@@ -14,6 +14,30 @@ stops rewarding confidence, so members pile up at the ceiling. The first thing t
 intervention that puts a floor under that confidence: stop asking the model to be perfectly certain on
 its members in the first place.
 
+Before I reach for the cure let me read the floor's numbers as a mechanism, because the arithmetic tells
+me exactly how much room there is and where. The quantity the composite actually penalizes is the margin
+of the attack above the coin flip, `mia_auc − 0.5`: on resnet20-cifar10 that is `0.7275 − 0.5 = 0.2275`,
+on vgg16bn-cifar100 `0.8677 − 0.5 = 0.3677`, on mobilenetv2-fmnist `0.5575 − 0.5 = 0.0575`. CIFAR-100's
+leakage margin is `0.3677 / 0.0575 ≈ 6.4×` FashionMNIST's — the overfit axis I predicted at the floor,
+now quantified. And the composite is exactly these margins subtracted from accuracy: `0.7972 − 0.2275 =
+0.5697`, `0.5045 − 0.3677 = 0.1368`, `0.9260 − 0.0575 = 0.8685`, matching the three reported
+privacy_scores to the digit. So the scoreboard is not hiding anything: CIFAR-100 scores worst because it
+is punished on *both* terms at once (lowest accuracy 0.5045 *and* largest AUC margin 0.3677), while
+FashionMNIST scores best because it is barely leaking (0.0575 margin) on top of high accuracy. That
+locates where a defense can matter. FashionMNIST already sits within 0.0575 of the 0.5 corner where AUC
+reduction stops paying, so there is almost nothing to win there and real accuracy to lose. CIFAR-10 and
+CIFAR-100 have 0.2275 and 0.3677 of AUC margin on the table respectively — that is where a defense earns
+its keep, if it can actually move separability rather than just relocate confidence.
+
+The privacy_gap column sharpens the picture in a way I should not skip, because gap and AUC are different
+readouts and their relationship is diagnostic. FashionMNIST's gap is a tiny 0.0211 with AUC 0.5575 — the
+member and non-member confidence means are almost coincident, consistent with the near-floor AUC. VGG's
+gap is 0.1479 with AUC 0.8677, and ResNet's gap is 0.0924 with AUC 0.7275 — so a larger mean gap tracks a
+larger AUC, as expected, but not linearly: ResNet has 62% of VGG's gap yet a much closer AUC, which tells
+me the two humps' *widths* also matter, not just the distance between their means. That is the same
+mean-versus-shape distinction I fixed in my head at the floor, and it is the lens I have to hold up to
+smoothing: I need to know whether smoothing changes the gap, the widths, or only slides everything.
+
 Let me start from what actually bugs me about the ERM objective, because the fix should come out of it.
 I have a softmax head, `p(k) = exp(z_k)/Σ_i exp(z_i)`, trained with cross-entropy against a one-hot
 target `q(k) = δ_{k,y}`, so the loss on an example is `−log p(y)`. To make `p(y) → 1` I need `z_y` to
@@ -56,6 +80,69 @@ hand-write the two-term split; the loop calls my `compute_loss` once per minibat
 one number. (This is the same criterion as a hand-rolled `(1−ε)·nll + ε·mean_k(−log p_k)` module, but
 the built-in flag is the literal edit the scaffold wants, and it is numerically identical.)
 
+Let me compute the confidence ceiling this actually imposes, because that number is what determines
+whether it can dent the leakage margins I just read off. Cross-entropy against the fixed target `q'` is
+minimized exactly when `p = q'`, so the *best* the model can do on a member is to output the smoothed
+target itself — its confidence on the true class is then `p(y) = (1 − ε) + ε/K`. With `ε = 0.1` and
+`K = 10` that ceiling is `0.9 + 0.1/10 = 0.91`; with `K = 100` it is `0.9 + 0.1/100 = 0.901`. So smoothing
+caps member confidence at about 0.91 essentially regardless of the class count — down from the ~1.0 that
+ERM's near-zero member losses imply. That is a real, computed drop of roughly 0.09 in the member ceiling.
+Two limiting checks confirm the knob behaves: as `ε → 0` the target returns to one-hot and the ceiling
+returns to 1.0, i.e. ERM exactly, so smoothing is a continuous deformation away from the floor; as
+`ε → (K−1)/K` the target becomes uniform and the ceiling collapses to `1/K`, destroying both the signal
+*and* the accuracy.
+
+Let me verify the finite-gap claim on the smallest possible case, because "the target no longer lives at
+infinity" should show up as an actual finite number. Take `K = 2` and `ε = 0.1`, so the smoothed target is
+`[0.95, 0.05]`. The loss is minimized at `p = [0.95, 0.05]`, and for a two-logit softmax
+`p(y) = σ(z_y − z_k)`, so the correct-vs-wrong logit gap the optimizer settles at is
+`z_y − z_k = logit(0.95) = ln(0.95/0.05) = ln 19 ≈ 2.94`. So smoothing pins the winning margin at about
+2.94 nats — a finite, `ε`-set value — where ERM's one-hot target drives that same gap to `+∞`. That is the
+mechanism made numeric: a bounded logit gap, hence a bounded confidence, hence a member spike that stops
+at 0.95 instead of 1.0. It is exactly the floor under confidence I wanted; the open question the numbers
+must answer is whether a *bounded* spike is any less separable from the non-member cloud than an unbounded
+one, and the rank-statistic argument says: not unless the non-members fail to slide down with it. At `ε = 0.1` I sit very near the ERM end of that continuum — the ceiling has moved
+only ~0.09 — which is my first quantitative warning that the intervention is mild.
+
+Here is why that ~0.09 drop is unlikely to translate into a ~0.09-worth reduction in the attack. The
+ceiling `0.91` is applied to *every* member the same way, and because the smoothing term is in the
+training loss it reshapes the model's outputs on non-members too — the network that learns to sit at 0.91
+on members will also, at inference, sit lower on the non-members it generalizes to. So both humps slide
+down by comparable amounts. Recall the rank-statistic arithmetic from the floor: subtracting a roughly
+common amount from both member and non-member confidences leaves almost every pairwise comparison
+unflipped, so the AUC barely moves. A cap that lowers the member mean from ~1.0 to ~0.91 is, to the
+attacker, close to the flat-shift example that left AUC at 1.0 — the *gap* may shrink (and I expect
+privacy_gap to fall below ERM's 0.0924/0.1479/0.0211) but the *separability* need not. That is the wall
+this rung is built to expose.
+
+There is a sharper structural mismatch hiding in the `ε/K` term, and it cuts against exactly the
+benchmark that needs help most. The uniform component of the smoothed target puts mass `ε/K` on each
+wrong class, and the forward-KL penalty `H(u, p)` weights every class by that same `1/K`. So on CIFAR-10
+each wrong class carries target mass `0.1/10 = 0.01`, but on CIFAR-100 each wrong class carries only
+`0.1/100 = 0.001` — a tenth as much grip per class. The total off-target mass is `ε = 0.1` either way,
+but it is smeared across 99 classes on CIFAR-100 versus 9 on CIFAR-10, so the pressure the smoothing term
+places on any *individual* competing logit is an order of magnitude weaker on the 100-class problem. That
+is perverse: CIFAR-100 is where ERM leaked hardest (AUC margin 0.3677, the 6.4× case), yet it is exactly
+where smoothing's per-class humbling is thinnest. The confidence *ceiling* is still ~0.9 there, but the
+force keeping any single rival logit alive is diluted 10×, so I should expect smoothing to do even less
+against the CIFAR-100 attack than against CIFAR-10's — the opposite of what a well-matched defense would
+do. This is a concrete reason to doubt smoothing can pull the 0.8677 wall down at all.
+
+I should also reason about the accuracy cost directly, because the exchange rate makes it decisive. Test
+accuracy is an argmax property — it depends only on *which* logit is largest, not on how large — and
+smoothing does not change which class the model prefers on an easy example; it only caps how confident it
+is allowed to be. So to first order smoothing should be near-neutral on accuracy, and as a regularizer it
+can even help slightly by discouraging degenerate large-magnitude solutions. The one way it *costs*
+accuracy is through the equidistant-cluster geometry: forcing every wrong class equally far from the
+activation can, on a genuinely hard sample sitting near a two-class boundary, nudge the argmax across that
+boundary. That effect is small and its sign is not guaranteed. So my accuracy prediction is "within a
+point or so of ERM, either direction," and combined with an AUC that I expect to barely move, the
+composite `Δprivacy_score = Δtest_acc − Δmia_auc` should land close to zero on every benchmark — smoothing
+buys little because it pays little and moves little. On the benchmark where it might have mattered most,
+CIFAR-100, the `1/K` dilution argues it does the least. If that holds, the message for the next rung is
+unambiguous: uniform target-humbling is the wrong tool, and I need pressure that scales with how spiked
+each *individual* output is, not a flat `ε/K` on every class.
+
 Now I want to understand what this does to the network geometrically, because that is where the "will it
 actually beat the attack" question lives, and I am suspicious it will not beat it by much. The logit for
 class `k` is `z_k = x^T w_k`, where `x` is the penultimate activation and `w_k` is the class template.
@@ -94,6 +181,21 @@ know how much privacy a *perfectly stable* regularizer can buy before I reach fo
 deliberately destabilizes training. Smoothing is the gentle, collapse-proof probe of "how much does
 bounding confidence, with no variance lever, actually help here?"
 
+This is also the reason I reach for smoothing *before* the other target-humbling option on the shelf.
+The lineage offers two ways to bound confidence: edit the target (label smoothing) or subtract a penalty
+on the output distribution (a confidence/entropy penalty). They differ in a way the CIFAR-100 number
+makes concrete. Smoothing trains toward a strictly-positive target `q'`, so its gradient is ordinary
+cross-entropy — always a descent direction, never a term that can push the loss *up*. A penalty that
+subtracts something from the loss can, if it is strong enough or badly timed, overpower the fitting term
+and drive the objective the wrong way. Now look at where CIFAR-100 already sits: test_acc 0.5045, barely
+above half, on a 100-class problem the model is only just managing to fit at all. That is precisely the
+benchmark where an objective that can fight its own fitting term is most likely to tip into failure. So
+the disciplined order is to spend the *safe* regularizer first and measure how much a pure
+confidence-cap buys with zero destabilization risk, and only then — knowing that baseline — decide
+whether the extra adaptivity of a penalty is worth its collapse risk on the 0.5045 case. Running the
+riskier method first would confound "the adaptivity helped" with "I got lucky on stability." Smoothing
+first is the clean experiment.
+
 One more design point, the value of `ε`. It is the single knob, the fraction of target mass moved to
 uniform; it trades data-fitting against humility. Too small and the floor under confidence is too high
 to dent the attack; too large and accuracy craters as the correct class loses its mass. The
@@ -102,6 +204,18 @@ move off it — the datasets are class-balanced, so uniform `u` is the right pri
 that lifts accuracy as a regularizer on ImageNet-scale problems without flattening the output. I keep
 `ε = 0.1` fixed across all three benchmarks; the loop already exposes `epoch` but smoothing has no
 reason to vary by epoch, so `compute_loss` ignores it.
+
+I do consider the one adaptation the `1/K` dilution seems to invite — raise `ε` on CIFAR-100 to
+counteract the 10× thinner per-class grip — and reject it for concrete reasons. First, the compensating
+`ε` would have to be large: to restore per-class mass `0.01` at `K = 100` I would need `ε = 1.0`, which is
+the fully-uniform target that destroys the signal and the accuracy outright, and even reaching CIFAR-10's
+grip only partway means pushing `ε` far enough to noticeably lower the true-class ceiling on a benchmark
+already sitting at 0.5045 accuracy — spending accuracy I can ill afford on the fragile case. Second, and
+more fundamentally, a bigger *uniform* push does not fix a *uniformity* problem: raising `ε` still applies
+the same pressure to a memorized member and an uncertain one, so it would relocate the member mean further
+without changing separability — more of the move I already expect to fail. The right response to the
+dilution is not a bigger flat push but an *adaptive* one, which is a different method entirely. So I hold
+`ε = 0.1` fixed and let this rung report the honest ceiling of what uniform target-humbling can do.
 
 So the falsifiable expectations against the ERM numbers. I expect smoothing to *reduce member
 confidence* — the privacy_gap should come down from ERM's levels — because it puts a hard floor under

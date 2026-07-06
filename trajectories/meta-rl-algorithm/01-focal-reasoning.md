@@ -1,13 +1,26 @@
 The scaffold hands me a SAC actor-critic that already conditions on a task variable `z`; what it does
 *not* hand me is anything that makes `z` mean something. The default `z` is a dummy zero, `infer_posterior`
 and `adapt` are no-ops, and `train_iteration` takes no gradients — so the policy is the same policy on
-every task and there is no meta-learning at all. The first real thing I have to design, then, is the
-context encoder: the map from collected transitions to a `z` that tells the policy which task it is in.
-I want the *simplest* encoder that could possibly work, so that whatever I build next has a clean floor
-to beat. Simplicity here has a precise meaning — the fewest moving parts in the inference path, and a
-training signal for the encoder that is *decoupled* from the value learning so I can reason about it in
-isolation. That points me at a deterministic encoder shaped directly by a distance objective, and I'll
-spend the rest of this working out why that is both the natural starting point and where it should crack.
+every task and there is no meta-learning at all. Before I reach for an encoder I should check that an
+encoder is even the right primitive here, because the other two families of meta-RL would attack this
+differently and I want to be sure the frozen substrate rules them out rather than merely disfavouring
+them. RL² / learning-to-RL would make the *policy* recurrent and let the task live in a hidden state
+carried across the trial, training the whole recurrence with ordinary RL on trial return; but the fixed
+substrate is an *off-policy* SAC actor-critic that reads decorrelated minibatches out of a replay buffer,
+and a trial-return-trained recurrence is an on-policy object that does not survive being fed shuffled
+off-policy transitions — the temporal credit assignment it depends on is exactly what the buffer
+destroys. It does not fit the harness I am given. MAML / ProMP would meta-learn an initialization and
+adapt with a few policy-gradient steps in an inner loop; but there is no inner-loop machinery in this
+substrate and both of MAML's loops are on-policy, so that too is structurally excluded by the frozen
+code. What the scaffold actually exposes is a `z`-slot on the actor and both critics and an encoder hook
+(`infer_posterior`/`adapt`), so it commits me to the *context-encoder* family: learn a map from collected
+transitions to a `z` that identifies the task, and train it with a meta-gradient step. The first real
+thing to design, then, is that context encoder, and I want the *simplest* one that could possibly work,
+so that whatever I build next has a clean floor to beat. Simplicity here has a precise meaning — the
+fewest moving parts in the inference path, and a training signal for the encoder that is *decoupled* from
+the value learning so I can reason about it in isolation. That points me at a deterministic encoder shaped
+directly by a distance objective, and I'll spend the rest of this working out why that is both the natural
+starting point and where it should crack.
 
 Start from what the latent variable even is. The tasks in this family share the state and action space
 and differ only in their reward (and, on some families, transition) functions. Take the clean case of
@@ -16,7 +29,10 @@ the tasks satisfy what I'll call task-transition correspondence: two tasks agree
 reward everywhere if and only if they are the same task. Then the pair `(P, R)` *identifies* the task,
 and under determinism each `(s, a)` has a unique outcome `(s', r)`, so every task is a function
 `f_T(s, a) = (s', r)`. The whole family `{f_T}` lives on the transition space `S × A × S × ℝ`, which is
-exactly the context space the harness samples from. The encoder isn't inferring a fuzzy belief about a
+exactly the context space the harness samples from. I can be concrete about the sizes the harness hands
+me: on `point-robot` and `sparse-point-robot` a transition `(o, a, r)` is `2 + 2 + 1 = 5` numbers, and on
+`cheetah-vel` it is `20 + 6 + 1 = 27` — so "embed the function `f_T`" means map points of a 5- or
+27-dimensional space to a `latent_dim = 5` vector. The encoder isn't inferring a fuzzy belief about a
 hidden quantity; it is embedding the function `f_T` from samples of it. And here is the consequence that
 makes the simple design legitimate: because `(P, R)` pin the task pointwise, a *single* transition tuple
 in principle already constrains which task I'm in — `f_T` is determined by its values, and one value is a
@@ -24,28 +40,33 @@ real constraint. I do not need to integrate evidence across many transitions to 
 Two things drop straight out. The encoder should be **permutation-invariant** — order cannot matter if
 each transition independently reveals the task — and it should be **deterministic** — there is no
 irreducible uncertainty to represent, because the task is recoverable, not guessed. No probabilistic
-posterior, no information bottleneck, no product-of-Gaussians belief. The permutation-invariant
+posterior, no information bottleneck, no learned belief distribution over the task. The permutation-invariant
 aggregation that costs the least is the one prototypical networks use for class prototypes: embed every
 transition with a shared MLP and take the **mean** of the per-transition embeddings. So the encoder is a
 width-200 depth-3 MLP from one transition `(o, a, r)` to a `latent_dim`-vector, and `z` for a task is the
-mean over its context rows. That is `infer_posterior`, and `adapt` just calls it on the accumulated
-online context.
+mean over its context rows. On `cheetah-vel` that MLP is roughly `27·200 + 200·200·(depth−1) + 200·5`
+weights, on the order of `10⁵` parameters — an order of magnitude below the `net_size = 300` policy and
+each critic. The encoder is deliberately the cheapest network in the agent, which is what "thinnest floor"
+should mean numerically, not just rhetorically. That mean map is `infer_posterior`, and `adapt` just
+calls it on the accumulated online context.
 
 "Deterministic mean encoder" only says how I *combine* embeddings; it says nothing about what makes the
 embedding *good*. If I let the encoder learn purely through the SAC critic's Bellman gradients — the way
 a value-trained context encoder would — I have a problem I can see coming. So let me ask whether the
 geometry of `z` even needs a direct objective, because if it doesn't I shouldn't add one. The value
 function `Q(s, a, z)` is a continuous network: for close `z₁, z₂` it is *forced* to output close
-Q-values. Now take two genuinely different tasks whose embeddings happen to land close together. The
-network must give them nearly equal Q-values — but their *true* Q-values, built from different rewards
-and dynamics, are not close at all. A single continuous approximator simply cannot output two
-well-separated values at two nearly-identical inputs. So if the encoder lets distinct tasks' embeddings
-sit near each other, the conditioned value functions for those tasks become unrepresentable, and control
-fails downstream no matter how good the actor-critic is. The geometry of `z` is therefore not cosmetic;
-keeping distinct tasks far apart in latent space is a *precondition* for the value functions to exist. I
-need an objective that lives on the embedding space itself and clusters same-task transitions while
-separating different-task ones — and, importantly, I want it decoupled from the value learning so I can
-trust it.
+Q-values. Make that quantitative — a critic with Lipschitz constant `L` in its `z`-argument can express
+at most `L·δ` of a value gap between two tasks whose embeddings sit `δ` apart. Now take two genuinely
+different tasks whose true Q-values at some `(s, a)` differ by `ΔQ` — built from different rewards and
+dynamics, `ΔQ` is not small — but whose embeddings happen to land within `δ` of each other. Unless
+`L·δ ≥ ΔQ`, the conditioned value functions for those two tasks are *unrepresentable*: the network
+physically cannot output two well-separated values at two nearly-identical inputs. So the separation `δ`
+in latent space is a hard budget the critic has to spend, and if the encoder lets distinct tasks'
+embeddings sit near each other, control fails downstream no matter how good the actor-critic is. The
+geometry of `z` is therefore not cosmetic; keeping distinct tasks far apart in latent space is a
+*precondition* for the value functions to exist. I need an objective that lives on the embedding space
+itself and clusters same-task transitions while separating different-task ones — and, importantly, I want
+it decoupled from the value learning so I can trust it.
 
 The textbook objective for "cluster same, separate different" is the contrastive loss: a quadratic
 attractor `1{same}·‖q_i−q_j‖²` pulling same-task pairs together, and a margin hinge
@@ -53,35 +74,54 @@ attractor `1{same}·‖q_i−q_j‖²` pulling same-task pairs together, and a m
 that, it degenerates — the clusters do not cleanly separate; I get blobs holding transitions from several
 tasks at once. The why matters, because it dictates the fix. Two failures compound. First, the margin
 hinge is a spring that acts *only within radius m* and whose force is *weakest exactly where I need it
-most*: at the start, all embeddings are bunched near the origin (the latent is tanh-bounded, the encoder
-randomly initialized), so every pairwise distance is tiny, and the hinge's gradient with respect to
-distance, `−2(m−d)`, is bounded and has no special urgency at small `d`. Second, and deeper, the
-attractive squared-distance term is, algebraically, *variance maximization*: summing squared pairwise
-distances over a set equals `2N²·Var(X)`. Variance is a single global scalar, and many embedding
+most*: its gradient magnitude with respect to distance is `2(m−d)`, which is *bounded* (at most `2m` at
+contact) and roughly flat, so a pair of embeddings sitting right on top of each other feels essentially
+the same push as a pair already half-separated. At the start, all embeddings are bunched near the origin
+— the latent is tanh-bounded, the encoder randomly initialized — so every pairwise distance is tiny, and
+this bounded spring has no special urgency there. Second, and deeper, the attractive squared-distance
+term is, algebraically, *variance maximization*. I can just do the sum on paper: for scalar embeddings,
+`Σ_{i,j}(x_i−x_j)² = Σ_{i,j}(x_i² − 2x_i x_j + x_j²) = 2N Σ x_i² − 2(Σ x_i)²`, and `2N²·Var(X)
+= 2N²[(1/N)Σx_i² − x̄²] = 2N Σx_i² − 2(Σx_i)²` — the two expressions are identical, so summing squared
+pairwise distances *is* `2N²·Var`, per axis. Variance is a single global scalar, and many embedding
 distributions share it — including the degenerate one that piles half the mass at `+1` and half at `−1`
-on each axis, which can cram several tasks into each pile while still having huge variance. The optimizer
-happily spreads mass to the extremes and merges distinct tasks, because the global statistic it is
-maximizing says nothing about whether *every* pair of distinct clusters is separated. That is precisely
-the merged-blob failure.
+on each axis. On the tanh-bounded interval `[−1,1]` that two-point distribution has the maximal variance
+(`= 1`, since a bounded variable maximizes spread at the extremes), and with `latent_dim = 5` the corners
+`{−1,+1}⁵` are `2⁵ = 32` points all at that same maximal spread. So the optimizer can cram all 40
+`sparse-point-robot` training tasks onto those 32 corners — by pigeonhole it *must* collide at least eight
+tasks onto shared corners — and the variance-maximizing objective reads the *same* global scalar whether
+the 40 tasks land on 40 distinct points or pile onto two. It is completely indifferent to the collision.
+That is precisely the merged-blob failure, made arithmetic: a global statistic cannot enforce a
+per-pair separation.
 
 So I know what I actually need: a repulsion between different-task pairs that is *strong at short range
 and fades as distance grows* — the opposite profile of the margin spring, and one that cannot be
 satisfied by a global statistic. The function with that profile is a *negative* power of distance:
 `β / (‖q_i−q_j‖ⁿ + ε)` blows up as the distance goes to zero and relaxes once the pair is well
 separated. Replacing the margin term with this gives the deep-metric-learning loss
-`L = 1{same}·‖q_i−q_j‖² + 1{diff}·β/(‖q_i−q_j‖ⁿ + ε)`. Now the different-task term is a genuine
-repulsive *potential*, not a capped spring: two distinct-task embeddings sitting on top of each other
-feel an enormous push apart, and crucially the potential cannot be gamed by the variance trick, because
-the offending pairs *inside* a merged pile are at small distance and the `1/dⁿ` term is screaming at them.
-Every pair of distinct clusters is forced apart. Physically it is a system of like charges in a bounded
-box: with `n = 1` it is literally the Coulomb potential, the charges migrate to the boundary and pile up
-at the corners, and the tanh-bounded latent cube `(−1,1)^l` is the conducting box that lets the repulsion
-settle into a well-separated equilibrium instead of flinging everything to infinity. The same-task
-quadratic still pulls each task into a tight cluster, so I get tight clusters scattered to the extremes —
-exactly the geometry the continuity argument demanded. For the power I take `n = 2` (the inverse-square,
-sharper than Coulomb, concentrating effort on the closest offending pairs), which coincides with the
-Cauchy graph-embedding objective whose whole point is preserving local topology better than the quadratic
-form; `β` just matches the attractive and repulsive scales and `ε` floors the denominator.
+`L = 1{same}·‖q_i−q_j‖² + 1{diff}·β/(‖q_i−q_j‖ⁿ + ε)`. Let me actually compare the two repulsion
+profiles at a few distances to make sure this is not wishful, taking `β = 1`, `ε = 10⁻³`, `m = 1` and
+`n = 2`. The inverse-square force magnitude is `2βd/(d²+ε)²`. At `d = 0.1` — two clusters badly
+overlapping — the margin pushes with `2(1−0.1) = 1.8`, while the inverse-square pushes with
+`2·0.1/(0.01+0.001)² ≈ 1653`, nearly a *thousandfold* stronger exactly where I need separation most. At
+`d = 0.5` it is `1.0` versus `≈15.9`; at `d = 0.9`, `0.2` versus `≈2.7`; and past `d = m = 1` the margin
+is *dead* at `0` while the inverse-square still pushes `≈2.0`. The profiles are opposite where it matters:
+the margin is weakest at overlap and the inverse-power is strongest there. One honest subtlety the `ε`
+floor introduces: because the numerator carries a `d`, the inverse-square force does not actually diverge
+at `d = 0` — solving `d/dd [2βd/(d²+ε)²] = 2β(ε−3d²)/(d²+ε)³ = 0` puts the peak force at
+`d = √(ε/3) ≈ 0.018`, and it returns to `0` for two *exactly* coincident points. So `ε` is doing real
+work: it caps the otherwise-explosive contact force to keep the gradients finite, at the harmless cost
+that a pair at literally zero distance feels nothing while any nonzero separation immediately feels the
+`≈2β/d³` push. Physically it is a system of like charges in a bounded box: with `n = 1` it is literally
+the Coulomb potential, the charges migrate to the boundary and pile up at the corners, and the
+tanh-bounded latent cube `(−1,1)^l` is the conducting box that lets the repulsion settle into a
+well-separated equilibrium instead of flinging everything to infinity. For the power I take `n = 2` (the
+inverse-square, sharper than Coulomb, concentrating effort on the closest offending pairs), which
+coincides with the Cauchy graph-embedding objective whose whole point is preserving local topology better
+than the quadratic form; `β` just matches the attractive and repulsive scales and `ε` floors the
+denominator. The variance trick can no longer game the loss, because the offending pairs *inside* a merged
+pile are at small distance and the `1/d²` term is screaming at them — every pair of distinct clusters is
+forced apart while the same-task quadratic still pulls each task into a tight cluster, so I get tight
+clusters scattered to the extremes, exactly the geometry the continuity argument demanded.
 
 Now I have to decide how this encoder objective relates to the value-learning gradients, and the harness
 makes the choice for me in a way I should be explicit about. The clean version of this method, in the
@@ -97,18 +137,46 @@ for this setting: the deterministic mean encoder and the inverse-power DML loss,
 scaffold's plain SAC. The harness makes the contrastive loss convenient — `sample_context_from_buffer`
 returns a per-task context block, so I split each task's context in half, mean-encode each half into two
 embeddings sharing the task's label, and apply the squared distance to same-task pairs and the
-inverse-power to different-task pairs across the meta-batch. That distance-metric loss is the encoder's
-*primary* shaping signal. I should be precise about the gradient flow, though, because here I deviate from
-the fully-decoupled offline version and follow the scaffold's PEARL-shaped update instead: the contrastive
-loss is backpropped into the encoder, but the encoder optimizer is stepped *together with* the critic, and
-the `z` that feeds the two Q-heads is **not** detached — so the Bellman gradient also reaches the encoder,
-exactly as it would for a critic-trained context encoder. The `z` is detached only where it feeds the
-value head and the policy. So the encoder is shaped by the DML loss *plus* the critic, not by the DML loss
-alone; the design choice I am keeping from the clean version is the contrastive objective and the
-deterministic mean aggregation, not the gradient-level isolation. The SAC update underneath is the standard
-twin-Q / value / squashed-Gaussian-actor step — reward scaled, the soft target value net slowly tracked,
-`z` detached in the value and policy losses — exactly as the building blocks provide. The literal scaffold
-fill is in the answer.
+inverse-power to different-task pairs across the meta-batch. It is worth tracing the pair bookkeeping,
+because it tells me which force dominates when. With `meta_batch = 16` the split-in-half construction
+gives `2·16 = 32` embeddings and a `32×32` pair matrix: `16` same-task off-diagonal pairs (each task's
+two half-embeddings, counted symmetrically) attract, the `32` diagonal entries are at distance zero and
+contribute no gradient, and `32² − 32 − 32 = 960` ordered different-task pairs (480 unordered) repel, all
+averaged over the `1024` matrix entries. The negatives outnumber the positives roughly `30 : 1`, and with
+the `1/d²` blow-up they dominate the early gradient — which is exactly the right order of operations: the
+repulsion first flings distinct tasks apart, then the quadratic attractor tightens each task's two
+half-embeddings into a point. That distance-metric loss is the encoder's *primary* shaping signal. I
+should be precise about the gradient flow, though, because here I deviate from the fully-decoupled offline
+version and follow the scaffold's own update structure instead: the contrastive loss is backpropped into
+the encoder, but the encoder optimizer is stepped *together with* the critic, and the `z` that feeds the
+two Q-heads is **not** detached — so the Bellman gradient also reaches the encoder, exactly as it would
+for a critic-trained context encoder. The `z` is detached only where it feeds the value head and the
+policy. So the encoder is shaped by the DML loss *plus* the critic, not by the DML loss alone; the design
+choice I am keeping from the clean version is the contrastive objective and the deterministic mean
+aggregation, not the gradient-level isolation. Before I commit I check the shapes close: `infer_posterior`
+takes a context `(num_tasks, seq_len, context_dim)`, the encoder maps the last axis to `latent_dim`
+giving `(num_tasks, seq_len, 5)`, and the mean over the sequence axis gives `(num_tasks, 5)`; at
+evaluation a single task's accumulated context `(1, N, context_dim)` collapses to `(1, 5)`, which
+concatenates with `obs` `(1, obs_dim)` for `get_action`. The dimensions line up. The SAC update
+underneath is the standard twin-Q / value / squashed-Gaussian-actor step — reward scaled, the soft target
+value net slowly tracked, `z` detached in the value and policy losses — exactly as the building blocks
+provide. The literal scaffold fill is in the answer.
+
+One last check on the exponent, because `n` is a real knob and I do not want to pick it by taste. The
+repulsive force scales as `1/dⁿ⁺¹`, so if the closest offending pair sits at distance `d` and the
+next-closest at `2d`, the force ratio between them is `2ⁿ⁺¹`. At `n = 1` (Coulomb) that ratio is `4`; at
+`n = 2` it is `8`; at `n = 4` it is `32`. Larger `n` concentrates almost all the gradient on the single
+closest pair and effectively ignores the second-closest overlap — a winner-take-all repulsion that would
+separate one collision at a time and could leave a second merged pair untouched for many steps. Smaller
+`n` spreads the force so thinly that a badly overlapping pair barely gets more attention than a
+well-separated one, which is the margin-hinge disease again. `n = 2` sits where the closest pair gets
+clear priority (`8×` the next) without going winner-take-all, so several collisions get repaired in
+parallel — that is why the inverse-square is the right compromise, not merely the physics analogy. And I
+can sanity-check that the same-task term does not fight this: the two half-embeddings of one task share a
+label, so the only force between them is the quadratic attractor `‖q_a − q_b‖²`, whose gradient `2(q_a−q_b)`
+drives them straight together with no opposing repulsion (the diagonal self-pairs are at distance zero and
+contribute nothing). So each task collapses to a point while distinct tasks are shoved apart — the two
+terms act on disjoint pair-sets and cannot deadlock.
 
 So the design closes: a deterministic, mean-aggregating context encoder shaped primarily by an
 inverse-power distance metric loss that forces distinct task clusters to the corners of the bounded latent
@@ -124,17 +192,29 @@ the task is a target velocity that is only weakly visible in any one `(s, a, r)`
 but ambiguous, a permutation-invariant mean of per-transition embeddings throws away the temporal
 structure that would let me read the target off a *sequence* — and a contrastive loss that only enforces
 "these blocks are the same task, those are different" never teaches `z` to encode the underlying quantity
-the policy actually needs to set its running speed. I expect the cheetah encoding to be the weak point:
-the conditioned policy should land mediocre returns there. On `sparse-point-robot` the construction is in
-even more trouble — the reward is +1 only near the goal and 0 everywhere else, so almost every context
-transition carries reward 0 and is identical across tasks, the contrastive signal has almost nothing to
-separate tasks *by*, and there is no exploration mechanism here that commits to going somewhere to *find*
-the goal in the first place. A deterministic `z` with no notion of "I am uncertain, let me probe" cannot
-drive the temporally-extended exploration a sparse task needs. So I expect `sparse-point-robot` to be
-where this floor fails hardest — returns near zero, meaning the goal is essentially never reached. The
-dense, low-dimensional `point-robot` is the one place the assumptions roughly hold (the goal is readable
-from a few dense transitions), so it should be the only family where this rung looks healthy. If that
-split is what I measure — fine on dense low-dim, weak on high-dim encoding, near-zero on sparse — the
-diagnosis writes the next step for me: I need an encoder that respects the *sequence* of experience
-rather than treating context as an unordered bag, and eventually a representation that can carry
-*uncertainty* so the agent can explore the sparse task at all.
+the policy actually needs to set its running speed. So the cheetah representation is unpinned: nothing in
+the objective forces `z` to *be* the target velocity, only to be far from other tasks' `z`, and a bounded
+random-init encoder can satisfy "far from the others" in many ways, some of which happen to carry the
+speed and some of which do not. I expect the cheetah encoding to be the weak point, and specifically an
+*unreliable* one — the conditioned policy should land mediocre returns there with a wide spread across
+seeds, because whether a given run's encoder stumbles onto a usable target-velocity code is left to
+chance. On `sparse-point-robot` the construction is in even more trouble, and I can spell out the failure
+as a chain. The reward is `+1` only within some radius `ρ` of the goal and `0` everywhere else, with goals
+on a half-circle. Under an untrained exploratory policy the fraction of context transitions that land
+within `ρ` of the goal is tiny, so almost every context row is `(o, a, 0)` — and in the `(o, a, r)`
+coordinates the encoder actually reads, those rows are near-identical across tasks, because the reward
+coordinate, the *only* one that carries the goal's identity, is `0` for all of them. So the two halves of
+task A's context look almost the same as the two halves of task B's; the contrastive loss has almost no
+contrast to separate tasks *by*; it produces a `z` that barely varies with the task; the policy acts
+almost task-agnostically; and it therefore rarely reaches any goal — which keeps the reward `0` in the
+context, which keeps `z` uninformative. It is a fixed point of failure, and there is no exploration
+mechanism anywhere that commits to *going somewhere* to break it by finding the goal once. So I expect
+`sparse-point-robot` to be where this floor fails hardest — returns near zero, meaning the goal is
+essentially never reached. The dense, low-dimensional `point-robot` is the one place the assumptions
+roughly hold (the goal is readable from a few dense transitions and every reward is informative), so it
+should be the only family where this rung looks healthy. If that split is what I measure — fine on dense
+low-dim, weak and seed-unreliable on high-dim encoding, near-zero on sparse — then this thinnest encoder
+has left two cracks exactly where the measurement would expose them: an order-blind mean cannot read the
+cheetah target that lives in the *sequence* of experience rather than in any single unordered transition,
+and nothing in this construction drives the agent to *find* the sparse reward it has never once seen. Those
+are the limitations the climb from here has to answer to.

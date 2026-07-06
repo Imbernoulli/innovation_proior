@@ -8,7 +8,21 @@ exploit. The signal is LunarLander: mean 89.06, and the per-seed numbers are the
 {127.35, 229.07, **−89.25**}. One seed found a genuinely good policy (229), one found a mediocre one
 (127), and one fell into the crash basin and came out *negative*. That −89.25 seed is the −1000-style
 tell from the bottom of any RL ladder: the agent's greedy policy on that seed is systematically landing
-in the deceptive failure region, and the mean is being dragged down by it. The dueling architecture did
+in the deceptive failure region, and the mean is being dragged down by it.
+
+Let me read those three LunarLander numbers as mechanically as I can, because the shape of the failure
+should dictate the fix. The spread {127.35, 229.07, −89.25} has a range of 318.32 between best and worst
+seed — enormous against a mean of 89.06; the seed-to-seed standard deviation is about 133, larger than
+the mean itself, so this is not "mediocre on average," it is *bimodal across seeds*. Pull the one crash
+seed out and the remaining two average 178.2, so that single basin seed drags the reported mean down by
+roughly 89 points — it nearly halves it. And the drag is localized: CartPole and Acrobot are essentially
+flat across all three seeds (Acrobot mean −82.6; CartPole 487.2, with only the 461.6 seed off the cap),
+so seed 456 did not learn a uniformly worse agent — it learned one specific bad behavior on one specific
+task. That localization is a strong hint about what to change. The fix should leave CartPole and Acrobot
+alone, where nothing is broken, and target precisely whatever lets LunarLander's greedy policy commit to
+the crash region on some seeds and not others. A change that improved the mean estimate uniformly
+everywhere would be the wrong shape; I want something that specifically stops the argmax from being
+fooled on the one task whose return is bimodal. The dueling architecture did
 its job — it improved how the *mean* state value is estimated and shared across actions — but the failure
 that survives is not about how I estimate the mean. It is that I am estimating *only* a mean, and on
 LunarLander the return is sharply bimodal: a safe landing scores a few hundred, a crash scores a large
@@ -57,25 +71,27 @@ the sample `W_p`, the minimizer of the expected sample loss is not the minimizer
 intuition is that `W_p` is built from the quantile function `F⁻¹`, and a single sample is a draw, not an
 observation of a quantile; the optimal transport reshuffles which sample pairs with which prediction, and
 the gradient of that matching, averaged over sample sets, does not equal the population transport
-gradient. So the metric the theory wants is the one I cannot descend from single transitions. The
-categorical approach (the next rung) dodges this by fixing the atom *locations* on a predetermined grid,
-making the *probabilities* learnable, projecting the shifted target back onto the grid, and minimizing
-KL — but that needs me to supply `[v_min, v_max]` as prior knowledge and the projection exists only
-because fixed atoms force off-grid collisions. Let me see whether I can find a representation that is
-genuinely Wasserstein-aware *and* trainable from samples, with no projection and no support bounds.
+gradient. So the metric the theory wants is the one I cannot descend from single transitions. Let me see
+whether I can find a representation that is genuinely Wasserstein-aware *and* trainable from samples — and
+ideally one whose support is not fixed in advance but slides to wherever the returns actually live, since
+these three tasks span wildly different return ranges and I would rather not hand-set a range per task.
 
-The categorical agent's free variables are the *probabilities* on fixed locations — it learns the
-*vertical* axis. So turn the parametrization on its side. Fix the probabilities to be uniform,
-`q_i = 1/N`, and make the *locations* `θ_i` the learnable thing:
+Here is the lever. Wasserstein is built entirely from the quantile function `F⁻¹` — the inverse CDF, a
+map from probability level to value — so if I want a representation natively aligned with the metric the
+operator actually contracts in, its free parameters should be *points on that curve*: values indexed by
+probability level, not probabilities indexed by value. That is the transpose of an ordinary histogram.
+Fix the probabilities to be uniform, `q_i = 1/N`, and make the *locations* `θ_i` — the values at those
+levels — the learnable thing:
 `Z_θ(s,a) = (1/N) Σ_i δ_{θ_i(s,a)}`. I am no longer learning how much mass sits at fixed heights; I am
 learning *where* `N` equal lumps of mass should sit. And "where the `i`-th of `N` equal lumps sits" is
 exactly a **quantile** of the distribution. So this transposed parametrization estimates quantiles of
-the return. Three things immediately look better: the support is not pinned to any `[v_min, v_max]` — the
-locations slide to wherever the returns actually live, with per-state adaptive resolution (this matters
-here, where LunarLander spans roughly −400 to +300 and Acrobot −500 to −60 and CartPole 0 to 500, three
-very different ranges that one fixed grid would have to straddle); there is no projection, because when
-the Bellman target's atoms move they are just numbers I compare directly to my locations; and — the part
-I must verify — estimating quantiles may be doable from samples *without* a biased gradient.
+the return. Three things immediately look better: the support is not pinned in advance — the locations
+slide to wherever the returns actually live, with per-state adaptive resolution (this matters here, where
+LunarLander spans roughly −400 to +300 and Acrobot −500 to −60 and CartPole 0 to 500, three very
+different ranges that any single prearranged range would have to straddle); the Bellman target's shifted
+atoms are just numbers I compare directly against my locations, with no intermediate step needed to
+realign them; and — the part I must verify — estimating quantiles may be doable from samples *without* a
+biased gradient.
 
 Which quantiles? Minimize `W_1` between an arbitrary target `Y` and a uniform-`N`-Dirac distribution on
 ordered locations `θ_1 ≤ … ≤ θ_N`. With cumulative levels `τ_i = i/N`, the inverse-CDF of the uniform
@@ -86,6 +102,17 @@ own integral — so minimize each separately. The subgradient in `θ` of `∫_τ
 location is the quantile at the **midpoint** of the cell: `θ_i = F_Y⁻¹(τ̂_i)` with
 `τ̂_i = (2i − 1)/(2N)`. Not the cell edges `i/N` — the cell centers. That tells me precisely which
 quantiles my `N` locations should chase.
+
+Make that concrete with `N = 50`. The cumulative edges are `τ_i = i/50 ∈ {0.02, 0.04, …, 1.00}`, but the
+locations sit at the midpoints `τ̂_i = (2i−1)/100 ∈ {0.01, 0.03, 0.05, …, 0.99}`. The distinction is not
+pedantic. If I had naively parked location `i` at the edge `τ_i`, location 50 would chase the `1.00`
+quantile — the essential supremum of the return, an infinitely-sensitive statistic on a heavy tail — and
+location 0 would chase `0.00`, the infimum. The midpoint convention instead sends the extreme locations
+to `0.99` and `0.01`, one full half-cell in from the edges, which is exactly the reachable-from-samples
+region: the `0.99` quantile is estimable, the `1.00` "quantile" is not. So the `W_1`-optimal placement
+is also the *statistically well-posed* placement, and I did not have to impose that separately — it fell
+out of decoupling the transport integral cell by cell. That is the kind of coincidence that tells me the
+representation is right rather than merely convenient.
 
 Can I hit those midpoint quantiles from samples without bias? A quantile parametrization alone does *not*
 unbias Wasserstein — minimizing sample-`W_p` is still biased even here. The unbiasedness has to come
@@ -98,6 +125,21 @@ whole escape: I cannot descend `W_p`, but I can descend the quantile-regression 
 are the very locations that minimize `W_1`. End-to-end Wasserstein, by way of quantile regression on the
 midpoint quantiles.
 
+Let me verify the fixed point rather than take it on faith, because the whole escape hinges on it. The
+expected quantile loss at level `τ` is `E_Ẑ[ρ_τ(Ẑ − θ)]`; its derivative in `θ` is
+`E_Ẑ[−(τ − 1{Ẑ−θ<0})] = −τ + Pr(Ẑ < θ) = F(θ) − τ`. Setting it to zero gives `F(θ) = τ`, i.e.
+`θ = F⁻¹(τ)` — the `τ`-quantile, as required. Now the unbiasedness that KL-on-a-softmax could never give
+me: the *sample* gradient for a single draw `Ẑ` is `−(τ − 1{Ẑ < θ})`, which takes only two values,
+`1 − τ` when the draw is below `θ` and `−τ` when above. Its expectation is
+`(1−τ)·Pr(Ẑ<θ) + (−τ)·Pr(Ẑ≥θ) = Pr(Ẑ<θ) − τ = F(θ) − τ` — exactly the population gradient. A single
+sample gives an unbiased estimate because the gradient depends on the draw only through the *sign* of
+`Ẑ − θ`, and that sign is a Bernoulli whose mean is precisely the CDF I am trying to match. Contrast the
+thing I gave up: minimizing sample-`W_1` needs the sample's *value* to locate a quantile, and one draw is
+not an observation of a quantile, so its gradient does not average to the population one. The sign-only
+structure is the whole difference between a biased and an unbiased estimator here. Sanity-check the
+special case `τ = 0.5`: the loss collapses to symmetric absolute error, the fixed point is `F(θ) = 0.5`,
+the median — quantile regression contains the familiar median-is-the-L1-minimizer as its midpoint.
+
 One wrinkle before a deep net: `ρ_τ` is kinked at `u = 0` and its gradient magnitude stays constant
 (`τ` or `1−τ`) as `u → 0`, so there is no shrinking of the step as the error gets small and the locations
 jitter. Round the kink with a **Huber** loss — quadratic inside `|u| ≤ κ`, linear outside — and multiply
@@ -109,8 +151,8 @@ maximize expected return: the greedy action is `argmax_a (1/N) Σ_j θ_j(s,a)`, 
 per-action location average — a drop-in for DQN's `argmax_a Q`. The bootstrapped target locations are
 `Tθ_j = r + γ θ_j(s', a*)` (with `γ` zeroed at terminals), and each predicted location `θ_i(s,a)` is
 regressed, at its own level `τ̂_i`, against *all* `N` target locations: the all-pairs quantile Huber
-loss `(1/N) Σ_i Σ_j ρ_{τ̂_i}^κ(Tθ_j − θ_i)`. No projection, no `[v_min, v_max]`; the only new knob over
-DQN is `N`.
+loss `(1/N) Σ_i Σ_j ρ_{τ̂_i}^κ(Tθ_j − θ_i)`. No target realignment, no range to set by hand; the only
+new knob over DQN is `N`.
 
 Now land it in *this* task's edit surface, and note where it departs from the generic recipe. The torso
 is the **fixed MLP encoder** (`obs_dim → 120 → 84`), not a conv stack, so the only change to `QNetwork`
@@ -119,7 +161,17 @@ per-action mean over the `N` quantiles so the evaluation harness still argmaxes 
 I set **`N = 50`** quantiles, not the larger value the generic Atari recipe uses — on classic-control
 tasks with a single environment and a 500k-step budget, 50 locations already resolve the bimodality I
 care about (safe-landing mass vs crash mass on LunarLander) without inflating the head past the
-parameter budget, and a coarser comb trains faster and more stably here. The midpoint levels are
+parameter budget, and a coarser comb trains faster and more stably here. Put numbers to that. The head
+is `84 → |A|·N`, so on LunarLander (`|A| = 4`) at `N = 50` it is `84·200 + 200 = 17 000` parameters —
+already comparable to the ~11 000-parameter frozen encoder, which is as far as I want to push before the
+capacity check starts to frown. Take the generic Atari `N = 200` instead and it becomes
+`84·800 + 800 = 68 000`, roughly six times the encoder — that is a head that dwarfs the trunk it reads
+from, exactly the "capacity, not algorithm" smell I am supposed to avoid. And the loss cost is worse than
+linear: the all-pairs quantile-Huber term is `O(N²)` per transition, `50² = 2 500` pairwise errors at
+`N = 50` versus `200² = 40 000` at `N = 200` — a 16× compute multiplier on every one of the ~50 000
+updates over the run. So both the parameter budget and the per-update FLOP budget point the same way, and
+50 quantiles is where "enough resolution to see the LunarLander bimodality" meets "cheap and stable
+enough to fit on a single 500k-step run." The midpoint levels are
 `τ̂_i = (2i − 1)/(2N)`, fixed buffers. `κ = 1`. For the bootstrap I select `a*` greedily on the
 target network's next-state quantile means and take *that* network's quantiles for `Tθ_j` — note this is
 the scaffold's plain-DQN style target (select and evaluate both on the **target** net), *not* the
@@ -130,6 +182,21 @@ the dueling head: distributional learning is a change to the *output object and 
 the two-stream head would conflate two rungs — I want to isolate the effect of modeling the distribution.
 Adam at the scaffold `lr`, no grad clip needed beyond what the Huber already provides. (The full scaffold
 module is in the answer.)
+
+One design alternative is worth walking a few steps before I settle, because it is tempting. Instead of
+a *fixed* comb of `N` midpoint levels, I could sample the quantile levels `τ` at random on each forward
+pass and condition the head on the sampled `τ` — a continuous quantile function rather than a fixed set
+of `N` outputs. It has a real attraction: infinite effective resolution, and the network could interpolate
+quantiles it never explicitly parametrizes. But price it against this budget. It requires a
+`τ`-embedding (a cosine feature bank feeding an extra learned layer) grafted onto the head, which is
+capacity and structure beyond the single `84 → |A|·N` linear map the edit surface cheaply allows, and it
+turns the clean `forward(obs) → (batch, |A|)` interface into something that has to sample and average
+internally to hand the frozen harness a deterministic argmax. For classic control on a single 500k-step
+run, that sampling noise is a liability, not an asset — I want the *same* `N` quantiles every step so the
+bootstrap target is a stable function of the network, not a fresh random draw each update. The fixed
+midpoint comb gives me determinism, a trivial head, and enough resolution; the sampled-`τ` variant buys
+resolution I do not need at a stability and simplicity cost I cannot afford here. Set it aside. I keep
+the fixed `N = 50` comb.
 
 So what do I expect against the dueling numbers? CartPole is already saturated, so QR-DQN can only match
 500 — the test is that the quantile head does not *destabilize* a solved task (a real risk: a 50-way
@@ -142,8 +209,9 @@ distribution is the right fix, the quantile head should let the greedy policy di
 action that sometimes crashes from one that reliably lands, so I expect the **worst seed to climb out of
 the negative basin** and the mean to rise well above 89 with a tighter spread. I am less sure it reaches
 the very top — 50 quantiles on a single 500k-step run is a coarse picture of a heavy-tailed return, and
-if the low-probability crash tail is exactly where the resolution is thinnest, a categorical
-representation that spends its capacity on *probabilities at fixed locations* might capture that tail
-mass more faithfully than uniform-mass quantiles do. If QR-DQN lifts LunarLander's mean and worst seed
-but still leaves the tail ragged, that is the precise opening for the next rung: fix the support to the
-known classic-control range and learn the *mass* on it instead of the locations.
+the uniform-mass parametrization spends the same one-in-50 budget on the thin crash tail as on the dense
+middle, so if the low-probability crash tail is exactly where the resolution is thinnest, that is where
+this representation will stay weakest. If QR-DQN lifts LunarLander's mean and worst seed but still leaves
+the tail ragged, the diagnosis is that spreading resolution uniformly across the probability axis is the
+wrong allocation for a heavy tail, and the remaining gain would have to come from putting resolution
+where the returns actually live rather than at equal-mass spacings.

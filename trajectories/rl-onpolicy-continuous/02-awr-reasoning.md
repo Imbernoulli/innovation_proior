@@ -1,48 +1,78 @@
 The adaptive-KL rung learned everywhere, exactly as I expected, but it left precisely the weakness I was
-worried about, and the numbers say where. On HalfCheetah it landed a mean of 1676.6 but with a huge
-spread — 1194.9 / 2695.0 / 1139.9 across the three seeds, a 2.4× gap between the best and worst seed —
-so the dense-reward environment is *learnable* under the penalty servo but wildly inconsistent, which is
-the seed-to-seed instability I predicted from the reactive, after-the-fact $\beta$ adjustment: one seed
-got lucky with its KL overshoots and ran to 2695, two paid for the overshoots and stalled near 1150.
-Swimmer came in at 101.4 (81.6 / 113.0 / 109.5) — again the seed-42 value sits far below the other two,
-the same one-seed-drags-it-down signature. InvertedDoublePendulum was the steadiest at 6877.1 (6764.7 /
-7497.4 / 6369.2). So the diagnosis is sharp: the soft KL penalty does not *forbid* a bad move, it
-*prices* one, and on a noisy minibatch the optimizer will sometimes pay the price and take a step it
-should not, which is why the seed variance is the dominant failure rather than a flat ceiling. Because
-the task scores by geometric mean across the three environments, that HalfCheetah spread and the
-weak-seed Swimmer number are exactly what will hold this rung down. The question for the next rung is
-whether I can get a policy update that does not depend on the importance ratio at all — because the
-ratio is the thing that fans out and the KL penalty is only a soft attempt to rein it back in.
+worried about, and the numbers say where. Let me read the feedback table quantitatively rather than
+impressionistically, because the *shape* of the spread is the diagnosis. On HalfCheetah it landed a mean
+of 1676.6 but with a huge spread — 1194.9 / 2695.0 / 1139.9 across seeds {42, 123, 456}. That best-to-
+worst ratio is $2695/1140\approx2.36$, and note it is *not* a smooth spread: two seeds sit within $5\%$
+of each other near 1150 while the third more than doubles them. That is a bimodal signature, not
+Gaussian noise around a mean — one run got a run of lucky KL overshoots that let it escape to 2695, the
+other two paid for their overshoots and stalled. Swimmer came in at 101.4 (81.6 / 113.0 / 109.5) — again
+the same shape: two seeds cluster near 110 and seed-42 sits $\sim26\%$ below at 81.6, one-seed-drags-it-
+down. InvertedDoublePendulum was the steadiest at 6877.1 (6764.7 / 7497.4 / 6369.2), a best-to-worst
+ratio of only $7497/6369\approx1.18$. So the instability is *environment-dependent*: it is worst on the
+dense high-dimensional cheetah, milder on the low-dimensional swimmer, and nearly absent on the single-
+actuator pendulum. That inverse relationship with how well-behaved the advantage signal is confirms the
+mechanism I predicted: the soft KL penalty does not *forbid* a bad move, it *prices* one, and on a noisy
+minibatch the optimizer will sometimes pay the price and take a step it should not — so the failure mode
+is seed-to-seed *variance* driven by tail overshoots, not a flat ceiling. Because the task scores by
+geometric mean across the three environments, that HalfCheetah spread and the weak-seed Swimmer number
+are exactly what will hold this rung down: the gmean is dominated by the *worst* environment-seed, and a
+method that sacrifices some peak to never produce an 1140 or an 81.6 will beat it. The question for the
+next rung is whether I can get a policy update that does not depend on the importance ratio at all —
+because the ratio is the thing that fans out and the KL penalty is only a soft attempt to rein it back
+in.
 
-Let me attack from a completely different direction, because the whole penalty-vs-clip family is fighting
-the same enemy — the importance ratio $r_t$ — and maybe the move is to stop using a ratio surrogate
-entirely. Step back to what I actually want from a policy update: make the actions that turned out
-better (high advantage) more likely, and the ones that turned out worse less likely, without moving so
-far that the data I am training on stops describing the policy. The penalty form does this through
-$r_t\hat A_t$ minus a KL term. But there is an older idea that frames policy improvement as plain
-*supervised regression*: regress the policy directly onto the actions the agent took, with each action
-weighted by how good it was. No ratio, no clipping, no KL — just a weighted maximum-likelihood fit. The
-weight is an exponentiated advantage, $w_t = \exp(\hat A_t/\beta)$, and the policy loss is the negative
-weighted log-likelihood $-\hat{\mathbb E}_t[\,w_t\,\log\pi_\theta(a_t|s_t)\,]$. This is the
-advantage-weighted-regression lineage, and it is appealing here precisely because the failure I just
-diagnosed was *about the ratio*: if there is no ratio in the loss, there is no ratio to fan out, and the
-reactive KL servo I was unhappy with disappears entirely.
+The diagnosis names one enemy, the importance ratio $r_t$, and there are two structurally different ways
+to fight it, so let me be deliberate about which I try now. I could *keep* the ratio but hold it more
+firmly than a soft, servoed penalty manages — the trust-region instinct already in the background. Or I
+could *remove the ratio entirely* and frame policy improvement a different way. Both are live, but the
+cleaner experiment right now is the second, and here is why I want to run it first: the penalty rung's
+failure was ambiguous between "the ratio itself is unstable" and "the *soft penalty* on the ratio is
+unstable." If I abandon the ratio completely and the instability changes character, I learn which half of
+the diagnosis was right, and that tells me exactly what a ratio-keeping fix would need to look like. So
+the decisive move now is to drop the ratio surrogate and see what a ratio-free update does.
+
+Step back to what I actually want from a policy update: make the actions that turned out better (high
+advantage) more likely, and the ones that turned out worse less likely, without moving so far that the
+data I am training on stops describing the policy. The penalty form does this through $r_t\hat A_t$ minus
+a KL term. But there is an older idea that frames policy improvement as plain *supervised regression*:
+regress the policy directly onto the actions the agent took, with each action weighted by how good it
+was. No ratio, no importance weighting, no KL — just a weighted maximum-likelihood fit. The weight is an
+exponentiated advantage, $w_t = \exp(\hat A_t/\beta)$, and the policy loss is the negative weighted log-
+likelihood $-\hat{\mathbb E}_t[\,w_t\,\log\pi_\theta(a_t|s_t)\,]$. This is the advantage-weighted-
+regression lineage, and it is appealing here precisely because the failure I just diagnosed was *about
+the ratio*: if there is no ratio in the loss, there is no ratio to fan out, and the reactive KL servo I
+was unhappy with disappears entirely.
 
 Let me convince myself the exponential weight is the right shape and not just a convenient knob, because
-this is the crux of why AWR is a principled improvement step and not a lateral move. Frame the update as
+this is the crux of why this is a principled improvement step and not a lateral move. Frame the update as
 a constrained problem: find the new policy that maximizes expected advantage subject to staying KL-close
 to the data-generating policy — the *same* trust-region intuition as before, but solved in closed form
-instead of penalized. The solution to "maximize $\mathbb E_\pi[A]$ subject to
-$\mathrm{KL}[\pi\,\|\,\pi_{old}]\le\epsilon$" is the exponentially-tilted policy
-$\pi^*(a|s)\propto\pi_{old}(a|s)\exp(A(s,a)/\beta)$, where $\beta$ is the Lagrange multiplier for the KL
-constraint. I cannot represent that tilted distribution directly, but I can *project* it back onto my
-Gaussian policy class by minimizing the KL from $\pi^*$ to $\pi_\theta$ — and that projection is exactly
-weighted maximum likelihood, $\min_\theta -\mathbb E_{s,a\sim\pi_{old}}[\exp(A/\beta)\log\pi_\theta(a|s)]$.
-So the exponential advantage weight is not a heuristic; it is the closed-form trust-region solution
-expressed as a regression target. This is the trust region I wanted at rung 1, but achieved by
-*construction* — the weights bake the "stay close" in — rather than by a soft penalty the optimizer can
-trade away. That is the conceptual reason to expect it to be steadier on the dense-reward environment
-where the penalty form swung between 1150 and 2695.
+instead of penalized. Set up the Lagrangian $\max_\pi \mathbb E_\pi[A] - \beta(\mathrm{KL}[\pi\|\pi_{old}]
+-\epsilon)$ and take the functional derivative with respect to $\pi(a|s)$ under the normalization
+constraint; setting it to zero gives $\log\pi(a|s) = \log\pi_{old}(a|s) + A(s,a)/\beta - \text{const}$,
+i.e. the exponentially-tilted policy $\pi^*(a|s)\propto\pi_{old}(a|s)\exp(A(s,a)/\beta)$, where $\beta$ is
+the Lagrange multiplier for the KL constraint. I cannot represent that tilted distribution directly, but
+I can *project* it back onto my Gaussian policy class by minimizing the KL from $\pi^*$ to $\pi_\theta$ —
+$\min_\theta \mathrm{KL}[\pi^*\|\pi_\theta] = \min_\theta -\mathbb E_{s,a\sim\pi_{old}}[\exp(A/\beta)
+\log\pi_\theta(a|s)] + \text{const}$, which is exactly weighted maximum likelihood. So the exponential
+advantage weight is not a heuristic; it is the closed-form trust-region solution expressed as a
+regression target. This is the trust region I wanted at rung 1, but achieved by *construction* — the
+weights bake the "stay close" in — rather than by a soft penalty the optimizer can trade away. That is
+the conceptual reason to expect it to be steadier on the dense-reward environment where the penalty form
+swung between 1150 and 2695.
+
+Let me sanity-check the temperature knob against its two limits before I pick a value, because a knob I
+cannot reason about at the extremes is one I will mis-set in the middle. As $\beta\to\infty$, every weight
+$\exp(A/\beta)\to\exp(0)=1$, so the loss becomes plain unweighted maximum likelihood on the taken actions
+— pure imitation of $\pi_{old}$, zero policy improvement. As $\beta\to0$, the weight of the single highest-
+advantage action dominates all others by an unbounded factor, so the regression collapses onto that one
+action — greedy, winner-take-all, maximal improvement but maximal variance. So $\beta$ is literally the
+knob between imitate-the-old-policy and copy-the-single-best-action, and I want to sit far enough toward
+the greedy end to get real selectivity from unit-scale advantages but not so far that a single noisy
+sample owns the minibatch. The $\beta=0.05$ I computed above, with the clip at $20$, lands as "select the
+better-than-average half, weight them equally" — decisively past uniform, short of winner-take-all. That
+is the intended operating point, and the limit check tells me exactly which failure I am courting by
+choosing it: the greedy-end variance, which is the Swimmer worry.
 
 Now I have to be very careful, because the same-named idea has a canonical realization that is *not* what
 this task's harness implements, and if I import that story I will write the wrong method. The original
@@ -50,81 +80,123 @@ advantage-weighted-regression algorithm is *off-policy*: it keeps a large replay
 TD($\lambda$) returns over stored paths to get advantages, fits a separate critic and a separate actor
 with their own momentum optimizers and step counts, normalizes the advantage before exponentiating, uses
 a temperature near $1.0$, clips the weights at $20$, and adds an action-bound penalty. The whole point
-there is *reusing old data* across many iterations, which is why the regression framing matters — a
-ratio surrogate degrades badly on stale data, but a weighted regression onto whatever actions are in the
-buffer does not. None of that off-policy machinery exists in this scaffold. The loop here is strictly
-on-policy: it collects 2048 fresh transitions, computes *GAE* advantages (not buffer TD($\lambda$)) in
-the frozen reverse scan, hands me a *single* shared 2×64 actor-critic, and asks me to fill one
-`compute_losses` that Adam steps on for ten epochs over that one fresh batch. There is no replay buffer
-to point AWR's regression at, no separate solvers, no second network. So the faithful realization here is
-*on-policy AWR*: the advantage-weighted regression *objective* dropped into the PPO loop's plumbing,
-using the loop's GAE advantages and its single optimizer. I am keeping the idea — supervised weighted
-regression instead of a ratio surrogate — and discarding the off-policy apparatus the idea was born with,
-because the harness does not expose it.
+there is *reusing old data* across many iterations, which is why the regression framing matters — a ratio
+surrogate degrades badly on stale data, but a weighted regression onto whatever actions are in the buffer
+does not. None of that off-policy machinery exists in this scaffold. The loop here is strictly on-policy:
+it collects 2048 fresh transitions, computes *GAE* advantages (not buffer TD($\lambda$)) in the frozen
+reverse scan, hands me a *single* shared 2×64 actor-critic, and asks me to fill one `compute_losses` that
+Adam steps on for ten epochs over that one fresh batch. There is no replay buffer to point the regression
+at, no separate solvers, no second network. So the faithful realization here is *on-policy AWR*: the
+advantage-weighted regression *objective* dropped into the PPO loop's plumbing, using the loop's GAE
+advantages and its single optimizer. I am keeping the idea — supervised weighted regression instead of a
+ratio surrogate — and discarding the off-policy apparatus the idea was born with, because the harness
+does not expose it.
 
 That harness shape forces three concrete choices, and each one is a real departure from the canonical
-version that I want stated plainly rather than glossed. First, the temperature. The canonical default is
-$\beta\approx1.0$, but that is calibrated for *raw, separately-normalized* advantages over a replay
-buffer. The loop here has already normalized `mb_advantages` to roughly unit scale per minibatch
-(`norm_adv=True`), so unit-scale advantages divided by $\beta=1.0$ give weights $\exp(\pm1)$ that barely
-separate good actions from bad — the regression would be nearly uniform and learn almost nothing. To get
-real selectivity from unit-scale normalized advantages I need a *small* temperature; I use
-$\beta=0.05$, which turns a $+1$-sigma advantage into a weight $\approx e^{20}$ before clipping and a
-$-1$-sigma advantage into $\approx e^{-20}\approx0$, i.e. it sharply concentrates the regression on the
-better-than-average actions. This is the single most important deviation from the canonical recipe and it
-is *because* the loop pre-normalizes the advantages — the temperature has to be read against the scale of
-the input it actually receives, not the scale the original method assumed.
+version that I want stated plainly rather than glossed. First, the temperature, and I want to compute it
+against the input the loop actually hands me rather than assume the canonical scale. The canonical default
+is $\beta\approx1.0$, but that is calibrated for *raw, separately-normalized* advantages over a replay
+buffer. The loop here has already normalized `mb_advantages` to roughly zero-mean, unit-variance per
+minibatch (`norm_adv=True`), so let me see what each candidate temperature does to a unit-scale advantage.
+At $\beta=1.0$: a $+1\sigma$ advantage gives weight $\exp(1)\approx2.72$ and a $-1\sigma$ advantage gives
+$\exp(-1)\approx0.37$ — a ratio of only $7.4\times$ between good and bad actions, so the regression is
+nearly uniform and learns almost nothing selective. At $\beta=0.05$: a $+1\sigma$ advantage gives
+$\exp(20)\approx4.9\times10^{8}$ and a $-1\sigma$ advantage gives $\exp(-20)\approx2\times10^{-9}\approx0$.
+After the weight clip at $20$ (below), the $+1\sigma$ weight saturates and the $-1\sigma$ weight is
+effectively zero, so $\beta=0.05$ turns the exponential weighting into something close to a *hard
+selection*: above-average actions all get the ceiling weight, below-average actions get nothing. That is
+the selectivity I need from unit-scale normalized advantages, and it is the single most important
+deviation from the canonical recipe — the temperature has to be read against the scale of the input it
+actually receives, not the scale the original method assumed.
 
-Second, the weight clip and stabilization. With $\beta=0.05$ the exponential weights have an enormous
-dynamic range, and a single outlier advantage would produce a weight that dominates the entire minibatch
-gradient — the AWR analogue of the ratio blowing up. So I clamp the weights at `_awr_max_weight = 20.0`
-(the canonical clip value, which carries over cleanly), and then I do something the off-policy version
-does not need: I *self-normalize* the clipped weights to have mean one across the minibatch,
-`weights = weights / (weights.sum() + 1e-8) * weights.numel()`. The reason is specific to this loop.
-The off-policy version runs the actor for a fixed number of gradient steps with a momentum optimizer at
-its own step size; the absolute weight scale just rolls into that step size. Here the regression loss
-shares Adam and the global gradient-norm clip with the value loss, and Adam's update is sensitive to the
-*scale* of the gradient relative to its running second moment, so a minibatch whose weights happen to be
-mostly tiny (every action below average) would produce a vanishing policy gradient and waste the step,
-while a minibatch with one huge surviving weight would saturate the gradient-norm clip. Renormalizing
-the weights to mean one keeps the effective regression step size constant from minibatch to minibatch,
-which is the same robustness the loop's per-minibatch advantage normalization buys on the input side —
-this is the on-policy AWR's way of being stable inside a shared-optimizer K-epoch loop, and it is
-machinery the canonical buffer-based version simply does not have.
+Second, the weight clip and stabilization, and I want to work through what the numbers do to a minibatch
+so the stabilization is a computed necessity, not a superstition. With $\beta=0.05$ the exponential
+weights have an enormous dynamic range, and a single outlier advantage would produce a weight that
+dominates the entire minibatch gradient — the analogue of the ratio blowing up. So I clamp the weights at
+`_awr_max_weight = 20.0` (the canonical clip value, which carries over cleanly). Now trace a minibatch of
+$64$ transitions with roughly symmetric normalized advantages: about half sit above the mean and get
+clamped to $20$, about half sit below and collapse toward $0$. The raw clamped sum is then $\approx
+32\times20 = 640$. If I fed that into $-(\mathrm{newlogprob}\cdot w).\mathrm{mean}()$ directly, the policy
+loss would carry an effective scale of $640/64=10$ — ten times the entropy and value terms it shares the
+optimizer with — and that scale would *swing* from minibatch to minibatch depending on how many actions
+happened to land above average. So I do something the off-policy version does not need: I *self-normalize*
+the clipped weights to mean one, `weights = weights / (weights.sum() + 1e-8) * weights.numel()`. On that
+same minibatch this maps the $32$ surviving weights from $20$ down to $20\times64/640=2.0$ and leaves the
+zeros at zero, so the loss becomes a clean weighted MLE on the better-than-average half of the batch with
+a *fixed* effective scale, regardless of how many actions cleared the bar. The reason this matters is
+specific to this loop: the regression loss shares Adam and the global gradient-norm clip with the value
+loss, and Adam's update is sensitive to the *scale* of the gradient relative to its running second
+moment, so an un-normalized minibatch whose weights happen to be mostly tiny would produce a vanishing
+policy gradient and waste the step, while one with a few huge surviving weights would saturate the
+gradient-norm clip at $0.5$ and starve the value head. Renormalizing to mean one keeps the effective
+regression step size constant from minibatch to minibatch, which is the same robustness the loop's per-
+minibatch advantage normalization buys on the input side — this is on-policy AWR's way of being stable
+inside a shared-optimizer K-epoch loop, and it is machinery the canonical buffer-based version simply does
+not have.
 
-Third, what computes the weights and what carries the gradient. The advantage weights are a *target*,
-not a path: the regression should push $\log\pi_\theta$ up on high-weight actions, but the weights
-themselves must not receive gradient, or the optimizer could cheat by reshaping the advantage estimate.
-So the entire weight computation — the exp, the clamp, the renormalization — sits under
-`torch.no_grad()`, and only the `newlogprob` carries gradient into the policy loss
-$-\hat{\mathbb E}[w\,\log\pi_\theta]$. The value head gets the same plain MSE toward the GAE returns that
-rung 1 used — I am still introducing no clipping discipline, and the regression framing does not change
-the critic's job. The full module is in the answer.
+Third, what computes the weights and what carries the gradient. The advantage weights are a *target*, not
+a path: the regression should push $\log\pi_\theta$ up on high-weight actions, but the weights themselves
+must not receive gradient, or the optimizer could cheat by reshaping the advantage estimate. So the
+entire weight computation — the exp, the clamp, the renormalization — sits under `torch.no_grad()`, and
+only the `newlogprob` carries gradient into the policy loss $-\hat{\mathbb E}[w\,\log\pi_\theta]$. Let me
+confirm this gradient does the right thing and does not fan out the way the ratio did. For the Gaussian,
+$\nabla_\mu\log\pi_\theta(a|s) = (a-\mu)/\sigma^2$, so the per-sample policy gradient is $-w\cdot(a-\mu)/
+\sigma^2$: it pushes the mean $\mu$ *toward* each selected action $a$, with a magnitude bounded by the
+renormalized weight (at most $\sim2$ on a typical minibatch). There is no $r$ that compounds across
+epochs — the gradient magnitude is capped by the clipped, renormalized weight, full stop. That is exactly
+the fan-out immunity I came here for. But the same trace exposes the danger I will predict at the end: the
+weights are computed once, under `no_grad`, from the *fixed* GAE advantages of this rollout, so the
+regression target does not move as the policy moves through the ten epochs. That is a fixed target, which
+is stable when the advantage estimate is trustworthy — and a trap when it is not, because the policy will
+regress toward whatever action got the top advantage for all ten epochs with nothing to correct it. The
+value head gets the same plain MSE toward the GAE returns that rung 1 used — I am keeping the
+critic's objective exactly as rung 1 had it, and the regression framing does not change the critic's job.
+Keeping the critic
+identical to rung 1 is also a deliberate clean-experiment choice: I am changing exactly one thing between
+the penalty rung and this one — the policy objective, ratio-surrogate-plus-KL replaced by exponentiated-
+advantage regression — so whatever the numbers do, the change is attributable to that single swap and not
+to a critic I quietly improved at the same time. The full module is in the answer.
 
 It is worth noting what this rung deliberately leaves out relative to the canonical method, so the
-reasoning lands the harness's implementation: there is no separate replay buffer or
-off-policy reuse (the loop is on-policy), no separate critic/actor optimizers or step-count scheduling
-(one shared Adam), no advantage *re*-normalization before the exp beyond what the loop already did, no
-action-bound or L2 auxiliary losses, and the value targets are GAE returns rather than buffer
-TD($\lambda$). What survives, and what makes this AWR, is the core: replace the importance-ratio
-surrogate with an exponentiated-advantage-weighted supervised regression onto the taken actions.
+reasoning lands the harness's implementation: there is no separate replay buffer or off-policy reuse (the
+loop is on-policy), no separate critic/actor optimizers or step-count scheduling (one shared Adam), no
+advantage *re*-normalization before the exp beyond what the loop already did, no action-bound or L2
+auxiliary losses, and the value targets are GAE returns rather than buffer TD($\lambda$). What survives,
+and what makes this AWR, is the core: replace the importance-ratio surrogate with an exponentiated-
+advantage-weighted supervised regression onto the taken actions.
 
 Let me close on falsifiable expectations against the rung-1 numbers, because that is what the next rung
-will read. My central bet is *reliability through construction*: because the trust region is baked into
-the regression weights rather than enforced by a soft, reactive penalty, I expect the seed-to-seed
-swings that plagued ppo-penalty to shrink on at least one environment, and I expect AWR to *win* on the
+will read. Let me put a number on why Swimmer specifically is the environment where the fixed-target trap
+bites hardest. The frozen GAE scan uses $\gamma=0.99$, $\lambda=0.95$, so the advantage is a geometric
+sum of TD residuals with decay $\gamma\lambda=0.99\times0.95=0.9405$, giving an effective mixing horizon
+of $1/(1-0.9405)\approx16.8$ steps. On a dense-reward environment like HalfCheetah, where reward accrues
+every step, a $\sim17$-step advantage window aggregates plenty of signal and the estimate is relatively
+tight. On Swimmer the reward is the small forward progress of a low-dimensional swimmer over a long
+episode, and credit for a good stroke shows up many steps later — the signal-to-noise inside any $17$-step
+window is far lower, so the per-minibatch advantage estimate carries much more variance. AWR then takes
+that noisy estimate, computes a near-binary weight from it, and *freezes* it as the regression target for
+all ten epochs. So the noisiest advantages get the most decisive, least-correctable commitment — the
+worst possible pairing. That is the mechanism, quantified, behind the asymmetric prediction below.
+
+My central bet is *reliability through construction*: because the trust region is baked into
+the regression weights rather than enforced by a soft, reactive penalty, I expect the seed-to-seed swings
+that plagued the penalty rung to shrink on at least one environment, and I expect AWR to *win* on the
 environments where the advantage signal is clean and the better-than-average actions are well separated —
 HalfCheetah most of all, where I expect to clear the penalty rung's 1676.6 mean. On
 InvertedDoublePendulum, where the achievable return is large and the dynamics reward decisive
-exploitation of high-advantage actions, the sharp $\beta=0.05$ concentration should also help, so I
-expect to beat the penalty rung's 6877.1 there too. But I am genuinely worried about the cost of the
-sharp temperature on the *low-signal* environment. Swimmer has long-horizon credit assignment and noisy
-advantages; a temperature that concentrates the regression so aggressively on the top-weighted actions
-will, on noisy advantages, concentrate on *noise* — it will confidently regress toward whichever actions
-happened to get a high (possibly spurious) advantage on that minibatch, and with no ratio and no KL to
-pull it back, nothing damps that. So my concrete, falsifiable prediction is asymmetric: AWR beats the
-penalty rung on HalfCheetah and InvertedDoublePendulum but is *worse* on Swimmer than the penalty rung's
-101.4, and possibly the worst Swimmer of any rung. Because the task aggregates by geometric mean, a
-Swimmer collapse would cap AWR's overall score even if it wins the other two outright — which would be
-the exact signature that the next move is not "abandon the ratio" but "keep a ratio surrogate and make
-its trust region *hard and built into the loss* so it is reliable on every environment at once."
+exploitation of high-advantage actions, the sharp near-binary $\beta=0.05$ concentration should also help,
+so I expect to beat the penalty rung's 6877.1 there too. But I am genuinely worried about the cost of the
+sharp temperature on the *low-signal* environment, and the fixed-target trace above is exactly why.
+Swimmer has long-horizon credit assignment and noisy advantages; the near-binary selection I computed
+means the regression commits, for all ten epochs, to whichever half of the minibatch scored above the
+per-minibatch mean — and on noisy advantages that half is frequently *noise*. It will confidently regress
+toward whichever actions happened to get a high (possibly spurious) advantage on that minibatch, and with
+no ratio and no KL to pull it back, nothing damps that. So my concrete, falsifiable prediction is
+asymmetric: AWR beats the penalty rung on HalfCheetah and InvertedDoublePendulum but is *worse* on
+Swimmer than the penalty rung's 101.4, and possibly the worst Swimmer of any rung, with the collapse
+concentrated on whichever seed draws the noisiest advantages. Because the task aggregates by geometric
+mean, a Swimmer collapse would cap AWR's overall score even if it wins the other two outright — the
+unmistakable signature that trading the ratio away for a sharp fixed-target regression bought decisiveness
+on the clean-signal environments at the cost of reliability on exactly the noisy one the geometric mean
+punishes hardest. That reliability-versus-decisiveness tradeoff, landing on the wrong side of the
+aggregator, is the specific weakness this rung would leave on the table.

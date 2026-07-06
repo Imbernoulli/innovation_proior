@@ -11,9 +11,19 @@ it differs per landscape. So before I pick an algorithm I want to be clear about
 from in each candidate, because that is what will separate a floor baseline from something that actually
 moves.
 
+Before I even pick, I should count the budget, because scarcity governs which failures I can afford. The
+harness gives `pop_size=200` and `n_generations=500` on the three 30D problems, `1000` on the 100D one. A
+population-based method that spends one function evaluation per member per generation therefore gets
+`200 × 500 = 100000` evaluations at 30D and `200 × 1000 = 200000` at 100D — and, read the other way, each
+of the 200 members gets at most 500 (or 1000) attempts to be improved over the whole run. That is not many
+attempts per member when the job is to place 30 or 100 coordinates each near their optimum. It tells me two
+things up front: I cannot afford a method that wastes evaluations on trials structurally doomed to be
+rejected, and I cannot afford a method so timid it needs thousands of generations to refine a basin. Both
+of those are scale failures in disguise, which is why the scale question is the whole game.
+
 The scaffold's default fill answers the scale question the genetic-algorithm way: simulated binary
 crossover plus polynomial mutation, both with a fixed distribution index η=20, under tournament selection.
-That is a legitimate method and I will get to it on the next rung, but stare at how it sets scale. The SBX
+That is a legitimate method, but stare at how it sets scale. The SBX
 spread factor and the polynomial mutation width are governed by η, a number I fix once, by hand, and which
 does not contract as the population converges and does not align with the shape of the valley. The
 mutation injects fresh variation from a fixed-width distribution that is right for at most one phase of one
@@ -45,17 +55,31 @@ population is spread this much" into a perturbation vector I can add.
 
 The naive move is to estimate the population covariance and sample a Gaussian from it — but that is ES
 with extra steps, a `D×D` matrix to estimate, store, and keep current, the very machinery I am trying to
-delete, and at 100D that matrix is 10,000 entries. I want a perturbation of the right scale and
-orientation without ever forming a distribution. So: what is the simplest object built from the population
-whose typical magnitude *is* the population's spread? The difference between two members. Pick two members
-`x_r2` and `x_r3` at random and form `x_r2 − x_r3`. Its length is, by construction, a sample of the typical
-pairwise distance in the current population — large when the cloud is large, small when it is small. I
-never estimated anything; I subtracted two points I already have. Add a scaled copy to a third member as
-the perturbation: `v = x_r1 + F·(x_r2 − x_r3)`. Now the self-scaling is automatic and exact. Early, members
-are far apart, the difference is a big vector, the step is exploratory; late, members have clustered, the
-difference is tiny, the step refines. The scale rides the population's contraction with zero parameters and
-zero schedule. This is what ES needed a 1/5 rule or a self-adapted σ to fake, falling out of pure
-subtraction.
+delete. Let me price it honestly before I discard it, because "it feels heavy" is not a reason. At 100D
+that covariance is `100 × 100 = 10000` entries to hold and re-estimate every generation; drawing a
+correlated Gaussian from it the clean way needs a factorization, `O(D³) = 10^6` operations per refresh,
+and even a rank-one update to keep it current is `O(D²) = 10^4` per sample times 200 samples per
+generation. That is a second optimizer bolted on, and it lags: the covariance I sample from this
+generation was fit to where the population *was*, not where it is going. I want a perturbation of the right
+scale and orientation without ever forming a distribution. So: what is the simplest object built from the
+population whose typical magnitude *is* the population's spread? The difference between two members. Pick
+two members `x_r2` and `x_r3` at random and form `x_r2 − x_r3`. Its length is, by construction, a sample of
+the typical pairwise distance in the current population — large when the cloud is large, small when it is
+small. I never estimated anything; I subtracted two points I already have, `O(D)` work and zero storage.
+Add a scaled copy to a third member as the perturbation: `v = x_r1 + F·(x_r2 − x_r3)`.
+
+Let me make the self-scaling quantitative rather than take it on faith, because the whole argument rests on
+it. Early, the 200 members are uniform over the box; per coordinate they are independent draws from a
+uniform of width `L = hi − lo`. For two i.i.d. uniforms on an interval of width `L`, the mean absolute
+difference is `E|X − Y| = L/3`. So the raw per-coordinate difference has typical magnitude `L/3`, and with
+`F = 0.5` the step it contributes is about `L/6 ≈ 0.167 L`. On Rastrigin, `L = 10.24`, so an early
+per-coordinate step is on the order of `1.7` — a genuine exploratory hop across a couple of the unit-spaced
+pits. Now run the population forward to where it has clustered, per-coordinate spread `σ`. Two members are
+then roughly Gaussian with that spread, their difference is Gaussian with standard deviation `σ√2`, and the
+mean absolute difference is `σ√2 · √(2/π) = 2σ/√π ≈ 1.13 σ`. With `F = 0.5` the step is about `0.56 σ` —
+just over half the current spread, automatically. So as the cloud contracts from box-width to `σ`, the step
+contracts with it, from `~0.167 L` down to `~0.56 σ`, with no schedule anywhere. This is what ES needed a
+1/5 rule or a self-adapted σ to fake, falling out of pure subtraction.
 
 There is a second gift I almost miss, and it is the orientation. Difference vectors are not isotropic —
 they inherit the *shape* of the population cloud, not just its size. Picture Rosenbrock's long curved
@@ -66,7 +90,8 @@ anisotropic in exactly the way the landscape is — it proposes moves along dire
 has discovered it can move productively. This is the correlated, rotation-aware search ES needs an explicit
 covariance for, and I get it for nothing because the differences are samples of a cloud that has already
 aligned itself with the contours. The population does the covariance estimation implicitly, by where its
-members sit. This is precisely the property I expect to matter on Rosenbrock, where the scaffold default's
+members sit — the same `D×D` object I just priced at `10^6` operations, read off for the cost of one
+subtraction. This is precisely the property I expect to matter on Rosenbrock, where the scaffold default's
 axis-aligned polynomial mutation has no way to align with the diagonal valley.
 
 So the difference-vector perturbation is the core. Now I nail the details, each a real choice with a
@@ -85,22 +110,35 @@ value around a half keeps the mean step useful, and crucially I do *not* adapt `
 difference vector already carries the time-adaptation. I take `F = 0.5` as the task default.
 
 Now the indices. I need `r1, r2, r3` distinct from each other and from the target index `i` whose slot I
-am trying to improve. Distinct from each other because if `r2 = r3` the difference is the zero vector — a
-wasted trial. Distinct from `i` because the move should be informed by *other* members, not coupled to the
-very vector it competes against. Three indices all different from `i` means at least four distinct members,
-`pop_size ≥ 4`, which is comfortably satisfied at 200. Initialize the population uniformly over the box,
-the honest default with no prior — the scaffold's `make_individual` does exactly this.
+am trying to improve. Distinct from each other because if `r2 = r3` the difference is the zero vector — the
+mutant collapses to the bare base `x_r1` and the trial carries no new information, a wasted evaluation I
+already argued the budget cannot spare. Distinct from `i` because the move should be informed by *other*
+members, not coupled to the very vector it competes against. Three indices all different from `i` means at
+least four distinct members, `pop_size ≥ 4`, which is comfortably satisfied at 200. Initialize the
+population uniformly over the box, the honest default with no prior — the scaffold's `make_individual` does
+exactly this.
 
-Let me sanity-check the mutation by itself. Suppose every trial were just `v = x_r1 + F·(x_r2 − x_r3)`,
-accepted greedily if it beats its target. Does it work as a search? Members improve one slot at a time, the
-cloud contracts toward low-cost regions, the differences shrink with it, the steps anneal themselves — the
-dynamics are sound. But I have a worry: the perturbation moves *all* `D` coordinates of `x_r1` at once, by
-the full difference vector. On a separable problem like Rastrigin, where coordinates are independent,
-perturbing every coordinate simultaneously is wasteful — I would rather sometimes change a few coordinates
-and let the good values of the others ride along. More generally I want to control *how many* coordinates
-of the mutant make it into the trial, to inject diversity and tune to the dependency structure. So I will
-not let the mutant become the trial wholesale; I will *mix* it with the target coordinate by coordinate.
-That is the crossover step.
+Let me sanity-check the mutation by itself with a concrete trace, because I want to *see* the greedy loop
+improve, not assert it. Take a two-dimensional bowl `f(x) = x₁² + x₂²` and three members `x_r1 = (1, 1)`,
+`x_r2 = (3, 0)`, `x_r3 = (0, 2)`. The difference is `x_r2 − x_r3 = (3, −2)`; with `F = 0.5` the mutant is
+`v = (1, 1) + 0.5·(3, −2) = (2.5, 0)`. Suppose the target I am trying to replace is `x_i = (1, 4)` with
+cost `1 + 16 = 17`. If the crossover happens to take both coordinates from the mutant, the trial is
+`(2.5, 0)` with cost `6.25`, which is `< 17`, so greedy acceptance installs it and slot `i` has strictly
+improved. Now suppose instead `x_i = (0.3, 0.1)` with cost `0.1`; the same mutant `(2.5, 0)` costs `6.25 >
+0.1`, the trial is rejected, and `x_i` stays. That is the whole dynamic: members improve one slot at a
+time, the cloud contracts toward low-cost regions, the differences shrink with it, the steps anneal
+themselves. And it shows the self-scaling from the other side too — once a slot is deep in the bowl at
+`(0.3, 0.1)`, a difference built from far-flung members overshoots and is rejected, so only members whose
+own neighbours have also contracted will propose steps small enough to be accepted there. The scale
+filters itself through acceptance.
+
+But that trace also exposes the worry I have to face: the perturbation moves *all* `D` coordinates of
+`x_r1` at once, by the full difference vector. On a separable problem like Rastrigin, where coordinates are
+independent, perturbing every coordinate simultaneously is wasteful — I would rather sometimes change a few
+coordinates and let the good values of the others ride along. More generally I want to control *how many*
+coordinates of the mutant make it into the trial, to inject diversity and tune to the dependency structure.
+So I will not let the mutant become the trial wholesale; I will *mix* it with the target coordinate by
+coordinate. That is the crossover step.
 
 Build the trial `u` from the mutant `v` and the target `x_i` per coordinate: take `u_j = v_j` with
 probability `CR`, otherwise `u_j = x_{i,j}` — each coordinate decided by an independent coin, a binomial
@@ -115,6 +153,24 @@ force at least one coordinate from the mutant by picking a random index `j_rand`
 that coordinate from `v`: `u_j = v_j` if `random() < CR or j == j_rand`, else `u_j = x_{i,j}`. Now the
 construction cannot produce the all-target copy.
 
+Let me count exactly how many coordinates move, because that number is the mechanism that will make or
+break each landscape. Coordinate `j_rand` is always taken from the mutant; every other coordinate is taken
+with probability `CR`. So the expected number of mutant coordinates is `1 + (D − 1)·CR`. At `CR = 0.9`,
+that is `1 + 29·0.9 = 27.1` of 30 coordinates on the 30D problems, and `1 + 99·0.9 = 90.1` of 100 on the
+100D one. So roughly 90% of the vector is overwritten by a coordinated difference-vector move on every
+single trial. On Rosenbrock this is exactly right: the coordinates *have* to move together to track the
+valley, and a trial that only nudged two of them would step off the ribbon. But now put that same
+27-of-30 move on separable Rastrigin and reason about acceptance. The target `x_i` is a selection survivor,
+so most of its coordinates already sit near a per-coordinate local minimum; a random change to any one of
+them is far more likely to raise that coordinate's contribution than lower it. On a separable cost the
+trial's total change is the *sum* of the per-coordinate changes, and acceptance needs that sum `≤ 0`. If I
+disturb ~27 coordinates, I am summing ~27 mostly-adverse independent changes, and the chance that they
+cancel to a net improvement falls off sharply as the count grows — each extra coupled coordinate is another
+near-independent opportunity to spoil the move. Changing one or two coordinates (low `CR`) gives the
+occasional genuinely-better coordinate a chance to carry the trial; changing twenty-seven buries it. That
+is the precise sense in which `CR = 0.9` is the wrong policy on a separable egg-carton, and the effect
+should be worst at 100D, where the coordinated move is 90 coordinates wide.
+
 Now acceptance. I have a trial `u` for target slot `i`. Greedy and one-to-one: compare `u` against *its
 own target* `x_i`, and let `u` take the slot if its cost is no worse — `cost(u) ≤ cost(x_i)`; otherwise
 `x_i` stays. Two things make this exactly right. First, it is one-to-one — each trial competes only with
@@ -123,10 +179,18 @@ importantly, preserves diversity far better than a global "keep the best `N`" tr
 would let a few good basins crowd out everything and collapse the spread (and with it the self-scaling
 difference vectors); one-to-one replacement lets a member that is merely best *in its own lineage* survive,
 so the cloud stays spread and keeps supplying varied differences. Second, it is elitist per slot: a slot
-only ever changes to something no worse, so the best cost is monotone non-increasing — the method never
-throws away its best find. Does greedy acceptance trap me the way plain greedy search does? No, and this is
-where the population earns its keep: a single member sliding into a local basin cannot drag the others, and
+only ever changes to something no worse, so per slot the cost is monotone non-increasing, and therefore the
+population minimum `min_i cost(x_i)` can only fall or hold across a generation — the method never throws
+away its best find. Does greedy acceptance trap me the way plain greedy search does? No, and this is where
+the population earns its keep: a single member sliding into a local basin cannot drag the others, and
 difference vectors from members exploring other basins keep proposing jumps that pull a trapped member out.
+
+Let me also price the whole method against the covariance ES I discarded, so the "cheap" claim is a number
+and not a mood. Per generation, DE forms `N` mutants at `O(D)` each and evaluates `N` trials: `O(N·D)`
+arithmetic plus `N` objective calls, and it stores exactly the `N·D` reals of the population — `6000` at
+30D, `20000` at 100D — with no auxiliary matrix. The covariance route stored `D² = 10^4` extra reals at
+100D and spent `O(D²)`–`O(D³)` per generation keeping them current. DE buys the same scale-and-orientation
+adaptation for a subtraction. That is the trade I am making, stated in operations.
 
 Now I assemble the loop in the scaffold's vocabulary, and here the literal edit diverges from the generic
 textbook version in one detail worth stating, because the harness exposes the loop and I must fill it as it
@@ -148,15 +212,21 @@ hand the next one. The self-scaling difference vector should make DE far more sa
 scaffold default's fixed-η operators on the smooth, non-separable problems: on Ackley, whose basin is a
 single broad bowl once you are off the plateau, and on Rosenbrock's curved valley, the anisotropic
 differences should track the geometry and drive the best fitness down hard. But I am uneasy about three
-things. First, `CR = 0.9` is wrong for separable Rastrigin — changing nine of ten coordinates per trial
-fights the egg-carton's independence, so I expect Rastrigin (and especially 100D Rastrigin) to be DE's
-worst showings, possibly catastrophically so, because at 100D the difference vectors must coordinate a huge
-non-separable move on a separable problem. Second, with a fixed `pop_size=200` and only 500 generations,
-DE/rand/1 is a relatively slow converger; `rand` base trades speed for diversity, so I may simply run out
-of budget before refining. Third, classical DE/rand/1/bin has no adaptation of `F` or `CR` at all — the one
-setting must serve four very different landscapes, and I have just argued the setting that is right for
-Rosenbrock is wrong for Rastrigin. So my concrete expectation entering the next rung is: DE will land a
-clean, near-zero result on Ackley, a respectable Rosenbrock, and a *poor* Rastrigin at both dimensions —
-the failure being the fixed `CR` colliding with separability and the slow `rand` base burning the budget.
-That diagnosis is exactly what should push me toward an operator suite whose mutation is local and
-per-coordinate next, and a self-adapting DE after that.
+things, and the arithmetic above sharpens each into a concrete prediction. First, `CR = 0.9` is wrong for
+separable Rastrigin — I computed that it changes 27 of 30 coordinates at 30D and 90 of 100 at 100D, which
+is precisely the coordinated move that a separable survivor rejects, so I expect Rastrigin (and especially
+100D Rastrigin) to be DE's worst showings, possibly catastrophically so, because at 100D the difference
+vectors must coordinate a 90-coordinate jump on a problem that wants one axis fixed at a time. Second, with
+a fixed `pop_size=200` and only 500 (or 1000) generations, DE/rand/1 is a relatively slow converger; each
+member gets only that many improvement attempts, `rand` base trades speed for diversity, so I may simply
+run out of budget before refining and see convergence still creeping at the wall. Third, classical
+DE/rand/1/bin has no adaptation of `F` or `CR` at all — the one setting must serve four very different
+landscapes, and I have just argued the setting that is right for Rosenbrock is wrong for Rastrigin. So my
+concrete expectation entering the next rung is: DE will land a clean, near-zero result on Ackley, a
+respectable Rosenbrock, and a *poor* Rastrigin at both dimensions — the failure being the fixed `CR`
+colliding with separability and the slow `rand` base burning the budget. And there is an aggregate risk the
+per-seed picture may hide: with a `rand` base and no elite pull, some seeds may scatter and never enter the
+basin on the harder surfaces, which would inflate the mean far above a good seed's value — I expect that
+the seed-averaged numbers, not just the single seed, will be where the scatter shows. That diagnosis is
+exactly what should push the search toward a mutation that is local and per-coordinate rather than globally
+scaled from one fixed distribution.

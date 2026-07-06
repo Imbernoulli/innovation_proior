@@ -28,6 +28,21 @@ one `beta` would have to do two incompatible jobs across a run — stay small ea
 policy can learn to reach goals at all, then push hard once the policy has found rewarding-but-risky
 shortcuts. No single number does both.
 
+Let me put numbers on why one `beta` cannot serve all three environments, because the naive feedback
+hands me exactly the arithmetic. Under the *same* penalty — zero — the three environments landed at
+51, 61, and 152 against the budget 25, i.e. over-budget ratios of about 2.0, 2.4, and 6.1. Whatever
+monotone relationship maps penalty weight to resulting cost, the weight needed to drag PointButton from
+152 down to 25 has to overcome roughly three times the excess that PointGoal's 51 presents, and it has
+to do so against a hazard field dense enough that the reward-optimal path spends far more of its length
+inside cost regions. There is no reason the single scalar that lands one environment at 25 lands the
+others there too; the naive spread of 51/61/152 is direct evidence that the required tax is a strongly
+environment-dependent quantity, and a constant cannot be environment-dependent. Even within one
+environment the seed spread says the same thing at smaller scale — PointButton ranged 140–164 across
+seeds, so even the "right" constant for that environment on average would be wrong seed to seed. A
+number I must commit to before seeing data cannot track a target that moves by 3x across environments
+and by tens across seeds. The object I need is not a better constant; it is something that *reads* the
+realized cost and sets its own weight from the measured gap.
+
 So I should stop trying to fold safety into the objective and keep it as what it is — a constraint. The
 clean statement is the constrained problem
 
@@ -159,6 +174,20 @@ are unchanged. The (1+lambda) factor is a learning-rate normalization that keeps
 sane; it does not move the target. I have rescaled the step, not the optimum — forced by the scale
 problem, not decorative.
 
+Let me put a number on it so the two versions are concrete. On PointButton the naive cost was 152, so
+the integrator has to climb to a substantial lambda before the agent feels a 152-vs-25 violation —
+suppose it reaches lambda = 50. Un-normalized, `A = adv_r - 50*adv_c`: the cost term is fifty times a
+normal advantage, and since the effective policy-gradient step scales with the advantage magnitude, the
+step is inflated by a factor of about (1 + 50) = 51 relative to a plain PPO step — the update is
+fifty-odd times too large exactly when lambda is large, which is exactly when I need it careful.
+Normalized, `u = 50/51 ≈ 0.980`, so `A ≈ 0.980*(-adv_c) + 0.020*adv_r`: the weights sum to one, `|A|`
+stays on the order of a single advantage, and the step size PPO was tuned for is preserved. The
+direction is unchanged — the reward-to-cost weight ratio is 0.020 : 0.980 = 1 : 50, identical to the
+un-normalized 1 : lambda — so I have divided out precisely the (1 + lambda) step-size blowup and nothing
+else. That the general factor is exactly (1 + lambda) rather than, say, lambda is what keeps lambda = 0
+mapping to pure reward: at lambda = 0 the normalized blend is adv_r unchanged, which must be the naive
+update, and a bare 1/lambda would blow up there.
+
 There is an implementation choice in how I take the lambda step. Plain projected gradient ascent is
 lambda <- [lambda + eta*(J_c - d)]_+, and I can realize it cleanly by keeping lambda as a learnable
 scalar `torch.nn.Parameter` and defining a loss whose gradient is exactly the descent direction:
@@ -172,6 +201,22 @@ the simplest thing that hook can consume. The dual step size eta is the substrat
 0.035. Order within an epoch: read J_c, update lambda from it *first*, then run `super()._update()` with
 the freshly-updated lambda inside the combined advantage, then log lambda so I can watch it climb when
 the agent is unsafe and relax when it is safe.
+
+Two details of that update deserve a check rather than a wave. First, the order-of-operations: I update
+lambda *before* calling `super()._update()`. If I reversed it — ran the PPO step, then moved lambda — the
+policy step that just consumed the combined advantage would have used the *previous* epoch's lambda even
+though the fresh J_c for this epoch is already in hand, injecting a one-epoch staleness into the exact
+quantity the mechanism is trying to make responsive. Updating lambda first means the policy always reacts
+to the most recent measured violation, which is the whole reason I read J_c at the top of `_update`.
+Second, why wrap the single scalar in Adam at all rather than take the bare projected step
+`lambda <- [lambda + eta*(J_c - d)]_+`. The dual signal is a Monte-Carlo estimate of J_c and it is noisy:
+the naive PointButton cost ranged 140–164 across seeds, a spread of about 24 on a mean near 152, roughly
+16% jitter of the same character epoch to epoch. A bare fixed-step update passes that jitter straight into
+lambda scaled by eta, so lambda inherits the noise of the cost estimate. Adam's running estimates of the
+gradient's first and second moments turn a persistently one-signed pressure (steady over-budget) into
+steady climb while averaging down the zero-mean jitter, so the multiplier tracks the *trend* of the
+violation rather than each noisy sample — a genuinely useful property for a scalar whose job is to
+integrate a noisy signal, even if it is a heavier tool than a lone scalar strictly needs.
 
 I should name the one weakness of this loop up front, because it is real and intrinsic to the
 integral-only character of lambda, and it predicts where the *next* step will have to go. lambda is the
@@ -194,5 +239,5 @@ unit of cost removed is paid for in reward forgone; the question the result answ
 to still sit *over* budget — reduced from the naive level but not controlled, especially on PointButton
 where the violation it has to integrate against is largest — with cost oscillating rather than settling.
 If cost comes down substantially but remains above 25, that is the integral-only lag showing, and it is
-exactly the diagnosis that motivates replacing the pure integrator with a controller that also reacts to
-the present and anticipates the trend. The full scaffold module is in the answer.
+exactly the diagnosis that motivates replacing the pure integrator with an update rule that can react
+faster than accumulation allows. The full scaffold module is in the answer.

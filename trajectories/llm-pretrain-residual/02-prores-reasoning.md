@@ -11,6 +11,20 @@ with it: a competent floor that has left capacity on the table. The 2.2763 is th
 beat, and the lever has to be the depth flow, because that is the only thing I am allowed to touch and
 the only thing the floor leaves rigid.
 
+Let me read the four numbers for what they are worth before I design against them, because a single
+seed's scalars can still be squeezed for shape. Validation cross-entropy `2.2763` is a held-out FineWeb
+token perplexity of `e^2.2763 ≈ 9.74` — squarely in the healthy band I expected for a 355M model on ~7B
+tokens, so nothing is broken and I am fighting for *fractions* of a nat, not a rescue. WikiText-2 `44.28`
+and LAMBADA `70.09` are out-of-domain perplexities, tens rather than the in-domain 9.7, which is just
+the corpus shift; what matters is their *sensitivity*. LAMBADA scores a model on predicting the final
+word of a passage that requires long-range context, so it leans on the top of the stack — exactly the
+layers I am claiming are half-dead — while WikiText-2 is a broad next-token average that any competent
+middle layer already serves well. So if my deep-layer-death reading is right, a fix that wakes the deep
+layers should move LAMBADA more than WikiText-2, and that asymmetry is the falsifiable signature I will
+watch, not the headline loss alone. The downstream pair — ARC-Easy `54.12`, HellaSwag `33.82` — is the
+noisy read I flagged at the floor; HellaSwag near its ~25% four-way chance floor especially, so I will
+not bet a mechanism on a point of movement there.
+
 Let me make the deep-layer-death claim quantitative, because I want the fix to react to the mechanism,
 not the symptom. Trace the Pre-LN recursion `x_{l+1} = x_l + F(LN(x_l))`. The normalization fixes the
 scale of the *branch input* — what gets fed into attention or the MLP — but it does nothing to the
@@ -97,6 +111,19 @@ still partway up — the branches switch on in a wave that sweeps from shallow t
 steps every `α=1` and the model runs exactly vanilla. That last property is the one the static methods
 cannot have: the constraint is real early and *gone* late.
 
+Let me freeze the wave at one instant to make sure the shape is doing what I think, because a schedule
+is easy to get backwards and I want to *see* the gradient of engagement rather than assert it. Take step
+`t = 2000`, early in the run. Layer 1: `α = min(2000/1000, 1) = 1` — fully on. Layer 2:
+`min(2000/2000, 1) = 1` — just barely on. Layer 5: `min(2000/5000, 1) = 0.40`. Layer 10:
+`min(2000/10000, 1) = 0.20`. Layer 24: `min(2000/24000, 1) ≈ 0.083` — a whisper above the identity. So
+at step 2000 the stack is a smooth gradient of engagement: the bottom two layers at full strength, the
+middle at a fifth to a half, the top writing at eight percent of its branch. That gradient is exactly the
+shape I wanted, and it sweeps upward as `t` grows — at any early instant the deep layers are near-identity
+while the shallow ones beneath them are already doing their work, so the foundation is laid before the
+upper floors are built on it. If I had the sign of the `l`-dependence flipped, this same snapshot would
+show layer 24 at full strength and layer 1 off, which is the divergence pattern I am trying to avoid, so
+the snapshot doubles as a sign check on the schedule.
+
 Check it against the three things I wanted, and make each fall out rather than be asserted. Identity at
 init: `α(l,0)=min(0,1)=0`, so `x_{l+1}=x_l` exactly — ReZero's clean start for free, no init variance
 blowup. Bounded update across time *and* depth: early on only shallow layers have nonzero `α`, so only a
@@ -130,12 +157,32 @@ Two failure modes bracket it. Too small and I have barely delayed anything past 
 branches snap on immediately and I throw away the benefit. Too large and `T·L` eats a big fraction of my
 budget, so the deep layers spend most of training artificially weakened and never get enough
 full-strength steps to learn. So `T` wants to outlast the warm-up phase but stay a modest slice of
-training. Here the run is 13,535 steps over 24 layers, so I do not even want a per-layer total `T·L`
-that overruns it — I want most layers to reach full strength well inside the run. `T = 1000` is the
-natural default: the first layer finishes in 1000 steps, the shallow half is at full strength within a
-few thousand, and the wave has swept most of the stack before the cosine decay sets in. I set it once and
-do not tune it; the only principled adjustment would be at extreme depth, keeping `T·L ≤` total steps so
-every layer reaches full strength, which is not a concern at 24 layers.
+training, and I can put both brackets on the actual budget rather than eyeball them. The run is 13,535
+steps, and the fixed loop already warms the *learning rate* linearly over 4% of steps — `0.04·13,535 ≈
+541` steps — so whatever I pick, I want the first layer's residual ramp to outlast that LR warm-up,
+otherwise the shallow branches reach full strength while the optimizer itself is still finding its
+footing. `T = 541` would make layer 1 finish exactly when the LR warm-up ends; `T = 1000` gives the first
+layer a residual ramp almost twice the LR warm-up, comfortably on the safe side of that lower bracket.
+
+Now the upper bracket, and here I have to be honest about the arithmetic rather than wave it away. With
+`T = 1000` and `τ_l = T·l`, layer `l` reaches full strength at step `1000·l`, so the deepest layer would
+need `1000·24 = 24,000` steps — but I only have 13,535. Solve `1000·l = 13,535`: layers 1 through 13
+(`13,000 < 13,535`) cross into `α = 1` inside the run, but layers 14 through 24 do *not*. Layer 24 ends
+at `α = 13,535/24,000 ≈ 0.56`, layer 20 at `≈ 0.68`. So `T = 1000` does *not* let the schedule fully
+expire into vanilla for the top third of the stack within this budget — the deepest layers finish
+training only about half to two-thirds warmed. I could force full warm-up by shrinking `T` to
+`13,535/24 ≈ 563`, but that pushes layer 1's ramp right back down onto the LR-warm-up boundary and snaps
+the whole shallow half on too early, throwing away exactly the early protection the method exists to
+provide. So this is a genuine trade, not a free choice: at 24 layers and 13.5k steps I cannot both
+protect the shallow layers long enough *and* fully warm the deep ones, and I choose to protect the
+shallow layers. That is defensible because the schedule's whole job is the *chaotic early phase* — by the
+time the deep `α` are climbing through their 0.5–1.0 range the network is deep into the stable phase and
+the cosine LR is already decaying, so a deep layer that finishes at 56% strength has still spent its
+high-LR steps being gently held back and its low-LR steps coming online, which is the ordering I wanted.
+The cost I accept is that the deepest layers never quite reach the plain-vanilla operating point inside
+this run — the schedule sweeps *most* of the stack to full strength, not all of it. I set `T = 1000` once
+and do not tune it; the only regime where I would revisit the choice is far deeper stacks, where `T·L`
+overruns the budget so badly that even the middle layers never warm.
 
 A couple of choices I made without comment, now justified. I multiply only the *branch*
 `F(LN(x_l))` by `α` and leave the skip `x_l` at weight 1 — the skip is the identity highway and the

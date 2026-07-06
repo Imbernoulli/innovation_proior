@@ -17,6 +17,22 @@ stretched past the training length. The cure has to be an *explicit* position si
 substrate for it is the decoder-only Transformer the rest of the ladder shares — which also kills the
 sequential-recurrence cost, since attention parallelises over positions.
 
+Before I leave rung one's numbers I want to read them harder, because the exact ratios carry a mechanism
+I can use. The OOD token accuracies are `0.371 / 0.207 / 0.180` on `delim / repeat / reverse`. Take them
+relative to `delim`: `repeat` retains `0.207 / 0.371 = 0.56` of the identity-map accuracy, and `reverse`
+retains `0.180 / 0.371 = 0.49` — roughly a two-to-one falloff from the easiest to the hardest alignment.
+That ordering is exactly the `delim ≥ repeat ≥ reverse` I predicted from how much each variant's target
+index depends on knowing the source length at an unseen scale, and the fact that all three sit *well above*
+the 16-symbol chance level of `1/16 = 0.0625` tells me something specific: the recurrence did learn a real
+local alignment rule that partially transfers: it is placing most tokens correctly even at length 30–40,
+just not all of them. Meanwhile every OOD exact match is a hard `0.0`. Put those two facts together with
+the product-over-output arithmetic from rung one — sequence match behaves like per-token accuracy raised
+to the output length — and a per-token `0.37` over a 40-token output predicts `0.37^{40}`, a number with
+seventeen leading zeros: exact match is not merely low, it is annihilated. So the wall is not "the model
+cannot copy"; it is "the model cannot copy *without a single slip* across an output twice as long as any
+it trained on," and the missing ingredient is a per-position anchor that stops the slow drift. That is the
+precise hole an explicit positional code exists to fill.
+
 But the Transformer has its own problem before it can even start, and I have to face it head-on because
 it is the whole reason a positional scheme exists. Self-attention is a function of a *set* of key/value
 vectors. Take the attention output at one position: it is `softmax(q·k_j/√d)` weights times the values
@@ -25,12 +41,28 @@ is a linear function of the token at position `j`. Nowhere does the index `j` ap
 of the two token vectors. Permute the input tokens and every `k_j, v_j` is just relabelled, the set is
 identical, the softmax is over the same scores, the weighted sum is the same number. The feed-forward
 sublayer acts per position and cannot see neighbours either. So a stack of these reads its input as a
-*bag* of token vectors: `a b` and `b a` are the same object. (The causal mask does break some of this —
-I will come back to that at a later rung — but the default move, and the one I am taking now, is to put
-order back in by hand.) For the recurrent baseline I never had to, because the recurrence supplied order;
+*bag* of token vectors: `a b` and `b a` are the same object. (A causal mask is not perfectly symmetric,
+so it dents this a little — but the default move, and the one I am taking now, is to put order back in by
+hand.) For the recurrent baseline I never had to, because the recurrence supplied order;
 moving to attention, I have to manufacture a position signal explicitly. That is exactly the lever the
 task hands me, and the cleanest first explicit scheme is the one that started the Transformer line:
 sinusoidal absolute encoding.
+
+I should say why sinusoidal and not the other absolute code on the table, because the choice is not
+arbitrary and I want to have argued it. The two absolute options are the scaffold's learned table and the
+closed-form sinusoid. The learned table is the default fill, and I can reject it at this rung on the same
+inspection ground as before: it holds one trainable vector per slot up to `max_total_len`, and while slots
+for positions `21…40` do physically exist in a table sized to 256, they receive *zero gradient* during
+training because no training sequence ever reaches those positions — content lengths are drawn from
+`[1, 20]`, so the longest stream is `1 + 20 + 1 + 40 + 1` at most for `repeat`, but crucially the source
+region a copy head must key on never extends past position ~21, and every target-region slot past the
+training envelope is an untrained `N(0, 0.02)` vector. So a learned absolute table does not merely
+generalise poorly out of range; the relevant far slots are literally random noise the optimiser never
+touched. The sinusoid is the strictly better absolute code precisely because it replaces those untrained
+slots with a deterministic closed-form value — the same curve evaluated one step further along. If I am
+going to test whether *absoluteness itself* is the problem, I have to test it with the strongest absolute
+code available, so that a failure cannot be blamed on "you used the weak absolute scheme." Sinusoidal is
+that strongest absolute code, which is why it is the right first explicit rung.
 
 So what should the per-position signal be? Operationally, the number "this token is at position `t`" has
 to enter the computation in a form the existing machinery — linear layers, dot products, softmax — can
@@ -62,6 +94,26 @@ bounded. So I use a whole vector of sinusoids at geometrically spaced frequencie
 `10000·2π` — geometric so the wavelengths tile the scale axis evenly in log-space, giving roughly equal
 resolution from local to global.
 
+Let me put numbers on this frequency ladder for `d = 128`, because the counts turn out to predict exactly
+where extrapolation will hurt. There are `d/2 = 64` frequencies. The fastest, `ω_0 = 10000^0 = 1`, has
+wavelength `2π ≈ 6.28` tokens, so it completes about `20 / 6.28 ≈ 3.2` full cycles across the training
+range `[0, 20)`. The slowest, `ω_{63} = 10000^{-126/128} = 10000^{-0.984} ≈ 1.2·10^{-4}`, has wavelength
+`2π / 1.2·10^{-4} ≈ 5.2·10^4` tokens — it barely moves off zero across the whole task. Now ask the
+question that actually governs OOD: for how many of these 64 frequencies does the phase at an evaluation
+position 40 land in a range the model already saw during training over `[0, 20)`? A frequency whose
+wavelength exceeds 20 never completes even one cycle in training, so its phase over `[0, 20)` is a single
+monotone arc; at position 40 that arc continues into phase values that never occurred in training. The
+threshold is `2π / ω_i > 20`, i.e. `ω_i < 2π/20 ≈ 0.314`. Solving `10000^{-i/64} < 0.314` gives
+`(i/64)·ln 10000 > -ln 0.314`, i.e. `(i/64)(9.21) > 1.158`, so `i > 8.05` — frequencies `i = 9 … 63`, a
+full `55 of the 64`, never complete a cycle in the training window. For those 55 dimensions the phase at
+length 40 is literally a value the attention never observed while learning to read this code. Only the
+fastest `~9` frequencies cycle enough to repeat their phase patterns into the OOD range, and those are the
+*local* ones. So the arithmetic already whispers the verdict: the coarse, long-range positional dimensions
+— the ones a length-40 sequence most needs to distinguish its far positions — are exactly the ones whose
+values go out of distribution at evaluation. Bounded and closed-form does not save them, because
+"the model has seen this phase configuration" is the property that actually matters, and for 55 of 64
+channels it has not.
+
 There is one more thing the encoding has to give me, and it is the property that makes it more than a
 bounded counter: a fixed relative shift should be a fixed linear map. If I stored only `sin(ω t)` per
 dimension, I could not recover `sin(ω(t+k))` from it — the angle-addition formula needs `cos(ω t)`,
@@ -77,6 +129,21 @@ learned table is; it is just the next point along the same curves, and the rotat
 there with the same `M_k`. That last point is the direct answer to rung one's failure mode: where the
 recurrence had no anchor and the learned table had no entry, the sinusoid has a closed-form value
 everywhere.
+
+Let me verify the rotation claim explicitly on one frequency block, because it is the load-bearing algebra
+and I want to see it, not assert it. For frequency `ω`, the two coordinates hold `[sin ωt, cos ωt]`. The
+angle-addition identities give `sin ω(t+k) = sin ωt cos ωk + cos ωt sin ωk` and
+`cos ω(t+k) = cos ωt cos ωk − sin ωt sin ωk`. Stack those: `[sin ω(t+k), cos ω(t+k)]` equals the matrix
+`[[cos ωk, sin ωk], [−sin ωk, cos ωk]]` times `[sin ωt, cos ωt]`. That `2×2` matrix is exactly the planar
+rotation by angle `ωk`; it depends only on the offset `k`, not on `t`, and it is orthogonal so it
+preserves norm. Block-diagonally stacking these across the 64 frequencies gives the promised
+`p_{t+k} = M_k p_t` with a single `k`-dependent, `t`-independent linear map. This is genuinely more than a
+counter: a single dense matrix `M_k` can carry "shift by `k`," which is precisely the operation a
+copy/reverse alignment needs — attend to the token a fixed offset away — so an attention head *could*, in
+principle, learn a query/key geometry that implements "look `k` back" as one linear relation. The catch,
+which the next paragraph makes precise, is that whether the model *learned* to use `M_k` at the offsets
+that only appear past length 20 is a different question from whether `M_k` is mathematically available
+there. The algebra holds at every real `t`; the training signal does not.
 
 Now I have to be careful and honest, because the methods derivation of this scheme already names the
 catch, and the catch is exactly what I will be testing. "Defined everywhere" is *not* the same as "the
@@ -103,24 +170,49 @@ First, there is **no `√d_model` embedding scaling** here — the canonical sch
 lookup by `√d_model` to put content and position on comparable scales before the sum, but this scaffold's
 `SeqModel` adds `token_embedding_extra(positions)` straight onto the raw `token_embed` output, so I do not
 control that scaling and do not introduce it; the learned token embedding simply has to grow on its own
-to balance the `O(1)` sinusoids. Second, there is **no dropout** on the sum (the task fixes
+to balance the `O(1)` sinusoids. It is worth being concrete about that balance, because it is a real
+consequence of the harness rather than a cosmetic omission. The canonical recipe multiplies the token
+lookup by `√d_model = √128 ≈ 11.3` before adding position, so a token embedding initialised at unit scale
+is lifted to `~11×` the amplitude of the bounded `[-1, 1]` sinusoids, keeping content dominant and
+position a modest additive hint. Here there is no such multiply, so at initialisation an `N(0, 0.02)`-ish
+token vector has per-coordinate magnitude `~0.02` while each sinusoid coordinate swings in `[-1, 1]` —
+position would *swamp* content by roughly two orders of magnitude if training did nothing. What actually
+happens is that gradient descent grows the token embedding norm until content and the fixed-scale position
+term are comparable; the frozen table cannot move, so all the adaptation is on the embedding side. This is
+fine for learning at training length, but it is one more reason the scheme's behaviour is tuned to the
+`[0, 20)` regime: the embedding scale the optimiser settles on is calibrated against the phase statistics
+it saw, and those statistics shift out of range for the 55 coarse frequencies I counted above. Second, there is **no dropout** on the sum (the task fixes
 `dropout = 0.0`), unlike the original which applies dropout to the embedding-plus-position. And the
 positions fed in are `[0, T)` over the *whole* stream `[BOS] x … [SEP] y … [EOS]`, not a separate
 source/target indexing — the table is indexed by absolute stream position with a `clamp` to the table's
 last row as a safety bound (the table is sized to `max_total_len = 256`, comfortably past `2·L_train`, so
 the clamp never actually fires on this task's lengths). Nothing else in the editable block changes.
 
+The clock deserves one explicit comparison, since it is the second reason I moved off recurrence and I
+should predict its size. Rung one ran a Python-level loop of `T` sequential steps, each launching its own
+attention kernels, and `T` reaches `~83` on OOD — so the per-batch cost is a chain of `~83` dependent
+launches that no amount of hardware parallelism can collapse, which is why it clocked in the 400–500 s
+range. The Transformer replaces that with a *single* batched attention: all `T` query positions attend to
+all `T` keys in one `[T, T]` score matrix, an `O(T² d)` operation but one fully parallel kernel per layer,
+four layers, no sequential dependency across positions within a forward pass. `T² = 83² ≈ 6900` is a
+trivially small matrix for the GPU, so the four-layer forward is a handful of large parallel matmuls
+rather than `83` serial ones. I therefore expect the elapsed to fall by roughly the factor the
+serial-to-parallel change buys — from the LSTM's ~450 s down to a small fraction of that, likely a couple
+of minutes per variant — and the sinusoidal add itself is a single `[B, T, d]` table lookup once at the bottom, costing
+essentially nothing on top of the bare attention.
+
 So the delta from rung one is precise: where the LSTM carried order through a sequential recurrence with
 no explicit code, I now run the parallel decoder-only Transformer and stamp every token with a frozen
 sinusoidal absolute position before layer one. My falsifiable expectations against the rung-one numbers:
 in-distribution should stay perfect (`exact_match_id ≈ 1.0` on all three variants — the absolute code is
 more than enough at training length), and the elapsed time should drop sharply from the LSTM's 400–500 s
-to roughly the other Transformer rungs' ~130 s, because attention parallelises. The open question is OOD,
+to a couple of minutes per variant, because attention parallelises. The open question is OOD,
 and I have a specific prediction: if absoluteness is the disease, sinusoidal should *not* rescue OOD exact
 match — I expect `exact_match_ood` to stay at or near `0.0` on all three variants, and possibly with OOD
 token accuracy even *worse* than the LSTM's `0.37/0.21/0.18`, because the out-of-range phase patterns are
 actively misleading the attention rather than merely under-anchoring it. If that comes true — perfect ID,
-zero OOD, and OOD token accuracy at or below rung one — then the lesson is unambiguous and sets up the
-next rung: the failure is not "which absolute code," it is *absolute position at all*, and the move is to
-stop prescribing an absolute code and let the model build a relative one. (The full scaffold module is in
-the answer.)
+zero OOD, and OOD token accuracy at or below rung one — then the lesson is unambiguous: the failure is not
+"which absolute code," it is *absolute position at all* — an absolute index keyed on over `[0, 20)` simply
+has no counterpart over `[21, 40)`, and no sharpening of the absolute code can conjure one. That verdict is
+exactly what this diagnostic rung exists to deliver, and it is the constraint every rung after it has to
+answer to. (The full scaffold module is in the answer.)

@@ -10,6 +10,19 @@ did not satisfy the constraint*. That is the worst of both worlds: it gave up th
 without delivering the safety. The mechanism is converging toward feasibility too slowly to get there
 inside the training budget.
 
+Let me put the arithmetic on that "worst of both worlds" so I know exactly how bad the trade was. In
+cost, ppo_lag sits at over-budget ratios of 45.6/25 ≈ 1.82, 46.7/25 ≈ 1.87, and 56.2/25 ≈ 2.25 — still
+roughly *twice* the budget everywhere, essentially unchanged in character across the three environments
+despite their very different naive starting points (51, 61, 152). In return, against the naive
+25.5/32.8/19.7, it gave up 25.5→15.1 (about −41%), 32.8→18.6 (about −43%), and 19.7→4.0 (about −80%).
+So on PointButton it spent four-fifths of the return and still landed at 2.25x the budget; on the goal
+tasks it spent over 40% of the return to move cost from a ~2–2.4x violation to a ~1.8–1.9x one. Put
+those two columns together and the verdict is not "slow but on track" — it is that the integrator bought
+almost no feasibility with a large reward outlay. A method that paid 40–80% of its return should be at
+or near the budget; this one is nowhere close. That mismatch — heavy price, little safety — is the
+signature that the *rate* of the controller, not its eventual target, is what is broken: it is aimed at
+the right place and crawling there too slowly to arrive.
+
 This is exactly the integral-only lag I flagged when I built the dual loop, and now I can see it in the
 data rather than just predict it. lambda is the integral of the violation: it responds only to
 accumulated over-budget, so it climbs slowly from where it started, and on these runs it simply has not
@@ -98,6 +111,16 @@ the derivative term fighting that; a falling cost is good. So I rectify the deri
 positive part of the cost-increase rate, so it acts against increases and stays silent on decreases. A
 one-sided derivative for a one-sided (inequality) constraint.
 
+A quick numeric trace makes that term's scale and its silence concrete. Suppose the smoothed cost climbed
+from about 40 to 44 across the ten-epoch delay window — cost trending up toward the limit. Then
+pid_d = max(0, 44 - 40) = 4, and its contribution to lambda is K_D*pid_d = 0.01 * 4 = 0.04: a small
+anticipatory nudge that arrives *while cost is still rising*, before the integral has registered the new
+level. Now suppose instead the smoothed cost fell from 44 to 40 — cost improving. Then the raw difference
+is -4 and max(0, -4) = 0: the derivative contributes nothing, staying silent rather than pushing lambda
+down and undercutting the improvement. So the rectified derivative is active exactly in the dangerous
+direction and dormant in the safe one, and at K_D = 0.01 its magnitude is deliberately a fraction of the
+proportional kick — it shapes the approach, it does not drive it.
+
 So the full controller is the combination: proportional damps, derivative anticipates, integral does the
 one thing neither can. Why keep integral at all, given it is what lagged? Because at convergence I need
 *zero* steady-state violation, and only the integral term supplies the standing lambda that holds cost
@@ -136,6 +159,42 @@ derivative, summed with the three gains and clamped at zero. The gains are small
 is the right regime for a deep-RL plant: the integral as the slow memory that fixes the steady-state, and
 proportional and derivative giving fast, *shaped* responses on top, so I get responsiveness without having
 to push K_I into the regime that ruins reward.
+
+I want to see, in numbers, that K_P = 0.1 actually cures the lag the K_I = 0.01 integrator suffered,
+because "adds a proportional term" is only a fix if the term is large enough to matter at these gains.
+Take the ppo_lag PointGoal plateau: cost sat around 45.6, so the error is delta = 45.6 - 25 ≈ 20. The
+proportional contribution to lambda is K_P*delta ≈ 0.1 * 20 = 2, delivered *this epoch*, the moment the
+gap is measured. The integral contribution per epoch is K_I*delta ≈ 0.01 * 20 = 0.2. So the integrator
+needs about ten epochs of sustained 20-over-budget just to accumulate the standing multiplier the
+proportional term supplies in one — and that factor of ten is exactly the K_P/K_I ratio, 0.1/0.01. That
+is the lag made quantitative: the pure integrator was always ten-ish epochs behind the multiplier the
+current gap already justifies, and over a finite training budget those lost epochs are why cost never
+reached 25. The proportional term front-loads that standing value immediately, so the policy feels the
+45-vs-25 gap now instead of after the integrator crawls up to it. And because K_P is applied to the
+smoothed error rather than the raw one, the size-2 kick is a kick against the *trend*, not against a
+single noisy epoch.
+
+The two smoothing constants are worth reading as time scales rather than magic numbers. An EMA with
+coefficient 0.95, `x <- 0.95*x + 0.05*new`, has an effective averaging window of about 1/(1 - 0.95) = 20
+epochs: it remembers roughly the last twenty epochs of the signal, long enough that the 51–60 seed-to-seed
+jitter ppo_lag showed on PointButton is averaged down before it reaches the proportional or derivative
+terms, but short enough to still move within a training run. The derivative's delayed difference over a
+queue of 10 epochs measures the cost trend across a ten-epoch span — long enough that the difference of
+two smoothed values is a real trend and not quantization noise, since a one-epoch difference of a signal
+this noisy would be almost all noise. So the derivative is doubly protected: it differences an
+already-EMA-smoothed cost, and it differences it over a ten-epoch baseline, which is the only way a second
+-difference-like quantity is usable on a signal with 16%-scale jitter.
+
+One more mechanism I should trace concretely is the anti-windup on the integral, because it is aimed at
+the precise disease I am curing. The update is `I <- max(0, I + K_I*delta)`. During a feasible stretch,
+delta = J_c - d < 0, so `I + K_I*delta` decreases; without the clamp the integrator would bank a *negative*
+reservoir — it would keep subtracting while cost is under budget, so that when cost later rises the
+integrator first has to climb back up out of that negative hole before it can produce any positive lambda,
+re-introducing exactly the delayed reaction I built this controller to remove. The `max(0, .)` floors the
+reservoir at zero: a feasible stretch relaxes the integral to zero and no further, so the instant cost
+crosses back over budget the integrator reacts from zero rather than from a debt. That the integral is
+also *seeded* at 0.0 (lambda starts at zero, as it did in the dual loop) is consistent with this — the
+controller begins with no standing penalty and builds one only as violation is actually observed.
 
 The advantage blend is unchanged from the dual loop, and deliberately so. The large-lambda step-size
 blowup is the same problem regardless of how lambda is computed, and the same fix applies: arg max of

@@ -13,6 +13,20 @@ Every rung has now mixed channels the same lazy way — a linear combination in 
 has refused to move past the high-0.68 ceiling for any of them. That is the gap I want to attack, without
 giving back what TimesNet won on Handwriting and EthanolConcentration.
 
+Let me put the deltas on paper because they sharpen exactly what to hold and what to move. TimesNet vs
+PatchTST: Handwriting +0.0812 (0.2541 → 0.3353), EthanolConcentration +0.0342 (0.2852 → 0.3194),
+FaceDetection −0.0108 (0.6853 → 0.6745). Means: TimesNet (0.3194 + 0.6745 + 0.3353)/3 = 0.4431, against
+PatchTST 0.4082 and the floor 0.4006 — so TimesNet added +0.0349 mean over PatchTST, and unlike PatchTST's
+gain (which was almost entirely one dataset) this one is broad: two big moves up (+0.081, +0.034) partly
+offset by one small move down (−0.011). Now read the FaceDetection column *down the whole ladder*: 0.6822
+(floor) → 0.6853 (PatchTST) → 0.6745 (TimesNet). Three architectures, a spread of just 0.0108, and the best of
+them is the linear floor's channel-mixing head essentially tied with PatchTST's. FaceDetection has been
+*flat* across every rung regardless of temporal machinery — the temporal encoder is not the variable that
+moves it. That is the strongest evidence I have that its bottleneck is orthogonal to everything the ladder has
+varied so far, and it is cross-channel. So the design target is precise: add a dedicated cross-variable stage
+to move the flat 0.68 column, while not regressing the +0.081 and +0.034 that cross-period 2-D and no-normalize
+bought on Handwriting and EthanolConcentration.
+
 Let me be precise about what "mix channels" has meant and why it keeps failing on FaceDetection. The linear
 floor mixed channels only in the final `Linear(enc_in · seq_len, num_class)` — one fixed linear functional per
 class over the flattened window, so cross-channel covariance can be expressed only as a static weighting, never
@@ -40,6 +54,22 @@ variable length are trivial to respect. This is the modern-convolution insight f
 kernels plus pointwise mixing recover what attention offered, at convolutional cost. So my temporal operator is
 a large-kernel depthwise 1-D convolution along time, applied per channel-feature.
 
+The cheapness is the whole reason this is viable, so let me price it. The temporal conv runs over `M · D`
+channels grouped fully (groups = `M · D`), i.e. genuinely depthwise: one 1-D kernel per channel. With `D = 64`
+features per variable, FaceDetection's `M = 144` gives `144 · 64 = 9,216` depthwise channels, and a size-31
+kernel costs `9,216 · 31 ≈ 285,700` weights — the plus a size-5 small branch at `9,216 · 5 ≈ 46,100`. Compare
+the *dense* large conv the historical objection assumed: `channels² · kernel = 9,216² · 31 ≈ 2.6 billion`
+weights, plainly untrainable on ~5,900 FaceDetection series. Depthwise cuts that by a factor of `channels =
+9,216` down to a quarter-million — the difference between impossible and routine. On EthanolConcentration the
+depthwise channels are `3 · 64 = 192`, so the size-31 kernel is `192 · 31 ≈ 6,000` weights, negligible. So the
+large kernel that gives each channel a ~31-position receptive field in a single layer is essentially free once
+it is depthwise, and that is what lets me buy the long-range temporal reach in 1-D that TimesNet had to reshape
+to 2-D to get. Let me also translate the receptive field into raw timesteps, because that is the reach I am
+claiming: the stem strides by 4, so one patch-position is 4 original steps; a size-31 depthwise kernel then
+spans `31 · 4 ≈ 124` original timesteps in one conv, and after the stage-1 downsample-by-2 the effective reach
+doubles to ~248. On FaceDetection's ~62-step window the stem produces only ~15 positions, so a size-31 kernel
+(padded) already covers the *entire* sequence in a single layer — full-window temporal context for free.
+
 A large kernel has a known training pathology, though: it is hard to optimize from scratch because the gradient
 has to find structure across a wide support, and small-scale local detail (a two- or three-step wiggle that
 matters for the fine gesture distinctions in Handwriting) is easy for a wide kernel to smear. The fix that the
@@ -66,8 +96,30 @@ separate — this is the per-variable channel MLP, the standard feature-mixing F
 across the **variable** dimension M: by permuting so the variable axis becomes the convolution's channel axis
 and grouping by D (`groups = D`), each feature index is mixed *across all M variables* while features stay
 separate. ConvFFN2 is the explicit cross-variable operator that every earlier rung lacked — a learnable,
-per-feature interaction across the MEG sensors, applied at every temporal position. Both FFNs are the usual
-two-layer 1×1 conv with a GELU and dropout between, expanding `D → ffn_ratio·D → D`. A block is: depthwise
+per-feature interaction across the MEG sensors, applied at every temporal position. The obvious alternative is
+cross-variable *attention* — treat the `M` variables as tokens and self-attend over them at each timestep. Let
+me walk it and price why I do not. On FaceDetection that is a `144 × 144` attention map per timestep per layer,
+plus the Q/K/V/O projections; the map itself (~20.7k entries) is affordable, but attention adds its own
+projection parameters and, more importantly, a softmax-normalized dynamic mixing that these small datasets
+(EthanolConcentration ~260 series) will overfit — attention's data appetite is exactly what pushed me to
+channel-*independence* at the PatchTST rung. A grouped 1×1 conv over the variable axis is the cheaper, static
+learnable mix: it learns a fixed `M × M` interaction per feature (the `D · M²` weights I priced) with no
+softmax and no per-timestep dynamics to overfit, and it composes cleanly with the depthwise-then-pointwise
+convolutional grammar of the rest of the block. So I reject variable-attention in favour of ConvFFN2 on the
+same data-efficiency grounds that shaped every prior rung, and I keep the whole architecture convolutional. Both FFNs are the usual
+two-layer 1×1 conv with a GELU and dropout between, expanding `D → ffn_ratio·D → D` (I take `ffn_ratio = 1`,
+so the hidden width equals `D = 64`, keeping the block lean on the small datasets). The parameter arithmetic of
+the two mixers is illuminating because it shows where the cost of cross-variable modelling lands. ConvFFN1 is
+`Conv1d(M·D, M·D, 1, groups=M)`: each of the `M` groups maps that variable's `D` features to `D`, costing
+`D² = 64² = 4,096` per group, so `4,096 · M` total per 1×1 layer — on FaceDetection `4,096 · 144 ≈ 590k`, and
+it scales *linearly* in `M`. ConvFFN2 is `Conv1d(M·D, M·D, 1, groups=D)`: now each of the `D` groups mixes
+across all `M` variables, costing `M²` per group, so `D · M²` total — on FaceDetection `64 · 144² ≈ 1.33M` per
+1×1 layer, scaling *quadratically* in `M`. So the cross-variable operator is, by construction, the expensive
+one exactly on the high-channel dataset (its cost is `M² = 20,736` per feature on FaceDetection versus `M = 3`
+on EthanolConcentration and Handwriting). That is not a bug — it is the point. FaceDetection is where I am
+spending parameters to model 144-way sensor covariance, and that is precisely the dataset whose flat 0.68
+column says the covariance was never modelled. On the two low-channel datasets ConvFFN2 is nearly free
+(`64 · 9 ≈ 576` weights), so I am not paying for cross-variable capacity where there is nothing to mix. A block is: depthwise
 large-kernel temporal conv, BatchNorm, ConvFFN1 (feature mix), ConvFFN2 (variable mix), all wrapped in a
 residual connection. That decomposition — separable temporal conv, then feature mixing, then variable mixing —
 is the whole architecture in one block, and it cleanly separates the three kinds of structure (time, feature,
@@ -101,7 +153,16 @@ backbone. After the stages I have `[B, M, D, N_final]`. The canonical classifica
 dropout, flattens the whole `M · D · N_final` representation into one vector, and projects with a single
 `Linear(M · D · N_final, num_class)`. That flatten-and-project is where the final class decision is drawn — but
 it is the cross-variable ConvFFN2 *inside* every block that has already done the real channel mixing, so the
-head no longer carries the entire burden of cross-channel modelling the way the linear floor's head did. The one
+head no longer carries the entire burden of cross-channel modelling the way the linear floor's head did.
+Let me size that head so I know it is sane. The stem strides by `patch_stride = 4`, so `patch_num = seq_len //
+4`: EthanolConcentration `1750 // 4 = 437`, FaceDetection `62 // 4 = 15`, Handwriting `152 // 4 = 38`. With
+two stages the single downsample-by-2 folds that once, so the final temporal length is `patch_num // 2`
+(rounded up when odd): EthanolConcentration 219, FaceDetection 8, Handwriting 19. Times `D = 64` features gives
+`head_nf` per variable — 14,016 / 512 / 1,216 — and the head is `Linear(M · head_nf, num_class)`:
+EthanolConcentration `3 · 14,016 · 4 ≈ 168k`, FaceDetection `144 · 512 · 2 ≈ 147k`, Handwriting `3 · 1,216 · 26
+≈ 95k`. All in the hundred-thousand range, comparable to the earlier rungs' heads — nothing blows up, and
+crucially FaceDetection's head is now *smaller* than its per-block ConvFFN2 (~1.3M), which is the structural
+statement I want: the cross-channel work has moved out of the head and into a dedicated in-encoder stage. The one
 wrinkle is the padding mask: the stem's strided conv changes the temporal length from `seq_len` to `N_final`, so
 I cannot multiply by `x_mark_enc` at full resolution the way TimesNet did. The reference classification head does
 not consult the mask at all — it relies on the replicate-padding (not zero-padding) of the tail before every conv,

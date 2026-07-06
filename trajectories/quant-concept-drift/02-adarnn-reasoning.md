@@ -16,6 +16,31 @@ and almost none on *what survives when the distribution moves*. The 0.48 info ra
 explicitly force the model to learn what is *invariant* across time, so a drifted test window
 inherits a relation that was trained to be stable rather than a router trained to a stale signal.
 
+Let me read TRA's table more slowly, because the *rate* at which each metric decays across the three
+windows tells me which kind of structure survives drift and which does not. Line up the information
+ratios: 1.5869 on shifted, 1.0081 on `csi300`, 0.4798 on recent. Normalizing to the near window,
+`csi300` keeps 64% of the shifted IR and recent keeps only 30%. Now line up the plain IC: 0.0513,
+0.0420, 0.0237 — recent keeps 46% of shifted. The portfolio metric collapses almost twice as fast as
+the signal metric (30% vs 46%), and that gap is not noise: the top-50/drop-5 backtest is a hard
+threshold on the *top* of the cross-section, so a roughly uniform shrinkage of IC translates into a
+super-linear loss of the tail separation the strategy actually trades. That already tells me a method
+that only lifts average IC will underdeliver in the backtest; I need one that protects the *ordering*
+at the top of the book, not the mean correlation. And the ordering metric backs this up: rank IC runs
+0.0546, 0.0504, 0.0397 — recent keeps 73% of shifted, far more than plain IC's 46%. So the *monotone*
+content of TRA's signal is markedly more drift-stable than its linear content; the drift is corrupting
+the calibrated magnitude of the prediction more than its rank. That is a direct hint toward a method
+that aligns *distributions* rather than trusting the raw regression scale — the direction the
+invariance framing points anyway.
+
+One more decomposition before I commit. ICIR — the IC divided by its day-to-day standard deviation —
+runs 0.4283, 0.3355, 0.1923 across the windows; recent keeps only 45% of shifted, essentially the
+same decay as plain IC. So on the far regime TRA's daily IC is not just smaller on average, it is
+proportionally *noisier* day to day: the sign of the edge flickers. A single deterministic encoder
+trained on 2008–2014 produces a signal whose very stability erodes as the test window walks away from
+training. This is the numeric face of "the router reads a stale error-history signal": both the level
+and the temporal consistency of the edge decay together, and they decay hardest on the window furthest
+in time.
+
 Let me get the structure of that right, because naming it picks the tool. Write the joint law
 `P(x, y)`. Over the training stream 2008–2014 the marginal `P(x)` of the factors drifts hard with
 the regime, but the economic regularity turning factors into returns — `P(y|x)` — is far more
@@ -27,6 +52,33 @@ test is a genuinely unseen future window with no density to estimate, and the po
 notion of *when* inside a stream the distribution turns over. So the right move is to make the model
 *extract what is invariant across time* by aligning the periods' representations, which is exactly
 the failure TRA exposed: routing aligns nothing across regimes, it only partitions within one.
+
+Before I name a mechanism I want to be honest about the two or three moves actually on the table and
+kill the tempting ones with arithmetic rather than taste. The first is to route harder — more states,
+a sharper selector. I reject it on the numbers I just read: TRA is deterministic and still collapses
+on recent, so the failure is not selector variance I could average away; it is that the selector's
+input, cached prediction-error history, is itself computed on a stale distribution. More states only
+partition the training distribution more finely and give the drifted test *more* ways to be routed
+wrong. The second is the textbook covariate-shift fix — reweight each training sample by the
+test/train density ratio `w(x) = p_test(x)/p_train(x)`. It dies twice here: the test is a genuinely
+unseen future window, so `p_test` has no sample to estimate from at training time, and the ratio has
+no notion of *when* within the 2008–2014 stream the distribution turned, so it cannot express a
+*sequence* of shifts at unknown change points — it treats the stream as one static source.
+
+The third tempting move is invariant risk minimization: partition the stream into environments and
+penalize the variance of the per-environment optimal predictor, so the learned representation admits
+one head that is simultaneously optimal everywhere. It is the *right* instinct — invariance across
+time is exactly what I want — but it fits this scaffold badly, and I can see why concretely. IRM needs
+explicit environment labels and a penalty weight I would have to sweep, and its gradient-norm penalty
+is famously fragile; more damningly, on a view where each sample is a single timestep `[N, 1, 158]`
+the representation the penalty acts on is one hidden vector, and with only a two-way chronological
+split the environment count is two — the smallest number at which a variance penalty is estimable at
+all. The penalty would be balancing two noisy per-half gradients through a hand-tuned coefficient on a
+panel whose IC is about 0.05. That is a lot of fragile machinery for the same two-environment
+information I can use more directly. The direct use is: do not penalize the *gradient* of a shared
+predictor across halves, just push the halves' *representations* together and let a shared head sit on
+top — a distribution-matching loss between periods. Same invariance goal, a smoother objective, and it
+drops straight onto a recurrent encoder. That is the family I take.
 
 Now the model, derived against this scaffold — and the scaffold immediately changes the generic
 AdaRNN story in a way I have to honor. The generic idea splits the training stream into `K` periods
@@ -63,6 +115,28 @@ matching trade-off `λ` and `L_pred` the MSE on each half's predictions. Because
 want is the one *shared* between the halves, pushing their hidden representations together forces the
 GRU toward the invariant conditional.
 
+Let me size this network against the sample it must learn from, because the drift argument only
+matters if the model is not already starved. The stacked GRU has two single-layer cells: the first
+maps 158 inputs to 64 hidden, costing `3·(64·158 + 64·64 + 2·64) = 3·14336 ≈ 43.0k` parameters across
+its three gates; the second maps 64 to 64, `3·(64·64 + 64·64 + 2·64) ≈ 25.0k`; the linear head adds
+65. Call it about 68k parameters. The CSI300 training panel is roughly 300 names over ~1700 trading
+days, order `5·10^5` samples, so the parameter-to-sample ratio is comfortable — the model is not
+capacity-starved. What it is starved of is *signal per sample*: an IC around 0.05 is an R² near
+0.0025, so roughly 99.7% of each label's variance is noise the encoder must not fit. That reframes the
+whole exercise — the danger here is never underfitting the mean relation, it is the encoder spending
+its ample capacity memorizing the noise, and the distribution-matching loss is as much a regularizer
+that ties the two halves' representations together as it is a drift fix.
+
+The matching distance itself is worth pinning down, because the fill's `cosine` reduces each half's
+hidden batch to its *mean* before comparing — it aligns the first moment (the mean direction) of the
+two halves' representations, not their full distribution. That is the coarsest member of the available
+`TransferLoss` family (linear/RBF MMD would match higher moments, CORAL the covariance, the
+gradient-reversal adversary the whole density), and it is the cheapest to compute on the large CSI300
+batch. On a single-state, first-moment match between two chronological halves I am asking very little
+of the alignment: keep the average hidden representation of 2008–2011 pointed the same way as
+2012–2014. Cheap, stable, and — I suspect — too weak to reach a 2019–2020 regime that sits outside
+both halves, which is precisely the tension my falsifiable prediction turns on.
+
 The two-phase training is the load-bearing part the fill keeps. A chicken-and-egg sits between the
 state-importance weights and the GRU parameters: the weights judge the importance of hidden states,
 but early in training the states are meaningless, so the weights learn garbage and steer the GRU
@@ -77,7 +151,31 @@ weights only ever increase on the stalling states and a single noisy epoch canno
 re-L1-normalized to stay a convex weighting so `dw` alone controls strength. This is the boosting
 instinct: lean into the worst-aligned state. With `len_seq=1` there is a single state per layer, so
 the boosting update is doing little real work here — it is the period *alignment*, not the per-state
-reweighting, that carries this baseline on this task. Training is Adam `lr=1e-3`, `n_epochs=200`,
+reweighting, that carries this baseline on this task.
+
+It is worth tracing that boosting update once at this setting to be sure I am not fooling myself about
+what it does. The weight vector for a layer has one entry per hidden state; with `len_seq = 1` that is
+a length-one vector, say `w = [1]` after the L1 normalization the fill applies. At the next epoch the
+update multiplies it by `1 + sigmoid(d_new − d_old)`, some number in `(1, 2)` — giving `w = [m]` with
+`m ∈ (1, 2)` — and then re-L1-normalizes, `w/‖w‖_1 = [m]/m = [1]`. The single weight returns to 1
+every epoch: the boosting reweighting is *exactly idempotent* here, a no-op by construction, for each
+of the two layers independently. So whatever this baseline earns over a plain GRU comes entirely from
+the matching loss `dw·L_match` pulling the two halves' single hidden states together — the celebrated
+per-state boosting is inert at `len_seq = 1`, and I should read the result as a test of coarse
+two-half representation alignment, nothing more.
+
+The schedule's arithmetic reinforces which part does the work. Of the 200-epoch budget the first 40
+(20%) run `forward_pre_train`, stabilizing the representations under a gate-weighted match before any
+boosting weight engages; the remaining 160 run `forward_Boosting`. But I just showed the boosting
+reweight is idempotent at one state, so those 160 epochs are, in effect, still just the matching loss
+`0.5·L_match` plus the prediction MSE, now under a frozen uniform state weight. With `early_stop = 20`
+on validation loss the run almost certainly halts before epoch 200 on this noisy panel, so the entire
+trained model is: a two-layer GRU fit to predict returns from a single 158-vector, regularized by a
+first-moment alignment of two chronological halves at matching strength 0.5. Stated that plainly, it
+is a modest regularized regressor, and my expectation for its ceiling should be modest to match —
+competitive with TRA precisely because both are, underneath their different adaptation stories, small
+encoders extracting the same thin signal from the same panel. Training is Adam `lr=1e-3`,
+`n_epochs=200`,
 `early_stop=20` on validation loss, gradient value-clip at 3.0, `batch_size=800`, `dw=0.5`. The
 `seed` is `None`, so unlike TRA this model is *not* deterministic across seeds — its weights
 initialize differently each run, which I will need to read into its variance. At inference none of
@@ -93,6 +191,19 @@ One more thing the scaffold changes relative to TRA that bears on what I expect:
 slice. So AdaRNN has more raw factor information and a cheaper, more direct mechanism (align two
 halves, predict from one state) than TRA's heavy OT-distilled router. That cuts two ways and frames
 my falsifiable expectations.
+
+Let me make these predictions numeric enough that the next rung's feedback can actually falsify them.
+"Near TRA on shifted" means I expect shifted IC in the 0.048–0.055 band around TRA's 0.0513 and
+shifted info ratio at or a little above TRA's 1.5869 — the mild-shift window is where two-half
+alignment should pay, since 2012–2014 is genuinely close to a 2016–2018 test. "Still weak on recent"
+means recent info ratio should land in TRA's neighborhood of about 0.48, not the ~1.0 it would need to
+count as rescued, because aligning two halves inside 2008–2014 encodes nothing about the shape of
+2019–2020. And because `seed = None` makes this model non-deterministic, I expect the recent window —
+the lowest-SNR of the three — to show the widest seed spread of any cell in the table; a worst seed
+there flirting with zero info ratio would be the sharpest confirmation that alignment bought stability
+in-distribution and nothing out of it. If instead recent info ratio jumps cleanly above 1.0 across all
+three seeds, my whole "alignment cannot reach a regime outside both halves" reading is wrong and I
+would have to credit two-half matching with real extrapolation.
 
 I expect AdaRNN to be *roughly competitive with TRA on the aggregate, with a different regime
 profile and more seed variance*. Concretely: on `csi300_shifted` it should be in TRA's

@@ -13,6 +13,17 @@ the reconstruction smears the periodic structure, and anomalies stop standing ou
 handle on *which* periodicities a given window carries. That is the wall I have to break, and it means
 the next backbone must discover and adapt to the periods present in each window, not bake one in.
 
+Let me quantify the split in DLinear's results, because the direction of each move is the whole
+diagnosis. MSL rose `0.8187 − 0.7904 = +0.0283` in F1 and `0.7530 − 0.7130 = +0.0400` in recall, PSM
+rose `+0.0046`, but SMAP fell `0.6733 − 0.6883 = −0.0150` in F1 and `0.5383 − 0.5557 = −0.0174` in
+recall. Crucially, SMAP's precision barely moved (`0.9040 → 0.8987`), so the regression is entirely
+recall — the linear map reconstructed *more* of SMAP's anomalies than the patch backbone did, not fewer.
+The under-flexibility that helped MSL hurt SMAP, and that sign flip is the signal: the two datasets
+differ in whether one fixed linear readout suits every window. The mean moved from 0.8135 to 0.8194,
+`+0.0059`, carried by MSL and dragged by SMAP; if I could merely restore SMAP to its patch-backbone
+0.6883 while keeping MSL's and PSM's gains the mean would already be `(0.9663 + 0.8187 + 0.6883)/3 ≈
+0.824`, so SMAP is precisely where the next backbone's budget must go.
+
 Let me be precise about what kind of dependency a single point in a normal window actually has, because
 vague talk of "periodicity" is what got the linear map stuck. Take a point now. It depends on its
 immediate neighbors — the step before and after — which is the short-term movement inside the current
@@ -90,6 +101,20 @@ is harmless filler the truncation discards. So for each of the `k` periods I get
 (num-periods) × (period-length) per channel — `k` different 2D views of the same window, each exposing a
 different periodicity's intra/inter structure.
 
+Let me make the reshape concrete with plausible periods so the padding math is nailed down and the
+adjacency claim is checked, not just asserted. Say the top-3 frequencies of a window come out as `f = 4,
+7, 10`, giving periods `p = 100 // 4, 100 // 7, 100 // 10 = 25, 14, 10`. For `p = 25`, `100` is already
+`4 · 25`, so the grid is `4 × 25` with no padding. For `p = 14`, `100 % 14 = 2 ≠ 0`, so I pad to `(100
+// 14 + 1) · 14 = 8 · 14 = 112`, reshape to `8 × 14`, and truncate the filler back off after the conv.
+For `p = 10`, the grid is `10 × 10`. And the interperiod-adjacency claim is checkable: with `p = 25`,
+the point at `t = 30` lands at row `30 // 25 = 1`, column `30 % 25 = 5`; the same phase one cycle
+earlier, `t = 5`, lands at row `0`, column `5` — the cell directly above it. What was 25 steps apart in
+the 1D window is one step apart along the grid's row axis, so a `3 × 3` conv kernel centered on `t = 30`
+now spans its intraperiod neighbors (columns 4 and 6, same row) *and* its interperiod neighbor (column
+5, row 0) in one receptive field. The lift-to-2D does exactly what it claimed, and it is the same phase
+`t = 5` that a 1D convolution over the raw window would have to reach across 25 intervening steps to
+see.
+
 What runs over each 2D tensor? A 2D conv, obviously — but at what kernel size? The reshape fixes one
 period, yet the actual variation has structure at several scales: a fine wiggle over two or three steps,
 a broader hump over a third of the cycle, a slow tilt across several cycles. A single fixed kernel
@@ -108,6 +133,22 @@ freely. So share one inception block across all `k` periods — each period gets
 to `k`. That is conceptually right too: the inception learns "how to read 2D temporal variation," which
 should not depend on which period produced the grid.
 
+The per-dataset capacity settings are not arbitrary, and reading them against the earlier failures is
+where the whole ladder pays off. An inception block with `num_kernels = 6` holds six parallel 2D convs
+of kernel sizes `1, 3, 5, 7, 9, 11`, so a `d → d` inception costs `d^2 · (1 + 9 + 25 + 49 + 81 + 121) =
+286 d^2` weights, and a TimesBlock stacks two of them (expand `d_model → d_ff`, contract back). On PSM
+with `d_model = d_ff = 64` that is `2 · 286 · 64^2 ≈ 2.34M` per block over `e_layers = 2`; on SMAP with
+`d = 128` it is `2 · 286 · 128^2 ≈ 9.4M` per block over `e_layers = 3` — the most capacity of the three;
+on MSL it drops all the way to `d = 8`, `2 · 286 · 64 ≈ 37K` per block over a *single* layer. That
+ordering is the diagnosis turned into a budget. MSL's period is steady enough that DLinear's near-zero
+capacity linear map already reached 0.8187, so I give it the thinnest period-aware model that can only
+refine, deliberately avoiding the over-flexibility that sank the patch backbone's MSL recall to 0.7130.
+SMAP, whose shifting rhythm the fixed map could not track and where recall bottomed at 0.5383, gets the
+deepest, widest stack to actually model per-window period structure. PSM sits in between. The knob that
+broke the earlier rungs — too much flexibility on steady data, too little adaptivity on shifting data —
+is here set per dataset in the direction each one needs, which is only possible because the period
+discovery makes the flexibility *adaptive* rather than merely large.
+
 After the shared inception transforms each 2D tensor, reshape each back to 1D and truncate to `T`, giving
 `k` candidate 1D representations of the window. Now fuse them. A plain sum throws away that some periods
 are far more present in this window than others — and "more present" is exactly the per-window
@@ -118,7 +159,16 @@ most weight on that period's representation; a window with two strong rhythms sp
 window whose rhythm shifts gets a *different* convex combination than the previous window — the adaptivity
 that a single fixed map could never give. The alternatives are worse: a direct sum ignores importance,
 and raw amplitudes are unnormalized and scale-sensitive, so the softmax's normalization is the principled
-choice.
+choice. I should check the softmax does what I want at its extremes rather than trust it. If one period
+dominates — amplitudes like `[10, 1, 1]` on the three peaks — then softmax puts weight `e^{10} / (e^{10}
++ 2e^{1}) ≈ 22026 / 22031 ≈ 0.9998` on that period and near-zero elsewhere, so the block essentially
+reconstructs through the single correct grid: the sharp, confident case. If two rhythms are comparably
+present, say `[5, 5, 1]`, the weights split roughly `0.49, 0.49, 0.02`, blending the two grids. And a
+SMAP window whose dominant rhythm has shifted since the last window produces a *different* amplitude
+profile and therefore a different convex combination — precisely the per-window adaptivity a single
+fixed `W` could never express, now realized as data-dependent mixing weights recomputed from each
+window's own spectrum. That is the exact degree of freedom whose absence dropped SMAP's recall to
+0.5383.
 
 So one block does: discover periods → reshape to `k` 2D tensors → shared inception on each → reshape back
 → amplitude-softmax aggregate. Call it a TimesBlock. I stack several so the representation refines with
@@ -135,7 +185,15 @@ length in, same length out — which is exactly a reconstruction map. So `pred_l
 inside the block uses just `seq_len`, there is no horizon to invent and no decoder bolted on. I embed the
 window, run the residual TimesBlocks over its own length, and project every position back to the input
 channels; the harness reads the score off the squared difference between this reconstruction and the
-input.
+input. Trace it once to be sure the reconstruction is same-length. A PSM batch `[32, 100, 25]` is
+instance-normalized, the value-plus-position embedding lifts it to `[32, 100, 64]`, each residual
+TimesBlock maps `[32, 100, 64] → [32, 100, 64]` (the FFT reshape pads internally and truncates back to
+100, so length is conserved across the block), the LayerNorm over the 64-wide feature leaves it `[32,
+100, 64]`, and the final `Linear(64, 25)` projects every one of the 100 positions back to the 25
+channels, giving `[32, 100, 25]` — identical to the input, so the per-point squared error is defined at
+all 100 steps. `pred_len = 0` is exactly what keeps the internal pad length equal to `seq_len` alone;
+there is no horizon appended, so nothing about a forecast leaks into the reconstruction and every
+position the harness scores is a genuine reconstruction of an observed step.
 
 One real problem I must address — and here I do something DLinear deliberately did not. The channels and
 datasets span very different magnitudes and the level wanders, so I wrap the backbone in per-window

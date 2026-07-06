@@ -1,146 +1,277 @@
 Block AttnRes is the strongest rung in the ladder and its number tells me both that the depth-flow idea
-was right and exactly where it stopped short. Validation loss fell to 2.2544 — the first sub-2.26
-result, a clear step below learned-scaling's 2.2680 — and the perplexities moved with it the way the
-"per-token choice of which deep block to read" story predicted: WikiText-2 dropped to 41.82 (from 43.91)
-and LAMBADA fell to 64.32, finally below both prores's 67.21 and learned-scaling's 68.76. So the jump
-from a rank-one scalar mix to a content-dependent, full-rank mix over depth was the largest single move
-on the ladder, and it added genuine capacity, not just conditioning. But read what it cost to fit the
-budget, because that cost is the seam. To survive a fixed 2-GPU, micro-batch-32 run, Block AttnRes had
-to *coarsen* the depth axis: it kept ordinary unweighted residuals *within* each block of 4 layers and
-only ran the learned attention at the 6 block boundaries. So inside every block of 4 I am right back to
-the rigid unit-weight accumulator — the very thing the whole ladder has been fighting — and the dynamic
-routing only acts at 5 seams plus a readout. The depth-flow rule got smarter at the coarse scale and
-stayed dumb at the fine scale. And there is a deeper structural fact Block AttnRes never addresses, one
-that sits underneath *every* rung so far: no matter how I weight or attend over the *single* residual
-stream, that stream is forced to serve two conflicting jobs at once. It must stay a clean identity
-highway so gradients reach the shallow layers, *and* it must carry each deep layer's output strongly
-enough to keep that layer's representation distinct. Those two demands pull the one stream's coefficient
-in opposite directions. ProRes, learned-scaling, Block AttnRes — all of them tune *how* the one stream
-is written; none of them gives the network *more than one* stream to write into. That is the move I have
-not made, and it is the one that attacks the conflict at its root rather than at one scale of it.
+was right and exactly where it stopped short — so let me read the whole table before I decide what is left
+to do. Validation loss fell to 2.2544, the first sub-2.26 result. Set that step against the two before it:
+prores→learned-scaling was `−0.0027`, learned-scaling→attnres is `−0.0136`. The attnres step is five
+times the last scalar step and larger than the two scalar steps *combined* (`0.0056 + 0.0027 = 0.0083`).
+That is the fingerprint of *capacity added*, not conditioning tuned — the scalar family was decelerating,
+and going full-rank broke the deceleration. The perplexities moved with it the way the "per-token choice
+of which deep block to read" story predicted: WikiText-2 dropped to 41.82 (from 43.91, a `−2.09` move, by
+far the biggest on the ladder) and LAMBADA fell to 64.32, finally below *both* prores's 67.21 and
+learned-scaling's 68.76 — so the attention did the deep-layer-conditioning *and* the token-identity job in
+one mechanism, exactly where the two scalar schemes each had to trade one channel for the other. One
+column went the other way and I should not skip it: ARC-Easy slipped to 55.01, `−0.84` from
+learned-scaling's best-on-ladder 55.85. That is a small, real regression, and it has a plausible reading —
+when `x0` stopped being a dedicated additive injection with its own gain and became just one of ~7
+attention sources competing for softmax mass, the knowledge-recall edge the tied-embedding route was
+feeding softened. HellaSwag ticked up to 34.05 (`+0.15`), the first move it has made all ladder, as I
+guessed a richer depth flow might finally allow. So the jump from a rank-one scalar mix to a
+content-dependent, full-rank mix over depth was the largest single move on the ladder, and it added
+genuine capacity — with a faint tell that it did so partly at the expense of the clean token-identity
+route.
 
-Let me name the conflict precisely, because the fix has to be derived from it. Trace Pre-Norm again:
-`h_k = h_{k-1} + T(Norm(h_{k-1}))`, branch input normalized, raw output added to an unnormalized stream
-whose norm climbs with depth. As it climbs, a fresh layer's output is a shrinking fraction of the total,
-so deep layers' contributions wash out and adjacent deep features collapse toward each other — exactly
-the representation redundancy I suspected back at the vanilla floor and which Block AttnRes only partly
-relieves at block boundaries. The naive counter is Post-Norm — normalize after the addition so each
-output stays a meaningful fraction — but that puts a normalization Jacobian on the highway and the
-gradients vanish with depth. This is a seesaw, and the key realization is that it is *structural for a
-single stream*: one coefficient governs both "how much of the past survives" (the gradient route) and
-"how much of this layer enters" (the depth influence), and one number cannot satisfy both. Every scalar
-fix I have tried — and the ones I considered and rejected, ReZero's learned scalar, the depth-aware
-inits — slides along this seesaw without tipping it off. So the structural escape is not a better scalar;
-it is to stop having one stream.
+But read what it cost to fit the budget, because that cost is the seam. To survive a fixed 2-GPU,
+micro-batch-32 run, Block AttnRes had to *coarsen* the depth axis: it kept ordinary unweighted residuals
+*within* each block of 4 layers and only ran the learned attention at the 6 block boundaries. So inside
+every block of 4 I am right back to the rigid unit-weight accumulator the whole ladder has been fighting —
+the dynamic routing acts at 5 seams plus a readout, and the fine scale stayed dumb. That alone is a reason
+the number is not the last word. And there is a deeper structural fact Block AttnRes never addresses, one
+that sits underneath *every* rung so far, including the ARC regression I just read. No matter how I weight
+or attend over the *single* residual stream, that stream is forced to serve two conflicting jobs at once.
+It must stay a clean identity highway so gradients reach the shallow layers, *and* it must carry each deep
+layer's output strongly enough to keep that layer's representation distinct. Those two demands pull the one
+stream's coefficient in opposite directions, and no rung gave the network *more than one* stream to write
+into. That is the move I have not made, and it attacks the conflict at its root rather than at one scale of
+it.
+
+Let me name the conflict precisely, because the fix has to be derived from it, and I can ground it in a
+number I already have. Trace Pre-Norm again: `h_k = h_{k−1} + T(Norm(h_{k−1}))`, branch input normalized,
+raw output added to an unnormalized stream whose norm climbs with depth. As it climbs, a fresh layer's
+output is a *shrinking fraction* of the total, so deep layers' contributions wash out and adjacent deep
+features collapse toward each other — the representation redundancy I first suspected at the vanilla floor
+and which Block AttnRes only relieves at boundaries. The naive counter is Post-Norm — normalize after the
+addition so each output stays a meaningful fraction — but that puts a normalization Jacobian back on the
+highway and the gradients vanish with depth. This is a seesaw, and the key realization is that it is
+*structural for a single stream*: one coefficient governs both "how much of the past survives" (the
+gradient route) and "how much of this layer enters" (the depth influence), and one number cannot satisfy
+both. I do not have to take that on faith — learned-scaling's `resid_lambda` *is* that single coefficient,
+one learned number per layer sitting on exactly this seesaw, and its result was precisely what the seesaw
+predicts: a small val-loss gain that could not hold both channels, buying WikiText-2/ARC while giving
+LAMBADA back. A single scalar per stream can pick *one point* on the seesaw; it cannot win it. Every scalar
+fix I have tried — ProRes's schedule, learned-scaling's carry, and the ReZero scalar and depth-aware inits
+I rejected along the way — slides along this seesaw without tipping it off. So the structural escape is not
+a better scalar; it is to stop having one stream.
 
 What if the residual stream carried `n` parallel copies instead of one? Replicate the embedding into `n`
-copies to form a hyper-hidden *matrix* `H ∈ R^{n×d}` (here, in this task, a tensor `(B, T, n, D)`), and
-let every layer operate on the whole matrix, summing the `n` copies back into one vector only at the very
-top, right before the final LayerNorm and the head. The point of `n` copies is decoupling: now one copy
-can act as the clean Pre-Norm gradient highway while another carries a strongly-written, distinct deep
-output, so I do not have to make a single coefficient serve both jobs. With `n > 1` the two demands live
-in different copies. And I can convince myself this is structural and not just extra parameters: with a
-single stream the conflict provably persists no matter how the routing is learned (the `n = 1` case does
-not improve over baseline), whereas `n > 1` lets the network *reserve multiple patterns* of connecting to
-preceding layers simultaneously. That is the difference between sliding the seesaw and breaking it.
+copies to form a hyper-hidden *matrix* `H ∈ R^{n×d}` — here, in this task's tensor shapes, `(B, T, n, D)` —
+and let every layer operate on the whole matrix, summing the `n` copies back into one vector only at the
+very top, right before the final LayerNorm and the head. The point of `n` copies is decoupling: now one
+copy can act as the clean Pre-Norm gradient highway while another carries a strongly-written, distinct deep
+output, so I no longer have to make a single coefficient serve both jobs. With `n > 1` the two demands live
+in different copies, and the network can *reserve multiple patterns* of connecting to preceding layers
+simultaneously. I can sanity-check that this is structural and not just extra parameters by looking at the
+degenerate case: with `n = 1` there is still exactly one stream, the seesaw is untouched, and any dynamic
+routing I add is just noise on that single stream — so `n = 1` should be *no better than, and plausibly
+worse than, baseline*. It is the step from 1 to 2 copies, not the routing machinery, that breaks the
+seesaw. That is the difference between sliding it and tipping it off.
 
 Now derive the routing rule rather than guess it, because the overhead has to stay negligible or this
-cannot run at GPT-2 Medium scale on a fixed budget. A layer reads the matrix `H`, must form a single
-input for its sublayer, run the sublayer, and write the result back into the `n` copies. There are two
-distinct axes of connection. *Depth*: how the new sublayer output is distributed into the copies, and how
-each copy carries forward — the generalization of the residual skip. *Width*: how the copies exchange
-information within a layer, and how they are mixed to form the sublayer's single input. Collect every
-weight into one small `(n+1)×(n+1)` matrix where index 0 is the sublayer-output slot and `1..n` are the
-copies. Its first row `β` distributes the single output back into the copies (depth write); its first
-column `A_m` mixes the copies into the sublayer input `h_0 = A_m^T H` (width read); its `n×n` block `A_r`
-carries the copies to the new copies `H' = A_r^T H` (the stream's own recombination). The whole layer is
-then: read the input via `A_m`, carry the streams via `A_r`, run the sublayer on `h_0`, and write its
-output back via `β` plus the carry. One matrix of scalars per residual site, the attention and MLP
-untouched, `n` streams in and `n` streams out. Two structural bonuses fall out for free, and they are why
-this is more than a re-parameterization: this matrix *contains* Pre-Norm and Post-Norm as the
-non-trainable `n = 1` special cases (so I lose nothing), and at `n = 2` specific integer matrices express
-both the ordinary sequential residual *and* a parallel-block arrangement — so learning the matrix learns
-a soft, even dynamic, blend of sequential and parallel depth that the fixed residual can never reach.
+cannot run at GPT-2 Medium scale on a fixed budget. A layer reads the matrix `H`, must form a single input
+for its sublayer, run the sublayer, and write the result back into the `n` copies. There are two distinct
+axes of connection. *Depth*: how the new sublayer output is distributed into the copies, and how each copy
+carries forward — the generalization of the residual skip. *Width*: how the copies exchange information
+within a layer, and how they are mixed to form the sublayer's single input. Collect every weight into one
+small `(n+1)×(n+1)` matrix where index 0 is the sublayer-output slot and `1..n` are the copies. Its first
+row `β` distributes the single output back into the copies (the depth write); its first column `A_m` mixes
+the copies into the sublayer input `h_0 = A_m^T H` (the width read); its `n×n` block `A_r` carries the
+copies to the new copies `H' = A_r^T H` (the stream's own recombination). The whole layer is then: read the
+input via `A_m`, carry the streams via `A_r`, run the sublayer on `h_0`, and write its output back via `β`
+plus the carry. Two structural bonuses fall out for free, and they are why this is more than a
+re-parameterization. The matrix *contains* Pre-Norm and Post-Norm as the non-trainable `n = 1` special
+cases, so I lose nothing relative to the floor. And at `n = 2`, specific integer matrices express both the
+ordinary sequential residual *and* a parallel-block arrangement — so learning the matrix learns a soft,
+even dynamic, blend of sequential and parallel depth that the fixed residual can never reach.
 
 I want the routing to depend on the input, not be a fixed learned constant, because the right depth/width
-mix surely differs token to token — this is the same instinct that made Block AttnRes's per-token
-attention beat the static scalars. So make the matrix entries functions of `H`: keep the static matrix as
-a base and *add* a small dynamic correction predicted from `H` — normalize `H`, take a linear projection,
-squash with `tanh`, scale by a small learnable factor, add to the static base, separately for `β`, `A_m`,
-`A_r`. Each piece earns its place. The norm-before-projection keeps the depth-growing stream scale out of
-the routing predictor (the disease I am curing must not re-enter through the router — the same reason
-Block AttnRes RMS-normed its keys). The tanh bounds the correction so a runaway logit cannot blow up the
-connection weights and destabilize a 13.5k-step run I cannot afford to lose. The small init scale means
-the dynamic part starts negligible and the network has to *earn* its way off the static matrix.
+mix surely differs token to token — the same instinct that made Block AttnRes's per-token attention beat
+the static scalars. So make the matrix entries functions of `H`: keep the static matrix as a base and
+*add* a small dynamic correction predicted from `H` — normalize `H`, take a linear projection, squash with
+`tanh`, scale by a small learnable factor, add to the static base, separately for `β`, `A_m`, `A_r`. Each
+piece earns its place. The norm-before-projection keeps the depth-growing stream scale out of the routing
+predictor — the disease I am curing must not re-enter through the router, the same reason Block AttnRes
+RMS-normed its keys. The `tanh` bounds the correction so a runaway logit cannot blow up the connection
+weights and destabilize a 13.5k-step run I cannot afford to lose. The small init scale (`0.01`) means the
+dynamic part starts negligible and the network has to *earn* its way off the static matrix rather than
+being handed a random routing at step zero.
 
-Initialization is the part I cannot get wrong, and it is the cleanest argument for trying this here: I
-can make the very first forward pass behave *exactly* like the Pre-Norm residual that the vanilla floor
-already trains cleanly, so the model is never worse than baseline at step zero and only improves. Two
-requirements. The dynamic projections start at zero, so `tanh(0) = 0` and the dynamic correction is
-exactly nothing at init — the layer begins as pure static hyper-connection. And the static matrix encodes
-Pre-Norm-on-`n`-copies: `β = 1` writes the full output into every copy (as Pre-Norm adds the full
-branch), `A_r = I` carries each copy through unchanged (each stream a clean identity highway), and `A_m`
-is a one-hot `e_{k mod n}` that reads the sublayer input from a single copy, rotated by layer index so
-the copies are used round-robin and none is privileged. With this base and zero dynamics, summing the `n`
-rows at the top is *exactly* Pre-Norm. So unlike Block AttnRes — which started at a uniform block-average,
-a different operating point than vanilla — hyper-connections start at *bit-for-bit Pre-Norm* and bend
-away only as the dynamics learn. That is the safest possible starting point on this budget.
+Initialization is the part I cannot get wrong, and it is the cleanest argument for trying this here — but I
+want to *trace* it rather than assert it, because the last rung taught me that "starts at the floor" is a
+claim I have to check. Two requirements. The dynamic projections start at zero, so `tanh(0) = 0` and the
+dynamic correction is exactly nothing at init — the layer begins as pure static hyper-connection. And the
+static matrix encodes Pre-Norm-on-`n`-copies: `β = 1` writes the full output into every copy (as Pre-Norm
+adds the full branch), `A_r = I` carries each copy through unchanged (each stream a clean identity
+highway), and `A_m = e_{k mod n}` is a one-hot that reads the sublayer input from a single copy, rotated by
+site index `k` so the copies are used round-robin and none is privileged. Now trace `n = 2` at step zero.
+Both copies start equal to the lifted embedding, `h_1 = h_2 = x`. The width read `A_m = e_{k mod 2}` picks
+one copy, but both are `x`, so `h_0 = x`; the sublayer runs `T(Norm(x))`, call it `t`. The depth write adds
+`t` into every copy (`β = 1`) and the carry `A_r = I` leaves each copy in place, so each copy becomes
+`x + t` — and they stay equal. Iterate across all sublayers and every copy tracks the *same* value, which
+is exactly the single Pre-Norm stream `x_prenorm`. At the top I sum the `n` copies: `Σ = n · x_prenorm`.
+That is not literally Pre-Norm — it is `n` times it — but the sum feeds `ln_f`, and LayerNorm is invariant
+to an overall scale, so it divides the `n` straight back out and the head sees *exactly* the Pre-Norm
+logits. So the honest statement is: at init, with `n` identical copies, the model computes `n·x_prenorm`
+and `ln_f` normalizes it to bit-for-bit Pre-Norm. Unlike Block AttnRes — which started at a uniform
+block-average, a genuinely different operating point than vanilla — hyper-connections start at the vanilla
+operating point and bend away only as the dynamics learn. That is the safest possible starting point on
+this budget, and it means the ARC regression Block AttnRes paid for its non-vanilla start is a tax this
+rung does not owe.
 
-Now the budget check, because it decides the expansion rate. Static parameters per site: the
-`(n+1)×(n+1)` matrix, `O(n^2)` scalars — nothing. Dynamic parameters per site: projections of size
-`O(nd)` plus two scalars and a norm — tiny against the `O(d^2)` of attention and the MLP. The main new
-compute is the width matmul `A^T H`, an `(n+1)×n`-by-`n×d` per token, a rounding error for small `n`.
-Memory is the real cost: `n` streams cost `O(n·s·b·d)` activation per layer. For `n = 2` that is a few
-percent; the ablations say `n = 4` is where dynamic clearly beats static and `n = 1` is actually *worse*
-than baseline (a single dynamic stream has no room to reserve patterns and the dynamic noise just hurts).
-On *this* 24-layer, micro-batch-32, 2-GPU budget, where Block AttnRes already had to coarsen to fit, I
-will not assume `n = 4` is free — but `n = 2` is comfortably affordable and is the point where the seesaw
-provably breaks, so it is the honest default to land for this task, with `n = 4` the reach if memory
-allows. The streams sum to one vector before `ln_f`, so the head and the loss are untouched.
+Now the budget check, because it decides the expansion rate, and the arithmetic is friendlier than I
+feared. Static parameters per site are the `(n+1)×(n+1)` matrix, `O(n²)` scalars — nothing. Dynamic
+parameters per site are projections of size `O(nd)` plus two scalars and a norm — tiny against the `O(d²)`
+of attention and the MLP. The main new compute is the width matmul `A^T H`, an `(n+1)×n`-by-`n×d` per
+token, a rounding error for small `n`. Memory is the real cost: the `n` streams are the working state,
+`(B, T, n, D)`, carried through every layer. At `n = 2`, that is `2 · 67 ≈ 134 MB` of residual activation
+against vanilla's single `67 MB` — and, tellingly, *less* than the up-to-`0.47 GB` source list Block
+AttnRes had to hold, because hyper-connections keep no list of past block outputs, only the `n`-stream
+present state. So the thing I am trying to beat was actually *heavier* on activation memory than `n = 2`
+would be; the finale fits more comfortably than the rung below it. `n = 4` doubles that to `≈ 268 MB`, the
+reach if memory allows. The known ablation picture matches the seesaw argument: `n = 4` is where dynamic
+clearly beats static, and `n = 1` is *worse* than baseline (a single dynamic stream has no room to reserve
+patterns and the dynamic noise just hurts). On *this* 24-layer, micro-batch-32, 2-GPU budget, where Block
+AttnRes already had to coarsen to fit, I will not assume `n = 4` is free — but `n = 2` is comfortably
+affordable and is exactly the point where the seesaw provably breaks, so it is the honest default to land
+for this task, with `n = 4` the reach if memory allows. The streams sum to one vector before `ln_f`, so
+the head and the loss are untouched.
 
 Place it in the edit surface, because the fit is exact and worth being precise about. The contract keeps
-`CausalSelfAttention`, `MLP`, `LayerNorm` fixed and asks `Block.forward(x) → x` and `GPT.forward(idx,
-targets) → (logits, loss)`. Hyper-connections need two residual sites per layer (attention and MLP),
-each with its own static matrix, dynamic projections, and norm — and they operate on the `n`-stream
-tensor, not the single `x`. So I keep the `Block` as the vanilla container of `ln_1, attn, ln_2, mlp` but
-do not call its `forward`; instead, as Block AttnRes already did, I drive the sublayers directly from the
-`GPT.forward` loop. In `GPT.__init__` I build `2·n_layer` `HyperConnection` modules (one per site, the
-static one-hot indexed by site id `k mod n`), set the expansion rate `n`, and that is the only structural
-addition. In the forward loop I lift the embedding `x` into `n` copies (`H` of shape `(B, T, n, D)`),
-then for each layer run the attention site — width connection gives me the layer input in row 0 and the
-carried streams in the rest, I norm row 0 with `ln_1`, run `attn`, and the depth connection writes the
-output back via `β` and adds the carry — then the same for the MLP site with `ln_2` and `mlp`. After all
-layers I sum the `n` streams into one vector and pass it to `ln_f` and the head. In `configure_optimizers`
-the new parameters (static matrices, dynamic projections, scales, site norms) are mostly 1-D or small;
-following the pattern the ladder established for leveraged routing parameters (Block AttnRes's `0.1×`
-query group), I route the hyper-connection parameters into their own no-decay group — the static matrices
-and scales are gains, not weight matrices, and weight decay would just pull them back toward the Pre-Norm
-init I deliberately chose. The LR schedule and `CONFIG_OVERRIDES` stay default. The full scaffold module
-is in the answer.
+`CausalSelfAttention`, `MLP`, `LayerNorm` fixed and asks `Block.forward(x) → x` and
+`GPT.forward(idx, targets) → (logits, loss)`. Hyper-connections need two residual sites per layer
+(attention and MLP), each with its own static matrix, dynamic projections, and norm — and they operate on
+the `n`-stream tensor, not the single `x`. So I keep the `Block` as the vanilla container of
+`ln_1, attn, ln_2, mlp` but do not call its `forward`; instead, as Block AttnRes already did, I drive the
+sublayers directly from the `GPT.forward` loop. In `GPT.__init__` I build `2·n_layer` `HyperConnection`
+modules (one per site, the static one-hot indexed by site id `k mod n`), set the expansion rate `n`, and
+that is the only structural addition. In the forward loop I lift the embedding `x` into `n` copies (`H` of
+shape `(B, T, n, D)`), then for each layer run the attention site — the width connection gives me the layer
+input in row 0 and the carried streams in the rest, I norm row 0 with `ln_1`, run `attn`, and the depth
+connection writes the output back via `β` plus the carry — then the same for the MLP site with `ln_2` and
+`mlp`. After all layers I sum the `n` streams into one vector and pass it to `ln_f` and the head. In
+`configure_optimizers` the new parameters (static matrices, dynamic projections, scales, site norms) are
+gains, not weight matrices, so — following the pattern the ladder established for leveraged routing
+parameters (Block AttnRes's `0.1×` query group) — I route the hyper-connection parameters into their own
+no-decay group, because weight decay would just pull them back toward the Pre-Norm init I deliberately
+chose. The LR schedule and `CONFIG_OVERRIDES` stay default. The full scaffold module is in the answer.
 
 So the delta from the strongest baseline is precise and it is the move no rung in the ladder made: Block
 AttnRes kept one residual stream and got smarter about *attending over its coarsened history*;
 hyper-connections keep the *attention idea's* per-token dynamic routing but apply it to a fundamentally
 richer object — `n` parallel streams with a full static-plus-dynamic `(n+1)×(n+1)` routing matrix at
-*every* sublayer, fine-grained where Block AttnRes was coarse, and breaking the gradient-vs-collapse
-seesaw at its root instead of relieving it at 5 seams.
+*every* sublayer, fine-grained where Block AttnRes was coarse, and breaking the gradient-vs-collapse seesaw
+at its root instead of relieving it at 5 seams. Here is the bar this has to clear and what I would
+validate, stated against the real numbers and with no invented ones, because there is no feedback past this
+rung — it is the endpoint. The number to beat is 2.2544 validation loss, with WikiText-2 41.82, LAMBADA
+64.32, ARC-Easy 55.01, HellaSwag 34.05. The mechanism predicts hyper-connections should clear it: they add
+the fine-grained dynamic depth routing Block AttnRes gave up to fit the budget, they start at exactly the
+Pre-Norm operating point (so they never pay the start-from-a-different-point tax the ARC regression hints
+Block AttnRes did pay), and they directly target the adjacent-deep-layer feature collapse that the
+per-block-only routing leaves untouched inside each block. The signature I would look for, and the
+falsifiable test of the whole story: if hyper-connections are working, the cosine similarity between
+adjacent layers' features should *drop* relative to Pre-Norm — that is the direct readout of "deep layers
+made distinct," and it is the diagnostic that distinguishes a real seesaw-break from a mere reshuffle of
+the loss. On the headline metrics I would expect the deep-layer-sensitive ones to move most: LAMBADA below
+64.32 and WikiText-2 below 41.82, with validation loss into the low-2.25s or below. There is one softer
+prediction I will allow myself: because a per-copy identity highway can carry clean token identity the way
+learned-scaling's dedicated `x0` route did, ARC-Easy might *recover* toward its 55.85 high rather than
+staying at Block AttnRes's dented 55.01 — the distinct-streams design should not have to trade the recall
+channel away. The honest risks I would watch are two. First, the expansion rate: at `n = 2` the seesaw
+breaks but the capacity gain is smaller than `n = 4` would give, so if memory forces `n = 2` the win over
+Block AttnRes may be narrow rather than decisive — and `n = 1` would be *worse* than even vanilla, so the
+rate must stay above 1. Second, the short horizon: hyper-connections' reported advantage grows over long
+training as its convergence-speed gain compounds, and 13.5k steps on 7B tokens is a brief run, so I would
+not be surprised if the measured margin is smaller than the large-scale reports — the test is whether it
+beats 2.2544 cleanly and bends the adjacent-layer-similarity curve down, not whether it reproduces a large
+convergence speedup at this scale.
 
-Here is the bar this has to clear and what I would validate, stated against the real numbers and with no
-invented ones. The number to beat is 2.2544 validation loss, with WikiText-2 41.82, LAMBADA 64.32,
-ARC-Easy 55.01, HellaSwag 34.05. The mechanism predicts hyper-connections should clear it: it adds
-fine-grained dynamic depth routing that Block AttnRes gave up to fit the budget, it starts at exactly the
-Pre-Norm operating point (so it never pays the start-from-a-different-point tax), and it directly targets
-the adjacent-deep-layer feature collapse that the per-block-only routing leaves untouched inside each
-block. The signature I would look for, and the falsifiable test of the whole story: if hyper-connections
-are working, the cosine similarity between adjacent layers' features should *drop* relative to Pre-Norm —
-that is the direct readout of "deep layers made distinct," and it is the diagnostic that distinguishes a
-real seesaw-break from a mere reshuffle of the loss. On the headline metrics I would expect the
-deep-layer-sensitive ones to move most: LAMBADA below 64.32 and WikiText-2 below 41.82, with validation
-loss into the low-2.25s or below. The honest risks I would watch are two. First, the expansion rate: at
-`n = 2` the seesaw breaks but the capacity gain is smaller than `n = 4` would give, so if memory forces
-`n = 2` the win over Block AttnRes may be narrow rather than decisive — and `n = 1` would be *worse* than
-even vanilla, so the rate must stay above 1. Second, the short horizon: hyper-connections' reported
-advantage grows over long training (its convergence-speed gain compounds), and 13.5k steps on 7B tokens
-is a brief run, so I would not be surprised if the measured margin is smaller than the large-scale
-reports — the test is whether it beats 2.2544 cleanly and bends the adjacent-layer-similarity curve down,
-not whether it reproduces a 1.8× convergence speedup at this scale.
+```python
+# EDITABLE regions of custom_pretrain.py — finale: Hyper-Connections (DHC, expansion rate n)
+# Faithful to the primary source's Algorithm 2/3, re-expressed in the nanoGPT scaffold.
+# CausalSelfAttention, MLP, LayerNorm, GPTConfig are FIXED; HC drives the sublayers from
+# GPT.forward over an n-stream tensor H of shape (B, T, n, D).
+
+# Block: unchanged container (ln_1, attn, ln_2, mlp); its forward is not called.
+
+class HyperConnection(nn.Module):
+    """One residual site. h: (B, T, n, D). Static matrix = Pre-Norm-on-n-copies base;
+    dynamic projections zero-init -> exactly Pre-Norm at init."""
+
+    def __init__(self, dim, rate, site_id, dynamic=True):
+        super().__init__()
+        self.rate = rate
+        self.dynamic = dynamic
+        # static_beta = B = 1_{1xn} (write full output into every copy)
+        self.static_beta = nn.Parameter(torch.ones(rate))
+        # static_alpha = [A_m | A_r] = [e_{site_id mod n} | I_n]
+        init_alpha0 = torch.zeros(rate, 1)
+        init_alpha0[site_id % rate, 0] = 1.0
+        self.static_alpha = nn.Parameter(torch.cat([init_alpha0, torch.eye(rate)], dim=1))  # (n, n+1)
+        if dynamic:
+            self.dynamic_alpha_fn = nn.Parameter(torch.zeros(dim, rate + 1))
+            self.dynamic_alpha_scale = nn.Parameter(torch.ones(1) * 0.01)
+            self.dynamic_beta_fn = nn.Parameter(torch.zeros(dim))
+            self.dynamic_beta_scale = nn.Parameter(torch.ones(1) * 0.01)
+            self.layer_norm = LayerNorm(dim, bias=False)
+
+    def width_connection(self, h):                              # h: (B, T, n, D)
+        if self.dynamic:
+            norm_h = self.layer_norm(h)
+            wc = torch.tanh(norm_h @ self.dynamic_alpha_fn) * self.dynamic_alpha_scale
+            alpha = wc + self.static_alpha                      # (B, T, n, n+1)
+            dc = torch.tanh(norm_h @ self.dynamic_beta_fn) * self.dynamic_beta_scale
+            beta = dc + self.static_beta                        # (B, T, n)
+        else:
+            alpha = self.static_alpha[None, None, ...]          # broadcast over (B, T)
+            beta = self.static_beta[None, None, ...]
+        mix_h = alpha.transpose(-1, -2) @ h                     # (B, T, n+1, D)
+        return mix_h, beta
+
+    def depth_connection(self, mix_h, h_o, beta):              # h_o: (B, T, D)
+        return torch.einsum('btd,btn->btnd', h_o, beta) + mix_h[..., 1:, :]
+
+
+class GPT(nn.Module):
+    def _init_hc(self, config):  # GPT.__init__ residual region:
+        # ── Hyper-Connections: n parallel residual streams ──
+        self.hc_rate = 2  # expansion rate n (2 breaks the seesaw on this budget; 1 is worse than baseline)
+        self.hc = nn.ModuleList([
+            HyperConnection(config.n_embd, self.hc_rate, site_id=k, dynamic=True)
+            for k in range(2 * config.n_layer)  # two sites (attn, mlp) per layer
+        ])
+
+    def _forward_block_loop(self, x):  # GPT.forward block loop:
+        # ── Hyper-Connections: lift x into n copies, route per site, sum at the top ──
+        H = x.unsqueeze(-2).expand(-1, -1, self.hc_rate, -1).contiguous()  # (B, T, n, D)
+        s = 0
+        for block in self.transformer.h:
+            # attention site
+            mix_h, beta = self.hc[s].width_connection(H)
+            h0 = block.attn(block.ln_1(mix_h[..., 0, :]))
+            H = self.hc[s].depth_connection(mix_h, h0, beta)
+            s += 1
+            # MLP site
+            mix_h, beta = self.hc[s].width_connection(H)
+            h0 = block.mlp(block.ln_2(mix_h[..., 0, :]))
+            H = self.hc[s].depth_connection(mix_h, h0, beta)
+            s += 1
+        x = H.sum(dim=-2)   # sum the n streams -> single vector for ln_f + head
+        return x
+
+    # GPT.configure_optimizers (HC params -> no-decay group):
+    def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
+        hc_ids = {id(p) for p in self.hc.parameters()}
+        param_dict = {pn: p for pn, p in self.named_parameters() if p.requires_grad}
+        decay_params = [p for n, p in param_dict.items() if p.dim() >= 2 and id(p) not in hc_ids]
+        nodecay_params = [p for n, p in param_dict.items() if p.dim() < 2 and id(p) not in hc_ids]
+        hc_params = [p for n, p in param_dict.items() if id(p) in hc_ids]
+        optim_groups = [
+            {'params': decay_params, 'weight_decay': weight_decay},
+            {'params': nodecay_params, 'weight_decay': 0.0},
+            {'params': hc_params, 'weight_decay': 0.0},
+        ]
+        fused_available = 'fused' in inspect.signature(torch.optim.AdamW).parameters
+        use_fused = fused_available and device_type == 'cuda'
+        extra_args = dict(fused=True) if use_fused else dict()
+        optimizer = torch.optim.AdamW(optim_groups, lr=learning_rate, betas=betas, **extra_args)
+        return optimizer
+
+# CONFIG_OVERRIDES = {}   (no override).
+```

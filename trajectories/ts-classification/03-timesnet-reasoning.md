@@ -8,9 +8,16 @@ essentially nothing there. EthanolConcentration went 0.2890 → 0.2852, a hair *
 prediction I made explicitly: on smooth spectra, patching with overlapping windows and per-instance
 normalization washes out the slow global trend that the decomposition-linear captured directly, and the
 encoder's local-shape bias does not recover it. So PatchTST is a sideways-to-up move: a clear win where local
-shape matters, flat where cross-channel matters, a small loss where the global trend matters. Averaged it is
-about even with the floor, which is why I cannot stop here — I have traded one weakness for another rather
-than removing a weakness.
+shape matters, flat where cross-channel matters, a small loss where the global trend matters. Let me put the
+deltas on paper so "about even" is a number, not a vibe. Handwriting +0.0235 (0.2306 → 0.2541), FaceDetection
++0.0031 (0.6822 → 0.6853), EthanolConcentration −0.0038 (0.2890 → 0.2852). The floor's mean over the three is
+(0.2890 + 0.6822 + 0.2306)/3 = 0.4006; PatchTST's is (0.2852 + 0.6853 + 0.2541)/3 = 0.4082, a mean gain of
+just +0.0076. Read that carefully: essentially the entire mean improvement is the single +0.0235 on
+Handwriting, diluted by a third because the other two datasets barely moved (one up 0.003, one down 0.004,
+nearly cancelling). So this is not a broad lift — it is one dataset moving and two standing still. That is
+why I cannot stop here: I have traded one weakness for another rather than removing a weakness, and the
+mechanism that moved Handwriting (local-shape tokens) did nothing for the two datasets whose bottleneck is
+elsewhere.
 
 Reading across the two rungs, the common structural defect is now visible. Both models present the time axis
 as a *single* axis and ask the model to recover everything from adjacency along it (the floor) or from
@@ -45,8 +52,25 @@ intra- and inter-period variation simultaneously, which neither the linear floor
 with one operator. The bottleneck was never that the variation is hard; it is that the 1-D layout was the
 wrong space to look at it in.
 
-Which period `p`, though? These series have several periodicities at once and I do not know them a priori —
-they differ by dataset and even by window. So discover them from the data. The amplitude of the Fourier
+Let me trace the reshape on a tiny concrete case to be sure the two axes mean what I claim. Take `T = 12` and
+a period `p = 4`, so the grid is `12 // 4 = 3` rows by 4 columns. Lay the timesteps in row-major order:
+row 0 is `[x0, x1, x2, x3]`, row 1 is `[x4, x5, x6, x7]`, row 2 is `[x8, x9, x10, x11]`. Now walking down
+column 1 visits `x1, x5, x9` — timesteps 1, 5, 9, which are exactly `p = 4` apart, the *same phase* in three
+successive cycles. In the 1-D layout `x1` and `x5` were four steps apart with a whole cycle between them; in
+the grid they are vertically adjacent, one step apart. So a 2-D kernel of height 2 that sits on rows 0–1 of
+column 1 sees `x1` and `x5` together — the cross-period relation PatchTST could never span without a kernel as
+wide as the period. And walking along a row visits within-cycle neighbours as before. The reshape genuinely
+converts period-distance into grid-adjacency; the trace confirms it rather than my just asserting it. On the
+real datasets the grids are large — if EthanolConcentration's dominant period comes out around 175, the grid
+is roughly 10 rows × 175 columns; if FaceDetection's is around 15, roughly 4 rows × 15 — but the geometry is
+the same: columns are phase, rows are cycles.
+
+Which period `p`, though? The tempting shortcut is to hand-set one — but the frozen one-file constraint means
+a single fixed `p` would have to serve a 1,750-step spectrum, a 62-step MEG window, and a 152-step gesture at
+once, and there is no single period that is meaningful across all three; a `p` that tiles EthanolConcentration
+into sensible cycles would exceed the entire length of a FaceDetection window. So a fixed period is a non-starter
+under this substrate, which is the concrete reason I must *discover* it. These series have several periodicities
+at once and I do not know them a priori — they differ by dataset and even by window. So discover them from the data. The amplitude of the Fourier
 transform at frequency `j` measures how strongly a periodic component of period `T/j` is present; a strong
 period is a tall amplitude peak. So take the real FFT of the window along time, take amplitudes, average over
 batch and channels to get one length-`T/2+1` amplitude profile, zero out the DC term (frequency 0 is the
@@ -55,6 +79,17 @@ peaks. Each peak gives a dominant frequency `f_i` and a period `p_i = T // f_i`;
 well, because an amplitude is a measure of how strongly that period is expressed, and I will want it as an
 importance weight. I take only the top `k` (the spectrum is sparse and its high-frequency tail is mostly
 noise), with `k = 3` here.
+
+The DC-drop step is not cosmetic, and a number shows why. The frequency-0 bin of the real FFT is the sum
+(hence, up to scale, the mean) of the window. On EthanolConcentration the absorbance level is large and
+positive at every timestep, so that mean is huge — its amplitude can dwarf every genuine periodic peak by
+one or two orders of magnitude. If I left it in, `topk` would pick frequency 0 as the "strongest period,"
+and `p = T // 0` is undefined (division by zero) besides being meaningless — the mean is a level, not a
+rhythm. Zeroing `frequency_list[0]` before `topk` removes that trap and lets the selection see the actual
+periodic structure. Note this is a *selection*-time removal only: I zero the DC bin in the amplitude profile
+used to rank periods, but the raw window (level intact) is what the TimesBlocks and the reshape actually
+process, so I have not thrown the level away — I have only stopped it from hijacking period discovery. That
+distinction matters for the EthanolConcentration argument below, where keeping the level is the point.
 
 Now the block, carefully. For each period `p_i` I want to lay the `T` timesteps into a grid of
 `(T // p_i)` rows by `p_i` columns. `T` is generally not a multiple of `p_i`, so I pad the series with zeros
@@ -72,11 +107,35 @@ different *reshape* (different grid geometry), but the same conv weights process
 size is invariant to `k` — I can dial `k` purely as a width-of-search knob — and conceptually the inception is
 learning "how to read 2-D temporal variation," which should not depend on which period produced the grid.
 
+The sharing decision is not just tidy — it is what keeps this rung trainable on the tiny UEA splits, and the
+parameter count shows why. Each Inception block holds `num_kernels = 6` parallel 2-D convs with kernel sizes
+1, 3, 5, 7, 9, 11, so a `Conv2d(in, out)` at those sizes costs `in · out · Σ(size²) = in · out · (1 + 9 + 25 +
+49 + 81 + 121) = in · out · 286` weights. The block's first inception is `128 → 256`: `128 · 256 · 286 ≈ 9.37M`.
+The second is `256 → 128`: another `≈ 9.37M`. So one TimesBlock's conv is ~18.7M weights, and with `e_layers =
+3` blocks the stack is ~56M weights. Against EthanolConcentration's ~260 training series that is already a
+216,000:1 ratio — this rung leans on early stopping even harder than the linear floor did. Now the payoff of
+sharing one inception across the `k = 3` periods: if instead I gave each period its own conv, every TimesBlock
+would triple to ~56M and the stack to ~168M, tripling an already-enormous model for no conceptual gain, since
+"read a 2-D temporal grid" is the same operation whichever period reshaped it. Sharing makes model size
+independent of `k`, so `k` becomes a pure width-of-search knob I can raise without paying parameters. Given
+the 56M figure I keep `k = 3` — the amplitude spectrum of these windows is sparse, its top three peaks capture
+the dominant rhythms, and a larger `k` would only add noisier high-frequency views to aggregate over.
+
 After the shared inception transforms each of the `k` 2-D views, I reshape each back to 1-D, truncate to `T`,
 and fuse them. A plain sum throws away the fact that some periods are far more present in this window than
 others; I already kept the amplitudes, so I push the `k` amplitudes through a softmax (turning raw,
 scale-sensitive amplitudes into convex weights) and take the amplitude-weighted sum — a window dominated by
-one rhythm puts most weight on that period's view, a window with two rhythms splits the weight. That is one
+one rhythm puts most weight on that period's view, a window with two rhythms splits the weight. Trace it with
+three amplitudes: if the top-3 periods come back with raw amplitudes proportional to, say, `[6, 2, 1]`, a
+softmax gives roughly `[0.94, 0.02, 0.03]`... let me actually compute — `e^6, e^2, e^1 = 403, 7.4, 2.7`, sum
+413, so weights `[0.976, 0.018, 0.007]`: the dominant period's 2-D view carries essentially all the weight,
+which is the desired behaviour for a strongly single-rhythm window. But that also exposes a subtlety I should
+name: raw FFT amplitudes are large numbers and softmax is scale-sensitive, so on a window with one towering
+peak the aggregation collapses to almost-hard selection of one view, while on a window with three comparable
+peaks (amplitudes like `[2, 1.9, 1.8]` → weights ≈ `[0.37, 0.34, 0.30]`) it genuinely blends all three. That
+is acceptable and arguably right — it means the fusion is confident when the spectrum is peaky and hedges when
+it is flat — but it is a consequence of feeding raw amplitudes into softmax that I am choosing deliberately
+rather than stumbling into. That is one
 TimesBlock: discover periods → reshape to `k` 2-D views → shared inception on each → reshape back →
 amplitude-softmax aggregate, with a residual connection so a block only learns the correction to the
 representation and the stack stays stable. I stack `e_layers = 3` residual TimesBlocks with a LayerNorm
@@ -91,7 +150,15 @@ cue for classification can live in the absolute level and scale (a spectral curv
 gesture's acceleration magnitude), and the embedding's conv plus LayerNorm inside the blocks already handle
 scale heterogeneity without erasing the level — whereas PatchTST's per-window normalization, which I argued
 washed out EthanolConcentration's global trend, is exactly the move I want to *not* make here. That is a
-concrete reason to expect TimesNet to recover the EthanolConcentration ground PatchTST lost.
+concrete reason to expect TimesNet to recover the EthanolConcentration ground PatchTST lost. Make the
+mechanism explicit: PatchTST subtracted each window's temporal mean and divided by its std before the encoder,
+which on a spectral trace removes exactly the overall absorbance level that separates concentrations — I traced
+at the previous rung that this is a plausible cause of its −0.0038 dip on EthanolConcentration. TimesNet skips
+that subtraction entirely; the value-embedding conv reads the level-intact window, and the only normalizations
+inside are the LayerNorm between blocks (over the feature dimension, not erasing the temporal level) and
+BatchNorm-free convs. So the level cue survives all the way to the head. If EthanolConcentration climbs back
+above the floor's 0.2890 here, the not-normalizing choice is the most likely reason, and the multi-scale 2-D
+convolution reading the smooth curve at several kernel widths is the second.
 
 Now the head, and here is where the classification path finally does the thing both earlier rungs skipped.
 After the TimesBlock stack I have a per-timestep feature representation `[B, seq_len, d_model]`. I apply a
@@ -101,8 +168,23 @@ I flatten. This is the mask-awareness both the linear floor and PatchTST lacked:
 exactly zero to the flattened `seq_len · d_model` vector that the final `Linear(d_model · seq_len, num_class)`
 projects to logits, so the classifier cannot learn spurious weights on padding or have its decision drifted
 by where a window happens to end. On the variable-length datasets this should be a clean, free gain over the
-two mask-blind rungs. The channels are mixed in the value embedding and in the flatten-and-project head, as
+two mask-blind rungs. The final projection is `Linear(d_model · seq_len, num_class)`, and its width is worth
+noting because it is the same flatten-and-project shape as the floor's head, just over learned features:
+EthanolConcentration `128 · 1750 · 4 ≈ 896k` weights, Handwriting `128 · 152 · 26 ≈ 506k`, FaceDetection
+`128 · 62 · 2 ≈ 16k`. So on the long-window datasets the head is again large, and on FaceDetection it is tiny —
+which matters because FaceDetection's cross-channel decision must be squeezed through that 16k-weight join, the
+only place channels meet. The channels are mixed in the value embedding and in the flatten-and-project head, as
 before; what is new is the cross-period 2-D modelling in between and the mask-aware pooling.
+
+There is one subtlety about the mask multiply I should check rather than wave past: does zeroing the padded
+features actually remove padding's influence, given that the TimesBlocks ran *before* the mask is applied? The
+FFT period-discovery and the 2-D reshape operate on the full padded window, so padding does leak into the
+period estimate and into the conv receptive fields near the tail. But the load-bearing claim is narrower: the
+*final flattened vector* the classifier reads has exact zeros at padded positions, so the linear head cannot
+place weight on "what value sits at padded position t" — the spurious cue the floor and PatchTST both learned.
+That is a real, if partial, fix: it cleans the decision layer even though the intermediate representation still
+saw the tail. On Handwriting, whose windows vary in length and get right-padded to the dataset maximum, that
+cleaned decision layer is where I expect the mask to pay off, stacked on top of the cross-period gain.
 
 The falsifiable expectations against PatchTST's numbers. On Handwriting (PatchTST 0.2541, floor 0.2306): the
 gestures are strongly phase-recurrent, which is exactly what the 2-D cross-period view captures and patch
@@ -118,4 +200,4 @@ that FaceDetection needs less) would be entirely consistent. The single sharpest
 beats PatchTST on *both* Handwriting and EthanolConcentration: if it does, then cross-period 2-D modelling
 plus mask-aware pooling is the right leverage for these heterogeneous series and TimesNet is the strongest
 rung; if it only matches PatchTST, then the 2-D reshape is not buying what I claim and the task is bounded by
-something else. The distilled module and the literal `Custom.py` fill are in the answer.
+something else entirely. The distilled module and the literal `Custom.py` fill are in the answer.

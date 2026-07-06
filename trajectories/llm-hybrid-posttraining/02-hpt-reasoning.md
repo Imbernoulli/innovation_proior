@@ -2,8 +2,15 @@ The pure-SFT floor told me exactly what unconditional imitation costs, and it to
 Seed 42 landed at AIME24 0.062, AMC23 0.217, MATH-500 0.244. Read the split structure: AMC23 (0.217) is
 the *least* embarrassing — the small 40-example split is where a handful of demonstration-shaped problems
 moves the score, exactly as I expected — but MATH-500, the broad 500-example in-distribution split where
-teacher traces should transfer *best*, sits at only 0.244, and AIME24 is down at 0.062. That low
-MATH-500 is the tell. It is not that the teacher traces are bad; it is that copying them on *every*
+teacher traces should transfer *best*, sits at only 0.244, and AIME24 is down at 0.062. Put the three
+scores back into problem-counts to feel the shape: `0.062 × 30 ≈ 1.9` problem-equivalents on AIME24,
+`0.217 × 40 ≈ 8.7` on AMC23, `0.244 × 500 ≈ 122` on MATH-500. The number that should jump is that MATH-500,
+the split built to reward exactly the demonstration distribution, only edges past the tiny AMC23 split in
+fractional terms — `0.244` versus `0.217`, a near-tie — when in-distribution transfer should have opened a
+gap. On the broad split where teacher-style solutions are most abundant, one epoch of copying them buys
+almost nothing beyond what the same copying buys on 40 hand-shaped AMC problems. That flatness is the tell,
+and it is on the largest, least-noisy split, so it is a real signal and not a seed artifact. It is not that
+the teacher traces are bad; it is that copying them on *every*
 prompt — including the ones the 1.5B model already solves on its own — narrows the policy to one fixed
 solution style and never lets it practice its own reasoning, so any test prompt whose solution shape
 differs from the demonstrations is unsupported. The model also never trains recovery from its own
@@ -35,6 +42,19 @@ exactly the maximum-likelihood gradient — push up the log-prob of the demonstr
 
   ∇J_μ = E_{τ∼π_θ}[r ∇log π_θ]  +  μ E_{τ∼π_β}[∇log π_θ].
 
+This is exactly the spot where a hand-waved sign would poison everything downstream, so I check it on a
+toy I can compute in closed form. Take three trajectories, `π_θ = softmax(θ)` with `θ = (0.1, 0.4, −0.3)`,
+so `π_θ = (0.331, 0.447, 0.222)`, and a fixed demonstration distribution `π_β = (0.6, 0.3, 0.1)`. For a
+softmax, `∂ log π_θ(k)/∂θ_j = δ_{kj} − π_θ(j)`, so `E_{τ∼π_β}[∇log π_θ]_j = Σ_k π_β(k)(δ_{kj} − π_θ(j)) =
+π_β(j) − π_θ(j)`, which comes out `(0.269, −0.147, −0.122)`. Then `∇KL(π_β ‖ π_θ) = −E_{π_β}[∇log π_θ] =
+(−0.269, +0.147, +0.122)`. The demonstration term `+μ E_{π_β}[∇log π_θ] = μ(0.269, −0.147, −0.122)` pushes
+mass *onto* trajectory 0 — the one `π_β` weights most heavily, `0.6` — and off trajectories 1 and 2. That
+is the behavior-cloning direction: ascending the demonstration half moves `π_θ` toward `π_β`. Had I written
+the KL the other way, `KL(π_θ ‖ π_β)`, the expectation would be over `π_θ` and I would pick up an extra
+term from differentiating the sampling measure — not the clean SFT gradient. The direction I wrote is the
+one that makes the second half fall out as plain behavior cloning, and the toy confirms both the sign and
+the target.
+
 There it is. The gradient of one objective is an on-policy reward term plus the SFT term. SFT and RL are
 not two objectives; they are two halves of the gradient of a single objective, distinguished only by
 which distribution the trajectory is sampled from and what scalar weights it. The pure-SFT floor was
@@ -53,6 +73,18 @@ GRPO: group-normalized), and the shared likelihood gradient `∇π_θ`. SFT, REI
 out as choices of `π_ref` and `Â`. So each is an estimator — sometimes biased — of the *same* underlying
 policy gradient, with different bias-variance profiles.
 
+Before I trust that template I want it to *reproduce* the two halves I already derived, not merely resemble
+them, so let me instantiate the two dials I actually care about. SFT: set `π_ref = π_θ` and `Â ≡ 1`, and the
+estimator is `(1/π_θ) · 1 · ∇π_θ = ∇π_θ/π_θ = ∇log π_θ` — the plain cross-entropy ascent on the demonstration
+token, which is exactly the second half `E_{π_β}[∇log π_θ]` under its own sampling measure. GRPO: set
+`π_ref = π_{θ_old}`, and the `1/π_ref` denominator paired with `∇π_θ` reconstructs the importance ratio
+`π_θ/π_{θ_old}`, with `Â` the group z-score standing where the reward term's `r` sat — the first half, now
+variance-reduced by the group baseline. Both halves I derived from `∇J_μ` are single points in this
+`(π_ref, Â)` space, which is the concrete sense in which "SFT and RL are two halves of one gradient" is not a
+slogan: they differ only in the reference denominator and the advantage, and nothing else in the estimator
+moves. That is what licenses treating the router as a per-prompt choice of `(π_ref, Â)` rather than a blend of
+two rival objectives.
+
 That is the payoff for designing a router. If they are all estimators of one gradient, the design
 question is how to *weight* the estimators — and the instinct from estimation theory is to average noisy
 measurements, weighted toward the lower-variance ones. So maybe a fixed weighted blend of the SFT and RL
@@ -61,9 +93,17 @@ gradients? Wall. The bias and variance of each estimator are not fixed propertie
 is informative and low-variance and the SFT term is pure overfitting pressure — exactly the imitation tax
 the floor's MATH-500 number measured. On a prompt the model fails completely, the on-policy term carries
 *no* information at all: when every rollout in the group gets the same reward, the group-relative
-advantage `(R − mean)/std` is identically zero for that prompt, so GRPO contributes no gradient — and the
-all-wrong case is the dangerous one, because the model still cannot solve the prompt. Which prompt is
-which *changes as the model learns*. So a single global mixing coefficient — exactly what the floor's
+advantage `(R − mean)/std` is identically zero for that prompt, so GRPO contributes no gradient. Let me run
+the standardization on the three cases that matter with `n_verify = 8` binary rewards rather than assert the
+degeneracy. All-wrong, `R = [0,0,0,0,0,0,0,0]`: mean `0`, std `0` (floored), so `Â = [0,…,0]`. All-correct,
+`R = [1,…,1]`: mean `1`, std `0` (floored), `Â = [0,…,0]` again. But a mixed group, say two of eight passing,
+`R = [1,1,0,0,0,0,0,0]`: mean `0.25`, sample std `≈ 0.463`, so the two correct rollouts get `Â = (1−0.25)/0.463
+≈ +1.62` and the six wrong get `(0−0.25)/0.463 ≈ −0.54` — a clean signed contrast. So the gradient does not
+gracefully fade as a prompt gets harder; it *survives* on any group with a mix of passes and fails and drops to
+*exactly zero* the instant the group goes all-equal. Two of the three cases vanish, but they are not the same
+kind of vanish: the all-correct zero is a saturation the model has earned and can be skipped, while the
+all-wrong zero is the dangerous one — no gradient on a prompt the model still cannot solve, which is precisely
+where it most needs to learn. And which prompt sits in which case *changes as the model learns*. So a single global mixing coefficient — exactly what the floor's
 unconditional rule and any fixed-blend method commits to — is structurally wrong, the same way one
 global learning rate is wrong when different parameters need different scales. The "average the
 estimators" idea is right in spirit; the constant weight was the mistake. The weighting must be a
@@ -74,6 +114,19 @@ on-policy rollouts per prompt and verifies them to compute the GRPO advantage. T
 for free: `on_solve_num = Σ_i v(τ_i) ∈ {0,…,8}`, the number of the eight rollouts that passed the
 verifier. That is exactly the model's current competence on this prompt, and it costs nothing extra —
 the same verifier scores GRPO already consumes. So let the route be a function of `on_solve_num`.
+
+I should be honest that `on_solve_num` is a *coarse* competence ruler, and it is worth knowing how coarse
+before I lean the whole router on it. Eight Bernoulli draws estimate a prompt's true per-rollout solve
+probability `p` with a standard error around `√(p(1−p)/8)`, so a prompt with genuine `p = 0.1` — one the model
+can in fact solve one time in ten — produces all eight failures with probability `(1−p)^8 = 0.9^8 ≈ 0.43`. At
+`p = 0.05` that is `0.95^8 ≈ 0.66`; at `p = 0.2`, `0.8^8 ≈ 0.17`. So the `on_solve_num = 0` bucket is not
+"prompts the model cannot solve" — it is "prompts the model failed all eight times this step," which sweeps in
+a large fraction of genuinely-but-rarely-solvable prompts. That imprecision is real, and it is an argument for a
+*hard* gate at exactly `on_solve_num = 0` rather than a threshold higher up: raising the gate would only pull in
+more of these borderline-solvable prompts and hand them to imitation, whereas `switch_gate = 0` restricts the
+SFT route to the prompts where the on-policy signal is *provably* dead (the standardized advantage is exactly
+zero, not merely small), which is the one case eight samples can call with certainty. The noise in `on_solve_num`
+is a reason to gate conservatively, not a reason to abandon the signal.
 
 Now, what is the simplest function that does the right thing? I could make it a smooth blend, but think
 about what the degenerate-zero analysis demands. The failure I am targeting is itself a sharp cliff: the
@@ -119,7 +172,14 @@ read `on_solve_num`, fire that *same* SFT triple only when `on_solve_num ≤ swi
 band to the off-policy-RL arm, and otherwise return `(0, 0, 0)` to keep the on-policy GRPO group. The
 mixture self-adjusts: early in training the weak 1.5B model fails many prompts, so more of the batch gets
 demonstration gradients; as it strengthens, more prompts cross the gate and the batch moves toward
-on-policy RL. (The full controller is in the answer.)
+on-policy RL. Put rough numbers on that drift. Of the 128 prompts in a step, the SFT-routed fraction is the
+fraction with `on_solve_num = 0`, and by the binomial reading above a prompt of true difficulty `p` lands there
+with probability `(1−p)^8`. Early on, when the model is weak and typical `p` is small — say `0.05`–`0.1` across
+the harder mass — that is `0.66`–`0.43` of those prompts routed to imitation, so a large share of each batch is
+demonstration gradient; as training lifts the typical `p` toward `0.2`–`0.3`, the same prompts fall to
+`0.17`–`0.06`, and the batch tips toward on-policy RL without my touching the gate. The mixing ratio is not a
+hyperparameter I schedule; it is read off the model's own live competence, step by step. (The full controller is
+in the answer.)
 
 Reading the floor's shape, here is what I expect this to fix and where I am unsure. The floor's MATH-500
 narrowing came from imitating on prompts the model could already handle; conditioning the switch should

@@ -7,6 +7,27 @@ real question is which reconstruction backbone to start from, and I want to star
 *input representation* is least obviously wrong for this data, because everything downstream inherits
 that choice.
 
+Before I fixate on the Transformer family, let me actually walk the shelf, because three other
+backbone classes are sitting right there and I owe each a concrete reason to pass. A dense autoencoder
+flattens the whole `[100, C]` window into one long vector and squeezes it through a bottleneck; the
+trouble is that flattening throws away the temporal ordering entirely — step 3 and step 97 become just
+two coordinates of a vector with no notion that time flows between them — so the model has to re-learn
+adjacency from scratch through a dense weight matrix, and worse, a tight bottleneck is a blunt,
+unprincipled knob: too wide and it copies the window verbatim (anomalies included), too narrow and it
+blurs the normal structure too. An LSTM autoencoder fixes the ordering by rolling an encoder-decoder
+along time, but it pays for it with a sequential signal path of length `L = 100`: the gradient tying
+step 100's reconstruction back to step 1 has to survive a hundred recurrent hops, and the well-known
+forgetting means the long-range structure I most need to reconstruct — the daily cycle — arrives
+attenuated at the far end of the window. The frequency- and decomposition-aware models estimate period
+lengths from the spectrum or autocorrelation and aggregate same-phase points; that is genuinely
+appealing for periodic telemetry, but each bakes a *particular* period-extraction machinery into the
+architecture, and for a first rung I do not want to commit the backbone to a periodicity assumption
+before I have even established that a generic sequence reconstructor works — if I start with the most
+structured model and it underperforms I cannot tell whether the structure or the fit was at fault. So
+the disciplined first move is the least-committed backbone that still respects temporal locality, which
+points me at the Transformer family — where the one decision that dominates everything is what I call a
+token.
+
 Let me think about what a token even is in the reconstruction backbones on the shelf, because I suspect
 the token is where these models go wrong. The point-wise Transformer reconstructors treat a single time
 step as a token — either one scalar at time `t`, or the full `C`-channel vector at `t`. Sit with that.
@@ -54,6 +75,22 @@ I want `S` a bit smaller than `P` so consecutive patches overlap and no edge sha
 down the middle; `S = 8` with `P = 16` overlaps each patch with its neighbor by half, keeping local
 continuity.
 
+I should not treat `P = 16, S = 8` as handed to me, so let me price the neighbors. If I shrink to `P =
+8, S = 4` the count jumps to `floor((100 − 8)/4) + 2 = 23 + 2 = 25` patches: each token now spans only
+eight steps, barely more than the point-wise case I am fleeing, and the attention map grows to `25 × 25
+= 625` — over four times the `12 × 12 = 144` of my choice — for tokens too short to carry a
+recognizable shape. If instead I grow to `P = 32, S = 16` the count collapses to `floor((100 − 32)/16)
++ 2 = 4 + 2 = 6` patches, each spanning nearly a third of the window; now attention has only six objects
+to relate and each token smears a third of the window into one vector, so an anomaly localized to a few
+steps is diluted across a token that mostly reconstructs fine, and the score loses its spatial
+resolution. Sixteen steps at stride eight sits in the middle: long enough that a ramp or a bump is a
+whole token, short enough that a local glitch dominates its own token rather than being averaged away,
+with a cheap `12 × 12` map. I can sanity-check the extreme: push `P` all the way to `L = 100` and the
+count is `floor(0/S) + 2 = 2` — one real patch plus the padding patch — so attention has essentially
+nothing to relate and the head degenerates into a single global linear map of the whole window, exactly
+the un-patched flatten I was trying to improve on. Patching only buys anything while `P` stays well
+below `L`, which confirms the regime `P = 16 ≪ 100`.
+
 Now the second decision, independent of patching: how do I handle the `C` channels? The standard
 multivariate Transformer mixes them — at each step it projects the whole `C`-vector into one token, so
 cross-channel information is fused at the input and every channel ends up under one shared attention
@@ -80,6 +117,18 @@ independent length-`N` token sequences. Run the encoder, get `[B·C, N, D]`, res
 D]` at the end. The `C` copies of the weights are conceptual; the actual tensor is shared and the
 channels ride in the batch dimension.
 
+It is worth pricing this backbone before I build it, because the weight-sharing is what keeps it
+affordable. Each encoder layer carries the four attention projections `Q, K, V, O`, each `D · D = 512 ·
+512 ≈ 0.26M`, so `≈ 1.05M` for attention, plus the position-wise feed-forward `D → d_ff → D = 2 · 512 ·
+512 ≈ 0.52M`, about `1.57M` per layer and `≈ 3.1M` over the two layers. The patch projection is a slim
+`P → D = 16 · 512 ≈ 8K`, and the reconstruction head is one linear of width `head_nf = D · N = 512 · 12
+= 6144` into `seq_len = 100`, i.e. `≈ 0.61M`. The whole module is `≈ 3.7M` parameters — and, crucially,
+that count is *independent of `C`*: because the channels ride in the batch axis under shared weights,
+MSL's 55 channels and PSM's 25 use the identical parameter tensor. Had I mixed channels at the input
+instead, the very first projection would have been `C · L → D`, growing with every dataset and forcing
+a `C`-specific input map; channel-independence buys me one backbone for all three datasets at a fixed
+budget.
+
 The backbone itself I keep deliberately *vanilla* — the whole thesis is that the input representation,
 not the attention kernel, was the problem, so I must not sneak in a fancy kernel. Linear-project each
 patch to `D` with no bias (an instance-normalized patch already has its level removed, so a per-patch
@@ -92,7 +141,13 @@ landing in a patch will skew that token's own statistics and drag LayerNorm arou
 normalizes each feature across the batch of patch positions, so a single outlier patch is diluted by
 all the others rather than corrupting its own normalization. For time-series tokens that is the safer
 choice, so I use BatchNorm in the encoder (transpose the feature axis into place, BatchNorm1d, transpose
-back).
+back). The dilution is quantitative, not a vibe: BatchNorm computes each feature's statistics over the
+whole batch of patch positions, which for MSL is `1760` folded sequences `× 12` patches `= 21120`
+samples, so one anomalous patch shifts the mean by `≈ 1/21120` — negligible. LayerNorm would instead
+normalize a single token over its own `D = 512` features, so a spike landing in that patch corrupts
+`100%` of the statistics used to normalize it, dragging the whole token's representation. For
+reconstruction-for-anomaly, where the entire point is to keep the abnormal token's error intact rather
+than normalize it away, BatchNorm is the safe choice.
 
 Now the head — and here the anomaly-detection setting is cleaner than forecasting. I am not predicting a
 future horizon; I am reconstructing the window I was given. So the target window for the head is
@@ -100,6 +155,29 @@ future horizon; I am reconstructing the window I was given. So the target window
 it to `seq_len`, then permute back so the output is `[B, seq_len, C]`. The head input width is `head_nf
 = D · N = D · (floor((L − P)/S) + 2)`. There is no decoder, no learned temporal extension — the window
 comes in and the reconstruction of that same window comes out.
+
+I considered a more locality-respecting head — give each patch its own small linear `D → P` back to its
+own `P` steps and overlap-add the stride-8 overlaps — but it has two costs the flatten head avoids. It
+must average the doubly-covered overlap regions (stride below patch means each interior step is written
+by two patches), and, more importantly, each patch would be reconstructed only from its own encoded
+vector, blind to the rest of the window; whereas the flatten head sees all `N · D = 6144` features at
+once, so a step's reconstruction can draw on the whole window's encoded context. On a window this short
+`head_nf = 6144` is cheap, so the flatten head's global view wins over the local head's tidiness.
+
+Let me trace the shapes end to end on the largest case, MSL with `C = 55` and `B = 32`, to be sure
+nothing is off by a transpose. The window enters as `[32, 100, 55]`; instance-norm leaves it `[32, 100,
+55]`; permute to `[32, 55, 100]`; the patch embedding folds channels into the batch and cuts patches to
+`[32 · 55, 12, 512] = [1760, 12, 512]`, so the encoder sees 1760 independent 12-token sequences and its
+attention maps are `[1760, 8, 12, 12]`. Out comes `[1760, 12, 512]`, reshaped to `[32, 55, 12, 512]`
+and permuted to `[32, 55, 512, 12]`; the head flattens the trailing `512 · 12 = 6144` and projects to
+`[32, 55, 100]`; permute back to `[32, 100, 55]` — identical to the input, which is the contract for a
+reconstruction, and the per-point squared error the harness scores is then well-defined at every one of
+the 100 positions. The tail-padding earns its keep exactly here: without the extra patch `N` would be
+`floor(84/8) + 1 = 11`, whose patches start at `0, 8, …, 80` and whose last one covers steps `80`
+through `95`, leaving steps `96–99` in no patch at all and their reconstruction undefined; padding eight
+copies of the last value creates the twelfth patch starting at step `88`, which covers `96–99` (with
+harmless repeats past the true end that the head learns to map back), so every position gets a
+reconstruction.
 
 One last thing the data forces before this is done: distribution shift. The channels and datasets span
 very different magnitudes and the level wanders over time. If I feed raw values the backbone burns
@@ -111,7 +189,12 @@ window length. There is a subtlety for anomaly detection — per-window centerin
 anomaly that is purely a level shift — but the data is already globally Z-scored per dataset, the
 windows are short, and the anomalies that matter here are violations of the *shape* (the cycle breaks,
 the local dynamics go wrong), which survive per-window centering precisely because they are deviations
-from the structure the model has learned to reconstruct.
+from the structure the model has learned to reconstruct. I can bound the worst case. A pure level-shift
+anomaly of magnitude `δ` added to `m` of the 100 steps moves the window mean by `δ · m/100`, so
+per-window centering subtracts that much and leaves `δ · (1 − m/100)` of the shift in the residual. For
+a short anomaly — say `m = 5` steps — only 5% is absorbed and 95% survives to spike the reconstruction
+error; centering would only erase a level shift covering most of the window, which is not the anomaly
+regime I face. So the normalization is nearly free of the failure mode it superficially risks.
 
 That settles the first rung: reversible instance norm, patch the channel-independent windows into local
 shape tokens (padded so the tail is covered, `N = 12` patches at `P=16, S=8`), a vanilla BatchNorm
@@ -125,8 +208,14 @@ there. MSL and SMAP are noisier telemetry with sharper, less regular events; cha
 because the 55 MSL channels behave very differently, but the flatten head reconstructs the window
 through a single fixed linear projection of patch features, which has no explicit handle on *which*
 periodicity each window carries — and SMAP in particular has the hardest anomalies to separate by
-reconstruction error, so I expect it to be the weakest of the three. The open worry I will carry to the
-next step is exactly this: a patch Transformer is a powerful but *generic* sequence reconstructor; it
+reconstruction error, so I expect it to be the weakest of the three. To make that falsifiable in the
+task's own metrics: if the diagnosis is right, the failure will show as a recall shortfall rather than a
+precision one — an over-flexible reconstructor that partly fits anomalies lets their error slip under
+the `anomaly_ratio` threshold, so I would see precision hold up (what it flags is right) while recall
+sags on MSL and SMAP, with PSM's F1 highest and SMAP's lowest of the three. If instead precision were
+the one to collapse, the story would be the opposite — too *rigid* a reconstructor smearing normal
+structure into false spikes — and I would rethink the capacity direction entirely. The open worry I
+will carry to the next step is exactly this: a patch Transformer is a powerful but *generic* sequence reconstructor; it
 does not model the period structure of each window explicitly, and if the next backbone's failure is on
 the smooth, strongly periodic streams, the diagnosis is already written — I would want a reconstructor
 whose representation is *itself* organized around the periods present in the window.

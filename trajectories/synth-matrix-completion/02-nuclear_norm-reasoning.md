@@ -12,6 +12,24 @@ low-rank one sharply enough — even with samples to spare on rank3-50. The bias
 for free is too weak, and it is coarsened further by the optimizer being a crude approximation to the
 gradient flow the theory assumes.
 
+Before I move on I want to squeeze one more thing out of the floor's numbers, because the pair of columns
+tells me something the single metric does not. For each environment the `test_rel_fro` (error on the
+unseen entries) exceeds the `full_rel_fro` (error over the whole matrix): $0.452$ vs $0.381$ on rank3-50,
+$0.596$ vs $0.532$ on rank5-100, $0.923$ vs $0.878$ on rank10-200. That ordering is not noise; it is what
+*must* happen when the observed entries are fit almost perfectly, because the full error blends a
+near-zero part (the observed fraction $p$) with the large test part. If the observed residual is truly
+negligible, then $\|\hat M - M^\*\|_F^2 \approx \|(\hat M - M^\*)[\lnot\Omega]\|_F^2$, and since the
+unobserved entries are a random $(1 - p)$ fraction carrying the same per-entry error scale,
+$\text{full\_rel\_fro} \approx \sqrt{1 - p}\cdot\text{test\_rel\_fro}$. Check it: rank3-50 with $p = 0.3$
+gives $\sqrt{0.7}\cdot0.452 = 0.378$ against the measured $0.381$; rank5-100 with $p = 0.2$ gives
+$\sqrt{0.8}\cdot0.596 = 0.533$ against $0.532$; rank10-200 with $p = 0.1$ gives $\sqrt{0.9}\cdot0.923 =
+0.876$ against $0.878$. Three near-exact hits. That confirms two things at once: the training residual
+really is negligible (as the $10^{-9}$-scale `train_mse` already said), and the reconstruction error is
+spread *uniformly* across observed and unobserved entries — the depth-2 fit is not localizing its mistakes,
+it is picking a globally wrong low-rank-ish matrix. So the target for this rung is not "fit the data
+better" — the data is already fit — it is "select a better matrix," which is exactly what an explicit
+nuclear-norm objective is for.
+
 That diagnosis splits the path two ways. One direction is to make the implicit bias *stronger* — more
 depth — and I will take that on the next rung. But before I trust a stronger version of the same
 implicit mechanism, I want a clean, principled point of comparison: the method that asks for the
@@ -35,6 +53,17 @@ $O(nr\log n)$ entries. So the objective is not in question; what is in question 
 scale and from cheap repeated operations, because feeding the SDP to an interior-point solver chokes
 past $n=100$, ignores the low rank of the answer, and degenerates near the optimum. I need a first-order
 method built from operations that only ever touch the matrix cheaply.
+
+The scale numbers decide the algorithm before any elegance does. The observations live on environments up
+to $n = 200$, so $X$ has up to $n^2 = 4\cdot10^4$ entries. An interior-point SDP treats the nuclear-norm
+program as a semidefinite program in $O(n^2)$ variables and factors a dense Newton system each step at
+roughly $O(n^6)$ cost; at $n = 200$ that is $\sim 6\cdot10^{13}$ operations per iteration, hopelessly past
+the under-30-minute wall-clock cap, and it throws away the one thing I know — that the answer is low rank —
+by carrying a dense iterate and degenerating near the optimum. A first-order proximal method is the
+opposite: its per-step cost is one SVD at $O(n^3)$, about $8\cdot10^6$ operations at $n = 200$, seven
+orders of magnitude cheaper, and if I can keep the iterates low rank the SVD gets cheaper still. So I am
+committed to a proximal / first-order scheme built from cheap repeated operations, and the only real design
+question is how to make each step both cheap *and* faithful to the hard data constraint.
 
 The shape of the answer should look like compressed sensing. There, to find a sparse vector with
 $Ax = b$, the workhorse is soft-thresholding $S_\tau(x) = \text{sign}(x)(|x| - \tau)_+$, applied
@@ -60,6 +89,17 @@ above $\tau$ ($U_0,\Sigma_0,V_0$) and at/below ($U_1,\Sigma_1,V_1$); then $X = D
 term is the $UV^\*$ of $X$; $W$ is orthogonal to $U_0,V_0$ and has $\|W\|_2 = \tau^{-1}\max\Sigma_1 \le
 1$. So $Y - X \in \tau\,\partial\|X\|_\*$, i.e. $D_\tau$ is the exact prox. The shrink is principled, not
 a heuristic.
+
+A one-line numeric check keeps me honest about what $D_\tau$ actually does to a spectrum. Take a diagonal
+$Y = \text{diag}(10, 3, 0.5)$ and $\tau = 2$: $D_\tau(Y) = \text{diag}(8, 1, 0)$ — the two large modes
+survive, each shrunk by exactly $\tau$, and the small one is zeroed, dropping the rank from $3$ to $2$.
+Raise $\tau$ to $4$ and it returns $\text{diag}(6, 0, 0)$, rank $1$. So $\tau$ is a direct rank dial: every
+singular value below it dies, every one above it is pulled toward zero by the constant $\tau$. That
+constant pull is also why the shrink alone never exactly fits the data — the surviving singular values come
+out systematically too small by $\tau$, which is the $\tfrac12\|X\|_F^2$ penalty showing up in the
+spectrum — and it is why I will need $\tau$ large enough to sparsify but a separate mechanism (the growing
+$Y$) to push the surviving values back up toward feasibility. The shrink biases low; something else has to
+restore the fit.
 
 How do I turn one prox into a method that respects the hard constraint $P_\Omega(X) = P_\Omega(M)$? The
 imaging-style move is to *relax*: minimize $\lambda\|X\|_\* + \tfrac12\|P_\Omega(X) - P_\Omega(M)\|_F^2$,
@@ -103,6 +143,17 @@ gives $r_k^2 \le r_{k-1}^2 - (2\delta_k - \delta_k^2)\|X^k - X^\*\|_F^2$, a genu
 ratio) lets me push to $\delta = 1.2/p = 1.2\,n^2/m$, taking much bigger steps. This is not a rigorous
 theorem (the iterate difference is not a fixed incoherent matrix) but it converges in practice.
 
+Let me pin the step size to actual numbers, since the near-isometry is what makes the aggressive choice
+safe. The operator $P_\Omega$ keeps a $p$-fraction of entries, so for a matrix uncorrelated with the mask
+$\|P_\Omega(A)\|_F^2 \approx p\|A\|_F^2$ — it has "gain" $p$, and an ascent step of size $\delta$ on the
+dual effectively moves the primal by $\delta p$. To get an $O(1)$ effective step I therefore want
+$\delta \approx c/p$, and the fill takes $\delta = 1.2/p$: on rank3-50 ($p = 0.3$) that is $\delta = 4$, on
+rank5-100 ($p = 0.2$) $\delta = 6$, on rank10-200 ($p = 0.1$) $\delta = 12$. Each is far past the
+conservative $\delta < 2$ the worst-case bound licenses, but the point of the near-isometry is exactly that
+the worst case does not bind here: the *effective* step $\delta p = 1.2$ sits safely inside the $(0, 2)$
+decrease window in every environment. This is where decoupling $\tau$ from $\delta$ pays off — I can take a
+large data step for fast convergence without touching the threshold that controls the rank of the iterates.
+
 Two more pieces. For $\tau$: calibrate against the standard synthetic generator, where $\|M\|_F \approx
 n\sqrt r$ and $\|M\|_\* \approx nr$; to make the nuclear term about $10\times$ the Frobenius term the
 ratio $2\tau/n \approx 10$, i.e. $\tau = 5n$, keeps the nuclear term dominant while rank is bounded away
@@ -127,6 +178,39 @@ wall-clock cap, so a short SVT budget already reaches the intended low-but-finit
 This matters for my expectations: on rank10-200 this baseline is *not* the converged nuclear-norm
 solution — it is a deliberately truncated SVT, run just long enough not to time out. So whatever it
 scores there, I should read it as "11 steps of SVT," not "nuclear-norm minimization converged."
+
+The same discipline applies to $\tau$ and the warm start, and both come out to concrete integers. With
+$\tau = 5n$ the threshold is $250$ on rank3-50, $500$ on rank5-100, $1000$ on rank10-200 — large in
+absolute terms, which is what forces the shrink to kill all but the few dominant singular values and keeps
+the iterates genuinely low rank. The warm start then skips the wasted opening iterations analytically.
+Starting from $Y^0 = 0$, the $k$-th iterate before any nonzero shrink is $k\delta P_\Omega(M)$, and its
+top singular value must exceed $\tau$ for the shrink to return anything, so every step with
+$k\delta\|P_\Omega(M)\| < \tau$ returns exactly zero. Rather than spin through those, the fill leaps to
+$Y^0 = k_0\delta P_\Omega(M)$ with $k_0 = \lceil\tau/(\delta\|P_\Omega(M)\|)\rceil$. Using the Frobenius
+norm in place of the spectral norm makes the denominator an overshoot — $\|P_\Omega(M^\*)\|_F \approx
+\sqrt p\,\|M^\*\|_F = \sqrt p\,n \ge \|P_\Omega(M^\*)\|_2$ — which nudges $k_0$ slightly *down*, so the warm
+start lands just before the first informative iterate rather than past it. On rank3-50 that is
+$\|P_\Omega(M)\|_F \approx \sqrt{0.3}\cdot50 \approx 27.4$, giving $k_0 = \lceil 250/(4\cdot27.4)\rceil =
+\lceil 2.28\rceil = 3$: I skip two dead iterations and start exactly where the shrink first produces
+something, without risking a jump past it. The other environments follow the same arithmetic — rank5-100
+has $\|P_\Omega(M)\|_F \approx \sqrt{0.2}\cdot100 \approx 44.7$, $\delta = 6$, $\tau = 500$, so $k_0 =
+\lceil 500/(6\cdot44.7)\rceil = \lceil 1.86\rceil = 2$; rank10-200 has $\|P_\Omega(M)\|_F \approx
+\sqrt{0.1}\cdot200 \approx 63.2$, $\delta = 12$, $\tau = 1000$, so $k_0 = \lceil 1000/(12\cdot63.2)\rceil =
+\lceil 1.32\rceil = 2$. The savings are modest because the near-isometry keeps $\|P_\Omega(M)\|_F$ large
+relative to $\tau/\delta$, but the mechanism is free and guarantees I never spend the tight iteration
+budget on shrinks that provably return zero.
+
+I can also predict a qualitative flip in the `train_mse` column that will tell me the method is doing what
+I think. Depth-2 drove training MSE to $\sim 10^{-9}$ — it interpolated the observations exactly. SVT will
+*not*: the $\tfrac12\|X\|_F^2$ term in the Uzawa objective deliberately holds the surviving singular values
+below feasibility by the threshold pull, so the observed entries end up only approximately fit and the
+training residual should be visibly nonzero — orders of magnitude larger than depth-2's $10^{-9}$. That is
+not a bug; it is the signature of trading exact data-fit for a low-rank, low-nuclear-norm spectrum. So the
+reading of this rung's numbers is set in advance in two parts: `test_rel_fro` should drop on rank3-50 and
+rank5-100 if the floor's gap was a bias-strength problem, and `train_mse` should rise off the floor as
+direct evidence that I am now regularizing rather than interpolating. If instead `test_rel_fro` failed to
+improve while `train_mse` stayed near zero, I would suspect the shrink was not actually running — but the
+mechanism says both should move together.
 
 So the falsifiable expectations against the depth-2 floor. On rank3-50, depth-2 left $0.452$ despite
 generous samples; if that gap was the weak/approximated bias rather than the data being too poor,

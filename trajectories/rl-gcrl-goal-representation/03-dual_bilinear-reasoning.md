@@ -14,6 +14,14 @@ not punished too hard. In manipulation it is false: pushing a cube off a ledge i
 is hard; many transitions are one-way. Forcing a symmetric code onto an asymmetric reaching structure
 costs expressiveness exactly where the task is hardest, and that is the gap I now want to close.
 
+I should be precise about the evidence, since this task reports no per-seed numbers and no leaderboard —
+what I carry forward from the Hilbert rung is a qualitative ordering, not a measured gap. The
+consensus is that the symmetric metric sits clearly above the raw-goal floor but below what a directed
+aggregator reaches, with the shortfall concentrated on antmaze-large and the cube manipulation setting
+and the two essentially tied on pointmaze-large. That pattern is exactly the fingerprint of a symmetry
+constraint biting where reaching is directed and vanishing where it is reversible, so I will let it set
+the direction of the fix without pretending I can quantify the points it will recover.
+
 There is a second, subtler limitation worth stating because it sharpens the fix. Even setting asymmetry
 aside, a shared-embedding metric `||phi(s) - phi(g)||` is *not a universal approximator* of two-argument
 functions. Not every pairwise function — not even every symmetric one — can be written as a Euclidean
@@ -50,7 +58,17 @@ observation maps to a latent and the reward is latent, `r^ell(s, g) = I(p^ell(s)
 observations with the same latent induce *identical* latent rewards on every trajectory, so their
 optimal values agree at every state and `phi^vee(g_1) = phi^vee(g_2)`. Exogenous observation noise that
 does not change the latent task disappears — which is the floor's failure (joint angles, scene texture
-riding into the value) finally addressed at the level of the target, not patched after the fact.
+riding into the value) finally addressed at the level of the target, not patched after the fact. Make it
+concrete on cube manipulation: take two goal observations that agree on the cube's target pose but differ
+in some coordinate the agent does not control — a background detail, an unrelated arm-joint reading at
+the goal. Their latent reward `I(p(s) = p(g))` is the same indicator at every state `s`, so every
+trajectory earns identical returns toward `g_1` and `g_2`, their optimal values coincide pointwise, and
+the ideal functional maps them to the same code. The bilinear value is trained on exactly that
+latent-reward signal, so the gradient never rewards `psi` for distinguishing `g_1` from `g_2` — the two
+collapse. The floor did the opposite: it fed both raw observations, differences and all, straight into
+the value, so the downstream net had to *learn* to ignore the exogenous coordinate from finite data.
+Here the invariance is a property of what the code is trained to represent, not a burden pushed onto the
+controller.
 
 The functional is the right ideal, but I cannot store an arbitrary function per goal and I do not know
 `d*`. The sufficiency argument tells me exactly how to finitize it: the functional is *paired with a
@@ -58,7 +76,22 @@ state and evaluated*, `f(s') = d*(s', g)`. So model the two-argument value surfa
 embeddings, `V(s, g) ~= f(psi(s), phi(g))`, and export the goal-side vector `phi(g)` as the finite
 code. The only open choice is the aggregator `f`. The Hilbert rung chose the metric
 `f = -||psi - phi||` with `psi = phi`, and I just diagnosed why that is too rigid: symmetric and
-non-universal. The simplest aggregator that fixes both problems is the **bilinear inner product**:
+non-universal. There are three genuinely different ways to build a directed, more expressive `f`, and I
+want to eliminate two of them on concrete grounds before committing. The most flexible is a monolithic
+MLP over the concatenation, `f = MLP([psi(s), phi(g)])`: universal and directed, but it fails the one
+structural requirement the sufficiency argument imposed — that the goal be carried by a *vector code*
+that is paired with the state and evaluated. An MLP couples `s` and `g` through joint hidden layers, so
+there is no clean goal-side vector whose relationship to the state code is the value; `encode_goal` would
+still have to return `phi(g)`, but the value surface would no longer be a simple function of the two
+codes, and the "a direction in code space is an actionable control signal" algebra that the Hilbert rung
+banked would be gone. A second option is an explicit asymmetric quasimetric — say `sum_k ReLU(phi_k(g) -
+psi_k(s))` — which is directed and, unlike the Euclidean norm, keeps the triangle inequality while
+dropping symmetry, so it is arguably the "correct" object for `d*`. But it re-imposes metric axioms I do
+not actually need for a *representation*: the sufficiency and noise-invariance arguments ask only that
+the code preserve optimal successor values and collapse latent-preserving noise, not that it obey the
+triangle inequality, and the quasimetric head is a fussier, harder-to-fit surface for no gain in the
+representation role. The simplest aggregator that is directed and universal *and* keeps the value a plain
+function of two vector codes is the **bilinear inner product**:
 
 `f(psi(s), phi(g)) = psi(s)^T phi(g)`.
 
@@ -67,11 +100,37 @@ Two things fall out immediately. It is *directed*: `psi` and `phi` are different
 costs the metric could not — directly attacking the manipulation gap. And it is *universal*: with
 learned feature maps of sufficient width, sums of separable products approximate any continuous
 two-variable function on a compact domain, so the bilinear value can represent reaching-value surfaces
-the metric provably cannot. In the practical head I scale the dot product by the width,
-`V(s, g) = psi(s)^T phi(g) / sqrt(d)`. Without it, the dot product is a sum of `d` terms whose scale
-grows with the representation width, so changing `rep_dim` would silently change the initial value and
-gradient magnitude; dividing by `sqrt(d)` keeps the bilinear score order-one across widths — the same
-square-root scaling attention uses, and load-bearing here for stable training at `rep_dim = 256`.
+the metric provably cannot. I can make the "cannot" sharp by checking that the inner product actually
+*subsumes* the Hilbert metric rather than merely differing from it. The negative squared distance
+expands as `-||a - b||^2 = 2 a^T b - ||a||^2 - ||b||^2`, and that is exactly a single inner product in a
+lifted space: set `psi(s) = [2 phi(s), -||phi(s)||^2, 1]` on the state side and `phi_goal(g) = [phi(g),
+1, -||phi(g)||^2]` on the goal side, and their dot product is `2 phi(s)^T phi(g) - ||phi(s)||^2 -
+||phi(g)||^2 = -||phi(s) - phi(g)||^2`. So with just three extra coordinates the bilinear head reproduces
+the negative squared Hilbert value; the bilinear family strictly contains the metric family (up to the
+monotone `x -> -sqrt(-x)` reparameterization, which does not matter for the greedy argmax or for the
+code's role as coordinates). That settles the capacity question in one direction: the inner product can
+be no *less* expressive than the metric, so the only thing that could go wrong is optimization, not
+representational reach — a reassuring floor under the whole rung.
+
+In the practical head I scale the dot product by the width, `V(s, g) = psi(s)^T phi(g) / sqrt(d)`, and
+the scale is worth computing rather than asserting. At initialization the two codes are roughly
+zero-mean with order-one per-coordinate variance, so `psi(s)^T phi(g) = sum_{k=1}^{d} psi_k phi_k` is a
+sum of `d` near-independent order-one terms: its standard deviation grows like `sqrt(d)`, which at
+`d = 256` is `16`. An unscaled score of typical magnitude `16` would swamp the reward of magnitude `1`
+inside the TD target `r + gamma * mask * v`, and — worse — that magnitude would *change with the width*,
+so retuning `rep_dim` would silently rescale the value and its gradients and force a re-tune of the
+expectile dynamics. Dividing by `sqrt(d) = 16` pulls the initial score back to order one and makes it
+invariant to the width choice; it is the same square-root normalization attention uses, and it is
+load-bearing here precisely because `rep_dim = 256` is large enough that the unscaled `16` would matter.
+One thing the inner product buys for free relative to the metric is numerical smoothness: there is no
+`sqrt(||.||)` anywhere, so no `1/(2 sqrt(.))` singularity at coincident codes, and the `1e-6` floor the
+Hilbert rung needed simply disappears — the gradient of `psi^T phi / sqrt(d)` with respect to `phi(g)` is
+just `psi(s) / sqrt(d)`, bounded wherever LayerNorm keeps the codes bounded, one fewer fragile constant
+than before. The honest cost of the trade is that the bilinear head gives up the metric's freebies:
+`V(s, s) = psi(s)^T phi(s) / sqrt(d)` is not pinned to `0`, `V <= 0` is not guaranteed, and the triangle
+inequality no longer holds by construction. Those were true inductive biases, and I am choosing to relearn
+them from data in exchange for direction and universality — a good trade exactly where reaching is
+asymmetric, and a roughly neutral one where it was already metric-shaped.
 
 Now the offline learning, and here I keep the *exact same recipe* as the Hilbert rung — only the value
 parameterization changes from `-||psi - phi||` to `psi^T phi / sqrt(d)`. The reasoning is identical:
@@ -94,6 +153,23 @@ embeddings. The discount story is unchanged (`gamma` for TD stability, convergin
 approximation), and I no longer need the square-root floor that the metric required — there is no
 `sqrt(||.||)` singularity in an inner product, so the bilinear value is numerically smoother at init,
 one fewer fragile constant than the Hilbert rung.
+
+Two checks reassure me the head is wired correctly. First the shapes, which the ensemble and the concat
+make worth tracing once: `observations` and `goals` come in `(B, obs_dim)`; the state ensemble `phi` and
+goal ensemble `psi` produce `(2, B, rep_dim)` each; the elementwise product scaled by `1/sqrt(rep_dim)`
+and summed over the last axis is `(2, B)`, averaged over the ensemble axis to `v_mean` of shape `(B,)`.
+The critic branch is identical in shape to the Hilbert rung — `[observations, goals, actions]` concat
+into the twin `target_rep_critic`, two `(B, 1)` heads squeezed and `min`'d to a `(B,)` `q_t` — so
+`adv = q_t - v_mean` and `td_target = r + gamma * mask * next_v_mean` are both clean `(B,)` differences,
+and `encode_goal` returns `psi(goals).mean(axis=0)` of shape `(B, rep_dim)`. Every shape matches the
+Hilbert rung except the scalar the value is built from, which is the whole point: only the
+parameterization changed, `-||phi_s - phi_g||` to `phi_s^T psi_g / sqrt(d)`, and the surrounding
+expectile-plus-TD machinery is byte-for-byte the same recipe. Second, the greedy-sufficiency argument I
+leaned on needs the discount transform to preserve rankings, and it does: `gamma in (0, 1)` makes
+`gamma^d` strictly decreasing in `d`, so ordering successors by `gamma^{d*(s', g)}` is the same ordering
+as by `-d*(s', g)`, hence `argmax_a E[gamma^{d*(s', g)}]` picks the same action as minimizing expected
+reaching time — the monotone value transform never reorders the greedy step, which is exactly why
+carrying the code in log-discount coordinates loses nothing the optimal policy needs.
 
 One design point I want to defend explicitly, because it is the reason this is a *representation* method
 and not just a different value head: I keep the bilinear representation value strictly separate from the
@@ -119,5 +195,12 @@ touch lower or a touch higher, but within noise — because there is little asym
 structure to exploit. So the sharp, falsifiable prediction is: bilinear > Hilbert most on cube, clearly
 on antmaze, roughly tied on pointmaze, with the bilinear average above the Hilbert average — and the
 whole improvement traceable to having dropped the symmetric-metric assumption for a directed, universal
-aggregator. The distilled module — bilinear `phi`/`psi`, the `/sqrt(d)` score, the expectile-plus-TD
+aggregator. The capacity subsumption tightens this into a two-sided test on the one metric available,
+success rate across the three environments. Because the inner-product head can reproduce the negative
+squared Hilbert value with three extra coordinates, it can be no less expressive than the metric; so if
+bilinear were to come in *below* Hilbert anywhere, that would not indict the representation's reach — it
+would point at optimization (the harder-to-fit non-metric surface, the lost `V(s, s) = 0` and triangle-
+inequality priors it now must relearn). And if it fails to improve on cube specifically, the asymmetry
+diagnosis itself is wrong, because cube is where direction should matter most. Either outcome is
+informative, which is what makes the prediction worth staking. The distilled module — bilinear `phi`/`psi`, the `/sqrt(d)` score, the expectile-plus-TD
 `rep_loss`, goal code `psi(g)` — is in the answer.

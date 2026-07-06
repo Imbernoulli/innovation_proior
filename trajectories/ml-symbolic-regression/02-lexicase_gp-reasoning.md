@@ -1,17 +1,21 @@
 The standard-GP numbers tell me exactly one story, and I want to read it precisely before I change
 anything. Koza-3 is solved: 0.985, 0.998, 0.994 across the three seeds, mean 0.993 — the reachable
-polynomial behaves exactly as I predicted, steady and high, no drama. The drama is entirely on the two
-transcendental benchmarks, and it is *variance*, not a uniformly low mean. Nguyen-7 has two seeds at
-0.998 and 0.991 — essentially solved — and then seed 456 at −1.0: a complete blow-up, the wrong form
-found early, diverging off the wider test range badly enough that R² went negative and the floor caught
-it. One bad seed drags the Nguyen-7 mean from "near-solved" down to 0.330. Nguyen-10 is the same disease
-in a milder, more pervasive form: 0.884, 0.557, 0.322 — no single catastrophe, but a steady decline
-across seeds, mean 0.588, as if the search keeps locking onto partial fits of the sin·cos product and
-never recovers the rest. This is precisely the premature-convergence signature I worried about: with
-nothing but raw-MSE tournaments, one lineage that gets an early lead on the 20-or-100-point training
+polynomial behaves exactly as I predicted, steady and high, no drama, with a seed-to-seed range of only
+0.012. The drama is entirely on the two transcendental benchmarks, and it is *variance*, not a
+uniformly low mean. Nguyen-7 has two seeds at 0.998 and 0.991 — essentially solved, they average 0.994 —
+and then seed 456 at −1.0: a complete blow-up, the wrong form found early, diverging off the wider test
+range badly enough that R² went negative and the floor caught it. The arithmetic makes the point sharp:
+those two good seeds alone would put the mean at 0.994, and the single catastrophic seed drags it to
+0.330, a cost of 0.665 in mean R² carried by one run in three. So Nguyen-7's problem is not that the
+engine cannot fit logarithms — two thirds of the time it fits them almost perfectly — it is that one
+seed in three detonates. Nguyen-10 is the same disease in a milder, more pervasive form: 0.884, 0.557,
+0.322 — no single catastrophe, but a steady slide across seeds, mean 0.588, spanning a range of 0.56, as
+if the search keeps locking onto partial fits of the sin·cos product and never recovers the rest. Two
+different textures — one bimodal (solved or detonated), one a graded sag — but the same underlying
+mechanism: with nothing but raw-MSE tournaments, one lineage that gets an early lead on the training
 sample dominates the tournaments, the population homogenizes onto its *form*, and on the transcendental
-targets that form is wrong often enough that the seed-to-seed outcome is a coin flip — solved, or
-stuck. The lever the diagnosis points at is selection: the failure is *which* lineage wins, so I should
+targets that form is wrong often enough that the seed-to-seed outcome is a coin flip — solved, or stuck.
+The lever the diagnosis points at is selection: the failure is *which* lineage wins, so I should
 change what selection rewards.
 
 Let me look hard at what tournament selection actually does, because the flaw is structural, not a
@@ -25,9 +29,13 @@ trees can have the identical mean error with completely different profiles: one 
 other the population's *best* on a cluster of hard cases and bad on the rest. For harvesting a building
 block the second is gold and the first is nothing — and tournament cannot tell them apart. Worse, it
 actively buries the specialist: its few bad cases inflate its mean, so against a generalist with lower
-mean it almost never wins. On Nguyen-10 this is exactly what I think is happening — the search needs a
-tree that nails the `sin(x)` factor and another that nails the `cos(y)` factor, but a specialist on
-one factor reads as mediocre on the mean and gets selected out before crossover can splice the two. The
+mean it almost never wins. On Nguyen-10 this is exactly what I think is happening, and I can name the
+specialist concretely. The target is `2·sin(x)·cos(y)`; a tree that has assembled the `sin(x)` factor
+but not yet the `cos(y)` modulation is *excellent* on the slice of training points where `cos(y) ≈ 1`
+(the `y ≈ 0` and `y ≈ 2π` rows) and *bad* where `cos(y) ≈ 0` (the `y ≈ π/2` rows). That is precisely a
+case specialist — best-in-population on a subset of the 100 cases — and it is exactly the half-built
+factor crossover needs to splice with a `cos(y)` specialist to finish the product. But its bad rows
+inflate its mean, so tournament selects it out before crossover ever gets to combine the two. The
 information I most need to escape premature convergence — the *shape* of the error vector, not its
 average — is the information I throw away before selecting.
 
@@ -60,18 +68,38 @@ automatically exert more pressure, toward exactly the specialists I want to prop
 selection, and there is a diversity bonus for free: because each parent comes down a different random
 conjunction of cases, the population spreads across behavior space instead of collapsing onto one
 lineage — which is the direct antidote to the premature convergence that produced standard GP's −1.0
-seed and its Nguyen-10 decline.
+seed and its Nguyen-10 slide.
+
+Let me trace the mechanism on a four-tree, three-case toy to convince myself it does what I claim,
+because the whole bet rests on it preserving specialists that the mean buries. Say the per-case error
+matrix is `A = [0.1, 0.9, 0.5]`, `B = [0.9, 0.1, 0.5]`, `C = [0.5, 0.5, 0.1]`, `D = [0.4, 0.4, 0.4]` —
+`A` a specialist on case 0, `B` on case 1, `C` on case 2, and `D` the mediocre generalist. Under the
+mean, the fitnesses are `A = 0.50`, `B = 0.50`, `C = 0.37`, `D = 0.40`: tournament ranks `C` best, then
+`D`, and the two single-case specialists `A` and `B` sit dead last at 0.50, so they are exactly the
+trees a tournament selects *out* — even though `A` is the population's unique best on case 0 and `B` on
+case 1. Now run lexicase. If the shuffle leads with case 0, gate 0 keeps only the best on it — `A` at
+0.1 — and `A` is the parent; a shuffle leading with case 1 hands the parent to `B`; leading with case 2
+hands it to `C`. `D` is never the unique best on any case, so it wins a first gate essentially never.
+So over many selection events lexicase returns `A`, `B`, `C` in rotation — it *preserves all three
+specialists*, precisely the half-built factors crossover needs — while tournament would have collapsed
+onto `C` and `D` and thrown `A` and `B` away. That is the `sin(x)`-specialist/`cos(y)`-specialist
+survival I need on Nguyen-10, made concrete. And note the diversity is not incidental: with the pool
+typically winnowing over about five cases, each parent is defined by a different random handful out of
+the `N` cases, and for Nguyen-10's `N = 100` there are astronomically many such conjunctions, so distinct
+parents genuinely sample distinct behavioral niches instead of all descending from one lineage.
 
 So I am sold on the structure. Now drop it onto *this* problem — continuous symbolic regression on
 real-valued, noisy data — and watch it break. Pool is the whole population, shuffle the cases, first
 case: find the best error on it, keep only individuals whose error *equals* that best. And right there
 is the wall. My errors are continuous floats. What is the chance two distinct expression trees produce
-the *exact same* floating-point error on a case? Essentially zero — it only happens if they are the
-same model. So "best error on this case" is achieved by exactly one individual, and the very first gate
-slams the pool from 500 to 1. Every selection event is decided by a single case, and the entire
-multi-case filtering chain — the conjunction mechanism that was the whole point — is gone. Worse,
-single-case selection off one noisy case is *worse* than tournament. The mechanism is sound; the
-*pass condition* is too sharp for a continuous space.
+the *exact same* 64-bit floating-point error on a case? On the order of `2⁻⁵²` — essentially zero; it
+only happens if they are literally the same model. So "best error on this case" is achieved by exactly
+one individual, and the very first gate slams the pool from 500 to 1. Every selection event is then
+decided by a single case, and the entire multi-case filtering chain — the conjunction mechanism that was
+the whole point — is gone. And single-case selection is *worse* than the tournament I am replacing: it
+picks a parent by its error at one of the 20 (Nguyen-7) or 100 (Nguyen-10) training points, discarding
+everything the other points say — strictly less information than tournament's mean over all of them. The
+mechanism is sound; the *pass condition* is too sharp for a continuous space.
 
 Diagnose it precisely so I fix the right thing. The gate asks "is your error equal to the pool-best?"
 In a discrete space many individuals share the best, so the gate keeps a meaningful subset and the
@@ -97,14 +125,22 @@ lacked.
 Which dispersion measure? The textbook standard deviation fails immediately on a GP population, and the
 reason is specific to GP. A population at any moment is full of *garbage* — freshly mutated junk,
 expressions that divide by near-zero or blow up and produce enormous errors. Those are extreme outliers
-in the error vector, and the standard deviation is dominated by them: a handful of trees at error `10⁶`
-while everyone real sits near `0.3` sends σ through the roof, so a σ-band would be set by the junk, be
-enormous, and pass everyone — back to no filtering. I need a dispersion measure that ignores the tails
-and reports the typical spread among the competitive individuals. That is the median absolute deviation:
-`MAD = median_j |e_t(j) − median_k e_t(k)|`. The inner median is the typical error, the outer median
-the typical distance from it; a minority of arbitrarily huge outliers moves it by at most one rank step
-— MAD has a 50% breakdown point, it simply does not see the junk. So `ε_t = MAD(e_t)` reports the scale
-the real contenders live in, exactly where "near-elite" should be judged. It is parameter-free,
+in the error vector, and the standard deviation is dominated by them. Let me actually compute an example
+so the failure is not hypothetical. Suppose on some case the six real contenders sit at errors `[0.20,
+0.25, 0.30, 0.35, 0.40, 0.45]` and one blow-up tree sits at `10⁶`. The median error is 0.35, and the
+median absolute deviation is `MAD = median|e − 0.35| = 0.10` — a sensible read of "the contenders live
+about 0.1 apart." The standard deviation of the same seven numbers is ≈ `3.5·10⁵`, driven almost
+entirely by the one blow-up, a factor of roughly three million larger than the MAD. Now play each as a
+band: `ε = MAD = 0.10` sets the pass threshold at `0.20 + 0.10 = 0.30` and keeps `{0.20, 0.25, 0.30}` —
+three of seven, a real filter that isolates the near-elite. `ε = σ ≈ 3.5·10⁵` sets the threshold at
+essentially `3.5·10⁵` and passes all six real contenders (it excludes only the blow-up), so the σ-band
+does no discriminating whatever among the trees I actually care about. The σ-band is set *by the junk*,
+is enormous, and waves everyone through — back to no filtering. So I need a measure that ignores the
+tails and reports the typical spread among the competitive individuals. That is the median absolute
+deviation: `MAD = median_j |e_t(j) − median_k e_t(k)|`. The inner median is the typical error, the
+outer the typical distance from it; a minority of arbitrarily huge outliers moves it by at most one rank
+step — MAD has a 50% breakdown point, it simply does not see the junk. So `ε_t = MAD(e_t)` reports the
+scale the real contenders live in, exactly where "near-elite" should be judged. It is parameter-free,
 auto-scales to each case's difficulty, and shrinks as the population converges. That MAD-not-σ choice is
 forced by the outlier-heavy nature of GP populations specifically.
 
@@ -116,10 +152,37 @@ this event. So sharpen it: recompute *both* the pool elite `e*_t` and the MAD ov
 candidate pool at each gate. As the pool homogenizes, the pool-MAD collapses, so `ε` shrinks further and
 the later gates keep filtering hard instead of waving everyone through — and the pool-best always clears
 its own band, so the pool never empties. This pool-relative (dynamic) form is the one that keeps the
-gates discriminating all the way down the chain, and it is what I land on. The cost stays in lexicase's
-class: recomputing a minimum and a MAD over the current pool at each gate is linear in the pool size per
-case, so one selection is `O(PN)` worst case and filling the population is `O(P²N)` — the MAD adds no
-asymptotic term, and in practice the pool winnows fast so wall-clock stays near tournament.
+gates discriminating all the way down the chain, and it is what I land on. One endgame property is worth
+checking, because it governs how each selection terminates. As the pool winnows to the near-tied
+contenders, their errors on any remaining case cluster tightly, so the pool-MAD there collapses toward
+zero and the band `e*_t + ε_t` tightens back toward exact-best. That is the right behavior, not a defect:
+by the time only near-elites remain I *want* the last gates to decide by who is genuinely best among
+equals rather than waving the whole cluster forward, and the shrinking MAD delivers exactly that without
+my writing a schedule — the band is wide when the pool is diverse and contested and narrow when it is
+down to fine distinctions, self-scheduled at both ends.
+
+There is a consistency point I should not gloss: selection no longer looks at the scalar MSE at all, yet
+elitism and the outer loop still do. Is that coherent? It is, and deliberately so. The per-case filter
+chooses *parents* — who gets to breed — and that is where I want behavioral diversity, specialists and
+all. But the thing a run ultimately reports is a single tree, and "best" for reporting can only mean
+lowest aggregate error on the training sample, which is raw MSE. So the two roles are genuinely
+different: lexicase decides who reproduces, raw MSE decides who is remembered and carried forward
+untouched. Keeping `fitness_function` as raw MSE is exactly what lets the elite stay the honest
+best-fitter even while selection is breeding from specialists that would never top the MSE ranking — the
+two mechanisms pull in complementary directions rather than fighting.
+
+I should cost this before committing, because lexicase's price is real and I want it quantified against
+the tournament it replaces. Recomputing a minimum and a MAD over the current pool at each gate is linear
+in the pool size per case, so one selection is `O(PN)` worst case and filling the population is `O(P²N)`
+— the MAD adds no asymptotic term. But the *typical* cost is far lower, because the pool winnows fast.
+If a contested gate keeps roughly a fraction `ρ ≈ 0.3` of its pool, then after `g` gates the pool is
+about `500·0.3^g`, and it reaches one when `0.3^g = 1/500`, i.e. `g ≈ ln 500 / ln(1/0.3) ≈ 5.2` gates.
+So a typical parent is decided by about five cases, not all `N`, reading roughly `500 + 150 + 45 + 14 +
+4 + 1 ≈ 700` error entries per selection. Against tournament's `7` reads per selection that is a factor
+near 100 per generation — heavy, but a constant factor, not the `O(P²N)` worst case, because the
+winnowing rescues the average. So I expect a large wall-clock jump per run, on the order of a hundredfold
+in selection cost, and the honest question is whether that compute buys back the seeds standard GP threw
+away.
 
 The contract here passes the per-case absolute-error matrix into `selection` from
 `evolve_one_generation`, which builds it once per generation by evaluating every tree on the training
@@ -137,14 +200,15 @@ convergence that produced standard GP's worst outcomes. So the cleanest predicti
 seed should disappear.** That catastrophe was one lineage converging early onto a form that diverges off
 the test range; lexicase's case-by-case filtering keeps alternative forms alive long enough that no
 single early winner can lock the population, so I expect all three Nguyen-7 seeds positive and the mean
-to climb from 0.330 toward the ~0.97 the two good seeds already showed. On Nguyen-10, where the search
-needs to splice a `sin(x)` specialist with a `cos(y)` specialist, lexicase should *preserve* exactly
-those specialists that tournament buried — so I expect the Nguyen-10 mean to rise above standard GP's
-0.588, with the seed-42 near-solved case holding and the weaker seeds pulled up. Koza-3 is the control:
-it was already solved by the plain engine, so case-based selection should not hurt it — I expect it to
-stay high, near 0.99. If instead Nguyen-10 *does not* improve, that would tell me the bottleneck there
-is not selection diversity but raw representational search (the right product is simply hard to assemble
-under this depth cap), and the lever would have to move off selection. And there is one cost I should
-watch honestly: lexicase's `O(P²N)` selection is far heavier than tournament's `O(Pk)`, so I expect a
-large jump in wall-clock per run — the question is whether that compute buys back the seeds standard GP
+to climb from 0.330 toward the ~0.99 the two good seeds already showed — recovering essentially the full
+0.665 that the one detonating seed was costing. On Nguyen-10, where the search needs to splice the
+`sin(x)` specialist with the `cos(y)` specialist, lexicase should *preserve* exactly those specialists
+that tournament buried — so I expect the Nguyen-10 mean to rise above standard GP's 0.588, with the
+seed-42 near-solved case holding and the weaker seeds pulled up. Koza-3 is the control: it was already
+solved by the plain engine, so case-based selection should not hurt it — I expect it to stay high, near
+0.99. If instead Nguyen-10 *does not* improve, that would tell me the bottleneck there is not selection
+diversity but raw representational search (the right product is simply hard to assemble under this depth
+cap), and the lever would have to move off selection. And there is one cost I should watch honestly:
+lexicase's `O(P²N)` selection is far heavier than tournament's `O(Pk)`, so I expect the large jump in
+wall-clock I just estimated — the question is whether that compute buys back the seeds standard GP
 threw away.

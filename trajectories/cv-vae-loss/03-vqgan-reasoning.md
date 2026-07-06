@@ -1,38 +1,50 @@
-The perceptual rung did what I bet it would, and the numbers say so precisely. The small scale fell
-from 53.00 to 19.64 — the blur tax I diagnosed was real and the perceptual term collected most of it,
-just as I predicted the biggest gain would land where capacity is tightest. Medium went 15.75 → 10.69,
-a solid but smaller cut, and large went 5.35 → 3.84, the smallest absolute move of the three, exactly
-the diminishing-returns-up-the-capacity-ladder shape I expected: the large model was already nearly
-crisp under pixel loss, so LPIPS had little blur left to remove there. So the perceptual diagnosis
-holds end to end. But look at where the small scale *stopped*: 19.64 is far better than 53.00 and still
-the worst of the three by a wide margin — there is a residual softness LPIPS could not finish off. And I
-flagged exactly this at the close of the last rung: a fixed perceptual distance pulls deep features
-together but has no sharp, *adversarial* opinion about whether a patch of texture is realistic. VGG
-features can be matched by something that is close-but-still-a-bit-soft, because LPIPS is a static ruler,
-not a critic that actively hunts for the residual tell-tale difference between a real image and a
-reconstruction. The 19.64 is what is left after the ruler has done all it can; closing it needs a signal
-that keeps finding the softness LPIPS tolerates and punishing it.
+The perceptual rung did what I bet it would, and the numbers say so precisely enough that I should read
+them before deciding anything. The small scale fell from `53.00` to `19.64`, the medium `15.75 → 10.69`,
+the large `5.35 → 3.84`, and the gmean `16.47 → 9.31`. The prediction was that the biggest gain would
+land where the blur tax was largest, so let me check the *fractional* cuts rather than the absolute ones,
+because the fractions are what test the mechanism. Small kept `19.64/53.00 = 0.37` of its rFID — a `63%`
+cut. Medium kept `10.69/15.75 = 0.68` — a `32%` cut. Large kept `3.84/5.35 = 0.72` — a `28%` cut. The
+fractional improvement is monotone in the starting rFID: the perceptual term collected the most, in
+proportion, exactly where L1 had left the most on the table, and the least where the pixel loss had
+nearly sufficed. That is the "blur tax scales inversely with capacity" diagnosis confirmed end to end,
+not just in sign but in ordering. And the ladder compressed: the small-to-large spread went from
+`53.00/5.35 = 9.9×` down to `19.64/3.84 = 5.1×`. So attacking blur in feature space pulled the whole
+curve down and squeezed it together, most at the bottom.
+
+But look at where the small scale *stopped*. `19.64` is far better than `53.00` and still the worst of
+the three by a wide margin — a `5.1×` gap to the large scale's `3.84` remains. LPIPS did most of what a
+static perceptual ruler can do and then left a residual it structurally cannot finish, and I flagged
+exactly this at the close of the last rung: a fixed perceptual distance pulls deep features together but
+has no sharp, *adversarial* opinion about whether a patch of texture is realistic. VGG features can be
+matched by something that is close-but-still-a-bit-soft, because LPIPS is a static ruler — it scores a
+fixed distance and stops — not a critic that actively hunts for the residual tell-tale difference between
+a real image and a reconstruction and keeps moving the goalposts as the reconstruction improves. The
+`19.64` is what is left after the ruler has done all it can; closing it needs a signal that keeps finding
+the softness LPIPS tolerates and punishing it.
 
 That signal is adversarial. Add a discriminator `D` trained to tell real CIFAR images from
 reconstructions, and train the autoencoder — now also playing the role of a generator — to fool it. As
 `D` sharpens at spotting the residual softness or artifacts of reconstructions, it forces the
 autoencoder to produce crisper, more realistic output precisely in the high-frequency detail that the
-pixel and perceptual terms together still leave a touch soft. This is the move that historically took
-autoencoder reconstruction from "perceptually close" to "sharp," and it is the natural next correction
-to the L1 + LPIPS + KL skeleton I already have.
+pixel and perceptual terms together still leave a touch soft. The crucial difference from LPIPS is that
+`D` is *not static*: every step it retrains on the current reconstructions, so the moment the decoder
+learns to satisfy it, it re-specializes to whatever softness remains, a moving target that never lets the
+decoder settle into the "close enough" LPIPS accepts. This is the move that historically took
+autoencoder reconstruction from "perceptually close" to "sharp," and it is the natural next correction to
+the L1 + LPIPS + KL skeleton I already have.
 
 Now I have to be careful about *what* this rung is, because the name invites the wrong construction. The
 lineage this rung descends from is a two-stage vector-quantized model: compress an image to a short grid
 of discrete codes with a straight-through quantizer, replace the codebook's L2 reconstruction with a
 perceptual-plus-adversarial objective so it can compress hard and stay sharp, then learn an
 autoregressive transformer prior over the code indices. *None of that second machinery exists in this
-task.* The architecture here is a fixed continuous `AutoencoderKL` with a diagonal-Gaussian bottleneck
-— no codebook, no quantizer, no straight-through estimator, and certainly no second-stage transformer
-prior over codes. I am editing the *loss only*. So what carries over is exactly one idea from that
-lineage: the reconstruction objective should be perceptual *plus patch-adversarial* rather than pixel
-only. Everything else — the discrete bottleneck, the index sequence, the GPT — is out of scope and I
-must not import it into the reasoning. The rung is "add an adversarial term to the continuous VAE's
-reconstruction loss," not "build a VQGAN."
+task.* The architecture here is a fixed continuous `AutoencoderKL` with a diagonal-Gaussian bottleneck —
+no codebook, no quantizer, no straight-through estimator, and certainly no second-stage transformer prior
+over codes. I am editing the *loss only*. So what carries over is exactly one idea from that lineage: the
+reconstruction objective should be perceptual *plus patch-adversarial* rather than pixel only. Everything
+else — the discrete bottleneck, the index sequence, the autoregressive prior — is out of scope and I must
+not import it into the reasoning. The rung is "add an adversarial term to the continuous VAE's
+reconstruction loss," not "build a two-stage VQ model."
 
 The next thing the harness dictates is *where the adversarial machinery lives*, and this is the load
 bearing detail. The fixed training loop already has built-in GAN support: if my loss module exposes
@@ -47,91 +59,153 @@ piece against the loop's actual code.
 
 First, the weight balancing. A constant weight on the adversarial term is guaranteed wrong somewhere in
 training: early the discriminator is near-random and its gradient into the decoder is tiny and noisy,
-later it sharpens and can swamp the reconstruction signal — and a fixed coefficient cannot track a
-moving ratio. What I want is for the adversarial gradient and the reconstruction gradient to arrive at
-the decoder with comparable magnitude automatically. The place they meet is the decoder's last layer,
-`vae.decoder.conv_out.weight`, through which every gradient into the decoder must pass; the loop measures
-both gradients *there* and sets the adaptive weight to `‖∇ ref‖ / (‖∇ g_loss‖ + δ)`, clamped and
-detached. The subtlety is what it uses as the *reference* gradient. The loop reads
+later it sharpens and can swamp the reconstruction signal — and a fixed coefficient cannot track a moving
+ratio between two gradients that evolve on their own schedules. What I want is for the adversarial
+gradient and the reconstruction gradient to arrive at the decoder with comparable magnitude
+automatically. The place they meet is the decoder's last layer, `vae.decoder.conv_out.weight`, through
+which every gradient into the decoder must pass; the loop measures both gradients *there* and sets the
+adaptive weight to `‖∇ ref‖ / (‖∇ g_loss‖ + δ)`, clamped and detached. That formula is worth reading
+literally: it rescales the GAN gradient so that, at the last layer, its norm matches the reference
+gradient's norm — so the adversarial term contributes on the same scale as the reference no matter how
+sharp or dull `D` currently is. The subtlety is what it uses as the *reference* gradient. The loop reads
 `criterion._perceptual_loss` if my module has stashed it, and uses *that* — the perceptual term alone —
 as the reference, falling back to the whole loss otherwise. So the adaptive weight here normalizes the
 GAN gradient to the magnitude of the *perceptual* gradient at the last layer, not to the full
-reconstruction gradient. That means my module must store `self._perceptual_loss = p_loss` so the loop
-can pick it up; if I forget, the loop balances against the entire loss instead and the GAN pressure is
-calibrated to the wrong scale. This is a concrete place the task's implementation differs from the
-generic lineage, where the adaptive weight is balanced against the full reconstruction loss — here it is
-against the perceptual term specifically, by the loop's construction.
+reconstruction gradient. That means my module must store `self._perceptual_loss = p_loss` so the loop can
+pick it up. And I should trace the failure of forgetting, because it is not benign: the full-loss
+gradient norm includes the L1 and feature-matching terms on top of perceptual, so it is strictly larger
+than the perceptual-only norm, which means the fallback reference is larger, which makes the adaptive
+weight *larger*, which drives the GAN *harder* — over-pressuring the decoder into adversarial artifacts
+rather than removing softness. So stashing `_perceptual_loss` is not bookkeeping; getting it wrong
+mis-calibrates the GAN toward too-strong, and a rung that gets *worse* than perceptual would be the
+signature. This is a concrete place the task's implementation differs from the generic lineage, where the
+adaptive weight is balanced against the full reconstruction loss — here it is against the perceptual term
+specifically, by the loop's construction.
 
-Second, the discriminator. The quality problem is *local* — residual softness in texture and
-high-frequency detail inside the image — so I want a discriminator that judges patches, not one that
-collapses the whole image to a single real/fake scalar. A fully-convolutional PatchGAN outputs a grid
-of scores, one per receptive field, concentrating the adversarial signal on local texture realism and
-giving a dense gradient. I build it as `NLayerDiscriminatorWithFeatures`: the standard PatchGAN stack —
-strided conv, LeakyReLU, deeper strided convs with normalization — but with two task-specific choices.
-I wrap every conv in **spectral normalization** to keep the discriminator Lipschitz and the adversarial
-game stable, which matters because the loop trains `D` aggressively every step after warm-up. And I
-register forward hooks on the LeakyReLU activations to expose the **intermediate features**, because of
-the third piece.
+Second, the discriminator, and here a receptive-field calculation changes how I should think about it.
+The quality problem is *local* — residual softness in texture and high-frequency detail inside the image
+— so I want a discriminator that judges patches, not one that collapses the whole image to a single
+real/fake scalar. A fully-convolutional PatchGAN outputs a grid of scores, one per receptive field,
+concentrating the adversarial signal on local texture realism and giving a dense gradient. I build it as
+`NLayerDiscriminatorWithFeatures`: the standard PatchGAN stack — strided conv, LeakyReLU, deeper strided
+convs with normalization — with `n_layers = 3`. But let me actually compute what "patch" means on a
+`32×32` input, because the phrase is misleading here. The stack downsamples `32 → 16 → 8 → 4` through
+three stride-2 `4×4` convs, then two stride-1 `4×4` convs take `4 → 3 → 2`, so the output is a `2×2` grid
+of scores. Tracking the receptive field through those five layers — `RF ← RF + (k-1)·jump`, `jump ← jump·stride` —
+gives `4, 10, 22, 46, 70`: a receptive field of `70` pixels. On a `32×32` image that `70` exceeds the
+whole image, so each of the `2×2` output cells effectively sees (a clipped version of) the entire image.
+In other words, on CIFAR this "PatchGAN" is nearly a *global* discriminator dressed as a patch one — the
+patches are the whole image. That is not a bug; it just tells me the local-vs-global framing does not buy
+much at `32px`, and the real value of the fully-convolutional form here is the *dense output and dense
+features* — a `2×2` score grid plus the intermediate feature maps at `16×16`, `8×8`, `4×4`, `3×3` — that
+give many gradient sites rather than one. That receptive-field finding also settles a fork I might otherwise agonize over: fully-convolutional `D`
+versus a global classifier `D` that pools to a single real/fake scalar. Since locality is moot at `32px`
+— both see essentially the whole image — the choice is really about *gradient density*, and there the
+fully-convolutional form wins decisively. A single-scalar `D` gives the generator one gradient direction
+per image, and it can win cheaply by latching onto one global cue (an overall color-histogram tell, say),
+which produces uninformative gradients and invites mode collapse. The fully-convolutional `D` emits a
+`2×2` score grid *and* four hooked feature maps at `16×16`, `8×8`, `4×4`, `3×3` — hundreds of
+spatially-anchored gradient sites per image rather than one — so the adversarial signal is dense and
+location-aware even when each site's receptive field is global. So I keep the fully-convolutional stack
+not for locality, which it does not really have here, but for gradient density, which it has in
+abundance. Two task-specific choices go on top. I wrap every conv in **spectral normalization** to keep
+the discriminator Lipschitz and the adversarial game stable, which matters because the loop trains `D`
+aggressively every step after warm-up; an un-normalized `D` can grow its weights, make its logits and
+gradients explode, and destabilize the generator it is supposed to teach. And I register forward hooks on
+the LeakyReLU activations to expose the **intermediate features**, because of the third piece.
 
 Third — the one term the loop does *not* compute and that I therefore add inside `VAELoss` — feature
 matching. Beyond fooling the discriminator's final score, I want the reconstruction's *internal*
 discriminator features to match the real image's, layer by layer. Feature matching is a well-known
 stabilizer for adversarial training: instead of (or alongside) chasing the single real/fake logit, the
 generator is asked to reproduce the statistics the discriminator extracts at each layer, which gives a
-denser, less mode-collapse-prone signal and ties the adversarial objective back to perceptual structure.
-So when the discriminator is on, I run both the target and the reconstruction through `D` with
-`return_features=True`, take the L1 distance between corresponding real and fake feature maps (detaching
-the real features so the discriminator is not pulled by this term), average over the layers, and add it
-to my reconstruction loss with `feat_match_weight = 1.0`. The real-feature detach is the same discipline
-as everywhere else: feature matching trains the generator toward the discriminator's representation, not
-the discriminator toward the generator. This feature-matching term is *the* thing my module contributes
-to the adversarial objective; the logit-level `g_loss` and the discriminator's own hinge-plus-R1 update
-are the loop's job.
+denser, less mode-collapse-prone signal — the four hooked feature maps are four gradient sites per image
+instead of the lone logit — and ties the adversarial objective back to perceptual structure. So when the
+discriminator is on, I run both the target and the reconstruction through `D` with `return_features=True`,
+take the L1 distance between corresponding real and fake feature maps (detaching the real features so the
+discriminator is not pulled by this term), average over the layers, and add it to my reconstruction loss
+with `feat_match_weight = 1.0`. The real-feature detach is the same discipline as everywhere else:
+feature matching trains the generator toward the discriminator's representation, not the discriminator
+toward the generator. This feature-matching term is *the* thing my module contributes to the adversarial
+objective; the logit-level `g_loss` and the discriminator's own hinge-plus-R1 update are the loop's job.
 
 So let me assemble the literal fill against everything I keep. The reconstruction skeleton is unchanged
-from the perceptual rung: `F.l1_loss` as the pixel anchor, the frozen `lpips.LPIPS(net='vgg')`
-perceptual term at `perceptual_weight = 0.5` (float-cast under autocast, eval, no grad), and the
-closed-form KL at `kl_weight = 1e-6`. I stash `self._perceptual_loss = p_loss` for the loop's adaptive
-weight. I build `self.disc = NLayerDiscriminatorWithFeatures()` and its own
-`self.disc_opt = Adam(lr=1e-4, betas=(0.5, 0.9))`, and set `self.disc_start = 5000` — the warm-up,
-because a randomly initialized decoder produces garbage and turning adversarial pressure on immediately
-lets `D` win trivially and emit useless or destructive gradients; hold the GAN off until the
-autoencoder reconstructs sanely. In `forward`, I gate the feature-matching term on `step >= disc_start`
-exactly as the loop gates its own adversarial terms, so the two come on together. I report the
-reconstruction pieces always and the feature-matching value once it is active. Note what I am *not*
-writing in the module and the loop handles: the hinge discriminator loss
-`(relu(1 + D(recon.detach())) + relu(1 - D(real))).mean()`, the **R1 gradient penalty** on real inputs
-(`gp_weight = 10`), the generator logit loss `-mean D(recon)`, and the adaptive-weight computation. The
-R1 penalty in particular is a task-specific stabilizer the lineage's pure-hinge recipe does not carry —
-it is in the loop, not mine to add. (The distilled module, including the discriminator class, is in the
-answer.)
+from the perceptual rung: `F.l1_loss` as the pixel anchor, the frozen `lpips.LPIPS(net='vgg')` perceptual
+term at `perceptual_weight = 0.5` (float-cast under autocast, eval, no grad), and the closed-form KL at
+`kl_weight = 1e-6`. I stash `self._perceptual_loss = p_loss` for the loop's adaptive weight. I build
+`self.disc = NLayerDiscriminatorWithFeatures()` and its own `self.disc_opt = Adam(lr=1e-4,
+betas=(0.5, 0.9))` — the low `beta1 = 0.5` is the standard GAN choice, letting the discriminator adapt
+quickly to a moving generator rather than averaging over stale gradients — and set `self.disc_start =
+5000`. The warm-up matters because a randomly initialized decoder produces garbage, and turning
+adversarial pressure on immediately lets `D` win trivially and emit useless or destructive gradients; I
+hold the GAN off until the autoencoder reconstructs sanely. In `forward`, I gate the feature-matching
+term on `step >= disc_start` exactly as the loop gates its own adversarial terms, so the two come on
+together — a feature-matching term against an untrained `D` would be matching noise. I report the
+reconstruction pieces always and the feature-matching value once it is active, so I can watch it switch
+on at step `5000` and confirm it *decreases* — a feature-matching term that plateaus high would mean the
+reconstruction's internal `D`-features never converge to the reals', i.e., the adversarial pressure is
+not landing. It is worth accounting for what this rung now costs per step, since it is no longer a
+two-line loss: the module holds a whole discriminator and its own Adam state, and my feature-matching
+term adds two `D` forward passes per step (target and reconstruction, with `return_features=True`) on top
+of the passes the loop already runs for `g_loss` and the discriminator update. The step budget is fixed,
+so this does not cost me schedule — I get the same `20k`/`30k` steps regardless — it just makes each step
+heavier, which is a price I pay in wall-clock, not in optimization. The edit surface explicitly permits a
+loss module to carry a discriminator, an optimizer, and a `disc_start`, so none of this leaves the
+contract; it is exactly the GAN-shaped fill the loop was built to accept. Note what I am *not*
+writing in the module and the loop handles: the hinge discriminator loss `(relu(1 + D(recon.detach())) +
+relu(1 - D(real))).mean()`, the **R1 gradient penalty** on real inputs (`gp_weight = 10`), the generator
+logit loss `-mean D(recon)`, and the adaptive-weight computation. The R1 penalty in particular is a
+task-specific stabilizer the lineage's pure-hinge recipe does not carry, and it is worth being clear on
+what it does mechanically because it interacts with my spectral-norm choice. R1 adds
+`(gp_weight/2)·‖∇_x D(x_real)‖²` with `gp_weight = 10`, penalizing the *norm of the discriminator's
+gradient at real images*. Without it, a discriminator that is winning drives its decision boundary toward
+a near-vertical wall at the data manifold — enormous gradient magnitude right where the real images sit —
+and the generator, receiving that razor-edged signal, gets a gradient so steep and narrow it cannot
+follow it stably. R1 flattens that wall, keeping `D` confident but *smooth* near the data so the gradient
+it hands the generator is climbable. It works toward the same stability goal as spectral norm but from
+the other side: spectral norm constrains `D`'s Lipschitz constant globally through its weights, R1 damps
+its gradient locally at the real data — belt and suspenders for a critic the loop trains every step. All
+of that lives in the loop, not mine to add. (The distilled module, including the discriminator class, is
+in the answer.)
 
-Now the falsifiable expectations against the perceptual numbers. The adversarial term attacks exactly
-the residual softness LPIPS left, and that softness was largest on the small scale (19.64). So I expect
-the small scale to improve most again, plausibly down into the mid-teens, since the patch discriminator
-keeps finding the soft textures the static ruler tolerated. Medium (10.69) and large (3.84) should each
-tick down too, with large moving least in absolute terms — it was already crisp, so there is the least
-softness left for the critic to find. The gmean task score, 9.31 at the perceptual rung, should fall
-meaningfully below it. Two risks I am watching, both rooted in the adaptive weight and the warm-up.
-First, if the adaptive weight is miscalibrated — say I forget to stash `_perceptual_loss` and the loop
-balances against the full loss — the GAN pressure could be too strong and *raise* rFID by introducing
-adversarial artifacts instead of removing softness; a rung that gets worse, not better, is the signature
-of that bug. Second, the warm-up at 5000 steps means the small run (20,000 steps) spends a quarter of
-training without the discriminator and the larger runs (30,000) spend a sixth — so the adversarial term
-has fewer steps to work on small, which could blunt the very scale I expect it to help most. If the
-small scale *fails* to improve much while medium and large do, the warm-up fraction is the suspect. If
-the adversarial rung comes in cleanly below perceptual across all three scales, the ladder is doing what
-it should and the residual to attack next would be something the patch discriminator and perceptual
-term *together* still miss — a structured, frequency-localized error rather than a generic softness.
+Before I predict, I should size the one budget risk the warm-up introduces, because it cuts against the
+scale I most want to help. `disc_start = 5000` is a fixed step count, but the three runs have different
+budgets: the small runs `20,000` steps, so the discriminator is off for `5000/20000 = 25%` of training;
+the medium and large run `30,000` steps, so it is off for `5000/30000 = 16.7%`. The small scale — the one
+carrying the worst residual at `19.64`, the one I most need the adversarial term to fix — is precisely
+the one that gets the *least* adversarial training, a quarter of its schedule spent with the critic
+silent. So there are two forces pulling opposite ways on small: it has the most softness for the critic
+to find, but the fewest post-warm-up steps to find it in. That tension is exactly what the numbers will
+adjudicate.
+
+Now the falsifiable expectations against the perceptual numbers. The adversarial term attacks exactly the
+residual softness LPIPS left, and that softness was largest on the small scale (`19.64`). So the default
+prediction, by the same logic that has held for two rungs, is that the small scale improves most again,
+plausibly down into the mid-teens, since the patch discriminator keeps finding the soft textures the
+static ruler tolerated. Medium (`10.69`) and large (`3.84`) should each tick down too, with large moving
+least in absolute terms — it was already crisp, so there is the least softness left for the critic to
+find. The gmean task score, `9.31` at the perceptual rung, should fall meaningfully below it. Two risks I
+am watching, both traced above. First, if the adaptive weight is miscalibrated — say I forget to stash
+`_perceptual_loss` and the loop balances against the full loss — the GAN pressure would be too strong and
+could *raise* rFID by introducing adversarial artifacts instead of removing softness; a rung that gets
+worse, not better, is the signature of that bug. Second, the warm-up fraction: if the small scale *fails*
+to improve much while medium and large do, the `25%`-silent schedule is the suspect, not the mechanism.
+If the adversarial rung comes in cleanly below perceptual across all three scales, the ladder is doing
+what it should, and any residual that survived would be something the patch discriminator and perceptual
+term *together* still miss — a structured error rather than a generic softness, since all three of my
+terms so far live purely in the spatial domain.
 
 The causal chain in one breath: perceptual's measured residual is the softness a static LPIPS ruler
-tolerates (small scale stalls at 19.64, still the worst) → add an adversarial patch discriminator that
-actively hunts that softness, but keep it to the *loss-only* idea from the VQ lineage, importing none of
-its codebook / quantizer / transformer machinery, none of which this continuous `AutoencoderKL` exposes
-→ let the fixed loop own the generator logit loss, the hinge-plus-R1 discriminator update, and the
-adaptive weight (which it balances against `_perceptual_loss`, so I must stash it), and contribute from
-the module only what the loop does not: a spectral-norm `NLayerDiscriminatorWithFeatures` and an L1
-**feature-matching** term gated at `disc_start = 5000` → landing `L1 + 0.5·LPIPS + 1e-6·KL +
-1.0·feat_match` with the discriminator built and `_perceptual_loss` stashed, and expecting the small
-scale's 19.64 to fall the hardest while watching the adaptive-weight calibration and the warm-up
-fraction for the two ways this rung could disappoint.
+tolerates — the fractional cuts (`63%/32%/28%`) confirmed the blur-tax-scales-with-capacity mechanism and
+compressed the ladder to `19.64/10.69/3.84`, gmean `9.31`, but the small scale stalls at `19.64`, still
+the worst by `5.1×` → add an adversarial patch discriminator that actively, non-statically hunts that
+softness, but keep it to the *loss-only* idea from the VQ lineage, importing none of its codebook /
+quantizer / transformer machinery, none of which this continuous `AutoencoderKL` exposes → let the fixed
+loop own the generator logit loss, the hinge-plus-R1 discriminator update, and the adaptive weight (which
+it balances against `_perceptual_loss`, so I must stash it or over-drive the GAN), and contribute from
+the module only what the loop does not: a spectral-norm `NLayerDiscriminatorWithFeatures` (whose `70px`
+receptive field makes it near-global at `32px`, so its value is the dense score grid and features, not
+locality) and an L1 **feature-matching** term gated at `disc_start = 5000` → landing `L1 + 0.5·LPIPS +
+1e-6·KL + 1.0·feat_match` with the discriminator built and `_perceptual_loss` stashed, and expecting the
+small scale's `19.64` to fall the hardest while watching the adaptive-weight calibration and the
+`25%`-silent warm-up fraction for the two ways this rung could disappoint.

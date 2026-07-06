@@ -12,6 +12,22 @@ harder boundaries; the residual weak spots are precisely the rows where the per-
 few corrections. The SPSA bargain — a genuine direction, but `O(n)` queries per step — caps the number of
 steps, and on hard boundaries the number of steps is what I am short of.
 
+Let me decompose SPSA's table the same way I decomposed the floor's, because the residual structure tells
+me where the next method has to bite. By architecture: ResNet20 `(0.955 + 0.910)/2 = 0.933`, MobileNetV2
+`(0.920 + 0.885)/2 = 0.903`, VGG11-BN `(0.605 + 0.620)/2 = 0.613`. VGG is *still* the outlier, now at
+`0.613` against `~0.92` for the other two — a ratio `0.613/0.933 = 0.66`, better than the floor's `0.47`
+but the same backbone is still the wall. And a sign flip worth noticing: by dataset, SPSA scores CIFAR-10
+`(0.955 + 0.605 + 0.920)/3 = 0.827` against CIFAR-100 `(0.910 + 0.620 + 0.885)/3 = 0.805` — CIFAR-100 is now
+slightly *lower*, whereas for the floor it was slightly higher. That inversion is mechanistically sensible:
+the floor benefited from CIFAR-100's extra competitors because it was flailing for *any* flip, but once I
+descend a real margin the "more targets" bonus evaporates (aiming already finds the nearest boundary) and
+the more crowded 100-way logit geometry costs a hair. The gap is small (`0.022`), so dataset is second
+order; architecture is first order, and the number to beat is the VGG pair near `0.61`. The improvement
+SPSA bought there — `0.255 -> 0.605` (`2.37x`) and `0.300 -> 0.620` (`2.07x`) — proves the VGG failure was
+directional, but the fact it *stalled* at `~0.61` while ResNet went to `~0.93` on the same three steps says
+the VGG boundary needs *more corrections than three*, not a cleaner single direction. So the next rung is
+not about a better direction; it is about buying an order of magnitude more steps out of the same budget.
+
 So the question for this rung is sharp: can I get many cheap, *effective* moves instead of a few
 expensive ones? SPSA pays `256` queries to estimate one gradient and then takes one step on it. What if a
 single query bought me a whole candidate move that I either keep or discard? That is one query per *step*,
@@ -20,6 +36,23 @@ good enough to make progress. The floor already used one-query accept-if-better 
 moves were structureless. So the entire game is: design a one-query proposal whose moves are *structured*
 enough that greedy accept-if-better converges in tens of steps. SPSA's strength was the direction; the
 floor's strength was the cheap step. I want both: cheap steps *and* moves aligned with the model.
+
+Before committing, let me price the one-query alternatives the background offers, because "one query per
+step" is a family, not a single method. Option one: keep the floor's uniform proposal but fix its two
+economic sins — move to `+/- eps` corners and run the full `~999` steps instead of `64`. But the floor
+already proved the ceiling here: a uniform corner direction over `3072` coordinates is still `~1.4%`
+aligned, and `999` of those is still a random walk; more cheap steps without structure does not clear the
+VGG wall. Option two: SimBA-style orthonormal search — add or subtract a fixed small step along one basis
+vector (a pixel or a DCT atom) per query. That is structured and cheap, but each move is a *small*
+orthogonal step that can never be undone, so the perturbation is a monotone accumulation and I cannot
+re-spend budget on a region I later realize was wrong; and single-basis moves touch one direction at a
+time, throwing away the per-query leverage of moving a whole block. Option three: fixed-grid corner search
+— restrict to `+/- eps` on a pre-defined discrete grid of blocks. Corners are right, but freezing the grid
+throws away the freedom to *choose where* to spend the next move, which is exactly the freedom I most want
+on a hard boundary. The synthesis these three point at is: corners (from option three), a block move that
+re-spends freely (fixing option two's irreversibility), and a freely *sampled* location (fixing option
+three's frozen grid) — greedy accept-if-better over that proposal. That is where I am headed, and the rest
+of this reasoning is deriving the block's shape and sign from the model.
 
 There is a deeper reason to abandon gradient estimation entirely, beyond the query tax. SPSA, like any
 finite-difference method, estimates and follows the *local gradient*. A large class of defenses do not
@@ -56,8 +89,15 @@ for a fixed number `k` of changed pixels, I should shape them to maximize the nu
 fully covered. Build the shape greedily, one cell at a time, tracking the count `N` of fully-covered
 `s x s` squares: from an `s x s` block (`N = 1`), extending as a long thin strip spends ~`s` cells per new
 covered window, while keeping the shape near-square and adding a strip along the longer side creates many
-covered windows at once. Carrying this through, the optimum for area `k` is the near-square rectangle; for
-`k = l^2` it is a literal `l x l` square. So the convolutional structure forces the update's support to be
+covered windows at once. Let me make this concrete with a `3 x 3` first-layer filter (`s = 3`). A `2 x 2`
+block of changed pixels fully covers *zero* `3 x 3` windows — a `3 x 3` window does not fit inside a
+`2 x 2` support at all — so it moves no first-layer activation to its full extent; a `3 x 3` block covers
+exactly `1`. Now spend a real budget, `k = 64` pixels, three ways: an `8 x 8` square covers
+`(8 - 3 + 1)^2 = 36` full windows; a `4 x 16` rectangle covers `(4 - 3 + 1)(16 - 3 + 1) = 2 * 14 = 28`; a
+`2 x 32` strip covers `0`, because two rows can never contain a three-row window. Same `64`-pixel budget,
+and the square saturates `36` first-layer units, the rectangle `28`, the strip *none*. Carrying this
+through, the optimum for area `k` is the near-square rectangle; for `k = l^2` it is a literal `l x l`
+square. So the convolutional structure forces the update's support to be
 a **square** — the shape that maximizes the worst-case change in first-layer activations per pixel of
 budget. And unlike fixed-grid corner-search attacks, I let the square's *position* be sampled freely
 anywhere each iteration; freezing a grid throws away the freedom to choose where to spend budget.
@@ -70,24 +110,43 @@ pixels want to move the same way. Compare `E|<delta, v>|` over one channel of th
 signs: `<delta, v>` is a sum of independent signed terms, and by Khintchine its expected magnitude is
 `Theta(||v_block||_2)` — the signs partially cancel, random-walk style. One shared sign `rho` across the
 square: `<delta, v> = rho * sum_block v = rho * ||v_block||_1` for a constant-sign block, so
-`E|<delta, v>| = Theta(||v_block||_1)`. And `||v_block||_1 >> ||v_block||_2` for a constant block (`h^2`
-vs `h`), an entire factor of `h` better alignment. So I share one sign across the whole square *within*
-each channel, but keep separate signs *per channel* (different first-layer color filters can want
-different channel directions, and the implementation keeps that freedom for free). The update is a square
-block, all spatial entries within a channel at `+/-2eps`, one sign per channel, at a uniformly random
-location.
+`E|<delta, v>| = Theta(||v_block||_1)`. Put the scaling on an `h x h` block with roughly unit-magnitude
+`v` entries: `||v_block||_1 ~ h^2` while `||v_block||_2 ~ sqrt(h^2) = h`, so the shared sign aligns at the
+`h^2` scale and the independent signs at the `h` scale — a factor of `h` better. For the `8 x 8` square
+above, `h = 8`, so the shared sign is about `8x` better aligned with a locally-constant gradient than an
+independent-sign fill of the exact same square; the two design choices compound, because the square is
+what makes the local gradient approximately constant across the support in the first place. So I share one
+sign across the whole square *within* each channel, but keep separate signs *per channel* (different
+first-layer color filters can want different channel directions, and the implementation keeps that freedom
+for free). The update is a square block, all spatial entries within a channel at `+/-2eps`, one sign per
+channel, at a uniformly random location.
 
 How big is the square, and does it stay fixed? Let `p in [0,1]` be the fraction of spatial pixels I touch
 this step; the side is `s = round(sqrt(p * n_features / c))`, clamped to >= 1. Early in the search I am
 far from a solution and want big, coarse moves that can change the prediction outright — large `p`. As I
 close in, large squares overshoot and are more likely to be rejected, wasting a query. So `p` shrinks over
 the budget, the direct analogue of step-size decay (the thing Adam gave SPSA, here built into the move
-size). The fill starts at `p_init = 0.8` and halves `p` at fixed iteration breakpoints, with
-`resc_schedule = True` rescaling the schedule to the actual budget by mapping `it -> int(it / n_queries *
-10000)` so the same coarse-to-fine shape stretches to whatever `n_queries` is given. And the
+size). Put the schedule in pixels for CIFAR, where `n_features / c = H * W = 1024`, so `s =
+round(sqrt(p * 1024))`. Starting at `p_init = 0.8` gives `s = round(sqrt(819.2)) = 29` — a `29 x 29` square
+that covers almost the entire `32 x 32` image, a genuinely coarse "repaint most of it" opening move. Then
+`p` halves: `0.4 -> sqrt(409.6) = 20`, `0.2 -> 14`, `0.1 -> 10`, `0.05 -> 7`, `0.025 -> 5`, so the side
+walks `29 -> 20 -> 14 -> 10 -> 7 -> 5 -> ...` from near-global repaints down to tiny local touch-ups — the
+step-size decay Adam gave SPSA, here realized as a shrinking support. The `resc_schedule = True` maps
+`it -> int(it / n_queries * 10000)`, so the breakpoints that were tuned on a `10000`-query schedule are
+compressed by exactly `10x` onto this `1000`-query budget — the same coarse-to-fine arc, ten times faster,
+which matters because at one query per step I will take on the order of hundreds of steps and want the
+whole arc to fit. And the
 initialization: rather than start at the clean image and spend the first moves finding the boundary, start
 *already* on the boundary at a structured high-frequency point CNNs are known to be sensitive to — random
-width-1 vertical stripes at full `L_inf` radius.
+width-1 vertical stripes at full `L_inf` radius. Two reasons make this the right free move. First,
+economics: I earlier watched the floor spend `~32` accepted steps just accumulating to the `eps` radius; a
+boundary init hands me that radius for free at query zero, so none of my precious one-query steps are
+wasted merely reaching full magnitude. Second, direction: width-1 vertical stripes are a maximally
+high-frequency pattern along the horizontal axis, and a convolutional first layer with small filters is
+exactly a high-frequency-sensitive operator — its filters respond strongly to sharp local transitions — so
+the stripe init already sits near a direction the model's early layers amplify, a better starting basin
+than the clean image or uniform noise. It costs the same one initial query the floor spent seeding `best`,
+but it spends it on the boundary in a model-relevant direction instead of at the timid clean point.
 
 The objective is the margin `J = f_y - max_{k!=y} f_k`, used both as the thing to minimize and as the
 success test (it is the same quantity SPSA descended, and the floor's plain-`f_y` choice is a degenerate
@@ -106,7 +165,25 @@ exits the instant it flips, the *average* queries over the batch will be far bel
 samples flip in a handful of moves and stop consuming queries, so the mean is pulled down toward the easy
 tail. This is the opposite of SPSA, where every sample paid the full `768` regardless. So I expect Square
 to win on *both* axes simultaneously, which is rare: higher `asr` (more, better-aligned steps on the hard
-boundaries) *and* lower `avg_queries` (cheap steps plus early exit).
+boundaries) *and* lower `avg_queries` (cheap steps plus early exit). Put the step arithmetic beside SPSA's:
+SPSA got `1000 // 256 = 3` corrections; Square, at one query each, can make up to `~999`, a factor of
+`~333x` more corrections on the same budget. The VGG rows stalled at `~0.61` on three steps precisely
+because three was too few; if the boundary needs, say, `50` structured corrections, Square can afford it
+and SPSA never could.
+
+Let me verify the square construction against its endpoints rather than trust the derivation. At the coarse
+end, `p -> 1` and a shared per-channel sign, the move is essentially a single global `+/-2eps` shift of an
+entire channel that reprojects to a uniform `+/-eps` tint — a one-parameter, `2^3 = 8`-way corner probe of
+the global colour direction, exactly the kind of blunt "is the whole image the wrong tint" test a coarse
+opening should make. At the fine end, `s = 1`, the square collapses to a single pixel driven to `+/- eps`
+— which is precisely a SimBA-style single-coordinate corner flip. So the coarse-to-fine schedule literally
+interpolates between a global corner probe and single-pixel corner search, with the `l x l` square as the
+general member: the two one-query methods I rejected as endpoints sit *inside* this family, and the square
+schedule sweeps through them. That is the consistency check I wanted — the design is a strict
+generalization, not a lateral move. The force-accept-on-flip clause cannot break feasibility because the
+force-accepted candidate is still a projected `+/-eps` point, and the early-exit (stop querying once
+`margin <= 0`) is what guarantees `avg_queries` falls below the budget rather than pinning at it: any
+sample that flips at step `t` contributes `t + 1` queries, not `1000`, so easy samples drag the mean down.
 
 So the falsifiable expectations against SPSA's numbers. Square should beat SPSA on `asr` everywhere,
 because corner-spending square moves aligned with the convolutional structure make real progress per

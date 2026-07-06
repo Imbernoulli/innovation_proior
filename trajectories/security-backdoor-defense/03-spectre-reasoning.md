@@ -10,6 +10,22 @@ anything, a hair *below* the clustering rung's 0.4237, because the small recall 
 into any `(1-asr)` improvement and clean accuracy wobbled. The defense is detecting some poison and
 still failing to defend.
 
+Turn that 0.2688 into a body count, because it explains the flat `asr` exactly and sets the bar this
+rung has to clear. On resnet20-cifar10-badnets there are about 2,500 poison in the target class, and the
+harness removed the top `1.5*0.05*50,000 = 3,750` points. Recall 0.2688 means `0.2688 * 2,500 ≈ 672`
+poison landed in the removed set; the other `1,828` — 73% of the poison — survived into the retrain set.
+And 1,828 trigger-carrying, target-relabeled images is not a residue, it is a full-strength attack: it
+is more poison than the entire cifar100 injection, and the retrain relearns the shortcut off it, which is
+why `asr` reads 0.9708, essentially the clustering rung's value. The lesson in the arithmetic is that
+`asr` is not linear in recall — it is a near-threshold: a backdoor trigger is a low-entropy, high-margin
+feature that a network will relearn from even a small surviving fraction, so partial removal buys almost
+nothing until removal is nearly total. The removal budget is not the obstacle — 3,750 comfortably exceeds
+the 2,500 poison, so a ranking that floated *all* the poison to the top would remove every one and still
+spend 1,250 slots on clean data. The obstacle is purely recall: to move `asr` I need recall not at 0.27
+but near 1.0, which means catching the ~73% of poison the single top eigenvector never inspected. That is
+the quantitative target — not "better detection" in the abstract, but the specific missing three-quarters
+on cifar10 and the entire signature on cifar100.
+
 The diagnosis is the limitation I named at the close of the last step, now measured. A 27% recall means
 the top eigenvector caught roughly one poisoned point in four and missed three. The spectral test bets
 everything on the *single* top-variance direction of the *combined* class covariance, and that bet only
@@ -65,14 +81,23 @@ below a half, the clean majority is never trimmed away.
 There is a dimensionality obstacle I have to clear before whitening, and it is the difference between
 this working and amplifying noise. Robust covariance estimation in `d` dimensions needs on the order of
 `d^2` samples to be accurate, and `d` here is the penultimate-feature dimension — hundreds to thousands
-— while a class has only a few thousand examples. I cannot robustly estimate a thousand-dimensional
-covariance from that; the estimate would be garbage and whitening would inflate estimation noise rather
-than poison. So I reduce dimension first: project the centered class features onto their top-`k`
+— while a class has only a few thousand examples. Put the numbers in: MobileNetV2's penultimate width is
+`d = 1,280`, so a full covariance has `d(d+1)/2 ≈ 820,000` free parameters, and `d^2 ≈ 1.64` million —
+against a FashionMNIST class of ~6,000 points. VGG-16-BN is `d = 512`, `d^2 ≈ 262,000`, against a
+cifar100 class of ~500-1,000 points, worse by two orders of magnitude. The sample-to-parameter ratio is
+far below one; the covariance estimate would be rank-deficient and its inverse-square-root — the
+whitening map — would blow up the many near-zero sample directions, inflating estimation noise rather
+than poison. I cannot robustly estimate a thousand-dimensional covariance from a few thousand points. So I reduce dimension first: project the centered class features onto their top-`k`
 singular subspace and do all robust estimation and whitening inside that `k`-dimensional space. This is
 safe for the poison as long as `k` is large enough to contain the contaminated direction — the poison
 bump, even if not the single top direction, is *some* above-average-variance direction, so it lives
 within the top-`k` subspace for a reasonable `k` — and it makes robust estimation feasible (`k^2`
-samples, not `d^2`) while restoring distance contrast.
+samples, not `d^2`) while restoring distance contrast. With the cap at `k = 64`, `k^2 = 4,096`, which sits
+below the cifar10 and fmnist class sizes (thousands) and near the cifar100 class size — feasible where the
+full `d^2 = 262,000` was not, a two-orders-of-magnitude reduction in what the robust estimator has to
+support. It also flips the distance-concentration argument that killed the clustering rung: at `k=64` the
+relative distance spread `~1/sqrt(k) ≈ 0.125` is back to where contrast exists, so the Mahalanobis
+trimming the robust estimator relies on can actually separate core from outlier.
 
 But `k` is a real knob with failure on both sides, and the spectral rung's cifar100 zero is a warning
 that fixed choices can be exactly wrong. Too small a `k`: the subspace might not contain the poison
@@ -89,6 +114,28 @@ tall residual eigenvalue (the un-whitened poison); a `k` too small (no poison) o
 clean dilution) leaves a flatter whitened spectrum. Pick the `k` that maximizes the post-whitening top
 eigenvalue. The data tells me the effective dimensionality of the signature instead of my guessing it;
 a geometric grid from 1 up to a cap suffices and the choice is not sensitive to the exact grid.
+
+Trace why that argmax points the right way in each regime, because a selection rule is only as good as
+its extremum. If `k` is *too small* to contain the poison direction, the top-`k` subspace is all clean
+variance; the robust estimator whitens it to near-isotropy and the post-whitening top eigenvalue sits
+near 1 — a flat signal, correctly rejected. If `k` is *right*, the subspace contains the contaminated
+direction, but the robust estimator trims the poison as high-Mahalanobis outliers and so does not count
+it toward the clean covariance; whitening therefore leaves that direction un-shrunk and the
+post-whitening top eigenvalue reads well above 1 — the tall signal I select. If `k` is *too large*, I drag
+in clean directions estimated from too few samples relative to `k^2`, the robust estimator mis-whitens
+them, and one may inflate above 1 — a false tall signal, and I have to be honest the argmax could chase
+it. Two things bound the damage: the `k = 64` cap keeps `k^2` under the class sizes so mis-whitening
+stays mild, and a mis-whitened clean direction inflates *diffusely* across many points rather than
+isolating a minority, so it does not manufacture the sharp poison/clean split a true signature does — the
+score degrades gracefully rather than flipping to flag clean data. The rule is not perfect, but its
+failure mode is bounded and its success mode is exactly the "un-whitened poison direction stays tall"
+event I want, so I trust the argmax over a capped geometric grid more than any fixed `k` — which is what
+the spectral rung effectively committed to and what its cifar100 zero punished. I choose iterative
+Mahalanobis trimming for the robust step over the alternatives on the same feasibility grounds: a
+minimum-covariance-determinant search is combinatorial and far too slow to run per class per `k`, and a
+fixed per-coordinate quantile clip ignores exactly the joint covariance structure whitening exists to
+exploit, whereas trimming by Mahalanobis distance under the running estimate is the cheapest operation
+that removes the joint outliers the whitening must not see.
 
 After robust whitening, how do I score? The two endpoints I already know are both wrong for half the
 cases. Score by the squared whitened *norm*: the total excess across all directions, good when the
@@ -118,6 +165,28 @@ excess over clean noise, small enough not to bet everything on the single top di
 already over-bet on. The QUE score is not an arbitrary nonlinearity; it is the precise object that makes
 the method agnostic to how concentrated or spread the signature is, which is the entire reason I did
 robust whitening.
+
+I should verify the two endpoint claims literally rather than assert them, since the whole argument for
+QUE rests on it interpolating correctly. Take `alpha = 0`: then `A = 0`, `Q = exp(0) = I`, and the score
+is `h_i^T I h_i / Tr(I) = ||h_i||^2 / k` — exactly the squared whitened norm, the spread-friendly
+endpoint. Take `alpha -> infinity`: `A` is a positive scaling of `Sigma_tilde - I`, whose top eigenvector
+`e_1` carries the largest excess; `exp(alpha A)` has eigenvalues `exp(alpha * excess_j)`, so the largest
+dominates and `Q / Tr(Q) -> e_1 e_1^T`, giving score `-> (h_i . e_1)^2`, the squared top-projection — the
+sharp endpoint, which is precisely the spectral rung's test applied in whitened space. So `alpha` really
+does slide between the two failures I already know. Now put `alpha = 4` on a concrete whitened spectrum
+to see the emphasis. Suppose after whitening a class's `Sigma_tilde` has one excess direction at variance
+3 and the rest at 1, so in that direction `Sigma_tilde - I = 2` and the top norm is `||Sigma_tilde||_2 =
+3`, `denom = max(3-1, 1e-6) = 2`. Then `A` on that direction is `4 * 2 / 2 = 4` and on clean directions
+`0`, so `Q` weights the excess direction by `exp(4) ≈ 54.6` and each clean direction by `exp(0) = 1`. A
+poison point aligned with the excess is scored ~55x more heavily than the clean spread it used to be
+diluted by — that is the amplification the raw squared-projection sum in the spectral rung could not
+supply. Now stress the *spread* case: let `Sigma_tilde = diag(2, 2)` in a 2-D whitened subspace (two
+equally-excess directions). Then `||Sigma_tilde||_2 = 2`, `denom = 1`, `A = 4*(diag(2,2) - I)/1 =
+diag(4,4)`, so `Q = diag(e^4, e^4)` weights both directions equally and the score collapses back to
+`(h_1^2 + h_2^2) * e^4 / (2 e^4) = ||h||^2 / 2` — the norm. So on a genuinely spread signature QUE
+*automatically* becomes the spread-friendly norm, and on a sharp one it concentrates 55-fold; the single
+`alpha = 4` did both without my telling it which case it was in. That is the check that convinces me QUE
+is the right score and not just a plausible-looking exponential.
 
 Ground it in the scaffold. Same `BackdoorDefense` contract, same per-training-label routing as the
 spectral rung (the target label is not exposed, so run on every class; group by cached training labels,

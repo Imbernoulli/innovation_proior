@@ -6,7 +6,14 @@ multi-scale dataset paying off. So the bet held: multiscale disentanglement gene
 better than cross-variate attention. But ECL is the residue, and it is the residue I expected: 0.1561,
 better than PatchTST's 0.1819 but *still behind* iTransformer's 0.1482 — TimeMixer gave back some of the
 ECL win precisely because it is channel-independent and never explicitly models the 321 coupled channels.
-So after four rungs the scoreboard is honest and split: the best temporal model (TimeMixer) owns ETTh1
+The ECL residue is exactly one number wide: 0.1561 against iTransformer's 0.1482, a gap of 0.0079, about
+5% of the value — small, but stubborn, and it is the *only* cell on the board where the best temporal
+model is not the best model. Everywhere else TimeMixer's broad-base bet paid as I predicted: it took ETTh1
+from iTransformer's 0.3950 down to 0.3767 (−0.0183) and Weather from 0.1753 to 0.1621 (−0.0132), two
+gains that dwarf the 0.0079 it conceded on ECL, which is why the mean fell 0.2395 → 0.2317. So the shape
+of the remaining problem is precise: I have a model that wins two datasets outright and trails on the
+third by a hair, and the hair is entirely the cross-client correlation it refuses to model. So after four
+rungs the scoreboard is honest and split: the best temporal model (TimeMixer) owns ETTh1
 and Weather but loses ECL to the only model that modeled channels (iTransformer), which in turn lost
 ETTh1. The two levers — fine intra-series temporal structure and cross-variate correlation — have never
 been held in the same model that also keeps both their virtues. Every rung that grabbed one let go of the
@@ -36,6 +43,21 @@ gap. The two virtues live in two camps and each camp's virtue is the other's mis
 at once, and the ladder has shown me that I cannot get there by picking *one* granularity and applying it
 to *all* channels.
 
+Before I break that assumption I weigh the cheaper ways to hold both levers, because if one worked I would
+not need a new architecture. The first is an ensemble: average TimeMixer's and iTransformer's forecasts.
+But that fuses two models at the output, after each has already thrown away what the other keeps —
+iTransformer's forecast never had the intra-target detail to lend, and averaging a detailed prediction
+with a coarse one on ETTh1 would just drag the good one toward the bad, so the ensemble helps only where
+both already agree and hurts where they diverge, which is exactly the datasets that matter. The second is
+to bolt a channel-attention stage onto TimeMixer — keep its multiscale temporal encoder, add an
+iTransformer-style cross-variate block on top. But that is the two-stage route I priced and rejected two
+rungs ago: it pays O(C²) over all channels at every layer and, worse, it applies channel mixing to *every*
+temporal feature of *every* channel, reintroducing precisely the detail-overwrite that cost iTransformer
+ETTh1. Both cheap routes fail for the same reason: they treat the two levers as separable modules to
+stack, when the ladder's evidence is that applying channel mixing uniformly to the fine temporal
+representation is what destroys it. The fix has to be about *where* the channel signal is allowed to
+touch the temporal one, which no amount of stacking addresses.
+
 That is the assumption to break. I have been taking it for granted that whatever granularity I pick —
 patch everything, or variate-token everything — I apply it uniformly. But the target and the side
 channels play genuinely different roles. The target is the thing whose internal temporal wiggle I must
@@ -51,7 +73,18 @@ patch embedding, and additionally prepend a single learnable *global token* per 
 that will stand in for "the whole target series" when it talks to the exogenous side. Run self-attention
 *within* the target's patch tokens (plus its global token): this is the fine intra-target temporal
 modeling PatchTST had, fully preserved, with no channel noise leaking in because only target tokens
-participate. The exogenous path: embed each side channel's whole look-back into one variate token with
+participate. One choice inside the endogenous path is worth pausing on: I patch non-overlapping here, step equal to
+patch length, so 96/16 = 6 patches, where PatchTST deliberately overlapped at stride 8 to get 12. The
+overlap earned its keep there because attention over patches was the *only* mechanism carrying
+information, so phase-robust coverage of every local motif mattered and doubling the token count was cheap
+insurance. Here the picture is different: the global token plus cross-attention now carries an extra,
+orthogonal source of context, and the two-attention layer runs twice the attention machinery per block, so
+halving the patch count keeps the self-attention map at 7×7 instead of 13×13 and holds the layer cheap
+without losing much — a missed motif at a patch boundary is now partly recoverable through the global
+token's summary. So non-overlapping is the right trade once the patches are no longer the sole information
+path; I spend the saved tokens on affording the second attention rather than on redundant patch coverage.
+
+The exogenous path: embed each side channel's whole look-back into one variate token with
 `DataEmbedding_inverted` — iTransformer's coarse, physically-coherent per-channel token. Then the cross:
 the target's *global token* (and only the global token) attends to the exogenous variate tokens via a
 cross-attention. This is the asymmetry made architecture. Cross-variate information enters through one
@@ -59,7 +92,16 @@ narrow gate — the global summary slot — so the patch tokens that carry the t
 are never overwritten by channel mixing, the side channels' noise can only reach the target through a
 single learned bottleneck, and the cost is O(patch_num · C) for the cross-attention rather than
 iTransformer's O(C²) over all channels — linear in the side-channel count, spent only on informing the
-one target I predict. The encoder layer therefore has *two* attentions: self-attention over the target's
+one target I predict. Put ECL's numbers in. The endogenous self-attention is over the target's patches
+plus its global token: at patch_len 16 the non-overlapping patch count is 96/16 = 6, so 7 tokens and a
+7×7 = 49-entry attention map, tiny. The cross gate is one global query reading all 321 exogenous tokens —
+321 scores for the one target. Contrast the alternatives on the same 321-channel data: iTransformer paid
+321² ≈ 103k scores to relate every channel to every channel, and a design that let all six patch tokens
+cross-attend would pay 6·321 ≈ 1926 per target with the patch detail exposed to channel noise, while
+concatenating patches and channels into one sequence and running plain self-attention — the Crossformer
+move — would pay (6 + 321)² ≈ 107k and let channel noise hit the patches directly. The global gate spends
+about 49 + 321 ≈ 370 per target: two orders of magnitude under the concatenation route, and every one of
+those 321 cross scores is spent informing a target I actually forecast. The encoder layer therefore has *two* attentions: self-attention over the target's
 patch-plus-global tokens, then cross-attention from the global token into the exogenous tokens, then the
 position-wise feed-forward — stacked e_layers deep. The head is the direct multi-step flatten-and-project
 that has worked at every rung: flatten the target's patch features (now informed by the exogenous side
@@ -78,6 +120,21 @@ the patch tokens are not, and then it is folded back among the patch tokens by t
 target's prediction can use the imported channel signal without any patch ever having been overwritten.
 That is the asymmetry the per-channel-role argument demanded, realized as a one-token bottleneck.
 
+I trace one layer's shapes to confirm the patches are truly never overwritten, because that invariant is
+the whole claim. The endogenous token set enters as [B·C, patch_num+1, d_model] = [B·C, 7, 512] — six
+patch tokens and one global per channel. Self-attention acts on all seven and returns all seven, refining
+the target's temporal representation; so far every token moves, which is fine because this stage sees only
+target tokens, no channels. Then I slice off the last token, the global, reshape it to [B, C, 512] so the
+C channels' globals form one query set, and cross-attend that against the exogenous set [B, C, 512] — the
+output is [B, C, 512], one updated global per channel, and it is added back only onto the global slot. The
+six patch tokens are carried through this stage untouched, byte for byte. Only in the feed-forward, which
+runs over the concatenation of the untouched patches and the updated global, does the imported channel
+context diffuse into the patch representations — and it does so through a learned position-wise map, not by
+overwriting. So the patch tokens are modified by their own self-attention and by the FFN, never by the
+cross-attention directly, which is exactly the "inform without overwrite" the design promised, now visible
+in the tensor bookkeeping. The head then flattens the seven per-channel tokens: head_nf = d_model ×
+(patch_num + 1) = 512 × 7 = 3584, mapped by one linear to the 96-step horizon.
+
 There is a subtlety in stacking this e_layers deep that I want to get right. Within a layer the order is
 self-attention (target patches refine their own temporal representation), then cross-attention (the
 global token pulls in channel context), then feed-forward (the channel context diffuses back across the
@@ -95,7 +152,15 @@ This is the unification the ladder has been pointing at. Endogenous self-attenti
 intra-target temporal modeling, the ETTh1/Weather strength. Exogenous cross-attention through the global
 token = iTransformer's cross-variate correlation, the ECL strength — but routed asymmetrically so it
 informs without overwriting and costs linear, not quadratic, in channels. And the per-window instance
-normalization that every rung needed wraps it all. In the multivariate (`features='M'`) setting, every
+normalization that every rung needed wraps it all — the same subtract-mean, divide-std before embedding
+and restore after the head that PatchTST and iTransformer both required, because patched target tokens and
+inverted exogenous tokens alike must see level-drift-free input. The endogenous embedding itself is the
+minimal thing that makes the two-granularity idea concrete: a `Linear(patch_len, d_model)` lifts each
+16-step patch to the model width, a `PositionalEmbedding` tags the six patch positions with order, and the
+one learnable global vector per channel is appended as the seventh token — the summary slot initialized as
+a free parameter and shaped entirely by what the cross-attention teaches it to carry.
+
+In the multivariate (`features='M'`) setting, every
 channel is in turn the endogenous target while all channels serve as the exogenous pool, so the
 endogenous patching is applied to all channels and the cross-attention lets each channel's global token
 read the full variate set — the symmetric-multivariate form of the same idea.
@@ -124,6 +189,12 @@ over-parameterizes a 7-channel problem, so TimeXer may *not* beat TimeMixer's 0.
 slightly above it — the endogenous/exogenous machinery earns its keep when there are many informative
 side channels, which ETTh1 lacks. So the expected signature is: best-on-ladder ECL and Weather, ETTh1
 roughly level with or just behind TimeMixer, and the lowest mean MSE on the ladder — carried by finally
-modeling channels without sacrificing temporal detail. If instead ECL fails to reach iTransformer's
-0.1482, the unification did not actually hold both levers, and the honest conclusion would be that the
-asymmetric gate is too narrow at this fixed capacity.
+modeling channels without sacrificing temporal detail. The mean-MSE arithmetic sets a low bar and a high
+one. Just matching TimeMixer's best-two and closing the ECL residue — say ECL to ~0.14, ETTh1 and Weather
+roughly held near 0.377 and 0.16 — already pulls the mean under TimeMixer's 0.2317, because recovering the
+0.0079 ECL gap alone is worth about 0.0026 off the mean with nothing given back. The high bar is to also
+edge Weather and hold ETTh1, which would push the mean into the low 0.22s. Either way the decisive cell is
+ECL: it is the one number that has resisted every temporal-only rung, and dropping it below 0.1482 while
+keeping ETTh1 near TimeMixer's 0.3767 is the single event that would prove both levers are held at once.
+If instead ECL fails to reach iTransformer's 0.1482, the unification did not actually hold both levers,
+and the honest conclusion would be that the asymmetric gate is too narrow at this fixed capacity.

@@ -9,17 +9,47 @@ question is the right *first rung*: what is the cheapest projection that is not 
 its directions from the data instead of from a random number generator — and what should I expect it
 to do and to fail at on these three datasets, because that failure is what forces the second rung.
 
-Let me write down what actually goes wrong with the naive linear fits the first rung has to beat, so I
-know what shape of answer I want. Take the cloud of standardized points the harness hands me and ask
-for a line through it. The obvious tool is the regression line: pick one coordinate as the thing to
-predict, minimize the sum of squared residuals measured *along that coordinate's axis*. Fine — but now
-swap which coordinate I call dependent and minimize residuals along the *other* axis, on the very same
-points, and I get a different line. Two lines, not one, for one cloud. The reason is structural: the
-regression residual is measured along a single coordinate direction, so the criterion secretly assumes
-that coordinate is exact and the other carries all the error. On standardized pixel data that is
-false — every coordinate is a measurement with its own wobble, none is privileged. A criterion that
-privileges one axis is the wrong *shape* of answer. I need a fit that is symmetric in all the
-coordinates and returns one unique flat for the cloud.
+Before I reach for a data-driven method I should make the JL floor concrete, because "genuinely poor"
+deserves a number rather than a shrug. The lemma says that to hold every pairwise distance among n
+points inside a factor 1 ± ε I need a target dimension of order ln(n)/ε^2; writing it as m ≥ 8 ln(n)/ε^2
+and putting n = 5000 in gives ln(5000) ≈ 8.52, so even a loose 50% distortion (ε = 0.5) demands
+m ≥ 8·8.52/0.25 ≈ 273 dimensions, and a tight ε = 0.1 demands about 6800. Run the same relation
+*backwards* at the m = 2 I am actually handed: 2 = 8·8.52/ε^2 forces ε ≈ 5.8, a "distortion" far larger
+than one, which is the bound's way of saying it guarantees nothing at all. So the random projection is
+not a little worse than a data-driven map, it is off the edge of the theorem that justifies it. That
+settles the floor by arithmetic, not by taste, and it also tells me the shape of the fix: at two
+dimensions I have no room to be indifferent about *which* two directions I keep, so I must spend them
+on the directions the data itself says are richest.
+
+The prior art names three linear candidates for "directions from the data": a least-squares regression
+line, factor analysis with a fixed number of latent factors, and the variance-ranking idea. Let me walk
+them, because two of the three fall to concrete objections and the survivor is the one I want. Take the
+regression line first. The obvious tool is to pick one coordinate as the thing to predict and minimize
+the sum of squared residuals measured *along that coordinate's axis*. Fine — but now swap which
+coordinate I call dependent and minimize residuals along the *other* axis, on the very same points, and
+I get a different line. Two lines, not one, for one cloud. I can make the failure numeric on
+standardized data: with unit variances and correlation ρ, regressing the second coordinate on the first
+gives slope ρ, while regressing the first on the second gives a line of slope 1/ρ in the same plane; at
+ρ = 0.8 that is a line of slope 0.8 against a line of slope 1.25, and they coincide only in the
+degenerate ρ = 1. The reason is structural: the regression residual is measured along a single
+coordinate direction, so the criterion secretly assumes that coordinate is exact and the other carries
+all the error. On standardized pixel data that is false — every coordinate is a measurement with its own
+wobble, none is privileged. A criterion that privileges one axis is the wrong *shape* of answer. I need
+a fit that is symmetric in all the coordinates and returns one unique flat for the cloud.
+
+Factor analysis is the subtler candidate, and it is worth ruling out by what it costs rather than
+dismissing it. It models each observed coordinate as a linear combination of a few latent factors plus
+per-coordinate noise, so the covariance is written C ≈ Λ Λ^T + Ψ with Λ the factor loadings and Ψ a
+diagonal of private noise variances. The moment I set Ψ to a single isotropic level, Ψ = τ^2 I, this
+collapses to probabilistic PCA and its factor directions *are* the top eigenvectors of C — so the only
+thing factor analysis adds over the variance idea is a *heteroscedastic* Ψ, a separate estimated noise
+level per pixel. That buys nothing I need for a 2D projection and costs a great deal: on the 784-pixel
+images Ψ carries 784 extra parameters with no closed form, fit by an EM loop that alternates factor and
+noise estimates, and the whole apparatus exists to *down-weight* noisy coordinates rather than to find
+a faithful low-dimensional frame. Under a five-minute CPU budget and a scaffold that just wants a
+projection, paying for an iterative noise model to recover, at best, a reweighting of the same
+eigen-directions is a bad trade. So the survivor is the third candidate, and I will build it from the
+symmetric-fit requirement the regression line failed.
 
 What is a symmetric notion of "distance from a point to a line"? Not the vertical gap, not the
 horizontal gap — the *perpendicular* distance. That treats every direction alike; it does not care
@@ -54,24 +84,42 @@ introduced as bookkeeping turns out to *be* the residual variance, up to sign. F
 residual minimal, so I take the *least* eigenvalue and its eigenvector as the discarded normal
 direction.
 
+Before I trust the abstract eigenproblem let me run it on a case small enough to solve by hand and see
+that it returns something I already believe. Take two standardized coordinates with correlation 0.8, so
+C = [[1, 0.8], [0.8, 1]]. The characteristic equation (1 − λ)^2 − 0.64 = 0 gives 1 − λ = ±0.8, i.e.
+λ = 1.8 and λ = 0.2. The eigenvector for 1.8 solves −0.8 v1 + 0.8 v2 = 0, so v1 = v2: the direction
+(1, 1)/√2, a line at 45°. The eigenvector for 0.2 is (1, −1)/√2. So the dominant direction is the 45°
+diagonal, and — the detail that convinces me the object is right — it sits *between* the two regression
+lines of slope 0.8 and 1.25 I computed above, bisecting them, which is exactly what a symmetric fit
+should do where the two asymmetric fits disagree. In two coordinates this dominant direction is
+precisely the major axis of the correlation ellipse: a single, symmetric, well-defined direction,
+instead of two regression lines. There is even a clean degenerate case that tells me when the answer is
+non-unique: if the cloud is an isotropic ball — all correlations zero, all variances equal — every
+direction is equally good and there is no preferred axis. The method correctly refuses to pick a
+direction when the data has none.
+
 But I care more about the best-fitting *line* — the one-dimensional summary, the dominant direction of
-the cloud. Redo the perpendicular minimization for a line through the centroid: the squared
-perpendicular distance of a centered point from the line with unit direction l is, by Pythagoras, the
-full squared length minus the squared projection onto l. Sum and divide by n: the perpendicular
-residual equals (total per-coordinate variance) minus (variance of the data projected onto l). Stare
-at this. The first term, the total of the per-coordinate variances, is a *constant* — it does not
-depend on l at all. The second term is the variance of the data *along* the line. So minimizing the
-perpendicular residual of the line is identical to *maximizing the variance of the projection onto the
-line*. The two problems are the same problem: minimize scatter off the line is the same as maximize
-scatter along it, because total scatter splits Pythagoreanly into "along" plus "perpendicular" and the
-total is fixed. And the line that maximizes projected variance is the eigenvector of the covariance
-matrix with the *greatest* eigenvalue — the mirror image of the plane case. The best-fitting line is
-the direction of greatest variance; the best-fitting plane is perpendicular to the direction of least
-variance. In two coordinates this is precisely the major axis of the correlation ellipse: a single,
-symmetric, well-defined direction, instead of two regression lines. There is even a clean degenerate
-case that tells me when the answer is non-unique: if the cloud is an isotropic ball — all correlations
-zero, all variances equal — every direction is equally good and there is no preferred axis. The method
-correctly refuses to pick a direction when the data has none.
+the cloud — than about the discarded normal, so let me redo the perpendicular minimization for a line
+through the centroid. The squared perpendicular distance of a centered point from the line with unit
+direction l is, by Pythagoras, the full squared length minus the squared projection onto l. Sum and
+divide by n: the perpendicular residual equals (total per-coordinate variance) minus (variance of the
+data projected onto l). Stare at this. The first term, the total of the per-coordinate variances, is a
+*constant* — it does not depend on l at all. The second term is the variance of the data *along* the
+line. So minimizing the perpendicular residual of the line is identical to *maximizing the variance of
+the projection onto the line*. The two problems are the same problem: minimize scatter off the line is
+the same as maximize scatter along it, because total scatter splits Pythagoreanly into "along" plus
+"perpendicular" and the total is fixed. And the line that maximizes projected variance is the
+eigenvector of the covariance matrix with the *greatest* eigenvalue — the mirror image of the plane
+case. The best-fitting line is the direction of greatest variance; the best-fitting plane is
+perpendicular to the direction of least variance.
+
+Let me put numbers on the Pythagorean split with the same 2×2 matrix, because it is the load-bearing
+identity and I would rather see it close than assert it. The total scatter is the trace of C, which is
+1 + 1 = 2. The variance captured along the top axis (1, 1)/√2 is the top eigenvalue, 1.8. The
+perpendicular residual left over is the bottom eigenvalue, 0.2. And 1.8 + 0.2 = 2 exactly recovers the
+trace: the scatter *along* plus the scatter *off* equals the fixed total, so pushing the "along" term to
+its maximum (1.8) is the very same act as pushing the "off" term to its minimum (0.2). The identity is
+not a slogan; it balances to the last digit on a case I can check.
 
 Come at the reductive problem from the accounting side now, because I want an *ordered sequence* of new
 coordinates, not just one. Look for new variables that are mutually uncorrelated and unit-variance,
@@ -109,6 +157,16 @@ about: singular-vector signs are arbitrary (U S V^T = (−U) S (−V)^T), so two
 coordinate's axis; fixing each vector's sign by a deterministic rule (force the largest-magnitude entry
 positive) makes the output stable across the seeds.
 
+Is any of this near the budget ceiling? Let me count. The heaviest dataset is a 784-pixel image cloud
+at n ≤ 5000. A full deterministic SVD of a 5000×784 matrix is roughly O(n p^2) ≈ 5000·784^2 ≈ 3×10^9
+floating-point operations — a few seconds. And I do not even need the full factorization: a randomized
+SVD that keeps only the top two singular directions runs in about O(n p k) ≈ 5000·784·2 ≈ 8×10^6
+operations, essentially instantaneous, which is why the scaffold can afford to thread `random_state`
+through a randomized solver without noticing the cost. The 50-dimensional newsgroups cloud is smaller
+still, O(n p^2) ≈ 5000·2500 ≈ 10^7. The output shape checks out too: U S truncated to two columns is
+(n, 2), exactly the contract the harness asserts. So the linear-algebra core is nowhere near the
+five-minute wall; the cost of the whole ladder will live in the *nonlinear* rungs, not here.
+
 That is the entire first rung: center the standardized cloud, take the top two right singular vectors of
 the centered matrix, and return the projection onto them. In the scaffold this is the smallest possible
 edit — `fit_transform` builds the SVD-backed principal-component projection and returns the first two
@@ -128,29 +186,47 @@ reason it usually does not: PCA is *linear*. It can only place points on a flat 
 through the cloud. If the data lies on a curved manifold — digits whose appearance varies smoothly along
 nonlinear modes, clothing images whose pixel correlations bend — then a flat projection folds the curl
 and lands points from opposite sides of a fold right next to each other. The neighborhoods get mangled;
-the global variance survives. So I expect the continuity scores to hold up reasonably (PCA does not
-*tear* nearby points apart — it preserves the coarse layout) while the trustworthiness and especially
-the kNN accuracy collapse, because a flat shadow of a curved cloud invents false neighbors and smears
-the ten digit classes into one overlapping blob where a 7-NN classifier cannot separate them.
+the global variance survives.
 
-The three datasets should not behave identically, and the split is informative. MNIST and Fashion-MNIST
-are 784-dimensional images whose true structure is strongly nonlinear, so I expect PCA's class
-preservation there to be weak — the digit and garment classes are not separable in any two linear
-directions. 20-Newsgroups is already linearly pre-reduced to 50 dimensions by truncated SVD before the
-harness ever sees it, which is itself a linear operation closely related to PCA, so the further drop to
-two dimensions is again a linear projection of an already-linear summary; its class structure (five
-topic groups) is more diffuse and overlapping, so I expect that to be the weakest of all on kNN
-accuracy. Across the board, this is the floor: the cheapest non-arbitrary projection, and the cheapest
-to *diagnose*, because whatever it loses it loses for one clean reason — linearity.
+I can predict *which* of the three metrics moves, and in which direction, straight from their
+definitions, because the fold acts asymmetrically on them. Trustworthiness asks: of a point's 7 map
+neighbors, how many were near in the original space — so it is the metric that punishes *false*
+neighbors the map invents, and a fold is a false-neighbor factory, stacking two originally-distant
+sheets on top of each other. Continuity asks the mirror question: of a point's 7 original neighbors, how
+many stay near in the map — so it punishes *tearing*, and a linear map is smooth, it does not rip nearby
+points apart; two genuine neighbors are close in all the coordinates including the two PCA keeps, so
+they land close. So the clean prediction is trustworthiness and especially kNN accuracy collapse while
+continuity holds up relatively — a flat shadow of a curved cloud invents false neighbors and smears the
+ten digit classes into one overlapping blob where a 7-NN classifier cannot separate them, but it does
+not tear the coarse layout apart.
+
+I can even guess the kNN scale rather than wave at it. MNIST has ten digit classes, so a classifier that
+learned nothing sits at chance ≈ 1/10 = 0.10; a two-dimensional linear shadow will separate a few gross
+groups (a handful of visually distinct digits) while smearing the rest, so I expect something a few times
+chance, in the low 0.3s. The three datasets should not behave identically, and the split is informative.
+MNIST and Fashion-MNIST are 784-dimensional images whose true structure is strongly nonlinear, so I
+expect PCA's class preservation there to be weak — but clothing categories carry more coarse linear
+contrast (a boot's pixels differ from a shirt's along broad low-frequency directions PCA keeps), so
+Fashion should do least badly of the three on kNN. 20-Newsgroups is already linearly pre-reduced to 50
+dimensions by truncated SVD before the harness ever sees it, which is itself a linear operation closely
+related to PCA, so the further drop to two dimensions is again a linear projection of an already-linear
+summary; its class structure (five topic groups, chance ≈ 1/5 = 0.2) is more diffuse and overlapping, so
+I expect that to be the weakest of all on kNN accuracy relative to the room it has. Across the board,
+this is the floor: the cheapest non-arbitrary projection, and the cheapest to *diagnose*, because
+whatever it loses it loses for one clean reason — linearity.
 
 The falsifiable expectation I will check against the measured numbers: PCA should beat the random
 projection comfortably (it picks data-driven directions), but its kNN accuracy should land far below any
 nonlinear neighbor-embedding method — somewhere in the 0.3 range on the image datasets and lower on
 newsgroups — with trustworthiness dragged down with it, while continuity stays the highest-relative of
-its own three metrics because the global layout is the one thing a linear map preserves. If that is what
-I see, then the diagnosis is settled and points straight at the next rung: this is a *nonlinearity*
-problem, not a fitting problem. The fix is not a better linear direction; the global layout PCA gives
-is actually worth *keeping* — it is the one thing a flat map gets right — so the natural next move is to
-keep PCA's globally-faithful skeleton as a starting point and *refine it locally*, bending the
-neighborhoods to follow the manifold without discarding the global frame. That refine-from-PCA strategy,
-driven by relative-order triplet forces, is exactly what step 2 builds.
+its own three metrics because the global layout is the one thing a linear map preserves. And because the
+whole failure is linearity and not sampling, the seed-to-seed spread should be tiny — PCA is
+deterministic up to the sign convention, so any variance across seeds {42, 123, 456} can only come from
+the scoring probe's stratified split, not from the reducer; if I see large method variance here I have
+misunderstood something. If instead I see the split I predict — high continuity, collapsed
+trustworthiness and kNN, tight seeds — then the diagnosis is settled and points straight at the next
+rung: this is a *nonlinearity* problem, not a fitting problem. The fix is not a better linear direction;
+the global layout PCA gives is actually worth *keeping* — it is the one thing a flat map gets right — so
+the natural next move is to keep PCA's globally-faithful skeleton as a starting point and *refine it
+locally*, bending the neighborhoods to follow the manifold without discarding the global frame. That
+refine-from-PCA strategy, driven by local nonlinear forces that leave the global frame intact, is exactly what step 2 builds.

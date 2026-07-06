@@ -46,6 +46,20 @@ that is a single affine map along the time axis. For one variate, predict the ho
 of the look-back: X̂ = W·X, with W a T×L matrix. Row t of W says how to combine the L past values into
 the t-th future value. One linear layer, applied along time. That is it.
 
+Before I even write it down I want to be sure it is the right floor, so I line up the three genuinely
+minimal direct-multi-step forecasters I could pick and knock two out on their own terms. The first is a
+small recurrent net — a GRU that ingests the window and rolls the horizon out — but rolling out means
+feeding its own step-t prediction back to produce step t+1, and over ninety-six steps that is exactly the
+compounding-error disease I already indicted the iterated baselines for; even trained teacher-forced it
+carries the wrong inductive bias for a one-shot horizon, so it is out. The second is a shallow
+self-attention over the ninety-six step-tokens, the lineage's reflex shrunk to minimal size — but it
+costs ninety-six squared pairwise scores, needs a positional encoding bolted on to undo the permutation
+invariance it should not have on ordered data, and by the confound argument its apparent edge might be
+nothing but the direct strategy it shares with everything under this loop; it is neither minimal nor
+free of the against-the-grain problem, so it is out too. The third is a single affine map read straight
+across the window, and it survives both tests: no feedback loop, no permutation pathology, the fewest
+parameters of the three. So the floor is the linear map, and I build it.
+
 Before I take that seriously I have to check it is not trivially crippled. The reflex objection is "it
 is linear, it cannot model anything." But consider what a single linear row can express. If the series
 has a period p — 24 for daily, 168 for weekly — then a future value is, to first order, well predicted
@@ -64,6 +78,20 @@ map every input step connects directly to every output step with a learned weigh
 signal path from any past observation to any future prediction is length one. No recurrence to forget
 through, no attention bottleneck — the long-range dependency lives in the weight matrix itself.
 
+I can make the not-crippled claim fully concrete rather than leave it as a hunch. Put the daily period at
+twenty-four on hourly data and the look-back at ninety-six — four days. To predict future step t,
+counting one to ninety-six past the window end, the sharpest periodic estimate is the value one period
+earlier, at absolute index (96 + t) − 24 = 72 + t. For every t from one to twenty-four that index lands
+in [73, 96], squarely inside the window, so row t of W simply places its weight on column 72 + t and
+copies the value off — one-period-back prediction is literally one nonzero entry per row. For t from
+twenty-five to forty-eight the one-period-back index runs past the window end, but the two-periods-back
+index 48 + t sits in [73, 96] and the row reads that instead; the map degrades gracefully to the nearest
+in-window period rather than failing. So a single linear row expresses "copy the value k periods back"
+exactly, for whatever k keeps the lag in range, and superposing such rows over the L columns expresses
+any fixed linear combination of periodic lags plus a slope extrapolation for the trend. That is not a
+crippled hypothesis class for a signal whose forecastable content is trend and periodicity; it is a tight
+fit to it.
+
 So I commit to the minimal model: one linear layer L→T along time, trained by the loop's direct MSE over
 the whole horizon. One decision falls out immediately. There are C channels; do I learn a W per channel
 or share one W? Within a single dataset the channels usually share temporal dynamics — every electricity
@@ -75,6 +103,18 @@ heavy models spend capacity learning which channels influence which, and I am wa
 benchmarks that coupling is weak or spurious and that ignoring it avoids overfitting. The point is a
 clean control, so I want the fewest moving parts that can still represent the forecastable structure.
 
+The parameter arithmetic makes the stakes of that bet exact. One shared W is pred_len × seq_len =
+96 × 96 = 9216 weights plus a length-96 bias, and two of them — one per decomposed stream — is roughly
+eighteen thousand parameters total, a count that does not grow with the channel dimension at all. The
+per-channel alternative multiplies it by C: about a hundred and thirty thousand parameters on the
+seven-channel data, four hundred thousand on the twenty-one-channel data, and close to six million on
+the three-hundred-and-twenty-one-channel data. Six million weights fit against a single standardized
+training split is exactly the regime where a model memorizes the training era and generalizes worse, and
+the channel dimension where the per-channel map balloons most is precisely the one whose coupling I trust
+least. So sharing W is not only the cleaner prior about a shared diurnal rhythm; it is the decisive
+regularizer on the wide datasets. I default to shared and treat individual as an option I do not
+exercise.
+
 Now I run the bare linear map against the dataset feature I know will bite it: distribution shift. On
 the hourly transformer-temperature data the *level* of the series drifts between the training span and
 the test span — the mean is simply higher or lower later in time. A single W fit on training-era levels
@@ -85,6 +125,19 @@ within-window drift; for the parts the loader does not absorb, subtracting the l
 before the map and adding it back after would recenter each window. I keep that in mind but do not bolt
 it on, because the loader's standardization already covers most of it and I want the rung minimal.
 
+It is worth being precise about which part of the drift is already handled, because it decides how much I
+must add. The loader standardizes each channel by a mean and standard deviation fit once on the training
+span, so it removes the constant offset between, say, a low-consumption client and a high-consumption one
+and puts every channel on a comparable scale before the map ever sees it. What it cannot remove is drift
+*within* the test era relative to the training era: if later windows sit systematically above the
+training mean the standardization was fit on, the map receives an input shifted by that residual and,
+being a fixed linear operator, returns a horizon shifted by W times that residual — wrong, with no
+mechanism to recenter. Subtracting each window's own look-back mean before the map and adding it back
+after would zero out exactly that residual for the price of two cheap operations, and I file it as the
+obvious next handle. But since the loader absorbs the bulk of the level problem and the rung's whole
+value is being the minimal understood control, I leave the model at two linear maps over a decomposed
+window and let the heavier rungs decide whether per-window recentering earns its keep.
+
 The more interesting weakness is trend *together with* seasonality, which is the common case. Picture
 the signal as a big slow ramp with a small daily oscillation riding on top. A single W must fit both at
 once, and the two want very different weight patterns: the trend wants weights that extrapolate a slow
@@ -92,7 +145,19 @@ drift — broadly smooth across the look-back — while the seasonality wants we
 at the periodic lags. Worse, the trend is large in magnitude and the seasonal part is small, so in a
 squared-error fit the trend dominates the gradient: W spends itself getting the big ramp roughly right
 and under-fits the small oscillation that carries the fine structure. One matrix is being asked to be
-two different filters and the loss makes it prioritize the loud one. So how do I let them specialize?
+two different filters and the loss makes it prioritize the loud one.
+
+I can put a number on how badly. Write the window as trend plus season with amplitudes A_t and A_s, and
+suppose the trend is a full order of magnitude larger, A_t ≈ 10·A_s — routine on the hourly
+transformer-temperature data where a slow ramp of several units rides over a daily wiggle of a few
+tenths. Squared error weights each part by its magnitude squared, so the trend contributes on the order
+of a hundred times the seasonal part to the loss and to the gradient that trains the single W. Descent
+therefore pours essentially all of its budget into getting the ramp roughly right and treats the
+oscillation as rounding error, under-fitting the very structure that carries the daily rhythm. Split the
+streams first and the arithmetic inverts: the seasonal map sees a target of amplitude A_s everywhere and
+a gradient scaled to A_s, no longer swamped, while the trend map fits its own single-scale target — two
+well-conditioned regressions in place of one that the loud component captured. So how do I let them
+specialize?
 
 Here a tool already in this literature becomes the obvious move. Seasonal-trend decomposition is the
 oldest idea in time-series analysis: write the series additively as a slow trend-cyclical part plus a
@@ -107,6 +172,17 @@ map — Linear_Trend and Linear_Seasonal, both L→T — and let each specialize
 other and neither's gradient swamped by the other's magnitude. Then sum the predicted streams:
 X̂ = W_seasonal·seasonal + W_trend·trend.
 
+I pause on whether the split should be learned rather than fixed. I could make the trend extractor a
+learnable low-pass filter, or reach for a classical seasonal-trend decomposition that iteratively refines
+both parts. But a learnable decomposition adds parameters and, worse, adds a second thing that can overfit
+inside a control whose entire purpose is to have no moving parts I do not understand; and an iterative
+classical decomposition is neither differentiable end-to-end nor cheap to run inside the loop. A single
+fixed moving average is parameter-free, differentiable, and exactly the reparameterization I argued for —
+it conditions the optimization without enlarging the function class. So the fixed block is not a
+compromise forced by laziness; it is the only choice consistent with the rung being a clean control, and
+I take the version the scaffold already exposes so that I am reusing machinery rather than introducing a
+knob.
+
 I should be honest about one thing, because it looks like I just made the model "deeper" and that would
 betray the point. Is this still linear? Two linear maps plus a sum are affine; the only added operation
 is the moving-average split, and a moving average is itself linear, so decomposition followed by two
@@ -117,12 +193,33 @@ squared error fits each well instead of letting the trend's magnitude dominate. 
 preconditioning an optimization — same solution set, far better-behaved learning — and it pays off
 exactly when there is a clear trend, the case the bare linear map handled worst.
 
+I should verify the two claims I just leaned on — that nothing is lost and that nothing is added — rather
+than assert them. Reconstruction first: season is defined as x minus its moving average and trend as the
+moving average, so season plus trend is x identically, an exact split with no residual. Take a four-step
+window x = [1, 2, 3, 4] and a length-three replicate-padded average: pad to [1, 1, 2, 3, 4, 4], slide
+width-three means to get trend = [1.33, 2, 3, 3.67], and season = x − trend = [−0.33, 0, 0, 0.33]; season
++ trend returns [1, 2, 3, 4] exactly, the trend the smooth part and the season the zero-sum detail.
+Function class second: the moving average is a fixed linear operator M, so trend = M·x and season =
+(I − M)·x, and the full model W_s·(I − M)·x + W_t·M·x collapses to a single matrix
+(W_s(I − M) + W_t·M) acting on x — one T×L affine map, exactly the hypothesis class of the bare linear
+model. So I have added zero representational capacity and only reparameterized the optimization, which is
+the whole point: the same solutions remain reachable, far better conditioned to reach the one that fits
+both scales at once.
+
 The moving-average details decide the edge behavior. I want the trend to have the same length as the
 input, so I average-pool with an odd kernel of size k, stride 1, and pad. Zero-padding would drag the
 trend toward zero at the two ends, creating spurious dips where I have least information — the wrong
 boundary behavior. Replicate-padding instead — front with (k−1)/2 copies of the first value, back with
 (k−1)/2 copies of the last — keeps the trend flat-but-faithful at the edges; with k odd, (k−1)/2 per
-side restores the length exactly. The scaffold's `series_decomp` already implements precisely this. For
+side restores the length exactly. I can see the failure the replicate choice avoids on that same
+four-step window: zero-padding the front would make the first averaged value (0 + 0 + 1)/3 = 0.33 instead
+of the faithful 1.33 — a trend that plunges toward zero exactly where the window begins and I have the
+least data to correct it, manufacturing a downward slope out of nothing at the boundary that matters most
+for the recent past. Replicate-padding copies the edge value into the pad, so the boundary average stays
+pinned near the true edge level and the trend runs flat-but-honest where it runs out of context. With
+k = 25 that is twelve copies on each side, and twelve plus the ninety-six interior plus twelve, pooled at
+width twenty-five, returns ninety-six — the length is preserved with no off-by-one, which the shape
+bookkeeping downstream depends on. The scaffold's `series_decomp` already implements precisely this. For
 the kernel I take k = 25, the value the decomposition block uses (it smooths sub-daily wiggles on hourly
 data while preserving the daily-and-slower trend), and keeping it identical keeps the comparison clean —
 I am reusing the block, not tuning a new knob. Here the edit surface bites in a small but real way: the
