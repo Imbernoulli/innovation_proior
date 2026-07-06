@@ -1,23 +1,25 @@
 # Innovation Prior — SFT datasets (LLaMA-Factory ShareGPT)
 
-Two ShareGPT files, designed to train **together in ONE run**:
+The annotated innovation data, in ShareGPT format:
 - `innovation_sft.jsonl` — our annotated innovation data (reasoning, with per-turn loss folding).
-- `maintain_sft.jsonl` — public **Qwen**-distilled traces mixed in to **maintain the base model's
-  original capabilities** (on-policy replay against forgetting; reasoning *and* no-reasoning, the
-  latter handled so it doesn't corrupt thinking).
+- Plus the 2026-07 **wave-2** batches: `innovation_wave2_sft.jsonl` (verified rollout + Codex, 758)
+  and `innovation_v4_sft.jsonl` (FrontierCS-style single-file C++, 346), concatenable into the run.
+
+> **Dropped (2026-07):** the HF-scraped `maintain_sft.jsonl` capability-maintenance set is no longer
+> used — training is **innovation-only** now.
 
 > **Browse it on the site.** Every example is viewable in the website's **Training data** mode
 > (`#d`), which lazy-loads the gzipped shards under `viewer/` and shows the per-turn `loss` /
 > `enable_thinking` metadata. Regenerate the viewer catalogue with
 > `python3 tools/build_site_data.py` whenever these `.jsonl.gz` files change.
 
-The processed data is committed **gzipped** here: `innovation_sft.jsonl.gz`,
-`maintain_sft.jsonl.gz` — decompress before training (`gunzip -k *.jsonl.gz`). The raw `.jsonl`
-are git-ignored; regenerate either the raw files or refresh the gzips with:
+The processed data is committed **gzipped** here: `innovation_sft.jsonl.gz` (+ the wave-2
+`innovation_wave2_sft.jsonl.gz` / `innovation_v4_sft.jsonl.gz`) — decompress before training
+(`gunzip -k *.jsonl.gz`). The raw `.jsonl` are git-ignored; regenerate with:
 ```bash
 python3 sft/build_sft.py        # innovation_sft.jsonl
-python3 sft/build_maintain.py   # maintain_sft.jsonl  (assembles the per-source HF pieces)
-gzip -kf sft/innovation_sft.jsonl sft/maintain_sft.jsonl
+python3 sft/build_v4.py         # innovation_v4_sft.jsonl (FrontierCS-style C++)
+gzip -kf sft/innovation_sft.jsonl sft/innovation_v4_sft.jsonl
 ```
 
 ## ⚠️ Requires the patched LLaMA-Factory fork
@@ -62,21 +64,19 @@ compatible: data without these fields trains exactly as before.
 
 ## Registering & training everything in ONE run
 
-LLaMA-Factory only trains **registered** datasets. To run all four data kinds (our annotated data,
-Qwen distill, MiniMax distill, no-reasoning Qwen) together:
+LLaMA-Factory only trains **registered** datasets:
 
-1. Copy `innovation_sft.jsonl` and `maintain_sft.jsonl` into the fork's `LLaMA-Factory/data/`.
+1. Copy `innovation_sft.jsonl` (and optionally the wave-2 `innovation_wave2_sft.jsonl` /
+   `innovation_v4_sft.jsonl`) into the fork's `LLaMA-Factory/data/`.
 2. Merge `sft/dataset_info_snippet.json` into `LLaMA-Factory/data/dataset_info.json`.
-3. One training config trains both at once:
+3. Training config:
    ```yaml
-   dataset: innovation_sft,innovation_maintain
+   dataset: innovation_sft        # optionally + the wave-2 batches
    template: qwen3              # or qwen3_5
    mask_history: false          # per-turn `loss` flags do the folding
-   # enable_thinking stays at the template default (true); the no-reasoning rows
-   # carry "enable_thinking": false per-example and override it themselves.
    ```
-   The per-turn `loss` flags (folding) and per-example `enable_thinking` flags (reasoning vs not)
-   are baked into the data, so a single global config handles every case.
+   The per-turn `loss` flags (folding) are baked into the data, so a single global config handles
+   every case.
 
 ## 1. `innovation_sft.jsonl` — our annotated data
 
@@ -96,32 +96,24 @@ agentic (Mode 1 all-results-as-observation + Mode 2 per-round; assistant tool st
 structured `function_call` role → LF renders qwen3 JSON / qwen3_5 XML). Literal structural tokens
 in content are neutralized to `⟨think⟩`/`⟨tool_call⟩`/….
 
-## 2. `maintain_sft.jsonl` — capability-maintenance mix (903 examples)
+## 2. Capability-maintenance mix — DROPPED (2026-07)
 
-All sources are **Qwen-distilled** — the goal is to **maintain the base Qwen model's original
-capabilities** (on-policy replay against catastrophic forgetting) while we fine-tune on the
-innovation data. One file; the no-reasoning rows are tagged `enable_thinking:false` so they coexist
-with the reasoning rows in the same run.
+A public **HF-scraped** Qwen-distilled maintenance set (`maintain_sft.jsonl`, 903 examples from
+khazarai / WithinUsAI / armand0e / nvidia Open-SWE) was previously mixed in against catastrophic
+forgetting. It has been **removed at the user's direction** — training is now **innovation-only**,
+relying on the verified wave-2 rollout data (which itself spans reasoning / instruction-following /
+agentic C++/Python) for on-policy breadth. `build_maintain.py`, the `maintain_sft*` and `distill_*`
+files, and the viewer's maintain shards were deleted.
 
-**Reasoning (653, trained with thinking):**
+## 3. Wave-2 batches (2026-07) — verified rollout + Codex
 
-| source | kept | notes |
-|---|---|---|
-| `khazarai/qwen3.6-plus-high-reasoning-500x` | 250 | already `<think>` |
-| `WithinUsAI/Qwen3.7_Max_Thinking_dataset_5K` | 250 | `problem`/`thinking_trace`/`answer` → `<think>` |
-| `armand0e/qwen3.7-max-pi-traces` | 47 | agentic (pi); all non-empty sessions |
-| `armand0e/qwen3.7-plus-claude-code` | 6 | agentic (Claude Code); all non-empty sessions |
-| `nvidia/Open-SWE-Traces` openhands **`minimax_m25`** | 100 | the only MiniMax data, capped to 100 |
+New verified data, all landing as **single-file C++ / stdin** (the FrontierCS scoring target):
 
-> "non-empty" = the session actually has **model output** (a real assistant turn). The two armand
-> repos hold only 47 / 6 sessions total; every one with model output was kept.
+- **`innovation_wave2_sft.jsonl`** (758) — Qwen3.6-27B on-policy rejection samples + DeepSeek V4 Pro
+  tier-2 (solving the 27B's hard failures; ungradeable math gold judged by DeepSeek V4 Flash) +
+  Codex `gpt-5.5` black-box datapoints. code / math / reasoning / ifollow / FrontierCS-Codex.
+- **`innovation_v4_sft.jsonl`** (346) — competition C++, 100% single-file/stdin, 100% debug/self-verify.
+- **`innovation_wave2_raw_keepers.jsonl.gz`** — 787 RAW verified keeper records (problem + all
+  verifier-passing generations); verified-only, no failed samples.
 
-**No-reasoning (250, `enable_thinking:false`):** `nvidia/Open-SWE-Traces` openhands **`qwen35_122b`**
-(the Qwen split). These assistant turns carry an **empty** think in the source (Qwen non-thinking
-mode); we store them as plain answers and tag the example `enable_thinking:false`, so at train time
-the empty think lands in the **prompt**, never the loss. (Verified: 0 `<think>` substrings trained.)
-
-**Tool declarations:** the agentic traces (armand, Open-SWE) carry tool *calls* but declare no tool
-*schemas*. `build_maintain.py` reconstructs a minimal `tools` declaration per example from the
-observed calls (tool name + argument keys) so the tools render in the system prompt at the right
-place. `<|im_start|>`/`<|im_end|>` occurring inside content are neutralized.
+Pipeline + provenance: [`../experiments/DATA_WAVE2_FCS_CPP_zh.md`](../experiments/DATA_WAVE2_FCS_CPP_zh.md).

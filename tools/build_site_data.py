@@ -196,7 +196,7 @@ def build_viewer():
 
     datasets = [
         ("innovation_sft", os.path.join(ROOT, "sft", "innovation_sft.jsonl.gz")),
-        ("maintain_sft", os.path.join(ROOT, "sft", "maintain_sft.jsonl.gz")),
+        # maintain_sft (HF-scraped capability-maintenance set) dropped 2026-07 — innovation-only now.
     ]
 
     examples_index = []

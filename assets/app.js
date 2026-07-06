@@ -685,7 +685,6 @@
       "lets reasoning, non-reasoning, and folded-history data all train in one run.</p>" +
       '<div class="td-cards">' +
       table("innovation_sft", d.innovation_sft) +
-      table("maintain_sft", d.maintain_sft) +
       "</div>" +
       '<p class="td-note">Bodies lazy-load from gzipped shards (<code>sft/viewer/*.json.gz</code>) and are ' +
       "gunzipped in your browser. Full build + training docs: <code>sft/README.md</code>.</p>" +
