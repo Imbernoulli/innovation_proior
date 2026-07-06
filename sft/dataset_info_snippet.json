@@ -1,19 +1,8 @@
 {
-  "_comment": "Merge into LLaMA-Factory/data/dataset_info.json and put the .jsonl under data/. Requires the fork branch feat/per-turn-loss-mask (per-turn `loss` + per-example `enable_thinking`). Train BOTH datasets in ONE run: `dataset: innovation_sft,innovation_maintain`, template qwen3 (or qwen3_5), mask_history=false. The per-turn `loss` flags do the folding; the per-example `enable_thinking:false` rows (no-reasoning distillation) put their empty think in the prompt, not the loss — so a single qwen3 (thinking) run safely mixes reasoning and non-reasoning data.",
+  "_comment": "Merge into LLaMA-Factory/data/dataset_info.json and put the .jsonl under data/. Requires the fork branch feat/per-turn-loss-mask (per-turn `loss`). Train `dataset: innovation_sft` (optionally concatenate the wave-2 batches innovation_wave2_sft.jsonl / innovation_v4_sft.jsonl after gunzip), template qwen3 (or qwen3_5), mask_history=false. The per-turn `loss` flags do the think-folding. NOTE: the HF-scraped capability-maintenance set (formerly `innovation_maintain` / maintain_sft.jsonl, collected from public HF sources) was DROPPED 2026-07 — training is innovation-only now.",
 
   "innovation_sft": {
     "file_name": "innovation_sft.jsonl",
-    "formatting": "sharegpt",
-    "columns": {"messages": "conversations", "system": "system", "tools": "tools"},
-    "tags": {
-      "role_tag": "from", "content_tag": "value",
-      "user_tag": "human", "assistant_tag": "gpt",
-      "observation_tag": "observation", "function_tag": "function_call", "system_tag": "system"
-    }
-  },
-
-  "innovation_maintain": {
-    "file_name": "maintain_sft.jsonl",
     "formatting": "sharegpt",
     "columns": {"messages": "conversations", "system": "system", "tools": "tools"},
     "tags": {

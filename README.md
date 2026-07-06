@@ -28,8 +28,10 @@ paper into the chain of thought of how the method was actually derived.
 Beyond the website, the traces are assembled into **supervised fine-tuning data** in the
 LLaMA-Factory ShareGPT format. Build scripts and full documentation live in
 [`sft/`](sft/README.md). The processed data ships **gzipped** in `sft/`
-(`innovation_sft.jsonl.gz`, `maintain_sft.jsonl.gz` — `gunzip -k` to use); the raw `.jsonl` are
-git-ignored and regenerable with the scripts. Two datasets, trained **together in one mixed run**:
+(`innovation_sft.jsonl.gz`, plus the 2026-07 wave-2 batches `innovation_wave2_sft.jsonl.gz` /
+`innovation_v4_sft.jsonl.gz` and their raw verified keepers `innovation_wave2_raw_keepers.jsonl.gz`
+— `gunzip -k` to use); the working `.jsonl` are git-ignored and regenerable with the scripts.
+Training is **innovation-only** (the HF-scraped maintenance set was dropped 2026-07):
 
 - **`innovation_sft.jsonl`** (`sft/build_sft.py`) — our annotated data: each method as a Q&A, each
   trajectory / agentic ladder as a multi-turn conversation (with tool use), the answer being the
@@ -50,11 +52,12 @@ git-ignored and regenerable with the scripts. Two datasets, trained **together i
   > (explicit `loss`/`tools`/`enable_thinking` on every row). The longer-term plan (retire the fork,
   > emit natural single-user + observation conversations for upstream LLaMA-Factory) still stands.
   > Details: [`experiments/PIPELINE_FINDINGS_zh.md`](experiments/PIPELINE_FINDINGS_zh.md) §发现二/三.
-- **`maintain_sft.jsonl`** (`sft/build_maintain.py`) — a capability-**maintenance** set: public
-  **Qwen**-distilled traces (khazarai, WithinUsAI, armand `pi`/Claude-Code, nvidia Open-SWE) mixed
-  in as on-policy replay to preserve the base Qwen model's original abilities (against catastrophic
-  forgetting). Includes both reasoning and Qwen non-reasoning traces, plus reconstructed tool
-  declarations for the agentic ones.
+- **Capability-maintenance set — DROPPED (2026-07).** A public **HF-scraped** Qwen-distilled
+  maintenance set (`maintain_sft.jsonl` / `sft/build_maintain.py`, from khazarai, WithinUsAI, armand
+  `pi`/Claude-Code, nvidia Open-SWE) was previously mixed in against catastrophic forgetting, but has
+  been removed at the user's direction — training is now **innovation-only**, relying on the verified
+  wave-2 rollout data (which itself carries broad reasoning / instruction-following / agentic coverage)
+  for on-policy breadth.
 
 ### Patched LLaMA-Factory
 
@@ -74,9 +77,9 @@ LLaMA-Factory lacks, so we maintain a fork:
    non-thinking traces) trains in the same thinking run **without** teaching the model to emit an
    empty think block. *(Verified: such data trains zero `<think>` tokens.)*
 
-To train: fill the two stub paths in the fork's `data/dataset_info.json`, then run a single config
-with `dataset: innovation_sft,innovation_maintain`, `template: qwen3` (or `qwen3_5`),
-`mask_history: false`. The per-example metadata is baked into the data, so one global config trains
+To train: fill the stub path in the fork's `data/dataset_info.json`, then run a single config
+with `dataset: innovation_sft` (optionally concatenate the wave-2 batches), `template: qwen3` (or
+`qwen3_5`), `mask_history: false`. The per-example metadata is baked into the data, so one global config trains
 every case correctly. Full details: [`sft/README.md`](sft/README.md).
 
 ## Experiments & evaluation（实验与评测）
@@ -118,6 +121,7 @@ every case correctly. Full details: [`sft/README.md`](sft/README.md).
 
 - **`sft/innovation_wave2_sft.jsonl.gz`** — 758 条（code 119 / math 92 / reasoning 397 / ifollow 141 / Codex 9），reasoning 中位数 **33k 字符**（对治 SFT 欠推理）。
 - **`sft/innovation_v4_sft.jsonl.gz`** — V4 竞赛 C++ 346 条，**100% 单文件 C++ 读 stdin、100% 带 debug/自验**（源目录早已入库，但从未进 SFT 混合，本次 build 成可直接 mix 的 `.gz`）。
+- **`sft/innovation_wave2_raw_keepers.jsonl.gz`** — 上面这批的**原始 verified keeper**（787 条，每条含 problem + 所有过验证的 reasoning/answer 生成，未打包成 ShareGPT）。**只含通过验证的正确数据，失败/没做出来的样本一律不入。**
 - 工具：`tools/{hardcp_rollout,fcs_codex_gen,assemble_wave}.py`、`tools/driver_watchdog.sh`；Codex 题库与产物：`data_v4/_fcs_codex/`。
 
 加入训练：`gunzip` 后在 LLaMA-Factory `dataset_info.json` 注册为独立 dataset（C++ 是主修复，`innovation_v4` 建议 oversample 到 ≥15–20%）。
