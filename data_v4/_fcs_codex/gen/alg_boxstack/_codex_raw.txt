@@ -1,0 +1,105 @@
+===CONTEXT===
+We are given up to n = 2000 boxes. Box i has dimensions w_i, d_i, h_i, and may be rotated so that any one dimension becomes its vertical height while the other two form its rectangular base. A box can be placed on another only when both base dimensions are strictly smaller than the base dimensions below it. Each input box is treated as usable once in a stack. We must output the maximum possible total stack height. Dimensions are as large as 10^9, so the answer requires 64-bit arithmetic. The solution is scored by exact equality with the optimal maximum height.
+
+===REASONING===
+The input scale is n <= 2000, so there are only 3n <= 6000 possible oriented box states. An exponential search over subsets or permutations is impossible: even 2^n is far beyond the budget, and storing per-subset states would MLE immediately. A cubic dynamic program over orientations is also avoidable, while an O((3n)^2) transition scan is about 36 million comparisons, which is acceptable in C++17.
+
+I model each possible rotation as one oriented candidate: base side a, base side b, height c, and the original box id. I sort the two base dimensions so that a <= b; this makes base comparison orientation-independent, because rotating within the horizontal plane does not change whether one rectangle can strictly fit inside another.
+
+Then I sort all oriented candidates by increasing base dimensions. Let dp[i] be the best stack height whose bottom oriented box is candidate i. To place candidate j above candidate i, I need:
+
+a_j < a_i and b_j < b_i,
+
+and the two candidates must not be the same original box. The transition is:
+
+dp[i] = height_i + max(dp[j]) over all valid j above i.
+
+Since base dimensions strictly increase as I go downward, this forms an acyclic order after sorting. I use long long because the maximum height can be as large as 2000 * 10^9.
+
+I reject approaches that try all rotations per box as a recursive assignment first, because 3^2000 is impossible. I also reject sorting by volume or base area alone: strict fitting depends on both base coordinates, and area can increase while one side decreases, so area ordering is not sufficient.
+
+For a concrete check, take two boxes:
+
+Box 1: 1 2 10  
+Box 2: 3 4 5
+
+Box 1 can have bases (1,2) height 10, (1,10) height 2, or (2,10) height 1.  
+Box 2 can have bases (3,4) height 5, (3,5) height 4, or (4,5) height 3.
+
+The best stack is Box 1 with base (1,2), height 10, on Box 2 with base (3,4), height 5, total 15. The DP sees (1,2) < (3,4), so dp for the Box 2 orientation becomes 5 + 10 = 15. Other rotations either do not fit or produce smaller total height, so the answer is 15. Brute force over the six oriented candidates for this tiny case gives the same maximum.
+
+The general algorithm is therefore: generate all rotations, sort by base, run the O(m^2) longest-stack DP over m <= 6000 oriented candidates, and print the maximum dp value.
+
+===ANSWER===
+```cpp
+#include <algorithm>
+#include <iostream>
+#include <tuple>
+#include <vector>
+
+using namespace std;
+
+struct Orientation {
+    long long a;
+    long long b;
+    long long h;
+    int id;
+};
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    int n;
+    cin >> n;
+
+    vector<Orientation> boxes;
+    boxes.reserve(3LL * n);
+
+    for (int i = 0; i < n; ++i) {
+        long long x[3];
+        cin >> x[0] >> x[1] >> x[2];
+
+        for (int heightDim = 0; heightDim < 3; ++heightDim) {
+            int p = (heightDim + 1) % 3;
+            int q = (heightDim + 2) % 3;
+
+            long long a = x[p];
+            long long b = x[q];
+            if (a > b) {
+                swap(a, b);
+            }
+
+            boxes.push_back({a, b, x[heightDim], i});
+        }
+    }
+
+    sort(boxes.begin(), boxes.end(), [](const Orientation &lhs, const Orientation &rhs) {
+        return tie(lhs.a, lhs.b, lhs.h, lhs.id) < tie(rhs.a, rhs.b, rhs.h, rhs.id);
+    });
+
+    const int m = static_cast<int>(boxes.size());
+    vector<long long> dp(m, 0);
+
+    long long answer = 0;
+
+    for (int i = 0; i < m; ++i) {
+        dp[i] = boxes[i].h;
+
+        for (int j = 0; j < i; ++j) {
+            if (boxes[j].id == boxes[i].id) {
+                continue;
+            }
+
+            if (boxes[j].a < boxes[i].a && boxes[j].b < boxes[i].b) {
+                dp[i] = max(dp[i], dp[j] + boxes[i].h);
+            }
+        }
+
+        answer = max(answer, dp[i]);
+    }
+
+    cout << answer << '\n';
+    return 0;
+}
+```

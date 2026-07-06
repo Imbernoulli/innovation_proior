@@ -1,0 +1,1 @@
+We are given one lowercase string `s` with length at most 3000. We must partition `s` into contiguous substrings so that every substring is a palindrome, and output the minimum possible number of substrings. The score is exactly this minimum count.

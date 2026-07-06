@@ -1,0 +1,1 @@
+We are given an `R x C` target grid with colors `1..K`, where `1 <= R,C <= 50` and `1 <= K <= 10`. The grid starts blank. One stroke chooses a color and paints one entire row or one entire column that color, overwriting previous paint. We must output the minimum number of strokes needed to obtain exactly the target grid, or `-1` if no sequence of strokes can produce it.

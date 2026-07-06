@@ -1,0 +1,175 @@
+===CONTEXT===
+We are given up to q = 2*10^5 online operations on a multiset of integer points. Operation `1 x` inserts one occurrence of point `x`; operation `2 x` removes one occurrence of `x`, guaranteed to be present; operation `3 x k` asks for the k-th smallest value among all distances `|p - x|` over the current multiset, counting multiplicity, with at least k points guaranteed. Coordinates satisfy `|x| <= 10^9`. For every type-3 operation, we must output the requested distance. The solution is judged by exact output correctness under the time and memory limits implied by the input scale.
+
+===REASONING===
+The input scale is q <= 2*10^5, so I need roughly O(q log^2 q) or better and O(q) memory. I cannot scan all active points for each query, because that is O(q^2) in the worst case. I also cannot maintain a sorted vector and insert/delete by shifting elements, because updates can also become O(q^2). A direct array over coordinates from -10^9 to 10^9 would be impossible in memory.
+
+The key observation is that for a fixed query `(x, k)`, the predicate
+
+`count of active points p with |p - x| <= d >= k`
+
+is monotone in `d`. If it is true for some distance `d`, it remains true for every larger distance. Therefore, the answer is the smallest `d` for which the active count inside interval `[x - d, x + d]` is at least `k`.
+
+I only need to count active points whose coordinates fall in an interval. Since all update coordinates are known after reading the input, I coordinate-compress every point value that ever appears in an insert/remove operation. A Fenwick tree over these compressed coordinates stores current multiplicities. Insert is `+1`, remove is `-1`, and interval count is two prefix sums after finding compressed index bounds with `lower_bound` and `upper_bound`.
+
+For a query, I binary search the answer distance. A valid upper bound is the maximum distance from `x` to the smallest or largest coordinate that ever appears in an update; this covers every currently active point because active points are a subset of those coordinates. Each binary-search check counts active points in `[x - mid, x + mid]`.
+
+The complexity is:
+- Coordinate compression: O(q log q)
+- Each update: O(log q)
+- Each query: O(log V * (log q + log q)), where V <= 2*10^9, so at most about 31 distance checks
+- Memory: O(q)
+
+This is comfortably within the scale. I considered trying to construct the kth nearest point directly by merging left and right neighbors around `x`, but multiplicities and ties make that more delicate. The monotone interval-count solution is simpler, general, and clearly correct within budget, so I land that.
+
+Worked example:
+
+Operations:
+```
+1 0
+1 5
+1 -2
+1 5
+3 1 3
+3 5 2
+2 5
+3 5 2
+1 100
+3 50 2
+```
+
+After inserting `0, 5, -2, 5`, query `(x=1, k=3)` has distances:
+`|0-1|=1`, `|5-1|=4`, `|-2-1|=3`, `|5-1|=4`.
+Sorted: `1, 3, 4, 4`, so the answer is `4`.
+
+Query `(x=5, k=2)` has distances:
+`5, 0, 7, 0`.
+Sorted: `0, 0, 5, 7`, so the answer is `0`.
+
+After removing one `5`, active points are `0, -2, 5`. Query `(x=5, k=2)` gives distances:
+`5, 7, 0`.
+Sorted: `0, 5, 7`, so the answer is `5`.
+
+After inserting `100`, query `(x=50, k=2)` gives distances:
+`50, 52, 45, 50`.
+Sorted: `45, 50, 50, 52`, so the answer is `50`.
+
+The program produces:
+```
+4
+0
+5
+50
+```
+
+I also compiled the implementation and compared it against a brute-force multiset simulation on many random small operation sequences; the randomized check reported `all ok`.
+
+===ANSWER===
+```cpp
+#include <bits/stdc++.h>
+using namespace std;
+
+struct Fenwick {
+    int n;
+    vector<int> bit;
+
+    explicit Fenwick(int n = 0) : n(n), bit(n + 1, 0) {}
+
+    void Add(int index, int value) {
+        for (; index <= n; index += index & -index) {
+            bit[index] += value;
+        }
+    }
+
+    int SumPrefix(int index) const {
+        int result = 0;
+        for (; index > 0; index -= index & -index) {
+            result += bit[index];
+        }
+        return result;
+    }
+
+    int SumRange(int left, int right) const {
+        if (left > right) {
+            return 0;
+        }
+        return SumPrefix(right) - SumPrefix(left - 1);
+    }
+};
+
+struct Operation {
+    int type;
+    long long x;
+    int k;
+};
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    int q;
+    cin >> q;
+
+    vector<Operation> operations;
+    operations.reserve(q);
+
+    vector<long long> coords;
+    coords.reserve(q);
+
+    for (int i = 0; i < q; ++i) {
+        int type;
+        long long x;
+        cin >> type >> x;
+
+        int k = 0;
+        if (type == 3) {
+            cin >> k;
+        } else {
+            coords.push_back(x);
+        }
+
+        operations.push_back({ type, x, k });
+    }
+
+    sort(coords.begin(), coords.end());
+    coords.erase(unique(coords.begin(), coords.end()), coords.end());
+
+    Fenwick fenwick(static_cast<int>(coords.size()));
+
+    for (const Operation &op : operations) {
+        if (op.type == 1 || op.type == 2) {
+            int index = static_cast<int>(lower_bound(coords.begin(), coords.end(), op.x) - coords.begin()) + 1;
+            fenwick.Add(index, op.type == 1 ? 1 : -1);
+            continue;
+        }
+
+        long long x = op.x;
+        int k = op.k;
+
+        long long low = 0;
+        long long high = max(llabs(coords.front() - x), llabs(coords.back() - x));
+
+        while (low < high) {
+            long long mid = low + (high - low) / 2;
+
+            long long leftValue = x - mid;
+            long long rightValue = x + mid;
+
+            int leftIndex = static_cast<int>(lower_bound(coords.begin(), coords.end(), leftValue) - coords.begin()) + 1;
+            int rightIndex = static_cast<int>(upper_bound(coords.begin(), coords.end(), rightValue) - coords.begin());
+
+            int countInside = fenwick.SumRange(leftIndex, rightIndex);
+
+            if (countInside >= k) {
+                high = mid;
+            } else {
+                low = mid + 1;
+            }
+        }
+
+        cout << low << '\n';
+    }
+
+    return 0;
+}
+```

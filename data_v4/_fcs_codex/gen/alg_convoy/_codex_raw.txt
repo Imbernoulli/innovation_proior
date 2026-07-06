@@ -1,0 +1,100 @@
+===CONTEXT===
+We are given n two-stage jobs in a flow shop with two machines. Every job must run on machine A first for a_i time, then on machine B for b_i time. Each machine handles at most one job at a time, and B cannot start a job before that job finishes on A. We may choose one common job order for both machines, and must output the minimum possible completion time of the final job on B. Constraints are 1 <= n <= 2*10^5 and 1 <= a_i,b_i <= 10^9, so the answer may exceed 32-bit integer range. A correct solution must compute the exact optimum within these limits.
+
+===REASONING===
+The input scale is up to 2*10^5 jobs, so I have an O(n log n) sorting budget and O(n) memory budget. I explicitly reject trying all permutations, dynamic programming over subsets, or pairwise local search without a proven global rule, because those would explode at this n. Even O(n^2) exchange-improvement simulation is too risky at 2*10^5. I need a general ordering rule and a linear pass to evaluate the schedule.
+
+This is the classical two-machine flow-shop makespan problem, solved by Johnson's rule. The rule is not a per-case shortcut: for every job, compare a_i and b_i. Jobs with a_i <= b_i should go in the first block, sorted by increasing a_i. Jobs with a_i > b_i should go in the second block, sorted by decreasing b_i. Concatenating those two blocks gives an optimal order.
+
+I justify the rule by the standard adjacent-swap argument. Consider two neighboring jobs x and y after all earlier jobs have already accumulated some fixed machine-A time. Only the relative order of x and y matters for the local contribution to how much machine B may be delayed. For x before y, the relevant worst delay term is max(a_x + b_x, a_x + a_y) plus the later b_y contribution; for y before x it is the symmetric expression. Simplifying the adjacent comparison gives the known condition: place x before y when min(a_x, b_y) <= min(b_x, a_y). Johnson's construction is exactly a sorting arrangement satisfying this condition for every crossable pair: small A times are pulled early in ascending order, and small B times are pushed late in descending order. Since any inversion violating the condition can be swapped without increasing the makespan, repeatedly removing such inversions reaches Johnson's order, so that order is optimal.
+
+After constructing the order, computing the makespan is direct. I keep tA, the finish time of the current prefix on machine A, and tB, the finish time of the current prefix on machine B. For each job in order, tA += a_i, then B starts it at max(tA, tB), so tB = max(tA, tB) + b_i. The final tB is the answer. Because n can be 2*10^5 and each time can be 10^9, sums can reach about 4*10^14, so I use 64-bit integers.
+
+I verify on a concrete small example:
+Jobs:
+1: a=3, b=2
+2: a=2, b=5
+3: a=4, b=1
+
+Partition:
+Job 2 has a<=b, so it goes early.
+Jobs 1 and 3 have a>b, so they go late sorted by decreasing b: job 1 then job 3.
+Order: 2, 1, 3.
+
+Schedule trace:
+Start tA=0, tB=0.
+Job 2: tA=2, tB=max(0,2)+5=7.
+Job 1: tA=5, tB=max(7,5)+2=9.
+Job 3: tA=9, tB=max(9,9)+1=10.
+Makespan is 10.
+
+Brute-force sanity check over all 6 orders:
+1,2,3 gives tB=11.
+1,3,2 gives tB=14.
+2,1,3 gives tB=10.
+2,3,1 gives tB=11.
+3,1,2 gives tB=15.
+3,2,1 gives tB=14.
+The Johnson order reaches the brute-force minimum 10.
+
+This gives a simple correct solution within budget: sort the two groups, concatenate, and simulate once.
+
+===ANSWER===
+```cpp
+#include <algorithm>
+#include <iostream>
+#include <vector>
+
+using namespace std;
+
+struct Job {
+    long long a;
+    long long b;
+};
+
+int main() {
+    ios::sync_with_stdio(false);
+    cin.tie(nullptr);
+
+    int n;
+    cin >> n;
+
+    vector<Job> early, late;
+    early.reserve(n);
+    late.reserve(n);
+
+    for (int i = 0; i < n; ++i) {
+        Job job;
+        cin >> job.a >> job.b;
+        if (job.a <= job.b) {
+            early.push_back(job);
+        } else {
+            late.push_back(job);
+        }
+    }
+
+    sort(early.begin(), early.end(), [](const Job &x, const Job &y) {
+        return x.a < y.a;
+    });
+
+    sort(late.begin(), late.end(), [](const Job &x, const Job &y) {
+        return x.b > y.b;
+    });
+
+    long long timeA = 0;
+    long long timeB = 0;
+
+    for (const Job &job : early) {
+        timeA += job.a;
+        timeB = max(timeB, timeA) + job.b;
+    }
+
+    for (const Job &job : late) {
+        timeA += job.a;
+        timeB = max(timeB, timeA) + job.b;
+    }
+
+    cout << timeB << '\n';
+    return 0;
+}
+```

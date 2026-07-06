@@ -1,0 +1,68 @@
+===CONTEXT===
+We are given a 2D `torch.cuda.FloatTensor` `x` with shape `(M, N)` and must implement `def softmax(x)` returning a CUDA tensor containing the row-wise softmax. The implementation must use a Triton kernel targeting Triton 3.2.0 / CUDA on an NVIDIA L4. `N` is at most 8192, and the intended mapping is one Triton program per row. Correctness is scored by maximum absolute error against `torch.softmax(x, dim=1)` below `1e-4`; performance is scored by throughput. The kernel must be numerically stable by subtracting each row maximum before exponentiation.
+
+===REASONING===
+The input scale is `M` rows and `N <= 8192` columns. With one program per row, the natural complexity budget is `O(MN)` work and `O(MN)` output memory, with only `O(N)` temporary vector state inside each program. Anything that materializes extra full-size intermediate tensors in Python, launches multiple kernels per row, or computes softmax with Python loops over rows would waste bandwidth or TLE. A dense matrix-wide reduction strategy is also unnecessary because reductions are independent per row.
+
+I use the standard stable softmax pipeline inside each Triton program: load one row into a block, replace masked lanes with `-inf`, compute the row max, subtract it, exponentiate, sum the exponentials, divide, and store. The block size is chosen as the next power of two at runtime, capped naturally by the problem limit `N <= 8192`, so the same algorithm handles all row widths without hardcoded per-case constants. Masking handles non-power-of-two `N`.
+
+For a concrete check, take one row `[1, 2, 4]`. The max is `4`, so the shifted row is `[-3, -2, 0]`. The exponentials are approximately `[0.049787, 0.135335, 1]`, the sum is `1.185122`, and the softmax is approximately `[0.042010, 0.114195, 0.843795]`. The masked fourth lane for a block size of 4 is loaded as `-inf`, remains zero after exponentiation, and does not affect the sum or stores. This matches the scalar stable softmax formula. For tiny rows, brute force by direct Python arithmetic gives the same values; for `N=1`, subtracting the only element gives `exp(0)/1 = 1`, which is the expected row softmax.
+
+I also tried the local environment before finalizing the code path: Python can import `torch` and `triton`, but CUDA is unavailable in this container, so I could verify imports only, not execute the GPU kernel here. The implementation below is the simplest correct one-program-per-row Triton solution within the stated budget.
+
+===ANSWER===
+```python
+import torch
+import triton
+import triton.language as tl
+
+
+@triton.jit
+def _row_softmax_kernel(x_ptr, y_ptr, n_cols: tl.constexpr, x_stride_m: tl.constexpr, x_stride_n: tl.constexpr, block_size: tl.constexpr):
+    row = tl.program_id(0)
+    cols = tl.arange(0, block_size)
+    mask = cols < n_cols
+
+    x = tl.load(x_ptr + row * x_stride_m + cols * x_stride_n, mask=mask, other=-float("inf"))
+    x = x - tl.max(x, axis=0)
+    num = tl.exp(x)
+    den = tl.sum(num, axis=0)
+    y = num / den
+
+    tl.store(y_ptr + row * n_cols + cols, y, mask=mask)
+
+
+def softmax(x):
+    if x.dim() != 2:
+        raise ValueError("softmax expects a 2D tensor")
+    if not x.is_cuda:
+        raise ValueError("softmax expects a CUDA tensor")
+    if x.dtype is not torch.float32:
+        raise ValueError("softmax expects torch.float32 input")
+
+    m, n = x.shape
+    y = torch.empty((m, n), device=x.device, dtype=x.dtype)
+
+    if m == 0 or n == 0:
+        return y
+    if n > 8192:
+        raise ValueError("softmax supports N <= 8192")
+
+    block_size = triton.next_power_of_2(n)
+    num_warps = 4
+    if block_size >= 2048:
+        num_warps = 8
+    elif block_size <= 64:
+        num_warps = 1
+
+    _row_softmax_kernel[(m,)](
+        x,
+        y,
+        n,
+        x.stride(0),
+        x.stride(1),
+        block_size,
+        num_warps=num_warps,
+    )
+    return y
+```

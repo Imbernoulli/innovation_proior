@@ -108,6 +108,20 @@ every case correctly. Full details: [`sft/README.md`](sft/README.md).
 
 > 待办：剩余 in-scope de-rewrite（~300 条）、trajectory 逐 rung 加深、用 HF 现成蒸馏+筛选集（OpenCodeReasoning-2 等）规模化竞赛数据、build_sft 按 Qwen3 模板统一改造（退 fork）。见任务清单与上述文档。
 
+## Data wave-2：拒绝采样 + Codex 黑盒生成（2026-07）
+
+在「改造现有数据」之外，本轮**新造**了一批**可验证**的 FrontierCS-style 数据，全部对着 C++ 落点。完整记录：**[`experiments/DATA_WAVE2_FCS_CPP_zh.md`](experiments/DATA_WAVE2_FCS_CPP_zh.md)**。
+
+三条独立引擎（都只留过验证的）：**(1) on-policy 拒绝采样**——Qwen3.6-27B 在 hard 可验证 RL 训练题上 rollout（4→8→16 加采样，代码 `g++` 编译+跑测例、数学 answer-match）；**(2) tier-2 兜底**——把 27B 打满仍做不出的硬失败交给 **DeepSeek V4 Pro** 解，数学里没法判的金标用 **DeepSeek V4 Flash（关思考）当严格 LLM judge** 兜底；**(3) Codex 黑盒**——自建仿 FCS 分布的困难题 list，每题一个 `codex exec`（`gpt-5.5`）自产 context+reasoning+answer、自己编译验证。
+
+本次收口（均已随本 commit 入库为 `.gz`，`sft/*.jsonl` 被 gitignore）：
+
+- **`sft/innovation_wave2_sft.jsonl.gz`** — 758 条（code 119 / math 92 / reasoning 397 / ifollow 141 / Codex 9），reasoning 中位数 **33k 字符**（对治 SFT 欠推理）。
+- **`sft/innovation_v4_sft.jsonl.gz`** — V4 竞赛 C++ 346 条，**100% 单文件 C++ 读 stdin、100% 带 debug/自验**（源目录早已入库，但从未进 SFT 混合，本次 build 成可直接 mix 的 `.gz`）。
+- 工具：`tools/{hardcp_rollout,fcs_codex_gen,assemble_wave}.py`、`tools/driver_watchdog.sh`；Codex 题库与产物：`data_v4/_fcs_codex/`。
+
+加入训练：`gunzip` 后在 LLaMA-Factory `dataset_info.json` 注册为独立 dataset（C++ 是主修复，`innovation_v4` 建议 oversample 到 ≥15–20%）。
+
 ## The website
 
 A pure-static single-page app — no build step, all relative paths, so it works as-is on
