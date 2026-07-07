@@ -1,0 +1,73 @@
+name: Deploy Pages
+
+# Publishes ONLY the files the static site actually needs, dropping the heavy
+# non-page data (reference PDFs, raw SFT jsonl, old-round shards). This keeps the
+# published site well under GitHub Pages' 1 GB limit — the repo as a whole is
+# ~2.5 GB checked out (887 MB of methods/*/refs/*.pdf + sft/r1,r2 + raw jsonl),
+# which is why the default whole-branch Pages build stopped working.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # enablement: true turns the Pages site back on (build_type=workflow) if
+      # it was disabled — no manual Settings change needed.
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Assemble published site (drop heavy non-page data)
+        run: |
+          set -euo pipefail
+          mkdir -p _site
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='_site' \
+            --exclude='*.pdf' \
+            --exclude='sft/r1/' \
+            --exclude='sft/r2/' \
+            --exclude='sft/*.jsonl' \
+            --exclude='sft/*.jsonl.gz' \
+            --exclude='sft/*.preremediation' \
+            --exclude='data_v4/' \
+            --exclude='frontiersmith_synth/' \
+            --exclude='backlog/' \
+            --exclude='paper2reasoning/' \
+            ./ _site/
+          # ensure Jekyll is bypassed on the published artifact
+          touch _site/.nojekyll
+          echo "=== published site size (must be < 1 GB) ==="
+          du -sh _site
+          echo "=== top entries ==="
+          du -sh _site/* 2>/dev/null | sort -rh | head -15
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
