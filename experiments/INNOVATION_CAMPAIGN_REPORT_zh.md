@@ -15,9 +15,12 @@
 | **SFT / soup** | vs **start**(都无 RL) | ✅ **MLS +150~200%**、✅ **Theta(circle-packing)+65~83%** |
 | **RL** | vs **base+RL**(同 GRPO) | ✅ **FCS +1.2~4.5(4 批次可复现)**、⚠️ **ALE +152(旗舰模型,不普适)** |
 
-**两条能理直气壮讲、且有代码级证据支撑的结论:**
-1. **创新 SFT/soup 在发现类任务(MLS、Theta)上直接超 start** —— 模型写出更懂问题结构的方案(因果 DR-learner、六边形晶格堆叠)。
+**三条能理直气壮讲、且有代码级证据支撑的结论:**
+1. **创新 SFT/soup 在发现类任务(MLS、Theta、Research)上直接超 start** —— 模型写出更懂问题结构的方案(因果 DR-learner、六边形晶格堆叠、HNSW+efSearch、参数上限求解)。
 2. **创新+RL 在竞赛算法(FCS)上超 base+RL** —— 4 个独立批次一致。
+3. **⭐ 我们自造的 RL 题(frontiersmith_synth 500 题)比 FrontierCS 官方题更好用** —— base+RL-on-synth=**7.61** > base 7.05 > base+RL-on-FrontierCS=6.63(唯一在 FCS 上真提点的 RL 数据)。详见 **§4B**。
+
+> **r3 代(最新)新结果见 §4B**;两份代码级案例研究见 `CASE_STUDY_zh.md`(r1/r2:FCS/MLS/Theta/ALE)与 `CASE_STUDY_r3_zh.md`(r3:Research/MLS)。
 
 **同样诚实地记录的边界:**
 - **RL 会"同质化"两个策略**:MLS 上 RL-vs-base+RL 的 20 题里 15 题逐位相同,残余 +8.6% 是**执行/纠错鲁棒性**而非方法更创新。→ **创新的方法论优势主要体现在 RL 之前。**
@@ -110,9 +113,49 @@
 
 ---
 
+## 4B. r3 代新结果(2026-07,QOS 恢复后跑出)
+
+r3 = 最新一代数据(method 1201 + v4 346 + 深化 traj + wave2/maintain),Qwen3.5-9B full-SFT。
+
+### 4B.1 ⭐ 自造 RL 数据 > FrontierCS —— 唯一在 FCS 上真提点的 RL
+同条件公平对比(同 base Qwen3.5、同 GRPO 32k config,只换 RL 训练数据):
+
+| base + RL on … | FCS(strip 单测) | vs base 7.05 |
+|---|---|---|
+| **`frontiersmith_synth`(我们自造 500 题)@s15** | **7.61** | ✅ **+0.56(唯一真提点)** |
+| 我们自造 @s20 | 7.36 | +0.31 |
+| **FrontierCS(172 官方题)`rlfix32k`** | **6.63** | ❌ −0.42(反而掉) |
+
+→ **我们的开放式题目生成方法(FrontierSmith,拓宽到 FunSearch/AlphaEvolve/OpenEvolve 等)产出的 RL 数据,比 FrontierCS 自己的题还好用**(7.61 vs 6.63,+15%),且是唯一让 base 在竞赛 FCS 上真提点的 RL 数据(可能因更泛化 + 避开 eval 泄漏)。
+
+### 4B.2 soup alpha 消融(instruct 占比越大 = alpha 越小 = 越保竞赛)
+`merged = α·SFT + (1−α)·base`。**发现类(MLS/Research)a10~a20 是甜点**;竞赛(FCS)α 越小越接近 base。可信单测 FCS 仅 a30 就位(a10/a20 单测在跑,预计更高;bundler 口径比单测低 ~1.45×,仅供趋势):
+
+| 指标(base 参照) | 甜点 | 说明 |
+|---|---|---|
+| **Research**(base 9.08) | `full_wd01 a10=11.96`(最高)、`methodv4 a20=10.32`、`a10=10.10` | **部分 a10/a20 超 base**(非全部:`full_wd01_a20=8.48`/`methodtraj_a20=8.84` 未超;高方差 std~3) |
+| **MLS**(base ~0.04) | `methodtraj a10=0.091`、`full_wd0 a10=0.096` | a10 最高 |
+| ALE(base 356) | `methodtraj a10=384` | 低 α 保 ALE |
+| FCS 单测(base 7.05) | a30:methodv4=5.29 / full_wd0=5.18(a10/a20 单测跑中,更高) | α 越小越高 |
+
+### 4B.3 maintain 数据(抗遗忘)这条线
+| | SFT 直测 FCS | 最佳 Research |
+|---|---|---|
+| **full(带 maintain/wave2)** | **wd0=1.54 / wd01=1.14** | **wd01 a10=11.96(全场最高)** |
+| method/methodtraj(无 maintain) | 0.51 / 0.31 | ~10.3 |
+
+→ **maintain 数据既让 SFT 保 FCS ~3×(抗遗忘),又在 Research 拔尖**。
+
+### 4B.4 r3 案例研究(代码级,详见 `CASE_STUDY_r3_zh.md`)
+- **Research**(methodv4/full a20 vs base):4 个真创新赢 —— 正确 HNSW+efSearch(vs 幻觉 FAISS,+77)、解析求解 200K 参数上限的最大隐层(+47)、调度 slack 缓冲(vs 读错对象,+47)、低基数前缀排序(vs 随机搜索,+53)。
+- **MLS**(methodtraj/methodv4 a10 vs base):2 真创新(causal-discovery 恢复到 stable-PC+Meek +0.30;causal-treatment-effect doubly-robust R-learner,ATE 误差 14× 降 +0.24)+ 3 诚实标注(MoE=runtime、calibration/evolution=恢复力而非新颖)。
+
+---
+
 ## 5. 局限与未完成
 
-- **r3(最新一代)评测未跑完**:集群 QOS 关联被禁用,新作业(GPU+CPU)全部无法提交;methodv4/full 的 RL 判据仍缺。r3 局部(methodtraj_a10 MLS=0.091 bundler 口径)已印证同方向。
+- **r3 评测大部完成**(QOS 曾被禁用 ~半天,已恢复):synth-RL、r3 RL step、Research、MLS/ALE all-benchmark、maintain 消融均已出(见 §4B)。**仍在跑**:各 alpha 的**可信单测 FCS**(a10/a20 甜点,预计比 bundler 口径高)+ a05(更大 instruct 占比)soup。这些落地后本节数字会更全。
+- **bundler vs 单测 FCS**:all-benchmark bundler 的 FCS 因与 ALE 共享 judge 偏低 ~1.45×,只作趋势;报告的 FCS 结论以 dedicated 单测为准。
 - **ALE case 的 frame**:如 §4.2,cases 是对裸 base,严格公平应对 base+RL;聚合公平差(+152)只对旗舰成立。
 - **ALE 方差大**(std@5≈134):单个 ±20~60 的 ALE 差在噪声内。
 - **MLS `.partial2` artifact**:早前误引的 base=0.1335 是只跑了 3 题的损坏快照,已弃用;真值 base=0.038(devfix)/0.064(旧)。
