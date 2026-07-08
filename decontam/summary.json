@@ -1,19 +1,21 @@
 {
   "mls_task_slugs_total": 161,
-  "policy": "surgical (2026-07-08 user directive): see decontam_rules.json",
+  "mls_public_140_total": 140,
+  "policy": "surgical (2026-07-08 user directive): MLS anchored to public 140-task release; see decontam_rules.json",
   "decontam_actions_sft": {
-    "keep": 1198,
-    "keep_flagged": 1019,
+    "keep": 1200,
+    "keep_flagged": 1048,
     "drop_row": 65,
-    "drop_finale_turn": 416
+    "drop_finale_turn": 385
   },
   "rules": {
     "drop_method_slugs": 28,
     "drop_traj_slugs": 8,
-    "type1_finale_traj": 51
+    "type1_finale_traj": 46,
+    "type1_finale_spared_offpublic": 5
   },
   "mls_type1_nonnative_finale": {
-    "n_trajectories": 51,
+    "n_trajectories": 46,
     "offenders": {
       "ai4bio-protein-inverse-folding": "vfn",
       "ai4sci-climate-emulation": "conformer-climate",
@@ -32,9 +34,6 @@
       "graph-link-prediction": "buddy",
       "graph-node-classification": "gcnii",
       "graph-signal-propagation": "jacobiconv",
-      "llm-hybrid-posttraining": "luffy",
-      "llm-offline-rl": "dpop",
-      "llm-on-policy-distillation": "skew-reverse-kl",
       "llm-pretrain-attention": "diff-transformer",
       "llm-pretrain-bitlinear": "lsq",
       "llm-pretrain-linear-attention": "gated-deltanet",
@@ -55,10 +54,8 @@
       "rl-offline-continuous": "sac-rnd",
       "rl-offline-off2on": "cal-ql",
       "rl-offpolicy-continuous": "crossq",
-      "rl-offpolicy-sample-efficiency": "simba",
       "rl-onpolicy-continuous": "rpo",
       "rl-value-atari": "iqn",
-      "safe-exploration-fixed-budget": "crpo",
       "security-adversarial-attack-sparse-l0": "sparse-pgd",
       "security-backdoor-defense": "spectre",
       "security-machine-unlearning": "salun",
@@ -71,23 +68,24 @@
   "rollup": {
     "sft": {
       "n": 2698,
-      "leak": 1500,
-      "contaminated": 1088,
+      "leak": 1498,
+      "contaminated": 92,
       "by_severity": {
-        "REVIEW": 50,
+        "REVIEW": 48,
         "MEDIUM": 362,
-        "HIGH": 876,
-        "CRITICAL": 212
+        "HIGH": 911,
+        "CRITICAL": 50,
+        "LOW": 127
       },
       "by_benchmark": {
-        "MLS": 1035,
+        "MLS": 1033,
         "FCS": 391,
         "ALE": 354,
         "THETA": 66,
         "TTT": 71
       },
       "by_family": {
-        "mls_finale_method_standalone": 39,
+        "mls_finale_method_standalone": 37,
         "fcs_research_topical": 13,
         "ale_ahc039": 8,
         "autocorr_inequalities": 15,
@@ -113,21 +111,21 @@
       }
     },
     "wave2": {
-      "n": 758,
-      "leak": 220,
+      "n": 1352,
+      "leak": 566,
       "contaminated": 0,
       "by_severity": {
-        "REVIEW": 211,
+        "REVIEW": 557,
         "MEDIUM": 9
       },
       "by_benchmark": {
-        "FCS": 128,
-        "THETA": 92,
-        "TTT": 92
+        "FCS": 303,
+        "THETA": 263,
+        "TTT": 263
       },
       "by_family": {
-        "wave2_code_bank": 119,
-        "wave2_math": 92,
+        "wave2_code_bank": 294,
+        "wave2_math": 263,
         "wave2_fcs_codex": 9
       }
     },

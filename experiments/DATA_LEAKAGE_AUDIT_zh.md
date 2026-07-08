@@ -32,10 +32,17 @@
 > **最终处置策略（按 2026-07-08 你的口径，非一刀切删）**——规则见 `decontam/decontam_rules.json`：
 > - **整条删（65 行 / 28 method + 8 trajectory）**：discovery 里**启发式/进化搜索跑出来的纪录构造** + AHC039
 >   （它们是针对评测实例搜出来的具体解）。
-> - **只删 finale 那一 turn（51 条 MLS 轨迹）**：把注入的非原生更强 baseline 那一轮去掉，**保留** baseline ladder。
+> - **只删 finale 那一 turn（46 条 MLS 轨迹）**：把注入的非原生更强 baseline 那一轮去掉，**保留** baseline ladder。
 > - **保留**：MLS 同任务的 baseline ladder、正经 paper 方法（含 39 个 finale method 的独立版）、FCS-research 方法、
 >   v4/wave2 合成（n-gram 复核只撞到 boilerplate，无真实题面重合）。
-> - 净效果：`innovation_sft` 2698 → **2582**（只删 116 行）；`wave2`(758)/`v4`(346) 原样保留。
+> - 净效果：`innovation_sft` 2698 → **2587**（只删 111 行）；`wave2`(758)/`v4`(346) 原样保留。
+>
+> **⚠️ 更新 2026-07-08（去污参照锚定到「公开的 140 tasks」）**：MLS 轴的参照从早先手工列表改为
+> **github.com/Imbernoulli/MLS-Bench 实际发布的 140 个 task**（`decontam/public_140_tasks.json`）。规则：
+> 轨迹的 task **在这 140 里**才去污，且只删「本身没公开的更强的」finale rung；**不在 140 里就不管**（保留 finale）。
+> 因此 finale-drop 从 51 收窄到 **46**（另外 5 条落在未发布 MLS 任务上——`llm-hybrid-posttraining`、`llm-offline-rl`、
+> `llm-on-policy-distillation`、`rl-offpolicy-sample-efficiency`、`safe-exploration-fixed-budget`——已放行保留 finale）。
+> `2582→2587`（+5）。下文 §2.1/§4 的 51/2582 是改动前的历史叙述，最终口径以本框为准。
 
 ---
 

@@ -30,10 +30,15 @@ MLS_TASKS = Path("/srv/home/bohanlyu/MLS-Bench/tasks")
 SEV_RANK = {"CRITICAL": 5, "HIGH": 4, "MEDIUM": 3, "REVIEW": 2, "LOW": 1, "NONE": 0}
 
 # Decontamination policy (2026-07-08 user directive; see experiments/DATA_LEAKAGE_AUDIT_zh.md):
-#   * DROP entirely: discovery HEURISTIC-SEARCH / record constructions + AHC039 (they reconstruct the
-#     eval instance). The generic problem/paper methods below are KEPT (public science, not overfit
-#     to an eval instance).
-#   * DROP FINALE TURN only: MLS same-task trajectories that inject a non-native stronger baseline.
+#   MLS axis is anchored to the 140 tasks PUBLISHED at github.com/Imbernoulli/MLS-Bench
+#   (decontam/public_140_tasks.json). A trajectory is decontaminated ONLY if its task is one of the 140;
+#   if not, it is left untouched (不用管). For a published task we keep the baseline ladder the public
+#   task itself discloses and remove only the '多出来的更强的' — the non-native, beyond-public-baseline
+#   finale rung.
+#   * DROP FINALE TURN only: MLS same-task trajectories (task IN the 140) whose finale injects a
+#     non-native stronger baseline. Offenders on UNpublished MLS tasks are spared (keep finale).
+#   * DROP entirely: discovery HEURISTIC-SEARCH / record constructions + AHC039 — these reconstruct
+#     eval instances of the OTHER benchmarks (ThetaEvolve/TTT-Discover/ALE), a separate axis; kept as-is.
 #   * KEEP: MLS baseline ladders, standalone paper methods (incl. the finale methods), FCS-research
 #     paper reconstructions, v4/wave2 synthetic (n-gram-clean).
 KEEP_PAPER = {"circle-packing-in-square", "cap-set", "kissing-number", "fast-matrix-multiplication",
@@ -116,7 +121,7 @@ def build_slug_map(reg):
             put(slug, "MEDIUM", b, name, f"Discovery-eval-family topic [{et}]; eval-set membership not locally confirmed. {note}")
     return m
 
-def classify_slug(slug, kind, slug_map, mls_slugs, mls20, cp_review):
+def classify_slug(slug, kind, slug_map, mls_slugs, public140, cp_review):
     """Return (leak, contaminated, benchmarks, family, severity, reason)."""
     # 1) explicit registry match (discovery / ALE / FCS-research reconstructions)
     if slug in slug_map:
@@ -124,16 +129,24 @@ def classify_slug(slug, kind, slug_map, mls_slugs, mls20, cp_review):
         sev = e["severity"]
         contaminated = sev in ("CRITICAL", "HIGH")
         return (True, contaminated, e["benchmarks"], e["family"], sev, e["reason"])
-    # 2) MLS-Bench same-task overlap (trajectory / agentic / method whose slug IS an MLS task)
+    # 2) MLS-Bench same-task overlap. Reference = the 140 tasks PUBLISHED at
+    #    github.com/Imbernoulli/MLS-Bench. A same-task trajectory only matters if its task is
+    #    published (in the 140); its baseline ladder is KEPT (disclosed by the public task) and only
+    #    a non-native stronger finale is dropped separately. Same slug as an UNPUBLISHED MLS task is
+    #    not an eval surface -> left untouched (不用管). Never dropped by same-task alone here.
     if slug in mls_slugs:
-        ev = slug in mls20
-        sev = "CRITICAL" if ev else "HIGH"
-        reason = ("Same MLS-Bench task as an EVALUATED task (research question + fixed interface + "
-                  "baseline ladder reproduced as a multi-turn %s; trajectories can inject non-native, "
-                  "stronger-than-native baselines into context)." % kind) if ev else \
-                 ("Same MLS-Bench task slug (research question + interface + baseline ladder reproduced "
-                  "as multi-turn %s). Not clean held-out for MLS." % kind)
-        return (True, True, ["MLS"], "mls_same_task", sev, reason)
+        published = slug in public140
+        if published:
+            sev = "HIGH"
+            reason = ("Same research question as a PUBLISHED MLS-Bench task (in the public 140-task "
+                      "release): fixed interface + baseline ladder reproduced as a multi-turn %s. Baseline "
+                      "ladder kept (the public task discloses it); any non-native stronger finale rung is "
+                      "dropped separately." % kind)
+        else:
+            sev = "LOW"
+            reason = ("Same slug as an MLS task NOT in the public 140-task release -> not an eval surface; "
+                      "left untouched per directive (%s)." % kind)
+        return (True, False, ["MLS"], "mls_same_task", sev, reason)
     # 3) competitive-programming classics: could answer an FCS algorithmic problem (semantic; needs review)
     if slug in cp_review:
         return (True, False, ["FCS"], "cp_classic", "REVIEW",
@@ -141,7 +154,7 @@ def classify_slug(slug, kind, slug_map, mls_slugs, mls20, cp_review):
                 "intended solution is exactly this (n-gram cannot catch a paraphrased statement).")
     return (False, False, [], None, "NONE", "")
 
-def annotate_main(slug_map, mls_slugs, mls20, cp_review, type1_offenders):
+def annotate_main(slug_map, mls_slugs, public140, cp_review, type1_offenders):
     """innovation_sft: kinds method / v4 / traj_* / agentic_* via _sft_tags.jsonl."""
     # map: finale method slug (and hyphen/underscore variants) -> the MLS task it is SOTA for
     finale_method_map = {}
@@ -162,7 +175,7 @@ def annotate_main(slug_map, mls_slugs, mls20, cp_review, type1_offenders):
                 "Synthetic FCS/ALE-register single-file C++ (constructed, not copied); same input "
                 "distribution as FCS/ALE eval. Verify no accidental match to a real benchmark problem.")
         else:
-            leak, cont, ben, fam, sev, reason = classify_slug(slug, kind, slug_map, mls_slugs, mls20, cp_review)
+            leak, cont, ben, fam, sev, reason = classify_slug(slug, kind, slug_map, mls_slugs, public140, cp_review)
             if (not leak) and kind == "method" and slug in finale_method_map:
                 # standalone method that is ALSO the strongest-known method injected as an MLS finale
                 mls_task = finale_method_map[slug]
@@ -261,12 +274,18 @@ def rollup(rows):
 def main():
     reg = json.load(open(DEC / "eval_registry.json"))
     mls_slugs = load_mls_slugs()
-    mls20 = set(reg["mls_evaluated_20"])
+    # MLS decontam reference = the 140 tasks actually PUBLISHED at github.com/Imbernoulli/MLS-Bench
+    # (user directive 2026-07-08). Only trajectories whose task is one of these 140 are decontaminated,
+    # and then only their non-native, beyond-public-baseline finale rung is dropped ('多出来的更强的').
+    public140 = set(json.load(open(DEC / "public_140_tasks.json"))["tasks"])
     cp_review = set(reg["cp_classic_review_slugs"])
     slug_map = build_slug_map(reg)
-    type1_offenders = load_type1_finale_offenders(mls_slugs)
+    type1_all = load_type1_finale_offenders(mls_slugs)
+    # finale-drop applies ONLY to offenders whose task is in the public 140 (others: 不用管 -> keep finale)
+    type1_offenders = {k: v for k, v in type1_all.items() if k in public140}
+    type1_spared = sorted(set(type1_all) - set(type1_offenders))
 
-    main_rows = annotate_main(slug_map, mls_slugs, mls20, cp_review, type1_offenders)
+    main_rows = annotate_main(slug_map, mls_slugs, public140, cp_review, type1_offenders)
     wave2_rows = annotate_wave2()
     v4_rows = annotate_v4()
 
@@ -283,10 +302,15 @@ def main():
         "drop_method_slugs": sorted(drop_method),
         "drop_traj_slugs": sorted(drop_traj),
         "type1_finale_traj": sorted(type1_offenders),
+        "type1_finale_spared_offpublic": type1_spared,
         "keep_paper_methods": sorted(KEEP_PAPER),
-        "_policy": ("drop_method_slugs/drop_traj_slugs removed entirely (discovery heuristic-search/record "
-                    "constructions + AHC039). type1_finale_traj: keep trajectory, skip finale rung. "
-                    "Everything else kept. Per user directive 2026-07-08."),
+        "public_140_ref": "decontam/public_140_tasks.json (github.com/Imbernoulli/MLS-Bench release)",
+        "_policy": ("MLS axis anchored to the PUBLISHED 140-task release: type1_finale_traj (drop the "
+                    "non-native, beyond-public-baseline finale rung, keep the baseline ladder) is applied "
+                    "ONLY to trajectories whose task is in the 140; offenders on unpublished MLS tasks are "
+                    "spared (type1_finale_spared_offpublic -> keep finale). drop_method_slugs/drop_traj_slugs "
+                    "removed entirely (discovery heuristic-search/record constructions + AHC039; other "
+                    "benchmarks). Everything else kept. Per user directive 2026-07-08."),
     }
     json.dump(rules, open(DEC / "decontam_rules.json", "w"), indent=1, ensure_ascii=False)
 
@@ -317,10 +341,12 @@ def main():
     act = Counter(r["decontam_action"] for r in main_rows)
     summary = {
         "mls_task_slugs_total": len(mls_slugs),
-        "policy": "surgical (2026-07-08 user directive): see decontam_rules.json",
+        "mls_public_140_total": len(public140),
+        "policy": "surgical (2026-07-08 user directive): MLS anchored to public 140-task release; see decontam_rules.json",
         "decontam_actions_sft": dict(act),
         "rules": {"drop_method_slugs": len(drop_method), "drop_traj_slugs": len(drop_traj),
-                  "type1_finale_traj": len(type1_offenders)},
+                  "type1_finale_traj": len(type1_offenders),
+                  "type1_finale_spared_offpublic": len(type1_spared)},
         "mls_type1_nonnative_finale": {
             "n_trajectories": len(type1_offenders),
             "offenders": {k: v["finale_slug"] for k, v in sorted(type1_offenders.items())},

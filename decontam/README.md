@@ -31,6 +31,9 @@ published record) without copying its prompt verbatim, so n-gram sees nothing.
      baseline** as a `finale` endpoint (a real published method absent from the MLS task's native
      baselines — e.g. jSO, SOAP, UniPC, diff-transformer, gated-DeltaNet, CrossQ). This is extra
      capability beyond what MLS discloses at inference. See `mls_type1_nonnative_finale.json`.
+     - **Reference = the 140 PUBLISHED tasks** (`public_140_tasks.json`, github.com/Imbernoulli/MLS-Bench).
+       Only the **46** offenders whose task is in that release have their finale dropped; the **5** on
+       *unpublished* MLS tasks are spared (不用管 — keep finale).
 3. **Register-matched synthetic** (annotated, *not* auto-dropped) — `v4` (346 synthetic FCS/ALE-style
    single-file C++, "造题 not 抄题") and `wave2` code/math/fcs_codex. Constructed, not copied, but drawn
    from the *same distribution* as FCS/ALE. Kept in the clean copy on purpose (dropping in-distribution
@@ -42,9 +45,11 @@ published record) without copying its prompt verbatim, so n-gram sees nothing.
   suffixes `-record`/`-autoevolver-record`/`-frontier-largeN`/`-funsearch-evolved`/`-slsqp`/`-sa-*`/
   `-basinhop`/`-multistart`/`-grid-baseline`/`-goldberg-optimal` …) **+ AHC039** (method + trajectory).
   These are overfit to the eval instance → removed entirely.
-- **`drop_finale_turn`** (51 trajectories) — MLS same-task trajectories that inject a **non-native
-  stronger baseline** as a `finale` rung: keep the trajectory (baseline ladder), drop only that rung.
-- **`keep`** — MLS baseline ladders (same-task but the ladder MLS itself discloses); **paper** discovery
+- **`drop_finale_turn`** (46 trajectories, **on the public-140 only**) — MLS same-task trajectories that
+  inject a **non-native stronger baseline** as a `finale` rung: keep the trajectory (baseline ladder,
+  which the public task discloses), drop only that `多出来的更强的` rung. Offenders on unpublished MLS
+  tasks (5) are spared. Reference: `public_140_tasks.json`.
+- **`keep`** — MLS baseline ladders (same-task but the ladder the public task itself discloses); **paper** discovery
   methods (`circle-packing-in-square`, `cap-set`, `kissing-number`, `fast-matrix-multiplication`,
   `erdos-minimum-overlap`, `autocorrelation-inequalities`, `heilbronn-triangle`, LABS); the 39 standalone
   finale methods; **FCS-research** reconstructions (per directive, may not be evaluated); **v4/wave2**
@@ -56,12 +61,12 @@ published record) without copying its prompt verbatim, so n-gram sees nothing.
 |---|---|
 | `eval_registry.json` | Curated map: eval-task families → the training slugs that reconstruct them. Edit to tune the audit. |
 | `audit_leakage.py` | Deterministic auditor. Writes annotations + `decontam_rules.json` + `benchmark_denylist.txt`. **Re-run after editing the registry.** |
-| `decontam_rules.json` | **The gate `build_sft.py` reads.** `drop_method_slugs`(28) / `drop_traj_slugs`(8) / `type1_finale_traj`(51) / `keep_paper_methods`. |
+| `decontam_rules.json` | **The gate `build_sft.py` reads.** `drop_method_slugs`(28) / `drop_traj_slugs`(8) / `type1_finale_traj`(46) / `keep_paper_methods`. |
 | `leakage_tags_sft.jsonl` | Per-row annotation, line-aligned with `sft/innovation_sft.jsonl(.gz)` (2698). Fields incl. `leak, decontam_action, type1_nonnative_finale, exclude_from_summary, benchmarks[], family, severity, reason`. |
 | `leakage_tags_wave2.jsonl` / `leakage_tags_v4.jsonl` | " for `innovation_wave2_sft` (758) / `innovation_v4_sft` (346). |
-| `mls_type1_nonnative_finale.json` | The 51 MLS trajectories that inject a non-native stronger-baseline finale, with the injected method. |
+| `mls_type1_nonnative_finale.json` | The 51 MLS non-native-finale trajectories tagged on_public_140 (46 drop_finale / 5 spared), with the injected method. |
 | `benchmark_denylist.txt` | The 36 slugs removed entirely (28 method + 8 traj). |
-| `clean_rebuilt/innovation_sft.jsonl(.gz)` | **Decontaminated duplicate** (2582 rows), produced by the `build_sft.py` gate. **Clean training set = this + original `sft/innovation_wave2_sft` + original `sft/innovation_v4_sft`.** |
+| `clean_rebuilt/innovation_sft.jsonl(.gz)` | **Decontaminated duplicate** (2587 rows), produced by the `build_sft.py` gate. **Clean training set = this + original `sft/innovation_wave2_sft` + original `sft/innovation_v4_sft`.** |
 | `summary.json` | Rollup + `decontam_action` distribution. |
 
 ## Usage
@@ -73,7 +78,7 @@ python3 decontam/audit_leakage.py
 # build the clean SFT (gate is ON by default; writes to a review path, NOT over sft/)
 SFT_OUT=decontam/clean_rebuilt/innovation_sft.jsonl \
 SFT_TAGS_OUT=decontam/clean_rebuilt/_sft_tags.jsonl \
-  python3 sft/build_sft.py            # -> 2582 rows; INNOVATION_DECONTAM=0 disables the gate
+  python3 sft/build_sft.py            # -> 2587 rows; INNOVATION_DECONTAM=0 disables the gate
 
 # once happy, the plain `python3 sft/build_sft.py` writes the clean version to sft/ (gate default-on).
 # summarizing training data: skip rows with decontam_action in {drop_row, drop_finale_turn},

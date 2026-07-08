@@ -57,9 +57,6 @@
   "graph-link-prediction",
   "graph-node-classification",
   "graph-signal-propagation",
-  "llm-hybrid-posttraining",
-  "llm-offline-rl",
-  "llm-on-policy-distillation",
   "llm-pretrain-attention",
   "llm-pretrain-bitlinear",
   "llm-pretrain-linear-attention",
@@ -80,10 +77,8 @@
   "rl-offline-continuous",
   "rl-offline-off2on",
   "rl-offpolicy-continuous",
-  "rl-offpolicy-sample-efficiency",
   "rl-onpolicy-continuous",
   "rl-value-atari",
-  "safe-exploration-fixed-budget",
   "security-adversarial-attack-sparse-l0",
   "security-backdoor-defense",
   "security-machine-unlearning",
@@ -91,6 +86,13 @@
   "stf-traffic-forecast",
   "ts-classification",
   "ts-short-term-forecast"
+ ],
+ "type1_finale_spared_offpublic": [
+  "llm-hybrid-posttraining",
+  "llm-offline-rl",
+  "llm-on-policy-distillation",
+  "rl-offpolicy-sample-efficiency",
+  "safe-exploration-fixed-budget"
  ],
  "keep_paper_methods": [
   "autocorrelation-inequalities",
@@ -103,5 +105,6 @@
   "low-autocorrelation-sequences",
   "sums-and-differences-sets"
  ],
- "_policy": "drop_method_slugs/drop_traj_slugs removed entirely (discovery heuristic-search/record constructions + AHC039). type1_finale_traj: keep trajectory, skip finale rung. Everything else kept. Per user directive 2026-07-08."
+ "public_140_ref": "decontam/public_140_tasks.json (github.com/Imbernoulli/MLS-Bench release)",
+ "_policy": "MLS axis anchored to the PUBLISHED 140-task release: type1_finale_traj (drop the non-native, beyond-public-baseline finale rung, keep the baseline ladder) is applied ONLY to trajectories whose task is in the 140; offenders on unpublished MLS tasks are spared (type1_finale_spared_offpublic -> keep finale). drop_method_slugs/drop_traj_slugs removed entirely (discovery heuristic-search/record constructions + AHC039; other benchmarks). Everything else kept. Per user directive 2026-07-08."
 }

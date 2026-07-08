@@ -1,536 +1,362 @@
-[
- {
-  "traj": "ai4bio-protein-inverse-folding",
-  "finale_slug": "vfn",
-  "method": "VFN (Vector Field Network encoder)",
-  "native_baselines": [
-   "gvp",
-   "pifold",
-   "proteinmpnn"
-  ]
- },
- {
-  "traj": "ai4sci-climate-emulation",
-  "finale_slug": "conformer-climate",
-  "method": "Conformer (convolution-augmented transformer over the levels)",
-  "native_baselines": [
-   "cnn",
-   "ed",
-   "hsr",
-   "unet"
-  ]
- },
- {
-  "traj": "ai4sci-inverse-diffusion-algo",
-  "finale_slug": "daps",
-  "method": "DAPS (Decoupled Annealing Posterior Sampling)",
-  "native_baselines": [
-   "dps",
-   "lgd",
-   "reddiff"
-  ]
- },
- {
-  "traj": "ai4sci-weather-forecast-aggregation",
-  "finale_slug": "set-transformer-aggregation",
-  "method": "Set Transformer pooling (SAB + PMA)",
-  "native_baselines": [
-   "cross_attention",
-   "learned_weighted_sum",
-   "mean_pooling"
-  ]
- },
- {
-  "traj": "causal-discovery-discrete",
-  "finale_slug": "lges",
-  "method": "LGES (less greedy equivalence search, BDeu)",
-  "native_baselines": [
-   "boss",
-   "ges",
-   "grasp",
-   "hc",
-   "pc"
-  ]
- },
- {
-  "traj": "causal-observational-nonlinear",
-  "finale_slug": "score",
-  "method": "SCORE (score-matching order)",
-  "native_baselines": [
-   "cam",
-   "directlingam",
-   "grandag",
-   "notears_mlp"
-  ]
- },
- {
-  "traj": "cv-classification-loss",
-  "finale_slug": "bi-tempered",
-  "method": "Robust Bi-Tempered Logistic Loss",
-  "native_baselines": [
-   "focal_loss",
-   "label_smoothing",
-   "poly_loss"
-  ]
- },
- {
-  "traj": "cv-diffusion-cfg",
-  "finale_slug": "cfg-zero-star",
-  "method": "CFG-Zero* (optimized scale + zero-init)",
-  "native_baselines": [
-   "cfg",
-   "cfgpp",
-   "zeroinit"
-  ]
- },
- {
-  "traj": "cv-diffusion-efficiency",
-  "finale_slug": "unipc",
-  "method": "UniPC (unified predictor-corrector)",
-  "native_baselines": [
-   "ddim",
-   "dpm2s",
-   "dpm3m_sde",
-   "dpm3m_sde_kdfix"
-  ]
- },
- {
-  "traj": "cv-vae-loss",
-  "finale_slug": "focal-frequency-loss",
-  "method": "Focal Frequency Loss (FFL) on the VQGAN recipe",
-  "native_baselines": [
-   "l2-kl",
-   "perceptual",
-   "vqgan"
-  ]
- },
- {
-  "traj": "dl-activation-function",
-  "finale_slug": "acon",
-  "method": "ACON-C (learnable smooth-maximum activation)",
-  "native_baselines": [
-   "gelu",
-   "mish",
-   "silu"
-  ]
- },
- {
-  "traj": "dl-lr-schedule",
-  "finale_slug": "knee",
-  "method": "Knee (explore-exploit) schedule",
-  "native_baselines": [
-   "cosine",
-   "one_cycle",
-   "warmup_cosine"
-  ]
- },
- {
-  "traj": "dl-residual-connection",
-  "finale_slug": "se_block",
-  "method": "Squeeze-and-Excitation channel attention",
-  "native_baselines": [
-   "gated_residual",
-   "pre_activation",
-   "stochastic_depth"
-  ]
- },
- {
-  "traj": "graph-graph-classification",
-  "finale_slug": "pna-readout",
-  "method": "PNA-style degree-aware multi-aggregation readout",
-  "native_baselines": [
-   "diffpool",
-   "gin_sum",
-   "sagpool"
-  ]
- },
- {
-  "traj": "graph-link-prediction",
-  "finale_slug": "buddy",
-  "method": "BUDDY (exact CN/AA/RA overlap decoder)",
-  "native_baselines": [
-   "gcn_dot",
-   "seal",
-   "vgae"
-  ]
- },
- {
-  "traj": "graph-node-classification",
-  "finale_slug": "gcnii",
-  "method": "GCNII (initial residual + identity mapping)",
-  "native_baselines": [
-   "gat",
-   "gcn",
-   "graphsage"
-  ]
- },
- {
-  "traj": "graph-signal-propagation",
-  "finale_slug": "jacobiconv",
-  "method": "JacobiConv (Jacobi-basis orthogonal-polynomial filter)",
-  "native_baselines": [
-   "bernnet",
-   "chebnetii",
-   "gprgnn"
-  ]
- },
- {
-  "traj": "llm-hybrid-posttraining",
-  "finale_slug": "luffy",
-  "method": "LUFFY (off-policy guidance; route stuck prompts to off-policy RL)",
-  "native_baselines": [
-   "grpo",
-   "hpt",
-   "sft"
-  ]
- },
- {
-  "traj": "llm-offline-rl",
-  "finale_slug": "dpop",
-  "method": "DPOP / DPO-Positive (DPO + one-sided chosen barrier)",
-  "native_baselines": [
-   "dpo",
-   "ipo",
-   "orpo",
-   "simpo"
-  ]
- },
- {
-  "traj": "llm-on-policy-distillation",
-  "finale_slug": "skew-reverse-kl",
-  "method": "Skewed Reverse KL (SRKL, DistiLLM)",
-  "native_baselines": [
-   "dagger",
-   "gkd",
-   "opd",
-   "rs_kd",
-   "taid"
-  ]
- },
- {
-  "traj": "llm-pretrain-attention",
-  "finale_slug": "diff-transformer",
-  "method": "Differential Transformer",
-  "native_baselines": [
-   "qk_norm",
-   "rope",
-   "rope_qk_norm"
-  ]
- },
- {
-  "traj": "llm-pretrain-bitlinear",
-  "finale_slug": "lsq",
-  "method": "LSQ (Learned Step Size Quantization)",
-  "native_baselines": [
-   "binary_sign",
-   "int2_uniform",
-   "ternary_158bit"
-  ]
- },
- {
-  "traj": "llm-pretrain-linear-attention",
-  "finale_slug": "gated-deltanet",
-  "method": "Gated DeltaNet (gated delta rule)",
-  "native_baselines": [
-   "deltanet",
-   "gla",
-   "retnet"
-  ]
- },
- {
-  "traj": "llm-pretrain-optimizer",
-  "finale_slug": "soap",
-  "method": "SOAP (Adam in Shampoo's eigenbasis)",
-  "native_baselines": [
-   "adamw_nesterov",
-   "lion",
-   "muon"
-  ]
- },
- {
-  "traj": "llm-pretrain-residual",
-  "finale_slug": "hyper-connections",
-  "method": "Hyper-Connections (DHC, n parallel residual streams)",
-  "native_baselines": [
-   "full_attnres",
-   "learned_scaling",
-   "prores",
-   "vanilla"
-  ]
- },
- {
-  "traj": "llm-qat-algorithm",
-  "finale_slug": "omniquant-lwc",
-  "method": "OmniQuant LWC (learnable weight clipping)",
-  "native_baselines": [
-   "finetune_then_ptq",
-   "lsq",
-   "no_qat",
-   "ste"
-  ]
- },
- {
-  "traj": "llm-rl-importance-sampling",
-  "finale_slug": "cispo",
-  "method": "CISPO (clipped IS weight, stop-gradient)",
-  "native_baselines": [
-   "first_k_tokens",
-   "sequence_level",
-   "token_level"
-  ]
- },
- {
-  "traj": "marl-centralized-critic",
-  "finale_slug": "mappo-as-critic",
-  "method": "Agent-Specific (AS) central-V critic",
-  "native_baselines": [
-   "ippo_critic",
-   "mappo_critic",
-   "mat_critic"
-  ]
- },
- {
-  "traj": "meta-inner-loop-optimizer",
-  "finale_slug": "meta-curvature",
-  "method": "Meta-Curvature (learned Kronecker-factored gradient preconditioner)",
-  "native_baselines": [
-   "anil",
-   "maml",
-   "meta_sgd"
-  ]
- },
- {
-  "traj": "ml-calibration",
-  "finale_slug": "beta-calibration",
-  "method": "Beta calibration (three-parameter power-law-on-odds map)",
-  "native_baselines": [
-   "isotonic_regression",
-   "platt_scaling",
-   "temperature_scaling"
-  ]
- },
- {
-  "traj": "ml-federated-aggregation",
-  "finale_slug": "feddyn",
-  "method": "FedDyn (Federated Dynamic Regularization)",
-  "native_baselines": [
-   "fedavg",
-   "fedprox",
-   "scaffold"
-  ]
- },
- {
-  "traj": "optimization-evolution-strategy",
-  "finale_slug": "jso",
-  "method": "jSO (weighted current-to-pBest-w/1 adaptive DE)",
-  "native_baselines": [
-   "de",
-   "ga_sbx",
-   "lshade"
-  ]
- },
- {
-  "traj": "optimization-gradient-compression",
-  "finale_slug": "powersgd",
-  "method": "PowerSGD (warm-started low-rank + error feedback)",
-  "native_baselines": [
-   "qsgd",
-   "signsgd",
-   "topk_ef"
-  ]
- },
- {
-  "traj": "optimization-multi-objective",
-  "finale_slug": "sms-emoa",
-  "method": "SMS-EMOA (S-metric hypervolume selection)",
-  "native_baselines": [
-   "agemoea",
-   "moead",
-   "nsga2",
-   "nsga3",
-   "rvea",
-   "spea2"
-  ]
- },
- {
-  "traj": "pde-design-solver",
-  "finale_slug": "transolver-plus",
-  "method": "Transolver++ (eidetic states)",
-  "native_baselines": [
-   "graphsage",
-   "graphunet",
-   "pointnet",
-   "transolver"
-  ]
- },
- {
-  "traj": "quant-concept-drift",
-  "finale_slug": "double-ensemble",
-  "method": "DoubleEnsemble (sample-reweighting + feature-selection ensemble)",
-  "native_baselines": [
-   "adarnn",
-   "lgbm",
-   "tra"
-  ]
- },
- {
-  "traj": "rl-intrinsic-exploration",
-  "finale_slug": "ngu",
-  "method": "NGU (Never Give Up)",
-  "native_baselines": [
-   "icm",
-   "ppo",
-   "rnd"
-  ]
- },
- {
-  "traj": "rl-offline-continuous",
-  "finale_slug": "sac-rnd",
-  "method": "SAC-RND (anti-exploration by random network distillation)",
-  "native_baselines": [
-   "iql",
-   "rebrac",
-   "td3_bc"
-  ]
- },
- {
-  "traj": "rl-offline-off2on",
-  "finale_slug": "cal-ql",
-  "method": "Cal-QL (calibrated Q-learning)",
-  "native_baselines": [
-   "awac",
-   "iql",
-   "spot"
-  ]
- },
- {
-  "traj": "rl-offpolicy-continuous",
-  "finale_slug": "crossq",
-  "method": "CrossQ (BatchRenorm critic, no target networks)",
-  "native_baselines": [
-   "ddpg",
-   "sac",
-   "td3"
-  ]
- },
- {
-  "traj": "rl-offpolicy-sample-efficiency",
-  "finale_slug": "simba",
-  "method": "SimBa (simplicity-bias residual encoder on the FastTD3 backbone)",
-  "native_baselines": [
-   "fastsac",
-   "fasttd3",
-   "ppo"
-  ]
- },
- {
-  "traj": "rl-onpolicy-continuous",
-  "finale_slug": "rpo",
-  "method": "RPO (Robust Policy Optimization)",
-  "native_baselines": [
-   "awr",
-   "ppo",
-   "ppo_penalty"
-  ]
- },
- {
-  "traj": "rl-value-atari",
-  "finale_slug": "iqn",
-  "method": "IQN (Implicit Quantile Networks)",
-  "native_baselines": [
-   "c51",
-   "double_dqn",
-   "qr_dqn"
-  ]
- },
- {
-  "traj": "safe-exploration-fixed-budget",
-  "finale_slug": "crpo",
-  "method": "CRPO (constraint-rectified policy optimization)",
-  "native_baselines": [
-   "budget_margin_lag",
-   "naive",
-   "pid_lag",
-   "ppo_lag"
-  ]
- },
- {
-  "traj": "security-adversarial-attack-sparse-l0",
-  "finale_slug": "sparse-pgd",
-  "method": "Sparse-PGD / sPGD (gradient-guided support search, white-box)",
-  "native_baselines": [
-   "jsma",
-   "onepixel",
-   "pixle",
-   "sparse_rs",
-   "sparsefool"
-  ]
- },
- {
-  "traj": "security-backdoor-defense",
-  "finale_slug": "spectre",
-  "method": "SPECTRE (Hayase et al., 2021)",
-  "native_baselines": [
-   "activation_clustering",
-   "confidence_filter",
-   "spectral_signature",
-   "zscore_outlier"
-  ]
- },
- {
-  "traj": "security-machine-unlearning",
-  "finale_slug": "salun",
-  "method": "SalUn (saliency-masked random labeling)",
-  "native_baselines": [
-   "bad_teacher",
-   "negative_gradient",
-   "retain_finetune",
-   "scrub"
-  ]
- },
- {
-  "traj": "security-poison-robust-learning",
-  "finale_slug": "normalized-loss-functions",
-  "method": "Active Passive Loss (NCE + RCE)",
-  "native_baselines": [
-   "bootstrap",
-   "cross_entropy",
-   "generalized_ce",
-   "symmetric_ce"
-  ]
- },
- {
-  "traj": "stf-traffic-forecast",
-  "finale_slug": "stid",
-  "method": "STID (spatial-temporal identity)",
-  "native_baselines": [
-   "dlinear",
-   "itransformer",
-   "softs",
-   "stemgnn",
-   "timemixer",
-   "timesnet"
-  ]
- },
- {
-  "traj": "ts-classification",
-  "finale_slug": "moderntcn",
-  "method": "ModernTCN (large-kernel depthwise conv + cross-variable ConvFFN)",
-  "native_baselines": [
-   "dlinear",
-   "patchtst",
-   "timesnet"
-  ]
- },
- {
-  "traj": "ts-short-term-forecast",
-  "finale_slug": "nbeats",
-  "method": "N-BEATS (double-residual basis-expansion stack)",
-  "native_baselines": [
-   "dlinear",
-   "patchtst",
-   "timemixer",
-   "timesnet"
-  ]
- }
-]
+{
+ "_comment": "MLS same-task trajectories whose finale rung injects a non-native, stronger-than-baseline method. Reference = the 140 published tasks (decontam/public_140_tasks.json). Only offenders on the public 140 have their finale dropped; the rest are spared (不用管). 46 drop_finale, 5 spared, 51 total.",
+ "offenders": [
+  {
+   "task": "ai4bio-protein-inverse-folding",
+   "finale_slug": "vfn",
+   "finale_method": "VFN (Vector Field Network encoder)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "ai4sci-climate-emulation",
+   "finale_slug": "conformer-climate",
+   "finale_method": "Conformer (convolution-augmented transformer over the levels)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "ai4sci-inverse-diffusion-algo",
+   "finale_slug": "daps",
+   "finale_method": "DAPS (Decoupled Annealing Posterior Sampling)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "ai4sci-weather-forecast-aggregation",
+   "finale_slug": "set-transformer-aggregation",
+   "finale_method": "Set Transformer pooling (SAB + PMA)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "causal-discovery-discrete",
+   "finale_slug": "lges",
+   "finale_method": "LGES (less greedy equivalence search, BDeu)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "causal-observational-nonlinear",
+   "finale_slug": "score",
+   "finale_method": "SCORE (score-matching order)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "cv-classification-loss",
+   "finale_slug": "bi-tempered",
+   "finale_method": "Robust Bi-Tempered Logistic Loss",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "cv-diffusion-cfg",
+   "finale_slug": "cfg-zero-star",
+   "finale_method": "CFG-Zero* (optimized scale + zero-init)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "cv-diffusion-efficiency",
+   "finale_slug": "unipc",
+   "finale_method": "UniPC (unified predictor-corrector)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "cv-vae-loss",
+   "finale_slug": "focal-frequency-loss",
+   "finale_method": "Focal Frequency Loss (FFL) on the VQGAN recipe",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "dl-activation-function",
+   "finale_slug": "acon",
+   "finale_method": "ACON-C (learnable smooth-maximum activation)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "dl-lr-schedule",
+   "finale_slug": "knee",
+   "finale_method": "Knee (explore-exploit) schedule",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "dl-residual-connection",
+   "finale_slug": "se_block",
+   "finale_method": "Squeeze-and-Excitation channel attention",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "graph-graph-classification",
+   "finale_slug": "pna-readout",
+   "finale_method": "PNA-style degree-aware multi-aggregation readout",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "graph-link-prediction",
+   "finale_slug": "buddy",
+   "finale_method": "BUDDY (exact CN/AA/RA overlap decoder)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "graph-node-classification",
+   "finale_slug": "gcnii",
+   "finale_method": "GCNII (initial residual + identity mapping)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "graph-signal-propagation",
+   "finale_slug": "jacobiconv",
+   "finale_method": "JacobiConv (Jacobi-basis orthogonal-polynomial filter)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "llm-pretrain-attention",
+   "finale_slug": "diff-transformer",
+   "finale_method": "Differential Transformer",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "llm-pretrain-bitlinear",
+   "finale_slug": "lsq",
+   "finale_method": "LSQ (Learned Step Size Quantization)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "llm-pretrain-linear-attention",
+   "finale_slug": "gated-deltanet",
+   "finale_method": "Gated DeltaNet (gated delta rule)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "llm-pretrain-optimizer",
+   "finale_slug": "soap",
+   "finale_method": "SOAP (Adam in Shampoo's eigenbasis)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "llm-pretrain-residual",
+   "finale_slug": "hyper-connections",
+   "finale_method": "Hyper-Connections (DHC, n parallel residual streams)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "llm-qat-algorithm",
+   "finale_slug": "omniquant-lwc",
+   "finale_method": "OmniQuant LWC (learnable weight clipping)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "llm-rl-importance-sampling",
+   "finale_slug": "cispo",
+   "finale_method": "CISPO (clipped IS weight, stop-gradient)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "marl-centralized-critic",
+   "finale_slug": "mappo-as-critic",
+   "finale_method": "Agent-Specific (AS) central-V critic",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "meta-inner-loop-optimizer",
+   "finale_slug": "meta-curvature",
+   "finale_method": "Meta-Curvature (learned Kronecker-factored gradient preconditioner)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "ml-calibration",
+   "finale_slug": "beta-calibration",
+   "finale_method": "Beta calibration (three-parameter power-law-on-odds map)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "ml-federated-aggregation",
+   "finale_slug": "feddyn",
+   "finale_method": "FedDyn (Federated Dynamic Regularization)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "optimization-evolution-strategy",
+   "finale_slug": "jso",
+   "finale_method": "jSO (weighted current-to-pBest-w/1 adaptive DE)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "optimization-gradient-compression",
+   "finale_slug": "powersgd",
+   "finale_method": "PowerSGD (warm-started low-rank + error feedback)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "optimization-multi-objective",
+   "finale_slug": "sms-emoa",
+   "finale_method": "SMS-EMOA (S-metric hypervolume selection)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "pde-design-solver",
+   "finale_slug": "transolver-plus",
+   "finale_method": "Transolver++ (eidetic states)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "quant-concept-drift",
+   "finale_slug": "double-ensemble",
+   "finale_method": "DoubleEnsemble (sample-reweighting + feature-selection ensemble)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "rl-intrinsic-exploration",
+   "finale_slug": "ngu",
+   "finale_method": "NGU (Never Give Up)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "rl-offline-continuous",
+   "finale_slug": "sac-rnd",
+   "finale_method": "SAC-RND (anti-exploration by random network distillation)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "rl-offline-off2on",
+   "finale_slug": "cal-ql",
+   "finale_method": "Cal-QL (calibrated Q-learning)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "rl-offpolicy-continuous",
+   "finale_slug": "crossq",
+   "finale_method": "CrossQ (BatchRenorm critic, no target networks)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "rl-onpolicy-continuous",
+   "finale_slug": "rpo",
+   "finale_method": "RPO (Robust Policy Optimization)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "rl-value-atari",
+   "finale_slug": "iqn",
+   "finale_method": "IQN (Implicit Quantile Networks)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "security-adversarial-attack-sparse-l0",
+   "finale_slug": "sparse-pgd",
+   "finale_method": "Sparse-PGD / sPGD (gradient-guided support search, white-box)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "security-backdoor-defense",
+   "finale_slug": "spectre",
+   "finale_method": "SPECTRE (Hayase et al., 2021)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "security-machine-unlearning",
+   "finale_slug": "salun",
+   "finale_method": "SalUn (saliency-masked random labeling)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "security-poison-robust-learning",
+   "finale_slug": "normalized-loss-functions",
+   "finale_method": "Active Passive Loss (NCE + RCE)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "stf-traffic-forecast",
+   "finale_slug": "stid",
+   "finale_method": "STID (spatial-temporal identity)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "ts-classification",
+   "finale_slug": "moderntcn",
+   "finale_method": "ModernTCN (large-kernel depthwise conv + cross-variable ConvFFN)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "ts-short-term-forecast",
+   "finale_slug": "nbeats",
+   "finale_method": "N-BEATS (double-residual basis-expansion stack)",
+   "on_public_140": true,
+   "action": "drop_finale"
+  },
+  {
+   "task": "llm-hybrid-posttraining",
+   "finale_slug": "luffy",
+   "finale_method": "LUFFY (off-policy guidance; route stuck prompts to off-policy RL)",
+   "on_public_140": false,
+   "action": "spared_offpublic_keep_finale"
+  },
+  {
+   "task": "llm-offline-rl",
+   "finale_slug": "dpop",
+   "finale_method": "DPOP / DPO-Positive (DPO + one-sided chosen barrier)",
+   "on_public_140": false,
+   "action": "spared_offpublic_keep_finale"
+  },
+  {
+   "task": "llm-on-policy-distillation",
+   "finale_slug": "skew-reverse-kl",
+   "finale_method": "Skewed Reverse KL (SRKL, DistiLLM)",
+   "on_public_140": false,
+   "action": "spared_offpublic_keep_finale"
+  },
+  {
+   "task": "rl-offpolicy-sample-efficiency",
+   "finale_slug": "simba",
+   "finale_method": "SimBa (simplicity-bias residual encoder on the FastTD3 backbone)",
+   "on_public_140": false,
+   "action": "spared_offpublic_keep_finale"
+  },
+  {
+   "task": "safe-exploration-fixed-budget",
+   "finale_slug": "crpo",
+   "finale_method": "CRPO (constraint-rectified policy optimization)",
+   "on_public_140": false,
+   "action": "spared_offpublic_keep_finale"
+  }
+ ]
+}
