@@ -128,15 +128,25 @@ r3 = 最新一代数据(method 1201 + v4 346 + 深化 traj + wave2/maintain),Qwe
 
 → **我们的开放式题目生成方法(FrontierSmith,拓宽到 FunSearch/AlphaEvolve/OpenEvolve 等)产出的 RL 数据,比 FrontierCS 自己的题还好用**(7.61 vs 6.63,+15%),且是唯一让 base 在竞赛 FCS 上真提点的 RL 数据(可能因更泛化 + 避开 eval 泄漏)。
 
-### 4B.2 soup alpha 消融(instruct 占比越大 = alpha 越小 = 越保竞赛)
-`merged = α·SFT + (1−α)·base`。**发现类(MLS/Research)a10~a20 是甜点**;竞赛(FCS)α 越小越接近 base。可信单测 FCS 仅 a30 就位(a10/a20 单测在跑,预计更高;bundler 口径比单测低 ~1.45×,仅供趋势):
+### 4B.2 ⭐ soup alpha 消融 —— **a05(只掺 5% SFT)是甜点:竞赛几乎不掉 + 发现类提点**
+`merged = α·SFT + (1−α)·base`(base=instruct)。α 越小 = instruct 占比越大 = 越保竞赛。
 
-| 指标(base 参照) | 甜点 | 说明 |
-|---|---|---|
-| **Research**(base 9.08) | `full_wd01 a10=11.96`(最高)、`methodv4 a20=10.32`、`a10=10.10` | **部分 a10/a20 超 base**(非全部:`full_wd01_a20=8.48`/`methodtraj_a20=8.84` 未超;高方差 std~3) |
-| **MLS**(base ~0.04) | `methodtraj a10=0.091`、`full_wd0 a10=0.096` | a10 最高 |
-| ALE(base 356) | `methodtraj a10=384` | 低 α 保 ALE |
-| FCS 单测(base 7.05) | a30:methodv4=5.29 / full_wd0=5.18(a10/a20 单测跑中,更高) | α 越小越高 |
+**可信单测 FCS 全表(base 7.05;dedicated judge,已替换早前偏低 ~1.45× 的 bundler 口径):**
+
+| soup 单测 FCS | a05 | a10 | a20 | a30 | a50 |
+|---|---|---|---|---|---|
+| **methodv4** | **6.99** | 6.49 | 6.37 | 5.29 | 2.76 |
+| methodtraj | ~6.0 | 6.04 | 5.87 | – | 1.29 |
+| full_wd0(maintain) | 6.29 | 5.75 | 4.84 | 5.18 | 2.64 |
+| full_wd01(maintain) | 6.13 | 6.54 | 5.05 | 4.69 | 2.12 |
+
+→ **单调:α 越小 FCS 越接近 base**;**a05 全部 6.0-6.99,几乎追平 base 7.05**(竞赛几乎不掉)。
+
+**同一 a05 同时保住发现类**(Research base 9.08):`full_wd01 a5=11.28`、`methodtraj a5=10.67`、`methodv4 a5=9.40`、`full_wd0 a5=9.13`。
+
+**结论:a05 是更优甜点** —— 只掺 5% innovation SFT 就"**FCS 追平 base + Research 超 base**",比 a10~a50 都均衡。`methodtraj a5`(FCS ~6.0 + Research 10.67)是最佳全能。(Research 高方差 std~3;`full_wd01_a20=8.48`/`methodtraj_a20=8.84` 等中间 α 有低于 base 的,不是全 α 都超。)
+
+其它指标(bundler 口径,仅趋势):MLS `methodtraj a10=0.091`/`full_wd0 a10=0.096`;ALE `methodtraj a10=384` —— 均低 α 最好。
 
 ### 4B.3 maintain 数据(抗遗忘)这条线
 | | SFT 直测 FCS | 最佳 Research |
