@@ -1,0 +1,148 @@
+{
+  "_comment": "Curated map: eval-benchmark task families -> the training-source slugs that reconstruct them. Slugs are matched against the `id` field of sft/_sft_tags.jsonl (framing suffix `#rN` stripped). MLS-Bench same-task overlap is handled separately/deterministically in audit_leakage.py by intersecting source slugs with tasks/*. Benchmarks: FCS=FrontierCS, ALE=ALE-Bench, THETA=ThetaEvolve, TTT=TTT-Discover, MLS=MLS-Bench.",
+  "families": [
+    {
+      "family": "circle_packing_n26",
+      "benchmarks": ["THETA", "TTT"],
+      "eval_task": "ThetaEvolve circle_packing_modular (n=26 sum-of-radii); TTT-Discover circle packing",
+      "note": "Exact eval task. context.md cites AlphaEvolve/Shinka/ThetaEvolve/AutoEvolver record values; endpoint rung reaches the published record.",
+      "critical_slugs": ["circle-autoevolver-record", "geom-circle-packing-26"],
+      "high_slugs": ["circle-packing-in-square", "circle-grid-baseline", "circle-single-slsqp", "circle-multistart-slsqp", "circle-structured-perturb-slsqp"]
+    },
+    {
+      "family": "erdos_min_overlap_c5",
+      "benchmarks": ["TTT", "THETA"],
+      "eval_task": "TTT-Discover Erdos minimum-overlap constant C5 (also an AlphaEvolve/ThetaEvolve math target)",
+      "note": "context.md cites TTT-Discover 0.38087532 and AutoEvolver record; endpoint rung pushes to record resolution.",
+      "critical_slugs": ["erdos-autoevolver-record", "erdos-frontier-largeN", "math-erdos-min-overlap"],
+      "high_slugs": ["erdos-minimum-overlap", "erdos-uniform-baseline", "erdos-coarse-slsqp", "erdos-finer-basinhop"]
+    },
+    {
+      "family": "autocorr_inequalities",
+      "benchmarks": ["THETA", "TTT"],
+      "eval_task": "ThetaEvolve first/second/third_autocorr_inequality (AC1/AC2/AC3); TTT-Discover AC1/AC2",
+      "note": "Same convolution-based objective as the eval evaluators; c1/c2 record + frontier-largeN reach the record.",
+      "critical_slugs": ["c1-autoevolver-record", "c1-frontier-largeN", "c2-frontier-largeN", "c2-record", "math-autocorrelation-c1", "math-autocorrelation-inequality"],
+      "high_slugs": ["autocorrelation-inequalities"]
+    },
+    {
+      "family": "hadamard_maxdet",
+      "benchmarks": ["THETA"],
+      "eval_task": "ThetaEvolve hadamard_matrix (|det|/theoretical bound)",
+      "note": "Orrick record construction reproduced.",
+      "critical_slugs": ["hadamard-orrick-record"],
+      "high_slugs": ["synth-hadamard-maxdet"]
+    },
+    {
+      "family": "heilbronn_triangle",
+      "benchmarks": ["THETA", "TTT"],
+      "eval_task": "Heilbronn triangle problem (CONFIRMED runnable ThetaEvolve task: openevolve alphaevolve_math_problems/heilbronn_triangle + heilbronn_convex)",
+      "note": "Full explore->record ladder incl. Goldberg optimal endpoint.",
+      "critical_slugs": ["heilbronn-goldberg-optimal", "geom-heilbronn-triangle"],
+      "high_slugs": ["heilbronn-triangle", "heilbronn-grid-baseline", "heilbronn-random-multistart", "heilbronn-sa-positions", "heilbronn-softmin-polish"]
+    },
+    {
+      "family": "cap_set",
+      "benchmarks": ["THETA", "TTT"],
+      "eval_task": "Cap set problem (FunSearch/AlphaEvolve target; discovery-eval family)",
+      "note": "Includes a FunSearch-evolved endpoint construction.",
+      "critical_slugs": ["capset-funsearch-evolved", "combi-cap-set"],
+      "high_slugs": ["cap-set", "capset-greedy-lex", "capset-random-multistart", "capset-structured-priority"]
+    },
+    {
+      "family": "kissing_number",
+      "benchmarks": ["THETA", "TTT"],
+      "eval_task": "Kissing number (AlphaEvolve math-discovery target)",
+      "note": "CONFIRMED runnable eval task: openevolve examples/alphaevolve_math_problems/kissing_number/{initial_program,evaluator}.py.",
+      "high_slugs": ["kissing-number"]
+    },
+    {
+      "family": "fast_matrix_mult",
+      "benchmarks": ["THETA", "TTT"],
+      "eval_task": "Fast matrix multiplication / tensor-decomposition rank (AlphaEvolve target)",
+      "note": "CONFIRMED runnable eval task: openevolve examples/alphaevolve_math_problems/matmul/{initial_program,evaluator}.py.",
+      "high_slugs": ["fast-matrix-multiplication"]
+    },
+    {
+      "family": "low_autocorr_binary_seq",
+      "benchmarks": ["THETA", "TTT"],
+      "eval_task": "Low-autocorrelation binary sequences / LABS (AlphaEvolve-adjacent; distinct from AC1/2/3)",
+      "note": "Distinct from the continuous autocorr inequalities but same discovery register -> MEDIUM.",
+      "medium_slugs": ["low-autocorrelation-sequences"]
+    },
+    {
+      "family": "ale_ahc039",
+      "benchmarks": ["ALE"],
+      "eval_task": "ALE-Bench AtCoder AHC039 'Purse Seine Fishing' (real AtCoder Heuristic Contest problem)",
+      "note": "Real AHC problem, full bbox->grid-greedy->grid-SA->Shinka ladder incl. ShinkaEvolve-refined endpoint. ALE-Bench eval-set membership of AHC039 to be confirmed, but treat as CRITICAL.",
+      "critical_slugs": ["ale-atcoder-ahc039", "ahc039-shinka-targeted-sa"],
+      "high_slugs": ["ahc039-bbox-rect", "ahc039-grid-greedy", "ahc039-grid-sa"]
+    },
+    {
+      "family": "trimul_kernel",
+      "benchmarks": ["FCS", "TTT"],
+      "eval_task": "FrontierCS-research 'trimul' task + TTT-Discover GPU TriMul kernel (AlphaFold triangle multiplicative update)",
+      "note": "Exact name-match to FrontierCS research task dir tasks/trimul.",
+      "critical_slugs": ["trimul"]
+    },
+    {
+      "family": "scrna_denoise",
+      "benchmarks": ["FCS", "TTT"],
+      "eval_task": "FrontierCS-research 'denoising' + TTT-Discover single-cell RNA-seq denoising (molecular cross-validation)",
+      "note": "ttt-discover-denoise is literally named after the benchmark; magic-imputation/magic-diffusion/knn-smoothing are the OpenProblems denoising benchmark's own reference methods.",
+      "critical_slugs": ["ttt-discover-denoise", "bio-scrna-denoise"],
+      "high_slugs": ["raw-baseline-denoise", "magic-imputation", "magic-diffusion", "knn-smoothing"]
+    },
+    {
+      "family": "fcs_flash_attention",
+      "benchmarks": ["FCS"],
+      "eval_task": "FrontierCS-research flash_attention (causal SDPA fused exact-attention kernel)",
+      "note": "5 method reconstructions of the exact kernel the task optimizes (FlashAttention v1/2/3).",
+      "high_slugs": ["flashattention", "flash-attention-2", "flash-v1", "flash-v2", "flash-v3"]
+    },
+    {
+      "family": "fcs_mla",
+      "benchmarks": ["FCS"],
+      "eval_task": "FrontierCS-research mla (Multi-head Latent Attention decoding kernel)",
+      "note": "Reconstructs low-rank KV-cache compression + RoPE, exactly the MLA kernel target.",
+      "high_slugs": ["mla", "mla-attention"]
+    },
+    {
+      "family": "fcs_topology_opt",
+      "benchmarks": ["FCS"],
+      "eval_task": "FrontierCS-research topology_optimization (MBB-beam SIMP compliance minimization)",
+      "note": "simp reconstructs the exact named method; mma-svanberg is the standard optimizer used to solve it (weaker/topical -> MEDIUM).",
+      "high_slugs": ["simp"],
+      "medium_slugs": ["mma-svanberg"]
+    },
+    {
+      "family": "fcs_proton_therapy",
+      "benchmarks": ["FCS"],
+      "eval_task": "FrontierCS-research proton_therapy_planning (IMPT spot-weight inverse planning)",
+      "high_slugs": ["proton-therapy-impt"]
+    },
+    {
+      "family": "fcs_malloclab",
+      "benchmarks": ["FCS"],
+      "eval_task": "FrontierCS-research malloclab (CS:APP malloc/free allocator, throughput vs utilization)",
+      "high_slugs": ["malloc-allocator"]
+    },
+    {
+      "family": "fcs_research_topical",
+      "benchmarks": ["FCS"],
+      "eval_task": "Various FrontierCS-research tasks reconstructed at the technique level (topical, with a real gap -> MEDIUM; per-item verify)",
+      "note": "car_aerodynamics_sensing(gappy-POD/DEIM), wireless_channel_simulation(importance sampling/Hamming), muon_tomography, quadruped_gait, robot_arm_cycle_time, cryptographic(AES/SHA256/SHA3), pid_tuning(ZN), uav_inspection_coverage, manned_lunar_landing.",
+      "medium_slugs": ["gappy-pod-sensors", "deim-nonlinear-rom", "importance-sampling-rare-event", "hamming-codes", "muon-tomography", "quadruped-gait", "robot-arm-time-optimal", "aes-rijndael", "sha256-merkle-damgard", "keccak", "ziegler-nichols-pid", "coverage-path-planning", "powered-descent-convexification"]
+    },
+    {
+      "family": "sums_diffs_finite_sets",
+      "benchmarks": ["THETA", "TTT"],
+      "eval_task": "Sums & differences of finite sets / MSTD (AlphaEvolve Appendix B.6; runnable OpenEvolve example sums_diffs_finite_sets, NOT in this run's Theta/TTT subset)",
+      "note": "Leakable Theta-family eval task with a checked-in runnable example; this run did not execute it -> MEDIUM.",
+      "medium_slugs": ["sums-and-differences-sets"]
+    }
+  ],
+  "fcs_research_task_names": ["trimul", "denoising", "flash_attention", "mla", "predict_modality", "perturbation_prediction", "topology_optimization", "wireless_channel_simulation", "iscso2015", "iscso2023", "malloclab", "proton_therapy_planning", "quadruped_gait", "muon_tomography", "manned_lunar_landing", "car_aerodynamics_sensing", "dynamic_obstacle_navigation", "pid_tuning", "robot_arm_cycle_time", "uav_inspection_coverage", "cryptographic"],
+  "cp_classic_review_slugs": ["dsu-on-tree", "gale-shapley", "karmarkar-karp-binpacking", "balkanoi-2011-time-is-money", "algo-online-bin-packing", "schonhage-strassen", "tammes-problem", "thomson-problem"],
+  "mls_evaluated_20": ["causal-observational-linear-gaussian", "causal-observational-linear-non-gaussian", "causal-observational-nonlinear", "causal-treatment-effect", "causal-discovery-discrete", "ml-active-learning", "ml-anomaly-detection", "ml-calibration", "ml-clustering-algorithm", "ml-dimensionality-reduction", "ml-ensemble-boosting", "ml-missing-data-imputation", "ml-selective-deferral", "ml-subgroup-calibration-shift", "ml-symbolic-regression", "mlsys-moe-load-balance", "optimization-evolution-strategy", "optimization-multi-objective", "optimization-nas", "llm-scaling-law-discovery"]
+}

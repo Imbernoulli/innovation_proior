@@ -35,6 +35,29 @@ import json, os, glob, re
 REPO = os.environ.get('INNOVATION_PRIOR_REPO') or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 os.chdir(REPO)
 
+# ---------- decontamination gate (see experiments/DATA_LEAKAGE_AUDIT_zh.md) ----------
+# Build-time removal of eval-benchmark leakage. Rules live in decontam/decontam_rules.json
+# (regenerate the audit with decontam/audit_leakage.py). Policy (2026-07-08 user directive):
+#   drop_method_slugs : discovery heuristic-search / record constructions + AHC039 -> not emitted.
+#   drop_traj_slugs   : discovery-math ladders + AHC039 trajectory -> not emitted.
+#   type1_finale_traj : MLS same-task trajectories that inject a NON-native stronger baseline as a
+#                       finale rung -> KEEP the trajectory but SKIP the finale rung only.
+# Everything else (MLS baseline ladders, standalone paper methods, FCS-research paper reconstructions,
+# v4/wave2 synthetic) is kept. Toggle off with INNOVATION_DECONTAM=0 to get the pre-audit build.
+DECON = os.environ.get('INNOVATION_DECONTAM', '1') != '0'
+_DROP_METHODS, _DROP_TRAJ, _TYPE1_FINALE = set(), set(), set()
+if DECON:
+    _rp = os.path.join(REPO, 'decontam', 'decontam_rules.json')
+    if os.path.isfile(_rp):
+        _rules = json.load(open(_rp))
+        _DROP_METHODS = set(_rules.get('drop_method_slugs', []))
+        _DROP_TRAJ = set(_rules.get('drop_traj_slugs', []))
+        _TYPE1_FINALE = set(_rules.get('type1_finale_traj', []))
+    else:
+        print(f"[decontam] WARNING: {_rp} missing; building WITHOUT the leakage gate.")
+        DECON = False
+_decon_stats = {'methods_dropped': 0, 'trajs_dropped': 0, 'finale_rungs_dropped': 0}
+
 # NOTE (data remediation, see experiments/DATA_REMEDIATION_zh.md §1.3 / §3-A1):
 # the old system prompt was a pure "research-register" amplifier ("You are a good researcher.")
 # with no delivery discipline. It is augmented below to also carry the missing skill the FCS/ALE
@@ -115,6 +138,9 @@ def end_on_assistant(convs):
 methods = json.load(open('methods.json'))
 for m in methods:
     slug, yr = m['slug'], m.get('year')
+    if slug in _DROP_METHODS:                     # decontam: eval-task reconstruction
+        _decon_stats['methods_dropped'] += 1
+        continue
     d = f'methods/{slug}/results'
     if not all(os.path.isfile(f'{d}/{f}.md') for f in ('context', 'reasoning', 'train_answer')):
         continue
@@ -165,10 +191,17 @@ def step_answer(d, st):
 
 for meta_p in sorted(glob.glob('trajectories/*/meta.json')):
     task = os.path.basename(os.path.dirname(meta_p))
+    if task in _DROP_TRAJ:                         # decontam: discovery ladder / AHC039 reconstruction
+        _decon_stats['trajs_dropped'] += 1
+        continue
     tj = trajs.get(task); yr = tj['year'] if tj else None
     d = f'trajectories/{task}'
     meta = json.load(open(meta_p))
     steps = [s for s in sorted(meta.get('steps', []), key=lambda s: s.get('n', 0)) if s.get('reasoning')]
+    if task in _TYPE1_FINALE:                      # decontam: drop the injected non-native finale rung
+        _n0 = len(steps)
+        steps = [s for s in steps if not s.get('finale')]
+        _decon_stats['finale_rungs_dropped'] += _n0 - len(steps)
     if not steps:
         continue
     init = read_with_note(f"{d}/{meta.get('initial_context_file','00-initial-context.md')}")
@@ -260,6 +293,8 @@ def agentic_round(actions, fold, is_current):
 
 for ap in sorted(glob.glob('trajectories/*/agentic_messages.json')):
     task = os.path.basename(os.path.dirname(ap))
+    if task in _DROP_TRAJ:                         # decontam: keep in sync with trajectory gate
+        continue
     yr = trajs[task]['year'] if task in trajs else None
     data = json.load(open(ap))
     tools_str = json.dumps(data.get('tools', []), ensure_ascii=False)
@@ -340,20 +375,27 @@ for ex in examples:
         assert all(flags), f"{ex.get('_id')}: non-folded example must train every assistant turn"
 
 # ---------- write ----------
-os.makedirs('sft', exist_ok=True)
-out = 'sft/innovation_sft.jsonl'
+# Output paths are parametrizable so a decontam build can be produced WITHOUT overwriting the
+# original sft/innovation_sft.jsonl during review (set SFT_OUT / SFT_TAGS_OUT).
+out = os.environ.get('SFT_OUT', 'sft/innovation_sft.jsonl')
+tags_out = os.environ.get('SFT_TAGS_OUT', 'sft/_sft_tags.jsonl')
+os.makedirs(os.path.dirname(out) or '.', exist_ok=True)
+if DECON:
+    print(f"[decontam] gate ON: dropped {_decon_stats['methods_dropped']} methods, "
+          f"{_decon_stats['trajs_dropped']} trajectories, {_decon_stats['finale_rungs_dropped']} "
+          f"Type-1 finale rungs. (INNOVATION_DECONTAM=0 to disable.)")
 tags = []
 with open(out, 'w', encoding='utf-8') as f:
     for ex in examples:
         f.write(json.dumps({k:v for k,v in ex.items() if not k.startswith('_')}, ensure_ascii=False) + "\n")
         tags.append(tag_example(ex))
-with open('sft/_sft_tags.jsonl', 'w', encoding='utf-8') as f:
+with open(tags_out, 'w', encoding='utf-8') as f:
     for t in tags:
         f.write(json.dumps(t, ensure_ascii=False) + "\n")
 n = len(tags) or 1
 agg = {k: sum(1 for t in tags if t.get(k)) for k in ('has_code','reads_stdin','has_cpp','defines_class','has_fallback')}
 print(f"wrote {out}: {len(examples)} examples (train with mask_history=False)")
-print(f"wrote sft/_sft_tags.jsonl ({len(tags)} rows); landing mix:")
+print(f"wrote {tags_out} ({len(tags)} rows); landing mix:")
 for k, v in agg.items():
     print(f"  {k}: {v} ({100*v/n:.1f}%)")
 for k, v in stats.items():

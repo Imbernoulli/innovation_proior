@@ -1,0 +1,151 @@
+{
+  "mls_task_slugs_total": 161,
+  "policy": "surgical (2026-07-08 user directive): see decontam_rules.json",
+  "decontam_actions_sft": {
+    "keep": 1198,
+    "keep_flagged": 1019,
+    "drop_row": 65,
+    "drop_finale_turn": 416
+  },
+  "rules": {
+    "drop_method_slugs": 28,
+    "drop_traj_slugs": 8,
+    "type1_finale_traj": 51
+  },
+  "mls_type1_nonnative_finale": {
+    "n_trajectories": 51,
+    "offenders": {
+      "ai4bio-protein-inverse-folding": "vfn",
+      "ai4sci-climate-emulation": "conformer-climate",
+      "ai4sci-inverse-diffusion-algo": "daps",
+      "ai4sci-weather-forecast-aggregation": "set-transformer-aggregation",
+      "causal-discovery-discrete": "lges",
+      "causal-observational-nonlinear": "score",
+      "cv-classification-loss": "bi-tempered",
+      "cv-diffusion-cfg": "cfg-zero-star",
+      "cv-diffusion-efficiency": "unipc",
+      "cv-vae-loss": "focal-frequency-loss",
+      "dl-activation-function": "acon",
+      "dl-lr-schedule": "knee",
+      "dl-residual-connection": "se_block",
+      "graph-graph-classification": "pna-readout",
+      "graph-link-prediction": "buddy",
+      "graph-node-classification": "gcnii",
+      "graph-signal-propagation": "jacobiconv",
+      "llm-hybrid-posttraining": "luffy",
+      "llm-offline-rl": "dpop",
+      "llm-on-policy-distillation": "skew-reverse-kl",
+      "llm-pretrain-attention": "diff-transformer",
+      "llm-pretrain-bitlinear": "lsq",
+      "llm-pretrain-linear-attention": "gated-deltanet",
+      "llm-pretrain-optimizer": "soap",
+      "llm-pretrain-residual": "hyper-connections",
+      "llm-qat-algorithm": "omniquant-lwc",
+      "llm-rl-importance-sampling": "cispo",
+      "marl-centralized-critic": "mappo-as-critic",
+      "meta-inner-loop-optimizer": "meta-curvature",
+      "ml-calibration": "beta-calibration",
+      "ml-federated-aggregation": "feddyn",
+      "optimization-evolution-strategy": "jso",
+      "optimization-gradient-compression": "powersgd",
+      "optimization-multi-objective": "sms-emoa",
+      "pde-design-solver": "transolver-plus",
+      "quant-concept-drift": "double-ensemble",
+      "rl-intrinsic-exploration": "ngu",
+      "rl-offline-continuous": "sac-rnd",
+      "rl-offline-off2on": "cal-ql",
+      "rl-offpolicy-continuous": "crossq",
+      "rl-offpolicy-sample-efficiency": "simba",
+      "rl-onpolicy-continuous": "rpo",
+      "rl-value-atari": "iqn",
+      "safe-exploration-fixed-budget": "crpo",
+      "security-adversarial-attack-sparse-l0": "sparse-pgd",
+      "security-backdoor-defense": "spectre",
+      "security-machine-unlearning": "salun",
+      "security-poison-robust-learning": "normalized-loss-functions",
+      "stf-traffic-forecast": "stid",
+      "ts-classification": "moderntcn",
+      "ts-short-term-forecast": "nbeats"
+    }
+  },
+  "rollup": {
+    "sft": {
+      "n": 2698,
+      "leak": 1500,
+      "contaminated": 1088,
+      "by_severity": {
+        "REVIEW": 50,
+        "MEDIUM": 362,
+        "HIGH": 876,
+        "CRITICAL": 212
+      },
+      "by_benchmark": {
+        "MLS": 1035,
+        "FCS": 391,
+        "ALE": 354,
+        "THETA": 66,
+        "TTT": 71
+      },
+      "by_family": {
+        "mls_finale_method_standalone": 39,
+        "fcs_research_topical": 13,
+        "ale_ahc039": 8,
+        "autocorr_inequalities": 15,
+        "cp_classic": 11,
+        "cap_set": 9,
+        "circle_packing_n26": 11,
+        "erdos_min_overlap_c5": 11,
+        "fast_matrix_mult": 1,
+        "fcs_flash_attention": 5,
+        "hadamard_maxdet": 5,
+        "heilbronn_triangle": 11,
+        "kissing_number": 1,
+        "scrna_denoise": 9,
+        "low_autocorr_binary_seq": 1,
+        "fcs_malloclab": 1,
+        "fcs_mla": 2,
+        "fcs_topology_opt": 2,
+        "fcs_proton_therapy": 1,
+        "sums_diffs_finite_sets": 1,
+        "trimul_kernel": 1,
+        "v4_synth_register": 346,
+        "mls_same_task": 996
+      }
+    },
+    "wave2": {
+      "n": 758,
+      "leak": 220,
+      "contaminated": 0,
+      "by_severity": {
+        "REVIEW": 211,
+        "MEDIUM": 9
+      },
+      "by_benchmark": {
+        "FCS": 128,
+        "THETA": 92,
+        "TTT": 92
+      },
+      "by_family": {
+        "wave2_code_bank": 119,
+        "wave2_math": 92,
+        "wave2_fcs_codex": 9
+      }
+    },
+    "v4": {
+      "n": 346,
+      "leak": 346,
+      "contaminated": 0,
+      "by_severity": {
+        "MEDIUM": 346
+      },
+      "by_benchmark": {
+        "FCS": 346,
+        "ALE": 346
+      },
+      "by_family": {
+        "v4_synth_register": 346
+      }
+    }
+  },
+  "clean_build": "Produced by the build_sft.py gate (INNOVATION_DECONTAM=1, reads decontam_rules.json): decontam/clean_rebuilt/innovation_sft.jsonl(.gz). wave2/v4 are kept unchanged (n-gram-clean synthetic). Originals under sft/ are never modified."
+}
