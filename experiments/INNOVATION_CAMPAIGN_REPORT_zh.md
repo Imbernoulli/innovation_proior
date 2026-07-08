@@ -160,6 +160,26 @@ r3 = 最新一代数据(method 1201 + v4 346 + 深化 traj + wave2/maintain),Qwe
 - **Research**(methodv4/full a20 vs base):4 个真创新赢 —— 正确 HNSW+efSearch(vs 幻觉 FAISS,+77)、解析求解 200K 参数上限的最大隐层(+47)、调度 slack 缓冲(vs 读错对象,+47)、低基数前缀排序(vs 随机搜索,+53)。
 - **MLS**(methodtraj/methodv4 a10 vs base):2 真创新(causal-discovery 恢复到 stable-PC+Meek +0.30;causal-treatment-effect doubly-robust R-learner,ATE 误差 14× 降 +0.24)+ 3 诚实标注(MoE=runtime、calibration/evolution=恢复力而非新颖)。
 
+### 4B.5 创新度量:相似度 + 复杂度(各由 subagent + Codex 双源独立算,结论一致)
+
+除了逐题案例,我们量化了模型「创新性」的两个维度(OURS = 创新模型 vs base):
+
+**① 相似度 to baselines(仅 MLS,越低=越 novel)—— OURS 略更 novel:**
+| | OURS | BASE |
+|---|---|---|
+| 平均 Jaccard(与 stated baseline 的技术重叠,↓ 更 novel)| **0.31 / 0.22**(两源)| 0.39 / 0.28 |
+| 更 novel 的任务(paired)| **14/20** | — |
+| 引入 baseline 之外新技术 | **17/20** | 13/20 |
+
+→ 创新模型**更偏离教科书 baseline**(方向一致、双源确认),但**幅度小**。
+
+**② 复杂度(所有 benchmark)—— OURS ≈ base,甚至略低:**
+FCS 上 OURS 的 #imports 3.5 vs base 4.2、#calls 14 vs 16、cyclomatic 26 vs 31;4 个 benchmark 全部 Mann-Whitney **p>0.10 无一显著**;技术"配方"逐项相同(HNSW 20 vs 22、efSearch 26 vs 29、isotonic 3 vs 2)。
+
+→ **模型没有写出更复杂/更多技术堆砌的代码**(不是「已有方法的组合」意义上的复杂化),甚至略更精简。
+
+**综合诚实结论**:创新训练**改变的是"敢于偏离 baseline 的倾向"**(相似度),**而非代码结构的复杂化/堆砌**(复杂度无差异)。且相似度信号被一个混淆强烈干扰——**越 novel 的方案越容易崩**(MLS 20 题里 13-16 是 fallback;最 novel 的 EBO-M/TeeMOEA/Robust-GMM 都崩了),跑通拿分的反而常是低-novelty 的 baseline 重组。所以这测的是**创新"意向"而非成功的创新**,与「innovation disposition 学到了、但在奖励简单正确代码的任务上反噬」一致。详见 `complexity_codex.md` / `similarity_codex.md`。
+
 ---
 
 ## 5. 局限与未完成
