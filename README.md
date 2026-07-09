@@ -35,8 +35,9 @@ Training is **innovation-only** (the HF-scraped maintenance set was dropped 2026
 
 ### 数据总览 / Data inventory (2026-07)
 
-All examples are annotated or **verifier-passing** (no failed/wrong samples). **4,396** SFT examples
-in the mix (wave-2 still growing); the HF-scraped maintenance set (903) was dropped.
+All examples are annotated or **verifier-passing** (no failed/wrong samples). **3,794** SFT examples
+in the mix; the HF-scraped maintenance set (903) was dropped. **Wave-2 is filtered to hard problems
+only — round-0 accuracy ≤ 0.5** (the model solves them ≤ half the time).
 
 | 组 group | 条数 | 细分 breakdown | 来源 source |
 |---|---:|---|---|
@@ -44,16 +45,16 @@ in the mix (wave-2 still growing); the HF-scraped maintenance set (903) was drop
 | **trajectory**（逐 rung 多轮推导） | 678 | full 166 · folded 512 | 标注 annotated |
 | **agentic**（带工具调用的多轮） | 473 | full 127 · folded 346 | 标注 annotated |
 | **v4 / cpp**（FrontierCS 单文件 C++ 落点） | 346 | fcs/ale-converted 168 · cpv4 110 · cpv4b 67 | **cc + Codex** 合成，100% 单文件 C++/stdin、100% debug/自验 |
-| **wave-2 · reasoning** | 538 | Guru 6-domain | 27B 拒绝采样 + DeepSeek 兜底 |
-| **wave-2 · ifollow** | 248 | IFEval 约束 | 同上 |
-| **wave-2 · code (C++)** | 294 | 竞赛题，compile+run 验证 | 27B / DeepSeek 蒸馏 |
-| **wave-2 · math** | 263 | 含 Flash-judge 救回的不可判金标 | 27B / DeepSeek 蒸馏 |
+| **wave-2 · reasoning** | 200 | Guru 6-domain · acc≤0.5 | 27B 拒绝采样 + DeepSeek 兜底 |
+| **wave-2 · ifollow** | 129 | IFEval 约束 · acc≤0.5 | 同上 |
+| **wave-2 · code (C++)** | 190 | 竞赛题 compile+run · acc≤0.5 | 27B / DeepSeek 蒸馏 |
+| **wave-2 · math** | 222 | 不可判金标 Flash-judge · acc≤0.5 | 27B / DeepSeek 蒸馏 |
 | **wave-2 · fcs_codex** | 9 | algorithm 7 · research-cpu 1 · research-gpu 1 | **Codex `gpt-5.5` 黑盒** |
 | ~~distill / maintain~~ | ~~903~~ | ❌ 已删 dropped 2026-07 | HF-scraped Qwen distill (khazarai/WithinUsAI/nvidia Open-SWE) |
 
 > 术语：仓库里旧的 **"distill" = 被删的 HF-maintain**；本轮**新蒸馏**（27B/DeepSeek rollout）在 **wave-2** 里，是保留的。
-> wave-2 的 raw verified keeper（1,355 条，含 problem + 所有过验证生成）另存 `sft/innovation_wave2_raw_keepers.jsonl.gz`。
-> 引擎仍在后台产出（27B code-only + DeepSeek tier-2 + Codex），wave-2 会继续增长。
+> wave-2 的 raw verified keeper（741 条，acc≤0.5，含 problem + 所有过验证生成）另存 `sft/innovation_wave2_raw_keepers.jsonl.gz`。
+> 27B rollout（全 4 域）仍在后台产出；DeepSeek tier-2 因 key 余额暂停；wave-2 只保留 round-0 acc≤0.5 的硬样本。
 
 - **`innovation_sft.jsonl`** (`sft/build_sft.py`) — our annotated data: each method as a Q&A, each
   trajectory / agentic ladder as a multi-turn conversation (with tool use), the answer being the

@@ -19,6 +19,10 @@ REPO = os.environ.get('INNOVATION_PRIOR_REPO') or os.path.dirname(os.path.dirnam
 os.chdir(REPO)
 HARDCP = 'data_v4/_hardcp'
 
+# Optional hardness filter: keep only rollout keepers whose round-0 pass rate (first_round_rate,
+# None==0) is <= WAVE_ACC_MAX. Codex/v4 datapoints have no acc and are unaffected.
+ACC_MAX = float(os.environ['WAVE_ACC_MAX']) if os.environ.get('WAVE_ACC_MAX') else None
+
 CODE_SYS = ("You are an expert competitive programmer. Solve the problem with a single, self-contained "
             "C++17 program that reads from standard input and writes to standard output. Before you commit, "
             "verify your reasoning and trace your code on concrete inputs and edge cases, and fix any bug "
@@ -71,6 +75,9 @@ def rollout_examples(wl):
                     continue
                 # 27B on-policy: drop the ones it aced 4/4 in round 0 (too easy); keep tier-2 solves all
                 if not keep_all and (r.get('first_round_rate') or 0) >= 1.0:
+                    continue
+                # optional hardness cap: keep only round-0 acc <= ACC_MAX (None==0, i.e. escalation-only)
+                if ACC_MAX is not None and (r.get('first_round_rate') or 0) > ACC_MAX:
                     continue
                 p = wl.get(r['id'])
                 if not p:
