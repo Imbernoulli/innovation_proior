@@ -26,35 +26,52 @@
 
 ## 2. 正则化 sweep(全在 nomaintain + 去污染 + traj 上;目标=少塌保 FCS)
 
-轻档(soup α=0.1 / LoRA scale=0.1)FCS/ALE —— **nomaintain-a10 基线 = FCS 6.4 / ALE 368**:
+轻档(soup α=0.1 / LoRA scale=0.1),格式 **mean@5 / best@5** —— 参照:nomaintain-a10 基线 FCS 6.41/11.58、ALE 368/487、Research 10.2;**base FCS 7.05/11.78、ALE 357/515、Research 9.08**:
 
-| 变体 | FCS | ALE |
-|---|---|---|
-| **weight decay 0.3** (a10) | **6.7** | **416** |
-| weight decay 0.5 (a10) | 6.5 | 414 |
-| 低 LR 2e-6 (a10) | 6.4 | 362 |
-| 新代码 baseline (a10) | 6.2 | 393 |
-| LoRA r32 (s0.1) | 6.0 | 369 |
-| LoRA r64 / r8 / r16 (s0.1) | 5.8 / 5.4 / 5.3 | 337–376 |
+| 变体 | FCS | ALE | Research |
+|---|---|---|---|
+| **weight decay 0.3** (a10) | **6.68 / 11.91** | **416 / 595** | 8.34 / 19.5 |
+| weight decay 0.5 (a10) | 6.53 / 11.86 | 414 / **665** | 9.49 / 22.7 |
+| 低 LR 2e-6 (a10) | 6.40 / 11.59 | 362 / 539 | **10.77 / 24.8** |
+| 低 LR 1e-6 (a10) | 5.70 / 11.45 | 367 / 517 | 7.97 / 20.6 |
+| 新代码 baseline (a10) | 6.16 / 10.99 | 393 / 569 | 9.87 / 20.1 |
+| 新 maintain (a10, §4) | 5.89 / 10.48 | 350 / 491 | **11.47 / 24.0** |
+| LoRA r32 (s0.1) | 5.98 / 11.55 | 369 / 500 | 8.60 / 19.3 |
+| LoRA r64 (s0.1) | 5.76 / 12.20 | 337 / 449 | 7.64 / 19.3 |
+| LoRA r8 (s0.1) | 5.36 / 9.58 | 376 / 549 | 8.85 / 18.5 |
+| LoRA r16 (s0.1) | 5.26 / 9.93 | 360 / 490 | 9.03 / 20.2 |
 
 **结论**
-- **weight decay 0.3 在轻档最保 FCS + ALE**(6.7 / 416,双双超基线),是最有效的额外正则;NEFTune、大 wd 在**重档**反而更差。
+- **保 FCS/ALE 选 wd0.3–0.5**(FCS 6.5–6.7 ≈ base、ALE 414–416 双超基线);**保 Research 选低 LR 2e-6 或新 maintain**(10.8–11.5 > base 9.08)。没有单一变体三线全赢——wd0.3 的 Research(8.3)反而低于 base。
 - **LoRA 低秩也能保住 FCS**(s0.1 档 5.3–6.0);**关键是 merge scale(0.1 vs 0.5)而非 rank**——重档(s0.5)全塌到 1.1–3.0。
-- 重档(soup a50 / LoRA s0.5)一律塌陷(FCS 0.6–4.2),印证"小扰动"才保能力。
+- 重档(soup a50 / LoRA s0.5)一律塌陷(FCS 0.6–4.2),印证"小扰动"才保能力。NEFTune、大 wd 在重档更差。
 - 备注:dropout 此前一直关(LoRA `lora_dropout=0.0`、模型自身无 dropout);为标准正则可选 0.05–0.1。
-- **缺口**:reg sweep 的 Research/MLS 仍在补测,补齐后判断"保 FCS 的同时创新有没有迁移"。
+- **NEFTune a10 补测中**:此前 soup 文件损坏(disk-full 期写坏,safetensors MetadataIncompleteBuffer),从未出过分;已重 soup + 重评(FCS/ALE/Research)。
 
 ---
 
-## 3. RL A/B(clean soup a10 上 GRPO;对照 base+RL = clean_rlstart 5.44)
+## 3. RL A/B(clean soup a10 上 GRPO)
 
-| RL 臂 | FCS | ALE |
-|---|---|---|
-| full_a10(maintain) step40 | 2.36 | 490 |
-| nomaintain_a10 step40 | 2.83 | 462 |
-| base+RL | 5.44 | — |
+### 3a. mixed 数据 @20k cap(FrontierCS172+synth10+ALE40)—— 全程塌
+按 step 的 FCS mean@5(best@5):
 
-**结论**:RL 后 **nomaintain ≥ maintain**(2.83 vs 2.36),但**两臂 FCS 都低于 base+RL 5.44** → **RL 不提 FCS、maintain 在 RL 下也无优势**(与 r3 一致:RL 把 pre-RL 的 6+ 拉回,同质化)。ALE 则被 RL 抬高(462–490)。
+| step | full_a10(maintain) | nomaintain_a10 | base+RL(start) |
+|---|---|---|---|
+| pre-RL | 6.10 (10.99) | 6.41 (11.58) | 7.05 (11.78) |
+| 5 | 4.81 (8.98) | 5.78 (10.24) | — |
+| 10 | 4.90 (9.67) | — | — |
+| 15 | 4.00 (9.51) | 4.13 (9.67) | 5.25 (10.66)* |
+| 20 | 5.15 (10.73) | 4.08 (8.59) | 1.57 (3.68)* |
+| 40 | 2.36 (5.22) | 2.83 (5.60) | 5.44 (11.18) |
+
+\* start_step15/20 的分数含判题 infra 超时计 0(step20 有 236/910=26%!),**已修 resume 逻辑重评中**,1.57 大概率被低估。
+**结论**:20k cap 的 mixed RL 对所有臂都是净负(pre-RL 6.1–6.4 → step20 4–5 → step40 2.4–2.8);ALE 被 RL 抬高(step40 462–490)。回复长度塌缩(→5–7k)+ clip 掉到 0.03,复现了 RL 考古的"response collapse"。
+
+### 3b. 纯 synthetic 500 题 @32k(= 唯一赢过 base 的 RL 配方,重启中)
+- 依据:rlfsx_q35_inst_start(job 10728651,4 GPU,20 步 8h41)最终 **FCS 7.61 > base 6.38**,无 train=eval 泄漏。
+- 2 GPU 尝试全灭:32k 长回复下 update_actor step2 CUDA OOM(5/5,130GB 占用再要 15.6GB),且 62min/步。**32k 必须 4 GPU**。
+- 已按赢家原配置(4 GPU/480G/32768 resp/45056 model_len/gpu_mem0.4/offload 关/mb1)重提 6 臂:start 对照 + cl_nom_a5/a10/a20 + cl_newmt_a10 + cl_wd03_a10;20 步、每 5 步存,每个存点全 4 项评测。
+- 观察:我们的 SFT soup 在 synth 上的回复远长于 start(clip 0.875 vs 0.19–0.31)——创新倾向的直接体现,RL 是否能把它压回有效长度是本轮看点。
 
 ---
 
@@ -71,10 +88,18 @@ A/B(同配方,唯一差异=新代码):
 ## 5. 扩展到 Qwen3.6-35B-A3B(MoE,进行中)
 
 用上面的最佳配方在 35B-A3B 上做 6-way(clean nomaintain + 去污染 + traj):
-- **3 LoRA**:r32 / r16 / r32+wd0.3
-- **3 全参数**(ds_z3 offload,4 GPU):full+wd0.1 / full+wd0.3 / full+lr2e6
+- **3 LoRA**:r32 / r16 / r32+wd0.3 → merge s0.1
+- **3 全参数**(ds_z3 offload+nopin,4 GPU,1200G):full+wd0.1 / full+wd0.3 / full+lr2e6 → soup a5/a10
 
-下游:LoRA→merge s0.1、full→soup a5/a10 → 4 benchmark → 跨设置挑最优。[训练中]
+LoRA 首批分(mean@5/best@5;35B base 评测中,暂无参照):
+
+| 设置 | FCS | ALE |
+|---|---|---|
+| **LoRA r32 s0.1** | **9.83 / 16.76** | 447 |
+| LoRA r32+wd0.3 s0.1 | 9.72 / 16.89 | 413 |
+| LoRA r16 s0.1 | 9.13 / 15.34 | **495** |
+
+9B 最好档才 6.7,35B LoRA 轻档直接 9.7–9.8 —— 净增益要等 35B base 分出来才能定,但绝对值已远超 9B 全家。全参数 wd01/wd03/lr2e6 均已训完(loss 0.98→0.93),soup a5/a10 评测中。[进行中]
 
 ---
 
