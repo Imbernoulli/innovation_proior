@@ -161,7 +161,17 @@ self.index.hnsw.efSearch = self.ef_search
 
 **② 创新 vs 可靠性的最终口径。** 二审确认题 175/193 的增益是"交付纪律"(更少编译错误/截断,算法同族甚至更朴素);且 base 在这些题的 think 里同样有多方案探索——**在 top 分差题里找不到干净的"算法创新"案例**。全文最可辩护的创新差分证据仍是:#179 的"读评分规则找满分条件 + 多次尝试"(§6.2,base 同题 0/5 出现)与 §6.4 的分布级统计;对 base 的整体优势应表述为**"同等算法水平下显著更可靠 + 把创新倾向中有回报的部分(多试、护栏、防御式 API)固化"**,而非"发明了新算法"。
 
-### 6.8 本节一句话
+### 6.9 精选创新 case(全文见 [GOOD_CASES_zh.md](GOOD_CASES_zh.md))
+
+广泛挖掘(ALE 本波 + 旗舰旧模型 + Research 全 64 题重排 + 旧 curated case 复核)后,**3 个达标 case**(同题、跨样本稳定、可引用设计差异、非评测器伪影,均核过 base+RL 严格对照):
+
+1. **AHC025(本波,最硬)**:天平比较分组题——base 只会"排序+蛇形分桶",**wd03+RL 发明"在线学权重(感知机式乘法更新)+ 装箱局部搜索"**,设计族 3/5 样本复现,内部对照单调兑现(轮转 1.23e10 → base 排序 6.77e9 → 我们 **5.47e9**),模型自注释 "This acts as a gradient descent / reinforcement learning to estimate relative weights"。
+2. **AHC046(旗舰)**:冰面滑行题——对照只会曼哈顿逐格走,我们把**滑行建模为图的边跑 BFS**(1119 vs base+RL 547);caveat:双方各 1 个干净成功样本。
+3. **MLS causal-treatment-effect(前轮,跨代复现)**:base 朴素 T-learner vs 我们 **doubly-robust DR/R-learner 正交化**(0.26 vs 0.055,+375%,两代四 build 复现);caveat:soup vs start 框架(均无 RL)。
+
+同文件含诚实排除清单(AHC015=正确性差异、AHC039/016 死于严格对照、AHC008=单样本运气)和**第二个 evaluator artifact 披露**(`qknorm`:逐字节交回题面 baseline 在 clamp-型 metric 下吃满分,"复交参考基线"型,与 §6.7 的显存复用型并列)。
+
+### 6.10 本节一句话
 
 SFT 把创新语料的"多方案计划体"写进了权重但压垮了代码生成;0.1 权重的 soup ≈ base 且夹带 18% 短思考残留;5 步 RL 的 +1.7(FCS)/+5.7(Research)不是发明更强算法,而是**剪掉坏模式、钉住已验证方案、提高完整代码在预算内落地的概率**——同时 #179 提醒:RL 后模型依旧会栽在实现精度上。
 
