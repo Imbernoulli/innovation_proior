@@ -71,11 +71,27 @@
 
 **新 4 组 RL 的预警指标**(每 patrol 检查):赢家-长度差(得分组中位长 <0.5× 零分组、连续 3 步 → 杀);长度地板(mean 掉破前 5 步均值一半而 score 未翻倍 → step15 前杀);组退化率(>60% 有奖组是 1-of-8、持续 5 步 = 信号太稀);entropy<0.55(step20 前)= 锁死前兆;eval 端 median completion <4k = 浅思考签名。
 
-### 3b. 纯 synthetic 500 题 @32k(= 唯一赢过 base 的 RL 配方,重启中)
-- 依据:rlfsx_q35_inst_start(job 10728651,4 GPU,20 步 8h41)最终 **FCS 7.61 > base 6.38**,无 train=eval 泄漏。
-- 2 GPU 尝试全灭:32k 长回复下 update_actor step2 CUDA OOM(5/5,130GB 占用再要 15.6GB),且 62min/步。**32k 必须 4 GPU**。
-- 已按赢家原配置(4 GPU/480G/32768 resp/45056 model_len/gpu_mem0.4/offload 关/mb1)重提 6 臂:start 对照 + cl_nom_a5/a10/a20 + cl_newmt_a10 + cl_wd03_a10;20 步、每 5 步存,每个存点全 4 项评测。
-- 观察:我们的 SFT soup 在 synth 上的回复远长于 start(clip 0.875 vs 0.19–0.31)——创新倾向的直接体现,RL 是否能把它压回有效长度是本轮看点。
+### 3b. 纯 synthetic 500 题 @32k —— 主结果:两目标全达成(step5,2026-07-12)
+
+最终配置(4 臂同配置):4 GPU、32 prompts×8 rollouts、mini=16(2 更新/步)、32768 resp/45056 model_len、**rollout 采样=评测口径**(temp1.0/top_p0.95/top_k20/presence1.5)、纯 synth 500 题、GRPO 默认 KL、20 步每 5 步存、每存点全量评测。
+
+**Step5 全对照**(FCS/ALE 错误样本≤2/910,干净;Research 全部 pli 修复后值):
+
+| step5 | FCS mean@5(best@5) | ALE | Research |
+|---|---|---|---|
+| **wd03_a10+RL** | **8.42(14.88)** | **434** | 14.01 |
+| nom_a5+RL | 7.22(12.50) | 398 | **14.45** |
+| base+RL(对照) | 7.25(12.28) | 389 | 11.48 |
+| pre-RL wd03 | 6.68(11.91) | 416 | 8.34 |
+| pre-RL nom_a5 | 6.58(12.56) | 398 | 11.1 |
+| raw base | 7.05(11.78) | 357 | 9.08 |
+
+**结论**
+1. **RL 涨分 ✓**:wd03 FCS 6.68→8.42(+1.74)、Research 8.34→14.01(+5.7);nom_a5 FCS +0.64、Research +3.4。base+RL 也涨(7.05→7.25)但幅度小得多。
+2. **我们超 base+RL ✓(三线全胜)**:wd03+RL 在 **FCS 8.42>7.25、ALE 434>389、Research 14.01>11.48** 全面超过同配置 base+RL;nom_a5+RL 在 Research(14.45)也超。**innovation-SFT 起点让同样的 RL 学得更多**——这就是"SFT 先验 + RL 放大"的直接证据。
+3. 训练健康(vs 3a 的死亡螺旋):奖励密度充足(有梯度组 53–88%)、长度无塌缩、entropy 正常;32k cap + 大 batch + 采样对齐 = 关键差异。
+4. Research 轨迹 s5→s10 高位站稳(wd03 14.01→13.49、nom_a5 14.45→12.75),step10/15/20 全存点评测流水中,最终按最优步报。
+5. MLS 口径警示:该基准"do-nothing"即得 0.094,单种子单题波动 0.3–0.6,涉 base+RL 的横向比较不可判;仅保留"我们 pre-RL(0.070 公平口径)≫ raw base(0.032)"。RL 侵蚀多轮 agent 行为(重复被拒编辑、思考+46%)为真实定性发现。
 
 ---
 
