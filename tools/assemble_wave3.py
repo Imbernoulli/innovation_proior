@@ -23,7 +23,10 @@ REPO = os.environ.get('INNOVATION_PRIOR_REPO') or os.path.dirname(os.path.dirnam
 os.chdir(REPO)
 HARDCP = 'data_v4/_hardcp'
 
-ACC_MAX = float(os.environ['WAVE_ACC_MAX']) if os.environ.get('WAVE_ACC_MAX') else None
+# Hard-only by default: keep a rollout keeper only if its round-0 pass rate (first_round_rate,
+# None==0) is <= 0.5 — same "keep only hard samples" bar as wave-2. Override via WAVE_ACC_MAX
+# (e.g. WAVE_ACC_MAX=1.0 to keep everything the 27B didn't ace 4/4).
+ACC_MAX = float(os.environ['WAVE_ACC_MAX']) if os.environ.get('WAVE_ACC_MAX') else 0.5
 
 CODE_SYS = ("You are an expert competitive programmer. Solve the problem with a single, self-contained "
             "C++17 program that reads from standard input and writes to standard output. Before you commit, "

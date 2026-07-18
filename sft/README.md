@@ -4,9 +4,10 @@ The annotated innovation data, in ShareGPT format:
 - `innovation_sft.jsonl` — our annotated innovation data (reasoning, with per-turn loss folding).
 - Plus the 2026-07 **wave-2** batches: `innovation_wave2_sft.jsonl` (verified rollout + Codex, 758)
   and `innovation_v4_sft.jsonl` (FrontierCS-style single-file C++, 346), concatenable into the run.
-- Plus the 2026-07 **wave-3** batch: `innovation_wave3_sft.jsonl` (1,119) — every NEW verified keeper
-  since wave-2, adding the FrontierCS capability gaps (heuristic **optimization**, post-cutoff
-  **AtCoder Heuristic**, CodeContests+ strong-test, and a deep re-roll of the 27B's hard failures).
+- Plus the 2026-07 **wave-3** batch: `innovation_wave3_sft.jsonl` (179, **hard-only**) — every NEW
+  verified keeper since wave-2 that the 27B did **not** find easy (round-0 acc ≤ 0.5), one answer per
+  problem. Adds the FrontierCS capability gaps (heuristic **optimization**, post-cutoff **AtCoder
+  Heuristic**, CodeContests+ strong-test, and a deep re-roll of the 27B's hard failures).
   Concatenable into the same run. See **§4**.
 
 > **Dropped (2026-07):** the HF-scraped `maintain_sft.jsonl` capability-maintenance set is no longer
@@ -124,25 +125,30 @@ Pipeline + provenance: [`../experiments/DATA_WAVE2_FCS_CPP_zh.md`](../experiment
 
 ## 4. Wave-3 batch (2026-07) — capability-gap injection + deep re-roll
 
-`innovation_wave3_sft.jsonl` (**1,119**, gzipped as `innovation_wave3_sft.jsonl.gz`) = every verified
+`innovation_wave3_sft.jsonl` (**179**, gzipped as `innovation_wave3_sft.jsonl.gz`) = every verified
 keeper produced **after** wave-2, with the wave-2 ids subtracted so there is **zero overlap**. Built
-with `python3 tools/assemble_wave3.py` (same ShareGPT + `<think>` format; shortest kept generation
-per problem; on-policy base traces drop the ones the 27B aced 4/4, teacher / re-roll passes keep
-every solve). Snapshot 2026-07-17 — the rollout is still running, so this file gets refreshed as
-more keepers land.
+with `python3 tools/assemble_wave3.py`, same **hard-only** bar as wave-2:
+
+- **round-0 acc ≤ 0.5** — keep a problem only if the 27B solved ≤ half of its first 4 samples
+  (`WAVE_ACC_MAX=0.5`, the default). Easy problems teach nothing; this drops the big `acc=0.75`
+  bulk and everything the 27B aced 4/4.
+- **one answer per problem** — the single shortest verified generation (`passes[0]`), deduped by id.
+
+Same ShareGPT + `<think>` format. Snapshot 2026-07-17 — the rollout is still running (ccplus + the
+math/ifollow re-roll), so this file gets refreshed as more hard keepers land.
 
 | domain | examples | what it is |
 |---|---:|---|
-| reasoning | 338 | base-trace growth + deep re-roll of the 27B's hard failures |
-| code | 294 | HardTests CF/AtCoder growth **+ CodeContests+ (`ccplus`)** strongest-test exact-judge |
-| optim | 183 | **NEW** — NP-Engine heuristic optimization (TSP/knapsack/set-cover/…): write one C++ that reads stdin, prints `Answer: …`; verified feasible **and** beats a per-instance baseline on K fresh instances |
-| math | 161 | base-trace growth + deep re-roll |
-| ifollow | 127 | base-trace growth + deep re-roll |
-| ahc | 16 | **NEW** — post-cutoff **AtCoder Heuristic Contests** (AHC047–067 + awtf25/26); C++ scored by the OFFICIAL AtCoder Rust `vis` binary on every seed, must beat a greedy baseline |
+| optim | 87 | **NEW** — NP-Engine heuristic optimization (TSP/knapsack/set-cover/…): write one C++ that reads stdin, prints `Answer: …`; verified feasible **and** beats a per-instance baseline on K fresh instances |
+| code | 58 | HardTests CF/AtCoder + **CodeContests+ (`ccplus`)** strongest-test exact-judge |
+| math | 14 | deep re-roll of the 27B's hard failures |
+| ahc | 12 | **NEW** — post-cutoff **AtCoder Heuristic Contests** (AHC047–067 + awtf25/26); C++ scored by the OFFICIAL AtCoder Rust `vis` binary on every seed, must beat a greedy baseline |
+| ifollow | 8 | deep re-roll |
 
-Reasoning length: median **50k** chars, max **213k** — these are the long, self-checking traces the
-FrontierCS regression forensics said were missing ("提案的嗓音在,写代码的手没了"). All land as the
-FrontierCS scoring target: **single-file C++ / stdin**.
+17 of the 179 are deep-re-roll keepers. Reasoning length: median **120k** chars, max **213k** — the
+hard-only cut keeps exactly the long, self-checking traces the FrontierCS regression forensics said
+were missing ("提案的嗓音在,写代码的手没了"). All land as the FrontierCS scoring target:
+**single-file C++ / stdin**.
 
 **Why these sources (grounded in the real eval, not a summary).** FrontierCS `algorithm` is 92%
 optimization / partial-score and 58% interactive; our whole rollout had been 100% exact-judge CF —
@@ -152,10 +158,10 @@ the official scorer binaries.
 
 **Deep re-roll.** wave-2 gave up on a problem after 16 samples. wave-3 re-samples the genuine
 hard-failures (passed=False, not too-easy, not already solved by a teacher pass) with a deep budget
-(schedule 4→8→…→256) so the hardest problems finally yield a keeper. Early signal is differentiated:
-`ifollow` recovers ~47%, `math` ~19%, but `reasoning` ~0% — its hard tail is genuinely beyond the
-27B even at 256 samples, so that slice should go to a **teacher** (DeepSeek) pass rather than more
-self-sampling.
+(schedule 4→8→…→256) so the hardest problems finally yield a keeper. The signal is differentiated:
+`ifollow` recovers ~47%, `math` ~19%, but `reasoning` was **~0% and has been dropped** from the
+re-roll — its hard tail is genuinely beyond the 27B even at 256 samples, so that slice should go to a
+**teacher** (DeepSeek) pass rather than more self-sampling.
 
 **Known caveat (optim).** The optim baseline (nearest-neighbour, ratio 1.0) is **lenient** — 145/328
 problems were aced 4/4 and dropped as too-easy, and there were **0** hard-failures. The 183 kept have
