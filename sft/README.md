@@ -4,6 +4,10 @@ The annotated innovation data, in ShareGPT format:
 - `innovation_sft.jsonl` — our annotated innovation data (reasoning, with per-turn loss folding).
 - Plus the 2026-07 **wave-2** batches: `innovation_wave2_sft.jsonl` (verified rollout + Codex, 758)
   and `innovation_v4_sft.jsonl` (FrontierCS-style single-file C++, 346), concatenable into the run.
+- Plus the 2026-07 **wave-3** batch: `innovation_wave3_sft.jsonl` (1,119) — every NEW verified keeper
+  since wave-2, adding the FrontierCS capability gaps (heuristic **optimization**, post-cutoff
+  **AtCoder Heuristic**, CodeContests+ strong-test, and a deep re-roll of the 27B's hard failures).
+  Concatenable into the same run. See **§4**.
 
 > **Dropped (2026-07):** the HF-scraped `maintain_sft.jsonl` capability-maintenance set is no longer
 > used — training is **innovation-only** now.
@@ -117,3 +121,53 @@ New verified data, all landing as **single-file C++ / stdin** (the FrontierCS sc
   verifier-passing generations); verified-only, no failed samples.
 
 Pipeline + provenance: [`../experiments/DATA_WAVE2_FCS_CPP_zh.md`](../experiments/DATA_WAVE2_FCS_CPP_zh.md).
+
+## 4. Wave-3 batch (2026-07) — capability-gap injection + deep re-roll
+
+`innovation_wave3_sft.jsonl` (**1,119**, gzipped as `innovation_wave3_sft.jsonl.gz`) = every verified
+keeper produced **after** wave-2, with the wave-2 ids subtracted so there is **zero overlap**. Built
+with `python3 tools/assemble_wave3.py` (same ShareGPT + `<think>` format; shortest kept generation
+per problem; on-policy base traces drop the ones the 27B aced 4/4, teacher / re-roll passes keep
+every solve). Snapshot 2026-07-17 — the rollout is still running, so this file gets refreshed as
+more keepers land.
+
+| domain | examples | what it is |
+|---|---:|---|
+| reasoning | 338 | base-trace growth + deep re-roll of the 27B's hard failures |
+| code | 294 | HardTests CF/AtCoder growth **+ CodeContests+ (`ccplus`)** strongest-test exact-judge |
+| optim | 183 | **NEW** — NP-Engine heuristic optimization (TSP/knapsack/set-cover/…): write one C++ that reads stdin, prints `Answer: …`; verified feasible **and** beats a per-instance baseline on K fresh instances |
+| math | 161 | base-trace growth + deep re-roll |
+| ifollow | 127 | base-trace growth + deep re-roll |
+| ahc | 16 | **NEW** — post-cutoff **AtCoder Heuristic Contests** (AHC047–067 + awtf25/26); C++ scored by the OFFICIAL AtCoder Rust `vis` binary on every seed, must beat a greedy baseline |
+
+Reasoning length: median **50k** chars, max **213k** — these are the long, self-checking traces the
+FrontierCS regression forensics said were missing ("提案的嗓音在,写代码的手没了"). All land as the
+FrontierCS scoring target: **single-file C++ / stdin**.
+
+**Why these sources (grounded in the real eval, not a summary).** FrontierCS `algorithm` is 92%
+optimization / partial-score and 58% interactive; our whole rollout had been 100% exact-judge CF —
+matching almost none of it. So wave-3 injects the missing shape with **strong** verifiers (weak
+tests would re-poison): optim uses the vendored NP-Engine validator + a real baseline gate; ahc uses
+the official scorer binaries.
+
+**Deep re-roll.** wave-2 gave up on a problem after 16 samples. wave-3 re-samples the genuine
+hard-failures (passed=False, not too-easy, not already solved by a teacher pass) with a deep budget
+(schedule 4→8→…→256) so the hardest problems finally yield a keeper. Early signal is differentiated:
+`ifollow` recovers ~47%, `math` ~19%, but `reasoning` ~0% — its hard tail is genuinely beyond the
+27B even at 256 samples, so that slice should go to a **teacher** (DeepSeek) pass rather than more
+self-sampling.
+
+**Known caveat (optim).** The optim baseline (nearest-neighbour, ratio 1.0) is **lenient** — 145/328
+problems were aced 4/4 and dropped as too-easy, and there were **0** hard-failures. The 183 kept have
+discriminative signal (the 27B fails them at least sometimes) but the difficulty ceiling is low;
+tightening the baseline (NN+2-opt, or ratio<1) would make this track pull harder.
+
+**Decontamination (lenient line — avoid only the actual *evaluation set*).** Contest-derived tracks
+are fine as training data; we only guard against the eval benchmarks themselves. `ahc` excludes
+AHC≤046 (= ALE-Bench's 40) and was cross-checked vs the public FrontierCS statement set (max Jaccard
+0.009). `ccplus` is CodeContests+ (a training corpus, oracle-re-verified 100%), deduped vs the
+existing worklists.
+
+Provenance / integration for the new domains: each is a self-contained
+`data_v4/_hardcp/<domain>/` dir with its own `verify.py` (exposing `verify(generation_text, problem)`)
+and `worklist.jsonl`; rebuild the wave with `python3 tools/assemble_wave3.py`.

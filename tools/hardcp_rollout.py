@@ -307,7 +307,8 @@ async def append_jsonl(path, row, lock, args):
 async def run_domain(session, backend, endpoints, request_sem, domain, args, query_sem, verify_pool):
     wl = os.path.join(HARDCP, domain, args.worklist)
     probs = [json.loads(l) for l in open(wl) if l.strip()]
-    out_path = os.path.join(HARDCP, 'traces', f'{domain}{backend["suffix"]}.jsonl')
+    suffix = args.out_suffix if args.out_suffix is not None else backend["suffix"]
+    out_path = os.path.join(HARDCP, 'traces', f'{domain}{suffix}.jsonl')
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     done = set()
     if os.path.isfile(out_path):
@@ -401,8 +402,9 @@ async def main_async(args):
     conn = aiohttp.TCPConnector(limit=conn_limit, limit_per_host=conn_per_host,
                                 ttl_dns_cache=60, enable_cleanup_closed=True)
     query_sem = asyncio.Semaphore(args.query_concurrency)
-    request_sem = asyncio.Semaphore(GLOBAL_HTTP_CONCURRENCY)
-    print(f'global_http_concurrency={GLOBAL_HTTP_CONCURRENCY}', flush=True)
+    global_http = max(args.concurrency, GLOBAL_HTTP_CONCURRENCY)
+    request_sem = asyncio.Semaphore(global_http)
+    print(f'global_http_concurrency={global_http} (--concurrency={args.concurrency})', flush=True)
     try:
         async with aiohttp.ClientSession(connector=conn) as session:
             # All domains progress in parallel. Endpoint-local semaphores prevent one wedged
@@ -431,6 +433,10 @@ def main():
     ap.add_argument('--deepseek-model', default='deepseek-v4-pro')
     ap.add_argument('--worklist', default='worklist.jsonl',
                     help='which worklist file per domain (e.g. failed_27b.jsonl for the Poe hard-tail pass)')
+    ap.add_argument('--out-suffix', default=None,
+                    help="override the backend's output suffix so a deep re-roll pass writes to a "
+                         "SEPARATE traces/<domain><suffix>.jsonl (e.g. .reroll) instead of colliding "
+                         "with the first-pass file (whose ids would be skipped as 'done')")
     ap.add_argument('--url', default=None)
     ap.add_argument('--model', default=None)
     # Saturate the server WITHOUT crowding KV. The local setup here is two independent TP=2
