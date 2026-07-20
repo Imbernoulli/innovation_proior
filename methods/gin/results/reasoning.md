@@ -41,7 +41,7 @@ Wait — I should pin down whether "injective" is even the right notion at deepe
 
 Now the engineering question: I need an aggregator over multisets that is injective, ideally *universal* (able to express any multiset function once composed with a learned transform), and I want it to be something a neural net can realize. There's a known result for *sets*: any permutation-invariant set function decomposes as ρ(Σ_{x∈S} f(x)) — sum the per-element features, then transform. That's the Deep Sets template. But my neighbors form a *multiset*, not a set — two neighbors can be identical, and that multiplicity is structural information I must not lose. Does sum-decomposition survive the jump from sets to multisets? Let me try to build f explicitly.
 
-X is countable, so fix an injection Z: X→ℕ. Bound the multiset size: |X| < N for some integer N. Try f(x) = N^{-Z(x)}. Then Σ_{x∈X} f(x) = Σ_x N^{-Z(x)}, and because each element of X contributes N^{-Z(x)} once per occurrence, the claim is that the total is a number whose base-N representation has, in the Z(x)-th place, the *count* (multiplicity) of x — and since multiplicities are all below N, there's no carrying between places, so distinct multisets give distinct sums. I want to actually see this work rather than wave at it, so let me take N=4 (multisets of size < 4), elements a,b,c with Z(a)=1, Z(b)=2, Z(c)=3, and two genuinely different multisets: X1 = {a,a,b} and X2 = {a,b,b,c}. Then
+X is countable, so fix an injection Z: X→ℕ. Bound the multiset size: |X| < N for some integer N. Try f(x) = N^{-Z(x)}. Then Σ_{x∈X} f(x) = Σ_x N^{-Z(x)}, and because each element of X contributes N^{-Z(x)} once per occurrence, the claim is that the total is a number whose base-N representation has, in the Z(x)-th place, the *count* (multiplicity) of x — and since multiplicities are all below N, there's no carrying between places, so distinct multisets give distinct sums. Take N=4 (multisets of size < 4), elements a,b,c with Z(a)=1, Z(b)=2, Z(c)=3, and two genuinely different multisets: X1 = {a,a,b} and X2 = {a,b,b,c}. Then
 
     Σ_{X1} f = 2·4^{-1} + 1·4^{-2}          = 0.5 + 0.0625            = 0.5625,
     Σ_{X2} f = 1·4^{-1} + 2·4^{-2} + 1·4^{-3} = 0.25 + 0.125 + 0.015625 = 0.390625,
@@ -70,7 +70,7 @@ So the AGGREGATE should be a sum, and I should learn f as a neural net — unive
 
     Σ_{x∈X} ReLU(Wx) = ReLU(W Σ_{x∈X} x)
 
-on those coordinates (and trivially on the zeroed ones). Since Σ_{X_1} x = Σ_{X_2} x = 5, the two sums are identical for *every* W. Let me confirm I haven't fooled myself with a special W by trying an arbitrary one: take a 4-output map with rows (W = [1.69, 1.03, −0.87, −0.45], one weight each since inputs are scalar). On X_1 = {1,1,1,1,1}, each ReLU(Wx) for x=1 is (1.69, 1.03, 0, 0) and summing five copies gives (8.44, 5.16, 0, 0). On X_2 = {2,3}: ReLU(W·2) = (3.38, 2.06, 0, 0), ReLU(W·3) = (5.06, 3.10, 0, 0), summing gives (8.44, 5.16, 0, 0) — identical. And ReLU(W·5) = (8.44, 5.16, 0, 0) matches, exactly as the identity Σ ReLU(Wx) = ReLU(W·Σx) predicts. The reason is ReLU's positive-homogeneity plus the missing bias: with all-positive inputs the layer can't break the linearity, so the network degenerates into "sum the inputs, then one linear map" — and summing first destroys the distinction. (A bias and a big enough output dimension could rescue *this particular* example by bending some inputs across the ReLU kink, but a single linear+ReLU is still a generalized linear model, not a universal approximator of multiset functions, so it can't realize an arbitrary injective f. I'd expect that to show up as underfitting — embeddings that don't capture structural similarity well enough for a simple downstream classifier — though that's a claim I'd want to check against training-set accuracy on the benchmarks, not something the algebra alone settles.) So the transform has to be a real MLP — at least two layers — not σ∘W. That's a representational requirement, not a tuning preference.
+on those coordinates (and trivially on the zeroed ones). Since Σ_{X_1} x = Σ_{X_2} x = 5, the two sums are identical for *every* W: with a 4-output W = [1.69, 1.03, −0.87, −0.45], five copies of ReLU(W·1) sum to (8.44, 5.16, 0, 0), and ReLU(W·2)+ReLU(W·3) sums to the same (8.44, 5.16, 0, 0) — matching ReLU(W·5) exactly, as the identity predicts. The reason is ReLU's positive-homogeneity plus the missing bias: with all-positive inputs the layer can't break the linearity, so the network degenerates into "sum the inputs, then one linear map" — and summing first destroys the distinction. (A bias and a big enough output dimension could rescue *this particular* example by bending some inputs across the ReLU kink, but a single linear+ReLU is still a generalized linear model, not a universal approximator of multiset functions, so it can't realize an arbitrary injective f. I'd expect that to show up as underfitting — embeddings that don't capture structural similarity well enough for a simple downstream classifier — though that's a claim to check against training-set accuracy on the benchmarks, not something the algebra alone settles.) So the transform has to be a real MLP — at least two layers — not σ∘W. That's a representational requirement, not a tuning preference.
 
 Now the last subtlety, and it's a real one. My injectivity theorem assumed the layer had the form φ(h_v^{(k-1)}, f(neighbor-multiset)) — the center node kept *separate* from the aggregate. But the cleanest thing to build with a sum would be to just throw the center into the bag and sum over {self} ∪ neighbors. Does that lose anything? Consider the chain a–b–b and the chain b–a–b. Look at the middle node. In the first, the middle node is b with neighbors {a,b}; in the second, the middle node is a with neighbors {b,b}. WL keeps these as distinct rooted things: (b, {a,b}) vs (a, {b,b}). Let me check what a flat self-plus-neighbors sum does with the same f as before, Z(a)=1, Z(b)=2, N=4, so f(a)=¼, f(b)=1/16. Flat-merging the center into the bag: the first node's bag is {b; a,b} = {a,b,b} with sum ¼ + 1/16 + 1/16 = 0.375; the second node's bag is {a; b,b} = {a,b,b} with sum ¼ + 1/16 + 1/16 = 0.375 — *identical*. So the flat sum really does collapse them; throwing the center in with the neighbors threw away which element was the root, exactly as WL would have kept track of. I need to keep the center distinguishable. The minimal fix that preserves the sum structure: weight the center differently. Try h(c, X) = (1+ε)·f(c) + Σ_{x∈X} f(x) — sum the neighbors, add a *scaled* copy of the center. Before proving anything, let me just see whether a scaled center actually breaks the tie on this pair. Take ε = √2 − 1, so (1+ε) = √2. First node (center b, neighbors {a,b}): √2·(1/16) + (¼ + 1/16) = 0.0884 + 0.3125 = 0.4009. Second node (center a, neighbors {b,b}): √2·(¼) + (1/16 + 1/16) = 0.3536 + 0.125 = 0.4786. Different — the scaled center separates the two roots that the flat sum merged. So the device works on the example; now I should pin down for which ε it works in general, over arbitrary pairs (c, X).
 
@@ -92,195 +92,6 @@ Now the graph-level readout. Theorem says I need it injective over the multiset 
 
 with READOUT a sum. This is the jumping-knowledge idea — let the final representation reach back to every depth. Each per-layer sum-readout is injective on its multiset, and concatenation never merges what its components keep apart (if two graphs differ in any single layer's pooled vector, they differ in the concatenation), so the all-depth readout is at least as discriminating as the best single layer — including the deepest one I'd otherwise have to commit to. And because a node's height-k feature is a learned embedding of a height-k rooted subtree, summing those features over the graph is a learnable analogue of counting subtrees — structurally the same histogram the WL subtree kernel forms by hand, except the subtrees are embedded into a continuous space so *similar* subtrees land near each other, which one-hot WL labels can't do. I'll hold the "generalizes the WL subtree kernel" claim as a structural correspondence rather than a theorem — the kernel's exact feature is a hard count and mine is a learned sum of embeddings, so the precise sense in which one contains the other is something I'd want to state carefully — but the injectivity of each per-layer sum is what I actually need here, and that I've checked.
 
-Let me check the constructed net against the three hypotheses the equivalence proof actually consumed, one at a time, because the theorem only bites if all three hold. Hypothesis one, injective neighbor aggregation: I'm summing f-encoded neighbor features, and I verified above that the f(x)=N^{-Z(x)} sum recovers exact counts on a concrete pair — so the aggregate is injective on bounded neighbor multisets. Hypothesis two, injective combine over (center, neighbor-aggregate): I'm using (1+ε)·f(center) + Σ_neighbors with ε irrational, and I both proved and watched it separate the a–b–b / b–a–b roots that the flat sum merged — injective. Hypothesis three, injective readout over the node-feature multiset: each per-layer sum-pool is the same multiset sum, injective by the same digit argument. All three hold, so the equivalence applies and this net matches WL's discriminative power, which the upper bound says is the most any message-passing GNN can reach. Conversely, every degraded variant fails a *specific* hypothesis with a *specific* witness I computed: mean instead of sum fails aggregation injectivity (it merged {g,r} with {g,g,r,r}, both 5.5); max fails it harder (it merged {g,r} with {g,r,r}, both 10); one linear+ReLU fails the universal-f requirement (it merged {1,1,1,1,1} with {2,3}, both (8.44,5.16,0,0)); flat-merging the center fails combine injectivity (both roots 0.375). So the four design choices aren't interchangeable knobs — each one is the thing that repairs a hypothesis I watched a simpler choice break.
+The equivalence theorem needed three things injective: neighbor aggregation, the center-neighbor combine, and the graph readout — and the construction now has all three, by the same digit-sum argument at each stage. So this net matches WL's discriminative power, the most any message-passing GNN can reach. And each simpler alternative I ruled out failed exactly one of those three, with an explicit witness: mean fails aggregation injectivity, max fails it harder, one linear+ReLU fails the universal-f requirement, flat-merging the center fails combine injectivity. The four design choices aren't interchangeable knobs — each repairs a specific hypothesis a simpler choice breaks.
 
-Now let me write it as real code. The transform is a small MLP (Linear → BatchNorm → ReLU stack, with a plain Linear if I degrade it to one layer for the ablation). The graph net stacks these layers; sum and average pooling become sparse matrix multiplies over a block-diagonal batch adjacency, max pooling uses padded neighbor lists, and the center weighting is the (1+ε) reweight, with ε either a learned parameter or fixed by putting self-loops into the pooled neighborhood. The expressive setting uses sum for both neighbor aggregation and graph pooling; the average and max branches stay in the class because I need them as controlled ablations. The readout pools every layer and pushes each pooled vector through its own linear head; summing those scores is the implementation form of concatenating all depths and then applying one linear classifier.
-
-```python
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
-
-class MLP(nn.Module):
-    """The transform that plays the role of f / phi.
-    num_layers == 1 is the linear ablation; num_layers >= 2 is the MLP case.
-    """
-    def __init__(self, num_layers, input_dim, hidden_dim, output_dim):
-        super().__init__()
-        self.num_layers = num_layers
-        self.linear_or_not = True
-
-        if num_layers < 1:
-            raise ValueError("number of layers should be positive")
-        elif num_layers == 1:
-            self.linear = nn.Linear(input_dim, output_dim)
-        else:
-            self.linear_or_not = False
-            self.linears = nn.ModuleList()
-            self.batch_norms = nn.ModuleList()
-            self.linears.append(nn.Linear(input_dim, hidden_dim))
-            for _ in range(num_layers - 2):
-                self.linears.append(nn.Linear(hidden_dim, hidden_dim))
-            self.linears.append(nn.Linear(hidden_dim, output_dim))
-            for _ in range(num_layers - 1):
-                self.batch_norms.append(nn.BatchNorm1d(hidden_dim))
-
-    def forward(self, x):
-        if self.linear_or_not:
-            return self.linear(x)
-        h = x
-        for layer in range(self.num_layers - 1):
-            h = F.relu(self.batch_norms[layer](self.linears[layer](h)))
-        return self.linears[self.num_layers - 1](h)
-
-
-class GraphCNN(nn.Module):
-    def __init__(self, num_layers, num_mlp_layers, input_dim, hidden_dim,
-                 output_dim, final_dropout, center_weighting,
-                 graph_pooling_type, neighbor_pooling_type, device):
-        super().__init__()
-        self.num_layers = num_layers
-        self.final_dropout = final_dropout
-        self.center_weighting = center_weighting
-        self.graph_pooling_type = graph_pooling_type
-        self.neighbor_pooling_type = neighbor_pooling_type
-        self.device = device
-
-        # one learned eps per message-passing layer when the center is kept separate
-        self.eps = nn.Parameter(torch.zeros(self.num_layers - 1))
-
-        self.mlps = nn.ModuleList()
-        self.batch_norms = nn.ModuleList()
-        for layer in range(self.num_layers - 1):
-            in_dim = input_dim if layer == 0 else hidden_dim
-            self.mlps.append(MLP(num_mlp_layers, in_dim, hidden_dim, hidden_dim))
-            self.batch_norms.append(nn.BatchNorm1d(hidden_dim))
-
-        self.linears_prediction = nn.ModuleList()
-        for layer in range(num_layers):
-            in_dim = input_dim if layer == 0 else hidden_dim
-            self.linears_prediction.append(nn.Linear(in_dim, output_dim))
-
-    def preprocess_neighbors_for_maxpool(self, batch_graph):
-        max_deg = max(graph.max_neighbor for graph in batch_graph)
-        padded_neighbor_list = []
-        start_idx = [0]
-
-        for i, graph in enumerate(batch_graph):
-            start_idx.append(start_idx[i] + len(graph.g))
-            for j, neighbors in enumerate(graph.neighbors):
-                pad = [n + start_idx[i] for n in neighbors]
-                pad.extend([-1] * (max_deg - len(pad)))
-                if not self.center_weighting:
-                    # eps fixed to 0: pool the center together with its neighbors.
-                    pad.append(j + start_idx[i])
-                padded_neighbor_list.append(pad)
-
-        return torch.LongTensor(padded_neighbor_list).to(self.device)
-
-    def preprocess_neighbors_for_matrix_pool(self, batch_graph):
-        edge_mat_list = []
-        start_idx = [0]
-        for i, graph in enumerate(batch_graph):
-            start_idx.append(start_idx[i] + len(graph.g))
-            edge_mat_list.append(graph.edge_mat + start_idx[i])
-
-        Adj_block_idx = torch.cat(edge_mat_list, 1)
-        Adj_block_elem = torch.ones(Adj_block_idx.shape[1])
-
-        if not self.center_weighting:
-            num_node = start_idx[-1]
-            self_loop = torch.arange(num_node, dtype=torch.long)
-            self_loop_edge = torch.stack([self_loop, self_loop])
-            Adj_block_idx = torch.cat([Adj_block_idx, self_loop_edge], 1)
-            Adj_block_elem = torch.cat([Adj_block_elem, torch.ones(num_node)], 0)
-
-        Adj_block = torch.sparse.FloatTensor(
-            Adj_block_idx, Adj_block_elem,
-            torch.Size([start_idx[-1], start_idx[-1]]))
-        return Adj_block.to(self.device)
-
-    def preprocess_graph_pool(self, batch_graph):
-        start_idx = [0]
-        for i, graph in enumerate(batch_graph):
-            start_idx.append(start_idx[i] + len(graph.g))
-
-        idx, elem = [], []
-        for i, graph in enumerate(batch_graph):
-            if self.graph_pooling_type == "average":
-                elem.extend([1.0 / len(graph.g)] * len(graph.g))
-            else:
-                elem.extend([1.0] * len(graph.g))
-            idx.extend([[i, j] for j in range(start_idx[i], start_idx[i + 1])])
-
-        idx = torch.LongTensor(idx).transpose(0, 1)
-        elem = torch.FloatTensor(elem)
-        graph_pool = torch.sparse.FloatTensor(
-            idx, elem, torch.Size([len(batch_graph), start_idx[-1]]))
-        return graph_pool.to(self.device)
-
-    def maxpool(self, h, padded_neighbor_list):
-        # Padded -1 indices select this dummy row, which cannot affect the max.
-        dummy = torch.min(h, dim=0)[0]
-        h_with_dummy = torch.cat([h, dummy.reshape(1, -1).to(self.device)])
-        return torch.max(h_with_dummy[padded_neighbor_list], dim=1)[0]
-
-    def next_layer_with_center_weighting(self, h, layer,
-                                         padded_neighbor_list=None, Adj_block=None):
-        if self.neighbor_pooling_type == "max":
-            pooled = self.maxpool(h, padded_neighbor_list)
-        else:
-            pooled = torch.spmm(Adj_block, h)
-            if self.neighbor_pooling_type == "average":
-                degree = torch.spmm(
-                    Adj_block, torch.ones((Adj_block.shape[0], 1)).to(self.device))
-                pooled = pooled / degree
-
-        pooled = pooled + (1 + self.eps[layer]) * h
-        pooled_rep = self.mlps[layer](pooled)
-        return F.relu(self.batch_norms[layer](pooled_rep))
-
-    def next_layer(self, h, layer, padded_neighbor_list=None, Adj_block=None):
-        if self.neighbor_pooling_type == "max":
-            pooled = self.maxpool(h, padded_neighbor_list)
-        else:
-            pooled = torch.spmm(Adj_block, h)
-            if self.neighbor_pooling_type == "average":
-                degree = torch.spmm(
-                    Adj_block, torch.ones((Adj_block.shape[0], 1)).to(self.device))
-                pooled = pooled / degree
-
-        pooled_rep = self.mlps[layer](pooled)
-        return F.relu(self.batch_norms[layer](pooled_rep))
-
-    def forward(self, batch_graph):
-        X_concat = torch.cat([graph.node_features for graph in batch_graph], 0).to(self.device)
-        graph_pool = self.preprocess_graph_pool(batch_graph)
-
-        padded_neighbor_list, Adj_block = None, None
-        if self.neighbor_pooling_type == "max":
-            padded_neighbor_list = self.preprocess_neighbors_for_maxpool(batch_graph)
-        else:
-            Adj_block = self.preprocess_neighbors_for_matrix_pool(batch_graph)
-
-        hidden_rep = [X_concat]
-        h = X_concat
-        for layer in range(self.num_layers - 1):
-            if self.center_weighting:
-                h = self.next_layer_with_center_weighting(
-                    h, layer, padded_neighbor_list, Adj_block)
-            else:
-                h = self.next_layer(h, layer, padded_neighbor_list, Adj_block)
-            hidden_rep.append(h)
-
-        score_over_layer = 0
-        for layer, h in enumerate(hidden_rep):
-            pooled_h = torch.spmm(graph_pool, h)
-            score_over_layer += F.dropout(
-                self.linears_prediction[layer](pooled_h),
-                self.final_dropout, training=self.training)
-        return score_over_layer
-```
-
-The causal chain, end to end: I start by asking for the ceiling on what a message-passing GNN can distinguish, recognize that the loop is structurally the WL test, and get the upper bound that no such GNN beats WL. The proof leaks power exactly where lossy functions collapse distinct inputs, so reaching WL requires aggregation, combine, and readout to be injective on multisets. Sum is the one of {sum, mean, max} that keeps the full multiset; mean keeps only the distribution, max only the support, and each failure has an explicit confusing pair. A sum of learned features is universal over bounded multisets; a single linear+ReLU degenerates to a plain sum and underfits, so the transform has to be a real MLP. Merging the center with its neighbors loses the root, so I tag the center with (1+ε), which is injective for irrational ε and becomes a practical learned parameter or a fixed-zero self-loop variant. Pooling each layer and combining all depths gives the graph readout. Sum aggregation, MLP transform, center weighting, and multi-layer readout are all doing one job: preserve every distinction that WL preserves, while letting the embeddings become learned continuous features instead of hard hashes.
+Now to write it as real code. The transform is a small MLP (Linear → BatchNorm → ReLU stack, with a plain Linear if I degrade it to one layer for the ablation). The graph net stacks these layers; sum and average pooling become sparse matrix multiplies over a block-diagonal batch adjacency, max pooling uses padded neighbor lists, and the center weighting is the (1+ε) reweight, with ε either a learned parameter or fixed by putting self-loops into the pooled neighborhood. The expressive setting uses sum for both neighbor aggregation and graph pooling; the average and max branches stay in the class because I need them as controlled ablations against the theory. The readout pools every layer and pushes each pooled vector through its own linear head; summing those scores is the implementation form of concatenating all depths and then applying one linear classifier. The full module — MLP class, the GraphCNN with its max/matrix-pool preprocessing and the eps-weighted next-layer step — is a direct transcription of this design; I write it out once, in the answer.
