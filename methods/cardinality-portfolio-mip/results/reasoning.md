@@ -1,6 +1,6 @@
 Let me start from the continuous portfolio problem I already trust. If I only care about fractional weights, I can choose `x` on the simplex and trade return against covariance risk with a convex quadratic objective. In minimization form it is `0.5 * x' Sigma x - mu' x`, or the same thing with a risk-aversion multiplier in front of the variance. With ordinary lower and upper bounds this is a convex QP, so a CVXPY-style optimizer can solve it globally. The trouble is that the answer is a vector of real numbers, and the desk does not trade a vector of real numbers.
 
-The first desk constraint is a support limit. I might be allowed to hold at most `K` names out of a large benchmark universe. The second is a buy-in floor: if I hold name `i` at all, I do not want a dust position; I want `x_i >= alpha_i`. The third is the actual deployment step: eventually the target has to become integer shares or integer lots. Rebalancing adds another layer, because I am usually moving from a current book `x0`, and large trades have impact. None of this changes why the covariance quadratic is attractive; it changes the feasible set around it. Let me work out what the feasible set actually looks like before I commit to any modeling trick.
+The first desk constraint is a support limit. I might be allowed to hold at most `K` names out of a large benchmark universe. The second is a buy-in floor: if I hold name `i` at all, I do not want a dust position; I want `x_i >= alpha_i`. The third is the actual deployment step: eventually the target has to become integer shares or integer lots. Rebalancing adds another layer, because I am usually moving from a current book `x0`, and large trades have impact. None of this changes why the covariance quadratic is attractive; it changes the feasible set around it, and that feasible set is what needs pinning down first.
 
 The buy-in floor is already enough to break convexity. For one name the feasible set is `{0} union [alpha_i, u_i]`. If zero and `alpha_i` are both feasible, convexity would force every point between them to be feasible, but the whole interval `(0, alpha_i)` is exactly what I am trying to forbid. So no purely convex constraint in `x_i` can represent this floor-or-zero rule. The cardinality limit has the same structure in higher dimension. For each subset `S` with `|S| <= K`, the portfolios supported on `S` form a face of the simplex. The feasible set is the union of all those faces. If I average a feasible portfolio supported on `{1,2,3}` with another supported on `{4,5,6}`, I can get six positive weights, so the union is not convex.
 
@@ -12,7 +12,7 @@ Sigma = [[0.040, 0.028, 0.010],
          [0.010, 0.012, 0.060]],   delta = 8.
 ```
 
-Minimizing `0.5*delta*x'Sigma x - mu'x` over the simplex gives the continuous optimum `x ~ (0.386, 0.270, 0.344)` with objective about `0.00346` — all three names held. Now suppose I am only allowed `K = 2`. The two largest weights are names 1 and 3, so I keep those and renormalize: `(0.386, 0, 0.344)` rescaled to `(0.529, 0, 0.471)`, objective about `0.01323`. But if I re-solve the QP on the support `{1, 3}` directly, I get `(0.609, 0, 0.391)` with objective `0.01117` — strictly better than the renormalized weights. Renormalization preserves the ratio `0.386 : 0.344 = 0.529 : 0.471`, but once name 2 is gone the correct ratio is `0.609 : 0.391`. Dropping name 2 changed the covariance interactions among the survivors, and the right weights on the remaining names are not the old weights times one scalar. The patch can also leave a survivor below `alpha_i` or above its cap, and it never checks whether `{1,3}` is even the best pair. So truncate-and-renormalize is a heuristic, not the object I need.
+Minimizing `0.5*delta*x'Sigma x - mu'x` over the simplex gives the continuous optimum `x ~ (0.387, 0.270, 0.343)` with objective about `0.00346` — all three names held. Now suppose I am only allowed `K = 2`. The two largest weights are names 1 and 3, so I keep those and renormalize: `(0.387, 0, 0.343)` rescaled to `(0.530, 0, 0.470)`, objective about `0.0132`. But if I re-solve the QP on the support `{1, 3}` directly, I get `(0.609, 0, 0.391)` with objective `0.01117` — strictly better than the renormalized weights. Renormalization preserves the ratio `0.387 : 0.343 = 0.530 : 0.470`, but once name 2 is gone the correct ratio is `0.609 : 0.391`. Dropping name 2 changed the covariance interactions among the survivors, and the right weights on the remaining names are not the old weights times one scalar. The patch can also leave a survivor below `alpha_i` or above its cap, and it never checks whether `{1,3}` is even the best pair. So truncate-and-renormalize is a heuristic, not the object I need.
 
 An `L1` penalty does not rescue me either. In a long-only fully invested portfolio, `sum_i |x_i| = sum_i x_i = 1`, so the lasso-like penalty is a constant. Even outside the simplex, `L1` encourages shrinkage; it does not enforce "at most `K`" or "if positive, at least `alpha_i`." The requirement is not merely that weights become small. I need a yes-or-no decision for each name.
 
@@ -20,7 +20,7 @@ So I introduce that decision explicitly. Let `y_i` be binary, with `y_i = 1` mea
 
 `alpha_i y_i <= x_i <= u_i y_i`.
 
-Let me check the two cases by hand. If `y_i = 0`, the constraint reads `0 <= x_i <= 0`, so `x_i` is pinned to zero and the name is out. If `y_i = 1`, it reads `alpha_i <= x_i <= u_i`, so the name is held at or above its floor and at or below its cap. The forbidden gap `(0, alpha_i)` is unreachable under either value of `y_i`, which is exactly the disjunction I could not write with a convex constraint. The cap `u_i` doubles as the tight big-M value here; using the real cap rather than an arbitrary huge constant keeps the continuous relaxation tighter. Once the indicators exist, the holding count is just `sum_i y_i <= K`. I want `<= K`, not equality, because the rule is "at most"; forcing an extra name can waste a floor-sized position or even make an otherwise feasible choice infeasible.
+The two cases are direct: if `y_i = 0`, the constraint reads `0 <= x_i <= 0`, so `x_i` is pinned to zero and the name is out. If `y_i = 1`, it reads `alpha_i <= x_i <= u_i`, so the name is held at or above its floor and at or below its cap. The forbidden gap `(0, alpha_i)` is unreachable under either value of `y_i`, which is exactly the disjunction I could not write with a convex constraint. The cap `u_i` doubles as the tight big-M value here; using the real cap rather than an arbitrary huge constant keeps the continuous relaxation tighter. Once the indicators exist, the holding count is just `sum_i y_i <= K`. I want `<= K`, not equality, because the rule is "at most"; forcing an extra name can waste a floor-sized position or even make an otherwise feasible choice infeasible.
 
 That gives a mixed-integer quadratic model:
 
@@ -28,9 +28,9 @@ That gives a mixed-integer quadratic model:
 
 subject to ordinary linear constraints, `sum_i y_i <= K`, `alpha_i y_i <= x_i <= u_i y_i`, and `y_i in {0,1}`. In the portfolio case without benchmark-relative terms, `Q` is the risk-aversion-scaled covariance and `c = -mu`. The objective remains convex in the continuous variables because `Q` is positive semidefinite; the only nonconvexity is integrality. That is the shape I want, because it means I can hand the integer search to branch-and-bound and have every node be a convex problem.
 
-So let me trace the branch-and-bound story to be sure it closes. If I relax `y_i in {0,1}` to `0 <= y_i <= 1`, I get a convex QP relaxation. Because I am minimizing, that relaxation gives a lower bound on any integer-feasible solution in the node. An incumbent integer solution gives an upper bound. If a node's lower bound is no better than the incumbent, I can prune the whole subtree. If a relaxed solution has a fractional `y_s`, I branch into `y_s = 0` and `y_s = 1`. The bounds are valid because relaxing the integrality only enlarges the feasible set, so the relaxed minimum can only be lower than the constrained one.
+The branch-and-bound bookkeeping is worth pinning down. If I relax `y_i in {0,1}` to `0 <= y_i <= 1`, I get a convex QP relaxation. Because I am minimizing, that relaxation gives a lower bound on any integer-feasible solution in the node. An incumbent integer solution gives an upper bound. If a node's lower bound is no better than the incumbent, I can prune the whole subtree. If a relaxed solution has a fractional `y_s`, I branch into `y_s = 0` and `y_s = 1`. The bounds are valid because relaxing the integrality only enlarges the feasible set, so the relaxed minimum can only be lower than the constrained one.
 
-There is an older continuous-variable way to do the same search, and I want to know how much it really buys. The natural idea is to relax the support constraint to the single inequality `sum_i x_i/u_i <= K`. Is that an exact encoding of cardinality? Let me test it. Take `u_i = 0.5` for four names and `K = 2`, and hold all four at `0.25` (which sums to 1). Then `sum_i x_i/u_i = 4 * 0.25/0.5 = 2.0 <= 2`, so the surrogate is satisfied, yet four names are held and the support limit of two is violated. So the inequality is only a relaxation: the forward direction holds — if at most `K` names are held and each `x_i <= u_i`, then `sum_i x_i/u_i <= sum_{held} 1 <= K` — but the converse fails, and many small positive weights can sneak past it. The surrogate is therefore useful for bounding but cannot by itself enforce cardinality. The branch decisions have to restore the disjunction by pushing a chosen variable down to zero or up above its floor. A tailored implementation can branch directly on `x_s`: in the down branch, delete the variable or enforce `x_s = 0`; in the up branch, enforce `x_s >= alpha_s` and add `s` to the set of variables that are definitely in. Then each node solves the convex QP relaxation with the cardinality constraint removed and the already-branched-up lower bounds enforced. Pivoting methods such as Lemke's method are attractive there because a child node is only a small modification of its parent, so the parent basis can warm-start the next solve. The modeling version with binaries and a general MIQP solver expresses the same discrete choices more directly, and since both reduce to convex QP relaxations at each node, I will write the binary version and let the solver branch.
+There is an older continuous-variable way to do the same search, and I want to know how much it really buys. The natural idea is to relax the support constraint to the single inequality `sum_i x_i/u_i <= K`. Is that an exact encoding of cardinality? Take `u_i = 0.5` for four names and `K = 2`, and hold all four at `0.25` (which sums to 1). Then `sum_i x_i/u_i = 4 * 0.25/0.5 = 2.0 <= 2`, so the surrogate is satisfied, yet four names are held and the support limit of two is violated. So the inequality is only a relaxation: the forward direction holds — if at most `K` names are held and each `x_i <= u_i`, then `sum_i x_i/u_i <= sum_{held} 1 <= K` — but the converse fails, and many small positive weights can sneak past it. The surrogate is therefore useful for bounding but cannot by itself enforce cardinality. The branch decisions have to restore the disjunction by pushing a chosen variable down to zero or up above its floor. A tailored implementation can branch directly on `x_s`: in the down branch, delete the variable or enforce `x_s = 0`; in the up branch, enforce `x_s >= alpha_s` and add `s` to the set of variables that are definitely in. Then each node solves the convex QP relaxation with the cardinality constraint removed and the already-branched-up lower bounds enforced. Pivoting methods such as Lemke's method are attractive there because a child node is only a small modification of its parent, so the parent basis can warm-start the next solve. The modeling version with binaries and a general MIQP solver expresses the same discrete choices more directly, and since both reduce to convex QP relaxations at each node, I will write the binary version and let the solver branch.
 
 The portfolio objective itself needs one more pass. If I am tracking a benchmark `xB`, the risk term I actually care about is benchmark-relative:
 
@@ -44,7 +44,7 @@ with `C = diag(c)`. I want the whole thing in the generic `0.5*x'Q*x + c'x` form
 
 `0.5 * x' (Sigma + 2C) x - (r + Sigma xB + 2C x0)' x`,
 
-with constant `0.5*xB'Sigma*xB + x0'C x0` that the optimizer can ignore. I should not trust an algebra rearrangement I did in my head, so let me check it numerically. With a random PSD `Sigma`, `xB = (0.5,0.3,0.2)`, `x0 = (0.4,0.4,0.2)`, `c = (0.1,0.2,0.05)`, `r = (0.08,0.12,0.03)`, evaluated at `x = (0.6,0.1,0.3)`, the original `-r'x + 0.5*(x-xB)'Sigma(x-xB) + sum_i c_i(x_i-x0_i)^2` comes to `0.0699415`, and `0.5*x'(Sigma+2C)x - (r+Sigma xB+2C x0)'x` plus the constant comes to the same `0.0699415`, differing by `2e-16`. So the collected form is exact. One sign deserves a note: benchmark risk contributes `+Sigma xB` to the effective return vector, because the minimization objective carries `-x'Sigma xB`. If I use a risk-aversion multiplier `delta`, I scale the `Sigma` parts by `delta`, so the linear benchmark term becomes `delta Sigma xB`.
+with constant `0.5*xB'Sigma*xB + x0'C x0` that the optimizer can ignore. A sign error is easy to make in this kind of rearrangement, so I check it on numbers, reusing the same `Sigma` from the truncate-and-renormalize example above with `xB = (0.5,0.3,0.2)`, `x0 = (0.4,0.4,0.2)`, `c = (0.1,0.2,0.05)`, `r = (0.08,0.12,0.03)`, evaluated at `x = (0.6,0.1,0.3)`. The original `-r'x + 0.5*(x-xB)'Sigma(x-xB) + sum_i c_i(x_i-x0_i)^2` comes to `-0.0458`, and `0.5*x'(Sigma+2C)x - (r+Sigma xB+2C x0)'x` plus the constant comes to the same `-0.0458`, differing only at machine precision. So the collected form is exact. One sign deserves a note: benchmark risk contributes `+Sigma xB` to the effective return vector, because the minimization objective carries `-x'Sigma xB`. If I use a risk-aversion multiplier `delta`, I scale the `Sigma` parts by `delta`, so the linear benchmark term becomes `delta Sigma xB`.
 
 Sector-change constraints fit as linear rows. If sector `l` contains indices `S_l` and the allowed benchmark-relative change is `epsilon_l`, the absolute-value constraint
 
@@ -54,163 +54,10 @@ is just the two inequalities `sum_{i in S_l} x_i <= epsilon_l + sum_{i in S_l} x
 
 For proportional transaction cost, I can split each trade into buy and sell variables, `x_i - x0_i = b_i - s_i`, `b_i >= 0`, `s_i >= 0`, and charge `tau_i^+ b_i + tau_i^- s_i`. For a fixed net trade, minimizing a positive cost drives the smaller of `b_i` and `s_i` to zero, so `b_i + s_i = |x_i - x0_i|` at optimum. In the symmetric implementation I do not need to write those variables by hand; CVXPY's `norm(x - x0, 1)` is the same convex proportional-cost term. Fixed ticket costs are different: a fee paid whenever the trade is nonzero is a step function, so an exact model needs another binary trade indicator. If ticket costs are second-order relative to impact or proportional cost, leaving them out keeps the core model quadratic and cleaner.
 
-Round lots are not the same decision as support selection, so I will keep them separate. I can solve the support-and-weight MIQP first, producing target weights, and then project those weights onto integer shares. The projection should not be naive rounding — let me see why. With a `$10,000` book, prices `(97, 53, 31)`, and target weights `(0.5, 0.3, 0.2)`, the target dollar amounts are `(5000, 3000, 2000)`. Rounding each `target/price` independently gives `(52, 57, 65)` shares, which costs `52*97 + 57*53 + 65*31 = 10,080` dollars — `$80` over the budget. Independent rounding ignores the shared budget, so it can overspend and distort the allocation. I want a model that respects the cash constraint while tracking the targets. Let `p_i` be the latest price, `T` the account value, and `x_i` the integer number of shares. The target dollar amount is `w_i T`, the deployed amount is `p_i x_i`, and the residual is `eta_i = w_i T - p_i x_i`. Introduce `u_i` with `eta_i <= u_i` and `eta_i >= -u_i`; minimizing `sum_i u_i` squeezes `u_i` down to `|eta_i|`. Add leftover cash `r = T - p'x` to the objective and require `x >= 0`, `r >= 0` so the budget is never exceeded. The result is a mixed-integer linear program:
+Round lots are not the same decision as support selection, so I will keep them separate. I can solve the support-and-weight MIQP first, producing target weights, and then project those weights onto integer shares. The projection should not be naive rounding, and the reason is concrete. With a `$10,000` book, prices `(97, 53, 31)`, and target weights `(0.5, 0.3, 0.2)`, the target dollar amounts are `(5000, 3000, 2000)`. Rounding each `target/price` independently gives `(52, 57, 65)` shares, which costs `52*97 + 57*53 + 65*31 = 10,080` dollars — `$80` over the budget. Independent rounding ignores the shared budget, so it can overspend and distort the allocation. I want a model that respects the cash constraint while tracking the targets. Let `p_i` be the latest price, `T` the account value, and `x_i` the integer number of shares. The target dollar amount is `w_i T`, the deployed amount is `p_i x_i`, and the residual is `eta_i = w_i T - p_i x_i`. Introduce `u_i` with `eta_i <= u_i` and `eta_i >= -u_i`; minimizing `sum_i u_i` squeezes `u_i` down to `|eta_i|`. Add leftover cash `r = T - p'x` to the objective and require `x >= 0`, `r >= 0` so the budget is never exceeded. The result is a mixed-integer linear program:
 
 `minimize sum_i u_i + r`.
 
 That is the integer allocation step I want after the quadratic model chooses the target weights, and because the budget enters as `r >= 0` it cannot overspend the way independent rounding did.
 
-Now the code should look like the optimizer I already have: objective functions return CVXPY expressions for minimization, transaction cost is an `L1` term, and the allocation helper uses an integer variable with the `eta <= u`, `eta >= -u` absolute-value linearization.
-
-```python
-import collections
-
-import cvxpy as cp
-import numpy as np
-import pandas as pd
-
-
-def portfolio_return(w, expected_returns, negative=True):
-    sign = -1 if negative else 1
-    return sign * (w @ expected_returns)
-
-
-def portfolio_variance(w, cov_matrix):
-    return cp.quad_form(w, cov_matrix, assume_PSD=True)
-
-
-def transaction_cost(w, w_prev, k=0.001):
-    return k * cp.norm(w - w_prev, 1)
-
-
-def _as_vector(value, n, name):
-    arr = np.asarray(value, dtype=float).reshape(-1)
-    if arr.size == 1:
-        return np.full(n, float(arr[0]))
-    if arr.size != n:
-        raise ValueError(f"{name} must be scalar or length {n}")
-    return arr
-
-
-class DeskPortfolioModel:
-    def __init__(self, expected_returns, cov_matrix, tickers=None,
-                 weight_bounds=(0, 1), solver=None):
-        self.expected_returns = np.asarray(expected_returns, dtype=float).reshape(-1)
-        self.cov_matrix = np.asarray(cov_matrix, dtype=float)
-        self.n_assets = len(self.expected_returns)
-        self.tickers = list(tickers) if tickers is not None else list(range(self.n_assets))
-        self.weight_bounds = weight_bounds
-        self.solver = solver
-        if self.cov_matrix.shape != (self.n_assets, self.n_assets):
-            raise ValueError("covariance matrix does not match expected returns")
-
-    def _upper_bounds(self):
-        lower, upper = self.weight_bounds
-        return _as_vector(upper, self.n_assets, "upper bound")
-
-    def solve(self, max_names, min_weight, benchmark_weights=None, current_weights=None,
-              sector_map=None, sector_limits=None, impact=None,
-              transaction_cost_rate=0.0, risk_aversion=1.0, solver=None):
-        n = self.n_assets
-        w = cp.Variable(n)
-        y = cp.Variable(n, boolean=True)
-
-        floor = _as_vector(min_weight, n, "min_weight")
-        cap = self._upper_bounds()
-        linear = self.expected_returns.copy()
-        quadratic = risk_aversion * self.cov_matrix.copy()
-
-        if benchmark_weights is not None:
-            benchmark = _as_vector(benchmark_weights, n, "benchmark_weights")
-            linear = linear + risk_aversion * (self.cov_matrix @ benchmark)
-        else:
-            benchmark = None
-
-        if impact is not None:
-            if current_weights is None:
-                raise ValueError("current_weights are required when impact is supplied")
-            current = _as_vector(current_weights, n, "current_weights")
-            impact_vec = _as_vector(impact, n, "impact")
-            C = np.diag(impact_vec)
-            quadratic = quadratic + 2 * C
-            linear = linear + 2 * (C @ current)
-        elif current_weights is not None:
-            current = _as_vector(current_weights, n, "current_weights")
-        else:
-            current = None
-
-        objective = 0.5 * cp.quad_form(w, quadratic, assume_PSD=True) - linear @ w
-        if current is not None and transaction_cost_rate:
-            objective += transaction_cost(w, current, k=transaction_cost_rate)
-
-        constraints = [
-            cp.sum(w) == 1,
-            w >= cp.multiply(floor, y),
-            w <= cp.multiply(cap, y),
-            cp.sum(y) <= max_names,
-        ]
-
-        if sector_map and sector_limits:
-            if benchmark is None:
-                raise ValueError("benchmark_weights are required for sector limits")
-            for sector, members in sector_map.items():
-                idx = [self.tickers.index(t) if t in self.tickers else int(t) for t in members]
-                shift = cp.sum(w[idx]) - float(np.sum(benchmark[idx]))
-                limit = float(sector_limits[sector])
-                constraints += [shift <= limit, -shift <= limit]
-
-        prob = cp.Problem(cp.Minimize(objective), constraints)
-        prob.solve(solver=solver or self.solver)
-        if prob.status not in {"optimal", "optimal_inaccurate"}:
-            raise ValueError(f"optimization failed with status {prob.status}")
-
-        weights = collections.OrderedDict(
-            (ticker, float(value)) for ticker, value in zip(self.tickers, w.value)
-            if abs(value) > 1e-10
-        )
-        selected = collections.OrderedDict(
-            (ticker, int(round(value))) for ticker, value in zip(self.tickers, y.value)
-        )
-        return weights, selected, prob.value
-
-
-class ShareAllocator:
-    def __init__(self, weights, latest_prices, total_portfolio_value=10000):
-        if not isinstance(weights, dict):
-            raise TypeError("weights should be a dictionary of {ticker: weight}")
-        if not isinstance(latest_prices, pd.Series):
-            raise TypeError("latest_prices should be a pandas Series")
-        self.weights = list(weights.items())
-        self.latest_prices = latest_prices
-        self.total_portfolio_value = total_portfolio_value
-
-    @staticmethod
-    def _remove_zero_positions(allocation):
-        return {k: v for k, v in allocation.items() if v != 0}
-
-    def lp_portfolio(self, solver=None):
-        p = self.latest_prices.values
-        n = len(p)
-        w = np.fromiter([weight for _, weight in self.weights], dtype=float)
-
-        x = cp.Variable(n, integer=True)
-        r = self.total_portfolio_value - p.T @ x
-        eta = w * self.total_portfolio_value - cp.multiply(x, p)
-        u = cp.Variable(n)
-
-        constraints = [eta <= u, eta >= -u, x >= 0, r >= 0]
-        objective = cp.sum(u) + r
-
-        opt = cp.Problem(cp.Minimize(objective), constraints)
-        opt.solve(solver=solver)
-        if opt.status not in {"optimal", "optimal_inaccurate"}:
-            raise ValueError("integer allocation failed")
-
-        vals = np.rint(x.value).astype(int)
-        allocation = collections.OrderedDict(
-            zip([ticker for ticker, _ in self.weights], [int(v) for v in vals])
-        )
-        return self._remove_zero_positions(allocation), float(r.value)
-```
-
-I end up with a clean separation. The support decision is a mixed-integer convex quadratic model: binary `y` variables express the floor-or-zero disjunction and the count limit, while the expanded benchmark and impact terms keep the objective in `0.5*x'Q*x - r_tilde'x` form, which I checked collects exactly. Branch-and-bound gets its bounds from convex QP relaxations, whether the branching is written through binaries or directly on continuous variables — and the continuous surrogate alone is only a relaxation, so the discrete branching is what actually enforces cardinality. The final share list is a smaller integer linear projection that tracks the continuous target without the overspend that independent rounding would cause.
+The implementation is now mechanical. `DeskPortfolioModel.solve` opens a continuous `w` and a boolean `y`, ties them with `w >= cp.multiply(floor, y)` and `w <= cp.multiply(cap, y)`, and caps the count with `cp.sum(y) <= max_names`; the quadratic accumulates `risk_aversion * cov_matrix` plus `2*C` when impact is supplied, the linear side accumulates `expected_returns` plus the benchmark and impact terms I collected above, and a sector loop adds the two-sided `shift <= limit`, `-shift <= limit` rows before the whole thing goes to `cp.Problem(...).solve()`. `ShareAllocator.lp_portfolio` is the eta/u allocation problem verbatim: an integer `x`, `eta = w*T - x*p`, and `minimize cp.sum(u) + r` subject to `eta <= u`, `eta >= -u`, `x >= 0`, `r >= 0`.
