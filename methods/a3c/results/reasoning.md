@@ -18,18 +18,9 @@ Let me stare at this for a second. The correlation problem is fundamentally abou
 
 And I can push the diversity further on purpose: give each worker a *different* exploration policy. If worker 1 is nearly greedy and worker 7 explores wildly, they'll fan out across even more of the state space, and the aggregate update gets even less correlated. So I'm not just passively hoping they diverge; I can actively make them diverge.
 
-Does this really reproduce what replay gave me, quantitatively? That's the whole bet, so I should actually do the variance arithmetic rather than wave at it. The aggregate update over a wall-clock window is the average of the gradients arriving in that window, (1/N) Σ_i g_i, and what I care about is the variance of that mean — the noise the optimizer actually sees. The general decomposition is Var((1/N) Σ_i g_i) = (1/N²)[Σ_i Var(g_i) + Σ_{i≠j} Cov(g_i, g_j)]. Two regimes bracket what can happen. If the g_i are independent with per-sample variance σ², the cross-covariances vanish and this collapses to N·σ²/N² = σ²/N — averaging N of them shrinks the variance by a factor N. If instead they're perfectly correlated, as a single agent's consecutive gradients nearly are (g_i ≈ g_j), then Cov(g_i, g_j) ≈ σ² for every pair, the double sum contributes N(N−1)σ², and the whole thing comes out to (1/N²)[Nσ² + N(N−1)σ²] = σ² — no reduction at all, no matter how many I average. So the entire benefit hinges on whether the samples in the window are independent or correlated; the count N alone does nothing.
+Does this really reproduce what replay gave me, quantitatively? The aggregate update over a wall-clock window is the average of the gradients arriving in that window, (1/N) Σ_i g_i, and what I care about is the variance of that mean — the noise the optimizer actually sees. The general decomposition is Var((1/N) Σ_i g_i) = (1/N²)[Σ_i Var(g_i) + Σ_{i≠j} Cov(g_i, g_j)]. Two regimes bracket what can happen. If the g_i are independent with per-sample variance σ², the cross-covariances vanish and this collapses to N·σ²/N² = σ²/N — averaging N of them shrinks the variance by a factor N. If instead they're perfectly correlated, as a single agent's consecutive gradients nearly are (g_i ≈ g_j), then Cov(g_i, g_j) ≈ σ² for every pair, the double sum contributes N(N−1)σ², and the whole thing comes out to (1/N²)[Nσ² + N(N−1)σ²] = σ² — no reduction at all, no matter how many I average. So the entire benefit hinges on whether the samples in the window are independent or correlated; the count N alone does nothing.
 
-Let me check those two endpoints numerically before I trust them, since this is the load-bearing claim. I draw windows of N scalar gradients with σ² = 1, average each window, and measure the variance of that average across many windows — once with independent draws and once with the N entries forced equal (perfect correlation):
-
-```
-N=  1   Var(mean) indep=0.9953  (σ²/N=1.0000)   Var(mean) correlated=1.0031
-N=  4   Var(mean) indep=0.2493  (σ²/N=0.2500)   Var(mean) correlated=0.9996
-N= 16   Var(mean) indep=0.0625  (σ²/N=0.0625)   Var(mean) correlated=0.9978
-N= 64   Var(mean) indep=0.0155  (σ²/N=0.0156)   Var(mean) correlated=1.0071
-```
-
-The independent column tracks σ²/N exactly (0.25, 0.0625, 0.0156), while the correlated column sits stubbornly at ≈1.0 for every N. So my single online agent, whose window is essentially one correlated sample repeated, lives in the right-hand column: a high-variance drift that more samples don't fix. The N workers, each in an unrelated part of state space, live in the left-hand column — and the temporal correlation that replay was fighting is just gone, because the samples being averaged come from N unrelated places, not from one slowly-varying trajectory. So parallelism delivers both the minibatch-style averaging *and* the decorrelation — the two things replay provided — and it does it without storing a single old transition. The one thing the arithmetic also makes explicit is the catch: the gain is real only to the extent the workers are genuinely decorrelated, which is exactly why I'll want to push their diversity on purpose rather than hope for it.
+My single online agent's window is essentially one correlated sample repeated, so it sits at that σ² floor with no N-dependence: a high-variance drift that more data doesn't fix. The N workers, each in an unrelated part of state space, sit in the independent case instead, because the samples being averaged come from N unrelated places rather than one slowly-varying trajectory. So parallelism delivers both the minibatch-style averaging and the decorrelation that replay provided, without storing a single old transition — but only to the extent the workers are genuinely decorrelated, which is exactly why I want to push their diversity on purpose rather than hope for it.
 
 The consequence I actually care about is that decorrelation no longer comes from a buffer of *old-policy* data. Every worker's data is fresh, generated right now by (essentially) the current shared policy. So nothing is forcing me off-policy anymore. On-policy methods become legal again. Sarsa, n-step methods, actor-critic — the whole family that replay had locked out — can now use the same stabilizer, because parallelism does not require old data. The off-policy restriction was never about the math of deep RL; it was a side effect of *how* DQN got its decorrelation. Change the decorrelation mechanism and the restriction evaporates.
 
@@ -43,7 +34,7 @@ The same worker skeleton should be able to accept more than one update rule, so 
 
 Start with the simplest, one-step Q-learning. Each step the worker takes an ε-greedy action from Q(s,a;θ′), sees r and s′, forms the target y = r + γ max_{a'} Q(s', a'; θ⁻) — or just y = r if s′ is terminal — and accumulates the gradient of (y − Q(s,a;θ′))². I keep the DQN target network θ⁻, a slowly-copied frozen set of parameters, because the moving-target problem is orthogonal to the correlation problem and parallelism doesn't fix it; I still want a steady label for the bootstrap. But now there's a subtlety in *when* to refresh θ⁻ that single-agent DQN never had to face. DQN counts its own steps and copies θ⁻ ← θ every so often. Here there are many workers all writing θ, so "every I_target steps" of *which* worker? If each worker refreshes off its own local step count, the frozen network would get rewritten N times as often as I intend, and inconsistently across threads. So the counter that drives the refresh has to be the *global* shared T — the total environment frames consumed across all threads — and I copy θ⁻ ← θ every time T crosses a multiple of I_target (40000 frames). That ties the target-network staleness to total experience, not to any one worker's pace, which is the quantity I actually care about keeping the bootstrap stable against. And the exploration: I'll give each worker an ε drawn periodically from a distribution rather than a single shared schedule, so the workers genuinely differ — that's the diversity that's doing the decorrelating, and it also just explores better. Apply the accumulated gradient every I_AsyncUpdate steps or at episode end.
 
-Let me actually design that exploration distribution, because "draw ε from a distribution" is too vague to implement and the structure matters. The thing I want is for the N workers, at any instant, to span a *range* of greediness: some nearly exploiting the current policy, some exploring hard, a few exploring extremely hard to keep probing far corners of state space. The cleanest way to get a spread without inventing a continuous schedule per thread is a small mixture: each thread periodically samples one of three target ε values — call them ε₁, ε₂, ε₃ — with probabilities 0.4, 0.3, 0.3, and each ε is itself annealed from 1 down to its target over the first four million frames so that early on everybody explores and the spread opens up only as the policy becomes worth exploiting. I pick the three targets as 0.1, 0.01, 0.5. The 0.1 endpoint is the familiar DQN exploitation floor — get most workers (the 0.4-weight mode) behaving close to greedy so the aggregate gradient is mostly on-distribution. The 0.01 endpoint gives a slice of nearly-deterministic workers that sharpen the value estimates where the policy is confident. And the 0.5 endpoint is the one that looks strange at first — half-random actions is a *lot* of noise — but it's deliberate: a standing minority of very-exploratory workers keeps feeding the shared model transitions from states a near-greedy policy would never revisit, which both decorrelates the batch further and guards against the whole ensemble collapsing into one exploited basin. Three point masses, not a continuum, because that's the least machinery that produces a genuine greedy/medium/wild spread, and the 0.4/0.3/0.3 weights tilt the mass toward exploitation while still keeping a third of the fleet exploring aggressively.
+Now I need to design that exploration distribution, because "draw ε from a distribution" is too vague to implement and the structure matters. The thing I want is for the N workers, at any instant, to span a *range* of greediness: some nearly exploiting the current policy, some exploring hard, a few exploring extremely hard to keep probing far corners of state space. The cleanest way to get a spread without inventing a continuous schedule per thread is a small mixture: each thread periodically samples one of three target ε values — call them ε₁, ε₂, ε₃ — with probabilities 0.4, 0.3, 0.3, and each ε is itself annealed from 1 down to its target over the first four million frames so that early on everybody explores and the spread opens up only as the policy becomes worth exploiting. I pick the three targets as 0.1, 0.01, 0.5. The 0.1 endpoint is the familiar DQN exploitation floor — get most workers (the 0.4-weight mode) behaving close to greedy so the aggregate gradient is mostly on-distribution. The 0.01 endpoint gives a slice of nearly-deterministic workers that sharpen the value estimates where the policy is confident. And the 0.5 endpoint is the one that looks strange at first — half-random actions is a *lot* of noise — but it's deliberate: a standing minority of very-exploratory workers keeps feeding the shared model transitions from states a near-greedy policy would never revisit, which both decorrelates the batch further and guards against the whole ensemble collapsing into one exploited basin. Three point masses, not a continuum, because that's the least machinery that produces a genuine greedy/medium/wild spread, and the 0.4/0.3/0.3 weights tilt the mass toward exploitation while still keeping a third of the fleet exploring aggressively.
 
 One-step Sarsa is the same skeleton with one character changed in the target: instead of r + γ max_{a'} Q(s', a'; θ⁻), use r + γ Q(s', a'; θ⁻) where a′ is the action the worker *actually* takes next, and use just r when s' is terminal. So it evaluates the policy it's following rather than the greedy policy — on-policy. That this is even writable here is the concrete consequence of having dropped replay: an on-policy target like Sarsa's would have been off-limits in the replay regime, and now it's just another one-line swap. Same target network, same accumulation.
 
@@ -53,26 +44,30 @@ Instead of bootstrapping after one real reward, I can let the worker collect sev
 
 How do I implement n-step on the worker? The classic way is the backward view — eligibility traces, where you keep a decaying trace per parameter and credit flows backward implicitly. But traces are awkward with momentum-based optimizers and especially with backprop-through-time on a recurrent net; the bookkeeping fights the autodiff. The forward view is cleaner here: just literally roll out up to t_max steps, then explicitly compute the n-step return for each visited state by walking *backward* through the rollout. Concretely, after rolling out, set R from the last state — bootstrap R = max_a Q(s_t,a;θ⁻), or R = 0 if that state was terminal — and then for i from the last step down to the first, do R ← r_i + γ R and accumulate the gradient of (R − Q(s_i,a_i;θ′))². Let me hand-unroll the recursion to be sure it does what I claim. Initialize R ← max_a Q(s_t,a;θ⁻). At i = t−1: R ← r_{t-1} + γ·max_a Q(s_t,a;θ⁻), a one-step return targeting s_{t-1}. At i = t−2: R ← r_{t-2} + γ(r_{t-1} + γ max_a Q(s_t,a;θ⁻)) = r_{t-2} + γ r_{t-1} + γ² max_a Q(s_t,a;θ⁻), a two-step return for s_{t-2}. By induction, the state t_start gets r_{t_start} + γ r_{t_start+1} + … + γ^{k-1} r_{t-1} + γ^k max_a Q(s_t,a;θ⁻) with k = t − t_start ≤ t_max. So the last state gets a one-step target, the second-to-last a two-step target, and so on up to a t_max-step target for the first state. Every state automatically gets the longest n-step return available to it, all from one cheap backward pass, no traces. Apply the whole accumulated gradient as a single update.
 
-There's a second payoff to running this many-worker n-step (and even one-step) value update that I didn't go looking for but that the bias-variance picture predicts. The one-step bootstrap target r + γ max_{a'} Q(s',a';θ⁻) is *biased*, because it leans on the imperfect current estimate of Q at s′. That bias is correlated along a single agent's trajectory — the same systematically-wrong Q values get reused as targets at consecutive, near-identical states, so the error doesn't wash out, it compounds. But with N workers bootstrapping at N scattered, unrelated states, the bias terms they inject are drawn from all over the value surface and are roughly independent, so when their gradients average into the shared θ the *bias itself* partially cancels — not just the variance. That predicts something I should expect to see: one-step methods consuming *fewer* environment frames to reach a given score as I add workers, i.e. a data-efficiency gain on top of the raw wall-clock speedup, which would show up as a *superlinear* speedup (more than N× from N threads) for the one-step methods specifically. The multi-step and actor-critic methods, which already use real rewards to suppress that bootstrap bias, should gain less this way and scale closer to linearly. I can't settle this from the desk — it's an empirical claim about how the bias terms actually distribute across states — so I'm holding it as a falsifiable prediction to look for, not a result: if one-step Q does *not* beat N× while n-step stays near N×, the bias-cancellation story is wrong and I'd drop it.
+There's a second effect this many-worker bootstrapping has that I didn't go looking for but that falls out of the same bias-variance picture. The one-step bootstrap target r + γ max_{a'} Q(s',a';θ⁻) is *biased*, because it leans on the imperfect current estimate of Q at s′. That bias is correlated along a single agent's trajectory — the same systematically-wrong Q values get reused as targets at consecutive, near-identical states, so the error doesn't wash out, it compounds. But with N workers bootstrapping at N scattered, unrelated states, the bias terms they inject are drawn from all over the value surface and are less correlated with each other, so when their gradients average into the shared θ some of that bias should partially cancel too, not just the variance. I can't settle from the desk how large this effect actually is — it's an empirical question about how the bias distributes across states in practice — but it's a mechanism worth keeping in mind alongside the raw throughput gain: parallel workers may be doing more for the most bootstrap-heavy methods than just running them faster.
 
 The method I most want back is direct policy optimization, because continuous actions and stochastic exploration fit it naturally. Parameterize π(a|s;θ) and maximize J(θ) = E[R]. I need ∇_θ J. Let a trajectory be τ = (s_0,a_0,r_0,...), with probability p_θ(τ). The environment dynamics and starting-state distribution do not depend on θ, so the θ-dependent part of log p_θ(τ) is just Σ_t log π_θ(a_t|s_t). Then ∇_θ J = ∇_θ Σ_τ p_θ(τ)R(τ) = Σ_τ p_θ(τ)∇_θ log p_θ(τ)R(τ) = E[Σ_t ∇_θ log π_θ(a_t|s_t)R(τ)]. I can replace the full trajectory return beside the t-th score term by the reward-to-go from t, because rewards that happened before a_t do not depend on that action and only add another zero-mean baseline term. That gives the familiar per-step estimator ∇_θ log π(a_t|s_t;θ)R_t. That's REINFORCE — push up the log-probability of actions in proportion to the return that followed them. It's unbiased, which is great, but R_t is a full Monte-Carlo return, so this estimator has brutal variance: the magnitude of the return swings wildly from episode to episode and that swing goes straight into the gradient.
 
-So I want to reduce the variance without biasing it. The standard move is to subtract a baseline that depends only on the state: replace R_t with R_t − b(s_t). Does that keep it unbiased? Look at the term I'm adding: E[∇_θ log π(a|s) b(s)]. For a fixed s, the expectation over a∼π is b(s) Σ_a π(a|s) ∇_θ log π(a|s) = b(s) Σ_a ∇_θ π(a|s) = b(s) ∇_θ Σ_a π(a|s) = b(s) ∇_θ 1 = 0. So subtracting any state-only baseline changes the score-function gradient's expectation by exactly zero — unbiased — while it can slash the variance. Let me sanity-check that "Σ_a ∇_θ π = ∇_θ Σ_a π = 0" on a concrete two-action softmax so I trust the step, since it's the crux of the whole baseline argument. Take π(1) = σ(z), π(2) = 1 − σ(z) for a single logit z = θ, with σ the sigmoid. Then ∇_θ π(1) = σ(1−σ) and ∇_θ π(2) = −σ(1−σ); they sum to exactly 0, so Σ_a ∇_θ π(a) = 0 indeed, and any b multiplying it contributes nothing to the expected gradient. The probabilities are pinned to sum to 1, so the gradient that raises one action's probability must lower the others by the same total amount — the baseline rides on that constraint. Good, the identity holds. If the baseline is learned in a network that shares parameters with the policy, the actor loss still has to treat the baseline value as a fixed multiplier; otherwise autodiff would add a separate baseline-gradient term that is not part of this identity. What's the best b? Since the mean of the gradient is fixed regardless of b, minimizing variance is minimizing the second moment E[(∇log π)²(R − b)²]. Differentiate w.r.t. b and set to zero: d/db E[(∇log π)²(R−b)²] = −2 E[(∇log π)²(R−b)] = 0, giving b* = E[(∇log π)² R] / E[(∇log π)²], the (∇log π)²-weighted average return. That's not exactly V(s), but it's a weighted version of E[R|s], so V^π(s) — the typical return from s — is the right practical surrogate, and a constant baseline (which can only remove the overall mean) misses the per-state structure that dominates the variance. The huge state-to-state variation in returns — some states are just worth more than others — gets subtracted off by a state-dependent V, leaving only how much *this action* beat the state's average.
+So I want to reduce the variance without biasing it. The standard move is to subtract a baseline that depends only on the state: replace R_t with R_t − b(s_t). Does that keep it unbiased? Look at the term I'm adding: E[∇_θ log π(a|s) b(s)]. For a fixed s, the expectation over a∼π is b(s) Σ_a π(a|s) ∇_θ log π(a|s) = b(s) Σ_a ∇_θ π(a|s) = b(s) ∇_θ Σ_a π(a|s) = b(s) ∇_θ 1 = 0. So subtracting any state-only baseline changes the score-function gradient's expectation by exactly zero — unbiased — while it can slash the variance. The probabilities are pinned to sum to 1, so the gradient that raises one action's probability must lower the others by the same total amount, and that constraint is exactly what makes the baseline term vanish for free. If the baseline is learned in a network that shares parameters with the policy, the actor loss still has to treat the baseline value as a fixed multiplier; otherwise autodiff would add a separate baseline-gradient term that is not part of this identity. What's the best b? Since the mean of the gradient is fixed regardless of b, minimizing variance is minimizing the second moment E[(∇log π)²(R − b)²]. Differentiate w.r.t. b and set to zero: d/db E[(∇log π)²(R−b)²] = −2 E[(∇log π)²(R−b)] = 0, giving b* = E[(∇log π)² R] / E[(∇log π)²], the (∇log π)²-weighted average return. That's not exactly V(s), but it's a weighted version of E[R|s], so V^π(s) — the typical return from s — is the right practical surrogate, and a constant baseline (which can only remove the overall mean) misses the per-state structure that dominates the variance. The huge state-to-state variation in returns — some states are just worth more than others — gets subtracted off by a state-dependent V, leaving only how much *this action* beat the state's average.
 
 And that leftover has a name. R_t is an estimate of Q^π(s_t,a_t), and b(s_t) = V^π(s_t), so R_t − V(s_t) is an estimate of Q^π(s,a) − V^π(s) = A^π(s,a), the advantage. So the update becomes ∇_θ log π(a_t|s_t;θ)(R_t − V(s_t)): push up actions that did better than the state's baseline, push down ones that did worse. The policy is the actor; the value function V is the critic supplying the baseline. Both can be the same network with two heads, which I'll come back to.
 
 Now I tie this to the n-step machinery I already built, because that's exactly how I'll estimate the advantage. Use the same forward-view rollout: maintain π(a|s;θ) and V(s;θ_v); roll out up to t_max steps; bootstrap R = V(s_t;θ′_v) from the last state (or R = 0 if terminal); then walk backward R ← r_i + γ R. At each i, the quantity R is the n-step return from s_i, so R − V(s_i;θ′_v) is the advantage estimate Â = Σ_{j=0}^{k-1} γ^j r_{i+j} + γ^k V(s_{i+k};θ′_v) − V(s_i;θ′_v), with k as large as the rollout allows. If I write the policy update as a loss for autodiff, the sign flips: L_π = −log π(a_i|s_i;θ′) stopgrad(Â), so gradient descent on L_π performs ascent on the policy objective. For the critic, the target R is fixed and only the current value prediction receives the gradient: L_v = 0.5[stopgrad(R) − V(s_i;θ′_v)]². The 0.5 only removes a factor of two from the gradient — d/dV of 0.5(R−V)² is −(R−V), a clean residual with no stray 2 to fold into the learning rate — and an outer value-loss coefficient can scale the critic relative to the actor.
 
-Now there's an alternative way I could compute the policy multiplier, and I want to check it gives the same thing rather than assume it. Instead of forming R − V(s_i) directly, I could accumulate per-step TD errors δ_i = r_i + γV(s_{i+1}) − V(s_i) through a discounted recursion G_i = δ_i + γλ G_{i+1}, the generalized-advantage form. Let me telescope it at λ = 1 to check it lands on the same finite n-step advantage. With λ = 1, G_i = δ_i + γ G_{i+1} = Σ_{j=0}^{k-1} γ^j δ_{i+j}, where k runs to the end of the rollout. Write that sum out:
+Now there's an alternative way to compute the policy multiplier, and it's worth checking it lands on the same value, because it's the form the code below will actually use: instead of forming R − V(s_i) directly, accumulate per-step TD errors δ_i = r_i + γV(s_{i+1}) − V(s_i) through a discounted recursion G_i = δ_i + γλ G_{i+1}, the generalized-advantage form. Telescoping it at λ = 1 should land on the same finite n-step advantage. With λ = 1, G_i = δ_i + γ G_{i+1} = Σ_{j=0}^{k-1} γ^j δ_{i+j}, where k runs to the end of the rollout. Write that sum out:
 Σ_j γ^j (r_{i+j} + γ V(s_{i+j+1}) − V(s_{i+j}))
 = Σ_j γ^j r_{i+j} + Σ_j γ^{j+1} V(s_{i+j+1}) − Σ_j γ^j V(s_{i+j}).
 The two value sums telescope: the first runs over γ^{j+1}V(s_{i+j+1}) for j = 0…k−1, i.e. γ¹V(s_{i+1}), γ²V(s_{i+2}), …, γ^k V(s_{i+k}); the second runs over γ^j V(s_{i+j}) for j = 0…k−1, i.e. γ⁰V(s_i), γ¹V(s_{i+1}), …, γ^{k-1}V(s_{i+k-1}). Every interior value term γ^m V(s_{i+m}) for 1 ≤ m ≤ k−1 appears once with + and once with − and cancels, leaving only the new endpoint γ^k V(s_{i+k}) from the first sum and the −V(s_i) from the second. So G_i = Σ_{j=0}^{k-1} γ^j r_{i+j} + γ^k V(s_{i+k}) − V(s_i) — exactly the Â the backward R recursion produced. Good: the two routes agree at λ = 1, so I haven't smuggled in a different estimator, and λ < 1 would simply down-weight the longer-horizon corrections (a knob I don't need yet). Notice I didn't need a target network here: the actor-critic update isn't a max-bootstrap that chases itself the same way, and the critic is regressing toward an n-step return that's mostly real rewards.
 
 Parameter sharing is the next pressure point. I wrote θ and θ_v as if separate, but it's wasteful to learn two whole networks from pixels. Use one convolutional body, with a softmax head for π and a single linear head for V, and share everything below the heads. One representation, far fewer parameters and far less compute, and the value-prediction signal actually helps shape the shared features. So θ and θ_v overlap almost entirely.
 
+That shared body still has to decide what it's built from. The standard preprocessing stacks the last four frames so a single input carries motion — without it, a raw 42×42 snapshot can't tell a ball moving left from one moving right. Stacking is a fixed-width fix: it buys exactly k frames of history and no more, which is fine for reflexive Atari but useless for something like first-person maze navigation, where the fact I need ("have I passed this junction before") can be arbitrarily far back. I'm already threading a rollout of up to t_max steps through this network in order, one frame at a time, to build the n-step return, so instead of widening the input to k channels I let a recurrent cell ride on the conv features: an LSTM whose hidden state carries forward from step to step within an episode and resets to zero at an episode boundary. Backprop through the rollout trains it to keep whatever history actually matters, unbounded in principle rather than capped at k frames, and it costs nothing extra to wire up since the rollout loop already carries values, log-probs, and rewards through the same backward pass.
+
 Another failure mode appears once I imagine the policy as a softmax. Suppose early on, before V is any good, one action happens to be followed by a slightly-better-than-average return a few times. The advantage for it comes out positive, I push its log-prob up, the softmax sharpens toward it, so I sample it even more, so I keep reinforcing it — a feedback loop that drives π toward a near-deterministic policy long before I've actually explored enough to know it's the right action. The policy commits prematurely to a suboptimal action and then can't escape because it stops sampling the alternatives. I need something that resists the softmax saturating too early.
 
 I can resist saturation by rewarding uncertainty directly. The entropy of the policy, H(π(·|s)) = −Σ_a π(a|s) log π(a|s), is maximal at the uniform distribution and goes to zero as π collapses onto one action. So add β H(π) to the objective I'm maximizing. Its gradient ∇_θ H pushes π back toward higher entropy — toward keeping some probability on the other actions — which directly counteracts the premature-collapse loop. β sets how hard I push; too small and it collapses anyway, too large and the policy stays mushy and never commits, so it's a smallish constant — 0.01 works across the discrete games. In loss form the entropy appears with a minus sign, L_π = −log π(a_i|s_i;θ′) stopgrad(Â) − β H(π(·|s_i;θ′)), because the optimizer will minimize L_π. The advantage term does the learning; the entropy term keeps exploration alive while it learns. (This entropy trick is exactly Williams & Peng 1991's, who found it most useful on tasks needing hierarchical, multi-stage behavior — the same place a softmax is most tempted to commit early.)
+
+The entropy bonus fights collapse during training, but I can also just not start collapsed. A generic fan-in/fan-out-scaled uniform init on the conv and linear layers is the safe default that keeps activations from exploding or vanishing on the way through four conv layers — nothing about RL changes that; the LSTM can keep its own default recurrent-weight init, I just zero its biases so no gate starts pre-biased open or shut. The two output heads deserve different treatment, though. The critic's initial value barely matters, since the regression loss corrects it from any starting point, so it can get a normal-scale init (std 1 on the column norm) at no cost. The actor's initial logits matter far more, because they set the starting policy the entropy bonus has to work from: at that same scale, the initial logits can already come out sharply uneven, so the softmax starts partway toward one action and the entropy term has to claw its way back to spread-out instead of just holding a good position. Initializing the actor head's weights two orders of magnitude smaller (std 0.01 against the critic's 1.0) keeps the initial logits close to zero and the initial policy close to uniform, so entropy regularization's job becomes "stay spread out" rather than "get back to spread out."
 
 Now I want to push this further than the discrete games, because the whole reason I fought to get policy gradient back was that it's the *only* one of these four that extends cleanly to continuous actions — the value-based three all rely on a max or an argmax over actions, which is hopeless over a continuous ℝ^d. With A3C nothing in the skeleton actually assumed discreteness; the only discrete-specific object is the softmax head. So the move is to swap the softmax for a continuous distribution and leave the rest — the n-step advantage, the shared-parameter async loop, the entropy bonus — untouched. The natural choice is a diagonal Gaussian: the policy network emits a mean vector μ(s) and a variance σ²(s), and π(a|s) = N(a; μ(s), σ²(s) I) with spherical covariance. To act, I just sample a ∼ N(μ, σ²). The score function I need for the policy gradient is ∇_θ log π(a|s) of a Gaussian, which is perfectly differentiable — log π = −½ Σ_d (a_d − μ_d)²/σ² − (D/2) log(2πσ²), so ∇_μ log π = (a−μ)/σ² and the σ gradient falls out too. The advantage multiplier R − V(s) scales it exactly as before.
 
@@ -84,360 +79,6 @@ Last piece: the optimizer, because in the async setting it's not totally obvious
 
 The fix for the uneven-magnitude problem is per-coordinate adaptive scaling, so I move to non-centered RMSProp. Let Δθ be the accumulated gradient of the loss being minimized. Then, elementwise, g ← αg + (1−α)Δθ² and θ ← θ − η Δθ / √(g+ε). The g accumulates a running average of squared gradients per coordinate, and dividing by √g rescales every coordinate to roughly unit step, which is precisely what dissolves the loud-vs-quiet mismatch that hurt SGD — so a single η now works across far more coordinates and across far more sampled learning rates. The ε floor inside the square root keeps a coordinate that has seen only tiny gradients (g ≈ 0) from getting an explosively large 1/√g step; without it the very quiet coordinates would blow up. Now the genuinely async-specific question, the one single-machine RMSProp never had to answer: do the threads share the running statistic g, or does each keep its own? Two real options, and they behave differently. If g is per-thread, each thread normalizes by *its own* recent gradient history; but the threads are in different parts of state space seeing different gradient scales, so they'll disagree about how to rescale the same shared coordinate, and a thread whose local g happens to be small will fire an oversized step into θ that the others didn't expect — that's added variance across the fleet, and it shows up as more sensitivity to the learning rate. If instead g is shared in memory and updated lock-free like the parameters themselves, every thread normalizes by the *aggregate* second-moment statistics, so all threads agree on the per-coordinate scaling and their steps are mutually consistent; and as a bonus I save a per-thread copy of a parameter-sized vector, which is real memory at 16 threads. So I'd predict the robustness ordering, most to least, to be shared RMSProp, then per-thread RMSProp, then momentum SGD — adaptive-and-consistent beats adaptive-but-disagreeing beats non-adaptive — and shared adaptive statistics is what I'll use. In the code I write below, I use the same shared-state idea with Adam: shared first moments, shared second moments, and a lock-free step on the shared parameters; Adam just adds a first-moment average and bias-correction on top of the same shared-second-moment normalization.
 
-Now I can write the implementation. The environment wrapper turns pixels into a compact normalized tensor; the network shares the visual and recurrent body before splitting into the value and policy heads; each worker syncs a local model, rolls out several steps, bootstraps R from the last value when the episode has not ended, walks backward through the rollout, and sends the local gradients into the shared parameters before one shared optimizer step.
+Two more magnitude knobs matter for the same reason the Hogwild argument needed small steps: the whole lock-free story only stays benign if one worker's update can't be wildly larger than what another worker expected to see. Atari scores range from single digits to the tens of thousands across games, so an unclipped reward would let one game's gradient scale dwarf another's and break the bounded-noise assumption before I even get to the coordinate-wise adaptive scaling; clipping every reward to [-1, 1] puts all games on the same footing, at the real cost of losing reward magnitude (games where the size of a reward carries information, not just its sign, lose that signal), but it's a reasonable price for keeping one learning rate and one Hogwild noise regime working uniformly. And now that a worker's gradient flows back through an LSTM over up to t_max steps, an unlucky rollout can occasionally produce a gradient far outside the typical benign-race magnitude; clipping the norm of the accumulated gradient before it's added to the shared parameters caps that tail risk without touching the common case, which is why it's worth tuning alongside the learning rate rather than treating it as free.
 
-```python
-import math
-import os
-import time
-from collections import deque
-
-import cv2
-import gym
-import numpy as np
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
-import torch.multiprocessing as mp
-from gym.spaces.box import Box
-
-
-def create_atari_env(env_name):
-    env = gym.make(env_name)
-    env = AtariRescale42x42(env)
-    env = NormalizedEnv(env)
-    return env
-
-
-def _process_frame42(frame):
-    frame = frame[34:34 + 160, :160]
-    frame = cv2.resize(frame, (80, 80))
-    frame = cv2.resize(frame, (42, 42))
-    frame = frame.mean(2, keepdims=True)
-    frame = frame.astype(np.float32)
-    frame *= 1.0 / 255.0
-    frame = np.moveaxis(frame, -1, 0)
-    return frame
-
-
-class AtariRescale42x42(gym.ObservationWrapper):
-    def __init__(self, env=None):
-        super().__init__(env)
-        self.observation_space = Box(0.0, 1.0, [1, 42, 42])
-
-    def _observation(self, observation):
-        return _process_frame42(observation)
-
-
-class NormalizedEnv(gym.ObservationWrapper):
-    def __init__(self, env=None):
-        super().__init__(env)
-        self.state_mean = 0
-        self.state_std = 0
-        self.alpha = 0.9999
-        self.num_steps = 0
-
-    def _observation(self, observation):
-        self.num_steps += 1
-        self.state_mean = self.state_mean * self.alpha + \
-            observation.mean() * (1 - self.alpha)
-        self.state_std = self.state_std * self.alpha + \
-            observation.std() * (1 - self.alpha)
-
-        unbiased_mean = self.state_mean / (1 - pow(self.alpha, self.num_steps))
-        unbiased_std = self.state_std / (1 - pow(self.alpha, self.num_steps))
-        return (observation - unbiased_mean) / (unbiased_std + 1e-8)
-
-
-def normalized_columns_initializer(weights, std=1.0):
-    out = torch.randn(weights.size())
-    out *= std / torch.sqrt(out.pow(2).sum(1, keepdim=True))
-    return out
-
-
-def weights_init(m):
-    classname = m.__class__.__name__
-    if classname.find('Conv') != -1:
-        weight_shape = list(m.weight.data.size())
-        fan_in = np.prod(weight_shape[1:4])
-        fan_out = np.prod(weight_shape[2:4]) * weight_shape[0]
-        w_bound = np.sqrt(6. / (fan_in + fan_out))
-        m.weight.data.uniform_(-w_bound, w_bound)
-        m.bias.data.fill_(0)
-    elif classname.find('Linear') != -1:
-        weight_shape = list(m.weight.data.size())
-        fan_in = weight_shape[1]
-        fan_out = weight_shape[0]
-        w_bound = np.sqrt(6. / (fan_in + fan_out))
-        m.weight.data.uniform_(-w_bound, w_bound)
-        m.bias.data.fill_(0)
-
-
-class ActorCritic(nn.Module):
-    def __init__(self, num_inputs, action_space):
-        super().__init__()
-        self.conv1 = nn.Conv2d(num_inputs, 32, 3, stride=2, padding=1)
-        self.conv2 = nn.Conv2d(32, 32, 3, stride=2, padding=1)
-        self.conv3 = nn.Conv2d(32, 32, 3, stride=2, padding=1)
-        self.conv4 = nn.Conv2d(32, 32, 3, stride=2, padding=1)
-        self.lstm = nn.LSTMCell(32 * 3 * 3, 256)
-        self.critic_linear = nn.Linear(256, 1)
-        self.actor_linear = nn.Linear(256, action_space.n)
-
-        self.apply(weights_init)
-        self.actor_linear.weight.data = normalized_columns_initializer(
-            self.actor_linear.weight.data, 0.01)
-        self.actor_linear.bias.data.fill_(0)
-        self.critic_linear.weight.data = normalized_columns_initializer(
-            self.critic_linear.weight.data, 1.0)
-        self.critic_linear.bias.data.fill_(0)
-        self.lstm.bias_ih.data.fill_(0)
-        self.lstm.bias_hh.data.fill_(0)
-        self.train()
-
-    def forward(self, inputs):
-        inputs, (hx, cx) = inputs
-        x = F.elu(self.conv1(inputs))
-        x = F.elu(self.conv2(x))
-        x = F.elu(self.conv3(x))
-        x = F.elu(self.conv4(x))
-        x = x.view(-1, 32 * 3 * 3)
-        hx, cx = self.lstm(x, (hx, cx))
-        return self.critic_linear(hx), self.actor_linear(hx), (hx, cx)
-
-
-class SharedAdam(optim.Adam):
-    def __init__(self, params, lr=1e-3, betas=(0.9, 0.999),
-                 eps=1e-8, weight_decay=0):
-        super().__init__(params, lr, betas, eps, weight_decay)
-        for group in self.param_groups:
-            for p in group['params']:
-                state = self.state[p]
-                state['step'] = torch.zeros(1)
-                state['exp_avg'] = p.data.new().resize_as_(p.data).zero_()
-                state['exp_avg_sq'] = p.data.new().resize_as_(p.data).zero_()
-
-    def share_memory(self):
-        for group in self.param_groups:
-            for p in group['params']:
-                state = self.state[p]
-                state['step'].share_memory_()
-                state['exp_avg'].share_memory_()
-                state['exp_avg_sq'].share_memory_()
-
-    def step(self, closure=None):
-        loss = None
-        if closure is not None:
-            loss = closure()
-
-        for group in self.param_groups:
-            for p in group['params']:
-                if p.grad is None:
-                    continue
-                grad = p.grad.data
-                state = self.state[p]
-                exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
-                beta1, beta2 = group['betas']
-                state['step'] += 1
-
-                if group['weight_decay'] != 0:
-                    grad = grad.add(p.data, alpha=group['weight_decay'])
-
-                exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
-                exp_avg_sq.mul_(beta2).addcmul_(
-                    grad, grad, value=1 - beta2)
-                denom = exp_avg_sq.sqrt().add_(group['eps'])
-                bias_correction1 = 1 - beta1 ** state['step'].item()
-                bias_correction2 = 1 - beta2 ** state['step'].item()
-                step_size = group['lr'] * math.sqrt(
-                    bias_correction2) / bias_correction1
-                p.data.addcdiv_(exp_avg, denom, value=-step_size)
-        return loss
-
-
-def ensure_shared_grads(model, shared_model):
-    for param, shared_param in zip(model.parameters(),
-                                   shared_model.parameters()):
-        if shared_param.grad is not None:
-            return
-        shared_param._grad = param.grad
-
-
-def train(rank, args, shared_model, counter, lock, optimizer=None):
-    torch.manual_seed(args.seed + rank)
-    env = create_atari_env(args.env_name)
-    env.seed(args.seed + rank)
-    model = ActorCritic(env.observation_space.shape[0], env.action_space)
-
-    if optimizer is None:
-        optimizer = optim.Adam(shared_model.parameters(), lr=args.lr)
-
-    model.train()
-    state = env.reset()
-    state = torch.from_numpy(state)
-    done = True
-    episode_length = 0
-
-    while True:
-        model.load_state_dict(shared_model.state_dict())
-        if done:
-            cx = torch.zeros(1, 256)
-            hx = torch.zeros(1, 256)
-        else:
-            cx = cx.detach()
-            hx = hx.detach()
-
-        values, log_probs, rewards, entropies = [], [], [], []
-
-        for step in range(args.num_steps):
-            episode_length += 1
-            value, logit, (hx, cx) = model((state.unsqueeze(0), (hx, cx)))
-            prob = F.softmax(logit, dim=-1)
-            log_prob = F.log_softmax(logit, dim=-1)
-            entropy = -(log_prob * prob).sum(1, keepdim=True)
-            entropies.append(entropy)
-
-            action = prob.multinomial(num_samples=1).detach()
-            log_prob = log_prob.gather(1, action)
-
-            state, reward, done, _ = env.step(action.numpy())
-            done = done or episode_length >= args.max_episode_length
-            reward = max(min(reward, 1), -1)
-
-            with lock:
-                counter.value += 1
-
-            if done:
-                episode_length = 0
-                state = env.reset()
-
-            state = torch.from_numpy(state)
-            values.append(value)
-            log_probs.append(log_prob)
-            rewards.append(reward)
-
-            if done:
-                break
-
-        R = torch.zeros(1, 1)
-        if not done:
-            value, _, _ = model((state.unsqueeze(0), (hx, cx)))
-            R = value.detach()
-        values.append(R)
-
-        policy_loss, value_loss = 0, 0
-        gae = torch.zeros(1, 1)
-        for i in reversed(range(len(rewards))):
-            R = args.gamma * R + rewards[i]
-            advantage = R - values[i]
-            value_loss = value_loss + 0.5 * advantage.pow(2)
-
-            delta_t = rewards[i] + args.gamma * values[i + 1] - values[i]
-            # With lambda = 1, this is the same finite n-step advantage.
-            gae = gae * args.gamma * args.gae_lambda + delta_t
-
-            policy_loss = policy_loss \
-                - log_probs[i] * gae.detach() \
-                - args.entropy_coef * entropies[i]
-
-        optimizer.zero_grad()
-        (policy_loss + args.value_loss_coef * value_loss).backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_grad_norm)
-        ensure_shared_grads(model, shared_model)
-        optimizer.step()
-
-
-def test(rank, args, shared_model, counter):
-    torch.manual_seed(args.seed + rank)
-    env = create_atari_env(args.env_name)
-    env.seed(args.seed + rank)
-    model = ActorCritic(env.observation_space.shape[0], env.action_space)
-
-    model.eval()
-    state = env.reset()
-    state = torch.from_numpy(state)
-    reward_sum = 0
-    done = True
-    start_time = time.time()
-    actions = deque(maxlen=100)
-    episode_length = 0
-
-    while True:
-        episode_length += 1
-        if done:
-            model.load_state_dict(shared_model.state_dict())
-            cx = torch.zeros(1, 256)
-            hx = torch.zeros(1, 256)
-        else:
-            cx = cx.detach()
-            hx = hx.detach()
-
-        with torch.no_grad():
-            value, logit, (hx, cx) = model((state.unsqueeze(0), (hx, cx)))
-        prob = F.softmax(logit, dim=-1)
-        action = prob.max(1, keepdim=True)[1].numpy()
-
-        state, reward, done, _ = env.step(action[0, 0])
-        done = done or episode_length >= args.max_episode_length
-        reward_sum += reward
-
-        actions.append(action[0, 0])
-        if actions.count(actions[0]) == actions.maxlen:
-            done = True
-
-        if done:
-            print("Time {}, num steps {}, FPS {:.0f}, episode reward {}, "
-                  "episode length {}".format(
-                      time.strftime("%Hh %Mm %Ss",
-                                    time.gmtime(time.time() - start_time)),
-                      counter.value,
-                      counter.value / (time.time() - start_time),
-                      reward_sum,
-                      episode_length))
-            reward_sum = 0
-            episode_length = 0
-            actions.clear()
-            state = env.reset()
-            time.sleep(60)
-
-        state = torch.from_numpy(state)
-
-
-def launch(args):
-    os.environ['OMP_NUM_THREADS'] = '1'
-    os.environ['CUDA_VISIBLE_DEVICES'] = ''
-
-    torch.manual_seed(args.seed)
-    env = create_atari_env(args.env_name)
-    shared_model = ActorCritic(env.observation_space.shape[0],
-                               env.action_space)
-    shared_model.share_memory()
-
-    if args.no_shared:
-        optimizer = None
-    else:
-        optimizer = SharedAdam(shared_model.parameters(), lr=args.lr)
-        optimizer.share_memory()
-
-    counter = mp.Value('i', 0)
-    lock = mp.Lock()
-    processes = []
-
-    p = mp.Process(target=test, args=(args.num_processes, args,
-                                      shared_model, counter))
-    p.start()
-    processes.append(p)
-
-    for rank in range(args.num_processes):
-        p = mp.Process(target=train,
-                       args=(rank, args, shared_model, counter, lock,
-                             optimizer))
-        p.start()
-        processes.append(p)
-
-    for p in processes:
-        p.join()
-```
-
-So the whole chain, end to end: online deep RL is unstable because a single agent's consecutive gradients are correlated and the bootstrap target moves; replay fixed that by mixing across stored time, but doing so forced off-policy learning, cost memory, and demanded a GPU or a cluster; the same decorrelation can come from many parallel actors exploring different states at once, averaging into something stationary just like a minibatch — so I drop replay entirely, run lock-free workers on one machine sharing parameters, and because the data is fresh enough for on-policy updates I get that family back; I plug in one-step Q, Sarsa, n-step Q, and finally advantage actor-critic, where the policy gradient with a learned value baseline gives an n-step advantage update, parameter-shared between actor and critic, with an entropy bonus to stop the softmax from collapsing too early — all optimized with shared adaptive state across the workers.
+Now I can write the implementation. The environment wrapper turns pixels into a compact normalized tensor; the shared network runs the conv stack into the LSTM before splitting into the softmax policy head and the linear value head, initialized as above; each worker syncs a local copy, rolls out up to t_max steps with clipped rewards, bootstraps R from the last value when the episode has not ended, walks backward through the rollout computing the GAE-form advantage and the entropy-regularized policy and value losses, clips the gradient norm, and pushes the local gradients into the shared, lock-free Adam state before one optimizer step. The full module is in the answer.

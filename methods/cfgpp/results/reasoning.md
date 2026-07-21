@@ -25,7 +25,7 @@ And the conditional denoised estimate alone is `x_hat_c = x_hat_null - sqrt(1-a_
 
   x_hat_cfg = x_hat_null - w*(x_hat_null - x_hat_c) = (1 - w) x_hat_null + w x_hat_c.
 
-I want to be sure I didn't slip a sign in that rearrangement, because the whole reading of CFG hangs on it. Let me put numbers on it: take `a_t = 0.36` so `sqrt(a_t) = 0.6`, `sqrt(1-a_t) = 0.8`, pick an `x_t`, `eps_null`, `eps_c` at random in a few dimensions, and compute `x_hat_cfg` two ways — directly from `(x_t - 0.8*eps_cfg)/0.6` with `eps_cfg = eps_null + w*delta`, and from the affine form `(1-w)x_hat_null + w x_hat_c`. With `w = 12` the two agree to machine precision (max componentwise difference ~7e-15), and the coefficient on `x_hat_c` reads `12`, on `x_hat_null` reads `-11`. So it's genuinely an affine combination of the two denoised estimates with weights `(1-w, w)`, and at the working `w` the weight on `x_hat_null` is large and negative.
+This is genuinely an affine combination of the two denoised estimates with weights `(1-w, w)`: at the working `w = 12` the coefficient on `x_hat_c` is `12` and on `x_hat_null` is `-11` — large and negative.
 
 That sign is the tell. If `w` were in `[0,1]` this would be an *interpolation* — a point on the segment between `x_hat_null` and `x_hat_c`. But the useful CFG regime is `w` in `[5,30]`, so `1-w` is hugely negative: this is an *extrapolation*, far beyond `x_hat_c`, way off the end of the segment. Why does that matter? Because of the manifold geometry. The clean manifold `M` is, to a good local approximation, piecewise linear — the segment between two nearby denoised points lies (approximately) on `M`, and so does a short move along it. So `x_hat_null` and `x_hat_c` are both on `M`, the whole segment between them is on `M`, but the moment the combination weight passes 1 I shoot off the end of that linear piece and leave `M`. That lines up with the sudden shift and the color saturation people see in the early, high-noise steps: the denoised estimate is being thrown off the data manifold by the very extrapolation that high `w` demands. So one source of trouble looks like `w > 1` turning interpolation into extrapolation.
 
@@ -61,7 +61,7 @@ The network's prediction `eps_theta(x_t, c)` is `eps_c`, and the residual in `l_
 
   l_sds(x) = || eps_c - eps ||^2 = (a_t / (1-a_t)) * || x - x_hat_c ||^2.
 
-This reduction does a lot of work, so before I differentiate it let me check it numerically rather than trust the cancellation. Keep `a_t = 0.36`. Pick an `x_t` and a conditional prediction `eps_c`, form `x_hat_c = (x_t - 0.8 eps_c)/0.6`. Now pick a candidate clean point `x`, set the consistent `eps_used = (x_t - 0.6 x)/0.8`, and evaluate the two sides: `||eps_c - eps_used||^2` directly, against `(0.36/0.64)||x - x_hat_c||^2`. They come out equal to the last digit (14.3526 both ways, difference 0.0), and `eps_c - eps_used` equals `sqrt(a_t)/sqrt(1-a_t) (x - x_hat_c) = 0.75 (x - x_hat_c)` componentwise (max difference ~4e-16). Good — `l_sds` really is, up to the scalar `a_t/(1-a_t)`, just the squared distance from `x` to the conditional denoised estimate. That's a clean quadratic in `x`. Its gradient, evaluated at `x = x_hat_null`, is
+This reduction does a lot of work: `l_sds` is, up to the scalar `a_t/(1-a_t)`, just the squared distance from `x` to the conditional denoised estimate — a clean quadratic in `x`. Its gradient, evaluated at `x = x_hat_null`, is
 
   grad_{x_hat} l_sds (x_hat_null) = (2 a_t / (1-a_t)) * (x_hat_null - x_hat_c).
 
@@ -77,13 +77,13 @@ So the optimization step, after the Jacobian-free reduction, makes the denoised 
 
   x_hat_cfgpp = x_hat_null + lambda (x_hat_c - x_hat_null) = (1 - lambda) x_hat_null + lambda x_hat_c.
 
-Now compare that to the CFG denoised estimate `(1-w) x_hat_null + w x_hat_c`. Same *shape* — an affine combination of the same two endpoints — but the coefficient is `lambda`, and the question that decides everything is whether `lambda` stays in `[0,1]`. It's a step size: `lambda = 2 a_t gamma_t/(1-a_t)`, so for a small learning rate it's small and positive. With the numbers above and a modest `gamma_t = 0.05`, `lambda = 2(0.36)(0.05)/0.64 = 0.0563`, comfortably inside `[0,1]`; and I confirmed numerically that the gradient-step expression `x_hat_null - gamma_t grad` and the interpolation `x_hat_null + lambda(x_hat_c - x_hat_null)` are the same vector (difference exactly 0). So with `lambda` in `[0,1]` this is an honest **interpolation**: a convex combination of `x_hat_null` and `x_hat_c`, sitting *on the segment between them*, which — under the piecewise-linear manifold — stays *on* `M`. That addresses source (a): I never extrapolate past the conditional endpoint, so the denoised estimate doesn't shoot off the data manifold. And the endpoints are interpretable — `lambda = 0` is pure unconditional, `lambda = 1` is pure conditional, and in between a smooth blend — so the scale stops being a magnification factor I have to crank to 12.
+Now compare that to the CFG denoised estimate `(1-w) x_hat_null + w x_hat_c`. Same *shape* — an affine combination of the same two endpoints — but the coefficient is `lambda`, and the question that decides everything is whether `lambda` stays in `[0,1]`. It's a step size: `lambda = 2 a_t gamma_t/(1-a_t)`, so for a small learning rate it's small and positive. With a representative `a_t = 0.36` and a modest step size `gamma_t = 0.05`, `lambda = 2(0.36)(0.05)/0.64 = 0.0563`, comfortably inside `[0,1]`. So with `lambda` in `[0,1]` this is an honest **interpolation**: a convex combination of `x_hat_null` and `x_hat_c`, sitting *on the segment between them*, which — under the piecewise-linear manifold — stays *on* `M`. That addresses source (a): I never extrapolate past the conditional endpoint, so the denoised estimate doesn't shoot off the data manifold. And the endpoints are interpretable — `lambda = 0` is pure unconditional, `lambda = 1` is pure conditional, and in between a smooth blend — so the scale stops being a magnification factor I have to crank to 12.
 
 Let me re-express the whole step in the familiar noise-mixing notation, both to see how small the change from CFG is and because I want one object I can drop straight into the existing sampler. Define, identically to CFG but with `lambda`,
 
   eps_cfgpp(x_t) = eps_null(x_t) + lambda (eps_c(x_t) - eps_null(x_t)).
 
-I'd *like* the interpolated denoised estimate to be exactly the Tweedie estimate of this mixed noise — that would mean the denoise half is still a plain Tweedie call, just with a mixed input. Symbolically: substitute `x_hat_• = (x_t - sqrt(1-a_t) eps_•)/sqrt(a_t)` into `x_hat_null + lambda(x_hat_c - x_hat_null)`; the `x_t/sqrt(a_t)` terms collect to `x_t/sqrt(a_t)`, and the noise terms collect to `-(sqrt(1-a_t)/sqrt(a_t))(eps_null + lambda(eps_c - eps_null))`, which is `(x_t - sqrt(1-a_t) eps_cfgpp)/sqrt(a_t)`. I checked this numerically too with the same `a_t = 0.36`, `lambda = 0.0563`: the interpolation `x_hat_null + lambda(x_hat_c - x_hat_null)` and `(x_t - 0.8 eps_cfgpp)/0.6` agree to ~1e-16. So the reverse step is
+I'd *like* the interpolated denoised estimate to be exactly the Tweedie estimate of this mixed noise — that would mean the denoise half is still a plain Tweedie call, just with a mixed input. Symbolically: substitute `x_hat_• = (x_t - sqrt(1-a_t) eps_•)/sqrt(a_t)` into `x_hat_null + lambda(x_hat_c - x_hat_null)`; the `x_t/sqrt(a_t)` terms collect to `x_t/sqrt(a_t)`, and the noise terms collect to `-(sqrt(1-a_t)/sqrt(a_t))(eps_null + lambda(eps_c - eps_null))`, which is `(x_t - sqrt(1-a_t) eps_cfgpp)/sqrt(a_t)`. So the reverse step is
 
   x_hat_cfgpp(x_t) = (x_t - sqrt(1-a_t) eps_cfgpp(x_t)) / sqrt(a_t)        # denoise with the MIXED noise
   x_{t-1}          = sqrt(a_{t-1}) x_hat_cfgpp(x_t) + sqrt(1-a_{t-1}) eps_null(x_t)    # renoise with the UNCONDITIONAL noise.
@@ -96,15 +96,7 @@ I should test the claim that this genuinely fixes DDIM inversion, because that w
 
   eps_cfg(x_t) - eps_cfg(x_{t-1}) = ( eps_null(x_t) - eps_null(x_{t-1}) ) + w ( delta(x_t) - delta(x_{t-1}) ).
 
-The first bracket is the small unconditional drift. The second is scaled by the *full* `w`, and `delta` — the conditional-vs-unconditional direction — is not small. Let me actually quantify how badly that hurts rather than assert it. Set up two adjacent steps: a small unconditional drift `||eps_null(x_t) - eps_null(x_{t-1})|| ~ 0.02`, an order-1 `delta` that drifts appreciably between steps so `||delta(x_t) - delta(x_{t-1})|| ~ 0.56`. Then for CFG with `w = 12`:
-
-  ||eps_cfg(x_t) - eps_cfg(x_{t-1})|| = 6.69,   of which   w*||d delta|| = 6.68,
-
-so the guidance term completely dominates the inversion error — the adjacent-step noise change, which inversion needs to be small, is ~300x the unconditional drift. For CFG++ with `lambda = 0.6` on the same vectors:
-
-  ||eps_cfgpp(x_t) - eps_cfgpp(x_{t-1})|| = 0.343,   lambda*||d delta|| = 0.334,
-
-a factor of ~19.5 smaller than CFG's. The renoise using `eps_null` means the Tweedie half of the inversion keeps the usual unconditional approximation, and the guidance-sensitive part of the update is scaled by `lambda` instead of `w`:
+The first bracket is the small unconditional drift. The second is scaled by the *full* `w`, and `delta` — the conditional-vs-unconditional direction — is not small, so at the working `w` in `[5,30]` this second term is the one that threatens to dominate: the adjacent-step noise change that inversion needs to be small instead picks up `w` times whatever drift `delta` has between steps. The renoise using `eps_null` means the Tweedie half of the inversion keeps the usual unconditional approximation, and the guidance-sensitive part of the update is scaled by `lambda` instead of `w`:
 
   e_cfg   ~= w * ( delta(x_t) - delta(x_{t-1}) ),
   ||e_cfgpp|| = lambda || delta(x_t) - delta(x_{t-1}) ||,
@@ -125,7 +117,7 @@ with `Delta(x_t) := x_hat_c(x_t) - x_hat_null(x_t)`. Now run the identical algeb
 
 Compare the two. Both share the same benign unconditional drift `sqrt(1-a_t)/sqrt(a_t) d eps_null`. But the *conditional* part is different in character. CFG++ contributes a single nudge `lambda Delta(x_t)` — at each step, move a little (`lambda <= 1`) toward the current conditional direction. CFG contributes `w (Delta(x_t) - Delta(x_{t+1}))`: a *difference* of consecutive conditional shifts, each scaled by a large `w`. So CFG's update is a large `w Delta(x_t)` push partly cancelled by `-w Delta(x_{t+1})` from the previous step — a large overshoot that mostly undoes itself, with the residual that actually advances toward the condition being the small difference `Delta(x_t) - Delta(x_{t+1})`, which needs a large `w` to register and changes sign as the two consecutive `Delta`s trade places. I haven't simulated the full trajectory, so I'll call this the likely mechanism rather than a proven one — but the structure (a large-magnitude term that nearly self-cancels step to step) is the natural source of the oscillatory early shifts and saturation that CFG shows, whereas CFG++'s single `lambda Delta(x_t)` has no previous-step overshoot to cancel and should evolve smoothly. I'd want to confirm it by plotting `x_hat` across steps for both rules on a real model.
 
-I should also sanity-check that this isn't secretly just CFG with a clever schedule, because if it were the "principled trajectory redesign" story would collapse. CFG++ is still a linear combination of the same two score functions, so I can ask: is there a time-varying CFG scale `w_t` that reproduces the CFG++ trajectory? Match the two updates step by step — CFG's `x_{t-1} = sqrt(a_{t-1}) x_hat_cfg + sqrt(1-a_{t-1}) eps_cfg` against CFG++'s `sqrt(a_{t-1}) x_hat_cfgpp + sqrt(1-a_{t-1}) eps_null` — and solve for the `w_t` that makes them agree. The two reduce to a single scalar equation per step, and it does have a solution: a schedule of the form `w_t = -gamma_t/xi_t` with `gamma_t = sqrt(a_{t-1}) sqrt(1-a_t)/sqrt(a_t)` and `xi_t = sqrt(1-a_{t-1}) - sqrt(a_{t-1})sqrt(1-a_t)/sqrt(a_t)`. So in principle CFG++ does correspond to *some* time-varying CFG schedule — but it's a schedule nobody would write down by hand, with a sign and a `t`-dependence dictated by the manifold geometry rather than by heuristic scale-tuning. That's the reassurance I wanted: the content of the method is not "pick a better `w(t)`" but "derive which renoise noise keeps the trajectory on the manifold," and the equivalent schedule only exists after the fact because both rules live in the same two-score linear family.
+One alternative worth ruling out: is CFG++ secretly just CFG with a clever time-varying schedule, which would undercut the claim that this is a different mechanism rather than a retuning? CFG++ is still a linear combination of the same two score functions, so match the two updates step by step — CFG's `x_{t-1} = sqrt(a_{t-1}) x_hat_cfg + sqrt(1-a_{t-1}) eps_cfg` against CFG++'s `sqrt(a_{t-1}) x_hat_cfgpp + sqrt(1-a_{t-1}) eps_null` — and solve for the `w_t` that makes them agree. The two reduce to a single scalar equation per step, and it does have a solution: a schedule of the form `w_t = -gamma_t/xi_t` with `gamma_t = sqrt(a_{t-1}) sqrt(1-a_t)/sqrt(a_t)` and `xi_t = sqrt(1-a_{t-1}) - sqrt(a_{t-1})sqrt(1-a_t)/sqrt(a_t)`. So in principle CFG++ does correspond to *some* time-varying CFG schedule — but it's one nobody would write down by hand, with a sign and a `t`-dependence dictated by the manifold geometry rather than by heuristic scale-tuning. The content of the method is not "pick a better `w(t)`" but "derive which renoise noise keeps the trajectory on the manifold"; the equivalent schedule only exists after the fact because both rules live in the same two-score linear family.
 
 Before I write code I want the method to extend past plain DDIM, because the same off-manifold logic should apply to any solver. Every widely-used sampler up to second order, when solving the *unconditional* PF-ODE, has a single-step update of the form
 
@@ -137,83 +129,4 @@ where the leading term is the denoising and all the rest — the higher-order co
 
 For Euler this reads `x_{i+1} = x_hat_cfgpp(x_i) + (x_i - x_hat_null(x_i))/sigma_i * sigma_{i+1}` — note the slope term uses `x_hat_null`, not the guided estimate. For Euler-ancestral, same denoising swap plus the usual stochastic term `sigma_i eps`. For DPM++ 2M, rearrange its two-step update so the guided conditional Tweedie appears only as the leading term and every other Tweedie (the current and previous, including the finite-difference correction `(1-e^{-h})/(2r)` term) stays unconditional. The recipe is mechanical once stated this way. And it extends to distilled few-step models like SDXL-Lightning and SDXL-Turbo too: those already bake a fixed guidance into the conditional score, so I set `lambda = 1` (use the conditional denoised estimate) and still take the rest of the Euler renoising components from the unconditional estimate — the difference is *still* just the renoising step.
 
-Now let me write the DDIM CFG++ sampler as the code I'd actually ship, filling the one empty slot — the guidance rule and the two halves of the step. Two network outputs per step, the mixed denoise, the unconditional renoise:
-
-```python
-import torch
-from tqdm import tqdm
-
-
-class BaseDDIMCFGpp(StableDiffusion):
-    """DDIM sampler with CFG++: interpolating guidance on the denoise,
-    unconditional noise on the renoise. Same two NFE/step as CFG."""
-
-    @torch.autocast(device_type='cuda', dtype=torch.float16)
-    def sample(self, cfg_guidance=0.6, prompt=["", ""], callback_fn=None, **kwargs):
-        # cfg_guidance is the interpolation scale lambda.
-        uc, c = self.get_text_embed(null_prompt=prompt[0], prompt=prompt[1])
-
-        zt = self.initialize_latent()                  # x_T ~ N(0, I)
-        zt = zt.requires_grad_()
-
-        pbar = tqdm(self.scheduler.timesteps, desc="SD")
-        for step, t in enumerate(pbar):
-            at = self.alpha(t)                         # bar_alpha_t
-            at_prev = self.alpha(t - self.skip)        # bar_alpha_{t-1}
-
-            with torch.no_grad():
-                noise_uc, noise_c = self.predict_noise(zt, t, uc, c)   # eps_null, eps_c
-                # mixed noise: eps_null + lambda (eps_c - eps_null)
-                noise_pred = noise_uc + cfg_guidance * (noise_c - noise_uc)
-
-            # denoise: Tweedie with the mixed noise
-            z0t = (zt - (1 - at).sqrt() * noise_pred) / at.sqrt()
-
-            # renoise with the unconditional noise eps_null
-            zt = at_prev.sqrt() * z0t + (1 - at_prev).sqrt() * noise_uc
-
-            if callback_fn is not None:
-                callback_kwargs = {'z0t': z0t.detach(), 'zt': zt.detach(), 'decode': self.decode}
-                callback_kwargs = callback_fn(step, t, callback_kwargs)
-                z0t = callback_kwargs["z0t"]
-                zt = callback_kwargs["zt"]
-
-        # last step: return the clean denoised estimate, no renoise
-        img = self.decode(z0t)
-        img = (img / 2 + 0.5).clamp(0, 1)
-        return img.detach().cpu()
-```
-
-The SDXL version is the identical step with the scheduler's `alphas_cumprod[t]` indexed directly and the dual text embeddings passed through — same `noise_pred` for the Tweedie denoise, same `noise_uc` for the renoise:
-
-```python
-class BaseDDIMCFGpp(SDXL):
-    def reverse_process(self, null_prompt_embeds, prompt_embeds, cfg_guidance,
-                        add_cond_kwargs, shape=(1024, 1024), callback_fn=None, **kwargs):
-        zt = self.initialize_latent(
-            size=(1, 4, shape[1] // self.vae_scale_factor, shape[0] // self.vae_scale_factor))
-
-        pbar = tqdm(self.scheduler.timesteps.int(), desc='SDXL')
-        for step, t in enumerate(pbar):
-            next_t = t - self.skip
-            at = self.scheduler.alphas_cumprod[t]
-            at_next = self.scheduler.alphas_cumprod[next_t]
-
-            with torch.no_grad():
-                noise_uc, noise_c = self.predict_noise(
-                    zt, t, null_prompt_embeds, prompt_embeds, add_cond_kwargs)
-                noise_pred = noise_uc + cfg_guidance * (noise_c - noise_uc)
-
-            z0t = (zt - (1 - at).sqrt() * noise_pred) / at.sqrt()       # denoise (mixed)
-            zt = at_next.sqrt() * z0t + (1 - at_next).sqrt() * noise_uc # renoise (uncond)
-
-            if callback_fn is not None:
-                callback_kwargs = {'z0t': z0t.detach(), 'zt': zt.detach(), 'decode': self.decode}
-                callback_kwargs = callback_fn(step, t, callback_kwargs)
-                z0t = callback_kwargs["z0t"]
-                zt = callback_kwargs["zt"]
-
-        return z0t
-```
-
-Let me trace the causal chain one more time. I started from CFG's pain at the high scale it needs — mode collapse, saturation, broken inversion — and refused to accept it as inherent, because the unconditional sampler is fine. Dissecting one DDIM step, and checking the algebra numerically, showed two off-manifold sources: the `w>1` denoised estimate `(1-w)x_hat_null + w x_hat_c` is an extrapolation off the piecewise-linear manifold (coefficient on `x_hat_c` is `12` at the working scale), and the renoise injects the guided, off-manifold noise. Reframing text guidance as `min_{x in M} l(x)` instead of as a sharpened posterior let me run the well-behaved unconditional sampler and add only a corrective nudge; the text-conditioned score-matching (SDS) loss is the right `l`, and the decomposed-sampling / Jacobian-omitting view gave a stable gradient on the denoised estimate with the renoise unconditional — which I then confirmed survives into the written-out step, fixing source (b). Reducing the loss to `(a_t/(1-a_t))||x - x_hat_c||^2` (checked to match the raw residual numerically) and taking one gradient step turned the denoised estimate into the interpolation `(1-lambda)x_hat_null + lambda x_hat_c` with `lambda = 2 a_t gamma_t/(1-a_t)` landing in `[0,1]` (0.0563 for the test values) — fixing source (a) by staying on the segment, hence on the manifold. Rewriting in noise-mixing form, verified by the Tweedie-of-mixed-noise check, exposed the whole method as one line changed from CFG: denoise with the mixed `eps_cfgpp`, renoise with `eps_null`, scale in `[0,1]`, zero extra compute. The inversion-error numbers showed the guidance-sensitive term shrinks from `w` to `lambda` (a ~20x smaller adjacent-step noise change on the test vectors), restoring invertibility; the posterior-mean evolution traced CFG's oscillatory `w(Delta_t - Delta_{t+1})` down to CFG++'s single `lambda Delta_t`, which I expect makes the trajectory smooth but would still confirm by plotting. The general higher-order rule — guide only the leading denoising term, keep all renoising Tweedie terms unconditional — carries the same principle to Euler, ancestral, and DPM++ solvers and to distilled few-step models. And the whole thing drops into the existing DDIM harness as a one-line change in which predicted noise feeds the renoise.
+Filling the one empty slot in the sampler is now mechanical: two network outputs per step (`eps_null`, `eps_c`), the mixed `eps_cfgpp` feeding the Tweedie denoise, `eps_null` feeding the renoise, same two NFE/step as CFG. That's the whole `BaseDDIMCFGpp.sample` method for SD v1.5 — the `cfg_guidance` argument is `lambda`, `noise_pred` is the mixed noise for `z0t`, and `noise_uc` alone drives the renoise of `zt`. The SDXL variant is the identical step, just reading `alphas_cumprod[t]` straight off the scheduler and passing the dual text embeddings through instead of a single `(uc, c)` pair — same mixed `noise_pred` for the denoise, same `noise_uc` for the renoise.
