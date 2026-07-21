@@ -10,7 +10,7 @@ G(u)(y)\approx \sum_{k=1}^{p}\left[\sum_{i=1}^{n}c_i^k\sigma\left(\sum_{j=1}^{m}
 
 I should not read this as only "some huge network exists." The structure is worth staring at. Each summand is a product of two factors. The first factor — the bracket — depends only on the sampled input values \([u(x_1),\ldots,u(x_m)]\); it never sees \(y\). The second factor \(\sigma(w_k\cdot y+\zeta_k)\) depends only on the query coordinate \(y\); it never sees \(u\). The operator value is a finite sum of these products.
 
-Before I trust that this separation is the right thing to build around, I want to see it bite on an operator I can compute by hand. Take the antiderivative \(G(u)(y)=\int_0^y u(t)\,dt\) and restrict inputs to a small basis, say monomials \(u(t)=\sum_{i=0}^{3} a_i t^i\). Then by linearity \(G(u)(y)=\sum_{i=0}^{3} a_i \int_0^y t^i\,dt = \sum_{i=0}^{3} a_i\,\frac{y^{i+1}}{i+1}\). That is already in the product-sum form exactly: the input-side factor for term \(i\) is the coefficient \(a_i\), and the query-side factor is \(\Psi_i(y)=y^{i+1}/(i+1)\). So if a model produced the coefficients \(a_i\) from the input and the functions \(\Psi_i\) from \(y\) and took their inner product, it would be exact, not approximate. Let me check the arithmetic numerically with random coefficients, comparing the product-sum \(\sum_i a_i\Psi_i(y)\) against the integral computed by quadrature on a grid of \(y\). The maximum discrepancy comes out at \(4.5\times10^{-8}\), which is quadrature noise. So for a linear operator on a finite input basis the separation is literally exact. That tells me the product-of-two-factors shape is not an artifact of the theorem's proof — it is the natural coordinate system for this problem, with input-dependent coefficients on one side and \(y\)-dependent basis functions on the other.
+To see this bite on an operator I can compute by hand, take the antiderivative \(G(u)(y)=\int_0^y u(t)\,dt\) and restrict inputs to a small basis, say monomials \(u(t)=\sum_{i=0}^{3} a_i t^i\). Then by linearity \(G(u)(y)=\sum_{i=0}^{3} a_i \int_0^y t^i\,dt = \sum_{i=0}^{3} a_i\,\frac{y^{i+1}}{i+1}\). That is already in the product-sum form exactly: the input-side factor for term \(i\) is the coefficient \(a_i\), and the query-side factor is \(\Psi_i(y)=y^{i+1}/(i+1)\). So if a model produced the coefficients \(a_i\) from the input and the functions \(\Psi_i\) from \(y\) and took their inner product, it would be exact, not approximate, for any linear operator on a finite input basis. That tells me the product-of-two-factors shape is not an artifact of the theorem's proof — it is the natural coordinate system for this problem, with input-dependent coefficients on one side and \(y\)-dependent basis functions on the other.
 
 Now the obvious baseline ignores that structure: concatenate \([u(x_1),\ldots,u(x_m)]\) and \(y\), then use a fully connected network. It is universal as an ordinary finite-dimensional function approximator, so it is not impossible. But it is a poor inductive bias. The sensor vector answers "which input function am I transforming?" while \(y\) answers "where do I evaluate the output?" These are different roles, and in higher output dimension they do not even have comparable sizes. A flat network has to discover that separation from data, when I already know it from the structure above. I would rather hand the structure to the model.
 
@@ -30,7 +30,7 @@ The shallow theorem also should not force the final architecture to be shallow. 
 
 for all \(u\) and \(y\). The factor that only sees the input becomes \(g\); the factor that only sees \(y\) becomes \(f\). If the chosen function classes for \(g\) and \(f\) are themselves universal approximators, I can instantiate them as ordinary deep networks. The one-hidden-layer form in the theorem is then just one choice of \(g,f\), not a constraint: a branch map \(g\) for the input measurements, a trunk map \(f\) for the query coordinate, and an inner product.
 
-There are two variants. The stacked version keeps the literal picture: one trunk and \(p\) separate branch networks, each producing one coefficient. That is close to the theorem but expensive, since \(p\) is not tiny. The unstacked version uses one branch network with \(p\) outputs. It shares the coefficient features, uses fewer parameters and less memory, and gives a regularizing bias. I cannot settle which generalizes better from the page alone, but the prediction is concrete: if the unstacked form trades a little higher training error for lower test error, the sharing is helping. That is the experiment I would run to decide.
+There are two variants. The stacked version keeps the literal picture: one trunk and \(p\) separate branch networks, each producing one coefficient. That is close to the theorem but expensive, since \(p\) is not tiny. The unstacked version uses one branch network with \(p\) outputs. It shares the coefficient features, uses fewer parameters and less memory, and gives a regularizing bias. I cannot settle which generalizes better without running both, but the prediction is concrete: if the unstacked form trades a little higher training error for lower test error, the sharing is helping. That is the experiment I would run to decide.
 
 A bias term needs a careful statement, because I do not want to add anything that changes what is representable. The product sum does not require a final scalar bias, and the branch brackets in the theorem carry their own biases \(\theta_i^k\) inside the activation already. Adding ordinary branch-layer biases and a final scalar \(b_0\) cannot reduce expressivity — setting them to zero recovers the bias-free model — so the worst case is unchanged, and a free additive constant gives the optimizer an easy degree of freedom for the output mean:
 
@@ -38,7 +38,7 @@ A bias term needs a careful statement, because I do not want to add anything tha
 \widehat{G}(u)(y)=\sum_{k=1}^p b_k(u)\,t_k(y)+b_0.
 \]
 
-There is one detail in the query network I should not gloss over, because getting it wrong quietly breaks expressivity. In the theorem the query factor is \(\sigma(w_k\cdot y+\zeta_k)\) — the nonlinearity is on the outside, after the linear map of \(y\). If I implement the trunk as an ordinary FNN whose last layer is linear and I forget the activation, then for a fixed input \(u\) the prediction is \(\langle b(u), W y + c\rangle + b_0\), which is affine in \(y\). The output as a function of \(y\) could then only ever be a hyperplane. That is easy to test: try to fit a curved target like \(G(u)(y)=y^2\) for a single \(u\) using features that are affine in \(y\) versus features passed through \(\tanh\). The best affine-in-\(y\) fit to \(y^2\) on \([-1,1]\) leaves an RMS residual of about \(0.31\) — it simply cannot bend. Replacing the trunk features with a handful of \(\tanh(\cdot)\) features drops the residual to about \(0.11\) on the same fit, and more features would push it lower. So the activation on the trunk output is not cosmetic; it is what lets the learned basis functions curve. I apply the trunk activation after the final linear layer. The branch output stays as raw coefficients, matching the bracket in the theorem, which is a coefficient and not passed through an outer \(\sigma\).
+There is one detail in the query network I should not gloss over, because it changes what the trunk can represent. In the theorem the query factor is \(\sigma(w_k\cdot y+\zeta_k)\) — the nonlinearity is the outermost operation on the linear map of \(y\), not something that only happens to sit deeper inside. Take the shallowest instantiation, a single linear layer of width \(p\) mapping \(y\mapsto Wy+c\): if I forget to apply an activation after it, then for a fixed input \(u\) the prediction is \(\langle b(u), Wy+c\rangle + b_0\), which is affine in \(y\) — a hyperplane no matter how the branch net is trained. That is easy to test: try to fit a curved target like \(G(u)(y)=y^2\) for a single \(u\) using features that are affine in \(y\) versus features passed through \(\tanh\). The best affine-in-\(y\) fit to \(y^2\) on \([-1,1]\) leaves an RMS residual of about \(0.31\) — it simply cannot bend. Replacing the trunk features with a handful of \(\tanh(\cdot)\) features drops the residual to about \(0.11\) on the same fit, and more features would push it lower. The FNN scaffold applies its activation only between hidden layers, never after the last one, so whatever depth the trunk ends up with, its final projection into the \(p\)-dimensional basis needs a trailing activation of its own to be a basis function rather than a linear readout. I apply the trunk activation after the final linear layer. The branch output stays as raw coefficients, matching the bracket in the theorem, which is a coefficient and not passed through an outer \(\sigma\).
 
 Now the whole construction rests on finite measurements of \(u\), so I have to bound what the sensors throw away. For an ODE solution operator
 
@@ -59,7 +59,7 @@ and Gronwall turns this into
 \|G(u)(d)-G(u_m)(d)\|_2\le c(b-a)\kappa(m,V)\,e^{c(b-a)}.
 \]
 
-I want to make sure I have not made an error in the Lipschitz-to-Gronwall step, so I check the bound against a real solve. Take \(s'(x)=-s(x)+u(x)\) on \([0,1]\) with \(s(0)=0\), where \(\partial g/\partial s=-1\) so \(c=1\), and \(u(x)=\sin 3x+\tfrac12\cos 7x\). For each \(m\) I sample \(u\), build the piecewise-linear \(u_m\), solve both ODEs on a fine grid, and compare the worst-case solution error against the bound \(c(b-a)\kappa\,e^{c(b-a)}=e\cdot\kappa\):
+Testing the bound against a real solve: take \(s'(x)=-s(x)+u(x)\) on \([0,1]\) with \(s(0)=0\), where \(\partial g/\partial s=-1\) so \(c=1\), and \(u(x)=\sin 3x+\tfrac12\cos 7x\). For each \(m\) I sample \(u\), build the piecewise-linear \(u_m\), solve both ODEs on a fine grid, and compare the worst-case solution error against the bound \(c(b-a)\kappa\,e^{c(b-a)}=e\cdot\kappa\):
 
 | \(m\) | \(\kappa\) | actual sup error | Gronwall bound | holds |
 |---|---|---|---|---|
@@ -68,54 +68,10 @@ I want to make sure I have not made an error in the Lipschitz-to-Gronwall step, 
 | 16 | 1.37e-2 | 2.04e-3 | 3.72e-2 | yes |
 | 32 | 3.48e-3 | 5.08e-4 | 9.46e-3 | yes |
 
-The bound holds at every sensor count and is not vacuous — it sits within roughly an order of magnitude of the true error and shrinks with it. So once \(m\) is large enough to push \(c(b-a)\kappa e^{c(b-a)}\) under the tolerance budget, the leftover map from the finite vector \((u(x_0),\ldots,u(x_m))\) to \(G(u_m)(d)\) is an ordinary continuous finite-dimensional function on a compact set, which a standard network approximates with the remaining error. While I am tracking shapes: if \(W_1\in\mathbb{R}^{n\times(m+1)}\) then \(W_1[u(x_0)\cdots u(x_m)]^\top\in\mathbb{R}^n\), so the hidden bias lives in \(\mathbb{R}^n\).
+The bound holds at every sensor count and is not vacuous — it sits within roughly an order of magnitude of the true error and shrinks with it. So once \(m\) is large enough to push \(c(b-a)\kappa e^{c(b-a)}\) under the tolerance budget, the leftover map from the finite vector \((u(x_0),\ldots,u(x_m))\) to \(G(u_m)(d)\) is an ordinary continuous finite-dimensional function on a compact set, which a standard network approximates with the remaining error. That standard network is exactly the branch net: its first linear layer takes the \(m+1\) sampled values, \(W_1\in\mathbb{R}^{n\times(m+1)}\), so \(W_1[u(x_0)\cdots u(x_m)]^\top\in\mathbb{R}^n\) and the hidden bias sitting after it lives in \(\mathbb{R}^n\) — indexed by the hidden width, not by the sensor count \(m+1\), which is easy to mix up.
 
 The same table tells me how sensor count should scale with roughness. The \(\kappa\) column drops by almost exactly a factor of four each time \(m\) doubles. I checked this rate on its own over a wider range — doubling \(m\) gives ratios \(4.15, 3.72, 3.93, 3.99, 4.00\) — so the piecewise-linear interpolation error is \(O(1/m^2)\) for a fixed smooth function, as expected from the second-derivative interpolation estimate. For Gaussian random fields with a squared-exponential kernel of length scale \(l\), the second-derivative magnitude grows like \(1/l^2\), which pushes the constant in front of the \(1/m^2\) to \(O(1/l^2)\), i.e. \(\kappa\sim O(1/(m^2 l^2))\). Rougher fields (smaller \(l\)) need proportionally more sensors. I would want to confirm the \(l\) dependence with a sampled-GRF experiment, but the \(m\) scaling I have verified directly.
 
-So the architecture is settled by the structure rather than guessed: a branch network mapping sampled input values to a coefficient vector, a trunk network mapping the query coordinate through an activation to a basis vector, an inner product, and an additive bias. The implementation should expose that merge explicitly instead of burying it in another dense layer, so I write the dot product as an einsum.
+So the structure above pins down the architecture directly: a branch network mapping sampled input values to a coefficient vector, a trunk network mapping the query coordinate through an activation to a basis vector, an inner product, and an additive bias. The merge should be explicit rather than buried inside another dense layer, so I write it as an einsum: one branch network with \(p\) outputs, one trunk network with \(p\) outputs (activated after its final linear layer, for the expressivity reason above), the two dotted together on the shared index, plus the scalar bias.
 
-```python
-import torch
-import torch.nn as nn
-
-
-class FNN(nn.Module):
-    def __init__(self, layer_sizes, activation=nn.Tanh()):
-        super().__init__()
-        self.linears = nn.ModuleList(
-            nn.Linear(layer_sizes[i], layer_sizes[i + 1])
-            for i in range(len(layer_sizes) - 1)
-        )
-        self.activation = activation
-
-    def forward(self, x):
-        for i, linear in enumerate(self.linears):
-            x = linear(x)
-            if i < len(self.linears) - 1:
-                x = self.activation(x)
-        return x
-
-
-class DeepONet(nn.Module):
-    def __init__(self, branch_layers, trunk_layers, activation=nn.Tanh()):
-        super().__init__()
-        if branch_layers[-1] != trunk_layers[-1]:
-            raise ValueError("branch and trunk output widths must match")
-        self.branch = FNN(branch_layers, activation)
-        self.trunk = FNN(trunk_layers, activation)
-        self.activation = activation
-        self.bias = nn.Parameter(torch.tensor(0.0))
-
-    def forward(self, u_sensors, y):
-        b = self.branch(u_sensors)
-        t = self.activation(self.trunk(y))
-        out = torch.einsum("bi,bi->b", b, t).unsqueeze(1)
-        return out + self.bias
-
-    def forward_grid(self, u_sensors, y_grid):
-        b = self.branch(u_sensors)
-        t = self.activation(self.trunk(y_grid))
-        return torch.einsum("bi,ni->bn", b, t) + self.bias
-```
-
-I want to be sure the two einsum strings do what I claim, so I trace them on dummy tensors with batch \(B=4\), width \(p=3\), grid \(N=7\). For the paired path, `einsum("bi,bi->b", b, t)` over `b,t` of shape \([4,3]\) returns shape \([4]\), and after `unsqueeze(1)` shape \([4,1]\); I checked it equals the row-wise dot product \(\sum_i b_{ki}t_{ki}\) (matches `(b*t).sum(dim=1, keepdim=True)` exactly). That \([B,1]\) is right, because the supervised scalar is still one column. For the grid path, `einsum("bi,ni->bn", b, t)` with `b` of shape \([4,3]\) and `t` of shape \([7,3]\) returns \([4,7]\), and it equals `b @ t.T` exactly — every input function dotted against every query basis vector. So evaluating the operator on a whole new grid of query points only changes the einsum indices, not the networks. That is the payoff of the split: once the coefficient vector for \(u\) and the basis vector for \(y\) are separated, new query locations are essentially free.
+Tracing that merge on dummy tensors with batch \(B=4\), width \(p=3\), grid \(N=7\) pins down the two shapes I actually need. For a single paired sample, `einsum("bi,bi->b", b, t)` over `b,t` of shape \([4,3]\) returns shape \([4]\), which after `unsqueeze(1)` is \([4,1]\) — matching the row-wise dot product `(b*t).sum(dim=1, keepdim=True)` exactly, the right shape since the supervised scalar is one column. For evaluating a whole grid of query points against the same batch of input functions, `einsum("bi,ni->bn", b, t)` with \(b\) of shape \([4,3]\) and \(t\) of shape \([7,3]\) returns \([4,7]\), equal to `b @ t.T`: every input function's coefficient vector dotted against every query point's basis vector at once. So evaluating the operator on a whole new grid of query points only changes the einsum indices, not the two networks — once the coefficient vector for \(u\) and the basis vector for \(y\) are separated, new query locations are essentially free. That is the branch/trunk network I build: two FNNs, one merge, one bias.
