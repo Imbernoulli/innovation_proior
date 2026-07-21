@@ -1,208 +1,94 @@
-The sandwich rung came back and it settled the question I was unsure of — in the direction I half-expected
-but with a margin small enough to be its own verdict. Validation loss 2.3104, against the parallel rung's
-2.3112: the sandwich did beat the parallel floor, so the first part of the thesis held (restore the
-cross-talk, control the branch outputs, get back some quality). But it beat it by *0.0008* — eight
-ten-thousandths of a nat — and it paid for that sliver with the slowest run on the board: 21,661s training and
-586s eval, against the parallel rung's 19,747s and 406s. Worse, two of the secondary witnesses went the
-*wrong* way: WikiText-2 perplexity rose to 46.8 (from 45.98) and LAMBADA to 72.08 (from 70.96), and PIQA
-dropped to 62.46 (from 64.42). So the headline metric improved by a whisper while the perplexities — which
-read the same language-modeling quality on held-out text — actually got worse. That is the signature of a
-change that is *insurance, not improvement*: the four-norm sandwich bounded the residual-stream variance, which
-nudged the in-distribution validation loss a hair, but the extra normalization did not make the model a better
-language model — if anything the heavier per-block normalization slightly over-constrained it, which the
-perplexity rise on out-of-training text exposes. This is exactly the "soft-prior / variance-insurance"
-outcome I flagged: at 24 layers the output norm is not a final-loss lever, it is a stabilizer the model did
-not actually need, and I paid the most wall-clock on the ladder for it.
+The sandwich rung came back and settled the question I was unsure of, in the direction I half-expected but by
+a margin small enough to be its own verdict. Validation loss 2.3104 against the parallel rung's 2.3112: it did
+beat the parallel floor, so the first part of the thesis held — restore the cross-talk, control the branch
+outputs, get back some quality. But it beat it by *0.0008* — eight ten-thousandths of a nat — and paid with the
+slowest run on the board, 21,661s training against the parallel rung's 19,747s. Worse, the held-out witnesses
+went the *wrong* way: both perplexities rose and PIQA dropped. The headline improved by a whisper while
+generalization got worse — the signature of a change that is *insurance, not improvement*. Exactly the
+soft-prior outcome I flagged: at 24 layers the output norm is a stabilizer the model did not need, and I paid
+the most wall-clock on the ladder for it.
 
-Let me put the magnitudes side by side, because the *sign* pattern across the row is the whole diagnosis. On
-the headline, `2.3112 → 2.3104` is a gain of `0.0008` nats, `0.035%`; exponentiated, FineWeb perplexity moves
-`e^2.3112 ≈ 10.087` to `e^2.3104 ≈ 10.079`, eight thousandths of a perplexity point. Now the held-out
-witnesses, which moved the *other* way and by an order of magnitude more: WikiText-2 `45.98 → 46.8` is `+0.82`,
-`+1.78%`; LAMBADA `70.96 → 72.08` is `+1.12`, `+1.58%`. So the sandwich improved the in-distribution objective
-by `0.035%` and worsened held-out language modeling by `1.6–1.8%` — same experiment, opposite signs, a
-fifty-fold difference in size. That is not a better language model; it is a differently-regularized one whose
-training-distribution loss is a whisper lower and whose generalization is measurably worse. The downstream row
-corroborates once I read only the columns that carry signal: ARC-Easy is flat (`54.76 → 54.76`), HellaSwag and
-WinoGrande move inside their noise near chance (`32.93 → 33.03`, `50.2 → 50.28`), and the one downstream number
-with any size moves the wrong way — PIQA `64.42 → 62.46`, `−1.96`, a regression on a task held out of selection
-entirely. Every witness that moved appreciably moved against the sandwich. And the cost that bought this:
-training `19747 → 21661`s, `+1914`s, `+9.7%`; per iteration `1.64 → 1.80` s/iter; eval `406 → 586`s, the extra
-forward cost of two more norms per block showing up even in the short lm-eval pass. So the sandwich is the
-slowest rung, as I expected, and it spent that time making the model marginally better at the one thing it
-trained on and worse at everything else.
+The *sign* pattern across the row is the whole diagnosis. Headline `2.3112 → 2.3104` is `0.0008` nats,
+`0.035%`. The held-out witnesses moved the *other* way and by an order of magnitude more: WikiText-2
+`45.98 → 46.8` is `+1.78%`, LAMBADA `70.96 → 72.08` is `+1.58%`. Same experiment, opposite signs, a fifty-fold
+difference in size — not a better language model but a differently-regularized one whose training-distribution
+loss is a whisper lower and whose generalization is measurably worse. Downstream corroborates on the columns
+that carry signal: ARC-Easy flat (`54.76 → 54.76`), HellaSwag and WinoGrande moving inside their near-chance
+noise, and the one downstream number with any size moving the wrong way — PIQA `64.42 → 62.46`, `−1.96`, a
+regression on a task held out of selection. Every witness that moved appreciably moved against the sandwich. And
+the cost: training `19747 → 21661`s, `+1914`s, `+9.7%`, `1.64 → 1.80` s/iter; eval `406 → 586`s, two more norms
+per block showing up even in the short pass.
 
-So now I have two structural experiments and their verdicts. The parallel rung *removed* normalization and
-structure (one shared norm, summed branches) and came in worst on val_loss because it lost cross-talk at small
-scale. The sandwich rung *added* normalization and structure (four norms, output control) and came in
-marginally better on val_loss but worse on perplexity and slowest in time. Read together, they bracket the
-answer: more block restructuring in either direction is not buying language-modeling quality at this scale —
-the parallel simplification cost cross-talk, the sandwich elaboration cost generalization and speed, and
-neither moved the needle more than a whisker on the metric that matters. The lesson is that I have been
-spending my edit budget on the *wiring* when the wiring is not where the quality is. The one change that was
-unambiguously safe across both rungs was the normalization *rule* — RMSNorm trained stably both times and I
-never had a reason to doubt it. So the move that the data actually points to is to stop restructuring the block
-and return to the *simplest* possible RMSNorm block: keep the cheaper, well-behaved normalization rule, drop
-every structural complication, and put the two sublayers back in the plain sequential pre-norm arrangement the
-default block used — just with RMSNorm instead of LayerNorm. Strip back to the minimal change from the
-default, and let the architecture be exactly what the substrate was tuned for.
+So I have two structural experiments and their verdicts. The parallel rung *removed* normalization and
+structure and came in worst on val_loss, losing cross-talk at small scale. The sandwich *added* normalization
+and structure and came in marginally better on val_loss but worse on perplexity and slowest in time. Read
+together they bracket the answer: more block restructuring in either direction is not buying language-modeling
+quality at this scale — the parallel simplification cost cross-talk, the sandwich elaboration cost
+generalization and speed, and neither moved the metric that matters more than a whisker. I have been spending my
+edit budget on the *wiring*, and the wiring is not where the quality is. The one change unambiguously safe
+across both rungs was the normalization *rule* — RMSNorm trained stably both times and I never had a reason to
+doubt it. So the move the data points to is to stop restructuring, keep the cheaper well-behaved RMSNorm, and
+return to the plain sequential pre-norm block the default used — the minimal change from the default fill.
 
-Let me re-derive why the plain sequential RMSNorm block should be the strongest of the three, grounding it in
-the two failures I just measured. The default block is `x ← x + Attn(LN_pre(x))`, `x ← x + MLP(LN_pre(x))` —
-one pre-norm per sublayer, sequential, clean identity residual path. Everything about this arrangement is
-what the substrate's `1/√(2·n_layer)` residual init, its learning rate, and its schedule were chosen for: two
-residual writes per block, a single norm on each sublayer's input, the gradient flowing straight down the
-identity path without passing through a norm. The pre-norm placement gives the depth-stable, warmup-free
-gradient that lets a 24-layer stack train cleanly; the sequential ordering gives the MLP the post-attention
-residual to read, the intra-block cross-talk the parallel rung lost and which cost it 2.3112. So the *only*
-thing I want to change from the default is the normalization rule, swapping LayerNorm for RMSNorm — and that
-swap I have already validated twice as harmless to stability.
+Why the plain block should be the strongest of the three is relative to the two failures I measured. It keeps
+everything the substrate's `1/√(2·n_layer)` residual init, learning rate, and schedule were chosen for — two
+residual writes per block, one pre-norm per sublayer, the gradient flowing straight down the identity path — and
+changes only the normalization rule, LayerNorm for RMSNorm, which I validated twice as harmless — drop the
+mean and the bias, keep `a/RMS(a)·γ` and its self-regulating quadratic gradient. One detail I lean on here:
+the `1/n` inside the root, rather than a plain L2 `‖a‖`, normalizes per-coordinate, so the scheme behaves
+consistently across the 1024-d feature vectors that an L2 projection onto a unit sphere would not.
 
-Why is the RMSNorm swap not just harmless but *right* here, beyond the arithmetic saving? The default
-LayerNorm bundles two operations: subtract the mean (re-centering invariance — shift `a` by a constant, `μ`
-absorbs it, output unchanged) and divide by the standard deviation (re-scaling invariance — scale `a` by `α`,
-both `μ` and `σ` scale, the ratio is unchanged). Stabilizing a deep stack is about controlling the *spread* of
-activations and gradients, and subtracting the mean does not touch the spread — `var(a − μ) = var(a)`; it
-moves the cloud, it does not shrink or grow it. The operation that actually pins the magnitude the next block
-and the backward pass see is the division by the scale. RMSNorm keeps exactly that — `āᵢ = aᵢ/RMS(a)·γ`,
-`RMS(a) = √((1/n)Σaᵢ²)` — and discards only the re-centering, which I argue is along for the ride. When `a`
-already has zero mean, RMSNorm and LayerNorm coincide exactly (`σ = RMS`), so this is the same layer with the
-recentering switched off, not a different mechanism. And because the config sets `bias=False`, the default
-LayerNorm carries no bias anyway, so there is nothing to lose there: a bias on a normalization layer only
-exists to restore a location after recentering, and with no recentering there is no location to restore. The
-RMSNorm therefore carries only the gain `γ`, initialized to ones, ignoring the `bias` argument it is handed.
+Reconciled with the two failures: against the parallel rung, the plain block restores sequential ordering, so
+the MLP reads the post-attention residual and the intra-block cross-talk that cost 2.3112 is back — recovered by
+doing nothing more exotic than not parallelizing. Against the sandwich, it has *one* norm per sublayer, not two,
+so it drops the output-variance constraint I just watched over-constrain the model and push the perplexities up;
+each sublayer writes its natural contribution into the residual, and at 24 layers — deep enough to train cleanly
+under pre-norm but not so deep that un-normalized residual growth hurts final loss — that freedom is worth more
+than the sandwich's variance insurance. So the plain block sits at the sweet spot the two restructured rungs
+straddled — the parallel rung's cross-talk back without its simplification, the default's clean pre-norm
+gradient without the sandwich's over-constraint — and it is the one arrangement that matches the substrate on
+every axis, so unlike the restructured rungs it incurs no init-vs-wiring mismatch: every block writes twice at
+`1/√48`, residual RMS starting near `√2`, the near-doubling the init was designed for — not the sandwich's
+`√48 ≈ 6.9`, where the scale-invariant `LN_post` divided the `1/√48` straight back out.
 
-The backward pass is the real reason I trust this as the substrate, and it is worth following because it
-explains why RMSNorm should be *at least as good* as LayerNorm on quality, not merely cheaper. Because `RMS`
-is quadratic in `a` and `a = Wx`, the weight enters both numerator and denominator. The Jacobian of the
-normalized vector with respect to `a` is `R = (1/RMS(a))·(I − aaᵀ/(n·RMS(a)²))` — `1/RMS` times identity minus
-a rank-one outer-product that projects out the radial direction (perturbing `a` along itself does not change
-`a/RMS`, so the Jacobian must annihilate it; indeed `R·a = 0`). Chaining to the weight gives
-`∂L/∂W = (R(γ ⊙ u))xᵀ` with `u` the upstream gradient. Scaling the input or the weights by `δ` sends
-`R → R/δ`, so `∂L/∂W` is *invariant* to input scaling (the `δ` from `x` cancels the `1/δ` from `R`) and
-*inversely proportional* to weight scaling (only `R` moves): a layer whose weights have grown large
-automatically receives smaller gradients, an implicit per-layer learning-rate adaptation that damps further
-growth with no schedule and no extra parameters. None of that self-regulation came from the mean-subtraction;
-all of it survives in RMSNorm. So the cheaper layer is also the well-conditioned one. The `1/n` inside the
-root (rather than plain L2 `‖a‖`) is kept deliberately: it normalizes per-coordinate rather than per-vector,
-so the scheme behaves consistently across the 1024-dimensional feature vectors here and would across layers of
-other widths — plain L2 normalization, which forces a unit sphere independent of `n`, does not transfer the
-same way.
+None of this is a capacity change — the plain block carries `49,152` gains (no biases), the sandwich `98,304`,
+the parallel `24,576`, spanning `0.014%`/`0.028%`/`0.007%` of the model, capacity-invisible. So the entire
+measured `val_loss` spread across the two restructured rungs, `0.0008` nats, was produced at effectively fixed
+capacity: a pure placement-and-wiring effect. Whatever the plain block lands at, the difference is attributable
+to *where the norms sit and how the sublayers are ordered*, nothing else.
 
-Now reconcile this with the two failures, because the plain block's claim to be strongest is *relative to the
-restructured ones I measured*. Against the parallel rung: the plain block restores the sequential ordering, so
-the MLP reads the post-attention residual and the intra-block cross-talk the parallel rung lost is back — that
-is the gap that cost 2.3112, recovered by doing nothing more exotic than not parallelizing. Against the
-sandwich rung: the plain block has *one* norm per sublayer, not two, so it does not impose the output-variance
-constraint that I just watched over-constrain the model and push the perplexities up; it lets each sublayer
-write its natural contribution into the residual, and at 24 layers — deep enough to train cleanly under
-pre-norm but not so deep that the un-normalized residual growth actually hurts final loss — that freedom is
-worth more than the sandwich's variance insurance. So the plain block sits at the sweet spot the two
-restructured rungs straddled: it has the parallel rung's cross-talk back without its simplification, and it
-has the default's clean pre-norm gradient without the sandwich's over-constraint. It is also the block the
-`1/√(2·n_layer)` init and the substrate schedule were *literally tuned for*, two residual writes per block,
-one input norm each — so unlike the restructured rungs it incurs no init-vs-wiring mismatch at all.
+So I expect not a dramatic drop but the plain block to claim the *best* val_loss on the ladder by a margin
+similar to the gaps already seen, a few thousandths of a nat — and, crucially, to do it *while the perplexities
+go the right way*, because the thing that made the sandwich's perplexity rise is exactly what the plain block
+removes. `LN_post` re-pinned every branch contribution to a magnitude set by its learned gain, flattening the
+model's freedom to write a large contribution from one block and a small one from another; on the training
+distribution the optimizer could route around the constraint (why the in-distribution cost never showed and
+`val_loss` even dipped), but on held-out text the lost degree of freedom is not recoverable at test time, and
+that is what the `+1.78%`/`+1.58%` perplexity rise measures. The plain block hands that freedom back — each
+sublayer writes its natural, un-re-pinned contribution, bounded only by the substrate's `1/√48` init. So the
+sharp prediction is that removing exactly the operation that flattened contribution magnitudes should *reverse*
+the sandwich's regression, not merely stop it: WikiText-2 back below 46.8, LAMBADA below 72.08, ideally toward
+the parallel rung's 45.98 and 70.96. That perplexity reversal is the claim I care about most — if the plain
+block lowers val_loss but the perplexities do not improve, the val_loss ordering is noise at this scale and the
+honest conclusion is that norm placement does not matter here.
 
-I can make that alignment concrete by putting the three blocks' initial residual magnitudes side by side,
-since I worked the pieces out on the earlier rungs. Every block here writes to the residual twice, and the
-substrate scales each `c_proj` by `1/√(2·n_layer) = 1/√48 ≈ 0.1443`, so each write lands at `RMS ≈ 0.1443`
-relative to a unit-RMS input. The plain block adds `48` such writes down the stack, so the residual RMS at the
-top starts near `√(1 + 48·0.1443²) = √2 ≈ 1.41` — the near-doubling the init was designed to produce. The
-parallel block also wrote twice per block with the same `1/√48` scaling, so it too started at `√2`; its problem
-was never the init, it was the *trained* loss of cross-talk. The sandwich is the odd one out: its `LN_post` is
-scale-invariant and divides the `1/√48` straight back out, re-pinning each write to `RMS = 1`, so its stack
-started near `√48 ≈ 6.9`, about five times hotter, leaning on `LN_pre` and `ln_f` to absorb the inflation. So
-of the three, only the plain block combines the clean `√2` init with sequential cross-talk and a single input
-norm per sublayer — it is the one arrangement that matches the substrate on *every* axis at once, which is the
-concrete content of "no init-vs-wiring mismatch."
+I touch no `CONFIG_OVERRIDES`: the whole point of returning to the plain block is that it is the arrangement the
+learning rate, the `0.04 × 12030 ≈ 481`-iteration warmup, and the cosine decay to `min_lr` were tuned for, so
+changing any of them would undo the alignment I am deliberately restoring. So the strongest rung is the *least*
+elaborate fill: keep rung 1's RMSNorm class verbatim, and replace `Block` with the plain sequential pre-norm
+block — `ln_1`, attention, residual add; `ln_2`, MLP, residual add — the default block with LayerNorm swapped
+for RMSNorm and nothing else. The distilled module and the literal scaffold code are in the answer.
 
-I should be honest about how large I expect the win to be, because the sandwich already taught me that these
-differences are small. The plain RMSNorm block differs from the sandwich only in the *placement* of
-normalization (input-only vs input-and-output) and from the parallel block in *ordering and norm count*. None
-of these is a capacity change; the model has the same parameters either way (RMSNorm even has fewer, no
-biases).
-
-The counts make "no capacity change" exact. The plain block carries `2` gain vectors of length `1024` per
-block over `24` blocks — `49,152` gains, no biases; the sandwich carried `4`, `98,304`; the parallel block
-shared `1`, `24,576`. Against `355M` parameters these are `0.014%`, `0.028%`, and `0.007%` of the model — a
-spread of a few ten-thousandths, capacity-invisible. So the entire measured `val_loss` spread across the two
-restructured rungs, `2.3112` down to `2.3104`, `0.0008` nats, was produced at effectively fixed capacity: it is
-a pure placement-and-wiring effect, not a parameter effect. That is the cleanest possible setting for reading
-the plain block's number — whatever it lands at, the difference is attributable to *where the norms sit and how
-the sublayers are ordered*, nothing else, because the parameter budget is identical to four decimal places.
-
-So I am not expecting a dramatic drop — I am expecting the plain block to claim the *best* val_loss on
-the ladder by a margin similar in size to the gaps I have already seen, a few thousandths of a nat, and,
-crucially, to do it *while the perplexities go the right way* — because the thing that made the sandwich's
-perplexity rise (extra per-block normalization over-constraining out-of-distribution text) is exactly what the
-plain block removes. That perplexity reversal is the falsifiable claim I care about most: if the plain block
-lowers val_loss but the perplexities do *not* improve over the sandwich, then the val_loss ordering is noise at
-this scale and the honest conclusion is that norm placement does not matter here.
-
-It is worth naming the mechanism by which the sandwich's extra norm hurt held-out text, because that mechanism
-is exactly what the plain block removes. `LN_post` re-pins every branch contribution to a magnitude set by its
-learned gain, block after block, flattening the model's freedom to write a *large* contribution from one block
-and a *small* one from another — all that per-block, per-token magnitude information is folded through a single
-scale-invariant channel. On the training distribution the optimizer can partly route around the constraint,
-which is why the in-distribution cost never showed and `val_loss` even dipped a hair; but on held-out text the
-lost degree of freedom is not recoverable at test time, and that is what the `+1.78%`/`+1.58%` perplexity rise
-on WikiText-2 and LAMBADA is measuring. The plain block hands that freedom back — each sublayer writes its
-natural, un-re-pinned contribution, the magnitude the projection actually learned, bounded only by the
-substrate's `1/√48` init the schedule was tuned around. So the sharp prediction is that removing exactly the
-operation that flattened contribution magnitudes should *reverse* the sandwich's regression, not merely stop
-it: WikiText-2 back below `46.8` and LAMBADA below `72.08`, ideally down toward the parallel rung's `45.98` and
-`70.96`.
-
-I do not touch
-`CONFIG_OVERRIDES`: the entire point of returning to the plain block is that it is the arrangement the
-substrate's learning rate, its `0.04 × 12030 ≈ 481`-iteration warmup, and its cosine decay to `min_lr` were
-chosen for — the plain sequential pre-norm block with two `1/√48` writes is exactly the configuration those
-`481` warmup steps were calibrated against, so changing any of them would undo the alignment I am
-deliberately restoring.
-
-So the strongest rung is the *least* elaborate fill of the edit surface: keep the RMSNorm class from rung 1
-verbatim, and replace the `Block` with the plain sequential pre-norm block — `ln_1`, attention, residual add;
-`ln_2`, MLP, residual add — the default block with LayerNorm swapped for RMSNorm and nothing else. The
-distilled module and the literal scaffold code are in the answer.
-
-The falsifiable expectations, against both prior rungs' real numbers. First and most confident: this should
-post the *best* validation loss of the three — below the sandwich's 2.3104 and the parallel's 2.3112 — because
-it has the cross-talk the parallel rung lost and lacks the over-constraint the sandwich added. Second, the one
-I most want to see: the perplexities should *reverse the sandwich's regression* — WikiText-2 back below 46.8
-(toward or under the parallel rung's 45.98) and LAMBADA back below 72.08 (toward or under 70.96) — because
-removing the output norm removes exactly the constraint that pushed them up. Third — and here I can finally be
-quantitative rather than ordinal, because the sandwich handed me a second wall-clock point. The parallel rung
-ran `1` norm per block at `19747`s; the sandwich ran `4` at `21661`s; the difference, `1914`s over three extra
-norms, is `638`s per norm per run, about `0.053` s/iter — the first time on this ladder I can actually price a
-norm, since it takes two norm-counts to define a slope. Linearly extrapolating to the plain block's `2` norms
-gives `19747 + 638 ≈ 20385`s. I distrust the third digit for a concrete reason: the `1`-norm point is the
-*parallel* block, which also enjoyed a shortened critical path (both sublayers read one input, no write-ordering
-wait), so its `19747`s is a touch lower than a `1`-norm *sequential* block would be, and my slope therefore
-slightly under-counts; the plain block being sequential, I would nudge the estimate up into the low `20,000`s,
-call it `20.4–20.6k`. So it should land faster than the sandwich's `21661`s and slower than the parallel rung's
-`19747`s — not the fastest, and that is fine, because speed was never the objective — and the `elapsed` column
-will tell me whether the per-norm cost is really linear or whether the wiring confound is larger than I think. Fourth, downstream accuracy should
-hold or tick up — ARC-Easy and HellaSwag in the same band, and PIQA recovering from the sandwich's 62.46
-toward the parallel rung's 64.42, since whatever the sandwich's extra normalization cost in PIQA is removed
-here. To be quantitative about which downstream columns I am actually predicting on: ARC-Easy sat flat at
-`54.76` across *both* prior rungs, so it is insensitive to this edit surface and I expect no move; HellaSwag
-(`32.93 → 33.03`) and WinoGrande (`50.2 → 50.28`) are within a tenth of a point of their near-chance floors and
-carry no signal, so I will not read them either way; PIQA is the one column with headroom and a measured swing,
-`64.42 → 62.46` under the sandwich, so the `−1.96` it lost to over-constraint is exactly the quantity the plain
-block should hand back, and I predict it recovers most of the way to `64.42`. If PIQA does *not* recover while
-`val_loss` improves, that is another way the over-constraint story could be wrong. This is where the ladder
-ends: the strongest arrangement on this edit surface is the simplest one — the
-cheaper RMSNorm rule, which was safe every time, in the plain sequential pre-norm block the substrate was
-built for — and the two restructuring experiments earned their place by showing, in measured numbers, that
-spending the edit budget on wiring in either direction (parallel simplification or sandwich elaboration) buys
-nothing at 355M that the plain block does not already have.
-
-The causal chain in one breath: the sandwich beat the parallel floor by only 0.0008 val_loss while *raising*
-the perplexities (WikiText-2 46.8, LAMBADA 72.08) and running slowest — variance insurance, not improvement,
-the over-constraint of four norms at 24 layers → so stop restructuring the block and keep only the one change
-that was safe every time, the RMSNorm rule (drop the mean-subtraction that controls location not spread, keep
-the re-scaling normalization and its self-regulating quadratic gradient, no bias since `bias=False` and
-nothing to recenter) → put the two sublayers back in the plain sequential pre-norm block the substrate's
-`1/√(2·n_layer)` init and schedule were tuned for, which restores the cross-talk the parallel rung lost and
-removes the output norm that over-constrained the sandwich → expecting the best val_loss of the three *with*
-the perplexities reversing the sandwich's regression, at a wall-clock between the two — the simplest fill of
-the edit surface as the strongest, which is itself the finding.
+Two more predictions I can finally pin down quantitatively. On wall-clock the sandwich handed me a second data
+point, so I can price a norm rather than just order the rungs: `1` norm per block at `19747`s, `4` at `21661`s,
+so `1914`s over three extra norms is `638`s per norm. Extrapolating to the plain block's `2` norms gives
+`≈ 20385`s — but the `1`-norm point is the *parallel* block, which also had a shortened critical path (one
+input, no write-ordering wait), so it runs a touch below a `1`-norm *sequential* block and my slope under-counts;
+I nudge the plain-block estimate into the low-20,000s, between the two prior rungs. On downstream, ARC-Easy sat
+flat at `54.76` across both prior rungs and I expect no move; HellaSwag and WinoGrande sit within a tenth of
+their near-chance floors and carry no signal; PIQA is the one column with headroom and a measured swing
+(`64.42 → 62.46` under the sandwich), so I predict it recovers most of the way toward `64.42` — and if it does
+not while `val_loss` improves, that is another way the over-constraint story fails. So the ladder ends where it
+is simplest: the cheaper RMSNorm rule, safe every time, in the plain sequential pre-norm block the substrate was
+built for, the two restructuring experiments having shown in measured numbers that spending the edit budget on
+wiring in either direction buys nothing at 355M the plain block does not already have.
