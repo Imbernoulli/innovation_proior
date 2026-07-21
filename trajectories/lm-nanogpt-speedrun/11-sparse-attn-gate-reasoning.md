@@ -57,28 +57,17 @@ context says this head has nothing useful to add. Decouple "where does the atten
 fire at all." If I have that valve, the model no longer has to abuse a token as a sink; it can let the softmax
 point wherever and just close the valve.
 
-Let me consider the ways to build that valve, because there are a few and I want the one that's genuinely
-distance-independent and context-dependent. One option is to add a dedicated learnable "register" or sink
-token to the sequence — a slot every query can always attend to, carrying the overflow mass. But that's still
-a token *in the sequence*, so it's subject to the very windowing and rotary that broke the BoS sink; I'd be
-rebuilding the same fragile mechanism with a nicer name. A second option is to change the softmax itself — the
-"off-by-one" softmax that adds a constant 1 to the denominator, giving the head an implicit escape route for
-probability mass without forcing it onto a key. That's cleaner, but the escape is a *fixed* constant, the same
-for every token and context; it lets a head leak mass but not *decide, per token, based on context* whether to
-fire. What I want is context-dependent: the no-op decision should depend on what this token is and what's
-around it. The third option — a learned gate on the attention output, a per-head, per-token scalar in (0, 1)
-that multiplies the head's output — is the one that's both. When the gate is near 1 the head fires normally;
-when it's near 0 the head contributes nothing for that token, which is exactly the context-based no-op I want,
-and a gate is by construction distance-independent — it's computed from the token's own representation, not
-from any relationship to a sink. The *per-token* granularity is the crux: the gate is evaluated at every
-position from that position's own residual state, so a single head can fire on the tokens where it has
-something to contribute and abstain on the tokens where it doesn't, within the same sequence. That's strictly
-what the sink was faking — a head "no-op-ing" on some queries and not others — but done cleanly and locally
-instead of by routing mass to a distant token whose reachability changes with position. A per-head-*global*
-gate (one scalar per head for the whole sequence) couldn't do this; it could only turn a head off entirely or
-leave it on. The per-token gate is what makes it a genuine context-based no-op rather than a head on/off
-switch. So the output gate strictly dominates the register (not sequence-bound) and
-the off-by-one softmax (context-dependent, not a fixed constant). That's the valve.
+Of the ways to build that valve, two fail the test. A dedicated learnable "register" or sink token is still a
+token *in the sequence*, subject to the very windowing and rotary that broke the BoS sink — the same fragile
+mechanism with a nicer name. An "off-by-one" softmax (a constant 1 added to the denominator) gives the head an
+escape route for probability mass, but a *fixed* one, the same for every token; it can't decide per token,
+based on context, whether to fire. The third option — a learned gate on the attention output, a per-head
+scalar in (0, 1) that multiplies the head's output — is both distance-independent (computed from the token's
+own representation, not from any relationship to a sink) and per-token (evaluated at each position from that
+position's residual state, so one head can fire where it has something to contribute and abstain where it
+doesn't, within the same sequence). That per-token granularity is exactly what the sink was faking, done
+cleanly and locally; a per-head-*global* gate could only switch a head on or off entirely. So the output gate
+dominates both alternatives. That's the valve.
 
 The question is what the gate should be a function of. It should be a function of the current context — the
 residual stream at this token — so the gate is sigmoid of a small linear map of x. But I don't want to feed
@@ -94,19 +83,14 @@ projection c_proj, so it scales the whole head's contribution as a unit. Gating 
 output, whatever it computed, counts for this much" — which is precisely the no-op knob I want, cleanly
 separated from the softmax that decided *where* the attention pointed. Gating the values or the query instead
 would tangle the no-op decision back into the attention computation itself; scaling the finished head output
-keeps the two concerns — where attention goes, and whether the head fires — fully decoupled. Let me check the cost is really negligible: the
-gate matmul is tokens × 12 × num_heads per gated layer, against the attention's tokens × window × head_dim ×
-num_heads — with the window in the hundreds-to-thousands and head_dim 128, the 12-wide gate is smaller than
-the attention by a factor of roughly (window × 128)/12 ≈ thousands, a genuine rounding error. The parameter
-count is tiny too: with 6 heads (head_dim 128 at width 768), each gated layer's gate weight is a [6, 12] = 72-
-number matrix, so the whole bank across a handful of gated layers is a few hundred parameters — nothing next
-to the ~200M+ of the rest of the model. And there's the same safety floor the U-net had: if every gate
-learned its way to 1, `sigmoid(...)·y = y` and I recover the exact ungated attention I have now, so the gate
-strictly *contains* the current model as the all-gates-open corner and can't do worse than baseline except
-through the optimization it enables. The worst case is that training drives all gates to 1 and I've spent a
-few hundred parameters to rediscover the ungated net. That's the
-"sparse" in sparse attention gate — only 12 of 768 residual dims feed it, so it's almost free, and the bet is
-that twelve dimensions carry enough of the relevance signal.
+keeps the two concerns — where attention goes, and whether the head fires — fully decoupled. The cost is
+negligible: the gate matmul is tokens × 12 × num_heads against attention's tokens × window × head_dim ×
+num_heads, smaller by roughly (window × 128)/12 ≈ thousands, and the whole bank across a handful of gated
+layers is a few hundred parameters. And it has the U-net's safety floor: if every gate learns its way to 1,
+`sigmoid(...)·y = y` recovers the exact ungated attention, so the gate strictly *contains* the current model
+and the worst case is spending a few hundred parameters to rediscover it. That's the "sparse" in sparse
+attention gate — only 12 of 768 residual dims feed it — and the bet is that twelve carry enough of the
+relevance signal.
 
 Why the *raw first 12 dims* of x, rather than a learned projection down to 12? Because a fixed slice lets the
 residual stream self-organize: the model can learn to *write* the gate-relevance signal into those first 12
@@ -124,16 +108,12 @@ where the no-op valve pays off; the early broad-attention layers rarely need to 
 applied where the mechanism predicts the sink tax is largest, not sprayed uniformly — which also keeps the
 already-negligible cost confined to the layers that actually benefit.
 
-Initialization matters for the early dynamics, same discipline as everywhere else in this network, and I want
-to verify it lands where I intend. I zero-init the gate bank. With zero weights, the linear map outputs 0 for
-every token, sigmoid(0) is exactly 0.5, so every gate starts at 0.5 — every head's output is halved uniformly
-at step zero. Is a uniform 0.5 a benign start? It's a symmetric point that asserts no opinion about which
-heads should fire — no head is preferentially opened or closed — and the constant 0.5 factor on every head is
-just a global 2× rescale of the attention contribution, which the surrounding norms and residual scales absorb
-without trouble. The gate then *learns* away from 0.5 toward 0 or 1 as the data dictates. Nothing in the gate
-injects a confident random signal at init; it earns its values from a neutral start, just like the zero-init
-head and the zero-init residual projections. (Contrast a random-init gate, which would open some heads and
-close others arbitrarily at step zero, a random perturbation the early steps would have to undo.)
+I zero-init the gate bank, same discipline as everywhere else in this network. With zero weights the linear
+map outputs 0, sigmoid(0) = 0.5, so every gate starts at 0.5 — every head's output uniformly halved at step
+zero. That's benign: a symmetric point asserting no opinion about which heads fire, and the constant 0.5 is
+just a global 2× rescale the surrounding norms absorb. The gate then learns away from 0.5 toward 0 or 1 as the
+data dictates — no confident random signal at init, unlike a random-init gate that would open and close heads
+arbitrarily for the early steps to undo.
 
 The sigmoid is load-bearing in a second way beyond giving a (0,1) range: it's smooth. A hard gate — a 0/1
 indicator of "fire or not" — would be non-differentiable at its threshold and pass no gradient, so the model
@@ -144,42 +124,14 @@ direction each gate should move. A head that should abstain drifts its gate towa
 drifts toward 1; and the smoothness means the optimizer sees a clean gradient the whole way. That's why the
 valve is a sigmoid and not a threshold.
 
-The cost-benefit is the usual speedrun calculus. The gate adds a tiny per-step cost — a 12-wide matmul and a
-sigmoid per gated layer, negligible against attention as the arithmetic showed. The benefit is that the model
-gets a proper distance-independent no-op and stops paying the tax of a broken sink, which should let it reach
-the bar in fewer steps. My estimate is on the order of 50 fewer steps — small in absolute terms, but at a
-~1750-step operating point that's ~3%, and it's ~free. Why only ~50 and not a dramatic cut? Because the sink
-tax is real but bounded: the model already *has* a workaround (the unreliable BoS sink), so I'm not enabling
-a capability it lacked, I'm removing the friction of a workaround that half-works. The gain is the wasted
-capacity the broken sink was consuming, not a whole new mechanism — a few percent, the size of a friction
-removal, which is exactly the magnitude I'd expect and the honest thing to predict rather than overselling it. The risk is that 12 dimensions is too few to carry a
-useful gating signal, or that gating heads off destabilizes attention and costs more steps than it saves — but
-the zero-init keeps the early behavior gentle, and the mechanism is addressing a real inefficiency I can name
-precisely: a sink crutch that my own windowing and rotary have made unreliable. So the falsifiable signature is
-a modest *step-count* drop (~50 steps) at essentially unchanged step_avg (the gate is a rounding error), with
-val_loss holding under the bar. If the step count *doesn't* move, then either 12 dims was too few or the sink
+The gate's cost is a 12-wide matmul and a sigmoid per gated layer, negligible against attention; the benefit
+is a proper distance-independent no-op that stops paying the broken-sink tax. My estimate is on the order of
+50 fewer steps — ~3% at a ~1750-step operating point, and ~free. Not a dramatic cut, because the sink tax is
+bounded: the model already *has* a workaround (the unreliable BoS sink), so I'm removing the friction of a
+half-working mechanism, not enabling a capability it lacked — the gain is the wasted capacity the broken sink
+was consuming, a friction-removal magnitude, the honest thing to predict rather than oversell. So the
+falsifiable signature is a modest *step-count* drop (~50 steps) at unchanged step_avg, with val_loss holding
+under the bar. If the step count *doesn't* move, then either 12 dims was too few or the sink
 wasn't actually costing what I think, and I'd try widening the gate's input slice (say to 24 or 32 dims) before
-abandoning the mechanism, since the input-sparsity is the cheapest thing to relax and the first suspect.
-
-```python
-# a per-head attention gate driven by only the first 12 residual dims (sparse):
-# attn_gate_bank: one [num_heads, 12] weight per gated layer
-self.attn_gate_bank = nn.Parameter(torch.zeros(num_gated_layers, num_heads, 12))
-
-# inside the attention forward, after computing the attention output y of shape (B, T, num_heads, head_dim):
-# sparse context-based gate: sigmoid of a tiny linear map from 12 residual dims, per head, no-op when ~0
-y = y * torch.sigmoid(F.linear(x[..., :12], attn_gate_w)).view(B, T, self.num_heads, 1)
-```
-
-Here `attn_gate_w` is the per-layer `[num_heads, 12]` slice pulled from the bank, `x[..., :12]` is the
-sparse 12-dim slice of the residual stream feeding the gate, the sigmoid gives a per-head, per-token
-multiplier in (0,1), and the zero-init bank means every gate starts at sigmoid(0)=0.5 and learns from there.
-The chain: softmax forces every head to attend to something, so heads learn to dump unwanted mass on a BoS
-sink; my own sliding-window + rotary make that sink unreliable (often outside the window, and rotary makes its
-score position-dependent); so the model needs a distance-independent context-based no-op instead, and of the
-options — a register token (still sequence-bound, still fragile), an off-by-one softmax (a fixed, non-context
-escape), or an output gate — only the learned per-head gate is both distance-independent and per-token
-context-dependent; the gate is sigmoid of a *sparse* 12-of-768-dim slice of the residual (cost a rounding
-error against attention, verified), multiplies the attention output and closes to ~0 when the head should
-abstain, and is zero-initialized so every gate starts at the neutral sigmoid(0)=0.5 and learns from there —
-removing the sink crutch and saving roughly 50 steps at essentially flat step_avg.
+abandoning the mechanism, since the input-sparsity is the cheapest thing to relax and the first suspect. The zero-init `attn_gate_bank` and
+the `y * sigmoid(F.linear(x[..., :12], attn_gate_w))` multiply are in the answer.

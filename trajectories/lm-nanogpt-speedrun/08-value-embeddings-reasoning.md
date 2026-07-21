@@ -99,39 +99,25 @@ step, which is why embedding groups run at much higher learning rates than the m
 (0.8, 0.95) also fit: the lower β₁ = 0.8 (vs the body's 0.9) means the first-moment average decays faster,
 appropriate when a row's gradients are intermittent and a stale momentum from many steps ago would be
 misleading. So the vte hyperparameters aren't a new tuning problem — they're the wte embedding-group settings,
-which vte inherits by being the same kind of object. And there's a per-step compute
-cost after all: every forward now does a second, twelve-times-wider embedding lookup and twelve view/mix
-operations. That will push the step time up a little — the 12× wider gather is the main contributor, since
-it moves 12× the embedding bytes. Let me size that so I know what step-time rise to brace for. Per step the
-stream is ~64K tokens; wte gathers 65536 × 768 × 2 bytes ≈ 100 MB, while vte gathers 65536 × 9216 × 2 ≈ 1.2 GB
-of rows, and the backward pass writes gradients into those same rows. At an H100's ~3 TB/s HBM bandwidth,
-moving 1.2 GB is ~0.4 ms forward, and with the scatter-add on the backward it's a few tenths of a millisecond
-more — so I'd expect step_avg to rise by roughly a millisecond or two from the vte traffic, a bandwidth-bound
-cost, not a compute-bound one (no matmul touches 463M of anything). Against a ~160 ms step that's ~1%, small,
-which is exactly why the bet is favorable: a ~1% step-time rise is easy to beat if a dedicated per-token value
-cuts even a few percent of the steps. The bet is that the step *count* falls by more than enough to pay for it.
+which vte inherits by being the same kind of object. There is a per-step cost, though: the 12×-wider gather
+moves 12× the embedding bytes. Per ~64K-token step, wte gathers ~100 MB while vte gathers 65536 × 9216 × 2 ≈
+1.2 GB, plus the backward's scatter-add into the same rows; at ~3 TB/s HBM that's ~0.4 ms forward and a few
+tenths more backward, so step_avg rises a millisecond or two — a bandwidth cost, not compute (no matmul
+touches 463M of anything). Against a ~160 ms step that's ~1%, easy to beat if a dedicated per-token value cuts
+even a few percent of the steps.
 
-A quick shape check, since the chunk-and-mix has to line up exactly. vte's row is 9216 wide; `chunk(12,
-dim=-1)` splits it into twelve slices of 9216/12 = 768 each, so vi[i] is (B, T, 768). Inside the attention
-forward the value v is viewed as (B, T, n_head, head_dim) = (B, T, 6, 128), and 6·128 = 768, so
-`vi.view_as(v)` reshapes the 768-wide slice to (B, T, 6, 128) and the convex mix `(1-lamb)·v + lamb·vi` is
-elementwise on matching shapes. The widths reconcile: one 9216-wide table row carries exactly one 768-wide
-value per layer, which is exactly one full head-partitioned value tensor per layer. No padding, no leftover.
-And the routing has to respect the U-net layout from the skip rung: the twelve chunks vi[0..11] are indexed by
-*block position*, and since the encoder/decoder relabeling doesn't reorder the block list — blocks 0–5 encode,
-6–11 decode, in order — block i simply consumes slice vi[i], so the chunk index and the block index line up
-directly. Each block, whether it's acting as encoder or decoder, gets its own dedicated slice; the U-net
-skip-connection wiring (which activations get added where) is orthogonal to the vte slicing (which value table
-each block mixes in), so the two mechanisms compose without either needing to know about the other.
+The widths reconcile cleanly: `chunk(12)` splits the 9216-wide row into twelve 768-wide slices, and 768 =
+6·128 = n_head·head_dim, so `vi.view_as(v)` reshapes each slice to one full head-partitioned value tensor per
+layer, no padding. The chunk index is the block index (the encoder/decoder relabeling doesn't reorder the
+block list), so block i consumes vi[i]; the U-net skip wiring (which activations get added where) is
+orthogonal to the vte slicing (which table each block mixes in), and the two compose without either knowing
+about the other.
 
-Before I commit, the alternatives. I could instead widen v1 itself — compute several early values in the
-first block and let each later layer pick one — but that's still derived from the residual stream and still
-funnels through the first block's projections, so it doesn't escape the "derived, filtered" problem, it just
-adds more derived vectors. I could share a *single* vte slice across all layers rather than twelve — cheaper
-(38.6M, not 463M) — but then I'm back to one shared vector for all consumers, exactly the v1 bottleneck I'm
-trying to break, just relocated into a table; the whole point is per-layer specialization, so the 12× width is
-load-bearing, not gratuitous. The dedicated per-layer table is the option that actually removes the
-bottleneck, and its cost is memory I have to spare rather than compute I don't.
+The alternatives don't remove the bottleneck. Widening v1 itself is still derived from the residual stream
+and funnels through the first block's projections. Sharing a *single* vte slice across all layers is cheaper
+(38.6M) but relocates the v1 bottleneck into a table — one shared vector for all consumers. The whole point
+is per-layer specialization, so the 12× width is load-bearing, and its cost is memory I have to spare rather
+than compute I don't.
 
 One thing I want to keep honest with myself: this isn't free structure the model can ignore at init the
 way the embed shortcut was. The vte table starts from whatever its initialization is, and lambda controls
@@ -144,55 +130,10 @@ then pull ahead as the per-token value slices sharpen and the lambdas open up. I
 3.28 bar comes down, the extra lookup time is paid for and this is a win. Given how much the lambdas wanted v1
 in the first place, I think the layers will want a dedicated, richer version of that signal even more.
 
-If the mechanism is right, the falsifiable signature is a *step-count* drop bought at a *step-time rise* — the
-distinctive fingerprint of trading compute/memory for convergence, the opposite of the window warmup. I'd
-expect the step count from 1750 down toward ~1530, and the step_avg to rise above 160.89 ms from the wider
-lookup, with the wallclock still falling because the step cut outweighs the time rise. If instead the step
-count barely moves while step_avg jumps, the table isn't earning its lookup cost — the layers didn't want a
-dedicated per-token value after all — and I'd revert. The learned lambdas are again a bonus diagnostic: if
-they open up more than they did for v1, that's direct evidence the dedicated table is a richer signal than the
-shared computed value was, and if they differ *across layers* more than the v1 lambdas did, that confirms the
-per-layer slices are being used for genuinely different things — the whole premise of paying for 12× the
-width.
-
-```python
-# in GPT.__init__:
-self.transformer = nn.ModuleDict(dict(
-    wte = nn.Embedding(config.vocab_size, config.n_embd),
-    # token value embeddings by @KoszarskyB - inspired by @Grad62304977's value residual learning
-    vte = nn.Embedding(config.vocab_size, config.n_embd*12),
-    h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
-))
-
-# in GPT.forward, look up and chunk into one slice per layer:
-vi = self.transformer.vte(idx[None]).chunk(12, dim=-1)
-# ... each block i receives vi[i] (encoder/decoder indexing matches the U-net layout):
-# x = self.transformer.h[i](x, vi[i], x0, block_mask)
-
-# in the attention forward, mix the value embedding into v with the learnable lambda:
-def forward(self, x, vi, block_mask):
-    B, T = x.size(0), x.size(1)
-    q = self.c_q(x).view(B, T, self.n_head, -1)
-    k = self.c_k(x).view(B, T, self.n_head, -1)
-    v = self.c_v(x).view(B, T, self.n_head, -1)
-    v = (1 - self.lamb) * v + self.lamb * vi.view_as(v)   # @Grad62304977
-    q, k = norm(q), norm(k)
-    q, k = self.rotary(q), self.rotary(k)
-    y = flex_attention(q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2), block_mask=block_mask)
-    y = y.transpose(1, 2).contiguous().view_as(x)
-    return self.c_proj(y)
-
-# vte optimized by Adam alongside wte:
-optimizer1 = torch.optim.Adam([raw_model.transformer.wte.weight, raw_model.transformer.vte.weight], lr=0.6, betas=(0.8, 0.95), fused=True)
-```
-
-The chain: the value residual gave every layer a line back to the first block's value v1, but v1 is a
-derived, residual-stream quantity, shared across all layers, sourced from one overloaded c_v — the same
-two-jobs-one-object bottleneck the untie rung taught me to recognize; replace it with a dedicated learned
-table vte of width n_embd·12 = 9216 (≈463.6M params, but a token-indexed *gather* not a matmul, so
-memory-and-bandwidth not FLOPs) looked up from the token ids and chunked into one per-layer slice, so each
-attention layer mixes in its own direct, per-token value via the same learnable lambda — `v = (1 -
-self.lamb)*v + self.lamb * vi.view_as(v)` — with vte optimized by Adam alongside wte. The 12×-wider lookup
-raises the step time, but a direct learned value signal that never has to survive the residual stream, and
-that can differ per layer where one shared v1 could not, should cut the step count from 1750 toward ~1530 by
-more than enough to pay for it.
+If the mechanism is right the fingerprint is a *step-count* drop bought at a *step-time rise* — trading
+compute/memory for convergence, the opposite of the window warmup — with the wallclock still falling because
+the step cut outweighs the time rise. If the step count barely moves while step_avg jumps, the table isn't
+earning its lookup cost and I'd revert. The learned lambdas are again a diagnostic: if they open up more than
+they did for v1, the dedicated table is a richer signal; if they differ more *across layers*, the per-layer
+slices are being used for genuinely different things — the whole premise of paying for 12× the width. The
+`vte` table, the chunk-and-mix, and the Adam group are in the answer.

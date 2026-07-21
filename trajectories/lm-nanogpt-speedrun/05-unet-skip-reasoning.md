@@ -31,28 +31,18 @@ depth of the transformer. Treat the first half of my twelve blocks as an "encode
 the saved encoder activations back in — each decoder block gets a long skip connection from its symmetric
 partner in the encoder. This is the U-net pattern over transformer depth, and the design is by @brendanh0gan.
 
-The pairing falls out naturally if I store the encoder outputs on a stack and pop them in the decoder, and I
-want to trace it explicitly to be sure the symmetry is right rather than assume it. With num_encoder_layers =
-6 I push encoder layer 0, then 1, 2, 3, 4, up to 5 — the stack, bottom to top, is [0, 1, 2, 3, 4, 5]. In the
-decoder I pop before each block: decoder block 0 pops the top, which is encoder layer 5 (the deepest, closest
-to the bottleneck); decoder block 1 pops encoder layer 4; …; decoder block 5 pops encoder layer 0 (the
-freshest). So encoder layer i pairs with decoder layer (num_decoder_layers − 1 − i): enc 5 ↔ dec 0, enc 4 ↔
-dec 1, …, enc 0 ↔ dec 5. That's exactly the symmetric U-net pairing — freshest-encoder to last-decoder,
-deepest-encoder to first-decoder — and I got it for free, just from `skip_connections.pop()` and the
-last-in-first-out discipline. No bookkeeping, no index arithmetic; the stack *is* the symmetry. The decoder,
-which is doing the final shaping of the representation before the head, gets to reuse the encoder's cleaner
-intermediate features directly rather than reconstructing them from the residual stream alone.
+The pairing falls out for free if I store the encoder outputs on a stack and pop them in the decoder: pushing
+encoder layers 0..5 and popping before each decoder block gives encoder layer i to decoder layer
+(num_decoder_layers − 1 − i) — enc 5 ↔ dec 0 (deepest to just-past-the-bottleneck), enc 0 ↔ dec 5 (freshest
+to last-decoder). The `skip_connections.pop()` LIFO discipline *is* the symmetry; no index bookkeeping. The
+decoder, doing the final shaping before the head, reuses the encoder's cleaner intermediate features directly
+rather than reconstructing them from the residual stream alone.
 
-Why split exactly in half — six and six — and symmetrically? The half-split is what makes the LIFO pairing
-come out symmetric: with num_encoder = num_decoder = n_layer/2 = 6, every encoder layer has exactly one
-decoder partner and the stack empties precisely as the decoder finishes, no leftover pushes or pops. An
-asymmetric split (say 8 encoder, 4 decoder) would leave four encoder activations with no decoder to receive
-them, or force some decoder blocks to take two skips — either way the clean one-to-one symmetry breaks and I'd
-be back to hand-managing which activation goes where. The symmetric half-split is the unique choice that makes
-the stack discipline *be* the pairing. And it matches the U-net's own logic: the bottleneck (the most
-processed, most abstract representation) sits at the middle, layer 5→6, and the decoder undoes the encoding
-symmetrically, each decoder layer reconstructing at the "resolution" its encoder partner captured. For a
-12-block transformer, 6/6 is the natural cut.
+The half-split six-and-six is what makes that LIFO pairing symmetric: every encoder layer has exactly one
+decoder partner and the stack empties precisely as the decoder finishes. An asymmetric split (8 encoder, 4
+decoder) would strand four encoder activations or force double skips, breaking the one-to-one symmetry. It
+also matches the U-net's logic: the bottleneck (most abstract) sits at the middle, layer 5→6, and the decoder
+undoes the encoding symmetrically. For a 12-block transformer, 6/6 is the natural cut.
 
 How much of each encoder activation should each decoder block take? Same answer as the value lambdas last
 rung: don't hardcode it, let the model choose. I give the decoder a learnable skip weight per decoder layer,
@@ -115,80 +105,26 @@ there is to cover the same loss drop in fewer steps. The U-net buys the conditio
 in as wallclock. This is a coupled bet — the LR doubling is only safe *because* of the skips — so I test them
 together, not separately.
 
-Why *double*, specifically, and not 1.5× or 4×? The wallclock lever here is step count, and to a rough first
-order the loss reduction achieved by the end of training is a budget spent as (learning rate) × (number of
-steps): push the LR up and you cover the same ground in fewer steps, until the LR gets large enough that the
-optimization becomes unstable and the trade reverses. So the question is how much conditioning headroom the
-skips actually opened. Halving the gradient-flow depth (the ~12-block path to a ~2-block path for the deepest
-skip) is a substantial conditioning improvement, and a 2× LR is the matched, conservative bet — it aims to
-roughly halve nothing catastrophic while betting the skips absorb the extra step size. 4× would be greedy:
-the conditioning gain is real but not obviously a factor of four, and a 4× LR on a run already sitting 0.0009
-under the bar would likely tip val_loss over 3.28. 1.5× would under-claim the headroom the halved gradient
-depth suggests. Double is the size that matches the mechanism's estimate without gambling the thin margin, and
-if it holds I expect roughly the step-count cut a 2× effective LR buys once the schedule is re-tuned around it.
+Why *double*, and not 1.5× or 4×? To first order the end-of-training loss reduction is a budget spent as
+(learning rate) × (steps), so a higher LR covers the same ground in fewer steps until instability reverses
+the trade. Halving the gradient-flow depth is a substantial conditioning improvement, and 2× is the matched,
+conservative bet on it; 4× is greedy — the gain isn't obviously a factor of four and a 4× LR on a run already
+0.0009 under the bar would likely tip val_loss over 3.28 — while 1.5× under-claims the headroom.
 
-Let me weigh the doubling against the thinning margin I noted, because it's the obvious tension. The last
-record already sat only 0.0009 under the bar, and doubling the LR shortens the run further and could make it
-twitchier — pushing val_loss up toward or over 3.28. But the U-net cuts the other way: better-conditioned
-gradient flow should make the loss *lower* at a given step count, restoring margin even as the doubled LR
-spends it. So the two effects on val_loss oppose, and my expectation is that the conditioning win at least
-offsets the LR-doubling risk — I'd hope to see val_loss hold or even improve, not degrade, despite the shorter
-run. If instead val_loss pokes above 3.28, that says the doubling was too aggressive for the conditioning the
-skips actually delivered, and I'd back the LR off from 2× toward 1.5×.
+The doubling does run against that thin margin — a shorter, higher-LR run is twitchier and could push
+val_loss over the bar — but the U-net cuts the other way, making the loss lower at a given step count. The
+two effects oppose, and my bet is the conditioning win at least offsets the LR risk, so val_loss holds or
+improves despite the shorter run; if it pokes above 3.28 I back the LR off toward 1.5×.
 
 So: split the twelve blocks into a six-block encoder and a six-block decoder; save each encoder output on a
 stack; in the decoder, pop in LIFO order to recover the symmetric U-net pairing and add the partner back with
 a learnable per-decoder-layer skip weight initialized to one; and double the learning rate because the
 shortened gradient paths let me. It's the embed shortcut's principle — direct paths to earlier
 representations — generalized from one source to a full symmetric skip structure over depth, with only L/2
-connections. If the mechanism is right, the falsifiable signature: the step count should fall below 3200 (the
-richer skips plus the doubled LR covering the loss drop in fewer steps), at roughly flat step_avg (a skip is a
-scaled add, negligible against the block matmuls), and — the interesting one — val_loss should *not* degrade
-despite the shorter run, because the conditioning offsets the LR risk. I'd expect the step count toward ~3000.
+connections. If the mechanism is right the step count falls below 3200 (the richer skips plus the doubled LR
+covering the loss drop in fewer steps) at roughly flat step_avg (a skip is a scaled add, negligible against
+the block matmuls) and — the interesting one — val_loss does *not* degrade despite the shorter run, because
+the conditioning offsets the LR risk. The `GPT` with the `skip_weights` bank, encoder/decoder split, and
+LIFO decoder loop is in the answer.
 
-```python
-class GPT(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        # U-net design by @brendanh0gan
-        self.num_encoder_layers = config.n_layer // 2   # first half = encoder
-        self.num_decoder_layers = config.n_layer - self.num_encoder_layers
-        # learnable skip-connection weights for the decoder layers
-        self.skip_weights = nn.Parameter(torch.ones(self.num_decoder_layers))
-        self.transformer = nn.ModuleDict(dict(
-            wte = nn.Embedding(config.vocab_size, config.n_embd),
-            h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
-        ))
-        self.lm_head = CastedLinear(config.n_embd, config.vocab_size)
-        self.lm_head.weight.data.zero_()
 
-    def forward(self, idx, target):
-        x = norm(self.transformer.wte(idx[None]))
-        x0 = x
-        # Encoder pass — first half of the blocks
-        skip_connections = []
-        for i in range(self.num_encoder_layers):
-            x = self.transformer.h[i](x, x0)  # block also threads the value-residual signal (rung 4)
-            skip_connections.append(x)
-        # Decoder pass — remaining blocks with weighted skip connections
-        for i in range(self.num_decoder_layers):
-            x = x + self.skip_weights[i] * skip_connections.pop()
-            x = self.transformer.h[self.num_encoder_layers + i](x, x0)
-        x = norm(x)
-        logits = 30 * torch.tanh(self.lm_head(x).float() / 30)
-        loss = F.cross_entropy(logits.view(-1, logits.size(-1)), target.view(-1))
-        return loss
-
-# the skip weights are 1D params optimized as scalar_params by Adam
-scalar_params = [p for p in params if p.ndim < 2] + [raw_model.skip_weights]
-```
-
-The chain: the embed shortcut showed that direct paths to earlier representations pay off (30% fewer steps
-last rung), so I generalize it from one source (x0) to a full symmetric U-net over depth — but sparsely, with
-only L/2 connections, not the all-to-all explosion. The first six blocks encode and push their outputs on a
-stack, the last six decode and pop them in LIFO order, which a hand-trace confirms gives the symmetric
-early-to-late pairing (enc 5 ↔ dec 0, enc 0 ↔ dec 5) for free, each long skip scaled by a learnable
-per-decoder-layer weight initialized to one (active from the start, deliberately not a pass-through); and
-because those skips roughly halve the gradient-flow depth (head-to-encoder-0 goes from a ~12-block path to a
-~2-block path) and better-condition the landscape, I double the learning rate to cash the conditioning out as
-fewer steps to 3.28 — expecting the step count toward ~3000 with val_loss holding despite the shorter run.

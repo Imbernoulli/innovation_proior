@@ -17,7 +17,7 @@ interferes with normal training. But "never interferes" should make me suspiciou
 bites, it isn't regularizing; it's just sitting there, and a term that does nothing is either free insurance
 or a wasted degree of freedom, and I'd like to know which.
 
-Let me actually look at what a cap of 30 does in this regime, with numbers rather than intuition. tanh(z) is
+Look at what a cap of 30 does in this regime, with numbers. tanh(z) is
 essentially linear for small z — tanh(z) ≈ z − z³/3, so it's within a percent of z until |z| ≈ 0.3 — which
 means `30*tanh(logit/30)` is essentially the identity until the raw logit gets to a meaningful fraction of
 30. Put values through it. At a logit of 5: 30·tanh(5/30) = 30·tanh(0.167) = 30·0.1651 = 4.95, a 1%
@@ -85,18 +85,11 @@ There's a tension I should name, because lowering the cap to 15 is not obviously
 far I'll distort the actual probabilities the model needs to express. A token that genuinely deserves a
 logit margin of 20 over its competitors can't get it if the cap is 15 — the softmax can never become as
 confident as the data wants, and that would *raise* the loss, not lower it. So the right cap is the loosest
-one that still bites meaningfully across the run, not the tightest possible; I want it active over the 10–15
-band but not so tight that it clips the genuinely-confident predictions at the top of that band. Let me weigh
-the alternatives on that axis. A cap of 20 would be only slightly more active than 30 — at logit 10 it gives
-15·... 20·tanh(0.5) = 20·0.462 = 9.24, a 7.6% reduction, more than 30's 3.6% but still leaving the 10–15 band
-mostly linear — so it barely turns the regularizer on. A cap of 10 would bite hard but sit right *at* the
-typical decisive-logit magnitude, clipping exactly the confident predictions I need to keep — a straitjacket
-even for this regime. 15 is the halving: a real tightening (active across the 5–15 band, as the numbers show)
-without collapsing onto the confident-prediction magnitude, so it regularizes the bulk of the distribution
-while still letting the top-end logits reach ~15.
-
-Let me verify the "15 is safe, 10 is not" claim with the confidence headroom it leaves, because that's the
-whole distinction. The tanh output asymptotes to ±C, so the maximum capped logit is C, and the confidence the
+one that still bites meaningfully across the run, not the tightest possible: active over the 10–15 band but
+not clipping the genuinely-confident predictions at its top. A cap of 20 barely turns the regularizer on (at
+logit 10, 20·tanh(0.5) = 9.24, only 7.6%), while 10 would bite hard but sit right *at* the typical
+decisive-logit magnitude. The confidence headroom pins down why 15 is safe where 10 is not. The tanh output
+asymptotes to ±C, so the maximum capped logit is C, and the confidence the
 model can express for the true token is set by its margin over the competing logits. A margin of C = 15 nats
 means odds of e¹⁵ ≈ 3.3 million to 1 in favor of the true token over a competitor at the bulk — and against
 the *entire* uniform 50304-way vocabulary that's 3.3M/50304 ≈ 65× headroom, so the true token still dominates
@@ -107,58 +100,31 @@ field the true token no longer dominates, and a genuinely confident prediction w
 confidence the data supports. That's the line: 15 keeps ample headroom over the full vocabulary while
 regularizing the bulk; 10 crosses into clipping the confident predictions themselves. The arithmetic picks 15
 as the loosest cap that still bites without distorting, and rejects 10 as over-tight — not by taste but by the
-e^C-versus-vocabulary comparison. (There's a minor numerical bonus too: bounded logits keep the softmax's
-exponentials in a comfortable range, so the cross-entropy stays well-conditioned — but that's a side benefit,
-not the reason.) It's the natural first step down — moderate, testable, and
-if it holds I can consider going lower later. If val_loss holds at or below the bar with the cap at 15, that's
-direct evidence the network was leaving structure on the table that the cap can supply for free, and I'd
-expect to be able to *drop steps* as a result — the imposed structure does some of the work the steps were
-doing.
+e^C-versus-vocabulary comparison. (Bounded logits also keep the softmax's exponentials in a comfortable range,
+a minor conditioning bonus, not the reason.)
 
-It's worth being explicit about *how* imposed structure turns into fewer steps, because "regularizer helps"
-is not automatically "run is shorter." The tanh cap with the sech² gradient damping short-circuits the
-logit-inflation feedback loop: without a biting cap, part of every late gradient goes into pushing the winning
-logit higher (the softmax rewards confidence), and part of the optimizer's budget is spent inflating logits
-that the model then has to keep in check — motion that doesn't reduce val_loss much because it's over-confidence
-past the point of diminishing returns. With the cap biting over 10–15, that inflation is damped at the source,
-so those gradient components are freed to go toward genuine loss reduction instead. The structure the cap
-hands the model — "keep the logit distribution compact" — is thus not just a passive constraint; it redirects
-gradient budget from a low-value activity (inflating already-confident logits) to loss reduction, which is
-exactly what "does the work the steps were doing" means concretely.
+That is how the imposed structure turns into fewer steps and not just a helped regularizer: without a biting
+cap, part of every late gradient goes into pushing the winning logit higher (the softmax rewards confidence),
+budget spent inflating logits past the point of diminishing returns; with the cap biting over 10–15 the sech²
+damping short-circuits that feedback loop at the source, freeing those gradient components for genuine loss
+reduction. That redirection is what "does the work the steps were doing" means concretely — and it's why I
+looked at the softcap at all: the ladder has shortened the run four-fold, so a constant calibrated for a
+large-scale, long-training setting has no reason to be right here. Borrowed constants are the first place to
+look for free wins when the operating point has moved this far.
 
-There's a meta-point here that's really the reason I looked at the softcap at all. This ladder has been
-relentlessly *shortening* the run — from 6200 steps at the Muon record down to 1530 now, a factor of four —
-so the regime has drifted a long way from wherever any borrowed constant was originally set. The softcap of 30
-came from a large-scale, long-training setting; my run is now shorter and smaller than that setting by orders
-of magnitude, so a constant calibrated there has no reason to be right here. Whenever the operating point
-moves this far, the borrowed constants are the first place to look for free wins, because each one encodes an
-assumption about a regime I've left behind. The softcap is the cleanest example because its regime dependence
-is so direct — its whole job (bound runaway logits) is a function of how large logits get, which is a function
-of how long and large the run is — but the general move is "re-examine every inherited number when the regime
-shifts," and I expect it to keep paying off as the run gets shorter still.
+The change is one literal edit — 30 becomes 15 — but it has to land everywhere the softcap appears, training
+*and* validation, so the model is measured under exactly the output transform it trained with; a mismatch
+(train at 15, eval at 30) would run the val_loss through a different final nonlinearity than the model
+optimized against and corrupt the comparison. tanh costs the same regardless of the constant, so step_avg
+doesn't move; the cost side is exactly zero and the only question is whether the regime rewards the tighter
+bound.
 
-The change itself is almost embarrassingly small — it's one literal edit, the number 30 becomes 15 in two
-places: `logits = 30*torch.tanh(logits/30)` becomes `logits = 15*torch.tanh(logits/15)`. No new parameters,
-no new tensors, no new compute to speak of — tanh costs the same regardless of the constant, so step_avg won't
-move at all. It's purely a change in how much structure I'm imposing on the output. The one thing I have to be careful
-about is applying the same constant everywhere the softcap appears — training *and* validation — so the model
-is evaluated under exactly the output transform it trained with; a mismatch (train at 15, eval at 30, or vice
-versa) would measure the model through a different final nonlinearity than it optimized against and corrupt the
-val_loss comparison. Hence the edit lands in both places, changing 30 to 15 consistently. So the cost side is
-exactly zero and the only question is whether the regime rewards the tighter bound. Given everything above —
-that the cap at 30 is arithmetically nearly inert over the 10–15 range the run's logits occupy, that we're
-firmly in the small-scale regime where imposed structure helps, and that 15 is a moderate halving rather than
-a collapse onto the confident-prediction magnitude — I think it does.
-
-If the mechanism is right, the falsifiable signature is unusual: step_avg dead flat (a tanh constant is free),
-val_loss holding at or under the bar, and the step *count* dropping — because the imposed compactness does
-work the steps were doing. That last part is the real claim, and it's the one that could fail: if val_loss
-*rises* above 3.28, the cap is too tight and is clipping predictions the data wants (I'd go back toward 20);
-if the step count *doesn't* fall while val_loss holds, then the structure wasn't load-bearing and the cap was
-genuinely just insurance (harmless, but not a win) — in which case I've at least confirmed the softcap can be
-tightened for free and can keep pushing it lower on a later rung. I'll lower the cap and expect to pull the step count down
-from where the intervening tuning has it — around 1490 — to something like 1390, with val_loss staying under
-3.28 at unchanged step time — a pure step-count win from a zero-cost, one-character edit.
+The falsifiable signature is unusual: step_avg dead flat (a tanh constant is free), val_loss holding at or
+under the bar, and the step *count* dropping — because the imposed compactness does work the steps were doing.
+That last part is the real claim: if val_loss *rises* above 3.28 the cap is too tight and clips predictions
+the data wants (I'd go back toward 20); if the step count *doesn't* fall while val_loss holds, the structure
+wasn't load-bearing and the cap was genuinely just insurance (harmless, but not a win, and confirmation the
+cap can be pushed lower later). A pure step-count win from a zero-cost, one-character edit:
 
 ```python
 # before:
@@ -166,13 +132,3 @@ logits = 30 * torch.tanh(logits / 30)
 # after (this record):
 logits = 15 * torch.tanh(logits / 15)
 ```
-
-The chain: every other knob on this model is learned or scheduled, so the un-revisited constants are where
-stale assumptions hide, and the tanh softcap of 30 is one — arithmetically `30*tanh(logit/30)` reduces a
-logit of 10 by only 3.6% and of 5 by 1%, so over the 10–15 band the run's logits actually occupy (a decisive
-50304-way prediction needs a margin ~ln(25000) ≈ 10) it's a guardrail at a cliff edge I never reach, not a
-regularizer; halving it to 15 makes the same logits bite hard (12.6% at logit 10) — imposing the structure
-that the logit distribution stay compact; and in the small-scale, time-starved regime, free imposed structure
-is work the network doesn't have to spend steps learning (while 20 barely turns the regularizer on and 10
-would clip the confident predictions themselves), so the one-line, zero-cost change lets the step count fall
-from ~1490 to ~1390 at flat step_avg while val_loss holds under 3.28.

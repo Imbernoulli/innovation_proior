@@ -102,12 +102,9 @@ The schedule line is a single expression: interpolate `64` up to `1792` over the
 divide by 64, floor to land on a block boundary, multiply back by 64, and materialize it each step into an
 int tensor on the device so it can flow straight into the mask predicate.
 
-Let me trace the endpoints of that expression to be sure it does what I intend. At step 0: `64 * ((0 /
-num_iterations * (1792 − 64) + 64) // 64) = 64 * ((0 + 64) // 64) = 64 * (64 // 64) = 64 * 1 = 64`. Good —
-starts at one block. At `step = num_iterations` (the final step): `64 * ((1 * 1728 + 64) // 64) = 64 * (1792
-// 64) = 64 * 28 = 1792`. Good — ends at 1792. And at the midpoint, step = num_iterations/2: `64 * ((864 +
-64) // 64) = 64 * (928 // 64) = 64 * 14 = 896` — right at the average I computed, as a linear ramp should be.
-So the expression is a clean floor-quantized linear interpolation from 64 to 1792.
+The floor-quantized expression checks out at the endpoints: step 0 gives `64*(64//64) = 64` (one block), the
+final step gives `64*(1792//64) = 1792`, and the midpoint gives `64*(928//64) = 896`, the average a linear
+ramp should hit.
 
 ```python
 # Set the attention blocksize for the current step, in chunks of 64. By @fernbear.bsky.social
@@ -123,37 +120,21 @@ kv_idx < attn_blocksize` line — so I don't touch the mask logic at all; I just
 window instead of a constant, and `create_block_mask` rebuilds with the current width each forward. The
 plumbing is identical; only the number flowing into it now moves. And it composes with the document mask
 untouched: a query still can't cross a document boundary, and now additionally can't reach past the current
-window, both from the same three-predicate AND. It's also worth stating what this change costs in the ledger:
-nothing. No new parameters (the window is a schedule, not a learnable), no new tensors of consequence (one
-scalar int per step), no new compute machinery (the windowing kernel already exists from last rung) — it is
-purely a schedule on a hyperparameter I already have, which is the cheapest kind of win there is and the same
-category as the momentum warmup and the LR schedule. That's why it's worth doing even for a modest expected
-gain: the downside is bounded to "the schedule shape was slightly wrong," recoverable by re-sloping, with no
-parameters or compute sunk.
+window, both from the same three-predicate AND. The change costs nothing in the ledger — no new parameters,
+one scalar int per step, no new compute machinery — purely a schedule on a hyperparameter I already have, the
+same category as the momentum warmup, with the downside bounded to "the shape was slightly wrong," recoverable
+by re-sloping.
 
-Let me put numbers on the "cheaper early steps" to know how much I'm actually saving. The windowed attention
-does ~T·W score computations per head, so at fixed T = 65536 the attention work is directly proportional to
-the window W. At step 0, W = 64: that's 65536 × 64 ≈ 4.2M score pairs per head. At the end, W = 1792: 65536 ×
-1792 ≈ 117M pairs — 28× more. So the earliest steps do roughly one twenty-eighth of the attention arithmetic
-of the final steps; the attention matmul is nearly free at the start and grows linearly to full cost by the
-end. Averaged over the run, the attention work is proportional to the average window 928 rather than 1792, so
-if I were holding at 1792 the whole time the attention portion of every step would be ~1.9× what the ramp
-averages. Attention isn't the entire step — the MLPs, embedding, and head are fixed cost — but it's the
-dominant piece I profiled last rung, so roughly halving its average should be a visible step_avg cut, largest
-in the early steps and shrinking to zero savings by the final step where the ramp reaches 1792. The 27
-recompiles don't eat this: each is a one-time compile of the kernel for a given window, reused for every step
-until the window next increments, so the compile cost amortizes across the ~65 steps that share each window
-value.
+Attention work per head is ~T·W, so at the 64-token start it does one twenty-eighth of the arithmetic of the
+1792-token end. Attention isn't the whole step — the MLPs, embedding, and head are fixed cost — but it's the
+dominant piece I profiled last rung, so averaging its window at 928 rather than 1792 should show up as a
+visible step_avg cut, largest early and shrinking to zero by the final step. The 27 recompiles don't eat it:
+each is one-time and amortizes across the ~65 steps that share a window value.
 
-What I expect: the early steps get cheaper because they run with a 64-token window instead of the full fixed
-one, which trims per-step time over the first stretch of training; the curriculum lets the model nail local
-structure before being asked to use long-range context, which should let it reach the bar in slightly fewer
-steps; and the staged early phase should tighten the variance that the fixed-window record showed. So the
-falsifiable signature is a *step_avg* drop (the distinguishing fingerprint — the last three rungs moved step
-count, this one should move per-step time via the cheaper early windows) alongside a small step-count cut and
-a steadier, ideally lower val_loss. I'd expect the step count from 1875 toward ~1750 with step_avg falling
-below 161.84 ms. If step_avg *doesn't* drop, that would say the early small-window steps aren't actually where
-the attention time was, and I'd look at whether the mask rebuild or something else dominates.
+So the distinguishing signature is a *step_avg* drop — the last three rungs moved step count, this one should
+move per-step time via the cheaper early windows — alongside a small step-count cut (the curriculum) and a
+steadier, ideally lower val_loss (the tamed variance). If step_avg *doesn't* drop, the early small-window
+steps aren't where the attention time was, and I'd look at whether the mask rebuild dominates.
 
 There's a tension in the endpoint I should name. Because the window only reaches 1792 at the very last step,
 the model gets very little training *at* its full context — the widest window is exercised for only a handful
@@ -167,12 +148,3 @@ curriculum built. But it's a genuine knob: if val_loss comes in worse, the fix i
 *earlier* (steepen the ramp or cap it before the final step) so the model gets more full-context steps,
 trading back some of the early cheapness for late-context training. For now the bet is that local-first with a
 brief wide-context tail is the right allocation, because that's where the entropy is.
-
-The chain: the FlexAttention record cut steps 37% but left a fixed window and raised variance, and a fixed
-window assumes the right amount of context is constant across training — wrong at both ends, since early on
-the model can't use long-range context (and pays ~28× for it in slower steps) while late on it can and
-should; so I grow the window linearly from 64 to ~1792 tokens (average 928, ~half the per-token attention
-work of holding at 1792), quantized to multiples of 64 so FlexAttention recompiles only ~27 times across the
-run, with the schedule expression traced to start at 64 and end at 1792 — which makes early steps cheaper
-(step_avg down), acts as a short-to-long-context curriculum that reaches the bar in slightly fewer steps, and
-tames the run-to-run variance the fixed window left behind.

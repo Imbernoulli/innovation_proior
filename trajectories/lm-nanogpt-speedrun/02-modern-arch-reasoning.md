@@ -60,11 +60,8 @@ larger effective gradient on the winning key → q,k grow further. QK-norm cuts 
 q and k along the head dimension so each has unit RMS (norm √d exactly), and then qᵀk = √d·√d·cos(θ) = d·cos(θ),
 a bounded cosine similarity times a fixed d — after the 1/√d it's √d·cos(θ), capped at √d = √128 ≈ 11.3 in
 magnitude regardless of how the raw q,k norms drift. The logit can no longer run away because its scale is
-now a geometric constant, not a learned magnitude. The fix is
-to normalize the per-head query and key vectors before the dot product — RMS-norm q and k along the head
-dimension so each has unit RMS and hence norm √d. Then the attention score is essentially d·cos(angle), a
-cosine-like similarity at a controlled scale — the logits can't run away no matter how the raw q,k norms
-drift, and training is steadier. "QK norm." Apply rotary first, then norm q and k. And notice this interacts
+now a geometric constant, not a learned magnitude, and training is steadier. "QK norm." Apply rotary first,
+then norm q and k. And notice this interacts
 with a change I'm about to make below: I'm going to *widen* the heads to d = 128, which doubles the number
 of terms in that qᵀk sum versus d = 64, so the un-normalized logits would be even larger and QK-norm matters
 *more* at the wider head, not less. The two changes support each other.
@@ -118,19 +115,14 @@ makes the `1/√(2·n_layer)` fudge redundant: the variance it was there to cont
 the zero init, so I can delete `attn_scale` entirely. One knob removed, gentler start, and the LR can be
 pushed harder because the early steps aren't fighting random init.
 
-Let me sanity-check the variance claim with actual numbers, since deleting a scale factor is the kind of
-thing that quietly blows up if I'm wrong. Suppose the pre-attention RMSNorm hands each sublayer a unit-RMS
-input, so var ≈ 1 going in. With standard random init, an attention or MLP sublayer outputs a vector whose
-per-coordinate variance is some O(1) value v — say v ≈ 1 for the estimate. The residual stream is the running
-sum x + sublayer₁ + sublayer₂ + …, and independent additions add variances, so after the 2·12 = 24 sublayers
-the stream variance is ≈ 1 + 24v ≈ 25, i.e. its RMS has grown by 5× from input to output — the deep blocks
-see a residual that's a factor of 5 hotter than the shallow ones, and the softmax/logit scales drift with
-depth. The baseline's 1/√24 ≈ 0.204 factor multiplies each contribution's variance by 1/24, giving 1 + 24·v/24
-≈ 2, RMS growth √2 — bounded, which is the whole point of the fudge. Zero-init does better than bounded: with
-c_proj = 0 every sublayer outputs exactly 0 at step zero, so the sum is just x and the stream variance is
-*exactly* 1 at every depth — no growth, no depth-dependent drift, and nothing for a scale factor to correct.
-So dropping `attn_scale` isn't a leap of faith; it's arithmetically redundant once the projections start at
-zero, and the identity-stack start is strictly gentler than the √2-growth the fudge allowed.
+Put numbers on it, since deleting a scale factor blows up quietly if I'm wrong. With a unit-RMS input and
+each of the 24 sublayers adding an ~O(1)-variance vector, the stream variance runs to ≈ 1 + 24 ≈ 25 — RMS
+grown 5×, the deep blocks a factor of 5 hotter than the shallow ones. The 1/√24 factor scales each
+contribution's variance by 1/24, giving variance ≈ 2, RMS growth √2 — bounded, the point of the fudge.
+Zero-init does better than bounded: with c_proj = 0 every sublayer outputs exactly 0 at step zero, so the
+stream variance is *exactly* 1 at every depth. Dropping `attn_scale` is therefore arithmetically redundant
+once the projections start at zero, and the identity-stack start is strictly gentler than the √2-growth the
+fudge allowed.
 
 Last, a pure-efficiency detail that's free loss-wise but real on wallclock: the GPT-2 vocab is 50257
 tokens, an ugly number for the head matmul and the embedding. The head computes (tokens × 768) @ (768 ×
@@ -155,79 +147,9 @@ changes makes it hard to know which paid off, and some of them (zero-init especi
 rate re-tuned or they'll stall — so I'll re-tune the schedule (the warmdown and total iteration count) along
 with this rather than assume the old schedule transfers.
 
-If the mechanism is right, the falsifiable signature is two-pronged and I can state it against this record's
-numbers: the step count should drop below 6200 (a better function to fit), and the step_avg should drop
-below 216 ms (the padded vocab plus the wider, kernel-friendlier heads), so both factors of the wallclock
-product move the same way — a compounding cut rather than a single lever. I'd expect the step count toward
-roughly 5100 and the step time noticeably under 216 ms; if instead the step count falls but step_avg *rises*,
-that would say the wider heads cost more than the padded vocab saved, and I'd reconsider head dim 128.
-
-Here is the modernized block and config — the deltas against the prior Muon script.
-
-```python
-class CausalSelfAttention(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        self.n_head = config.n_head
-        self.n_embd = config.n_embd
-        self.head_dim = self.n_embd // self.n_head
-        assert self.n_embd % self.n_head == 0
-        self.c_q = nn.Linear(self.n_embd, self.n_embd, bias=False)   # split QKV
-        self.c_k = nn.Linear(self.n_embd, self.n_embd, bias=False)
-        self.c_v = nn.Linear(self.n_embd, self.n_embd, bias=False)
-        self.c_proj = nn.Linear(self.n_embd, self.n_embd, bias=False)
-        self.c_proj.weight.data.zero_()  # zero init suggested by @Grad62304977
-        self.rotary = Rotary(self.head_dim)
-
-    def forward(self, x):
-        B, T, C = x.size()
-        q = self.c_q(x).view(B, T, self.n_head, self.head_dim)
-        k = self.c_k(x).view(B, T, self.n_head, self.head_dim)
-        v = self.c_v(x).view(B, T, self.n_head, self.head_dim)
-        cos, sin = self.rotary(q)
-        q, k = apply_rotary_emb(q, cos, sin), apply_rotary_emb(k, cos, sin)
-        q, k = F.rms_norm(q, (q.size(-1),)), F.rms_norm(k, (k.size(-1),))  # QK norm
-        y = F.scaled_dot_product_attention(q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2), is_causal=True)
-        y = y.transpose(1, 2).contiguous().view_as(x)
-        y = self.c_proj(y)
-        return y
-
-class MLP(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        self.c_fc   = nn.Linear(config.n_embd, 4 * config.n_embd, bias=False)
-        self.c_proj = nn.Linear(4 * config.n_embd, config.n_embd, bias=False)
-        self.c_proj.weight.data.zero_()  # zero init
-    def forward(self, x):
-        x = self.c_fc(x)
-        x = F.relu(x).square()  # squared ReLU; ~1-2% better than GELU
-        x = self.c_proj(x)
-        return x
-
-class Block(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        self.attn = CausalSelfAttention(config)
-        self.mlp = MLP(config)
-    def forward(self, x):
-        x = x + self.attn(F.rms_norm(x, (x.size(-1),)))   # no attn_scale: zero-init projections handle it
-        x = x + self.mlp(F.rms_norm(x, (x.size(-1),)))
-        return x
-
-@dataclass
-class GPTConfig:
-    vocab_size : int = 50304   # 50257 padded up to a multiple of 128
-    n_layer : int = 12
-    n_head : int = 6           # head dim 128
-    n_embd : int = 768
-```
-
-The chain: the Muon record splits into steps × step_avg, and the architecture pins both, so I attack both
-at once. GELU → ReLU² and head dim 64 → 128 give a function that fits faster; QK-norm bounds the qᵀk logits
-(and matters *more* at the wider head, where the dot product has twice the terms) and parameter-free RMSNorm
-removes unused affine params; splitting QKV gives Muon three clean n×n matrices and retires its special-case
-branch; zero-initializing the residual output projections starts the net as an identity stack with residual
-variance exactly O(1), which lets the `1/√(2·n_layer)` ≈ 0.204 attn-scale be dropped and the early dynamics
-gentle enough to keep the learning rate high; and padding the vocab to 50304 = 128·393 lines the fattest
-matmul up with the tensor-core tile, cutting per-step time at zero loss cost. Together these should cut the
-step count from 6200 toward ~5100 *and* pull step_avg under 216 ms at the same 3.28 bar.
+If the mechanism is right the signature is two-pronged, and distinct from the last rung's single lever: the
+step count should drop below 6200 (a better function to fit) *and* the step_avg below 216 ms (the padded
+vocab plus the kernel-friendlier heads), both factors of the wallclock product moving the same way. If
+instead the step count falls but step_avg *rises*, that says the wider heads cost more than the padded vocab
+saved and I'd reconsider head dim 128. The modernized attention/MLP/block/config is in the answer — the
+deltas against the prior Muon script.

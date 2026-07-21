@@ -108,10 +108,7 @@ state h), the first update pulls the true-token row toward +h with magnitude ~1,
 50303 wrong rows *away* from h by a tiny ~h/V. So the first step is exactly the right shape: a strong, clean
 signal that "this hidden state should score token t highly," and an almost-imperceptible push on everything
 else — no thrashing, no large wrong corrections to undo. Contrast a random-init head, whose first gradient
-also has to cancel out whatever confident-but-wrong logits the random rows produced, wasting the step. And the
-scaling is sane in the limit: shrink V toward a tiny vocabulary and the initial loss ln V shrinks toward 0
-with the wrong-row gradients growing to O(1/V) that's no longer negligible — i.e. the "flat push on the
-losers" only becomes vanishing *because* the vocabulary is large, which is precisely this regime. The
+also has to cancel out whatever confident-but-wrong logits the random rows produced, wasting the step. The
 max-entropy start is both the gentlest and the most informative first step available.
 
 One more thing the untie exposes. With tying, the embedding vector that seeded the residual stream was the
@@ -138,62 +135,19 @@ magnitude of the residual stream that every sublayer's output is added *onto*. I
 *smaller* correction to a 2×-larger running sum — the blocks' relative influence on the stream silently
 shrinks as the embedding inflates. Pinning x0 to unit RMS at the source fixes the baseline the whole residual
 stream is measured against, so the sublayers keep a stable proportionate voice regardless of what the
-embedding table's overall scale does. That's a concrete, mechanical reason the post-embed norm earns its
-place beyond tidiness — it's not re-normalizing something already normalized, it's normalizing the one
-quantity (the residual baseline) that the in-block norms structurally can't reach.
+embedding table's overall scale does. The post-embed norm isn't re-normalizing something already normalized;
+it's normalizing the one quantity — the residual baseline — that the in-block norms structurally can't reach.
 
-Let me weigh the alternatives before I commit, because untying isn't the only way to unstick the head. I
-could leave the matrix tied and just give the head its own learning rate or a learned output scale — cheap,
-no new parameters — but that doesn't resolve the core tension: one matrix still has to be simultaneously a
-good input geometry and a good output geometry, and a scalar knob can't let those two arrangements differ.
-I could untie but random-init the head — but then I pay the 39M *and* lose the gentle max-entropy start,
-getting the worst of both. Or I could untie, zero-init the head, and normalize the embedding — pay the 39M
-once and take both the specialization and the clean start. The third is the only option that spends the
-parameter cost and collects both benefits, so that's the bundle: untie into two matrices, zero-init the head
-so training starts from the uniform-logit max-entropy point at ~10.83 nats, and RMS-norm the embedding right
-after lookup so the input scale is pinned.
+The cheaper alternatives don't actually resolve the tension: a shared matrix with its own head learning rate
+or a learned output scale still forces one geometry to be both a good input lookup and a good output
+classifier, and a scalar knob can't let the two arrangements differ; untying but random-init'ing the head
+pays the 39M *and* forfeits the gentle max-entropy start. Only untie + zero-init head + post-embed norm
+spends the parameter cost once and collects both the specialization and the clean start, so that's the
+bundle.
 
-If the mechanism is right, the falsifiable signature is specific and distinguishable from the last rung's.
-Untying adds no forward matmul, so the per-step time should be essentially *unchanged* by the untie itself
-(any step-time movement would come from other tuning, not from the extra matrix, which only sits in memory);
-what should move is the *step count*, downward, because two specialized matrices fit the input-and-output
-problem in fewer updates than one overloaded matrix. So I expect the record to read as "fewer steps at
-roughly flat step_avg" — the opposite fingerprint from the modern-arch record, which moved both factors.
-Concretely I'd expect the step count down from 5100 toward the mid-4000s while step time holds near where the
-body's tuning has it. If instead the step count *rises*, that would say the 39M of fresh parameters slowed
-convergence more than specialization helped, and I'd back off — the risk I named up front, now measurable.
-
-```python
-class GPT(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        self.transformer = nn.ModuleDict(dict(
-            wte = nn.Embedding(config.vocab_size, config.n_embd),
-            h = nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
-        ))
-        # head is now its own matrix, no longer tied to wte
-        self.lm_head = CastedLinear(config.n_embd, config.vocab_size)
-        self.lm_head.weight.data.zero_()   # start from uniform logits / max-entropy loss
-
-    def forward(self, idx, target):
-        x = self.transformer.wte(idx[None])     # token embeddings
-        x = norm(x)                              # RMS-norm the embedding right after lookup
-        for block in self.transformer.h:
-            x = block(x)
-        x = norm(x)
-        logits = self.lm_head(x)
-        logits = logits.float()
-        loss = F.cross_entropy(logits.view(-1, logits.size(-1)), target.view(-1))
-        return loss
-```
-
-The chain: the modern-arch record moved both wallclock factors and improved the margin, so the body and
-optimizer are good and the last untouched piece is the tied embedding/head — a single matrix forced to be
-simultaneously a good input lookup table and a good output classifier, two genuinely different geometries
-that compromise each other. Untying lets the optimizer specialize each, paying ~39M parameters of *training
-memory* only (active params per token, forward matmuls, and throughput all unchanged, so the speedrun charge
-is fine); the fresh head is zero-initialized so loss starts at the max-entropy log(vocab) ≈ 10.83 nats with
-no random head noise; and the embedding is RMS-normed immediately after lookup so the first block always sees
-a unit-scale input, decoupling the embedding's direction from its magnitude now that the tie no longer
-constrains its scale. Two specialized, gently-started matrices should reach 3.28 in fewer steps than one
-overloaded one, at essentially unchanged step time.
+Untying adds no forward matmul, so per-step time should be essentially unchanged by the untie itself; what
+moves is the step count, downward — two specialized matrices fit the input-and-output problem in fewer
+updates than one overloaded matrix — a "fewer steps at flat step_avg" fingerprint, opposite the modern-arch
+record's. If the step count *rises* instead, the 39M of fresh parameters slowed convergence more than
+specialization helped, and I'd back off — the risk I named up front, now measurable.
+The two-matrix `GPT` (separate `wte` and zero-init `lm_head`, `x = norm(wte(idx))`) is in the answer.

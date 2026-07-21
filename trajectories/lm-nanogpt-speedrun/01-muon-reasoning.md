@@ -82,8 +82,8 @@ spectrum-flat — the argument above works whether the small singular values com
 "not starved." There's a classic tool for applying a scalar function to the singular values of a matrix using
 only matrix multiplies: a polynomial iteration. If p(x) is an odd polynomial that drives the interval (0, 1]
 toward 1, then applying p to the matrix — built only from G, GGᵀ, and products — applies p to each singular
-value while leaving the singular vectors fixed. That last fact is the crux and worth checking rather than
-asserting: if G = U S Vᵀ, then G Gᵀ G = U S Vᵀ · V S Uᵀ · U S Vᵀ = U S³ Vᵀ, and likewise (GGᵀ)² G = U S⁵ Vᵀ,
+value while leaving the singular vectors fixed. That last fact is the crux: if G = U S Vᵀ, then
+G Gᵀ G = U S Vᵀ · V S Uᵀ · U S Vᵀ = U S³ Vᵀ, and likewise (GGᵀ)² G = U S⁵ Vᵀ,
 so any odd polynomial a·X + b·XXᵀX + c·(XXᵀ)²X equals U (a S + b S³ + c S⁵) Vᵀ — the U and V ride through
 untouched and the polynomial acts on the diagonal S entry-by-entry. So a matmul-only iteration is exactly a
 way to apply a scalar function σ ↦ a σ + b σ³ + c σ⁵ to the whole singular spectrum at once. Newton–Schulz
@@ -108,8 +108,8 @@ the point where the iteration stops converging to exactly 1 everywhere is fine �
 the singular values not at 1 but scattered around it. The coefficients that do this come out to roughly
 (a, b, c) = (3.4445, −4.7750, 2.0315). Slope at zero 3.4445 — more than double the safe iteration's 1.5.
 
-Let me actually run this on a couple of singular values by hand, because I want to see both that it pulls
-starved directions up fast and how badly it overshoots, and I'd rather have numbers than a hope. Take a
+Run this on a couple of singular values by hand, to see both that it pulls starved directions up fast and
+how badly it overshoots. Take a
 starved singular value σ = 0.1. One step: p(0.1) = 3.4445(0.1) − 4.7750(0.001) + 2.0315(1e-5) = 0.34445 −
 0.004775 + 0.00002 ≈ 0.340. So a value at 0.1 is pulled up to 0.34 in a single step — a 3.4× amplification,
 which is just the slope-at-zero doing its job. Second step: p(0.340) = 3.4445(0.340) − 4.7750(0.0393) +
@@ -158,7 +158,7 @@ transformer block matrices — that ≈85M of the ≈124M total parameters — a
 embedding/head, the remaining ≈39M. Two optimizers, side by side, each stepping the parameters it's suited
 to. I'll name the new one after what it does — momentum, orthogonalized by Newton–Schulz: Muon.
 
-Is the "nearly free" claim actually true, or am I hoping? Let me estimate the arithmetic. One Newton–Schulz
+Now the arithmetic behind the "nearly free" claim. One Newton–Schulz
 step on an n×n matrix is three matmuls (XXᵀ, then A@X, then A@B), ≈ 3n³ multiply-adds; for n = 768 that's
 ≈ 3·4.5e8 ≈ 1.4e9 MACs, and five steps ≈ 7e9. Across the body's ≈14 matrices per model that's on the order
 of 1e11–1e12 FLOPs of orthogonalization per optimizer step. An H100 does bf16 matmul at ~10^15 FLOP/s, so
@@ -178,81 +178,11 @@ training, eating the gain — the band [0.7, 1.1] means the update isn't exactly
 residual anisotropy interacts badly with a high LR the run could get twitchy. But the whole point of
 normalizing G by its norm up front and of momentum-smoothing before orthogonalizing is to keep the
 iteration in the stable regime; I'll set the Muon learning rate well below the AdamW head's (0.1× to start)
-and warm into it. If the mechanism is right, the falsifiable signature is specific: the step count to reach
-3.28 should fall meaningfully below the baseline's while the per-step time barely moves (since I've added
-only ~1% of matmul), so train_time should drop roughly in proportion to the step-count cut — not through a
-cheaper step, but through fewer of them. If instead the step time balloons or the step count doesn't fall,
-the "nearly free, better direction" story is wrong and I'd back off the LR or the coefficients.
+and warm into it. If the mechanism is right the step count to reach 3.28 falls below the baseline's while
+the per-step time barely moves, so train_time drops roughly in proportion to the step-count cut — not
+through a cheaper step, but through fewer of them; if the step time balloons instead, the "nearly free"
+story is wrong and I back off the coefficients or the LR.
 
-Here is the optimizer, run on the transformer body alongside AdamW for the embedding and head.
-
-```python
-@torch.compile
-def zeropower_via_newtonschulz5(G, steps=10, eps=1e-7):
-    """
-    Newton-Schulz iteration to compute the zeroth power / orthogonalization of G. We opt to use a
-    quintic iteration whose coefficients are selected to maximize the slope at zero. For the purpose
-    of minimizing steps, it turns out to be empirically effective to keep increasing the slope at
-    zero even beyond the point where the iteration no longer converges all the way to one everywhere
-    on the interval. This iteration therefore does not produce UV^T but rather something like US'V^T
-    where S' is diagonal with S_{ii}' \\sim Uniform(0.5, 1.5), which turns out not to hurt model
-    performance at all relative to UV^T, where USV^T = G is the SVD.
-    """
-    assert len(G.shape) == 2
-    a, b, c = (3.4445, -4.7750,  2.0315)
-    X = G.bfloat16() / (G.norm() + eps)  # ensure top singular value <= 1
-    if G.size(0) > G.size(1):
-        X = X.T
-    for _ in range(steps):
-        A = X @ X.T
-        B = A @ X
-        X = a * X + b * B + c * A @ B
-    if G.size(0) > G.size(1):
-        X = X.T
-    return X.to(G.dtype)
-
-class Muon(torch.optim.Optimizer):
-    """Muon: MomentUm Orthogonalized by Newton-schulz."""
-    def __init__(self, params, lr=3e-4, momentum=0.95, nesterov=True, backend='newtonschulz5', backend_steps=5):
-        defaults = dict(lr=lr, momentum=momentum, nesterov=nesterov, backend=backend, backend_steps=backend_steps)
-        super().__init__(params, defaults)
-
-    def step(self):
-        for group in self.param_groups:
-            lr = group['lr']; momentum = group['momentum']
-            zeropower_backend = zeropower_backends[group['backend']]
-            for p in group['params']:
-                g = p.grad
-                if g is None:
-                    continue
-                state = self.state[p]
-                if 'momentum_buffer' not in state:
-                    state['momentum_buffer'] = torch.zeros_like(g)
-                buf = state['momentum_buffer']
-                buf.mul_(momentum).add_(g)
-                if group['nesterov']:
-                    g = g.add(buf, alpha=momentum)
-                if g.size(0) == 3 * g.size(1):  # split grouped QKV parameters
-                    g = torch.cat([zeropower_backend(g1, steps=group['backend_steps']) for g1 in g.split(g.size(1))])
-                    scale = g.size(1)**0.5
-                else:
-                    g = zeropower_backend(g, steps=group['backend_steps'])
-                    scale = max(g.size(0), g.size(1))**0.5  # scale to have update.square().mean() == 1
-                p.data.add_(g, alpha=-lr * scale)
-
-# embedding + head on AdamW; transformer body on Muon
-optimizer1 = torch.optim.AdamW(raw_model.lm_head.parameters(), lr=args.learning_rate, betas=(0.9, 0.95), weight_decay=0, fused=True)
-optimizer2 = Muon(raw_model.transformer.h.parameters(), lr=0.1*args.learning_rate, momentum=0.95)
-```
-
-So the causal chain: AdamW is a diagonal preconditioner blind to a weight matrix's singular structure, so
-its updates inherit the gradient's anisotropy and starve the small singular directions; the second-order
-family sees that structure but pays an SVD/eigendecomposition tax that would blow the per-step budget;
-orthogonalizing the momentum-smoothed gradient (step along U Vᵀ) makes the update spectrum-flat and is
-exactly the polar factor the second-order family whitens toward, but I only need the *zeroth* power, which
-a matmul-only quintic Newton–Schulz applies to the singular spectrum with U, V riding through untouched;
-slope-at-zero-maximizing coefficients (3.4445, −4.7750, 2.0315) pull starved singular values up in two
-steps (0.1 → 0.34 → 0.99 by hand) at the cost of a mild overshoot that leaves the spectrum in a flat band
-around 1, all in bf16 matmuls that cost under ~1% of the step; applied to the ≈85M-parameter transformer
-body (AdamW kept for the ≈39M embedding/head), this should drop the loss faster per step and let me cut the
-iteration count — which, since the step time barely moves, is the wallclock.
+I run the new optimizer on the transformer body's 2D matrices — that ≈85M of the ≈124M total — and keep
+AdamW for the embedding/head; the full `zeropower_via_newtonschulz5` iteration and `Muon` class are in the
+answer.

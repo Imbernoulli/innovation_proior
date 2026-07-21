@@ -79,26 +79,20 @@ kernel actually operates on. So the three conditions I want become three predica
 familiar `q_idx >= kv_idx`. The document constraint I get by computing a cumulative-sum document id: every
 time I pass the EoS token id 50256 the doc id increments, so `docs = (idx == 50256).cumsum(0)` tags each
 position with which document it belongs to, and `docs[q_idx] == docs[kv_idx]` is true exactly when query and
-key live in the same document. Let me trace that to be sure I have the boundary right: for a stream
-`[a, a, <eos>, b, b]` with EoS at position 2, `(idx==50256)` is `[0,0,1,0,0]` and its cumsum is
-`[0,0,1,1,1]`. So positions 0,1 (the a's and could include the eos... position 2 has doc id 1) — position 0
-and 1 have doc id 0, position 2 (the EoS itself) has id 1, positions 3,4 (the b's) have id 1. A query at
-position 4 (a b) has doc id 1 and can attend to positions 2,3,4 (all doc id 1) but not 0,1 (doc id 0) — so it
-sees the b's and the EoS delimiter but not the earlier document's a's. That's exactly the separation I want,
-and note the EoS lands with the *following* document, which is fine — it's a delimiter the next document can
-attend to as its start marker. And the window is `q_idx - kv_idx < attn_blocksize` — the query only reaches
+key live in the same document. Trace the boundary: for a stream `[a, a, <eos>, b, b]` with EoS at position 2,
+`(idx==50256)` is `[0,0,1,0,0]` and its cumsum `[0,0,1,1,1]`, so positions 0,1 (the a's) have doc id 0 and
+positions 2,3,4 (the EoS and the b's) have doc id 1. A query at position 4 can then attend to 2,3,4 but not
+0,1 — it sees the b's and the delimiter but not the earlier document's a's. The EoS lands with the *following*
+document, which is fine: a start marker the next document can attend to. And the window is
+`q_idx - kv_idx < attn_blocksize` — the query only reaches
 `attn_blocksize` tokens back. The mask is the AND of the three, and that single predicate is the whole
 specification; FlexAttention turns it into the kernel.
 
-One reassuring check on the window predicate: if I set `attn_blocksize` ≥ T, the condition `q_idx - kv_idx <
-attn_blocksize` is true for every causal pair, so the window mask disappears and I recover ordinary dense
-causal attention *within each document*. The windowed form therefore strictly generalizes the dense
-document-causal attention — it's the same computation with a knob that, turned to its maximum, gives back the
-full map. So by choosing W ≈ 1024 ≪ T = 65536 I'm not adopting a different, weaker attention; I'm taking the
-same attention and declining to compute the long-range pairs, and the only thing the model gives up is the
-ability to attend *beyond* 1024 tokens within a single document — which, per the locality argument, is signal
-it rarely used. That framing also tells me the safe fallback if loss regresses: widen W toward T and I
-continuously approach the dense behavior, trading speed back for range.
+Setting `attn_blocksize` ≥ T makes the window predicate true for every causal pair, recovering ordinary dense
+document-causal attention — so the windowed form strictly generalizes it, and choosing W ≈ 1024 ≪ T = 65536
+just declines to compute the long-range pairs, giving up only the ability to attend beyond 1024 tokens within
+a document (signal the locality argument says is rarely used). That also gives the safe fallback if loss
+regresses: widen W toward T to trade speed back for range.
 
 The one recurring cost I'm adding is rebuilding the block mask each forward, and I should check it's cheap
 enough not to eat the win. `create_block_mask` doesn't evaluate the predicate per token pair — that would be
@@ -141,42 +135,15 @@ constraint isn't a limitation on throughput, it's just a relocation of the batch
 across-device. The block mask itself has to be
 rebuilt each forward, because the document boundaries depend on the actual tokens in this step's stream —
 `create_block_mask(document_causal_mask, None, None, S, S, device="cuda", _compile=True)` where `S = len(idx)`
-— and I let it compile, caching the kernel. The attention call becomes
-`flex_attention(q.transpose, k.transpose, v.transpose, block_mask=block_mask)` in place of
-`F.scaled_dot_product_attention`, everything else in the block — the QK-norm, the rotary, the value-residual
-mix `v = (1-lamb)*v + lamb*vi` — left exactly as it was.
+— and I let it compile, caching the kernel. The attention call becomes `flex_attention(...)` in place of
+`F.scaled_dot_product_attention`; everything else in the block — the QK-norm, the rotary, the value-residual
+mix — is left exactly as it was. The full attention forward and the sequence-length change are in the answer.
 
-```python
-from torch.nn.attention.flex_attention import flex_attention, create_block_mask
-flex_attention = torch.compile(flex_attention, dynamic=False)
-create_block_mask = torch.compile(create_block_mask, dynamic=False)
-
-def forward(self, x, vi, block_mask):
-    B, T = x.size(0), x.size(1)
-    assert B == 1, "Must use batch size = 1 for FlexAttention"
-    q = self.c_q(x).view(B, T, self.n_head, -1)
-    k = self.c_k(x).view(B, T, self.n_head, -1)
-    v = self.c_v(x).view(B, T, self.n_head, -1)
-    v = (1 - self.lamb) * v + self.lamb * vi.view_as(v)
-    q, k = norm(q), norm(k)
-    q, k = self.rotary(q), self.rotary(k)
-    y = flex_attention(q.transpose(1, 2), k.transpose(1, 2), v.transpose(1, 2), block_mask=block_mask)
-    y = y.transpose(1, 2).contiguous().view_as(x)
-    return self.c_proj(y)
-
-S = len(idx)
-block_mask = create_block_mask(document_causal_mask, None, None, S, S, device="cuda", _compile=True)
-# sequence_length : 64*1024 (was ~1024); batch_size : 8 sequences
-```
-
-What I expect: the per-step time barely moves, because each step still does roughly the same amount of
-useful attention work per token (the window caps how much any query attends to, at ~1024 keys, the same order
-as the old dense 1024-context), but each step now ingests sixty-odd times the tokens, so the number of steps
-to cover my token budget collapses. That's the falsifiable signature — a big *step-count* cut at roughly flat
-step_avg, the opposite fingerprint from a per-step-time optimization — and it comes from buying context
-cheaply rather than from any change to what the model learns. I'd expect the step count down from 3000 toward
-~1875. If instead step_avg balloons, that would mean the windowed kernel isn't actually skipping the
-masked-out blocks (the block-sparsity isn't kicking in at my block granularity) and I'd check the mask.
+So the falsifiable signature is a big *step-count* cut at roughly flat step_avg — the per-step time barely
+moves (each step still does the same order of useful attention work per token, ~1024 keys), but each step
+ingests sixty-odd times the tokens, so the steps to cover the token budget collapse. It comes from buying
+context cheaply, not from any change to what the model learns. If step_avg balloons instead, the windowed
+kernel isn't skipping the masked-out blocks at my block granularity and I'd check the mask.
 
 There's one wrinkle I want to name honestly before I commit, because it's a real cost and not a free lunch.
 Shortening the run this much makes it twitchier. The previous record had already doubled the LR, and a high
@@ -189,13 +156,3 @@ If the variance becomes the binding constraint later, the natural place to attac
 which I'm holding fixed at a single size for the whole run here; there may be slack in *how* the window is
 scheduled rather than in whether it exists. But that's later. For now: replace dense causal attention with a
 windowed, document-masked FlexAttention, lengthen the context to 64K, and let the step count fall.
-
-The chain: the U-net record confirmed both step count and margin moved the right way, and profiling shows each
-step is now dominated by dense O(T²) causal attention, which caps the context at ~1024 tokens; but the
-attention I actually want at long context is sparse — causal, same-document, within a bounded window — and
-the arithmetic shows a T=65536 windowed map with W≈1024 costs the same *per token* as the old 1024 dense map
-while ingesting 64× the tokens; FlexAttention compiles exactly that sparse pattern from a three-predicate
-block mask (causal `q>=kv`, document `docs[q]==docs[kv]` from the EoS cumsum, window `q-kv<blocksize`), so the
-cost goes linear in context and the masked blocks are never touched; that lets me push the sequence length to
-64K with B=1 packed streams, which covers the token budget in ~64× fewer steps and cuts the wallclock hard —
-at the known price of higher run-to-run variance (~0.005 std), whose mean still clears the bar.

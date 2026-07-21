@@ -30,16 +30,9 @@ the pristine early-layer value, and the attention output can't drift entirely aw
 content. It's the value-stream analogue of a residual connection, but across depth rather than within a
 block.
 
-Let me make "attention concentrates with depth" concrete, because it's the load-bearing premise. A head's
-attention distribution over its window is a softmax; its entropy measures how broadly it reads. A maximally
-broad head over a window of W keys has entropy ln W (uniform); a fully concentrated head that dumps all its
-mass on one key has entropy 0. The empirical finding behind value residual is that entropy *falls* with depth
-— early layers read broadly (entropy near ln W), late layers collapse toward a few keys (entropy toward 0).
-The consequence for the value stream is direct: a head that attends to only one or two positions computes its
-output as essentially the value of those one or two tokens, so whatever rich, broad value information the
-early layers gathered is not being read by the deep layers at all — they've narrowed their aperture. Giving
-the deep layer a direct additive line to v1 sidesteps the narrowed aperture entirely: even a fully
-concentrated deep head still gets a (1−λ)·(its own value) + λ·v1 blend, so v1 arrives regardless of where the
+The additive line to v1 sidesteps the narrowed aperture directly: even a fully concentrated deep head — one
+that dumps nearly all its softmax mass on one key and so outputs essentially that single token's value —
+still gets a (1−λ)·(its own value) + λ·v1 blend, so the clean early signal arrives regardless of where the
 softmax points. And why v1 — the *first* block's value — rather than some middle layer's? Because v1 is the
 least-processed thing that is still *in value space*: it's the embedding passed through exactly one value
 projection, so it's the cleanest per-token value available, one transformation deep, before concentration has
@@ -102,21 +95,14 @@ the run*. First, the optimizer side. Muon's momentum is set to 0.95, which is gr
 found a sensible region — momentum averages the orthogonalized updates and smooths the trajectory. But at
 the very start, when the weights are near their zero-init and the loss is dropping fastest, a heavy momentum
 buffer is averaging over updates that are themselves changing direction rapidly; the buffer lags the true
-gradient and the early steps are noisier than they need to be. Let me quantify "heavy": an exponential
-moving average with momentum m has an effective averaging window of about 1/(1−m) updates, so momentum 0.95
-averages over ~1/0.05 = 20 updates, while 0.85 averages over ~1/0.15 ≈ 6.7. Early in training the "right"
-gradient direction is turning over far faster than 20 steps, so a 20-step memory is stale — it's pointing
-where the loss surface *was*, not where it is. Starting at 0.85 (a ~7-step memory) tracks the fresh gradient
-roughly three times more responsively, then ramping to 0.95 restores the smoothing once the trajectory
-settles. Concretely, the buffer is buf ← m·buf + g, so a gradient from k steps ago carries weight ~mᵏ in the
-current buffer: at m = 0.95 a gradient 10 steps old still weighs 0.95¹⁰ ≈ 0.60, and 20 steps old 0.95²⁰ ≈
-0.36 — a long tail of stale directions. At m = 0.85 the same 10-step-old gradient weighs 0.85¹⁰ ≈ 0.20 and
-the 20-step-old one 0.85²⁰ ≈ 0.039 — the tail is cut off fast, so the buffer is dominated by recent gradients.
-That's the quantitative content of "gentler early": in the first 500 steps the update leans on the last ~7
-gradients, which in the fast-turning early landscape actually point where the loss is now. So a momentum *warmup*: start Muon at 0.85 and ramp linearly up to 0.95 over the first 500 steps. In
-the loop: `frac = min(step/500, 1)` and `optimizer3.param_groups[0]['momentum'] = (1 - frac)*0.85 +
-frac*0.95`. It costs nothing — it's a schedule on a hyperparameter I already have, and 500 steps out of ~4500
-is the first ~11% of the run, exactly the fast-changing early phase.
+gradient and the early steps are noisier than they need to be. Quantify "heavy": an exponential moving
+average with momentum m has an effective window of ~1/(1−m) updates, so 0.95 averages over ~20 and 0.85 over
+~7 — and since the buffer weights a gradient from k steps ago by ~mᵏ, at m = 0.95 a 20-step-old gradient
+still weighs 0.95²⁰ ≈ 0.36 (a long stale tail), while at 0.85 it weighs 0.85²⁰ ≈ 0.04 (cut off fast). Early
+in training the "right" direction turns over far faster than 20 steps, so a 20-step memory points where the
+loss surface *was*. So a momentum *warmup*: start Muon at 0.85 (a ~7-step memory tracking the fresh gradient)
+and ramp linearly to 0.95 over the first 500 steps, restoring the smoothing once the trajectory settles. It
+costs nothing — a schedule on a hyperparameter I already have, over the first ~11% of the run.
 
 Second, the logits. I zero-init the head, so the run *starts* from uniform max-entropy logits, which is
 clean — but nothing stops a single logit from blowing up *later* in training. As the head sharpens, one
@@ -124,8 +110,7 @@ coordinate of the 50304-way output can run away, the softmax saturates, the cros
 that coordinate goes tiny or spikes, and I get a noisy, slightly unstable loss curve right where I want it
 smooth. Gemma 2 (Team et al. 2024) handles exactly this with a tanh logit softcap: pass the logits through a
 smooth saturating nonlinearity so they're bounded but the function stays differentiable and monotone. I'll
-cap at 30: `logits = 30 * torch.tanh(logits / 30)`. Let me verify this is near-inert for normal logits and
-only bites on runaways, because a cap that distorts ordinary training would raise the loss. Expand for small
+cap at 30: `logits = 30 * torch.tanh(logits / 30)`. Expand for small
 argument: tanh(z) ≈ z − z³/3, so 30·tanh(logit/30) ≈ logit − logit³/(3·30²) = logit − logit³/2700. At a
 typical logit of 5, the correction is 125/2700 ≈ 0.046 — under 1%, invisible. At logit 10 it's 1000/2700 ≈
 0.37, a few percent. Only as the logit climbs toward 30 does it bend hard: 30·tanh(1) = 30·0.7616 ≈ 22.8, so
@@ -133,16 +118,11 @@ a raw logit of 30 is squashed to 22.8, and the function asymptotes to ±30 no ma
 So it's the identity where training lives and a wall only at the runaway edge — a free stabilizer with a
 negligible footprint (tanh costs the same regardless of the constant).
 
-Before I bundle, let me consider whether these are the *right* tools versus the obvious alternatives. For
-the logit runaway I could use plain gradient clipping or weight decay on the head instead of a softcap — but
-clipping needs a per-run threshold I'd have to tune and it acts on the whole gradient rather than the specific
-pathology, and weight decay pulls the head toward zero indiscriminately, fighting the very sharpening I want.
-The tanh cap is targeted (it acts only on large logits), smooth (no gradient discontinuity to destabilize the
-optimizer), and self-tuning in the sense that the constant 30 is a soft bound, not a hard clip point. For the
-attention-concentration problem I could add more heads or a concentration penalty, but those cost compute or
-a tuned regularizer weight, whereas the value residual is a pointwise mix that's nearly free and addresses the
-mechanism directly (restore access to clean values) rather than penalizing the symptom. So the four I'm
-bundling are each the cheap, targeted, pass-through-at-init choice.
+Each is the cheap, targeted choice over its alternatives: gradient clipping or head weight decay for the
+logit runaway would need a tuned threshold and act on the whole gradient (or drag the head toward zero,
+fighting the sharpening) where the tanh cap is targeted and smooth; more heads or a concentration penalty for
+the attention problem cost compute or a tuned weight where the value residual is a nearly-free pointwise mix
+that addresses the mechanism directly.
 
 So I'm bundling four shortcuts, each derived from the same instinct — give the network direct paths to clean
 signal and don't let any one quantity run away. Value residual with a learnable per-layer lambda (mix in the
@@ -152,57 +132,12 @@ tanh logit softcap at 30 (bound the output so the softmax can't saturate). Each 
 starts from a pass-through or known-good initialization so I'm only ever *adding* capacity the model can
 choose to ignore — which is exactly why bundling them is low-risk here, unlike the modern-arch rung.
 
-If the mechanism is right, the falsifiable signature: the two value-path changes should buy real *steps* —
-better information flow to deep layers is the kind of thing that cuts the iteration count meaningfully — so I
-expect the step count down from 4578 toward ~3200, with val_loss holding under 3.28. The per-step time should
-be roughly flat: the mixes and the x0 threading add a few pointwise operations (a slight bump, not a matmul),
-and the warmup and softcap are free. If instead the step count barely moves, that would say the deep layers
-weren't actually starved of early signal and the value paths are inert — but the fixed-0.5 value residual is
-already reported to help, and the learnable lambda only relaxes it, so I'd be surprised. The learned lambdas
-themselves are a bonus diagnostic: if they settle well away from 0.5, that's direct evidence the layers
-wanted a depth-varying amount of v1 that the constant couldn't give.
-
-```python
-# value residual + learnable lambda, inside the attention block
-def __init__(self, ...):
-    ...
-    self.lamb = nn.Parameter(torch.tensor(0.5))   # value residual lambda, optimized by Adam(lr=0.02)
-
-def forward(self, x, v1=None):
-    ...
-    v = self.c_v(x).view(B, T, self.n_head, self.head_dim)
-    if v1 is None:
-        v1 = v                                            # first block defines the shared value
-    v = (1 - self.lamb) * v + self.lamb * v1.view_as(v)   # mix with first-block value
-
-# embed shortcut, in the Block
-class Block(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        self.attn = CausalSelfAttention(config.n_embd, config.n_head)
-        self.mlp = MLP(config.n_embd)
-        self.lambdas = nn.Parameter(torch.tensor([1., 0.]))
-    def forward(self, x, x0, v1):
-        x = self.lambdas[0] * x + self.lambdas[1] * x0   # embed shortcut
-        x = x + self.attn(F.rms_norm(x, (x.size(-1),)), v1)
-        x = x + self.mlp(F.rms_norm(x, (x.size(-1),)))
-        return x
-
-# momentum warmup for Muon (optimizer3), in the training loop
-frac = min(step/500, 1)
-optimizer3.param_groups[0]['momentum'] = (1 - frac) * 0.85 + frac * 0.95
-
-# tanh logit softcap, before computing the loss
-logits = 30 * torch.tanh(logits / 30)
-```
-
-The chain: as depth grows attention concentrates and late layers lose the early value signal, so I mix each
-layer's value with the first block's v1 (value residual, Zhou et al. 2024) and let a learnable per-layer
-lambda (init 0.5 = the original half-and-half, so pass-through) decide how much per depth; generalizing "give
-deep blocks a clean early signal" I also re-inject the original embedding x0 into every block through two
-learnable scalars (init (1,0), verified to be exactly `x` at step zero); I ramp Muon's momentum from 0.85 to
-0.95 over 500 steps so the early buffer averages ~7 updates instead of ~20 and tracks the fast-changing
-gradient; and I cap the logits with `30*tanh(logits/30)` (Gemma 2's softcap), which the small-argument
-expansion shows is within ~1% of the identity for normal logits and a wall only near ±30. Four small
-shortcuts, each a pass-through at init so bundling is safe, compounding into fewer and cleaner steps to 3.28
-at roughly flat per-step time.
+If the mechanism is right the two value-path changes buy real *steps* — better information flow to deep
+layers cuts the iteration count meaningfully — with val_loss holding under 3.28 and per-step time roughly
+flat (the mixes and x0 threading are a few pointwise ops, not a matmul; the warmup and softcap are free). If
+the step count barely moves, the deep layers weren't starved of early signal after all — but the fixed-0.5
+value residual is already reported to help and the learnable lambda only relaxes it, so I'd be surprised.
+The learned lambdas are a bonus diagnostic: if they settle well away from 0.5, that's direct evidence the
+layers wanted a depth-varying amount of v1 the constant couldn't give. The four changes — the `self.lamb`
+value mix, the `self.lambdas` embed shortcut, the momentum-warmup line, and the tanh softcap — are in the
+answer.
