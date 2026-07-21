@@ -8,7 +8,7 @@ So the disease has a name: co-adaptation. And naming it that way is suggestive, 
 
 How do you stop a unit from relying on a specific partner? Make the partner unreliable. If, on any given training case, any other hidden unit might simply not be there, then a unit *cannot* build a strategy that assumes unit 7 is present and outputting its usual value — because half the time unit 7 isn't present at all. The only strategies that survive are the ones that are useful regardless of which other units happen to be around. So: on each presentation of each training case, delete each hidden unit independently with probability one-half. Forward-propagate through whatever survives, backprop through the same survivors, update. Next case, fresh coin flips.
 
-Let me sanity-check that this does what I want and isn't just adding noise for noise's sake. A unit that had learned "I'm the correction term for units 7, 22, 91" now finds those collaborators absent half the time, in random combinations. Its gradient, averaged over the random contexts, pushes it to be useful *on average across the combinatorial variety of contexts it might find itself in* — not useful in one specific frozen context. That looks like it bites on exactly the brittleness I was trying to kill, rather than on a proxy for it the way weight decay does. I'll hold that as a hypothesis and keep poking at it, because "intuitively attacks the disease" is not the same as "actually works," and I haven't yet checked what this does at test time.
+A unit that had learned "I'm the correction term for units 7, 22, 91" now finds those collaborators absent half the time, in random combinations. Its gradient, averaged over the random contexts, pushes it to be useful *on average across the combinatorial variety of contexts it might find itself in* — not useful in one specific frozen context. That bites on the actual brittleness, not on a proxy for it the way weight decay does. What I haven't checked yet is what happens at test time, once there's no randomness left to average over.
 
 Now, dropping units at random — let me look at the same operation from a completely different angle, because I have a suspicion it's doing more than just "robustifying each unit." Every time I sample a random subset of units to keep, I'm not training the same network — I'm training a *different* network, a thinned-out subnetwork, one of the many you can carve out by deleting units. With N hidden units there are 2^N such subnetworks. And crucially they all share weights: the weight on the connection into unit 7 is the same weight no matter which subnetwork unit 7 happens to appear in. So over the course of training I'm not training one net — I'm training an astronomically large family of nets, 2^N of them, with massive parameter sharing, each one getting a tiny bit of training (basically one mini-update) on whatever case showed up when it was sampled.
 
@@ -22,7 +22,7 @@ Now the hard part. Training is fine — sample a mask, go. But at test time I ca
 
 A hidden unit, during training, is present on half the cases. So a downstream unit receives input from it only half the time. If at test time I switch the unit on permanently, the downstream unit suddenly gets twice the expected input from it compared to training. To keep the downstream input statistics matched to what was learned, I should halve the outgoing weight of every unit. So my candidate "mean network" is: keep all units, but halve all the weights (the weights that were used on a present-half-the-time unit). One pass, all units on, weights halved.
 
-That's a plausible hand-wave, but I don't trust hand-waves about averaging non-linear things. Let me check whether the mean network actually equals the ensemble average in a case I can compute exactly. Take the simplest interesting case: a single hidden layer feeding a softmax output, and let me see what "average over all 2^N masks" really gives and whether halving the weights reproduces it.
+That's a plausible hand-wave, but I don't trust hand-waves about averaging non-linear things — I want to see whether the mean network actually equals the ensemble average in a case I can compute exactly. Take the simplest interesting case: a single hidden layer feeding a softmax output, and work out what "average over all 2^N masks" really gives and whether halving the weights reproduces it.
 
 Set up notation. Hidden activations h_i for i = 1..N (these are fixed once the input is fixed). A mask m ∈ {0,1}^N keeps unit i iff m_i = 1. The logit for class k under mask m is
 
@@ -58,7 +58,7 @@ and
 
 This is the mean network with every outgoing weight halved. The factor of ½ is not a fudge I inserted to make test time cheap — it is (1/2^N)Σ_m m_i, the keep-probability, falling straight out of the averaging. If I use a different drop rate d, the same computation averages masks with their sampling probabilities instead of weighting all masks equally; then E[m_i] = 1 − d, so the test-time multiplier is the keep probability q = 1 − d.
 
-Before I let myself believe an exact equality between a deterministic forward pass and a geometric mean over an exponential family, I should actually run both and compare, because algebra at this scale is exactly where a dropped factor of two or a misplaced normalizer hides. Take a concrete tiny net: N=2 hidden units with fixed activations h = (0.7, −1.3), three output classes, random outgoing weights W and biases b. Enumerate all four masks, softmax each subnetwork's logits, and form the normalized geometric mean by exponentiating the per-class average of log P_m. Then separately compute the single mean-network pass: all units on, weights halved, one softmax. The geometric mean comes out (0.2933, 0.0771, 0.6295); the halved-weight pass comes out (0.2933, 0.0771, 0.6295), agreeing to ~1e-17 — machine zero, so this is an identity and not a near-miss. To make sure I'm not fooling myself that *any* average would match, I also compute the arithmetic mean of the four P_m: (0.3644, 0.0826, 0.5530), which differs from the mean network by 0.077, nowhere near zero. So the equality really is a property of the geometric mean specifically; the cancellation of the log-partition term earlier was load-bearing, and the arithmetic mean would *not* be reproduced by halving the weights. The cheap test-time pass computes the geometric-mean ensemble exactly, for one hidden layer plus softmax.
+Before I let myself believe an exact equality between a deterministic forward pass and a geometric mean over an exponential family, I should actually run both and compare, because algebra at this scale is exactly where a dropped factor of two or a misplaced normalizer hides. Take a concrete tiny net: N=2 hidden units with fixed activations h = (0.7, −1.3), three output classes, outgoing weights W = [[0.9, −0.6, 0.3], [−0.4, 0.8, 0.5]] and bias b = (0.1, −0.2, 0.05). Enumerate all four masks, softmax each subnetwork's logits, and form the normalized geometric mean by exponentiating the per-class average of log P_m. Then separately compute the single mean-network pass: all units on, weights halved, one softmax. The geometric mean comes out (0.6133, 0.1232, 0.2635); the halved-weight pass comes out (0.6133, 0.1232, 0.2635), agreeing to ~1e-17 — machine zero, so this is an identity and not a near-miss. To make sure I'm not fooling myself that *any* average would match, I also compute the arithmetic mean of the four P_m: (0.5981, 0.1409, 0.2610), which differs from the mean network by up to 0.018, not zero. So the equality really is a property of the geometric mean specifically; the cancellation of the log-partition term earlier was load-bearing, and the arithmetic mean would *not* be reproduced by halving the weights. The cheap test-time pass computes the geometric-mean ensemble exactly, for one hidden layer plus softmax.
 
 Now I want to know whether using the geometric mean is a *good* idea or just a convenient one. Convenience that gives a worse answer is a trap. Is the deterministic mean network actually competitive with the thing it's standing in for? Let me compare the mean network's log-probability of the correct class against the average over masks of the individual subnetworks' log-probabilities — i.e., is the single deterministic net at least as good, in log-prob, as a typical sampled net?
 
@@ -86,7 +86,7 @@ Now Hölder with all exponents equal to M gives
 
 Equality in Hölder requires these normalized vectors to be proportional across masks; because each one already sums to one, proportional means identical. That is exactly the condition that all subnetworks make the same predictive distribution. So mean_m log Z_m ≥ log Z′, which gives log G(t) ≥ mean_m log P_m(t), with equality only if the nets all agree.
 
-Let me put a number on this on the same tiny net, because an inequality I derived by chaining a cancellation into Hölder is worth one concrete confirmation. On the N=2 example, log G(t) − mean_m log P_m(t) for the three classes comes out 0.4405, 0.4405, 0.4405 — all positive, so the deterministic pass does beat the average sampled net in log-prob of the truth, and notably the gap is the *same* for every class. That sameness is itself a check on the algebra: the derivation said the gap is mean_m log Z_m − log Z′, a quantity with no k in it, so it had *better* be constant across classes, and it is. Then I force the equality case — set the outgoing weights to zero so every mask produces an identical distribution — and the gap collapses to ~1e-16 for all classes, exactly the "equality iff all nets agree" condition Hölder predicted. So the single deterministic pass is not a worse summary, in this log-prob sense, than the typical sampled net, and the bound is tight precisely where it should be.
+On the same N=2 example, log G(t) − mean_m log P_m(t) for the three classes comes out 0.0656, 0.0656, 0.0656 — all positive, so the deterministic pass does beat the average sampled net in log-prob of the truth, and notably the gap is the *same* for every class. That sameness is itself a check on the algebra: the derivation said the gap is mean_m log Z_m − log Z′, a quantity with no k in it, so it had *better* be constant across classes, and it is. Then I force the equality case — set the outgoing weights to zero so every mask produces an identical distribution — and the gap collapses to zero for all classes, exactly the "equality iff all nets agree" condition Hölder predicted. So the single deterministic pass is not a worse summary, in this log-prob sense, than the typical sampled net, and the bound is tight precisely where it should be.
 
 The regression analogue is even simpler. If the outputs are linear and I average the predictions, the mean prediction's squared error versus the average of the individual squared errors differs by the variance of the predictions across masks, which is nonnegative — so the mean network's squared error is always ≤ the average of the dropout networks' squared errors. Same conclusion, by plain Jensen.
 
@@ -108,126 +108,6 @@ Where to apply it across the depth? Co-adaptation can happen at every layer, so 
 
 Let me also make sure the rest of the net cooperates with aggressive search. In the convolutional models I'll use the max-with-zero nonlinearity, max(0, z), for the hidden units. It doesn't saturate, so it trains faster and its activities just scale with large inputs rather than flattening out — which suits the large-learning-rate regime and removes the need for fussy contrast normalization. The one hazard is a dead unit: if a unit's input is always negative its output is always zero and so is its gradient, so it never learns. To avoid that I initialize weights from a zero-mean normal with variance large enough that units usually get some positive input, and I set the hidden biases to a small positive constant (1) so units start off firing. With that, learning gets off the ground and the dropout masking does its job on top.
 
-Let me trace one mini-batch end to end with all of this in place, because the implementation has to keep the mask consistent between forward and backward. Forward: for the visible units and then for each hidden layer, draw a uniform random matrix U, set mask = (U > drop_rate), and multiply the activations by that mask, remembering it for the hidden layers. Backward: when the gradient arrives at a hidden layer's activations, multiply it by the *same* stored mask, so gradient flows only through the units that were actually present in the forward pass; a dropped unit must receive zero gradient, exactly as if it weren't in the net. Then the usual backprop through the linear weights. Update with momentum, then project each hidden unit's incoming weights back onto the L2 ball of squared radius l. At test time, no masks: run all units, and either scale outgoing weights by keep_prob or, equivalently and more conveniently in code, scale the corresponding activations by keep_prob — same number, same effect, one clean forward pass.
+Here's one mini-batch end to end, since the implementation has to keep the mask consistent between forward and backward. Forward: for the visible units and then for each hidden layer, draw a uniform random matrix U, set mask = (U > drop_rate), and multiply the activations by that mask, remembering it for the hidden layers. Backward: when the gradient arrives at a hidden layer's activations, multiply it by the *same* stored mask, so gradient flows only through the units that were actually present in the forward pass; a dropped unit must receive zero gradient, exactly as if it weren't in the net. Then the usual backprop through the linear weights. Update with momentum, then project each hidden unit's incoming weights back onto the L2 ball of squared radius l. At test time, no masks: run all units, and either scale outgoing weights by keep_prob or, equivalently and more conveniently in code, scale the corresponding activations by keep_prob — same number, same effect, one clean forward pass.
 
-The code shape is the same one I need in a cuda-convnet-style trainer: forward uses a thresholded uniform mask, test multiplies activations by 1 − drop_rate, and backward reuses the stored mask.
-
-```python
-import numpy as np
-
-def relu(z):
-    return np.maximum(0.0, z)
-
-def softmax(z):
-    z = z - z.max(axis=1, keepdims=True)
-    e = np.exp(z)
-    return e / e.sum(axis=1, keepdims=True)
-
-def cross_entropy_grad(probs, y):
-    g = probs.copy()
-    g[np.arange(len(y)), y] -= 1.0
-    return g / len(y)
-
-
-class Layer:
-    """Fully-connected layer with per-unit dropout and a max-norm weight constraint."""
-    def __init__(self, n_in, n_out, drop_rate=0.5, max_sq_norm=15.0, last=False):
-        self.W = np.random.randn(n_in, n_out) * 0.01
-        self.b = np.zeros(n_out) + (0.0 if last else 1.0)  # positive bias keeps ReLU units alive
-        self.drop_rate = 0.0 if last else drop_rate
-        self.keep_prob = 1.0 - self.drop_rate
-        self.max_sq_norm = max_sq_norm
-        self.last = last
-        self.mask = None
-
-    def forward(self, x, train):
-        self.x = x
-        self.z = x @ self.W + self.b
-        a = self.z if self.last else relu(self.z)
-        self.mask = None
-        if self.last or self.drop_rate == 0.0:
-            return a
-        if train:
-            # cuda-convnet mechanics: random uniform mask, keep where U > drop_rate.
-            self.mask = (np.random.rand(*a.shape) > self.drop_rate).astype(a.dtype)
-            a = a * self.mask
-        else:
-            # mean network: all units on, activations scaled by keep_prob = 1 - drop_rate.
-            a = a * self.keep_prob
-        return a
-
-    def backward(self, grad_a):
-        if not self.last:
-            if self.mask is not None:
-                grad_a = grad_a * self.mask    # same mask as the forward pass
-            grad_a = grad_a * (self.z > 0)     # ReLU gate
-        self.gW = self.x.T @ grad_a
-        self.gb = grad_a.sum(axis=0)
-        return grad_a @ self.W.T
-
-    def after_update(self):
-        if self.last:
-            return
-        # Project each hidden unit's incoming vector onto ||w||^2 <= max_sq_norm.
-        sq = (self.W ** 2).sum(axis=0, keepdims=True)
-        scale = np.ones_like(sq)
-        too_large = sq > self.max_sq_norm
-        scale[too_large] = np.sqrt(self.max_sq_norm / sq[too_large])
-        self.W *= scale
-
-
-class Net:
-    def __init__(self, sizes, drop_rate_hidden=0.5, drop_rate_input=0.2):
-        self.drop_rate_input = drop_rate_input
-        self.input_keep_prob = 1.0 - drop_rate_input
-        self.input_mask = None
-        self.layers = []
-        n_layers = len(sizes) - 1
-        for i, (a, b) in enumerate(zip(sizes[:-1], sizes[1:])):
-            last = (i == n_layers - 1)
-            drop = 0.0 if last else drop_rate_hidden
-            self.layers.append(Layer(a, b, drop_rate=drop, last=last))
-
-    def forward(self, x, train):
-        self.input_mask = None
-        if self.drop_rate_input > 0.0:
-            if train:
-                self.input_mask = (np.random.rand(*x.shape) > self.drop_rate_input).astype(x.dtype)
-                x = x * self.input_mask
-            else:
-                x = x * self.input_keep_prob
-        for L in self.layers:
-            x = L.forward(x, train)
-        return softmax(x)
-
-    def backward(self, probs, y):
-        g = cross_entropy_grad(probs, y)
-        for L in reversed(self.layers):
-            g = L.backward(g)
-
-
-def lr_schedule(ep, eps0=10.0, f=0.998):
-    return eps0 * (f ** ep)                  # large initial rate, geometric decay
-
-def momentum_schedule(ep, p_i=0.5, p_f=0.99, T=500):
-    return (ep / T) * p_f + (1 - ep / T) * p_i if ep < T else p_f  # ramp 0.5 -> 0.99
-
-
-def train(net, X, Y, epochs=3000, batch=100):
-    vW = [np.zeros_like(L.W) for L in net.layers]
-    vb = [np.zeros_like(L.b) for L in net.layers]
-    for ep in range(epochs):
-        mom = momentum_schedule(ep)
-        lr  = lr_schedule(ep) * (1 - mom)    # scale step by (1-mom) so high momentum stays sane
-        for i in range(0, len(X), batch):
-            xb, yb = X[i:i+batch], Y[i:i+batch]
-            probs = net.forward(xb, train=True)
-            net.backward(probs, yb)
-            for k, L in enumerate(net.layers):
-                vW[k] = mom * vW[k] - lr * L.gW   # momentum averages over many stochastic nets
-                vb[k] = mom * vb[k] - lr * L.gb
-                L.W += vW[k]; L.b += vb[k]
-                L.after_update()                 # max-norm projection after every update
-```
-
-The causal chain, start to finish: overfitting in a big net is co-adaptation — units that are only useful in the company of specific other units, a conspiracy that fits the training set and breaks on test data. Kill co-adaptation by making every unit's collaborators unreliable: drop each hidden unit with probability one-half on every case. That single act is two things at once — a regularizer that forces each unit to be useful across a combinatorial variety of contexts, and an implicit training of 2^N weight-sharing subnetworks, i.e. model averaging woven into one training run. At test time the average is recovered by one deterministic pass with all units on and activations scaled by keep_prob = 1 − drop_rate, which for a single hidden layer plus softmax is the normalized geometric mean of all 2^N subnets — an exact identity I checked numerically, agreeing to machine precision while the arithmetic mean does not — and which lands no worse, in log-prob of the truth, than a typical sampled net, by a Hölder argument whose gap I confirmed is nonnegative and class-independent. To make this stochastic objective trainable, replace the L2 penalty with a per-hidden-unit max-norm constraint so the learning rate can start huge and search weight space, and ramp momentum toward 0.99 to average gradient information over the ever-changing sampled nets. Use drop_rate = 0.5 where parameters are plentiful and co-adaptation is rife — the fully-connected hidden layers — and use a gentler rate or none on inputs and convolutional layers, where destroying signal or fighting already-shared weights buys less.
+That's the whole training loop — the mechanics match the dropout fork of cuda-convnet: forward applies a thresholded uniform mask on the surviving units and test multiplies activations by keep_prob, backward reuses the stored mask, and the max-norm projection runs on the hidden-unit incoming weights after every update.
