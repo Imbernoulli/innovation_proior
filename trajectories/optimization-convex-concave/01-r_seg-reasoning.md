@@ -7,14 +7,13 @@ strictly outward for every step size, with no `τ` that rescues it because the c
 `⟨z_t,Jz_t⟩=z_tᵀJz_t` is identically zero (`J` is skew). The extragradient look-ahead fixes that —
 take a forward half-step to `w`, evaluate the field *there*, then step from the original `z_t` — and
 on the same field that anchor manufactures a `−τ²I` inward term, turning the modulus `√(1+τ²)>1` into
-`√(1−τ²(1−τ²))<1`. So the default scaffold contracts the rotation. The question for the first rung of
-this ladder is not whether extragradient works; it is what to add to extragradient when the thing I am
-graded on is the *gradient norm under noise*, and that is where I want to think carefully before I
-commit, because the cheapest-looking fix is exactly the one I am going to try first and it has a
-built-in cost I want to have measured rather than guessed.
+`√(1−τ²(1−τ²))<1`. So the default step contracts the rotation. The question is not whether
+extragradient works; it is what to add to it when the graded quantity is the *gradient norm under
+noise*. The cheapest-looking fix is the one I will try first, and it has a built-in cost I want
+measured rather than guessed.
 
-Let me make the two competing forces concrete on this field before I generalize, because the numbers
-set the scale of everything that follows. Simultaneous descent-ascent multiplies `‖z‖²` by `(1+τ²)`
+Making the two competing forces concrete on this field sets the scale of everything that follows.
+Simultaneous descent-ascent multiplies `‖z‖²` by `(1+τ²)`
 every step, so over the 900 bilinear iterations at `τ=0.1` it inflates the norm by
 `(1.01)^{450} = e^{450·ln 1.01} = e^{4.478} ≈ 88`, taking `‖z0‖ = √200 ≈ 14.14` out to about `1245` —
 a clean, catastrophic blow-up that is why the scaffold cannot be the naive step. The extragradient
@@ -23,16 +22,15 @@ look-ahead, by contrast, has per-step modulus `√(1−τ²(1−τ²))`; at `τ=
 contracts. The trouble is that this contraction is a *special property of the pure rotation* — the
 `−τ²I` term exists because `J²=−I`, a coincidence of the bilinear operator — and it is not something I
 can rely on when the field is merely monotone and *flat*, like the clipped `(δ,ν)` component, where
-there is no analogous curvature for the look-ahead to grab. What I want going into this ladder is a
-contraction I can trust on both instances, including the flat one, and that is a stronger requirement
-than "extragradient happens to spiral inward on `xy`."
+there is no analogous curvature for the look-ahead to grab. What I want is a contraction I can trust
+on both instances, including the flat one — a stronger requirement than "extragradient happens to
+spiral inward on `xy`."
 
-Let me write down what stochastic extragradient can actually promise, because the shape of its
-guarantee tells me where to push. The oracle here is the exact operator `F(z)` plus a fixed-scale
-additive Gaussian update perturbation, so each half-step is an exact evaluation followed by a noise
-draw. Suppose for a moment the operator were `λ`-strongly monotone with unique zero `z*`. Running one
-SEG step with `η<1/(4L)` and tracking `‖z_{t+1}−z*‖²`, I can grind the bookkeeping out rather than
-quote it. Write the two half-steps as `z_{1/2}=z_t−ηF(z_t)` (predictor) and `z_{t+1}=z_t−ηF(z_{1/2})`
+The shape of stochastic extragradient's guarantee tells me where to push. The oracle here is the
+exact operator `F(z)` plus a fixed-scale additive Gaussian update perturbation, so each half-step is
+an exact evaluation followed by a noise draw. Suppose for a moment the operator were `λ`-strongly
+monotone with unique zero `z*`. Running one SEG step with `η<1/(4L)` and tracking `‖z_{t+1}−z*‖²`:
+write the two half-steps as `z_{1/2}=z_t−ηF(z_t)` (predictor) and `z_{t+1}=z_t−ηF(z_{1/2})`
 (corrector), so the update identities are `ηF(z_t)=z_t−z_{1/2}` and `ηF(z_{1/2})=z_t−z_{t+1}`. Expand
 `‖z_{t+1}−z*‖² = ‖z_t−z*‖² − 2⟨z_t−z_{t+1}, z_t−z*⟩ + ‖z_t−z_{t+1}‖²`, and substitute
 `z_t−z_{t+1}=ηF(z_{1/2})` into the inner product; then the standard trick is to split
@@ -66,21 +64,16 @@ convex-concave, so `λ=0`. Every term in the contraction inequality is multiplie
 the inequality says nothing — there is no contraction at all, only the merely-monotone `O(1/k)`
 best-iterate gap, and no last-iterate gradient-norm guarantee. The bilinear field is monotone but
 with a strictly zero strong-monotonicity margin (pure rotation); the `(δ,ν)` field's clipped
-component is monotone but flat, again no margin. So the honest situation entering this ladder is: the
+component is monotone but flat, again no margin. So the honest situation here is: the
 default SEG converges, but slowly and to a noise-limited neighborhood, and the property that would
 make it fast — strong monotonicity — is exactly the property I do not have.
 
-Before I reach for anything structural, I want to rule out the cheaper knobs, because if one of them
-worked I would rather turn a dial than change the operator. There are three within reach. The first is
-to keep bare SEG and simply tune the step size to sit in a smaller neighborhood. But at `λ=0` there is
-no radius to tune down: the floor `cησ²/λ` is a statement about a *contracting* method, and with no
-contraction the noise merely diffuses the iterate around a flat merely-monotone level set — shrinking
-`η` shrinks the diffusion per step but there is nothing pulling the iterate back, so it buys nothing
-in the last-iterate norm and costs me the `1/(ηT)` progress. This is not a subtlety I can wave off, because the ball-radius formula `cησ²/λ` I just derived
-degenerates precisely here: at `λ=0` it reads `cησ²/0 = ∞`, meaning there is no finite neighborhood
-the iterate is pulled into, so "shrink `η` to shrink the ball" is not even a well-posed move — there
-is no ball. The second is the implicit/proximal step
-`z_{t+1}=(I+τF)^{-1}(z_t)`, which is firmly nonexpansive for monotone `F` and contracts
+Before I reach for anything structural, I want to rule out the cheaper knobs. There are three within
+reach. The first is to keep bare SEG and simply tune the step size to sit in a smaller neighborhood.
+But at `λ=0` the floor `cησ²/λ` reads `cησ²/0 = ∞`: there is no ball to tune down, only diffusion of
+the iterate around a flat merely-monotone level set with nothing pulling it back, so shrinking `η`
+buys nothing in the last-iterate norm and costs me the `1/(ηT)` progress. The second is the
+implicit/proximal step `z_{t+1}=(I+τF)^{-1}(z_t)`, which is firmly nonexpansive for monotone `F` and contracts
 unconditionally — the geometric ideal I would love to have. But it needs `F` evaluated at the unknown
 next point, a nonlinear solve buried inside every iteration, and on a generic field that is not
 something the fixed single-loop step lets me run. The third is to note that both the divergence I
@@ -101,7 +94,7 @@ regularized saddle objective `f(x,y) + (λ/2)‖x−a_x‖² − (λ/2)‖y−a_
 `F`, I get the SEG contraction the bare problem could never give me: the iterate contracts toward
 `G`'s zero, and the noise floor is `η σ²/λ` with a genuine `λ>0`.
 
-The catch is the one I have to face squarely, because it is the entire cost of this first rung:
+The catch is the one I have to face squarely, because it is the entire cost of this move:
 running on `G` drives me toward `G`'s zero `w*`, which is *not* `z*`, the zero of `F`. I have solved a
 different problem, and the metric is `‖F‖`, not `‖G‖`. So the question that decides whether the trick
 is legitimate is how far `w*` is from being a near-stationary point of the original `F`. From the
@@ -118,7 +111,7 @@ and strong monotonicity of `G` (with `G(w*)=0`) gives `λ‖z̃−w*‖ ≤ ‖G
 
 Where to put the anchor `a`? The only special point I have at the start is `z0` itself; I cannot
 anchor at `z*` because I do not know it. So anchor at the initial point, `a=z0`, fixed forever — this
-is the restarted/regularized SEG rung, "R-SEG." I should check the anchored solution does not run off
+is the restarted/regularized SEG method, "R-SEG." I should check the anchored solution does not run off
 to infinity. With `a=z0`, strong monotonicity of `G` between `w*` and `z*` plus `F(z*)=0` gives
 `λ‖w*−z*‖² ≤ G(z*)ᵀ(z*−w*) = λ(z*−z0)ᵀ(z*−w*)`; dividing by `λ` and polarizing yields *both*
 `‖w*−z0‖ ≤ ‖z*−z0‖` and `‖w*−z*‖ ≤ ‖z*−z0‖`. The regularized solution is no farther from the anchor
@@ -138,59 +131,29 @@ still pulling toward `z0`. The anchor is `z0` and never moves — the transfer b
 single distance `‖z0−z*‖` and needs no extra anchor state. Two operator evaluations, two noise draws,
 the fixed `z0` anchor; the full scaffold module is in the answer.
 
-I do not want to leave the bias as a symbol, because on `bilinear` it is the whole story and I can
-compute it exactly rather than lean on the transfer-bound upper estimate. On `f=xy`, `G(z)=Jz+λ(z−z0)`
+On `bilinear` the bias is the whole story, and I can compute it exactly rather than lean on the
+transfer-bound upper estimate. On `f=xy`, `G(z)=Jz+λ(z−z0)`
 with `J=[[0,1],[−1,0]]`, and its zero solves `(J+λI)w* = λ z0`, i.e. `w* = λ(J+λI)^{-1} z0`. The
 matrix `J+λI = [[λ,1],[−1,λ]]` has determinant `λ²+1` and inverse `(1/(λ²+1))[[λ,−1],[1,λ]]`. With
 `z0=[10,10]ᵀ`, `[[λ,−1],[1,λ]][10,10]ᵀ = [10λ−10, 10+10λ]ᵀ = 10[λ−1, λ+1]ᵀ`, so
 `w* = (10λ/(λ²+1))·[λ−1, λ+1]ᵀ`. On the rotation field `‖F(z)‖=‖Jz‖=‖z‖`, so the residual at the exact
 anchored solution is `‖F(w*)‖ = ‖w*‖ = (10λ/(λ²+1))√((λ−1)²+(λ+1)²) = (10λ/(λ²+1))√(2λ²+2)
 = 10√2·λ/√(λ²+1)`. At `λ=0.1` that is `10·1.41421·0.1/√1.01 = 1.41421/1.00499 = 1.40720`. So the best
-`bilinear` gradient norm this rung can possibly reach, no matter how many of the 900 iterations I
+`bilinear` gradient norm this method can possibly reach, no matter how many of the 900 iterations I
 spend, is about `1.407` — the anchored solution itself sits that far from the origin, and the pull
-toward `z0=[10,10]` is what parks it there.
+toward `z0=[10,10]` is what parks it there. The small-`λ` linearization `10√2·λ = λ‖z0‖ = λ‖z0−z*‖`
+recovers the transfer-bound term exactly; at `λ=0.1` the bound gives `1.41421` against the exact
+`1.40720`.
 
-This exact `w*` also lets me check the non-expansiveness geometry I leaned on, and on the rotation it
-turns out to be exactly tight, which is reassuring. The inequality `‖w*−z*‖² ≤ (z*−z0)ᵀ(z*−w*)`
-rearranges to `⟨w*−z*, w*−z0⟩ ≤ 0` — the vectors from `w*` back to the true solution and back to the
-anchor make an obtuse angle, so by Thales' theorem `w*` sits inside the sphere whose diameter is the
-segment `[z0, z*]`, hence within `‖z0−z*‖` of *both* endpoints. Plugging the numbers in with `z*=0`,
-`⟨w*, w*−z0⟩ = (−0.891)(−10.891) + (1.089)(−8.911) = 9.704 − 9.704 = 0` exactly: on the pure rotation
-`w*` lands *on* the sphere, at the right-angle vertex, because `F` carries zero strong-monotonicity
-margin so `G`'s excess is purely the `λ` I injected. The right angle means Pythagoras holds,
-`‖w*−z0‖² + ‖w*−z*‖² = ‖z0−z*‖²`, and indeed `14.071² + 1.407² = 197.99 + 1.98 = 199.97 ≈ 200 =
-‖z0−z*‖²`. So the anchored solution is exactly as far from `z0` as it needs to be and no farther, and
-the bias `λ‖w*−z0‖ = 0.1·14.071 = 1.407` is the leg of that right triangle — a fully consistent
-picture, not a hand-wave.
-
-Two limits confirm the formula is doing the right thing and expose the lever cleanly. As `λ→0`,
-`w* → 0 = z*`: no regularization, the anchored solution collapses onto the true saddle and the
-residual vanishes. As `λ→∞`, `10λ/(λ²+1) → 10/λ` and `[λ−1,λ+1] → [λ,λ]`, so `w* → [10,10] = z0` and
-the residual `→ ‖z0‖ = √200 ≈ 14.14`: infinite regularization pins the iterate at the anchor, the
-worst point on the field. So `10√2·λ/√(λ²+1)` climbs monotonically from `0` to `‖z0‖` as `λ` runs
-`0→∞`, which is the bias-versus-`λ` lever made fully explicit. And for small `λ` it linearizes to
-`10√2·λ = λ‖z0‖ = λ‖z0−z*‖`, exactly the transfer-bound term; at `λ=0.1` the bound gives `1.41421`
-against the exact `1.40720`, so the bound is only `0.5%` loose — tight to first order. The value
-`λ=0.1` the harness chose sits right where the bias is `≈1.4`, and the harness's 900 iterations cannot
-touch it.
-
-It is worth asking why the harness picked `λ=0.1` on bilinear rather than something much smaller,
-since the bias `10√2·λ/√(λ²+1)` falls linearly as I shrink `λ` and I might be tempted to drive it to,
-say, `λ=0.01` and cut the bilinear residual by a factor of ten to `≈0.14`. The reason I cannot just do
-that is the other side of the transfer bound, `2‖G(z̃)‖`, which I have been treating as crushable but
-is only crushable at a *rate* set by the conditioning `κ = (L+λ)/λ`. The anchored operator on the
-rotation contracts with a modulus whose distance below one scales like `λ` (the strong-monotonicity
-margin the anchor installs), so the number of steps to drive `‖G‖` down to a target scales like
-`κ·log(1/target) ~ (1/λ)·log(1/target)`. At `λ=0.1` that budget is comfortably inside 900 iterations;
-at `λ=0.01` the contraction is ten times slower and the anchored solve would not finish inside the
-fixed budget, so `‖G‖` would still be sizeable and the transfer bound would be dominated by the
-unconverged `2‖G‖` term rather than by the smaller bias I was chasing. So there is a genuine interior
-optimum: too-large `λ` is all bias, too-small `λ` is all unconverged optimization error and an exploded
-noise floor `ησ²/λ`, and `λ ~ ε/D` with `D ~ ‖z0−z*‖` sits between them. On bilinear that lands
-`λ` near `0.1`, and the price is a bias I have now computed exactly to be `≈1.4`. I note this so the
-record is honest: `λ=0.1` is not a bad choice given the fixed budget — it is the balanced one — and
-the `1.4` is the *structural* cost of anchoring far from the solution, not a tuning mistake I could dial
-away without breaking the convergence of `G`.
+Could I not shrink `λ` to cut this? The bias `10√2·λ` falls linearly, so `λ=0.01` would drop the
+bilinear residual to `≈0.14`. But the other side of the transfer bound, `2‖G(z̃)‖`, is only crushable
+at a rate set by the conditioning `κ=(L+λ)/λ`: the anchored rotation contracts with a margin scaling
+like `λ`, so driving `‖G‖` to a target costs `~(1/λ)·log(1/target)` steps. At `λ=0.1` that fits inside
+900 iterations; at `λ=0.01` the solve is ten times slower, does not finish, and the transfer bound is
+then dominated by the unconverged `2‖G‖` term rather than the smaller bias I was chasing — while the
+noise floor `ησ²/λ` explodes by the same factor. So there is a genuine interior optimum, `λ ~ ε/D`
+with `D ~ ‖z0−z*‖`; on bilinear it lands `λ` near `0.1` and the `≈1.4` bias is the structural cost of
+anchoring far from the solution, not a tuning mistake.
 
 The `(δ,ν)` case is the opposite extreme, and I want a rough figure there too even though I cannot
 compute it exactly. There `z0 ~ N(0,I)` in the `2d=200`-dimensional joint space, so `‖z0‖ ≈ √200 ≈
@@ -203,20 +166,12 @@ neither the bias nor the noise catastrophically — mostly the mild regularizati
 that is already near the solution. The exact constant on the noise radius I cannot pin down on paper;
 the `delta_nu` column will tell me.
 
-So the falsifiable expectation for this first rung, against which the next rung will be judged. The
-`bilinear` final gradient norm should be pinned by the anchor bias at about `1.4` — the exact `w*`
-residual `1.407` plus a hair of finite-iteration and `σ=0.001` noise slack — catastrophically worse
-than what a no-anchor step would give, because the fixed pull toward `[10,10]ᵀ` is literally dragging
-the iterate back toward the worst possible point and holding it there. The `delta_nu` norm should be
-small, around `0.1` or below. The mean `final_gradient_norm` is the average of the two, so it will be
-dragged up almost entirely by the bilinear half — I expect a mean near `0.7–0.8`, the worst of any
-rung on this ladder. There is a sharper second signature worth stating, because it distinguishes a
-bias-limited method from a variance-limited one: since the bilinear score is deterministic anchor
-bias, not variance, turning the noise up should barely move it — the high-noise `bilinear` column
-should sit within a percent or two of the default. If instead the bilinear number swings with the
-noise level, my whole diagnosis is wrong. The diagnosis I want in the record is structural: the
-fixed-`z0` Tikhonov anchor buys strong monotonicity and noise robustness but pays an irreducible
-`λ‖z0−z*‖` bias, and on the bilinear instance the start is so far from the solution that the bias *is*
-the score. The lever to pull next is to keep extragradient's own anti-rotation contraction — the
-`−τ²I` term that needs no external anchor at all — while removing the `λ(z−z0)` pull that is dragging
-the iterate toward `[10,10]`, and to see how far the bare, unbiased look-ahead step gets on its own.
+So the expectations. The `bilinear` final gradient norm should be pinned by the anchor bias at about
+`1.4` — the exact `w*` residual `1.407` plus a hair of finite-iteration and `σ=0.001` slack — while
+`delta_nu` should be small, around `0.1` or below. The mean is the average of the two, dragged up
+almost entirely by the bilinear half, so I expect near `0.7–0.8`. A distinguishing signature: since
+the bilinear score is deterministic anchor bias, not variance, turning the noise up should barely move
+it — the high-noise `bilinear` column within a percent or two of default. If it swings with the noise
+level instead, the diagnosis is wrong. The lever to pull next is to keep extragradient's own
+anti-rotation contraction — the `−τ²I` term that needs no external anchor — while removing the
+`λ(z−z0)` pull dragging the iterate toward `[10,10]`, and see how far the bare look-ahead step gets.
