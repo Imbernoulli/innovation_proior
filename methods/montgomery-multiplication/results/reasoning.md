@@ -156,44 +156,6 @@ perform every square and multiply as one encoded multiplication, and decode once
 at the end. A long chain pays for the representation at its boundaries, while
 the loop avoids division by `N` throughout.
 
-Let me check the arithmetic on a small case before trusting the symbols. Take
-`N = 17` and `R = 32`. Then `N_prime` must satisfy
-
-```text
-17 * N_prime = -1 mod 32.
-```
-
-`17 * 15 = 255 = -1 mod 32`, so `N_prime = 15`. Encode `7` and `11`:
-
-```text
-7_bar = 7 * 32 mod 17 = 3
-11_bar = 11 * 32 mod 17 = 12
-```
-
-The encoded product uses `T = 3 * 12 = 36`. REDC gives
-
-```text
-m = (36 mod 32) * 15 mod 32 = 4 * 15 mod 32 = 28
-t = (36 + 28 * 17) / 32 = 512 / 32 = 16
-```
-
-`16 < 17`, so the encoded product is `16`. The ordinary product is
-`7 * 11 = 77 = 9 mod 17`, and `9` encoded is
-
-```text
-9 * 32 mod 17 = 16.
-```
-
-The representation has stayed closed under multiplication. Decoding `16` should
-return `9`:
-
-```text
-m = 16 * 15 mod 32 = 16
-t = (16 + 16 * 17) / 32 = 288 / 32 = 9.
-```
-
-That checks the boundary conversion too.
-
 For multi-precision arithmetic I do not actually want to form every operation
 as a single enormous "mod `R`" computation if `R = b^n` is an `n`-word radix.
 The same congruence can be enforced one word at a time. Let `b` be the machine
@@ -226,141 +188,25 @@ The final shift is just dropping those zero words. This is the same reduction,
 organized so a multi-word implementation can interleave multiply-add work with
 the reduction instead of building a separate divider.
 
-The code I want now has fixed modulus setup, encode, decode, product reduction,
-encoded multiplication, ordinary modular multiplication, and exponentiation that
-stays encoded internally.
-
-```python
-from random import Random
-
-
-def inverse_mod(a, m):
-    """Return a^{-1} mod m for coprime positive integers a and m."""
-    if m <= 0:
-        raise ValueError("modulus must be positive")
-    a %= m
-    old_r, r = a, m
-    old_s, s = 1, 0
-    while r:
-        q = old_r // r
-        old_r, r = r, old_r - q * r
-        old_s, s = s, old_s - q * s
-    if old_r != 1:
-        raise ValueError("inverse does not exist")
-    return old_s % m
-
-
-class FixedModulusArithmetic:
-    def __init__(self, modulus, word_bits=None):
-        if modulus <= 1 or modulus % 2 == 0:
-            raise ValueError("the modulus must be an odd integer greater than 1")
-        self.N = modulus
-        self.word_bits = word_bits
-
-        if word_bits is None:
-            self.k = modulus.bit_length()
-        else:
-            if word_bits <= 0:
-                raise ValueError("word_bits must be positive")
-            self.k = ((modulus.bit_length() + word_bits - 1) // word_bits) * word_bits
-
-        self.R = 1 << self.k
-        self.mask = self.R - 1
-        self.N_prime = (-inverse_mod(self.N, self.R)) & self.mask
-        self.R2 = (self.R * self.R) % self.N
-
-    def reduce_product(self, T):
-        """REDC: return T * R^{-1} mod N for 0 <= T < R*N."""
-        if T < 0 or T >= self.R * self.N:
-            raise ValueError("REDC input must satisfy 0 <= T < R*N")
-        m = ((T & self.mask) * self.N_prime) & self.mask
-        t = (T + m * self.N) >> self.k
-        if t >= self.N:
-            t -= self.N
-        return t
-
-    def redc(self, T):
-        """Explicit REDC alias for the product reduction step."""
-        return self.reduce_product(T)
-
-    def encode(self, x):
-        """Return xR mod N."""
-        return self.reduce_product((x % self.N) * self.R2)
-
-    def decode(self, x_encoded):
-        """Return the standard residue represented by x_encoded."""
-        return self.reduce_product(x_encoded % self.N)
-
-    def mul_encoded(self, a_encoded, b_encoded):
-        """Multiply two Montgomery-domain representatives."""
-        a_encoded %= self.N
-        b_encoded %= self.N
-        return self.reduce_product(a_encoded * b_encoded)
-
-    def modmul(self, a, b):
-        a_encoded = self.encode(a)
-        b_encoded = self.encode(b)
-        return self.decode(self.mul_encoded(a_encoded, b_encoded))
-
-    def modpow(self, base, exponent):
-        if exponent < 0:
-            raise ValueError("negative exponents are not supported")
-        result = self.encode(1)
-        x = self.encode(base)
-        while exponent:
-            if exponent & 1:
-                result = self.mul_encoded(result, x)
-            x = self.mul_encoded(x, x)
-            exponent >>= 1
-        return self.decode(result)
-
-
-def verify():
-    cases = [
-        (3, 0, 2, 0),
-        (17, 7, 11, 13),
-        (187, 42, 55, 19),
-        (104729, 12345, 67890, 1000),
-        (1_000_000_007, 123456789, 987654321, 13579),
-        ((1 << 64) - 59, (1 << 63) - 1, (1 << 62) + 1, 257),
-    ]
-
-    rng = Random(20260607)
-    for bits in (8, 16, 32, 80, 127):
-        for _ in range(20):
-            N = rng.getrandbits(bits) | 1 | (1 << (bits - 1))
-            a = rng.randrange(0, 3 * N)
-            b = rng.randrange(0, 3 * N)
-            exponent = rng.randrange(0, 5000)
-            cases.append((N, a, b, exponent))
-
-    checks = 0
-    for N, a, b, exponent in cases:
-        for word_bits in (None, 8, 16, 32):
-            engine = FixedModulusArithmetic(N, word_bits=word_bits)
-            checks += 1
-
-            expected_mul = (pow(a, 1, N) * pow(b, 1, N)) % N
-            assert engine.decode(engine.encode(a)) == a % N
-            assert engine.decode(engine.encode(b)) == b % N
-            assert engine.modmul(a, b) == expected_mul
-            assert engine.modpow(a, exponent) == pow(a, exponent, N)
-            assert engine.modpow(a, 0) == pow(a, 0, N)
-
-            R_inverse = inverse_mod(engine.R, N)
-            for T in (0, 1, min(engine.R * N - 1, a * b), engine.R * N - 1):
-                assert engine.redc(T) == (T * R_inverse) % N
-
-    print(f"all tests passed: {checks} configurations over {len(cases)} modmul/modpow cases")
-
-
-if __name__ == "__main__":
-    verify()
-```
-
-The pieces now fit: arbitrary division by `N` is expensive; a power
-of two gives cheap low bits and cheap exact division; adding `mN` preserves the
-residue modulo `N` while choosing `m` with `-N^{-1} mod R` forces divisibility
-by `R`; the quotient is `T R^{-1} mod N` and is below `2N`; storing `x` as
-`xR mod N` makes that loss of one `R` factor exactly what multiplication needs;
-conversion costs are paid at the edges and amortized over the products inside.
+The implementation follows this derivation directly, with a fixed-modulus
+object holding the precomputed constants and one shared REDC step underneath
+everything. `__init__` fixes an odd `N`, takes `k` as `N`'s bit length (rounded
+up to a whole number of machine words when a `word_bits` size is given, so
+`R = 2^k` lands on a realistic word boundary), and computes the two constants
+the derivation needed once per modulus: `N_prime = -N^{-1} mod R` by extended
+Euclid, and `R2 = R^2 mod N` for boundary conversions. `reduce_product` is
+REDC itself — mask for `m`, add `mN`, shift by `k`, one conditional
+subtraction — guarded by the same `0 <= T < RN` domain check the bound above
+requires. `encode` and `decode` are each a single call to `reduce_product`,
+using `R2` so that entering the domain never needs a real division by `N`.
+`mul_encoded` multiplies two domain values and reduces once, and `modpow` is
+ordinary square-and-multiply with the accumulator and base kept encoded for
+every step, decoded only once at the end — the amortization argument made
+concrete. A test harness exercises this across bit-widths from 8 to 127 bits
+and several `word_bits` settings, checking `modmul` and `modpow` against
+Python's built-in `pow` for `a`, `b` drawn from up to `3N` (so `encode` is
+also tested on inputs outside the canonical range), and separately calling
+`redc` directly on `T` at the edges of its domain — `0`, `1`, and `RN - 1`,
+the largest input the `0 <= T < RN` requirement allows — against the raw
+`T * R^{-1} mod N` definition, so every constant and every step of the
+derivation above has something in the code and the test run checking it.
