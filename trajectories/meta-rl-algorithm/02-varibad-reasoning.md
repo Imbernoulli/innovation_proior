@@ -49,48 +49,36 @@ Take the sequence problem first, because it changes the primitive. I argued for 
 the previous rung from "each transition independently reveals the task," but the cheetah failure shows the
 premise is too strong here: when the task is only weakly visible per transition, *what I should do next*
 depends on the whole sequence so far, not on an order-free set. The right primitive for online, ordered
-inference is recurrence. It is worth pausing on why recurrence rather than the other order-sensitive
-options, because I do not want to reach for the most expressive thing by reflex. Plain set-attention would
-be permutation-invariant by design — it would reintroduce exactly the order-blindness I am trying to
-escape unless I bolt positional encodings onto it. A Transformer with positional encodings *would* read
-order, but it is far heavier than a GRU and it shines on long-range dependencies across long sequences;
-here the sequences are short (capped at the path length) and the dependency I need is the *running* summary
-of a single trajectory, which is precisely what a recurrent hidden state is built to carry. And recurrence
-matches the deployment shape for free: at test time transitions arrive one at a time and I want to fold
-each into the belief as it comes, which is one GRU step, whereas a Transformer would re-attend over the
-whole growing context every step. So the GRU is the cheapest primitive that reads order and updates online
-— the right rung between the order-blind mean I am leaving and the heavier attention machinery the budget
-does not justify. So I replace the mean encoder with a recurrent one: embed each transition `(o, a,
+inference is recurrence. Plain set-attention is permutation-invariant — it reintroduces the order-blindness
+I am trying to escape unless I bolt positional encodings on; a Transformer would read order but is far
+heavier and shines on long-range dependencies across long sequences, whereas here the sequences are short
+(capped at path length) and the dependency I need is the *running* summary of a single trajectory, exactly
+what a recurrent hidden state carries. Recurrence also matches deployment for free: at test time
+transitions arrive one at a time and I fold each into the belief as it comes, one GRU step, where a
+Transformer would re-attend over the whole growing context every step. So the GRU is the cheapest
+primitive that reads order and updates online. I replace the mean encoder with a recurrent one: embed each transition `(o, a,
 r)` with small feature extractors, run a GRU whose hidden state carries the running summary of experience,
 and read out the task latent from the hidden state. One GRU step is one belief update, folding in one
 transition at a time, which is exactly the online structure the rollout protocol needs — `update_context`
 appends a transition, `adapt` runs the GRU over the accumulated context and reads off `z` from the final
 hidden state. The harness's `infer_posterior` gets the same treatment: reset the GRU, run it over the
-sampled context block, take the last step's readout. I should check the shapes and the cost, because a
-recurrent encoder is not free. The context arrives as `(num_tasks, seq_len, feat_dim)`; the pre-MLP
-flattens to `(num_tasks·seq_len, feat_dim)`, lifts to width 200, reshapes back to `(num_tasks, seq_len,
-200)`, the GRU runs with hidden `(1, num_tasks, 200)` to give `out (num_tasks, seq_len, 200)`, and the
-`μ`/`logvar` heads read `out[:, −1, :]` to `(num_tasks, latent_dim)` — the posterior after all `seq_len`
-transitions have been folded in, in order. On the cost side, the GRU alone is `3·(200·200 + 200·200 + 200)
-≈ 2.4·10⁵` parameters, and with the pre-MLP and the reward decoder the encoder-side network is on the
-order of `3·10⁵` parameters — roughly four times the `~9·10⁴`-parameter FOCAL encoder. Under this
-benchmark's deliberately short budget (about twenty outer iterations, an hour of wall time) that heavier
-encoder is a real risk of being slower to train or overfitting, and I flag it as the thing to watch on the
-one family FOCAL already handled. Crucially, on this benchmark I should keep the context the GRU sees
+sampled context block, take the last step's readout. A recurrent encoder is not free. The context arrives
+as `(num_tasks, seq_len, feat_dim)`; a pre-MLP lifts each transition to width 200, the GRU runs over the
+sequence, and the `μ`/`logvar` heads read the last step to `(num_tasks, latent_dim)` — the posterior after
+all `seq_len` transitions have been folded in, in order. On cost, the GRU plus pre-MLP and reward decoder
+is on the order of `3·10⁵` parameters, roughly four times the `~9·10⁴`-parameter mean encoder. Under this
+benchmark's short budget (~twenty iterations, an hour of wall time) that heavier encoder is a real risk of
+being slower to train or overfitting — the thing to watch on the one family the mean encoder already
+handled. Crucially, on this benchmark I should keep the context the GRU sees
 *chronological and within a single trajectory* — if I let it stitch together independent trajectories
 without resetting the hidden state at episode boundaries, the running summary gets polluted by
 discontinuities, so I cap the context length at the path length so each task's context comes from one
 coherent rollout. That is a harness-specific care the mean encoder never needed, because a mean does not
-care about order; a GRU does. And it is worth being concrete about why the order matters at all, since
-that is the whole justification for the extra machinery. Suppose the diagnostic content of a cheetah
-context is a monotone *trend* — the reward climbing as the agent's speed passes through the target and
-falling past it. A mean of per-transition embeddings, `(1/T)Σ φ(cₜ)`, is by construction invariant to any
-permutation of the `cₜ`, so the increasing sequence and its exact reverse map to the *same* `z`; the trend,
-which lives entirely in the ordering, is annihilated before the loss ever sees it. A GRU's last hidden
-state is a composition `h_T = g(g(… g(h₀, c₁) …), c_T)` that is not symmetric in its arguments, so the
-increasing and reversed sequences generically land on different `h_T` and thus different `z`. That is the
-one expressive gap the recurrence buys — reading structure that survives only in the order — and it is
-exactly the structure cheetah's target velocity hides in.
+care about order; a GRU does. Concretely: if the diagnostic content of a cheetah context is a monotone
+*trend* — reward climbing as speed passes through the target and falling past it — a mean `(1/T)Σ φ(cₜ)`
+maps the increasing sequence and its exact reverse to the *same* `z`, annihilating the trend before the
+loss sees it, while a GRU's last hidden state is not symmetric in its inputs and separates them. That is
+the one expressive gap the recurrence buys, and it is exactly where cheetah's target velocity hides.
 
 Now the richer training signal, and this is where I have to think about what objective actually forces `z`
 to carry reward structure. The previous encoder was trained by a distance-metric loss — pure geometry,
@@ -117,19 +105,13 @@ distribution and I want the regularization that comes with it. The GRU reads out
 stochasticity buys two things. It lets me put an information bottleneck on the latent in the form of a KL
 to a unit-Gaussian prior, `KL(q(z|c) ‖ N(0,I)) = −½ Σ(1 + logσ² − μ² − σ²)`, which squeezes `z` to the
 minimal reward-relevant content and discourages it from memorizing training-task idiosyncrasies under the
-short budget. It is worth reading that KL at the two ends of training to see it behaves. At initialization
-the heads output `μ ≈ 0`, `logσ² ≈ 0` (`σ² ≈ 1`), so `KL ≈ −½ Σ(1 + 0 − 0 − 1) = 0` — the belief starts
-*at* the prior, which is exactly where an uninformed posterior should sit. And I can price a single
-informative dimension to see the tax is gentle: a latent coordinate that has learned to carry content, say
-`μ = 1`, `σ² = 0.25`, contributes `−½(1 + log 0.25 − 1 − 0.25) = −½(−1.386 − 0.25) ≈ 0.82` nats to the KL,
-which at `λ = 0.1` costs about `0.082` in the encoder loss — small enough that a dimension only pays it if
-the reconstruction term is buying more than that in return, so the bottleneck prunes idle dimensions
-without strangling useful ones. As `z` acquires content, `μ`
-grows away from zero and `σ²` shrinks below one, and the KL climbs, taxed by `λ`. And with
-`reward_pred_weight = 1.0` against `kl_lambda = 0.1`, the reconstruction term outweighs the bottleneck
-roughly ten to one early on, so `z` first *acquires* task content and only then gets squeezed toward
-minimality — the right order, rather than a bottleneck that strangles the latent before it has learned
-anything. So the encoder's loss is an ELBO-flavored pair: the reward-prediction reconstruction term plus
+short budget. At initialization the heads output `μ ≈ 0`, `σ² ≈ 1`, so `KL ≈ 0` — the belief starts *at*
+the prior, where an uninformed posterior should sit; as `z` acquires content `μ` grows away from zero and
+`σ²` shrinks below one and the KL climbs, taxed by `λ`. With `reward_pred_weight = 1.0` against
+`kl_lambda = 0.1`, the reconstruction term outweighs the bottleneck roughly ten to one early on, so `z`
+first *acquires* task content and only then gets squeezed toward minimality — the right order, rather than
+a bottleneck that strangles the latent before it has learned anything. So the encoder's loss is an
+ELBO-flavored pair: the reward-prediction reconstruction term plus
 the KL, `L_enc = λ·KL(q(z|c) ‖ N(0,I)) + reward_pred_loss`. The reward decoder and the GRU encoder train
 together under this loss; the decoder is used only at training time to shape `z` and is dropped at
 evaluation, where `adapt` just runs the GRU to get the belief and the policy acts on it.
@@ -175,29 +157,20 @@ strict enrichment over the previous rung's geometry-plus-critic signal: I have *
 term and swapped the bag-of-transitions encoder for a sequential one. The full scaffold module is in the
 answer.
 
-Now the falsifiable expectations against the FOCAL numbers I opened with. The reward-prediction signal and
-the sequential encoder are aimed squarely at the two failures, so I expect `cheetah-vel` to *firm up*: the
-−108 seed should disappear and the spread should tighten, because reconstructing the velocity reward forces
-a consistent target-velocity representation regardless of which seed I am on — concretely I expect the
-seed coefficient of variation to fall from FOCAL's ~22% back toward the single-digit range point-robot
-already shows, even if the mean itself moves only modestly (from −84.7 toward the low-to-mid −80s), because
-firming up an unreliable encoder buys me the tail seeds before it buys me the average. On
-`sparse-point-robot` I expect the reward decoder to rescue the dead seeds: forcing `z` to predict where the
-+1 lives should turn the two 0.0 seeds into nonzero returns and lift the mean well above FOCAL's 0.30 — I
-would call this rung a success on sparse only if the mean clears ~1.5 and no longer has seeds stuck at
-exactly zero. The risk I am carrying is `point-robot`: FOCAL was already healthy there at −13.9, and the
-heavier, recurrent, three-signal encoder — four times the parameters, trained under the same fixed
-~20-iteration budget, hence roughly a quarter of the gradient-steps-per-parameter FOCAL's encoder enjoyed —
-could overfit or simply be slower to train, so I would not be shocked if it lands a little worse; against
-that, its sequential readout is strictly more expressive, so it might instead *help*, and I will watch
-whether point-robot moves toward or past −12 rather than assuming a direction. The honest open question is
-`sparse-point-robot` in absolute terms: even with a reward decoder, this rung still has no *exploration*
-mechanism — nothing that makes the agent commit to going somewhere to find the rare reward in the first
-place. A single stochastic `z` is sampled once, fed to the policy, and the only within-episode randomness
-left is the policy's per-step action noise, which is undirected. So this rung may *sharpen task inference*
-without fixing the deeper "you have to reach the goal once to learn anything" problem. If sparse improves
-but stays low — say it clears the ~1.5 bar but the best seed is still only a few times the noise floor,
-with a wide spread that reads as luck-of-the-rollout — then this rung has sharpened *task inference* while
-leaving *exploration* untouched: a single sampled `z` plus undirected per-step action noise gives the agent
-no directed way to reach the rare reward it has never seen, and on a must-reach-goal task that is the
-limitation a sharper encoder alone cannot lift — the crack the climb from here has to answer to.
+Now the expectations against the FOCAL numbers I opened with. The reward-prediction signal and the
+sequential encoder are aimed at the two failures. On `cheetah-vel` I expect the encoder to *firm up*:
+reconstructing the velocity reward should force a consistent target-velocity representation across seeds,
+so the −108 tail seed disappears and the coefficient of variation falls from ~22% toward the single-digit
+range point-robot shows; and since the two good seeds already average −72.9, removing the tail should pull
+the mean up toward there. On `sparse-point-robot` I expect the reward decoder to rescue the dead seeds —
+forcing `z` to predict where the +1 lives should turn the two 0.0 seeds nonzero and lift the mean well
+above 0.30, a success only if it clears the low-single-digits with no seed stuck at exactly zero. The risk
+is `point-robot`: FOCAL was already healthy at −13.9, and the heavier three-signal encoder (four times the
+parameters, same ~20-iteration budget) could overfit or train slower, so it might land a little worse;
+against that its sequential readout is strictly more expressive, so I watch the direction rather than
+assume one. The honest open question is `sparse-point-robot` in absolute terms: even with a reward decoder
+this rung has no *exploration* mechanism — a single stochastic `z` is sampled once, and the only
+within-episode randomness left is undirected per-step action noise. So it may *sharpen task inference*
+without fixing the deeper "you have to reach the goal once to learn anything" problem: if sparse improves
+but stays low with a wide luck-of-the-rollout spread, then a single sampled `z` plus undirected noise still
+gives no directed way to reach the rare reward — the crack the climb from here has to answer to.

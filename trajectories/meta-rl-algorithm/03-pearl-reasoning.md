@@ -82,35 +82,24 @@ the form that also gives me the uncertainty I now need. Let each transition emit
 Gaussians. The product is itself Gaussian with a closed form: precisions add, `1/σ² = Σ_n 1/σ_n²`, and the
 mean is the precision-weighted average `μ = σ²·Σ_n μ_n/σ_n²`.
 
-Read what that closed form means, and check it against cases I already know the answer to, because a
-formula I can't sanity-check is a formula I don't trust. Take `N` equally-confident factors, each with
-`σ_n² = 1`. Then `1/σ² = Σ_n 1 = N`, so `σ² = 1/N` and `μ = (1/N)Σ_n μ_n` — the belief mean is just the
-sample mean of the factor means and its variance shrinks as `1/N`. That is *exactly* the Bayesian posterior
-for a Gaussian mean under `N` unit-variance observations, the textbook result, so the product fusion is not
-some ad-hoc pooling — it is the correct filter in the case I can verify by hand. Numerically, `N = 64`
-context transitions take the belief std from the prior's `1` down to `1/√64 = 0.125`, an eight-fold
-sharpening, and every extra transition tightens it further: the belief *sharpens with evidence*, which is
-the whole point. Now the asymmetric case, which is where sparse gets rescued: let one transition be highly
-diagnostic, `σ_n² = 0.01`, and the rest uninformative, `σ² = 1`. The precision sum is dominated by
-`1/0.01 = 100`, swamping the ~63 unit contributions, so `μ ≈ μ` of the confident factor and `σ² ≈ 0.01` —
-a single confident vote dominates the belief. On sparse the confident vote is precisely the rare transition
-where the +1 fired: the moment the agent grazes the goal once, that transition's factor pins the posterior
-onto the goal location, and the many zero-reward transitions barely move it. That is the mechanism that
-makes the rare reward *count*, and it is a property the mean and the GRU both lacked — they weighted every
-transition the same. It is worth being explicit that a naive alternative — emit per-transition means and
-just *average* them — would not do this: an unweighted average of 64 factor means dilutes the one
-diagnostic vote by a factor of 64, drowning the +1's information in the sea of zero-reward transitions.
-The precision weighting is the whole difference: it is what lets a confident factor speak loudly and an
-uncertain one stay quiet, and it is inseparable from representing the belief as a *distribution* with a
-variance rather than as a point. So the probabilistic object is not decoration; it is what the sparse task
-was missing. And the product is symmetric in its factors, so the encoder is permutation-invariant
-by construction. So the encoder MLP now outputs, per transition, a mean and a (pre-softplus) variance —
-`2·latent_dim` outputs — and the agent fuses them into `(z_means, z_vars)` and samples `z` by
-reparameterization. Let me confirm the shapes close: the context is `(num_tasks, N, context_dim)`, the
-encoder maps the last axis to `2·latent_dim` giving `(num_tasks, N, 10)`, I split into `mu` and softplus'd
-`sigma²` each `(num_tasks, N, 5)`, and for each task I fuse the `N` factors along the transition axis down
-to a single `(5,)` mean and variance, stacking back to `(num_tasks, 5)`; a clamp at `σ² ≥ 10⁻⁷` keeps a
-degenerate zero-variance factor from sending the precision to infinity. The dimensions line up.
+Read the closed form in two cases. With `N` equally-confident factors (`σ_n² = 1`), `1/σ² = N` so
+`σ² = 1/N` and `μ = (1/N)Σ_n μ_n` — the sample mean of the factor means, variance shrinking as `1/N`, the
+standard Bayesian posterior for a Gaussian mean; `N = 64` transitions take the belief std from the prior's
+`1` down to `1/√64 = 0.125`, an eight-fold sharpening, so the belief *sharpens with evidence*. The
+asymmetric case is where sparse gets rescued: let one transition be highly diagnostic, `σ_n² = 0.01`, and
+the rest uninformative. The precision sum is dominated by `1/0.01 = 100`, swamping the ~63 unit
+contributions, so `μ ≈` the confident factor's mean and `σ² ≈ 0.01` — a single confident vote dominates the
+belief. On sparse that vote is precisely the rare transition where the +1 fired: the moment the agent
+grazes the goal once, its factor pins the posterior onto the goal location and the many zero-reward
+transitions barely move it. That is the mechanism that makes the rare reward *count*, which the mean and
+the GRU both lacked — they weighted every transition the same; a naive unweighted average of 64 factor
+means would dilute the one diagnostic vote by 64x, drowning the +1 in the sea of zeros. The precision
+weighting is the whole difference, and it is inseparable from representing the belief as a *distribution*
+with a variance rather than a point. And the product is symmetric in its factors, so the encoder is
+permutation-invariant by construction. So the encoder MLP outputs, per transition, a mean and a
+pre-softplus variance — `2·latent_dim` outputs — and the agent fuses them into `(z_means, z_vars)` and
+samples `z` by reparameterization, with a clamp at `σ² ≥ 10⁻⁷` so a degenerate zero-variance factor cannot
+send the precision to infinity.
 
 Now the training signal for this encoder, and here I make the second reversal from the last rung. I trained
 the GRU with a reward-reconstruction loss; that was the move that gave `z` content. But for a posterior I
@@ -164,42 +153,35 @@ ever sees this iteration's collection, never stale history, so its training inpu
 distribution it will face at test. The collection itself mixes prior-conditioned exploration (sample `z`
 from `N(0,I)`, gather data before the agent knows the task) with posterior-conditioned exploration (re-infer
 `q(z|c)` after some context accumulates), so the encoder sees both prior- and posterior-conditioned data,
-exactly the distribution it faces at test. This decoupling is what was implicitly carrying the previous
-rungs and what I now make load-bearing: it is the operational form of "the encoder's data ≠ the policy's
-data," and it is what lets off-policy efficiency coexist with the distribution match the encoder needs.
+exactly the distribution it faces at test. This decoupling — the operational form of "the encoder's data ≠
+the policy's data" — is what lets off-policy efficiency coexist with the distribution match the encoder
+needs.
 
-Putting it together in this task's edit surface: the agent holds the permutation-invariant product-of-Gaussians
-encoder (MLP → `2·latent_dim`, softplus on the variance, fuse, reparameterized sample) and the scaffold's
-`z`-conditioned SAC heads; `infer_posterior` fuses the context into `(z_means, z_vars)` and samples; `adapt`
-runs it on accumulated context; `compute_kl_div` is the KL to `N(0,I)`. The algorithm's meta-gradient step
-samples context from the recent encoder buffer (distinct from the off-policy RL batch from the full buffer),
-backprops the KL into the encoder, backprops the Q-loss into the Q-nets *and* the encoder and steps them
-together, then the value loss and policy loss on detached `z`, with a soft target-value update. Test-time
-evaluation is the posterior-sampling loop the protocol already implements: clear context, sample `z` from the
-prior, roll out, accumulate, re-infer, repeat, then act deterministically with the inferred `z`. This is a
-faithful fill — unlike the previous two rungs I am not dropping or reducing any of the method's machinery,
-because all of it (the probabilistic belief, the bottleneck, the posterior-sampling exploration, the
-decoupled samplers) fits the harness directly. The full scaffold module is in the answer.
+Putting it together: the agent holds the permutation-invariant product-of-Gaussians encoder
+(MLP → `2·latent_dim`, softplus on the variance, fuse, reparameterized sample) and the scaffold's
+`z`-conditioned SAC heads; `infer_posterior` fuses the context and samples, `adapt` runs it on accumulated
+context, `compute_kl_div` is the KL to `N(0,I)`. The meta-gradient step draws context from the recent
+encoder buffer (distinct from the off-policy RL batch), backprops the KL into the encoder and the Q-loss
+into the Q-nets *and* the encoder together, then the value and policy losses on detached `z` with a soft
+target update; test-time evaluation is the posterior-sampling loop the protocol already implements. Unlike
+the previous two rungs I am not dropping or reducing any of the method's machinery — the probabilistic
+belief, the bottleneck, the posterior-sampling exploration, and the decoupled samplers all fit the harness
+directly. The full scaffold module is in the answer.
 
-Now the falsifiable expectations against the VariBAD numbers I opened with. The whole point of this rung is
-the sparse task, so that is the sharp prediction: posterior sampling gives the agent temporally-extended,
-hypothesis-committed exploration that undirected action jitter never could, so `sparse-point-robot` should
-jump clearly above VariBAD's 1.99 — I would call this rung a real success on sparse only if the mean roughly
-doubles, into the mid-single-digits, and I expect the best seed to push well past VariBAD's 3.39 (a seed near
-or above ~9 would be the signature of an agent that actually commits to sweeping the half-circle, since only
-an agent that reliably reaches the goal early and then exploits can rack up that many in-goal steps). The
-information-bottleneck KL should also help generalization to held-out tasks under the tiny budget, so I
-expect `cheetah-vel` to *improve*, and here I can be sharper than "firm up" because VariBAD already told me
-firming up is not enough: its variance cut of 3.3× moved the mean by one percent, so the ceiling was never
-the variance. Dropping the reconstruction term in favor of a critic-trained, bottlenecked `z` attacks the
-ceiling itself — the representation is now shaped by what the value function needs rather than by reward
-magnitudes it does not — so I expect a genuine *mean* step, into the low-to-mid −60s, not just another
-variance reduction around −84. The honest risk is `point-robot`: VariBAD's recurrent encoder won it (−10.1),
-and a permutation-invariant product-of-Gaussians belief discards the sequential structure that helped there,
-so I would not be surprised if this rung *regresses* on the easy dense task — say into the −14 to −16 range
-— while winning the two hard ones. That trade is the explicit bet of this rung: give up a little on the
-easiest, low-dimensional family where any encoder suffices, to win decisively on the two families that
-actually exercise meta-RL — high-dimensional encoding and sparse-reward exploration — because the
-probabilistic belief and the posterior-sampling it enables are aimed precisely at those. If the measured
-ordering is "loses point-robot, wins cheetah-vel and sparse-point-robot clearly," the climb has landed where
-the design said it would.
+Now the expectations against the VariBAD numbers I opened with. The point of this rung is the sparse task,
+so that is the sharp prediction: posterior sampling gives temporally-extended, hypothesis-committed
+exploration that undirected action jitter never could, so `sparse-point-robot` should jump clearly above
+VariBAD's 1.99, and the best seed should push well past its 3.39 — a seed racking up many in-goal steps
+would be the signature of an agent that reaches the goal early and then exploits. The information-bottleneck
+KL should also help generalization under the tiny budget, so I expect `cheetah-vel` to *improve* — and here
+I can be sharper than "firm up," because VariBAD already showed firming is not enough: its 3.3× variance cut
+moved the mean by one percent, so the ceiling was never the variance. Dropping the reconstruction term for a
+critic-trained, bottlenecked `z` attacks the ceiling itself — the representation is shaped by what the value
+function needs rather than reward magnitudes it does not — so I expect a genuine *mean* improvement, not
+just another variance reduction around −84. The honest risk is `point-robot`: VariBAD's recurrent encoder
+won it (−10.1), and a permutation-invariant product-of-Gaussians belief discards the sequential structure
+that helped there, so I would not be surprised if this rung *regresses* on the easy dense task while winning
+the two hard ones. That trade is the explicit bet: give up a little on the easiest, low-dimensional family
+where any encoder suffices, to win decisively on the two families that actually exercise meta-RL —
+high-dimensional encoding and sparse-reward exploration — because the probabilistic belief and the
+posterior-sampling it enables are aimed precisely at those.
