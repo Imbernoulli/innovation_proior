@@ -26,19 +26,13 @@ per weight by 4×, the arithmetic intensity rises and the token latency drops by
 factor. So low-bit weight-only quantization is not a memory trick that costs speed — for this workload
 it *is* the speed. That is why I care about pushing bits down rather than settling at a safe 8.
 
-It is worth pinning the bandwidth claim with a roofline sketch so I know the 4× is real and not
-wishful. For one decoded token the dominant work is the matmuls against the weight matrices: every
-weight is read once and used in exactly one multiply-add, so the arithmetic intensity is ~2 FLOPs per
-weight element read. A modern accelerator has on the order of hundreds of TFLOP/s of compute against a
-few TB/s of memory bandwidth — a ratio of hundreds of FLOPs per byte at the ridge point — so at 2 FLOPs
-per element the kernel sits far out on the bandwidth-bound side of the roofline, and its runtime is
-essentially (bytes of weights) / (bandwidth). Halving or quartering the bytes per weight therefore moves
-the runtime almost linearly, which is why weight-only quantization delivers speed here even though it
-does nothing to the FLOP count. The moment I move to large-batch serving the picture inverts — many
-tokens reuse each weight, arithmetic intensity climbs, and the workload becomes compute-bound, at which
-point weight-only quantization buys memory but not speed and I would instead need the *matmul* itself in
-low precision. I note that fork now because it is the axis the later, harder regime lives on; for the
-batch-1 floor, bandwidth is the whole game and low-bit weights are the direct lever.
+The bandwidth claim is a roofline fact: at ~2 FLOPs per weight element read against an accelerator's
+hundreds-of-FLOPs-per-byte ridge point, the batch-1 kernel sits far out on the bandwidth-bound side, so
+its runtime is essentially (bytes of weights)/(bandwidth) and quartering the bytes moves it almost
+linearly — weight-only quantization buys speed even though it touches no FLOPs. The picture inverts only
+for large-batch serving, where many tokens reuse each weight, arithmetic intensity climbs, and I would
+instead need the *matmul* itself in low precision — a fork I note now because the later, harder regime
+lives on it.
 
 Now the first real design question: *granularity*. One Δ for an entire weight matrix (per-tensor) is
 crude, because different output channels of a linear layer have very different scales, and a single Δ
@@ -98,18 +92,11 @@ of the useful signal is small, and I do not want rounding to nudge near-zero wei
 systematically). This confirms the mapping does what I claimed and that the failure at 3-bit is the grid
 being coarse relative to the *typical* weight, not any bug in the rounding.
 
-I can sharpen the 3-bit case further. Eight levels for a whole channel means the *entire* trained
-structure of 4096 weights — their careful relative sizes — is being projected onto {−4,−3,…,2,3}. The
-distribution of trained weights is heavy in the middle and light in the tails: most weights are small, a
-few are large. Because Δ is pinned by the largest weight, a weight that is 10% of the channel max lands
-at round(0.1·4σ / 1.33σ) = round(0.30) = 0 — it is annihilated. A weight at 20% of max rounds to ±1, a
-single level. So at 3-bit per-channel the *bulk* of every channel — the small and medium weights that
-carry most of the layer's function — is being crushed into just the innermost two or three levels, while
-the grid wastes resolution out at the tails where almost no weight sits. That is the mechanism, and it
-predicts not a graceful degradation but a sharp break: I expect LLaMA-7B 3-bit per-channel WikiText
-perplexity to climb from an FP16 reference near 5.68 up into the mid-twenties — a more than 4× blow-up
-no one would deploy — while 4-bit g128 on Llama-2-7B should sit within a few tenths of its FP16 (I would
-guess on the order of 5.7 against an FP16 ≈ 5.5).
+The mechanism is that Δ is pinned by the largest weight while the trained distribution is heavy in the
+middle: a weight at 10% of the channel max lands at round(0.1·4σ/1.33σ) = round(0.30) = 0, annihilated,
+and one at 20% rounds to a single level. So the *bulk* of every channel is crushed into the innermost
+two or three levels while the grid wastes resolution out at the tails — a sharp break, not a graceful
+one.
 
 One more piece of the weight-only story I want to reason through before I move on: *why* per-weight
 rounding noise that looks small in SQNR terms turns into a 4× perplexity blow-up rather than a mild
@@ -124,10 +111,10 @@ average out. At 8-bit, ε ≈ 0.009 and even a pessimistic ε√L over 32 layers
 by more than twice its own scale by the output, long before the nonlinear amplification is counted. A
 model whose final-layer hidden state is off by 2× produces a next-token distribution that is nearly
 unrelated to the true one, and perplexity — the exponential of the average negative log-likelihood —
-punishes that sharply. That is the quantitative bridge from "16% relative rounding noise per weight" to
-"mid-twenties perplexity", and it tells me the fix cannot be *smaller* noise per weight from a cleverer
-scale alone; it has to be noise that is *shaped* so that its effect on the layer output cancels rather
-than accumulates. Holding onto that, because it is the first hint of what the next rung must do.
+punishes that sharply. That is the quantitative bridge from a per-weight rounding noise that looks small
+in SQNR terms to a multiple-fold perplexity blow-up, and it tells me the fix cannot be *smaller* noise
+per weight from a cleverer scale alone; it has to be noise that is *shaped* so that its effect on the
+layer output cancels rather than accumulates.
 
 There is a second, worse failure I should name now even though I am not attacking it yet, because it
 sets up everything that comes later. Everything above is *weight-only*: I quantize W and leave the
@@ -183,45 +170,21 @@ so a per-group zero-point is the same order of cost for a real gain. I will keep
 whole-channel weights and use the affine path for groups; both are still plain round-clamp-dequantize
 with no calibration.
 
-A note on what "quality" means here so my bet is honest on both axes. The primary metric is WikiText-2
-perplexity at sequence length 2048 — sensitive, continuous, and exactly the exponential-of-loss quantity
-my depth argument above says will blow up. The secondary is zero-shot commonsense-reasoning accuracy
-averaged over a fixed suite, which is coarser and more forgiving: a model can be several perplexity
-points worse and still answer most multiple-choice questions correctly, because the argmax over a few
-answer strings survives perturbations that a full next-token distribution does not. So at 8-bit and
-4-bit g128 I expect both metrics essentially untouched; at 3-bit per-channel I expect perplexity to
-scream first while zero-shot accuracy sags more gently; and at W4A4 I expect *both* to collapse, because
-a detonated model gets even the argmax wrong. I mention this only so I do not later confuse a modest
-accuracy dip with a healthy model — perplexity is the leading indicator, and it is the number I will
-read the cliff off of.
+The two quality axes are not equally sensitive, and that matters for reading the results. WikiText-2
+perplexity is the exponential-of-loss quantity my depth argument says will blow up; zero-shot accuracy
+averaged over a fixed suite is coarser, because the argmax over a few answer strings survives
+perturbations that a full next-token distribution does not. So perplexity is the leading indicator — it
+screams at 3-bit per-channel while accuracy sags more gently, and only a detonated model (W4A4) gets even
+the argmax wrong. I keep that ordering so I do not later mistake a modest accuracy dip for a healthy
+model.
 
-So here is the bet I am placing on RTN as the floor. It is the right *baseline* — free, calibration-
-free, and genuinely fine at 8 bits — and it tells me precisely where the cliff is. The code is exactly
-the magnitude-based step size and a clamp-and-round, applied per-channel (and optionally per-group):
-
-```python
-def find_params(self, x):                       # per-(out)channel symmetric grid
-    x = x.flatten(1) if self.perchannel else x.flatten().unsqueeze(0)
-    xmax = torch.maximum(x.abs().max(1)[0], torch.zeros(x.shape[0])).clamp(min=1e-5)
-    self.maxq = torch.tensor(2 ** (self.bits - 1) - 1)   # symmetric N-bit grid
-    self.scale = xmax / self.maxq                         # Δ from the channel's own max
-    self.zero  = torch.zeros_like(self.scale)
-
-def sym_quant_dequant(x, scale, maxq):          # round-to-nearest, clamp, dequantize
-    q = torch.clamp(torch.round(x / scale), -(maxq + 1), maxq)
-    return scale * q
-```
-
-The prediction I am setting the bar at follows straight from the SQNR arithmetic above: this should be
-excellent at 8 bits (≈41 dB, untouched) and acceptable at 4-bit g128 — I would guess a Llama-2-7B
-WikiText perplexity within a few tenths of FP16, on the order of 5.7 against an FP16 ≈ 5.5 — but it
-should fall off a cliff at 3-bit *per-channel*, where the SQNR collapses toward 8 dB and I expect
-LLaMA-7B perplexity to climb to something like the mid-twenties against an FP16 of ≈ 5.68, a more than
-4× blow-up. And the moment activations join at 4 bits, the 14.3-vs-1 outlier arithmetic says the model
-detonates to perplexity in the thousands. If those are the numbers, then the questions the rest of the
-ladder must answer are sharp and well-posed, and they split cleanly. The weight-only cliff at 3-bit
-per-channel is a *structured* loss, not random noise: the errors are correlated through the layer's
-output, so they should be *compensable* — and the lever to compensate them is sitting in the calibration
-activations that RTN has so far refused to use. The activation detonation is a different beast, a
-concentration of energy in a few fixed coordinates, and defeating it will need its own instrument. RTN's
-whole contribution is to draw those two gaps precisely.
+So RTN is the right floor — free, calibration-free, genuinely fine at 8 bits — and the code is just the
+magnitude-based step size and a clamp-and-round, per-channel or per-group (the full quantizer is in the
+answer). The predictions follow from the SQNR arithmetic: excellent at 8 bits (≈41 dB, untouched),
+acceptable at 4-bit g128 (within a few tenths of FP16), a several-fold blow-up at 3-bit *per-channel*
+where the SQNR collapses toward 8 dB, and — the moment activations join at 4 bits — detonation to
+perplexity in the thousands from the 14.3-vs-1 outlier arithmetic. Those numbers split the rest of the
+ladder into two well-posed gaps. The weight-only cliff at 3-bit per-channel is a *structured* loss whose
+errors are correlated through the layer output, so they should be *compensable* — and the lever sits in
+the calibration activations RTN refuses to use. The activation detonation is a different beast, energy
+concentrated in a few fixed coordinates, and it will need its own instrument.

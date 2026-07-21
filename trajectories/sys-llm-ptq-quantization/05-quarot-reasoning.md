@@ -57,15 +57,12 @@ it so the grid can spend resolution uniformly and waste none.
 The objection is obvious and it is the whole reason this has not been the standard move: I cannot just
 rotate the activations, because rotating the activations changes the function the network computes,
 unless I undo the rotation somewhere. If I insert Q before a linear and do nothing else, the output is
-wrong. So I need rotations that are *free* — that change the internal representation but leave the
-model's output exactly unchanged. This is where I get to exploit a structural property of the
-Transformer that I have not used yet: **computational invariance**. The residual stream is acted on by
-linear maps — the projections in attention and MLP read from it and write to it — and an orthogonal
-matrix Q can be pushed *through* a linear map by absorbing it into the weights. If I decide the hidden
-state h shall be represented as Qh in the rotated frame, then any linear W that reads h computes Wh =
-(WQᵀ)(Qh), so I fold Qᵀ into that weight's input side; any linear that writes a contribution c into the
-stream must now write Qc, so I fold Q into its output side. The two foldings are inverses that meet in
-the residual stream, so end to end the computation is identical — I have changed the *basis* the hidden
+wrong. So I need rotations that are *free* — that change the internal representation but leave the model's
+output exactly unchanged. This is where I get to exploit a structural property of the Transformer I have
+not used yet: **computational invariance**. The residual stream is acted on only by linear maps that read
+from it and write to it, and an orthogonal Q can be pushed *through* a linear map by absorbing it into the
+weights: a reader's input side takes Qᵀ, a writer's output side takes Q, and the two foldings meet in the
+stream as inverses, so end to end the computation is identical — I have changed the *basis* the hidden
 state is stored in, nothing else.
 
 The one place this could break is normalization, and it is worth checking rather than assuming. LLaMA
@@ -84,30 +81,13 @@ the stream shall be stored rotated as x' = x Q. A *reader* (W_q, W_k, W_v) must 
 original output x Wᵀ; since x = x' Qᵀ, that output is x' Qᵀ Wᵀ = x' (W Q)ᵀ, so the folded reader weight is
 W ← W Q. A *writer* (W_o) produces a contribution c = a W_oᵀ from its input a, and to land in the rotated
 stream it must emit c Q = a W_oᵀ Q = a (Qᵀ W_o)ᵀ, so the folded writer weight is W ← Qᵀ W. Those are
-exactly `rotate_attention_inputs` (W←WQ) and `rotate_attention_output` (W←QᵀW) in the code. The essential
-check is that going around the block — read from the rotated stream, write back to it — leaves the stream
-consistently in the x' = xQ frame, and the residual add is between two vectors both in that frame, so
-after the head un-rotates at the end (x' Qᵀ = x) the logits are identical to FP16. It composes to the
-identity because QᵀQ = I; any single sign or transpose error would break that and the FP16 output would
-move, which is precisely the check that catches a mistake.
+the folded reader weight W ← W Q and writer weight W ← Qᵀ W (which are `rotate_attention_inputs` and
+`rotate_attention_output` in the answer). Going around the block leaves the stream consistently in the
+x' = xQ frame, the residual add is between two vectors both in that frame, and after the head un-rotates
+(x' Qᵀ = x) the logits are identical to FP16 because QᵀQ = I — any single sign or transpose error would
+move the FP16 output, so the FP16-match is the check.
 
-```python
-def rotate_attention_inputs(layer, Q):                     # reads the residual stream
-    for W in [layer.self_attn.q_proj, layer.self_attn.k_proj, layer.self_attn.v_proj]:
-        W.weight.data = torch.matmul(W.weight.double(), Q).to(W.weight.dtype)
-
-def rotate_attention_output(layer, Q):                     # writes the residual stream
-    W = layer.self_attn.o_proj
-    W.weight.data = torch.matmul(Q.T, W.weight.double()).to(W.weight.dtype)
-    if W.bias is not None:
-        W.bias.data = torch.matmul(Q.T, W.bias.double()).to(W.bias.dtype)
-
-def rotate_ov_proj(layer, head_num, head_dim):             # online Hadamard in the V/O path
-    apply_exact_had_to_linear(layer.self_attn.v_proj, had_dim=head_dim, output=True)
-    apply_exact_had_to_linear(layer.self_attn.o_proj, had_dim=-1, output=False)
-```
-
-The value/output path needs its own treatment (the `rotate_ov_proj` above) because the outliers there
+The value/output path needs its own treatment because the outliers there
 live in the per-head dimension, not the residual dimension, so a second Hadamard at head-dim granularity
 is applied online between V and O; and the keys and queries get a Hadamard before the KV-cache is
 quantized, so the cached K and V are stored in an outlier-free frame at 4 bits. These online Hadamards
@@ -143,63 +123,30 @@ because not every rotation in the pipeline can be fused offline. The residual-st
 weights once and is free at runtime. But some rotations have to be applied *online* — inside the
 attention value/output path, and on the keys and queries to make the KV-cache quantizable — and for those
 an O(n²) dense rotation per token would be a real inference tax, whereas an O(n log n) Hadamard is
-nearly free. A *random* Hadamard (a Hadamard composed with a random ±1 diagonal) keeps the
-outlier-spreading property — the random signs prevent any adversarial alignment of the fixed Hadamard
-pattern with the model's structure — while keeping the fast transform. The concern about a *plain*
-Hadamard is real and worth stating: its rows are a fixed, highly structured ±1 pattern, so if the model
-happened to have activation structure aligned with that pattern (a spike sitting exactly where a
-Hadamard row is constant-sign), the transform could concentrate rather than spread it — a pathological
-but not impossible alignment. Composing with a random sign diagonal randomizes which coordinates get
-which sign before the butterfly, which breaks any such alignment in expectation while leaving the
-transform exactly orthogonal and still O(n log n); I get the averaging guarantee of a random rotation and
-the speed of a Hadamard at once. So Q is a randomized Hadamard
-matrix on the hidden dimension, fused where possible and run as a cheap WHT kernel where not.
-
-```python
-def random_hadamard_matrix(size, device):                  # ±1/√n entries, with a random sign diagonal
-    Q = (torch.randint(0, 2, (size,)).double() * 2 - 1)
-    return matmul_hadU(torch.diag(Q)).to(device)
-
-@torch.inference_mode()
-def rotate_model(model, args):
-    Q = get_orthogonal_matrix(model.config.hidden_size, args.rotate_mode)   # 'hadamard'
-    rotate_embeddings(model, Q); rotate_head(model, Q)                       # rotate in / un-rotate out
-    for layer in model_utils.get_transformer_layers(model):
-        rotate_attention_inputs(layer, Q, model_type)      # W ← W Q  (reads the stream)
-        rotate_attention_output(layer, Q, model_type)      # W ← Qᵀ W (writes the stream)
-        rotate_mlp_input(layer, Q, model_type)
-        rotate_mlp_output(layer, Q, model_type)            # + exact Hadamard on down_proj input
-        rotate_ov_proj(layer, model_type, num_heads, head_dim)   # online Hadamard in the V/O path
-```
+nearly free. A *plain* Hadamard is risky: its rows are a fixed, structured ±1 pattern, so a spike sitting exactly
+where a Hadamard row is constant-sign could be concentrated rather than spread. Composing with a random
+±1 sign diagonal randomizes which coordinates get which sign before the butterfly, breaking any such
+alignment in expectation while staying exactly orthogonal and O(n log n). So Q is a randomized Hadamard on
+the hidden dimension, fused into the weights where possible and run as a cheap WHT kernel where not (the
+`rotate_model` pass is in the answer).
 
 With the outliers dissolved, the activations quantize to 4 bits on ordinary per-tensor (or per-token)
 scales — no special outlier path, no channels kept in higher precision, every matmul genuinely in 4-bit.
-And I do not throw away the weight-quantization machinery I already trust: after rotating, I still run
-**GPTQ** on the (now-rotated) weights to compensate the 4-bit weight rounding error optimally. I choose
-GPTQ rather than AWQ here for a specific reason. AWQ's protection worked by scaling salient weight
-channels identified from activation magnitude — but the rotation has just *destroyed* the axis-aligned
-channel structure that AWQ keys on; in the rotated frame there are no salient channels to scale, because
-the whole point was to make every coordinate statistically the same. GPTQ, by contrast, does not care
-about channel identity — it minimizes the output reconstruction ‖ŴX̂ − WX̂‖² whatever the basis, so it is
-exactly the right tool in a frame where the structure has been deliberately washed out. The rotation and
-GPTQ are complementary in the cleanest way: rotation removes the activation structure, GPTQ optimizes the
-weight grid without needing any structure. This is a
-clean composition, and it is worth seeing why the two do not interfere. The rotation is a fixed
-orthogonal reparametrization that makes the *activations* quantizable; GPTQ then solves min‖ŴX̂ − WX̂‖²
-in the rotated frame, treating the rotated weights as just another weight matrix to compress against the
-rotated calibration activations X̂. Rotation prepares the operands; GPTQ optimizes the weight grid on
-the prepared operands; the KV-cache is handled by the online K/Q Hadamard so the cache also quantizes to
-4 bits. Each part addresses a different operand, so they stack rather than fight. This is the full
-W4A4KV4 pipeline — I will call it rotation-based quantization.
+And I do not throw away the weight machinery I already trust: after rotating, I still run **GPTQ** on the
+rotated weights to compensate the 4-bit weight rounding. Not AWQ, for a specific reason — AWQ scales
+salient weight channels identified from activation magnitude, but the rotation has just *destroyed* the
+axis-aligned channel structure it keys on; in the rotated frame every coordinate is statistically the
+same, so there are no salient channels to scale. GPTQ does not care about channel identity — it minimizes
+‖ŴX̂ − WX̂‖² in whatever basis — so it is exactly the right tool in a washed-out frame. The two stack
+rather than fight: rotation prepares the operands, GPTQ optimizes the weight grid on them, and the online
+K/Q Hadamard makes the KV-cache quantizable to 4 bits — the full W4A4KV4 pipeline, rotation-based
+quantization.
 
-One property of this result I want to name because it is the qualitative break from everything before:
-there are *no higher-precision channels anywhere*. SmoothQuant left the outliers smaller-but-present and
-leaned on the 8-bit grid's headroom to absorb them; a mixed-precision scheme would keep the outlier
-channels in FP16. Here, after rotation, every coordinate is statistically the same near-Gaussian, so
-there is nothing to single out — every matmul, weights and activations and KV alike, runs genuinely at 4
-bits with a plain per-tensor/per-token grid and no exceptions. That is what makes it *true* W4A4KV4
-rather than "4-bit with an FP16 side channel", and it is only possible because the rotation removed the
-structure that would otherwise have demanded a side channel.
+The qualitative break from everything before is that there are *no higher-precision channels anywhere*.
+SmoothQuant left the outliers smaller-but-present and leaned on the 8-bit grid's headroom; a
+mixed-precision scheme would keep them in FP16. Here every coordinate is the same near-Gaussian, so every
+matmul — weights, activations, KV — runs at 4 bits on a plain per-tensor/per-token grid with no
+exceptions. That is what makes it *true* W4A4KV4 rather than "4-bit with an FP16 side channel."
 
 Let me also reason about the *scale dependence*, because it is a falsifiable prediction the mechanism
 makes. The outlier-spreading is a 1/√n effect: the residual dimension n grows with model size (4096 at
@@ -210,17 +157,13 @@ central-limit averaging. So the rotation argument should get *cleaner* as the mo
 predicts the W4A4 gap to FP16 should *shrink* with scale — the opposite of the usual expectation that
 bigger models are harder to quantize.
 
-The bar and the bet. The reference is SmoothQuant pushed to W4A4 on Llama-2-7B: ≈83 perplexity, broken.
-My claim is that *removing* the outliers by rotating them out of existence — rather than rescaling them —
-finally makes 4-bit activations quantize as cleanly as 4-bit weights, and that with GPTQ on the rotated
-weights the whole W4A4KV4 model stays within a small margin of FP16. Concretely I am betting Llama-2-7B
-W4A4 comes down from ~83 to about 6.1 against an FP16 of 5.47 — a gap of ~0.63 — and, because of the
-1/√n scale argument, that the gap shrinks with width: 13B landing near 5.40 (FP16 4.88, gap ~0.52) and
-70B near 3.79 (FP16 3.32, gap ~0.47), within roughly half a perplexity point of full precision at the
-largest size. The risks are two and I can bound both. The online Hadamard cost — I am wagering the WHT's
-O(n log n) is cheap enough that the un-fused rotations are essentially free at inference. And the
-assumption that a *random* rotation is good enough: a random Hadamard spreads the mass on average, but it
-is not *chosen* to minimize the post-rotation quantization error for this particular model, and different
-random draws give measurably different realized error. That last point is exactly the loose thread. If
-rotating away the outliers is the right idea — and the numbers say it is — the natural next question is
-whether the rotation should be *learned* rather than left to chance.
+The bar is SmoothQuant pushed to W4A4 on Llama-2-7B: ≈83 perplexity, broken. My claim is that *removing*
+the outliers by rotating them out of existence finally makes 4-bit activations quantize as cleanly as
+4-bit weights, and with GPTQ on the rotated weights the whole W4A4KV4 model stays within a small margin
+of FP16 — Llama-2-7B down from ~83 to about 6.1 against FP16 5.47, and, by the 1/√n argument, the gap
+*shrinking* with width (13B ~5.40 vs 4.88, 70B ~3.79 vs 3.32, within half a perplexity point at the
+largest size). Two risks I can bound: the un-fused online Hadamards, cheap by the O(n log n) WHT; and the
+assumption that a *random* rotation is good enough — a Hadamard spreads the mass on average but is not
+*chosen* for this model, and different draws give measurably different realized error. That last point is
+the loose thread: if rotating away the outliers is the right idea, the next question is whether the
+rotation should be *learned* rather than left to chance.

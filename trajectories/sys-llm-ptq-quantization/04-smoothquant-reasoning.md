@@ -8,17 +8,13 @@ itself to run on the hardware's integer tensor cores. Those INT8 GEMM units need
 INT8. Weight-only quantization buys me nothing there, because the arithmetic still happens in FP16 — the
 weights get dequantized on the way in and the matmul runs at FP16 rates.
 
-Let me be precise about why the regime is different, because it changes which quantization even helps.
-In batch-1 decode, each weight is read once and used in one multiply-add, so arithmetic intensity is ~2
-FLOP/byte and the kernel is bandwidth-bound — shrinking the weights is the whole win. In large-batch
-prefill or serving, a single weight matrix is reused across hundreds of token-vectors, so arithmetic
-intensity climbs by that batch factor and the kernel crosses onto the compute-bound side of the
-roofline. There, the lever is not bytes read but the *rate of the multiply itself*, and an INT8 tensor
-core runs at roughly 2× the throughput of the FP16 pipe for the same silicon. To claim that speedup the
-matmul's two inputs must both be INT8 integers so the accumulation happens in the integer datapath.
-Weight-only quantization cannot get there because X is still FP16; I have to quantize the activations
-too. So the target shifts: **W8A8** — INT8 weights *and* INT8 activations — so the linear layers execute
-as dense INT8 GEMMs.
+The regime is different in a way that changes which quantization helps. In large-batch prefill or
+serving, a single weight matrix is reused across hundreds of token-vectors, so arithmetic intensity
+climbs past the roofline ridge and the kernel is compute-bound — the lever is now the *rate of the
+multiply*, and an INT8 tensor core runs at roughly 2× the FP16 pipe. To claim that the matmul's two
+inputs must both be INT8 so the accumulation happens in the integer datapath, and weight-only cannot get
+there because X is still FP16. So the target shifts to **W8A8** — INT8 weights *and* activations — with
+the linears running as dense INT8 GEMMs.
 
 The weights I already know how to quantize to 8 bits; from the floor's SQNR arithmetic, 8-bit RTN on
 weights is ~41 dB, essentially lossless, and I do not need any of the GPTQ/AWQ machinery for that — the
@@ -38,19 +34,18 @@ and ordinary activations sit near 1, then Δ = 100/127 = 0.79, so an ordinary ac
 rounds to round(1/0.79) = round(1.27) = 1 — a single level, when it deserved ~127 of them. The ordinary
 signal, which is the overwhelming majority of the information, is being crushed into one or two levels
 near zero while the grid spends its whole range describing the handful of outliers. The information in
-the bulk of the activations is annihilated, and that is why the model goes to chance. It is worth noting *why* I am testing this on a 175B model specifically, because the outlier problem is
-not scale-invariant — it gets sharply worse as models grow. In small models the activation channels are
-fairly uniform and even naive per-tensor INT8 survives; but as width and depth increase, a few channels
-emerge whose magnitudes pull away from the rest by larger and larger factors, and by the hundred-billion
-scale the ratio is the ~100× that destroys per-tensor quantization. So the hardest, most valuable case —
-the giant model where INT8 serving throughput matters most and where naive quantization fails worst — is
-exactly OPT-175B, and a method that only worked on small models would be solving the easy half of the
-problem. That the naive number is 35.5% (chance is ~33% on this suite) tells me the large model is not
-merely degraded but *destroyed*, which is the right stress test: if migration can rescue the worst case,
-it rescues the rest. The natural fix everyone reaches for is *per-channel* activation quantization: a separate Δ per input channel, so the
-outlier channels get their own coarse grid and the quiet channels keep a fine one. And it works —
-simulated per-channel activation quantization recovers FP16 accuracy, because now the ordinary channels
-round against ~1, not against 100.
+the bulk of the activations is annihilated, and the model goes to chance. And the problem is not
+scale-invariant — it sharpens with size: small models have fairly uniform channels that naive per-tensor
+INT8 survives, but as width and depth grow a few channels pull away by larger factors until the ratio is
+the ~100× that destroys per-tensor quantization at the hundred-billion scale. So OPT-175B is the right
+stress test — the giant model where INT8 throughput matters most and naive quantization fails worst — and
+its 35.5% (chance ~33% on this suite) is a *destroyed*, not merely degraded, model: rescue the worst case
+and the rest follow.
+
+The natural fix everyone reaches for is *per-channel* activation quantization: a separate Δ per input
+channel, so the outlier channels get their own coarse grid and the quiet ones keep a fine one. And it
+works — simulated per-channel activation quantization recovers FP16 accuracy, because the ordinary
+channels now round against ~1, not against 100.
 
 But there is a wall, and it is a hardware wall, not a statistics one — this is the crux of the whole
 rung. Look at where the activation scaling axis lives in the matmul Y = X W, with X of shape [T tokens ×
@@ -67,18 +62,14 @@ organized by channel, not by token — every token has the same outlier channels
 sees the same 100× spike in every row and cannot separate it out. The field is stuck between a quantizer
 that works but will not run and a quantizer that runs but does not work.
 
-Before I abandon runtime scaling, let me weigh the two other escapes people reach for, because if either
-worked cleanly I would not need a new idea. The first is a *mixed-precision outlier decomposition*: keep
-the handful of outlier activation channels in FP16 and run only the well-behaved channels through the
-INT8 GEMM, adding the FP16 outlier contribution back separately. This does preserve accuracy, but it is
-the ragged-layout disease again, now on the activation side and worse: the outlier channel set can shift
-with the input, so the kernel needs a dynamic split, a separate FP16 matmul for the outlier columns, and
-a scatter-add to recombine — the INT8 GEMM I wanted is now wrapped in FP16 bookkeeping that eats the
-throughput win I was chasing. The second escape is fully *dynamic per-channel* activation quantization
-computed on the fly, but that is exactly the contraction-axis granularity the tensor core forbids, so it
-cannot run on the fast path no matter how I compute it. Both escapes fail for the same underlying reason:
-they try to handle the outliers *at runtime*, where the hardware constrains me to per-token/per-tensor
-scales. The only way out is to make the activations un-outlier-y *before* they reach the kernel.
+The two escapes people reach for both fail for the same reason. A *mixed-precision outlier decomposition*
+— keep the outlier channels in FP16, run the rest through the INT8 GEMM, add the outlier contribution
+back — preserves accuracy but is the ragged-layout disease on the activation side and worse, since the
+outlier set shifts with the input: a dynamic split, a separate FP16 matmul, a scatter-add, all eating the
+throughput win. Fully *dynamic per-channel* activation quantization is exactly the contraction-axis
+granularity the tensor core forbids. Both try to handle outliers *at runtime*, where the hardware allows
+only per-token/per-tensor scales. The only way out is to make the activations un-outlier-y *before* they
+reach the kernel.
 
 So let me stop trying to scale activations *at runtime* and ask whether I can rebalance the difficulty
 *offline*. The outliers are a property of which channels are large — a fixed, persistent set — and I can
@@ -112,28 +103,18 @@ that: for each channel j, take
 
   s_j = max(|X_j|)^α / max(|W_j|)^(1−α),  with α = 0.5 by default.
 
-Let me verify what α = 0.5 does, because the claim is that it equalizes the two operands' difficulty. The
-smoothed activation max in channel j is max(|X_j|)/s_j = max(|X_j|)^(1−α)·max(|W_j|)^(1−α)... let me just
-substitute α = 0.5: s_j = √(max|X_j|)/√(max|W_j|) = √(max|X_j|/max|W_j|). Then the smoothed activation
-max becomes max|X_j|/s_j = max|X_j|·√(max|W_j|/max|X_j|) = √(max|X_j|·max|W_j|), and the smoothed weight
-max becomes max|W_j|·s_j = max|W_j|·√(max|X_j|/max|W_j|) = √(max|X_j|·max|W_j|) — the *same* value. So at
-α = 0.5 both operands' per-channel maxima land exactly on the geometric mean √(max|X_j|·max|W_j|); the
-burden is shared evenly. Put numbers on it: an outlier channel with max|X_j| = 100 and max|W_j| = 0.1
-gets s_j = √(100/0.1) = √1000 = 31.6, and both smoothed maxima become √(100·0.1) = √10 = 3.16. The
-activation outlier fell from 100 to 3.16 — a 31× reduction that brings it into the range of the ordinary
-channels — while the weight max only rose from 0.1 to 3.16, which the 8-bit weight grid handles with
-ease. At α = 1 the activations are fully flattened but the weights are overloaded; at α = 0 the reverse.
-Models with heavier activation outliers (GLM-130B is the extreme) want a larger α ≈ 0.75 to push more of
-the difficulty onto the still-easy weights, and the right α is picked with a quick validation-set grid
-search. I can see why the optimal α tracks outlier severity from the same geometric-mean identity: if a
-model's activation maxima tower over its weight maxima by a huge factor, then at α = 0.5 the shared
-geometric-mean landing point √(max|X|·max|W|) is still large relative to the ordinary weights, so the
-weights are pushed further than necessary while the activations remain a touch too hot; nudging α up
-toward 0.75 lowers the smoothed activation max faster than it raises the smoothed weight max, because the
-exponents on the two maxima are α and 1−α and the activation max is the bigger number, so more of the
-severe imbalance lands on the operand that can afford it. For a model with mild outliers, α = 0.5 already
-splits it evenly and there is nothing to gain by shifting. The activation maxima come from a calibration pass (a few hundred sentences); the weight maxima
-are exact. Once α and those statistics are fixed, s is closed-form — no gradients, no per-weight
+At α = 0.5, s_j = √(max|X_j|/max|W_j|), so the smoothed activation max max|X_j|/s_j and the smoothed
+weight max max|W_j|·s_j both become √(max|X_j|·max|W_j|) — the same value, the geometric mean; the burden
+is shared exactly evenly. With numbers: an outlier channel at max|X_j| = 100, max|W_j| = 0.1 gets s_j =
+√1000 = 31.6, and both smoothed maxima become √10 = 3.16. The activation outlier fell 31× into the range
+of ordinary channels while the weight max only rose from 0.1 to 3.16, which the 8-bit weight grid handles
+with ease. At α = 1 the activations flatten but the weights overload; at α = 0 the reverse. Models with
+heavier outliers (GLM-130B) want α ≈ 0.75 to push more difficulty onto the still-easy weights: when the
+activation maxima tower over the weight maxima, nudging α up lowers the smoothed activation max faster
+than it raises the weight max (the activation max being the larger number under the exponents α and 1−α),
+so more of the imbalance lands where it can be afforded. The right α is a quick validation-set grid
+search. The activation maxima come from a calibration pass; the weight maxima are exact. Once α and those
+statistics are fixed, s is closed-form — no gradients, no per-weight
 reconstruction, no mixed-precision outlier path. It is worth appreciating how cheap this is next to the
 weight-only methods: GPTQ needed a d×d Hessian and a Cholesky inverse per layer, and AWQ needed ~20
 forward passes per layer to search α against output MSE. SmoothQuant needs only a *single* statistic per
@@ -143,33 +124,13 @@ There is no per-layer optimization at all; the migration is a closed-form repara
 uniformly. That lightness is not incidental — it is what makes the method deployable on a 175B model
 where even one Hessian per layer would be a serious compute and memory burden.
 
-```python
-@torch.no_grad()
-def smooth_ln_fcs(ln, fcs, act_scales, alpha=0.5):
-    weight_scales = torch.cat(                              # per-input-channel weight max
-        [fc.weight.abs().max(dim=0, keepdim=True)[0] for fc in fcs], dim=0
-    ).max(dim=0)[0].clamp(min=1e-5)
-    s = (act_scales.pow(alpha) / weight_scales.pow(1 - alpha)).clamp(min=1e-5)
-    ln.weight.div_(s)                                       # fold diag(s)^-1 into LayerNorm (offline)
-    if getattr(ln, "bias", None) is not None:
-        ln.bias.div_(s)
-    for fc in fcs:
-        fc.weight.mul_(s.view(1, -1))                       # fold diag(s) into next linears (offline)
-```
-
-Let me also sanity-check that the trade is actually favorable and not just shifting the pain around. The
-concern is that after migration the weights are harder to quantize, and if that new weight difficulty
-cost as much accuracy as the activation difficulty it relieved, I would have gained nothing. But the two
-are not symmetric. Before smoothing, the weight per-channel maxima are already fairly uniform — trained
-weights do not have the 100× persistent-channel pathology that activations do — so multiplying a channel
-by s = 31.6 raises that channel's weight max to ~3.16 while the other channels' maxima also move by their
-own (much smaller) s values, and the *spread* of weight maxima widens only modestly. At 8 bits, a
-per-channel weight grid absorbs a max of 3.16 trivially (Δ = 3.16/127 = 0.025, plenty of resolution). So
-the migration converts a *fatal* activation problem (bulk annihilated) into a *negligible* weight problem
-(slightly larger but still lossless per-channel grid). The asymmetry — weights start easy and stay easy,
-activations start fatal and become easy — is precisely why the trade wins, and it is why α = 0.5 is a
-reasonable default rather than a knife-edge: even splitting the difficulty evenly leaves both sides
-inside 8-bit's comfort zone.
+The trade is favorable because the two operands are not symmetric. Before smoothing, the weight
+per-channel maxima are already fairly uniform — trained weights lack the 100× persistent-channel
+pathology activations have — so multiplying a channel by s = 31.6 raises its weight max to ~3.16 while the
+spread of weight maxima widens only modestly, and at 8 bits a per-channel grid absorbs a max of 3.16
+trivially (Δ = 3.16/127 = 0.025). The migration converts a *fatal* activation problem into a *negligible*
+weight one, which is why the trade wins and why α = 0.5 is a safe default rather than a knife-edge: even
+an even split leaves both sides inside 8-bit's comfort zone. (The `smooth_ln_fcs` fold is in the answer.)
 
 I should be careful about *which* linears share a smoothing factor, because the fold has to stay exact.
 The factor diag(s)⁻¹ is folded into a LayerNorm, and every linear that reads that LayerNorm's output must
@@ -206,17 +167,13 @@ survives 8-bit activations will *not* survive 4-bit activations: the migrated ou
 not *gone*, and at 16 levels smaller is not enough. I flag that now because it is the wall the next rung
 must break.
 
-The bar and the bet. The reference point is the *naive* W8A8, which on OPT-175B gives a zero-shot
-average of 35.5% — chance level, a broken model — against an FP16 of 66.9%. The metric here is zero-shot
-accuracy rather than perplexity, deliberately, because the breakthrough being measured is whether INT8
-*activation* quantization works at scale at all, and the zero-shot suite on a 175B model is the standard
-way that is reported; it is also the coarser metric, so restoring it to near-FP16 is a claim that the
-model is genuinely functional, not just less-broken. My claim is that migrating the activation outliers
-into the weights offline lets both operands quantize to INT8 on hardware-friendly per-tensor/per-token
-scales, and I am betting the OPT-175B zero-shot average comes back up to within a fraction of a point of
-66.9% — call it ~66.8%, essentially lossless. The risk is the split: if α is wrong for a given model I
-overload one side or the other, which is exactly why α is grid-searched per model. If it holds, I have
-crossed from weight-only into true weight-and-activation quantization, and the linear layers finally run
-in integer arithmetic. But this is INT8. The moment I try W4A4 the residual outliers reappear inside the
-16-level grid, and a sharper instrument than offline rescaling — something that *removes* the outliers
+The bar is the *naive* W8A8: OPT-175B at 35.5% zero-shot, chance level, against FP16's 66.9%. I use
+zero-shot accuracy rather than perplexity here deliberately — the breakthrough is whether INT8 *activation*
+quantization works at scale at all, and on a 175B model that is how it is reported; being the coarser
+metric, restoring it to near-FP16 is a claim the model is genuinely functional. My bet is that migrating
+the outliers into the weights offline lets both operands quantize to INT8 on hardware-friendly scales and
+brings the OPT-175B zero-shot average back to within a fraction of a point of 66.9% — essentially
+lossless. The risk is the split, which is why α is grid-searched per model. If it holds, I have crossed
+from weight-only into true weight-and-activation quantization. But this is INT8: at W4A4 the residual
+outliers reappear inside the 16-level grid, and a sharper instrument — one that *removes* the outliers
 rather than shrinking them — will be needed.
