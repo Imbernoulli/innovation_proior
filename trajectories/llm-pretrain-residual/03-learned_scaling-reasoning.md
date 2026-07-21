@@ -17,22 +17,18 @@ deep layers up a little. ARC-Easy rose `54.12 → 55.35` (`+1.23`) and HellaSwag
 confirmed — deep layers were under-used, and protecting them early helps — and the confirmation is
 concentrated exactly where the theory said it would be.
 
-But the same table exposes the schedule's ceiling, and there is a piece of arithmetic that makes the
-ceiling sharper than "a fixed schedule is blunt." ProRes's schedule is `α(l,t) = min(t/(T·l), 1)` with
-`T = 1000`, so layer `l` reaches full strength at step `1000·l`. The run is only 13,535 steps. Solve
-`1000·l = 13,535`: layers 1 through 13 cross into `α = 1` inside the run, but layers 14 through 24 never
-do — layer 24 ends at `α = 13,535/24,000 ≈ 0.56`, layer 20 at `≈ 0.68`. So within this budget the
-schedule did *not* expire into vanilla for the top third of the stack; the deepest ten layers finished
-training still throttled to roughly half or two-thirds strength. Read that against the LAMBADA move and
-it cuts two ways at once. On one hand it says ProRes's deep-layer win is *real but incomplete* — the
-layers it helped most (LAMBADA leans on them) were precisely the ones still being held back at the final
-step, so there was more sitting on the table. On the other hand it indicts the whole *fixed-schedule*
-idea for this budget: a schedule that is supposed to relax back to vanilla runs out of steps before it
-finishes relaxing, so the deep layers I most want at full strength are exactly the ones it strands partway
-up. A schedule dictates *one* trajectory per layer and, here, that trajectory does not even complete. I
-want to keep what worked — gentle, conditioned control of how much each branch writes — but hand the
-magnitude to the network so it can *set* each layer's strength directly and *persistently*, with no clock
-running out. And I want to attack a second weakness the schedule never touched at all.
+But the same table exposes the schedule's ceiling, and it is the arithmetic I already worked out at step
+2: with `T = 1000` the schedule strands the top third of the stack — layers 14 through 24 never reach
+`α = 1` inside the 13,535 steps, layer 24 finishing at `≈ 0.56`. Read against the LAMBADA move that cuts
+two ways. On one hand ProRes's deep-layer win is *real but incomplete* — the layers it helped most
+(LAMBADA leans on them) were precisely the ones still held back at the final step, so there was more
+sitting on the table. On the other it indicts the whole *fixed-schedule* idea for this budget: a schedule
+meant to relax back to vanilla runs out of steps before it finishes relaxing, stranding exactly the deep
+layers I most want at full strength. A schedule dictates *one* trajectory per layer, and here that
+trajectory does not even complete. I want to keep what worked — gentle, conditioned control of how much
+each branch writes — but hand the magnitude to the network so it can *set* each layer's strength directly
+and *persistently*, with no clock running out. And I want to attack a second weakness the schedule never
+touched at all.
 
 Take the magnitude first. The natural move is the one ProRes deliberately avoided: stop *prescribing* the
 residual weight and *learn* it. Put a scalar in front of each layer's residual write and let gradient
@@ -97,26 +93,21 @@ this is exactly the floor, and every deviation the network learns is a deliberat
 refinement — no identity-start tax, no schedule to expire, just two scalars per layer the network is free
 to move.
 
-I have to check one thing before I trust `resid_lambda` off its init, because it sits right on top of the
-invariant I carried up from the floor: keep the leading `I` in the unrolled Jacobian, keep the skip
-coefficient near one, or the multiplicative `r^L` decay comes back. `resid_lambda` *is* the skip
+`resid_lambda` sits right on top of the invariant I carried up from the floor: keep the leading `I`, keep
+the skip coefficient near one, or the multiplicative `r^L` decay comes back. `resid_lambda` *is* the skip
 coefficient — it multiplies the carried stream — so if the network learns it too far below 1 across a run
-of deep layers, the identity highway is attenuated exactly the way the floor warned against. Put a number
-on it: if a stretch of `k` deep layers all settled at `resid_lambda = 0.95`, the carried stream through
-that stretch is multiplied by `0.95^k`, and for `k = 10` that is `0.95^10 ≈ 0.60` — a 40% attenuation of
-the gradient route through the deep half, the very cliff the residual connection was invented to kill. So
-this knob is double-edged, and I need to know whether the design protects the invariant or breaks it.
-Three things hold it near 1, and none is a hard clamp. The init is 1, so the layer starts *on* the
-invariant and only leaves it if gradient descent actively pushes it off. There is no weight decay on these
-scalars (I get to that next), so nothing systematically drags `resid_lambda` toward 0. And the loss
-landscape itself is self-limiting here: a `resid_lambda` low enough to starve the shallow layers' gradient
-would stall their learning and *raise* the loss, so gradient descent is pushed back toward keeping the
-carry alive. The protection is the loss, not a constraint — which is exactly the right kind of protection,
-because it lets a layer leak the carry *where the data says it helps* (a noisy deep layer damping its own
-accumulated stream) while refusing the wholesale attenuation that would kill the highway. I expect the
-learned `resid_lambda` to sit close to 1 with small, signed per-layer deviations, not to wander off toward
-zero; if instead they collapsed low, the val_loss would move *up*, not down, and I would read that as the
-invariant being violated.
+of deep layers, the identity highway is attenuated exactly the way the floor warned against. A number: if
+a stretch of `k` deep layers all settled at `resid_lambda = 0.95`, the carried stream is multiplied by
+`0.95^k`, and for `k = 10` that is `≈ 0.60`, a 40% attenuation of the gradient route through the deep half
+— the very cliff the residual connection was invented to kill. So the knob is double-edged. Three things
+hold it near 1, none a hard clamp. The init is 1, so the layer starts *on* the invariant and only leaves
+it if gradient descent pushes it off. There is no weight decay on these scalars, so nothing systematically
+drags it toward 0. And the loss is self-limiting: a `resid_lambda` low enough to starve the shallow
+layers' gradient stalls their learning and *raises* the loss, so descent is pushed back toward keeping the
+carry alive. The protection is the loss, not a constraint — which is the right kind, because it lets a
+layer leak the carry *where the data says it helps* while refusing the wholesale attenuation that would
+kill the highway. I expect learned `resid_lambda` near 1 with small signed deviations; if they collapsed
+low, val_loss would move *up*, and I would read that as the invariant violated.
 
 Why `x0` and not "blend in some earlier layer's output"? Because `x0` is the *least redundant* signal in
 the stream. Every later representation `x_i` for `i > 1` is already reachable through the ordinary
@@ -135,7 +126,7 @@ stream forbids. So the two-scalar form is strictly more expressive than the step
 one-scalar learnable design, and the whole thing costs `2·n_layer = 48` scalars against 355M
 parameters — a few parts in ten million, free.
 
-There is one detail in *training* these 48 scalars I have to get right, and it is the only place this rung
+There is one detail in *training* these 48 scalars I have to get right, and it is the only place this step
 touches the optimizer. They are gains, not weights — each sits at a leveraged point, multiplying a whole
 layer's worth of signal — and they are one-dimensional, so they must not get weight decay. Decay would
 pull `resid_lambda` toward 0 and `x0_lambda` toward 0, dragging the carry below 1 and fighting the very
@@ -167,7 +158,7 @@ learnable* scalars per layer — `resid_lambda` (init 1, the persistent learnabl
 direct embedding-to-every-depth route the schedule never had. Here is what I expect against the 2.2707
 prores number and the 2.2763 floor, and where I am unsure. The mechanism predicts I should beat *both*:
 the learnable carry subsumes what the schedule was doing — a layer finds its own residual weight and
-*keeps* it, with no clock to run out — and the `x0` injection adds a route neither earlier rung had, so I
+*keeps* it, with no clock to run out — and the `x0` injection adds a route neither earlier step had, so I
 expect validation loss at or below 2.2707, with mid-2.26s a clean win. The `x0` signature is token
 identity preserved at depth, so I expect it on the metrics that reward precise next-token prediction and
 recall: WikiText-2 should finally move below prores's 44.11, and ARC-Easy (knowledge recall, which the
@@ -177,56 +168,10 @@ warm-up; learned-scaling's `resid_lambda` starts at 1 rather than ramping from 0
 that specific deep-layer-conditioning schedule, and I would not be surprised if LAMBADA lands slightly
 *above* prores's 67.21 even as the overall val_loss improves — a tell that the two methods help through
 different channels rather than one strictly dominating. The honest risk cuts the other way: with only 48
-scalars and a 13.5k-step run the network may not push the `x0_lambdas` far from 0, in which case the rung
+scalars and a 13.5k-step run the network may not push the `x0_lambdas` far from 0, in which case the step
 collapses toward a learnable-`resid_lambda`-only model and lands near prores. If the win is real but
-small, the diagnosis for the next rung writes itself: a *scalar* per layer — scheduled or learned, one or
+small, the diagnosis for the next step writes itself: a *scalar* per layer — scheduled or learned, one or
 two — is still a rank-one knob on the depth flow. The stream is still fundamentally an *unweighted sum* of
 past outputs, mixed the same way for every token, and what I have never given the network is the ability
 to *choose which past layer's output to read*, per token, with a full-rank, content-dependent mixing —
 attention over the depth axis itself.
-
-```python
-# EDITABLE regions of custom_pretrain.py — step 3: learnable residual scaling + x0 injection
-# (each region shown inside its enclosing method exactly as spliced into the file)
-
-# Block: unchanged — vanilla Pre-LN residual.
-
-class GPT(nn.Module):
-    def _init_scaling(self, config):  # GPT.__init__ residual region:
-        # ── Learnable residual scaling + x0 injection ──
-        # resid_lambdas[i]: scales the incoming residual stream (init 1.0 = vanilla)
-        # x0_lambdas[i]:    scales the embedding injection (init 0.0 = no injection)
-        self.resid_lambdas = nn.Parameter(torch.ones(config.n_layer))
-        self.x0_lambdas = nn.Parameter(torch.zeros(config.n_layer))
-
-    def _forward_block_loop(self, x):  # GPT.forward block loop:
-        # ── Learnable residual scaling + x0 injection ──
-        # x0 = embedding output; provides gradient highway to every depth.
-        x0 = x
-        for i, block in enumerate(self.transformer.h):
-            block_out = block(x)
-            delta = block_out - x
-            x = self.resid_lambdas[i] * x + delta + self.x0_lambdas[i] * x0
-        return x
-
-    # GPT.configure_optimizers (route scaling params to no-decay group):
-    def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
-        # Route residual scaling params to no-decay group
-        scaling_ids = {id(self.resid_lambdas), id(self.x0_lambdas)}
-        param_dict = {pn: p for pn, p in self.named_parameters() if p.requires_grad}
-        decay_params = [p for n, p in param_dict.items() if p.dim() >= 2 and id(p) not in scaling_ids]
-        nodecay_params = [p for n, p in param_dict.items() if p.dim() < 2 and id(p) not in scaling_ids]
-        scaling_params = [p for n, p in param_dict.items() if id(p) in scaling_ids]
-        optim_groups = [
-            {'params': decay_params, 'weight_decay': weight_decay},
-            {'params': nodecay_params, 'weight_decay': 0.0},
-            {'params': scaling_params, 'weight_decay': 0.0},
-        ]
-        fused_available = 'fused' in inspect.signature(torch.optim.AdamW).parameters
-        use_fused = fused_available and device_type == 'cuda'
-        extra_args = dict(fused=True) if use_fused else dict()
-        optimizer = torch.optim.AdamW(optim_groups, lr=learning_rate, betas=betas, **extra_args)
-        return optimizer
-
-# CONFIG_OVERRIDES = {}   (no override).
-```

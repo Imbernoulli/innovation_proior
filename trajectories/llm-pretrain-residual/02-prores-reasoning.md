@@ -25,21 +25,13 @@ watch, not the headline loss alone. The downstream pair — ARC-Easy `54.12`, He
 noisy read I flagged at the floor; HellaSwag near its ~25% four-way chance floor especially, so I will
 not bet a mechanism on a point of movement there.
 
-Let me make the deep-layer-death claim quantitative, because I want the fix to react to the mechanism,
-not the symptom. Trace the Pre-LN recursion `x_{l+1} = x_l + F(LN(x_l))`. The normalization fixes the
-scale of the *branch input* — what gets fed into attention or the MLP — but it does nothing to the
-*stream* `x_l` I keep adding onto. So the stream variance accumulates with depth: under the usual
-zero-mean weight assumptions the scale satisfies a product `σ²_{x_l} ∝ ∏_{k<l}(1 + 1/σ_{x_k})`, every
-layer contributing a factor above one. The slow case is linear growth, `σ²_{x_L} ≳ Θ(L)`; the dangerous
-case is exponential. Now write the block Jacobian: `∂(x + F(LN(x)))/∂x = I + (∂F/∂LN)·(∂LN/∂x)`, and
-the second term carries a `1/σ_{x_l}` from the normalization dividing by the stream's own scale. When
-the stream variance is large, that term is tiny, the block Jacobian collapses toward `I`, and a block
-whose Jacobian is `≈ I` is becoming a local identity map — changing its input barely changes what it
-adds. Chain that up the stack and the deepest layers are pushed toward doing nothing. That is the
-mechanism behind the floor's left-on-the-table capacity: the variance explosion is not a cosmetic
-numerical annoyance, it is the thing that turns deep layers into dead weight. So the question is sharp:
-how do I keep those deep layers alive without touching attention, the MLP, or the norm — only the
-residual flow?
+The deep-layer-death claim is the mechanism I want the fix to react to, and I established its shape at the
+floor: the Pre-LN stream variance accumulates with depth (the benign case linear, `σ²_{x_L} ≳ Θ(L)`, the
+dangerous case exponential), and the block Jacobian `I + (∂F/∂LN)·(∂LN/∂x)` carries a `1/σ_{x_l}` in its
+second term, so once the stream scale is large that term collapses and the block becomes a local identity —
+changing its input barely changes what it adds. That is the floor's left-on-the-table capacity, and it is
+not a cosmetic numerical annoyance: it turns deep layers into dead weight. So the question is sharp: how do
+I keep those deep layers alive without touching attention, the MLP, or the norm — only the residual flow?
 
 One school says kill the variance growth and the deep layers come back. The cleanest version is to
 down-weight deeper residuals statically: divide the branch input by `√l` at layer `l`, so the variance
@@ -62,7 +54,7 @@ instant and held fixed through the stable phase is over-conservative once I am i
 frozen-in-time problem as `1/√l`, just from the update side.
 
 And then the scalar-on-the-branch family — ReZero, SkipInit — which is the closest in form to what I
-keep circling, and worth being precise about because the *next* rung is going to be exactly this family.
+keep circling, and worth being precise about because the *next* step is going to be exactly this family.
 ReZero puts one learnable scalar on each branch, `x_{l+1} = x_l + α_l·F(LN(x_l))`, every `α_l`
 initialized to 0. That zero init is lovely: at `t=0` the whole network is exactly the identity, the
 input-output Jacobian is `I`, trivially well-conditioned, and the stream variance cannot blow up at init
@@ -111,32 +103,21 @@ still partway up — the branches switch on in a wave that sweeps from shallow t
 steps every `α=1` and the model runs exactly vanilla. That last property is the one the static methods
 cannot have: the constraint is real early and *gone* late.
 
-Let me freeze the wave at one instant to make sure the shape is doing what I think, because a schedule
-is easy to get backwards and I want to *see* the gradient of engagement rather than assert it. Take step
-`t = 2000`, early in the run. Layer 1: `α = min(2000/1000, 1) = 1` — fully on. Layer 2:
-`min(2000/2000, 1) = 1` — just barely on. Layer 5: `min(2000/5000, 1) = 0.40`. Layer 10:
-`min(2000/10000, 1) = 0.20`. Layer 24: `min(2000/24000, 1) ≈ 0.083` — a whisper above the identity. So
-at step 2000 the stack is a smooth gradient of engagement: the bottom two layers at full strength, the
-middle at a fifth to a half, the top writing at eight percent of its branch. That gradient is exactly the
-shape I wanted, and it sweeps upward as `t` grows — at any early instant the deep layers are near-identity
-while the shallow ones beneath them are already doing their work, so the foundation is laid before the
-upper floors are built on it. If I had the sign of the `l`-dependence flipped, this same snapshot would
-show layer 24 at full strength and layer 1 off, which is the divergence pattern I am trying to avoid, so
-the snapshot doubles as a sign check on the schedule.
+Freeze the wave at step `t = 2000`: layer 1 fully on (`min(2000/1000,1)=1`), layer 5 at `0.40`, layer 10
+at `0.20`, layer 24 at `≈ 0.083` — a smooth gradient of engagement that sweeps upward as `t` grows, deep
+layers near-identity while the shallow ones beneath them are already doing their work. Flip the sign of the
+`l`-dependence and this same snapshot would put layer 24 at full strength and layer 1 off, the divergence
+pattern I am avoiding, so it doubles as a sign check.
 
-Check it against the three things I wanted, and make each fall out rather than be asserted. Identity at
-init: `α(l,0)=min(0,1)=0`, so `x_{l+1}=x_l` exactly — ReZero's clean start for free, no init variance
-blowup. Bounded update across time *and* depth: early on only shallow layers have nonzero `α`, so only a
-few layers can move the function and they move it by a fraction `α<1`; the constraint relaxes itself
-layer by layer as training proceeds, tight when updates are chaotic and fully released when they are
-stable — the temporal awareness DeepNorm's constant lacks. The ordering: a deep layer's `α` stays near 0
-while the shallow layers below it do their early large updates, so by the time it climbs enough to matter
-the foundation beneath it has largely settled, and it is not injecting garbage back through the gradient
-path while the shallow layers are still finding their footing. The variance explosion is cured *in time*
-rather than statically: the deep `α` are near zero during the chaotic early phase when the stream is most
-prone to running up the exponential branch, then the increments come on gradually as `α` ramps, so the
-variance grows gently — the control of `1/√l` early, without its permanent late clamp, because my factor
-goes to 1.
+The design meets the three things I wanted, each falling out of the form. Identity at init: `α(l,0)=0`, so
+`x_{l+1}=x_l` exactly — ReZero's clean start, no init variance blowup. Bounded update across time and
+depth: early on only shallow layers have nonzero `α` and they move the function by a fraction `α<1`, and
+the constraint relaxes itself layer by layer — tight when updates are chaotic, fully released when stable,
+the temporal awareness a constant init-time bound lacks. Ordering: a deep layer's `α` stays near 0 while
+the shallow layers below do their early large updates, so it is not injecting garbage back through the
+gradient path while they are still finding their footing. And the variance climb is cured *in time* rather
+than statically — the deep `α` are near zero during the chaotic early phase, then come on gradually,
+giving the control of `1/√l` early without its permanent late clamp, because my factor goes to 1.
 
 I should make sure the specific shape is load-bearing and not arbitrary. If every layer warmed up
 *together* (`min(t/T,1)`, no `l`-dependence), I would delay the chaotic init updates but ignore the
@@ -219,7 +200,7 @@ this scale is noisy enough that I would not bet on a clean move on ARC-Easy or H
 risk is the failure mode the static-vs-dynamic argument flagged in reverse: at only 24 layers and 13.5k
 steps the variance explosion may be mild enough that vanilla was never badly conditioned, in which case
 ProRes mostly delays harmless early updates and lands *near* the floor rather than clearly under it. If
-the validation loss barely moves, the diagnosis for the next rung is already written: a fixed
+the validation loss barely moves, the diagnosis for the next step is already written: a fixed
 *schedule* with no learned magnitude per layer is too blunt — I should let each layer *learn* its own
 residual weight, and add a second, orthogonal route that the schedule never gives me, a direct path from
 the token embedding into every depth.

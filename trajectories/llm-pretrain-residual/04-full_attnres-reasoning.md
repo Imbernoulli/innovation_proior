@@ -1,4 +1,4 @@
-Learned-scaling did beat both earlier rungs, and the *pattern* of how it won is the tell I was watching
+Learned-scaling did beat both earlier steps, and the *pattern* of how it won is the tell I was watching
 for — so let me read the table hard before I decide what the next rule has to be. Validation loss came in
 at 2.2680, under prores's 2.2707 and vanilla's 2.2763. But look at the *sequence* of val-loss steps:
 vanilla→prores was `−0.0056`, prores→learned-scaling is `−0.0027`. The second scalar refinement bought
@@ -32,7 +32,7 @@ mixing matrix, a different row per token. The depth axis can attempt the same ju
 form its input as `h_l = Σ_i α_{i→l} v_i` with `Σ_i α_{i→l} = 1`, where the weights `α` are computed by
 softmax attention over the depth sources — a learned, per-token choice of which earlier representations to
 combine. That turns the depth-mixing matrix from rank-one (vanilla) or low-rank-scalar (the last two
-rungs) into generically full rank: each destination can read any subset of the past, differently for each
+steps) into generically full rank: each destination can read any subset of the past, differently for each
 token. That is the move left on the table, and it is the largest one.
 
 Now the design choices, derived rather than assumed. What are the values, the keys, the queries? The
@@ -94,7 +94,7 @@ output — and the bet is that block-level dynamic aggregation captures most of 
 a fraction of the memory.
 
 Before I trust this I should trace what the zero-init actually produces on the first forward, because it
-is *not* the same clean start the last rung had and I do not want to pretend otherwise. With every
+is *not* the same clean start the last step had and I do not want to pretend otherwise. With every
 `w_l = 0`, each boundary logit is `w_l^T RMSNorm(v_i) = 0` for all sources, so the softmax is uniform:
 `1/k` over the `k` available sources. So on step zero, block boundary `b` sets its input to the *mean* of
 the embedding and all preceding block outputs — not to the running stream, not to the latest block output.
@@ -102,25 +102,23 @@ That is genuinely different from vanilla and from learned-scaling, both of which
 Pre-LN residual; block AttnRes starts at a *uniform block-average* operating point and has to learn its
 way toward whatever concentration the data prefers. I flag this honestly as a cost: it is a departure from
 the "start at exactly the working floor" discipline that made learned-scaling safe, and it is a plausible
-place for the rung to lose ground if the averaging start is a worse basin than the residual start. The
+place for the step to lose ground if the averaging start is a worse basin than the residual start. The
 mitigating read is that a uniform average is still well-conditioned — every source gets equal forward
 weight and equal gradient at init, nothing is amplified by scale — and the softmax can concentrate
 quickly. But it is a real difference and I will watch for it.
 
-The gradient story changes with it, and I should keep it exact rather than assert continuity with the
-clean highway. The plain additive recurrence has a unit-coefficient identity term in the backward product
-`∏(I + ∂f/∂h)` — gradient routes straight through depth with coefficient one. A normalized softmax mixture
-does *not* preserve that exact unit `I`; instead it gives *direct, differentiable, weighted paths from the
-loss to every block output with nonzero attention weight*, plus the score-gradient path through the keys.
-At zero init every block source has nonzero (uniform `1/k`) weight, so at the start of training gradients
-are spread across all earlier block outputs rather than forced through the immediate predecessor — a
-different, and for deep routing arguably better, conditioning than the strict identity highway, since
-every block gets a direct gradient from the readout rather than one attenuated through the whole stack
-above it. And the coarsening keeps both scales honest: the within-block residuals preserve the clean local
-identity path on the fine scale (inside each block of 4 I am running exactly the vanilla highway), while
-the boundary attention adds the global content-dependent routing on the coarse scale.
+The gradient story changes with it. The plain additive recurrence has a unit-coefficient `I` in the
+backward product `∏(I + ∂f/∂h)`; a normalized softmax mixture does *not* preserve that exact unit `I` but
+gives direct, differentiable, weighted paths from the loss to every block output with nonzero attention
+weight, plus the score-gradient path through the keys. At zero init every block source has uniform `1/k`
+weight, so early gradients are spread across all earlier block outputs rather than forced through the
+immediate predecessor — arguably better conditioning for deep routing, since every block gets a direct
+gradient from the readout rather than one attenuated through the whole stack above it. And the coarsening
+keeps both scales honest: the within-block residuals preserve the clean local identity path (inside each
+block of 4 I run exactly the vanilla highway) while the boundary attention adds the global
+content-dependent routing on the coarse scale.
 
-There is one optimizer wrinkle, and it is the only thing this rung changes about training. The
+There is one optimizer wrinkle, and it is the only thing this step changes about training. The
 pseudo-queries are zero-initialized and sit at a *leveraged* point — they decide the *entire* mixing at
 each boundary, so a query that moves too fast can swing which block the next block reads and destabilize
 everything downstream of it. This is a sharper lever than learned-scaling's scalars, and the contrast is
@@ -133,7 +131,7 @@ rate, `0.1×` the base rate, with no weight decay (they are not weight matrices,
 them back toward the uniform init they started at). The `0.1×` is a deliberate order-of-magnitude caution,
 not a value I can derive precisely, and it is bracketed by two failure modes I will read off the numbers:
 too hot and the boundary mixing destabilizes and I lose the clean within-block highways; too cold and the
-queries barely leave their uniform init and the rung collapses toward a fixed block-averaging model only
+queries barely leave their uniform init and the step collapses toward a fixed block-averaging model only
 marginally above learned-scaling. The main model matrices stay in the decayed group, the other 1-D
 parameters (LayerNorm gains and the like) in the standard no-decay group; the cosine schedule and
 `CONFIG_OVERRIDES` stay default.
@@ -156,85 +154,20 @@ token-identity channels at once; full_attnres (here, block-partitioned AttnRes) 
 accumulator at block boundaries with *content-dependent softmax attention over block outputs* — a dense,
 full-rank depth-mixing at the block scale, with the embedding as a first-class source, zero-initialized to
 start at uniform averaging. Here is what I expect against the 2.2680 learned-scaling number, and where the
-bet is. The mechanism predicts the largest val_loss drop on the ladder: moving from a rank-one scalar mix
-to a full-rank content-dependent mix is the first rung that adds genuine *capacity* to the depth flow
+bet is. The mechanism predicts the largest val_loss drop so far: moving from a rank-one scalar mix
+to a full-rank content-dependent mix is the first step that adds genuine *capacity* to the depth flow
 rather than just conditioning it, so unlike the decelerating scalar steps I expect a clear step *up* in
 size, plausibly into the mid-2.25s — the first sub-2.26 number. The dynamic depth aggregation should
 sharpen long-range prediction most, because choosing which deep block to read per token is exactly what
 helps completion: I expect LAMBADA to finally drop below *both* prores (67.21) and learned-scaling (68.76)
 — since the attention can do the deep-layer-conditioning *and* the token-identity job in one mechanism,
 not trade them — and WikiText-2 to fall below 43.91. Downstream accuracy should at least hold its gains;
-HellaSwag, flat all ladder, might finally tick up if the richer depth flow helps commonsense composition.
+HellaSwag, flat all along, might finally tick up if the richer depth flow helps commonsense composition.
 The honest risks are two. First, the coarsening: if sublayer-granularity routing was where the real
 benefit lived, block-level attention captures only part of it and the win is smaller than the full version
 would give — and inside each block of 4 I am, admittedly, right back to the rigid unit-weight accumulator
 I have been fighting. Second, the leveraged queries and the non-vanilla start: if the `0.1×` LR is too
 aggressive the boundary mixing could destabilize and cost me the clean within-block highways, and if too
 gentle the queries barely leave their uniform init and I get a fixed block-average only marginally above
-learned-scaling. Either way, this is the strongest depth-flow rule available inside the four-baseline
-ladder, and the number it lands is the bar any further idea has to clear.
-
-```python
-# EDITABLE regions of custom_pretrain.py — step 4: Block Attention Residuals
-# (each region shown inside its enclosing method exactly as spliced into the file)
-
-# Block: unchanged — vanilla Pre-LN residual (used within each block).
-
-class GPT(nn.Module):
-    def _init_attnres(self, config):  # GPT.__init__ residual region:
-        # ── Block Attention Residuals: partition layers into blocks ──
-        # 24 layers / 4 = 6 blocks; attention at 5 boundaries + 1 output query
-        self.attnres_block_size = 4  # layers per block
-        n_blocks = config.n_layer // self.attnres_block_size
-        # n_blocks-1 boundary queries (first block gets embedding directly)
-        self.attnres_queries = nn.Parameter(torch.zeros(n_blocks - 1, config.n_embd))
-        self.attnres_query_out = nn.Parameter(torch.zeros(config.n_embd))
-
-    def _forward_block_loop(self, x):  # GPT.forward block loop:
-        # ── Block Attention Residuals: standard residual within blocks,
-        #    attention aggregation at block boundaries ──
-        block_size_layers = self.attnres_block_size
-        n_blocks = len(self.transformer.h) // block_size_layers
-        block_outputs = [x]  # initial embedding is first source
-        for blk_idx in range(n_blocks):
-            # At block boundary (except first): attend over previous block outputs
-            if blk_idx > 0:
-                stacked = torch.stack(block_outputs, dim=0)  # (num_sources, B, T, D)
-                keys_normed = F.rms_norm(stacked, (stacked.size(-1),))
-                logits = torch.einsum('d, n b t d -> n b t', self.attnres_queries[blk_idx - 1], keys_normed)
-                weights = logits.softmax(dim=0)  # (num_sources, B, T)
-                x = torch.einsum('n b t, n b t d -> b t d', weights, stacked)
-            # Run layers within this block with standard residual connections
-            start = blk_idx * block_size_layers
-            end = start + block_size_layers
-            for layer_idx in range(start, end):
-                x = self.transformer.h[layer_idx](x)
-            block_outputs.append(x)
-        # Final output: attend over all block outputs with dedicated query
-        stacked = torch.stack(block_outputs, dim=0)
-        keys_normed = F.rms_norm(stacked, (stacked.size(-1),))
-        logits = torch.einsum('d, n b t d -> n b t', self.attnres_query_out, keys_normed)
-        weights = logits.softmax(dim=0)
-        x = torch.einsum('n b t, n b t d -> b t d', weights, stacked)
-        return x
-
-    # GPT.configure_optimizers (queries in a 0.1x-LR, no-decay group):
-    def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
-        attnres_params = [self.attnres_queries, self.attnres_query_out]
-        attnres_ids = {id(p) for p in attnres_params}
-        param_dict = {pn: p for pn, p in self.named_parameters() if p.requires_grad}
-        decay_params = [p for n, p in param_dict.items() if p.dim() >= 2 and id(p) not in attnres_ids]
-        nodecay_params = [p for n, p in param_dict.items() if p.dim() < 2 and id(p) not in attnres_ids]
-        optim_groups = [
-            {'params': decay_params, 'weight_decay': weight_decay},
-            {'params': nodecay_params, 'weight_decay': 0.0},
-            {'params': attnres_params, 'lr': learning_rate * 0.1, 'weight_decay': 0.0},
-        ]
-        fused_available = 'fused' in inspect.signature(torch.optim.AdamW).parameters
-        use_fused = fused_available and device_type == 'cuda'
-        extra_args = dict(fused=True) if use_fused else dict()
-        optimizer = torch.optim.AdamW(optim_groups, lr=learning_rate, betas=betas, **extra_args)
-        return optimizer
-
-# CONFIG_OVERRIDES = {}   (no override).
-```
+learned-scaling. Either way, this is the strongest depth-flow rule I have reached,
+and the number it lands is the bar any further idea has to clear.
