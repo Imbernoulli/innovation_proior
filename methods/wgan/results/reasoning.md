@@ -12,7 +12,7 @@ Total variation: δ(P_0,P_theta) = sup_A |P_0(A) − P_theta(A)|. For any theta 
 
 KL: for theta ≠ 0 there are points with P_theta>0 but P_0=0, so KL(P_theta||P_0)=+∞, and symmetrically the other way. At 0 it's 0. So KL is +∞ then 0. Useless.
 
-JS: JS = ½KL(P_0||P_m)+½KL(P_theta||P_m) with P_m the mixture. Let me actually do this arithmetic rather than wave at it. For theta≠0 the supports are disjoint, so on the support of P_0 the mixture is P_m = ½P_0 (the P_theta piece contributes nothing there), and KL(P_0||P_m) = ∫ P_0 log(P_0 / (½P_0)) = ∫ P_0 log 2 = log 2. Symmetrically KL(P_theta||P_m) = log 2. So JS = ½·log 2 + ½·log 2 = log 2 for every theta ≠ 0, and 0 at theta=0. Let me check that with a quick numerical sweep to make sure I haven't fooled myself — discretize two narrow bumps of width 0.02 at separation t and compute JS directly: at t = 3, 1, 0.3 I get JS = 0.6931, 0.6931, 0.6931 (and log 2 = 0.6931), dead flat; only at t = 0.1, 0.05, once the bump tails actually start to overlap, does JS finally drop to 0.676, 0.442. So JS is the constant log 2 on a punctured neighborhood of 0 and drops only when the supports physically meet. Flat everywhere ⇒ zero gradient everywhere ⇒ gradient descent has literally nothing to follow, and there's a discontinuity at the answer.
+JS: JS = ½KL(P_0||P_m)+½KL(P_theta||P_m) with P_m the mixture. For theta≠0 the supports are disjoint, so on the support of P_0 the mixture is P_m = ½P_0 (the P_theta piece contributes nothing there), and KL(P_0||P_m) = ∫ P_0 log(P_0 / (½P_0)) = ∫ P_0 log 2 = log 2. Symmetrically KL(P_theta||P_m) = log 2. So JS = ½·log 2 + ½·log 2 = log 2 for every theta ≠ 0, and 0 at theta=0: JS is the constant log 2 on a punctured neighborhood of 0 and drops only when the supports physically meet. Flat everywhere ⇒ zero gradient everywhere ⇒ gradient descent has literally nothing to follow, and there's a discontinuity at the answer.
 
 Now the Earth-Mover / Wasserstein-1 distance. Definition: W(P_r,P_g) = inf over couplings γ of E_{(x,y)~γ}[||x−y||], where a coupling is a joint distribution γ(x,y) whose marginals are P_r and P_g. Read it as the cheapest plan to physically haul the mass of one pile into the shape of the other, cost = mass × distance moved. For the two segments, the obvious plan moves each point (0, z) straight across to (theta, z): every unit of mass travels |theta|, so W(P_0,P_theta) = |theta|. Can I do better? Any coupling has to pair up mass on the left segment with mass on the right, and the left segment sits at x=0 while the right sits at x=theta, so every paired pair differs by at least |theta| in the x-coordinate alone, hence costs at least |theta|; the straight-across plan attains it, so W = |theta| exactly. Continuous, and its derivative is sign(theta) — a clean, constant-magnitude gradient pointing me toward theta=0 from either side. So in the same toy where TV jumped 1→0, KL was +∞→0, and JS sat pinned at 0.693, W reads off |theta| with a usable slope. As theta_t -> 0, P_{theta_t} converges to P_0 under W and under nothing else here.
 
@@ -28,7 +28,7 @@ Can I get differentiability too? Strengthen "continuous" to "locally Lipschitz":
 
 And does a real neural net satisfy E_z[L(theta,z)] < ∞? Take g_theta with smooth Lipschitz nonlinearities. Its Jacobian in (theta, z) is a product/sum of weight matrices and the diagonal Jacobians of the nonlinearities; if the nonlinearity is L-Lipschitz then each diagonal block has norm ≤ L, and writing f_{1:k} for the first k layers, ||f_{1:k}(z)|| grows like ||z|| times a product of weight-matrix norms. Bounding the full gradient norm term by term gives ||∇_{theta,z} g_theta(z)|| ≤ C_1(theta) + C_2(theta)·||z||, where C_1, C_2 are products/sums of the weight-matrix norms times powers of L. So if the prior has E[||z||] < ∞ — Gaussian, uniform, anything sane — then E_z[L(theta,z)] ≤ C_1(theta) + C_2(theta)·E[||z||] < ∞. The assumption holds for any reasonable feedforward net. So W(P_r,P_theta) really is a continuous, almost-everywhere-differentiable loss for the generators I actually use. None of this is true for JS.
 
-Let me also pin down the hierarchy so I know what I'm trading. I expect: convergence in KL implies convergence in JS/TV, which implies convergence in W, with the implications strict so W is the weakest among these. Let me chase the chain of bounds rather than just claim it. Write total variation as δ(P,Q)=sup_A |P(A)-Q(A)|. Pinsker gives δ(P,Q) <= sqrt(KL(P||Q)/2). For JS, with M=(P+Q)/2, I have δ(P,M)=δ(P,Q)/2 and δ(Q,M)=δ(P,Q)/2; applying Pinsker to both mixture KLs gives δ(P,Q) <= sqrt(2 JS(P,Q)), so JS -> 0 forces δ -> 0, and if δ -> 0 then both distributions are close to their mixture, so JS -> 0 as well. On a compact space with diameter B, a maximal coupling leaves only δ mass unmatched, so W(P,Q) <= B·δ(P,Q). Let me put numbers on the two non-obvious inequalities so I know I have the constants right: take two overlapping bumps on [0,1] discretized to 11 points, P near 0.2 and Q near 0.8. Computing directly I get TV = 0.9996, JS = 0.6928, and W = 0.5997 (W in 1-D is just ∫|CDF_P − CDF_Q|). Check Pinsker: TV ≤ sqrt(2·JS) reads 0.9996 ≤ 1.1771, holds. Check the OT bound: W ≤ B·TV with B=1 reads 0.5997 ≤ 0.9996, holds. So the order KL ⇒ {JS, TV} ⇒ W is the right way round and the constants are as I wrote them. The implications are strict: W -> 0 is equivalent to convergence in distribution, and a sequence can converge weakly while staying at TV-distance 1 (the parallel lines again, where W -> 0 but TV ≡ 1). W converges in strictly more situations. That's why it's the one that keeps giving me a usable loss when the supports don't overlap, and why "switch to a different f-divergence" can't save me — JS, reverse-KL, forward-KL, total variation, every density-ratio functional lives at the strong end and shares the flat-loss disease. The fix has to change the *geometry* of the comparison, not just the divergence label, and W does because it measures transport cost — it uses the metric on X — instead of a pointwise density ratio.
+The hierarchy matters too: convergence in KL should imply convergence in JS/TV, which should imply convergence in W, with the implications strict so W is the weakest among these. Chase the actual bounds. Write total variation as δ(P,Q)=sup_A |P(A)-Q(A)|. Pinsker gives δ(P,Q) <= sqrt(KL(P||Q)/2). For JS, with M=(P+Q)/2, I have δ(P,M)=δ(P,Q)/2 and δ(Q,M)=δ(P,Q)/2; applying Pinsker to both mixture KLs gives δ(P,Q) <= sqrt(2 JS(P,Q)), so JS -> 0 forces δ -> 0, and if δ -> 0 then both distributions are close to their mixture, so JS -> 0 as well. On a compact space with diameter B, a maximal coupling leaves only δ mass unmatched, so W(P,Q) <= B·δ(P,Q). So the order KL ⇒ {JS, TV} ⇒ W is the right way round. The implications are strict: W -> 0 is equivalent to convergence in distribution, and a sequence can converge weakly while staying at TV-distance 1 (the parallel lines again, where W -> 0 but TV ≡ 1). W converges in strictly more situations. That's why it's the one that keeps giving me a usable loss when the supports don't overlap, and why "switch to a different f-divergence" can't save me — JS, reverse-KL, forward-KL, total variation, every density-ratio functional lives at the strong end and shares the flat-loss disease. The fix has to change the *geometry* of the comparison, not just the divergence label, and W does because it measures transport cost — it uses the metric on X — instead of a pointwise density ratio.
 
 So I've decided: minimize W(P_r, P_theta). Now the trouble. The definition is an infimum over all couplings γ with the right marginals. That's a search over an enormous space of joint distributions — completely intractable; I can't enumerate transport plans for image distributions. The primal form is a dead end for computation. I need another handle on the same number.
 
@@ -36,7 +36,7 @@ Wasserstein-1 is an optimal-transport problem, and optimal transport is a linear
 
   W(P_r, P_g) = sup over 1-Lipschitz f of  E_{x~P_r}[f(x)] − E_{x~P_g}[f(x)],
 
-the sup taken over all functions f: X -> R with ||f||_L ≤ 1, i.e. |f(x)−f(y)| ≤ ||x−y||. Let me make sure I believe the shape of this, because it's the load-bearing step. In the primal I pay ||x−y|| for every unit moved from x to y, and I must respect the marginals. Dualize the marginal constraints with a potential function f: the constraint that γ moves mass at cost ||x−y|| turns, in the dual, into the requirement that the potential never claims a price difference bigger than the transport cost — f(x) − f(y) ≤ ||x−y|| for all x,y, which is exactly 1-Lipschitz. And the dual objective collects the potential against the two marginals: E_{P_r}[f] − E_{P_g}[f]. So the impossible inf over couplings becomes a sup over a single scalar function constrained to be 1-Lipschitz. That's a massive simplification: instead of a joint distribution I'm optimizing one function. (And note if I relax to K-Lipschitz functions I just get K·W, a harmless constant rescaling.)
+the sup taken over all functions f: X -> R with ||f||_L ≤ 1, i.e. |f(x)−f(y)| ≤ ||x−y||. This is the load-bearing step, so trace where the Lipschitz cap comes from: in the primal I pay ||x−y|| for every unit moved from x to y, and I must respect the marginals. Dualize the marginal constraints with a potential function f: the constraint that γ moves mass at cost ||x−y|| turns, in the dual, into the requirement that the potential never claims a price difference bigger than the transport cost — f(x) − f(y) ≤ ||x−y|| for all x,y, which is exactly 1-Lipschitz. And the dual objective collects the potential against the two marginals: E_{P_r}[f] − E_{P_g}[f]. So the impossible inf over couplings becomes a sup over a single scalar function constrained to be 1-Lipschitz. That's a massive simplification: instead of a joint distribution I'm optimizing one function. (And note if I relax to K-Lipschitz functions I just get K·W, a harmless constant rescaling.)
 
 This reframing is useful because of what the sup-form *is*. It's an integral probability metric: pick a class of functions F and define d_F(P,Q) = sup_{f∈F} E_P[f] − E_Q[f]. W is the special case F = 1-Lipschitz functions. The choice of F is not innocent — it picks out the topology. F = functions bounded in [−1,1] gives twice total variation, back to the strong topology I was trying to escape; the unit ball of an RKHS gives MMD, which is closed-form via a kernel but costs O(samples²) and needs huge batches in high dimensions to even be a reliable statistic. The Lipschitz ball is the one whose IPM is W — the weak distance, the one that just survived the parallel-lines test — so that's the function class I want to optimize over.
 
@@ -46,7 +46,7 @@ Now, how do I actually take the sup over all 1-Lipschitz functions? I can't enum
 
 If the class were all K-Lipschitz functions, the supremum would be exactly K·W(P_r, P_theta). With a neural family inside that class, the maximized value is a lower estimate of K·W, and it gets better as the family and the inner optimization get better. This f_w looks like a GAN discriminator, but it is not a classifier. There's no sigmoid, no probability, no log; it outputs a raw real number, and the thing I read off is the *difference of its means* on real vs. fake. It's playing the role of the dual potential. I'll call it a critic, not a discriminator — it scores rather than classifies.
 
-Two things I need to check before I trust this. First, can I differentiate W through this construction to get a gradient for the generator? Suppose for a fixed theta the inner max is attained by some critic f. Define V(f, theta) = E_{P_r}[f] − E_z[f(g_theta(z))]. The set of optimal critics is nonempty (Kantorovich–Rubinstein guarantees a maximizer on the compact X), and by the envelope theorem — when you differentiate the value of a maximization with respect to a parameter that only enters the objective, you can hold the maximizer fixed and differentiate the objective directly — I get ∇_theta W(P_r,P_theta) = ∇_theta V(f, theta) for the optimal f. The first term E_{P_r}[f] doesn't depend on theta, so
+Two things matter here. First, can I differentiate W through this construction to get a gradient for the generator? Suppose for a fixed theta the inner max is attained by some critic f. Define V(f, theta) = E_{P_r}[f] − E_z[f(g_theta(z))]. The set of optimal critics is nonempty (Kantorovich–Rubinstein guarantees a maximizer on the compact X), and by the envelope theorem — when you differentiate the value of a maximization with respect to a parameter that only enters the objective, you can hold the maximizer fixed and differentiate the objective directly — I get ∇_theta W(P_r,P_theta) = ∇_theta V(f, theta) for the optimal f. The first term E_{P_r}[f] doesn't depend on theta, so
 
   ∇_theta W(P_r, P_theta) = −∇_theta E_z[f(g_theta(z))] = −E_z[ ∇_theta f(g_theta(z)) ],
 
@@ -56,103 +56,14 @@ With the JS/log-D objective, the better the discriminator gets, the closer the l
 
 Second, and this is the real snag: the dual sup is over 1-Lipschitz f. If I just let f_w be an unconstrained net, the sup is +∞ (scale f up without bound) and I'm not computing W at all — I'm computing garbage. I must constrain f_w to be K-Lipschitz for some fixed K, so that the family is the Lipschitz ball (up to the irrelevant scale K) and the sup is finite. How do I keep a neural net Lipschitz?
 
-Let me think about what controls a net's Lipschitz constant. It's roughly the product of the operator norms of the weight matrices times the Lipschitz constants of the nonlinearities. If I could bound every weight, the whole function's Lipschitz constant is bounded by a constant that depends only on the box I put the weights in, not on the particular weights — so all f_w in that box are K-Lipschitz for one common K. The crudest way to bound the weights: after each gradient update, clamp every weight back into a small box, w <- clip(w, −c, c), say c = 0.01. The parameter space W = [−c,c]^l is compact, every f_w is K-Lipschitz for a K determined by W, and I'm optimizing over the Lipschitz ball up to scale. So the recipe is: ascend the critic objective, then clip.
+What controls a net's Lipschitz constant? It's roughly the product of the operator norms of the weight matrices times the Lipschitz constants of the nonlinearities. If I could bound every weight, the whole function's Lipschitz constant is bounded by a constant that depends only on the box I put the weights in, not on the particular weights — so all f_w in that box are K-Lipschitz for one common K. The crudest way to bound the weights: after each gradient update, clamp every weight back into a small box, w <- clip(w, −c, c), say c = 0.01. The parameter space W = [−c,c]^l is compact, every f_w is K-Lipschitz for a K determined by W, and I'm optimizing over the Lipschitz ball up to scale. So the recipe is: ascend the critic objective, then clip.
 
 I want to be honest that clipping is a blunt instrument, because feeling its failure modes tells me how to set c. If c is too large, weights take forever to walk to the boundary of the box, so the effective constraint is loose and it's hard to drive the critic to optimality — and I just argued optimality is the whole point. If c is too small, then through many layers the products of small weights shrink the signal and the gradients vanish — especially without batchnorm or in recurrent nets. So there's a narrow band for c, and it interacts with depth and normalization. I tried fancier things — projecting weights onto a sphere — and they made little difference, so I'll keep clipping for its sheer simplicity, while treating clean Lipschitz enforcement as an unresolved engineering problem.
 
-Let me check the constraint does the right thing by actually solving the dual on a clean case I can do by hand: two point masses, real at position b and fake at position a on the line. The dual value is sup over 1-Lipschitz f of f(b) − f(a). The 1-Lipschitz cap means f(b) − f(a) ≤ |b − a|, with equality exactly when f rises at the maximal allowed rate between a and b — i.e. when f is the slope-1 ramp f(x) = x. So the optimal critic on this case is *linear*, slope 1, value |b − a| = W. Let me confirm numerically by scanning candidate slopes s ∈ [−1,1] for real at b=2, fake at a=0: the maximizer is s = 1.000 with dual value 2.000, matching true W = |2| = 2. Now read off the gradient it hands the generator: the generator descends −f(fake), so its gradient in the fake's position is −f'(a) = −(slope) = −1 — constant, nonzero, pointing the fake straight toward the real. Contrast the GAN optimum D* = P_r/(P_r+P_g): on disjoint supports D* = 1 on the real support and 0 on the fake support, and *any* smooth interpolation between is admissible, so its gradient in the gap can be ~0 — the saturated, flat case. So the Lipschitz cap isn't just making the sup finite; by forbidding f from ever being steeper than slope 1 it forces the optimal critic into the gentle linear ramp, which is precisely the shape with a constant descent direction for the generator everywhere between the modes.
+Solve the dual exactly on a clean case: two point masses, real at position b and fake at position a on the line. The dual value is sup over 1-Lipschitz f of f(b) − f(a). The 1-Lipschitz cap means f(b) − f(a) ≤ |b − a|, with equality exactly when f rises at the maximal allowed rate between a and b — i.e. when f is the slope-1 ramp f(x) = x. So the optimal critic on this case is *linear*, slope 1, value |b − a| = W. Now read off the gradient it hands the generator: the generator descends −f(fake), so its gradient in the fake's position is −f'(a) = −(slope) = −1 — constant, nonzero, pointing the fake straight toward the real. Contrast the GAN optimum D* = P_r/(P_r+P_g): on disjoint supports D* = 1 on the real support and 0 on the fake support, and *any* smooth interpolation between is admissible, so its gradient in the gap can be ~0 — the saturated, flat case. So the Lipschitz cap isn't just making the sup finite; by forbidding f from ever being steeper than slope 1 it forces the optimal critic into the gentle linear ramp, which is precisely the shape with a constant descent direction for the generator everywhere between the modes.
 
 One more property falls out. Mode collapse in a GAN comes from this: for a *fixed* discriminator, the generator's best response is to dump all its mass onto the single point the discriminator scores highest — a sum of deltas at the argmax. If the discriminator is held fixed while the generator chases it, the generator collapses. But here I train the critic toward optimality at every step, so there's no stale fixed target to chase for long; the critic re-optimizes against whatever the generator does. This attacks the fixed-discriminator collapse mechanism instead of relying on a deliberately undertrained discriminator.
 
 The optimizer choice has the same flavor. The critic objective is highly non-stationary — its landscape shifts as the generator moves and as the weights get clipped. With a momentum optimizer like Adam (β1 > 0) on the critic, training would blow up; when it did, the cosine between the Adam step and the raw gradient turned negative — momentum was dragging the update against the gradient on this nonstationary loss. So momentum is the wrong tool here. RMSProp — which rescales by a running average of gradient magnitude but carries no momentum — handles nonstationary objectives well, so I'll use RMSProp with a small learning rate (5e-5). Plain, no momentum.
 
-So let me assemble the whole loop. I keep the DCGAN convolutional body for both nets — the contribution is the objective and the training discipline, not a new architecture, and holding the body fixed isolates the effect of the distance. The generator is the usual transpose-conv stack mapping a 100-D Gaussian z to a 64×64×3 image. The critic is the DCGAN discriminator body with the final sigmoid removed and the output averaged to a single scalar — it's f_w. Per outer iteration: do n_critic critic steps, with 100 steps for the first 25 generator iterations and every 500th iteration when I really want the critic near-optimal before the generator moves; each critic step samples a real batch and a fake batch, descends `D(fake) - D(real)` by RMSProp, which is the same as ascending `E[f_w(real)] - E[f_w(fake)]`, and projects the weights into [−c,c]. Then one generator step descends `-D(fake)`, i.e. raises the critic's score on its own fakes, which by the gradient identity is a descent step on W.
-
-At this point the loop is short enough to write down directly.
-
-```python
-import torch
-import torch.nn as nn
-import torch.optim as optim
-
-nz, ngf, ndf, nc = 100, 64, 64, 3          # latent dim, gen/critic widths, image channels
-c = 0.01                                    # weight-clip box: keeps the critic K-Lipschitz
-n_critic = 5                                # train the critic ~to optimality each gen step
-lr = 5e-5                                    # small step; RMSProp (no momentum)
-
-# Generator: DCGAN transpose-conv body, z -> 64x64x3 image. (the implicit sampler g_theta)
-class Generator(nn.Module):
-    def __init__(self):
-        super().__init__()
-        def block(ci, co, k=4, s=2, p=1):
-            return [nn.ConvTranspose2d(ci, co, k, s, p, bias=False),
-                    nn.BatchNorm2d(co), nn.ReLU(True)]
-        self.net = nn.Sequential(
-            *block(nz, ngf*8, 4, 1, 0), *block(ngf*8, ngf*4),
-            *block(ngf*4, ngf*2), *block(ngf*2, ngf),
-            nn.ConvTranspose2d(ngf, nc, 4, 2, 1, bias=False), nn.Tanh())
-    def forward(self, z):
-        return self.net(z)
-
-# Critic f_w: DCGAN conv body, NO sigmoid -- it scores, it does not classify.
-# Output is a single real number (the dual potential evaluated and averaged).
-class Critic(nn.Module):
-    def __init__(self):
-        super().__init__()
-        def block(ci, co, bn=True):
-            layers = [nn.Conv2d(ci, co, 4, 2, 1, bias=False)]
-            if bn: layers.append(nn.BatchNorm2d(co))
-            layers.append(nn.LeakyReLU(0.2, inplace=True))
-            return layers
-        self.net = nn.Sequential(
-            *block(nc, ndf, bn=False), *block(ndf, ndf*2),
-            *block(ndf*2, ndf*4), *block(ndf*4, ndf*8),
-            nn.Conv2d(ndf*8, 1, 4, 1, 0, bias=False))   # no sigmoid
-    def forward(self, x):
-        return self.net(x).mean(0).view(1)              # scalar critic value
-
-G, D = Generator(), Critic()
-# RMSProp, not Adam: the critic loss is nonstationary; momentum made it diverge.
-optD = optim.RMSprop(D.parameters(), lr=lr)
-optG = optim.RMSprop(G.parameters(), lr=lr)
-
-def enforce_constraint(net):
-    for p in net.parameters():
-        p.data.clamp_(-c, c)
-
-def scoring_network_loss(net, real, fake):
-    return net(fake) - net(real)             # minimize this == maximize E[f(real)] - E[f(fake)]
-
-def generator_loss(net, fake):
-    return -net(fake)                        # raise the critic score assigned to generated samples
-
-def set_requires_grad(net, flag):
-    for p in net.parameters():
-        p.requires_grad = flag
-
-def train_step(real, gen_iter):
-    # Critic phase: estimate W by maximizing E[f(real)] - E[f(fake)].
-    real = real[0] if isinstance(real, (list, tuple)) else real
-    device = real.device
-    set_requires_grad(D, True)
-    iters = 100 if (gen_iter < 25 or gen_iter % 500 == 0) else n_critic
-    lossD = None
-    enforce_constraint(D)
-    for _ in range(iters):
-        z = torch.randn(real.size(0), nz, 1, 1, device=device)
-        fake = G(z).detach()                    # critic phase: generator frozen
-        lossD = scoring_network_loss(D, real, fake)
-        optD.zero_grad(); lossD.backward(); optD.step()
-        enforce_constraint(D)                   # Lipschitz constraint via weight clipping
-
-    # Generator phase: descend W via grad_theta W = -E[grad_theta f(g(z))].
-    set_requires_grad(D, False)
-    z = torch.randn(real.size(0), nz, 1, 1, device=device)
-    fake = G(z)
-    lossG = generator_loss(D, fake)
-    optG.zero_grad(); lossG.backward(); optG.step()
-    # -lossD = E[f(real)] - E[f(fake)] is, up to scale K, the current W estimate.
-    return (-lossD).item()
-```
-
-The chain is now tight: real images and any implicit generator both live on thin manifolds that generically don't overlap, so every density-ratio distance — KL, JS, every f-divergence — is flat or infinite there and its gradient dies, which is the root of GAN instability, vanishing generator gradients, and the fixed-discriminator collapse mechanism. The Wasserstein-1 / Earth-Mover distance measures transport cost using the metric on the space, so it stays continuous and a.e. differentiable across non-overlapping supports (parallel lines: W = |theta|, gradient sign(theta), while JS = log 2 is flat). Its intractable inf-over-couplings becomes, by Kantorovich–Rubinstein duality, a sup over 1-Lipschitz functions, which I realize with a neural critic that scores rather than classifies; I enforce the Lipschitz constraint crudely by clipping the critic's weights into a small box, train the critic toward optimality because a better critic gives a better W-gradient, and descend `-D(fake)` through the generator with RMSProp.
+So let me assemble the whole loop. I keep the DCGAN convolutional body for both nets — the contribution is the objective and the training discipline, not a new architecture, and holding the body fixed isolates the effect of the distance. The generator is the usual transpose-conv stack mapping a 100-D Gaussian z to a 64×64×3 image. The critic is the DCGAN discriminator body with the final sigmoid removed and the output averaged to a single scalar — it's f_w. Per outer iteration: do a handful of critic steps per generator step — five is enough once the critic is already close to optimal — but push that up to 100 steps for the first 25 generator iterations and every 500th iteration after, when the critic is furthest from optimal and I most want it near-optimal before the generator moves; each critic step samples a real batch and a fake batch, descends `D(fake) - D(real)` by RMSProp, which is the same as ascending `E[f_w(real)] - E[f_w(fake)]`, and projects the weights into [−c,c]. Then one generator step descends `-D(fake)`, i.e. raises the critic's score on its own fakes, which by the gradient identity is a descent step on W.
