@@ -33,40 +33,29 @@ apart, and I should not chase silhouette on non-convex geometry; the metric to p
 "don't be degenerate" floor, nothing subtler.
 
 So the diagnosis is sharp: DBSCAN owns the non-convex setting but *throws away* a whole geometry, and on
-the geometric-mean aggregate a single collapsed setting is ruinous. I need a rung that is at least
+the geometric-mean aggregate a single collapsed setting is ruinous. I need a method that is at least
 *non-degenerate everywhere* — that returns `k` honest clusters on the high-dimensional digits where
 DBSCAN returned nothing — even if I have to give up some of DBSCAN's shape flexibility to get it. The
 harness hands me the true cluster count as `n_clusters`; DBSCAN ignored it, and on digits that refusal
 is exactly what killed it. The obvious move is to *use* it — but "use `k`" names a whole family of
 methods, and I should walk that family and let the choice be forced rather than reached for.
 
-There are four candidates on the shelf that take `k` and could plausibly do better than DBSCAN on
-digits, and I want to eliminate three of them with arithmetic before I settle. A Gaussian mixture is the
-most tempting, because it does not force spherical cells — a full covariance per component could in
-principle *model* the varying `cluster_std` blobs that beat DBSCAN, fitting a tight ellipse to the tight
-blob and a loose one to the loose blob. But count the parameters it would need on digits: ten components
-each with a full `64×64` covariance is `10 · (64 · 65 / 2) = 10 · 2080 = 20800` covariance parameters
-estimated from 1797 points — more than ten unknowns per data point, so the per-component covariances go
-singular, the likelihood shoots to `+∞` on degenerate spikes, and EM diverges or collapses. Restricting
-to diagonal covariance drops that to `10 · 64 = 640` parameters, which *is* estimable, but a
-diagonal-covariance mixture is essentially K-Means with per-axis variance scaling — it buys nothing on
-the non-convex moons and adds a fragile EM on top. So GMM either overfits digits into singularity or
-degenerates to a K-Means-shaped model with extra machinery; it is not the robust minimal step I want.
-Spectral clustering is the second temptation, and a sharper one, because it could actually get moons
-*right*: build an affinity graph, embed with the Laplacian's eigenvectors, and cluster there, which
-follows non-convex connectivity. But two facts kill it here. First, the affinity is a Gaussian kernel
-`exp(−||x−y||² / 2σ²)` whose bandwidth `σ` is a *global scale knob* — the same kind of single global
-radius as DBSCAN's `eps`, and it will concentrate and misfire in 64-D for exactly the reason `eps` did,
-so spectral would just relocate DBSCAN's digits failure into a new parameter. Second, the dense
-eigendecomposition is `O(n³)`; at `n = 1797` that is about `5.8·10⁹` operations per fit and it also
-offers no explicit noise. Trading `eps` for `σ` to inherit the same curse is not progress. K-medoids/PAM
-is the third: it swaps means for actual data points as representatives, which lets it use an arbitrary
-distance, but the assignment rule is still nearest-representative, so the cells are still convex — it
-does nothing for moons — and each iteration costs `O(n²)` swap evaluations, strictly more than the
-alternative for no shape gain. I could also imagine going the *other* way and making DBSCAN's radius
-adaptive per region, but re-deriving a separate density scale everywhere is a substantially larger piece
-of machinery, and what I need first is the simplest thing that structurally *cannot* collapse on digits,
-so I set the adaptive-density idea aside as a later rung's job and take the minimal robust partitioner.
+Four candidates on the shelf take `k` and could plausibly beat DBSCAN on digits, and three fall to
+arithmetic. A Gaussian mixture tempts most — full per-component covariance could *model* the varying
+`cluster_std` blobs DBSCAN capped, a tight ellipse on the tight blob and a loose one on the loose — but
+on digits ten components each with a full `64×64` covariance is `10 · (64 · 65 / 2) = 20800` covariance
+parameters from 1797 points, more than ten unknowns per point, so the covariances go singular, the
+likelihood spikes to `+∞`, and EM collapses; the diagonal restriction (`10 · 64 = 640` parameters) is
+estimable but is just K-Means with per-axis variance scaling, buying nothing on moons while adding a
+fragile EM. Spectral clustering is sharper, since its Laplacian eigen-embedding follows non-convex
+connectivity and could get moons *right* — but its Gaussian-kernel bandwidth `σ` is a single global scale
+knob that will concentrate and misfire in 64-D for exactly the reason `eps` did, relocating the digits
+failure into a new parameter, and its dense `O(n³)` eigendecomposition is about `5.8·10⁹` operations at
+`n = 1797` with no explicit noise. K-medoids/PAM keeps a nearest-representative rule, so its cells stay
+convex — nothing for moons — at a steeper `O(n²)` per iteration. The other direction, making DBSCAN's
+radius adaptive per region, is real but a much larger build; what I need first is the simplest thing that
+structurally *cannot* collapse on digits, so I set that aside as a later method's job and take the
+minimal robust partitioner.
 
 That leaves plain K-Means, and it is minimal for a reason worth spelling out: it is the one candidate
 that is *constructed* to return exactly `k` non-empty groups, so it cannot produce the degenerate
@@ -86,16 +75,13 @@ I need a good local search, and the entire game becomes how good a local solutio
 move with tangled variables is to optimize one with the other fixed and alternate. Fix the centers:
 each point contributes `min_c ||x − c||²`, minimized by assigning it to its nearest center — exactly
 optimal, term by term, and it carves space into Voronoi cells. Fix the assignment: the best center for a
-group `S` minimizes `Σ_{x∈S} ||x − z||²`. Compute it rather than assert it. Let `c = (1/|S|)Σ_{x∈S} x`
+group `S` minimizes `Σ_{x∈S} ||x − z||²`. Work out the minimizer. Let `c = (1/|S|)Σ_{x∈S} x`
 and write `x − z = (x − c) + (c − z)`; expanding, `Σ ||x − z||² = Σ ||x − c||² + 2(c − z)·Σ(x − c) +
 |S| ||c − z||²`. The cross term carries `Σ(x − c) = |S|c − |S|c = 0` by the very definition of the
 mean, so it vanishes, leaving `Σ ||x − z||² = Σ ||x − c||² + |S| ||c − z||²`. This is the parallel-axis
 identity: the total squared distance to any point `z` is the squared spread about the centroid plus
-`|S|` times `z`'s squared offset from it. Let me check it on a concrete `S = {0, 2, 4}` in one dimension
-so I am not trusting the algebra blind: the mean is `c = 2`, the spread `Σ(x−2)² = 4 + 0 + 4 = 8`, and
-testing `z = 1` directly gives `(0−1)² + (2−1)² + (4−1)² = 1 + 1 + 9 = 11`, while the identity predicts
-`8 + 3·(2−1)² = 8 + 3 = 11` — they agree, and any `z ≠ 2` adds the strictly positive `|S|(c−z)²`, so the
-minimizer is uniquely `z = 2`. Now squared distance pays off: under squared error the optimal
+`|S|` times `z`'s squared offset from it. Any `z ≠ c` adds the strictly positive `|S| ||c − z||²`, so the
+minimizer is uniquely `z = c`, the mean. Now squared distance pays off: under squared error the optimal
 representative is the *mean*, a closed-form one-pass quantity; under absolute error it would be the
 median, which has no such linear form. The square is what makes the centroid step trivial. Two forced
 steps, alternating.
@@ -123,7 +109,7 @@ every center still gets a non-empty group. The centroid step is a per-coordinate
 scale threshold at all. So concentration cannot produce a degenerate labeling here; what it *can* do is
 shrink the margins, so the ten digit groups will be only weakly separated and the silhouette on digits
 will be modest and positive rather than large — a real cost, but a survivable one, and exactly the
-opposite failure mode from DBSCAN's cliff. That is the mechanical content of "non-degenerate everywhere."
+opposite failure mode from DBSCAN's cliff.
 
 But here is the rub, and it is the whole story. The fixed point is only a *local* minimum of `phi`.
 `phi`, as a function of the center locations, is a pointwise minimum of convex squared-distance pieces —
@@ -179,34 +165,23 @@ since the harness always passes the true count). `n_init = 10` is the restart co
 `O(log k)` seeding robust in practice; `max_iter = 300` caps the local loop, which converges far sooner
 on these sizes. `predict` delegates to the fitted model's nearest-center rule. The class is in the answer.
 
-Reading DBSCAN's numbers, here is what I expect this rung to do and where it must lose. On **digits** —
+Reading DBSCAN's numbers, here is what I expect and where I must lose. On **digits** —
 the setting DBSCAN threw away at silhouette −1.0 and ARI 0.0003 — this should be a large, decisive gain:
 ten honest centroids in 64-D, no collapse, ARI and NMI well off the floor and silhouette comfortably
 positive; the geometric-mean aggregate alone should jump from rescuing this one dead setting, since I
 showed a moment ago that lifting the digits setting from a negative factor to any positive one is worth
 more to the product than a couple of points anywhere else. On **blobs**, K-Means should *beat* DBSCAN
 clearly — convex isotropic Gaussians are its exact model, and `D²` seeding plus restarts handle the
-varying `cluster_std` far better than a single global `eps` did, so I expect ARI up around the 0.85
-range, above DBSCAN's 0.70 and with less seed-to-seed spread than the 0.17 swing I saw. The honest cost
-is **moons**: this is where I knowingly give back DBSCAN's win. Two interleaving half-circles are
-non-convex, and "nearest centroid" is a Voronoi tessellation that *must* cut each moon with a straight
-bisector — so K-Means will slice the moons the wrong way and score far below DBSCAN's 0.972, I expect
-ARI well under 0.5. Trace the geometry to see the mechanism, not just assert it: the two moons
-interleave so that the upper arc and the lower arc each span roughly the same horizontal extent, one
-shifted down and to the right of the other. K-Means with `k = 2` places two centroids and separates them
-by the perpendicular bisector of the centroid pair — a single straight line. There is no orientation of
-one straight line that puts one whole crescent on each side, because the crescents wrap past each other;
-whatever line I draw, each side of it contains a chunk of *both* true arcs. So each predicted cluster is
-a mixture of the two ground-truth moons, and a partition where every predicted group is roughly half one
-class and half the other is exactly the low-ARI regime. The inertia objective is even actively
-*hostile* here: the lowest-inertia 2-split of the interleaving arcs is the compact left/right or
-top/bottom cut, which is precisely the wrong one — so restarts will not save me, because they all
-converge toward the same wrong-but-compact optimum. That is the trade I am making with eyes open: I sacrifice the one setting DBSCAN
-owned to stop *failing* the setting DBSCAN destroyed, and because the task aggregates by geometric mean,
-trading a moons collapse for a digits collapse is the right direction — a method that is
-mediocre-everywhere beats one that is excellent-on-one and zero-on-another, which is precisely what the
-`(0.707 · 0.714 · −0.330)` degenerate product proved. The falsifiable claims against the prior numbers:
-digits silhouette goes from −1.0 to positive and digits ARI from ~0 to a real value; blobs ARI rises
-above 0.70; and moons ARI *falls* below DBSCAN's 0.97 — and if it falls all the way to a poor convex
-split, that moons failure is itself the next rung's target, because the ideal method would keep DBSCAN's
-non-convex moons *and* K-Means's non-degenerate digits at once.
+varying `cluster_std` better than a single global `eps`, so I expect ARI up toward the mid-0.8s, above
+DBSCAN's 0.70 and with less seed spread. The honest cost is **moons**, where I knowingly give back
+DBSCAN's win. Nearest-centroid is a Voronoi tessellation: with `k = 2` the two centroids are separated by
+a single straight bisector, and no orientation of one straight line puts a whole crescent on each side,
+because the interleaving arcs wrap past each other — each side holds a chunk of *both* true arcs, so each
+predicted cluster is a half-and-half mixture, the low-ARI regime. Worse, the inertia objective is
+actively hostile: the lowest-inertia 2-split is the compact left/right cut, precisely the wrong one, so
+restarts converge to the same wrong-but-compact optimum rather than rescuing me. Moons ARI should fall
+well below DBSCAN's 0.972, likely toward a coin-flip. That is the trade with eyes open — a geometric mean
+rewards mediocre-everywhere over excellent-on-one-and-zero-on-another, which the degenerate
+`(0.707 · 0.714 · −0.330)` product already proved. And if moons does fall to a poor convex split, that
+failure is the next method's target, since the ideal method keeps DBSCAN's non-convex moons *and*
+K-Means's non-degenerate digits at once.

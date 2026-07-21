@@ -7,29 +7,26 @@ ARI 0.481, NMI 0.383 — barely better than a coin flip on a two-class problem �
 Nearest-centroid is a Voronoi tessellation; it *must* cut each half-moon with a straight bisector, so it
 sliced the interleaving arcs the wrong way.
 
-Let me put both rungs' tables side by side on the actual scoring rule before I decide anything, because
-the aggregate is a geometric mean and I want the ladder's shape in numbers, not impressions. K-Means's
+Let me put both prior methods' tables side by side on the actual scoring rule before I decide anything,
+because the aggregate is a geometric mean and I want the shape of these results in numbers, not impressions. K-Means's
 three setting-means are blobs `(0.853 + 0.874 + 0.585)/3 ≈ 0.771`, moons `(0.481 + 0.383 + 0.494)/3 ≈
 0.453`, and digits `(0.534 + 0.671 + 0.139)/3 ≈ 0.448`, whose geometric mean is `(0.771 · 0.453 ·
 0.448)^{1/3} = (0.1565)^{1/3} ≈ 0.54`. That 0.54 is finite and real — nothing degenerate — and it is the
 number I now have to beat. DBSCAN's aggregate, by contrast, had a digits setting-mean of about `−0.33`
 (the −1.0 silhouette dragging it negative), which makes its geometric mean ill-defined — degenerate —
-so on the scoring rule DBSCAN is *below* K-Means despite owning moons outright. So the ladder's shape is
+so on the scoring rule DBSCAN is *below* K-Means despite owning moons outright. So the shape is
 crisp: DBSCAN owns non-convex moons and dies on high-D digits; K-Means owns convex blobs and digits and
 dies on non-convex moons. Each is excellent-on-some, terrible-on-another, and on a geometric-mean
 aggregate that is exactly the wrong profile — the mean is pulled toward its *weakest* factor, so both
-rungs are held down, K-Means by its moons 0.453 and (would-be) DBSCAN by its digits −0.33.
+methods are held down, K-Means by its moons 0.453 and (would-be) DBSCAN by its digits −0.33.
 
-There is a second signal in the tables I should not miss, because it will shape what "winning moons" is
-even allowed to look like. Compare the two moons rows on silhouette: DBSCAN, with a near-perfect ARI of
-0.972, scored silhouette only 0.224, while K-Means, with a *wrong* ARI of 0.481, scored silhouette
-0.494 — higher. The intrinsic metric actively *prefers* the incorrect convex split, because two
-interleaving crescents are close in Euclidean space and the compact left/right cut looks more
-"separated" to silhouette than the true arcs do. So silhouette and ARI point in opposite directions on
-moons, and I should file the consequence now: whatever method recovers the correct arcs will show its
-moons gain in ARI and NMI, and its moons silhouette will stay low — near DBSCAN's 0.22, not up at
-K-Means's 0.49. I will not read a modest moons silhouette as a failure later; it is baked into the
-geometry.
+A second signal in the tables shapes what "winning moons" can even look like. On the two moons rows,
+DBSCAN's near-perfect ARI 0.972 scored silhouette only 0.224, while K-Means's *wrong* ARI 0.481 scored
+silhouette 0.494 — higher. The intrinsic metric *prefers* the incorrect convex split, because two
+interleaving crescents sit close in Euclidean space and a compact left/right cut looks more separated
+than the true arcs. So whatever recovers the correct arcs will show its moons gain in ARI and NMI while
+its moons silhouette stays low near 0.22 — I will not read that modest silhouette as a failure later; it
+is baked into the geometry.
 
 So what I want is the method that keeps DBSCAN's two virtues — arbitrary shape and explicit noise, which
 are what won moons — *without* DBSCAN's fatal weakness, the single global `eps` that concentrated itself
@@ -50,19 +47,14 @@ whatever is near. That is exactly the seed-to-seed spread I watched on DBSCAN's 
 and on digits it is total. One threshold for a multi-density object is a structural mismatch, not a
 tuning annoyance.
 
-Now the options. I could keep DBSCAN and just *search* `eps` — run it at a grid of radii and pick the
-best — but "best by what?" I have no labels at fit time, and every single run is still one horizontal
-density level, so a grid of horizontal cuts still cannot place the knot's cluster and the cloud's
-cluster in the *same* output; the search cannot buy me what one level structurally lacks. I could go the
-K-Means direction again — a fixed-`k` partition is guaranteed non-degenerate — but that is the rung I
-just built, and it throws moons away; I am here precisely to *not* do that. Or I make the radius *local*,
-letting each region declare its own density scale, which is the direction that could actually work.
-OPTICS is the classical version of that idea — it produces a reachability ordering with a per-point
-reachability distance instead of a single `eps` — but extracting a flat clustering from an OPTICS
-reachability plot needs a steepness threshold `ξ`, which is a new global knob heuristically chosen, and
-its reachability is *asymmetric* (defined one-sidedly from the ordering), which is what forces that
-heuristic. So the local-radius idea is right but OPTICS's particular realization just relocates the knob.
-Let me take the local-radius idea and remove the knob by construction.
+The options. Grid-searching `eps` is no escape: with no labels at fit time I cannot pick "best," and
+every run is still one horizontal density level, so a grid of horizontal cuts still cannot place the
+knot's cluster and the cloud's cluster in the *same* output. K-Means again is guaranteed non-degenerate
+but throws moons away — the method I just built and am here to avoid. The direction that works is a
+*local* radius, each region declaring its own density scale. OPTICS is the classical version, but
+extracting a flat clustering from its reachability plot needs a steepness threshold `ξ` — a new global
+knob — forced by its *asymmetric* one-sided reachability. The local-radius idea is right; I want it with
+the knob removed by construction.
 
 Don't pick one `eps` — look at all of them. Vary `lambda` (equivalently `eps = 1/lambda`) and watch the
 components evolve. As the level rises a component shrinks by shedding its fringe, splits into two, or
@@ -82,17 +74,13 @@ is the distance to its `m_pts`-th nearest neighbor (counting `p` itself), so `|N
 when `eps ≥ d_core(p)`; its reciprocal `1/d_core(p)` is a `K`-NN density estimate with `K = m_pts`, which
 is why `m_pts` is a density-smoothing knob, not a cluster-count knob. Then `p, q` are directly reachable
 at `eps` iff `eps ≥ d_core(p)`, `eps ≥ d_core(q)`, and `eps ≥ d(p,q)` — all three at once iff
-`eps ≥ max(d_core(p), d_core(q), d(p,q))`. Check it on a concrete pair with `m_pts = 5`: let
-`d_core(p) = 0.2` (p sits in a moderately dense spot, its 5th neighbor at 0.2), `d_core(q) = 0.35`, and
-the raw gap `d(p,q) = 0.15`. The three conditions "p is core," "q is core," and "p, q within eps" first
-hold simultaneously at `eps = max(0.2, 0.35, 0.15) = 0.35` — below that, at say `eps = 0.25`, p is core
-and the pair is within eps but q has not yet reached core, so they are *not* yet linked, exactly as the
-max predicts. The binding constraint is q's sparsity, and the mutual-reachability distance reports it as
-0.35 rather than the deceptively small raw 0.15. Define that maximum as the **mutual reachability distance**
-`d_mreach(p,q) = max(d_core(p), d_core(q), d(p,q))`. It is symmetric, reduces to ordinary distance when
-both core distances are small, and *inflates* a pair when either endpoint is in a sparse region — a
-sparse point cannot be closer than its own core distance to anything. That inflation is exactly the
-defense against single-linkage chaining, and it is worth a concrete number to be sure it does the work.
+`eps ≥ max(d_core(p), d_core(q), d(p,q))`; the binding constraint is whichever of the two sparsities or
+the raw gap is largest, so a pair in which one endpoint is sparse only links at that endpoint's larger
+core distance, not the deceptively small raw gap. Define that maximum as the **mutual reachability
+distance** `d_mreach(p,q) = max(d_core(p), d_core(q), d(p,q))`. It is symmetric, reduces to ordinary
+distance when both core distances are small, and *inflates* a pair when either endpoint is in a sparse
+region — a sparse point cannot be closer than its own core distance to anything. That inflation is
+exactly the defense against single-linkage chaining, and a concrete number shows it does the work.
 Picture two dense clusters bridged by a thin line of noise. A cluster point sits among neighbors at
 spacing `~0.1` and reaches its `m_pts`-th neighbor at `d_core ≈ 0.05`; a bridge point in the sparse line
 reaches its `m_pts`-th neighbor only far away, say `d_core ≈ 0.5`. The raw distance from the bridge point
@@ -127,10 +115,8 @@ one survives, the cluster merely *shrank* and keeps its label while the small pi
 none survives, the cluster *died*. This turns the dendrogram into a compact tree of significant
 components — a discrete approximation to Hartigan's density-contour tree. I want `m_clSize` to mean "a
 couple of percent of the data" rather than a fixed count that would be too coarse on the 1797-point
-digits and too fine on the 1000-point moons, so I scale it: `m_clSize = max(5, n // 50)`. That reads out
-to `1797 // 50 = 35` on digits, `1500 // 50 = 30` on blobs, and `1000 // 50 = 20` on moons — a check
-confirms these are all about `35/1797 ≈ 1.9%`, `30/1500 = 2.0%`, `20/1000 = 2.0%` of their sets, i.e. a
-consistent ~2% floor on what counts as a cluster, which is the invariance I wanted across the three
+digits and too fine on the 1000-point moons, so I scale it: `m_clSize = max(5, n // 50)`. That is 35 on
+digits, 30 on blobs, 20 on moons — a consistent ~2% floor on what counts as a cluster across the three
 sizes.
 
 I still need a flat clustering, and a horizontal cut is exactly what failed, so I choose clusters from
@@ -142,35 +128,16 @@ contributes over the interval it belongs to `C_i` before leaving, `lambda_max(x_
 (with `lambda = 1/eps`, each term is nonnegative: higher departure density minus lower birth density),
 summed to the **stability** `S(C_i)`. Then extract the non-overlapping set of clusters maximizing total
 stability — I cannot select both a node and a descendant, or a point gets two labels — by a bottom-up
-dynamic program: `S_hat(C_i) = S(C_i)` at a leaf, else `max(S(C_i), Σ_children S_hat)`. Trace the rule on
-a single node to be sure it does what I mean: if a parent has two children whose propagated stabilities
-sum to more than the parent's own, `S_hat(parent) = Σ_children` and the parent is deselected, so the
-finer split is kept; if the children sum to less, the parent's own stability wins, `S_hat(parent) =
-S(parent)`, and its whole subtree is suppressed in favor of the single coarser cluster. Ties go to the
-parent. Exclude the root; uncovered points are noise. This is excess-of-mass (EOM) selection, and it is
-precisely the thing DBSCAN could not do: a diffuse cluster and a dense cluster can *both* appear in the
-final labeling because they are selected at different levels of the same tree — the knot from high
-`lambda`, the cloud from low `lambda`, in one output.
-
-Let me run the multi-density blobs through this once with invented-but-consistent numbers, because that
-setting is the exact one a single `eps` mishandled and I want to see the machinery cure it. Say the tight
-blob (`cluster_std ≈ 0.5`) is a dense knot whose points stay together from a low birth level up to a high
-`lambda` before they finally scatter, giving it a wide membership interval and a stability of, say,
-`S(knot) = 12`; the loose blob (`cluster_std ≈ 1.5`) is a diffuse cloud that exists only over a narrow
-band of low `lambda` — it never reaches high density and dissolves early — with a smaller but real
-`S(cloud) = 5`. A single horizontal cut is forced to choose one level for both: cut high to resolve the
-knot and the cloud's points are all below that density, so the cloud vanishes into noise; cut low to keep
-the cloud and the knot merges with whatever neighbor shares that loose level. Either horizontal choice
-loses one blob — which is precisely DBSCAN's 0.59–0.76 seed wobble, one blob or another falling on the
-wrong side of the one radius. Now the EOM DP: suppose the condensed tree has a parent node (the merged
-knot-plus-cloud region, born low) whose own stability as a single cluster is `S(parent) = 9`, and whose
-two children are the knot (`S_hat = 12`) and the cloud (`S_hat = 5`). The rule compares `S(parent) = 9`
-against `Σ_children S_hat = 12 + 5 = 17`; since `17 > 9`, the parent is deselected and both children are
-selected, so the knot and the cloud *both* appear in the flat labeling, each chosen at its own level. Had
-the cloud been genuinely spurious — say `S_hat = 1` so the child sum `13` still beats `9`, or a fringe
-piece below `m_clSize` that never became a node at all — the DP would keep the split only where a real
-second cluster exists, and otherwise let the parent stand. That is the horizontal cut's failure repaired
-by construction: nothing forces the knot and the cloud to be read at the same density.
+dynamic program: `S_hat(C_i) = S(C_i)` at a leaf, else `max(S(C_i), Σ_children S_hat)`. When the children's
+propagated stabilities outsum the parent's own the parent is deselected and the finer split is kept;
+otherwise the coarser parent wins and its subtree is suppressed; ties go to the parent. Exclude the root;
+uncovered points are noise. This is excess-of-mass (EOM) selection, and it is precisely the thing DBSCAN
+could not do: a diffuse cluster and a dense cluster can *both* appear in the final labeling because they
+are selected at different levels of the same tree. That is the direct cure for the multi-density blobs a
+single `eps` mishandled — the tight knot lives at high `lambda`, the loose cloud at low `lambda`, and the
+DP takes each at its own level instead of forcing one horizontal cut to choose between them (which is
+exactly what produced DBSCAN's 0.59–0.76 seed wobble, one blob or another falling on the wrong side of
+the one radius).
 
 Now the edit, and the scaffold decides how literal I get. `sklearn.cluster.HDBSCAN` realizes all of the
 above — mutual-reachability single-linkage, size-based condensation, EOM extraction — so I do not
@@ -184,7 +151,7 @@ method does not carry, and I keep it because the high-dimensional setting demand
 *everything* noise — `len(set(labels)) ≤ 1`, the degenerate case the silhouette scores at −1.0 — I fall
 back to `KMeans(k)` with the harness's `n_clusters`, so even if density estimation gives up in 64-D I
 return `k` honest clusters instead of the collapse that killed DBSCAN on digits. That fallback is
-exactly the lesson of step 2 folded in as a safety net: never hand the harness a degenerate labeling.
+exactly the previous method's lesson folded in as a safety net: never hand the harness a degenerate labeling.
 And I should be clear-eyed that the guard is not decoration on digits — the mutual-reachability MST is
 still built on 64-D distances, and those distances still concentrate into a thin shell exactly as they
 did for DBSCAN's `eps`. The difference is that HDBSCAN never commits to *one* level: even a concentrated
@@ -193,26 +160,20 @@ dump the rest to noise rather than collapse outright — but the concentration m
 digits is weak, so the KMeans fallback is real insurance against the tail where even the stablest split
 is below `m_clSize`. The full class is in the answer.
 
-Reading K-Means's and DBSCAN's numbers together, here is what I expect and why it should be the
-strongest rung. On **moons**, HDBSCAN should recover DBSCAN's win and likely exceed it — the
-hierarchical, self-tuning density model finds the two arcs without a hand-set `eps`, so ARI should be at
-or near 1.0, far above K-Means's 0.481 and at least matching DBSCAN's 0.972; but by the silhouette
-argument above, that gain shows up in ARI and NMI, and the moons silhouette will stay modest near
-DBSCAN's 0.22, not near K-Means's 0.49, so I will judge moons by ARI/NMI. On **blobs**, it should
-beat DBSCAN's capped 0.70: selecting clusters at *different* density levels is the direct cure for the
-varying-`cluster_std` problem that a single `eps` could not handle, so I expect ARI up around the
-high-0.7s/low-0.9s, competitive with K-Means and with less of DBSCAN's 0.17 seed spread. On **digits**,
-the honest expectation is *non-degenerate but modest*: density estimation in 64-D is genuinely hard, so
-HDBSCAN will likely leave many points as noise and recover only the cleanest digit clusters — I expect
-ARI well above DBSCAN's 0.0003 but probably below K-Means's 0.534, with the KMeans fallback as insurance
-against an outright collapse. The falsifiable claim against the prior rungs: HDBSCAN should be the only
-method on the ladder that is non-degenerate on *all three* geometries at once — moons near-perfect,
-blobs strong, digits real — so even where it trails K-Means on a single setting, its geometric-mean
-aggregate should top both. That is the arithmetic that matters: K-Means's aggregate was pinned near 0.54
-by its dead-flat moons factor of 0.45, and DBSCAN's was degenerate; a method whose *weakest* setting is
-a real positive number instead of 0.45 or −0.33 will have a geometric mean above both even if no single
-setting is a record. If digits comes in low enough to drag the gmean below K-Means's, that is the
-residual the ladder ends on: the high-dimensional setting where neither density estimation nor a fixed-`k`
-partition is clearly right, and where the genuinely better move would combine a density-hierarchy's shape
-sense with a dimension-robust embedding — but within this harness's edit surface, the self-tuning
-multi-level density model is the strongest single algorithm I can land.
+Reading K-Means's and DBSCAN's numbers together, here is what I expect. On **moons**, HDBSCAN should
+recover DBSCAN's win and likely exceed it — the self-tuning density model finds the two arcs without a
+hand-set `eps`, so ARI should be at or near 1.0, far above K-Means's 0.481; but by the silhouette
+argument above, that gain shows up in ARI/NMI while the moons silhouette stays modest near DBSCAN's 0.22,
+so I will judge moons by ARI/NMI. On **blobs**, it should beat DBSCAN's capped 0.70: selecting clusters
+at *different* density levels directly cures the varying-`cluster_std` problem a single `eps` could not,
+so I expect ARI in the high-0.7s to low-0.9s, competitive with K-Means. On **digits**, the honest
+expectation is *non-degenerate but modest*: density estimation in 64-D is genuinely hard, so HDBSCAN will
+likely leave many points as noise and recover only the cleanest digit clusters — ARI well above DBSCAN's
+0.0003 but probably below K-Means's 0.534, with the KMeans fallback as insurance against outright
+collapse. The bet: this should be the only method so far that is non-degenerate on *all three* geometries
+at once, so even where it trails K-Means on a single setting its geometric mean tops both — a method whose
+*weakest* factor is a real positive number beats one pinned by a 0.45 moons factor and one that is
+degenerate. If 64-D density estimation drags digits low enough to sink the gmean below K-Means's, the
+residual left standing is exactly that setting, where the better move would pair a density hierarchy's
+shape sense with a dimension-robust embedding — but within this edit surface, the self-tuning multi-level
+density model is the strongest single algorithm I can land.
