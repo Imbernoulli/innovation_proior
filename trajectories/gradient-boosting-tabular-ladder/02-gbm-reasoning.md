@@ -1,6 +1,6 @@
 The adaptive reweighting works, but it is wired to a single thing: a 0/1 "right or wrong" indicator on
 a classification label. Each round I crush the weight of correctly-classified examples and lift the
-misclassified ones, which — as the previous rung's own bookkeeping showed — is exactly stagewise
+misclassified ones, which — as the AdaBoost bookkeeping showed — is exactly stagewise
 descent of the exponential loss exp(−yF) of the margin. That is one loss, and the margin is a *sign*: it
 knows whether the committee lands on the right side of the label, never how far a continuous prediction
 sits from a continuous target. If I want to predict a real-valued quantity, or fit a Huber loss robust
@@ -88,7 +88,7 @@ Check that AdaBoost is the special case, to be sure I have not thrown anything a
 exponential loss L(y, F) = exp(−yF) with y ∈ {−1,+1}. Its negative gradient at F_{m−1} is
 gⁱ_m = yᵢ·exp(−yᵢ F_{m−1}(xᵢ)) — the sign yᵢ points each example toward its label, and the magnitude
 exp(−yᵢ F_{m−1}(xᵢ)) is large exactly on the examples the current margin gets wrong. That magnitude *is*
-the AdaBoost weight the previous rung derived (it showed the sample weight entering a round is
+the AdaBoost weight I derived earlier (the sample weight entering a round is
 proportional to exp(−yᵢ F(xᵢ))). So gradient boosting on the exponential loss reproduces AdaBoost's
 reweighting as a byproduct of the gradient, and the new framework strictly contains it while reaching
 past it to squared error, absolute error, Huber, logistic deviance, Poisson — anything with a gradient.
@@ -101,44 +101,29 @@ the loss itself*,
 
   γ_{jm} = argmin_γ Σ_{xᵢ ∈ R_{jm}} L(yᵢ, F_{m−1}(xᵢ) + γ),
 
-a separate one-dimensional optimization per leaf. Let me actually solve it for a few losses, with real
-numbers, so I know what the line search does rather than trusting the shape of the formula. For squared
-error L = ½(y − F)², the derivative in γ is Σ_{R}(yᵢ − F − γ) = 0, so γ_{jm} = mean of the residuals in
-the leaf — and since the pseudo-residual for squared error is itself yᵢ − F, the whole thing collapses to
-"fit residuals, leaf = mean residual." Trace it on three points y = (3, 5, 4), F_{m−1} = (2, 2, 2): the
-pseudo-residuals are (1, 3, 2), a single leaf takes their mean γ = 2, and F becomes (4, 4, 4) — exactly
-the leaf mean of y, ordinary regression-tree boosting, no surprises. For absolute error L = |y − F| the
-pseudo-residual is sign(yᵢ − F) (so the tree structure is fit to ±1 signs), while the line search
-Σ_{R}|yᵢ − F − γ| is minimized at the *median* residual. Here the two-stage split earns its keep: take
-y = (1, 2, 3, 100), F = (0, 0, 0, 0). The pseudo-residuals are all +1 — the tree cannot even see that
-100 is an outlier, every example just says "go up." The line search takes the median of the raw
-residuals (1, 2, 3, 100), which is 2.5, not their mean 26.5. So the leaf steps up by 2.5 and the single
-gross outlier does not drag the whole leaf by twenty-six; the structure comes from the signs, the
-magnitude from the median, and that is precisely why absolute-error boosting is robust. For logistic
+a separate one-dimensional optimization per leaf. What it does depends on the loss, and the differences
+are instructive. For squared error L = ½(y − F)² the pseudo-residual is yᵢ − F and the line search
+returns the leaf's mean residual, so the whole thing collapses to ordinary regression-tree boosting. For
+absolute error L = |y − F| the pseudo-residual is only the *sign* sign(yᵢ − F), so the tree structure is
+fit to ±1 signs while the line search takes the *median* residual in each leaf — and that split is
+exactly why absolute-error boosting is robust: on a leaf holding y = (1, 2, 3, 100) with F = 0 the
+pseudo-residuals are all +1 (the tree cannot even see the outlier), and the median step of 2.5 moves the
+leaf up sensibly rather than being dragged toward the mean 26.5 by the single gross value. For logistic
 (binomial) deviance the pseudo-residual is yᵢ − pᵢ with pᵢ = σ(F_{m−1}(xᵢ)), and the leaf minimization
-has no closed form, so I take a single Newton step,
+has no closed form, so I take one Newton step,
 
   γ_{jm} = Σ_{R}(yᵢ − pᵢ) / Σ_{R} pᵢ(1 − pᵢ),
 
-numerator the sum of gradients, denominator the sum of local curvatures pᵢ(1−pᵢ). Put numbers on it: a
-leaf with three examples at current probabilities p = (0.5, 0.8, 0.3) and labels y = (1, 0, 1) has
-gradients yᵢ − pᵢ = (0.5, −0.8, 0.7) summing to 0.4 and curvatures pᵢ(1−pᵢ) = (0.25, 0.16, 0.21)
-summing to 0.62, so the Newton leaf is γ = 0.4/0.62 = 0.645. The naive least-squares leaf — the mean
-pseudo-residual — would be 0.4/3 = 0.133, nearly a factor of five smaller: the plain fit badly
-undershoots because it ignores that these examples sit on a shallow part of the logistic curve where a
-larger step is warranted. So the structure is found by least squares on the first-order pseudo-residual,
-but the leaf magnitude quietly uses the second derivative *locally, per leaf* — and I notice this is
-exactly the logistic leaf value the IRLS route would have produced (Σ(y−p)/Σp(1−p) is what a weighted
-least-squares fit with weight p(1−p) puts in a leaf). The two routes agree at the *leaf*; they disagree
-only at *split-finding*, where IRLS wants the curvature weights and I am fitting plain squared error to
-the gradient. That is the fork I promised to come back to. This two-step split — cheap squared-error fit
-for the partition, exact (or Newton) line search for the magnitudes — is what makes gradient boosting
-accurate across losses. And it lets me re-verify the AdaBoost connection at the leaf level: for the
-exponential loss, minimizing Σ_{R} exp(−yᵢ(F + γ)) over a leaf splits into positives and negatives with
-weighted masses W₊ = Σ_{R,+} exp(−yF) and W₋ = Σ_{R,−} exp(−yF), and setting the derivative
-−W₊e^{−γ} + W₋e^{γ} = 0 gives γ = ½ log(W₊/W₋). For a stump covering the whole space with weighted
-error ε, that is ½ log((1−ε)/ε) — exactly half the AdaBoost vote weight log((1−ε)/ε), the factor ½ being
-the standard {−1,+1}-versus-0/1 convention. The line search recovers AdaBoost's coefficient on the nose.
+numerator the sum of gradients, denominator the sum of local curvatures pᵢ(1−pᵢ). On a leaf with
+p = (0.5, 0.8, 0.3) and y = (1, 0, 1) the gradients sum to 0.4 and the curvatures to 0.62, so the Newton
+leaf is γ = 0.4/0.62 = 0.645 — nearly five times the naive mean pseudo-residual 0.4/3 = 0.133, because
+these examples sit on a shallow part of the logistic curve where a larger step is warranted. So the
+structure is found by least squares on the first-order pseudo-residual, but the leaf magnitude uses the
+second derivative *locally, per leaf* — and this is exactly the logistic leaf value the IRLS route would
+have produced. The two routes agree at the *leaf*; they disagree only at *split-finding*, where IRLS
+wants the curvature weights and I am fitting plain squared error to the gradient. That is the fork I
+promised to come back to. This two-step split — cheap squared-error fit for the partition, exact (or
+Newton) line search for the magnitudes — is what makes gradient boosting accurate across losses.
 
 Second, taking the full optimal step every round overfits — the model races to fit the training data
 and generalizes poorly. So I shrink each step by a learning rate ν ∈ (0,1]:
@@ -163,31 +148,10 @@ curvature where it is cheapest and least disruptive to use — inside a fixed le
 so I keep the split criterion as plain least squares on the first-order pseudo-residual and bank the
 generality. The gradient machine is the right thing to lock in first; the split score, and whether to
 carry the Hessian into it, can be revisited once *speed* forces my hand and I have to rebuild the split
-finder anyway.
+finder anyway. (The per-stage fit — pseudo-residual, tree, per-leaf line search, shrunk step — is in the
+answer's `_fit_stage`.)
 
-```python
-def _fit_stage(self, i, X, y, raw_predictions, sample_weight, sample_mask, random_state, ...):
-    loss = self._loss
-    original_y = y
-    raw_predictions_copy = raw_predictions.copy()
-    for k in range(loss.K):                       # one tree per class (K=1 for regression/binary)
-        if loss.is_multi_class:
-            y = np.array(original_y == k, dtype=np.float64)
-        # pseudo-residuals = negative gradient of the loss at the current model
-        residual = loss.negative_gradient(y, raw_predictions_copy, k=k, sample_weight=sample_weight)
-        # fit a regression tree to the pseudo-residuals by least squares (exact split finding)
-        tree = DecisionTreeRegressor(criterion=self.criterion, splitter="best",
-                                     max_depth=self.max_depth, max_leaf_nodes=self.max_leaf_nodes, ...)
-        tree.fit(X, residual, sample_weight=sample_weight, check_input=False)
-        # line-search each leaf in the real loss, then take a shrunk (learning_rate) step
-        loss.update_terminal_regions(tree.tree_, X, y, residual, raw_predictions,
-                                     sample_weight, sample_mask, learning_rate=self.learning_rate, k=k)
-        self.estimators_[i, k] = tree
-    return raw_predictions
-```
-
-Now the part that determines the cost, and I want to get its size right on paper before I run anything,
-because it is going to be the thing this rung is measured on. The tree's structure is found by
+Now the part that determines the cost. The tree's structure is found by
 `splitter="best"`, which for each candidate feature *pre-sorts* the examples by that feature value and
 scans every adjacent pair as a candidate threshold, picking the split that most reduces squared-error
 impurity on the pseudo-residuals. This is **exact** split finding: every possible threshold on every
@@ -205,32 +169,27 @@ is nothing in the loss or the model class that is expensive — the pseudo-resid
 example, the leaf line search is a handful of sums per leaf — the entire per-round wall-clock is this
 exhaustive pre-sorted scan over all 10.5M rows at every node of every tree.
 
-Let me also sanity-check the *shape* of the accuracy claim against a known limit, so I am not asserting
-the AUC will be fine on faith. When L is squared error and I strip the regularization, the tree fits
-yᵢ − F by least squares, which is ordinary variance-reduction splitting; and the exact best-first
-splitter finds the globally optimal threshold at each node. There is no approximation anywhere in the
-pipeline — the split is optimal, the leaf is exact, the only inexactness is the greedy stagewise
-structure that all boosting shares. So on a dense numeric benchmark like Higgs the accuracy should be
-essentially the best a depth-8, 500-round, ν = 0.1 gradient-boosted ensemble can do; there is no reason
-to expect the exact splitter to *lose* AUC to anything, since anything faster will only *approximate*
-the split it computes exactly. What I therefore expect when this meets the benchmark is a test AUC that
-is genuinely competitive — high, and a reference the faster rungs will have to match — while the
-training-seconds-per-iteration is the number that stands out, dominated entirely by the 10⁹–10¹⁰-per-tree
-pre-sorted scan I just counted. I do not have that seconds figure yet; the Higgs timing table will tell
-me exactly how bad, and my prediction is falsifiable in the specific sense that the per-iteration time
-should be enormous *relative to any method that visits far fewer candidate thresholds* — orders of
-magnitude, not a constant factor — because the bottleneck scales with (number of distinct feature values
-scanned) × (number of nodes), and that is precisely the product a candidate-thinning scheme would cut.
+The accuracy side of the claim I can pin down from a known limit. With squared error and no
+regularization the tree fits yᵢ − F by ordinary variance-reduction splitting, and the exact best-first
+splitter finds the globally optimal threshold at each node — there is no approximation anywhere except
+the greedy stagewise structure all boosting shares. So on a dense numeric benchmark like Higgs the
+accuracy should be essentially the best a depth-8, 500-round, ν = 0.1 ensemble can do: anything faster
+can only *approximate* the split this computes exactly, so the exact splitter sets an accuracy reference
+nothing should beat. What stands out instead is the training time, dominated entirely by the
+10⁹–10¹⁰-per-tree pre-sorted scan. I do not have that figure yet, but the falsifiable prediction is not a
+specific number — it is that the per-iteration time is enormous *relative to any method that visits far
+fewer candidate thresholds*, orders of magnitude rather than a constant factor, because the bottleneck
+scales with (distinct feature values scanned) × (nodes), exactly the product a candidate-thinning scheme
+would cut.
 
-So this is what I have: **gradient boosting** — boosting recast as steepest descent in function space,
-where the loss enters only through the pseudo-residual gⁱ_m, the tree projects that gradient onto the
-base-learner class by least squares, a per-leaf line search calibrates the step in the true loss, and
-shrinkage ν regularizes. It dissolves AdaBoost's classification-only limitation: any differentiable loss
-works by changing one gradient formula, and both the per-loss IRLS route and AdaBoost itself fall out as
-special cases rather than competitors. The wall it leaves standing is speed. The exact splitter's
-per-iteration cost is set entirely by re-sorting and re-scanning all 10.5M rows at every node, and that
-cost is not incidental — it is the price of *provably* optimal splits I do not actually need. The next
-thing to attack is not *what* the trees fit but *how* the splits are found: if I can replace "pre-sort
-and re-scan all the data at every node" with something that visits a small, representative set of
-candidate thresholds, the seconds-per-iteration should fall by orders of magnitude while the AUC holds —
-and that is where I go next.
+So this is **gradient boosting** — boosting recast as steepest descent in function space, where the loss
+enters only through the pseudo-residual gⁱ_m, the tree projects that gradient onto the base-learner class
+by least squares, a per-leaf line search calibrates the step in the true loss, and shrinkage ν
+regularizes. It dissolves AdaBoost's classification-only limitation: any differentiable loss works by
+changing one gradient formula, with the per-loss IRLS route and AdaBoost itself falling out as special
+cases. The wall it leaves standing is speed — the exact splitter's per-iteration cost is set entirely by
+re-sorting and re-scanning all 10.5M rows at every node, the price of *provably* optimal splits I do not
+actually need. So the next thing to attack is not *what* the trees fit but *how* the splits are found:
+replace "pre-sort and re-scan all the data at every node" with something that visits a small,
+representative set of candidate thresholds, and the seconds-per-iteration should fall by orders of
+magnitude while the AUC holds.

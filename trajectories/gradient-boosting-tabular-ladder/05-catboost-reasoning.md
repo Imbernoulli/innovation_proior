@@ -69,7 +69,7 @@ label precisely — but that attacks the symptom, not the disease: the condition
 there in expectation, the noise only raises its variance, and I'd be trading a bias I can remove for a
 variance I'm adding. Or I could abandon target statistics and one-hot the categories — but a column with
 thousands of distinct IDs one-hots into thousands of near-empty binary features, which explodes the very
-(#features) factor the previous rung worked to shrink and gives the histogram almost nothing to bin;
+(#features) factor the feature-bundling work just shrank and gives the histogram almost nothing to bin;
 hashing the IDs into a smaller space collides unrelated categories and destroys the high-cardinality
 signal that made the ID worth keeping. None of the shortcuts both keep the data and remove the shift.
 That is what pushes me toward ordering: I want a genuine holdout for every single example while still
@@ -109,23 +109,18 @@ ordered TS returns the honest constant p on both. The diagnosis — a conditiona
 encoding saw yₖ — and the cure — a strict prefix that cannot — line up on the numbers, which is the check
 I wanted before trusting the construction on the real data.
 
-That all-unique case shows the ordered TS correctly *refusing* to invent signal; let me also watch it on
-the opposite case — a category that genuinely repeats — to confirm it still *recovers* real structure
-without reopening the leak. Take five training rows sharing one category c, ordered by σ with labels
-(1, 0, 1, 1, 0), prior p = 0.5, smoothing a = 1. The first in order has an empty history:
-x̂ = (0 + 0.5)/(0 + 1) = 0.5, the bare prior, untouched by its own label 1. The second sees one prior
-occurrence (label 1): (1 + 0.5)/(1 + 1) = 0.75. The third sees (1, 0): (1 + 0.5)/(2 + 1) = 0.5. The
-fourth sees (1, 0, 1): (2 + 0.5)/(3 + 1) = 0.625. The fifth sees (1, 0, 1, 1): (3 + 0.5)/(4 + 1) = 0.7.
-No row's number used its own label — the fourth is labelled 1, but its 0.625 was built from the three
-rows before it — so a split on this column cannot read a row's answer off its own feature. Yet the later
-rows, with three and four prior occurrences, are already settling toward the category's true positive
-rate 3/5 = 0.6, so the encoding *is* recovering the real signal, just from history rather than from the
-present. And the early-row noise is visible in the same five numbers — the first sits at the flat prior,
-the second at a one-example 0.75 — which is exactly what averaging over independent permutations smooths:
-reorder the rows and the one that was first now sits mid-order with a genuine history, so its averaged
-encoding is never marooned at the prior. The all-unique case gave the honest constant p; the repeated
-case gives the honest rate; neither used yₖ. Both limits behave, so I trust the ordered TS on the real
-categorical mix, which lies between them.
+The all-unique case shows the ordered TS *refusing* to invent signal; the opposite case — a category that
+genuinely repeats — shows it still *recovers* real structure without reopening the leak. Take five
+training rows sharing one category c, ordered by σ with labels (1, 0, 1, 1, 0), prior p = 0.5, smoothing
+a = 1. The first has an empty history and gets the bare prior 0.5; the successive rows see histories
+(1), (1,0), (1,0,1), (1,0,1,1) and get 0.75, 0.5, 0.625, 0.7. No row's number used its own label — the
+fourth is labelled 1, but its 0.625 was built from the three rows before it — so a split cannot read a
+row's answer off its own feature, yet the later rows are already settling toward the category's true
+positive rate 3/5 = 0.6. The early-row noise (the first row marooned at the prior, the second at a
+one-example 0.75) is exactly what averaging over independent permutations smooths: reorder, and the row
+that was first now sits mid-order with a genuine history. The all-unique case gave the honest constant p,
+the repeated case gives the honest rate; neither used yₖ, so I trust the ordered TS on the real
+categorical mix that lies between them.
 
 That fixes the *features*. But the exact same leak lives in the *boosting* itself, and noticing it is
 what makes this more than an encoding trick — it is the same disease one level up. In ordinary gradient
@@ -155,21 +150,7 @@ compute its gradient/residual using a model that was trained **only on the examp
 a model that has never seen k. In the idealized version I maintain, for each position i, a separate
 supporting model Mᵢ trained on the first i examples; the residual for k uses M_{σ(k)−1}, which excludes
 k. Then the residual is an unbiased estimate of the true gradient at xₖ, the base learner is unbiased,
-and the prediction shift vanishes:
-
-```text
-Algorithm — Ordered boosting (idealized):
-  input: {(x_k, y_k)}_{k=1..n}, number of iterations I
-  sigma  <- random permutation of [1..n]
-  M_i    <- 0   for i = 1..n
-  for t = 1 to I:
-      for i = 1 to n:
-          r_i  <- y_i - M_{sigma(i)-1}(x_i)     # residual from a model that has NOT seen example i
-      for i = 1 to n:
-          dM   <- LearnModel( (x_j, r_j) : sigma(j) <= i )   # fit using only the prefix up to i
-          M_i  <- M_i + dM
-  return M_n
-```
+and the prediction shift vanishes. (The idealized ordered-boosting loop is written out in the answer.)
 
 The idealized form keeps n separate models and is n× too expensive — on a dataset the size of the
 categorical benchmark that is thousands of full models per boosting run, plainly unusable. But I don't
@@ -211,28 +192,20 @@ pairs, so the oblivious tree is markedly weaker per tree — which is exactly th
 leakage-sensitive model wants, keeping any residual overfitting in check while the ordering removes the
 systematic bias.
 
-This is the closing move, so let me set the bar and say why I believe it clears it. The fast histogram
-learners — the regularized second-order one and the sampling/bundling one — both encode categoricals with
-the all-data target statistic and both compute gradients on the same data they fit, so on a heavily
-*categorical* dataset they should suffer both pathologies at once: the conditional shift in the encoding
-and the prediction shift in the residual. The natural test is the Amazon Employee Access data, whose
-features are almost entirely high-cardinality categorical IDs — the all-unique regime where I showed the
-leak is most violent. To set the bar I run the two prior histogram learners — the regularized
-second-order one and the sampling/bundling one — on Amazon myself, both with their default all-data
-target statistic, and read their test log-loss (lower is better). What stands out is that the two land
-essentially on top of each other: their log-losses are separated by a hair, far tighter than the gaps
-their split engines opened on the numeric benchmarks. It is worth reading that near-tie, because it tells
-me something about what binds on this dataset. On Higgs and MS LTR these two learners diverged by their
-split engines: the second-order histogram, the GOSS/EFB sampling, the leaf-wise growth all moved the AUC
-and the NDCG. On Amazon they collapse onto each other, which says the split engine is *not* the binding
-constraint here; the shared all-data categorical encoding is, and both learners are stuck at the same
-place because they share the same leak. That near-tie is exactly the signature I'd expect if the
-categorical handling, not the numeric machinery, is what caps the score — and it is the categorical
-handling this rung rebuilds. The bet is that removing *both* leaks — ordered target statistics for the
-categorical encoding and ordered boosting for the residuals, sharing one permutation — eliminates the
-conditional shift that inflates their test loss, closes the train/test gap the all-data statistics open,
-and so drives the Amazon log-loss distinctly below both of those baselines. That is the falsifiable claim:
-if ordering the encoding and ordering the boosting really do cure the leak, the log-loss should fall clear
-of both, not tie them. This is **CatBoost** — ordered target statistics, ordered boosting, oblivious trees — the learner
-that finally handles categorical tabular data without leaking the target, and that is where the ladder
-ends.
+The fast histogram learners — the regularized second-order one and the sampling/bundling one — both
+encode categoricals with the all-data target statistic and both compute gradients on the same data they
+fit, so on a heavily *categorical* dataset they should suffer both pathologies at once: the conditional
+shift in the encoding and the prediction shift in the residual. The natural test is the Amazon Employee
+Access data, whose features are almost entirely high-cardinality categorical IDs — the all-unique regime
+where the leak is most violent. Running both prior learners on Amazon with their default all-data target
+statistic, their test log-losses land essentially on top of each other, separated by a hair — far tighter
+than the gaps their split engines opened on the numeric benchmarks. That near-tie is the tell: on Higgs
+and MS LTR the second-order histogram, the GOSS/EFB sampling, and the leaf-wise growth all moved the AUC
+and NDCG, but on Amazon they collapse onto each other, which says the split engine is *not* the binding
+constraint here — the shared all-data categorical encoding is, and both are stuck at the same place
+because they share the same leak. So the bet is that removing *both* leaks — ordered target statistics for
+the encoding and ordered boosting for the residuals, sharing one permutation — eliminates the conditional
+shift, closes the train/test gap the all-data statistics open, and drives the Amazon log-loss distinctly
+below both baselines rather than tying them. That is the falsifiable claim. This is **CatBoost** — ordered
+target statistics, ordered boosting, oblivious trees — the learner that finally handles categorical
+tabular data without leaking the target.

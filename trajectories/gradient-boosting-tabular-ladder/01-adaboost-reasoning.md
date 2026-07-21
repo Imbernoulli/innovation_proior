@@ -101,55 +101,18 @@ is not two independent choices dressed up as one — the ratio εₜ/(1−εₜ)
 neutralizes the old learner and what minimizes the bound, and that coincidence is the reason to trust
 it over any hand-set schedule.
 
-Let me sanity-check the arithmetic on two regimes so I know the bound is doing something. Take a weak
-learner that manages εₜ = 0.4 every round (γₜ = 0.1). Then βₜ = 0.4/0.6 = 0.667, αₜ = log(0.6/0.4) =
-log 1.5 = 0.405, and the per-round factor is 2√(0.4·0.6) = 2√0.24 = 0.9798 — a barely-shrinking factor,
-as it should be for a marginal learner. Over 100 rounds the bound is 0.9798¹⁰⁰ ≈ exp(−2.04) ≈ 0.130,
-which sits just under the looser exp(−2·100·0.01) = exp(−2) ≈ 0.135, confirming √(1−4γ²) is the tighter
-of the two. Now take a strong weak learner, εₜ = 0.1 (γₜ = 0.4): βₜ = 0.111, αₜ = log 9 = 2.197, and the
-per-round factor is 2√(0.09) = 0.6, so after only 20 rounds the bound is 0.6²⁰ ≈ exp(−10.2) ≈ 3.7×10⁻⁵.
-The same machine, driven by nothing but the realized εₜ, races to zero error when the learner is good
-and crawls when it is marginal — the adaptivity is real, not decorative.
+The fixed-schedule option I set aside earlier settles against this bound as a yardstick. With realized
+errors that differ across rounds — say ε₁ = 0.1 and ε₂ = 0.4 — the round-optimal minimizers of the bound
+factor ((1−ε)β + ε)/√β are β₁* = 1/9 and β₂* = 2/3, a nearly sixfold spread, so any single frozen β must
+compromise and pays pure slack on every round whose realized error differs from whatever it was tuned
+for; to place it well I would again need the ε-sequence in advance. The adaptive βₜ = εₜ/(1−εₜ) is
+exactly the per-round minimizer, so it leaves no slack and needs nothing known ahead of time — the payoff
+of computing the factor after seeing εₜ instead of before.
 
-Now I can settle the fixed-schedule option I set aside earlier, because the bound gives me a yardstick.
-Suppose two rounds with realized errors ε₁ = 0.1 and ε₂ = 0.4, and I insist on one frozen β for both.
-The bound factor for a round is ((1−ε)β + ε)/√β, and its round-optimal minimizers are β₁* = 1/9 = 0.111
-and β₂* = 2/3 = 0.667 — a nearly sixfold spread, because the two rounds want wildly different amounts of
-reweighting. Any single β must compromise. Take the geometric mean β = √(0.111·0.667) = 0.272: round 1's
-factor is ((0.9)(0.272) + 0.1)/√0.272 = 0.345/0.522 = 0.662 against its optimum 2√(0.1·0.9) = 0.6, and
-round 2's is ((0.6)(0.272) + 0.4)/0.522 = 0.563/0.522 = 1.079 against its optimum 2√(0.24) = 0.980. Both
-rounds are left worse than their adaptive best, and the product 0.662·1.079 = 0.714 exceeds the adaptive
-0.6·0.980 = 0.588 by more than a fifth — pure slack, paid on every round, and to shrink it I would have
-to know the ε-sequence in advance to place β well. The adaptive βₜ = εₜ/(1−εₜ) is exactly the per-round
-minimizer, so it leaves no slack anywhere and needs nothing known ahead of time. That is the concrete
-payoff of computing the factor after seeing εₜ instead of before.
-
-I should also watch the reweighting move on a concrete handful of examples, because I want to *see* the
-neutrality condition happen rather than trust the algebra. Five examples, uniform p = 0.2 each; the
-learner gets two of them wrong, so εₜ = 0.4 and βₜ = 0.667. Multiply the three correct examples by βₜ:
-each becomes 0.2·0.667 = 0.1333; the two wrong stay at 0.2. The total is 2·0.2 + 3·0.1333 = 0.4 + 0.4 =
-0.8, which is exactly Zₜ = (1−εₜ)βₜ + εₜ = 0.6·0.667 + 0.4 = 0.8. Renormalize: the wrong examples become
-0.2/0.8 = 0.25 each and the correct ones 0.1333/0.8 = 0.1667 each. Under the new distribution the
-learner's weighted error is the mass on the two it missed, 2·0.25 = 0.5 — exactly ½, precisely the
-neutrality I designed for. And a small consistency point falls out: instead of multiplying the *correct*
-examples by βₜ, I could multiply the *wrong* ones by exp(αₜ) = 1/βₜ = 1.5 — wrong → 0.3, correct stay
-0.2, total 1.2, renormalized to 0.25 and 0.1667. Identical distribution. That is why the implementation
-below is free to phrase the update as "amplify the misclassified examples by exp(αₜ)" — up-weighting
-wrong by 1/βₜ and down-weighting correct by βₜ are the same operation after renormalization.
-
-One numeric verification before I trust the exponential-loss reading that closes this rung, because I
-will lean on it heavily in the next rung and I want the identity to hold on actual numbers, not just in
-symbols. Take two rounds with ε₁ = 0.4 and ε₂ = 0.25, so α₁ = log(0.6/0.4) = log 1.5 = 0.4055 and
-α₂ = log(0.75/0.25) = log 3 = 1.0986. Follow one example i that round 1 gets *wrong* and round 2 gets
-*right*. Under the "up-weight the misclassified by exp(αₜ)" convention its accumulated unnormalized
-weight is exp(α₁·1)·exp(α₂·0) = exp(0.4055) = 1.500. Now compute what the margin formula predicts. In
-{−1,+1} form yᵢhₜ = −1 on the wrong round and +1 on the right one, so the running vote is
-yᵢF₂(xᵢ) = α₁(−1) + α₂(+1) = −0.4055 + 1.0986 = 0.6931, and exp(−½·yᵢF₂) = exp(−0.3466) = 0.7071. The
-claimed proportionality carries the example-independent constant exp(½Σₜαₜ) = exp(½·1.5041) =
-exp(0.7520) = 2.1213, and 2.1213·0.7071 = 1.500 — exactly the accumulated weight I got by multiplying
-the per-round factors. The two routes agree to the digit, so the weight an example carries really is
-exp(−½·margin) up to the constant renormalization absorbs; the reweighting is descending exp(−yF) and
-nothing else, and I have now watched that happen arithmetically rather than only argued it.
+One consistency point about the update matters for the implementation: instead of multiplying the *correct*
+examples by βₜ, I can multiply the *wrong* ones by exp(αₜ) = 1/βₜ, and after renormalizing the two give
+an identical distribution. So the implementation is free to phrase the update as "amplify the
+misclassified examples by exp(αₜ)."
 
 The vote weight is the scalar αₜ = log(1/βₜ) = log((1 − εₜ)/εₜ) I already used in the bound, and I
 should say why it is *that* function of the error and not some other increasing one — 1/εₜ, or (1 −
@@ -171,50 +134,18 @@ The fix is to shift the vote weight by the log of the number of "wrong" classes:
 
   αₜ = log((1 − εₜ)/εₜ) + log(K − 1).
 
-I can check this term does exactly the right thing by asking when αₜ > 0. The inequality
-log((1−εₜ)/εₜ) + log(K−1) > 0 is (1−εₜ)(K−1)/εₜ > 1, i.e. (1−εₜ)(K−1) > εₜ, i.e. (K−1) > εₜ·K, i.e.
-εₜ < (K−1)/K — the vote is positive on exactly the learners that beat the K-class random bar, no
-looser and no tighter. At K = 2 the shift log(K−1) = 0 vanishes and I recover the binary form; the
-guard εₜ < (K−1)/K becomes εₜ < ½. As a concrete middle case, K = 3 (random error 2/3): a learner with
-εₜ = 0.6, genuinely useful because 0.6 < 0.667, would get log(0.4/0.6) = −0.405 from the binary term
-alone and be wrongly discarded; the +log 2 = +0.693 shift lifts it to +0.288, correctly counting it.
-The same αₜ then drives the multiplicative reweighting: scale up the misclassified examples by exp(αₜ).
+The shift is forced by requiring αₜ > 0 exactly when the learner beats the K-class random bar:
+log((1−εₜ)/εₜ) + log(K−1) > 0 rearranges to (1−εₜ)(K−1) > εₜ, i.e. εₜ < (K−1)/K, no looser and no
+tighter. At K = 2 the shift vanishes and I recover the binary form with its guard εₜ < ½; at K = 3
+(random error 2/3) a learner with εₜ = 0.6 — useful, since 0.6 < 2/3 — would score log(0.4/0.6) = −0.405
+from the binary term alone and be wrongly discarded, and the +log 2 shift lifts it to +0.288. The same αₜ
+then drives the reweighting: scale up the misclassified examples by exp(αₜ).
 
-Let me write the per-round step. Fit the weak learner on the weighted data; compute the weighted error;
-turn it into the vote weight αₜ with the log(K−1) multiclass term; multiply the weights of the
-misclassified examples by exp(αₜ); renormalize. Guard the degenerate cases — if εₜ ≤ 0 the learner is
-perfect (give it a large finite vote and stop), and if εₜ is at least as bad as random ((K−1)/K) the
-learner is useless and I discard it.
-
-```python
-def _boost_discrete(self, iboost, X, y, sample_weight, random_state):
-    estimator = self._make_estimator(random_state=random_state)
-    estimator.fit(X, y, sample_weight=sample_weight)
-    y_predict = estimator.predict(X)
-
-    incorrect = y_predict != y
-    # weighted error on the current distribution
-    estimator_error = np.mean(np.average(incorrect, weights=sample_weight, axis=0))
-
-    if estimator_error <= 0:                  # perfect on the weighted data
-        return sample_weight, 1.0, 0.0
-
-    n_classes = self.n_classes_
-    if estimator_error >= 1.0 - (1.0 / n_classes):   # no better than random
-        self.estimators_.pop(-1)
-        return None, None, None
-
-    # vote weight: log((1-err)/err) with the +log(K-1) multiclass term
-    estimator_weight = self.learning_rate * (
-        np.log((1.0 - estimator_error) / estimator_error) + np.log(n_classes - 1.0)
-    )
-    # up-weight the misclassified examples
-    if not iboost == self.n_estimators - 1:
-        sample_weight = np.exp(
-            np.log(sample_weight) + estimator_weight * incorrect * (sample_weight > 0)
-        )
-    return sample_weight, estimator_weight, estimator_error
-```
+So the per-round step is: fit the weak learner on the weighted data; compute the weighted error; turn it
+into the vote weight αₜ with the log(K−1) multiclass term; multiply the weights of the misclassified
+examples by exp(αₜ); renormalize. Guard the degenerate cases — if εₜ ≤ 0 the learner is perfect (give it
+a large finite vote and stop), and if εₜ is at least as bad as random ((K−1)/K) the learner is useless
+and I discard it. (The full `_boost_discrete` step is in the answer.)
 
 Before I close, I want to make the nature of this loss explicit rather than leave it as a feeling,
 because it is the thing that will limit the whole scheme. Track the weight that example i carries into
@@ -231,15 +162,12 @@ reweighting is tied to this loss and no other, because the margin yᵢ F_T(xᵢ)
 — it only knows whether the committee is on the right side, weighted by confidence, never how far a
 continuous prediction sits from a continuous target.
 
-What does this give me, and where does it stop? It gives a boosting algorithm with no free hand-tuned
-reweighting schedule — βₜ and αₜ are both computed from the realized error εₜ — and a training-error
-bound ∏ₜ 2√(εₜ(1−εₜ)) that drops geometrically as long as every weak learner clears the random bar.
-That is the answer to "how do I reweight, and how do I vote": **AdaBoost**, adaptive reweighting by
-βₜ = εₜ/(1−εₜ) and voting by αₜ = log((1−εₜ)/εₜ) (+ log(K−1) for K classes). This is a foundational,
-pre-benchmark construction — the datasets and wall-clock numbers the later rungs will be graded on came
-after it — so what I can honestly claim here is the algorithm and its bound, not a figure on those
-datasets; the geometric-decrease prediction is the falsifiable claim, and it lives in the training-error
-curve, not in a held-out benchmark number I do not yet have.
+So this is **AdaBoost**: adaptive reweighting by βₜ = εₜ/(1−εₜ) and voting by αₜ = log((1−εₜ)/εₜ)
+(+ log(K−1) for K classes), with no hand-tuned schedule, and a training-error bound ∏ₜ 2√(εₜ(1−εₜ)) that
+drops geometrically while every learner clears the random bar. This is a foundational construction that
+predates the tabular speed/accuracy benchmarks, so what I can honestly claim is the algorithm and its
+bound, not a figure on those datasets; the falsifiable prediction is the geometric decrease, and it lives
+in the training-error curve, not a held-out benchmark number.
 
 But look at what I had to assume to get here. The whole derivation is built around *misclassification*
 — a 0/1 indicator [hₜ(xᵢ) ≠ yᵢ] — and the exponential-style reweighting that crushes correctly-labeled

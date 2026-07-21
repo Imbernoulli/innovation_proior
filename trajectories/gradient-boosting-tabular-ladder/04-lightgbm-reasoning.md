@@ -60,46 +60,13 @@ split the full histogram would.
 
 One detail in the ranking key is worth pausing on: I said "sort by gradient magnitude," but the objective
 weights each example by its Hessian too, and the implementation ranks by |g·h| rather than |g| alone. The
-reason is the completed-square objective from the previous rung — an example's pull on the
+reason is the completed-square form of the second-order objective — an example's pull on the
 Hessian-weighted split loss scales with both how under-fit it is (|g|) and how much curvature it carries
 (h) — so |g·h| is the more faithful measure of "how much this example can still move the next split,"
 and it is that product the code thresholds on to pick the top-a set. Concretely, per bagging block: form
 the per-example key |g·h|, find the threshold that picks out the top-a fraction, keep everyone above it,
 and for everyone below it keep them with probability b/(1−a), multiplying the kept ones' g and h by the
-amplification (1−a)/b:
-
-```cpp
-data_size_t top_k   = std::max(1, (data_size_t)(cnt * config_->top_rate));     // keep top-a
-data_size_t other_k = (data_size_t)(cnt * config_->other_rate);               // sample fraction b
-ArrayArgs<score_t>::ArgMaxAtK(&tmp_gradients, 0, (int)tmp_gradients.size(), top_k - 1);
-score_t threshold = tmp_gradients[top_k - 1];
-score_t multiply  = (score_t)(cnt - top_k) / other_k;                          // amplification (1-a)/b
-for (data_size_t i = 0; i < cnt; ++i) {
-    auto cur_idx = start + i;
-    score_t grad = 0.0f;
-    for (int t = 0; t < num_tree_per_iteration_; ++t) {
-        size_t idx = static_cast<size_t>(t) * num_data_ + cur_idx;
-        grad += std::fabs(gradients[idx] * hessians[idx]);
-    }
-    if (grad >= threshold) {                         // large-gradient: keep at weight 1
-        buffer[cur_left_cnt++] = cur_idx;
-        ++big_weight_cnt;
-    } else {                                          // small-gradient: sample with prob b/(1-a)
-        data_size_t sampled = cur_left_cnt - big_weight_cnt;
-        data_size_t rest_need = other_k - sampled;
-        data_size_t rest_all = (cnt - i) - (top_k - big_weight_cnt);
-        double prob = rest_need / static_cast<double>(rest_all);
-        if (rand.NextFloat() < prob) {
-            buffer[cur_left_cnt++] = cur_idx;
-            for (int t = 0; t < num_tree_per_iteration_; ++t) {
-                size_t idx = static_cast<size_t>(t) * num_data_ + cur_idx;
-                gradients[idx] *= multiply;           // ... and amplify to stay unbiased
-                hessians[idx]  *= multiply;
-            }
-        }
-    }
-}
-```
+amplification (1−a)/b. (The GOSS sampling-and-amplification loop is in the answer.)
 
 There is a subtlety in *when* to start sampling. Early in boosting the model is crude and almost every
 example has a large gradient, so the GOSS split into "informative top-a" and "redundant tail" is
@@ -158,35 +125,8 @@ on the order of a hundred columns into one bundle before the accumulated collisi
 in the feature factor, essentially free because the columns almost never collide. The dense case is the
 same arithmetic run backward — with 28 always-on Higgs features every pair collides on nearly every row,
 no two fit under any sane budget, and the feature factor does not move — so the collision math itself
-tells me which benchmark EFB will help and which it will leave untouched.
-
-```cpp
-const data_size_t single_val_max_conflict_cnt = (data_size_t)(total_sample_cnt / 10000);  // conflict budget
-for (auto fidx : find_order) {                          // greedily place each feature
-    // collect existing groups whose total count still fits, then search a sample of them
-    int best_gid = -1, best_conflict_cnt = -1;
-    for (auto gid : search_groups) {
-        const data_size_t rest_max_cnt =
-            single_val_max_conflict_cnt - group_total_data_cnt[gid] + group_used_row_cnt[gid];
-        const data_size_t cnt = GetConflictCount(conflict_marks[gid], sample_indices[fidx],
-                                                 num_per_col[fidx], rest_max_cnt);
-        if (cnt >= 0 && cnt <= rest_max_cnt && cnt <= cur_non_zero_cnt / 2) {  // fits the budget
-            best_gid = gid; best_conflict_cnt = cnt; break;
-        }
-    }
-    if (best_gid >= 0) {                                 // add to an existing bundle
-        features_in_group[best_gid].push_back(fidx);
-        group_total_data_cnt[best_gid] += cur_non_zero_cnt;
-        group_used_row_cnt[best_gid] += cur_non_zero_cnt - best_conflict_cnt;
-        MarkUsed(&conflict_marks[best_gid], sample_indices[fidx], num_per_col[fidx]);
-    } else {                                             // or open a new bundle
-        features_in_group.emplace_back();
-        features_in_group.back().push_back(fidx);
-        conflict_marks.emplace_back(total_sample_cnt, false);
-        MarkUsed(&(conflict_marks.back()), sample_indices[fidx], num_per_col[fidx]);
-    }
-}
-```
+tells me which benchmark EFB will help and which it will leave untouched. (The greedy bundle-finder is in
+the answer.)
 
 There is a third lever, in how the tree itself grows. The histogram learners I have been building grow
 trees *level-wise*: split every node at the current depth before going deeper. That keeps the tree
@@ -221,24 +161,23 @@ mutually-exclusive sparse features; leaf-wise growth spends each split where it 
 per-iteration cost was (#data)×(#features)×(levels) histogram updates; GOSS shrinks the first factor and
 EFB the second, so the product drops on both axes at once. Because GOSS keeps the histogram unbiased and
 EFB bundles only near-non-colliding features, the split gains — and therefore the accuracy — should be
-preserved while the time per iteration falls below the histogram baseline. Now let me predict honestly,
-because the two benchmarks should behave *differently* and that is the sharp, falsifiable part. Higgs is
-dense: 28 continuous features, every one nonzero on every row, so EFB finds almost nothing to bundle and
-the feature factor barely moves; the Higgs speedup below 165.575 s/iter therefore comes almost entirely
-from GOSS's 0.3n data factor and the leaf-wise/engineering gains, so I expect a *modest* further drop,
-not another 22×, with the AUC holding at or a touch above 0.845314 since the sums stay unbiased. MS LTR,
-by contrast, has 137 features, many of them sparse ranking signals, so EFB should bundle aggressively and
-leaf-wise growth should find sharper splits within the same leaf budget — there I expect a clear gain in
-ranking quality (NDCG@10 up), not just a speed win. If instead Higgs sped up dramatically or MS-LTR's
-ranking metric failed to move, my mechanism would be wrong; the two tables will tell me.
+preserved while the time per iteration falls below the histogram baseline. The two benchmarks should
+behave *differently*, and that is the sharp, falsifiable part. Higgs is dense: 28 continuous features,
+every one nonzero on every row, so EFB finds almost nothing to bundle and the feature factor barely moves;
+the Higgs speedup below 165.575 s/iter therefore comes almost entirely from GOSS's 0.3n data factor and
+the leaf-wise/engineering gains, so I expect a *modest* further drop, not another 22×, with the AUC
+holding at or a touch above 0.845314 since the sums stay unbiased. MS LTR, by contrast, has 137 features,
+many of them sparse ranking signals, so EFB should bundle aggressively and leaf-wise growth should find
+sharper splits within the same leaf budget — there I expect a clear gain in ranking quality (NDCG@10 up),
+not just a speed win. Were Higgs to speed up dramatically or MS-LTR's ranking metric to stay flat, the
+mechanism would be wrong; the two tables will tell me.
 
 This is **LightGBM**: histogram split finding plus Gradient-based One-Side Sampling, Exclusive Feature
-Bundling, and leaf-wise tree growth. Against the histogram baseline's 165.575 s/iter on Higgs, the bet is
-a further drop in per-iteration time at matched-or-better AUC, and on the ranking benchmark a clear NDCG
-gain. The thing I notice it has *not* touched is the one part of the pipeline that has been the same since
-AdaBoost: how a *categorical* feature becomes a number a tree can split on. Higgs and the ranking set are
-numeric, so nothing here has been tested against categories. But on a dataset whose features are
-categorical identifiers with thousands of values, the standard move is to replace each category with a
-statistic of the target — and that, done naively, quietly uses each example's own label to encode its own
-features. Every rung so far, mine included, would do it that way, and on numeric benchmarks the flaw is
-invisible. That is the next thing to question.
+Bundling, and leaf-wise tree growth — a further drop in per-iteration time at matched-or-better AUC on
+Higgs, and a clear NDCG gain on ranking. The thing it has *not* touched is the one part of the pipeline
+that has been the same since AdaBoost: how a *categorical* feature becomes a number a tree can split on.
+Higgs and the ranking set are numeric, so nothing here has been tested against categories. But on a
+dataset whose features are categorical identifiers with thousands of values, the standard move is to
+replace each category with a statistic of the target — and that, done naively, quietly uses each example's
+own label to encode its own features. Every learner so far, mine included, would do it that way, and on
+numeric benchmarks the flaw is invisible. That is the next thing to question.
