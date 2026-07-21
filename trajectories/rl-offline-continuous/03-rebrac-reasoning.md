@@ -109,15 +109,10 @@ penalties — one on the actor, one on the critic target — is the whole decoup
 it is still minimal: no behavior model, no divergence estimator, just two L2 pulls toward dataset actions
 with two coefficients.
 
-Let me check this decoupled design degenerates correctly, because a good sanity test is that the new
-method contains the old one as a special case. Set critic_bc = 0 and the critic target loses its
-next-action penalty, collapsing back to the plain TD3 min-target; set actor_bc back to playing α's role
-and drop the LayerNorm and the extra layer, and the actor loss is TD3+BC's again. So ReBRAC is TD3+BC
-plus two orthogonal moves — a geometric one (LayerNorm depth) and an algorithmic one (the second BC
-coefficient) — and at the zero-setting of both new knobs I recover the exact predecessor whose numbers I
-am trying to beat. That is reassuring: I am not gambling on a wholesale redesign, I am adding two
-independently-defensible terms to a base that already gave me a clean 85 on Walker and a tie on
-HalfCheetah, and only the Maze2d lottery needs fixing.
+At critic_bc = 0 the target collapses back to the plain TD3 min-target, and dropping the LayerNorm depth
+gives back TD3+BC's actor loss — so this is not a wholesale redesign but two orthogonal additions, a
+geometric one (LayerNorm depth) and an algorithmic one (the second BC coefficient), bolted onto a base
+that already gave a clean 85 on Walker and a tie on HalfCheetah, with only the Maze2d lottery left to fix.
 
 I should also confront the tempting cheaper alternative and say why I reject it, because it would save me
 the architecture change. Why not simply keep TD3+BC exactly and make its single α per-dataset — crank it
@@ -167,35 +162,24 @@ trainer; the batch size stays the loop's default. The full scaffold module — t
 the LayerNorm-free 3×256 actor, the per-env hyperparameter table, and the train step with both BC
 penalties — is in the answer.
 
-Let me trace the actor loss to confirm the normalizer and the new BC coefficient compose the way I
-intend. The delayed actor update forms pi = actor(states), shape (B, a_dim); q = critic_1(states, pi),
-shape (B,); the actor BC is ((pi − actions)²).sum(−1), a per-sample (B,) L2 to the logged action; and the
-reward-scale normalizer is lmbda = 1/(|q|.mean().detach() + 1e-8), a scalar. The loss is
-(actor_bc·bc_mse − lmbda·q).mean(): the RL term −lmbda·q has typical magnitude 1 (since lmbda·|q| ≈ 1 by
-construction, the reward scale cancelling just as it did at the previous rung, only here the target
-magnitude is 1 rather than α = 2.5 because ReBRAC folds the strength into the per-dataset actor_bc rather
-than a global α), and the BC term is charged at the dataset's own actor_bc. So on HalfCheetah the actor
-feels an RL pull of scale ≈ 1 against a BC pull of scale 0.001·‖pi − a‖² — the RL term dominates by three
-orders of magnitude, which is exactly the "let the actor exploit the single-policy data" I wanted; on
-Walker the BC coefficient 0.05 brings the anchor back to within a factor of ~20 of the RL term, holding
-the gait. The +1e-8 in the denominator is the only guard against a degenerate all-zero critic early in
-training and never otherwise matters. This confirms the two knobs are doing independent jobs: lmbda fixes
-the RL scale across datasets, and actor_bc sets, per dataset, how hard to lean against it.
+With the actor loss (actor_bc·‖pi − a‖² − lmbda·q).mean() and lmbda = 1/(|q|.mean().detach() + 1e-8), the
+RL term −lmbda·q has typical magnitude 1 by construction — the reward scale cancels as at the previous
+rung, only the target magnitude is now 1 rather than α = 2.5, since ReBRAC folds the strength into the
+per-dataset actor_bc. So on HalfCheetah the RL pull of scale ≈ 1 dominates a BC pull at 0.001 by three
+orders of magnitude — the actor exploits the single-policy data freely — while Walker's 0.05 brings the
+anchor to within a factor of ~20, holding the gait. The two knobs are independent: lmbda fixes the RL
+scale across datasets, actor_bc sets how hard to lean against it per dataset.
 
-Here is the falsifiable bar against the prior numbers. On HalfCheetah I expect a clear jump over both
-predecessors' ~48: the near-zero actor BC (0.001, essentially releasing the anchor that TD3+BC's α held)
-plus a deeper LayerNorm critic should let the actor exploit the single-policy data harder without the
-overestimation that capped it before — I am predicting the low 60s, and if HalfCheetah stays at 48 the
-decoupling bought nothing there and the binding constraint was never the BC coupling. On Walker2d I expect
-to hold or modestly beat TD3+BC's 85.14 with comparable tightness — the heavier per-dataset cloning (0.05)
-should keep the gait stable and not disturb the clean half-point spread it already had. The decisive test
-is Maze2d. TD3+BC's 50.29 was a 56.8-std coin flip spanning 8.69 to 114.99; if the LayerNorm critic and
-the critic-target BC actually kill the spurious pockets, I expect Maze2d to come up *and* its seed variance
-to come *down* relative to TD3+BC — a mean well above 50 with the per-seed spread no longer spanning 8 to
-115, ideally with the failing 8.69-style seed lifted off the floor. That is the claim that separates this
-rung from the last: not just a higher Maze2d mean, but a Maze2d that is high *and* no longer a lottery. If
-the mean rises but the variance stays enormous, then the LayerNorm did not smooth the right thing and the
-critic-target BC was too weak, and the next move would have to attack the multimodality directly. But if
-the variance collapses while the mean climbs across all three datasets, the decoupled,
-geometrically-regularized version has done what the single-knob TD3+BC could not, and this is the top of
-the ladder I can reach inside the parameter budget.
+Here is the bar against the prior numbers. On HalfCheetah I expect a clear jump over both predecessors'
+~48: releasing the actor BC to near-zero (0.001) plus a deeper LayerNorm critic should let the actor
+exploit the single-policy data harder without the overestimation that capped it before; if HalfCheetah
+stays at 48 the decoupling bought nothing and the BC coupling was never the binding constraint. On
+Walker2d I expect to hold or modestly beat TD3+BC's 85.14 with comparable tightness — the heavier cloning
+(0.05) should keep the gait stable. The decisive test is Maze2d, TD3+BC's 56.8-std coin flip spanning 8.69
+to 114.99: if the LayerNorm critic and the critic-target BC kill the spurious pockets, I expect the mean
+to come up *and* the seed variance to come *down*, the failing 8.69-style seed lifted off the floor — not
+just a higher Maze2d but one that is no longer a lottery. If the mean rises but the variance stays
+enormous, the LayerNorm did not smooth the right thing and the next move must attack the multimodality
+directly. If the variance collapses while the mean climbs across all three datasets, the decoupled,
+geometrically-regularized version has done what the single-knob TD3+BC could not — the top of the ladder I
+can reach inside the parameter budget.

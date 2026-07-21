@@ -13,18 +13,15 @@ toward the over-valued actions, and — with no new transitions to ever correct 
 compounds into divergence. This is not a small bias; it is the reason the scaffold's default twin-critic
 actor-critic, run naively on a static buffer, would simply fall over.
 
-Let me make the "almost always upward" quantitative to myself, because it justifies the entire hedging
-posture I am about to adopt. Suppose the true value at s' is q*, and the critic reports q* + ε where ε is
-zero-mean approximation noise with spread σ over the action argument. The bootstrap does not read the
-critic at one action; it reads it at the argmax over actions, so it samples the *upper order statistic*
-of that noise. For even a modest number of effective distinct action directions k, the expected maximum
-of k independent zero-mean errors is positive and grows roughly like σ√(2 ln k): for k on the order of a
-few tens, that is nearly 2σ of pure upward bias injected at every backup, before the reward has said
-anything. Discount it and iterate: a per-step optimistic bias δ compounds through the geometric series to
-δ/(1 − γ), and with γ = 0.99 that is a hundred-fold amplification of whatever single-step overestimation
-I let in. So the design target is not "reduce" the OOD query; a hundred-fold multiplier means I want to
-*eliminate* it from value learning if I possibly can. That number, 1/(1−γ) = 100, is the whole reason I
-refuse to compromise on this at the floor.
+I want the "almost always upward" made quantitative, because it sets how hard I have to fight. Suppose
+the critic reports q* + ε with ε zero-mean approximation noise of spread σ over the action argument. The
+bootstrap reads the critic not at one action but at the argmax, so it samples the *upper order statistic*
+of that noise: the expected maximum of k independent zero-mean errors grows like σ√(2 ln k), which for a
+few tens of effective action directions is nearly 2σ of pure upward bias at every backup, before the
+reward has said anything. And it compounds — a per-step optimistic bias δ sums through the geometric
+series to δ/(1 − γ), a hundred-fold amplification at γ = 0.99. So the target is not to *reduce* the OOD
+query but to *eliminate* it from value learning if I can; a hundred-fold multiplier leaves no room to
+compromise at the floor.
 
 So why begin the ladder with implicit Q-learning specifically, and not a behavior-constrained or a
 conservative method? Because I want the *cleanest* possible answer to the OOD-query problem as my floor:
@@ -34,17 +31,12 @@ generative-model constraints, conservative penalties, divergence regularizers �
 the loop, query a learned Q at an action that was not in the data: the generative-model constraints emit
 sampled actions that can fall OOD, the conservative penalty has to sample OOD actions precisely to push
 them down. The OOD query is still in the loop, and by the multiplier above, still dangerous. There is one
-family that removes the query *entirely*, and that is where I want my floor. Let me walk the design space
-explicitly so I know what I am rejecting and why, rather than by taste. A behavior-regularized
-actor-critic keeps the DDPG-style ∇_aQ ascent and penalizes divergence from π_β — attractive because it
-preserves real improvement, but it needs a fitted behavior model to estimate the divergence, and the
-ascent step still evaluates Q at the actor's action, so the multiplier is still armed and I am now also
-tuning a density model blind. A conservative value penalty adds a term that samples OOD actions and
-pushes their Q down while pushing dataset actions up — attractive because it directly attacks
-overestimation, but it introduces a temperature I cannot validate offline and, structurally, it *courts*
-the OOD query (it must generate the very actions it fears) so its stability rests on the penalty exactly
-cancelling the extrapolation, a knife-edge I do not want as my floor. Both are live options; both keep
-the query. I set them aside not because they cannot work but because they cannot be my *clean* baseline.
+family that removes the query *entirely*, and that is where I want my floor. Both live alternatives keep
+the query. A behavior-regularized actor-critic preserves the ∇_aQ ascent and penalizes divergence from
+π_β, but the ascent still evaluates Q at the actor's action — the multiplier stays armed — and it needs a
+fitted behavior model I would tune blind. A conservative value penalty attacks overestimation directly
+but introduces an offline-unvalidatable temperature and *courts* the very OOD query it fears, resting on a
+knife-edge cancellation. Neither can be my *clean* baseline.
 
 The cleanest in-sample objective is the SARSA target: bootstrap with the dataset's own next action a',
 not a max. The scaffold even hands me `next_actions` in the batch for exactly this. Minimizing
@@ -77,18 +69,13 @@ the estimate are weighted more, so the estimate is pulled *up*, and as τ → 1 
 of the support. That is exactly the in-support max I wanted, expressed as a regression I can run with SGD
 on dataset actions only.
 
-Let me verify this on a toy before I trust it, because the whole method rides on the expectile behaving
-the way I claimed. Take three values a random variable can hit, {0, 1, 2}, equally likely, and find the
-τ-expectile m by the stationarity condition τ·Σ_{x>m}(x−m) = (1−τ)·Σ_{x<m}(m−x). At τ = 0.5, with m
-between 1 and 2 the positive side is (2−m) and the negative side is m + (m−1) = 2m−1, so 0.5(2−m) =
-0.5(2m−1) gives 2−m = 2m−1, i.e. m = 1, exactly the mean — SARSA recovered, as promised. Now τ = 0.7:
-0.7(2−m) = 0.3(2m−1) → 1.4 − 0.7m = 0.6m − 0.3 → 1.7 = 1.3m → m ≈ 1.31. The estimate has moved from the
-mean of 1.0 up to 1.31, roughly 31% of the way toward the maximum of 2.0 — pulled into the upper tail but
-nowhere near slamming to the top. And taking τ → 1 in the same equation sends the right side to zero, so
-(2 − m) → 0 and m → 2, the true supremum. So the dial does exactly the three things I need: τ = 0.5 is
-honest evaluation, τ near 1 is the in-support argmax, and τ = 0.7 sits deliberately between, optimistic
-but not reckless. This is not a hand-wave; it is a computed interpolation, and it is why I will treat τ
-as the safety–improvement knob and set it below 1 on purpose.
+A toy pins the dial down. Take {0, 1, 2} equally likely; the τ-expectile m solves
+τ·Σ_{x>m}(x−m) = (1−τ)·Σ_{x<m}(m−x). At τ = 0.5, with m in (1, 2): 0.5(2−m) = 0.5(2m−1) gives m = 1, the
+mean — SARSA recovered. At τ = 0.7: 0.7(2−m) = 0.3(2m−1) → 1.7 = 1.3m → m ≈ 1.31, about 31% of the way
+from the mean toward the maximum of 2. And τ → 1 sends the right side to zero, so m → 2, the supremum. So
+τ = 0.5 is honest evaluation, τ near 1 is the in-support argmax, and τ = 0.7 sits deliberately between —
+optimistic but not reckless — which is why I treat τ as the safety–improvement knob and set it below 1 on
+purpose.
 
 But I must take the expectile over actions *only*. The naive move — put the asymmetric loss directly on
 the TD residual r + γ Q(s', a') − Q(s, a) — is wrong, and the reason is the load-bearing subtlety of the
@@ -157,18 +144,11 @@ over *the action distribution*; stacking them, I am optimistic about which in-su
 pessimistic about whether any single critic's number can be trusted — the two biases point in opposite
 directions on purpose and neither is allowed to run away.
 
-Let me trace the shapes through one step to confirm the plumbing is consistent, since a silent broadcast
-bug here would corrupt every loss. The batch arrives as states (B, s_dim), actions (B, a_dim), rewards
-(B, 1), next_states (B, s_dim), dones (B, 1) with B = 256. next_v = V(s') is (B,) after the squeeze in
-the value net. In the V update, each target critic returns (B,), their min is (B,), V(s) is (B,), so the
-advantage is (B,) and the asymmetric L2 reduces it to a scalar — clean. In the Q update I squeeze rewards
-and dones to (B,) so that rewards + (1−done)·γ·next_v is a (B,) target that matches each critic's (B,)
-output; if I had left rewards as (B, 1) and next_v as (B,), the addition would broadcast to (B, B) and the
-MSE would silently average a quarter-million cross terms — that is the one dimension trap in this update
-and squeezing to (B,) everywhere is what defuses it. The advantage I pass to the policy update is the same
-(B,) tensor from the V step, detached, so exp(β·adv) is (B,) and multiplies the per-sample negative
-log-prob (B,) elementwise before the mean. Everything is (B,) at the point of reduction; the plumbing is
-consistent.
+One dimension trap is worth defusing before it corrupts every loss. In the Q update, rewards and dones
+arrive as (B, 1) while next_v is (B,), so rewards + (1−done)·γ·next_v would broadcast to (B, B) and the
+MSE would silently average a quarter-million cross terms. Squeezing rewards and dones to (B,) makes every
+quantity (B,) at the point of reduction — the target aligns one-to-one with each critic's output, and the
+detached advantage from the V step multiplies the per-sample log-prob elementwise before the mean.
 
 That leaves the policy, and it must obey the same commandment: never query Q at an unseen action. So I
 cannot do argmax or a DDPG-style ∇_a Q ascent, both of which evaluate Q at the policy's possibly-OOD
@@ -184,31 +164,25 @@ observed actions by how advantaged they are, querying no OOD action, with the st
 baked into the fact that only logged actions ever get a gradient. β = 3.0 is the inverse temperature for
 locomotion (β → 0 is behavior cloning, β → ∞ greedily concentrates on the single best-advantaged action);
 a handful of transitions can have huge advantages whose exp weights would swamp the loss, so I clamp
-exp(βA) at 100. That clamp has a precise meaning worth reading off: exp(3A) hits 100 when 3A = ln 100 ≈
-4.605, i.e. A ≈ 1.535 in value units, so any transition whose advantage exceeds about 1.5 is treated the
-same as one at exactly 1.5 — the top ~1.5 units of advantage are flattened so that no single lucky
-transition can contribute more than 100× the weight of an average one. And I cosine-anneal the actor
+exp(βA) at 100, capping any one transition at 100× the weight of an average one. And I cosine-anneal the actor
 learning rate over the full 1e6 steps, so the advantage-weighting can be aggressive early — when the
 critic is still learning and large corrections help — and settle to a near-zero learning rate late, when
 I want the policy to stop chasing the last flickers of a noisy advantage. The actor's `.act` is what
 evaluation rolls out — I take the distribution mean at eval time, because the log-std was only ever there
 to define the likelihood for the weighted regression, not to inject noise into a deployed policy.
 
-What do I expect this floor to do, and where is it fragile? On HalfCheetah and Walker2d — dense-reward
-locomotion where the medium dataset is a single coherent mediocre policy — IQL's in-sample value
-learning should produce a stable, sensible improvement over the behavior policy without any divergence,
-landing somewhere comfortably above random but not dramatically above the data, because τ = 0.7 is
-deliberately conservative and the advantage weighting stays close to π_β. On Maze2d — the stitching task
-— I am genuinely unsure. IQL *can* stitch in principle (the expectile backup is real DP), but its
-improvement is gated by τ: at 0.7 the in-support max is only weakly approximated (the toy said about 31%
-of the way from mean to max), so on a task that needs aggressive value propagation across fragments, the
-conservative expectile may leave a lot on the table, and the advantage-weighted extraction (which never
-extrapolates beyond dataset actions) caps how far the goal-reaching policy can deviate from the meandering
-behavior data. So my falsifiable expectation is: solid, low-variance scores on the two locomotion datasets
-— HalfCheetah especially should be nearly pinned to the data with a tiny seed spread, since there is no
-headroom to disagree over — and a comparatively weak, higher-variance Maze2d where the conservatism bites,
-because a weak value signal propagated across fragments is exactly the kind of thing that lands in
-different places on different seeds. That gap, if it appears, is precisely the opening for the next rung
-to be more aggressive about exploiting the critic rather than hedging with an expectile. The full
-scaffold module — the GaussianPolicy-style `Actor`, the 2×256 `Critic` and `ValueFunction`, and the
-`OfflineAlgorithm` with its V → Q → policy update order — is in the answer.
+Where do I expect this floor to land, and where is it fragile? On HalfCheetah and Walker2d — dense-reward
+locomotion where the medium dataset is a single coherent mediocre policy — the in-sample value learning
+should produce a stable improvement over the behavior policy without divergence, sitting comfortably above
+random but not dramatically above the data, because τ = 0.7 is deliberately conservative and the advantage
+weighting stays close to π_β; HalfCheetah especially has little headroom to disagree over, so I expect it
+nearly pinned to the data with a tight seed spread. Maze2d — the stitching task — is the genuine worry.
+IQL *can* stitch in principle (the expectile backup is real DP), but its improvement is gated by τ: at 0.7
+the in-support max is only weakly approximated (the toy said about 31% of the way from mean to max), so on
+a task that needs aggressive value propagation across fragments the conservative expectile may leave a lot
+on the table, and the advantage-weighted extraction (which never extrapolates beyond dataset actions) caps
+how far the goal-reaching policy can deviate from the meandering data. So I expect a comparatively weak,
+higher-variance Maze2d where the conservatism bites — a weak value signal propagated across fragments is
+exactly what lands in different places on different seeds. That gap, if it appears, is the opening for a
+next rung to exploit the critic directly rather than hedge with an expectile. The full module — Gaussian
+`Actor`, 2×256 `Critic` and `ValueFunction`, and the V → Q → policy update order — is in the answer.

@@ -6,82 +6,56 @@ That is what Random Network Distillation offers. Keep a fixed, randomly-initiali
 
 Before I commit, I have to confront a known failure of naive offline RND, because if I reproduce it I am worse than ReBRAC, not better. The reported problem is that plain RND is "not discriminative enough" as an OOD detector, and I need the mechanism, not just the warning. Picture the predictor taking `[s, a]` concatenated at its input. It is a flexible MLP trained to match the target on the data, and at the same time the actor is being optimized to make the penalty `b(s, π(s))` small, with the actor controlling the action argument. If the action only enters as a few concatenated input dimensions, the predictor's error as a function of the action is smooth and largely featureless off the data — nothing forces it to be *high* on a specific OOD action. So the actor can find action directions where the error happens to already be small, even though those actions are OOD, and slide the bonus down without returning to the data. The penalty is escapable, and an escapable penalty is no conservatism at all — it would let the actor walk right back into the overestimation ReBRAC's LayerNorm and BC were holding shut. So the naive version is not just weak, it is the wrong tool, and the reason is the *conditioning*: how the action is injected into the prior, not RND itself.
 
-That reframes the design precisely, and it is the crux. I do not need a new novelty principle; I need the predictor's error to be a *sharp* function of the action — genuinely small on dataset actions and genuinely large the instant the action leaves the data — so the only way the actor can drive `b` down is to propose an in-distribution action. The lever is the architecture by which the action conditions the network. Concatenation dilutes the action's influence; I want the action to *control the computation* over the state. Feature-wise linear modulation does exactly this: let the state be the feature stream flowing through the MLP, and let the action, through its own linear map, produce per-unit scale and shift parameters `(γ, β)` that multiply and offset a hidden layer, `h ← γ ⊙ h + β`. Now a different action reshapes the function the network computes, so it induces a different target embedding to match; the predictor's error becomes genuinely action-dependent — small on the `(s,a)` it trained on, and forced to be different (untrained, hence large) on action settings the data never produced. The multiplicative gate is what denies the actor a smooth low-error escape. (The roles can be swapped — action as the modulated feature, state as context — which is the form the reference uses; the substance is the multiplicative conditioning either way.) This single architectural choice is what separates a discriminative RND penalty from the escapable one, and it is the part I have to get right.
+That reframes the design precisely, and it is the crux. I do not need a new novelty principle; I need the predictor's error to be a *sharp* function of the action — genuinely small on dataset actions and genuinely large the instant the action leaves the data — so the only way the actor can drive `b` down is to propose an in-distribution action. The lever is the architecture by which the action conditions the network. Concatenation dilutes the action's influence; I want the action to *control the computation* over the state. Feature-wise linear modulation does exactly this: let the state be the feature stream flowing through the MLP, and let the action, through its own linear map, produce per-unit scale and shift parameters `(γ, β)` that multiply and offset a hidden layer, `h ← γ ⊙ h + β`. Now a different action reshapes the function the network computes, so it induces a different target embedding to match; the predictor's error becomes genuinely action-dependent — small on the `(s,a)` it trained on, and forced to be different (untrained, hence large) on action settings the data never produced. The multiplicative gate is what denies the actor a smooth low-error escape. (The roles can be swapped — action as the modulated feature, state as context — either way the substance is the multiplicative conditioning.) This single architectural choice is what separates a discriminative RND penalty from the escapable one, and it is the part I have to get right.
 
-Let me make the escapability argument quantitative, because it is the crux and I want to be sure FiLM
-actually fixes it rather than merely sounding better. Under concatenation the predictor is ĝ([s,a]); the
-actor drives the bonus down by descending ∇_a b, and the relevant quantity is how large ‖∇_a b‖ is on OOD
-actions. With the action entering as a handful of input dimensions among many, the predictor learned a
-function that is smooth in a off the data (it was never given a reason to be otherwise there), so ∇_a b is
-small and, worse, roughly constant in direction — the actor can follow a shallow, near-constant gradient
-to a nearby OOD action where b happens to be low and sit there. The penalty is a gently sloped plain the
-actor slides across, not a wall. Under FiLM the action produces the multiplicative gates (γ, β) that
-reshape the *entire* hidden computation over the state stream, so a change in a changes not one input
-coordinate but the whole function the target embeds — dg/da now flows through the multiplicative term γ⊙h,
-whose sensitivity is proportional to the hidden activations h themselves, not to a single input weight. The
-predictor was trained to match the target only on the (s,a) the data contains, so the moment a leaves that
-set the two networks' reshaped computations diverge and b rises steeply; ∇_a b points *back toward the
-data* rather than along a low-error ridge, because there is no off-data direction where the untrained
-predictor happens to agree with the reshaped target. The multiplicative gate converts the shallow plain
-into a basin whose only minimum is in-support — that is the whole difference between an escapable and an
-inescapable penalty, and it is a statement about the *shape* of ∇_a b, which is exactly what the actor's
-gradient descent reads.
+To be sure FiLM fixes this rather than merely sounding better, look at ∇_a b, which is exactly what the
+actor descends. Under concatenation the predictor is smooth in a off the data (never given a reason to be
+otherwise there), so ∇_a b is small and near-constant — a gently sloped plain the actor slides across to a
+nearby OOD action where b happens to be low. Under FiLM the action's gates reshape the whole hidden
+computation, so dg/da flows through the multiplicative term γ⊙h, its sensitivity proportional to the
+activations themselves rather than to one input weight; the moment a leaves the data the predictor's and
+target's reshaped computations diverge, b rises steeply, and ∇_a b points *back toward* the data rather
+than along a low-error ridge. The multiplicative gate turns the plain into a basin whose only minimum is
+in-support.
 
 With a discriminative `b(s,a)` I wire it in at both places OOD actions corrupt the value — which is the same two-leak structure I exploited in ReBRAC, now with a learned penalty instead of L2. The actor proposes `π(s)`, possibly OOD, so I subtract `β·b(s, π(s))` from the actor objective: it still climbs `Q` but is charged for unfamiliarity, pulled toward actions that are high-value *and* in-support. And the critic target bootstraps off `Q(s', a')` at the policy's next action, which can be OOD regardless of the actor, so I subtract `β·b(s', a')` inside the target as well: `y = r + γ(1−d)·[min_i Q_i(s', a') − α·logπ(a'|s') − β·b(s', a')]`. This is the anti-exploration mirror of adding an online bonus to both the policy reward and the value — it suppresses the over-valuation at the backup and steers the policy away from it at once, which is structurally what ReBRAC's actor-BC and critic-target-BC pair did, but now the conservatism is the learned OOD signal rather than a fixed pull.
 
 The base I hang this on is SAC rather than TD3, deliberately. SAC's actor is a stochastic Tanh-Gaussian that *samples* the actions I need to score with `b`, and its auto-tuned entropy temperature `α` (tuned to a target entropy of `−dim(A)`) keeps the policy from collapsing onto a single action while the RND penalty pushes it around — a stochastic policy is the natural object to anti-explore, because the penalty acts on the whole action distribution, not one deterministic point. I keep the overestimation-control stack that ReBRAC validated: twin critics with a `min` target and LayerNorm on each critic hidden layer (the geometric smoothing that helped Maze2d so much carries over unchanged), Polyak targets at `τ = 5e-3`, `γ = 0.99`. Two details that bite if ignored: the RND target stays *frozen* (only the predictor trains, only on dataset `(s,a)` — never on the actor's proposed actions, or the system games itself by making its own reference easy), and the bonus is normalized by a running standard deviation of the raw distillation error, because that error is huge early and shrinks late, so a fixed `β` on the raw error would mean wildly different conservatism over a run. Finally, `β` is the one knob that genuinely needs per-dataset setting — and that is not a regression from ReBRAC, it is the same per-dataset tuning ReBRAC already paid for its BC coefficients, just one coefficient instead of two. HalfCheetah-medium, a tight single-policy dataset, wants a light penalty so the actor can exploit (`β` small, around 0.3); Walker2d-medium wants a much heavier one to hold the gait against the entropy drive (`β` around 8). The fixed loop hands me the env name, so I read `β` from it exactly as ReBRAC read its coefficients.
 
-The running-std normalization is worth pinning down mechanically, because if I get it wrong the one knob
-β stops meaning anything. I keep a streaming mean and variance of the raw distillation error ‖ĝ − g‖²
-updated by the parallel (Chan/Welford-style) combine: for a fresh minibatch of n errors with mean m_b and
-variance v_b against the running (m, V, count N), the merged count is N + n, the mean shifts by
-δ·n/(N+n) where δ = m_b − m, and the merged M2 is V·N + v_b·n + δ²·N·n/(N+n), all under no-grad so it is
-bookkeeping, not a gradient path. Dividing the raw error by √V before scaling by β makes the *typical*
-bonus O(1) throughout training regardless of the absolute distillation error, which early on is enormous
-(the predictor has barely started matching the target) and late is tiny (it has largely converged on the
-data). Without this, a fixed β would apply crushing conservatism in the first thousands of steps —
-suppressing every action, in-support or not, because *everything* looks novel to a fresh predictor — and
-then near-zero conservatism late, exactly backwards. Normalizing by the running std decouples "how strong
-is the anti-exploration" (β) from "how far has the predictor trained" (the raw scale), so a single β can
-be set per dataset and hold its meaning across the 1e6 steps. And the frozen target matters for the same
-reason from the other side: if I let the target train, the predictor and target would co-adapt to drive
-the error to zero everywhere, the running std would collapse, and the normalized bonus would become noise
-— the whole OOD signal depends on the target being a *fixed, arbitrary* function that only the data-region
-of the predictor has learned to match.
+The bonus must be normalized by a running standard deviation of the raw distillation error, or the one
+knob β stops meaning anything. That raw error is enormous early (the predictor has barely started matching
+the target) and tiny late (it has converged on the data), so a fixed β on the raw error would apply
+crushing conservatism in the first thousands of steps — everything looks novel to a fresh predictor — and
+near-zero conservatism late, exactly backwards. Dividing by the running std, maintained under no-grad by a
+streaming Welford combine, holds the *typical* bonus at O(1) throughout, decoupling "how strong is the
+anti-exploration" (β) from "how far has the predictor trained" (the raw scale), so one β holds its meaning
+across the 1e6 steps. The frozen target matters from the other side: if the target trained too, predictor
+and target would co-adapt to drive the error to zero everywhere, the running std would collapse, and the
+bonus would become noise — the OOD signal depends on the target being a *fixed, arbitrary* function only
+the data-region of the predictor has learned to match.
 
-The β table itself reads as a mechanism once I look at the ratio: Walker2d's β ≈ 8 is about 27×
-HalfCheetah's β ≈ 0.3, and Maze2d sits between at 1.0. That ordering is not arbitrary — it tracks exactly
-what each dataset's predecessor numbers told me. HalfCheetah is the single-policy dataset where ReBRAC had
-to release its actor-BC to 0.001 to let the actor move at all, so it wants the *lightest* anti-exploration
-so the stochastic actor can roam among in-support actions and find the value that a hard anchor denied it
-— hence β = 0.3, and hence my hope that HalfCheetah, the current limiting factor of the geometric mean, is
-where the learned penalty pays off most. Walker2d, whose clean 87.5 came from staying close to the gait,
-wants heavy anti-exploration (β = 8) to hold the policy on the walking manifold against SAC's entropy
-drive, which is actively pushing the action distribution to spread out — the entropy temperature and the
-RND penalty are in tension, and on Walker the penalty must win. Maze2d, with broad state coverage and a
-navigation task that tolerates many in-support approaches, takes the middle β = 1. So the single knob is
-carrying the same per-dataset information ReBRAC's two BC coefficients carried, compressed into one number
-whose cross-dataset ratio is legible as "how tightly must this dataset be held on-manifold."
+The β ordering tracks the predecessor numbers. HalfCheetah, the single-policy dataset where ReBRAC had to
+release its actor-BC to 0.001 to let the actor move at all, wants the *lightest* anti-exploration (β = 0.3)
+so the stochastic actor can roam among in-support actions and find value a hard anchor denied it — and it
+is the current limiting factor of the geometric mean, so it is where I most hope the learned penalty pays
+off. Walker2d, whose clean 87.5 came from staying near the gait, wants heavy anti-exploration (β = 8) to
+hold the policy on the walking manifold against SAC's entropy drive, which is actively spreading the action
+distribution — the two are in tension and on Walker the penalty must win. Maze2d, broad-coverage with many
+in-support approaches, sits between at β = 1. One knob carries the per-dataset information ReBRAC's two BC
+coefficients did, its cross-dataset ratio legible as how tightly each dataset must be held on-manifold.
 
-Now the budget, because this is the constraint that killed the ensemble alternative and it must not kill this one, and I should count rather than assert. The extra cost over the SAC base is the RND module: a predictor and a frozen *target* (the target's parameters do not count as trainable, so only the predictor is charged against the cap), each a FiLM MLP emitting a 32-dim embedding. Tally the predictor at the locked 256 width for the locomotion dimensions: the FiLM linear maps the state context of dimension s_dim to 2·256 = 512 gate parameters (s_dim·512 + 512, a few thousand), the first linear maps the action feature of dimension a_dim to 256 (a_dim·256 + 256, on the order of a couple thousand), the second hidden is a 256·256 + 256 = 65,792 block, and the 256→32 head is 256·32 + 32 = 8,224 — so the whole trainable RND predictor is on the order of 85k parameters. Set that against the twin 3×256 LayerNorm critics I am carrying over from ReBRAC, each already ~140k, plus the 3×256 actor: the RND predictor is a small fraction of the critics it augments. Using a *two*-hidden-layer FiLM RND rather than three is the deliberate lever that keeps the total trainable count just under the 1.05× largest-baseline cap on both the locomotion and the maze2d state dimensions — a third RND hidden layer would add another ~66k and threaten the ceiling. So this is admissible exactly where a 10-critic ensemble (which would add nine extra ~140k critics, well over a million parameters) is not, and the choice of two RND layers is not cosmetic — it is what the budget arithmetic forces. The pessimism comes from one small network, paid for in math, not capacity. The full scaffold module — the FiLM RND, the SAC actor/critic, and the `OfflineAlgorithm` with the penalty subtracted in both the actor loss and the critic target — is in the answer.
+Now the budget, the constraint that killed the ensemble and must not kill this. The only cost over the SAC base is the RND predictor (the frozen target is not trainable, so uncharged): a two-hidden FiLM MLP emitting a 32-dim embedding, on the order of 85k parameters — a small fraction of the twin 3×256 LayerNorm critics (~140k each) it augments. Two RND hidden layers rather than three is the deliberate lever that keeps the total just under the 1.05× cap on both the locomotion and the maze2d state dimensions; a third layer would add ~66k and threaten the ceiling. So this is admissible exactly where a 10-critic ensemble — nine extra ~140k critics, over a million parameters — is not: ensemble-quality pessimism from one small network, paid for in arithmetic, not capacity. The full module — FiLM RND, SAC actor/critic, and the penalty subtracted in both the actor loss and the critic target — is in the answer.
 
-Let me trace the two-leak wiring and the SAC log-prob so the signs and shapes are right, because a wrong
-sign on the penalty would turn anti-exploration into pro-exploration and quietly wreck everything. The
-Tanh-Gaussian actor samples raw ~ Normal(μ, σ) by rsample (so the gradient flows), squashes a =
-tanh(raw), and the log-prob carries the change-of-variables correction log π(a) = log N(raw) − Σ log(1 −
-tanh(raw)² + 1e-6); that correction is what makes the entropy term honest for a bounded action, and
-omitting it would let the policy claim spurious certainty near the saturated ±1 edges. In the critic
-target I build y = r + γ(1−d)·[min_i Q_i(s', a') − α·logπ(a'|s') − β·b(s', a')] under no-grad: the
-entropy bonus −α·logp and the anti-exploration penalty −β·b are *both subtracted*, so a novel next action
-(large b) lowers the target — the value of reaching an OOD next action is suppressed at the backup,
-exactly the mirror of adding a novelty bonus in online RL. In the actor loss I minimize
-(α.detach()·logp + β·b − q_pi).mean(), i.e. maximize q_pi − α·logp − β·b: the actor climbs Q, is paid α
-for entropy, and is charged β for novelty — the same two subtractions, now steering the policy instead of
-the bootstrap. The shapes all reduce over the action axis to (B,) before the mean, and q_pi uses the min
-of the two *online* critics so the actor cannot exploit whichever critic is momentarily higher. The
-temperature update −(log_alpha·(logp + target_entropy).detach()).mean() drives logp toward
-target_entropy = −dim(A), so α self-adjusts to hold the policy entropy at a fixed target rather than my
-guessing it — which matters because β is actively fighting that entropy on Walker, and I want α to be the
-thing that yields, not a hand-set constant.
+Two wiring details decide whether the sign is right, and a wrong sign would turn anti-exploration into
+pro-exploration. The Tanh-Gaussian actor rsamples raw ~ Normal(μ, σ) so the gradient flows, squashes
+a = tanh(raw), and its log-prob carries the change-of-variables correction
+log π(a) = log N(raw) − Σ log(1 − tanh(raw)² + 1e-6) — without it the policy could claim spurious certainty
+at the saturated ±1 edges and the entropy term would lie. Then the penalty enters *subtracted* in both
+places: the critic target y = r + γ(1−d)·[min_i Q_i(s', a') − α·logπ(a'|s') − β·b(s', a')] lowers the value
+of a novel next action at the backup, and the actor loss (α.detach()·logp + β·b − q_pi).mean() charges the
+same β for novelty while it climbs Q — the online-critic min in q_pi keeping the actor off whichever critic
+is momentarily higher. The temperature update drives logp toward target_entropy = −dim(A) so α
+self-adjusts; this matters because β is actively fighting that entropy on Walker, and I want α, not a
+hand-set constant, to be the thing that yields.
 
-Here is the bar this has to clear, stated against ReBRAC's real numbers so it is falsifiable. The whole thesis is that a learned per-`(s,a)` OOD penalty beats a fixed L2-to-the-data, so the cleanest place to test it is the two locomotion datasets where ReBRAC's BC was bluntest. On HalfCheetah-medium I expect to clear ReBRAC's 63.35: the RND penalty should let the actor roam among in-support actions to find higher-value ones instead of being pulled toward the single mediocre logged action, and the reference's reported ~66 on this dataset is the target — if I merely match 63 the learned penalty bought nothing over L2 here. On Walker2d-medium I expect to clear 87.54 by a clear margin (the reference reports low-90s), because the gait data is exactly where "stay in support" rather than "clone this action" should pay, and the heavier `β` is there to hold it. Maze2d is the honest open question: ReBRAC's 93.95 is already very high, the SAC entropy drive plus an RND penalty in a navigation task with broad coverage could either match it or, if `β` is mis-set, let the stochastic policy wander — so the falsifiable claim there is *hold near 90*, not necessarily beat it, and a large drop on Maze2d would say the entropy-regularized stochastic actor is the wrong base for this stitching task even if it wins locomotion. There is no SAC-RND row on this leaderboard to confirm any of this; what the trajectory ends on is the construction whose learned, FiLM-conditioned OOD penalty is the principled successor to ReBRAC's fixed behavior-cloning brake — ensemble-quality conservatism from a single network, inside the budget that forbids the ensemble.
+Here is the bar, stated against ReBRAC's numbers so it is falsifiable. The thesis is that a learned per-`(s,a)` OOD penalty beats a fixed L2-to-the-data, so the cleanest test is the two locomotion datasets where ReBRAC's BC was bluntest. On HalfCheetah-medium I expect to clear ReBRAC's 63.35: the RND penalty should let the actor roam among in-support actions to find higher-value ones instead of being pulled toward the single mediocre logged action — if I merely match 63 the learned penalty bought nothing over L2 here. On Walker2d-medium I expect to clear 87.54 by a clear margin, because the gait data is exactly where "stay in support" rather than "clone this action" should pay, and the heavier `β` is there to hold it. Maze2d is the honest open question: 93.95 is already very high, and the SAC entropy drive plus an RND penalty on a broad-coverage navigation task could either match it or, if `β` is mis-set, let the stochastic policy wander — so the claim there is *hold near 90*, not necessarily beat it, and a large drop would say the entropy-regularized stochastic actor is the wrong base for a stitching task even if it wins locomotion. Where this lands is a construction whose learned, FiLM-conditioned OOD penalty is the principled successor to ReBRAC's fixed behavior-cloning brake — ensemble-quality conservatism from a single network, inside the budget that forbids the ensemble.
