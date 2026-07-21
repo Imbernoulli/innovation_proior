@@ -63,11 +63,10 @@ step becomes $-\alpha \odot g$, an elementwise product of a learned vector with 
 footprint is exactly $\dim\theta = 121\text{K}$ — one scalar per parameter, precisely the reserved
 budget, four orders of magnitude below the full matrix.
 
-Let me check this buys both things I want, because if it only buys per-coordinate rates I have not
-escaped "follow the gradient." Per-coordinate rate: yes, trivially — entry $\alpha_j$ is coordinate
+Does this buy both things I want? Per-coordinate rate: yes, trivially — entry $\alpha_j$ is coordinate
 $j$'s own learning rate, so the sensitive BatchNorm scale and the head weight can move at completely
-different magnitudes, which one scalar can never do. And the direction — here is the part I want to be
-sure of, so I will make it quantitative. Is $\alpha \odot g$ parallel to $g$? Take the smallest
+different magnitudes, which one scalar can never do. And the direction: is $\alpha \odot g$ parallel to
+$g$? Take the smallest
 non-trivial case, a two-coordinate gradient $g=(1,1)$ and rates $\alpha=(0.5,\,0.05)$, a ten-fold
 spread of the kind I expect the task family to want (move a discriminative coordinate ten times faster
 than a fragile one). Then $\alpha\odot g=(0.5,\,0.05)$, and the cosine to $g$ is
@@ -118,24 +117,16 @@ And $\alpha$ is differentiable, which is the whole reason for choosing this shap
 straight into the same query-loss-after-adaptation objective MAML used, except now I meta-learn
 $\theta$ *and* $\alpha$ together: $\theta_i' = \theta - \alpha \odot \nabla\mathcal{L}^{\text{sup}}_i
 (\theta)$, and $\min_{\theta,\alpha}\, \mathbb{E}_{\mathcal{T}}[\mathcal{L}^{\text{qry}}(\theta -
-\alpha \odot \nabla\mathcal{L}^{\text{sup}}(\theta))]$. Before I trust that the *same* outer Adam can
-carry $\alpha$, I want to see its gradient come out right on a case I can compute by hand, and I want
-to see it is genuinely cheaper than the $\theta$ path. For one task, with $g=\nabla_\theta\mathcal{L}
+\alpha \odot \nabla\mathcal{L}^{\text{sup}}(\theta))]$. For one task, with $g=\nabla_\theta\mathcal{L}
 ^{\text{sup}}$, $H=\nabla_\theta^2\mathcal{L}^{\text{sup}}$, $\theta'=\theta-\alpha\odot g$, and
 $v=\nabla_{\theta'}\mathcal{L}^{\text{qry}}$, the chain rule gives $\partial\mathcal{L}^{\text{qry}}/
 \partial\alpha = -v\odot g$ and $\partial\mathcal{L}^{\text{qry}}/\partial\theta = (I - \mathrm{diag}
 (\alpha)H)^\top v$. The $\alpha$-line has *no Hessian* — $\alpha$ enters $\theta'$ linearly through the
 elementwise product, so its gradient is a plain elementwise product $-v\odot g$, cheaper than the
-$\theta$-line's Hessian-vector path, which is reassuring for the "no extra second order" claim. Now the
-hand check: reuse the scalar toy, $\mathcal{L}^{\text{sup}}=\tfrac12 a\theta^2$ so $g=a\theta$, and
-$\mathcal{L}^{\text{qry}}=\tfrac12 b(\theta-c)^2$, with $a=2,\,b=1,\,c=1,\,\theta=1,\,\alpha=0.1$. Then
-$g=2$, $\theta'=1-\alpha a\theta=1-0.2=0.8$, $v=b(\theta'-c)=-0.2$, and the formula predicts
-$\partial\mathcal{L}^{\text{qry}}/\partial\alpha = -v\,g = -(-0.2)(2) = 0.4$. Directly, $\theta'(\alpha)=
-1-2\alpha$, so $\mathcal{L}^{\text{qry}}=\tfrac12(1-2\alpha-1)^2 = 2\alpha^2$ and
-$\mathrm{d}/\mathrm{d}\alpha = 4\alpha = 0.4$ at $\alpha=0.1$. They match, and the sign is mechanistically
-right: the support minimum is at $0$, the query minimum at $1$, so stepping toward $0$ overshoots away
-from $1$, the gradient on $\alpha$ is positive, and the outer loop is correctly told to *shrink* this
-rate — which is precisely the per-coordinate discrimination a single scalar cannot make. So the *same*
+$\theta$-line's Hessian-vector path. And the sign reads correctly: on a coordinate whose support
+minimum lies opposite the query minimum, stepping toward the support target overshoots the query
+target, so $-v\odot g$ is positive and the outer loop is told to *shrink* that rate — the
+per-coordinate discrimination a single scalar cannot make. So the *same*
 outer Adam optimizes both, by backprop through one (or five) inner steps with the graph kept — no BPTT
 through an optimizer network, no stored recurrent states, just one extra tensor per parameter. The
 thing that made the recurrent route unscalable is simply gone, because I replaced "a network that emits
@@ -159,7 +150,7 @@ single scalar; Meta-SGD uses `update_module` with a *list* of per-parameter prod
 is now a tensor, not a number. Finally `meta_parameters()` returns `list(self.lrs.parameters())` so the
 outer Adam optimizes $\alpha$ alongside $\theta$ — the harness sums them into `all_meta_params` and the
 budget check (one scalar per model parameter, $\sim121\text{K}$) is exactly Meta-SGD's footprint. The full
-scaffold module is in the answer.
+module is in the answer.
 
 Two design choices inside that form are not forced by the contract and I should make them deliberately.
 First, is $\alpha$ shared across the inner steps or fresh per step? A per-step $\alpha_t$ would let the
@@ -179,38 +170,27 @@ is only to not forbid it. Both choices — static across steps, unconstrained si
 two principles that chose the diagonal in the first place: stay inside the budget, and buy the learned
 direction without buying a recurrence.
 
-Let me confirm the relations so I know I have generalized MAML and not built a third unrelated gadget.
-Freeze $\alpha$ to a single constant in every coordinate and stop learning it: $\alpha \odot g = c\,g$,
-$\theta'=\theta-c\,g$ — exactly MAML, plain SGD at a scalar rate, meta-learning only $\theta$. So MAML
-is the point in this space where $\alpha$ is uniform and fixed; I have strictly generalized it by
-letting $\alpha$ be non-uniform and learned. The recurrent route is the expensive way to chase the
-same three learned ingredients, which I have replaced with the static diagonal. And the diagonal is the
-right rank, not a cop-out — the two cheaper alternatives fail for reasons I can name in numbers. A
-per-layer scalar would attach one rate to each parameter tensor; CNN4 has on the order of a dozen or
-two such tensors (four conv weights, their biases, the BatchNorm pairs, the head weight and bias), so a
-per-layer rule spends a couple of dozen numbers and cannot move two weights *within* a single conv
-block at different rates — but within-layer is exactly where the per-coordinate structure lives, so it
-throws away the whole point to save a hundred-thousand numbers I am allowed to spend. The full matrix
-is the other extreme, the fifteen-billion-number object, most expressive but $\dim\theta^2$ and
-per-step-costly. The diagonal is the unique middle that is linear in memory, per-coordinate, and
-off-gradient.
+The relations confirm I have generalized MAML rather than built a third unrelated gadget. Freeze
+$\alpha$ to a single constant in every coordinate and stop learning it: $\alpha \odot g = c\,g$,
+$\theta'=\theta-c\,g$ — exactly MAML, meta-learning only $\theta$; I have strictly generalized it by
+letting $\alpha$ be non-uniform and learned. And the diagonal is the right rank between the two
+alternatives, both of which fail for nameable reasons: the full matrix is the $\dim\theta^2$
+fifteen-billion-number object I already ruled out, and a per-layer scalar — one rate per parameter
+tensor, a couple of dozen numbers across CNN4's conv weights, biases, BatchNorm pairs, and head —
+cannot move two weights *within* a single conv block at different rates, which is exactly where the
+per-coordinate structure lives, throwing away the whole point to save numbers I am allowed to spend.
+The diagonal is the unique middle that is linear in memory, per-coordinate, and off-gradient.
 
-So the delta from step 1 is concrete: where MAML applied one shared scalar to every parameter via
-`maml_update`, I attach a learnable per-parameter rate vector $\alpha$ (a `ParameterList` of
-`ones_like(p)*0.5`), step each parameter by $-\alpha \odot g$ via `update_module`, and hand $\alpha$ to
-the outer loop as meta-parameters. Reading MAML's shape, here is what I expect and where I am unsure.
 The biggest win should be at **1-shot**, because that is precisely where MAML's single shared rate was
 both lowest (0.4365) and shakiest (the $6.2\%$ relative wobble, std 0.0147): a learned per-coordinate
 rate can keep the sensitive coordinates timid while letting the discriminative ones move, so 1-shot
-mean should rise above 0.4365 and, if the diagnosis is right, the seed spread should tighten — the
-learned $\alpha$ removes the knife-edge that the single scalar had to walk, so I would expect the std
-to fall well under half of MAML's. Where I am genuinely unsure is the **5-shot** benchmarks: MAML was
-already strong there (0.6379 mini, 0.7067 cifar) because the larger support set made the rigid step
-forgiving, so the extra capacity of a per-parameter rate has less to fix and could even hurt if the
-larger meta-parameter set overfits the meta-training distribution — a non-uniform $\alpha$ tuned to
-training episodes need not transfer as cleanly as one shared scalar, and the extra $121\text{K}$
-meta-parameters are $121\text{K}$ new ways to fit the wrong thing. The falsifiable claim is therefore
-directional and uneven: 1-shot should improve clearly (mean up, std down) while 5-shot may stay flat or
-slip, and if it slips the lesson is that the ceiling at 5-shot was never the step's expressiveness — in
-which case the next rung is not "more capacity in the step" but a different axis entirely, *which*
-parameters to adapt at all. The 5-shot columns of the next table are the ones I will read first.
+mean should rise above 0.4365 and the seed spread should tighten — the learned $\alpha$ removes the
+knife-edge that the single scalar had to walk, so I would expect the std to fall well under half of
+MAML's. Where I am genuinely unsure is the **5-shot** benchmarks: MAML was already strong there (0.6379
+mini, 0.7067 cifar) because the larger support set made the rigid step forgiving, so the extra capacity
+of a per-parameter rate has less to fix and could even hurt if the larger meta-parameter set overfits
+the meta-training distribution — a non-uniform $\alpha$ tuned to training episodes need not transfer as
+cleanly as one shared scalar, and the extra $121\text{K}$ meta-parameters are $121\text{K}$ new ways to
+fit the wrong thing. So the claim is directional and uneven: 1-shot should improve clearly (mean up,
+std down) while 5-shot may stay flat or slip. If it slips, the lesson is that the 5-shot ceiling was
+never the step's expressiveness at all, but *which* parameters the inner loop adapts.

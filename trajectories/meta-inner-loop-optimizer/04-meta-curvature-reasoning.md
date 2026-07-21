@@ -1,18 +1,18 @@
 ANIL's numbers close one axis and, by closing it, point straight at the one I have not touched. The bet
 paid off exactly as I framed it. At 5-shot ANIL recovered everything Meta-SGD lost: miniImageNet 5-shot
 back to 0.6366 (Meta-SGD had sagged to 0.6237, so $+0.0129$) and CIFAR-FS 5-shot up to 0.7138 (from
-0.6885, $+0.0253$) — past MAML's 0.7067 and the best 5-shot CIFAR number on the ladder — with the seed
+0.6885, $+0.0253$) — past MAML's 0.7067 and the best 5-shot CIFAR number yet — with the seed
 spread that Meta-SGD had widened (std 0.0113 on CIFAR) tightening back to 0.0035. And at 1-shot ANIL did
 not just hold Meta-SGD's gain, it improved on it: 0.4815 against 0.4760, the tightest 1-shot spread yet
 (std 0.0029, seeds {0.4814, 0.4852, 0.4780}). The three-benchmark average makes it unambiguous —
 $0.6106$ for ANIL against $0.5961$ Meta-SGD and $0.5937$ MAML — and, unlike Meta-SGD's wash, this is a
-uniform lift rather than a redistribution: it is the strongest or tied-strongest rung on all three. I
-will be honest about the one soft spot: miniImageNet 5-shot at 0.6366 is a hair *under* MAML's 0.6379
-(a $-0.0013$ I read as a tie inside ANIL's own $0.0112$ spread there, seed 42 dipping to 0.6208), so
-that column is recovered but not conquered. Still, ANIL is the strongest rung, and that is the good news
-and also the problem: I have now optimized two of the three axes of the inner loop. MAML learned *where
-to start*. Meta-SGD learned a per-coordinate *rate*. ANIL settled *which parameters* adapt — the head,
-not the body. What I have *not* learned, on any rung, is the *direction*: every method so far steps
+uniform lift rather than a redistribution: the strongest or tied-strongest method on all three. The one
+soft spot: miniImageNet 5-shot at 0.6366 is a hair *under* MAML's 0.6379 (a $-0.0013$ I read as a tie
+inside ANIL's own $0.0112$ spread there, seed 42 dipping to 0.6208), so that column is recovered but
+not conquered. Still, ANIL is the strongest so far, and that is the good news and also the problem: I
+have now optimized two of the three axes of the inner loop. MAML learned *where to start*. Meta-SGD
+learned a per-coordinate *rate*. ANIL settled *which parameters* adapt — the head, not the body. What I
+have *not* learned yet is the *direction*: every method so far steps
 along the raw gradient (Meta-SGD only rescales it coordinate-by-coordinate, which is a diagonal tilt at
 best, at most the thirty-nine-degree reorientation a diagonal can manage). The inner step is still,
 geometrically, "follow the gradient." That is the axis left on the table, and it is exactly where
@@ -42,7 +42,7 @@ answer is second-order: Newton steps `θ − α H^{-1} ∇L`, rescaling the grad
 Hessian; natural gradient steps `θ − α F^{-1} ∇L`, rescaling by the inverse Fisher. Both, on that
 $\kappa=100$ problem, drive $\kappa$ toward $1$ and turn the ten-step crawl into essentially a single
 straight shot. But I cannot lift them in unchanged, and the reason is the same few-shot pathology that
-has shaped every rung: Newton and natural gradient *compute* `H` or `F` from the current task's data —
+has shaped every step so far: Newton and natural gradient *compute* `H` or `F` from the current task's data —
 and the current task is one or five examples. A curvature estimated from five points is the curvature of
 *the support set*, and stepping "as far as possible" along it is stepping as far as possible to fit five
 points, which is exactly how I overfit. I saw this already in another guise: Meta-SGD's extra capacity,
@@ -90,27 +90,21 @@ because it *respects* the tensor's three modes instead of fighting them: it reco
 and takes their product, which is where the real dependencies live (output channel to output channel,
 input channel to input channel) and nowhere they do not. That is why it is the structure I keep.
 
-This is strictly richer than every rung so far, and the special cases make that precise. If every `M` is
-the *identity*, then `MC(G) = G` and the inner step is `θ − α ∇L` — exactly MAML. If every `M` is
-*diagonal*, the transform is a per-coordinate rescaling — exactly Meta-SGD. The full Kronecker-factored
-`M` keeps the *off-diagonal* coordinate dependencies a diagonal throws away: it can combine the gradient
-on one input channel with another's, which is precisely the off-valley correction plain SGD (and even
-Meta-SGD's diagonal) cannot make. Make it concrete on two output channels: a dense `M_o = [[1, 0.5],
-[0.5, 1]]` sends the channel gradients `(g_1, g_2)` to `(g_1 + 0.5 g_2,\; 0.5 g_1 + g_2)`, so a large
-gradient on channel 1 now nudges channel 2's update — the cross-term `0.5 g_1` is exactly the entry no
-diagonal, however finely tuned, can produce, because a diagonal's off-diagonal is zero by definition. If
-the two channels' gradients are correlated across the task family (which whitening the feature covariance
-is all about), that off-diagonal is where the conditioning fix lives. Let me actually verify the identity case rather than assert it, because
-the einsum index bookkeeping is where such a claim usually breaks. Reshape `G` to `[C_out, C_in, d]`. The
-filter product is `einsum("oid,fd->oif", G, M_f)`, producing `G'_{oif} = Σ_d G_{oid} (M_f)_{fd}`; set
-`M_f = I_d` and `(M_f)_{fd} = δ_{fd}`, so `G'_{oif} = G_{oif}`, unchanged. The input product
-`einsum("oid,ji->ojd", G, M_i)` gives `Σ_i G_{oid}(M_i)_{ji}`, which at `M_i = I` collapses the sum to
-`G_{ojd}` — unchanged. Likewise `einsum("oid,jo->jid", G, M_o)` at `M_o = I` is unchanged. So all three
-mode-products at identity return `G` exactly, `MC(G) = G`, the step is `θ − α∇L`, MAML reproduced — the
-special case is real, not decorative. So initializing all factors to identity starts the method as MAML
-and lets meta-training deform them away as it discovers which coordinate recombinations help the
-post-adaptation query loss — the same "start from behavior I trust" principle that made me initialize
-Meta-SGD's rates uniformly.
+This is strictly richer than every method so far, and the special cases make that precise. If every `M`
+is the *identity*, then each mode-product is a no-op, `MC(G) = G`, and the inner step is `θ − α ∇L` —
+exactly MAML. If every `M` is *diagonal*, the transform is a per-coordinate rescaling — exactly
+Meta-SGD. The full Kronecker-factored `M` keeps the *off-diagonal* coordinate dependencies a diagonal
+throws away: it can combine the gradient on one input channel with another's, which is precisely the
+off-valley correction plain SGD (and even Meta-SGD's diagonal) cannot make. Make it concrete on two
+output channels: a dense `M_o = [[1, 0.5], [0.5, 1]]` sends the channel gradients `(g_1, g_2)` to
+`(g_1 + 0.5 g_2,\; 0.5 g_1 + g_2)`, so a large gradient on channel 1 now nudges channel 2's update —
+the cross-term `0.5 g_1` is exactly the entry no diagonal, however finely tuned, can produce, because a
+diagonal's off-diagonal is zero by definition. If the two channels' gradients are correlated across the
+task family (which whitening the feature covariance is all about), that off-diagonal is where the
+conditioning fix lives. So initializing all factors to identity starts the method as MAML and lets
+meta-training deform them away as it discovers which coordinate recombinations help the post-adaptation
+query loss — the same "start from behavior I trust" principle that made me initialize Meta-SGD's rates
+uniformly.
 
 And I should expect this to *generalize* rather than just fit faster, for a reason I can read off the
 meta-gradient. With inner step `θ^τ = θ − α M ∇L_train`, the gradient of the meta-loss with respect to a
@@ -136,7 +130,7 @@ say beyond step five.
 
 Here I have to confront a real tension, because the plan is to apply `M` across *all* layers, and ANIL
 just showed me that adapting the body is at best useless and at worst the source of the 5-shot
-meta-overfitting. Why re-introduce a body inner loop I paid three rungs to understand and then delete?
+meta-overfitting. Why re-introduce a body inner loop it took three methods to understand and then delete?
 The honest answer is a capacity count, and it cuts the other way from intuition. Meta-SGD's diagonal put
 one free rate on every body coordinate — on `conv2` alone that is `64·64·9 = 36864` unconstrained
 numbers, and across the four conv weights `1728 + 3·36864 = 112320`. The Kronecker factorization on those
@@ -164,7 +158,7 @@ cross-entropy, takes `torch.autograd.grad` over the parameters with the graph ke
 gradient by its factors via the three `n`-mode products (plain `einsum` matrix multiplies along each
 axis), and applies the differentiable update `p ← p − α MC(g)` by re-routing parameter tensors so the
 outer loop can backprop into both θ and the factors; `meta_parameters()` returns all the factors. This is
-the literal generalization of the earlier rungs' edits: where MAML used a scalar in `maml_update` and
+the literal generalization of the earlier edits: where MAML used a scalar in `maml_update` and
 Meta-SGD used a per-parameter vector in `update_module`, I use a per-parameter *transform* and the same
 differentiable re-route.
 
@@ -188,9 +182,9 @@ With that, the optimizer state lands at `29005 + 49152 + 1626 + 25 = 79808 ≈ 8
 `121K`, a total of `≈ 201K` comfortably inside the `291K` budget with about `90K` to spare — full
 structured curvature where it is affordable, a diagonal fallback only on the one mode that cannot be. The
 factors still initialize to identity (diagonal factors to ones), so the method still begins as MAML. The
-full scaffold module is in the answer.
+full module is in the answer.
 
-So the delta from ANIL is the axis ANIL left untouched: ANIL fixed *which* parameters adapt and left the
+So the move takes the axis ANIL left untouched: ANIL fixed *which* parameters adapt and left the
 surviving head's step as plain gradient descent; meta-curvature fixes *how* that step moves by
 preconditioning the gradient with a learned, Kronecker-factored, generalization-trained curvature —
 applied across all layers, not only the head, so the body's outer-loop-learned features are themselves
@@ -206,8 +200,7 @@ finally conquers the miniImageNet 5-shot column that ANIL only tied with MAML (0
 the structured curvature is a strict superset of both the identity (MAML) and diagonal (Meta-SGD) steps
 and is meta-trained for generalization rather than support-fitting. The risk I will watch is the same
 meta-overfitting that bit Meta-SGD at 5-shot, which the identity initialization, the four-times-smaller
-body factor count, and the diagonal fallback on the oversized head mode are meant to contain. This task's
-leaderboard has no meta-curvature row to confirm it; what the trajectory ends on is the construction that,
-having exhausted *where to start*, *how far per coordinate*, and *which parameters*, finally learns
-*which direction* — the structured, generalization-oriented preconditioner of the inner gradient that
-captures the coordinate dependencies every earlier rung's diagonal-or-identity step could not.
+body factor count, and the diagonal fallback on the oversized head mode are meant to contain. Having
+exhausted *where to start*, *how far per coordinate*, and *which parameters*, the construction finally
+learns *which direction* — the structured, generalization-oriented preconditioner of the inner gradient
+that captures the coordinate dependencies every earlier diagonal-or-identity step could not.

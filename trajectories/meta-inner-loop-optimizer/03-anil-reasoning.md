@@ -19,7 +19,7 @@ sharp: I have been adding *capacity to the step* — first a scalar, then a per-
 the step moves and ask a different question entirely: *which* parameters should the inner loop move at
 all?
 
-Here is what actually nags me about both rungs so far, and it is the same complaint from two sides.
+What nags me about both methods so far is the same complaint from two sides.
 The cost: the inner loop runs per task, inside every one of 60,000 meta-iterations, over every single
 parameter of CNN4 — all $121\text{K}$ of them across four conv blocks plus BatchNorm plus the head — and
 because the adapted parameters depend on $\theta$ both directly and through the inner gradient,
@@ -59,18 +59,19 @@ is also the question of what the overwhelming majority of the network's adaptati
 How would I tell? Two ways. The blunt one: freeze a contiguous block of body layers at test time —
 give them no inner update, force them to reuse the meta-initialization's features — and read off
 accuracy. If rapid learning is the story, freezing should hurt; if feature reuse, it should barely
-matter. The documented result on exactly this MAML/MiniImageNet setup is unambiguous: freezing layer 1
-leaves 5-way-1-shot at 46.5 against 46.9 unfrozen; freezing layers 1–2, 46.4; 1–3, 46.3; freezing
-*all four* conv layers, everything but the head, 46.3 ± 0.4; on 5-shot it slips only from 63.1 to 61.0.
+matter. Run it and the pattern is unambiguous: freezing layer 1 leaves 5-way-1-shot at 46.5 against
+46.9 unfrozen; freezing layers 1–2, 46.4; 1–3, 46.3; freezing *all four* conv layers, everything but
+the head, 46.3 ± 0.4; on 5-shot it slips only from 63.1 to 61.0.
 Removing the inner-loop adaptation of the entire body costs about $0.6$ points at 1-shot — and here I
 can calibrate that against my own MAML feedback, where the seed-to-seed std was $1.47$ points. A
 $0.6$-point effect sitting *below* the $1.5$-point seed noise is statistically indistinguishable from
 zero: whatever the body's inner loop contributes at 1-shot, it is smaller than the run-to-run scatter I
 already tolerate. That tilts me hard toward feature reuse, but freezing is indirect. The sharper
 measurement compares the body's representation before and after the inner loop directly — CCA/CKA of a
-layer's activations pre versus post adaptation, 1 for identical functions. The established picture: the
-body conv layers sit at CCA above 0.9, CKA near 1 — the inner loop induces almost no functional change
-in the body — while the head sits below 0.5, moving a lot, as it must. The Euclidean weight movement
+layer's activations pre versus post adaptation, 1 for identical functions. That measurement says the
+same: the body conv layers sit at CCA above 0.9, CKA near 1 — the inner loop induces almost no
+functional change in the body — while the head sits below 0.5, moving a lot, as it must. The Euclidean
+weight movement
 says the same even more starkly: the average distance between initialization and finetuned weights is
 tiny for every layer except the last, *even though the body layers hold fourteen times more parameters
 than the head*. More parameters, less movement. And this is not a quirk of the converged model — the
@@ -122,8 +123,8 @@ Have I just reinvented first-order MAML? No, and the distinction is load-bearing
 expect this to *match* MAML's accuracy rather than lag it like a first-order approximation would.
 First-order MAML keeps the full inner loop (adapts every parameter) but *drops the Hessian*. I am doing
 the opposite axis: I keep the second-order machinery and shrink *which* parameters get an inner loop
-down to the head. I do not want to assert this — I want to see the surviving second-order term with my
-own eyes on the smallest example that has a body and a head, so take scalars $\theta_1$ (body),
+down to the head. The surviving second-order term shows up on the smallest example that has a body and
+a head, so take scalars $\theta_1$ (body),
 $\theta_2$ (head), prediction $f=\theta_2\theta_1 x$, MSE loss. Support point $(x_s,y_s)$: the
 head's inner gradient is $\partial\mathcal{L}^{\text{sup}}/\partial\theta_2 = (\theta_2\theta_1 x_s -
 y_s)\,\theta_1 x_s$, and the crucial thing is that this expression *contains $\theta_1$* — it was
@@ -175,40 +176,32 @@ scan `named_parameters` for the ones containing "classifier"), and inside each s
 current parameter objects matching those names, build an id-set, and route updates by id. The rule
 carries no learnable optimizer state of its own — unlike Meta-SGD I add no meta-parameters — so
 `meta_parameters()` returns `[]`, and the only things the outer Adam optimizes are the model's own
-weights. The full scaffold module is in the answer.
+weights. The full module is in the answer.
 
-There is a structural point worth naming, because it inverts the pattern of the ladder so far. Every
-previous rung *added* to the inner loop's expressiveness — MAML fixed a scalar, Meta-SGD generalized it
-to a diagonal, a strict superset. ANIL goes the other way: freezing the body is exactly MAML with the
-body's inner rates constrained to zero, so ANIL's inner loop is a *restriction* of MAML's, a strictly
-smaller hypothesis space of adaptations. On expressiveness alone it can only match MAML, never exceed
-it. Yet I expect it to *beat* MAML at 5-shot, and the only way to square that is that the extra
-expressiveness MAML had over ANIL was expressiveness to *overfit* — the body's freedom to adapt was
-capacity spent fitting the support, not generalizing. So the move that helps is a constraint, not a
-capacity, which is the precise opposite of Meta-SGD, where I added capacity and it hurt. Two rungs, two
-directions, and the same underlying fact: at 5-shot the binding limit was never how expressive the step
-is, it was how much room the inner loop has to overfit the body. ANIL removes that room.
+The move also inverts the pattern of the progression so far. Both previous methods *added* to the inner
+loop's expressiveness — MAML fixed a scalar, Meta-SGD generalized it to a diagonal, a strict superset.
+ANIL goes the other way: freezing the body is exactly MAML with the body's inner rates constrained to
+zero, so ANIL's inner loop is a *restriction* of MAML's, a strictly smaller hypothesis space. On
+expressiveness alone it can only match MAML, never exceed it. Yet I expect it to *beat* MAML at 5-shot,
+and the only way to square that is that the extra expressiveness MAML had over ANIL was expressiveness
+to *overfit* — the body's freedom to adapt was capacity spent fitting the support, not generalizing. So
+the move that helps is a constraint, not a capacity, the precise opposite of Meta-SGD: at 5-shot the
+binding limit was never how expressive the step is, it was how much room the inner loop has to overfit
+the body, and ANIL removes that room.
 
-So the delta from step 2 is a change of axis, not of capacity: Meta-SGD added a learnable
-per-parameter rate over *all* parameters and meta-overfit at 5-shot; ANIL instead freezes the body's
-inner loop entirely and adapts only the head, with no extra meta-parameters and a fraction of the
-per-task cost — the inner-loop Hessian-vector product now runs over the $8005$-parameter head rather
-than the $121\text{K}$-parameter whole, more than an order of magnitude smaller. Reading Meta-SGD's shape, the falsifiable claims are pointed at the two places it
-failed. At **5-shot** ANIL should *recover* what Meta-SGD lost and likely edge past MAML, because the
-meta-overfitting was caused by adapting body parameters that should not move — freeze them and the
-regression should reverse: miniImageNet 5-shot back above 0.6379 and CIFAR-FS 5-shot back toward or
-past 0.7067, with CIFAR's seed spread tightening from Meta-SGD's 0.0113 back toward MAML's 0.0027. At
-**1-shot** ANIL should at least hold Meta-SGD's 0.4760 — the head still gets a genuine,
-second-order-aware inner loop, which is the part that fixed 1-shot in the first place — and may improve
-on it, since head-only adaptation from a single example is far less prone to the instability that forced
-MAML's tiny rate (there is no full-network step to diverge, and the wobbling BatchNorm statistics no
-longer feed an inner update). If instead 1-shot were to drop, that would falsify the feature-reuse story
-for the thin-support regime and say the body's inner loop was load-bearing at 1-shot after all. The bet
-is the opposite: feature reuse is the whole game, the body's inner loop was always along for the ride,
-and removing it fixes 5-shot while holding 1-shot — which would make ANIL the strongest rung on every
-benchmark at the lowest cost. Concretely the bar is the three-benchmark average: MAML sits at $0.5937$
-and Meta-SGD at $0.5961$, so for ANIL to be the strongest rung rather than a third wash it has to clear
-both — and if the feature-reuse account is right, it should clear them not by robbing one benchmark for
-another the way Meta-SGD did, but by lifting the two 5-shot columns while at least holding 1-shot, a
-uniform gain rather than a redistribution. The 5-shot columns are where I will know first whether
-freezing the body was the right axis.
+So the move is a change of axis, not of capacity: where Meta-SGD added a learnable per-parameter rate
+over all parameters and meta-overfit at 5-shot, ANIL freezes the body's inner loop entirely and adapts
+only the head, with no extra meta-parameters and the inner-loop Hessian-vector product now over the
+$8005$-parameter head rather than the $121\text{K}$-parameter whole. The claims are pointed at the two
+places Meta-SGD failed. At **5-shot** ANIL should *recover* what Meta-SGD lost and likely edge past
+MAML, because the meta-overfitting came from adapting body parameters that should not move — freeze them
+and the regression reverses: miniImageNet 5-shot back above 0.6379 and CIFAR-FS 5-shot toward or past
+0.7067, with CIFAR's spread tightening from Meta-SGD's 0.0113 back toward MAML's 0.0027. At **1-shot**
+ANIL should at least hold Meta-SGD's 0.4760 — the head still gets a genuine, second-order-aware inner
+loop, the part that fixed 1-shot — and may improve on it, since head-only adaptation from a single
+example is far less prone to the instability that forced MAML's tiny rate (no full-network step to
+diverge, and the wobbling BatchNorm statistics no longer feed an inner update). A 1-shot drop would
+falsify feature reuse in the thin-support regime. The bet is the opposite, and its signature is a
+*uniform* gain: the three-benchmark average bar is MAML's $0.5937$ and Meta-SGD's $0.5961$, and if
+feature reuse is the whole game, ANIL clears both not by robbing one benchmark to pay another the way
+Meta-SGD did, but by lifting the two 5-shot columns while at least holding 1-shot.
