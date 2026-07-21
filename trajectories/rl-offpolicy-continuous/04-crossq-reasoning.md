@@ -1,171 +1,23 @@
-TD3 won the leaderboard, and it won it the way I hoped — by being strong on all three environments at
-once rather than trading one region for another. HalfCheetah recovered to 11055 (from SAC's 10360),
-Reacher snapped back to −3.83 (from SAC's −4.76, essentially level with DDPG's −3.94), and Ant came in
-highest of all, 4642 (from SAC's 3577). So the deterministic actor reclaimed the entropy tax exactly
-where I predicted, and the twin-min carried over the overestimation control that fixed Ant. But the
-residual I flagged at the close of rung 3 is sitting right there in the Ant column: the per-seed Ant
-returns are {4763, 3407, 5757} — a range of `5757 − 3407 = 2350`, the widest of any environment on
-the board, about 51% of the 4642 mean. Line it up against the other columns to be sure it is
-Ant-specific: HalfCheetah's TD3 seeds {10446, 11283, 11435} span 989 (9% of the mean), Reacher's
-{−3.81, −4.20, −3.48} span 0.72. So the instability is concentrated entirely on the high-dimensional
-task, exactly where the critic has the most to learn. That is not a strong-but-stable result; it is a
-strong-on-average result with one seed (3407) lagging the best (5757) by `1 − 3407/5757 ≈ 41%`. And
-this pattern survived every fix so far — twin-min, target smoothing, delayed updates all landed, the
-mean climbed 3577→4642, and *still* one Ant seed sits 41% below its sibling. And I named the suspect already: every rung so far, DDPG, SAC,
-TD3, learns its critic through *stale target networks*. The smoothed twin-min target TD3 reads is
-computed off slow copies `Q_{θ'}`, lagged by `tau=0.005`, and `tau` is a knob balancing a deliberately
-delayed signal against jitter. A lagged bootstrap is a slower, noisier learning signal, and on the
-high-dimensional task where the critic has the most to learn and the most room to be wrong, that
-staleness is the most likely source of the seed that fell behind. So the move is to attack the target
-network itself.
+TD3 won the leaderboard, and it won it the way I hoped — strong on all three environments at once rather than trading one region for another. HalfCheetah recovered to 11055 (from SAC's 10360), Reacher snapped back to −3.83 (from SAC's −4.76, level with DDPG's −3.94), and Ant came in highest of all, 4642 (from SAC's 3577). So the deterministic actor reclaimed the entropy tax exactly where I predicted, and the twin-min carried over the overestimation control that fixed Ant. But the residual I flagged at the close of rung 3 is sitting right there in the Ant column: the per-seed Ant returns are {4763, 3407, 5757} — a range of 2350, the widest of any environment on the board (about 51% of the mean), against HalfCheetah's 989 (9%) and Reacher's 0.72. So the instability is concentrated entirely on the high-dimensional task, one seed lagging the best by ~40%. This pattern survived every fix so far — twin-min, target smoothing, delayed updates all landed, the mean climbed 3577→4642, and still one Ant seed sits well below its sibling. And I named the suspect already: every rung so far, DDPG, SAC, TD3, learns its critic through *stale target networks*. The smoothed twin-min target TD3 reads is computed off slow copies `Q_{θ'}`, lagged by `tau=0.005`, and on the high-dimensional task where the critic has the most to learn and the most room to be wrong, that staleness is the most likely source of the seed that fell behind. So the move is to attack the target network itself.
 
-Let me re-derive *why* the target network is there, because the folklore answer — "the bootstrap would
-chase itself" — is not specific enough to attack. The critic minimizes `(Q_θ(s,a) − [r + γ Q_θ(s',a')])²`.
-Standard practice already detaches the next-state value, so there is no degenerate "shrink the target"
-gradient path; the question is what diverges when that detached value is computed from the *live*
-critic instead of a frozen copy. Two things. One, the target value moves every step because θ moves —
-the regression objective is non-stationary, the DQN story. Two, and I think this is the one actually
-doing the damage, the input distributions at `(s,a)` and `(s',a')` are *not the same*. The actions `a`
-at the current state come from the replay buffer — a mixture of stale policies. The actions `a'` at the
-next state come from the *current* policy. Those are different action distributions over different
-states, and a single critic is being asked to be accurate on both and to relate them through the
-Bellman equation. A deep net's behavior on one input cloud is unconstrained by its behavior on
-another; if the critic drifts to different scales on the `(s,a)` cloud versus the `(s',a')` cloud — and
-nothing prevents that — the bootstrap relates two numbers on different scales and the recursion
-amplifies the mismatch. The target network masks this by freezing one side, so the mismatch cannot run
-away; but it does not *address* it, it just slows everything enough to contain it, at the cost of the
-staleness that is hurting Ant.
+Let me re-derive *why* the target network is there, because the folklore answer — "the bootstrap would chase itself" — is not specific enough to attack. The critic minimizes `(Q_θ(s,a) − [r + γ Q_θ(s',a')])²`. Standard practice already detaches the next-state value, so there is no degenerate "shrink the target" gradient path; the question is what diverges when that detached value is computed from the *live* critic instead of a frozen copy. Two things. One, the target value moves every step because θ moves — the regression objective is non-stationary, the DQN story. Two, and I think this is the one doing the damage, the input distributions at `(s,a)` and `(s',a')` are *not the same*: the actions `a` at the current state come from the replay buffer, a mixture of stale policies, while the actions `a'` at the next state come from the *current* policy. Those are different action distributions over different states, and a single critic is asked to be accurate on both and to relate them through the Bellman equation. A deep net's behavior on one input cloud is unconstrained by its behavior on another; if the critic drifts to different scales on the `(s,a)` cloud versus the `(s',a')` cloud — and nothing prevents that — the bootstrap relates two numbers on different scales and the recursion amplifies the mismatch. The target network masks this by freezing one side so the mismatch cannot run away, but it does not *address* it; it just slows everything enough to contain it, at the cost of the staleness that is hurting Ant.
 
-That reframing is the lever. If the real disease is a *distribution mismatch between the current and
-next state-action inputs to one critic*, then the cure is not "freeze one side" — it is "make the two
-sides share a normalized distribution so the critic sees them as one population." And the standard tool
-whose entire job is to normalize a layer's inputs to a controlled distribution is Batch Normalization.
-So: put normalization inside the critic and remove the very mismatch the target network was
-compensating for. If it works, the target network is redundant and I delete it — which kills the
-staleness *and* the `tau` knob at once.
+That reframing is the lever. If the real disease is a *distribution mismatch between the current and next state-action inputs to one critic*, then the cure is not "freeze one side" — it is "make the two sides share a normalized distribution so the critic sees them as one population." And the standard tool whose entire job is to normalize a layer's inputs to a controlled distribution is Batch Normalization. So: put normalization inside the critic and remove the very mismatch the target network was compensating for. If it works, the target network is redundant and I delete it — which kills the staleness *and* the `tau` knob at once.
 
-Before I reach for BatchNorm I should ask whether a *cheaper* normalizer would do, because the field's reflex against BatchNorm in RL is strong and LayerNorm is the fashionable safe substitute. But walk what LayerNorm actually does: it normalizes each *sample* across its own feature dimension, so it never looks at the rest of the batch — the `(s,a)` row and the `(s',a')` row are each rescaled by their own per-row statistics, independently. That stabilizes activations, and it is why LayerNorm is a fine generic regularizer, but it does exactly nothing about the disease I just named. My disease is a mismatch *between two clouds*, and the only way to force those two clouds onto one scale is a normalizer that computes its statistics *across the batch*, so that the same shared mean and variance apply to a current and a next row alike. LayerNorm's per-sample normalization cannot couple the two populations by construction; it would leave the critic free to drift to different scales on the two clouds, which is the thing the target network was compensating for. So the cross-batch coupling is not incidental to the fix — it *is* the fix, and only a batch-statistics normalizer supplies it. That rules LayerNorm out and points squarely at BatchNorm. So: put batch normalization inside the critic and remove the very mismatch the target network was compensating for. If it works, the target network is redundant and I delete it — which kills the staleness *and* the `tau` knob at once.
+Before I reach for BatchNorm I should ask whether a *cheaper* normalizer would do, because the field's reflex against BatchNorm in RL is strong and LayerNorm is the fashionable safe substitute. But LayerNorm normalizes each *sample* across its own feature dimension, so it never looks at the rest of the batch — the `(s,a)` row and the `(s',a')` row are each rescaled by their own per-row statistics, independently. That stabilizes activations, but it does nothing about the disease I named. My disease is a mismatch *between two clouds*, and the only way to force those two clouds onto one scale is a normalizer that computes its statistics *across the batch*, so the same shared mean and variance apply to a current and a next row alike. LayerNorm's per-sample normalization cannot couple the two populations by construction; it would leave the critic free to drift to different scales on the two clouds — the thing the target network was compensating for. So the cross-batch coupling is not incidental to the fix, it *is* the fix, and only a batch-statistics normalizer supplies it. That rules LayerNorm out and points squarely at BatchNorm.
 
-But BatchNorm has a bad reputation in value learning, and I should reproduce the failure before I trust
-a fix. Insert vanilla BatchNorm the obvious way: forward `(s,a)` through the critic for the prediction,
-*separately* forward `(s',a')` (no-grad) for the bootstrap value, form the target, regress. In the
-first pass BatchNorm normalizes by the `(s,a)` batch's mean/variance; in the second pass by the
-`(s',a')` batch's mean/variance. Those statistics differ — exactly because the two batches have
-different distributions, the mismatch I am trying to fix — so the critic is literally a *different
-function* in the two passes: same weights, different normalization, different effective transform. The
-Bellman equation now relates the outputs of two non-identical functions, which is incoherent, and the
-separately-updated running statistics lurch. Make the incoherence concrete: suppose at some hidden unit
-the `(s,a)` batch has mean 2.0 and the `(s',a')` batch mean 2.5 — a modest half-unit gap from the
-policy having moved. Vanilla BN subtracts 2.0 in the first pass and 2.5 in the second, so the *same*
-downstream weights act on activations that have been recentered by different amounts; the critic's
-prediction and its own bootstrap target are computed in two different coordinate frames, and the
-regression `Q(s,a) ≈ r + γ Q(s',a')` is trying to equate numbers that no longer live on a common axis.
-Worse, since the policy keeps moving, that half-unit gap itself drifts, so the two running-statistics
-buffers chase two different moving targets and can diverge over training. That is precisely why naive
-BatchNorm destabilizes critics — it is not that normalization is toxic to value learning, it is that
-normalizing the two Bellman sides *separately* manufactures the very mismatch it should remove — and
-naming the cause names the fix: normalize them jointly.
+But BatchNorm has a bad reputation in value learning, and I should reproduce the failure before I trust a fix. Insert vanilla BatchNorm the obvious way: forward `(s,a)` through the critic for the prediction, *separately* forward `(s',a')` (no-grad) for the bootstrap value, form the target, regress. In the first pass BatchNorm normalizes by the `(s,a)` batch's mean/variance; in the second by the `(s',a')` batch's — and those statistics differ precisely because the two batches have different distributions, the mismatch I am trying to fix. So the critic is literally a *different function* in the two passes: same weights, different normalization. If at some hidden unit the `(s,a)` batch has mean 2.0 and the `(s',a')` batch mean 2.5, vanilla BN recenters by different amounts in the two passes, so the same downstream weights act on activations in two different coordinate frames, and the regression `Q(s,a) ≈ r + γ Q(s',a')` tries to equate numbers that no longer live on a common axis. Worse, since the policy keeps moving, that gap itself drifts, so the two running-statistics buffers chase two moving targets and diverge over training. That is precisely why naive BatchNorm destabilizes critics — not that normalization is toxic to value learning, but that normalizing the two Bellman sides *separately* manufactures the very mismatch it should remove. Naming the cause names the fix: normalize them jointly.
 
-Do not let the normalization see the two batches as two populations. *Concatenate* them: stack `(s,a)`
-on top of `(s',a')` into one batch of size `2N`, do a *single* forward pass through the normalized
-critic, split the output into the current-state predictions and the next-state values. Now the
-normalization computes its moments from the *union* of both sub-batches — one shared distribution — so
-every input, current or next, is normalized identically and the critic is one consistent function
-across both. The prediction and the bootstrap target now live on the same normalized scale by
-construction. This is almost free: one concatenation, one forward pass over a `2N = 512`-row batch, one split. Count the cost honestly — a single forward over 512 rows is essentially the same arithmetic as two forwards over 256 rows, so I am not paying extra compute; I am paying the *same* compute I would spend forwarding current and next separately, just arranged so the normalization sees them together. And I am *saving* the compute and memory of every target network I delete. The one subtlety is the batch statistics are now computed over the union of the two clouds, so the shared mean and variance sit between the current and next distributions — which is the entire point: both halves get normalized to the same in-between reference, and neither is normalized to its own private scale. The next-state half is detached before forming the target — it is a bootstrap
-value, no gradient flows into it — but it shares the forward pass and therefore the normalization with
-the current-state half. That shared normalization is what the target network was crudely approximating,
-and now I get it exactly, from the *live* critic, with no lag. So: normalized critic, current and next
-forwarded jointly, and no target network at all.
+Do not let the normalization see the two batches as two populations. *Concatenate* them: stack `(s,a)` on top of `(s',a')` into one batch of size `2N`, do a *single* forward pass through the normalized critic, split the output into the current-state predictions and the next-state values. Now the normalization computes its moments from the *union* of both sub-batches — one shared distribution — so every input, current or next, is normalized identically and the critic is one consistent function across both; prediction and bootstrap target live on the same normalized scale by construction. This is almost free: a single forward over the `2N = 512`-row batch is essentially the same arithmetic as two forwards over 256 rows, just arranged so the normalization sees them together, and I *save* the compute and memory of every target network I delete. The one subtlety is that the shared mean and variance now sit between the current and next distributions — which is the entire point: both halves get normalized to the same in-between reference, neither to its own private scale. The next-state half is detached before forming the target — it is a bootstrap value, no gradient flows into it — but it shares the forward pass and therefore the normalization with the current-state half. That shared normalization is what the target network was crudely approximating, and now I get it exactly, from the *live* critic, with no lag.
 
-Two roles the target network played — stationarity and cross-batch consistency — and the joint-batch
-normalization takes over both. It directly kills the cross-batch mismatch (both sides share moments),
-and it substantially tames the non-stationarity, because normalization fixes the scale and center of
-each layer's activations every step, so the representation the later layers see is far more stationary
-than raw activations even as θ moves. The target network has nothing left to do; delete it. The
-bootstrap value is the live critic's next-state output, detached, normalized jointly with the
-prediction.
+Two roles the target network played — stationarity and cross-batch consistency — and joint-batch normalization takes over both. It directly kills the cross-batch mismatch, and it substantially tames the non-stationarity, because normalization fixes the scale and center of each layer's activations every step, so what the later layers see is far more stationary than raw activations even as θ moves. The target network has nothing left to do; delete it. The bootstrap value is the live critic's next-state output, detached, normalized jointly with the prediction.
 
-One refinement, because plain BatchNorm is not quite enough under RL's non-stationarity. BatchNorm
-normalizes by *batch* statistics in training but by *running* statistics at inference, and that gap is
-benign with large i.i.d. batches and harmful here: the policy is changing, the replay distribution
-drifts, the running statistics chase a moving target, and a minibatch's stats can swing far from them.
-Batch Renormalization (Ioffe 2017) is the patch: keep normalizing by batch statistics but add a
-clipped affine correction `(r, d)` that ties the batch normalization back to the running statistics,
-`r = clip(σ_batch/σ_run, 1/r_max, r_max)` and `d = clip((μ_batch − μ_run)/σ_run, −d_max, d_max)`, and
-both detached (constants, not differentiated). Read what the clips buy at `r_max=3, d_max=5`: `r` is
-free to correct the batch's scale toward the running scale by up to a factor of 3 in either direction
-before it saturates, and `d` can shift the batch's center by up to 5 running-standard-deviations. Well
-inside those bands, `r→σ_batch/σ_run` and `d→(μ_batch−μ_run)/σ_run` exactly, so the layer is
-normalizing by the *running* statistics — the stationary, drift-averaged ones — while still
-differentiating through the batch. When a minibatch's stats swing wildly out (the RL non-stationarity
-case), the clips cap how far that swing can distort the normalization, so a freak batch cannot yank
-the transform around. That is precisely the failure mode plain BatchNorm has under drifting data, and
-the clip is the guard. The running stats themselves update as an EMA with `momentum=0.01`, a time
-constant of `1/0.01 = 100` updates, slow enough to average over the replay drift but fast enough to
-follow it. So the critic's normalization layer is BatchRenorm, with that small momentum and the `(r,d)`
-corrections stop-gradiented.
+One refinement, because plain BatchNorm is not quite enough under RL's non-stationarity. BatchNorm normalizes by *batch* statistics in training but by *running* statistics at inference, and that gap is benign with large i.i.d. batches but harmful here: the policy is changing, the replay distribution drifts, the running statistics chase a moving target, and a minibatch's stats can swing far from them. Batch Renormalization is the patch: keep normalizing by batch statistics but add a clipped affine correction `(r, d)` that ties the batch normalization back to the running statistics, `r = clip(σ_batch/σ_run, 1/r_max, r_max)` and `d = clip((μ_batch − μ_run)/σ_run, −d_max, d_max)`, both detached. Well inside the clip bands `r→σ_batch/σ_run` and `d→(μ_batch−μ_run)/σ_run` exactly, so the layer normalizes by the *running* — stationary, drift-averaged — statistics while still differentiating through the batch; when a minibatch's stats swing wildly out (the RL non-stationarity case), the clips at `r_max=3, d_max=5` cap how far that swing can distort the transform, so a freak batch cannot yank it around. The running stats update as an EMA with `momentum=0.01`, a time constant of 100 updates, slow enough to average over the replay drift but fast enough to follow it. So the critic's normalization layer is BatchRenorm, with that small momentum and the `(r,d)` corrections stop-gradiented.
 
-Now everything else stays SAC, deliberately, because the contribution is a normalization change and I
-do not want to confound it. The actor is the stochastic tanh-Gaussian, reparameterized, with the
-squash log-prob correction — the same actor rung 2 used, returning `(action, log_prob, mean)` so the
-loop's `eval_actor` unwraps it. Twin critics with a `min` next-state target, minus the entropy term,
-and automatic temperature tuning to `H_target = −dim(A)`. The maximum-entropy objective is back, but
-note the difference from rung 2's concern: SAC's entropy tax came from a *deliberately* stochastic
-*deterministic-task* policy at evaluation, and here evaluation still reads the policy mean
-(`mean_action`), so the entropy serves exploration during training while evaluation stays the sharp
-mean — and the real lever this rung pulls is not the actor at all, it is the normalized,
-target-free critic. The entropy temperature self-tunes per environment, which is what I want across
-HalfCheetah, Reacher, and Ant.
+Everything else stays SAC, deliberately, because the contribution is a normalization change and I do not want to confound it. The actor is the stochastic tanh-Gaussian, reparameterized, with the squash log-prob correction — the rung-2 actor, returning `(action, log_prob, mean)` so the loop's `eval_actor` unwraps it. Twin critics with a `min` next-state target minus the entropy term, and automatic temperature tuning to `H_target = −dim(A)`. The maximum-entropy objective is back, but note the difference from rung 2's concern: SAC's entropy tax came from a deliberately stochastic policy at *evaluation*, and here evaluation reads the policy mean (`mean_action`), so the entropy serves exploration during training while evaluation stays the sharp mean. The real lever this rung pulls is not the actor at all — it is the normalized, target-free critic — and the entropy temperature self-tunes per environment across HalfCheetah, Reacher, and Ant.
 
-This task's harness shapes two things I must be honest about, because the baseline named after this
-method here is not the full configuration. First, the network *dimensions are fixed* — a
-parameter-count check enforces 256-wide layers — so I cannot widen the critic to the full method's 2048
-units. That widening accounts for part of the accuracy, which the normalization makes trainable;
-here I keep 256-wide critics and rely only on the normalization-plus-no-target mechanism, so I should
-expect the *mechanism's* benefit (un-stale bootstrap, consistent cross-batch scale) without the
-extra-capacity benefit. Second, with the target network gone there is no `tau` and the critic learns
-from a fresh signal, so I update the actor *every* step (policy delay 1) rather than every two — the
-critic no longer needs to settle behind a lagged target before each policy move, because there is no
-lag. That is worth stating as a mechanism, not just a hyperparameter flip: the delay in TD3 existed
-*because* the target was stale — the actor had to wait for the critic to catch up to a lagged signal.
-Remove the lag and the reason for the delay evaporates, so `policy_frequency=1` is not an independent
-tuning choice, it is a *consequence* of deleting the target network. It also roughly doubles the
-actor's update count over the run, from ~487500 to ~975000, which the un-stale critic can now afford to
-support. And count what the deletion saves on the fixed budget: dropping two target critics removes on
-the order of `2 × 72k ≈ 144k` parameters plus their memory and the `soft_update` traffic every step, so
-the target-free critic is *lighter* than the twin-target design it replaces, not heavier — the added
-BatchRenorm layers cost only their per-feature scale, shift, and running buffers, a few hundred
-parameters each, negligible against the 144k of target networks removed. I also keep the BatchRenorm eps at the scaffold's numerical setting rather than the canonical value, and
-toggle the critics to eval mode for the actor's Q-evaluation (the actor reads the critic on a single
-current-state batch, which should use running statistics, not recompute batch stats on a one-sided
-batch). The reason this matters is the same joint-batch logic in reverse: during the critic update I
-*want* both clouds present so BatchRenorm couples them, but during the actor update I feed only current
-states `(s, π(s))` — there is no next-state half to pair them with. If I left the critic in train mode
-it would normalize that one-sided batch by *its own* mean and variance, which is a different transform
-from the one the critic was fit under, so the actor would be ascending a critic that is silently a
-different function than the one being trained. Switching to eval mode makes the critic use the running
-statistics — the drift-averaged reference it accumulated during training — so the actor reads the same
-critic it is optimizing, on a consistent scale. It is a small toggle but a load-bearing one: without
-it the actor and critic would be looking at two different normalizations of the same network. So the scaffold delta from TD3 is: bring back SAC's stochastic actor and entropy tuning, put
-BatchRenorm into the `QNetwork`, forward current and next state-action jointly through each twin critic,
-delete both target critics and the target actor and all soft-updates, and update the actor every step.
-The full scaffold module is in the answer.
+This harness shapes two things I must be honest about. First, the network *dimensions are fixed* — the parameter-count check pins 256-wide layers — so I cannot widen the critic, which would add capacity the normalization makes trainable. Here I keep 256-wide critics and rely on the normalization-plus-no-target mechanism alone, so I should expect the *mechanism's* benefit (un-stale bootstrap, consistent cross-batch scale) without any extra-capacity benefit. Second, with the target network gone there is no `tau` and the critic learns from a fresh signal, so I update the actor *every* step (`policy_frequency=1`) rather than every two. That is a mechanism, not a free tuning flip: TD3's delay existed *because* the target was stale — the actor had to wait for the critic to catch up to a lagged signal — so removing the lag removes the reason for the delay, and `policy_frequency=1` is a consequence of deleting the target network, not an independent choice. It also roughly doubles the actor's update count, which the un-stale critic can afford. And deleting two target critics *lightens* the fixed budget rather than burdening it — the BatchRenorm layers cost only their per-feature scale, shift, and running buffers, negligible against the target networks removed.
 
-The bar this has to clear is TD3's measured board, and the claims are falsifiable seed by seed. The
-headline test is Ant: if the staleness diagnosis is right, removing the target network should
-*tighten* the Ant seed spread that TD3 left at {4763, 3407, 5757} — the lagging 3407 seed should come
-up, because an un-stale bootstrap learns the high-dimensional critic faster and more consistently — and
-the Ant mean should land at or above TD3's 4642. If Ant's spread stays as wide, the target network was
-not the cause and the variance is coming from somewhere else. HalfCheetah and Reacher are near
-saturation for the good methods (TD3 at 11055 and −3.83), so the test there is *holding*, not jumping:
-the normalized critic and the entropy-explored-but-mean-evaluated actor should match TD3 on both, and a
-*drop* on Reacher would mean the residual evaluation behavior is not as sharp as TD3's deterministic
-policy. There is a real risk specific to this constrained version: stripped of the full method's critic
-widening, the normalization-only CrossQ may not separate from TD3 by much — the honest expectation is
-parity-to-better with a tighter Ant, not a blowout. What this rung adds to the ladder is not a bigger
-number guaranteed; it is the demonstration that the target network — the one fixture every prior rung
-inherited unquestioned — is removable, and that the seed-to-seed instability still visible in the
-strongest baseline's Ant column is exactly what a target-free, jointly-normalized critic is built to
-cure. The leaderboard has no CrossQ row to confirm it; what the trajectory ends on is the construction
-whose joint-batch normalization makes the stale bootstrap unnecessary.
+One load-bearing toggle: I switch the critics to eval mode for the actor's Q-evaluation. During the critic update I *want* both clouds present so BatchRenorm couples them, but during the actor update I feed only current states `(s, π(s))` — there is no next-state half to pair them with. Left in train mode, the critic would normalize that one-sided batch by its own mean and variance, a different transform from the one it was fit under, so the actor would ascend a critic that is silently a different function than the one being trained. Eval mode makes the critic use the running statistics — the drift-averaged reference it accumulated during training — so the actor reads the same critic it is optimizing, on a consistent scale. Small toggle, but without it the actor and critic look at two different normalizations of the same network. So the scaffold delta from TD3 is: bring back SAC's stochastic actor and entropy tuning, put BatchRenorm into the `QNetwork`, forward current and next state-action jointly through each twin critic, delete both target critics and the target actor and all soft-updates, and update the actor every step. The full scaffold module is in the answer.
+
+The bar this has to clear is TD3's measured board, and the claims are falsifiable seed by seed. The headline test is Ant: if the staleness diagnosis is right, removing the target network should *tighten* the Ant seed spread TD3 left at {4763, 3407, 5757} — the lagging 3407 seed should come up, because an un-stale bootstrap learns the high-dimensional critic faster and more consistently — and the Ant mean should land at or above 4642. If the spread stays as wide, the target network was not the cause and the variance comes from elsewhere. HalfCheetah and Reacher are near saturation for the good methods (11055 and −3.83), so the test there is *holding*, not jumping; a drop on Reacher would mean the residual evaluation behavior is not as sharp as TD3's deterministic policy. There is a real risk specific to this constrained version: stripped of any critic widening, the normalization-only method may not separate from TD3 by much — the honest expectation is parity-to-better with a tighter Ant, not a blowout. What this rung adds is not a bigger number guaranteed; it is the demonstration that the target network — the fixture every prior rung inherited unquestioned — is removable, and that the seed-to-seed instability still visible in the strongest baseline's Ant column is exactly what a target-free, jointly-normalized critic is built to cure.
