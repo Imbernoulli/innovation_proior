@@ -85,13 +85,13 @@ The logit should then collapse to a single relative rotation. Rotations compose 
 
   q_m^T k_n = (R^d_{Theta, m} W_q x_m)^T (R^d_{Theta, n} W_k x_n) = x_m^T W_q^T R^d_{Theta, n-m} W_k x_n.
 
-I've been manipulating block matrices in my head and I want to make sure the gluing across planes and the transpose convention are actually right, not just plausible. Let me take d = 4 with the two-frequency schedule (theta = [1, 0.01]), fix arbitrary content vectors q = W_q x_m and k = W_k x_n, and compute. First the composition: build R_m and R_n as 4x4 block-diagonal rotations and form R_m^T R_n versus R_{n-m} directly. For m = 5, n = 8, max |R_5^T R_8 - R_3| comes out 1.1e-16 — equal to machine precision, so the transpose really does subtract angles and leave R_{n-m}. Then the relative property on the actual logit: (R_5 q)·(R_8 k) = 1.03749, and at the shifted pair (R_105 q)·(R_108 k) = 1.03749 — identical to five places, same offset -3. Move to offset -4, (R_5 q)·(R_9 k) = 0.97103, and it changes. So the logit tracks m - n and is blind to the absolute shift, exactly the demand, and now I've watched it happen on numbers rather than trusting the algebra. The sign also lines up with the complex check above: with this real rotation convention, q^T R_delta k equals Re[q k* e^{-i delta}], so the matrix-form R_{n-m} is the same relative dependence as the complex-form e^{i(m-n)theta}.
+The gluing across planes and the transpose convention are worth checking on numbers, not just in my head. Take d = 4 with the two-frequency schedule (theta = [1, 0.01]), fix arbitrary content vectors q = W_q x_m and k = W_k x_n, and compute. First the composition: build R_m and R_n as 4x4 block-diagonal rotations and form R_m^T R_n versus R_{n-m} directly. For m = 5, n = 8, max |R_5^T R_8 - R_3| comes out 1.1e-16 — equal to machine precision, so the transpose really does subtract angles and leave R_{n-m}. Then the relative property on the actual logit: (R_5 q)·(R_8 k) = 1.03749, and at the shifted pair (R_105 q)·(R_108 k) = 1.03749 — identical to five places, same offset -3. Move to offset -4, (R_5 q)·(R_9 k) = 0.97103, and it changes. So the logit tracks m - n and is blind to the absolute shift, exactly the demand, and now I've watched it happen on numbers rather than trusting the algebra. The sign also lines up with the complex check above: with this real rotation convention, q^T R_delta k equals Re[q k* e^{-i delta}], so the matrix-form R_{n-m} is the same relative dependence as the complex-form e^{i(m-n)theta}.
 
 The position difference sits in a single rotation matrix sandwiched between the content projections. No learned position table, no clip, no bias bucket. And R is orthogonal, so it preserves norms — applying it can't blow up or collapse the representation as it propagates through layers, which is the stability I wanted when the magnitude dropped out of the 2D solution.
 
 What frequencies? I have d/2 of them to choose. I keep coming back to the sinusoid: its geometric spread of wavelengths is what gave it multi-resolution coverage, and I want the same — some planes that spin fast and resolve local offsets, some that spin slowly and stay almost fixed over the whole sequence to carry coarse position. So reuse exactly that schedule: theta_i = 10000^{-2(i-1)/d} for i = 1..d/2. This isn't an arbitrary borrow; it makes the construction literally the relative-rotation version of sinusoidal encoding. Fast planes for nearby tokens, slow planes for far ones. (And as a practical aside, if I let the theta_i be learned, they barely move from this initialization — so there's no reason to spend parameters on them; freeze them.)
 
-Now, do I want this decay-envelope intuition to actually be true, or am I just asserting it? Let me check whether far-apart tokens really do get a weaker positional signal. Group q = W_q x_m and k = W_k x_n into d/2 complex pairs and write the logit as a sum over planes:
+Whether far-apart tokens really do get a weaker positional signal is a question I can answer directly rather than leave as intuition. Group q = W_q x_m and k = W_k x_n into d/2 complex pairs and write the logit as a sum over planes:
 
   q_m^T k_n = Re[ sum_{i=0}^{d/2-1} q_{[2i:2i+1]} k_{[2i:2i+1]}* e^{i(m-n) theta_i} ].
 
@@ -105,7 +105,7 @@ where the boundary terms vanish because S_0 = 0 and h_{d/2} = 0. Take magnitudes
                                    <= sum_i |S_{i+1}| |h_{i+1} - h_i|
                                    <= ( max_i |h_{i+1} - h_i| ) * sum_i |S_{i+1}|.
 
-This factors cleanly: a content piece, max_i |h_{i+1} - h_i|, times a purely positional envelope sum_i |S_{i+1}|. The content piece doesn't know about m - n at all. So the question of decay is entirely about the envelope (1/(d/2)) sum_i |S_i|. The story I want to tell is that because the theta_i are a geometric sweep, as |m - n| grows the phases e^{i(m-n)theta_i} spread out across the frequencies, the partial sums S_i lose coherence, and the envelope shrinks. But I've been burned by plausible-sounding spectral hand-waving before, so let me actually evaluate this envelope rather than assert it decays. Take d = 64 (so d/2 = 32 frequencies) and the standard schedule, and tabulate the averaged envelope for growing offsets:
+This factors cleanly: a content piece, max_i |h_{i+1} - h_i|, times a purely positional envelope sum_i |S_{i+1}|. The content piece doesn't know about m - n at all. So the question of decay is entirely about the envelope (1/(d/2)) sum_i |S_i|. The story I want to tell is that because the theta_i are a geometric sweep, as |m - n| grows the phases e^{i(m-n)theta_i} spread out across the frequencies, the partial sums S_i lose coherence, and the envelope shrinks. That's a claim about spectral coherence, not a computation, so evaluate the envelope directly. Take d = 64 (so d/2 = 32 frequencies) and the standard schedule, and tabulate the averaged envelope for growing offsets:
 
   delta=0:   16.50    delta=1:   15.95    delta=2:   14.48    delta=4:   11.14
   delta=8:    9.92    delta=16:   7.65    delta=32:   7.65    delta=64:   5.70
@@ -115,122 +115,10 @@ At delta = 0 every phase is 1 and the cumulative sums grow straight out to S_32 
 
 Two practical things before code. First, I'm not going to build that block-diagonal matrix and matrix-multiply — it's mostly zeros, O(d^2) for an O(d) operation. The rotation of each 2-plane (x_{2i}, x_{2i+1}) by angle m*theta_i is, written out, x_{2i} cos - x_{2i+1} sin and x_{2i+1} cos + x_{2i} sin. So I can do the whole thing elementwise: take x, multiply by the cosine vector [cos m*theta_1, cos m*theta_1, cos m*theta_2, cos m*theta_2, ...] (each frequency repeated for its two coordinates), and add a "rotated" copy of x — namely [-x_2, x_1, -x_4, x_3, ...], the per-pair 90-degree swap — multiplied by the matching sine vector. That's R^d_{Theta, m} x = x (*) cos_vec + rotate(x) (*) sin_vec, two elementwise multiplies and an add, O(d). This is the form I'll actually run, so I should confirm it computes the same thing as the block matrix and not some off-by-one variant. On the same d = 4 vector as before, with cos_vec = [cos 5, cos 5, cos 0.05, cos 0.05], sin_vec the matching sines, and rotate(q) the pair swap, max |elementwise(q, m=5) - R_5 q| is 0.0 exactly. Good — the elementwise rule and the matrix are bit-identical, so I can drop the matrix entirely.
 
-The linear-attention case is the property none of the additive relative schemes could give. The same norm-preserving rotation can sit after the feature maps. In linear attention the per-token features go through non-negative maps phi(q_m), psi(k_n) before being combined. If I rotate *after* the feature map, R_m phi(q_m) and R_n psi(k_n), the rotation shouldn't disturb the factorized structure — but "shouldn't" is the kind of word that hides bugs, so let me check the two things I'm leaning on. First, that the rotation keeps the relative property even on the (now non-negative) feature vectors: with d = 4, phi and psi sampled non-negative, m = 3, n = 7, I get (R_3 phi)·(R_7 psi) - phi·(R_4 psi) = 1.7e-16, so the dot still collapses to a single R_{n-m} between the per-token features. Second, that orthogonality really leaves magnitudes alone: ||R_3 phi|| - ||phi|| = -2.2e-16. Both hold to machine precision. So position still rides on the per-token features, the associativity trick still precomputes its running sums and stays O(N), and the relative offset is now baked in:
+The linear-attention case is the property none of the additive relative schemes could give. The same norm-preserving rotation can sit after the feature maps. In linear attention the per-token features go through non-negative maps phi(q_m), psi(k_n) before being combined. If I rotate *after* the feature map, R_m phi(q_m) and R_n psi(k_n), that should leave the factorized structure intact, which rests on two things worth checking directly. First, that the rotation keeps the relative property even on the (now non-negative) feature vectors: with d = 4, phi and psi sampled non-negative, m = 3, n = 7, I get (R_3 phi)·(R_7 psi) - phi·(R_4 psi) = 1.7e-16, so the dot still collapses to a single R_{n-m} between the per-token features. Second, that orthogonality really leaves magnitudes alone: ||R_3 phi|| - ||phi|| = -2.2e-16. Both hold to machine precision. So position still rides on the per-token features, the associativity trick still precomputes its running sums and stays O(N), and the relative offset is now baked in:
 
   Attention_m = sum_n (R_m phi(q_m))^T (R_n psi(k_n)) v_n / sum_n phi(q_m)^T psi(k_n).
 
 I keep the denominator un-rotated on purpose: after rotation the numerator terms can go negative, and leaving the normalizer as the original non-negative sum avoids dividing by something near zero. The weights aren't strictly a probability distribution anymore, but they still weight values by relative-position-modulated similarity, which is the point. An additive bias b_{m,n} cannot sit on the per-token features — it lives in the matrix linear attention refuses to form — which is precisely why this relative scheme is linear-attention compatible.
 
-So let me write it. I'll precompute the per-position angles m*theta_i, hold their cosines and sines, and apply the elementwise rotation to q and k right before the logit. The two layouts differ only by a fixed permutation of the head dimension, but the code has to be consistent about which one it uses.
-
-```python
-import torch
-import torch.nn as nn
-
-# One-based theta_i = base^{-2(i-1)/d}; arange(0, d, 2) is the zero-based code form.
-def inverse_frequencies(head_dim, base=10000, device=None):
-    if head_dim % 2 != 0:
-        raise ValueError("head_dim must be even for pairwise rotations")
-    return 1.0 / (base ** (torch.arange(0, head_dim, 2, device=device).float() / head_dim))
-
-# HuggingFace RoFormer layout: sin and cos are stored as halves, then repeated
-# into interleaved pairs, and the 90-degree swap is [-x1, x0, -x3, x2, ...].
-def roformer_sinusoidal_pos(positions, head_dim, base=10000):
-    inv_freq = inverse_frequencies(head_dim, base, positions.device)
-    angles = positions[:, None].float() * inv_freq[None, :]
-    return torch.cat([angles.sin(), angles.cos()], dim=-1)
-
-def apply_roformer_rotary_position_embeddings(sinusoidal_pos, query_layer, key_layer, value_layer=None):
-    sinusoidal_pos = sinusoidal_pos.to(device=query_layer.device, dtype=query_layer.dtype)
-    sin, cos = sinusoidal_pos.chunk(2, dim=-1)
-    sin_pos = torch.stack([sin, sin], dim=-1).reshape_as(sinusoidal_pos)
-    cos_pos = torch.stack([cos, cos], dim=-1).reshape_as(sinusoidal_pos)
-
-    rotate_half_query = torch.stack(
-        [-query_layer[..., 1::2], query_layer[..., ::2]], dim=-1
-    ).reshape_as(query_layer)
-    query_layer = query_layer * cos_pos + rotate_half_query * sin_pos
-
-    rotate_half_key = torch.stack(
-        [-key_layer[..., 1::2], key_layer[..., ::2]], dim=-1
-    ).reshape_as(key_layer)
-    key_layer = key_layer * cos_pos + rotate_half_key * sin_pos
-
-    if value_layer is not None:
-        rotate_half_value = torch.stack(
-            [-value_layer[..., 1::2], value_layer[..., ::2]], dim=-1
-        ).reshape_as(value_layer)
-        value_layer = value_layer * cos_pos + rotate_half_value * sin_pos
-        return query_layer, key_layer, value_layer
-    return query_layer, key_layer
-
-# HuggingFace LLaMA layout: concatenate the frequency table with itself and
-# rotate by swapping the two contiguous halves.
-def llama_rotary_tables(position_ids, head_dim, base=10000, dtype=None):
-    inv_freq = inverse_frequencies(head_dim, base, position_ids.device)
-    inv_freq = inv_freq[None, :, None].float().expand(position_ids.shape[0], -1, 1)
-    position_ids = position_ids[:, None, :].float()
-    freqs = (inv_freq @ position_ids).transpose(1, 2)
-    emb = torch.cat((freqs, freqs), dim=-1)
-    cos, sin = emb.cos(), emb.sin()
-    if dtype is not None:
-        cos, sin = cos.to(dtype=dtype), sin.to(dtype=dtype)
-    return cos, sin
-
-def rotate_half(x):
-    x1, x2 = x[..., : x.shape[-1] // 2], x[..., x.shape[-1] // 2 :]
-    return torch.cat([-x2, x1], dim=-1)
-
-def apply_llama_rotary_pos_emb(q, k, cos, sin, unsqueeze_dim=1):
-    cos = cos.unsqueeze(unsqueeze_dim)
-    sin = sin.unsqueeze(unsqueeze_dim)
-    q_embed = (q * cos) + (rotate_half(q) * sin)
-    k_embed = (k * cos) + (rotate_half(k) * sin)
-    return q_embed, k_embed
-
-class PositionStrategy:
-    def __init__(self, head_dim, base=10000, layout="llama"):
-        if layout not in {"llama", "roformer"}:
-            raise ValueError("layout must be 'llama' or 'roformer'")
-        self.head_dim = head_dim
-        self.base = base
-        self.layout = layout
-
-    def apply(self, q, k, positions):
-        if self.layout == "roformer":
-            sinusoidal_pos = roformer_sinusoidal_pos(positions, self.head_dim, self.base)
-            return apply_roformer_rotary_position_embeddings(sinusoidal_pos, q, k)
-
-        position_ids = positions[None, :].expand(q.shape[0], -1)
-        cos, sin = llama_rotary_tables(position_ids, self.head_dim, self.base, dtype=q.dtype)
-        return apply_llama_rotary_pos_emb(q, k, cos, sin)
-
-class SelfAttention(nn.Module):
-    def __init__(self, d_model, n_heads, position):
-        super().__init__()
-        self.n_heads, self.head_dim = n_heads, d_model // n_heads
-        self.Wq = nn.Linear(d_model, d_model)
-        self.Wk = nn.Linear(d_model, d_model)
-        self.Wv = nn.Linear(d_model, d_model)
-        self.Wo = nn.Linear(d_model, d_model)
-        self.position = position
-
-    def forward(self, x, positions=None, mask=None):
-        B, T, _ = x.shape
-        if positions is None:
-            positions = torch.arange(T, device=x.device)
-
-        def split(t):
-            return t.view(B, T, self.n_heads, self.head_dim).transpose(1, 2)
-        q, k, v = split(self.Wq(x)), split(self.Wk(x)), split(self.Wv(x))
-
-        q, k = self.position.apply(q, k, positions)
-
-        logits = (q @ k.transpose(-2, -1)) / (self.head_dim ** 0.5)
-        if mask is not None:
-            logits = logits.masked_fill(mask, float("-inf"))
-        o = logits.softmax(dim=-1) @ v
-        return self.Wo(o.transpose(1, 2).reshape(B, T, -1))
-```
-
-The chain is now tight: attention is order-blind, and order only matters through the logit q_m^T k_n, so I demand that the logit depend on contents and the relative offset m - n alone; in 2D over the complex plane the stable solution keeps magnitude position-free and makes the phase arithmetic in position, so q rotates by m*theta and k rotates by n*theta; tiling that rotation across d/2 planes at a geometric spread of frequencies lifts it to full dimension, makes the offset show up as a single rotation R_{n-m} between the content projections, gives the summation-by-parts decay envelope, and rides on the per-token features so it survives linear attention. In code, all of that is still just a table of cosines and sines plus `x * cos + rotate(x) * sin`.
+So let me write it. I'll precompute the per-position angles m*theta_i, hold their cosines and sines, and apply the elementwise rotation to q and k right before the logit: multiply by the repeated cosine vector, add the pair-swapped-and-sign-flipped copy times the repeated sine vector. There's one bookkeeping choice with no mathematical content but real consequences for the code: which two coordinates of the head dimension count as a "pair." I can interleave them (dims 0,1 are a pair, 2,3 are a pair, ...) or split the head dimension into two contiguous halves and pair dim i with dim i + d/2. Both realize the same block-diagonal rotation up to a fixed permutation of the head dimension, so both are mathematically identical; a model just has to pick one and apply it consistently to every query and key it ever produces, since mixing the two conventions silently misaligns which coordinates rotate together. The full module — the frequency table, the two pairing conventions, and the attention layer that calls into it — is in the answer.
