@@ -19,17 +19,13 @@ was chasing two rungs ago; it is the critic telling me something about its *reso
 much heavier upper tail than the others, and a 200-step staircase is a coarse instrument for a five-figure
 return distribution with a long, heavy top.
 
-The thing that keeps bothering me is that I picked the number 200 by hand and then the network is stuck
-with it forever. The output layer is $|\mathcal A|\times 200$, those 200 numbers are tied one-to-one to
-200 levels $\hat\tau_i=(2i-1)/(2N)$ chosen before training started, and the approximation can never be
-finer than 200 no matter how much the frozen encoder has left to give. On Seaquest, whose return
-distribution runs into five figures with a long, heavy upper tail, a 200-step staircase is a coarse
-description of exactly the tail that the 12152 seed lived in — and every update touches the same fixed
-comb of levels, so the agent never gets to put extra resolution where the distribution is most
-informative. The resolution is an architectural constant, not something that improves with capacity or
-training. That is the wart I want to remove, and it is the natural next move: last rung enriched the value
-*object* from a scalar to a distribution; this rung removes the one structural limit left on that
-distribution.
+And the resolution is an *architectural constant*, not something that improves with capacity or training.
+The output layer is $|\mathcal A|\times 200$, those 200 numbers tied one-to-one to 200 levels
+$\hat\tau_i=(2i-1)/(2N)$ chosen before training started; every update touches the same fixed comb, so the
+agent can never put extra resolution where Seaquest's heavy upper tail — exactly where the 12152 seed
+lived — actually demands it, no matter how much the frozen encoder has left to give. That is the wart to
+remove: last rung enriched the value *object* from a scalar to a distribution; this rung removes the one
+structural limit left on that distribution.
 
 So what is the object I am really approximating? The 200 locations are quantiles, and "the location of
 the $\tau$-quantile as a function of $\tau$" is just the quantile function $F_Z^{-1}(\tau)$ — the inverse
@@ -39,10 +35,8 @@ $\tau$. If I could learn the whole function — a map I can query at any $\tau$ 
 pinned to a grid: I evaluate it at as many or as few points as I like, and the fidelity is set by how
 well the network approximates a curve, which is a matter of capacity and training, not a hardcoded $N$.
 Write the target: $Z_\tau(x,a):=F_{Z(x,a)}^{-1}(\tau)$, so that for $\tau\sim U([0,1])$, the value
-$Z_\tau(x,a)$ is a genuine sample of the return. Let me make sure that last claim is actually true and not
-wishful, because the whole design rests on it. If $\tau\sim U([0,1])$ and I push it through the quantile
-function, what is the law of $F^{-1}(\tau)$? Compute the CDF of the output:
-$\Pr(F^{-1}(\tau)\le z)=\Pr(\tau\le F(z))=F(z)$, using that $\tau$ is uniform so $\Pr(\tau\le u)=u$. The
+$Z_\tau(x,a)$ is a genuine sample of the return. The whole design rests on that claim, and it holds by a
+one-line CDF computation: $\Pr(F^{-1}(\tau)\le z)=\Pr(\tau\le F(z))=F(z)$, since $\tau$ is uniform. The
 pushforward has CDF $F$ exactly — it *is* $Z$. That is inverse-transform sampling, and it says the
 quantile function is a complete, lossless encoding of the distribution: knowing how to map a uniform draw
 to a return is knowing the whole return law. So instead of learning probabilities on fixed locations, or
@@ -74,69 +68,48 @@ zero error — so Huberize with threshold $\kappa$, quadratic inside $[-\kappa,\
 weighted by the asymmetric quantile factor $|\tau-\mathbb{1}\{u<0\}|$; $\kappa=1$ recovers the
 gradient-clipped squared error inside the band but asymmetric per level.
 
-I want to be careful about one thing that is easy to get wrong: why $\tau$ and $\tau'$ must be drawn
-*independently* rather than reusing one draw. The quantile-regression objective at level $\tau$ regresses
-my prediction $Z_\tau(x,a)$ against *samples of the target return*, and its minimizer is the target's
-$\tau$-quantile only when those samples are genuine draws from the whole target law. By the
-inverse-transform fact I established, $Z_{\tau'}(x',\pi(x'))$ with $\tau'\sim U([0,1])$ *is* such a draw —
-a uniform base sample pushed through the target quantile function is a sample of the bootstrapped return.
-So the inner average $\frac1{N'}\sum_j\rho_\tau(r+\gamma Z_{\tau'_j}-Z_\tau)$ is a Monte-Carlo estimate of
-$\mathbb{E}_{\hat Z\sim\text{target}}[\rho_\tau(\hat Z-Z_\tau)]$, exactly what I want. Now suppose I tied
-them, $\tau'=\tau$. Then the "target sample" would be the target's $\tau$-quantile specifically, not a
-uniform draw — I would be regressing the $\tau$-quantile of my prediction toward the $\tau$-quantile of
-the target, a quantile-to-quantile pairing. That is no longer quantile regression against a distribution;
-it is the fixed-comb matching in disguise, and it throws away precisely the distributional content the
-implicit form was supposed to buy — each predicted level would only ever see its own matched target level
-and never the *spread* of the target across levels. The independence of $\tau$ and $\tau'$ is what keeps
-the target a genuine sample of the whole return law, so decoupling the two draws is not incidental
-bookkeeping but the thing that makes the all-pairs loss a distributional loss at all.
+One subtlety is easy to get wrong: $\tau$ and $\tau'$ must be drawn *independently*. The
+quantile-regression objective at level $\tau$ regresses $Z_\tau(x,a)$ against *samples of the target
+return*, and its minimizer is the target's $\tau$-quantile only when those samples are genuine draws from
+the whole target law — which, by the inverse-transform fact, is exactly what $Z_{\tau'}(x',\pi(x'))$ with
+$\tau'\sim U([0,1])$ is. Tie them ($\tau'=\tau$) and the "target sample" becomes the target's
+$\tau$-quantile specifically, not a uniform draw: I would be pairing my $\tau$-quantile with the target's
+$\tau$-quantile, the fixed-comb matching in disguise, each predicted level seeing only its own matched
+target level and never the target's *spread* across levels. Independence is what keeps the target a
+genuine sample of the whole return law, and so what makes the all-pairs loss a distributional loss at all.
 
 Now the sample counts, because they are *knobs* rather than the fixed 200. Sample $N$ values of $\tau$
 for predictions and $N'$ values of $\tau'$ for targets, form the all-pairs loss
 $\mathcal L=\frac1{N'}\sum_{i=1}^{N}\sum_{j=1}^{N'}\rho^\kappa_{\tau_i}(\delta^{\tau_i,\tau'_j})$ — sum
 over predicted levels $i$ (each is regressed at its own level), average over target samples $j$ (a
 Monte-Carlo estimate of the bootstrapped distribution, hence $1/N'$). $N$ is how much of my own quantile
-function I touch per update; $N'$ is a variance-reduction count on the regression target. Before I set
-them, let me be explicit about the two cheaper ways I could have tried to buy Seaquest's tail back and
-why neither is the move. I could simply widen the grid — take the last rung's $N$ from 200 to 400. But
-the head is $513\,|\mathcal A|\,N$ parameters, so on Seaquest that goes from $1{,}846{,}800$ to
-$3{,}693{,}600$, a full $2\times$ the previous head, and the budget check only tolerates
-$1.05\times$ the $|\mathcal A|\times200$ reference — so doubling $N$ is not even affordable, and even if
-it were it would still be a *fixed, shared* comb spending its extra resolution uniformly rather than on
-the tail. Or I could keep $N$ modest but make the levels $\tau_i$ themselves learnable, an adaptive comb.
-That is better, but it is still a finite count, and the one comb is shared across every state — Seaquest's
-per-state upper tail still cannot get local resolution — and it drags in a small proposal branch and a
-nested optimization for the levels. The implicit function dominates both: it is continuous (no finite
-count at all), its resolution is per-state and per-$\tau$ because the network can bend the curve wherever
-the data pushes, and the "number of quantiles" is demoted to a sampling count I choose per update rather
-than an architectural width. Push $N=1$ in my head as a sanity check on that framing: I touch a single
-random point of the curve per update, close to a non-distributional agent in loss terms — a clean
-diagnostic that the benefit is the implicit representation, not merely many heads. For the working agent I
-want both moderate: enough $N$ to shape several parts of the curve, enough $N'$ to denoise the target,
-nowhere near a 200-wide output layer. $N=N'=8$ is the balanced setting; the per-update cost is
-$8\times8=64$ pairwise terms, against the grid agent's $200\times200=40{,}000$ — a $625\times$ reduction
-in the pairwise loss work, and far below its 200-wide output.
+function I touch per update; $N'$ is a variance-reduction count on the regression target. The two cheaper
+ways to buy Seaquest's tail back both fall short. Widening the grid — $N$ from 200 to 400 — doubles
+Seaquest's output to $3{,}693{,}600$ params, past the budget check's $1.05\times$ reference, and it stays
+a *fixed, shared* comb spending its extra resolution uniformly, not on the tail. Making the levels
+$\tau_i$ learnable is better but still a finite count shared across every state — Seaquest's per-state
+upper tail gets no local resolution — and it adds a proposal branch and a nested optimization. The
+implicit function dominates both: continuous, resolution per-state and per-$\tau$ because the network can
+bend the curve wherever the data pushes, with the quantile count demoted to a sampling count I pick per
+update. I take both moderate: $N=N'=8$, whose $8\times8=64$ pairwise terms sit far below the grid agent's
+$200\times200=40{,}000$.
 
 Now the architecture: how does $\tau$ get in? The state side should stay as close as possible to the
 machinery the scaffold fixes. I take $\psi(x)$ to be the frozen `NatureDQNEncoder` ending in its
 512-dim ReLU feature vector — that is just choosing the boundary so the encoder includes the usual hidden
 layer, leaving the action head as a single linear map from 512 features to actions. I want to insert
 $\tau$-dependence without rebuilding either, so add a function $\phi(\tau)$ that embeds the scalar level
-into the same 512-dim space and combine it with $\psi(x)$ before the head. What combination?
-Concatenation is the lazy choice, and I should work out exactly what it can and cannot represent before I
-reject it, because "obviously multiply" is not a reason. Concatenate $\psi(x)$ and $\phi(\tau)$ into a
-$1024$-vector and hit it with a single linear head $W\in\mathbb{R}^{|\mathcal A|\times1024}$. Split $W$
-into its two halves $W=[W^\psi\;|\;W^\phi]$; then the output for action $a$ is
+into the same 512-dim space and combine it with $\psi(x)$ before the head. Concatenation is the lazy
+choice, and it is worth seeing exactly why it fails. Concatenate $\psi(x)$ and $\phi(\tau)$ into a
+$1024$-vector and hit it with a single linear head $W=[W^\psi\;|\;W^\phi]$; the output for action $a$ is
 $Z_\tau(x,a)=W^\psi_a\!\cdot\!\psi(x)+W^\phi_a\!\cdot\!\phi(\tau)=g_a(x)+h_a(\tau)$ — additively
-*separable*, a state term plus a $\tau$ term that share nothing. The consequence is fatal for what I need:
-$\partial Z_\tau/\partial\tau=h_a'(\tau)$ is identical for every state, so the *shape* of the quantile
-function in $\tau$ is fixed across the whole game and only its *level* $g_a(x)$ slides up and down.
-Concretely, take two Seaquest states with the same mean return but different spread — one where I have
-just surfaced and the outcome is nearly deterministic (a flat quantile function), one where I am deep with
-low oxygen and the return is bimodal, escape-and-score versus suffocate (a quantile function with a sharp
-step). Additive $h_a(\tau)$ hands both the *same* curve shape shifted by $g_a$; it cannot give one a flat
-and the other a steep $F^{-1}$. But that state-dependent reshaping is the entire point. So I need $\tau$
-to *multiply* the state features. Take the Hadamard product $Z_\tau(x,a)\approx f(\psi(x)\odot\phi(\tau))_a$,
+*separable*. Then $\partial Z_\tau/\partial\tau=h_a'(\tau)$ is identical for every state, so the *shape*
+of the quantile function in $\tau$ is fixed across the whole game and only its *level* $g_a(x)$ slides up
+and down. But two Seaquest states with the same mean and different spread — just surfaced, outcome nearly
+deterministic (flat $F^{-1}$) versus deep with low oxygen, bimodal escape-or-suffocate (stepped $F^{-1}$)
+— need *different curve shapes*, and additive $h_a(\tau)$ can only shift one curve. That state-dependent
+reshaping is the entire point, so I need $\tau$ to *multiply* the state features. Take the Hadamard
+product $Z_\tau(x,a)\approx f(\psi(x)\odot\phi(\tau))_a$,
 so $\phi(\tau)$ gates each feature of $\psi(x)$: now $Z_\tau(x,a)=\sum_j W_{a,j}\,\psi_j(x)\,\phi_j(\tau)$
 and $\partial Z_\tau/\partial\tau=\sum_j W_{a,j}\,\psi_j(x)\,\phi_j'(\tau)$ — the $\tau$-slope is reweighted
 by the state features $\psi_j(x)$, genuinely state-dependent, so even a single linear head sees a
@@ -145,8 +118,8 @@ network, precisely because the encoder is *frozen*: I cannot adapt $\psi$ to mak
 interaction has to be forced through the only thing I control, and multiplication forces it through the
 shallow head.
 
-What embedding $\phi(\tau)$? The first thing to rule out is feeding the raw scalar $\tau$ through a
-linear layer, and again I want the reason to be a calculation, not a shrug. A linear map of the scalar is
+What embedding $\phi(\tau)$? Rule out feeding the raw scalar $\tau$ through a linear layer by the same
+kind of calculation. A linear map of the scalar is
 $\phi(\tau)=w\tau+b$, affine in $\tau$; compose it with the single linear head and, up to the one ReLU,
 $Z_\tau(x,a)$ is affine in $\tau$, so $F^{-1}(\tau)$ is a straight line in $\tau$ — and a linear quantile
 function is the quantile function of one distribution only, the uniform on an interval. It literally
@@ -162,20 +135,14 @@ features of the quantile function down to a scale of $1/64\approx1.6\%$ of the p
 finer than any monotone return curve, even Seaquest's stepped one, actually needs. $n=64$ cosines is
 plenty and cheap.
 
-Let me make sure I have not quietly defeated the point by adding capacity, because the whole ladder's
-budget check is watching. The encoder is untouched and frozen. The head is the same shallow $f$. The only
-new parameters are the cosine embedding's `Linear(64, 512)` — that is $64\times512+512=33{,}280$ — and the
-action head `Linear(512, |\mathcal A|)`, which is $513\,|\mathcal A|$: $2052$ for Breakout, $3078$ for
-Pong, $9234$ for Seaquest. So the total learnable head-plus-embedding is about $35{,}300$ on Breakout,
-$36{,}400$ on Pong, $42{,}500$ on Seaquest. Compare that to the grid agent's output layer,
-$513\,|\mathcal A|\times200$: $410{,}400$, $615{,}600$, $1{,}846{,}800$ respectively. The ratios are the
-decisive part of the accounting — the implicit head is about $11.6\times$ smaller on Breakout,
-$16.9\times$ smaller on Pong, and $43.4\times$ smaller on Seaquest, the very game I care most about. I
-have *removed* the 200-fold output blowup and replaced it with one small cosine branch, so I am not only
-inside the $1.05\times$-QR-DQN budget on all three action-space sizes (4, 6, 18), I am comfortably below
-it — the representational gain comes entirely from learning a function of $\tau$, not from width. That is
-the property I want: a minimal, single-axis change over the quantile rung that spends *less* capacity, not
-more.
+This has to stay inside the ladder's budget check. The encoder is frozen and the head is the same shallow
+$f$; the only new parameters are the cosine embedding's `Linear(64, 512)` ($33{,}280$) plus the action
+head `Linear(512, |\mathcal A|)` ($513\,|\mathcal A|$), totalling roughly $35$k–$42.5$k across the three
+action sizes. The grid agent's output layer was $513\,|\mathcal A|\times200$ — up to $1{,}846{,}800$ on
+Seaquest — so the implicit head is an order of magnitude smaller (over $40\times$ on Seaquest, the game I
+care most about). I have *removed* the 200-fold output blowup and replaced it with one small cosine
+branch, so I am comfortably below the $1.05\times$-QR-DQN budget on all three action sizes: the
+representational gain comes from learning a function of $\tau$, not from width.
 
 Now the policy. The grid agent acts on the mean of its 200 locations. The mean is
 $\mathbb{E}_{\tau\sim U([0,1])}[Z_\tau(x,a)]$, so approximate it with $K$ fresh samples and take the
@@ -199,20 +166,11 @@ pairwise TD errors and the all-pairs quantile Huber, steps Adam at the scaffold'
 `learning_rate = 1e-4` with $\epsilon_{\text{Adam}}=0.01/\text{batch\_size}$, and does the hard target
 copy at `target_network_frequency`. The full scaffold module is in the answer.
 
-Now the bar this has to clear, stated against the strongest baseline's real numbers so I can be proven
-wrong. QR-DQN set Breakout mean 252.4 (best seed 324.7), Seaquest mean 9027 (best seed 12152), Pong
-20.9. Pong is at the ceiling and a richer representation cannot help there — I expect IQN to hold
-$\approx21$, and if it dropped that would mean the cosine modulation destabilized the easy case, a clear
-failure. Breakout and Seaquest are where the implicit function should pay: I expect IQN to match or beat
-the QR-DQN means while removing the fixed-resolution bottleneck, and I expect the *largest* gain on
-Seaquest specifically, because that is the game whose return distribution is widest and whose long upper
-tail — the one the 12152 seed lived in, the one whose CoV *rose* to $0.25$ under the 200-comb — the fixed
-grid resolved most coarsely. The three things I would validate: (1) the $K$-sample mean policy is stable
-seed-to-seed, with no resolution-induced variance of the kind the 200-grid showed on Seaquest — concretely
-I would want Seaquest's CoV to fall back rather than climb; (2) Seaquest is where the implicit
-representation gains most, which is the falsifiable claim — if Breakout improves but Seaquest does not,
-then the bottleneck was never resolution and I misread the 12152 seed; and (3) the head stays inside the
-parameter budget on all of breakout (4), pong (6), and seaquest (18) actions, which the $11.6/16.9/43.4\times$
-accounting above already confirms. If IQN merely matched QR-DQN everywhere, that would say 200 quantiles
-already saturated these games and the implicit representation buys nothing at this budget — a clean
-negative result, but I expect the Seaquest tail to say otherwise.
+The bar is QR-DQN's numbers: Breakout mean 252.4, Seaquest mean 9027, Pong 20.9. Pong is at the ceiling —
+a richer representation should hold it near 21, and a drop would mean the cosine modulation destabilized
+the easy case. Breakout and Seaquest are where the implicit function should pay, matching or beating the
+means while removing the fixed-resolution bottleneck, with the *largest* gain on Seaquest — the game whose
+return distribution is widest and whose long upper tail (the one whose CoV *rose* to $0.25$ under the
+200-comb) the fixed grid resolved most coarsely. If Breakout improves but Seaquest does not, the
+bottleneck was never resolution and I misread the 12152 seed; if IQN merely matches QR-DQN everywhere,
+200 quantiles already saturated these games and the implicit representation buys nothing at this budget.

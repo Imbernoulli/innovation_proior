@@ -7,44 +7,31 @@ spread quantitatively rather than eyeballing it. Take the coefficient of variati
 can compare games on different scales. Breakout: mean 170.7, the three seeds deviate by $-29.1,-45.1,+74.1$,
 a standard deviation of $\approx52.8$, so a CoV of $52.8/170.7\approx0.31$. Seaquest: mean 6789, deviations
 $+389,-1403,+1015$, std $\approx1025$, CoV $1025/6789\approx0.15$. Pong: std $\approx0.25$, CoV $\approx0.01$.
-So two facts sit side by side and I have to hold both honestly. In *absolute* terms Seaquest is the widest
-swing by far — a $5386$-to-$7804$ range of $\sim2400$ points, dwarfing Breakout's $119$-point range — but
-in *relative* terms Breakout actually wobbles more, a third of its mean against Seaquest's one-sixth.
-These are not two diseases; they are one, seen through two lenses. A scalar critic that has to absorb the
-stochasticity of the return into a single number will wobble by an amount that scales roughly with the
-return magnitude on the long-horizon game (hence Seaquest's huge absolute swing) and by a large *fraction*
-on the game where the return is small and the policy is fragile (hence Breakout's large relative swing).
+Two facts sit side by side. In *absolute* terms Seaquest swings widest — a $5386$-to-$7804$ range of
+$\sim2400$ points, dwarfing Breakout's $119$-point range — but in *relative* terms Breakout wobbles more,
+a third of its mean against Seaquest's one-sixth. One disease through two lenses: a scalar critic
+absorbing the return's stochasticity into a single number wobbles by an amount scaling with return
+magnitude on the long-horizon game and by a large *fraction* on the small-return, fragile-policy game.
 Either way the wobble is the tell.
 
-And it is the *residual* of the disease I already named, not a new one. Decoupling selection from
-evaluation removed the *non-uniform* part of the overestimation, but $\theta^-$ is a stale copy of
-$\theta$, so right after each `target_network_frequency = 1000` sync the two nets coincide and the
-target reverts to a plain max for that interval — the correlated-error floor I admitted I couldn't fully
-clear. And on Seaquest's eighteen actions, exactly where the typical-case inflation
-$\epsilon\frac{m-1}{m+1}$ is largest, that residual bias and the relative-ordering errors it leaves have
-the most room to move the greedy policy from seed to seed. So the variance is the tell: the critic is
-still a single scalar per action, a point estimate with no notion of its own uncertainty, and it
-absorbs all the stochasticity of returns and bootstraps into one number that wobbles. Tightening the
-target-sync gap would shave a little more bias, but it cannot change *what* the critic represents. The
-ceiling here is representational, and to break it I have to stop collapsing the return to its mean.
+And it is the *residual* of the disease I already named. Decoupling removed the *non-uniform* part of the
+overestimation, but $\theta^-$ is a stale copy of $\theta$, so right after each
+`target_network_frequency = 1000` sync the target reverts to a plain max for that interval — the
+correlated-error floor I couldn't fully clear — and on Seaquest's eighteen actions, where the inflation
+$\epsilon\frac{m-1}{m+1}$ is largest, that residual has the most room to move the greedy policy seed to
+seed. The critic is still a single scalar per action, a point estimate with no notion of its own
+uncertainty, so it absorbs all the stochasticity and bootstraps into one wobbling number. Tightening the
+sync gap shaves a little more bias but cannot change *what* the critic represents. The ceiling is
+representational, and to break it I have to stop collapsing the return to its mean.
 
-Let me not jump to that conclusion without pricing the cheaper moves, because three of them are sitting
-right there and I owe them an honest look. First, I could keep pushing the previous rung's own lever:
-widen the sync gap so $\theta$ and $\theta^-$ decorrelate further and the post-sync plain-max intervals
-shrink. That shaves the residual bias, but it operates on the same scalar target and leaves the critic a
-point estimate — it addresses the part of the wobble that is bias, not the part that is discarded spread,
-and the CoV computation says both parts are live. Second, I could switch the bootstrap to $n$-step
-returns, trading some bias for lower variance in the target. But that re-weights the same one-number
-target; it never gives the critic a notion of its own uncertainty, and the harness feeds me single
-transitions, so it is not even a clean edit-surface change. Third — and this is the tempting one, because
-it directly targets the Seaquest symptom — I could robustify the *scalar* loss, swap `mse_loss` for a
-Huber on the TD error so the occasional five-figure Seaquest return stops dominating the gradient. That
-would genuinely calm the outlier-driven wobble. But it treats the large return as a nuisance to clip
-rather than as *signal*: the whole reason one Seaquest seed scores 7804 and another 5386 is that the
-return distribution has real upper mass, and a robust scalar loss throws that mass away just as
-thoroughly as the squared loss did — it stabilizes the mean without ever representing the spread that is
-the actual information. All three tame a symptom; none change the object. So the representational move is
-not a luxury, it is the only one of the four that attacks the diagnosis instead of the bruise.
+Three cheaper moves each fail for the same reason: they operate on the scalar target and never give the
+critic a notion of its own spread. Widening the sync gap shaves residual *bias* but does nothing for the
+discarded spread. $n$-step returns trade target bias for variance while still re-weighting one number
+(and the harness feeds single transitions anyway). Swapping `mse_loss` for a Huber calms the
+outlier-driven wobble but treats the five-figure Seaquest return as a nuisance to clip rather than as
+*signal* — the real upper mass in the return law that makes one seed score 7804 and another 5386 is
+exactly what a robust scalar loss discards. All three tame a symptom; only the representational move
+attacks the diagnosis.
 
 Why am I only learning the mean at all? I train an agent to maximize expected return, so I learn
 $Q(x,a)=\mathbb{E}[Z(x,a)]$, one number per state-action. But $Z(x,a)$ — the actual return from
@@ -75,17 +62,11 @@ maximal Wasserstein metric $\bar d_p$, the operator $\mathcal{T}^\pi$ is a $\gam
 common reward shift cancels, the scalar $\gamma$ comes out, the mixture over successors is bounded by
 the worst case), with unique fixed point $Z^\pi$.
 
-Let me actually watch the contraction happen on a toy, because "the $\gamma$ comes out" is the kind of
-claim I should see rather than assert. Take a deterministic transition and zero reward, so
-$\mathcal{T}Z\overset{D}{=}\gamma Z'$, and two candidate successor return laws, $Z_1'=\delta_0$ and
-$Z_2'=\delta_1$ — point masses at $0$ and $1$. Their $W_1$ distance is $|0-1|=1$. Apply the operator:
-$\mathcal{T}Z_1'=\delta_0$ and $\mathcal{T}Z_2'=\delta_\gamma$, whose $W_1$ distance is $|0-\gamma|=\gamma$.
-The gap shrank from $1$ to $\gamma$ — exactly the contraction factor. Add any shared reward $r$ and both
-images shift by $r$, leaving the horizontal gap untouched, so the contraction is $\gamma$ regardless of
-$r$. And this is the very step KL would misread: $\gamma\delta_1=\delta_\gamma$ has disjoint support from
-$\delta_0$, so KL between the two images is still infinite, unchanged from before the operator acted —
-the metric would tell me nothing contracted. Wasserstein is the *right* metric — and that is precisely
-the problem.
+The disjoint-support case shows why the metric choice bites. Deterministic transition, zero reward, so
+$\mathcal{T}Z\overset{D}{=}\gamma Z'$; take $Z_1'=\delta_0$, $Z_2'=\delta_1$, at $W_1$ distance $1$. The
+images $\delta_0$ and $\delta_\gamma$ sit at $W_1$ distance $\gamma$ — the contraction factor — but have
+disjoint support, so their KL is still infinite, reporting nothing contracted. Wasserstein is the *right*
+metric — and that is precisely the problem.
 
 Because there is a sampling obstruction: I cannot minimize Wasserstein from samples by SGD. If I form an
 empirical target from sampled transitions and minimize the sample-Wasserstein loss, the minimizer of the
@@ -129,15 +110,10 @@ $W_1(Y,U)=\sum_i\int_{\tau_{i-1}}^{\tau_i}|F_Y^{-1}(\omega)-\theta_i|\,d\omega$,
 — each $\theta_i$ in its own integral. The subgradient of one cell in $\theta$ is
 $2F(\theta)-(\tau_{i-1}+\tau_i)$, zero at $F(\theta)=\frac{\tau_{i-1}+\tau_i}{2}$, so the $W_1$-optimal
 location is the quantile at the cell *midpoint*: $\hat\tau_i=\frac{2i-1}{2N}$,
-$\theta_i=F_Y^{-1}(\hat\tau_i)$. Not the cell edges $i/N$ — the centers $(2i-1)/(2N)$. This is a place I
-could easily fumble by reaching for the round number $i/N$, so let me check it costs what I think on the
-smallest case, $N=2$ against a target uniform on $[0,1]$ (so $F_Y^{-1}(\omega)=\omega$). The midpoints
-are $\hat\tau_1=1/4,\hat\tau_2=3/4$, giving $\theta=(0.25,0.75)$; the cell integrals are
-$\int_0^{1/2}|\omega-0.25|\,d\omega=1/16$ and $\int_{1/2}^1|\omega-0.75|\,d\omega=1/16$, total
-$W_1=1/8=0.125$. Now the tempting wrong choice, the edges $\theta=(F^{-1}(1/2),F^{-1}(1))=(0.5,1.0)$:
-$\int_0^{1/2}|\omega-0.5|\,d\omega=1/8$ and $\int_{1/2}^1|\omega-1|\,d\omega=1/8$, total $W_1=1/4=0.25$.
-The midpoints give exactly *half* the transport cost of the edges. So the $(2i-1)/(2N)$ levels are not a
-convention, they are the minimizer, and getting them wrong would double my error — worth the care.
+$\theta_i=F_Y^{-1}(\hat\tau_i)$ — the centers $(2i-1)/(2N)$, not the cell edges $i/N$. That distinction is
+easy to fumble and not free: on the smallest case $N=2$ against a uniform target ($F_Y^{-1}(\omega)=\omega$),
+the midpoints $(0.25,0.75)$ give $W_1=1/16+1/16=1/8$, while the edges $(0.5,1.0)$ give $1/8+1/8=1/4$ —
+exactly double. So the $(2i-1)/(2N)$ levels are the minimizer, and getting them wrong doubles the error.
 
 Now hit those midpoint quantiles from samples without bias. Quantile parametrization alone does not
 unbias Wasserstein — the obstruction above still applies to $W_p$ directly. The unbiasedness has to come
@@ -176,42 +152,26 @@ mean-argmax is deliberate: I am changing the critic's *representation* and its *
 how the policy reads the critic, so any movement in the scores is attributable to the richer critic and
 not to a new acting rule.
 
-Now fit this to *this* edit surface, because I must land the harness's implementation. The fixed
-`NatureDQNEncoder` gives me 512 features; the head becomes `Linear(512, n_actions * N)`, reshaped to
-$(B, n_{\text{actions}}, N)$, with $Q$-values as the per-action mean over the $N$ — so
-`q_network.forward` returns means and the loop's eval argmax still works unchanged. I take $N = 200$, the
-standard Atari resolution and exactly the width the scaffold's budget check is sized around ($1.05\times$
-the $|\mathcal A|\times200$ head), so I am at the budget, not over it. Let me put the parameter arithmetic
-down so I know precisely what $N=200$ spends. The head is $512\cdot|\mathcal A|\cdot N + |\mathcal A|\cdot N
-= 513\,|\mathcal A|\,N$ parameters: for Breakout ($|\mathcal A|=4$) that is $410{,}400$, for Pong ($6$)
-$615{,}600$, for Seaquest ($18$) $1{,}846{,}800$. Compared to the scalar critic's $513\,|\mathcal A|$
-head ($9234$ on Seaquest), the quantile head is a full $200\times$ wider — that is the literal price of
-pinning the resolution to $200$ fixed levels, and the budget check is sized to allow exactly this and no
-more. There is a second cost in the loss: the all-pairs quantile Huber compares every one of $N$
-predicted locations against every one of $N$ target locations, so it is $N^2=40{,}000$ pairwise Huber
-terms per state-action, times the batch of $32$, over a million per update — an $O(N^2)$ tax that also
-scales with the resolution I chose. The midpoint levels are the fixed buffer $\hat\tau_i=(2i-1)/(2N)$.
-$\kappa=1$ is hard-coded — the harness does not expose the $\kappa=0$ hard-loss branch as a runtime
-option, so I commit to the Huberized form. One optimizer detail I keep from the distributional recipe
-even though it differs from the previous rung: Adam with $\epsilon_{\text{Adam}}=0.01/\text{batch\_size}$
-(a larger-than-default $\epsilon$ that stabilizes the all-pairs asymmetric regression whose per-quantile
-gradient scales differ), while the learning rate stays the scaffold's `args.learning_rate = 1e-4` rather
-than the $5\times10^{-5}$ a from-scratch distributional run might pick — I am filling the harness's
-contract, and its LR is fixed. The target sync stays the hard copy at `target_network_frequency`. The
-full scaffold module is in the answer.
+Now fit this to the edit surface. The fixed `NatureDQNEncoder` gives 512 features; the head becomes
+`Linear(512, n_actions * N)`, reshaped to $(B, n_{\text{actions}}, N)$, with $Q$-values the per-action
+mean over the $N$ — so `q_network.forward` returns means and the loop's eval argmax works unchanged. I
+take $N = 200$, the width the scaffold's budget check is sized around ($1.05\times$ the
+$|\mathcal A|\times200$ head), so I sit at the budget, not over it. That is a $200\times$-wider output
+than the scalar critic — the literal price of pinning resolution to 200 fixed levels — and it costs a
+second time in the loss: the all-pairs quantile Huber is $N^2=40{,}000$ pairwise terms per state-action,
+$O(N^2)$ in the resolution. Midpoint levels are the fixed buffer $\hat\tau_i=(2i-1)/(2N)$; $\kappa=1$ is
+hard-coded (the harness exposes no $\kappa=0$ branch). I keep one optimizer detail from the distributional
+recipe — Adam with $\epsilon_{\text{Adam}}=0.01/\text{batch\_size}$, a larger-than-default $\epsilon$ that
+stabilizes the all-pairs asymmetric regression whose per-quantile gradient scales differ — while the
+learning rate stays the scaffold's fixed `1e-4`. The target sync stays the hard copy at
+`target_network_frequency`. The full scaffold module is in the answer.
 
-So the delta from the decoupled-target rung is concrete: same fixed encoder, same replay,
-$\epsilon$-greedy, and periodic copy, but the head emits $N=200$ quantile locations per action instead
-of one scalar, the loss is the all-pairs quantile Huber instead of `mse_loss`, and the policy acts on
-the mean of the locations. Here is what I expect against the measured numbers. Pong is already at the
-ceiling (20.7) and a richer critic can't do much there — I expect it to stay $\approx21$, no worse. The
-two informative games should move on *both* axes I diagnosed: the mean should rise because the critic now
-models the spread instead of letting it corrupt one scalar, and — the falsifiable part — the
-seed-to-seed variance should *not blow up* relative to Double DQN even as the mean climbs, because the
-quantile Huber's tail-clipping and distributional averaging are exactly the stabilizers the bare squared
-loss lacked. So Breakout should clear Double DQN's 170 (I expect the mid-200s), and Seaquest should
-clear its 6789 (I expect into the 9000s) with the high-return transitions now shaping the upper
-quantiles rather than yanking the mean from seed to seed. If instead the distributional critic merely
-matched the scalar one, that would say the Seaquest variance was never representational and I misread the
-diagnosis; if it raised the mean but the spread widened, that would say $N=200$ on a frozen encoder is
-under-resolving the tails and the next move is to stop fixing the quantile *levels* at all.
+Pong is at the ceiling (20.7) and a richer critic can't do much there — it should hold. The two
+informative games should move on *both* axes I diagnosed: the mean should rise as the critic models the
+spread instead of letting it corrupt one scalar, and — the part I can be proven wrong on — the
+seed-to-seed variance should *not blow up* even as the mean climbs, because the quantile Huber's
+tail-clipping and distributional averaging are the stabilizers the squared loss lacked. So both Breakout
+and Seaquest should clear their Double DQN means (170.7 and 6789). Two failure branches would tell me
+something: if the distributional critic merely matches the scalar one, the Seaquest variance was never
+representational; if the mean rises but the spread *widens*, $N=200$ is under-resolving the tails, and the
+next move is to stop fixing the quantile *levels* at all.
