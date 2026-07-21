@@ -6,9 +6,9 @@ plain value head gets — also as expected, because Acrobot's reward is a dense 
 the action matters at almost every step, so the value/advantage split has very little redundancy to
 exploit. The signal is LunarLander: mean 89.06, and the per-seed numbers are the whole story —
 {127.35, 229.07, **−89.25**}. One seed found a genuinely good policy (229), one found a mediocre one
-(127), and one fell into the crash basin and came out *negative*. That −89.25 seed is the −1000-style
-tell from the bottom of any RL ladder: the agent's greedy policy on that seed is systematically landing
-in the deceptive failure region, and the mean is being dragged down by it.
+(127), and one fell into the crash basin and came out *negative*. That −89.25 seed is the classic
+failure tell: the agent's greedy policy on that seed is systematically landing in the deceptive crash
+region, and the mean is being dragged down by it.
 
 Let me read those three LunarLander numbers as mechanically as I can, because the shape of the failure
 should dictate the fix. The spread {127.35, 229.07, −89.25} has a range of 318.32 between best and worst
@@ -35,7 +35,7 @@ collapsing the return to its mean at all.
 Let me sit with that. We train the agent to maximize expected return, and so we learn `Q = E[Z]`, where
 `Z(s,a)` is the actual random return from `(s,a)`. The Bellman recursion the scalar obeys is
 `Q(s,a) = E R + γ E Q(s',a')`, a `γ`-contraction in `L∞`, unique fixed point — clean, and it is exactly
-what the dueling rung still relied on. But `Z` itself is a random variable, and on LunarLander it is
+what the dueling head still relied on. But `Z` itself is a random variable, and on LunarLander it is
 visibly bimodal. The scalar throws that away. In supervised learning I would never hesitate to model the
 full conditional distribution when I can — it strictly carries more information. The catch in RL is that
 there are no given targets; I bootstrap, "learning a guess from a guess," so the question is whether the
@@ -111,8 +111,7 @@ location 0 would chase `0.00`, the infimum. The midpoint convention instead send
 to `0.99` and `0.01`, one full half-cell in from the edges, which is exactly the reachable-from-samples
 region: the `0.99` quantile is estimable, the `1.00` "quantile" is not. So the `W_1`-optimal placement
 is also the *statistically well-posed* placement, and I did not have to impose that separately — it fell
-out of decoupling the transport integral cell by cell. That is the kind of coincidence that tells me the
-representation is right rather than merely convenient.
+out of decoupling the transport integral cell by cell.
 
 Can I hit those midpoint quantiles from samples without bias? A quantile parametrization alone does *not*
 unbias Wasserstein — minimizing sample-`W_p` is still biased even here. The unbiasedness has to come
@@ -125,20 +124,11 @@ whole escape: I cannot descend `W_p`, but I can descend the quantile-regression 
 are the very locations that minimize `W_1`. End-to-end Wasserstein, by way of quantile regression on the
 midpoint quantiles.
 
-Let me verify the fixed point rather than take it on faith, because the whole escape hinges on it. The
-expected quantile loss at level `τ` is `E_Ẑ[ρ_τ(Ẑ − θ)]`; its derivative in `θ` is
-`E_Ẑ[−(τ − 1{Ẑ−θ<0})] = −τ + Pr(Ẑ < θ) = F(θ) − τ`. Setting it to zero gives `F(θ) = τ`, i.e.
-`θ = F⁻¹(τ)` — the `τ`-quantile, as required. Now the unbiasedness that KL-on-a-softmax could never give
-me: the *sample* gradient for a single draw `Ẑ` is `−(τ − 1{Ẑ < θ})`, which takes only two values,
-`1 − τ` when the draw is below `θ` and `−τ` when above. Its expectation is
-`(1−τ)·Pr(Ẑ<θ) + (−τ)·Pr(Ẑ≥θ) = Pr(Ẑ<θ) − τ = F(θ) − τ` — exactly the population gradient. A single
-sample gives an unbiased estimate because the gradient depends on the draw only through the *sign* of
-`Ẑ − θ`, and that sign is a Bernoulli whose mean is precisely the CDF I am trying to match. Contrast the
-thing I gave up: minimizing sample-`W_1` needs the sample's *value* to locate a quantile, and one draw is
-not an observation of a quantile, so its gradient does not average to the population one. The sign-only
-structure is the whole difference between a biased and an unbiased estimator here. Sanity-check the
-special case `τ = 0.5`: the loss collapses to symmetric absolute error, the fixed point is `F(θ) = 0.5`,
-the median — quantile regression contains the familiar median-is-the-L1-minimizer as its midpoint.
+The contrast with what I gave up is sharp: minimizing sample-`W_1` needs the sample's *value* to locate
+a quantile, and one draw is not an observation of a quantile, so its gradient does not average to the
+population one; here the sign is a Bernoulli whose mean is precisely the CDF I am matching, so the
+single-sample gradient is exactly the population gradient. That sign-only structure is the whole
+difference between a biased and an unbiased estimator.
 
 One wrinkle before a deep net: `ρ_τ` is kinked at `u = 0` and its gradient magnitude stays constant
 (`τ` or `1−τ`) as `u → 0`, so there is no shrinking of the step as the error gets small and the locations
@@ -179,39 +169,32 @@ double-DQN split (select on online, evaluate on target) that the generic recipe 
 the frozen loop only lets me change the head and the loss, and decoupling overestimation is a different
 concern. The target uses `(1 − dones)` to zero `γ` at terminals exactly as the scalar loop did. I drop
 the dueling head: distributional learning is a change to the *output object and loss*, and stacking it on
-the two-stream head would conflate two rungs — I want to isolate the effect of modeling the distribution.
+the two-stream head would conflate two changes — I want to isolate the effect of modeling the distribution.
 Adam at the scaffold `lr`, no grad clip needed beyond what the Huber already provides. (The full scaffold
 module is in the answer.)
 
-One design alternative is worth walking a few steps before I settle, because it is tempting. Instead of
-a *fixed* comb of `N` midpoint levels, I could sample the quantile levels `τ` at random on each forward
-pass and condition the head on the sampled `τ` — a continuous quantile function rather than a fixed set
-of `N` outputs. It has a real attraction: infinite effective resolution, and the network could interpolate
-quantiles it never explicitly parametrizes. But price it against this budget. It requires a
-`τ`-embedding (a cosine feature bank feeding an extra learned layer) grafted onto the head, which is
-capacity and structure beyond the single `84 → |A|·N` linear map the edit surface cheaply allows, and it
-turns the clean `forward(obs) → (batch, |A|)` interface into something that has to sample and average
-internally to hand the frozen harness a deterministic argmax. For classic control on a single 500k-step
-run, that sampling noise is a liability, not an asset — I want the *same* `N` quantiles every step so the
-bootstrap target is a stable function of the network, not a fresh random draw each update. The fixed
-midpoint comb gives me determinism, a trivial head, and enough resolution; the sampled-`τ` variant buys
-resolution I do not need at a stability and simplicity cost I cannot afford here. Set it aside. I keep
-the fixed `N = 50` comb.
+One alternative is tempting: instead of a *fixed* comb of `N` midpoint levels, sample the quantile levels
+`τ` at random each forward pass and condition the head on the sampled `τ` — a continuous quantile
+function with, in principle, infinite effective resolution. But it needs a `τ`-embedding (a cosine
+feature bank feeding an extra learned layer) grafted onto the head — capacity and structure beyond the
+single `84 → |A|·N` linear map the edit surface cheaply allows — and it turns the clean
+`forward(obs) → (batch, |A|)` interface into something that must sample and average internally to hand
+the harness a deterministic argmax. For classic control on a single 500k-step run I want the *same* `N`
+quantiles every step, so the bootstrap target is a stable function of the network rather than a fresh
+random draw; the sampled-`τ` variant buys resolution I do not need at a stability cost I cannot afford. I
+keep the fixed `N = 50` comb.
 
-So what do I expect against the dueling numbers? CartPole is already saturated, so QR-DQN can only match
-500 — the test is that the quantile head does not *destabilize* a solved task (a real risk: a 50-way
-head is more to fit than a linear one, and on an easy task that can add variance). Acrobot I expect to
-land in the low −80s again, roughly on par, because its return is fairly unimodal (negative
-time-to-goal) and there is little distributional structure for quantiles to exploit beyond the mean. The
-bet is entirely on **LunarLander**, and it is a sharp, falsifiable one: the dueling failure was the
-seed-456 crash basin pulling the mean to −89 and the spread {−89, 127, 229}. If modeling the return
-distribution is the right fix, the quantile head should let the greedy policy distinguish a high-mean
-action that sometimes crashes from one that reliably lands, so I expect the **worst seed to climb out of
-the negative basin** and the mean to rise well above 89 with a tighter spread. I am less sure it reaches
-the very top — 50 quantiles on a single 500k-step run is a coarse picture of a heavy-tailed return, and
-the uniform-mass parametrization spends the same one-in-50 budget on the thin crash tail as on the dense
-middle, so if the low-probability crash tail is exactly where the resolution is thinnest, that is where
-this representation will stay weakest. If QR-DQN lifts LunarLander's mean and worst seed but still leaves
-the tail ragged, the diagnosis is that spreading resolution uniformly across the probability axis is the
-wrong allocation for a heavy tail, and the remaining gain would have to come from putting resolution
-where the returns actually live rather than at equal-mass spacings.
+So what do I expect against the dueling numbers? CartPole is already saturated, so this can only match
+500 — the test is that the 50-way head does not *destabilize* a solved task, a real risk since it is more
+to fit than a linear one. Acrobot I expect on par again, low −80s, because its return is fairly unimodal
+and there is little distributional structure for quantiles to exploit beyond the mean. The bet is on
+**LunarLander**: the dueling failure was the crash-basin seed pulling the mean to −89. If modeling the
+return distribution is the right fix, the quantile head lets the greedy policy distinguish a high-mean
+action that sometimes crashes from one that reliably lands, so I expect the worst seed to climb out of
+the negative basin and the mean to rise well above 89 with a tighter spread. I am less sure it reaches
+the very top: 50 equal-mass quantiles spend the same one-in-50 budget on the thin crash tail as on the
+dense middle, so if the low-probability crash tail is where resolution is thinnest, that is where this
+representation stays weakest. Should the mean and worst seed lift but the tail stay ragged, the reading
+is that spreading resolution uniformly across the probability axis is the wrong allocation for a heavy
+tail — and the remaining gain would have to come from putting resolution where the returns actually
+live.

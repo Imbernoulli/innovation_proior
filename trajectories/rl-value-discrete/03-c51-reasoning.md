@@ -6,7 +6,7 @@ exactly the prediction: modeling the return distribution let the greedy policy s
 high mean that hid crash mass. CartPole pinned at a clean 500 on all three seeds — the 50-way head did
 not destabilize the already-solved task, which was the risk I flagged. Acrobot landed at −80.07, a hair
 better than dueling's −82.6 and right in the low −80s as expected, since its return is nearly unimodal
-and there is little distributional structure for quantiles to exploit. So the rung worked. But I closed
+and there is little distributional structure for quantiles to exploit. So the change worked. But I closed
 the last step with a specific doubt, and the LunarLander mean of 197 is exactly where that doubt lives:
 197 is good, not great, and the per-seed numbers are still ragged — seed 42 at 152 is well below seed 123
 at 244. A consistently-landing LunarLander agent should be scoring in the 200s on every seed. The
@@ -15,7 +15,7 @@ quantile picture of the return is still coarse where it matters most.
 Let me quantify "ragged," because vague dissatisfaction is not a design brief. The three LunarLander seeds
 are {152.64, 243.81, 194.99}: a range of 91.17 and a seed-to-seed standard deviation of about 37 around
 the 197.15 mean. That is a 3.5× tightening of the dueling range (318.32 → 91.17) — real progress, the
-distributional representation earned its rung — but 37 is still a wide band on a task where a competent
+distributional representation earned its keep — but 37 is still a wide band on a task where a competent
 lander should clear 200 on every seed. Seed 42 at 152.64 sits 44.5 below the mean; seed 123 at 243.81
 sits 46.7 above; the gap between those two is essentially the entire reason the mean is 197 and not ~240.
 Nothing is catastrophic now — no seed is in the negative basin — but the ceiling is being pinned by
@@ -40,14 +40,12 @@ learn the *mass* on them. That is the categorical representation, and it is wort
 three requirements rather than just asserting it, because the loss and the projection are subtle and I
 want them exactly right.
 
-Same starting point: I refuse to keep collapsing the return to its mean, and I keep the distributional
-Bellman recursion `Z(s,a) =D R(s,a) + γ Z(s',a')` that QR-DQN already relied on. The recursion exists.
-The contraction story is the same and it is still the whole game: the operator `γ`-scales the next-state
-distribution (a *horizontal* shrink toward 0), shifts by the reward, and mixes over transitions, so it
-contracts in **Wasserstein** — `d_p` sees the horizontal slide and scales with `γ` — and emphatically
-*not* in KL, total variation, or Kolmogorov distance, which compare mass at matched locations and are
-blind to the shrink. QR-DQN's whole trick was to be Wasserstein-aware by learning locations. Now I am
-going to deliberately give that up and pay for it, so I need to know exactly what I am buying.
+Same starting point, and I carry over the distributional Bellman recursion
+`Z(s,a) =D R(s,a) + γ Z(s',a')` and its contraction story unchanged from QR-DQN: the operator
+`γ`-scales the next-state distribution horizontally, shifts by the reward, and contracts in
+**Wasserstein**, not in KL, total variation, or Kolmogorov distance, which are blind to the shrink.
+QR-DQN's whole trick was to be Wasserstein-aware by learning locations. Now I am going to deliberately
+give that up and pay for it, so I need to know exactly what I am buying.
 
 What distribution class should the network output? I want multimodality — the win/lose bimodality of
 LunarLander is the entire reason I left scalars — and I want it cheap. The natural move, borrowing from
@@ -81,22 +79,15 @@ mixture of the same family, so I would be back to a biased fit. Neither alternat
 complaint. The complaint is that resolution should be allocated across the *value* axis, at the returns'
 true magnitudes, not across the probability axis — and that is precisely what a fixed grid does.
 
-Now the loss, and this is where the categorical representation forces a different path than QR-DQN. From
-the theory, Wasserstein is *the* metric, so the first instinct is to minimize `d_p(TZ_θ, Z_θ)` directly.
-But I already know — it is what pushed me to quantiles last rung — that the sampled Wasserstein gradient
-is **biased**: with a mixture target seen one sample at a time, the partition inequality
-`d_p^p(P, Q) ≤ E_I d_p^p(P_i, Q)` is strict, so SGD on the sampled `W_p` descends an upper bound whose
-minimizer is the wrong point. (The clean counterexample: target `½δ_0 + ½δ_1`, prediction
-`pδ_0 + (1−p)δ_1`; the true `d_1 = |p − ½|` is minimized at `p = ½`, but the expected *sampled* distance
-is `½(1−p) + ½p = ½`, constant in `p`, gradient zero everywhere.) QR-DQN dodged this by switching the
-*loss* to quantile regression, whose minimizers happen to be the `W_1`-optimal locations and whose
-gradient is sign-only and unbiased. With fixed locations I cannot do that — the locations are not free.
-What I *can* minimize unbiasedly from samples is **cross-entropy**, the softmax's native loss. The only
-obstruction is geometric: the Bellman update scales each atom `z_j` by `γ` and shifts by `r`, so the
-updated atom `r + γz_j` almost never lands on the grid `{z_i}`. The target `TZ_θ` and my parametrization
-`Z_θ` live on disjoint supports, and a KL between disjoint supports is exactly the useless vertical
-quantity I have been avoiding. So I must put the shifted target *back onto my grid* before taking
-cross-entropy.
+Now the loss, and this is where the categorical representation forces a different path than QR-DQN.
+Minimizing Wasserstein directly is out for the same reason as last time — the sampled `W_p` gradient is
+biased. QR-DQN dodged that by switching the *loss* to quantile regression, whose minimizers are the
+`W_1`-optimal locations; with fixed locations I cannot, the locations are not free. What I *can* minimize
+unbiasedly from samples is **cross-entropy**, the softmax's native loss. The only obstruction is
+geometric: the Bellman update scales each atom `z_j` by `γ` and shifts by `r`, so `r + γz_j` almost never
+lands on the grid `{z_i}`. The target `TZ_θ` and my parametrization `Z_θ` then live on disjoint supports,
+and a KL between disjoint supports is exactly the useless vertical quantity I have been avoiding. So I
+must put the shifted target *back onto my grid* before taking cross-entropy.
 
 The projection that respects the geometry: distribute each shifted atom's mass onto its two nearest grid
 neighbors by linear interpolation, clamping anything outside `[v_min, v_max]` to the endpoints. The
@@ -107,27 +98,20 @@ probability `p_j`. Accumulating over all source atoms gives the projected target
 handle in code: when `b_j` is exactly an integer, `l = u` and the lower weight `(u − b_j) = 0` would drop
 the mass, so I send the full `p_j` to that single atom — the `(l == u)` correction.
 
-Let me run three concrete atoms through this projection to be sure it preserves mass and the first
-moment, because the whole rung rests on it working. Fix the grid: `v_min = −500`, `v_max = 500`,
-`N = 51`, so `Δz = 1000/50 = 20` and `z_i = −500 + 20i` (`z_0 = −500`, `z_25 = 0`, `z_50 = 500`). Take a
-source atom at `z_j = 0` carrying probability `p_j`, with reward `r = 1`, `γ = 0.99`. The shifted atom is
-`T̂z = clamp(1 + 0.99·0) = 1`, so `b = (1 + 500)/20 = 25.05`, `l = 25`, `u = 26`. The lower weight is
-`u − b = 0.95` onto `z_25 = 0`, the upper weight is `b − l = 0.05` onto `z_26 = 20`. Mass check:
-`0.95 + 0.05 = 1`, preserved. First-moment check: `0.95·0 + 0.05·20 = 1.0 = T̂z`, so the two-atom split
-reproduces the shifted location exactly — the projection is a mass-preserving, mean-preserving smear onto
-the neighbors, which is what "distribute by linear interpolation" is supposed to mean. Now the integer
-case that the correction exists for: same atom `z_j = 0` but `r = 0`, so `T̂z = 0` and `b = (0+500)/20 =
-25.0` exactly. Then `l = ⌊25⌋ = 25` and `u = ⌈25⌉ = 25`, so `l = u`; the naive lower weight `(u − b) = 0`
-and the naive upper weight `(b − l) = 0` are *both* zero and the entire `p_j` would silently vanish. The
-correction rewrites the lower weight as `(u + [l==u] − b) = 25 + 1 − 25 = 1`, sending the full `p_j` to
-atom 25 and preserving the mass. This is not a rare edge case: any transition whose `r + γz_j` happens to
-land on a multiple of `Δz` offset from `v_min` hits it, and with `Δz = 20` and integer-ish rewards that
-happens constantly, so without the correction I would be bleeding probability mass out of the target
-distribution every batch. Third, the clamp: a bottom atom `z_j = −500` with `r = −10`, `γ = 0.99` gives
-raw `−10 + 0.99·(−500) = −505`, below the floor, so `clamp` pins it to `−500`, `b = 0`, `l = u = 0`, and
-the full mass piles onto the floor atom. That is the bounded-support prior doing its job — "everything
-worse than −500 is equally catastrophic" — rather than a bug; it is exactly the behavior I want at the
-edges of a fixed grid. Terminal transitions
+The projection has two edge behaviors I need to get right, so fix the grid — `v_min = −500`,
+`v_max = 500`, `N = 51`, `Δz = 20`, `z_i = −500 + 20i` — and push atoms through. A generic source atom
+`z_j = 0` with `r = 1`, `γ = 0.99` shifts to `T̂z = 1`, `b = (1 + 500)/20 = 25.05`, splitting mass
+`0.95/0.05` onto `z_25, z_26`; that preserves both mass (`0.95 + 0.05 = 1`) and the first moment
+(`0.95·0 + 0.05·20 = 1 = T̂z`), which is all "distribute by linear interpolation" should do. The integer
+case is the one the `(l == u)` correction exists for: with `r = 0`, `T̂z = 0` gives `b = 25.0` exactly,
+so `l = u = 25` and both naive weights `(u − b)` and `(b − l)` are zero — the entire `p_j` would silently
+vanish. The correction rewrites the lower weight as `(u + [l==u] − b) = 1`, sending the full mass to atom
+25. This is not a rare edge case: any `r + γz_j` landing on a multiple of `Δz` offset from `v_min` hits
+it, and with `Δz = 20` and integer-ish rewards that happens constantly, so without the correction I would
+bleed probability mass out of the target every batch. And the clamp: a bottom atom `z_j = −500` with
+`r = −10` gives raw `−505`, below the floor, so `clamp` pins it to `−500` and the full mass piles onto the
+floor atom — the bounded-support prior doing its job ("everything worse than −500 is equally
+catastrophic"), not a bug. Terminal transitions
 are handled by zeroing `γ` (the `(1 − dones)` factor), which collapses every shifted atom to `r`. The
 target distribution is formed from the **target network** (frozen bootstrap, as DQN), and the greedy
 action is chosen on the **mean** of the next-state distribution, `a* = argmax_a Σ_i z_i p_i(s',a)` —
@@ -136,22 +120,18 @@ the projected target `m` and the prediction, `−Σ_i m_i log p_i(s,a)` — the 
 `KL(Φ T̂ Z_{θ⁻}(s,a) ‖ Z_θ(s,a))`. The distributional Bellman update has become **multiclass
 classification** over the `N` atoms, which is exactly the unbiased-gradient regime I retreated to.
 
-Let me confirm that "unbiased" claim the same way I checked the quantile loss, because it is the whole
-justification for accepting a value-blind loss. The prediction is a softmax, `p_i = softmax(logits)_i`,
-and the cross-entropy against a target `m` has the textbook gradient in the logits `∂(−Σ_k m_k log p_k)/
-∂logit_i = p_i − m_i`. Now the subtlety that makes this legitimate in the bootstrap setting: the target
-`m` is itself built from a *single sampled transition* `(s, a, r, s')` — one draw of the reward and the
-next state — so it is a random target `m(r, s')`. The gradient I descend is `p_i − m_i(r,s')`, whose
-expectation over transitions is `p_i − E_{r,s'}[m_i(r,s')]`; because the projection `Φ` and the
-expectation are both linear in the distribution, `E[m] = ΦT̂ applied to the true next-state distribution`,
-so the expected gradient drives `p` toward the *true* projected Bellman target, not toward some biased
-surrogate. The estimator is unbiased because cross-entropy is linear in the target and the projection is
-linear — no reshuffling of sample-to-atom matching, unlike the transport in Wasserstein. That is the
-precise sense in which fixing the locations bought me back an unbiased sampled gradient at the cost of
-Wasserstein-awareness: I trade a horizontal-metric loss I cannot descend for a vertical-metric loss I
-can, and the projection is the bridge that makes the vertical loss meaningful despite the `γ`-shift.
+The unbiasedness is the whole justification for accepting a value-blind loss, so pin it down. The
+cross-entropy against target `m` has gradient `p_i − m_i` in the logits. The subtlety in the bootstrap
+setting: `m` is built from a *single sampled transition* `(s, a, r, s')`, so it is a random target
+`m(r, s')`, and the gradient I descend is `p_i − m_i(r,s')` with expectation `p_i − E_{r,s'}[m_i]`.
+Because both the projection `Φ` and the expectation are linear in the distribution, `E[m]` is `ΦT̂`
+applied to the true next-state distribution, so the expected gradient drives `p` toward the *true*
+projected Bellman target — no reshuffling of sample-to-atom matching, unlike the transport in
+Wasserstein. That is how fixing the locations buys back an unbiased sampled gradient at the cost of
+Wasserstein-awareness: a horizontal-metric loss I cannot descend traded for a vertical-metric one I can,
+with the projection the bridge that makes the vertical loss meaningful despite the `γ`-shift.
 
-A word on what I am trading versus QR-DQN, because it is the crux of whether this rung beats the last.
+A word on what I am trading versus QR-DQN, because it is the crux of whether this beats the last step.
 KL is insensitive to the atom *values* — it only matches mass — so this loss is *not* Wasserstein-aware
 the way the quantile loss was; if `v_min, v_max` are badly chosen the fixed grid can be a real handicap,
 and the projection introduces a small bias the quantile approach avoided. What I get back is that the
@@ -171,33 +151,25 @@ here the returns are unclipped classic-control returns that genuinely span this 
 −500 to +500 would clamp the crash tail and the CartPole cap to the endpoints and defeat the entire
 point of switching to a fixed grid. `Δz = 1000/50 = 20`, so each atom is 20 return-units wide — coarse
 in absolute terms, but the bimodal structure I care about (a few-hundred-point landing peak vs a
-few-hundred-negative crash peak) is comfortably resolved at that spacing. Check where the returns that
-matter actually land on this grid. CartPole's cap of exactly `+500` is `z_50`, the top atom — the
-saturated return sits *on* a grid point and needs no interpolation, so the coarse `Δz` cannot blur it,
-which answers the one worry I had about a fixed grid degrading the solved task. A LunarLander landing near
-`+200` maps to `b = (200 + 500)/20 = 35.0`, atom 35 (`z_35 = 200`) exactly; a crash near `−200` maps to
-`b = (−200 + 500)/20 = 15.0`, atom 15 exactly — the two modes I most need to keep apart fall on distinct
-grid atoms 20 apart, so the representation can put a clean probability lump on each rather than smearing
-them together. Acrobot's returns in the low `−80`s map to `b = (−80 + 500)/20 = 21.0`, atom 21 exactly,
-so its narrow unimodal mass sits squarely on a grid point too. So the peaks that carry the signal on all
-three tasks happen to land on or very near atoms at this spacing — the grid is coarse but aligned, and the
-`Δz = 20` resolution buys the multimodality I switched representations for without wasting atoms. The projection is the
+few-hundred-negative crash peak) is comfortably resolved at that spacing, and the returns that carry the
+signal fall neatly on the grid: CartPole's cap of exactly `+500` is the top atom `z_50` and needs no
+interpolation, so the coarse `Δz` cannot blur the solved task; a `+200` landing and a `−200` crash land
+on atoms 35 and 15, distinct and 20 atoms apart, so the two LunarLander modes get a clean probability
+lump each rather than smearing together. The grid is coarse but aligned. The projection is the
 linear-interpolation operator with the `(l == u)` integer-`b` correction, terminals via `(1 − dones)`,
 target built from the target net, greedy on the mean. I drop both the dueling head and the quantile head:
-this rung isolates the categorical-distribution effect, and the loss is cross-entropy, not quantile
+this step isolates the categorical-distribution effect, and the loss is cross-entropy, not quantile
 Huber. Adam at the scaffold `lr`. (The full scaffold module is in the answer.)
 
-So, falsifiably, against QR-DQN's {500, 197.15, −80.07}: CartPole should stay pinned near 500 — the only
-risk is the coarse `Δz = 20` grid blurring the cap, so I am watching that it does not slip below ~485 the
-way a badly-resolved head might. Acrobot I expect on par again, low −80s, perhaps a touch noisier because
-its return sits in the dense lower-middle of a wide grid where 20-unit atoms are relatively coarse — if
-it drifts a couple of points below QR-DQN's −80, that is the grid-coarseness cost showing up exactly
-where I would predict it. LunarLander is the test: if the under-resolved tail was really what kept
-QR-DQN's mean at 197 with ragged seeds, the fixed-grid mass model should lift the **mean above 197** and
-*tighten* the worst seed, because the crash tail now has honest grid resolution at its true magnitude.
-That is the bar this rung must clear to earn the top of the ladder. If instead LunarLander comes back
-*lower* than QR-DQN, the diagnosis is unambiguous and points past this whole family: the `[−500, 500]`
-grid with 20-unit atoms is too coarse for LunarLander's bimodality, the KL loss's value-blindness has
-cost more than the quantile loss's tail-noise did, and the right next move would be to combine the
-best of both — but that is a different rung. For now this is the strongest fill the scaffold allows me to
-isolate cleanly, and the measured LunarLander mean against 197.15 is exactly what decides it.
+So, against QR-DQN's {500, 197.15, −80.07}: CartPole should stay near 500, the only risk being the
+coarse `Δz = 20` grid blurring the cap slightly if the head is badly resolved. Acrobot I expect on par,
+low −80s, perhaps a touch noisier since its return sits in the dense lower-middle of a wide grid where
+20-unit atoms are relatively coarse — any small drift below QR-DQN's level would be the grid-coarseness
+cost showing up where I would predict it. LunarLander is the test: if the under-resolved tail was really
+what kept QR-DQN's mean at 197 with ragged seeds, the fixed-grid mass model should lift the **mean above
+197** and *tighten* the worst seed, because the crash tail now has honest grid resolution at its true
+magnitude. If instead LunarLander comes back *lower* than QR-DQN, the diagnosis is unambiguous and points
+past this whole family: the `[−500, 500]` grid with 20-unit atoms is too coarse for LunarLander's
+bimodality, the KL loss's value-blindness has cost more than the quantile loss's tail-noise did, and the
+next move would be to combine the best of both. The measured LunarLander mean against 197.15 is what
+decides it.
