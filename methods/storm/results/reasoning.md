@@ -15,7 +15,7 @@ So let me try to graft the SARAH correction onto the momentum recursion. Momentu
   `d_t = (1-a) d_{t-1} + a nabla f(x_t, xi_t) + (1-a)(nabla f(x_t, xi_t) - nabla f(x_{t-1}, xi_t))`,
   `x_{t+1} = x_t - eta d_t`.
 
-The only difference from vanilla momentum is that last `(1-a)(nabla f(x_t,xi_t) - nabla f(x_{t-1},xi_t))` term. Let me check the converging limit literally: if `x_t = x_{t-1}` then `nabla f(x_t,xi_t) - nabla f(x_{t-1},xi_t) = 0`, the added term vanishes, and `d_t = (1-a)d_{t-1} + a nabla f(x_t,xi_t)`, plain momentum. So whatever I'm building reduces to classic momentum SGD once the iterates settle — it is not some exotic object, it is momentum with an extra correction that matters most early when steps are large. Now let me put it in the form I'd actually run, collecting terms, and check what it reduces to. Write `g = nabla f(x_t, xi_t)`, `gp = nabla f(x_{t-1}, xi_t)`, `d = d_{t-1}`. Expanded, `d_t = (1-a)d + a g + (1-a)(g - gp)`. Group the `g` pieces: `a g + (1-a) g = g`, leaving `d_t = g + (1-a)d - (1-a)gp = g + (1-a)(d - gp)`. Let me confirm those two forms are the same thing and not an algebra slip — `(1-a)d + ag + (1-a)(g-gp)` minus `g + (1-a)(d-gp)` should be identically zero, and expanding both: `(1-a)d + ag + (1-a)g - (1-a)gp` vs `g + (1-a)d - (1-a)gp`; the `g` terms are `ag + (1-a)g = g` on the left and `g` on the right, the `(1-a)d` and `-(1-a)gp` match, so the difference is `0`. Good. So with a step shift, `d_{t+1} = nabla f(x_{t+1}, xi_{t+1}) + (1-a)(d_t - nabla f(x_t, xi_{t+1}))`. Now compare corners. Setting `a = 0` gives `d_{t+1} = nabla f(x_{t+1},xi_{t+1}) + (d_t - nabla f(x_t,xi_{t+1}))`, which is SARAH's recursion (coefficient `1`, the random walk I found earlier). Dropping the correction term — i.e. setting `gp = g`, no two-point difference — collapses the expanded form to `(1-a)d + ag`, plain momentum. So the object has both ancestors as corners, and the random walk lives precisely at the `a=0` edge; the interior `a` small but nonzero is where the carry-forward coefficient `(1-a)` is a genuine contraction. That interior is the regime worth analyzing.
+The only difference from vanilla momentum is that last `(1-a)(nabla f(x_t,xi_t) - nabla f(x_{t-1},xi_t))` term. In the converging limit, if `x_t = x_{t-1}` then that difference is `0`, the added term vanishes, and `d_t = (1-a)d_{t-1} + a nabla f(x_t,xi_t)`, plain momentum. So whatever I'm building reduces to classic momentum SGD once the iterates settle — not some exotic object, just momentum with an extra correction that matters most early when steps are large. Now put it in the form I'd actually run. Write `g = nabla f(x_t, xi_t)`, `gp = nabla f(x_{t-1}, xi_t)`, `d = d_{t-1}`: expanded, `d_t = (1-a)d + a g + (1-a)(g - gp)`, and grouping the `g` pieces `a g + (1-a) g = g` leaves `d_t = g + (1-a)(d - gp)`. So with a step shift, `d_{t+1} = nabla f(x_{t+1}, xi_{t+1}) + (1-a)(d_t - nabla f(x_t, xi_{t+1}))`. Now compare corners. Setting `a = 0` gives `d_{t+1} = nabla f(x_{t+1},xi_{t+1}) + (d_t - nabla f(x_t,xi_{t+1}))`, which is SARAH's recursion (coefficient `1`, the random walk I found earlier). Dropping the correction term — i.e. setting `gp = g`, no two-point difference — collapses the expanded form to `(1-a)d + ag`, plain momentum. So the object has both ancestors as corners, and the random walk lives precisely at the `a=0` edge; the interior `a` small but nonzero is where the carry-forward coefficient `(1-a)` is a genuine contraction. That interior is the regime worth analyzing.
 
 Now I have to check whether this actually reduces variance, because "it looks like both ancestors" is not a proof. The right object to track is the error in the direction I'm stepping along. Define `epsilon_t := d_t - nabla F(x_t)`. This measures exactly how wrong my update direction is relative to the true (unknown) gradient. For plain SGD the analogous error is `g_t - nabla F(x_t)` with `E[||.||^2] <= sigma^2` — flat, no decay. If I can show `E[||epsilon_t||^2]` *decreases* over time, that *is* variance reduction. Subtract `nabla F(x_t)` from my update. Start from `d_t = nabla f(x_t, xi_t) + (1-a)(d_{t-1} - nabla f(x_{t-1}, xi_t))`:
 
@@ -25,13 +25,13 @@ I want `(1-a) d_{t-1}` to turn into `(1-a) epsilon_{t-1}`, so I add and subtract
 
   `epsilon_t = (1-a) epsilon_{t-1} + a(nabla f(x_t, xi_t) - nabla F(x_t)) + (1-a)(nabla f(x_t, xi_t) - nabla f(x_{t-1}, xi_t) - (nabla F(x_t) - nabla F(x_{t-1})))`.
 
-Let me read these three terms one at a time. The first, `(1-a) epsilon_{t-1}`, is a *contraction* of the previous error by factor `(1-a)` — the momentum averaging shrinking accumulated error, and the very piece the `a=0` random walk was missing. The second, `a(nabla f(x_t, xi_t) - nabla F(x_t))`, is fresh single-sample noise, magnitude `~ sigma`, but multiplied by the small `a` — I can make this as small as I like by shrinking `a`. The third: `nabla f(x_t, xi_t) - nabla f(x_{t-1}, xi_t)` minus its mean `nabla F(x_t) - nabla F(x_{t-1})`. This is the same-sample two-point difference, centered, so by smoothness it is `O(||x_t - x_{t-1}||) = O(eta ||d_{t-1}||)` — small whenever the step is small. So heuristically `||epsilon_t|| ~ (1-a)||epsilon_{t-1}|| + Z`, where `Z` is small. A contraction-plus-small-input recursion `u_t = (1-a)u_{t-1} + Z` has fixed point `u = (1-a)u + Z`, i.e. `u = Z/a`, so I'd expect the error to stabilize near `Z/a`. Let me sanity-check that fixed point is the right scaling and I'm not fooling myself: I'll come back and iterate the actual recursion numerically once I've fixed the schedule, since "settles at `Z/a`" is the claim the whole rate rests on. For now it tells me the design problem: choose `eta` and `a` to make `Z/a` tiny — drive the numerator `Z` (which scales with `a sigma` and with `eta`) down while keeping the denominator `a` from being so small that `Z/a` blows back up. That tension between `Z` and `a` in `Z/a` is what the schedule has to resolve; everything else is making it precise.
+Let me read these three terms one at a time. The first, `(1-a) epsilon_{t-1}`, is a *contraction* of the previous error by factor `(1-a)` — the momentum averaging shrinking accumulated error, and the very piece the `a=0` random walk was missing. The second, `a(nabla f(x_t, xi_t) - nabla F(x_t))`, is fresh single-sample noise, magnitude `~ sigma`, but multiplied by the small `a` — I can make this as small as I like by shrinking `a`. The third: `nabla f(x_t, xi_t) - nabla f(x_{t-1}, xi_t)` minus its mean `nabla F(x_t) - nabla F(x_{t-1})`. This is the same-sample two-point difference, centered, so by smoothness it is `O(||x_t - x_{t-1}||) = O(eta ||d_{t-1}||)` — small whenever the step is small. So heuristically `||epsilon_t|| ~ (1-a)||epsilon_{t-1}|| + Z`, where `Z` is small. A contraction-plus-small-input recursion `u_t = (1-a)u_{t-1} + Z` has fixed point `u = (1-a)u + Z`, i.e. `u = Z/a`, so I'd expect the error to stabilize near `Z/a` — the claim the whole rate rests on, which I will iterate numerically once the schedule is fixed. For now it tells me the design problem: choose `eta` and `a` to make `Z/a` tiny — drive the numerator `Z` (which scales with `a sigma` and with `eta`) down while keeping the denominator `a` from being so small that `Z/a` blows back up. That tension between `Z` and `a` in `Z/a` is what the schedule has to resolve; everything else is making it precise.
 
 Before I make it precise, the step size and the momentum coefficient. SVRG/SARAH set these by hand against `L` and `sigma`; I refuse to. The adaptive-learning-rate idea says: set the step from the gradients you've seen. AdaGrad uses `eta_t = k / (sum_{i<=t} g_i^2)^{1/2}`. Let me reach for the same shape but I am *not* going to assume the `1/2` power — the exponent should be whatever the convergence analysis demands, so I'll leave it free and pin it down by matching rates. Write `eta_t = k / (w + sum_{i=1}^t G_i^2)^{p}` with `G_t = ||nabla f(x_t, xi_t)||` the gradient norm at the sample, `w` a small offset to keep things finite at `t = 0`, and `p` to be determined. And I want the momentum coefficient to *also* be adaptive and to *decay*, because the heuristic `Z/a` analysis said `a` controls the contraction and the noise injection — early on I want `a` larger (strong fresh-noise suppression is less important than tracking), later smaller. Let me tie it to the step size: `a_{t+1} = c eta_t^2`. Why `eta^2` and not `eta`? Because in the error recursion the noise term enters as `a` times noise, but it will get squared in `E[||epsilon||^2]`, and — I'll see this drop out of the algebra in a moment — the term that wants to be controlled is `a^2 = c^2 eta^4`, and pairing `a` with `eta^2` is what makes the noise contribution scale like `eta^4`, i.e. summable. Let me carry `p` and the `eta^2` coupling and let the analysis confirm them.
 
 Let me get the exponents by the equilibrium heuristic, sharpened. The gradient-norm-squared `G_t^2 = ||nabla f(x_t,xi_t)||^2` does *not* go to zero even at a critical point, because of the variance floor — `E[G_t^2] >= sigma^2 > 0` roughly — so `sum_{i<=t} G_i^2 ~ Theta(t)`, and `eta_t ~ k / t^p`, and `a_t = c eta_{t-1}^2 ~ t^{-2p}`. Now sharpen the error recursion. From the three terms, `E[||epsilon_t||^2]` picks up: from the noise term, `~ a_t^2 sigma^2 = eta^4 ~ t^{-4p}`; from the contraction, `(1-a_t)^2 E[||epsilon_{t-1}||^2]`; from the smoothness term, `~ eta_{t-1}^2 ||d_{t-1}||^2 ~ eta^2(||epsilon||^2 + ||nabla F||^2)`. Set `E[||epsilon_t||^2] = E[||epsilon_{t-1}||^2]` (equilibrium), use `(1-a_t) ~ 1 - a_t`, and the `a_t` from the contraction balances the inputs: `a_t ||epsilon||^2 ~ t^{-4p} + t^{-2p}||nabla F||^2`, so `||epsilon||^2 ~ t^{-4p}/t^{-2p} + ||nabla F||^2 = t^{-2p} + ||nabla F||^2`. The error floor is `t^{-2p}`. Now the descent side will trade `eta_t ||nabla F||^2` against `eta_t ||epsilon||^2`, and the iterate stops making progress when `||nabla F||^2` drops to the error floor `t^{-2p}`. So `||nabla F||^2 ~ T^{-2p}`, `||nabla F|| ~ T^{-p}`. For the optimal `T^{-1/3}` this wants `p = 1/3` — the *cube* root of accumulated squared gradients, not AdaGrad's square root.
 
-This is the moment to cash the IOU I left above and actually iterate the recursion, because the whole exponent argument hinges on "the floor scales as `t^{-2p}`." Let me code up the scalar error recursion with `eta_t = t^{-p}`, `a_t = eta_t^2`, drive `||nabla F|| = 0` to isolate the noise floor, seed `eps_0^2 = sigma^2 = 1`, and step `eps_t^2 = a_t^2 + (1-a_t)^2 eps_{t-1}^2 + eta_t^2 eps_{t-1}^2` for `t` up to `2e5`, then read the log-log slope of `eps_t^2` between `t=1e5` and `t=2e5`. If `p=1/3` is right the slope should be near `-2p = -0.667`; I'll also run `p=1/2` and `p=1/4` to see whether the slope really tracks `-2p` or whether I've talked myself into a coincidence. Running it: `p=1/3` gives floor `2.96e-4` at `t=2e5` with slope `-0.671`; `p=1/2` gives slope `-0.941` (the `(1-a)^2` correction makes it lag the asymptotic `-1.0` a bit at finite `t`); `p=1/4` gives `-0.502`. So the floor really does decay like `t^{-2p}` — for `p=1/3`, like `t^{-2/3}` — and the heuristic was not a coincidence. That settles `p = 1/3`: AdaGrad's `1/2` would over-shrink the step and give the easy-case `T^{-1/2}` only when the noise is already gone, but cannot hold the variance-reduced `T^{-1/3}` floor in the noisy regime; the cube root is what matches the equilibrium. And with `p = 1/3`, `a_t ~ t^{-2/3}` — decaying, which is the behavior I wanted from the momentum coefficient. So:
+The whole exponent argument hinges on "the floor scales as `t^{-2p}`," so I iterate the recursion to test it. Code up the scalar error recursion with `eta_t = t^{-p}`, `a_t = eta_t^2`, drive `||nabla F|| = 0` to isolate the noise floor, seed `eps_0^2 = sigma^2 = 1`, and step `eps_t^2 = a_t^2 + (1-a_t)^2 eps_{t-1}^2 + eta_t^2 eps_{t-1}^2` for `t` up to `2e5`, then read the log-log slope of `eps_t^2` between `t=1e5` and `t=2e5`; if `p=1/3` is right the slope should be near `-2p = -0.667`, and I run `p=1/2` and `p=1/4` alongside to see whether the slope really tracks `-2p`. `p=1/3` gives floor `2.96e-4` at `t=2e5` with slope `-0.671`; `p=1/2` gives slope `-0.941` (the `(1-a)^2` correction makes it lag the asymptotic `-1.0` a bit at finite `t`); `p=1/4` gives `-0.502`. So the floor really does decay like `t^{-2p}` — for `p=1/3`, like `t^{-2/3}` — and the heuristic was not a coincidence. That settles `p = 1/3`: AdaGrad's `1/2` would over-shrink the step and give the easy-case `T^{-1/2}` only when the noise is already gone, but cannot hold the variance-reduced `T^{-1/3}` floor in the noisy regime; the cube root is what matches the equilibrium. And with `p = 1/3`, `a_t ~ t^{-2/3}` — decaying, which is the behavior I wanted from the momentum coefficient. So:
 
   `eta_t = k / (w + sum_{i=1}^t G_i^2)^{1/3}`,  `a_{t+1} = c eta_t^2`,
   `d_{t+1} = nabla f(x_{t+1}, xi_{t+1}) + (1 - a_{t+1})(d_t - nabla f(x_t, xi_{t+1}))`,  `x_{t+1} = x_t - eta_t d_t`,
@@ -50,7 +50,7 @@ The cross term `-eta_t nabla F.epsilon_t` I tame with Young's inequality `|a.b| 
 
   `<= E[F(x_t) - eta_t||nabla F||^2 + (eta_t/2)||nabla F||^2 + (eta_t/2)||epsilon_t||^2 + L eta_t^2||epsilon_t||^2 + L eta_t^2||nabla F||^2]`.
 
-Collect. The `||nabla F||^2` coefficient is `-eta_t + eta_t/2 + L eta_t^2 = -eta_t/2 + L eta_t^2`; if `eta_t <= 1/(4L)` then `L eta_t^2 <= L eta_t/(4L) = eta_t/4`, so the coefficient is `<= -eta_t/2 + eta_t/4 = -eta_t/4`. Let me check the boundary `eta_t = 1/(4L)` numerically so I know which way the inequality points at the worst allowed step: the coefficient is `-eta_t/2 + L eta_t^2 = -1/(8L) + L/(16L^2) = -1/(8L) + 1/(16L) = -1/(16L)`, which is exactly `-eta_t/4 = -(1/4)(1/4L) = -1/(16L)`, so the bound is tight at the endpoint and strict for smaller steps — the `-eta_t/4` is real, not slack I'm hoping holds. The `||epsilon||^2` coefficient is `eta_t/2 + L eta_t^2 <= eta_t/2 + eta_t/4 = 3 eta_t/4`, and at the same endpoint it is `1/(8L) + 1/(16L) = 3/(16L) = 3 eta_t/4`, again tight. So
+Collect. The `||nabla F||^2` coefficient is `-eta_t + eta_t/2 + L eta_t^2 = -eta_t/2 + L eta_t^2`; if `eta_t <= 1/(4L)` then `L eta_t^2 <= L eta_t/(4L) = eta_t/4`, so the coefficient is `<= -eta_t/2 + eta_t/4 = -eta_t/4` (tight at the endpoint `eta_t = 1/(4L)`, where both sides equal `-1/(16L)`, strict for smaller steps). The `||epsilon||^2` coefficient is `eta_t/2 + L eta_t^2 <= eta_t/2 + eta_t/4 = 3 eta_t/4`. So
 
   `E[F(x_{t+1}) - F(x_t)] <= E[-(eta_t/4)||nabla F(x_t)||^2 + (3 eta_t/4)||epsilon_t||^2]`,   provided `eta_t <= 1/(4L)`.
 
@@ -81,7 +81,7 @@ Now I build the potential and force the constants. Take `Phi_t = F(x_t) + z_t ||
 
 `B_t` is where `c` gets pinned. `B_t = (eta_t^{-1}(1-a_{t+1})(1+4L^2 eta_t^2) - eta_{t-1}^{-1})||epsilon_t||^2`. Expand: `eta_t^{-1}(1-a_{t+1})(1+4L^2 eta_t^2) <= eta_t^{-1}(1 + 4L^2 eta_t^2 - a_{t+1})` (dropping the cross product `a_{t+1} . 4L^2 eta_t^2 >= 0`), `= eta_t^{-1} + eta_t(4L^2) - eta_t^{-1}a_{t+1}`. With `a_{t+1} = c eta_t^2`, `eta_t^{-1}a_{t+1} = c eta_t`. So `B_t <= (eta_t^{-1} - eta_{t-1}^{-1} + eta_t(4L^2 - c))||epsilon_t||^2`. I need this to come out *negative* (so the error in the potential is being burned, not accumulated), and that is a race between the step-size-increment `eta_t^{-1} - eta_{t-1}^{-1}` (which is positive — the inverse step size grows) and the `-c eta_t` from the momentum coupling. So I must show `eta_t^{-1} - eta_{t-1}^{-1}` is itself `O(eta_t)` and then choose `c` big enough.
 
-Bound the increment. `eta_t^{-1} - eta_{t-1}^{-1} = (1/k)[(w + sum_{i<=t}G_i^2)^{1/3} - (w + sum_{i<t}G_i^2)^{1/3}]`. The map `x -> x^{1/3}` is concave, so `(x+y)^{1/3} <= x^{1/3} + (y/3) x^{-2/3}`; with `x = w + sum_{i<t}G_i^2`, `y = G_t^2`, the increment is `<= G_t^2/(3k(w + sum_{i<t}G_i^2)^{2/3})`. Now I want to express the denominator in terms of `eta_t`, i.e. `(w + sum_{i<=t}G_i^2)`. Since `w >= 2G^2`, `w + sum_{i<t}G_i^2 = (w - G_t^2) + sum_{i<=t}G_i^2 >= (w - G^2) + sum_{i<=t}G_i^2 >= w/2 + sum_{i<=t}G_i^2 >= (1/2)(w + sum_{i<=t}G_i^2)`. So `(w + sum_{i<t}G_i^2)^{2/3} >= 2^{-2/3}(w + sum_{i<=t}G_i^2)^{2/3}`, and the increment `<= 2^{2/3} G_t^2/(3k(w+sum_{i<=t}G_i^2)^{2/3}) = (2^{2/3}/(3k)) G_t^2 . (eta_t/k)^2 = (2^{2/3}G_t^2/(3k^3)) eta_t^2`. Now `G_t^2 <= G^2`, and `eta_t <= 1/(4L)` (I'll guarantee that with `w`), so `eta_t^2 <= eta_t/(4L)`, giving `eta_t^{-1} - eta_{t-1}^{-1} <= (2^{2/3}G^2/(12 L k^3)) eta_t <= (G^2/(7 L k^3)) eta_t` (since `2^{2/3}/12 < 1/7`). So the increment is bounded by `(G^2/(7Lk^3)) eta_t`. Now choose `c = 28 L^2 + G^2/(7 L k^3)`. Then `eta_t(4L^2 - c) = eta_t(4L^2 - 28L^2 - G^2/(7Lk^3)) = -24 L^2 eta_t - (G^2/(7Lk^3)) eta_t`, and the `-(G^2/(7Lk^3))eta_t` exactly cancels the increment bound, leaving `B_t <= -24 L^2 eta_t ||epsilon_t||^2`. So `c` is forced into two pieces with two distinct jobs: the `28 L^2` produces the surplus `-24L^2 eta_t` that will dominate the descent lemma's `+3eta_t/4` error term, and the `G^2/(7Lk^3)` exactly eats the step-size-increment. Nothing arbitrary.
+Bound the increment. `eta_t^{-1} - eta_{t-1}^{-1} = (1/k)[(w + sum_{i<=t}G_i^2)^{1/3} - (w + sum_{i<t}G_i^2)^{1/3}]`. The map `x -> x^{1/3}` is concave, so `(x+y)^{1/3} <= x^{1/3} + (y/3) x^{-2/3}`; with `x = w + sum_{i<t}G_i^2`, `y = G_t^2`, the increment is `<= G_t^2/(3k(w + sum_{i<t}G_i^2)^{2/3})`. Now I want to express the denominator in terms of `eta_t`, i.e. `(w + sum_{i<=t}G_i^2)`. Since `w >= 2G^2`, `w + sum_{i<t}G_i^2 = (w - G_t^2) + sum_{i<=t}G_i^2 >= (w - G^2) + sum_{i<=t}G_i^2 >= w/2 + sum_{i<=t}G_i^2 >= (1/2)(w + sum_{i<=t}G_i^2)`. So `(w + sum_{i<t}G_i^2)^{2/3} >= 2^{-2/3}(w + sum_{i<=t}G_i^2)^{2/3}`, and the increment `<= 2^{2/3} G_t^2/(3k(w+sum_{i<=t}G_i^2)^{2/3}) = (2^{2/3}/(3k)) G_t^2 . (eta_t/k)^2 = (2^{2/3}G_t^2/(3k^3)) eta_t^2`. Now `G_t^2 <= G^2`, and `eta_t <= 1/(4L)` (I'll guarantee that with `w`), so `eta_t^2 <= eta_t/(4L)`, giving `eta_t^{-1} - eta_{t-1}^{-1} <= (2^{2/3}G^2/(12 L k^3)) eta_t <= (G^2/(7 L k^3)) eta_t` (since `2^{2/3}/12 < 1/7`). So the increment is bounded by `(G^2/(7Lk^3)) eta_t`. Now choose `c = 28 L^2 + G^2/(7 L k^3)`. Then `eta_t(4L^2 - c) = eta_t(4L^2 - 28L^2 - G^2/(7Lk^3)) = -24 L^2 eta_t - (G^2/(7Lk^3)) eta_t`, and the `-(G^2/(7Lk^3))eta_t` exactly cancels the increment bound, leaving `B_t <= -24 L^2 eta_t ||epsilon_t||^2`. So `c` is forced into two pieces with two distinct jobs: the `28 L^2` produces the surplus `-24L^2 eta_t` that will dominate the descent lemma's `+3eta_t/4` error term, and the `G^2/(7Lk^3)` exactly eats the step-size-increment.
 
 `C_t` just stays `sum_t 4 L^2 eta_t ||nabla F(x_t)||^2`.
 
@@ -96,7 +96,7 @@ where `(1/(32L^2))(2 k^3 c^2 ln(T+2)) = k^3 c^2/(16L^2) ln(T+2)`, `(1/(32L^2))(-
   `<= E[(k^3c^2/(16L^2)) ln(T+2) + sum_t(-(eta_t/4) + (eta_t/8))||nabla F(x_t)||^2 + sum_t((3eta_t/4) - (3eta_t/4))||epsilon_t||^2]`
   `= E[(k^3c^2/(16L^2)) ln(T+2) - sum_t (eta_t/8) ||nabla F(x_t)||^2]`.
 
-The two `(3eta_t/4)||epsilon_t||^2` terms cancel exactly: the descent lemma contributes `+(3eta_t/4)||epsilon_t||^2` and the scaled potential contributes `-(3eta_t/4)||epsilon_t||^2`, sum `0`. Worth checking that the `3/4` on both sides is not a happy accident I should distrust — the descent side's `3/4` came from `eta_t/2 + Leta_t^2` at the `eta_t<=1/4L` bound, and the potential side's `3/4` is `24L^2/(32L^2)`, i.e. the `-24L^2 eta_t` from `B_t` scaled by the `1/(32L^2)` weight. So both `3/4`s trace back to the *same two choices*: the weight `z_t = 1/(32L^2 eta_{t-1})` and the `28L^2` piece of `c` (which produced the `-24L^2` surplus after the `+4L^2` from `C_t`). Change `32L^2` to anything else and the potential's coefficient stops matching the descent's `3/4`, leaving a residual `||epsilon||^2` that does not cancel — so this is the constant the cancellation forces, not one I picked freely. Reorder, using `Phi_{T+1} >= F^*` (since `||epsilon||^2 >= 0` and `F >= F^*`):
+The two `(3eta_t/4)||epsilon_t||^2` terms cancel exactly: the descent lemma contributes `+(3eta_t/4)||epsilon_t||^2` and the scaled potential contributes `-(3eta_t/4)||epsilon_t||^2`, sum `0`. Both `3/4`s trace to the *same two choices*: the descent side's `3/4` came from `eta_t/2 + Leta_t^2` at the `eta_t<=1/4L` bound, and the potential side's is `24L^2/(32L^2)`, the `-24L^2 eta_t` from `B_t` scaled by the `1/(32L^2)` weight — so the weight `z_t = 1/(32L^2 eta_{t-1})` and the `28L^2` piece of `c` (which produced the `-24L^2` surplus after the `+4L^2` from `C_t`). Change `32L^2` to anything else and the potential's coefficient stops matching the descent's `3/4`, leaving a residual `||epsilon||^2` that does not cancel — so this is the constant the cancellation forces, not one I picked freely. Reorder, using `Phi_{T+1} >= F^*` (since `||epsilon||^2 >= 0` and `F >= F^*`):
 
   `E[sum_t eta_t ||nabla F(x_t)||^2] <= 8 E[Phi_1 - Phi_{T+1}] + (k^3 c^2/(2L^2)) ln(T+2) <= 8(F(x_1) - F^*) + 8 z_1 E[||epsilon_1||^2] + (k^3c^2/(2L^2))ln(T+2)`.
 
@@ -122,151 +122,4 @@ There is one assumption I leaned on that the SVRG/SARAH analyses do not: that ea
 
 Now the implementation, because the clean update rule hides a few decisions a real optimizer must make. I have one sample per step, two parameter sets in play (current `x_t` and previous `x_{t-1}`), and I need *the same sample's* gradient at *both* points. In a static TensorFlow graph I can keep a slot containing the previous iterate and use graph replacement to ask for the current loss gradient with reads of each variable swapped to that slot. I keep the slots that the recursion actually needs: previous iterate, running gradient estimate `d`, an elementwise squared-gradient accumulator, a scalar running maximum gradient norm for clipping, and a diagnostic sum of squared estimates. The theorem writes one scalar `eta_t = k/(w + sum G_i^2)^{1/3}`; the implementation uses the same cube-root law elementwise, `sum_grad_squared += grad^2`, which is the diagonal preconditioning version practitioners expect from AdaGrad/Adam-style code. The coefficient is `beta = min(1, momentum * eta^2)`, the implementation name for `a`; the cap is the numerical version of the proof's `a <= 1` constraint. The update line is `grad + (1-beta)(grad_estimate - grad_at_prev_iterate)`, then a scalar-norm clip to the running gradient scale, then save the current variable as the next previous iterate before applying `var += -eta * new_grad_estimate`.
 
-Before I trust that this line is the recursion and not a near-miss, let me trace it on a one-dimensional problem I can compute by hand. Take `F(x) = x^2/2`, so `nabla F(x) = x`, with stochastic gradient `nabla f(x, xi) = x + xi`, `xi ~ N(0, sigma^2)`. The same-sample requirement means `grad_at_prev_iterate` must be `previous_iterate + xi` with the *same* `xi` as `grad = x + xi`; that is exactly what the graph-replacement of the variable read by the previous-iterate slot produces. Start at `x = 5`, `previous_iterate = 5`, `grad_estimate = 0`, with the code's defaults `lr=1, eta_offset=10, momentum=100, g_max=0.01`. Step 1, draw `xi_1`: `grad = 5 + xi_1`, `grad_at_prev = 5 + xi_1` (prev equals `x` initially), `sum_grad_squared = 0.01^3 + grad^2`, `eta = (10 + sum_grad_squared)^{-1/3}`, `beta = min(1, 100 eta^2)`, `new_grad_estimate = grad + (1-beta)(0 - grad_at_prev)`. Running it, `eta = 0.3046`, `beta = 1.0`, so `new_grad_estimate = grad` (the `(1-beta)` factor zeroes the correction), and the applied update is `-eta * grad_estimate = -1.53457`. Computing the same thing by hand from the formula gives `-1.53457` — they match to the digits, so the code line is the recursion, not a near-miss. One honest observation from the trace: `beta` saturates at `1` here because `momentum * eta^2 = 100 * 0.09 > 1` in this low-dimensional toy, so the `min(1, .)` cap is active and the same-sample correction is *off* early — the cap is not cosmetic, it really fires, exactly as the `a <= 1` constraint in the proof anticipated; the correction switches on only once `eta` has shrunk enough that `100 eta^2 < 1`. Letting it run 4000 steps with `sigma = 0.3`, `x` moves from `5.0` to `|x| = 0.019`, i.e. `||nabla F(x)|| = |x|` driven toward `0` — the optimizer does find the critical point of `x^2/2`, which is the behavior the whole construction was for. So the implementation faithfully realizes the algorithm. The actual optimizer also carries optional summary hooks, records the local smoothness diagnostic `||grad - grad_at_prev_iterate|| / (0.0001 + ||var - previous_iterate||)`, and keeps the `compute_gradients` signature compatible with the surrounding Tensor2Tensor training code. Mapping names: `lr` is `k`, `eta` is the denominator offset `w`, `momentum` is `c`, and `g_max` initializes the gradient-scale quantities.
-
-```python
-import tensorflow.compat.v1 as tf
-from tensorflow.contrib import graph_editor as contrib_graph_editor
-from tensorflow.contrib.optimizer_v2 import optimizer_v2
-
-GATE_OP = 1
-
-PREVIOUS_ITERATE = "previous_iterate"
-GRAD_ESTIMATE = "grad_estimate"
-SUM_GRAD_SQUARED = "sum_grad_squared"
-MAXIMUM_GRADIENT = "maximum_gradient"
-SUM_ESTIMATES_SQUARED = "sum_estimates_squared"
-
-
-class StormOptimizer(optimizer_v2.OptimizerV2):
-  def __init__(self, lr=1.0, g_max=0.01, momentum=100.0, eta=10.0,
-               output_summaries=False, use_locking=False,
-               name="StormOptimizer"):
-    super(StormOptimizer, self).__init__(use_locking, name)
-    self.lr = lr
-    self.g_max = g_max
-    self.momentum = momentum
-    self.eta = eta
-    self.output_summaries = output_summaries
-
-  def _find_read_tensors(self, outputs, target):
-    read_tensors, visited = set(), set()
-
-    def dfs(parent):
-      for x in parent.op.inputs:
-        if x.name not in visited:
-          if x.name == target.name:
-            read_tensors.add(parent)
-          visited.add(x.name)
-          dfs(x)
-
-    for output in outputs:
-      dfs(output)
-    return read_tensors
-
-  def _make_replace_dict(self, state, grads, var_list):
-    replace_dict = {}
-    for var in var_list:
-      previous_iterate = tf.convert_to_tensor(state.get_slot(var, PREVIOUS_ITERATE))
-      for tensor in self._find_read_tensors(grads, var):
-        replace_dict[tensor] = previous_iterate
-    return replace_dict
-
-  def _recompute_gradients(self, state):
-    return contrib_graph_editor.graph_replace(
-        self.grads, self._make_replace_dict(state, self.grads, self.vars))
-
-  def _create_slot_with_value(self, state, var, value, name):
-    state.create_slot(
-        var, tf.constant(value, shape=var.shape, dtype=var.dtype.base_dtype), name)
-
-  def _create_vars(self, var_list, state):
-    for var in var_list:
-      state.create_slot(var, var.initialized_value(), PREVIOUS_ITERATE)
-      self._create_slot_with_value(state, var, self.g_max ** 3, SUM_GRAD_SQUARED)
-      state.zeros_slot(var, GRAD_ESTIMATE)
-      state.create_slot(
-          var, tf.constant(self.g_max, dtype=var.dtype.base_dtype), MAXIMUM_GRADIENT)
-      self._create_slot_with_value(state, var, 0.01, SUM_ESTIMATES_SQUARED)
-
-  def _prepare(self, state):
-    self.grads = []
-    self.vars = []
-
-  def _resource_apply_dense(self, grad, var, state):
-    return self._apply_dense(grad, var, state)
-
-  def _apply_dense(self, grad, var, state):
-    self.grads.append(grad)
-    self.vars.append(var)
-    return tf.no_op()
-
-  def _finish(self, state):
-    update_ops = []
-    grads_at_prev_iterate = self._recompute_gradients(state)
-
-    for var, grad, grad_at_prev_iterate in zip(
-        self.vars, self.grads, grads_at_prev_iterate):
-      sum_grad_squared = state.get_slot(var, SUM_GRAD_SQUARED)
-      previous_iterate = state.get_slot(var, PREVIOUS_ITERATE)
-      maximum_gradient = state.get_slot(var, MAXIMUM_GRADIENT)
-      grad_estimate = state.get_slot(var, GRAD_ESTIMATE)
-      sum_estimates_squared = state.get_slot(var, SUM_ESTIMATES_SQUARED)
-
-      maximum_gradient_updated = tf.assign(
-          maximum_gradient, tf.maximum(maximum_gradient, tf.norm(grad)))
-      update_ops.append(maximum_gradient_updated)
-
-      sum_grad_squared_updated = tf.assign_add(
-          sum_grad_squared, tf.pow(tf.abs(grad), 2.0))
-      update_ops.append(sum_grad_squared_updated)
-
-      smoothness = tf.norm(grad - grad_at_prev_iterate) / (
-          0.0001 + tf.norm(var - previous_iterate))
-      eta = self.lr * tf.pow(self.eta + sum_grad_squared_updated, -1.0 / 3.0)
-      beta = tf.minimum(1.0, self.momentum * tf.square(eta))
-
-      new_grad_estimate = grad + (1.0 - beta) * (
-          grad_estimate - grad_at_prev_iterate)
-      new_grad_estimate = tf.clip_by_value(
-          new_grad_estimate, -maximum_gradient_updated, maximum_gradient_updated)
-
-      if self.output_summaries:
-        tf.summary.scalar(self._name + "/smoothness/" + var.name, smoothness)
-        tf.summary.scalar(self._name + "/max_grad/" + var.name,
-                          maximum_gradient_updated)
-        tf.summary.scalar(self._name + "/average_beta/" + var.name,
-                          tf.reduce_mean(beta))
-        tf.summary.scalar(self._name + "/iterate_diff/" + var.name,
-                          tf.norm(var - previous_iterate))
-        tf.summary.scalar(self._name + "/grad_diff/" + var.name,
-                          tf.norm(grad - grad_at_prev_iterate))
-        tf.summary.scalar(self._name + "/vr_grad_estimate_norm/" + var.name,
-                          tf.norm(new_grad_estimate))
-        tf.summary.scalar(self._name + "/grad_norm/" + var.name, tf.norm(grad))
-
-      grad_estimate_updated = tf.assign(grad_estimate, new_grad_estimate)
-      update_ops.append(grad_estimate_updated)
-
-      update_ops.append(tf.assign_add(
-          sum_estimates_squared, tf.square(new_grad_estimate)))
-
-      with tf.control_dependencies([grad_at_prev_iterate]):
-        previous_iterate_updated = tf.assign(previous_iterate, var)
-        update_ops.append(previous_iterate_updated)
-
-      with tf.control_dependencies([previous_iterate_updated]):
-        update_ops.append(tf.assign_add(var, -eta * grad_estimate_updated))
-
-    return tf.group(*update_ops)
-
-  def compute_gradients(self, loss, var_list=None, gate_gradients=GATE_OP,
-                        aggregation_method=None, grad_loss=None,
-                        stop_gradients=None, colocate_gradients_with_ops=False,
-                        scale_loss_by_num_replicas=None):
-    return super(StormOptimizer, self).compute_gradients(
-        loss, var_list, gate_gradients, aggregation_method, grad_loss,
-        stop_gradients, scale_loss_by_num_replicas)
-```
-
-So the causal chain, start to finish. SGD is stuck at `O(T^{-1/4})` because gradient noise has a floor that does not vanish near a critical point. Variance reduction beats the floor with a smoothness control variate — a same-sample two-point gradient difference, small precisely when consecutive iterates are close — but SVRG and SARAH and SPIDER all anchor that control variate with a full-gradient checkpoint (a mega-batch costing up to `O(T)` samples for one point) and ride a non-adaptive step size tuned against unknown constants. Staring at SARAH's recursive estimator next to heavy-ball momentum, both are "carry the running estimate forward and fold in the new gradient," so I graft the SARAH same-sample correction onto the momentum recursion, `d_t = (1-a)d_{t-1} + a nabla f(x_t,xi_t) + (1-a)(nabla f(x_t,xi_t) - nabla f(x_{t-1},xi_t))`, which contains both ancestors as corners (`a=0` is SARAH, drop the correction is momentum) and reduces to plain momentum once the iterates settle. Tracking the error `epsilon_t = d_t - nabla F(x_t)` gives a recursion with a contraction `(1-a)`, a tiny `a sigma` noise injection, and a smoothness term `O(eta||d||)`, so the error settles at `Z/a` and the design problem is to make `Z/a` small. Building the step size adaptively as `eta_t = k/(w + sum G^2)^{1/3}` and `a_{t+1} = c eta_t^2`, the equilibrium heuristic fixes the cube-root exponent as exactly what yields the optimal `||nabla F|| ~ T^{-1/3}` floor. A time-varying Lyapunov potential `Phi_t = F(x_t) + ||epsilon_t||^2/(32L^2 eta_{t-1})` — time-varying being what removes the checkpoint — lets me telescope: the descent lemma spends `(3eta/4)||epsilon||^2` and the potential's error term burns exactly `(3eta/4)||epsilon||^2`, a cancellation I force by choosing `z_t propto 1/eta` and `c = 28L^2 + G^2/(7Lk^3)` (the `28L^2` covers the descent surplus, the second piece eats the step-size increment). The noise term sums to only `ln(T+2)` via the log lemma, the seed error `epsilon_1` costs a single `sigma^2` instead of a checkpoint, and a Cauchy-Schwarz pass converts `sum eta_t||nabla F||^2` into the final `E[||nabla F||] <= O(1/sqrt T) + 2sigma^{1/3}/T^{1/3}` — optimal, adaptive to `sigma` without knowing it. Dropping the Lipschitz assumption is available by hardwiring `sigma` into a deterministic schedule. And the whole thing ships as a single-sample optimizer with per-variable slots for the previous iterate, the estimate, the squared-gradient accumulator, a gradient-scale maximum, and diagnostics, plus a same-sample second gradient evaluation at the previous iterate, per-coordinate adaptive steps, and a scalar gradient-scale clip; in the TensorFlow training setup, fixing `k` and `w` leaves `c` as the swept knob.
+Now I trace this line on a one-dimensional problem to see the mechanics concretely. Take `F(x) = x^2/2`, so `nabla F(x) = x`, with stochastic gradient `nabla f(x, xi) = x + xi`, `xi ~ N(0, sigma^2)`. The same-sample requirement means `grad_at_prev_iterate` must use the *same* `xi` as `grad = x + xi`; that is exactly what the graph-replacement of the variable read by the previous-iterate slot produces. Start at `x = 5`, `previous_iterate = 5`, `grad_estimate = 0`, with the defaults `lr=1, eta_offset=10, momentum=100, g_max=0.01`. The first step gives `eta = 0.3046`, `beta = min(1, 100 * 0.09) = 1.0`, so the `(1-beta)` factor zeroes the correction and the applied update is plain `-eta * grad`. The honest surprise is that `beta` saturates at `1` in this low-dimensional toy — the `min(1, .)` cap is active and the same-sample correction is *off* early, exactly as the `a <= 1` constraint in the proof anticipated; the correction switches on only once `eta` has shrunk enough that `100 eta^2 < 1`. Letting it run 4000 steps with `sigma = 0.3`, `x` moves from `5.0` to `|x| = 0.019`, i.e. `||nabla F(x)|| = |x|` driven toward `0` — the optimizer does find the critical point of `x^2/2`, which is the behavior the whole construction was for. The actual optimizer also carries optional summary hooks, records the local smoothness diagnostic `||grad - grad_at_prev_iterate|| / (0.0001 + ||var - previous_iterate||)`, and keeps the `compute_gradients` signature compatible with the surrounding Tensor2Tensor training code. Mapping names: `lr` is `k`, `eta` is the denominator offset `w`, `momentum` is `c`, and `g_max` initializes the gradient-scale quantities. The full `StormOptimizer` module is in the answer.
