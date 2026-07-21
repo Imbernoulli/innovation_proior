@@ -4,7 +4,7 @@ I should be honest about the second pressure too, because it shapes what kind of
 
 Let me lay out the tools I actually have. The strongest online base I trust in continuous control is TD3, and it's worth being precise about *why* each of its pieces exists, because they're all aimed at the same overestimation disease I'm fighting, just in the online form. The root fact is Thrun and Schwartz's: a greedy target `max_{a'} Q(s',a')` is upward-biased under noise, because for zero-mean error `eps`, `E[max_{a'}(Q+eps)] >= max_{a'} Q` — the max picks out whichever action got the luckiest positive error. Fujimoto showed the same thing happens for a deterministic actor-critic even though the max is implicit in the policy gradient. TD3's three answers: keep two critics and bootstrap from their minimum, `y = r + gamma·min_{i=1,2} Q_{theta'_i}(s', a')`, so the min is an approximate upper-bound suppressor — it biases me toward *under*estimation, and underestimation is self-correcting in a way overestimation isn't, because the policy just avoids the actions it underrates instead of chasing them. Add clipped noise to the target action, `a' = pi_{phi'}(s') + clip(N(0,sigma),-c,c)` with `sigma=0.2, c=0.5`, so the target can't overfit a razor-thin spike in `Q` — nearby actions are forced to share value. And update the actor and the slow targets only every `d=2` critic steps, so the critic error settles before each policy move. These are good and I'm keeping them. But notice what none of them do: not one keeps the policy near the dataset. Offline, the actor walks straight off the edge of the data and the clipped-min can't save a critic whose entire off-distribution surface is unconstrained garbage — `min` of two garbage numbers is still garbage. So TD3 alone is necessary machinery but not the offline fix.
 
-What's the cheapest thing that *is* an offline fix? The minimalist move I keep coming back to is: just add a behavior-cloning term to the actor so it's penalized for straying from the dataset action. Concretely the deterministic-policy-gradient actor update becomes `pi = argmax_pi E_{(s,a)~D}[ Q(s,pi(s)) - (pi(s)-a)^2 ]` — maximize value, but pay a squared penalty for deviating from the logged action `a` at that state. One line on top of TD3. I like it because it's the opposite of bundling complexity: no generative model, no extra network, no sampled-action logsumexp. There's one real subtlety I have to get right, though, and it's about scale. The BC term `(pi(s)-a)^2` is bounded — actions live in `[-1,1]^m`, so it's at most about 4 per dimension — but `Q` scales with the reward magnitude, which is totally arbitrary across tasks. Let me actually feel out how bad that is rather than just assert it. Suppose I write `Q - (pi-a)^2` and ask how the value pull compares to the BC pull. The BC gradient has magnitude order one (a bounded penalty, deviations of order one); the `Q` gradient scales with `|Q|`. So the effective balance is roughly `mean|Q| : 4`. If I sweep a few plausible reward scales — `mean|Q|` of 5, 500, 50000 — the ratio is `5:4` (balanced), then `500:4` and `50000:4`, where the BC term is swamped and the policy is essentially pure RL, free to drift OOD. So a single fixed coefficient cannot transfer: the same number that balances a small-reward task ignores the data entirely on a large-reward one. The fix is to put `Q` on a footing that's invariant to its own scale — divide by the average magnitude of `Q`: `lambda = alpha / mean(|Q|)`, and use `lambda·Q - (pi-a)^2`. Let me check that does what I want: `lambda·mean|Q| = alpha` regardless of whether `mean|Q|` is 5, 500, or 50000 — the normalized value term sits at a constant magnitude `alpha` across all three, so one coefficient now means the same thing on every task. Crucially `lambda` is a *stop-gradient* scalar — it rescales the loss, it does not change the direction of the `Q` gradient, because I'm differentiating `pi`, not the normalizer. With `alpha=2.5` this is TD3+BC, and it's reported to match much heavier methods. So that's my floor.
+What's the cheapest thing that *is* an offline fix? The minimalist move I keep coming back to is: just add a behavior-cloning term to the actor so it's penalized for straying from the dataset action. Concretely the deterministic-policy-gradient actor update becomes `pi = argmax_pi E_{(s,a)~D}[ Q(s,pi(s)) - (pi(s)-a)^2 ]` — maximize value, but pay a squared penalty for deviating from the logged action `a` at that state. One line on top of TD3. I like it because it's the opposite of bundling complexity: no generative model, no extra network, no sampled-action logsumexp. There's one real subtlety I have to get right, though, and it's about scale. The BC term `(pi(s)-a)^2` is bounded — actions live in `[-1,1]^m`, so it's at most about 4 per dimension — but `Q` scales with the reward magnitude, which is totally arbitrary across tasks. Suppose I write `Q - (pi-a)^2` and ask how the value pull compares to the BC pull. The BC gradient has magnitude order one (a bounded penalty, deviations of order one); the `Q` gradient scales with `|Q|`. So the effective balance is roughly `mean|Q| : 4`. If I sweep a few plausible reward scales — `mean|Q|` of 5, 500, 50000 — the ratio is `5:4` (balanced), then `500:4` and `50000:4`, where the BC term is swamped and the policy is essentially pure RL, free to drift OOD. So a single fixed coefficient cannot transfer: the same number that balances a small-reward task ignores the data entirely on a large-reward one. The fix is to put `Q` on a footing that's invariant to its own scale — divide by the average magnitude of `Q`: `lambda = alpha / mean(|Q|)`, and use `lambda·Q - (pi-a)^2`. Then `lambda·mean|Q| = alpha` regardless of whether `mean|Q|` is 5, 500, or 50000 — the normalized value term sits at a constant magnitude `alpha` across all three, so one coefficient now means the same thing on every task. Crucially `lambda` is a *stop-gradient* scalar — it rescales the loss, it does not change the direction of the `Q` gradient, because I'm differentiating `pi`, not the normalizer. With `alpha=2.5` this is TD3+BC, and it's reported to match much heavier methods. So that's my floor.
 
 Now I want to find where TD3+BC is leaving value on the table, because I don't think one BC term on the actor is the end. Stare at the critic target again. I regularized the *actor* at the training states `s` — fine, at `s` the policy is pulled toward `a`. But the critic's target is `r + gamma·min Q(s', a')` with `a' = pi_target(s') + noise`. That next action `a'` is generated at the *next* state `s'`, and nothing in the actor's BC term at `s` guarantees `pi(s')` is in-distribution at `s'`. So the bootstrap can still pick an OOD `a'`, the critic can still overrate it, and I've reintroduced the exact loop I was trying to kill — just one bootstrap step removed from where I patched it. The actor penalty fixes "what action do I take at states I've seen"; it does nothing about "what action does the target *assume I'll take next*". Those are different leaks. The actor BC plugs one; the target is still open.
 
@@ -18,13 +18,13 @@ Let me write the target out properly. Next action with target smoothing, `a' = c
 
 Here's the thing I want to push on, the thing the framework left coupled: should `beta_actor` and `beta_critic` be the *same* number? The original framework gave both sides one shared `alpha`. But think about what each side is actually doing. The actor penalty controls how conservative the policy is *when it acts* — how willing it is to deviate from the logged action to chase value. The critic penalty controls how distrustful the *bootstrap* is of off-distribution next-actions. Those are genuinely different jobs with different right answers per environment. On a task where the dataset is broad and the dynamics forgiving, I might want a tiny actor penalty (let the policy improve freely) but a meatier critic penalty (the bootstrap still needs guarding). On a narrow dataset the reverse. Forcing one coefficient to serve both means every task gets a single point on a one-dimensional trade-off, when the real trade-off is two-dimensional. So decouple them: `beta_1` for the actor, `beta_2` for the critic, tuned separately. This is cheap — it's two scalars instead of one — and it's the generalization of the framework that the deterministic-MSE instantiation makes natural. I'd expect the actor penalty to be the load-bearing one (it's the thing standing between me and the OOD collapse) and the critic penalty to help less but complete the picture — but I'm not assuming that; the point of decoupling is precisely that I don't have to assume they move together, and an ablation that zeroes one at a time would tell me which carries the weight.
 
-OK, so on the *loss* side I now have: TD3's machinery (twin critics, clipped-min, target smoothing, delayed updates, soft targets at `tau=5e-3`), plus a decoupled two-sided BC penalty with squared distance, plus the TD3+BC `lambda = alpha/mean(|Q|)` normalization on the actor's value term. Let me fold the normalization in cleanly. The actor loss I'll minimize is `mean( beta_1·(pi(s)-a)^2 - lambda·Q(s,pi(s)) )` with `lambda = stopgrad(alpha/mean|Q(s,pi(s))|)`. There's a small bookkeeping question: do I carry both `alpha` and `beta_1`, or is one redundant? Let me check by comparing minimizers. TD3+BC minimizes `(pi-a)^2 - (alpha/mean|Q|)·Q`. My loss is `beta_1·(pi-a)^2 - lambda·Q`; multiply my whole loss by the positive constant `alpha` (which doesn't move the argmin) and it becomes `alpha·beta_1·(pi-a)^2 - alpha·lambda·Q`. If I set `lambda = 1/mean|Q|` (i.e. drop the explicit `alpha` into the normalizer), this is `alpha·beta_1·(pi-a)^2 - (alpha/mean|Q|)·Q`, which has the same minimizer as TD3+BC exactly when `alpha·beta_1 = 1`, i.e. `beta_1 = 1/alpha`. So `alpha` and `beta_1` are not independent — they're reciprocals. There's no point carrying both; I drop `alpha`, set `lambda = stopgrad(1/mean|Q|)`, and tune `beta_1` per task, with the sanity check that TD3+BC's default `alpha=2.5` corresponds to `beta_1 = 1/2.5 = 0.4` in my parameterization, so I haven't wandered off the baseline's known-good region. That's the actor.
+OK, so on the *loss* side I now have: TD3's machinery (twin critics, clipped-min, target smoothing, delayed updates, soft targets at `tau=5e-3`), plus a decoupled two-sided BC penalty with squared distance, plus the TD3+BC `lambda = alpha/mean(|Q|)` normalization on the actor's value term. Let me fold the normalization in cleanly. The actor loss I'll minimize is `mean( beta_1·(pi(s)-a)^2 - lambda·Q(s,pi(s)) )` with `lambda = stopgrad(alpha/mean|Q(s,pi(s))|)`. There's a small bookkeeping question: do I carry both `alpha` and `beta_1`, or is one redundant? Comparing minimizers settles it. TD3+BC minimizes `(pi-a)^2 - (alpha/mean|Q|)·Q`. My loss is `beta_1·(pi-a)^2 - lambda·Q`; multiply my whole loss by the positive constant `alpha` (which doesn't move the argmin) and it becomes `alpha·beta_1·(pi-a)^2 - alpha·lambda·Q`. If I set `lambda = 1/mean|Q|` (i.e. drop the explicit `alpha` into the normalizer), this is `alpha·beta_1·(pi-a)^2 - (alpha/mean|Q|)·Q`, which has the same minimizer as TD3+BC exactly when `alpha·beta_1 = 1`, i.e. `beta_1 = 1/alpha`. So `alpha` and `beta_1` are not independent — they're reciprocals. There's no point carrying both; I drop `alpha`, set `lambda = stopgrad(1/mean|Q|)`, and tune `beta_1` per task, with the sanity check that TD3+BC's default `alpha=2.5` corresponds to `beta_1 = 1/2.5 = 0.4` in my parameterization, so I haven't wandered off the baseline's known-good region. That's the actor.
 
 Now I have to confront the architectural and optimization choices, because this is where the "minor bundle" I was suspicious of actually lives, and I refuse to copy them blindly — I want each one to either earn its place by a real argument or get dropped. Start with normalization between layers, because I have a concrete reason to suspect it matters for *exactly my disease*. The whole problem is the critic extrapolating wildly on OOD actions. What does LayerNorm do to that? Suppose the last hidden representation feeding the critic's output head `w` is layer-normalized — call it `psi(s,a)`. LayerNorm rescales `psi` to a fixed norm regardless of input, so `||psi(s,a)||` is a bounded constant for *any* `(s,a)`, including ones far off-distribution. Then for any input at all,
 `|Q(s,a)| = |w^T relu(psi(s,a))| <= ||w||·||relu(psi(s,a))|| <= ||w||·||psi(s,a)||`,
-using Cauchy-Schwarz, then `||relu(x)|| <= ||x||` (ReLU only shrinks magnitudes). The question is what the constant `||psi(s,a)||` actually is. I was about to write `<= ||w||`, i.e. assume LayerNorm forces unit norm — but let me not hand-wave the constant; it's the whole point. LayerNorm subtracts the mean and divides by the standard deviation per coordinate, so it makes each of the `d` features have unit variance, which means `||psi||^2 = sum_j psi_j^2 ≈ d·1 = d`, i.e. `||psi|| ≈ sqrt(d)`, not 1. Let me verify on a concrete vector. Take a wild input `psi = [50, -80, 120, -30]` (`d=4`, deliberately huge to mimic OOD), layer-normalize it: I get a vector of norm `2.0000`, and `sqrt(4) = 2`. Try `d=16`: norm `4.0000 = sqrt(16)`. `d=256`: norm `16.0000 = sqrt(256)`. So the constant is `sqrt(d)`, and the correct bound is `|Q| <= ||w||·sqrt(d)`. Good that I checked — the clean "`<= ||w||`" I almost wrote is off by `sqrt(d)`, which for `d=256` is a factor of 16. The *constant* is wrong but the *mechanism* is exactly what I wanted, so let me confirm the mechanism numerically rather than trust the inequality. With `d=256`, draw head weights `w ~ 0.1·N(0,I)` so `||w||·sqrt(d) ≈ 26`, then over 100000 random draws compare an "in-distribution" hidden vector `psi_in ~ N(0,I)` against a wildly OOD one `psi_ood ~ 500·N(0,I)+200`. The worst `|Q|` over all in-distribution draws comes out about `5.1`, and the worst `|Q|` over all OOD draws about `4.9` — both comfortably under the bound `26`, and crucially *both in the same band*. That's the property I actually care about: the OOD value can't escape the band the in-distribution values live in, because the same `||w||·sqrt(d)` caps both. Without LayerNorm the OOD `psi` of norm in the hundreds would feed straight through and `|Q|` would blow up with it; with it, the runaway is gone. So this genuinely caps the extrapolation that drives the overestimation loop, and it does it *without* explicitly telling the policy "stay near the data" — it just makes the off-distribution surface bounded and well-behaved. LayerNorm goes in the **critic**, between every hidden layer. Do I put it in the actor too? The actor isn't the thing extrapolating dangerous values — it's a policy bounded into `[-1,1]` by a tanh and already pulled to the data by `beta_1`. The extrapolation pathology lives in the critic's value surface, not in the policy's action surface, so normalizing the actor isn't addressing the disease; I'll leave the actor without inter-layer normalization. Asymmetric on purpose: LayerNorm in the critic, none in the actor.
+using Cauchy-Schwarz, then `||relu(x)|| <= ||x||` (ReLU only shrinks magnitudes). The question is what the constant `||psi(s,a)||` actually is. I was about to write `<= ||w||`, assuming LayerNorm forces unit norm — but LayerNorm subtracts the mean and divides by the standard deviation per coordinate, so it makes each of the `d` features have unit variance, which means `||psi||^2 = sum_j psi_j^2 ≈ d·1 = d`, i.e. `||psi|| ≈ sqrt(d)`, not 1. A quick check on a wild vector confirms it: `psi = [50, -80, 120, -30]` (`d=4`, deliberately huge to mimic OOD) layer-normalizes to a vector of norm `2.0000 = sqrt(4)`. So the correct bound is `|Q| <= ||w||·sqrt(d)`, off from the naive `||w||` by a factor of `sqrt(d)` — 16x at `d=256` — but the *mechanism* is exactly what I wanted regardless of the constant: `||psi(s,a)||` is forced to that same `sqrt(d)` for *any* input, whether the raw pre-normalization vector sat at norm 5 or norm 5000. Without LayerNorm that raw norm feeds straight through and an OOD `psi` in the hundreds blows `|Q|` up with it; with it, the OOD value is capped at exactly the same `||w||·sqrt(d)` an in-distribution value is capped at — same band, no runaway. That's what genuinely caps the extrapolation that drives the overestimation loop, and it does it *without* explicitly telling the policy "stay near the data" — it just makes the off-distribution surface bounded and well-behaved. LayerNorm goes in the **critic**, between every hidden layer. Do I put it in the actor too? The actor isn't the thing extrapolating dangerous values — it's a policy bounded into `[-1,1]` by a tanh and already pulled to the data by `beta_1`. The extrapolation pathology lives in the critic's value surface, not in the policy's action surface, so normalizing the actor isn't addressing the disease; I'll leave the actor without inter-layer normalization. Asymmetric on purpose: LayerNorm in the critic, none in the actor.
 
-Depth next. The default off-policy bases use two hidden layers, and I keep seeing later offline work quietly switch to three and call it important without much argument. The scaling intuition is straightforward — more depth gives more capacity to fit the value/policy given enough data, and offline I have a big static dataset — so three hidden layers of width 256 is the reasonable bump. I shouldn't oversell it: I'd expect it to help meaningfully on the harder tasks (the critic on long-horizon navigation needs the capacity) and to be close to a wash on the easy locomotion ones, with diminishing returns past three or four and a drop if I go absurd (six). So: three hidden layers, width fixed at 256, in both actor and critic.
+Depth next. The default off-policy bases use two hidden layers, and I keep seeing later offline work quietly switch to three and call it important without much argument. The scaling intuition is straightforward — more depth gives more capacity to fit the value/policy given enough data, and offline I have a big static dataset — so three hidden layers of width 256 is the reasonable bump. I shouldn't oversell it: I'd expect it to help meaningfully on the harder tasks (the critic on long-horizon navigation needs the capacity) and to be close to a wash on the easy locomotion ones, and depth is not free forever — at some point the extra capacity stops paying for itself and may start hurting optimization, so I won't push it arbitrarily deep on the strength of this argument alone. So: three hidden layers, width fixed at 256, in both actor and critic — a bump over the two-layer default that I can justify, not a bigger jump I can't.
 
 Batch size and learning rate. Larger batches give lower-variance gradient estimates, which can speed convergence within a fixed one-million-step budget, and the standard heuristic is to scale the learning rate up with the batch. So on the locomotion datasets I'll push the batch to 1024 and the learning rate to `1e-3`. But I should be careful and not declare this universal, because a bigger batch isn't free — it can over-smooth and it interacts badly with some domains. My expectation is it's a clear win on Gym-MuJoCo and a loser on, say, sparse-reward navigation, where I'd keep the batch at 256 and the learning rate small. So this is a per-domain knob, not a global setting — exactly the kind of "minor choice" that I want explicit and ablatable rather than baked in.
 
@@ -34,153 +34,26 @@ One inherited choice I'll deliberately *drop*: TD3+BC also normalized the state 
 
 Let me also nail the update *schedule*, because TD3's delayed-update structure interacts with how I've split the losses. The critic gets updated every step — it needs all the gradient steps it can get to fit a moving target. The actor and the target networks update on the delayed cadence, every `policy_freq = 2` steps. So on a delayed step I do critic-then-actor-then-soft-target; on a non-delayed step I do critic only. That's the two-timescale structure that lets the critic error shrink between policy moves, and I keep it exactly.
 
-Now let me make sure the pieces compose into one coherent training step before I write code. Per step: sample `(s, a, r, s', â', done)`. Build the smoothed next action `a' = clip(pi_target(s') + clip(N(0,0.2),-0.5,0.5), -1, 1)`. Bootstrap `q = min(Q1_target(s',a'), Q2_target(s',a'))`, then apply the value penalty `q <- q - beta_2·sum((a' - â')^2)`. Target `y = r + gamma·(1-done)·q`. That is the core equation. If my dataset preparation also carries an empirical return-to-go, I can keep a separate calibration switch that floors `y` at that observed return; that is not the behavior-regularization idea, so it must stay explicit and optional. Critic loss `MSE(Q1(s,a), y) + MSE(Q2(s,a), y)`, step both critics. If it's a delayed step: actor action `pi = actor(s)`, value `q_pi = Q1(s, pi)`, normalizer `lambda = stopgrad(1/mean|q_pi|)`, actor loss `mean(beta_1·sum((pi-a)^2) - lambda·q_pi)`, step the actor; then soft-update all three targets at `tau`. Every signal traces to a piece I argued for: the min and smoothing and delay are TD3's overestimation/variance controls, the two `beta` penalties are the decoupled deterministic BRAC value-and-policy regularization, `lambda` is TD3+BC's scale normalization, LayerNorm in the critic is the extrapolation cap, depth/batch/`gamma` are the read-off design choices.
+Putting the pieces together into one coherent training step, before writing code. Per step: sample `(s, a, r, s', â', done)`. Build the smoothed next action `a' = clip(pi_target(s') + clip(N(0,0.2),-0.5,0.5), -1, 1)`. Bootstrap `q = min(Q1_target(s',a'), Q2_target(s',a'))`, then apply the value penalty `q <- q - beta_2·sum((a' - â')^2)`. Target `y = r + gamma·(1-done)·q`. That is the core equation. If my dataset preparation also carries an empirical return-to-go, I can keep a separate calibration switch that floors `y` at that observed return; that is not the behavior-regularization idea, so it must stay explicit and optional. Critic loss `MSE(Q1(s,a), y) + MSE(Q2(s,a), y)`, step both critics. If it's a delayed step: actor action `pi = actor(s)`, value `q_pi = Q1(s, pi)`, normalizer `lambda = stopgrad(1/mean|q_pi|)`, actor loss `mean(beta_1·sum((pi-a)^2) - lambda·q_pi)`, step the actor; then soft-update all three targets at `tau`. Every signal traces to a piece I argued for: the min and smoothing and delay are TD3's overestimation/variance controls, the two `beta` penalties are the decoupled deterministic BRAC value-and-policy regularization, `lambda` is TD3+BC's scale normalization, LayerNorm in the critic is the extrapolation cap, depth/batch/`gamma` are the read-off design choices.
 
-Let me write it as the code I'd actually ship, filling the loss and network slots in the offline actor-critic harness. The critic carries LayerNorm between hidden layers; the actor does not.
+Let me put this into the actual tensor code that fills the two TODO slots and the two network bodies in the harness — the rest of the scaffolding (imports, the deepcopy'd target networks, the Adam optimizers, the soft-update loop) is the standard TD3 plumbing already given and stays as is. The critic gets three hidden layers of width 256 with LayerNorm after every ReLU; the actor gets the same depth and width with no LayerNorm and a tanh-bounded output. The training step itself is just the equations above translated into tensor ops: target smoothing and the clipped-min bootstrap exactly as TD3, the value penalty subtracted from that bootstrap before the Bellman sum, and the actor loss combining the decoupled `beta_1` with the stop-gradient `lambda`:
 
 ```python
-import copy
-import numpy as np
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
-
-class DeterministicActor(nn.Module):
-    """pi(s) = max_action * tanh(net(s)). 3 hidden layers of 256, ReLU,
-    NO inter-layer normalization: the actor isn't the surface that extrapolates
-    dangerous values, and a tanh already bounds its output into the action box."""
-
-    def __init__(self, state_dim, action_dim, max_action):
-        super().__init__()
-        self.max_action = max_action
-        self.net = nn.Sequential(
-            nn.Linear(state_dim, 256), nn.ReLU(),
-            nn.Linear(256, 256), nn.ReLU(),
-            nn.Linear(256, 256), nn.ReLU(),
-            nn.Linear(256, action_dim), nn.Tanh(),
-        )
-
-    def forward(self, state):
-        return self.max_action * self.net(state)
-
-    @torch.no_grad()
-    def act(self, state, device="cpu"):
-        state = torch.tensor(state.reshape(1, -1), device=device, dtype=torch.float32)
-        return self(state).cpu().numpy().flatten()
-
-
-class Critic(nn.Module):
-    """Q(s, a). 3 hidden layers of 256, ReLU, WITH LayerNorm between layers.
-    LayerNorm bounds the last hidden feature norm (to ~sqrt(width)), so
-    |Q| <= ||w_head|| * sqrt(width) even on out-of-distribution actions ->
-    OOD values stay in the same band as in-distribution values, capping
-    catastrophic value extrapolation."""
-
-    def __init__(self, state_dim, action_dim):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(state_dim + action_dim, 256), nn.ReLU(), nn.LayerNorm(256),
-            nn.Linear(256, 256), nn.ReLU(), nn.LayerNorm(256),
-            nn.Linear(256, 256), nn.ReLU(), nn.LayerNorm(256),
-            nn.Linear(256, 1),
-        )
-
-    def forward(self, state, action):
-        return self.net(torch.cat([state, action], dim=-1)).squeeze(-1)
-
-
-class ReBRAC:
-    """TD3 with a decoupled, deterministic behavior-regularization penalty on
-    both the actor loss (beta_1) and the critic bootstrap target (beta_2),
-    plus the TD3+BC value normalization on the actor."""
-
-    def __init__(self, state_dim, action_dim, max_action,
-                 actor_bc_coef=1.0, critic_bc_coef=1.0,     # beta_1, beta_2; YAML overrides per env
-                 discount=0.99, tau=5e-3, lr=1e-3,
-                 policy_noise=0.2, noise_clip=0.5, policy_freq=2,
-                 normalize_q=True, use_mc_return_floor=False, device="cuda"):
-        self.device = device
-        self.beta_1 = actor_bc_coef          # actor-side BC penalty strength
-        self.beta_2 = critic_bc_coef         # critic-side BC penalty strength (decoupled)
-        self.discount = discount             # 0.999 on long sparse-reward tasks, else 0.99
-        self.tau = tau
-        self.max_action = max_action
-        self.policy_noise = policy_noise     # target policy smoothing (TD3)
-        self.noise_clip = noise_clip
-        self.policy_freq = policy_freq       # delayed actor/target updates (TD3)
-        self.normalize_q = normalize_q
-        self.use_mc_return_floor = use_mc_return_floor
-        self.total_it = 0
-
-        self.actor = DeterministicActor(state_dim, action_dim, max_action).to(device)
-        self.actor_target = copy.deepcopy(self.actor)
-        self.actor_opt = torch.optim.Adam(self.actor.parameters(), lr=lr)
-
-        self.critic_1 = Critic(state_dim, action_dim).to(device)
-        self.critic_2 = Critic(state_dim, action_dim).to(device)
-        self.critic_1_target = copy.deepcopy(self.critic_1)
-        self.critic_2_target = copy.deepcopy(self.critic_2)
-        self.critic_1_opt = torch.optim.Adam(self.critic_1.parameters(), lr=lr)
-        self.critic_2_opt = torch.optim.Adam(self.critic_2.parameters(), lr=lr)
-
-    def train(self, batch):
-        self.total_it += 1
-        # batch carries the dataset's own next action a_hat' for the critic penalty
-        if self.use_mc_return_floor:
-            states, actions, rewards, next_states, dones, next_actions_data, mc_returns = batch
-            mc_returns = mc_returns.squeeze(-1)
-        else:
-            states, actions, rewards, next_states, dones, next_actions_data = batch
-            mc_returns = None
-        not_done = 1.0 - dones.squeeze(-1)
-        rewards = rewards.squeeze(-1)
-
-        # ---- critic update (every step) ----
-        with torch.no_grad():
-            # target policy smoothing: noisy, clipped next action
-            noise = (torch.randn_like(actions) * self.policy_noise).clamp(
-                -self.noise_clip, self.noise_clip)
-            next_actions = (self.actor_target(next_states) + noise).clamp(
-                -self.max_action, self.max_action)
-            # clipped double-Q bootstrap
-            next_q = torch.min(self.critic_1_target(next_states, next_actions),
-                               self.critic_2_target(next_states, next_actions))
-            # BRAC value penalty: pessimize the bootstrap toward the dataset's
-            # next action a_hat' (no behavior model needed; deterministic -> MSE)
-            bc_penalty = ((next_actions - next_actions_data) ** 2).sum(-1)
-            next_q = next_q - self.beta_2 * bc_penalty
-            target_q = rewards + not_done * self.discount * next_q
-            if mc_returns is not None:
-                target_q = torch.maximum(target_q, mc_returns)
-
-        critic_loss = (F.mse_loss(self.critic_1(states, actions), target_q)
-                       + F.mse_loss(self.critic_2(states, actions), target_q))
-        self.critic_1_opt.zero_grad(); self.critic_2_opt.zero_grad()
-        critic_loss.backward()
-        self.critic_1_opt.step(); self.critic_2_opt.step()
-
-        # ---- delayed actor + target update ----
-        if self.total_it % self.policy_freq == 0:
-            pi = self.actor(states)
-            q = self.critic_1(states, pi)
-            # BRAC policy regularization: pull the acting policy to the dataset action
-            bc_mse = ((pi - actions) ** 2).sum(-1)
-            # TD3+BC value normalization: balance RL vs imitation across reward scales
-            lmbda = 1.0
-            if self.normalize_q:
-                lmbda = 1.0 / (q.abs().mean().detach() + 1e-8)
-            actor_loss = (self.beta_1 * bc_mse - lmbda * q).mean()
-            self.actor_opt.zero_grad()
-            actor_loss.backward()
-            self.actor_opt.step()
-
-            # soft target updates
-            for net, tgt in ((self.critic_1, self.critic_1_target),
-                             (self.critic_2, self.critic_2_target),
-                             (self.actor, self.actor_target)):
-                for p, tp in zip(net.parameters(), tgt.parameters()):
-                    tp.data.copy_(self.tau * p.data + (1 - self.tau) * tp.data)
+# critic bootstrap: TD3's clipped-min target, then subtract beta_2 times the
+# squared distance to the dataset's own next action next_actions_data (a_hat')
+noise = (torch.randn_like(actions) * self.policy_noise).clamp(-self.noise_clip, self.noise_clip)
+next_actions = (self.actor_target(next_states) + noise).clamp(-self.max_action, self.max_action)
+next_q = torch.min(self.critic_1_target(next_states, next_actions),
+                   self.critic_2_target(next_states, next_actions))
+bc_penalty = ((next_actions - next_actions_data) ** 2).sum(-1)      # value penalty
+next_q = next_q - self.beta_2 * bc_penalty
+target_q = rewards + not_done * self.discount * next_q
+...
+# actor: beta_1's BC penalty against the logged action, plus the stop-gradient
+# 1/mean|Q| scale normalization so beta_1 transfers across reward magnitudes
+pi = self.actor(states)
+q = self.critic_1(states, pi)
+bc_mse = ((pi - actions) ** 2).sum(-1)                                # policy regularization
+lmbda = 1.0 / (q.abs().mean().detach() + 1e-8)                        # TD3+BC normalization
+actor_loss = (self.beta_1 * bc_mse - lmbda * q).mean()
 ```
-
-So the causal chain, start to finish. I started stuck: off-policy actor-critic on a frozen dataset overestimates out-of-distribution actions, the maximizing policy chases the overestimate off-data, and the value diverges. TD3 gives me the right online overestimation controls — clipped-min twin critics, target smoothing, delayed updates — but none of them keep the policy on the data, so offline they're necessary but not sufficient. The minimalist fix is a behavior-cloning penalty on the actor with the value term normalized by `1/mean|Q|` — which I checked actually holds the value-versus-imitation balance constant across reward scales, where an unnormalized coefficient would silently turn into pure RL on high-reward tasks — and that's the floor; it works, but it only guards the action I take, not the next-action the critic bootstraps from, so the overestimation leak reopens one step downstream in the target. Recognizing the two penalty locations of the behavior-regularized framework, I add the missing half — a value penalty inside the critic target — and because my policy is deterministic, the divergence collapses from KL/MMD-against-a-learned-behavior-model down to a plain squared distance to the dataset's own recorded next action, no extra network. The framework had coupled the two penalty strengths, but actor-side and critic-side caution are different jobs, so I decouple them into `beta_1` and `beta_2` and tune per environment (`beta_1 = 0.4` lands me on TD3+BC's `alpha = 2.5` default, my anchor). Then I refuse to inherit the architecture bundle blindly: LayerNorm goes in the critic because — when I actually worked the bound rather than asserting it — it caps `|Q|` at `||w_head||·sqrt(width)` on out-of-distribution actions, keeping OOD values in the same band as in-distribution ones and shutting off the runaway that drives the loop; but not in the actor, whose output is already bounded and pulled to data; depth goes to three layers for capacity on a large static dataset; batch and learning rate go up on dense locomotion for faster low-variance convergence but stay small on sparse tasks where they hurt; the discount goes to `0.999` on long sparse-reward tasks because I computed that `0.99^1000 = 4.3e-5` arithmetically erases the terminal signal while `0.999^1000 = 0.37` preserves a third of it; and I drop the inherited state normalization to keep the method online-compatible at negligible offline cost. The whole thing is TD3 plus two squared-distance penalties and a handful of read-off design choices, every one individually justified and removable.
