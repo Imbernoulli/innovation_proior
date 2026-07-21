@@ -28,27 +28,23 @@ keys itself, runs its own online softmax — so there is no communication betwee
 free. This is the one-line change with the longest reach: promoting the sequence to a grid axis converts an 11%-full
 chip into a saturated one at batch 1, and it costs nothing but the launch geometry.
 
-I should check that "1536 blocks" actually translates into a full chip and is not clipped by per-SM resource
-limits, because a grid can be large on paper while only one block fits per SM. The binding resources are registers
-and shared memory. With the query-split layout below, one threadblock (4 warps, 128 threads) holds an `acc_o` of
-`BLOCK_M × d = 128 × 128` in FP32 = 64 KB = 16384 registers and a score tile of `128 × 64` FP32 = 32 KB = 8192
-registers, ~24576 registers plus loop temporaries — call it `~200` registers/thread × 128 threads ≈ 25.6K
-registers. Against the SM's 65536 registers that is `65536 / 25600 ≈ 2.5`, so registers allow 2 resident blocks per
-SM. Shared memory: the `Q` tile (32 KB) plus double-buffered `K`,`V` (2 × 32 KB) ≈ 96 KB against 164 KB also allows
-one, near two, per SM. So ~2 blocks/SM × 108 SMs ≈ 216 concurrent blocks — exactly the fill target — and the 1536
-launched blocks queue up as ~7 full waves on top of that resident set. The grid is not just nominally large; it
-genuinely oversubscribes the chip, which is what hides load latency between waves.
+A grid can be large on paper while only one block fits per SM, so "1536 blocks" only helps if two actually reside
+per SM. The binding resources are registers and shared memory. With the query-split layout below, one threadblock
+(4 warps, 128 threads) holds an `acc_o` of `128 × 128` FP32 = 16384 registers and a `128 × 64` FP32 score tile =
+8192 registers, ~24576 plus loop temporaries — call it `~200` registers/thread × 128 ≈ 25.6K, so `65536 / 25600 ≈
+2.5` allows 2 resident blocks per SM. Shared memory: the `Q` tile (32 KB) plus double-buffered `K`,`V` (2 × 32 KB)
+≈ 96 KB against 164 KB also allows nearly two. So ~2 blocks/SM × 108 SMs ≈ 216 concurrent blocks — the fill target
+— and the 1536 launched blocks queue as ~7 waves on top, oversubscribing the chip enough to hide load latency
+between waves.
 
-Before I settle on plain sequence-parallelism, there is a tempting alternative worth walking a few steps: split the
-*key/value* range across independent blocks too — several blocks each handle a slab of keys for the same query
-tile, and a second reduction kernel combines their partial `(õ, ℓ, m)` with the online-softmax merge. This is the
-right move when a *single* query tile cannot fill the grid — very small batch, very few query blocks, huge context
-— because it manufactures parallelism along the key axis. But price it in the regime I am actually in: at batch 1,
-12 heads, `N`=16K I already launch 1536 query blocks against a 216-block resident capacity, so the grid is
-oversubscribed sevenfold *without* touching the key axis. Splitting keys on top would only add a second kernel
-launch, a round-trip of the partial `(õ, ℓ, m)` through HBM, and a merge — pure overhead when occupancy is already
-saturated. So key-splitting is a real tool, but for the training/prefill sweep it is a solution to a problem I do
-not have; plain sequence-parallelism dominates it here. I keep it in my pocket and reach for the grid change.
+One alternative is worth pricing before I commit: split the *key/value* range across independent blocks too — each
+handling a slab of keys for the same query tile, with a second reduction kernel merging their partial `(õ, ℓ, m)`
+by the online-softmax combine. That manufactures parallelism along the key axis, and it is the right move when a
+single query tile cannot fill the grid — tiny batch, few query blocks, huge context. But in the regime I am in —
+batch 1, 12 heads, `N`=16K — I already launch 1536 query blocks against 216 resident, oversubscribed sevenfold
+without touching the key axis; splitting keys on top would only add a kernel launch and an HBM round-trip of the
+partials for no occupancy I lack. So it stays a tool for the decode/tiny-batch case, not this sweep; sequence-
+parallelism dominates it here.
 
 Second leak: the non-matmul FLOPs inside the inner loop. The tensor cores do the two GEMMs, but in between, every
 key block, the online softmax does a pile of work on the *other* execution units — the CUDA cores and the special
@@ -80,12 +76,11 @@ forward — I am now insisting it stay the *only* one. The max-rescale I cannot 
 genuinely changes block to block and `acc_o` really is stale by `α` when the max grows; that `2N` is load-bearing.
 But I can make sure it is the *only* non-matmul touch of `acc_o` left inside the loop and that nothing else is
 recomputed. The second removal is a micro-trick on the `exp`: the SFU has a native base-2 exponential
-(`MUFU.EX2`), and `exp(x) = 2^{x·log₂e}`. Let me confirm the identity numerically so I do not corrupt the softmax
-chasing speed: `exp(2) = 2^{2·1.4427} = 2^{2.8854} = 2^2 · 2^{0.8854} = 4 · 1.847 = 7.389 = e²`, exact. If I
+(`MUFU.EX2`), and `exp(x) = 2^{x·log₂e}` exactly. If I
 compute `exp2(x · log₂e)` instead of `exp(x)`, the hardware runs the fast path directly; and by folding
 `log₂e` into the precomputed `softmax_scale · log₂e` I hand the base change and the `√d` scaling to the compiler as
 one fused multiply-add on the scores, saving a multiply per score element rather than paying `exp` = `ex2` + a
-separate multiply. The point of all of this is the ratio: attention's useful work is the two matmuls; anything else
+separate multiply. The point throughout is the ratio: attention's useful work is the two matmuls; anything else
 in the loop is overhead holding the tensor cores idle at a `16×` penalty, so I drive that overhead toward the floor.
 
 Third leak, and the one I would never have found without thinking about the *warps* inside a block: how is the work
@@ -100,16 +95,11 @@ the same query row must exchange their partial maxima and partial sums to agree 
 cross-warp reduction: a `log₂4 = 2`-round tree through shared memory, gated by a `__syncthreads`, on *every* key
 block. And for the `P·V` GEMM, each warp produces a partial output for its key-slice and those partials must be
 *summed* across the four warps — another shared-memory reduction and another barrier. Count it: at `N=8K`,
-`BLOCK_N=64`, a query tile iterates `N/BLOCK_N = 128` key blocks, so split-K pays on the order of `128` softmax
-reductions and `128` output reductions per query tile in the forward, each a smem round-trip plus a `__syncthreads`
-that idles all four warps until the slowest arrives. This is the classic split-K pattern, and on this problem it is
-a per-iteration tax. Put a rough clock on it: a `__syncthreads` plus a smem write-read round trip is on the order
-of tens to a hundred-plus cycles of exposed latency where the four warps stall on the slowest, and split-K pays two
-such reductions (softmax and output) per key block × 128 key blocks per query tile — call it a few hundred barriers
-each costing ~50–100 cycles, so of order `10⁴`–`10⁵` cycles per query tile burned purely on synchronization. Set
-that beside the useful matmul: a `128 × 64 × 128` score GEMM plus a `128 × 64 × 128` output GEMM is roughly `2·128·64·128
-≈ 2.1M` MAC-pairs per block that the tensor cores retire in a few hundred cycles, so the barrier overhead is not a
-rounding error against the compute — it is a comparable-order stall stacked on top of every iteration.
+`BLOCK_N=64`, a query tile iterates `N/BLOCK_N = 128` key blocks, so split-K pays ~128 softmax reductions and ~128
+output reductions per query tile in the forward — some 256 barriers, each a smem write-read round-trip plus a
+`__syncthreads` that idles all four warps until the slowest arrives. Against a hot loop whose useful work is two
+small tensor-core GEMMs the cores retire in a few hundred cycles, a per-iteration barrier of tens-to-hundreds of
+exposed cycles is not a rounding error — it is a comparable-order stall stacked on every iteration.
 
 Flip it. Split the *query* dimension across warps instead: each of the four warps owns a disjoint `BLOCK_M/4 = 32`-row
 slab of the query tile and computes the *full* `K`-range for its own rows. Now a single warp holds an entire query
@@ -122,17 +112,12 @@ barriers per query tile that split-K paid collapse to zero. This is the work-par
 divide attention across warps along the dimension the softmax *does not* reduce over (queries), not the one it does
 (keys), so each warp's softmax is self-contained.
 
-Let me sanity-check that these three, stacked, plausibly reach the "roughly double" I am aiming for, rather than
-nickel-and-diming. They attack disjoint losses, so their effects compound rather than overlap. Take the small-batch
-long-context regime as the worst case: the grid change alone lifts SM coverage from ~11% toward saturation — on its
-own a several-fold occupancy gain that was leaving most of the chip idle. On the now-full chip, the tensor cores
-were still stalled ~18% of the time on non-matmul work and idling through hundreds of hot-loop barriers per query
-tile; removing the per-iteration `1/ℓ` (softmax time share ~18% → ~13%) and deleting the split-K barriers recovers a
-good part of the *remaining* time. Even setting occupancy aside and looking only at a single well-fed block, if the
-kernel spent order-`0.18` of its time stalled on softmax and a comparable slice on synchronization, driving both
-toward zero is close to a `1/(1 − ~0.3)` ≈ `1.4×` on that block alone — and multiplied by the occupancy recovery in
-the batch-1 regime the product lands in the neighborhood of `2×`. The estimate is coarse, but it says the target is
-reachable from these three levers and not dependent on some fourth trick.
+The three attack disjoint losses, so they compound. In the small-batch long-context regime the grid change alone
+lifts SM coverage from ~11% toward saturation — a several-fold occupancy gain by itself. On the now-full chip, a
+single well-fed block still spent order-`0.18` of its time stalled on non-matmul softmax and a comparable slice on
+hot-loop synchronization; driving both toward zero (defer `1/ℓ`, delete the split-K barriers) is roughly
+`1/(1−0.3) ≈ 1.4×` on that block, and multiplied through the batch-1 occupancy recovery the product lands near
+`2×`. Coarse, but it says the target is reachable from these three levers alone.
 
 None of this changes the math, and I can say why for each piece. The grid still covers exactly the same
 `(query, batch, head)` outputs — it is the same set, relaunched with the sequence as an axis. Deferring the `1/ℓ`
@@ -176,23 +161,13 @@ for `P·V` — with the `1/ℓ` normalization deferred to a single call after th
     Tensor lse = softmax.template normalize_softmax_lse<Is_dropout>(acc_o, params.scale_softmax, params.rp_dropout);
 ```
 
-If the three changes do what I claim, they are falsifiable on this task's metrics, and each predicts a *different*
-signature. The grid change should show up most where occupancy was the bottleneck: the `tflops_per_sec` and `mfu`
-gains should be largest at small batch and long sequence (batch-1, `N`=16K) and smallest where `batch × heads` was
-already ample. The softmax-FLOP cuts have a head-dimension signature: the non-matmul fraction scales as `~5/(4d)`,
-so it is twice as large at `d=64` as at `d=128`, which means deferred normalization and base-2 `exp` should lift
-`mfu` more at the *smaller* head dims. The warp-split change is a pure hot-loop win with no shape dependence. And
-`speedup_over_prev` against the fused kernel should land near `~2×` — anything much less would say one of the three
-leaks was not really costing what I counted.
+Each change predicts a *different* falsifiable signature. The grid change should lift `tflops_per_sec` and `mfu`
+most at small batch / long sequence and least where `batch × heads` was already ample; the softmax-FLOP cuts have a
+head-dimension signature (the non-matmul fraction scales as `~5/(4d)`, so deferred normalization and base-2 `exp`
+help more at `d=64` than `d=128`); the warp-split is a pure hot-loop win with no shape dependence. A
+`speedup_over_prev` much below `~2×` would say one of the three leaks was not costing what I counted.
 
-The causal chain: the fused kernel was compute-bound but under-utilized, and the slack was all in partitioning.
-Making the query/sequence blocks a first-class grid dimension fills the SMs even at batch 1 and long context —
-turning an 11%-covered chip into a saturated one; deferring the softmax normalization out of the inner loop and
-folding the base-2 `exp` cuts the non-matmul work that, at a `16×` throughput penalty, was eating close to a fifth
-of the wall clock; and splitting the warps over queries rather than keys makes each warp's softmax self-contained,
-deleting hundreds of cross-warp reductions and `__syncthreads` per query tile from the hot loop. Same exact output,
-same linear memory — roughly twice the throughput, now reaching a large fraction of the chip's tensor-core peak.
-What remains is a property of the kernel itself: it is synchronous. Within each warp the score matmul, the data
-movement, and the softmax still take turns — each waits on the one before it — so on hardware fast enough to expose
-that serialization, the ceiling stops being how the work is partitioned and becomes the fact that these three kinds
-of work never run at the same time.
+What remains after all three is a property of the kernel itself: it is synchronous. Within each warp the score
+matmul, the data movement, and the softmax still take turns, each waiting on the one before it — so on hardware
+fast enough to expose that serialization, the ceiling stops being how the work is partitioned and becomes the fact
+that these three kinds of work never run at the same time.

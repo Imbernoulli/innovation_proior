@@ -122,12 +122,10 @@ accumulated and emitted in higher precision — BF16 — not FP8.)
 
 Second, and this is the real idea for the outliers: **incoherent processing**. The trouble with outliers is that
 they're concentrated — a few entries are huge, most are small, and FP8 can't serve both at one scale. But suppose
-I first multiply Q and K each by a random orthogonal matrix `R` (`Q → QR`, `K → KR`). The exactness is the first
-thing to check, because if it perturbs the scores the whole exercise is pointless: `(QR)(KR)ᵀ = Q R Rᵀ Kᵀ`, and for
-an orthogonal `R` we have `R Rᵀ = I`, so this is exactly `QKᵀ`. Concretely with a Hadamard: the `d × d` Hadamard
-matrix `H` has entries `±1` and `H Hᵀ = d·I`, so the *normalized* transform `R = H/√d` satisfies `R Rᵀ = H Hᵀ / d =
-(d·I)/d = I` — orthogonal, exactly invertible inside the product. The scores are unchanged, so the attention output
-is unchanged. What the rotation buys is dynamic range. Take an outlier of magnitude `M` sitting in a single
+I first multiply Q and K each by a random orthogonal matrix `R` (`Q → QR`, `K → KR`). This leaves the scores
+untouched: `(QR)(KR)ᵀ = Q R Rᵀ Kᵀ = QKᵀ` for orthogonal `R`. Concretely with a Hadamard — the `d × d` matrix `H`
+has entries `±1` and `H Hᵀ = d·I`, so `R = H/√d` gives `R Rᵀ = (d·I)/d = I`, exactly invertible inside the
+product. What the rotation buys, at no cost to the output, is dynamic range. Take an outlier of magnitude `M` sitting in a single
 coordinate of a vector; after multiplying by a dense `±1/√d` transform that concentrated energy `M²` is spread
 across all `d` coordinates, so the per-coordinate magnitude falls to roughly `M/√d`. For `d = 128`, `√d ≈ 11.3`, so
 the spike that forced the FP8 scale is cut by about `11×`. With the worst outlier `11×` smaller, the per-vector
@@ -139,99 +137,29 @@ The result: FP8 attention with the matmul quantization error cut by a large fact
 speedup arrives without the accuracy collapse naive FP8 would suffer, the error ending up several-fold smaller than
 the un-rotated FP8 baseline.
 
-Let me bound what these should buy, so the claims are falsifiable on the task's own metrics. In FP16 the starting
-point is ~35% util on H100; if the load-hiding (producer/consumer) and the softmax/matmul overlap succeed, the
-tensor cores approach always-busy and util should head toward the ~75% ceiling — on paper `0.75/0.35 ≈ 2.1×`. I do
-not expect to hit 2.1×: WGMMA has latency, the pipeline has fill/drain edges, and the softmax cannot be *perfectly*
-buried, so the realized `speedup_over_prev` should land in the `1.5–2.0×` band and the `mfu` in the low-to-mid 70s
-percent of H100 FP16 peak, i.e. `tflops_per_sec` around `0.75 · 989 ≈ 740`. FP8 is a separate axis: the e4m3 tensor
-path roughly doubles the peak to ~1979 TFLOPs/s, so even at a *lower* utilization than FP16 the absolute throughput
-should push toward `~1.2` PFLOPs/s — that is around `1.2e15 / 1.979e15 ≈ 61%` of FP8 peak, which is a sensible-and-
-falsifiable target: FP8 should beat FP16 in raw TFLOPs/s but sit at *lower* MFU, because the incoherent-processing
-Hadamard and the descales are real overhead the FP16 path does not pay. And the FP8 accuracy metric is the one that
-would falsify incoherent processing outright: if the Hadamard rotation is doing what the `√d ≈ 11×` outlier
-argument says, FP8-with-rotation should show materially smaller error than plain FP8 at the same speed; if the error
-were unchanged, the rotation would be dead weight and the whole FP8 case would collapse back to naive quantization.
+These give falsifiable directions, not a table I can read off in advance. In FP16 the starting point is ~35% util
+on H100; if the load-hiding and the softmax/matmul overlap succeed, util heads toward the ~75% band the async
+engines can sustain — a ceiling of `0.75/0.35 ≈ 2.1×`, which WGMMA latency, pipeline fill/drain, and imperfect
+softmax burial should discount to a realized `speedup_over_prev` in the `1.5–2.0×` range with `mfu` in the
+low-to-mid 70s of FP16 peak. FP8 is a separate axis: the e4m3 path roughly doubles the tensor peak, so absolute
+`tflops_per_sec` should climb toward the petaflop range while `mfu` sits *lower* than FP16 — the Hadamard rotation
+and the descales are overhead the FP16 path does not pay. The sharpest falsifier is the accuracy metric: if the
+`√d ≈ 11×` outlier argument holds, FP8-with-rotation should show materially smaller error than plain FP8 at the
+same speed; unchanged error would mean the rotation is dead weight and the FP8 case collapses to naive
+quantization.
 
-Let me pin the structure. The warp-specialization dispatch — warpgroup 0 becomes the TMA producer (registers
-deallocated), the rest become consumers (`hopper/flash_fwd_kernel_sm90.h`):
+The structure that lands all this: at kernel entry the warpgroup index picks a role — warpgroup 0 deallocates its
+registers and loops issuing TMA loads (`producer_acquire` a pipeline stage, fire the `tma_load` with the stage's
+barrier, commit), the rest allocate registers and loop running the mainloop `mma`. Inside a consumer, each step of
+`fwd_step` issues the two WGMMAs for the pipelined blocks async, releases the consumed stage, then runs the
+`max`/`online_softmax`/`rescale_o` for the current block so the softmax overlaps the just-issued matmuls; on the FP8
+path a register permute precedes the descale-finalize (`softmax.finalize(v_descale)`), and the interface routes
+`float8_e4m3fn` inputs to a BF16 output. The full Hopper kernel is in the answer.
 
-```cuda
-        if (warp_group_idx == 0) {  // Producer
-            cutlass::arch::warpgroup_reg_dealloc<LoadRegisterRequirement>();
-            PipelineState smem_pipe_write = cutlass::make_producer_start_state<MainloopPipelineK>();
-            // ... loop over work tiles, issuing TMA loads of Q, K, V into the pipeline ...
-            mainloop.load(params.mainloop, pipeline_k, pipeline_v, pipeline_vt, smem_pipe_write,
-                          shared_storage, scheduler_prefetch, seqlen_info, block_coord, work_idx);
-        } else {  // Consumer
-            cutlass::arch::warpgroup_reg_alloc<MmaRegisterRequirement>();
-            TiledMmaPV tiled_mma_pv;
-            // ... loop over work tiles, running the matmuls + softmax on loaded tiles ...
-            tile_valid = mainloop.mma(
-                params.mainloop, pipeline_k, pipeline_v, smem_pipe_read,
-                tOrO, softmax, threadIdx.x - MmaThreadOffset, work_idx, seqlen_info, block_coord, shared_storage);
-        }
-```
-
-The producer drives TMA: `acquire` a pipeline stage, fire the async copy with the stage's barrier, `commit`
-(`hopper/mainloop_fwd_sm90_tma_gmma_ws.hpp`):
-
-```cuda
-        auto load_K = [&] (int const n_block, auto const& smem_pipe_write, auto need_seqlenk_masking_type) {
-            pipeline_k.producer_acquire(smem_pipe_write);
-            copy(params.tma_load_K.with(*pipeline_k.producer_get_barrier(smem_pipe_write), mcast_mask_kv, TMA::CacheHintSm90::EVICT_LAST),
-                tKgK_TMA(_, n_block_idx, bidb_kv_idx), tKsK_TMA(_, smem_pipe_write.index()));
-        };
-```
-
-The consumer pipelines softmax over WGMMA: each step issues `gemm(QKᵀ)` for the next block async, does the
-softmax for the current block (overlapping the matmul), then `gemm(P·V)` and the rescale — interleaving the two
-matmuls and the softmax across iterations (`hopper/mainloop_fwd_sm90_tma_gmma_ws.hpp`):
-
-```cuda
-            // Each step does gemm0 for iter n_block, gemm1 for iter n_block + 1, and softmax for iter n_block.
-            auto fwd_step = [&](int const n_block, auto mask_fn, auto check_inf_type) {
-                ++smem_pipe_read;
-                if (!UseSchedulerBarrier || warp_group_idx == 0) { consumer_wait(pipeline_k, smem_pipe_read); }
-                warp_scheduler_barrier_sync();
-                flash::gemm</*zero_init=*/true, /*wg_wait=*/-1>(tiled_mma_qk, tSrQ, tSrK(_, _, _, smem_pipe_read.index()), tSrS);   // QKᵀ for next block, async
-                flash::gemm</*zero_init=*/false, /*wg_wait=*/-1>(tiled_mma_pv, cute::conditional_return<MmaPV_is_RS>(tOrP, tOsP), tOrV(_, _, _, smem_pipe_read_v.index()), tOrO);  // P·V for this block, async
-                warp_scheduler_barrier_arrive();
-                warpgroup_wait<1>();
-                pipeline_k.consumer_release(smem_pipe_read);
-                mask_fn(tSrS, n_block);
-                cute::copy(softmax.template max_get_scale</*Is_first=*/false, Check_inf>(tSrS), scores_scale);   // softmax, overlapping the issued matmuls
-                softmax.template online_softmax</*Is_first=*/false, Check_inf>(tSrS);
-                if constexpr (Is_FP8 && !V_colmajor) { flash::permute_Cregs_fp8(tSrS); }    // FP8 register permute (incoherent-processing path)
-                convert_type_out(make_tensor(tSrS.data(), tOrP.layout()), tOrP);
-                softmax.rescale_o(tOrO, scores_scale);
-            };
-```
-
-The FP8 path carries per-tensor descales applied at the matmul boundaries and finalizes the softmax with
-`v_descale`; FP8 inputs accumulate to BF16 output (`hopper/mainloop_fwd_sm90_tma_gmma_ws.hpp`,
-`hopper/flash_attn_interface.py`):
-
-```cuda
-            float const v_descale = !Is_FP8 || params.ptr_v_descale == nullptr ? 1.0f : params.ptr_v_descale[bidb * get<0>(params.stride_v_descale) + bidh_kv * get<1>(params.stride_v_descale)];
-            cute::copy(softmax.finalize(v_descale), scores_scale);
-```
-
-```python
-    # FP8 (e4m3) inputs produce BF16 output (FP8 can't faithfully hold the result)
-    q_type = q.dtype
-    if q_type == torch.float8_e4m3fn:
-        out_dtype = torch.bfloat16
-    else:
-        out_dtype = q_type
-```
-
-The causal chain across all three rungs: FlashAttention made attention exact, fused, and linear in memory by
-never materializing the score matrix (online softmax + IO-aware tiling + recompute-in-backward); FlashAttention-2
-re-partitioned that same kernel — sequence-parallel grid, deferred normalization, query-split warps — to roughly
-double throughput and hit 72% MFU on A100; and now FlashAttention-3 restructures it for Hopper's asynchronous
-machinery — warp-specialized producer/consumer with TMA loads hidden behind WGMMA matmuls, the softmax pipelined
-to overlap the tensor cores, and an FP8 path made accurate by random-orthogonal (Hadamard) incoherent processing
-that preserves the matmul math while taming the outliers. Same exact `softmax(QKᵀ/√d)·V` throughout — only the
-mapping onto the silicon changes, and with it the utilization, from ~35% of an idle H100 toward ~75% in FP16 and
-near a petaflop in FP8.
+The arc across the three rungs stayed on one fixed output — `softmax(QKᵀ/√d)·V`, bit-for-bit — while everything
+under it moved: first *what touches HBM* (never materialize the score matrix), then *how the on-chip work is
+partitioned* across grid, warps, and the softmax normalization, and now *how it maps onto asynchronous silicon*
+(warp-specialized TMA producers feeding WGMMA consumers, softmax overlapped with the matmuls, FP8 made accurate by
+Hadamard incoherent processing). Each rung left the math alone and only rescheduled the computation onto the
+hardware, and the utilization tracked that: from a bandwidth-bound floor, through 72% of Ampere's peak, to
+three-quarters of an H100 in FP16 and into the petaflop range in FP8.
