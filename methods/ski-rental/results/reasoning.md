@@ -10,7 +10,7 @@ The adversary gets to pick x after seeing my a (I'm deterministic, so it can sim
 
 Is 2 − 1/B the best any deterministic rule can do? Take any A_a and let the adversary stop at x = a+1, the first horizon on which I actually buy. The ratio is (a+B)/min(a+1, B). If a < B−1, that is (a+B)/(a+1), and it decreases as a moves toward B−1. If a = B−1, it is (2B−1)/B. If a ≥ B, OPT is already B and the ratio is at least (a+B)/B ≥ 2. So the minimum worst case is exactly at a = B−1, with ratio 2 − 1/B. Deterministically I'm stuck near 2. And I can feel exactly why: I commit to a single buy-day, the adversary knows which one, and it ends the season the instant after I buy. My determinism is the leak. The adversary plays against the one day I'll buy.
 
-So plug the leak: don't buy on a fixed day. Randomize the buy-day. Now the adversary still has to commit to x in advance — it's oblivious, it sees my code and my distribution but not my coin flips — so it can no longer aim at "the day after I buy," because it doesn't know which day that is. If I mix two deterministic cutoffs, then against any fixed x my expected cost is a genuine average of two deterministic costs, and the adversary can't catch both cutoffs with one x. Let me check this even helps: with unscaled costs buy = 300 and rent = 20, mixing A_10 and A_15 half-and-half gives a worst-horizon expected cost (½)(500)+(½)(600) = 550 against OPT 300 — ratio 550/300 ≈ 1.83, already under 2. Good, randomization bites. The question is which distribution over buy-days is best, and how low I can push the ratio.
+So plug the leak: don't buy on a fixed day. Randomize the buy-day. Now the adversary still has to commit to x in advance — it's oblivious, it sees my code and my distribution but not my coin flips — so it can no longer aim at "the day after I buy," because it doesn't know which day that is. If I mix two deterministic cutoffs, then against any fixed x my expected cost is a genuine average of two deterministic costs, and the adversary can't catch both cutoffs with one x. With unscaled costs buy = 300 and rent = 20, mixing A_10 and A_15 half-and-half gives a worst-horizon expected cost (½)(500)+(½)(600) = 550 against OPT 300 — ratio 550/300 ≈ 1.83, already under 2. So randomization does bite; the question is which distribution over buy-days is best, and how low I can push the ratio.
 
 Let me set it up properly, and I need to be precise about the indexing or the constants will be off. Let π_i be the probability that I buy on day i, for i = 1, …, B. Buying on day i means I have rented i−1 days and, if the season reaches day i, I pay B at the start of that day. Buying after day B is wasteful: once I have already rented B days, OPT's long-horizon cost is B and delaying the purchase only adds rent before the same lump sum. Now fix a horizon k and compute my expected cost. A day-i buy costs (i−1)+B if i ≤ k, because the season reaches the buy day; it costs k if i > k, because the season ends before I buy. So
 
@@ -66,9 +66,9 @@ What is r^B? It's (B/(B−1))^B = (1 − 1/B)^{−B}. So
 
 and as B grows, (1−1/B)^B → 1/e, hence ρ → e/(e−1) ≈ 1.58.
 
-The flattening forced a geometric distribution on the buy-day, and the normalization forced the ratio. I didn't pick 1.58 — it fell out of "make every horizon equally bad and let the probabilities sum to one." Let me sanity-check the small cases against the limit: B = 5 gives ρ ≈ 1.487, B = 10 gives ≈ 1.535, B = 100 gives ≈ 1.577, all sliding up toward 1.582 from below as B → ∞. And it's well under the deterministic 2 − 1/B for every B ≥ 2. The drop from 2 to e/(e−1) is the whole payoff of hiding the buy-day behind a coin.
+The flattening forced a geometric distribution on the buy-day, and the normalization forced the ratio. I didn't pick 1.58 — it fell out of "make every horizon equally bad and let the probabilities sum to one." The small cases track the limit from below: B = 5 gives ρ ≈ 1.487, B = 10 gives ≈ 1.535, B = 100 gives ≈ 1.577, sliding up toward 1.582 as B → ∞, and well under the deterministic 2 − 1/B for every B ≥ 2. The drop from 2 to e/(e−1) is the whole payoff of hiding the buy-day behind a coin.
 
-Before I trust it, let me make sure horizons k > B can't bite. For k > B, OPT(k) = B because the clairvoyant buys on day one. My expected cost is now independent of k: every buy-day i ≤ B is reached, so E[C] = Σ_i π_i(B+i−1). But that is exactly E[C(B)], since horizon B also reaches every buy-day in the support. The flattened constraint at k = B already made E[C(B)] = ρB. So no horizon beyond B is worse than the ones I equalized. Good — and this also confirms why the support must stop at buy day B, not at "after renting B days." One extra delayed day would leave the k = B equation looking fine while making every longer horizon pay an unnecessary extra rent day.
+Horizons k > B need checking too, since I only flattened k ≤ B. There OPT(k) = B because the clairvoyant buys on day one, and my expected cost is now independent of k: every buy-day i ≤ B is reached, so E[C] = Σ_i π_i(B+i−1) — which is exactly E[C(B)], already pinned to ρB by the k = B constraint. So no horizon beyond B is worse than the ones already equalized, and this is also why the support must stop at buy day B rather than "after renting B days": one extra delayed day would leave the k = B equation looking fine while making every longer horizon pay an unnecessary extra rent day.
 
 Now, is this actually optimal, or did I just find a good distribution? I need a matching lower bound: no algorithm, however clever, beats e/(e−1) against the oblivious adversary.
 
@@ -129,69 +129,4 @@ p(z) = e^z/(e−1) on [0,1].
 
 The factor is the boundary value of the derivative equation at τ = 1: the tail integral vanishes, so ρ = p(1) = e/(e−1). Same constant, now exact rather than a limit. The truncation at z = 1 matters for the same reason it did discretely: any density mass beyond the break-even time is pure waste, so the support stops at 1.
 
-Step back and I can name the whole causal chain. The pain is a recurring-vs-lump-sum decision with an adversarial, hidden horizon. Measured against the clairvoyant min(x, B), the deterministic freedom is the buy-day, the best cutoff is break-even (rent B−1 days, then buy on day B), and that's stuck near 2 because the oblivious adversary can aim at the one day I'll buy. Randomizing the buy-day removes that aim. Demanding that the expected ratio be flat across every horizon forces the buy-day probabilities to be geometric with ratio 1/(1−1/B), growing toward the deadline; normalization gives π_i = αr^{i−1} with α = 1/((B−1)(r^B−1)), and the boundary equation gives competitive factor ρ = r^B/(r^B−1) = 1/(1 − (1−1/B)^B) → e/(e−1) ≈ 1.58. The matching lower bound is the reciprocal geometry seen from the adversary's side via Yao, with horizon tail (1−1/B)^{t−1} making every deterministic cutoff equally bad. In continuous time the geometric becomes the exponential density e^z/(e−1) on [0,1], with the constant exact. Now let me write it as code: OPT, the deterministic buy days, the geometric buy-day distribution, the worst-horizon ratio, and the continuous sampler.
-
-```python
-import math, random
-
-def opt_cost(x, B):
-    # clairvoyant: rent everything if the horizon is short, else buy day one
-    return min(x, B)
-
-def det_cost(buy_day, x, B):
-    # buy_day is 1-indexed: rent buy_day-1 days, then buy if the horizon reaches it
-    return x if x < buy_day else (buy_day - 1) + B
-
-def best_det_ratio(B):
-    # break-even buy day B: worst horizon x = B gives (2B-1)/B = 2 - 1/B
-    return det_cost(B, B, B) / opt_cost(B, B)
-
-def buy_day_distribution(B):
-    # pi_i = alpha * r^(i-1), r = B/(B-1), i=1..B.
-    # alpha normalizes the probabilities; rho = 1 + (B-1)*alpha is the ratio.
-    if B == 1:
-        return [1.0]
-    r = B / (B - 1)
-    alpha = 1.0 / ((B - 1) * (r ** B - 1.0))
-    return [alpha * r ** (i - 1) for i in range(1, B + 1)]
-
-def expected_ratio_exact(B):
-    # worst over horizons of E_i[det_cost(i, x, B)] / opt_cost(x, B)
-    pi = buy_day_distribution(B)
-    return max(
-        sum(pi[i - 1] * det_cost(i, x, B) for i in range(1, B + 1)) / opt_cost(x, B)
-        for x in range(1, 2 * B + 1)
-    )
-
-def sample_buy_day(pi, rng):
-    u, c = rng.random(), 0.0
-    for i, p in enumerate(pi, start=1):
-        c += p
-        if u <= c:
-            return i
-    return len(pi)
-
-def adversary_tail(t, B):
-    # Yao lower-bound distribution: Pr[X >= t] = (1 - 1/B)^(t-1)
-    return (1.0 - 1.0 / B) ** (t - 1)
-
-def continuous_density(z):
-    # spin-block density p(z) = e^z/(e-1) on [0,1]
-    if 0.0 <= z <= 1.0:
-        return math.exp(z) / (math.e - 1.0)
-    return 0.0
-
-def sample_buy_time_continuous(rng):
-    # inverse CDF F(z) = (e^z - 1)/(e - 1), so z = ln(1 + u(e - 1))
-    return math.log(1.0 + rng.random() * (math.e - 1.0))
-
-def continuous_ratio(z, d):
-    # scale buy cost to 1; spin until z, then block if the lock is still held
-    cost = d if d < z else z + 1.0
-    return cost / min(d, 1.0)
-
-if __name__ == "__main__":
-    for B in [5, 10, 100, 1000]:
-        print(B, round(best_det_ratio(B), 4), round(expected_ratio_exact(B), 4))
-    print("e/(e-1) =", math.e / (math.e - 1))
-```
+Time to make it concrete: OPT, the deterministic break-even baseline, the geometric buy-day distribution with its sampler, the Yao adversary's tail probability, and the continuous density with its inverse-CDF sampler, so I can sweep B and watch both ratios converge — 2 − 1/B for the deterministic cutoff, and 1/(1 − (1−1/B)^B) sliding up to e/(e−1) for the randomized one. The full module is in the answer.
