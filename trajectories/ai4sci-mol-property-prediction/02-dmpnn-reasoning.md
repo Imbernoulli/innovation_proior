@@ -67,44 +67,32 @@ is exactly what was insufficient on BBBP, where the label rides on extensive, wh
 that a per-atom average has divided away. The molecule vector `Σ_v h_v` keeps the counts.
 
 The exclusion looks expensive — for every directed bond, a sum over the source atom's neighbors minus one
-— but it factors, and it is worth doing the arithmetic so I know the architectural upgrade is actually
-free. The sum over `N(v)\w` is the sum over *all* of `N(v)` minus the one excluded term, and the full sum
-over incoming bonds at `v` does not depend on `w`: compute `a_v = Σ_{k∈N(v)} h_kv` once per atom, then for
-each outgoing bond `v→w` the message is `a_v − h_wv`, one subtraction. The naive version costs, per atom,
-`deg(v)·(deg(v)−1)` message terms — quadratic in degree — so the total is `O(Σ_v deg(v)^2)`; the factored
-version is one length-`deg(v)` sum per atom plus one subtraction per directed bond, `O(Σ_v deg(v)) = O(E)`.
-Concretely a degree-4 atom (a quaternary carbon) drops from `4·3 = 12` message terms to a `4`-term sum plus
-`4` subtractions, and the gap widens as degree grows. To find the reverse bond instantly, store bonds in
-adjacent forward/reverse pairs so the reverse of bond `e` is `e XOR 1` — check it: pair `(a→b)=0,(b→a)=1`
-gives `0^1=1` and `1^1=0`; pair `(b→c)=2,(c→b)=3` gives `2^1=3` and `3^1=2`; the involution is exact. The
-scaffold's `edge_index` already lays bonds out this way, so the directed scheme costs essentially the same
-as a plain atom aggregation. The architectural advantage is free.
+— but it factors. The sum over `N(v)\w` is the full sum over `N(v)` minus the one excluded term, and the
+full sum does not depend on `w`: compute `a_v = Σ_{k∈N(v)} h_kv` once per atom, then for each outgoing
+bond `v→w` the message is `a_v − h_wv`, one subtraction. The naive version costs `deg(v)·(deg(v)−1)`
+message terms per atom — quadratic in degree, `O(Σ_v deg(v)^2)` total; the factored version is one
+length-`deg(v)` sum per atom plus one subtraction per bond, `O(E)`. A degree-4 quaternary carbon drops
+from `4·3 = 12` terms to a 4-term sum plus 4 subtractions. To find the reverse bond instantly, store bonds
+in adjacent forward/reverse pairs so the reverse of `e` is `e XOR 1`; `edge_index` already lays them out
+this way, so the directed scheme costs essentially the same as a plain atom aggregation.
 
-It is worth taking the exclusion to its limiting case to be sure it does what I claim. On an *acyclic*
-fragment — a tree, which is what most drug side-chains and linkers are — belief propagation with the
-reverse-message exclusion is *exact*: every message travels each edge once in each direction and never
-revisits, so there is provably no double counting and no totter, and the directed encoder is echo-free on
-those substructures by construction. The approximation only re-enters inside *rings*, where a message can
-loop back around the cycle rather than straight back along its own bond, and there the scheme becomes loopy
-BP rather than exact BP. That is the honest scope of the fix: the reverse-exclusion kills the length-2
-`v→w→v` totters everywhere, exactly and for free, and leaves only the longer ring-length walks as residual
-mixing — a strict improvement over the atom-centered update that tottered on every bond, acyclic or not.
+The limiting case fixes the scope of the fix. On an *acyclic* fragment — a tree, which is what most drug
+side-chains and linkers are — belief propagation with the reverse-message exclusion is *exact*: every
+message travels each edge once in each direction and never revisits, so the directed encoder is echo-free
+there by construction. The approximation only re-enters inside *rings*, where a message can loop around
+the cycle rather than straight back along its own bond, and there the scheme becomes loopy BP. So
+reverse-exclusion kills the length-2 `v→w→v` totters everywhere, and leaves only the longer ring-length
+walks as residual mixing — a strict improvement over the atom-centered update that tottered on every bond.
 
-Now I have to decide how much to change at once, and there is a real design choice hiding here. I could
-make the minimal edit — swap GIN's mean readout for a sum and change nothing else — which cleanly tests the
-readout in isolation, but it leaves the totter untouched and, more to the point, does nothing for BBBP's
-*global-prior* gap, so the single-target task would stay near chance and I'd have learned little. I could
-make the other minimal edit — bolt molecule-level descriptors onto the existing GIN — which tests the prior
-in isolation but keeps the tottering mean-pool encoder muddying the local tasks. Or I fix both diagnosed
-failures in one rung: move to directed bonds (kills the totter), sum-pool (keeps counts), and concatenate a
-descriptor prior (patches the global gap). Changing two things at once carries the usual confound — if the
-aggregate moves I can't attribute it to one cause — but the two changes target *disjoint* task-failures,
-which is what saves the experiment: the descriptor branch is aimed squarely at BBBP's global-physicochemistry
-gap, while the directed-bond-plus-sum rework is aimed at message quality on all three, so the per-task split
-in the feedback will attribute for me. I hold off on jumping to a 3D or pretrained encoder deliberately —
-I have not yet exhausted what the 2D bond graph can do, and if I leap the whole ladder now I will never be
-able to say whether 2D message passing was truly capped or just clumsily arranged. So this rung stays inside
-the 2D graph and spends its budget on the directed reformulation plus the prior.
+I fix both diagnosed failures at once: move to directed bonds (kills the totter), sum-pool (keeps counts),
+and concatenate a descriptor prior (patches the global gap). Changing two things carries the usual
+confound, but the two changes target *disjoint* task-failures, which is what saves the experiment — the
+descriptor branch is aimed squarely at BBBP's global-physicochemistry gap, the directed-bond-plus-sum
+rework at message quality on all three, so the per-task split in the feedback will attribute for me. I
+hold off on jumping to a 3D or pretrained encoder deliberately: I have not yet exhausted what the 2D bond
+graph can do, and if I leap now I will never be able to say whether 2D message passing was truly capped or
+just clumsily arranged. So this step stays inside the 2D graph and spends its budget on the directed
+reformulation plus the prior.
 
 Now the part that directly attacks BBBP's 0.51. Even fixed, this is a *local, data-hungry, prior-free*
 encoder — `T≈3` hops is still smaller than a drug-molecule's diameter, and BBBP's answer lives in global
@@ -126,19 +114,15 @@ hands the model a view of chemistry it could never learn from a few hundred scaf
 across the whole molecule where three-hop message passing cannot. This is the patch for precisely the
 failure I measured.
 
-It matters that the prior I bolt on is *global physicochemistry* specifically, and not just any fixed
-featurization, so let me rule out the tempting alternatives on the axis they'd actually add. An ECFP/Morgan
-fingerprint is also a fixed, zero-training prior, but it is a bag of *local* circular substructures — the
-same kind of information the message passing already extracts, just hashed — so it would reinforce the axis
-the encoder is already good at while doing nothing for the *whole-molecule* quantities BBBP needs; wrong
-axis. Simply stacking more graph layers extends the receptive field, but it stays local, stays
-data-hungry, and cannot invent lipophilicity or polar surface area out of a few hundred labels; wrong cure.
-A learned global-attention pool could in principle assemble a molecule-level summary, but it is *learned*,
-so on a single-target set of a few hundred scaffolds it inherits the very data-hunger I'm trying to route
-around. The RDKit descriptor panel is the one option that adds a genuinely *new, global, and prior-laden*
-axis at zero data cost — molecular weight, LogP, TPSA, donor/acceptor counts are computed from cheminformatics
-rules distilled over decades, not fit to my 1.6k training molecules — which is exactly why it is the right
-concatenation for the failure I measured rather than a reflex toward "add more features."
+It matters that the prior is *global physicochemistry* specifically, not just any fixed featurization. An
+ECFP/Morgan fingerprint is also a zero-training prior, but it is a bag of *local* circular substructures —
+what the message passing already extracts, just hashed — so it reinforces the axis the encoder is already
+good at and does nothing for the whole-molecule quantities BBBP needs. Stacking more graph layers stays
+local, stays data-hungry, and cannot invent lipophilicity or polar surface area from a few hundred labels.
+A learned global-attention pool could assemble a molecule-level summary but is itself *learned*, so it
+inherits the data-hunger I'm trying to route around. The RDKit descriptor panel is the one option adding a
+genuinely new, global, prior-laden axis at zero data cost — MW, LogP, TPSA, donor/acceptor counts come
+from cheminformatics rules distilled over decades, not fit to my 1.6k molecules.
 
 The descriptors have wildly different scales — a molecular weight in the hundreds next to a fraction in
 `[0,1]` next to an integer ring count — so I must standardize them before they meet the head, or the
@@ -147,62 +131,43 @@ clean version would map each descriptor through its CDF (a percentile in `[0,1]`
 across features, immune to outliers and to non-normal count distributions), fit once on a large background.
 In *this* task's edit surface I approximate that with a BatchNorm-style running normalizer on the
 descriptor branch: a per-feature running mean/std updated as batches arrive, so train and test see the
-same scaling — the streaming standardization, not a precomputed CDF table. One honest limitation I'll
-respect rather than hide: the harness only reliably exposes SMILES to this branch through `batch._smiles`;
-when that attribute is absent the descriptor branch falls back to a zero vector. Let me check that the
-fallback is genuinely inert rather than injecting noise: an all-zeros batch through the running normalizer
-maps to `(0 − running_mean)/running_std`, which is a *constant* vector across every molecule in the batch —
-not literally zero, but per-molecule uninformative — and a constant fed into the linear head is absorbed
-into that head's bias term, so it shifts the intercept and carries no molecule-specific signal. The pure
-GNN branch then supplies all the per-molecule variation, which is the behavior I want: the descriptor lift
-is real where SMILES are available and harmlessly degenerate where they are not. I also keep the descriptor
-set deliberately compact (the seventeen above) rather than the full few-hundred CDF-normalized panel,
-because the compact set is the chemically load-bearing subset and is robust to compute in-loop.
+same scaling — the streaming standardization, not a precomputed CDF table. One honest limitation:
+the pipeline only reliably exposes SMILES to this branch through `batch._smiles`, and when that attribute
+is absent the descriptor branch falls back to a zero vector. That fallback is inert rather than noisy: an
+all-zeros batch through the running normalizer maps to `(0 − running_mean)/running_std`, a *constant*
+vector across the batch — per-molecule uninformative — and a constant into the linear head is absorbed
+into its bias, shifting the intercept with no molecule-specific signal. The pure GNN branch then supplies
+all the per-molecule variation: the descriptor lift is real where SMILES are available and harmlessly
+degenerate where they are not. I keep the descriptor set compact (the seventeen above) rather than the
+full few-hundred CDF-normalized panel, because the compact set is the chemically load-bearing subset and
+robust to compute in-loop.
 
 The remaining knobs follow from something, not a hat. Depth `T = 3`: enough hops to build a useful local
-environment around each atom without the tied recurrence over-smoothing or, even with the skip, washing
-out distinctions — and, because `W_m` is tied across rounds, depth costs no extra parameters, so `T=3` is
-as cheap as `T=1`. That tying is worth pricing out: the encoder's weight is one `W_i` on `[atom;bond]→300`
-(~44k), one shared `W_m` of `300×300` (~90k) reused at every step, and one `W_o` on `[atom;msg]→300`
-(~131k); with the head that is on the order of `3.6×10^5` trainable weights — *fewer* than rung one's GIN,
-even though depth-3 directed message passing is strictly more expressive, precisely because tying `W_m`
-means depth-3 does not triple that `90k` the way an untied stack would (it would have cost `~180k` more).
-Hidden width 300, the usual sweet spot for these molecule sizes. **Sum** pooling for the graph readout
-(keeps counts), with the head a two-layer FFN over `[h ; h_f]`. Dropout I'll leave near zero by default and
-let the driver lift it per dataset where overfitting bites — the small single-target sets want a little,
-the regression-style targets more. The loss is the fixed pipeline's masked BCE for the multi-task Tox21
-(absent assays contribute no gradient), and the scaffold split stays — the architecture and the evaluation
-are answering the same question (does the representation transfer to new chemistry) from two ends.
+environment without the tied recurrence over-smoothing distinctions away, and because `W_m` is tied across
+rounds depth costs no extra parameters, so `T=3` is as cheap as `T=1`. Counting weights: one `W_i` on
+`[atom;bond]→300` (~44k), one shared `W_m` of `300×300` (~90k) reused every step, one `W_o` on
+`[atom;msg]→300` (~131k); with the head, ~`3.6×10^5` — *fewer* than the GIN's `6.4×10^5` even though
+depth-3 directed message passing is strictly more expressive, because tying `W_m` means depth-3 does not
+triple that `90k` the way an untied stack would. Hidden width 300. **Sum** pooling (keeps counts), head a
+two-layer FFN over `[h ; h_f]`. Dropout near zero by default, lifted per dataset by the driver where
+overfitting bites. The loss stays the pipeline's masked BCE for multi-task Tox21 (absent assays contribute
+no gradient), and the scaffold split stays.
 
-So the delta from rung one is concrete: where GIN summed over *all* neighbors (tottering) and mean-pooled
+So the delta from the starter GIN: where it summed over *all* neighbors (tottering) and mean-pooled
 (losing counts) with no global prior, I move the state onto directed bonds and exclude the reverse message
-(BP-style, no totter), add the tied-update-plus-skip so depth is free and bond identity survives,
-**sum**-pool to keep counts, and concatenate a running-normalized RDKit descriptor vector so the global
-physicochemistry BBBP needs is handed in directly. Reading GIN's shape, here is what I expect and where I'm
-exposed. BBBP is the falsifiable claim: GIN sat at chance (0.51); if the descriptor branch is really
-supplying the global prior BBBP turns on, BBBP should move *clearly off chance* — it is the metric that
-most directly tests the diagnosis, and if BBBP stays near 0.5 my story about "global prior fixes it" is
-wrong. BACE should at least hold and likely improve as the directed message passing kills the totter that
-was muddying its local substructure; Tox21 I expect to hold around GIN's 0.75 or edge up, since it had the
-most data and was never the bottleneck. The honest risk I can already name cuts against those last two:
-the directed-bond rework is motivated by a totter that may simply not have been *their* bottleneck — they
-were already healthy under GIN — so it is entirely possible the rework buys them nothing measurable and the
-descriptor branch is the only real mover, in which case BACE and Tox21 sit roughly where they were. And a
-sharper exposure: the descriptor branch only helps where `batch._smiles` is exposed at finetune; if it is
-not, the model is just a directed-bond MPNN with sum pooling — better-formed than GIN's tottering mean-pool
-encoder, but without the global lift, in which case BBBP improves only modestly rather than dramatically.
-If *that* is what I see — BBBP creeping rather than leaping — the diagnosis for the next rung is already
-written: the cure isn't more 2D graph machinery at all, it's the *3D geometry* the property actually
-depends on, plus pretraining to escape the data-hunger — feed the model atoms-in-space instead of a 2D
-graph.
+(no totter), add a tied update with a skip so depth is free and bond identity survives, **sum**-pool to
+keep counts, and concatenate a running-normalized RDKit descriptor vector so the global physicochemistry
+BBBP needs is handed in directly.
 
-The causal chain in one breath: GIN's measured failure is structural — chance (0.51) on BBBP, a full
-`0.22–0.24` below BACE (0.73) and Tox21 (0.75), because a *mean*-pooled, four-hop, prior-free encoder
-cannot see global physicochemistry, while the two local-substructure tasks survive → fix the message
-passing by moving state onto directed bonds and excluding the reverse term (`m_vw = a_v − h_wv`, factored to
-`O(E)`, reverse via `e XOR 1`), killing the totter, with a tied update plus skip so depth is free and bond
-identity survives → fix the readout by **sum**-pooling to keep the counts mean threw away → patch the
-locality/no-prior gap that BBBP exposed by concatenating a running-normalized RDKit 2D descriptor vector
-whose axes *are* the BBB checklist (MW, TPSA, LogP, HBD), dropping gracefully to the pure GNN where SMILES
-aren't exposed → expecting BBBP to move clearly off chance, BACE to hold/improve, Tox21 to hold — and if
-BBBP barely moves, the next rung must abandon 2D graphs for the 3D geometry plus pretraining.
+Here is what I expect and where I'm exposed. BBBP is the falsifiable claim: GIN sat at chance; if the
+descriptor branch really supplies the global prior BBBP turns on, BBBP should move *clearly off chance* —
+and if it stays near 0.5 my story is wrong. BACE should at least hold and likely improve as the directed
+message passing kills the totter muddying its local substructure; Tox21, which had the most data and was
+never the bottleneck, I expect to hold or edge up. The honest risk cuts against those last two: the totter
+may simply not have been *their* bottleneck — they were already healthy under GIN — so the rework may buy
+them nothing measurable and leave the descriptor branch the only real mover. And a sharper exposure: the
+descriptor branch only helps where `batch._smiles` is exposed at finetune; if it is not, this is just a
+directed-bond MPNN with sum pooling — better-formed than GIN's tottering mean-pool, but without the global
+lift, so BBBP creeps rather than leaps. If that is what I see, the next move is not more 2D machinery at
+all — it is the *3D geometry* the property actually depends on, plus pretraining to escape the
+data-hunger.

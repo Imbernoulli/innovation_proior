@@ -60,13 +60,11 @@ scale — and the checkpoint is for an *invariant* Transformer, so equivariant t
 the object I can load. The third option is a plain Transformer over atoms with geometry injected as an
 invariant, and once I see that invariance is all the target needs, that is where the walk lands.
 
-Why a Transformer and not a 3D GNN even setting locality aside: I want *every* atom able to look at *every*
-other atom, because the interactions that decide the property are long-range in bond-distance, and that is
-exactly what self-attention gives for free — a Transformer treats its input as a fully-connected set, every
-atom token attending to every other. And a set is the right object: atoms have no canonical order, attention
-is permutation-equivariant over them, and a `[CLS]` readout gives an order-invariant molecule vector. So
-the backbone is a Transformer, not a local GNN — which also flips the very thing that capped the 2D rungs
-(bonded-only message passing) into full connectivity.
+So the backbone is a Transformer, not a local 3D GNN: it treats its input as a fully-connected set, every
+atom attending to every other, so the long-range contacts that decide the property are visible — flipping
+the bonded-only message passing that capped the 2D encoders into full connectivity. A set is the right
+object anyway: atoms have no canonical order, attention is permutation-equivariant over them, and a `[CLS]`
+readout gives an order-invariant molecule vector.
 
 But a Transformer is position-blind: `softmax(QKᵀ/√d)V` depends only on the set of token features, not on
 where any atom is. In language you add a positional encoding indexed by a *discrete* integer slot. My
@@ -108,26 +106,22 @@ tokens that is `31·31 = 961` distinct pair types each carrying its own `(a_t, b
 step lifts `[B, N, N] → [B, N, N, K]`; a small MLP `Linear(K → heads)` projects the `K` Gaussian channels
 down to one bias per attention head, giving `[B, N, N, heads]`, which permutes to `[B, heads, N, N]` and
 adds straight onto the attention logits, themselves `[B, heads, N, N]`. Dimensions line up, and geometry is
-now steering which atoms each atom attends to — the pair-to-atom channel. It is worth noting that `961`
-pair types is generous: an organic molecule draws from a handful of elements, so `C–C`, `C–N`, `C–O`,
-`C–H`, `C–S`, `N–O` and a few more cover the overwhelming majority of pairs, and the rare element-pair
-affines see almost no gradient here. That is fine precisely because these `(a_t, b_t)` come pretrained —
-the checkpoint has already exercised them across hundreds of millions of conformers, so I am inheriting
-calibrated per-pair rulers rather than trying to fit `961` of them on a few hundred labels, which the
-finetune set could never do.
+now steering which atoms each atom attends to — the pair-to-atom channel. `961` pair types is generous:
+an organic molecule draws from a handful of elements, so `C–C`, `C–N`, `C–O`, `C–H`, `C–S`, `N–O` and a
+few more cover the overwhelming majority, and the rare affines see almost no gradient here. That is fine
+because these `(a_t, b_t)` come pretrained — exercised across hundreds of millions of conformers — so I
+inherit calibrated per-pair rulers rather than trying to fit `961` of them on a few hundred labels, which
+the finetune set never could.
 
-I should check the symmetry bookkeeping at the readout too, not just at the distance bias, because it is
-easy to reintroduce an order dependence and quietly break the invariance I paid for. Attention is
-permutation-*equivariant* over the atom tokens: permute the input atoms by any `π` and every output token
-permutes by the same `π`, since `softmax(QKᵀ)V` carries no positional index and the distance bias is
-itself indexed symmetrically by the pair. So the per-atom outputs are equivariant, and I need the molecule
-vector to be *invariant* — order-free. The `[CLS]` token supplies exactly that: it is a fixed extra
-position that attends to all atoms and is attended-to, its output is a permutation-*invariant* pooling of
-the atom set (reordering the atoms leaves what `[CLS]` sees unchanged), and reading the property off `[CLS]`
-gives one vector per molecule independent of atom numbering. Equivariant trunk, invariant readout — the
-composition is invariant end to end, which together with the SE(3)-invariant distance bias means the whole
-model is invariant to both atom relabeling and rigid motion, the two symmetries a molecule property must
-respect and neither one more.
+The readout has its own symmetry bookkeeping, and it is easy to reintroduce an order dependence that
+quietly breaks the invariance I paid for. Attention is permutation-*equivariant* over the atom tokens:
+permute the input atoms by any `π` and every output token permutes by the same `π`, since `softmax(QKᵀ)V`
+carries no positional index and the distance bias is indexed symmetrically by the pair. So the per-atom
+outputs are equivariant, but I need the molecule vector *invariant* — order-free. The `[CLS]` token
+supplies that: a fixed extra position that attends to all atoms and is attended-to, so its output is a
+permutation-invariant pooling of the atom set, one vector per molecule independent of atom numbering.
+Equivariant trunk, invariant readout — the composition is invariant end to end, which with the
+SE(3)-invariant distance bias makes the whole model invariant to both atom relabeling and rigid motion.
 
 The pair feature should not stay frozen, though. The distance is fixed by the conformer, but the *meaning*
 of a pair's interaction is what the model figures out as it processes the molecule — and that figuring-out
@@ -149,26 +143,22 @@ schedule. So each block is: normalize, self-attend with the pair bias, add; norm
 add. The encoder tracks and updates the pair representation through the stack, so the attention bias
 entering each layer is the running pair feature, and the delta `q^L − q^0` falls out by subtraction.
 
-And the scale is exactly why loading the checkpoint is a forced move rather than a nicety, which I want to
-price out. `86M` parameters against BBBP's `~1.6k` training molecules is roughly `52,000` parameters for
-every labeled example — two orders of magnitude past the `~400:1` GIN and `~220:1` D-MPNN ratios that were
-*already* over-parameterized and leaning entirely on inductive bias. There is no world in which this trunk
-learns a transferable representation from scratch on a few hundred scaffolds; the only thing that makes an
-`86M`-parameter encoder usable on these sets is that its representation was learned on an essentially
-unlimited pile of unlabeled conformers and I am merely finetuning a light head on top. So the pretrained
-weights are not a bonus — they are the entire mechanism by which the model escapes the data-hunger that
-capped the 2D rungs, and "load the checkpoint" is load-bearing.
+The scale is why loading the checkpoint is forced, not a nicety. `86M` parameters against BBBP's `~1.6k`
+training molecules is ~`52,000` per labeled example — two orders past the `~400:1` GIN and `~220:1`
+D-MPNN ratios that were already over-parameterized. This trunk cannot learn a transferable representation
+from a few hundred scaffolds; the pretrained weights, learned on an essentially unlimited pile of unlabeled
+conformers, are the entire mechanism by which it escapes the data-hunger that capped the 2D encoders.
 
-Now make it concrete *in this task's edit surface*, because the harness fixes everything but the
-`MoleculeModel` class, and what it exposes is narrower than the full framework. I do *not* build the
+Now make it concrete in the editable region, since the fixed pipeline exposes only the
+`MoleculeModel` class, narrower than the full framework. I do *not* build the
 pretraining loop, the masked-atom / noised-coordinate recovery objective, or the equivariant coordinate
 head here — those produced the checkpoint I am loading, but for property prediction I only consume the
-encoder and read out a molecule vector. So the fill is: a token embedding sized to the Uni-Mol dictionary
+encoder and read out a molecule vector. So the fill is: a token embedding sized to the pretrained dictionary
 (map each atom's element to its dictionary index from the 136-dim feature vector, prepend `[CLS]`, append
 `[SEP]`, pad with `[PAD]`); extend the distance matrix and mask for those two special tokens; form edge
 types as `token_i · dict_size + token_j`; run the edge-type Gaussian layer and project to per-head attention
 bias; embed tokens; run the Pre-LN encoder-with-pair; and read out the `[CLS]` token through a
-classification head. One faithful-but-thinner choice here: the head is a simple dropout-then-linear on the
+classification head. One simpler choice here: the head is a plain dropout-then-linear on the
 `[CLS]` representation — not a dense+tanh+dropout pooler — because at finetune the heavy pretrained trunk
 does the work and the simplest head transfers most cleanly and adds the fewest fresh, un-pretrained weights
 to overfit on a few hundred labels. And the load step matters: I read the checkpoint, remap the
@@ -177,34 +167,16 @@ the Gaussian layer, all 15 encoder layers), and skip the pretraining-only heads 
 coordinate projection) and any mismatch — falling back to from-scratch only if the checkpoint is absent, a
 path the budget arithmetic above says I never want to take.
 
-So the delta from rung two is total, not incremental: where D-MPNN passed messages along bonds in 2D and
-bolted on a global descriptor prior, I feed the model atoms-in-space, attend fully-connected with an
-SE(3)-invariant pair-type Gaussian distance bias, let geometry and attention co-refine through a Pre-LN
-encoder, read out `[CLS]`, and — crucially — start from weights pretrained on hundreds of millions of
-conformers. Reading the 2D rungs' shape, here are the falsifiable claims. BACE and Tox21 are the cleanest
-tests: both *fell* from GIN to D-MPNN (`0.726→0.688`, `0.747→0.713`) because 2D message passing had hit its
-ceiling, so if geometry plus pretraining is the real lever, both should now *exceed* even GIN's numbers —
-BACE clearly above `0.726` and Tox21 above `0.747` — not merely recover D-MPNN's. BBBP is the harder claim:
-the descriptor prior got it to `0.599`, and 3D geometry plus a pretrained trunk should push it higher still,
-comfortably off chance and above D-MPNN — though BBBP's severe scaffold shift on a single binary target
-means I expect the *smallest* absolute headroom there, so a BBBP that clears D-MPNN's `0.599` while staying
-the most tightly capped of the three, with BACE and Tox21 both breaking clear above GIN's `0.726` and
-`0.747` rather than merely recovering, would confirm the diagnosis: the win comes from the geometry the
-2D graph never had and the pretraining the small sets could never substitute for, and it is largest exactly
-where local-2D message passing was most starved. If instead BACE and Tox21 fail to clear GIN's marks, my
-story — that the 2D *input*, not the 2D *architecture*, was the ceiling — is wrong, and the bracket I read
-off the two feedback tables was a coincidence rather than a wall.
+So the delta from D-MPNN is total, not incremental: instead of passing messages along bonds in 2D with a
+bolted-on descriptor prior, I feed the model atoms-in-space, attend fully-connected with an SE(3)-invariant
+pair-type Gaussian distance bias, let geometry and attention co-refine through a Pre-LN encoder, read out
+`[CLS]`, and start from weights pretrained on hundreds of millions of conformers.
 
-The causal chain in one breath: D-MPNN's measured result is a *2D-input* ceiling — BBBP crept off chance
-(`0.510→0.599`, `+0.089`) on the descriptor prior but BACE and Tox21 *fell* (`−0.038`, `−0.034`) so the
-mean barely moved (`+0.006`) and two different 2D encoders bracket BACE in `[0.688,0.726]` and Tox21 in
-`[0.713,0.747]` without clearing GIN — rearranging 2D message passing only redistributes error where
-geometry is the missing signal → the property depends on how atoms sit in space and the small sets are
-data-starved, so move to a 3D-input encoder pretrained at scale → use a fully-connected Transformer (every
-atom sees every atom, long-range contacts visible), inject 3D position as a per-pair attention bias built
-from the SE(3)-invariant Euclidean distance (`‖R(xᵢ−xⱼ)‖ = ‖xᵢ−xⱼ‖`, invariance is all the target needs)
-through a pair-type-aware learnable Gaussian basis in Graphormer's slot → let `QKᵀ` write back into the
-pair channel so geometry and attention co-refine, Pre-LN for stable finetuning, `[CLS]` readout, and load
-the pretrained checkpoint the `52,000:1` budget makes non-negotiable → expecting BACE and Tox21 to exceed
-even GIN's marks and BBBP to push past D-MPNN, with the largest gains where 2D message passing was most
-starved of geometry.
+The cleanest falsifiable test is BACE and Tox21: both *fell* from GIN to D-MPNN (`0.726→0.688`,
+`0.747→0.713`) because 2D message passing had hit its ceiling, so if geometry plus pretraining is the real
+lever they should now *exceed* even GIN's marks — not merely recover D-MPNN's. BBBP is the harder claim:
+the descriptor prior got it to `0.599`, and 3D geometry plus a pretrained trunk should push it higher
+still, comfortably off chance, though its severe single-target scaffold shift means I expect the least
+absolute headroom there. If instead BACE and Tox21 fail to clear GIN's marks, my story — that the 2D
+*input*, not the 2D *architecture*, was the ceiling — is wrong, and the bracket I read off the two feedback
+tables was coincidence rather than a wall.
