@@ -36,7 +36,7 @@ DEAP stores the average normalized side length, so its finite update includes th
 
   i.distance += (f_m(i+1) - f_m(i-1)) / (M (f_m^max - f_m^min)).
 
-Second detail: the boundary solutions of the front — the ones with the smallest and largest value of an objective — have no neighbor on one side, so the neighbor-gap is undefined. In the four-point example those are A and B, and they are exactly the extreme points of the front, the ends I most want to keep, because losing them shrinks the spread (and in the Delta metric they are what the d_f, d_l terms reward). So what number should they get? The local-density picture says an end point has empty space on one whole side — it is as uncrowded as a point can be — so the consistent value is an *infinite* crowding distance: they rank ahead of every finite-distance interior point whenever the front is truncated. Let me confirm that doesn't break the comparison I just did: with A and B pinned at infinity and Q, P at 1.08 and 1.42, truncating a four-point front down to three keeps A, B, P and drops Q — the two ends and the sparser interior point, which is the spread I want. So infinity here isn't a hack to dodge the undefined gap; it falls out of the same density estimate and gives the right truncation. Pinning the extremes is how the population reaches the ends of the front instead of curling inward.
+Second detail: the boundary solutions of the front — the ones with the smallest and largest value of an objective — have no neighbor on one side, so the neighbor-gap is undefined. In the four-point example those are A and B, and they are exactly the extreme points of the front, the ends I most want to keep, because losing them shrinks the spread (and in the Delta metric they are what the d_f, d_l terms reward). So what number should they get? The local-density picture says an end point has empty space on one whole side — it is as uncrowded as a point can be — so the consistent value is an *infinite* crowding distance: they rank ahead of every finite-distance interior point whenever the front is truncated. That doesn't break the comparison I just did: with A and B pinned at infinity and Q, P at 1.08 and 1.42, truncating a four-point front down to three keeps A, B, P and drops Q — the two ends and the sparser interior point, which is the spread I want. So infinity here isn't a hack to dodge the undefined gap; it falls out of the same density estimate and gives the right truncation. Pinning the extremes is how the population reaches the ends of the front instead of curling inward.
 
 What does this cost? For each of M objectives I sort the front, which is O(N log N), so crowding-distance assignment is O(M N log N) -- cheaper than the non-domination sort, so it doesn't dominate the budget. And it has *no parameter*. Combine-and-truncate gives elitism without an archive, the n_p/S_p bookkeeping gives O(M N^2) sorting, and the cuboid gap gives parameter-free diversity.
 
@@ -50,7 +50,7 @@ Now I can finally assemble the survival step properly. I have the combined pool 
 
 Let me also pin down parent selection. The mathematical tournament draws two random individuals and keeps the better one under crowded-comparison: lower rank wins; same-rank ties go to the larger crowding distance. So mating pressure already favors solutions that are both near the front and in sparse regions, which seeds the next generation toward the under-represented parts of the front. In the code path I will use, the tournament is the DEAP dominance/crowding variant: if one candidate directly dominates the other it wins; otherwise the larger crowding distance wins, and an exact tie is a coin flip. That means the environmental selection is the place where full rank-then-crowding truncation is enforced, while mating uses the canonical dominance-then-crowding tournament after crowding distances have been assigned.
 
-Now the variation operators — how I turn selected parents into offspring. I'm on real-coded (continuous) variables, so I need real crossover and mutation, and the standard pair is SBX and polynomial mutation. Let me make sure I understand *why* they have the shape they do rather than just dropping them in. SBX is built to imitate single-point crossover on binary strings, but in continuous space. The key quantity is the spread factor beta = |(c2 − c1)/(p2 − p1)|, the ratio of how far apart the children are to how far apart the parents are. SBX samples beta from a polynomial density P(beta) = 0.5(eta_c+1)beta^{eta_c} for beta ≤ 1 and 0.5(eta_c+1)/beta^{eta_c+2} for beta > 1, then places the children symmetrically around the parents' midpoint:
+Now the variation operators — how I turn selected parents into offspring. I'm on real-coded (continuous) variables, so I need real crossover and mutation, and the standard pair is SBX and polynomial mutation. SBX is built to imitate single-point crossover on binary strings, but in continuous space. The key quantity is the spread factor beta = |(c2 − c1)/(p2 − p1)|, the ratio of how far apart the children are to how far apart the parents are. SBX samples beta from a polynomial density P(beta) = 0.5(eta_c+1)beta^{eta_c} for beta ≤ 1 and 0.5(eta_c+1)/beta^{eta_c+2} for beta > 1, then places the children symmetrically around the parents' midpoint:
 
   c1 = 0.5[(1+beta_q)p1 + (1−beta_q)p2],   c2 = 0.5[(1−beta_q)p1 + (1+beta_q)p2].
 
@@ -76,84 +76,6 @@ Let me account for the cost of one full generation now, to confirm the sort is w
 
 There's a fourth thing I should fold in, because real problems have constraints and I'd like to handle them without adding a penalty parameter — which would be a new knob, undoing the parameter-free spirit. The temptation is to add a penalty term to the objectives for infeasibility, but then I have to weight it, and the weight is fragile. Instead, let me extend *dominance* itself so the whole sorting machinery handles constraints for free. Define a constrained-domination: solution i constrained-dominates j if (1) i is feasible and j is not; or (2) both are infeasible but i has the smaller total constraint violation; or (3) both are feasible and i dominates j in the ordinary Pareto sense. Let me walk the cases to see this gives the ranking I want: any feasible solution beats any infeasible one by case (1); among two infeasibles, case (2) ranks the less-violating one higher, so the front-1 layer of an all-infeasible population is its least-violating members and selection pulls the population toward the feasible region through the constraint boundary; among two feasibles, case (3) is just ordinary Pareto sorting. So the constraint pressure dominates the Pareto pressure exactly when it should and otherwise gets out of the way. No penalty parameter, and it slots straight into the same non-domination sort — I only changed the comparison primitive, nothing downstream changes. And the reduction check: if every solution is feasible, cases (1) and (2) never fire, so constrained-domination *is* ordinary dominance — the unconstrained problems run the identical algorithm, the constraint machinery adding nothing.
 
-Let me trace the full main loop end to end to make sure the pieces lock together. Initialize a random parent population P_0 inside the bounds and evaluate it. Sort P_0 by non-domination, assign ranks and crowding distances, so the first tournament has the information it needs. Then each generation: binary-tournament-select N parents from P_t, using the dominance/crowding tournament in the code path; apply SBX (p_c = 0.9) and polynomial mutation (p_m = 1/n) to make offspring Q_t; evaluate Q_t; combine R_t = P_t ∪ Q_t (size 2N); fast-non-dominated-sort R_t; assign crowding distances per front; fill P_{t+1} front by front until adding the next front would overflow N; for that last partial front, sort by crowding distance descending and take the top slots to reach exactly N; repeat. The merge happens after offspring creation every generation, and that parent-offspring competition is what carries elitism.
+The full main loop, end to end: initialize a random parent population P_0 inside the bounds and evaluate it. Sort P_0 by non-domination, assign ranks and crowding distances, so the first tournament has the information it needs. Then each generation: binary-tournament-select N parents from P_t, using the dominance/crowding tournament in the code path; apply SBX (p_c = 0.9) and polynomial mutation (p_m = 1/n) to make offspring Q_t; evaluate Q_t; combine R_t = P_t ∪ Q_t (size 2N); fast-non-dominated-sort R_t; assign crowding distances per front; fill P_{t+1} front by front until adding the next front would overflow N; for that last partial front, sort by crowding distance descending and take the top slots to reach exactly N; repeat. The merge happens after offspring creation every generation, and that parent-offspring competition is what carries elitism.
 
-So now let me write it as the actual code I'd ship, filling the single generation-strategy slot. The library already gives me the fast non-dominated sort, the crowding-distance assignment, the dominance/crowding tournament, and the bound-respecting SBX and polynomial mutation operators. I should call those directly rather than quietly reimplementing near-copies, because the exact details matter: crowding distances get infinite boundaries and DEAP's normalized neighbor gap divided by the number of objectives; the mating tournament is dominance first, crowding second; the bounded variation operators use the inverse-CDF and bound-distance cases I just worked through.
-
-```python
-from copy import deepcopy
-import random
-from operator import attrgetter
-
-from deap import tools
-from deap.tools.emo import assignCrowdingDist
-
-
-class NSGA2Strategy:
-    """Elitist multiobjective generation strategy using DEAP's canonical pieces."""
-
-    def __init__(self, pop_size, n_var, bounds,
-                 cx_prob=0.9, cx_eta=20.0, mut_eta=20.0, mut_prob=None):
-        if pop_size % 4 != 0:
-            raise ValueError("selTournamentDCD requires pop_size divisible by 4")
-        self.pop_size = pop_size
-        self.n_var = n_var
-        self.bounds = bounds                       # (low, up)
-        self.cx_prob = cx_prob
-        self.cx_eta = cx_eta
-        self.mut_eta = mut_eta
-        self.mut_prob = mut_prob if mut_prob is not None else 1.0 / n_var
-
-    def _assign_selection_crowding(self, population):
-        fronts = tools.sortNondominated(population, len(population),
-                                        first_front_only=False)
-        for front in fronts:
-            assignCrowdingDist(front)
-
-    def clone_and_vary(self, parents):
-        offspring = [deepcopy(ind) for ind in parents]
-        low, up = self.bounds
-        for i in range(0, len(offspring) - 1, 2):
-            if random.random() < self.cx_prob:
-                tools.cxSimulatedBinaryBounded(
-                    offspring[i], offspring[i + 1],
-                    eta=self.cx_eta, low=low, up=up)
-                del offspring[i].fitness.values
-                del offspring[i + 1].fitness.values
-        for ind in offspring:
-            tools.mutPolynomialBounded(
-                ind, eta=self.mut_eta, low=low, up=up, indpb=self.mut_prob)
-            del ind.fitness.values
-        return offspring
-
-    @staticmethod
-    def evaluate_invalid(population, evaluate):
-        for ind in population:
-            if not ind.fitness.valid:
-                ind.fitness.values = evaluate(ind)
-
-    def generation(self, population, evaluate):
-        self._assign_selection_crowding(population)
-        parents = tools.selTournamentDCD(population, self.pop_size)
-        offspring = self.clone_and_vary(parents)
-        self.evaluate_invalid(offspring, evaluate)
-
-        combined = population + offspring
-        fronts = tools.sortNondominated(combined, self.pop_size,
-                                        first_front_only=False)
-        for front in fronts:
-            assignCrowdingDist(front)
-
-        next_population = []
-        for front in fronts:
-            if len(next_population) + len(front) <= self.pop_size:
-                next_population.extend(front)
-                continue
-            remaining = self.pop_size - len(next_population)
-            front = sorted(front, key=attrgetter("fitness.crowding_dist"), reverse=True)
-            next_population.extend(front[:remaining])
-            break
-        return next_population
-```
-
-Let me retrace the causal chain. I started stuck: the layered-ranking-plus-fitness-sharing recipe was expensive (O(M N^3) sorting), non-elitist (parents could vanish between generations), and dependent on a fragile sigma_share for diversity. I attacked elitism first and realized the external archive of SPEA/PAES was avoidable -- merging parents and offspring into one 2N pool and truncating it makes both generations compete in the same survival decision. That doubled the sort size, which forced me to fix the cubic cost: computing each pair's domination once into a count n_p and a dominated set S_p lets me peel fronts by decrementing stored counts, so the dominance work is O(M N^2), the peeling work is O(N^2), and the storage is O(N^2). For diversity I refused a radius parameter and read crowding straight off each solution's neighbors along the front -- the normalized neighbor gaps in each objective, with the front's extremes pinned at infinity so they rank ahead of finite-distance interior points -- giving parameter-free spread at O(M N log N). One lexicographic comparison, rank-then-crowding, encodes the ideal survival preference; the code uses full front rank and crowding for environmental selection and the standard dominance-then-crowding tournament for mating. SBX and polynomial mutation, bound-respecting, supply self-adaptive real-coded variation whose offspring spread tracks the population's own contraction; eta_c = eta_m = 20, p_c = 0.9, and p_m = 1/n follow from wanting moderately local, mostly-recombining variation with about one mutated variable per individual. Constrained-domination extends the same sort to constraints with no penalty parameter. The cost stays O(M N^2) per generation, governed by exactly the sort I optimized, and the whole thing drops into the standard generational MOEA loop as one generation strategy.
+Filling the single generation-strategy slot, I reach for the library's own pieces rather than quietly reimplementing near-copies of them, because the exact details matter and DEAP already has them right: `sortNondominated` runs the n_p/S_p peel I just worked out by hand; `assignCrowdingDist` gives the boundaries infinite distance and divides the normalized neighbor gap by the objective count M, exactly the average-side-length convention I derived; `selTournamentDCD` is the dominance-then-crowding mating tournament; `cxSimulatedBinaryBounded` and `mutPolynomialBounded` are the bound-respecting SBX and polynomial mutation with the inverse-CDF and bound-distance branches I traced through above. The generation method wires them in the order the main-loop trace above lays out: rank-and-crowd the incoming population so the tournament has what it needs, select N parents by that tournament, vary them into N offspring, merge parents and offspring into the 2N pool, sort that pool into fronts, and fill the next population front by front, truncating the first overflowing front by crowding distance descending.
