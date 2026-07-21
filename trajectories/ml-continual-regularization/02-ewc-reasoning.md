@@ -18,9 +18,8 @@ Read that Permuted line with a pencil, because the shape is the diagnosis. The s
 peaking around the fifth-to-seventh contexts, then *decelerate* at the end — and the deceleration is not
 recovery, it is the chance floor. A ten-way readout at chance sits near 0.10, and the last two contexts,
 0.1430 and 0.1394, are about 1.4 times chance, effectively dead; the slide flattens because it has hit the
-bottom, not because the springs started holding. That accelerate-then-flatten-at-the-floor fingerprint is a
-system being driven into the floor. And crucially the earliest context is *also* eroding: context 1 ends at
-0.7862, where the very same first-trained, most-protected task on Split-MNIST held 0.9991 — a 0.21 absolute
+bottom, not because the springs started holding. And crucially the earliest context is *also* eroding:
+context 1 ends at 0.7862, where the very same first-trained, most-protected task on Split-MNIST held 0.9991 — a 0.21 absolute
 gap on the context that had the most protection and the least interference. So it is not simply "can't learn
 the new ones." It is both failure modes at once — the accumulated, undecayed `Omega` has rigidified the
 fixed-capacity net so the later permutations can't be learned, *and* the over-strong, scale-mismatched
@@ -45,9 +44,9 @@ also uses the labels rather than the model's predictive spread, which biases it.
 diagonal. It is the real curvature, but the raw Hessian at a minimum found by a stochastic optimizer can
 have small negative entries (the point is not a perfect stationary point), so it would hand me negative
 stiffnesses, and forming even its diagonal exactly is a second-derivative computation I would rather avoid.
-Each patch fails for a *structural* reason, not a tuning reason, and the structure they all miss is that
-importance ought to be the precision of a posterior — a genuinely PSD, genuinely bounded object with a
-first-order estimator. So rather than patch, derive it.
+Each fails for a structural reason, not a tuning one, and the structure they miss is that importance ought
+to be the precision of a posterior — PSD and bounded with a first-order estimator. So rather than patch,
+derive it.
 
 So go back to what "importance" should be and derive it properly rather than reading it off the path. The
 honest way to think about "what does the network know about a finished context A" is probabilistic.
@@ -101,17 +100,13 @@ of squared first-order gradients*, no second derivatives. And the outer-product 
 — a sum of squares cannot be negative — whereas the raw empirical Hessian can be indefinite and would give
 me negative "stiffnesses," meaningless as importances.
 
-That PSD-by-construction is not a footnote; it is the second half of SI's cure. SI's running sum
-`W = -sum g delta_theta` can go *negative* — a coordinate that on some steps moved with its gradient
-(loss went up along it) contributes a positive `g delta_theta`, hence a negative `omega`, an importance
-that says "hold this weight negatively," which is nonsense and is exactly why SI needed the `epsilon` floor
-to keep the ratio from misbehaving. The Fisher, being a sum of squares, cannot be negative and needs no
-floor; the estimator is well-posed by shape, not by a patched constant. So the Fisher is the usable
-curvature: exact as an expected-likelihood identity, first-order computable, guaranteed PSD. It does cost
-something SI did not — the separate post-context sweep of `200 * output.shape[1]` backward passes I priced
-at rung one, 400 on the binary heads and 2000 on the ten-way ones per boundary — so I am deliberately
-buying back the compute SI dodged in exchange for boundedness. Given that the failure was a runaway
-magnitude and not a compute budget, that is a trade I take without hesitation.
+That PSD-by-construction is the second half of SI's cure: SI's running sum could go negative and needed the
+`epsilon` floor to stay sane, whereas the Fisher, a sum of squares, cannot be negative and needs none —
+well-posed by shape, not by a patched constant. So the Fisher is the usable curvature: exact as an
+expected-likelihood identity, first-order computable, guaranteed PSD. It does cost what SI dodged — the
+separate post-context sweep of `200 * output.shape[1]` backward passes priced at rung one, 400 on the
+binary heads and 2000 on the ten-way ones per boundary — so I am buying back compute in exchange for
+boundedness. Since the failure was runaway magnitude, not a compute budget, that trade is easy.
 
 I still have a full matrix `F`. In a million-dimensional weight space, storing even one full Fisher is
 hopeless. Keep only the *diagonal* — treat off-diagonals as zero, asserting the posterior is a factorized
@@ -126,18 +121,14 @@ the diagonal Fisher. Important weights held nearly rigid, unimportant ones free 
 Gaussian quadratic-form factor that fell out of the Taylor expansion — and note this is *why* this rung's
 penalty carries the leading `0.5` that SI's no-half penalty deliberately dropped (SI absorbed the half via
 the `Delta^2` normalization; here the half is the honest Gaussian coefficient). `lambda` trades A against
-B: the clean derivation says the Fisher should be multiplied by A's sample size `N`, but that is exactly
-what I must *not* take literally — `N` runs to the thousands here, and multiplying the spring by a
-thousand would drown `L_B` entirely and freeze the net solid, which is not overconfidence in some abstract
-sense but a concrete three-orders-of-magnitude mismatch between the derivation's nominal strength and a
-usable one. The diagonal Laplace approximation is overconfident (it ignores the off-diagonal correlations
-that would soften it), so rather than nail `lambda` to `N` I let it be the tunable knob — which in this
-harness is the per-benchmark `reg_strength`. The scale is easy to sanity-check: the harness divides the
-Fisher by `n_samples`, so each returned `F_i` is a per-example average, of order `p(1-p) <= 0.25` per
-entry, while `L_B` is an order-one loss. For the spring to be *comparable* to the task loss the strength
-wants to be roughly order one to order hundred, not order thousand — so the derivation's nominal `lambda =
-N` overshoots a usable value by three to four orders of magnitude, and that gap is exactly why `lambda` has
-to be a benchmark-level knob rather than a formula.
+B: the clean derivation says multiply the Fisher by A's sample size `N`, but `N` runs to the thousands here
+and a thousand-fold spring would drown `L_B` and freeze the net solid. The diagonal Laplace approximation
+is overconfident anyway (it ignores the off-diagonal correlations that would soften it), so rather than
+nail `lambda` to `N` I let it be the tunable per-benchmark `reg_strength`. The scale is easy to check: the
+harness divides the Fisher by `n_samples`, so each returned `F_i` is a per-example average of order
+`p(1-p) <= 0.25`, while `L_B` is order one — for the spring to be comparable to the task loss the strength
+wants order one to order hundred, not order thousand, so the nominal `lambda = N` overshoots by three to
+four orders of magnitude and has to be a benchmark-level knob, not a formula.
 
 Make sure I can actually compute that diagonal Fisher, because the harness's default fill already does it
 and I want to land exactly that. `F_i = E_x E_{y ~ p_theta(y|x)}[(d log p_theta(y|x)/dtheta_i)^2]` at
@@ -155,9 +146,8 @@ example at a time, divided by the sample count. So my `estimate_importance` is e
 fill* — the EWC-shaped curvature the scaffold ships — and the penalty is the default `0.5 * sum F (theta -
 theta*)^2`.
 
-Before I trust the prediction that this under-weights Split-MNIST relative to SI, let me actually compute
-the Fisher of a cleanly converged binary task and see how small it gets, because that is the whole worry.
-Take the softmax over logits; the score of the per-class NLL with respect to logit `j` for target `k` is
+Compute the Fisher of a cleanly converged binary task, since its smallness is the whole worry against
+Split-MNIST. Take the softmax over logits; the score of the per-class NLL with respect to logit `j` for target `k` is
 `p_j - delta_{jk}`, so the diagonal Fisher of the logits is `F_jj = sum_k p_k (p_j - delta_{jk})^2 =
 p_j - p_j^2 = p_j (1 - p_j)`. On a binary head that has solved its task confidently, say `p = [0.99, 0.01]`,
 that gives `F = 0.99 * 0.01 = 0.0099` — a hundredth. The more confidently the task is solved, the closer
@@ -187,20 +177,18 @@ So the delta from SI is precise and surgical. Where SI read importance off the t
 reads it off the *endpoint* as a diagonal Fisher: a bounded, PSD, per-point curvature with no dependence on
 how many steps a context took. Where SI dropped the half via `Delta^2`, EWC carries the honest Gaussian
 `0.5`. The penalty shape is the same spring; only the stiffness changes, and that is the whole point — the
-failure was the estimator, so I changed the estimator. Now the falsifiable expectations against SI's
-measured line, benchmark by benchmark. On Split-MNIST I expect EWC to be *very good but probably slightly
-below* SI's 0.9852: the endpoint Fisher, which I just watched fall to `~0.01` on a confidently solved
-binary task, under-weights exactly the cleanly converged tasks SI's trajectory held perfectly — so I would
-not be surprised to see EWC land around 0.95–0.97, a hair under SI here, and if anything it is one or two
-tasks that the near-zero Fisher fails to protect that would drag the mean. The decisive test is Permuted-
-MNIST. EWC's importance does not compound along the trajectory and is bounded per context, so it should
-*not* exhibit SI's monotone slide to 0.14; I expect the per-context line to decay at most gently rather
-than crash to the chance floor, and the average to jump well above SI's 0.4474 — into the low-to-mid 0.8s
-if the bounded Fisher genuinely keeps the ten permutations alive. That single benchmark is where EWC should
-win the aggregate, because SI's 0.6468 total collapse there is the biggest number on the board to recover.
-On Split-CIFAR100 I expect a near-tie with SI in the low-to-mid 0.5s — the per-context line there was
-difficulty-shaped, not forgetting-shaped, so the Fisher-vs-path-integral choice should barely register, and
-a difference of a point or two either way would be consistent with the estimator simply not being the
+failure was the estimator, so I changed the estimator. Now the expectations against SI's measured line. On
+Split-MNIST I expect EWC to be very good but probably slightly below SI's 0.9852: the endpoint Fisher,
+which I just watched fall to `~0.01` on a confidently solved binary task, under-weights exactly the cleanly
+converged tasks SI's trajectory held perfectly — a hair under SI, and if anything one or two tasks the
+near-zero Fisher fails to protect would drag the mean. The decisive test is Permuted-MNIST. EWC's
+importance does not compound along the trajectory and is bounded per context, so it should *not* exhibit
+SI's monotone slide to 0.14; I expect the per-context line to decay at most gently rather than crash to the
+chance floor, and the average to jump well above SI's 0.4474 if the bounded Fisher genuinely keeps the ten
+permutations alive. That single benchmark is where EWC should win the aggregate, because SI's 0.6468 total
+collapse there is the biggest number on the board to recover. On Split-CIFAR100 I expect a near-tie with
+SI — the per-context line there was difficulty-shaped, not forgetting-shaped, so the Fisher-vs-path-integral
+choice should barely register, a point or two either way consistent with the estimator simply not being the
 bottleneck. If EWC's Permuted-MNIST does *not* clear SI's by a wide margin, my diagnosis of SI's collapse —
 unbounded growing importance — was wrong, and the fix is something else; but if it does, the remaining
 weakness is the one I already named: the loop sums Fishers without bound across contexts and re-anchors

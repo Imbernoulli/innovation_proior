@@ -34,21 +34,15 @@ how much loss I pay for moving in each direction, stiff directions are the ones 
 about. So per-parameter importance is morally per-parameter curvature, and a curvature-weighted quadratic
 penalty is the natural form — which is exactly what the default Fisher fill encodes.
 
-Given that importance is curvature, let me lay out what estimators are actually on the table at this first
-rung and cost them honestly, rather than reaching for the elegant one because it is elegant. Option one is
-to leave the scaffold's default in place: a diagonal Fisher recomputed at the endpoint in a separate
-post-context sweep. Option two is the uniform-stiffness L2 anchor I just rejected — a single global spring
-constant — which cannot have per-parameter selectivity by construction, so it is out on the argument
-above. Option three is a cheap magnitude proxy: accumulate `sum |g_k|` or `sum g_k^2` along training and
-call the weights with the biggest gradients important. It looks free, and it tempts because the loop is
-already handling gradients, but it credits the wrong quantity. A weight whose gradient stays large while
-it barely moves — because the surface is stiff exactly there and the optimizer cannot budge it — racks up
-enormous "importance" without ever having changed the loss; a weight that quietly slid the loss down under
-a small persistent gradient scores little. And it has the units of gradient (or gradient-squared), not of
-loss, so I cannot turn it into a faithful spring without exactly the motion-bookkeeping I am about to
-derive. That leaves option one and option four — the path integral `_custom_W` already holds — and since I
-have argued both are curvature-flavored, the deciding question is cost: at equal faithfulness the ladder
-should open with the estimator that spends nothing the loop is not already spending.
+Given that importance is curvature, weigh the estimators on the table. The uniform-stiffness L2 anchor I
+just rejected has no per-parameter selectivity by construction — out. A cheap magnitude proxy — accumulate
+`sum |g_k|` or `sum g_k^2` and call the big-gradient weights important — tempts because the loop already
+handles gradients, but it credits the wrong quantity: a weight whose gradient stays large while it barely
+moves (stiff surface, optimizer stuck) racks up huge "importance" without ever having changed the loss, and
+it carries units of gradient, not loss, so it cannot become a faithful spring without exactly the motion-
+bookkeeping I am about to derive. That leaves the scaffold's endpoint Fisher and the path integral the
+loop's `_custom_W` already holds; both are curvature-flavored, so the deciding question is cost — the
+ladder should open with the estimator that spends nothing the loop is not already spending.
 
 So price option one concretely. The default `estimate_importance` runs `min(len(dataset), 200)` single-
 example forward passes after each context, and for *each* of those it does one backward pass per output
@@ -60,8 +54,7 @@ has *already* summed `_custom_W = sum(-g * delta_theta)` step by step, out of gr
 for the optimizer regardless — option four's importance is one `O(#params)` division away, with zero extra
 forward or backward passes. If option four's `W` genuinely measures curvature-like importance, then the
 first rung that costs the loop nothing beats the first rung that pays for a 2000-backward sweep, at equal
-faithfulness. So the elegance is worthless unless the running sum is really curvature; let me check that it
-is, because that is the load-bearing claim.
+faithfulness. So the running sum wins only if it is really curvature — the load-bearing claim to check.
 
 Make it precise. Picture the training of context `mu` as a path `theta(t)` through parameter space, from
 the boundary snapshot `theta(t_{mu-1})` to the endpoint `theta(t_mu)`. An infinitesimal step `delta(t)`
@@ -122,17 +115,11 @@ infinite importance, which is nonsense — and `xi` floors that. The harness exp
 `model.epsilon` (default `0.1`). So the importance I return per parameter is `W_k / (Delta_k^2 + epsilon)`,
 read straight from the loop's accumulated `W` and the net motion since the boundary snapshot.
 
-It is worth reading what `epsilon = 0.1` actually does at the two ends of the `Delta^2` range, because the
-constant is doing real work, not decoration. For a weight that moved a lot — `Delta^2 >> 0.1` — the floor
-is negligible and `Omega_k -> W_k / Delta_k^2`, the clean faithfulness ratio. For a weight that barely
-budged — `Delta^2 << 0.1` — the floor takes over and `Omega_k -> W_k / 0.1 = 10 W_k`, so the damping caps
-the importance of a near-static weight at ten times its accumulated path credit rather than letting a
-vanishing denominator send it to infinity. And a near-static weight has small `W_k` too (little motion
-means little `-g delta_theta` accumulated), so numerator and denominator both shrink and the bare ratio is
-ill-conditioned exactly there; `epsilon` is what makes that limit well-behaved, resolving the `~0/0` toward
-`10 W_k` instead of noise. The scale `0.1` is thus a soft threshold between "moved enough that its
-faithfulness ratio is trustworthy" and "sat still, so trust its raw credit scaled by a fixed cap." I take
-the harness value; it is the right kind of constant and there is no reason to fight it at rung one.
+Read `epsilon = 0.1` at the two ends of the `Delta^2` range: for a weight that moved a lot (`Delta^2 >>
+0.1`) the floor is negligible and `Omega_k -> W_k / Delta_k^2`, the clean faithfulness ratio; for one that
+barely budged (`Delta^2 << 0.1`) it caps the importance at `W_k / 0.1 = 10 W_k` rather than letting a
+vanishing denominator blow up. A near-static weight has small `W_k` too, so the bare ratio is a `~0/0`
+exactly there and `epsilon` is what resolves it. I take the harness value.
 
 Let me pressure-test whether this is really measuring curvature, the way the default Fisher claims to, on
 the one case I can solve: a quadratic loss `E(theta) = 0.5 (theta-theta*)^T H (theta-theta*)`. Continuous
@@ -162,8 +149,8 @@ one dimension because there are no off-diagonals to cancel. Now put the default 
 example: the empirical Fisher is the squared score at the endpoint `theta*`, where `g = H(theta* - theta*)
 = 0`, so the endpoint Fisher reads *zero* curvature. It has thrown away all the curvature by the time it
 looks; the path integral accumulated curvature-flavored information along the way, while the gradients were
-still nonzero, at no extra backward pass. That is the sharpest form of the case for starting the ladder
-here rather than at the default — and it is not a slogan, the one-coordinate numbers say `1` versus `0`.
+still nonzero, at no extra backward pass — the one-coordinate numbers say `1` versus `0`, the sharpest form
+of the case for opening the ladder here rather than at the default.
 
 Before I pin the hyperparameter, trace what happens across contexts, because that is where the noise bias
 comes home to roost. The loop sums whatever I return into `_custom_importance` and re-anchors
@@ -177,8 +164,7 @@ Each context dumps its `omega/Delta^2` into the pile, and I just showed each `om
 the accumulated SGD noise variance; so the pile grows faster than the true curvature would, and later
 contexts — especially deterministic ones on uncorrelated inputs, which move weights a long way and dump
 large-norm increments — pour disproportionate stiffness onto a fixed-capacity net. There is no decay to
-relieve it. This is the mechanism I have to keep in view when I read the numbers: unbounded, upward-biased,
-never re-scaled.
+relieve it: the accumulated importance is unbounded, upward-biased, and never re-scaled.
 
 One structural fact about the benchmarks sharpens where that stiffness lands. The networks are all multi-
 head, and the loop "computes the task loss only over the classes present in the current context," so each
@@ -188,18 +174,16 @@ overwrites. On the two task-incremental benchmarks the separate heads insulate t
 is entirely a story about trunk weights; on Permuted-MNIST the same ten classes recur under each
 permutation and the uncorrelated inputs force the trunk to re-represent from scratch every context, which
 is precisely why the trunk springs there are asked to hold mutually contradictory settings and why the
-undecayed accumulation should hurt most on that sequence. So when I predict the failure below, I am
-predicting it about the trunk, and the multi-head structure is what keeps the heads from confounding the
-read.
+undecayed accumulation should hurt most on that sequence. The failure I predict below is thus a trunk
+failure, the heads insulated from confounding it.
 
 Now the hyperparameter the noise decides. Because `W` overestimates, `c = 1` (equal weight to old and new,
 if the integral were exact) over-constrains the net; the honest remedy is `c < 1`, an empirical knob
 trading old memories against capacity, and on noisier or harder benchmarks it wants to come down. In this
 harness `c` is the per-benchmark `reg_strength`, scalable by `CONFIG_OVERRIDES['reg_strength_scale']`; I
 leave the override empty and take the harness default — `c = 1` is the honest in-the-limit value and the
-baseline spends it as-is, so any over-constraint from the noise bias will show *undamped* in the numbers,
-which is what I want at rung one: I would rather see the failure mode clearly than tune it away before I
-understand it. The loop also handles the cross-context summation, so my `estimate_importance` returns the
+baseline spends it as-is, so any over-constraint from the noise bias shows undamped rather than tuned away
+before I understand it. The loop also handles the cross-context summation, so my `estimate_importance` returns the
 raw normalized increment `W_k/(Delta_k^2 + epsilon)` per context, and the per-step penalty is the cheap
 `sum_k Omega_k (p-theta_tilde)^2` with no leading half — both filling the two slots exactly (the full
 module is in the answer).
@@ -207,26 +191,20 @@ module is in the answer).
 So at step 1 my edit is: leave the loop and its `_custom_W` accumulator alone, replace the default
 endpoint-Fisher `estimate_importance` with the trajectory normalization `W/(Delta^2 + epsilon)`, and
 replace the default `0.5 * sum F (theta-theta*)^2` with the no-half `sum Omega (theta-theta*)^2`. Now reason
-about what this floor should do, because that is the point of running it, and the noise mechanism above
-turns into a falsifiable pattern across the three benchmarks. On a short task-incremental sequence —
+about what this floor should do across the three benchmarks. On a short task-incremental sequence —
 Split-MNIST, 5 binary tasks, a small MLP trained to convergence each time — the path integral is
-accumulated over few, clean descents, the overestimate `a_k Var(xi_k)` is mild and summed over only a
-handful of contexts, and the per-parameter springs should hold the earlier binary tasks well; I expect SI
-to be strong here, possibly the strongest single number on the whole ladder, because the trajectory
-importance is at its most faithful when each context converges cleanly and there are only a handful of
-them. Split-CIFAR100 is task-incremental with 10 contexts on a CNN — more contexts, noisier gradients, a
-harder net, so more accumulated noise bias — but each task still has its own head and the contexts do not
-demand mutually contradictory weights, so I expect the overestimate to bite only somewhat and the average
-to land in the mid-0.5s, respectable but not dominant. The real exposure is Permuted-MNIST: domain-
-incremental, 10 contexts of *uncorrelated* inputs, a larger MLP, every context demanding genuinely
-different weights. Here the running `Omega` only ever adds across ten contexts, the SGD overestimate
-compounds with each, and there is no decay to relieve it — so by the later permutations the accumulated
-springs may have rigidified the fixed-capacity net so hard that new permutations cannot be learned *and*
-the over-strong, scale-mismatched importance (deterministic later contexts dump large-norm increments) may
-even fail to hold the early ones. If SI is going to break anywhere, it is on the long domain-incremental
-sequence: I expect a steep decay across the ten Permuted contexts, the average dragged well below what a
-bounded importance would give, even as Split-MNIST stays excellent. That asymmetry — best on the short
-clean sequence, worst on the long uncorrelated one, with Split-CIFAR100 in between — is exactly the
-falsifiable signature I am watching for, and if it shows up it points the next rung straight at importance
-that does not over-accumulate: a curvature estimate that is bounded and re-centered rather than a path
-integral that only ever grows.
+accumulated over few clean descents, the overestimate `a_k Var(xi_k)` is mild and summed over only a
+handful of contexts, so the per-parameter springs should hold the earlier binary tasks well; I expect SI
+to be strong here. Split-CIFAR100 is task-incremental with 10 contexts on a CNN — more contexts, noisier
+gradients, a harder net — but each task keeps its own head and the contexts do not demand mutually
+contradictory weights, so the overestimate should bite only somewhat: respectable, well short of the
+near-perfect Split-MNIST. The real exposure is Permuted-MNIST: domain-incremental, 10 contexts of
+*uncorrelated* inputs, a larger MLP, every context demanding genuinely different trunk weights. Here the
+running `Omega` only ever adds across ten contexts, the SGD overestimate compounds, and there is no decay
+to relieve it — so by the later permutations the accumulated springs may have rigidified the fixed-capacity
+net so hard that new permutations cannot be learned, *and* the over-strong, scale-mismatched importance may
+even fail to hold the early ones. If SI breaks anywhere it is here: a steep decay across the ten
+permutations, the average dragged well below what a bounded importance would give, even as Split-MNIST
+stays excellent. Best on the short clean sequence, worst on the long uncorrelated one — and if that shows
+up it points the next rung at importance that does not over-accumulate: bounded and re-centered rather than
+a path integral that only ever grows.

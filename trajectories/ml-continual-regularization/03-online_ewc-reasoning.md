@@ -42,13 +42,9 @@ mechanism that frees capacity for the future instead of letting the summed sprin
 
 Feel the wall first. EWC itself notes two quadratic penalties sum to a single quadratic penalty — a sum of
 springs is a spring. So can I just merge them? For one coordinate,
-`0.5 F_A (theta - theta*_A)^2 + 0.5 F_B (theta - theta*_B)^2` expands to a single square centered at
-`m = (F_A theta*_A + F_B theta*_B)/(F_A + F_B)` with stiffness `F_A + F_B`. Let me check that with numbers
-so I trust the shape and not just the words: take `F_A = 1, theta*_A = 0, F_B = 3, theta*_B = 4`, so the
-predicted center is `m = (1*0 + 3*4)/(1+3) = 3` and the predicted stiffness `1 + 3 = 4`. Expanding the sum,
-`0.5[theta^2 + 3(theta-4)^2] = 0.5[4 theta^2 - 24 theta + 48] = 2 theta^2 - 12 theta + 24`; the merged
-single spring is `0.5*4*(theta-3)^2 = 2 theta^2 - 12 theta + 18`. They agree up to the constant `24 - 18 =
-6`, which is `theta`-independent and vanishes under any gradient. So the merge is exact for the descent
+`0.5 F_A (theta - theta*_A)^2 + 0.5 F_B (theta - theta*_B)^2` completes the square to a single spring
+centered at `m = (F_A theta*_A + F_B theta*_B)/(F_A + F_B)` with stiffness `F_A + F_B`, up to a
+`theta`-independent constant that vanishes under any gradient. So the merge is exact for the descent
 dynamics: the *stiffness* merges into a running sum of Fishers — one parameter-sized object regardless of
 context count, constant memory, good. But the merged anchor `m` is a Fisher-weighted blend of all past
 optima; to update it incrementally I would carry `sum_t F_t` and `sum_t F_t theta*_t` and divide — still
@@ -188,12 +184,11 @@ One harness-specific subtlety, and it is the difference between this and a from-
 loop accumulates whatever I return *additively* into `_custom_importance` — `existing + my_return`. But I
 want the buffer to land on `gamma * existing + F_new`, not `existing + F_new`. So inside
 `estimate_importance` I compute the full decayed-plus-new Fisher `gamma * existing + F_new` myself, then
-*subtract* the existing value and return the difference `(gamma - 1) * existing + F_new`: the loop's
-`existing + ((gamma-1)*existing + F_new)` lands exactly on `gamma * existing + F_new`. Trace it once with
-numbers to be sure the sign is right: `existing = 2, F_new = 1, gamma = 0.9`. The target is
-`0.9*2 + 1 = 2.8`; my returned increment is `(0.9-1)*2 + 1 = -0.2 + 1 = 0.8`; the loop computes
-`2 + 0.8 = 2.8`. It lands. That subtraction trick is purely an adapter to the harness's add-don't-replace
-convention, and it makes the carried buffer hold the geometric decayed sum the derivation prescribes. The
+*subtract* the existing value and return the difference `(gamma - 1) * existing + F_new`, so the loop's
+`existing + ((gamma-1)*existing + F_new)` lands exactly on `gamma * existing + F_new` (with `existing = 2,
+F_new = 1, gamma = 0.9`: increment `-0.2 + 1 = 0.8`, buffer `2 + 0.8 = 2.8 = 0.9*2 + 1`). That subtraction
+is purely an adapter to the harness's add-don't-replace convention, making the carried buffer hold the
+geometric decayed sum the derivation prescribes. The
 importance estimator itself is unchanged from EWC: the diagonal Fisher from softmax-weighted squared
 gradients over all classes, eval mode, capped sample — the model's own expected curvature, first-order and
 cheap. (The full module, with the subtraction adapter and the `gamma` in both places, is in the answer.)
@@ -213,6 +208,5 @@ Split-CIFAR100 I expect essentially EWC's number, mid-0.5s — the estimator is 
 lines already agreed to within 0.0126 per context, and ten contexts is right at the decay's effective
 window, so `gamma F*` neither frees much nor costs much. The win, if it comes, is modest and concentrated
 where the theory says it should be: the long sequence whose accumulating springs were the only thing left
-over-constraining the net. That is the endpoint of this ladder — bounded, re-centered, decayed curvature at
-constant cost — and the bar it must clear is EWC's 0.9577 / 0.8381 / 0.5463, won or matched benchmark by
-benchmark with the Permuted-MNIST average the decisive number.
+over-constraining the net. The bar to clear is EWC's 0.9577 / 0.8381 / 0.5463, with the Permuted-MNIST
+average the decisive number.
