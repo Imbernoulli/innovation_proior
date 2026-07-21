@@ -45,8 +45,8 @@ each config gets and when to kill it*; TPE *decides which configs to propose in 
 line that says "sample uniformly" with "sample from the model" and nothing else about the bracket machinery
 has to change.
 
-It is worth pinning down just how surgical that replacement is on this substrate, because it is what makes the
-attribution clean. The bracket schedule uses `s_max = min(3, floor(log_η(total_budget)))`, and since
+The replacement is surgical on this substrate, which is what makes the attribution clean. The bracket
+schedule uses `s_max = min(3, floor(log_η(total_budget)))`, and since
 `log₃ 50 = 3.56` and `log₃ 40 = 3.36` both floor to 3, `s_max = 3` on every benchmark — which is *the same*
 `s_max` Hyperband got from its own `min(4, floor(...))`, because the floor(3) binds below both caps at these
 budgets. So the two methods run the *identical* bracket schedule: the same four brackets opening 27, 18, 6, 4
@@ -103,35 +103,18 @@ the pool feeding the model is the multi-fidelity history, it reaches a fittable 
 evaluations — long before a single-fidelity model would have had anything to say — so the aiming turns on early
 in the run when the AUC integral is most sensitive to it.
 
-It is worth being precise about why the pooled model still composes correctly with the bracket schedule
-despite mixing fidelities, because that is the subtle joint where the staple could fail. The model's job is
-only to *rank* candidate configs by `l(x)/g(x)`; it does not need calibrated scores, only a roughly correct
-notion of which region the good configs occupy. Cheap low-fidelity scores are biased estimators of the
-terminal score, but on most of the space they are *order-correlated* with it — a config that scores in the top
-γ at a third of the trees is, more often than not, genuinely in a good region — so pooling them sharpens
-`l(x)` toward the right region faster than waiting for scarce full-fidelity data would. The places this breaks
-are exactly the configs whose cheap-vs-expensive ranking inverts, and those are rare enough on XGBoost and SVM
-that the pooled model is a clear net win there; the NN is the known exception — its 50-iteration scores rank
-configs differently from its 500-iteration truth — which is why I keep flagging it. And crucially, even when
-the model is mildly misled, Hyperband's *allocation* is the backstop: a config the model over-rates still has
-to survive the successive-halving rungs at increasing fidelity before it consumes a full evaluation, so a
-model error that the cheap fidelity would have masked gets caught by the schedule. The model aims; the
-schedule vetoes. That mutual correction is the real reason the composition is more than the sum of its parts,
-and it is exactly what a pure-model rung (no veto, TPE) and a pure-schedule rung (no aim, Hyperband) each
-lacked.
-
-Let me trace the two-way correction on a concrete case to be sure it is real and not a slogan. Suppose the
-pooled model, fooled by a cheap NN score, over-rates a region — say a large-`learning_rate_init` config that
-looks strong at 50 iterations but diverges by 500. In pure TPE that config would be proposed and then
-evaluated at full fidelity, burning a whole cost unit on a loser. Here it enters through an aggressive
-bracket at fidelity 0.1 (50 iterations), where it does look good, so it survives the first halving to 150
-iterations — and there, if the divergence has started to show, it is culled before it ever reaches the
-full-fidelity rung, costing only 0.1 + a share of 0.3 rather than a full 1.0. Conversely, suppose the model
-correctly aims at a slow-but-good config: the schedule still makes it prove itself up the fidelity ladder, but
-because the model aimed it, the *pool of configs entering the cheap rungs is better on average* than
-Hyperband's random flood, so more of the survivors reaching full fidelity are genuinely good. The aim
-improves the input to the schedule; the schedule protects the budget from the aim's mistakes. Neither the
-warm-up-taxed TPE nor the blind-sampling Hyperband had both halves of that loop.
+The pooled model composes correctly with the schedule despite mixing fidelities because its job is only to
+*rank* configs by `l(x)/g(x)`, not to produce calibrated scores. Cheap low-fidelity scores are biased but
+mostly order-correlated with the terminal score, so pooling them sharpens `l(x)` toward the right region
+faster than waiting for scarce full-fidelity data — breaking only where the cheap-vs-expensive ranking
+inverts, rare on XGBoost and SVM, the known exception being the NN's 50-versus-500-iteration disagreement.
+And the schedule is the backstop: a config the model over-rates still has to survive the halving rungs at
+increasing fidelity before it consumes a full evaluation. Concretely, a large-`learning_rate_init` config
+that looks strong at 50 iterations but diverges by 500 would, in pure TPE, be proposed straight to full
+fidelity and burn a whole unit; here it enters an aggressive bracket at fidelity 0.1, and once the divergence
+shows at 150 iterations it is culled for a fraction of a unit. The model aims; the schedule vetoes — the
+mutual correction that a pure-model rung (no veto, TPE) and a pure-schedule rung (no aim, Hyperband) each
+lacked, and the real reason the composition is more than the sum of its parts.
 
 The bracket schedule is otherwise Hyperband's exactly. On the first call the brackets are built by drawing
 each bracket's configs from `_sample_from_model` — which falls back to uniform until the 8-trial warm-up is
@@ -144,8 +127,8 @@ the fallback is aimed, which matters because, as the cost arithmetic showed, rou
 the run is those fallback draws, and having the model aim them rather than sample randomly is free extra
 selection pressure on the very evaluations that fill out the budget. The distilled module is in the answer.
 
-One implementation detail falls out favorably and is worth noting because it is where DEHB had to work harder.
-The model proposes configs by drawing uniform candidates and selecting the argmax of `log l − log g`; the
+One implementation detail falls out favorably, where DEHB had to work harder. The model proposes configs by
+drawing uniform candidates and selecting the argmax of `log l − log g`; the
 selected candidate is a genuine, unperturbed config from the space, which the harness then clips and returns.
 So the exact-equality match `cfg == last.config` that Hyperband used still works here — the model does not
 *mutate* a config the way DE did, it *chooses among* clean draws — and I do not need DEHB's `np.allclose` on
@@ -155,51 +138,31 @@ of Hyperband transfers wholesale. That the composition inherits Hyperband's clea
 tolerance-based one is a small sign the parts really do fit: I am adding a selection model to an allocation
 skeleton without disturbing how the skeleton tracks its own trials.
 
-Before I trust the whole construction, let me check it degenerates into its own parts at the extremes, because
-a composition that does not contain its ingredients as limits is probably mis-assembled. Shrink the budget so
-that `floor(log_η budget) = 0` and `s_max = 0`: the schedule collapses to a single bracket of a few configs
-straight at fidelity 1.0, there is no cheap rung to triage and no promotion, and every config is drawn from
-the model at full fidelity — which is exactly TPE (with an 8-trial warm-up instead of 10). So at a tiny budget
-BOHB *is* the model-only rung, the correct floor. Now grow the budget: `s_max` rises, more and cheaper rungs
-appear, the pool of observations swells so the per-fidelity data thins its excuse away, and the method becomes
-model-guided search running inside a deep multi-fidelity hedge — the full intended object. And hold the model
-off entirely (imagine `n_startup` larger than the whole budget): `_sample_from_model` never leaves its uniform
-fallback, and BOHB reduces to plain Hyperband, byte for byte. So the construction sits exactly on the line
-between TPE and Hyperband, containing each as a boundary case and adding value only in the interior where both
-a model and a fidelity ladder are affordable — which is precisely the regime these 40–50-budget benchmarks
-live in. That the same object collapses to the two strongest prior rungs at its two extremes is the strongest
-evidence I have, short of running it, that the composition is coherent rather than a hopeful staple.
+The construction contains both ingredients as limits, which is what tells me it is assembled right. At
+`s_max = 0` the schedule collapses to a single full-fidelity bracket drawn from the model — exactly TPE, with
+an 8-trial warm-up instead of 10. Hold the model off entirely (`n_startup` past the whole budget) and
+`_sample_from_model` never leaves its uniform fallback — plain Hyperband, byte for byte. So the method sits
+on the line between TPE and Hyperband and adds value only in the interior where both a model and a fidelity
+ladder are affordable, which is precisely the 40–50-budget regime here.
 
 Where should this land against the whole ladder? It should be the first rung that is strong on *both* axes
 simultaneously. On convergence AUC it should at least *match* Hyperband — because the schedule is byte-for-byte
 identical — and plausibly edge it on the benchmarks where aiming the early cheap configs helps the curve climb
 faster, since now the cheap brackets are not flooding random configs but model-guided ones, so the survivors
 that reach high fidelity are better from the start. On final best it should finally *beat* the pure-Hyperband
-random-sampling cap: I expect XGBoost to improve past Hyperband's −0.3912 toward the best the ladder has
-touched — Hyperband and DEHB both already hit −0.3885 on their best seed, so a model that aims the full-
-fidelity survivors should pull the *mean* toward that −0.388/−0.389 band — and SVM to reach TPE's model-driven
-0.9795 rather than Hyperband's random 0.9778. The NN is the benchmark I am still watching. It is the one where
-the cheap fidelity ranks configs poorly, and pooling cheap and expensive scores into one model means a
-misleading cheap score can pull the model's elite toward a region that is good at 50 iterations but not 500 —
-so I expect a real risk that a single NN seed's convergence AUC dips sharply, a bracket whose model was misled
-by cheap scores, even while the NN *final best* improves. On that final best, the reachable target is set by
-what the ladder has already shown is possible: DEHB touched −2998 on its best NN seed, so a model-aimed BOHB
-should be able to pull the NN mean below Hyperband's −3053 and TPE's −3048, into the low −3000s or better,
-without my needing to claim a precise figure the run has not yet produced.
+random-sampling cap: XGBoost toward the −0.388/−0.389 band Hyperband and DEHB already touched on their best
+seeds, SVM to TPE's model-driven 0.9795 rather than Hyperband's random 0.9778, and the NN below Hyperband's
+−3053 and TPE's −3048 — DEHB already touched −2998 on its best NN seed, so the low −3000s is reachable
+without my claiming a figure the run has not produced. The NN is also where I expect the one honest failure:
+pooling cheap and expensive scores means a misleading 50-iteration score can pull the model's elite toward a
+region that is good at 50 but not 500, so a single NN seed's convergence AUC may dip sharply even as its
+final best improves.
 
-So the falsifiable expectations against the prior numbers are: `total_evals` stable across seeds and equal to
-Hyperband's (105/95/95 — the schedule is identical, so this must hold or something is wrong); convergence AUC
-at least matching Hyperband's (XGBoost ~0.96, SVM ~0.95, NN ~0.95) with the NN possibly showing a single
-low-variance-breaking seed if the pooled model is misled by cheap scores; and — the decisive one — final best
-scores that *break the Hyperband cap*, with XGBoost the clearest case (model-aimed full-fidelity survivors
-pushing the mean past −0.391 toward the −0.3885 the best seeds already reached) and SVM matching TPE's 0.9795
-and the NN improving over −3053. If I see final best improve over Hyperband *while* convergence AUC stays at
-Hyperband's level — strong on selection and allocation at once — that is the composition working as designed,
-and it is why this is the strongest rung: it is the only method on the ladder that is not weak on either axis.
-The one honest caveat the numbers should expose is the pooled-fidelity model's vulnerability on the NN, where
-a single seed's convergence AUC may dip sharply — the cheap-rank-correlation problem re-entering through the
-model rather than through triage — which is the residual a method modeling each fidelity separately, or
-learning the cross-fidelity correlation, would be the next thing to attack beyond this ladder. But that
-residual is narrow and named; everything else about the profile — matched convergence, broken final-best cap,
-seed-stable cost — is the two-axis composition finally paying off, and it is the reason the ladder ends here:
-no ingredient on the board is being traded against another anymore.
+So the falsifiable expectations: `total_evals` stable across seeds and equal to Hyperband's 105/95/95 (the
+schedule is identical, so this must hold); convergence AUC at least matching Hyperband's (XGBoost ~0.96,
+SVM ~0.95), the NN possibly broken by a single misled seed; and — the decisive one — final best breaking the
+Hyperband cap, XGBoost clearest. Final best up over Hyperband *while* convergence AUC holds at Hyperband's
+level is the composition working as designed: the only method on the ladder not weak on either axis. The
+residual it exposes is narrow and named — the pooled-fidelity model's NN vulnerability, which a per-fidelity
+or cross-fidelity-correlation model would attack next — and it is why the ladder ends here: no ingredient is
+being traded against another anymore.

@@ -43,13 +43,11 @@ expected amount by which x would beat the incumbent — outcomes worse than y* c
 the expectation over the surrogate's predictive distribution automatically rewards both high predicted score
 (exploit) and high predictive spread that could clear y* (explore). It is the standard acquisition precisely
 because that exploit/explore trade falls out of one integral with no tuning, so I commit to EI and spend the
-design effort on the surrogate, which is where the space's structure actually bites. The textbook surrogate is a
-Gaussian process, and it is elegant — analytic posterior mean and variance, closed-form EI — but it is the
-wrong fit for *this* space, and naming why is what forces the alternative. A GP kernel needs a metric on the
-whole configuration vector, and my spaces have a categorical axis (SVM kernel, NN activation) with no natural
-metric; conditioning costs O(n³); and EI under a GP stakes all exploration on a single point estimate of the
-predictive variance, which a sparse early sample (my normal starting condition at 40 evaluations) can
-collapse to near-zero, killing exploration silently.
+design effort on the surrogate, which is where the space's structure actually bites. The textbook surrogate
+is a Gaussian process, and it is the same one I turned away from before, for the same reasons that bind
+harder here as an isolated model: a GP kernel needs a metric on the whole configuration vector that the
+categorical axis (SVM kernel, NN activation) does not provide, and EI under a GP stakes all exploration on a
+single predictive-variance estimate that a sparse 40-evaluation sample can silently collapse to near-zero.
 
 The obvious escape from the GP's metric problem is a *random-forest* surrogate — the SMAC-style regression
 forest that predicts a mean and a bootstrap variance and feeds them to EI. It is genuinely tempting because a
@@ -113,33 +111,13 @@ optimization rather than gradient ascent, which sidesteps the categorical axis h
 cheap at 24 candidates. Every suggestion is full fidelity 1.0; this rung deliberately uses *no* multi-fidelity,
 to measure the model in isolation. The distilled module is in the answer.
 
-Let me hand-trace the ratio on a one-dimensional slice to be sure `log l − log g` actually points where I
-claim, rather than trusting the algebra blind. Say the good set is two points at 0.30 and 0.35, the bad set
-three points at 0.10, 0.60, 0.90, and both bandwidths hit the floor `bw = 0.05` (the std of two nearby good
-points is well under 0.05, so `max(0.05, std)` = 0.05). Score a candidate at x = 0.32, right in the good
-cluster. Its squared distances to the good points are (0.02)² and (0.03)², so the Gaussian weights are
-`exp(−0.5·0.0004/0.0025) = exp(−0.08) = 0.923` and `exp(−0.5·0.0009/0.0025) = exp(−0.18) = 0.835`, giving
-`l ≈ mean(0.923, 0.835) = 0.879`. Its distances to the bad points are 0.22, 0.28, 0.58, whose weights are
-`exp(−0.5·0.0484/0.0025) = exp(−9.68) ≈ 6.2e−5`, `exp(−15.7) ≈ 1.5e−7`, and `exp(−67) ≈ 0`, giving
-`g ≈ mean ≈ 2.1e−5`. The ratio `l/g ≈ 42000`, so `log l − log g ≈ +10.6`: strongly preferred. Now score a
-candidate at x = 0.62, sitting on a bad point. There `g` picks up a full-weight bump (`≈ mean(…, 1.0, …) ≈
-0.33`) while `l` sees distances 0.32 and 0.27, weights `exp(−20.5)` and `exp(−14.6)`, so `l ≈ 2e−7` and
-`log l − log g ≈ −14`: strongly rejected. The ranking does exactly what the derivation promised — candidates
-near the good cluster win, candidates near the bad points lose — and the floor-dominated bandwidth is what
-makes the two densities crisp enough to separate them on five total observations.
-
-The bandwidth floor of 0.05 is not arbitrary either, and a limiting-case check shows why it sits where it
-does. In the unit box a bandwidth of 0.05 gives each Gaussian bump a width of about 10% of an axis, so with
-roughly ten good points scattered across [0,1] the bumps tile the space without heavy overlap. Push the
-bandwidth the wrong way to see the failure modes. If it were large, say 0.5, then for a typical inter-point
-distance of 0.3 the weight is `exp(−0.5·0.09/0.25) = exp(−0.18) = 0.84` — nearly full weight everywhere — so
-`l(x)` and `g(x)` both flatten toward the same constant and `log l − log g → 0` across the whole box: the
-model loses all ranking signal and TPE degenerates to random search. If it were tiny, say 0.005, each point
-becomes an isolated spike and any candidate not landing almost exactly on a good point reads `l ≈ 0`,
-overfitting the handful of observations. The 0.05 floor is the compromise that keeps the densities smooth
-enough to generalize between the few points I have and sharp enough to distinguish good regions from bad —
-and because it is a *floor*, once enough observations accumulate that their std exceeds 0.05 the bandwidth
-grows with the data, which is the right adaptive behavior.
+The bandwidth floor of 0.05 is a design choice worth motivating, because it is where the model's resolution
+lives. In the unit box, bw = 0.05 gives each bump a width of about 10% of an axis, so ten good points tile
+[0,1] without heavy overlap. A large bandwidth (0.5) flattens `l(x)` and `g(x)` toward the same constant —
+`log l − log g → 0` and TPE degenerates to random search; a tiny one (0.005) makes each point an isolated
+spike and any candidate not landing on a good point reads `l ≈ 0`, overfitting. The 0.05 floor is the
+compromise, and because it is a *floor*, once the observations' std exceeds it the bandwidth grows with the
+data.
 
 This same bandwidth arithmetic is what quietly rescues the lossy categorical encoding. The SVM `kernel` axis
 has three choices mapped to {0, 0.5, 1.0} and the NN `activation` similarly, and the scalar relaxation
@@ -163,16 +141,12 @@ resolves an order-of-magnitude difference in learning rate as a healthy 0.4-wide
 is many bandwidths and cleanly separable — the encoding is doing real work to make the density model see the
 structure the loss landscape actually has.
 
-One last check on the acquisition: is re-sampling 24 candidates every call enough, given I threw away gradient
-ascent? The value of the sampling is a *selection ratio*. Each full-fidelity evaluation is now the argmax of
-`log l − log g` over 24 fresh draws under the current model, so relative to random search — which evaluates a
-best-of-one draw — TPE evaluates a best-of-24 under a model that already concentrates on the good region. The
-24 is a deliberate cheapness: at ~six KDE evaluations per candidate the acquisition costs a few hundred
-Gaussian weights per suggestion, trivial against a full model train-and-score, and pushing it to hundreds of
-candidates would sharpen the argmax only marginally once the model is confident while burning compute the
-budget does not care about. Sampling also sidesteps the categorical axis having no gradient at all — there is
-nothing to ascend along a choice-index — so best-of-24 is both the cheap and the *correct* way to optimize an
-acquisition that lives on a mixed continuous-categorical box.
+Optimizing EI by sampling 24 candidates is a *selection ratio*: each full-fidelity evaluation is the argmax
+of `log l − log g` over 24 fresh draws under the current model, so against random search's best-of-one, TPE
+evaluates a best-of-24 under a model already concentrated on the good region. The acquisition costs a few
+hundred Gaussian weights, trivial against a train-and-score, and pushing it to hundreds of candidates would
+sharpen the argmax only marginally. Sampling also sidesteps the categorical axis having no gradient to ascend
+along a choice-index — so best-of-24 is both the cheap and the correct way to optimize on a mixed box.
 
 Now where should this land against DEHB's numbers? TPE's strength is *final quality* and *low-variance*
 convergence, because it spends every full-price evaluation on a model-chosen config rather than a cheap noisy
@@ -189,15 +163,11 @@ while being *more reliable on final best* — the inverse of DEHB's profile. And
 largest on the two 40-budget benchmarks, I expect the AUC gap to DEHB to be widest there and narrowest on the
 50-budget XGBoost.
 
-The falsifiable expectations against DEHB are then specific: `total_evals` back to exactly the budget (50/40/
-40 — single fidelity, the tell that the model-only rung is doing no triage); NN final best recovered toward
-random search's level (no low-fidelity mis-promotion); but convergence AUC distinctly below DEHB's, because
-the 10-config warm-up and full-price evaluations cannot front-load the curve the way cheap triage did. The total_evals prediction is the
-cleanest tell of all: a single-fidelity method spends exactly one cost unit per look, so the count must read a
-flat 50/40/40 with zero seed-to-seed variance — the exact opposite of DEHB's 65-to-354 SVM swing — and if it
-does not, something in the strategy is silently requesting sub-1.0 fidelity and the isolation experiment is
-contaminated. If I see all of it — budget-pinned total_evals, decent and stable final scores, but AUC that
-loses to DEHB — the diagnosis is the missing ingredient stated cleanly: a *good model alone* fixes final
-quality and reliability but cannot match the *anytime* convergence that cheap multi-fidelity buys. The two strengths are
-complementary, which is the whole setup for the rungs that follow: hedge the configs-versus-fidelity tradeoff
-across the spectrum (next), and then put a model *inside* that hedge so the best of both compound.
+The falsifiable expectations against DEHB: `total_evals` back to a flat 50/40/40 with zero seed-to-seed
+variance (single fidelity, the tell of no triage — the opposite of DEHB's 65-to-354 SVM swing); NN final
+best recovered toward random search's level; but convergence AUC distinctly below DEHB's, because the
+10-config warm-up plus full-price evaluations cannot front-load the curve the way cheap triage did. That
+profile states the missing ingredient cleanly: a good model alone fixes final quality and reliability but
+cannot match the anytime convergence cheap multi-fidelity buys. The two strengths are complementary, which
+sets up the rungs that follow — hedge the configs-versus-fidelity tradeoff across the spectrum next, then put
+a model *inside* that hedge so the best of both compound.

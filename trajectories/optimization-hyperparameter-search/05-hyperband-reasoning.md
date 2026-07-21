@@ -23,17 +23,13 @@ swung its SVM `total_evals` from 65 to 354 across seeds. The question this rung 
 skeleton *on its own*, done right — without DE, without a model — so I can see what principled resource
 allocation buys by itself and have a clean, *deterministic* substrate to graft a model onto next.
 
-Before committing to that, let me be honest about the alternatives on the table. One: simply add multi-
-fidelity to TPE right now — feed the model with cheap evaluations and let it aim. That is the eventual
-combination and I will build to it, but doing it now confounds two changes at once; if the combined method
-wins I will not know whether the gain came from the allocation skeleton or the model living inside it, and the
-whole point of a ladder is to attribute each gain to one ingredient. Two: just re-run DEHB and tune it — but
-DEHB's damage came from *two* coupled sources, its DE learner's data-dependent promotion (the 65-to-354 swing)
-and its low-fidelity mis-promotion, and I cannot cleanly separate the allocation skeleton from the learner
-inside DEHB. Three, which is the disciplined move: isolate the pure allocation skeleton with *random*
-sampling — no DE, no model — so the only thing on trial is whether principled resource allocation, by itself,
-recovers the anytime convergence TPE lost. That isolation is what makes the next rung's gain attributable
-purely to adding a model.
+Adding multi-fidelity to TPE right now is the eventual combination, but doing it here would confound two
+changes at once — I would not know whether a win came from the allocation skeleton or the model inside it.
+And re-running DEHB and tuning it cannot separate the allocation skeleton from its DE learner, whose
+data-dependent promotion (the 65-to-354 swing) and low-fidelity mis-promotion were coupled. The disciplined
+move is to isolate the pure allocation skeleton with *random* sampling — no DE, no model — so the only thing
+on trial is whether principled resource allocation, by itself, recovers the anytime convergence TPE lost,
+and the next rung's gain is attributable purely to adding a model.
 
 Strip the problem to the evaluation side. The waste that random search and TPE both pay is that every
 configuration is trained to full resource before I look at it, so with budget B I see only B configurations.
@@ -74,21 +70,15 @@ configurations-versus-fidelity dilemma, and it is the *same* failure I watched b
 refuses to guess N and *hedges* across the whole spectrum: run several SH instances ("brackets"), each
 starting at a different number-of-configs-versus-initial-fidelity tradeoff. The most aggressive bracket throws
 a flood of configs at the cheapest fidelity (great if cheap predicts expensive); the least aggressive bracket
-is essentially random search at full fidelity (the safe fallback when cheap is misleading). By spanning the
-brackets, Hyperband covers the entire dilemma and is at most about (number of brackets) times slower than the
-best fixed choice — a guarantee no single SH setting has. The reason this is the right shape of hedge, and not
-just "try several settings," is that the brackets are *complementary*: each one is the optimal allocation
-under a different assumption about how predictive the cheap fidelity is, and since I do not know which
-assumption holds, paying a logarithmic-factor overhead to run all of them buys robustness to being wrong about
-the one thing SH most needs to assume. On a benchmark where the cheap fidelity is faithful — SVM, whose cheap
-rungs are 2-fold CV that ranks like 5-fold — the aggressive bracket carries the run and the safe bracket is
-cheap insurance; on a benchmark where it lies — the NN's 50 versus 500 iterations — the safe bracket protects
-the eventual winner that the aggressive bracket would have killed. That is exactly the DEHB-NN failure mode
-turned into a hedge instead of a gamble. Critically, every config is still sampled *uniformly at random*:
-Hyperband is purely an allocation method, it never uses one evaluation's outcome to decide where to look next.
-That is exactly its limitation and exactly why it is the right rung here — it measures the multi-fidelity
-skeleton in isolation, with random sampling, so the gap between it and the next rung will be attributable
-purely to adding a model.
+is essentially random search at full fidelity (the safe fallback when cheap is misleading). Spanning the brackets covers the entire dilemma at an at-most-(number of brackets)× slowdown — a guarantee
+no single SH setting has. The brackets are *complementary*: each is the optimal allocation under a different
+assumption about how predictive the cheap fidelity is, so running all of them buys robustness to being wrong
+about the one thing SH must assume. Where the cheap fidelity is faithful — SVM, whose cheap rungs are 2-fold
+CV that ranks like 5-fold — the aggressive bracket carries the run; where it lies — the NN's 50 versus 500
+iterations — the safe full-fidelity bracket protects the eventual winner the aggressive bracket would have
+killed, turning the DEHB-NN failure mode into a hedge instead of a gamble. And every config is still sampled
+uniformly at random — pure allocation, no aiming — which is exactly the limitation the next rung removes and
+why this one isolates the skeleton cleanly.
 
 Now the implementation the scaffold fills in, derived against the harness, and here the bracket schedule is
 worth computing out because it is what makes this rung deterministic. With η = 3, `s_max = min(4,
@@ -111,15 +101,11 @@ compares equal to the queued one; a method that perturbed configs would break th
 Hyperband (random configs, never perturbed) fits the queue model cleanly where DEHB needed `np.allclose` on
 encoded vectors. The distilled module is in the answer.
 
-Let me verify the schedule degenerates sensibly and that the halving preserves at least one survivor, because
-an off-by-one in `len//η` could silently drop a bracket to zero. The `n_keep = max(1, len // η)` floor
-guarantees a bracket never empties mid-cascade: the 6-config bracket goes `6 → max(1, 2) = 2 → max(1, 0) = 1`
-and stops at a single full-fidelity survivor, and even the 4-config full-fidelity bracket, which starts at
-fidelity 1.0, simply never advances (its fidelity is already 1.0) and evaluates its 4 configs as plain random
-search — the correct degenerate limit of a bracket with no room to triage. Push the budget down toward `s_max
-= 0` and the whole schedule collapses to that single bracket: Hyperband becomes random search, which is the
-right floor for a method that only ever *allocates*. Good — the schedule is well-formed, and its total count
-of evaluations is fixed the instant the budget is known, which is the property I most want to see confirmed.
+The `n_keep = max(1, len // η)` floor guarantees a bracket never empties mid-cascade: the 6-config bracket
+goes `6 → 2 → 1` and stops at a single full-fidelity survivor, and the 4-config full-fidelity bracket (fidelity
+already 1.0) never advances and evaluates its 4 configs as plain random search. Push the budget to `s_max = 0`
+and the whole schedule collapses to that single bracket — Hyperband becomes random search, the right floor for
+a method that only ever *allocates*.
 
 It helps to trace what resource the survivors of one bracket actually climb, because the fidelity ladder maps
 onto each benchmark's cost knob differently and that is where the hedge earns its keep. Take the aggressive
@@ -147,23 +133,12 @@ past a hundred on XGBoost. Every term in that sum is fixed by the budget, so the
 *identical across seeds* — which is the concrete, checkable difference from DEHB, whose promotion cascade read
 the data and swung its SVM count from 65 to 354.
 
-One choice I have been treating as given deserves its own justification: why η = 3. The halving rate sets both
-how many configs each rung keeps (1/η) and how much the resource multiplies (×η), and the theory that the
-envelope argument sits inside says the total work to identify the best arm is minimized near η = e ≈ 2.72; 3
-is the smallest integer at that optimum, and it has the added virtue on this substrate that ×3 on the fidelity
-matches the `1/η^s` ladder cleanly (0.1 → 0.3 → 0.9 → 1.0). A larger η — say 5 — would keep too few survivors
-per rung (27 → 5 → 1), collapsing the population before the resource is high enough to rank it reliably; a
-smaller η — 2 — would climb the resource too slowly, spending many rungs before the survivors reach full
-fidelity and eating the budget on intermediate looks. η = 3 is the balance, and it is the same rate DEHB used,
-so holding it fixed keeps this rung a clean isolation of *allocation* rather than a re-tuning of the ladder.
-To see the collapse concretely: at η = 5 the aggressive bracket would open 27 configs and keep only
-`27 // 5 = 5` after the first halving and then `5 // 5 = 1`, so it reaches a single survivor in two rungs
-having spent almost the entire flood at the noisiest fidelity — the population is gone before the resource is
-high enough to trust the ranking. At η = 2 the same 27 configs would step 27 → 13 → 6 → 3 → 1, five rungs, and
-the resource would only reach full fidelity after four intermediate looks per survivor, spending the budget on
-half-trained models. Three keeps the survivor count healthy at each rung (27 → 9 → 3 → 1) while tripling the
-resource each step, which is exactly the schedule the cost accounting above showed lands the total count where
-it does — another reason the choice is forced rather than free.
+η = 3 is held fixed from the DEHB rung, which keeps this a clean isolation of *allocation* rather than a
+re-tuning of the ladder; it is also the natural rate — the best-arm theory minimizes total work near
+η = e ≈ 2.72, and 3 is the smallest integer there, with ×3 matching the `1/η^s` ladder cleanly. A larger η
+(5) would collapse 27 → 5 → 1 in two rungs, gone before the resource is high enough to trust the ranking; a
+smaller η (2) would climb 27 → 13 → 6 → 3 → 1, spending the budget on half-trained intermediate looks. Three
+keeps the survivor count healthy (27 → 9 → 3 → 1) while tripling the resource each step.
 
 Where should this land against TPE and DEHB? Hyperband should recover the *anytime* strength TPE lost, because
 the aggressive brackets surface a decent config from the cheap fidelity fast — so I expect its convergence AUC
@@ -180,26 +155,16 @@ triages at low fidelity too, so where the envelope threshold τ exceeds the chea
 aggressive bracket can still kill the eventual winner — though the safe full-fidelity bracket should keep the
 mean from cratering the way DEHB's single seed did.
 
-I should also expect the same convergence-AUC-above-1.0 artifact DEHB showed, and for the same mechanical
-reason, though in a milder and more predictable form. The AUC integrates the min-max-normalized best-so-far
-curve, and Hyperband, like DEHB, floods the run with cheap noisy low-fidelity scores that can drag the
-normalization floor very low; when the good configs then surface, the normalized curve can overshoot and the
-integral can read above 1.0. So I would not be surprised to see a Hyperband seed cross 1.0 on the NN or
-XGBoost, exactly where DEHB did (DEHB's NN seeds 1.0035, 1.0079, one XGBoost seed 1.0031) — but because the
-bracket schedule fixes *how many* cheap scores land and when, the overshoot should be less seed-to-seed
-erratic than DEHB's, tracking the deterministic count rather than DE's data-dependent promotion. If instead
-the AUC stays cleanly below 1.0 everywhere, that would tell me the fallback full-fidelity draws that fill out
-the budget are dominating the tail of the curve and steadying the normalization — either way the number is
-interpretable through the same lens.
+I should also expect the same convergence-AUC-above-1.0 artifact DEHB showed, for the same reason: the
+flood of cheap noisy low-fidelity scores drags the normalization floor very low, so the normalized curve can
+overshoot 1.0 when the good configs surface. But because the bracket schedule fixes how many cheap scores
+land and when, the overshoot should be less seed-to-seed erratic than DEHB's, tracking the deterministic
+count rather than DE's data-dependent promotion.
 
-So the falsifiable expectations against the prior numbers: convergence AUC should rise back above TPE's on
-every benchmark (especially the NN, where TPE's 0.8306 was weakest) and sit near DEHB's, because the multi-
-fidelity hedge front-loads the curve; `total_evals` should be well above the budget *and dead stable across
-seeds* — the deterministic-bracket tell, distinguishing it cleanly from DEHB's variance — because the 55
-opening configs and every halving are fixed by the budget alone; and final best should track the competitive
-band without clearly beating TPE, because random sampling allocates but does not aim. If I see exactly that —
-AUC recovered and stable, total_evals inflated but seed-invariant, final best even with TPE — the residual
-weakness is named precisely: Hyperband's quality is capped by random sampling. It has the perfect skeleton and
-the wrong sampler. The final rung is then forced: keep this bracket schedule, but replace the random sampling
-with the model from the TPE rung, so the multi-fidelity *allocation* and the model-guided *selection* compound
-instead of being traded off.
+So the falsifiable expectations: convergence AUC rising back above TPE's on every benchmark (especially the
+NN, where TPE's 0.8306 was weakest) and sitting near DEHB's; `total_evals` well above the budget *and dead
+stable across seeds* — the deterministic-bracket tell that distinguishes it from DEHB's variance; and final
+best in the competitive band without clearly beating TPE, because random sampling allocates but does not aim.
+That profile names the residual precisely: Hyperband has the perfect skeleton and the wrong sampler, its
+quality capped by random sampling. The final rung is then forced — keep this bracket schedule, replace random
+sampling with the TPE model, so allocation and model-guided selection compound instead of being traded off.

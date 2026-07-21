@@ -36,39 +36,23 @@ stretches to a hundred or more actual evaluations. The cheap scores are noisy bu
 one — a config that is hopeless after a third of its trees is almost certainly hopeless at full — so I can
 rule out the obviously bad early and concentrate spend on the promising.
 
-Before I commit, let me be disciplined and walk the alternatives that are genuinely on the table now, because
-"use fidelity" is not yet a method. Option one: keep single fidelity but swap CMA's covariance model for a
-Gaussian-process surrogate with Expected Improvement. This is the textbook move and it is tempting, but it
-fails on this substrate for reasons I can name concretely rather than by feel. A GP needs a metric over the
-whole configuration vector, and two of my three spaces carry a categorical axis (SVM `kernel`, NN
-`activation`) with no natural distance; conditioning is O(n³), and with multi-fidelity inflating the trial
-count toward a hundred that is ~10⁶ operations per `suggest` call — survivable, but not the real problem. The
-real problem is that a GP is *still single fidelity*: it pays a full unit per evaluation and hits the exact
-amortization wall CMA just hit, and under a sparse 40-evaluation sample its predictive variance can collapse
-to near-zero and silently kill exploration. So a better single-fidelity model does not address the failure I
-just measured; discard it. Option two: pure successive halving with random sampling — evaluate N random
-configs at low fidelity, keep the top 1/η, promote. This *does* attack the amortization wall, and it is the
-minimal multi-fidelity move. But it throws away the one thing CMA got right: learning from history. SH picks
-every config at random; the outcome of one evaluation never informs the next. I would be trading one half of
-the problem for the other. Option three, which is where the arithmetic points: combine cheap triage with a
-*model-free* way of learning from history, so I get both multi-fidelity allocation and history-driven
-proposal without paying the covariance-fitting cost that just failed.
+"Use fidelity" is not yet a method, and two neighbours frame the choice. A Gaussian-process surrogate with
+EI is the textbook move, but it is *still single fidelity* — it pays a full unit per evaluation and hits the
+exact amortization wall CMA just hit, on top of the categorical-metric and variance-collapse problems that
+already turned me away from it — so a better single-fidelity model does not address the failure I measured.
+Pure successive halving with random sampling does attack the amortization wall, but it throws away the one
+thing CMA got right: SH picks every config at random, so the outcome of one evaluation never informs the
+next. CMA-ES learned from history but couldn't triage; SH triages but doesn't learn. I want both — a
+*model-free* way to learn from history combined with cheap multi-fidelity triage.
 
-Successive halving is the clean way to triage: sample N configs, evaluate all at the lowest fidelity, keep
-the top 1/η, multiply the fidelity by η, repeat to the top. Survivors get exponentially more resource; the
-full evaluation is paid only for a handful. But SH has one input it cannot set for itself — N, the
-configurations-versus-fidelity tradeoff. Go wide and cheap (large N) and I triage aggressively, which is
-right only if the cheap fidelity predicts the expensive one well; if the correlation is weak, I will discard
-at low fidelity exactly the config that would have won at full. The full hedge across several
-starting fidelities is a further step I can take later; here I want to address a *different* weakness that a
-plain successive-halving ladder still has — it samples every configuration uniformly at random. They are brilliant at
-*allocating* budget and *killing* weak configs early, but they never use the outcome of one evaluation to
-decide where to look next, so their quality is capped by random sampling. CMA-ES learned from history but
-couldn't triage; SH triages but doesn't learn. I want both: model-free learning *and* multi-fidelity
-scheduling.
+Successive halving triages: sample N configs, evaluate all at the lowest fidelity, keep the top 1/η,
+multiply the fidelity by η, repeat. Survivors get exponentially more resource; the full evaluation is paid
+only for a handful. But SH has one input it cannot set for itself — N, the configurations-versus-fidelity
+tradeoff: wide and cheap (large N) triages aggressively, which is right only if the cheap fidelity predicts
+the expensive one well, and if the correlation is weak I discard at low fidelity exactly the config that
+would have won at full. (The full hedge across several starting fidelities is a later step.)
 
-CMA-ES learned from history by fitting a covariance — a model — and that model cost too much to amortize.
-The alternative is a *model-free* way to learn from history, and differential evolution is exactly that. It
+The *model-free* learner to pair with it is differential evolution. It
 keeps a population of vectors in the unit box and improves them generation by generation with three
 operators. Mutation, DE/rand/1: pick three distinct population members and form a mutant `v = x_a +
 F·(x_b − x_c)`. Binomial crossover: build a trial by taking each coordinate from `v` with probability `Cr`,
@@ -97,29 +81,21 @@ the harness rather than write down the textbook `1/η^s`. With η = 3 and `s_max
 floor(log_η(total_budget)))`, every benchmark lands on the same cap: `log₃ 50 = 3.56` and `log₃ 40 = 3.36`,
 both floor to 3, so `s_max = 3` for all three. The raw rungs `1/3^s` for s = 3,2,1,0 are 0.037, 0.111, 0.333,
 1.0, and the loop clips fidelity to a floor of 0.1, so 0.037 becomes 0.1 while 0.111, 0.333, 1.0 pass
-through. I dedupe on `round(fid, 3)`: the keys are 0.1, 0.111, 0.333, 1.0 — all distinct — so the ladder is
-`[0.1, 0.111, 0.333, 1.0]`, four rungs. It is worth being precise that at this cap the dedupe is *insurance,
-not a binding constraint*: only s = 3 falls below the 0.1 floor, so only one rung is pushed up to it, and
-0.111 stays clear of 0.1 under three-digit rounding. The guard would only bite if the cap were higher — an
-`s_max ≥ 4` would push both `1/81 = 0.012` and `1/27 = 0.037` onto the same 0.1 floor, collapsing two SH
-rounds into one wasted pair — which is exactly the pathology I am protecting against even though it does not
-fire at η = 3, `s_max = 3`. This is a real adaptation to the harness: the floor of 0.1 means I cannot have
-arbitrarily many distinct cheap rungs, so the dedupe keeps a strictly increasing ladder no matter how the cap
-is set.
+through. Deduping on `round(fid, 3)` leaves the keys 0.1, 0.111, 0.333, 1.0 — all distinct — so the ladder is
+`[0.1, 0.111, 0.333, 1.0]`, four rungs. At this cap the dedupe is insurance rather than binding (only s = 3
+falls below the floor), but it is a real harness adaptation: the 0.1 floor means I cannot have arbitrarily
+many distinct cheap rungs, so the guard keeps a strictly increasing ladder if the cap is ever raised
+(`s_max ≥ 4` would push both 0.012 and 0.037 onto 0.1, collapsing two SH rounds into one).
 
-Each surviving fidelity gets its own population of `max(4, dim+1)` configs, sampled uniformly and queued for
-evaluation at that fidelity — 7 for the 6-D XGBoost and NN spaces, 4 for the 3-D SVM space. Let me sanity-
-check that this initialization even fits the budget before I trust the rest. The initial queue for XGBoost is
-7 configs at each of the four fidelities, and its cost is `7·(0.1 + 0.111 + 0.333 + 1.0) = 7·1.544 = 10.8`
-cost units out of the budget of 50 — so roughly a fifth of the budget seeds all four populations, leaving
-~39 units for evolution and promotion, and the single full-fidelity rung (7·1.0 = 7 units) already dominates
-that opening cost, which is the tell that most of the *count* of evaluations will come from the cheap rungs.
-For SVM the opening is `4·1.544 = 6.2` of 40. Good — the ladder is affordable and the cheap rungs are where
-the trial count balloons.
+Each surviving fidelity gets its own population of `max(4, dim+1)` configs, sampled uniformly and queued at
+that fidelity — 7 for the 6-D XGBoost and NN spaces, 4 for the 3-D SVM space. The XGBoost opening costs
+`7·(0.1 + 0.111 + 0.333 + 1.0) = 10.8` of 50 — roughly a fifth of the budget seeds all four populations, and
+the single full-fidelity rung (7 units) dominates it, the tell that most of the *count* of evaluations comes
+from the cheap rungs. SVM's opening is `4·1.544 = 6.2` of 40. The ladder is affordable and the cheap rungs
+are where the trial count balloons.
 
-It is worth spending a moment on what each rung of that ladder actually *does* to each benchmark, because the
-fidelity contract is spelled out in the scaffold and it decides where triage will be faithful and where it
-will lie — and this is exactly the difference the NN risk hinges on. SVM scales its CV folds as `max(2,
+What each rung of the ladder *does* to each benchmark is where triage becomes faithful or lies, and the NN
+risk hinges on it. SVM scales its CV folds as `max(2,
 int(5·budget))`. Run the four rungs through it: at 0.1, `int(5·0.1) = int(0.5) = 0`, floored to 2 folds; at
 0.111, `int(0.555) = 0`, again 2; at 0.333, `int(1.665) = 1`, again 2; only at 1.0 does it reach `int(5) = 5`
 folds. So on SVM the three cheap rungs are *all* 2-fold cross-validation and only the top rung is 5-fold — a
@@ -142,10 +118,9 @@ crossover a trial, queue it at the low fidelity, and increment that fidelity's g
 and this is DEHB's signature departure from plain Hyperband — promotion. Every time the source fidelity
 completes a fresh generation, the top `1/η` of its (already-evolved) population is *promoted* to seed the
 next fidelity's population, re-evaluated there, gated by a per-fidelity generation counter so promotion
-happens at most once per fresh source generation and the queue cannot grow unbounded. Let me trace the
-promotion accounting on the 4-member SVM populations to check it is well-defined and does not starve or
-explode. The lowest rung holds 4 configs; `n_promote = max(1, 4 // 3) = max(1, 1) = 1`, so exactly one config
-is promoted from 0.1 to 0.111, then one from 0.111 to 0.333, then one from 0.333 to 1.0. The generation gate
+happens at most once per fresh source generation and the queue cannot grow unbounded. On the 4-member SVM
+populations `n_promote = max(1, 4 // 3) = 1`, so exactly one config is promoted from 0.1 to 0.111, then one
+from 0.111 to 0.333, then one from 0.333 to 1.0. The generation gate
 `_gen_count[hi] >= _gen_count[src]` refuses to re-promote until the source has advanced another generation,
 so a single fresh low-fidelity generation triggers at most one promotion per adjacent pair — a bounded
 cascade, not a runaway. On the 7-member XGBoost populations, `7 // 3 = 2`, so two configs promote at each
@@ -169,43 +144,28 @@ tolerating the encode–decode–clip round-trip. This is why the decode is log-
 config encodes, decodes, clips, and re-encodes to within 1e-3 of itself — and it is a real adaptation to a
 harness that hands me back a cleaned config rather than the vector I proposed.
 
-Now let me verify the whole thing degenerates sensibly in a limiting case before I trust its behavior, then
-say where it should land. Push the budget down so that `s_max = 0`: the ladder becomes the single fidelity
-`[1.0]`, there is no promotion (no next rung), and DE simply evolves one full-fidelity population generation
-by generation — which is exactly plain differential evolution at full price, the correct degenerate limit.
-Push the other way, imagine the cheap fidelity is a *perfect* proxy for the expensive one: then every
-promotion carries the true top `1/η`, the full-fidelity rung only ever evaluates genuine survivors, and the
-effective number of full-cost looks I spend is a small fraction of the budget while the trial count runs into
-the hundreds — the best case for AUC. Real benchmarks sit between these, and where they sit is set entirely
-by the cheap-to-expensive rank correlation.
+At `s_max = 0` the ladder collapses to the single fidelity `[1.0]` with no promotion and DE evolves one
+full-fidelity population — plain differential evolution at full price, the correct degenerate limit; where a
+real run lands between that and the perfect-proxy best case is set entirely by the cheap-to-expensive rank
+correlation.
 
-So where will this actually land relative to CMA-ES and random search, and what should I be nervous about?
-The wins should be on *convergence AUC*, the metric both prior rungs were weakest on, because triage means a
-decent config surfaces from the cheap rungs fast and the best-so-far curve climbs early instead of sitting
-flat — the opposite of CMA-ES's wide-then-slow opening. I expect DEHB's AUC to beat CMA-ES comfortably
-(whose SVM AUC was 0.6644 with that 0.2241 seed, and whose XGBoost AUC was 0.7373) and to be at least
-competitive with, probably above, random search's 0.7885 on SVM and 0.7725 on the NN. I am specifically
-nervous about two things. First, the AUC is computed on the *min-max-normalized* best-so-far curve, and DEHB
-spends a lot of cheap evaluations — many low-fidelity scores that are noisy and can be poor — so the
-normalization floor (the worst score seen) may sit very low and the curve's early portion may look ragged;
-the convergence_auc can even exceed 1.0 here, an artifact of how the normalized curve integrates when many
-cheap noisy evaluations bracket the good ones. Second, the *cost accounting*: because low-fidelity evals are
-cheap, DEHB runs many more actual evaluations than the single-fidelity baselines — the initial-population
-arithmetic above already shows the trial count detaching from the 40–50 budget, and with promotions and
-generations firing it should climb into the hundreds, sometimes with a large seed-to-seed swing because DE's
-promotion cascade is data-dependent (a lucky low rung that fills quickly triggers more promotions). And on a
-benchmark where the cheap fidelity predicts the expensive one *poorly* — the NN, where 50 iterations may rank
-configs differently from 500 — aggressive low-fidelity triage could promote the wrong survivors and the final
-best score could actually *dip* below random search's, the very benchmark where CMA-ES had been fine.
+So where will this land relative to CMA-ES and random search, and what should I be nervous about?
+The wins should be on *convergence AUC*, because triage surfaces a decent config from the cheap rungs fast
+and the curve climbs early — the opposite of CMA-ES's wide-then-slow opening — so I expect DEHB's AUC to
+beat CMA-ES comfortably (SVM 0.6644, XGBoost 0.7373) and to be at least competitive with random search's
+0.7885/0.7725 on SVM and the NN. Two things make me nervous. The AUC is computed on the min-max-normalized
+best-so-far curve, and DEHB's flood of cheap noisy scores can drag the normalization floor very low, so the
+integral can even exceed 1.0 — an artifact of the normalized curve, not a real convergence past optimum. And
+because cheap evals are cheap, `total_evals` detaches from the 40–50 budget and should climb into the
+hundreds with a large seed-to-seed swing, since DE's promotion cascade is data-dependent (a lucky low rung
+that fills quickly triggers more promotions). Where the cheap fidelity predicts the expensive one *poorly* —
+the NN, 50 iterations versus 500 — aggressive triage could promote the wrong survivors and the final best
+could *dip* below random search's, the very benchmark where CMA-ES had been fine.
 
-So the falsifiable expectations against the prior numbers are: convergence AUC should rise sharply versus
-CMA-ES and beat random search's 0.7885/0.7725 on SVM and NN, because triage front-loads good configs;
-`total_evals` should climb well past the budget (into the hundreds on at least SVM), confirming the cheap
-evaluations are being spent, and it should vary across seeds because promotion is data-dependent; and the
-final best scores should stay in the competitive band but with a real risk of the NN best *worsening*
-relative to random search's −3050 if low-fidelity rank-correlation is weak there. If I see exactly that —
-strong AUC, inflated and seed-variable total_evals, an NN best that slips while SVM/XGBoost AUC jump — that
-is multi-fidelity working as designed, with the low-fidelity-correlation caveat exposed, and it points at the
-next question: the residual weakness is that DEHB and SH alike *guess* the configurations-versus-fidelity
-tradeoff, and where the cheap fidelity lies, they throw the eventual winner away early. The next rung should
-stop guessing it and hedge across the whole spectrum.
+So the falsifiable expectations: convergence AUC rising sharply versus CMA-ES and beating random search's
+0.7885/0.7725 on SVM and NN; `total_evals` climbing well past the budget (into the hundreds on at least SVM)
+and varying across seeds because promotion is data-dependent; final best in the competitive band but with a
+real risk of the NN best *worsening* if low-fidelity rank-correlation is weak there. That profile would
+expose the residual weakness DEHB and SH share: both *guess* the configurations-versus-fidelity tradeoff,
+and where the cheap fidelity lies they throw the eventual winner away early. The next rung should stop
+guessing it and hedge across the whole spectrum.
