@@ -1,23 +1,23 @@
 The flat profile sat exactly at `2.0`, and the feedback made the obstruction concrete: with every piece
 identical the autoconvolution is locked to a triangle with one sharp central peak, and there is no gradient to
 follow — refining the grid does nothing. So the only way down is to introduce *variation* among the heights and
-let some search find a non-flat profile that suppresses that peak. Before I commit to a search, I want to see
-the mechanism on the smallest case I can compute by hand, so I actually know what "suppressing the peak" buys.
+let some search find a non-flat profile that suppresses that peak. The smallest case I can compute by hand,
+`N=2`, pins down what "suppressing the peak" actually buys.
 
 Take `N=2`, `a=(a_0,a_1)`. The self-convolution is `a*a=(a_0^2,\,2a_0a_1,\,a_1^2)` and the score is
 `R = 4·max(a_0^2,2a_0a_1,a_1^2)/(a_0+a_1)^2`. Flat `(1,1)` gives `b=(1,2,1)`, peak `2`, sum `2`, so
 `R=4·2/4=2` — the central node wins and pins the ratio at `2`, exactly as advertised. Now break it: try
 `(2,1)`. Then `b=(4,4,1)`, and the peak is now `4`, *tied* between the endpoint node `a_0^2=4` and the
-cross node `2a_0a_1=4`, against sum `3`, giving `R=4·4/9=1.778`. That is below `2`, and I can see *why*:
+cross node `2a_0a_1=4`, against sum `3`, giving `R=4·4/9=1.778`. That is below `2`, and the reason is visible:
 making `a_0` heavier pulls the cross term `2a_0a_1` down relative to where a symmetric profile would put it,
 so the dominant node stops being the central overlap and starts being a corner. The score that this
-minimization punishes is precisely the central self-overlap, and asymmetry is the lever that relieves it. So
-the direction is real, and I have a concrete witness `R=1.778<2` to confirm it rather than just assert it.
+minimization punishes is precisely the central self-overlap, and asymmetry is the lever that relieves it —
+`R=1.778<2` is a concrete witness.
 
 That tempts an obvious guess for the larger profile: if asymmetry helps, pile mass at the ends and hollow out
-the middle — a U-shape — to starve the central node directly. Let me check it before I believe it. At `N=50`,
-a U-shape `1+3|x-1/2|` (heavy at both ends, light in the middle) scores `R=2.125` — *worse* than flat. A pure
-steep ramp `x` is worse still at `2.23`. So the naive "concentrate at the ends" reading is wrong: a symmetric
+the middle — a U-shape — to starve the central node directly. At `N=50`, a U-shape `1+3|x-1/2|` (heavy at
+both ends, light in the middle) scores `R=2.125` — *worse* than flat. A pure steep ramp `x` is worse still at
+`2.23`. So the naive "concentrate at the ends" reading is wrong: a symmetric
 U just builds two big endpoint nodes whose self-overlap is its own large peak, and an over-steep ramp does the
 same at one end. What actually worked at `N=2` was *moderate, one-sided* asymmetry, and that does lift: a
 half-`2`/half-`1` step at `N=50` reproduces `R=1.778` to the digit, and the gentle ramp `0.5+x` gives `1.864`.
@@ -80,25 +80,29 @@ sharp, where the surrogate faithfully tracks the true peak. The gradient factors
 autoconvolution by the chain rule, and everything is `O(N log N)` with FFTs, so the polish is cheap. I run
 Adam on top of this gradient — its per-coordinate adaptive scaling suits the wide dynamic range of the
 heights — clip to non-negative after each step, and track the best *true* `R` ever seen, not the surrogate's.
+Even this smoothed descent can settle into a shallow trap of its own, so I add the same escape logic at a
+gentler scale: every so many steps I reinject a small amount of Gaussian noise around the best point found so
+far and resume descending from there, instead of leaning on one unbroken gradient trajectory to find the
+bottom of the basin.
 
 One thing I want to watch is whether the optimizer drives some heights to *zero* or concentrates mass
 asymmetrically. That would be a real signal, not noise: it would mean the best coarse profile is genuinely
 sparse and one-sided — a specific structure, not an even spread, and not the symmetric U-shape that failed
 above — which is what the `N=2` mechanism predicts.
 
-What do I expect? The annealing-plus-polish should clear the flat-triangle ceiling easily — that is the entire
-reason to accept uphill moves — and drop well into the low `1.5`s, the band where coarse constructions for
-this constant live. I do not expect to *reach* the `1.5053` of the `600`-piece construction, let alone the
-`1.50286` record, from a short run on `50` heights; those numbers are the product of careful optimization on
-far finer grids, and `50` pieces is a coarse grid that caps how low the peak can be pushed.
+What do I expect? Accepting uphill moves exists precisely to clear the flat-triangle ceiling, so the
+annealing-plus-polish should get past `2` easily and drop well into the low `1.5`s, the band where coarse
+constructions for this constant live. I do not expect to *reach* the `1.5053` of the `600`-piece construction,
+let alone the `1.50286` record, from a short run on `50` heights; those numbers are the product of careful
+optimization on far finer grids, and `50` pieces is a coarse grid that caps how low the peak can be pushed.
 
 Running it bears this out. The construction settles at `R ≈ 1.537`, and the profile is exactly the structure I
 was watching for: of the fifty heights, about ten are driven to zero, the mass is spread unevenly with no
 left-right symmetry, and the dominant autoconvolution node sits off the geometric center. So the search did
 find the tuned, sparse asymmetry that the hand example pointed at and that the symmetric U-shape could not
 reach — a large drop, from `2.0` down to `1.537` — and then stalled, limited not by the search idea but by the
-coarse resolution. That stall is the opening for the next rung. If the only thing capping me is that `50`
-pieces cannot render a sufficiently fine, peak-suppressing autoconvolution, then the move is to *lift* this
+coarse resolution. That stall is exactly the opening for the next attempt. If the only thing capping me is
+that `50` pieces cannot render a sufficiently fine, peak-suppressing autoconvolution, then the move is to *lift* this
 optimized coarse shape onto a much finer grid and bring a much stronger optimizer — one that attacks the whole
 flat top of near-peak nodes at once — to carve the fine structure that annealing on `50` heights cannot
 represent.
