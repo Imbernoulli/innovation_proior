@@ -16,28 +16,21 @@ entirely a recall failure — I can check it closes: `2 * 0.839 * 0.776 / (0.839
 away too many genuinely clean examples to keep its lower-stationarity small: it is over-discarding, the
 opposite failure from the unroll's soft over-keeping.
 
-There is one more number that tells me *where* this fragility lives, and it sharpens the whole diagnosis.
-On the MLP the same penalty did *not* wreck the cleaner: MLP recall only slipped from 0.979 to 0.928
-(down 0.051, a quarter of the linear drop), precision rose from 0.822 to 0.889, and the net MLP f1 went
-*up*, 90.82 versus RHG's 89.34. So the gradient-norm penalty is a clean win on the MLP cleaner and a
-disaster on the linear one. That asymmetry is exactly what the counterexample predicted: the failure is
-tied to degenerate lower-level curvature, and the *linear* softmax cross-entropy is the one riddled with
-flat `grad_yy g ≈ 0` directions — near-separable batches whose logits saturate, collinear pixel features
-whose weight subspaces are unidentified — while the MLP's sigmoid-warped loss keeps enough curvature that
-the penalty step `grad_yy g . grad_y g` does not vanish on the examples that matter. And the toy regressed
-exactly as G-PBGD anticipated: 303.7 mean convergence_steps (up from the shared 260.7) at a residual of
-0.081 (up from 0.030), because the toy dispatched to the gradient-norm penalty's stiffer landscape. Read across the two models, G-PBGD's own cleaner f1 splits by ten points — 90.82 on the MLP against 80.63
-on the linear model, for the *same* penalty at the *same* `gamma = 37` — and that within-method gap is
-itself the cleanest fingerprint of the diagnosis: nothing about the penalty changed between the two runs
-except the inner architecture, so a 10-point f1 gap can only come from the inner *curvature* differing,
-which is exactly the degenerate-`grad_yy g` story. A method whose cleaner quality is that sensitive to the
-lower-level Hessian is the wrong default. So G-PBGD bought MLP accuracy with a fragile, high-variance
-*linear* cleaner and a worse toy convergence. The
-diagnosis is the one I rehearsed in the counterexample: the gradient-norm penalty's local stationarity
-only controls `grad_yy g . grad_y g`, so its behavior is hostage to the lower-level curvature `grad_yy g`
-— which is what makes both its linear f1 unstable and its toy residual coarse. The fix is the *robust*
-member of the penalty family, whose local stationarity controls `grad_y g` directly with no curvature
-factor in the way: the value-gap penalty, V-PBGD.
+There is one more number that tells me *where* this fragility lives. On the MLP the same penalty did *not*
+wreck the cleaner: recall only slipped from 0.979 to 0.928, precision rose from 0.822 to 0.889, and the
+net MLP f1 went *up*, 90.82 versus RHG's 89.34. So the gradient-norm penalty is a clean win on the MLP
+cleaner and a disaster on the linear one — its own f1 splitting ten points across models, 90.82 versus
+80.63, for the *same* penalty at the *same* `gamma = 37`. Nothing changed between the two runs except the
+inner architecture, so that gap can only come from the inner *curvature* differing — exactly what the
+counterexample predicted. The *linear* softmax cross-entropy is riddled with flat `grad_yy g ≈ 0`
+directions — near-separable batches whose logits saturate, collinear pixel features whose weight subspaces
+are unidentified — where the penalty step `grad_yy g . grad_y g` vanishes; the MLP's sigmoid-warped loss
+keeps enough curvature that it does not. And the toy regressed as G-PBGD anticipated: 303.7 mean
+convergence_steps at 0.081 residual, up from the shared 260.7 / 0.030, because it dispatched to the
+gradient-norm penalty's stiffer landscape. A method whose cleaner quality is that sensitive to the
+lower-level Hessian is the wrong default: its local stationarity only controls `grad_yy g . grad_y g`,
+hostage to `grad_yy g`. The fix is the *robust* member of the penalty family, whose local stationarity
+controls `grad_y g` directly with no curvature factor in the way: the value-gap penalty, V-PBGD.
 
 Before I commit to the value gap I should check that it beats the two cheaper repairs I could try on
 G-PBGD itself, because switching penalties is not free. The first repair is to just turn `gamma` down: if
@@ -73,25 +66,18 @@ the better-conditioned MLP's did not. The value gap has no such division, so it 
 lower-level curvature; I expect its cleaner f1 to be both *higher and far more stable* than G-PBGD's, and
 in particular to fix the *linear* case that was the whole problem.
 
-I want to be sure the value gap is a faithful penalty at the global level too, not just a convenient local
-fix, because the f1 instability G-PBGD showed was a *variance* problem and I need the value gap to be
-principled across the whole landscape. The squared-distance-bound argument gives it cleanly. Take any
-feasible `(x, y)`, project `y` to `y_x in S(x)` so `d = d_{S(x)}(y) = ||y_x - y||`, and use `L`-Lipschitz
-`f`: `f(x, y) - f(x, y_x) >= -L d`. Add `gamma p` and the bound `p >= d^2/mu`: the whole expression is at
-least `-L d + (gamma/mu) d^2`, a scalar quadratic in `d >= 0` whose minimum over `d` is `-L^2 mu/(4
-gamma)` (at `d* = L mu/(2 gamma)`). Setting `gamma* = L^2 mu/(4 eps_1)` floors it at `-eps_1`, so any
-bilevel global solution (where `p = 0`) is an `eps_1`-global-min of the penalized problem, and conversely
-an `eps_2`-global-min of the penalized problem with `gamma > gamma*` has `p <= (eps_1 + eps_2)/(gamma -
-gamma*)` — penalty residual shrinking like `O(1/gamma)` globally and `O(1/gamma^2)` locally. The lever is
-the quadratic `(gamma/mu) d^2`, present only because `p` *dominates* `d^2`, overpowering the linear
-Lipschitz slack `-L d` once `gamma` clears the threshold. And the `gamma = Theta(delta^{-1/2})` scaling is
-genuinely tight, not loose analysis: on the trivial instance `f = y, g = y^2` the penalized objective
-`y + gamma y^2` is minimized at `y = -1/(2 gamma)` with gap `p = 1/(4 gamma^2)`, so forcing the gap below
-`delta` requires exactly `gamma >= 1/(2 sqrt(delta))` — the scaling is achieved, not merely bounded. A
-*finite* `gamma` suffices for any finite accuracy, and because the value gap is the more faithful surrogate
-(one PL chain, not two), the `gamma` it needs to hit a given lower-stationarity residual is far smaller
-than the gradient norm's — which is exactly why I can afford a gentle penalty here, and gentleness is what
-protects the cleaner's recall from the over-discarding that `gamma = 37` caused.
+The value gap is faithful at the global level too, not just a convenient local fix. For any feasible
+`(x, y)`, project `y` to `y_x in S(x)` with `d = ||y_x - y||`; `L`-Lipschitz `f` gives
+`f(x, y) - f(x, y_x) >= -L d`, and adding `gamma p` with `p >= d^2/mu` floors the penalized objective at
+`-L d + (gamma/mu) d^2 >= -L^2 mu/(4 gamma)`. So any bilevel global solution is an `eps_1`-global-min of
+the penalized problem for `gamma = L^2 mu/(4 eps_1)`, penalty residual shrinking `O(1/gamma)` globally and
+`O(1/gamma^2)` locally — the lever being that `p` dominates `d^2` and overpowers the linear Lipschitz
+slack once `gamma` clears threshold. The `gamma = Theta(delta^{-1/2})` scaling is tight, not loose: on
+`f = y, g = y^2` the penalized `y + gamma y^2` minimizes at `y = -1/(2 gamma)` with gap `1/(4 gamma^2)`,
+so a gap below `delta` needs exactly `gamma >= 1/(2 sqrt(delta))`. A *finite* `gamma` suffices — and
+because the value gap is the more faithful surrogate (one PL chain, not two), the `gamma` it needs is far
+smaller than the gradient norm's, which is exactly why I can afford a gentle penalty here, and gentleness
+is what protects the cleaner's recall from the over-discarding that `gamma = 37` caused.
 
 The one subtlety the value gap introduces is computing `grad v(x)`, and the PL Danskin lemma dissolves it.
 Naively `grad v` needs a lower solution `y*(x)` and looks like the implicit machinery I have been avoiding.
@@ -132,19 +118,14 @@ for; that is the distinction between approximating `grad v` cheaply and differen
 And like every prior rung, it ignores the exposed `inner_grad/outer_grad/inner_val` callables; the helper
 builds the gradients directly from the two networks and `sigmoid(x)`.
 
-I should check the detach pattern realizes the right object by pushing it to the limit where I know the
-answer. On the lower manifold, where `y` has reached a lower minimizer and `y_hat = y = y*`, the penalty
-`p = g(x, y) - v(x)` must have gradient zero — it is nonnegative and equals zero exactly there, so the
-manifold is its minimum. Take the two coordinates. In `y`, the value-gap gradient is `grad_y g(x, y*)`,
-which is `0` because `y*` is inner-stationary. In `x`, the helper's contribution is `grad_x[gxy - vx] =
-grad_x g(x, y) - grad_x g(x, y_hat)` — the `vx` term contributes only through `sigmoid(x)` because the
-inner outputs are detached, giving exactly `grad_x g(x, y_hat)` — and with `y = y_hat` these cancel to
-`0`. So both coordinates vanish on the manifold, confirming the subtraction is oriented correctly: the
-detach makes `vx` carry `grad_x g(x, y_hat)` and *only* that, so `gxy - vx` is the genuine value gap whose
-gradient dies exactly where `p = 0`. Had I detached the wrong tensor — say let the gradient flow through
-`y_hat` — the `x`-cancellation would fail and the penalty would push even on the manifold, which is the
-kind of wiring error the linear-f1 number would expose. This is the same Danskin structure as the
-implicit-term-times-zero above, now checked at the level of the actual computation.
+The detach orientation is easy to get backwards, so I pin it on the lower manifold where `y = y_hat = y*`
+and the penalty gradient must vanish. In `y` the value-gap gradient is `grad_y g(x, y*) = 0`
+(inner-stationary). In `x` it is `grad_x[gxy - vx] = grad_x g(x, y) - grad_x g(x, y_hat)`, where `vx`
+contributes only through `sigmoid(x)` because the inner outputs are detached — so it carries exactly
+`grad_x g(x, y_hat)`, and with `y = y_hat` the two cancel. Both coordinates vanish, confirming the
+subtraction is oriented right. Had I let the gradient flow through `y_hat` instead, the `x`-cancellation
+would fail and the penalty would push even on the manifold — a wiring error the linear-f1 number would
+expose.
 
 The hyperparameters are the gentle schedule this task's reference uses, and the contrast with G-PBGD's
 `gamma_max = 37` is itself diagnostic: linear `lrx=lry=0.1, lr_inner=0.01, inner_itr=1, gamma_max=0.2,
@@ -185,24 +166,21 @@ residual and full success, recovering the ~43 steps and the residual that G-PBGD
 gradient-norm toy objective. If the toy did not return to 260.7, the toy dispatch would not be using the
 value gap.
 
-So my falsifiable expectations against the measured numbers, since this is meant to be the strongest rung.
-On the toy I expect V-PBGD to *recover* the unrolling family's 260.7 steps and 0.030 residual, beating
-G-PBGD's 303.7 / 0.081 — fixing the toy regression outright. On hyper-cleaning I expect it to keep the
-penalty family's accuracy win over the unrolling family while *fixing the linear f1 collapse*: linear
-accuracy around 90 (G-PBGD was 89.84, so comparable or slightly better, and far above the unrolling 84.6),
-but with linear f1 back up into the low 90s — well above G-PBGD's fragile 80.63 — and a stable
-cleaner recall near 0.95 rather than G-PBGD's 0.78, since the value gap does not divide by the degenerate
-`grad_yy g` that crashed the linear recall. That recovered f1 would not merely repair G-PBGD's
-regression; it would sit *above* the unrolling family's own linear f1 of ~89.5, so the value gap should be
-the best cleaner on the board, not just the least broken — and it should close G-PBGD's ten-point
-cross-model f1 gap, landing the linear and MLP f1 within a point or two of each other instead of split by
-ten, precisely because it has removed the curvature-sensitivity that opened that gap. On the hidden MLP I expect to land a shade below
-G-PBGD's 92.38, giving up about a point — and I expect that precisely because the MLP was the case where the gradient-norm
-penalty already *worked* (its MLP f1 rose, recall barely moved), so the value gap's robustness buys little
-there and its gentler `gamma` trades about a point of raw MLP accuracy for the far more faithful, lower-
-variance cleaner and the recovered toy convergence. That is the trade I am willing to make, and it is why
-the value gap is the robust default: it should win the toy primary metric, the linear primary metric, and
-both f1 scores decisively, losing only the single hidden MLP accuracy by about a point. If the value gap
-instead matched G-PBGD's broken linear f1, the detach pattern would not be realizing the `gxy - vx` value
-gap and I would have wired the wrong subtraction; if its toy did not snap back to 260.7, the toy dispatch
-would be on the wrong penalty. The full scaffold edit is in the answer.
+So my falsifiable expectations. On the toy I expect V-PBGD to *recover* the unrolling family's 260.7 steps
+and 0.030 residual exactly — it dispatches to the same `grad g` step, so this is a wiring prediction, not
+an estimate — reversing G-PBGD's toy regression. On hyper-cleaning I expect it to keep the penalty
+family's accuracy win (comparable to G-PBGD, well above the unrolling 84.6) while *fixing the linear f1
+collapse*: linear f1 back up to at or above the unrolling family's ~89.5 and, crucially, *stable* across
+seeds rather than swinging six points, with cleaner recall recovered to the unrolling family's high level,
+because the value gap does not divide by the degenerate `grad_yy g` that crashed G-PBGD's linear recall.
+That would make the value gap the best cleaner on the board, not just the least broken, and should close
+G-PBGD's ten-point cross-model f1 gap, landing linear and MLP f1 close together instead of split. On the
+hidden MLP I expect to give up a little against G-PBGD, precisely because the MLP was the case where the
+gradient-norm penalty already *worked* (its MLP f1 rose, recall barely moved), so the value gap's
+robustness buys little there and its gentler `gamma` trades a bit of raw MLP accuracy for the far more
+faithful, lower-variance cleaner and the recovered toy convergence. That is the trade I am willing to
+make: it should win the toy primary, the linear primary, and both f1 scores, losing only the single hidden
+MLP accuracy by a little. If instead V-PBGD matched G-PBGD's broken linear f1, the detach pattern would
+not be realizing the `gxy - vx` value gap and I would have wired the wrong subtraction; if its toy did not
+snap back to 260.7, the toy dispatch would be on the wrong penalty. The full scaffold edit is in the
+answer.

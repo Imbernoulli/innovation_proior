@@ -39,26 +39,15 @@ that — and to ask whether the unrolling family can do better at all by spendin
 to remove the truncation entirely and back-propagate through the *whole* inner trajectory. That is full
 reverse-mode hyper-gradient, RHG, and it is the `K = T` special case of exactly the method I just ran.
 
-Let me be careful about what "the same method, more of it" buys, because the result of step 1 is a
-strong prior and I do not want to spend memory blindly. The exact hypergradient of the `T`-step inner
-run is the full trajectory sum `d_x F = grad_x f + sum_{t=0}^{T} B_t A_{t+1} ... A_T grad_y f`, with
-`A_t = I - lr_inner * grad_yy g` the state Jacobian of the inner gradient-descent map and
-`B_t = -lr_inner * grad_xy g` its direct dependence on `x`. Truncation kept only the last `K` of those
-`T + 1` terms; full RHG keeps all of them. The terms it adds back are precisely the deep ones, indexed
-`t <= T - K`, each carrying a product of more than `K` contraction matrices `A_{t+1} ... A_T`, so each is
-bounded in size by `(1 - lr_inner*mu)^{T-t} <= (1 - lr_inner*mu)^{K}`. In other words, the extra terms
-full RHG sums are *exactly* the ones whose magnitude T-RHG's bias bound said were negligible, and whose
-negligibility the low seed-variance already circumstantially confirmed. If the inner map genuinely
-contracts, adding them should move the hypergradient — and therefore the final accuracy — almost not at
-all. The 84.61/84.79 result from step 1 is my baseline expectation for what RHG will reproduce.
-
-I can put a number on how little I expect to move. The relative weight of everything RHG adds over T-RHG
-is at most `(1 - lr_inner*mu)^{100}`; even at a modest curvature-step product of `0.05` that factor is
-`about 0.006`, and at `0.03` it is `about 0.05`. So unless the inner problem is genuinely ill-conditioned
-(`lr_inner*mu` down around a hundredth, where the factor climbs toward `0.37`), the deep terms should
-shift the descent direction by at most a few percent, which on an 85%-accuracy plateau is fractions of a
-point — well inside the 0.37-point seed noise I just measured. Concretely I predict RHG within about a
-third of a point of T-RHG on both models, and I would be genuinely surprised by a multi-point jump.
+The terms full RHG adds over the truncated sum are precisely the deep ones, `t <= T - K`, each carrying
+more than `K` contraction matrices and so bounded by `(1 - lr_inner*mu)^{K}` — exactly the terms T-RHG's
+bias bound already called negligible, and whose negligibility the low seed-variance circumstantially
+confirmed. I can put a number on how little I expect to move: at a modest curvature-step product of
+`0.05` that factor is `about 0.006`, at `0.03` about `0.05`. Unless the inner problem is genuinely
+ill-conditioned (`lr_inner*mu` around a hundredth, where the factor climbs toward `0.37`), the deep terms
+shift the descent direction by at most a few percent — fractions of a point on an 85% plateau, well
+inside the 0.37-point seed noise. So I predict RHG within about a third of a point of T-RHG on both
+models, `84.61/84.79` my baseline expectation, and a multi-point jump would genuinely surprise me.
 
 So why run it, if I expect it to match? Two reasons, and both are about *learning the geometry* rather
 than chasing points. First, full RHG is the exact gradient of the procedure I actually ran, with no
@@ -71,21 +60,14 @@ reference point the whole unrolling lineage is measured against; pinning its num
 the "differentiate the inner run" family on this task, so when a penalty reformulation later jumps ahead
 I know the jump is about the *method class*, not about truncation.
 
-Let me re-derive the adjoint so I am sure full unrolling is just the truncated sweep with `K = T`, and
-so I land the right hyperparameters. The Lagrangian view makes this clean: minimize `f(x, y_T)` subject
-to the `T` constraints `y_t = Phi_t(y_{t-1}, x)`, attach a row multiplier `alpha_t` to each, and form
-`L = f(x, y_T) + sum_t alpha_t . (y_t - Phi_t(y_{t-1}, x))`. Stationarity in `y_T` gives
-`alpha_T = grad_y f`; stationarity in each interior `y_{t-1}` gives the backward recursion
-`alpha_{t-1} = alpha_t . (d Phi_t / d y_{t-1}) = alpha_t . A_t`; and stationarity collected over `x`
-gives the gradient `d_x F = grad_x f + sum_t alpha_t . B_t`. The multiplier `alpha_t` is the adjoint
-state — the sensitivity of the final validation loss to a perturbation of the inner iterate at time `t`
-— and the recursion carries it from the end of training to the beginning. Every operation is a
-transposed-Jacobian-vector product: `alpha . A` is the gradient of "alpha dotted with the next state"
-with respect to the current state, `alpha . B` the same with respect to `x`. Neither forms a matrix.
-Setting `K = T` means the backward loop runs from `T` down to `1` over the *entire* stored trajectory
-rather than the last hundred states; the recursion, the accumulation, the per-step cost are identical —
-only the window length and therefore the memory change. This is why I can say with confidence that RHG
-and T-RHG are the same algorithm: the step-1 code and the step-2 code differ in one integer.
+The Lagrangian view confirms full unrolling is just the truncated sweep with `K = T`: minimize
+`f(x, y_T)` subject to the constraints `y_t = Phi_t(y_{t-1}, x)`, attach a multiplier `alpha_t` to each,
+and stationarity gives back exactly the adjoint recursion — `alpha_T = grad_y f`,
+`alpha_{t-1} = alpha_t . A_t`, `d_x F = grad_x f + sum_t alpha_t . B_t` — with `alpha_t` now read as the
+sensitivity of the validation loss to a perturbation of the inner iterate at time `t`. Setting `K = T`
+just runs the backward loop over the entire stored trajectory rather than the last hundred states;
+recursion, accumulation, and per-step cost are identical, only the window length and memory change. RHG
+and T-RHG differ in one integer.
 
 The harness makes that literally true. `run_rhg_family` reads `K` from the hyperparameters and runs the
 forward inner loop keeping the suffix of `K + 1` states, then calls the fixed `hg.reverse(...,
@@ -120,10 +102,9 @@ given more than 500 steps. The inner optimality gap after `T` steps contracts li
 `(1 - lr_inner*mu)^T (g(y_0) - v)`, which is only small if `lr_inner*mu*T` is large; if `mu` is small
 (the flat MLP landscape), 500 steps from scratch leaves the inner problem genuinely under-solved, and
 RHG then differentiates a classifier that has not really found its minimum. So I expect the unrolling
-family, full or truncated, to be capped well below the penalty reformulations — around 85% test accuracy
-— not because the differentiation is wrong but because the inner problem is barely solved before I
-differentiate it. The 85% is the signature of a crude inner solve, and no amount of extra backward depth
-can fix a forward pass that stopped short of the minimum.
+family, full or truncated, capped well below the penalty reformulations — around 85% — not because the
+differentiation is wrong but because no amount of backward depth can fix a forward pass that stopped
+short of the minimum.
 
 I can put numbers on that forward gap the same way I did the backward truncation, and the comparison
 exposes a distinction I had been blurring. The inner optimality gap after `T` steps contracts like
@@ -149,68 +130,41 @@ too-small steps along. This is the structural cul-de-sac of the differentiate-th
 budget is dominated by re-solving the inner problem from scratch, which leaves nothing for solving it
 *well* or for taking many outer steps.
 
-The toy, as in step 1, is decoupled from all of this. `run_rhg_family` in toy mode dispatches to the
-same `_toy_pbgd_step` as the value-gap method: `S(x) = {-x}`, `v(x) = 0`, nothing to unroll, one
-projected penalized step on `f + gamma * grad g` with `gams = (10.0,)`, `alpha0 = 0.1`. So I expect RHG's
-toy line to be *identical* to T-RHG's — and I mean identical to the last digit, `260.712` mean steps,
-`0.030088` residual, success `1.0`, not merely "within noise," because the toy step never reads `K` at
-all: it is the same `_toy_pbgd_step` with the same `gams`, `alpha0`, and the same 1000 seeded inits, so
-the two runs execute bit-for-bit the same arithmetic. That is a sharper falsifiable claim than the
-hyper-cleaning one: if the toy tables differ even in a low digit, then the `K` knob is leaking into the
-toy code path where it has no business, and I have a wiring bug rather than a property of unrolling. The
-toy simply cannot separate these two rungs; only hyper-cleaning can, and only through the deep trajectory
-terms.
+The toy, as in step 1, is decoupled: `run_rhg_family` dispatches to the same `_toy_pbgd_step`, which
+never reads `K`, so RHG's toy line should be *identical* to T-RHG's to the last digit — `260.712` mean
+steps, `0.030088` residual, success `1.0`, bit-for-bit the same arithmetic on the same 1000 seeded inits,
+not merely "within noise." A toy table that differs even in a low digit means the `K` knob is leaking
+into the toy path — a wiring bug, not a property of unrolling.
 
-There is a detail in the step-1 toy table worth reading before I move on, because it is the kind of thing
-that looks like noise and is not. The mean convergence was 260.7 but the *median* was 302.3 — the median
-sits well *above* the mean, which means the step-count distribution over the 1000 inits is left-skewed:
-a substantial block of inits converge much faster than the typical ~302 steps, dragging the average down,
-while the bulk clusters near 302. That is consistent with the projected penalized step on `f + 10 g`
-having two regimes across the domain `[0, 3]` — inits that start near the `y = -x` valley snap to
-tolerance in a handful of steps, inits that start far from it grind through the full few-hundred-step
-descent — and it is a property of the shared toy landscape, not of unrolling. So I expect RHG to
-reproduce not just the mean but the whole shape: median 302.3, mean 260.7, to the digit, because it runs
-the identical toy step. If the mean matched but the median drifted, something in the seeding or the
-tolerance check would have changed, which the single-integer `K` edit cannot touch.
+One detail in the step-1 toy table is worth reading: the mean was 260.7 but the *median* 302.3, so the
+step-count distribution is left-skewed — a block of inits near the `y = -x` valley snap to tolerance in a
+few steps and drag the average down, while the bulk far from it grind through the full descent. That is a
+property of the shared toy landscape, so RHG should reproduce the whole shape (median 302.3, mean 260.7);
+a mean that matched but a median that drifted would mean the seeding or tolerance changed, which the
+single-integer `K` edit cannot touch.
 
-The memory and runtime give me a second, independent wiring check on hyper-cleaning. If the helper is
-truly storing the whole trajectory at `K = 500`, RHG's inner run must hold about `477 MB` of MLP
-checkpoints against T-RHG's `95 MB`, and its per-outer-step work must be about `5/3` of T-RHG's from the
-extra 400 backward TJVPs, so I expect RHG's runtime-to-best to sit modestly above T-RHG's. If instead
-RHG runs at the same speed and memory as the truncated version, the helper is silently ignoring the
-larger `K` and I am not actually running full unrolling — a different failure than a bad hyperparameter,
-and one the runtime column would expose before the accuracy column could mislead me.
+Memory and runtime give a second, independent wiring check: at `K = 500` the helper must hold about `5x`
+the checkpoints and do `5/3` the per-step work of T-RHG, so RHG's runtime-to-best should sit modestly
+above it. If instead it runs at the same speed and memory, the helper is silently ignoring the larger
+`K` and I am not actually running full unrolling — a failure the runtime column exposes before the
+accuracy column could mislead me.
 
-So here is what I expect, stated against the step-1 numbers so it is falsifiable. On the toy, RHG should
-reproduce T-RHG exactly: 260.7 mean steps, success 1.0, residual 0.030. On hyper-cleaning, RHG should
-land *at or just above* T-RHG: linear test accuracy around 84.6 (T-RHG was 84.61) and MLP around 84.8
-(T-RHG was 84.79), with linear f1 near 89.4 and the same high-recall, middling-precision cleaner profile
-(recall around 0.97, precision around 0.83) — and I can sanity-check that f1 prediction against those
-two: `2 * 0.83 * 0.97 / (0.83 + 0.97) ≈ 1.610 / 1.80 ≈ 0.894`, so recall-0.97/precision-0.83 and
-f1-89.4 are the same prediction stated two ways, and if the measured f1 drifts far from that the
-precision-recall pair I am imagining is wrong. If anything I expect the deep terms to buy a *sliver* of
-precision — full unrolling includes the early trajectory's influence on which examples got down-weighted,
-so RHG's cleaner precision might tick from T-RHG's 0.828 up toward 0.83, lifting f1 from 89.06 toward 89.4
-— but a sliver is the ceiling on what an exact hypergradient of a crude solve can add, and a sliver on an
-85% plateau is scientifically a null result, which is the useful thing to establish. If RHG matches T-RHG within the ~0.37-point seed noise, the
-truncation was free — the contraction held and `K = 100` was already deep enough — and the unrolling
-family's ceiling on this task is ~85% accuracy, set by the 500-step inner solve. If RHG instead jumps
-several points above T-RHG, then the deep terms mattered, `lr_inner*mu` is smaller than I estimated, and
-the inner problem is poorly conditioned. Either way, the gap to the penalty reformulations — which I have
-not yet measured but expect to be large — will be the real story, because it is the gap between
-"differentiate a crude inner solve" and "fold lower-level optimality into the objective and descend it
-directly" without ever resetting an inner loop. That is where the next rung has to go if this ceiling is
-real.
+So, stated against the step-1 numbers: on the toy RHG should reproduce T-RHG exactly (260.7 steps,
+success 1.0, residual 0.030); on hyper-cleaning it should land *at or just above* T-RHG — linear around
+84.6, MLP around 84.8, with the same high-recall/middling-precision cleaner profile — perhaps buying a
+*sliver* of precision from the early trajectory's influence on down-weighting, but a sliver on an 85%
+plateau is a null result, which is the useful thing to establish. If RHG matches within seed noise, the
+truncation was free and the unrolling family's ceiling on this task is ~85%, set by the 500-step inner
+solve; if it jumps several points, the deep terms mattered and `lr_inner*mu` is smaller than I estimated.
+Either way the real story is the gap to the penalty reformulations — "differentiate a crude inner solve"
+versus "fold lower-level optimality into the objective and descend it directly" — which is where the next
+rung has to go if this ceiling is real.
 
-I can even see the budget arithmetic that would justify the switch. This rung spends about `100000`
-inner-gradient evaluations, but they are structured wastefully: `100` outer steps, each burning `500`
-forward steps to re-solve the inner problem from a random init that it then throws away, plus `500`
-backward steps to differentiate the throwaway. The same `100000` evaluations spent as *one persistent
-coupled trajectory* over `(x, y)` — never resetting `y`, letting it accumulate progress across outer
-steps — would be on the order of `100000` genuine coupled updates instead of `100` outer moves, three
-orders of magnitude more actual descent on the joint variables. That reallocation is the entire promise
-of the penalty class the background points to: stop paying to re-solve and re-differentiate a fresh
-inner problem every outer step, and instead pay once, continuously, into a single objective whose
-descent drives `y` toward lower-optimality and `x` toward the outer minimum together. Whether that
-promise pays off is the next rung's question; this rung's job was to fix the unrolling ceiling as the
+The budget arithmetic points the way out. This rung's ~`100000` inner-gradient evaluations are
+structured wastefully: `100` outer moves, each burning `500` forward steps to re-solve a throwaway inner
+problem plus `500` to differentiate it. Spent instead as one persistent coupled trajectory over `(x, y)`
+— never resetting `y` — the same budget buys on the order of `100000` genuine coupled updates rather than
+`100` outer moves. That reallocation is the promise of the penalty class the background points to: pay
+once, continuously, into a single objective instead of re-solving a fresh inner problem every outer step.
+Whether it pays off is the next rung's question; this rung's job was to fix the unrolling ceiling as the
 number it has to beat. The full scaffold edit is in the answer.

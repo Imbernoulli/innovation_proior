@@ -23,26 +23,21 @@ re-solving a throwaway inner problem 100 times into one long coupled trajectory.
 family, and the cheapest member of it — the one with an *exactly computable* penalty gradient and no
 inner loop at all — is the squared lower-level gradient norm, G-PBGD.
 
-Before I commit I want to be sure the penalty escape is genuinely better than the other two things I
-could do with what the last two rungs taught me, because "the inner solve is the bottleneck" admits more
-than one fix. Option one: keep unrolling but solve the inner problem harder — push `T` up, or warm-start
-the inner loop so it does not restart from a random init each outer step. This directly attacks the
-diagnosed cause, but it does not change the *structure*: I still store `O(K * dim(y))` states, still
-differentiate through a solve, and warm-starting only helps if I also stop treating each outer step as an
-independent inner problem — at which point I am halfway to a coupled method anyway and have kept the
-memory overhead for nothing. Option two: compute the hypergradient by implicit differentiation directly,
-solving `(grad_yy g) v = grad_y f` with a few conjugate-gradient or Neumann steps instead of a full
-unroll. But the background already flags implicit differentiation as needing second-order information, and
-worse, it *still* needs a lower minimizer `y*(x)` to evaluate the Hessian at — the same crude-solve
-bottleneck, just relocated from the unroll into the linear solve. Neither option escapes the ceiling;
-both keep paying to approximate `y*(x)` well. Option three is the penalty reformulation, which is
-categorically different because it never needs `y*(x)` at a fixed `x` at all — it lets `y` and `x` descend
-together toward joint stationarity of `F_gamma`. Within the penalty family there are again two members,
-and the ordering is clear: the gradient norm has an *exact* penalty gradient computable with no inner
-machinery, whereas the value gap needs `grad v(x)` and hence some estimate of a lower solution. So the
-disciplined first penalty rung is the one that adds *zero* new approximation — the gradient norm — and I
-save the value-gap sibling for when I have measured whether the gradient norm's known fragility actually
-bites here.
+Before I commit I want to be sure the penalty escape beats the other two fixes the diagnosis admits.
+Option one: keep unrolling but solve the inner problem harder — push `T` up or warm-start it. That
+attacks the cause but not the *structure*: I still store `O(K * dim(y))` states and differentiate through
+a solve, and warm-starting only helps if I stop treating each outer step as an independent inner problem
+— at which point I am halfway to a coupled method and have kept the memory overhead for nothing. Option
+two: implicit differentiation, solving `(grad_yy g) v = grad_y f` with a few conjugate-gradient or
+Neumann steps. But it needs second-order information and *still* needs a lower minimizer `y*(x)` to
+evaluate the Hessian at — the same crude-solve bottleneck, relocated into the linear solve. Neither
+escapes the ceiling; both keep paying to approximate `y*(x)`. Option three, the penalty reformulation, is
+categorically different: it never needs `y*(x)` at a fixed `x`, letting `y` and `x` descend together
+toward joint stationarity of `F_gamma`. Within the family the ordering is clear — the gradient norm has an
+*exact* penalty gradient with no inner machinery, the value gap needs `grad v(x)` and hence a
+lower-solution estimate — so the disciplined first penalty rung is the one that adds *zero* new
+approximation, the gradient norm, saving the value-gap sibling for when I have measured whether its known
+fragility bites here.
 
 The budget confirms the escape is affordable, not a compute blowout. Each G-PBGD step is one forward pass
 to form `gxy` and `fy` plus one backward through `min(1/gamma,1)*(fy + 0.5*gamma*||grad_y g||^2)` — about
@@ -62,11 +57,9 @@ solve, no value tracking. Differentiating `||grad_y g||^2 = grad_y g . grad_y g`
 grad_y g` in `y` and `2 grad_xy g . grad_y g` in `x`: both are Hessian-vector products, the Hessian of
 `g` times the already-computed vector `grad_y g`. I never materialize the Hessian; I compute `grad_y g`
 keeping the graph (`create_graph=True`), form the scalar `f + (gamma/2)||grad_y g||^2`, and one more
-backward hands me exactly `gamma grad_yy g . grad_y g` and `gamma grad_xy g . grad_y g` — and I should
-check the constant, because it is easy to be off by a factor. Differentiating `(gamma/2)||grad_y g||^2`
-in `y` gives `(gamma/2) . 2 . grad_yy g . grad_y g = gamma grad_yy g . grad_y g`: the `1/2` cancels the
-`2` from the square exactly, so the objective's own backward pass produces the HVP with no stray factor.
-Compare the value gap, whose gradient needs `grad v(x)`, i.e. knowledge of a lower solution `y*(x)` —
+backward hands me exactly `gamma grad_yy g . grad_y g` and `gamma grad_xy g . grad_y g` — the `(gamma/2)`
+differentiates against the square's `2` to leave a clean `gamma`, no stray factor. Compare the value gap,
+whose gradient needs `grad v(x)`, i.e. knowledge of a lower solution `y*(x)` —
 exactly the object the unrolling rungs were straining to approximate. So the gradient-norm penalty is the
 *simplest possible* penalty member: plain coupled gradient descent on `F_gamma = f + (gamma/2)||grad_y
 g||^2`, the penalty gradient available exactly, no inner optimizer anywhere. After watching the unrolling
@@ -92,23 +85,19 @@ wherever `grad_yy g` goes singular. That is its signature weakness, and it is ex
 penalty is the more robust sibling: the value gap's local stationarity is `grad_y f + gamma grad_y g = 0`,
 which controls `||grad_y g|| <= L/gamma` directly, with no `grad_yy g` anywhere in the way.
 
-The framework that makes this precise is the squared-distance bound, and it is worth grinding through
-because it turns "large enough `gamma`" into an actual finite number. Write the constraint as
-`d^2_{S(x)}(y) = 0`. A penalty `p` is a `rho`-squared-distance bound if `p >= 0`, `rho p >=
-d^2_{S(x)}(y)`, and `p = 0` exactly on `S(x)`. Under the lower level being `(1/mu)`-PL plus smooth, the
-error bound `g - v >= (1/mu) d^2` makes the value gap a `mu`-bound with one PL chain. The gradient norm
-needs the *stronger* `(1/sqrt(mu))`-PL to chain twice: `||grad_y g||^2 >= (1/mu)(g - v) >= (1/mu^2) d^2`,
-two PL applications stacked, so it is one PL step weaker a surrogate than the value gap — the same fact
-the counterexample showed geometrically now shows up as an extra assumption. With an SDB and
-`L`-Lipschitz `f`, the calmness inequality bounds how far below `f`'s own values the penalized objective
-can dip: `min_{z >= 0} (-L z + (gamma/rho) z^2)`, minimized at `z* = L rho/(2 gamma)` with value
-`-L z* + (gamma/rho) z*^2 = -L^2 rho/(2 gamma) + L^2 rho/(4 gamma) = -L^2 rho/(4 gamma)`. So globals of
-`f + gamma p` have penalty residual `O(1/gamma)`, and a second-order version gives locals `O(1/gamma^2)`
-— but the *local* bound for the gradient-norm penalty needs the singular values of `grad_yy g` bounded
-below by some `sigma > 0`, from `||grad_yy g . grad_y g|| >= sigma ||grad_y g||`, the exact condition
-`y = 2pi/3` violates. So the gradient-norm penalty is principled *when the lower Hessian does not
-degenerate*, and `gamma = Theta(delta^{-1/2})` is the tight scaling for a target residual `delta` — a
-finite `gamma`, not `gamma -> infinity`.
+The squared-distance-bound framework turns "large enough `gamma`" into a finite number. Write the
+constraint as `d^2_{S(x)}(y) = 0`; a penalty `p` is a `rho`-squared-distance bound if `p >= 0`,
+`rho p >= d^2_{S(x)}(y)`, and `p = 0` exactly on `S(x)`. Under `(1/mu)`-PL plus smoothness the error
+bound `g - v >= (1/mu) d^2` makes the value gap a `mu`-bound with one PL chain, whereas the gradient norm
+needs the *stronger* `(1/sqrt(mu))`-PL to chain twice (`||grad_y g||^2 >= (1/mu)(g - v) >= (1/mu^2) d^2`)
+— one PL step weaker a surrogate, the counterexample's geometric fact now showing up as an extra
+assumption. With an SDB and `L`-Lipschitz `f`, the calmness inequality
+`min_{z >= 0}(-L z + (gamma/rho) z^2) = -L^2 rho/(4 gamma)` puts the global penalty residual at
+`O(1/gamma)` and a second-order version at `O(1/gamma^2)` — but the *local* gradient-norm bound needs the
+singular values of `grad_yy g` floored above some `sigma > 0`, from `||grad_yy g . grad_y g|| >= sigma
+||grad_y g||`, the exact condition `y = 2pi/3` violates. So the gradient-norm penalty is principled *when
+the lower Hessian does not degenerate*, and `gamma = Theta(delta^{-1/2})` is the tight scaling for a
+target residual `delta` — a finite `gamma`, not `gamma -> infinity`.
 
 I want to connect that abstract degeneracy to *this* problem, because it is not a pathology I have to
 hunt for — the linear hyper-cleaner has it built in. The inner objective is a `sigmoid(x)`-weighted
@@ -181,27 +170,24 @@ the penalty gradient behaves like `2 . (2u) . (2 + 2x) = 8u(1 + x)` — proporti
 the value-gap-style step there descends `grad g ≈ 2u` with no `(1 + x)` amplification. So over the domain
 `x in [0, 3]` the gradient-norm toy is up to four times stiffer near the valley, and stiffer landscapes at
 a fixed step `alpha0 = 0.1` take more iterations to settle under the tolerance and settle at a coarser
-residual. Concretely I expect the toy convergence_steps to rise from the shared 260.7 to roughly 300, with
-a larger residual (on the order of 0.06–0.10 rather than 0.030) — the penalty pins the
-gradient norm small but at a coarser residual. This is not a regression I am introducing by mistake; it
-is the gradient-norm penalty's geometry showing through, the same `grad_yy g`-sensitivity that made
-`y = 2pi/3` spurious in the counterexample.
+residual. Concretely I expect the toy convergence_steps to rise somewhat above the shared 260.7 and settle at a
+coarser residual, a few times the 0.030 — the penalty pins the gradient norm small but at a coarser
+residual. This is not a regression I am introducing by mistake; it is the gradient-norm penalty's
+geometry showing through, the same `grad_yy g`-sensitivity that made `y = 2pi/3` spurious in the
+counterexample.
 
 So my falsifiable expectations against the prior numbers. On hyper-cleaning I expect G-PBGD to *break the
-unrolling ceiling decisively*: the penalty descends one coupled objective for tens of thousands of steps
-without ever resetting an inner solve, so I expect MLP test accuracy to jump from RHG's 84.79 into the
-low 90s — a gain of several points, decisively clear of the unrolling plateau — and linear accuracy from
-84.63 up toward about 90. But I expect a cost on the cleaner f1, because the aggressive gradient-norm penalty drives
-precision up at the expense of recall — I expect linear f1 to actually *drop* below the unrolling rungs
-(from RHG's ~89.5 toward ~80), with cleaner recall falling to about 0.78 even as cleaner *precision* rises — I expect precision to move
-the other way, up toward ~0.85 from the unrolling family's ~0.83, because a hard penalty discards
-aggressively and the survivors are cleaner, so the f1 drop is a recall story, not a precision one — because
-the penalty is tuned for accuracy, not for the precision-recall balance the soft, under-solved unroll
-happened to strike; and
+unrolling ceiling decisively*: descending one coupled objective for tens of thousands of steps without
+ever resetting an inner solve should push test accuracy several points clear of the ~85% plateau on both
+models. But I expect a cost on the cleaner f1, and specifically as a *recall* failure: the aggressive
+`gamma_max = 37` penalty discards examples hard to keep its lower-stationarity small, so the survivors are
+cleaner (precision holds or rises) while too many genuinely-clean points are thrown away (recall drops),
+and f1 falls below the unrolling rungs — a recall story, not a precision one, because the penalty is tuned
+for accuracy, not for the precision-recall balance the soft, under-solved unroll happened to strike. And
 I expect that f1 to be *unstable* across seeds, because it is hostage to the degenerate `grad_yy g`
 directions I identified in the linear cross-entropy, which differ init to init. If G-PBGD instead matched
-the unrolling toy numbers, the toy dispatch would not be using the gradient-norm penalty; if its MLP
-accuracy did not break 90, the penalty escape would have failed and the bottleneck would not have been
+the unrolling toy numbers, the toy dispatch would not be using the gradient-norm penalty; if its accuracy
+did not break the plateau, the penalty escape would have failed and the bottleneck would not have been
 the inner solve after all; and if its cleaner f1 came out as high and stable as the unrolling family's,
-then the lower Hessian is better conditioned than the counterexample fears and the robustness argument
-for the value-gap sibling loses its motivation. The full scaffold edit is in the answer.
+the lower Hessian is better conditioned than the counterexample fears and the value-gap sibling loses its
+motivation. The full scaffold edit is in the answer.

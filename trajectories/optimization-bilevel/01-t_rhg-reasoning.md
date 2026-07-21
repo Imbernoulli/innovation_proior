@@ -62,18 +62,9 @@ fill its columns. Reverse mode replaces all of that with one vector of length `d
 sweep. With `x` this wide, reverse mode is not merely preferable, it is the only direction that fits in
 memory at all.
 
-Before I trust the recursion I should hand-trace it on the smallest case that has any depth, `T = 2`,
-because a sign or an ordering error here silently corrupts every hypergradient. With two steps
-`y_2 = Phi_2(Phi_1(y_0, x), x)`, direct differentiation gives `d y_2/dx = B_2 + A_2 B_1` (the direct
-dependence of step 2, plus the direct dependence of step 1 pushed forward through step 2's state
-Jacobian). Now run the adjoint by hand: initialize `alpha_2 = grad_y f`, accumulate `h = alpha_2 . B_2`,
-propagate `alpha_1 = alpha_2 . A_2`, then accumulate `h += alpha_1 . B_1 = alpha_2 . A_2 . B_1`. The
-total is `h = grad_y f . (B_2 + A_2 B_1) = grad_y f . (d y_2/dx)`, exactly the middle factor contracted
-against `grad_y f`. So the sweep reproduces the total derivative with the state Jacobians appearing in
-the correct order (`A_2` multiplies the *earlier* step's `B_1`, never the later one), which is the
-ordering the reverse pass has to get right and the one place a naive forward-then-transpose would slip.
-That trace is my assurance that when I hand the helper `K = 100`, the hundred TJVPs it does are summing
-the last hundred of these terms in the right sequence.
+The one thing the sweep has to get right is the ordering. At `T = 2`, `d y_2/dx = B_2 + A_2 B_1`, and
+the adjoint reproduces it as `h = alpha_2 . B_2 + alpha_2 . A_2 . B_1`, so `A_2` multiplies the *earlier*
+step's `B_1`, never the later one — the one place a naive forward-then-transpose would slip.
 
 But the reverse contraction has one cost I have to confront, and it is what makes the *truncated*
 variant the rung I actually fill rather than full unrolling. To evaluate `A_t` and `B_t` on the way
@@ -121,23 +112,11 @@ lr_inner * grad_yy g`, so the infinite backward sum equals `grad_y f . (lr_inner
 That cancellation is a real check that I derived the maps right: if `lr_inner` had survived in the
 converged limit, one of `A_t` or `B_t` would carry the wrong power of the step size. And the truncation
 lands cleanly on this picture through the finite identity `(I - A)(I + A + ... + A^{K-1}) = I - A^K`: the
-`K`-step backward sum is the `K`-term partial Neumann series, so its relative error against the true
-inverse is `||A_inf^K|| ≈ (1 - lr_inner*mu)^K` — the same bound I got by counting dropped terms, arrived
-at a second way. So `K` is literally the order of the inverse-Hessian approximation, and this rung is,
-quietly, implicit differentiation computed by summing instead of solving. That is the cleanest possible
-"do the honest thing cheaply" baseline.
-
-A one-line scalar instance makes the order-of-approximation claim tangible. Suppose in the converged
-region `grad_yy g` acts like a scalar curvature `a` and `lr_inner * a = 0.05`, so `A_inf = 0.95`. The
-true inverse factor is `sum_{k>=0} 0.95^k = 1/0.05 = 20`. The `K = 100` partial sum is
-`(1 - 0.95^{100})/0.05`, and `0.95^{100} ≈ e^{-100*0.0513} ≈ e^{-5.13} ≈ 0.0059`, so the partial sum is
-`20 * (1 - 0.0059) ≈ 19.88` — a `0.6%` shortfall, matching `r^K` exactly. Push the curvature down to
-`lr_inner * a = 0.01`, `A_inf = 0.99`: now the true factor is `100`, but `0.99^{100} ≈ e^{-1} ≈ 0.37`,
-so the `K = 100` sum recovers only `63` of it — a `37%` error. That is the honest picture in two numbers:
-truncation at `K = 100` is nearly free when the inner curvature-step product is a few hundredths, and
-badly biased when it is a hundredth, which is precisely the `lr_inner * mu ≳ 0.046` threshold restated.
-I cannot read `mu` off the problem from here, so which regime the weighted cross-entropy lands in is a
-measurement, not a derivation.
+`K`-step backward sum is the `K`-term partial Neumann series, its relative error against the true inverse
+`||A_inf^K|| ≈ (1 - lr_inner*mu)^K`. So `K` is literally the order of the inverse-Hessian approximation,
+and this rung is, quietly, implicit differentiation computed by summing instead of solving — the cleanest
+possible "do the honest thing cheaply" baseline. I cannot read `mu` off the problem from here, so which
+regime the weighted cross-entropy lands in is a measurement, not a derivation.
 
 Now I have to map this onto *this task's* harness, and the mapping decides everything about what the
 code can and cannot do. The scaffold already implements the entire reverse-mode machinery for me:
@@ -163,24 +142,17 @@ so `grad_y g = 2u + x sin(2u)`, which vanishes at `u = 0`, i.e. `y = -x`, and `g
 floor of a nonnegative-near-`u=0` bowl for `x in [0, 3]`. So `v(x) = min_y g = 0` on the whole domain,
 the value gap `g - v = g` has nothing to unroll, and the harness collapses every method to the same
 projected step there. My `TOY_HPARAMS` for this rung are therefore the shared `gams=(10.0,),
-alpha0=0.1`, and I should *expect identical toy numbers* to the other value-gap-style rungs — whatever
-the shared projected step produces, this rung inherits it exactly. The step itself is transparent: it
-descends `f + 10 * g` with a projected step of size `0.1` onto `[0, 3]`, so it simultaneously pulls `y`
-toward `-x` (through the `g` term) and pushes `x` down the reduced outer landscape `f(x, -x)`, and the
-convergence count is however many such steps it takes to bring the stationarity residual under the fixed
-tolerance from 1000 random inits. The only place the truncated method can distinguish itself is
-hyper-cleaning, and only through `K`.
+alpha0=0.1`, and I should *expect identical toy numbers* to the other value-gap-style rungs. That step
+descends `f + 10 * g` with a projected step of size `0.1` onto `[0, 3]`, pulling `y` toward `-x` through
+the `g` term while pushing `x` down the reduced landscape `f(x, -x)`; the convergence count is however
+many such steps bring the stationarity residual under tolerance from 1000 random inits. The only place
+the truncated method can distinguish itself is hyper-cleaning, and only through `K`.
 
-That leaves the choice of `K`, which is the whole identity of this rung versus full unrolling. I take
-`T = 500` inner steps, `K = 100` (truncate to the last fifth of the trajectory), `lr = 0.001` outer,
-`lr_inner = 0.1` linear and `0.4` MLP, with `outer_itr = 100` and `eval_interval = 1`. The contraction
-argument says the bias from dropping the first 400 transitions is bounded by `(1 - lr_inner*mu)^{100}`
-— negligible if the inner problem is even mildly well-conditioned, per the `lr_inner*mu > 0.046`
-threshold above — while the memory drops by `5x` relative to the full unroll. The non-interference
-structure of hyper-cleaning sharpens this: since `grad_x f = 0`, the truncated adjoint is the *entire*
-hypergradient estimate, and for the right problem class it is essentially as good a descent direction as
-the full one even at small `K`. So I expect `K = 100` to cost me very little accuracy against `K = 500`
-— but I have flagged that this is a bet on the conditioning, not a proof.
+That leaves the choice of `K`, the whole identity of this rung versus full unrolling. I take `T = 500`
+inner steps, `K = 100` (the last fifth of the trajectory), `lr = 0.001` outer, `lr_inner = 0.1` linear
+and `0.4` MLP, `outer_itr = 100`, `eval_interval = 1`. Dropping the first 400 transitions costs a bias
+bounded by `(1 - lr_inner*mu)^{100}` for a `5x` memory saving, and because `grad_x f = 0` the truncated
+adjoint is the *entire* hypergradient — so at small `K` this is a bet on the conditioning, not a proof.
 
 The rest of the budget follows from counting gradient evaluations, and the count is itself a diagnosis
 of this family's ceiling. Each outer step runs `T = 500` forward inner gradient steps plus `K = 100`
