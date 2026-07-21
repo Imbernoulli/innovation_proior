@@ -149,40 +149,24 @@ into a better policy update — so the value clip is not cosmetic; it is the cri
 trust region, and it is the one structural ingredient the two prior rungs left entirely on the table.
 The full module is in the answer.
 
-The loop also hands back a `clipfrac` diagnostic — the fraction of a minibatch with $|r-1|>\epsilon$ —
-and it is worth predicting what a healthy run of this method should show, because it is the cheapest check
-that the band is doing real work rather than sitting vacuous. At the first epoch of a fresh batch every
-$r_t\approx1$ (the network has not moved off $\theta_{old}$ yet), so `clipfrac` should start near zero;
-by the tenth epoch the ratios have drifted and some fraction sits past the band, so `clipfrac` should
-climb to a steady value. If it stayed at zero, the band would never engage and I would effectively be
-running the unclipped placeholder — the fan-out is back. If it shot toward one, nearly every sample would
-be clipped and the ten epochs would be wasted on flat gradients — the microscopic-step failure. The
-regime I want is intermediate: a modest fraction clipped, meaning the brake bites on the samples that
-moved too far while the rest still carry gradient. So `clipfrac` is my running confirmation that
-$\epsilon=0.2$ is neither vacuous nor saturating on a given environment, and if one environment reported a
-wildly different `clipfrac` from the others it would tell me the single $\epsilon$ was not, in fact,
-transferring — which is the thing I am betting it does.
+The loop's `clipfrac` diagnostic — the fraction with $|r-1|>\epsilon$ — is the cheapest read on whether
+the band is doing real work: near zero would mean it never engages (the unclipped placeholder, fan-out
+back), near one would mean nearly everything is clipped and the ten epochs waste on flat gradients (the
+microscopic-step failure). A modest intermediate fraction, and a similar one across the three
+environments, is the signature that a single $\epsilon=0.2$ is transferring.
 
-There is also a reason to expect this reliability to pay off *specifically* in the score the task uses,
-and it is worth making explicit because it is why "balance" beats "peak" here. The task score is the
-geometric mean of the three environments' (normalized) returns, $\text{gmean}=(x_1 x_2 x_3)^{1/3}$, and
-the geometric mean is dominated by its *smallest* factor: halving the weakest environment roughly halves
-the whole score, while doubling the strongest lifts it only by a cube-root factor. AWR's ledger is exactly
-the wrong shape for that aggregator — it bought a HalfCheetah gain (one lucky seed to 3301) at the cost of
-a Swimmer collapse to 90.2 with a seed at 46, so its weakest factor sank. PPO's trade is the right shape:
-give back the lucky HalfCheetah tail, but lift the weakest environment (Swimmer) out of the collapse and
-tighten every seed. Even if PPO's HalfCheetah mean lands below AWR's, moving the *minimum* factor up is
-worth more to the geometric mean than the peak I gave up. So the clip is not just a stability fix; it is
-the update rule whose failure profile is aligned with how this task actually scores.
+This reliability pays off specifically in the aggregator. The geometric mean $(x_1 x_2 x_3)^{1/3}$ is
+dominated by its smallest factor — halving the weakest environment roughly halves the score, while
+doubling the strongest lifts it only by a cube-root — and AWR's ledger is the wrong shape for that: a
+lucky-seed HalfCheetah gain bought at a Swimmer collapse to 90.2 (seed 46) sank its weakest factor.
+Giving back the lucky tail to lift Swimmer out of collapse and tighten every seed is worth more to the
+geometric mean than the peak surrendered.
 
-Let me be precise about what this rung is *within this harness*, so I land its implementation and not a
-generic one. There is no separate value network — the 2×64 critic is its own head, so the `vf_coef`
-combine is a real shared-optimizer term, not a no-op. There is no entropy bonus in play (`ent_coef=0` by
-default on MuJoCo, where the Gaussian's learned log-std supplies exploration), so I include the entropy
-term in the loss for contract-completeness but expect it to contribute nothing. The GAE advantages, the
-per-minibatch normalization, the LR anneal, and the global gradient-norm clip are all the loop's, frozen;
-my contribution is exactly the clipped surrogate plus the clipped value loss. This is PPO-clip as the
-scaffold realizes it — no more, no less.
+Within this harness: the 2×64 critic shares the optimizer, so the `vf_coef` term is real; `ent_coef=0` on
+MuJoCo (the learned log-std supplies exploration), so the entropy term is included for
+contract-completeness but contributes nothing; the GAE scan, per-minibatch normalization, LR anneal, and
+gradient-norm clip are all the frozen loop's. My contribution is exactly the clipped surrogate plus the
+clipped value loss.
 
 One elegance is worth noting because it is the contrast with the penalty rung's whole apparatus. The
 frozen loop anneals the learning rate linearly to zero, so late in training each Adam step moves the
@@ -196,17 +180,13 @@ only the current minibatch. That statelessness is not just tidy; it is why one $
 three environments and a full run without ever being adjusted, which is exactly the fragility the penalty
 rung's per-minibatch mutable $\beta$ introduced.
 
-Closing on falsifiable expectations against AWR's numbers, since this is the rung that should top the
-ladder and the finale will have to clear it. My central bet is *balance*: the hard, per-minibatch, unit-
-free band should give up a little of AWR's HalfCheetah peak (I would not be shocked if PPO's HalfCheetah
-mean lands *below* AWR's 1996.7, because AWR's 3301 seed inflated that mean and PPO trades that lucky tail
-for consistency) but should *not* collapse on Swimmer the way AWR did — I expect PPO's Swimmer to clear
-AWR's 90.2 and the penalty rung's 101.4, because the min-clip corrects the spurious-action overshoots
-that cratered AWR's seed-123 to 46, and to do so with much tighter seed spread than either prior rung. On
-InvertedDoublePendulum I expect PPO to be at least competitive with AWR's 7299.2. The concrete,
-falsifiable claim is about the *geometric mean*, not any single environment: PPO should be the most
-balanced of the three — no environment where it is the worst by a wide margin — so even if it does not
-win every environment outright, its three-environment geometric mean should be the highest of the
-baselines, because the task rewards exactly the reliability the hard clip is built to deliver — no
-environment where it is the worst by a wide margin, every seed tracking its neighbours, the weakest factor
-of the geometric mean lifted out of the collapse that capped both prior rungs.
+Closing on falsifiable expectations against AWR's numbers. My central bet is *balance*: the hard,
+per-minibatch, unit-free band should give up a little of AWR's HalfCheetah peak — I would not be shocked
+if PPO's HalfCheetah mean lands *below* AWR's 1996.7, since AWR's 3301 seed inflated that mean and PPO
+trades the lucky tail for consistency — but should not collapse on Swimmer, which I expect to clear AWR's
+90.2 and the penalty rung's 101.4 with much tighter seed spread, because the min-clip corrects the
+spurious-action overshoots that cratered AWR's seed-123 to 46. On InvertedDoublePendulum I expect it at
+least competitive with 7299.2. The falsifiable claim is about the *geometric mean*, not any single
+environment: no environment where PPO is the worst by a wide margin, every seed tracking its neighbours,
+the weakest factor lifted out of the collapse that capped both prior rungs — so even without winning any
+environment outright, its three-environment geometric mean should be the highest yet.

@@ -132,16 +132,13 @@ passed back in, does the noise enter. Getting that gate wrong — perturbing at 
 noise into the behavior policy and silently break the on-policy assumption that the whole ladder rests on,
 so the `if action is None: sample else: perturb-then-rescore` structure is load-bearing, not incidental.
 
-It is worth pausing on what makes this the right *finale* structurally, not just numerically, because it
-says something about the edit surface itself. Every previous rung rewrote `compute_losses` and left
-`get_action_and_value` at the scaffold default — they all fought over the *loss*. This rung is the mirror
-image: it leaves `compute_losses` byte-for-byte identical to PPO and edits only `get_action_and_value`,
-the *distribution*. That is the last untouched degree of freedom on the whole edit surface. The ladder has
-walked the loss from a soft KL penalty, to a ratio-free regression, to a hard clip, exhausting what the
-loss alone can do; the remaining return PPO leaves on the table lives not in the loss but in the policy's
-own stochasticity, which only `get_action_and_value` controls. So RPO is not an arbitrary next idea — it
-is the one move that reaches the part of the substrate no prior rung could touch while preserving every
-gain they earned. It *composes* with PPO rather than replacing it.
+There is a structural reason this is the natural next move. Every previous rung fought over
+`compute_losses` and left `get_action_and_value` at the default; this one is the mirror image —
+`compute_losses` stays byte-for-byte PPO and only `get_action_and_value`, the *distribution*, changes. The
+loss has been walked from a soft KL penalty to a ratio-free regression to a hard clip, exhausting what it
+alone can do; the return PPO still leaves on the table lives not in the loss but in the policy's own
+stochasticity, which only `get_action_and_value` controls. So this composes with PPO rather than replacing
+it — reaching the one part of the substrate no prior rung touched while preserving every gain.
 
 Now the harness fit, which is the cleanest of any rung on this ladder. RPO changes *only*
 `get_action_and_value`; `compute_losses` is byte-for-byte PPO's clipped surrogate plus clipped value loss
@@ -157,36 +154,18 @@ the runtime assertion checks — the contribution is algorithmic, exactly as the
 demands. No replay buffer, no extra network, no new hyperparameter in the config; it slots into the frozen
 loop exactly. The full module is in the answer.
 
-I checked this against the method's canonical reference implementation line by line, because the finale
-has to be a faithful realization and not a plausible-looking variant. The reference perturbs the mean with
-`uniform_(-rpo_alpha, rpo_alpha)` in the `else` branch only, with `rpo_alpha=0.5` default, and
-reconstructs the Normal before evaluating — identical to the edit here down to the gate and the default;
-the only cosmetic differences are that the edit hardcodes `rpo_alpha = 0.5` as a local rather than reading
-a config field and uses `obs.device` rather than a module-level `device`, both functionally identical. The
-`compute_losses` is verbatim PPO. So the finale is the reference method, correctly placed in the scaffold.
-
-Let me state the bar it must clear and what I would validate, since this rung carries no measured result —
-the numbers it has to beat are PPO's: HalfCheetah 1757.6, Swimmer 113.2, InvertedDoublePendulum 7048.4.
-The claim of the method is that this implicit-entropy perturbation improves over PPO across continuous-
-control environments while never destabilizing, which is exactly the balanced-reliability axis this task
-scores on. So the falsifiable bar is concrete and three-fold. First, HalfCheetah: I expect RPO to lift the
-mean above 1757.6 and, more tellingly, to *narrow* the gap between the 1400-plateau seeds and the 2441
-tail — the landscape-smoothing and arrested std-collapse should let more seeds find the better gait, so I
-would validate this by checking whether the per-seed *minimum* rises, not just the mean, since the
-mechanism predicts fewer trapped seeds rather than a higher ceiling. Second, Swimmer: PPO already nailed
-it at 113.2 with a seed range of $8$ points; the bar here is *do no harm* — the $\alpha^2/(6\sigma^2)$
-pressure must not inflate the std enough to reintroduce AWR's long-horizon collapse, so I would validate
-that RPO's Swimmer stays in PPO's tight band. Third, InvertedDoublePendulum: this is the risk environment,
-because it is an unstable balancing task where too much exploration can knock the pole over; the bar is
-that $\alpha=0.5$ does not over-perturb it below PPO's 7048.4, and I would watch the worst seed most
-closely, since $\Delta$ is largest exactly when $\sigma$ is small — which on a converged pendulum policy is
-precisely when I least want to be re-injecting motion. The overall, geometric-mean claim is that RPO clears
-PPO by improving the dense, exploration-limited environment (HalfCheetah) while holding the other two —
-because the task rewards the method that is reliably good everywhere, and a scale-free implicit-entropy
-regularizer that fixes the one place PPO leaves return on the table, without touching the trust region that
-made PPO reliable, is the natural next step past the strongest baseline. If instead RPO's perturbation
-drags InvertedDoublePendulum or destabilizes Swimmer, that would falsify the claim that $\alpha=0.5$
-transfers across these three dynamics, and the move past it would be to anneal $\alpha$ or make it state-
-dependent so the pressure eases where the policy must stay decisive. But the bet this finale makes is that
-the fixed, scale-free perturbation holds across all three at once — the same reliability the clip bought,
-now extended from the *step* to the *entropy*.
+The bar this must clear is PPO's numbers: HalfCheetah 1757.6, Swimmer 113.2, InvertedDoublePendulum
+7048.4. The claim is that a scale-free implicit-entropy perturbation improves over PPO while never
+destabilizing — the balanced-reliability axis the task scores on — so the falsifiable bar is three-fold.
+HalfCheetah: I expect the mean above 1757.6 and, more tellingly, the per-seed *minimum* to rise as the
+smoothed landscape and arrested std-collapse let more seeds escape the 1400 basin into the 2441-class gait
+— fewer trapped seeds rather than a higher ceiling. Swimmer: *do no harm* — the $\alpha^2/(6\sigma^2)$
+pressure must not inflate the std enough to reintroduce the long-horizon collapse, so it should stay in
+PPO's tight band. InvertedDoublePendulum is the risk environment: unstable balancing where too much
+exploration knocks the pole over, and $\Delta$ is largest exactly when $\sigma$ is small — a converged
+pendulum policy — so I watch the worst seed for a drop below 7048.4. The geometric-mean bet is that the
+fixed perturbation clears PPO by lifting the exploration-limited environment while holding the other two;
+if instead it drags the pendulum or destabilizes Swimmer, that falsifies $\alpha=0.5$ transferring across
+these three dynamics, and the move past it would be to anneal $\alpha$ or make it state-dependent so the
+pressure eases where the policy must stay decisive. This is the reliability the clip bought, extended from
+the *step* to the *entropy*.

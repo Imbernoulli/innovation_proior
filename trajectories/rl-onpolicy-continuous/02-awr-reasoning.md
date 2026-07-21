@@ -134,40 +134,23 @@ minibatch advantage normalization buys on the input side — this is on-policy A
 inside a shared-optimizer K-epoch loop, and it is machinery the canonical buffer-based version simply does
 not have.
 
-Third, what computes the weights and what carries the gradient. The advantage weights are a *target*, not
-a path: the regression should push $\log\pi_\theta$ up on high-weight actions, but the weights themselves
-must not receive gradient, or the optimizer could cheat by reshaping the advantage estimate. So the
-entire weight computation — the exp, the clamp, the renormalization — sits under `torch.no_grad()`, and
-only the `newlogprob` carries gradient into the policy loss $-\hat{\mathbb E}[w\,\log\pi_\theta]$. Let me
-confirm this gradient does the right thing and does not fan out the way the ratio did. For the Gaussian,
-$\nabla_\mu\log\pi_\theta(a|s) = (a-\mu)/\sigma^2$, so the per-sample policy gradient is $-w\cdot(a-\mu)/
-\sigma^2$: it pushes the mean $\mu$ *toward* each selected action $a$, with a magnitude bounded by the
-renormalized weight (at most $\sim2$ on a typical minibatch). There is no $r$ that compounds across
-epochs — the gradient magnitude is capped by the clipped, renormalized weight, full stop. That is exactly
-the fan-out immunity I came here for. But the same trace exposes the danger I will predict at the end: the
-weights are computed once, under `no_grad`, from the *fixed* GAE advantages of this rollout, so the
-regression target does not move as the policy moves through the ten epochs. That is a fixed target, which
-is stable when the advantage estimate is trustworthy — and a trap when it is not, because the policy will
-regress toward whatever action got the top advantage for all ten epochs with nothing to correct it. The
-value head gets the same plain MSE toward the GAE returns that rung 1 used — I am keeping the
-critic's objective exactly as rung 1 had it, and the regression framing does not change the critic's job.
-Keeping the critic
-identical to rung 1 is also a deliberate clean-experiment choice: I am changing exactly one thing between
-the penalty rung and this one — the policy objective, ratio-surrogate-plus-KL replaced by exponentiated-
-advantage regression — so whatever the numbers do, the change is attributable to that single swap and not
-to a critic I quietly improved at the same time. The full module is in the answer.
+Third, what computes the weights and what carries the gradient. The weights are a *target*, not a path:
+the entire weight computation — exp, clamp, renormalization — sits under `torch.no_grad()`, or the
+optimizer could cheat by reshaping the advantage estimate; only `newlogprob` carries gradient into
+$-\hat{\mathbb E}[w\,\log\pi_\theta]$. For the Gaussian that per-sample gradient is $-w\cdot(a-\mu)/
+\sigma^2$, pushing $\mu$ *toward* each selected action with magnitude bounded by the renormalized weight
+(at most $\sim2$) — there is no $r$ to compound across epochs, which is the fan-out immunity I came for.
+But the same structure carries the danger I predict below: the weights are frozen from *this rollout's*
+GAE advantages, so the regression target does not move as the policy moves through the ten epochs. A fixed
+target is stable when the advantage estimate is trustworthy and a trap when it is not — the policy
+regresses toward whichever action drew the top advantage for all ten epochs with nothing to correct it.
+The value head keeps rung 1's plain MSE toward the GAE returns, deliberately unchanged: I am swapping
+exactly one thing — the policy objective — so whatever the numbers do is attributable to that swap and not
+to a critic I quietly improved. The full module is in the answer.
 
-It is worth noting what this rung deliberately leaves out relative to the canonical method, so the
-reasoning lands the harness's implementation: there is no separate replay buffer or off-policy reuse (the
-loop is on-policy), no separate critic/actor optimizers or step-count scheduling (one shared Adam), no
-advantage *re*-normalization before the exp beyond what the loop already did, no action-bound or L2
-auxiliary losses, and the value targets are GAE returns rather than buffer TD($\lambda$). What survives,
-and what makes this AWR, is the core: replace the importance-ratio surrogate with an exponentiated-
-advantage-weighted supervised regression onto the taken actions.
-
-Let me close on falsifiable expectations against the rung-1 numbers, because that is what the next rung
-will read. Let me put a number on why Swimmer specifically is the environment where the fixed-target trap
-bites hardest. The frozen GAE scan uses $\gamma=0.99$, $\lambda=0.95$, so the advantage is a geometric
+Now to falsifiable expectations against the rung-1 numbers, and why Swimmer specifically is where the
+fixed-target trap bites hardest. The frozen GAE scan uses $\gamma=0.99$, $\lambda=0.95$, so the advantage
+is a geometric
 sum of TD residuals with decay $\gamma\lambda=0.99\times0.95=0.9405$, giving an effective mixing horizon
 of $1/(1-0.9405)\approx16.8$ steps. On a dense-reward environment like HalfCheetah, where reward accrues
 every step, a $\sim17$-step advantage window aggregates plenty of signal and the estimate is relatively
@@ -178,25 +161,15 @@ that noisy estimate, computes a near-binary weight from it, and *freezes* it as 
 all ten epochs. So the noisiest advantages get the most decisive, least-correctable commitment — the
 worst possible pairing. That is the mechanism, quantified, behind the asymmetric prediction below.
 
-My central bet is *reliability through construction*: because the trust region is baked into
-the regression weights rather than enforced by a soft, reactive penalty, I expect the seed-to-seed swings
-that plagued the penalty rung to shrink on at least one environment, and I expect AWR to *win* on the
-environments where the advantage signal is clean and the better-than-average actions are well separated —
-HalfCheetah most of all, where I expect to clear the penalty rung's 1676.6 mean. On
-InvertedDoublePendulum, where the achievable return is large and the dynamics reward decisive
-exploitation of high-advantage actions, the sharp near-binary $\beta=0.05$ concentration should also help,
-so I expect to beat the penalty rung's 6877.1 there too. But I am genuinely worried about the cost of the
-sharp temperature on the *low-signal* environment, and the fixed-target trace above is exactly why.
-Swimmer has long-horizon credit assignment and noisy advantages; the near-binary selection I computed
-means the regression commits, for all ten epochs, to whichever half of the minibatch scored above the
-per-minibatch mean — and on noisy advantages that half is frequently *noise*. It will confidently regress
-toward whichever actions happened to get a high (possibly spurious) advantage on that minibatch, and with
-no ratio and no KL to pull it back, nothing damps that. So my concrete, falsifiable prediction is
-asymmetric: AWR beats the penalty rung on HalfCheetah and InvertedDoublePendulum but is *worse* on
-Swimmer than the penalty rung's 101.4, and possibly the worst Swimmer of any rung, with the collapse
-concentrated on whichever seed draws the noisiest advantages. Because the task aggregates by geometric
-mean, a Swimmer collapse would cap AWR's overall score even if it wins the other two outright — the
-unmistakable signature that trading the ratio away for a sharp fixed-target regression bought decisiveness
-on the clean-signal environments at the cost of reliability on exactly the noisy one the geometric mean
-punishes hardest. That reliability-versus-decisiveness tradeoff, landing on the wrong side of the
-aggregator, is the specific weakness this rung would leave on the table.
+My central bet is *reliability through construction*: with the trust region baked into the weights rather
+than servoed by a soft penalty, I expect AWR to win where the advantage signal is clean and the
+better-than-average actions are well separated — HalfCheetah, clearing the penalty rung's 1676.6, and
+InvertedDoublePendulum, where the large achievable return rewards decisive exploitation and the sharp
+$\beta=0.05$ concentration should beat 6877.1. But the same sharpness is a liability on the low-signal
+environment. On Swimmer the near-binary selection commits for all ten epochs to whichever half of a
+minibatch beat its noisy mean — frequently noise — with no ratio and no KL to pull it back. So my
+prediction is asymmetric: AWR beats the penalty rung on HalfCheetah and InvertedDoublePendulum but comes
+in *worse* on Swimmer than 101.4, with the collapse concentrated on whichever seed draws the noisiest
+advantages. Because the score is a geometric mean, that one Swimmer collapse would cap AWR overall even if
+it wins the other two — decisiveness on the clean environments bought at the cost of reliability on
+exactly the noisy one the aggregator punishes hardest.

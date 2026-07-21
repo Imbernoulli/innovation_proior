@@ -114,20 +114,13 @@ regime where the surrogate bound stays tight (and, from the per-dimension arithm
 to per-coordinate moves of a few hundredths of a std, which is a sane step), and 0.5 is a neutral
 starting coefficient that the servo will pull to the right scale within a handful of updates regardless.
 
-The second harness detail is *which* KL I penalize. The exact KL between two diagonal Gaussians is
-available in closed form, but the loop's vocabulary is the log-ratio: I already have `logratio =
-newlogprob - mb_logprobs` for the diagnostics. The cheap, unbiased-in-expectation KL estimator that lives
-naturally here is $\hat{\mathrm{KL}} = \hat{\mathbb E}[(r-1)-\log r]$, the same quantity the scaffold
-computes for `approx_kl`. Let me verify this estimator is actually a KL surrogate and not just a
-plausible-looking expression, by expanding it in the small-move regime where I intend to operate. Write
-$x=\log r=\mathrm{newlogprob}-\mathrm{oldlogprob}$, so $r=e^x$ and the estimator's integrand is
-$(e^x-1)-x$. Taylor-expand: $e^x-1-x = \tfrac{x^2}{2}+\tfrac{x^3}{6}+\dots$, so to leading order it is
-$\tfrac12(\Delta\log\pi)^2$. Two things fall out and both are exactly what I want. First, it is
-non-negative for every sample ($e^x-1-x\ge0$ for all real $x$, with equality only at $x=0$), so unlike
-the raw $-\log r$ it never turns into a *reward* for moving — it is a genuine distance. Second, its
-expectation $\tfrac12\mathbb E[(\Delta\log\pi)^2]$ is precisely the second-order (Fisher) expansion of
-the KL, so I am penalizing a faithful proxy for the trust-region quantity while paying only the log-ratio
-I already have. Good — the estimator is principled, not just convenient.
+The second harness detail is *which* KL I penalize. The exact diagonal-Gaussian KL is available in closed
+form, but the loop's vocabulary is the log-ratio I already have, so I use the estimator $\hat{\mathrm{KL}}
+= \hat{\mathbb E}[(r-1)-\log r]$ — the same expression the scaffold computes for `approx_kl`. With
+$x=\log r$ its integrand $(e^x-1)-x = \tfrac{x^2}{2}+\dots$ has the two properties I need: it is
+non-negative for every sample (equality only at $x=0$), so unlike raw $-\log r$ it never becomes a
+*reward* for moving; and its expectation $\tfrac12\mathbb E[(\Delta\log\pi)^2]$ is the second-order
+(Fisher) expansion of the KL, a faithful trust-region proxy paid for with the log-ratio I already have.
 
 But there is one critical difference from the diagnostic use of this same expression: the diagnostic
 `approx_kl` is computed under `torch.no_grad()`, whereas my *penalty* term must carry a gradient. The
@@ -153,36 +146,20 @@ machinery layered on top of it in this rung — folded in with the loop's `vf_co
 MuJoCo, where the Gaussian's learned log-std already supplies exploration). The full module is in the
 answer.
 
-Before I commit, let me trace the servo's steady-state behaviour, because the interaction between the
-$1.5\times$ dead-zone and the geometric doubling determines how tight the KL control actually is, and
-that tightness is exactly what will decide whether this rung is stable or jittery. Model the realized KL
-of a step as roughly inversely proportional to $\beta$ — a bigger penalty buys a smaller move — so the
-servo is a bang-bang controller on a monotone plant. Say it has settled and a minibatch comes in with
-KL slightly above the upper trip $1.5\,d_{targ}=0.015$. It doubles $\beta$, which roughly *halves* the
-next step's KL, dropping it to $\sim0.0075$ — still inside the dead-zone $[d_{targ}/1.5,\,1.5\,d_{targ}]
-= [0.0067,\,0.015]$, so it holds. Good: one correction lands the KL back in-band. But the *reverse*
-corner is looser. If a step undershoots to just below $d_{targ}/1.5=0.0067$, the servo halves $\beta$,
-which roughly *doubles* the next KL to $\sim0.0134$ — again in-band. So the dead-zone is wide enough
-(a factor of $2.25$) that a single doubling or halving from either edge lands back inside it rather than
-overshooting to the opposite edge, which means the servo does *not* limit-cycle in the steady state; it
-parks $\beta$ and only nudges it as the plant drifts. That is reassuring for the average case. What it
-does *not* protect against is a minibatch whose advantage estimate is a genuine outlier: that single
-step can take a KL of, say, $3\,d_{targ}$ *before* the doubling has a chance to react, because the
-adaptation is strictly after-the-fact. The dead-zone bounds the servo's steady jitter but not the size
-of a first, surprising overshoot — and with 320 minibatches per batch, surprising minibatches are not
-rare. This is the concrete mechanism behind the seed-variance worry I will state at the end: the control
-is tight on average and loose in the tail.
+One property of this servo matters for what follows. Modelling the realized KL as roughly inverse in
+$\beta$, the $1.5\times$ dead-zone (a factor of $2.25$ wide) is wide enough that a single doubling or
+halving from either edge lands back inside it rather than overshooting to the opposite edge — so the servo
+does not limit-cycle; it parks $\beta$ and only nudges it as the plant drifts. But the adaptation is
+strictly after-the-fact: a minibatch whose advantage estimate is an outlier can take a KL of several
+$d_{targ}$ *before* the doubling reacts, and with 320 minibatches per batch such surprises are not rare.
+The control is tight on average and loose in the tail — which is the mechanism behind the seed-variance
+worry I close on.
 
-I should be honest about what this task's adaptive-KL rung is *not*, because the same idea has been
-realized in heavier forms elsewhere and I want the reasoning to land exactly the harness's
-implementation, not an imported one. There is no outer per-iteration adaptation loop that re-runs the
-whole batch at a fixed $\beta$ and only then adjusts — the adaptation happens *inline*, per minibatch,
-mutating `agent._kl_beta` as the 320 steps proceed, which is finer-grained and a little noisier than a
-once-per-iteration servo but is the only shape the free-function contract supports cleanly. There is no
-separate KL-early-stopping break (`target_kl` in the loop defaults to `None`); the penalty is the sole
-brake. And the KL is the cheap log-ratio estimator I just verified, not the closed-form Gaussian KL.
-These are the harness's constraints, and the rung is the faithful realization of adaptive-KL-penalty PPO
-*within* them.
+The same idea has heavier realizations elsewhere, but the free-function contract fixes the shape here:
+adaptation happens *inline* per minibatch, mutating `agent._kl_beta` as the 320 steps proceed rather than
+once per iteration after re-running the batch — finer-grained and a little noisier, but the only clean
+fit. There is no separate KL-early-stopping break (`target_kl` defaults to `None`); the penalty is the
+sole brake, and the KL is the cheap log-ratio estimator above, not the closed-form Gaussian KL.
 
 One more interaction is worth naming because it is baked into the frozen loop and my servo has to live
 with it: the learning rate anneals linearly to zero over the 488 iterations. That means a fixed $\beta$
@@ -195,30 +172,16 @@ differences I computed earlier; it is also silently compensating for the LR sche
 down as the anneal bites. A hand-tuned $\beta$ would have to fight the schedule too, which is one more
 reason the fixed variant was hopeless and the servo is the right shape for this substrate.
 
-Let me close on what I expect, since this is the first rung and the numbers it lands will set the floor
-the next rung has to beat. The penalty servo should keep the policy from the outright collapse the
-placeholder would suffer, so I expect real learning on all three environments — this is a working
-on-policy method, not a broken one. But I am uneasy about two things that I think will show up as the
-weakness this rung leaves on the table, and both trace back to arithmetic I have already done. First, the
-inline per-minibatch adaptation is reactive: it only shrinks $\beta$ *after* a minibatch has already
-overshot the KL, and with 320 minibatches per batch each carrying its own noisy advantage estimate, there
-is ample opportunity for a minibatch to take a too-large step *before* the coefficient catches up. That
-occasional overshoot is exactly the kind of instability that inflates seed-to-seed variance — I would not
-be surprised to see one environment swing widely across the three seeds {42, 123, 456}, because whether a
-run gets unlucky with an early overshoot is itself seed-dependent. Second, a soft KL penalty asks the
-optimizer to *trade off* return against distance, and the optimizer will sometimes pay the KL cost to
-chase a large advantage on a noisy minibatch — the penalty *prices* a bad move rather than *forbidding*
-it; this means on the environments where the advantage estimates are noisiest — Swimmer, with its long-horizon
-credit assignment where the discount and GAE settings bite hardest, and the unstable
-InvertedDoublePendulum — I expect the penalty form to be the *least* reliable, not just the least
-efficient. Because the task scores by geometric mean across the three environments, any single
-environment where the penalty servo gets unlucky drags the whole score down hard. So my falsifiable
-expectation is concrete: this rung learns everywhere but is the *least balanced* of the update rules I
-will try — it should be the one most prone to a weak environment, or a weak seed within an environment,
-pulling its geometric-mean score down through the aggregator that punishes the worst factor hardest. The
-two properties I distrust are named and separable: the penalty is *soft*, so the optimizer can pay the KL
-cost to chase a noisy advantage, and the servo is *reactive*, so it only shrinks $\beta$ after a minibatch
-has already overstepped. If the numbers show the seed-to-seed instability I expect, those two properties
-are precisely what a stronger update rule on this substrate would have to do without — and this rung's
-role is to establish, as the floor, exactly how much reliability a soft, after-the-fact leash leaves on
-the table.
+Let me close on what I expect, since this floor sets what the next update rule has to beat. The penalty
+servo should keep the policy from the placeholder's outright collapse, so I expect real learning on all
+three environments. But two properties I distrust are named and separable, and both trace to arithmetic
+already done. The penalty is *soft*: it asks the optimizer to trade off return against distance, so on a
+noisy minibatch it will sometimes pay the KL cost to chase a large advantage — it *prices* a bad move
+rather than *forbidding* it. And the servo is *reactive*: it shrinks $\beta$ only *after* a minibatch has
+overshot, and with 320 minibatches per batch each carrying its own noisy advantage there is ample room to
+overstep before the coefficient catches up. Together they make this the *least balanced* of the update
+rules I will try: it should learn everywhere but leave seed-to-seed instability on whichever environment
+carries the noisiest advantages, and since the task scores by geometric mean, one unlucky environment —
+or one unlucky seed within it — drags the whole score down through the aggregator that punishes the worst
+factor hardest. A stronger rule on this substrate would have to hold the policy near $\pi_{old}$ without a
+soft, after-the-fact leash.
