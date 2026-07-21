@@ -1,208 +1,156 @@
-ProteinMPNN did what I bet it would and the numbers confirm the diagnosis was right. On CATH 4.2 it
-recovered 0.4603 at perplexity 5.4723, on CATH 4.3 0.4612 / 5.4639, on TS50 0.4829 / 5.0827 — a clean
-jump over GVP's 0.4310 / 0.4337 / 0.4602, and the perplexity fell from the high-5.8s into the mid-5.4s.
-So the lever was exactly what I claimed: pouring 25 invariant inter-atomic distances and a live edge
-update into the graph beats one direction vector and frozen edges. The thin-edge starvation, not the
+ProteinMPNN did what I bet it would. On CATH 4.2 it recovered 0.4603 at perplexity 5.4723, on CATH 4.3
+0.4612 / 5.4639, on TS50 0.4829 / 5.0827 — a clean jump over GVP's 0.4310 / 0.4337 / 0.4602, perplexity
+falling from the high-5.8s into the mid-5.4s. So the lever was as claimed: 25 invariant inter-atomic
+distances and a live edge update beat one direction vector and frozen edges. Thin-edge starvation, not the
 choice of invariance route, was GVP's problem.
 
-But I should not stop at "it went up." I want to read *where* it went up, because the shape of the gain
-tells me what is still missing. Take the recovery deltas benchmark by benchmark: CATH 4.2 rose 0.0293,
-CATH 4.3 rose 0.0275, TS50 rose only 0.0227. The richest gain landed on the two in-distribution CATH
-sets and the *smallest* on TS50, the out-of-distribution de novo set. That is exactly what a local-
-geometry fix should look like. Distances sharpen the reading of each residue's immediate neighborhood,
-and on structures drawn from the training distribution that sharper local read converts directly into
-recovery; on TS50, whose folds are unlike anything trained on, a purely local improvement helps less
-because the thing that transfers across distribution shift is not local sharpness but *global,
-fold-agnostic* structure. So the delta pattern is a signpost: ProteinMPNN's edge distances are an
-in-distribution lever, and if I want to move TS50 I need machinery that is transferable rather than
-merely local. Hold that thought, because it will become the sharpest prediction of this rung.
+But *where* it went up tells me what is still missing. Take the recovery deltas benchmark by benchmark:
+CATH 4.2 rose 0.0293, CATH 4.3 rose 0.0275, TS50 only 0.0227. The richest gain landed on the two
+in-distribution CATH sets and the *smallest* on TS50, the out-of-distribution de novo set — exactly what a
+local-geometry fix should look like. Distances sharpen the reading of each residue's immediate
+neighborhood, and on structures drawn from the training distribution that sharper local read converts
+directly into recovery; on TS50, whose folds are unlike anything trained on, a purely local improvement
+helps less, because what transfers across distribution shift is not local sharpness but *global,
+fold-agnostic* structure. So ProteinMPNN's edge distances are an in-distribution lever, and moving TS50
+needs machinery that is transferable rather than merely local.
 
-The perplexity column tells a complementary story worth reading. GVP → ProteinMPNN dropped perplexity by
-0.43 on CATH 4.2, 0.36 on CATH 4.3, and 0.40 on TS50 while recovery moved by only 0.02–0.03. So the
-smooth `exp`-NLL signal fell several times more, in relative terms, than the argmax rate rose. That is
-the joint move I asked for last rung actually happening — both metrics improved together, so the gain was
-a genuine narrowing of the whole predictive distribution and not argmax quantization — and it also tells
-me perplexity is the more *sensitive* readout of a geometry improvement: it registers the encoder getting
-surer about every residue even where the argmax was already right and cannot move. I will want that fact
-when I judge this rung, because if the new machinery sharpens the distribution I expect it to show in
-perplexity at least as loudly as in recovery.
+The perplexity column tells a complementary story. GVP → ProteinMPNN dropped perplexity by 0.43 on CATH
+4.2, 0.36 on CATH 4.3, 0.40 on TS50 while recovery moved only 0.02–0.03. So the smooth `exp`-NLL signal
+fell several times more, in relative terms, than the argmax rate rose — both metrics improved together, so
+the gain was a genuine narrowing of the whole distribution and not argmax quantization, and perplexity is
+the more *sensitive* readout of a geometry improvement, registering the encoder getting surer about every
+residue even where the argmax was already right and cannot move. I'll want that when I judge this rung.
 
-ProteinMPNN also stopped short in three ways I can name concretely. First, its aggregation is an
-*unweighted* symmetric MLP sum divided by a fixed `scale`; every valid neighbor contributes equally, and
-the model never learns that a tightly-packed hydrophobic contact should weigh more than a distant
-glancing one. Second, its only side-chain proxy is a *single fixed* virtual `Cβ` at the ideal tetrahedral
-position — one hand-placed point, identical for every residue, when the geometry that distinguishes amino
-acids could use a learned, transferable probe. Third, it has no global context: every residue sees only
-its `k`-NN neighborhood, never a protein-level summary, so it cannot tell a buried core position from a
-surface one except through whatever leaks in over three hops. Each of those is a concrete handle, and the
-next rung should grab all three at once while keeping the rich invariant featurization that just paid off.
+ProteinMPNN also stopped short in three ways. Its aggregation is an *unweighted* symmetric MLP sum divided
+by a fixed `scale`; every valid neighbor contributes equally, and the model never learns that a
+tightly-packed hydrophobic contact should weigh more than a distant glancing one. Its only side-chain proxy
+is a *single fixed* virtual `Cβ`, one hand-placed point identical for every residue, when the geometry that
+distinguishes amino acids could use a learned, transferable probe. And it has no global context: every
+residue sees only its `k`-NN neighborhood, never a protein-level summary, so it cannot tell a buried core
+position from a surface one except through whatever leaks in over three hops.
 
-I should ask whether I even need all three, or whether the cheap move — just stack more of ProteinMPNN's
-own block — would get me there. It would not, and the delta table says why. Adding layers to the
-unweighted-sum block buys more hops of local propagation, which is more of the *in-distribution* lever
-that already gained the most (the CATH sets) and the *least* where I most need help (TS50). Depth alone
-cannot learn to weight one neighbor over another — the sum is structurally equal-weight however deep it
-runs — and it cannot manufacture a protein-level view a `k`-NN stack never forms except by slow leakage.
-So more depth would likely nudge CATH and leave the TS50 gap roughly where it is, which is the opposite
-of what I want. The three mechanisms are not interchangeable with depth; they are the pieces that address
-weighting, transferable probe geometry, and global context directly. That is why I grab them together
-rather than reaching for the free parameter first.
+The cheap move — just stack more of ProteinMPNN's own block — would not get me there, and the delta table
+says why. Adding layers to the unweighted-sum block buys more hops of local propagation, more of the
+in-distribution lever that already gained the most and the least where I most need help. Depth alone cannot
+learn to weight one neighbor over another — the sum is structurally equal-weight however deep it runs — and
+it cannot manufacture a protein-level view a `k`-NN stack never forms except by slow leakage. So more depth
+would nudge CATH and leave the TS50 gap roughly where it is, the opposite of what I want. The three
+mechanisms address weighting, transferable probe geometry, and global context directly, so I grab them
+together rather than reaching for the free parameter first.
 
-Start with the aggregation, because it is the cheapest big win. ProteinMPNN sums messages; I want the
-graph to *decide* how much neighbor `j` matters to center residue `i`. The obvious template is graph
-attention: make a query from `i`, a key and value from `j`, score by a dot product. But I should think
-about whether the dot product is the right scoring function *here*, and it is not. In a plain transformer
-the edge is at most a small additive positional bias added to `q_i · k_j`; the geometry only shifts the
-logit, it cannot gate on the content. In this graph the edge feature is not a bias — it *is* the pairwise
-geometry, the 25-distance pose I worked so hard to build, and I want it to participate in the score
-multiplicatively and nonlinearly, not as an afterthought term. So instead of separate query/key
-projections and a dot product, score each edge with an MLP over the concatenation of the center node, the
-edge, and the neighbor node, `w_ji = AttMLP([h_i ‖ e_ji ‖ h_j]) / sqrt(d_head)`, softmax over the
-incoming neighbors of the same center, and form the value from the edge-and-neighbor concatenation
-`v_j = NodeMLP([e_ji ‖ h_j])`, then `ĥ_i = Σ_j a_ji v_j`. The `1/sqrt(d_head)` scaling matters for the
-Transformer reason — without it large head dimensions saturate the neighbor softmax into a near-argmax
-and the gradient through the weights dies. This replaces ProteinMPNN's equal-weight sum with a learned,
-geometry-aware weighting, which is precisely the missing lever on aggregation. I give the attention four
-heads over the 128-dim hidden, `d_head = 32`, for a concrete reason rather than habit: a single head can
-weight the neighborhood by only one criterion at a time, but a residue's identity depends on several
-relations at once — how tightly a neighbor packs, how far along the chain it sits, how its probe atoms
-align — and four heads let the same neighborhood be pooled under four different learned weightings in
-parallel, one head free to key on packing distance while another keys on sequence proximity. The
-`1/sqrt(d_head) = 1/sqrt(32)` factor is what keeps each head's logits in the regime where the softmax
-stays soft. I keep the edge update ProteinMPNN introduced — after the node attention refines `h_i`, re-derive each edge from its refreshed
-endpoints, `e_ji ← EdgeMLP([ĥ_j ‖ e_ji ‖ ĥ_i])` — so node and edge states still co-adapt through depth.
+Start with the aggregation, the cheapest big win. ProteinMPNN sums messages; I want the graph to *decide*
+how much neighbor `j` matters to center `i`. The obvious template is graph attention — query from `i`, key
+and value from `j`, score by dot product — but the dot product is the wrong scoring function here. In a
+plain transformer the edge is at most a small additive positional bias on `q_i · k_j`; the geometry only
+shifts the logit. In this graph the edge feature *is* the pairwise geometry, the 25-distance pose I worked
+to build, and I want it to participate in the score multiplicatively and nonlinearly, not as an
+afterthought. So instead of query/key projections and a dot product, score each edge with an MLP over the
+concatenation of center node, edge, and neighbor node, `w_ji = AttMLP([h_i ‖ e_ji ‖ h_j]) / sqrt(d_head)`,
+softmax over the incoming neighbors of the same center, and form the value from the edge-and-neighbor
+concatenation `v_j = NodeMLP([e_ji ‖ h_j])`, then `ĥ_i = Σ_j a_ji v_j`. The `1/sqrt(d_head)` scaling
+matters for the Transformer reason — without it large head dimensions saturate the neighbor softmax into a
+near-argmax and the gradient through the weights dies. Four heads over the 128-dim hidden, `d_head = 32`,
+because a residue's identity depends on several relations at once — how tightly a neighbor packs, how far
+along the chain it sits, how its probe atoms align — and four heads let the same neighborhood be pooled
+under four learned weightings in parallel. I keep the edge update ProteinMPNN introduced — after the node
+attention refines `h_i`, re-derive each edge from its refreshed endpoints,
+`e_ji ← EdgeMLP([ĥ_j ‖ e_ji ‖ ĥ_i])` — so node and edge states still co-adapt through depth.
 
-Next, the global context, because the second weakness of ProteinMPNN was that residues never see the
-protein as a whole. Full global attention would give every residue direct access to every other, and I
-should price that before I reject it. It is `O(L²)` per layer against the graph's `O(L·k)`; with `k = 30`
-and proteins running to several hundred residues — say `L ≈ 500` — that is a ratio of `L/k ≈ 16`, sixteen
-times the compute per layer, ten layers deep, and in exchange I get a mechanism with *no locality prior*
-that has to relearn from scratch that spatial neighbors matter most. I refuse to pay `16×` to discard the
-very inductive bias the KNN graph gave me for free. What I actually need is far less: a cheap protein-
-level summary. Mean-pool the current node embeddings over the residues of the same protein, push that
-through an MLP, and use a *sigmoid gate* to modulate each residue's channels, `h_i ← ĥ_i · σ(GateMLP(c))`.
-Why a multiplicative gate and not an additive context? Trace the additive version: adding the same
-context vector `c` to every `h_i` shifts all residues by an identical amount, which is just a per-protein
-bias — it cannot say "keep this channel here, suppress it there," it moves everyone the same way and
-washes out the residue-specific geometry that is the whole carrier of the prediction. Multiplication with
-`σ(·) ∈ (0, 1)` per channel lets the global summary keep or damp each channel independently while the
-local representation stays the carrier. This is linear in residues and slots in after the node and edge
-updates. So one encoder block is now: MLP-scored neighbor attention, a wide feed-forward refinement, the
-edge update, and the global channel gate — strictly more than ProteinMPNN's node-then-edge block,
-addressing aggregation and context together.
+Next the global context. Full global attention would give every residue direct access to every other, but
+price it first: `O(L²)` per layer against the graph's `O(L·k)`; with `k = 30` and `L ≈ 500` that is a ratio
+of `L/k ≈ 16`, sixteen times the compute per layer, ten layers deep, and in exchange a mechanism with *no
+locality prior* that has to relearn from scratch that spatial neighbors matter most. I refuse to pay `16×`
+to discard the inductive bias the KNN graph gave me for free. What I need is far less: a cheap protein-level
+summary. Mean-pool the current node embeddings over the residues of the same protein, push through an MLP,
+and use a *sigmoid gate* to modulate each residue's channels, `h_i ← ĥ_i · σ(GateMLP(c))`. Not an additive
+context, because adding the same context vector to every `h_i` shifts all residues by an identical amount —
+a per-protein bias that cannot say "keep this channel here, suppress it there," it moves everyone the same
+way and washes out the residue-specific geometry that is the whole carrier. Multiplication with
+`σ(·) ∈ (0, 1)` per channel lets the global summary keep or damp each channel independently while the local
+representation stays the carrier. Linear in residues, slotted in after the node and edge updates. So one
+encoder block is now MLP-scored neighbor attention, a wide feed-forward, the edge update, and the global
+channel gate.
 
-Now the third weakness, the single fixed virtual atom, and this is the richest fix. ProteinMPNN's one
-`Cβ` is a hand-placed point; I want *learnable* virtual atoms — points whose positions in the local
-backbone frame are parameters shared across all residues. Build the frame from the three backbone atoms
-around `CA` and place each virtual atom `V_i^k = x_k·b_i + y_k·n_i + z_k·(b_i×n_i) + CA_i` with shared
-unit-normalized coefficients `(x_k, y_k, z_k)`. Two things need checking here. First, invariance: `b_i`
-and `n_i` are backbone difference vectors and `b_i×n_i` their cross product, so all three rotate with the
-residue; a fixed linear combination of them added to `CA_i` therefore transforms exactly as the backbone
-does, and every distance measured from `V_i^k` is invariant — the learnable point is as clean as the real
-atoms. Second, the discipline of *sharing* the coefficients across residues: if every residue had its own
-virtual coordinates the points would be arbitrary per example and the model would overfit to placements
-that mean nothing across proteins; shared coordinates force a *transferable* placement — a consensus
-geometric probe that adds side-chain-like information without ever seeing a side chain, and that the
-optimizer can tune to wherever it most helps discriminate amino acids. There is a satisfying continuity
-in the initialization I should note: the first virtual atom is seeded at exactly the tetrahedral
-coefficients ProteinMPNN used for its fixed `Cβ`, so this rung literally *starts* from ProteinMPNN's one
-hand-placed probe and is free to move it and add two more. With three virtual atoms I get extra invariant
-distances on both nodes and edges: virtual-virtual pair distances at the node level, and same-index and
-cross-virtual distances at the edge level, all in the RBF basis. This is the principled generalization of
-ProteinMPNN's lone fixed `Cβ` — three learned probes instead of one fixed one, seeded at the fixed one so
-nothing is lost at initialization. Three is a deliberate count, not a round number. Each virtual atom I
-add contributes `n·(n−1)` ordered virtual-virtual node channels through the RBF, so three already spend
-`3·2·16 = 96` node channels — nearly half the 204-channel node feature — plus their edge terms; pushing
-to four or five would let the virtual-atom distances dominate the featurization and invite the model to
-overfit probe placements that do not transfer, the very failure the sharing discipline exists to prevent.
-Three probes is enough to triangulate a side-chain-like direction while keeping the learned geometry a
-minority of the feature budget, so the real backbone distances still anchor the read.
+Now the third weakness, the single fixed virtual atom, and the richest fix. I want *learnable* virtual
+atoms — points whose positions in the local backbone frame are parameters shared across all residues. Build
+the frame from the three backbone atoms around `CA` and place each virtual atom
+`V_i^k = x_k·b_i + y_k·n_i + z_k·(b_i×n_i) + CA_i` with shared unit-normalized coefficients. Two checks.
+Invariance: `b_i`, `n_i` are backbone difference vectors and `b_i×n_i` their cross product, so all three
+rotate with the residue; a fixed linear combination added to `CA_i` transforms exactly as the backbone
+does, and every distance from `V_i^k` is invariant. And the discipline of *sharing* the coefficients across
+residues: per-residue virtual coordinates would be arbitrary per example and overfit placements that mean
+nothing across proteins, while shared coordinates force a *transferable* placement — a consensus geometric
+probe that adds side-chain-like information without ever seeing a side chain, tuned by the optimizer to
+wherever it most helps discriminate amino acids. There is a continuity worth noting: the first virtual atom
+is seeded at exactly the tetrahedral coefficients ProteinMPNN used for its fixed `Cβ`, so this rung
+literally *starts* from that one hand-placed probe and is free to move it and add two more. With three
+virtual atoms I get extra invariant distances on both nodes and edges. Three is deliberate: each virtual
+atom contributes `n·(n−1)` ordered virtual-virtual node channels through the RBF, so three already spend
+`3·2·16 = 96` node channels — nearly half the 204-channel node feature — and pushing to four or five would
+let the virtual-atom distances dominate the featurization and invite overfitting the probe placements, the
+very failure the sharing discipline exists to prevent. Three is enough to triangulate a side-chain-like
+direction while keeping the learned geometry a minority of the feature budget.
 
-Around those virtual atoms I enrich the rest of the featurization to the limit of what invariant scalars
-can carry, since the ProteinMPNN run proved that feature richness is the dominant lever. For nodes:
-intra-residue real-atom pair distances (`CA-N, CA-C, CA-O, N-C, N-O, O-C`) in the RBF basis, the virtual-
-virtual distances, the six dihedral `{sin, cos}` channels, and the local orientation channels — which
-totals `6·16 + 12 + 3·2·16 = 204` invariant channels per node. For edges: a long list of inter-residue
-real-atom pair distances (fifteen pairs) in the RBF basis, the virtual-atom edge distances (three
-same-index plus the cross terms), several direction features — the dot products of the backbone direction
-vectors with the neighbor direction and their cross-product magnitudes, all invariant because they are
-projections and lengths, not raw vectors — a few angle features, and the sinusoidal positional encoding
-of the offset, which comes to `15·16 + 4 + 8 + 16 + (3·16 + 3·2·16) = 412` channels per edge. The exact
-counts close the way PiFold's featurizer does; the point is that every channel is an invariant scalar and
-together they describe the local geometry far more completely than ProteinMPNN's 25 distances alone. I
-normalize with BatchNorm here rather than LayerNorm — the dense per-residue MLP stacks that embed these
-features benefit from batch statistics over the flattened `(B·L, hidden)` tensor, and BatchNorm is what
-the reference PiGNN uses; the trade is that BatchNorm couples the batch, so a residue's normalization now depends on the other
-proteins in its batch — which is one more reason the deeper stack will want a modest but not tiny batch
-size, small enough to fit ten layers in memory yet large enough that the batch statistics stay stable.
+Around those probes I enrich the featurization to the limit of what invariant scalars carry, since the
+ProteinMPNN run proved feature richness is the dominant lever. Nodes: intra-residue real-atom pair
+distances (`CA-N, CA-C, CA-O, N-C, N-O, O-C`) in the RBF basis, the virtual-virtual distances, six dihedral
+`{sin, cos}` channels, and local orientation channels — `6·16 + 12 + 3·2·16 = 204` invariant channels.
+Edges: fifteen inter-residue real-atom pair distances in the RBF basis, the virtual-atom edge distances
+(three same-index plus cross terms), direction features — dot products of the backbone direction vectors
+with the neighbor direction and cross-product magnitudes, all invariant because they are projections and
+lengths, not raw vectors — a few angle features, and the sinusoidal offset encoding —
+`15·16 + 4 + 8 + 16 + (3·16 + 3·2·16) = 412` channels. The exact counts aren't the point; every channel is
+an invariant scalar and together they describe the local geometry far more completely than 25 distances
+alone. I normalize with BatchNorm rather than LayerNorm — the dense per-residue MLP stacks benefit from
+batch statistics over the flattened `(B·L, hidden)` tensor — but the trade is that BatchNorm couples the
+batch, so a residue's normalization now depends on the other proteins in its batch, one more reason the
+deeper stack wants a modest but not tiny batch size.
 
-Now the decoder, and here the encoder-only edit surface and PiFold *agree* for once, which is why this
-rung fits the task so naturally. The autoregressive factorization `p(S|X) = Π_t p(s_t | s_<t, X)` is
-expressive but pays a sequential cost, and many of the dependencies it models through previously
-generated tokens are *already* induced by the shared structure — if two residues pack together, the
-backbone geometry and the contact graph have told the encoder so. So the right trade is to make the
-structural encoder strong enough that a *one-shot* decoder suffices: `p(S|X) = Π_i p(s_i | X)`, with the
-decoder a single linear readout to 20 logits and a log-softmax. This is not a claim that residues are
-physically independent; it is the claim that the final node embeddings already contain the structural
-context for each marginal. And it is exactly what the harness wants: `forward(X, mask)`, no sequence
-input, one parallel forward pass, no length-`L` decoding loop. Here is the structural point that makes me
-expect this rung to *top* the ladder rather than merely improve on it. GVP and ProteinMPNN each arrived
-carrying an autoregressive decoder in their original design, and the edit surface *amputated* it — those
-two methods lost the half of the model that was meant to carry residue-residue couplings, and had to make
-do with a per-residue MLP they were never built for. PiFold *chose* the one-shot decoder from the start;
-its entire philosophy is to push the work into the encoder. So when the harness removes the
-autoregressive decoder, PiFold loses nothing — the component the task keeps, the encoder, is precisely
-the component PiFold invested in. It is the one method on the ladder whose strength was never in the
-decoder the harness removed, and that alignment, not just the extra machinery, is why I expect it on top.
+Now the decoder, where the encoder-only edit surface and PiFold *agree*. The autoregressive factorization
+`p(S|X) = Π_t p(s_t | s_<t, X)` is expressive but pays a sequential cost, and many of the dependencies it
+models through previously generated tokens are *already* induced by the shared structure — if two residues
+pack together, the backbone geometry and the contact graph have told the encoder so. So make the encoder
+strong enough that a *one-shot* decoder suffices: `p(S|X) = Π_i p(s_i | X)`, the decoder a single linear
+readout to 20 logits and a log-softmax. Not a claim that residues are physically independent — the claim
+that the final node embeddings already contain the structural context for each marginal. And it is exactly
+what the harness wants: `forward(X, mask)`, no sequence input, one parallel forward pass. Here is the
+structural point that makes me expect this rung to *top* the ladder. GVP and ProteinMPNN each arrived
+carrying an autoregressive decoder, and the edit surface *amputated* it — those two lost the half of the
+model meant to carry residue-residue couplings and made do with a per-residue MLP they were never built
+for. PiFold *chose* the one-shot decoder from the start; its whole philosophy pushes the work into the
+encoder. So when the harness removes the autoregressive decoder, PiFold loses nothing — the component the
+task keeps is precisely the component PiFold invested in. That alignment, not just the extra machinery, is
+why I expect it on top.
 
-Two task-specific implementation notes on which PiFold this is. First, the reference PiFold runs ten
-PiGNN layers, far more than the scaffold's default three; the deeper stack is where the attention,
-edge-update, and context-gate machinery earns its keep, so this rung sets `num_encoder_layers = 10` via
-the `CONFIG_OVERRIDES` the edit surface allows. The depth buys two things at once. It deepens the
-attention refinement, but it also widens the receptive field: three hops of a `k = 30` graph reach only a
-few residues of graph distance out from each center, a modest local patch, whereas ten hops let signal
-propagate across essentially a whole domain — so even before the explicit global gate fires, a
-ten-layer stack has let each residue's embedding integrate structure from far down the chain. The gate
-then adds the protein-level summary on top of that already-domain-scale receptive field. Ten
-attention-plus-context layers over the full batch-normed feature stack are heavier per step — each layer
-now carries a value tensor on the `(B, L, K, hidden)` grid, and ten of them stacked is a real memory bill
-— so the same override drops `batch_size` to 8 to fit, both within the four keys the harness permits
-(`learning_rate, dropout, num_encoder_layers, batch_size`). The neighbor softmax is guarded the obvious
-way: padded neighbors have their logits pushed to `-1e9` before the softmax, and `exp(-1e9)` underflows
-to zero, so no attention weight leaks onto padding no matter how the graph was filled — the aggregation
-sees only real neighbors. Second, this is the *encoder* of PiFold transplanted into the dense
-batched `(B, L, K)` harness with the scaffold `mask`, not the sparse scatter-based reference; the
-attention softmax is over the neighbor axis with a `-1e9` mask on padded neighbors, and the BatchNorm is
-applied on flattened `(B·L, hidden)` tensors. The featurizer, the PiGNN block, and the linear one-shot
-decoder are faithful; the graph plumbing is the dense form the harness provides.
+Two implementation notes on which PiFold this is. PiFold runs ten layers, far more than the scaffold's
+three; the deeper stack is where the attention, edge-update, and context-gate machinery earns its keep, so
+this rung sets `num_encoder_layers = 10` via `CONFIG_OVERRIDES`. Depth buys two things: it deepens the
+attention refinement, and it widens the receptive field — three hops of a `k = 30` graph reach only a few
+residues out, whereas ten hops let signal propagate across essentially a whole domain, so even before the
+explicit gate fires each residue's embedding integrates structure from far down the chain, and the gate
+adds the protein-level summary on top. Ten layers over the full batch-normed feature stack are heavier per
+step — each carries a value tensor on the `(B, L, K, hidden)` grid — so the same override drops
+`batch_size` to 8 to fit, both within the four keys the harness permits. The neighbor softmax is guarded
+the obvious way: padded neighbors have their logits pushed to `-1e9` before the softmax, which underflows
+to zero, so no weight leaks onto padding. And this is the *encoder* of PiFold in the dense batched
+`(B, L, K)` form the harness provides, with the scaffold `mask` rather than a sparse scatter.
 
-Let me check invariance once more, since I leaned entirely on invariant scalars again. All node and edge
-distance features are inter-atomic distances (invariant); the dihedrals and the direction *dot products*
-and *cross-product magnitudes* are projections and lengths, hence invariant; the virtual atoms are placed
-*in the local frame*, so distances from them rotate and translate with the residue and stay invariant, as
-I checked above; the positional encoding is frame-independent; the attention is a softmax over a symmetric
-neighbor set. The linear readout consumes only these invariant node embeddings, so the output distribution
-is invariant by construction. Cost is `O(L·k)` per layer with the context gate `O(L)`.
+Invariance holds again by construction: every node and edge feature is an inter-atomic distance, a
+dihedral, a direction dot-product or cross-product magnitude, a frame-local virtual-atom distance, or a
+frame-independent positional encoding; the attention is a softmax over a symmetric neighbor set; the linear
+readout consumes only these invariant embeddings. Cost is `O(L·k)` per layer with the context gate `O(L)`.
 
-The falsifiable expectations against ProteinMPNN's measured numbers. The bet is that learned attention
-(over equal-weight sums), three learned virtual atoms (over one fixed `Cβ`), a global context gate (over
-none), a richer invariant feature set, and a deeper ten-layer stack together beat ProteinMPNN — and that
-PiFold's one-shot encoder-only design fits this task better than any method whose decoder was amputated.
-So I expect a clear gain over ProteinMPNN's 0.4603 / 0.4612 / 0.4829: recovery into the mid-0.46s on
-CATH 4.2 and into the high-0.47s on CATH 4.3, with TS50 climbing past 0.52, and perplexity dropping below
-ProteinMPNN's 5.47 / 5.46 / 5.08 toward the low-5s and mid-4s. And here is the sharp one, the prediction
-I built on the delta table above: I expect the *largest* recovery jump to land on TS50. The reasoning is
-mechanistic, not hopeful. When ProteinMPNN added purely local edge distances, TS50 gained the *least*
-(0.0227 against CATH's 0.0293 and 0.0275) because local sharpness does not transfer across distribution
-shift. The new machinery this rung adds is different in kind — the global context gate and the learned,
-shared virtual-atom probes are transferable, fold-agnostic structure, exactly the thing that *should*
-help most where the test folds are least like training. So if my story about *why* the new machinery
-helps is right, the ordering of the gains should invert relative to the ProteinMPNN step: TS50 should now
-lead. If instead PiFold's TS50 gain is *not* the largest of the three benchmarks, then the machinery is
-just adding local capacity like the last rung did, my transferability story is wrong, and I would have to
-rethink what the context gate and the probes are actually doing rather than credit them with a transfer
-they did not deliver. If PiFold tops the ladder as expected,
-the open question it leaves — and the one a finale would have to answer — is whether the *frame-anchored*
-virtual atoms can be made to carry richer geometry still, by letting the network compute *learnable vector
-operations* between them rather than only reading their pairwise distances. The full encoder-only scaffold
-module is in the answer.
+The bet against ProteinMPNN's numbers: learned attention, three learned virtual atoms, a global context
+gate, a richer invariant feature set, and a deeper ten-layer stack together beat ProteinMPNN, and PiFold's
+one-shot encoder-only design fits this task better than any method whose decoder was amputated. So I expect
+a clear gain over 0.4603 / 0.4612 / 0.4829 — a step up on both CATH sets, TS50 pushing past 0.5, perplexity
+below 5.47 / 5.46 / 5.08. And the sharp claim the delta table earns: I expect the *largest* recovery jump on
+TS50. The mechanism — when ProteinMPNN added purely local edge distances, TS50 gained the least (0.0227
+against CATH's 0.0293 and 0.0275) because local sharpness does not transfer across distribution shift; the
+machinery this rung adds, the global context gate and the shared learnable probes, is transferable,
+fold-agnostic structure, which should help most where the test folds are least like training. So the
+ordering of gains should invert: TS50 should now lead. If instead PiFold's TS50 gain is not the largest, the
+machinery is just adding local capacity, my transferability story is wrong, and I would rethink what the
+gate and probes are doing. If PiFold tops the ladder, the open question a finale faces is whether the
+frame-anchored virtual atoms can carry richer geometry still, by letting the network compute *learnable
+vector operations* between them rather than only reading their pairwise distances.
