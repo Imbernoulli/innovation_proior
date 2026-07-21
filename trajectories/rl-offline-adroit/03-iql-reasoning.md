@@ -19,7 +19,7 @@ knob cannot manufacture a signal that the target construction never produced.
 
 So I want to step back from "constrain the policy" entirely, because I have now tried both ways of doing
 it — an implicit exponential-weight constraint and an explicit squared-penalty constraint — and both left
-the same Hammer/Door floor. Let me name the alternatives at this rung honestly before I pick. One option
+the same Hammer/Door floor. The alternatives are worth naming before I pick. One option
 is to keep pushing on the constraint: raise the critic penalty further, add a Monte-Carlo return floor,
 anneal the coefficients. But every one of these still sits on a target that is a single bootstrapped `min`
 over a policy-proposed next action; they change *how hard I hold the policy near data*, not *whether the
@@ -37,10 +37,9 @@ Start from what actually breaks. Standard Q-learning regresses `Q(s,a)` onto `r 
 and that max ranges over *all* actions, including ones absent from the data at `s'`, where the network
 extrapolates upward and the policy chases it. The safe alternative is SARSA: bootstrap with the
 *dataset's* next action, `r + γ Q̄(s', a')` with `a'` from `D`. Now no off-support action is ever touched
-— but MSE fits `Q` to the *mean* of those targets, so the fixed point is `Q^{π_β}`, the value of the
-behavior policy. Let me confirm that MSE gives the mean, because the whole design hinges on replacing this
-mean with something better: minimizing `E[(X - m)²]` over `m` has derivative `-2E[X - m] = 0`, so `m =
-E[X]`, the mean. That is pure policy evaluation, one improvement step, no iteration — exactly the
+— but MSE fits `Q` to the *mean* of those targets (minimizing `E[(X-m)²]` gives `m = E[X]`), so the fixed
+point is `Q^{π_β}`, the value of the behavior policy. That is pure policy evaluation, one improvement step,
+no iteration — exactly the
 "one-step" ceiling that floors the long-horizon tasks, because to get a good value at the start of the
 Hammer sequence I need value to flow backward across transitions, stitching fragments, which a single step
 of evaluation cannot do. So I am caught: the max improves but queries off-support; SARSA's mean is safe
@@ -58,8 +57,8 @@ ever querying `Q` at any specific `a'`*.
 The statistic that gives the upper tail of a random variable from its samples, without naming any point,
 is the expectile. The τ-expectile of `X` minimizes an *asymmetric* squared loss, `m_τ = argmin_m E[ |τ -
 1(u<0)|·u² ]` with `u = x - m`: a positive residual (a sample above my estimate) is weighted `τ`, a
-negative one `1-τ`. Let me differentiate to see exactly what it computes. Setting `d/dm E[|τ -
-1(u<0)|·u²] = 0` gives `E[|τ - 1(u<0)|·(x - m)] = 0`, i.e. `τ·E[(x-m)_+] = (1-τ)·E[(m-x)_+]` — the
+negative one `1-τ`. Differentiating, `d/dm E[|τ - 1(u<0)|·u²] = 0` gives `E[|τ - 1(u<0)|·(x - m)] = 0`,
+i.e. `τ·E[(x-m)_+] = (1-τ)·E[(m-x)_+]` — the
 `τ`-weighted mass of samples above `m` balances the `(1-τ)`-weighted mass below. At `τ = 0.5` both weights
 are `½`, the condition is `E[x-m]=0`, and `m_{0.5}` is the mean — SARSA exactly. For `τ > 0.5` the samples
 *above* the estimate are weighted more, so the balance point `m` is pushed up; as `τ → 1` the below-mass
@@ -101,18 +100,13 @@ monotone in `τ`, bounded by the in-support optimum, and converges to it as `τ 
 in-support Q-learning. I stabilize with clipped double-Q (a single twin-Q module, take the `min`) and a
 Polyak target critic so `V` chases a stable `Q̄` rather than a moving one.
 
-Let me trace one backup to convince myself the value genuinely propagates, because "multi-step DP" is the
-claim the whole rung rests on. Take three consecutive transitions on the Hammer sequence, `s_0 → s_1 →
-s_2`, all in the data. `V_ψ(s_2)` is the `0.8`-expectile of `Q̄(s_2, ·)` over the demonstrated actions at
-`s_2` — an optimistic-over-actions value. `Q_θ(s_1, a_1)` regresses onto `r_1 + γ V_ψ(s_2)`, so it
-inherits that optimism one step back. Then `V_ψ(s_1)` is the `0.8`-expectile of `Q̄(s_1, ·)`, which now
-sits on top of the backed-up `V_ψ(s_2)`, and `Q_θ(s_0, a_0)` regresses onto `r_0 + γ V_ψ(s_1)`. So after
-two sweeps the value at `s_0` already reflects an optimistic-in-support choice made two steps downstream,
-and iterating the two losses to convergence backs the in-support-best value all the way up the chain —
-this is exactly the stitching that a single SARSA evaluation could not do, and it is why I expect Hammer,
-whose reward is realized only at the end of a long ordered motion, to be the task that moves most if the
-thesis is right. Nothing in that trace ever evaluated `Q` or `V` at an action outside the demonstrations
-at each state, which is the safety half of the same claim.
+Trace it along the Hammer sequence `s_0 → s_1 → s_2`, all in the data: `V_ψ(s_2)` is the `0.8`-expectile
+of `Q̄(s_2,·)` over the demonstrated actions, `Q_θ(s_1,a_1)` regresses onto `r_1 + γ V_ψ(s_2)` and inherits
+that optimism one step back, and `V_ψ(s_1)` then sits on top of the backed-up value. So iterating the two
+losses backs the in-support-best value all the way up the chain — the stitching a single SARSA evaluation
+could not do — and never once touches an action outside the demonstrations, which is the safety half of the
+same claim. That is why I expect Hammer, whose reward is realized only at the end of a long ordered motion,
+to be the task that moves most if the thesis holds.
 
 There is a second, quieter reason the split matters that the variance bookkeeping makes precise. The raw
 TD target's variance decomposes as variance over the action plus variance over the transition,
@@ -120,8 +114,8 @@ TD target's variance decomposes as variance over the action plus variance over t
 *whole* thing rewards both variance components, so it would inflate the value by the transition noise as
 well as the action tail. By routing the action-optimism through `V` (expectile, `Var_a` only) and the
 transition-averaging through `Q` (MSE, `E Var_{s'}` handled as a mean), I apply optimism to exactly the
-first term and honest averaging to exactly the second. That is not a heuristic; it is the reason the split
-into two networks exists rather than a single expectile regression on the TD residual.
+first term and honest averaging to exactly the second — which is why the split into two networks exists
+rather than a single expectile regression on the TD residual.
 
 Now set `τ`. The `τ → 1` limit is the pure in-support max, but the asymmetric loss at `τ` near `1` weights
 below-residuals by `1-τ`, which near zero makes the regression cling to a handful of the very largest
@@ -176,12 +170,11 @@ one interior `256·256 = 65,536`, and an output `256·action_dim ≈ 256·28 ≈
 parameters — roughly half the `~1.5·10^5` of each three-layer critic. Deliberately: the value functions
 need capacity to represent the propagated `Q` and `V` surfaces, but the actor only has to fit a weighted
 regression onto demo actions, and the less capacity it has, the less it can memorize the five thousand
-transitions verbatim. The dropout compounds this at train time in a way worth being explicit about: the
-AWR log-likelihood `log π_φ(a|s)` is computed with the actor in *train* mode, so a tenth of the hidden
-units are zeroed on each pass and the fit must survive that masking, whereas at evaluation `act` switches
-to eval mode, disables dropout, and returns the policy *mean* — so the reported D4RL score is the clean
-mode of a policy that was trained under noise, which is the standard way dropout buys generalization on a
-tiny dataset. I keep `exp_adv_max = 100`, `discount = 0.99`, `tau = 5e-3`, `lr = 3e-4`. The actor optimizer
+transitions verbatim. The AWR log-likelihood is computed in *train* mode so the fit must survive the
+masking, whereas at evaluation `act` switches to eval mode, disables dropout, and returns the policy
+*mean* — so the reported score is the clean mode of a policy trained under noise, the standard way dropout
+buys generalization on a tiny dataset. I keep `exp_adv_max = 100`, `discount = 0.99`, `tau = 5e-3`,
+`lr = 3e-4`. The actor optimizer
 gets a `CosineAnnealingLR` decayed over the full `1e6` steps, which matters on this little data: it anneals the
 AWR learning rate smoothly to zero so late training, when the value functions have converged and the
 weights are their sharpest, does not thrash the policy with large steps on a fixed dataset it has already
@@ -195,28 +188,19 @@ at `tau = 5e-3` gives `V` a slow-moving `Q̄` to take the expectile of, and the 
 keeps that expectile from being taken over an already-overestimated value. And the `Q` bootstrap uses
 `V(s')` from the *live* value network rather than a separate target-`V`; `V` is bounded by construction —
 it is an expectile of the twin-`min`, so it inherits the same conservatism and needs no target of its own.
-The cosine schedule runs a single half-period from `3e-4` to `0` across the million steps, so the actor
-learning rate is still near `3e-4` through early training when the advantages are settling and decays to
-zero by the end when they are sharp. I ignore `â'` in the
-batch — that next-action anchor was the previous rung's hook, not mine, since my value training never needs
-a next action at all.
+I ignore `â'` in the batch — that next-action anchor was the previous rung's hook, not mine, since my value
+training never needs a next action at all.
 
-So the delta from the previous rung is sharp and it targets exactly the systematic Hammer/Door floor the
-numbers exposed. Where the decoupled-penalty rung did one-step ascent off a TD3 critic whose target was a
-single bootstrapped `min` — and so had no propagated value to climb on the long sequence — I now (1) never
-query an unseen action anywhere in value training; (2) replace the mean bootstrap with an upper *expectile
-over actions* at `τ=0.8` that is genuine multi-step in-support dynamic programming, so value can flow
-backward across the Hammer contact sequence and stitch the cloned Door data; (3) split the expectile (over
-actions) from an honest MSE (over dynamics) so I am not optimistic about lucky transitions; and (4)
-extract the policy by advantage-weighted regression over dataset actions only, off a *deterministic*
-learned advantage rather than a sampled one, regularized with dropout against memorizing twenty-five
-trajectories. My falsifiable expectations against the previous numbers, on the three metrics:
-`pen-human-v1` should hold high and stay tight — I expect a mean comfortably above the 74.6 of the
-previous rung, with a seed spread no worse than its forty points, because expectile DP plus a
-deterministic-advantage AWR is the most reliable extractor on near-expert data. `hammer-human-v1` is the
-real test of the whole thesis: if in-support multi-step propagation is what was missing, Hammer should
-finally lift clearly off the `0.35`–`1.05` floor the two previous rungs sat at — I expect a small but
-unambiguous, above-noise mean, the first sign the long sequence is being valued. And `door-cloned-v1`
-should move off zero into low-but-positive territory across seeds, because the broad cloned data is exactly
-what stitching can exploit and neither previous rung could. If Pen rises, Hammer clears the floor, and Door
-turns positive across seeds, the in-support-DP hypothesis is confirmed and this is the strongest rung.
+The change from the previous rung targets exactly the systematic Hammer/Door floor: where the
+decoupled-penalty rung did one-step ascent off a single bootstrapped `min` with no propagated value to
+climb, value training here never queries an unseen action, replaces the mean bootstrap with an upper
+expectile over actions at `τ=0.8` that is genuine multi-step in-support DP, splits that expectile from an
+honest MSE over dynamics, and extracts the policy by advantage-weighted regression off a *deterministic*
+learned advantage rather than a sampled one. My a-priori expectations on the three metrics: `pen-human-v1`
+should hold high and stay tight — a mean at least as good as the previous 74.6 with no worse a spread,
+since expectile DP plus a deterministic-advantage AWR is the most reliable extractor on near-expert data.
+`hammer-human-v1` is the real test: if in-support multi-step propagation is what was missing, Hammer should
+lift clearly off the `0.35`–`1.05` floor the two previous rungs sat at — a small but unambiguous
+above-noise mean, the first sign the long sequence is being valued. And `door-cloned-v1` should move off
+zero into low-but-positive territory across seeds, since the broad cloned data is exactly what stitching
+can exploit and neither previous rung could.

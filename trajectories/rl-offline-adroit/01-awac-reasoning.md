@@ -21,8 +21,7 @@ real but not catastrophic, which is exactly why behavior cloning is a serious co
 thing I have to beat. So the target is the cheapest algorithm that does *some* value-based improvement
 over the demos while staying provably inside their support.
 
-Before I commit to that, let me actually walk the alternatives that are in circulation, because two of
-them are tempting and I want to eliminate them on arithmetic rather than taste. The prior offline fixes
+Two families in circulation are tempting enough to cost out before I move on. The prior offline fixes
 — BCQ, BEAR, BRAC — all add an explicit constraint `D(π, π_β) ≤ ε`, but they buy it by *fitting a
 behavior model* `π̂_β`: a conditional VAE that generates candidate actions (BCQ), or a density I take an
 MMD/KL divergence against (BEAR/BRAC). Cost that out here. `π̂_β` has to model a distribution over a
@@ -62,14 +61,12 @@ Solving for `log π` and folding the action-independent constants into a per-sta
 
 The optimal constrained policy is the behavior policy reweighted by the exponentiated advantage. `λ`,
 the multiplier on the KL, is a temperature: small `λ` sharpens toward the highest-advantage actions
-(aggressive improvement), large `λ` flattens toward `π_β` (cautious, BC-like). Let me sanity-check the
-two limits before I trust the form. As `λ → ∞` the exponent goes to zero, `exp(A/λ) → 1` uniformly, and
-`π* → π_β` — the constraint is so tight the policy just clones the data, which is exactly behavior
+(aggressive improvement), large `λ` flattens toward `π_β` (cautious, BC-like). The two limits read off
+the form directly. As `λ → ∞` the exponent goes to zero, `exp(A/λ) → 1` uniformly, `π* → π_β` — behavior
 cloning. As `λ → 0` the exponentiation sharpens without bound and all mass concentrates on the single
-highest-advantage action in the support, which is the greedy in-support improvement. So `λ` genuinely
-interpolates BC (the safe competitor I must beat) and greedy improvement (the thing that would step off
-support if it could), and any finite `λ` is a controlled step from cloning toward improvement. That is
-precisely the dial I was looking for, and it confirms the derivation lands where the mechanics should.
+highest-advantage action in the support — greedy in-support improvement. So `λ` interpolates BC (the safe
+competitor I must beat) and greedy improvement (the thing that would step off support if it could); any
+finite `λ` is a controlled step from cloning toward improvement, which is exactly the dial I want.
 
 The behavior model is still sitting in `π*`, though. The decisive step is the projection onto my
 parametric actor `π_θ`, and the *direction* of the KL in that projection is what makes `π_β` cancel or
@@ -88,13 +85,11 @@ This is supervised learning on the dataset's own actions, each `(s,a)` weighted 
 advantage. The constraint is enforced *implicitly*: reweighting the buffer's actions can never put mass
 on an action the data did not contain, yet it concentrates that mass on the high-advantage actions. No
 behavior model anywhere, and — crucially for narrow human data — the actor never queries Q at a
-policy-proposed off-support action during improvement. Let me verify the choice of KL direction is
-load-bearing and not cosmetic, by writing the reverse one out. The reverse KL is `KL(π_θ ‖ π*) =
-E_{a~π_θ}[ log π_θ - log π_β - A/λ + log Z ]`. That expectation is over `a ~ π_θ` — a policy-proposed
-action, exactly the off-support query I am trying to avoid — and it contains an explicit `log π_β` term,
-which is the behavior model I refuse to fit. So the reverse KL drags both diseases back in; the forward
-KL is the only projection that lets me sample from the buffer and cancel `π_β`. This is the whole reason
-the method exists in this form, and the check makes it concrete rather than asserted.
+policy-proposed off-support action during improvement. The KL direction is load-bearing, not cosmetic:
+the reverse KL is `KL(π_θ ‖ π*) = E_{a~π_θ}[ log π_θ - log π_β - A/λ + log Z ]`, an expectation over
+`a ~ π_θ` — a policy-proposed action, exactly the off-support query I am trying to avoid — and it carries
+an explicit `log π_β` term, the behavior model I refuse to fit. Reverse KL drags both diseases back in;
+forward KL is the only projection that samples from the buffer and cancels `π_β`.
 
 The per-state `Z(s) = E_{a~π_β}[exp(A/λ)]` in the weight I can drop and simply normalize weights across
 the minibatch, or not normalize at all: it is a per-*state* factor, so it only reweights how much
@@ -114,24 +109,21 @@ Q_i(s, a_π)` with `a_π ~ π(·|s)`. I should be honest that this `V` is a *sin
 trace what that does to the weight. Suppose the true advantage of a demo action is zero but the
 one-sample `V` estimate is off by `±0.1` because the critic's action-landscape at that state is bumpy on
 thin data. Then `A` swings by `±0.1`, and at the temperature I am about to choose the weight
-`exp(A/λ)` swings by a factor `exp(±0.1/λ)`. That amplification is the crux of the variance story, so let
-me pin the temperature down before finishing the analysis.
+`exp(A/λ)` swings by a factor `exp(±0.1/λ)`. That amplification is the crux of the variance story, and
+the temperature sets how violently it bites.
 
 Now I have to be honest about how this harness differs from the generic recipe, because the constraints
 here are tighter than where the method was tuned and they cut against its strengths. First, this is a
 *purely offline* run — one million gradient steps on a static buffer, no online phase at all. The
 recipe's headline strength is that the same update flows from offline pre-training into online
 fine-tuning without changing anything; that strength is simply unused here, and what is left is the
-offline half, which on narrow human data is the part most exposed to the implicit-constraint being only
-as good as the advantage estimate. Second, the harness fixes batch size at 256 and the hidden width at
-256 across three layers; I cannot reach for the larger batch or the wider nets that smoothed the
-advantage-weighting variance elsewhere. Let me count what that width actually buys me so I know the
-regime: the actor is a 3×256 trunk, whose two interior `256×256` matrices are `65,536` parameters each,
-plus an input map of order `state_dim·256 ≈ 45·256 ≈ 1.2·10^4` and an output map of order `256·28`, so
-about `1.5·10^5` parameters; each critic is the same order, and with two critics the whole apparatus is
-roughly `4.5·10^5` parameters trained on five thousand transitions — near ninety parameters per sample.
-That over-parameterization is exactly why the implicit in-support constraint has to do the regularizing;
-there is no capacity headroom to spend and, per the harness, none to be bought.
+offline half, most exposed to the implicit constraint being only as good as the advantage estimate.
+Second, batch size and hidden width are fixed at 256 across three layers; I cannot reach for the larger
+batch or wider nets that smoothed the advantage-weighting variance elsewhere. The actor is a 3×256 trunk —
+two interior `256×256` matrices at `65,536` params each, an input map `state_dim·256 ≈ 45·256 ≈ 1.2·10^4`
+and an output map `256·28`, about `1.5·10^5` params; two critics of the same order make roughly `4.5·10^5`
+parameters on five thousand transitions, near ninety per sample. That over-parameterization is why the
+implicit in-support constraint has to do the regularizing: no capacity headroom to spend, and none to buy.
 
 Third, and most consequential, the temperature. I set `awac_lambda = 0.1` to match the reference's
 manipulation configuration, and I should read what `λ=0.1` means mechanically together with the weight
@@ -164,18 +156,13 @@ critics and turn on state normalization (`CONFIG_OVERRIDES = {"normalize": True}
 hand state — whose raw joint-angle and velocity channels live on very different scales — helps the MLPs
 condition and matches how this baseline was run.
 
-It is worth tracing what the weighted-MLE update actually does to the actor mean, because with a Gaussian
-of fixed spread the objective collapses to something I can read off exactly. For a Normal with a shared
-`σ`, `log π_θ(a|s) = -‖a - μ_θ(s)‖² / (2σ²) + const`, so maximizing `E[ w · log π_θ ]` with weights
-`w = exp(A/λ)` is minimizing a *weighted squared regression* of the mean onto the demo actions:
-`min_θ E[ w·‖a - μ_θ(s)‖² ]`. At a state `s` seen with several demo actions `a_i` and weights `w_i`, the
-minimizer of the mean is the weighted average `μ*(s) = Σ_i w_i a_i / Σ_i w_i`. So the actor at each state
-converges to a *convex combination of the demonstrated actions there*, tilted toward the high-advantage
-ones — which is a second, independent confirmation that the policy can never leave the demo tube: a
-convex mixture of in-support actions is in the convex hull of the data, and the weights only slide where
-inside that hull the mean sits. It also makes the variance story concrete once more: it is the `w_i` that
-move under seed noise, and they move exponentially, so the same weighted mean can shift materially between
-seeds even though every action it averages is a fixed demo point.
+With a Gaussian of fixed spread the weighted-MLE update reads off in closed form. For a Normal with shared
+`σ`, `log π_θ(a|s) = -‖a - μ_θ(s)‖²/(2σ²) + const`, so maximizing `E[w·log π_θ]` with `w = exp(A/λ)` is a
+*weighted squared regression* of the mean onto the demo actions, `min_θ E[w·‖a - μ_θ(s)‖²]`. At a state
+seen with demo actions `a_i` and weights `w_i` the minimizing mean is `μ*(s) = Σ_i w_i a_i / Σ_i w_i` — a
+convex combination of the demonstrated actions, tilted toward the high-advantage ones, and so always
+inside the demo hull. The `w_i` are what move under seed noise, exponentially, so the same weighted mean
+can land in a different corner of that hull between seeds even though every action it averages is fixed.
 
 One more harness detail I should fix now is the effective horizon, because it bounds how far value can
 propagate and thus how much the bootstrapped `Q^π` can help the hard tasks. With `γ = 0.99` the geometric
@@ -187,42 +174,28 @@ policy-proposed `a' ~ π(s')`. Every link in that chain is an off-support query 
 damp, not eliminate. That is the structural reason I expect Pen to be reachable and Hammer not: the same
 bootstrap that is one safe hop on Pen is a hundred compounding hops on Hammer.
 
-Per step, then: sample `(s, a, r, s', done, â')` — the harness hands me the dataset's own next action
-`â'`, but this method has no use for it, so I ignore it and bootstrap from `a' ~ π(·|s')` instead. Critic update every step: bootstrap `q_next = min(Q̄_1(s', a'),
-Q̄_2(s', a'))` at `a' ~ π(·|s')`, target `y = r + γ(1-done) q_next`, MSE on both critics, step both. Actor
-update every step: compute the advantage with detached critics, `weight = clamp(exp(A/λ), max=100)`, and
-minimize `-(log π_θ(a|s)·weight).mean()`. Then soft-update both target critics at `tau = 5e-3`. The whole
-thing is a standard actor-critic where the only non-standard piece is the advantage-weighted MLE actor,
-which is what keeps it on the demo tube without a behavior model.
+Per step: the harness hands me the dataset's own next action `â'`, but bootstrapping from `a' ~ π(·|s')`
+needs no next-action anchor, so I ignore `â'`. Critic: `y = r + γ(1-done)·min_i Q̄_i(s', a')` at
+`a' ~ π(·|s')`, MSE on both. Actor: advantage with detached critics, `weight = clamp(exp(A/λ), max=100)`,
+minimize `-(log π_θ(a|s)·weight).mean()`. Soft-update both target critics at `tau = 5e-3`. A standard
+actor-critic whose only non-standard piece is the advantage-weighted MLE actor.
 
-Two small implementation commitments follow from the shapes and matter enough to state. I keep a separate
-Adam optimizer for each critic rather than one over the union of parameters: the two critics feed a single
-summed MSE, but stepping them under distinct optimizers keeps their Adam moment estimates independent, so
-the `min` genuinely averages two *decorrelated* value estimates rather than two heads that drift together
-— decorrelation is the entire reason the twin-`min` damps overestimation, and sharing an optimizer would
-quietly erode it. And at evaluation the actor must act deterministically: `act` returns the policy *mean*
-when the module is in eval mode and only samples in train mode, because the ten evaluation rollouts should
-report the mode of the learned Gaussian, not a fresh draw whose exploration noise would inject spurious
-seed-to-seed spread on top of the training variance I already expect. The reported D4RL score is thus the
-score of `μ_θ(s)`, the weighted-mean-of-demos policy the fixed-point analysis picked out.
+Two implementation choices follow from the shapes. I keep a separate Adam optimizer per critic rather than
+one over the union: distinct optimizers keep the two critics' Adam moments independent, so the `min`
+averages two decorrelated estimates rather than two heads that drift together — and that decorrelation is
+what makes the twin-`min` damp overestimation. And at evaluation `act` returns the policy *mean* (eval
+mode), not a sample, so the ten rollouts report the mode of the learned Gaussian rather than injecting
+fresh exploration noise on top of the training variance I already expect. The reported score is thus the
+score of `μ_θ(s)`, the weighted-mean-of-demos policy the fixed point picked out.
 
-What do I expect this to do on the three tasks, and where do I think it will leave value on the table —
-the question the next rung will have to answer. Pen (`pen-human-v1`) is the most reachable task and the
-one where advantage weighting over near-expert demos should do best, so I expect a respectable Pen score,
-but with high seed-to-seed variance, because at `λ=0.1` on twenty-five trajectories the weights are a
-sharp function of a noisy single-sample advantage — a seed whose critic happens to calibrate the demo
-advantages will concentrate on the right actions and Pen flies; a seed whose critic is mis-calibrated
-points the same `10^4`-range weights at the wrong demos and the policy is dragged off. Hammer
-(`hammer-human-v1`) and Door (`door-cloned-v1`) I am pessimistic about: the advantage signal there has to
-flow through a long, precise contact sequence, the implicit constraint keeps the policy welded to
-twenty-five demonstrations of it, and with no online correction and no separate in-support optimism the
-method has little room to improve past the average demo action. So my falsifiable expectation, stated
-against the three metrics, is: a decent-but-volatile `pen-human-v1` mean with a wide per-seed spread,
-near-floor `hammer-human-v1`, and near-zero `door-cloned-v1`. The weak spot is precise: the advantage here
-is `Q - V` with `V` read off a single policy sample, so the "how good is this action relative to
-alternatives" signal is exactly as noisy as one stochastic critic query, and that noise is exponentiated
-by a factor that can hit `10^4`. The actor is pinned to demo actions by an MLE that has no explicit
-machinery for *staying calibrated* when the data is this thin. So the honest limit of this rung is that
-its steadiness rides entirely on how well one stochastic critic query happens to calibrate on a given
-seed — which is exactly the fragility I expect the Pen spread to expose, and the first thing I would want
-to attack if the numbers come back as volatile as I fear.
+The a-priori read on the three tasks. Pen (`pen-human-v1`) is the most reachable — a quick-payoff
+stabilization well inside the 100-step horizon, over near-expert demos — so advantage weighting should do
+best there, but with wide seed-to-seed spread: at `λ=0.1` the weights are a sharp function of a
+single-sample advantage, so a seed whose critic calibrates the demo advantages concentrates on the right
+actions and Pen flies, while a mis-calibrated seed points the same `10^4`-range weights at the wrong
+demos. Hammer (`hammer-human-v1`) and Door (`door-cloned-v1`) I expect near the floor: their advantage has
+to flow through a long precise contact sequence, the implicit constraint welds the policy to twenty-five
+demonstrations, and with no online phase and no separate in-support optimism there is little room to
+improve past the average demo action. The honest weak spot is that the whole method's steadiness rides on
+how well one stochastic critic query happens to calibrate on a given seed — which is the first thing I
+would attack if the Pen spread comes back as wide as I fear.

@@ -16,8 +16,8 @@ advantage signal, read off a single stochastic policy-sample of `V(s)`, was too 
 improvement on data this thin. The constraint lived only in the *actor*, and the calibration it depended
 on was exactly as noisy as one critic query.
 
-Before I redesign, let me make sure the cheapest patch is not just retuning what I already have, because
-if it were I would take it. The obvious lever is the temperature `λ`. Push it up and the weights flatten
+The cheapest patch would be retuning what I have, and I should rule it out before redesigning. The obvious
+lever is the temperature `λ`. Push it up and the weights flatten
 toward uniform, the `exp(±1)` amplification shrinks, and Pen's variance would come down — but flattening
 the weights *is* moving back toward plain behavior cloning, which caps the policy at the demonstrators
 and would surrender the improvement bite that got a seed to 106.7 in the first place; and it does nothing
@@ -48,8 +48,8 @@ offline fix.
 
 The cheapest offline fix is the minimalist one: add a behavior-cloning penalty to the actor so it pays a
 squared cost for deviating from the logged action, `π = argmax_π E[ Q(s, π(s)) - (π(s)-a)² ]`. One line
-on top of TD3. There is one scale subtlety I have to get right, and it is worth doing the dimensional
-arithmetic. The BC term is *bounded*: each action coordinate lives in `[-1,1]`, so a per-coordinate
+on top of TD3. There is one scale subtlety to get right. The BC term is *bounded*: each action coordinate
+lives in `[-1,1]`, so a per-coordinate
 squared error is at most `(2)² = 4`, and the sum over the ~28 action dimensions is bounded by `4·28 ≈
 112` — a fixed, task-independent scale. But `Q` scales with the *arbitrary* reward magnitude of the task:
 on a high-reward task `Q` is numerically large and dwarfs the bounded BC term, so the policy ignores the
@@ -95,14 +95,11 @@ dataset's recorded next action `â'`. One subtraction, no extra network — and 
 256-width parameter budget, which matters because that budget forbids me from buying capacity my way out
 of the problem.
 
-Let me put a number on the smoothing so I know it is a gentle regularizer and not a second source of
-off-support drift. The target noise is `N(0, 0.2)` clipped to `[-0.5, 0.5]`, i.e. clipped at `2.5σ`, so
-the clip bites on only about `1.2%` of coordinate draws and the smoothing is effectively a small
-`0.2`-standard-deviation ball around `π̄(s')`. That is small next to the action range `[-1,1]`, so it
-blurs a razor-thin `Q` spike without itself launching the target action off support — which matters here,
-because a large smoothing radius would manufacture exactly the off-support next-action query I am adding
-the critic penalty to suppress. The two mechanisms have to be sized consistently, and a `0.2` ball inside
-a `2`-wide box is consistent.
+The smoothing has to stay gentle enough not to become a second source of off-support drift. The target
+noise `N(0,0.2)` clipped to `[-0.5,0.5]` is a `2.5σ` clip that bites on only ~`1.2%` of coordinate draws,
+an effectively `0.2`-wide ball around `π̄(s')` — small next to the `[-1,1]` range, so it blurs a razor-thin
+`Q` spike without launching the target action off support, which would otherwise manufacture the very
+off-support query the critic penalty is there to suppress.
 
 There is a subtlety in *what* I anchor the critic penalty to that is easy to get wrong. I penalize
 `Σ(a' - â')²` — the policy's smoothed next action against the *dataset's recorded* next action `â'` — not
@@ -113,27 +110,22 @@ the next action in the batch" into a free behavior-regularizer: every transition
 in-support next-action target, and the penalty measures precisely how far the bootstrap's chosen
 next-action has drifted from the trajectory's real continuation.
 
-I should also fix the initialization arithmetic, because with the value-normalization scalar in play the
-starting scale of `Q` is not innocuous. CORL-style init sets hidden weights uniform in `±√(1/fan_in)`;
-for a `256`-wide layer that is `±1/16 ≈ ±0.0625`, a standard fan-in scaling that keeps activations
-`O(1)`. The output heads start tiny — actor output uniform in `±1e-3`, critic output in `±3e-3` — so both
-networks begin producing near-zero outputs. That near-zero start is deliberate: a critic that begins
-outputting values around zero, together with LayerNorm's hard cap, means the runaway-extrapolation engine
-has no large initial values to amplify, and the value normalization `λ = 1/mean(|Q|)` only takes over the
-actor's RL-vs-BC balance once `Q` has grown to a genuine scale. The delayed-update schedule interacts with
-the million-step budget too: at `policy_freq = 2` the critic takes all `1e6` gradient steps while the
-actor and the three target networks take `5·10^5`, so the value estimate always leads the policy it is
-being ascended, which is the ordering delayed updates exist to guarantee.
+The initialization scale matters because the value-normalization scalar keys off `Q`'s magnitude.
+CORL-style init sets hidden weights uniform in `±√(1/fan_in)` — `±1/16` for a 256-wide layer, keeping
+activations `O(1)` — and output heads tiny (actor `±1e-3`, critic `±3e-3`), so both networks start near
+zero. That is deliberate: a critic outputting near-zero values has no large initial value for the
+extrapolation engine to amplify, and `λ = 1/mean(|Q|)` only takes over the actor's RL-vs-BC balance once
+`Q` has grown to a genuine scale. The delayed schedule interacts with the million-step budget too: at
+`policy_freq = 2` the critic takes all `1e6` gradient steps while the actor and the three target networks
+take `5·10^5`, so the value estimate always leads the policy being ascended.
 
 The target, written out: smoothed next action `a' = clip(π̄(s') + clip(N(0,0.2),-0.5,0.5), -1, 1)`;
 bootstrap `q = min_i Q̄_i(s', a')`; value penalty `q ← q - β_critic·Σ(a' - â')²`; target `y = r +
-γ(1-done)·q`. The actor keeps its own penalty, `λ·Q(s,π(s)) - β_actor·Σ(π(s)-a)²`. Now I am using a value
-penalty *and* a policy regularization at once, both as cheap squared distances for a deterministic policy.
-Notice what the critic penalty does mechanically at exactly the leak I diagnosed: when the policy's next
-action `a'` agrees with the demonstrated `â'` the penalty is zero and the bootstrap is trusted in full;
-the moment `a'` drifts off the demos the penalty grows quadratically and the target is pulled *down*, so
-the critic is taught to distrust its own value precisely where the next-action left the data. That is the
-downstream half of the Hammer chain being closed one link at a time.
+γ(1-done)·q`. The actor keeps its own penalty, `λ·Q(s,π(s)) - β_actor·Σ(π(s)-a)²` — a value penalty *and*
+a policy regularization at once, both cheap squared distances for a deterministic policy. When `a'` agrees
+with the demonstrated `â'` the penalty is zero and the bootstrap is trusted in full; as `a'` drifts off the
+demos it grows quadratically and pulls the target down, closing the downstream half of the Hammer chain one
+link at a time.
 
 The piece the framework left coupled is whether `β_actor` and `β_critic` should be the same number. They
 do different jobs. The actor penalty controls how conservative the policy is *when it acts* — how willing
@@ -176,45 +168,27 @@ output), and run `actor_lr = critic_lr = 3e-4`. I do *not* turn on state normali
 *not* use a Monte-Carlo return floor — both are side roads this baseline leaves off, and adding either
 would confound the clean read on whether the two-place penalty is what moves the numbers.
 
-It is worth writing the actor gradient to confirm the two terms pull the way I intend. The actor loss is
-`β_actor·Σ(π(s)-a)² - λ·Q(s,π(s))`, so `∇_θ` is `2·β_actor·(π-a)·∂π/∂θ - λ·∂Q/∂a·∂π/∂θ`. The first term
-is a spring of stiffness `2β_actor` pulling `π(s)` straight toward the demo action `a`; the second is the
-value ascent `∇_a Q` scaled to `O(1)` by `λ`. At the fixed point these balance, `π(s)` settling where the
-value gradient equals `2β_actor·(π-a)` — i.e. the policy leaves the demo action only as far as the value
-gradient can overcome the spring. On Pen with `β_actor = 0.1` the spring is stiff and the policy stays
-tucked against the near-expert demos; on Hammer and Door with `β_actor = 0.01` the spring is ten times
-softer and the policy is *allowed* to move, which is the point — welding it to the demos is what floored
-it. But softening the actor spring only helps if there is a trustworthy value gradient to move along, and
-that is exactly the doubt I have about the single-`min` target on the long tasks, so I expect the softer
-spring to buy Hammer and Door little unless the propagated value is there to reward the motion.
+The actor gradient confirms the two terms pull as intended: `∇_θ = 2β_actor·(π-a)·∂π/∂θ - λ·∂Q/∂a·∂π/∂θ`,
+a spring of stiffness `2β_actor` pulling `π(s)` toward the demo action against a value ascent `∇_a Q`
+scaled to `O(1)` by `λ`. At the fixed point the policy leaves the demo action only as far as the value
+gradient overcomes the spring. So Pen's stiff `β_actor = 0.1` tucks the policy against its near-expert
+demos, while Hammer and Door's `0.01` spring is ten times softer and lets the policy move — which is the
+point, since welding it to the demos is what floored it. But softening the spring only helps if there is a
+trustworthy value gradient to move along, exactly my doubt about the single-`min` target on the long tasks,
+so I expect the softer spring to buy Hammer and Door little unless the propagated value is there to reward
+the motion.
 
-The LayerNorm asymmetry deserves one more look, because it is a real design commitment and not a default I
-am copying. The critic is the only surface that maps an *arbitrary* action to a scalar value, so it is the
-only place unbounded extrapolation can manufacture a target the policy will chase; capping its feature
-norm at `16` bounds that. The actor maps a state to an action already confined to `[-1,1]` by a final
-tanh, so its output is bounded by construction and there is nothing for a LayerNorm to protect against; a
-LayerNorm inside the actor would only whiten intermediate features and constrain the policy's expressivity
-for no safety gain. So LayerNorm goes in the critic and nowhere else — asymmetric because the two networks
-face opposite risks.
-
-So the delta from the previous rung is precise and it targets the exact failures the numbers showed. Where
-advantage-weighting put the constraint only in a stochastic actor and read improvement off a noisy
-single-sample `V`, I now (1) make the policy deterministic, removing the sampled-`V` variance that swung
-Pen from 32.8 to 106.7; (2) put a second squared behavior penalty *inside the critic target* against the
-dataset's own next action, closing the downstream leak that floored Hammer; (3) decouple the actor and
-critic penalties and set them per task, so the tight Pen tube, the long Hammer sequence and the broad
-cloned Door data each get their own conservativeness; and (4) cap critic extrapolation with LayerNorm at a
-feature norm of `16`. My falsifiable expectations against the previous numbers, stated on the three
-metrics: `pen-human-v1` should *tighten* — I want the seed spread well under the seventy-point swing, even
-if the mean lands near or modestly above 67, because the deterministic policy removes the exponentiated
-single-sample variance that produced the swing. `hammer-human-v1` I expect to stay low; a tiny actor
-penalty plus a guarded bootstrap may lift it off the absolute floor, but the long contact sequence is the
-hardest thing here and a target that is still a single bootstrapped `min` gives the deterministic actor
-only one-step ascent to climb, so I would not bet on a large jump — it could even sit flat or dip if the
-critic penalty makes the already-pessimistic `min` target so conservative that the long chain backs up
-almost no value. `door-cloned-v1` I expect to stay near zero. If Pen tightens but Hammer and Door barely
-move, that is the signal that the *explicit* TD3-style constraint, even decoupled and even with the
-critic-side penalty, is still doing only one-step improvement off a deterministic policy — and I would
-read that as evidence that no amount of tuning a one-step constraint, in the actor or in the critic, can
-manufacture the propagated value the long tasks need. The ceiling would then be structural, a property of
-the single bootstrapped target, not a matter of coefficients I have left un-tuned.
+The change from the previous rung is precise and aimed at the failures the numbers showed: a deterministic
+policy removes the sampled-`V` variance that swung Pen across seeds; a second squared penalty *inside the
+critic target* against the dataset's own next action closes the downstream leak that floored Hammer; the
+actor and critic penalties are decoupled and set per task; and LayerNorm caps critic extrapolation. My
+a-priori expectations on the three metrics: `pen-human-v1` should *tighten* — the deterministic policy
+removes the exponentiated single-sample variance, so I want the seed spread well under the previous swing,
+even if the mean lands only near or modestly above the prior 67. `hammer-human-v1` I expect to stay low; a
+tiny actor penalty plus a guarded bootstrap may nudge it off the floor, but the target is still a single
+bootstrapped `min` giving only one-step ascent, so it could as easily sit flat or dip if the critic penalty
+makes that already-pessimistic target too conservative to back up value across the long chain.
+`door-cloned-v1` I expect near zero. If Pen tightens but Hammer and Door barely move, the signal is that an
+*explicit* one-step constraint — decoupled, critic-side and all — still does only one-step improvement, and
+the ceiling on the long tasks is structural in the single bootstrapped target, not a matter of coefficients
+I have left un-tuned.
