@@ -18,19 +18,10 @@ where the bottleneck squeeze is tightest and the model can least afford to spend
 freedom on pixel-mean-matching. The full small-to-large spread is `53.00/5.35 = 9.9×` — nearly an order
 of magnitude of rFID separating the same loss at two capacities. This is not a learning-rate problem and
 not a capacity problem I am allowed to touch; it is a *measurement* problem, and it is worst exactly
-where measurement matters most.
-
-Let me cross-check that reading against the bottleneck geometry, because if the blur tax really is a
-capacity effect it should line up with how hard each model is squeezing. The encoder funnels the image's
-`D = 3072` real degrees of freedom through `J` latent values, so the compression ratio `D/J` is `12:1`
-for small (`J = 256`), `6:1` for medium (`J = 512`), and `3:1` for large (`J = 1024`). Lay the rFIDs
-against those ratios: `12:1 → 53.00`, `6:1 → 15.75`, `3:1 → 5.35`. Halving the squeeze (`12 → 6`) cuts
-rFID by `3.37×`; halving it again (`6 → 3`) cuts it by `2.94×` — the *same* roughly-threefold factor per
-halving I read off the capacity ladder, which is what I should see if the squeeze and the capacity are
-two names for one thing. So rFID grows like `(D/J)` raised to about `log2(3) ≈ 1.6` — superlinearly in
-the bottleneck squeeze. That superlinearity is the quantitative face of the blur tax: the small model is
-not merely `4×` more compressed than the large one, it pays a `~9.9×` rFID penalty for it, because the
-detail it is forced to discard is exactly the high-frequency content a pixel loss under-rewards and rFID
+where measurement matters most. This lines up with the bottleneck geometry — the same `~3×`-per-halving
+factor falls out of the compression ratios `D/J` = `12:1 → 6:1 → 3:1`, so squeeze and capacity are two
+names for one thing, and the small model pays a `~9.9×` rFID penalty for a `4×` tighter bottleneck
+because the detail it discards is exactly the high-frequency content a pixel loss under-rewards and rFID
 over-weights.
 
 So the obstacle is sharp: per-pixel L1 (and L2, and PSNR, which is L2 on a log axis) treats the image as
@@ -58,32 +49,20 @@ exactly the distance I want my small model to be scored on during training, beca
 reconstruction has visibly different deep features and would be penalized, whereas under L1 it slides
 through.
 
-Now I have a choice about how much of that feature-space machinery to build myself, and it is worth
-laying the options out because the tempting one is the wrong one. Option one: derive and *train* my own
-calibrated perceptual metric here — normalize features, fit per-channel weights against human judgments,
-the whole apparatus. Option two: use raw deep-feature distance, a plain sum of squared VGG-activation
-differences, and be done. Option three: consume an off-the-shelf, pre-calibrated perceptual distance as
-a frozen black box. Let me kill options one and two on their merits before landing on three.
+The one real question is how much of that feature-space machinery to build myself, and the contract
+settles it: `lpips` is an available *import* — a perceptual distance to *consume*, not one to learn.
+Building my own calibrated metric is infeasible anyway with no 2AFC judgments in this loop, no second
+optimizer for calibration coefficients, and a one-module edit surface rather than a metric-learning
+pipeline. And a *raw* deep-feature distance — a plain sum of squared VGG-activation differences — fails
+on a computable pathology: channels have wildly different activation magnitudes, so if channel A fires
+at `~100` and channel B at `~1`, a `1%` error in the loud channel and a *complete* `100%` error in the
+quiet one are both an absolute difference of `1`, scored identically. An unnormalized distance measures
+whether the *loud* channels matched in gain, not whether the activation *pattern* agrees — and pattern
+is where the perceptual content lives. LPIPS fixes exactly this: unit-normalize across channels at each
+location (a gain-invariant cosine of feature *direction*), recalibrate each channel by a coefficient fit
+to human judgments, spatially average, sum across layers.
 
-Option two fails on a concrete, computable pathology. Convolutional channels have wildly different
-activation magnitudes, so a naive sum of squared feature differences is dominated by a few high-energy
-channels. Make it numeric: suppose at some location channel A fires with magnitude `~100` and channel B
-with magnitude `~1`. A `1%` error in the loud channel is an absolute difference of `1`; a *complete*,
-`100%` error in the quiet channel is also an absolute difference of `1`. A raw squared-difference sum
-scores those identically — it cannot tell "the loud channel is off by one percent" from "the quiet
-channel is totally wrong." So an unnormalized feature distance measures whether the *loud* channels
-matched in gain, not whether the *pattern* of activation across channels agrees, and pattern is where the
-perceptual content lives. The mature fix is to unit-normalize across channels at each spatial location —
-which turns the comparison into a gain-invariant cosine of feature *direction* — then recalibrate each
-channel by a learned non-negative coefficient fit to human two-alternative-forced-choice judgments,
-spatially average within a layer, and sum across layers. That is a real, load-bearing apparatus, and it
-is exactly what option one would have me rebuild. But option one is infeasible *here*: I have no 2AFC
-judgments in this loop, no second optimizer for the calibration coefficients, no projection step onto the
-non-negativity constraint, and the edit surface is one loss module, not a metric-learning pipeline. The
-contract the harness hands me is unambiguous — `lpips` is an available *import*, i.e., a perceptual
-distance to *consume*, not one to learn.
-
-So option three, and I take it cleanly: `lpips.LPIPS(net='vgg')`, which is precisely the whole object —
+So I take it cleanly: `lpips.LPIPS(net='vgg')`, which is precisely the whole object —
 a frozen VGG trunk, channel normalization, learned per-channel calibration grounded in human data —
 pre-built and pre-calibrated. I freeze it hard: `eval()` and `requires_grad_(False)` on every parameter.
 Freezing is not optional, and the reason is the same emergent-perceptual-structure fact I am exploiting.
@@ -116,39 +95,23 @@ a scale improves on LPIPS-driven training but its rFID barely moves, that decoup
 suspect.
 
 Now compose. I do not throw away the floor — the negative-ELBO skeleton was correct, the KL is still the
-right closed-form leash at the same tiny `1e-6`, and I keep the L1 reconstruction term, because the
-perceptual loss alone has a known weakness as a sole objective: optimizing it can leave high-frequency
-artifacts, since many non-natural images map to similar deep features, so a pure perceptual objective can
-wander into an image that matches VGG statistics while carrying grid-like or checkerboard junk a human
-would reject. The L1 term is the anchor against that; it pins coarse structure and color, while LPIPS
-carries the perceptual sharpness the pixel term cannot see. The failure mode I am guarding against is
-concrete: a distance defined purely on deep features has a large null space — many pixel-level images
-collapse to nearly the same VGG activations, so an optimizer pushed only by LPIPS can drift into that
-null space and paint high-frequency junk (checkerboard or grid-like texture that VGG happens not to
-distinguish from the target) while the feature distance keeps falling. L1 has no such null space at the
-pixel level; every wrong pixel costs. So the two terms are complementary by construction — L1 rules out
-the pixel-space nonsense LPIPS is blind to, LPIPS rules out the perceptual softness L1 is blind to. So
-the reconstruction objective becomes `L1(recon, target) + perceptual_weight · LPIPS(recon, target)`, and
-the full loss is that plus `kl_weight · KL`.
+right closed-form leash at the same tiny `1e-6`, and I keep the L1 reconstruction term, because a
+distance defined purely on deep features has a large null space: many pixel-level images collapse to
+nearly the same VGG activations, so an optimizer pushed only by LPIPS can drift into that null space and
+paint high-frequency junk (checkerboard or grid-like texture VGG fails to distinguish from the target)
+while the feature distance keeps falling. L1 has no such null space at the pixel level; every wrong pixel
+costs. So the two terms are complementary by construction — L1 rules out the pixel-space nonsense LPIPS
+is blind to, LPIPS rules out the perceptual softness L1 is blind to. The reconstruction objective becomes
+`L1(recon, target) + perceptual_weight · LPIPS(recon, target)`, plus `kl_weight · KL`. Enlarging the
+reconstruction side does not make a `1e-6` KL suddenly steer — if anything its share *falls* below the
+floor's `~0.7%` — so I leave `kl_weight = 1e-6` where it was.
 
-It is worth confirming the KL leash is still safe to leave alone under the new balance rather than
-assuming it. At the floor the loss was `rec_mean (~0.07) + 1e-6·KL (~5e-4)`, KL about `0.7%` of the
-total. Adding `0.5·LPIPS (~0.05–0.1)` roughly doubles the reconstruction side of the objective, so the
-KL's share *falls* to well under half a percent — the leash is, if anything, even fainter relative to the
-larger reconstruction pressure. There is no mechanism by which enlarging the reconstruction terms would
-make a `1e-6` KL suddenly steer, so I leave `kl_weight = 1e-6` exactly where it was; the floor's KL
-behavior was never the problem, and the split metrics will let me confirm it stays near zero.
-
-I should be clear-eyed that this move costs me the clean probabilistic story the floor had. The floor was
-an honest negative ELBO — every term a log-likelihood or a divergence. Once I add `0.5·LPIPS`, the
-objective is no longer a bound on any marginal likelihood; it is an ELBO plus a perceptual regularizer
-that has no generative-model interpretation. That is a deliberate trade, and I make it with eyes open:
-the task does not score log-likelihood, it scores rFID, and a term that is a poorly-motivated likelihood
-but a well-motivated proxy for the scored metric is the right thing to optimize *here*. The KL keeps the
-latent well-behaved so the encoder-decoder still functions as a coherent autoencoder; the L1 keeps the
-reconstruction anchored to the pixels; and the LPIPS term buys alignment with the metric at the price of
-probabilistic purity I was never being graded on. If I were being scored on likelihood I would not add
-it; being scored on rFID, I would be foolish not to.
+I should be clear-eyed that this move costs me the clean probabilistic story. The floor was an honest
+negative ELBO — every term a log-likelihood or a divergence. Once I add `0.5·LPIPS`, the objective is no
+longer a bound on any marginal likelihood; it is an ELBO plus a perceptual regularizer with no
+generative-model interpretation. That is a deliberate trade: the task scores rFID, not log-likelihood,
+and a term that is a poorly-motivated likelihood but a well-motivated proxy for the scored metric is the
+right thing to optimize *here*. If I were being scored on likelihood I would not add it.
 
 One implementation detail the harness forces, and it is a real numerical trap rather than a formality:
 the loop runs under autocast mixed precision, and LPIPS is a VGG forward pass. Half precision carries
@@ -179,46 +142,25 @@ compute L1, the float-cast mean LPIPS, and the mean KL, sum them as `rec + 0.5·
 report all three in the metrics dict. No discriminator, no frequency term yet — just the perceptual
 upgrade to the reconstruction distance. (The distilled module is in the answer.)
 
-Now the falsifiable expectations against the floor's numbers, because that is the point of having run it.
-The whole diagnosis was that the blur tax is largest where capacity is tightest, and it scaled smoothly:
-`53.00` at small, `15.75` at medium, `5.35` at large. The perceptual term attacks blur directly — it is
-the one thing L1 was blind to — so if the diagnosis is right, the *biggest* improvement should land on
-the *small* scale, where L1 left the most on the table at `53.00`. I expect that number to fall the
-hardest, plausibly by half or more, because LPIPS refuses to reward the soft conditional mean the small
-model was hiding behind. The medium scale, which started at `15.75` with moderate blur, should improve
-substantially too. The large scale was already crisp at `5.35` — the pixel loss was nearly enough there,
-sitting near the bottom of that log-linear capacity line — so the perceptual term has less blur to remove
-and I expect a smaller absolute gain; it should still tick down, since deep-feature matching is strictly
-more aligned with rFID than pixel matching, but I would be suspicious if it moved as much as the small
-scale did. This is the crisp test: if instead the large scale improved most and the small barely moved,
-my whole "blur tax scales inversely with capacity" reading would be wrong and I would have to rethink the
-mechanism from scratch. PSNR and SSIM I expect to hold or dip very slightly: those reward pixel and
+Now the falsifiable expectations against the floor's numbers. The diagnosis was that the blur tax is
+largest where capacity is tightest (`53.00` small, `15.75` medium, `5.35` large). The perceptual term
+attacks blur directly — the one thing L1 was blind to — so if the diagnosis holds, the *biggest*
+improvement should land on the *small* scale, where L1 left the most on the table; the large scale was
+already near-crisp, so the perceptual term has less blur to remove and I expect a smaller absolute gain.
+The crisp test: if instead the large scale improved most and the small barely moved, the whole "blur tax
+scales inversely with capacity" reading would be wrong and I would rethink the mechanism from scratch.
+PSNR and SSIM I expect to hold or dip very slightly: those reward pixel and
 local-statistic agreement, which the pure L1 floor was already optimizing, and adding a perceptual term
 that tolerates small pixel-exact misses in exchange for crispness can trade a hair of PSNR for a large
 rFID gain — which is exactly the trade I want, since rFID is the scored metric and PSNR is only a
 diagnostic. If PSNR *collapsed*, that would tell me `0.5` is too high and LPIPS is overriding the anchor;
 holding roughly flat is the signature of a healthy balance.
 
-And I can already feel where this rung will run out, which is the useful part of predicting. The
-perceptual loss pulls deep features together, but it still does not have a sharp, adversarial opinion
-about whether a *patch* of texture is realistic — VGG features can be matched by something that is
-close-but-still-a-bit-soft, because the metric is a fixed distance, not an active critic hunting for the
-residual difference between a real image and a reconstruction. So I expect perceptual to substantially
-close the small-scale gap but leave a residual softness — the kind a fixed distance structurally cannot
-finish — that will still be the live constraint on top of this same L1 + LPIPS + KL skeleton. The metrics dict will report `rec_loss`, `p_loss`, and `kl_loss`
-separately so I can watch which term is still the live constraint when this rung plateaus.
-
-The causal chain in one breath: L1's measured failure is a *measurement* problem — the small scale's
-`53.00` versus the large's `5.35`, a smooth `~3×`-per-capacity-doubling blur tax with a `9.9×`
-small-to-large spread and gmean `16.47`, is a per-pixel loss rewarding the conditional-mean blur that
-rFID punishes → so measure reconstruction error in deep feature space, where blur is penalized and
-distance is emergently perceptual → reject building my own calibrated metric (no 2AFC data, no second
-optimizer here) and reject raw feature distance (a two-channel `100`-vs-`1` magnitude example shows it
-scores loud-channel gain, not pattern), and take the pre-calibrated `lpips.LPIPS(net='vgg')` as a frozen
-black-box ruler, because the harness exposes a perceptual distance to *consume*, not to *learn*, and
-freezing preserves the representation I am exploiting → keep the L1 term as a stability anchor against
-perceptual high-frequency artifacts, keep the KL leash at `1e-6`, float-cast the VGG pass to dodge fp16
-cancellation, and weight LPIPS at `0.5` by an order-matching units argument → landing
-`F.l1_loss + 0.5·LPIPS + 1e-6·KL`, and expecting the small-scale `53.00` to fall the hardest with
-diminishing gains up the capacity ladder, while a residual softness a fixed perceptual ruler structurally
-cannot finish remains as the live constraint.
+And I can already feel where this rung will run out. The perceptual loss pulls deep features together,
+but it has no sharp, adversarial opinion about whether a *patch* of texture is realistic — VGG features
+can be matched by something close-but-still-a-bit-soft, because the metric is a fixed distance, not an
+active critic hunting the residual difference between a real image and a reconstruction. So I expect
+perceptual to substantially close the small-scale gap but leave a residual softness — the kind a fixed
+distance structurally cannot finish — as the live constraint on top of this same L1 + LPIPS + KL
+skeleton. The metrics dict reports `rec_loss`, `p_loss`, and `kl_loss` separately so I can watch which
+term still binds when this rung plateaus.

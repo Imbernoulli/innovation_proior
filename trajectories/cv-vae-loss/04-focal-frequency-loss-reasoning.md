@@ -46,16 +46,13 @@ before I commit to it I have to check it against the obvious failure, because a 
 repeat the spatial loss's sin in a new guise — and here I can actually settle it with a theorem rather
 than a hunch.
 
-Take the plain, equally-weighted spectral distance and ask what it equals. If I use an *orthonormal*
+Take the plain, equally-weighted spectral distance and ask what it equals. Under an *orthonormal*
 (unitary) 2D FFT, Parseval's theorem holds exactly: `Σ_{u,v} |F(u,v)|² = Σ_{x,y} |f(x,y)|²` for any
-signal, so applying it to the difference signal `f_r - f_f` gives `Σ_{u,v} |F_r - F_f|² = Σ_{x,y} |x_r -
-x_f|²`. In words: the unweighted squared spectral distance *is* the squared pixel distance, exactly the
-same number. I checked it numerically on a random `32×32` pair to be sure I had the normalization right,
-and the two sums agreed to seven digits — the orthonormal `norm='ortho'` flag is doing exactly the
-unitary bookkeeping that makes the identity hold, and had I used the default unnormalized FFT the two
-sides would have differed by a factor of the transform length and I might have mistaken a scaling
-artifact for a real signal. So an equally-weighted frequency loss is not a new objective at
-all — it is pixel MSE wearing a Fourier costume. It would spend its gradient exactly the way L2 does,
+signal, so applied to the difference `f_r - f_f` it gives `Σ_{u,v} |F_r - F_f|² = Σ_{x,y} |x_r - x_f|²`.
+The unweighted squared spectral distance *is* the squared pixel distance, the same number — and it is the
+`norm='ortho'` flag that does the unitary bookkeeping making this hold; the default unnormalized FFT
+would differ by a factor of the transform length. So an equally-weighted frequency loss is not a new
+objective at all — it is pixel MSE wearing a Fourier costume. It would spend its gradient exactly the way L2 does,
 which is exactly the blur-hedging behavior I spent three rungs escaping. That kills the naive version
 outright, and it also tells me precisely where any real value must come from: *not* from moving to the
 frequency domain per se, but from *weighting the frequencies unequally*. The domain change buys nothing;
@@ -73,19 +70,13 @@ matches a frequency, `w ≈ 0` and it is ignored; where it is far off, `w` is la
 *dynamic* — as a once-hard frequency gets matched its weight decays and the loss moves to the
 next-hardest. A self-generated curriculum over frequencies, no hand-set band selection.
 
-Let me verify the weighting actually does what I claim rather than trust the story, by writing the
-per-component contribution. With `w = (e / e_max)^α` for an error `e = |F_r - F_f|` normalized by the
-per-image max `e_max`, the loss contribution of that component is `w · e² = e^{α+2} / e_max^α`. At `α = 0`
-this is `e²` — the unweighted loss, which Parseval just showed is redundant. At `α = 1` it is `e³ / e_max`
-— cubic in the error, so already-small errors contribute vanishingly while the largest error contributes
-the full `e_max²`. I sanity-checked the shape on five errors evenly spaced up to the max: at `α = 0` the
-mid-sized errors still carry real weight (a component at half the max error contributes about a quarter of
-the max's contribution, `0.255`), whereas at `α = 1` that same mid component collapses to about an eighth
-(`0.129`), and the tiny errors go to essentially zero. So raising `α` from `0` to `1` visibly rebalances
-the gradient off the easy frequencies and onto the hard ones — exactly the curriculum I wanted, and
-exactly what the redundant `α = 0` case cannot do. The default focusing strength is `α = 1` — the weight
-scales linearly with the error magnitude — which is the robust starting point; `α = 0` recovers the loss
-I just argued against, and much larger `α` would over-focus on a single frequency and starve the rest.
+Writing the per-component contribution confirms the weighting does what I claim: with `w = (e / e_max)^α`
+for a normalized error `e = |F_r - F_f|`, the contribution is `w · e² = e^{α+2} / e_max^α`. At `α = 0`
+this is `e²` — the unweighted loss Parseval just showed is redundant. At `α = 1` it is `e³ / e_max`,
+cubic in the error, so already-small errors contribute vanishingly while the largest contributes the full
+`e_max²` — the gradient is rebalanced off the easy frequencies and onto the hard ones, the curriculum I
+wanted. So the default focusing strength is `α = 1`; `α = 0` recovers the redundant MSE, and much larger
+`α` would over-focus on a single frequency and starve the rest.
 
 The one subtlety I must get right is that this weight has to be a *constant* with respect to the
 parameters — detached, stop-gradient. If gradients flowed through `w = distance^α`, the loss would be
@@ -97,32 +88,21 @@ fixed per-frequency spotlight that says "spend your effort here," and nothing el
 keep the spotlight stable: divide the weight matrix by its per-image max so the loss scale does not
 silently drift as absolute errors shrink over training (without it, `w` would shrink with the errors and
 the whole term would fade out just as it should be sharpening its focus), clamp to `[0,1]`, and zero any
-NaN from the `0^α` corner where a perfectly-matched frequency gives `0/0`. For `32×32` CIFAR a single
-global FFT (`patch_factor = 1`) is right; patch-wise spectra are a device for larger images where a global
-FFT would blur spatial locality across the whole frame, which is not a concern at this size. Let me trace
-the shapes so the normalization operates where I intend. With `patch_factor = 1` the whole image is one
-patch, so `tensor2freq` produces a spectrum of shape `[B, 1, C, 32, 32]` and stacks real and imaginary
-parts into `[B, 1, C, 32, 32, 2]`; the error magnitude `|F_r - F_f|^α` collapses that last axis back to
-`[B, 1, C, 32, 32]`. The per-image max I divide by is taken over the two spectral axes (the `32×32`
-frequency grid), so each image-and-channel's spotlight is normalized against *its own* hardest frequency —
-which is what makes the `[0,1]` spotlight per-sample and keeps one image's easy spectrum from setting the
-scale for another's. And the FFT uses orthonormal normalization — the same choice that made Parseval exact
-above — so the transform is unitary and the spectral distance lands on the same scale as a spatial one,
-which matters because I am adding it to spatial terms and want `loss_weight` to mean something comparable.
+NaN from the `0^α` corner where a perfectly-matched frequency gives `0/0`. I take the per-image max over
+the two spectral axes, so each image-and-channel's spotlight is normalized against *its own* hardest
+frequency, keeping the `[0,1]` gate per-sample rather than letting one image's easy spectrum set the
+scale for another's. For `32×32` CIFAR a single global FFT (`patch_factor = 1`) is right — patch-wise
+spectra are a device for larger images where a global FFT would blur spatial locality across the frame.
+And the orthonormal normalization keeps the spectral distance on the same scale as a spatial one, which
+matters because I am adding it to spatial terms and want `loss_weight` to mean something comparable.
 
-The `FocalFrequencyLoss` constructor also exposes `log_matrix`, `batch_matrix`, and `ave_spectrum`, and I
-leave all three off, each for a reason rather than by default. `log_matrix` would replace the weight with
-`log(1 + w)`, compressing its dynamic range — useful when frequency errors span many orders of magnitude
-and a raw `w` would let one monster frequency dominate everything; here, after three spatial rungs the
-errors are already fairly even and the linear `α = 1` weight is the cleaner curriculum, so I do not want to
-flatten it. `batch_matrix` would normalize the spotlight by the max over the *entire batch* instead of
-per-image, coupling every image's weighting to whichever image in the batch happens to carry the worst
-frequency — that cross-image coupling adds variance I have no reason to invite, and per-image
-normalization is the more stable choice. `ave_spectrum` would average the spectra across the batch before
-comparing, which throws away per-image frequency structure and turns the loss into a distribution-level
-statistic; but I want each reconstruction pulled toward *its own* target's spectrum, not toward the batch
-mean, so it stays off. The defaults I keep — per-image, linear, per-sample spectrum — are the ones
-consistent with a per-image reconstruction objective.
+The constructor's other switches stay off, each for a reason. `log_matrix` (`log(1+w)`) would compress
+the weight's dynamic range — useful when frequency errors span orders of magnitude, but after three
+spatial rungs the errors are fairly even and the linear `α = 1` weight is the cleaner curriculum.
+`batch_matrix` would normalize by the max over the *entire batch*, coupling every image's weighting to
+whichever image carries the worst frequency — cross-image variance I have no reason to invite.
+`ave_spectrum` would average spectra across the batch before comparing, but I want each reconstruction
+pulled toward *its own* target's spectrum, not the batch mean.
 
 Now the composition, and this is the crucial design point: the focal frequency loss is a *complement*, not
 a replacement. It constrains the spectrum but says nothing about absolute pixel values being right — you
@@ -167,17 +147,12 @@ am not touching the architecture, the optimizer, the schedule, the EMA, or the e
 loop. The finale is a *pure loss-design* addition: one frequency-domain term, complementary to the three
 spatial terms, gated by a detached hard-frequency spotlight.
 
-Now the bar this has to clear and what I would validate, against the strongest baseline's real numbers.
-The vqgan rung sits at small `14.75`, medium `7.13`, large `3.38`, gmean `7.08`. For the finale to justify
-itself, the gmean must come in *below* `7.08`, and the per-scale story I would expect — by the same logic
-that has held for three rungs — is that the frequency term helps most where the high-frequency residual is
-largest. That should again be the small scale: the narrowest model through the tightest bottleneck (the
-`12:1` compression I traced earlier) loses the most high-frequency detail, so an explicit spectral term
-has the most band-mismatch to recover there, and I would expect `14.75` to fall the hardest. Medium and
-large should tick down too but by less, large least of all, since at `3.38` it is already crisp enough
-that little spectral residual remains — and large was already the scale that barely moved this rung, so a
-frequency term with little to recover there is consistent, not surprising. PSNR and SSIM I would expect to
-hold or improve slightly, and this is a real point of difference from the perceptual rung: matching the
+Now the bar, against the strongest baseline's numbers: small `14.75`, medium `7.13`, large `3.38`, gmean
+`7.08`. For the finale to justify itself the gmean must come in *below* `7.08`, and by the same logic that
+has held for three rungs the frequency term should help most where the high-frequency residual is largest
+— again the small scale, through the tightest `12:1` bottleneck, which loses the most detail; the large,
+already crisp at `3.38`, should barely move. PSNR and SSIM I would expect to hold or improve slightly, a
+real point of difference from the perceptual rung: matching the
 spectrum more faithfully restores high-frequency content that, unlike the perceptual-versus-pixel trade,
 is *not* in tension with pixel accuracy — a sharper, spectrally-correct reconstruction is also a
 pixel-closer one, so if anything a faithful spectrum nudges PSNR up rather than trading it away.
@@ -196,18 +171,3 @@ bottlenecked autoencoder, and the fact that none of the three spatial terms targ
 *explicitly* while FFL targets it by construction and concentrates on exactly the hard bands, make me
 expect a real, scale-dependent gain — largest on the small scale — that pushes the gmean below the
 strongest baseline.
-
-The causal chain in one breath: three spatial rungs (pixel, perceptual, adversarial) have flattened the
-curve to gmean `7.08` with shrinking `43% → 24%` cuts, because they all measure error in the spatial
-domain and none targets the frequency bands a bottlenecked autoencoder structurally loses → so measure
-reconstruction error directly on the 2D FFT spectrum as the squared complex distance → but Parseval shows
-the unweighted orthonormal spectral distance equals pixel MSE *exactly* (checked to seven digits), so the
-domain change alone is redundant and the weighting must carry all the novelty → gate each component by a
-detached, `[0,1]`-normalized hard-frequency spotlight `|F_r - F_f|^α` (`α = 1`, whose `e³` contribution I
-verified concentrates gradient off the easy frequencies onto the hard ones, where `α = 0` collapses back
-to the redundant MSE) that self-generates a curriculum over the hardest bands → add this `loss_weight·FFL`
-term as a *complement* on top of the full vqgan recipe (it constrains the spectrum, the spatial terms
-anchor the pixels), sized at a gentle few-thousandths so it nudges rather than hijacks, changing one line
-of the objective and nothing else → expecting the small scale's `14.75` to fall the hardest and the gmean
-to clear `7.08`, with PSNR/SSIM held or up, while watching the frequency-weight and the
-redundancy-with-the-discriminator risk that would falsify the diagnosis.
