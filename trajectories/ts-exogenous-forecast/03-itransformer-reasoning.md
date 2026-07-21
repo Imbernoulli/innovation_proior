@@ -117,57 +117,26 @@ carries real temporal content rather than a single tick. The two diseases of the
 temporal content per token, channel mixing smeared through norm — are both gone, and they are gone
 because of the tokenization, not because of any extra machinery.
 
-It is worth being precise about *why* the cross-variate score is the right object, because it is the
-whole justification for the rung. In the timestamp layout the attention map answered "which instants
-look alike," a quantity that is at best a proxy for periodicity and at worst noise. In the variate-token
-layout the score between token $i$ and token $j$ is computed from two vectors that each summarize a full
-ninety-six-step series, so the dot product reads off how the *temporal profile* of variate $i$ aligns
-with that of variate $j$ — a learned, soft, lag-tolerant analogue of cross-correlation. That is exactly
-the statistic a forecaster wants when the target leans on covariates: it says "the wind channel's
-recent profile resembles a configuration that historically preceded this kind of move in the target,"
-and the softmax-weighted value aggregation then writes the relevant covariate representations into the
-target's token. None of this needs me to specify *which* channels matter; the attention learns the
-coupling from data. And because the projection that builds each token sees the entire look-back, the
-representation it summarizes is already temporally rich — the FFN inside each layer then refines that
-per-variate temporal representation further. So the division of labor is clean and inverted from the
-usual Transformer: attention does the *cross-channel* work, the FFN does the *within-channel temporal*
-work, and neither steps on the other. That separation is the reason the stock encoder, unmodified,
-suddenly becomes a competent multivariate model — the layout, not the layer, was the lever all along.
+The division of labor is clean and inverted from the usual Transformer: attention does the
+*cross-channel* work, the FFN the *within-channel temporal* work, and neither steps on the other — which
+is why the stock encoder, unmodified, suddenly becomes a competent multivariate model. The layout, not
+the layer, was the lever. A limiting case forces the point: if the target is a pure lagged copy of one
+covariate, $x^{(\text{tgt})}_t = x^{(\text{cov})}_{t-k}$, and the rest is noise, then PatchTST — seeing
+only the target's own past — is structurally blind to a covariate move the target has not yet responded
+to, while iTransformer can place nearly all of the target token's weight on the covariate token (their
+profiles align up to a shift) and let the value path and FFN implement the $k$-step shift. So there is a
+concrete class of dependence only the cross-variate layout can represent, with no lag parameter and no
+specified coupling — and Weather's covariate-driven target is its real-world echo.
 
-Let me verify the mechanism on a limiting case where I can reason exactly, because "attention learns the
-coupling" is easy to assert and I want to see it forced by the construction. Take the extreme where the
-target is a pure lagged copy of one covariate: $x^{(\text{tgt})}_t = x^{(\text{cov})}_{t-k}$ for some lag
-$k$, and the other channels are noise. What does each model do at the horizon? PatchTST, channel-
-independent, sees only the target's own past; if the driving covariate has already moved but the target
-has not yet responded, that impending move is simply *not in the target's history*, so no temporal model
-of the target alone can anticipate it — PatchTST is structurally blind to it. iTransformer, in the
-variate-token layout, builds the target token and the covariate token as projections of their full
-96-step series; attention can place essentially all of the target token's weight on the covariate token
-(their profiles are identical up to a shift, so their query-key alignment is maximal), and the value
-path plus the per-variate FFN can implement the $k$-step shift, reconstructing the target's future from
-the covariate's already-observed present. So in this special case the fusion recovers *exactly* the
-signal PatchTST must miss, and it does so with the stock encoder — no lag parameter, no specified
-coupling. Real series are messier mixtures, but this confirms the fusion is not decorative: there is a
-concrete, checkable class of dependence that only the cross-variate layout can represent, and Weather's
-covariate-driven target is the real-world echo of it.
-
-The forecast head is then the dual of the embedding: each variate token, after the encoder has let the
-other channels write into it, is projected $\mathbb{R}^{D}\to\mathbb{R}^{\text{pred\_len}}$ back to a
-ninety-six-step forecast for that channel. Let me trace it to be sure the target lands in the scored
-column: the encoder output is $(B,N',512)$ where $N'$ is $N$ plus the mark tokens; `Linear(512,96)`
-gives $(B,N',96)$; permute to $(B,96,N')$ and slice `[:, :, :N]` to drop the mark tokens, leaving
-$(B,96,N)$ — one 96-step forecast per real channel, in channel order, so the target sits in the last
-column exactly where the harness slices. Because `c_out == enc_in` and I produce a token per channel,
-the output already has the right shape. I keep the same per-instance normalization (subtract the
-look-back mean, divide by std, add back after) for the same distribution-shift reason as the patch rung.
-And I should double-check it stays per-channel in *this* layout, because the token axis is now the
-channel axis and a careless reduction could average across channels: `means = x_enc.mean(1, keepdim=True)`
-still reduces over the *time* axis, giving $(B,1,N)$ — one statistic per channel — and the de-norm
-multiplies by `stdev[:,0,:]` broadcast over the horizon, so each channel's forecast is rescaled by its
-own std. The normalization does not smuggle in coupling; all the cross-channel mixing happens in the
-attention scores and nowhere else, which is exactly the property I argued for. The calendar features `x_mark_enc` can be folded in as extra tokens by the inverted embedding,
-which is free covariate information. Configuration is the standard one: `e_layers=2`, `d_model=512`,
-`d_ff=512`, `n_heads=8`, dropout 0.1. The full scaffold module is in the answer.
+The forecast head is the dual of the embedding: each variate token, after the encoder has let the other
+channels write into it, is projected $\mathbb{R}^{D}\to\mathbb{R}^{\text{pred\_len}}$ back to a
+ninety-six-step forecast, and slicing off the mark tokens leaves one forecast per channel with the
+target in the last column where the harness slices. I keep the same per-instance normalization as the
+patch rung; it reduces over the time axis, so it stays per-channel and all cross-channel mixing happens
+in the attention scores and nowhere else, exactly the property I argued for. The calendar features
+`x_mark_enc` fold in as extra tokens — free covariate information. Configuration is the standard one:
+`e_layers=2`, `d_model=512`, `d_ff=512`, `n_heads=8`, dropout 0.1. The full scaffold module is in the
+answer.
 
 I should be honest about what this rung trades away relative to the patch rung, because it predicts
 exactly where it might *not* win. By crushing each channel's whole series into a single token with one
@@ -196,21 +165,7 @@ finding the research question is after. The next rung's job, then, writes itself
 temporal resolution that PatchTST's patches gave *and* the cross-variate reach that this rung gives,
 and stop spending quadratic compute and noise on channels the target never needs.
 
-I want to be sharp about the two-sided prediction on ECL, because it is the most diagnostic single
-result this rung can produce. MSE weights large squared errors, so if cross-client fusion removes even a
-few big systematic misses, MSE should fall below PatchTST's 0.317887. MAE weights every error linearly,
-so it reports the *typical* error — and if the $O(N^2)$ symmetric attention lets 320 mostly-irrelevant
-clients each leak a little noise into the target token, the typical error can rise even as the worst-case
-error falls. That is why I explicitly allow ECL MAE to move less than MSE, or even slip above 0.394697,
-while still counting the rung a success: a split verdict on ECL (MSE down, MAE flat-to-up) would not be
-noise, it would be the measured fingerprint of *indiscriminate* fusion — reading every channel whether
-or not it helps. And that fingerprint, if it appears, is precisely the defect the following rung must
-target: the fusion needs to become selective about which channels write into the target and by how much,
-rather than symmetric across all $N$. So whichever way ECL's MAE lands, the number is informative — a
-clean drop says symmetric fusion was already enough, a slip says the next lever is a more selective
-fusion that stops treating all channels alike.
-Either way I will have converted the vague worry "attention over 321 channels might be noisy" into a
-signed, per-metric measurement I can act on, which is the most this rung can be asked to deliver — a
-concrete number the next design decision can be pinned to rather than an intuition I would otherwise have
-to guess about, and the difference between a ladder that reasons from evidence and one that reasons from
-hope.
+The ECL split, if it appears, is the diagnostic that licenses the next rung: MSE down but MAE flat-to-up
+would be the fingerprint of *indiscriminate* fusion — reading every channel whether or not it helps — and
+the fix it points to is a fusion that becomes selective about which channels write into the target and by
+how much, rather than symmetric across all $N$.

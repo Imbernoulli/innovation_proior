@@ -98,52 +98,27 @@ feed-forward block mixes everything, and the layer repeats. At the end, the endo
 plus the now-exogenous-informed global token — are flattened through a linear head to the 96-step
 forecast for the target.
 
-There is a subtlety in *why* a single global token is enough to carry all the exogenous influence, and
-it is worth pinning down because it is the crux of the asymmetry argument. One might worry that funnelling
-every covariate's contribution through one token is a bottleneck so tight it loses information. But think
-about what the target actually needs from the exogenous side: not the covariates' fine temporal detail —
-that is *their* business, not the target's — but a summary of "given where the covariates are now, which
-way is the target being pushed." That is a low-dimensional ask, and a single $d_{model}$-wide token
-updated by attention over the covariate tokens is amply expressive for it. Contrast the alternative,
-where every endogenous patch token cross-attends to every covariate token: now each of the target's
-local shapes is independently re-weighted by 320 noisy clients, and there is no shared, denoised summary
-— each patch absorbs its own slice of covariate turbulence, which is precisely the mechanism by which
-iTransformer's symmetric fusion let ECL's noise inflate the target's typical-case error. The global
-token forces the covariate influence to be *consolidated* before it touches the target's fine structure,
-so the same attention that reads useful covariate signal also averages away the per-channel noise. The
-bottleneck is not a limitation; it is the denoiser. And because only the global token queries the
-exogenous stream, the cost of fusion is $O(1\cdot N)$ per layer in the number of covariates rather than
-iTransformer's $O(N^2)$ — the directed design is cheaper *and* cleaner on exactly the large panels where
-symmetric fusion struggled most. On ECL that is one query against 320 keys, a single length-320
-attention vector, versus iTransformer's full $321\times321\approx 103{,}000$-entry map — roughly a
-$320\times$ reduction in the fusion attention, and every one of those retained interactions terminates
-*at the target* rather than at some pair of unscored clients.
+Funnelling every covariate through one token might look like a bottleneck too tight to carry the signal,
+but the target does not need the covariates' fine temporal detail — that is *their* business — only a
+summary of which way they are pushing it, and a single $d_{model}$-wide token updated by attention over
+the covariate tokens is amply expressive for that. The bottleneck consolidates the covariate influence
+before it touches the target's fine structure, so the same attention that reads useful signal also
+averages away the per-channel noise — it is a denoiser, not a limitation. And because only the global
+token queries the exogenous stream, the fusion costs $O(1\cdot N)$ per layer rather than iTransformer's
+$O(N^2)$: on ECL, one query against 320 keys versus a full $321\times321\approx 103{,}000$-entry map,
+and every retained interaction terminates *at the target* rather than at some pair of unscored clients.
 
-I can make the denoising claim quantitative, which is the part I most want to be sure of before I commit
-to a single bottleneck token. Suppose each of the $M=320$ covariate tokens carries the same useful signal
-component $s$ plus an independent zero-mean noise $\varepsilon_c$ of variance $\sigma^2$. When the global
-token attends over them with softmax weights $w_c$ summing to one, the aggregated update is $\sum_c w_c
-(s+\varepsilon_c) = s + \sum_c w_c \varepsilon_c$, and the noise term has variance $\sigma^2\sum_c w_c^2$.
-For roughly uniform attention $w_c\approx 1/M$ that is $\sigma^2/M$ — the signal passes through at full
-strength while the independent noise is suppressed by a factor of $M=320$. Now the contrasting case: if
-instead each of the 6 endogenous patches ran its *own* cross-attention, each patch would draw an
-independent noisy aggregate and there would be no averaging *across* patches — the target's fine structure
-would carry 6 separately-corrupted covariate injections, exactly the per-patch turbulence I am trying to
-avoid. So the single global token is not merely cheaper; it is the configuration that maximizes the
-covariate signal-to-noise before any of it touches the patches. That is the mechanism behind the ECL MAE
-fix, written as an arithmetic rather than an intuition.
-
-Let me check this against the two failures I am trying to fix, concretely. iTransformer's ETTh1 loss
-came from giving up patch-level temporal detail; here the endogenous stream *is* patches, so that
-detail is preserved — ETTh1 should recover toward PatchTST's level, because the target's own structure
-is modeled at PatchTST's resolution while the (small) ETTh1 covariate signal is available through the
-global token if it helps. iTransformer's ECL MAE regression came from symmetric, indiscriminate fusion
-letting covariate noise into the target; here the fusion is one directed cross-attention through a
-single global-token bottleneck, so the exogenous influence is read, not injected wholesale — ECL MAE
-should come back down even as the cross-client information keeps MSE low. And Weather's win, which came
-from cross-variate fusion in the first place, should hold or improve, because the fusion is still there,
-just routed more precisely. The construction is the literal resolution of the PatchTST-vs-iTransformer
-tension the last three feedbacks measured.
+The denoising is not just intuition: if each covariate token carries the same useful signal plus
+independent noise of variance $\sigma^2$, the global token's softmax-weighted aggregate passes the
+signal at full strength while the noise variance drops to $\sigma^2\sum_c w_c^2 \approx \sigma^2/M$ under
+roughly uniform weights — suppressed by a factor of $M$. Letting each of the 6 patches run its own
+cross-attention instead would give no averaging across patches, so the fine structure would carry six
+separately-corrupted injections. The single global token maximizes covariate signal-to-noise before any
+of it touches the patches, which is the mechanism behind the ECL MAE fix. Concretely, then, the endo
+patch stream preserves the detail iTransformer gave up on ETTh1; the directed bottleneck reads exogenous
+influence without injecting it wholesale, so ECL MAE should come back down while cross-client information
+keeps MSE low; and Weather's fusion win holds, just routed more precisely — the literal resolution of the
+PatchTST-vs-iTransformer tension the last three feedbacks measured.
 
 Now the edit surface, because the loop is fixed and I only fill `Model`, and TimeXer's MS path has a
 few specifics I have to get exactly right. The endogenous embedding (`EnEmbedding`) patches the **last**
@@ -161,22 +136,11 @@ global token back, and a conv feed-forward mixes. The head flattens the endogeno
 `patch_len=16`, `e_layers=1`, `d_model=512`, `d_ff=512`, `n_heads=8`, `factor=3`, dropout 0.1,
 `use_norm=True`. The full scaffold module is in the answer.
 
-Let me trace the tensor shapes end to end, because the two streams and the cross-attention give several
-places a wrong reshape would silently pass and corrupt the result. Take ECL, $N=321$. `EnEmbedding`
-receives `x_enc[:, :, -1:].permute(0,2,1)` of shape $(B,1,96)$; `unfold(size=16, step=16)` makes
-$(B,1,6,16)$; the value embedding sends the last axis $16\to512$, giving $(B,1,6,512)$; the global token
-$(B,1,1,512)$ is concatenated on the patch axis to $(B,1,7,512)$, then reshaped to $(B\cdot1, 7, 512)$ —
-7 endogenous tokens, the global one last. `DataEmbedding_inverted` receives `x_enc[:, :, :-1]` of shape
-$(B,96,320)$ and, with the calendar marks appended, yields the exogenous set $(B, 320{+}m, 512)$ for $m$
-mark tokens. In the layer: self-attention over the 7 endogenous tokens is a $7\times7$ map; then
-$x[:, -1, :]$ picks the global token as a $(B,1,512)$ query and cross-attends to the $(B,320{+}m,512)$
-exogenous keys/values, producing a $(B,1,512)$ update — one query row, so the directed $O(N)$ cost is
-literal in the shapes. The updated global token is concatenated back with `x[:, :-1, :]` to restore
-$(B,7,512)$, the conv FFN mixes, and the head flattens $7\cdot512 = 3584$ to the 96-step horizon. The
-de-norm then multiplies by `stdev[:, 0, -1:]` — the *last* channel's std, the target's — because in MS I
-emit only the target and must undo the target's own normalization, not some other channel's. Every
-reshape lines up, and critically the exogenous tokens never appear on the output path except through the
-single global-token update, which is the whole asymmetry made concrete.
+The one shape detail that matters is that the global token is picked out as a single query row — on ECL,
+$x[:, -1, :]$ is a $(B,1,512)$ query cross-attending to the $(B,320{+}m,512)$ exogenous keys/values,
+producing a $(B,1,512)$ update — so the directed $O(N)$ cost is literal, and the exogenous tokens never
+appear on the output path except through that single global-token update. That is the whole asymmetry
+made concrete.
 
 One configuration choice deserves its own justification: `e_layers=1`, where PatchTST used 3 and
 iTransformer 2. It looks like under-provisioning until I count what one layer here actually contains. A
@@ -191,27 +155,20 @@ cut; it is the right depth for a design whose single layer is already doing the 
 rungs split across a deeper stack.
 
 So the bar this rung must clear is concrete and per-dataset, written against the three real numbers
-below it. On **ETTh1** it must beat or match iTransformer's 0.058923 / 0.186680 and ideally recover the
-ground iTransformer lost to PatchTST's 0.058292 / 0.182538 — the patch endogenous stream should bring
-ETTh1 back down to PatchTST's level or just under it, because that is what restoring patch-level
-resolution buys. On
-**Weather** it must hold iTransformer's 0.001346 / 0.026998 — the fusion that won there is preserved, so
-I expect a small further drop, not a regression; if Weather instead *regressed*, that would mean the
-patch endogenous stream had somehow starved the fusion of the covariate signal it needs, and the
-global-token routing was too tight rather than just tight enough. On **ECL** it must beat iTransformer on
-*both* metrics,
-and the MAE is the one I am really testing: iTransformer slipped to 0.405040 because its fusion was
-indiscriminate, and if the directed global-token bottleneck is doing what I designed it to do, ECL MAE
-should fall well below that — that single number is the cleanest test of whether asymmetric fusion beats
-symmetric fusion on a large noisy panel. If ETTh1 fails to recover the patch-level ground, my claim that
-the endogenous patch stream restores PatchTST's resolution is wrong. If ECL MAE does *not* improve over
-0.405040, then the directed bottleneck is not actually controlling the covariate noise and the
-asymmetry bought nothing. Those are the two falsifiable failure conditions; clearing both — ETTh1 at or
-below PatchTST's 0.058292, Weather held at iTransformer's 0.001346, and ECL beneath iTransformer's
-0.301479 / 0.405040 on both metrics — is what it means for the endo/exo separation to be the right answer
-to the exogenous-fusion question this whole ladder was asking. Notice that clearing them requires the rung to be simultaneously best-or-near-best on
-all three datasets, which no prior rung managed: DLinear led nowhere, PatchTST owned ETTh1 but lost
-Weather and ECL, iTransformer owned Weather but lost ETTh1 and split ECL. A rung that tops or ties every
-dataset would be the first to dominate rather than trade — and that dominance, if it appears, is the
-metric-level statement that the endogenous/exogenous split genuinely subsumes both channel-independent
-patching and symmetric cross-variate fusion instead of merely interpolating between them.
+below it. On **ETTh1** it must beat or match iTransformer's 0.058923 / 0.186680 and recover the ground
+iTransformer lost to PatchTST's 0.058292 / 0.182538 — the patch endogenous stream should bring ETTh1
+back to PatchTST's level, because that is what restoring patch-level resolution buys. On **Weather** it
+must hold iTransformer's 0.001346 / 0.026998 — the fusion that won there is preserved, so I expect no
+regression; if Weather instead *regressed*, the patch stream had starved the fusion of covariate signal
+and the global-token routing was too tight. On **ECL** it must beat iTransformer on *both* metrics, and
+the MAE is the one I am really testing: iTransformer slipped to 0.405040 because its fusion was
+indiscriminate, and if the directed bottleneck works, ECL MAE should fall well below that — the cleanest
+test of whether asymmetric fusion beats symmetric fusion on a large noisy panel. Those are the two
+falsifiable failure conditions: if ETTh1 fails to recover the patch-level ground, the claim that the
+endogenous patch stream restores PatchTST's resolution is wrong; if ECL MAE does not improve over
+0.405040, the directed bottleneck is not controlling the covariate noise and the asymmetry bought
+nothing. Clearing both requires this rung to be best-or-near-best on all three datasets at once, which no
+prior rung managed — DLinear led nowhere, PatchTST owned ETTh1 but lost Weather and ECL, iTransformer
+owned Weather but lost ETTh1 and split ECL — so a rung that tops every dataset would be the first to
+dominate rather than trade, the metric-level statement that the endo/exo split subsumes both
+channel-independent patching and symmetric cross-variate fusion instead of interpolating between them.

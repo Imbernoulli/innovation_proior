@@ -99,123 +99,69 @@ $\mathbb{R}^{P}$. The patch count is $N=\lfloor(L-P)/S\rfloor+1$ plus one for th
 embedding adds — far fewer than $L$, so attention is cheap, *and* each token is now a meaningful local
 shape.
 
-Let me put real numbers on "far fewer," because the whole efficiency argument lives there. With $L=96$,
-$P=16$, $S=8$: `PatchEmbedding` first replication-pads $S=8$ steps on the end, taking the length to
-$104$, then unfolds width-16 windows at stride 8, giving $\lfloor(104-16)/8\rfloor+1 = 11+1 = 12$ patch
-tokens — which is exactly the $\text{int}((96-16)/8 + 2)=12$ that the flatten head's `head_nf`
-$=d_{model}\cdot 12$ assumes, so the head lines up. Twelve tokens instead of ninety-six. Point-wise
-attention builds a $96\times 96$ score matrix, $9216$ entries per channel per layer; patch attention
-builds $12\times 12$, $144$ entries — a $64\times$ reduction, and quadratic, so if I ever wanted a
-longer look-back the gap only widens. The stride-8 half-overlap between adjacent 16-step patches is a
-deliberate small redundancy: a shape that straddles a patch boundary still appears whole inside a
-neighboring window, so I am not arbitrarily severing local structure at the cuts. Each patch is embedded
-by a shared $\mathbb{R}^{16}\to\mathbb{R}^{128}$ linear map plus a positional embedding, and the twelve
-tokens run through the encoder.
+Concretely, with $L=96$, $P=16$, $S=8$, `PatchEmbedding` replication-pads $S=8$ on the end and unfolds
+width-16 windows at stride 8, giving $\lfloor(104-16)/8\rfloor+1 = 12$ patch tokens — which is exactly
+the $12$ the flatten head's `head_nf` $=d_{model}\cdot 12$ assumes, so the head lines up. Twelve tokens
+instead of ninety-six collapses the attention map from $96\times96$ to $12\times12$, and the stride-8
+half-overlap keeps a shape that straddles a patch boundary whole inside a neighboring window, so I am
+not severing local structure at the cuts. Each patch is embedded by a shared $\mathbb{R}^{16}\to
+\mathbb{R}^{128}$ linear map plus a positional embedding, and the twelve tokens run through the encoder.
 
-It is worth being explicit about what a query-key dot product now *computes*, because that is where the
-tokenization change pays off. Each patch token is a $128$-dim embedding of a 16-step local shape, so the
-score between patch $a$ and patch $b$ is a learned similarity between two local waveforms — "does the
-shape around step $a$ resemble the shape around step $b$?" That is a matched-filter operation over
-shapes, exactly the thing a forecaster wants: it can learn that the ramp at the start of a daily cycle
-predicts the peak eight patches later, and route information from the one to the other. With only 12
-tokens, the attention head has a small enough set that it can learn a sharp, near-deterministic routing
-rather than a diffuse average — a further reason the collapsed token count is a feature, not just a cost
-saving, and one that a 96-token point-wise map, spreading its softmax mass over eight times as many
-mostly-meaningless positions, could never enjoy. Contrast the
-point-wise score, which asked "does the scalar at step $a$ equal the scalar at step $b$?" — a comparison
-of two structureless numbers whose answer is dominated by noise. Same attention kernel, same softmax;
-the only thing I changed is that the objects being compared went from meaningless to meaningful, and
-that is the entire thesis of the rung.
+And the query-key dot product now computes the right thing: each patch token embeds a 16-step local
+shape, so the score between patch $a$ and patch $b$ is a learned similarity between two local waveforms
+— a matched-filter over shapes that can learn the ramp starting a daily cycle predicts the peak eight
+patches later. With only 12 tokens the head can learn a sharp routing rather than spreading its softmax
+over ninety-six mostly-meaningless positions. Same attention kernel, same softmax; the only change is
+that the compared objects went from meaningless scalars to meaningful shapes — the entire thesis of the
+rung.
 
-I owe myself one honest caveat about the efficiency half of the patching argument, because the substrate
-fixes `seq_len=96` and I cannot lengthen it. The "cheap long window" benefit — that collapsing $L$ into
-$L/S$ tokens lets you afford a much longer look-back — is real but *latent* here; I am not allowed to
-spend it. So the win this rung actually claims on these three datasets cannot be "I fed the model more
-history." It must be the *semantic* half alone: at the same fixed 96-step look-back, patch tokens carry
-meaningful local shapes that point-wise tokens did not, so attention finally has the right objects to
-compare. If PatchTST beats DLinear here, that improvement is attributable purely to better token
-semantics, not to a longer window — which keeps this a clean comparison against the linear floor. Embed each patch with a shared linear map $\mathbb{R}^{P}\to\mathbb{R}^{d}$ plus a positional
-embedding, run a stack of vanilla Transformer encoder layers over the patch tokens (the substrate's
-`Encoder`/`EncoderLayer`/`FullAttention`), and flatten the resulting $N$ patch representations through
-a linear head to the 96-step horizon.
+One honest caveat about the efficiency half of the argument: the substrate fixes `seq_len=96`, so the
+"cheap long window" benefit — collapsing $L$ into $L/S$ tokens to afford more history — is real but
+*latent* here; I cannot spend it. The win this rung claims must be the *semantic* half alone: at the
+same 96-step look-back, patch tokens carry meaningful local shapes that point-wise tokens did not. If
+PatchTST beats DLinear, that gain is attributable to better token semantics, not a longer window, which
+keeps the comparison clean. Run the patch tokens through a stack of vanilla encoder layers (the
+substrate's `Encoder`/`EncoderLayer`/`FullAttention`) and flatten to the 96-step horizon.
 
-The crucial design decision — the one that keeps this rung a *clean control* — is that the backbone is
-**channel-independent**: the same patch-embedding, the same encoder, the same head are applied to every
-channel separately, and channels never attend to each other. I implement that by folding the channel
-axis into the batch: reshape $(B,L,C)$ so each channel becomes its own sequence of patch tokens, run
-the shared backbone, then reshape back. Let me trace the shapes so I am sure no channel ever attends to
-another: $x_{enc}$ is $(B,96,C)$; permute to $(B,C,96)$; `PatchEmbedding` folds the channel axis into
-the batch and patches, giving $(B\cdot C, 12, 128)$; the encoder runs self-attention over the $12$-token
-axis only, so its attention map is per-$(B\cdot C)$-row — on ECL that is $B\cdot 321$ independent
-length-12 sequences in one forward pass, none of which share an attention score. Reshape back to
-$(B,C,128,12)$, and the flatten-head maps $128\cdot 12 = 1536$ down to the $96$-step horizon per channel.
-The channel axis passed through as a pure batch dimension from start to finish; the exogenous covariates
-are as invisible to the target here as they were in DLinear. This is deliberate. It does for the
-temporal model what
-DLinear could not — patches plus attention give a strong *nonlinear, multi-scale* read of one channel's
-own dynamics — while holding the channel-independence axis fixed at exactly where DLinear had it. So
-whatever this rung gains over DLinear is attributable to *better per-channel temporal modeling*, not to
-fusion. That is the whole reason it comes before the cross-variate rung.
+The crucial design decision — the one that keeps this a *clean control* — is that the backbone is
+**channel-independent**: the same patch-embedding, encoder, and head are applied to every channel
+separately, implemented by folding the channel axis into the batch so each channel becomes its own
+sequence of patch tokens, run through the shared backbone, then reshaped back. On ECL that is $B\cdot
+321$ independent length-12 sequences in one forward pass, none of which share an attention score — the
+covariates are as invisible to the target here as in DLinear. This is deliberate: it does for the
+temporal model what DLinear could not — patches plus attention give a strong nonlinear, multi-scale read
+of one channel's own dynamics — while holding channel-independence fixed exactly where DLinear had it.
+So whatever this rung gains over DLinear is attributable to *better per-channel temporal modeling*, not
+fusion. That is why it comes before the cross-variate rung.
 
-I should size the jump in cost I am accepting, because "add a Transformer" can quietly mean a hundredfold
-more parameters and I want it to be a small model. With $e\_layers=3$, $d\_model=128$, $d\_ff=256$: each
-encoder layer is roughly $4d^2$ for the attention projections ($4\cdot128^2 = 65{,}536$) plus $2\cdot d
-\cdot d\_ff$ for the feed-forward ($2\cdot128\cdot256 = 65{,}536$), about $131$k per layer, so three
-layers is $\approx 393$k. The flatten head is $1536\cdot96 \approx 147$k, and the patch embedding is a
-tiny $16\cdot128 = 2048$. Total is on the order of $0.55$ million parameters — roughly $30\times$
-DLinear's $18.6$k, but still a small model, and crucially it is *shared across all channels and
-independent of $C$*, so it is the same size on ETTh1's 7 channels and ECL's 321. That is the right kind
-of scaling: I am spending the extra capacity on the temporal model, once, not on the channel count.
+The cost is modest: with $e\_layers=3$, $d\_model=128$, $d\_ff=256$, on the order of $0.55$M parameters
+— roughly $30\times$ DLinear's $18.6$k but still small, and crucially shared across all channels and
+*independent of $C$*, so the same size on ETTh1's 7 channels and ECL's 321. The extra capacity goes into
+the temporal model, once, not the channel count.
 
-Two pieces of plumbing I keep because they are known to matter and cost little. First, **instance
-normalization** in the Non-stationary-Transformer style: subtract the per-instance mean and divide by
-the per-instance std of the look-back before patching, then add them back after the head. These
-benchmarks have heavy distribution shift between train and test windows, and normalizing each instance
-removes the shift the model would otherwise waste capacity chasing — and importantly it is applied
-per-channel, so it does not smuggle in any cross-channel coupling. Let me check that last claim in the
-shapes, because if the normalization leaked across channels it would quietly break the control. The mean
-is `x_enc.mean(1, keepdim=True)`, reducing over the *time* axis only, so it has shape $(B,1,C)$ — one
-mean and one std per channel, computed from that channel's look-back alone. The subtract, the divide, and
-the symmetric de-normalization after the head (`stdev[:,0,:]` and `means[:,0,:]` broadcast over the 96
-horizon steps) all act channel-wise. So a channel is centered and scaled by its own statistics and never
-sees another's — the normalization respects channel-independence exactly, and it happens *before* the
-channel axis is folded into the batch, so each of the $B\cdot C$ folded sequences arrives already
-standardized. Second, **BatchNorm** (in the
-transpose-BN-transpose form) instead of LayerNorm inside the encoder, which is the reference choice for
-patch tokens and trains more stably here. The reason is a property of the tokens: patch embeddings vary
-enormously in magnitude across a batch — a flat, quiet window embeds to a small-norm token, a steep ramp
-to a large one — and LayerNorm, which normalizes *within* each token across its 128 features, leaves that
-between-token magnitude spread intact. Transpose-BatchNorm instead normalizes each of the 128 features
-*across* the token-and-batch axis, so it explicitly centers and scales away that spread, which is why it
-converges more smoothly on patch tokens than LayerNorm does. With `e_layers=3`, `n_heads=4`,
-`d_model=128`, `d_ff=256`,
-`patch_len=16`, `stride=8`, dropout 0.1 — the standard configuration — the model is small and fast. The
-full scaffold module is in the answer.
+Two pieces of plumbing I keep because they matter and cost little. First, **instance normalization** in
+the Non-stationary-Transformer style: subtract the per-instance mean and divide by the per-instance std
+of the look-back before patching, add them back after the head, to remove the train/test distribution
+shift the model would otherwise chase. It reduces over the *time* axis only, giving one mean and std per
+channel — so it stays per-channel and smuggles in no cross-channel coupling, and it happens before the
+channel axis folds into the batch. Second, **BatchNorm** (transpose-BN-transpose form) instead of
+LayerNorm inside the encoder. Patch embeddings vary enormously in magnitude across a batch — a flat
+window embeds to a small-norm token, a steep ramp to a large one — and LayerNorm, normalizing *within*
+each token across its 128 features, leaves that between-token spread intact; transpose-BatchNorm
+normalizes each feature *across* the token-and-batch axis, centering that spread away, which converges
+more smoothly on patch tokens. With `e_layers=3`, `n_heads=4`, `d_model=128`, `d_ff=256`, `patch_len=16`,
+`stride=8`, dropout 0.1, the model is small and fast. The full scaffold module is in the answer.
 
-Now the falsifiable expectations against DLinear's measured numbers, dataset by dataset. On **ETTh1**,
-where fusion has little to add, this rung should *still beat* DLinear's 0.0644 / 0.1878 — and if it
-does, that improvement is pure evidence that the per-channel temporal model was the bottleneck on ETTh1,
-exactly the residual gap I flagged in the linear result; I expect ETTh1 MSE to drop into the high
-0.05s. On **Weather**, where the target leans hard on its covariates, I expect a real improvement over
-DLinear's 0.005652 simply because attention-over-patches is a far better temporal model — but I also
-expect this rung to *leave a gap*, because it still cannot read the other channels; that residual gap
-on Weather is precisely the quantity the next, cross-variate rung must close, and I want it on the
-record. On **ECL** I expect the biggest absolute drop from DLinear's 0.3873, since 321 clients give the
-shared linear map the most trouble and a patch-attention temporal model the most room — but again with
-a residual that only cross-client fusion can take. If instead this rung *fails* to beat DLinear on
-ETTh1, my diagnosis was wrong and the linear floor was already the best per-channel model, which would
-send the next rung straight to fusion with no temporal upgrade. I do not expect that, but the ETTh1
-comparison is the experiment that decides it.
-
-There is a second reading of these numbers I want prepared in advance, because it is the one that
-licenses the *next* rung rather than this one. Even in the best case where PatchTST beats DLinear on all
-three, the shape I am predicting is that the ETTh1 improvement roughly *exhausts* that dataset's
-headroom — the residual there was almost all weak-temporal-model, and a strong per-channel model should
-take most of it — whereas on Weather and ECL a visible residual should *remain* after the temporal
-upgrade, because no amount of per-channel modeling can manufacture the covariate signal. So the
-diagnostic on this feedback is not just "did it beat DLinear" but "where did a gap survive": if the gap
-closes on ETTh1 and persists on Weather and ECL, that surviving gap is the fusion gap, now cleanly
-separated from the temporal-model gap that this rung just paid off. That separation is the whole reason
-this rung exists between the linear floor and the first cross-variate model — it converts an ambiguous
-"DLinear is loose everywhere" into a specific, addressable "the remaining looseness on Weather and ECL
-is exactly the missing exogenous signal," which is the mandate the next rung inherits.
+Now the expectations against DLinear's measured numbers, as directions I can check. On **ETTh1**, where
+fusion has little to add, this rung should *still beat* DLinear's 0.0644 / 0.1878 — and if it does, that
+gain is evidence the per-channel temporal model was the ETTh1 bottleneck, the residual I flagged in the
+linear result. On **Weather**, a real improvement over DLinear's 0.005652 because attention-over-patches
+is a far better temporal model, but a residual should *remain* because it still cannot read the other
+channels — that residual is the quantity the next, cross-variate rung must close. On **ECL** I expect
+the biggest absolute drop from DLinear's 0.3873, since 321 clients give the shared linear map the most
+trouble, again with a residual only cross-client fusion can take. If instead this rung *fails* to beat
+DLinear on ETTh1, my diagnosis was wrong and the linear floor was already the best per-channel model —
+that comparison is the experiment that decides it. And the diagnostic that licenses the *next* rung is
+not "did it beat DLinear" but "where did a gap survive": if it closes on ETTh1 and persists on Weather
+and ECL, that surviving gap is the fusion gap, now cleanly separated from the temporal-model gap this
+rung paid off.
