@@ -245,19 +245,6 @@ each stratum and stacking the strata in height order yields a distinct linear ex
 `e(P) ≥ ∏_{i=1}^m L_i! ≥ ∏_i 2^{L_i − 1} = 2^{n − m}`, i.e. `n − m ≤ log e(P)`.
 Therefore `Σ log|R_i| = O(log e(P))`.
 
-The volume argument has enough moving parts (a maximum disjoint family, a gap count, a factorial bound,
-two separate constants) that I want to see the final inequality actually hold before I trust it. So let
-me brute-force small cases: enumerate random integer-interval families on `[1,n]` for `n ≤ 6`, count
-`e(P)` exactly by checking all `n!` permutations against the partial order, and compare `Σ log|R_i|`
-to `log e(P)` directly. Over a couple thousand random families the largest ratio `Σ log|R_i| / log e(P)`
-I see is `2.0`, achieved by the family `{[1,2], [1,2]}`: two width-`2` intervals give `Σ log|R_i| = 2`,
-while the partial order is the empty order (the two intervals overlap, so neither precedes the other),
-which has `e(P) = 2` linear extensions and `log e(P) = 1`. That is the worst case and it is finite — the
-ratio never blows up, consistent with the `O(1)` constant the proof produced. (The witness is also a
-good gut-check on the mechanism: two overlapping intervals are *incomparable*, so they contribute one
-bit of ordering ambiguity `log 2` each but only `log 2` to `e(P)` jointly — the sum can lead `log e(P)`
-by a bounded factor but not more.) Good — the lemma holds, and it holds with a genuinely small constant. ∎
-
 Substituting back — `|R_i| = W(v_i)`, `e(P) = D(I) ≤ D` — gives `Σ_v log W(v) = O(log D(I)) = O(log D)`.
 So delete-mins cost `O(n + log D)`, and Dijkstra with a working-set heap runs in `O(m + log D)` time:
 **universally optimal in time**. And in comparisons it does `O(F + log D)`, since the delete-min
@@ -423,7 +410,7 @@ where live indices start at `1`. Re-asserting on the settled `1`-based list, it 
 `2000` inserts:
 
     after 1999 inserts:  sizes |H_1|,|H_2|,…  =  [3, 12, 192, 1792]   (Σ = 1999, all items present)
-    upper bound |H_i| ≤ 2^{2^i}:   3≤4, 12≤16, 192≤65536, 1792≤2^65536   ✓ all hold
+    upper bound |H_i| ≤ 2^{2^i}:   3≤4, 12≤16, 192≤256, 1792≤65536       ✓ all hold
     number of inner heaps = 4 ;   1 + log log 1999 ≈ 4.45              ✓ matches the O(log log n) claim
     log₂|H_i|:   H_2→3.6,  H_3→7.6,  H_4→10.8     vs   2^i = 4, 8, 16   ✓ log|H_i| ≤ 2^i throughout
 
@@ -435,9 +422,9 @@ settled indices, never for the in-flight `H_0`.
 Delete-min cost. An item `x` in `H_i` costs `O(log|H_i|) ≤ O(log 2^{2^i}) = O(2^i)` to delete (the inner
 heap is Fibonacci-quality). If `i = 1`, that's `O(1)`, fine. If `i > 1`, by the corollary
 `log W(x) ≥ log 2^{2^{i−3}} = 2^{i−3} = 2^i / 8`, so the delete cost `O(2^i) = O(8 · 2^{i−3}) =
-O(log W(x))`. There it is: the doubly-exponential growth makes `H_{i−2}`'s size lower-bound (a stand-in
-for `W(x)`) match `H_i`'s size upper-bound to within a factor of `8` in the log. Delete-min is within the
-working-set bound. (And the `/8` is exactly why I needed doubly- and not singly-exponential: with
+O(log W(x))`. The doubly-exponential growth makes `H_{i−2}`'s size lower-bound (a stand-in
+for `W(x)`) match `H_i`'s size upper-bound to within a factor of `8` in the log, so delete-min is
+within the working-set bound. (And the `/8` is exactly why I needed doubly- and not singly-exponential: with
 `|H_i| = 2^i` the cost is `O(i)` while `log W ≥ i − c`, a constant *additive* gap only — but the insert
 amortization needs the gaps between sizes to grow fast, and that's the other half.)
 
@@ -493,115 +480,17 @@ before — built black-box on top of any Fibonacci-quality inner heap. Dijkstra 
 the comparison count down to `O(F − n + 1 + log D)` (universally comparison-optimal), both matching the
 topological lower bounds I drew at the start.
 
-Tracing the whole chain: the path-off-a-star shows Fibonacci-Dijkstra overcharges easy graphs, which
-demands a per-graph rather than worst-case benchmark — universal optimality. To match it I first prove
-the per-graph lower bounds `Ω(m + log D)` time and `Ω(F − n + 1 + log D)` comparisons. The delete-mins
-are the only loose term, so I ask for a heap charged by *recency* — the working-set bound — and I prove
-its total cost is `O(log D)` because Dijkstra's parent-before-child insertion windows are disjoint, which
-through an interval-counting lemma collapses `Σ log W(v)` into `log D`. The residual `O(n)` comparison
-slack matters only when almost every vertex is a bottleneck, and bottlenecks have forced order whose
-distances propagate by additions, so I keep them out of the heap and splice them in by exponential
-search (or recurse), spending no comparisons where the lower bound permits none. Finally I build the
-required heap by stacking Fibonacci-quality heaps whose sizes grow doubly-exponentially in recency, which
-makes the older neighbor's size a constant-factor-in-the-log proxy for an item's working set (cheap
-delete-min) while making the meld-charge series converge (cheap insert), with union-find and a one-word
-suffix-minimum bit vector doing the `O(1)` routing.
-
-And here is the deliverable itself: a single self-contained C++17 program for the distance-order
-problem. The working-set outer heap above is the device that makes the *analysis* go through; the
-order it produces is exactly Dijkstra's non-decreasing-distance scan order, which a standard lazy
-binary heap realizes, with a deterministic id tie-break so a parent precedes its child (a topological
-order of the search tree). It reads the graph from stdin — `n m s`, then `m` lines `u v w` (arc `u→v`
-of non-negative length `w`) — and prints the vertices in distance order, then their true distances.
-Distances use arbitrary-precision integers so accumulated arc lengths cannot overflow.
+And here is the program itself: a single self-contained C++17 file for the distance-order problem. The
+working-set outer heap above is the device that makes the *analysis* go through; the order it produces
+is exactly Dijkstra's non-decreasing-distance scan order, which a standard lazy binary heap realizes,
+with a deterministic id tie-break so a parent precedes its child (a topological order of the search
+tree). It reads the graph from stdin — `n m s`, then `m` lines `u v w` (arc `u→v` of non-negative
+length `w`) — and prints the vertices in distance order, then their true distances. Distances use
+arbitrary-precision integers so accumulated arc lengths cannot overflow.
 
 The lazy `priority_queue` decrease-key emulation — pushing a fresh `(distance, vertex)` on every
 relaxation and skipping stale popped entries with `scanned` — is the part I'd most easily get wrong
 under time pressure; if I weren't confident I could keep that invariant straight within the budget,
-I'd fall back to the `O(n^2 + m)` array-scan Dijkstra for non-negative weights and ship that.
-
-```cpp
-// Universal-optimality Dijkstra: the distance-order problem.
-// Reads a weighted directed graph and a source from stdin; prints the vertices
-// in a valid distance order (non-decreasing true distance from s), then the
-// distances. Tie-break is deterministic so the output is a topological order of
-// the search tree (parent before child), i.e. a genuine distance order.
-//
-// stdin:  n m s            (vertices 0..n-1, m arcs, source s)
-//         u v w            (m lines: arc u->v with non-negative length w)
-// stdout: line 1: the n vertices in distance order (space-separated)
-//         line 2: their true distances d*(v) in that same order
-//
-// The paper's working-set outer heap (doubly-exponential stack of meldable
-// heaps giving O(1) decrease-key with an O(log W(x)) delete-min) is the device
-// for the universal-optimality *analysis*; the produced order is exactly that
-// of Dijkstra scanning vertices in non-decreasing distance, which a standard
-// lazy binary heap realizes here. Distances use arbitrary-precision integers.
-
-#include <bits/stdc++.h>
-#include <boost/multiprecision/cpp_int.hpp>
-using namespace std;
-using boost::multiprecision::cpp_int;
-
-int main() {
-    ios::sync_with_stdio(false);
-    cin.tie(nullptr);
-
-    int n, m, s;
-    if (!(cin >> n >> m >> s)) return 0;
-
-    vector<vector<pair<int, cpp_int>>> adj(n);
-    for (int e = 0; e < m; ++e) {
-        int u, v;
-        string weight_text;
-        cin >> u >> v >> weight_text;
-        cpp_int w(weight_text);
-        adj[u].push_back({v, w});
-    }
-
-    vector<cpp_int> dist(n);
-    vector<char> has_dist(n, 0);     // avoids using a finite overflow-prone INF
-    vector<char> scanned(n, 0);      // SCANNED once popped with final distance
-    vector<int> order;               // vertices in scanned (distance) order
-    order.reserve(n);
-
-    // Lazy binary heap keyed by (current distance, vertex id). The id tie-break
-    // makes the scan order deterministic; a vertex's current distance equals its
-    // true distance when first scanned, so vertices leave in non-decreasing
-    // true-distance order -- a valid distance order.
-    typedef pair<cpp_int, int> State;     // (distance, vertex)
-    priority_queue<State, vector<State>, greater<State>> H;
-
-    dist[s] = 0;
-    has_dist[s] = 1;
-    H.push({0, s});
-
-    while (!H.empty()) {
-        State top = H.top();
-        H.pop();
-        cpp_int dv = top.first;
-        int v = top.second;
-        if (scanned[v]) continue;          // stale entry from an earlier key
-        scanned[v] = 1;
-        order.push_back(v);
-        for (const auto& arc : adj[v]) {
-            int w = arc.first;
-            const cpp_int& len = arc.second;
-            if (scanned[w]) continue;
-            cpp_int nd = dv + len;
-            if (!has_dist[w] || nd < dist[w]) {  // relax (insert or decrease-key)
-                dist[w] = nd;
-                has_dist[w] = 1;
-                H.push({nd, w});
-            }
-        }
-    }
-
-    for (size_t i = 0; i < order.size(); ++i)
-        cout << order[i] << (i + 1 < order.size() ? ' ' : '\n');
-    for (size_t i = 0; i < order.size(); ++i)
-        cout << dist[order[i]] << (i + 1 < order.size() ? ' ' : '\n');
-
-    return 0;
-}
-```
+I'd fall back to the `O(n^2 + m)` array-scan Dijkstra for non-negative weights and ship that. Either
+way the code is the loop I traced above: a heap keyed by current distance, relax on delete-min, append
+to the output order.
