@@ -10,7 +10,7 @@ But then I'm back to behavior cloning, which can't beat the data. Unless. Unless
 
 Here's what bugs me about plain cloning: it learns $a\sim\pi(a\mid s)$, collapsing every trajectory that ever passed through state $s$ — the brilliant ones and the awful ones — into one conditional distribution. Of course it's average; I *averaged*. But the dataset isn't actually a single policy. It's a whole spectrum of behaviors, each of which achieved some outcome. The outcome information is sitting right there in the rewards and I'm discarding it. A given state $s$ appears in a trajectory that limped to a return of 3 and in another that stormed to a return of 90, and the action taken was different in each, *and that difference is exactly the signal I want*. If I could tell the model "you're in the version of this that ends up at 90," it should reproduce the 90-action.
 
-So condition on the outcome. Train $a\sim\pi_\theta(a\mid s,\,\text{outcome})$, where for each logged action I label it with the return its trajectory actually went on to achieve. This is honest supervised learning — no bootstrapping, every label is a real number computed by summing rewards, nothing optimized against a learned function. The claim I have to be careful about is "not capped at average." Plain cloning at state $s$ learns $\mathbb{E}[a\mid s]$, averaging over all trajectories through $s$. With conditioning I instead learn $\mathbb{E}[a\mid s,\,\text{outcome}=R]$, a separate prediction per value of $R$. So the question is whether $\mathbb{E}[a\mid s,\,R{=}\text{high}]$ actually picks out the good action rather than the average one — and that depends entirely on whether, in the data, the high-$R$ trajectories through $s$ took systematically different actions than the low-$R$ ones. If they did, conditioning separates them; if every return through $s$ used the same action, conditioning buys nothing and I'm back to the average. I'll need to convince myself the first case is the typical one, ideally on a concrete instance, before I trust this. Granting it for now: each action is filed under the return it produced, so the model learns a map from desired-return to behavior, and at deployment I *ask* for a high return and read off the action. The dataset never had to contain an expert policy; it only had to contain, scattered across many trajectories, the good actions paired with the good outcomes they led to. Hindsight does the relabeling: every trajectory is a "successful" demonstration of achieving its *own* return.
+So condition on the outcome. Train $a\sim\pi_\theta(a\mid s,\,\text{outcome})$, where for each logged action I label it with the return its trajectory actually went on to achieve. This is honest supervised learning — no bootstrapping, every label is a real number computed by summing rewards, nothing optimized against a learned function. The claim I have to be careful about is "not capped at average." Plain cloning at state $s$ learns $\mathbb{E}[a\mid s]$, averaging over all trajectories through $s$. With conditioning I instead learn $\mathbb{E}[a\mid s,\,\text{outcome}=R]$, a separate prediction per value of $R$. So the question is whether $\mathbb{E}[a\mid s,\,R{=}\text{high}]$ actually picks out the good action rather than the average one — and that depends entirely on whether, in the data, the high-$R$ trajectories through $s$ took systematically different actions than the low-$R$ ones. If they did, conditioning separates them; if every return through $s$ used the same action, conditioning buys nothing and I'm back to the average. Whether that's the typical case is exactly what a concrete instance should settle, so I'll come back to it once I have one. Provisionally: each action is filed under the return it produced, so the model learns a map from desired-return to behavior, and at deployment I *ask* for a high return and read off the action. The dataset never had to contain an expert policy; it only had to contain, scattered across many trajectories, the good actions paired with the good outcomes they led to. Hindsight does the relabeling: every trajectory is a "successful" demonstration of achieving its *own* return.
 
 What's the right "outcome" variable to feed, concretely? The total trajectory return is one number for the whole episode, but I'm making a decision at every timestep, and the relevant quantity at timestep $t$ isn't the return from the start — that's partly spent — it's the return I have *left to collect from here on*. So feed the return-to-go: $\widehat{R}_t=\sum_{t'=t}^{T} r_{t'}$, the sum of future rewards from $t$ onward. At $t=1$ it's the full episode return; as the episode proceeds it shrinks. And I have to feed the *future* return, not the past reward $r_t$: if I fed past rewards the model would condition on what already happened, which says nothing about which action steers toward a target. The action at $t$ should be conditioned on the future I'm aiming at, so it has to be returns-to-go, not rewards.
 
@@ -37,7 +37,7 @@ Relabel every step with the state, the return-to-go (negative steps remaining *i
 
 But the same hand-trace shows the limit, which I want to be honest about. Suppose neither walk ever takes the direct $C\to G$ step — say I replace $w_2$ with $D\to B\to A\to B\to G$. Then there is *no* training token with $(C,\widehat{R}{=}-1)$ at all; the only token at $C$ is $(C,\widehat{R}{=}-3,a{=}A)$. Prompting $\widehat{R}=-1$ at $C$ now conditions on something the data never demonstrated, and the model has nothing to stitch — conditioning cannot conjure an action whose segment never appears anywhere in the data. So the improvement is real but bounded: it recombines good fragments that *exist*, scattered across trajectories; it does not invent them. That's a fair characterization of the mechanism, and it's exactly the regime offline RL lives in.
 
-A practical wrinkle on this toy: if I also want the model to *generate* the return token (rather than me supplying it), I can bias generation toward shorter paths with a simple prior over the encoded remaining-length token, $P_{\mathrm{prior}}(\widehat{R}=k)\propto T+1-k$, multiplying the model probability by $P_{\mathrm{prior}}(\widehat{R}_t)^{10}$ before sampling the return token. The action model still does the stitching; the prior just steers which return-to-go I commit to. The whole improvement here is conditional generation plus hindsight return labels — no dynamic programming, no Bellman backup.
+A practical wrinkle on this toy: if I also want the model to *generate* the return token (rather than me supplying it), I don't have an oracle on the optimal path length to prompt with, but I can still bias generation toward shorter paths with a simple prior over the encoded remaining-length token, $P_{\mathrm{prior}}(\widehat{R}=k)\propto T+1-k$, and raise it to a power before multiplying it into the model's own return-token probability, tuning that power empirically to trade off how hard the prior pulls against what the model itself has learned. The action model still does the stitching; the prior just steers which return-to-go I commit to. The whole improvement here is conditional generation plus hindsight return labels — no dynamic programming, no Bellman backup.
 
 The sparse-reward case is where I most expect TD to struggle. Think about Key-to-Door: grab a key in room one, wander an irrelevant room two, and only at the door in room three do you get a reward, and only if you took the key. The signal has to connect an action at the very start to an outcome at the very end, skipping everything in the middle. TD propagates that reward backward one Bellman step per sweep, so it has to crawl across the whole empty middle — order $N$ sweeps for an $N$-step gap — and any distractor reward in between can corrupt the crawl. Self-attention has a different cost structure: the query at the door token can attend to the key token in one hop, the dot-product between query and key vectors forming the long-range association in a single layer regardless of distance. So on paper the sparse, long-horizon credit problem that costs TD $O(N)$ propagation costs attention $O(1)$ hops. That's the reason to *expect* an advantage; I shouldn't call it confirmed from the architecture alone, because whether the model learns to *use* that one-hop path is an empirical question, not a guarantee of attention's existence.
 
@@ -45,226 +45,18 @@ But I can name a concrete, checkable prediction that would tell me whether the m
 
 And notice what fell away on its own. No discount factor — the return-to-go is an undiscounted sum, $\gamma=1$, and I don't need $\gamma<1$ to make anything a contraction because there's no fixed-point iteration here, it's one supervised pass; which is good, because $\gamma<1$ was introduced for convergence and finiteness and it can buy me myopia I don't want. No conservatism, no pessimism term, no behavior regularizer in the objective. Those terms exist to stop a policy from exploiting the errors of a learned value function it's being optimized against. I never optimize a policy against a learned critic. My objective is regression to actions that genuinely occurred in the data, conditioned by the desired outcome, so the specific overestimation loop that conservatism defends against is not in the design.
 
-One thing I should pressure-test: is this just behavior cloning on the high-return subset in disguise? Imagine the honest competitor — percentile behavior cloning, clone only the top-$X\%$ of trajectories by return. When data is plentiful that's actually a strong baseline and the model is, in part, learning to behave like the good slice. But two differences matter. Choosing the right percentile requires evaluating in the environment, which offline I cannot do; the return-conditioning sidesteps that by letting one model span all percentiles and selecting at test time via the prompt. And when data is scarce, throwing away all but the top $X\%$ is wasteful — the model trained on the *whole* distribution can use the structure in the mediocre trajectories (and the stitching) to generalize better than one trained on a thin good slice. So it's related to clone-the-best but strictly more flexible, and it's the stitching that makes it more than imitation.
+Is this just behavior cloning on the high-return subset in disguise? Imagine the honest competitor — percentile behavior cloning, clone only the top-$X\%$ of trajectories by return. When data is plentiful that's actually a strong baseline and the model is, in part, learning to behave like the good slice. But two differences matter. Choosing the right percentile requires evaluating in the environment, which offline I cannot do; the return-conditioning sidesteps that by letting one model span all percentiles and selecting at test time via the prompt. And when data is scarce, throwing away all but the top $X\%$ is wasteful — the model trained on the *whole* distribution can use the structure in the mediocre trajectories (and the stitching) to generalize better than one trained on a thin good slice. So it's related to clone-the-best but strictly more flexible, and it's the stitching that makes it more than imitation.
 
-Let me also settle the architectural choices before coding, because a couple of them are non-obvious. The three modalities — return-to-go (a scalar), state (a vector, or an image), action (discrete index or continuous vector) — live in completely different spaces and scales. A single shared input projection would smear them together, so I give each its own embedding: a linear map per modality to the hidden width, and for image states a convolutional encoder instead of the linear map. Then a layer norm on the embeddings to keep the scales sane going into attention.
+Let me also settle the architectural choices before coding, because a couple of them are non-obvious. The three modalities — return-to-go (a scalar), state (a vector, or an image), action (discrete index or continuous vector) — live in completely different spaces and scales. A single shared input projection would smear them together, so I give each its own embedding: a linear map per modality to the hidden width, and for image states a convolutional encoder instead of the linear map. Then a layer norm on the embeddings to keep the scales sane going into attention. Even within the return modality alone, the raw numbers span wildly different ranges across environments — thousands for a cumulative MuJoCo score, tens for an Atari game — so before the linear return-embedding sees them I divide return-to-go, and correspondingly the reward used in the rollout recursion, by a fixed per-environment scale; the states get the same treatment, z-scored against their dataset mean and standard deviation. Neither is a research choice so much as the same regression hygiene that makes the constants I'm about to fit well-conditioned.
 
 Positional information is the subtle one. The standard GPT positional embedding tags a token by its index in the sequence, $0,1,2,\dots$ But my sequence runs three tokens per environment timestep, so positions $1,2,3$ are all timestep $1$. I do not only need the model to know that the action token is two slots after the return token; I need it to know that all three tokens belong to env-timestep $1$. In the vector-state version I can remove the built-in token-position table and learn a per-*timestep* embedding, adding the *same* timestep vector to all three tokens of that timestep. That tells the model "these three are the same moment" while letting attention sort out the within-moment order via the causal mask. Add, don't concatenate, to keep the width fixed.
 
 Why the action head on the state token and not elsewhere — because that's the position whose causal context is exactly $(\text{history},\widehat{R}_t,s_t)$, the conditioning I derived. The head is a linear map to action logits for discrete actions (softmax + cross-entropy), or a linear map for continuous actions; for bounded continuous actions I squash with a tanh so the output lives in the valid range.
 
-This is also the place where the implementation is most likely to be silently wrong, so I want to trace the index bookkeeping explicitly rather than trust it. I'll build the stacked sequence by stacking the three per-timestep embeddings, permuting, and reshaping to length $3T$, and the claim is that after running the transformer and reshaping *back* to $(T,3,\cdot)$, index $0$ holds return positions, index $1$ holds state positions, index $2$ holds action positions — so the action head must read index $1$. Let me check that with a tiny tagged example: tag every return embedding with the value $1$, every state with $2$, every action with $3$, and push $T=2$ timesteps through the exact stack/permute/reshape. The flattened sequence comes out as $[1,2,3,1,2,3]$ — i.e. $(\widehat{R}_1,s_1,a_1,\widehat{R}_2,s_2,a_2)$, the interleaving I wanted. Reshaping back to $(T,3)$ and slicing: index $0$ recovers $[1,1]$ (returns), index $1$ recovers $[2,2]$ (states), index $2$ recovers $[3,3]$ (actions). So the action prediction does have to be read off slice index $1$ — which matches `action_preds = self.predict_action(x[:, 1])` in the code, and the next-state and next-return heads correctly sit on slice $2$, the action-token positions, where the action has already been seen. Worth the thirty-second check, because a transposed index here would train the action head on the wrong conditioning context and the whole conditioning argument would be quietly broken while the loss still looked fine.
+This is also the place where the implementation is most likely to be silently wrong. I build the stacked sequence by stacking the three per-timestep embeddings, permuting, and reshaping to length $3T$, and the claim is that after running the transformer and reshaping *back* to $(T,3,\cdot)$, index $0$ holds return positions, index $1$ holds state positions, index $2$ holds action positions — so the action head must read index $1$. Tag every return embedding with the value $1$, every state with $2$, every action with $3$, and push $T=2$ timesteps through the exact stack/permute/reshape: the flattened sequence comes out as $[1,2,3,1,2,3]$ — i.e. $(\widehat{R}_1,s_1,a_1,\widehat{R}_2,s_2,a_2)$, the interleaving I wanted. Reshaping back to $(T,3)$ and slicing: index $0$ recovers $[1,1]$ (returns), index $1$ recovers $[2,2]$ (states), index $2$ recovers $[3,3]$ (actions). So the action prediction has to be read off slice index $1$, and the next-state and next-return heads sit on slice $2$, the action-token positions, where the action has already been seen. A transposed index here would train the action head on the wrong conditioning context, with the loss still looking fine while the whole conditioning argument quietly broke.
 
 Context length $K$: if history is really doing work, the clean stress test is $K=1$, dropping the model to a single timestep. My intuition for why longer context helps even when frame-stacking already gives Markovian-ish state is that I'm modeling a whole distribution of policies, not one, and the recent context lets the model infer which policy regime generated the surrounding behavior, which sharpens the action prediction. So I keep $K$ at a few dozen timesteps, shorter for short goal-conditioned episodes. I also budget more capacity than a typical single-policy RL network, because the model has to represent a distribution over returns and behaviors rather than one narrow controller. The rest is inherited language-model hygiene: AdamW, weight decay on the linear/conv weights but not on biases / layer-norms / embeddings, a learning-rate warmup then decay, gradient clipping — none of it method-specific, all of it free from the Transformer literature, which is precisely the dividend of casting RL as sequence modeling: I get to ride a mature, stable training stack instead of fighting RL-specific divergence.
 
-The code has to preserve exactly that causal order: embed each modality, add the per-timestep encoding, interleave into the $(\widehat{R}_1,s_1,a_1,\dots)$ order, run the causal Transformer, read the action prediction off the state-token positions, train only the masked action loss, and update the target return during rollout.
+The code has to preserve exactly that causal order — embed each modality, add the per-timestep encoding, interleave into the $(\widehat{R}_1,s_1,a_1,\dots)$ order, run the causal Transformer, read the action prediction off the state-token positions, train only the masked action loss, and update the target return during rollout. Concretely: a custom GPT-2 backbone with its own token-positional embeddings stripped out (the added timestep embedding is now the only positional signal), the three prediction heads reading the slices I just verified, and an autoregressive rollout that carries states, actions, returns, and timesteps forward while applying the decrement recursion at each step.
 
-```python
-import numpy as np
-import torch
-import torch.nn as nn
-import transformers
-
-from decision_transformer.models.model import TrajectoryModel
-from decision_transformer.models.trajectory_gpt2 import GPT2Model
-
-
-class DecisionTransformer(TrajectoryModel):
-    def __init__(
-        self,
-        state_dim,
-        act_dim,
-        hidden_size,
-        max_length=None,
-        max_ep_len=4096,
-        action_tanh=True,
-        **kwargs,
-    ):
-        super().__init__(state_dim, act_dim, max_length=max_length)
-        self.hidden_size = hidden_size
-
-        config = transformers.GPT2Config(vocab_size=1, n_embd=hidden_size, **kwargs)
-        self.transformer = GPT2Model(config)
-
-        self.embed_timestep = nn.Embedding(max_ep_len, hidden_size)
-        self.embed_return = nn.Linear(1, hidden_size)
-        self.embed_state = nn.Linear(self.state_dim, hidden_size)
-        self.embed_action = nn.Linear(self.act_dim, hidden_size)
-        self.embed_ln = nn.LayerNorm(hidden_size)
-
-        self.predict_state = nn.Linear(hidden_size, self.state_dim)
-        self.predict_action = nn.Sequential(
-            *([nn.Linear(hidden_size, self.act_dim)] + ([nn.Tanh()] if action_tanh else []))
-        )
-        self.predict_return = nn.Linear(hidden_size, 1)
-
-    def forward(self, states, actions, rewards, returns_to_go, timesteps, attention_mask=None):
-        batch_size, seq_length = states.shape[0], states.shape[1]
-        if attention_mask is None:
-            attention_mask = torch.ones(
-                (batch_size, seq_length), dtype=torch.long, device=states.device
-            )
-
-        state_embeddings = self.embed_state(states)
-        action_embeddings = self.embed_action(actions)
-        returns_embeddings = self.embed_return(returns_to_go)
-        time_embeddings = self.embed_timestep(timesteps)
-
-        state_embeddings = state_embeddings + time_embeddings
-        action_embeddings = action_embeddings + time_embeddings
-        returns_embeddings = returns_embeddings + time_embeddings
-
-        stacked_inputs = torch.stack(
-            (returns_embeddings, state_embeddings, action_embeddings), dim=1
-        ).permute(0, 2, 1, 3).reshape(batch_size, 3 * seq_length, self.hidden_size)
-        stacked_inputs = self.embed_ln(stacked_inputs)
-
-        stacked_attention_mask = torch.stack(
-            (attention_mask, attention_mask, attention_mask), dim=1
-        ).permute(0, 2, 1).reshape(batch_size, 3 * seq_length)
-
-        transformer_outputs = self.transformer(
-            inputs_embeds=stacked_inputs,
-            attention_mask=stacked_attention_mask,
-        )
-        x = transformer_outputs["last_hidden_state"]
-        x = x.reshape(batch_size, seq_length, 3, self.hidden_size).permute(0, 2, 1, 3)
-
-        return_preds = self.predict_return(x[:, 2])
-        state_preds = self.predict_state(x[:, 2])
-        action_preds = self.predict_action(x[:, 1])
-        return state_preds, action_preds, return_preds
-
-    def get_action(self, states, actions, rewards, returns_to_go, timesteps, **kwargs):
-        states = states.reshape(1, -1, self.state_dim)
-        actions = actions.reshape(1, -1, self.act_dim)
-        returns_to_go = returns_to_go.reshape(1, -1, 1)
-        timesteps = timesteps.reshape(1, -1)
-
-        if self.max_length is not None:
-            states = states[:, -self.max_length:]
-            actions = actions[:, -self.max_length:]
-            returns_to_go = returns_to_go[:, -self.max_length:]
-            timesteps = timesteps[:, -self.max_length:]
-
-            pad = self.max_length - states.shape[1]
-            attention_mask = torch.cat(
-                [torch.zeros(pad, device=states.device), torch.ones(states.shape[1], device=states.device)]
-            ).to(dtype=torch.long).reshape(1, -1)
-            states = torch.cat(
-                [torch.zeros((1, pad, self.state_dim), device=states.device), states], dim=1
-            ).to(dtype=torch.float32)
-            actions = torch.cat(
-                [torch.zeros((1, pad, self.act_dim), device=actions.device), actions], dim=1
-            ).to(dtype=torch.float32)
-            returns_to_go = torch.cat(
-                [torch.zeros((1, pad, 1), device=returns_to_go.device), returns_to_go], dim=1
-            ).to(dtype=torch.float32)
-            timesteps = torch.cat(
-                [torch.zeros((1, pad), device=timesteps.device), timesteps], dim=1
-            ).to(dtype=torch.long)
-        else:
-            attention_mask = None
-
-        _, action_preds, _ = self.forward(
-            states, actions, None, returns_to_go, timesteps,
-            attention_mask=attention_mask, **kwargs
-        )
-        return action_preds[0, -1]
-
-
-def discount_cumsum(x, gamma):
-    y = np.zeros_like(x)
-    y[-1] = x[-1]
-    for t in reversed(range(x.shape[0] - 1)):
-        y[t] = x[t] + gamma * y[t + 1]
-    return y
-
-
-def train_step(model, get_batch, optimizer, batch_size):
-    states, actions, rewards, dones, rtg, timesteps, attention_mask = get_batch(batch_size)
-    action_target = actions.clone()
-
-    _, action_preds, _ = model.forward(
-        states, actions, rewards, rtg[:, :-1], timesteps, attention_mask=attention_mask
-    )
-
-    act_dim = action_preds.shape[2]
-    action_preds = action_preds.reshape(-1, act_dim)[attention_mask.reshape(-1) > 0]
-    action_target = action_target.reshape(-1, act_dim)[attention_mask.reshape(-1) > 0]
-    loss = torch.mean((action_preds - action_target) ** 2)
-
-    optimizer.zero_grad()
-    loss.backward()
-    torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
-    optimizer.step()
-    return loss.detach().cpu().item()
-
-
-def evaluate_episode_rtg(
-    env,
-    state_dim,
-    act_dim,
-    model,
-    max_ep_len=1000,
-    scale=1000.0,
-    state_mean=0.0,
-    state_std=1.0,
-    device="cuda",
-    target_return=None,
-    mode="normal",
-):
-    model.eval()
-    model.to(device=device)
-    state_mean = torch.from_numpy(state_mean).to(device=device)
-    state_std = torch.from_numpy(state_std).to(device=device)
-
-    state = env.reset()
-    if mode == "noise":
-        state = state + np.random.normal(0, 0.1, size=state.shape)
-
-    states = torch.from_numpy(state).reshape(1, state_dim).to(device=device, dtype=torch.float32)
-    actions = torch.zeros((0, act_dim), device=device, dtype=torch.float32)
-    rewards = torch.zeros(0, device=device, dtype=torch.float32)
-    target_return = torch.tensor(target_return, device=device, dtype=torch.float32).reshape(1, 1)
-    timesteps = torch.tensor(0, device=device, dtype=torch.long).reshape(1, 1)
-
-    episode_return, episode_length = 0.0, 0
-    for t in range(max_ep_len):
-        actions = torch.cat([actions, torch.zeros((1, act_dim), device=device)], dim=0)
-        rewards = torch.cat([rewards, torch.zeros(1, device=device)])
-
-        action = model.get_action(
-            (states.to(dtype=torch.float32) - state_mean) / state_std,
-            actions.to(dtype=torch.float32),
-            rewards.to(dtype=torch.float32),
-            target_return.to(dtype=torch.float32),
-            timesteps.to(dtype=torch.long),
-        )
-        actions[-1] = action
-        action = action.detach().cpu().numpy()
-
-        state, reward, done, _ = env.step(action)
-        cur_state = torch.from_numpy(state).to(device=device).reshape(1, state_dim)
-        states = torch.cat([states, cur_state], dim=0)
-        rewards[-1] = reward
-
-        if mode != "delayed":
-            next_target = target_return[0, -1] - reward / scale
-        else:
-            next_target = target_return[0, -1]
-        target_return = torch.cat([target_return, next_target.reshape(1, 1)], dim=1)
-        timesteps = torch.cat(
-            [timesteps, torch.ones((1, 1), device=device, dtype=torch.long) * (t + 1)], dim=1
-        )
-
-        episode_return += reward
-        episode_length += 1
-        if done:
-            break
-    return episode_return, episode_length
-```
-
-The `rtg[:, :-1]` slice matters for a mundane shape reason: the batch builder stores one extra return-to-go value, so the model consumes the first $K$ return tokens aligned with the $K$ states and actions, while the extra value remains available if I ever train a next-return head. For discrete actions and image states the changes are: a convolutional encoder in place of `embed_state`, an action lookup table instead of a linear action embedding, logits with cross-entropy instead of a tanh-regressed vector, and in the minGPT-style image code a global timestep embedding plus a local token-position embedding. The return/state/action order, the state-token action head, and the return-to-go recursion stay the same.
-
-So the whole chain, in one breath: bootstrapping is the source of every instability in offline value learning — the deadly triad, the overestimation, the slow distractable credit assignment, the discount-induced myopia, the conservatism patches that all exist to defend against optimizing a policy against a learned value function. Drop bootstrapping entirely and the stable alternative is supervised learning, but plain cloning averages away the good behavior. Recover the good behavior by conditioning each action on the outcome — the return-to-go, the future reward still to collect — and relabeling every logged action with the return it actually achieved, which is honest supervision with no learned critic. Treat the trajectory as a token stream $(\widehat{R}_1,s_1,a_1,\dots)$ and a causal Transformer turns this into next-action prediction with full history for free, and its single-hop attention gives the model a direct way to associate distant events with returns. At test time, prompt the return I want, act, subtract each reward from the target via $\widehat{R}_{t+1}=\widehat{R}_t-r_t$, and let the model and environment keep the prefix and target consistent while useful fragments from the data can be recombined under the same supervised objective.
+One shape detail is easy to get backwards: the batch loader keeps one extra return-to-go value per sampled window, so training aligns the first $K$ return tokens with the $K$ states and actions while the trailing value stays available should I ever want a next-return head — drop it and the return token misaligns with the state it's supposed to condition. In the delayed-reward variant, where the whole payout is folded into the final timestep, every intermediate reward really is zero, so the same decrement recursion would already hold the target flat through the empty middle as a side effect; I write it as an explicit branch instead, so the rollout states outright that the target is being held fixed on purpose rather than leaving that behavior to fall out incidentally of rewards that happen to be zero. For discrete actions and image states the changes are: a convolutional encoder in place of the state embedding, an action lookup table instead of a linear action embedding, logits with cross-entropy instead of a tanh-regressed vector, and in the minGPT-style image code a global timestep embedding plus a local token-position embedding. The return/state/action order, the state-token action head, and the return-to-go recursion stay the same across all of these variants.
