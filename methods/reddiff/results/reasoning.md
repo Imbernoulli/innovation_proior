@@ -12,7 +12,7 @@ and the denoising posterior `p(x_0 | x_t)` is, in general, a complicated multimo
 
 How does the field currently get past this? DPS approximates the integral by its mean. Replace the whole posterior `p(x_0 | x_t)` by a point mass at its mean, the Tweedie/MMSE estimate `x̂_0 = E[x_0 | x_t] = (x_t - sigma_t epsilon_theta) / alpha_t`, so that `p(y | x_t) ≈ p(y | x̂_0)`. Then under Gaussian noise the guidance term is analytic, `∇_{x_t} log p(y|x_t) ≈ -(1/sigma_v^2) ∇_{x_t} || y - f(x̂_0(x_t)) ||^2`, and you add it to the prior score each reverse step. It's general, it handles nonlinear `f`, and it works. But two things gnaw at me. The approximation `p(y|x_t) ≈ p(y|x̂_0)` collapses the mode structure of `p(x_0|x_t)` to a single point, so it is least reliable when the denoising posterior is broad or strongly multimodal, exactly the regime where many intermediate reverse-diffusion steps are trying to decide global structure. And the operational killer: `x̂_0` is a function of `x_t` *through the network*, so `∇_{x_t} || y - f(x̂_0(x_t)) ||^2` forces me to backpropagate through the diffusion denoiser at every single step. That's a score-Jacobian / vector-Jacobian product — memory-hungry, slow, and unstable, and it makes the method touchy about the step-size schedule and the initialization. ΠGDM sharpens the guidance by treating `p(x_0|x_t)` as a Gaussian and inverting `f` through its pseudoinverse, but it buys its sharpness by specializing to linear (and semi-linear, like JPEG) operators, so general nonlinear `f` is out — and it's still a unimodal posterior-score approximation that I differentiate through the model to compute.
 
-So both leading methods are doing the same risky thing: they *approximate the intractable posterior score* and then differentiate the network. Stare at that. The reason the posterior score is intractable is the multimodal `p(x_0|x_t)`. The thing that keeps biting is the trajectory — `p(y|x_t)` only exists because I insisted on conditioning the noising process on `y`. What happens if I refuse to do that? If I never form `p(x_t | y)` along the trajectory at all, and instead pose the whole problem as inference over the clean `x_0` directly, the multimodal denoising posterior never enters, and there's nothing to approximate.
+So both leading methods are doing the same risky thing: they *approximate the intractable posterior score* and then differentiate the network. The reason the posterior score is intractable is the multimodal `p(x_0|x_t)`. The thing that keeps biting is the trajectory — `p(y|x_t)` only exists because I insisted on conditioning the noising process on `y`. What happens if I refuse to do that? If I never form `p(x_t | y)` along the trajectory at all, and instead pose the whole problem as inference over the clean `x_0` directly, the multimodal denoising posterior never enters, and there's nothing to approximate.
 
 I have a frozen prior `p(x_0)` and a known likelihood `p(y|x_0)`; the only obstacle to writing the posterior is the normalizer `p(y)`. That's the textbook setting for variational inference. So let me posit a tractable family `q(x_0 | y)` and fit it to the true posterior by minimizing
 
@@ -38,7 +38,7 @@ Every piece on the right is now something I can compute. `∇_{x_t} log p(x_t)` 
   min_{mu, sigma}  E_q[ ||y - f(x_0)||^2 / (2 sigma_v^2) ]
                  + ∫_0^T (beta(t)/2) E_{q(x_t|y)} [ || ∇_{x_t} log q(x_t|y) - ∇_{x_t} log p(x_t) ||^2 ] dt.
 
-Now simplify. The dispersion `sigma` of `q` is awkward and I suspect it isn't doing much for images — I'll come back to it — so let me take `sigma -> 0`, a Dirac `q(x_0|y) = delta(x_0 - mu)`. Then `x_0 = mu` deterministically, `x_t = alpha_t mu + sigma_t epsilon`, and `q(x_t|y) = N(alpha_t mu, sigma_t^2 I)`. Its score is `∇_{x_t} log q(x_t|y) = -(x_t - alpha_t mu)/sigma_t^2`, which with `x_t - alpha_t mu = sigma_t epsilon` is `-epsilon/sigma_t`. I want to be sure I have that right before I lean on it, so let me check both Gaussian scores numerically on a random instance (`d=5`, `alpha_t=0.8`, `sigma_t=0.6`, random `mu`, `epsilon`, and an arbitrary network output `eps_theta`): the closed form `-(x_t - alpha_t mu)/sigma_t^2` matches `-epsilon/sigma_t` to `1e-16`, and the difference of the two scores `(-epsilon/sigma_t) - (-eps_theta/sigma_t)` equals `(eps_theta - epsilon)/sigma_t` to `1e-16`. Good — the residual structure is real, not a coincidence of how I wrote it. So the regularizer is an expected squared *noise residual*: how far the network's predicted noise is from the noise I actually injected. Written out, with a general weighting `omega(t)` folded in,
+Now simplify. The dispersion `sigma` of `q` is awkward and I suspect it isn't doing much for images — I'll come back to it — so let me take `sigma -> 0`, a Dirac `q(x_0|y) = delta(x_0 - mu)`. Then `x_0 = mu` deterministically, `x_t = alpha_t mu + sigma_t epsilon`, and `q(x_t|y) = N(alpha_t mu, sigma_t^2 I)`. Its score is `∇_{x_t} log q(x_t|y) = -(x_t - alpha_t mu)/sigma_t^2`, which with `x_t - alpha_t mu = sigma_t epsilon` is `-epsilon/sigma_t`. So the score difference `∇log q - ∇log p` is `(epsilon_theta(x_t;t) - epsilon)/sigma_t`, and the regularizer is an expected squared *noise residual*: how far the network's predicted noise is from the noise I actually injected. Written out, with a general weighting `omega(t)` folded in,
 
   min_mu  ||y - f(mu)||^2  +  E_{t, epsilon} [ 2 omega(t) (sigma_v/sigma_t)^2 || epsilon_theta(x_t;t) - epsilon ||^2 ],   x_t = alpha_t mu + sigma_t epsilon.
 
@@ -54,7 +54,7 @@ So my regularizer is `∫_0^T (beta(t)/2) E[...] dt = -∫_0^T (d KL_t / dt) dt`
 
   -∫_0^T omega(t) (d KL_t/dt) dt = -[ omega(t) KL_t ]_0^T + ∫_0^T omega'(t) KL_t dt.
 
-The whole question is the boundary term `[omega(t) KL_t]_0^T`. At `t = T` the forward process has destroyed all signal, `x_T` is pure `N(0,I)`, so `q(x_T|y) = p(x_T)` and `KL_T = 0`; that end is gone for free. At `t = 0`, the only lever I have to kill the term is the weighting itself — demand `omega(0) = 0`. I don't want to take that on faith, because the entire downstream simplification hangs on the boundary term vanishing, so let me actually integrate it. I take a concrete KL-like profile `K(t) = 0.7 cos(pi t / 2)` on `[0,1]` (it satisfies `K(T)=K(1)=0` and `K(0)=0.7`, like a running KL that closes at `t=T`) and the weighting `omega(t) = t^2`, which has `omega(0)=0`. Numerically integrating both sides on a fine grid: the left side `-∫ omega K' dt = 0.32386905` and the right side `-[omega K]_0^T + ∫ omega' K dt = 0.32386905`, agreeing to eight digits, with the boundary term itself coming out at `-4e-17` — machine zero, exactly because `omega(0)K(0) = 0` and `omega(T)K(T) = 0`. Then I rerun with a weighting that violates the condition, `omega(t) = 1 + t` so `omega(0) = 1`: now the dropped boundary term is `omega(0)K(0) = 0.700000`, and if I (wrongly) ignore it the two sides disagree by exactly `0.700000`. So `omega(0)=0` is not cosmetic — without it I'm left with a `KL_0 = KL(q(x_0|y)||p(x_0))` term, which is precisely the unevaluable prior-KL I was trying to get rid of. Choosing `omega(0)=0` is what severs that dependence. With it,
+The whole question is the boundary term `[omega(t) KL_t]_0^T`. At `t = T` the forward process has destroyed all signal, `x_T` is pure `N(0,I)`, so `q(x_T|y) = p(x_T)` and `KL_T = 0`; that end is gone for free. At `t = 0`, the only lever I have to kill the term is the weighting itself — demand `omega(0) = 0`. Skipping that condition would leave the boundary contribution `omega(0) KL_0 = omega(0) KL(q(x_0|y)||p(x_0))` sitting in the objective — exactly the intractable prior KL I set out to eliminate — so `omega(0)=0` is what severs that dependence, not a cosmetic restriction. With it,
 
   reg = ∫_0^T omega'(t) E_{q(x_t|y)} [ log( q(x_t|y) / p(x_t) ) ] dt.
 
@@ -94,13 +94,13 @@ hence
 
   mu - mu_hat_t = (sigma_t/alpha_t)( epsilon_theta(x_t;t) - epsilon ).
 
-I claimed this is exact, so let me confirm it on the same random instance I used earlier (`d=5`, `alpha_t=0.8`, `sigma_t=0.6`, arbitrary `eps_theta`): computing `mu - mu_hat_t` from Tweedie on one side and `(sigma_t/alpha_t)(eps_theta - eps)` on the other, the max coordinate difference is `4e-16` — exact to floating point, no approximation. The signal residual is the noise residual times `sigma_t/alpha_t`, which is precisely `1/SNR_t` for `SNR_t := alpha_t/sigma_t`. So to convert my noise-domain gradient `lambda_t (epsilon_theta - epsilon)` into the signal-domain residual `lambda (mu - mu_hat_t)` with a *constant* `lambda`, I set
+This is exact by construction — it's the same substitution I just did, run backward. The signal residual is the noise residual times `sigma_t/alpha_t`, which is precisely `1/SNR_t` for `SNR_t := alpha_t/sigma_t`. So to convert my noise-domain gradient `lambda_t (epsilon_theta - epsilon)` into the signal-domain residual `lambda (mu - mu_hat_t)` with a *constant* `lambda`, I set
 
   lambda_t = lambda / SNR_t = lambda (sigma_t / alpha_t).
 
-I checked this directly too: with `lambda = 0.25` and `lambda_t = lambda sigma_t/alpha_t`, the vectors `lambda(mu - mu_hat_t)` and `lambda_t(epsilon_theta - epsilon)` agree to `1e-16`. So the `1/SNR` weighting is forced, not a tuned choice — it's the exact rescaling that maps the noise-prediction residual onto the clean-data residual, putting the regularizer in the same units as the fitting term and collapsing the blow-up at small `t`. And it has the right qualitative behavior: it upweights high-noise early steps (large `t`, small SNR), which build coarse semantic structure, and downweights low-noise late steps (small `t`, large SNR), which only add fine detail — so a single `lambda` controls the fidelity-perceptual trade-off, larger `lambda` leaning on the prior and smaller `lambda` leaning on the data. (If I ever want to push the weighting harder I can try `sqrt(1/SNR_t)` or `(1/SNR_t)^2`, but linear `1/SNR` is the one that follows from the signal-domain conversion.) This also fixes the timestep ordering: since different `t` govern different scales and coarse structure should be laid down before detail, I should step `t` in *descending* order from `T` to `0`, like a standard reverse sampler — establish semantics first, refine later.
+So the `1/SNR` weighting is forced, not a tuned choice — it's the exact rescaling that maps the noise-prediction residual onto the clean-data residual, putting the regularizer in the same units as the fitting term and collapsing the blow-up at small `t`. And it has the right qualitative behavior: it upweights high-noise early steps (large `t`, small SNR), which build coarse semantic structure, and downweights low-noise late steps (small `t`, large SNR), which only add fine detail — so a single `lambda` controls the fidelity-perceptual trade-off, larger `lambda` leaning on the prior and smaller `lambda` leaning on the data. (If I ever want to push the weighting harder I can try `sqrt(1/SNR_t)` or `(1/SNR_t)^2`, but linear `1/SNR` is the one that follows from the signal-domain conversion.) This also fixes the timestep ordering: since different `t` govern different scales and coarse structure should be laid down before detail, I should step `t` in *descending* order from `T` to `0`, like a standard reverse sampler — establish semantics first, refine later.
 
-There's one more thing I want to pin down before I write code, because it determines the exact line in the implementation: which quantity in the VP scheduler equals `1/SNR_t`? The code I'll write forms `x_t = scaling * (mu + sigma * epsilon)`, with `scaling` and `sigma` the scheduler's two arrays. Matching that to the standard `x_t = alpha_t mu + sigma_t epsilon` gives `alpha_t = scaling` and the standard `sigma_t = scaling * sigma`, so the scheduler's `sigma = sigma_t/alpha_t = 1/SNR_t` directly. Let me verify with the actual VP formulas (`sigma_fn(t) = sqrt(e^{beta_d t^2/2 + beta_min t} - 1)`, `scaling_fn(t) = 1/sqrt(e^{beta_d t^2/2 + beta_min t})`, `beta_d=19.9`, `beta_min=0.1`). At a few times `t in {0.05, 0.3, 0.6, 0.9}`: first, `alpha_t^2 + sigma_t^2` comes out `1.000000` at every one — the scheme is genuinely variance-preserving, a good sanity check that I matched the parametrization correctly. Second, the scheduler's `sigma` equals `sigma_t/alpha_t` to all printed digits (e.g. at `t=0.3`, both are `1.2342`; at `t=0.6`, both `6.0966`) — so `sigma` is exactly `1/SNR_t`. That means the "linear" lambda schedule, which multiplies `base_lambda` by the scheduler's `sigma`, implements precisely `lambda/SNR_t`. The one-line code comment "sigma equals 1/SNR" is therefore literally true, not a hand-wave, and the benchmark's `constant` default is a deliberate departure I'm exposing, not the derived choice.
+One more thing to pin down before writing code, since it determines the exact line in the implementation: which quantity in the VP scheduler equals `1/SNR_t`? The code forms `x_t = scaling * (mu + sigma * epsilon)`, with `scaling` and `sigma` the scheduler's two arrays. Matching that to the standard `x_t = alpha_t mu + sigma_t epsilon` gives `alpha_t = scaling` and `sigma_t = scaling * sigma`, so the scheduler's `sigma = sigma_t/alpha_t = 1/SNR_t` directly. Checking against the actual VP formulas (`sigma_fn(t) = sqrt(e^{beta_d t^2/2 + beta_min t} - 1)`, `scaling_fn(t) = 1/sqrt(e^{beta_d t^2/2 + beta_min t})`, `beta_d=19.9`, `beta_min=0.1`) at `t in {0.05, 0.3, 0.6, 0.9}`: `alpha_t^2 + sigma_t^2` comes out `1.000000` at every one, confirming the parametrization is genuinely variance-preserving, and the scheduler's `sigma` matches `sigma_t/alpha_t` to all printed digits (e.g. at `t=0.3`, both `1.2342`; at `t=0.6`, both `6.0966`) — so `sigma` is exactly `1/SNR_t`. That means the "linear" lambda schedule, which multiplies `base_lambda` by the scheduler's `sigma`, implements precisely `lambda/SNR_t`, and the benchmark's `constant` default is a deliberate departure I'm exposing, not the derived choice.
 
 Let me reconsider the dispersion `sigma` I threw away, to be sure I'm not leaving something on the table. Keep `q = N(mu, sigma^2 I)`. The reparameterized diffused sample is `x_t = alpha_t mu + sqrt(alpha_t^2 sigma^2 + sigma_t^2) epsilon`; define `eta_t := (1 + sigma^2 (alpha_t/sigma_t)^2)^{1/2}` so `x_t = alpha_t mu + eta_t sigma_t epsilon` (and `eta_t = 1` recovers `sigma = 0`). Redo the mean gradient with the same constants as before: now `∇_{x_t} log q(x_t|y) = -epsilon / (eta_t sigma_t)`, while `∇_{x_t} log p(x_t) = -epsilon_theta/sigma_t`, so
 
@@ -116,76 +116,4 @@ so optimizing `sigma` would be cheap. But I don't think Gaussian dispersion is t
 
 Let me also settle the optimizer details, since "use any first-order optimizer" is too glib. Adam is the natural default — adaptive per-coordinate step sizes handle the very different gradient scales of the fitting term (which depends on `f`) and the residual term. The learning rate is a real tuning knob, so I'll expose it rather than bury it in the schedule. I'll use momentum betas like `(0.9, 0.99)` — a slightly shorter second-moment window than the usual `0.999` is reasonable here because the objective changes as `t` descends, so I don't want the denominator to be too sluggish. No weight decay — there's no parameter-shrinkage prior on `mu`, the diffusion regularizer *is* the prior. For initialization, either a pseudo-inverse warm start or zeros can fit the framework; a compact implementation can start from zeros and let the stochastic residuals plus the data gradient move `mu`.
 
-So let me put the whole reasoning into the code I'd actually run, filling the one empty slot — the `inference` body — using the frozen denoiser, the forward operator's data-fitting gradient, the VP schedule, and an off-the-shelf Adam. The clean signal estimate I optimize is `mu`; each step I noise it to `x_t`, read the denoiser's noise prediction `epsilon_theta`, detach it, choose the configured residual weight (with the linear option giving `lambda/SNR_t` because the scheduler's `sigma` is inverse SNR, as I just verified), add the data-fitting gradient, and let Adam move `mu`:
-
-```python
-import torch
-import tqdm
-from .base import Algo
-import wandb
-from utils.scheduler import Scheduler
-
-
-class REDDiff(Algo):
-    def __init__(self, net, forward_op, num_steps=1000, observation_weight=1.0,
-                 base_lambda=0.25, base_lr=0.5, lambda_scheduling_type='constant'):
-        super(REDDiff, self).__init__(net, forward_op)
-        self.net = net
-        self.net.eval().requires_grad_(False)
-        self.forward_op = forward_op
-        self.scheduler = Scheduler(num_steps=num_steps, schedule='vp',
-                                   timestep='vp', scaling='vp')
-        self.base_lr = base_lr
-        self.observation_weight = observation_weight
-        if lambda_scheduling_type == 'linear':
-            self.lambda_fn = lambda sigma: sigma * base_lambda
-        elif lambda_scheduling_type == 'sqrt':
-            self.lambda_fn = lambda sigma: torch.sqrt(sigma) * base_lambda
-        elif lambda_scheduling_type == 'constant':
-            self.lambda_fn = lambda sigma: base_lambda
-        else:
-            raise NotImplementedError
-
-    def pred_epsilon(self, model, x, sigma):
-        sigma = torch.as_tensor(sigma).to(x.device)
-        d = model(x, sigma)
-        return (x - d) / sigma
-
-    def inference(self, observation, num_samples=1, **kwargs):
-        device = self.forward_op.device
-        num_steps = self.scheduler.num_steps
-        pbar = tqdm.trange(num_steps)
-        if num_samples > 1:
-            observation = observation.repeat(num_samples, 1, 1, 1)
-
-        # Random initialization for the optimized clean estimate.
-        mu = torch.zeros(num_samples, self.net.img_channels,
-                         self.net.img_resolution, self.net.img_resolution,
-                         device=device).requires_grad_(True)
-        optimizer = torch.optim.Adam([mu], lr=self.base_lr, betas=(0.9, 0.99))
-
-        for step in pbar:
-            with torch.no_grad():
-                sigma, scaling = self.scheduler.sigma_steps[step], self.scheduler.scaling_steps[step]
-                epsilon = torch.randn_like(mu)
-                xt = scaling * (mu + sigma * epsilon)
-                pred_epsilon = self.pred_epsilon(self.net, xt, sigma).detach()
-
-            lam = self.lambda_fn(sigma)  # sigma equals 1/SNR; the linear option gives lambda/SNR_t.
-            optimizer.zero_grad()
-
-            gradient, loss_scale = self.forward_op.gradient(mu, observation,
-                                                            return_loss=True)
-            gradient = gradient * self.observation_weight + lam * (pred_epsilon - epsilon)
-            mu.grad = gradient
-
-            optimizer.step()
-            pbar.set_description(
-                f'Iteration {step + 1}/{num_steps}. '
-                f'Data fitting loss: {torch.sqrt(loss_scale)}')
-            if wandb.run is not None:
-                wandb.log({'data_fitting_loss': torch.sqrt(loss_scale)}, step=step)
-        return mu
-```
-
-Let me trace the causal chain one last time. I want posterior samples from a pretrained diffusion prior and a known forward operator, but the reverse-diffusion route needs the likelihood score `∇log p(y|x_t)`, intractable because the denoising posterior `p(x_0|x_t)` is multimodal — and DPS and ΠGDM cope by approximating that score with a point estimate and then *differentiating through the network*, loose when the denoising posterior is broad and expensive because of the denoiser Jacobian. So instead of approximating the trajectory score, I posed inference directly on `x_0`: fit a Gaussian `q(x_0|y)` to the true posterior by minimizing `KL(q || p(x_0|y))`, which Bayes-expands into a reconstruction term plus `KL(q || p(x_0))`. That prior-KL is unevaluable as a density, but the maximum-likelihood diffusion identity turns it into a weighted score-matching integral the frozen network can evaluate. With `sigma -> 0` the objective became a measurement-fitting term plus a noise-residual regularizer; the two Gaussian scores I checked numerically give the difference `(epsilon_theta - epsilon)/sigma_t`. The integration-by-parts identity — which I confirmed numerically holds, and confirmed that dropping the `omega(0)≠0` boundary term costs exactly `omega(0)KL_0` — collapsed the regularizer's gradient to `lambda_t (epsilon_theta - epsilon)`, a residual with **no denoiser Jacobian**; and I verified against a Gaussian-prior closed form that this stop-gradient residual is the *correct* KL gradient, not just a cheap surrogate. That residual structure is RED's, but generative: noise injected to every denoiser across the full trajectory, not one deterministic denoiser, so the iterates actually navigate the manifold. The noise residual blows up at small `t`, so I rescaled it to the signal domain via the exact identity `mu - mu_hat_t = (sigma_t/alpha_t)(epsilon_theta - epsilon)` (also checked to floating point), which forced `lambda_t = lambda/SNR_t` — a single interpretable knob that upweights coarse-structure steps and downweights detail steps, telling me to step `t` descending — and I confirmed the VP scheduler's `sigma` array is exactly `1/SNR_t`, so the code's `linear` option implements that weighting verbatim. Dispersion stays at zero because Gaussian perturbations leave the image manifold. And because the gradient is a single forward pass, the whole thing drops into an off-the-shelf Adam loop: sampling has become stochastic optimization.
+The `inference` body just wires these pieces together, using the frozen denoiser, the forward operator's data-fitting gradient, the VP schedule, and an off-the-shelf Adam: initialize the clean-signal estimate `mu` at zero; at each scheduler step (descending `t`, VP schedule) sample `epsilon`, form `x_t = scaling * (mu + sigma * epsilon)`, run the net once to get `epsilon_theta` and detach it, scale the residual `epsilon_theta - epsilon` by the configured `lam` (constant, or `sigma * base_lambda` for the derived `lambda/SNR_t` weighting, since the scheduler's `sigma` is inverse SNR as just checked), add the forward operator's data-fitting gradient, and hand the sum to Adam as `mu.grad`. No line in that loop differentiates through `self.net` — the only autograd trace PyTorch ever builds is through `forward_op.gradient`. The full module is in the answer.
