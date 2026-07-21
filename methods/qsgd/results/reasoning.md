@@ -26,13 +26,13 @@ Take a single coordinate `v_i` of the gradient. I want to randomly round it to s
 
 Is it unbiased? `E[xi_i] = |v_i|/||v||_2`, so `E[Q(v_i)] = ||v||_2 * sgn(v_i) * |v_i|/||v||_2 = sgn(v_i)|v_i| = v_i`. Clean. Each coordinate becomes a sign bit plus a Bernoulli that's usually zero, and a single shared float for the norm, so I send the norm plus, for each coordinate that came up `1`, its location and its sign. Almost free on the wire.
 
-Let me make sure I actually believe this on a concrete vector before I trust the algebra, because it's easy to fool myself with normalization. Take `v = (3, -4, 0)`, so `||v||_2 = sqrt(9+16) = 5` and the normalized magnitudes are `(0.6, 0.8, 0)`. Then `xi_1 = 1` with prob `0.6`, `xi_2 = 1` with prob `0.8`, and `xi_3 = 0` always. The reconstruction lands on `(0 or 5, 0 or -5, 0)`. Mean: `E[Q] = (5·0.6, -5·0.8, 0) = (3, -4, 0) = v`, so unbiased coordinate by coordinate — good, the normalization didn't sneak a bias in. The price is visible too: the first coordinate, truly `3`, is being slammed to either `0` or `5`, a swing of the full `||v||_2` around its true value. That's a lot of noise for a coordinate whose magnitude is only `0.6` of the norm.
+Check it on a concrete vector, since it's easy to fool myself with normalization. Take `v = (3, -4, 0)`, so `||v||_2 = sqrt(9+16) = 5` and the normalized magnitudes are `(0.6, 0.8, 0)`. Then `xi_1 = 1` with prob `0.6`, `xi_2 = 1` with prob `0.8`, and `xi_3 = 0` always. The reconstruction lands on `(0 or 5, 0 or -5, 0)`. Mean: `E[Q] = (5·0.6, -5·0.8, 0) = (3, -4, 0) = v`, so unbiased coordinate by coordinate — good, the normalization didn't sneak a bias in. The price is visible too: the first coordinate, truly `3`, is being slammed to either `0` or `5`, a swing of the full `||v||_2` around its true value. That's a lot of noise for a coordinate whose magnitude is only `0.6` of the norm.
 
 Now what does it cost me in variance, and in bits? Variance first, because that's what the SGD bound charges me for. Compute the second moment:
 
   E[ ||Q(v)||^2 ] = sum_i E[ ||v||_2^2 * xi_i^2 ] = ||v||_2^2 * sum_i E[xi_i^2] = ||v||_2^2 * sum_i (|v_i|/||v||_2) = ||v||_2 * sum_i |v_i| = ||v||_2 * ||v||_1,
 
-using `xi_i^2 = xi_i` for a 0/1 variable so `E[xi_i^2] = E[xi_i] = |v_i|/||v||_2`. So the second moment is exactly the product of the two norms, `||v||_2 ||v||_1`. Let me check that on `v = (3, -4, 0)`: `||v||_2 = 5`, `||v||_1 = 7`, so the formula predicts `E[||Q||^2] = 35`. Computing it directly from the distribution — `E[||Q||^2] = 25·0.6 + 25·0.8 + 0 = 15 + 20 = 35` — matches, and I ran the same setup as a Monte-Carlo average of `||Q||^2` over a couple million draws and got `35.0` back, so the identity is right and the code implements it. The true `||v||^2` is `25`, so the second-moment factor here is `35/25 = 1.4`. Now `||v||_1 <= sqrt(n) * ||v||_2` by Cauchy-Schwarz (the `L1` norm of an `n`-vector is at most `sqrt(n)` times the `L2` norm), so in general
+using `xi_i^2 = xi_i` for a 0/1 variable so `E[xi_i^2] = E[xi_i] = |v_i|/||v||_2`. So the second moment is exactly the product of the two norms, `||v||_2 ||v||_1`. Check it on `v = (3, -4, 0)`: `||v||_2 = 5`, `||v||_1 = 7`, so the formula predicts `E[||Q||^2] = 35`. Computing it directly from the distribution — `E[||Q||^2] = 25·0.6 + 25·0.8 + 0 = 15 + 20 = 35` — matches. The true `||v||^2` is `25`, so the second-moment factor here is `35/25 = 1.4`. Now `||v||_1 <= sqrt(n) * ||v||_2` by Cauchy-Schwarz (the `L1` norm of an `n`-vector is at most `sqrt(n)` times the `L2` norm), so in general
 
   E[ ||Q(v)||^2 ] <= sqrt(n) * ||v||_2^2.
 
@@ -56,7 +56,7 @@ That's just the fractional part of `a*s` — the distance from `a` (scaled by `s
 
 Unbiased by construction, since I solved for `p` precisely to make `E[xi_i] = a`: `E[Q_s(v_i)] = ||v||_2 * sgn(v_i) * a = v_i`. And my old two-level scheme is just `s = 1`: levels `0` and `1`, `p(a,1) = a`, the Bernoulli I started with — so this is a strict generalization, one dial with the crude version at the `s = 1` end.
 
-Before pushing the algebra, let me run the same `(3, -4, 0)` example through `s = 2` and see whether the variance actually moves the way I'm betting it does. With `s = 2`, the level grid in normalized space is `{0, 0.5, 1}`. The coordinate `a_1 = 0.6` falls in `[0.5, 1]`, so `ell = 1` and `p = 0.6·2 - 1 = 0.2`: it rounds to `1` (i.e. `||v||_2 = 5`) with prob `0.2` and to `0.5` (i.e. `2.5`) with prob `0.8`, instead of the violent `0`-or-`5`. The coordinate `a_2 = 0.8` has `ell = 1`, `p = 0.6`. Working the second moment from the per-coordinate distribution gives `E[||Q_2||^2] = 27.5`, a factor `27.5/25 = 1.1` — down from `1.4` at `s = 1`. Pushing to `s = 4` gives `1.025`. So the variance really does collapse toward `1` as I add levels, and I confirmed those same numbers by Monte-Carlo (`s = 2` empirical second moment `27.51`, mean `(3.001, -4.000, 0)`, still unbiased). The knob behaves.
+Before pushing the algebra, let me run the same `(3, -4, 0)` example through `s = 2` and see whether the variance actually moves the way I'm betting it does. With `s = 2`, the level grid in normalized space is `{0, 0.5, 1}`. The coordinate `a_1 = 0.6` falls in `[0.5, 1]`, so `ell = 1` and `p = 0.6·2 - 1 = 0.2`: it rounds to `1` (i.e. `||v||_2 = 5`) with prob `0.2` and to `0.5` (i.e. `2.5`) with prob `0.8`, instead of the violent `0`-or-`5`. The coordinate `a_2 = 0.8` has `ell = 1`, `p = 0.6`. Working the second moment from the per-coordinate distribution gives `E[||Q_2||^2] = 27.5`, a factor `27.5/25 = 1.1` — down from `1.4` at `s = 1`. Pushing to `s = 4` gives `1.025`. So the variance really does collapse toward `1` as I add levels.
 
 Now the payoff has to show up in the variance. Each `xi_i` only randomizes between two adjacent levels `1/s` apart, so its variance is the variance of a (scaled) Bernoulli on a gap of size `1/s`:
 
@@ -126,50 +126,4 @@ The variance bound `min(n/s^2, sqrt n/s) ||v||^2` is tied to the full dimension 
 
 There's a second practical choice in the normalization. The theory normalizes by `||v||_2`, which is what gives the sparsity guarantees, but I can also normalize by the maximum absolute value of a bucket when I care more about dense fixed-width behavior than about sparse Elias coding. Dividing by the max maps the largest coordinate to exactly `1` and keeps every normalized magnitude as large as possible, so random rounding spends its levels on the range actually occupied by the bucket. The trade is clear: max-normalization forfeits the sparsity proof, while `L2` normalization is the version whose density and Elias bit accounting I just proved.
 
-So let me write the operator I'd actually ship — the compress/decompress pair that fills the empty slot in the data-parallel exchange. Flatten; take the norm; for each coordinate, scale its absolute value into level space `s |v_i|/||v||`; the integer floor is the lower level, and I round up with probability equal to the fractional part. Carry the sign on the integer level. The payload on the wire is the vector of signed integer levels plus the single norm float; decompression is just `(||v|| / s) *` level. Memory is exactly one tensor of levels plus a scalar — no residual buffer, because I never needed error feedback.
-
-```python
-import torch
-
-from grace_dl.torch import Compressor
-
-
-class QSGDCompressor(Compressor):
-
-    def __init__(self, quantum_num):
-        super().__init__()
-        self.quantum_num = quantum_num
-
-    def compress(self, tensor, name):
-        shape = tensor.size()
-        tensor = tensor.flatten()
-
-        norm = tensor.norm()
-        norm = norm.flatten()
-        abs_gradient = tensor.abs()
-
-        level_float = self.quantum_num / norm * abs_gradient
-        previous_level = level_float.floor()
-        prob = torch.empty_like(tensor).uniform_()
-        is_next_level = (prob < (level_float - previous_level)).type(torch.float32)
-        new_level = previous_level + is_next_level
-
-        sign = tensor.sign()
-        tensor_compressed = (new_level * sign).type(torch.int16)
-        tensor_compressed = tensor_compressed.type(
-            torch.int8 if self.quantum_num < 128 else torch.half
-        )
-        tensor_compressed = tensor_compressed, norm
-
-        return tensor_compressed, shape
-
-    def decompress(self, tensor_compressed, shape):
-        tensor_compressed, norm = tensor_compressed
-
-        decode_output = tensor_compressed.type(torch.float32)
-        tensor_decompressed = norm / self.quantum_num * decode_output
-        tensor_decompressed = tensor_decompressed.view(shape)
-        return tensor_decompressed
-```
-
-Let me trace the whole causal chain back, because every piece earned its place. The pain was that gradient communication, not computation, dominates data-parallel training as models and worker counts grow, so I have to put fewer bits on the wire. The aggressive 1-bit scheme already does that but it's a biased heuristic with no guarantee, propped up by error feedback. Reading the standard SGD bound told me why it has no guarantee — the bound charges only for variance, and only because the gradient is unbiased — and that handed me the central move: compress unbiasedly, `E[Q(g)] = g`, so `Q(g)` is just another stochastic gradient and the only cost is inflated variance, which plugs straight into the existing theorem with no error feedback at all. The crudest unbiased quantizer — round each normalized magnitude to `{0,1}` — gave sublinear bits but a `sqrt(n)` variance blowup, ruinous on high-dimensional models. Adding `s` intermediate levels with stochastic rounding to the neighboring level (probability equal to the fractional part, forced by demanding exact unbiasedness) shrank the per-coordinate jump and the added variance bound to `min(n/s^2, sqrt n/s)`, reaching added variance `1` and second-moment factor `2` at `s = sqrt(n)`. The integer levels are mostly small, so Elias coding of position-gaps and values, bounded via Jensen, brought the bits down to `O(sqrt n log n)` in the sparse regime and `2.8n + 32` in the dense regime — `32/2.8 ≈ 11x` fewer bits than 32-bit full precision, and provably near the `Omega(n)` lower bound. Substituting the inflated second moment into the convex SGD theorem and the Ghadimi-Lan non-convex bound gave convergence guarantees identical in form to full-precision SGD. Bucketing can decouple the variance from the unfixable dimension `n`, and max-normalization is a dense-code variant that trades away the sparsity proof. The core implementation remains one stochastic-rounding kernel, one vector of signed levels, and one scale, with no residual buffer.
+So the operator I'd actually ship — the compress/decompress pair that fills the empty slot in the data-parallel exchange — is: flatten; take the norm; for each coordinate, scale its absolute value into level space `s |v_i|/||v||`; the integer floor is the lower level, and I round up with probability equal to the fractional part. Carry the sign on the integer level. The payload on the wire is the vector of signed integer levels plus the single norm float; decompression is just `(||v|| / s) *` level. Memory is exactly one tensor of levels plus a scalar — no residual buffer, because I never needed error feedback. For storage I only need enough bits to hold a signed level in `[-s, s]`, so an `int8` covers any budget under `128` levels and a `half` covers the rest — that's the whole implementation, no different from what the bit-cost derivation above already promised.
