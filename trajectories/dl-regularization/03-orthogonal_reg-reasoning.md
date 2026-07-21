@@ -26,8 +26,8 @@ the signature of a regularizer that fixes the output but ignores the propagation
 on the *internal* weight matrices, but not the way DropBlock did — not their spatial shape, but their
 *spectrum*.
 
-Let me reason from what actually goes wrong inside a deep conv net, because that is where the lever is. A
-signal enters at the bottom and gets multiplied by one layer's weights, then a nonlinearity, then the
+What goes wrong inside a deep conv net is where the lever is. A signal enters at the bottom and gets
+multiplied by one layer's weights, then a nonlinearity, then the
 next layer's weights, up to the logits; a gradient does the same in reverse, the error at the top
 multiplied by the transposed weight matrices on its way down to the early layers. So both the forward
 activation and the backward gradient are, at heart, a vector hit by a long product of matrices. A product
@@ -48,20 +48,17 @@ two equivalent conditions `W^T W = I` (columns orthonormal) or `W W^T = I` (rows
 McClelland and Ganguli worked out why this is the right configuration: orthogonal weights give *dynamical
 isometry* that survives depth, because a product of orthogonal matrices is itself orthogonal, so a deep
 stack of orthogonal layers has an end-to-end map with all singular values still exactly one, no matter how
-deep. Let me make sure I actually believe that under composition rather than reciting it. Compose a few
-`2×2` rotations `R(θ_1)R(θ_2)R(θ_3)` — a rotation times a rotation is `R(θ_1+θ_2+θ_3)`, still a rotation,
-so its singular values are still exactly `{1, 1}`, no spread accumulated no matter how many I chain. Now
-do the naive alternative — scaled Gaussian init that preserves norm *on average* (Glorot–Bengio) — and
-watch it fail exactly the test that matters. Norm preservation in expectation is not a flat spectrum: the
-squared singular values of a scaled Gaussian matrix follow the Marchenko–Pastur law, a real spread that
-does not vanish with size, and under composition the product develops a wildly kurtotic spectrum. If I
-multiply eight `64×64` matrices each with entries `N(0, 1/64)` — norm-preserving on average — and look at
-the singular values of the product, the ratio of largest to smallest runs to something like `10^{12}`:
-most singular values crushed toward zero, a thin tail surviving. Such a product still preserves the norm
-of a *typical* vector, but anisotropically: any component of a backpropagated error lying in the crushed
-subspace is annihilated to twelve digits, so the early layers get no gradient there. Orthogonal has none
-of that spread — that is the whole point, and the `2×2` composition shows why it is exact rather than
-approximate.
+deep — compose rotations `R(θ_1)R(θ_2)R(θ_3) = R(θ_1+θ_2+θ_3)`, still a rotation, singular values still
+`{1, 1}`, no spread accumulated however many I chain. The naive alternative — scaled Gaussian init that
+preserves norm *on average* (Glorot–Bengio) — fails exactly the test that matters. Norm preservation in
+expectation is not a flat spectrum: the squared singular values of a scaled Gaussian matrix follow the
+Marchenko–Pastur law, a real spread that does not vanish with size, and under composition the product
+develops a wildly kurtotic spectrum. Multiply eight `64×64` matrices each with entries `N(0, 1/64)` —
+norm-preserving on average — and the product's ratio of largest to smallest singular value runs to
+something like `10^{12}`: most singular values crushed toward zero, a thin tail surviving. Such a product
+still preserves the norm of a *typical* vector, but anisotropically: any component of a backpropagated
+error lying in the crushed subspace is annihilated, so the early layers get no gradient there. Orthogonal
+has none of that spread — that is the whole point.
 
 So I could initialize orthogonal and be done — except orthogonal initialization is a condition on the
 weights at step zero, and nothing holds it there. The instant the data gradient takes its first step it
@@ -74,16 +71,14 @@ the weights) — so a force that acts at every step is precisely what I want.
 
 The heavy-handed standing force would be a hard constraint: confine each weight matrix to the orthogonal
 (Stiefel) manifold and re-orthogonalize after every step with a QR or SVD. That keeps the spectrum exactly
-flat but let me price it before I take it seriously. An SVD of a `512×4608` VGG weight is on the order of
-`out² · (in·k·k) ≈ 512² · 4608 ≈ 1.2×10^9` flops, per layer, per step — thirteen of those in VGG alone,
-tens more in ResNet, every one of tens of thousands of steps across three full 200-epoch runs. That is a
-matrix factorization dropped into the inner loop, competing with the convolutions themselves for wall
-clock — a non-starter, and the same cheapness concern that made the confidence penalty attractive. And
-there is a problem specific to convolutions I must confront head-on: conv weights are not square. A
-`Conv2d` weight is `[out_channels, in_channels, k, k]`; to talk about its spectrum I flatten it to a 2D
-matrix with output channels as rows and everything else collapsed into columns, `W ∈ R^{out × (in·k·k)}`.
-That is almost never square, and *how* it is non-square differs across the very layers I want to
-regularize, so I have to look at the actual shapes. A ResNet-56 mid-stage conv is `[64, 64, 3, 3]`,
+flat, but price it: an SVD of a `512×4608` VGG weight is on the order of `out² · (in·k·k) ≈ 512² · 4608 ≈
+1.2×10^9` flops, per layer, per step — thirteen of those in VGG alone, tens more in ResNet, every one of
+tens of thousands of steps across three full 200-epoch runs. A matrix factorization in the inner loop,
+competing with the convolutions for wall clock — a non-starter, the same cheapness concern that made the
+confidence penalty attractive. And a problem specific to convolutions: conv weights are not square. A
+`Conv2d` weight is `[out_channels, in_channels, k, k]`; to talk about its spectrum I flatten it to
+`W ∈ R^{out × (in·k·k)}`, output channels as rows. That is almost never square, and *how* it is non-square
+differs across the layers I want to regularize. A ResNet-56 mid-stage conv is `[64, 64, 3, 3]`,
 reshaping to `W ∈ R^{64 × 576}` — short and wide, `out = 64` rows in a `576`-column space. A VGG conv is
 `[512, 512, 3, 3] → R^{512 × 4608}`, again wide. For a wide matrix the two orthogonality conditions stop
 being equivalent: `W^T W = I` asks the `in·k·k` columns (`576`, `4608`) to be orthonormal in `R^{out}`
@@ -125,15 +120,13 @@ the kind of magnitude control rung one piled on redundantly. The Gram residual c
 spectrum — which is the complementary thing L2 cannot do.
 
 Measured how? The smooth choice with a clean closed-form gradient is the squared Frobenius norm of the
-residual, `||W W^T − I||_F^2 = sum_{i,j} R_{ij}^2`. Let me derive its gradient rather than trust a formula,
-because the derivation tells me the per-step cost. Writing `f = tr((W W^T − I)^2)` since the residual is
-symmetric, `df = 2 tr((W W^T − I) d(W W^T)) = 2 tr((W W^T − I)(dW·W^T + W·dW^T))`, and collecting the `dW`
-terms gives `∂f/∂W = 4(W W^T − I)W`. I can spot-check that against a finite difference on a small random
-`W` and it agrees to seven digits, so I believe it. That gradient is two matrix multiplies — form `W W^T`,
-subtract `I`, multiply by `W` — with no SVD and no eigendecomposition, which autograd computes for me when
-I just write the forward penalty. So the wall that killed the hard constraint — a `10^9`-flop factorization
-every step — is gone; I traded an exact projection for a cheap gradient nudge toward the manifold, which is
-all I need to keep the spectrum from drifting, and it costs essentially nothing per step. Squaring is also
+residual, `||W W^T − I||_F^2 = sum_{i,j} R_{ij}^2`. Its gradient tells me the per-step cost. Writing
+`f = tr((W W^T − I)^2)` since the residual is symmetric, `df = 2 tr((W W^T − I)(dW·W^T + W·dW^T))`, and
+collecting the `dW` terms gives `∂f/∂W = 4(W W^T − I)W`. That gradient is two matrix multiplies — form
+`W W^T`, subtract `I`, multiply by `W` — with no SVD and no eigendecomposition, which autograd computes for
+me from the forward penalty. So the wall that killed the hard constraint — a `10^9`-flop factorization
+every step — is gone; I traded an exact projection for a cheap gradient nudge toward the manifold, all I
+need to keep the spectrum from drifting, and it costs essentially nothing per step. Squaring is also
 deliberate on its own terms: the Frobenius norm itself has a square root and is non-differentiable at zero,
 while squaring removes the root, makes the penalty a smooth polynomial in `W`, and grows *quadratically*
 when a residual entry gets large — so it pushes hardest exactly on the worst-off filters. That last property
@@ -147,8 +140,8 @@ misses the failure I am chasing, and it still costs a power iteration per layer 
 residual controls the whole spectrum at once.
 
 How hard should I push? This is a soft encouragement, not a law, so it gets a small coefficient `lambda`.
-Let me get its scale on paper at initialization, because it turns out not to be negligible the way rung
-one's was. For a Kaiming-init VGG conv, `W ∈ R^{512 × 4608}` with entries `N(0, 2/4608)`, the diagonal of
+Its scale at initialization turns out not to be negligible the way rung one's was. For a Kaiming-init VGG
+conv, `W ∈ R^{512 × 4608}` with entries `N(0, 2/4608)`, the diagonal of
 `W W^T` is `||filter||^2 ≈ 4608 · (2/4608) = 2` — not one — and the off-diagonals have variance
 `≈ 4/4608`. So `||W W^T − I||_F^2 ≈ 512·(2−1)^2 + 512^2·(4/4608) ≈ 512 + 227 ≈ 739` per layer, and
 `lambda · 739 ≈ 0.074` at `lambda = 1e-4` — order `10^{-1}` per layer against a `CE ≈ 4.6`, summed over
@@ -159,13 +152,13 @@ entry, while the off-diagonals are small `random` numbers around zero. So early 
 *unit-norm* pressure, pulling each filter's squared norm from `2` down toward `1`, and only as the filters
 differentiate does the off-diagonal decorrelation become the active part.
 
-That observation refines the clean "L2 does scale, this does shape" story I told myself, and honesty
-demands I state the refinement: the diagonal of my residual *is* a scale term too. But it is a scale term
-that points at unit norm, whereas L2 points at zero — so far from duplicating L2, on the norm the two pull
-in *opposite* directions: L2 wants `||filter|| → 0`, my diagonal wants `||filter|| → 1`. Rather than piling
-on redundant shrinkage the way rung one did, the Gram diagonal sets a floor L2 alone would drive the scale
-below, and the off-diagonal does the genuinely new work — the decorrelation, the flat spectrum — that
-neither L2 nor the entropy penalty touches. This is why `lambda` must stay small: at `1e-4`, the gradient
+That refines the clean "L2 does scale, this does shape" story: the diagonal of my residual *is* a scale
+term too. But it points at unit norm where L2 points at zero — so far from duplicating L2, on the norm the
+two pull in *opposite* directions: L2 wants `||filter|| → 0`, my diagonal wants `||filter|| → 1`. Rather
+than piling on redundant shrinkage the way rung one did, the Gram diagonal sets a floor L2 alone would
+drive the scale below, and the off-diagonal does the genuinely new work — the decorrelation, the flat
+spectrum — that neither L2 nor the entropy penalty touches. This is why `lambda` must stay small: at
+`1e-4`, the gradient
 it adds per weight is `≈ lambda · 4 · (||filter||^2 − 1) · w ≈ 1e-4 · 4 · 1 · 0.02 ≈ 8×10^{-6}`, a gentle
 nudge that lets the data loss do the real work while the orthogonality term keeps the weights near a good
 manifold. If `lambda` were large I would optimize for orthogonal but task-blind filters — and, given the
@@ -187,40 +180,30 @@ And unlike rung one, I do *not* schedule this. The warm-up was what made rung on
 late; here the whole point is that the data gradient drags `W` off the manifold *immediately*, so the
 standing force has to be there immediately to oppose it. No delayed start, no ramp — from the first step.
 
-Why should this help generalization and not just stabilize gradients? Two mechanisms, both readable from
-`R`. The off-diagonal part drives filter–filter correlations toward zero, so filters span distinct
-directions instead of clustering — the layer stops wasting capacity on near-duplicate filters, and more of
-the nominal parameters do independent work. The diagonal part pushes `||filter||^2` toward one, keeping
-filter magnitudes from collapsing, so capacity stays usable instead of dying toward an uninformative
-origin. Both are about using the model's capacity fully and keeping the representation well-conditioned —
-a generalization story, not merely a gradient-flow story. And this is exactly the lever the confidence
-penalty lacked: it acts *inside* the network, on the propagation, on the deepest models where the entropy
-penalty was weakest.
+This is a generalization story, not merely a gradient-flow one: driving off-diagonal correlations toward
+zero stops the layer wasting capacity on near-duplicate filters, and holding `||filter||^2` near one keeps
+that capacity from collapsing toward an uninformative origin — the model uses its parameters fully and
+stays well-conditioned. And it is exactly the lever the confidence penalty lacked: it acts *inside* the
+network, on the propagation, on the deepest models where the entropy penalty was weakest.
 
-So the fill iterates the conv filter banks, reshapes each weight to `[out_channels, in·k·k]` so rows are
-filters, builds `W W^T`, subtracts an identity on the same device, squares the residual and sums it, and
-scales by `lambda`. Autograd supplies the `4(W W^T − I)W` gradient. It reads only `model` (for the conv
-weights), ignores `inputs`, `outputs`, `targets` except to land the scalar on the right device, and
-changes nothing else — same architecture, init, SGD, cosine schedule, evaluation. The full scaffold body
-is in the answer.
+So the fill iterates the conv filter banks, reshapes each to `[out_channels, in·k·k]`, builds `W W^T`,
+subtracts an identity on the same device, squares the residual and sums it, scales by `lambda`, and lets
+autograd supply the `4(W W^T − I)W` gradient. It reads only `model`, lands the scalar on `outputs.device`,
+and changes nothing else. The full scaffold body is in the answer.
 
 Now the falsifiable expectations against the confidence penalty's numbers. The mechanism is finally
-internal — it acts on the weight spectrum that governs propagation through depth — so I expect the gains
-to concentrate where the output penalty was weakest: **ResNet-56**, the deepest network, where the
-confidence penalty managed only +0.21 to 72.66 and a mere `0.76%` relative error cut because it never saw
-the internal conditioning. I expect the Gram penalty to beat 72.66 on ResNet-56 and to be the *strongest*
-of the three regularizers there, plausibly into the low-73s — the deepest model is where flattening the
-layer-wise spectra should pay off most. On VGG-16-BN I expect a result near, but not clearly above, the
-confidence penalty's 74.31: VGG's real capacity sink is its dense classifier head, which this conv-only
-penalty does not touch, so the output penalty's direct grip on that head's softmax may match or slightly
-edge a conv-spectrum penalty there — I would be unsurprised to land just under 74.31, in the low-74s. On
-MobileNetV2/FashionMNIST I expect a near-tie around the confidence penalty's 94.90, since the task is
-saturated and — by the `C ≫ 9` argument above — the depthwise convs give the Gram penalty an infeasible
-target and little to decorrelate: high-94s, within a fraction of a point either way. Netting out across the
-three pairs, I expect this rung to edge ahead overall by winning the hardest, deepest model decisively
-while trading the others roughly evenly — making it the strongest baseline on the ladder. If instead it
-*lost* to the confidence penalty on ResNet-56, that would falsify my reading that the deepest network's
-shortfall was about internal spectral conditioning rather than output over-confidence, and would tell me
-the propagation story is doing less work here than the output story. I do not expect that: the confidence
-penalty's own weakest point was its deepest model, absolutely and relatively, and a flat weight spectrum is
-exactly what a deep stack needs.
+internal — it acts on the weight spectrum that governs propagation through depth — so the gains should
+concentrate where the output penalty was weakest: **ResNet-56**, the deepest network, where the confidence
+penalty managed only +0.21 to 72.66 and a `0.76%` relative error cut because it never saw the internal
+conditioning. I expect the Gram penalty to beat 72.66 there and to be the *strongest* of the three
+regularizers on that model — the deepest stack is where flattening the layer-wise spectra should pay off
+most. On VGG-16-BN I expect no clear win over the confidence penalty's 74.31: VGG's real capacity sink is
+its dense classifier head, which this conv-only penalty does not touch, so the output penalty's direct
+grip on that head's softmax should match or edge a conv-spectrum penalty. On MobileNetV2/FashionMNIST I
+expect roughly a tie with 94.90, the task being saturated and — by the `C ≫ 9` argument — the depthwise
+convs giving the penalty an infeasible target with little to decorrelate. Netting out, I expect this rung
+to edge ahead overall by winning the deepest model decisively while trading the others evenly. If instead
+it *lost* to the confidence penalty on ResNet-56, that would falsify my reading that the deepest network's
+shortfall was internal spectral conditioning rather than output over-confidence. I do not expect that: the
+confidence penalty's own weakest point was its deepest model, absolutely and relatively, and a flat weight
+spectrum is exactly what a deep stack needs.
