@@ -40,20 +40,19 @@ adaptation machinery and all of it on extracting cross-sectional signal, and bec
 RobustZScore-free raw factors are naturally robust to the marginal drift that hurts a neural encoder.
 Let me derive why a GBDT is the right control and exactly how the scaffold wants it filled.
 
-Before I commit to trees, let me be deliberate about the alternatives, because "give up on sequence
-adaptation" is a strong claim. One move is to keep a sequence model but make it heavier or smarter — a
-real multi-step window with attention instead of AdaRNN's degenerate single timestep, or a
-domain-adversarial alignment (gradient reversal) instead of a first-moment cosine match. I reject this
-on the arithmetic of the ceiling. Two structurally different adaptation mechanisms already converged to
-the same aggregate (≈0.560 vs ≈0.561) and the same far-regime collapse; the thing they share is not
-their adaptation design, it is the data — an IC around 0.05, an R² near 0.0025, on a panel where about
-99.75% of each label is noise. A larger attention model has *more* parameters to fit that noise and
-needs *more* clean signal per sample to justify them, which is exactly what this panel does not have;
-it would raise variance, not the ceiling. A second move is explicit domain alignment across regimes
-(MMD or DANN) on a flat feature view — but that is AdaRNN's idea without the recurrence, and it
-inherits the same defect: aligning training-era distributions says nothing about a 2019–2020 window
-that lies outside them. Both tempting options spend more capacity on the axis that is already
-saturated. The move with actual headroom is orthogonal: stop trying to *learn* drift-robustness with a
+The alternatives deserve a hearing, since "give up on sequence adaptation" is a strong claim. One move
+is to keep a sequence model but make it heavier or smarter — a real multi-step window with attention
+instead of AdaRNN's degenerate single timestep, or a domain-adversarial alignment (gradient reversal)
+instead of a first-moment cosine match. I reject this on the arithmetic of the ceiling: two
+structurally different adaptation mechanisms already converged to the same aggregate and the same
+far-regime collapse, and what they share is not their adaptation design, it is the data — an IC around
+0.05, an R² near 0.0025, a panel where about 99.75% of each label is noise. A larger attention model
+has *more* parameters to fit that noise and needs *more* clean signal per sample to justify them,
+exactly what this panel lacks; it would raise variance, not the ceiling. A second move is explicit
+domain alignment across regimes (MMD or DANN) on a flat feature view — but that is AdaRNN's idea
+without the recurrence, and it inherits the same defect: aligning training-era distributions says
+nothing about a 2019–2020 window that lies outside them. Both spend more capacity on the axis that is
+already saturated. The move with actual headroom is orthogonal: stop trying to *learn* drift-robustness with a
 high-variance encoder and instead pick a learner whose *inductive bias* is drift-robust for free and
 whose regularization is built for noise. That is a gradient-boosted tree, and let me derive why the
 scaffold's exact fill is the right instance of it.
@@ -87,36 +86,15 @@ unregularized optimum would memorize idiosyncratic returns. It is the consensus 
 on exactly this kind of tabular data, and on this task it is the control the two adaptive models have
 spent four rungs failing to clearly beat.
 
-Let me put numbers on that regularization, because "heavy penalties" is the whole reason to expect
-this tree to survive drift where the encoders did not. For squared loss the per-sample hessian is 1,
-so a leaf holding `n` samples has `H = n` and optimal value `w* = −G/(n + λ2)` with `λ2 = 580.98`. A
-leaf with, say, 100 samples is shrunk by a factor `100/(100 + 580.98) ≈ 0.147` relative to the
-unregularized `−G/n` — it keeps about 15% of its natural magnitude; even a 500-sample leaf keeps only
-`500/1081 ≈ 0.46`. On top of that the L1 term `λ1 = 205.7` enters as a soft-threshold on the gradient
-sum, `sign(G)·max(|G| − 205.7, 0)`, so any leaf whose accumulated `|G|` fails to clear 205.7 is set to
-exactly zero — pruned to no contribution. Together these say the booster commits a nonzero prediction
-only to a split whose gradient mass is both large and consistent, which on low-SNR returns is precisely
-the discipline that separates a real cross-sectional edge from a lucky residual. This is the tree
-analogue of the regularizer role I assigned AdaRNN's matching loss — except here it is aimed directly
-at the noise instead of at cross-half alignment, and it costs no adaptation machinery.
-
-And let me actually check the scale-invariance claim I am leaning on, since it is the load-bearing
-reason to expect drift portability. Take any split `x_ij ≤ d` and apply a positive monotone rescaling
-of that factor, `x' = a·x + b` with `a > 0` — the kind of level/spread move temporal drift induces on
-a factor's marginal. The sample set with `x' ≤ a·d + b` is identical to the set with `x ≤ d`, so the
-identical partition is reachable at threshold `d' = a·d + b`, and since the split gain depends only on
-the gradient sums of the two sides, the gain is unchanged. The tree's decision surface is invariant to
-any monotone rescaling of any individual factor: a drift that moves a factor's mean and variance leaves
-the learned rule intact, whereas a neural encoder's first-layer linear combination of all 158 factors
-changes meaning the instant those marginals move. That is the mechanism, verified on one line of
-algebra, behind expecting the tree to hold on `csi300_recent` where both encoders drifted.
-
-The histogram cost also confirms this is cheap enough to be the right default. Each node builds a
-per-feature gradient histogram in one `O(n · 158)` pass over its samples and scans splits in
-`O(158 · 255)` over the ≤255 bins; the sibling histogram is recovered by parent-minus-smaller-child
-subtraction, so only the smaller child is ever built from scratch. Over ~210 leaves and up to 1000
-rounds that is a modest, cache-friendly workload on the CSI300 panel — nothing like the per-epoch
-recurrent passes the sequence models paid, and deterministic to boot.
+The regularization is the whole reason to expect this tree to survive drift where the encoders did
+not. For squared loss a leaf of `n` samples takes value `w* = −G/(n + λ2)` with `λ2 = 580.98`, so a
+100-sample leaf keeps only about `100/681 ≈ 15%` of its unregularized magnitude and even a 500-sample
+leaf keeps under half. On top of that `λ1 = 205.7` soft-thresholds the gradient sum, zeroing any leaf
+whose accumulated `|G|` fails to clear it. Together they let the booster commit a nonzero prediction
+only where the gradient mass is both large and consistent — on low-SNR returns, exactly the discipline
+that separates a real cross-sectional edge from a lucky residual. It is the tree analogue of the
+regularizer role I gave AdaRNN's matching loss, except aimed directly at the noise instead of at
+cross-half alignment, and costing no adaptation machinery.
 
 Now the scaffold specifics, because the fill is a *faithful* qlib `LGBModel`, not a generic GBDT, and
 a couple of details in it look like adaptation but are not. The hyperparameters are the official
@@ -138,26 +116,15 @@ the booster's own per-tree feature and row sub-sampling parameters forwarded to 
 temporal-domain adaptation — they are vanilla stochastic-GBDT knobs that add a little member-to-member
 decorrelation. The fill trains with `num_boost_round=1000` and `early_stopping_rounds=50` against the
 validation segment (2015–2016), so the actual tree count is chosen by validation, and it is
-deterministic, which is why I expect (and the harness shows) identical numbers across the three seeds.
-
-It is worth being precise that `colsample_bytree = 0.8879` and `subsample = 0.8789` do almost nothing
-structural here, so I do not over-read them. The first hands each tree a random `0.8879·158 ≈ 140` of
-the 158 factors; the second fits each tree on a random `0.8789` fraction of the rows. Both are mild —
-they inject a little decorrelation between successive trees so the ensemble variance drops slightly,
-the same reason a random forest subsamples — but at about 89% they are close to "use everything," and
-they carry no notion of time, regime, or feature reliability. They are not the gradient-based
-one-sided sampling the engine is famous for, and they are certainly not domain adaptation. If I wanted
-the drift robustness to come from *which* samples and features each member sees, this booster is not
-expressing it — it is a single tree over essentially the whole panel, and any deliberate sample or
-feature shaping would have to be built on top, not read into these two knobs.
+deterministic, which is why I expect identical numbers across the three seeds.
 
 The data view is the other place the scaffold makes a deliberate choice, and it is the right one for
 trees. The fill edits the workflow processor block to set `infer_processors: []` — it removes the
 `RobustZScoreNorm` and `Fillna` that the neural baselines depend on, and keeps only the label
 processors (`DropnaLabel`, `CSRankNorm`). That is correct GBDT practice: trees split on raw factor
 thresholds and gain nothing from per-feature z-scoring (which would, if anything, smear the natural
-split points), and LightGBM handles NaNs natively by learning a default direction, so there is no
-The one processor the fill keeps is worth dwelling on, because it lines up with what the TRA table
+split points), and LightGBM handles NaNs natively by learning a default direction, so there is no need
+for external imputation. The one processor the fill keeps is worth dwelling on, because it lines up with what the TRA table
 already taught me. `CSRankNorm` on the label cross-sectionally rank-normalizes the returns each day, so
 the tree is fit to predict a stock's *rank* within the day's cross-section rather than its raw return
 magnitude. That is the same axis I found most drift-stable in TRA's numbers — its rank IC decayed to
@@ -182,40 +149,24 @@ it is corroborating evidence that the shrinkage — not luck — is what makes t
 matched the encoders on IC but also ran a −0.10 drawdown would undercut the whole "regularization buys
 robustness" story, so the drawdown is a second, independent place the mechanism can be checked.
 
-Let me make the bar concrete, because "beat the adaptive models" has to mean something a single row of
-feedback can confirm or refute. The number to clear is the aggregate: both adaptive models sit at
-≈0.560–0.561, so a win means the gmean of the three per-regime metric means lands *clearly* above that,
-not within rounding of it — the gmean penalizes any regime that collapses, so a single weak window
-would drag the tree back to the tie even if it dominated the other two. That structure tells me exactly
-where the tree has to *not* fail: it cannot afford a `csi300_recent` collapse the way the encoders had,
-because the geometric mean would punish it just as hard. So the whole bet reduces to the far regime.
-The two encoders posted recent info ratios of 0.48 (TRA) and a coin-flip 0.47 mean (AdaRNN), with
-recent annualized returns around 0.033–0.035; if the tree's scale-invariant threshold rules are as
-portable as the algebra says, its recent info ratio should not sit near 0.5 but well clear of 1.0, and
-its recent annualized return should be a multiple of the encoders' ~0.03, not a match. That single cell
-is where the trajectory's thesis lives or dies.
-
-Let me reason carefully about what this control should do, because if it merely ties the adaptive
-models the trajectory has no strong rung, and if it wins it reframes the whole task. On
-`csi300_shifted` I expect LGBM to be competitive but perhaps a touch behind AdaRNN's strong showing
-there (AdaRNN's alignment genuinely helps where the shift is mild and the near window rewards a
-sequence encoder). The decisive regime is `csi300_recent`. Both adaptive models died there
-(info ratio ≈0.47–0.48); my falsifiable prediction is that the tree, seeing all factors and immune to
-marginal rescaling, will *not* die there — its `csi300_recent` annualized return and info ratio should
-come in clearly above the adaptive models' (I expect info ratio comfortably above 1.0 and annualized
-return well above their ≈0.03–0.04), because the relation the trees learn from raw thresholds is more
-portable to a distant regime than a neural encoder's drifted representation. And on the long-horizon
-`csi300` window I expect LGBM to be the best of the three on the signal metrics (higher IC and
-rank IC) with a markedly *shallower max drawdown* — the strong regularization should make its
-portfolio steadier than the adaptive models', whose drawdowns ran to −0.10. If those three predictions
-hold — competitive on the near window, decisively better on the far window, best signal and shallowest
-drawdown on the long window — then the aggregate gmean puts LGBM above both adaptive models, and the
-trajectory's lesson is sharp and a little subversive: on a thin, noisy CSI300 panel, the most
-effective response to concept drift among these baselines is *not* an explicit drift-adaptation
-mechanism but a strong, heavily-regularized, full-feature non-adaptive learner whose inductive bias
-(threshold splits, leaf shrinkage) is already robust to the marginal shift. The failure mode that
-would refute this is the symmetric one: if LGBM's `csi300_recent` also lands near info ratio 0.5, then
-the far regime is simply unforecastable for everyone and the ceiling is the data, not the model. The
-numbers will decide it — and if LGBM does win as the strong control, the natural next move is not to
-abandon it but to make *it* drift-robust by ensembling it deliberately, reweighting the samples it
-learns from and the features it uses, which is exactly where a stronger method would build from here.
+So the whole bet reduces to the far regime. The aggregate to clear is the adaptive pair's
+≈0.560–0.561, and the geometric mean punishes any collapsed window, so LGBM cannot afford a
+`csi300_recent` failure the way the encoders had — a single weak window would drag it back to the tie
+even if it dominated the other two. Both encoders posted recent info ratios near 0.48 with recent
+annualized returns around 0.033–0.035; if the tree's scale-invariant threshold rules are as portable
+as the algebra says, it should clear that collapse zone decisively rather than merely matching it, and
+that single cell is where the trajectory's thesis lives or dies. On `csi300_shifted` I expect it
+competitive but perhaps a touch behind AdaRNN's alignment-helped showing, since the mild-shift near
+window rewards a sequence encoder. And on the long `csi300` window I expect the best signal of the
+three (higher IC and rank IC) with a markedly *shallower max drawdown* than the encoders' ≈−0.10,
+because the heavy leaf shrinkage keeps the portfolio from large bets on thin evidence. If those hold —
+competitive near, decisively better far, best signal and shallowest drawdown long — the aggregate
+gmean puts LGBM above both adaptive models, and the trajectory's lesson is sharp and a little
+subversive: on a thin, noisy CSI300 panel the most effective response to concept drift among these
+baselines is *not* an explicit drift-adaptation mechanism but a strong, heavily-regularized,
+full-feature non-adaptive learner whose inductive bias — threshold splits, leaf shrinkage — is already
+robust to the marginal shift. The refuting outcome is symmetric: if LGBM's `csi300_recent` also lands
+near the encoders' collapse, the far regime is simply unforecastable and the ceiling is the data, not
+the model. And if LGBM does win as the strong control, the next move is not to abandon it but to make
+*it* drift-robust — ensemble it deliberately, reweighting the samples it learns from and the features
+it uses — which is exactly where a stronger method would build from here.

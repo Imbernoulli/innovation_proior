@@ -13,27 +13,21 @@ both barely off the 0.5 floor, because the sigmoid is nearly flat near zero (its
 rank-ICIR, and above all the information ratio, which lives around 1 and maps near 0.73, a full 0.22
 above the floor. So the objective is quietly telling me two things: raw predictive correlation is
 almost free to move, and what genuinely moves the score is *stable, risk-adjusted* behavior held
-across every regime. That is a drift objective wearing a scoreboard.
+across every regime.
 
-Let me pin down how much the geometric mean over regimes actually bites, because it decides whether
-"consistency" is a slogan or a real budget. Say a method reaches a per-regime seven-metric mean of
-0.58 on two windows but only 0.54 on the third. The arithmetic mean would be 0.567; the geometric
-mean is `(0.58·0.58·0.54)^{1/3} = 0.5665`, and the gap to a flat method scoring 0.57 everywhere
-(gmean 0.5700) is a real 0.0035, most of it manufactured by the single weak regime rather than by any
-average. Push the weak regime down to 0.50 and the gmean drops to `(0.58·0.58·0.50)^{1/3} = 0.5520`,
-losing another 0.014 for a four-point dip in one window. The lesson is arithmetic, not rhetorical: on
-this scoreboard the cheapest points are bought by *lifting the worst regime*, and the most expensive
-mistake is to let any one window collapse. That is precisely the failure mode concept drift produces
-— a model that is fine on windows near its training distribution and falls apart on the one that
-drifted — so the first rung should go straight at instability across time rather than chase a higher
-in-sample IC on the friendly window.
+And the geometric mean over regimes makes a single weak window expensive. A method at a 0.58
+per-regime mean on two windows but 0.54 on the third scores gmean 0.5665, already below a flat 0.57
+everywhere; let the weak regime fall to 0.50 and the gmean drops to 0.5520. So the cheapest points
+come from *lifting the worst regime*, and the most expensive mistake is to let any one window
+collapse — precisely the failure mode concept drift produces. The first rung should go straight at
+instability across time, not chase a higher in-sample IC on the friendly window.
 
 The default Ridge is a single linear relation `p(y|x)` fit by average squared loss over 2008–2014,
 and that is exactly the assumption I distrust: one fixed joint `P`, one mapping from factors to
 returns. The market is not one `P`. Two of the best-documented cross-sectional effects point in
 opposite directions at the same time — momentum (winners keep winning) and reversal (losers rebound)
-— and which one dominates rotates with the regime. Let me make the damage concrete instead of
-asserting it. Suppose the training stream is an equal blend of two sub-regimes: in regime A the
+— and which one dominates rotates with the regime. Concretely: suppose the training stream is an
+equal blend of two sub-regimes: in regime A the
 truth is `y = +β·r + ε` (momentum), in regime B it is `y = −β·r + ε` (reversal), where `r` is some
 past-return factor standardized to unit variance and equal mass falls in each. A single least-squares
 coefficient is `θ = Cov(r, y)/Var(r)`, and the covariance pools the two: `Cov(r,y) = ½·(+β·Var(r)) +
@@ -58,24 +52,15 @@ whatever past prediction-error state is already cached. Property (c) is the one 
 solutions, and I will keep coming back to it.
 
 Start with "one model, several behaviors." A mixture-of-experts is the right shape: `K` experts and a
-gate. But what should the experts be here? `K` full backbones would multiply parameters by `K` and,
-on a noisy, smallish CSI300 panel, overfit hard — so let me count the cost before I commit. The
-backbone the scaffold pins is an attentive LSTM: input width 20, hidden 64, two layers. An LSTM
-layer carries roughly `4·(hidden·(in+hidden)+hidden)` parameters; layer one is `4·(64·(20+64)+64) =
-4·5440 = 21,760`, layer two is `4·(64·128+64) = 33,024`, and the attention head (a `W` of `64×64` and
-a context vector `u`) adds about `4,200`, so the shared encoder is ≈59k parameters. A single linear
-predictor from the 128-wide latent is `129` parameters. Replicating only that head `K` times costs
-`K·129` — negligible. Replicating the *whole encoder* `K` times costs `K·59k`; at `K=3` that is
-≈177k versus the ≈64k the shared-encoder design uses once the router (≈5k, computed below) is added.
-Roughly 2.7× more parameters to fit from the same 2008–2014 sample, for capacity I do not need — the
-patterns differ in the *relation* far more than in how to *encode* a 60-day window. So I share one
-encoder `ψ` and replicate only the cheap part into `K = num_states` linear predictors: `ŷ_ik = θ_k ∘
-ψ(x_i)`, `ψ` shared, `θ_k` a linear head. Near-zero extra parameters, and a free safety net I can
-actually verify rather than assert: at `num_states = 1` the router's softmax over one logit is 1, the
-one-hot selection is `[1]`, the transport with a single column marginal `ν_1 = 1` forces every
-sample's mass onto that one head, and the distillation term `Σ_k P_ik log q_ik = 1·log 1 = 0`, so the
-whole objective collapses to plain task loss and the model *is* a single attentive LSTM. Routing can
-only add capacity, never subtract it. In this task `num_states = 3` (the workflow's `MTSDatasetH` is
+gate. But what should the experts be here? `K` full backbones would multiply the encoder's parameters
+by `K` and overfit hard on a noisy, smallish CSI300 panel — and the patterns differ in the *relation*
+far more than in how to *encode* a 60-day window, so replicating the encoder buys capacity I do not
+need. The attentive-LSTM encoder is ≈59k parameters; a single linear predictor off the 128-wide
+latent is 129. So I share one encoder `ψ` and replicate only the cheap head into `K = num_states`
+linear predictors: `ŷ_ik = θ_k ∘ ψ(x_i)`, `ψ` shared, `θ_k` a linear head. Near-zero extra
+parameters, and a free safety net: at `num_states = 1` the router and transport degenerate and the
+objective collapses to plain task loss, so the model *is* a single attentive LSTM — routing can only
+add capacity, never subtract it. In this task `num_states = 3` (the workflow's `MTSDatasetH` is
 configured with `num_states: 3`) — enough heads to separate the main regimes, few enough that each
 head still gets a third of the data rather than a starving sliver.
 
@@ -107,9 +92,8 @@ analogue is each predictor's *recent prediction error*, which is exactly the cac
 `MTSDatasetH` carries. So the router reads the per-sample history of the `K` predictors' losses,
 encoded by a small LSTM (`tra_config` hidden 32, one layer) whose last hidden state is concatenated
 with the 128-dim latent (`src_info="LR_TPE"`: latent representation plus temporal prediction errors)
-and mapped by a linear `fc` to `K` logits. Counting this: the TPE-LSTM is `4·(32·(3+32)+32) ≈ 4,608`
-parameters and the `fc` from `160` to `3` adds `483`, so the router is ≈5.1k on top of the ≈59k
-encoder — the number I used above. One causality subtlety the sampler must respect or the whole thing
+and mapped by a linear `fc` to `K` logits — about 5k parameters on top of the ≈59k encoder, a small
+addition. One causality subtlety the sampler must respect or the whole thing
 leaks: the most recent usable error is from *before* the label horizon, never the current step, and
 batches flow forward in time and are never shuffled across the time axis, or the router would be
 reading its own future.
@@ -127,13 +111,12 @@ test time, where I drop the noise and take `argmax(prob)`. Training prediction i
 choice).sum`; test prediction is `all_preds[argmax(prob)]` — label-free, property (c) satisfied at
 inference.
 
-Train this end to end and it collapses: every sample routes to one predictor and the other two
-starve — the self-reinforcing gating pathology. It is worth tracing why so I fix it with the right
-tool. If head `k` is even slightly better on a batch, the gate hands it more mass, its gradient
-signal is larger, it improves faster, and the gate concentrates further next step; the fixed point is
-winner-take-all. A soft load-balancing penalty does *not* fix this, because it only equalizes mass —
-it says nothing about *which* sample belongs to *which* predictor, so an arbitrary balanced
-assignment discovers no patterns at all. So I have to state the real objective: assign each sample to
+Train this end to end and it collapses: if head `k` is even slightly better on a batch, the gate
+hands it more mass, its gradient is larger, it improves faster, and the gate concentrates further next
+step — the fixed point is winner-take-all and the other two heads starve. A soft load-balancing
+penalty does *not* fix this, because it only equalizes mass — it says nothing about *which* sample
+belongs to *which* predictor, so an arbitrary balanced assignment discovers no patterns. So I have to
+state the real objective: assign each sample to
 the predictor that fits it *best*, subject to keeping the predictors balanced. Pack the predictor
 errors into a loss matrix `L ∈ R^{N×K}`, seek an assignment `P` minimizing `⟨P, L⟩` with each sample
 getting one predictor (row sums one) and each predictor a prescribed share (column sums `ν_k N`). Row
@@ -141,19 +124,11 @@ marginals fixed, column marginals fixed, nonnegative entries, linear cost — th
 **optimal-transport** problem, and "do not collapse" *is* the column-marginal constraint, not a
 bolted-on penalty. The exact LP is too slow per minibatch, so use the entropic relaxation: the
 `sinkhorn` step exponentiates `exp(-L_h/ε)` and runs three iterations of column-then-row
-normalization.
-
-The sign in that exponent is the one place I refuse to hand-wave, because getting it backwards
-silently trains the anti-model, so let me trace a tiny case. Take two samples, two heads, with loss
-matrix `L = [[0.1, 0.9],[0.9, 0.1]]` — sample 0 is fit well by head 0, sample 1 by head 1. With `ε =
-0.1`, `exp(-L/ε)` gives `[[e^{-1}, e^{-9}],[e^{-9}, e^{-1}]] ≈ [[0.368, 0.0001],[0.0001, 0.368]]`.
-Normalizing columns then rows leaves the mass essentially on the diagonal — sample 0 → head 0, sample
-1 → head 1 — which is what I want: low loss earns high transport mass. Flip the sign to `exp(+L/ε)`
-and the mass lands on the off-diagonal, routing every sample to the head that fits it *worst* — a
-model that trains each predictor on exactly the samples it is bad at. So the minus sign is
-non-negotiable, and the `L_h` fed to Sinkhorn is a blend `L_h = α·norm(L) + (1−α)·norm(hist)` with
-`α = 0.5`, fusing the noisy single-batch loss with a smoother historical loss so the transport target
-does not thrash from minibatch to minibatch.
+normalization. The cost enters the exponent with a *minus* sign so that low loss earns high transport
+mass; the opposite sign would land the mass on the samples each head fits worst, silently training the
+anti-model, so the minus is non-negotiable. The `L_h` fed to Sinkhorn is a blend `L_h = α·norm(L) +
+(1−α)·norm(hist)` with `α = 0.5`, fusing the noisy single-batch loss with a smoother historical loss
+so the transport target does not thrash from minibatch to minibatch.
 
 The transport `P` needs labels to compute `L`, so it cannot itself be the test selector — it is a
 *teacher*. The router, fed only LR and TPE, is trained to predict the assignment the OT oracle would
@@ -190,13 +165,12 @@ dropped factors carried regime information. So my honest expectation is that TRA
 complete drift-routing model and should clear the averaged linear default, especially on the
 risk-adjusted metrics the scoreboard rewards — but that its IC and rank-IC land in the modest range
 and its information ratios are respectable rather than dominant, with the three regimes treated
-unevenly. The falsifiable shape I will look for: because the router's selector is learned from error
-history on the *training* distribution, I expect it to be strongest on the window closest to training
-(`csi300_shifted`, 2016–2018) and weakest on the window furthest from it (`csi300_recent`,
-2019–2020). If `csi300_recent`'s information ratio comes in clearly below the `csi300` window's — say
-less than half of it — that is the tell: the routing capacity is being spent on separating
+unevenly. Because the router's selector is learned from error history on the *training* distribution,
+I expect it to hold up best on the windows nearest training and to weaken on `csi300_recent`
+(2019–2020), the window furthest from it. If the recent window's information ratio comes in clearly
+below the others', that is the tell: the routing capacity is being spent on separating
 in-distribution patterns and is not, by itself, *aligning* the model to a shifted future. TRA is
-deterministic across seeds (its backbone is seeded), so anything I see there is structural, not
-noise, which makes that gradient a clean read. And that diagnosis is exactly what the next rung — a
-model that explicitly forces what is *invariant* across time rather than routing within a single
-distribution — would be built to address.
+deterministic across seeds (its backbone is seeded), so whatever gradient across windows I see is
+structural, not noise. And that diagnosis is exactly what the next rung — a model that explicitly
+forces what is *invariant* across time rather than routing within a single distribution — would be
+built to address.
