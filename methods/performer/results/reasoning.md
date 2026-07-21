@@ -88,7 +88,7 @@ Where it matters is `SM→0`. Trig had `SM⁻²` out front; this has `SM²`. Run
 
 They move in opposite directions: as `SM` falls, `MSE_pos` falls *with* it while `MSE_trig` climbs. The exponential estimator is most accurate exactly where the trigonometric one is least accurate — on the small entries that dominate the matrix and that the normalizer amplifies. That's the trade I care about. Positive features aren't a cosmetic fix for the sign — in the regime that was killing training they cut the variance by orders of magnitude, and they pay for it only on the large entries, where there's accuracy to spare.
 
-Can I push the variance down further for free? The estimator uses `exp(ωᵀz)`. Since `ω` and `-ω` have the same distribution (Gaussian is symmetric), I could symmetrize: use both `exp(ωᵀz)` and `exp(-ωᵀz)`, i.e. set `l=2` with `f_1=exp(u)`, `f_2=exp(-u)`, and `h(u) = exp(-‖u‖²/2)/√2`. The estimator becomes proportional to `cosh(ωᵀz)`, still positive, still unbiased (the cross terms in expectation give the same `SM`). Its MSE: averaging `½(e^{ωᵀz} + e^{-ωᵀz})` and using that the two have equal variance and a *negative* covariance, the variance of the average should drop below the variance of either alone. Working it out, `MSE(SM̂^{hyp+}) = ½(1 - exp(-‖z‖²)) MSE(SM̂⁺)`. The factor is `½(1 - exp(-‖z‖²))`, which is at most `½` — so the symmetrized estimator's MSE is at most half the plain one's, no matter what `x,y` are. Let me look at the factor across a few `‖z‖²`: at `‖z‖²=0.41` it's `0.168`, at `2.65` it's `0.465`, at `9.25` it's `0.500`. It saturates at `½` for large `‖z‖` and is smaller for small `‖z‖` — never above `½`. So `SM̂^{hyp+}` is always at least as good as `SM̂⁺` and at least as good as plain `SM̂⁺` with twice the features (which would also cut MSE by `½`). A free factor from a symmetry I already had — though I'll keep the plain positive map as the workhorse and treat this as the reason two redrawn halves are never wasted.
+Can I push the variance down further for free? The estimator uses `exp(ωᵀz)`. Since `ω` and `-ω` have the same distribution (Gaussian is symmetric), I could symmetrize: use both `exp(ωᵀz)` and `exp(-ωᵀz)`, i.e. set `l=2` with `f_1=exp(u)`, `f_2=exp(-u)`, and `h(u) = exp(-‖u‖²/2)/√2`. The estimator becomes proportional to `cosh(ωᵀz)`, still positive, still unbiased (the cross terms in expectation give the same `SM`). Its MSE: averaging `½(e^{ωᵀz} + e^{-ωᵀz})` and using that the two have equal variance and a *negative* covariance, the variance of the average should drop below the variance of either alone. Working it out, `MSE(SM̂^{hyp+}) = ½(1 - exp(-‖z‖²)) MSE(SM̂⁺)`. The factor is `½(1 - exp(-‖z‖²))`, which is at most `½` — so the symmetrized estimator's MSE is at most half the plain one's, no matter what `x,y` are. Let me look at the factor across a few `‖z‖²`: at `‖z‖²=0.41` it's `0.168`, at `2.65` it's `0.465`, at `9.25` it's `0.500`. It saturates at `½` for large `‖z‖` and is smaller for small `‖z‖` — never above `½`. So `SM̂^{hyp+}` is always at least as good as `SM̂⁺`, and by more than a rounding margin: at the same compute cost — two exponentials per `ω`, matching what `2m` fresh projections would cost in the plain estimator — its MSE comes out `(1-exp(-‖z‖²))` times smaller than doubling `m` in the plain map, strictly better for any finite `z`. That comparison, though, is against fresh *independent* directions; I haven't worked out how symmetrizing `m` directions stacks up against spending the same budget on `m` more *orthogonal* directions instead, which is its own separately-quantified lever. I'll leave that trade unresolved and ship the plain positive map with orthogonal sampling as the default — the lever I've actually quantified — keeping symmetrization as a documented option rather than folding it in.
 
 Now the second lever. I'm drawing `m` independent Gaussian directions `ω_i`. Independence is wasteful — independent random directions in high dimensions cluster and waste samples. If I instead force `ω_1,…,ω_m` to be *exactly orthogonal*, I cover the sphere more evenly. And I can do this without breaking unbiasedness: for an isotropic distribution like `N(0,I)`, I can sample a Gaussian block and run Gram-Schmidt, which keeps each `ω_i`'s marginal distribution the same (still `N(0,I)` directionally with chi-distributed length) while making rows pairwise orthogonal inside a block. The marginals are unchanged, so each individual feature is still unbiased, so the average is still unbiased. A single orthogonal block has at most `d` rows; if I want more than `d` features, I stack independent `d × d` orthogonal blocks and a final partial block. Does orthogonality actually reduce variance, and by how much?
 
@@ -128,7 +128,9 @@ where `a_0 = g(0)` is the constant term (for `exp`, `a_0 = 1`). Translating back
 
 So two ingredients have survived their checks: positive (`R+`) features, which keep the normalizer positive and drive the variance toward zero on exactly the small entries that dominate; and orthogonal (`O`) sampling of the random directions, which cuts the variance further by a gap I confirmed both analytically and by Monte Carlo. Stacking them into the reassociation gives a stable, linear-time approximation whose softmax-kernel entries are unbiased and whose normalized attention output avoids the negative-normalizer failure mode.
 
-One more variant worth deriving, because the unbounded `exp` makes me slightly nervous about numerical range. What if I sample `ω` not from `N(0,I)` but uniformly from the sphere of radius `√d` — i.e. replace `ω` by `√d · ω/‖ω‖`? Call the resulting kernel `SMREG`, the regularized softmax kernel. It's the same construction with a different isotropic `Ω`, so all the orthogonality results carry over. How close is `SMREG` to `SM`? Expand `SM` and `SMREG` in the Taylor series of the exponential. For `SM`, `F(z) = Σ_k (1/(2k)!)‖z‖^{2k} d^k E[(ω̂ᵀe_1)^{2k}]` after using isotropy to kill odd terms and writing `ω = ‖ω‖ω̂`. The angular moment `A(2k,d) = E[(ω̂ᵀe_1)^{2k}] = (2k-1)!! / [(d+2k-2)(d+2k-4)⋯d]`, which I can get by integrating `sin^{d-2}θ` against `cos^{2k}θ` and a partial-integration recursion `F(k,d) = (k-1)/(d+1) F(k-2,d+2)`. The ratio of the `k`-th terms is `f(k,d) = d^k/[(d+2k-2)⋯d]`. Let me tabulate it at `d=16` to see whether it really stays `≤ 1`: `f(0..6,16) = 1, 1, 0.889, 0.711, 0.517, 0.345, 0.212`. Every term is at most `1`, with equality only at `k=0,1`, and the later terms decay — so the regularized series is dominated by the softmax series term by term, i.e. `SMREG ≤ SM`. A direct Monte-Carlo of the radius-`√d` estimator at `d=16` gives `SMREG/SM ≈ 0.906`: a real lower bound, modestly below `SM`, and tightening as `d` grows. Bounding the tail with a Poisson concentration argument (the partial sums of `w^k/k!` are a Poisson CDF, `w = ‖z‖²/2`) gives the asymptotic statement
+But an MSE bound, even an exponential tail bound, is a promise about one entry `(i,j)`. What I actually need is every one of the `L²` entries close to the truth *at once*, and I need the feature count `m` to pay for that guarantee without growing with `L` — otherwise "linear in `L`" quietly stops being true the moment I ask for a real correctness guarantee instead of an average-case one. The naive fix, union-bounding the per-entry failure probability over all `L²` pairs, is exactly what breaks this: driving `L²` failure probabilities down forces the per-entry probability down like `1/L²`, and with an exponential tail bound that costs `m ~ log L` — a feature budget that grows, however slowly, with the thing I'm trying to be independent of. The way out is that queries and keys don't range over all of `R^d`; after the projections that produce them their norms are bounded by some radius `R` that has nothing to do with `L`. So instead of union-bounding over the specific `L²` pairs that happen to occur, I can cover that fixed ball once with a finite `ε`-net whose size depends only on `d` and `R`, apply the tail bound at each net point, and extend to the rest of the ball using that the kernel and the feature map vary smoothly with their argument. That covering-based extension of orthogonal-feature tail bounds is worked out in recent random-feature theory; running it through gives `m = Θ((d/δ²) log(4d^{3/4}R/δ))` features for uniform entrywise error `δ`, with `L` never appearing — the radius `R` costs only a log, and doubling the sequence doubles the work but never the feature budget.
+
+One more variant worth deriving, because the unbounded `exp` makes me slightly nervous about numerical range. What if I sample `ω` not from `N(0,I)` but uniformly from the sphere of radius `√d` — i.e. replace `ω` by `√d · ω/‖ω‖`? Call the resulting kernel `SMREG`, the regularized softmax kernel. It's the same construction with a different isotropic `Ω`, so all the orthogonality results carry over. How close is `SMREG` to `SM`? Expand `SM` and `SMREG` in the Taylor series of the exponential. For `SM`, `F(z) = Σ_k (1/(2k)!)‖z‖^{2k} d^k E[(ω̂ᵀe_1)^{2k}]` after using isotropy to kill odd terms and writing `ω = ‖ω‖ω̂`. The angular moment `A(2k,d) = E[(ω̂ᵀe_1)^{2k}] = (2k-1)!! / [(d+2k-2)(d+2k-4)⋯d]`, which I can get by integrating `sin^{d-2}θ` against `cos^{2k}θ` and a partial-integration recursion `F(k,d) = (k-1)/(d+1) F(k-2,d+2)`. The ratio of the `k`-th terms is `f(k,d) = d^k/[(d+2k-2)⋯d]`. Let me tabulate it at `d=16` to see whether it really stays `≤ 1`: `f(0..6,16) = 1, 1, 0.889, 0.711, 0.517, 0.345, 0.212`. Every term is at most `1`, with equality only at `k=0,1`, and the later terms decay — so the regularized series is dominated by the softmax series term by term, i.e. `SMREG ≤ SM`. A direct Monte-Carlo of the radius-`√d` estimator at `d=16`, for one random `x,y` pair, gives `SMREG/SM ≈ 0.906` — consistent with the term-by-term dominance just shown, modestly below `SM`, and the gap should tighten as `d` grows since every ratio `f(k,d)` in the tail approaches `1`. Bounding the tail with a Poisson concentration argument (the partial sums of `w^k/k!` are a Poisson CDF, `w = ‖z‖²/2`) gives the asymptotic statement
 
     SMREG(x,y)/SM(x,y) ≥ 1 - 2/d^{1/3} + o(1/d^{1/3}),
 
@@ -146,90 +148,4 @@ and the prefix-scan output matches them to `1.1e-16` — floating-point identica
 
 A last generalization falls out for free. Nothing in the reassociation needed the feature map to come from the softmax kernel specifically — it only needed `φ(x) ≥ 0` so the normalizer stays positive, and some `φ` that produces a sensible similarity. So I can take `φ(x) = f(x) + ε` directly, or optionally `φ(x)=f(Wx)+ε` with random features, for any non-negative `f` and treat the choice of `f` as a hyperparameter — a *generalized* kernelizable attention. I'll make `f = ReLU` the default: deterministic features applied straight to `x` (no projection unless I ask for one), no softmax norm correction, and a small additive `ε = 10^{-3}` for numerical safety. The softmax estimator is then one option (`f = exp` with the norm-correction and redrawn orthogonal projections) and ReLU another, both at linear cost.
 
-Let me write the code, grounded in how this actually has to run. Softmax attention builds nonnegative random features with `d^{-1/4}` normalization, orthogonal Gaussian projection blocks, a per-query/per-key max subtraction for range safety, redrawing of the projection enabled by default, and a denominator stabilizer; generalized attention instead defaults to deterministic ReLU features with `ε = 10^{-3}` and no redraw.
-
-```python
-import math
-import jax
-from jax import random
-import jax.numpy as jnp
-
-SOFTMAX_DEFAULTS = dict(
-    renormalize_attention=True,
-    numerical_stabilizer=1e-6,
-    nb_features=256,
-    ortho_features=True,
-    ortho_scaling=0,
-    redraw_features=True,
-)
-GENERALIZED_DEFAULTS = dict(
-    renormalize_attention=True,
-    numerical_stabilizer=0.0,
-    nb_features=256,
-    features_type="deterministic",
-    kernel_fn=jax.nn.relu,
-    kernel_epsilon=1e-3,
-    redraw_features=False,
-)
-
-def gaussian_orthogonal_random_matrix(key, nb_rows, nb_columns, scaling=0):
-    blocks = []
-    rng = key
-    for _ in range(nb_rows // nb_columns):
-        rng, block_key = random.split(rng)
-        q, _ = jnp.linalg.qr(random.normal(block_key, (nb_columns, nb_columns)))
-        blocks.append(q.T)
-    remaining = nb_rows - len(blocks) * nb_columns
-    if remaining:
-        rng, block_key = random.split(rng)
-        q, _ = jnp.linalg.qr(random.normal(block_key, (nb_columns, nb_columns)))
-        blocks.append(q.T[:remaining])
-
-    matrix = jnp.vstack(blocks)
-    if scaling == 0:
-        multiplier = jnp.linalg.norm(random.normal(key, (nb_rows, nb_columns)), axis=1)
-    elif scaling == 1:
-        multiplier = math.sqrt(float(nb_columns)) * jnp.ones((nb_rows,))
-    else:
-        raise ValueError("scaling must be 0 or 1")
-    return jnp.diag(multiplier) @ matrix
-
-def nonnegative_softmax_features(data, projection_matrix, is_query,
-                                 attention_axes=(-2,), eps=1e-6,
-                                 normalize_data=True):
-    # data layout is batch/nonattention/head/attention/channels.
-    normalizer = data.shape[-1] ** -0.25 if normalize_data else 1.0
-    ratio = projection_matrix.shape[0] ** -0.5
-    data_dash = jnp.einsum("...d,md->...m", normalizer * data, projection_matrix)
-    diag = jnp.sum(data ** 2, axis=-1, keepdims=True) * (normalizer ** 2) / 2.0
-    if is_query:
-        max_term = jnp.max(data_dash, axis=-1, keepdims=True)
-    else:
-        max_term = jnp.max(data_dash, axis=(-1,) + attention_axes, keepdims=True)
-    return ratio * (jnp.exp(data_dash - diag - max_term) + eps)
-
-def generalized_features(data, projection_matrix=None, kernel_fn=jax.nn.relu,
-                         kernel_epsilon=1e-3, normalize_data=False):
-    normalizer = data.shape[-1] ** -0.25 if normalize_data else 1.0
-    if projection_matrix is None:
-        return kernel_fn(normalizer * data) + kernel_epsilon
-    data_dash = jnp.einsum("...d,md->...m", normalizer * data, projection_matrix)
-    return kernel_fn(data_dash) + kernel_epsilon
-
-def noncausal_favor(q_prime, k_prime, value, eps=1e-6):
-    z = jnp.einsum("...lm,...ld->...md", k_prime, value)
-    w = jnp.einsum("...lm,...md->...ld", q_prime, z)
-    t = jnp.einsum("...lm,...m->...l", q_prime, k_prime.sum(axis=-2))
-    t = t + 2 * eps * (jnp.abs(t) <= eps)
-    return w / t[..., None]
-
-def causal_favor(q_prime, k_prime, value, eps=1e-6):
-    kv_prefix = jnp.cumsum(jnp.einsum("...lm,...ld->...lmd", k_prime, value), axis=-3)
-    k_prefix = jnp.cumsum(k_prime, axis=-2)
-    w = jnp.einsum("...lm,...lmd->...ld", q_prime, kv_prefix)
-    t = jnp.einsum("...lm,...lm->...l", q_prime, k_prefix)
-    t = t + 2 * eps * (jnp.abs(t) <= eps)
-    return w / t[..., None]
-```
-
-The causal chain in one breath: softmax attention is quadratic only because I build `A` before multiplying by `V`; the fix is to approximate `exp(q_iᵀk_j)` by `φ(q_i)ᵀφ(k_j)` so I can reassociate and never form `A`; an unbiased kernel estimator comes from random features, but the textbook trigonometric map can go negative and has variance exploding as the kernel goes to zero, which destroys the normalizer and training; completing the square in the Gaussian integral turns `exp(xᵀy)` into an expectation of a product of `exp`s, giving a strictly positive feature map whose variance instead *vanishes* as the kernel goes to zero; sampling those random directions orthogonally cuts the variance further by a provable `2/(d+2)` gap that holds at every dimension precisely because the feature coefficients are non-negative; and the same reassociation, run as a prefix-sum, handles the causal mask in `O(Lmd)` time — so dense softmax-kernel attention gets a stable linear-time random-feature approximation.
+Coding it up: softmax attention needs nonnegative random features with the `d^{-1/4}` normalization derived above, an orthogonal Gaussian projection built by drawing Gram-Schmidt blocks and rescaling each row by an independent chi-length (exactly the construction that kept the marginals unbiased), a per-query/per-key max subtraction so the unbounded `exp` stays in range on real hardware, and a denominator stabilizer (`1e-6` — a negligible nudge for any real attention score, it only perturbs the rare `t` that lands within `1e-6` of zero) so `t≈0` can't produce a divide-by-zero; generalized attention swaps in deterministic ReLU features with `ε = 10^{-3}` — a bigger floor than the softmax path needs, because `ReLU`, unlike `exp`, actually reaches zero — and skips the redraw. For the feature count, the theory above only pins down a growth rate, `m = Θ((d/δ²) log(4d^{3/4}R/δ))`; for the per-head dimensions and the accuracy I need in practice that lands in the low hundreds, so `nb_features=256` is the practical value in that regime rather than a separately derived constant. Both feed the same two contractions — global sum for the bidirectional case, prefix scan for the causal one — that the reassociation above already derived.
