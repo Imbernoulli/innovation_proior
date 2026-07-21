@@ -1,4 +1,4 @@
-I want to solve a convex-concave saddle point, min over x and max over y of f(x,y), and I keep tripping over the same thing: the method that works for minimization just doesn't work here, and I don't fully understand why yet. So let me strip the problem to the bone and stare at the simplest instance that already breaks, f(x,y) = x·y. It's bilinear, convex in x, concave in y, with the obvious saddle at the origin. If I can't handle this, I can't handle anything.
+I want to solve a convex-concave saddle point, min over x and max over y of f(x,y), and I keep tripping over the same thing: the method that works for minimization just doesn't work here, and I don't fully understand why yet. So let me strip the problem to the bone and stare at the simplest instance that already breaks, f(x,y) = x·y. It's bilinear, convex in x, concave in y, with the obvious saddle at the origin.
 
 The natural move is to treat min-max as "descend in x, ascend in y" at the same time. Write z = (x,y) and bundle the two updates into one vector field. For minimization I'd follow minus the gradient; for the max-player I follow plus the gradient. So the joint direction is the field F(z) = (∂f/∂x, −∂f/∂y), and the simultaneous update is z_{t+1} = z_t − τ F(z_t). For f = x·y this is F(x,y) = (y, −x). Let me just compute. ∂f/∂x = y, ∂f/∂y = x, so F = (y, −x). That's z rotated by ninety degrees — it's J·z with J = [[0,1],[−1,0]], the skew-symmetric rotation generator. Huh. The whole field is rotational. At every point it points *around* the origin, never toward it. There is no "downhill toward the saddle" anywhere in this field; it's all sideways.
 
@@ -26,7 +26,7 @@ I have to check I haven't just smuggled in two forward steps, because two forwar
 
 Look at what appeared: a −τ²I term that wasn't in the forward step. The eigenvalues are now 1 − τ² ∓ iτ, with modulus √((1 − τ²)² + τ²). Let me expand: (1 − τ²)² + τ² = 1 − 2τ² + τ⁴ + τ² = 1 − τ² + τ⁴ = 1 − τ²(1 − τ²). For τ < 1 that's strictly less than 1, so it should contract. Let me put a number on it at τ = 0.1, and let me get it two ways so I'm sure I haven't mis-derived the map. Symbolically the modulus is √(1 − 0.01·0.99) = √0.9901 = 0.995038. Numerically, building the map straight from two field evaluations — w = (I − 0.1J)z, then z₊ = z − 0.1·J·w — and reading off |eig| gives 0.995038 as well; the matrix it produces, [[0.99, −0.1],[0.1, 0.99]], is exactly I − 0.1J − 0.01I, so the algebra and the actual update agree. Below one. The spiral turns inward — the real part pulled under 1, which the forward step (modulus 1.004988 at the same τ) never managed. So per step the forward iterate grows by ×1.004988 and the corrected one shrinks by ×0.995038; starting from ‖z₀‖ = √200 ≈ 14.14 and running 50 steps, that predicts forward ≈ 14.14·1.004988⁵⁰ ≈ 18.14 and corrected ≈ 14.14·0.995038⁵⁰ ≈ 11.03. I ran the two iterations to check, and at t = 50 they read 18.14 and 11.03 — the forward iterate climbing, the corrected one decaying, matching the per-step factors to the digits I can see. The extra step manufactured a genuine contraction where there was none.
 
-That −τ²I is suggestive: it looks like the start of the implicit step's expansion, and if so the corrector isn't just *a* fix but specifically an approximation of the backward step. Let me check that rather than assert it. The backward step on the bilinear field is (I + τJ)^{-1}; since (I + τJ)(I − τJ) = I + τ²I, it equals (1/(1+τ²))(I − τJ) exactly. Expanding the scalar factor, 1/(1+τ²) = 1 − τ² + O(τ⁴), so (I + τJ)^{-1} = I − τJ − τ²I + O(τ³). The corrected step I just derived, I − τJ − τ²I, is precisely this truncated after the −τ²I term, whereas the plain forward step I − τJ truncates one term earlier. If that reading is right, the corrected map should sit *closer* to the true resolvent than the forward map does — by a factor of about τ, since I'm keeping one more order. So I measured the Frobenius distances at τ = 0.1: forward-to-resolvent is 0.01407, corrected-to-resolvent is 0.001407 — exactly a factor of ten, i.e. a factor of 1/τ, closer. And the corrected map's modulus 0.995038 essentially coincides with the resolvent's own modulus 0.995037. So the corrector isn't merely contracting; it is buying the leading curvature term of the resolvent, explicitly, with one extra gradient evaluation in place of a matrix inverse — and the factor-of-τ gap is the quantitative signature that it's a second-order, not first-order, approximation.
+That −τ²I is suggestive: it looks like the start of the implicit step's expansion, and if so the corrector isn't just *a* fix but specifically an approximation of the backward step. The backward step on the bilinear field is (I + τJ)^{-1}; since (I + τJ)(I − τJ) = I + τ²I, it equals (1/(1+τ²))(I − τJ) exactly. Expanding the scalar factor, 1/(1+τ²) = 1 − τ² + O(τ⁴), so (I + τJ)^{-1} = I − τJ − τ²I + O(τ³). The corrected step I just derived, I − τJ − τ²I, is precisely this truncated after the −τ²I term, whereas the plain forward step I − τJ truncates one term earlier. If that reading is right, the corrected map should sit *closer* to the true resolvent than the forward map does — by a factor of about τ, since I'm keeping one more order. So I measured the Frobenius distances at τ = 0.1: forward-to-resolvent is 0.01407, corrected-to-resolvent is 0.001407 — exactly a factor of ten, i.e. a factor of 1/τ, closer. And the corrected map's modulus 0.995038 essentially coincides with the resolvent's own modulus 0.995037. So the corrector isn't merely contracting; it is buying the leading curvature term of the resolvent, explicitly, with one extra gradient evaluation in place of a matrix inverse — and the factor-of-τ gap is the quantitative signature that it's a second-order, not first-order, approximation.
 
 Let me nail that O(τ²)-vs-O(τ) claim in general, not just on the toy, because it's the real justification and I want it to hold for any Lipschitz monotone F. Suppose F is L-Lipschitz, ‖F(a) − F(b)‖ ≤ L‖a − b‖. Let w_imp be the true implicit/proximal next point, w_imp = z_t − τ F(w_imp), and let z_{eg} = z_t − τ F(w) be my explicit corrector, with w = z_t − τ F(z_t) the look-ahead. Then
 
@@ -50,7 +50,7 @@ The first piece is the good one. By monotonicity, ⟨F(w) − F(z*), w − z*⟩
 
   ‖z_{t+1} − z*‖² = ‖z_t − z*‖² − 2τ⟨F(w), w − z*⟩ + τ²‖F(w) − F(z_t)‖² − ‖w − z_t‖².
 
-Let me verify that regrouping reproduces what I had. τ²‖F(w) − F(z_t)‖² − ‖w − z_t‖² = τ²‖F(w)‖² − 2τ²⟨F(w), F(z_t)⟩ + τ²‖F(z_t)‖² − τ²‖F(z_t)‖² (using ‖w − z_t‖² = τ²‖F(z_t)‖²) = τ²‖F(w)‖² − 2τ²⟨F(w), F(z_t)⟩ = τ²‖F(w)‖² − 2τ⟨F(w), τF(z_t)⟩ = τ²‖F(w)‖² − 2τ⟨F(w), z_t − w⟩. Yes — that's exactly the leftover two terms. So the clean one-step identity is
+That regrouping checks out directly: τ²‖F(w) − F(z_t)‖² − ‖w − z_t‖² = τ²‖F(w)‖² − 2τ²⟨F(w), F(z_t)⟩ + τ²‖F(z_t)‖² − τ²‖F(z_t)‖² (using ‖w − z_t‖² = τ²‖F(z_t)‖²) = τ²‖F(w)‖² − 2τ²⟨F(w), F(z_t)⟩ = τ²‖F(w)‖² − 2τ⟨F(w), τF(z_t)⟩ = τ²‖F(w)‖² − 2τ⟨F(w), z_t − w⟩ — exactly the leftover two terms. So the clean one-step identity is
 
   ‖z_{t+1} − z*‖² = ‖z_t − z*‖² − 2τ⟨F(w), w − z*⟩ + τ²‖F(w) − F(z_t)‖² − ‖w − z_t‖²,
 
@@ -82,69 +82,4 @@ So the iterate contracts geometrically down to a noise floor of size 3ησ²/μ 
 
 One more thing to settle before I write code: the constrained / regularized case. If there's a feasible set or a nonsmooth regularizer g, both gradient steps become proximal steps, w = prox_{ηg}(z_t − ηF(z_t;ξ)) and z_{t+1} = prox_{ηg}(z_t − ηF(w;ξ)) — and on an unconstrained box (feasible set all of R^d, no regularizer) the prox is the identity, so it collapses to the plain two-step update. The benchmark I'm targeting is unconstrained, so prox = identity and I can drop it; but it's good to know the method's general form is "replace each gradient step by a proximal step" and nothing else changes in the analysis (the prox-strong-convexity lemma carries the g terms).
 
-Now the concrete iteration, mapping onto the harness. The oracle hands me a deterministic operator evaluation oracle.grad(z) = F(z) and a fresh additive Gaussian perturbation oracle.noise() per draw; the feasible set is all of R^{2d}, so no projection. One step is: evaluate the field at the current point, take the look-ahead step (with one noise draw), evaluate the field at the look-ahead point, take the corrector step from the *original* point (with a second noise draw). Two operator evaluations, both on the same deterministic F; the stochasticity in this benchmark is additive update noise, not two independently sampled operators, so the same-sample concern is automatically avoided. The step size τ is per-problem: small on the bilinear field (τ = 0.1, where the field is 1-Lipschitz so τ < 1/L = 1 with margin, and the contraction modulus √(1 − τ²(1−τ²)) wants τ well below 1), and τ = 1 on the structured (δ,ν) instance whose monotone clipped component has slope at most about one and whose skew coupling is small, matching the reference setup even though the clean strict-contraction proof sits at the boundary.
-
-```python
-from typing import Any
-import numpy as np
-
-from fixed_benchmark import (
-    ProblemSpec, StepOutput, StochasticOracle,
-    as_vector, make_step_output, run_cli,
-)
-
-
-def init_state(
-    problem: ProblemSpec,
-    initial_z: np.ndarray,
-    seed: int,
-    hyperparameters: dict[str, Any],
-) -> dict[str, Any]:
-    # keep the fixed starting point z_0 in the state
-    return {"z": as_vector(initial_z, expected_dim=2 * problem.dim), "step_index": 0}
-
-
-def step(
-    state: dict[str, Any],
-    oracle: StochasticOracle,
-    problem: ProblemSpec,
-    hyperparameters: dict[str, Any],
-    max_sfo_calls: int,
-) -> StepOutput:
-    tau = float(hyperparameters["tau"])
-    z = as_vector(state["z"], expected_dim=2 * problem.dim)
-    step_index = int(state.get("step_index", 0))
-
-    # predictor: one forward step to the look-ahead point w (the cheap guess of z_{t+1})
-    g = oracle.grad(z)                       # F(z_t)
-    w = z - tau * g + oracle.noise()         # w = z_t - tau F(z_t) + noise
-
-    # corrector: evaluate the field AT w, but step from the ORIGINAL z_t -- this anchor
-    # is what turns two forward steps into a contraction (the -tau^2 / -||w-z|| term)
-    gw = oracle.grad(w)                      # F(w), same deterministic operator
-    z_next = z - tau * gw + oracle.noise()   # z_{t+1} = z_t - tau F(w) + noise
-
-    # measurement convention of the harness (not part of the method)
-    metric_iterate = z_next if problem.name == "bilinear" else z
-    return make_step_output(
-        {"z": z_next, "step_index": step_index + 1},
-        metric_iterate,
-        2,                                   # two operator evaluations per iteration
-    )
-
-
-def get_hyperparameters(problem_name: str, sigma: float) -> dict[str, Any]:
-    # tau <= 1/L; both fields are ~1-Lipschitz, so small tau on the pure-rotation
-    # bilinear field and tau at the boundary on the structured instance
-    if problem_name == "bilinear":
-        return {"tau": 0.1}
-    if problem_name == "delta_nu":
-        return {"tau": 1.0}
-    raise KeyError(f"Unknown problem: {problem_name}")
-
-
-if __name__ == "__main__":
-    run_cli(init_state=init_state, step=step, get_hyperparameters=get_hyperparameters)
-```
-
-Let me close the loop on the whole chain. I started with min-max and the obvious simultaneous descent-ascent, and it diverged geometrically on f = x·y because the game field is purely rotational — its update operator has modulus √(1+τ²) > 1 for every step size (1.004988 at τ = 0.1, an outward spiral I confirmed climbing to ‖z‖ ≈ 18 over 50 steps), with no contractive component, monotone but with zero strong-monotonicity margin. The implicit/backward step doesn't have that problem — its operator is the resolvent (I+τF)^{−1}, modulus 1/√(1+τ²) < 1 — but it's unrunnable because it needs the field at the unknown next point. So I approximated that future point explicitly with a cheap look-ahead forward step to w, evaluated the field there, and stepped from the *original* point z_t using F(w); anchoring at z_t rather than at w is what injects the −τ²I / −‖w−z_t‖² term the forward step lacked. That this anchored step is genuinely a second-order approximation of the implicit one — and not just some other stable map — is the thing I checked rather than assumed: it reproduces the resolvent's −τ²I expansion term, sits ten times (≈ 1/τ) closer to the true resolvent in matrix distance than the forward step, and contracts at modulus 0.995038, matching the resolvent's 0.995037. The one-step identity, with monotonicity killing the main cross term and Lipschitzness turning the discretization error into the negative (τ²L²−1)‖w−z_t‖², then gives Fejer decrease for the deterministic monotone case — linear when strongly monotone, O(1/t) on the ergodic gap when merely monotone. Under noisy updates the predictor-corrector logic only survives if both evaluations use the same operator draw — I saw the same-sample variant converge to ~10⁻⁹ and the independent-sample variant stall at ~1.7 on the stochastic bilinear field — and then the strongly monotone stochastic rate degrades gracefully to a contraction down to an O(ησ²/μ) neighborhood. What's left is two field evaluations per step, fully explicit, no inner solve, no projection on the unconstrained instances. The look-ahead-and-anchor iteration this converged on is exactly the (stochastic) extra-gradient method.
+Now the concrete iteration, mapping onto the harness. The oracle hands me a deterministic operator evaluation oracle.grad(z) = F(z) and a fresh additive Gaussian perturbation oracle.noise() per draw; the feasible set is all of R^{2d}, so no projection. One step is: evaluate the field at the current point, take the look-ahead step (with one noise draw), evaluate the field at the look-ahead point, take the corrector step from the *original* point (with a second noise draw) — two operator evaluations, both on the same deterministic F, so the same-sample concern is automatically satisfied here since there's only one operator to begin with. The step size τ is per-problem: small on the bilinear field (τ = 0.1, where the field is 1-Lipschitz so τ < 1/L = 1 with margin, and the contraction modulus √(1 − τ²(1−τ²)) wants τ well below 1), and τ = 1 on the structured (δ,ν) instance whose monotone clipped component has slope at most about one and whose skew coupling is small, sitting right at the boundary of the strict-contraction proof rather than comfortably inside it. That's the whole `step`: two `oracle.grad` calls, one at `z`, one at the look-ahead `w = z - tau*g`, with the actual move taken from `z` using the second gradient — the anchor-at-z_t, aim-with-F(w) rule, wired straight into the harness's three slots. This look-ahead-and-anchor iteration, with the same-sample noise rule, is exactly the (stochastic) extragradient method.
