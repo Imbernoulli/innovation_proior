@@ -1,12 +1,12 @@
 Let me start from what actually breaks when I try to classify nodes on a real graph. I have features `X` and a graph, some labels, and I want to predict the rest. Everyone's recipe is the same: aggregate each node's neighborhood with the normalized adjacency `Â = D̃^{-1/2} Ã D̃^{-1/2}` (self-loops folded in), transform with a weight matrix, repeat. And on Cora or CiteSeer it works, because those graphs are homophilic — neighbors mostly share my label, so averaging my neighborhood denoises my own label estimate. But hand me a graph where neighbors tend to *disagree* — a webpage graph where a student page links to a course page links to a faculty page, or any disassortative structure — and the same averaging is poison. It smears together exactly the things I need to keep apart. The signal that says "I am different from my neighbors" is precisely what neighborhood averaging annihilates. So the first thing I have to admit is that there is no single propagation rule that is right for both kinds of graph; the operation I want is graph-dependent, and the standard stack has baked one choice — averaging — into its bones.
 
-And there's a second wound that's tangled up with the first. Suppose the label information I need is several hops away. I'd like to propagate far. But I should be careful about what happens when I push `Â` to a high power. `Â` is symmetric, so write `Â = U Λ U^T`. The Laplacian `L̃_sym = I − Â` is PSD — for any `u`, set `f = D̃^{-1/2} u` and expand, `u^T L̃_sym u = u^T u − u^T D̃^{-1/2} Ã D̃^{-1/2} u = Σ_i D̃_ii f_i^2 − Σ_{i,j} f_i f_j Ã_{ij}`, and symmetrizing the middle term, `= (1/2) Σ_{i,j} Ã_{ij}(f_i − f_j)^2 ≥ 0`. So every eigenvalue of `Â` is `≤ 1`. For a connected graph, `0` is a simple eigenvalue of `L̃_sym`: the vector `π` with `π_i = √D̃_ii / √(Σ_v D̃_vv)` satisfies `L̃_sym π = π − D̃^{-1/2} Ã D̃^{-1/2} (D̃^{1/2} 𝟙)/√(ΣD̃) = π − D̃^{-1/2} Ã 𝟙 /√(ΣD̃) = π − D̃^{-1/2} D̃ 𝟙/√(ΣD̃) = π − π = 0`, using `Ã 𝟙 = D̃ 𝟙` (row sums are degrees). So `Â π = π`, `λ_1 = 1`. And the same quadratic form is bounded above: `(1/2)Σ Ã_{ij}(f_i − f_j)^2 ≤ Σ Ã_{ij}(f_i^2 + f_j^2) = 2 Σ_i (u_i^2/D̃_ii) Σ_j Ã_{ij} = 2 Σ_i u_i^2 = 2`, so the largest Laplacian eigenvalue is `≤ 2`, with equality only for a bipartite graph — and self-loops make `G` non-bipartite, so strictly `< 2`, i.e. `λ_n > −1`. Putting it together, `1 = λ_1 > λ_2 ≥ … ≥ λ_n > −1`: the top eigenvalue is the unique one of magnitude `1`.
+And there's a second wound tangled up with the first. Suppose the label information I need sits several hops away and I want to propagate far — but I should be careful what happens when `Â` is raised to a high power. `Â` is symmetric, so it diagonalizes with real eigenvalues, and the associated Laplacian quadratic form pins its whole spectrum to `1 = λ_1 > λ_2 ≥ … ≥ λ_n > −1`: the top eigenvalue is exactly `1`, attained at the degree-profile vector `π_i = √D̃_ii / √(Σ_v D̃_vv)` (a fixed point of `Â`, since `Ã 𝟙 = D̃ 𝟙`), and the self-loops keep `G` non-bipartite so the bottom eigenvalue never reaches `−1`. I'll need `π` again shortly.
 
-This is the kind of claim I've talked myself into being wrong about before, so before I build a whole argument on it let me just compute it on a graph I can hold in my head. Take four nodes: a path `0–1–2` with one extra leaf `3` hanging off node `1`. Add self-loops, so degrees are `D̃ = (2, 4, 2, 2)`, and form `Â = D̃^{-1/2} Ã D̃^{-1/2}`. Numerically its eigenvalues come out `{1, 0.5, 0.5, −0.25}` — exactly one eigenvalue equal to `1`, the rest strictly inside `(−1, 1)`, just as the bound predicts. The degree-profile vector `π = √D̃ / √(Σ D̃) = (0.447, 0.632, 0.447, 0.447)` has unit norm and `Â π − π = 0` to machine precision, so `λ_1 = 1` really is achieved at `π`. Good — the spectral picture isn't a hopeful sketch, it holds on a concrete graph.
+Let me ground this on a graph small enough to hold in my head, since I'll keep reusing it for the checks that follow. Take four nodes: a path `0–1–2` with one extra leaf `3` hanging off node `1`. Add self-loops, so degrees are `D̃ = (2, 4, 2, 2)`, and form `Â = D̃^{-1/2} Ã D̃^{-1/2}`. Numerically its eigenvalues come out `{1, 0.5, 0.5, −0.25}` — exactly one eigenvalue equal to `1`, the rest strictly inside `(−1, 1)`, just as the bound predicts. The degree-profile vector `π = √D̃ / √(Σ D̃) = (0.447, 0.632, 0.447, 0.447)` has unit norm and `Â π − π = 0` to machine precision, so `λ_1 = 1` really is achieved at `π`.
 
 That ordering is the whole over-smoothing story. `Â^k = U Λ^k U^T`, and every `|λ_i|^k` with `i ≥ 2` decays geometrically while `λ_1^k = 1` survives, so `Â^k → π π^T`, rank one. On my four-node graph I can watch this happen: `‖Â^k − π π^T‖_F` goes `0.75` at `k=1`, `0.088` at `k=4`, `2.2×10^{-5}` at `k=16`, and underflows to `0` by `k=64` — the matrix really does collapse onto the single outer product `π π^T`, and it does so at the rate `0.5^k` set by the second eigenvalue. Concretely `Â^k H^(0) = π β^T + o_k(1)` with `β^T = π^T H^(0)`: after enough hops every node's representation is the *same* vector `β`, scaled only by its degree factor `π_i`. The features have lost all the information that distinguished the nodes. So I cannot just stack more `Â`'s to reach far — depth and discrimination are at war.
 
-Now, one idea on the table already half-solves the depth problem, and I want to steal its good part before I fix its bad part. The decoupling idea: instead of interleaving transform and propagation layer by layer, do all the transforming first — `H^(0) = f_θ(X)` with a plain MLP, per node, no graph — and only then propagate. The reason this helps is exactly the eigenvalue fact above: if I propagate with personalized PageRank, the operator is `α(I − (1−α)Â)^{-1}`, and its limit still depends on `H^(0)` (it's not the bare `Â^k → ππ^T`), so I get a large effective neighborhood without the transform itself ever over-smoothing. Let me make sure I understand *why* PPR escapes. Power-iterate `Z^{(k+1)} = (1−α)Â Z^{(k)} + α H`, starting `Z^{(0)} = H`. Unroll: `Z^{(K)} = (1−α)^K Â^K H + α Σ_{k=0}^{K-1} (1−α)^k Â^k H`, and as `K → ∞` with `α ∈ (0,1)`, `(1−α)^K Â^K → 0` and the sum becomes the geometric series `α Σ_{k=0}^∞ (1−α)^k Â^k = α(I − (1−α)Â)^{-1}`. So PPR is, exactly, a *fixed-weight combination of all hop powers* `Σ_k γ_k Â^k` with `γ_k = α(1−α)^k`. It never collapses to rank one because it keeps a positive weight `α` on hop 0 (the un-propagated `H`) plus geometrically fading weights on the deeper hops; the early hops anchor it to the features.
+Now, one idea on the table already half-solves the depth problem, and I want to steal its good part before I fix its bad part. The decoupling idea: instead of interleaving transform and propagation layer by layer, do all the transforming first — `H^(0) = f_θ(X)` with a plain MLP, per node, no graph — and only then propagate. The reason this helps is exactly the eigenvalue fact above: if I propagate with personalized PageRank, the operator is `α(I − (1−α)Â)^{-1}`, and its limit still depends on `H^(0)` (it's not the bare `Â^k → ππ^T`), so I get a large effective neighborhood without the transform itself ever over-smoothing. Here is why: unroll the power iteration `Z^{(k+1)} = (1−α)Â Z^{(k)} + α H`, starting `Z^{(0)} = H`: `Z^{(K)} = (1−α)^K Â^K H + α Σ_{k=0}^{K-1} (1−α)^k Â^k H`, and as `K → ∞` with `α ∈ (0,1)`, `(1−α)^K Â^K → 0` and the sum becomes the geometric series `α Σ_{k=0}^∞ (1−α)^k Â^k = α(I − (1−α)Â)^{-1}`. So PPR is, exactly, a *fixed-weight combination of all hop powers* `Σ_k γ_k Â^k` with `γ_k = α(1−α)^k`. It never collapses to rank one because it keeps a positive weight `α` on hop 0 (the un-propagated `H`) plus geometrically fading weights on the deeper hops; the early hops anchor it to the features.
 
 So decoupling is clearly part of the answer, and PPR's "keep all hops, weighted" structure is suggestive. But stare at those weights `γ_k = α(1−α)^k`. They are *fixed* — chosen by one scalar `α` — and they are all positive and monotonically decreasing. Two complaints. First, fixed means I'm asserting a priori how much each hop should count, the same for every graph; that's the same sin as hard-wiring averaging. Second, all-positive-decreasing — I have a nagging feeling that shape is *intrinsically* a low-pass filter, the very thing that fails on heterophily, but I want to come back and check that feeling rather than trust it. SGC has the same flavor in cartoon form: it's `γ_k = δ_{kK}`, all weight on a single deep hop, which for large `K` is basically the over-smoothing operator itself. Both of these are points in a space of "weighted sums of hop powers," and the natural move is not to pick a point in that space by hand but to *learn* it. Keep the decoupling, `H^(0) = f_θ(X)`, then propagate as `Z = Σ_{k=0}^K γ_k H^(k)`, `H^(k) = Â H^(k-1)`, but let the `γ_k` be free parameters trained end-to-end with `θ` against the classification loss.
 
@@ -44,97 +44,22 @@ strictly negative under the same nondegenerate all-classes condition, so descent
 
 This argument has enough moving parts — the over-smoothing substitution, the `η → ∞` limit, the sign bookkeeping — that I don't want to trust it on the strength of the algebra alone; let me trace the actual gradient on a small case and see if it lands where the formula says. Reuse the four-node graph, two classes, training labels `(0,1,0,1)` so both classes appear, and a random `H^(0)`. Then `β = π^T H^(0) = (2.668, 1.091)`, with `argmax β = 0` and `argmin β = 1`. The deeply propagated hop `H^(64) = Â^{64} H^(0)` comes out with all four rows proportional to `β`: row `i` equals `π_i · β` to four decimals (e.g. node 1, the high-degree hub, has the largest `π_i = 0.632` and row `(1.687, 0.690)`), so the over-smoothing substitution is real on this graph, not just asymptotic hand-waving. Now drive `Z = c · H^(64)` and compute `∂L/∂γ_k = Σ_i η⟨P̂_i − Y_i, H^(64)_i⟩` directly. For a *positive* dominant weight (`c = +1`): the gradient is `+0.73` at `η = 1`, `+8.17` at `η = 5`, `+85.1` at `η = 50` — positive throughout, and the `η = 50` value equals the predicted `Σ_i η π_i(max_j β_j − β_{ℓ(i)}) = 85.106` to the digits printed. For a *negative* dominant weight (`c = −1`): `−0.44`, `−6.71`, `−70.5`, negative throughout, matching the predicted min-gap value `−70.504`. So the gradient really does carry the same sign as `γ_k`, and it really does converge to the max/min-gap formula as `η` grows. The loss recognizes a collapsed hop — predicting one class for everyone can't be right once the training labels span all classes — and pushes its weight toward `0`. That's the depth guarantee I was missing, and it's label-driven: the escape happens because the labels disagree with the smoothed-out prediction. APPNP escapes by a fixed `α`; here the escape is steered by which hops actually help on this graph. So I can set `K` large (say 10) and let the optimizer suppress whatever hops over-smooth.
 
-The two lemmas I leaned on are now both checked rather than assumed: `Â^k H^(0) → π β^T` I watched converge (the `‖Â^k − ππ^T‖` table and the row-proportional-to-`β` print), and the softmax→argmax limit and the gradient formula I traced numerically to the predicted values. The work was in noticing that the over-smoothed representation makes `P̂` node-independent so the inner product reduces to a max/min gap — and the four-node trace confirms that reduction is exact, not approximate, once `k` is large.
-
 Now, do I constrain `γ`? I used the nonnegativity-plus-sum-to-one assumption while *characterizing* what nonnegative weights do (the low-pass check), but that was a hypothesis to expose their failure mode, not a constraint I want — imposing it would lock me into low-pass, which the numbers just showed is fatal on heterophily. So no nonnegativity, no normalization on `γ`; it's a free real `(K+1)`-vector. I do want to think about how to *initialize* it, though, because that's a real degree of freedom and it interacts with how much label information I have. The clean default is uniform, `γ_k = 1/(K+1)` — an equal-weight average over all hops. I should not pretend that this initial filter is neutral in frequency: by the low-pass check I just ran (uniform `1/11` gave ratios `0.18, 0.07`), nonnegative uniform weights with mass beyond hop 0 are low-pass. What uniform does buy is a simple equal-hop starting point instead of a decaying PPR shape or a single SGC spike. Because the parameters are unconstrained, the optimizer can still move away from this low-pass start and cross into alternating signs if the labels demand high-pass structure. There are other sensible inits — a PPR shape `α(1−α)^k` if I want to start near APPNP, a `δ_{kK}` SGC shape, a normalized random vector — and which one I pick matters as an *implicit prior* when labels are scarce (sparse splits), because then the data cannot fully overrule the starting shape. But under a dense split the shape is genuinely learned and the init mostly washes out; that's the whole premise — the `γ_k` are learned, not imposed. For a simple default I'll take uniform.
 
 I want to be honest about the cost of this particular parameterization. I'm building the filter as `Σ_k γ_k Â^k` in the *power* basis `{Â, Â^2, …, Â^K}`. Those powers are not orthogonal — and the four-node experiment shows exactly why this could bite: by `k = 16` the matrix `Â^k` is already within `2×10^{-5}` of the single rank-one `π π^T`, so the high powers are nearly identical to each other, the basis becomes nearly collinear, and the coefficient-to-response map gets ill-conditioned. Chebyshev-style bases are better conditioned. So why accept the monomial basis? Because it *is* Generalized PageRank: each `γ_k` is literally the weight on `k`-hop propagation, which makes the learned filter directly readable — plot `γ_k` versus `k` and you can see whether the graph wanted low-pass (positive, decaying or growing), high-pass (alternating signs), or feature-dominated (weight on the first few hops). That interpretability is a feature I care about, and the conditioning cost is tolerable at moderate `K` like 10 (where the collinearity, from the same table, is only just setting in). It's a deliberate trade, not an oversight.
 
 Let me also be clear about why the GCN normalization with self-loops is the right operator to take powers of, since the whole spectral argument depended on it. The self-loops are what guarantee `|λ_n| < 1` strictly — on the four-node graph the smallest eigenvalue was `−0.25`, comfortably inside `(−1,1)`, no bipartite `λ = −1` to make `Â^k` oscillate forever instead of converging — so the over-smoothing limit `π π^T` is well-defined (and I watched it converge). The symmetric normalization `D̃^{-1/2} Ã D̃^{-1/2}` is what makes `Â` symmetric (real spectrum, the spectral story) and keeps its top eigenvalue exactly `1` with the degree-profile eigenvector `π` (the `Â π − π = 0` check). So `gcn_norm` it is.
 
-Now let me turn the math into the actual propagation module, and I want it sparse and `O(K · |E|)` — never form `Â^k` as a dense matrix. The structure is: compute `H^(0)`, then iterate `H^(k) = Â H^(k-1)` one sparse step at a time, accumulating `Z = Σ_k γ_k H^(k)` as I go. One sparse `Â·x` is exactly a message-passing step with edge weights `norm` from `gcn_norm` and sum aggregation; the message is `norm · x_j`. So the propagation layer holds the `(K+1)` learnable weights, normalizes the adjacency once, seeds the accumulator with `γ_0 · x`, and folds in `γ_{k+1} · (Â^{k+1} x)` after each propagation step:
+Now let me turn the math into the actual propagation module, and I want it sparse and `O(K · |E|)` — never form `Â^k` as a dense matrix. The structure is: compute `H^(0)`, then iterate `H^(k) = Â H^(k-1)` one sparse step at a time, accumulating `Z = Σ_k γ_k H^(k)` as I go. One sparse `Â·x` is exactly a message-passing step with edge weights `norm` from `gcn_norm` and sum aggregation; the message is `norm · x_j`. So the propagation layer holds the `(K+1)` learnable weights, normalizes the adjacency once, seeds the accumulator with `γ_0 · x`, and folds in `γ_{k+1} · (Â^{k+1} x)` after each propagation step, never materializing `Â^k` itself:
 
 ```python
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from torch.nn import Linear, Parameter
-from torch_geometric.nn import MessagePassing
-from torch_geometric.nn.conv.gcn_conv import gcn_norm
-
-
-class GPR_prop(MessagePassing):
-    """Learnable polynomial filter in the monomial basis.
-
-    Z = sum_{k=0}^{K} gamma_k * Â^k x,   Â = D̃^{-1/2} Ã D̃^{-1/2}.
-    The gamma_k are free reals (may be negative) so the response
-    g(λ)=sum_k gamma_k λ^k can be low-pass (homophily) or high-pass
-    (heterophily), learned end-to-end from the labels.
-    """
-
-    def __init__(self, K, alpha=0.1, Gamma=None, **kwargs):
-        super(GPR_prop, self).__init__(aggr="add", **kwargs)
-        self.K = K
-        self.alpha = alpha                       # kept for compatibility with common training args
-        self.Gamma = Gamma
-        if Gamma is None:
-            temp = torch.ones(K + 1, dtype=torch.float) / (K + 1)
-        else:
-            temp = torch.as_tensor(Gamma, dtype=torch.float)
-        self.temp = Parameter(temp)               # the GPR weights gamma_0..gamma_K
-
-    def reset_parameters(self):
-        # Uniform init 1/(K+1): an equal-hop low-pass start. The weights remain
-        # unconstrained, so training can move them to alternating signs.
-        if self.Gamma is None:
-            nn.init.constant_(self.temp, 1.0 / (self.K + 1))
-        else:
-            gamma = torch.as_tensor(
-                self.Gamma, dtype=self.temp.dtype, device=self.temp.device)
-            self.temp.data.copy_(gamma)
-
-    def forward(self, x, edge_index, edge_weight=None):
-        # symmetric GCN-normalized adjacency Â (self-loops -> |λ_n|<1, λ_1=1)
-        edge_index, norm = gcn_norm(
-            edge_index, edge_weight, num_nodes=x.size(0), dtype=x.dtype)
-        hidden = x * self.temp[0]                # gamma_0 * Â^0 x
-        for k in range(self.K):
-            x = self.propagate(edge_index, x=x, norm=norm)   # one step: x <- Â x
-            hidden = hidden + self.temp[k + 1] * x           # + gamma_{k+1} * Â^{k+1} x
-        return hidden                            # Z = sum_k gamma_k Â^k H^(0)
-
-    def message(self, x_j, norm):
-        return norm.view(-1, 1) * x_j            # sparse mat-vec (Â @ x)
-
-
-class GPRGNN(torch.nn.Module):
-    """Decoupled model: MLP transform f_theta first, then learnable propagation."""
-
-    def __init__(self, dataset, args):
-        super(GPRGNN, self).__init__()
-        self.lin1 = Linear(dataset.num_features, args.hidden)
-        self.lin2 = Linear(args.hidden, dataset.num_classes)
-        self.prop1 = GPR_prop(args.K, args.alpha, getattr(args, "Gamma", None))
-        self.dprate = args.dprate
-        self.dropout = args.dropout
-
-    def reset_parameters(self):
-        self.prop1.reset_parameters()
-
-    def forward(self, data):
-        x, edge_index = data.x, data.edge_index
-        x = F.dropout(x, p=self.dropout, training=self.training)
-        x = F.relu(self.lin1(x))                 # H^(0) = f_theta(X), per node, no graph
-        x = F.dropout(x, p=self.dropout, training=self.training)
-        x = self.lin2(x)
-        if self.dprate == 0.0:
-            x = self.prop1(x, edge_index)        # propagate with learned gamma_k
-        else:
-            x = F.dropout(x, p=self.dprate, training=self.training)
-            x = self.prop1(x, edge_index)
-        return F.log_softmax(x, dim=1)
+hidden = x * self.temp[0]                # gamma_0 * Â^0 x
+for k in range(self.K):
+    x = self.propagate(edge_index, x=x, norm=norm)   # one sparse step: x <- Â x
+    hidden = hidden + self.temp[k + 1] * x           # + gamma_{k+1} * Â^{k+1} x
+return hidden                            # Z = sum_k gamma_k Â^k H^(0)
 ```
 
-The `temp` vector is the filter; I train it in the same Adam run as the MLP but put the propagation parameters in their own optimizer group with zero weight decay — the `γ_k` are a tiny `(K+1)`-vector that *is* the contribution, and decaying it toward zero would fight the filter I'm trying to learn — while keeping ordinary weight decay on the MLP weights. `K = 10` gives ten hops, matching the depth PPR-style propagation uses, and the over-smoothing-escape argument (now checked, not just asserted) means the extra hops can be attempted: any that over-smooth are pushed back toward zero by the gradient.
+The rest is bookkeeping around this loop — the `(K+1)` free reals live in a `Parameter` initialized uniformly, `gcn_norm` supplies the edge weights once up front, and the class drops into the existing MLP-then-propagate skeleton in place of the fixed slot; the full module is in the answer.
 
-Let me trace the whole causal chain back. I started stuck: neighborhood averaging is right for homophily and ruinous for heterophily, and stacking it to reach far hops over-smooths features into the degree profile `π β^T` — a collapse I watched happen numerically (`‖Â^k − ππ^T‖ → 0` at rate `0.5^k`). The decoupling idea — transform once with an MLP, then propagate — frees the representation from the over-smoothing trap and showed me, via PPR's geometric-series expansion, that a propagation rule is really a *weighted sum of hop powers* `Σ_k γ_k Â^k`. APPNP and SGC are fixed, nonnegative points in that space, and the low-pass check (uniform `γ` ratios `0.18, 0.07 < 1`) confirmed nonnegative weights are low-pass, which is why they fail on heterophily; the alternating-sign check (`γ_k = (−α)^k` giving `g = 1/(1+αλ)`, ratios `1.20, 1.71 > 1`) confirmed signed coefficients are the heterophily mechanism. Making the `γ_k` free and learned end-to-end turns the propagation into a learnable polynomial graph filter `U g_{γ,K}(Λ) U^T`, the universal family containing the baselines as special cases, with the response shape read off the labels. The depth worry I reopened by un-fixing the weights I closed by computing `∂L/∂γ_k` in the over-smoothing regime and tracing it on the four-node graph: it tracks `Σ_T η π_i (max_j β_j − β_{ℓ(i)}) ≥ 0` for positive `γ_k` (numerically `+85.1` vs predicted `85.106`) and the `min` analogue `≤ 0` for negative `γ_k` (`−70.5` vs `−70.504`), so gradient descent pushes over-smoothing weights toward zero in the nondegenerate all-classes case — a label-guided escape that lets me try large `K`. Uniform initialization is only an equal-hop low-pass start, not a frequency-neutral promise; the important part is that the weights are unconstrained after initialization. The monomial basis costs some conditioning (the `Â^k` collinearity I saw by `k=16`) but buys interpretability (each `γ_k` is the weight on `k`-hop propagation); and the GCN-normalized self-looped `Â` is what makes the spectrum clean (`λ_1 = 1`, `|λ_{others}| < 1`, verified on the small graph) so all of this holds. The result drops into the MLP-then-propagate pipeline as a `(K+1)`-vector of filter weights and `K` sparse message-passing steps.
+The `temp` vector is the filter; I train it in the same Adam run as the MLP but put the propagation parameters in their own optimizer group with zero weight decay — the `γ_k` are a tiny `(K+1)`-vector that *is* the contribution, and decaying it toward zero would fight the filter I'm trying to learn — while keeping ordinary weight decay on the MLP weights. `K = 10` gives ten hops, matching the depth PPR-style propagation uses, and the over-smoothing-escape argument checked above means the extra hops can be attempted: any that over-smooth are pushed back toward zero by the gradient.
