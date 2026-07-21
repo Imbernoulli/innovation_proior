@@ -50,9 +50,9 @@ So `R` is either coupled into `eta` or cancelled entirely. Either way I never ne
 ```
 Clip(g_i) := 1 / (||g_i|| + ...)
 ```
-— a per-sample normalization, `g_i -> g_i/||g_i||`. The two DP-specific knobs have become one: `sigma`, which the accountant hands me for free. Tuning a private model is now a 1D search over `eta`, like regular training. That's the whole prize.
+— a per-sample normalization, `g_i -> g_i/||g_i||`. The two DP-specific knobs have become one: `sigma`, which the accountant hands me for free. Tuning a private model is now a 1D search over `eta`, like regular training.
 
-Except now I have to be honest about what normalization throws away. After AUTO-V, *every* clipped per-sample gradient has length exactly `R` (or `1`): `||g_i/||g_i|| || = 1` for all `i`. The magnitude information is completely gone — a sample whose gradient was tiny and a sample whose gradient was huge come out indistinguishable, both unit vectors. That's a kind of scale-invariance, and it sounds harmless until I think about what it does when the per-sample directions disagree. Picture the simplest case where they should: a balanced binary problem, label `+1` or `-1` with equal probability, one scalar parameter `theta`, logistic loss `log(1 + e^{-y theta})`. The per-sample gradient is `-y * sigmoid(-y theta)`, which for a `+1` example points one way and for a `-1` example the other. Let me actually put numbers on it rather than wave at it: take `theta = 0.7` and a balanced batch of 50 positives and 50 negatives. The `+1` gradient is `-sigmoid(-0.7) = -0.3318` and the `-1` gradient is `+sigmoid(0.7) = +0.6682`; they have *different magnitudes* because the logistic curve isn't symmetric about this `theta`, so the true mean gradient is `(50(-0.3318) + 50(+0.6682))/100 = +0.1682` — nonzero, I should move in the `+` direction. Now apply AUTO-V (`gamma = 0`): each gradient becomes its own sign, so I sum `50 * (-1) + 50 * (+1) = 0`. Exactly zero. The aggregated normalized gradient is the empty vector even though the true gradient is `+0.168`. So DP-SGD just sits there — not because I'm at a stationary point, but because normalization erased exactly the magnitude difference (`0.668` vs `0.332`) that was tipping the true sum to `+`. And it isn't a single fragile point: across a whole interval of `theta` the two opposite-sign unit contributions stay balanced 50/50, so the optimizer is frozen wherever it should be moving. A "lazy region." The same cancellation appears in a Gaussian-mixture mean-estimation problem, and clipped DP-GD has been characterized this way before (Chen et al.). So AUTO-V has a real defect, and I've now watched it happen on a concrete batch: it can refuse to converge to a zero true-gradient because it loses magnitude. This is the wall.
+Except now I have to be honest about what normalization throws away. After AUTO-V, *every* clipped per-sample gradient has length exactly `R` (or `1`): `||g_i/||g_i|| || = 1` for all `i`. The magnitude information is completely gone — a sample whose gradient was tiny and a sample whose gradient was huge come out indistinguishable, both unit vectors. That's a kind of scale-invariance, and it sounds harmless until I think about what it does when the per-sample directions disagree. Picture the simplest case where they should: a balanced binary problem, label `+1` or `-1` with equal probability, one scalar parameter `theta`, logistic loss `log(1 + e^{-y theta})`. The per-sample gradient is `-y * sigmoid(-y theta)`, which for a `+1` example points one way and for a `-1` example the other. Put numbers on it: take `theta = 0.7` and a balanced batch of 50 positives and 50 negatives. The `+1` gradient is `-sigmoid(-0.7) = -0.3318` and the `-1` gradient is `+sigmoid(0.7) = +0.6682`; they have *different magnitudes* because the logistic curve isn't symmetric about this `theta`, so the true mean gradient is `(50(-0.3318) + 50(+0.6682))/100 = +0.1682` — nonzero, I should move in the `+` direction. Now apply AUTO-V (`gamma = 0`): each gradient becomes its own sign, so I sum `50 * (-1) + 50 * (+1) = 0`. Exactly zero. The aggregated normalized gradient is the empty vector even though the true gradient is `+0.168`. So DP-SGD just sits there — not because I'm at a stationary point, but because normalization erased exactly the magnitude difference (`0.668` vs `0.332`) that was tipping the true sum to `+`. And it isn't a single fragile point: across a whole interval of `theta` the two opposite-sign unit contributions stay balanced 50/50, so the optimizer is frozen wherever it should be moving. A "lazy region." The same cancellation appears in a Gaussian-mixture mean-estimation problem, and clipped DP-GD has been characterized this way before (Chen et al.). So AUTO-V has a real defect, and I've now watched it happen on a concrete batch: it can refuse to converge to a zero true-gradient because it loses magnitude.
 
 The diagnosis also tells me what to check about the fix. Re-run the *same* batch with `gamma = 0.01`: now the contributions are `-0.3318/(0.3318+0.01) = -0.9707` and `+0.6682/(0.6682+0.01) = +0.9853`, which no longer have equal magnitude, and the sum is `50(-0.9707) + 50(+0.9853) = +0.7255` — nonzero, and the *same sign* as the true `+0.168`. So a positive denominator constant breaks the cancellation on exactly the example that broke AUTO-V, and points the step the right way. That's the lead I'll follow.
 
@@ -119,7 +119,7 @@ The denominator is manifestly positive (it's a product of square roots and squar
 ```
 S^2 +- 2cS + 1 > S^2 +- 2cS + c^2 = (S +- c)^2 >= 0,
 ```
-so both radicands are strictly positive. From that, `B > 0` and `C > 0` are immediate (`1 - c^2 > 0`, everything else positive). `A > 0` is the piece I can't read off by inspection — it's a sum of two terms, `sqrt(S^2+2cS+1)(3c^2 S - 2c(S^2+1) + S)` and its mirror, and the first parenthesis goes negative (`-2c(S^2+1)` dominates for large `S`), so the sign isn't obvious. Before trusting a full algebraic grind I'll just evaluate it. Sweeping `c in (0,1)` and `S in (0,8)` on a 40x60 grid, the minimum of `A` over the whole grid comes out `0.020` — strictly positive, and the value drifts toward `0` only as `c -> 1` or `S -> 0`, the boundary the constraint `0 < c < 1` excludes. (As a cross-check I also numerically differentiated `f` itself: across `c in {0.05,0.3,0.6,0.9,0.99}`, `Gamma in {0.01,0.2,1.0}`, `S in {0.1,...,5}` there were *zero* points with `df/dS >= 0`.) So `A > 0` on the open region, and with `A, B, C` all positive, `A Gamma^2 + B Gamma + C > 0` for any `Gamma > 0` (positive-coefficient quadratic), giving `df/dS < 0`. More noise, less alignment — and now I've actually seen the inequality hold rather than asserted it. Second, if `S < S'`, then evaluating `f` at the minimizer for `S` but with the larger value `S'` makes it smaller, so the minimum value `min_c f(c, S; Gamma)` is strictly decreasing in `S`. Third, by the same kind of derivative computation `f` is strictly decreasing in `c` for `S > 1`; in the case `S = r > 1`, this pins the minimizing `c` at `1`.
+so both radicands are strictly positive. From that, `B > 0` and `C > 0` are immediate (`1 - c^2 > 0`, everything else positive). `A > 0` is the piece I can't read off by inspection — it's a sum of two terms, `sqrt(S^2+2cS+1)(3c^2 S - 2c(S^2+1) + S)` and its mirror, and the first parenthesis goes negative (`-2c(S^2+1)` dominates for large `S`), so the sign isn't obvious. Before trusting a full algebraic grind I'll just evaluate it. Sweeping `c in (0,1)` and `S in (0,8)` on a 40x60 grid, the minimum of `A` over the whole grid comes out `0.020` — strictly positive, and the value drifts toward `0` only as `c -> 1` or `S -> 0`, the boundary the constraint `0 < c < 1` excludes. (As a cross-check I also numerically differentiated `f` itself: across `c in {0.05,0.3,0.6,0.9,0.99}`, `Gamma in {0.01,0.2,1.0}`, `S in {0.1,...,5}` there were *zero* points with `df/dS >= 0`.) A grid only covers `S` up to `8`, so pin down both ends analytically instead of trusting the sample to extrapolate: at `S = 0` both radicands collapse to `1`, and the bracket becomes `(0 - 2c + 0) + (0 + 2c + 0) = 0` for every `c` — so `A` vanishes only at the excluded endpoint, exactly where the grid says it drifts to zero, not before it. And as `S -> infinity`, expanding `sqrt(S^2 +- 2cS + 1) ~ S +- c`, the cubic-in-`S` terms cancel between the two halves and `A ~ 2(1+c^2) S^2`, positive and growing without bound, so the sampled range isn't hiding a sign flip further out either. Between the two analytically-pinned endpoints and a grid that finds no sign change on the interior, I'll take `A > 0` on the open region as established, and with `A, B, C` all positive, `A Gamma^2 + B Gamma + C > 0` for any `Gamma > 0` (positive-coefficient quadratic), giving `df/dS < 0`. More noise, less alignment. Second, if `S < S'`, then evaluating `f` at the minimizer for `S` but with the larger value `S'` makes it smaller, so the minimum value `min_c f(c, S; Gamma)` is strictly decreasing in `S`. Third, by the same kind of derivative computation `f` is strictly decreasing in `c` for `S > 1`; in the case `S = r > 1`, this pins the minimizing `c` at `1`.
 
 Now the lower bound. Introduce a *thresholding ratio* `r > 0` and split by whether the noise-to-signal `S` is below or above `r`. I'll keep only the `S < r` part:
 ```
@@ -220,70 +220,9 @@ One more knob to justify: the value of `gamma`. The analysis says any `gamma > 0
 
 Let me sanity-check the form against the alternatives so I know I'm not reinventing something subtly different. Per-sample normalization is *not* mini-batch normalized SGD: NSGD normalizes the *batch* gradient `(1/B sum g_i)/||1/B sum g_i||`, which stays parallel to the true batch direction and involves no noise; AUTO normalizes *each sample* before summing, `1/B sum g_i/||g_i||`, which is generally *not* parallel to the batch gradient (that non-parallelism is the bias I just spent a page bounding) and is wrapped in the DP noise. They're solving different problems. And the stability constant distinguishes me from plain per-sample normalization with a threshold: the constant is what gives the non-convex convergence-to-zero under the same smoothness assumptions ordinary SGD uses.
 
-So let me write the mechanism I'd actually ship, filling the one empty slot — turning per-sample gradients into a privatized aggregate. The operation is: compute each per-sample gradient's norm, scale by `1/(||g_i|| + gamma)` (this is the AUTO-S clip; AUTO-V is the `gamma = 0` special case), sum, add Gaussian noise with standard deviation `sigma` (= `sigma * R` with `R = 1`, since the post-clip sensitivity is `1`), and hand the result to whatever optimizer the training loop uses. Grounded in the way the real DP libraries do it — in Opacus it's literally one line, `per_sample_clip_factor = max_grad_norm/(per_sample_norms + 0.01)`, and in a ghost-clipping library the same `C = max_grad_norm/(norm_sample + numerical_stability_constant)` with `numerical_stability_constant = 1e-2` and `max_grad_norm` pinned to `1`:
-
-```python
-import torch
-
-
-class DPMechanism:
-    """Automatic clipping (AUTO-S): replace the per-sample clip min(R/||g_i||, 1)
-    with per-sample normalization g_i / (||g_i|| + gamma). No clipping threshold R
-    to tune (any constant R is gauge — it couples into the learning rate for
-    non-adaptive optimizers and cancels for adaptive ones), so R is fixed at 1.
-    Sensitivity is bounded by 1, so the privacy accountant is unchanged from
-    Abadi's DP-SGD. AUTO-V is the gamma = 0 special case (pure normalization),
-    which loses all magnitude information and can stall in a 'lazy region';
-    gamma > 0 preserves magnitude order, escapes it, and is what gives the
-    O(T^{-1/4}) convergence to a stationary point, matching non-private SGD.
-    """
-
-    def __init__(self, max_grad_norm, noise_multiplier, n_params,
-                 dataset_size, batch_size, epochs, target_epsilon, target_delta):
-        self.max_grad_norm = max_grad_norm        # R; pinned to 1 below for automatic clipping
-        self.noise_multiplier = noise_multiplier  # sigma, fixed by the accountant from (eps, delta, p, T)
-        self.n_params = n_params
-        self.dataset_size = dataset_size
-        self.batch_size = batch_size
-        self.epochs = epochs
-        self.target_epsilon = target_epsilon
-        self.target_delta = target_delta
-        # FastDP pins R to 1 for automatic clipping and uses 1e-2 as gamma.
-        self.max_grad_norm = 1.0
-        self.numerical_stability_constant = 1e-2
-
-    def clip_and_noise(self, per_sample_grads, step, epoch):
-        batch_size = per_sample_grads[0].shape[0]
-
-        # per-sample gradient L2 norm over ALL parameters jointly (flat clipping):
-        # the sensitivity is of the whole per-sample gradient vector, not per layer.
-        flat = torch.cat([g.reshape(batch_size, -1) for g in per_sample_grads], dim=1)
-        norm_sample = flat.norm(2, dim=1)         # [B] = ||g_i||
-
-        # AUTO-S clip factor C_i = R / (||g_i|| + gamma), R = 1.
-        # ||C_i g_i|| = ||g_i|| / (||g_i|| + gamma) < 1, so sensitivity <= 1.
-        # gamma > 0: as ||g_i|| -> 0 the gradient -> g_i/gamma (keeps direction and
-        # shrinks with magnitude) instead of being blown up to a unit vector.
-        C = self.max_grad_norm / (norm_sample + self.numerical_stability_constant)
-
-        noised_grads = []
-        for g in per_sample_grads:
-            shape = [batch_size] + [1] * (g.dim() - 1)
-            normalized = g * C.reshape(shape)               # C_i * g_i, each length < 1
-            summed = normalized.sum(dim=0)                  # sum_i C_i g_i (the private signal)
-
-            # Gaussian noise at the bounded sensitivity (= R = 1): std = sigma * R.
-            # Same noise-to-sensitivity ratio sigma as Abadi's clip, so the accountant
-            # (and hence the (eps, delta) guarantee) is identical.
-            noise = torch.randn_like(summed) * (self.noise_multiplier * self.max_grad_norm)
-            noised_grads.append(summed + noise)             # any optimizer steps on this
-
-        return noised_grads
-
-    def get_effective_sigma(self, step, epoch):
-        # sigma is constant and was fixed up front by the accountant; the clipping
-        # change does not touch privacy accounting.
-        return self.noise_multiplier
+So the mechanism I'd actually ship fills the one empty `clip_and_noise` slot: compute each per-sample gradient's norm over *all* parameters jointly (the sensitivity constraint is on the whole per-sample gradient vector, not per layer), scale by `1/(||g_i|| + gamma)` — AUTO-S, with AUTO-V as the `gamma = 0` special case — sum, and add Gaussian noise with standard deviation `sigma` (`= sigma * R` with `R = 1`, since the post-clip sensitivity is `1`). Against Abadi's clip the whole change is one line:
 ```
-
-The causal chain is tight now: private training carries a second knob `R` that, unlike `sigma`, cannot be read off the privacy budget and has to be 2D-grid-searched, with accuracy painfully sensitive to it. I notice that the regime where the best private models actually live uses a small `R`, and in that regime Abadi's clip `min(R/||g_i||, 1)` degenerates into per-sample normalization `R g_i/||g_i||` — and normalization is in fact the per-sample factor that maximizes alignment with the true gradient under the sensitivity budget, which is the very term that drives one-step descent. So I replace clipping with normalization. Then `R` is gauge: privacy depends only on the noise-to-sensitivity ratio `sigma`, so any constant `R` is equivalent; and `R` either couples into the learning rate (non-adaptive optimizers) or cancels entirely (adaptive ones), so it never needs tuning — fix it at `1`. Pure normalization (AUTO-V), though, erases all magnitude information, which freezes the optimizer in a lazy region where opposite-class gradients cancel even with a nonzero true gradient. Adding a stability constant `gamma` in the denominator — `g_i/(||g_i||+gamma)` — restores magnitude order, turns into ordinary SGD near the optimum, and keeps the sensitivity bounded so privacy is untouched. The non-convex analysis checks the patch: smoothness reduces the per-step decrease to the alignment term plus a noise penalty; the symmetric-noise half-space pairing lower-bounds the paired bracket by `min_c f(c, r; gamma/||g||)(||g|| - xi/r)` and then the alignment term picks up the outer `1/2`; for `gamma = 0`, `r < 1` leaves the residual floor `xi/r > xi` while `r >= 1` makes the prefactor vanish, but for `gamma > 0` and `r > 1` the prefactor is strictly positive; telescoping, inverting through the convex envelope, and minimizing the resulting hyperbola over `r` gives `min_t E||g_t|| = O(T^{-1/4})`, the same rate as non-private SGD. The factor analysis through `mu`-GDP then says train longer with more noise, use larger batches, pretrain, and keep the learning rate as the one remaining knob. And the whole thing is a one-line change to the existing DP-SGD harness.
+# Abadi:   clip_factor = min(max_grad_norm / per_sample_norm, 1)
+# AUTO-S:  clip_factor =     max_grad_norm / (per_sample_norm + gamma)
+```
+— everything else in the loop (batch sampling, the per-sample-gradient backend, the optimizer step, the accountant call) is untouched, which is what "no DP-specific hyperparameter left to tune" actually costs to implement: nothing. That one-line shape is exactly what the real DP libraries converge on once you look at their code: Opacus's clip-factor line is `per_sample_clip_factor = max_grad_norm/(per_sample_norms + 0.01)`, and a ghost-clipping library computes the same `max_grad_norm/(norm_sample + numerical_stability_constant)` with `numerical_stability_constant = 1e-2` and `max_grad_norm` pinned to `1`. The full module is worked out in the answer.
