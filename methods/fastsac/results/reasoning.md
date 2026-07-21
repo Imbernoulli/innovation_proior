@@ -1,7 +1,7 @@
-Let me start from what actually hurts. I want to train continuous-control policies — torques
-for a simulated humanoid, say — and I have two families of methods, each broken in a different
-way. The on-policy policy gradients, TRPO and PPO, are stable and I can usually get them to
-work, but they are ravenous: every gradient step wants fresh trajectories, and once I've used
+I want to train continuous-control policies — torques for a simulated humanoid, say — and I
+have two families of methods available, each broken in a different way. The on-policy policy
+gradients, TRPO and PPO, are stable and I can usually get them to work, but they are ravenous:
+every gradient step wants fresh trajectories, and once I've used
 a batch I throw it away. On the hardest tasks, the 21-dimensional Humanoid, PPO needs gigantic
 batches just to stay stable, so the sample bill is enormous. The off-policy side, DDPG, reuses
 a replay buffer and so is far thriftier with data, but it's a nightmare to stabilize: I tune
@@ -104,18 +104,10 @@ leaving the remaining part as gamma * E_{s',a'~pi} Q(s',a'). The reward is bound
 assumption, and for the tabular proof |A| < infinity bounds the entropy term. Banach's fixed
 point theorem then would give a unique fixed point.
 
-Before I trust that, let me actually run the backup on a tiny MDP and watch it, because the
-entropy term inside V is exactly the part I added and could easily have gotten wrong. Two
-states, two actions, gamma = 0.9, alpha = 0.5, random reward r(s,a), random transition matrix
-P(s'|s,a), and a fixed random stochastic policy pi. I implement
-V(s') = sum_a pi(a|s') (Q(s',a) - alpha log pi(a|s')) and TQ = r + gamma P V, then draw random
-pairs Q_1, Q_2 and measure the ratio ||TQ_1 - TQ_2||_inf / ||Q_1 - Q_2||_inf. Across draws I
-get ratios of 0.40, 0.71, 0.85, 0.71, 0.83 — every one at or below gamma = 0.9, never above,
-which is the contraction inequality holding numerically. And iterating the backup from two
-very different starts, Q = 0 and Q = 10 everywhere, the two trajectories close to a gap of
-7e-9 after 200 steps and land on the same Q* = [[4.64, 5.16], [4.99, 2.35]]. So the fixed
-point is unique and reachable from anywhere, exactly as the contraction promised. That's soft
-policy evaluation — call it Lemma 1.
+So the soft Bellman operator is a gamma-contraction on the same grounds as ordinary policy
+evaluation, with the entropy folded into a bounded one-step reward — the fixed point is unique
+and every starting Q converges to it under repeated backups. That's soft policy evaluation,
+call it Lemma 1.
 
 Now the improvement step. In ordinary policy iteration I'd set the new policy greedy on Q. In
 the soft world the analogous "greedy" move is toward the energy-based policy exp(Q/alpha)/Z —
@@ -171,20 +163,14 @@ proved for T^{pi_new}) to Q^{pi_new}(s,a). Therefore
 
 So the projection onto the restricted family does improve the policy, and the proof tells me
 *why*: falling back to pi_old is always an option inside the argmin, which is what makes (*)
-hold. Let me put a number on it before I move on, because the subtle part is the claim that an
-I-projection onto a *restricted* family still improves — exact greedy improvement would, but a
-KL-projection is not obviously monotone, and my hand argument leaned on the recursion not
-breaking. Same kind of tiny tabular MDP, now 2 states and 3 actions, alpha = 0.7, gamma = 0.9.
-I solve soft policy evaluation for a random pi_old to get Q_old, then improve. First the
-*unrestricted* case where Pi is the full simplex, so the I-projection of exp(Q_old/alpha)/Z is
-exactly exp(Q_old/alpha)/Z: re-evaluating gives Q_new pointwise above Q_old, smallest gap
-+5.60, nothing negative. Then the case I actually care about — a genuinely restricted family,
-where for each state I only allow mixtures (1-l)*uniform + l*onehot(argmax Q_old) and pick the
-l whose distribution is KL-closest to the target. That projection cannot in general reach
-exp(Q_old/alpha)/Z, so it's a real test of the restricted claim. Re-evaluating that projected
-policy: Q_proj is still pointwise >= Q_old, smallest gap +5.72. The restricted projection
-improves too. That's the improvement guarantee — Lemma 2 — and now I believe it rather than
-just having pushed symbols around.
+hold. The subtle part of that argument is that it never actually used anything about
+*exp(Q/alpha)/Z* being reachable — it only used that pi_old is itself a member of Pi and so is
+always a candidate the argmin can fall back to. That means the bound holds whether Pi is the
+full simplex (where the I-projection would land exactly on the energy-based target) or some
+genuinely restricted family that can't reach that target at all — a diagonal Gaussian, say, which
+is what I'll actually use as the actor. The fallback-to-pi_old step doesn't care which. That's
+the improvement guarantee, Lemma 2, and it's the piece that lets me get away with a restricted
+policy class in the first place.
 
 Chaining the two: alternate soft evaluation and soft improvement. By Lemma 2 the sequence
 Q^{pi_i} is monotonically nondecreasing in i; it's bounded above because reward and entropy
@@ -221,16 +207,9 @@ log Z constant, the expected
 
   J_pi(phi) = E_{s~D}[ E_{a~pi_phi}[ alpha log pi_phi(a|s) - Q_theta(s,a) ] ].
 
-I dropped log Z by a one-line argument earlier; since the whole actor update rides on that
-drop being legitimate, let me confirm it numerically rather than trust the algebra. One state,
-4 actions, alpha = 0.6, random Q. I form target = exp(Q/alpha)/Z and, for several random
-categorical pi, compare alpha*KL(pi || target) against J_pi(pi) + alpha*log Z. They match to
-machine precision on every draw (0.83024 vs 0.83024, 0.43854 vs 0.43854, ...), so minimizing
-J_pi really is minimizing the KL up to that state-only constant. And to be sure the objective
-points where I think, I minimize J_pi over the simplex by mirror descent: it converges to
-[0.241, 0.650, 0.096, 0.012], which is exactly exp(Q/alpha)/Z. So this objective's minimizer
-is the energy-based policy the improvement step wanted — good, the actor loss is faithful to
-Lemma 2.
+I dropped log Z by the argument that it's additive and depends only on s, not on pi' — so
+J_pi(phi) and alpha*KL(pi_phi || exp(Q/alpha)/Z) differ by exactly that constant and share the
+same minimizer over phi. The actor loss really is minimizing the KL that Lemma 2 needs.
 
 How do I take the gradient of an expectation whose sampling distribution depends on phi? The
 generic answer is the likelihood-ratio / REINFORCE estimator — but that's high-variance, and
@@ -268,7 +247,12 @@ min(Q_theta_1, Q_theta_2) at (s, a). The min deliberately trades a little undere
 protection against the actor chasing a positive error spike. Targets are kept by Polyak
 averaging, thetabar_i <- tau*theta_i + (1-tau)*thetabar_i, with a small tau — a slow target
 reduces TD target drift; push tau too high and bootstrapping follows its own noise too quickly,
-too low and the target lags behind the learned critic.
+too low and the target lags behind the learned critic. TD3 also delays the actor relative to
+the critic, on the idea that the actor should chase a critic that's had a chance to settle
+rather than one still churning from the last step; I'll keep that knob too, decoupled from the
+target-network cadence — update the critic (and Polyak-update its targets) every step, but only
+touch the actor every k steps, firing k actor updates each time that happens so it doesn't fall
+behind on its total update count over training.
 
 Now the actor's distribution. I want a tractable pi_phi I can both sample (reparameterized) and
 evaluate log pi for. A diagonal Gaussian is the obvious choice: the net outputs a mean mu_phi(s)
@@ -382,159 +366,15 @@ critics. At evaluation time I don't want the exploration randomness anymore, so 
 *mean* action, tanh(mu_phi(s)) — the policy was trained to also maximize entropy, so its mean
 is a good deterministic readout but isn't itself what the stochastic objective optimizes.
 
-Now let me write it as the code it actually becomes — a tanh-squashed Gaussian actor, twin
-soft critics, the min-target with the entropy bonus, the reparameterized actor loss, and the
-automatic temperature, each block tied back to the step that motivated it.
-
-```python
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
-LOG_STD_MIN, LOG_STD_MAX = -5, 2
-
-
-class QNetwork(nn.Module):
-    def __init__(self, n_obs, n_act, hidden_dim=256):
-        super().__init__()
-        self.fc1 = nn.Linear(n_obs + n_act, hidden_dim)
-        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
-        self.fc3 = nn.Linear(hidden_dim, 1)
-
-    def forward(self, obs, action):
-        x = torch.cat([obs, action], dim=-1)
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        return self.fc3(x)
-
-
-class Actor(nn.Module):
-    def __init__(self, n_obs, n_act, action_low=None, action_high=None, hidden_dim=256):
-        super().__init__()
-        self.fc1 = nn.Linear(n_obs, hidden_dim)
-        self.fc2 = nn.Linear(hidden_dim, hidden_dim)
-        self.fc_mean = nn.Linear(hidden_dim, n_act)
-        self.fc_logstd = nn.Linear(hidden_dim, n_act)
-
-        if action_low is None or action_high is None:
-            action_scale = torch.ones(n_act)
-            action_bias = torch.zeros(n_act)
-        else:
-            low = torch.as_tensor(action_low, dtype=torch.float32)
-            high = torch.as_tensor(action_high, dtype=torch.float32)
-            action_scale = (high - low) / 2.0
-            action_bias = (high + low) / 2.0
-        self.register_buffer("action_scale", action_scale)
-        self.register_buffer("action_bias", action_bias)
-
-    def forward(self, obs):
-        x = F.relu(self.fc1(obs))
-        x = F.relu(self.fc2(x))
-        mean = self.fc_mean(x)
-        log_std = torch.tanh(self.fc_logstd(x))
-        log_std = LOG_STD_MIN + 0.5 * (LOG_STD_MAX - LOG_STD_MIN) * (log_std + 1.0)
-        return mean, log_std
-
-    def get_action(self, obs):
-        mean, log_std = self.forward(obs)
-        normal = torch.distributions.Normal(mean, log_std.exp())
-        u = normal.rsample()                       # reparameterized: mean + std * eps
-        y = torch.tanh(u)
-        action = y * self.action_scale + self.action_bias
-        log_prob = normal.log_prob(u)
-        log_prob -= torch.log(self.action_scale * (1 - y.pow(2)) + 1e-6)
-        log_prob = log_prob.sum(-1, keepdim=True)
-        mean_action = torch.tanh(mean) * self.action_scale + self.action_bias
-        return action, log_prob, mean_action
-
-
-def build_algorithm(n_obs, n_act, device, action_low=None, action_high=None,
-                    policy_lr=3e-4, q_lr=1e-3):
-    actor = Actor(n_obs, n_act, action_low, action_high).to(device)
-    qf1, qf2 = QNetwork(n_obs, n_act).to(device), QNetwork(n_obs, n_act).to(device)
-    qf1_target = QNetwork(n_obs, n_act).to(device)
-    qf2_target = QNetwork(n_obs, n_act).to(device)
-    qf1_target.load_state_dict(qf1.state_dict())
-    qf2_target.load_state_dict(qf2.state_dict())
-    log_alpha = torch.zeros(1, requires_grad=True, device=device)
-    return {
-        "actor": actor, "qf1": qf1, "qf2": qf2,
-        "qf1_target": qf1_target, "qf2_target": qf2_target,
-        "log_alpha": log_alpha, "target_entropy": -float(n_act),
-        "actor_opt": torch.optim.Adam(actor.parameters(), lr=policy_lr),
-        "q_opt": torch.optim.Adam(list(qf1.parameters()) + list(qf2.parameters()), lr=q_lr),
-        "alpha_opt": torch.optim.Adam([log_alpha], lr=q_lr),
-    }
-
-
-def update_critic(batch, c, gamma):
-    actor = c["actor"]
-    qf1, qf2 = c["qf1"], c["qf2"]
-    qf1_target, qf2_target = c["qf1_target"], c["qf2_target"]
-    alpha = c["log_alpha"].exp().detach()
-    obs, action, reward, next_obs, done = batch
-
-    with torch.no_grad():
-        next_action, next_logp, _ = actor.get_action(next_obs)
-        qf1_next = qf1_target(next_obs, next_action)
-        qf2_next = qf2_target(next_obs, next_action)
-        min_q_next = torch.min(qf1_next, qf2_next) - alpha * next_logp
-        next_q = reward + (1.0 - done) * gamma * min_q_next
-
-    qf1_a = qf1(obs, action)
-    qf2_a = qf2(obs, action)
-    q_loss = F.mse_loss(qf1_a, next_q) + F.mse_loss(qf2_a, next_q)
-    c["q_opt"].zero_grad(); q_loss.backward(); c["q_opt"].step()
-    return q_loss
-
-
-def update_actor(batch, c):
-    actor, qf1, qf2 = c["actor"], c["qf1"], c["qf2"]
-    alpha = c["log_alpha"].exp().detach()
-    obs = batch[0]
-
-    pi, logp, _ = actor.get_action(obs)
-    min_q_pi = torch.min(qf1(obs, pi), qf2(obs, pi))
-    actor_loss = (alpha * logp - min_q_pi).mean()
-    c["actor_opt"].zero_grad(); actor_loss.backward(); c["actor_opt"].step()
-
-    with torch.no_grad():
-        _, logp_alpha, _ = actor.get_action(obs)
-    alpha_loss = (-c["log_alpha"].exp() * (logp_alpha + c["target_entropy"])).mean()
-    c["alpha_opt"].zero_grad(); alpha_loss.backward(); c["alpha_opt"].step()
-    return actor_loss, alpha_loss
-
-
-@torch.no_grad()
-def soft_update(src, tgt, tau):
-    for p, p_t in zip(src.parameters(), tgt.parameters()):
-        p_t.mul_(1.0 - tau).add_(p, alpha=tau)
-
-
-def train_step(batch, c, gamma, tau, global_step,
-               policy_frequency=2, target_network_frequency=1):
-    q_loss = update_critic(batch, c, gamma)
-    actor_loss = alpha_loss = None
-    if global_step % policy_frequency == 0:
-        for _ in range(policy_frequency):
-            actor_loss, alpha_loss = update_actor(batch, c)
-    if global_step % target_network_frequency == 0:
-        soft_update(c["qf1"], c["qf1_target"], tau)
-        soft_update(c["qf2"], c["qf2_target"], tau)
-    return q_loss, actor_loss, alpha_loss
-```
-
-So the causal chain: I wanted off-policy efficiency *and* stability, and traced DDPG's
-brittleness to a deterministic actor maximizing an overestimated critic with bolted-on
-exploration. Putting entropy into the objective makes exploration something the policy
-optimizes rather than something I schedule, and pushing it inside the soft value function
-makes it propagate through the bootstrap. Soft policy iteration — soft evaluation as a direct
-gamma-contraction and soft improvement as a KL-projection that's provably monotone because the
-old policy is always a fallback — gives the correct skeleton, which I approximate with a
-soft-Bellman critic and a KL-minimizing actor. The
-reparameterization trick turns the stochastic-actor update into DDPG's cheap pathwise gradient,
-TD3's twin-min curbs the residual overestimation, tanh squashing plus affine action rescaling
-with the change-of-variables correction handles bounded actions exactly, and recasting the
-temperature as a dual variable that tracks a target entropy of -dim(A) removes the last
-per-task knob. The result is an off-policy actor-critic that explores by design, resists
-overestimation, and tunes its own stochasticity.
+Assembling that into modules: a QNetwork scoring (obs, action) pairs, instantiated twice for
+the twin critics with matching targets; an Actor whose forward pass gives a mean and a
+log-std remapped into [-5, 2], and whose get_action samples u, squashes it through tanh,
+rescales into the action box, and applies the change-of-variables correction to get an exact
+log pi; build_algorithm wiring up the two critics, their targets, the actor, and log_alpha
+(kept in log-space so alpha stays positive) each with its own Adam optimizer; update_critic
+drawing the next action from the *current* policy rather than the buffer, forming the
+min-target with its entropy term, and minimizing the summed MSE of both critics against it;
+update_actor drawing a reparameterized action, minimizing E[alpha*log pi - min Q] with alpha
+detached, then taking one dual-gradient step on log alpha with log pi detached the other way;
+and soft_update Polyak-averaging both critics into both targets on the critic-every-step,
+actor-every-k-steps cadence above. That assembly is the algorithm this derivation earns.
