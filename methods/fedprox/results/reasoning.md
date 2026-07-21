@@ -22,7 +22,7 @@ Now I want to know whether this quadratic is doing more than just "feels like it
 
   ||hat_w_k - w^t|| ≤ (1/bar_mu) ||∇F_k(w^t)||.
 
-So the displacement of the exactly-solved local problem is bounded by the local gradient size divided by bar_mu — the spring caps how far a device can travel, and stiffer mu means a smaller cap. Let me not take this on faith, because the whole proof is going to lean on it; I'll work a concrete case where F_k actually has negative curvature, which is the regime that matters. Take F_k(w) = g0^T w + (1/2) w^T H w on R^2 with H = diag(1.0, -0.6), so one direction has curvature -0.6 and the negative-curvature bound is L_ = 0.6 — F_k is genuinely non-convex. Pick g0 = (0.4, 0.9), broadcast point w^t = (0.5, -0.2), and mu = 1.4, so bar_mu = mu - L_ = 0.8 and h_k is strongly convex (the smallest eigenvalue of H + mu I is 1.4 - 0.6 = 0.8, which is bar_mu exactly). The local gradient at the anchor is ∇F_k(w^t) = g0 + H w^t = (0.4 + 0.5, 0.9 + 0.12) = (0.9, 1.02), with norm sqrt(0.81 + 1.0404) = 1.360. The exact minimizer solves (H + mu I) hat_w = mu w^t - g0, giving hat_w = (0.125, -1.475), so the displacement is ||hat_w - w^t|| = ||(-0.375, -1.275)|| = 1.329. The bound predicts (1/bar_mu)||∇F_k(w^t)|| = 1.360/0.8 = 1.700. And 1.329 ≤ 1.700 — the bound holds, strictly, with the displacement at 78% of the cap. (It is not slack by accident: had I taken H purely diagonal-with-equal-entries the inequality would saturate, since for a pure quadratic the strong-convexity bound is tight; the negative-curvature direction here is what makes it strict.) So the spring really does cap travel by ||∇F_k(w^t)||/bar_mu even when F_k is non-convex, which is the only case I care about. The same quadratic that tethers the drift is the thing that convexifies the subproblem and produces this bound — one move, not two.
+So the displacement of the exactly-solved local problem is bounded by the local gradient size divided by bar_mu — the spring caps how far a device can travel, and stiffer mu means a smaller cap, and this holds for genuinely non-convex F_k, which is the only case I care about. The same quadratic that tethers the drift is the thing that convexifies the subproblem and produces this bound — one move, not two.
 
 Now the straggler half. I refused to drop them and I refused to mandate a fixed E. So I need a way to *say*, formally, "device k did some variable amount of work this round and returned a partial solution," and then aggregate that partial solution safely. The natural measure is inexactness of the local minimization: device k returns some w_k that need not be the exact minimizer of h_k, and I'll quantify how far it got by how small the residual gradient of h_k is at w_k relative to where it started. Say w_k is a gamma-inexact solution if
 
@@ -111,7 +111,7 @@ with the coefficient written out as
   rho = 1/mu - gamma B/mu - B(1+gamma)sqrt(2)/(bar_mu sqrt(K)) - LB(1+gamma)/(bar_mu mu)
         - L(1+gamma)^2 B^2/(2 bar_mu^2) - L B^2 (1+gamma)^2/(bar_mu^2 K)(2 sqrt(2K) + 2).
 
-There it is — one round of the method decreases f in expectation by rho ||∇f(w^t)||^2, with rho assembled from exactly the heterogeneity B, the inexactness gamma, the participation K, the smoothness L, and the proximal stiffness through mu and bar_mu = mu - L_. For this to be a genuine decrease I need the whole displayed rho to be positive. Two terms show unavoidable qualitative constraints: the leading 1/mu must beat gamma B/mu, so I need gamma B < 1; and the sampling term B/(bar_mu sqrt(K)) has to be controlled, which points to B/sqrt(K) < 1, i.e. enough devices per round relative to how heterogeneous the network is. Those constraints are the qualitative heart of it: sloppy local solves are only plausible when the network is homogeneous, and heterogeneity needs enough sampled devices. The proximal term enters through bar_mu in every denominator — a stiffer spring (larger mu, hence larger bar_mu) shrinks all the penalty terms, which is the precise sense in which the anchor stabilizes convergence.
+So one round of the method decreases f in expectation by rho ||∇f(w^t)||^2, with rho assembled from exactly the heterogeneity B, the inexactness gamma, the participation K, the smoothness L, and the proximal stiffness through mu and bar_mu = mu - L_. For this to be a genuine decrease I need the whole displayed rho to be positive. Two terms show unavoidable qualitative constraints: the leading 1/mu must beat gamma B/mu, so I need gamma B < 1; and the sampling term B/(bar_mu sqrt(K)) has to be controlled, which points to B/sqrt(K) < 1, i.e. enough devices per round relative to how heterogeneous the network is. Those constraints are the qualitative heart of it: sloppy local solves are only plausible when the network is homogeneous, and heterogeneity needs enough sampled devices. The proximal term enters through bar_mu in every denominator — a stiffer spring (larger mu, hence larger bar_mu) shrinks all the penalty terms, which is the precise sense in which the anchor stabilizes convergence.
 
 The rate falls right out by telescoping. If rho > 0 holds at each round, take total expectation and sum the per-round decrease from t = 0 to T-1: sum_t rho E||∇f(w^t)||^2 ≤ f(w^0) - f(w^T) ≤ f(w^0) - f^* = Delta. So (1/T) sum_t E||∇f(w^t)||^2 ≤ Delta/(rho T), which is ≤ epsilon after T = O(Delta/(rho epsilon)) rounds. That's convergence to an epsilon-approximate stationary point for general non-convex F_k under non-IID data with only K devices reporting per round and inexact local solves — the guarantee the bare local-averaging method didn't have.
 
@@ -119,98 +119,8 @@ Let me sanity-check the convex special case to make sure the constants are sane 
 
   E_{S_t}[f(w^{t+1})] ⪅ f(w^t) - (1/(2mu)) ||∇f(w^t)||^2 + (3LB^2/(2 mu^2)) ||∇f(w^t)||^2.
 
-The 1/(2mu) is the surviving fraction of the leading 1/mu after the B/sqrt(K) ≤ 1/2 sampling term eats up to half of it; the 3LB^2/(2mu^2) collects the L(1+gamma)^2 B^2/(2 bar_mu^2) curvature term and its 1/K sibling under B ≤ 0.5 sqrt(K). Now optimize over mu: the net coefficient is rho(mu) = 1/(2mu) - 3LB^2/(2mu^2). Its derivative is rho'(mu) = -1/(2mu^2) + 3LB^2/mu^3, which vanishes at mu = 6LB^2 (multiply through by mu^3: -mu/2 + 3LB^2 = 0). Plugging that back, term by term: 1/(2·6LB^2) = 1/(12LB^2), and 3LB^2/(2·(6LB^2)^2) = 3LB^2/(72 L^2 B^4) = 1/(24LB^2), so rho(6LB^2) = 1/(12LB^2) - 1/(24LB^2) = 2/(24LB^2) - 1/(24LB^2) = 1/(24LB^2). Let me sanity-check this arithmetic numerically with L = 2.3, B = 1.7 so I'm not trusting a hand cancellation: 6LB^2 = 6·2.3·2.89 = 39.88, and scanning mu over a grid the maximizer of 1/(2mu) - 3·2.3·2.89/(2mu^2) lands at mu ≈ 39.88 with peak value ≈ 0.006268, while 1/(24·2.3·2.89) = 0.006268 — the two agree, so the optimum mu and rho are right. The number of rounds to reach a gradient-squared below epsilon is then O(LB^2 Delta/epsilon). This tells me two real things: to solve to higher accuracy (smaller epsilon forces a larger B_epsilon since the dissimilarity bound has to hold on a larger non-stationary region) I should *increase* mu — the spring should stiffen as I demand a more accurate solution; and if I substitute the bounded-variance bound B_epsilon ≤ sqrt(1 + sigma^2/epsilon), the round count becomes O(LDelta/epsilon + LDelta sigma^2/epsilon^2), which is exactly the SGD complexity. So the method doesn't beat distributed SGD asymptotically — it matches it — and indeed under genuinely non-IID data a local-update scheme can be *worse* than distributed SGD. I should be clear-eyed: the analysis gives *sufficient* conditions for convergence and a characterization of how heterogeneity hurts, not a proof of superiority or a better asymptotic rate.
+The 1/(2mu) is the surviving fraction of the leading 1/mu after the B/sqrt(K) ≤ 1/2 sampling term eats up to half of it; the 3LB^2/(2mu^2) collects the L(1+gamma)^2 B^2/(2 bar_mu^2) curvature term and its 1/K sibling under B ≤ 0.5 sqrt(K). Now optimize over mu: the net coefficient is rho(mu) = 1/(2mu) - 3LB^2/(2mu^2). Its derivative is rho'(mu) = -1/(2mu^2) + 3LB^2/mu^3, which vanishes at mu = 6LB^2 (multiply through by mu^3: -mu/2 + 3LB^2 = 0). Plugging that back, term by term: 1/(2·6LB^2) = 1/(12LB^2), and 3LB^2/(2·(6LB^2)^2) = 3LB^2/(72 L^2 B^4) = 1/(24LB^2), so rho(6LB^2) = 1/(12LB^2) - 1/(24LB^2) = 1/(24LB^2). The number of rounds to reach a gradient-squared below epsilon is then O(LB^2 Delta/epsilon). This tells me two real things: to solve to higher accuracy (smaller epsilon forces a larger B_epsilon since the dissimilarity bound has to hold on a larger non-stationary region) I should *increase* mu — the spring should stiffen as I demand a more accurate solution; and if I substitute the bounded-variance bound B_epsilon ≤ sqrt(1 + sigma^2/epsilon), the round count becomes O(LDelta/epsilon + LDelta sigma^2/epsilon^2), which is exactly the SGD complexity. So the method doesn't beat distributed SGD asymptotically — it matches it — and indeed under genuinely non-IID data a local-update scheme can be *worse* than distributed SGD. I should be clear-eyed: the analysis gives *sufficient* conditions for convergence and a characterization of how heterogeneity hurts, not a proof of superiority or a better asymptotic rate.
 
 Now the variable-work extension I promised, which is almost free. Everywhere I used a single gamma, I can let it be gamma_k^t per device per round, because the only place gamma entered the expectations over devices was through E_k[(1+gamma)||∇F_k(w^t)||], and E_k[(1+gamma_k^t)||∇F_k(w^t)||] ≤ (1 + max_{k in S_t} gamma_k^t) E_k||∇F_k(w^t)||. So define gamma^t = max_{k in S_t} gamma_k^t and the entire bound goes through with gamma replaced by gamma^t. Concretely: a fast device solves h_k more exactly (small gamma_k^t), a straggler solves it less exactly (large gamma_k^t, e.g. by running fewer local iterations), every device contributes its partial w_k, and the round still decreases f as long as the *worst* inexactness gamma^t satisfies the rho^t > 0 condition. Nobody is dropped; the straggler's partial work is aggregated and paid for honestly in the bound through gamma^t. That is the systems-heterogeneity story, and it cost one line of the proof because I set up inexactness as residual-gradient size from the start.
 
-Let me put the whole thing into the code I'd actually run, filling the local optimizer slot in the federated harness. The theorem uses p_k sampling and a simple average for the clean analysis; the implementation path I want to mirror uses the baseline engineering choice of uniform client sampling and a sample-weighted server mean. The local objective is F_k + (mu/2)||w - w^t||^2, realized by adding mu(w - w^t) to the gradient at every local step, with w^t stored as a frozen slot; variable work is just running each device's local solver for however many epochs it can afford before returning its partial solution.
-
-```python
-import numpy as np
-import tensorflow as tf
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import control_flow_ops, math_ops, state_ops
-from tensorflow.python.training import optimizer
-from .fedbase import BaseFedarated
-
-
-class PerturbedGradientDescent(optimizer.Optimizer):
-    def __init__(self, learning_rate=0.001, mu=0.01, use_locking=False, name="PGD"):
-        super(PerturbedGradientDescent, self).__init__(use_locking, name)
-        self._lr = learning_rate
-        self._mu = mu
-        self._lr_t = None
-        self._mu_t = None
-
-    def _prepare(self):
-        self._lr_t = ops.convert_to_tensor(self._lr, name="learning_rate")
-        self._mu_t = ops.convert_to_tensor(self._mu, name="prox_mu")
-
-    def _create_slots(self, var_list):
-        for v in var_list:
-            self._zeros_slot(v, "vstar", self._name)
-
-    def _apply_dense(self, grad, var):
-        lr_t = math_ops.cast(self._lr_t, var.dtype.base_dtype)
-        mu_t = math_ops.cast(self._mu_t, var.dtype.base_dtype)
-        vstar = self.get_slot(var, "vstar")
-        return control_flow_ops.group(
-            state_ops.assign_sub(var, lr_t * (grad + mu_t * (var - vstar)))
-        )
-
-    def set_params(self, global_params, client):
-        with client.graph.as_default():
-            for variable, value in zip(tf.trainable_variables(), global_params):
-                self.get_slot(variable, "vstar").load(value, client.sess)
-
-
-class Server(BaseFedarated):
-    def __init__(self, params, learner, dataset):
-        self.inner_opt = PerturbedGradientDescent(
-            params["learning_rate"], params["mu"]
-        )
-        super(Server, self).__init__(params, learner, dataset)
-
-    def train_round(self, round_num):
-        _, selected_clients = self.select_clients(
-            round_num, num_clients=self.clients_per_round
-        )
-        np.random.seed(round_num)
-        active_clients = np.random.choice(
-            selected_clients,
-            round(self.clients_per_round * (1 - self.drop_percent)),
-            replace=False,
-        )
-        self.inner_opt.set_params(self.latest_model, self.client_model)
-
-        client_solutions = []
-        for client in selected_clients.tolist():
-            client.set_params(self.latest_model)
-            if client in active_clients:
-                solution, stats = client.solve_inner(
-                    num_epochs=self.num_epochs, batch_size=self.batch_size
-                )
-            else:
-                partial_epochs = np.random.randint(low=1, high=self.num_epochs)
-                solution, stats = client.solve_inner(
-                    num_epochs=partial_epochs, batch_size=self.batch_size
-                )
-            client_solutions.append(solution)
-            self.metrics.update(rnd=round_num, cid=client.id, stats=stats)
-
-        self.latest_model = self.aggregate(client_solutions)
-        self.client_model.set_params(self.latest_model)
-
-    def aggregate(self, weighted_solutions):
-        total_weight = 0.0
-        base = [0] * len(weighted_solutions[0][1])
-        for weight, solution in weighted_solutions:
-            total_weight += weight
-            for i, value in enumerate(solution):
-                base[i] += weight * value.astype(np.float64)
-        return [value / total_weight for value in base]
-```
-
-Before I trust the code, let me trace `_apply_dense` on a concrete step to confirm it is the spring I derived and not, say, a sign-flipped force that would push devices *away* from w^t. The update is `var <- var - lr*(grad + mu*(var - vstar))`, with `vstar` holding the broadcast w^t. Take lr = 0.1, mu = 0.5, vstar = (1.0, 2.0), a device that has drifted to var = (1.4, 1.0), and a local gradient grad = (0.2, -0.3). The spring force is mu*(var - vstar) = 0.5·(0.4, -1.0) = (0.2, -0.5). Adding the gradient: grad + spring = (0.4, -0.8), times lr gives a step of (0.04, -0.08), so var moves to (1.36, 1.08). Look at coordinate 0: var was 1.4, above vstar = 1.0, and the spring contributes +0.2 to the subtracted quantity, i.e. it pulls var *down* toward 1.0 — the restoring direction, correct. Coordinate 1: var = 1.0 is below vstar = 2.0, the spring contributes -0.5 to the subtracted quantity, so it *adds* to var, pulling it up toward 2.0 — also restoring. So the force points from var back to the anchor in both coordinates, which is what (mu/2)||w - w^t||^2 should give. And setting mu = 0 makes the update exactly var <- var - lr*grad, plain local SGD — the FedAvg base case falls out of the same line of code, with no separate branch. The implementation matches the math.
-
-Let me trace the causal chain back to be sure it holds together. I start stuck: averaging locally-trained models works only when they stay in a shared basin, but non-IID data makes more local work drive each device toward its own optimum, so the one knob I have (local epochs) buys communication efficiency at the cost of drift that wrecks the average and can diverge — and meanwhile heterogeneous devices cannot all do the same work, so stragglers get dropped, wasting their effort and biasing the sample. I want to cap how far each device strays from the broadcast model directly, regardless of solver or step count, which is exactly what a quadratic spring (mu/2)||w - w^t||^2 added to the local objective does: it tethers the drift, reduces to plain local averaging at mu = 0, and — because adding mu I to the Hessian convexifies F_k whenever mu exceeds its negative curvature L_ — simultaneously turns the local subproblem strongly convex, which hands me the displacement bound ||w_k - w^t|| ≤ (1+gamma)/bar_mu ||∇F_k(w^t)|| that the proof runs on. I refuse to drop stragglers by measuring local work as gamma-inexactness in the residual gradient of that same subproblem, which lets work vary per device and round while still being aggregated. I deliberately drop the DANE-style gradient-correction term because it needs the full global gradient and fails under low participation. Then, bounding the all-device average's drift, the deviation M_{t+1} from a clean gradient step, the L-smooth descent on that average, and the 1/K sampling gap from K random devices, all in terms of the dissimilarity B, I get a per-round expected decrease rho ||∇f||^2 whenever the full rho expression is positive, with gamma B < 1 and B/sqrt(K) < 1 as the visible constraints that explain the trade-offs. Telescoping gives O(Delta/(rho epsilon)) rounds to an epsilon-stationary point; the convex case pins mu ≈ 6LB^2 and matches SGD's complexity; the variable-gamma version costs one extra line. In code, the whole thing is the existing federated harness with the local gradient changed to grad + mu*(w - w^t) and the sample-weighted server average left alone.
+Let me put the whole thing into the code I'd actually run, filling the local optimizer slot in the federated harness. The theorem uses p_k sampling and a simple average for the clean analysis; the implementation path I want to mirror uses the baseline engineering choice of uniform client sampling and a sample-weighted server mean. The local objective is F_k + (mu/2)||w - w^t||^2, realized by adding mu(w - w^t) to the gradient at every local step, with w^t stored as a frozen slot and read back each round; the update becomes var <- var - lr*(grad + mu*(var - vstar)), a restoring force pointing from the drifted parameter back to the anchor, and mu = 0 makes it plain local SGD again with no separate branch. Variable work is just running each device's local solver for however many epochs it can afford before returning its partial solution. That is the whole change — the perturbed-gradient step and the frozen anchor slot dropped into the existing server loop, sample-weighted merge untouched; the full module is in the answer.
