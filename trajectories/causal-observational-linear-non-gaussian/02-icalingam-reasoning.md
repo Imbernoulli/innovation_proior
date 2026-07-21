@@ -1,9 +1,9 @@
-The continuous-optimization rung told me, in numbers, exactly what it costs to ignore non-Gaussianity,
+The continuous-optimization floor told me, in numbers, exactly what it costs to ignore non-Gaussianity,
 and the costs land precisely where the theory said they would. On ER30 it was strong but not clean —
 F1 0.919, but seed 456 collapsed to F1 0.835 with SHD 35 while seeds 42 and 123 sat at SHD 9 and 4, so
-the method is *unstable* on the denser small graph, one bad seed dragging the mean. Before I move on I
-want to read these numbers as mechanism rather than as a verdict, because the shape of the errors is
-what dictates the next engine. Take SF100, the real indictment: F1 0.716, SHD 136, precision 0.897 but
+the method is *unstable* on the denser small graph, one bad seed dragging the mean. The shape of the
+errors is what should dictate the next engine, so read them as mechanism. Take SF100, the real
+indictment: F1 0.716, SHD 136, precision 0.897 but
 recall **0.597**. The scale-free graph here has about `3·(100−3) = 291` true directed edges. Recall
 0.597 means I recovered roughly `0.597·291 ≈ 174` of them and simply *missed* about `117`; precision
 0.897 means of the `174/0.897 ≈ 194` edges I did output, about `20` were spurious. Add the two error
@@ -23,17 +23,17 @@ large fraction of the true ones is a method that, faced with an edge it cannot c
 prunes it rather than risk a reversal — and it cannot confidently orient the many edges incident to a
 high-degree hub because it reads only second-order structure and, under the *uniform* (sub-Gaussian)
 noise on SF100, it has the least higher-order signal to work with even if it wanted it. The diagnosis is
-unambiguous: the ceiling on the previous rung was set by its refusal to use non-Gaussianity, and the
+unambiguous: the ceiling on the previous method was set by its refusal to use non-Gaussianity, and the
 orientation failures on the hard graph are exactly the gap. The fix is not a better optimizer; it is to
 switch the engine to one whose *entire* mechanism is the non-Gaussian fingerprint.
 
-So let me go back to the model and ask what second-order statistics provably cannot do, to be sure
-non-Gaussianity is the right lever and not a hope. The model is recursive linear,
+To be sure non-Gaussianity is the right lever and not a hope, go back to the model and ask what
+second-order statistics provably cannot do. The model is recursive linear,
 `x_i = sum_{k(j) < k(i)} b_{ij} x_j + e_i`, disturbances `e_i` mutually independent, no hidden common
 cause, acyclic. In matrix form `x = Bx + e`, and acyclicity means there is some ordering under which
 `B` is *strictly* lower triangular — a variable cannot be its own parent and depends only on earlier
 ones. I just do not know that ordering; in my data the rows are in arbitrary order, so `B` is permutable
-to strict lower triangularity but not actually triangular as I see it. Now the wall the previous rung
+to strict lower triangularity but not actually triangular as I see it. Now the wall the previous method
 hit, made concrete. Suppose the `e_i` were Gaussian. Then `x` is jointly Gaussian, and a multivariate
 Gaussian is *completely* described by its mean and covariance — nothing else is observable. Take two
 variables. Model one: `x_1 = e_1`, `x_2 = 0.8 x_1 + e_2`, with `var(e_1)=1`, `var(e_2)=0.36`. Then
@@ -69,29 +69,24 @@ and at most one is Gaussian — up to permutation, scaling, and sign of its colu
 ambiguity. In this model every disturbance is non-Gaussian, so the condition holds with room to spare.
 Contrast Gaussian sources, where any orthogonal rotation `A R` produces the same distribution (rotating
 independent Gaussians gives independent Gaussians of the same covariance) — that rotational freedom is
-precisely the `d(d−1)/2`-dimensional slack that left the previous rung unable to orient. Non-Gaussianity
-collapses that slack to a discrete residue, and it is worth counting exactly how much residue is left,
-because that residue is the whole remaining problem. Identifiability "up to permutation, scaling, sign"
+precisely the `d(d−1)/2`-dimensional slack that left the previous method unable to orient. Non-Gaussianity
+collapses that slack to a discrete residue, and that residue is the whole remaining problem.
+Identifiability "up to permutation, scaling, sign"
 means I recover `A`, hence `W = I − B`, hence `B`, once I resolve a permutation (one of `d!` row orders),
 a per-row scaling (`d` continuous factors), and a per-row sign (`2^d` choices). Everything else — the
 rotational continuum that blinded the covariance — is gone. So ICA hands me the raw material and the
 causal content lives entirely in nailing down those `d!` orders, `d` scales, and `d` signs.
 
-It sharpens the picture to see *where inside the ICA fit* the non-Gaussianity actually does its work,
-because that is also where the fragility will live. FastICA does not attack `W` directly; it first
-*whitens* the data — a PCA-style linear map `V` making `cov(Vx) = I` — which uses up exactly the
-second-order structure, the `d(d+1)/2` free numbers in a symmetric covariance. After whitening the
-remaining unmixing is an *orthogonal* matrix `U` (whitened data has identity covariance, and only a
-rotation preserves that), so `W = U V` and the whole search collapses to finding the right rotation `U`
-among the `d(d−1)/2` orthogonal angles. And a rotation of *Gaussian* sources is undetectable — it leaves
-the identity covariance identical and the joint density Gaussian — which is precisely why the covariance
-route could never pin direction: the direction lives entirely in those rotation angles, and only
-non-Gaussianity distinguishes one rotation from another (it is the one thing a rotation of independent
-non-Gaussian sources does *not* preserve). So maximizing non-Gaussianity over `U` is the exact operation
-that recovers what the covariance threw away. That is the good news; the bad news riding along with it is
-that the maximize-non-Gaussianity-over-rotations objective is non-convex over a `d(d−1)/2`-dimensional
-manifold — `4950` angles at `d = 100` — and that is the surface on which a global fit can slip into a
-wrong basin.
+It sharpens the picture to see *where inside the ICA fit* the non-Gaussianity does its work, because that
+is where the fragility will live. FastICA first *whitens* the data — a linear map `V` making
+`cov(Vx) = I`, which uses up exactly the second-order structure — after which the remaining unmixing is
+an *orthogonal* matrix `U`, so `W = U V` and the whole search collapses to finding the right rotation
+among the `d(d−1)/2` orthogonal angles. A rotation of *Gaussian* sources is undetectable, which is
+precisely why the covariance route could never pin direction: the direction lives entirely in those
+rotation angles, and only non-Gaussianity distinguishes one rotation from another. So maximizing
+non-Gaussianity over `U` recovers what the covariance threw away — but that objective is non-convex over
+a `d(d−1)/2`-dimensional manifold, `4950` angles at `d = 100`, and that is the surface on which a global
+fit can slip into a wrong basin.
 
 Take scaling first — it is easiest and it tells me what "correct" means. In the SEM convention each
 variable's own coefficient is one: the equation `x_i = (stuff) + e_i` has coefficient `+1` on `e_i`, so
@@ -120,7 +115,7 @@ support, that diagonal slot is zero for any lower-triangular `M`. Conversely `Q 
 the same relabeling applied to rows and columns, so the diagonal of `P_1 M P_1^T` is `M`'s nonzero
 diagonal merely reordered, all nonzero. So a fully nonzero diagonal ⟺ `P_1 = P_2`, and the zero-free-diagonal
 row permutation is unique and correct. The acyclicity is exactly what makes the permutation decidable —
-the same structure the previous rung had to *guess* at through magnitude thresholding, which is why it
+the same structure the previous method had to *guess* at through magnitude thresholding, which is why it
 reversed and missed hub edges. Here it hands me a clean criterion: find the row order making the diagonal
 nonzero.
 
@@ -147,7 +142,7 @@ repelled from ever parking a near-zero entry on the diagonal, which is exactly t
 build the cost matrix `C_{r,c} = 1/|W_ica[r,c]|`, run `linear_sum_assignment` to get the row-to-diagonal
 matching, and scatter each row into its matched position so the matched entries land on the diagonal.
 This `O(d^3)` step is cheap even at `d = 100` (`10^6` operations), so it scales straight through SF100
-where the previous rung's hub orientation broke down.
+where the previous method's hub orientation broke down.
 
 With the rows correctly ordered, scaling is the easy step set up earlier: take the diagonal `D` of the
 permuted `W`, divide each row by its diagonal entry so the diagonal becomes all ones — now `W_estimate`
@@ -181,47 +176,34 @@ oracle property adaptive lasso is designed for — so spurious weak edges are pr
 good estimates. The first variable in the order has no predecessors and stays exogenous with an all-zero
 row. The result fills the signed coefficients into `B[target, predecessors]`, returned with
 `B[i,j] != 0` meaning `j -> i`. Note this is the same sparse re-estimation the continuous-optimization
-rung approximated with a single hard threshold `ω = 0.3`; doing it as a BIC-selected lasso per node is
+floor approximated with a single hard threshold `ω = 0.3`; doing it as a BIC-selected lasso per node is
 strictly more careful, since it adapts the penalty per predictor instead of applying one global cutoff,
 which is part of why I expect the missing-edge problem to shrink.
 
 One honest caveat I keep in front of me: the ICA step is a non-convex optimization, and it is the *only*
-part of this pipeline that is. FastICA maximizes a non-Gaussianity contrast — a negentropy proxy built
-on a `log cosh` nonlinearity, iterated by a fixed-point update with symmetric decorrelation across the
-components — and that objective has multiple local optima; a run from a poor initialization can settle
-into the wrong one, giving an unreliable `W` and hence a wrong graph. There is no convexity guarantee;
-stability depends on initialization and step behavior. It is worth being clear that the cost is not the
-worry — a `d = 100` unmixing is `d^2 = 10^4` parameters and each fixed-point sweep is `O(n d^2) ≈ 10^7`
-operations, trivial within a 1000-iteration budget — the worry is that those `10^4` parameters are being
-fit from `n·d = 10^5` data scalars, a thin `~10:1` ratio on SF100, over a `100`-dimensional non-convex
-landscape whose `log cosh` contrast is tuned for super-Gaussian sources and is at its *weakest* on the
-sub-Gaussian uniform noise SF100 uses. I fix the random seed (from `SEED`) for reproducibility and give
-FastICA a generous 1000-iteration budget, but I am clear-eyed that this is the soft spot — the part that
-rests on an optimization that can fail — as opposed to the permutation/scaling/order logic downstream,
-which is exact given a good `W`. (The full scaffold fill — FastICA, the assignment, the peel-off order
-search, and the `_BaseLiNGAM` adaptive-lasso re-estimation — is in the answer.)
+part of this pipeline that is. FastICA maximizes a `log cosh` negentropy contrast by a fixed-point
+iteration with symmetric decorrelation, and that objective has multiple local optima; a run from a poor
+initialization can settle into the wrong one, giving an unreliable `W` and hence a wrong graph. The cost
+is not the worry — the fit is trivial within a 1000-iteration budget — the worry is that its `10^4`
+unmixing parameters are estimated from a thin `~10:1` sample ratio on SF100, over a `100`-dimensional
+landscape whose contrast is tuned for super-Gaussian sources and is weakest on that scenario's
+sub-Gaussian uniform noise. I fix the random seed (from `SEED`) and give a generous budget, but I am
+clear-eyed that this is the soft spot, as opposed to the permutation/scaling/order logic downstream,
+which is exact given a good `W`. (The full module is in the answer.)
 
-Now the falsifiable expectations against the previous rung's numbers. The whole point is that ICA-LiNGAM
-*uses* non-Gaussianity, so on the scenarios with strong higher-order signal it should clear the
-continuous program decisively, and on the scenario where it does not it should not improve much. ER30 has
-Laplace noise (heavy-tailed, strongly super-Gaussian — ideal ICA fuel) and only 30 nodes: I expect
-near-perfect recovery, F1 well above 0.95 and SHD in the low single digits, and specifically I expect it
-to fix the seed-456 instability (F1 0.835, SHD 35) that dragged the previous mean to 0.919, because a
-per-seed FastICA fit on heavy-tailed sources should not have the orientation ambiguity that produced
-that seed's `~23` false edges. ER50 has exponential noise (also strongly non-Gaussian, skewed) with 2000
-samples: I expect the SHD-58, F1-0.872 result to improve sharply, F1 well above 0.95 and SHD into the
-low single digits, since the source signal is exactly what ICA separates and the sample size is generous
-— `2500` unmixing parameters from `2000·50 = 10^5` data scalars is a `40:1` ratio, four times healthier
-than SF100's `10:1`, so the global fit has room here that it will not have on the hard graph.
-SF100 is the test of whether this engine helps where the previous one most failed (F1 0.716, recall
-0.597, `~117` missing edges). Two forces fight here. The assignment-plus-acyclic-order machinery should
-orient the hub edges the least-squares program kept pruning, so I expect recall to rise substantially —
-the missing-edge pile should shrink. But the noise on SF100 is *uniform*, sub-Gaussian and light-tailed,
-the weakest case for an ICA contrast tuned to super-Gaussian sources, and `10^4` unmixing parameters
-from a `10:1` sample ratio stress the single global FastICA fit into a `100`-dimensional non-convex
-optimization. So I expect SF100 to improve over the previous rung's F1 but to remain the worst scenario
-by a wide margin, and I expect the global-ICA non-convexity to surface as high seed-to-seed variance —
-one seed landing in a bad basin. If that variance appears, it localizes the fault precisely — not in
-non-Gaussianity, which won ER30 and ER50 outright, but in the single global, non-convex fit I routed it
-through — and the soft spot any stronger method must remove is exactly that reliance on one
-basin-dependent optimization in unmixing space.
+Now the falsifiable expectations against the previous numbers. ICA-LiNGAM *uses* non-Gaussianity, so on
+the scenarios with strong higher-order signal it should clear the continuous program decisively, and
+where it does not it should not improve much. ER30 has Laplace noise (heavy-tailed, strongly
+super-Gaussian — ideal ICA fuel) and only 30 nodes: I expect near-perfect recovery, and specifically that
+it fixes the seed-456 instability (F1 0.835, SHD 35) that dragged the previous mean down, since a FastICA
+fit on heavy-tailed sources should not carry the orientation ambiguity that produced that seed's `~23`
+false edges. ER50 has exponential noise (also strongly non-Gaussian) with 2000 samples — a healthy `40:1`
+sample-to-parameter ratio — so I expect the SHD-58, F1-0.872 result to improve sharply as well. SF100 is
+the test of whether this engine helps where the previous one most failed (F1 0.716, recall 0.597, `~117`
+missing edges). Two forces fight: the assignment-plus-acyclic-order machinery should orient the hub edges
+the least-squares program kept pruning, so I expect recall to rise substantially and the missing-edge
+pile to shrink; but the sub-Gaussian uniform noise and thin `10:1` ratio stress the single global FastICA
+fit, so I expect SF100 to improve yet remain the worst scenario by a wide margin, with the non-convexity
+surfacing as high seed-to-seed variance — one seed landing in a bad basin. If that variance appears it
+localizes the fault: not in non-Gaussianity, which won ER30 and ER50, but in the single global non-convex
+fit I routed it through — and that is the reliance any stronger method must remove.

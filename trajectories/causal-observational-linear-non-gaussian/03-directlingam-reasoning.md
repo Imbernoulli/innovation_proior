@@ -1,19 +1,19 @@
-The ICA rung confirmed the thesis on the easy scenarios and exposed exactly where the ICA *machinery*
+The ICA method confirmed the thesis on the easy scenarios and exposed exactly where the ICA *machinery*
 breaks on the hard one, and the break is legible in the numbers if I decompose them into edges. ER30
 went from the continuous program's unstable F1 0.919 (SHD 16, seed 456 collapsing) to a near-perfect
 F1 0.989, SHD 2.3, recall a clean 1.0 on every seed — the heavy-tailed Laplace noise is ideal ICA fuel
 and the instability vanished. ER50 went from F1 0.872, SHD 58 to F1 0.994, SHD 3.0, again recall 1.0
 across all three seeds. That recall-1.0 on both Erdős–Rényi scenarios is worth pausing on: it means the
 non-Gaussian engine found *every* true edge, which is precisely the missing-edge disease (recall 0.597
-on SF100 last rung) cured on the graphs where the noise cooperates. So on both ER scenarios the switch
+on SF100 for the continuous floor) cured on the graphs where the noise cooperates. So on both ER scenarios the switch
 to a non-Gaussian engine did exactly what I predicted.
 
 But SF100 tells the real story, and it is *not* the story I half-expected. F1 rose only to 0.804 (from
 0.716), SHD stayed catastrophic at 120, and — crucially — the precision/recall asymmetry *flipped*. Let
 me put edges to that flip, because the mechanism is in the arithmetic. SF100 has about `291` true
-directed edges. Last rung the continuous program was high-precision (0.897) and low-recall (0.597):
+directed edges. The continuous floor was high-precision (0.897) and low-recall (0.597):
 recovering `~174` edges, *missing* `~117`, adding only `~20` false ones — its `~136` SHD was almost all
-omission. Now ICA-LiNGAM inverts every one of those piles: recall 0.944 means it finds `~275` of the
+omission. ICA-LiNGAM inverts every one of those piles: recall 0.944 means it finds `~275` of the
 `291` true edges, missing only `~16`, but precision 0.702 means it emitted about `275/0.702 ≈ 392`
 edges, so roughly `117` of them are *false additions*. The SHD barely moved (`136 → 120`) but its
 composition turned inside out: `~117` omissions became `~16`, while `~20` false edges became `~117`. The
@@ -125,9 +125,9 @@ is comparing the total non-Gaussianity of the regressor-plus-residual pair in ea
 have to estimate a 2-D entropy.
 
 Make that explicit, because it is what licenses replacing kernel MI with one-dimensional entropies. The
-linear map `(x,y) → (x,d)` with `d = y − ax` is `T = [[1, 0], [−a, 1]]`, whose determinant is `1·1 −
-0·(−a) = 1`. Differential entropy transforms as `H(Tu) = H(u) + log|det T|`, and `log|det T| = log 1 = 0`,
-so `H(x,d) = H(x,y)` exactly; the same map the other way gives `H(y,e) = H(x,y)`. Therefore the joint
+linear map `(x,y) → (x,d)` with `d = y − ax` is `T = [[1, 0], [−a, 1]]`, unit determinant. Differential
+entropy transforms as `H(Tu) = H(u) + log|det T|`, so `log|det T| = 0` and `H(x,d) = H(x,y)` exactly; the
+same map the other way gives `H(y,e) = H(x,y)`. Therefore the joint
 entropies are identical in both directions and cancel:
 `I(x,d) − I(y,e) = [H(x) + H(d) − H(x,d)] − [H(y) + H(e) − H(y,e)] = H(x) + H(d) − H(y) − H(e)`. Folding
 in standardized residuals (both residual variances are `1 − ρ²`, so their extra log-scale terms are the
@@ -146,12 +146,7 @@ heavy-tailed sources) and `γ` is `E{log cosh}` under a standard Gaussian, so it
 the second uses the odd `u exp(−u²/2)` to capture asymmetry/skew. Both are subtracted because a more
 non-Gaussian variable has lower entropy than the Gaussian of the same variance, and the constants are the
 fixed maximum-entropy weights making the approximation second-order accurate around the Gaussian — given
-numbers, not things to tune. Let me at least sanity-check that `γ` is in the right ballpark rather than
-swallow it: `log cosh(u)` is bounded between `0` and `|u|`, so `E{log cosh Z}` for a standard normal lies
-between `0` and `E|Z| = √(2/π) ≈ 0.798`; and near zero `log cosh(u) ≈ u²/2`, whose Gaussian expectation
-is `0.5`, so the true value sits somewhere below `0.5` and well inside `(0, 0.798)` — `0.37457` is
-comfortably consistent, which is all I need to trust the tabulated constant. The approximation is valid
-only for *standardized* `u`, so I standardize every variable and divide every residual by its own
+numbers, not things to tune. The approximation is valid only for *standardized* `u`, so I standardize every variable and divide every residual by its own
 standard deviation before feeding it in. Why fix the contrast functions rather than estimate each
 variable's log-pdf? Because the recovered direction is insensitive to the exact log-pdf as long as the
 shape is roughly right, and per-variable density fitting is many parameters and unreliable at small
@@ -176,44 +171,33 @@ accumulated counter-evidence (store `−M(i)` and argmax). A genuinely exogenous
 wins. This is the pairwise specialization of the residual-independence statistic, computed from cheap 1-D
 entropies, no kernel, no bandwidth, no 2-D density.
 
-The cost and convergence story is the whole reason I left ICA behind, so I want the arithmetic explicit.
-There is no iterative search in parameter space anywhere: when `q` variables remain, a round scores all
-`q(q−1)` ordered pairs among them — each pair a couple of `O(n)` regressions and four `O(n)` entropy
-evaluations — then after the source is chosen it does the `q − 1` residual updates, also `O(n)` each,
-that peel that source out. A round therefore costs `O(q² n)`, and summing `q` from `d` down to `1` gives
-`n · Σ q² ≈ n d³/3`; at `d = 100`, `n = 1000` that is about `10^3 · 10^6/3 ≈ 3·10^8` element-operations —
-heavier per run than a single ICA sweep (`~10^7`) but comparable to ICA's full 1000-sweep budget
-(`~10^{10}` worst case), and I am buying something concrete with it: a *deterministic* answer with no
-initialization, no step size, and no basin to fall into. With a true independence score the exogenous
-variable is identified each round, the residual system stays in the model class, and the order is
-recovered; the fixed 1-D entropy approximation keeps that finite-step structure while replacing the
-expensive kernel score with a cheaper likelihood-ratio proxy. Once the order is in hand, the connection
-strengths are a triangular regression of each variable on its predecessors — and the edit hands the order
-to the same `causal-learn` `_BaseLiNGAM._estimate_adjacency_matrix` the previous rung used: adaptive
+The cost is the whole reason I left ICA behind, and it is favorable. There is no iterative search in
+parameter space anywhere: with `q` variables left a round scores its `q(q−1)` ordered pairs (each a
+couple of `O(n)` regressions and entropy evaluations) then does `q − 1` `O(n)` residual peels, so the
+whole run is `O(n d³)` — heavier than a single ICA sweep but comparable to ICA's full budget, and I am
+buying a *deterministic* answer with no initialization, no step size, and no basin to fall into. With a
+true independence score the exogenous variable is identified each round, the residual system stays in the
+model class, and the order is recovered; the fixed 1-D entropy approximation keeps that finite-step
+structure while replacing the expensive kernel score with a cheaper likelihood-ratio proxy. Once the order is in hand, the connection
+strengths are a triangular regression of each variable on its predecessors — and I hand the order
+to the same `causal-learn` `_BaseLiNGAM._estimate_adjacency_matrix` the previous method used: adaptive
 lasso per node (OLS pilot, `|coef|^γ` weights with `γ = 1`, BIC-selected lasso, unweight), consistent
 selection driving absent edges to exactly zero, returned with `B[i,j] != 0` meaning `j -> i`. So the
-*only* thing that changed from the previous rung is the engine that produces the causal order: the global
-non-convex ICA fit is replaced by a deterministic, scale-invariant, pairwise-entropy peeling. (The full
-scaffold fill — `_residual`, `_entropy`, `_diff_mutual_info`, the `M(i)` source search, the peeling loop,
-and the `_BaseLiNGAM` adaptive-lasso re-estimation — is in the answer.)
+*only* thing that changed is the engine that produces the causal order: the global non-convex ICA fit is
+replaced by a deterministic, scale-invariant, pairwise-entropy peeling. (The full module is in the answer.)
 
-Now the falsifiable expectations against the previous rung's numbers. On ER30 and ER50 the ICA route was
-already near-perfect (F1 0.989/0.994, SHD 2.3/3.0, recall 1.0), so the direct method should match —
-*not* dramatically beat — those, since both use the same non-Gaussian identifiability and the same
-adaptive-lasso edge step; I expect F1 around 0.99 and SHD in the low single digits on both, perhaps a
-hair worse on one and a hair better on another, essentially a tie on the easy scenarios where ICA did
-not struggle. The decisive test is SF100, where the ICA machinery failed: F1 0.804, SHD 120, precision
-0.702, and the seed-123 SHD-159 blowup with its `~157` false edges. If my diagnosis is right — that the
-SF100 failure was the global non-convex ICA optimization under sub-Gaussian uniform noise, not the
-non-Gaussian principle itself — then replacing that optimization with a deterministic pairwise peeling
-should *collapse* the SHD and restore precision, because a correct order gives the adaptive lasso real
-sparse structure to find instead of forcing it to invent `~117` false edges into a scrambled ordering. I
-expect SF100 SHD to drop from `~120` into the single digits, F1 to jump from 0.804 to above 0.98,
-precision to recover from 0.702 to near 0.97 (i.e. the `~117` false additions to nearly vanish), and the
-seed-to-seed variance to shrink hard — no more seed-123-style 159 outlier — because there is no longer any
-non-convex optimization to land in a bad basin, and no scale-dependent permutation to flip. If instead
-SF100 stays poor, my diagnosis is wrong and the difficulty is intrinsic to the sub-Gaussian noise — but
-the scale-invariance and the absence of a global optimization make me expect the former, and the feedback
-table will settle it. That gap on SF100 — three rungs failing it for three different reasons (missed hub
-edges, then ICA-scrambled false edges) finally closing — is the result this rung must deliver to earn the
-top of the ladder.
+Now the falsifiable expectations against the previous numbers. On ER30 and ER50 the ICA route was
+already near-perfect (F1 0.989/0.994, SHD 2.3/3.0, recall 1.0), and the direct method uses the same
+non-Gaussian identifiability and the same adaptive-lasso edge step, so I expect it to match rather than
+beat those — essentially a tie where ICA did not struggle. The decisive test is SF100, where the ICA
+machinery failed: F1 0.804, SHD 120, precision 0.702, and the seed-123 SHD-159 blowup with its `~157`
+false edges. If my diagnosis is right — that the failure was the global non-convex ICA optimization under
+sub-Gaussian uniform noise, not the non-Gaussian principle itself — then replacing that optimization with
+a deterministic scale-invariant peeling should hand the adaptive lasso a correct order with real sparse
+structure instead of forcing it to invent `~117` false edges into a scrambled ordering. So SF100 should
+collapse into roughly the same quality band the ER scenarios already reach: precision recovering out of
+the 0.70s, SHD dropping sharply, and the seed-to-seed variance shrinking with no non-convex basin left to
+fall into. It may sit a touch below the ER scenarios since SF100 is genuinely the hardest of the three.
+If instead SF100 stays poor, my diagnosis is wrong and the difficulty is intrinsic to the sub-Gaussian
+noise — that is the clean falsifier. That gap on SF100 — failed three ways, missed hub edges then
+ICA-scrambled false edges, finally closing — is the result this last method must deliver.

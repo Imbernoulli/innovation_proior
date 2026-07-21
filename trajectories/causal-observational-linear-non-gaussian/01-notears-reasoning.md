@@ -10,44 +10,34 @@ least-squares score `ℓ(W) = (1/2n)‖X − XW‖_F^2` is smooth and convex in 
 cover, because the least-squares minimizer is known to recover a true DAG with high probability even in
 high dimensions, and the consistency carries over to non-Gaussian noise too, with no faithfulness
 assumption. The whole game, then, is the single requirement that the graph `W` induces be **acyclic**.
-Everything hard about this rung lives inside that one word, and everything I write below is a way to get
-a black-box solver to respect it.
+Everything hard here lives inside that one word.
 
-I want to be honest about why I am starting *here*, with the method that ignores the one thing this
-benchmark is built around. The data are non-Gaussian by construction — Laplace on ER30, exponential on
-ER50, uniform on SF100 — and the whole point of the task, as the prior art makes clear, is that
-non-Gaussianity buys full edge orientation that the covariance alone cannot give. A least-squares score
-reads only second-order structure; it does not exploit non-Gaussianity at all. So this is deliberately
-the rung that does *not* use the task's defining resource. It is the floor: a strong, general-purpose
-structure learner from a *different* method family — continuous optimization rather than discrete search
-or independence-testing — so that whatever the LiNGAM rungs add on top of it is measured against a real,
-competent baseline rather than against nothing. If a method that throws away non-Gaussianity already
-does well on the easier scenarios and stumbles on the hard one, that stumble is precisely the gap the
-next rung must fill, and I will want it drawn cleanly.
+Why start *here*, with the method that ignores the one thing this benchmark is built around? The data
+are non-Gaussian by construction — Laplace on ER30, exponential on ER50, uniform on SF100 — and the whole
+point of the task, as the prior art makes clear, is that non-Gaussianity buys full edge orientation that
+the covariance alone cannot give. A least-squares score reads only second-order structure; it does not
+exploit non-Gaussianity at all. So I deliberately start with the method that does *not* use the task's
+defining resource. It is the floor: a strong, general-purpose structure learner from a *different* method
+family — continuous optimization rather than discrete search or independence-testing — so that whatever a
+non-Gaussian method later adds on top of it is measured against a real, competent baseline rather than
+against nothing. If a method that throws away non-Gaussianity already does well on the easier scenarios
+and stumbles on the hard one, that stumble is precisely the gap the next attempt must fill.
 
-Now the acyclicity obstacle, because it is the entire substance of this rung. "Acyclic" is a property of
+Now the acyclicity obstacle, because it is the entire substance of the problem. "Acyclic" is a property of
 the *support pattern* of `W` — a combinatorial property of a discrete object — and the number of DAGs
 on `d` nodes grows superexponentially in `d`. I cannot enumerate it; optimizing a score over it is
 NP-hard. Every classical method is some clever way of moving inside the discrete set of acyclic graphs
-without leaving it, and it is worth pricing each one against these specific graphs before I discard the
-family, because the prices are what push me off it. Order-based search fixes a topological ordering and
-searches the space of orderings — but that space has size `d!`, and `30! ≈ 2.6·10^32`, `50! ≈ 3·10^64`,
-`100! ≈ 9·10^157`. Even with a clever score I cannot walk a meaningful fraction of `10^157` orderings
-for SF100; heuristics prune, but then I have no optimality and a landscape riddled with local traps.
-Exact parent-set enumeration is worse in a different way: for each node I would score subsets of the
-other `d−1` as candidate parent sets, `2^{d−1}` of them unbounded — `2^{29} ≈ 5·10^8` per node on ER30,
-`2^{49} ≈ 6·10^14` on ER50, `2^{99} ≈ 6·10^29` on SF100 — and the only way to tame that is to cap the
-in-degree, an assumption the dense Erdős–Rényi graphs break (ER30 at `p=0.25` puts the average in-degree
-near `0.25·29 ≈ 7` with the late nodes higher, ER50 at `p=0.2` near `0.2·49 ≈ 10`). Greedy equivalence
-search sidesteps enumeration by adding or deleting one edge at a time and checking, after every single
-move, that no cycle was created — an `O(d+e)` acyclicity test inside a loop over `~d^2` candidate moves
-(`900` on ER30, `10^4` on SF100), repeated for as many steps as there are edges (`~109`, `~245`, `~291`
-respectively). That is tractable, but greedy edge-at-a-time search is fast and reliable only when the
-true graph is sparse in the sense of few parents per node, and it inherits a second limitation that
-matters more: like PC's conditional-independence route, it scores on the covariance and so recovers only
-the Markov equivalence class — skeleton plus collider-forced orientations. None of these is "write down
-an objective and call a solver," and all of them treat acyclicity as something to enforce operationally
-by staying inside a legal discrete region, inheriting that region's curse: bad scaling, or a
+without leaving it, and each one's price is what pushes me off the family. Order-based search fixes a
+topological ordering and searches the `d!` orderings — `30! ≈ 2.6·10^32`, `50! ≈ 3·10^64`,
+`100! ≈ 9·10^157`; heuristics prune, but then I have no optimality and a landscape riddled with local
+traps. Exact parent-set enumeration scores `2^{d−1}` candidate parent sets per node, and the only way to
+tame that is to cap the in-degree — an assumption the dense Erdős–Rényi graphs break, since ER30 at
+`p=0.25` puts the average in-degree near `7` and ER50 at `p=0.2` near `10`, with the late nodes higher.
+Greedy equivalence search adds or deletes one edge at a time with an acyclicity check after each move —
+tractable, but reliable only when each node has few parents, and it inherits a limitation that matters
+more: like PC's conditional-independence route, it scores on the covariance and so recovers only the
+Markov equivalence class, skeleton plus collider-forced orientations. None of these is "write down an
+objective and call a solver," and all inherit their discrete region's curse: bad scaling, or a
 bounded-in-degree assumption these graphs violate.
 
 That phrase — "write down an objective and call a solver" — is the lever, because two neighboring
@@ -83,7 +73,7 @@ traces, and it even has a closed form: `Σ_{k≥0} B^k = (I − B)^{-1}` (the Ne
 `tr((I − B)^{-1}) = d` iff DAG — but the Neumann series only converges when the spectral radius
 `r(B) < 1`, and along the optimization path a non-DAG iterate can easily push `r(B)` past 1, at which
 point `I − B` approaches singular and the "closed form" is garbage or an outright division by zero.
-Wall. The finite series `Σ_{k=1}^d tr(B^k)` sidesteps convergence — a DAG's `B` is nilpotent with
+That kills the closed form. The finite series `Σ_{k=1}^d tr(B^k)` sidesteps convergence — a DAG's `B` is nilpotent with
 `B^d = 0` so the sum truncates exactly — but now look at how the terms scale. Successive terms grow by
 roughly the factor `r(B)` each step (the ratio `tr(B^{k+1})/tr(B^k)` tracks the spectral radius), so
 this is a geometric series with no built-in damping: if `r(B) > 1` the terms *increase* all the way to
@@ -115,8 +105,7 @@ acyclic. Define `h(W) = tr(e^{W∘W}) − d`. It is smooth, nonnegative, zero if
 the factorial-reweighted total of weighted closed walks — automatically cyclicity-quantifying, which
 was desideratum (b), the one a bare indicator cannot give.
 
-The gradient I need for the solver falls out of the chain rule, and I want to check it rather than quote
-it. Write `M = W ∘ W`. The matrix-calculus identity is `∂ tr(e^M)/∂M = (e^M)^T` (it comes from
+The gradient I need for the solver falls out of the chain rule. Write `M = W ∘ W`. The matrix-calculus identity is `∂ tr(e^M)/∂M = (e^M)^T` (it comes from
 differentiating `tr(M^k)` term by term: `d tr(M^k) = k tr(M^{k-1} dM)`, so the sensitivity to `M` is
 `(e^M)^T`). Then `M_{kl} = W_{kl}^2` gives `∂M_{kl}/∂W_{ij} = 2W_{ij}` when `(k,l) = (i,j)` and zero
 otherwise, so the double sum in the chain rule collapses to a single term:
@@ -126,15 +115,11 @@ gradient costs essentially nothing beyond the value. The transpose is not cosmet
 symmetric, and `(e^M)^T ≠ e^M` in general; dropping it would misattribute the sensitivity of the closed
 walks to the wrong edges.
 
-Let me actually put a number on `h` so I trust it, not just assert it. Take the path `1→2→3` as a binary
-`B`: it is nilpotent, `B^3 = 0`, every `tr(B^k) = 0`, so `tr(e^B) = 3` and `h = 0` — a DAG scores zero,
-as it must. Now close the path into a 3-cycle by adding `3→1`. Now `B` is the cyclic permutation matrix,
-`B^3 = I`, and `tr(B^k) = 3` whenever `3 | k` and `0` otherwise. So
-`tr(e^B) = 3·(1/0! + 1/3! + 1/6! + 1/9! + …) = 3·(1 + 0.16667 + 0.001389 + 0.0000028 + …) ≈ 3·1.16806 =
-3.5042`, giving `h = tr(e^B) − 3 ≈ 0.504 > 0`. A single 3-cycle registers as `h ≈ 0.5`, and a longer
-cycle of length `L` would register as `≈ L/L! = 1/(L−1)!` per node summed — smaller, correctly reflecting
-that a `1000`-node cycle is "less locally cyclic" per the factorial weighting but still strictly
-positive. The function does exactly what it advertises on a case I can compute by hand.
+The measure grades cyclicity concretely: the path `1→2→3` has nilpotent `B`, every `tr(B^k) = 0`, so
+`h = 0`; close it into a 3-cycle by adding `3→1` and `B` becomes the cyclic permutation with `tr(B^k) = 3`
+whenever `3 | k`, giving `tr(e^B) = 3(1 + 1/3! + 1/6! + …) ≈ 3.50`, so `h ≈ 0.5 > 0`. A longer cycle of
+length `L` registers as `≈ 1/(L−1)!` — the factorial weighting reads a long cycle as less locally cyclic,
+but still strictly positive.
 
 So the program exists in full: minimize `ℓ(W)` subject to `h(W) = tr(e^{W∘W}) − d = 0` — a smooth score,
 a smooth scalar equality constraint, real-matrix variables, the entire matrix updated at once (global,
@@ -166,15 +151,10 @@ the linearized sparsity pressure pushing both parts toward zero. One more bound 
 to exactly zero — `(0,0)` bounds on the diagonal coordinates — forbidding self-loops. And I center the
 columns of `X` first so the intercept does not leak into edge weights.
 
-It is worth pricing this so I know it will actually run at `d = 100`. The doubled variable vector has
-length `2d^2`: that is `1800` on ER30, `5000` on ER50, `20000` on SF100 — large for L-BFGS-B but well
-within its comfort zone, since limited-memory BFGS stores only a handful of vectors of that length. Each
-function evaluation is one `expm` (`O(d^3)`: `2.7·10^4`, `1.25·10^5`, `10^6` flops) plus the loss
-gradient `X^T(X − XW)` (`O(n d^2)`: on SF100 that is `1000·10^4 = 10^7`, which actually dominates the
-`expm`). With the outer loop capped at 100 iterations and each inner L-BFGS-B solve taking on the order
-of a hundred evaluations, the total `expm` count is in the low thousands — heavy but entirely feasible,
-and the reason I am willing to pay `O(d^3)` per step is that the matrix exponential is the price of
-enforcing acyclicity globally instead of edge-by-edge.
+The doubled variable vector has length `2d^2` — `20000` at `d = 100`, which limited-memory BFGS handles
+since it stores only a handful of vectors — and each evaluation costs one `O(d^3)` `expm` plus the
+`O(nd^2)` loss gradient. Heavy but feasible, and paying `O(d^3)` per step is the price of enforcing
+acyclicity globally instead of edge-by-edge.
 
 After the outer loop converges I have `W̃` with `h(W̃)` at machine tolerance, not exactly zero —
 *almost* a DAG, with a handful of tiny spurious weights left over from a near-feasible rather than
@@ -191,44 +171,26 @@ are the reference defaults: `ρ=1, α=0, h=∞` to start; the outer iterations c
 at `10^{16}`; feasibility declared at `h ≤ 10^{-8}`; the progress factor `0.25` and the `ρ` multiplier
 `×10`; and `λ = 0.1` as the sparsity level, which sits well below the loss scale (the per-sample
 normalized `ℓ` is `O(1)` while `λ‖W‖_1` with `~few` edges of magnitude `~1` per column is also `O(1)`,
-so the two terms are comparable rather than one swamping the other). One harness detail is load-bearing
-and easy to get catastrophically wrong: the reference implementation reads `W[i,j] ≠ 0` as `i → j`, but
-this task's convention is `B[i,j] ≠ 0 ⇒ j → i`, the exact opposite, so the final adjacency must be
-**transposed** before return. That single transpose is the whole difference between a correct graph and
-a fully reversed one; since the metric scores direction and requires both skeleton and direction to
-match for a true positive, getting the transpose wrong would zero the score on every edge. (The full
-scaffold module — the augmented-Lagrangian loop and the acyclicity function `h` filling the one open
-slot — is in the answer.)
+so the two terms are comparable rather than one swamping the other). One convention detail is
+load-bearing and easy to get catastrophically wrong: the `W` I have been fitting reads `W[i,j] ≠ 0` as
+`i → j` (column `j` holds the weights into node `j`), but this task's convention is `B[i,j] ≠ 0 ⇒ j → i`,
+the exact opposite, so the final adjacency must be **transposed** before return. Since the metric scores
+direction and requires both skeleton and direction to match for a true positive, getting the transpose
+wrong would zero the score on every edge. (The full module is in the answer.)
 
-Now reason about what this floor should do, because that is the entire point of running it. The
-least-squares score is direction-blind in the sense that matters: it does not read the non-Gaussian
-fingerprint that orients edges, so it relies on the magnitude/sparsity pattern and the acyclicity
-constraint to pin orientation, which is exactly the information a Markov-equivalence-class method has and
-no more. On the smaller, less dense ER30 (30 nodes, `p=0.25`, 1000 samples) the signal-to-noise per edge
-is high and the sample-to-parameter ratio is comfortable — each node's incoming weights are estimated
-from `1000` samples against at most `~7` real parents, and `1000/29 ≈ 34` samples per candidate
-coefficient — so the continuous program should fit it well: I expect strong F1 and small SHD, with the
-main risk being an unlucky seed where the dense small graph confuses a few orientations. ER50 doubles
-the nodes but also doubles the samples to 2000, so the per-parameter ratio actually *improves* slightly
-(`2000/49 ≈ 41`); against that, `d = 50` makes each matrix exponential and the `5000`-variable L-BFGS-B
-solve much heavier and the nonconvex landscape harder to descend cleanly, so I expect a real but milder
-drop than the raw node count would suggest — the extra samples and the harder optimization roughly
-fighting to a draw. SF100 is the one I am worried about, and the arithmetic says why. It has 100 nodes
-but only 1000 samples, a sample-to-parameter ratio of `1000/99 ≈ 10`, the thinnest of the three; it is
-hub-heavy scale-free, so a hub carries many incident edges whose orientation all has to be pinned from
-second-order structure alone; and its noise is *uniform*, which is light-tailed and *sub*-Gaussian, so
-even a method that wanted higher-order signal would find the least of it here. The hub edges are where a
-covariance-only fit is weakest: faced with many ambiguous edges incident to a hub and a sparsity penalty
-that punishes keeping them, the threshold-and-acyclicity rounding will tend to *prune* the ambiguous
-ones rather than risk a reversal that the acyclicity constraint would then have to unwind elsewhere. So
-my mechanistic expectation is that SF100 is where this rung is weakest — lower F1, much larger SHD — and
-that the error will show as an asymmetry in which recall suffers more than precision, because pruning
-ambiguous hub edges drops true positives (recall) while keeping the surviving edges mostly correct
-(precision). I hold that direction loosely — the acyclicity rounding could equally force a batch of
-reversals that would instead dent precision — so the honest statement is: I expect SF100 to be worst and
-I expect a precision/recall split; the feedback table will tell me which way it leans, and that lean is
-diagnostic. Whichever way it goes, the diagnosis is already pointed at the next rung: this method's
-ceiling is set by its refusal to use non-Gaussianity, so the orientation errors on the hard graph are
-the gap, and the fix is to stop reading only
-second-order structure and switch the same `run_causal_discovery` slot to an engine built directly on
-the non-Gaussian signal this least-squares score throws away.
+What should this floor do? The least-squares score does not read the non-Gaussian fingerprint that
+orients edges, so it pins orientation from the magnitude/sparsity pattern and the acyclicity constraint
+alone — exactly the information a Markov-equivalence-class method has and no more. On ER30 (30 nodes,
+1000 samples, `1000/29 ≈ 34` samples per candidate coefficient) the signal is high and the ratio
+comfortable, so I expect strong F1 and small SHD. ER50 doubles the nodes but also the samples, so the
+ratio actually *improves* (`2000/49 ≈ 41`), while the larger solve and harder nonconvex landscape push
+back — extra samples and harder optimization fighting to a draw, a mild drop at most. SF100 is the worry:
+100 nodes on only 1000 samples (`1000/99 ≈ 10`, the thinnest ratio), hub-heavy so a hub's many incident
+edges all need orienting from second-order structure alone, and *uniform* noise that is light-tailed and
+sub-Gaussian — the least higher-order signal of the three. Faced with many ambiguous hub edges and a
+sparsity penalty against keeping them, the threshold-and-acyclicity rounding should prune rather than risk
+a reversal, so I expect SF100 worst, with recall suffering more than precision (though the acyclicity
+rounding could equally force reversals that dent precision instead). Either way the next move is forced:
+this method's ceiling is set by its refusal to use non-Gaussianity, so the orientation errors on the hard
+graph are the gap, and the fix is to build the next engine directly on the non-Gaussian signal this score
+throws away.
