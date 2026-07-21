@@ -35,8 +35,8 @@ I want to know how the trouble depends on sample count, because that will tell m
 as `r_i = θ + ε_i` with `ε_i ∼ N(0,σ²)` i.i.d., `θ` the true prompt baseline. The std-normalized
 advantage is `A_i = (ε_i − ε̄)/D` with `D = sqrt((1/N)Σ_j(ε_j − ε̄)²)`. Condition on `ε_i` and ask
 whether the denominator behaves like a constant. Computing the conditional second moment of `D²` gives
-`E[D²|ε_i] = ((N−1)²/N²)σ² + ((N−1)/N²)ε_i²` — call it `α + βε_i²` with `β = (N−1)/N² > 0`. Let me not
-just assert that; the pieces are worth seeing, because the whole fix hinges on the `N`-dependence.
+`E[D²|ε_i] = ((N−1)²/N²)σ² + ((N−1)/N²)ε_i²` — call it `α + βε_i²` with `β = (N−1)/N² > 0`. The pieces,
+since the whole fix hinges on the `N`-dependence:
 `Σ_j(ε_j−ε̄)² = Σ_j ε_j² − Nε̄²`. Conditioning on `ε_i` and using `E[ε_j]=0`, `E[Σε_j²|ε_i] = ε_i² +
 (N−1)σ²`, and `E[Nε̄²|ε_i] = (N−1)σ²/N + ε_i²/N`, so the difference is `(1−1/N)[ε_i² + (N−1)σ²] =
 ((N−1)/N)[ε_i² + (N−1)σ²]`, and dividing by `N` gives exactly `α + βε_i²`. The reading is that the
@@ -50,13 +50,10 @@ groups.) Now watch the `N` dependence: as `N → ∞`, `β = (N−1)/N² → 0` 
 the individual sample vanishes and `D` converges to the true `σ`. The disease is *small N*. The cure is
 more samples in whatever pool I standardize over.
 
-I cannot grow the per-prompt group, so before I reach for a bigger pool let me make sure I have the
-right lever and not a patch. One option is to floor the group std so the near-unanimous blowups are
-capped — but that treats only the brittleness and leaves the per-prompt scope, so the difficulty bias
-survives; step 2 already told me deletion beat that. Another is to keep a running scale across steps, an
-EMA of the advantage std — a large effective pool, but it pulls in statistics from a policy that has
-already moved, and with the policy shifting every one of 100 steps that staleness is a real cost for no
-clear gain. What other pool do I have *right now*, in-distribution? The whole batch. In one optimization
+I cannot grow the per-prompt group, so before reaching for a bigger pool: flooring the group std leaves
+the per-prompt scope and its difficulty bias intact (step 2 already beat that), and a running EMA scale
+across steps pulls in statistics from a policy that has already moved — real staleness at 100 steps for
+no clear gain. What other pool do I have *right now*, in-distribution? The whole batch. In one optimization
 step the loop gives me 128 prompts × 16 = a global batch of ~2000 responses across many prompts. If I
 standardize over *that* pool instead of over each 16-sample group, the mean and std I divide by are
 computed from `N_global ≈ 2000`, not `N_group = 16`, and they are computed from the *current* policy's
@@ -104,45 +101,31 @@ dangerous small-sample std is simply gone — I get scale normalization back *wi
 bias, because the scale is no longer per-prompt. That is the precise answer to the question this step
 opened with.
 
-I have to confront a tension I created at step 2, or I am fooling myself. Back then I argued that
-dividing every advantage by one global number "folds into the learning rate and changes nothing about
-the relative weighting of examples." But that is exactly what a global whiten does — divide the whole
-batch by one std. So does it do anything, or am I about to add a no-op? Work it through honestly.
-*Within a single step*, yes, dividing all advantages by the scalar `std_batch` is a uniform rescale;
-the ratio between prompt A's advantages and prompt B's is untouched. And that is not a bug — it is the
-safety property I need. dr_grpo restored the *correct* relative weighting (mixed prompts dominate,
-unanimous ones vanish), and because a uniform divide preserves every ratio, the global whiten keeps
-that weighting exactly intact; it cannot re-introduce the difficulty bias the way a per-prompt divide
-did. What it changes is not within-step relative weighting but *across-step absolute scale*. Over 100
-steps the raw magnitude of `A'` drifts — early on the policy is bad and reward spreads are wide, later
-they narrow — so with a fixed learning rate and a fixed clip, an un-whitened advantage delivers a
-different effective step size at step 5 than at step 95. Per-step whitening pins the batch to unit
-variance every step, decoupling the effective step size from that drift so the one fixed LR and the one
-fixed clip stay well-calibrated throughout the run. So the step-2 statement was right and this is not a
-contradiction: the global divide *is* a per-step LR rescale, and the point is to make that rescale a
-*constant* across steps instead of a drifting one. "Cross-prompt scale" is really "one stable overall
-scale that preserves the good relative weighting" — which is exactly what the per-group std could never
-be.
+I have to confront a tension I created at step 2: I argued there that dividing every advantage by one
+global number folds into the learning rate and changes no relative weighting — which is exactly what a
+global whiten does. So is it a no-op? *Within a single step*, yes, dividing by the scalar `std_batch` is
+a uniform rescale that leaves every prompt-to-prompt ratio untouched — but that is the safety property I
+need, not a bug: it keeps dr_grpo's correct relative weighting (mixed prompts dominate, unanimous ones
+vanish) exactly intact and cannot re-introduce the difficulty bias a per-prompt divide did. What it
+changes is *across-step* scale. Over 100 steps the raw magnitude of `A'` drifts — wide reward spreads
+early, narrow late — so with a fixed LR and clip an un-whitened advantage delivers a different effective
+step size at step 5 than at step 95. Per-step whitening pins the batch to unit variance every step, so
+the one fixed LR and clip stay calibrated throughout. The step-2 statement was right: the global divide
+*is* a per-step LR rescale, and the point is to make that rescale constant across steps instead of
+drifting.
 
-The place this should matter most is the tail of the run, and it is worth spelling out because it is a
-mechanism dr_grpo cannot have. As the policy strengthens over 100 steps, more groups go near-unanimous,
-so the raw centered advantages `A'` shrink toward zero — under dr_grpo the update magnitude fades with
-them and late-training learning stalls just as the fixed LR expects a normally-scaled signal. Batch
-whitening renormalizes the surviving spread back to unit variance every step, so the still-informative
-mixed prompts keep delivering a full-scale gradient even when the batch-average spread has collapsed.
-That is the concrete thing the across-step scale stabilizer buys over dr_grpo, and it says the two
-estimators should diverge more the longer training runs — at 100 steps the gap may be modest, but it is
-in the direction of the whitened estimator sustaining learning where the un-whitened one tapers.
+This should matter most at the tail of the run. As the policy strengthens over 100 steps more groups go
+near-unanimous, so the centered advantages `A'` shrink toward zero; under dr_grpo the update magnitude
+fades with them and late-training learning stalls, while batch whitening renormalizes the surviving
+spread back to unit variance every step, so the still-informative mixed prompts keep delivering a
+full-scale gradient. That says the two estimators should diverge more the longer training runs — at 100
+steps the gap may be modest, but in the direction of the whitened estimator sustaining learning where
+the un-whitened one tapers.
 
-That reframing also gives me a cheap correctness check on the two-step map: whitening is an affine
-transform `x ↦ (x − m)/s` with `s > 0`, hence monotone, so within any prompt a correct response's
-`A' = +0.5` stays strictly above a wrong response's `−0.5` after the whiten — the sign structure the
-group mean established is preserved, not scrambled. And I can pin down what the whiten's *centering*
-step actually removes: the per-sequence advantages sum to zero within each group by construction, so
-their batch mean over sequences is exactly zero; the only thing `masked_whiten` subtracts is the small
-*length-weighted* offset (the `+0.42`-style tilt from correct answers running longer). So the global
-mean-subtraction is a minor length de-biasing and the real work of step two is the division — the
-across-step scale stabilizer I just argued for.
+Whitening is a monotone affine map (`s > 0`), so within a prompt a correct response's `A' = +0.5` stays
+above a wrong one's `−0.5` — the sign structure the group mean established is preserved. Its centering
+step removes only a small length-weighted offset (the per-sequence advantages already sum to zero within
+each group), so the real work of step two is the division, the across-step scale stabilizer.
 
 Edge case before I trust it: a prompt with only one sample in the batch (group size 1). There is no
 "other responses" to form a mean, and subtracting the sample from itself would zero its advantage,
@@ -172,47 +155,32 @@ a numerical guard under a *batch* variance, not a load-bearing scale — with ~2
 tokens the batch std is nowhere near zero, so unlike grpo's `ε` this floor never actually shapes an
 advantage.
 
-Let me dimension-check the code path so the masking is right. `token_level_rewards` is `(bs,
-response_length)` with `bs = 2048`; `scores = token_level_rewards.sum(-1)` is `(2048,)`. After
-subtracting the per-prompt mean, `scores.unsqueeze(-1).tile([1, response_length])` re-expands to
-`(2048, response_length)` with `A'_i` copied across the row, and `* response_mask` zeros the padding.
-`masked_whiten(scores, response_mask)` then computes a single scalar mean and scalar std over the
-masked (valid) entries — one number each, pooled over ~2000 responses' tokens — and returns `(scores −
-mean)/(std + ε)`, so the output has batch-token mean 0 and unit variance; the trailing `* response_mask`
-re-zeros padding the whiten's affine shift may have disturbed. Returns equal advantages, no bootstrap.
-The shapes close and the two masks bracket the whiten exactly as they must.
+In code the two masks bracket the whiten: broadcast `A'_i` across the row with `.tile`, mask to zero
+padding, `masked_whiten` pools one scalar mean and std over the valid tokens and standardizes them to
+batch-token mean 0 and unit variance, then a trailing mask re-zeros the padding its affine shift
+disturbed. Returns equal advantages, no bootstrap.
 
-I have to be honest about a piece of the full recipe that I *cannot* apply here. The reasoning-task
-variant of this method also adds a separate KL-to-reference loss term, and the right estimator for that
-is subtle — sampling from `π_θ` means I am constraining the reverse KL, and of the usual k1/k2/k3
-candidates only k2 = `½(log(π_θ/π_ref))²` differentiates to the reverse-KL gradient without an exploding
-importance weight. But the KL-loss setting is *fixed outside my edit surface* — the only editable region
-is `compute_custom_advantage`. So I do not write the KL term; the loop applies whatever KL it applies,
-and my job is purely the advantage. My step-3 edit is exactly the two-step advantage: group-mean center,
-broadcast to tokens, masked-whiten over the batch's valid tokens, mask. (The fill is in the answer.)
+One piece of the full recipe I *cannot* apply here: the reasoning-task variant also adds a separate
+KL-to-reference loss, whose right estimator is subtle — sampling from `π_θ` constrains the reverse KL,
+and of the usual k1/k2/k3 candidates only k2 = `½(log(π_θ/π_ref))²` differentiates to the reverse-KL
+gradient without an exploding importance weight. But the KL-loss setting is fixed outside my edit
+surface; the only editable region is `compute_custom_advantage`, so my step-3 edit is exactly the
+two-step advantage — group-mean center, broadcast to tokens, masked-whiten over the batch's valid
+tokens, mask. (The fill is in the answer.)
 
-At this point the construction is dr_grpo plus one operation: where dr_grpo stopped after group-mean
-centering, I broadcast to tokens and whiten over the global batch. So the delta is the global scale
-normalization the deleted std could never safely provide. Reading the dr_grpo numbers, here is what I
-expect and where I am unsure. dr_grpo already fixed the difficulty bias, so I do not expect a second
-large jump on MATH/AMC from the *same* mechanism; the `+0.0117` aggregate gain there was the
-difficulty-bias money, and it is already collected. The gain this step should come from putting all
-prompts' advantages on one stable scale, which should most help wherever incomparable raw scales were
-still injecting noise into the update — I expect the aggregate `score_mean` to clear dr_grpo's −0.5049,
-with the strongest token-level whitening benefit showing up on the splits where response lengths and
-reward scales vary most (MATH and AMC again). GSM8K should hold near 0.4671 or drift slightly, since its
-prompts are short and uniform and have least to gain from length-weighted global whitening — I would not
-be shocked to see it dip a hair if the global scale trades a touch of easy-split accuracy for stability
-elsewhere. The move is again small in the algebra — one added whitening op on top of the step-2
-advantage, and compute-neutral (two masked reductions over the batch tokens against the forward/backward
-cost) — so I expect a modest aggregate lift, not a leap. I can even bound my expectation quantitatively:
-the step-1 → step-2 change, which collected the whole difficulty-bias correction, moved the unweighted
-3-accuracy mean from `0.2858` to `0.2917`, a `+0.0058` gain. Since that mechanism is already spent and
-this step only adds scale stabilization, I expect the step-2 → step-3 gain on that same 3-accuracy mean
-to be *smaller* than `+0.0058` — a diminishing return, not a repeat of the first jump. If instead I saw
-a gain as large or larger, that would tell me scale stabilization was doing something bigger than I
-think and I would have mis-attributed the step-2 win. On a single seed (42) any one benchmark could
-wobble; the load-bearing prediction is the aggregate. If the batch-whitened estimator clears
-dr_grpo on the aggregate, the missing-scale diagnosis is confirmed — the std was never the problem, its
-*scope* was, and the fix is to keep the legitimate scale normalization but compute it from a pool large
-enough to be a constant.
+So the construction is dr_grpo plus one operation: where dr_grpo stopped after group-mean centering, I
+broadcast to tokens and whiten over the global batch. dr_grpo already collected the difficulty-bias
+money (the `+0.0117` aggregate gain), so I do not expect a second large jump on MATH/AMC from the same
+mechanism; the gain this step should come from putting all prompts' advantages on one stable scale, most
+helping wherever incomparable raw scales were still injecting noise — I expect the aggregate to clear
+dr_grpo's −0.5049, with the token-level whitening benefit strongest where response lengths and reward
+scales vary most (MATH and AMC). GSM8K should hold near 0.4671 or drift slightly, its prompts short and
+uniform with least to gain, and could even dip a hair if the global scale trades a touch of easy-split
+accuracy for stability elsewhere. I can bound the expectation: the step-1 → step-2 change collected the
+whole difficulty-bias correction and moved the unweighted 3-accuracy mean from `0.2858` to `0.2917`, a
+`+0.0058` gain; since that mechanism is spent and this step only adds scale stabilization, I expect the
+step-2 → step-3 gain on that mean to be *smaller* than `+0.0058` — a diminishing return, not a repeat.
+A gain as large or larger would mean I mis-attributed the step-2 win. On one seed (42) any benchmark
+could wobble, so the load-bearing prediction is the aggregate: if it clears dr_grpo's −0.5049, the
+missing-scale diagnosis is confirmed — the std was never the problem, its *scope* was, and the fix is to
+keep the legitimate scale normalization but compute it from a pool large enough to be a constant.

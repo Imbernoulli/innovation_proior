@@ -6,19 +6,13 @@ I try to RL-tune this small math model, because the choice of baseline-from-rewa
 and I do not want to fool myself about it.
 
 PPO is actor-critic. Alongside the policy I would have to train a second network, the value function
-`V_ψ`, in practice the same size as the policy — a 0.5B critic shadowing a 0.5B actor. Let me put a
-number on the "brute cost" before I lean on it, because I have exactly one H200 and I should know
-whether memory is really the wall. Full-parameter training of 0.5B params in bf16: the weights are
-2 bytes each, so 1.0 GB; the gradients another 2 bytes, 1.0 GB; and Adam carries an fp32 master copy
-plus two fp32 moments, 12 bytes per param, 6.0 GB. That is ~8 GB of resident training state for the
-actor. A policy-sized critic doubles the trainable state to ~16 GB, plus its own forward/backward
-activations. On a 141 GB H200 that fits with enormous room to spare. So if I am honest, "the critic is
-too expensive" cannot be a memory argument in this setting — the GPU would swallow it. The cost that
-actually bites is not the footprint but the coupling and, more sharply, whether the critic can even do
-its job here.
+`V_ψ`, in practice the same size as the policy — a 0.5B critic shadowing a 0.5B actor. On one H200 the
+footprint is not the wall: actor plus a policy-sized critic is ~16 GB of training state against 141 GB
+of memory, so "the critic is too expensive" cannot be a memory argument here. What actually bites is
+the coupling, and more sharply whether the critic can even do its job — which means asking *why* the
+critic is there at all.
 
-That is the deeper problem, and it is *why* the critic is there at all. The reason a value function
-shows up is variance reduction in the policy gradient. The estimator is
+The reason a value function shows up is variance reduction in the policy gradient. The estimator is
 `g = E[ ∇_θ log π_θ(a|s) Â ]`, and the multiplier `Â` tells each token whether to go up or down. The
 raw return there is unbiased but extremely noisy, so the classic fix is to subtract a baseline `b(s)`
 depending only on the state, not the action — that subtraction is free in expectation,
@@ -42,13 +36,11 @@ want a variance-reducing baseline; I do not want this learned per-token critic.
 
 So the question sharpens: can I get a baseline — an approximation to "the default value of this state"
 — without learning `V`? The baseline only has to be (i) independent of the action being scored and
-(ii) close to the expected return from here. It need not be a learned network. So let me lay out the
-critic-free candidates and actually walk them, not wave at them. One option is a leave-one-out mean
-over the other responses in a group (RLOO); another is the full group mean; another is a single global
-baseline pooled across all prompts in the batch — one scalar subtracted from every response; another is
-a fixed constant. Take the global-baseline option seriously for a moment, because it is tempting: I
-could subtract the batch-average reward from every `r_i` and call it a baseline. But watch what it
-scores. A high reward on prompt A can mean two utterly different things — "this was a good response" or
+(ii) close to the expected return from here. It need not be a learned network. The critic-free
+candidates are a leave-one-out mean over the other responses in a group (RLOO), the full group mean, a
+single global baseline pooled across all prompts in the batch, or a fixed constant. Take the global
+baseline first, because it is tempting: subtract the batch-average reward from every `r_i`. But watch
+what it scores. A high reward on prompt A can mean two utterly different things — "this was a good response" or
 "A was an easy problem." A response that is correct on a trivial prompt where every sample is already
 correct has `r_i = 1`, beats the global mean, and gets a positive advantage — reinforced, though there
 was nothing to learn. Meanwhile a strong-but-imperfect response on a hard prompt can trail the global
@@ -134,89 +126,54 @@ minimal choice is to assign the whole normalized outcome to every token of the r
 consistent with the information I actually have. The returns tensor the loop expects downstream is,
 with no bootstrapped value target to compute, the same tensor as the advantages.
 
-I want to resist the urge to be cleverer than the information allows, because uniform broadcast looks
-crude and there are tempting alternatives. I could distribute the terminal reward across tokens by some
-schedule — front-load it, or weight by position — or I could use the policy's own token log-probs or
-entropy as a within-sequence credit proxy, handing more advantage to the tokens the model was least
-sure about. Walk that second one a step: weighting by `−log π_θ(o_t)` would systematically pour extra
-advantage into low-probability tokens. On a *correct* solution those are often exactly the creative
-reasoning steps I want to reinforce — but on a *wrong* solution they are the noisy, malformed tokens I
-want to suppress, and the scheme cannot tell the two apart because it never looks at the reward's sign
-per token. Any such allocation invents a per-token signal out of the model's own confidence, encoding
-whatever bias the heuristic carries, and buys me nothing: the reward-to-go is genuinely constant along
-the sequence, so there is no true per-token structure to recover and no variance to be reduced by
-redistributing a constant. Every non-uniform scheme adds bias with zero informational payoff. So the
-uniform broadcast is not laziness; it is forced by the reward being a single terminal bit.
+Uniform broadcast looks crude, and there are tempting alternatives — front-load the terminal reward,
+weight by position, or use the policy's own token log-probs as a within-sequence credit proxy. But
+weighting by `−log π_θ(o_t)` pours extra advantage into low-probability tokens, which on a *correct*
+solution are the creative reasoning steps I want to reinforce but on a *wrong* one are the noisy,
+malformed tokens I want to suppress — and the scheme cannot tell the two apart, because it never looks
+at the reward's sign per token. Any such allocation invents a per-token signal out of the model's own
+confidence and buys me nothing: the reward-to-go is genuinely constant along the sequence, so there is
+no per-token structure to recover. Uniform broadcast is not laziness; it is forced by the reward being
+a single terminal bit.
 
-The `ε` deserves one careful trace, because I want to know whether it is shaping any real advantage or
-only guarding a degenerate case. Take an all-wrong group, `k = 0`: every `r_i = 0`, the mean is 0, the
-numerator `r_i − mean = 0`, and the std is 0. Without `ε` that is `0/0`, a NaN that would poison the
-whole batch; with `ε` it is `0/ε = 0`. So the numerator is *already* zero — the well-defined answer is
-an advantage of 0, no relative signal, which is exactly correct — and `ε`'s only job is to convert the
-NaN into that 0. It never scales a genuine advantage; it just keeps unanimous groups from exploding.
-And the singleton branch (mean 0, std 1)? Given the fixed loop — 16 samples per prompt, batch of 128
-prompts, so a `(2048, response_length)` reward tensor with 128 distinct group ids each appearing
-exactly 16 times — every group is size 16 and that branch never fires. It is defensive code, not a
-lever. The final shaping is a broadcast I should trace so the mask is right: after standardizing I hold
-a `(2048,)` vector of per-response scalars; `scores.unsqueeze(-1)` makes it `(2048, 1)`, and
-multiplying by the `(2048, response_length)` `response_mask` broadcasts the scalar onto every valid
-token and zeros the padding in one stroke. So a response of `L` valid tokens carries `L` identical
-copies of `Â_i` and zeros thereafter — which is what "assign the whole normalized outcome to every
-token" means concretely, and it is why returns can be the very same tensor: there is no separate value
-target to shape, only the broadcast advantage under the mask.
+The `ε` floor only guards a degenerate case. An all-wrong group (`k = 0`) has every `r_i = 0`, mean 0,
+numerator `r_i − mean = 0`, and std 0, so without `ε` it is `0/0`, a NaN that would poison the whole
+batch; with `ε` it is `0/ε = 0`, which is the correct answer anyway — no relative signal. So `ε` never
+scales a genuine advantage; it just keeps unanimous groups from exploding. The singleton branch (mean
+0, std 1) is defensive code that never fires: the fixed loop hands exactly 16 responses per group, a
+`(2048, response_length)` reward tensor with 128 group ids each appearing 16 times. The final
+`scores.unsqueeze(-1) * response_mask` broadcasts the per-response scalar onto every valid token and
+zeros padding in one stroke, and returns can be the very same tensor because there is no separate value
+target to shape.
 
-Now I have to be careful about what the edit surface here actually *is*, because the established
-critic-free recipe is more than an advantage formula — it also moves the KL-to-reference anchor out of
-the reward and into the loss with a non-negative per-token estimator, and it dual-clips the surrogate.
-In the general derivation those pieces matter: folding KL into the reward and then z-scoring it
-entangles the regularizer with the advantage, so the clean version pulls KL into the loss as its own
-term and the clip lives in the actor objective. But *none of that is mine to write here*. The only
-editable region is `compute_custom_advantage`; the actor loss, its clipping, and the KL-loss setting
-are fixed outside the edit surface and are applied by the loop after my function returns. So in this
-task the method reduces to exactly the advantage half: group-mean center, divide by group std,
-broadcast to tokens, mask. The KL anchor and the clip are still there — the loop supplies them — but
-they are not levers I touch, and I must not write the reasoning as if I were adding them. My step-1 edit
-is precisely the group z-score advantage, and nothing else. (The distilled fill is in the answer.)
+The established critic-free recipe is more than an advantage formula — it also moves the KL-to-reference
+anchor out of the reward and into the loss and dual-clips the surrogate. But none of that is mine to
+write here: the only editable region is `compute_custom_advantage`; the actor loss, its clipping, and
+the KL-loss setting are fixed outside the edit surface and applied by the loop after my function
+returns. So the method reduces to exactly the advantage half — group-mean center, divide by group std,
+broadcast to tokens, mask — and I must not write it as if I were adding the KL term or the clip. (The
+fill is in the answer.)
 
-Before I settle, one limit check to make sure the whole construction degenerates to something sane in
-the regime where I trust it most. Push `G → ∞`: the group mean converges to the prompt's true expected
-return `θ`, the group std converges to the true reward dispersion `σ`, and the z-score converges to
-`(r_i − θ)/σ`, the genuinely standardized reward — a clean, unbiased-in-the-limit object, and the
-self-inclusion of `r_i` in its own mean washes out as `O(1/G)`. So the estimator is not wrong in kind;
-it is the right object estimated from too few samples. At `G = 16` the numerator's baseline is a
-16-sample estimate of `θ` and the denominator is a 16-sample estimate of `σ`, and the squared-mass and
-`3.75`-extremal computations already showed the denominator is the fragile one — small `G` is precisely
-where the per-group std stops behaving like a constant and starts acting as a difficulty reweighter.
-And I cannot grow the group — it is 16 by construction, and enlarging it means paying 16× the rollout
-cost. So the limit does not hand me an easy fix; it sharpens the immediate question instead. At `G = 16`
-is this fragile per-group scale doing more good than harm at all? If it is a net distortion, the first
-thing to try is not to estimate it more carefully but to strike it out and see what the rewards do
-without it.
+The construction is right in kind — as `G → ∞` the group mean converges to the prompt's true expected
+return `θ`, the std to the true dispersion `σ`, and the z-score to the genuinely standardized reward
+`(r_i − θ)/σ`. But at `G = 16` both the baseline and the fragile denominator are 16-sample estimates,
+and I cannot grow the group without paying 16× the rollout cost. So the question is whether this
+per-group scale does more good than harm at `G = 16`; if it is a net distortion, the first thing to try
+is not to estimate it more carefully but to strike it out and see what the rewards do without it.
 
-So at step 1 the baseline is settled: per prompt, sum the per-token rewards to recover each response's
-scalar score; bucket scores by group id; compute each group's mean and std; standardize each response's
-score within its group; broadcast that scalar over the response's valid tokens; return it as both
-advantages and returns. This is the most established critic-free estimator the loop can run, and it is
-the floor I climb from. To keep the scale of the exercise in view: 128 prompts × 16 samples × 100 steps
-is ~205K rollouts, and the entire learning signal is that many 0/1 verifier bits, shaped by this
-function into per-token advantages. Every bit of leverage I have is in how I turn those bits into
-`Â`.
+So step 1 is settled: sum the per-token rewards to each response's scalar score, bucket by group id,
+compute each group's mean and std, standardize each score within its group, broadcast that scalar over
+the response's valid tokens, return it as both advantages and returns. This is the most established
+critic-free estimator the loop can run, the floor I climb from.
 
-Now reason about what this floor must do, because that is the entire point of running it. The
-squared-mass accounting already told me the std is a per-problem reweighter, not the innocent
-"advantage normalization, everybody does it" I was tempted to treat it as. When I whiten advantages
-across an entire batch, dividing by one global number folds into the learning rate and changes nothing
-about relative weighting. But a *per-problem* std divides different problems by different numbers, and
-that 4× reweighting toward near-unanimous prompts is a difficulty distortion that exists purely because
-the normalization is scoped to the group. There is a second worry riding on the same scope: the std is
-estimated from only 16 samples per problem, and with outcome rewards near-unanimous groups are common,
-so the scale I divide by is itself the noisiest object in the estimator — and the `3.75` extremal case
-shows how a single fluke can set it. I expect this to cost accuracy in a way the benchmarks should
-reveal. The harder splits (MATH-500, AMC) are where the mix of solved and unsolved is genuine, so those
-are precisely the prompts whose informative signal gets tamped down relative to the near-unanimous ones
-whose weight gets inflated; the transferable reasoning signal I most want to reinforce is exactly what
-the std down-weights. So I expect grpo to learn — GSM8K accuracy should hold up, since its prompts are
-easier and their groups behave — but to leave accuracy on the table on the harder benchmarks, and to
-land at the bottom of whatever I compare it against on the aggregate `score_mean`. Whatever the precise
-split, the diagnosis is already pointed at the next step: if the per-group std is a distortion rather
-than a stabilizer, the cleanest test is to delete it and see whether the harder splits recover.
+What this floor must do follows from the squared-mass accounting: the per-group std reweights the batch
+~4× toward the near-unanimous prompts and away from the mixed-outcome ones, and it is estimated from
+only 16 samples, so with outcome rewards making near-unanimous groups common, the scale I divide by is
+the noisiest object in the estimator. The harder splits (MATH-500, AMC) are where the mix of solved and
+unsolved is genuine, so those are precisely the prompts whose informative signal gets tamped down
+relative to the near-unanimous ones whose weight gets inflated — exactly the transferable reasoning
+signal I most want to reinforce. So I expect grpo to learn — GSM8K should hold, its prompts easier and
+their groups near-unanimous either way — but to leave accuracy on the table on the harder benchmarks,
+and to land at the bottom of whatever I compare it against on the aggregate `score_mean`. If the
+per-group std is a distortion rather than a stabilizer, the cleanest test is to delete it and see
+whether the harder splits recover.
