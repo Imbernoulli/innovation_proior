@@ -12,9 +12,8 @@ variance I predicted as the do-nothing floor. Read that as a ratio: `test_mse/Va
 co-adapting features is actively making the fit worse than a constant predictor would. The `score` is
 `5·10⁻⁶`/`1.4·10⁻⁵`/`1.7·10⁻⁵`, three to four orders below anything useful, and it lands right where the
 two saturated exponentials put it: `exp(−subspace_err²/r)·exp(−test_mse) ≈ exp(−2)·exp(−9) ≈ 1.7·10⁻⁵`
-on r4, matching the measured `1.7·10⁻⁵` to the digit. So the metric is behaving exactly as the floor
-analysis said, and the `exp(−2)` subspace factor is the ceiling every one of those scores is pinned
-under.
+on r4, matching the measured `1.7·10⁻⁵`. The `exp(−2)` subspace factor is the ceiling every one of those
+scores is pinned under.
 
 The seed structure tells me this is not a variance problem I can fix by trying harder. On r2 the
 per-seed `subspace_err` is 1.993/1.928/1.943 — a spread of `0.065` around `1.95`, all three within `3.5%`
@@ -35,23 +34,18 @@ readout in closed form. The cure for the second is to make the first-layer phase
 well-conditioned as I can, so whatever alignment signal exists is not diluted by a co-adapting readout or
 by runaway row norms.
 
-Before I build that, let me be honest about the alternatives, because "separate the stages" is one of
-several moves the four hooks allow and I should not pick it by reflex. Option one: keep joint SGD but go
-online — draw fresh Gaussian batches every step instead of reshuffling `4096` fixed points, killing the
-finite-sample noise floor I diagnosed. That helps the *variance* of the correlation estimate but does
-nothing about the `d²` *escape time*: the drift is still `O(m²)` at an `O(1/√d)` start, so I would still
-need `~16k` steps to leave the equator and I have `8k`. Fresh data lowers the noise ceiling but not the
-step-count wall; it cannot be the whole fix. Option two: the giant-step leap — take one enormous
-first-layer step `η ~ √(n/d)` to cancel the `d^{-(s-1)/2}` smallness in a single shot, the trick the
-single-index analysis uses to escape in one update. But the budget is 8000 steps on a *finite*
-`n`-scale set reshuffled into batches of 128, not fresh population batches; the empirical degree-3
-correlation on 128 points has sampling std `~1/√128 ≈ 0.088`, dwarfing the `~5.9·10⁻³` population signal
-(SNR `≈ 0.07`), so one giant step amplifies sampling noise, not alignment. A single leap on a finite
-batch is a coin flip, not a rotation. Option three, the one I take: separate the stages *and* run many
-moderate steps rather than one giant one, so the alignment accumulates over thousands of mini-batch
-correlations that partially average the `0.088` noise, while the closed-form readout solve removes the
-co-adaptation that inflated the MSE. Option one dies on step count, option two on finite-batch noise; the
-staged, moderate-step version is the only one that touches both failure causes at once.
+Separating the stages is one of several moves the hooks allow, so weigh the others first. Keep joint SGD
+but go online — fresh Gaussian batches every step instead of reshuffling `4096` fixed points — and I kill
+the finite-sample noise floor but not the `d²` escape time: the drift is still `O(m²)` at an `O(1/√d)`
+start, so I still need `~16k` steps to leave the equator and I have `8k`. Fresh data lowers the noise
+ceiling, not the step-count wall. The giant-step leap — one enormous first-layer step `η ~ √(n/d)` to
+cancel the `d^{-(s-1)/2}` smallness in a single shot — is the trick the single-index analysis uses on
+fresh population batches, but here the empirical degree-3 correlation on 128 points has sampling std
+`~1/√128 ≈ 0.088`, dwarfing the `~5.9·10⁻³` population signal (SNR `≈ 0.07`), so one giant step amplifies
+sampling noise, not alignment: a coin flip, not a rotation. So separate the stages *and* run many moderate
+steps rather than one giant one, so the alignment accumulates over thousands of mini-batch correlations
+that partially average the `0.088` noise, while the closed-form readout solve removes the co-adaptation
+that inflated the MSE — the only route that touches both failure causes at once.
 
 Let me build the first-layer phase concretely. Freeze the readout `a` and look at the gradient on a row
 `w_i` alone. With squared loss `(1/2)(y − f̂)²`, the row gradient is `g_i = a_i (1/n) Σ_ν x^ν σ'(⟨w_i,
@@ -81,16 +75,11 @@ here I am running the *squared-loss* gradient on the live net with the readout p
 than the pure correlation, but it is the honest one the harness exposes, and with the readout at scale
 `0.0625` the `f̂` contamination is second-order against the label term.
 
-Let me check the sign-symmetric readout really does keep the `f̂` contamination second-order, because the
-whole "next best thing" argument leans on it. The residual is `f̂ − y`, and the rotational drift I want
-is the `E[σ'(⟨w_i,x⟩) ∇_x y]` piece from the `−y` term. The `f̂` term contributes `E[a_i σ'(⟨w_i,x⟩) x
-f̂(x)]`; with `f̂ = Σ_j a_j σ(⟨w_j,x⟩)` and the `a_j` i.i.d. `±1/√W`, the diagonal `j = i` piece is
-`a_i² E[σ'(⟨w_i,x⟩) x σ(⟨w_i,x⟩)]`, which points essentially along `w_i` itself (a self-term, no `V*`
-rotation), and the off-diagonal `j ≠ i` pieces have random signs `a_i a_j` that average toward zero
-across the `W = 256` neurons, leaving an `O(1/√W) = O(1/16)` residual fluctuation with no coherent `V*`
-component. So the readout injects a self-rescaling plus `O(1/√W)` isotropic jitter, but the *only*
-coherent pull into `V*` comes from the `−y` label term — which is exactly the correlation I want. The
-sign symmetry is what makes the pollution incoherent rather than a systematic bias; that is why a small
+The sign symmetry is what keeps the `f̂` contamination incoherent. In the residual `f̂ − y`, the `f̂` term
+contributes `E[a_i σ'(⟨w_i,x⟩) x f̂(x)]`; with the `a_j` i.i.d. `±1/√W`, the diagonal `j = i` piece points
+essentially along `w_i` itself (a self-rescaling, no `V*` rotation), and the off-diagonal `j ≠ i` pieces
+carry random signs `a_i a_j` that average to an `O(1/√W)` fluctuation with no coherent `V*` component. So
+the *only* coherent pull into `V*` comes from the `−y` label term — the correlation I want — and a small
 random `±1/√W` readout is a usable stand-in for the zero-output net the clean derivation would use.
 
 Now the step size and the budget split. A from-scratch analysis would take a *giant* step to cancel the
@@ -132,18 +121,13 @@ resolve the subspace cleanly. The larger pool is doing double duty — it condit
 it lifts the stage-1 correlation SNR to the edge of detectability — but `0.83` is not `≫ 1`, so I am
 buying partial recovery, not a solved subspace.
 
-The trouble I have to be clear-eyed about: even granting this stage works, what can it recover? The
-single-step leap analysis says one giant step into `V_ℓ*` reaches only the directions present *at the
-leap order*. Here the leap order is 3 and the link is a *decoupled* `Σ He₃` with no cross terms, so there
-is no staircase — each teacher direction must be picked up cold from its own degree-3 correlation, and
-there is no lower-degree rung to expose the next one by conditioning. So the multi-step climb that
-rescues `ℓ=1` staircases (condition on a found direction, the next becomes first-order visible) has
-*nothing to climb* here. My moderate-step stage 1 is really `r` independent third-order alignment
-problems run in parallel across `256` rows, and whether any row's degree-3 correlation on finite batches
-rises above the `0.088` sampling floor inside 6400 steps is genuinely uncertain. I expect *partial*
-alignment at best — better than the floor's zero, because freezing the readout and renormalizing removes
-the two things that were actively hurting joint SGD, but far from full recovery, because the degree-3
-signal is still weak and there is no ladder.
+And even granting the stage works, what it can recover is limited by the same decoupled structure that
+sank the floor: with no cross terms there is no staircase to condition on, so stage 1 is really `r`
+independent third-order alignment problems run in parallel across `256` rows. Whether any row's degree-3
+correlation on finite batches rises above the `0.088` sampling floor inside 6400 steps is genuinely
+uncertain. I expect *partial* alignment at best — better than the floor's zero, because freezing the
+readout and renormalizing removes the two things that were actively hurting joint SGD, but far from full
+recovery, because the degree-3 signal is weak and there is no ladder.
 
 Stage 2 is the part I am confident in, and it is why separating the stages helps the MSE regardless of
 how well stage 1 does. For the last 20% of the budget — `1600` steps — I freeze `W_in` entirely and fit
@@ -170,34 +154,22 @@ on the learned subspace `U`, `E[(g − f̂)²] ≥ E[Var(g | P_U x)] − o(1)` �
 much of `V*` stage 1 recovered. Quantify that bound: if the learned subspace captures the teacher
 directions to an aggregate fraction `ρ`, the residual variance is roughly `Var[g]·(1 − ρ) = 6(1 − ρ)`.
 With near-random `U`, `ρ ~ r/d ≈ 0.02` and the residual is `≈ 5.9` — the MSE cannot beat `~6` by fitting
-the link, it can only stop *overshooting* it. Let me sanity-check that `6` is really the frozen-feature
-floor and not something I can undercut for free: the best *constant* predictor is `E[y] = 0` (each
-`He₃(z_i)` is mean-zero), and it already achieves `test_mse = Var[y] = 6`. Ridge on the `256` frozen
-ReLU features can only do better than the constant to the extent those features correlate with the cubic
-target, and the degree-3 content lives in a `~d³/6 ≈ 3·10⁵`-dimensional Hermite eigenspace of the
-ReLU-Gaussian kernel that `256` near-random features barely touch — so the explained variance is a tiny
-`O(256 · r/d³)` sliver and the ridge MSE sits just *below* `6` only if stage 1 rotated the features into
-`V*`, and essentially *at* `6` if it did not. So `6` is a hard reference line: landing a few tenths under
-it means real (if partial) alignment; landing at or just above it means the gain was pure variance
-de-inflation from killing the co-adaptation, with no subspace found. So the two stages are not independent knobs: stage 1 sets
-the ceiling, stage 2 reaches it, and if stage 1 finds nothing the best stage 2 can do is haul the MSE
-back down from the floor's inflated `9`–`10` to near `6`, no further.
+the link, it can only stop *overshooting* it. `6` is a hard reference line: the best constant predictor
+`E[y] = 0` already achieves `Var[y] = 6`, and ridge on `256` near-random ReLU features barely touches the
+cubic's degree-3 eigenspace, so the MSE sits just *below* `6` only if stage 1 rotated the features into
+`V*` and essentially *at* `6` if it did not. Landing a few tenths under it means real (if partial)
+alignment; landing at or just above means the gain was pure variance de-inflation from killing the
+co-adaptation. Stage 1 sets the ceiling, stage 2 reaches it, and if stage 1 finds nothing the best stage 2
+can do is haul the MSE back down from the floor's inflated `9`–`10` to near `6`, no further.
 
-So the falsifiable expectations against the floor's numbers. First, `subspace_err` should *drop below*
-the floor's `√(2r)`: freezing the readout and renormalizing the rows removes the co-adaptation and
-norm-inflation that pinned joint SGD at exactly `√(2r)`, so even partial degree-3 alignment should pull
-the projector distance down — I expect somewhere in the 1.5–2.6 band rather than locked at 2.0/2.45/2.83,
-with the most movement on r2 (one fewer cold direction to find) and the least on r4. Second, `test_mse`
-should fall *below* the floor's 9–10 toward (but not all the way to) `Var[g] = 6`, because the closed-form
-ridge solve stops the readout from inflating the prediction variance even on imperfect features — a few
-points below 6 if any subspace was found, near 6 if essentially none was, since the `6(1 − ρ)` bound caps
-the gain at `ρ`. Third, `score`, being the product of two exponentials in those two quantities, should
-rise by roughly an order of magnitude over the floor's `~1·10⁻⁵` — into the `1·10⁻⁴` range — driven
-mostly by the MSE recovery (moving `exp(−9)` up toward `exp(−6)`, a factor `~20`), since the subspace
-exponential is still near `exp(−2)` because the subspace is far from clean. If instead `subspace_err`
-stays pinned at `√(2r)` and only the MSE moves, that tells me stage 1's degree-3 climb found *nothing*
-and the entire gain is the convex readout fit on random features — which would force me to abandon
-gradient-based alignment for the cubic altogether and find the subspace some way that does not depend on
-climbing a degree-3 ladder that is not there, since the wall here is the gradient *method*, not the
-problem's information content. The full two-stage module — spherical init, frozen-readout stage 1 with spherical reprojection, and the stage-2
-ridge solve — is in the answer.
+So the expectations against the floor's numbers. `subspace_err` should drop below `√(2r)` — removing the
+co-adaptation and norm-inflation that pinned joint SGD there, partial degree-3 alignment should pull the
+projector distance down, most where there are fewest cold directions to find (r2). `test_mse` should fall
+below the floor's 9–10 toward but not all the way to `Var[g] = 6`, since the `6(1 − ρ)` bound caps the
+gain at whatever fraction `ρ` of `V*` stage 1 recovered. `score` should rise roughly an order of magnitude
+into the `1·10⁻⁴` range, driven mostly by the MSE recovery, since the subspace exponential stays near
+`exp(−2)` while the subspace is far from clean. The sharp branch: if `subspace_err` stays pinned at
+`√(2r)` and only the MSE moves, stage 1's degree-3 climb found *nothing* and the whole gain is convex
+readout fitting on random features — which would force me to abandon gradient-based alignment and find the
+subspace some way that does not depend on climbing a degree-3 ladder that is not there, since the wall is
+the gradient *method*, not the problem's information content. The full two-stage module is in the answer.

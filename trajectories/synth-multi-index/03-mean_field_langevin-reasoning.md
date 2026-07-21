@@ -66,11 +66,10 @@ loss. It nudges the particles, but I am clear that it is not what carries the su
 carries it is the moment estimate I compute alongside, and I keep the drift step because it is the honest
 Langevin motion the frame prescribes, not because I am counting on one step to solve anything.
 
-That moment estimate is the heart of why this rung should finally crack the subspace, and I should derive
-it end to end rather than assert that `E[y²xxᵀ]` "sees the subspace." Stein's identity says `E[x · h(x)] =
-E[∇h]`; applied to a degree-3 link it converts the third-order correlation into a *second-order* object I
-can estimate directly from data with no gradient climb. Form the label-weighted input covariance `M =
-E[y² · x xᵀ]`. Because `y = g(U*ᵀx)` depends on `x` only through `z = U*ᵀx`, write `x = U*z + x_⊥` with
+That moment estimate is the heart of why this rung should finally crack the subspace. Stein's identity
+`E[x · h(x)] = E[∇h]`, applied to a degree-3 link, converts the third-order correlation into a
+*second-order* object I can estimate directly from data with no gradient climb. Form the label-weighted
+input covariance `M = E[y² · x xᵀ]`. Because `y = g(U*ᵀx)` depends on `x` only through `z = U*ᵀx`, write `x = U*z + x_⊥` with
 `x_⊥` the orthogonal-complement part, independent of `z` and mean zero. Then `M = E[h(z)(U*z + x_⊥)(U*z +
 x_⊥)ᵀ]` with `h(z) = y²`; the cross terms vanish by independence and zero mean, leaving `M = U* A U*ᵀ +
 E[h(z)]·E[x_⊥ x_⊥ᵀ]`, where `A = E[h(z) z zᵀ]` is `r×r` and `E[x_⊥x_⊥ᵀ] = I − Π*`. Now compute `A`
@@ -90,7 +89,7 @@ so its top-`r` eigenspace is *exactly* `span(U*)`, with an eigengap of `36/r` ab
 numbers in: the teacher eigenvalue is `24` (r2), `18` (r3), `15` (r4) sitting above a bulk at `6`, an
 eigengap of `18`/`12`/`9`. This is a *huge*, clean spectral signal — nothing like the `0.83`-SNR gradient
 whisper. It also predicts the rank ordering: the gap shrinks as `36/r`, so r4 is the hardest for the
-estimator, but even its `gap = 9` towers over the finite-sample noise. Let me check that noise: on `n =
+estimator, but even its `gap = 9` towers over the finite-sample noise. On `n =
 64{,}000` fresh points the entrywise sampling error of `M` is `~ std(y² x_k x_l)/√n`; with `E[y²] = 6`
 and `y²` fluctuations `O(10)`, that is `O(10)/√64000 ≈ 0.04` per entry, and the top-eigenvalue
 perturbation scales like `√(d/n)·‖M‖ ≈ √(128/64000)·24 ≈ 0.045·24 ≈ 1.1` — an order of magnitude below
@@ -111,18 +110,9 @@ just derived that its eigengap is a clean `36/r` with the teacher subspace sitti
 top-`r` eigenspace, no decomposition heuristics required. The third-moment tensor would recover the same
 `V*` but costs two orders more memory and a nonconvex decomposition where the second moment costs one
 symmetric eigensolve; with an `O(1)` eigengap already in hand, the extra machinery buys nothing. So I
-take `M`, and I take it because the arithmetic — cheaper estimator, closed-form eigensolve, provable
-`36/r` gap — dominates the tensor route on every axis that matters here.
+take `M`.
 
-Let me verify the `M` formula independently before I build on it, by computing its trace two ways and
-demanding they agree. From `M = 6I_d + (36/r)Π*`: `tr(M) = 6d + (36/r)·tr(Π*) = 6d + (36/r)·r = 6d + 36`.
-Directly: `tr(M) = tr E[y² xxᵀ] = E[y² ‖x‖²]`. Split `‖x‖² = ‖z‖² + ‖x_⊥‖²` with `z = U*ᵀx` and `x_⊥`
-independent; `E[y²‖z‖²] = Σ_k E[h(z) z_k²] = Σ_k A_{kk} = r(6 + 36/r) = 6r + 36`, and `E[y²]E[‖x_⊥‖²] =
-6·(d − r)`. Sum: `6r + 36 + 6d − 6r = 6d + 36`. The two computations agree exactly, which pins the `A_{kk}
-= 6 + 36/r` diagonal I derived and the `6·(I − Π*)` complement piece — the algebra behind the `36/r`
-eigengap is right.
-
-So the implementation: I enlarge `make_dataset` to `n = min(64{,}000, max_train_examples)` fresh Gaussian
+The implementation: I enlarge `make_dataset` to `n = min(64{,}000, max_train_examples)` fresh Gaussian
 points — the fresh-sample regime that makes the empirical `M` track its population value with the noise I
 just bounded — estimate `M` in a chunked pass, symmetrize it, take the top-`r` eigenvectors by `eigh`,
 and cache those as `_CACHED_DIRECTIONS` at dataset-construction time so the readout solve can use them.
@@ -145,10 +135,10 @@ features actually span the cubic on `V*`, so the residual is no longer floored b
 random `U` — it is floored by how well the bias-grid bumps approximate `He₃`, which with a `~32`–`64`-point
 grid is small.
 
-Let me put a number on "small," because "the features span the cubic" is only as good as the grid. A
-positive/negative pair of ReLUs at adjacent thresholds `b, b'` is a bump whose superposition builds a
-piecewise-linear interpolant of any univariate target along the direction, so the ridge can realize
-`He₃(z)` on each recovered direction up to the interpolation error of a piecewise-linear fit on the grid.
+"The features span the cubic" is only as good as the grid, so put a number on it. A positive/negative pair
+of ReLUs at adjacent thresholds builds a piecewise-linear interpolant of any univariate target along the
+direction, so the ridge can realize `He₃(z)` on each recovered direction up to the interpolation error of
+a piecewise-linear fit on the grid.
 That error is `~ (Δb)²·max|He₃''|/8` on each cell, and `He₃''(z) = 6z`, whose magnitude on `z ∈ [−3, 3]`
 peaks at `18`. With `~32` offsets per sign on r4 the spacing is `Δb = 6/32 ≈ 0.19`, giving a pointwise
 error `~ (0.19)²·18/8 ≈ 0.08`; on r2's finer `~64`-offset grid it is a quarter of that. Square and average
@@ -157,29 +147,18 @@ per direction — negligible next to the `6/r` chunk a *missed* direction would 
 basis is not the bottleneck; the moment estimate's fidelity is. The features are good enough that
 `test_mse` is set by how many directions `M` recovered, exactly as I want the two jobs cleanly separated.
 
-I should also confirm the analytic drift step does what I claim rather than trust the formula. The drift
-is `2d · corr · (∇_ŵ corr)`, and since `∇_ŵ(corr²) = 2·corr·∇_ŵ corr`, the drift is `d · ∇_ŵ(corr²)` —
-gradient *ascent* on the squared correlation `corr²`, scaled by the ambient dimension `d`. The code adds
-it with a positive `lr` (`weight.add_(drift − wd·w, alpha=lr)`), so the sign is ascent, which is right: I
-want each particle to *increase* its degree-3 correlation with the label. The `d` prefactor rescales the
-`O(1/d)`-small population drift back to `O(1)` so a single `lr = 5e-2` step actually moves the particle,
-and the tangent projection `drift − (drift·ŵ)ŵ` plus renormalization keeps it on the sphere — a genuine
-Riemannian correlation-ascent step with the KL decay `−wd·ŵ` and the `√(2·lr)·noise_std ≈ √(0.1)·3.16·
-10⁻³ ≈ 10⁻³` Langevin jitter folded in. It is the population feature-learning motion the MFLD frame
-prescribes; I lean on the moment estimate for recovery, but the drift is a coherent, sign-correct step,
-not a decoration.
+The analytic drift `2d · corr · (∇_ŵ corr) = d · ∇_ŵ(corr²)` is gradient *ascent* on the squared
+correlation, scaled by `d`; the code adds it with a positive `lr` (`weight.add_(drift − wd·w, alpha=lr)`),
+which is the right sign — each particle increases its degree-3 correlation with the label. The `d`
+prefactor rescales the `O(1/d)`-small population drift back to `O(1)` so a single `lr = 5e-2` step moves
+the particle, and the tangent projection plus renormalization keeps it on the sphere, with KL decay and
+the `√(2·lr)·noise_std ≈ 10⁻³` Langevin jitter folded in. So the rung is one Hermite-3
+correlation-Langevin step on the spherical particles (the honest population motion the frame prescribes),
+a moment estimate `M = E[y²xxᵀ] = 6I + (36/r)Π*` that finishes the subspace in one pass, an installed
+bias-grid ReLU basis along the recovered directions, and a closed-form ridge solve for the link.
 
-So the rung is, in order: one analytic Hermite-3 correlation-Langevin step on the spherical first-layer
-particles (the feature-learning drift of the *correct* third-order objective, with KL decay and the
-`√(2·lr)·noise_std` diffusion); a moment estimate `M = E[y²xxᵀ] = 6I + (36/r)Π*` whose top-`r` eigenspace
-recovers `V*` directly from a large fresh pool, bypassing the gradient wall; an explicit installation of a
-bias-grid ReLU feature basis along those recovered directions; and a closed-form ridge solve for the
-readout. The Langevin machinery justifies *why* a population method with diffusion escapes the exponent
-that capped SGD; the moment estimate is *how* this implementation finishes the subspace in one pass; the
-ridge solve fits the link on features that finally span it.
-
-Now the falsifiable expectations against two-stage's numbers, because that is the bar. First and most
-important, `subspace_err` should *break away* from the `√(2r)` band that both prior rungs were stuck near.
+Now the falsifiable expectations against two-stage's numbers. First and most important, `subspace_err`
+should *break away* from the `√(2r)` band that both prior rungs were stuck near.
 The moment estimator does not climb a third-order gradient; it reads `V*` off a directly estimated
 second-order moment whose eigengap `36/r` is `18`/`12`/`9` against a finite-sample perturbation `~1`, so
 on a 64k pool it should recover the subspace to a real fraction of its true directions. I expect
