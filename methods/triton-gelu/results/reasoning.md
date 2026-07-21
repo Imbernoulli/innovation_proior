@@ -1,8 +1,8 @@
-Let me start from what actually hurts. I have a new operation I want to run on a GPU — say a fused activation inside an MLP block — and there is no cuBLAS or cuDNN entry for it, because those libraries only ship a fixed catalogue of primitives. So my choice is: glue together generic library calls and watch it crawl, or sit down and hand-write a CUDA kernel for it. I have done the second thing. It ate months. The kernel I ended up with is fast, but it is fast on exactly one GPU: I tuned the tile sizes to that card's register file and shared-memory capacity, I laid out the thread-to-data mapping so the loads coalesce on that card's memory controllers, I sprinkled `__syncthreads()` by hand wherever a shared-memory write had to land before a read. Move to the next architecture, or let tensor cores show up, and most of that work is wrong and I rewrite it. That is the wall I keep hitting: a custom kernel is either slow or it costs an expert months and doesn't survive the hardware it was born on.
+I have a new operation I want to run on a GPU — say a fused activation inside an MLP block — and there is no cuBLAS or cuDNN entry for it, because those libraries only ship a fixed catalogue of primitives. So my choice is: glue together generic library calls and watch it crawl, or sit down and hand-write a CUDA kernel for it. I have done the second thing. It ate months. The kernel I ended up with is fast, but it is fast on exactly one GPU: I tuned the tile sizes to that card's register file and shared-memory capacity, I laid out the thread-to-data mapping so the loads coalesce on that card's memory controllers, I sprinkled `__syncthreads()` by hand wherever a shared-memory write had to land before a read. Move to the next architecture, or let tensor cores show up, and most of that work is wrong and I rewrite it. That is the wall I keep hitting: a custom kernel is either slow or it costs an expert months and doesn't survive the hardware it was born on.
 
 So I want to step back and ask what, structurally, makes the hand-written route so expensive — because if I can name the recurring cost, maybe I can design it away. Let me write down the simplest possible kernel, an elementwise one, in the standard CUDA model, and watch what I'm forced to think about. I take a flat array of `N` elements and I want `y = f(x)`. In CUDA each thread handles one scalar: `int i = blockIdx.x * blockDim.x + threadIdx.x; if (i < N) y[i] = f(x[i]);`. Fine, that one's easy. Now make it matmul, the operation that actually matters, and the model turns hostile. A tile of the output `C` is computed by a block of threads cooperating: I have to decide which thread owns which output element, stage sub-tiles of `A` and `B` into shared memory, put a barrier after the staging so every thread sees the data, arrange the global loads so consecutive threads hit consecutive addresses or the bandwidth evaporates, and avoid two threads hammering the same shared-memory bank. None of that is the *algorithm* — the algorithm is "multiply and accumulate." All of it is bookkeeping that exists only because the unit I program is the scalar thread, and a tile has to be shredded across many threads by hand.
 
-That's the thing to stare at. In every fast route, the unit of parallelism is the scalar thread, and the consequence ripples outward. In hand-written CUDA *I* shred the tile across threads, so *I* own coalescing and barriers. What do the compiler-based routes do instead? Let me actually work through them, because if one of them already solves my problem I should just use it.
+That's the thing to stare at. In every fast route, the unit of parallelism is the scalar thread, and the consequence ripples outward. In hand-written CUDA *I* shred the tile across threads, so *I* own coalescing and barriers. What do the compiler-based routes do instead — and does one of them already solve my problem, so I don't need to invent anything?
 
 The polyhedral compilers — Tensor Comprehensions, Diesel, Tiramisu, the affine dialect in MLIR — take a loop nest and lift it into geometry. The set of loop iterations becomes an integer polyhedron, literally a region cut out by affine inequalities: for `for i in [0,M): for j in [0,N): for k in [0,K): C[i][j] += A[i][k]*B[k][j]`, the iteration domain is `{ (i,j,k) : 0<=i<M, 0<=j<N, 0<=k<K }`, a box in `Z^3`. A *schedule* is then an affine map `Theta_S(x) = T_S [x; g; 1]` taking the loop indices `x` and global parameters `g` to the order in which iterations execute, slowest-varying index first. The beautiful part is that loop transformations become linear algebra on `T_S`: loop interchange of `i` and `j` is just swapping two rows of the identity, `Theta_S = [[0,1,0],[1,0,0],[0,0,1]]` gives traversal order `(j,i,k)`; tiling and fusion are similar reshapings of the domain and the map. And it's fully automatic — feed it C, get back a transformed nest — and on dense matmul it can reach library-class speed. So why am I not done? Two walls. First, the space of legal schedules explodes with the number of statements and the size of the domain, and *checking* that a candidate schedule preserves the program's semantics means resolving integer linear programs; that's expensive, and it gets worse because the *right* schedule depends on cache sizes, SM count, and the runtime tensor shapes, so I'm back to a costly per-shape search. Second, and this is the one that actually kills it for me: the whole framework only applies to Static Control Parts — loop bounds and array subscripts must be *affine* functions of the loop indices. That's true for dense regular code. It is *not* true for the structured-sparse operations I care about, where the index of the next nonzero block is read out of a lookup table, not computed as `a*i + b`. The geometry has nothing to grab onto. So polyhedral machinery is powerful exactly where the vendor libraries already win, and silent exactly where I need help.
 
@@ -73,93 +73,12 @@ def _gelu_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
     tl.store(out_ptr + offsets, out.to(x.dtype), mask=mask)
 ```
 
-Before I trust it, let me trace the index arithmetic on a small case by hand, because the masked tail is exactly where an off-by-one would hide. Take `n_elements = 10` and `BLOCK = 4`, so the grid is `ceil(10/4) = 3` instances. Instance `pid=0` builds `offsets = 0*4 + [0,1,2,3] = [0,1,2,3]`, all `< 10`, so `mask = [T,T,T,T]` and it writes elements 0–3. Instance `pid=1` builds `[4,5,6,7]`, again all in range, writes 4–7. Instance `pid=2` builds `[8,9,10,11]`; now `mask = [8<10, 9<10, 10<10, 11<10] = [T,T,F,F]`, so it loads/stores only 8 and 9 and the masked lanes (offsets 10, 11) neither fault nor write. Union of the written offsets is `{0..9}`, each exactly once — full coverage, no double-write, no out-of-bounds. The mask does what I wanted on the one partial block. Good; the launch geometry is sound.
-
 Launching it is the SPMD grid I designed: one instance per chunk, `grid = ((n_elements + BLOCK - 1) // BLOCK,)`, with `BLOCK = 1024` — a power of two large enough to give each instance enough work to amortize launch overhead and saturate the memory bus, small enough to keep many instances resident for occupancy. Tensors pass as pointers to their first element; indexing the jitted function with the grid gives the launchable kernel.
 
 Now wire it into the MLP. The forward does the first matmul to get the wide hidden `h`, runs the GELU kernel over `h` as one custom pointwise expression, then the second matmul. The interesting work is the backward, and I want it analytic rather than letting autograd trace through the elementwise op, because I just wrote the activation explicitly and its gradient is just as local. The two linears are easy — they're matmuls, so their gradients are matmuls: with `out = act @ W_proj^T`, the gradient flowing into `act` is `d_act = grad_out @ W_proj`, and `grad_W_proj = grad_out^T @ act`; likewise after the activation gradient I get `d_h`, and `grad_x = d_h @ W_fc`, `grad_W_fc = d_h^T @ x`. The one piece that needs care is the activation's own derivative. Differentiate `gelu(x) = 0.5 x (1 + tanh(inner))` with `inner = c (x + a x^3)`, `a = 0.044715`, by the product rule:
 
   d/dx gelu = 0.5 (1 + tanh(inner)) + 0.5 x · sech^2(inner) · d(inner)/dx,
 
-and the chain `d(inner)/dx = c (1 + 3 a x^2)`, with `sech^2 = 1 - tanh^2`. Let me sanity-check the limits so I trust the signs. As `x -> +inf`, `inner -> +inf`, `tanh -> 1`, so the first term `-> 0.5(1+1) = 1`; the second term has `sech^2 -> 0` killing it, so the derivative `-> 1` — GELU acts like the identity for large positive `x`. As `x -> -inf`, `tanh -> -1`, first term `-> 0`, second term `-> 0`, derivative `-> 0` — GELU saturates to zero on the left. At `x = 0`: `inner = 0`, `tanh 0 = 0`, first term `0.5(1+0) = 0.5`, second term `0.5·0·1·c = 0`, so the derivative is `0.5`. The endpoints are consistent, but endpoints are the easy part — a wrong constant in the product-rule second term, or a dropped `3` in `d(inner)/dx`, would leave all three limits intact and still corrupt the gradient in the bulk. So I should check the analytic formula against the function it claims to differentiate, at points away from the limits. Take the central finite difference `(gelu(x+eps) - gelu(x-eps)) / (2 eps)` with `eps = 1e-6` and compare to the analytic value at a spread of `x`:
+and the chain `d(inner)/dx = c (1 + 3 a x^2)`, with `sech^2 = 1 - tanh^2`. The limits confirm the signs: as `x -> +inf`, `tanh -> 1`, so the first term `-> 1` while `sech^2 -> 0` kills the second, giving derivative `-> 1` — GELU acts like the identity for large positive `x`. As `x -> -inf`, both terms vanish, so the derivative `-> 0` — GELU saturates to zero on the left. At `x = 0`, `tanh 0 = 0` gives first term `0.5` and the second term is `0` (it carries a factor of `x = 0`), so the derivative is `0.5`, the expected slope of a function that is close to `0.5 x` near the origin. One thing the limits alone don't show: the derivative isn't confined to `[0,1]` in between — it dips slightly negative around `x = -1` and rises slightly above `1` around `x = 1..2`, a real non-monotonicity of the tanh approximation to GELU, not a bug. So the backward, evaluated in fp32 on the saved pre-activation `h` (I save `h` rather than recomputing the matmul), multiplies that full derivative elementwise into the upstream gradient.
 
-```
-  x      analytic       finite-diff     |diff|
- -3.0   -0.01158417   -0.01158417    1.3e-11
- -1.0   -0.08296408   -0.08296408    7.1e-12
- -0.5    0.13263010    0.13263010    9.6e-12
-  0.0    0.50000000    0.50000000    0
-  0.5    0.86736990    0.86736990    5.0e-11
-  1.0    1.08296408    1.08296408    4.7e-11
-  2.0    1.08609926    1.08609926    1.8e-11
-  3.0    1.01158417    1.01158417    2.4e-11
-```
-
-Every point agrees to ~1e-11, the floor of a central difference at this `eps` — so the product rule, the chain `c(1 + 3 a x^2)`, and the `sech^2 = 1 - tanh^2` substitution are all correct, not just at the limits but throughout. Two things in that table are worth pausing on. The derivative is *negative* near `x = -1` (value `-0.083`): GELU dips below zero on the left before saturating, so it is non-monotone, which is a real property of the function and not a bug in my formula — the finite difference confirms the sign. And around `x = 1..2` the derivative exceeds 1 (peaks near `1.086`): GELU overshoots the identity line before settling back to slope 1, again matched by the finite difference. I half-expected the slope to stay in `[0,1]` like a squashing nonlinearity; it does not, and the numeric check is what told me my expectation was wrong rather than my algebra. So the backward, evaluated in fp32 on the saved pre-activation `h` (I save `h` rather than recomputing the matmul), is:
-
-```python
-import torch
-
-import triton
-import triton.language as tl
-from triton.language.extra.cuda import libdevice
-
-
-@triton.jit
-def _gelu_kernel(x_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
-    pid = tl.program_id(0)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
-    xf = x.to(tl.float32)                            # polynomial/tanh in fp32
-    c = 0.7978845608028654                           # sqrt(2/pi)
-    inner = c * (xf + 0.044715 * xf * xf * xf)
-    out = xf * 0.5 * (1.0 + libdevice.tanh(inner))   # tanh-approx GELU
-    tl.store(out_ptr + offsets, out.to(x.dtype), mask=mask)
-
-
-class _TritonGELUMLP(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, x, w_fc, w_proj):
-        h = x @ w_fc.t()                             # first linear
-        act = torch.empty_like(h)
-        n = h.numel()
-        BLOCK = 1024
-        grid = ((n + BLOCK - 1) // BLOCK,)           # one program instance per chunk
-        _gelu_kernel[grid](h, act, n, BLOCK_SIZE=BLOCK)   # one custom pointwise pass over h
-        out = act @ w_proj.t()                       # second linear
-        ctx.save_for_backward(x, w_fc, w_proj, h, act)
-        return out
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        x, w_fc, w_proj, h, act = ctx.saved_tensors
-        dtype = grad_output.dtype
-        # gradients of the two linears are plain matmuls
-        g = grad_output.reshape(-1, grad_output.shape[-1])
-        x_flat = x.reshape(-1, x.shape[-1])
-        act_flat = act.reshape(-1, act.shape[-1])
-        d_act = grad_output @ w_proj.to(dtype)
-        grad_w_proj = g.t() @ act_flat.to(dtype)
-        # analytic GELU-tanh derivative, in fp32:
-        #   d/dx = 0.5(1+tanh(inner)) + 0.5 x * sech^2(inner) * d_inner
-        #   inner = c (x + 0.044715 x^3),  d_inner = c (1 + 3*0.044715 x^2),  sech^2 = 1 - tanh^2
-        h_f = h.float()
-        c = 0.7978845608028654
-        inner = c * (h_f + 0.044715 * h_f * h_f * h_f)
-        tanh_inner = torch.tanh(inner)
-        sech2 = 1.0 - tanh_inner * tanh_inner
-        d_inner = c * (1.0 + 3.0 * 0.044715 * h_f * h_f)
-        gelu_grad = 0.5 * (1.0 + tanh_inner) + 0.5 * h_f * sech2 * d_inner
-        d_h = (d_act.float() * gelu_grad).to(dtype)
-        grad_x = d_h @ w_fc.to(dtype)
-        grad_w_fc = d_h.reshape(-1, d_h.shape[-1]).t() @ x_flat.to(dtype)
-        return grad_x, grad_w_fc, grad_w_proj
-
-
-def fused_mlp_forward(x, w_fc, w_proj):
-    """MLP forward with a tanh-GELU elementwise kernel between the two linears."""
-    return _TritonGELUMLP.apply(x, w_fc, w_proj)
-```
-
-Let me trace the causal chain back. The pain was that a custom GPU kernel is either slow (compose generic library calls and eat the memory wall) or it costs an expert months and dies on the next architecture (hand-write CUDA/PTX). Picking apart why the fast routes are expensive, I found the common root: the atom of parallelism is the scalar thread, which forces the programmer to shred every tile across threads by hand — owning coalescing, shared memory and barriers — or forces the compiler into affine-only iteration spaces with costly legality checks (polyhedral) or non-portable hand-written schedules (Halide/TVM), neither of which can even express structured sparsity. The move was to make the *tile* — a statically-shaped multi-dimensional sub-array — a first-class value, so a kernel becomes single-threaded-but-blocked: one program instance owns a whole tile, indexed by a program id, and the parallelism is recovered *by the compiler*. To make that recovery possible I built an LLVM-based IR with tile types and SSA, numpy broadcasting via reshape/broadcast, the `dot`/`trans` primitives, and Predicated SSA with `psi` merges for intra-tile control flow, surfaced in the Python kernel as masks on loads and stores. On that IR the four hand-authored burdens fell out of standard data-flow analysis: hierarchical sub-blocking with op-aware fragments (vectorize elementwise, tensorize FP16 matmul for tensor cores) recovers parallelism; contiguity analysis recovers coalescing; arithmetic-intensity plus liveness plus linear-time storage allocation recovers shared-memory placement; and the RAW/WAR data-flow recovers exactly the barriers needed. The one irreducibly empirical knob, the tile sizes, is isolated into an auto-tuner whose search space the IR itself exposes. And because a program instance owns a whole tile, a bandwidth-bound pointwise expression becomes a single local kernel: the MLP keeps its two dense matmuls, while the activation slot reads the wide hidden tensor once, computes the tanh approximation in fp32 for stable low-precision execution, stores the activated tensor once, and carries an analytic `0.5(1+tanh) + 0.5 x sech^2 (c(1+3a x^2))` backward to match.
+That assembles into the module I ship. The forward runs the first matmul, launches the pointwise kernel above over `h` to get `act`, and runs the second matmul, saving `x, w_fc, w_proj, h, act` for backward. The backward gets `d_act = grad_out @ w_proj` and `grad_w_proj = grad_out^T @ act` from the second-linear identity above, evaluates the analytic GELU derivative on the saved `h` in fp32 and multiplies it into `d_act` to get `d_h`, then gets `grad_x = d_h @ w_fc` and `grad_w_fc = d_h^T @ x` from the first-linear identity — the same matmul gradients I wrote down when I wired the MLP together, now just assembled into one `torch.autograd.Function` around the one kernel that had no library entry.
