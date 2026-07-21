@@ -43,8 +43,8 @@ The GAN reaches its optimum when the policy matches the expert, at which point a
 $D^*=p_E/(p_E+q)=\tfrac12$ everywhere and tells me nothing. But I do not have to use a free discriminator.
 In the GAN the optimal discriminator is $D^*=p_E/(p_E+q)$, and here I *know* $q$ — the generator density
 is my own policy, which I can evaluate as $\log\pi(a\mid s)$. So I plug $q$ in and let the discriminator
-model only the data density, in the Boltzmann form $D=\exp f/(\exp f+\pi)$. Let me confirm this is just a
-constrained sigmoid: its logit is $\log\frac{D}{1-D}=\log\frac{\exp f/(\exp f+\pi)}{\pi/(\exp f+\pi)}=
+model only the data density, in the Boltzmann form $D=\exp f/(\exp f+\pi)$. This is just a constrained
+sigmoid, logit $\log\frac{D}{1-D}=\log\frac{\exp f/(\exp f+\pi)}{\pi/(\exp f+\pi)}=
 \log\frac{\exp f}{\pi}=f-\log\pi(a\mid s)$. So $D=\sigma\big(f(s,a,s')-\log\pi(a\mid s)\big)$ — a sigmoid
 whose logit is a learned reward term minus the *filled-in* log policy density. Two payoffs. First, the
 optimal discriminator is now independent of the generator: $D$ is optimal exactly when $\exp f$ matches the
@@ -70,20 +70,15 @@ the value-function shaping, the remainder is forced to be a cleaner reward, and 
 better-conditioned for the policy to optimize.
 
 The structure to impose is the only policy-invariant degree of freedom there is: potential-based shaping.
-Let me verify the invariance claim myself so I know I am not throwing away signal, because it is the whole
-license for the decomposition. Take any potential $\Phi(s)$ and form the shaped reward
-$r'=r+\gamma\Phi(s')-\Phi(s)$. Its optimal action-value satisfies $Q'^*(s,a)=Q^*(s,a)-\Phi(s)$ (the
-telescoping shaping terms collapse the discounted sum into a single boundary $-\Phi(s)$), hence
-$V'^*(s)=V^*(s)-\Phi(s)$, and the advantage is $A'^*=Q'^*-V'^*=(Q^*-\Phi)-(V^*-\Phi)=Q^*-V^*=A^*$ —
-unchanged. So shaping shifts $Q$ and $V$ together and leaves the greedy policy fixed for *any* $\Phi$;
-without knowing the dynamics it is the only class of reward transformations with that property. So I carve
-the discriminator's $f$ into a reward term and a potential-shaping term, each its own network:
-$f(s,a,s')=g(s,a)+\gamma\,h(s')-h(s)$. Whatever shaping the optimization wants to apply, it dumps into
-$h$; $g$ is left to be the unshaped reward. Working the algebra at the optimum (with the chaining lemma
-under decomposable dynamics) gives $h^*=V^*$ up to a constant and $g^*=r$ up to a constant — $h$ soaks up
-exactly the value-function shaping that made the advantage entangled, and $g$ comes out clean. This is the
-AIRL discriminator, and the structure is what should stabilize training on the terminating bodies:
-$h$ absorbing the value gradient means $g$ does not have to, so the reward handed to the policy is
+For any potential $\Phi(s)$, the shaped reward $r'=r+\gamma\Phi(s')-\Phi(s)$ leaves the advantage
+unchanged — the telescoping shaping terms collapse to a single boundary, $Q'^*=Q^*-\Phi$ and
+$V'^*=V^*-\Phi$, so $A'^*=Q'^*-V'^*=A^*$ — and without knowing the dynamics it is the only class of reward
+transformations with that property. So I carve $f$ into a reward term and a potential-shaping term, each
+its own network: $f(s,a,s')=g(s,a)+\gamma\,h(s')-h(s)$. Whatever shaping the optimization wants, it dumps
+into $h$; $g$ is left as the unshaped reward. At the optimum $h^*=V^*$ and $g^*=r$ (each up to a constant)
+— $h$ soaks up exactly the value-function shaping that made the advantage entangled, and $g$ comes out
+clean. This is the AIRL discriminator, and the structure should stabilize training on the terminating
+bodies: with $h$ absorbing the value gradient, $g$ need not, so the reward handed to the policy is
 better-behaved than GAIL's value-dominated mush.
 
 Now I have to land this in *this* scaffold, and the scaffold forces several concrete departures from the
@@ -141,54 +136,31 @@ concession the math does not force but the data does: the expert demos store no 
 expert transitions are non-terminal (exactly correct for HalfCheetah, which never terminates; mildly wrong
 for the Hopper/Walker terminal states in the demos, but the tuned reference configs also lack expert dones
 by default). I pass `expert_done_zeros` for the expert side and the real `policy_dones` for the generator
-side. The architecture: $g$ is an MLP $[s,a]\to256\to256\to1$ and $h$ is an MLP $[s]\to256\to256\to1$.
-Let me count parameters against the cap, since this is now two nets instead of one. On HalfCheetah, $g$
-has input width $17+6=23$, so $23\cdot256+256=6144$ plus $65792$ plus $257$, total $72{,}193$; $h$ has
-input width $17$, so $4608+65792+257=70{,}657$; together $\approx142{,}850$, roughly $1.87\times$ GAIL's
-single $76{,}545$-parameter discriminator. This is the largest reward net on the ladder so far, which is
-exactly why the scaffold's parameter budget is sized at $1.05\times$ this net — I sit right at the cap, and
-the decomposition into two heads is what spends it.
+side. The architecture: $g$ is an MLP $[s,a]\to256\to256\to1$, $h$ an MLP $[s]\to256\to256\to1$ — two nets
+now, together $\approx143$k parameters on HalfCheetah, roughly $1.87\times$ GAIL's single $76$k-parameter
+discriminator. This is the largest reward net so far, and I sit right at the $1.05\times$-largest-baseline
+cap; the decomposition into two heads is what spends it.
 
-Let me verify the done-aware fix does what I claim on a transition I can trace by hand, because the whole
-rescue hinges on it and it is cheap to check the sign. Take a two-state fragment where the potential net
-has learned something sensible: $h(s)$ large and positive for an upright torso (high future value) and
-$h(s_{\text{fallen}})$ near zero. Now the policy takes a bad action and the body falls at this step, so
-the transition is terminal, $\text{done}=1$, and the "next state" $s'$ is a nominal fallen configuration
-with, say, $h(s')\approx0$ but which the untrained $h$ might just as easily read as *positive* because it
-has never been told this state has no future. Without the mask, $f=g(s,a)+\gamma h(s')-h(s)$: if $h(s')$
-comes out positive the shaping term $\gamma h(s')$ *adds* reward to the very transition where the body
-died — the policy is paid, at the moment of the fall, for the imagined future of a state that has none, so
-falling can look no worse (or even better) than staying up. With the mask, $\gamma(1-\text{done})h(s')=0$
-and the transition reduces to $f=g(s,a)-h(s)$: it loses the large positive $-h(s)$ boundary term (an
-upright state's potential *subtracted*), i.e. leaving a high-value upright state to fall is correctly
-scored as a large negative shaping contribution. So the mask flips the sign of the incentive at exactly
-the terminal transition — from "falling has phantom future value" to "leaving a good state to fall costs
-you its potential." That is precisely the gradient a Hopper or Walker policy needs to stop toppling on the
-first stumble, and it is absent from the unmasked (and from GAIL's) reward.
+The $-\log\pi(a\mid s)$ term needs a scale sanity-check, since I subtract it from $f$ inside the logit and
+a wildly-scaled subtrahend could swamp the learned reward. Under the Gaussian actor, $\log\pi(a\mid s)=
+-\tfrac12\sum_i\big[(a_i-\mu_i)^2/\sigma_i^2+\log(2\pi\sigma_i^2)\big]$; for a competent expert acting near
+the policy mean the squared term is small and the magnitude is set by the $\log(2\pi\sigma_i^2)$
+normalizer, a handful for a $3$-to-$6$-dimensional action with order-unity $\sigma$ — not hundreds. So
+$-\log\pi$ is an $O(1)$-to-$O(10)$ offset comparable to $f$ itself, the regime where it constrains the
+discriminator (making it generator-independent) without drowning the learned reward. It is evaluated under
+no-grad so no gradient flows into the policy from the discriminator side; the policy only moves through PPO
+on the reward I serve.
 
-The $-\log\pi(a\mid s)$ term deserves one scale check too, since I am subtracting it from $f$ inside the
-logit and a wildly-scaled subtrahend could swamp the learned reward. Under the Gaussian actor,
-$\log\pi(a\mid s)=-\tfrac12\sum_i\big[(a_i-\mu_i)^2/\sigma_i^2+\log(2\pi\sigma_i^2)\big]$ over the
-action dimensions. For a competent expert whose actions sit near the policy mean early on, the squared
-term is small and the magnitude is dominated by the $-\tfrac12\sum_i\log(2\pi\sigma_i^2)$ normalizer,
-which for a $3$-to-$6$-dimensional action with order-unity $\sigma$ is a handful — not hundreds. So
-$-\log\pi$ contributes an $O(1)$-to-$O(10)$ offset to the logit, comparable to $f$ itself, exactly the
-regime where it meaningfully constrains the discriminator (making it generator-independent) without
-drowning the learned reward term. It is evaluated under no-grad so no gradient flows into the policy from
-the discriminator side; the policy only ever moves through PPO on the reward I serve.
-
-Now the falsifiable expectations, read directly against GAIL's numbers. The structured, done-aware reward
-should help *most* exactly where GAIL failed worst — the terminating bodies — because that is where the
+Now the falsifiable expectations, read against GAIL's numbers. The structured, done-aware reward should
+help *most* exactly where GAIL failed worst — the terminating bodies — because that is where the
 phantom-terminal-potential and the saturated unstructured reward did the damage. So I expect Hopper and
 Walker2d to climb decisively off GAIL's near-zero floor ($25.7$ and $77.8$): not to the expert, but into
-the hundreds-to-low-thousands, with the generator-independent optimal discriminator and the done-aware
-shaping giving the policy a stable enough signal to keep the body upright long enough to accumulate return.
-On HalfCheetah, GAIL already survived at $1646$ thanks to non-termination, so AIRL's terminal-state fix
-buys it less there; I expect a modest improvement (the stabler game and the better-conditioned reward
-should still push it up, into the low-to-mid $2000$s, but the gap over GAIL should be a fraction of what I
-expect on the terminating bodies). The clean signature that would confirm the diagnosis: AIRL beats GAIL
-on *every* environment, and the *margin* is largest on Hopper and Walker2d and smallest on HalfCheetah —
-the inverse of where GAIL's terminal-driven collapse hit hardest. If instead AIRL also collapses on the
-terminating bodies, then the problem is not the reward structure at all but the adversarial frame itself
-on clean demos — and the next rung would have to abandon adversarial reward learning entirely. That is the
-bar AIRL must clear, and it is exactly the question step 3 will answer.
+the hundreds-to-low-thousands, with the generator-independent discriminator and the done-aware shaping
+giving a stable enough signal to keep the body upright long enough to accumulate return. HalfCheetah
+already survived at $1646$ thanks to non-termination, so the terminal-state fix buys it less there — a
+modest improvement staying in the low thousands, the gap over GAIL a fraction of what I expect on the
+terminating bodies. The signature that would confirm the diagnosis: AIRL beats GAIL on *every* environment,
+with the *margin* largest on Hopper and Walker2d and smallest on HalfCheetah — the inverse of where GAIL's
+collapse hit hardest. Were AIRL to also collapse on the terminating bodies, the problem would not be the
+reward structure but the adversarial frame itself on clean demos, and step 3 would have to abandon
+adversarial reward learning entirely. That is the bar AIRL must clear.

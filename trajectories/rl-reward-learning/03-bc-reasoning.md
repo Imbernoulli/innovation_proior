@@ -60,7 +60,7 @@ rung precisely to settle it: on these clean, dense MuJoCo demos with a fixed PPO
 cloning's *stability* beat the adversarial methods' *principle*?
 
 Let me reason about *why* cloning could win here, because it is not obvious from the lineage — the lineage
-says BC should lose. Recall the covariate-shift penalty I sized at rung 1: BC's regret grows like
+says BC should lose. Recall the covariate-shift penalty I sized at the first step: BC's regret grows like
 $\varepsilon T^2$, and with $T\approx1000$ that $T^2=10^6$ multiplier is what makes a small per-step error
 $\varepsilon$ compound into a fall. Two things blunt that penalty on *this* task. First, the demos are
 dense — tens of thousands of transitions — and the experts are competent, so the expert state distribution
@@ -76,26 +76,19 @@ policy-density to evaluate, nothing to balance — it is a single stationary sup
 dataset. On clean demos that stability is worth more than the occupancy-matching guarantee, *if* the
 experiment bears it out.
 
-Now I have to land BC in *this* scaffold, and here the scaffold forces a version of cloning that is quite
-different from the classical road-following cloner — and I have to derive the harness's actual version, not
-the textbook one. The classical formulation laid out a whole apparatus: a population-coded output bank read
-by center of mass for fine continuous control, synthetic perspective-transformed views to manufacture the
-off-center recovery examples the expert never demonstrates, pure-pursuit relabeling of those views, and a
-replay buffer with a mean-steering-toward-straight eviction rule to lock in left-right symmetry. *None of
-that exists here.* The scaffold gives me no road geometry to synthesize recovery views from, no
-population-coded output — the policy is a fixed Gaussian actor-critic with a mean head and a
-state-independent log-std — and no mechanism to relabel manufactured states. The harness exposes exactly
-one thing the classical cloner did not have and that I should use: the policy's *full action distribution*.
-So the task's BC is not "regress the action to a point"; it is *maximum-likelihood cloning of the Gaussian
-policy* — minimize the negative log-probability of the expert's actions under $\pi(a\mid s)$. Writing that
-loss out for the Gaussian actor, $-\log\pi(a\mid s)=\tfrac12\sum_i\big[(a_i-\mu_i(s))^2/\sigma_i^2+
-\log(2\pi\sigma_i^2)\big]$: minimizing it drives the mean head $\mu(s)$ toward the expert action (the
-squared term, an MSE weighted by inverse variance) *and* fits the log-std $\log\sigma$ (the normalizer
-term), because pushing $\sigma$ too small blows up the $(a-\mu)^2/\sigma^2$ penalty on any residual error
-while pushing it too large blows up the $\log\sigma$ term — the two terms balance at the $\sigma$ that
-matches the actual action spread. So a single NLL objective trains both the mean and the variance at once
-and gives proper action coverage rather than a brittle point estimate that a plain MSE-on-the-mean would
-produce. That is the tuned-library BC objective, and it is what the harness's fill implements.
+Now I have to land BC in *this* scaffold, which forces a version of cloning quite different from the
+classical road-following cloner — that one leaned on machinery this harness does not provide (synthetic
+recovery views to manufacture off-center examples, a population-coded output bank, relabeling of
+manufactured states). What the harness *does* expose, and the classical cloner did not have, is the
+policy's *full action distribution*. So BC here is not "regress the action to a point"; it is
+*maximum-likelihood cloning of the Gaussian policy* — minimize the negative log-probability of the expert's
+actions under $\pi(a\mid s)$. Writing that loss for the Gaussian actor, $-\log\pi(a\mid s)=\tfrac12\sum_i
+\big[(a_i-\mu_i(s))^2/\sigma_i^2+\log(2\pi\sigma_i^2)\big]$: minimizing it drives the mean head $\mu(s)$
+toward the expert action (the squared term, an inverse-variance-weighted MSE) *and* fits the log-std (the
+normalizer), since too-small $\sigma$ blows up the $(a-\mu)^2/\sigma^2$ penalty on any residual error while
+too-large $\sigma$ blows up the $\log\sigma$ term — the two balance at the $\sigma$ matching the actual
+action spread. So one NLL objective trains both mean and variance and gives proper action coverage, not the
+brittle point estimate a plain MSE-on-the-mean would produce.
 
 The mechanics the scaffold dictates, derived from its rigid contract. The reward net is *unused* — BC does
 not learn a reward — so `RewardNetwork` is a dummy returning zeros, and `compute_reward` returns zeros for
@@ -106,8 +99,8 @@ value-target that is everywhere zero — so the secondary PPO step contributes e
 critically, injects *none* of the non-stationarity that destabilized the adversarial methods. PPO is
 present but inert; it cannot fight the cloning. The actual learning happens in `update()`, and to train the
 *policy* there I need the policy reference *and* its optimizer — the scaffold hands both in through
-`set_policy(policy, optimizer)`, which the BC fill stores (unlike AIRL, which kept only the reference; BC
-keeps the optimizer because *it*, not the fixed PPO step, does the gradient updates on the policy). Inside
+`set_policy(policy, optimizer)`, and I store both (unlike AIRL, which kept only the reference; here I keep
+the optimizer because *it*, not the fixed PPO step, does the gradient updates on the policy). Inside
 `update()` I sample expert $(s,a)$ minibatches, evaluate $\log\pi(a\mid s)$ via the policy's
 `get_action_and_value(obs, expert_acts)` — which returns the log-prob of the *expert* action under the
 current Gaussian — and minimize $-\mathbb{E}[\log\pi(a\mid s)]$, with a tiny entropy *penalty*
@@ -118,7 +111,7 @@ the coefficient is deliberately tiny ($10^{-3}$) so it does not fight the NLL's 
 only stops a pathological collapse to zero variance that would make the log-prob and its gradient explode.
 
 The step-budget choice is worth pinning down against the adversarial rungs. I run several BC gradient
-steps per `update()` call — the fill uses `n_bc_steps=20` — so cloning dominates any residual influence of
+steps per `update()` call — I use `n_bc_steps=20` — so cloning dominates any residual influence of
 the secondary PPO step, and I clip the policy grad-norm at $0.5$ and step the policy optimizer directly.
 Compare the adversarial rungs' $16$ effective discriminator steps per round ($4\times4$): I am spending a
 comparable per-round gradient budget, but on a *stationary* supervised loss over a *fixed* dataset rather
@@ -133,49 +126,40 @@ log-std fit; clipping the norm to $0.5$ caps that step size so the $20$ inner st
 progress toward the expert action rather than oscillating around it. It is the supervised analogue of the
 trust region PPO gives the adversarial rungs — cheap here because the target is fixed.
 
-The dummy reward net still has to satisfy the contract, so let me confirm it is legal and cheap. It must
-expose `forward(state, action, next_state) -> (batch,)` and the algorithm must set `self.reward_net`, so I
-keep a `RewardNetwork` that holds a single unused `nn.Linear(1,1)` — a handful of parameters — and whose
-`forward` returns `torch.zeros(batch)`. Against the $\approx1.05\times$-largest-baseline parameter cap this
-is trivially inside budget: three parameters versus the tens of thousands the adversarial reward nets spent,
-so BC is the *smallest* reward footprint on the ladder even though it produces the policy I actually care
-about. The asymmetry is the point — BC moves all of its capacity into the policy (which is fixed-size and
-not mine to grow) and spends essentially nothing on the reward object the other rungs poured their budget
-into.
+The dummy reward net still has to satisfy the contract — expose `forward(state, action, next_state) ->
+(batch,)` and be set as `self.reward_net` — so I keep a `RewardNetwork` holding one unused `nn.Linear(1,1)`
+whose `forward` returns `torch.zeros(batch)`. A handful of parameters against the tens of thousands the
+adversarial nets spent: BC has the *smallest* reward footprint on the ladder even though it produces the
+policy I actually care about. The asymmetry is the point — BC spends all its capacity on the policy
+(fixed-size, not mine to grow) and nothing on the reward object the other rungs poured their budget into.
 
-It is worth checking the terminal-body argument from the policy side, because that is where I am claiming
-the decisive win and I should make sure the mechanism is real and not wishful. On Hopper and Walker2d the
-episode ends when the torso pitches past a threshold; survival is a matter of producing, at each state, an
-action close enough to a competent one that the body stays inside the viable set. AIRL's failure there was
-that two of three seeds never grew a reward whose gradient reliably pointed at "stay upright," so the
-policy wandered out of the viable set within a few steps ($\sim160$-return seeds). A cloned Gaussian does
-not have to *discover* that gradient at all: for every expert state it is trained directly toward the
-expert's action, and because the expert stays upright the entire demonstration, in-distribution the clone
-inherits an upright-keeping action at every visited state. The residual risk is purely covariate shift —
-the clone drifts to a state the expert never showed and emits a poor action there — but on dense demos
-that manifold is well covered, so the drift is slow and the $\varepsilon T^2$ budget is spent gradually
-rather than blown in the first few steps. That is exactly the difference between "barely alive, occasional
-lucky seed" and "consistently alive across seeds" that I expect to see: AIRL's terminating-body survival
-was gated on the adversarial reward *emerging* (a coin-flip across seeds), whereas BC's survival is gated
-only on the demos covering the states the clone visits (reliable when the demos are dense and clean). If
-the reasoning is right the seed spread on Hopper and Walker should tighten relative to AIRL's
-two-dead-one-alive scatter, not just the mean rise.
+The terminal-body argument is worth making from the policy side, since that is where I claim the decisive
+win. On Hopper and Walker2d the episode ends when the torso pitches past a threshold, so survival means
+producing, at each state, an action close enough to a competent one to keep the body in the viable set.
+AIRL's failure there was that two of three seeds never grew a reward whose gradient reliably pointed at
+"stay upright." A cloned Gaussian does not have to *discover* that gradient: for every expert state it is
+trained directly toward the expert's action, and since the expert stays upright throughout, in-distribution
+the clone inherits an upright-keeping action at every visited state. The residual risk is purely covariate
+shift — the clone drifts to an unseen state and acts poorly there — but on dense demos the manifold is well
+covered, so the drift is slow and the $\varepsilon T^2$ budget is spent gradually rather than blown in the
+first few steps. AIRL's terminating-body survival was gated on the adversarial reward *emerging* (a
+coin-flip across seeds); BC's is gated only on the demos covering the states the clone visits (reliable when
+they are dense and clean). If the reasoning holds, the seed spread on Hopper and Walker should tighten
+relative to AIRL's two-dead-one-alive scatter, not just the mean rise.
 
-So the falsifiable expectations, read against the two rungs below. If the diagnosis is right — that the
-adversarial methods are dominated by min-max instability on clean demos, not by their occupancy-matching
-principle — then BC should *beat AIRL on the aggregate*, and it should beat it most clearly where AIRL's
-instability bit hardest: the terminating bodies. I expect BC's Hopper and Walker2d to land in the
-low-thousands and the low-to-mid thousands respectively — not the $\{153, 169, 2198\}$ two-dead-one-alive
-pattern AIRL gave, but consistently-alive cloned gaits across seeds, because a supervised fit to a
-competent expert keeps the body upright without needing a reward to emerge first. On HalfCheetah, where
-AIRL already reached $2514$ and the body never terminates, I expect BC to be *competitive but not
-dramatically ahead* — possibly even with one runaway seed (cloning a fast cheetah can overshoot the
-expert's speed) and one weak seed (cloning can also underfit a high-dimensional gait), so a wide spread
-around the low-$2000$s that might even trail AIRL's mean slightly. The clean signature that would confirm
-the whole ladder's story: BC strongest overall, winning Hopper and Walker2d decisively while roughly tying
-or modestly trailing AIRL on the non-terminal HalfCheetah — i.e. the simplest method beating the
+So the falsifiable expectations, read against the two rungs below. If the diagnosis is right — the
+adversarial methods dominated by min-max instability on clean demos, not by their occupancy-matching
+principle — then BC should *beat AIRL on the aggregate*, most clearly where AIRL's instability bit hardest:
+the terminating bodies. I expect BC's Hopper and Walker2d into the low-thousands — not the $\{153, 169,
+2198\}$ two-dead-one-alive pattern AIRL gave, but consistently-alive cloned gaits, because a supervised fit
+to a competent expert keeps the body upright without needing a reward to emerge first. On HalfCheetah,
+where AIRL already reached $2514$ and the body never terminates, I expect BC competitive but not
+dramatically ahead — its edge smallest of any environment, and possibly a wide seed spread, since cloning a
+fast cheetah can overshoot the expert's speed while a high-dimensional gait can also underfit. The
+signature that would confirm the whole ladder's story: BC strongest overall, winning Hopper and Walker2d
+decisively while roughly tying AIRL on the non-terminal HalfCheetah — the simplest method beating the
 principled ones precisely because the principle's cost (instability) outweighs its benefit (occupancy
-matching) on clean demonstrations. If instead BC underperforms AIRL across the board, then the
-covariate-shift penalty really does dominate here and the adversarial frame was right after all — but given
-the two-thirds-dead AIRL seeds on the terminating bodies, I expect the opposite, and that is the bar BC
-must clear as the top of this ladder.
+matching) on clean demonstrations. Were BC to instead underperform AIRL across the board, the
+covariate-shift penalty really would dominate here and the adversarial frame was right after all — but
+given the two-thirds-dead AIRL seeds on the terminating bodies, I expect the opposite, and that is the bar
+BC must clear as the top of this ladder.
