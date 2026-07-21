@@ -44,7 +44,7 @@ How do I improve it? The plane through my m basic points has an equation z = π�
 s = argmin_j [ cⱼ − (π·Aⱼ + π₀) ].
 ```
 
-Let me run one pricing pass by hand to make sure this rule actually points somewhere sensible, because I don't trust it until I've watched it move on numbers. Take m = 2 — one convexity row, one y-row — and five points (yⱼ, zⱼ): (0,3), (1,1), (2,4), (3,0), (4,5). The requirement is y = 2. Start with the two outer points 0 and 4 as my basic simplex; their y-interval [0,4] straddles 2, so the requirement line does pierce the segment between them. Fitting the plane (here a line) through them: π·0 + π₀ = 3 and π·4 + π₀ = 5 give π₀ = 3, π = 0.5. The current crossing height at y = 2 is 0.5·2 + 3 = 4. Now the gaps cⱼ − (π·yⱼ + π₀) for the five points: point 0 gives 3 − 3 = 0, point 1 gives 1 − 3.5 = −2.5, point 2 gives 4 − 4 = 0, point 3 gives 0 − 4.5 = −4.5, point 4 gives 5 − 5 = 0. The two basic points read 0, as they must — they're *on* the plane. The most negative is point 3 at −4.5, so point 3 enters. Geometrically point 3 = (3,0) is the lowest point sitting under my tilted line, exactly the one I'd want to pull the line down toward. Good — the rule moves, and it moves toward the floor of the cloud, not at random.
+I run one pricing pass by hand on a small example to watch the entering rule move. Take m = 2 — one convexity row, one y-row — and five points (yⱼ, zⱼ): (0,3), (1,1), (2,4), (3,0), (4,5). The requirement is y = 2. Start with the two outer points 0 and 4 as my basic simplex; their y-interval [0,4] straddles 2, so the requirement line does pierce the segment between them. Fitting the plane (here a line) through them: π·0 + π₀ = 3 and π·4 + π₀ = 5 give π₀ = 3, π = 0.5. The current crossing height at y = 2 is 0.5·2 + 3 = 4. Now the gaps cⱼ − (π·yⱼ + π₀) for the five points: point 0 gives 3 − 3 = 0, point 1 gives 1 − 3.5 = −2.5, point 2 gives 4 − 4 = 0, point 3 gives 0 − 4.5 = −4.5, point 4 gives 5 − 5 = 0. The two basic points read 0, as they must — they're *on* the plane. The most negative is point 3 at −4.5, so point 3 enters. Geometrically point 3 = (3,0) is the lowest point sitting under my tilted line — the rule moved toward the floor of the cloud, not at random.
 
 If that minimum is ≥ 0 — no point lies below the current plane — then the plane already supports the whole cloud from below. Any feasible center of gravity is a convex combination of the columns; the gaps at all columns are then non-negative, and the gap at the center of gravity is the same convex combination of the column gaps (everything here is linear in the weights), so it too is non-negative. At y = b, then, no feasible center of gravity can sit below the plane's height there, which is the current value — so I can't do better, and I stop. That gives me an optimality test, and the thing I like about it is that it's *purely local*: I read it off the m basic points and one pass over the columns; I never enumerate vertices.
 
@@ -70,19 +70,17 @@ the inequality by multiplying −c̄ₛ ≥ Δₜ₋₁ by θₜ > 0. Rearrange:
 Δₜ ≤ (1 − θₜ) Δₜ₋₁ ≤ e^{−θₜ} Δₜ₋₁,
 ```
 
-using 1 − θ ≤ e^{−θ}. Let me check that last inequality isn't wishful, since the whole bound rests on it: at θ = 0.1, 1 − θ = 0.900 against e^{−0.1} = 0.905; at θ = 0.5, 0.500 against 0.607; at θ = 0.9, 0.100 against 0.407. The right side is larger every time — and it has to be, since e^{−θ} = 1 − θ + θ²/2 − … sits above 1 − θ by a positive θ²/2 to leading order. Good, the step is honest. Chain it over the iterations:
+using 1 − θ ≤ e^{−θ}, which holds because e^{−θ} = 1 − θ + θ²/2 − … sits above 1 − θ by a positive θ²/2 to leading order. Chain it over the iterations:
 
 ```
 Δₜ / Δ₀ ≤ (1−θ₁)(1−θ₂)⋯(1−θₜ) ≤ e^{−(θ₁+⋯+θₜ)} = e^{−Σθᵢ}.
 ```
 
-Independent of n, the number of variables. The gap decays geometrically in the *sum of the entering values*. Now let me put numbers on what that buys. Suppose θ is, on average, about 1/m — the entering weight is a typical share among m basic variables. To drive the gap down by e^{−7} (which is 0.00091, under a thousandth) I need Σθᵢ ≥ 7, and at θ ≈ 1/m that's about 7m iterations. Let me sanity-check the geometric product directly rather than trust the exponential bound: fourteen steps at θ = 0.5 each (Σθ = 7) give ∏(1 − 0.5) = 0.5¹⁴ = 6.1×10⁻⁵, comfortably under 10⁻³, and indeed below the e⁻⁷ = 9.1×10⁻⁴ the bound promises. So for m = 5, roughly 7m = 35 pivots cut the gap a thousand-fold. *That's* the calculation that convinces me, back here in 1947, that this could be genuinely efficient — a handful of m-sized batches of steps, not a combinatorial crawl. (It leans on the non-degeneracy floor θ > 0; I'll have to come back to what happens when that floor fails.)
+Independent of n, the number of variables. The gap decays geometrically in the *sum of the entering values*. Now let me put numbers on what that buys. Suppose θ is, on average, about 1/m — the entering weight is a typical share among m basic variables. To drive the gap down by e^{−7} (which is 0.00091, under a thousandth) I need Σθᵢ ≥ 7, and at θ ≈ 1/m that's about 7m iterations — for m = 5, roughly 35 pivots cut the gap a thousand-fold. *That's* the calculation that convinces me, back here in 1947, that this could be genuinely efficient — a handful of m-sized batches of steps, not a combinatorial crawl. (It leans on the non-degeneracy floor θ > 0; I'll have to come back to what happens when that floor fails.)
 
-Before I trust any of this, I want to run my small example all the way to its end in the column picture and see where it lands, then check that against the answer computed a completely different way. From the basic pair {0,4} the rule brought in point 3 = (3,0). The requirement line y = 2 now has to be supported by a pair straddling it, and from the points actually on the lower boundary the straddling pair is {1,3} = (1,1) and (3,0): the line through them has slope (0−1)/(3−1) = −0.5, so at y = 2 it gives z = 1 + (−0.5)(2−1) = 0.5. A fresh pricing pass against that line finds no point below it — the remaining points 0, 2, 4 all sit at or above the lower hull — so 0.5 is where it stops. Independently: the lowest z achievable at y = 2 is just f(2), the underbelly of the hull of those five points, and the underbelly near y = 2 is exactly the segment from (1,1) to (3,0), giving f(2) = 0.5 with weights ½ on point 1 and ½ on point 3 (so that ½·1 + ½·3 = 2 lands the center of gravity on the line). The two routes agree: 0.5, weights (0, ½, 0, ½, 0). The algorithm reaches the geometric answer. That's the first thing that makes me believe the column picture isn't just a pretty story.
+I run my small example all the way to its end in the column picture and check the answer a completely different way. From the basic pair {0,4} the rule brought in point 3 = (3,0). The requirement line y = 2 now has to be supported by a pair straddling it, and from the points actually on the lower boundary the straddling pair is {1,3} = (1,1) and (3,0): the line through them has slope (0−1)/(3−1) = −0.5, so at y = 2 it gives z = 1 + (−0.5)(2−1) = 0.5. A fresh pricing pass against that line finds no point below it — the remaining points 0, 2, 4 all sit at or above the lower hull — so 0.5 is where it stops. Independently: the lowest z achievable at y = 2 is just f(2), the underbelly of the hull of those five points, and the underbelly near y = 2 is exactly the segment from (1,1) to (3,0), giving f(2) = 0.5 with weights ½ on point 1 and ½ on point 3 (so that ½·1 + ½·3 = 2 lands the center of gravity on the line). The two routes agree: 0.5, weights (0, ½, 0, ½, 0). The algorithm reaches the geometric answer. That's the first thing that makes me believe the column picture isn't just a pretty story.
 
 Now the punch that I don't see coming until I build it. I strip the convexity constraint Σxⱼ = 1 — I don't always have that leading-1 row; the general planning LP is just Ax = b, x ≥ 0 — and I work out the same column-geometry algorithm without it, and arrange in the fall of '47 to have the Bureau of Standards run it on Stigler's nutrition problem. And as I watch what it does, step by step, choosing an entering column, dropping a leaving column, moving to an adjacent basis — I look at where each basis sits in the *row* geometry, the geometry of the variables, and each one is a vertex of the feasible polyhedron, each step crossing to a vertex that differs in exactly one basic column — an adjacent vertex, along an edge. This is descent from vertex to adjacent vertex along the edges of the polyhedron. It is the *same algorithm I rejected at the start as a stupid boundary-wandering idea*. The column geometry didn't give me a new algorithm. It gave me a new pair of eyes on the old one — and through those eyes the same edge-walk is fast for a concrete reason I can now point to: the only points it ever moves to are extreme points of the underbelly, and in any cloud most points lie well above the underbelly, so those are rare. The intuition that said "wandering the outside boundary must be slow" was counting all boundary vertices; the column picture shows the walk only ever visits the few that matter.
-
-I can double-check that the row-geometry machine and the column-geometry reasoning give the same number, because by now I have the tableau coded. On a tiny case I can solve by hand — maximize 3x₁ + 2x₂ subject to x₁ + x₂ ≤ 4, x₁ + 3x₂ ≤ 6, x ≥ 0, i.e. minimize −3x₁ − 2x₂ — the feasible vertices are (0,0) with value 0, (4,0) with 12, (0,2) with 4, and the intersection (3,1) with 11; the max is 12 at (4,0). Running the tableau code on the standard form returns x = (4, 0) and objective −12, i.e. max 12 — the right vertex, found by edge-descent. And feeding it the convexity example above (convexity row, y-row = 2, costs = the zⱼ) returns weights (0, ½, 0, ½, 0) and z = 0.5, matching the underbelly computation I did by hand. The edge-walk lands on the optima I can check independently.
 
 So I stop hunting for an interior method. The boundary walk *is* the method; I just had to see it in the column geometry to trust it. What it's called — moving from one simplex of points to a neighboring simplex — is why Motzkin calls it "simplex," and the name fits.
 
@@ -104,163 +102,10 @@ t* = min over rows i with a_i > 0 of  b_i / a_i,
 
 and that row's basic variable leaves. Only positive coefficients can block me — a zero or negative coefficient means that basic variable doesn't decrease as the entering variable rises, so it imposes no limit. If *no* coefficient is positive, nothing ever blocks: I can push the entering variable to infinity, z drops without bound, the problem is unbounded. That's the unboundedness flag, and it falls right out of the ratio test having no eligible row.
 
-Then pivot: with pivot row r and entering column q, divide row r by the pivot entry to make it 1, and subtract multiples of it from every other row — *including the objective row* — to clear column q to zero elsewhere. That's exactly Gaussian elimination on the tableau, and it carries the whole thing to the adjacent basic feasible solution: the new basis has q where r used to be, the new x_B reads straight off the b-column, and the new reduced costs are sitting in the objective row ready for the next pricing pass. `take_step` is one pivot.
+Then pivot: with pivot row r and entering column q, divide row r by the pivot entry to make it 1, and subtract multiples of it from every other row — *including the objective row* — to clear column q to zero elsewhere. That's exactly Gaussian elimination on the tableau, and it carries the whole thing to the adjacent basic feasible solution: the new basis has q where r used to be, the new x_B reads straight off the b-column, and the new reduced costs are sitting in the objective row ready for the next pricing pass. `apply_row_operation` is one pivot.
 
 Two more things or it won't run on real problems. First, where do I start? I need *some* basic feasible solution. If every constraint was a ≤ inequality with a non-negative right-hand side, the slack variables I added form a ready-made non-negative basis — start there. But equality and ≥ rows have no such free slack, and a general equality-form routine should not assume the caller has handed me a basis. So I run a Phase 1 uniformly: add an artificial variable to each row, minimize the *sum of the artificials*; if I can drive it to zero, any remaining artificial basic rows are either pivoted out or recognized as redundant, and I'm sitting on a genuine basic feasible solution of the original problem, which I hand to Phase 2 to optimize the real objective. If the minimum sum of artificials is positive, the original constraints are infeasible — no plan exists.
 
 Second, the thing Koopmans makes me confront. I assumed non-degeneracy — that no basic variable is ever zero — when I argued convergence, and I figured degeneracy has probability zero: what are the odds of four planes in three-space meeting exactly at a point? But practical Air Force programs keep producing zero basic variables. Degeneracy is not a curiosity; it is routine. Degeneracy means the ratio test can give t* = 0 — a pivot that swaps the basis but doesn't move the vertex or lower z — and a sequence of those can *cycle*, returning to a basis it already visited and looping forever. The proof-level fix is to perturb the right-hand side infinitesimally, or keep lexicographic bookkeeping that behaves as if such a perturbation had been made, so tied zero steps are ordered consistently and the basis cannot repeat. In code I also want a Bland-style smallest-index option, because a full tableau routine needs a deterministic anti-cycling path when degeneracy appears.
 
-Let me write it the way it actually runs — a full tableau, an artificial-variable first phase for feasibility, pricing for the entering column, ratio test for the leaving row, pivot, repeat.
-
-```python
-import numpy as np
-
-def to_standard_form(A_ub, b_ub, c):
-    """Convert A_ub @ x <= b_ub, x >= 0 into A @ x == b, x >= 0."""
-    c = np.asarray(c, dtype=float).reshape(-1)
-    A_ub = np.asarray(A_ub, dtype=float)
-    b = np.asarray(b_ub, dtype=float).reshape(-1)
-    if A_ub.ndim != 2:
-        raise ValueError("A_ub must be a two-dimensional array")
-    m, n = A_ub.shape
-    if c.size != n or b.size != m:
-        raise ValueError("incompatible dimensions for c, A_ub, and b_ub")
-
-    A = np.hstack((A_ub, np.eye(m)))
-    c_ext = np.concatenate((c, np.zeros(m)))
-    negative = b < 0
-    A[negative, :] *= -1
-    b[negative] *= -1
-    return c_ext, A, b
-
-
-def choose_improving_column(tableau, tol=1e-9, smallest_index_ties=False):
-    """Return an entering column, or None when all reduced costs are non-negative."""
-    objective = tableau[-1, :-1]
-    candidates = np.where(objective < -tol)[0]
-    if candidates.size == 0:
-        return None
-    if smallest_index_ties:
-        return int(candidates[0])
-    return int(candidates[np.argmin(objective[candidates])])
-
-
-def choose_blocking_row(tableau, basis, column, n_rows,
-                        tol=1e-9, smallest_index_ties=False):
-    """Minimum-ratio test over positive pivot-column entries."""
-    pivot_column = tableau[:n_rows, column]
-    rhs = tableau[:n_rows, -1]
-    rows = np.where(pivot_column > tol)[0]
-    if rows.size == 0:
-        return None
-    ratios = rhs[rows] / pivot_column[rows]
-    best = ratios.min()
-    tied = rows[ratios <= best + tol]
-    if smallest_index_ties:
-        basis = np.asarray(basis)
-        return int(tied[np.argmin(basis[tied])])
-    return int(tied[0])
-
-
-def apply_row_operation(tableau, basis, row, column):
-    """Gaussian elimination pivot: make the pivot 1 and clear its column."""
-    tableau[row, :] = tableau[row, :] / tableau[row, column]
-    for other in range(tableau.shape[0]):
-        if other != row:
-            tableau[other, :] -= tableau[other, column] * tableau[row, :]
-    basis[row] = column
-
-
-def solve_tableau(tableau, basis, n_rows, tol=1e-9,
-                  smallest_index_ties=False, maxiter=1000, nit0=0):
-    """Run tableau pivots against the last row as the active objective."""
-    nit = nit0
-    while True:
-        column = choose_improving_column(tableau, tol, smallest_index_ties)
-        if column is None:
-            return "optimal", nit
-
-        row = choose_blocking_row(
-            tableau, basis, column, n_rows, tol, smallest_index_ties
-        )
-        if row is None:
-            return "unbounded", nit
-        if nit >= maxiter:
-            return "iteration_limit", nit
-
-        apply_row_operation(tableau, basis, row, column)
-        nit += 1
-
-
-def solve_linear_program(c, A, b, tol=1e-9, maxiter=1000,
-                         smallest_index_ties=False):
-    """Minimize c @ x subject to A @ x == b and x >= 0.
-
-    Returns (x, objective_value, status), where status is one of
-    "optimal", "infeasible", "unbounded", or "iteration_limit".
-    """
-    c = np.asarray(c, dtype=float).reshape(-1)
-    A = np.asarray(A, dtype=float)
-    b = np.asarray(b, dtype=float).reshape(-1)
-    if A.ndim != 2:
-        raise ValueError("A must be a two-dimensional array")
-    m, n = A.shape
-    if c.size != n or b.size != m:
-        raise ValueError("incompatible dimensions for c, A, and b")
-
-    # Standard-form rows need b >= 0 so artificial variables start feasible.
-    A = A.copy()
-    b = b.copy()
-    negative = b < 0
-    A[negative, :] *= -1
-    b[negative] *= -1
-
-    # Phase 1 tableau: constraints, true objective, and feasibility objective.
-    tableau = np.zeros((m + 2, n + m + 1))
-    tableau[:m, :n] = A
-    tableau[:m, n:n + m] = np.eye(m)
-    tableau[:m, -1] = b
-    tableau[m, :n] = c
-    basis = list(range(n, n + m))
-    tableau[-1, :] = -tableau[:m, :].sum(axis=0)
-    tableau[-1, n:n + m] = 0
-
-    status, nit = solve_tableau(
-        tableau, basis, m, tol, smallest_index_ties, maxiter
-    )
-    if status == "iteration_limit":
-        return None, None, status
-    if abs(tableau[-1, -1]) > tol:
-        return None, np.inf, "infeasible"
-
-    # Remove artificial columns; pivot any zero-valued artificial basic out first.
-    keep_rows = []
-    for row in range(m):
-        if basis[row] >= n:
-            choices = np.where(np.abs(tableau[row, :n]) > tol)[0]
-            if choices.size:
-                apply_row_operation(tableau, basis, row, int(choices[0]))
-                keep_rows.append(row)
-        else:
-            keep_rows.append(row)
-
-    phase2 = np.vstack((tableau[keep_rows, :], tableau[[m], :]))
-    phase2 = np.delete(phase2, np.s_[n:n + m], axis=1)
-    basis = [basis[row] for row in keep_rows]
-
-    status, nit = solve_tableau(
-        phase2, basis, len(keep_rows), tol, smallest_index_ties, maxiter, nit
-    )
-    if status == "iteration_limit":
-        return None, None, status
-    if status == "unbounded":
-        return None, -np.inf, "unbounded"
-
-    x = np.zeros(n)
-    for row, variable in enumerate(basis):
-        value = phase2[row, -1]
-        x[variable] = 0.0 if abs(value) < tol else value
-    return x, float(c @ x), "optimal"
-```
-
-The causal chain, start to finish: I need to mechanize military program planning, so I generalize Leontief's input-output model into a dynamic, many-activity linear system — and the genuinely new step is pulling the goal out of the ground rules and stating it as an explicit *linear objective*, because comparing plans by enumeration is hopeless (70! > 10^100). The optimum of a linear objective over the constraint polyhedron sits at a vertex, i.e. a basic feasible solution, so I only have to search vertices; the obvious way is to walk edge to edge improving the objective, but I reject that on sight as a slow boundary-wander and go looking for an interior method. The column geometry from my thesis — weighting points so their center of gravity sits on the requirement line at lowest height — recasts the problem so the same walk becomes a short hop across the rare extreme points of the convex hull's underbelly, with a clean e^{−Σθ} convergence bound saying about m-sized batches of steps suffice; and when I strip the convexity constraint and run it on the diet problem I see that this "new" column-geometry algorithm *is* the edge-descent I'd discarded, now visibly efficient. Made arithmetic, it's the tableau simplex: price out columns to pick the most-negative reduced cost as the entering variable, ratio-test to find the first basic variable forced to zero as the leaving one, pivot by Gaussian elimination to the adjacent vertex, use an artificial-variable first phase when no starting basis is available, and guard degenerate zero steps with consistent tie handling or perturbation.
+Let me write it the way it actually runs — a full tableau, an artificial-variable first phase for feasibility, pricing for the entering column, ratio test for the leaving row, pivot, repeat. That's the whole machine; nothing left to derive, only to code up as the tableau routine and set it running on real programs.
