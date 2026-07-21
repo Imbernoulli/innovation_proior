@@ -16,7 +16,7 @@ The pain is the *next* stage. To actually maximize that KL-constrained objective
 
 So here's the itch. The reward-fitting stage is a clean supervised classification problem. The policy-fitting stage is a fragile RL problem. Both stages are, in the end, trying to satisfy the same preference data. Why are there two stages, and why is the second one RL at all? Could I collapse them — go straight from preferences to a policy with one supervised loss?
 
-Let me look at the closed form of the optimum, because if I'm going to skip the RL I need to know what RL is even aiming at. The KL-constrained objective is actually solvable in closed form for an unconstrained (non-parametric) policy — that's the one fact I'll lean on, so let me derive it rather than quote it.
+Let me look at the closed form of the optimum, because if I'm going to skip the RL I need to know what RL is even aiming at. The KL-constrained objective is actually solvable in closed form for an unconstrained (non-parametric) policy — that's the one fact I'll lean on, so let me derive it.
 
 Take the objective, write the KL out as an expectation:
 
@@ -43,8 +43,6 @@ Z(x) doesn't depend on π, so it's a constant for the minimization. The only ter
   π*(y|x) = (1/Z(x)) · π_ref(y|x) · exp( r(x,y)/β ).
 
 The move that made it go through was manufacturing π* so the reward term became part of a KL, and then leaning on KL ≥ 0. The optimal policy is the reference, reweighted by exp(reward/β). Tilt probability mass toward high-reward completions, and the tilt sharpens as β shrinks — β is the weight on the KL leash, so large β keeps the policy pinned near π_ref while small β lets it chase reward hard. Either way the *form* is an exponential tilt of π_ref.
-
-Before I build on it, let me sanity-check the algebra on a tiny case I can compute by hand, because the rest of the argument rides on this exact form. Take a prompt with three possible completions, π_ref = (0.5, 0.3, 0.2), an arbitrary reward r = (1.0, 0.0, −0.5), and β = 0.5. The tilt weights π_ref·exp(r/β) are 0.5·e², 0.3·e⁰, 0.2·e⁻¹ = (3.695, 0.300, 0.0736), so Z = 4.068 and π* = (0.908, 0.0737, 0.0181), which sums to 1.0 — it really is a distribution, and most of the mass has moved onto the high-reward completion, as the "tilt toward high reward" reading predicts. So the closed form checks out arithmetically and behaves the way I described.
 
 Now — this is exactly the place where prior work gets stuck, and where I almost get stuck too. This closed form is famous; reward-weighted regression (Peters & Schaal 2007), advantage-weighted regression (Peng 2019), the distributional-control work — they all know the optimum is this exp-tilted distribution. But they can't *use* it directly, because Z(x) = Σ_{y'} π_ref(y'|x) exp(r(x,y')/β) is a sum over all possible completions. For language, that's all possible sequences — combinatorially many. You can't compute Z, you can't even cheaply estimate it (importance sampling over sequences from an LM is brutally expensive). So the closed form gets demoted to a *target you approximate*: weight your samples by exp(r/β) and regress, or do RL toward it. The intractable Z is the wall everyone hits, and it's why we're back to sampling-based optimization.
 
@@ -75,7 +73,7 @@ Divide top and bottom by the numerator:
    = 1 / ( 1 + exp( β log(π*(y2)/π_ref(y2)) − β log(π*(y1)/π_ref(y1)) ) )
    = σ( β log(π*(y1)/π_ref(y1)) − β log(π*(y2)/π_ref(y2)) ).
 
-The Z(x) terms left no trace. The preference probability under the *true* reward's optimal policy came out as a logistic function of the difference of β·log-ratios between the policy and the reference — no Z, no sum over sequences. I want to be sure I didn't just lose Z in the notation, so let me put numbers to it on the same three-completion example from before. The implicit reward β log(π*/π_ref) on (y1, y2, y3) is (0.298, −0.702, −1.202), and r − β log Z with β log Z = 0.5·log(4.068) = 0.702 is (1.0 − 0.702, 0.0 − 0.702, −0.5 − 0.702) = (0.298, −0.702, −1.202) — identical, so the implicit reward really is the true reward minus the same x-only offset on every completion. Now compare preference probabilities directly. Under the true reward, σ(r(y1) − r(y2)) = σ(1.0) = 0.731; under the implicit reward, σ(0.298 − (−0.702)) = σ(1.0) = 0.731. The same for the other pairs: σ(r(y1) − r(y3)) = σ(1.5) = 0.818 matches σ(0.298 − (−1.202)) = σ(1.5) = 0.818, and σ(r(y2) − r(y3)) = σ(0.5) = 0.622 matches σ(−0.702 − (−1.202)) = σ(0.5) = 0.622. Every pair agrees to the digit. The cancellation isn't a notational sleight; the two rewards produce literally the same Bradley-Terry distribution, because preferences only ever see reward *differences* and Z was a reward *offset* shared by both completions.
+The Z(x) terms left no trace. The preference probability under the *true* reward's optimal policy came out as a logistic function of the difference of β·log-ratios between the policy and the reference — no Z, no sum over sequences. The cancellation isn't a notational sleight; the two rewards produce literally the same Bradley-Terry distribution, because preferences only ever see reward *differences* and Z was a reward *offset* shared by both completions.
 
 This reframes the implicit reward as r̂(x,y) = β log( π(y|x)/π_ref(y|x) ) — the β log Z(x) piece doesn't matter for anything preferences can observe, so I can just drop it and define the policy's implicit reward as the log-ratio. The policy is secretly a reward model, and the secret reward is β times how much more (or less) likely the policy makes a completion relative to the reference.
 
@@ -105,70 +103,23 @@ Now read −s back in reward terms. s = r̂(x,y_w) − r̂(x,y_l) with r̂ = β 
 
   ∇_θ L_DPO = − β · E [ σ( r̂(x,y_l) − r̂(x,y_w) ) · ( ∇log π_θ(y_w|x) − ∇log π_θ(y_l|x) ) ].
 
-Look at the two pieces. The bracket ∇log π_θ(y_w) − ∇log π_θ(y_l): a gradient step against this *raises* the log-probability of the preferred completion and *lowers* that of the dispreferred one. Exactly what I want. The scalar weight is σ(r̂(x,y_l) − r̂(x,y_w)) = σ(−s), with s the preferred-minus-dispreferred margin. I claimed this is "large when wrong, small when right," but let me actually tabulate σ(−s) across margins to see whether it behaves as a self-pacing weight or just as a constant-ish factor. For s = (−2.0, −0.5, 0.0, +0.5, +2.0, +5.0) the weights σ(−s) are (0.881, 0.622, 0.500, 0.377, 0.119, 0.0067). So when the model mis-orders the pair by margin −2 the weight is 0.88 — nearly the full step — and when it has the pair right with margin +5 the weight has dropped to 0.007, two orders of magnitude smaller. The update really does pour gradient into the examples it currently gets wrong and nearly switch off on the ones it already has right; it isn't a near-constant scale, the spread is genuine.
+Look at the two pieces. The bracket ∇log π_θ(y_w) − ∇log π_θ(y_l): a gradient step against this *raises* the log-probability of the preferred completion and *lowers* that of the dispreferred one. Exactly what I want. The scalar weight is σ(r̂(x,y_l) − r̂(x,y_w)) = σ(−s), with s the preferred-minus-dispreferred margin — supposedly large when the pair is wrong, small when it's already right. Tabulating it: for s = (−2.0, −0.5, 0.0, +0.5, +2.0, +5.0) the weights σ(−s) are (0.881, 0.622, 0.500, 0.377, 0.119, 0.0067). When the model mis-orders the pair by margin −2 the weight is 0.88 — nearly the full step — and when it has the pair right with margin +5 the weight has dropped to 0.007, two orders of magnitude smaller. It isn't a near-constant scale; the update really does pour gradient into the examples it currently gets wrong and nearly switch off on the ones it already has right.
 
-That weight is what separates this from the naive cousin I wanted to check. The naive objective is "just raise log p(y_w) and lower log p(y_l)" — unweighted, which is the unlikelihood baseline: exactly the bracket ∇log π_θ(y_w) − ∇log π_θ(y_l) with weight fixed at 1, no σ term, no reference ratios. The worry there is that there's nothing on the likelihood *minimization* of y_l to make it stop — the gradient on y_l keeps pointing the same direction no matter how low p(y_l) already is, so I'd expect it to drive probabilities down without bound until the policy degenerates into whatever maximizes the gap (repetitive non-text, e.g. a summary that just emits "when when when …"). I can't run the LM here to watch that happen, but the contrast with DPO is concrete: in DPO the weight σ(−s) → 0 as the margin grows, so the very mechanism that would run away is the one that shuts itself off once the preferred completion is comfortably ahead. To double-check the DPO loss actually relaxes as the margin opens, I evaluate −log σ(β·logits) at β = 0.1 while the policy pushes the chosen log-ratio up and the rejected down by δ: at δ = 0, 0.5, 1.0, 2.0 the logits are 0, 1, 2, 4 and the loss is 0.693, 0.644, 0.598, 0.513 — monotonically decreasing but flattening, consistent with a push that fades rather than one that runs away. The dynamic, per-example weight, scaled by β to respect the strength of the KL constraint, and the anchoring to π_ref through the log-ratio (so "lowering p(y_l)" is measured relative to the reference, not in absolute terms) are doing the real work.
+That weight is what separates this from the naive cousin I wanted to check. The naive objective is "just raise log p(y_w) and lower log p(y_l)" — unweighted, which is the unlikelihood baseline: exactly the bracket ∇log π_θ(y_w) − ∇log π_θ(y_l) with weight fixed at 1, no σ term, no reference ratios. The worry there is that there's nothing on the likelihood *minimization* of y_l to make it stop — the gradient on y_l keeps pointing the same direction no matter how low p(y_l) already is, so I'd expect it to drive probabilities down without bound until the policy degenerates into whatever maximizes the gap (repetitive non-text). I can't run the LM here to watch that happen, but the contrast with DPO is concrete: in DPO the weight σ(−s) → 0 as the margin grows, so the very mechanism that would run away is the one that shuts itself off once the preferred completion is comfortably ahead. The dynamic, per-example weight, scaled by β to respect the strength of the KL constraint, and the anchoring to π_ref through the log-ratio (so "lowering p(y_l)" is measured relative to the reference, not in absolute terms) are doing the real work.
 
 There's a generalization sitting here too, almost for free. Bradley-Terry was the K=2 case of Plackett-Luce, which handles full rankings of K items: the probability of a ranking τ is the product over ranks of exp(r(y_{τ(k)})) / Σ_{j≥k} exp(r(y_{τ(j)})). The same cancellation works — each factor is a softmax over a subset of completions all sharing the prompt x, so substituting r = β log(π/π_ref) + β log Z(x) makes the β log Z(x) cancel within every factor. So if I ever have ranked data instead of pairs, the objective is the obvious log-product analogue with the implicit log-ratio reward. Nice to know it's not special to pairs.
 
 One more thing I want to understand, because it tells me *why* the RL route was unstable in the first place and reassures me I'm not just trading one instability for another. Go back to the actor-critic view of stage 3. If a fixed reward r_φ induces π*(y|x) = π_ref(y|x)exp(r_φ(x,y)/β)/Z_φ(x), then minimizing KL(π_θ ‖ π*) is, after multiplying by −β, equivalent to maximizing E_{π_θ}[r_φ(x,y) − β log(π_θ(y|x)/π_ref(y|x)) − β log Z_φ(x)]. The subtracted term V_φ(x) = β log Z_φ(x) is the soft value of the reference distribution under r_φ. It is an x-only baseline, so it does not change the expected policy-gradient direction, but it is exactly the baseline that would reduce variance if I were estimating the gradient with samples. Standard actor-critic has to learn a value baseline for this role, or hack around it with a reference-completion estimate of the normalizing term. The reparameterization I derived makes this term *cancel structurally* — it never has to be estimated at all, because preferences only see differences. So the stability isn't luck; it's the same cancellation that removed Z, viewed from the optimization side.
 
-Alright. I'm confident. Let me write the code, and let me make sure it mirrors how this actually gets implemented rather than a toy. The objective needs, per preference pair, four sequence-level log-probabilities: policy-on-chosen, policy-on-rejected, reference-on-chosen, reference-on-rejected. A "sequence log-probability" is the sum over completion tokens of log p(token | prefix) — sum, not average, because that's the log-likelihood the Bradley-Terry derivation is written in. The autoregressive shift matters: the logit at position t predicts the label at t+1, and prompt or padding positions must be masked out before the sum. The reference is frozen, so its log-probs are computed under no_grad, and chosen plus rejected completions can be concatenated into one forward pass per model. Then the loss is just −logsigmoid(β · ((policy_chosen − policy_rejected) − (reference_chosen − reference_rejected))), which is exactly −log σ(β(log-ratio_w − log-ratio_l)) once I group the chosen/rejected and policy/reference terms. If I want conservative labels, I can smooth the binary target by mixing in the reversed comparison; if I want the reference-free ablation, I set the reference log-ratio to zero. The implicit rewards β(policy − reference), detached, are worth logging to watch the margin grow.
+Alright. I'm confident. Let me write the code, and let me make sure it mirrors how this actually gets implemented rather than a toy. The objective needs, per preference pair, four sequence-level log-probabilities: policy-on-chosen, policy-on-rejected, reference-on-chosen, reference-on-rejected. A "sequence log-probability" is the sum over completion tokens of log p(token | prefix) — sum, not average, because that's the log-likelihood the Bradley-Terry derivation is written in. The autoregressive shift matters: the logit at position t predicts the label at t+1, and prompt or padding positions must be masked out before the sum. The reference is frozen, so its log-probs are computed under no_grad. Then the loss is just −logsigmoid(β · ((policy_chosen − policy_rejected) − (reference_chosen − reference_rejected))), which is exactly −log σ(β(log-ratio_w − log-ratio_l)) once I group the chosen/rejected and policy/reference terms. If I want conservative labels, I can smooth the binary target by mixing in the reversed comparison; if I want the reference-free ablation, I set the reference log-ratio to zero. The implicit rewards β(policy − reference), detached, are worth logging to watch the margin grow.
 
 ```python
-import torch
-import torch.nn.functional as F
-
-def get_batch_logps(logits, labels, average_log_prob=False):
-    # logits: (B, T, V) from the LM; labels: (B, T), with -100 on prompt/pad.
-    assert logits.shape[:-1] == labels.shape
-    labels = labels[:, 1:].clone()             # token t is predicted from positions < t
-    logits = logits[:, :-1, :]
-    loss_mask = (labels != -100)               # only score completion tokens
-    labels[labels == -100] = 0                 # gather needs valid indices
-    per_token_logps = torch.gather(
-        logits.log_softmax(-1), dim=2, index=labels.unsqueeze(2)).squeeze(2)
-    summed_logps = (per_token_logps * loss_mask).sum(-1)
-    if average_log_prob:                       # default False: we want the SUM
-        return summed_logps / loss_mask.sum(-1)
-    return summed_logps                        # sequence log-prob, shape (B,)
-
-def dpo_loss(policy_chosen_logps, policy_rejected_logps,
-             reference_chosen_logps, reference_rejected_logps,
-             beta, label_smoothing=0.0, reference_free=False):
-    pi_logratios  = policy_chosen_logps   - policy_rejected_logps      # log π_θ(y_w)/π_θ(y_l)
-    ref_logratios = reference_chosen_logps - reference_rejected_logps  # log π_ref(y_w)/π_ref(y_l)
-    if reference_free:
-        ref_logratios = torch.zeros_like(pi_logratios)
-    logits = pi_logratios - ref_logratios     # = (r̂_w - r̂_l)/β ; β log Z cancelled here
-    losses = (
-        -F.logsigmoid(beta * logits) * (1 - label_smoothing)
-        -F.logsigmoid(-beta * logits) * label_smoothing
-    )
-    chosen_rewards   = beta * (policy_chosen_logps   - reference_chosen_logps).detach()
-    rejected_rewards = beta * (policy_rejected_logps - reference_rejected_logps).detach()
-    return losses, chosen_rewards, rejected_rewards
-
-def concatenated_forward(model, batch):
-    all_logits = model(batch["concat_input_ids"],
-                       attention_mask=batch["concat_attention_mask"]).logits
-    all_logps = get_batch_logps(all_logits, batch["concat_labels"])
-    n_chosen = batch["chosen_input_ids"].shape[0]
-    return all_logps[:n_chosen], all_logps[n_chosen:]
-
-def train_step(policy_model, reference_model, batch, beta, optimizer):
-    pc, pr = concatenated_forward(policy_model, batch)
-    with torch.no_grad():                      # reference is frozen — no gradient, no RL
-        rc, rr = concatenated_forward(reference_model, batch)
-    losses, chosen_rewards, rejected_rewards = dpo_loss(pc, pr, rc, rr, beta)
-    loss = losses.mean()
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
-    accuracy = (chosen_rewards > rejected_rewards).float().mean()
-    return loss.item(), accuracy.item()
+def preference_objective(policy_chosen_lp, policy_rejected_lp,
+                          ref_chosen_lp, ref_rejected_lp, beta):
+    logits = (policy_chosen_lp - policy_rejected_lp) - (ref_chosen_lp - ref_rejected_lp)
+    return -F.logsigmoid(beta * logits).mean()   # β log Z cancelled here
 ```
 
-For knobs: β = 0.1 by default (β = 0.5 for the TL;DR summarization data), the reference is the SFT model, and when there's no SFT model available I make one by fine-tuning on the preferred completions only — π_ref = argmax_π E[log π(y_w|x)] — so that the reference is in-distribution for the preferences I'm fitting, which keeps the implicit reward honest. RMSprop at lr 1e-6 with a short linear warmup over ~150 steps is enough; there's no sampling loop, no critic, no reward model, so there's almost nothing to tune.
+That fills the one empty slot in the skeleton with exactly the loss derived above; `sequence_logprob`, the frozen reference, and the optimizer step were already on the table and need no change. The one wrinkle worth adding beyond this core is efficiency: batch chosen and rejected together into a single forward pass per model rather than two, since the LM doesn't care which half of the batch it's scoring.
 
-The causal chain, start to finish: I want the policy that maximizes preference-reward minus a KL leash to the reference. That objective has a closed-form optimum, an exponential tilt of the reference by the reward, but its partition function is intractable, so nobody uses it directly — they approximate it with RL. Instead of solving the equation for the policy, I solve it for the reward: every reward is β·log(its optimal policy / reference) plus an x-only term. Substituting that into Bradley-Terry, the x-only term — the partition function — cancels, because preferences only see reward differences. So the optimal policy satisfies a Bradley-Terry model whose reward is just β·log(π/π_ref), and I can fit the policy directly by the same maximum-likelihood classification loss used for reward models — no reward model, no value function, no sampling, no RL. The gradient turns out to raise the preferred completion and lower the dispreferred one, weighted by how wrongly the policy currently orders them, which keeps it from degenerating the way an unweighted likelihood objective does. The policy was a reward model all along.
+For knobs: β = 0.1 by default (β = 0.5 for the TL;DR summarization data), the reference is the SFT model, and when there's no SFT model available I make one by fine-tuning on the preferred completions only — π_ref = argmax_π E[log π(y_w|x)] — so that the reference is in-distribution for the preferences I'm fitting, which keeps the implicit reward honest. RMSprop at lr 1e-6 with a short linear warmup over ~150 steps is enough; there's no sampling loop, no critic, no reward model, so there's almost nothing to tune.
