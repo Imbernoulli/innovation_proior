@@ -29,13 +29,11 @@ reduces adaptability, so the fix is to stop demanding probability one.
 
 Before I pick a handle, I want to know which regime this run is even in, because how much any
 over-confidence fix can buy depends on how hard the run is pushing into the over-confident corner, and
-that is set by the budget, which I can read straight off the substrate. Micro-batch 64, gradient
-accumulation 8, two GPUs — so `64·8·2 = 1024` sequences enter each optimizer step. The data is FineWeb
-`sample-10BT`, about 7.1B tokens, consumed over 13,535 iterations, which is `7.1e9 / 13535 ≈ 524{,}600`
-tokens per step; dividing by the 1024 sequences gives a sequence length of about 512, and `1024 · 512 =
-524{,}288` tokens per step times 13,535 steps is `7.10e9`, so the arithmetic closes. The number that
-matters is the ratio to parameters: `7.1e9 / 3.55e8 = 20.0` tokens per parameter, essentially one pass
-over the corpus at almost exactly the compute-optimal token-to-parameter ratio. That reframes what
+that is set by the budget. Micro-batch 64, gradient accumulation 8, two GPUs give `64·8·2 = 1024`
+sequences per optimizer step, and 7.1B FineWeb tokens over 13,535 iterations works out to about 512
+tokens per sequence. The number that matters is the ratio to parameters: `7.1e9 / 3.55e8 = 20.0`
+tokens per parameter, essentially one pass over the corpus at almost exactly the compute-optimal ratio.
+That reframes what
 "over-confidence" can mean here. This is not a many-epoch run where the model sees the same examples
 dozens of times and memorizes them; each token is seen about once, so classic overfitting-by-repetition
 is muted, and the over-confidence I diagnosed is the milder, structural kind — the loss forever pushing
@@ -85,23 +83,15 @@ smoothing does not merely forbid the runaway in principle; it pins the optimal c
 at about 13.8 nats — a finite, computable ceiling in place of `+∞`. That is the whole mechanism made
 concrete: the target moved from infinity to a point roughly fourteen nats out.
 
-I can push the fixed-point picture one step further, from *where the optimum sits* to *whether the
-optimizer actually feels a force toward it*, because those are not the same claim and the difference is
-the whole reason a finite optimum helps. Under plain cross-entropy the gradient on the true-token logit
-is `p_y - 1`, whose magnitude `1 - p_y` shrinks toward zero exactly as the model gives the loss what it
-asks for — so the closer the model gets to its (infinite) optimum the *weaker* the pull, a vanishing
-gradient forever chasing a target at infinity, which is why the gap creeps upward rather than snapping to
-a value and never settles anywhere. Smoothing changes the sign structure. Its true-token gradient is
-`p_y - q'(y) = p_y - (1 - ε + ε/V)`, and once the model overshoots and drives `p_y` past `0.95001` this
-term turns *positive*, so descent now pushes the winning logit back *down*. That is a genuine two-sided
-spring centered at `p_y ≈ 0.95`: below it the pull is up, above it the pull is down, and the strength
-grows linearly in the displacement `p_y - q'(y)`. Put the number on it at a model that has run the
-true-token probability up to `0.99`: the smoothing gradient there is `0.99 - 0.95001 = +0.040`, a
-four-percent-of-full-scale downward force on the winning logit, whereas plain cross-entropy's gradient at
-the same point is `0.99 - 1 = -0.010`, still pushing it *up*. So smoothing does not merely relocate the
-optimum from infinity to 13.8 nats out; it converts a one-way monotone creep into a restored equilibrium
-the optimizer can actually come to rest at, and the restoring force is exactly the `ε`-weighted uniform
-pull the decomposition below will name.
+There is a difference between *where the optimum sits* and *whether the optimizer feels a force toward
+it*, and that difference is the reason a finite optimum helps. Under plain cross-entropy the true-token
+gradient `p_y - 1` shrinks toward zero exactly as the model gives the loss what it asks for, a vanishing
+pull forever chasing a target at infinity, which is why the gap creeps up and never settles. Smoothing's
+true-token gradient `p_y - (1 - ε + ε/V)` turns *positive* once `p_y` overshoots `0.95001`, so descent
+pushes the winning logit back *down* — a two-sided spring centered at `p_y ≈ 0.95` whose strength grows
+with the displacement. At `p_y = 0.99` the smoothing gradient is `+0.040`, a downward force, where plain
+cross-entropy's `0.99 - 1 = -0.010` is still pushing up. Smoothing converts a one-way creep into a
+restored equilibrium the optimizer can come to rest at.
 
 Let me rewrite the loss to see its structure, because the structure is what tells me what I am really
 doing. Cross-entropy is linear in the target, so
@@ -112,36 +102,21 @@ So smoothing is exactly the ordinary hard-label cross-entropy, downweighted by `
 has drifted from uniform, with relative weight `ε/(1-ε)`. It is a regularizer that says "stay a bit
 humble, do not get too far from the prior." With `u` uniform, `H(u, p) = Σ_k (1/V)(-log p_k) = mean_k(-log p_k)`,
 so I never have to materialize the smoothed target vector — the second term is just `ε` times the mean
-of the negative log-probabilities over the vocabulary. Let me sanity-check the decomposition on a tiny
-case rather than trust the algebra blind: `V = 3`, `ε = 0.1`, target `y = 0`, and suppose the model
-predicts `p = (0.5, 0.3, 0.2)`. Then `q' = (0.9 + 0.0333, 0.0333, 0.0333) = (0.9333, 0.0333, 0.0333)`,
-and `H(q', p) = -(0.9333·log 0.5 + 0.0333·log 0.3 + 0.0333·log 0.2) = 0.7407`. The decomposition says
-this should equal `(1-ε)·H(q, p) + ε·H(u, p) = 0.9·(-log 0.5) + 0.1·(mean of -log 0.5, -log 0.3, -log 0.2)
-= 0.9·0.6931 + 0.1·1.1688 = 0.7407`. They agree to the digits I carried, so the split is real and the
-gradient inherits it: `∂H(q',p)/∂z_k = p_k - q'(k) = (1-ε)·(p_k - δ_{k,y}) + ε·(p_k - 1/V)`, exactly
-`(1-ε)` times the maximum-likelihood gradient plus `ε` times a uniform "flatten toward the prior" pull.
-That decomposition is what I will lean on to reason about strength.
+of the negative log-probabilities over the vocabulary. The gradient inherits the split:
+`∂H(q',p)/∂z_k = p_k - q'(k) = (1-ε)·(p_k - δ_{k,y}) + ε·(p_k - 1/V)`, exactly `(1-ε)` times the
+maximum-likelihood gradient plus `ε` times a uniform "flatten toward the prior" pull. That decomposition
+is what I will lean on to reason about strength.
 
-The structure also lets me place label smoothing among its target-side siblings and confirm I have the
-right member, because "floor the target" is not the only way to say "stop demanding probability one." The
-closest relative is a confidence penalty — add `-β·H(p) = β·Σ_k p_k log p_k` to the loss, rewarding the
-model directly for keeping entropy in its prediction. Against the decomposition I just wrote these are
-near mirror images: smoothing adds `ε·H(u,p) = ε·D_KL(u‖p) + const`, penalizing the KL *from* uniform to
-the model, while the confidence penalty is `β·Σ p log p = β·D_KL(p‖u) + const`, the same divergence read
-in the opposite direction. But they behave differently in ways that matter for a first rung. Differentiate
-the confidence penalty and the per-logit pull works out to `β·p_k·(log p_k + H(p))`, weighted by `p_k`,
-so it concentrates on the already-confident tokens and vanishes on the tail — where `p_k log p_k → 0` — 
-never actively flooring the rare tokens, only bleeding mass off the peak, and it has no closed-form
-optimum I can write down, since the balance point depends on `β` and the data together. Label smoothing's
-uniform pull `ε·(p_k - 1/V)` is bounded, even-handed, and literally floors every coordinate toward `1/V`,
-and it has the finite closed-form optimum `p = q'` I just solved for. A second sibling would smooth toward
-the *unigram* token frequency instead of uniform, flooring common tokens more than rare ones — but that
-bakes corpus statistics into the target, a data-dependent choice I would have to estimate and defend, and
-it breaks the clean `H(u,p) = mean_k(-log p_k)` identity that lets me skip materializing the target
-entirely. So among the target-side options, uniform label smoothing is the right member for the cheapest
-rung: the same over-confidence cure, a bounded even-handed gradient, no extra coefficient beyond `ε`, no
-data-dependent estimation, and an optimum I can write in closed form — exactly the surgical one-liner I
-wanted to calibrate the ladder with.
+"Floor the target" is not the only target-side move, and the decomposition lets me place the siblings
+quickly. The closest relative is a confidence penalty `-β·H(p) = β·Σ_k p_k log p_k`; against the split I
+just wrote it is the mirror image — smoothing penalizes `D_KL(u‖p)`, the confidence penalty penalizes
+`D_KL(p‖u)`. But its per-logit pull `β·p_k·(log p_k + H(p))` is weighted by `p_k`, so it concentrates on
+the already-confident tokens and vanishes on the tail (`p_k log p_k → 0`), never flooring the rare
+tokens, and it has no closed-form optimum. A second sibling smooths toward the *unigram* frequency, but
+that bakes corpus statistics into the target — a data-dependent estimate I would have to defend — and it
+breaks the clean `H(u,p) = mean_k(-log p_k)` identity. Uniform label smoothing is the right member for the
+cheapest rung: a bounded, even-handed pull `ε·(p_k - 1/V)` that floors every coordinate toward `1/V`, no
+coefficient beyond `ε`, no data-dependent estimation, and a closed-form optimum `p = q'`.
 
 Now the part that is specific to *this* task and is exactly where the harness diverges from the generic
 recipe, and I have to get it right or I am cheating. The validation metric is the honest modeling
@@ -159,21 +134,15 @@ comparable across every method on the ladder. PyTorch's `F.cross_entropy` expose
 directly, so the whole edit is one call with the smoothing coefficient gated on `torch.is_grad_enabled()`.
 The full scaffold function is in the answer.
 
-Two correctness points on that one-line call, because a library call still has to do exactly what I
-reasoned about or the mechanism I just built is not the mechanism that runs. First, the gate itself:
-`torch.is_grad_enabled()` returns `True` inside the training forward and `False` inside the
-`@torch.no_grad()` evaluation forward, so `smoothing = 0.05 if torch.is_grad_enabled() else 0.0` yields
-`ε = 0.05` while training and plain cross-entropy at eval, from one function body with no branching I have
-to keep in sync — the same `compute_loss` serves both passes, which is precisely what makes the reported
-`val_loss` an honest number I can line up against the rest of the ladder. Second, the ignore index has to
-compose correctly with smoothing. `F.cross_entropy(..., ignore_index=-1, label_smoothing=0.05)` must not
-bleed the `ε/V` floor onto the `-1` packed-boundary positions, and it does not: positions whose target is
-`-1` are dropped from *both* the hard `H(q,p)` term and the uniform `H(u,p)` term before the mean, so the
-smoothing floor is applied only where there is a real next token and the reduction denominator is the
-count of valid positions. That matters quantitatively — if the library smoothed the ignored positions too,
-it would be adding an `ε·H(u,p)` pull at boundaries the model should not be learning from, and averaging
-over a larger denominator, which would silently rescale the effective `ε` away from the `0.05` I chose on
-purpose. The masking is what keeps `ε` meaning what I set it to.
+Two correctness points on that one-line call. The gate: `torch.is_grad_enabled()` is `True` inside the
+training forward and `False` inside the `@torch.no_grad()` eval forward, so
+`smoothing = 0.05 if torch.is_grad_enabled() else 0.0` gives `ε = 0.05` while training and plain
+cross-entropy at eval, from one function body serving both passes. The ignore index: for the `ε` I set to
+mean what I chose, `F.cross_entropy(..., ignore_index=-1, label_smoothing=0.05)` must drop the `-1`
+packed-boundary positions from *both* the hard and the uniform terms before the mean — and it does, so the
+smoothing floor is applied only where there is a real next token and the denominator is the count of valid
+positions. Were the ignored positions smoothed and counted, the effective `ε` would silently rescale by
+the valid fraction.
 
 And I can put a number on what that training-time bias actually costs, which is the thing the eval split
 protects the *reported* number from but cannot undo in the *trained model*. The extra term I am adding
@@ -187,24 +156,14 @@ only a couple of nats — and it is exactly the bias I am hoping the regularizat
 single-epoch, compute-optimal run with muted overfitting, whether it repays is genuinely in doubt, which
 is why I want this rung as the honest probe rather than as a method I am confident wins.
 
-Let me also pin the floor that bias sits on, because it sharpens what "off-data" actually costs the
-weights. The smoothed target `q'` carries its own entropy,
-`H(q') = -q'(y) log q'(y) - (V-1)·(ε/V)·log(ε/V)`. With `q'(y) = 1 - ε + ε/V = 0.95001` the first term is
-`-0.95001·log(0.95001) = 0.0487`; the tail carries `(V-1)·(ε/V) = 0.05·(50256/50257) ≈ 0.050` of mass at
-per-token log-probability `log(ε/V) = log(9.95·10⁻⁷) = -13.82`, contributing `-0.050·(-13.82) = 0.691`;
-so `H(q') ≈ 0.74` nats. That is the *irreducible* training cross-entropy the smoothing bakes in: even a
-perfect predictor that outputs exactly `q'` scores `H(q', q') = H(q') ≈ 0.74` nats on the smoothed
-objective, where against the true one-hot the floor is `0`. The eval split spares the *reported*
-`val_loss` from that 0.74-nat floor — I grade against the one-hot — but the *weights* are still trained
-toward a target whose best achievable point sits three-quarters of a nat off the data, and the eval split
-cannot undo that in the model, only in the number. And netting the bias honestly against plain
-cross-entropy rather than counting the added term alone: the smoothed objective is
-`H(q,p) + ε·(H(u,p) - H(q,p))`, so the true excess over plain cross-entropy at a fixed prediction is
-`ε·(H(u,p) - H(q,p)) ≈ 0.05·(10.8 - 2.3) = 0.43` nats — a hair under the crude `ε·H(u,p) ≈ 0.5` estimate
-above, because the `(1-ε)` downweighting of the hard term gives a little of it back. Either accounting
-lands in the same place: order half a nat of off-data pull riding on the objective, and that is exactly
-the debt the regularization has to repay out of a single-epoch run where the overfitting it prevents is
-already muted.
+Netting that bias honestly against plain cross-entropy rather than counting the added term alone: the
+smoothed objective is `H(q,p) + ε·(H(u,p) - H(q,p))`, so the true excess over plain cross-entropy at a
+fixed prediction is `ε·(H(u,p) - H(q,p)) ≈ 0.05·(10.8 - 2.3) = 0.43` nats — a hair under the crude
+`ε·H(u,p) ≈ 0.5`, because the `(1-ε)` downweighting of the hard term gives a little back. Either way it is
+order half a nat of off-data pull riding on the objective, and the eval split spares the *reported*
+`val_loss` from it but cannot undo it in the *weights* — the model is still trained toward a target that
+sits off the data, and that is the debt the regularization has to repay out of a single-epoch run where
+the overfitting it prevents is already muted.
 
 The second divergence from the canonical recipe is the coefficient, and now I can choose it from the
 arithmetic rather than by taste. The original Inception/Transformer setting uses `ε = 0.1`. Compare the
@@ -223,46 +182,25 @@ is barely perturbed and the prior-pull bias stays near half a nat. This rung is 
 label smoothing — it is `ε = 0.05`, training-only, via the library's `label_smoothing` argument with the
 `-1` ignore index the harness uses for packed boundaries.
 
-Now reason about what this floor must do, because that is the entire point of running it first, and it is
-also the crisp statement of what it *cannot* reach. Smoothing attacks the target, and through the target
-it caps the *gap* between the true-class logit and the rest — the difference the softmax actually sees,
-which I just pinned at about 13.8 nats. What it pointedly does *not* touch is the absolute *level* of the
-logits. A model can sit at logits `(1000, 990, 990, …)` and have exactly the smoothed-optimal gaps while
-being numerically enormous, because cross-entropy and its smoothed cousin are both invariant to a uniform
-shift of all logits: adding a constant `c` to every logit multiplies numerator and denominator of the
-softmax by `e^c` and changes nothing, so `q'` and `p` both see only differences and the whole level is a
-free coordinate the smoothed loss says nothing about. Let me make that concrete rather than assert it —
-`softmax(z + c·1)_k = e^{z_k+c}/Σ_j e^{z_j+c} = e^c·e^{z_k}/(e^c·Σ_j e^{z_j}) = softmax(z)_k`, so `p` is
-literally the identical vector for every `c`, and therefore `H(q,p)`, `H(u,p)`, and their `ε`-blend are
-all exactly constant along the whole ray `z + c·1`. Gradient descent on the smoothed loss feels precisely
-zero force in that direction; the level is not merely unpenalized, it is invisible to this objective. Smoothing is a statement about differences and it
-leaves the overall magnitude — the gauge — completely free. That matters because the run trains in
-bfloat16, where large logit magnitudes are where the exponential in the softmax becomes unfaithful:
-bfloat16 keeps float32's exponent range but far fewer mantissa bits, so once the logits are large the
-rounding is coarse right where they enter the `exp`, and smoothing does nothing about any of it because
-it never constrained the level in the first place. It also leaves a real question about whether trading
-away true-likelihood for a milder gap is even the right trade when the *evaluation* is true likelihood: I
-am training against a distribution offset by that half-nat prior-pull, and only the regularization
-benefit, if any, can repay it.
+The crisp statement of what this floor *cannot* reach is the whole point of running it first. Smoothing
+caps the *gap* between the true-class logit and the rest — the difference the softmax sees, pinned at
+about 13.8 nats. What it does not touch is the absolute *level*. A model can sit at logits
+`(1000, 990, 990, …)` with exactly the smoothed-optimal gaps while being numerically enormous, because
+cross-entropy and its smoothed cousin are both invariant to a uniform shift `z → z + c·1` — the `e^c`
+cancels in the softmax, so `p` is the identical vector for every `c` and the whole level is a free
+coordinate the objective feels zero force along. Smoothing is a statement about differences and leaves the
+overall magnitude free. That matters because the run trains in bfloat16, where large logit magnitudes are
+exactly where the softmax exponential becomes unfaithful — few mantissa bits, coarse rounding right as the
+logits enter the `exp` — and smoothing never constrained the level to begin with. So even setting aside
+the half-nat off-data bias, the level is a handle it structurally cannot pull.
 
-So here is what I expect, stated against outcomes I can be wrong about — and I have no measured numbers
-in front of me yet, so these are directions, not values. On the primary `val_loss`, light training-only
-smoothing should land *close* to plain cross-entropy — within a few hundredths of a nat — and it is
-genuinely unclear whether it lands above or below, because the regularization benefit on a single-epoch
-run is small and it is fighting the half-nat bias I have put into the objective; my honest prior is that
-the bias slightly wins and this comes in a touch *behind* plain cross-entropy, but I would not stake much
-on the sign. The two perplexity metrics, WikiText-2 and LAMBADA, should track `val_loss` in the same
-direction, since they are the same next-token likelihood on other corpora — and quantitatively, because
-perplexity is `exp` of a per-token cross-entropy, a swing of a few hundredths of a nat in `val_loss` maps
-to a few-percent swing in those perplexities, so if smoothing moves `val_loss` by `+0.0X` I should see
-WikiText-2 and LAMBADA move by roughly `X` percent in the same direction rather than by some unrelated
-amount; a perplexity move much larger than the `val_loss` move would be a sign something other than the
-smoothing is in play. On the downstream accuracies
-(ARC-Easy, HellaSwag, PIQA, WinoGrande), where a better-calibrated next-token distribution can help even
-when likelihood does not, I would expect smoothing to be at worst neutral. If this rung comes in *behind*
-a method that attacks the logit level or the logit values directly, the diagnosis is already written:
-smoothing pulled on the gap, the gauge-invariant handle, and left untouched the absolute magnitude that
-the bfloat16 softmax actually cares about — which says the next rung should stop attacking the target and
-start attacking the level. This is the weakest rung on the ladder by design: it is the most conservative,
-target-side over-confidence fix, and whatever it leaves on the table is precisely what the level-side and
-value-side interventions are for.
+These are directions, not values. On the primary `val_loss`, light training-only smoothing should land
+*close* to plain cross-entropy, within a few hundredths of a nat, and it is genuinely unclear whether
+above or below — the regularization benefit on a single-epoch run is small and it fights the half-nat
+bias; my honest prior is the bias slightly wins and this comes in a touch *behind*, but I would not stake
+much on the sign. WikiText-2 and LAMBADA perplexity should track `val_loss` in the same direction (they
+are the same likelihood on other corpora, and perplexity is `exp` of it, so a few hundredths of a nat is a
+few percent). Downstream accuracy I would expect at worst neutral. If this rung lands behind a method that
+attacks the logit level directly, the diagnosis is already written: smoothing pulled on the gap and left
+the absolute magnitude — the thing the bfloat16 softmax cares about — untouched, so the next move is to
+stop attacking the target and attack the level.

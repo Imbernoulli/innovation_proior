@@ -1,19 +1,13 @@
-Label smoothing told me something precise, and it told me in numbers. It did not just fail to help — it
-landed *behind* plain cross-entropy on the metric I care about: `val_loss` 2.3377, with WikiText-2
-perplexity at 47.13 and LAMBADA at 71.80, both noticeably worse than I would want, and the downstream
-accuracies (arc_easy 54.04, hellaswag 33.63, piqa 63.71, winogrande 51.78) sitting in a
-respectable-but-unremarkable band. Let me read those numbers with a little arithmetic before I move,
-because they carry more than "it was worse." A `val_loss` of 2.3377 is a per-token cross-entropy, so the
-FineWeb token-level perplexity is `exp(2.3377) = 10.36` — the model is effectively choosing among about
-ten equally-likely next tokens. And the way I set that rung up, I expected light training-only smoothing
-to land within a few hundredths of a nat of plain cross-entropy, above or below; it came in above,
-behind, which is the sign that on a single-epoch run the half-nat of off-data bias I put into the
-objective was not repaid by the regularization. Read that the right way. I trained against a softened
-distribution and was graded against the true one, and the deeper lesson is structural: smoothing pulled
-on the logit *gap* — the difference between the true-class logit and the rest, the part the softmax
-actually sees — and the gap is the gauge-invariant part of the logits. It never touched the absolute
-*level*. And on this run, in bfloat16, the level is exactly where I should expect trouble. So I am going
-to stop attacking the target and go after the handle smoothing structurally cannot reach.
+Label smoothing told me something precise, and in numbers: it landed *behind* plain cross-entropy on the
+metric I care about, `val_loss` 2.3377, WikiText-2 perplexity 47.13 and LAMBADA 71.80, with downstream
+accuracies (arc_easy 54.04, hellaswag 33.63, piqa 63.71, winogrande 51.78) in a respectable but
+unremarkable band. A `val_loss` of 2.3377 is `exp(2.3377) = 10.36` in token perplexity — the model
+effectively choosing among about ten equally-likely next tokens. I expected smoothing to land within a few
+hundredths of a nat of plain cross-entropy, either side; it came in behind, which is the sign that on a
+single-epoch run the half-nat of off-data bias was not repaid by the regularization. That confirms what I
+flagged going in: smoothing pulled on the gauge-invariant *gap* and never touched the absolute *level* —
+and in bfloat16 the level is exactly where the trouble is. So I stop attacking the target and go after the
+handle smoothing structurally cannot reach.
 
 Let me start from what actually goes wrong at the level, because the symptom is concrete and it is not
 the same symptom smoothing was built for. I am pretraining a big decoder-only Transformer in bfloat16,
@@ -37,25 +31,15 @@ with normalizer `Z = Σ_k exp(l_k)`, and cross-entropy against the true next tok
 So the loss decomposes, exactly, into two pieces pulling opposite ways: raise the true-token logit `l_y`,
 lower the log-partition `log Z`.
 
-Now the crux, and it is precisely the thing label smoothing could not see. Cross-entropy depends on the
-logits *only through their differences*. Add a constant `c` to every logit, `l → l + c·1`: the softmax
-does not move at all, `exp(l_j + c)/Σ_k exp(l_k + c) = e^c exp(l_j)/(e^c Σ_k exp(l_k)) = p_j`, the `e^c`
-cancels, so `CE` is unchanged. But look at the two pieces individually: `l_y → l_y + c`, and `Z → e^c Z`
-so `log Z → log Z + c`; both terms moved by `+c` and inside `CE = log Z - l_y` the two `c`'s cancel.
-Cross-entropy is *exactly* invariant to a uniform shift of all logits. There is a whole one-parameter
-family of logit vectors — `l + c·1` for every real `c` — that produce identical predictions and identical
-loss, and along that family `log Z` ranges over the entire real line while the loss the optimizer sees is
-constant. Cross-entropy pins down the gaps and says nothing whatsoever about the level. The level is a
-free gauge with no restoring force. Let me make the "no restoring force" quantitative rather than
-rhetorical, because it is the whole reason this rung can work where smoothing could not. The gauge
-direction in logit space is the all-ones vector `1`, and the force the optimizer feels along it is the
-directional derivative `Σ_j ∂CE/∂l_j = Σ_j (p_j - 1[j=y]) = (Σ_j p_j) - 1 = 1 - 1 = 0`. Identically zero,
-for every logit configuration — cross-entropy exerts *exactly no* force along the gauge, which is the
-same shift-invariance seen through the gradient. That is why label smoothing did nothing here: smoothing
-sharpens the *gaps*, it lives entirely in the gauge-invariant subspace, so it too contributes zero along
-`1` and cannot supply the missing constraint on the level — the gauge is precisely the direction both are
-blind to. The 2.3377 was smoothing pulling hard on a handle that was already constrained while the
-genuinely free quantity drifted underneath.
+Now the crux. Cross-entropy depends on the logits only through their differences: a uniform shift
+`l → l + c·1` moves `l_y → l_y + c` and `log Z → log Z + c`, and inside `CE = log Z - l_y` the two cancel,
+so a whole one-parameter family `l + c·1` produces identical loss while `log Z` ranges over the entire
+real line. The level is a free gauge with no restoring force. Make that quantitative, because it is the
+whole reason this rung can work where smoothing could not: the force along the gauge direction `1` is the
+directional derivative `Σ_j ∂CE/∂l_j = Σ_j (p_j - 1[j=y]) = 1 - 1 = 0`, identically zero for every logit
+configuration. Smoothing lives entirely in the gauge-invariant gap subspace, so it too contributes zero
+along `1` and cannot supply the missing level constraint — the 2.3377 was smoothing pulling on a handle
+already constrained while the genuinely free quantity drifted underneath.
 
 Which way does the gauge actually drift in practice? I should be honest that shift-invariance alone does
 not fix a direction — a truly forceless coordinate could wander either way — so the direction is an
@@ -65,24 +49,17 @@ restoring force any push that inflates the logits is free as far as the loss is 
 behavior is that it wanders *up*, the activations feeding the final softmax growing over the run, the
 model getting more extreme in magnitude without the loss objecting. That is the slow gradient-norm
 growth. And why is a drifting `log Z` dangerous *here*, in bfloat16 specifically? Because these large
-numbers go straight into an exponential. bfloat16 keeps float32's eight exponent bits but only seven
-mantissa bits against float32's twenty-three, so within any binade it rounds about `2^16 ≈ 65536` times
-more coarsely, and because a fixed mantissa width spans each interval `[2^k, 2^{k+1})`, the *absolute*
-roundoff grows with the magnitude of the number. Put a number on it: at magnitude 128, i.e. the binade
-`[2^7, 2^8)`, the unit in the last place is `2^(7-7) = 2^0 = 1`, so consecutive representable bfloat16
-values near 128 are spaced a full 1.0 apart. Now push a large, coarsely-rounded logit through `exp`: the
-differential is `d(exp x) = exp(x)·dx`, so a small absolute error `dx` in the argument becomes a
-*relative* error of size `dx` in the output; make the logits large and `dx` grows with them, so the
-softmax outputs are corrupted by an amount that grows as the level drifts up. Concretely: ten logits at
-128 and one at 128.5. The true softmax weight on the distinguished token is
-`e^0.5/(10 + e^0.5) = 1.6487/11.6487 = 0.1416`. But 128.5 sits exactly halfway between the representable
-128 and 129, and round-half-to-even sends it to 128 (whose last mantissa bit is zero), so in bfloat16 all
-eleven logits are 128 and the weight becomes the uniform `1/11 = 0.0909` — a collapse from 0.1416 to
-0.0909, a 36% swing manufactured entirely by roundoff, because the 0.5-nat gap that carried the
-distinction fell below the resolution. The free gauge lets the logits drift large; large logits are
-where the bfloat16 exponential becomes unfaithful; an unfaithful exponential corrupts the softmax and,
-when it tips over, produces a spike. The slow growth and the sudden discontinuity are the same disease at
-two timescales.
+numbers go straight into an exponential. bfloat16 keeps float32's exponent range but only seven mantissa
+bits, and because a fixed mantissa width spans each binade `[2^k, 2^{k+1})`, the *absolute* roundoff grows
+with the magnitude: at magnitude 128 the spacing between representable values is a full `1.0`. Push a
+coarsely-rounded logit through `exp` and `d(exp x) = exp(x)·dx` turns that absolute error into a *relative*
+error on the softmax weight that grows as the level drifts up. Concretely: ten logits at 128 and one at
+128.5. The true softmax weight on the distinguished token is `e^0.5/(10 + e^0.5) = 0.1416`, but 128.5 sits
+halfway between representable 128 and 129 and rounds to 128, so in bfloat16 all eleven logits are equal and
+the weight collapses to `1/11 = 0.0909` — a 36% swing manufactured entirely by roundoff, the 0.5-nat gap
+having fallen below the resolution. The free gauge lets the logits drift large, large logits make the
+exponential unfaithful, and an unfaithful exponential corrupts the softmax and eventually spikes. The slow
+growth and the sudden discontinuity are the same disease at two timescales.
 
 So I need a restoring force on the gauge, and cross-entropy cannot supply it by construction — I just
 watched its gauge force come out to exactly zero. I have to add something that *does* care about the
@@ -129,21 +106,14 @@ anyway — they differ by at most `log V` — so holding `log Z` down holds the 
 ever having to name which coordinate is currently on top. Penalizing `log Z` is penalizing the max with a
 differentiable handle. That is the quantity; `(log Z)²` is the shape.
 
-Let me confirm the gradient actually does what I think, and reuse the gauge projection as the check. The
-augmented per-position objective is `L = CE + λ·(log Z)² = (log Z - l_y) + λ·(log Z)²`. The key
-derivative is `d(log Z)/d l_j = exp(l_j)/Σ_k exp(l_k) = p_j`. So `d(log Z - l_y)/d l_j = p_j - 1[j=y]`,
-the familiar predicted-minus-one-hot, and `d/d l_j[λ·(log Z)²] = 2λ·log Z·p_j`. Stacked:
-`dL/d l_j = (p_j - 1[j=y]) + 2λ·log Z·p_j`. Now project onto the gauge again — sum over `j` — and watch
-the two terms separate cleanly: the cross-entropy part gives `Σ_j (p_j - 1[j=y]) = 0` as before, and the
-penalty part gives `Σ_j 2λ·log Z·p_j = 2λ·log Z·(Σ_j p_j) = 2λ·log Z`. So the total force the optimizer
-feels along the free direction is *exactly* `2λ·log Z`, supplied entirely by the penalty, zero of it from
-cross-entropy. That is the whole design in one line: on the one direction cross-entropy leaves completely
-unconstrained, the z-loss is the sole force, and it points back toward `log Z = 0` with a strength
-proportional to how far the level has drifted. Read the per-logit term the same way: when `log Z > 0`
-(the logits have drifted up, the dangerous case) `2λ·log Z·p_j` is positive on every coordinate, weighted
-by `p_j`, so descent subtracts it — pushing down hardest on the logits that contribute most to `Z`,
-shrinking `log Z` back toward 0; when `log Z < 0` it reverses and pushes those same high-probability
-coordinates back up.
+The gradient of the augmented objective `L = CE + λ·(log Z)²` confirms the design. Using
+`d(log Z)/d l_j = p_j`, the per-logit gradient is `dL/d l_j = (p_j - 1[j=y]) + 2λ·log Z·p_j`. Projecting
+onto the gauge — sum over `j` — the two terms separate: cross-entropy gives `Σ_j (p_j - 1[j=y]) = 0` as
+before, and the penalty gives `Σ_j 2λ·log Z·p_j = 2λ·log Z`. So the force along the one direction
+cross-entropy leaves unconstrained is *exactly* `2λ·log Z`, supplied entirely by the penalty, pointing
+back toward `log Z = 0` with a strength proportional to the drift. Per-coordinate, when `log Z > 0` the
+term `2λ·log Z·p_j` is positive everywhere, so descent pushes down hardest on the logits contributing most
+to `Z`; when `log Z < 0` it reverses.
 
 Does pinning the gauge actually bound the magnitudes that feed the exp? I want a guarantee, not a hope.
 Log-sum-exp is sandwiched: `Z ≥ exp(max_k l_k)` gives `log Z ≥ max_k l_k`, and `Z ≤ V·exp(max_k l_k)`
@@ -161,27 +131,19 @@ could handcuff the model: can it still say "this token is almost certain" once I
 Pinning `log Z = 0` means `Σ_k exp(l_k) = 1`, so the raw logits *are* the log-probabilities,
 `l_k = log p_k`, all of them `≤ 0`. To express `p_y = 0.95` the model sets `l_y = log 0.95 = -0.05` and
 spreads the remaining `0.05` of mass over the other tokens near `log(0.05/(V-1)) ≈ log(9.95·10⁻⁷) =
--13.8`. That is a perfectly representable configuration — a spread of about `13.8` nats between the winner
-and the tail — so holding `log Z` at 0 costs the model no expressive power at all; it just fixes the
-additive gauge so that "confident" is realized by the tail going very negative rather than by the winner
-running very positive. The penalty removes a redundant degree of freedom, not a useful one. And that
-`13.8`-nat spread is exactly the confidence scale label smoothing's own optimum implied — its optimal
-`p_y = 1-ε ≈ 0.95` against a tail of `ε/(V-1)` gives the same `log((1-ε)(V-1)/ε) ≈ 13.8` nats of log-odds
-— which is reassuring: the level fix and the target fix agree on *how much* log-odds a healthy prediction
-needs. They disagree only on whether to also let the whole logit stack float upward off that scale, and
-floating upward is precisely the part that hurts in bfloat16.
+-13.8`. That is a perfectly representable configuration — a `13.8`-nat spread between winner and tail — so holding
+`log Z` at 0 costs no expressive power; it just fixes the additive gauge so "confident" is realized by the
+tail going very negative rather than the winner running very positive. The penalty removes a redundant
+degree of freedom, not a useful one. And that spread is the same `13.8` nats smoothing's own optimum
+implied: the level fix and the target fix agree on *how much* log-odds a healthy prediction needs, and
+disagree only on whether to let the whole stack float upward off that scale — which is precisely the part
+that hurts in bfloat16.
 
-This is also where I can see, cleanly, why this is the right lever and label smoothing was the wrong one
-— not as a guess now but confirmed by the 2.3377. Smoothing changes the *target distribution*, fitting
-the model to a softened version of the data; that lowers true likelihood (which is what I was graded on,
-and it cost 2.3377 with perplexities 47.13/71.80) and acts on the gap, the gauge-invariant part with zero
-gauge force. The z-loss changes neither — it leaves the target the data and touches only the free level
-through `log Z`, so it sits on top of plain cross-entropy without becoming label smoothing in disguise.
-Different handle, and the one a numerical drift actually has. A hard logit clamp is worse: it clamps an
-already-corrupted value after the roundoff has happened and adds a kink the optimizer must route around;
-the penalty acts smoothly *during* optimization to discourage the large logits from ever forming.
-Gradient-norm clipping is further downstream still, reacting after the bad step is computed. The penalty
-is the only one of the three that addresses the cause rather than the symptom.
+Against the other level-side options: a hard logit clamp clamps an already-corrupted value after the
+roundoff has happened and adds a kink the optimizer must route around, and gradient-norm clipping (already
+on, and the spikes come anyway) reacts after the bad step is computed. The `(log Z)²` penalty is the only
+one that acts smoothly *during* optimization to discourage the large logits from ever forming — the cause
+rather than the symptom.
 
 Now `λ`. Two jobs fix its scale by an order-of-magnitude argument, not a guess. It must be small enough
 that the penalty is a gentle regularizer and cross-entropy stays essentially maximum likelihood, or I am
@@ -201,34 +163,20 @@ smoothing's `ε` it needs no training-vs-eval split: it does not distort the tar
 through the whole run and the evaluated cross-entropy is unaffected by it — the penalty term is not even
 added into the reported number, and the model it produces is graded on honest likelihood.
 
-Two implementation details or the whole thing is subtly wrong. First, reduction: cross-entropy ignores
-the `-1` packed-boundary positions and averages over valid ones; the penalty has to be averaged over
-*exactly* those same positions, both because the ignored positions' logits are untrained garbage whose
-`log Z` is meaningless, and because a different denominator would change the effective `λ` away from the
-clean ratio I just reasoned about — if I divided by all `B·T` positions instead of the valid ones, the
-realized coefficient would be scaled by the valid fraction and my order-of-magnitude argument would be
-off by exactly that factor. So mask to `targets != -1` and take the mean of `(log Z)²` over those.
-Second, compute `log Z` with the max-subtracting stabilized `torch.logsumexp` — I would be embarrassed to
-introduce an overflow while fixing a numerical drift — which subtracts `max_k l_k` before exponentiating,
-so it never exponentiates a positive argument and is exact. The whole edit is then plain cross-entropy
-(the library handles the ignore index and averaging) plus `1e-4` times the masked-mean squared
-log-partition. The full scaffold function is in the answer.
+Two implementation details or the whole thing is subtly wrong. Reduction: the penalty has to be averaged
+over *exactly* the valid (`targets != -1`) positions cross-entropy uses — the ignored positions' `log Z`
+is meaningless garbage, and a different denominator would rescale the effective `λ` by the valid fraction,
+off the clean ratio I just reasoned about. And compute `log Z` with the max-subtracting stabilized
+`torch.logsumexp` so I do not introduce an overflow while fixing a numerical drift. The whole edit is then
+plain cross-entropy plus `1e-4` times the masked-mean squared log-partition; the full scaffold is in the
+answer.
 
-So the delta from step 1: where smoothing softened the target and pulled on the gauge-invariant gap that
-carries zero level force, I leave the target the data and add the one term that touches the free level — a
-small squared-log-partition penalty whose proportional restoring force `2λ·log Z` is the *only* force on
-the gauge, holds `log Z` near 0, caps the top logits via the log-sum-exp sandwich to within ~11 nats of
-`log Z`, and keeps the bfloat16 exp in its faithful regime. Reading smoothing's shape, here is what I
-expect, falsifiably. The primary `val_loss` should move *below* smoothing's 2.3377 and below plain
-cross-entropy — because, unlike smoothing, this neither distorts the evaluated objective nor leaves the
-dangerous magnitude free; I would expect a recovery of a few hundredths of a nat off smoothing's mark, and
-by the same `perplexity = exp(loss)` map, that recovery should drag WikiText-2 and LAMBADA perplexity down
-by a few percent each off smoothing's 47.13 / 71.80. The
-downstream accuracies (arc_easy, hellaswag, piqa, winogrande) should hold or nudge up, since a
-numerically healthier softmax is strictly better-behaved and I am no longer paying smoothing's off-data
-bias — though at these eval-set sizes single-seed accuracy moves of a point or so are within noise, so I
-will read them as a band rather than a ranking. If `val_loss` improves but the top logits are *still* not
-tightly bounded — if a single excited coordinate can spike even with the level held on *average*, since
-`2λ·log Z` is a force on the batch-mean `log Z` and not a per-position ceiling — the diagnosis for the
-next rung is already there: a soft average penalty nudges the level but guarantees no per-logit bound, so
-the next move is to stop nudging the level and structurally bound the logit *values* themselves.
+So where smoothing softened the target and pulled on the zero-force gap, I leave the target the data and
+add the one term that touches the free level. What I expect, falsifiably: `val_loss` should move *below*
+smoothing's 2.3377 and below plain cross-entropy, since this neither distorts the evaluated objective nor
+leaves the dangerous magnitude free — a recovery of a few hundredths of a nat, dragging WikiText-2 and
+LAMBADA down a few percent each by the `perplexity = exp(loss)` map. Downstream accuracy should hold or
+nudge up (a healthier softmax, no off-data bias), though single-seed moves of a point are within noise.
+The residual risk is already visible: `2λ·log Z` is a force on the batch-*mean* `log Z`, not a per-position
+ceiling, so a single excited coordinate can still spike while the average sits near zero — which says the
+next move is to stop nudging the level and structurally bound the logit *values* themselves.
