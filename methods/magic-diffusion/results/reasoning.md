@@ -1,4 +1,4 @@
-The kNN rung left me with two specific complaints, and I want to fix both at once. The first is
+The kNN-smoothing baseline left me with two specific complaints, and I want to fix both at once. The first is
 that I chose neighbors on the raw, noisy profiles, so some of my pooling was simply wrong — impostor
 cells dragged in by dropout, true neighbors pushed away. The second is that the pool was a hard
 uniform average with a single global `k`: every neighbor counted equally, the boundary at the `k`-th
@@ -23,19 +23,15 @@ distance to its `k`-th neighbor, so the width is automatically narrow where cell
 wide where they are spread out — a kernel of the form `exp(−(d/σ_i)^α)` with `σ_i` the per-cell
 distance to the `k`-th neighbor and `α` controlling how sharply the affinity decays.
 
-Before I commit to that, let me check it actually does what I am claiming, because "adaptive
-bandwidth" is easy to assert and easy to get backwards. Take two cells, one in a dense region whose
-`k`-th neighbor sits at distance `σ = 0.5`, one in a sparse region with `σ = 3.0`, and `α = 2`.
-First, is the kernel self-calibrating — does a neighbor that is "the `k`-th one" get the same vote
-in both regions regardless of absolute scale? At `d = σ_i` the exponent is `−1` for both, so the
-affinity is `exp(−1) = 0.368` for the dense cell and `0.368` for the sparse cell. Same vote. Good —
-the bandwidth normalizes away the difference in absolute scale, which is exactly what I want, since
-a fixed absolute distance means very different things in the two regions. Now the flip side: take a
-neighbor sitting at a *fixed* absolute distance `d = 1.0` for each. Dense cell: `exp(−(1/0.5)^2) =
-exp(−4) = 0.018` — essentially cut off, treated as a stranger. Sparse cell: `exp(−(1/3)^2) =
-exp(−0.111) = 0.895` — kept as a strong neighbor. So the same physical gap is a wall for the packed
-cell and a near-neighbor for the spread-out cell. That is the density adaptation I was after, and
-the numbers confirm the kernel is oriented the right way rather than the reverse.
+Take two cells, one in a dense region whose `k`-th neighbor sits at distance `σ = 0.5`, one in a
+sparse region with `σ = 3.0`, and `α = 2`. At `d = σ_i` the exponent is `−1` for both, so a neighbor
+that is "the `k`-th one" gets the same vote — `exp(−1) = 0.368` — in both regions regardless of the
+absolute scale: the bandwidth normalizes away the difference. But a neighbor sitting at a *fixed*
+absolute distance `d = 1.0` is treated oppositely in the two regions: `exp(−(1/0.5)^2) = exp(−4) =
+0.018` for the dense cell, essentially cut off, against `exp(−(1/3)^2) = exp(−0.111) = 0.895` for the
+sparse cell, kept as a strong neighbor. The same physical gap is a wall for the packed cell and a
+near neighbor for the spread-out one — exactly the density adaptation a single global bandwidth
+cannot give.
 
 Symmetrize the resulting affinity matrix so the relation is mutual, and row-normalize it into a
 Markov transition matrix `P` — now `P[i,j]` is the probability of stepping from cell `i` to cell `j`
@@ -44,9 +40,8 @@ in one diffusion step, large for similar cells and smoothly small for dissimilar
 With a transition matrix in hand, I do not have to stop at immediate neighbors. One step of `P`
 averages each cell with its affinity-weighted neighbors, which is already a soft version of kNN. But
 nothing forces me to take a single step: I can impute by `X̂ = Pᵗ X`. The question is whether powering
-`P` buys anything a one-step soft average does not, and I should pin that down concretely rather than
-wave at "information flows along the manifold." Take the smallest case that has the structure I care
-about: four cells strung along a trajectory, `0–1–2–3`, each connected only to its immediate
+`P` buys anything a one-step soft average does not. Take the smallest case that has the structure I
+care about: four cells strung along a trajectory, `0–1–2–3`, each connected only to its immediate
 neighbors. Row-normalizing the adjacency (with self-loops) gives
 
 ```
@@ -67,13 +62,12 @@ P²   = [[.417 .417 .167 .000]
 ```
 
 Now `P²[0,2] = 0.167` — cell 0 *does* borrow from cell 2, even though they share no edge, because
-the walk reaches it through the intermediate cell 1. That is the transitive pooling, and here it is
-as an actual nonzero entry that was zero one step earlier, not a slogan. The same example also tells
-me the honest limit of the trick: `P²[0,3] = 0` exactly. Two steps reach two hops and no farther, so
-`t` is literally the radius of pooling along the chain. That is reassuring in both directions — it
-confirms diffusion genuinely extends reach beyond direct neighbors, and it confirms the reach is
-controlled and finite, not some uncontrolled blur. The hard cliff of kNN is replaced by a smooth,
-distance-weighted average that pools out to a tunable number of hops along the continuum.
+the walk reaches it through the intermediate cell 1. That is the transitive pooling: a nonzero entry
+that was zero one step earlier. The same example also gives the honest limit: `P²[0,3] = 0` exactly.
+Two steps reach two hops and no farther, so `t` is literally the radius of pooling along the chain —
+diffusion extends reach beyond direct neighbors, but the reach is controlled and finite, not an
+uncontrolled blur. The hard cliff of kNN is replaced by a smooth, distance-weighted average that
+pools out to a tunable number of hops along the continuum.
 
 That immediately raises the worry on the other side: if a couple of steps already pull in
 two-hop cells, what stops me from cranking `t` up for ever-more smoothing? I can answer that from the
@@ -90,7 +84,7 @@ stationary distribution of the walk. So in the large-`t` limit every cell is rep
 common, geometry-weighted global average, and all the biological variation between cells is gone.
 That is the over-smoothing failure made concrete: `t` too small under-pools, `t` too large collapses
 toward a single profile, and the useful regime is in between. This is the same bias–variance lever
-`k` was on the kNN rung, but better-behaved, because the affinity weighting already does most of the
+`k` was for kNN-smoothing, but better-behaved, because the affinity weighting already does most of the
 denoising in a single step and the powers are there only to reach transitively, not to grind
 everything flat. I therefore expect the sweet spot to be a handful of steps; I will tune `t` on the
 tune set and expect it to land small. The kernel decay `α` and the neighbor count `k` setting the
@@ -99,23 +93,15 @@ around ten).
 
 The diffusion is run in the same square-root, library-normalized space I built the graph in, then
 inverted — square the diffused values and restore each cell's library size — so the output lands on
-the count scale. Let me trace the whole pipeline once on a small synthetic input to be sure it does
-the basic thing a denoiser must do before I trust it on the real harness. On a 40-cell × 12-gene
-Poisson draw with `t = 2`, the output comes back the same shape and entirely non-negative (the final
-`square` guarantees that regardless of what diffusion did), the dropout zeros drop from a fraction of
-0.18 to 0.00 — exactly the gaps that pooling across neighbors should fill — and the mean per-gene
-variance falls from 5.5 to 0.77, the Poisson jitter being beaten down by the averaging. So the
-mechanism smooths and de-zeros as intended end to end; nothing in the inversion or normalization
-breaks the count-scale contract.
+the count scale.
 
-I expect this to clear the kNN rung, and to clear it specifically on the MSE term — the
-log-normalized shape — because the adaptive weighting and reliable embedding recover the local
-geometry that hard uniform pooling smeared, and the few-hop diffusion fills dropout without the cliff
-artifacts. What I do not expect it to fix is two things that will become the next rung's targets.
-First, I am committing to a *single* variance-stabilizing transform, the square root, for every
-gene — but genes with very different dropout rates are stabilized best by different transforms, and a
-high-dropout gene and a low-dropout gene should not be forced through the same nonlinearity. Second,
-plain diffusion smooths in the count space but never directly targets the log-normalized metric the
-MSE is computed in, nor does it exploit the global low-rank structure that a factorization could
-capture on top of the local diffusion. Those two gaps — gene-adaptive transforms and a refinement
-that targets the actual scoring space — are what the endpoint rung is built to close.
+I expect this to beat kNN-smoothing, and specifically on the MSE term — the log-normalized shape —
+because the adaptive weighting and reliable embedding recover the local geometry that hard uniform
+pooling smeared, and the few-hop diffusion fills dropout without the cliff artifacts. Two things I do
+not expect this to fix. First, I am committing to a *single* variance-stabilizing transform, the
+square root, for every gene — but genes with very different dropout rates are stabilized best by
+different transforms, and a high-dropout gene and a low-dropout gene should not be forced through the
+same nonlinearity. Second, plain diffusion smooths in the count space but never directly targets the
+log-normalized metric the MSE is computed in, nor does it exploit the global low-rank structure that
+a factorization could capture on top of the local diffusion. Gene-adaptive transforms and a
+refinement that targets the scoring space directly are gaps left for a further method to close.
