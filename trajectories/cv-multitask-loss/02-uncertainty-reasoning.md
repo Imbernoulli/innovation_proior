@@ -21,41 +21,31 @@ I have, and it is telling me the lever I left on the table — the *relative wei
 coarse — is the one that matters here. So I should pick it up next. The trouble is that picking it up
 naively is its own trap, and I want to walk into the right scheme rather than the wrong one.
 
-Let me lay out what "learning the weight" could even mean here, because there are three or four
-candidates and I do not want to grab the first one. The most literal is a *static* weight,
-`L = w L_fine + (1−w) L_coarse`, with `w` found by grid search. But grid search is not available to me
-in any honest form: the substrate fixes everything to a single 200-epoch run per configuration, seed
-42, with no held-out split to tune `w` on, so a "searched" weight would really be a weight I peeked at
-the test metric to pick, which is exactly the leakage the benchmark exists to forbid. And even if I
-could search it, a static `w` is by construction blind to the training-time evolution — it commits to
-one balance for all 200 epochs, and the fact that the deficit is capacity-dependent suggests the right
-balance is not a universal constant but something the run should discover. So the weight has to be
-*learned* jointly, and that is the second candidate: make `w_fine`, `w_coarse` trainable parameters and
-let SGD set them. Stare at the gradient for one second. `∂L/∂w_i = L_i ≥ 0`, which is nonnegative, so
-gradient descent pushes every `w_i` *down*, and there is nothing in this objective that pushes back.
-The global optimum over the weights is `w_fine = w_coarse = 0`, where `L = 0` and the network has
-learned nothing. The weights collapse to zero. So I cannot just learn the weights of a bare weighted
-sum — the objective is happy to turn off both tasks. Whatever scheme learns the weights has to carry a
-term that *resists shrinking them*, a cost for declaring a task unimportant.
+What could "learning the weight" even mean here? The most literal is a *static* weight
+`L = w L_fine + (1−w) L_coarse` found by grid search — but I have no honest way to search it: the
+substrate fixes a single 200-epoch run per configuration, seed 42, with no held-out split, so a
+"searched" weight would really be one I peeked at the test metric to pick, exactly the leakage the
+benchmark forbids. And a static `w` is blind to the training-time evolution anyway — it commits to one
+balance for all 200 epochs, while the capacity-dependent deficit suggests the right balance is something
+the run should discover. So the weight has to be *learned* jointly: make `w_fine`, `w_coarse` trainable
+and let SGD set them. But `∂L/∂w_i = L_i ≥ 0` is nonnegative, so descent pushes every `w_i` *down* with
+nothing pushing back; the global optimum is `w_fine = w_coarse = 0`, where `L = 0` and the network has
+learned nothing. The weights collapse. So a bare learned weighted sum cannot work — whatever learns the
+weights must carry a term that *resists shrinking them*, a cost for declaring a task unimportant.
 
-The third candidate is the one that is genuinely tempting, so I have to walk it a few steps before I
-can put it down: balance the tasks by their *gradient magnitudes*, GradNorm-style — measure
-`‖∂(w_i L_i)/∂θ_shared‖` for each task and drive the weights so the two gradient norms track a common
-target rate. It is attractive because it goes straight at the magnitude imbalance the ResNet-20 number
-just fingered. But two things kill it for me here. First, computing per-task gradient norms on the
-shared trunk means I am back inside the exact machinery I paid so dearly for in the PCGrad rung: I have
-only the two scalar losses, so to get `∂L_i/∂θ_shared` I would have to walk the autograd graph and call
-`torch.autograd.grad` twice per step, reintroducing the two-to-three-times step cost I would love to
-shed now that I know the geometry was not the disease. Second, GradNorm carries a restoring-force
-hyperparameter `α` and a running target for the gradient-norm ratio — a knob I would have to set with
-no validation budget to set it against, which is the same leakage problem as the grid weight wearing a
-different hat. So GradNorm is a heavy, hyperparameter-laden way to reach a magnitude lever, and I want
-a *light* one with no tuning. That is the real constraint the collapse taught me: I need a principled
-coupling between "how much I down-weight a task" and "a penalty for doing so," built in rather than
-bolted on, and ideally with no free knob at all. And note this is a genuinely different kind of fix
-from PCGrad — PCGrad operated on the gradient *directions* and refused to ask about magnitudes; here I
-am going straight at the magnitudes, learning them, which is exactly the axis PCGrad's ResNet-20
-collapse said was underserved.
+The third candidate is genuinely tempting, so I walk it a few steps before putting it down: balance the
+tasks by their *gradient magnitudes*, GradNorm-style — drive the weights so the two per-task gradient
+norms on the shared trunk track a common target rate. It goes straight at the magnitude imbalance the
+ResNet-20 number just fingered. But two things kill it here. First, per-task gradient norms on the
+shared trunk put me back inside the machinery I paid so dearly for with PCGrad: with only the two scalar
+losses, getting `∂L_i/∂θ_shared` means walking the autograd graph and calling `torch.autograd.grad`
+twice per step, reintroducing the two-to-three-times step cost I would love to shed now that the
+geometry was not the disease. Second, GradNorm carries a restoring-force hyperparameter `α` and a
+running gradient-norm target — a knob I would have to set with no validation budget, the same leakage as
+the grid weight in a different hat. So GradNorm is a heavy, knob-laden route to a magnitude lever, and I
+want a light one. That is the real constraint the collapse taught me: I need a principled coupling
+between how much I down-weight a task and a penalty for doing so, built in rather than bolted on, ideally
+with no free knob at all.
 
 Where would such a coupling come from naturally? The fine and coarse losses are both cross-entropies,
 and a cross-entropy is a negative log-likelihood in disguise — it is `−log Softmax(logits)_c` for the
@@ -107,9 +97,8 @@ shape. The analogue of "scaling the observation noise" for a softmax is temperat
 appears on the unscaled cross-entropy exactly as in the regression case, but the regularizer comes out as
 a messy log-ratio of two log-sum-exps that depends on the logits. Under the approximation
 `(1/σ) Σ_c' exp((1/σ²) f_{c'}) ≈ (Σ_c' exp f_{c'})^{1/σ²}` the bracket collapses back to a clean
-`log σ`, and I should check *where* that approximation is exact rather than wave at it: at `σ = 1` the
-left side is `Σ_c' exp f_{c'}` and the right side is `(Σ_c' exp f_{c'})^1 = Σ_c' exp f_{c'}`, the two
-are literally equal, so the approximation is exact at `σ = 1` and degrades smoothly as `σ` moves away.
+`log σ`, and that approximation is *exact* at `σ = 1`: the left side is `Σ_c' exp f_{c'}` and the right
+side is `(Σ_c' exp f_{c'})^1`, literally equal, degrading smoothly as `σ` moves away.
 Since I am going to *initialize* every `σ_i` at 1, the approximation is exact at the start and only
 first-order off as the scales drift, which is the regime it is least wrong in. So the classification term
 is `(1/σ_i²) L_i + log σ_i`, parallel to regression up to the factor-of-two on the coefficient (the
@@ -118,38 +107,20 @@ on the same shape — inverse-variance weight plus a logarithmic scale penalty �
 works for the two cross-entropies I actually have.
 
 I had better make sure I can optimize the scale stably, because there are two landmines. `σ` appears as
-`1/σ²`, so if it ever wanders to zero I divide by zero and blow up; and `σ` is a variance scale,
-constrained positive, which is awkward for plain SGD that will happily step a parameter negative. Both
-vanish with one reparameterization: do not learn `σ`, learn the *log-variance* `s := log σ²`. Then
-`1/σ² = exp(−s)` (always strictly positive, no divide-by-zero), `log σ = s/2`, and `s` ranges over all
-of ℝ so SGD can step it freely. In terms of `s` the per-task term is `exp(−s_i) L_i + s_i` (taking the
-canonical convention that absorbs the factor-of-two, which moves the term's value but not its optimum in
-`s`). Let me verify this is well-behaved rather than assert it: `∂/∂s = −exp(−s)L + 1`, which is zero at
-`s = log L`, and the second derivative is `exp(−s)L > 0`, so the term is strictly convex in `s` with a
-single minimum — robust to where I start. I can trace the pull concretely. Take a task sitting at loss
-`L = 2` and start it at `s = 0`: the derivative is `−exp(0)·2 + 1 = −1`, negative, so descent *raises*
-`s`, down-weighting the task; step to `s = 1` and the derivative is `−exp(−1)·2 + 1 = −0.736 + 1 =
-+0.264`, now positive, so descent *lowers* `s` — the minimum is caught between `s = 0` and `s = 1`,
-right where `log 2 ≈ 0.693` says it should be. So the scalar really does walk to its fixed point from a
-neutral start. I should also check that absorbing the Gaussian `1/2` into the canonical
-`exp(−s) L + s` form is harmless, since I dropped it casually. The strict form is
-`½ exp(−s) L + ½ s`, whose derivative is `−½ exp(−s) L + ½`, zero when `exp(−s) L = 1`, i.e. at
-`s = log L` — the *same* fixed point as the canonical form's `−exp(−s) L + 1 = 0`. The `1/2` scales the
-term's height and it scales the gradient the scalar feels, but it does not move where the minimum sits,
-so the two conventions learn the same equilibrium scale and I lose nothing by taking the tidier one.
-And the neutral start is the payoff: `s = 0` means `σ² = 1`, every task weighted equally,
-the most neutral possible start with no preference baked in, and the strict convexity means I do not
-have to tune where it begins. This is the cleanest possible answer to PCGrad's ResNet-20 problem:
-instead of leaving the fine/coarse weight to chance, I start them equal and let the likelihood walk them
-to wherever the data says, with no extra hand-tuned hyperparameter anywhere in the rule.
+`1/σ²`, so if it wanders to zero I divide by zero and blow up; and `σ` is a positive variance scale,
+awkward for plain SGD that will happily step it negative. Both vanish with one reparameterization: learn
+the *log-variance* `s := log σ²` instead of `σ`. Then `1/σ² = exp(−s)` is always strictly positive,
+`log σ = s/2`, and `s` ranges over all of ℝ so SGD steps it freely. The per-task term becomes
+`exp(−s_i) L_i + s_i` (the canonical convention absorbs the Gaussian factor-of-two, which scales the
+term's height but not its minimum in `s`). Its derivative `−exp(−s)L + 1` is zero at `s = log L`, with
+second derivative `exp(−s)L > 0`, so the term is strictly convex in `s` with a single minimum — robust
+to where I start. And the neutral start is the payoff: `s = 0` means `σ² = 1`, every task weighted
+equally, no preference baked in, and the convexity means I do not have to tune where it begins. This is
+the cleanest answer to PCGrad's ResNet-20 problem: start the fine/coarse weights equal and let the
+likelihood walk them wherever the data says, with no hand-tuned hyperparameter anywhere in the rule.
 
-One more limit check to make sure the rule degenerates sensibly. If the two tasks ever sit at the same
-loss, `L_fine = L_coarse`, their fixed points coincide, `s_fine = s_coarse`, the two `exp(−s)` weights
-are equal, and the rule reduces to the equal-weighted sum — so at the worst case it does no harm
-relative to the default. And at the very first step, `s = 0` everywhere, the weights are exactly `(1,1)`
-and I *am* the default sum, so the method starts from the scaffold and only departs from it as the
-losses reveal their relative scales. That is the behaviour I want: neutral at `t = 0`, adaptive
-thereafter.
+At the first step `s = 0` everywhere, so the weights are exactly `(1,1)` and the rule *is* the default
+sum; it departs only as the losses reveal their relative scales — neutral at `t = 0`, adaptive thereafter.
 
 Now land it in this task's edit surface, and notice how much *simpler* it is than the PCGrad rung — and
 why. PCGrad had to fight the interface: walk the autograd graph to recover the shared parameters, call
@@ -165,47 +136,28 @@ precision `exp(−s_i)` and accumulate `exp(−s_i) · L_i + s_i`, return the su
 and it is back to one forward and one backward a step — I have shed PCGrad's tax entirely. (The full
 scaffold module is in the answer.)
 
-So the delta from the PCGrad rung is a change of *axis*: where PCGrad operated on gradient directions
-and was blind to magnitude, this rung learns the per-task magnitude directly, with a likelihood-derived
-log-variance penalty that keeps it from collapsing to zero. There is one more reason to expect this to
-beat both the equal-weighting default and a static grid weight, and it bears on PCGrad's backbone
-pattern. A grid weight is *static* for the whole run; the learned `σ` is *dynamic* — early on every loss
-is large so every `σ_i` is large and the weighting is roughly even, and as the model masters the easier
-20-way coarse task its loss drops, its `σ` drops, and its weight *rises*, with the schedule of relative
-weights evolving over training in a way no fixed point can match. Let me trace that with concrete
-numbers so I know what "dynamic" actually buys. At init both losses are near their uniform-guess values,
-`L_fine ≈ 4.6` and `L_coarse ≈ 3.0`, both starting from `s = 0`, so the weights are `(1, 1)` and the two
-fixed points the scalars are being pulled toward are `s_fine → log 4.6 ≈ 1.53` and
-`s_coarse → log 3.0 ≈ 1.10` — both positive, so both scalars climb and both weights fall from 1, the
-fine one falling faster since its target is higher. By mid-training the coarse task, being a 20-way
-problem, has been largely mastered, say `L_coarse ≈ 1.0` while `L_fine ≈ 2.0` still lags; the fixed
-points have moved to `s_coarse → log 1.0 = 0` and `s_fine → log 2.0 ≈ 0.69`, so the coarse scalar,
-which had climbed, is now pulled back *down* toward 0, its weight `exp(−s_coarse)` climbing back toward
-1 and above, while the fine scalar settles near `0.69` with weight `≈ 0.5`. So the relative weight the
-trunk feels genuinely *turns over* across the run — the coarse task's pull on the shared features waxes
-as it is mastered — and a static grid weight, committed to one number for all 200 epochs, cannot
-express that turnover. That adaptivity is exactly what the small ResNet-20 trunk needed and could not
-get from PCGrad. The one caveat I have to keep honest is that this drift is *slow*: `s_fine` and
-`s_coarse` are two scalars stepped by the same SGD learning rate that is simultaneously moving ten
-million network weights, so the log-vars crawl toward these fixed points rather than snap to them, and
-the equilibrium I just traced is the target, not the instantaneous state at any given epoch.
+So the delta from the PCGrad attempt is a change of *axis*: PCGrad operated on gradient directions and
+was blind to magnitude; this rule learns the per-task magnitude directly, with a likelihood-derived
+log-variance penalty that keeps it from collapsing to zero. And unlike a static grid weight, the learned
+`σ` is *dynamic*: at the fixed point `σ_i² = L_i`, so early on both losses are large, both `σ` are
+large, and the weighting is roughly even; as the easier 20-way coarse task is mastered and its loss
+drops, its `σ` drops and its weight *rises*, a schedule of relative weights no fixed number can match.
+That adaptivity is exactly what the small ResNet-20 trunk needed and could not get from PCGrad. The one
+caveat I keep honest is that the drift is *slow*: `s_fine` and `s_coarse` are two scalars stepped by the
+same SGD learning rate that is simultaneously moving ten million network weights, so they crawl toward
+their fixed points rather than snap to them — the equilibrium is the target, not the instantaneous state
+at any given epoch.
 
-Now the falsifiable expectations against the numbers I have. The PCGrad run was 64.31 / 70.20 / 74.17,
-gmean 69.44. My sharp claim is on **ResNet-20**: if the ResNet-20 collapse really was a *weighting*
-problem, then learning the weight should pull that point *up*, clearly above 64.31 — that is the
-headline test of this whole diagnosis, and if it fails there my read of PCGrad was wrong. On
-**ResNet-56** I expect a smaller gain over 70.20, because the deeper trunk was already less starved by
-mis-weighting — the deficit differences I computed said as much, `5.89` of the gap sat between ResNet-20
-and ResNet-56, so there is simply less for the lever to recover on the deeper backbone. On
-**VGG-16-BN** I am genuinely unsure of the sign: PCGrad already hit 74.17 there, VGG has large-capacity
-heads where the auxiliary signal matters least, and the `σ → 1` approximation in the classification
-derivation is only first-order once the scales drift, so the learned weighting might land *near or even
-slightly under* PCGrad on that backbone rather than above it. If the pattern comes out as "big
-ResNet-20 recovery, modest ResNet-56 gain, roughly flat or slightly down VGG," that confirms the
-magnitude lever is what the task rewards — but it also tells me what uncertainty weighting still cannot
-do: it learns *one constant* weight per task and nothing time-aware beyond the slow fixed-point drift,
-and that drift is slow precisely because `s_i` is one scalar crawling under the same SGD learning rate
-as ten million network parameters. So if the real story is that the balance the trunk needs at epoch 20
-is not the balance it needs at epoch 150 — a within-run schedule that a slowly-drifting learned *level*
-cannot track — then this rung's static learned scale is as far as a level-based rule can climb, and the
-next rung will have to read something the loss *level*, however cleverly learned, simply cannot see.
+Now the falsifiable expectations against PCGrad's 64.31 / 70.20 / 74.17 (gmean 69.44). My sharp claim is
+on **ResNet-20**: if its collapse really was a *weighting* problem, learning the weight should pull that
+point clearly above 64.31 — the headline test of the whole diagnosis, and if it fails there my read of
+PCGrad was wrong. On **ResNet-56** I expect a smaller gain, since the deeper trunk was already less
+starved — most of the deficit spread sat between it and ResNet-20. On **VGG-16-BN** I am genuinely
+unsure of the sign: PCGrad already reached 74.17, VGG has the large heads where the auxiliary signal
+matters least, and the `σ → 1` classification approximation is only first-order once the scales drift,
+so the learned weighting could land near or slightly below PCGrad there. Even if the magnitude lever
+wins overall, it exposes its own ceiling: this rule learns *one constant* scale per task, time-aware
+only through that slow fixed-point drift. If the balance the trunk needs at epoch 20 differs from the
+one it needs at epoch 150 — a within-run schedule a slowly-drifting learned *level* cannot track — then
+a level-based rule has climbed as far as it can, and the next lever has to read something the loss level,
+however cleverly learned, cannot see.

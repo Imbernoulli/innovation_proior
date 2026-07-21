@@ -43,21 +43,18 @@ rung is now legible: it weights by a learned *level* of each loss, with a fixed 
 *value*, and it has almost no notion of the *speed* at which each task is currently improving. The next
 lever is rate, not level.
 
-Before I build the rate rule, let me be sure it is the right next move and not just the most obvious
-one, because there are cheaper things I could try first. I could keep uncertainty weighting and just
-*schedule* the log-variances — anneal them, or re-initialize them — but that is still a level-based
-rule wearing a schedule; it does not introduce any signal about how fast each loss is descending, so it
-cannot fix a lag that is fundamentally about rate. I could reach again for a gradient-magnitude
-balancer of the GradNorm family, which does carry a rate target — but that drags me back into per-task
-gradient norms on the shared trunk, which means the autograd-graph walk and the extra backward passes I
-was so glad to shed at the uncertainty rung, plus its restoring-force hyperparameter I have no budget to
-tune. What I want is a rate signal I can compute from the *only* things the interface hands me cheaply:
-the two scalar losses, the epoch counters, and whatever small state I choose to carry between calls. And
-that is enough, because the rate of a loss is visible in the loss itself over time — I do not need its
-gradient, I only need its value now and its value a moment ago. That is the one piece of information the
-`epoch`/`total_epochs` arguments and a stored history buffer let me compute, and the two earlier rungs
-threw it away: PCGrad read the instantaneous gradient *geometry*, uncertainty read the instantaneous
-loss *level*; neither looked at the loss's *change over time*.
+Before I build the rate rule, is it the right next move? The cheap alternative — keep uncertainty
+weighting and just *schedule* the log-variances — is still a level-based rule wearing a schedule; it
+carries no signal about how fast each loss is descending, so it cannot fix a lag that is fundamentally
+about rate. GradNorm does carry a rate target, but it drags me back into the per-task gradient norms,
+autograd-graph walk, and extra backward passes I was glad to shed at the uncertainty rung, plus a
+hyperparameter I have no budget to tune. What I want is a rate signal from the *only* things the
+interface hands me cheaply: the two scalar losses, the epoch counters, and whatever small state I carry
+between calls. And that is enough, because the rate of a loss is visible in the loss itself over time — I
+need its value now and its value a moment ago, not its gradient. That is exactly what a stored history
+buffer lets me compute, and the two earlier attempts threw it away: PCGrad read the instantaneous
+gradient *geometry*, uncertainty the instantaneous loss *level*; neither looked at the loss's *change
+over time*.
 
 Now derive the form. What I actually care about, for keeping the two tasks balanced, is not how big a
 loss is in absolute terms — that is exactly the units-and-scale problem uncertainty weighting already
@@ -72,19 +69,15 @@ early and a 20-way coarse cross-entropy near `log 20 ≈ 3.0` live at different 
 is barely moving — it has stalled, it is the slow learner; `r_k < 1` means the loss is still dropping
 fast — it is learning well, the fast learner; `r_k > 1` means the loss is *rising*. So a *larger* `r_k`
 corresponds to a *slower* (or worsening) learner, and a larger `r_k` is exactly the task I want to give
-*more* weight. That monotonicity — bigger ratio gets bigger weight — is the core of the rule. Contrast
-uncertainty weighting, where a bigger *loss* got a bigger `σ` and therefore *less* weight; here a bigger
-*ratio* gets more weight. The two rules push on different quantities and in the opposite direction,
-which is the point, and it is why this rule can catch a task that uncertainty misses. Take the easy
-coarse task in the phase where the weighting actually matters — it is descending *fast*, so it carries a
-*small* loss and a *low* ratio at the same moment, and the two rules read those two facts in opposite
-directions. Uncertainty sees the small loss and drives the coarse weight *up* (`1/L` grows as `L`
-shrinks); DWA sees the fast descent (low ratio, well below the harder fine task's ratio) and drives the
-coarse weight *down*. On a task I only ever wanted as an auxiliary, DWA's direction is the one that
-protects the fine head's share of the trunk, and it never performs uncertainty's runaway up-ramp on a
-task that is busy making itself irrelevant.
+*more* weight. That monotonicity — bigger ratio gets bigger weight — is the core of the rule, and it is
+the *opposite* push from uncertainty weighting, where a bigger *loss* got a bigger `σ` and therefore
+*less* weight. That is why this rule can catch a task uncertainty misses: the easy coarse task,
+descending fast, carries a *small* loss and a *low* ratio at the same moment, and the two rules read
+those facts in opposite directions — uncertainty drives its weight *up* (`1/L` grows as `L` shrinks),
+DWA drives it *down*, protecting the fine head's share of the trunk and never performing uncertainty's
+runaway up-ramp on a task busy making itself irrelevant.
 
-Let me put numbers on that "opposite direction" so it is not just a slogan. Pick a mid-training moment
+Numbers make the reversal concrete. Pick a mid-training moment
 where the easy coarse task has descended well while the fine task lags: `L_coarse = 0.8`, `L_fine = 2.2`,
 with the coarse loss still dropping fast, `r_coarse = 0.70`, and the fine loss creeping, `r_fine = 0.92`.
 Uncertainty weights by level, at fixed point `1/L`, so it wants `w_coarse = 1/0.8 = 1.25` against
@@ -113,28 +106,19 @@ bounded too: each softmax entry lies in `(0, 1)`, so each weight lies in `(0, 2)
 starve a task to zero or blow one up — it reweights only within a bounded band around equal weighting,
 which is a feature, not a limitation, on a deep net I do not want to destabilize.
 
-The temperature `T` sets how wide that band is, and I should pin down its two limits before choosing a
-value. As `T → ∞`, every `r_k/T → 0`, the softmax flattens to `(0.5, 0.5)`, and `K · softmax → (1, 1)`:
-DWA reduces to *equal weighting*, a soft rule that barely reweights. As `T → 0`, the softmax sharpens to
-a hard argmax that puts `(1, 0)` on the single largest ratio, and `K · softmax → (2, 0)`: DWA dumps the
-entire budget on the slowest task and zeroes the other, which is far too aggressive and would whipsaw a
-deep net batch to batch. So I want a middle value, and let me actually compute what a given `T` does
-rather than guess. Take a representative mid-training moment where the coarse task is mostly mastered and
-still creeping down while the fine task has stalled: say `r_fine = 1.0` (stalled) and `r_coarse = 0.8`
-(still descending). At `T = 2.0`, `r_k/T = (0.5, 0.4)`, so `exp(0.5) = 1.649` and `exp(0.4) = 1.492`
-sum to `3.141`, the softmax is `(0.525, 0.475)`, and the weights are `(1.050, 0.950)` — a gentle nudge
-toward the stalled fine task, exactly the direction I want, and small enough not to jolt the trunk.
-Drop to `T = 0.5` and the same ratios give `r_k/T = (2.0, 1.6)`, `exp` values `7.389` and `4.953`
-summing to `12.342`, softmax `(0.599, 0.401)`, weights `(1.197, 0.803)` — noticeably sharper, starting
-to press. Push to `T = 100` and I get `r_k/T = (0.01, 0.008)`, weights `(1.001, 0.999)` — essentially
-equal weighting, confirming the `T → ∞` limit numerically. So `T = 2.0` is the conservative middle:
-enough contrast to favor the lagging task by a few percent, not so much that it starves the other, and
-the numeric trace shows the reweighting it produces is a light touch that stays close to the equal-sum
-budget while still leaning toward whichever task has stalled. One more property falls out of the trace
-that I like: if the two ratios are *equal*, say both `0.9`, the softmax is `(0.5, 0.5)` and the weights
-are `(1, 1)` regardless of the common value — DWA responds only to the *gap* between the two descent
-rates, not to their absolute level, which is precisely the scale-freedom I was after and another way of
-seeing that it is a genuinely different signal from the level-based uncertainty rule.
+The temperature `T` sets how wide that band is; its two limits pin the choice. As `T → ∞`, every
+`r_k/T → 0`, the softmax flattens to `(0.5, 0.5)` and `K · softmax → (1, 1)`: DWA reduces to *equal
+weighting*. As `T → 0`, the softmax sharpens to a hard argmax and `K · softmax → (2, 0)`: DWA dumps the
+entire budget on the slowest task and zeroes the other, far too aggressive for a deep net batch to
+batch. So I want a middle value. At `T = 2.0`, a representative moment with the fine task stalled
+(`r_fine = 1.0`) and the coarse task still creeping (`r_coarse = 0.8`) gives `r_k/T = (0.5, 0.4)`,
+softmax `(0.525, 0.475)`, weights `(1.050, 0.950)` — a gentle nudge toward the stalled task, small
+enough not to jolt the trunk. `T = 2.0` is the conservative middle: enough contrast to favor the lagging
+task by a few percent, not so much that it starves the other. And one property I like falls out: if the
+two ratios are *equal*, the softmax is `(0.5, 0.5)` and the weights are `(1, 1)` regardless of the common
+value — DWA responds only to the *gap* between the descent rates, not their absolute level, the
+scale-freedom I was after and another way to see it is a genuinely different signal from the level-based
+uncertainty rule.
 
 There is a bootstrap question — what are the weights on the very first update, when there is no
 "previous" loss to form a ratio against? On the first step (or whenever no history exists yet) I have no
@@ -190,34 +174,24 @@ finite if a previous loss ever underflows toward zero. This is again simpler tha
 even lighter than uncertainty's two learnable scalars — no parameters at all, just a buffer and a
 softmax. (The full scaffold module is in the answer.)
 
-So the delta across the three rungs is a clean progression of *what signal drives the weighting*: PCGrad
-used the instantaneous gradient geometry and ignored magnitude; uncertainty used the instantaneous loss
-level and learned a slow static scale; DWA uses the recent loss *rate of change* and pushes weight
-toward whichever task is descending more slowly, recomputed every step. It directly targets the
-limitation the uncertainty run exposed — a static, slow-drifting weight that cannot track tasks learning
-at different speeds — by making the weight a fast, bounded, budget-preserving function of the live
-descent rate.
+So across the three attempts the signal driving the weighting progresses cleanly: PCGrad used
+instantaneous gradient geometry and ignored magnitude; uncertainty used the instantaneous loss level as
+a slow static scale; DWA uses the recent loss *rate of change*, a fast, bounded, budget-preserving weight
+pushed toward whichever task is descending more slowly — directly targeting the static-weight limitation
+the uncertainty run exposed.
 
-Now the falsifiable expectations against the numbers I have. Uncertainty was 66.81 / 70.94 / 72.67,
-gmean 70.10; PCGrad was 64.31 / 70.20 / 74.17, gmean 69.44. My sharpest claim is on **VGG-16-BN**,
-because that is where I located the whole failure: the uncertainty rung *regressed* there to 72.67, and
-if that regression was caused by uncertainty ramping the coarse weight *up* as the coarse loss fell,
-then a rate-driven weight — which reads the coarse task's fast descent as a low ratio and holds its
-share *down*, never performing that runaway up-ramp, and returning to neutral only once both tasks stall
-together — should *recover* VGG. I expect it back above uncertainty's 72.67, and plausibly at or above
-PCGrad's 74.17, since 74.17 is roughly what the coarse task's *un*-over-weighted contribution looked
-like on that backbone. If
-DWA does *not* lift VGG, my "rate vs level" story is wrong and I will have to conclude the VGG drop was
-something other than lag. On **ResNet-20** I expect a further small gain over uncertainty's 66.81 — the
-rate signal should help the starved small trunk allocate weight to whichever task is currently lagging,
-on top of the level-based recovery uncertainty already bought, so I would be disappointed if it did not
-clear 67 — though ResNet-20 is also where I most fear the per-batch noise, being the smallest model with
-the least averaging in its features, so if any backbone shows the ratio noise swamping the signal it is
-this one. On **ResNet-56** I expect another modest step over 70.94, the same "deep trunk was less
-starved, less to gain" logic as before. If the pattern comes out as "VGG recovered, ResNet-20 up past
-67, ResNet-56 modestly up" — a Pareto improvement over uncertainty rather than uncertainty's trade — that
-confirms the *rate* of learning is the signal this hierarchical fine/coarse task most rewards, and DWA
-sits at the top of the ladder. If instead the per-batch noise in the ratio swamps the signal and DWA
-lands no better than uncertainty, the read would be that the epoch-averaged form the per-batch interface
-cannot cheaply express is what actually matters, and the static learned weight is as far as a
-scalar-loss rule can climb here.
+Now the falsifiable expectations against uncertainty's 66.81 / 70.94 / 72.67 (gmean 70.10) and PCGrad's
+64.31 / 70.20 / 74.17. My sharpest claim is on **VGG-16-BN**, where I located the whole failure: if
+uncertainty's regression to 72.67 came from ramping the coarse weight *up* as the coarse loss fell, then
+a rate-driven weight — which reads the coarse task's fast descent as a low ratio and holds its share
+*down*, never performing that runaway up-ramp — should *recover* VGG, back above 72.67 and plausibly
+toward PCGrad's un-over-weighted 74.17. If DWA does *not* lift VGG, the "rate vs level" story is wrong
+and the drop was something other than lag. On **ResNet-20** I expect a further small gain over 66.81, the
+rate signal helping the starved small trunk track whichever task lags — though this is also where I most
+fear the per-batch ratio noise, the smallest model with the least averaging in its features. On
+**ResNet-56** I expect another modest step, the same less-starved-deep-trunk logic. If the pattern is
+VGG recovered and both ResNets up — a Pareto improvement over uncertainty rather than its trade — the
+*rate* of learning is the signal this hierarchical task most rewards. If instead the per-batch noise
+swamps the ratio and DWA lands no better than uncertainty, the read is that the epoch-averaged form this
+interface cannot cheaply express is what matters, and a static learned weight is as far as a scalar-loss
+rule can climb here.

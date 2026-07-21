@@ -11,8 +11,7 @@ sees `g_fine` and `g_coarse` separately; it sees their sum and steps along it. I
 it has to be visible in the geometry of that sum, and a fix that only rescales the losses can never
 reach a problem that lives in directions.
 
-But that last sentence is a claim, and before I commit the whole first rung to it I should prove it,
-because the entire choice of where to start the ladder turns on whether it is actually true. There are
+That last sentence is a claim, and it fixes where I start, so it is worth settling. There are
 really only two families of intervention available to me. One is the *weighting* family: replace the
 sum by `L = w_fine L_fine + w_coarse L_coarse` with nonnegative weights — static, grid-searched,
 learned, or set by some rule I have not written yet — which scales the two loss magnitudes before adding. The other
@@ -28,12 +27,10 @@ cancel entirely and the angle between the two gradients is left *unchanged*. Rew
 gradient along its own fixed ray; it never rotates one toward or away from the other. So if the two
 gradients point partly against each other, no choice of nonnegative weights can stop them pointing
 against each other; the overlap that cancels in the sum stays exactly as it was. That settles it: a
-directional disease is *unreachable* by the entire weighting family, and the only way to find out
-whether the disease is directional is to fix the direction and see what happens. That is precisely why
-I start the ladder here rather than with a weighting scheme — I deliberately pick the rung that
-operates one level deeper than weighting, so that if it under-delivers on the magnitude axis (and I
-have a specific reason to suspect it will, which I will get to) the diagnosis points cleanly at *what
-kind* of intervention the task actually rewards, and the next rung is forced.
+directional disease is *unreachable* by the entire weighting family, so the only way to learn whether
+the disease is directional at all is to fix the direction and watch. That is why I start with geometry
+rather than a weighting scheme — it operates one level deeper than weighting, so if it under-delivers on
+the magnitude axis the diagnosis points cleanly at what kind of intervention the task actually rewards.
 
 So let me stare at the geometry. Two gradient vectors `g_fine`, `g_coarse` in the same shared-trunk
 parameter space; the step goes along `g_fine + g_coarse`. When are they fighting? When they point
@@ -84,57 +81,36 @@ worry about; the projection is a single symmetric operation, and I do not need t
 shuffling that a many-task version would require to stay unbiased. This is *projecting conflicting
 gradients* — PCGrad, in its two-task form.
 
-Before I trust any of that verbally I want to run it on actual numbers, because the projection is easy
-to state and easy to get backwards. Take a clean 2-D instance with both a conflict and a magnitude
-imbalance, so I am in the interesting part of the triad: `g_fine = g_0 = (2, 1)`,
-`g_coarse = g_1 = (−1, 1)`. Their dot product is `2·(−1) + 1·1 = −1 < 0`, so they conflict, as
-intended. The squared norms are `‖g_0‖² = 5` and `‖g_1‖² = 2`, and the cosine is
-`−1/√(5·2) = −1/√10 ≈ −0.316`. The plain sum is `g_0 + g_1 = (1, 2)` with squared norm `5`, and set
-against `‖g_0‖² + ‖g_1‖² = 7` I can see the cancellation directly: the `2·(g_0·g_1) = −2` cross term
-has eaten two units of squared length off the honest total. Now project. The de-conflicted fine
-gradient is `g_0 − (dot/‖g_1‖²) g_1 = (2,1) − (−1/2)(−1,1) = (2,1) − (1/2, −1/2) = (1.5, 1.5)`, and its
-dot with `g_1` is `1.5·(−1) + 1.5·1 = 0` — orthogonal, conflict gone, as the derivation promised. The
-de-conflicted coarse gradient is `g_1 − (dot/‖g_0‖²) g_0 = (−1,1) − (−1/5)(2,1) = (−0.6, 1.2)`, and its
-dot with `g_0` is `−0.6·2 + 1.2·1 = 0` — orthogonal too. Summing the two projected gradients gives
-`g^PC = (1.5 − 0.6, 1.5 + 1.2) = (0.9, 2.7)`, whose squared norm is `0.81 + 7.29 = 8.1`. That number is
-the whole point of the exercise: the plain sum had squared length `5`, and the de-conflicted step has
-squared length `8.1`, *larger* — the projection has not merely removed a cancellation, it has recovered
-length the cancellation was hiding. So the surgery is not a defensive trim; it is a strict escape from
-the flattening the plain sum suffers under conflict.
+The projection is easy to state and easy to get backwards, so I run it on numbers. Take a 2-D instance
+with both a conflict and a magnitude imbalance, the interesting part of the triad: `g_fine = g_0 =
+(2, 1)`, `g_coarse = g_1 = (−1, 1)`. Their dot is `−1 < 0`, so they conflict; the squared norms are `5`
+and `2` and the cosine is `−1/√10 ≈ −0.316`. The plain sum `g_0 + g_1 = (1, 2)` has squared norm `5`
+against an honest `‖g_0‖² + ‖g_1‖² = 7` — the `2(g_0·g_1) = −2` cross term has eaten two units of length.
+Projecting, `g_0^{proj} = (2,1) − (−1/2)(−1,1) = (1.5, 1.5)` (dot with `g_1` now `0`) and `g_1^{proj} =
+(−1,1) − (−1/5)(2,1) = (−0.6, 1.2)` (dot with `g_0` now `0`). Their sum `g^PC = (0.9, 2.7)` has squared
+norm `8.1` — *larger* than the plain sum's `5`. The projection has not merely removed a cancellation, it
+has recovered length the cancellation was hiding; the surgery is a strict escape from the flattening the
+plain sum suffers under conflict, not a defensive trim.
 
-That the length went *up* rather than merely stopped going down is worth understanding, because it
-tells me the operation is doing something more than orthogonalization. Write `g^PC = g_0^PC + g_1^PC`
-and collect terms: `g^PC = (1 − cos φ/R) g_0 + (1 − cos φ·R) g_1` with `R = ‖g_0‖/‖g_1‖`. Plug in the
-numbers to check I have the coefficients right: `R = √5/√2 = √2.5 ≈ 1.581`, so
-`cos φ/R = −0.316/1.581 = −0.2` and the coefficient on `g_0` is `1 − (−0.2) = 1.2`; and
-`cos φ·R = −0.316·1.581 = −0.5` so the coefficient on `g_1` is `1 − (−0.5) = 1.5`. Reassembling,
-`1.2·(2,1) + 1.5·(−1,1) = (2.4, 1.2) + (−1.5, 1.5) = (0.9, 2.7)` — exactly the `g^PC` I got the other
-way. So under conflict, where `cos φ < 0`, *both* coefficients exceed 1: PCGrad does not merely cancel
-the conflict, it *amplifies* each task's own direction, and that amplification is where the extra
-length comes from. It is the heavy-ball-flavoured behaviour that lets the step break out of the valley
+The length going *up* rather than merely stopping its fall tells me the operation is more than
+orthogonalization. Collecting terms, `g^PC = (1 − cos φ/R) g_0 + (1 − cos φ·R) g_1` with
+`R = ‖g_0‖/‖g_1‖`; on the example `R ≈ 1.581` and `cos φ ≈ −0.316` give coefficients `1.2` on `g_0`
+and `1.5` on `g_1`. Under conflict, where `cos φ < 0`, *both* coefficients exceed 1: PCGrad does not
+merely cancel the conflict, it *amplifies* each task's own direction, and that amplification is where
+the extra length comes from — the heavy-ball-flavoured behaviour that breaks the step out of the valley
 the plain sum sits stuck in.
 
-I still owe myself a check that this is a legitimate descent direction and not a plausible-looking hack
-that could quietly raise a loss. The cleanest thing I can actually compute is the *first-order* change
-each task's loss undergoes under the two candidate steps, because to first order the change in `L_fine`
-from a step along direction `d` is `−t (g_fine · d)`, so bigger `g_fine · d` means more descent on
-fine. Under the plain sum, `g_fine · (g_0 + g_1) = ‖g_0‖² + dot = 5 + (−1) = 4`. Under PCGrad,
-`g_fine · g^PC = g_0 · (g_0^PC + g_1^PC)`, and since `g_1^PC` was built orthogonal to `g_0` the second
-term vanishes, leaving `g_0 · g_0^PC = ‖g_0‖² − dot²/‖g_1‖² = 5 − 1/2 = 4.5`. So PCGrad buys `4.5`
-units of first-order descent on fine against the plain sum's `4` — strictly more. Repeat for coarse:
-plain sum gives `g_coarse · (g_0 + g_1) = ‖g_1‖² + dot = 2 + (−1) = 1`, and PCGrad gives
-`g_1 · g_1^PC = ‖g_1‖² − dot²/‖g_0‖² = 2 − 1/5 = 1.8`, again strictly more. This is the real content of
-the descent guarantee, and I have now verified it on numbers rather than asserted it: whenever the
-conflict term is negative and the projection coefficients stay positive, the de-conflicted step delivers
-strictly more first-order descent on *each* task than the plain sum does. The general boundary is that
-the improvement on fine is `−dot·(1 + cos φ·R)` and on coarse `−dot·(1 + cos φ/R)`, both positive so
-long as the conflict is not so severe relative to the magnitude imbalance that a coefficient flips
-negative — which is the near-anti-parallel regime, and there the smooth-loss quadratic upper bound is
-the honest backstop: it gives a strict decrease scaling like `(1 − cos²φ)`, vanishing only when the two
-gradients are *exactly* anti-parallel, and exact anti-alignment of two stochastic minibatch gradients
-essentially never happens. So PCGrad is a descent method; it does not *break* anything, and the
-single-step win over the plain sum is exactly the triad regime — conflict, magnitude dominance, high
-curvature — recovered from the algebra rather than hoped for.
+I do need to make sure the de-conflicted step is genuine descent and not a hack that could quietly raise
+a loss. To first order the change in `L_fine` along direction `d` is `−t (g_fine · d)`, so `g_fine · d`
+measures descent on fine. Under the plain sum `g_0·(g_0 + g_1) = 5 + (−1) = 4`; under PCGrad, `g_1^PC`
+is orthogonal to `g_0`, so `g_0·g^PC = ‖g_0‖² − dot²/‖g_1‖² = 5 − 1/2 = 4.5` — strictly more. For coarse
+the plain sum gives `2 + (−1) = 1` and PCGrad gives `2 − 1/5 = 1.8`, again more. So whenever the conflict
+term is negative and the projection coefficients stay positive, the de-conflicted step delivers strictly
+more first-order descent on *each* task than the plain sum. The one edge is the near-anti-parallel regime
+where a coefficient could flip; there the smooth-loss quadratic bound still gives a decrease scaling like
+`(1 − cos²φ)`, vanishing only at exact anti-alignment, which two stochastic minibatch gradients
+essentially never hit. So PCGrad is a genuine descent method, and its single-step win over the plain sum
+is exactly the triad regime — conflict, dominance, curvature.
 
 None of this is free, and I want the cost on the table before I commit. The plain sum costs one forward
 and one backward per step. PCGrad, as I am about to implement it, costs one forward, then two calls to
@@ -199,27 +175,21 @@ to be. This surrogate-loss device is the bridge from "I can only return a scalar
 a specific gradient," and it is the defining feature of how PCGrad has to be expressed *here* rather
 than as the external wrapper. (The full scaffold module is in the answer.)
 
-So the delta from the equal-weighting default is: where the default returned `fine_loss + coarse_loss`
-and let SGD step along the raw sum, this rung recovers the shared parameters by walking the loss graph,
-computes the two per-task gradients, projects away their conflict only when `cos φ < 0`, and returns a
-surrogate scalar whose backward pass installs the de-conflicted gradient. Now let me reason about what
-I actually expect, because that sets up the next rung, and the two extra backward passes I am paying
-for sharpen the stakes. The honest worry is twofold and specific to this task. One: fine and coarse
-here are *not* an arbitrary, semantically unrelated pair — coarse is a deterministic *coarsening* of
-fine, its label is a fixed many-to-one map of the fine label, so a feature direction that lowers the
-fine loss almost always lowers the coarse loss too. That is the definition of correlated gradients,
-`cos φ ≥ 0`, and on every such step PCGrad detects no conflict, does nothing, and I am back to the
-plain sum having paid triple for the privilege. Two: even on the minority of steps where it fires,
-PCGrad fixes the *direction* of the conflict and does nothing about the *magnitude imbalance* between a
-100-way and a 20-way cross-entropy — I showed above the two losses sit at genuinely different scales,
-and PCGrad never asks how much each task should count, only whether they fight. If the real bottleneck
-on fine accuracy is that the coarse task is mis-weighted — too loud early, or starving the fine head of
-a scarce trunk's capacity — a direction-only fix leaves that entirely on the table. So my falsifiable
-expectation is that this rung lands respectably but *not* at the top, and I can even predict the
-*shape* of where it disappoints: the smaller the backbone, the more a scarce trunk's capacity is
-contested, and the more a magnitude blindness should cost, so I expect the capacity-scarce ResNet-20 to
-be the weakest of the three backbones relative to what a good *weighting* rule would reach there, with
-the deeper ResNet-56 and the larger-headed VGG-16-BN less hurt because they have capacity to spare. If
-that is what the numbers say — a direction fix that is fine where capacity is abundant and soft exactly
-where it is scarce — the next rung writes itself: stop projecting directions and go straight at the
-fine/coarse *magnitude* balance this rung deliberately refused to touch.
+So the delta from the equal-weighting default: recover the shared parameters by walking the loss graph,
+project away the two gradients' conflict only when `cos φ < 0`, and return a surrogate scalar whose
+backward installs the de-conflicted gradient. What do I actually expect, given the two extra backward
+passes I am paying for? Two worries are specific to this task. First, coarse is *not* an arbitrary
+second task — it is a deterministic *coarsening* of fine, a fixed many-to-one map of the fine label, so
+a feature direction that lowers the fine loss almost always lowers the coarse loss too. That is
+correlated gradients, `cos φ ≥ 0`, and on every such step PCGrad detects no conflict, does nothing, and
+I am back to the plain sum having paid triple. Second, even when it fires, PCGrad fixes the *direction*
+of the conflict and does nothing about the *magnitude imbalance* between a 100-way and a 20-way
+cross-entropy — it never asks how much each task should count, only whether they fight. If the real
+bottleneck on fine accuracy is that the coarse task is mis-weighted, starving the fine head of a scarce
+trunk's capacity, a direction-only fix leaves that on the table. So my falsifiable expectation is that
+this lands respectably but *not* at the top, and I can predict the shape of the disappointment: the
+smaller the backbone, the more a scarce trunk's capacity is contested, so magnitude blindness should
+cost most on the capacity-scarce ResNet-20 and least on the deeper ResNet-56 and larger-headed
+VGG-16-BN, which have capacity to spare. If that is the pattern — a direction fix that is fine where
+capacity is abundant and soft where it is scarce — the next move is forced: stop projecting directions
+and go straight at the fine/coarse *magnitude* balance this attempt deliberately refused to touch.
