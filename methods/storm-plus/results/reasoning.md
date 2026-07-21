@@ -29,7 +29,7 @@ What exponent do I want on the *step size*? Look back at the curvature tax (L et
 
 Now the *momentum* a_t. In STORM a_t ∝ L^2 eta_t^2, and since STORM's eta ∝ (sum g^2)^{-1/3} ∝ t^{-1/3} when noise keeps ||g||^2 from vanishing, that means a_t ∝ t^{-2/3}. So the *shape* I want to reproduce is a_t decaying like t^{-2/3}. I can manufacture that shape parameter-free with the same AdaGrad trick on the *gradient* norms: a_t = 1/(1 + sum_{i<t} ||g_i||^2)^{2/3}. When the noise floor keeps sum ||g_i||^2 growing like t, this is ≈ t^{-2/3}, the decay STORM wanted, but with no L^2 and no G anywhere. Why ||g|| here and not ||d||? Because the term a_t is fighting is the variance term in the eps recursion, a_t^2 ||g_t - gbar_t||^2, and I'll bound ||g_t - gbar_t||^2 in expectation by ||g_t||^2 (more on that in a second), so I want a_t to telescope against ||g||^2. Why the "+1" inside? Two reasons: it makes a_1 = 1 when there's no history yet (and a_1 = 1 is the honest "trust the first sample fully" momentum), and it guarantees a_t in (0,1] for all t, which the recursion needs (a_t is a convex weight).
 
-The exponent 2/3 on a_t I should not just assert — the whole point of the schedule is that a_t^2 lands the variance term at a *constant* and not a growing sum, and that's exactly the kind of claim I keep seeing asserted and want to actually check. The variance term is sum_t a_t^2 ||g_t - gbar_t||^2, and with a_t = 1/(1+sum_{i<t}||g||^2)^{2/3} the square is a_t^2 = 1/(1+sum_{i<t}||g||^2)^{4/3}, so I'm summing ||g_t||^2/(1+sum_{i<t}||g||^2)^{4/3}, an AdaGrad-shaped sum b_t/(1+sum_{j<t}b_j)^p with p = 4/3 > 1. The claim is that p > 1 makes this a constant, p = 1 makes it logarithmic, and p < 1 makes it a growing power — and the exponent choice is supposed to push p across the p=1 boundary. Let me just compute the sum at a few exponents with all b_t = 1 (the worst case, noise floor never vanishing), and see whether the boundary is where I think it is.
+The exponent 2/3 on a_t I should not just assert — the whole point of the schedule is that a_t^2 lands the variance term at a *constant* and not a growing sum. The variance term is sum_t a_t^2 ||g_t - gbar_t||^2, and with a_t = 1/(1+sum_{i<t}||g||^2)^{2/3} the square is a_t^2 = 1/(1+sum_{i<t}||g||^2)^{4/3}, so I'm summing ||g_t||^2/(1+sum_{i<t}||g||^2)^{4/3}, an AdaGrad-shaped sum b_t/(1+sum_{j<t}b_j)^p with p = 4/3 > 1. The claim is that p > 1 makes this a constant, p = 1 makes it logarithmic, and p < 1 makes it a growing power — and the exponent choice is supposed to push p across the p=1 boundary. Let me just compute the sum at a few exponents with all b_t = 1 (the worst case, noise floor never vanishing), and see whether the boundary is where I think it is.
 
 ```
 p=4/3:  n=10 -> 1.27,  n=100 -> 1.96,  n=1000 -> 2.30,  n=10000 -> 2.46
@@ -67,7 +67,7 @@ B=10, L=10:  x <= 6606      (L^3 = 1000, B^{9/4} = 178)
 
 So x is finite at every setting (the crossing exists — RHS really does fall below x), and the bound tracks the constants the way I expect: at (10,10) the bound 6606 is the same order as 1 + L^3 + B^{9/4} = 1179 (within a small multiplicative constant from the 2/9-power prefactor), and L^3 is the dominant piece exactly when L is large. So x = sum_t ||gbar_t||^2 <= O(1 + L^3 + B^{9/4}). Then by the random-iterate choice and Jensen, E||grad F(xbar_T)|| <= sqrt(E||gbar(xbar_T)||^2) = sqrt(sum_t ||gbar_t||^2/T) <= O(sqrt(1+L^3+B^{9/4})/sqrt T). So in the noiseless case I get O(1/sqrt T), with no L, G, sigma in the algorithm — only appearing in the final constant. The step size alone, with its 1/a reweighting, does the right thing, and now I've watched it produce a finite bound on real numbers rather than just trusting the exponent count.
 
-I leaned on that telescoping identity twice, so let me actually prove it rather than wave at it. Claim (McMahan-Streeter, generalized to any p in (0,1)): for b_1 > 0, b_2,...,b_n >= 0, sum_{i=1}^n b_i/(sum_{j<=i} b_j)^p <= (1/(1-p))(sum_{i=1}^n b_i)^{1-p}. Induction on n. Base n=1: b_1/b_1^p = b_1^{1-p} <= (1/(1-p)) b_1^{1-p} since 1/(1-p) >= 1. Inductive step: let Z = sum_{i<=n} b_i and x = b_n, so by hypothesis on the first n-1 terms, the sum is at most (1/(1-p))(Z-x)^{1-p} + x/Z^p. Call h(x) = (1/(1-p))(Z-x)^{1-p} + x/Z^p; I need max_{0<=x<Z} h(x) <= (1/(1-p))Z^{1-p}. h is concave in x (the first term is concave, the second linear), so the max is where h'(x) = 0: derivative of (1/(1-p))(Z-x)^{1-p} is (1/(1-p))(1-p)(Z-x)^{-p}(-1) = -(Z-x)^{-p}, plus derivative of x/Z^p is 1/Z^p. So h'(x) = 1/Z^p - 1/(Z-x)^p, which is zero exactly at x = 0 (then Z-x = Z) and negative for x > 0. So h is maximized at x = 0, h(0) = (1/(1-p))Z^{1-p}. Done. With p = 2/3 this gives the 3(sum)^{1/3} I used on the d-terms; with p = 1/3 the (3/2)(sum)^{2/3} I used on the gbar-terms. Let me sanity-check the constant isn't off: drawing 200 random b_i and accumulating, the left side comes out 65.8 against an asserted right side of 67.2 for p=1/3, and 17.2 against 20.1 for p=2/3 — the bound holds with room to spare in both, so the 1/(1-p) constant is right and not too tight. Solid.
+I leaned on that telescoping identity twice, so let me actually prove it rather than wave at it. Claim (McMahan-Streeter, generalized to any p in (0,1)): for b_1 > 0, b_2,...,b_n >= 0, sum_{i=1}^n b_i/(sum_{j<=i} b_j)^p <= (1/(1-p))(sum_{i=1}^n b_i)^{1-p}. Induction on n. Base n=1: b_1/b_1^p = b_1^{1-p} <= (1/(1-p)) b_1^{1-p} since 1/(1-p) >= 1. Inductive step: let Z = sum_{i<=n} b_i and x = b_n, so by hypothesis on the first n-1 terms, the sum is at most (1/(1-p))(Z-x)^{1-p} + x/Z^p. Call h(x) = (1/(1-p))(Z-x)^{1-p} + x/Z^p; I need max_{0<=x<Z} h(x) <= (1/(1-p))Z^{1-p}. h is concave in x (the first term is concave, the second linear), so the max is where h'(x) = 0: derivative of (1/(1-p))(Z-x)^{1-p} is (1/(1-p))(1-p)(Z-x)^{-p}(-1) = -(Z-x)^{-p}, plus derivative of x/Z^p is 1/Z^p. So h'(x) = 1/Z^p - 1/(Z-x)^p, which is zero exactly at x = 0 (then Z-x = Z) and negative for x > 0. So h is maximized at x = 0, h(0) = (1/(1-p))Z^{1-p}. Done. With p = 2/3 this gives the 3(sum)^{1/3} I used on the d-terms; with p = 1/3 the (3/2)(sum)^{2/3} I used on the gbar-terms. Let me sanity-check the constant isn't off: drawing 200 random b_i and accumulating, the left side comes out 65.8 against an asserted right side of 67.2 for p=1/3, and 17.2 against 20.1 for p=2/3 — the bound holds with room to spare in both, so the 1/(1-p) constant is right and not too tight.
 
 Now the stochastic case, but first with the *simplified* momentum a_{t+1} = 1/t^{2/3} (and a_1 = 1) — same eta_t = (sum||d||^2/a)^{-1/3}. This won't adapt to variance, but it'll let me see the proof's spine. Two parts: bound the accumulated error E sum_t ||eps_t||^2, then convert that into a bound on E sum_t ||gbar_t||^2.
 
@@ -107,7 +107,7 @@ With a_{t+1} = 1/T^{2/3} the middle term is 2B T^{2/9}(sum||d||^2)^{1/3}. Take e
 
   E sum||gbar||^2 <= (1/2)E sum||gbar||^2 + 2B T^{2/9}(3E sum||gbar||^2)^{1/3} + (3/2)L(3E sum||gbar||^2)^{2/3}.
 
-Subtract the (1/2): (1/2)E sum||gbar||^2 <= (sublinear in E sum||gbar||^2) terms, solve out the 1/3 and 2/3 powers -> E sum||gbar||^2 <= O(L^3 + B^{3/2} T^{1/3}). Combining the two cases, E sum_t ||gbar_t||^2 <= O((L^3 + sigma^2 + B^{3/2})T^{1/3}). Random iterate + Jensen: E||grad F(xbar_T)|| <= sqrt(E sum||gbar||^2/T) <= O(sqrt(L^3+sigma^2+B^{3/2})/T^{1/3}). There it is — the optimal 1/T^{1/3}, parameter-free in the algorithm (L, B, sigma only in the final constant). I notice this simplified version does *not* recover 1/sqrt T when sigma = 0: the sigma^2 T^{1/3} term came from D = sum a_t with the non-adaptive a, which keeps adding t^{-2/3} regardless of whether there's any noise to fight. That's a concrete flaw, and it's exactly the reason the fixed-schedule a_t isn't good enough — I want the *adaptive* a_t precisely so the momentum notices when sigma = 0 and stops paying for noise that isn't there. But the spine is proven, and the offline check already showed the adaptive eta gives 1/sqrt T when the error is gone, so the fix is in the momentum.
+Subtract the (1/2): (1/2)E sum||gbar||^2 <= (sublinear in E sum||gbar||^2) terms, solve out the 1/3 and 2/3 powers -> E sum||gbar||^2 <= O(L^3 + B^{3/2} T^{1/3}). Combining the two cases, E sum_t ||gbar_t||^2 <= O((L^3 + sigma^2 + B^{3/2})T^{1/3}). Random iterate + Jensen: E||grad F(xbar_T)|| <= sqrt(E sum||gbar||^2/T) <= O(sqrt(L^3+sigma^2+B^{3/2})/T^{1/3}) — the optimal 1/T^{1/3}, parameter-free in the algorithm (L, B, sigma only in the final constant). But I notice this simplified version does *not* recover 1/sqrt T when sigma = 0: the sigma^2 T^{1/3} term came from D = sum a_t with the non-adaptive a, which keeps adding t^{-2/3} regardless of whether there's any noise to fight. That's a concrete flaw, and it's exactly the reason the fixed-schedule a_t isn't good enough — I want the *adaptive* a_t precisely so the momentum notices when sigma = 0 and stops paying for noise that isn't there. But the spine is proven, and the offline check already showed the adaptive eta gives 1/sqrt T when the error is gone, so the fix is in the momentum.
 
 Now the hard version: a_{t+1} = 1/(1+sum_{i<=t}||g_i||^2)^{2/3}, which is *random* (it depends on the noisy g_i). Two new headaches. First, a_t is no longer deterministic-given-past in the convenient way — it's H_{t-1}-measurable still (depends on g_1..g_{t-1}), good, but it's correlated with the noise, so I can't pull it out of expectations as a constant. Second, and worse, the reciprocal increments 1/a_{t+1} - 1/a_t are no longer bounded by 2/3: a single large ||g_t||^2 can make 1/a_{t+1} = (1+sum_{i<=t}||g||^2)^{2/3} jump a lot in one step. The term-B bound depended on 1/a_{t+1} - 1/a_t <= 2/3, so it's in danger. Let me check just how badly it breaks before deciding how to patch it, because if the increments stay near 2/3 anyway I'm worrying about nothing. Simulate a_t with constant per-step gradient energy ||g||^2 = c and watch the worst reciprocal increment:
 
@@ -165,72 +165,4 @@ with kappa = O(B^{3/4} + L^{3/2}), M = O(1 + L^{9/4} + B^{9/8} + G^5 + (L G^4)^{
 
 Let me also be honest with myself about what the analysis quietly assumed beyond smoothness and bounded variance, so I know the method's limits. The proof used a bound on the gradient norm G (in the stopping-time argument and the C_1 term) and a bound on the *range* of function values B = max|F(x)-F(y)| (in the smoothness-plus-update telescope, where Delta_t had to live in [0,B]). Both enter only the final constants, not the schedules — but the B assumption is genuinely needed by *this* argument; without it the (2B/eta_T)(Delta telescope) step has nothing to bound Delta_t by. I'll note that as the price of this particular proof route.
 
-So let me write the method as the loop I'd actually run, being careful about the index bookkeeping that the a_{t+1}-inside-eta coupling forces. At iteration t I already hold d_t, the corresponding current stochastic gradient g_t (with d_1 = g_1 from the warm start), and the running sums; I (1) fold this step's ||g_t||^2 into the gradient-energy sum and form a_{t+1} from it; (2) fold ||d_t||^2/a_{t+1} into the estimate-energy sum and form eta_t; (3) step; (4) draw a fresh sample and make the two oracle calls g_{t+1} = grad f(x_{t+1};xi_{t+1}) and gtilde_t = grad f(x_t;xi_{t+1}); (5) recurse d_{t+1} = g_{t+1} + (1-a_{t+1})(d_t - gtilde_t), and carry g_{t+1} forward as the next iteration's current gradient. The norms in the schedules are full-vector Euclidean norms over all parameters — a *scalar* step size and a *scalar* momentum per iteration, not per-coordinate. Filling the one empty slot of the corrected-momentum harness:
-
-```python
-import math
-import torch
-
-
-def grad(model, loss_fn, x, batch):
-    """One stochastic gradient grad f(x; xi), flattened to a single vector."""
-    set_flat_params(model, x)
-    model.zero_grad(set_to_none=True)
-    loss = loss_fn(model, batch)
-    loss.backward()
-    return flat_grad(model)                       # 1-D tensor over all parameters
-
-
-class StormPlus:
-    """STORM+ : fully parameter-free, no-checkpoint variance reduction.
-
-    Corrected-momentum recursion (STORM template), with momentum a_t and step
-    eta_t set from observed gradient/estimate norms only -- no smoothness L,
-    gradient bound G, or variance sigma anywhere in the schedule.
-
-        a_{t+1} = 1 / (1 + sum_{i<=t} ||g_i||^2) ^ (2/3)
-        eta_t   = 1 / (sum_{i<=t} ||d_i||^2 / a_{i+1}) ^ (1/3)
-        x_{t+1} = x_t - eta_t d_t
-        d_{t+1} = g_{t+1} + (1 - a_{t+1}) (d_t - grad f(x_t; xi_{t+1}))
-    """
-
-    def __init__(self, model, loss_fn, x_init):
-        self.model = model
-        self.loss_fn = loss_fn
-        self.x = x_init.clone()              # current iterate x_t
-        self.g = None                        # current stochastic gradient g_t
-        self.d = None                        # gradient estimate d_t
-        self.sum_g2 = 0.0                    # sum_{i<=t-1} ||g_i||^2 (gradient energy)
-        self.sum_d2_over_a = 0.0             # sum_{i<=t-1} ||d_i||^2 / a_{i+1} (estimate energy)
-
-    def step(self, batch=None):
-        if self.d is None:                                   # warm start: d_1 = g_1 (one sample)
-            if batch is None:
-                batch = draw_sample()
-            self.g = grad(self.model, self.loss_fn, self.x, batch)
-            self.d = self.g.clone()
-
-        g_t = self.g                                         # grad f(x_t; xi_t)
-
-        # a_{t+1} from cumulative gradient norms -> shape ~ t^{-2/3}, in (0,1]
-        self.sum_g2 += g_t.pow(2).sum().item()
-        a_next = 1.0 / (1.0 + self.sum_g2) ** (2.0 / 3.0)
-
-        # eta_t from cumulative estimate norms reweighted by 1/a -> the lr<->momentum coupling
-        self.sum_d2_over_a += self.d.pow(2).sum().item() / a_next
-        eta_t = 1.0 / (self.sum_d2_over_a) ** (1.0 / 3.0)
-
-        x_old = self.x.clone()
-        with torch.no_grad():
-            self.x = self.x - eta_t * self.d                 # x_{t+1} = x_t - eta_t d_t
-
-        # refresh on a FRESH sample: two oracle calls, current and previous iterate (no checkpoint)
-        next_batch = draw_sample()
-        g_next = grad(self.model, self.loss_fn, self.x, next_batch)    # grad f(x_{t+1}; xi_{t+1})
-        g_tilde = grad(self.model, self.loss_fn, x_old, next_batch)    # grad f(x_t;     xi_{t+1})
-        self.d = g_next + (1.0 - a_next) * (self.d - g_tilde)          # corrected momentum
-        self.g = g_next                                                # g_{t+1} for next iteration
-        return eta_t, a_next
-```
-
-Let me trace the causal chain one more time. I wanted the optimal 1/T^{1/3} stationarity rate without checkpoints, which STORM already had — but STORM bought it by hardwiring the smoothness L and the gradient bound G into its step eta ∝ (sum g^2)^{-1/3} and its momentum a ∝ L^2 eta^2, and when I traced the proof I found the L isn't decorative: it's the weight that balances the smoothness term against the contraction in the error recursion, so deleting it breaks the proof. AdaGrad told me how to set a schedule from observed squared norms with a summable telescope, and the exponents were pinned by the target rate and checked, not guessed: 1/3 on the step (so the d-energy terms telescope to a cube root that lands 1/T^{1/3}, using ||d|| not ||g|| so the numerators actually cancel) and 2/3 on the momentum (which I confirmed by computing the AdaGrad sum at p = 4/3, 1, 2/3 and watching only p > 1 stay constant — so the momentum exponent has to exceed 1/2, and 2/3 is the natural value that also matches STORM's t^{-2/3} shape). The circular L-dependence — a tied to eta via L — I broke by reversing the coupling: instead of a ∝ L^2 eta^2, make eta depend on a, eta_t = (sum||d||^2/a_{i+1})^{-1/3}, where the extra 1/a ≈ t^{2/3} of shrinkage does L's old job parameter-free. I verified the construction in three layers, each producing a number I could check: offline gives 1/sqrt T from the step alone (and I solved the polynomial inequality on concrete (L,B) to see the bound is finite and scales as 1+L^3+B^{9/4}); simplified-momentum gives 1/T^{1/3} and exposed both the error-then-signal two-case spine and the concrete flaw that a fixed a_t fails to drop the sigma^2 T^{1/3} term at sigma = 0; and the fully adaptive a_t — random, with reciprocal increments I simulated overshooting 2/3 early but settling under 2/3 after a_t < beta — is tamed by a stopping time tau* that restores the increment bound on the tail, a constant-bounded prefix before it, a martingale/optional-stopping argument for the cross terms, the exponent-4/3 dyadic-blocking lemma that pins the variance term at the constant 12 (matching the ~2.5 I saw numerically), and Young's inequality to split the mixed g-energy/d-energy products. The result is E||grad F(xbar_T)|| <= O(M/sqrt T + kappa sigma^{1/3}/T^{1/3}), and its noiseless limit agrees with the offline bound I computed first — optimal in the noisy case, automatically 1/sqrt T when noiseless, with L, G, B, sigma confined to the constants and absent from every schedule the algorithm computes — two oracle calls per step, no batch, no anchor, nothing to tune but an overall step-size scale.
+The method as I'd actually run it: at iteration t I already hold d_t, the current stochastic gradient g_t (with d_1 = g_1 from the warm start), and two running sums — the gradient energy sum_{i<=t}||g_i||^2 and the reweighted estimate energy sum_{i<=t}||d_i||^2/a_{i+1}. Each step (1) folds ||g_t||^2 into the gradient-energy sum and forms a_{t+1} from it; (2) folds ||d_t||^2/a_{t+1} into the estimate-energy sum and forms eta_t; (3) takes x_{t+1} = x_t - eta_t d_t; (4) draws a fresh sample and makes the two oracle calls g_{t+1} = grad f(x_{t+1};xi_{t+1}) and gtilde_t = grad f(x_t;xi_{t+1}); (5) recurses d_{t+1} = g_{t+1} + (1-a_{t+1})(d_t - gtilde_t), carrying g_{t+1} forward as the next iteration's current gradient. The norms are full-vector Euclidean norms over all parameters — one scalar step size and one scalar momentum per iteration, not per-coordinate. That five-step loop, filled into the corrected-momentum harness's one empty slot, is the whole construction: two oracle calls per step, no batch, no anchor, nothing to tune but an overall step-size scale, and L, G, B, sigma never appearing in anything the algorithm computes.
