@@ -304,8 +304,8 @@ trust myself to write it from memory, so let me pin it down by what it has to do
 P_k of degree O(k) such that
   x ≡ 0 (mod p)  ⟹  P_k(x) ≡ 0 (mod p^k),     x ≡ 1 (mod p)  ⟹  P_k(x) ≡ 1 (mod p^k);
 i.e. it *amplifies* a mod-p decision into a mod-p^k decision. The shape I half-remember is
-P_k(x) = (−1)^k (x−1)^k ( Σ_{i=0}^{k−1} C(k+i−1, i) x^i ) + 1. Before I lean a whole construction on
-it, let me just evaluate it on a small case rather than assume it. Take p = 3, k = 2, so p^k = 9, and
+P_k(x) = (−1)^k (x−1)^k ( Σ_{i=0}^{k−1} C(k+i−1, i) x^i ) + 1. Let me evaluate it on a small case
+before leaning a whole construction on it. Take p = 3, k = 2, so p^k = 9, and
 test x ≡ 0 (mod 3). At x = 0: the sum Σ_{i=0}^{1} C(1+i, i) x^i = C(1,0) + C(2,1)·0 = 1, and
 (−1)^2 (0−1)^2 · 1 + 1 = (1)(1)(1) + 1 = 2. So P_2(0) = 2, and 2 ≡ 2 (mod 9), not 0. The "x ≡ 0
 ⟹ 0 mod p^k" property *fails* — and it fails by exactly the constant +1 I tacked on at the end. The
@@ -318,8 +318,8 @@ Re-test p = 3, k = 2: at x = 0, 1 − (1)(1) = 0 ≡ 0 (mod 9) ✓; at x = 1, th
 second term so P_2(1) = 1 ✓. Let me push the check further, over all residues mod p and a couple of
 moduli, to be sure it is the *amplification* I claimed and not just luck at 0 and 1: for p ∈ {2,3,5}
 and k ∈ {1,2,3,4}, evaluating P_k on every x in a wide range, every x ≡ 0 (mod p) gives P_k(x) ≡ 0
-(mod p^k) and every x ≡ 1 (mod p) gives P_k(x) ≡ 1 (mod p^k). All cases pass. Good — *now* I trust
-the polynomial; the lesson is that the additive-constant version was a plausible-looking trap.
+(mod p^k) and every x ≡ 1 (mod p) gives P_k(x) ≡ 1 (mod p^k). All cases pass. The additive-constant
+version was the trap; the corrected product form is what I carry into the construction.
 
 With the corrected amplifier I can build the MOD_p gate as a polynomial mod p^k. Set
 Q_k(x) = P_k(x^{p−1}) and invoke Fermat's little theorem: for x not divisible by p, x^{p−1} ≡ 1
@@ -409,8 +409,8 @@ Now assemble. Given a depth-d ACC circuit C of size s = 2^{n^ε} on n inputs:
     evaluate h on all 2^{n−k} points         # zeta-transform DP, O(2^{n−k} poly(n) + K) time
     output satisfiable iff g(h(·)) = 1 somewhere
 
-Let me check the exponents land below 2^n, not assert it — the whole argument is worthless if the
-running time secretly creeps back to 2^n. Writing e for f(d, m), the decomposition of the k-blowup
+Let me check the exponents actually land below 2^n — if the running time creeps back to 2^n, ACCSAT
+buys nothing over exhaustive search. Writing e for f(d, m), the decomposition of the k-blowup
 gives a symmetric gate over K ≤ s^{e(e · log^e s)} ANDs, i.e. the exponent of K (base 2) is on the
 order of e·k + (log s')^e where s' = 2^k·s is the blown-up size, so log s' = n^ε + k. There are two
 competing exponents: the *evaluation* exponent n − k, and the *monomial* exponent E_K ≈ e·k + (n^ε +
@@ -418,7 +418,7 @@ k)^e. I need E_K to stay well below n − k. With k = n^{1/(2e)}: the term (n^ε
 max(n^{εe}, k^e) = max(n^{εe}, n^{1/2}); choosing ε < 1/(2e) makes n^{εe} < n^{1/2}, so (n^ε+k)^e =
 O(n^{1/2}) and the e·k term is O(n^{1/(2e)}) ≤ O(n^{1/2}) as well, giving E_K = O(n^{1/2}) — certainly
 below n^{2/3}. Meanwhile n − k = n − n^{1/(2e)}, whose gap from n is n^{1/(2e)}, far larger than the
-n^{1/2}… wait, I should check that direction too, since if E_K exceeded n − k the whole thing dies.
+n^{1/2} — and I need this direction too, since if E_K exceeded n − k the savings would vanish.
 n − k ≈ n for large n, and E_K = O(n^{1/2}) ≪ n, so 2^{E_K} ≪ 2^{n−k}; the evaluation term dominates.
 Let me also sanity it numerically at a sample point: e = 3, ε = 0.05, n = 10^6. Then k = n^{1/6} = 10,
 log s' = n^{0.05} + 10 ≈ 12.6, E_K ≈ e·k + (log s')^e = 30 + 12.6³ ≈ 2.0×10³, while n − k ≈ 1.0×10⁶.
@@ -466,23 +466,8 @@ one place I use a non-black-box fact is the ACC-SAT algorithm, and it uses the S
 ACC circuits — every known faster-than-2^n SAT algorithm breaks the moment you add an oracle or an
 algebraic extension to the instance, precisely because beating exhaustive search forces you to
 exploit structure a black box hides. There are oracles with NEXP^A ⊆ ACC^A, and my proof correctly
-does *not* relativize, because it reaches inside the circuit. The mechanism is the inversion: a
-faster satisfiability algorithm for a circuit class — an algorithmic *upper* bound — is exactly what
-spins, through the time hierarchy, into a circuit *lower* bound for that class. Improved
-exponential-time SAT algorithms are now the only thing standing between here and lower bounds for
-TC0, for unrestricted P/poly, for NP — because the spinning half already works for every robust
-class; only the SAT algorithm needs ACC.
-
-To recap the causal chain in one breath: I want NEXP ⊄ ACC; target the NEXP-complete SUCCINCT 3SAT,
-which has a strong time lower bound from the efficient Cook–Levin reduction (n + O(log n) inputs) and
-the nondeterministic time hierarchy; the Karp–Lipton–Meyer mechanism (guess a circuit for an
-exponential object, verify by *local* checks) shows fast circuit-analysis spins into a lower bound,
-but only under an unachievable assumption; weaken the assumption by guessing a *witness* circuit
-(IKW easy witnesses) and reducing its verification to *one* SAT call via clause-locality (SATALG3);
-fix the "x is unrestricted" obstruction by guessing the *gate-value* circuit of x and checking it
-with local gate-consistency plus a SAT call, breaking the regress with the directly-checkable
-gate-connection base case (SATALG5), which needs only AC0 ⊆ C and closure under composition; then
-deliver the missing piece, a faster-than-2^n ACC-SAT algorithm, by converting ACC to a symmetric
-function of ANDs (SYM⁺), k-blowing-up to reduce variables, and bulk-evaluating via the zeta-transform
-dynamic program (or Coppersmith rectangular matrix multiplication, or coefficient-to-point FFT) in
-2^{n − Ω(n^δ)} time; the two halves collide at the time hierarchy and out drops NEXP ⊄ ACC.
+does *not* relativize, because it reaches inside the circuit. And since the spinning half never
+touched anything specific to ACC — only AC0 ⊆ C and closure under composition — the same collision
+with the time hierarchy is waiting for TC0, for unrestricted P/poly, for NP, the moment someone
+supplies a faster-than-exhaustive-search satisfiability algorithm for those classes. The only thing
+I actually had to build that's specific to ACC is the satisfiability algorithm itself.
