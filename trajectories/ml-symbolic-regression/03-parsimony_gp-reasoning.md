@@ -40,36 +40,25 @@ extrapolate a shade worse than a compact version would. One mechanism — unmana
 control's slip, the sag on the hardest benchmark, and the little tax on the easy wins. The lever is not
 selection-for-diversity anymore; it is *complexity control*.
 
-Before I commit to a penalty, let me lay out the levers that are actually available and knock down the
-ones that do not fit, because "control complexity" admits several moves and most are wrong here. The
-first is the blunt one: tighten the depth cap. But bloat is a *size* problem, not a depth problem — a
-tree at depth 8 already admits up to `2⁹ − 1 = 511` nodes, and I could halve the depth to 6 and still
-carry 127 nodes of padding, while forbidding legitimately deep forms a hard target may need. A static
-depth limit cannot tell productive depth from inert bulk, so it is the wrong axis. The second is a fixed
-size penalty `c`, a constant I set by hand; I will come back to why the constant is a trap, but the
-short version is that the right value is problem- and generation-dependent and I refuse to tune it three
-ways. The third is genuinely tempting: a multi-objective, Pareto approach that treats size and error as
-two objectives and selects on non-dominated fronts. It is the principled thing, but it does not fit this
-contract cleanly — `evolve_one_generation` receives a flat scalar fitness list and carries no persistent
-front state across generations, so I would rebuild a non-dominated sort from scratch every call and
-replace the whole selection mechanism, when my diagnosis is specifically that *one* scalar nuisance,
-size, needs canceling out of an otherwise-working selector. That is a heavy intervention where a
-targeted one will do. The fourth is the one I have to think hardest about: keep lexicase, which just
-cured convergence, and *add* parsimony on top. Here I hit a mechanical wall. Parsimony pressure is a
-modification of the *scalar* fitness — I want to add `c·l` to each tree's number and let selection see
-the penalized number. Lexicase selection does not consume a scalar at all; it filters on the per-case
-error matrix, and there is nowhere to inject `c·l` into a per-case gate short of adding a size term to
-every case's error, which turns lexicase into a different algorithm. So parsimony and lexicase are not
-simply stackable in selection: to apply a size penalty I need a selector that consumes a scalar, and
-that is the tournament. Returning to the size-7 tournament is therefore *forced* by the mechanism, not
-merely chosen for speed — though it does also reclaim lexicase's `O(P²N)` cost down to `O(Pk)`, and it
-turns this rung into a clean test of the bloat hypothesis: if diversity were still the binding
-constraint, dropping lexicase would regress Nguyen-7 back toward a catastrophe and the numbers would
-say so. One more class is quietly ruled out by the substrate itself: any scheme that needs persistent
-per-individual state across generations — genotypic age of a lineage, an accumulated novelty score —
-cannot be expressed, because `Node`'s `__slots__ = ('value','children')` blocks attaching fields and
-`evolve_one_generation` sees only the current trees and their fitnesses. Whatever I do must be
-recomputable from the current population alone.
+Before I commit to a penalty I knock down the levers that do not fit. Tightening the depth cap is the
+wrong axis — bloat is a *size* problem, not a depth one: a depth-8 tree already admits 511 nodes, and
+halving to depth 6 still carries 127 nodes of padding while forbidding legitimately deep forms a hard
+target may need. A fixed hand-set penalty `c` is a trap I return to below. A multi-objective Pareto
+approach over size and error is the principled move but does not fit this contract: `evolve_one_generation`
+receives a flat scalar fitness list and carries no persistent front state, so I would rebuild a
+non-dominated sort every call and replace the whole selector — heavy, where my diagnosis is that *one*
+scalar nuisance, size, needs cancelling out of an otherwise-working selector. The tempting fourth option
+is to keep lexicase and *add* parsimony on top, but here I hit a mechanical wall: parsimony is a
+modification of the *scalar* fitness, and lexicase consumes no scalar — it filters on the per-case error
+matrix, with nowhere to inject `c·l` short of adding a size term to every case, which turns it into a
+different algorithm. So applying a size penalty *forces* a selector that consumes a scalar: the size-7
+tournament, not merely chosen for speed but required — and it reclaims lexicase's `O(P²N)` down to
+`O(Pk)` and turns this into a clean test of the bloat hypothesis, since if diversity were still binding,
+dropping lexicase would regress Nguyen-7 toward a catastrophe. One more class is ruled out by the
+substrate: any scheme needing persistent per-individual state — lineage age, an accumulated novelty
+score — cannot be expressed, since `Node`'s `__slots__ = ('value','children')` blocks attaching fields and
+`evolve_one_generation` sees only the current trees and fitnesses. Whatever I do must be recomputable
+from the current population alone.
 
 So I start from the failure I can actually observe and make it precise, because "penalize big trees" is
 easy to say and easy to get wrong. After a quiet opening where average size barely moves, the mean node
@@ -110,23 +99,8 @@ fitness over mean fitness. The operational reading is the whole point — a posi
 length and fitness means selection has a length advantage to exploit, so the mean grows. That is bloat,
 named exactly.
 
-Let me pin the identity down on a concrete population, because I am about to lean my whole coefficient on
-it and I want to see it hold, not just believe it. Take three programs with sizes `l = (2, 4, 6)` and
-maximized fitnesses `f = (1, 2, 3)` — bigger trees fitter, the bloat setup. The mean size is `μ = 4` and
-mean fitness `f̄ = 2`. Under proportionate selection the pick probabilities are `f/Σf = (1/6, 2/6, 3/6)`,
-so the expected selected size is `(1/6)·2 + (2/6)·4 + (3/6)·6 = 0.333 + 1.333 + 3.0 = 4.667`, giving a
-direct `E[Δμ] = 4.667 − 4 = +0.667`. Now the theorem: `Cov(l,f) = mean[(l−μ)(f−f̄)] = mean[(−2)(−1),
-(0)(0), (2)(1)] = mean[2, 0, 2] = 1.333`, and `Cov(l,f)/f̄ = 1.333/2 = 0.667`. The two agree exactly —
-the direct simulation of one selection step and Price's formula land on the same +0.667. The mean grows,
-and the theorem says by how much. Now bring back the penalty and watch it cancel: with the linear
-`g = c·l`, `Cov(l, f − c·l) = Cov(l,f) − c·Var(l)`, and `Var(l) = mean[(l−μ)²] = mean[4,0,4] = 2.667`,
-so the covariance vanishes at `c = Cov(l,f)/Var(l) = 1.333/2.667 = 0.5`. Check it: the penalized
-fitnesses are `f − 0.5·l = (1−1, 2−2, 3−3) = (0, 0, 0)`, whose covariance with length is trivially zero,
-so `E[Δμ] = 0`. Setting `c` to that exact ratio flattened the size-fitness relationship to nothing and
-froze the expected mean size. The toy did what the algebra promised.
-
-That generalizes: bring the penalty back without assuming it is linear, `f_p(x,t) = f(x) − g(l(x),t)`
-for any size function `g`. The same identity gives `E[Δμ] = Cov(l, f − g)/(f̄ − ḡ) = (Cov(l,f) −
+Now bring the penalty back to cancel that covariance, without assuming it is linear:
+`f_p(x,t) = f(x) − g(l(x),t)` for any size function `g`. The same identity gives `E[Δμ] = Cov(l, f − g)/(f̄ − ḡ) = (Cov(l,f) −
 Cov(l,g))/(f̄ − ḡ)`. For *no* expected growth I set `E[Δμ] = 0`, and (provided the denominator is
 nonzero) the condition is simply `Cov(l,g) = Cov(l,f)`. The penalty must have exactly the same
 covariance with size as the raw fitness currently has — the mean-fitness denominator drops out because I
@@ -138,18 +112,15 @@ advantage selection currently sees. Subtracting that slope times length removes 
 advantage from the selection signal. No tuning, no per-benchmark constant — the population measures the
 pressure it needs.
 
-I keep the selection-scheme boundary honest, because this rung does not use proportionate selection. The
+I keep the selection-scheme boundary honest, because I am not using proportionate selection here. The
 exact covariance derivation assumes fitness-proportionate `p(l,t)`. Tournament selection does not give
 that closed form, so `c = Cov(l,f)/Var(l)` is not an exact theorem for a tournament. But the ratio still
 *estimates* the linear size-fitness slope in the current population, and tournament selection amplifies
 the same ordering — it just sharpens the preference for whoever has the better penalized value.
 Cancelling that slope is therefore the natural practical coefficient, and it carries over without
 changing the operator, which matters because I am keeping the size-7 tournament and the standard
-uniform-point subtree crossover and mutation from the previous rungs. I am changing *only* what number
-selection sees. There is one small numerical honesty check on the estimator: in the scaffold `np.cov`
-divides by `n − 1` while `np.var` divides by `n`, so the ratio I compute is the true OLS slope times
-`n/(n−1)` — at `pop_size = 500` a factor of `500/499 ≈ 1.002`, a 0.2% inflation that is far inside the
-clamp I am about to add and beneath the run-to-run noise in the covariance itself, so I leave it.
+uniform-point subtree crossover and mutation from before. I am changing *only* what number selection
+sees.
 
 Now translate to this scaffold's conventions, which is where the signs and the clamps live. The theory
 used maximized fitness and wrote `f − c·l`; the scaffold gives MSE, where *lower* is better. Under that
@@ -169,10 +140,10 @@ upper clamp at 0.001 bounds the other tail. It is a mild ceiling: `c = 0.001` me
 at most `0.001·100 = 0.1` in added MSE, and on a benchmark like Koza-3 where fits are uniformly good and
 the size-MSE covariance is weak, `auto_c` sits far below that cap and the ceiling never binds; it exists
 only for the pathological generation where a spurious size-fitness correlation spikes `auto_c` and,
-unclamped, would make selection ignore fit entirely and collapse the population to stubs. A quick
-dimensional check confirms the object is sane: `c = Cov(l, MSE)/Var(l)` has units of MSE per node, so
-`c·l` is in MSE units, addable to MSE, and `c` reads as the per-node MSE cost the population currently
-shows. Critically, the penalty lives in **selection only**. The raw MSE stays the truth for elitism, for
+unclamped, would make selection ignore fit entirely and collapse the population to stubs. The units
+work out: `c = Cov(l, MSE)/Var(l)` is MSE per node, so `c·l` is in MSE units addable to MSE, and `c`
+reads as the per-node MSE cost the population currently shows. Critically, the penalty lives in
+**selection only**. The raw MSE stays the truth for elitism, for
 the outer loop's best-tree tracking, and for the final report — `fitness_function` returns raw MSE
 unchanged, the elite carried forward each generation is the raw-MSE best, and only the penalized vector
 `MSE + c·l` is handed into the tournament. If I baked the penalty into the fitness, the loop would
@@ -181,32 +152,22 @@ I am clamping against. The per-generation loop is then: compute the lengths and 
 keep the raw-MSE elite, and breed by tournament on the penalized vector plus the unchanged
 crossover/mutation/reproduction split. The full scaffold module is in the answer.
 
-Now the falsifiable expectations against the lexicase numbers, because this rung has to clear a specific
-bar. The mechanism is the OLS slope of fitness on size cancelled out of selection, so the direct
-prediction is that mean tree size stops drifting up — and the *downstream* prediction, the one the
-leaderboard sees, is that controlling bloat recovers the generalization that bloat was costing. So I
-expect Koza-3 to come *back up* from lexicase's 0.922 toward standard GP's 0.99 and beyond — the slip
-was overfitting introns, and removing them should restore the clean polynomial fit; if Koza-3 does *not*
-recover, the bloat story is wrong and the slip had another cause. I expect Nguyen-10 to improve on
-lexicase's 0.714, because the 0.643 and 0.500 seeds were, on this reading, bloated overfits of the
-sin·cos product; a parsimony-pressured search should find a tighter, more generalizable form and lift
-the mean and the floor. Nguyen-7 is the interesting one: lexicase already cured its catastrophe to a
-0.968 mean, and parsimony does *not* carry lexicase's diversity machinery, so the open question is
-whether plain tournament + parsimony can hold Nguyen-7 near 0.97 without lexicase's per-case
-protection. My expectation is yes — that the −1.0 blow-up was a depth/divergence problem as much as a
-diversity problem, and that a compact, parsimony-controlled tree is *less* prone to diverging off the
-test range than a bloated one, so Nguyen-7 should stay high (near or above 0.985) with the smaller trees
-extrapolating more gracefully; the small tax lexicase levied on its good seeds should even reverse, since
-those seeds now breed compacter logs. If all three hold, this rung should sit clearly above lexicase on
-the overall mean — and it should do so *fast*, because parsimony keeps trees small and `O(Pk)` tournament
-selection is orders of magnitude cheaper than lexicase's `O(P²N)`, so I expect both a higher mean and a
-dramatically lower wall-clock than the previous rung. The one outcome that would refute the whole chain
-is Nguyen-10 staying stuck near 0.7 while Koza-3 recovers: that would mean bloat was never the Nguyen-10
-bottleneck, and the cap there is raw representational reach — the difficulty of assembling the right
-two-variable product under this depth limit — which no selection-side fix can lift. That failure mode is
-plausible on its own terms: Nguyen-10 needs a `sin(x)` subtree and a `cos(y)` subtree *co-present* in one
-tree and joined under a `mul`, all inside the depth-8 cap, a simultaneous two-factor assembly strictly
-harder than Nguyen-7's single univariate log, and parsimony only reshapes which trees selection prefers —
-it cannot manufacture a factor the population never manages to build. So if Nguyen-10 stalls while
-Koza-3 climbs, I will read it not as a failure of the parsimony coefficient but as a signal that the next
-lever has to act on the operators or the representation, not on selection at all.
+Now the falsifiable expectations against the lexicase numbers. The mechanism is the OLS slope of fitness
+on size cancelled out of selection, so the direct prediction is that mean tree size stops drifting up,
+and the downstream one the leaderboard sees is that controlling bloat recovers the generalization bloat
+was costing. So I expect Koza-3 to come *back up* from lexicase's 0.922 toward standard GP's 0.99 — the
+slip was overfitting introns, and removing them should restore the clean polynomial fit; if Koza-3 does
+*not* recover, the bloat story is wrong. I expect Nguyen-10 to improve on lexicase's 0.714, since the
+0.643 and 0.500 seeds read as bloated overfits of the sin·cos product that a tighter form should
+generalize better. Nguyen-7 is the interesting one: lexicase cured its catastrophe to 0.968, and
+parsimony carries none of lexicase's diversity machinery, so the open question is whether plain
+tournament + parsimony holds it there without per-case protection. My expectation is yes — the −1.0
+blow-up was a divergence problem as much as a diversity one, and a compact tree is *less* prone to
+diverging off the test range than a bloated one — so Nguyen-7 should stay high, and all of this at a
+fraction of lexicase's wall-clock since `O(Pk)` tournament is far cheaper than `O(P²N)`. The one outcome
+that refutes the whole chain is Nguyen-10 staying stuck near 0.7 while Koza-3 recovers: that would mean
+bloat was never its bottleneck and the cap is raw representational reach — a `sin(x)` and a `cos(y)`
+subtree *co-present* under one `mul` inside the depth-8 cap, a two-factor assembly strictly harder than
+Nguyen-7's single univariate log, which parsimony cannot manufacture, it only reshapes which trees
+selection prefers. If Nguyen-10 stalls while Koza-3 climbs, the next lever has to act on the operators or
+the representation, not on selection at all.
