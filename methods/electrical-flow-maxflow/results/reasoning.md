@@ -14,7 +14,7 @@ Let me first just see how bad the electrical flow is as a flow. Take resistances
 
 I want a graph where I can predict the answer by hand, so I can both build intuition and check the code against it. Take `k` parallel paths, each of length `k`, from `s` to `t`, plus one single edge directly from `s` to `t`. The number of edges is `m = k·k + 1 ≈ k²`. The max flow is `k + 1` — one unit down each path plus one across the direct edge. The electrical flow with unit resistances should split by Ohm's law: the direct edge is a single resistor of resistance `1`; each of the `k` paths is `k` resistors in series, resistance `k`. By symmetry the `k` paths each carry the same current `I_p` and the direct edge carries `I_d`, with the same voltage drop `φ_s − φ_t = V` across all of them: `V = I_d·1 = I_p·k`, so `I_d = k·I_p`. Conservation: `k·I_p + I_d = k+1`, i.e. `I_p + I_d = (k+1)/k·I_p`... let me just substitute. `k I_p + k I_p = k+1`? No — `k·I_p + I_d = k I_p + k I_p = 2k I_p = k+1`, so `I_p = (k+1)/(2k)` and `I_d = k I_p = (k+1)/2`. So the direct edge, capacity one, carries `(k+1)/2 ≈ k/2 ≈ √m/2`.
 
-Before I build a whole theory on that number, let me actually run the Laplacian solve on this graph and read off the direct edge's flow, because a hand-derivation of a resistor network is exactly the kind of thing I get wrong by a factor of two. Building the family for `k = 4, 9, 16, 25` and solving `Lφ = (k+1)χ` numerically, the direct edge carries `2.5, 5.0, 8.5, 13.0` — exactly `(k+1)/2` in every case — against `√m = 4.12, 9.06, 16.03, 25.02`, a ratio settling to about `0.52`. So my hand-derivation was right, and the overload really is `Θ(√m)`: `(k+1)/2` over a capacity of `1`. That is the `ℓ_2`-vs-`ℓ_∞` gap made concrete — electrical flow loves the short path and shoves `√m` units across it. I will keep this graph; it is going to be the stress test for whatever I build.
+A hand-derivation of a resistor network is exactly the kind of thing that goes wrong by a factor of two, so I check it numerically before trusting it: building the family for `k = 4, 9, 16, 25` and solving `Lφ = (k+1)χ`, the direct edge carries `2.5, 5.0, 8.5, 13.0` — exactly `(k+1)/2` in every case — against `√m = 4.12, 9.06, 16.03, 25.02`, a ratio settling to about `0.52`. So the hand-derivation was right, and the overload really is `Θ(√m)`: `(k+1)/2` over a capacity of `1`. That is the `ℓ_2`-vs-`ℓ_∞` gap made concrete — electrical flow loves the short path and shoves `√m` units across it. I will keep this graph; it is going to be the stress test for whatever I build.
 
 So a single electrical flow is a max flow that can be wrong by `√m` on some edge. I cannot return it. But `√m` is exactly the kind of factor I was hoping to start at and then reduce. I need a wrapper that calls this fast-but-overloading primitive repeatedly and converges to something feasible.
 
@@ -71,7 +71,7 @@ Now build the oracle out of one electrical flow. I want resistances `r_e`, depen
 
 `r_e = (1/u_e²)(w_e + ε‖w‖_1/(3m))`.
 
-Then `E_r(f) = Σ_e (w_e + ε‖w‖_1/3m) cong(f,e)²`. Two terms, and each does a job. The `w_e cong²` part will give the weighted-average congestion. The additive `ε‖w‖_1/3m` part is a *floor* under every resistance — and that floor is what controls the worst case. Let me see why the floor is needed at all before trusting it. If I used only `r_e = w_e/u_e²`, an edge whose weight `w_e` had decayed to nearly nothing would have nearly zero resistance, so the electrical flow could shove an unbounded amount of current across it at almost no energy cost — the width would be uncontrolled. The floor `ε‖w‖_1/3m` guarantees every edge has resistance at least `ε‖w‖_1/(3m u_e²)`, so a large congestion on any single edge forces a large energy contribution, which I can cap. So: `w_e` term for the average, floor term for the max.
+Then `E_r(f) = Σ_e (w_e + ε‖w‖_1/3m) cong(f,e)²`. Two terms, and each does a job. The `w_e cong²` part will give the weighted-average congestion. The additive `ε‖w‖_1/3m` part is a *floor* under every resistance — and that floor is what controls the worst case. Why is the floor needed at all? If I used only `r_e = w_e/u_e²`, an edge whose weight `w_e` had decayed to nearly nothing would have nearly zero resistance, so the electrical flow could shove an unbounded amount of current across it at almost no energy cost — the width would be uncontrolled. The floor `ε‖w‖_1/3m` guarantees every edge has resistance at least `ε‖w‖_1/(3m u_e²)`, so a large congestion on any single edge forces a large energy contribution, which I can cap. So: `w_e` term for the average, floor term for the max.
 
 The oracle: compute the (approximate) electrical flow of value `F` with these resistances. If its energy exceeds `(1+ε)‖w‖_1`, declare fail. Otherwise return it. Let me verify both that it never wrongly fails and that "energy ≤ `(1+ε)‖w‖_1`" implies the two congestion bounds.
 
@@ -87,15 +87,13 @@ Cost of one oracle call: one approximate Laplacian solve. The solver's time depe
 
 So I already broke nothing — I matched `m^{3/2}` up to `ε` and polylog. That is not yet a win; the win has to come from the width. The bad graph says `ρ = Θ(√m)` is *tight* for a single electrical flow: the direct edge really does carry `Θ(√m)`. I cannot improve the width by analyzing the same flow more cleverly. I have to change what the oracle does.
 
-Stare at the bad graph again. The offending edge is the single direct `s-t` edge carrying `√m` units. Now — what if I just deleted it? Let me actually try it on the same family, because if deletion only moved the overload somewhere else it would be a dead end. Drop the direct edge, leaving `k` parallel length-`k` paths, and recompute the electrical flow for the remaining max flow value `F = k`. The numbers come back clean: for `k = 4, 9, 16, 25` the maximum `|f(e)|` over all edges is exactly `1.0` — each path now carries precisely one unit, perfectly balanced, no edge over capacity. And the max flow dropped only from `k+1` to `k`, a relative loss of `1/(k+1) = 0.20, 0.10, 0.059, 0.038` — shrinking to nothing as the graph grows. So the bad edge was *fragile*: it was the single channel carrying a huge current, and killing it both fixed the electrical flow and barely touched the optimum. That suggests a general phenomenon worth betting on — that the few edges an electrical flow overloads are exactly the few that can be removed cheaply — though one example is not a proof of it, and I'll have to earn the general statement.
+Stare at the bad graph again. The offending edge is the single direct `s-t` edge carrying `√m` units. Now — what if I just deleted it? Deletion could just move the overload somewhere else, so I try it on the same family. Drop the direct edge, leaving `k` parallel length-`k` paths, and recompute the electrical flow for the remaining max flow value `F = k`. The numbers come back clean: for `k = 4, 9, 16, 25` the maximum `|f(e)|` over all edges is exactly `1.0` — each path now carries precisely one unit, perfectly balanced, no edge over capacity. And the max flow dropped only from `k+1` to `k`, a relative loss of `1/(k+1) = 0.20, 0.10, 0.059, 0.038` — shrinking to nothing as the graph grows. So the bad edge was *fragile*: it was the single channel carrying a huge current, and killing it both fixed the electrical flow and barely touched the optimum. That suggests a general phenomenon worth betting on — that the few edges an electrical flow overloads are exactly the few that can be removed cheaply — though one example is not a proof of it, and I'll have to earn the general statement.
 
 So modify the oracle: pick a target width `ρ` *smaller* than `√m` — I will tune it, it will land at about `m^{1/3}`. Compute the electrical flow. If some edge has congestion exceeding `ρ`, *remove that edge from the graph* (add it to a permanent forbidden set `H`), keep all the other weights, and recompute. Repeat until every edge is within `ρ` (or a genuine failure — `s, t` disconnected, or energy too high). Removed edges stay removed forever, in every future oracle call.
 
 Two things to prove, and they are the whole content of the improvement. (1) The removals do not destroy too much flow — the total capacity of `H` must stay below, say, `εF/12`, so a feasible flow of value `(1−ε/12)F` still survives and the oracle never wrongly fails. (2) The total number of removals across the whole algorithm is small — at most `Õ(m^{1/3})` — so the extra electrical solves do not blow up the running time.
 
-To bound the number of removals I want a monotone quantity — something that only moves one way as the run proceeds and is bounded on both ends, so each removal can be charged against a chunk of it. Both removing an edge and raising a weight do the same thing to the network: they raise resistances (deletion is `r → ∞`). So I want a quantity that responds monotonically to raising resistances. The effective `s-t` resistance is the natural candidate — physically, opening or thickening resistors should make it harder, not easier, to push current across. If that monotonicity is real, and if I can further show each *removal* forces a *substantial multiplicative* jump (not just an increase), then a ceiling on the total resistance caps the count. Let me check whether `R_eff` actually behaves that way before committing to it.
-
-Let me first get the monotonicity and the quantitative jump straight, because everything rests on them. The variational identity for effective conductance (Thomson's principle): `C_eff(r) = 1/R_eff(r) = min_{φ: φ_s=1, φ_t=0} Σ_{(u,v)} (φ_u − φ_v)²/r_{uv}`, with the minimizing `φ` being the electrical potentials of the unit-conductance flow. Rayleigh monotonicity falls right out: if `r'_e ≥ r_e` for all `e`, then for *every* `φ`, `Σ (φ_u−φ_v)²/r'_{uv} ≤ Σ (φ_u−φ_v)²/r_{uv}`, so the minima obey `C_eff(r') ≤ C_eff(r)`, hence `R_eff(r') ≥ R_eff(r)`. Raising resistances raises effective resistance. Good.
+To bound the number of removals I want a monotone quantity — something that only moves one way as the run proceeds and is bounded on both ends, so each removal can be charged against a chunk of it. Both removing an edge and raising a weight do the same thing to the network: they raise resistances (deletion is `r → ∞`). So I want a quantity that responds monotonically to raising resistances. The effective `s-t` resistance is the natural candidate — physically, opening or thickening resistors should make it harder, not easier, to push current across. If that monotonicity is real, and if I can further show each *removal* forces a *substantial multiplicative* jump (not just an increase), then a ceiling on the total resistance caps the count. Both claims need to be established before I can rely on them. The variational identity for effective conductance (Thomson's principle): `C_eff(r) = 1/R_eff(r) = min_{φ: φ_s=1, φ_t=0} Σ_{(u,v)} (φ_u − φ_v)²/r_{uv}`, with the minimizing `φ` being the electrical potentials of the unit-conductance flow. Rayleigh monotonicity falls right out: if `r'_e ≥ r_e` for all `e`, then for *every* `φ`, `Σ (φ_u−φ_v)²/r'_{uv} ≤ Σ (φ_u−φ_v)²/r_{uv}`, so the minima obey `C_eff(r') ≤ C_eff(r)`, hence `R_eff(r') ≥ R_eff(r)`. Raising resistances raises effective resistance. Good.
 
 Now the quantitative jump. Suppose in the current electrical flow `f`, some edge `h` carries a `β` fraction of the total energy, `f(h)² r_h = β E_r(f)`. I raise `r_h` to `γ r_h` (and `γ = ∞` is "cut it"). Claim: `R_eff(r') ≥ (γ/(β + γ(1−β))) R_eff(r)`.
 
@@ -214,207 +212,8 @@ and after taking logs and plugging the `μ^N` bound, `b ≤ (4m/(ερ³))N + (12
 
 for `ε ≤ 1/7`. So `a + b < N`, contradicting `a + b = N`. Therefore the assumption fails: within `N` steps the algorithm produces `r^i` with `R_eff(r^i) ≥ (1−7ε)μ^i/F²`, and then the threshold sweep yields a cut of capacity at most `(1+2δ)/√(1−7ε) · F ≤ F/(1−7ε)`. The cut algorithm runs in `Õ(m^{4/3}ε^{-8/3})` time (the `N` solves at `Õ(m)` each), and on a sparsifier with `O(n log n/ε²)` edges it gives a `(1+ε)`-cut in `Õ(m + n^{4/3}ε^{-8/3})`.
 
-Let me trace the whole causal chain once more. The flow-decomposition barrier blocks every path-augmentation method, so I switch to a primitive that produces a whole flow vector in one shot — the electrical (minimum-energy, `ℓ_2`) flow, which is a single nearly-linear-time Laplacian solve. That flow ignores capacities and can overload an edge by `√m` (the `ℓ_2`-vs-`ℓ_∞` gap, witnessed by the parallel-paths-plus-direct-edge graph). Multiplicative weights converts a capacity-oblivious oracle that only satisfies the *weighted-average* capacity constraint into a feasible flow, in iterations proportional to the oracle's *width*; choosing resistances `r_e = (w_e + ε‖w‖_1/3m)/u_e²` makes one electrical solve such an oracle, with width `√m` — yielding `m^{3/2}`. To beat it, I exploit that the overloaded edges are fragile: remove any edge that exceeds a smaller width `ρ`, recompute, and bound the removals by tracking effective resistance, which is monotone (Rayleigh) and jumps multiplicatively whenever a high-energy edge is cut (the resistance-increase lemma); balancing iterations `Õ(ρ)` against removals `Õ(m/ρ²)` gives `ρ ≈ m^{1/3}` and a running time of `Õ(m^{4/3}ε^{-3})`, improved to `Õ(mn^{1/3}ε^{-11/3})` by Karger smoothing. The dual reads a cut directly from the electrical potentials by sweeping a threshold, bounding the cut by `√(μ/R_eff)` and driving `R_eff` up onto the minimum cut, for `Õ(m + n^{4/3}ε^{-8/3})`.
-
 If the electrical-flow oracle's resistance floor and grounded-Laplacian Cholesky solve felt too risky to implement cleanly in contest time, I would fall back to standard Dinic max flow and ship that.
 
-Here is the algorithm as a single self-contained C++17 program, the oracle plus the multiplicative-weights loop with the electrical-flow primitive at its core. It reads `n m s t F eps` and then `m` lines `a b u` from stdin, and prints the feasibility-scaled flow value, the per-edge flow, and the maximum congestion (or `FAIL` when the oracle certifies `F > F*`). The Laplacian solve is done by a dense Cholesky factorization of the grounded system, standing in for the nearly-linear-time SDD solver the analysis assumes.
+But it doesn't feel too risky — the oracle is one Laplacian solve plus a reweighting loop, and the theory says exactly what that loop needs to do at each step. What I can actually deliver in a single contest program is the electrical-flow primitive, the plain multiplicative-weights oracle of width `3√(m/ε)`, and its outer loop, all running in `Õ(m^{3/2}ε^{-5/2})` — not the width-reduced `Õ(m^{4/3}ε^{-3})` machinery, whose removal set `H` and per-edge energy-transfer bookkeeping are a second layer of implementation on top of this one, and not the dual cut algorithm, which needs its own threshold-sweep and geometric-mean tracking. The Laplacian solve itself I do by dense Cholesky on the grounded system rather than a nearly-linear-time SDD solver — for the sizes a stdin/stdout contest program will see, `O(n^3)` Cholesky is simpler to get right than reimplementing Koutis-Miller-Peng, and it returns the same electrical flow the analysis reasons about, just without the asymptotic guarantee. So the program I write is: the electrical-flow solve by Cholesky, the resistances `r_e = (w_e + ε‖w‖_1/3m)/u_e²`, the energy fail-test, and the feasibility-scaled average `f̄`.
 
-```cpp
-// Electrical-flow + multiplicative-weights approximate maximum s-t flow.
-// Reads from stdin:  n m s t F eps
-//                    then m lines:  a b u   (undirected edge a--b, capacity u)
-// Writes to stdout:  one line "FAIL" if F > F* (oracle certifies infeasibility),
-//                    otherwise "value <V>" then m lines of per-edge flow f(e),
-//                    then "maxcong <c>".  (0-indexed vertices.)
-//
-// The electrical flow of value F minimizes the energy sum_e r_e f(e)^2 over s-t
-// flows with B f = F*chi; it is the potential flow f = C B^T phi where
-// L phi = F*chi, L = B C B^T the weighted Laplacian.  L is SDD; here we ground
-// one vertex and solve the dense reduced system directly (the algorithm's
-// intended regime replaces this with a nearly-linear-time SDD solver).  The
-// multiplicative-weights outer loop turns this capacity-oblivious oracle into a
-// feasible flow, reweighting by congestion each round.
-//
-// long long is unused for the numeric core (flows are real), but capacities and
-// counts are read as long long to avoid overflow on large inputs.
-
-#include <bits/stdc++.h>
-using namespace std;
-
-struct Edge { int a, b; double u; };
-
-// Solve the symmetric positive-definite reduced Laplacian system A x = rhs by
-// Cholesky factorization (A is the Laplacian with the grounded vertex removed).
-// A is given as a dense (k x k) row-major matrix; solves in place.
-static vector<double> cholesky_solve(vector<vector<double>>& A, vector<double> rhs) {
-    int k = (int)A.size();
-    // Cholesky: A = L L^T (store L in lower triangle of A).
-    for (int i = 0; i < k; ++i) {
-        for (int j = 0; j <= i; ++j) {
-            double sum = A[i][j];
-            for (int p = 0; p < j; ++p) sum -= A[i][p] * A[j][p];
-            if (i == j) {
-                if (sum <= 0) sum = 1e-12;        // guard tiny/round-off pivots
-                A[i][j] = sqrt(sum);
-            } else {
-                A[i][j] = sum / A[j][j];
-            }
-        }
-    }
-    // Forward solve L y = rhs.
-    vector<double> y(k);
-    for (int i = 0; i < k; ++i) {
-        double sum = rhs[i];
-        for (int p = 0; p < i; ++p) sum -= A[i][p] * y[p];
-        y[i] = sum / A[i][i];
-    }
-    // Back solve L^T x = y.
-    vector<double> x(k);
-    for (int i = k - 1; i >= 0; --i) {
-        double sum = y[i];
-        for (int p = i + 1; p < k; ++p) sum -= A[p][i] * x[p];
-        x[i] = sum / A[i][i];
-    }
-    return x;
-}
-
-// Electrical s-t flow of value F with the given per-edge conductances.
-// Returns the flow vector f (length m); potentials phi returned via out-param.
-static vector<double> electrical_flow(int n, const vector<Edge>& edges,
-                                      const vector<double>& conduct,
-                                      int s, int t, double F,
-                                      vector<double>& phi_out) {
-    int m = (int)edges.size();
-    // Build dense Laplacian L = B C B^T (n x n).
-    vector<vector<double>> L(n, vector<double>(n, 0.0));
-    for (int e = 0; e < m; ++e) {
-        if (conduct[e] == 0.0) continue;
-        int a = edges[e].a, b = edges[e].b;
-        double c = conduct[e];
-        L[a][a] += c; L[b][b] += c;
-        L[a][b] -= c; L[b][a] -= c;
-    }
-    // Ground vertex 0: solve on indices 1..n-1.
-    int k = n - 1;
-    vector<vector<double>> A(k, vector<double>(k, 0.0));
-    for (int i = 0; i < k; ++i)
-        for (int j = 0; j < k; ++j)
-            A[i][j] = L[i + 1][j + 1];
-    vector<double> rhs(k, 0.0);
-    // chi: +1 at s, -1 at t (scaled by F); drop the grounded row 0.
-    auto add_chi = [&](int v, double val) {
-        if (v == 0) return;        // grounded row removed
-        rhs[v - 1] += val;
-    };
-    add_chi(s, F);
-    add_chi(t, -F);
-
-    vector<double> xk = cholesky_solve(A, rhs);
-    vector<double> phi(n, 0.0);
-    for (int i = 0; i < k; ++i) phi[i + 1] = xk[i];
-
-    // Ohm's law: f = C B^T phi, with B^T phi on edge (a,b) = phi[a]-phi[b].
-    vector<double> f(m, 0.0);
-    for (int e = 0; e < m; ++e) {
-        if (conduct[e] == 0.0) { f[e] = 0.0; continue; }
-        f[e] = conduct[e] * (phi[edges[e].a] - phi[edges[e].b]);
-    }
-    phi_out = phi;
-    return f;
-}
-
-static double output_number(double x) {
-    double y = round(x * 1000000.0) / 1000000.0;
-    if (fabs(y) < 0.5e-6) return 0.0;
-    return y;
-}
-
-int main() {
-    ios::sync_with_stdio(false);
-    cin.tie(nullptr);
-
-    int n, s, t;
-    long long m_ll;
-    double F, eps;
-    if (!(cin >> n >> m_ll >> s >> t >> F >> eps)) return 0;
-    int m = (int)m_ll;
-
-    vector<Edge> edges(m);
-    vector<double> u(m);
-    for (int e = 0; e < m; ++e) {
-        cin >> edges[e].a >> edges[e].b >> edges[e].u;
-        u[e] = edges[e].u;
-    }
-
-    // Multiplicative-weights outer loop (the plain (eps, 3 sqrt(m/eps)) oracle).
-    double rho = 3.0 * sqrt((double)m / eps);             // width of the plain oracle
-    long long N = (long long)ceil(2.0 * rho * log((double)max(m, 2)) / (eps * eps));
-
-    vector<double> w(m, 1.0);
-    vector<double> acc(m, 0.0);
-    bool failed = false;
-
-    for (long long it = 0; it < N; ++it) {
-        double w1 = 0.0;
-        for (int e = 0; e < m; ++e) w1 += w[e];
-
-        // r_e = (1/u_e^2)(w_e + eps*|w|_1/(3m)): w_e term for the average,
-        // floor term eps*|w|_1/(3m) caps the worst congestion.
-        vector<double> conduct(m, 0.0);
-        vector<double> res(m, 0.0);
-        double floor_term = eps * w1 / (3.0 * m);
-        for (int e = 0; e < m; ++e) {
-            res[e] = (w[e] + floor_term) / (u[e] * u[e]);
-            conduct[e] = 1.0 / res[e];
-        }
-
-        vector<double> phi;
-        vector<double> f = electrical_flow(n, edges, conduct, s, t, F, phi);
-
-        // Energy E_r(f); fail-test certifies F > F* when energy too large.
-        double E = 0.0;
-        for (int e = 0; e < m; ++e) E += res[e] * f[e] * f[e];
-        if (E > (1.0 + eps) * w1) { failed = true; break; }
-
-        // Reweight by congestion; accumulate the per-round flow.
-        for (int e = 0; e < m; ++e) {
-            double cong = fabs(f[e]) / u[e];
-            w[e] *= (1.0 + (eps / rho) * cong);
-            acc[e] += f[e];
-        }
-    }
-
-    cout.setf(std::ios::fixed);
-    cout << setprecision(6);
-
-    if (failed) {
-        cout << "FAIL\n";
-        return 0;
-    }
-
-    // Feasibility-scaled average of the per-round flows.
-    double scale = (1.0 - eps) * (1.0 - eps) / ((1.0 + eps) * (double)N);
-    vector<double> fbar(m);
-    for (int e = 0; e < m; ++e) fbar[e] = scale * acc[e];
-    vector<double> printed_flow(m);
-    for (int e = 0; e < m; ++e) printed_flow[e] = output_number(fbar[e]);
-
-    // Flow value = net flow out of s in the printed certificate.
-    double value = 0.0;
-    for (int e = 0; e < m; ++e) {
-        if (edges[e].a == s) value += printed_flow[e];
-        else if (edges[e].b == s) value -= printed_flow[e];
-    }
-
-    double maxcong = 0.0;
-    for (int e = 0; e < m; ++e) maxcong = max(maxcong, fabs(printed_flow[e]) / u[e]);
-
-    cout << "value " << output_number(fabs(value)) << "\n";
-    for (int e = 0; e < m; ++e) cout << printed_flow[e] << "\n";
-    cout << "maxcong " << output_number(maxcong) << "\n";
-    return 0;
-}
-```
-
-One last sanity pass: does the implemented loop actually produce a feasible flow, and does the final scaling do what the analysis claims? The smallest input that exercises the averaging is two parallel unit-capacity edges between `s` and `t`, `F = 2`, `ε = 0.2` — stdin `2 2 0 1 2 0.2` then `0 1 1` twice. By symmetry the true answer is `1` unit per edge, congestion `1`. The program prints `value 1.066667`, `0.533333` on each edge, and `maxcong 0.533333` — max congestion `0.533333 < 1`, so it is feasible, and the value is a `0.53` fraction of `F`. That fraction is exactly `(1−ε)²/(1+ε) = 0.8²/1.2 = 0.64/1.2 = 0.5333`, the feasibility scaling I derived, with no surprise hiding in the iteration loop. The gap from the optimal `1` per edge is entirely the conservative scaling, not infeasibility — which is the right behaviour, since the analysis only ever promised value `(1−O(ε))F` and feasibility, and here I see precisely those two things and nothing worse. Pushing `F` past `F*` (e.g. `2 1 0 1 10 0.2` then `0 1 1`) makes the energy fail-test trip and the program print `FAIL`, certifying `F > F*`. It does not, of course, exhibit the `m^{1/3}` width reduction (this plain oracle has width `√m`); for that I would need to run the improved oracle on the parallel-paths-plus-direct-edge family and watch the forbidden set `H` stay at `Õ(m^{1/3})`, which the removal lemma predicts but I have not traced end-to-end here.
+One sanity check on the implemented loop: does it actually produce a feasible flow, and does the final scaling do what the analysis claims? The smallest input that exercises the averaging is two parallel unit-capacity edges between `s` and `t`, `F = 2`, `ε = 0.2` — stdin `2 2 0 1 2 0.2` then `0 1 1` twice. By symmetry the true answer is `1` unit per edge, congestion `1`. The program prints `value 1.066667`, `0.533333` on each edge, `maxcong 0.533333 < 1` — feasible, at `0.53` of `F`. That fraction is exactly `(1−ε)²/(1+ε) = 0.8²/1.2 = 0.5333`, the feasibility scaling derived above: the gap from the optimal `1` per edge is entirely that conservative scaling, not infeasibility. Pushing `F` past `F*` (`2 1 0 1 10 0.2` then `0 1 1`) trips the energy fail-test and prints `FAIL`, certifying `F > F*`. What it does not exhibit is the `m^{1/3}` width reduction — this plain oracle has width `√m` by construction — nor the dual cut; those stay at the level of the analysis above, not the shipped code.
