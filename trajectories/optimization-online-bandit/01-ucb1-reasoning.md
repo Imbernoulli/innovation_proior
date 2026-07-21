@@ -71,21 +71,14 @@ That is the property `eps`-greedy lacked — exploration directed by uncertainty
 the uncertainty resolves the wrong way. Be optimistic in the face of uncertainty, then act greedily on
 the optimism.
 
-Let me stop and trace the self-correction on the exact failure that killed greedy, because I want to be
-sure the optimism actually rescues it rather than just sounding like it does. Say I have played each arm
-once and the best arm (mean `0.80`, call it arm 9) drew a `0` on its single pull while the second-best
-(mean `0.70`, arm 8) drew a `1`. Greedy now has `mu_hat_9 = 0`, `mu_hat_8 = 1`, and would pick arm 8
-forever, never touching arm 9 again — the lock-in. Under the optimistic rule I am building, both arms
-have `N = 1`, so both carry the *same* large uncertainty bonus, whatever its exact form; call it `b(1)`.
-Arm 8's optimistic value is `1 + b(1)` and arm 9's is `0 + b(1)`, so arm 8 does win this round — but arm
-9's optimistic value is still `b(1)`, sitting second, and it does not decay while `N_9` stays at `1`. As
-the rounds advance and I keep pulling arm 8, its empirical mean regresses from the fluke `1` toward its
-true `0.70` and its bonus shrinks as `N_8` grows, so its optimistic value falls; meanwhile arm 9's
-optimistic value `b(1)` is if anything *rising*, because the bonus grows slowly with the round count for
-any arm I have stopped pulling. Their curves must cross, arm 9 gets re-pulled, and its buried estimate
-gets a second look. The permanent exile greedy suffered simply cannot happen here: any arm with a small
-count keeps an inflated index that forces a revisit. Good — the mechanism does what I claimed, on the
-concrete case that motivated it.
+Put this on the exact failure that killed greedy. Say each arm has been played once and the best arm
+(mean `0.80`, arm 9) drew a `0` while the second-best (mean `0.70`, arm 8) drew a `1`. Greedy has
+`mu_hat_9 = 0`, `mu_hat_8 = 1` and picks arm 8 forever. Under the optimistic rule both arms have `N = 1`
+and carry the *same* bonus, call it `b(1)`; arm 8 wins this round at `1 + b(1)`, but arm 9 sits second at
+`0 + b(1)` and its index does not decay while `N_9` stays at `1`. As I keep pulling arm 8 its mean
+regresses from the fluke `1` toward `0.70` and its bonus shrinks, while arm 9's `b(1)` if anything rises
+with the round count — so the curves cross, arm 9 gets re-pulled, and the permanent exile greedy suffered
+cannot happen: any small-count arm keeps an inflated index that forces a revisit.
 
 Now I have to make "the highest plausible value of `mu_a`" precise, and that is a confidence interval.
 I need: how far above the empirical mean `mu_hat_a` could the true mean `mu_a` be, with overwhelming
@@ -129,8 +122,7 @@ yields `E[N_a(T)] <= 8 ln T / Delta_a^2 + 1 + pi^2/3`, hence `R_T <= 8 sum_a (ln
 (1+pi^2/3) sum_a Delta_a`. Logarithmic, finite-time, distribution-free over `[0,1]` — exactly the
 finite-horizon guarantee the asymptotic Lai–Robbins index policies left open.
 
-Let me actually put the stochastic MAB's numbers through this bound, both to sanity-check it and to
-calibrate how loose it is. The leading term is `8 * ln(10000) * sum_a (1/Delta_a) = 8 * 9.21 * 32.15 ≈
+Put the stochastic MAB's numbers through this bound, to calibrate how loose it is. The leading term is `8 * ln(10000) * sum_a (1/Delta_a) = 8 * 9.21 * 32.15 ≈
 2369`, and the lower-order term is `(1 + pi^2/3) * 3.5 ≈ 15`, so the bound predicts cumulative regret
 `≈ 2384`, normalized `≈ 0.24`. That is better than the random floor's `0.35` but not by an impressive
 margin — and it *should* be loose, because the counting argument spends the constant `8` and, via
@@ -139,11 +131,10 @@ Delta_a^2)` that a mean-`Delta_a` arm ideally costs. The gap-free reading tells 
 story: splitting arms at a gap threshold `gamma` (small-gap arms cost at most `T*gamma` total, large-gap
 arms use the log bound, balanced at `gamma = sqrt(8 K ln T / T)`) gives `O(sqrt(K T ln T))`, and here
 `sqrt(10 * 10000 * 9.21) ≈ 960` cumulative. So somewhere between the loose `2384` gap-dependent bound and
-this `960` gap-free bound is where the guarantee lives, and both are worst-case envelopes — the realized
-number is typically well under either, because Hoeffding's `8` is pessimistic and the arms are not all
-adversarially placed. I will not pretend to know the realized figure in advance; I expect a few percent,
-and the stochastic_mab column will tell me exactly. Either way `R_T/T -> 0` on the stationary world,
-which is the qualitative jump from the random floor I am replacing.
+this `960` gap-free bound is where the guarantee lives, both worst-case envelopes — the realized number
+is typically well under either, since Hoeffding's `8` is pessimistic and the arms are not adversarially
+placed. I expect a few percent. Either way `R_T/T -> 0` on the stationary world, the qualitative jump
+from the random floor I am replacing.
 
 Now I have to be careful about *this* harness rather than the textbook, because the rule is graded on
 three different worlds and the contract only gives me `select_arm(t, context)` and `update(arm, reward,

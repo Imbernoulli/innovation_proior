@@ -28,8 +28,7 @@ tuned against the horizon, because that constant is exactly what traded me the s
 non-stationary one. Both conclusions point the same way: away from deterministic confidence bonuses and
 toward a Bayesian, randomized rule.
 
-Before committing, let me actually walk the design space I am standing in, because there are three or four
-live options and I want to reject the tempting ones with arithmetic rather than taste. The first is to keep
+Before committing, walk the live alternatives and rule them out. The first is to keep
 the index and just retune the budget — run KL-UCB with a smaller `c`, say `c = 0.5`, to cut the early
 over-exploration on the stochastic world. But this is a zero-sum knob against the two columns it touches:
 shrinking `c` narrows the confidence radius everywhere, which would pull the stochastic column back down
@@ -79,17 +78,13 @@ For the Bernoulli arms — the stochastic MAB and the non-stationary settings �
 and trivial. The uniform prior on `[0,1]` is `Beta(1,1)`; after `r` successes and `s` failures the
 posterior is `Beta(r+1, s+1)` — the data enter only through the counts, the prior contributes the `+1`s,
 and an observation just bumps one parameter. So I maintain `alpha_a` (successes + 1) and `beta_a`
-(failures + 1) per arm, draw `theta_a ~ Beta(alpha_a, beta_a)`, and play `argmax_a theta_a`. Let me trace a
-small concrete state to convince myself the targeting works the way I claim. Suppose early on some arm has
-3 successes in 5 pulls: its posterior is `Beta(4, 3)`, mean `4/7 ≈ 0.571`, and standard deviation
-`sqrt(alpha·beta / ((alpha+beta)^2 (alpha+beta+1))) = sqrt(12 / (49·8)) ≈ 0.175` — very wide, so a single
-draw can easily land anywhere from 0.4 to 0.75 and this arm will keep getting sampled. Now suppose the true
-best arm has been pulled 1000 times at its 0.80 mean: `Beta(801, 201)`, mean `≈ 0.799`, std
-`≈ sqrt(0.80·0.20/1000) ≈ 0.0126` — a tight spike. A draw from the spike almost always beats a draw from
-any arm whose mean is below `0.799 − a few·0.0126 ≈ 0.76`, so the low arms stop winning as soon as their
-posteriors separate, while genuinely-close arms keep getting resampled until the data settle them. That is
-exactly the self-extinguishing, gap-adaptive exploration I want. The regret analysis (Agrawal–Goyal) makes
-it rigorous: `E[N_a(T)] = O(log T / Delta_a^2 + 1/Delta_a^4)` and hence `O(log T / Delta_a)` regret,
+(failures + 1) per arm, draw `theta_a ~ Beta(alpha_a, beta_a)`, and play `argmax_a theta_a`. The targeting
+is visible in the posterior widths: an arm at 3 successes in 5 pulls is `Beta(4, 3)`, std `≈ 0.175`, wide
+enough that a single draw lands anywhere from 0.4 to 0.75, so it keeps getting sampled; the best arm after
+1000 pulls at 0.80 is `Beta(801, 201)`, std `≈ 0.0126`, a spike that almost always beats any arm whose mean
+sits below `~0.76`. So low arms stop winning as soon as their posteriors separate while genuinely-close
+arms keep being resampled — the self-extinguishing, gap-adaptive exploration I want. The regret analysis
+(Agrawal–Goyal) makes it rigorous: `E[N_a(T)] = O(log T / Delta_a^2 + 1/Delta_a^4)` and hence `O(log T / Delta_a)` regret,
 matching the Lai–Robbins `log T` order that UCB1 and KL-UCB also achieve — so I lose nothing in asymptotic
 rate, and at finite horizons the randomization avoids the front-loaded deterministic exploration that, on
 this very task, inflated KL-UCB's `c = 1` budget to 0.0612 on the stochastic MAB. So on the stochastic
@@ -109,25 +104,18 @@ played, `theta_hat_a = B_a^{-1} f_a` is the ridge estimate with `f_a = sum rewar
 sampling covariance. At each round I draw `theta_tilde_a ~ N(theta_hat_a, v^2 B_a^{-1})` per arm and play
 `argmax_a x·theta_tilde_a`. The posterior width `v^2 B_a^{-1}` is large in directions the arm has not been
 exercised, so exploration is targeted in *context space*, which is precisely the structure UCB1 and KL-UCB
-could not see. Let me dimension-check the pieces so a silent shape bug does not eat the whole gain: `B_a` is
-`d×d = 10×10`; `B_a^{-1} f_a` is `[d×d][d] = [d]`, so `theta_hat_a` is a length-10 vector, good; the draw
-`theta_hat_a + L z` with `L` a `10×10` factor and `z` length-10 is length-10, good; and `x·theta_tilde_a`
-contracts a length-10 with a length-10 to a scalar score, good. The argmax over the five scalars is the arm.
+could not see.
 
-Two implementation choices make LinTS run inside this harness without blowing the compute budget, and both
-survive a back-of-envelope cost count. First, I never form `B_a` and invert it from scratch each round; I
-maintain `B_a^{-1}` directly and update it incrementally with the Sherman–Morrison identity: when arm `a`
-is played on context `x`, `B_a^{-1} <- B_a^{-1} − (B_a^{-1} x x^T B_a^{-1}) / (1 + x^T B_a^{-1} x)`. That is
-one matrix-vector product `B_a^{-1} x` at `O(d^2) = 100` flops, one outer product at `O(d^2)`, one scalar
-denominator — call it a few hundred flops per update, times `T = 10000` updates, is order `10^6` flops
-total, nothing. No `O(d^3)` inversion ever runs on the update path, and `theta_hat_a <- B_a^{-1} f_a` after
-bumping `f_a += reward · x` is another `O(d^2)`. Second, to draw `theta_tilde_a ~ N(theta_hat_a, v^2 B_a^{-1})`
+Two implementation choices keep LinTS cheap. First, I never form `B_a` and invert it from scratch each
+round; I maintain `B_a^{-1}` directly and update it with the Sherman–Morrison identity: when arm `a`
+is played on context `x`, `B_a^{-1} <- B_a^{-1} − (B_a^{-1} x x^T B_a^{-1}) / (1 + x^T B_a^{-1} x)`, an
+`O(d^2)` rank-one update with no inversion ever on the update path, and `theta_hat_a <- B_a^{-1} f_a` after
+bumping `f_a += reward · x`. Second, to draw `theta_tilde_a ~ N(theta_hat_a, v^2 B_a^{-1})`
 exactly I take a Cholesky factor `L` of `v^2 B_a^{-1}` and set `theta_tilde_a = theta_hat_a + L z` with `z`
-standard normal. Cholesky is `O(d^3) = 1000` flops per arm, times `K = 5` arms times `T = 10000` rounds is
-`5·10^7` flops — a few tens of milliseconds of numpy, entirely affordable at `d = 10`; the `d^3` term would
-only bite if `d` were in the hundreds. If the Cholesky fails numerically (a `B_a^{-1}` that has drifted
-slightly non-PSD from floating-point accumulation) I fall back to the isotropic `theta_hat_a + sqrt(v^2) z`,
-which is a safe over-approximation of the width rather than a crash. The regularizer is `lambda = 1` — a
+standard normal — `O(d^3)` per arm, trivial at `d = 10`. If the Cholesky fails (a `B_a^{-1}` that has
+drifted slightly non-PSD from floating-point accumulation) I fall back to the isotropic
+`theta_hat_a + sqrt(v^2) z`, a safe over-approximation of the width rather than a crash. The regularizer
+is `lambda = 1` — a
 unit ridge prior, well-conditioned at `d = 10`, which also means `B_a^{-1}` starts at exactly `I` so the
 very first draws are standard-normal explorations around zero, the correct uninformed prior. The
 sampling-variance scale is `v^2 = 0.25`, and I want to pin down that number rather than guess it. The
@@ -153,14 +141,12 @@ sum `sum_{k>=0} gamma^k = 1/(1 − gamma)`, and the effective memory is `~1/(1�
 `gamma = 0.999` that is `1000` rounds — comfortably shorter than the `2000`-round segments between the
 changepoints at `{2000, 4000, 6000, 8000}`, so each segment's true means are learned and the previous
 segment's are forgotten before the next change, yet long enough that within a segment the posterior still
-concentrates well. Let me check the forgetting rate against the segment length quantitatively: stale mass
-from just before a changepoint decays like `gamma^k = e^{k ln gamma} ≈ e^{−k/1000}`, so by the end of a
-2000-round segment the oldest observations retain `e^{−2} ≈ 0.135` of their weight and by 1000 rounds into
-the *next* segment they retain `e^{−3} ≈ 0.05` — effectively gone well before that segment's midpoint. So a
-changepoint costs me roughly a memory-length worth of relearning and no more, which is the timescale I want.
+concentrates well. Stale mass from just before a changepoint decays like `e^{−k/1000}`, retaining only
+`e^{−2} ≈ 0.135` of its weight by the end of a 2000-round segment and `e^{−3} ≈ 0.05` a further 1000 rounds
+on — a changepoint costs roughly one memory-length of relearning and no more.
 
-The worry I have to actually resolve is what this discount does to the *stationary* MAB, because I intend to
-run it on every non-contextual update, stochastic world included. Compute the steady state: if an arm with
+The worry to resolve is what this discount does to the *stationary* MAB, since I run it on every
+non-contextual update, stochastic world included. Compute the steady state: if an arm with
 true mean `p` is pulled steadily, its `alpha` obeys `alpha <- gamma·alpha + p` at equilibrium, so
 `alpha* = p/(1−gamma) = 1000p`, and likewise `beta* = 1000(1−p)`, for a total pseudo-count of `1000`. The
 posterior std at that steady state is `~sqrt(p(1−p)/1000)`; for the `p = 0.80` best arm that is
@@ -177,9 +163,8 @@ lets me run the discount globally on the Bernoulli branch: on the stationary MAB
 clamped width inflation just computed, which the steady-state check says the arm gaps absorb. The contextual
 branch gets *no* discount — LinTS's ridge accumulation already has its own `lambda·I` regularization, and the
 contextual world is stationary, so discounting there would only add noise and throw away hard-won design
-directions. As a sanity limit, note `gamma -> 1` recovers `alpha <- alpha`, i.e. exactly the vanilla
-undiscounted Beta update, so the discount is a strict one-parameter generalization that reduces to plain TS
-in the no-forgetting limit — which is what I want it to be.
+directions. `gamma -> 1` recovers the vanilla undiscounted Beta update, so the discount is a strict
+one-parameter generalization of plain TS.
 
 One more harness detail I have to get right: the RNG. The arm draws have to be genuinely random for
 probability-matching to hold — if two runs shared a deterministic stream the `P(play k) = P(k optimal)`
@@ -204,12 +189,9 @@ an exploration gap, and would say the `x·theta_a` structure is not learnable in
 discounted Beta posterior attacks it with a different mechanism (forgetting versus a tighter full-history
 index). I expect TS to land in the same neighborhood but plausibly a touch *worse* than KL-UCB — somewhat
 above its 0.0349 — because a 1000-round effective memory still carries some stale mass into the early part
-of each new segment, whereas KL-UCB's tight full-history index, once it relearns, is very sharp. So my expectation is that TS wins the stochastic and
-contextual worlds decisively and is competitive-but-not-dominant on non-stationary. If that holds, TS is the
-strongest single rule across the three settings — best on two of three, and the only baseline that closes the
-contextual gap — which is exactly the bar a strongest-rung method has to clear: not winning every column, but
-being the rule whose total regret across the three heterogeneous regimes is lowest, because it is the only
-one that adapts its *mechanism* per regime (Beta posterior, LinTS, discounted Beta) instead of forcing one
-index everywhere. The remaining weakness is the non-stationary column, where a method that combined
-change-point detection or a sharper forgetting schedule with this posterior could plausibly do better — but
-that is past the strongest single rule this task carries.
+of each new segment, whereas KL-UCB's tight full-history index, once it relearns, is very sharp. So TS
+should win the stochastic and contextual worlds decisively and be competitive-but-not-dominant on
+non-stationary — best on two of three, and the only rule that closes the contextual gap, because it is the
+only one that adapts its *mechanism* per regime (Beta posterior, LinTS, discounted Beta) rather than forcing
+one index everywhere. The remaining weakness is the non-stationary column, where combining change-point
+detection or a sharper forgetting schedule with this posterior could plausibly do better.

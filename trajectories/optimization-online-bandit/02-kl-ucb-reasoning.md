@@ -71,9 +71,8 @@ boundary, for free, no variance estimate to plug in. UCB1 is literally the speci
 mu_hat_a + sqrt(budget/(2 N_a))`, the additive sqrt bonus. So I am not inventing a new family — I am
 using the *tight* member of the one UCB1 already lives in.
 
-Let me put a number on how much the geometry actually buys, because that number is going to control my
-expectation for the stochastic world, and I do not want to fool myself into predicting a win that the
-arm configuration will not deliver. Take a common budget `b = budget/N_a = 0.01` and compare the KL width
+Put a number on how much the geometry actually buys, since it controls my expectation for the stochastic
+world. Take a common budget `b = budget/N_a = 0.01` and compare the KL width
 to the Pinsker width at three arms, solving `d(p, p+w) = b` for the KL width `w` and `sqrt(b/2)` for the
 Pinsker one. At `p = 0.10` the KL width is `0.048` against Pinsker's `0.071` — the KL ball is `2/3` the
 size, a real tightening. At `p = 0.50` they are `0.070` versus `0.071` — essentially identical, as they
@@ -85,23 +84,6 @@ below the optimum — `0.55`, `0.60`, `0.70` — and their KL curvatures `1/(2 p
 curvature `5.56`), but those have large gaps and get ruled out after a handful of pulls regardless of
 which geometry I use, so tightening them saves almost nothing. So the tighter constant is real, but on
 *this* arm profile it barely activates where the regret is, and it is an asymptotic statement besides.
-
-Let me trace the two actual indices at a mid-run round to see the effect operationally, since `select_arm`
-will compute the literal KL-UCB index against UCB1's literal radius, budgets and all. Take `t = 5000`.
-A far low arm sitting at `mu_hat = 0.10` with `N = 100` pulls gets KL-UCB index `0.265` versus UCB1's
-`0.10 + sqrt(2 log 5000 / 100) = 0.513`: KL-UCB has already crushed that arm's optimism down near the
-truth while UCB1 still floats it above `0.5`, so KL-UCB stops wasting pulls on it far sooner. Now the
-regret-driving near-top arm at `mu_hat = 0.70` with `N = 500`: KL-UCB index `0.779` versus UCB1's `0.885`.
-Both indices drop under KL, but look at *how much* — the low arm's index fell by `0.25`, the near-top
-arm's by only `0.11`. The tightening is concentrated on the arms that were never the problem. That is the
-same story the curvature computation told, now in operational numbers: KL-UCB clamps hard on the far arms
-I could already rule out and only gently on the clustered top arms where the regret actually lives. As a
-sanity check on the other end of the range, a freshly-seen arm with `mu_hat = 0` after `N = 1` pull gets
-KL index `max{ q : d(0,q) <= log t } = 1 - 1/t`, which at `t = 100` is `0.99` — near the top, exactly as
-it should be, matching UCB1's saturated optimism for an unknown arm; the two rules agree that a
-once-pulled arm must stay maximally optimistic, and only diverge as evidence accumulates. So the index is
-well-behaved at both extremes; the question is entirely about the crowded middle, and there the numbers
-say the win is modest.
 
 What budget? To make the failure risk decay like `1/t` I want `exp(-N_a * budget/N_a) ~ 1/t`, i.e.
 `budget ~ log t`. The proven exploration function is `f(t) = log t + 3 log log t` (the `c = 3` correction
@@ -166,9 +148,8 @@ once (`t < K` round-robin), then for each arm compute the KL-UCB index from its 
 `N_a`, and `argmax`. `update` just accumulates counts and reward sums — no buffer, no window, no context
 state. That is the whole literal edit (the full module is in the answer).
 
-Before I write down expectations, let me reason carefully about the non-stationary dynamics, because the
-claim "a tighter index relearns faster" is not automatically true and I want to know which way it actually
-cuts. Split a changepoint into two arms. The *formerly*-best arm carries a high stale `mu_hat`, a huge
+The claim that a tighter index relearns faster is not automatically true; reason about the non-stationary
+dynamics to see which way it cuts. Split a changepoint into two arms. The *formerly*-best arm carries a high stale `mu_hat`, a huge
 `N`, and therefore a tiny radius under either geometry — and that persistence is the dominant cost:
 because `N` is enormous, each fresh contrary sample barely moves `mu_hat`, so this arm keeps a high index
 and keeps getting pulled until its estimate finally decays, and that decay is governed by `N`, not by the
@@ -192,27 +173,17 @@ distribution-free says the Bernoulli `d` upper-bounds the deviations of *any* `[
 the index stays a valid (if slack) confidence bound on the contextual marginal; it just cannot help me
 there for the modeling reason, not a validity reason.
 
-Now the falsifiable expectations against UCB1's measured numbers. On the **stochastic MAB** I have
-argued myself into genuine uncertainty, and I should record it as such rather than pretend. The tighter
-KL geometry should reduce regret on the off-center arms relative to UCB1's symmetric bound — but the
-computation above says the reduction is only `~12%` at the `0.70` arm that actually drives the regret,
-while the `c = 1` budget (against UCB1's effective `c = 2`) explores more conservatively per arm early,
-and on a horizon of only `T = 10000` with arm means clustered between 0.1 and 0.8 the asymptotic constant
-advantage may not have fully materialized. So I would not be shocked if KL-UCB's stochastic number comes
-in *worse* than UCB1's 0.0378 — the asymptotic optimality is a `T -> infinity` statement, and at `T =
-10000` the heavier-or-lighter early exploration of the `c = 1` log-budget can cost more than the tighter
-constant saves on this particular arm profile. I expect it near 0.0378, and the stochastic_mab column
-will tell me the sign. On the **non-stationary** setting I expect KL-UCB to *beat* UCB1's 0.083: the
-tighter index relearns a changed arm faster because, on segments whose means lean toward the boundaries,
-the KL bound separates a risen arm from a fallen one far more sharply than the flat Pinsker width does —
-so even on full history it should recover from each of the four changepoints quicker than UCB1's
-range-only bound, pulling the normalized regret down below 0.083. That is a hypothesis, not a certainty,
-because the persistence of the stale old-best arm (large `N`, tiny radius, slow-decaying `mu_hat`) hurts
-KL-UCB and UCB1 alike; if KL-UCB does *not* improve the non-stationary number, that falsifies the
-"tighter index relearns faster on full history" bet and would say the only real cure for non-stationarity
-is forgetting, which this rung deliberately refused. On the **contextual** setting I expect essentially
-no change from UCB1's 0.179 — same modeling gap, context still ignored, marginal means still collapsed —
-so it should land in the same high-teens neighborhood, around 0.18.
+So the expectations, against UCB1's measured numbers. On the **stochastic MAB** I am genuinely
+uncertain: the `~12%` tightening at the regret-driving `0.70` arm is small, and the `c = 1` budget
+(against UCB1's effective `c = 2`) explores more conservatively per arm early, so at `T = 10000` the
+asymptotic constant advantage may not materialize — I expect it near 0.0378 and would not be shocked to
+land *worse*. On the **non-stationary** setting I expect KL-UCB to *beat* UCB1's 0.083, the sharper
+separation between a risen and a fallen arm recovering each changepoint faster on full history — but it
+is a hypothesis, not a theorem, since the stale old-best arm's persistence (large `N`, tiny radius,
+slow-decaying `mu_hat`) hurts both rules alike; if it does *not* improve, that falsifies the "relearns
+faster on full history" bet and says the only cure for non-stationarity is forgetting, which this rung
+refused. On the **contextual** setting I expect no change from UCB1's 0.179 — context still ignored,
+marginal means still collapsed — around 0.18.
 
 Whatever happens on stochastic_mab and contextual, the conclusion is already pointed at the next rung: an
 index — optimistic or KL — cannot use the context, and the contextual 0.18 will not move until I switch
