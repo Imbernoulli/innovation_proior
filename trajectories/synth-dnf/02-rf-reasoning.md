@@ -53,7 +53,7 @@ sparsely-supported region. The diagnosis from deep_dnf carries over — I have a
 representation problem — and the fix is the same shape as averaging many soft conjunctions, except I
 average many *exact* trees instead.
 
-The averaging argument I want is precise, so let me make it. Take a predictor that is an average of
+The averaging argument is precise. Take a predictor that is an average of
 trees, each grown on a resampled version of the data, and consider its variance. If the individual trees
 were independent and each had variance `σ²`, the average of `B` of them would have variance `σ²/B` —
 variance vanishes as I add trees. Real trees grown on bootstrap resamples of the same data are *not*
@@ -118,80 +118,32 @@ label. Setting it high, say 50, would smooth away real width-4 terms: a term fir
 about 1250 of 20000, but a *specific* term reached only after several correct splits is supported by far
 fewer points at its leaf, and a floor of 50 could refuse to isolate it. `min_samples_leaf=2` is the light
 touch — it forbids only the single-point leaves that are provably noise while leaving every genuinely
-supported term reachable. That is the reasoning behind each hyperparameter, and none of it required
-looking at the hidden terms.
+supported term reachable. None of this required looking at the hidden terms.
 
-Quantify what the averaging buys so I am not hand-waving "variance goes down." Take a single deep tree's
-test error as its bias-plus-variance; on this task the bias is near zero (a pure tree can represent any of
-the terms) so its error is essentially variance `σ²`. If bootstrap-plus-feature-subsampling gets the
-pairwise tree correlation down to `ρ = 0.3` — a reasonable target given a specific strong variable heads
-only ~1/6 of trees — then 200 trees give ensemble variance `0.3σ² + 0.7σ²/200 = 0.3σ² + 0.0035σ² ≈
-0.304σ²`, roughly a threefold variance cut over one tree, with the tree-count term already negligible. To
-push meaningfully below `0.3σ²` I would have to lower `ρ` further, and the only lever for that is more
-feature randomization — which the sparse-coverage argument just told me I cannot spend. So the forest's
-achievable accuracy on this task is set by the `ρσ²` floor, and that floor is set by how much
-decorrelation the sparse family will tolerate. That is a concrete, falsifiable ceiling: if the forest
-plateaus a few points short of perfection on some family, this is the mechanism, and the cure will not be
-"more trees" — it will be a different aggregation entirely.
+So the forest's achievable accuracy is set by the `ρσ²` floor, and that floor is set by how much
+decorrelation the sparse family will tolerate: pushing below it needs more feature randomization, which
+the sparse-coverage argument just said I cannot spend. If the forest plateaus a few points short of
+perfection on some family, the cure will not be "more trees" but a different aggregation entirely.
 
-In the task's scaffold this is an almost trivial fill, and that is the point — I do not need a bespoke
-network, I need the right off-the-shelf estimator wired into `fit_and_predict`. `build_model` returns an
-`sklearn` `RandomForestClassifier` with `n_estimators=200` (enough trees to push the `(1−ρ)σ²/B` term
-well below the `ρσ²` floor, so adding more buys little), `max_depth=None` (grow each tree until its
-leaves are pure — full depth, because I want each tree low-bias and I am counting on the average for
-variance), and `min_samples_leaf=2` (a light touch against single-point leaves, which on this sparse cube
-are pure noise; requiring two points per leaf trims the most overfit twigs without imposing real bias).
-`n_jobs=-1` parallelizes the 200 trees. `make_dataset` is the default uniform sample — 20000 labelled
-`(x, f(x))` pairs — and `fit_and_predict` just calls `.fit` on the float-cast Booleans and `.predict` on
-the test set, returning the 0/1 vector. And I expect this to be *far* cheaper than deep_dnf: no candidate
-mining, no 30-epoch gradient loop, just 200 axis-aligned trees on a tabular problem sklearn is built for,
-so the 12-to-38-second fits of the differentiable model should collapse toward a fraction of a second.
-The full module is in the answer.
+The fill is almost trivial, and that is the point — no bespoke network, just the right off-the-shelf
+estimator: `RandomForestClassifier(n_estimators=200, max_depth=None, min_samples_leaf=2, n_jobs=-1)` on
+the default uniform sample, `.fit` then `.predict`. And I expect it *far* cheaper than deep_dnf — no
+candidate mining, no gradient loop — so the 12-to-38-second fits should collapse toward a fraction of a
+second. The full module is in the answer.
 
-Now the falsifiable expectations against the deep_dnf numbers, family by family. On **monotone** (deep_dnf
-0.9088): the forest should be *competitive but not obviously dominant*. Monotone DNF with 20 terms over
-40 variables is a wide target; a width-4 term is a length-4 path, and I can estimate the coverage
-pressure — at the root each of the 6 drawn variables is a candidate, so a *specific* relevant variable
-appears with probability `6/40 = 0.15`, and building all four literals of a specific term along one path
-requires the right variables to keep showing up at successive nodes. With 200 trees the union of paths
-should cover most of the 20 terms, but the high term count means many leaves and a real chance some terms
-are under-covered by the random splits. I would not be shocked if the forest lands near or slightly below
-deep_dnf's monotone number — the warm-start mining genuinely helps the differentiable model there, and
-deep_dnf's 0.9088 is buoyed by the 0.6277 base rate. On **random** (deep_dnf 0.7605): I expect the forest
-to *clearly beat* deep_dnf, because the tree's exact axis-aligned splits do not suffer the noisy-OR's
-union-of-errors blowup; mixed polarity is free (a split tests `x_i = 0` or `x_i = 1` symmetrically), and
-the target is narrow (10 terms over 30 variables), so the random family should jump well above 0.76 —
-this is the single comparison that should vindicate the switch. On **sparse** (deep_dnf 0.8986): by the
-81%-coverage calculation the junta is learnable but the forest wastes about a fifth of its splits on noise
-variables, so I expect a gain over deep_dnf but not a runaway one, and — per the same calculation — I
-would not be surprised to see sparse come in below the random number.
+Expectations against deep_dnf, family by family. On **random** (0.7605) the forest should *clearly beat*
+it: exact axis-aligned splits do not suffer the union-of-errors, mixed polarity is free (a split tests
+`x_i = 0` or `x_i = 1` symmetrically), and the target is narrow, so random should jump well above 0.76 —
+the comparison that vindicates the switch. On **sparse** (0.8986), by the 81%-coverage figure the junta
+is learnable but a fifth of the splits waste on noise, so a gain but not a runaway, possibly sparse below
+random. On **monotone** (0.9088) I am least sure the forest wins: 20 width-4 terms over 40 variables is a
+*wide* target, and a specific term is covered only if some tree assembles its four-variable path — per-node
+availability `6/40 = 0.15`, so the per-tree per-term probability `q` is small and the ensemble rescues it
+as `1 − (1 − q)^{200}`, which is 0.98 for `q = 0.02` but collapses to 0.63 for `q = 0.005`. It takes only
+a few under-covered terms to cap monotone a real distance below its representational ceiling — a coverage
+shortfall, not a representation failure. So monotone flat-to-down.
 
-I can sharpen the monotone worry into a coverage estimate, because it is the family where I am least sure
-the forest wins. For a single tree to model a *specific* one of the 20 terms exactly, it needs a
-root-to-leaf path that splits on that term's four variables — and because at each node only 6 of 40
-variables are candidates, the four right variables have to keep turning up along a single path. Even
-granting that a strong split on a term-relevant variable is usually taken when available, the chance that
-all four of a given term's variables become available and get chosen along one path in one tree is well
-below one; call it roughly the per-node availability `6/40 = 0.15` compounded across the depth the path
-needs, which is small. The rescue is the ensemble: with 200 trees, a term is covered if *any* tree
-assembles its path, so the effective coverage is `1 − (1 − q)^{200}` for per-tree per-term probability
-`q`. If `q` is as low as 0.02, that union coverage is `1 − 0.98^{200} = 1 − 0.018 = 0.98` — reassuring —
-but if `q` dips toward 0.005 for the hardest-to-assemble terms, coverage falls to `1 − 0.995^{200} = 1 −
-0.37 = 0.63`, meaning better than a third of the 200 trees would have to cooperate and some terms may
-still slip through. With 20 terms competing, it takes only two or three under-covered terms to cap the
-monotone accuracy in the mid-0.80s. That is the structural reason I expect monotone to be the forest's
-soft spot: not a representation failure, but a coverage shortfall on a *wide* target where the random
-feature subsets spread thin across too many conjunctions. The narrow random target (10 terms over 30
-variables, subset 5 of 30) does not have this problem to the same degree — fewer terms to cover, each with
-a comfortably high union coverage — which is another reason I expect random to leap and monotone to lag.
-
-So the prediction I am committing to: the geometric mean should rise above deep_dnf's 0.8532, driven
-almost entirely by a large gain on the random family, with monotone roughly flat and sparse uncertain.
-If instead the forest's *random* number fails to clear deep_dnf's 0.76, my whole diagnosis — that the
-noisy-OR's union-of-errors, not the representation, sank deep_dnf — is wrong, and I would have to look
-elsewhere. And if the forest, despite exact splits and 200 trees, still leaves any family well short of
-the near-perfect accuracy a width-4 concept ought to allow from 20000 examples, that points at the next
-lever: a forest *bags independent trees* and never lets a later tree correct an earlier one's mistakes.
-The way to push past flat averaging is to make each new tree fit the *residual error* of the ones so far —
-to boost rather than bag — and to ask whether a plain gradient-trained MLP, which the differentiable
-model abandoned, was actually a stronger generic learner than either tree ensemble all along.
+The commitment: the geometric mean rises above 0.8532, driven almost entirely by the random gain. If
+random fails to clear 0.76, my noisy-OR diagnosis was wrong. And if the forest still leaves any family
+short of near-perfect, the next lever is to stop averaging *independent* trees and fit each new tree to
+the *residual error* — boosting.

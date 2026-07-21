@@ -21,7 +21,7 @@ fitting 20 overlapping conjunctions to high accuracy from a single *flat* traini
 whether the flat pass is bag-of-independent-trees or one-shot gradient descent on a fixed loss, the same
 residual structure is left unmodeled.
 
-Let me make the flat-learner diagnosis sharp, because it is what dictates the next move. Both failing
+The flat-learner diagnosis dictates the next move. Both failing
 learners share a property: they fit the whole target in one undifferentiated pass over a fixed objective,
 with no mechanism to notice "these particular examples are still wrong and deserve more attention." The
 forest fits all 200 trees to the *same* labels in parallel; if random feature subsets cause the ensemble to
@@ -33,10 +33,9 @@ fit that sliver is a small fraction of the total gradient, so the optimizer plat
 half-learned. Different architectures, identical failure shape: the wide monotone target has many terms
 competing for a fixed budget of fitting effort, and a flat learner spreads that budget by the *frequency* of
 each region rather than by where the *error* currently is, so the hardest, rarest terms are chronically
-starved. The geometric mean makes this the decisive family: with `∂G/∂x_i = G/(3 x_i)`, the smallest factor
-moves the mean most, and monotone at 0.8461 has by far the highest sensitivity — `0.9415/(3·0.8461) = 0.371`
-per point against `~0.314` for the two near-ceiling families — so the entire aggregate is now hostage to this
-one number. Nothing flat has cracked it, and the geomean will not clear 0.95 until something does.
+starved. By the geomean sensitivity `∂G/∂x_i = G/(3 x_i)`, monotone at 0.8461 is now by far the highest-
+leverage factor (0.371 per point against ~0.314 for the near-ceiling families), so the aggregate is
+hostage to this one number and will not clear 0.95 until something cracks it.
 
 So I need a learner that does not fit the target in one flat pass but builds it up *sequentially*, each new
 component explicitly correcting the errors the ensemble has made so far. That is boosting, and it is the one
@@ -49,8 +48,8 @@ adding the sequential error-correction the MLP and the forest both lack. It is t
 tree's representation (which held random and sparse at ceiling) plus a fitting procedure that reallocates
 effort to the residual (which is what monotone has needed all along).
 
-Let me reconstruct the boosting argument, because the choice of *gradient* boosting over the older
-loss-specific schemes is what makes it general and stable here. I want an additive model `F(x) = Σ_m ρ_m
+The choice of *gradient* boosting over the older loss-specific schemes is what makes it general and stable
+here. I want an additive model `F(x) = Σ_m ρ_m
 h(x; a_m)`, each `h` a small regression tree, fit greedily one term at a time (forward stagewise: hold
 `F_{m-1}` fixed, add one tree). For squared error the stage subproblem is "fit the next tree to the residual
 `y − F_{m-1}`" — the classic residual loop. But for classification I want the binomial deviance
@@ -98,42 +97,26 @@ long as the residual structure is still being reduced, spending its full round b
 starting model `F_0` is the best constant (the base-rate logit), and the final prediction thresholds the
 additive logit at 0.
 
-I should stress-test the boosting story against one failure mode before I commit, because it is the obvious
-objection: could the sequential fitting *overfit* the monotone family the way a single deep tree does, memor-
-izing training points instead of recovering terms? Two guards answer it. The trees are weak (depth 5, `32`
-leaves against 20000 points, so each leaf averages hundreds of examples — no single-point memorization like
-an unpruned forest tree), and the early-stopping validation split watches held-out deviance, so the moment
-extra rounds start fitting noise rather than terms the boosting halts. The line search on the true deviance
-also keeps each step honest — it will not take a large step that helps train while hurting the loss geometry.
-So the regularization is layered (weak learners, shrinkage, subsample, early stop), and the concern that
-sequential correction just overfits is met by construction. The residual-chasing is aimed at systematic
-error — the under-covered terms — not at individual noisy labels, because a single mislabeled point cannot
-sustain a large pseudo-response across many rounds the way a whole unmodeled term's region can.
+The obvious objection is that sequential fitting could *overfit* monotone the way a single deep tree does.
+Two guards answer it. The trees are weak — depth 5, 32 leaves against 20000 points, so each leaf averages
+hundreds of examples, no single-point memorization — and the early-stop validation split halts the moment
+extra rounds fit noise rather than terms. The residual-chasing is aimed at systematic error (the under-
+covered terms), not individual noisy labels: a single mislabeled point cannot sustain a large pseudo-
+response across many rounds the way a whole unmodeled term's region can.
 
-The contrast with the random forest is worth making precise, because both are tree ensembles and the naive
-reading is "more trees, same idea." They are opposites in how they combine. The forest *decorrelates and
-averages*: it deliberately makes its trees disagree (bootstrap plus `sqrt(n)` feature subsets) and then
-takes the mean, so its whole engine is variance reduction on a set of independently-grown, full-depth,
-low-bias trees — and its ceiling is the correlation floor `ρσ²`, which on the wide monotone target it could
-not lower without starving the sparse junta. Boosting does the reverse: its trees are *weak* (depth-5,
-high-bias) and *dependent by construction* — each is grown to fix the previous ensemble's residual — so its
-engine is bias reduction, driving down a systematic error that the forest's averaging leaves in place. That
-is why boosting is the right tool for monotone specifically: the forest's monotone failure was never variance
-(200 trees had crushed that), it was the residual bias of under-covered terms, and bias is exactly what
-sequential residual-fitting removes. The forest had no lever for it; boosting's entire mechanism is that
-lever. So this rung is not "a better forest," it is the complementary ensemble that attacks the error
-component the forest structurally cannot touch — while keeping the exact-conjunctive-split representation
-that made trees beat the MLP's smeared weights on random in the first place.
+Both are tree ensembles, but they are opposites in how they combine, and that is the point. The forest
+decorrelates and averages full-depth low-bias trees — its engine is variance reduction, and its ceiling is
+the correlation floor `ρσ²` it could not lower on monotone without starving the sparse junta. Boosting's
+trees are weak (depth-5, high-bias) and dependent by construction, so its engine is bias reduction, driving
+down exactly the residual bias of under-covered terms that the forest's averaging left in place. The
+forest had no lever for that; boosting's whole mechanism is that lever — while keeping the exact
+conjunctive splits that made trees beat the MLP on random.
 
-I should also price the compute, because gbdt gives up the forest's greatest practical virtue. The forest fit
-in about 0.67 seconds a family — 200 trees grown fully in *parallel* (`n_jobs=-1`) on a tabular problem. Gbdt
-is inherently *sequential*: round `m` cannot start until round `m−1`'s tree is fit and the pseudo-responses
-recomputed, so up to 500 rounds run one after another with no parallelism across rounds, and each round fits
-a fresh depth-5 tree on 18000 examples plus a line search. That is many more, deeper, sequential fits than
-the forest's parallel shallow-in-aggregate work, so I expect gbdt's fit time to land in the tens of seconds —
-comparable to deep_dnf's 12-to-38, an order of magnitude above the forest — with the *hard* monotone family
-running the longest precisely because early stopping lets it use its full round budget while the easy families
-halt early. Under the task's soft wall-clock budget that is acceptable: this is the top of the ladder, the
+Gbdt gives up the forest's practical virtue: where the forest grew 200 trees in *parallel* (0.67s a
+family), boosting is inherently *sequential* — round `m` waits on round `m−1`'s tree and pseudo-responses,
+up to 500 rounds each fitting a depth-5 tree on 18000 examples plus a line search. So I expect fit time in
+the tens of seconds, an order of magnitude above the forest, with the *hard* monotone family running
+longest because early stopping lets it use its full round budget while the easy families halt early. Under the task's soft wall-clock budget that is acceptable: this is the top of the ladder, the
 place to spend compute, and the sequential cost is the direct price of the error-correction that the parallel
 forest could not buy at any tree count.
 
@@ -148,34 +131,18 @@ even safer: 10 terms over 30 variables is narrow, mixed polarity is free for a s
 correction on top of exact splits I would be surprised to see anything but a near-perfect number, plausibly
 the 1.0 the MLP nearly reached.
 
-In the scaffold this is a clean fill: `build_model` returns the `sklearn` `GradientBoostingClassifier` with
-those settings, `make_dataset` is the default uniform sample, `fit_and_predict` calls `.fit` and `.predict`
-and returns the 0/1 vector — and notably it reads `config.term_width` to set the tree depth, so the learner
-adapts to the announced conjunction width without ever peeking at the hidden terms. The full module is in the
-answer.
+The fill is clean: `GradientBoostingClassifier` with those settings on the default uniform sample, `.fit`
+then `.predict` — and it reads `config.term_width` to set the tree depth, adapting to the announced
+conjunction width without ever peeking at the hidden terms. The full module is in the answer.
 
-Now the falsifiable expectations against the MLP's numbers, family by family. On **monotone** (the
-bottleneck — MLP 0.8461, the worst standing number and the lowest earned-fraction anywhere), I expect gbdt to
-*finally crack it*. This is the whole reason for the rung: 20 terms is a lot of conjunctions, but boosting
-fits them one residual at a time, a depth-5 tree per round can isolate each term, and with up to 500 shrunk
-rounds and early stopping to let the hard family run long, the deviance should be driven down until nearly
-all 20 terms are covered — I am expecting a jump from the mid-0.84s into the high 0.90s. If gbdt does *not*
-substantially beat 0.8461 on monotone, then my entire account — that the monotone failure is a flat-fitting
-problem cured by sequential error-correction — is wrong, and I would have to conclude the wide target is just
-intrinsically hard to learn from 20000 examples regardless of algorithm. On **random** (MLP 0.9989,
-near-solved) and **sparse** (MLP 0.9876), I expect gbdt to be *at least as good*: exact conjunctive splits
-handle mixed polarity for free (random) and simply never split on irrelevant variables (sparse, the tree's
-native advantage over the MLP that already showed up in the forest's 0.9312), and early stopping guards
-against overfitting these easy families. I would expect both up near or above the MLP's numbers, with random
-plausibly hitting 1.0.
-
-So the prediction I am committing to: gbdt should post the highest geometric mean of the ladder, above the
-MLP's 0.9415, and the gain should come *predominantly from the monotone family* — the one family that has
-resisted every flat learner — with random and sparse holding at or near their ceilings. By the geomean
-sensitivity, monotone is where the leverage is: lifting it from 0.8461 toward the high 0.90s while the other
-two hold near 1.0 would push the aggregate up by roughly `0.37 × 0.13 ≈ 0.048`, into the high 0.98s. If the
-monotone number jumps like that while random and sparse stay near-perfect, the trajectory's thesis is
-confirmed: on uniform-distribution DNF learning, the winning learner is not the one with the DNF inductive
-bias hand-coded in (deep_dnf was weakest), nor flat averaging (rf) or flat gradient descent (mlp), but a tree
-ensemble that keeps exact conjunctive splits *and* corrects its own residual errors round by round. That is
-the rung I expect to end on, and it is the strongest baseline the task provides.
+Expectations against the MLP. On **monotone** (the bottleneck, 0.8461) gbdt should *finally crack it*: 20
+terms fit one residual at a time, a depth-5 tree isolates each, and with up to 500 shrunk rounds and early
+stopping to run the hard family long, the deviance should fall until nearly all 20 terms are covered — a
+jump into the high 0.90s. If gbdt does *not* substantially beat 0.8461 there, my whole account — monotone
+as a flat-fitting problem cured by sequential correction — is wrong, and the wide target is intrinsically
+hard regardless of algorithm. On **random** (0.9989) and **sparse** (0.9876) I expect at least as good:
+exact splits handle mixed polarity free and never split on irrelevant variables, and early stopping guards
+the easy families. If that monotone jump lands while the others hold, the thesis is confirmed: for
+uniform-distribution DNF the winning learner is not the hand-coded DNF bias, nor flat averaging or flat
+gradient descent, but a tree ensemble that keeps exact conjunctive splits *and* corrects its own residual
+errors round by round.
