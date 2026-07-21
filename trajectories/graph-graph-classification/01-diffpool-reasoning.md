@@ -1,9 +1,8 @@
 The readout is the whole job, and the floor I have to climb off is the simplest thing that turns node
-vectors into a graph vector and works at all. The scaffold default does that with one line —
-`global_add_pool(x, batch)` — and I could just run it. But before I accept the flattest possible readout
-as my starting rung, let me ask whether there is a more *structured* default that is still simple enough
-to be a baseline, because the structure I add at the bottom is the structure every later rung will
-either keep or argue against. The thing that nags at me about a single global sum is that it is *flat*.
+vectors into a graph vector and works at all. The default does that with one line —
+`global_add_pool(x, batch)` — and I could just run it. But let me ask whether there is a more *structured*
+starting point that is still simple enough to be a baseline. The thing that nags at me about a single
+global sum is that it is *flat*.
 Stare at what message passing actually does: it moves information along edges, K hops out, and stops.
 Every node ends up holding a summary of its K-hop neighborhood, and then a global sum dumps all N of
 those summaries into one pot and stirs. At no point does the model ever represent anything at a scale
@@ -62,25 +61,24 @@ it, node i contributing in proportion to S_{ij} — a weighted sum, which stacke
 the matrix product **X' = Sᵀ Z**. Row j of X' is cluster j's pooled embedding. That is the coarse-graph
 readout, and it falls right out of treating S as a soft node↔cluster indicator.
 
-I should check this respects permutations, because it would be embarrassing to break the one invariant I
-must keep. Relabel the original nodes by a permutation P: features ↦ PZ and, if the assignment network
+This has to respect permutations — the one invariant a graph-level answer must keep. Relabel the
+original nodes by a permutation P: features ↦ PZ and, if the assignment network
 is equivariant (it is a per-node map, so it commutes with row permutation), scores and hence S ↦ PS.
 Then X' = (PS)ᵀ(PZ) = Sᵀ PᵀP Z = Sᵀ Z, because P is a permutation so PᵀP = I. The coarsened embedding is
 invariant to node numbering. Good — that is the property a graph-level answer needs to be well-defined,
 and it holds regardless of *which* axis of S I choose to normalize, as long as the normalization is
 itself node-equivariant.
 
-That choice of axis is not cosmetic, and I want to make it deliberately rather than inherit it, because
-it decides the whole character of this bottom rung. There are two ways to softmax S. I can normalize
+That choice of axis is not cosmetic; it decides the whole character of the pool. There are two ways to
+softmax S. I can normalize
 over *clusters* — each node's row sums to one, so every node distributes its unit of mass across the K
 clusters, the canonical row-stochastic assignment. Or I can normalize over *nodes* — each cluster's
 column sums to one, so every cluster is a normalized mixture of the real nodes, a proper weighted
 average of node embeddings. The second reading is the cleaner one to write against the dense tensor I
-will build (`softmax` over the node axis of an `[B, N_max, K]` score block), and it has a consequence I
-should trace all the way out before I commit, because it will tell me exactly how much this rung can
-possibly deliver.
+will build (`softmax` over the node axis of an `[B, N_max, K]` score block), and it has a consequence
+worth tracing all the way out, because it caps how much this pool can deliver.
 
-Take the node-normalized version and work a tiny case by hand: two nodes with embeddings x₁, x₂, two
+Take the node-normalized version, two nodes with embeddings x₁, x₂, two
 clusters, score matrix with columns softmaxed over the two nodes. Column j gives weights S_{1j}, S_{2j}
 with S_{1j}+S_{2j}=1, so cluster j's pooled embedding is X'_j = S_{1j}x₁ + S_{2j}x₂ — a convex
 combination of the two nodes, literally a weighted average. Now the last step of the readout collapses
@@ -102,19 +100,17 @@ cannot distinguish {a, b} from {a, a, b, b}. It captures proportions and throws 
 precise defect I am building in at the bottom, on purpose — and it is exactly what a plain *sum* would
 have kept, since a sum over the inflated set is k times the original.
 
-I should convince myself the *other* axis is not secretly better, because it would be lazy to pick the
-node-normalized softmax without checking what row-normalization would have done. Row-normalize (each node
-distributes its unit of mass over the K clusters, Σ_j S_{ij} = 1), then run the same pool-then-mean.
-The output is (1/K)·Σ_j Σ_i S_{ij} x_i = (1/K)·Σ_i (Σ_j S_{ij}) x_i = (1/K)·Σ_i x_i, because each row of S
-sums to one — a *constant multiple of the global sum*, and, tellingly, *completely independent of S*. The
-assignment matrix cancels out of the output entirely; its gradient through this readout is zero, so the
-MLP that produces it would never train. I checked this on a random 6-node case and swapping in a totally
-different assignment left the output bit-for-bit identical. So row-softmax gives me a scaled sum with a
-dead, un-learnable clustering — a degenerate readout that only *pretends* to pool. Node-softmax gives me
+Is the *other* axis secretly better? Row-normalize (each node distributes its unit of mass over the K
+clusters, Σ_j S_{ij} = 1), then run the same pool-then-mean. The output is
+(1/K)·Σ_j Σ_i S_{ij} x_i = (1/K)·Σ_i (Σ_j S_{ij}) x_i = (1/K)·Σ_i x_i, because each row of S sums to one —
+a *constant multiple of the global sum*, and, tellingly, *completely independent of S*. The assignment
+matrix cancels out of the output entirely; its gradient through this readout is zero, so the MLP that
+produces it would never train. So row-softmax gives me a scaled sum with a dead, un-learnable clustering
+— a degenerate readout that only *pretends* to pool. Node-softmax gives me
 a live, learned convex combination that at least exercises the assignment, at the cost of being a
 weighted mean. Neither is good, but only one keeps the learned pooling actually learning, so I take the
-node axis with eyes open: I want the ambitious idea (a *learned* soft clustering) to be genuinely under
-test at this rung, not silently short-circuited into a constant.
+node axis with eyes open: I want the *learned* soft clustering genuinely under test, not silently
+short-circuited into a constant.
 
 Where does S come from? A small network over the node embeddings: a per-node output of width K, softmaxed
 over the node axis. Here I make the one decision that separates *this task's* DiffPool from the canonical
@@ -140,8 +136,8 @@ constraint binds. The allowance is roughly 10·H² + 9·H extra parameters on to
 backbone/classifier, and at H = 64 that is 10·4096 + 576 = 41,536 parameters of headroom. My assignment
 MLP is `Linear(D, D) → ReLU → Linear(D, K)`: the first layer is 64·64 + 64 = 4,160, the second is
 64·25 + 25 = 1,625, so 5,785 parameters total — about one-seventh of the headroom. The budget does not
-bind here at all; if anything it tells me the *stripped* readout is under-spending, which is consistent
-with its being the weakest rung. Output width is `hidden_dim`, so the fixed classifier head — whose first
+bind here at all; if anything it tells me the *stripped* readout is under-spending, consistent with its
+being the weakest of the reductions I can build. Output width is `hidden_dim`, so the fixed classifier head — whose first
 layer is `Linear(output_dim, 64)` — consumes it unchanged with no extra cost from a wide readout.
 
 Now the two sizes I have to pick, K clusters and N_max padding. I fix K = 25 clusters and pad to
@@ -157,67 +153,38 @@ crisp, well-separated clusters impossible. On PROTEINS and NCI1, with larger gra
 compression and the softmax at least has room to be selective, but with no structural prior it has no
 reason to be.
 
-Made concrete in the scaffold's vocabulary: the readout converts the batch's stacked node embeddings to
-dense, padded form with `to_dense_batch(x, batch)` → `[B, N_max, D]` plus a validity mask, computes raw
-assignment scores with the 2-layer MLP → `[B, N_max, K]`, masks padded nodes to −∞ before the softmax
-(so phantom padding nodes get zero assignment), softmaxes *over the nodes* so each cluster is a
-normalized mixture of real nodes, re-zeroes the padded rows, and pools `X' = Sᵀ X_dense` → `[B, K, D]`.
-The last collapse to one graph vector is the mean over the K clusters, `[B, D]`. One honest note about
-the code: I also materialize the dense adjacency with `to_dense_adj` and could form the coarsened
-adjacency `Sᵀ A S`, exactly as the canonical method does before its *next* convolution — but there is no
-next convolution here, the readout returns a graph vector, so that adjacency is computed and never
-consumed. I leave the line in for parity with the full method's coarsening step while being clear that
-only the embedding pool `Sᵀ X` feeds the output. The dense pipeline's cost is modest: with N_max = 150
-the adjacency is 150² ≈ 22.5k entries per graph, trivial at these batch sizes, and the assignment and
-pool are two small batched matmuls. The full scaffold module is in the answer.
+Mechanically: dense-batch with `to_dense_batch(x, batch)` → `[B, N_max, D]` plus a validity mask, raw
+assignment scores from the 2-layer MLP → `[B, N_max, K]`, mask padded nodes to −∞ before the softmax,
+softmax *over the nodes*, re-zero the padded rows, pool `X' = Sᵀ X_dense` → `[B, K, D]`, mean over the K
+clusters → `[B, D]`. One honest note: I also materialize the dense adjacency with `to_dense_adj` and
+could form the coarsened adjacency `Sᵀ A S`, exactly as the canonical method does before its *next*
+convolution — but there is no next convolution here, so that adjacency is computed and never consumed. I
+leave the line in for parity with the full coarsening step, but only the embedding pool `Sᵀ X` feeds the
+output. The dense cost is modest: N_max = 150 gives a 150² ≈ 22.5k-entry adjacency per graph, trivial,
+and two small batched matmuls. The full module is in the answer.
 
-Now let me reason about what this stripped DiffPool must do, because that is the whole point of starting
-here, and I want my expectations falsifiable. I have already proved the ceiling — a convex-combination
-pool, a learned weighted mean, count-blind by construction — and the single thing I kept is also the
-single thing the auxiliaries were there to *protect*: I removed the protection. Without the link loss
-there is nothing telling connected nodes to share a cluster; the MLP assigns from node *features alone*,
-blind to the adjacency, so "clusters" need not correspond to any graph structure at all. Without the
-entropy loss there is nothing stopping the softmax from staying diffuse, in which case the weighted mean
-slides all the way to the plain global mean I derived as its diffuse limit. So my honest prediction is
-that this readout behaves, at best, like a *learned, noisier global mean* — and a mean, as the readout
-lineage already warned, throws away counts and is strictly weaker than a sum on the multiset of node
-features. The risk is not that it crashes; it is that the learned soft clustering, pulled only by a
-distant classification gradient through a non-convex assignment, settles into something diffuse or
-feature-arbitrary and pools *less* informatively than the trivial sum the scaffold ships with. That is
-exactly why it is the bottom rung: it carries the most ambitious idea on the ladder — a *learned*
-hierarchy — but in the one form the harness permits, shorn of the auxiliaries that make the idea pay, so
-it should be the most likely to underperform a simple injective reduction.
+So what should this stripped pool do? I proved the ceiling — a convex-combination pool, a learned
+weighted mean, count-blind — and the one thing I kept is exactly what the auxiliaries were there to
+*protect*. Without the link loss nothing tells connected nodes to share a cluster; the MLP assigns from
+node *features alone*, blind to the adjacency. Without the entropy loss nothing stops the softmax from
+staying diffuse, in which case the weighted mean slides all the way to the plain global mean I derived as
+its diffuse limit. So the honest prediction is that this behaves, at best, like a *learned, noisier
+global mean* — count-blind, strictly weaker than a sum on the node multiset. The risk is not a crash; it
+is that the learned clustering, pulled only by a distant classification gradient through a non-convex
+assignment, settles into something diffuse and pools *less* informatively than the trivial sum the
+default ships with. It carries the most ambitious idea — a *learned* hierarchy — but shorn of the
+auxiliaries that make it pay, so it is the most likely to underperform a simple injective reduction.
 
-Where is this falsifiable against the three datasets, and on which of the two metrics? On tiny MUTAG the
-K > N arithmetic and the 188-graph sample together predict a *coin flip*: the soft assignment has almost
-no data to fit and is forced diffuse, so I expect the cross-validation test_acc to swing several points
-across seeds {42, 123, 456} — this is variance, not signal. On PROTEINS and NCI1, with more graphs, the
-MLP gets more gradient, and here I expect the opposite tell: because the pool collapses to nearly the
-same diffuse weighted mean every run, the *seed spread should be tight* — a low-variance band is the
-fingerprint of a readout that is not learning a seed-distinguishing partition but converging to one flat
-answer. PROTEINS, with the larger graphs where a real hierarchy would help most, is the cleanest place to
-read this: if the stripped pool gets the *least* out of the graphs that should reward hierarchy the most,
-that is the diagnosis confirming itself. The macro_f1 column is the honest cross-check on the imbalanced
-sets: a count-blind mean that leans on the majority class should show macro_f1 sitting below test_acc by
-a few points on the more skewed datasets, while on a balanced set the two should nearly coincide.
-Whatever the precise split, the diagnosis is already pointed at the next rung: the weakness here is that
-I *discarded structure and counts* — a provably-convex-combination pool with no injective reduction and
-no use of the per-layer (`layer_outputs`) information the scaffold hands me. The cleanest next move is to
-stop trying to learn a hierarchy with no support for it and instead take the most expressive *flat*
-reduction there is — a sum, which keeps the counts a mean loses — and read it from *every* layer rather
-than one, turning the unused `layer_outputs` into the multi-scale signal this hierarchy attempt was
-reaching for but could not reach.
-
-The causal chain in one breath: a single global sum is flat and represents no scale between a node's
-neighborhood and the whole graph, so the structured floor is a graph analogue of CNN pooling → that
-means clustering nodes into a coarser graph, hard clustering kills the gradient, so soften it into a
-node-normalized assignment S = softmax(scores) and pool X' = Sᵀ Z (permutation-invariant via PᵀP = I) →
-but that node-normalized pool followed by a mean over clusters is provably a convex combination of the
-nodes, Σᵢ wᵢ xᵢ with Σwᵢ = 1, i.e. a learned weighted mean that is invariant to multiset inflation and so
-count-blind → and my editable slot is only the post-backbone readout, so I cannot wire in the canonical
-method's pooling-GNN or its link/entropy auxiliaries; I keep the learned soft assignment (a plain MLP,
-5,785 params, well inside the 41,536 headroom, one level, mean over clusters) and drop the protection →
-which means, with no structural prior and no anti-diffuse term, and with K = 25 exceeding the node count
-on tiny MUTAG, the pool likely behaves like a learned, noisier global mean that discards counts → so
-this is the bottom rung by construction, and its failure points straight at the next: recover the counts
-with an injective *sum* and read it from every layer.
+Where is that falsifiable? On tiny MUTAG the K > N arithmetic and the 188-graph sample predict a coin
+flip: the assignment has almost no data to fit, so I expect test_acc to swing several points across seeds
+{42, 123, 456} — variance, not signal. On PROTEINS and NCI1 the opposite tell: because the pool collapses
+to nearly the same diffuse weighted mean every run, the seed spread should be *tight*, the fingerprint of
+a readout converging to one flat answer rather than learning a partition. PROTEINS, with the larger
+graphs where a real hierarchy would help most, is the cleanest place to read it — if the pool reaching
+for structure gets the least out of the most-structured set, that is the diagnosis confirming itself.
+The macro_f1 column cross-checks: a count-blind, majority-leaning mean should sit below test_acc on the
+more skewed sets and nearly coincide on a balanced one. Either way the weakness is that I *discarded
+structure and counts* and used none of the per-layer `layer_outputs`. The cleanest correction is to stop
+trying to learn a hierarchy without support for it and take the most expressive *flat* reduction — a sum,
+which keeps the counts a mean loses — read from *every* layer, turning the unused `layer_outputs` into
+the multi-scale signal this attempt was reaching for.
