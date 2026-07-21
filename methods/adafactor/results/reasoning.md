@@ -68,13 +68,11 @@ Entrywise, if I call the raw column sums `C = 1_nᵀ V` (so `C_j = Σ_i V_{ij}`)
 
 since `Σ_k R_k = Σ_{i,j} V_{ij} = 1_nᵀ V 1_m` is the grand total, which is the same whether I sum the row sums or the column sums.
 
-The derivation gave me a *stationary point*, not necessarily the global minimum, and I solved it by hand — I want to confirm I didn't fool myself. So let me check the closed form against an honest numerical optimizer. I take a random positive `4×5` matrix `V`, run the Lee–Seung multiplicative KL updates at rank 1 to convergence from a random start, and compare. The numerically-found factorization gives total I-divergence `2.6020705424231`; the closed form `V̂_{ij}=R_iC_j/ΣR_k` gives `2.6020705424232` — agreement to the last digit, and the reconstructed matrices match entrywise to `4e-16`. So the row-sum/column-sum formula really is the rank-1 I-divergence minimizer, not just a stationary point I stumbled into. The whole family of minimizers is exactly the pairs whose product equals this `V̂` — the gauge just slides the split between `R` and `S`.
+The derivation gave me a *stationary point* of a non-convex problem, not automatically the global minimum, so it's worth checking against an independent solver rather than trusting the algebra alone. I take a random positive `4×5` matrix `V`, run the Lee–Seung multiplicative KL updates at rank 1 to convergence from a random start, and compare. The numerically-found factorization gives total I-divergence `2.6020705424231`; the closed form `V̂_{ij}=R_iC_j/ΣR_k` gives `2.6020705424232` — agreement to the last digit, and the reconstructed matrices match entrywise to `4e-16`. So the row-sum/column-sum formula really is the rank-1 I-divergence minimizer, not just a stationary point. The whole family of minimizers is exactly the pairs whose product equals this `V̂` — the gauge just slides the split between `R` and `S`.
 
-Now let me check this reconstruction is what I actually want, not just what the math handed me.
+Two things this reconstruction needs to satisfy, beyond minimizing the divergence. Is it nonnegative? `V ≥ 0` entrywise, so all row sums and column sums are `≥ 0`, and `V̂_{ij} = R_i C_j / Σ_k R_k ≥ 0`. Good — square-rootable, the hard constraint is satisfied by construction.
 
-Is it nonnegative? `V ≥ 0` entrywise, so all row sums and column sums are `≥ 0`, and `V̂_{ij} = R_i C_j / Σ_k R_k ≥ 0`. Good — square-rootable, the hard constraint is satisfied by construction.
-
-Does it recover `V` when it should? If `V` is genuinely rank 1, say `V = a bᵀ`, then row sums `R = a (1ᵀb)`, column sums `C = b (1ᵀa)`, grand total `Σ R = (1ᵀa)(1ᵀb)`, and `V̂_{ij} = a_i(1ᵀb)·b_j(1ᵀa)/((1ᵀa)(1ᵀb)) = a_i b_j = V_{ij}`. Algebra says exact recovery; I'll confirm it numerically too, since it's cheap — building `V = a bᵀ` from random positive `a, b` and pushing it through the formula gives a reconstruction matching `V` to `4e-16`. So I'm only ever losing information to the extent `V` is *not* rank 1, which is the price I'm knowingly paying.
+Does it recover `V` when `V` actually is rank 1? Say `V = a bᵀ`: row sums `R = a (1ᵀb)`, column sums `C = b (1ᵀa)`, grand total `Σ R = (1ᵀa)(1ᵀb)`, and `V̂_{ij} = a_i(1ᵀb)·b_j(1ᵀa)/((1ᵀa)(1ᵀb)) = a_i b_j = V_{ij}` — exact recovery. So I'm only ever losing information to the extent `V` is *not* rank 1, which is the price I'm knowingly paying.
 
 And — this is the property I made a requirement after the SVD failed — `V̂` depends on `V` only through the row sums `V 1_m` and the column sums `1_nᵀ V`, and *those are linear functions of `V`*. Because the row sum is linear, the row sum of a moving average equals the moving average of the row sums:
 
@@ -91,7 +89,7 @@ So the matrix update, with Adam's machinery otherwise intact and momentum set as
 
 with the same bias-correction `1/(1−β₂ᵗ)` as Adam since `R` and `C` are zero-initialized EMAs. For a parameter that isn't a matrix — a vector or scalar — there's nothing to factor, so I just keep the ordinary full `v` there; those are small anyway.
 
-One worry before I trust this: by collapsing `V` to row and column sums, am I throwing away something the model needs? Two crude alternatives bound the question — instead of the outer product, just use the row means alone (one denominator per row, broadcast across columns) or the column means alone. If I imagine the shared input-embedding / output-softmax matrix where each row is a vocabulary token: frequent tokens get large-magnitude gradients, rare tokens tiny ones, so the variation that matters runs *down the rows*. A row-only summary keeps that and should be about as good as the full thing; a column-only summary averages frequent and rare tokens together within each column and destroys exactly the structure that matters — it should be much worse. The rank-1 outer product keeps both the row and the column profile, so it should be safe where either crude version is, and the column-only failure mode is the one to watch. That matches the intuition that the row/column structure is real signal, not noise I'm safe to average over.
+By collapsing `V` to row and column sums, am I throwing away something the model needs? Two crude alternatives bound the question — instead of the outer product, just use the row means alone (one denominator per row, broadcast across columns) or the column means alone. If I imagine the shared input-embedding / output-softmax matrix where each row is a vocabulary token: frequent tokens get large-magnitude gradients, rare tokens tiny ones, so the variation that matters runs *down the rows*. A row-only summary keeps that and should be about as good as the full thing; a column-only summary averages frequent and rare tokens together within each column and destroys exactly the structure that matters — it should be much worse. The rank-1 outer product keeps both the row and the column profile, so it should be safe where either crude version is, and the column-only failure mode is the one to watch. That matches the intuition that the row/column structure is real signal, not noise I'm safe to average over.
 
 Now, I came here to save memory, and I've cut the *second*-moment buffer for matrices from `nm` to `n+m`. But Adam has *two* buffers. The first moment `m` is still a full model-sized array. If I'm serious about memory, I should ask whether I can drop momentum entirely — set `β₁ = 0`, no first-moment accumulator at all. For vectors and scalars that takes their extra memory to zero; for matrices it leaves only the `O(n+m)` factored second moment. That would make the extra optimizer state sublinear everywhere.
 
@@ -127,7 +125,7 @@ Exactly. So Adam's bias-corrected recursion is *identical* to a plain EMA with n
 
   `v̂_t = β̂₂_t v̂_{t-1} + (1 − β̂₂_t) g_t²`,  `β̂₂_t = β₂(1−β₂^{t-1})/(1−β₂ᵗ)`.
 
-This is an algebraic identity, so let me confirm it numerically against the actual Adam path, because it's easy to drop a factor here. I run a 50-step squared-gradient stream through both: the standard Adam recursion with bias correction `v_t/(1−β₂ᵗ)` at `β₂=0.999`, and the plain time-varying EMA with `β̂₂_t` and no correction term. The two corrected sequences agree to `1e-14` at every step — machine precision, so the rewrite is exact. And the schedule it implies: at `t = 1`, `β̂₂_1 = β₂(1−1)/(1−β₂) = 0`, so `v̂_1 = g_1²` — no stale prior, just the first squared gradient; numerically `β̂₂` climbs from `0` toward `β₂` (at `t=1000` it's `0.998`, against `β₂=0.999`). So the bias correction *is* an increasing decay rate that starts at 0 and rises to `β₂`. That reframes the problem: I don't need to bolt a schedule onto Adam, I get to *choose* the increasing schedule `β̂₂_t` directly.
+The schedule this implies: at `t = 1`, `β̂₂_1 = β₂(1−1)/(1−β₂) = 0`, so `v̂_1 = g_1²` — no stale prior, just the first squared gradient; numerically `β̂₂` climbs from `0` toward `β₂` (at `t=1000` it's `0.998`, against `β₂=0.999`). So the bias correction *is* an increasing decay rate that starts at 0 and rises to `β₂`. That reframes the problem: I don't need to bolt a schedule onto Adam, I get to *choose* the increasing schedule `β̂₂_t` directly.
 
 So propose the family
 
@@ -157,7 +155,7 @@ Prove that holds, by induction on `t`. At `t = 1` the sum is just `1 − β̂₂
 
   `Σ_{i=1}^t (1−β̂₂_i) Π_{j=i+1}^t β̂₂_j = β̂₂_t · Σ_{i=1}^{t-1}(1−β̂₂_i)Π_{j=i+1}^{t-1} β̂₂_j + (1−β̂₂_t) = β̂₂_t·1 + (1−β̂₂_t) = 1`.
 
-So *any* schedule with `β̂₂_1 = 0` makes the EMA weights sum to one. I sum the weights numerically for `c ∈ {0.5, 0.8, 1.0, 1.5}` at `T=200` as a guard against an algebra slip — every case gives `1.000000000000`. Under the same stationarity approximation that justifies Adam's bias correction, that means no separate correction term is needed. Bias correction falls out for free, and it falls out for *every* `c > 0`.
+So *any* schedule with `β̂₂_1 = 0` makes the EMA weights sum to one — under the same stationarity approximation that justifies Adam's bias correction, no separate correction term is needed, and that holds for *every* `c > 0`.
 
 But "weights sum to 1" doesn't by itself make a good estimator — `c` is still unconstrained, and the weight-sum identity holds even for large `c`. There's a second condition I should impose, separate from unbiasedness: I don't want gradients from the distant past to keep nontrivial weight forever, or the estimate never really tracks the present. So I want, for every fixed `i`,
 
@@ -204,135 +202,8 @@ For a parameter that's a vector or scalar there's nothing to factor — keep the
 
 And momentum stays off, `β₁ = 0`, so there's no first-moment buffer at all; if I ever wanted it back I could reinstate the first-moment EMA on the clipped update exactly as Adam does, at the cost of the extra buffer. The recommended knobs: `ε₁ = 10⁻³⁰`, `ε₂ = 10⁻³`, `d = 1`, `ρ_t = min(10⁻², 1/√t)`, `β̂₂_t = 1 − t^{-0.8}`.
 
-Let me write it as code I'd actually run. The thing to get right when implementing: rather than literally storing the row/column *sums* `R` and `C` and the grand-total normalizer separately, it's cleaner and numerically nicer to keep the row and column *means* of the squared gradient. This is not an approximation beyond the rank-1 fit. If `r_i = (1/m)Σ_j V_{ij}` and `c_j = (1/n)Σ_i V_{ij}`, then `V̂_{ij} = R_i C_j / Σ_k R_k = r_i c_j / mean_i(r)`, so `1/√V̂_{ij} = √(mean_i(r)/r_i) · √(1/c_j)`. That is exactly `rsqrt(r_i / mean(r))` along the row axis times `rsqrt(c_j)` along the column axis, broadcast into the full matrix. Before I trust that the mean-form really is the same map as the sum-form, I push a random positive `3×4` matrix through both — `1/√V̂` from `R_iC_j/ΣR_k` and from the `rsqrt(r/mean(r))·rsqrt(c)` mean-form — and they agree entrywise to `2e-16`. Same map, just better-conditioned arithmetic. A parameter counts as a matrix to factor when it has at least two axes; the row buffer has the shape of all-but-the-last axis, the column buffer all-but-the-second-last.
+What actually needs implementing, then: rather than literally storing the row/column *sums* `R` and `C` and the grand-total normalizer separately, it's cleaner and numerically nicer to keep the row and column *means* of the squared gradient — not a further approximation, just a rescaling of the same rank-1 fit. If `r_i = (1/m)Σ_j V_{ij}` and `c_j = (1/n)Σ_i V_{ij}`, then `V̂_{ij} = R_i C_j / Σ_k R_k = r_i c_j / mean_i(r)`, so `1/√V̂_{ij} = √(mean_i(r)/r_i) · √(1/c_j)` — the reconstruction factors cleanly into a row-axis term `rsqrt(r_i / mean(r))` and a column-axis term `rsqrt(c_j)`, whose outer product multiplied elementwise into the gradient gives `U_t`.
 
-```python
-import math
-import torch
-from torch.optim import Optimizer
+A parameter counts as a matrix to factor when it has at least two axes; the row buffer takes the shape of all-but-the-last axis, the column buffer all-but-the-second-last. Everything else the optimizer needs — lazy per-parameter state, the relative-step schedule `α_t = max(ε₂,RMS(X))ρ_t`, the increasing decay `β̂₂_t=1−t^{-0.8}` applied to the row/col means, the RMS-based clip, the optional momentum on the clipped update, half-precision bookkeeping — is standard optimizer plumbing wired around this one reconstruction.
 
-
-class Adafactor(Optimizer):
-    """Adaptive optimizer with sublinear extra memory.
-
-    Matrix params: store only row/col means of the squared gradient and
-    reconstruct the per-coordinate denominator as their rank-1 outer product
-    (the I-divergence-optimal rank-1 fit to the second-moment matrix).
-    Plus: no first moment by default, an increasing second-moment decay that
-    removes bias correction, update clipping by RMS, and a relative step size.
-    """
-
-    def __init__(self, params, lr=None, eps=(1e-30, 1e-3), clip_threshold=1.0,
-                 decay_rate=-0.8, beta1=None, scale_parameter=True,
-                 relative_step=True, warmup_init=False):
-        if lr is not None and relative_step:
-            raise ValueError("Cannot combine manual `lr` with relative_step=True")
-        if warmup_init and not relative_step:
-            raise ValueError("warmup_init=True requires relative_step=True")
-        # eps = (eps1, eps2): eps1 floors the second moment, eps2 floors the
-        # parameter scale so zero-initialized params can escape 0.
-        defaults = dict(lr=lr, eps=eps, clip_threshold=clip_threshold,
-                        decay_rate=decay_rate, beta1=beta1,
-                        scale_parameter=scale_parameter,
-                        relative_step=relative_step, warmup_init=warmup_init)
-        super().__init__(params, defaults)
-
-    @staticmethod
-    def _rms(t):                                   # RMS over all entries
-        return t.norm(2) / (t.numel() ** 0.5)
-
-    @staticmethod
-    def _get_lr(group, state):
-        rel = group["lr"]
-        if group["relative_step"]:                 # rho_t = min(1e-2, 1/sqrt(t))
-            min_step = 1e-6 * state["step"] if group["warmup_init"] else 1e-2
-            rel = min(min_step, 1.0 / math.sqrt(state["step"]))
-        scale = 1.0
-        if group["scale_parameter"]:               # relative step: max(eps2, RMS(X)) * rho
-            scale = max(group["eps"][1], state["RMS"])
-        return scale * rel
-
-    @staticmethod
-    def _approx_sq_grad(row_mean, col_mean):
-        # 1/sqrt(V_hat) = rsqrt(r_i / mean(r)) * rsqrt(c_j), the rank-1
-        # reconstruction from row/col sums in mean form (outer product).
-        r = (row_mean / row_mean.mean(dim=-1, keepdim=True)).rsqrt_().unsqueeze(-1)
-        c = col_mean.unsqueeze(-2).rsqrt()
-        return torch.mul(r, c)
-
-    @torch.no_grad()
-    def step(self, closure=None):
-        loss = closure() if closure is not None else None
-        for group in self.param_groups:
-            for p in group["params"]:
-                if p.grad is None:
-                    continue
-                grad = p.grad
-                if grad.is_sparse:
-                    raise RuntimeError("Adafactor does not support sparse gradients")
-                if grad.dtype in {torch.float16, torch.bfloat16}:
-                    grad = grad.float()
-                state = self.state[p]
-                factored = grad.dim() >= 2            # factor over the final two axes
-                use_first_moment = group["beta1"] is not None
-
-                if len(state) == 0:                  # lazy state init
-                    state["step"] = 0
-                    if use_first_moment:
-                        state["exp_avg"] = torch.zeros_like(grad)
-                    if factored:                     # O(n)+O(m), not O(nm)
-                        state["row"] = torch.zeros(grad.shape[:-1]).to(grad)
-                        state["col"] = torch.zeros(grad.shape[:-2] + grad.shape[-1:]).to(grad)
-                    else:
-                        state["v"] = torch.zeros_like(grad)
-                    state["RMS"] = 0
-                else:
-                    if use_first_moment:
-                        state["exp_avg"] = state["exp_avg"].to(grad)
-                    if factored:
-                        state["row"] = state["row"].to(grad)
-                        state["col"] = state["col"].to(grad)
-                    else:
-                        state["v"] = state["v"].to(grad)
-
-                p_data_fp32 = p
-                if p.dtype in {torch.float16, torch.bfloat16}:
-                    p_data_fp32 = p_data_fp32.float()
-
-                state["step"] += 1
-                state["RMS"] = self._rms(p_data_fp32) # parameter scale, for relative step
-                lr = self._get_lr(group, state)
-
-                beta2t = 1.0 - state["step"] ** group["decay_rate"]   # beta2_hat_t = 1 - t^{-0.8}
-                sq = grad ** 2 + group["eps"][0]                       # g^2 + eps1, floors V_hat
-
-                if factored:
-                    row, col = state["row"], state["col"]             # running row/col MEANS of g^2
-                    row.mul_(beta2t).add_(sq.mean(dim=-1), alpha=1.0 - beta2t)
-                    col.mul_(beta2t).add_(sq.mean(dim=-2), alpha=1.0 - beta2t)
-                    update = self._approx_sq_grad(row, col)           # 1/sqrt(V_hat), rank-1
-                    update.mul_(grad)                                 # U = G / sqrt(V_hat)
-                else:
-                    v = state["v"]
-                    v.mul_(beta2t).add_(sq, alpha=1.0 - beta2t)
-                    update = v.rsqrt().mul_(grad)
-
-                # update clipping: cap RMS(U) at d, leave it alone if already below
-                if group["clip_threshold"] is not None:
-                    update.div_((self._rms(update) / group["clip_threshold"]).clamp_(min=1.0))
-                update.mul_(lr)                                       # alpha_t * U_hat
-
-                if use_first_moment:                                 # optional momentum on the clipped update
-                    exp_avg = state["exp_avg"]
-                    exp_avg.mul_(group["beta1"]).add_(update, alpha=1 - group["beta1"])
-                    update = exp_avg
-
-                p_data_fp32.add_(update, alpha=-1.0)                  # X <- X - alpha_t * U_hat
-                if p.dtype in {torch.float16, torch.bfloat16}:
-                    p.copy_(p_data_fp32)
-        return loss
-```
-
-Before I call this done, let me trace one full step on a small matrix to make sure the pieces compose the way I think. Take a `3×4` parameter `X` with random entries and a random gradient `G`, and run a single `step()`. At `t=1` the decay is `β̂₂_1 = 1 − 1^{-0.8} = 0`, so the row/col buffers go straight to the row/col means of `G²+ε₁` with no stale prior — the denominator is the rank-1 reconstruction of `G²`. Now here's a check I expected to come out clean and didn't quite: I figured `U = G/√V̂` would be exactly `sign(G)` on the first step (since `V̂ ≈ G²`), giving `RMS(U)=1` exactly, no clipping, and `step = α·sign(G)`. Running it, `RMS(U) = 1.0043`, not `1`. The gap is real and instructive: the rank-1 reconstruction of `G²` is *not* `G²` unless `G²` happens to be rank 1, and a random `G²` isn't — so `√V̂ ≠ |G|` entrywise and `U` is only approximately `sign(G)`. That's not a bug, it's exactly the rank-1 approximation error I knowingly accepted, showing up at the smallest possible scale; `RMS(U)=1.004` sits just under the clip threshold `d=1`... actually just over, so on this draw the clip divides by `1.004` and trims it back to exactly `1` before scaling by `α`. The composed step matches `α·Û` to floating point. So the clipping engages even on a benign first step whenever the approximation error nudges `RMS(U)` past 1 — good to know the guard is live and not just decorative.
-
-So the chain, start to finish: Adam's second-moment buffer is a full model-sized copy and that's what's capping model size, but the per-coordinate denominator it stores has row/column structure on a weight matrix, so I try to keep only a rank-1 summary and reconstruct the rest. The textbook rank-1 (truncated SVD) is wrong twice — a `2×2` example shows its top singular vector doesn't survive the exponential smoothing of a running accumulator, and its factors aren't nonnegative — so I switch to a nonnegative factorization under the I-divergence, and minimizing it at rank 1 hands back exactly the row sums and column sums of `V` (which I confirmed against a numerical NMF solver to machine precision), with reconstruction `V̂_{ij} = R_i C_j / Σ_k R_k`; because row/column sums are linear in `V`, smoothing and factoring commute and I can maintain just `R ∈ ℝⁿ` and `C ∈ ℝᵐ`, dropping the buffer from `O(nm)` to `O(n+m)`. Then I drop the *first*-moment buffer too (`β₁ = 0`), which exposes an instability — stale slow-decaying second moments produce larger-than-desired steps, visible as `RMS(U_t)` straying from 1 — and I fix it directly by clipping the actual update `U = G/√V̂` by its RMS (not the gradient, which adaptive scaling renders useless to clip). I attack the same stale-estimate problem at its root with an increasing decay `β̂₂_t = 1 − t^{-c}`, which I found is the same shape Adam's bias correction already implies (verified as an exact identity numerically), decays fast early and slow late, removes bias correction for free as long as `β̂₂_1 = 0`, and needs `c ≤ 1` — which I pinned down by watching the weight on an old gradient vanish for `c=0.8, 1.0` but plateau near `0.28` for `c=1.5`. Finally I make the step *relative* — scale it by `max(ε₂, RMS(X))` so each parameter moves a fixed fraction of its own size — and the resulting optimizer keeps Adam-style per-coordinate adaptivity while its extra memory is sublinear in the parameters.
+Before calling this done, trace one full update on a small matrix to make sure the pieces compose the way I think. Take a `3×4` parameter `X` with random entries and a random gradient `G`. At `t=1` the decay is `β̂₂_1 = 1 − 1^{-0.8} = 0`, so the row/col buffers go straight to the row/col means of `G²+ε₁` with no stale prior — the denominator is the rank-1 reconstruction of `G²`. Here's a check I expected to come out clean and didn't quite: I figured `U = G/√V̂` would be exactly `sign(G)` on the first step (since `V̂ ≈ G²`), giving `RMS(U)=1` exactly, no clipping, and `step = α·sign(G)`. Running it, `RMS(U) = 1.0043`, not `1`. The gap is real and instructive: the rank-1 reconstruction of `G²` is *not* `G²` unless `G²` happens to be rank 1, and a random `G²` isn't — so `√V̂ ≠ |G|` entrywise and `U` is only approximately `sign(G)`. That's not a bug, it's exactly the rank-1 approximation error I knowingly accepted, showing up at the smallest possible scale; `RMS(U)=1.004` is just over the clip threshold `d=1`, so on this draw the clip divides by `1.004` and trims it back to exactly `1` before scaling by `α`. The composed step matches `α·Û` to floating point. So the clipping engages even on a benign first step whenever the approximation error nudges `RMS(U)` past 1 — the guard is live, not just decorative.
