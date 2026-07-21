@@ -24,7 +24,7 @@ So relax the selection. Instead of picking one position, take *all* the annotati
 
   c_i = Σ_{j=1}^{Tx} α_ij h_j.
 
-This is smooth: c_i is a differentiable function of every α_ij, so gradient can flow back into whatever produces the weights. But I want to be sure I haven't actually given up the selection I started with — that the soft average really does *contain* the hard pick as a limiting case, otherwise I've quietly changed the model into something weaker. Let me check it with numbers rather than assert it. Take a toy with three source positions and 2-dimensional annotations h_1 = (1,0), h_2 = (0,1), h_3 = (−1,−1), and suppose the scorer wants position 2. If the three energies are equal, say (0,0,0), the softmax gives α = (0.333, 0.333, 0.333) and c = 0.333·(1,0) + 0.333·(0,1) + 0.333·(−1,−1) = (0, 0) — a flat blend that points nowhere in particular, exactly the useless "average everything" I'm trying to escape. Now push the energy on position 2 up to (0, 8, 0): the softmax gives α = (0.0003, 0.9993, 0.0003) and c = (0.0, 0.999), which is h_2 = (0,1) to three decimals. So as the scorer sharpens, c_i → h_{j*}: the hard selection is the limit of the soft one, recovered for free by making one energy dominate, and I never had to commit to a non-differentiable argmax to get there. The weighted average is strictly more general — it can also keep mass on two positions at once when a target word genuinely depends on more than one source word, and it can spread over context for a word with no single lexical source instead of needing a NULL token — but it loses nothing I wanted from the hard version.
+This is smooth: c_i is a differentiable function of every α_ij, so gradient flows back into whatever produces the weights, and it doesn't secretly give up the selection I started with. With equal energies the softmax is uniform and c_i is just the flat average of every annotation — which also tells me where training starts, since near-zero alignment weights land there rather than anywhere pathological. Push one energy far above the rest, though, and the softmax concentrates almost entirely on that position, so c_i converges to that single annotation: the hard pick is the sharp-energy limit of the soft average, not a different mechanism I'm giving up. And unlike the hard version, this one can keep mass on two positions at once when a target word genuinely depends on both, or spread over context for a word with no single lexical source, without needing a NULL token.
 
 And there's a clean reading of what c_i now *is*. If I interpret α_ij as the probability that target word y_i is aligned to — translated from — source word x_j, then c_i = Σ_j α_ij h_j is exactly the expected annotation under that alignment distribution, E_{j∼α_i}[h_j]. So I haven't thrown away the alignment idea from statistical MT; I've made it soft. The alignment isn't a discrete latent variable estimated by a separate EM step — it's a deterministic, differentiable quantity computed inside the network, and the gradient of the translation loss flows straight through it and trains the aligner jointly with everything else.
 
@@ -34,13 +34,13 @@ The normalization is the easy half: I want nonnegative weights summing to one ov
 
   α_ij = exp(e_ij) / Σ_{k=1}^{Tx} exp(e_ik).
 
-The harder half is the scoring function e_ij = a(s_{i-1}, h_j) — how do I compare a decoder state to a source annotation? The first thing I reach for is a dot product, e_ij = s_{i-1} · h_j, since that's the cheapest similarity. But before I commit, let me actually check the shapes, because s_{i-1} lives in R^n (the decoder has n hidden units) while h_j is a concatenation of a forward and a backward state, so it lives in R^{2n}. With n = 4, the dot product is asking to multiply a length-4 vector elementwise against a length-8 vector — it simply doesn't define; the operation errors on the size mismatch (4 vs 8), there's no broadcasting that rescues it. So the dot product is out unless I first insert a projection just to make the shapes line up. And once I'm projecting anyway, there's no reason to restrict the comparison to a bilinear form. So let me just learn the comparison directly with a small neural net: project the query and the key each into a common space and let a nonlinearity and a final vector decide the score. Concretely a one-hidden-layer MLP,
+The harder half is the scoring function e_ij = a(s_{i-1}, h_j) — how do I compare a decoder state to a source annotation? The first thing I reach for is a dot product, e_ij = s_{i-1} · h_j, since that's the cheapest similarity. But the shapes don't match: s_{i-1} lives in R^n (the decoder has n hidden units), while h_j is a concatenation of a forward and a backward state, so it lives in R^{2n}. With n = 4, that's a length-4 vector against a length-8 vector — the dot product simply isn't defined, and no broadcasting rescues it. So the dot product is out unless I first insert a projection just to make the shapes line up. And once I'm projecting anyway, there's no reason to restrict the comparison to a bilinear form. So let me just learn the comparison directly with a small neural net: project the query and the key each into a common space and let a nonlinearity and a final vector decide the score. Concretely a one-hidden-layer MLP,
 
   e_ij = a(s_{i-1}, h_j) = v_a^T tanh(W_a s_{i-1} + U_a h_j),
 
-with W_a mapping the decoder state (R^n) into the hidden comparison space, U_a mapping the annotation (R^{2n}) into that same space, the tanh giving it the freedom to be a nonlinear match rather than a fixed inner product, and v_a reading the hidden activation out to a single scalar energy. Let me confirm this actually produces a scalar and resolves the shape problem: with n = 4, n' = 3, W_a s_{i-1} is a 3-vector, U_a h_j is a 3-vector (U_a is 3×8, so the 2n = 8 annotation maps in cleanly), their sum goes through tanh as a 3-vector, and v_a^T contracts it to a single number — a well-formed scalar energy. The mismatched dimensions never collide because each input gets its own projection matrix into the shared n'-space. This is a feedforward network jointly trained with the rest — the aligner is just more parameters in the same model, learned by the same backprop, and that's the whole point of having made the alignment soft.
+with W_a mapping the decoder state (R^n) into the hidden comparison space, U_a mapping the annotation (R^{2n}) into that same space, the tanh giving it the freedom to be a nonlinear match rather than a fixed inner product, and v_a reading the hidden activation out to a single scalar energy. Each side gets its own projection into the shared R^{n'}, so the n-vs-2n mismatch that killed the dot product never recurs: W_a s_{i-1} and U_a h_j land at the same width by construction, and v_a contracts their tanh sum to a scalar regardless. This is a feedforward network jointly trained with the rest — the aligner is just more parameters in the same model, learned by the same backprop, and that's the whole point of having made the alignment soft.
 
-Let me check the cost of this, because it's the one place this design is clearly more expensive than the old encoder–decoder. The score a(s_{i-1}, h_j) has to be evaluated for every source position j and every target position i — that's Tx × Ty evaluations per sentence pair, a full matrix, where the old model paid essentially nothing per step beyond running the decoder. For translation that's tolerable: sentences are mostly fifteen to forty words, so the matrix is small. But I can also shave it. Look at the score: W_a s_{i-1} changes every decoder step, but U_a h_j depends only on the annotation, not on i. So I can compute all the U_a h_j once per sentence, up front, and at each decoder step only recompute W_a s_{i-1} and add. That cuts the per-step alignment work roughly in half and makes the Tx × Ty matrix cheap to fill.
+This design does have one real cost the old encoder–decoder didn't pay. The score a(s_{i-1}, h_j) has to be evaluated for every source position j and every target position i — that's Tx × Ty evaluations per sentence pair, a full matrix, where the old model paid essentially nothing per step beyond running the decoder. For translation that's tolerable: sentences are mostly fifteen to forty words, so the matrix is small. But I can also shave it. Look at the score: W_a s_{i-1} changes every decoder step, but U_a h_j depends only on the annotation, not on i. So I can compute all the U_a h_j once per sentence, up front, and at each decoder step only recompute W_a s_{i-1} and add. That cuts the per-step alignment work roughly in half and makes the Tx × Ty matrix cheap to fill.
 
 Now wire the context into the decoder. The decoder is a gated recurrent unit — I want gating because a plain tanh RNN can't carry information across the dozens of steps a translation takes; gradients vanish through the recurrence, and the gated cell keeps computation paths whose product of derivatives stays near one so gradient survives. The GRU has an update gate z deciding how much candidate state to write, so 1 − z keeps the old state; a reset gate r decides how much old state feeds the candidate; and the new state is a gated interpolation. The only change from the standard cell is that the per-step context c_i now feeds in alongside the previous output embedding and the previous state, in all three places:
 
@@ -53,127 +53,10 @@ where E is the target embedding matrix so E y_{i-1} is the embedding of the prev
 
 For the output distribution, rather than a single linear-softmax I use a slightly deeper readout — it helps to give the emission its own nonlinear layer before the vocabulary projection. The detailed readout uses the same pre-emission state that queried the source, the previous word, and the context: t̃_i = U_o s_{i-1} + V_o E y_{i-1} + C_o c_i. Then a maxout layer takes the max over consecutive pairs, t_i = [ max(t̃_{i,2k-1}, t̃_{i,2k}) ]_k, and a linear-plus-softmax maps to the target vocabulary, p(y_i | y_{<i}, x) ∝ exp(y_i^T W_o t_i). The maxout just gives the readout a cheap nonlinearity by selecting between two linear pieces per unit.
 
-Before I trust this whole thing, let me make sure I haven't built something that *replaces* the old encoder–decoder rather than *generalizing* it — a new model that can't fall back to the old behavior would be a gamble, whereas one that contains the old model as a special case can only help. So I'll try to substitute the old model's settings into the new equations and see if they collapse to it. Freeze the context: force c_i = c̄ for every i, a single source summary, with the context dimensionality matched (in the usual RNN encoder–decoder that summary is the final forward encoder state →h_Tx). Walk it through. The decoder factor g(y_{i-1}, s_i, c_i) becomes g(y_{i-1}, s_i, c̄) — one frozen conditioning vector, which is the original. The GRU equations keep their form but every C c_i term is now the same constant C c̄ at every step, so they're just an ordinary GRU decoder reading a fixed context. And the alignment machinery — the MLP and the softmax — produces α_ij that no longer feed anything, because c_i is fixed regardless of the weights; the gradient into W_a, U_a, v_a is zero and those parameters sit inert. So nothing of the old model is missing and nothing extra is active: the plain encoder–decoder is literally the c_i ≡ c̄ corner of this model. That's the reassurance I wanted — learning is free to recover it if that were ever best. It won't be, because the frozen-context configuration is precisely the bottleneck I'm trying to escape, but the new model can't do worse in principle, and that's worth having confirmed by substitution rather than assumed.
+I want this new model to *generalize* the old encoder–decoder, not merely replace it — one that can't fall back to the old behavior when that's genuinely best would be a gamble, whereas one that contains the old model as a special case can only help. So substitute the old model's settings into the new equations and see if they collapse to it. Freeze the context: force c_i = c̄ for every i, a single source summary, with the context dimensionality matched (in the usual RNN encoder–decoder that summary is the final forward encoder state →h_Tx). Walk it through. The decoder factor g(y_{i-1}, s_i, c_i) becomes g(y_{i-1}, s_i, c̄) — one frozen conditioning vector, which is the original. The GRU equations keep their form but every C c_i term is now the same constant C c̄ at every step, so they're just an ordinary GRU decoder reading a fixed context. And the alignment machinery — the MLP and the softmax — produces α_ij that no longer feed anything, because c_i is fixed regardless of the weights; the gradient into W_a, U_a, v_a is zero and those parameters sit inert. So nothing of the old model is missing and nothing extra is active: the plain encoder–decoder is literally the c_i ≡ c̄ corner of this model, a special case rather than a different animal, so learning is free to fall back to it if the soft alignment ever failed to help. It won't need to, since the frozen-context configuration is exactly the bottleneck I started from — but the new model can't do worse in principle.
 
 There's one more design comparison worth settling, because a soft, learned alignment already exists in a neighboring problem. In handwriting synthesis, Graves makes a generator attend to a character sequence with a differentiable, location-based scheme — a mixture of Gaussian kernels whose centers are predicted — but the centers are constrained to advance monotonically, the attention only ever moves forward. For handwriting that's right, because you write characters in order. For translation it would be a real limitation: getting a grammatical target constantly requires reordering — adjectives and nouns swap between languages, and longer-range movement is common — so the place I need to read in the source can jump backward relative to where I just read. My content-based score e_ij = a(s_{i-1}, h_j) has no monotonicity baked in; it scores every source position on its merits for the current step, so it can attend anywhere and reorder freely. The price is that I score all Tx positions every step instead of nudging a single moving location, but for sentence-length inputs that's the cost I already decided was acceptable.
 
 For training there's nothing exotic: maximize the log-probability of the correct translation, ∑ log p(y | x), by minibatch SGD. RNNs like this are prone to exploding gradients, so I clip the global gradient norm to a threshold of one before each step (Pascanu, Mikolov & Bengio). I use Adadelta to adapt per-parameter learning rates so I don't have to hand-tune a schedule. Initialization matters for the recurrence — random orthogonal matrices for the recurrent weights so the state map preserves gradient norm to start — and the alignment net wants small, near-zero initial weights (sample W_a and U_a from a tight Gaussian, set v_a and the biases to zero) so attention starts roughly uniform and the energies don't saturate the tanh before there's any signal. At decode time I don't take greedy argmaxes; I run a beam search to approximately maximize the conditional probability.
 
-One implementation point I want to pin down before writing it: in code the context c_i = Σ_j α_ij h_j is a weighted sum over the source positions, and the natural way to express it is a batched matrix multiply of the weight vector against the stacked annotations, bmm(α.unsqueeze(1), annotations).squeeze(1). Let me confirm that's the same arithmetic and not a transpose mistake. With one example, three source positions, annotations [[1,0],[0,1],[−1,−1]] and weights [0.1, 0.7, 0.2], the bmm gives [−0.1, 0.5], and the hand sum 0.1·(1,0) + 0.7·(0,1) + 0.2·(−1,−1) = (0.1−0.2, 0.7−0.2) = (−0.1, 0.5) — they agree. Good; the one-liner is the expected-annotation sum, so the code below reads c_i straight off the weights.
-
-```python
-import torch
-import torch.nn as nn
-
-class Encoder(nn.Module):
-    """Bidirectional GRU: turn the source into a sequence of per-position
-    annotations the decoder can re-read, plus an initial decoder state."""
-    def __init__(self, input_dim, emb_dim, hidden_dim, dropout):
-        super().__init__()
-        self.embedding = nn.Embedding(input_dim, emb_dim)
-        self.rnn = nn.GRU(emb_dim, hidden_dim, bidirectional=True)
-        # s_0 = tanh(W_s backward_h_1)
-        self.init_state = nn.Linear(hidden_dim, hidden_dim)
-        self.dropout = nn.Dropout(dropout)
-
-    def forward(self, src):                              # src: [src_len, batch]
-        embedded = self.dropout(self.embedding(src))
-        # outputs[j] = h_j = [forward_j ; backward_j]  -> the annotations
-        outputs, hidden = self.rnn(embedded)            # outputs: [src_len, batch, 2*n]
-        # hidden[-1] is the backward state at source position 1
-        hidden = torch.tanh(self.init_state(hidden[-1]))
-        return outputs, hidden                           # annotations, s_0
-
-
-class AdditiveAlignment(nn.Module):
-    """e_ij = v_a^T tanh(W_a s_{i-1} + U_a h_j), then softmax over j."""
-    def __init__(self, hidden_dim, attn_dim):
-        super().__init__()
-        self.query = nn.Linear(hidden_dim, attn_dim, bias=False)
-        self.key = nn.Linear(hidden_dim * 2, attn_dim, bias=False)
-        self.energy = nn.Linear(attn_dim, 1, bias=False)
-
-    def precompute(self, encoder_outputs):
-        return self.key(encoder_outputs)               # U_a h_j: [src_len, batch, attn]
-
-    def forward(self, hidden, projected_annotations):   # hidden: [batch, n]
-        query = self.query(hidden).unsqueeze(0)         # [1, batch, attn]
-        e = self.energy(torch.tanh(query + projected_annotations)).squeeze(2)
-        return torch.softmax(e.transpose(0, 1), dim=1)  # alpha_ij: [batch, src_len]
-
-
-class DecoderGRUCell(nn.Module):
-    """The decoder GRU equations with c_i entering the candidate and both gates."""
-    def __init__(self, emb_dim, context_dim, hidden_dim):
-        super().__init__()
-        self.candidate_x = nn.Linear(emb_dim, hidden_dim)
-        self.candidate_h = nn.Linear(hidden_dim, hidden_dim, bias=False)
-        self.candidate_c = nn.Linear(context_dim, hidden_dim, bias=False)
-        self.update_x = nn.Linear(emb_dim, hidden_dim)
-        self.update_h = nn.Linear(hidden_dim, hidden_dim, bias=False)
-        self.update_c = nn.Linear(context_dim, hidden_dim, bias=False)
-        self.reset_x = nn.Linear(emb_dim, hidden_dim)
-        self.reset_h = nn.Linear(hidden_dim, hidden_dim, bias=False)
-        self.reset_c = nn.Linear(context_dim, hidden_dim, bias=False)
-
-    def forward(self, embedded, prev_hidden, context):
-        z = torch.sigmoid(
-            self.update_x(embedded) + self.update_h(prev_hidden) + self.update_c(context)
-        )
-        r = torch.sigmoid(
-            self.reset_x(embedded) + self.reset_h(prev_hidden) + self.reset_c(context)
-        )
-        candidate = torch.tanh(
-            self.candidate_x(embedded) + self.candidate_h(r * prev_hidden) + self.candidate_c(context)
-        )
-        return (1 - z) * prev_hidden + z * candidate
-
-
-class Decoder(nn.Module):
-    """One GRU step conditioned on the previous word and the per-step context
-    c_i = sum_j alpha_ij h_j; maxout readout to the vocabulary."""
-    def __init__(self, output_dim, emb_dim, hidden_dim, maxout_dim, dropout, alignment):
-        super().__init__()
-        self.output_dim = output_dim
-        self.maxout_dim = maxout_dim
-        self.alignment = alignment
-        self.embedding = nn.Embedding(output_dim, emb_dim)
-        self.rnn_cell = DecoderGRUCell(emb_dim, hidden_dim * 2, hidden_dim)
-        self.readout = nn.Linear(hidden_dim + emb_dim + hidden_dim * 2, maxout_dim * 2)
-        self.fc_out = nn.Linear(maxout_dim, output_dim, bias=False)
-        self.dropout = nn.Dropout(dropout)
-
-    def forward(self, input, hidden, encoder_outputs, projected_annotations):
-        embedded = self.dropout(self.embedding(input))              # [batch, emb]
-        alpha = self.alignment(hidden, projected_annotations)       # [batch, src_len]
-        annotations = encoder_outputs.permute(1, 0, 2)              # [batch, src_len, 2*n]
-        # c_i = sum_j alpha_ij h_j  (expected annotation)
-        context = torch.bmm(alpha.unsqueeze(1), annotations).squeeze(1)  # [batch, 2*n]
-        prev_hidden = hidden
-        hidden = self.rnn_cell(embedded, prev_hidden, context)           # s_i
-        readout = self.readout(torch.cat((prev_hidden, embedded, context), dim=1))
-        maxout = readout.view(readout.shape[0], self.maxout_dim, 2).max(dim=2).values
-        prediction = self.fc_out(maxout)
-        return prediction, hidden, alpha
-
-
-class Seq2Seq(nn.Module):
-    def __init__(self, encoder, decoder, device):
-        super().__init__()
-        self.encoder, self.decoder, self.device = encoder, decoder, device
-
-    def forward(self, src, trg, teacher_forcing_ratio):
-        trg_len, batch = trg.shape
-        outputs = torch.zeros(trg_len, batch, self.decoder.output_dim, device=trg.device)
-        encoder_outputs, hidden = self.encoder(src)     # annotations, s_0
-        projected_annotations = self.decoder.alignment.precompute(encoder_outputs)
-        input = trg[0]                                  # <sos>
-        for t in range(1, trg_len):
-            output, hidden, _ = self.decoder(input, hidden, encoder_outputs, projected_annotations)
-            outputs[t] = output
-            teacher = torch.rand((), device=trg.device).item() < teacher_forcing_ratio
-            input = trg[t] if teacher else output.argmax(1)
-        return outputs
-```
-
-The causal chain in one breath: one fixed vector can't hold a whole source sentence, and that shows up as quality collapsing on long inputs; so keep the source as a bidirectional sequence of annotations the decoder can re-read instead of crushing it; let the decoder build a fresh context per step by relevance; "relevance" wants to be a hard pick of one source word but that's non-differentiable and pulls in the separate EM machinery I'm avoiding, so soften it to a softmax-weighted average of annotations — an expected annotation under a differentiable alignment that backprop trains jointly with everything else, and which I checked numerically collapses back to the hard pick as the energies sharpen; score relevance by comparing the pre-emission decoder state s_{i-1} to each annotation with a small MLP because their dimensions (n vs 2n) don't even admit a dot product; feed that context through the gated decoder and the maxout readout — and the plain encoder–decoder drops out, by substitution, as the fixed-context corner of this model.
+Turning this into code is now direct transcription of the equations above: a bidirectional GRU encoder that returns the stacked annotations h_j and a tanh-initialized decoder state; an alignment module whose precompute step is exactly the once-per-sentence U_a h_j and whose forward step adds the projected decoder state and contracts through v_a before the softmax; a GRU cell whose three gates each take the extra c_i term; and a decoder step that reads c_i off the weights as a batched weighted sum over the annotations, runs the GRU cell, and passes the result through the maxout readout. That module — encoder, alignment, decoder cell, and the autoregressive loop around them — is what I hand over as the implementation.

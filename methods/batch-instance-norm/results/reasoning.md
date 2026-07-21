@@ -26,7 +26,7 @@ and then the usual learnable affine on top,
 
   y_{nchw} = γ_c · z_{nchw} + β_c.
 
-Why a convex combination rather than something fancier? I want the endpoints to be *exactly* the two methods I already trust. Let me check that the endpoints really collapse the way I'm claiming, since that's the property the whole design rests on. At ρ_c = 1, z = x̂^(B), and the affine on top gives γ_c·x̂^(B) + β_c — that's batch norm with its usual affine, verbatim. At ρ_c = 0, z = x̂^(I), giving γ_c·x̂^(I) + β_c — instance norm with the same affine. So the two corners are pure BN and pure IN with nothing extra, and in between it's a literal interpolation. Good: the construction degenerates to exactly the things I trust at the two ends, so I'm not introducing a new untested operation, only a way to slide between two old ones. Both branches already share the same [N,C,H,W] shape and I'm going to put the same γ,β on the result, so a scalar mix per channel is the minimal thing that contains both as special cases. Now let me weigh the alternatives, because "minimal" is a claim I should be able to defend. Concatenating the two responses would double the channel count and break the drop-in property — I want this to slot into an existing architecture in place of the BN layer with no other change. A small learned network gating the two would add real capacity, and then any improvement is confounded: a skeptic could say "you just added parameters." A convex scalar adds exactly C extra numbers per layer; against a ResNet's millions of weights that's a fraction of a percent, so a capacity-increase explanation for any gain doesn't hold up. So: one scalar per channel, ρ ∈ [0,1], interpolating two normalizations I already have.
+Why a convex combination rather than something fancier? I want the endpoints to be *exactly* the two methods I already trust: at ρ_c = 1, z = x̂^(B) and y = γ_c·x̂^(B) + β_c — batch norm with its usual affine, verbatim; at ρ_c = 0, z = x̂^(I) and y = γ_c·x̂^(I) + β_c — instance norm with the same affine. So the two corners are pure BN and pure IN with nothing extra, and in between it's a literal interpolation. Both branches already share the same [N,C,H,W] shape and I'm going to put the same γ,β on the result, so a scalar mix per channel is the minimal thing that contains both as special cases. Weigh the alternatives: concatenating the two responses would double the channel count and break the drop-in property — I want this to slot into an existing architecture in place of the BN layer with no other change. A small learned network gating the two would add real capacity, and then any improvement is confounded: a skeptic could say "you just added parameters." A convex scalar adds exactly C extra numbers per layer; against a ResNet's millions of weights that's a fraction of a percent, so a capacity-increase explanation for any gain doesn't hold up. So: one scalar per channel, ρ ∈ [0,1], interpolating two normalizations I already have.
 
 I read ρ_c as a *gate* on style. If the style carried by channel c matters to the task, the gate opens toward 1 and the style rides through on the batch-normalized branch. If the style in channel c is nuisance, the gate closes toward 0 and the style gets scrubbed by the instance-normalized branch. The network learns, per channel, how much style to let through.
 
@@ -55,9 +55,9 @@ I treated x̂^(B) and x̂^(I) as constants with respect to ρ here, which is the
 
 They agree to ~1e-6, so the derivation is right and I can reason from it. Now stare at the factor that scales this gradient: the *difference* x̂^(B) − x̂^(I) between the two normalized responses. When is that difference large, and when is it small? Both responses are unit-scale, near-zero-mean normalizations of the same x; the only thing that differs is which mean and variance got subtracted — the batch's or the instance's. If the style variation across the minibatch is marginal — every image in the batch has nearly the same per-channel mean and variance — then μ^(B)_c ≈ μ^(I)_{nc} and σ^(B)_c ≈ σ^(I)_{nc} for every n, so x̂^(B) ≈ x̂^(I), and their difference should be tiny. Let me make that concrete rather than wave at it. Take a batch of four identical images (the extreme "no style variation" case): then the batch and per-instance statistics coincide exactly, and I measure max|x̂^(B) − x̂^(I)| = 0.0 — the gate gradient is identically zero, ρ cannot move at all. Now scale and shift each image in the batch differently per channel (strong contrast/brightness variation across the batch) and the same measurement gives max|x̂^(B) − x̂^(I)| = 1.65. So the driving factor really does collapse toward zero as the minibatch becomes style-homogeneous and only grows when there's genuine cross-image style spread. A tiny difference means a tiny ∂ℓ/∂ρ_c, which means ρ_c barely moves under a normal learning rate. So the gate I just designed has a built-in problem: exactly the signal that's supposed to drive it — the discrepancy between the two normalizations — is small on a homogeneous batch, so the gate is sluggish and may never travel from its initialization at 1 down to the IN end where it's needed.
 
-But this points at its own fix. The gradient is small not because the gate doesn't matter but because it's *multiplied by a small difference*. The cure is to amplify how far ρ moves per unit of that gradient — give ρ its own, larger learning rate. If the rest of the network trains at η, train the gate at 10η. That directly compensates for the small (x̂^(B) − x̂^(I)) factor and lets ρ actually reach its preference within the training budget. It's a choice I can point at a cause for — the suppressed factor in the gradient I just verified — rather than a knob I twiddle: counter the suppression with a matched learning-rate multiplier on exactly the parameter whose gradient is suppressed. (The exact multiplier, 10, is a guess at the right order of magnitude; I'd tune it, but the *sign* of the correction — ρ needs a larger step than the rest — is forced by the gradient.)
+But this points at its own fix. The gradient is small not because the gate doesn't matter but because it's *multiplied by a small difference*. The cure is to amplify how far ρ moves per unit of that gradient — give ρ its own, larger learning rate. If the rest of the network trains at η, train the gate at 10η: that directly compensates for the small (x̂^(B) − x̂^(I)) factor and lets ρ actually reach its preference within the training budget. (The exact multiplier, 10, is a guess at the right order of magnitude; I'd tune it, but the *sign* of the correction — ρ needs a larger step than the rest — is forced by the gradient.)
 
-One more thing about ρ's optimization. The other weights in the network get L2 weight decay, which pulls them toward zero. Should ρ get it? No — and I should be careful here, because applying the default uniformly would be a quiet bug. ρ is a *mixing coefficient* constrained to [0,1], not a weight whose magnitude I want to discourage. L2-decaying ρ would bias it toward 0, i.e. toward *pure instance norm*, for no principled reason — it would secretly push every channel to scrub style, fighting both my init at 1 and the actual signal from the data, and contradicting the clip I put on it. So ρ gets no weight decay. I'll put ρ in its own parameter group: learning rate 10η, weight decay 0, init 1, clipped to [0,1] after each step. Everything else trains exactly as before.
+One more thing about ρ's optimization. The other weights in the network get L2 weight decay, which pulls them toward zero. Should ρ get it? No: ρ is a *mixing coefficient* constrained to [0,1], not a weight whose magnitude I want to discourage. L2-decaying ρ would bias it toward 0, i.e. toward *pure instance norm*, for no principled reason — it would secretly push every channel to scrub style, fighting both my init at 1 and the actual signal from the data, and contradicting the clip I put on it. So ρ gets no weight decay. I'll put ρ in its own parameter group: learning rate 10η, weight decay 0, init 1, clipped to [0,1] after each step. Everything else trains exactly as before.
 
 Let me make sure the gate really is per channel and not per layer, since that's load-bearing. If I'd used one scalar ρ for the whole layer, I'd be back to a global decision — keep all style or remove all style in this layer — which I already argued can't be right when channels in the same layer carry different kinds of style. With a vector ρ ∈ [0,1]^C, channel c can go to 1 (keep its style via BN) while channel c′ next to it goes to 0 (scrub its style via IN). That's the resolution of the original dilemma, and it costs only C extra parameters per layer.
 
@@ -69,97 +69,6 @@ Next, a tidy way to fold the gate and the affine together so I don't materialize
 
 So I could let the batch-norm branch carry the affine weight (γ·ρ) and the bias β, let the instance-norm branch carry the affine weight (γ·(1−ρ)) with no bias, and just add the two branch outputs. The distributing-out is elementary, but the code path is fiddly — the BN branch uses real batch_norm with running stats and the IN branch uses the reshaped one — so before I commit to it I'd rather see the folded computation reproduce the direct mix-then-affine formula numerically. On a random [2,3,4,5] input with random γ, β and ρ∈[0,1], I compute the reference y = (ρ·x̂^(B)+(1−ρ)·x̂^(I))·γ+β directly, and separately the folded path out_bn + out_in with the pre-scaled branch weights and the reshape trick for out_in. Max abs difference: 4.8e-7 — the two are the same up to float error. (And the ρ=1 corner reduces to F.batch_norm(x, γ, β) exactly, the BN endpoint again.) So folding is safe and lets each branch be a single call to the normalization primitive with a pre-scaled weight. The gate ρ is a parameter of the layer; I'll tag it so the training loop knows to clip it to [0,1] after each optimizer step.
 
-Let me write the drop-in layer the way I would actually compute it in the existing PyTorch stack. The batch-norm branch should keep the ordinary batch-norm machinery, including its affine parameters and running statistics in evaluation mode. The instance branch is different: it must always use the current input's per-instance statistics, with no running averages and no independent affine. Inheriting from the batch-norm base class gives me the usual weight, bias, running_mean, running_var, eps, momentum, and input checks; I only add the gate and then fold the gate into the branch weights:
+Putting this into the existing PyTorch stack: the batch-norm branch keeps the ordinary batch-norm machinery — affine parameters and running statistics in eval mode — while the instance branch always uses the current input's per-instance statistics, with no running averages and no affine of its own. Inheriting from the batch-norm base class gives me the usual weight, bias, running_mean, running_var, eps, momentum, and input-dimension check for free; I only add the gate parameter (init 1, tagged so the optimizer can find it) and fold it into each branch's affine weight the way I checked above — `bn_w = γ·ρ` feeding the real batch-norm call, `in_w = γ·(1−ρ)` scaling the reshape-based IN branch, outputs summed. The optimizer setup follows straight from the gradient analysis: the gate gets its own parameter group at 10× the base learning rate and zero weight decay, and after every optimizer step it's clamped back into [0,1]. The full module and training loop are exactly this, written out.
 
-```python
-import torch
-from torch.nn import functional as F
-from torch.nn.modules.batchnorm import _BatchNorm
-from torch.nn.parameter import Parameter
-
-
-class _BatchInstanceNorm(_BatchNorm):
-    def __init__(self, num_features, eps=1e-5, momentum=0.1, affine=True):
-        super(_BatchInstanceNorm, self).__init__(num_features, eps, momentum, affine)
-        self.gate = Parameter(torch.Tensor(num_features))
-        self.gate.data.fill_(1)
-        setattr(self.gate, 'bin_gate', True)
-
-    def forward(self, input):
-        self._check_input_dim(input)
-
-        # Batch norm: (gamma * rho) is the branch weight, beta is the branch bias.
-        if self.affine:
-            bn_w = self.weight * self.gate
-        else:
-            bn_w = self.gate
-        out_bn = F.batch_norm(
-            input, self.running_mean, self.running_var, bn_w, self.bias,
-            self.training, self.momentum, self.eps)
-
-        # Instance norm: reshape [N, C, H, W] to [1, N*C, H, W],
-        # so batch_norm pools over H,W for each original (n,c) pair.
-        b, c = input.size(0), input.size(1)
-        if self.affine:
-            in_w = self.weight * (1 - self.gate)
-        else:
-            in_w = 1 - self.gate
-        input = input.view(1, b * c, *input.size()[2:])
-        out_in = F.batch_norm(
-            input, None, None, None, None,
-            True, self.momentum, self.eps)
-        out_in = out_in.view(b, c, *input.size()[2:])
-        out_in.mul_(in_w[None, :, None, None])
-
-        return out_bn + out_in
-
-
-class BatchInstanceNorm1d(_BatchInstanceNorm):
-    def _check_input_dim(self, input):
-        if input.dim() != 2 and input.dim() != 3:
-            raise ValueError('expected 2D or 3D input (got {}D input)'.format(input.dim()))
-
-
-class BatchInstanceNorm2d(_BatchInstanceNorm):
-    def _check_input_dim(self, input):
-        if input.dim() != 4:
-            raise ValueError('expected 4D input (got {}D input)'.format(input.dim()))
-
-
-class BatchInstanceNorm3d(_BatchInstanceNorm):
-    def _check_input_dim(self, input):
-        if input.dim() != 5:
-            raise ValueError('expected 5D input (got {}D input)'.format(input.dim()))
-```
-
-The training loop is the same SGD loop as before, with two tweaks that came straight out of the gradient analysis: the gate gets its own parameter group with a 10× learning rate and zero weight decay, and after each optimizer step the gate is clipped back into [0,1] so it stays a genuine convex weight:
-
-```python
-import torch.optim as optim
-
-
-def set_optimizer(model, args):
-    params = [{'params': [p for p in model.parameters()
-                          if not getattr(p, 'bin_gate', False)]},
-              {'params': [p for p in model.parameters()
-                          if getattr(p, 'bin_gate', False)],
-               'lr': args.lr * args.bin_lr, 'weight_decay': 0}]
-    return optim.SGD(params,
-                     lr=args.lr,
-                     momentum=args.momentum,
-                     weight_decay=args.weight_decay)
-
-
-def train(trainloader, model, criterion, optimizer):
-    model.train()
-    bin_gates = [p for p in model.parameters() if getattr(p, 'bin_gate', False)]
-    for inputs, targets in trainloader:
-        loss = criterion(model(inputs), targets)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        for p in bin_gates:
-            p.data.clamp_(min=0, max=1)
-```
-
-Let me trace the whole causal chain one more time and note which links I've actually checked versus which I'm still taking on faith. I wanted to remove disturbing image style while keeping useful style, and from the generation literature I took the premise — *unverified here, an empirical bet I'd test by training* — that style is the per-channel mean and variance of a feature map. Granting that, removing style is instance normalization, but applied wholesale to a classifier it degrades accuracy (a reported fact), because it also erases the channels where style is the discriminative signal. Batch normalization sits at the opposite extreme: it preserves instance style, so it can't scrub the nuisance. Neither chooses, and the right choice differs channel by channel. Since both normalized responses are computable from the same input, I interpolate them with a per-channel convex weight ρ — a style gate, 1 for keep-via-BN, 0 for scrub-via-IN — and I checked that the two corners ρ=1 and ρ=0 collapse to exactly BN and IN. It's constrained to [0,1] by clipping and initialized to 1 so training starts from the safe BN corner and only opens IN where it helps. Differentiating the loss through the gate, and confirming the formula against autograd (agreement to ~1e-6), gave ∂ℓ/∂ρ_c proportional to γ_c·Σ(x̂^(B) − x̂^(I))·∂ℓ/∂y; I measured that the driving difference goes to exactly 0 on a style-homogeneous batch and grows only with real cross-image style spread — so the gate is sluggish — which is why ρ gets an amplified (≈10×) learning rate to make it travel, and, being a mixing coefficient rather than a magnitude, no weight decay. I verified numerically that the [1, N·C, H, W] reshape reproduces instance normalization (max diff 2.4e-7) and that folding the gate into the per-branch affine weights reproduces the direct mix-then-affine output (max diff 4.8e-7), so the implementation computes the math I intended. What remains genuinely unverified until I train it: whether per-channel style gating actually beats wholesale BN and whether the learned gates separate toward 0 and 1 — those are the experiments, not things I can assert here. The result drops into the existing layer slot with C extra parameters and negligible compute, leaving the optimizer, data pipeline, and loop otherwise untouched.
+What the design doesn't settle on paper: whether per-channel style gating actually beats wholesale BN, and whether the learned gates really separate toward 0 and 1 rather than parking near a shared middle — those are experiments, not something to assert here; the premise that style *is* per-channel mean/variance is itself an empirical bet borrowed from the generation literature, not something this derivation proves. What's certain is the shape of the artifact: it drops into the existing layer slot with C extra parameters and negligible compute, leaving the optimizer, data pipeline, and training loop otherwise untouched.
