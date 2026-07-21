@@ -6,7 +6,7 @@ Why squared distance rather than plain distance? I'll come back to that with a r
 
 Let me get the local search itself nailed down first, because I need to understand exactly where its weakness lives before I can fix it. The objective `phi` has two kinds of variable tangled together: the locations of the centers, and the assignment of points to centers. When two things are tangled like that, the move is to optimize one with the other held fixed, alternate, and hope. So: fix the centers, what's the best assignment? Each point `x` contributes `min_{c} || x - c ||^2` — a minimum over centers — and that minimum is achieved by assigning `x` to its nearest center. There's no freedom and no cleverness here: for fixed centers, nearest-center assignment is exactly optimal, term by term. So step one is forced — assign each point to its nearest center, which carves space into the regions "closer to `c_i` than to any other center," and those regions are Voronoi cells whose boundaries bisect the segments between adjacent centers.
 
-Now the other direction: fix the assignment, what's the best center for a group `S`? I want the point `z` that minimizes `sum_{x in S} || x - z ||^2`. Let me actually compute it instead of asserting "the mean." Let `c = c(S) = (1/|S|) sum_{x in S} x` be the center of mass, and write each `x - z = (x - c) + (c - z)`. Then
+Now the other direction: fix the assignment, what's the best center for a group `S`? I want the point `z` that minimizes `sum_{x in S} || x - z ||^2`. Let `c = c(S) = (1/|S|) sum_{x in S} x` be the center of mass, and write each `x - z = (x - c) + (c - z)`. Then
 
   sum_{x in S} || x - z ||^2 = sum_{x in S} || (x - c) + (c - z) ||^2
     = sum_{x in S} || x - c ||^2 + 2 (c - z) . sum_{x in S} (x - c) + |S| || c - z ||^2.
@@ -21,21 +21,21 @@ Two forced steps, alternating. Does the loop converge? Track `phi` across a full
 
 But here is the rub, and I have to be precise about it because it's the whole story. The fixed point is only a *local* minimum of `phi` — or worse, possibly a saddle. The loop never increases `phi`, but "never increases" only guarantees I roll downhill into whatever basin I started in. And `phi`, as a function of the center locations, is not convex: it's a pointwise minimum over centers of convex squared-distance pieces, so it's a bumpy landscape with many valleys of very different depths. Which valley I end up in is decided entirely by where I place the centers at the start. So the quality of this beautiful, parameter-free local search is hostage to its initialization, and I have no control over the outcome.
 
-How bad can that be? Let me think about the naive start everyone uses: pick the `k` initial centers uniformly at random from the data. Picture five well-separated, equal-size blobs and `k = 5`. Uniform sampling draws five points from the union; with five equal blobs the chance that I get exactly one center per blob is the classic all-distinct draw `5!/5^5 = 120/3125 ≈ 0.038` — under 4%. Let me not trust just the closed form and check the geometry too: I put 40 points around each of five well-separated centers and, over 2000 uniform draws of five seeds, count how many distinct blobs the seeds touch. The fraction touching all five came out `≈ 0.039`, matching the `0.038` combinatorics, and the mean number of blobs touched was `≈ 3.4` out of 5 — so on a typical draw one or two blobs get no seed at all while some blob is double-seeded. Now run the loop from such a start: the blob with no nearby center gets swallowed into its neighbor, while the over-seeded blob gets split in two. The loop happily converges — every center is the mean of its region — but it's converged to a clustering that merges two true groups and splits a third. And there's no upper bound on how bad this is: I can build instances where the `phi` the loop returns is an arbitrarily large multiple of `phi_OPT`, with `n` and `k` fixed, and this isn't an adversarial trick — even ordinary random seeding produces unboundedly bad ratios with non-negligible probability. So the local search is fine; the *seeding* is the disease. The whole question reduces to: how do I place the `k` initial centers so that the local search starts in a good basin, ideally with a guarantee?
+How bad can that be? Let me think about the naive start everyone uses: pick the `k` initial centers uniformly at random from the data. Picture five well-separated, equal-size blobs and `k = 5`. Uniform sampling draws five points from the union; with five equal blobs the chance that I get exactly one center per blob is the classic all-distinct draw `5!/5^5 = 120/3125 ≈ 0.038` — under 4%. Checking the geometry directly rather than leaning on the closed form alone: I put 40 points around each of five well-separated centers and, over 2000 uniform draws of five seeds, count how many distinct blobs the seeds touch. The fraction touching all five came out `≈ 0.039`, matching the `0.038` combinatorics, and the mean number of blobs touched was `≈ 3.4` out of 5 — so on a typical draw one or two blobs get no seed at all while some blob is double-seeded. Now run the loop from such a start: the blob with no nearby center gets swallowed into its neighbor, while the over-seeded blob gets split in two. The loop happily converges — every center is the mean of its region — but it's converged to a clustering that merges two true groups and splits a third. And there's no upper bound on how bad this is: I can build instances where the `phi` the loop returns is an arbitrarily large multiple of `phi_OPT`, with `n` and `k` fixed, and this isn't an adversarial trick — even ordinary random seeding produces unboundedly bad ratios with non-negligible probability. So the local search is fine; the *seeding* is the disease. The whole question reduces to: how do I place the `k` initial centers so that the local search starts in a good basin, ideally with a guarantee?
 
 So what do I want from the seeding? Three things. The centers should be spread out — one per true group, not clumped. It should be robust — a single weird point shouldn't be able to hijack the placement. And, the prize, it should come with a provable bound on the resulting `phi`, because that's exactly what the local search lacks.
 
-First attempt: force the spread deterministically. Pick the first center somehow, then add the point farthest from all centers chosen so far, repeat. This certainly spreads the centers — each new one is as far as possible from the existing ones. But stare at what "farthest point" *is*: it's the most extreme outlier in the data. So this procedure preferentially plants centers on outliers — one anomalous point pulls a whole center onto itself, wasting it and distorting the rest. The spread is real but it's bought by sacrificing robustness completely. Wall. Deterministic-farthest is too aggressive — it always grabs the single most extreme point.
+First attempt: force the spread deterministically. Pick the first center somehow, then add the point farthest from all centers chosen so far, repeat. This certainly spreads the centers — each new one is as far as possible from the existing ones. But stare at what "farthest point" *is*: it's the most extreme outlier in the data. So this procedure preferentially plants centers on outliers — one anomalous point pulls a whole center onto itself, wasting it and distorting the rest. The spread is real but it's bought by sacrificing robustness completely: deterministic-farthest is too aggressive, because it always grabs the single most extreme point.
 
 So I want the *tendency* of farthest-point — favor points far from the current centers — without the brittleness of always grabbing the single farthest. The fix for "always grab the max" is "sample with probability that grows with the distance." Randomize it. Let `D(x)` be the distance from `x` to the nearest center already chosen. If I sample the next center from the data with probability proportional to some increasing function of `D(x)`, then far-from-everything regions are strongly favored — I get the spread — but any single point, even an outlier, is just one point carrying a small slice of the total probability mass, so it can't dominate. Outliers are far, yes, but there are few of them; a dense under-covered cluster has many moderately-far points whose mass adds up. Randomization turns "the one farthest point" into "the under-covered regions," which is exactly what I want. Let me re-run the same five-blob experiment with this rule — first center uniform, each next center sampled proportional to `D(x)^2` — and again count blobs covered over 2000 trials. Now all five blobs are covered `≈ 0.98` of the time, mean blobs touched `≈ 4.98` out of 5, versus `0.04` and `3.4` for uniform. So the `D^2` rule really does deliver the one-center-per-group spread that uniform seeding fails to, and it does it without ever locking onto a single extreme point. That's the empirical pull I wanted; the open question is whether I can turn it into a guarantee.
 
-Now, what function of `D(x)`? Proportional to `D(x)` itself? Or `D(x)^2`? Let me let the objective decide rather than guess. The objective is `phi = sum_x min_c || x - c ||^2 = sum_x D(x)^2` once `D(x)` is the distance to the nearest chosen center. So each point's *contribution to the very quantity I'm trying to shrink* is `D(x)^2`. If I sample proportional to `D(x)^2`, I'm sampling each point in proportion to how much it currently hurts the objective — I put a new center, with high probability, exactly where the current cost is concentrated. That's the principled choice: sample with probability
+Now, what function of `D(x)`? Proportional to `D(x)` itself? Or `D(x)^2`? The objective settles it: `phi = sum_x min_c || x - c ||^2 = sum_x D(x)^2` once `D(x)` is the distance to the nearest chosen center. So each point's *contribution to the very quantity I'm trying to shrink* is `D(x)^2`. If I sample proportional to `D(x)^2`, I'm sampling each point in proportion to how much it currently hurts the objective — I put a new center, with high probability, exactly where the current cost is concentrated. That's the principled choice: sample with probability
 
   D(x_0)^2 / sum_{x in X} D(x)^2,
 
 which I'll call `D^2` weighting. The square isn't a tuning knob; it's the matching exponent to a squared-error objective. (I'll later check that `D^1` corresponds to a different objective, but for squared error it's the square.) The seeding, then: first center uniformly at random from the data; each subsequent center sampled with `D^2` weighting against the centers chosen so far; stop at `k`; then run the alternating loop from those seeds.
 
-Now I want the prize — a provable bound on the resulting `phi`. This is the part that justifies the whole construction, so let me actually prove it rather than wave at it. I'll compare against the optimal clustering `C_OPT` with potential `phi_OPT`, and I'll write `phi(A)` for the contribution of a point set `A` to the potential, and `phi_OPT(A)` for `A`'s contribution under the optimal centers. The key structural fact I already have — the parallel-axis identity — I'll restate in the form I'll lean on: for any point set `S` with center of mass `c(S)` and any point `z`,
+Now I want the prize — a provable bound on the resulting `phi`, since that's what justifies the construction. I'll compare against the optimal clustering `C_OPT` with potential `phi_OPT`, and I'll write `phi(A)` for the contribution of a point set `A` to the potential, and `phi_OPT(A)` for `A`'s contribution under the optimal centers. The key structural fact I already have — the parallel-axis identity — I'll restate in the form I'll lean on: for any point set `S` with center of mass `c(S)` and any point `z`,
 
   sum_{x in S} || x - z ||^2 - sum_{x in S} || x - c(S) ||^2 = |S| || c(S) - z ||^2.
 
@@ -52,7 +52,7 @@ Both inner sums are the same thing — `A`'s squared spread about its own centro
 
   E[phi(A)] = phi_OPT(A) + phi_OPT(A) = 2 phi_OPT(A).
 
-A factor of 2. That's the price of using a random data point instead of the true centroid: in expectation it costs exactly twice the optimal contribution. Intuitively, a random member of `A` sits at the cluster's RMS radius from the centroid, and by the identity that doubles the moment of inertia. Before I trust this, let me put numbers to it on the smallest set I can. Take `A = {0, 1, 5}` on a line. Its mean is `c = (0 + 1 + 5)/3 = 2`, and `phi_OPT(A) = (0-2)^2 + (1-2)^2 + (5-2)^2 = 4 + 1 + 9 = 14`. Check the identity at an arbitrary `z = 3`: the left side `sum (a-3)^2 = 9 + 4 + 4 = 17`; the right side `phi_OPT(A) + |A|(c-z)^2 = 14 + 3*(2-3)^2 = 14 + 3 = 17`. They agree. Now the factor-2 claim itself: seed `a_0` uniformly over the three points and use it as the lone center. For `a_0 = 0`: `sum_a (a-0)^2 = 0 + 1 + 25 = 26`. For `a_0 = 1`: `1 + 0 + 16 = 17`. For `a_0 = 5`: `25 + 16 + 0 = 41`. Average: `(26 + 17 + 41)/3 = 84/3 = 28`. And `2 phi_OPT(A) = 2*14 = 28`. It lands exactly on the nose — the algebra wasn't hiding a constant. Clean.
+A factor of 2. That's the price of using a random data point instead of the true centroid: in expectation it costs exactly twice the optimal contribution. Intuitively, a random member of `A` sits at the cluster's RMS radius from the centroid, and by the identity that doubles the moment of inertia.
 
 Step two: the trickier case — the rest of the centers are seeded by `D^2` weighting, not uniformly. I want an analogue of the factor-2 result, but now the new center for cluster `A` is drawn proportional to current squared distance, and there's already an arbitrary set of centers in place. Claim: if I add one center to the current clustering `C` by `D^2` weighting, and that center happens to land in some optimal cluster `A`, then `E[phi(A)] <= 8 phi_OPT(A)`. The factor is 8, not 2 — I pay more because the sampling isn't uniform within `A`, but it's still a constant. Let me prove it. The probability I pick a specific `a_0 in A` as the new center, conditioned on picking from `A`, is `D(a_0)^2 / sum_{a in A} D(a)^2`. After I add `a_0`, a point `a in A` contributes `min(D(a), || a - a_0 ||)^2` to the potential — either its old nearest center is still closer, or the new center `a_0` is. So
 
@@ -70,7 +70,7 @@ and in this piece I use `min(D(a), || a - a_0 ||)^2 <= || a - a_0 ||^2`. In the 
 
   E[phi(A)] <= (4/|A|) sum_{a_0 in A} sum_{a in A} || a - a_0 ||^2.
 
-But `(1/|A|) sum_{a_0} sum_{a} || a - a_0 ||^2` is exactly the quantity from step one — it equals `2 phi_OPT(A)` by the same uniform-seeding computation. So `E[phi(A)] <= 4 * 2 phi_OPT(A) = 8 phi_OPT(A)`. There's the 8. The factor of 2 from triangle/power-mean and the factor of 2 from the uniform-within-`A` average multiply. This bound passed through two inequalities, so let me check it doesn't quietly fail — reuse `A = {0, 1, 5}`, `phi_OPT(A) = 14`, and put one pre-existing center at `x = 12` so that `D(a)` is nonzero (the situation the `D^2` step actually faces). Then `D = |a - 12|` gives `D^2 = (144, 121, 49)` for `a = (0, 1, 5)`, summing to `314`, so the `D^2`-weighted probabilities of choosing the new center are `(144, 121, 49)/314`. For each choice of `a_0` the post-add contribution is `sum_a min(D(a)^2, (a - a_0)^2)`: picking `a_0 = 0` gives `min(144,0)+min(121,1)+min(49,25) = 0+1+25 = 26`; `a_0 = 1` gives `min(144,1)+min(121,0)+min(49,16) = 1+0+16 = 17`; `a_0 = 5` gives `min(144,25)+min(121,16)+min(49,0) = 25+16+0 = 41`. The expectation is `(144*26 + 121*17 + 49*41)/314 = (3744 + 2057 + 2009)/314 = 7810/314 ≈ 24.87`. Against `8 phi_OPT(A) = 112` the bound holds with a lot of slack — in fact here `24.87 < 2*14 = 28` too, because this little instance happens to be friendly to `D^2`. The 8 is a worst-case envelope, not the typical cost, which is the right shape for what I want.
+But `(1/|A|) sum_{a_0} sum_{a} || a - a_0 ||^2` is exactly the quantity from step one — it equals `2 phi_OPT(A)` by the same uniform-seeding computation. So `E[phi(A)] <= 4 * 2 phi_OPT(A) = 8 phi_OPT(A)`. There's the 8: a factor of 2 from triangle/power-mean and a factor of 2 from the uniform-within-`A` average, multiplied. It is a worst-case envelope, not a typical cost — most instances will do better — but a constant envelope is all the argument needs.
 
 So I have: a uniformly-seeded cluster costs `2 phi_OPT(A)` in expectation, and a `D^2`-seeded cluster, if the seed lands in it, costs at most `8 phi_OPT(A)`. The remaining worry is that `D^2` seeding might *not* place a center in every optimal cluster — it could seed two centers into one cluster and miss another, the same failure uniform seeding had. I need to show that across the `k` draws, the seeding covers the clusters well enough that the total is only an `O(log k)` factor worse than optimal. This is an induction, and I have to set it up carefully.
 
@@ -136,133 +136,6 @@ One more generalization, because I want to understand *why* the exponent is 2 an
 
 Before I write code, a few practical wrinkles have to line up with the mathematics instead of fighting it. The centroid step can produce an *empty cluster*: if some center wins no points in the assignment step, its mean is `0/0`, undefined. The natural repair is to relocate an emptied center to a point that is currently far from its assigned center, so the dead center is spent where the present objective is large. `D^2` sampling is also random, and a single draw can be unlucky; at each seeding step I can draw a small number of candidates by `D^2` weighting, compute for each the resulting potential `sum_x min(old D(x)^2, || x - candidate ||^2)`, and greedily keep the candidate that reduces the potential the most. A logarithmic number of candidates, exactly `2 + int(log k)`, is the lightweight version of that hedge. And since the underlying objective is non-convex with many local minima, I should run the whole procedure ten times from independent seedings, keep the run with the lowest final `phi`, and cap each Lloyd run at 300 iterations. The local loop should stop when labels are unchanged, or when the squared center shift falls below a tolerance; if it stops by center shift rather than exact label stability, I need one final assignment pass so the returned labels match the returned centers.
 
-So let me assemble the whole thing into code, filling the one empty slot — how the centers are seeded — and writing the refine loop and the restart hedge around it.
-
-```python
-import numpy as np
-from sklearn.base import BaseEstimator, ClusterMixin
-
-
-def _sq_dist_to_nearest(X, centers):
-    """For each point: squared Euclidean distance to its nearest center, and which one."""
-    d2 = ((X[:, None, :] - centers[None, :, :]) ** 2).sum(axis=2)   # (n, k)
-    return d2.min(axis=1), d2.argmin(axis=1)
-
-
-def _kmeanspp_init(X, k, rng):
-    """Seed k centers by D^2 weighting (greedy: a few candidates per center)."""
-    n = X.shape[0]
-    n_local_trials = 2 + int(np.log(k))           # logarithmic greedy variance reduction
-    centers = np.empty((k, X.shape[1]), dtype=X.dtype)
-    indices = np.full(k, -1, dtype=int)
-
-    # first center: uniform at random  -> the uniform-seed cluster costs 2*phi_OPT(A)
-    center_id = rng.choice(n)
-    centers[0] = X[center_id]
-    indices[0] = center_id
-    closest_d2 = ((X - centers[0]) ** 2).sum(axis=1)   # D(x)^2 to the one chosen center
-    current_pot = closest_d2.sum()                       # phi = sum_x D(x)^2
-
-    for c in range(1, k):
-        # sample n_local_trials candidate points with probability proportional to D(x)^2
-        rand_vals = rng.uniform(size=n_local_trials) * current_pot
-        candidate_ids = np.searchsorted(np.cumsum(closest_d2), rand_vals)
-        np.clip(candidate_ids, None, n - 1, out=candidate_ids)
-
-        # for each candidate, the potential if it were added: sum_x min(D(x)^2, ||x - cand||^2)
-        distance_to_candidates = ((X[candidate_ids, None, :] - X[None, :, :]) ** 2).sum(axis=2)
-        np.minimum(closest_d2, distance_to_candidates, out=distance_to_candidates)
-        candidate_pot = distance_to_candidates.sum(axis=1)
-
-        best = np.argmin(candidate_pot)            # greedily keep the candidate that drops phi most
-        current_pot = candidate_pot[best]
-        closest_d2 = distance_to_candidates[best]  # D^2 to nearest of the centers chosen so far
-        best_candidate = candidate_ids[best]
-        centers[c] = X[best_candidate]
-        indices[c] = best_candidate
-    return centers, indices
-
-
-def _centers_from_labels(X, labels, centers, d2):
-    """Move nonempty clusters to their means; relocate empty clusters to far points."""
-    k = centers.shape[0]
-    new_centers = centers.copy()
-    counts = np.bincount(labels, minlength=k)
-    for j in range(k):
-        if counts[j] > 0:
-            new_centers[j] = X[labels == j].mean(axis=0)     # centroid step
-    empty = np.where(counts == 0)[0]
-    if len(empty) > 0:
-        farthest = np.argsort(d2)[::-1]
-        for j, point_id in zip(empty, farthest):
-            new_centers[j] = X[point_id]                     # empty cluster: relocate farthest
-    return new_centers
-
-
-def _lloyd(X, centers, max_iter=300, tol=1e-4):
-    """Batch Lloyd iteration with strict-label and center-shift stopping."""
-    labels = np.full(X.shape[0], -1, dtype=np.int32)
-    labels_old = labels.copy()
-    strict_convergence = False
-    n_iter = 0
-    for n_iter in range(1, max_iter + 1):
-        d2, labels = _sq_dist_to_nearest(X, centers)         # assignment step
-        new_centers = _centers_from_labels(X, labels, centers, d2)
-        center_shift_tot = ((new_centers - centers) ** 2).sum()
-        centers = new_centers
-
-        if np.array_equal(labels, labels_old):
-            strict_convergence = True
-            break
-        if center_shift_tot <= tol:
-            break
-        labels_old[:] = labels
-
-    if not strict_convergence:
-        d2, labels = _sq_dist_to_nearest(X, centers)         # final E-step after tol/max_iter
-    else:
-        d2 = ((X - centers[labels]) ** 2).sum(axis=1)
-    inertia = d2.sum()                                      # final phi
-    return centers, labels, inertia, n_iter
-
-
-class CustomClustering(BaseEstimator, ClusterMixin):
-    """Squared-error clustering: k-means++ seeding + Lloyd refinement, best of n_init restarts."""
-
-    def __init__(self, n_clusters=None, random_state=42, n_init=10, max_iter=300, tol=1e-4):
-        self.n_clusters = n_clusters
-        self.random_state = random_state
-        self.n_init = n_init
-        self.max_iter = max_iter
-        self.tol = tol
-        self.labels_ = None
-        self.cluster_centers_ = None
-        self.inertia_ = None
-        self.n_iter_ = None
-
-    def fit(self, X):
-        X = np.asarray(X, dtype=float)
-        k = self.n_clusters if self.n_clusters is not None else 8
-        if k > X.shape[0]:
-            raise ValueError("n_clusters must be no larger than n_samples")
-        rng = np.random.RandomState(self.random_state)
-        best_inertia, best_centers, best_labels, best_n_iter = np.inf, None, None, 0
-        for _ in range(self.n_init):                          # non-convex -> hedge with restarts
-            centers, _ = _kmeanspp_init(X, k, rng)            # the seeding slot, filled by D^2
-            centers, labels, inertia, n_iter = _lloyd(X, centers, self.max_iter, self.tol)
-            if inertia < best_inertia:                        # keep the lowest-phi run
-                best_inertia = inertia
-                best_centers, best_labels, best_n_iter = centers, labels, n_iter
-        self.cluster_centers_, self.labels_ = best_centers, best_labels
-        self.inertia_, self.n_iter_ = best_inertia, best_n_iter
-        return self
-
-    def predict(self, X):
-        if self.cluster_centers_ is None:
-            self.fit(X)
-        return _sq_dist_to_nearest(np.asarray(X, dtype=float), self.cluster_centers_)[1]
-```
+So the empty seeding slot gets filled in exactly the way this whole derivation was aimed at: draw the first center uniformly, then repeatedly draw `n_local_trials = 2 + int(log k)` candidates by `D^2` weighting and greedily keep whichever one drops the running potential the most. Everything downstream of that slot is the generic squared-error machinery I already had — assign to nearest center, recompute means, stop on label equality or a center-shift tolerance with a final assignment refresh so the returned labels match the returned centers, relocate any emptied center to the point currently farthest from its own center, and wrap the whole thing in `n_init = 10` independent restarts keeping the lowest-inertia run, capped at `max_iter = 300` sweeps each.
 
 Before I call this done, let me run the assembled thing on an input small enough to sanity-check by eye — the place a bug in the seeding/empty-cluster/loop plumbing would show. Three well-separated blobs in the plane, ten points each (a `0.3`-spread cloud around `(0,0)`, `(10,0)`, `(0,10)`), and `k = 3`. The first seed is uniform; the next two are `D^2`-drawn, which on three far-apart blobs should land one per blob with high probability — so Lloyd starts essentially already in the right basin and should converge in a sweep or two. Running it: it returns in `n_iter = 2`, with `inertia ≈ 3.385` (on the order of `30` points times a per-point squared spread of `~0.1`, which is what `0.3`-radius noise should give — so the magnitude is right, not a degenerate `0` or a blown-up merge). The labels come out as the first ten points all in one cluster, the next ten all in another, the last ten all in a third, three distinct labels — i.e. each true blob recovered pure, no blob split or merged. The empty-cluster branch never fired here (every seed claimed a blob), which is the expected path for separated data; I'd want a separate degenerate input to exercise that branch, but the common case behaves. Good enough to trust the wiring.
-
-Let me trace the causal chain back. I wanted to partition unlabeled points by squared-distance compactness, so I scored a center set by `phi = sum_x min_c || x - c ||^2`; minimizing it exactly is NP-hard, forcing a local search. Untangling the two coupled variables gave two forced moves — assign each point to its nearest center (the pointwise `min`), and move each center to its group's mean (the parallel-axis identity, which is also why squared error and not absolute: squared error's optimal representative is the cheap closed-form mean). Alternating these makes `phi` monotonically non-increasing over a finite set of partitions, so the loop converges to a fixed point — but only a local minimum, and `phi` is non-convex, so the outcome is hostage to the seeding, with uniform seeding giving an unbounded cost ratio. I wanted seeding that spreads the centers, stays robust, and comes with a guarantee; deterministic farthest-point spreads but seeds outliers, so I randomized it, sampling each next center proportional to `D(x)^2` — the exponent matching the squared-error objective, the randomization defanging outliers. Proving its quality: the parallel-axis identity gives `E[phi(A)] = 2 phi_OPT(A)` for a uniform seed and, via triangle plus power-mean, `<= 8 phi_OPT(A)` for a `D^2` seed that lands in `A`; an induction over (centers-to-place, clusters-uncovered) accumulates a harmonic factor, and specializing to `t = u = k-1` yields `E[phi] <= 8(ln k + 2) phi_OPT` — an `O(log k)` guarantee for any data, which the subsequent local search can only improve. A simplex-of-simplices construction makes me believe the `log k` is of the right order rather than slack (though I stopped short of pinning the exact constant from below), and the `D^l` generalization shows the exponent is locked to the objective's. Then practicality: reseed empty clusters at the farthest point, take a logarithmic number of greedy `D^2` candidates per center to cut seeding variance, and restart the whole procedure several times keeping the lowest-`phi` run because the landscape is non-convex. The result is a near-linear, parameter-light clustering procedure with a provable approximation guarantee, which is exactly what the bare local search lacked.
