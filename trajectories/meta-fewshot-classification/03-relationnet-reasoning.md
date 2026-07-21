@@ -29,7 +29,7 @@ on the table. The violent benchmark-to-benchmark swing — CUB up 13 points, CIF
 symptom that no single fixed, closed-form comparison is right for all of these layouts. The metric is
 the bottleneck, and its sensitivity to the data is the proof.
 
-So the thing I kept fixed through both previous rungs — the comparison function — is what I have to
+So the thing I kept fixed through both previous methods — the comparison function — is what I have to
 attack. In the matching vote it was cosine; in the prototype method it was squared Euclidean,
 equivalently a linear classifier. In *both*, every bit of learning lived in the embedding, and the
 actual comparison was a hand-chosen, closed-form function: the network learns where to put the points,
@@ -107,24 +107,20 @@ evidence toward a decision, so pooling away spatial dimensions is exactly right 
 embedding). The ResNet-12 maps are small, so rather than a fixed 2×2 max-pool that assumes a particular
 map size, I use `AdaptiveMaxPool2d((5,5))` after the first conv block and `AdaptiveMaxPool2d((1,1))`
 after the second — adaptive pooling makes the module robust to whatever spatial size the backbone emits,
-which is the safe choice when I am bolting onto a backbone I did not design. Let me actually work out the
-spatial arithmetic to be sure the module is well-formed, because "adaptive" can quietly hide a mistake.
-A ResNet-12 takes the 84×84 image through four stride-2 stages, 84→42→21→10→5, so the map it emits is
-640×5×5. The first conv has pad 1 and kernel 3, which preserves 5×5; then `AdaptiveMaxPool2d((5,5))` on
-a 5×5 map is an *identity* — it does nothing here, and that is the point of using it, because on a
-backbone that emitted a larger map it would downsample instead of erroring. The second conv has pad 0
-and kernel 3, which takes 5×5 down to 3×3; then `AdaptiveMaxPool2d((1,1))` collapses the 3×3 to a single
-640-vector per (class, query) pair. Flatten it and pass through Linear(640, 8) → ReLU → Linear(8, 1).
-The hidden FC of width 8 is the comparator's final non-linearity over the pooled convolutional evidence
-— without it the head would be Linear(640,1), i.e. linear again, and I would have quietly reintroduced
-the very linear comparator that lost CIFAR. The BatchNorms use momentum 1 (no running average), the
-relation-network convention that fits the small per-episode batches. Let me also account for what this
-costs, because "all new parameters live here" should be a number I can defend against the budget. The
-first conv is 1280·640·3·3 ≈ 7.37M, the second 640·640·3·3 ≈ 3.69M, the two FCs a few thousand, so the
+which is the safe choice when I am bolting onto a backbone I did not design. The ResNet-12 emits a
+640×5×5 map (84→42→21→10→5 through four stride-2 stages); the first conv (pad 1, kernel 3) preserves
+5×5, so `AdaptiveMaxPool2d((5,5))` is an *identity* here — and that is the point of adaptive pooling,
+since on a backbone emitting a larger map it downsamples instead of erroring. The second conv (pad 0,
+kernel 3) takes 5×5 to 3×3, and `AdaptiveMaxPool2d((1,1))` collapses that to a single 640-vector per
+(class, query) pair. Flatten and pass through Linear(640, 8) → ReLU → Linear(8, 1); the width-8 FC is
+the comparator's final non-linearity — without it the head would be Linear(640,1), linear again, and I
+would have quietly reintroduced the very linear comparator that lost CIFAR. The BatchNorms use momentum
+1 (no running average), the relation-network convention that fits the small per-episode batches. And the
+budget: the first conv is 1280·640·3·3 ≈ 7.37M, the second 640·640·3·3 ≈ 3.69M, the two FCs a few thousand, so the
 relation module is ≈11.1M parameters. That is the same order as the matching method's ~11.5M of FCE —
 but where the FCE spent it on a recurrent per-episode *re-embedding* that had to be trained at a lowered
 learning rate and did not transfer to novel-class support sets, this spends it on the *comparison
-itself*, the one place both previous rungs left un-learnable, in a plain feedforward conv stack that is
+itself*, the one place both previous methods left un-learnable, in a plain feedforward conv stack that is
 stable at the default rate. Same parameter budget, aimed at the actual bottleneck.
 
 The output is a single scalar, and I want it to be a *relation score*, "how much do these match,"
@@ -140,11 +136,9 @@ each class's K embedded maps into one class-level map before the comparison. The
 already told me how to aggregate a set order-invariantly: sum. So element-wise *sum* the K support
 feature maps of a class into one class feature map, then run the one-shot procedure on it. This is the
 same "one entity per class" move the prototype method made — and notice the relation network keeps that
-improvement over matching's scatter *and* adds the learned comparator the prototype lacked. I claimed
-sum and mean are interchangeable here; let me check that rather than wave it through, because it is the
-kind of thing that is true for a lazy reason and false for a subtle one. Summing K = 5 maps scales the
-class map by 5 relative to the query map, and my first instinct was "BatchNorm will absorb it." But that
-is wrong, and it is worth seeing why: the class map and the query map are concatenated *before* the
+improvement over matching's scatter *and* adds the learned comparator the prototype lacked. Are sum and
+mean interchangeable here? Summing K = 5 maps scales the class map by 5 relative to the query map, and
+my first instinct was "BatchNorm will absorb it." But that is wrong: the class map and the query map are concatenated *before* the
 first conv, so only half the input channels are scaled by 5, the query half is not — the pre-activation
 is 5·(W_class ∗ class) + (W_query ∗ query) + b, which is not a global multiple of anything, and BN,
 which can only remove a per-channel affine of the *whole* activation, cannot rescale one summand of a
@@ -155,62 +149,51 @@ reparameterization of W_class that the optimizer undoes — immaterial to what c
 initialization scale, and BN's real job here is just to keep whatever scale results well-conditioned. So
 I keep sum, the order-invariant aggregator the relational module prescribed, and stop worrying about the
 constant. So I get the prototype's clean per-class summary in feature-map space, and on top of it a
-non-linear learned comparison — the two upgrades the previous two rungs each had only one of.
+non-linear learned comparison — the two upgrades the previous two methods each had only one of.
 
-Before committing I trace the shapes once end to end, because a five-dimensional expand-and-concatenate
-is easy to get wrong on an axis. Support maps come in as 25×640×5×5; averaging within each of the 5
-classes gives class maps 5×640×5×5. Query maps are 75×640×5×5. I broadcast the prototypes to
-75×5×640×5×5 and the queries to 75×5×640×5×5, concatenate on the channel axis (dim 2) to 75×5×1280×5×5,
-and flatten the first two axes to 375×1280×5×5 — 75 queries times 5 classes, 375 pairs. The relation
-module maps 375×1280×5×5 → (conv,BN,ReLU,pool5) → 375×640×5×5 → (conv,BN,ReLU,pool1) → 375×640×1×1 →
-flatten 375×640 → 375×8 → 375×1, and I view it back to 75×5. Output shape (n_query, n_way) = (75, 5),
-exactly the contract, one relation score per (query, class). Good — no axis crossed.
+The pairing is a five-dimensional expand-and-concatenate, easy to get wrong on an axis: 5 class maps
+(640×5×5) and 75 query maps broadcast and concatenate on the channel axis into 375 pairs of 1280×5×5,
+the relation module boils each to a scalar, and I view them back to (n_query, n_way) = (75, 5) — one
+relation score per (query, class), the contract shape.
 
 Last piece, the loss, and it is the one that looks oddest until I see what the model emits. The reflex
 is cross-entropy — it is classification, the targets are class indices, and that is what both previous
-rungs used. But the model does not emit a normalized distribution over classes; it emits N *independent*
+methods used. But the model does not emit a normalized distribution over classes; it emits N *independent*
 sigmoid relation scores, each produced by the shared comparator looking at one (class, query) pair in
 isolation, with no softmax tying them together. The natural ground truth for a single relation score is
 binary: 1 if the query's class equals that class, 0 otherwise. So per pair I am *regressing a score
 toward a {0,1} target* — drive the matched pair to 1, every mismatched pair to 0 — which is mean-squared
-error against the one-hot target. Let me check MSE-on-a-sigmoid actually trains toward those targets and
-does not have a pathology. With r = σ(z), the per-pair loss (r − t)² has dL/dz = 2(r − t)·σ′(z) =
-2(r − t)·r(1 − r). Away from the target the gradient is healthy; as r approaches 0 or 1 the r(1−r) factor
-tapers it to zero — the classic "MSE on sigmoid saturates" concern — but here the targets t *are* 0 and
-1, so the vanishing gradient sits exactly at the correct fixed points and only makes the final approach
-gentle, not the training stuck. That is acceptable. If I insisted on cross-entropy instead I would have
+error against the one-hot target. MSE-on-a-sigmoid has a known worry: with r = σ(z), the
+per-pair loss (r − t)² has dL/dz = 2(r − t)·r(1 − r), and the r(1−r) factor tapers the gradient to zero
+as r approaches 0 or 1. But here the targets t *are* 0 and 1, so that vanishing gradient sits exactly at
+the correct fixed points and only makes the final approach gentle, not the training stuck. If I insisted on cross-entropy instead I would have
 to renormalize the N independent scores into a distribution — a softmax or extra head — which
 re-couples the classes: each score's gradient would then depend on the others, reintroducing exactly the
 fixed cross-class comparison structure I built independent relations to escape. So MSE is not sloppiness;
 it is the loss consistent with treating each (query, class) decision as an independent learned-relation
-regression. I override `compute_loss` to MSE against one-hot, where both previous rungs left it at
+regression. I override `compute_loss` to MSE against one-hot, where both previous methods left it at
 cross-entropy (the prototype) or NLL (the matching vote).
 
 For optimization I can stay on the scaffold default: SGD@1e-2 from scratch — no LR_OVERRIDE. Unlike the
 matching method's recurrences, the relation module is a feedforward conv stack and is stable under the
 default rate; there is no depth-25 unrolled recurrence to blow up, so the reason I had to drop to 1e-3
-in the matching rung simply does not apply here, and the loop's grad-norm clipping at 5.0 covers the
+in the matching method simply does not apply here, and the loop's grad-norm clipping at 5.0 covers the
 from-scratch training. The embedding and comparator tune each other, the embedding shaping maps the
 comparator can compare and the comparator adapting to the embedding.
 
-So the delta from the prototype rung is precise: I keep its one-clean-entity-per-class summary (now in
+So the delta from the prototype method is precise: I keep its one-clean-entity-per-class summary (now in
 feature-map space, by summing maps), but I replace the *fixed linear* comparison — the thing that won
 CUB and lost CIFAR/mini — with a learned non-linear convolutional comparator on the concatenated pair,
-scored by sigmoid and trained by MSE. The full scaffold module is in the answer. Now the falsifiable
-expectations against the prototype numbers. The whole reason to do this is the generic benchmarks where
-the linear metric left accuracy on the table, so I expect **CIFAR-FS to recover and pass** the prototype
-0.682 — the learned comparator can carve the non-convex matched regions the linear head could not — and
-**miniImageNet to rise** past 0.649 for the same reason; concretely I would put CIFAR back over 0.78,
-above even the matching vote's 0.769, and mini past 0.69. The risk and the test is **CUB**: the prototype
-already posted a strong 0.756 there on a layout where a clean entity plus a simple metric was apparently
-near-ideal, so the learned comparator's extra capacity might buy little on CUB and could even be *higher
-variance* across seeds, because a flexible comparator with ~11M parameters trained from scratch on
+scored by sigmoid and trained by MSE. The full scaffold module is in the answer. The whole reason to do
+this is the generic benchmarks where the linear metric left accuracy on the table, so I expect
+**CIFAR-FS** to recover and pass 0.78 (above even the matching vote's 0.769) and **miniImageNet** to
+rise past 0.69 — the learned comparator can carve the non-convex matched regions the linear head could
+not. The risk and the test is **CUB**: the prototype already posted a strong 0.756 there on a layout
+where a clean entity plus a simple metric was near-ideal, so the extra capacity might buy little and
+could even raise seed-to-seed *variance* — a flexible ~11M-parameter comparator trained from scratch on
 twenty-five images per episode has more ways to land differently per seed than a parameter-free linear
-head. So my concrete prediction: CIFAR up clearly (past 0.78), mini up (past 0.69), CUB roughly holding
-around 0.756 but with visibly larger seed-to-seed spread than the prototype's tight 0.753–0.762. If
-CIFAR and mini both rise while CUB holds, that confirms the diagnosis that the fixed metric — not the
-summary — was the bottleneck on the generic benchmarks, and the learned comparison is the right and
-final lever among the metric methods. If even the learned comparator cannot move the generic benchmarks
-much, the remaining lever is no longer the metric at all but *adapting the embedding itself to each task*
-— making the per-class summaries task-aware rather than comparing fixed embeddings — which is where I
-would look next.
+head, so I expect CUB roughly holding near 0.756 but with visibly larger spread than the prototype's
+tight 0.753–0.762. If CIFAR and mini rise while CUB holds, the fixed metric — not the summary — was the
+bottleneck on the generic benchmarks. If even the learned comparator cannot move them, the remaining
+lever is no longer the metric but *adapting the embedding itself to each task* — making the per-class
+summaries task-aware rather than comparing fixed embeddings.

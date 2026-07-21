@@ -1,7 +1,7 @@
 The classifier inside the episode is the whole point, and the scaffold hands me a default already —
 mean prototypes, distance to prototypes — but I want to start from the weakest *principled* fill of
-this contract and understand exactly where it stalls, because that failure is what every later rung
-will react to. So I set the prototype shortcut aside and start from what actually hurts in this
+this contract and understand exactly where it stalls, because that failure is what every later method
+will react to. So I set the prototype shortcut aside and start from the structural difficulty of the
 problem, then build the simplest classifier that respects it.
 
 What hurts is structural, not a tuning problem. I have a backbone that would be wonderful if I could
@@ -11,12 +11,11 @@ parametric net sees five giraffes and shrugs, because the only way it knows how 
 take gradient steps, and five examples are a few tiny steps. Worse, the rules of this task forbid the
 move entirely: at test time I get a fresh support set of unseen classes and I am not allowed to update
 weights on it. No fine-tuning at evaluation. And if I tried — hammering the backbone on the support —
-I would overfit catastrophically and overwrite everything the base classes taught me. Let me put a
-number on the regime, because it decides everything downstream. Five-way five-shot is twenty-five
-labeled support images per episode, and the ResNet-12 the scaffold gives me is on the order of twelve
-million parameters. Twenty-five constraints against twelve million degrees of freedom is not a fit, it
-is an interpolation table; one or two SGD steps at any sane rate either move the weights not at all or
-move them enough to wreck the base-class geometry. So whatever I build has to absorb a
+I would overfit catastrophically and overwrite everything the base classes taught me. The regime
+decides everything downstream: five-way five-shot is twenty-five labeled support images per episode
+against a ResNet-12 on the order of twelve million parameters — not a fit but an interpolation table,
+where one or two SGD steps at any sane rate either move the weights not at all or move them enough to
+wreck the base-class geometry. So whatever I build has to absorb a
 never-before-seen class *instantly*, with no weight update, and still classify a query into it. The
 knowledge that adapts to the task cannot live in the slowly-moving weights; it has to live in the
 support set itself.
@@ -78,9 +77,8 @@ where f embeds the query and g embeds the support examples — both the same dee
 is a similarity. The softmax gives me exactly the non-negative, sum-to-one weights I assumed, it is
 differentiable, and it is the same smoothing that killed NCA's discontinuity, now applied over the
 support set rather than all of training. The metric is learned through f and g, which are deep, fixing
-NCA's linear limitation. What should c be? Let me actually walk the three candidates rather than reach
-for one. NCA used negative squared Euclidean; a dot product is the other reflex; cosine is the third.
-Take the raw dot product c(u,v) = uᵀv. The backbone's outputs have no constraint on their magnitude —
+NCA's linear limitation. What should c be? NCA used negative squared Euclidean; a dot product is the
+other reflex; cosine is the third. Take the raw dot product c(u,v) = uᵀv. The backbone's outputs have no constraint on their magnitude —
 one support embedding can come out with a norm several times another's simply because of where it
 landed in feature space — and under a dot product a long support vector scores high for almost any
 query regardless of *direction*, so that one slot dominates the softmax and the vote reduces to "which
@@ -140,9 +138,8 @@ feature: g(x_i, S) = h⃗_i + h⃐_i + g′(x_i). The skip matters because I do 
 reconstruct the useful feature from scratch; I want it to start from the raw feature and add a
 contextual *correction*. At initialization g(x_i, S) ≈ g′(x_i), so the network only has to learn how
 the set should *modify* the embedding, and it can never do worse than the myopic version because it can
-drive the LSTM contributions to zero. Let me be honest about the cost of this, though, because it is
-exactly the ledger the hard benchmark will audit. A bidirectional LSTM with input and hidden width both
-640 carries, per direction, four gates each with a 640×640 input-to-hidden matrix, a 640×640
+drive the LSTM contributions to zero. But the cost is steep. A bidirectional LSTM with input and hidden
+width both 640 carries, per direction, four gates each with a 640×640 input-to-hidden matrix, a 640×640
 hidden-to-hidden matrix, and two bias vectors: 4·(640² + 640² + 2·640) ≈ 3.28M parameters, times two
 directions ≈ 6.56M. That is already half the size of the backbone itself, and it is bought so that each
 support embedding can be reshaped using information from the other twenty-four support vectors in its
@@ -174,40 +171,21 @@ parameters; so the two FCE modules together add roughly 11.5M parameters on top 
 nearly doubling the model, all of it sitting in front of a per-episode signal of at most a couple dozen
 support vectors.
 
-Before I commit I should trace the shapes end to end once, because a per-point vote with two recurrences
-has several places a transpose or a normalization axis could be silently wrong. Support features come in
-as 25×640; the bidirectional LSTM emits 25×1280, I split it into the two 640-wide halves and add both to
-the raw 25×640, leaving contextualized support at 25×640. Query features are 75×640 (5 classes × 15
-queries). The query encoder initializes its hidden and cell states at 75×640; each of the 25 loop steps
-computes attention (75×640)·(640×25) = 75×25, reads (75×25)·(25×640) = 75×640, concatenates the
-re-injected raw query to 75×1280, and the cell returns 75×640, plus the skip — still 75×640 after all 25
-steps. The final vote takes the 75×640 query against the L2-normalized 25×640 support transposed to
-640×25, giving a 75×25 similarity, softmaxed along the support axis so each query's 25 weights sum to
-one, then multiplied by the 25×5 one-hot support labels to give 75×5. That last matmul is what turns 25
-per-point weights into 5 per-class masses, and because the softmax rows sum to one and the one-hot
-columns partition the 25 supports into 5 classes, each output row sums to one: it is a genuine
-distribution over the 5 classes, shape (n_query, n_way) = (75, 5), exactly the contract. Good — no axis
-is transposed wrong and the output is already normalized.
+One structural fact about the output decides the loss. The final vote takes the query against the
+L2-normalized support, softmaxes along the support axis so each query's 25 weights sum to one, then
+multiplies by the 25×5 one-hot support labels: the softmax rows sum to one and the one-hot columns
+partition the 25 supports into 5 classes, so each output row sums to one. The head emits a genuine
+distribution over the 5 classes, shape (n_query, n_way) = (75, 5) — already normalized, exactly the
+contract. So its log is a log-probability and the matched loss is negative log-likelihood, −log ŷ_{true},
+not the cross-entropy the other fills use. The two happen to return the same number here — cross-entropy's
+log-softmax on a log-probability input is the identity, since exp-then-sum returns 1 — but I write NLL
+because it is the honest description of what the head emits, and I would rather not lean on the accident
+that a second softmax is a no-op: the moment anything perturbs normalization, cross-entropy silently
+re-normalizes under me. One such perturbation is already in the code: to avoid log(0) = −∞ when a query
+puts zero total mass on a class, I floor the vote with ε = 1e−6 before the log, which NLL absorbs as a
+negligible −log(1+5ε) shift while a re-softmax would divide it back out.
 
-That "already normalized" is the fact that decides the loss, and it is worth doing the arithmetic
-instead of asserting it. The output ŷ is a convex combination of one-hots, so ŷ is a probability
-vector; I take its log and the natural loss is negative log-likelihood, −log ŷ_{true}. The reflex would
-be cross-entropy, which the other fills use, so let me actually check what cross-entropy would do to a
-log-probability input. PyTorch cross-entropy is log-softmax followed by NLL: it computes
-log_softmax(x)_y = x_y − log Σ_j exp(x_j). Feed it x = log ŷ. Then exp(x_j) = ŷ_j and Σ_j exp(x_j) =
-Σ_j ŷ_j = 1, so log_softmax(log ŷ)_y = log ŷ_y − log 1 = log ŷ_y, and cross-entropy returns exactly
-−log ŷ_y — the *same* number NLL returns. So the two are not different values here; cross-entropy only
-happens to agree because ŷ is already normalized, and softmax of the log of a normalized distribution is
-the identity. The reason I still write NLL is semantic, not numeric: the output *is* a log-probability,
-NLL is its matched loss, and I would rather not lean on the accident that a second softmax is a no-op —
-the moment anything perturbs normalization, cross-entropy starts silently re-normalizing under me. And
-one such perturbation is already in my code: to avoid log(0) = −∞ when a query puts zero total mass on a
-class, I floor the vote with a tiny additive ε = 1e−6 before the log, which makes each row sum to
-1 + 5ε instead of 1. Under NLL that just shifts every log by an imperceptible −log(1+5ε) ≈ −5e−6; under
-cross-entropy the re-softmax would divide it back out. Both are negligible, but NLL is the honest
-description of what the head emits, so NLL it is.
-
-Two more implementation choices I should pin down rather than wave through, because they bite. First,
+Two more implementation choices bite. First,
 the cosine vote: strictly, cosine normalizes *both* sides, but if I L2-normalize the query too, the
 softmax loses its bite, and I can see why with one line of arithmetic. Each logit is q·ŝ_i where ŝ_i is
 a unit support vector, so logit_i = ‖q‖ · cos(q, ŝ_i): the query norm ‖q‖ multiplies every cosine and
@@ -217,8 +195,7 @@ and softmax(…, gap 0.1) is nearly uniform — the vote cannot concentrate on t
 query unnormalized and ‖q‖ for a 640-d ReLU embedding is easily order 10, so the same 0.1 cosine gap
 becomes a logit gap near 1.0 and the softmax actually peaks. So I normalize the *support* side only and
 leave the query "sharp" — a deliberate trade of strict query-side scale invariance for a softmax that
-discriminates, and the arithmetic says it is the difference between a vote and a shrug. Second, the
-learning rate. The scaffold defaults to plain SGD at 1e-2, which is fine for a fixed-metric mean
+discriminates. Second, the learning rate. The scaffold defaults to plain SGD at 1e-2, which is fine for a fixed-metric mean
 classifier, but this method has a bidirectional LSTM *and* a K = 25-step attention loop in the forward
 path, so backprop runs through a depth-25 recurrence stacked on the backbone — a much deeper and more
 nonlinear computation graph than the plain net the 1e-2 default was chosen for. The global gradient-norm
@@ -229,25 +206,17 @@ smaller step matched to the recurrent depth — and let the clip handle spikes. 
 False: each query is classified on its own against the support, never letting queries see each other.
 The full scaffold module is in the answer.
 
-So the delta from the scaffold default is concrete: where the default takes per-class *means* and
-scores by L2 distance, I keep every support point, contextualize support and query with LSTMs, and vote
-by cosine-softmax over the support labels with an NLL loss. Now let me reason about what this floor
-should do, because that is the entire point of running it first. This is the most *intricate* of the
-metric methods — a per-point vote with two LSTMs and ~11.5M extra parameters — but intricacy is not
-strength here. The vote keeps one weight per support example and never forms a single concise entity
-per class, so at 5-shot each class is a scatter of five embeddings the softmax has to integrate, and the
-FCE recurrences add capacity that a couple dozen support vectors per episode can barely exercise in a way
-that transfers to novel classes. I expect the benchmarks to split on one axis: how cleanly the *frozen
-cosine vote* over individual points separates the classes. Where classes are visually distinct — generic
-objects, CIFAR-like and miniImageNet-like categories — the query's embedding points in a very different
-direction from the wrong classes' support, the cosines spread, the softmax concentrates, and the LSTMs
-should help a little. Where the test distribution diverges from the broad training sampling —
-fine-grained classes that are mutually similar, one bird species against another — the per-point cosine
-vote should struggle most: the embeddings of every class point in nearly the same direction, so a
-query's cosine to all twenty-five scattered support points is uniformly high and nearly equal, the
-softmax over support smears mass across all five classes, and the LSTM context cannot manufacture a
-margin that the embedding-plus-fixed-metric does not already have — the skip connection guaranteed it
-starts as a no-op, and there is no within-set signal telling it how to open a gap where none exists. So
-I predict the weakest benchmark for this method is the fine-grained one, and that the next rung's job is
-to find a *cleaner per-class summary and a metric consistent with it*, which is precisely where
-collapsing each class to a single prototype — instead of voting over points — points.
+The delta from the default: where it takes per-class *means* and scores by L2 distance, I keep every
+support point, contextualize support and query with LSTMs, and vote by cosine-softmax over the support
+labels under NLL. This is the most *intricate* of the metric methods — a per-point vote with two LSTMs
+and ~11.5M extra parameters — but intricacy is not strength here. The vote never forms a single concise
+entity per class, so at 5-shot each class is a scatter of five embeddings the softmax has to integrate,
+and the FCE capacity can barely be exercised by a couple dozen support vectors in a way that transfers
+to novel classes. So the benchmarks should split on how cleanly the frozen cosine vote separates
+classes: where classes are visually distinct the cosines spread and the softmax concentrates and the
+LSTMs help a little, but where classes are mutually similar — one bird species against another — a
+query's cosine to all twenty-five scattered support points is uniformly high, the softmax smears mass
+across all five classes, and the skip-initialized FCE has no within-set signal telling it how to open a
+gap where none exists. So I predict the weakest benchmark here is the fine-grained one, and that the
+next step must find a cleaner per-class summary with a metric consistent with it — collapsing each class
+to a single prototype rather than voting over points.

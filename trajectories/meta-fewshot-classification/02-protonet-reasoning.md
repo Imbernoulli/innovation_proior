@@ -2,7 +2,7 @@ The matching-vote run told me where the per-point classifier breaks, and it told
 two generic benchmarks it was respectable — CIFAR-FS 0.769, miniImageNet 0.674 — but on the
 fine-grained one it cratered to 0.625 on CUB, the lowest of the three by a wide margin and exactly the
 benchmark I flagged as the danger. Before I read a mechanism into that I should check it is not seed
-noise, because a wrong causal story here poisons the whole next rung. The per-seed spreads on the
+noise, because a wrong causal story here poisons the next step. The per-seed spreads on the
 matching run are tiny: CUB std 0.004, CIFAR std 0.002, mini std 0.007. The CIFAR-to-CUB gap is
 0.769 − 0.625 = 0.144, which is 0.144 / 0.004 ≈ 36 CUB standard deviations. That is not a fluctuation;
 it is a structural deficit that no reseeding will close. So I can trust the split and read it the way I
@@ -72,11 +72,7 @@ through the derivative of the inner product term gives ∇_c d_φ(x, c) = −∇
 to zero: ∇²φ(c) Σ_x (x − c) = 0; since φ is strictly convex its Hessian is positive definite hence
 invertible, so the only solution is Σ_x (x − c) = 0, i.e. c is the mean. So for *any* Bregman
 divergence the mean is the optimal representative — precisely the prototype I already chose; the two
-choices are made for each other. Let me instantiate the general derivation on the one case I actually
-care about, as a sanity check that I have not mis-stated it: take squared Euclidean directly, without
-the Bregman machinery, g(c) = Σ_x ‖x − c‖², so g′(c) = Σ_x 2(c − x) = 2(Nc − Σ_x x), and setting that
-to zero gives c = (1/N) Σ_x x, the mean, full stop. The general argument reproduces the elementary one,
-so I trust it. And there is a converse worth holding: among smooth distortions, this mean-as-minimizer
+choices are made for each other. And there is a converse worth holding: among smooth distortions, this mean-as-minimizer
 property characterizes exactly the Bregman divergences. That tells me my distance had better *be* a
 Bregman divergence, or I am averaging points that the distance does not think the average represents.
 
@@ -109,13 +105,10 @@ There is a deeper reading of "squared Euclidean is a Bregman divergence" that su
 assumption I am silently making. There is a bijection between regular exponential-family densities and
 regular Bregman divergences. Model each class in embedding space as one component of an
 equally-weighted mixture; the posterior over which component generated z is exactly the
-softmax-over-negative-divergence-to-prototypes I wrote down. Let me verify that for the spherical
-Gaussian rather than assert it: put an equally-weighted mixture of isotropic unit-variance Gaussians,
-p(z | k) = (2π)^{−d/2} exp(−½‖z − c_k‖²) and π_k = 1/K. Bayes gives
-P(k | z) = π_k p(z|k) / Σ_{k'} π_{k'} p(z|k'); the (1/K) and (2π)^{−d/2} factors are identical across
-classes and cancel top and bottom, leaving P(k | z) = exp(−½‖z − c_k‖²) / Σ_{k'} exp(−½‖z − c_{k'}‖²) —
-which is exactly the softmax over negative squared distance I wrote down, the ½ being nothing but an
-overall temperature. So my classifier *is*, literally, the posterior of an exponential-family mixture
+softmax-over-negative-divergence-to-prototypes I wrote down — for an equally-weighted mixture of
+isotropic unit-variance Gaussians the class-independent (1/K) and (2π)^{−d/2} factors cancel in Bayes'
+rule, leaving exactly the softmax over negative squared distance, the ½ nothing but an overall
+temperature. So my classifier *is*, literally, the posterior of an exponential-family mixture
 with one component per class, and the choice of d picks the class-conditional density. Squared Euclidean corresponds to a spherical, isotropic, unit-variance
 Gaussian per class: every class a round blob of the same size around its mean. That is a strong, simple
 assumption, and in this data-starved regime "strong and simple" is exactly the bias I want — it is the
@@ -175,33 +168,23 @@ train / 5-shot test already gives me that match for free.
 So the edit is the literal scaffold default, and that is the point: the matching run forced me back to
 the simplest fill — mean prototypes, score by (negative) distance, cross-entropy — by showing that the
 intricate per-point vote with FCE underperforms exactly where intricacy cannot buy margin. The full
-scaffold module is in the answer. Now the falsifiable expectations against the matching numbers, and I
-have to be careful to separate what the classifier change predicts from what the harness confounds.
-There is also a scoring reason to want the CUB fix specifically, not just any gain. The task score is
-the *geometric* mean of the three benchmark accuracies, and a geometric mean is dragged hardest by its
-smallest factor: matching scores (0.6736·0.7691·0.6251)^{1/3} ≈ 0.687, and because CUB at 0.625 is the
-low factor, a proportional gain there moves the product as much as a proportional gain anywhere but is
-far *easier* to obtain — lifting CUB from 0.625 to 0.75 is a +20% proportional move, whereas the same
-+20% on CIFAR would demand 0.923, which no clean summary is going to deliver. So the highest-leverage
-place to spend a design change is exactly the weakest benchmark, and the weakest benchmark is exactly
-where the per-point scatter is the diagnosed cause. The move that should pay off most is therefore on
-**CUB**: collapsing each fine-grained class to one prototype and scoring by the Euclidean partner of the
-mean removes the scatter that posted 0.625, so I expect CUB to jump the most — the fine-grained benchmark is where a clean per-class entity helps most — and I will
-call the threshold: past 0.70, which would be a double-digit gain over the matching vote. On the generic
-benchmarks I am less sure of the direction, and part of the reason is a confound I have to name: the
-scaffold trains everyone from scratch under plain SGD@1e-2 with no pre-trained backbone, and the
-matching method ran at its own LR_OVERRIDE of 1e-3 while prototypes will run at the default 1e-2, so any
-change on mini/CIFAR mixes the classifier with the optimizer and I cannot cleanly attribute it. Setting
-that aside, the mechanism prediction is: the mean summary is a strong but rigid prior — a spherical
-Gaussian per class — and on already-separable generic classes the matching vote's per-point flexibility
-may have been buying something the rigid summary gives back. So my concrete prediction: CUB up
-substantially (past 0.70), CIFAR roughly flat or down a little, and mini in the same neighbourhood. If
-CIFAR *drops* while CUB *rises*, that is the spherical-Gaussian prior doing exactly what it should —
-trading flexibility on already-separable classes for a clean, low-variance summary that wins where
-classes collide — and it is a *directional* split (one benchmark up, another down) that no pure
-optimizer change could produce, so it would be the classifier talking, not the learning rate. And if
-even the prototype's rigid summary leaves the *generic* benchmarks where the per-point vote left them,
-the diagnosis for the next rung is already written: the bottleneck is not the *summary* but the *fixed
-metric* comparing query to summary — the induced linear head can only cut classes apart with
-hyperplanes, and a hyperplane through prototype-means is a weak knife when the classes are not laid out
-as round separable blobs — and the move is to stop hand-choosing the comparison and learn it.
+scaffold module is in the answer. There is also a scoring reason to spend the change on CUB
+specifically: the task score is the *geometric* mean of the three accuracies, dragged hardest by its
+smallest factor, so a proportional gain on CUB (the 0.625 low factor) moves the product as much as one
+anywhere but is far easier to obtain — lifting 0.625 by 20% needs 0.75, the same 20% on CIFAR would
+demand 0.923, which no clean summary delivers. So the highest-leverage move is exactly the weakest
+benchmark, which is also where the per-point scatter is the diagnosed cause. Collapsing each fine-grained
+class to one prototype and scoring by the Euclidean partner of the mean removes that scatter, so I
+expect CUB to jump the most — I will call the threshold past 0.70, a double-digit gain over the matching
+vote. On the generic benchmarks the direction is confounded: the matching method ran at its own
+LR_OVERRIDE of 1e-3 while prototypes run at the default 1e-2, so any mini/CIFAR change mixes the
+classifier with the optimizer. Setting that aside, the mean summary is a strong but rigid prior — a
+spherical Gaussian per class — and on already-separable generic classes the matching vote's per-point
+flexibility may have bought something the rigid summary gives back, so I expect CIFAR flat or down a
+little and mini in the same neighbourhood. A *directional* split — CUB up while CIFAR drops — is the
+fingerprint no monotone optimizer change could produce, so it would be the classifier talking, not the
+learning rate. And if even the rigid summary leaves the generic benchmarks where the per-point vote left
+them, the diagnosis for the next step is already written: the bottleneck is not the *summary* but the
+*fixed metric* comparing query to summary — the induced linear head cuts classes apart only with
+hyperplanes, a weak knife when the classes are not round separable blobs — and the move is to stop
+hand-choosing the comparison and learn it.
