@@ -10,7 +10,7 @@ If r_(1) < ... < r_(n) are the sorted calibration scores, then r_test <= r_(k) e
 
   P(r_test <= r_(k)) = k/(n+1).
 
-This does not know the distribution of r. It does not know how the classifier was trained. It only knows that the calibration scores and the test score are exchangeable. Before I lean on it, let me sanity-check the counting at the smallest interesting size. Take n = 1: there is one calibration score and one test score, two pooled values, and exchangeability says r_test is below or above the single calibration value with probability 1/2 each. The formula gives P(r_test <= r_(1)) = 1/(n+1) = 1/2. That matches, and it also matches my intuition that with a single calibration point I genuinely cannot pin coverage more finely than a coin flip.
+This does not know the distribution of r. It does not know how the classifier was trained. It only knows that the calibration scores and the test score are exchangeable.
 
 Now I can choose the rank. I want at least a 1 - alpha probability that the new nonconformity score is no larger than the calibration threshold q_hat. If q_hat = r_(k), the exact probability is k/(n+1), so the smallest safe integer is
 
@@ -32,13 +32,13 @@ Together with the lower bound,
 
   1 - alpha <= P(r_test <= q_hat) <= 1 - alpha + 1/(n+1).
 
-Let me check that this band is not vacuous. At n = 5, alpha = 0.2 the achieved probability is 5/6 = 0.833, an excess of 0.033 over the target, and the bound 1/(n+1) = 0.167 sits comfortably above it. At n = 49 the achieved probability is 40/50 = 0.800 exactly, excess zero, well inside the 0.02 band. So the rank correction does not push me far above the target; the slack is at most one rank out of n+1, and at the operating points I care about it is often nil.
+The slack is at most one rank out of n+1 — at n = 5 the achieved probability is 5/6 = 0.833 against a target of 0.8, an excess of 0.033, and by n = 49 the achieved probability is 40/50 = 0.800 exactly. So the rank correction is not wastefully conservative; it just refuses to undershoot.
 
 The marginal statement is averaged over the calibration draw and the test point. If I freeze one calibration set and ask what probability an infinite stream of future test points has of clearing this particular q_hat, that probability is random because q_hat is random. Reduce the calibration scores through their CDF to uniforms, so q_hat becomes the k-th order statistic of n uniform draws, with k = ceil((n+1)(1 - alpha)). The k-th order statistic of n uniforms is Beta(k, n + 1 - k). With l = floor((n+1)alpha), I have k = n + 1 - l away from the +infinity endpoint, so n + 1 - k = l, and the distribution is
 
   Beta(n + 1 - l, l).
 
-I should confirm the index bookkeeping rather than trust it. Take n = 49, alpha = 0.2: then l = floor(50 * 0.2) = 10 and k = ceil(50 * 0.8) = 40, and indeed k = n + 1 - l = 50 - 10 = 40, with n + 1 - k = 10 = l, so Beta(k, n+1-k) and Beta(n+1-l, l) are the same Beta(40, 10). Its mean is (n + 1 - l)/(n + 1) = 40/50 = 0.8, exactly 1 - alpha, and its standard deviation is sqrt(40*10/(50^2 * 51)) ≈ 0.056, so the realized acceptance rate of a frozen calibration set sits within a few points of the target. That tells me what finite calibration size buys: a small calibration set gives a noisy realized operating point, while hundreds or thousands of calibration scores shrink that spread at the root-n scale and make the realized acceptance rate concentrate tightly around the target.
+Checking the index bookkeeping: take n = 49, alpha = 0.2, then l = floor(50 * 0.2) = 10 and k = ceil(50 * 0.8) = 40, and indeed k = n + 1 - l = 50 - 10 = 40, with n + 1 - k = 10 = l, so Beta(k, n+1-k) and Beta(n+1-l, l) are the same Beta(40, 10). Its mean is (n + 1 - l)/(n + 1) = 40/50 = 0.8, exactly 1 - alpha, and its standard deviation is sqrt(40*10/(50^2 * 51)) ≈ 0.056, so the realized acceptance rate of a frozen calibration set sits within a few points of the target. That tells me what finite calibration size buys: a small calibration set gives a noisy realized operating point, while hundreds or thousands of calibration scores shrink that spread at the root-n scale and make the realized acceptance rate concentrate tightly around the target.
 
 This is also where the subgroup issue shows up. A single pooled threshold controls the marginal event. It does not force each group to clear the same accept/defer rate, and it does not force the selective risk inside each group to match. If I wanted a group-conditional accept/defer rate, I would need to calibrate within groups and pay for it with smaller per-group calibration samples. For the simple pooled rule, the honest promise is marginal.
 
@@ -67,49 +67,6 @@ Then
   iff max_j f(x_test)_j >= 1 - q_hat
   iff acceptance_score(x_test) >= threshold.
 
-Before I commit to that sign-flip, let me run it once by hand, because confusing nonconformity space with confidence space is the easy way to invert the whole rule. Take five calibration points with top-softmax confidences 0.55, 0.70, 0.80, 0.90, 0.95, and c = 0.8 so alpha = 0.2. The nonconformities are 0.45, 0.30, 0.20, 0.10, 0.05; sorted, r = [0.05, 0.10, 0.20, 0.30, 0.45]. The zero-indexed rank is ceil(6 * 0.8) - 1 = 5 - 1 = 4, so q_hat = sort(r)[4] = 0.45 and threshold = 1 - 0.45 = 0.55. Now a test point: confidence 0.50 has nonconformity 0.50 > 0.45, so it should defer — and 0.50 >= 0.55 is False, deferred, consistent. Confidence 0.78 has nonconformity 0.22 <= 0.45, accept — and 0.78 >= 0.55 is True, accepted, consistent. Confidence 0.95 accepts both ways. So the confidence-space comparison reproduces the nonconformity-space rule exactly, and the stored threshold is on the right side of the flip.
+Confusing nonconformity space with confidence space is the easy way to invert the whole rule, so I run the sign-flip once by hand. Take five calibration points with top-softmax confidences 0.55, 0.70, 0.80, 0.90, 0.95, and c = 0.8 so alpha = 0.2. The nonconformities are 0.45, 0.30, 0.20, 0.10, 0.05; sorted, r = [0.05, 0.10, 0.20, 0.30, 0.45]. The zero-indexed rank is ceil(6 * 0.8) - 1 = 5 - 1 = 4, so q_hat = sort(r)[4] = 0.45 and threshold = 1 - 0.45 = 0.55. Now a test point: confidence 0.50 has nonconformity 0.50 > 0.45, so it should defer — and 0.50 >= 0.55 is False, deferred, consistent. Confidence 0.78 has nonconformity 0.22 <= 0.45, accept — and 0.78 >= 0.55 is True, accepted, consistent. Confidence 0.95 accepts both ways. So the confidence-space comparison reproduces the nonconformity-space rule exactly, and the stored threshold is on the right side of the flip.
 
-So the rule that emerges is: the conformal score is 1 - max softmax, the threshold is the conformal order statistic in nonconformity space, and the deployed comparison is the same cutoff converted back to confidence space. The calibration labels and group ids can be passed by the harness, but this particular pooled rule does not need them.
-
-Now the code is just the arithmetic above in the harness's policy shape:
-
-```python
-import numpy as np
-
-TARGET_COVERAGE_DEFAULT = 0.8
-
-
-class SelectivePolicy:
-    """Conformal abstention using a held-out calibration set."""
-
-    def __init__(self, target_coverage: float = TARGET_COVERAGE_DEFAULT, random_state: int = 0):
-        self.target_coverage = float(target_coverage)
-        self.random_state = int(random_state)
-        self.threshold_: float = 0.5
-        self.group_thresholds_: dict[int, float] = {}
-        self.meta_model_ = None
-        self.strategy_name = "conformal_abstention"
-
-    def fit(self, probs: np.ndarray, y_true: np.ndarray, groups: np.ndarray, X: np.ndarray | None = None) -> "SelectivePolicy":
-        scores = np.max(probs, axis=1)
-        nonconformity = 1.0 - scores
-        n = len(nonconformity)
-        alpha = float(np.clip(1.0 - self.target_coverage, 0.0, 1.0))
-        rank = int(np.ceil((n + 1) * (1.0 - alpha))) - 1
-        rank = int(np.clip(rank, 0, n - 1))
-        self.threshold_ = float(1.0 - np.sort(nonconformity)[rank])
-        self.group_thresholds_ = {}
-        self.meta_model_ = None
-        return self
-
-    def acceptance_score(self, probs: np.ndarray, groups: np.ndarray, X: np.ndarray | None = None) -> np.ndarray:
-        return np.max(probs, axis=1)
-
-    def predict_accept(self, probs: np.ndarray, groups: np.ndarray, X: np.ndarray | None = None) -> np.ndarray:
-        return self.acceptance_score(probs, groups, X) >= self.threshold_
-
-    def calibration_summary(self) -> dict[str, float]:
-        return {"threshold": float(self.threshold_)}
-```
-
-Reading back over the chain: softmax thresholding gives the right practical ranking shape but no finite-sample accounting for a fresh exchangeable point; exchangeability turns the unknown score distribution into a uniform rank, which the n = 1 and n = 5 checks bear out; the rank forces ceil((n+1)(1 - alpha)) and the zero-indexed clamp in code, with the +1 demonstrably load-bearing at small n; alpha is 1 - target_coverage; the abstention score is the deployable nonconformity 1 - max softmax; and the hand-traced example confirms that storing 1 - q_hat makes the runtime rule a single comparison on max softmax.
+So the rule that emerges is: the conformal score is 1 - max softmax, the threshold is the conformal order statistic in nonconformity space, and the deployed comparison is the same cutoff converted back to confidence space. The calibration labels and group ids can be passed by the harness, but this particular pooled rule does not need them. Filling the policy's `fit` and `acceptance_score` slots is then just this arithmetic: compute `1 - max_j probs[i,j]` per calibration row, take the zero-indexed rank `ceil((n+1)(1-alpha)) - 1` clamped into `[0, n-1]`, and store `1 - sort(nonconformity)[rank]` as the confidence-space threshold that `predict_accept` compares against.
