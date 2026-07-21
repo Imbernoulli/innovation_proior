@@ -14,13 +14,13 @@ and the equilateral triangle's area is `3 alpha(d) - pi`. Summing over the `2N -
 (2N - 4)(3 alpha(d) - pi) <= 4 pi.
 ```
 
-Solve for `alpha(d)`: `3 alpha(d) - pi <= 4 pi/(2N - 4) = 2 pi/(N - 2)`, so `alpha(d) <= pi/3 + (2 pi)/(3(N-2))`, which is `pi N/(3(N-2))`. Let me check that last simplification with actual numbers before I trust it, because it's the kind of place I drop a factor: at `N = 13`, `pi/3 + 2pi/(3·11) = 70.9091°` and `pi·13/(3·11) = 70.9091°`; at `N = 14`, both give `70.0000°`. They agree, so the algebra held. Inverting `alpha(d) = arccos(cos d/(1+cos d))` against that threshold — set `c_N = cos(pi N/(3N-6))`, then `cos d/(1+cos d) = c_N` gives `cos d = c_N/(1 - c_N)`:
+Solve for `alpha(d)`: `3 alpha(d) - pi <= 4 pi/(2N - 4) = 2 pi/(N - 2)`, so `alpha(d) <= pi/3 + (2 pi)/(3(N-2)) = pi N/(3(N-2))`. Inverting `alpha(d) = arccos(cos d/(1+cos d))` against that threshold — set `c_N = cos(pi N/(3N-6))`, then `cos d/(1+cos d) = c_N` gives `cos d = c_N/(1 - c_N)`:
 
 ```
 d_N <= arccos( c_N / (1 - c_N) ),   c_N = cos( pi N / (3N - 6) ).
 ```
 
-Let me sanity check it numerically. `N = 14`: `c_14 = cos(14 pi/36) = 0.34202`, and `arccos(0.34202/(1 - 0.34202)) = 58.6809°`. `N = 13`: `c_13 = 0.32707`, `arccos(0.32707/0.67293) = 60.9197°`. So the bound is real at `N = 14` but at `N = 13` it gives `60.92°` — *worse than 60°*, i.e. useless, because I already know `d_13 < 60°` from the kissing number. As another check, the inputs where I expect the bound to be *exact* are the values for which the sphere literally tiles into equilateral triangles: `arccos(c_N/(1-c_N))` returns `90.0000°` at `N = 6` (octahedron) and `63.4349°` at `N = 12` (icosahedron), the known optima — so the formula is right and it saturates exactly there. Everywhere else it's slack, fatally so at exactly the cases I care about. The reason is structural: I replaced every face by an equilateral triangle, but a real optimal arrangement has *rhombi, pentagons, hexagons* among its faces, and those don't saturate the per-triangle area inequality. The bound throws away the actual combinatorics.
+Evaluating it: `N = 14`: `c_14 = cos(14 pi/36) = 0.34202`, `arccos(0.34202/(1 - 0.34202)) = 58.6809°`. `N = 13`: `c_13 = 0.32707`, `arccos(0.32707/0.67293) = 60.9197°` — worse than `60°`, i.e. useless there, because I already know `d_13 < 60°` from the kissing number. The formula does saturate exactly at the values where the sphere tiles into equilateral triangles: `arccos(c_N/(1-c_N))` returns `90.0000°` at `N = 6` (octahedron) and `63.4349°` at `N = 12` (icosahedron), the known optima. Everywhere else it's slack, fatally so at exactly the cases I care about. The reason is structural: I replaced every face by an equilateral triangle, but a real optimal arrangement has *rhombi, pentagons, hexagons* among its faces, and those don't saturate the per-triangle area inequality. The bound throws away the actual combinatorics.
 
 Second tool: linear programming on the sphere, the Delsarte machine. This one I trust more because it solved the kissing number in dimensions `8` and `24`. The idea: functions of the inner product `t = <x,y>` that are positive-definite on the sphere are exactly the nonnegative combinations of Gegenbauer polynomials `P_k^{(n)}` — that's Schoenberg. The `P_k^{(n)}` obey `(k+n-2)P_{k+1} = (2k+n-2)t P_k - k P_{k-1}`, `P_0 = 1`, `P_1 = t`, normalized to `P_k(1) = 1`; for `n = 3` they're the Legendre polynomials. Positive-definiteness is the addition theorem: `P_k(<x,y>) = (1/r_k) sum_j v_{k,j}(x) v_{k,j}(y)` for an orthonormal harmonic basis, so `sum_{x,y in C} P_k(<x,y>) = (1/r_k) sum_j (sum_x v_{k,j}(x))^2 >= 0`. Take any `f = sum_k f_k P_k`. Then
 
@@ -46,7 +46,7 @@ So let me extract everything I can about the shape of an irreducible taut graph,
 
 Planar: take two taut edges `ab` and `xy`, each of length exactly `d`. If their shortest arcs crossed, the four endpoints would force one of the cross distances `ax, ay, bx, by` to be `< d` — but `d` is the *minimum* distance, contradiction. So taut edges don't cross: `CG(X)` is planar.
 
-Degrees: a vertex of degree `1` or `2` could be shifted (one or two taut constraints don't pin a point on the sphere — there's a free direction increasing all of them), so it would not be irreducible; degree `0` is allowed only as a genuinely isolated, room-to-spare point. What about high degree — can a vertex have six taut neighbours? Let me actually compute the room. Put the center at the north pole and a neighbour at distance `d`; for two neighbours separated by central angle `phi`, the spherical law of cosines gives the neighbour-neighbour distance `d_ij` via `cos d_ij = cos^2 d + sin^2 d cos phi`. Requiring `d_ij >= d` (they're points of the code too) means `cos d >= cos^2 d + sin^2 d cos phi`, i.e. `cos phi <= (cos d - cos^2 d)/sin^2 d = cos d/(1 + cos d) = cos(alpha(d))`, so consecutive neighbours subtend `phi >= alpha(d)` at the center. With `k` neighbours around the full turn, `k · alpha(d) <= 2pi`. At `d = d_14 ≈ 55.67°`, `alpha(d) = 68.8633°`, so `6·alpha = 413.18° > 360°` — six don't fit — while `5·alpha = 344.32° < 360°`, so five do. Degree `>= 6` is out; every vertex has degree `0, 3, 4,` or `5`.
+Degrees: a vertex of degree `1` or `2` could be shifted (one or two taut constraints don't pin a point on the sphere — there's a free direction increasing all of them), so it would not be irreducible; degree `0` is allowed only as a genuinely isolated, room-to-spare point. What about high degree — can a vertex have six taut neighbours? Put the center at the north pole and a neighbour at distance `d`; for two neighbours separated by central angle `phi`, the spherical law of cosines gives the neighbour-neighbour distance `d_ij` via `cos d_ij = cos^2 d + sin^2 d cos phi`. Requiring `d_ij >= d` (they're points of the code too) means `cos d >= cos^2 d + sin^2 d cos phi`, i.e. `cos phi <= (cos d - cos^2 d)/sin^2 d = cos d/(1 + cos d) = cos(alpha(d))`, so consecutive neighbours subtend `phi >= alpha(d)` at the center. With `k` neighbours around the full turn, `k · alpha(d) <= 2pi`. At `d = d_14 ≈ 55.67°`, `alpha(d) = 68.8633°`, so `6·alpha = 413.18° > 360°` — six don't fit — while `5·alpha = 344.32° < 360°`, so five do. Degree `>= 6` is out; every vertex has degree `0, 3, 4,` or `5`.
 
 Faces: each face of this planar graph is a spherical polygon all of whose edges have length exactly `d` — an equilateral spherical polygon, and it must be *convex* (a reflex vertex could be shifted inward). How many sides can a face have? A convex equilateral `m`-gon of side `d` needs total turning that forces `m <= floor(2 pi / d)`. Let me evaluate that ceiling at the cases I care about: at `d = 55.67°`, `2pi/d = 6.4666`, floor `6`; at `d = 57.14°`, `2pi/d = 6.3007`, floor `6`; even at the kissing edge `d = 60°` it's exactly `6`. So `m <= 6`: faces are triangles, rhombi (`m=4`), pentagons, hexagons. And an isolated (degree-`0`) point can only sit inside a face roomy enough to hold it `>= d` from all the face's vertices — that requires a hexagon, and at most one isolated point per hexagon.
 
@@ -60,13 +60,13 @@ Around every vertex `v`, the face angles meeting there fill the full turn:
 sum_{i in I(v)} u_i = 2 pi.
 ```
 
-Every face angle is at least the equilateral-triangle angle, `u_i >= alpha(d)` — because a convex equilateral polygon can't have an interior angle smaller than that of the triangle of the same side. A triangular face is forced equilateral, all three angles `= alpha(d)`. A rhombus (`m = 4`) has opposite angles equal, `u_1 = u_3`, `u_2 = u_4`, and a single relation between the two angle-classes. Let me derive that relation rather than quote it. Draw a diagonal and compare the two isosceles spherical triangles it creates; eliminating the diagonal length from the spherical cosine laws leaves `cot(u_1/2) cot(u_2/2) = cos d`, i.e.
+Every face angle is at least the equilateral-triangle angle, `u_i >= alpha(d)` — because a convex equilateral polygon can't have an interior angle smaller than that of the triangle of the same side. A triangular face is forced equilateral, all three angles `= alpha(d)`. A rhombus (`m = 4`) has opposite angles equal, `u_1 = u_3`, `u_2 = u_4`, and a single relation between the two angle-classes: draw a diagonal and compare the two isosceles spherical triangles it creates; eliminating the diagonal length from the spherical cosine laws leaves `cot(u_1/2) cot(u_2/2) = cos d`, i.e.
 
 ```
 u_2 = rho(u_1, d) := 2 cot^{-1}( tan(u_1/2) cos d ).
 ```
 
-Let me make sure I have the right map. `rho` should be its own inverse — swapping the two angle-classes of a rhombus shouldn't change it — and decreasing in `u_1`. Numerically at `d = 55.67°`: `rho(70°) = 136.90°`, `rho(80°) = 129.35°`, so decreasing; and `rho(rho(1.0)) = 1.0000` to machine precision, so self-inverse. Good. Since `u_2 >= alpha(d)` and `rho` is decreasing and self-inverse, `u_1 <= rho(alpha(d), d) = 2 alpha(d)`; so each rhombus angle is bracketed `alpha(d) <= u_i <= 2 alpha(d)`. Let me check that bracket's upper boundary explicitly: at `d = 55.67057°`, `alpha(d) = 68.8633°`, and `rho(alpha(d), d) = 137.72670°`, while `2 alpha(d) = 137.72670°` — they coincide to five decimals, so the bracket really is tight at the degenerate (flat) rhombus, as the self-inverse property predicts. Pentagons and hexagons are determined by `d` and any `m - 3` of their angles (two for a pentagon, three for a hexagon); the remaining angles are explicit functions `g_i` of those and `d`. Plus there are the irreducibility inequalities the *faces* themselves must satisfy: no point of the face can be Danzer-flipped into it, which translates to "the mirror image of each vertex across the opposite side stays `>= d` from the others," a family of inequalities `zeta_{ij}(...) >= d`; and if a hexagon holds an isolated point, that point's best position is still `> d` from all six vertices, `lambda(...) > d`.
+`rho` should be its own inverse — swapping the two angle-classes of a rhombus shouldn't change it — and decreasing in `u_1`. Numerically at `d = 55.67°`: `rho(70°) = 136.90°`, `rho(80°) = 129.35°`, so decreasing; and `rho(rho(1.0)) = 1.0000` to machine precision, so self-inverse. Since `u_2 >= alpha(d)` and `rho` is decreasing and self-inverse, `u_1 <= rho(alpha(d), d) = 2 alpha(d)`; so each rhombus angle is bracketed `alpha(d) <= u_i <= 2 alpha(d)`. Pentagons and hexagons are determined by `d` and any `m - 3` of their angles (two for a pentagon, three for a hexagon); the remaining angles are explicit functions `g_i` of those and `d`. Plus there are the irreducibility inequalities the *faces* themselves must satisfy: no point of the face can be Danzer-flipped into it, which translates to "the mirror image of each vertex across the opposite side stays `>= d` from the others," a family of inequalities `zeta_{ij}(...) >= d`; and if a hexagon holds an isolated point, that point's best position is still `> d` from all six vertices, `lambda(...) > d`.
 
 So per candidate graph I get a system: linear angle-sum equalities, plus nonlinear (transcendental) constraints `alpha`, `rho`, `g_i`, `zeta`, `lambda`, all coupled through `d` ranging over the window `[d_lo, d_hi]` — lower end the known construction, upper end Fejes Tóth (or the tighter SDP bracket). At `N = 13` that window is `[57.1367°, 58.5°]`; at `N = 14` it is `[55.67057°, 56.58°]` — both narrow, which is the whole point of having computed the global brackets first. If this system is *infeasible*, the graph `G` cannot be the optimum and I delete it.
 
@@ -80,7 +80,7 @@ At this point the optimal taut graph `G_N` is one of finitely many explicit grap
 
 For the last handful, I'll try symmetry first — it's elementary when it works — and keep a heavier certificate in reserve for the cases where the angles refuse to collapse to one clean scalar.
 
-The symmetry route is direct angle-chasing, exploiting the graph's symmetry to cut the free parameters down to one or two. Take `Gamma_13`. Set `u_0 = alpha(d)` for the triangle angles. Walking the graph and repeatedly applying the rhombus relation `u_{j} = rho(u_i, d)` and the angle-sums `sum u = 2 pi`, I can express every angle as a function of just `u_1, u_2, d` — for instance `u_5 = rho(u_1, d)`, `u_6 = rho(u_2, d)`, `u_9 = 2pi - u_5 - u_6`, `u_{13} = rho(u_9, d)`, and so on down the chain. Then one extra vertex equation (the closing condition at the special vertex `v_8`, `u_0 + u_{15} + u_4 + u_{16} = 2 pi`) ties `d` to `u_1, u_2`, leaving a one-dimensional family. For the relatives `Gamma_13^{(1)}` etc., the same chain plus the subgraph's extra equality collapses everything to a single free variable, and I can write a scalar function — call it `u_{18}(d)` — that an admissible realization must satisfy `u_{18}(d) >= alpha(d)`. The question is whether that constraint pins `d`. Tracking `u_{18}(d)` along the window, it comes out *monotonically decreasing*, and at `d = delta_13` it meets the floor, `u_{18}(delta_13) = alpha(delta_13)`. So `u_{18}(d) >= alpha(d)` forces `d <= delta_13`, with equality only at `Gamma^{(0)}`. That's the strict separation: every relative gives `psi < delta_13`, and `Gamma_13` gives exactly `delta_13`. And `delta_13` itself is *analytic*, not just numerical: with `a := alpha(d)`, the closing relations reduce to a transcendental equation in `a` alone, together with `cos d = cos a/(1 - cos a)` (the inverse of `alpha`). Let me at least verify that the two halves are mutually consistent at the claimed root. The closing equation solves to `a_13 ≈ 69.4051°`; feeding that into `cos d = cos a/(1 - cos a)` gives `d = 57.1367°` — and going back the other way, `alpha(57.1367°) = arccos(cos d/(1+cos d)) = 69.4051°`, which round-trips exactly. So the pair `(a_13, delta_13) = (69.4051°, 57.1367°)` is internally consistent and matches the construction value `psi(P_13)`. Same template kills the `N = 14` relatives `i = 1, 2`: reduce to a single parameter `x = (u_2 - u_1)/2`, derive `f_7(x,d) + f_8(x,d) = pi` from the angle-sums (which makes `d = theta(x)` a function of `x`), then show `f_{13}(x)` is monotone — `f_{13}'(0) ≈ -2.4587 < 0` — so the constraint `u_{13} >= u_0` forces `x <= 0`, and symmetrically `x >= 0`, pinning `x = 0`, i.e. the symmetric `Gamma_14`.
+The symmetry route is direct angle-chasing, exploiting the graph's symmetry to cut the free parameters down to one or two. Take `Gamma_13`. Set `u_0 = alpha(d)` for the triangle angles. Walking the graph and repeatedly applying the rhombus relation `u_{j} = rho(u_i, d)` and the angle-sums `sum u = 2 pi`, I can express every angle as a function of just `u_1, u_2, d` — for instance `u_5 = rho(u_1, d)`, `u_6 = rho(u_2, d)`, `u_9 = 2pi - u_5 - u_6`, `u_{13} = rho(u_9, d)`, and so on down the chain. Then one extra vertex equation (the closing condition at the special vertex `v_8`, `u_0 + u_{15} + u_4 + u_{16} = 2 pi`) ties `d` to `u_1, u_2`, leaving a one-dimensional family. For the relatives `Gamma_13^{(1)}` etc., the same chain plus the subgraph's extra equality collapses everything to a single free variable, and I can write a scalar function — call it `u_{18}(d)` — that an admissible realization must satisfy `u_{18}(d) >= alpha(d)`. The question is whether that constraint pins `d`. Tracking `u_{18}(d)` along the window, it comes out *monotonically decreasing*, and at `d = delta_13` it meets the floor, `u_{18}(delta_13) = alpha(delta_13)`. So `u_{18}(d) >= alpha(d)` forces `d <= delta_13`, with equality only at `Gamma^{(0)}`. That's the strict separation: every relative gives `psi < delta_13`, and `Gamma_13` gives exactly `delta_13`. And `delta_13` itself is *analytic*, not just numerical: with `a := alpha(d)`, the closing relations reduce to a transcendental equation in `a` alone, together with `cos d = cos a/(1 - cos a)` (the inverse of `alpha`). The closing equation solves to `a_13 ≈ 69.4051°`; feeding that into `cos d = cos a/(1 - cos a)` gives `d = 57.1367°` — and going back the other way, `alpha(57.1367°) = arccos(cos d/(1+cos d)) = 69.4051°`, which round-trips exactly, matching the construction value `psi(P_13)`. Same template kills the `N = 14` relatives `i = 1, 2`: reduce to a single parameter `x = (u_2 - u_1)/2`, derive `f_7(x,d) + f_8(x,d) = pi` from the angle-sums (which makes `d = theta(x)` a function of `x`), then show `f_{13}(x)` is monotone — `f_{13}'(0) ≈ -2.4587 < 0` — so the constraint `u_{13} >= u_0` forces `x <= 0`, and symmetrically `x >= 0`, pinning `x = 0`, i.e. the symmetric `Gamma_14`.
 
 The angle-chasing is elementary but it's fragile — for two of the `N = 14` relatives (`i = 3, 4`) I couldn't find a clean monotone scalar to separate them; the parameter reduction left two coupled variables and no single function whose monotonicity does the job. So I switch to infinitesimal rigidity via an equilibrium stress, which doesn't need a lucky scalar. If `X` is the maximal arrangement, then no motion of the points can increase the minimum distance — `X` is at a constrained maximum of `d` subject to all taut distances being `>= d`. Write the active constraints as `dist(x_i,x_j) - d >= 0`. The first-order optimality (KKT) conditions for that constrained max say there are Lagrange multipliers `omega_{ij}`, one per taut edge `{i,j}`, with `omega_{ij} >= 0`, `omega_{ij} = 0` on non-edges, and the stationarity condition at each vertex:
 
@@ -90,159 +90,4 @@ F_i := sum_{j != i} omega_{ij} e_{ij} = 0,
 
 where `e_{ij}` is the unit tangent at `x_i` pointing along the great circle toward `x_j`. So a maximal `Gamma^{(i)}` *must* carry such a nonnegative equilibrium stress — this is Connelly's stress-matrix condition, here arising straight from KKT on the packing optimization. The leverage is the contrapositive: if no nonnegative stress exists, the graph cannot be maximal. Now turn that into a certificate I can check. From the LP-refinement step I already have *interval enclosures* for every angle of `Gamma^{(i)}`, hence intervals for each tangent direction `e_{ij} = (c_{ij}, s_{ij})` with `c_{ij} in [p_{ij}, q_{ij}]`, `s_{ij} in [u_{ij}, v_{ij}]`. The equilibrium `sum_j omega_{ij} e_{ij} = 0`, with `omega >= 0`, becomes a system of *linear inequalities* in the `omega_{ij}` (using the interval bounds on each component, the equality `= 0` relaxes to `sum omega p <= 0 <= sum omega q` componentwise), plus the normalization `sum omega_{ij} = 1` to exclude the trivial zero. Feed that to `linprog`. For `i = 3, 4` the LP reports *infeasible*: no nonnegative normalized equilibrium stress exists within the angle enclosures, so `Gamma_14^{(3,4)}` cannot be the maximal arrangement. The last relatives die, leaving only `Gamma_14 = CG(P_14)`, with `d_14 = psi(P_14) ≈ 55.67057°`, unique up to isometry.
 
-That's the full machine, and notice how the pieces I rejected come back transformed. The global bounds (Fejes Tóth, the LP/SDP bracket) didn't pin the answer — but they supply the *window* `[d_lo, d_hi]` that makes the per-graph linearization finite and the enumeration tractable. The continuum I despaired of optimizing over is discretized by the irreducibility structure into finitely many planar graphs. Each graph is killed by a one-sided, cheap LP-infeasibility test, refined by bisection inside certified cells until the list is a handful. And the handful is separated exactly — by symmetry-driven angle-chasing where it's clean, and by a rigidity/stress-matrix certificate (KKT multipliers as a nonnegative equilibrium stress, checked again by LP) where it isn't. Now I can put the pieces into code without changing the logic.
-
-```python
-import subprocess
-import numpy as np
-from numpy.polynomial import polynomial as Pp
-from scipy.optimize import linprog
-
-def _pad(poly, size):
-    out = np.zeros(size)
-    out[:min(size, poly.size)] = poly[:min(size, poly.size)]
-    return out
-
-def _row(coeffs, size):
-    row = np.zeros(size)
-    if isinstance(coeffs, dict):
-        for i, value in coeffs.items():
-            row[i] = value
-        return row
-    row[:] = np.asarray(coeffs, dtype=float)
-    return row
-
-def _poly_max_on_interval(poly_coeffs, lo, hi):
-    points = [lo, hi]
-    deriv = Pp.polyder(poly_coeffs)
-    if deriv.size:
-        for root in Pp.polyroots(deriv):
-            if abs(root.imag) < 1e-8 and lo <= root.real <= hi:
-                points.append(root.real)
-    return np.max(Pp.polyval(np.array(points), poly_coeffs))
-
-def area_upper_bound(num_points):
-    cN = np.cos(np.pi * num_points / (3 * num_points - 6))
-    return np.arccos(cN / (1.0 - cN))  # 14 -> 58.6809 deg; 13 -> 60.92 deg
-
-def gegenbauer_basis(dimension, max_degree):
-    polys = [np.array([1.0])]
-    if max_degree >= 1:
-        polys.append(np.array([0.0, 1.0]))
-    for k in range(1, max_degree):
-        tPk = np.concatenate([[0.0], polys[k]])
-        nxt = ((2*k + dimension - 2) * tPk - k * _pad(polys[k-1], tPk.size))
-        polys.append(nxt / (k + dimension - 2))
-    return polys[:max_degree + 1]
-
-def code_cardinality_bound(poly_coeffs, dimension, inner_product_ceiling,
-                           offdiag_certifier=None):
-    coeffs = np.asarray(poly_coeffs, dtype=float)
-    while coeffs.size > 1 and abs(coeffs[-1]) < 1e-14:
-        coeffs = coeffs[:-1]
-    basis = gegenbauer_basis(dimension, coeffs.size - 1)
-    gegenbauer_coeffs = np.zeros(coeffs.size)
-    residual = coeffs.copy()
-    for k in range(coeffs.size - 1, -1, -1):
-        lead = residual[k] / basis[k][k]
-        gegenbauer_coeffs[k] = lead
-        residual[:k+1] -= lead * _pad(basis[k], k + 1)
-    if gegenbauer_coeffs[0] <= 0 or np.any(gegenbauer_coeffs[1:] < -1e-9):
-        return None
-    if offdiag_certifier is None:
-        if _poly_max_on_interval(coeffs, -1.0, inner_product_ceiling) > 1e-9:
-            return None
-    elif not offdiag_certifier(coeffs, -1.0, inner_product_ceiling):
-        return None
-    return Pp.polyval(1.0, coeffs) / gegenbauer_coeffs[0]
-
-def triangle_angle(side_length):
-    return np.arccos(np.cos(side_length) / (1.0 + np.cos(side_length)))
-
-def opposite_angle(angle, side_length):
-    return 2.0 * np.arctan(1.0 / (np.tan(angle / 2.0) * np.cos(side_length)))
-
-def planar_candidate_stream(num_points, generator="plantri", options=("-a",)):
-    cmd = [generator, "-q", *options, str(num_points)]
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    try:
-        for record in proc.stdout:
-            if record.strip():
-                yield record.rstrip()
-        err = proc.stderr.read().decode("utf-8", errors="replace").strip()
-        rc = proc.wait()
-        if rc:
-            raise RuntimeError(f"{' '.join(cmd)} failed with code {rc}: {err}")
-    finally:
-        if proc.poll() is None:
-            proc.kill()
-
-def passes_combinatorial_screen(degrees, face_sizes):
-    return (all(deg in (0, 3, 4, 5) for deg in degrees) and
-            all(3 <= size <= 6 for size in face_sizes))
-
-def angle_sum_equalities(vertex_incidence, num_variables, angle_offset=0):
-    equalities = []
-    for incident_angles in vertex_incidence:
-        row = np.zeros(num_variables)
-        row[[angle_offset + i for i in incident_angles]] = 1.0
-        equalities.append((row, 2*np.pi))
-    return equalities
-
-def lp_empty(num_variables, bounds, equalities=(), inequalities=()):
-    A_eq, b_eq, A_ub, b_ub = [], [], [], []
-    for coeffs, rhs in equalities:
-        A_eq.append(_row(coeffs, num_variables)); b_eq.append(rhs)
-    for coeffs, lo, hi in inequalities:
-        row = _row(coeffs, num_variables)
-        if hi is not None:
-            A_ub.append(row); b_ub.append(hi)
-        if lo is not None:
-            A_ub.append(-row); b_ub.append(-lo)
-    res = linprog(
-        np.zeros(num_variables),
-        A_ub=np.vstack(A_ub) if A_ub else None,
-        b_ub=np.array(b_ub) if b_ub else None,
-        A_eq=np.vstack(A_eq) if A_eq else None,
-        b_eq=np.array(b_eq) if b_eq else None,
-        bounds=bounds,
-        method="highs",
-    )
-    return res.status == 2  # only a proven infeasible LP eliminates anything
-
-def eliminate_candidate_by_lp(cells):
-    for cell in cells:
-        empty = lp_empty(
-            cell["num_variables"],
-            cell["bounds"],
-            cell.get("equalities", ()),
-            cell.get("inequalities", ()),
-        )
-        if not empty:
-            return False
-    return True
-
-def stress_infeasible(edge_list, direction_boxes, num_points):
-    m = len(edge_list)
-    inequalities = []
-    for i in range(num_points):
-        for comp in (0, 1):
-            lo_row = np.zeros(m)
-            hi_row = np.zeros(m)
-            for e, (a, b) in enumerate(edge_list):
-                c_lo, c_hi = direction_boxes[e][comp]  # tangent from a to b
-                if a == i:
-                    lo_row[e], hi_row[e] = c_lo, c_hi
-                elif b == i:
-                    lo_row[e], hi_row[e] = -c_hi, -c_lo
-            inequalities.append((lo_row, None, 0.0))  # sum omega*c_lo <= 0
-            inequalities.append((hi_row, 0.0, None))  # 0 <= sum omega*c_hi
-    return lp_empty(
-        m,
-        bounds=[(0.0, None)] * m,
-        equalities=[(np.ones(m), 1.0)],
-        inequalities=inequalities,
-    )
-```
-
-The causal chain: drawing gives a lower bound but no proof of optimality; the global area and LP bounds give only a numeric bracket and no uniqueness; so I model the optimum *locally* as a jammed (irreducible) taut graph, whose planarity, degrees in `{0,3,4,5}`, and faces of `<= 6` sides discretize the continuum of configurations into finitely many planar graphs; I generate them all and kill each by a cheap LP-infeasibility test on certified outer cells for the metric system, refined by bisection inside the angle window the global bounds provide; the handful of survivors are separated exactly by symmetry-driven angle-chasing, and where that fails, by a nonnegative equilibrium stress whose nonexistence (an LP infeasibility, KKT in disguise) certifies that the graph cannot be the maximum — leaving one graph, the exact value `d_N`, and uniqueness.
+That's the full machine, and the pieces I rejected come back transformed: the global bounds (Fejes Tóth, the LP/SDP bracket) didn't pin the answer, but they supply the *window* `[d_lo, d_hi]` that makes the per-graph linearization finite and the enumeration tractable; the continuum I despaired of optimizing over is discretized by the irreducibility structure into finitely many planar graphs; each graph is killed by a one-sided, cheap LP-infeasibility test, refined by bisection inside certified cells until the list is a handful; and the handful is separated exactly, by symmetry-driven angle-chasing where it's clean and by the same LP machinery reading KKT multipliers as a nonnegative equilibrium stress where it isn't. Turning that into code: `triangle_angle` and `opposite_angle` are `alpha(d)` and `rho(u,d)`; `area_upper_bound` and `gegenbauer_basis`/`code_cardinality_bound` are the two global brackets that set the window; `planar_candidate_stream` wraps `plantri` and `passes_combinatorial_screen`/`angle_sum_equalities` build each graph's metric system; `lp_empty` and `eliminate_candidate_by_lp` run the certified outer-relaxation kill pass over the refined cells; and `stress_infeasible` is the KKT/equilibrium-stress LP that finishes off the last relatives. The full module is in the answer.
