@@ -28,18 +28,18 @@ passing through a linear skeleton or a free over-parameterized net — and then 
 selection. Both prior nonlinear attempts put the nonlinear model and the structure search in the *same*
 stage — GraN-DAG's net learned mechanism and adjacency jointly, NOTEARS-MLP's linear skeleton proposed
 structure and the boosted stage only trimmed it — and both paid for the coupling, one in precision and
-one in recall. The way out is not a better single stage; it is to stop asking one stage to do both. If I separate "get the order" from "select the edges," I can use the right tool for each,
-instead of forcing one linear stage to do both jobs and failing at both on GP mechanisms.
+one in recall. The way out is to stop asking one stage to do both: separate "get the order" from
+"select the edges" and use the right tool for each.
 
-This decoupling is the organizing idea, and it is justified by identifiability, so let me make the
-argument at the population level where overfitting cannot muddy it. The DAG has a topological order;
+This decoupling is justified by identifiability, and the argument is cleanest at the population level
+where overfitting cannot muddy it. The DAG has a topological order;
 pick a correct one and the model becomes triangular — each variable regresses only on those earlier in
 the order. If somebody handed me a correct order, causal discovery would essentially dissolve into
 per-node nonlinear regression plus deciding which earlier variables actually matter — ordinary variable
 selection, a solved problem. So the genuinely hard, irreducibly causal part is the *order*; everything
-else is regression. Let me make the "order is enough" claim precise, because it is what licenses
-spending my regularization budget entirely on the edges. A *correct order* is enough for the causal
-answer even with extra spurious edges: the fully-connected DAG of a correct order is a super-DAG of the
+else is regression. And "order is enough" is precise, which is what licenses spending the whole
+regularization budget on the edges: a *correct order* is enough for the causal answer even with extra
+spurious edges, since the fully-connected DAG of a correct order is a super-DAG of the
 truth, and under modularity the intervention distributions it implies match the truth's, so edge
 pruning is an efficiency-and-readability step, not a correctness step. That tells me where penalties
 belong. The order search needs *no* regularization — identifiability supplies the gap that makes the
@@ -48,8 +48,8 @@ exactly the split NOTEARS-MLP got wrong by entangling a linear skeleton with the
 regularized (the `ℓ_1`, the thresholds) inside the stage that also had to find the structure, so the
 regularization threw away true edges instead of just cleaning up spurious ones.
 
-Now, what score recovers the order? The cleanest is the likelihood, and I should derive why it pins the
-order rather than assert it. Model the additive SEM with Gaussian errors; the joint negative
+Now, what score recovers the order? The cleanest is the likelihood, and it is worth deriving why it
+pins the order. Model the additive SEM with Gaussian errors; the joint negative
 log-likelihood is `sum_j [ (X_j - f_j(pa_j))² / (2σ_j²) + log σ_j ]` up to constants. Profile out the
 functions `f_j` (fit them by nonlinear regression) and the noise scales `σ_j`, and in expectation the
 data-fit terms each collapse to `1/2`, leaving the expected negative log-likelihood proportional to
@@ -66,17 +66,14 @@ residual-variance order search beats DirectLiNGAM's linear residual test and NOT
 skeleton: it reads the nonlinear asymmetry directly off the regression residuals, and it does so with a
 positive, identifiability-guaranteed margin rather than a threshold I have to guess.
 
-I want to see that margin actually exist before I build on it, so let me put it on a concrete two-node
-system. Take `X_1 ~ N(0,1)` a root and `X_2 = sin(2 X_1) + 0.5 X_1 + N_2` with `N_2` small (variance
-`≈ 0.09`), and score both orders by the profiled `sum_j log σ_j` using a boosted regression for each
-conditional. The correct order `[1,2]` leaves residual variance `Var(X_2|X_1) = 0.082` — essentially
-the true noise floor `0.09`, because the boosted regression recovers the mechanism — against the
-marginal `Var(X_1) = 0.98`, for a score `log 0.98 + log 0.082 = -2.51`. The wrong order `[2,1]` cannot
-undo the non-invertible bend: regressing `X_1` on `X_2` leaves residual variance `0.38`, far above the
-noise floor, and with the marginal `Var(X_2) = 1.10` the score is `log 1.10 + log 0.38 = -0.87`. The
-true order wins by a gap of `1.64` — positive, and comfortably larger than the estimation noise at this
-sample size. So the population claim is not just a KL formality; the asymmetry is large enough to read
-off finite data, which is exactly what a greedy residual-variance search will lean on.
+The margin has to survive finite data, so put it on `X_1 ~ N(0,1)`,
+`X_2 = sin(2 X_1) + 0.5 X_1 + N_2` with small `N_2`, scoring both orders by the profiled
+`sum_j log σ_j` with a boosted conditional. The correct order recovers the mechanism, leaving residual
+variance near the noise floor, and scores about `-2.51`; the wrong order cannot undo the non-invertible
+bend, leaves residual variance far above the floor, and scores about `-0.87` — a gap of roughly `1.6`,
+comfortably larger than the estimation noise at this sample size. So the KL claim is not just a
+formality; the asymmetry is large enough to read off finite data, which is what a greedy
+residual-variance search leans on.
 
 I have two real ways to turn that population score into an algorithm, and they trade accuracy for cost.
 One is to test the additive-noise asymmetry pairwise — regress each variable on each other and compare
@@ -139,7 +136,7 @@ candidate-generation stage is what should turn rung three's 0.13 SF20-GP recall 
 times larger.
 
 Stage three is pruning, the regularized cleanup — and by the population argument this is exactly and
-only where a penalty belongs. For any node with more than one parent, the fill runs a *partial-residual
+only where a penalty belongs. For any node with more than one parent, I run a *partial-residual
 independence test*: for each parent `p`, regress both `X_j` and `X_p` on the *other* parents (boosted
 trees again), take the two residuals, and if their absolute correlation is *below 0.05* remove `p`. The
 logic: if after conditioning on the other parents `X_p` carries no leftover dependence with `X_j`, then
@@ -183,31 +180,25 @@ candidates nonlinearly and order-respecting** rather than through a linear skele
 The falsifiable expectations against NOTEARS-MLP's measured shape. The decisive claim is that this rung
 fixes the recall collapse *without* surrendering precision. On **SF20-GP**, where NOTEARS-MLP's linear
 skeleton starved recall to 0.13 (F1 0.153, ~3–7 of 36 edges), the nonlinear order-respecting candidate
-generation should recover the GP parents the linear stage missed — I expect recall to leap into the
-0.7–0.8 range and F1 to jump past 0.8, a multiple of every prior rung, because GP-on-scale-free is
-exactly the regime where a correct nonlinear order plus nonlinear edge fitting should shine and it was
-exactly the regime the linear pool could not touch. On **ER20-Gauss**, the nonlinear-Gaussian case, it
-should keep NOTEARS-MLP's high precision (the partial-residual pruning is strict) and restore recall,
-lifting F1 well above 0.31 toward 0.7, with precision near 1.0 — the residual-variance order reads the
-nonlinearity that the Gaussian noise hid from DirectLiNGAM and that the linear skeleton hid from
-NOTEARS-MLP. I expect the limiter on ER20-Gauss to flip from precision to *recall*: with a strict
-partial-residual pruner and a correct order, the false-positive rate should be tiny (precision near 1),
-but a greedy order that places even one node slightly too early forfeits that node's true parents, which
-come "after" it in my recovered order and can no longer be candidates — so the edges I lose are lost to
-*order errors*, not to bad pruning, and they show up as depressed recall. That is a different failure
-signature from NOTEARS-MLP's, and if the ER20-Gauss recall lands well below its precision it points the
-finger squarely at the greedy order rather than the edge selection. On **ER12-LowSample**, the boosted ordering on 150 samples is the riskiest stage by the
-cost argument above (a data-starved regression on a growing predictor set), so I expect this rung's
-*smallest* relative gain here — F1 in the 0.5–0.6 range, clearly above NOTEARS-MLP's 0.384 but not the
-blowout of the 2000-sample scenarios, because the order search is variance-limited at small `n`. If
-those three land where I expect — roughly 0.85, 0.7, 0.55 — the averaged F1 is about 0.70, some two and
-a half times NOTEARS-MLP's 0.282 and a genuine jump rather than the hair's-breadth gains that separated
-the first three rungs from each other. The single number that would falsify the whole "decouple and go
-nonlinear" thesis: if this rung's averaged F1 does not clearly clear NOTEARS-MLP's ~0.28 and its SHD
-does not fall below NOTEARS-MLP's ~36 on SF20-GP, then the order is not the bottleneck and I have
-misread the ladder. This should be the
-strongest baseline precisely because it is the first method to get the nonlinear order right and *then*
-prune — and the residual weakness it will leave is the *order search itself*: greedy,
-residual-variance-driven, non-backtracking, and noisy at small `n`, so the natural next lever is to
-recover the order more directly and globally from the distribution rather than by appending one node at
-a time.
+generation should recover the GP parents the linear stage missed, so recall should climb steeply and
+F1 jump to a multiple of every prior rung — GP-on-scale-free is exactly the regime where a correct
+nonlinear order plus nonlinear edge fitting should shine, and exactly the one the linear pool could not
+touch. On **ER20-Gauss**, the nonlinear-Gaussian case, it should keep NOTEARS-MLP's high precision (the
+partial-residual pruner is strict) and restore recall, so F1 rises well above 0.31; the
+residual-variance order reads the nonlinearity that Gaussian noise hid from DirectLiNGAM and the linear
+skeleton hid from NOTEARS-MLP. Here the limiter should flip from precision to *recall*: with a strict
+pruner and a good order the false-positive rate is tiny, but a greedy order placing even one node too
+early forfeits that node's true parents, which now sit "after" it and can no longer be candidates — so
+the edges lost are lost to *order errors*, not bad pruning, and show up as depressed recall. If the
+ER20-Gauss recall lands well below its precision, that points squarely at the greedy order. On
+**ER12-LowSample**, the boosted ordering on 150 samples is the riskiest stage (a data-starved
+regression on a growing predictor set), so I expect the *smallest* relative gain here — clearly above
+NOTEARS-MLP's 0.384 but not the blowout of the 2000-sample scenarios, because the order search is
+variance-limited at small `n`. Averaged, that is a genuine jump — a large multiple of the ~0.28 plateau
+the first three rungs milled around, not the hair's-breadth gains between them. The falsifiable claim:
+if this rung's averaged F1 does not clearly clear NOTEARS-MLP's ~0.28 and its SF20-GP SHD does not fall
+below ~36, the order is not the bottleneck and I have misread the ladder. This should be the strongest
+baseline because it is the first to get the nonlinear order right and *then* prune — and the residual
+weakness it leaves is the *order search itself*: greedy, residual-variance-driven, non-backtracking,
+noisy at small `n`, so the next lever is to recover the order more directly and globally from the
+distribution than by appending one node at a time.

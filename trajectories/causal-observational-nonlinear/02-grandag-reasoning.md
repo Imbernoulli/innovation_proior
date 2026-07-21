@@ -30,9 +30,9 @@ genuinely nonlinear functions. The question is how to do that without inheriting
 whole field fights: the super-exponential combinatorial DAG search, and the non-identifiability of
 direction.
 
-Before committing, let me lay the real options side by side, because "model nonlinearity" admits more
-than one architecture and I want the elimination to be on the merits. One route is nonparametric
-conditional-independence testing — kernel CI tests feeding a PC-style search. It sees nonlinear
+"Model nonlinearity" admits more than one architecture, so the elimination has to be on the merits.
+One route is nonparametric conditional-independence testing — kernel CI tests feeding a PC-style
+search. It sees nonlinear
 dependence, but it inherits PC's two problems at once: the number of CI tests is combinatorial in the
 worst case, and the output is a CPDAG, so it stops at the equivalence class exactly where
 DirectLiNGAM's whole point was to escape it — I would be trading the linear disease for the
@@ -65,17 +65,14 @@ a global discrete property, so the classical algorithms are greedy: propose an e
 appeared, accept or reject. DirectLiNGAM dodged this by recovering an *order* rather than searching
 graphs, but it paid with the linearity. I want to keep "don't search the discrete space" *and* get
 nonlinear mechanisms. The device that does this is NOTEARS's smooth acyclicity characterization, and I
-need to reproduce its argument carefully because I will run it twice. Take a nonnegative matrix `B`;
-`(B^k)_{jj}` counts closed walks of length `k` through node `j`, so `tr(B^k)` counts length-`k` cycles,
-and `B` is acyclic iff `tr(B^k) = 0` for every `k`. Let me sanity-check the counting on the smallest
-case: a single 2-cycle `1→2→1` is the matrix with `B_{12}=B_{21}=1` and zeros elsewhere; then
-`B² = I`, `tr(B²) = 2 > 0`, correctly flagging the cycle, while any strictly-triangular `B` has
-`B^k → 0` and every trace vanishes. As a finite sum over all `k` the powers overflow; the fix is the
-matrix exponential, which reweights the length-`k` counts by `1/k!`, taming the explosion and giving
-the clean statement `tr e^B = d` iff `B` is a DAG (the `d` is `tr(B⁰)=tr(I)`). For real,
-possibly-negative weights, replace `B` by its Hadamard square so the count argument still applies:
-`h(W) = tr e^{W∘W} - d = 0`, with gradient `(e^{W∘W})^T ∘ 2W`. Solve a smooth score subject to
-`h(W)=0` with an augmented Lagrangian, and the whole graph updates at once — no greedy search.
+need its argument carefully because I will run it twice. For a nonnegative matrix `B`, `(B^k)_{jj}`
+counts closed walks of length `k` through node `j`, so `tr(B^k)` counts length-`k` cycles and `B` is
+acyclic iff `tr(B^k) = 0` for every `k`. Summed over all `k` the powers overflow; the matrix
+exponential reweights the length-`k` counts by `1/k!`, taming the explosion and giving the clean
+statement `tr e^B = d` iff `B` is a DAG (the `d` is `tr(B⁰)=tr(I)`). For real, possibly-negative
+weights, replace `B` by its Hadamard square: `h(W) = tr e^{W∘W} - d = 0`, gradient
+`(e^{W∘W})^T ∘ 2W`. Solve a smooth score subject to `h(W)=0` with an augmented Lagrangian and the
+whole graph updates at once — no greedy search.
 
 So why not just use NOTEARS directly? Because its `W` *is* the coefficient matrix of a *linear* SEM —
 the linear-mechanism objection I already used to eliminate it above. I want the continuous-constraint
@@ -93,38 +90,30 @@ network weights, a single nonnegative `(A)_{ij}` that is zero exactly when `NN_j
 depend on input `i`. Think about how information flows. It travels from `i` to an output only along
 computation *paths* through the hidden units, and a path is dead iff any weight on it is zero. So
 output `k` is completely independent of input `i` iff *every* path from `i` to `k` is dead. Quantify a
-path by the product of the absolute weights along it — nonnegative, and zero iff some link is zero —
-and "every path dead" becomes "the sum of all path products is zero," since a sum of nonnegatives
-vanishes iff every term does. The beautiful part: summing path products over all intermediate indices
-*is* matrix multiplication of the absolute-value weight matrices. Let me check the shapes so the
-identity is not just a slogan. With layer widths `[d, 10, 10, 1]` the per-variable weight matrices are
-`|W^{(1)}|` of shape `(10,d)`, `|W^{(2)}|` of shape `(10,10)`, `|W^{(3)}|` of shape `(1,10)`; the
-product `C = |W^{(3)}| |W^{(2)}| |W^{(1)}|` has shape `(1,d)`, and `C_{0i}` is exactly the total path
-strength from input `i` to the scalar output. Stack that row over all `d` variables to get a `(d,d)`
-matrix, sum over the (here trivial) output component, set the diagonal to zero, and `A` is the
-nonnegative `d×d` matrix `h` wanted — born nonnegative, so I do not even need the Hadamard square. The
-acyclicity constraint becomes `h = tr e^{A} - d = 0`, and I have run NOTEARS's walk-counting argument
-twice: once over *neural-network paths* to build `A`, once over *graph paths* to constrain it.
+path by the product of the absolute weights along it — nonnegative, zero iff some link is zero — and
+"every path dead" becomes "the sum of all path products is zero," since a sum of nonnegatives
+vanishes iff every term does. The key step: summing path products over all intermediate indices *is*
+matrix multiplication of the absolute-value weight matrices, so with layer widths `[d, 10, 10, 1]`
+the product `|W^{(3)}| |W^{(2)}| |W^{(1)}|` is a `(1,d)` row whose `i`-th entry is the total path
+strength from input `i` to the output. Stack over all `d` variables, sum out the output component,
+zero the diagonal, and `A` is the nonnegative `d×d` matrix `h` wanted — born nonnegative, so I do not
+even need the Hadamard square. The constraint becomes `h = tr e^{A} - d = 0`, and I have run the
+walk-counting argument twice: once over *network paths* to build `A`, once over *graph paths* to
+constrain it.
 
-That settles the principle. Now I have to be honest about what *this task's* fill of the function
-actually implements versus the cleanest version of the method, because the harness imposes constraints
-the polished method does not. The editable `run_causal_discovery` builds a per-variable MLP model with
-**two hidden layers of ten units and leaky-ReLU**, Xavier-initialized, weights stacked as a `(d, out,
-in)` tensor per layer so all `d` networks evaluate in parallel via one `einsum`; the first layer is
-masked by an `adjacency` matrix (initialized to all-ones-minus-identity) so a variable never sees
-itself. The score is the per-variable Gaussian log-likelihood with a learned per-variable `log_std`
-(the ANM noise). The adjacency `A` is the **path-normalized** product of absolute weight matrices —
-the raw path-product divided by the product of all-ones matrices through the same mask, which keeps the
-entries on a comparable scale across depth — column-summed over outputs and transposed into the `i->j`
-reading. The acyclicity is `tr(matrix_exp(A)) - d`. The optimizer is **RMSprop at lr 1e-3** with an
-augmented Lagrangian (`μ_0 = 1e-3`, `λ_0 = 0`), the convergence-based dual/penalty schedule
-(`λ += μ·h`, escalate `μ ×10` when the constraint stops shrinking by a factor, reset the optimizer
-state on each update), 80/20 train/validation split with the held-out augmented Lagrangian as the
+That settles the principle. Concretely I build a per-variable MLP with **two hidden layers of ten
+units and leaky-ReLU**, Xavier-initialized, weights stacked as a `(d, out, in)` tensor per layer so
+all `d` networks evaluate in parallel via one `einsum`; the first layer is masked by an `adjacency`
+matrix (all-ones-minus-identity) so a variable never sees itself. The score is the per-variable
+Gaussian log-likelihood with a learned per-variable `log_std` (the ANM noise). The adjacency `A` is
+the **path-normalized** product of absolute weight matrices, column-summed over outputs and
+transposed into the `i->j` reading, and the acyclicity is `tr(matrix_exp(A)) - d`. The optimizer is
+**RMSprop at lr 1e-3** with an augmented Lagrangian (`μ_0 = 1e-3`, `λ_0 = 0`), a convergence-based
+dual/penalty schedule, an 80/20 train/validation split with the held-out augmented Lagrangian as the
 convergence signal, and up to 30000 iterations with `h_tol = 1e-8`.
 
-Two mechanical details in that schedule deserve a second look because they are where an augmented
-Lagrangian either converges or thrashes. The dual update `λ += μ·h` is ordinary dual ascent — it pushes
-`λ` up in proportion to how badly the constraint is violated — but the penalty escalation `μ ×10` fires
+Two mechanical details in that schedule are where an augmented Lagrangian either converges or
+thrashes. The dual update `λ += μ·h` is ordinary dual ascent, but the penalty escalation `μ ×10` fires
 only when `h` *stops shrinking*, specifically when the new constraint value is not below `0.9×` the
 previous one. The logic is that if steadily tightening `λ` is still driving `h` down, I should let it
 keep working at the current `μ`; only when progress stalls does the quadratic penalty need to get
@@ -134,7 +123,7 @@ discontinuously reshapes that surface — carrying stale second-moment estimates
 send the first few steps in wrong-sized directions. That reset is also, I note, the seed-variance
 amplifier: every reset restarts the adaptive scaling from scratch on a non-convex surface, so which
 basin the run rolls into is sensitive to the exact trajectory, and two seeds diverge. The
-path-normalization in `w_adj` is the other detail worth stating plainly: the raw product of absolute
+path-normalization in `w_adj` is the second detail: the raw product of absolute
 weight matrices grows or shrinks systematically with depth and width (three matmuls compound the
 magnitudes), so dividing by the product of *all-ones* matrices through the same mask rescales every
 entry by the number of paths it summed over — turning a raw path-strength into an average path-strength
@@ -152,38 +141,25 @@ means it will *manufacture* dependence on inputs that are not true parents. So b
 expect ER12-LowSample to be this method's worst scenario, dominated by over-fit spurious edges, with
 large seed-to-seed variance — an arithmetic prediction, not a hunch.
 
-Two harness-specific choices are worth naming because they are exactly the same-named-vs-paper gap that
-will shape the numbers. First, edge clamping: the gcastle default masks any input whose `A` entry falls
-below `1e-4` *every step*, but the task fill deliberately applies the clamp only **every 500 iterations
-with a stricter `1e-3` threshold**, on the explicit reasoning that per-step clamping irreversibly
-removes edges too aggressively and destabilizes runs across seeds. That is a stability patch, not the
-canonical schedule, and it means the method here is *less* prone to prematurely killing a true edge but
-also slower to sparsify — it will let a dense intermediate graph persist longer. Second, the final DAG
-enforcement: rather than thresholding `A` (which only *upper-bounds* true dependence, since path
-products can cancel in the realized function or hidden units can saturate), the fill computes the
-**realized sensitivity** — the expected absolute Jacobian of each conditional's log-likelihood with
-respect to each input — and removes the weakest edges in increasing order of that Jacobian until the
-graph is acyclic, checked by the `tr(A^k)=0` closed-walk fact on the thresholded binary graph. This is
-a faithful piece of the canonical method (sensitivity-based extraction), and it is the right strength
-estimate. It is worth being precise about *why* `A` is only an upper bound and the Jacobian is the
-honest quantity, because the gap between them is exactly the over-connection I am worried about. `A`
-sums *absolute* path products, so it can never cancel: if there exists any path from `i` to `j` with
-all-nonzero weights, `A_{ij} > 0`, and the constraint dutifully treats `i` as a potential parent of
-`j`. But the *realized* function can be flat in `x_i` even when such a path exists — a leaky-ReLU unit
-whose pre-activation sits on one side of the kink contributes a constant local slope, and two paths
-with opposite signs can cancel in the actual output even though their absolute products both count in
-`A`. The expected absolute Jacobian `E[|∂ log-lik_j / ∂ x_i|]` measures the dependence that actually
-survives in the fitted function over the data distribution, so it zeroes out edges that `A` keeps but
-the mechanism does not use. Thresholding `A` would therefore lock in false parents that a sensitivity
-read would drop; using the Jacobian is what gives the pruning a chance — but only a chance, because it
-is still a single threshold with no penalty behind it. What the harness does *not* expose, relative to the fullest version of the procedure, is any
-preliminary neighbor-selection screen and any post-hoc significance-based pruning step — the fill has
-neither, so the only sparsity pressure is the constraint-plus-clamp-plus-Jacobian-threshold, with no
-explicit edge penalty anywhere in the objective.
+Two deliberate deviations from the canonical schedule shape the numbers. First, edge clamping: rather
+than masking any input whose `A` entry falls below `1e-4` every step, I apply the clamp only **every
+500 iterations with a stricter `1e-3` threshold**, because per-step clamping irreversibly removes
+edges too aggressively and destabilizes runs across seeds — a stability patch that is *less* prone to
+killing a true edge but slower to sparsify, so it lets a dense intermediate graph persist longer.
+Second, DAG enforcement by **realized sensitivity** rather than by thresholding `A`. `A` sums
+*absolute* path products, so it only *upper-bounds* dependence: if any all-nonzero path from `i` to
+`j` exists, `A_{ij} > 0`, but the realized function can still be flat in `x_i` — leaky-ReLU units
+saturate, opposite-sign paths cancel in the actual output. The expected absolute Jacobian
+`E[|∂ log-lik_j / ∂ x_i|]` measures the dependence that actually survives in the fitted function, so I
+remove edges in increasing order of that Jacobian until the graph is acyclic (checked by `tr(A^k)=0`).
+Thresholding `A` would lock in false parents the sensitivity read drops; the Jacobian gives pruning a
+chance — but only a chance, since it is still a single threshold with no penalty behind it, and there
+is no neighbor-selection screen and no significance-pruning stage. The only sparsity pressure is
+constraint-plus-clamp-plus-Jacobian-threshold, with no explicit edge penalty in the objective.
 
-So why do I expect GraN-DAG, despite being a genuinely nonlinear method, to *not* dominate the ladder,
-and in particular to be a tricky middle rung rather than a clean win over DirectLiNGAM? Because its
-weak point is precisely the place DirectLiNGAM was already weak: precision on dense graphs. With no
+So why do I expect GraN-DAG, despite genuinely modeling nonlinearity, to be a tricky middle rung
+rather than a clean win over DirectLiNGAM? Its weak point is precisely where DirectLiNGAM was already
+weak: precision on dense graphs. With no
 explicit sparsity penalty and a per-variable network free to fit spurious dependence, and with the
 order learned only implicitly through the acyclicity constraint, the augmented Lagrangian can converge
 to a graph that is *acyclic but over-connected* — low precision, high recall, high SHD — especially on
@@ -207,10 +183,8 @@ smooth, so the no-sparsity-penalty over-connection could leave SHD *worse* than 
 if F1 is comparable — the precision should stay low, and the predicted-edge count could easily exceed
 DirectLiNGAM's already-inflated `76`. On **ER12-LowSample** with only 150 samples, the `230`-parameter
 per-variable MLP is over-parameterized by my count above; I expect the noisiest, possibly worst F1 of
-the three, with large seed-to-seed variance. The single claim I will hold the next rung to: GraN-DAG
-should prove the nonlinearity is where the leverage is by lifting ER20-Gauss off DirectLiNGAM's floor —
-but its lack of an explicit sparsity/pruning stage should leave it *precision-starved and SHD-heavy*,
-so if a later rung adds disciplined edge selection on top of a correctly-recovered nonlinear order, it
-should beat GraN-DAG decisively on F1 and SHD at once. That is the gap I am setting up to close. The
-first cell I will read is ER20-Gauss: if the nonlinearity is genuinely the leverage, that is where the
-lift off DirectLiNGAM's 0.245 must show up, and if it does not, my whole diagnosis is wrong.
+the three, with large seed variance. So GraN-DAG should prove the nonlinearity is the leverage by
+lifting ER20-Gauss off DirectLiNGAM's floor, but its lack of an explicit sparsity/pruning stage should
+leave it precision-starved and SHD-heavy — the gap a later rung closes by adding disciplined edge
+selection on a correctly-recovered nonlinear order. The first cell I read is ER20-Gauss: if the lift
+off 0.245 does not show up there, my whole diagnosis is wrong.

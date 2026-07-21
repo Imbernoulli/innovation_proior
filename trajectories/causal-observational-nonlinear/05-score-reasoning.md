@@ -63,7 +63,7 @@ log-density, `s(x) = ∇ log p(x)` — and look at its `j`-th component. Two kin
 `f_c(pa(c))` with `j ∈ pa(c)`. So in general `s_j(x)` depends on `x_j`, on `x_j`'s parents (through
 `f_j`), and on `x_j`'s children (through their mechanisms).
 
-Here is the crux, and I should carry the derivative through explicitly rather than assert it. Take the
+Here is the crux, and it needs the derivative carried through explicitly. Take the
 *second* derivative of the log-density along `x_j` — the `j`-th diagonal entry of the Hessian of
 `log p`, call it `H_{jj}(x) = ∂² log p / ∂ x_j²`. The own-noise term contributes
 `∂²/∂x_j² [ -(x_j - f_j)²/(2σ_j²) ] = -1/σ_j²`, a *constant*, because `f_j` does not depend on `x_j`
@@ -78,13 +78,11 @@ distributional characterization of a leaf: a variable is a leaf iff the variance
 Hessian of `log p` is zero. No regression, no residual-variance comparison — a property of the score's
 Jacobian, read directly off the distribution, at every sample at once.
 
-Before I build the whole method on that identity I want to *see* it hold, so let me put it on a
-three-node chain `1 → 2 → 3` with nonlinear Gaussian mechanisms and estimate the diagonal Hessian at
-the sample points. The column variances of the (mean-normalized) diagonal Hessian come out to roughly
-`[2.31, 2.77, 0.36]`: the leaf, node 3, has an order of magnitude less variance than the two upstream
-nodes, and the `argmin` lands on it. That is the identity working on finite data with an estimated
-Hessian, not just in the population — the leaf's diagonal Hessian is nearly flat while the internal
-nodes' fluctuate, exactly as the derivative chain says. And it hands me a clean, *global*,
+The identity has to hold on estimated Hessians, not just in the population, so on a three-node chain
+`1 → 2 → 3` with nonlinear Gaussian mechanisms the mean-normalized diagonal-Hessian column variances
+come out to roughly `[2.31, 2.77, 0.36]`: the leaf, node 3, has an order of magnitude less variance
+than the upstream nodes and the `argmin` lands on it — nearly flat at the leaf, fluctuating at the
+internal nodes, exactly as the derivative chain says. That hands me a clean, *global*,
 backtracking-free order recovery: estimate the diagonal of the Hessian of `log p` at the sample points,
 pick the variable with the **minimum empirical variance** of its diagonal Hessian entry as the current
 leaf, append it (it goes *last* in the topological order), then *remove that variable from the data* and
@@ -140,12 +138,11 @@ diagonal of the score's Jacobian: `H = -G² + (K + η_H I)^{-1} ∇²K`, where `
 derivative `(-1/s² + (x_{kj}-x_{ij})²/s⁴) K_{ik}` and the `-G²` term is the correction that turns the
 derivative-of-the-score into the *diagonal Hessian of log p* — it is exactly the `(∂ s_j/∂ x_j) =
 ∂²_j log p` versus `s_j²` bookkeeping, and dropping it would leave me estimating the wrong object.
-Both are ridge-regularized matrix solves (`η_G = η_H = 0.001`) of an `n × n` system, `O(n³)` per
-evaluation. Let me check that is affordable at these scales: at `n = 2000` a dense solve is on the order
-of `5·10⁹` flops, times up to `d = 20` removals is `~10¹¹` — a handful of seconds of BLAS, entirely
-practical; at `n = 150` it is trivial. Before taking the variance I normalize each column of `H` by its
-mean (so variables on different scales are compared fairly), then the leaf is `argmin` of the column
-variances. This is the part of the method with *no analogue* in any prior rung: DirectLiNGAM used a
+Both are ridge-regularized solves (`η_G = η_H = 0.001`) of an `n × n` system, `O(n³)` per evaluation —
+a few seconds of BLAS at `n = 2000` across up to `d = 20` removals, trivial at `n = 150`. Before taking
+the variance I normalize each column of `H` by its mean so variables on different scales compare
+fairly, then the leaf is `argmin` of the column variances. This is the part with *no analogue* in any
+prior rung: DirectLiNGAM used a
 linear residual entropy, GraN-DAG used network-path products, NOTEARS-MLP used a linear skeleton, CAM
 used fitted residual variances — none of them touch the score's Hessian, which is the object that pins
 leaves down exactly.
@@ -163,17 +160,14 @@ instead of a greedy residual-variance search. I am deliberately *not* also swapp
 the feedback says the pruner is not what is failing; changing two things at once would blur which one
 moved the numbers.
 
-Let me be careful about what carries over verbatim from the canonical reference and what is re-expressed
-for this harness, since the finale code must be faithful. The leaf-detection core — the Gaussian kernel
-with median-distance bandwidth, `∇K = -Σ_i (x_k - x_i) K_{ik}/s²`, the score `G = (K+η_G I)^{-1}∇K`, the
-second-derivative `∇²K` with the `-1/s² + (x_k-x_i)²/s⁴` form, the diagonal Hessian
-`H = -G² + (K+η_H I)^{-1}∇²K`, the per-column mean normalization, and the `argmin`-variance leaf with
-iterative column removal and final reversal — is transcribed directly from the reference implementation
-(the reference is in PyTorch; I re-express the identical algebra in numpy, which the harness supports).
-The two defaults `η_G = η_H = 0.001` and the median-distance bandwidth are the reference defaults. The
-only adaptation is the pruning stage, where I use the harness's gradient-boosted regression with the
-same `0.05` importance cutoff CAM uses, rather than a spline significance test — the same pragmatic
-substitution the task's other baselines make. The full scaffold module is in the answer.
+The leaf-detection core — the Gaussian kernel with median-distance bandwidth,
+`∇K = -Σ_i (x_k - x_i) K_{ik}/s²`, the score `G = (K+η_G I)^{-1}∇K`, the second-derivative `∇²K` with
+the `-1/s² + (x_k-x_i)²/s⁴` form, the diagonal Hessian `H = -G² + (K+η_H I)^{-1}∇²K`, the per-column
+mean normalization, and the `argmin`-variance leaf with iterative column removal and final reversal —
+is exactly the canonical score-matching order recovery, which I write out in numpy with its standard
+defaults `η_G = η_H = 0.001` and the median-distance bandwidth. The only substitution is the pruning
+stage: gradient-boosted regression with the same `0.05` importance cutoff CAM uses, rather than a
+spline significance test. The full module is in the answer.
 
 Now the bar this has to clear and what I would validate, because there is no leaderboard row for it —
 this is the endpoint, and no feedback will come back to tell me if I am right, so the prediction has to
@@ -203,14 +197,11 @@ order should match it without a clear margin — the win is on the harder, lower
 scenarios, not this one. Claiming a blowout on SF20-GP would be dishonest: there is almost no headroom
 left there.
 
-Put the three together and the honest averaged target is modest, not a leap: parity on SF20-GP (~0.88),
-a recall-driven lift on ER20-Gauss (toward ~0.78), and a hedged gain on ER12-LowSample (toward ~0.62)
-would average around 0.76 against CAM's 0.726 — a real but incremental improvement, which is what I
-should expect at the *top* of a ladder where the architecture is already right and only one stage is
-being upgraded. The single result that would falsify the thesis that "the order search was the remaining
-bottleneck": if this method's averaged F1 does not clear CAM's ~0.726 and its ER12-LowSample F1 does not
-beat CAM's 0.564, then the greedy residual-variance order was not the limiting factor and the
-score-matching detour bought nothing. What I would validate first, then, is precisely the ER12-LowSample order accuracy — the
-cheapest direct test of whether reading leaves off the score's Hessian beats appending them by residual
-variance, and the one cell where the mechanism I just verified on the three-node chain has to prove it
-survives contact with 150 samples and twelve real variables.
+Averaged, that is a modest, incremental improvement over CAM, not a leap — which is what to expect at
+the *top* of a ladder where the architecture is already right and only one stage is upgraded. The
+result that would falsify "the order search was the remaining bottleneck" is if the averaged F1 does
+not clear CAM's ~0.726 and the ER12-LowSample F1 does not beat its 0.564: then the greedy order was not
+the limiter and the score-matching detour bought nothing. So I would validate ER12-LowSample order
+accuracy first — the cheapest direct test of whether reading leaves off the score's Hessian beats
+appending them by residual variance, and the one cell where the chain-verified mechanism has to survive
+contact with 150 samples and twelve real variables.
