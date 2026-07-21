@@ -1,7 +1,7 @@
 BALD did what the noise-subtraction argument predicted on the hard dataset and confirmed the limit I was
 carrying forward. On **letter** it repaired the regression: mean accuracy 0.8357 / auc 0.716, back above
 random's 0.816 / 0.724 on accuracy and well above least confidence's collapsed 0.7955 / 0.668, with seed
-42 up at 0.893 — the strongest letter-accuracy seed of any rung so far. That is exactly the
+42 up at 0.893 — the strongest letter-accuracy seed of any rule so far. That is exactly the
 `−E_θ[H[y|x,θ]]` term earning its keep: subtracting the irreducible 26-class boundary noise that raw least
 confidence was chasing. But the means also confirm the caveat, and I should difference them to see the size
 of the giveback. On **spambase** BALD came in at 0.905 / 0.892, *below* least confidence's 0.927 / 0.908 —
@@ -11,14 +11,14 @@ noise correction that rescued letter actively *cost* me on the two low-noise dat
 mechanical: where there is almost no aleatoric uncertainty to subtract, the `−E_θ[H]` term is near-constant
 across points and adds nothing but estimator noise — ten coarse dropout passes are a shakier ranking signal
 than one clean softmax max, so on spambase and splice BALD is paying for a correction it doesn't need. So
-BALD is the best rung *on letter* but no longer dominant everywhere, and the reason it can't hold spambase
+BALD is the best rule *on letter* but no longer dominant everywhere, and the reason it can't hold spambase
 and splice is the structural hole I named: BALD scores each point in isolation. It separates resolvable from
 irreducible uncertainty *per point*, but it has no term that looks at the other chosen points, so the `n`
 highest-MI rows can still be near-duplicates clustered in one stretch of the boundary — I pay for `n` labels
 and learn far fewer labels' worth. And I cannot fix that by tuning, because tuning a tradeoff coefficient
 would itself burn labels: changing a knob queries a *different* set, whose labels I'd have to buy to even
 evaluate the change, so a held-out sweep is not available to me the way it is in ordinary supervised tuning.
-So the next rung must do two things at once — keep the per-point informativeness BALD found *and* make the
+So the next step must do two things at once — keep the per-point informativeness BALD found *and* make the
 batch diverse — with no free coefficient to balance them, and ideally on a principled footing rather than a
 heuristic blend.
 
@@ -139,13 +139,8 @@ recovering much of what a one-directional greedy would have locked out. The per-
 per candidate per step, which I avoid with the low-rank structure: each `I(x) = V_x V_xᵀ` is rank `k`, so
 the Woodbury identity turns `(M + V_x V_xᵀ)⁻¹` into an update needing only a `k × k` solve — for letter a
 `26 × 26` solve rather than a `128 × 128` inversion — and the cyclic property of the trace lets me precompute
-`M⁻¹ I_U M⁻¹` once per step and score every candidate with a small batched matmul. Check the Woodbury saving
-in the smallest case so I trust the rank-`k` version: for a rank-one update, `(M + v vᵀ)⁻¹ = M⁻¹ −
-(M⁻¹ v vᵀ M⁻¹)/(1 + vᵀ M⁻¹ v)`, and the only thing I invert is the scalar `1 + vᵀ M⁻¹ v` — a `1×1` solve, no
-`128 × 128` inversion at all. The rank-`k` factor generalizes this exactly: `(M + V Vᵀ)⁻¹` needs only the
-inverse of the `k × k` matrix `I_k + Vᵀ M⁻¹ V`, so every candidate score is a `26 × 26` (letter) solve against
-a `128 × 128` `M⁻¹` I already hold, not a fresh `128 × 128` inversion. Over `2n` forward steps and a few
-hundred candidates each, that is the difference between the round finishing and the round timing out. One numerical adaptation
+`M⁻¹ I_U M⁻¹` once per step and score every candidate with a small batched matmul. Over `2n` forward steps and a
+few hundred candidates each, that is the difference between the round finishing and the round timing out. One numerical adaptation
 the CPU port forces: because the projected, candidate-filtered Fisher can be rank-deficient and
 ill-conditioned (a `128 × 128` matrix built from a few hundred rank-26 factors need not be full rank), I use
 the *pseudo*-inverse `torch.linalg.pinv` everywhere a plain inverse appears, and `nan_to_num` the scores — the
@@ -153,7 +148,7 @@ full-precision `torch.inverse` would throw on singular matrices here. The seed/c
 same as the derived risk: scale the seed Fisher into `M_0` by `nLabeled/(nLabeled+n)` and each candidate `V_x`
 by `√(n/(nLabeled+n))` so the new batch joins the labeled set in the correct proportion.
 
-So the rung-4 edit, against the literal scaffold and honest about what the harness omits: BAIT here streams the
+So the step-4 edit, against the literal scaffold and honest about what the harness omits: BAIT here streams the
 rank-`k` Fisher factors, projects them to 128 dims, restricts to an entropy-filtered candidate shortlist, and
 runs the A-optimal greedy
 (forward-oversample to `2n`, Woodbury+trace-rotation scoring with `pinv`, backward-prune to `n`). It is the
@@ -171,11 +166,11 @@ adaptations bite hardest, and the arithmetic says why: 26 classes means the larg
 random projection to 128 dims is the most aggressive squeeze — from ~3000 down to 128, a ~24× compression
 where the `1/√m` JL distortion is riding on the largest ambient dimension — and the streaming full-pool Fisher
 accumulation over letter's ~15,000 rows is the slowest, the one the time budget can fail to finish. I expect
-BAIT to *underperform* BALD on letter, and possibly not complete every seed there — if the leaderboard shows a
-missing or degraded letter result for BAIT, that is the projection-and-time adaptation showing through, not
-the A-optimal objective failing. So the bar BAIT must clear is: beat BALD on spambase and splice (where
+BAIT to *underperform* BALD on letter, and possibly not complete every seed there — if the letter result comes
+back missing or degraded, that is the projection-and-time adaptation showing through, not the A-optimal objective
+failing. So the bar BAIT must clear is: beat BALD on spambase and splice (where
 diversity is the binding constraint), at the cost of letter (where the CPU port handicaps it). If instead BAIT
 loses on spambase/splice too, then the entropy-pre-filter plus 128-dim projection has degraded the Fisher
 geometry past usefulness, and the whole fused-objective idea needs to be recovered by machinery light enough to
-survive letter — no `d·k × d·k` matrix, no projection, no pseudo-inverse — which is the open problem this rung
+survive letter — no `d·k × d·k` matrix, no projection, no pseudo-inverse — which is the open problem this step
 hands forward: keep the pool-aware diversity, pay only uncertainty-sampling cost.

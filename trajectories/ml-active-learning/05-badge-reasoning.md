@@ -1,5 +1,5 @@
 BAIT confirmed exactly the split I predicted, and the place it won and the place it lost together point to
-what the strongest rung has to be. On **spambase** the Fisher A-optimal objective came in at 0.929 / 0.911
+what the strongest rule has to be. On **spambase** the Fisher A-optimal objective came in at 0.929 / 0.911
 on the mean — above BALD's 0.905 / 0.892 by `0.024` in accuracy and edging even least confidence's 0.927 /
 0.908 — and on **splice** at 0.813 / 0.756, above BALD's 0.795 / 0.737 by `0.018`. So filling the diversity
 hole with a pool-aware information criterion genuinely helped where diversity was the binding constraint,
@@ -16,7 +16,7 @@ compute it exactly (per-class rank-`k` Fisher factors, a `d·k × d·k` pool mat
 pseudo-inverses, forward/backward greedy) is too heavy to survive this harness on the hardest dataset. I want
 the same fused property — long *and* diverse batches, no tradeoff knob — but obtained *cheaply*, with no
 matrix inverse, no projection, nothing that blows up when the number of classes is large. That is the
-constraint the final rung has to satisfy: BAIT's geometry, BALD's robustness on letter, at
+constraint the final step has to satisfy: BAIT's geometry, BALD's robustness on letter, at
 uncertainty-sampling cost.
 
 Let me think about what "the model is uncertain about this point" even means for a net trained by gradient
@@ -33,7 +33,7 @@ embedding and `W` the final linear layer, the cross-entropy gradient in the bloc
 
 Stare at this. The whole last-layer gradient embedding is an outer product: `g_x^y = (p − e_y) ⊗ z`, the
 probability-residual `r = p − e_y` tensored with the penultimate embedding `z`. That decomposition is the
-thing I have been chasing across three rungs. The `z` factor is *exactly* the representation space — it
+thing I have been chasing across three steps. The `z` factor is *exactly* the representation space — it
 carries where the example sits, its diversity and identity, the same penultimate features. The `r` factor
 carries how wrong/uncertain the model is — if the model is confident and right, `p ≈ e_y` so `r ≈ 0`; if
 it's unsure, `p` is spread and `r` is large. One object, and it already contains both of the things the
@@ -57,15 +57,13 @@ The only `y`-dependent piece is `−2 p_y`. To *minimize* `‖g_x^y‖` over `y`
 norm — meaning `‖g_x‖ = ‖g_x^{ŷ}‖` is a *lower bound* on the gradient norm the example will really induce
 once I see its true label. That's not laziness, it's a guarantee: when I pick a point because its `g_x` is
 large, it will produce at least that much update — the bound only ever understates, so I can't be fooled
-into thinking a confident point is informative. Now verify the magnitude actually tracks confidence, with
-numbers. A maximally unsure binary point `p = (0.5, 0.5)`: `Σ p_i² = 0.5`, and with `ŷ` the top class,
-`0.5 + 1 − 2(0.5) = 0.5`, so `‖g_x‖² = 0.5 ‖z‖²`. A confident binary point `p = (0.99, 0.01)`: `Σ p_i² =
-0.9802`, and `0.9802 + 1 − 2(0.99) = 0.0002`, so `‖g_x‖² = 0.0002 ‖z‖²` — the embedding has all but vanished.
-A flat 3-class point `p = (0.34, 0.33, 0.33)`: `Σ p_i² = 0.334`, and `0.334 + 1 − 2(0.34) = 0.654`, so
-`‖g_x‖² = 0.654 ‖z‖²`, large. So the length of this one cheap hallucinated gradient falls smoothly from ~`0.65`
-of `‖z‖²` at maximal confusion to ~`0.0002` at confidence — it *is* a conservative uncertainty score, the same
-uncertainty least confidence and BALD were reading, now living in the *direction*-bearing vector that also
-encodes representation. The lazy choice is the conservative-estimate choice.
+into thinking a confident point is informative. Check the magnitude against confidence. A maximally unsure
+binary point `p = (0.5, 0.5)` gives `‖p − e_ŷ‖² = 0.5 + 1 − 2(0.5) = 0.5`, so `‖g_x‖² = 0.5 ‖z‖²`; a confident
+`p = (0.99, 0.01)` gives `0.9802 + 1 − 2(0.99) = 0.0002`, so `‖g_x‖² = 0.0002 ‖z‖²`, the embedding all but
+vanished. So this one cheap hallucinated gradient's length falls smoothly from ~`0.5 ‖z‖²` at maximal confusion
+to near zero at confidence — a conservative uncertainty score, the same signal least confidence and BALD read,
+now living in the *direction*-bearing vector that also encodes representation. The lazy choice is the
+conservative-estimate choice.
 
 Now the batch. For every pool point I have a vector `g_x` whose *length* means uncertainty and whose
 *direction* means identity/representation. I want a batch of `n` points individually long (uncertain) and
@@ -117,13 +115,8 @@ size and the geometry decide it, exactly as the k-DPP would have.
 And those distances collapse because the embeddings are outer products — this is the step that makes the whole
 thing fit in memory on letter. For `g_a = r_a ⊗ z_a` and `g_b = r_b ⊗ z_b`, the inner product of two outer
 products factors: `⟨g_a, g_b⟩ = ⟨r_a ⊗ z_a, r_b ⊗ z_b⟩ = (r_a·r_b)(z_a·z_b)` — a product of a `k`-dimensional
-dot and a `d`-dimensional dot, never a `d·k`-dimensional one. Check the identity on vectors small enough to expand by hand, because the whole memory saving rides on it. Take
-`r_a = (1, 0)`, `z_a = (2, 0)`, so `g_a = r_a ⊗ z_a` flattens to `(2, 0, 0, 0)` with `‖g_a‖² = 4`; the factored
-form gives `‖r_a‖²‖z_a‖² = 1 · 4 = 4`, matching. Take `r_b = (0, 1)`, `z_b = (0, 3)`, so `g_b` flattens to
-`(0, 0, 0, 3)` with `‖g_b‖² = 9 = ‖r_b‖²‖z_b‖² = 1 · 9`. Their true inner product `⟨g_a, g_b⟩ = 0` (disjoint
-support), and the factored form `(r_a·r_b)(z_a·z_b) = (0)(0) = 0` agrees; the true squared distance is
-`4 + 9 = 13`, and the factored `‖r_a‖²‖z_a‖² + ‖r_b‖²‖z_b‖² − 2·0 = 13` agrees. The identity holds, so the
-squared distance is `‖g_a − g_b‖² = ‖r_a‖²‖z_a‖² + ‖r_b‖²‖z_b‖² − 2(r_a·r_b)(z_a·z_b)`, and I never form the
+dot and a `d`-dimensional dot, never a `d·k`-dimensional one. So the squared distance is
+`‖g_a − g_b‖² = ‖r_a‖²‖z_a‖² + ‖r_b‖²‖z_b‖² − 2(r_a·r_b)(z_a·z_b)`, and I never form the
 `d·k`-vectors: I keep
 `z` and `r` separately, precompute the per-point squared norms `‖z‖²` and `‖r‖²`, and compute any distance from
 one `z·z` dot and one `r·r` dot. For letter that means I work with a `d`-vector and a `26`-vector per point
@@ -149,7 +142,7 @@ two labels: the redundant batch that inverted its letter mean. In `(r, z)` space
 never drawn — the batch spends its second label somewhere genuinely different. That is precisely the
 redundant-batch waste that limited least confidence and BALD, fixed by construction rather than by a coefficient — and unlike BAIT it costs a few distance passes, not a stream-project-invert pipeline.
 
-So the final rung, against the literal scaffold: where BAIT streamed and projected a rank-`k` Fisher and
+So the final step, against the literal scaffold: where BAIT streamed and projected a rank-`k` Fisher and
 ran a forward/backward greedy with pseudo-inverses, BADGE here pulls `z` and `p` in one `get_embedding`
 call, forms the rank-one probability-residual `r`, and runs factored k-means++ seeding — first center by
 `‖r‖²‖z‖²` (most uncertain), then `D²`-weighted draws via `rv_discrete`, all distances computed from the
@@ -157,29 +150,28 @@ separate `(r, z)` factors so it never touches `d·k` space and never inverts a m
 uncertainty-and-diversity property as BAIT, at uncertainty-sampling cost, with no projection to choke on
 letter's 26 classes. The distilled rule and the literal scaffold fill are in the answer.
 
-Now the falsifiable expectations against the rungs already measured, which is what this endpoint has to
+Now the falsifiable expectations against the steps already measured, which is what this endpoint has to
 clear. The decisive test is **letter**, where BAIT collapsed (0.791 / 0.671, no seed-42 run) precisely
 because its heavy machinery couldn't survive 26 classes: BADGE's factored seeding has no projection and no
 matrix inverse — the `d·k` space that BAIT projected and letter choked on is never even formed here — so it
 should *not* collapse there, and because the fused embedding captures both the confusable-glyph uncertainty
 BALD scored (in `r`) *and* the diversity across the 26 classes that thin-budget letter needs (in `z`), I
-expect BADGE to be the *strongest* rung on letter — clearly above BALD's 0.836 / 0.716 and seed-42 0.893. If
+expect BADGE to be the *strongest* rule on letter — clearly above BALD's 0.836 / 0.716 and seed-42 0.893. If
 BADGE does not beat BALD on letter, then either the hallucinated-gradient lower bound is too loose on this
 small net (the residuals `r` too flat to separate points) or k-means++ in `(r, z)` space isn't capturing the
 right diversity, and the fused-embedding premise is wrong. On **spambase** I expect BADGE to roughly match
 BAIT and least confidence (≈0.93 / ≈0.91) — the balanced binary boundary leaves little for diversity to add
-over uncertainty, so the rungs converge, and I would not expect BADGE to *beat* BAIT's 0.929 / 0.911 by much
+over uncertainty, so the steps converge, and I would not expect BADGE to *beat* BAIT's 0.929 / 0.911 by much
 if at all. On **splice** I expect a gain over BAIT's 0.813 / 0.756. Before I set the bar, let me read the
-current leaderboard honestly across the four measured rungs, per dataset, because it tells me exactly which
+measured records honestly across the four measured steps, per dataset, because it tells me exactly which
 records BADGE has to break. On letter accuracy the record is BALD's 0.8357; on spambase it is BAIT's 0.929 /
 0.911; on splice it is a near tie between least confidence's 0.814 accuracy and BAIT's 0.813 / 0.756. But the
-striking gap is letter *auc*: random still holds it at 0.724, and *no adaptive rung has beaten it* — least
-confidence 0.668, BALD 0.716, BAIT 0.671 all sit below the blind draw. Four rungs in, the passive floor is
+striking gap is letter *auc*: random still holds it at 0.724, and *no adaptive rule has beaten it* — least
+confidence 0.668, BALD 0.716, BAIT 0.671 all sit below the blind draw. Four steps in, the passive floor is
 still the best sample-efficiency on the hardest dataset, because every adaptive rule so far either chased noise
 (least confidence), left the batch redundant (BALD), or collapsed under its own machinery (BAIT). So the sharp,
 falsifiable framing for this endpoint is: BADGE has to be the *first* rule to beat random's 0.724 letter auc
-while also taking BALD's letter accuracy and holding BAIT's spambase/splice — no prior rung managed even the
-first of those. The overall bar this endpoint must clear is therefore to be the best *aggregate* rung — to win
-letter outright (where every other rung either chased noise, stayed redundant, or collapsed) while holding
-spambase and splice at the front of the pack — which would make it the only rung that fuses uncertainty and
-diversity cheaply enough to survive every dataset, the thing the whole climb was reaching for.
+while also taking BALD's letter accuracy and holding BAIT's spambase/splice — no prior rule managed even the
+first of those. That is the bar: the best *aggregate* rule, winning letter outright (where every other rule
+either chased noise, stayed redundant, or collapsed) while holding spambase and splice at the front — the only
+rule to fuse uncertainty and diversity cheaply enough to survive every dataset.

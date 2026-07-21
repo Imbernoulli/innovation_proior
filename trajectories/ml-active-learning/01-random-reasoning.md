@@ -9,7 +9,7 @@ behavior I understand completely, the one that is the *floor* by construction, t
 has to beat. That rule is the one that uses nothing: no model, no labels seen so far, no notion of uncertainty.
 It just draws representatively. So at step 1 my edit to the scaffold is the trivial one — leave `query(n)` at
 its default, a uniform draw from the unlabeled pool — and the work is understanding *why* this is the right
-place to start and exactly where it will be weak, so I know what the next rung has to fix.
+place to start and exactly where it will be weak, so I know what the next step has to fix.
 
 Start from the only thing I can prove about *any* acquisition rule, because that is what tells me what the floor
 should even be. The single theorem that makes supervised learning work is the bridge from training error to test
@@ -19,14 +19,10 @@ I never observe that directly; I only ever see the empirical error on my labeled
 labeled set tells me anything about `err(c)` is uniform convergence: a hypothesis consistent with `m` labeled
 examples has `err ≤ ε` with confidence `1−δ` once `m = O((1/ε)(d ln(1/ε) + ln(1/δ)))`, `d` the VC dimension —
 and that PAC bound rests on exactly one premise about *where the training examples come from*: they are an i.i.d.
-sample from the very distribution I will be tested on. Let me put arithmetic on that so the shape of the bound is
-concrete and not a slogan. Take a modest hypothesis class, `d = 10`, and ask for `ε = 0.1`, `δ = 0.05`. Then
-`1/ε = 10`, `ln(1/ε) = ln 10 ≈ 2.30`, so `d ln(1/ε) ≈ 23.0`, and `ln(1/δ) = ln 20 ≈ 3.00`; the bracket is about
-`26.0` and `m ≈ 10 × 26 = 260` labels. Now sharpen the target to `ε = 0.05`: `1/ε = 20`, `ln(1/ε) ≈ 3.00`,
-bracket `≈ 20 × 3.00 + 3.00 ≈ 63.0`, and `m ≈ 20 × 63 = 1260`. Halving the error roughly *quintupled* the label
-demand, and the reason is visible in the algebra — the `1/ε` prefactor, not the `d ln(1/ε)` inside, is what
-dominates the growth. That prefactor is the price of a passive, representative sample, and it is exactly the term
-an adaptive rule will try to knock down. The sample is the bridge. If my labeled set is distributed like `P`, low
+sample from the very distribution I will be tested on. The shape of that bound matters: the `1/ε` prefactor, not
+the `d ln(1/ε)` inside the bracket, is what dominates the label demand — halving the target error roughly
+quintuples the labels needed. That prefactor is the price of a passive, representative sample, and it is exactly
+the term an adaptive rule will try to knock down. The sample is the bridge. If my labeled set is distributed like `P`, low
 training error transfers to low test error; if I bias the draw, the bridge is gone and the guarantee evaporates.
 So whatever `query(n)` I write, I had better be able to state what distribution my labeled set ends up following,
 because that distribution is the thing the entire generalization story hangs on.
@@ -43,15 +39,7 @@ Techniques* — is entirely about picking a subset of a finite population so tha
 estimate the whole population well, and its foundational design is simple random sampling without replacement:
 choose `n` of the `N` units so every size-`n` subset is equally likely. Define the inclusion probability
 `π_i = Pr[unit i is in the sample]`. By symmetry, unit `i` appears in `C(N−1,n−1)` of the `C(N,n)` possible
-subsets, so `π_i = C(N−1,n−1)/C(N,n) = n/N`, the same for every `i`. Let me not take that on faith but trace it
-on a case small enough to enumerate by hand. Take `N = 4`, `n = 2`. There are `C(4,2) = 6` subsets:
-`{1,2},{1,3},{1,4},{2,3},{2,4},{3,4}`. Unit 1 appears in the three that contain it — `{1,2},{1,3},{1,4}` — so
-`π_1 = 3/6 = 1/2 = n/N`, and by the identical count every other unit also sits in exactly three, `π_i = 1/2`.
-And the scaffold does not literally enumerate subsets; it permutes and takes a prefix, so I should check *that*
-gives the same law. There are `4! = 24` orderings; a fixed unordered prefix pair, say `{1,2}`, is realized by any
-permutation whose first two slots are `1,2` in some order and whose last two are `3,4` in some order — that is
-`2! × 2! = 4` permutations — so its probability is `4/24 = 1/6 = 1/C(4,2)`, and every pair is equally likely by
-the same count. The permute-and-slice default is a genuine simple-random-sample. Equal inclusion is exactly the
+subsets, so `π_i = C(N−1,n−1)/C(N,n) = n/N`, the same for every `i`. Equal inclusion is exactly the
 property I need, and I can say precisely why it is the right one and not merely a symmetric one. Take any
 statistic I would want the labeled set to estimate about the pool — class balance, the fraction in some region,
 anything expressible as a population average of `g(x_i)`. The general unbiased estimator under unequal inclusion
@@ -68,12 +56,10 @@ Should I sample with replacement or without? A label I already hold teaches me n
 paid for it once, the label is the same — so a repeat in a batch is a wasted budget slot. And without-replacement
 is also statistically tighter, and I can quantify it: the sample-mean variance under simple random sampling
 without replacement is `(σ²/n)·(N−n)/(N−1)`, versus `σ²/n` with replacement, the extra factor `(N−n)/(N−1) ≤ 1`
-being the finite-population correction. Let me feel that factor at the budget fractions this loop actually runs
-at. If I have labeled a fifth of the pool, `n/N ≈ 0.2`, the correction is about `1 − 0.2 = 0.8`: a 20% variance
-cut for free, just from not double-drawing. At `n/N = 0.5` it is `≈ 0.5`, the variance is halved; and at `n = N`
-it is exactly `0` — once I have labeled everything there is nothing left to be uncertain about, and the estimate
-is the population value with no variance at all. With-replacement never earns any of that; it keeps paying `σ²/n`
-no matter how much of the pool it has covered. So without replacement dominates on both counts, no wasted budget
+being the finite-population correction — `≤ 1`, and smaller the larger a fraction `n` is of `N`, dropping to `0`
+at `n = N` where the labeled set is the whole pool and there is no variance left. With-replacement never earns
+any of that; it keeps paying `σ²/n` no matter how much of the pool it has covered. So without replacement
+dominates on both counts, no wasted budget
 and a tighter estimate, and I want it over the *unlabeled* part of the pool only, because the already-bought
 labels would buy zero information if re-selected. That is exactly what the scaffold default does: take the pool
 indices where the mask is False, permute them uniformly, take the first `n`. A uniform permutation makes every
@@ -112,15 +98,13 @@ guarantee I cannot state without conditions. Uniform is not one option among the
 passive rule whose estimator is unconditionally unbiased. That is what makes it the floor.
 
 Now stare at where this will be weak, because that is the entire point of running it — the failure modes are
-knowable in advance from the structure of the rule, and they tell me what rung 2 must attack. The first bites
+knowable in advance from the structure of the rule, and they tell me what step 2 must attack. The first bites
 when a class is rare. A uniform draw faithfully reproduces the pool's class balance in the labeled subset — that
 is the "representative" property I just celebrated — so if the interesting class is 1-in-1000, a budget of 500
-labels buys roughly `500 × 0.001 = 0.5` of the rare class in expectation, and a classifier cannot learn a class
-from a sample containing none of it. Let me put a probability on "none of it": the chance a size-500 uniform draw
-misses the minority entirely is about `(1 − 0.001)^{500}`, and `500 · ln(0.999) ≈ 500 · (−0.0010005) ≈ −0.500`,
-so that probability is `≈ e^{−0.5} ≈ 0.61`. Nearly two runs in three see *zero* minority examples at a 1-in-1000
-rate and a 500-label budget; even at 1-in-200 the expected count is 2.5 and the miss probability is still
-`e^{−2.5} ≈ 0.08`. The very faithfulness that makes the rule unbiased is what makes it starve the minority:
+labels buys roughly `500 × 0.001 = 0.5` of the rare class in expectation — and the chance a size-500 draw misses
+the minority entirely is about `(1 − 0.001)^{500} ≈ e^{−0.5} ≈ 0.61`, nearly two runs in three seeing *zero* of
+it. A classifier cannot learn a class from a sample containing none of it. The very faithfulness that makes the
+rule unbiased is what makes it starve the minority:
 representativeness reproduces the imbalance, and when the rare class is the one I care about, reproducing the
 imbalance is the opposite of what I want. The second weakness is subtler and grows with the budget. Picture the
 set of hypotheses still consistent with everything I have labeled so far; somewhere in input space there is a
@@ -136,22 +120,16 @@ has to land a labeled point within `ε` of it, and the expected number of unifor
 interval of width `ε` is `1/ε` (with the log factor for high-confidence coverage on top), so `ε = 10^{−3}` costs
 on the order of a thousand labels; a learner that *chooses* where to ask does binary search and needs
 `log₂(1/ε) ≈ 10`. A thousand versus ten — `1/ε` versus `ln(1/ε)`. That gap is the prize a model-aware rule is
-chasing, and it is exactly what every later rung will spend the model on.
+chasing, and it is exactly what every later step will spend the model on.
 
-Let me put a crude accounting on that decay across the actual 20 rounds, because it tells me which of the two
-metrics will punish random hardest. Suppose the region of uncertainty roughly halves each round as labels come in
-— an optimistic model but the right qualitative shape — so `α_t ≈ α_0 · 2^{−t}`. A uniform draw of `n` per round
-then lands `α_t · n` useful labels in round `t`, and summed over 20 rounds the useful total is
-`α_0 · n · Σ_{t=0}^{19} 2^{−t} ≈ 2 α_0 n` — the *entire* twenty-round budget buys only about twice the first
-round's worth of useful labels, because everything after the first few rounds lands in already-settled territory.
-That geometric collapse is exactly what separates the two metrics I am scored on. Final `accuracy` reads only the
-last round, by which point even a wasteful rule has usually accumulated enough total labels to reach a decent
-plateau, so it forgives the early waste. The `auc` — area under the accuracy-vs-labels curve over all 20 rounds —
-integrates the whole trajectory, so it charges for every round the curve rose slowly; a rule that spends its
-early budget on settled territory pays for it in auc even if it eventually catches up in final accuracy. So I
-expect the gap between random and any adaptive rule to be *wider in auc than in accuracy*, and widest of all in
-auc-on-letter, where the many-class thin-budget regime keeps `α` low from the start and the curve crawls upward
-for many rounds before it climbs.
+That decay is what separates the two metrics I am scored on. Final `accuracy` reads only the last round, by which
+point even a wasteful rule has usually accumulated enough labels to reach a decent plateau, so it forgives the
+early waste. The `auc` — area under the accuracy-vs-labels curve over all 20 rounds — integrates the whole
+trajectory, so it charges for every round the curve rose slowly; a rule that spends its early budget on settled
+territory pays for it in auc even if it eventually catches up in final accuracy. So I expect the gap between
+random and any adaptive rule to be *wider in auc than in accuracy*, and widest of all in auc-on-letter, where the
+many-class thin-budget regime keeps `α` low from the start and the curve crawls upward for many rounds before it
+climbs.
 
 I should be honest about why I am not just reaching straight for a rule that targets `R`, because the temptation
 is real and the reason I resist it is the same reason random is the right floor. The moment I bias selection
@@ -170,7 +148,7 @@ information, but because of it: the one rule whose statistical behavior I can st
 learning curve any adaptive strategy must dominate across the budget range to justify the information it spends.
 
 Across the three datasets I expect these two weaknesses to show up differently, and that shape is the prediction
-I am setting up for the next rung. On **spambase** (binary, fairly balanced) a representative i.i.d. sample is
+I am setting up for the next step. On **spambase** (binary, fairly balanced) a representative i.i.d. sample is
 genuinely hard to beat — the boundary is simple, the classes are not pathologically imbalanced, and the budget
 is a healthy fraction of the pool so the finite-population correction is actively helping; random should be
 *strong* here, and a model-aware rule might barely improve on it. On **letter** (26 classes, the largest pool)
@@ -183,10 +161,10 @@ because where a blind draw ends depends on which of the 26 classes it happened t
 integrating the whole learning curve — should register that variance even more sharply than final accuracy does.
 On **splice** (3-class) it should sit in between. So the prediction is sharp: random's curve is the honest
 reference, hardest to beat on the easy balanced binary problem and easiest to beat where many classes and a thin
-budget make most random draws land in settled territory. The first thing I will change at rung 2 is to stop
+budget make most random draws land in settled territory. The first thing I will change at step 2 is to stop
 drawing blindly and start letting the model say which unlabeled points it is least sure of — turning the empty,
 model-free `query` into one that reads `self.predict_prob` and spends the budget on the contested region instead
-of the pool's bulk. The falsifiable expectation the next rung must beat: a model-aware rule should lift letter
+of the pool's bulk. The falsifiable expectation the next step must beat: a model-aware rule should lift letter
 clearly above random's curve (that is where the adaptivity prize is largest), gain little or nothing on
 spambase, and land a modest gain on splice — and if it fails to beat random on letter, the premise that the
 model's boundary is informative is wrong. The distilled rule and the literal scaffold fill are in the answer.

@@ -28,7 +28,7 @@ not seen enough data here" (which a label fixes) from "I am unsure because this 
 ambiguous / the label is intrinsically noisy" (which no label ever fixes). It chases both, and the second
 kind is wasted budget — on letter, the confusable-but-irreducible boundary between similar glyphs (an `l`
 that overlaps an `i`, a rotated `n`/`u`) eats queries that buy nothing, and there are `~26²` such confusable
-pairs to burn budget on. So the next rung has to *separate* the uncertainty a label can resolve from the
+pairs to burn budget on. So the next step has to *separate* the uncertainty a label can resolve from the
 uncertainty it cannot.
 
 Let me state what I actually want to query, cleanly, and let the form tell me what to compute. The honest
@@ -71,22 +71,14 @@ over all settings of `θ` in the posterior — is very uncertain about the label
 *individual* `θ` is confident. Put them together: I want the `x` where the parameter settings are each
 individually sure of the answer yet *sure of different answers*. That is disagreement — but disagreement
 that *keeps* the confidence, because the second term is built out of each setting's full entropy, not a
-hard vote. This is precisely the distinction least confidence missed. Let me trace it on three concrete
-points, using two posterior samples each, to make sure the subtraction really does what I claim and I am not
-just narrating. Work in nats, `H(p) = −Σ_c p_c ln p_c`, on a binary label. Point `E` (epistemic): sample one
-predicts `(0.9, 0.1)`, sample two predicts `(0.1, 0.9)` — each sample is sure, but they are sure of opposite
-classes. The mean prediction is `p̄ = (0.5, 0.5)`, so `H[p̄] = ln 2 = 0.693`; each per-sample entropy is
-`H(0.9, 0.1) = −0.9 ln 0.9 − 0.1 ln 0.1 = 0.095 + 0.230 = 0.325`, and their mean is `0.325`; the MI is
-`0.693 − 0.325 = 0.368`, large — query it. Point `A` (aleatoric): both samples predict `(0.5, 0.5)` — the
-model agrees the label is a genuine coin flip. Then `p̄ = (0.5, 0.5)`, `H[p̄] = 0.693`, mean per-sample
-entropy `= 0.693`, and MI `= 0.693 − 0.693 = 0`, correctly skipped even though its marginal entropy is
-maximal. Point `C` (confident-agreed): both samples predict `(0.95, 0.05)` — `p̄` entropy `0.199`, mean
-per-sample entropy `0.199`, MI `= 0`, also skipped, as it should be. And to check the score is *graded*
-and not just a three-way switch, point `B` (partial): sample one `(0.8, 0.2)`, sample two `(0.3, 0.7)` —
-they lean opposite ways but neither is sharp. Then `p̄ = (0.55, 0.45)`, `H[p̄] = 0.688`; per-sample entropies
-`H(0.8, 0.2) = 0.500` and `H(0.3, 0.7) = 0.611`, mean `0.556`; MI `= 0.688 − 0.556 = 0.132`, sitting between
-`A`'s `0` and `E`'s `0.368`. The score rises smoothly with how much the confident samples disagree, which is
-what I want from a ranking. Read the three together: least
+hard vote. This is precisely the distinction least confidence missed. Trace it on three points, two posterior
+samples each, in nats (`H(p) = −Σ_c p_c ln p_c`, binary label). Point `E` (epistemic): sample one predicts
+`(0.9, 0.1)`, sample two `(0.1, 0.9)` — each sure, but of opposite classes. Mean `p̄ = (0.5, 0.5)`, so
+`H[p̄] = ln 2 = 0.693`; each per-sample entropy `H(0.9, 0.1) = 0.325`, mean `0.325`; MI `= 0.693 − 0.325 =
+0.368`, large — query it. Point `A` (aleatoric): both samples predict `(0.5, 0.5)`, the model agreeing on a
+genuine coin flip. Then `H[p̄] = 0.693`, mean per-sample entropy `= 0.693`, MI `= 0`, correctly skipped even
+though its marginal entropy is maximal. Point `C` (confident-agreed): both predict `(0.95, 0.05)` — `H[p̄] =
+0.199`, mean per-sample entropy `0.199`, MI `= 0`, also skipped. Read the three together: least
 confidence would score `A` and `E` *identically* (both have marginal top-mass `0.5`, so both score `1 − 0.5 =
 0.5`) and would happily spend budget on `A`, the irreducible coin flip — which is exactly the wasted-budget
 mechanism I measured on letter. This criterion scores `E` at `0.368` and `A` at `0`: the subtraction is the
@@ -116,7 +108,7 @@ softmaxes. Note what the harness does *not* give me, and what I therefore drop f
 disagreement story: there is no Gaussian-process path, no probit/squared-exponential closed form, no
 nuisance-parameter marginalization, no preference-learning kernel — those need a GP posterior the scaffold
 has no notion of. The only posterior I can sample here is the dropout one, so the only estimator I can run
-is the Monte-Carlo one, and that is the rung.
+is the Monte-Carlo one, and that is what this step builds on.
 
 I should be clear-eyed about *why* dropout passes are a defensible stand-in for posterior samples, because the
 whole estimator leans on it. Training with dropout is, up to the choice of prior, fitting an approximate
@@ -128,13 +120,11 @@ is exactly the property the `E_θ` in my criterion needs. I should note the hone
 dropout perturbs the network too gently, every pass produces nearly the same softmax, the samples never disagree,
 `H[p̄] ≈ mean per-pass entropy`, and `I(x)` collapses toward zero *everywhere* — the estimator goes blind and I
 am back to roughly ranking by marginal entropy. That is a real risk on a small net and I will watch letter for
-it. Are there better posteriors I could reach for? A deep ensemble — train several independent networks and read
-their disagreement — is a genuinely stronger posterior sample, but the harness retrains exactly *one* `self.clf`
-per round and I cannot spawn a committee inside `query`. A Laplace approximation around the trained weights, or a
-short SG-MCMC chain, would also give samples, but both need gradients and Hessians of the loss that the scaffold
-does not expose to the acquisition rule. `predict_prob_dropout_split` is the one posterior-sampling primitive the
-loop actually hands me, so it is the one I build on — not because it is the best posterior, but because it is the
-only one reachable from inside this contract.
+it. Stronger posteriors exist — a deep ensemble, a Laplace approximation around the trained weights, a short
+SG-MCMC chain — but the harness retrains exactly *one* `self.clf` per round and exposes no loss gradients or
+Hessians to the acquisition rule, so `predict_prob_dropout_split` is the only posterior-sampling primitive I can
+reach from inside this contract. It is the one I build on — not because it is the best posterior, but because it
+is the only one available.
 
 Plug the samples into the two terms with simple Monte-Carlo estimates. The expectation over the posterior
 becomes an average over the passes. The marginal predictive `p(y|x,D) = E_θ[p(y|x,θ)]` becomes the mean
@@ -159,14 +149,13 @@ multi-step lookahead would have planned, without my having to plan it. Where myo
 a single batch: I score all `n` points against the *current* posterior, as if each were the only one added, so
 the criterion has no idea that the 2nd-highest-MI point becomes redundant once the 1st is labeled. That is the
 same batch-blindness least confidence had, wearing an information-theoretic coat, and no amount of getting the
-per-point MI right will fix it — which is why I flag it now as the failure I expect to survive this rung.
+per-point MI right will fix it — which is why I flag it now as the failure I expect to survive this step.
 
 One implementation point to get right against the literal scaffold, because the sign and sort direction
 are where this silently breaks. I want to rank the pool by `I(x)` and keep the most-informative `n`. It is
 cleaner to compute the *negative*, `U = (mean per-pass entropy) − (entropy of the mean) = −I(x)`, then
-sort `U` ascending and take the first `n`: the `n` smallest `U` are the `n` largest `I` — and I can check the
-direction against point `E`, whose `I = 0.368` gives `U = −0.368`, the most negative, so it sorts to the front
-and gets queried, which is what I want. So the rung-3 edit: where least confidence took a single `predict_prob`
+sort `U` ascending and take the first `n`: the `n` smallest `U` are the `n` largest `I`, so the most-informative
+points sort to the front. So the step-3 edit: where least confidence took a single `predict_prob`
 and the per-row max, I take `predict_prob_dropout_split` with `n_drop=10`, form `p̄` as the mean over passes,
 compute `entropy1 = H[p̄]` (total) and `entropy2 = mean_t H[pᵗ]` (aleatoric), set `U = entropy2 − entropy1`,
 sort ascending, return the first `n`. The distilled rule and the literal scaffold fill are in the answer.
@@ -189,5 +178,5 @@ a small gain over least confidence's 0.814 / 0.744. And the structural caveat I 
 BALD separates resolvable from irreducible uncertainty *per point*, but like least confidence it has no term
 that looks at the *other chosen points* — the `n` highest-MI rows can still be near-duplicates, all sitting on
 the same contested glyph pair. So if the batch is large relative to the contested region, BALD will still buy
-redundant labels, and the next rung will have to fuse uncertainty with diversity so the batch is informative
+redundant labels, and the next step will have to fuse uncertainty with diversity so the batch is informative
 *and* spread out — which is exactly the failure I expect to remain after fixing the noise problem.
