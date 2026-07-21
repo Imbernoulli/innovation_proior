@@ -36,7 +36,7 @@ So where does the SGD machinery break? Two places, and I need to be honest about
 
 First wall. The SGD slow-SDE derivation quietly used rotational equivariance. Plain SGD treats all directions identically, so I could pretend the Hessian is diagonal and `Γ` is a coordinate subspace, which is what made the giant-step moment formulas tractable. The preconditioner `S(v)` destroys that symmetry — it singles out coordinates — so I cannot diagonalize my way to the clean formulas. The projection `Φ` itself feels wrong now: the optimizer's "clean" converging direction isn't `−∇L`, it's `−S∇L`. Following gradient flow to define the projection would project along the wrong direction.
 
-Let me chase that. Suppose I naively kept the gradient-flow projection `Φ`. Then on `Γ`, `∂Φ` projects orthogonally, but the optimizer's drift lives in `S`-skewed directions, and the cancellation `∂Φ·(drift) = 0` that I leaned on — the thing that killed the mean-gradient term — no longer holds, because the analogous identity would need `∂Φ·S∇L = 0`, not `∂Φ·∇L = 0`. So the divergent `η⁻¹` term doesn't cancel and the whole long-horizon trick falls apart. The projection has to follow the preconditioned flow, not the gradient flow.
+Suppose I naively kept the gradient-flow projection `Φ`. Then on `Γ`, `∂Φ` projects orthogonally, but the optimizer's drift lives in `S`-skewed directions, and the cancellation `∂Φ·(drift) = 0` that I leaned on — the thing that killed the mean-gradient term — no longer holds, because the analogous identity would need `∂Φ·S∇L = 0`, not `∂Φ·∇L = 0`. So the divergent `η⁻¹` term doesn't cancel and the whole long-horizon trick falls apart. The projection has to follow the preconditioned flow, not the gradient flow.
 
 So redefine it: `Φ_S(x)` = limit of the *preconditioned* flow `ẋ = −S∇L(x)`. Differentiating `Φ_S(x(t)) = const` along this flow gives the identity I actually need:
 
@@ -54,9 +54,9 @@ But I still have the rotational-equivariance problem for the *moment calculation
 
 So in the primed coordinates the preconditioner is gone. The projections are tied by `Φ_S(Px') = PΦ'(x')`: flow in `x'`, map back by `P`, and I land at the same point on `Γ` as the original preconditioned flow. This is the precise way to reuse the SGD giant-step lemmas; the `P` and `P^{-1}` factors have to be transported through the projection relation, not moved by inspection.
 
-Second wall. The preconditioner isn't a constant — `v` keeps moving, so `S(v_k)` drifts, and I just pretended it was frozen at `S₀` over a giant step. Is that legitimate? It depends entirely on how fast `v` moves, i.e. on `β₂`. Let me feel out the two extremes. If `1−β₂` is `Θ(1)` (β₂ far from 1), then `v` re-equilibrates in `O(1)` steps; over a giant step the preconditioner changes by `Θ(1)` and there's no hope of treating it as approximately constant — the moments become intractable. Worse, when `β₂` is so small that `β₂ < β₁²`, these methods are known to outright fail to converge, so that regime isn't even meaningful. The other extreme: `1−β₂` exponentially tiny, `v` essentially frozen for the whole `O(η⁻²)` horizon — then `S` never adapts and the method is just preconditioned-SGD with a fixed matrix, which is boring and not what real Adam does. So I need the in-between rate where `v` moves on *exactly* the same `O(η⁻²)` clock as the manifold wandering: slow enough per step that `S₀` is a good freeze within a single giant step, but accumulating a `Θ(1)` change over the full horizon so that adaptiveness genuinely shapes the bias.
+Second wall. The preconditioner isn't a constant — `v` keeps moving, so `S(v_k)` drifts, and I just pretended it was frozen at `S₀` over a giant step. Is that legitimate? It depends entirely on how fast `v` moves, i.e. on `β₂`. Two extremes bound the answer. If `1−β₂` is `Θ(1)` (β₂ far from 1), then `v` re-equilibrates in `O(1)` steps; over a giant step the preconditioner changes by `Θ(1)` and there's no hope of treating it as approximately constant — the moments become intractable. Worse, when `β₂` is so small that `β₂ < β₁²`, these methods are known to outright fail to converge, so that regime isn't even meaningful. The other extreme: `1−β₂` exponentially tiny, `v` essentially frozen for the whole `O(η⁻²)` horizon — then `S` never adapts and the method is just preconditioned-SGD with a fixed matrix, which is boring and not what real Adam does. So I need the in-between rate where `v` moves on *exactly* the same `O(η⁻²)` clock as the manifold wandering: slow enough per step that `S₀` is a good freeze within a single giant step, but accumulating a `Θ(1)` change over the full horizon so that adaptiveness genuinely shapes the bias.
 
-Let me solve for that rate. The slow SDE lives on timescale `t = k η²`. One step changes `v` by `(1−β₂)(V(g g^T) − v)`, an `O(1−β₂)` quantity. Over `O(η⁻²)` steps the accumulated change is `O((1−β₂)·η⁻²)`, and I want that to be `Θ(1)`. So `1−β₂ = Θ(η²)`. Call it the "2-scheme," and set the constant `c := (1−β₂)/η²`. Then within one giant step of `η^{−1−β}` steps, `v` changes by `O((1−β₂)·η^{−1−β}) = O(η^{1−β})`, which is `o(1)` — small enough that freezing `S₀` only costs me lower-order error — yet over the full run it sweeps a `Θ(1)` arc.
+The slow SDE lives on timescale `t = k η²`. One step changes `v` by `(1−β₂)(V(g g^T) − v)`, an `O(1−β₂)` quantity. Over `O(η⁻²)` steps the accumulated change is `O((1−β₂)·η⁻²)`, and I want that to be `Θ(1)`. So `1−β₂ = Θ(η²)`. Call it the "2-scheme," and set the constant `c := (1−β₂)/η²`. Then within one giant step of `η^{−1−β}` steps, `v` changes by `O((1−β₂)·η^{−1−β}) = O(η^{1−β})`, which is `o(1)` — small enough that freezing `S₀` only costs me lower-order error — yet over the full run it sweeps a `Θ(1)` arc.
 
 Let me make sure I have the giant-step accumulation right, because it's easy to mis-state. The fraction of the relaxation that happens over one giant step of `N = η^{−1−β}` steps is `1 − β₂^N`, and I want to know its leading order. With `β₂ = 1 − cη²`, take `c = 1.7`, `β = 1/4` and watch it shrink:
 
@@ -94,7 +94,7 @@ The middle term is a weighted martingale sum. Bound it with Azuma–Hoeffding, b
 
 with probability `1−δ`, for all `k ≤ K = O(poly(1/η))`. Set `K = O((1/η)log(1/η))` so `γ^K = O(η)` and the last-iterate gap is `Õ(η)`. That's the convergence theorem — last-iterate, high-probability, vanishing with `η`, for the whole AGM family. (As a side effect, plugging `K = O(η⁻²)` shows the iterate stays within an `Õ(√η)` tube of `Γ` for the *entire* horizon, which is exactly what the manifold analysis needs.)
 
-There's a gap I glossed: PL only holds *near* `Γ`, not globally, and if the iterate ever wandered out I couldn't characterize it. I need to bound the probability of escape. Trick: build a proxy loss `L̃` that equals `L` inside the `ε₁`-tube but adds a quadratic wall `½C(dist(θ,Γ)−ε₁)²` further out. To make this rigorous I need the distance-to-`Γ` and the unit normal to be smooth, which the tubular neighborhood theorem gives on a tube of radius `τ_Γ` (and `∇r = n`, the unit normal). I also need the loss to actually rise as you leave `Γ`: a third-order Taylor expansion of `∇L` at the foot point `φ = P(θ)`, using `∇L(φ)=0` and `∇²L(φ)` positive on the normal space with a uniform eigenvalue floor `m>0` (compactness), gives `⟨∇L(θ), n⟩ ≥ m·r − C r²`, so for `r` below `m/C^{(3)}` the angle between `∇L` and the outward normal is non-obtuse — `Γ^τ` is genuinely a valley with `Γ` at the floor. With that, `L̃` is globally `(μ, L̄)`-PL: in the wall region `‖∇L̃‖² = ‖∇L‖² + 2C(r−ε₁)⟨∇L,n⟩ + C²(r−ε₁)² ≥ ‖∇L‖² + C²(r−ε₁)²` (the cross term is `≥0` by non-obtuseness), and combining with PL of `L` inside gives the PL of `L̃`. On the sublevel set `{L̃ < L_m}` we have `L̃ = L` and `θ ∈ Γ^{ε₁}`. Also, wherever `‖∇L̃‖` is large the loss strictly decreases each step (a no-PL corollary of the descent lemma), and a single step moves `θ` by at most `ηR·R₂`, so for small `η` the iterate can't jump across the safety band. Induct: starting near enough to `Γ`, the run stays in `Γ^{ε₁}` almost surely and the convergence bound applies with `L = L̃ = L`. Good — the foundation is solid; now back to the actual implicit bias.
+There's a gap I glossed: PL only holds *near* `Γ`, not globally, and if the iterate ever wandered out I couldn't characterize it. I need to bound the probability of escape. Trick: build a proxy loss `L̃` that equals `L` inside the `ε₁`-tube but adds a quadratic wall `½C(dist(θ,Γ)−ε₁)²` further out. To make this rigorous I need the distance-to-`Γ` and the unit normal to be smooth, which the tubular neighborhood theorem gives on a tube of radius `τ_Γ` (and `∇r = n`, the unit normal). I also need the loss to actually rise as you leave `Γ`: a third-order Taylor expansion of `∇L` at the foot point `φ = P(θ)`, using `∇L(φ)=0` and `∇²L(φ)` positive on the normal space with a uniform eigenvalue floor `m>0` (compactness), gives `⟨∇L(θ), n⟩ ≥ m·r − C r²`, so for `r` below `m/C^{(3)}` the angle between `∇L` and the outward normal is non-obtuse — `Γ^τ` is genuinely a valley with `Γ` at the floor. With that, `L̃` is globally `(μ, L̄)`-PL: in the wall region `‖∇L̃‖² = ‖∇L‖² + 2C(r−ε₁)⟨∇L,n⟩ + C²(r−ε₁)² ≥ ‖∇L‖² + C²(r−ε₁)²` (the cross term is `≥0` by non-obtuseness), and combining with PL of `L` inside gives the PL of `L̃`. On the sublevel set `{L̃ < L_m}` we have `L̃ = L` and `θ ∈ Γ^{ε₁}`. Also, wherever `‖∇L̃‖` is large the loss strictly decreases each step (a no-PL corollary of the descent lemma), and a single step moves `θ` by at most `ηR·R₂`, so for small `η` the iterate can't jump across the safety band. Induct: starting near enough to `Γ`, the run stays in `Γ^{ε₁}` almost surely and the convergence bound applies with `L = L̃ = L`. Now back to the actual implicit bias.
 
 I redo the giant-step moments, but now in the reparameterized space and with `v` tracked. Within a giant step freeze `S₀ = S(v₀) = PP`. The single-step update, after I show momentum is harmless, is effectively `θ_{k+1} ≈ θ_k − η S₀ g_k + (small)`. Why is momentum harmless? Because after convergence `∇L` crawls — successive `E[∇L(θ_{k+1})] − E[∇L(θ_k)]` is `O(η^{1.5})` (it's `η∇²L·S·m` in expectation, and the conditional mean of `m` is `O(η^{0.5})` since `∇L` is `O(η^{0.5})` post-convergence) — and the momentum only averages the last `O(log(1/η))` gradients, so `E[m_k]` and `E[g_k]` differ by `O(η^{1.5}log(1/η))`, utterly negligible against the `η²` drift. So I can replace `m` by `g` in every moment. (This is the same conclusion as the momentum-is-marginal result for SGD, recovered here by direct moment bounds.) Likewise the `(S(v_k)−S₀)g_k` term is `O(η^{1.5−β})` in expectation because `v` only crept `O(η²·#steps)`. So the leading update really is the fixed-preconditioner one.
 
@@ -126,9 +126,9 @@ The same drift can be rewritten with the second `Φ_S` identity into the `∇³L
 
 With those two matrices, the deterministic part is the projected negative semi-gradient of `⟨∇²L(ζ),Σ_◇(ζ;S)⟩`; the Itô correction hidden in the expanded `½ S∂²Φ_S[SΣS]` is exactly what keeps the process on `Γ`.
 
-Let me stare at this. It's the SGD slow SDE with three changes, each tracing to one decision I made. The projection is induced by `Φ_{S(t)}` — state-dependent, because the converging direction is `−S∇L` — whereas SGD's was fixed. The covariance enters as `SΣS`, filtered through the preconditioner on both sides, instead of bare `Σ`. And there's a brand-new line: `v` is a live state relaxing toward `V(Σ(ζ))` on the same slow clock, which is the whole point of the 2-scheme. The drift is again a negative *semi-gradient*, now of `μ(ζ,v) = ⟨∇²L(ζ), Σ_◇(ζ;S)⟩`, preconditioned by `S(t)` — "adaptive semi-gradient descent on a sharpness measure." And `β₁` is nowhere in it: momentum doesn't touch the bias, exactly as the moment bounds said it wouldn't.
+It's the SGD slow SDE with three changes, each tracing to one decision I made. The projection is induced by `Φ_{S(t)}` — state-dependent, because the converging direction is `−S∇L` — whereas SGD's was fixed. The covariance enters as `SΣS`, filtered through the preconditioner on both sides, instead of bare `Σ`. And there's a brand-new line: `v` is a live state relaxing toward `V(Σ(ζ))` on the same slow clock, which is the whole point of the 2-scheme. The drift is again a negative *semi-gradient*, now of `μ(ζ,v) = ⟨∇²L(ζ), Σ_◇(ζ;S)⟩`, preconditioned by `S(t)` — "adaptive semi-gradient descent on a sharpness measure." And `β₁` is nowhere in it: momentum doesn't touch the bias, exactly as the moment bounds said it wouldn't.
 
-I should make sure the SDE keeps `ζ` on `Γ`. The viability (Nagumo) condition is that the drift minus the Itô correction `½Σ_j D[A_j]A_j` lies in the tangent space, equivalently that the normal projection `P_⊥ = I − ∂Φ_S` annihilates it. Expanding `P_⊥ Σ_j D[A_j]A_j` with `A_j = S∂Φ_S S Σ^{1/2}_j` and using the second-derivative identity for `∂²Φ_S` reduces it to `−P_⊥ ∇²L^† ∂²(∇L)[S Σ_∥]`, which matches `P_⊥` of the drift term term-for-term. So they cancel and `ζ(t)` stays on `Γ`. Good.
+I should make sure the SDE keeps `ζ` on `Γ`. The viability (Nagumo) condition is that the drift minus the Itô correction `½Σ_j D[A_j]A_j` lies in the tangent space, equivalently that the normal projection `P_⊥ = I − ∂Φ_S` annihilates it. Expanding `P_⊥ Σ_j D[A_j]A_j` with `A_j = S∂Φ_S S Σ^{1/2}_j` and using the second-derivative identity for `∂²Φ_S` reduces it to `−P_⊥ ∇²L^† ∂²(∇L)[S Σ_∥]`, which matches `P_⊥` of the drift term term-for-term. So they cancel and `ζ(t)` stays on `Γ`.
 
 Now the payoff is the label-noise reduction, where I can finally see the difference from SGD concretely. With `Σ = αH` (here `H := ∇²L(ζ)`), look at the diffusion: it carries `S∂Φ_S S Σ^{1/2}`. But `Σ^{1/2}x = √α H^{1/2}x` lies in the normal space, and `∂Φ_S S` kills the normal space (that's the lemma `∂Φ_S(ζ)S∇²L(ζ)=0` applied through `H^{1/2}`). So the diffusion vanishes and the slow SDE collapses to an ODE:
 
@@ -138,14 +138,7 @@ At a fixed point, `v = V(Σ(ζ)) = V(αH) = α·diag(H)` for the Adam choice `V 
 
 `∇³L(ζ)[S] = Σ_j (α H_{jj})^{−1/2} ∇H_{jj}`.
 
-This is a sum of gradients, and I want to know whether it's itself a gradient of some scalar — that's what would turn the fixed-point condition into "stationary point of a regularizer." Each summand `(H_{jj})^{−1/2}∇H_{jj}` is a chain-rule pattern: it's `f'(H_{jj})∇H_{jj}` with `f'(x)=x^{−1/2}`, so it equals `∇ f(H_{jj})` for the antiderivative `f`. The antiderivative of `x^{−1/2}` is `2x^{1/2}`, so I should get `2∇(H_{jj}^{1/2})`. Let me confirm by differentiating back rather than trusting the integral table — `d/dx(x^{1−λ}/(1−λ)) = x^{−λ}` symbolically:
-
-```
-x^(-λ) − d/dx[ x^(1-λ)/(1-λ) ]  =  0     (sympy, λ symbolic)
-at λ=1/2 :                         0
-```
-
-So `(H_{jj})^{−1/2}∇H_{jj} = 2∇(H_{jj}^{1/2})` holds, and
+This is a sum of gradients, and I want to know whether it's itself a gradient of some scalar — that's what would turn the fixed-point condition into "stationary point of a regularizer." Each summand `(H_{jj})^{−1/2}∇H_{jj}` is a chain-rule pattern: it's `f'(H_{jj})∇H_{jj}` with `f'(x)=x^{−1/2}`, so it equals `∇ f(H_{jj})` for the antiderivative `f`. The antiderivative of `x^{−1/2}` is `2x^{1/2}` — differentiating back confirms it directly, `d/dx[x^{1−λ}/(1−λ)] = x^{−λ}` for general `λ`, which at `λ=1/2` gives `d/dx(2x^{1/2}) = x^{-1/2}` as required. So `(H_{jj})^{−1/2}∇H_{jj} = 2∇(H_{jj}^{1/2})` holds, and
 
 `∇³L(ζ)[S] = (2/√α) Σ_j ∇(H_{jj}^{1/2}) = (2/√α) ∇ tr(Diag(H)^{1/2})`.
 
@@ -157,15 +150,7 @@ Adam under label noise has `tr(Diag(H)^{1/2})` as its manifold regularizer — *
 
 This also hands me a free knob. Nothing forced the exponent to be `½` — that was just Adam's `√v`. Replace `S = Diag(1/(v^λ + ε))` for a tunable `λ ∈ [0,1)` (call it AdamE-λ; `λ=½` is Adam, `λ=0` strips the second moment and is plain momentum-SGD). Rerun the same line: `S = Diag((αH_{jj})^{−λ})`, so `∇³L[S] = Σ_j(αH_{jj})^{−λ}∇H_{jj}`, and the same antiderivative I just checked symbolically (`d/dx[x^{1−λ}/(1−λ)] = x^{−λ}` for general `λ`) gives `H_{jj}^{−λ}∇H_{jj} = (1/(1−λ))∇(H_{jj}^{1−λ})`, hence `∇³L[S] = (1/((1−λ)α^λ))∇tr(Diag(H)^{1−λ})` and the fixed point `∇_Γ tr(Diag(H)^{1−λ}) = 0`. So tuning the second-moment exponent tunes the exponent of the implicit regularizer, continuously interpolating from SGD's `tr(H)` at `λ=0` to Adam's `tr(Diag(H)^{1/2})` at `λ=½`. (And the `λ=0` end checks out against the SGD story I started from — `tr(Diag(H)^1) = tr(H)` — which is reassuring, because the `λ=0` preconditioner *is* the identity and the derivation should hand me back exactly the SGD regularizer there, not something merely similar.)
 
-I should check the `ε>0` case, since real Adam keeps `ε` around `10⁻⁸`, and I want to know whether that `ε` quietly changes the regularizer. Now `S = Diag(1/(√(α H_{jj}) + ε))`, so I need an antiderivative of `1/(√(αx)+ε)`. The shape `√(αx) − ε ln(√(αx)+ε)` looks right; let me differentiate it back to be sure rather than guess the integral:
-
-```
-ψ(x) = √(αx) − ε·ln(√(αx)+ε)
-ψ'(x) = α/(2(√(αx)+ε))           (sympy)
-1/(√(αx)+ε) − (2/α)·ψ'(x) = 0    (sympy)
-```
-
-So `1/(√(αx)+ε) = (2/α)ψ'(x)` exactly, and `∇³L[S] = (2/α)∇ tr(ψ(Diag(H)))`. The fixed point is `∇_Γ tr(Diag(H)^{1/2} − (ε/√α) ln((√α/ε)Diag(H)^{1/2} + I)) = 0`, after dropping the additive constant inside the logarithm. Now: how big is that `ε`-dependent correction? The scalar correction is `(ε/√α)ln(1 + (√α/ε)√x)`, non-negative since `ln(1+y) ≥ 0`. Let me actually evaluate its size against `ε log(1/ε)` over `x ∈ [0,4]`, `α=1`:
+I should check the `ε>0` case, since real Adam keeps `ε` around `10⁻⁸`, and I want to know whether that `ε` quietly changes the regularizer. Now `S = Diag(1/(√(α H_{jj}) + ε))`, so I need an antiderivative of `1/(√(αx)+ε)`. Try `ψ(x) = √(αx) − ε ln(√(αx)+ε)`: differentiating, `ψ'(x) = α/(2(√(αx)+ε))`, so `1/(√(αx)+ε) = (2/α)ψ'(x)` exactly, and `∇³L[S] = (2/α)∇ tr(ψ(Diag(H)))`. The fixed point is `∇_Γ tr(Diag(H)^{1/2} − (ε/√α) ln((√α/ε)Diag(H)^{1/2} + I)) = 0`, after dropping the additive constant inside the logarithm. Now: how big is that `ε`-dependent correction? The scalar correction is `(ε/√α)ln(1 + (√α/ε)√x)`, non-negative since `ln(1+y) ≥ 0`. Checking its size against `ε log(1/ε)` over `x ∈ [0,4]`, `α=1`:
 
 ```
 ε       max correction      ε·log(1/ε)
@@ -185,7 +170,7 @@ diag(H)             : [9.2 1.2 1.2 1.2 1.2 1.2 5.2 1.2]
 max abs diff        : 4.8e-07
 ```
 
-They agree to autodiff precision, so on `Γ`, `tr(Diag(H)^{e}) ∝ Σ_i(|u_i|^{2e} + |v_i|^{2e})`. Now the loss only sees `u_i² − v_i²`, so if both `u_i, v_i` are nonzero at an optimum I should be able to shrink them keeping `u_i²−v_i²` fixed and strictly lower `Σ(|u_i|^{2e}+|v_i|^{2e})`. Let me check that the penalty really does decrease — fix `u²−v²=1` (so `u²=1+t`, `v²=t`) and slide `t→0` at `e=½`:
+They agree to autodiff precision, so on `Γ`, `tr(Diag(H)^{e}) ∝ Σ_i(|u_i|^{2e} + |v_i|^{2e})`. Now the loss only sees `u_i² − v_i²`, so if both `u_i, v_i` are nonzero at an optimum I should be able to shrink them keeping `u_i²−v_i²` fixed and strictly lower `Σ(|u_i|^{2e}+|v_i|^{2e})`. Fix `u²−v²=1` (so `u²=1+t`, `v²=t`) and slide `t→0` at `e=½`:
 
 ```
 t=2.0  (u²)^.5+(v²)^.5 = 3.146
@@ -206,106 +191,8 @@ Both exponents line up. So minimizing `tr(Diag(H)^e)` on `Γ` is minimizing the 
 
 But I should be honest about when the `tr(Diag(H)^{1/2})` story is even the *right* story, because the diagonal of `H` is only meaningful as "the spectrum" when `H` is (close to) diagonal — which the diagonal net arranges in expectation. If `H` is far from diagonal, `tr(Diag(H)^{1/2})` is not `‖eigenvalues‖_{0.5}`, and there's no reason the bias should help. Deep matrix factorization is the stress test: there, SGD's `tr(H)` is known to track the nuclear norm of the product matrix, which favors low rank and generalizes well on a low-rank ground truth. Adam's `tr(Diag(H)^{1/2})` does *not* reduce to the nuclear norm, so I'd predict Adam drives `tr(Diag(H)^{1/2})` down while leaving `tr(H)` high (even non-monotone), converging to a higher-`tr(H)`, worse-generalizing solution than SGD. A separation in the opposite direction — same theory, but now the unique bias *hurts*. That asymmetry is exactly what makes "Adam reduces a *unique* form of sharpness" the right framing rather than "Adam is just better."
 
-One more family member worth chasing, because it tells me the limits of "explicit regularizer." For the Kronecker-factored method, `S` is `((V_R+εI)⊗(V_L+εI))^{−1/2}`, not diagonal. The question of whether *some* scalar regularizer `ψ` exists with the bias `∇_Γ ψ = 0` is the question of whether the vector field `A(ζ) = ∇³L(ζ)[S(V(Σ(ζ)))]` is conservative — has a potential — which by Stokes–Cartan is exactly the question of whether its curl `∂_iA_j − ∂_jA_i` vanishes. For Adam it did, and that's *why* `tr(Diag(H)^{1/2})` popped out: `∇³L[S]` was already a gradient. What made that work was that `S` is diagonal and each summand `(H_{jj})^{−λ}∇H_{jj}` is a single-coordinate chain rule, automatically curl-free. The Kronecker `S` couples coordinates through `V_L, V_R`, so `A_j` depends on `H` entries through *other* coordinates' factors and the chain-rule pattern is broken — exactly the asymmetric-coupling shape whose curl I'd expect to be nonzero (as a quick symbolic check confirms: a gradient field like `∇(x₁²x₂)` has curl `0`, while an asymmetrically-coupled field like `(x₂, −x₁)/√(x₁²+x₂²+1)` has curl `(−x₁²−x₂²−2)/(…)^{3/2} ≠ 0`). I haven't pushed the full Kronecker `A` through to an explicit curl here, so I'd want to verify the nonvanishing on the actual field before claiming it as a theorem; but structurally I expect the Kronecker manifold drift to be well-defined yet *not* gradient descent on any single scalar regularizer — a qualitatively different, "non-conservative" implicit bias. Worth flagging that the explicit-regularizer picture is a feature of the diagonal preconditioners, not a universal.
+One more family member worth chasing, because it tells me the limits of "explicit regularizer." For the Kronecker-factored method, `S` is `((V_R+εI)⊗(V_L+εI))^{−1/2}`, not diagonal. The question of whether *some* scalar regularizer `ψ` exists with the bias `∇_Γ ψ = 0` is the question of whether the vector field `A(ζ) = ∇³L(ζ)[S(V(Σ(ζ)))]` is conservative — has a potential — which by Stokes–Cartan is exactly the question of whether its curl `∂_iA_j − ∂_jA_i` vanishes. For Adam it did, and that's *why* `tr(Diag(H)^{1/2})` popped out: `∇³L[S]` was already a gradient. What made that work was that `S` is diagonal and each summand `(H_{jj})^{−λ}∇H_{jj}` is a single-coordinate chain rule, automatically curl-free. The Kronecker `S` couples coordinates through `V_L, V_R`, so `A_j` depends on `H` entries through *other* coordinates' factors and the chain-rule pattern is broken — exactly the asymmetric-coupling shape whose curl I'd expect to be nonzero (as a quick symbolic check confirms: a gradient field like `∇(x₁²x₂)` has curl `0`, while an asymmetrically-coupled field like `(x₂, −x₁)/√(x₁²+x₂²+1)` has curl `(−x₁²−x₂²−2)/(…)^{3/2} ≠ 0`). I haven't pushed the full Kronecker `A` through to an explicit curl here, so I'd want to verify the nonvanishing on the actual field before claiming it as a theorem; but structurally I expect the Kronecker manifold drift to be well-defined yet *not* gradient descent on any single scalar regularizer — a qualitatively different, "non-conservative" implicit bias: the explicit-regularizer picture is a feature of diagonal preconditioners, not a universal one.
 
 Stepping back to write the actual approximation guarantee I've been implicitly claiming. I have the giant-step first/second/sixth moments of the projected state `X̄ = (Φ_S(θ), v)` matching a drift `b` and diffusion `σ` to high order; the standard weak-approximation machinery (one-step moment matching to `O(η_e²)` for the first two moments and a controlled sixth-moment / third-derivative remainder, summed over `T/η_e` giant steps via a telescoping `u_{l,n}` argument with `u` the solution of the backward equation) then gives, for any `C³` test function `g`, `max_k |E[g(X̄_k)] − E[g(X(kη²))]| = Õ(η^{0.25})` over `K = ⌊Tη⁻²⌋` steps — after the `O((1/η)log(1/η))` convergence steps to get onto the manifold. The `0.25` comes out of optimizing the giant-step exponent: with `β` the giant-step parameter, the two surviving one-giant-step error exponents in the effective step size `η_e=η^{1−β}` are `a₁ = (1.5−2β)/(1−β)` and `a₂ = 1/(1−β)`. After summing over `T/η_e` giant steps the exponents drop to `a₁−1=(0.5−β)/(1−β)` and `a₂−1=β/(1−β)`; balancing them gives `β=0.25`, and then `η_e^{1/3}=η^{0.25}`. The `C⁵` smoothness of `L` (and `Σ^{1/2}`) and `C⁴` of `S` are exactly what's needed: the drift/diffusion must be `C⁴` to push `C³` test functions through, and `∂²Φ_S` (which the drift uses) needs `Φ_S ∈ C⁴`, hence `∇L ∈ C⁴`, hence `L ∈ C⁵`.
 
-Now let me write the update I have actually analyzed. I leave out bias correction and weight decay because neither appears in the dynamics above; for the diagonal instances `V(g g^T) = g⊙²` and `S(v)m = m/(v^λ+ε)`, so no matrix algebra is needed and `λ` is the dial that moves the implicit regularizer's exponent.
-
-```python
-import torch
-
-class CoordinateRescaledOptimizer(torch.optim.Optimizer):
-    def __init__(self, params, lr=1e-3, beta1=0.9, beta2=0.999,
-                 eps=1e-8, exponent=0.5):
-        if not 0 <= exponent < 1:
-            raise ValueError("exponent must lie in [0, 1)")
-        defaults = dict(lr=lr, beta1=beta1, beta2=beta2,
-                        eps=eps, exponent=exponent)
-        super().__init__(params, defaults)
-
-    @torch.no_grad()
-    def step(self, closure=None):
-        loss = None
-        if closure is not None:
-            with torch.enable_grad():
-                loss = closure()
-
-        for group in self.param_groups:
-            beta1 = group["beta1"]
-            beta2 = group["beta2"]
-            eps = group["eps"]
-            exponent = group["exponent"]
-            lr = group["lr"]
-            for p in group["params"]:
-                if p.grad is None:
-                    continue
-                grad = p.grad
-                state = self.state[p]
-                if not state:
-                    state["m"] = torch.zeros_like(p)
-                    state["v"] = torch.zeros_like(p)
-                m = state["m"]
-                v = state["v"]
-
-                m.mul_(beta1).add_(grad, alpha=1 - beta1)
-                v.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
-                denom = v.pow(exponent).add(eps)
-                p.addcdiv_(m, denom, value=-lr)
-
-        return loss
-
-def make_optimizer(name, params, lr, exponent=0.5):
-    if name == "sgd":
-        return torch.optim.SGD(params, lr=lr)
-    if name == "rmsprop":
-        return CoordinateRescaledOptimizer(params, lr=lr, beta1=0.0, exponent=0.5)
-    if name == "adam":
-        return CoordinateRescaledOptimizer(params, lr=lr, exponent=0.5)
-    if name == "adame":
-        return CoordinateRescaledOptimizer(params, lr=lr, exponent=exponent)
-    raise ValueError(f"unknown optimizer: {name}")
-
-def make_diagonal_net(d, kappa, seed=0):
-    g = torch.Generator().manual_seed(seed)
-    w_star = torch.zeros(d)
-    idx = torch.randperm(d, generator=g)[:kappa]
-    w_star[idx] = torch.randn(kappa, generator=g)
-    u = torch.full((d,), 0.1, requires_grad=True)
-    v = torch.full((d,), 0.1, requires_grad=True)
-
-    def predict(z):
-        return (z * (u.square() - v.square())).sum()
-
-    return [u, v], predict, w_star
-
-def label_noise_step(predict, z, y_clean, delta, opt, gen):
-    noisy = y_clean + delta * (2 * torch.randint(0, 2, (1,), generator=gen).item() - 1)
-    loss = 0.5 * (predict(z) - noisy) ** 2
-    opt.zero_grad()
-    loss.backward()
-    opt.step()
-    return loss.item()
-
-def run_diagnet(opt_name, n_train, d=10000, kappa=50, delta=0.1,
-                steps=20000, lr=1e-2, exponent=0.5, seed=0):
-    gen = torch.Generator().manual_seed(seed + 1)
-    params, predict, w_star = make_diagonal_net(d, kappa, seed)
-    Z = (torch.randint(0, 2, (n_train, d), generator=gen) * 2 - 1).float()
-    y = Z @ w_star
-    Zt = (torch.randint(0, 2, (2000, d), generator=gen) * 2 - 1).float()
-    yt = Zt @ w_star
-    opt = make_optimizer(opt_name, params, lr, exponent)
-
-    for _ in range(steps):
-        i = torch.randint(0, n_train, (1,), generator=gen).item()
-        label_noise_step(predict, Z[i], y[i], delta, opt, gen)
-
-    with torch.no_grad():
-        u, v = params
-        w_hat = u.square() - v.square()
-        test_loss = 0.5 * ((Zt @ w_hat - yt) ** 2).mean()
-    return test_loss.item()
-```
-
-So the causal chain is: SGD near a manifold does semi-gradient descent on a Hessian-noise sharpness measure, captured by a long-horizon SDE that tracks the *projection* onto the manifold; to carry that to adaptive methods I had to swap the gradient-flow projection for a preconditioned-flow projection (because the converging direction is `−S∇L`, and a reparameterization `x'=P^{−1}x` turns the preconditioned flow back into a plain one so the old moment calculus transfers), and I had to scale `1−β₂ = Θ(η²)` so the preconditioner moves on the manifold's own clock and enters the SDE as a live OU-like state; the resulting drift is adaptive semi-gradient descent on `⟨∇²L, SΣS − Σ_∥⟩`, with momentum provably irrelevant; under label noise the diffusion dies and the `1/√v` denominator turns SGD's linear `H_{jj}` weighting into `H_{jj}^{−1/2}`, integrating to the regularizer `tr(Diag(H)^{1/2})` (and `tr(Diag(H)^{1−λ})` for exponent `λ`); on a diagonal net that's an `ℓ_{0.5}` (vs SGD's `ℓ₁`) penalty on the recovered vector, predicting sparser, more sample-efficient recovery — while on deep matrix factorization, where the useful bias is toward low rank, the same unique sharpness reduction is the wrong one and should hurt.
+The optimizer I actually implement is the one the analysis covers: momentum and a coordinate-rescaled second moment, `θ_{k+1} = θ_k − η m_{k+1}/(v_{k+1}^λ+ε)`, with `λ` exposed as a dial (`λ=0` is momentum-SGD, `λ=½` is Adam) so the sparse-recovery experiment can sweep the implicit-regularizer exponent directly. I leave out bias correction and weight decay, since neither appears anywhere in the drift or diffusion I derived — adding them would be decorating the analyzed object rather than shipping it. Wired into the diagonal-net harness from the setup, this is the optimizer and diagnostic that let the `ℓ₁`-vs-`ℓ_{0.5}` prediction actually be swept over training-set size.
