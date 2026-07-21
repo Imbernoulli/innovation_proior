@@ -14,8 +14,6 @@ and then the system is just a linear recurrence,
 
   h_t = Ā h_{t−1} + B̄ x_t,  y_t = C h_t.
 
-Let me sanity-check that B̄ formula in the scalar case so I trust it. If A is a scalar a < 0, the ODE h' = a h + b x with x held at x_t over [0, Δ] integrates to h(Δ) = e^{aΔ} h(0) + (e^{aΔ} − 1)/a · b x_t. So Ā = e^{aΔ} and B̄ = (e^{aΔ} − 1)/a · b = (e^{aΔ} − 1)(aΔ)^{−1} · Δ b. Yes — matches, with the (ΔA)^{−1}(exp(ΔA) − I)·ΔB form. Good, the discretization is exact for piecewise-constant input.
-
 Why bother with the continuous story at all, instead of just learning a discrete transition directly? Two reasons that earlier work makes me believe. One: there's a special choice of A — the HiPPO matrix — for which the state becomes a near-optimal online summary of the input history, the coefficients of the input projected onto a basis of orthogonal polynomials. That's a genuinely principled long-range memory, not a heuristic. Two: the Δ parametrization gives a clean knob for the timescale, and discretization keeps the dynamics well-normalized. Fine. The HiPPO A is the reason these things have memory.
 
 Now the part that matters for efficiency, and the part I need to stare at hardest. Suppose I freeze (Δ, A, B, C) to be the same at every time step. Then unroll the recurrence from h_0 = 0:
@@ -50,15 +48,7 @@ The sequential problem first. The recurrence is sequential, yes, but it is *line
 
   (a₁, b₁) • (a₂, b₂) = (a₂ a₁,  a₂ b₁ + b₂).
 
-Check what this does. If I think of each pair as the affine map "h ↦ a h + b," then composing the map (a₁,b₁) then (a₂,b₂) gives h ↦ a₂(a₁ h + b₁) + b₂ = (a₂a₁) h + (a₂b₁ + b₂) — exactly the pair (a₂a₁, a₂b₁ + b₂). So • is just function composition of affine maps, and function composition is associative. Let me confirm associativity directly so I'm not hand-waving. Take three pairs and compose left-to-right:
-
-  [(a₁,b₁) • (a₂,b₂)] • (a₃,b₃) = (a₂a₁, a₂b₁+b₂) • (a₃,b₃) = (a₃a₂a₁,  a₃(a₂b₁+b₂) + b₃) = (a₃a₂a₁,  a₃a₂b₁ + a₃b₂ + b₃).
-
-And right-to-left:
-
-  (a₁,b₁) • [(a₂,b₂) • (a₃,b₃)] = (a₁,b₁) • (a₃a₂, a₃b₂+b₃) = (a₃a₂a₁,  a₃a₂b₁ + (a₃b₂+b₃)) = (a₃a₂a₁,  a₃a₂b₁ + a₃b₂ + b₃).
-
-Same. Associative. And the running scan of these pairs reconstructs the recurrence: with each step's pair set to (a_t, b_t) = (Ā_t, B̄_t x_t), the prefix composition up to t has second coordinate exactly h_t (starting from h_0 = 0). So computing all the h_t is a *prefix scan* under an associative operator — and associative prefix scans have a work-efficient parallel algorithm with O(L) total work and O(log L) depth (the Blelloch up-sweep/down-sweep). The time-varying recurrence is parallelizable after all. The non-linearity over time that would have killed parallelism isn't there — the recurrence is linear in h even though the coefficients vary, and linearity is all the scan needs. (This is the same parallel-scan trick S5 used to run a diagonal SSM as a recurrence; the difference is I'm going to run it with input-dependent coefficients, which is the whole point.)
+Check what this does. If I think of each pair as the affine map "h ↦ a h + b," then composing the map (a₁,b₁) then (a₂,b₂) gives h ↦ a₂(a₁ h + b₁) + b₂ = (a₂a₁) h + (a₂b₁ + b₂) — exactly the pair (a₂a₁, a₂b₁ + b₂). So • is just function composition of affine maps, and function composition is associative regardless of how many terms are chained. And the running scan of these pairs reconstructs the recurrence: with each step's pair set to (a_t, b_t) = (Ā_t, B̄_t x_t), the prefix composition up to t has second coordinate exactly h_t (starting from h_0 = 0). So computing all the h_t is a *prefix scan* under an associative operator — and associative prefix scans have a work-efficient parallel algorithm with O(L) total work and O(log L) depth (the Blelloch up-sweep/down-sweep). The time-varying recurrence is parallelizable after all. The non-linearity over time that would have killed parallelism isn't there — the recurrence is linear in h even though the coefficients vary, and linearity is all the scan needs. (This is the same parallel-scan trick S5 used to run a diagonal SSM as a recurrence; the difference is I'm going to run it with input-dependent coefficients, which is the whole point.)
 
 And while I'm here, let me reconsider whether the recurrence is even a bad deal on FLOPs, because I'd assumed the convolution was strictly cheaper. The recurrent scan does O(B·L·D·N) work — linear in L. The FFT convolution does O(B·L·D·log L). So the convolution carries a log L factor and the scan carries an N factor; the scan wins on arithmetic precisely when N < log₂ L. Put numbers on it: with N = 16 the crossover is L = 2¹⁶ ≈ 65k, and with N = 8 it's L = 256 — and my target settings run at sequence lengths in the thousands to a million. At L = 10⁶, log₂ L ≈ 20, comfortably above N = 16, so the scan is doing *fewer* FLOPs than the FFT there, not more. So abandoning the convolution isn't even clearly a loss on arithmetic over the regime I care about — the real problem was never FLOPs, it was the two things above: sequentiality (now solved by the scan) and memory.
 
@@ -89,7 +79,7 @@ I keep asserting that, so let me actually run it on a Selective-Copying-shaped i
   - DATA −1: g ≈ 0.9975, h ← 0.0025·0.9951 + 0.9975·(−1) = −0.9951. The new data overwrites.
   - filler: h ← 0.9975·(−0.9951) = −0.9926.
 
-So filler tokens decay the state by only ~0.25% each (the keep-gate ≈ 0.9975), while a data token slams ≈ 99.75% of its value straight in. The state really does ignore the noise and latch the signal — the mechanism behaves as advertised, and I didn't have to assume it, I watched it happen. Worth sanity-checking that the gate values themselves came from the exact ZOH and not from my having quietly substituted the sigmoid: Ā = exp(−softplus(+6)) = 0.0025 and 1 − exp(−softplus(+6)) = 0.9975 agree with σ(−6) and σ(+6) to four places, so the identity Ā = 1 − σ, B̄ = σ is holding numerically, not just symbolically.
+So filler tokens decay the state by only ~0.25% each (the keep-gate ≈ 0.9975), while a data token slams ≈ 99.75% of its value straight in. The state really does ignore the noise and latch the signal — the mechanism behaves as advertised, and I didn't have to assume it, I watched it happen.
 
 But the trace also exposes something I'd have missed by only asserting: the second data token *overwrote* the first (h went +0.9951 → −0.9951). A single scalar leaky-integrator state can hold one remembered value at a time, not two. So selectivity solves *gating* — keep vs. discard — but a 1-D state can't store a whole remembered block; the moment two data tokens must coexist, I need the state to have room. That's a concrete argument for N > 1 (a vector state per channel) and for B, C being full width-N and per-position, so different data tokens write into and read from different state coordinates rather than clobbering each other. Good — the toy didn't just confirm the gate, it told me why N has to be more than one.
 
@@ -147,53 +137,4 @@ def selective_scan_ref(u, delta, A, B, C, D=None, z=None, delta_bias=None, delta
 
 The for-loop is conceptual — what the hardware-aware version really does is replace it with the parallel associative scan over the operator (a, b) • (a′, b′) = (a′a, a′b + b′), with the discretization, the scan, and the multiply-by-C all fused into one kernel so deltaA and deltaB_u and the states never leave SRAM, and recomputed in the backward pass. The arithmetic is identical; only the memory choreography differs.
 
-And the block that wraps it, mirroring the standard implementation:
-
-```python
-import torch, torch.nn as nn, math
-from einops import rearrange
-
-class Mamba(nn.Module):
-    def __init__(self, d_model, d_state=16, d_conv=4, expand=2, dt_rank="auto"):
-        super().__init__()
-        self.d_inner = expand * d_model
-        self.dt_rank = math.ceil(d_model / 16) if dt_rank == "auto" else dt_rank
-
-        # in_proj makes the two branches: x (main) and z (gate), each width d_inner.
-        self.in_proj = nn.Linear(d_model, self.d_inner * 2, bias=False)
-        # short causal depthwise conv = the cheap local mixing (H3's shift-SSM role).
-        self.conv1d = nn.Conv1d(self.d_inner, self.d_inner, kernel_size=d_conv,
-                                groups=self.d_inner, padding=d_conv - 1, bias=True)
-        self.act = nn.SiLU()
-        # x_proj produces the *input-dependent* Δ (low-rank), B, and C from the signal.
-        self.x_proj  = nn.Linear(self.d_inner, self.dt_rank + 2 * d_state, bias=False)
-        self.dt_proj = nn.Linear(self.dt_rank, self.d_inner, bias=True)   # low-rank Δ -> per-channel steps
-
-        # A: static, diagonal, real; stored as log so A = -exp(A_log) < 0 (S4D-Real init).
-        A = torch.arange(1, d_state + 1, dtype=torch.float32).repeat(self.d_inner, 1)
-        self.A_log = nn.Parameter(torch.log(A))
-        self.D = nn.Parameter(torch.ones(self.d_inner))                   # per-channel skip
-        self.out_proj = nn.Linear(self.d_inner, d_model, bias=False)
-
-    def forward(self, hidden_states):           # (B, L, D)
-        b, l, _ = hidden_states.shape
-        xz = rearrange(self.in_proj(hidden_states), "b l two_d -> b two_d l")
-        x, z = xz.chunk(2, dim=1)               # x: main branch, z: gate branch
-
-        x = self.act(self.conv1d(x)[..., :l])   # local conv then SiLU
-
-        x_dbl = self.x_proj(rearrange(x, "b d l -> (b l) d"))
-        dt, B, C = torch.split(x_dbl, [self.dt_rank, self.A_log.shape[1], self.A_log.shape[1]], dim=-1)
-        # weight only; the Δ bias is folded into the scan via delta_bias (don't double-count it)
-        dt = rearrange(self.dt_proj.weight @ dt.t(), "d (b l) -> b d l", l=l)  # Δ before softplus, per channel
-        B  = rearrange(B, "(b l) n -> b n l", l=l)                        # selective B
-        C  = rearrange(C, "(b l) n -> b n l", l=l)                        # selective C
-        A  = -torch.exp(self.A_log.float())
-
-        y = selective_scan_ref(x, dt, A, B, C, D=self.D.float(), z=z,
-                               delta_bias=self.dt_proj.bias.float(), delta_softplus=True)
-        y = rearrange(y, "b d l -> b l d")
-        return self.out_proj(y)
-```
-
-So the whole chain, traced once forward: I started from the fact that good sequence modeling is good compression of context into a state, and compression has to be content-dependent or it fails on tasks like Selective Copying and Induction Heads. The cheap principled model, the structured SSM, gets its efficiency from being time-invariant — but time-invariance is exactly what forbids content-dependence, because a single fixed convolution kernel can't model variable, content-determined spacing. So I make Δ, B, C depend on the input, which restores selection (and selecting via Δ turns out to be precisely the classical RNN gate, derived from discretizing a leaky integrator) — and that immediately destroys the convolution form. I recover the lost efficiency by going back to the recurrence and noticing it's a first-order *linear* recurrence, hence an associative parallel scan; by keeping the N-times-larger expanded state inside fast SRAM via kernel fusion instead of writing it to HBM; and by recomputing intermediate states in the backward pass instead of storing them. Wrapped into a single homogeneous block that fuses the SSM path with a gated MLP and a short local conv, stacked with norms and residuals, that's a selective state space model — linear-time, constant-state at inference, and content-aware.
+Wrapping this into an actual module is mechanical, given everything above: an input projection splits the hidden state into the two branches x and z; the depthwise causal conv1d handles the short local mixing before the SiLU; a second projection reads off the low-rank Δ evidence together with B and C in one matmul, and a separate per-channel linear lifts that low-rank Δ signal up to width d_inner; A is stored as its log, so A = −exp(A_log) stays negative by construction under the S4D-Real init A_n = −(n+1); and the bias b_Δ has to be added exactly once — through delta_bias inside the scan itself — so the weight-only Δ projection and the bias don't get double-counted. That module, repeated with norm and residual, is the entire network: no attention, no separate MLP block anywhere in the stack.
