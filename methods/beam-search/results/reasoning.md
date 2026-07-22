@@ -34,11 +34,11 @@ Let me also question the cost of the evaluation itself, because I waved at "scor
 
 Let me pressure-test the core idea on something concrete and away from speech, to convince myself it isn't a speech-only trick — a 0/1 knapsack. `n` items, each with a weight and a value, a capacity, maximize total value. Build the solution one item at a time: layer `t` decides item `t` — take it or skip it. A state records how many items I've decided, the value accumulated, and the capacity left. The exact frontier doubles each layer — `2^n` subsets — so it's the same explosion. Beam search says: at each item, generate both children (take / skip) of every live state, rank the pool, keep the top `W`. What's `g + h` here? `g` is the value packed so far; for `h` I want an *optimistic* upper bound on the best completion, so that ranking by `g + h` never throws away a state by underselling its potential.
 
-The obvious candidate for `h` is the fractional (LP) relaxation: pour the remaining items into the leftover capacity, allowing the last one to be split. But "pour in the remaining items" hides an ordering choice, and I almost reached for the cheapest one — fill them in their original index order. Let me check that on the smallest instance I can think through by hand before I trust it. Two items, `(w,v) = (7,6)` and `(4,5)`, capacity `5`. Item 0 weighs 7, which doesn't fit; item 1 weighs 4, which does, for value 5 — so the integer optimum here is plainly **5** (take item 1, leave item 0). Now the index-order fractional fill: it meets item 0 first and takes the fraction that fits, `5/7` of it, contributing `6 · 5/7 = 4.286`, then has no capacity left for item 1, and stops at **4.286**. That is *below* the true completion value of 5. So as a heuristic it would *under*-rank a state whose real best completion is 5 — fatal, because the whole point of `h` was to be an over-estimate that never demotes a good state. Index order is out.
+The obvious candidate for `h` is the fractional (LP) relaxation: pour the remaining items into the leftover capacity, allowing the last one to be split. But "pour in the remaining items" hides an ordering choice, and I almost reached for the cheapest one — fill them in their original index order. Check it on the smallest instance I can work by hand. Two items, `(w,v) = (7,6)` and `(4,5)`, capacity `5`. Item 0 weighs 7, which doesn't fit; item 1 weighs 4, which does, for value 5 — so the integer optimum here is plainly **5** (take item 1, leave item 0). Now the index-order fractional fill: it meets item 0 first and takes the fraction that fits, `5/7` of it, contributing `6 · 5/7 = 4.286`, then has no capacity left for item 1, and stops at **4.286**. That is *below* the true completion value of 5. So as a heuristic it would *under*-rank a state whose real best completion is 5 — fatal, because the whole point of `h` was to be an over-estimate that never demotes a good state. Index order is out.
 
 The fix is to fill in *descending value-density* order. On that same instance the densities are `6/7 ≈ 0.857` and `5/4 = 1.25`, so item 1 goes first: it fits whole for value 5, leaving capacity 1, into which `1/7` of item 0 slots for `6/7 ≈ 0.857`, total **5.857**. That sits *above* the integer optimum of 5 — a genuine upper bound. The reason it's an upper bound and not just a feasible number is that the descending-density fractional fill *is* the optimum of the LP relaxation of the integer remainder, and an LP relaxation can only do better than (or equal to) the integer problem it relaxes; index order is merely one feasible point of that LP, which can land below the integer optimum, exactly as I just saw. So: descending density, fractional last item, rank the top `W` by `value-so-far + this bound`. The best feasible (fully-decided, or partially-decided-and-the-rest-skipped) state I ever see is the answer.
 
-Before scaling up, let me trace the beam itself by hand on a slightly bigger toy so I actually *watch* the dial work rather than assert it. Three items `(4,10), (3,7), (2,5)`, capacity 5. Densities are `2.5, 2.33, 2.5`, and the integer optimum is items 1 and 2 (weights `3+2=5`, value `7+5=12`); item 0 alone gives only 10. Run the beam at `W = 1`. At layer 0 the two children are "take item 0" (value 10, bound = 10 + fractional fill of the rest into capacity 1 = 10 + a sliver ≈ 12.5) and "skip item 0" (value 0, bound = best fractional fill of items 1,2 into capacity 5 = 7 + 5 = 12). Top by bound is *take item 0* at 12.5, so `W = 1` commits to it. From there capacity is 1, nothing else fits, and it finishes at value **10** — short of the optimum, exactly the brittle single-commitment failure. Now `W = 2`: layer 0 keeps *both* children, so the "skip item 0" lineage survives, and at the next layers it can pick up items 1 and 2 for value **12**. So on this toy the achieved value goes `10 → 12` as I widen from `W = 1` to `W = 2`, and `W = 3` stays at 12 — it has already found the optimum and there's nothing better to find. That's the climb-then-flatten, and it appeared on an instance small enough that I checked every number by hand.
+Before scaling up, let me trace the beam itself by hand on a slightly bigger toy. Three items `(4,10), (3,7), (2,5)`, capacity 5. Densities are `2.5, 2.33, 2.5`, and the integer optimum is items 1 and 2 (weights `3+2=5`, value `7+5=12`); item 0 alone gives only 10. Run the beam at `W = 1`. At layer 0 the two children are "take item 0" (value 10, bound = 10 + fractional fill of the rest into capacity 1 = 10 + a sliver ≈ 12.5) and "skip item 0" (value 0, bound = best fractional fill of items 1,2 into capacity 5 = 7 + 5 = 12). Top by bound is *take item 0* at 12.5, so `W = 1` commits to it. From there capacity is 1, nothing else fits, and it finishes at value **10** — short of the optimum, exactly the brittle single-commitment failure. Now `W = 2`: layer 0 keeps *both* children, so the "skip item 0" lineage survives, and at the next layers it can pick up items 1 and 2 for value **12**. So on this toy the achieved value goes `10 → 12` as I widen from `W = 1` to `W = 2`, and `W = 3` stays at 12 — it has already found the optimum and there's nothing better to find. That's the climb-then-flatten, and it appeared on an instance small enough that I checked every number by hand.
 
 Why this shape, in general? At `W = 1` I keep only the single most optimistic state each layer — a greedy fill — and one early commitment can be wrong, as it was above. As I raise `W`, I carry more near-miss subsets forward, so a subset the bound temporarily under-ranks has room to survive and ultimately win; the achieved value climbs toward the optimum, and at some finite `W` (when the beam is wide enough to never prune the eventual winner) it *hits* the optimum exactly — wider `W` then just spends more for the same answer. I shouldn't promise the climb is strictly monotone — since the bound only estimates the completion, there's no law forbidding a wider beam from briefly doing worse on a given instance — but the trend is up, and the flatten-at-optimum endpoint holds once the beam covers the winner. I'd like to see that same `10 → 12 → flat` shape on a larger instance where the gap to brute force is non-trivial, to be sure the toy wasn't a special case.
 
@@ -52,111 +52,9 @@ Why is this better? Each pass is a fresh width-one descent that, at every layer,
 
 So the family is clear in my head now. The core is bounded-breadth forward search: layer by layer, expand the live set, rank by an evaluation that estimates the final score, keep the best `W` (or everything within a threshold), never backtrack — a dial from exact at `W = ∞` to greedy at `W = 1`. When accurate evaluation is the bottleneck, filter cheaply to a wider intermediate set first, then evaluate expensively down to `W`. When the frozen beam collapses into one lineage, restore diversity — dedup, sample survivors, or, best of all, keep a per-layer queue and run repeated width-one passes until time runs out for an anytime, self-tuning search.
 
-Let me write the core — knapsack, deterministic fixed-`W`, ranked by the optimistic fractional bound — as a single self-contained C++17 program that reads one instance from stdin (`n W cap`, then `n` lines of `w v`) and prints the best value with the chosen indices, and run it against brute force on an instance big enough that the toy's `10 → 12` couldn't have been a fluke. Values accumulate in `long long` for overflow safety; the per-layer bound scans the not-yet-decided items in descending-density order, which I precompute once per layer.
+Let me write the core — knapsack, deterministic fixed-`W`, ranked by the optimistic fractional bound — as a single self-contained C++17 program that reads one instance from stdin (`n W cap`, then `n` lines of `w v`) and prints the best value with the chosen indices. Each state carries how many items are decided, the value packed so far (`long long`, for overflow safety), the remaining capacity, and the chosen indices; for each layer I pre-sort the not-yet-decided items by descending density once, so the bound at that layer is a single scan rather than a re-sort every time a state reaches it. Every step expands each live state into its skip/take children, scores each by the density-order fractional bound derived above, sorts the pool by that score, and resizes it down to `W` — that sort-and-resize is the entire method: no backtracking, no other control flow.
 
-```cpp
-// Beam search for 0/1 knapsack (single-file C++17, reads stdin).
-// Input: first line "n W cap" (item count, beam width, capacity); then n lines
-// "w v". Output line 1: the best value beam search finds; line 2: the chosen
-// item indices (0-based, increasing), or blank if none.
-#include <bits/stdc++.h>
-using namespace std;
-
-struct State {
-    int idx;              // how many items decided (the layer)
-    long long value;      // value packed so far (this is g)
-    long long cap;        // remaining capacity
-    double key;           // rank by value-so-far + optimistic bound (g + h)
-    vector<int> chosen;   // item indices taken
-};
-
-// h: optimistic completion -- the LP (fractional-knapsack) relaxation of the
-// items not yet decided: pack them in DESCENDING value/weight order, last item
-// taken fractionally. The fractional optimum is the LP relaxation of the integer
-// remainder, so it never underestimates the best integer completion -- exactly
-// what we want to rank states by. (The descending-density order is what makes it
-// an upper bound; input order is not.) 'rem' is items[idx..n-1] pre-sorted by
-// descending density so this is a single scan.
-static double bound(long long value, long long cap,
-                    const vector<pair<long long, long long>>& rem) {
-    double b = (double)value;
-    long long c = cap;
-    for (const auto& wv : rem) {
-        long long w = wv.first, v = wv.second;
-        if (w <= c) { c -= w; b += (double)v; }
-        else { b += (double)v * ((double)c / (double)w); break; }
-    }
-    return b;
-}
-
-int main() {
-    ios::sync_with_stdio(false);
-    cin.tie(nullptr);
-
-    int n;
-    long long W, capacity;
-    if (!(cin >> n >> W >> capacity)) return 0;
-    vector<pair<long long, long long>> items(n);  // (weight, value) in input order
-    for (int i = 0; i < n; ++i) cin >> items[i].first >> items[i].second;
-
-    // For each layer, pre-sort the remaining items[layer..n-1] by descending
-    // value/weight so the bound is a simple scan.
-    vector<vector<pair<long long, long long>>> remByDensity(n + 1);
-    for (int layer = 0; layer <= n; ++layer) {
-        vector<pair<long long, long long>> rem(items.begin() + layer, items.end());
-        sort(rem.begin(), rem.end(),
-             [](const pair<long long, long long>& a,
-                const pair<long long, long long>& b) {       // descending density
-                 return (long double)a.second * b.first > (long double)b.second * a.first;
-             });
-        remByDensity[layer] = move(rem);
-    }
-
-    vector<State> layer;
-    layer.push_back(State{0, 0, capacity, bound(0, capacity, remByDensity[0]), {}});
-    State best = layer[0];
-
-    for (int step = 0; step < n; ++step) {           // forward, one layer per item
-        vector<State> pool;
-        pool.reserve(layer.size() * 2);
-        for (const auto& s : layer) {                // expand every live state
-            long long w = items[s.idx].first, v = items[s.idx].second;
-            // skip item s.idx
-            {
-                State c = s;
-                c.idx = s.idx + 1;
-                c.key = bound(c.value, c.cap, remByDensity[c.idx]);
-                pool.push_back(move(c));
-            }
-            // take item s.idx, if it fits
-            if (w <= s.cap) {
-                State c = s;
-                c.idx = s.idx + 1;
-                c.value = s.value + v;
-                c.cap = s.cap - w;
-                c.chosen.push_back(s.idx);
-                c.key = bound(c.value, c.cap, remByDensity[c.idx]);
-                pool.push_back(move(c));
-            }
-        }
-        // rank by g + h, keep the top W -- the single pruning line, no backtracking
-        sort(pool.begin(), pool.end(),
-             [](const State& a, const State& b) { return a.key > b.key; });
-        if ((long long)pool.size() > W) pool.resize((size_t)W);
-        layer = move(pool);
-        for (const auto& s : layer)                  // track best feasible value
-            if (s.value > best.value) best = s;
-    }
-
-    cout << best.value << "\n";
-    for (size_t i = 0; i < best.chosen.size(); ++i)
-        cout << best.chosen[i] << (i + 1 == best.chosen.size() ? '\n' : ' ');
-    if (best.chosen.empty()) cout << "\n";
-    return 0;
-}
-```
-
-The pruning is the single block that sorts `pool` by key and resizes it to `W`: generate the whole layer's offspring, rank them by `value-so-far + optimistic-bound`, keep `W`, discard the rest, never look back. Now let me actually settle it. I take 20 random items (weights 1–15, values 1–20, fixed seed), capacity 60, get the exact optimum from a `2^20`-subset brute force, and feed the same items to the program at `W = 1, 2, 5, 20, 100`:
+Now let me actually settle it. I take 20 random items (weights 1–15, values 1–20, fixed seed), capacity 60, get the exact optimum from a `2^20`-subset brute force, and feed the same items to the program at `W = 1, 2, 5, 20, 100`:
 
 ```
 brute-force optimum: 185
@@ -167,8 +65,6 @@ beam W= 20: value=185  gap= 0  items=13
 beam W=100: value=185  gap= 0  items=13
 ```
 
-There it is, and it's not the toy: `179 → 183 → 185`, the gap to the true optimum closing from 6 to 2 to 0 as the beam widens, then dead flat at 185 for every wider beam. `W = 1` is the brittle greedy fill, 6 short; a beam of just 5 already recovers the exact optimum on this instance, and `W = 20` and `W = 100` buy nothing more. The dial does exactly what the structure said it would — quality climbing with `W`, then flattening at exactness once the beam is wide enough never to prune the winner, with the per-`W` cost growing linearly the whole way. And the recovery at finite, *small* `W` is the real payoff: I didn't need the exponential frontier to get the optimum here, just a beam of 5.
+It isn't just the toy: `179 → 183 → 185`, the gap to the true optimum closing from 6 to 2 to 0 as the beam widens, then dead flat at 185 for every wider beam. `W = 1` is the brittle greedy fill, 6 short; a beam of just 5 already recovers the exact optimum on this instance, and `W = 20` and `W = 100` buy nothing more. The dial does exactly what the structure said it would — quality climbing with `W`, then flattening at exactness once the beam is wide enough never to prune the winner, with the per-`W` cost growing linearly the whole way. And the recovery at finite, *small* `W` is the real payoff: I didn't need the exponential frontier to get the optimum here, just a beam of 5.
 
 The risky bit is the `g + h` beam ranking with the descending-density fractional-knapsack upper bound before the top-`W` prune; if I weren't confident I could implement and test that bound within the budget, I'd ship the standard exact 0/1 knapsack DP over capacity with reconstruction instead, because a plain correct submission beats an ambitious broken beam.
-
-So the chain is: the exact full-breadth forward sweep is correct but touches all the doomed breadth and is too slow; a single greedy path is cheap and forward-only but one bad decision ruins it and recovering needs the backtracking I'm trying to avoid; the fix is to keep neither all states nor one but the best `W`, ranked by an estimate of the final score, pruned forward each layer with no backtracking — a width dial from exact to greedy, with cost linear in depth and in `W` once the per-step evaluation and the top-`W` selection are taken as the unit of work; filter cheaply before evaluating expensively when ranking is the bottleneck; and when the frozen beam collapses to a single lineage, recover diversity by deduping, sampling, or keeping per-layer queues and replaying width-one passes until the time budget is spent.

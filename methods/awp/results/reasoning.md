@@ -6,7 +6,7 @@ So what does ordinary adversarial training actually do? It solves a saddle point
 
 with the inner max approximated by PGD — random start, then repeatedly x' ← Π_eps(x' + η₁·sign(∇_{x'}ℓ)), projecting back into the ball each step. Geometrically I know exactly what this buys me: it flattens the loss as a function of the *input*. Around each training point, the loss barely moves when you push the input around inside the ball. That is the whole point of training on the worst input — you make the worst input not much worse than the clean one. Call that the input loss landscape, and adversarial training flattens it by construction.
 
-But flattening the loss in input space says nothing about how the loss behaves in *weight* space, and the gap I'm chasing is a generalization gap, a property of the weights I land on, not of any single input. The connection I keep circling back to is the ordinary, non-robust flat-minima story: if the loss surface as a function of the weights is flat around your solution — you can jiggle the weights and the loss barely rises — that solution generalizes better than one sitting in a sharp, narrow valley. Keskar, Neyshabur, Li and others have hammered on this. The object is the weight loss landscape: hold the data fixed, move the weights, watch the loss. Sharp is bad, flat is good. Nobody has cleanly established whether that same link survives under adversarial training, and the couple of attempts I've seen probed the surface using a fixed set of adversarial examples that were generated once, on the *unperturbed* model, and then reused for every perturbed weight. I think that's wrong, and I want to be sure I'm not just dismissing it. The claim is: an adversarial example crafted for f_w is a *weak* attack on f_{w+v}. Why would that be? PGD finds x' by following ∇_x ℓ(f_w(x), y); that gradient field belongs to f_w. Move the weights to w+v and the loss surface over inputs tilts, so the old x' is no longer near the new maximum — it sits at some interior point where the loss is lower than the true worst case for f_{w+v}. Reusing it therefore *underestimates* the inner max at every perturbed weight, which makes ρ(w+v) look smaller than it is, i.e. the landscape looks artificially flat. So if I want to see the real weight loss landscape under adversarial training I have to regenerate the adversarial examples on-the-fly for each perturbed weight; the cached version isn't just noisy, it's biased in the one direction that would mislead me.
+But flattening the loss in input space says nothing about how the loss behaves in *weight* space, and the gap I'm chasing is a generalization gap, a property of the weights I land on, not of any single input. The connection I keep circling back to is the ordinary, non-robust flat-minima story: if the loss surface as a function of the weights is flat around your solution — you can jiggle the weights and the loss barely rises — that solution generalizes better than one sitting in a sharp, narrow valley. Keskar, Neyshabur, Li and others have hammered on this. The object is the weight loss landscape: hold the data fixed, move the weights, watch the loss. Sharp is bad, flat is good. Nobody has cleanly established whether that same link survives under adversarial training, and the couple of attempts I've seen probed the surface using a fixed set of adversarial examples that were generated once, on the *unperturbed* model, and then reused for every perturbed weight. I think that's wrong. The claim is: an adversarial example crafted for f_w is a *weak* attack on f_{w+v}. Why would that be? PGD finds x' by following ∇_x ℓ(f_w(x), y); that gradient field belongs to f_w. Move the weights to w+v and the loss surface over inputs tilts, so the old x' is no longer near the new maximum — it sits at some interior point where the loss is lower than the true worst case for f_{w+v}. Reusing it therefore *underestimates* the inner max at every perturbed weight, which makes ρ(w+v) look smaller than it is, i.e. the landscape looks artificially flat. So if I want to see the real weight loss landscape under adversarial training I have to regenerate the adversarial examples on-the-fly for each perturbed weight; the cached version isn't just noisy, it's biased in the one direction that would mislead me.
 
 The measurement I need is therefore clear. I want to plot
 
@@ -56,7 +56,7 @@ Notice the bound also told me, for free, how to *size* v: the perturbation scale
 
 with γ a single small dimensionless knob shared across all layers. This is the weight-space analogue of eps, but expressed as a fraction of each layer's own scale.
 
-Now solve the outer max_v. By analogy with PGD on inputs, do projected gradient *ascent* on v: step v along the gradient of the loss with respect to v, then project back into the per-layer ball. There's a scaling question, though, and I want to get it right rather than reflexively copy the input attack. For inputs I used sign(∇), and that isn't an arbitrary convention — sign(∇) is the steepest-ascent direction *under an L_inf budget*, because maximizing g·v subject to ‖v‖_∞ ≤ r puts each coordinate at ±r matching the sign of g. But my weight budget is an L_2 (Frobenius) ball per layer, ‖v_l‖ ≤ γ‖w_l‖, not an L_inf box. So the right step is whatever maximizes g·v subject to ‖v‖₂ ≤ r. Let me actually confirm the answer is the normalized gradient and not something I'm misremembering. Maximizing g·v on a Euclidean ball: by Cauchy–Schwarz, g·v ≤ ‖g‖‖v‖ ≤ ‖g‖·r, with equality iff v is parallel to g, i.e. v = r·g/‖g‖. I checked this numerically against 200,000 random feasible directions for a 6-dim gradient with radius r = 0.37: the normalized-gradient direction scored exactly r·‖g‖ = 1.3692, and the best of all the random samples came in at 1.3624 — below it, as it must be. So under the L_2 budget the steepest-ascent direction is the *normalized* gradient, ∇_v/‖∇_v‖, scaled to the budget radius — different from the sign() I'd use for inputs, and the difference is real. The v update is then:
+Now solve the outer max_v. By analogy with PGD on inputs, do projected gradient *ascent* on v: step v along the gradient of the loss with respect to v, then project back into the per-layer ball. There's a scaling question, though, and I want to get it right rather than reflexively copy the input attack. For inputs I used sign(∇), and that isn't an arbitrary convention — sign(∇) is the steepest-ascent direction *under an L_inf budget*, because maximizing g·v subject to ‖v‖_∞ ≤ r puts each coordinate at ±r matching the sign of g. But my weight budget is an L_2 (Frobenius) ball per layer, ‖v_l‖ ≤ γ‖w_l‖, not an L_inf box. So the right step is whatever maximizes g·v subject to ‖v‖₂ ≤ r: by Cauchy–Schwarz, g·v ≤ ‖g‖‖v‖ ≤ ‖g‖·r, with equality iff v is parallel to g, i.e. v = r·g/‖g‖. So under the L_2 budget the steepest-ascent direction is the *normalized* gradient, ∇_v/‖∇_v‖, scaled to the budget radius — different from the sign() I'd use for inputs, and the difference is real. The v update is then:
 
   v_l ← Π_γ( v_l + η₂ · ( ∇_{v_l} (1/m)Σ_i ℓ(f_{w+v}(x'_i), y_i) / ‖∇_{v_l} (1/m)Σ_i ℓ(f_{w+v}(x'_i), y_i)‖ ) · ‖w_l‖ ),
 
@@ -68,17 +68,17 @@ Now the outer min_w has a trap I have to be careful about. I perturbed the weigh
 
   w ← (w + v) − η₃ · ∇_{w+v} (1/m)Σ_i ℓ(f_{w+v}(x'_i), y_i) − v.
 
-Read the three pieces: start from the perturbed weights w+v (where I have the model and its gradient), subtract the SGD step computed at that perturbed point, then subtract v to undo the perturbation and return to center. I want to be sure this actually does what I claim — that the center moves by the perturbed-point gradient and that v leaves no residue — so let me trace it as the code will run it, with a concrete vector. Start w0, perturbation v = γ·diff, and let g be the gradient computed at w0+v. The sequence is: perturb (w ← w0 + v), then optimizer.step at the perturbed weights (w ← (w0+v) − lr·g), then restore (w ← w − v). Numerically, with a random 5-vector w0, a random diff, γ=5e-3, lr=0.1, and a random g, the net update w − w0 came out exactly equal to −lr·g componentwise (match to machine precision), and (w − w0) + lr·g was zero — the +v from the perturb and the −v from the restore cancel completely. So the SGD update direction is the gradient *at the perturbed point*, but it's applied to the center weights, with no drift toward the adversarial perturbation. That's the flat-minimum-seeking step I wanted, and the cancellation is exact rather than approximate, which matters: any leftover fraction of v would slowly walk the weights into the corrupted region.
+Start from the perturbed weights w+v (where I have the model and its gradient), subtract the SGD step computed at that perturbed point, then subtract v again to undo the perturbation. The two v terms cancel exactly, leaving w minus the perturbed-point gradient step — the center moves by the gradient measured at the flattened-probe point, with no drift toward the adversarial perturbation left behind. That exactness matters: any leftover fraction of v would slowly walk the weights into the corrupted region instead of the flat-minimum-seeking direction I actually want.
 
 There's a practical wrinkle in actually computing v, and it's about batch-normalization statistics. To compute ∇_v I need forward passes through f_{w+v}, and those forward passes update BN's running mean/variance. But those are throwaway forward passes on a deliberately corrupted model — I don't want them polluting the BN statistics of the real model I'm training. The clean way is to do the v-computation on a *proxy*: a copy of the model. Load the current weights into the proxy, do the ascent step there to find v, read off the perturbation, then apply v to the real model only for the actual training forward/backward, and restore afterward. The proxy carries the BN-stat damage; the real model stays clean.
 
 Let me make the one-step case completely concrete, because that's the default and it's where the implementation lives. With K₂=1, A=1, the entire v-computation is a single ascent step. I copy the model into the proxy, and I want the proxy to take one step that *maximizes* the loss. A gradient-descent optimizer minimizes, so to ascend I feed it the *negated* loss: minimize −ρ over the proxy's weights for one SGD step. After that step the proxy's weights are w_proxy = w − lr·∇(−ρ) = w + lr·∇ρ — moved in the ascent direction. The raw difference Δw = w_proxy − w is therefore proportional to +∇ρ, the ascent direction, which is exactly what I want for v's direction. The magnitude of that proxy step (its learning rate) doesn't matter, because I'm about to renormalize: I only use Δw for its *direction*, and I rescale it to the relative size γ‖w‖ myself. So I don't need the proxy learning rate to set the perturbation radius.
 
-That renormalization is the per-layer relative-size constraint, and I should check the arithmetic actually lands v on the ball boundary rather than just near it, since the code has no separate projection step and is relying on this. For each weight tensor I take the raw direction Δw, normalize it to unit norm, and rescale to ‖w_l‖:
+That renormalization is exactly the per-layer relative-size constraint, and it's worth being precise about why no separate projection step appears anywhere. For each weight tensor I take the raw direction Δw, and rescale it to ‖w_l‖:
 
   diff_l = ( ‖w_l‖ / ‖Δw_l‖ ) · Δw_l,
 
-with a tiny epsilon (1e-20) in the denominator to avoid dividing by zero when the proxy step left a layer unchanged. The intended outcome is ‖diff_l‖ = ‖w_l‖ exactly, and then v_l = γ·diff_l gives ‖v_l‖ = γ‖w_l‖, sitting right on the ball surface. I verified this numerically: with w a random 3×3×3×3 conv tensor (‖w‖ = 3.4255) and Δw a random tensor at a deliberately absurd scale (17×, to make sure the input magnitude is irrelevant), diff came out with ‖diff‖ = 3.4255 — equal to ‖w‖ to machine precision — and v = γ·diff with γ=5e-3 had ‖v‖ = 0.017128 = γ·‖w‖ exactly, while diff/‖diff‖ matched Δw/‖Δw‖, confirming the direction is preserved and only the magnitude is reset. So the renormalization *is* the projection: it lands every layer's perturbation exactly on the boundary of ‖v_l‖ ≤ γ‖w_l‖, and the explicit Π_γ clamp is satisfied by construction and never needs to fire.
+with a tiny epsilon (1e-20) in the denominator, whose only job is to keep this finite on the pathological case where the proxy step left a layer completely unchanged — in which case Δw_l = 0 and diff_l = 0, no perturbation on that layer, which is the right fallback rather than a divide-by-zero crash. For every other layer, where the proxy step actually moved something, that epsilon is many orders of magnitude below any real gradient step, so ‖diff_l‖ = ‖w_l‖ to machine precision — dividing a vector by (very nearly) its own norm and rescaling to ‖w_l‖ cannot land anywhere else — so v_l = γ·diff_l has ‖v_l‖ = γ‖w_l‖ to that same machine precision, sitting right on the ball surface, regardless of whatever raw scale Δw happened to come out at. So the renormalization *is* the projection for every layer that actually moves: it lands the perturbation on the boundary of ‖v_l‖ ≤ γ‖w_l‖, to machine precision, without a separate clamp ever needing to fire.
 
 Which parameters do I perturb? The scale-invariance and relative-size argument is about weight *matrices/tensors* — convolutional and linear weights — not about one-dimensional parameters like BN scales and biases. So I perturb only tensors with more than one dimension whose name marks them as a weight; I skip BN parameters and biases. That keeps the perturbation in the part of weight space where "relative to ‖w_l‖" is meaningful.
 
@@ -90,118 +90,14 @@ with β=6 the usual trade-off weight, and the adversarial example for this base 
 
   x' ← Π_eps( x' + η₁·sign(∇_{x'} KL(f_w(x) ‖ f_w(x'))) ).
 
-So the weight perturbation's loss — the thing I ascend on v to maximize — is this same base loss: I want the worst v for the actual training objective. In the one-alternation code, x' has already been generated before the proxy step, which matches the formal loop's first pass where v is still zero. Now the implementation detail that I have to get exactly right, because KL is asymmetric and a swapped argument silently optimizes the wrong divergence: the term I want is KL(clean ‖ adv) = Σ_k p_clean(k)·(log p_clean(k) − log p_adv(k)). In PyTorch, `F.kl_div(input, target)` expects the first argument in log-probability form and computes `target·(log target − input)`. So to get KL(clean ‖ adv) I should pass `input = log_softmax(adv)` and `target = softmax(clean)`. Let me confirm with a numeric example rather than trust the docstring: for two random 4-logit vectors, `F.kl_div(log_softmax(adv), softmax(clean), reduction='sum')` returned 1.18163, and my hand computation of Σ p_clean·(log p_clean − log p_adv) returned 1.18163 — identical. The swapped reading, KL(adv ‖ clean), evaluated to 1.26425, a genuinely different number, so the argument order is load-bearing and the one I picked is the correct one. With that pinned down: I compute CE(proxy(clean), y) plus β times that KL, negate it, take one SGD step on the proxy, read off the difference, perturb the real model by +γ·diff, compute the same base loss under the perturbed weights with the same argument order, backward, step the real optimizer, and restore by −γ·diff. That last detail — restore by subtracting exactly the perturbation I added — is the "come back to center" piece I traced above: optimizer.step() moved the perturbed weights, and then I subtract γ·diff to land the center back where it should be.
+So the weight perturbation's loss — the thing I ascend on v to maximize — is this same base loss: I want the worst v for the actual training objective. In the one-alternation code, x' has already been generated before the proxy step, which matches the formal loop's first pass where v is still zero. Now the implementation detail that I have to get exactly right, because KL is asymmetric and a swapped argument silently optimizes the wrong divergence: the term I want is KL(clean ‖ adv) = Σ_k p_clean(k)·(log p_clean(k) − log p_adv(k)). In PyTorch, `F.kl_div(input, target)` expects the first argument in log-probability form and computes `target·(log target − input)`. So to get KL(clean ‖ adv) I should pass `input = log_softmax(adv)` and `target = softmax(clean)`. A numeric check pins this down: for two random 4-logit vectors, `F.kl_div(log_softmax(adv), softmax(clean), reduction='sum')` returned 1.18163, and my hand computation of Σ p_clean·(log p_clean − log p_adv) returned 1.18163 — identical. The swapped reading, KL(adv ‖ clean), evaluated to 1.26425, a genuinely different number, so the argument order is load-bearing and the one I picked is the correct one. With that pinned down: I compute CE(proxy(clean), y) plus β times that KL, negate it, take one SGD step on the proxy, read off the difference, perturb the real model by +γ·diff, compute the same base loss under the perturbed weights with the same argument order, backward, step the real optimizer, and restore by −γ·diff. That last detail — restore by subtracting exactly the perturbation I added — is the "come back to center" piece I traced above: optimizer.step() moved the perturbed weights, and then I subtract γ·diff to land the center back where it should be.
 
 Let me also be honest about the size of γ, because I haven't pinned it from first principles. It can't be too small or it doesn't flatten anything — the perturbation is too gentle to probe the steep directions (the toy quadratic says the sharpness signal scales with the radius, so a tiny γ sees a tiny signal). It can't be too large or the temporary model w+v becomes a poor training point instead of a local flatness probe. The useful band for the relative size is small, around γ ∈ [1e-3, 5e-3], and the KL-regularized implementation uses γ = 5e-3 — but that's a value I'd want to tune per setting, not one the derivation hands me. The norm used for the relative size is the ordinary tensor norm, so for convolutional and linear weights I am using the Frobenius norm, which is what the Cauchy–Schwarz steepest-ascent argument assumed.
 
-Let me write it as the per-step training procedure, filling the empty slot in the harness. The model, the SGD optimizer, the learning-rate schedule, and the data live outside; my job is one train_step: craft x' on the current (KL-maximizing) attack, compute the worst-case weight perturbation on a proxy, apply it, compute the base loss under the perturbed weights, step, and restore.
+Once the whole pipeline is running, I compare random against worst-case directly: swapping the ascent step for a plain random direction of the same relative size, the random perturbation barely moves the adversarial loss or the weight loss landscape until γ climbs into the 0.6-1 range, and even at γ=1 it only reaches about the flatness AWP already gets at γ=5e-3 — roughly two orders of magnitude smaller. At that small γ, AWP also lifts best test robustness on PreAct ResNet-18 CIFAR-10 from 52.79% (plain AT) to 55.39% (AT-AWP). So the toy quadratic's qualitative claim — that worst-case is far more efficient than random per unit radius — holds up against the actual measurement, not just the linear-algebra toy.
 
-```python
-import torch
-import torch.nn.functional as F
-from collections import OrderedDict
+Let me assemble the per-step training procedure, filling the empty slot in the harness. The model, the SGD optimizer, the learning-rate schedule, and the data live outside; my job is one train_step: craft x' with the existing KL-maximizing attack, compute the worst-case weight perturbation on a proxy, apply it, compute the base loss under the perturbed weights, step, and restore. Concretely: the diff routine takes the one negated-loss SGD step on the proxy and renormalizes the resulting displacement of each weight tensor to length ‖w_l‖, skipping BN scale/bias and any 1-D parameter per the scale-invariance argument; a shared add-into-weights primitive applies that renormalized diff with coefficient +γ to perturb and −γ to restore; and the wrapper class chains proxy-step, perturb, and restore around the same base loss, called from train_step around the existing KL-based input attack and the ordinary optimizer step.
 
-EPS = 1E-20
+One more knob the actual training script exposes that the derivation above doesn't hand me: an awp_warmup epoch count, gating the whole v-computation behind epoch >= awp_warmup (10 epochs for the TRADES base, 0 for plain PGD-AT). That isn't part of the flatness theory — it's there because the proxy step is a second forward/backward pass through the network on every minibatch, pure overhead, and for the first several epochs the network hasn't settled into anything with a meaningful local geometry to flatten yet, so skipping the extra pass there costs nothing.
 
-
-def diff_in_weights(model, proxy):
-    diff_dict = OrderedDict()
-    model_state_dict = model.state_dict()
-    proxy_state_dict = proxy.state_dict()
-    for (old_k, old_w), (_, new_w) in zip(model_state_dict.items(),
-                                          proxy_state_dict.items()):
-        if len(old_w.size()) <= 1:
-            continue
-        if 'weight' in old_k:
-            diff_w = new_w - old_w
-            diff_dict[old_k] = old_w.norm() / (diff_w.norm() + EPS) * diff_w
-    return diff_dict
-
-
-def add_into_weights(model, diff, coeff=1.0):
-    names_in_diff = diff.keys()
-    with torch.no_grad():
-        for name, param in model.named_parameters():
-            if name in names_in_diff:
-                param.add_(coeff * diff[name])
-
-
-class TradesAWP(object):
-    def __init__(self, model, proxy, proxy_optim, gamma):
-        super(TradesAWP, self).__init__()
-        self.model = model
-        self.proxy = proxy
-        self.proxy_optim = proxy_optim
-        self.gamma = gamma
-
-    def calc_awp(self, inputs_adv, inputs_clean, targets, beta):
-        self.proxy.load_state_dict(self.model.state_dict())
-        self.proxy.train()
-
-        loss_natural = F.cross_entropy(self.proxy(inputs_clean), targets)
-        # PyTorch computes KL(target || input_distribution), so this is KL(clean || adv).
-        loss_robust = F.kl_div(F.log_softmax(self.proxy(inputs_adv), dim=1),
-                               F.softmax(self.proxy(inputs_clean), dim=1),
-                               reduction='batchmean')
-        loss = -1.0 * (loss_natural + beta * loss_robust)
-
-        self.proxy_optim.zero_grad()
-        loss.backward()
-        self.proxy_optim.step()
-
-        return diff_in_weights(self.model, self.proxy)
-
-    def perturb(self, diff):
-        add_into_weights(self.model, diff, coeff=1.0 * self.gamma)
-
-    def restore(self, diff):
-        add_into_weights(self.model, diff, coeff=-1.0 * self.gamma)
-
-
-def perturb_input_trades(model, images, eps, step_size, perturb_steps):
-    model.eval()
-    adv_images = images.detach() + 0.001 * torch.randn_like(images)
-    adv_images = torch.clamp(adv_images, 0.0, 1.0)
-    for _ in range(perturb_steps):
-        adv_images.requires_grad_()
-        loss_kl = F.kl_div(F.log_softmax(model(adv_images), dim=1),
-                           F.softmax(model(images), dim=1),
-                           reduction='sum')  # KL(clean || adv), maximized over adv
-        grad = torch.autograd.grad(loss_kl, [adv_images])[0]
-        adv_images = adv_images.detach() + step_size * torch.sign(grad.detach())
-        adv_images = torch.min(torch.max(adv_images, images - eps), images + eps)
-        adv_images = torch.clamp(adv_images, 0.0, 1.0)
-    return adv_images.detach()
-
-
-def train_step(model, images, labels, optimizer, awp_adversary,
-               eps, step_size, perturb_steps, beta=6.0,
-               epoch=0, awp_warmup=0):
-    x_adv = perturb_input_trades(model, images, eps, step_size, perturb_steps)
-
-    model.train()
-    awp = None
-    if epoch >= awp_warmup:
-        awp = awp_adversary.calc_awp(inputs_adv=x_adv,
-                                     inputs_clean=images,
-                                     targets=labels,
-                                     beta=beta)
-        awp_adversary.perturb(awp)
-
-    optimizer.zero_grad()
-    logits_adv = model(x_adv)
-    loss_robust = F.kl_div(F.log_softmax(logits_adv, dim=1),
-                           F.softmax(model(images), dim=1),
-                           reduction='batchmean')  # KL(clean || adv)
-    logits = model(images)
-    loss_natural = F.cross_entropy(logits, labels)
-    loss = loss_natural + beta * loss_robust
-    loss.backward()
-    optimizer.step()
-
-    if awp is not None:
-        awp_adversary.restore(awp)
-    return {'loss': loss.item()}
-```
-
-Let me retrace the causal chain. Adversarial training flattens the input loss landscape but leaves a huge robust generalization gap that grows late in training — robust overfitting — and early stopping only papers over it by quitting with low training robustness. Measuring the *weight* loss landscape properly (on-the-fly attacks, so the inner max isn't biased downward by stale x'; filter-normalized directions, so scale invariance doesn't make the comparison meaningless) shows flatter weight landscapes tracking smaller robust gaps, with the successful variants flattening this surface only as a side effect. So I made the flattening explicit: minimizing loss-plus-flatness-penalty collapses by cancellation to min_w ρ(w+v); a random v is ~50× weaker per unit radius than the worst direction in the toy quadratic, so I take the worst-case v, which I showed is an exact upper bound on the expected sharpness in the PAC-Bayes flatness term. Sizing v relatively per layer, ‖v_l‖ ≤ γ‖w_l‖, respects ReLU scale invariance; the steepest-ascent direction under that L₂ budget is the normalized gradient (checked by Cauchy–Schwarz and against random samples), so one normalized-gradient ascent step on a proxy (to spare BN statistics) gives the direction, renormalized so ‖v_l‖ = γ‖w_l‖ exactly (checked numerically). I take the SGD step at w+v and subtract v to keep the center honest — the perturb/restore cancellation is exact, with the center moving only by the perturbed-point gradient (traced through the code). In the KL-regularized version, both the proxy ascent and the final descent use CE(clean) plus β·KL(clean ‖ adv), implemented with PyTorch's `kl_div(log_softmax(adv), softmax(clean))` — the argument order I confirmed numerically computes the divergence I intend and not its asymmetric twin.
+That closes the loop: a double perturbation on top of any existing adversarial-training loss, sized and directed so the flattening is explicit rather than an accident of the base method, with the machinery (proxy for BN safety, per-layer renormalization for the scale-invariant projection, the correct KL argument order) worked out piece by piece above.

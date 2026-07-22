@@ -16,7 +16,7 @@ First, what is `g` for a fixed policy `π`? The policy induces a Markov chain `P
 
 That scalar is a problem. If the value of every state is the same number `g`, then `g` tells me *nothing* about which states are preferable, and a greedy improvement step `argmax_a [...]` needs exactly that — it needs to know whether action `a` lands me somewhere better. A constant carries no ranking. So a single function-of-state value, the thing the discounted theory hands me, has collapsed to a constant and lost all its discriminating power. I'm going to need something *besides* `g`.
 
-Let me try to write a Bellman equation anyway and see what breaks, because the breakage will tell me what the missing object is. Naively set `γ = 1` in the policy-evaluation equation: `V = r_π + P_π V`, i.e. `(I − P_π) V = r_π`. Now `I − P_π` is **singular** — `P_π` is stochastic, `P_π 1 = 1`, so `1` is an eigenvalue and `I − P_π` kills the constant vector. Two consequences. One: a solution exists only if `r_π` is in the range of `(I − P_π)`, which a generic reward vector is not — so there's no `V` at all unless I modify the equation. Two: even where a solution exists it's not unique, because I can add any multiple of `1` (the null vector) and stay a solution. The singular matrix is telling me something: the constant direction is degenerate, and the natural way a constant direction enters a never-ending process is through a per-step rate. The `1` in the null space and the state-independent `g` look like the same phenomenon wearing two hats — let me see if I can make that precise rather than just assert it.
+Let me try to write a Bellman equation anyway and see what breaks, because the breakage will tell me what the missing object is. Naively set `γ = 1` in the policy-evaluation equation: `V = r_π + P_π V`, i.e. `(I − P_π) V = r_π`. Now `I − P_π` is **singular** — `P_π` is stochastic, `P_π 1 = 1`, so `1` is an eigenvalue and `I − P_π` kills the constant vector. Two consequences. One: a solution exists only if `r_π` is in the range of `(I − P_π)`, which a generic reward vector is not — so there's no `V` at all unless I modify the equation. Two: even where a solution exists it's not unique, because I can add any multiple of `1` (the null vector) and stay a solution. The singular matrix is telling me something: the constant direction is degenerate, and the natural way a constant direction enters a never-ending process is through a per-step rate. The `1` in the null space and the state-independent `g` look like the same phenomenon wearing two hats; let me make that precise.
 
 So let me put `g` back in *on purpose* and look for a relative description. I can't ask "what is the total reward from state `s`," that's infinite. But I *can* ask "how much better is starting in `s` than the steady state — what extra, finite reward do I accumulate because I happen to start here?" Concretely, run the process for `N` steps from `s`. Its expected reward should have a common leading term `N · g` (the steady stream), plus a state-dependent offset that captures the transient. Subtract off the part that's common to everyone — the `N · g` — and look at what's left:
 
@@ -54,7 +54,7 @@ Now optimization. I have evaluation; I want improvement. Given the current `(g, 
 g* + h*(s) = max_a [ r(s,a) + Σ_{s'} p(s'|s,a) h*(s') ].
 ```
 
-If this is right, it's the **average-reward Bellman optimality equation** — a scalar `g*` and a vector `h*` together solving it, with the greedy policy achieving `g* = max_π g_π`. The structure mirrors the discounted optimality equation `V* = max_a[r + γ Σ p V*]`, but with two differences forced by the never-ending horizon: there are two unknowns instead of one, and the `max` is over `r + Σ p h*` offset by the constant `g*` rather than over a discounted bootstrap. I've been pushing symbols around, though, and I want to *see* this work before I trust it — a hand example where I can read off the gain, the bias, and watch policy iteration land on the equation.
+If this is right, it's the **average-reward Bellman optimality equation** — a scalar `g*` and a vector `h*` together solving it, with the greedy policy achieving `g* = max_π g_π`. The structure mirrors the discounted optimality equation `V* = max_a[r + γ Σ p V*]`, but with two differences forced by the never-ending horizon: there are two unknowns instead of one, and the `max` is over `r + Σ p h*` offset by the constant `g*` rather than over a discounted bootstrap. I've been pushing symbols around, though; let me watch it work on a hand example where I can read off the gain, the bias, and watch policy iteration land on the equation.
 
 Let me build the smallest MDP that still has a real choice in it. Two states; call them "cheap" (state 0) and "rich" (state 1). In each state I can play `a=0` (drift toward cheap) or `a=1` (drift toward rich). To keep *every* policy unichain — single recurrent class — I make every move leaky: probability `0.9` in the intended direction, `0.1` the other way, so no state is ever absorbing. Rewards: being in cheap pays `1`, being in rich pays `3` (I'll attach the reward to the action that *sits* in a state). Concretely
 
@@ -72,9 +72,9 @@ pi=(1,0):  g=0.00  h=[0, 0]   d=[.5 .5]      # the "wrong" cross policy
 pi=(1,1):  g=2.70  h=[0, 3]   d=[.1 .9]     # always rich-ward; sits mostly in state 1, pays ~2.7
 ```
 
-Let me sanity-check a couple of these by hand instead of trusting the solver blindly. For `pi=(1,1)` the chain is `[[.1 .9],[.1 .9]]`; its stationary distribution solves `d = dP`, and a chain whose rows are identical `[.1 .9]` lands in `[.1 .9]` immediately, so `g = .1·0 + .9·3 = 2.7`. Matches. For `pi=(0,1)` the chain is `[[.9 .1],[.1 .9]]`, symmetric, so `d=[.5 .5]` and `g = .5·1 + .5·3 = 2.0`. Matches. Good — the solver's gains are right, and the best policy is `(1,1)` with gain `2.7`, which is what I'd expect: spend as much time as possible in the rich state.
+Let me check two of these by hand. For `pi=(1,1)` the chain is `[[.1 .9],[.1 .9]]`; its stationary distribution solves `d = dP`, and a chain whose rows are identical `[.1 .9]` lands in `[.1 .9]` immediately, so `g = .1·0 + .9·3 = 2.7`. Matches. For `pi=(0,1)` the chain is `[[.9 .1],[.1 .9]]`, symmetric, so `d=[.5 .5]` and `g = .5·1 + .5·3 = 2.0`. Matches. The solver's gains check out, and the best policy is `(1,1)` with gain `2.7`, which is what I'd expect: spend as much time as possible in the rich state.
 
-Now run policy iteration from `pi=(0,0)` and watch it. Evaluate gives `g=0.9, h=[0,-1]`. Greedy step: `Q[a,s] = R[a] + (P[a] h)[s]`. `P[0] h = [.9·0+.1·(−1), .9·0+.1·(−1)] = [−.1,−.1]`, so `Q[0] = [1,0]+[−.1,−.1] = [.9,−.1]`. `P[1] h = [.1·0+.9·(−1), …] = [−.9,−.9]`, so `Q[1] = [0,3]+[−.9,−.9] = [−.9,2.1]`. Argmax over actions per state: state 0 prefers `a=0` (`.9 > −.9`), state 1 prefers `a=1` (`2.1 > −.1`). So `pi → (0,1)`. Evaluate `(0,1)`: `g=2.0, h=[0,10]`. Greedy again with this `h`: `P[1] h = [.1·0+.9·10, …] = [9,9]`, `Q[1]=[0,3]+[9,9]=[9,12]`; `P[0] h = [.9·0+.1·10,…]=[1,1]`, `Q[0]=[1,0]+[1,1]=[2,1]`. State 0: `9 > 2` → `a=1`; state 1: `12 > 1` → `a=1`. So `pi → (1,1)`. Evaluate `(1,1)`: `g=2.7, h=[0,3]`. Greedy once more: `P[1] h=[.1·0+.9·3,…]=[2.7,2.7]`, `Q[1]=[0,3]+[2.7,2.7]=[2.7,5.7]`; `P[0] h=[.1·3,.1·3]=[.3,.3]`... wait, `P[0] h = [.9·0+.1·3, .9·0+.1·3]=[.3,.3]`, `Q[0]=[1,0]+[.3,.3]=[1.3,.3]`. State 0: `2.7 > 1.3` → `a=1`; state 1: `5.7 > .3` → `a=1`. Greedy returns `(1,1)` — unchanged. Fixed point reached in three improvement steps. And at that fixed point, check the optimality equation directly: `g* + h*(s)` is `2.7+0 = 2.7` and `2.7+3 = 5.7`; `max_a Q[a,s]` is `2.7` and `5.7`. They match exactly, residual zero in both states. So the fixed point really does satisfy `g* + h* = max_a[r + P h*]`. The Bellman optimality equation isn't just plausible from the telescoping — I watched policy iteration converge to a `(g*, h*)` that solves it.
+Now run policy iteration from `pi=(0,0)` and watch it. Evaluate gives `g=0.9, h=[0,-1]`. Greedy step: `Q[a,s] = R[a] + (P[a] h)[s]`. `P[0] h = [.9·0+.1·(−1), .9·0+.1·(−1)] = [−.1,−.1]`, so `Q[0] = [1,0]+[−.1,−.1] = [.9,−.1]`. `P[1] h = [.1·0+.9·(−1), …] = [−.9,−.9]`, so `Q[1] = [0,3]+[−.9,−.9] = [−.9,2.1]`. Argmax over actions per state: state 0 prefers `a=0` (`.9 > −.9`), state 1 prefers `a=1` (`2.1 > −.1`). So `pi → (0,1)`. Evaluate `(0,1)`: `g=2.0, h=[0,10]`. Greedy again with this `h`: `P[1] h = [.1·0+.9·10, …] = [9,9]`, `Q[1]=[0,3]+[9,9]=[9,12]`; `P[0] h = [.9·0+.1·10,…]=[1,1]`, `Q[0]=[1,0]+[1,1]=[2,1]`. State 0: `9 > 2` → `a=1`; state 1: `12 > 1` → `a=1`. So `pi → (1,1)`. Evaluate `(1,1)`: `g=2.7, h=[0,3]`. Greedy once more: `P[1] h=[.1·0+.9·3,…]=[2.7,2.7]`, `Q[1]=[0,3]+[2.7,2.7]=[2.7,5.7]`; `P[0] h = [.9·0+.1·3, .9·0+.1·3] = [.3,.3]`, `Q[0]=[1,0]+[.3,.3]=[1.3,.3]`. State 0: `2.7 > 1.3` → `a=1`; state 1: `5.7 > .3` → `a=1`. Greedy returns `(1,1)` — unchanged. Fixed point reached in three improvement steps. And at that fixed point, check the optimality equation directly: `g* + h*(s)` is `2.7+0 = 2.7` and `2.7+3 = 5.7`; `max_a Q[a,s]` is `2.7` and `5.7`. They match exactly, residual zero in both states. So the fixed point really does satisfy `g* + h* = max_a[r + P h*]`. The Bellman optimality equation isn't just plausible from the telescoping — I watched policy iteration converge to a `(g*, h*)` that solves it.
 
 That worked, but it worked on a deliberately leaky MDP. Let me push on the unichain assumption to find out what it's actually buying me, because I leaned on it without testing it. Drop the leak: `a=0` makes state 0 self-loop with certainty (reward 1), `a=1` makes state 1 self-loop with certainty (reward 3), and the off-actions move you across. Now the policy `pi=(0,1)` makes *both* states absorbing — `P_π = I`, two separate recurrent classes, a **multichain**. Try to evaluate it with the same Poisson solve: `(I − P_π) = (I − I) = 0`, so the linear system's top block is all zeros except the `+g` column, and with the reference pin the matrix is
 
@@ -142,7 +142,7 @@ And that cancellation is the clue to a problem I haven't faced yet. Maximal gain
 
 I can make this ordering systematic, and the Laurent expansion hands me the ladder. Define: `π*` is **`n`-discount-optimal** if `lim_{γ→1} (1−γ)^{-n} (V_γ^{π*}(s) − V_γ^π(s)) ≥ 0` for every state `s` and every competitor `π`. Read off what each `n` means by plugging in the expansion `V_γ = g/(1−γ) + h + e_γ`.
 
-`n = −1`: multiply the difference by `(1−γ)`. Let me write it out so I don't fool myself: `(1−γ)(V_γ^{π*} − V_γ^π) = (g^{π*} − g^π) + (1−γ)(h^{π*} − h^π) + (1−γ)(e^{π*} − e^π)`. As `γ → 1` the last two groups vanish (the `h` terms are finite and multiplied by `1−γ → 0`; the `e` terms vanish anyway). So the condition is `g^{π*} − g^π ≥ 0` for all `π` — `(−1)`-discount-optimal is exactly gain-optimal.
+`n = −1`: multiply the difference by `(1−γ)`: `(1−γ)(V_γ^{π*} − V_γ^π) = (g^{π*} − g^π) + (1−γ)(h^{π*} − h^π) + (1−γ)(e^{π*} − e^π)`. As `γ → 1` the last two groups vanish (the `h` terms are finite and multiplied by `1−γ → 0`; the `e` terms vanish anyway). So the condition is `g^{π*} − g^π ≥ 0` for all `π` — `(−1)`-discount-optimal is exactly gain-optimal.
 
 `n = 0`: don't multiply at all. Now I must already be restricting to gain-optimal policies — otherwise the un-multiplied difference contains the `(g^{π*} − g^π)/(1−γ)` pole, which dominates and forces `g^{π*} ≥ g^π` anyway. Among gain-equal policies the pole cancels and `lim_{γ→1} (V_γ^{π*} − V_γ^π) = (h^{π*} − h^π) + lim(e^{π*} − e^π) = h^{π*} − h^π ≥ 0`. So `0`-discount-optimal is gain-optimal *plus* bias-optimal. The two criteria I motivated by hand are the `n = −1` and `n = 0` rungs of one ladder.
 
@@ -156,59 +156,22 @@ But the *relative* values — the differences `V_k(s) − V_k(s')` — are exact
 V_{k+1}(s) = T(V_k)(s) − T(V_k)(reference).
 ```
 
-Now `V_{k+1}(reference) = 0` for all `k`, the iterates can't drift, and they should converge to `h` (up to the reference offset). I need to keep one raw quantity before the subtraction: if `U_k = T(V_k)`, then the drift vector `U_k − V_k` approaches `g*·1`, and the offset `U_k(reference) − V_k(reference)` approaches `g*` when the reference is pinned to zero. This is **relative value iteration**. And the stopping rule should ignore the common drift too: not the max-norm of the raw increment, which is stuck near `g*`, but the **span seminorm** `sp(V) = max_s V(s) − min_s V(s)`. Stop when `sp(U_k − V_k) < ε`: the span measures the spread of the *relative* update and is blind to any constant added to all states, which is precisely the part I don't care about and can't stop drifting. Let me make sure this solver agrees with policy iteration on the example, since they take completely different routes to the same pair. Running relative value iteration (with the aperiodicity transform below, `τ=0.5`) on the leaky MDP returns `g=2.7`, `h=[0,3]`, `pi=(1,1)` — the same gain, the same bias, the same policy that policy iteration found. Two independent solvers, one answer; that's the cross-check I wanted.
+Now `V_{k+1}(reference) = 0` for all `k`, the iterates can't drift, and they should converge to `h` (up to the reference offset). I need to keep one raw quantity before the subtraction: if `U_k = T(V_k)`, then the drift vector `U_k − V_k` approaches `g*·1`, and the offset `U_k(reference) − V_k(reference)` approaches `g*` when the reference is pinned to zero. This is **relative value iteration**. And the stopping rule should ignore the common drift too: not the max-norm of the raw increment, which is stuck near `g*`, but the **span seminorm** `sp(V) = max_s V(s) − min_s V(s)`. Stop when `sp(U_k − V_k) < ε`: the span measures the spread of the *relative* update and is blind to any constant added to all states, which is precisely the part I don't care about and can't stop drifting. Since this takes a completely different route to the same pair, run it on the example: relative value iteration (with the aperiodicity transform below, `τ=0.5`) on the leaky MDP returns `g=2.7`, `h=[0,3]`, `pi=(1,1)` — the same gain, the same bias, the same policy that policy iteration found.
 
 Two cautions I should bake in. First, periodicity. If the chain has a recurrent class of period `> 1`, the backup `T` doesn't contract in span and the iterates can oscillate forever instead of settling — value iteration needs the chain aperiodic under all policies (or a state reachable from everywhere). The fix is an aperiodicity transformation: blend in a self-loop, `P̃ = (1−τ)I + τP` with `0 < τ < 1`, and scale the rewards to `r̃ = τr`. Then `T̃(h) = h + τg`, the greedy action is unchanged because the transformed maximand is `(1−τ)h(s) + τ[r(s,a)+P_a h]`, and the transformed gain is `g̃ = τg`; the original gain is the measured drift divided by `τ`. Second, asynchrony. If I update states one at a time (Gauss–Seidel / asynchronous), relative value iteration can actually **diverge** — Tsitsiklis's two-state example shows the relative-value map is not monotone and not a max-norm contraction, so the convergence guarantees of asynchronous *discounted* value iteration do not carry over. That's a real trap: the synchronous sweep is safe; the obvious asynchronous shortcut is not, without further care.
 
-Let me pull the pieces together. The pain was a continuing task with no horizon, where discounting injects an arbitrary `γ` that can rank policies wrong (the `γ ≈ 0.8409` crossover) and blows the value up as `γ → 1`. The honest objective is the long-run average `g`. For a unichain policy `g` is a state-independent scalar, which carries no ranking — so a single value function is not enough. Trying `γ = 1` directly hits the singularity of `I − P`, whose null space `span{1}` is the same degeneracy as the state-independent gain. Reintroducing `g` as a per-step toll and asking for the finite relative advantage of each start state produces the bias `h` and the Poisson equation `g + h(s) = r(s) + Σ p h(s')`; solvable precisely because `g = d·r_π`, as I checked. The same equation drops out independently as the `O(1)` coefficient of the Laurent expansion `V_γ = g/(1−γ) + h + O(1−γ)`, whose `O(1/(1−γ))` coefficient is the gain — and I read both coefficients straight off the discounted value numerically as `γ → 1`. Taking the `max` over actions gives the average-reward Bellman optimality equation `g* + h*(s) = max_a [r(s,a) + Σ p(s'|s,a) h*(s')]`, characterizing the optimum by the **pair** `(g*, h*)`, which I watched policy iteration converge to (residual zero) and relative value iteration reproduce. Gain alone is coarse; the Laurent ladder refines it — `(−1)`-discount-optimal = gain-optimal, `0`-discount-optimal = also bias-optimal, and `∞`-discount-optimal = Blackwell-optimal, one policy that wins for all `γ` near `1`. Policy iteration (Poisson-solve + greedy) finds a gain-optimal policy in finitely many steps; the Laurent/Blackwell refinement says how to break equal-gain ties by bias and higher coefficients; relative value iteration with reference subtraction and a span-seminorm stop iterates to `h` and recovers `g*` from the raw drift. The one boundary I hit and won't paper over: the scalar-`g` Poisson formulation needs a single recurrent class — on a multichain policy the evaluation matrix is genuinely singular, because the gain stops being one number. So the scope is unichain (or communicating). That's the landing — the optimality equations plus the gain/bias characterization, with policy iteration and RVI as the concrete solvers.
+So the landing is the pair `(g*, h*)` solving the average-reward Bellman optimality equation `g* + h*(s) = max_a [r(s,a) + Σ p(s'|s,a) h*(s')]`, scoped to unichain (or communicating) MDPs where a scalar gain is well-defined, with policy iteration (Poisson-solve + greedy) reaching it in finitely many steps, the Laurent ladder saying how to break equal-gain ties by bias and beyond, and relative value iteration reaching the same `(g,h)` from the raw backup's drift without a linear solve at every step.
+
+Turning the Poisson equation into code is just packaging the augmented linear system I already built: `g` and `h` as one unknown vector, the extra row pinning the reference state —
 
 ```python
-import numpy as np
-
-# ---- evaluate a fixed policy: the (gain, bias) PAIR via the Poisson equation ----
-# g + h(s) = r(s,pi(s)) + sum_s' p(s'|s,pi(s)) h(s'),  pin h(reference)=0.
-# This is the average-reward analogue of the discounted linear solve (I - gamma P)V = r,
-# but with the gain g made explicit because (I - P) is singular.
-def evaluate_policy(mdp, pi, ref=0):
-    n = mdp.n
-    Ppi = np.stack([mdp.P[pi[s]][s] for s in range(n)])   # (n,n) transition under pi
-    rpi = np.array([mdp.R[pi[s]][s] for s in range(n)])    # length-n reward under pi
-    # unknowns x = [h(0..n-1), g]; equations: h - Ppi h + g*1 = rpi, and h(ref)=0.
-    A = np.zeros((n + 1, n + 1)); b = np.zeros(n + 1)
-    A[:n, :n] = np.eye(n) - Ppi          # (I - Ppi) h
-    A[:n, n]  = 1.0                       # + g
-    b[:n]     = rpi
-    A[n, ref] = 1.0                       # h(ref) = 0 pins the +c1 freedom
-    x = np.linalg.solve(A, b)
-    h, g = x[:n], x[n]
-    return g, h
-
-# ---- policy iteration: Poisson evaluation plus greedy improvement ----
-def policy_iteration(mdp):
-    pi = np.zeros(mdp.n, dtype=int)
-    while True:
-        g, h = evaluate_policy(mdp, pi)
-        # greedy on r + E[h]: the average-reward improvement step
-        Q = np.stack([mdp.R[a] + mdp.P[a] @ h for a in range(mdp.m)], axis=0)  # (m,n)
-        pi_new = Q.argmax(axis=0)
-        if np.array_equal(pi_new, pi):
-            return g, h, pi                # fixed point: g + h = max_a [ r + P h ]
-        pi = pi_new
-
-# ---- relative value iteration: iterate h, subtract a reference to kill the g-drift ----
-def relative_value_iteration(mdp, ref=0, eps=1e-9, tau=0.5):
-    # aperiodicity transform: P~ = (1-tau)I + tau P, R~ = tau R, so g~ = tau*g
-    P = [ (1 - tau) * np.eye(mdp.n) + tau * mdp.P[a] for a in range(mdp.m) ]
-    R = [ tau * mdp.R[a] for a in range(mdp.m) ]            # rewards scale with the blend
-    V = np.zeros(mdp.n)
-    while True:
-        Q = np.stack([R[a] + P[a] @ V for a in range(mdp.m)], axis=0)
-        raw = Q.max(axis=0)
-        drift = raw - V                                    # tends to tau*g times the all-ones vector
-        V_next = raw - raw[ref]                            # reference subtraction: V_next[ref]=0
-        if drift.max() - drift.min() < eps:                # span seminorm: ignores common drift
-            g = 0.5 * (drift.max() + drift.min()) / tau    # undo g~ = tau*g
-            pi = Q.argmax(axis=0)
-            return g, V_next, pi
-        V = V_next
+A = np.zeros((n + 1, n + 1)); b = np.zeros(n + 1)
+A[:n, :n] = np.eye(n) - Ppi          # (I - Ppi) h
+A[:n, n]  = 1.0                       # + g
+b[:n]     = rpi
+A[n, ref] = 1.0                       # h(ref) = 0 pins the +c1 freedom
+x = np.linalg.solve(A, b)
+g, h = x[n], x[:n]
 ```
+
+Policy iteration alternates this solve with the greedy step `argmax_a [r(s,a) + (P_a h)(s)]` until the policy stops changing. Relative value iteration replaces the solve with the backup `T(V)`, subtracts the reference-state value from every state at each step to kill the `g`-drift, applies the aperiodicity blend when the chain might be periodic, and stops on the span seminorm of the raw drift — exactly the two solvers derived above.

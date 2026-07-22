@@ -287,9 +287,9 @@ So satisfiability of a symmetric g(AND₁, …, AND_K) on a given assignment red
 ANDs are 1, then apply g to that count. And "for every assignment, count how many of these monomials
 are on" is exactly the kind of thing a counting/transform primitive can do in bulk. That is the
 handle the symmetric top gate gives me, and it's why SYM⁺ — and not an arbitrary depth-two circuit —
-is what I want. Let me make sure I can actually *build* the SYM⁺ form, because the constants live in
-the construction (this is the Yao/Beigel–Tarui/Allender–Gore machinery; I'll re-walk it so I trust
-it). First make the circuit a tree (fan-out 1) at the cost of raising s to s^{O(d)}. Then: replace
+is what I want. The constants live in the construction, so I need to actually build the SYM⁺ form
+(this is the Yao/Beigel–Tarui/Allender–Gore machinery). First make the circuit a tree (fan-out 1) at
+the cost of raising s to s^{O(d)}. Then: replace
 each OR and AND by low-degree probabilistic constructions over MOD_p of polylog-fan-in ANDs, all
 sharing one set of poly(log s) random bits (the Valiant–Vazirani randomization), and replace NOT by
 a MOD gate. Eliminate composite moduli by the Chinese Remainder Theorem: m | x iff p_i^{e_i} | x
@@ -315,17 +315,16 @@ wrong. The fix is forced by the small computation: I want the bracketed product 
 x ≡ 0 and 1 at x ≡ 1, with no additive correction laid over the wrong branch. That is
   P_k(x) = 1 − (1 − x)^k ( Σ_{i=0}^{k−1} C(k+i−1, i) x^i ).
 Re-test p = 3, k = 2: at x = 0, 1 − (1)(1) = 0 ≡ 0 (mod 9) ✓; at x = 1, the (1−x)^k factor kills the
-second term so P_2(1) = 1 ✓. Let me push the check further, over all residues mod p and a couple of
-moduli, to be sure it is the *amplification* I claimed and not just luck at 0 and 1: for p ∈ {2,3,5}
-and k ∈ {1,2,3,4}, evaluating P_k on every x in a wide range, every x ≡ 0 (mod p) gives P_k(x) ≡ 0
-(mod p^k) and every x ≡ 1 (mod p) gives P_k(x) ≡ 1 (mod p^k). All cases pass. The additive-constant
-version was the trap; the corrected product form is what I carry into the construction.
+second term so P_2(1) = 1 ✓ — and it's not just luck at these two values: scanning p ∈ {2,3,5},
+k ∈ {1,2,3,4} over a wide range of x, every x ≡ 0 (mod p) gives P_k(x) ≡ 0 (mod p^k) and every
+x ≡ 1 (mod p) gives P_k(x) ≡ 1 (mod p^k), every time. The additive-constant version was the trap;
+the corrected product form is what I carry into the construction.
 
 With the corrected amplifier I can build the MOD_p gate as a polynomial mod p^k. Set
 Q_k(x) = P_k(x^{p−1}) and invoke Fermat's little theorem: for x not divisible by p, x^{p−1} ≡ 1
 (mod p), so Q_k pushes it to ≡ 1 (mod p^k); for x ≡ 0 (mod p), x^{p−1} ≡ 0, so Q_k ≡ 0 (mod p^k).
 Thus 1 − Q_k(Σ y_i) ≡ 1 (mod p^k) iff p divides Σ y_i — a MOD_p gate expressed as a single
-polynomial mod p^k. Let me confirm the wiring on a concrete sum: p = 2, k = 3, p^k = 8. For
+polynomial mod p^k. On a concrete sum, p = 2, k = 3, p^k = 8: for
 y = Σ y_i running 0, 1, 2, …, 12, the value 1 − Q_3(y) mod 8 comes out 1, 0, 1, 0, 1, 0, … — exactly
 1 whenever y is even, 0 whenever y is odd. That is the MOD_2 indicator, and it matches the actual
 parity-of-y at every value I checked. So the gate identity holds, not just the amplifier.
@@ -372,7 +371,7 @@ g_i(T) sums f over exactly those S ⊆ T that agree with T outside {1,…,i}, an
 all S ⊆ T. Each pass is O(2^n · poly(n)), n passes. So in O(2^n · poly(n)) time I have, for every
 assignment T, the count of satisfied ANDs; apply F to each count (poly(s) to tabulate F, then a
 lookup per assignment) and I've evaluated the SYM⁺ circuit everywhere. Satisfiable iff some count
-makes F output 1. Clean, and it's the proof I'd actually present — minimal machinery.
+makes F output 1.
 
 I should record that there are two other ways to do this same bulk evaluation, because they reveal
 why the method is robust. One uses fast matrix multiplication: split the n inputs into halves A and
@@ -420,11 +419,10 @@ O(n^{1/2}) and the e·k term is O(n^{1/(2e)}) ≤ O(n^{1/2}) as well, giving E_K
 below n^{2/3}. Meanwhile n − k = n − n^{1/(2e)}, whose gap from n is n^{1/(2e)}, far larger than the
 n^{1/2} — and I need this direction too, since if E_K exceeded n − k the savings would vanish.
 n − k ≈ n for large n, and E_K = O(n^{1/2}) ≪ n, so 2^{E_K} ≪ 2^{n−k}; the evaluation term dominates.
-Let me also sanity it numerically at a sample point: e = 3, ε = 0.05, n = 10^6. Then k = n^{1/6} = 10,
+As a numerical check, at e = 3, ε = 0.05, n = 10^6: k = n^{1/6} = 10,
 log s' = n^{0.05} + 10 ≈ 12.6, E_K ≈ e·k + (log s')^e = 30 + 12.6³ ≈ 2.0×10³, while n − k ≈ 1.0×10⁶.
 So E_K/(n−k) ≈ 0.002 — the monomial count's exponent is three orders of magnitude under the
-evaluation exponent, comfortably inside the budget; and repeating with e = 2, ε = 0.01 gives the same
-verdict (E_K ≈ 1.1×10³ ≪ 10⁶). So the evaluation runs in
+evaluation exponent, comfortably inside the budget. So the evaluation runs in
 O(2^{n−k} · poly(n) + K) = O(2^{n − n^{1/(2e)}} · poly(n)), since 2^{O(n^{1/2})} ≪ 2^{n − n^{1/(2e)}}.
 So ACC-SAT on subexponential-size depth-d ACC circuits runs in 2^{n − Ω(n^δ)} time for a δ > 0
 depending only on d and m. That is comfortably faster than 2^n — in fact a savings of a 2^{Ω(n^δ)}
@@ -441,9 +439,9 @@ O(2^n / n^k), so every L ∈ NTIME[2^n] is in NTIME[o(2^n)] — actually NTIME[o
 nondeterministic time hierarchy theorem forbids. Contradiction. Therefore NEXP ⊄ ACC: SUCCINCT 3SAT,
 and hence all of NEXP, has no nonuniform polynomial-size ACC circuits.
 
-A few extensions fall out, and they're worth pinning down because they tell me how sharp the result
-is. For the larger class E^NP I don't even need the IKW easy-witness machinery — I can get the
-witness directly. Consider the E^NP machine that, on (x, i), computes C_x, then binary-searches for
+A few extensions fall out, and they tell me how sharp the result actually is. For the larger class
+E^NP I don't even need the IKW easy-witness machinery — I can get the witness directly. Consider
+the E^NP machine that, on (x, i), computes C_x, then binary-searches for
 the lexicographically smallest satisfying assignment to F_{C_x} using its NP oracle (each query
 "is there a satisfying A' ≤ A?" is in NP), and outputs the i-th bit. That's an E^NP function; if
 E^NP ⊆ ACC of size S(n), this function has an S(3n)-size ACC witness circuit. Plug that in and the
@@ -457,9 +455,9 @@ couple of applications of S, so the NEXP size lower bound is only "half-exponent
 fully exponential — but it still kills polynomial and even quasipolynomial size, and with one more
 nesting it extends down to sub-third-exponential size and to grotesque classes just above NTIME[2^n].
 
-And the barriers — let me confirm I actually threaded them, because that's the whole reason the
-bottom-up program couldn't do this. Natural proofs: the argument never extracts a combinatorial
-property of the hard function; it leans on the *completeness* of SUCCINCT 3SAT and on
+And the barriers are the whole reason the bottom-up program couldn't do this, and the argument does
+thread them. Natural proofs: the argument never extracts a combinatorial property of the hard
+function; it leans on the *completeness* of SUCCINCT 3SAT and on
 diagonalization through the time hierarchy, so there's no P-natural property to harvest (and anyway
 there's little evidence ACC even has pseudorandom functions). Relativization and algebrization: the
 one place I use a non-black-box fact is the ACC-SAT algorithm, and it uses the SYM⁺ *structure* of

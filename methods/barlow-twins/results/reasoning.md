@@ -51,7 +51,7 @@ Now the load-bearing question: does this actually exclude collapse, by construct
 
 Now collapse. Suppose the network ignores its input and emits a constant: z_{b,i} = c_i for all b. After I mean-center feature i across the batch, every value becomes c_i − c_i = 0, so the centered column is (0,0,0,0). The numerator of C_ii is then sum_b 0·0 = 0 and the denominator is sqrt(0)·sqrt(0) = 0: the entry is 0/0, undefined in the exact formula, and in the practical batch-normalization computation the zero-variance feature gets mapped to zero after the epsilon-stabilized normalization. Either way C_ii is not 1, so the invariance term pays its full (1−0)² = 1 per diagonal entry and never goes to zero. A *correlation* needs non-zero variance in both arguments to even reach 1, and a constant feature has none. So the diagonal target by itself already forbids the constant — because I normalized by the per-feature batch standard deviation, "be perfectly correlated with myself across the batch" is impossible for a feature that doesn't vary across the batch. The act of normalizing forces every feature to carry batch variance, i.e. to actually respond to the input.
 
-So the constant is dead. But there's a subtler cheap escape I should check the same way: what if the network finds *one* informative direction that's invariant, and then copies it into all D features? Set both features to f0 = (1, −1, 2, −2) and again let B = A. Center, normalize: C_00 = C_11 = 1 (each copy is invariant, so the invariance term is happy), but C_01 = (sum_b f0·f0)/(|f0||f0|) = 1 — perfect off-diagonal correlation. The redundancy-reduction term pays λ·1² for that pair (and its mirror), so the copy is penalized exactly in proportion to how redundant it is. And it's not all-or-nothing: if I make feature 1 a partial copy, f1 + ε·f0, the off-diagonal correlation climbs smoothly with ε — running it, ε = 0.2 gives C_01 ≈ 0.196 (loss 0.077), ε = 0.5 gives 0.447 (loss 0.40), ε = 1.0 gives 0.707 (loss 1.0). So the off-diagonal term provides a continuous gradient away from redundancy, not just a flat penalty at the degenerate point. Between these checks, the configuration that drives both terms to zero is C = I: D features each invariant to the distortion *and* mutually decorrelated. The decorrelation term is doing the job that negatives or stop-gradients did in the other methods — making the trivial solution costly — but it does it as part of the objective, not as a bolted-on mechanism.
+So the constant is dead. But there's a subtler cheap escape I should check the same way: what if the network finds *one* informative direction that's invariant, and then copies it into all D features? Set both features to f0 = (1, −1, 2, −2) and again let B = A. Center, normalize: C_00 = C_11 = 1 (each copy is invariant, so the invariance term is happy), but C_01 = (sum_b f0·f0)/(|f0||f0|) = 1 — perfect off-diagonal correlation. The redundancy-reduction term pays λ·1² for that pair (and its mirror), so the copy is penalized exactly in proportion to how redundant it is. And it's not all-or-nothing: if I make feature 1 a partial copy, f1 + ε·f0 (with f0, f1 the orthogonal pair from the clean case above), the off-diagonal correlation climbs smoothly with ε, C_01 = ε/sqrt(1+ε²) — running it, ε = 0.2 gives C_01 ≈ 0.196 (redundancy-sum 2×0.196² ≈ 0.077, before the λ weight), ε = 0.5 gives 0.447 (≈0.40), ε = 1.0 gives 0.707 (≈1.0). So the off-diagonal term provides a continuous gradient away from redundancy, not just a flat penalty at the degenerate point. Between these checks, the configuration that drives both terms to zero is C = I: D features each invariant to the distortion *and* mutually decorrelated. The decorrelation term is doing the job that negatives or stop-gradients did in the other methods — making the trivial solution costly — but it does it as part of the objective, not as a bolted-on mechanism.
 
 Let me sanity-check the no-collapse claim by deleting pieces. If I delete the off-diagonal term and keep only invariance, the "copy one direction" example above shows the escape comes back — it had every C_ii = 1, so it's a zero-loss point of the invariance-only objective despite carrying one direction's worth of information. If I delete the invariance term and keep only decorrelation, nothing ties the two views together at all; the network can decorrelate features without learning anything view-consistent (set B to an unrelated batch and the off-diagonals can still be zero). Both terms have to be there.
 
@@ -93,124 +93,10 @@ The whitening method is the nearest cousin: it *hard*-whitens each batch (Choles
 
 And the oldest cousin, IMAX from the early SSL days: log|Cov(Z^A − Z^B)| − log|Cov(Z^A + Z^B)|, which maximizes information between the twin representations under an additive-Gaussian-noise-on-a-shared-signal model. It has the same two-flavored feel — a term wanting the two views similar, a term wanting units decorrelated — but it's *directly* an information quantity with no trade-off knob, and it never scaled. My version isn't literally an information quantity; it's a proxy with the lambda knob, which is exactly the slack that lets it scale.
 
-I'm convinced. Let me write the network and the loss as real code.
+I'm convinced. Let me pin down the architecture and the training details around this loss.
 
-The encoder is a ResNet-50 with its classification head removed, output width 2048 (call these the "representations" — what I'll actually use downstream). On top of it sits a projector: three linear layers, all 8192 wide, with batch-norm + ReLU after the first two and a bare linear at the end (call the projector output the "embeddings" — only these go into the loss). The projector being very wide is the high-D bet I argued for; three layers give the head enough nonlinear capacity without putting any supervised labels into it. For the per-feature batch normalization that defines C, I run each view's embeddings through a non-affine BatchNorm1d — that *is* the mean-center-and-divide-by-batch-std of my definition — and then the cross-correlation matrix is just the matrix product of the two normalized embedding batches, divided by N. The code is just those pieces in order: two stochastic views, one backbone and projector, one feature-normalized pairwise objective.
-
-```python
-import random
-
-import torch
-import torch.nn as nn
-import torchvision
-from PIL import Image, ImageFilter, ImageOps
-from torchvision import transforms
-
-
-class GaussianBlur:
-    def __init__(self, p):
-        self.p = p
-
-    def __call__(self, img):
-        if random.random() < self.p:
-            sigma = random.random() * 1.9 + 0.1
-            return img.filter(ImageFilter.GaussianBlur(sigma))
-        return img
-
-
-class Solarization:
-    def __init__(self, p):
-        self.p = p
-
-    def __call__(self, img):
-        if random.random() < self.p:
-            return ImageOps.solarize(img)
-        return img
-
-
-class Transform:
-    def __init__(self):
-        self.transform = self._pipeline(blur_p=1.0, solarize_p=0.0)
-        self.transform_prime = self._pipeline(blur_p=0.1, solarize_p=0.2)
-
-    @staticmethod
-    def _pipeline(blur_p, solarize_p):
-        return transforms.Compose([
-            transforms.RandomResizedCrop(224, interpolation=Image.BICUBIC),
-            transforms.RandomHorizontalFlip(p=0.5),
-            transforms.RandomApply(
-                [transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)],
-                p=0.8,
-            ),
-            transforms.RandomGrayscale(p=0.2),
-            GaussianBlur(p=blur_p),
-            Solarization(p=solarize_p),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-        ])
-
-    def __call__(self, x):
-        return self.transform(x), self.transform_prime(x)
-
-
-def build_projector(projector):
-    sizes = [2048] + list(map(int, projector.split("-")))
-    layers = []
-    for i in range(len(sizes) - 2):
-        layers.append(nn.Linear(sizes[i], sizes[i + 1], bias=False))
-        layers.append(nn.BatchNorm1d(sizes[i + 1]))
-        layers.append(nn.ReLU(inplace=True))
-    layers.append(nn.Linear(sizes[-2], sizes[-1], bias=False))
-    return nn.Sequential(*layers)
-
-
-def off_diagonal(x):
-    # Flattened view of the off-diagonal elements of a square matrix.
-    n, m = x.shape
-    assert n == m
-    return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
-
-
-def pairwise_feature_objective(z1, z2, normalizer, batch_size, weight):
-    # C is the D x D cross-correlation matrix, normalized along the batch dimension.
-    c = normalizer(z1).T @ normalizer(z2)
-    c.div_(batch_size)
-    if torch.distributed.is_available() and torch.distributed.is_initialized():
-        torch.distributed.all_reduce(c)
-
-    # Diagonal -> 1 for invariance; off-diagonal -> 0 for redundancy reduction.
-    on_diag = torch.diagonal(c).add_(-1).pow_(2).sum()
-    off_diag = off_diagonal(c).pow_(2).sum()
-    return on_diag + weight * off_diag
-
-
-class TwinEmbeddingModel(nn.Module):
-    def __init__(self, projector="8192-8192-8192", objective_weight=0.0051, batch_size=2048):
-        super().__init__()
-        self.objective_weight = objective_weight
-        self.batch_size = batch_size
-        self.backbone = torchvision.models.resnet50(zero_init_residual=True)
-        self.backbone.fc = nn.Identity()
-        self.projector = build_projector(projector)
-        output_dim = int(projector.split("-")[-1])
-        self.feature_normalizer = nn.BatchNorm1d(output_dim, affine=False)
-
-    def forward(self, y1, y2):
-        z1 = self.projector(self.backbone(y1))
-        z2 = self.projector(self.backbone(y2))
-        return pairwise_feature_objective(
-            z1, z2, self.feature_normalizer, self.batch_size, self.objective_weight
-        )
-
-
-def train_step(model, optimizer, y1, y2):
-    optimizer.zero_grad()
-    loss = model(y1, y2)
-    loss.backward()
-    optimizer.step()
-    return loss.item()
-```
+The encoder is a ResNet-50 with its classification head removed, output width 2048 (call these the "representations" — what I'll actually use downstream). On top of it sits a projector: three linear layers, all 8192 wide, with batch-norm + ReLU after the first two and a bare linear at the end (call the projector output the "embeddings" — only these go into the loss). The projector being very wide is the high-D bet I argued for; three layers give the head enough nonlinear capacity without putting any supervised labels into it. For the per-feature batch normalization that defines C, I run each view's embeddings through a non-affine BatchNorm1d — that *is* the mean-center-and-divide-by-batch-std of my definition — and the cross-correlation matrix itself is just the matrix product of the two normalized embedding batches, divided by the batch size, `c = normalizer(z1).T @ normalizer(z2) / N`, with the squared-distance-to-1 and squared-distance-to-0 read off its diagonal and off-diagonal blocks respectively. Two stochastic view-transforms, one shared backbone-plus-projector, one feature-normalized pairwise objective — that's the whole model.
 
 The training loop is the ordinary one — two augmented views per image, LARS with a base factor of batch_size/256, separate learning-rate multipliers for weights and for biases/batch-norm parameters, a 10-epoch warmup and cosine decay, and biases and BN parameters excluded from LARS adaptation and weight decay. In distributed training I convert the model to synchronized batch normalization before wrapping it, because the normalization in C is a batch statistic. Batch size can be large (2048) but, unlike contrastive learning, it doesn't *have* to be — there's no sample-space estimate that needs feeding, so it should work down to a few hundred.
 
-The causal chain, start to finish: bare view agreement collapses to a constant, and every existing fix — negatives, predictors, stop-gradients, clustering — props up "agree" with external machinery. Redundancy reduction reframes the goal as two desiderata that fight: make the two views agree, and decorrelate the components. Encode both in one object, the cross-correlation matrix between the two views computed across the batch, and ask for it to be the identity — diagonal→1 for invariance, off-diagonal→0 for non-redundancy. Normalizing each feature by its batch std makes "correlate perfectly with myself" impossible for a constant feature, so collapse is excluded by construction, not by a trick; the off-diagonal term kills the copy-one-direction escape; the zero-loss target C=I is a decorrelated, invariant, informative code. Because decorrelation is a Gaussian-proxy entropy estimate tied to the IB trade-off, the objective is cheap to estimate from small batches and high-dimensional embeddings — the exact reverse of contrastive learning. One symmetric loss, a wide projector, a plain ResNet, and no asymmetry anywhere.
+One symmetric loss, a wide projector, a plain ResNet, and no asymmetry anywhere: decorrelation turns non-collapse into the zero of an objective instead of a side effect enforced by negatives, predictors, or stop-gradients.

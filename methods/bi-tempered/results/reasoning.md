@@ -10,19 +10,19 @@ Now I need raw material for the deformation. The two cures point at the two oper
 
   `log_t(x) = (x^{1−t} − 1)/(1 − t)`,
 
-monotone increasing and concave, which should recover ordinary `log` as `t → 1`. Let me check that limit rather than take it on faith — numerically, `log_t(2)` at `t = 0.99, 0.999, 0.9999` gives `0.6956, 0.6934, 0.69317`, converging onto `log 2 = 0.69315`. Good. The property I am hoping for: for `0 ≤ t < 1`, as `x → 0` the term `x^{1−t} → 0`, so `log_t(x) → (0 − 1)/(1 − t) = −1/(1 − t)`, a finite floor. Numerically at `t = 0.5`, `log_t(10⁻⁸) = −1.9998`, sitting just above the predicted `−1/(1−0.5) = −2`. So `log_t` with `t < 1` is *bounded below*, where ordinary `log` runs to `−∞` as its argument goes to 0 — and that `−∞` is precisely the unboundedness I watched the large-margin outlier exploit. A loss built from a floored `log` would cap each example's contribution. That is encouraging for the first disease, with `t < 1` as the dial.
+monotone increasing and concave, recovering ordinary `log` as `t → 1`. The property I am hoping for: for `0 ≤ t < 1`, as `x → 0` the term `x^{1−t} → 0`, so `log_t(x) → (0 − 1)/(1 − t) = −1/(1 − t)`, a finite floor. Numerically at `t = 0.5`, `log_t(10⁻⁸) = −1.9998`, just above the predicted `−1/(1−0.5) = −2`. So `log_t` with `t < 1` is *bounded below*, where ordinary `log` runs to `−∞` as its argument goes to 0 — and that `−∞` is precisely the unboundedness I watched the large-margin outlier exploit. A loss built from a floored `log` would cap each example's contribution. That is encouraging for the first disease, with `t < 1` as the dial.
 
 Its inverse should be a tempered exponential
 
   `exp_t(x) = [1 + (1−t)x]_+^{1/(1−t)}`, with `[·]_+ = max(·, 0)`,
 
-recovering ordinary `exp` as `t → 1`. Let me confirm it really is the inverse: composing, `exp_t(log_t(x))` at `t = 1.5` and `x = 0.3, 1.0` returns `0.3, 1.0` exactly. The property I want at this end is the opposite of the floor: for `t > 1`, `1/(1−t)` is a negative exponent, so for large negative `x` the base `1 + (1−t)x` grows linearly and `exp_t` decays only *polynomially*, not exponentially. So a softmax built on `exp_t` with `t > 1` should not saturate as fast, and could leave a non-negligible probability on a far-wrong class instead of crushing it to zero. That is encouraging for the second disease, with `t > 1` as the dial. Two temperatures, two diseases, and the two functions are inverses of each other — which is suggestive, because the two dual halves of the matching loss are also linked by inversion (`τ` is the inverse of `∇F` on the simplex). It would be clean if `t < 1` and `t > 1` landed naturally on the divergence half and the transfer half respectively. Let me build the construction and see whether they do.
+recovering ordinary `exp` as `t → 1`, and inverting `log_t` by construction. The property I want at this end is the opposite of the floor: for `t > 1`, `1/(1−t)` is a negative exponent, so for large negative `x` the base `1 + (1−t)x` grows linearly and `exp_t` decays only *polynomially*, not exponentially. So a softmax built on `exp_t` with `t > 1` should not saturate as fast, and could leave a non-negligible probability on a far-wrong class instead of crushing it to zero. That is encouraging for the second disease, with `t > 1` as the dial. Two temperatures, two diseases, and the two functions are inverses of each other — which is suggestive, because the two dual halves of the matching loss are also linked by inversion (`τ` is the inverse of `∇F` on the simplex). It would be clean if `t < 1` and `t > 1` landed naturally on the divergence half and the transfer half respectively. Let me build the construction and see whether they do.
 
 I'll build the convex function so its gradient is the tempered log, since `∇F` being the link is what made the original construction work. I want `∇F_t(y) = log_t(y)` elementwise. Integrate `log_t`: `∫ (y^{1−t} − 1)/(1−t) dy = (1/(1−t)) [ y^{2−t}/(2−t) − y ]`, and collecting constants so it is clean,
 
   `F_t(y) = Σ_i ( y_i log_t(y_i) + (1/(2−t))(1 − y_i^{2−t}) )`.
 
-Before trusting that, let me check the gradient by finite differences — it is easy to drop a factor when integrating. At `t = 0.7`, `y = (0.3, 0.5, 0.2)`, central differences of `F_t` give `(−1.0105, −0.6258, −1.2766)`, and `log_t(y)` evaluates to `(−1.0105, −0.6258, −1.2766)`. They agree, so `∇F_t = log_t` as intended. Is `F_t` convex? `∇²F_t(y) = diag(d log_t(y)/dy) = diag(y^{−t})`, which is `⪰ 0` on the positive orthant, so `F_t` is strictly convex there (strongly convex on bounded sets for `0 ≤ t ≤ 1`) and induces a legitimate Bregman divergence. And at `t = 1` it should collapse to negative entropy and KL — I'll verify the divergence does, in a moment, rather than assert it.
+It is easy to drop a factor when integrating, so I check the gradient by finite differences: at `t = 0.7`, `y = (0.3, 0.5, 0.2)`, central differences of `F_t` give `(−1.0105, −0.6258, −1.2766)`, and `log_t(y)` evaluates to the same triple, so `∇F_t = log_t` as intended. Is `F_t` convex? `∇²F_t(y) = diag(d log_t(y)/dy) = diag(y^{−t})`, which is `⪰ 0` on the positive orthant, so `F_t` is strictly convex there (strongly convex on bounded sets for `0 ≤ t ≤ 1`) and induces a legitimate Bregman divergence.
 
 Now the divergence, from the Bregman definition with this `F_t`. The gradient term is `(y − ŷ)·log_t(ŷ)`, and after the algebra,
 
@@ -32,7 +32,7 @@ equivalently
 
   `Δ_{F_t}(y, ŷ) = Σ_i ( y_i^{2−t}/((1−t)(2−t)) − y_i ŷ_i^{1−t}/(1−t) + ŷ_i^{2−t}/(2−t) )`.
 
-Two derivations of the same object — let me make sure they actually coincide and that I trust them. At `t = 0.7`, `y = (0.6, 0.3, 0.1)`, `ŷ = (0.4, 0.4, 0.2)`: the raw Bregman definition `F_t(y) − F_t(ŷ) − (y−ŷ)·log_t(ŷ)` gives `0.062176`, and the second closed form gives `0.062176`. They match, so the algebra is right. Now the limiting cases that should anchor this in a family I already trust: at `t → 1` the divergence should be KL, and at `t → 0` it should be squared Euclidean. Numerically, at `t = 1 − 10⁻⁷` the Bregman value is `0.087660` against `KL(y‖ŷ) = Σ(y log(y/ŷ) − y + ŷ) = 0.087660`; at `t = 10⁻⁹` it is `0.030000` against `½‖y − ŷ‖² = 0.030000`. So this deformation is the β-divergence axis with `β = 2 − t`, KL at `t = 1` and squared Euclidean at `t = 0` — it never leaves the Bregman family I started in, it just slides along it.
+The Bregman definition and the closed form should be the same object: at `t = 0.7`, `y = (0.6, 0.3, 0.1)`, `ŷ = (0.4, 0.4, 0.2)`, `F_t(y) − F_t(ŷ) − (y−ŷ)·log_t(ŷ)` gives `0.062176`, and the second closed form gives `0.062176` too — the algebra is right. Now the limiting cases that anchor this in a family I already trust: at `t → 1` the divergence should be KL, and at `t → 0` it should be squared Euclidean. Numerically, at `t = 1 − 10⁻⁷` the Bregman value is `0.087660` against `KL(y‖ŷ) = Σ(y log(y/ŷ) − y + ŷ) = 0.087660`; at `t = 10⁻⁹` it is `0.030000` against `½‖y − ŷ‖² = 0.030000`. So this deformation is the β-divergence axis with `β = 2 − t`, KL at `t = 1` and squared Euclidean at `t = 0` — it never leaves the Bregman family I started in, it just slides along it.
 
 Does choosing `t < 1` for this divergence actually bound the loss, the way the floor on `log_t` suggested? I'll defer the precise number until I have the transfer function, because the loss on a one-hot label couples the divergence to the predicted probabilities, and I want to compute the saturation on the *whole* loss, not just the `−log_{t}` term.
 
@@ -62,7 +62,7 @@ Now the two properties a classification loss must keep. First, *properness*: I w
 
   `Σ_i [ −η_i log_{t_1} p_i + (1/(2−t_1)) p_i^{2−t_1} ]`
 
-only by terms that depend on the true posterior `η` and not on the model probabilities `p`. Sampling `y_n ~ η(·|x_n)` then gives the empirical objective `(1/N) Σ_n [ −log_{t_1} p_{y_n}(x_n) + (1/(2−t_1)) Σ_i p_i(x_n)^{2−t_1} ]`, again up to those model-independent constants — every term is a function of the model's probabilities and the *observed* label, with no hidden dependence on the unknown conditional. This is the place where building on the Bregman divergence rather than the Tsallis one earns its keep. The Tsallis route looks almost identical but uses `log_t(ŷ/y)`, and because `log_t(a/b) ≠ log_t(a) − log_t(b)` the ratio does not split into a model term and a label term; its unbiased estimator would need the true `P(y|x)` inside the logarithm, and approximating that conditional by 1 makes the estimator biased. So the choice of Bregman over Tsallis is exactly what keeps the empirical loss an unbiased, proper objective — load-bearing, not cosmetic. Second, *Bayes-risk consistency*: at the conditional-risk minimizer the predicted probabilities equal the posteriors `η_i`; the per-class normalization term does not depend on which class I am scoring, so it does not move the classwise argmin, and since `−log_{t_1}` is monotone decreasing for `0 ≤ t_1 < 1`, `argmin_i l_i = argmax_i p_i = argmax_i â_i = argmax_i η_i`. The loss still picks the Bayes-optimal class in the non-convex regime. So both properties survive the mismatch; the only thing the mismatch sacrifices is the convexity I just confirmed I wanted to lose.
+only by terms that depend on the true posterior `η` and not on the model probabilities `p`. Sampling `y_n ~ η(·|x_n)` then gives the empirical objective `(1/N) Σ_n [ −log_{t_1} p_{y_n}(x_n) + (1/(2−t_1)) Σ_i p_i(x_n)^{2−t_1} ]`, again up to those model-independent constants — every term is a function of the model's probabilities and the *observed* label, with no hidden dependence on the unknown conditional. This is the place where building on the Bregman divergence rather than the Tsallis one earns its keep. The Tsallis route looks almost identical but uses `log_t(ŷ/y)`, and because `log_t(a/b) ≠ log_t(a) − log_t(b)` the ratio does not split into a model term and a label term; its unbiased estimator would need the true `P(y|x)` inside the logarithm, and approximating that conditional by 1 makes the estimator biased. So the choice of Bregman over Tsallis is exactly what keeps the empirical loss an unbiased, proper objective. Second, *Bayes-risk consistency*: at the conditional-risk minimizer the predicted probabilities equal the posteriors `η_i`; the per-class normalization term does not depend on which class I am scoring, so it does not move the classwise argmin, and since `−log_{t_1}` is monotone decreasing for `0 ≤ t_1 < 1`, `argmin_i l_i = argmax_i p_i = argmax_i â_i = argmax_i η_i`. The loss still picks the Bayes-optimal class in the non-convex regime. So both properties survive the mismatch; the only thing the mismatch sacrifices is the convexity I just confirmed I wanted to lose.
 
 What do I set the temperatures to? Each dial cures one disease, so the choice should track which noise I expect. Pure small-margin boundary noise wants tail-heaviness only — `t_1 = 1`, `t_2` large (e.g. 4). Pure large-margin outliers want boundedness only — `t_1` small (e.g. 0.2), `t_2 = 1`. Realistic noise has both, so I want both dials engaged, but not so aggressively that optimization suffers — very extreme temperatures flatten the loss surface and slow convergence. For a moderate-scale, moderately-noisy image-classification problem with a residual network, a mild pair like `t_1 = 0.8`, `t_2 = 1.2` should sit in the safe, effective range: enough boundedness and tail-heaviness to resist noise, gentle enough that training stays stable. Higher noise or smaller, cleaner-architecture datasets push toward more extreme values; large clean datasets want the dials near 1. In practice this is a two-dimensional grid search, `t_1 ∈ [0.5, 1)` and `t_2 ∈ (1, 4]`.
 
@@ -72,75 +72,4 @@ Now the implementation, grounded in the tempered primitives. I need `log_t` and 
 
 where `q_i = p_i^{t_2}/Σ_j p_j^{t_2}`. Before I commit this to a custom backward, let me check it against finite differences of the forward loss — including the implicit `λ(a)` dependence, which is exactly where a hand-derived gradient tends to be wrong. At `t_1 = 0.7, t_2 = 1.4`, true class 1, `â = (0.3, −0.7, 1.1, 0.0)`, the closed form gives `(0.0558, −0.2393, 0.1426, 0.0408)` and central differences of the full forward loss give `(0.0558, −0.2393, 0.1426, 0.0408)`, agreeing to `3 × 10⁻¹⁰`. So the escort-distribution gradient is correct, implicit `λ` and all, and it is safe to drop it into the PyTorch port; when `t_1 = t_2 = 1`, I skip all of this and call ordinary cross-entropy.
 
-```python
-import torch
-import torch.nn.functional as F
-
-
-def log_t(u, t):
-    """Tempered logarithm; bounded below by -1/(1-t) for 0 <= t < 1."""
-    if t == 1.0:
-        return torch.log(u)
-    return (u.pow(1.0 - t) - 1.0) / (1.0 - t)
-
-
-def exp_t(u, t):
-    """Tempered exponential; heavy-tailed for t > 1 on negative inputs."""
-    if t == 1.0:
-        return torch.exp(u)
-    return torch.relu(1.0 + (1.0 - t) * u).pow(1.0 / (1.0 - t))
-
-
-def compute_normalization_fixed_point(activations, t, num_iters=5):
-    """Solve sum_i exp_t(a_i - lambda) = 1 for t > 1 by fixed point."""
-    mu = activations.max(dim=-1, keepdim=True).values
-    normalized_step_0 = activations - mu
-    normalized = normalized_step_0
-    for _ in range(num_iters):
-        Z = exp_t(normalized, t).sum(dim=-1, keepdim=True)
-        normalized = normalized_step_0 * Z.pow(1.0 - t)
-    Z = exp_t(normalized, t).sum(dim=-1, keepdim=True)
-    return -log_t(1.0 / Z, t) + mu
-
-
-def tempered_softmax(activations, t, num_iters=5):
-    """Tempered softmax p_i = exp_t(a_i - lambda_t(a))."""
-    if t == 1.0:
-        return F.softmax(activations, dim=-1)
-    norm = compute_normalization_fixed_point(activations, t, num_iters)
-    return exp_t(activations - norm, t)
-
-
-class _BiTemperedLogisticLoss(torch.autograd.Function):
-    @staticmethod
-    def forward(ctx, logits, targets, t1, t2, num_iters):
-        p = tempered_softmax(logits, t2, num_iters)
-        y = F.one_hot(targets, logits.shape[-1]).to(dtype=logits.dtype)
-        loss = -log_t(p.gather(-1, targets[..., None]).squeeze(-1), t1)
-        loss = loss - (1.0 / (2.0 - t1)) * (1.0 - p.pow(2.0 - t1).sum(dim=-1))
-        ctx.save_for_backward(p, y)
-        ctx.t1 = t1
-        ctx.t2 = t2
-        return loss
-
-    @staticmethod
-    def backward(ctx, grad_output):
-        p, y = ctx.saved_tensors
-        t1, t2 = ctx.t1, ctx.t2
-        delta = (p - y) * p.pow(t2 - t1)
-        delta_sum = delta.sum(dim=-1, keepdim=True)
-        escorts = p.pow(t2)
-        escorts = escorts / escorts.sum(dim=-1, keepdim=True)
-        grad_logits = delta - escorts * delta_sum
-        return grad_output.unsqueeze(-1) * grad_logits, None, None, None, None
-
-
-def bi_tempered_logistic_loss(logits, targets, t1=0.8, t2=1.2, num_iters=5):
-    """Sparse robust loss. t1 = t2 = 1 recovers ordinary cross-entropy."""
-    if t1 == 1.0 and t2 == 1.0:
-        return F.cross_entropy(logits, targets)
-    losses = _BiTemperedLogisticLoss.apply(logits, targets, float(t1), float(t2), int(num_iters))
-    return losses.mean()
-```
-
-The chain in one breath: softmax cross-entropy fails in two distinct ways under label noise — its unbounded `log` lets large-margin mislabeled points add loss linearly in their margin (I watched `−log p_0` track `5, 20, 100`), and its light-tailed softmax forces near-boundary noise toward 0/1. Both pieces are dual halves of one convex object — softmax is the dual-gradient of the negative entropy `F`, cross-entropy is its Bregman divergence — so I deformed `F` as a whole rather than hacking the pieces. A tempered logarithm floored at `−1/(1−t)` for `t_1 < 1` makes the loss bounded (numerically saturating at `1/(1−t_1) = 2`); its inverse, the tempered exponential heavy-tailed for `t_2 > 1`, makes the softmax non-saturating (three times the mass on a far-wrong class) at the price of a per-example normalizer with no closed form, which a fixed-point iteration solves to a valid probability vector in five steps. Mismatching `t_1 < 1 < t_2` gives a bounded, heavy-tailed loss whose second difference goes negative (non-convex, confirmed) while the matched case stays convex, and the loss remains proper — because it is built on the Bregman, not the Tsallis, divergence — and Bayes-risk consistent. The PyTorch port uses the escort-distribution gradient, checked against finite differences to `10⁻¹⁰`, with an ordinary cross-entropy branch at `(t_1, t_2) = (1, 1)`.
+Every piece is now pinned down: `log_t` and `exp_t` (with a `relu`/`clamp` realizing `[·]_+`), the fixed-point normalizer that converged to a valid distribution in five iterations above, the one-hot loss `−log_{t_1}(ŷ_c) − (1/(2−t_1))(1 − Σ_i ŷ_i^{2−t_1})`, and the escort-distribution backward `(p_i − y_i)p_i^{t_2−t_1} − q_i Σ_j (p_j − y_j)p_j^{t_2−t_1}` just verified against finite differences. Wiring these into a `torch.autograd.Function` — forward computing the loss from `tempered_softmax`, backward returning the closed-form gradient instead of differentiating through the fixed-point loop — with a `t_1 = t_2 = 1` branch that falls back to ordinary cross-entropy, is the whole port.
