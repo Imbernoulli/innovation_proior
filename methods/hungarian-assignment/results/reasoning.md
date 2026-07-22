@@ -132,8 +132,7 @@ there has genuine slack `u_i + v_j - r_ij > 0`. Let
 
 the smallest slack anywhere in that uncovered block; `δ > 0`. Now the budget update: subtract `δ`
 from `u_i` on every *inessential* row, and add `δ` to `v_j` on every *essential* (covered) column.
-Let me check the two things that must hold — feasibility preserved, and dual objective strictly down
-— because the whole termination argument rides on them.
+Two things need to hold for this to work: feasibility preserved, and the dual objective strictly down.
 
 Feasibility: which pairs `(i, j)` could have their `u_i + v_j` *decrease*? Only ones where I lowered
 something and didn't raise it. I lowered `u_i` exactly on inessential rows; I raised `v_j` on
@@ -158,9 +157,9 @@ and it can only terminate by the tight pairs admitting a full matching — which
 certified assignment. This is Egerváry's step lifting König from `0/1` to integers: a finite sequence
 of König problems, stitched together by budget updates that each expose at least one new tight pair.
 
-Let me make sure I see *why* the update direction is what it is and not the opposite, because the
-signs are the whole thing. I want to *create* a tight pair in the uncovered block, where every pair
-currently has positive slack `u_i + v_j − r_ij`. To make one of those equalities, I must *shrink*
+The update direction isn't arbitrary — it has to be this way and not the mirror image. I want to
+*create* a tight pair in the uncovered block, where every pair currently has positive slack
+`u_i + v_j − r_ij`. To make one of those equalities, I must *shrink*
 `u_i + v_j` there, which means lowering `u` on the inessential rows (or, symmetrically, lowering `v`
 on the inessential columns — rows and columns enter the problem symmetrically, so either works, and a
 careful implementation picks whichever keeps the potentials nonnegative). But if I only lower `u` on
@@ -190,12 +189,10 @@ If I get `n`, I'm done. If not, König gives me the minimum set of lines coverin
 than `n` lines. The uncovered entries are all strictly positive; let `d` be the smallest uncovered
 entry. The budget update "subtract `δ` from inessential rows, add to essential columns" becomes, in
 reduced-matrix terms: **subtract `d` from every uncovered row and add `d` to every covered column.**
-Let me track each cell to be sure: an entry whose row is uncovered and whose column is uncovered
-gets `−d` only, so it loses `d` (good — a new zero appears where the minimum was); an entry in a
-covered row and covered column gets `+d` only, so it gains `d`; an entry in an uncovered row but
-covered column gets `−d + d = 0`, unchanged; and an entry in a covered row and uncovered column is
-touched by neither, also unchanged. All entries stay `≥ 0` because `d` was the
-smallest uncovered value, so the uncovered cells can't go negative. Repeat: re-match on the new zeros,
+Cell by cell: uncovered-row/uncovered-column entries lose `d` only (a new zero appears where the
+minimum was); covered-row/covered-column entries gain `d` only; uncovered-row/covered-column entries
+lose `d` then gain it back, net zero; covered-row/uncovered-column entries are untouched. All stay
+`≥ 0` because `d` was the smallest uncovered value. Repeat: re-match on the new zeros,
 re-cover, re-subtract, until a full set of independent zeros appears. The dual objective `Σ u + Σ v`
 is now a *lower* bound on the cost (I flipped the sign), and each cover step strictly *raises* it — by
 `d·(n − |cover|) > 0`, the same count as before — so it climbs toward the optimum and this halts.
@@ -230,85 +227,27 @@ size of the costs. This is the same primal–dual method — dual-feasible poten
 matching, König-minimum dual updates, complementary-slackness optimality — just amortized so each
 dual update is the local minimum slack of one growing augmenting path instead of a global rescan.
 
-Let me write the fast form as the program I'd actually submit — a single self-contained C++17 routine
-that reads the instance from stdin (`n`, then the `n × n` integer cost matrix in row-major order) and
-prints the minimum total cost and the chosen column for each row. I'll work in `1`-based indices with
-a dummy column `0` to anchor each path, exactly as the path bookkeeping wants, and carry everything in
-`long long` so large entries can't overflow.
+Coding this up: a single self-contained routine that reads the instance from stdin (`n`, then the
+`n × n` integer cost matrix in row-major order) and prints the minimum total cost and the chosen
+column for each row. Per row `i`, grow a minimum-slack alternating tree over columns — maintain
+`minv[j]`, the smallest reduced cost reached at column `j` so far, and a predecessor `way[j]` to
+trace back; repeatedly step to the unused column with the smallest `minv`, call that value `delta`,
+and apply it: raise the potential on every row already on the path, lower it on every column already
+on the path (tight edges stay tight), and lower the running `minv` of the columns not yet reached.
+That `delta` is exactly the König minimum-uncovered slack, computed incrementally for this one
+growing path instead of by a global rescan. When the column reached is free, the alternating path is
+augmenting — flip it by walking `way[]` back and match the new row. I'll work in `1`-based indices
+with a dummy column `0` to anchor each path, and carry everything in `long long` so large entries
+can't overflow — the delivered program below is exactly this loop, run once per row.
 
-```cpp
-// Hungarian (Kuhn-Munkres) assignment, primal-dual O(n^3) shortest-augmenting-path form.
-// Reads from stdin: an integer n, then an n x n integer cost matrix (row-major).
-// Writes to stdout: the minimum total assignment cost, then n lines "i j"
-// meaning row i (0-based) is matched to column j. Uses long long to avoid overflow.
-#include <bits/stdc++.h>
-using namespace std;
-
-int main() {
-    int n;
-    if (!(cin >> n)) return 0;
-    vector<vector<long long>> cost(n, vector<long long>(n));
-    for (int i = 0; i < n; i++)
-        for (int j = 0; j < n; j++)
-            cin >> cost[i][j];
-
-    const long long INF = LLONG_MAX / 4;
-    // 1-based with a dummy column 0 anchoring each augmenting path.
-    vector<long long> u(n + 1, 0), v(n + 1, 0); // dual potentials (reduced costs >= 0)
-    vector<int> p(n + 1, 0);                    // p[j] = row matched to column j (0 = free)
-    vector<int> way(n + 1, 0);                  // predecessor column, to trace the path
-    for (int i = 1; i <= n; i++) {
-        p[0] = i;
-        int j0 = 0;
-        vector<long long> minv(n + 1, INF);     // min reduced cost reaching each column
-        vector<char> used(n + 1, false);        // columns already on the path
-        do {
-            used[j0] = true;
-            int i0 = p[j0], j1 = -1;
-            long long delta = INF;
-            for (int j = 1; j <= n; j++) {       // relax: extend the alternating path
-                if (!used[j]) {
-                    long long cur = cost[i0 - 1][j - 1] - u[i0] - v[j]; // reduced cost (slack)
-                    if (cur < minv[j]) { minv[j] = cur; way[j] = j0; }
-                    if (minv[j] < delta) { delta = minv[j]; j1 = j; }   // smallest slack = Koenig min
-                }
-            }
-            for (int j = 0; j <= n; j++) {        // dual update by delta: tight edges stay tight
-                if (used[j]) { u[p[j]] += delta; v[j] -= delta; }
-                else          minv[j] -= delta;
-            }
-            j0 = j1;
-        } while (p[j0] != 0);                     // until a free column -> augmenting path found
-        do {                                      // flip the path via the predecessor chain
-            int j1 = way[j0];
-            p[j0] = p[j1];
-            j0 = j1;
-        } while (j0);
-    }
-
-    vector<int> assign(n, 0);
-    for (int j = 1; j <= n; j++)
-        if (p[j] != 0) assign[p[j] - 1] = j - 1;
-
-    long long total = 0;
-    for (int i = 0; i < n; i++) total += cost[i][assign[i]];
-
-    cout << total << "\n";
-    for (int i = 0; i < n; i++) cout << i << " " << assign[i] << "\n";
-    return 0;
-}
-```
-
-That is the form I'd run on a machine, but its dual updates are amortized into the path search, which
-hides the König/Egerváry steps. To check the logic by hand I want the literal tableau form alongside —
-the same primal–dual method written as pencil-and-paper matrix moves: row reduce, column reduce, match
-the zeros, König-cover them, then subtract the minimum uncovered value off the uncovered rows and add
-it onto the covered columns, and repeat. So before I trust any of this I want to run that tableau form
-by hand on a concrete instance — not to
-admire the answer but because I half-expect to find that one König cover and one update isn't enough,
-and I'd like to see how many rounds it actually takes and whether the dual certificate it leaves
-behind really equals the cost. For a maximization with rating matrix `R`, I flip signs (`cost = −R`)
-and minimize, then negate the total back. Take
+That form is what I'd run on a machine, but its dual updates are amortized into the path search,
+which hides the König/Egerváry steps. To check the logic by hand I want the literal tableau form
+alongside — the same primal–dual method written as pencil-and-paper matrix moves: row reduce, column
+reduce, match the zeros, König-cover them, then subtract the minimum uncovered value off the
+uncovered rows and add it onto the covered columns, and repeat. Let me run this tableau form by hand
+on a concrete instance, to see how many cover-and-update rounds it actually takes and whether the
+dual certificate it leaves behind really equals the cost. For a maximization with rating matrix `R`,
+I flip signs (`cost = −R`) and minimize, then negate the total back. Take
 
     R = [[8,7,9,9],[5,2,7,8],[5,1,4,8],[2,2,2,6]],  so neg = −R = [[-8,-7,-9,-9],
                                                                     [-5,-2,-7,-8],
@@ -367,27 +306,13 @@ equality — so the assignment is certified optimal without enumerating permutat
 chosen cell the budget is tight: `u_0+v_0 = −9+1 = −8 = neg_{00}`, `u_1+v_2 = −7+0 = −7 = neg_{12}`,
 `u_2+v_3 = −6−2 = −8 = neg_{23}`, `u_3+v_1 = −4+2 = −2 = neg_{31}`. That is complementary slackness,
 verified cell by cell, not assumed. A full permutation enumeration on this `4 × 4` independently
-returns the same value `25`, so the certificate isn't fooling me. The trace took two cover-and-update
-rounds, which is the reassuring part: it confirms the loop isn't a formality — the reduction left real
-work, and the dual updates are what closed the gap. Checking against a brute-force permutation
-enumerator — try all `n!` orderings and keep the cheapest — on a few hundred random small integer
-matrices, the optimal cost from the program matches every time (`0` mismatches).
+returns the same value `25`, confirming the certificate. The trace took two cover-and-update rounds
+— the initial row/column reduction alone didn't finish it, and the dual updates were what closed the
+gap. Checking against a brute-force permutation enumerator — try all `n!` orderings and keep the
+cheapest — on a few hundred random small integer matrices, the optimal cost from the program matches
+every time (`0` mismatches).
 
 The `minv`/`way` shortest-augmenting-path update is the part I'd most easily get wrong under time
 pressure; if I weren't confident I could get the potential signs and path flip right in the budget,
 I'd fall back to the literal tableau Hungarian loop I've already traced as correct, with zero matching
 and König-cover recomputed after each slack update, and ship that -- a plain correct submission beats an ambitious broken one.
-
-So the causal chain: the assignment problem is a linear program, but a degenerate one where generic
-simplex is the wrong tool, so I write its dual and read off weak duality — every feasible budget
-`(u, v)` bounds every assignment, and they meet exactly when the assignment uses only *tight* pairs
-`u_i + v_j = r_ij` (complementary slackness). Birkhoff/total-unimodularity guarantees such a meeting
-pair exists. Solving the all-`0/1` (qualification) special case by augmenting paths gives König's
-min–max identity — maximum independent marks = minimum covering lines — and the cover it produces
-when the matching is short is exactly the handle to fix the budget: subtract the minimum uncovered
-slack `δ` from the inessential rows and add it to the essential columns (Egerváry's step), which
-keeps the budget feasible, exposes a new tight pair, and strictly lowers the dual objective, so the
-process terminates at a full tight matching certified optimal. Folding the budget into a reduced
-matrix turns this into the pencil-and-paper tableau — row/column reduction, match the zeros,
-König-cover, subtract-the-uncovered-minimum — and amortizing the dual updates into one shortest
-augmenting path per row turns the same logic into the `O(n^3)` potential form.

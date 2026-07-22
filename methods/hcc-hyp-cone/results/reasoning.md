@@ -8,15 +8,15 @@ Now, the naive patch is "just push the cliff pair apart in the loss." But think 
 
 So what kind of space has room? I keep coming back to negative curvature. The defining fact about hyperbolic space is that volume grows exponentially with radius instead of polynomially. That's why it embeds trees and hierarchies with low distortion — there's exponentially more room near the boundary than a flat space provides. And graded binding affinity *is* a kind of hierarchy: within an assay, ligands fan out from weak to strong, and across the library there's a coarse-to-fine structure of "binds this family / binds this target / binds this pocket conformation specifically." If a curved space naturally encodes hierarchy, maybe it naturally encodes the affinity hierarchy, and — this is the bet — maybe the exponential growth gives me exactly the room to separate cliffs cheaply.
 
-Let me make that idea quantitative before I commit, because "exponential room" is a slogan until I can show a small structural difference becomes a large distance — and a slogan is exactly the kind of thing I'd otherwise carry forward unchecked. I'll work on the Lorentz model of hyperbolic space, because Nickel & Kiela established it as the numerically stable realization (the Poincaré ball is equivalent but blows up near its boundary, and the Lorentz distance and exponential map have clean closed forms). The model: points live on the upper sheet of a two-sheeted hyperboloid in `R^{n+1}`, with the Lorentzian inner product `⟨x,y⟩_L = ⟨x_space, y_space⟩ − x_time·y_time`, constrained to `⟨x,x⟩_L = −1/κ` (curvature `−κ`), so `x_time = sqrt(1/κ + ||x_space||²)`. The geodesic distance is `d_L(x,y) = (1/√κ) arccosh(−κ⟨x,y⟩_L)`. And I lift Euclidean encoder outputs onto it with the exponential map at the origin: treat the encoder output as a tangent vector `v` at the hyperboloid vertex and fold it onto the surface. Parameterizing only the space components, that map simplifies beautifully — `x_space = sinh(√κ ||v||)/(√κ ||v||) · v` — with the time coordinate forced by the constraint. (I'm following the MERU construction here; that's the one that made hyperbolic contrastive learning actually train.)
+"Exponential room" is a slogan until I can show a small structural difference actually becomes a large distance, so let me make it quantitative. I'll work on the Lorentz model of hyperbolic space, because Nickel & Kiela established it as the numerically stable realization (the Poincaré ball is equivalent but blows up near its boundary, and the Lorentz distance and exponential map have clean closed forms). The model: points live on the upper sheet of a two-sheeted hyperboloid in `R^{n+1}`, with the Lorentzian inner product `⟨x,y⟩_L = ⟨x_space, y_space⟩ − x_time·y_time`, constrained to `⟨x,x⟩_L = −1/κ` (curvature `−κ`), so `x_time = sqrt(1/κ + ||x_space||²)`. The geodesic distance is `d_L(x,y) = (1/√κ) arccosh(−κ⟨x,y⟩_L)`. And I lift Euclidean encoder outputs onto it with the exponential map at the origin: treat the encoder output as a tangent vector `v` at the hyperboloid vertex and fold it onto the surface. Parameterizing only the space components, that map simplifies beautifully — `x_space = sinh(√κ ||v||)/(√κ ||v||) · v` — with the time coordinate forced by the constraint. (I'm following the MERU construction here; that's the one that made hyperbolic contrastive learning actually train.)
 
-Now the cliff calculation. Take two ligands as tangent vectors `v_1, v_2` at the origin, structurally similar, so suppose they have nearly equal radial norm `||v_1|| ≈ ||v_2|| = r` and a small angle `θ = ∠(v_1, v_2)` between them, `θ ≪ 1`. I want their geodesic distance after the exponential map. The hyperbolic law of cosines for the triangle with two sides of length `r` and included angle `θ` gives, in a unit-curvature hyperboloid, `cosh d = cosh²r − sinh²r cos θ`. Let me expand for small `θ`: `cos θ ≈ 1 − θ²/2`, so `cosh d ≈ cosh²r − sinh²r (1 − θ²/2) = (cosh²r − sinh²r) + sinh²r · θ²/2 = 1 + sinh²r · θ²/2`, using `cosh²r − sinh²r = 1`. So `cosh d − 1 ≈ (sinh²r/2) θ²`. Now invert: for small argument I claim `arccosh(1 + ε) ≈ √(2ε)`. I should check that inversion rather than trust it — it's the step that carries the whole result. Numerically: `arccosh(1 + 0.01) = 0.14130`, and `√(0.02) = 0.14142`, a ratio of 0.99917; at `ε = 10⁻⁴` the ratio is 0.99999. Good, the leading-order inverse is `√(2ε)` and the error is genuinely higher order. With `ε = (sinh²r/2)θ²`, `√(2ε) = √(sinh²r · θ²) = sinh r · θ`. Restoring the curvature factor (`d_L` carries a `1/√κ`),
+Now the cliff calculation. Take two ligands as tangent vectors `v_1, v_2` at the origin, structurally similar, so suppose they have nearly equal radial norm `||v_1|| ≈ ||v_2|| = r` and a small angle `θ = ∠(v_1, v_2)` between them, `θ ≪ 1`. I want their geodesic distance after the exponential map. The hyperbolic law of cosines for the triangle with two sides of length `r` and included angle `θ` gives, in a unit-curvature hyperboloid, `cosh d = cosh²r − sinh²r cos θ`. Let me expand for small `θ`: `cos θ ≈ 1 − θ²/2`, so `cosh d ≈ cosh²r − sinh²r (1 − θ²/2) = (cosh²r − sinh²r) + sinh²r · θ²/2 = 1 + sinh²r · θ²/2`, using `cosh²r − sinh²r = 1`. So `cosh d − 1 ≈ (sinh²r/2) θ²`. Now invert: for small argument, `arccosh(1 + ε) ≈ √(2ε)`, and since this is the step that carries the whole result it's worth pinning down numerically: `arccosh(1 + 0.01) = 0.14130`, and `√(0.02) = 0.14142`, a ratio of 0.99917; at `ε = 10⁻⁴` the ratio is 0.99999. So the leading-order inverse is `√(2ε)` and the error is genuinely higher order. With `ε = (sinh²r/2)θ²`, `√(2ε) = √(sinh²r · θ²) = sinh r · θ`. Restoring the curvature factor (`d_L` carries a `1/√κ`),
 
 ```
 d_H(exp_o(v_1), exp_o(v_2)) ≈ (sinh r / √κ) · θ + O(θ³).
 ```
 
-Before I read meaning into that, let me confirm the whole chain — law of cosines plus inversion — against the exact distance, because two approximations stacked can drift. At `κ=1`, `r=2`, `θ=0.1`: exact `arccosh(cosh²2 − sinh²2·cos 0.1) = 0.3606`, and `sinh(2)·0.1 = 0.3627` — within 0.6%. At `r=1, θ=0.01` the two agree to five places (`0.011752` vs `0.011752`). It only starts to drift when both `r` and `θ` are large together (at `r=3, θ=0.1` the approximation overshoots by ~4%), which is the regime where the higher-order term should bite — exactly as expected. So the formula is trustworthy in the small-`θ` regime that cliffs occupy.
+Two approximations stacked can drift, so let me confirm the whole chain — law of cosines plus inversion — against the exact distance. At `κ=1`, `r=2`, `θ=0.1`: exact `arccosh(cosh²2 − sinh²2·cos 0.1) = 0.3606`, and `sinh(2)·0.1 = 0.3627` — within 0.6%. At `r=1, θ=0.01` the two agree to five places (`0.011752` vs `0.011752`). It only starts to drift when both `r` and `θ` are large together (at `r=3, θ=0.1` the approximation overshoots by ~4%), which is the regime where the higher-order term should bite — exactly as expected. So the formula is trustworthy in the small-`θ` regime that cliffs occupy.
 
 So the separation is `θ` *amplified by `sinh r`*. In Euclidean space the same configuration gives separation `≈ r·θ` — linear in `r`. Here the factor is `sinh r`. Is that amplification actually large at radii I'd plausibly use, or is it a distinction without a difference? The ratio `sinh(r)/r` is the honest figure of merit, since it's the hyperbolic separation divided by the Euclidean one for the same `θ`. At `r=1` it's only 1.18 — barely anything. At `r=2` it's 1.81, at `r=3` it's 3.34, at `r=4` it's 6.82. So the amplification is real but it *only switches on past `r≈2`*; near the origin hyperbolic space is locally flat and buys me nothing. That's an important caveat for later — it means the geometry only helps if I can push the discriminating tier out to a genuinely large radius, not just nudge it. With that proviso, the picture holds: if two ligands occupy a large radial level and differ by even a tiny angle, their geodesic distance is several-fold larger than the Euclidean image of the same angle, and that multiplier grows without bound. A cliff pair — nearly identical structure (tiny `θ`) but very different function — can be separated if the geometry gives the stronger tier access to larger radial scale and tighter angular control, because the angular sliver is then amplified at the radius where it matters. I'm not distorting the metric uniformly; I'm letting the curvature do the amplification where the affinity hierarchy asks for it. So the design wants two coordinates doing two jobs: the radial coordinate carrying binding-strength tier, the angular position carrying identity, and the cliffs separating through the product of the two — provided the tiers actually reach the large-`r` regime where `sinh r` outruns `r`.
 
@@ -44,7 +44,7 @@ Now the tiers. I bucket each ligand by its affinity. The natural thresholds for 
 r_k = r_0 + b·Δr,        η_k = η_0 − b·Δη,
 ```
 
-with `r_0, η_0` the base radius and angular scale for the weakest tier and `Δr, Δη > 0` per-tier increments. Stare at the signs, because getting them backwards would invert the prior. A *stronger* binder (larger `b`) gets a *larger* `r_k`: the one-sided radial hinge permits a larger pocket-ligand geodesic cap for the stronger tier. This is a cap, not a force to sit exactly at that radius, but it gives high-affinity ligands room to occupy the larger radial scales where the `sinh r` angular amplification can matter. And a stronger binder gets a *smaller* `η_k`: a tighter angular tolerance, because a strong, specific binding event should align more decisively with the pocket's admissible direction than a weak one. So the implemented signs are strong = larger radial cap and tighter angular tolerance; weak = smaller radial cap and wider angular tolerance.
+with `r_0, η_0` the base radius and angular scale for the weakest tier and `Δr, Δη > 0` per-tier increments. Get the signs backwards here and the prior inverts, so it's worth being explicit about them. A *stronger* binder (larger `b`) gets a *larger* `r_k`: the one-sided radial hinge permits a larger pocket-ligand geodesic cap for the stronger tier. This is a cap, not a force to sit exactly at that radius, but it gives high-affinity ligands room to occupy the larger radial scales where the `sinh r` angular amplification can matter. And a stronger binder gets a *smaller* `η_k`: a tighter angular tolerance, because a strong, specific binding event should align more decisively with the pocket's admissible direction than a weak one. So the implemented signs are strong = larger radial cap and tighter angular tolerance; weak = smaller radial cap and wider angular tolerance.
 
 Let me run the actual 5EHR-style cliff pair through this, with the constants I'm about to choose (`r_0 = 0.5`, `Δr = 0.5`), and check the geometry separates them by an amount that survives. The weak member is, say, pIC50 5.5 and the strong member pIC50 8.0. With thresholds `[5,7,9]`, `bucketize` puts 5.5 in bucket 1 and 8.0 in bucket 2 (I should be careful here — 5.5 is *not* bucket 0; the first threshold is 5, so only sub-5 ligands land in the weakest bucket). That gives the weak ligand a radial cap `r = 0.5 + 1·0.5 = 1.0` and the strong one `r = 0.5 + 2·0.5 = 1.5`; angular tolerances `η = 0.7 − 0.2 = 0.5` and `0.7 − 0.4 = 0.3` respectively. Now what separation does that actually produce? If both ligands lie near the *same* pocket-relative direction but at their respective caps, they sit on roughly the same radial ray at radii 1.0 and 1.5, and the geodesic distance between two points on a common ray through the origin is just `|1.5 − 1.0| = 0.5` — I confirmed the exact law-of-cosines distance at `θ=0` returns 0.5000. So the radial tiering alone pries a structurally-identical pair apart by 0.5 in geodesic distance, where the Euclidean dot-product gap was `~0.00125`. And the angular axis compounds it: the strong ligand, held to the tighter `η`, is pushed toward the pocket axis at `r=1.5`, where a residual `θ=0.05` between the pair maps to geodesic `sinh(1.5)·0.05 = 0.106` — versus `sinh(0.5)·0.05 = 0.026` if the same angular sliver were left down at `r=0.5`, a 4× difference from radius alone. So the two knobs move in opposite directions with affinity and the separations from each *add* rather than fight, which is the two-axis separation the cliff analysis said I needed (`sinh r · θ` uses both `r` and `θ`). I had to check the bucket boundary to get this right; had 5.5 fallen in bucket 0 the two tiers would have been adjacent and the radial gap would have been only `Δr`, still positive but half as much.
 
@@ -83,252 +83,6 @@ Now the projection heads and the parameters the geometry needs, because there ar
 
 One last quirk to be careful about. The exp map returns *only* the 128-d space components — the time coordinate is implicit, recovered from the constraint. So the 128-d vector I get out *is* the on-manifold spatial representation. In the contrastive/cone losses, when I take the inner product for the softmax logits, I drop index 0 of that space vector (`emb[:, 1:]`) — a small implementation convention where the projector output is treated as `[lead, space...]` and the lead coordinate is excluded from the similarity, keeping the similarity computation aligned with how the manifold coordinates are bookkept. At *inference*, though, I score with the *full* 128-d dot product (`pocket_reps @ mol_reps.T`, take the max over a target's pockets, optionally add the sequence contribution), because that's the cached-retrieval matmul and it uses the embeddings as produced. The score function is the cheap dot product; everything geometric was paid for at training time.
 
-Let me write the scoring module, filling exactly the stubs — projection heads + geometry params in `__init__`, the three `project_*` lifts onto the hyperboloid, `compute_loss` assembling the HCC pathways + cone hierarchy + regularizers, and the matmul `score`:
+The scoring module fills exactly these stubs: projection heads and the geometry parameters (`α`, `κ`, `logit_scale`) in `__init__`; the three `project_*` methods scale-then-lift each backbone feature onto the hyperboloid via `exp_map0`; `compute_loss` assembles the cone-hierarchy losses, the two regularizers, and the pocket/sequence HCC pathways exactly as derived above; and `score` is the plain cached-matrix dot product, maxed over a target's pockets, plus the optional sequence contribution.
 
-```python
-"""Full hyperbolic scoring: HCC contrastive-ranking + cone hierarchy on the Lorentz model."""
-
-import math
-import numpy as np
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-from unimol.losses import lorentz as L
-
-
-class CustomScoring(nn.Module):
-    """Lorentz-hyperbolic embeddings + HCC contrastive ranking + cone hierarchy.
-
-    Projects each backbone feature into a 128-d space, scales by a clamped learnable
-    factor (so the exponential map cannot overflow), and lifts onto the hyperboloid
-    via exp_map0 with a learnable curvature. Trains with an in-batch contrastive +
-    listwise-ranking core (pocket->lig and seq->lig) plus radial+angular cone-tier
-    constraints driven by per-ligand affinity buckets.
-    """
-
-    def __init__(self, mol_dim=512, pocket_dim=512, protein_dim=480, embed_dim=128):
-        super().__init__()
-        # Projection heads: Linear(in,in) -> ReLU -> Linear(in,embed_dim).
-        self.mol_project = nn.Sequential(
-            nn.Linear(mol_dim, mol_dim), nn.ReLU(), nn.Linear(mol_dim, embed_dim)
-        )
-        self.pocket_project = nn.Sequential(
-            nn.Linear(pocket_dim, pocket_dim), nn.ReLU(), nn.Linear(pocket_dim, embed_dim)
-        )
-        self.protein_project = nn.Sequential(
-            nn.Linear(protein_dim, protein_dim), nn.ReLU(), nn.Linear(protein_dim, embed_dim)
-        )
-
-        # Per-tower scale (log space), init so scaled embedding has ~unit norm; clamp exp<=1
-        # to keep the exponential map from overflowing.
-        self.mol_alpha = nn.Parameter(torch.tensor([embed_dim ** -0.5]).log())
-        self.pocket_alpha = nn.Parameter(torch.tensor([embed_dim ** -0.5]).log())
-        self.protein_alpha = nn.Parameter(torch.tensor([embed_dim ** -0.5]).log())
-
-        # Learnable curvature (log space), clamped to [0.1, 10] so it stays hyperbolic.
-        self.curv = nn.Parameter(torch.tensor([1.0]).log(), requires_grad=True)
-        self._curv_minmax = {"max": math.log(10.0), "min": math.log(0.1)}
-
-        # Inverse temperature for the contrastive softmax (CLIP-style init).
-        self.logit_scale = nn.Parameter(torch.ones([1]) * np.log(13))
-
-        # Cone-hierarchy tiers (pIC50 thresholds) and weights.
-        self.alpha_poc = 1.0
-        self.alpha_prot = 1.0
-        self.bounds = torch.tensor([5.0, 7.0, 9.0], dtype=torch.float32)
-        self.chl_r0 = 0.5           # base radial cap (weakest tier)
-        self.chl_dr = 0.5           # +radius per tier: stronger binders get a larger cap
-        self.chl_eta0 = 0.7         # base angular scale (weakest tier, widest cone)
-        self.chl_deta = 0.2         # -angle per tier: stronger binders get a tighter cone
-        self.lambda_rad = 0.5
-        self.lambda_ang = 0.5
-        self.gamma_chl = 0.1        # cone is a prior, down-weighted vs the retrieval core
-        self.lambda_angu = 0.10     # R_ang weight
-        self.lambda_het = 0.10      # R_het weight
-
-    def _clamp_params(self):
-        self.mol_alpha.data = torch.clamp(self.mol_alpha.data, max=0.0)
-        self.pocket_alpha.data = torch.clamp(self.pocket_alpha.data, max=0.0)
-        self.protein_alpha.data = torch.clamp(self.protein_alpha.data, max=0.0)
-        self.curv.data = torch.clamp(self.curv.data, **self._curv_minmax)
-
-    def _project_to_hyperboloid(self, feat, proj_head, alpha):
-        u = proj_head(feat) * alpha.exp()                 # scale before lifting
-        with torch.autocast(u.device.type, dtype=torch.float32):
-            h = L.exp_map0(u, self.curv.exp())            # lift onto the hyperboloid
-        return h
-
-    def project_mol(self, mol_feat):
-        self._clamp_params()
-        return self._project_to_hyperboloid(mol_feat, self.mol_project, self.mol_alpha)
-
-    def project_pocket(self, poc_feat):
-        self._clamp_params()
-        return self._project_to_hyperboloid(poc_feat, self.pocket_project, self.pocket_alpha)
-
-    def project_protein(self, prot_feat):
-        self._clamp_params()
-        return self._project_to_hyperboloid(prot_feat, self.protein_project, self.protein_alpha)
-
-    def _compute_hcc_pair(self, emb_poc, emb_mol, batch_list, act_list,
-                          uniprot_poc, uniprot_mol, pocket_lig_smiles, lig_smiles,
-                          logit_scale):
-        """Contrastive + listwise-ranking loss for one query pathway (pocket or seq)."""
-        B = emb_poc.size(0)
-        emb_poc = emb_poc[:, 1:]                          # spatial-component similarity
-        emb_mol = emb_mol[:, 1:]
-        logits = torch.matmul(emb_poc, emb_mol.T) * logit_scale
-
-        N_mol = emb_mol.size(0)
-        mask = torch.zeros_like(logits, dtype=torch.bool)
-        if uniprot_poc is not None and uniprot_mol is not None:
-            for i in range(B):                            # same-target false negatives
-                for j in range(N_mol):
-                    if uniprot_poc[i] == uniprot_mol[j]:
-                        mask[i, j] = True
-        if pocket_lig_smiles is not None:
-            for i in range(B):                            # duplicate-ligand false negatives
-                bad = pocket_lig_smiles[i]
-                for j in range(N_mol):
-                    if lig_smiles[j] in bad:
-                        mask[i, j] = True
-        minus_inf = torch.finfo(logits.dtype).min
-        sim_masked = logits.masked_fill(mask, minus_inf)
-
-        # pocket -> ligand: one-positive InfoNCE per true binder; listwise ranking by affinity
-        loss_mol_list, loss_rank_list = [], []
-        for i in range(B):
-            s, e = batch_list[i]
-            acts = act_list[i]
-            L_i = e - s
-            out_i = sim_masked[i, s:e]
-            for k in range(s, e):
-                row_mask = torch.full_like(sim_masked[i], minus_inf)
-                row_mask[k] = 0                            # isolate column k as the positive
-                lprobs = F.log_softmax(row_mask + sim_masked[i], dim=-1)
-                if L_i > 1 and acts[k - s] < 5:            # skip weak binders as positives
-                    continue
-                loss_mol_list.append(-lprobs[k] / math.sqrt(L_i))
-            if L_i > 2:
-                for k_rel in range(L_i - 1):
-                    m = torch.zeros_like(out_i)
-                    for idx in range(L_i):
-                        if idx == k_rel:
-                            continue
-                        # only count ligands at least 3-fold weaker as "should rank below"
-                        if acts[k_rel] - math.log10(3) <= acts[idx]:
-                            m[idx] = minus_inf
-                    lprobs_rank = F.log_softmax(m + out_i, dim=-1)
-                    loss_rank_list.append(
-                        -lprobs_rank[k_rel] / (math.log(k_rel + 2) * math.sqrt(L_i))
-                    )
-        loss_mol = torch.stack(loss_mol_list).sum() if loss_mol_list else torch.tensor(0.0, device=logits.device)
-        loss_rank = torch.stack(loss_rank_list).sum() if loss_rank_list else torch.tensor(0.0, device=logits.device)
-
-        # ligand -> pocket: each ligand retrieves its own pocket
-        idx2poc = []
-        for i, (s, e) in enumerate(batch_list):
-            idx2poc += [i] * (e - s)
-        targets = torch.tensor(idx2poc, dtype=torch.long, device=logits.device)
-        lprobs_pocket_all = F.log_softmax(sim_masked.T, dim=-1)
-        loss_pocket_list = []
-        for i, (s, e) in enumerate(batch_list):
-            L_i = e - s
-            if L_i == 0:
-                continue
-            rows = list(range(s, e))
-            loss_tmp = F.nll_loss(lprobs_pocket_all[rows], targets[rows], reduction="none")
-            loss_pocket_list.append(loss_tmp.sum() / math.sqrt(L_i))
-        loss_pocket = torch.stack(loss_pocket_list).sum() if loss_pocket_list else torch.tensor(0.0, device=logits.device)
-
-        total = loss_pocket + loss_mol + loss_rank
-        return {"loss": total, "loss_pocket": loss_pocket, "loss_mol": loss_mol,
-                "loss_rank": loss_rank, "sim_masked": sim_masked}
-
-    def compute_loss(self, mol_emb, poc_emb, prot_emb, batch_list, act_list,
-                     uniprot_poc=None, uniprot_mol=None,
-                     pocket_lig_smiles=None, lig_smiles=None):
-        kappa = self.curv.exp().detach()
-        logit_scale = self.logit_scale.exp().detach()
-
-        # === Cone hierarchy (pocket <-> ligand only) ===
-        poc_space = poc_emb[:, 1:]
-        lig_space = mol_emb[:, 1:]
-        poc_idx = []
-        for i, (s, e) in enumerate(batch_list):
-            poc_idx += [i] * (e - s)
-        poc_idx = torch.tensor(poc_idx, device=poc_emb.device)
-
-        poc_sel = poc_space[poc_idx]
-        dist = L.pairwise_dist(poc_sel, lig_space, curv=kappa).diagonal()   # radial: pocket->ligand
-        device = dist.device
-        phi = L.oxy_angle(lig_space, poc_space[poc_idx], curv=kappa)        # angle at first arg
-        omega = L.half_aperture(poc_space[poc_idx], curv=kappa)             # pocket cone aperture
-
-        act_flat = torch.tensor([x for sub in act_list for x in sub],
-                                device=poc_emb.device, dtype=torch.float32)
-        bounds = self.bounds.to(poc_emb.device)
-        bucket = torch.bucketize(act_flat, bounds)                          # affinity tier
-        r_k = self.chl_r0 + bucket.float() * self.chl_dr                    # stronger -> larger cap
-        eta_k = self.chl_eta0 - bucket.float() * self.chl_deta              # stronger -> tighter tolerance
-        Nl = dist.size(0)
-        L_rad = F.relu(dist - r_k).sum() / math.sqrt(Nl)
-        L_ang = F.relu(phi - eta_k * omega).sum() / math.sqrt(Nl)
-        loss_cone = self.lambda_rad * L_rad + self.lambda_ang * L_ang
-
-        # angular margin: push decisively inside the cone, not just onto its boundary
-        m_margin = 0.15
-        R_ang = F.relu(phi - eta_k * omega + m_margin).sum() / math.sqrt(Nl)
-
-        # heterogeneity: weight threshold-selected entries by distance rank (beta = BEDROC focus 80.5)
-        R_het = torch.zeros(1, device=device)
-        cnt_het = 0
-        beta = 80.5
-        offset = 0
-        for i_poc, (s, e) in enumerate(batch_list):
-            L_i = e - s
-            if L_i < 1:
-                continue
-            d_i = dist[offset:offset + L_i].detach()
-            rank = (d_i.unsqueeze(0) < d_i.unsqueeze(1)).float().sum(1) + 1
-            w = torch.exp(-beta * (rank - 1) / L_i)
-            logits_row = torch.matmul(poc_space[i_poc:i_poc + 1], lig_space.T) * logit_scale
-            row_probs = F.softmax(logits_row[0, s:e], dim=-1)
-            pos_mask = act_flat[offset:offset + L_i] < 5                    # literal v < v_th mask
-            if pos_mask.any():
-                R_het += -(w[pos_mask] * row_probs[pos_mask].log()).sum() / (w[pos_mask].sum() + 1e-9)
-                cnt_het += 1
-            offset += L_i
-        R_het = R_het / max(cnt_het, 1)
-        loss_reg = self.lambda_het * R_het + self.lambda_angu * R_ang
-
-        # === HCC for both query pathways (pocket and sequence) ===
-        loss_dict_poc = self._compute_hcc_pair(
-            poc_emb, mol_emb, batch_list, act_list,
-            uniprot_poc, uniprot_mol, pocket_lig_smiles, lig_smiles, logit_scale,
-        )
-        loss_dict_prot = self._compute_hcc_pair(
-            prot_emb, mol_emb, batch_list, act_list,
-            uniprot_poc, uniprot_mol, pocket_lig_smiles, lig_smiles, logit_scale,
-        )
-        loss_hcc = self.alpha_poc * loss_dict_poc["loss"] + self.alpha_prot * loss_dict_prot["loss"]
-
-        total_loss = loss_hcc + self.gamma_chl * loss_cone + loss_reg
-        return total_loss, {
-            "loss": total_loss.item(),
-            "loss_hcc": loss_hcc.item(),
-            "loss_cone": loss_cone.item(),
-            "loss_reg": loss_reg.item(),
-            "sim_masked": loss_dict_poc["sim_masked"],
-        }
-
-    def score(self, mol_reps, pocket_reps, prot_reps=None):
-        """Cached-retrieval scoring: full-embedding dot product, max over a target's pockets."""
-        poc_scores = (pocket_reps @ mol_reps.T).max(axis=0)
-        if prot_reps is not None:
-            prot_scores = (prot_reps @ mol_reps.T).max(axis=0)
-            return poc_scores + prot_scores
-        return poc_scores
-```
-
-Let me close the loop on the causal chain. I started with a Euclidean contrastive screener that scales but cannot separate activity cliffs — structurally identical ligands with wildly different affinities collapse onto each other, because flat distance is linear and there's no room. Negative curvature gives that room: I derived, via the hyperbolic law of cosines and the `arccosh(1+ε)=√(2ε)` expansion — and checked both against exact distances — that two embeddings at radial depth `r` and small angle `θ` separate by `(sinh r/√κ)·θ`, angular difference amplified by `sinh r`, which the numbers said only outruns the Euclidean `r` once `r ≳ 2` (about 1.8× there, ~7× by `r=4`). So if I make radial tier and angular position carry affinity-sensitive structure *and push the discriminating tiers out to large radius*, cliffs can separate without distorting local structural similarity everywhere — I traced a concrete 5.5-vs-8.0 pIC50 pair and got 0.5 of geodesic separation from the radial tiers alone, against the `~0.00125` the Euclidean dot product would give. To control distance and angular spread per ligand I borrowed the entailment cone (aperture narrowing with radial norm, from Ganea, lifted to the Lorentz model by MERU) and turned its single binary cone into an *affinity-tiered* radial+angular hierarchy: bucket ligands by pIC50, give stronger binders a larger pocket-ligand radius cap and a smaller angular tolerance, and penalize only violations with one-sided hinges, plus a margin regularizer so angles go decisively inside the boundary and a threshold-mask heterogeneity regularizer weighted by the same focus `β=80.5` the BEDROC metric uses. That cone hierarchy rides on top of DrugCLIP's symmetric in-batch contrastive loss and a Plackett–Luce listwise ranking term, run on both a pocket-query pathway and an auxiliary protein-sequence pathway (the latter without cone supervision), with false-negative and duplicate masks. The exponential map needs a clamped learnable per-tower scale to avoid overflow and a learnable, bounded curvature; training scores with a spatial inner product while inference stays a cheap cached-matrix dot product, preserving billion-scale retrieval. The geometry is paid for at training time; the screen pays off at the top of the list.
+The mechanism also says where to expect the payoff to concentrate: the cone hierarchy only does work where a tiny angle meets a large radius, so the gain should show up on the cliff pairs and the fine within-assay ordering, not as a uniform lift everywhere — on ordinary, well-separated actives-vs-decoys the space should behave close to the Euclidean contrastive core it's built on top of.

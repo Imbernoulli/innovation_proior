@@ -24,7 +24,7 @@ Suppose I have a matching $M$ and I want it bigger. Picture a path that starts a
 
 That gives me the improvement move. But I need the converse to make it a *decision* procedure: if there is *no* augmenting path, is the matching already maximum? Because if "no augmenting path" could happen while a bigger matching still exists, then getting stuck would tell me nothing. Let me prove that getting stuck means truly maximum.
 
-Take my matching $M$ and suppose, for contradiction, that some strictly larger matching $M^\*$ exists, $|M^\*| > |M|$, yet $M$ has no augmenting path. Look at the symmetric difference $Q = M \mathbin\triangle M^\* = (M \setminus M^\*) \cup (M^\* \setminus M)$ — the edges in exactly one of the two matchings. Consider the degree of any vertex $v$ in the graph $(V, Q)$. It can have at most one edge from $M$ (matchings have max degree one) and at most one from $M^\*$, so its degree in $Q$ is at most $2$. A graph with all degrees $\le 2$ is a disjoint union of simple paths and cycles. Now, along any of these paths or cycles, consecutive edges must alternate between $M$ and $M^\*$ — two consecutive edges of $Q$ at a shared vertex can't both be from $M$ (that vertex would have two $M$-edges) nor both from $M^\*$, so they alternate. The cycles therefore have even length, with equally many $M$- and $M^\*$-edges. So the cycles contribute equal counts to $M$ and $M^\*$; all the *imbalance* $|M^\*| - |M| > 0$ must come from the paths. Hence at least one path has strictly more $M^\*$-edges than $M$-edges. An alternating path with more $M^\*$-edges than $M$-edges must begin and end with $M^\*$-edges, which means both endpoints have no $M$-edge in $Q$ — and they have no $M$-edge outside $Q$ either, because an $M$-edge at an endpoint that's also an $M^\*$-edge would be in neither $M\setminus M^\*$ nor $M^\*\setminus M$, fine, but if it were an $M$-edge not in $M^\*$ it would be in $Q$, contradicting "the path ends here." Let me state it carefully: an endpoint of such a path is matched in $M^\*$ (the path's last edge is an $M^\*$-edge incident to it) but *unmatched in $M$* — if it were $M$-matched, that $M$-edge is either in $M^\*$ too (then both edges at the endpoint... no, the endpoint has degree one in $Q$, so its $M$-edge, if not in $M^\*$, would add a second $Q$-edge, contradiction; and if its $M$-edge *is* in $M^\*$, then $M^\*$ would have two edges at this endpoint, the path edge and this one, contradiction). Either way the endpoint is exposed in $M$. So this path is an alternating path (alternating $M^\*$/$M$, equivalently $M$/non-$M$) with both endpoints exposed in $M$ — an augmenting path for $M$. That contradicts "no augmenting path." Therefore no larger $M^\*$ exists: **a matching is maximum iff it has no augmenting path.** That's the hinge I needed. Getting stuck is meaningful.
+Take my matching $M$ and suppose, for contradiction, that some strictly larger matching $M^\*$ exists, $|M^\*| > |M|$, yet $M$ has no augmenting path. Look at the symmetric difference $Q = M \mathbin\triangle M^\* = (M \setminus M^\*) \cup (M^\* \setminus M)$ — the edges in exactly one of the two matchings. Consider the degree of any vertex $v$ in the graph $(V, Q)$. It can have at most one edge from $M$ (matchings have max degree one) and at most one from $M^\*$, so its degree in $Q$ is at most $2$. A graph with all degrees $\le 2$ is a disjoint union of simple paths and cycles. Now, along any of these paths or cycles, consecutive edges must alternate between $M$ and $M^\*$ — two consecutive edges of $Q$ at a shared vertex can't both be from $M$ (that vertex would have two $M$-edges) nor both from $M^\*$, so they alternate. The cycles therefore have even length, with equally many $M$- and $M^\*$-edges. So the cycles contribute equal counts to $M$ and $M^\*$; all the *imbalance* $|M^\*| - |M| > 0$ must come from the paths. Hence at least one path has strictly more $M^\*$-edges than $M$-edges. Such a path begins and ends with $M^\*$-edges, and each such endpoint is matched in $M^\*$ but exposed in $M$: the endpoint has degree one in $Q$, so an $M$-edge there that isn't in $M^\*$ would be a second $Q$-edge at it (contradiction), and an $M$-edge there that is in $M^\*$ would give $M^\*$ two edges at that vertex (also a contradiction). So the path is alternating with both endpoints exposed in $M$ — an augmenting path for $M$, contradicting "no augmenting path." Therefore no larger $M^\*$ exists: **a matching is maximum iff it has no augmenting path.** Getting stuck is meaningful.
 
 Now I can run the program. Build a matching, look for an augmenting path; if found, flip and repeat; the size strictly increases each time and is bounded by $n$, so this halts after at most $n$ augmentations at a maximum matching. And now the question that the whole approach was built to answer: when the search for an augmenting path fails at a non-saturating matching, why should a deficient set appear?
 
@@ -41,94 +41,14 @@ $$|Z_B| = |Z_A| - 1.$$
 
 Put the two facts together. $Z_A$ is a subset of $A$ with
 $$|N(Z_A)| = |Z_B| = |Z_A| - 1 < |Z_A|.$$
-There it is — the deficient set, with deficiency exactly one, handed to me by the dead search. If $M$ is a maximum matching that fails to saturate $A$, then growing the alternating tree from any exposed index $r$ produces a concrete subfamily $Z_A$ whose neighborhood is strictly smaller than itself. So *no* matching can saturate $A$, and the neighborhood condition is violated on $Z_A$. Contrapositive complete: if the condition holds, a saturating matching exists; and when it fails, this very construction names the offending subfamily.
+The dead search hands me the deficient set directly: $Z_A$, with deficiency exactly one. If $M$ is a maximum matching that fails to saturate $A$, then growing the alternating tree from any exposed index $r$ produces a concrete subfamily $Z_A$ whose neighborhood is strictly smaller than itself. So *no* matching can saturate $A$, and the neighborhood condition is violated on $Z_A$. Contrapositive complete: if the condition holds, a saturating matching exists; and when it fails, this very construction names the offending subfamily.
 
-Let me make sure I didn't fool myself on the counting, because the whole theorem balances on $|N(Z_A)| = |Z_A| - 1$ and a sign slip there would wreck it. $Z_A$ contains the root $r$ (exposed) and some matched indices. The bijection is between $Z_A \setminus \{r\}$ and $Z_B$: forward map is "take your matching partner," and I argued (a) every non-root reachable index is matched into $Z_B$, (b) every reachable element is matched into $Z_A$ and being matched its partner is a non-root index (the root has no matching edge), (c) the matching is injective both ways. So it's a genuine bijection, $|Z_A| - 1 = |Z_B|$, and $N(Z_A) = Z_B$, so $|N(Z_A)| = |Z_A| - 1$. The strict inequality is real. Good.
-
-And let me sanity-check on the dead-simple instance so I trust the machine: $T_1 = \{a\}$, $T_2 = \{a\}$. Start matching empty, augment once, say $1$–$a$. Now $2$ is exposed; grow the tree from $r = 2$. From $2$ take a non-matching edge — its only neighbor is $a$, so $Z_B = \{a\}$. Is $a$ exposed? No, it's matched to $1$. Follow $a$'s matching edge back: lands on $1$, so $1 \in Z_A$. From $1$, neighbors are just $a$, already in $Z_B$, nothing new. Search dies. $Z_A = \{1, 2\}$, $Z_B = \{a\}$, $N(Z_A) = \{a\}$, and indeed $|N(Z_A)| = 1 = 2 - 1 = |Z_A| - 1 < |Z_A|$. The construction fingers exactly the obstruction $\{1, 2\}$, the two indices fighting over the single element $a$. Exactly right.
+Check it on the dead-simple instance: $T_1 = \{a\}$, $T_2 = \{a\}$. Start matching empty, augment once, say $1$–$a$. Now $2$ is exposed; grow the tree from $r = 2$. From $2$ take a non-matching edge — its only neighbor is $a$, so $Z_B = \{a\}$. Is $a$ exposed? No, it's matched to $1$. Follow $a$'s matching edge back: lands on $1$, so $1 \in Z_A$. From $1$, neighbors are just $a$, already in $Z_B$, nothing new. Search dies. $Z_A = \{1, 2\}$, $Z_B = \{a\}$, $N(Z_A) = \{a\}$, and indeed $|N(Z_A)| = 1 = 2 - 1 = |Z_A| - 1 < |Z_A|$. The construction fingers exactly the obstruction $\{1, 2\}$, the two indices fighting over the single element $a$. Exactly right.
 
 I should pause on whether there was an easier proof and why I'm choosing this one. There is a slicker-looking induction on $n$: throw away the last set $T_n$, get an SDR for the first $n-1$ by induction, and try to extend it — if $T_n$ has an element not already used, great; if not, every element of $T_n$ is spoken for, and you argue some "critical" subfamily (one that's already tight, $|N(S)| = |S|$) forces a recursion onto $S$ and onto its complement separately, both of which inherit the condition. It works, but it's a case analysis that *invokes* a critical tight set rather than *constructing* it, and the recursion onto two pieces is fiddly to get right. More to the point, it proves existence without putting the augmenting machinery in my hands, and it's the augmenting machinery — the ability to actually search for an improvement and, on failure, read off the bottleneck — that I wanted from the start. The alternating-tree proof gives the theorem *and* the algorithm *and* the witness in one motion. So I'll land on it.
 
 One more thing to record, because it's the same coin's other face and it's worth seeing fall out. When the search dies on a maximum matching $M$, look at the set
 $$C = (A \setminus Z_A) \cup Z_B.$$
-Is this a vertex cover? An edge is uncovered only if both endpoints are outside $C$, i.e. its $A$-endpoint is in $Z_A$ and its $B$-endpoint is outside $Z_B$. But I proved $N(Z_A) = Z_B$ — every neighbor of a $Z_A$-vertex is in $Z_B$ — so no such edge exists. $C$ is a cover. And its size: $|C| = (|A| - |Z_A|) + |Z_B| = |A| - |Z_A| + (|Z_A| - 1) = |A| - 1$. More generally, run the tree from *all* exposed indices at once and the same bookkeeping gives a cover of size exactly $|M|$, while every matching needs a cover at least its own size — so this cover is minimum and $\max|M| = \min|C|$. That's König's minimax, reproved constructively, with the matching and the cover coming out of the *same* search. The neighborhood criterion and the minimax are two readings of one structure: the alternating tree at a stuck matching. I came in wanting the criterion phrased on the sets, and not only did I get it, the dual cover and König's theorem are byproducts.
+Is this a vertex cover? An edge is uncovered only if both endpoints are outside $C$, i.e. its $A$-endpoint is in $Z_A$ and its $B$-endpoint is outside $Z_B$. But I proved $N(Z_A) = Z_B$ — every neighbor of a $Z_A$-vertex is in $Z_B$ — so no such edge exists. $C$ is a cover. And its size: $|C| = (|A| - |Z_A|) + |Z_B| = |A| - |Z_A| + (|Z_A| - 1) = |A| - 1$. More generally, run the tree from *all* exposed indices at once and the same bookkeeping gives a cover of size exactly $|M|$, while every matching needs a cover at least its own size — so this cover is minimum and $\max|M| = \min|C|$. That's König's minimax, reproved constructively, with the matching and the cover coming out of the *same* search. The neighborhood criterion and the minimax are two readings of one structure: the alternating tree at a stuck matching — the criterion phrased on the sets, which is what I came in wanting, and König's minimax fall out of the same construction.
 
-So let me write the result down cleanly. The condition is: *for every subfamily of indices $S$, the union of their sets contains at least $|S|$ elements*, $|N(S)| \ge |S|$ for all $S \subseteq A$. This is necessary by the trivial injection. It is sufficient because, were it impossible to saturate $A$, a maximum matching would leave some index exposed, and the alternating tree from that index would exhibit a subfamily $Z_A$ with $|N(Z_A)| = |Z_A| - 1$, violating the condition. The proof is constructive: it either augments toward a full assignment or returns the deficient subfamily. Here is the whole thing assembled.
-
-```python
-from collections import deque
-
-def admits_SDR(A, B, T):
-    """
-    A : list of indices (the family is indexed by A).
-    B : the finite ground set.
-    T : dict, T[a] = the set of ground-set elements joined to index a (= the set T_a).
-
-    Returns (True, M) where M maps each index to its distinct representative,
-    if a system of distinct representatives exists; otherwise (False, S) where
-    S is a deficient subfamily with |N(S)| < |S| -- the witness of impossibility.
-
-    Necessity: a saturating matching injects each index a into T_a, so any S
-    satisfies |N(S)| >= |S|. Sufficiency is proved constructively below: we
-    repeatedly enlarge the matching via augmenting paths; if at some exposed
-    index the alternating search dies, its reachable A-side is exactly the
-    deficient set.
-    """
-    match_A = {}          # index -> element  (current matching, A side)
-    match_B = {}          # element -> index  (current matching, B side)
-
-    def neighborhood(S):
-        out = set()
-        for a in S:
-            out |= T[a]
-        return out
-
-    for root in A:
-        if root in match_A:
-            continue
-        # Grow the alternating tree from the exposed index `root`.
-        # From an A-vertex we step out along NON-matching edges to B;
-        # from a B-vertex we step back along its MATCHING edge to A.
-        parent_B = {}                  # element -> index it was reached from
-        Z_A = {root}                   # reachable indices
-        Z_B = set()                    # reachable elements
-        frontier = deque([root])
-        augmented = False
-
-        while frontier and not augmented:
-            a = frontier.popleft()
-            for b in T[a]:             # non-matching step A -> B
-                if b in Z_B:
-                    continue
-                Z_B.add(b)
-                parent_B[b] = a
-                if b not in match_B:
-                    # b is an exposed element: we found an augmenting path.
-                    # Flip it: walk back parent_B / match_A, swapping edges.
-                    while True:
-                        a2 = parent_B[b]
-                        prev = match_A.get(a2)     # a2's old partner (if any)
-                        match_A[a2] = b            # match a2 -- b
-                        match_B[b] = a2
-                        if prev is None:           # reached the exposed root
-                            break
-                        b = prev                   # continue back along the path
-                    augmented = True
-                    break
-                else:
-                    # b is matched: follow its matching edge back into A.
-                    a2 = match_B[b]
-                    if a2 not in Z_A:
-                        Z_A.add(a2)
-                        frontier.append(a2)
-
-        if not augmented:
-            # The search died with no augmenting path. Then N(Z_A) = Z_B and
-            # |Z_B| = |Z_A| - 1, so Z_A is a deficient set: |N(Z_A)| < |Z_A|.
-            assert neighborhood(Z_A) == Z_B
-            assert len(Z_B) == len(Z_A) - 1
-            return (False, frozenset(Z_A))
-
-    # Every index got matched: the matching is an SDR.
-    return (True, dict(match_A))
-```
+So let me write the result down cleanly. The condition is: *for every subfamily of indices $S$, the union of their sets contains at least $|S|$ elements*, $|N(S)| \ge |S|$ for all $S \subseteq A$. This is necessary by the trivial injection. It is sufficient because, were it impossible to saturate $A$, a maximum matching would leave some index exposed, and the alternating tree from that index would exhibit a subfamily $Z_A$ with $|N(Z_A)| = |Z_A| - 1$, violating the condition. The proof is constructive, and it slots directly into the `admits_SDR` stub left open in the scaffold: loop over exposed roots, grow the alternating tree by a BFS queue (non-matching edge out of $A$, matching edge back from $B$), and the moment the frontier reaches an exposed element, walk the parent pointers back to the root flipping matching status as I go — that's the augmenting-path flip already derived, applied edge by edge. If the queue instead empties with every reached element matched, the reachable index set $Z_A$ *is* the deficient witness, by the bijection just derived; return it. Every index either gets matched this way or the routine exits early with the certificate.

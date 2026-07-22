@@ -1,4 +1,4 @@
-Let me start from what actually hurts. The recipe everyone uses now is: pre-train a big Transformer language model on a pile of text, then fine-tune it on a labeled dataset for whatever task I care about. The architecture is shared across tasks — that part is solved, one body, swap the head. But the adaptation isn't. To get a model to do sentiment, or entailment, or question answering, I still have to collect thousands to hundreds of thousands of labeled examples for that one task and run gradient descent on them. And I have to do that again for the next task, and the next.
+The recipe everyone uses now is: pre-train a big Transformer language model on a pile of text, then fine-tune it on a labeled dataset for whatever task I care about. The architecture is shared across tasks — that part is solved, one body, swap the head. But the adaptation isn't. To get a model to do sentiment, or entailment, or question answering, I still have to collect thousands to hundreds of thousands of labeled examples for that one task and run gradient descent on them. And I have to do that again for the next task, and the next.
 
 Three things gnaw at me about this. First, the number of useful language tasks is basically unbounded — correct this person's grammar, give me an example of "bravery," critique this short story, summarize this in the voice of a pirate. I cannot build a labeled training set for each of those. Second, and this is subtler, when I take a model with enormous capacity and fine-tune it on a *narrow* task distribution, it has every incentive to grab whatever spurious correlation happens to separate the labels in that narrow set. It can score at "human level" on the benchmark and still be brittle the moment the input drifts off-distribution — the very expressiveness that made pre-training work is now overfitting to artifacts of one small dataset. Third, this is just not how people work. A person reads "tell me if this sentence is happy or sad" and does it. Or sees two examples of someone being brave and produces a third. No gradient descent on ten thousand labeled pairs. They can even switch tasks mid-sentence — do a little arithmetic in the middle of a conversation. I'd like a system with that fluidity.
 
@@ -28,7 +28,7 @@ Start with the architecture, because here the right move is restraint. The scali
 
 But "scale a Transformer to dozens of billions of parameters and 96 layers" surfaces problems that don't bite at small scale, and I have to handle each. The first is depth stability. The original Transformer puts LayerNorm *after* each sublayer, on the residual sum. Stack that very deep and the gradients get unstable — the normalization sits on the main path and the signal has to fight through it at every layer. The fix is to move the normalization to *before* each sublayer, so each block computes x + Sublayer(LN(x)). Now the residual stream is a clean additive identity path from input to output, and the LayerNorm only conditions the input to each sublayer; gradients flow straight down the residuals. Add one final LayerNorm at the very top to normalize before the output projection. With pre-normalization I can train 96 layers without the training dynamics falling apart.
 
-The second problem is variance growth down the residual stream, and it's worth doing the arithmetic rather than hand-waving it. Each block adds its sublayer's output back into the stream: x ← x + δ. If I initialize every projection the standard way, each δ has roughly unit-scale variance, and because the δ's are approximately independent, the variances add: after a block's two additions (one from attention, one from the MLP), and L blocks, the residual stream's variance is roughly proportional to the number of additions, ≈ 2L. For the largest model, L = 96, so 2L = 192 — the activations at the top would have standard deviation √192 ≈ 14 times the input scale. That kind of blow-up wrecks the conditioning into the final LayerNorm and the stability of training. I want to keep the residual stream's scale roughly constant with depth. So I down-scale the weights of the projection that writes back into the residual stream by 1/√(number of residual additions) ≈ 1/√(2L): then each δ carries variance ∝ 1/(2L), and the 2L of them sum back to 2L · 1/(2L) = 1 — order one, independent of depth. Let me check the magnitude that implies: at L = 96, the residual-write-back init std becomes 0.02/√192 ≈ 0.00144, a factor of ~14 below the base 0.02 — exactly the √192 I needed to cancel. So the residual-path output projections get init std = 0.02/√(2·n_layers) while everything else keeps std ≈ 0.02. This is the GPT-2 initialization; I'm adopting it because the variance accounting lands, not on faith.
+The second problem is variance growth down the residual stream, and it's worth doing the arithmetic rather than hand-waving it. Each block adds its sublayer's output back into the stream: x ← x + δ. If I initialize every projection the standard way, each δ has roughly unit-scale variance, and because the δ's are approximately independent, the variances add: after a block's two additions (one from attention, one from the MLP), and L blocks, the residual stream's variance is roughly proportional to the number of additions, ≈ 2L. For the largest model, L = 96, so 2L = 192 — the activations at the top would have standard deviation √192 ≈ 14 times the input scale. That kind of blow-up wrecks the conditioning into the final LayerNorm and the stability of training. I want to keep the residual stream's scale roughly constant with depth. So I down-scale the weights of the projection that writes back into the residual stream by 1/√(number of residual additions) ≈ 1/√(2L): then each δ carries variance ∝ 1/(2L), and the 2L of them sum back to 2L · 1/(2L) = 1 — order one, independent of depth. At L = 96, the residual-write-back init std becomes 0.02/√192 ≈ 0.00144, a factor of ~14 below the base 0.02 — exactly the √192 needed to cancel the growth. So the residual-path output projections get init std = 0.02/√(2·n_layers) while everything else keeps std ≈ 0.02. This is the GPT-2 initialization; I'm adopting it because the variance accounting lands, not on faith.
 
 The input channel has to tolerate whatever a task can be written as: arithmetic with arbitrary digit strings, words with letters scrambled, freshly invented nonsense words, code, multiple languages. A word-level vocabulary would choke on some of those with out-of-vocabulary tokens, and a language-specific tokenizer would smuggle in assumptions about what the task input is allowed to look like. A byte-level scheme can represent *any* string, needs no language-specific preprocessing, and is reversible so I can decode exactly what the model emits. That pushes me to byte-level byte-pair encoding — BPE built over bytes — with a vocabulary around fifty thousand merges.
 
@@ -36,7 +36,7 @@ A few shape parameters I won't overthink, precisely because the scaling work say
 
 One parameter I *do* care about: the context window. GPT-2-scale models used a thousand-ish tokens. But the context window is now load-bearing in a new way — it's literally the budget for how many demonstrations I can put in a few-shot prompt. If I want to fit ten to a hundred (context, completion) pairs before the final query, I need room. So I double the window to 2048 tokens. The number of in-context examples K I can use is bounded by exactly this — K runs from zero up to however many demonstrations fit in 2048 tokens, which for typical tasks is tens.
 
-A 2048-token window makes the quadratic attention cost visible: every position attends to every earlier position, so the deepest models spend real compute just moving information across a long prefix. Full dense attention everywhere is wasteful when much of the useful mixing is local, but making every layer local would cut off global communication. The compromise is to alternate: some layers use full dense attention for global mixing, and the others use a locally-banded sparse pattern where each position attends within a band, in the style of the Sparse Transformer. That cuts the attention cost substantially while preserving enough long-range mixing across the dense layers. It's an efficiency change, not a capability change — in fact attention is a small enough fraction of total compute that I'll ignore it entirely when I do the compute accounting. For the compact code below I write the dense causal-attention form; the alternating sparse layers are an efficiency variant on the same block.
+A 2048-token window makes the quadratic attention cost visible: every position attends to every earlier position, so the deepest models spend real compute just moving information across a long prefix. Full dense attention everywhere is wasteful when much of the useful mixing is local, but making every layer local would cut off global communication. The compromise is to alternate: some layers use full dense attention for global mixing, and the others use a locally-banded sparse pattern where each position attends within a band, in the style of the Sparse Transformer. That cuts the attention cost substantially while preserving enough long-range mixing across the dense layers. It's an efficiency change, not a capability change — in fact attention is a small enough fraction of total compute that I'll ignore it entirely when I do the compute accounting. The dense causal-attention form is the heart of the block either way; the alternating sparse layers are an efficiency variant layered on top of it.
 
 Now sizes. The whole point is to *trace the curve*, so I train a ladder — eight models spanning three orders of magnitude, from around 125 million parameters up to 175 billion. The smallest matches a GPT-2-scale config (12 layers, width 768, 12 heads); each step up grows depth and width together (24 layers and wider, then 32, then 40, then 96 layers at width 12288 for the largest). Eight points let me check whether in-context learning scales smoothly the way loss does, and whether the zero/one/few-shot gap genuinely widens with size, rather than betting everything on a single giant model.
 
@@ -52,13 +52,13 @@ Then deduplication, because memorization is the enemy at this capacity. I fuzzil
 
 I don't sample the datasets in proportion to their size. Common Crawl is by far the largest but the lowest quality; the curated corpora are small but excellent. So I up-weight quality: over a training run of a few hundred billion tokens, Common Crawl gets seen less than once through, while the small high-quality sets get seen two or three times. That deliberately accepts a touch of overfitting on the good data in exchange for a higher average quality of every token the model trains on. For efficiency I always train on full 2048-token sequences, packing several short documents into one sequence separated by a special end-of-text token — no padding waste — and I don't bother with cross-document attention masking, because the end-of-text token itself tells the model that text on either side of it is unrelated, so it learns to not bleed context across the boundary.
 
-How long to train, and how big given a compute budget — this is where the scaling work pays off in a non-obvious way. The forward pass costs about 2 flops per active parameter per token, one multiply and one add. The backward pass needs work of the same order for the gradients with respect to both parameters and activations — roughly twice the forward work — so forward plus backward is about 3 times the forward cost, i.e. 6 flops per parameter per token. Total training compute is then about 6·N·D for N parameters and D tokens. Let me put the largest model's numbers in: 6 × 174.6×10⁹ × 300×10⁹ = 6 × 174.6 × 300 × 10¹⁸ = 314,280 × 10¹⁸ ≈ 3.14×10²³ flops. (As a unit check, that's ≈ 3.14×10²³ / 8.64×10¹⁹ ≈ 3.6×10³ PF-days, which is comfortably below the C_c^min ≈ 3.1×10⁸ PF-days constant in the compute scaling law, so I'm nowhere near the regime where the law's own normalization breaks — good.) The non-obvious part is the *allocation*. The compute-optimal prescription from the scaling measurements is to put a fixed budget mostly into model size and *not* train to convergence — the optimal model size grows with compute roughly as C^0.73, so as I get more compute I should buy a much bigger model and feed it comparatively few tokens, stopping well before the loss plateaus. That's why I train these enormous models on "only" a few hundred billion tokens rather than grinding each to convergence: a model ten times larger than a heavily-trained smaller one can use the *same* compute because it sees far fewer tokens, and it ends up with lower loss. Counterintuitive, but it's what the power laws say, and it's the whole reason the 175B model is feasible at all.
+How long to train, and how big given a compute budget — this is where the scaling work pays off in a non-obvious way. The forward pass costs about 2 flops per active parameter per token, one multiply and one add. The backward pass needs work of the same order for the gradients with respect to both parameters and activations — roughly twice the forward work — so forward plus backward is about 3 times the forward cost, i.e. 6 flops per parameter per token. Total training compute is then about 6·N·D for N parameters and D tokens. Let me put the largest model's numbers in: 6 × 174.6×10⁹ × 300×10⁹ = 6 × 174.6 × 300 × 10¹⁸ = 314,280 × 10¹⁸ ≈ 3.14×10²³ flops. (In PF-days that's 3.14×10²³ / 8.64×10¹⁹ ≈ 3.6×10³ PF-days, several orders of magnitude below the C_c^min ≈ 3.1×10⁸ PF-days constant in the compute scaling law — nowhere near the regime where the law's own normalization would break down.) The non-obvious part is the *allocation*. The compute-optimal prescription from the scaling measurements is to put a fixed budget mostly into model size and *not* train to convergence — the optimal model size grows with compute roughly as C^0.73, so as I get more compute I should buy a much bigger model and feed it comparatively few tokens, stopping well before the loss plateaus. That's why I train these enormous models on "only" a few hundred billion tokens rather than grinding each to convergence: a model ten times larger than a heavily-trained smaller one can use the *same* compute because it sees far fewer tokens, and it ends up with lower loss. Counterintuitive, but it's what the power laws say, and it's the whole reason the 175B model is feasible at all.
 
 Now the evaluation interface — the slots I left empty: how do I turn an arbitrary task into model input, and how do I read an answer back out, without ever training on the task. Constructing the prompt is straightforward once I commit to "text is the task spec": for a K-shot evaluation I draw K examples from the task's training set, write each as its context followed by its completion, concatenate them (delimited by newlines), and append the final query's context with the completion left blank for the model to fill. Optionally I prepend a natural-language instruction — and for zero-shot, the instruction *is* the whole prompt, since there are no demonstrations. K is whatever fits in 2048 tokens; more is usually better, so I tune K on a dev set and report the best on test.
 
 Reading the answer out splits by task type, and each split has a reason. For multiple-choice tasks I don't ask the model to generate — I score. I build the prompt as the K demonstrations plus the query context, then for each candidate completion I compute the model's likelihood of that completion continuing the prompt, and pick the highest.
 
-The fiddly part is the indexing, and this is exactly the kind of off-by-one that silently corrupts every number downstream if I get it wrong, so I want to trace it on a tiny case before I trust it. The model's logits at position j are a distribution over the token at position j+1 — that's what causal next-token prediction means. To score a completion I want, for each completion token, the log-probability the model assigned to it given everything before it. Concretely, say the prompt tokenizes to prefix = [10, 11, 12] (3 tokens) and a candidate completion is [20, 21] (2 tokens). The full sequence is [10, 11, 12, 20, 21]; the model's last input token needs no prediction, so I feed full[:-1] = [10, 11, 12, 20] and read its logits. Now: completion token 20 lives at full-index 3, and the distribution that predicts it is the logits at input position 2 (the position holding token 12, the token right before it). Completion token 21 lives at full-index 4, predicted by logits at input position 3 (holding token 20). So the first completion token is scored at logits position len(prefix) − 1 = 2, and successive ones at len(prefix) − 1 + i. That's exactly the start = len(prefix_ids) - 1 with token_logps[i] = logp[start + i, completion_ids[i]] in the code. Boundary check: the largest position I index is start + (len(comp) − 1) = 2 + 1 = 3, and the fed sequence full[:-1] has indices 0..3, so the last position is in range and nothing reads past the end. The off-by-one resolves cleanly, and feeding full[:-1] rather than full is what makes the alignment work — feeding the whole sequence would shift every score by one position and quietly tank accuracy.
+The fiddly part is the indexing — exactly the kind of off-by-one that silently corrupts every number downstream if I get it wrong, so I trace it on a tiny case. The model's logits at position j are a distribution over the token at position j+1 — that's what causal next-token prediction means. To score a completion I want, for each completion token, the log-probability the model assigned to it given everything before it. Concretely, say the prompt tokenizes to prefix = [10, 11, 12] (3 tokens) and a candidate completion is [20, 21] (2 tokens). The full sequence is [10, 11, 12, 20, 21]; the model's last input token needs no prediction, so I feed full[:-1] = [10, 11, 12, 20] and read its logits. Now: completion token 20 lives at full-index 3, and the distribution that predicts it is the logits at input position 2 (the position holding token 12, the token right before it). Completion token 21 lives at full-index 4, predicted by logits at input position 3 (holding token 20). So the first completion token is scored at logits position len(prefix) − 1 = 2, and successive ones at len(prefix) − 1 + i — a scoring rule of start = len(prefix_ids) - 1, token_logps[i] = logp[start + i, completion_ids[i]]. Boundary check: the largest position I index is start + (len(comp) − 1) = 2 + 1 = 3, and the fed sequence full[:-1] has indices 0..3, so the last position is in range and nothing reads past the end. The off-by-one resolves cleanly, and feeding full[:-1] rather than full is what makes the alignment work — feeding the whole sequence would shift every score by one position and quietly tank accuracy.
 
 The next subtlety is normalization. Raw joint likelihood favors *shorter* completions, since each extra token multiplies in another probability less than one, so I normalize by length — compare per-token likelihood (the .mean() over token_logps, not the sum). For a few datasets even that biases toward completions that are intrinsically common strings regardless of the question; there I divide by the completion's *unconditional* likelihood given a generic neutral lead-in like "Answer:", i.e. score P(completion | context) / P(completion | "Answer:"), which cancels the part of the completion's probability that has nothing to do with the actual question. Binary classification I just turn into multiple choice by giving the two classes meaningful word names ("True"/"False" instead of 0/1) and comparing their likelihoods, since the model has priors over real words but not over bare integers. Free-form generation tasks I actually decode, with beam search (width 4, length penalty 0.6 to stop it preferring trivially short outputs), and score with whatever the dataset uses — F1, exact match, or BLEU.
 
@@ -68,216 +68,4 @@ I should also be honest about where this design is structurally limited, since I
 
 The code should keep the separation clean: the model is a decoder-only pre-LN Transformer with the scaled residual init, the byte-level vocabulary, the 2048 context, and (in the efficient variant) alternating dense/sparse attention; the in-context-learning layer is only a prompt builder plus likelihood/generation scorer around the fixed model.
 
-```python
-import math
-import torch
-import torch.nn as nn
-from torch.nn import functional as F
-
-# ---- the architecture: decoder-only, pre-LN Transformer LM (dense reference form) ----
-
-class CausalSelfAttention(nn.Module):
-    # multi-head masked self-attention. In the large models, half the layers
-    # instead use a locally-banded sparse mask for O(n*band) cost; the dense
-    # form is the heart of it and is what I write here.
-    def __init__(self, d_model, n_head, n_ctx):
-        super().__init__()
-        assert d_model % n_head == 0
-        self.c_attn = nn.Linear(d_model, 3 * d_model)   # q,k,v in one matmul
-        self.c_proj = nn.Linear(d_model, d_model)       # writes back into the residual stream
-        self.n_head = n_head
-        # causal mask: position t may attend only to <= t (left-to-right)
-        self.register_buffer("mask", torch.tril(torch.ones(n_ctx, n_ctx)).view(1, 1, n_ctx, n_ctx))
-
-    def forward(self, x):
-        B, T, C = x.size()
-        q, k, v = self.c_attn(x).split(C, dim=2)
-        h = self.n_head
-        q = q.view(B, T, h, C // h).transpose(1, 2)
-        k = k.view(B, T, h, C // h).transpose(1, 2)
-        v = v.view(B, T, h, C // h).transpose(1, 2)
-        att = (q @ k.transpose(-2, -1)) / math.sqrt(k.size(-1))   # 1/sqrt(d_head) keeps logits in range
-        att = att.masked_fill(self.mask[:, :, :T, :T] == 0, float('-inf'))  # enforce causality
-        att = F.softmax(att, dim=-1)
-        y = (att @ v).transpose(1, 2).contiguous().view(B, T, C)
-        return self.c_proj(y)
-
-class Block(nn.Module):
-    # pre-normalization: LN before each sublayer, clean additive residual path
-    def __init__(self, d_model, n_head, n_ctx):
-        super().__init__()
-        self.ln_1 = nn.LayerNorm(d_model)
-        self.attn = CausalSelfAttention(d_model, n_head, n_ctx)
-        self.ln_2 = nn.LayerNorm(d_model)
-        self.mlp = nn.ModuleDict(dict(
-            c_fc=nn.Linear(d_model, 4 * d_model),       # FFN width = 4 * d_model
-            c_proj=nn.Linear(4 * d_model, d_model),     # also writes back into the residual stream
-        ))
-
-    def forward(self, x):
-        x = x + self.attn(self.ln_1(x))                 # residual add #1
-        m = self.mlp
-        x = x + m.c_proj(F.gelu(m.c_fc(self.ln_2(x))))  # residual add #2
-        return x
-
-class SequenceModel(nn.Module):
-    def __init__(self, vocab_size, n_ctx, n_layer, d_model, n_head):
-        super().__init__()
-        self.n_ctx = n_ctx
-        self.wte = nn.Embedding(vocab_size, d_model)    # byte-level BPE token embeddings
-        self.wpe = nn.Embedding(n_ctx, d_model)         # learned positional embeddings
-        self.h = nn.ModuleList([Block(d_model, n_head, n_ctx) for _ in range(n_layer)])
-        self.ln_f = nn.LayerNorm(d_model)               # final pre-output norm
-        self.lm_head = nn.Linear(d_model, vocab_size, bias=False)
-        self.lm_head.weight = self.wte.weight            # GPT-style tied token/output embeddings
-        # base init
-        self.apply(self._init)
-        # scale residual-path projections by 1/sqrt(2*n_layer): ~2*n_layer residual
-        # adds accumulate variance, so shrink each write-back to keep the stream ~unit-scale
-        for name, p in self.named_parameters():
-            if name.endswith("c_proj.weight"):
-                nn.init.normal_(p, mean=0.0, std=0.02 / math.sqrt(2 * n_layer))
-
-    def _init(self, m):
-        if isinstance(m, nn.Linear):
-            nn.init.normal_(m.weight, mean=0.0, std=0.02)
-            if m.bias is not None:
-                nn.init.zeros_(m.bias)
-        elif isinstance(m, nn.Embedding):
-            nn.init.normal_(m.weight, mean=0.0, std=0.02)
-
-    def forward(self, idx, targets=None):
-        B, T = idx.size()
-        assert T <= self.n_ctx
-        pos = torch.arange(T, device=idx.device).unsqueeze(0)
-        x = self.wte(idx) + self.wpe(pos)
-        for block in self.h:
-            x = block(x)
-        logits = self.lm_head(self.ln_f(x))
-        loss = None
-        if targets is not None:
-            # the entire training signal: next-token cross-entropy, every token weighted equally
-            loss = F.cross_entropy(logits.view(-1, logits.size(-1)), targets.view(-1), ignore_index=-1)
-        return logits, loss
-
-    @torch.no_grad()
-    def generate(self, idx, max_new_tokens, temperature=1.0, top_k=None, do_sample=False):
-        for _ in range(max_new_tokens):
-            idx_cond = idx if idx.size(1) <= self.n_ctx else idx[:, -self.n_ctx:]
-            logits, _ = self(idx_cond)
-            logits = logits[:, -1, :] / temperature
-            if top_k is not None:
-                v, _ = torch.topk(logits, top_k)
-                logits[logits < v[:, [-1]]] = -float("inf")
-            probs = F.softmax(logits, dim=-1)
-            if do_sample:
-                nxt = torch.multinomial(probs, 1)
-            else:
-                _, nxt = torch.topk(probs, k=1, dim=-1)
-            idx = torch.cat([idx, nxt], dim=1)
-        return idx
-
-# ---- training: scale batch up / LR down with model size; warmup; cosine decay ----
-
-def configure_optimizer(model, lr, weight_decay=0.1, betas=(0.9, 0.95)):
-    # decay matrix weights only; never decay biases, LayerNorm gains, or embeddings
-    decay, no_decay = [], []
-    for name, p in model.named_parameters():
-        if name.endswith("weight") and ("wte" not in name and "wpe" not in name and "ln" not in name):
-            decay.append(p)
-        else:
-            no_decay.append(p)
-    groups = [{"params": decay, "weight_decay": weight_decay},
-              {"params": no_decay, "weight_decay": 0.0}]
-    return torch.optim.AdamW(groups, lr=lr, betas=betas, eps=1e-8)  # beta2=0.95: shorter 2nd-moment memory
-
-# ---- the in-context-learning harness: fixed-model prompt + scorer ----
-
-def build_prompt(tokenizer, instruction, demonstrations, query_context):
-    # K-shot: optional instruction, then K (context -> completion) demos, then the query
-    parts = []
-    if instruction:
-        parts.append(instruction)
-    for ctx, completion in demonstrations:          # K of these; K bounded by n_ctx
-        parts.append(ctx + " " + completion)
-    parts.append(query_context)                     # completion left blank for the model
-    return tokenizer.encode("\n".join(parts))
-
-@torch.no_grad()
-def _completion_logprob(model, prefix_ids, completion_ids):
-    # logits at position j predict token j+1, so score completion tokens using full[:-1]
-    if not prefix_ids:
-        raise ValueError("completion likelihood needs at least one prefix token")
-    if not completion_ids:
-        device = next(model.parameters()).device
-        return torch.tensor(float("-inf"), device=device)
-    device = next(model.parameters()).device
-    full = prefix_ids + completion_ids
-    idx = torch.tensor([full[:-1]], dtype=torch.long, device=device)
-    logits, _ = model(idx)
-    logp = F.log_softmax(logits[0], dim=-1)
-    start = len(prefix_ids) - 1
-    token_logps = [logp[start + i, tok] for i, tok in enumerate(completion_ids)]
-    return torch.stack(token_logps).mean()
-
-@torch.no_grad()
-def score_choice(model, tokenizer, prompt_ids, completion, answer_context=None):
-    # multiple choice: rank candidates by the model's likelihood of the completion,
-    # length-normalized; optionally divide out the unconditional likelihood.
-    comp = tokenizer.encode(completion)
-    cond = _completion_logprob(model, prompt_ids, comp)
-    if answer_context is None:
-        return cond                                 # per-token conditional log-likelihood
-    base_ids = tokenizer.encode(answer_context)     # e.g. "Answer:" — generic lead-in
-    uncond = _completion_logprob(model, base_ids, comp)
-    return cond - uncond                            # divide out completion's generic likelihood
-
-@torch.no_grad()
-def beam_search(model, idx, max_new_tokens, beam_width=4, length_penalty=0.6, eos_token_id=None):
-    # batch size 1; rank partial continuations by sum log-prob / length**length_penalty
-    assert idx.size(0) == 1
-    beams = [(idx, torch.tensor(0.0, device=idx.device), False)]
-    prompt_len = idx.size(1)
-    for _ in range(max_new_tokens):
-        candidates = []
-        for tokens, score, done in beams:
-            if done:
-                candidates.append((tokens, score, done))
-                continue
-            idx_cond = tokens if tokens.size(1) <= model.n_ctx else tokens[:, -model.n_ctx:]
-            logits, _ = model(idx_cond)
-            logp = F.log_softmax(logits[:, -1, :], dim=-1)
-            k = min(beam_width, logp.size(-1))
-            vals, ids = torch.topk(logp, k, dim=-1)
-            for val, tok in zip(vals[0], ids[0]):
-                nxt = tok.view(1, 1)
-                ended = eos_token_id is not None and int(tok.item()) == eos_token_id
-                candidates.append((torch.cat([tokens, nxt], dim=1), score + val, ended))
-
-        def normalized(item):
-            tokens, score, _ = item
-            gen_len = max(1, tokens.size(1) - prompt_len)
-            return (score / (gen_len ** length_penalty)).item()
-
-        beams = sorted(candidates, key=normalized, reverse=True)[:beam_width]
-        if all(done for _, _, done in beams):
-            break
-    return max(beams, key=normalized)[0]
-
-@torch.no_grad()
-def few_shot_classify(model, tokenizer, instruction, demonstrations, query_context, choices):
-    prompt = build_prompt(tokenizer, instruction, demonstrations, query_context)
-    scores = [score_choice(model, tokenizer, prompt, c) for c in choices]
-    return choices[int(torch.stack(scores).argmax().item())]
-
-@torch.no_grad()
-def few_shot_generate(model, tokenizer, instruction, demonstrations, query_context, max_new_tokens,
-                      beam_width=4, length_penalty=0.6, eos_token_id=None):
-    prompt = build_prompt(tokenizer, instruction, demonstrations, query_context)
-    device = next(model.parameters()).device
-    idx = torch.tensor([prompt], dtype=torch.long, device=device)
-    out = beam_search(model, idx, max_new_tokens, beam_width, length_penalty, eos_token_id)
-    return tokenizer.decode(out[0, len(prompt):].tolist())
-```
-
-I end up with a simple chain: fine-tuning needs per-task data and updates and overfits narrow distributions; prompting a language model needs neither but was too weak — and the diagnosis is that it may be too small, not wrong, because loss scales smoothly with size and in-context learning is one of the capabilities packed in by next-token prediction over a corpus riddled with implicit demonstrations; that makes pre-training an outer loop and the forward pass an inner loop, i.e. meta-learning, so the few-shot setting is an *evaluation* of the existing model, not a new mechanism. The experiment is to scale the unchanged autoregressive Transformer recipe hard — pre-norm and scaled init for depth, doubled context for the demonstrations, alternating sparse attention for efficiency, batch up / LR down with size, compute-optimal under-training of very large models per the power laws, quality-filtered deduplicated web data — and wrap it in a prompt-builder-plus-likelihood/generation harness, then read off whether few-shot in-context learning crosses from toy into useful as the model grows.
+What's left is exactly what the ladder of sizes is for: train it in full, and read the zero-shot, one-shot, and few-shot curves off against each other as size grows — if the diagnosis is right, the gap between them should widen with scale rather than stay flat.

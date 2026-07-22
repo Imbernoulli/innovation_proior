@@ -59,7 +59,7 @@ P(argmax = k) = ∫_0^∞ π_k exp( -(Σ_i π_i) s ) ds = π_k / Σ_i π_i.
 
 So if the `π` are normalized this is exactly `π_k`, and notice it even works with *unnormalized* weights — the normalizer falls out of the ratio. The argmax of "log-weights plus Gumbel noise" draws exactly from the categorical. That's the max-stability of the Gumbel showing up: the additive Gumbel noise is precisely the perturbation that turns an argmax over log-probabilities into an exact categorical draw.
 
-I don't fully trust a contour-integral substitution until I've seen it hold up on numbers, so let me run the sampler on a concrete `π = (0.1, 0.6, 0.3)`. Draw a batch of `g_i = -log(-log u)`, add `log π_i`, take the argmax over the three coordinates, and tally how often each index wins. With a couple hundred thousand draws I get empirical frequencies `(0.0996, 0.5998, 0.3005)` against the target `(0.1, 0.6, 0.3)` — agreement to about three decimals, which is exactly the sampling noise I'd expect at this batch size. The substitution was right. Now I trust it.
+I'll lean on this sampler throughout, so it's worth checking against numbers: draw a batch of `g_i = -log(-log u)` for a concrete `π = (0.1, 0.6, 0.3)`, add `log π_i`, take the argmax over the three coordinates, and tally how often each index wins. With a couple hundred thousand draws I get empirical frequencies `(0.0996, 0.5998, 0.3005)` against the target `(0.1, 0.6, 0.3)` — agreement to about three decimals, consistent with the derivation.
 
 So the picture is: `z = one_hot(argmax_i [log π_i + g_i])`, with the noise parameter-free and the only non-differentiable thing being the argmax-then-one-hot on top. And that's a much more localized problem than before. The reparameterization wall wasn't "categoricals are hopeless"; it was specifically the argmax. I have a smooth, reparameterized expression `log π_i + g_i` for the perturbed scores, and a single hard operator clamping it onto a corner.
 
@@ -87,9 +87,9 @@ There's still one regime this soft sample doesn't serve. Sometimes I'm *forced* 
 z = y_hard - y_soft.detach() + y_soft.
 ```
 
-The detached `y_soft` and the live `y_soft` cancel in value, leaving exactly `y_hard`; but only the live `y_soft` carries a gradient, so I'd expect `∂z/∂θ = ∂y_soft/∂θ`. That's the kind of "value-here, gradient-there" splice that's easy to talk myself into and get subtly wrong about which term autograd actually tracks, so let me trace it on one fixed input. Take logits `(0.2, 1.3, -0.5)`, freeze the Gumbel noise at `(0.1, -0.4, 0.7)`, `τ = 0.5`; the perturbed-and-scaled scores softmax to a `y_soft` whose argmax is coordinate 1, so `y_hard = (0, 1, 0)`. Forming `z = y_hard - y_soft.detach() + y_soft` and reading off its value gives `(0, 1, 0)` — exactly `y_hard`, as the cancellation promised. Now the gradient: backprop `Σ_i z_i w_i` with weights `w = (1, 2, -1)` into the logits gives `(-0.127, 0.869, -0.742)`. Backprop the *same* objective through a plain `y_soft` (no hard term at all) gives `(-0.127, 0.869, -0.742)` — identical. So the splice does what I claimed: forward is the one-hot, backward is precisely the soft Jacobian, nothing leaks from the `y_hard` or `detach()` terms. A pleasant side effect: this stays sparse (one-hot forward) even at high `τ`, where the plain soft sample would be smeared out.
+The detached copy is invisible to autograd — it behaves like a constant offset baked into the forward value — so the value of `z` is `y_hard - const + y_soft_value = y_hard` exactly (the two `y_soft` numbers cancel), while every gradient that flows into `z` sees only the live, undetached `y_soft` term. So `∂z/∂θ = ∂y_soft/∂θ`: the forward pass is genuinely one-hot, the backward pass is genuinely the soft Jacobian, and neither leaks into the other. A pleasant side effect: this stays sparse (one-hot forward) even at high `τ`, where the plain soft sample would be smeared out.
 
-Let me make sure I actually understand the *distribution* of this relaxed sample `y`, not just how to draw it — I want its density on the simplex, both as a sanity check and because if I ever want to use the relaxation in the objective itself (a relaxed prior, say) I'll need `p(y)`. This takes a little care because the softmax is not invertible: it maps the `k` perturbed scores onto the simplex, which is `(k-1)`-dimensional, so one degree of freedom is lost in the normalization. To get an honest change of variables I should work with `k-1` free coordinates. Write `x_i = log π_i` for the logits. The natural way to kill the lost degree of freedom is to *center* by subtracting the last score before the softmax — subtract `(x_k + g_k)` from every score; the softmax is invariant to this shift so `y` is unchanged, and now I can track the `k-1` centered variables
+Knowing how to draw `y` isn't the same as knowing its *distribution*, and I want its density on the simplex — both to see that the relaxation is a well-defined object and because if I ever want to use it in the objective itself (a relaxed prior, say) I'll need `p(y)`. This takes a little care because the softmax is not invertible: it maps the `k` perturbed scores onto the simplex, which is `(k-1)`-dimensional, so one degree of freedom is lost in the normalization. To get an honest change of variables I should work with `k-1` free coordinates. Write `x_i = log π_i` for the logits. The natural way to kill the lost degree of freedom is to *center* by subtracting the last score before the softmax — subtract `(x_k + g_k)` from every score; the softmax is invariant to this shift so `y` is unchanged, and now I can track the `k-1` centered variables
 
 ```
 u_i = (x_i + g_i) - (x_k + g_k),   i = 1, ..., k-1,
@@ -177,27 +177,6 @@ def gumbel_softmax(logits, tau=1.0, hard=False, dim=-1):
     return y_soft
 ```
 
-And dropping it into the stochastic-categorical-latent VAE is exactly replacing the one place that used to need a non-differentiable categorical draw:
+Dropping it into the stochastic-categorical-latent VAE is exactly replacing the one place that used to need a non-differentiable categorical draw: the encoder still produces `logits`, but the forward method now calls `z = gumbel_softmax(logits, tau=tau, hard=hard)` in place of the old categorical sample, and hands that `z` straight to the decoder unchanged. `tau` gets annealed across training, `tau = max(0.5, exp(-r * step))`. The gradient now flows from the reconstruction loss, through the decoder, through that call, into the encoder logits and back to `θ`, with no stochastic node in the way.
 
-```python
-class CategoricalLatentVAE(torch.nn.Module):
-    def __init__(self, x_dim, n_vars, n_classes, hidden=256):
-        super().__init__()
-        self.n_vars, self.n_classes = n_vars, n_classes
-        self.encoder = torch.nn.Sequential(
-            torch.nn.Linear(x_dim, hidden), torch.nn.ReLU(),
-            torch.nn.Linear(hidden, n_vars * n_classes))
-        self.decoder = torch.nn.Sequential(
-            torch.nn.Linear(n_vars * n_classes, hidden), torch.nn.ReLU(),
-            torch.nn.Linear(hidden, x_dim))
-
-    def forward(self, x, tau, hard=False):
-        logits = self.encoder(x).view(-1, self.n_vars, self.n_classes)
-        z = gumbel_softmax(logits, tau=tau, hard=hard)     # the differentiable categorical sample
-        x_logits = self.decoder(z.view(x.size(0), -1))
-        return x_logits, logits
-```
-
-with `tau` annealed across training, `tau = max(0.5, exp(-r * step))`. The gradient now flows from the reconstruction loss, through the decoder, through `z = gumbel_softmax(logits, ...)`, into the encoder logits and back to `θ`, with no stochastic node in the way.
-
-Let me trace the whole chain back so I'm sure it holds together. I wanted a path-derivative gradient through a categorical sample, the way the Gaussian trick gives one through a continuous sample. Naively impossible — a one-hot output is piecewise constant, zero gradient. REINFORCE is unbiased but its cost-times-score form is too noisy, and baselines only dent that. The way through was the Gumbel-Max trick: adding i.i.d. Gumbel noise to the log-probabilities and taking the argmax draws the categorical *exactly* — I both did the `π_k/Σπ` integral and watched the argmax frequencies match `π` to three decimals — and it isolates the only non-differentiable operation as that single argmax, with the parameters entering smoothly as `log π_i`. Relaxing the argmax to a temperature-`τ` softmax gives a differentiable sample `y` on the simplex that I can backprop through; sweeping `τ` numerically, `τ → 0` reproduces `E[y] = π` (the exact draw) but creates spiky high-variance derivatives, while large `τ` flattens `y` to uniform and forgets `π`, so I anneal `τ` from high to a small floor to walk the bias-variance tradeoff. When I need a hard discrete value I keep the one-hot in the forward pass and the soft Jacobian in the backward via the detach splice, which I checked on a fixed input gives exactly the one-hot value with exactly the soft gradient. And the relaxed sample has a closed-form simplex density `Γ(k) τ^{k-1} (Σ π_i/y_i^τ)^{-k} ∏ π_i/y_i^{τ+1}`, which I confirmed integrates to 1 and collapses to the categorical as `τ → 0`. The result is a single softmax-of-perturbed-logits that turns a discrete latent into a reparameterized, low-variance, drop-in-differentiable node.
+The result is a single softmax-of-perturbed-logits — Gumbel noise for the exact reparameterized randomness, temperature for the argmax relaxation — that turns a discrete latent into a reparameterized, low-variance, drop-in-differentiable node.

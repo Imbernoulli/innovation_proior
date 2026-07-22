@@ -101,23 +101,3 @@ Now, what are the quanta of this field? It's a vector field, so spin 1. It's a t
 And there's a problem I can't make go away, and I should be honest that it's a real one. The mass. A mass term for the gauge field would be m²A_μ^aA^{aμ}, but that term is not invariant under the local transformation — under A_μ → SA_μS⁻¹ − (i/g)(∂_μS)S⁻¹ it picks up the inhomogeneous piece and is ruined, exactly as m²A_μA^μ is ruined in electromagnetism, which is why the photon is massless. So the gauge invariance that gave me everything also forbids a mass term, and the quanta of my field come out massless. Charged, massless, spin-one particles. For electromagnetism massless is fine — the photon is massless. But charged massless particles that couple to nucleons should have been seen, and they haven't been. I have no satisfactory answer to this; the principle is so clean and the structure so forced that I'm convinced the idea is right, but the mass of the quanta is genuinely open. I'll write it down as it stands — the local-symmetry construction is too compelling to set aside over a difficulty I can't yet resolve — and flag the mass question as unsolved.
 
 Let me also be clear about what was forced and what was a choice, because almost nothing here was a free choice. The covariant derivative form D_μ = ∂_μ − igA_μ is forced by demanding D_μψ → SD_μψ. The inhomogeneous transformation of A_μ is forced by the same demand — solved, not posited. The matrix/triplet nature of A_μ is forced by SU(2) having three generators. The −ig[A_μ,A_ν] term in F_μν is forced by requiring F to transform homogeneously, and equivalently it falls straight out of [D_μ,D_ν]. The self-interaction, the masslessness, the charges and spin of the quanta — all consequences, none of them inputs. The single genuine modeling decision is the very first one: to demand the isotopic-spin symmetry hold *locally* rather than globally. Everything else is the unwinding of that demand.
-
-So let me set down the final structure the local principle produces. The doublet transforms ψ → S(x)ψ with S(x) ∈ SU(2). The ordinary derivative is replaced by the covariant derivative
-
-  D_μ = ∂_μ − ig A_μ,  A_μ = A_μ^a T^a,  T^a = σ^a/2,
-
-chosen so that D_μψ → S D_μψ, which forces the compensating field to transform as
-
-  A_μ → S A_μ S⁻¹ − (i/g)(∂_μ S) S⁻¹,
-
-with the inhomogeneous second term reducing to A_μ → A_μ + (1/g)∂_μα in the abelian limit. The gauge-covariant field strength is
-
-  F_μν = ∂_μ A_ν − ∂_ν A_μ − ig [A_μ, A_ν],
-
-obtained from −ig F_μν = [D_μ, D_ν], transforming homogeneously as F_μν → S F_μν S⁻¹, and carrying the self-interaction term −ig[A_μ,A_ν] that has no counterpart in electromagnetism. The complete locally-invariant Lagrangian is
-
-  L = −¼ F_μν^a F^{aμν} + ψ̄(iγ^μ D_μ − m)ψ,
-
-whose F² term, expanded through the commutator, contains cubic and quartic self-couplings of the gauge field — the field is its own source, the total conserved isotopic spin includes the field's contribution, and the three spin-one, isospin-one quanta carry charges ±e and 0.
-
-Trace the chain once more. A global internal symmetry fixes a meaningless orientation rigidly across all of spacetime; demanding it instead hold locally breaks the bare derivative through the (∂_μS)ψ term; the cure is a compensating field with a covariant derivative D_μ = ∂_μ − igA_μ and an inhomogeneously-transforming A_μ; the naive field strength fails to transform cleanly because SU(2) doesn't commute, throwing off quadratic terms; those are absorbed by a commutator term −ig[A_μ,A_ν], equivalently F_μν = [D_μ,D_ν]/(−ig); and that commutator term, nonzero precisely because the group is non-abelian, makes the field self-interacting — the decisive structural difference from electromagnetism, paid for by quanta that come out massless.

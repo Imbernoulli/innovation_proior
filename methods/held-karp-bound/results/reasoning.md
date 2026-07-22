@@ -32,8 +32,8 @@ of vertex 1 from the tour and what remains is a tree on `{2,…,n}` (a connected
 out with all degrees 2, it satisfies the tour definition, so it *is* a tour, and being the
 cheapest 1-tree it's then the optimum tour.
 
-Before I trust any of this, let me actually run a tiny instance and see how loose the plain
-1-tree really is, because the whole investment depends on the gap being worth closing. Take five
+Let me run a tiny instance and see how loose the plain
+1-tree really is, since the whole investment depends on the gap being worth closing. Take five
 points in the unit square (a fixed pseudorandom draw) with Euclidean costs:
 
 ```
@@ -59,8 +59,8 @@ Suppose I add a number `π_i` to "every edge touching vertex `i`."
 Concretely, replace `c_ij` by `c_ij + π_i + π_j`. What does that do to a *tour*? In a tour every
 vertex has degree exactly 2, so the total added cost is `Σ_i π_i · (degree of i) = Σ_i 2π_i = 2Σπ_i`
 — the *same constant* for every tour. So I'd expect the perturbation to shift every tour's cost by
-the same `2Σπ_i`, leaving the argmin tour where it was. Let me not just assert that; let me check
-it on the five-city instance. Pick an arbitrary potential vector `π = (0.3, −0.5, 0.2, 0.7, −0.1)`,
+the same `2Σπ_i`, leaving the argmin tour where it was. Check that on the five-city instance:
+pick an arbitrary potential vector `π = (0.3, −0.5, 0.2, 0.7, −0.1)`,
 so `2Σπ_i = 1.2`. Recomputing the cost of all 24 tours under `c_ij + π_i + π_j` and comparing each
 to its raw cost plus `1.2`: every one of the 24 matches to machine precision, zero mismatches. So
 the TSP really is invariant under `c_ij → c_ij + π_i + π_j` up to a global constant — the optimal
@@ -139,10 +139,9 @@ choice at `τ`, so the true min is no larger). Subtract the first from this ineq
   `w(τ) − w(π) ≤ (τ − π) · v_{k(π)}`.
 
 So `v_{k(π)}` is a **subgradient** of the concave function `w` at `π`: it over-estimates the
-increase along every direction. Let me sanity-check this inequality on the five-city instance
-before I lean on it. At `π = 0` the active 1-tree has residual `v = d − 2 = [0, −1, 0, 1, 0]`
-(the `[2,1,2,3,2]` degrees minus 2 — exactly the starved vertex 1 and the over-used vertex 3 I
-flagged earlier). Take `τ` to be the random potential from before. The inequality predicts
+increase along every direction. Check it on the five-city instance: at `π = 0` the active 1-tree
+has residual `v = d − 2 = [0, −1, 0, 1, 0]` (the `[2,1,2,3,2]` degrees minus 2 — exactly the
+starved vertex 1 and the over-used vertex 3 I flagged earlier). Take `τ` to be the random potential from before. The inequality predicts
 `w(τ) − w(0) ≤ (τ − 0)·v`. The left side is `2.0584 − 1.87 = 0.1884`; the right side is
 `τ·v = (−0.5)(−1) + (0.7)(1) = 1.2`. Indeed `0.1884 ≤ 1.2` — the subgradient bound holds, and it's
 slack here because `τ` is not the active-tree direction. In particular, plugging in `τ = π*`, the
@@ -259,180 +258,26 @@ forcing two edges into some vertex, I can legitimately forbid all that vertex's 
 that child, since a tour using two edges at a vertex uses no others there. The hope is that the
 bound is tight enough that the trees stay tiny.
 
-Let me write the bound computation, then drop it into the search. The 1-tree is an MST on the
-`n−1` "ordinary" vertices under the perturbed costs, plus the two cheapest perturbed edges from
-the left-out special vertex; the bound accumulates *raw* edge costs and adds `Σ_i π_i (d_i − 2)`;
-the ascent updates `π += t · (d − 2)`.
-
-I'll land this as a single self-contained C++17 program reading `n` and the `n × n` symmetric cost
-matrix from stdin and printing the plain min-1-tree cost and the Held-Karp bound to stdout.
-
-The Held-Karp 1-tree subgradient bound is the part I'd most easily get wrong under time pressure,
-especially selecting the perturbed MST plus two special-node edges while scoring raw cost and
-`π·(d − 2)` correctly; if I weren't confident I could implement it in the budget, I'd fall back to
-standard exact bitmask DP over subsets and ship that -- a plain correct submission beats an ambitious broken one.
-
-```cpp
-// Held-Karp 1-tree Lagrangian lower bound for the symmetric TSP via subgradient
-// ("relaxation") ascent. NOT the O(2^n n^2) exact DP; this is a cheap bound for
-// branch-and-bound pruning.
-//
-// Input (stdin):  n, then an n x n symmetric real cost matrix (row-major).
-// Output (stdout): the plain minimum 1-tree cost and the Held-Karp bound (VJ schedule).
-#include <bits/stdc++.h>
-using namespace std;
-
-// Minimum 1-tree under node potentials pi: MST on nodes {0..n-2} plus the two
-// cheapest edges from the left-out node n-1, all under weighed cost
-// c(i,j)+pi[i]+pi[j]. Returns the sum of RAW edge costs in one_tree_cost and the
-// degree of each node in deg.
-static double compute_one_tree(const vector<vector<double>>& cost,
-                               const vector<double>& pi,
-                               vector<int>& deg) {
-    int n = (int)cost.size();
-    int extra = n - 1;  // the left-out / special node
-    fill(deg.begin(), deg.end(), 0);
-    double one_tree_cost = 0.0;
-
-    // Prim MST on the extra ordinary nodes {0..extra-1} under perturbed cost.
-    vector<double> best(extra);
-    vector<int> parent(extra, 0);
-    vector<char> in_tree(extra, 0);
-    for (int j = 0; j < extra; ++j) best[j] = cost[0][j] + pi[0] + pi[j];
-    in_tree[0] = 1;
-    best[0] = numeric_limits<double>::infinity();
-    for (int t = 0; t < extra - 1; ++t) {
-        int v = -1;
-        double bv = numeric_limits<double>::infinity();
-        for (int j = 0; j < extra; ++j)
-            if (!in_tree[j] && best[j] < bv) { bv = best[j]; v = j; }
-        int u = parent[v];
-        deg[u]++; deg[v]++;
-        one_tree_cost += cost[u][v];          // accumulate RAW cost
-        in_tree[v] = 1;
-        for (int j = 0; j < extra; ++j) {
-            double w = cost[v][j] + pi[v] + pi[j];
-            if (!in_tree[j] && w < best[j]) { best[j] = w; parent[j] = v; }
-        }
-    }
-
-    // Attach the extra node by its two cheapest (perturbed) edges.
-    int e1 = -1, e2 = -1;
-    double w1 = numeric_limits<double>::infinity(), w2 = w1;
-    for (int j = 0; j < extra; ++j) {
-        double w = cost[extra][j] + pi[extra] + pi[j];
-        if (w < w1) { w2 = w1; e2 = e1; w1 = w; e1 = j; }
-        else if (w < w2) { w2 = w; e2 = j; }
-    }
-    for (int v : {e1, e2}) {
-        deg[extra]++; deg[v]++;
-        one_tree_cost += cost[extra][v];
-    }
-    return one_tree_cost;
-}
-
-// Volgenant-Jonker vanishing step schedule reaching 0 at iteration M
-// (EJOR 9:83-89, 1982). step1 is seeded from the first / best 1-tree cost.
-struct VolgenantJonker {
-    int n, M, m = 0;
-    double step1 = 0.0;
-    bool inited = false;
-    VolgenantJonker(int n_, int max_iterations)
-        : n(n_), M(max_iterations > 0 ? max_iterations
-                                      : (int)(28.0 * pow((double)n_, 0.62))) {}
-    bool cont() { ++m; return m <= M; }
-    double step() const {
-        double mm = m, MM = M;
-        return (mm - 1) * (2 * MM - 5) / (2 * (MM - 1)) * step1
-               - (mm - 2) * step1
-               + 0.5 * (mm - 1) * (mm - 2) / ((MM - 1) * (MM - 2)) * step1;
-    }
-    void on_one_tree(double one_tree_cost) {
-        if (!inited) { inited = true; step1 = one_tree_cost / (2.0 * n); }
-    }
-    void on_new_wmax(double one_tree_cost) { step1 = one_tree_cost / (2.0 * n); }
-};
-
-// Held-Karp 1-tree Lagrangian lower bound on OPT for cost matrix `cost`,
-// using the Volgenant-Jonker schedule. w(pi) = cost(1-tree) + sum_i pi_i*(deg_i-2).
-static double held_karp_lower_bound(const vector<vector<double>>& cost,
-                                    int max_iterations = 0) {
-    int n = (int)cost.size();
-    if (n < 2) return 0.0;
-    if (n == 2) return cost[0][1] + cost[1][0];
-
-    VolgenantJonker alg(n, max_iterations);
-    vector<double> pi(n, 0.0), best_pi(n, 0.0);
-    vector<int> deg(n, 0);
-    double max_w = -numeric_limits<double>::infinity();
-
-    while (alg.cont()) {
-        double one_tree_cost = compute_one_tree(cost, pi, deg);
-        alg.on_one_tree(one_tree_cost);
-        double w = one_tree_cost;
-        for (int i = 0; i < n; ++i) w += pi[i] * (deg[i] - 2);  // w(pi) <= OPT
-        if (w > max_w) {
-            max_w = w;
-            best_pi = pi;
-            alg.on_new_wmax(one_tree_cost);
-        }
-        double s = alg.step();
-        for (int i = 0; i < n; ++i) pi[i] += s * (deg[i] - 2);  // ascent g_i=deg_i-2
-    }
-
-    double one_tree_cost = compute_one_tree(cost, best_pi, deg);
-    double w = one_tree_cost;
-    for (int i = 0; i < n; ++i) w += best_pi[i] * (deg[i] - 2);
-    return w;
-}
-
-int main() {
-    ios::sync_with_stdio(false);
-    cin.tie(nullptr);
-    int n;
-    if (!(cin >> n) || n <= 0) return 0;
-    vector<vector<double>> cost(n, vector<double>(n, 0.0));
-    for (int i = 0; i < n; ++i)
-        for (int j = 0; j < n; ++j) cin >> cost[i][j];
-
-    vector<int> deg(n, 0);
-    vector<double> zero(n, 0.0);
-    // A 1-tree needs n >= 3 (a tree on n-1 >= 2 nodes plus two distinct edges).
-    double plain = (n >= 3) ? compute_one_tree(cost, zero, deg)
-                            : (n == 2 ? cost[0][1] + cost[1][0] : 0.0);
-    double bound = held_karp_lower_bound(cost);
-
-    cout << fixed << setprecision(4);
-    cout << "plain min-1-tree    : " << plain << "\n";
-    cout << "Held-Karp bound (VJ): " << bound << "\n";
-    return 0;
-}
-```
+Let me write the bound computation, then drop it into the search, landing it as a single
+self-contained C++17 program reading `n` and the `n × n` symmetric cost matrix from stdin and
+printing the plain min-1-tree cost and the Held-Karp bound to stdout. The 1-tree computation is an
+MST (Prim) on the `n−1` "ordinary" vertices under the perturbed costs `cost+π_i+π_j`, plus the two
+cheapest perturbed edges from the left-out special vertex; the bound accumulates *raw* edge costs
+and adds `Σ_i π_i (d_i − 2)`, and a driving loop applies the ascent `π ← π + t(d−2)` under the
+Volgenant-Jonker step schedule, keeping the best `w(π)` seen. That accumulation — raw cost, scored
+off the *perturbed* MST but never mixing perturbed cost into the reported number, plus `π·(d−2)`
+— is the part I'd most easily get wrong under time pressure; if I weren't confident I could
+implement it correctly in the budget, I'd fall back to standard exact bitmask DP over subsets and
+ship that — a plain correct submission beats an ambitious broken one.
 
 Let me run this on the same five-city instance and see where the ascent lands, since I know the
 true answer is `C* = 2.7021` and the cold-start floor is `1.87`. The vanishing Volgenant-Jonker
 schedule drives the bound from `1.87` up to `2.7021` — it closes the entire gap here and recovers
 the optimum exactly, which makes sense because at the maximizing `π` the minimum 1-tree must have
-come out all-degree-2 and therefore *is* the optimal tour. That is the best case, and a useful
-reassurance that the machinery is wired correctly. It is not guaranteed in general: the
-upper-bound HWC schedule, fed the true optimum as `UB`, only reaches `2.3808` on this same
-instance — better than the `1.87` floor but well short of `max w`, because the over-shooting
-`UB`-based step with a coarse halving block does not fully converge in so few iterations on five
-cities. So the two schedules genuinely differ, and the bound returned is whatever the chosen
-schedule's best `π` achieves — always a valid lower bound, never necessarily `max w`.
-
-So the chain is: branch-and-bound needs a cheap, tight under-estimate of the optimum tour; a tour
-is a 1-tree with every degree 2, and the minimum 1-tree is MST-cheap, giving a first loose lower
-bound (on the five-city test, `1.87` against `C* = 2.70`); perturbing edge costs by per-vertex
-potentials `π` shifts every tour by the same constant (verified: all 24 tours shift by exactly
-`2Σπ`, so the TSP is invariant) while reshaping the 1-tree, yielding the family
-`w(π) = min_k[c_k + π·(d_k − 2)] ≤ C*` — the Lagrangian dual of the degree-2 constraints, concave
-and piecewise linear; maximizing it by demanding the function increase is too slow at the kinks,
-so instead I demand decreasing distance to high-level sets, which the degree-residual vector
-`d − 2` delivers as a subgradient (checked numerically: `w(τ)−w(π) ≤ (τ−π)·(d−2)` held on the
-test point), the maximum-residual relaxation method of Agmon-Motzkin-Schoenberg; the constant
-step has the bound `sup_m w(π_m) ≥ max w − (t/2)limsup_m‖d_m−2‖²`, the target step
-`t = λ(ℓ − w)/‖d−2‖²` follows when `ℓ < max w`, and the practical code uses either a
-vanishing Volgenant-Jonker schedule (which closed the gap to the optimum on the test) or an
-upper-bound HWC schedule with halved `λ`; the whole thing slots into branch-and-bound,
-forcing/forbidding edges and branching when the ascent stalls.
+come out all-degree-2 and therefore *is* the optimal tour. That is the best case. It is not
+guaranteed in general: the upper-bound HWC schedule, fed the true optimum as `UB`, only reaches
+`2.3808` on this same instance — better than the `1.87` floor but well short of `max w`, because
+the over-shooting `UB`-based step with a coarse halving block does not fully converge in so few
+iterations on five cities. So the two schedules genuinely differ, and the bound returned is
+whatever the chosen schedule's best `π` achieves — always a valid lower bound, never necessarily
+`max w`.

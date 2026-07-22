@@ -1,4 +1,4 @@
-Let me start from what actually hurts. I have a protein backbone — a chain of residues, each with its N, Cα, C, O atoms sitting at definite points in 3D — and I want a network that reads this structure and predicts, per residue, which amino acid belongs there. The thing that keeps biting me is that the problem has two natures at once. Part of it is pure geometry: which way a residue points, how the backbone curves, where a pocket opens up, whether two neighbors sit on the same side of me or on opposite sides — that's directions and angles and shapes in space. And part of it is relational: who is in contact with whom, the connectivity pattern of interactions, the order along the chain. The two architectures I have on the shelf each nail exactly one of these and fumble the other, and I keep being forced to give one up to get the other.
+I have a protein backbone — a chain of residues, each with its N, Cα, C, O atoms sitting at definite points in 3D — and I want a network that reads this structure and predicts, per residue, which amino acid belongs there. The thing that keeps biting me is that the problem has two natures at once. Part of it is pure geometry: which way a residue points, how the backbone curves, where a pocket opens up, whether two neighbors sit on the same side of me or on opposite sides — that's directions and angles and shapes in space. And part of it is relational: who is in contact with whom, the connectivity pattern of interactions, the order along the chain. The two architectures I have on the shelf each nail exactly one of these and fumble the other, and I keep being forced to give one up to get the other.
 
 The convolutional route — voxelize the atoms into a 3D occupancy grid and run a 3D-CNN — is genuinely good at geometry. Its filters latch onto motifs and pocket shapes directly in space. But it pays for that three ways: it's not invariant to how I happen to orient the molecule, so I have to augment with rotations and hope; the grid resolution trades memory against geometric precision; and it has thrown away the residue-residue graph entirely, so any relational reasoning has to be painfully re-learned through dense volumetric filters. The graph route is the mirror image. Build a proximity graph over residues, do message passing à la Gilmer — for each directed edge form a message m_{j→i} = g(h_i, h_j, e_{j→i}), aggregate the incoming ones at each node, update h_i — and now relational reasoning is native and cheap. The catch is the geometry. A protein's answer doesn't change if I rotate or reflect the whole coordinate frame, so my scalar predictions must be invariant to any unitary R acting on all the coordinates. The standard way a graph method buys that invariance is to crush every directional quantity into rotation-invariant scalars before it ever enters the network.
 
@@ -26,9 +26,9 @@ Now the poke. If I use the *same* V_h both to feed norms into the scalar path an
 
 V_h = W_h V, V_μ = W_μ V_h, s_h = ‖V_h‖ row-wise, v_μ = ‖V_μ‖ row-wise, s' = σ(W_m concat(s_h, s) + b), V' = σ⁺(v_μ) ⊙ V_μ. The only learned weights are W_h, W_μ (bias-free, on vectors) and W_m, b (the ordinary biased linear on scalars). I'll call this little thing a geometric vector perceptron — it's a perceptron that has grown a vector path.
 
-Let me make sure I haven't quietly broken equivariance with the split, by doing the proof end to end, because I'm going to lean on this property hard. Rotate/reflect the input: V → VU with U unitary. The scalar output is s' = σ( W_m [ ‖W_h V‖ ; s ] + b ). The only place V enters is through ‖W_h V‖, and ‖W_h (VU)‖ = ‖(W_h V) U‖ = ‖W_h V‖ because U is unitary and acts on the right (the 3-axis) while W_h acts on the left (the channel axis). So s' is exactly unchanged — invariant. For the vectors: V' = σ⁺(‖W_μ W_h V‖) ⊙ (W_μ W_h V). The scaling σ⁺(‖·‖) is a diagonal matrix D acting on the channel index, and as just argued ‖W_μ W_h (VU)‖ = ‖W_μ W_h V‖, so D is invariant. Then D W_μ W_h (VU) = (D W_μ W_h V) U because every left-acting factor (D, W_μ, W_h) commutes with the right-acting U. So V'(VU) = (V'(V)) U — equivariant. Both halves check out, and it's because the only operations I ever applied to vectors were channel-linear maps, norms, and norm-based scalings, which is exactly the closed toolkit I derived. The σ⁺ footnote matters: σ⁺ is a *scaling* applied via the norm, not a function applied to coordinates — that's what keeps it equivariant.
+The split must not have quietly broken equivariance, since everything from here on leans on it — tracing it through end to end: rotate/reflect the input, V → VU with U unitary. The scalar output is s' = σ( W_m [ ‖W_h V‖ ; s ] + b ). The only place V enters is through ‖W_h V‖, and ‖W_h (VU)‖ = ‖(W_h V) U‖ = ‖W_h V‖ because U is unitary and acts on the right (the 3-axis) while W_h acts on the left (the channel axis). So s' is exactly unchanged — invariant. For the vectors: V' = σ⁺(‖W_μ W_h V‖) ⊙ (W_μ W_h V). The scaling σ⁺(‖·‖) is a diagonal matrix D acting on the channel index, and as just argued ‖W_μ W_h (VU)‖ = ‖W_μ W_h V‖, so D is invariant. Then D W_μ W_h (VU) = (D W_μ W_h V) U because every left-acting factor (D, W_μ, W_h) commutes with the right-acting U. So V'(VU) = (V'(V)) U — equivariant. Both halves check out, and it's because the only operations I ever applied to vectors were channel-linear maps, norms, and norm-based scalings, which is exactly the closed toolkit I derived. The σ⁺ footnote matters: σ⁺ is a *scaling* applied via the norm, not a function applied to coordinates — that's what keeps it equivariant.
 
-I want one more guarantee before I trust this, because "it's invariant" is cheap — a network that ignores its vectors is also invariant. The question is whether this module is *expressive enough* to compute the invariant geometric functions I care about. Concretely: can a GVP that takes only vectors in and emits only scalars (n = 0, μ = 0), followed by a dense layer, approximate any continuous rotation/reflection-invariant scalar function of the input vectors? If yes, then the geometric reasoning isn't being lost — it's all recoverable from the norms.
+Invariance alone is cheap — a network that ignores its vectors is also invariant — so the real question is whether this module is *expressive enough* to compute the invariant geometric functions I care about. Concretely: can a GVP that takes only vectors in and emits only scalars (n = 0, μ = 0), followed by a dense layer, approximate any continuous rotation/reflection-invariant scalar function of the input vectors? If yes, then the geometric reasoning isn't being lost — it's all recoverable from the norms.
 
 Let me try to construct it. Take F : Ω^ν → ℝ continuous and invariant, F(R(V)) = F(V), where Ω^ν is the bounded set of V whose first three vectors v_1, v_2, v_3 are linearly independent (so I can canonically orient any element). The intuition: any invariant function only depends on the rotation-and-reflection-invariant "shape" of the vector cloud, and the shape is fully captured by the norms and pairwise inner products of the vectors. So if I can recover the inner products from norms — which is all a GVP's scalar path produces — I can recover the shape, and then it's an ordinary function-approximation problem.
 
@@ -52,248 +52,12 @@ Those are input dimensionalities; I want the hidden tuples richer. I'll first ru
 
 Now the task-level architecture for design. Following the autoregressive framing, the joint distribution factors as p(s | x) = ∏_i p(s_i | x, s_{<i}), so I want an encoder that sees structure only and a decoder that adds sequence causally. The encoder is the three GVP propagation steps on the structural graph, producing per-residue embeddings that depend on structure alone. Then I inject sequence: embed the known amino acids and, for each edge (j→i), append the *neighbor's* sequence embedding to the edge's scalar features — but mask it to zero whenever j ≥ i, so that residue i only ever sees the sequence of residues before it. That mask is what makes the factorization causal and lets me teacher-force at training (feed the true s_{<i}) while sampling left-to-right at inference. The decoder is three more GVP propagation steps on this sequence-augmented graph, but with a twist that keeps the causality exact even as the decoder deepens: for incoming edges from j ≥ i (the "future" direction), I must not let stale, sequence-contaminated decoder embeddings leak backward, so I compute those backward messages from the *encoder* embeddings (which never saw any sequence), while forward edges j < i use the live decoder embeddings; I sum the two and divide by the actual neighbor count. Finally one more GVP with a (20, 0) output — 20 scalars, no vectors — gives per-residue logits over the amino acids; softmax or log-softmax is applied when I sample or compute the cross-entropy loss.
 
-Let me sanity-check the design against what would happen if I removed each piece, since that's the real test of whether every part is load-bearing. If I replace the GVP with a vanilla MLP on the merged features, I'm back to scalar-only geometry: the vectors get flattened into coordinates and an MLP on coordinates is not invariant, so to stay invariant I would have to pre-project to scalars and recreate Ingraham's freeze. If I propagate only scalars, direct geometric access is gone. If I propagate only vectors, I lose the dihedral scalars and the amino-acid identity, which are genuinely scalar inputs, and I also lose the scalar output path used in the approximation argument. If I drop W_μ and fuse the two vector transforms into one, I re-impose h = μ, the coupling I deliberately broke. Each piece earns its place by a specific failure it prevents.
+Removing any one piece breaks something specific, which is the real test of whether it's load-bearing. If I replace the GVP with a vanilla MLP on the merged features, I'm back to scalar-only geometry: the vectors get flattened into coordinates and an MLP on coordinates is not invariant, so to stay invariant I would have to pre-project to scalars and recreate Ingraham's freeze. If I propagate only scalars, direct geometric access is gone. If I propagate only vectors, I lose the dihedral scalars and the amino-acid identity, which are genuinely scalar inputs, and I also lose the scalar output path used in the approximation argument. If I drop W_μ and fuse the two vector transforms into one, I re-impose h = μ, the coupling I deliberately broke. Each piece earns its place by a specific failure it prevents.
 
-So let me write the actual module. The GVP itself, processing a tuple (s, V):
+So the module itself is exactly the five lines already on the page — V_h = W_h V, V_μ = W_μ V_h, s_h = ‖V_h‖ row-wise, s' = σ(W_m concat(s_h, s) + b), V' = σ⁺(‖V_μ‖) ⊙ V_μ — written as an `nn.Module`. The only wrinkle is bookkeeping: `V` arrives shaped `(..., ν, 3)`, and `W_h`, `W_μ` are ordinary bias-free `nn.Linear` layers acting on the channel index, so I transpose to `(..., 3, ν)` first so `Linear` hits `ν` and leaves the 3 spatial coordinates alone — the same "W touches the channel axis, U touches the 3-axis" separation the equivariance proof depended on. The equivariant LayerNorm and vector dropout are equally direct translations of what's already derived: divide every vector row by its RMS norm across channels, no learned scale or shift (either would break the commuting-with-U argument), and zero out whole vector channels with one Bernoulli draw per channel rather than per coordinate.
 
-```python
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+Wiring GVPs into Gilmer's message-passing template is mechanical once those three pieces exist. I build it on top of `torch_geometric`'s `MessagePassing` class so the propagate/aggregate bookkeeping is inherited rather than rewritten: a `GVPConv` layer forms each message by concatenating (source tuple, edge tuple, target tuple) — both endpoints, not just the sender, so the message can depend on the pair — and runs it through the 3-GVP stack, last one with identity activations, then averages over neighbors; a `GVPConvLayer` wraps that in the residual-plus-equivariant-LayerNorm update and the wide GVP feed-forward, also residual and normed. The one piece of that wiring that's a real decision rather than falling out of the library's conventions is the autoregressive split: forward edges (`src < dst`) get their message from the live decoder embeddings, backward edges (`src ≥ dst`) get theirs from the frozen encoder embeddings instead, and the two contributions are summed and divided by the true neighbor count — exactly the causal split already described, just realized as two separate `GVPConv` calls over disjoint edge subsets. Everything else in that wiring — the exact `propagate`/`message` call signatures, the flatten/reshape needed to pass `(s, V)` tuples through them — is bookkeeping around the ideas already fixed above, not a new design choice.
 
+The full model is the encoder/decoder pair already laid out, now with dimensions attached: input GVPs (identity activation) plus equivariant LayerNorm lift the (6,3)/(32,1) node/edge tuples to (100,16)/(32,1) hidden tuples; three encoder GVPConvLayers propagate structure alone; the amino-acid embedding is appended to edge scalars and masked to zero for `j ≥ i`; three autoregressive decoder GVPConvLayers propagate the sequence-augmented graph with the forward/backward split above; a final GVP with a (20, 0) output and identity activations gives the 20 per-residue logits. Softmax (or log-softmax) turns those into a distribution, and training minimizes the masked per-residue cross-entropy against the native sequence.
 
-def _norm_no_nan(x, axis=-1, keepdims=False, eps=1e-8, sqrt=True):
-    # L2 norm clamped above eps so the gradient never sees a 0/0 at the origin.
-    out = torch.clamp(torch.sum(torch.square(x), axis, keepdims), min=eps)
-    return torch.sqrt(out) if sqrt else out
-
-
-class GVP(nn.Module):
-    """Geometric Vector Perceptron: (s, V) -> (s', V').
-    s : (..., n) scalars (invariant);  V : (..., nu, 3) vectors (equivariant).
-    Vectors are only ever channel-mixed (bias-free), normed, or scaled by a
-    function of their norm -- the closed set of ops that commute with rotation."""
-
-    def __init__(self, in_dims, out_dims, h_dim=None,
-                 activations=(F.relu, torch.sigmoid)):
-        super().__init__()
-        self.si, self.vi = in_dims          # (n, nu)
-        self.so, self.vo = out_dims         # (m, mu)
-        self.scalar_act, self.vector_act = activations
-        if self.vi:
-            self.h_dim = h_dim or max(self.vi, self.vo)        # h = max(nu, mu)
-            self.wh = nn.Linear(self.vi, self.h_dim, bias=False)   # W_h: nu -> h, no bias
-            self.ws = nn.Linear(self.h_dim + self.si, self.so)     # W_m on concat(norms, s)
-            if self.vo:
-                self.wv = nn.Linear(self.h_dim, self.vo, bias=False)  # W_mu: h -> mu, no bias
-        else:
-            self.ws = nn.Linear(self.si, self.so)
-
-    def forward(self, x):
-        if self.vi:
-            s, v = x
-            v = torch.transpose(v, -1, -2)         # (..., 3, nu) so Linear hits the channel axis
-            vh = self.wh(v)                         # V_h = W_h V   (..., 3, h)
-            vn = _norm_no_nan(vh, axis=-2)          # s_h = ||V_h|| per channel -> invariant
-            s = self.ws(torch.cat([s, vn], -1))     # scalars see the vector norms
-            if self.vo:
-                vm = self.wv(vh)                     # V_mu = W_mu V_h  (..., 3, mu)
-                vm = torch.transpose(vm, -1, -2)     # (..., mu, 3)
-                if self.vector_act:                  # V' = sigma+(||V_mu||) (.) V_mu  (row-wise)
-                    vm = vm * self.vector_act(_norm_no_nan(vm, axis=-1, keepdims=True))
-        else:
-            s = self.ws(x)
-            if self.vo:
-                vm = torch.zeros(s.shape[:-1] + (self.vo, 3), device=s.device)
-        if self.scalar_act:
-            s = self.scalar_act(s)
-        return (s, vm) if self.vo else s
-```
-
-The equivariant LayerNorm and the vector-channel dropout, since the GNN layers need them:
-
-```python
-class GVPLayerNorm(nn.Module):
-    """LayerNorm on a tuple: ordinary LayerNorm on scalars; vectors rescaled so
-    their root-mean-square norm is 1 (a single invariant scale -> equivariant)."""
-    def __init__(self, dims):
-        super().__init__()
-        self.s, self.v = dims
-        self.scalar_norm = nn.LayerNorm(self.s)
-
-    def forward(self, x):
-        if not self.v:
-            return self.scalar_norm(x)
-        s, v = x
-        vn = _norm_no_nan(v, axis=-1, keepdims=True, sqrt=False)   # ||v||^2 per channel
-        vn = torch.sqrt(torch.mean(vn, dim=-2, keepdim=True))      # RMS norm over channels
-        return self.scalar_norm(s), v / vn
-
-
-class _VDropout(nn.Module):
-    """Drop whole vector channels (not coordinates) -> equivariant."""
-    def __init__(self, drop_rate):
-        super().__init__()
-        self.drop_rate = drop_rate
-
-    def forward(self, x):
-        if not self.training:
-            return x
-        mask = torch.bernoulli((1 - self.drop_rate) *
-                               torch.ones(x.shape[:-1], device=x.device)).unsqueeze(-1)
-        return mask * x / (1 - self.drop_rate)
-
-
-class Dropout(nn.Module):
-    def __init__(self, drop_rate):
-        super().__init__()
-        self.sdropout = nn.Dropout(drop_rate)
-        self.vdropout = _VDropout(drop_rate)
-
-    def forward(self, x):
-        if isinstance(x, torch.Tensor):
-            return self.sdropout(x)
-        s, v = x
-        return self.sdropout(s), self.vdropout(v)
-```
-
-And the message-passing layer — the GVP message stack, mean aggregation, residual + equivariant norm, then the wide GVP feed-forward — with the autoregressive option for the decoder, where backward (src ≥ dst) edges form their messages from a separate set of node embeddings:
-
-```python
-import functools
-from torch_geometric.nn import MessagePassing
-from torch_scatter import scatter_add
-
-
-def tuple_sum(*args):
-    return tuple(map(sum, zip(*args)))
-
-def tuple_cat(*args, dim=-1):
-    dim %= len(args[0][0].shape)
-    s_args, v_args = list(zip(*args))
-    return torch.cat(s_args, dim=dim), torch.cat(v_args, dim=dim)
-
-def tuple_index(x, idx):
-    return x[0][idx], x[1][idx]
-
-def _merge(s, v):
-    v = torch.reshape(v, v.shape[:-2] + (3 * v.shape[-2],))
-    return torch.cat([s, v], -1)
-
-def _split(x, nv):
-    v = torch.reshape(x[..., -3*nv:], x.shape[:-1] + (nv, 3))
-    return x[..., :-3*nv], v
-
-
-class GVPConv(MessagePassing):
-    """m_{j->i} = g(concat(h_j, e_{j->i}, h_i)); aggregate over neighbors. g = stack of GVPs,
-    last with identity activation so the summed message stays expressive. I concatenate both
-    endpoints (source h_j AND target h_i) with the edge -- hence 2*si + se scalars in -- so the
-    message can depend on the pair, not just the neighbor."""
-    def __init__(self, in_dims, out_dims, edge_dims, n_layers=3, aggr="mean"):
-        super().__init__(aggr=aggr)
-        self.si, self.vi = in_dims
-        self.so, self.vo = out_dims
-        self.se, self.ve = edge_dims
-        GVP_ = functools.partial(GVP)
-        module_list = [GVP_((2*self.si + self.se, 2*self.vi + self.ve), out_dims)]
-        for _ in range(n_layers - 2):
-            module_list.append(GVP_(out_dims, out_dims))
-        module_list.append(GVP_(out_dims, out_dims, activations=(None, None)))
-        self.message_func = nn.Sequential(*module_list)
-
-    def forward(self, x, edge_index, edge_attr):
-        x_s, x_v = x
-        message = self.propagate(edge_index, s=x_s,
-                                 v=x_v.reshape(x_v.shape[0], 3*x_v.shape[1]),
-                                 edge_attr=edge_attr)
-        return _split(message, self.vo)
-
-    def message(self, s_i, v_i, s_j, v_j, edge_attr):
-        v_j = v_j.view(v_j.shape[0], v_j.shape[1] // 3, 3)
-        v_i = v_i.view(v_i.shape[0], v_i.shape[1] // 3, 3)
-        m = tuple_cat((s_j, v_j), edge_attr, (s_i, v_i))
-        return _merge(*self.message_func(m))
-
-
-class GVPConvLayer(nn.Module):
-    """Residual node update with aggregated GVP messages + equivariant LayerNorm,
-    then a wide GVP feed-forward, residual + norm. Vectors are refined every step."""
-    def __init__(self, node_dims, edge_dims, n_message=3, n_feedforward=2,
-                 drop_rate=.1, autoregressive=False):
-        super().__init__()
-        self.conv = GVPConv(node_dims, node_dims, edge_dims, n_message,
-                            aggr="add" if autoregressive else "mean")
-        GVP_ = functools.partial(GVP)
-        self.norm = nn.ModuleList([GVPLayerNorm(node_dims) for _ in range(2)])
-        self.dropout = nn.ModuleList([Dropout(drop_rate) for _ in range(2)])
-        hid = (4 * node_dims[0], 2 * node_dims[1])             # wide feed-forward tuple
-        self.ff_func = nn.Sequential(
-            GVP_(node_dims, hid),
-            GVP_(hid, node_dims, activations=(None, None)))
-
-    def forward(self, x, edge_index, edge_attr, autoregressive_x=None, node_mask=None):
-        if autoregressive_x is not None:
-            src, dst = edge_index
-            fwd = src < dst                                    # past: use live decoder embeddings
-            bwd = ~fwd                                         # future: use encoder embeddings only
-            dh = tuple_sum(
-                self.conv(x, edge_index[:, fwd], tuple_index(edge_attr, fwd)),
-                self.conv(autoregressive_x, edge_index[:, bwd], tuple_index(edge_attr, bwd)))
-            count = scatter_add(torch.ones_like(dst), dst,
-                                dim_size=dh[0].size(0)).clamp(min=1).unsqueeze(-1)
-            dh = dh[0] / count, dh[1] / count.unsqueeze(-1)
-        else:
-            dh = self.conv(x, edge_index, edge_attr)
-        if node_mask is not None:
-            x_ = x
-            x, dh = tuple_index(x, node_mask), tuple_index(dh, node_mask)
-        x = self.norm[0](tuple_sum(x, self.dropout[0](dh)))
-        dh = self.ff_func(x)
-        x = self.norm[1](tuple_sum(x, self.dropout[1](dh)))
-        if node_mask is not None:
-            x_[0][node_mask], x_[1][node_mask] = x[0], x[1]
-            x = x_
-        return x
-```
-
-Finally the inverse-folding model itself. The data pipeline has already featurized the backbone into the (6, 3) node and (32, 1) edge tuples. The model lifts those to node_h = (100, 16) and edge_h = (32, 1), runs three structure-only encoder layers, appends the causally masked sequence embedding to edge scalars, runs three autoregressive decoder layers, and outputs the 20 amino-acid logits:
-
-```python
-class CPDModel(nn.Module):
-    """Structure-conditioned autoregressive protein design.
-    node_in_dim=(6,3), node_h_dim=(100,16), edge_in_dim=(32,1), edge_h_dim=(32,1)."""
-    def __init__(self, node_in_dim, node_h_dim, edge_in_dim, edge_h_dim,
-                 num_layers=3, drop_rate=0.1):
-        super().__init__()
-        self.W_v = nn.Sequential(GVP(node_in_dim, node_h_dim, activations=(None, None)),
-                                 GVPLayerNorm(node_h_dim))
-        self.W_e = nn.Sequential(GVP(edge_in_dim, edge_h_dim, activations=(None, None)),
-                                 GVPLayerNorm(edge_h_dim))
-        self.encoder_layers = nn.ModuleList(
-            GVPConvLayer(node_h_dim, edge_h_dim, drop_rate=drop_rate) for _ in range(num_layers))
-        self.W_s = nn.Embedding(20, 20)
-        edge_h_dim = (edge_h_dim[0] + 20, edge_h_dim[1])
-        self.decoder_layers = nn.ModuleList(
-            GVPConvLayer(node_h_dim, edge_h_dim, drop_rate=drop_rate, autoregressive=True)
-            for _ in range(num_layers))
-        self.W_out = GVP(node_h_dim, (20, 0), activations=(None, None))
-
-    def forward(self, h_V, edge_index, h_E, seq):
-        h_V = self.W_v(h_V)
-        h_E = self.W_e(h_E)
-        for layer in self.encoder_layers:
-            h_V = layer(h_V, edge_index, h_E)
-        encoder_embeddings = h_V
-        h_S = self.W_s(seq)
-        h_S = h_S[edge_index[0]]
-        h_S[edge_index[0] >= edge_index[1]] = 0                 # residue i sees only seq[j] for j<i
-        h_E = (torch.cat([h_E[0], h_S], dim=-1), h_E[1])
-        for layer in self.decoder_layers:
-            h_V = layer(h_V, edge_index, h_E, autoregressive_x=encoder_embeddings)
-        return self.W_out(h_V)                                  # (n_nodes, 20) logits
-```
-
-The softmax over those logits gives the per-residue distribution; the training loss is the per-residue cross-entropy against the native sequence.
-
-Let me trace the causal chain one more time. The problem is dual — geometric and relational — and the two architecture families each surrendered one face: CNNs and the SO(3)-irrep networks reason geometrically but are costly or non-relational, while graph methods reason relationally but, to stay invariant, froze all geometry into scalars at the input via per-node local frames, which made the geometry both redundant and un-manipulable downstream. I refused both surrenders and asked what operations on raw vector features commute with rotation; the answer — channel-linear maps without bias, L2 norms, and scaling by a function of the norm — is a closed toolkit that makes vectors equivariant and scalars invariant, with the norm as the one bridge from geometry into the scalar prediction. Packaging that toolkit as a perceptron with a scalar path that reads vector norms and a vector path that channel-mixes then scales-by-norm gives the GVP; splitting the vector transform into W_h (for the norms) and W_μ (for the output vectors) decoupled the number of extracted invariants from the number of propagated directions; and the universal-approximation argument — recover inner products from norms by the cosine law, which I checked numerically reconstructs the orientation to machine precision, then Cybenko — says the norm bridge loses nothing. Dropping it into Gilmer's message passing, with an equivariant RMS LayerNorm and vector-channel dropout, gives a GNN whose vector features stay alive and get refined at every layer; feeding it the dihedral scalars and the three orientation vectors per node and the RBF/offset scalars plus the direction vector per edge — directions kept as honest arrows instead of local-frame scalars — un-freezes exactly what the prior graph method had to freeze; and wrapping it in the autoregressive masked encoder-decoder for design lands on a model that reasons relationally and geometrically at once, invariantly, at a cost that scales to whole proteins.
+The dual nature of the problem forced a choice between two surrenders — freeze geometry into invariant scalars at the door, the way Ingraham does, or pay the full SO(3)-irrep tax the way tensor field networks do. Asking which operations on raw vector features commute with rotation turned up a third option: channel-linear maps without bias, L2 norms, and norm-based scaling are the whole closed set, and the norm is the one bridge from geometry into an invariant scalar. Everything downstream — the W_h/W_μ split, the equivariant norm and dropout, the vector-valued node and edge features, the autoregressive design head — is that same toolkit pushed as deep into the network as it'll go, instead of collapsing to scalars at the first opportunity.
