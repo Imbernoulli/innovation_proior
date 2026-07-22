@@ -14,13 +14,13 @@ The constant $c$ (small, say $10^{-3}$) is a floor on the denominator; on the fi
 
 Which kernel? I want similarity near 1 when two embeddings nearly coincide and decaying as they separate, and I want it *scale-free* so it behaves the same whether a particular game's embeddings happen to live at distance 0.1 or distance 100 from each other. The inverse kernel from the episodic-memory line fits both:
 $$K(x,y)=\frac{\epsilon}{\dfrac{d^2(x,y)}{d_m^2}+\epsilon},$$
-with $d$ the Euclidean distance, $\epsilon$ a small constant, and — this is the scale-free part — $d_m^2$ a *running average of the squared distance to the nearest neighbors*. Dividing by $d_m^2$ normalizes distances into "typical-neighbor units," so the kernel doesn't need re-tuning per game as the embedding magnitudes drift; when $d^2\ll d_m^2$ the kernel is $\approx1$ (same cluster, full count), when $d^2\gg d_m^2$ it's $\approx0$ (different state, no count).
+with $d$ the Euclidean distance, $\epsilon$ a small constant, and — this is the scale-free part — $d_m^2$ a *running average of the $k$ nearest-neighbor squared distances*, updated with the whole neighbor list at each query. Dividing by $d_m^2$ normalizes distances into "typical-neighbor units," so the kernel doesn't need re-tuning per game as the embedding magnitudes drift; when $d^2\ll d_m^2$ the kernel is $\approx1$ (same cluster, full count), when $d^2\gg d_m^2$ it's $\approx0$ (different state, no count).
 
-Before going further I should actually trace this on the easy cases, because I want to know what numbers come out, not just the shape. Take the kernel constants $\epsilon=c=10^{-3}$ and $k=10$ neighbors, and normalize so the typical neighbor sits at $d^2/d_m^2\approx1$. Empty memory: the sum over neighbors is $0$, so $s=\sqrt{0}+c=10^{-3}$ and $r^{\text{episodic}}=1/s=1000$ — a huge bonus on the very first step of an episode, which is right, everything is maximally fresh. Now the opposite extreme: the agent is surrounded by states identical to where it stands, so every neighbor distance is $0$, each kernel term is $\epsilon/\epsilon=1$, and the sum equals the neighbor count. But the neighbor count is capped at $k=10$, so the sum saturates at $10$ no matter how many identical states are in memory — I checked $m=10,50,100$ identical entries and the sum stays $10$. Then $s=\sqrt{10}+c\approx3.16$ and the bonus bottoms out at $1/3.16\approx0.316$. So the within-episode bonus rides smoothly from $1000$ down to about $0.316$ as the agent re-treads ground, and never below that. Good — that smooth ride from "very fresh" to a small positive floor is exactly the reset-able decay I wanted, and the cap at $k$ keeps it from blowing up.
+What numbers does this actually produce at the extremes? Take the kernel constants $\epsilon=c=10^{-3}$ and $k=10$ neighbors, and normalize so the typical neighbor sits at $d^2/d_m^2\approx1$. Empty memory: the sum over neighbors is $0$, so $s=\sqrt{0}+c=10^{-3}$ and $r^{\text{episodic}}=1/s=1000$ — a huge bonus on the very first step of an episode, which is right, everything is maximally fresh. Now the opposite extreme: the agent is surrounded by states identical to where it stands, so every neighbor distance is $0$, each kernel term is $\epsilon/\epsilon=1$, and the sum equals the neighbor count. But the neighbor count is capped at $k=10$, so the sum saturates at $10$ no matter how many identical states are in memory — $m=10,50,100$ identical entries all give the same sum of $10$. Then $s=\sqrt{10}+c\approx3.16$ and the bonus bottoms out at $1/3.16\approx0.316$. So the within-episode bonus rides smoothly from $1000$ down to about $0.316$ as the agent re-treads ground, and never below that. That smooth ride from "very fresh" to a small positive floor is exactly the reset-able decay I wanted, and the cap at $k$ keeps the sum from growing without bound.
 
-That last number is worth pausing on, because it tells me something about a guard I was about to add. The summed similarity can't exceed $k=10$, so $s$ can't exceed $\sqrt{10}+c\approx3.16$. If I impose a hard ceiling "if $s$ exceeds a maximum similarity $s_m$, set the bonus to zero" with $s_m=8$, that branch will *never fire* under these constants — $s$ tops out at $3.16$, well under $8$. So $s_m$ is not the mechanism that drives the episodic bonus down; the smooth $1/\sqrt{s}$ is. The ceiling is a cheap safety guard for the regime where $k$ is much larger (or the kernel is widened), where the sum could grow past a point at which "very visited this episode" should mean exactly *no* bonus rather than a small positive one a camping agent could still chase. I'll keep it in, but I now understand it's a guard, not the operative decay — and I shouldn't have been thinking of it as the thing that turns the bonus off.
+That floor also settles the role of a guard I was about to add. The summed similarity can't exceed $k=10$, so $s$ can't exceed $\sqrt{10}+c\approx3.16$. If I impose a hard ceiling "if $s$ exceeds a maximum similarity $s_m$, set the bonus to zero" with $s_m=8$, that branch will *never fire* under these constants — $s$ tops out at $3.16$, well under $8$. So $s_m$ is not the mechanism that drives the episodic bonus down; the smooth $1/\sqrt{s}$ is, and I had been thinking of the ceiling as the thing that turns the bonus off. It isn't: it's a cheap safety guard for the regime where $k$ is much larger (or the kernel is widened), where the sum could grow past a point at which "very visited this episode" should mean exactly *no* bonus rather than a small positive one a camping agent could still chase. I'll keep it in, understood as a guard, not the operative decay.
 
-Now a pathology this episodic count would otherwise hand to an adversarial agent: near-duplicate frames. In Atari, consecutive frames are almost identical, so the running memory is full of embeddings a hair away from the current one. With the inverse kernel, how much count mass does a hair-away neighbor contribute? Let me check the kernel's sharpness directly. With $\epsilon=10^{-3}$, a neighbor at normalized squared distance $0.02$ already gives $\epsilon/(0.02+\epsilon)=0.048$ — the kernel is very sharp, so genuinely distinct nearby states contribute almost nothing. But a neighbor at distance essentially $0$ contributes the full $1$. The danger is the in-between: tiny jitter that should count as the same place but lands at a small nonzero distance, registering as partly fresh and paying a bonus for not moving — or, flipped, the agent's own immediate past piling up fat similarities and crushing the bonus. So before the kernel, I'll *cluster*: subtract a small floor $\xi$ from the normalized distances and clamp at zero,
+Now a pathology this episodic count would otherwise hand to an adversarial agent: near-duplicate frames. In Atari, consecutive frames are almost identical, so the running memory is full of embeddings a hair away from the current one. How much count mass does a hair-away neighbor contribute under the inverse kernel? With $\epsilon=10^{-3}$, a neighbor at normalized squared distance $0.02$ already gives $\epsilon/(0.02+\epsilon)=0.048$ — the kernel is very sharp, so genuinely distinct nearby states contribute almost nothing. But a neighbor at distance essentially $0$ contributes the full $1$. The danger is the in-between: tiny jitter that should count as the same place but lands at a small nonzero distance, registering as partly fresh and paying a bonus for not moving — or, flipped, the agent's own immediate past piling up fat similarities and crushing the bonus. So before the kernel, I'll *cluster*: subtract a small floor $\xi$ from the normalized distances and clamp at zero,
 $$d_n\leftarrow\max\!\big(d_n-\xi,\;0\big),$$
 so any neighbor closer than $\xi$ (in typical-neighbor units) snaps to distance $0$ and contributes the *maximal* kernel value — counted as the same state. Tracing it with $\xi=0.008$: a neighbor at normalized distance $0.005$ clamps to $0$ → kernel $1$ (same state), while one at $0.02$ stays at $0.012$ → kernel $0.077$ (counts as partly distinct). So $\xi$ is a small adjustment relative to the kernel's own sharpness; its real job is to make truly-coincident frames sum cleanly to integer count mass rather than to broadly merge a cluster. That matches what I want and doesn't accidentally erase real motion.
 
@@ -30,202 +30,16 @@ That's the episodic half. Now bring back the lifelong half, because the episodic
 $$\alpha_t=1+\frac{\mathrm{err}(x_t)-\mu_e}{\sigma_e},$$
 with $\mu_e,\sigma_e$ a running mean and std of the error — so for a typically-familiar state the standardized error is near $0$ and $\alpha_t\approx1$, while for a globally-novel one it's positive and $\alpha_t>1$.
 
-How do I combine the two? My first instinct is to add them, $i_t=r^{\text{episodic}}_t+\alpha_t$. Let me actually push numbers through both before I commit, because the choice isn't obvious and the failure modes are quantitative. Two situations matter. First, a *camping* spot: the agent has re-trodden this state enough that the episodic bonus sits at its floor $\approx0.316$, and I ask what each rule does as the lifelong factor swings. If the spot is globally familiar, $\alpha_t=1$; if globally novel, $\alpha_t$ saturates at whatever cap I set, say $5$. Additive gives $0.316+1=1.316$ (familiar) versus $0.316+5=5.316$ (novel). Multiplicative gives $0.316\cdot1=0.316$ versus $0.316\cdot5=1.58$. Both rules boost the novel case, fine. The damning case is the *second* one: a state the episodic count has correctly driven to **zero**, but which RND still flags as globally novel ($\alpha_t=5$). Additive gives $0+5=5$ — a fat bonus for camping in a spot the within-episode signal explicitly said is exhausted. Multiplicative gives $0\cdot5=0$. So the additive rule reopens exactly the camping exploit I closed with the saturation logic: the lifelong term *carries* the bonus on its own wherever the episodic term has gone quiet, and it leaves a constant additive baseline everywhere even after a region is globally mastered. The multiplicative rule keeps the episodic count as the *driver* — the term with the reset, the one responsible for persistence — and lets the lifelong signal only *scale* that drive. That settles it; I want the product, not the sum.
+How do I combine the two? My first instinct is to add them, $i_t=r^{\text{episodic}}_t+\alpha_t$, but the choice isn't obvious and the failure modes are quantitative, so I'll push numbers through both rules. Two situations matter. First, a *camping* spot: the agent has re-trodden this state enough that the episodic bonus sits at its floor $\approx0.316$, and I ask what each rule does as the lifelong factor swings. If the spot is globally familiar, $\alpha_t=1$; if globally novel, $\alpha_t$ saturates at whatever cap I set, say $5$. Additive gives $0.316+1=1.316$ (familiar) versus $0.316+5=5.316$ (novel). Multiplicative gives $0.316\cdot1=0.316$ versus $0.316\cdot5=1.58$. Both rules boost the novel case, fine. The damning case is the *second* one: a state the episodic count has driven to zero — the saturation guard firing, as it can in the larger-$k$ regime it exists for — but which RND still flags as globally novel ($\alpha_t=5$). Additive gives $0+5=5$ — a fat bonus for camping in a spot the within-episode signal explicitly said is exhausted. Multiplicative gives $0\cdot5=0$. So the additive rule reopens exactly the camping exploit I closed with the saturation logic: the lifelong term *carries* the bonus on its own wherever the episodic term has gone quiet, and it leaves a constant additive baseline everywhere even after a region is globally mastered. The multiplicative rule keeps the episodic count as the *driver* — the term with the reset, the one responsible for persistence — and lets the lifelong signal only *scale* that drive. That settles it; I want the product, not the sum.
 
 But raw multiplication has its own two failure modes, and the numbers tell me where to clamp. If I let $\alpha_t$ drift below $1$ (a globally-familiar state has standardized error below the mean, so $\alpha_t<1$), the modulator would *shrink* the episodic bonus — the lifelong term would start suppressing the within-episode drive on familiar rooms, which is precisely the persistence I'm trying to protect. And if I let $\alpha_t$ run unbounded, a single anomalous RND spike — a one-off weird frame at standardized error $+10$ — would multiply the bonus by $11$ and yank the policy toward a fluke. So clip:
 $$i_t=r^{\text{episodic}}_t\cdot\min\!\Big\{\max\{\alpha_t,1\},\,L\Big\},\qquad L=5.$$
-Tracing the clamp against standardized RND error confirms it does what I want: at error $0$ or below the mean, $\alpha_t\le1$ clamps to $1$ (modulator is the identity — lifelong can only boost, never suppress); at error $+1\sigma$ it's $2$, at $+4\sigma$ it's $5$, and at $+10\sigma$ it clamps back down to $L=5$ (no single spike explodes the bonus). The floor at $1$ is the "never give up" guarantee made literal: the product is always $\ge r^{\text{episodic}}_t$, so even after global novelty has completely vanished the agent still gets the full within-episode signal and keeps re-exploring. And the limiting behavior falls out: as the agent masters everything globally, $\alpha_t$ sits at the floor, the modulator $\to1$, and $i_t\to r^{\text{episodic}}_t$ — the method reduces to pure episodic novelty, the part that should never decay. Where the episodic bonus has itself gone to zero, the product is zero regardless of $\alpha_t$, so the camping exploit stays closed. That's the whole bonus.
+Against standardized RND error the clamp does what I want: at error $0$ or below the mean, $\alpha_t\le1$ clamps to $1$ (modulator is the identity — lifelong can only boost, never suppress); at error $+1\sigma$ it's $2$, at $+4\sigma$ it's $5$, and at $+10\sigma$ it clamps back down to $L=5$ (no single spike explodes the bonus). The floor at $1$ is the "never give up" guarantee made literal: the product is always $\ge r^{\text{episodic}}_t$, so even after global novelty has completely vanished the agent still gets the full within-episode signal and keeps re-exploring. And the limiting behavior falls out: as the agent masters everything globally, $\alpha_t$ sits at the floor, the modulator $\to1$, and $i_t\to r^{\text{episodic}}_t$ — the method reduces to pure episodic novelty, the part that should never decay. Where the episodic bonus has itself been zeroed by the saturation guard, the product is zero regardless of $\alpha_t$, so the camping exploit stays closed.
 
 But there's a second problem this construction creates, separate from *computing* the bonus, and I have to handle it or the gains evaporate on the easy games. By design this bonus *does not vanish* — the episodic term keeps paying out, never dropping below $\approx0.316$ as I traced above. That's the feature. But it means a value function trained on $e_t+\beta i_t$ has the exploratory drive *permanently* baked in; the policy will keep sacrificing extrinsic return to go sightseeing even on a dense-reward game where there's nothing to explore and it should just exploit. A vanishing bonus would have quietly switched itself off; mine won't. I can't fix this by annealing $\beta$ — that would throw away the persistence I worked for. I need an architecture that holds an exploratory policy and an exploitative policy *at the same time* and lets me act with either.
 
-I can get that separation if the value function is not one object but a *family*, indexed by the intrinsic weight itself. Use a universal value function approximator (Schaul et al. 2015): one network $Q(x,a,\beta_i)$ that conditions on $\beta_i$ and approximates the optimal value for the augmented reward $r^{\beta_i}_t=e_t+\beta_i i_t$, for a discrete set $\{\beta_i\}_{i=0}^{N-1}$. Pin the endpoints: $\beta_0=0$ is a *pure exploitative* value function (it never sees the intrinsic reward at all), and $\beta_{N-1}=\beta$ is the most exploratory. Now exploitation is free: at evaluation, act greedily with respect to $Q(x,a,0)$ and the exploratory bias is simply *gone* — no annealing, no switch to flip, it was a separate member of the family all along. And because all the $\beta_i$ share the network's weights, the strongly-exploratory members act as auxiliary tasks (Jaderberg et al. 2016) that keep the shared representation and skills improving *even before any extrinsic reward is ever seen*, which the $\beta_0$ head can then exploit the instant a reward appears. Why a whole spread of $N$ values and not just $\{0,\beta\}$? Because the pure-exploit and pure-explore policies can be very different in behavior, and a network asked to represent both extremes and nothing in between has to make a hard jump; a smoothly-spaced ladder of intermediate trade-offs makes the family easier to fit. I'll pack the spacing toward the two extremes (a sigmoid schedule in $i$) since those are the members I care most about. Let me confirm the schedule I wrote actually pins the endpoints and clusters where I claimed: with $N=32$, $\beta=0.3$, it returns $\beta_0=0$ and $\beta_{31}=0.3$ exactly, the first several $\beta_i$ are all but zero ($0,0,0.0001,0.0001,0.0002,\dots$) and the last several are all but $0.3$ ($0.2999,0.2999,0.3,0.3,0.3$), with the spread happening in the middle ($\beta_{16}=0.15$). Good — dense at both ends, which is the spacing I wanted. I pair each $\beta_i$ with its own discount $\gamma_i$: the exploitative end wants the *largest* discount, $\gamma_0=0.997$, to be as close to optimizing undiscounted extrinsic return as possible (rewards are far apart), while the exploratory end can use a *smaller* discount, $\gamma_{N-1}=0.99$, because the intrinsic reward is dense and small-ranged so a short horizon suffices — log-spaced in between. Checking the gamma schedule: it returns $\gamma_0=0.997$ and $\gamma_{31}=0.99$ exactly, decreasing monotonically through $\approx0.9968,0.9968,\dots,0.9911,0.9908,0.9904,0.99$. Endpoints and monotonicity as intended.
+I can get that separation if the value function is not one object but a *family*, indexed by the intrinsic weight itself. Use a universal value function approximator (Schaul et al. 2015): one network $Q(x,a,\beta_i)$ that conditions on $\beta_i$ and approximates the optimal value for the augmented reward $r^{\beta_i}_t=e_t+\beta_i i_t$, for a discrete set $\{\beta_i\}_{i=0}^{N-1}$. Pin the endpoints: $\beta_0=0$ is a *pure exploitative* value function (it never sees the intrinsic reward at all), and $\beta_{N-1}=\beta$ is the most exploratory. Now exploitation is free: at evaluation, act greedily with respect to $Q(x,a,0)$ and the exploratory bias is simply *gone* — no annealing, no switch to flip, it was a separate member of the family all along. And because all the $\beta_i$ share the network's weights, the strongly-exploratory members act as auxiliary tasks (Jaderberg et al. 2016) that keep the shared representation and skills improving *even before any extrinsic reward is ever seen*, which the $\beta_0$ head can then exploit the instant a reward appears. Why a whole spread of $N$ values and not just $\{0,\beta\}$? Because the pure-exploit and pure-explore policies can be very different in behavior, and a network asked to represent both extremes and nothing in between has to make a hard jump; a smoothly-spaced ladder of intermediate trade-offs makes the family easier to fit. I'll pack the spacing toward the two extremes (a sigmoid schedule in $i$) since those are the members I care most about. A sigmoid does exactly this: with $N=32$, $\beta=0.3$ it pins $\beta_0=0$ and $\beta_{31}=0.3$ at the endpoints, holds the first several $\beta_i$ within $10^{-4}$ of zero and the last several within $10^{-4}$ of $0.3$, and puts the transition in the middle ($\beta_{15}=0.15$) — dense at both ends, as wanted. I pair each $\beta_i$ with its own discount $\gamma_i$: the exploitative end wants the *largest* discount, $\gamma_0=0.997$, to be as close to optimizing undiscounted extrinsic return as possible (rewards are far apart), while the exploratory end can use a *smaller* discount, $\gamma_{N-1}=0.99$, because the intrinsic reward is dense and small-ranged so a short horizon suffices — log-spaced in between, which pins $\gamma_0=0.997$ and $\gamma_{31}=0.99$ and decreases monotonically through $\approx0.9969, 0.9968, \dots, 0.9911, 0.9907, 0.9904, 0.99$.
 
 One last subtlety from feeding a non-stationary reward into a value-based agent. The intrinsic reward depends on the episodic memory's contents, which depend on the whole within-episode history — so from the perspective of a memoryless state the reward looks unpredictable, and adding it naively turns the MDP into a POMDP. Two things keep it Markov-from-the-agent's-view: use a recurrent agent that summarizes the within-episode history in its state, and feed the intrinsic reward (and $\beta_i$, the previous action, the previous extrinsic reward) *as inputs* to the network so the value function can see the very quantity that shifted the reward. The natural base is a distributed recurrent replay value-learner (Kapturowski et al. 2019, R2D2): LSTM state, prioritized replay, off-policy Retrace value learning, many parallel actors — and the bonus is cheap and parallel by construction, so it rides that scale. The embedding network and the RND predictor are trained on a handful of frames from each sampled replay sequence; the RL loss uses all timesteps.
 
-I have to make the construction concrete at the bonus-module boundary, because the policy loop is fixed: the module computes a per-transition bonus, normalizes the rollout's intrinsic stream, and exposes its own training loss; a separate mixing function combines the extrinsic and intrinsic advantage streams. The episodic-reward routine below is the kNN-count-with-clustering procedure I traced above; the controllable-state embedding is the inverse-dynamics model; the lifelong factor is normalized clipped RND; the bonus is their product.
-
-```python
-import numpy as np
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
-# provided by the fixed loop: layer_init, RunningMeanStd, RewardForwardFilter, last_frame, Args
-
-P = 32      # controllable-state (embedding) dimension
-K = 10      # nearest neighbors for the episodic pseudo-count
-EPS = 1e-3  # kernel epsilon
-XI = 0.008  # cluster floor: distances below this (in typical-neighbor units) -> same state
-C = 1e-3    # pseudo-count constant (denominator floor)
-S_M = 8.0   # max similarity: above this the state is saturated this episode -> zero bonus
-L = 5.0     # cap on the lifelong modulator
-N_BETAS = 32
-BETA_MAX = 0.3
-GAMMA_MAX = 0.997
-GAMMA_MIN = 0.99
-
-
-def beta_schedule(n=N_BETAS, beta=BETA_MAX):
-    values = np.zeros(n, dtype=np.float32)
-    values[-1] = beta
-    for i in range(1, n - 1):
-        values[i] = beta / (1.0 + np.exp(-10.0 * (2 * i - (n - 2)) / (n - 2)))
-    return values
-
-
-def gamma_schedule(n=N_BETAS, gamma_max=GAMMA_MAX, gamma_min=GAMMA_MIN):
-    i = np.arange(n, dtype=np.float64)
-    log_gap = ((n - 1 - i) * np.log(1.0 - gamma_max) + i * np.log(1.0 - gamma_min)) / (n - 1)
-    return (1.0 - np.exp(log_gap)).astype(np.float32)
-
-
-class EpisodicMemory:
-    """Per-environment within-episode memory of controllable-state embeddings, reset each episode.
-    Holds a running average d_m^2 of the k-th-NN squared distance for scale-free kernels."""
-    def __init__(self, n_envs, device):
-        self.device = device
-        self.slots = [[] for _ in range(n_envs)]          # M = {f(x_0),...,f(x_{t-1})} per env
-        self.d2_m = np.ones(n_envs, dtype=np.float64)     # running mean of k-th-NN squared distance
-
-    def reset(self, env_idx):                              # called at every episode boundary
-        self.slots[env_idx] = []
-
-    def episodic_reward(self, env_idx, emb):              # emb: f(x_t), shape (P,)
-        M = self.slots[env_idx]
-        self.slots[env_idx] = M + [emb]                   # append AFTER reading
-        if len(M) == 0:
-            return float(1.0 / C)                         # empty sum: 1 / (sqrt(0) + c)
-        d2 = ((torch.stack(M) - emb) ** 2).sum(dim=1)     # squared distances to memory
-        k = min(K, d2.numel())
-        d2_k, _ = torch.topk(d2, k, largest=False, sorted=True)  # k nearest distances
-        d2_k = d2_k.cpu().numpy().astype(np.float64)
-        self.d2_m[env_idx] = 0.99 * self.d2_m[env_idx] + 0.01 * d2_k[-1]  # k-th NN distance
-        d_n = d2_k / max(self.d2_m[env_idx], 1e-12)        # normalize to typical-neighbor units
-        d_n = np.maximum(d_n - XI, 0.0)                    # cluster: tiny distances -> 0 (same state)
-        k_v = EPS / (d_n + EPS)                            # inverse kernel
-        s = np.sqrt(k_v.sum()) + C                         # sqrt(sum_{N_k} K) + c
-        if s > S_M:                                        # saturated this episode -> no bonus
-            return 0.0
-        return float(1.0 / s)                              # 1/sqrt(n): episodic novelty
-
-
-class IntrinsicBonusModule(nn.Module):
-    """Episodic kNN-count novelty over an inverse-dynamics controllable state,
-    multiplicatively modulated by a normalized, clipped RND lifelong-novelty factor."""
-
-    def __init__(self, action_dim: int, device: torch.device, args: "Args"):
-        super().__init__()
-        self.action_dim = action_dim
-        self.device = device
-        self.args = args
-        self.obs_rms = RunningMeanStd(shape=(1, 1, 84, 84))
-        self.reward_rms = RunningMeanStd()
-        self.discounted_reward = RewardForwardFilter(args.int_gamma)
-        self.err_rms = RunningMeanStd()                   # mu_e, sigma_e for the RND modulator
-        self.memory = EpisodicMemory(args.num_envs, device)
-
-        feature_output = 7 * 7 * 64
-        # controllable-state embedding f, trained by inverse dynamics (only action-relevant content)
-        self.encoder = nn.Sequential(
-            layer_init(nn.Conv2d(1, 32, 8, stride=4)), nn.ReLU(),
-            layer_init(nn.Conv2d(32, 64, 4, stride=2)), nn.ReLU(),
-            layer_init(nn.Conv2d(64, 64, 3, stride=1)), nn.ReLU(),
-            nn.Flatten(),
-            layer_init(nn.Linear(feature_output, P)),     # f(x) in R^P
-        )
-        # inverse model h: predict a_t from (f(x_t), f(x_{t+1})) -> anchors f
-        self.inverse_model = nn.Sequential(
-            layer_init(nn.Linear(2 * P, 256)), nn.ReLU(),
-            layer_init(nn.Linear(256, action_dim), std=0.01),
-        )
-        # lifelong RND: frozen random target g + trained predictor g_hat
-        self.predictor = nn.Sequential(
-            layer_init(nn.Conv2d(1, 32, 8, stride=4)), nn.LeakyReLU(),
-            layer_init(nn.Conv2d(32, 64, 4, stride=2)), nn.LeakyReLU(),
-            layer_init(nn.Conv2d(64, 64, 3, stride=1)), nn.LeakyReLU(),
-            nn.Flatten(),
-            layer_init(nn.Linear(feature_output, 512)), nn.ReLU(),
-            layer_init(nn.Linear(512, 512)), nn.ReLU(),
-            layer_init(nn.Linear(512, 512)),
-        )
-        self.target = nn.Sequential(
-            layer_init(nn.Conv2d(1, 32, 8, stride=4)), nn.LeakyReLU(),
-            layer_init(nn.Conv2d(32, 64, 4, stride=2)), nn.LeakyReLU(),
-            layer_init(nn.Conv2d(64, 64, 3, stride=1)), nn.LeakyReLU(),
-            nn.Flatten(),
-            layer_init(nn.Linear(feature_output, 512)),
-        )
-        for p in self.target.parameters():
-            p.requires_grad = False                       # target frozen at random init
-
-    def initialize(self, envs) -> None:
-        # warm the observation-normalization stats with a random rollout (RND target can't adapt scale)
-        bootstrap = []
-        total = self.args.num_steps * self.args.num_iterations_obs_norm_init
-        for _ in range(total):
-            a = np.random.randint(0, envs.single_action_space.n, size=(self.args.num_envs,))
-            sampled_obs = envs.step(a)[0]
-            bootstrap.append(sampled_obs[:, 3:4, :, :])
-            if len(bootstrap) >= self.args.num_steps:
-                self.obs_rms.update(np.concatenate(bootstrap, axis=0)); bootstrap.clear()
-
-    def trainable_parameters(self):
-        return list(self.encoder.parameters()) + list(self.inverse_model.parameters()) \
-            + list(self.predictor.parameters())           # target excluded (frozen)
-
-    def _normalize_obs(self, obs):                        # for predictor/target (NOT the policy)
-        mean = torch.from_numpy(self.obs_rms.mean).to(self.device)
-        var = torch.from_numpy(self.obs_rms.var).to(self.device)
-        return ((last_frame(obs) - mean) / torch.sqrt(var)).clip(-5, 5).float()
-
-    def update_batch_stats(self, batch_obs, batch_next_obs) -> None:
-        self.obs_rms.update(last_frame(batch_next_obs).cpu().numpy())
-
-    @torch.no_grad()
-    def compute_bonus(self, obs, next_obs, actions) -> torch.Tensor:
-        # episodic novelty: kNN pseudo-count over the controllable-state memory (per env)
-        emb = self.encoder(last_frame(next_obs).float())  # f(x_t): controllable state
-        r_epi = torch.tensor(
-            [self.memory.episodic_reward(i, emb[i]) for i in range(emb.shape[0])],
-            device=self.device, dtype=torch.float32)
-        # lifelong RND modulator: alpha = 1 + (err - mu_e)/sigma_e, clipped to [1, L]
-        norm_next = self._normalize_obs(next_obs)
-        err = (self.predictor(norm_next) - self.target(norm_next)).pow(2).sum(1)
-        self.err_rms.update(err.cpu().numpy())
-        sigma = float(np.sqrt(self.err_rms.var + 1e-8))
-        alpha = 1.0 + (err - float(self.err_rms.mean)) / sigma
-        alpha = alpha.clamp(min=1.0, max=L)
-        return (r_epi * alpha).detach()                   # i_t = r_episodic * clip(alpha, 1, L)
-
-    def reset_memory(self, env_idx) -> None:
-        self.memory.reset(env_idx)                        # call on each episode boundary
-
-    def normalize_rollout_rewards(self, rollout_intrinsic) -> torch.Tensor:
-        discounted = np.stack(
-            [self.discounted_reward.update(r) for r in rollout_intrinsic.cpu().numpy()], axis=0)
-        flat = discounted.reshape(-1)
-        self.reward_rms.update_from_moments(float(flat.mean()), float(flat.var()), int(flat.size))
-        return rollout_intrinsic / float(np.sqrt(self.reward_rms.var + 1e-8))
-
-    def loss(self, batch_obs, batch_next_obs, batch_actions) -> torch.Tensor:
-        # inverse-dynamics loss: train f so (f(x_t), f(x_{t+1})) predicts a_t  (controllable state)
-        f_t = self.encoder(last_frame(batch_obs).float())
-        f_tp1 = self.encoder(last_frame(batch_next_obs).float())
-        logits = self.inverse_model(torch.cat([f_t, f_tp1], dim=1))
-        inverse_loss = F.cross_entropy(logits, batch_actions.long())
-        # RND distillation loss: predictor toward frozen target (lifelong novelty)
-        norm_next = self._normalize_obs(batch_next_obs)
-        rnd_loss = F.mse_loss(self.predictor(norm_next),
-                              self.target(norm_next).detach(), reduction="none").sum(-1)
-        mask = (torch.rand(len(rnd_loss), device=self.device) < self.args.update_proportion).float()
-        rnd_loss = (rnd_loss * mask).sum() / torch.clamp(mask.sum(), min=1.0)
-        return inverse_loss + rnd_loss
-
-
-def mix_advantages(ext_advantages, int_advantages, args: "Args") -> torch.Tensor:
-    # one member of the family Q(x,a,beta_i): r^{beta_i} = e + beta_i * i
-    beta_i = getattr(args, "beta_i", getattr(args, "int_coef", BETA_MAX))
-    return getattr(args, "ext_coef", 1.0) * ext_advantages + beta_i * int_advantages
-```
-
-So the pressure I started from — a vanishing bonus that pushes the frontier once but never walks the agent back through cleared rooms — is met by splitting novelty into a reset-able within-episode count and a slow lifelong modulator. The within-episode term is $1/(\sqrt{\sum_{N_k}K}+c)$ over an episodic memory, which I traced from $1000$ on the first step down to a $\approx0.316$ floor when fully surrounded, with the inverse kernel normalized by the running $k$-th-nearest-neighbor distance, the cluster floor $\xi$ collapsing near-duplicates to full count mass, and the saturation cap $s_m$ standing by as a guard for larger-$k$ regimes. The embedding is an inverse-dynamics controllable state, so uncontrollable flicker cannot manufacture novelty. RND supplies $\alpha_t=1+(\mathrm{err}-\mu_e)/\sigma_e$, but only through $\mathrm{clip}(\alpha_t,1,L)$ — the comparison against additive combination showed why this has to multiply, not add: only the product keeps the bonus at zero where the episodic count is exhausted, and the floor at $1$ guarantees the lifelong factor can amplify globally novel regions without ever killing the episodic drive. The product is $i_t=r^{\text{episodic}}_t\,\mathrm{clip}(\alpha_t,1,L)$. Since that drive deliberately persists, exploitation stays clean by training the UVFA family $Q(x,a,\beta_i)$ from $\beta_0=0$ to $\beta=0.3$ (endpoints I checked the schedule actually pins, dense at both ends), with discounts from $\gamma_{\max}=0.997$ down to $\gamma_{\min}=0.99$, feeding the intrinsic reward and $\beta_i$ into the recurrent value learner so the augmented reward remains visible to the agent.
+What remains is to drop this construction into the fixed policy loop, and the loop dictates the module boundary: a per-transition bonus, a normalizer for the rollout's intrinsic stream, the module's own training loss, and a mixing function for the extrinsic and intrinsic advantage streams. Everything derived above lands in those slots directly — the episodic-reward routine is the kNN-count-with-clustering procedure I traced (including the scale-free $d_m^2$ update over the neighbor list and the $s_m$ guard), the controllable-state embedding (a small $32$-dimensional $f$) is trained by the inverse-dynamics cross-entropy, the lifelong factor is the normalized clipped RND error, the bonus is their product, and mixing the two advantage streams with weight $\beta_i$ is exactly one member of the family $Q(x,a,\beta_i)$.

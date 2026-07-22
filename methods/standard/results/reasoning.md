@@ -1,4 +1,4 @@
-Let me start from what actually hurts. I want a generative model that throws off sharp, coherent 32×32 images — the kind of CIFAR samples that, until now, only adversarial models could produce — but I am tired of paying the adversarial tax. The moment the discriminator outpaces the generator the min-max diverges; mode collapse is a tuning séance; and when training stops I am holding no number that tells me how well the model actually fits the data. What I want instead is a single scalar loss that plain SGD pushes down, monotonically, no second player. I want it likelihood-based, so I have a real codelength to look at. And I want the definition to be simple enough that I can scale it without a new bag of tricks each time.
+I want a generative model that throws off sharp, coherent 32×32 images — the kind of CIFAR samples that, until now, only adversarial models could produce — without paying the adversarial tax. The moment the discriminator outpaces the generator the min-max diverges; mode collapse is a tuning séance; and when training stops I am holding no number that tells me how well the model actually fits the data. What I want instead is a single scalar loss that plain SGD pushes down, monotonically, no second player. I want it likelihood-based, so I have a real codelength to look at. And I want the definition to be simple enough that I can scale it without a new bag of tricks each time.
 
 None of the roads in front of me give me all of that. The autoregressive models — the PixelCNN family — have beautiful likelihoods, but sampling crawls one pixel at a time over the whole image, thousands of sequential network calls, and the raster scan order is an inductive bias I inserted out of nowhere; nothing about an image says the top-left pixel comes first. Normalizing flows give exact likelihood and fast sampling, but invertibility plus a tractable Jacobian pins down how expressive each layer can be, and the latent has to match the data dimension exactly. VAEs are the cleanest to write — the ELBO falls out the instant you apply Jensen — but a single amortized Gaussian posterior keeps collapsing, the decoder learns to ignore the latent, and the samples come out smeared, because one latent layer is too short a bridge from a complicated image distribution to a simple prior. And the score-matching road, the noise-conditional score networks, gets samples that genuinely approach GAN quality — but its sampler's step sizes and per-scale noise are all dialed in by hand after training, there is no proper likelihood, and the training objective never directly optimizes the sampler I actually run.
 
@@ -18,7 +18,7 @@ The forward process I do *not* learn — I fix it as a string of noising steps. 
 
   q(x_t|x_{t-1}) = N(x_t; √(1−β_t) x_{t-1}, β_t I).
 
-Check it. If x_{t-1} has unit coordinate variance, then Var(x_t) = (1−β_t)·1 + β_t = 1 exactly — the β_t cancels out of the bookkeeping, the signal-shrink and the noise-add are tuned to trade off perfectly. And it is genuinely stable, not just true for one step: if x_{t-1} had variance v instead, Var(x_t) = (1−β_t)v + β_t = v − β_t(v−1) + ... → the map v ↦ (1−β_t)v + β_t has fixed point v=1 and slope 1−β_t < 1, so any drift in scale is *contracted* back toward 1 rather than amplified. That √(1−β_t) is not decoration — it is there so the marginal stays pinned near unit scale and the one network always sees inputs of consistent scale, regardless of where in the chain it is.
+If x_{t-1} has unit coordinate variance, then Var(x_t) = (1−β_t)·1 + β_t = 1 exactly — the β_t cancels out of the bookkeeping, the signal-shrink and the noise-add are tuned to trade off perfectly. And it is genuinely stable, not just true for one step: if x_{t-1} had variance v instead, Var(x_t) = (1−β_t)v + β_t = v − β_t(v−1) + ... → the map v ↦ (1−β_t)v + β_t has fixed point v=1 and slope 1−β_t < 1, so any drift in scale is *contracted* back toward 1 rather than amplified. That √(1−β_t) is not decoration — it is there so the marginal stays pinned near unit scale and the one network always sees inputs of consistent scale, regardless of where in the chain it is.
 
 Now I need to be able to sample for training. If, to get a training example at step t, I had to honestly walk t forward steps from x_0, that would be hopeless — t can be a thousand. Can I jump straight to an arbitrary t in one shot? Write α_t := 1−β_t, so x_t = √α_t x_{t-1} + √β_t ε_{t-1} with ε standard normal. Substitute x_{t-1} once:
 
@@ -40,7 +40,7 @@ Now the training objective. Like any latent-variable model, bound the negative l
   E[−log p_θ(x_0)] ≤ E_q[−log (p_θ(x_{0:T})/q(x_{1:T}|x_0))]
                   = E_q[ −log p(x_T) − Σ_{t≥1} log (p_θ(x_{t-1}|x_t)/q(x_t|x_{t-1})) ] =: L.
 
-My first instinct is to optimize L exactly as written. But look at each term's denominator: q(x_t|x_{t-1}), a single forward noising step, not conditioned on the data. To estimate that ratio I would Monte-Carlo over the forward noise, and the estimator's variance is brutal, because each term compares two local noising steps without ever using the x_0 I actually have in hand during training. The bound is honest but the gradients would be too noisy to train on. Wall.
+My first instinct is to optimize L exactly as written. But look at each term's denominator: q(x_t|x_{t-1}), a single forward noising step, not conditioned on the data. To estimate that ratio I would Monte-Carlo over the forward noise, and the estimator's variance is brutal, because each term compares two local noising steps without ever using the x_0 I actually have in hand during training. The bound is honest, but gradients this noisy are untrainable — optimizing L in its naive form is a dead end.
 
 Stare at that denominator. q(x_t|x_{t-1}) — it forgets x_0 entirely. But during training x_0 is right there. What if I condition the forward posterior on x_0? Because the forward process is Markov, adding x_0 to the condition changes nothing — given x_{t-1}, the next state x_t is independent of x_0 — so q(x_t|x_{t-1}) = q(x_t|x_{t-1},x_0), and now Bayes lets me flip it:
 
@@ -54,12 +54,12 @@ For each t>1 term, do the substitution:
 
   log (p_θ(x_{t-1}|x_t)/q(x_t|x_{t-1})) = log (p_θ(x_{t-1}|x_t)/q(x_{t-1}|x_t,x_0)) + log (q(x_{t-1}|x_0)/q(x_t|x_0)).
 
-That second piece, log[q(x_{t-1}|x_0)/q(x_t|x_0)], should telescope when summed over t from 2 to T. Let me make sure I have the cancellation right rather than wave at it: write a_t := log q(x_t|x_0), so the summand is a_{t-1} − a_t, and Σ_{t=2}^T (a_{t-1} − a_t) = (a_1 − a_2) + (a_2 − a_3) + … + (a_{T-1} − a_T) = a_1 − a_T — every interior a_t appears once with a + and once with a −. (I checked this on a length-6 dummy sequence of a_t and the partial sum came out to a_1 − a_T to the last digit, so the bookkeeping is sound.) So the sum leaves only log q(x_1|x_0) − log q(x_T|x_0). The whole sum sits behind a minus in L, so it contributes −log q(x_1|x_0) + log q(x_T|x_0). The −log q(x_1|x_0) cancels exactly against the +log q(x_1|x_0) buried in the t=1 term, and the leftover +log q(x_T|x_0) merges with −log p(x_T) into −log(p(x_T)/q(x_T|x_0)). Cleaning up,
+That second piece, log[q(x_{t-1}|x_0)/q(x_t|x_0)], telescopes when summed over t from 2 to T: writing a_t := log q(x_t|x_0), the summand is a_{t-1} − a_t, and Σ_{t=2}^T (a_{t-1} − a_t) = a_1 − a_T, every interior a_t appearing once with a + and once with a −. So the sum leaves only log q(x_1|x_0) − log q(x_T|x_0). The whole sum sits behind a minus in L, so it contributes −log q(x_1|x_0) + log q(x_T|x_0). The −log q(x_1|x_0) cancels exactly against the +log q(x_1|x_0) buried in the t=1 term, and the leftover +log q(x_T|x_0) merges with −log p(x_T) into −log(p(x_T)/q(x_T|x_0)). Cleaning up,
 
   L = E_q[ KL(q(x_T|x_0)‖p(x_T)) + Σ_{t>1} KL(q(x_{t-1}|x_t,x_0)‖p_θ(x_{t-1}|x_t)) − log p_θ(x_0|x_1) ]
     =        L_T                  +  Σ L_{t-1}                                       +  L_0.
 
-Look at what this bought me concretely. The term I was choking on was log(p_θ(x_{t-1}|x_t)/q(x_t|x_{t-1})), whose denominator q(x_t|x_{t-1}) ignores x_0 — to estimate it I had to Monte-Carlo over the forward noise. After the substitution that same term has become KL(q(x_{t-1}|x_t,x_0)‖p_θ(x_{t-1}|x_t)), a divergence between two Gaussians: q(x_{t-1}|x_t,x_0) is Gaussian (it's a forward posterior, which I'll compute in closed form next), and p_θ(x_{t-1}|x_t) is Gaussian by construction. The KL between two Gaussians has an analytic formula — no sampling of the forward noise enters it at all. That's the difference between a Monte-Carlo term whose variance I can't control and a deterministic function of x_0, x_t and the schedule constants. Conditioning the forward posterior on x_0 is the move that did it: it's a Rao-Blackwellization, replacing a noisy estimate with its conditional expectation given x_0. The variance I hit the wall on is gone — not because I declared it gone, but because the offending term no longer has any forward-noise expectation left to estimate.
+Look at what this bought me concretely. The term I was choking on was log(p_θ(x_{t-1}|x_t)/q(x_t|x_{t-1})), whose denominator q(x_t|x_{t-1}) ignores x_0 — to estimate it I had to Monte-Carlo over the forward noise. After the substitution that same term has become KL(q(x_{t-1}|x_t,x_0)‖p_θ(x_{t-1}|x_t)), a divergence between two Gaussians: q(x_{t-1}|x_t,x_0) is Gaussian (it's a forward posterior, which I'll compute in closed form next), and p_θ(x_{t-1}|x_t) is Gaussian by construction. The KL between two Gaussians has an analytic formula — no sampling of the forward noise enters it at all. That's the difference between a Monte-Carlo term whose variance I can't control and a deterministic function of x_0, x_t and the schedule constants. Conditioning the forward posterior on x_0 is the move that did it: it's a Rao-Blackwellization, replacing a noisy estimate with its conditional expectation given x_0. The variance I hit the wall on is gone: the offending term no longer contains any forward-transition sampling at all — the only randomness left is the single draw of x_t itself from the closed-form q(x_t|x_0), which I need anyway to feed the network.
 
 So I had better actually compute q(x_{t-1}|x_t,x_0). It is proportional to q(x_t|x_{t-1})·q(x_{t-1}|x_0), both Gaussian in x_{t-1}, and the product of Gaussians is Gaussian — complete the square. Collect the quadratic coefficient in x_{t-1}: from q(x_t|x_{t-1}) = N(√α_t x_{t-1}, β_t) it is α_t/β_t, and from q(x_{t-1}|x_0) = N(√ᾱ_{t-1} x_0, 1−ᾱ_{t-1}) it is 1/(1−ᾱ_{t-1}). So the posterior precision is
 
@@ -75,7 +75,7 @@ The mean is the linear-in-x_{t-1} term divided by the precision. The linear term
 
 So q(x_{t-1}|x_t,x_0) = N(x_{t-1}; μ̃_t(x_t,x_0), β̃_t I), a clean, explicitly computable Gaussian — the regression target for my reverse step.
 
-Before I lean on these two formulas for the rest of the derivation I want to make sure I completed the square correctly, because a sign slip here would poison everything downstream. Take the linear schedule (β from 10^{-4} to 0.02, T=1000) and a mid-chain step, t=500. Plugging the schedule in gives β_t = 0.0100, α_t = 0.9900, ᾱ_t = 0.0786, ᾱ_{t-1} = 0.0794. Two independent ways to get the posterior variance: from the precision, α_t/β_t + 1/(1−ᾱ_{t-1}) = 98.6 + 1.086 = 99.69, inverse 0.010031; from the formula β̃_t = (1−ᾱ_{t-1})/(1−ᾱ_t)·β_t = (0.9206/0.9214)·0.0100 = 0.010031. They agree to six figures. And for the mean, take a random x_0 and ε, form x_t = √ᾱ_t x_0 + √(1−ᾱ_t) ε, and compute μ̃_t both as coef1·x_0 + coef2·x_t and (looking ahead to the ε-substitution) as (1/√α_t)(x_t − (β_t/√(1−ᾱ_t))ε): the two land on the same number to all digits. The square was completed right.
+A sign slip in completing this square would poison everything downstream, so I put numbers into both formulas once. With the linear schedule (β from 10^{-4} to 0.02, T=1000) and a mid-chain step, t=500: β_t = 0.0100, α_t = 0.9900, ᾱ_t = 0.0786, ᾱ_{t-1} = 0.0794. Two independent ways to get the posterior variance: from the precision, α_t/β_t + 1/(1−ᾱ_{t-1}) = 98.6 + 1.086 = 99.69, inverse 0.010031; from the formula β̃_t = (1−ᾱ_{t-1})/(1−ᾱ_t)·β_t = (0.9206/0.9214)·0.0100 = 0.010031. They agree to six figures. And for the mean, taking a random x_0 and ε, forming x_t = √ᾱ_t x_0 + √(1−ᾱ_t) ε, and computing μ̃_t both as coef1·x_0 + coef2·x_t and (looking ahead to the ε-substitution) as (1/√α_t)(x_t − (β_t/√(1−ᾱ_t))ε), the two land on the same number to all digits.
 
 Back to L_T. It is KL(q(x_T|x_0)‖N(0,I)), and there is not a single θ inside it — I fixed the forward q, and the β_t are constants — so during training it is a constant I throw away. That hands me a design decision in passing: the forward variances β_t *could*, like a VAE encoder, be learned by reparameterization, but I deliberately do not learn them. Fixing β_t makes q wholly parameterless — there is no such thing as posterior collapse here — and it turns L_T into a discarded constant, so all that is left to train is the reverse process. Simple, and it costs nothing, because the forward chain is only a tool for grinding the data down; I never sample from it at generation time.
 
@@ -103,7 +103,7 @@ where ε_θ is the network, now tasked with answering "which ε was mixed into x
 
   L_{t-1} − C = E_{x_0,ε}[ β_t²/(2σ_t² α_t (1−ᾱ_t)) · ‖ε − ε_θ(√ᾱ_t x_0 + √(1−ᾱ_t) ε, t)‖² ].
 
-Wait. This thing — for each noise scale t, hand the network the noised image and have it regress out the noise that was added — looks exactly like denoising score matching. Let me check that it really is the score I'd be predicting, not just something noise-shaped. Vincent's identity: for a Gaussian corruption q_σ(x̃|x)=N(x̃; x, σ²I), the score ∇_{x̃} log q_σ = (x − x̃)/σ², which is proportional to the negative of the added noise. On my side the marginal is q(x_t|x_0)=N(√ᾱ_t x_0, (1−ᾱ_t)I), so ∇_{x_t} log q(x_t|x_0) = −(x_t − √ᾱ_t x_0)/(1−ᾱ_t). Now substitute x_t − √ᾱ_t x_0 = √(1−ᾱ_t) ε from the reparameterization: the score becomes −√(1−ᾱ_t) ε/(1−ᾱ_t) = −ε/√(1−ᾱ_t). (Numerically, at ᾱ=0.3 with a random x_0, ε, computing −(x_t−√ᾱ x_0)/(1−ᾱ) directly and computing −ε/√(1−ᾱ) give the same value, and dividing either by ε gives −1/√(1−ᾱ) = −1.195 — so it really is ε times a fixed negative scale, no hidden x_t dependence.) Predicting ε is therefore, up to the positive scale 1/√(1−ᾱ_t), predicting the score of the noised data. So this ε-regression I derived — summed over the noise scales t, dropping straight out of an ELBO — is the same multi-scale denoising score matching the score-based road runs by hand, except mine is the consequence of a proper variational bound rather than a hand-assembled objective.
+Wait. This thing — for each noise scale t, hand the network the noised image and have it regress out the noise that was added — looks exactly like denoising score matching. It should be the score itself I'd be predicting, not just something noise-shaped, and it is. Vincent's identity: for a Gaussian corruption q_σ(x̃|x)=N(x̃; x, σ²I), the score ∇_{x̃} log q_σ = (x − x̃)/σ², which is proportional to the negative of the added noise. On my side the marginal is q(x_t|x_0)=N(√ᾱ_t x_0, (1−ᾱ_t)I), so ∇_{x_t} log q(x_t|x_0) = −(x_t − √ᾱ_t x_0)/(1−ᾱ_t), and substituting x_t − √ᾱ_t x_0 = √(1−ᾱ_t) ε from the reparameterization gives the score as −ε/√(1−ᾱ_t). Predicting ε is therefore, up to the positive scale 1/√(1−ᾱ_t), predicting the score of the noised data. So this ε-regression I derived — summed over the noise scales t, dropping straight out of an ELBO — is the same multi-scale denoising score matching the score-based road runs by hand, except mine is the consequence of a proper variational bound rather than a hand-assembled objective.
 
 And look at sampling. A single reverse draw from p_θ(x_{t-1}|x_t) is
 
@@ -125,7 +125,7 @@ So I drop the weight entirely — set it to 1:
 
   L_simple(θ) = E_{t,x_0,ε}[ ‖ε − ε_θ(√ᾱ_t x_0 + √(1−ᾱ_t) ε, t)‖² ],   t ~ Uniform{1,…,T}.
 
-Why this helps, stated carefully: the true variational weighting over-emphasizes the small-t terms relative to the high-noise ones, and those small-t terms are the easy near-identity denoising. A uniform weight removes that relative over-emphasis, so the network spends less capacity fussing over imperceptible corrections and more on the genuinely hard high-noise denoising at large t — exactly the steps that decide whether a generated image has coherent global structure. It is still a *re*-weighted variational bound, in the spirit of emphasizing different reconstruction scales as needed, so it changes the codelength emphasis rather than abandoning likelihood. And it lines up with the score-based road's own choice — that uniform weight is exactly what its λ(σ)-weighted denoising score matching uses when the per-scale weight is set to a constant. For the t=1 case I let this same ε-surrogate cover the first step (it equals the discretized L_0 with the bin integral approximated by the density times the bin width, ignoring σ_1² and the edges); L_T never appears, because β_t is fixed. For exact likelihood accounting I keep the discretized L_0 path around, but for the sample-quality training objective it is plain mean-squared error on ε. The implementation could not be simpler.
+Why this helps, stated carefully: the true variational weighting over-emphasizes the small-t terms relative to the high-noise ones, and those small-t terms are the easy near-identity denoising. A uniform weight removes that relative over-emphasis, so the network spends less capacity fussing over imperceptible corrections and more on the genuinely hard high-noise denoising at large t — exactly the steps that decide whether a generated image has coherent global structure. It is still a *re*-weighted variational bound, in the spirit of emphasizing different reconstruction scales as needed, so it changes the codelength emphasis rather than abandoning likelihood. And it lines up with the score-based road's own choice — that uniform weight is exactly what its λ(σ)-weighted denoising score matching uses when the per-scale weight is set to a constant. For the t=1 case I let this same ε-surrogate cover the first step (up to the weight I just dropped, it is the discretized L_0 with the bin integral approximated by the density times the bin width, ignoring σ_1² and the edges); L_T never appears, because β_t is fixed. For exact likelihood accounting I keep the discretized L_0 path around, but for the sample-quality training objective it is plain mean-squared error on ε. The implementation could not be simpler.
 
 The math leaves three implementation choices exposed: T, the β schedule, and the network.
 
@@ -144,425 +144,3 @@ The training loop is now short. Training: repeat { sample x_0 ~ data; sample t ~
 Two connections I noticed while deriving this, both rather pretty, both staying inside what I already have. First, rewrite the bound in the equivalent form L = KL(q(x_T)‖p(x_T)) + Σ_{t≥1} E_q KL(q(x_{t-1}|x_t)‖p_θ(x_{t-1}|x_t)) + H(x_0). It is not directly estimable, but it is suggestive: set the chain length T equal to the data dimension, define the forward step as "mask the t-th coordinate of x_0," put all of p(x_T)'s mass on a single blank image, and let p_θ be a fully expressive conditional. Then KL(q(x_T)‖p(x_T))=0 and minimizing each KL trains p_θ to copy the already-revealed coordinates and predict the next — which is precisely an autoregressive model. So my Gaussian diffusion is an autoregressive model with a *generalized* bit ordering, one that cannot be obtained by permuting coordinates; and Gaussian noise may be a more natural ordering for images than masking, while the chain length is freed from equaling the data dimension. Second, treat L_1+…+L_T as rate and L_0 as distortion: the reverse process becomes a progressive decoder, with x̂_0 = (x_t − √(1−ᾱ_t) ε_θ(x_t)) / √ᾱ_t the running estimate of the clean image at any moment along the chain. Since the high-noise early steps can only carry broad structure, the chain should allocate coarse layout before fine detail, and I would expect a large share of the codelength to go to visually small residual detail — which would make the model a natural lossy compressor. That is a direction I would want to validate, not a conclusion I am asserting.
 
 Now the code has to preserve every branch I actually used. Precompute and cache all the schedule-derived coefficients up front — β_t, ᾱ_t, ᾱ_{t-1}, the square-root combinations that appear in q_sample and in the ε-to-x_0 inversion, the posterior variance β̃_t and its log, the two posterior-mean coefficients, and the fixed-large reverse-variance log branch. In the arrays, index 0 is the first one-based reverse step t=1, where the posterior variance is zero; for finite logs, the clipped posterior log variance reuses posterior_variance[1] at index 0, and the fixed-large log-variance uses that same first entry followed by betas[1:]. Use an extract helper to gather a coefficient at the right t and broadcast it to image shape. The closed-form forward sample, the forward-posterior mean and variance, the ε-to-x_0 inversion, the three prediction branches (x_{t-1} / x_0 / ε), the KL-versus-MSE loss switch, the discretized-Gaussian decoder for the t=0 term, the no-noise mask at the final sampling step, and the full reverse loop are exactly the formulas above. The backbone is the same-shape image network I designed: a U-Net with a sinusoidal time embedding, additive time projections inside each residual block, dropout, skip connections, and self-attention at the 16×16 resolution.
-
-```python
-import copy
-import math
-import torch
-import torch.nn.functional as F
-from torch import nn
-from torch.optim import Adam
-
-
-def get_step_variance_schedule(schedule, *, start, end, steps):
-    if schedule == "linear":
-        return torch.linspace(start, end, steps, dtype=torch.float64)
-    if schedule == "quad":
-        return torch.linspace(start ** 0.5, end ** 0.5, steps, dtype=torch.float64) ** 2
-    if schedule == "const":
-        return torch.full((steps,), end, dtype=torch.float64)
-    raise NotImplementedError(schedule)
-
-
-def extract(a, t, x_shape):
-    out = a.gather(0, t)
-    return out.reshape(t.shape[0], *((1,) * (len(x_shape) - 1)))
-
-
-def mean_flat(x):
-    return x.mean(dim=tuple(range(1, x.ndim)))
-
-
-def normal_kl(mean1, logvar1, mean2, logvar2):
-    # KL between two diagonal Gaussians, per element
-    return 0.5 * (-1.0 + logvar2 - logvar1 +
-                  torch.exp(logvar1 - logvar2) +
-                  (mean1 - mean2).pow(2) * torch.exp(-logvar2))
-
-
-def approx_standard_normal_cdf(x):
-    return 0.5 * (1.0 + torch.tanh(math.sqrt(2.0 / math.pi) * (x + 0.044715 * x.pow(3))))
-
-
-def discretized_gaussian_log_likelihood(x, *, means, log_scales):
-    # log prob of 8-bit x in [-1,1] under N(means, exp(log_scales)^2), bin half-width 1/255
-    centered = x - means
-    inv_std = torch.exp(-log_scales)
-    cdf_plus = approx_standard_normal_cdf(inv_std * (centered + 1.0 / 255.0))
-    cdf_min = approx_standard_normal_cdf(inv_std * (centered - 1.0 / 255.0))
-    log_cdf_plus = torch.log(cdf_plus.clamp(min=1e-12))
-    log_one_minus_cdf_min = torch.log((1.0 - cdf_min).clamp(min=1e-12))
-    cdf_delta = cdf_plus - cdf_min
-    return torch.where(
-        x < -0.999, log_cdf_plus,
-        torch.where(x > 0.999, log_one_minus_cdf_min, torch.log(cdf_delta.clamp(min=1e-12))),
-    )
-
-
-class ImageLatentGenerator(nn.Module):
-    def __init__(self, backbone, image_size, latent_steps=1000, schedule="linear",
-                 variance_start=1e-4, variance_end=0.02, prediction_type="eps",
-                 variance_type="fixedlarge", loss_type="mse"):
-        super().__init__()
-        if prediction_type not in {"xprev", "xstart", "eps"}:
-            raise ValueError("prediction_type must be 'xprev', 'xstart', or 'eps'")
-        if variance_type not in {"learned", "fixedsmall", "fixedlarge"}:
-            raise ValueError("variance_type must be 'learned', 'fixedsmall', or 'fixedlarge'")
-        if loss_type not in {"kl", "mse"}:
-            raise ValueError("loss_type must be 'kl' or 'mse'")
-        self.backbone = backbone
-        self.image_size = image_size
-        self.latent_steps = latent_steps
-        self.channels = backbone.channels
-        self.prediction_type = prediction_type
-        self.variance_type = variance_type
-        self.loss_type = loss_type
-
-        # forward variances beta_t (small, linearly ramped) and the cumulative products
-        betas = get_step_variance_schedule(
-            schedule, start=variance_start, end=variance_end, steps=latent_steps).float()
-        if not ((betas > 0).all() and (betas <= 1).all()):
-            raise ValueError("all step variances must be in (0, 1]")
-        alphas = 1. - betas                                  # alpha_t = 1 - beta_t
-        alphas_cumprod = torch.cumprod(alphas, dim=0)        # bar(alpha)_t
-        alphas_cumprod_prev = F.pad(alphas_cumprod[:-1], (1, 0), value=1.)  # bar(alpha)_{t-1}
-        reg = lambda n, v: self.register_buffer(n, v.float())
-
-        reg("betas", betas)
-        reg("alphas_cumprod", alphas_cumprod)
-        reg("alphas_cumprod_prev", alphas_cumprod_prev)
-        # coefficients for q(x_t|x_0): x_t = sqrt(bar_a) x0 + sqrt(1-bar_a) eps
-        reg("sqrt_alphas_cumprod", torch.sqrt(alphas_cumprod))
-        reg("sqrt_one_minus_alphas_cumprod", torch.sqrt(1. - alphas_cumprod))
-        reg("log_one_minus_alphas_cumprod", torch.log(1. - alphas_cumprod))
-        # coefficients to invert eps -> x_0
-        reg("sqrt_recip_alphas_cumprod", torch.sqrt(1. / alphas_cumprod))
-        reg("sqrt_recipm1_alphas_cumprod", torch.sqrt(1. / alphas_cumprod - 1))
-
-        # forward posterior q(x_{t-1}|x_t,x_0) = N(mu_tilde, beta_tilde I)
-        posterior_variance = betas * (1. - alphas_cumprod_prev) / (1. - alphas_cumprod)  # beta_tilde_t
-        # index 0 is paper step t=1; its posterior variance is zero, so reuse the next entry for logs
-        posterior_log_variance_clipped = torch.log(
-            torch.cat([posterior_variance[1:2], posterior_variance[1:]]))
-        # fixedlarge log variance: same clipped first entry, then beta_t for all later indices
-        fixedlarge_log_variance = torch.log(torch.cat([posterior_variance[1:2], betas[1:]]))
-        reg("posterior_variance", posterior_variance)
-        reg("posterior_log_variance_clipped", posterior_log_variance_clipped)
-        reg("fixedlarge_log_variance", fixedlarge_log_variance)
-        # mu_tilde_t = coef1 * x0 + coef2 * x_t
-        reg("posterior_mean_coef1", betas * torch.sqrt(alphas_cumprod_prev) / (1. - alphas_cumprod))
-        reg("posterior_mean_coef2", (1. - alphas_cumprod_prev) * torch.sqrt(alphas) / (1. - alphas_cumprod))
-
-    def q_sample(self, x0, t, noise):
-        # x_t = sqrt(bar_a_t) x0 + sqrt(1-bar_a_t) eps   -- jump straight to step t
-        return (extract(self.sqrt_alphas_cumprod, t, x0.shape) * x0 +
-                extract(self.sqrt_one_minus_alphas_cumprod, t, x0.shape) * noise)
-
-    def q_posterior_mean_variance(self, x0, x_t, t):
-        mean = (extract(self.posterior_mean_coef1, t, x_t.shape) * x0 +
-                extract(self.posterior_mean_coef2, t, x_t.shape) * x_t)
-        var = extract(self.posterior_variance, t, x_t.shape)
-        log_var = extract(self.posterior_log_variance_clipped, t, x_t.shape)
-        return mean, var, log_var
-
-    def predict_start_from_noise(self, x_t, t, noise):
-        # x_0 = (x_t - sqrt(1-bar_a) eps) / sqrt(bar_a)  -- invert the reparameterization
-        return (extract(self.sqrt_recip_alphas_cumprod, t, x_t.shape) * x_t -
-                extract(self.sqrt_recipm1_alphas_cumprod, t, x_t.shape) * noise)
-
-    def predict_start_from_xprev(self, x_t, t, xprev):
-        return (extract(1. / self.posterior_mean_coef1, t, x_t.shape) * xprev -
-                extract(self.posterior_mean_coef2 / self.posterior_mean_coef1, t, x_t.shape) * x_t)
-
-    def p_mean_variance(self, x_t, t, clip_denoised=True, return_pred_xstart=False):
-        model_output = self.backbone(x_t, t)
-        if self.variance_type == "learned":
-            model_output, model_log_variance = model_output.chunk(2, dim=1)
-            model_variance = torch.exp(model_log_variance)
-        elif self.variance_type == "fixedsmall":            # sigma_t^2 = beta_tilde_t
-            model_variance = extract(self.posterior_variance, t, x_t.shape).expand_as(x_t)
-            model_log_variance = extract(self.posterior_log_variance_clipped, t, x_t.shape).expand_as(x_t)
-        else:                                               # fixedlarge: sigma_t^2 = beta_t
-            model_variance = extract(self.betas, t, x_t.shape).expand_as(x_t)
-            model_log_variance = extract(self.fixedlarge_log_variance, t, x_t.shape).expand_as(x_t)
-
-        maybe_clip = (lambda y: y.clamp(-1., 1.)) if clip_denoised else (lambda y: y)
-        if self.prediction_type == "xprev":
-            pred_xstart = maybe_clip(self.predict_start_from_xprev(x_t, t, model_output))
-            model_mean = model_output
-        elif self.prediction_type == "xstart":
-            pred_xstart = maybe_clip(model_output)
-            model_mean, _, _ = self.q_posterior_mean_variance(pred_xstart, x_t, t)
-        else:                                               # eps: the parameterization we train
-            pred_xstart = maybe_clip(self.predict_start_from_noise(x_t, t, model_output))
-            model_mean, _, _ = self.q_posterior_mean_variance(pred_xstart, x_t, t)
-
-        if return_pred_xstart:
-            return model_mean, model_variance, model_log_variance, pred_xstart
-        return model_mean, model_variance, model_log_variance
-
-    @torch.no_grad()
-    def p_sample(self, x_t, t_int, clip_denoised=True, return_pred_xstart=False):
-        t = torch.full((x_t.shape[0],), t_int, device=x_t.device, dtype=torch.long)
-        model_mean, _, model_log_variance, pred_xstart = self.p_mean_variance(
-            x_t, t, clip_denoised=clip_denoised, return_pred_xstart=True)
-        noise = torch.randn_like(x_t)
-        # no noise at the final step t=0 (display the mean noiselessly)
-        nonzero_mask = (t != 0).float().reshape(x_t.shape[0], *((1,) * (x_t.ndim - 1)))
-        sample = model_mean + nonzero_mask * torch.exp(0.5 * model_log_variance) * noise
-        return (sample, pred_xstart) if return_pred_xstart else sample
-
-    @torch.no_grad()
-    def sample(self, batch_size=16, device=None):
-        device = device or self.betas.device
-        img = torch.randn(batch_size, self.channels, self.image_size, self.image_size, device=device)
-        for t_int in reversed(range(self.latent_steps)):    # reverse Langevin loop, T-1 .. 0
-            img = self.p_sample(img, t_int)
-        return img
-
-    def vb_terms_bpd(self, x0, x_t, t, clip_denoised=True, return_pred_xstart=False):
-        # exact variational term in bits/dim: Gaussian KL for t>0, discretized decoder for t=0
-        true_mean, _, true_log_variance = self.q_posterior_mean_variance(x0, x_t, t)
-        model_mean, _, model_log_variance, pred_xstart = self.p_mean_variance(
-            x_t, t, clip_denoised=clip_denoised, return_pred_xstart=True)
-        kl = mean_flat(normal_kl(true_mean, true_log_variance, model_mean, model_log_variance)) / math.log(2.)
-        decoder_nll = -discretized_gaussian_log_likelihood(
-            x0, means=model_mean, log_scales=0.5 * model_log_variance)
-        decoder_nll = mean_flat(decoder_nll) / math.log(2.)
-        out = torch.where(t == 0, decoder_nll, kl)
-        return (out, pred_xstart) if return_pred_xstart else out
-
-    def training_losses(self, x0, t=None, noise=None):
-        if t is None:
-            t = torch.randint(0, self.latent_steps, (x0.shape[0],), device=x0.device).long()
-        if noise is None:
-            noise = torch.randn_like(x0)
-        x_t = self.q_sample(x0, t, noise)
-        if self.loss_type == "kl":                          # exact variational bound
-            return self.vb_terms_bpd(x0, x_t, t, clip_denoised=False)
-        if self.variance_type == "learned":
-            raise ValueError("the simplified MSE objective uses a fixed-variance branch")
-        target = {                                          # L_simple: unit-weight MSE
-            "xprev": self.q_posterior_mean_variance(x0, x_t, t)[0],
-            "xstart": x0,
-            "eps": noise,                                   # predict the noise we added
-        }[self.prediction_type]
-        model_output = self.backbone(x_t, t)
-        return mean_flat((target - model_output).pow(2))
-
-    def training_loss(self, x0, t=None, noise=None):
-        return self.training_losses(x0, t=t, noise=noise).mean()
-
-    def forward(self, x0):
-        return self.training_loss(x0)
-
-
-class TimeEmbedding(nn.Module):
-    """Transformer sinusoidal embedding of the integer timestep."""
-    def __init__(self, dim):
-        super().__init__()
-        self.dim = dim
-
-    def forward(self, t):
-        half = self.dim // 2
-        freqs = torch.exp(torch.arange(half, device=t.device) * -(math.log(10000) / (half - 1)))
-        emb = t[:, None].float() * freqs[None, :]
-        return torch.cat((emb.sin(), emb.cos()), dim=-1)
-
-
-def group_norm(channels, max_groups=32):
-    groups = min(max_groups, channels)
-    while channels % groups:
-        groups -= 1
-    return nn.GroupNorm(groups, channels)
-
-
-def zero_module(module):
-    for p in module.parameters():
-        nn.init.zeros_(p)
-    return module
-
-
-class Downsample(nn.Module):
-    def __init__(self, channels):
-        super().__init__()
-        self.conv = nn.Conv2d(channels, channels, 3, stride=2, padding=1)
-
-    def forward(self, x):
-        return self.conv(x)
-
-
-class Upsample(nn.Module):
-    def __init__(self, channels):
-        super().__init__()
-        self.conv = nn.Conv2d(channels, channels, 3, padding=1)
-
-    def forward(self, x):
-        return self.conv(F.interpolate(x, scale_factor=2, mode="nearest"))
-
-
-class ResnetBlock(nn.Module):
-    """Wide-ResNet block with the time embedding added in."""
-    def __init__(self, dim_in, dim_out, time_dim, dropout):
-        super().__init__()
-        self.norm1 = group_norm(dim_in)
-        self.conv1 = nn.Conv2d(dim_in, dim_out, 3, padding=1)
-        self.time_proj = nn.Linear(time_dim, dim_out)
-        self.norm2 = group_norm(dim_out)
-        self.dropout = nn.Dropout(dropout)
-        self.conv2 = zero_module(nn.Conv2d(dim_out, dim_out, 3, padding=1))
-        self.act = nn.SiLU()
-        self.res = nn.Conv2d(dim_in, dim_out, 1) if dim_in != dim_out else nn.Identity()
-
-    def forward(self, x, t_emb):
-        h = self.conv1(self.act(self.norm1(x)))
-        h = h + self.time_proj(self.act(t_emb))[:, :, None, None]   # inject t into every block
-        h = self.conv2(self.dropout(self.act(self.norm2(h))))
-        return h + self.res(x)
-
-
-class AttentionBlock(nn.Module):
-    """Self-attention over spatial positions (used at 16x16)."""
-    def __init__(self, channels):
-        super().__init__()
-        self.norm = group_norm(channels)
-        self.q = nn.Conv2d(channels, channels, 1)
-        self.k = nn.Conv2d(channels, channels, 1)
-        self.v = nn.Conv2d(channels, channels, 1)
-        self.proj = zero_module(nn.Conv2d(channels, channels, 1))
-
-    def forward(self, x):
-        b, c, h, w = x.shape
-        hn = self.norm(x)
-        q = self.q(hn).reshape(b, c, h * w)
-        k = self.k(hn).reshape(b, c, h * w)
-        v = self.v(hn).reshape(b, c, h * w)
-        attn = torch.softmax(torch.einsum("bcn,bcm->bnm", q * (c ** -0.5), k), dim=-1)
-        out = torch.einsum("bnm,bcm->bcn", attn, v).reshape(b, c, h, w)
-        return x + self.proj(out)
-
-
-class ImageBackbone(nn.Module):
-    """Time-conditioned U-Net: same-shape image -> image (predicts eps), attention at 16x16."""
-    def __init__(self, image_size=32, channels=3, base_channels=128, out_channels=None,
-                 channel_mult=(1, 2, 2, 2), num_res_blocks=2,
-                 attn_resolutions=(16,), dropout=0.1):
-        super().__init__()
-        self.channels = channels
-        self.out_channels = out_channels or channels
-        time_dim = base_channels * 4
-        self.init_conv = nn.Conv2d(channels, base_channels, 3, padding=1)
-        self.time_mlp = nn.Sequential(TimeEmbedding(base_channels),
-                                      nn.Linear(base_channels, time_dim), nn.SiLU(),
-                                      nn.Linear(time_dim, time_dim))
-
-        self.downs = nn.ModuleList()
-        hs_channels = [base_channels]
-        current_channels = base_channels
-        current_res = image_size
-        for level, mult in enumerate(channel_mult):
-            out_ch = base_channels * mult
-            blocks = nn.ModuleList()
-            attns = nn.ModuleList()
-            for _ in range(num_res_blocks):
-                blocks.append(ResnetBlock(current_channels, out_ch, time_dim, dropout))
-                current_channels = out_ch
-                attns.append(AttentionBlock(current_channels)
-                             if current_res in attn_resolutions else nn.Identity())
-                hs_channels.append(current_channels)
-            down = Downsample(current_channels) if level != len(channel_mult) - 1 else nn.Identity()
-            if level != len(channel_mult) - 1:
-                hs_channels.append(current_channels)
-                current_res //= 2
-            self.downs.append(nn.ModuleList([blocks, attns, down]))
-
-        self.mid1 = ResnetBlock(current_channels, current_channels, time_dim, dropout)
-        self.mid_attn = AttentionBlock(current_channels)
-        self.mid2 = ResnetBlock(current_channels, current_channels, time_dim, dropout)
-
-        self.ups = nn.ModuleList()
-        for level, mult in reversed(list(enumerate(channel_mult))):
-            out_ch = base_channels * mult
-            blocks = nn.ModuleList()
-            attns = nn.ModuleList()
-            for _ in range(num_res_blocks + 1):
-                skip_ch = hs_channels.pop()
-                blocks.append(ResnetBlock(current_channels + skip_ch, out_ch, time_dim, dropout))
-                current_channels = out_ch
-                attns.append(AttentionBlock(current_channels)
-                             if current_res in attn_resolutions else nn.Identity())
-            up = Upsample(current_channels) if level != 0 else nn.Identity()
-            if level != 0:
-                current_res *= 2
-            self.ups.append(nn.ModuleList([blocks, attns, up]))
-
-        self.final_norm = group_norm(current_channels)
-        self.final_conv = zero_module(nn.Conv2d(current_channels, self.out_channels, 3, padding=1))
-
-    def forward(self, x, t):
-        t_emb = self.time_mlp(t)
-        h = self.init_conv(x)
-        skips = [h]
-        for level, (blocks, attns, down) in enumerate(self.downs):
-            for block, attn in zip(blocks, attns):
-                h = attn(block(h, t_emb))
-                skips.append(h)
-            if level != len(self.downs) - 1:
-                h = down(h)
-                skips.append(h)
-
-        h = self.mid1(h, t_emb)
-        h = self.mid_attn(h)
-        h = self.mid2(h, t_emb)
-
-        for level, (blocks, attns, up) in enumerate(self.ups):
-            for block, attn in zip(blocks, attns):
-                h = torch.cat((h, skips.pop()), dim=1)       # skip connection
-                h = attn(block(h, t_emb))
-            h = up(h)
-        return self.final_conv(F.silu(self.final_norm(h)))
-
-
-class ModelEMA:
-    def __init__(self, model, decay=0.9999):
-        self.decay = decay
-        self.ema_model = copy.deepcopy(model).eval()
-        for p in self.ema_model.parameters():
-            p.requires_grad_(False)
-
-    @torch.no_grad()
-    def update(self, model):
-        online = model.state_dict()
-        for name, value in self.ema_model.state_dict().items():
-            src = online[name].detach()
-            if value.is_floating_point():
-                value.mul_(self.decay).add_(src, alpha=1.0 - self.decay)
-            else:
-                value.copy_(src)
-
-
-def training_step(diffusion, x0, opt, ema=None):
-    loss = diffusion.training_loss(x0)
-    opt.zero_grad(set_to_none=True)
-    loss.backward()
-    opt.step()
-    if ema is not None:
-        ema.update(diffusion)
-    return loss.detach()
-
-
-if __name__ == "__main__":
-    backbone = ImageBackbone(image_size=32, base_channels=16, channel_mult=(1, 2),
-                             num_res_blocks=1, attn_resolutions=(16,), dropout=0.1)
-    diffusion = ImageLatentGenerator(backbone, image_size=32, latent_steps=8,
-                                     prediction_type="eps", variance_type="fixedlarge",
-                                     loss_type="mse")
-    opt = Adam(diffusion.parameters(), lr=2e-4)
-    ema = ModelEMA(diffusion)
-    x0 = torch.rand(2, 3, 32, 32) * 2 - 1
-    loss = training_step(diffusion, x0, opt, ema)
-    samples = ema.ema_model.sample(batch_size=2)
-    print(float(loss), samples.shape)
-```
-
-Tracing the chain back: I refused the adversarial game and the collapsing parameterized inference, so I fixed the inference side as a Gaussian chain that grinds the image into noise and learned only how to run it backwards; the √(1−β_t) scaling kept the variance conserved so one network sees a consistent input scale, and induction gave a closed-form q(x_t|x_0) that lets me jump to any t directly; optimizing the ELBO naively had unworkable variance, so I conditioned the forward posterior on x_0 and telescoped, turning the bound into a string of closed-form Gaussian KLs; completing the square produced μ̃_t and β̃_t; fixing the reverse variance and learning only the mean reduced each KL to an MSE on the mean; substituting the reparameterized x_0 showed the network only needs to predict the noise ε — which is exactly multi-scale denoising score matching, with the reverse step a Langevin update whose coefficients are pinned by β_t; a discretized-Gaussian decoder pinned down L_0; and disliking how the true weight overloads the easy low-noise terms, I dropped it to the uniform-MSE L_simple, freeing the network for the harder high-noise denoising — which, with T=1000, a small linear β schedule, and a shared U-Net carrying a sinusoidal time embedding and self-attention at the 16×16 resolution, closes the whole construction.
