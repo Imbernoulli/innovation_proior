@@ -24,7 +24,7 @@ Stack the parameters layer by layer, `θ = [vec(W₁)ᵀ … vec(W_ℓ)ᵀ]ᵀ`.
 
     vec(∇W_i) = vec(g_i ā_{i-1}ᵀ) = ā_{i-1} ⊗ g_i.
 
-Let me double-check that's the right order and not `g_i ⊗ ā_{i-1}` — `g_i ā_{i-1}ᵀ` is (output-dim × input-dim), `vec` stacks its columns, the `k`-th column is `[ā_{i-1}]_k · g_i`, so the stacked vector runs over input index slowly and output index fast, which is exactly `ā_{i-1} ⊗ g_i`. I don't fully trust my index bookkeeping with Kronecker products, so let me just check it numerically on a tiny case: `g = (g₀,g₁,g₂)`, `ā = (a₀,a₁)`. Then `vec(gāᵀ)` column-stacked is `(a₀g₀,a₀g₁,a₀g₂, a₁g₀,a₁g₁,a₁g₂)`, and `ā⊗g` is `(a₀g₀,a₀g₁,a₀g₂, a₁g₀,a₁g₁,a₁g₂)` — identical. (I ran this with random `u,v`: `vec(uvᵀ)` equals `v⊗u` to machine precision, and `g⊗ā` would have been the transposed ordering, which doesn't match.) Good, the order is `ā⊗g`. Now the block:
+Let me pin the order, since `g_i ⊗ ā_{i-1}` is the other plausible reading: `g_i ā_{i-1}ᵀ` is (output-dim × input-dim), `vec` stacks its columns, the `k`-th column is `[ā_{i-1}]_k · g_i`, so the stacked vector runs over input index slowly and output index fast — exactly `ā_{i-1} ⊗ g_i` (checked on the tiny case `g=(g₀,g₁,g₂)`, `ā=(a₀,a₁)`: both `vec(gāᵀ)` and `ā⊗g` give `(a₀g₀,a₀g₁,a₀g₂,a₁g₀,a₁g₁,a₁g₂)`; the other ordering `g⊗ā` would transpose this; on random `u,v`, `vec(uvᵀ)` equals `v⊗u` to machine precision, generally). Now the block:
 
     F_{i,j} = E[ (ā_{i-1} ⊗ g_i)(ā_{j-1} ⊗ g_j)ᵀ ].
 
@@ -81,7 +81,7 @@ That's just inverting `2ℓ` small matrices. And applying it to the gradient is 
 
     U_i = G_{i,i}⁻¹ V_i Ā_{i-1,i-1}⁻¹
 
-— `Ā` and `G` are symmetric so I don't even carry a transpose. Let me confirm this is actually `F̆⁻¹` applied to the vectorized gradient and not something I've garbled, because two Kronecker identities are stacked here. Numerically, with random SPD `Ā` (2×2) and `G` (3×3) and a random `V`: solving the dense `(Ā⊗G)⁻¹ vec(V)` and comparing to `vec(G⁻¹ V Ā⁻¹)` — they match to machine precision. (And I separately checked `(A⊗B)vec(X)=vec(BXAᵀ)` itself on random matrices; it holds.) So no giant matrix ever appears; I multiply the (small) gradient matrix on the left by `G⁻¹` (output side) and on the right by `Ā⁻¹` (input side). Cheap, direct, no CG. That's requirement (2) met for the block-diagonal version.
+— `Ā` and `G` are symmetric so I don't even carry a transpose. Two Kronecker identities are stacked in that line, so it's worth pinning down: with random SPD `Ā` (2×2), `G` (3×3), and a random `V`, solving the dense `(Ā⊗G)⁻¹ vec(V)` matches `vec(G⁻¹ V Ā⁻¹)` to machine precision (and `(A⊗B)vec(X)=vec(BXAᵀ)` checks out separately on random matrices). So no giant matrix ever appears — multiply the gradient matrix on the left by `G⁻¹` (output side) and on the right by `Ā⁻¹` (input side). Cheap, direct, no CG: requirement (2) met, for the block-diagonal version.
 
 But is block-diagonal too crude? Dropping all cross-layer curvature feels like it might be the diagonal-approximation mistake all over again, just at a coarser grain. Let me check whether I actually *can* keep some cross-layer structure cheaply. This is where the precision-matrix fact comes in. For a covariance `Σ`, the inverse `Σ⁻¹` is, row by row, the coefficients of the best linear predictor of each variable from all the others (up to a scale): `Σ⁻¹ = D⁻¹(I − B)`, with `[B]_{i,j} = −[Σ⁻¹]_{i,j}/[Σ⁻¹]_{i,i}`. The `(i,j)` entry of `Σ⁻¹` is small whenever variable `j` is not *useful* for predicting variable `i` given everyone else. The Fisher is a covariance — it's `E[∇θ ∇θᵀ]` and `E[∇θ] = 0` by the same lemma (`u=1`). So I can ask: to predict an entry of `∇W_i`, which other entries of `∇θ` are useful?
 
@@ -171,125 +171,18 @@ One more thing I want to verify: did I keep the natural gradient's invariance? M
 
     F̃†_{i,j} = Ā_{i-1,j-1}† ⊗ G_{i,j}† = (Ω_{i-1}⊗Φ_iᵀ)(Ā_{i-1,j-1}⊗G_{i,j})(Ω_{j-1}ᵀ⊗Φ_j) = (Ω_{i-1}⊗Φ_iᵀ) F̃_{i,j} (Ω_{j-1}ᵀ⊗Φ_j),
 
-and assembling the diagonal blocks should give exactly `F̆† = J_ζᵀ F̆ J_ζ`. There are several Kronecker transpose/mixed-product manipulations buried in that line, so let me sanity-check the single-block identity numerically before I trust the whole-matrix version. Take a 2-input, 3-output layer, random SPD `Ā` (2×2) and `G` (3×3), random invertible `Ω` (2×2) and `Φ` (3×3). Form `Ā† = Ω Ā Ωᵀ`, `G† = Φᵀ G Φ`, `F† = Ā†⊗G†`, and `J = Ωᵀ⊗Φ`. Then `JᵀFJ` matches `F†` to machine precision. So the criterion `F̆† = J_ζᵀ F̆ J_ζ` holds for the block-diagonal approximation. (The tridiagonal `F̂` satisfies the same identity — the `Ψ` and `Σ` carry the `Ω,Φ` factors through the block-Cholesky and they cancel; I checked the algebra by hand rather than numerically, but the block identity just verified is the load-bearing step.) So both my approximations meet the invariance criterion: with damping negligible, the method's path through distribution space is the same whatever the (fixed) transformation — invariant to input rescaling and to sigmoid-vs-tanh.
+and assembling the diagonal blocks should give exactly `F̆† = J_ζᵀ F̆ J_ζ`. Several Kronecker transpose/mixed-product manipulations are buried in that line, so check the single-block identity: take a 2-input, 3-output layer, random SPD `Ā` (2×2) and `G` (3×3), random invertible `Ω` (2×2) and `Φ` (3×3). Form `Ā† = Ω Ā Ωᵀ`, `G† = Φᵀ G Φ`, `F† = Ā†⊗G†`, and `J = Ωᵀ⊗Φ`. Then `JᵀFJ` matches `F†` to machine precision, so the criterion `F̆† = J_ζᵀ F̆ J_ζ` holds for the block-diagonal approximation. (The tridiagonal `F̂` satisfies the same identity — the `Ψ` and `Σ` carry the `Ω,Φ` factors through the block-Cholesky and they cancel; I checked that algebraically rather than numerically, but the block identity just verified is the load-bearing step.) So both my approximations meet the invariance criterion: with damping negligible, the method's path through distribution space is the same whatever the (fixed) transformation — invariant to input rescaling and to sigmoid-vs-tanh.
 
-And there's a clean payoff hiding in that algebra. Pick the transform that whitens: `Φ_i = G_{i,i}^{-1/2}`, `Ω_i = Ā_{i,i}^{-1/2}`, so that `G_{i,i}† = Φ_iᵀ G_{i,i} Φ_i = I` and `Ā_{i,i}† = Ω_i Ā_{i,i} Ω_iᵀ = I`. (Plugging `G^{-1/2}` and `Ā^{-1/2}` into the transformed block numerically does give `Ā†⊗G† = I` to machine precision, as it must.) Then `F̆† = diag(I⊗I, …) = I`, so the block-diagonal natural-gradient update in the transformed network is just `−α∇h†` — plain gradient descent. In other words, block-diagonal K-FAC *is* ordinary gradient descent on a network whose activations and backpropagated gradients have been centered and whitened (with respect to the model's distribution). That's what centering methods were reaching for, except they only centered and assumed away the within-layer correlations; the whitening here is what accounts for those correlations — and it falls out without needing skip connections.
+And there's a clean payoff hiding in that algebra. Pick the transform that whitens: `Φ_i = G_{i,i}^{-1/2}`, `Ω_i = Ā_{i,i}^{-1/2}`, so that `G_{i,i}† = Φ_iᵀ G_{i,i} Φ_i = I` and `Ā_{i,i}† = Ω_i Ā_{i,i} Ω_iᵀ = I`. (Plugging `G^{-1/2}` and `Ā^{-1/2}` into the transformed block numerically does give `Ā†⊗G† = I` to machine precision, as it must.) Then `F̆† = diag(I⊗I, …) = I`, so the block-diagonal natural-gradient update in the transformed network is just `−α∇h†` — plain gradient descent. In other words, this block-diagonal Kronecker-factored natural gradient *is* ordinary gradient descent on a network whose activations and backpropagated gradients have been centered and whitened (with respect to the model's distribution). That's what centering methods were reaching for, except they only centered and assumed away the within-layer correlations; the whitening here is what accounts for those correlations — and it falls out without needing skip connections.
 
 So the whole thing, in one breath: the natural gradient `F⁻¹∇h` is the right direction but `F` is impossibly big; each layer's gradient is an outer product `g āᵀ`, which makes the Fisher block `E[āāᵀ ⊗ ggᵀ]`; approximating the expectation of the Kronecker product by the Kronecker product of expectations, `Ā ⊗ G` (exact for Gaussian `(ā,g)` with `Cov(ā,g)=0`, error governed by their third- and fourth-order cumulants as I checked numerically, with `y` sampled from the model so forward and backward decouple); the across-layer coupling is removed by making the *inverse* block-diagonal or block-tridiagonal (justified because precision matrices are sparse where variables aren't useful predictors, and information only flows between adjacent layers); inversion is then `(A⊗G)⁻¹=A⁻¹⊗G⁻¹` and the solve is `G⁻¹ V Ā⁻¹` via `(A⊗B)vec(X)=vec(BXAᵀ)`; make it a real optimizer with factored Tikhonov damping (the `π` factor balancing the two factors), exact-`F` rescaling of the proposal, Levenberg–Marquardt on `λ`, a separate adaptive `γ`, parameter-free 2-D momentum, and online exponentially-averaged `Ā,G` — a rich, directly-invertible, compactly-estimable approximation to the curvature, only a few times the cost of SGD.
 
-Let me write the core of it as a custom optimizer. Each layer gets a forward hook to accumulate `A = E[āāᵀ]` and a backward hook to accumulate `G = E[ggᵀ]`, both as running averages; periodically I eigendecompose each, and the natural gradient for a layer is `G⁻¹ (grad) Ā⁻¹` computed in eigenbasis with damping added to the eigenvalue products.
+Let me write the core of it as a custom optimizer — not the full LM/`γ`/2-D-momentum/tridiagonal machinery derived above, but the piece that has to exist for any of it to run at all. Each layer gets a forward hook to accumulate `A = E[āāᵀ]` and a backward hook to accumulate `G = E[ggᵀ]`, both as running averages; periodically I eigendecompose each, and the natural gradient for a layer is `G⁻¹ (grad) Ā⁻¹` computed in eigenbasis with damping added to the eigenvalue products. For a first working version, this core takes the block-diagonal inverse only, `G` off of whatever backward pass actually runs (real labels, unless the caller adds the model-sampled one on top), and a `kl_clip`-style bound on the whole step's squared norm plus ordinary fixed-coefficient momentum in place of the exact-`F` rescaling and its `λ`/`γ`/2-D-momentum solve — cheap stand-ins that need no extra minibatch pass. The richer, exact pieces layer on top of this once it runs; the part worth tracing through directly is the eigenbasis solve itself, for a layer's gradient matrix `gm`:
 
-```python
-import math
-import torch
-import torch.optim as optim
-
-KNOWN = {"Linear", "Conv2d"}  # layers whose grad is an outer product g·āᵀ
-
-def cov_a(a, layer):
-    # A = E[ā āᵀ]; append a constant 1 so the bias is the last column of W (homogeneous coord)
-    b = a.size(0)
-    if layer.bias is not None:
-        a = torch.cat([a, a.new_ones(b, 1)], dim=1)
-    return a.t() @ (a / b)
-
-def cov_g(g, layer, batch_averaged):
-    # G = E[g gᵀ], with g the backprop pre-activation gradient (targets sampled from the model)
-    b = g.size(0)
-    return g.t() @ (g * b) if batch_averaged else g.t() @ (g / b)
-
-def update_running(stat, store, decay):                 # store ← decay·store + (1-decay)·stat
-    store.mul_(decay / (1 - decay)).add_(stat).mul_(1 - decay)
-
-class KFAC(optim.Optimizer):
-    def __init__(self, model, lr=1e-3, momentum=0.9, stat_decay=0.95,
-                 damping=1e-3, kl_clip=1e-3, weight_decay=0, t_cov=10, t_inv=100):
-        super().__init__(model.parameters(),
-                         dict(lr=lr, momentum=momentum, damping=damping, weight_decay=weight_decay))
-        self.stat_decay, self.kl_clip = stat_decay, kl_clip
-        self.t_cov, self.t_inv, self.steps = t_cov, t_inv, 0
-        self.A, self.G = {}, {}              # running E[āāᵀ], E[ggᵀ]  (compact, data-independent size)
-        self.Qa, self.Qg, self.da, self.dg = {}, {}, {}, {}   # eigvecs/eigvals of A, G
-        self.layers = []
-        for m in model.modules():
-            if m.__class__.__name__ in KNOWN:
-                self.layers.append(m)
-                m.register_forward_pre_hook(self._hook_fwd)
-                m.register_full_backward_hook(self._hook_bwd)
-
-    def _hook_fwd(self, m, inp):                          # accumulate A every t_cov steps
-        if torch.is_grad_enabled() and self.steps % self.t_cov == 0:
-            a = cov_a(inp[0].data, m)
-            if self.steps == 0:
-                self.A[m] = torch.diag(a.new_ones(a.size(0)))
-            update_running(a, self.A[m], self.stat_decay)
-
-    def _hook_bwd(self, m, gin, gout):                    # accumulate G every t_cov steps
-        if self.steps % self.t_cov == 0:
-            g = cov_g(gout[0].data, m, batch_averaged=True)
-            if self.steps == 0:
-                self.G[m] = torch.diag(g.new_ones(g.size(0)))
-            update_running(g, self.G[m], self.stat_decay)
-
-    def _eig(self, m):                                    # refresh A=Qa da Qaᵀ, G=Qg dg Qgᵀ
-        self.da[m], self.Qa[m] = torch.linalg.eigh(self.A[m])
-        self.dg[m], self.Qg[m] = torch.linalg.eigh(self.G[m])
-
-    def _grad_mat(self, m):                               # gradient as an output×input matrix
-        gm = m.weight.grad.data
-        if m.__class__.__name__ == "Conv2d":
-            gm = gm.view(gm.size(0), -1)
-        if m.bias is not None:                            # bias rides along as the last column
-            gm = torch.cat([gm, m.bias.grad.data.view(-1, 1)], dim=1)
-        return gm
-
-    def _natural_grad(self, m, gm, damping):
-        # G⁻¹ (grad) Ā⁻¹ in eigenbasis: rotate, divide by eigenvalue products + factored damping, rotate back
-        v1 = self.Qg[m].t() @ gm @ self.Qa[m]
-        v2 = v1 / (self.dg[m].unsqueeze(1) * self.da[m].unsqueeze(0) + damping)
-        v = self.Qg[m] @ v2 @ self.Qa[m].t()
-        if m.bias is not None:
-            return [v[:, :-1].view_as(m.weight.grad), v[:, -1:].view_as(m.bias.grad)]
-        return [v.view_as(m.weight.grad)]
-
-    def step(self, closure=None):
-        grp = self.param_groups[0]
-        lr, damping = grp["lr"], grp["damping"]
-        updates = {}
-        for m in self.layers:
-            if self.steps % self.t_inv == 0:
-                self._eig(m)
-            updates[m] = self._natural_grad(m, self._grad_mat(m), damping)
-
-        # rescale the whole proposal (a cheap stand-in for the exact-F quadratic rescaling)
-        vg = 0.0
-        for m in self.layers:
-            v = updates[m]
-            vg += (v[0] * m.weight.grad.data * lr**2).sum().item()
-            if m.bias is not None:
-                vg += (v[1] * m.bias.grad.data * lr**2).sum().item()
-        nu = min(1.0, math.sqrt(self.kl_clip / (vg + 1e-12)))
-
-        wd, mom = grp["weight_decay"], grp["momentum"]
-        for m in self.layers:
-            v = updates[m]
-            m.weight.grad.data.copy_(v[0]).mul_(nu)
-            if m.bias is not None:
-                m.bias.grad.data.copy_(v[1]).mul_(nu)
-        for p in grp["params"]:
-            if p.grad is None:
-                continue
-            d = p.grad.data
-            if wd != 0:
-                d = d.add(p.data, alpha=wd)
-            if mom != 0:
-                buf = self.state[p].setdefault("mom", torch.zeros_like(p.data))
-                buf.mul_(mom).add_(d)
-                d = buf
-            p.data.add_(d, alpha=-lr)
-        self.steps += 1
+```
+v1 = Qgᵀ gm Qa
+v2 = v1 / (dg⊗da + damping)     # elementwise: outer product of eigenvalues, plus the scalar
+v  = Qg v2 Qaᵀ
 ```
 
-Let me trace `_natural_grad` once to make sure the eigenbasis arithmetic really applies the damped Kronecker inverse and isn't off by a transpose or doing the wrong damping. It forms `v1 = Qgᵀ gm Qa`, divides elementwise by `dg ⊗ da + damping` (the outer product of the two eigenvalue vectors, plus the scalar `damping`), then rotates back `v = Qg v2 Qaᵀ`. With random SPD `G` (3×3) and `Ā` (2×2), a random `gm`, and `damping=0.05`, I compared the result of this routine to forming the dense `(Ā⊗G + 0.05·I)` and solving `(Ā⊗G + 0.05·I)⁻¹ vec(gm)` directly — they agree to machine precision. So the code is correct, and the trace also tells me something honest about *which* damping this is: adding the scalar to the eigenvalue *products* `dg·da` is exactly the full Tikhonov `(λ+η)I⊗I` on the assembled block, not the factored `(Ā+π√λ I)⊗(G+(1/π)√λ I)` damping I derived above. So this implementation is the simpler full-Tikhonov variant; the factored-`π` damping is the refinement that keeps the per-factor structure when one wants to avoid ever assembling the product. Good to have that distinction pinned down rather than blurred.
-
-The causal chain, once more and for the record: I wanted curvature-aware updates but `F⁻¹` is too big to form; the layer gradient being an outer product `g āᵀ` forced the Fisher block into the shape `E[āāᵀ ⊗ ggᵀ]`; approximating that expectation-of-a-Kronecker by a Kronecker-of-expectations `Ā ⊗ G` made each block a single small Kronecker product I can invert with `(A⊗B)⁻¹=A⁻¹⊗B⁻¹` and apply with `(A⊗B)vec(X)=vec(BXAᵀ)`, i.e. `G⁻¹ V Ā⁻¹` (an identity I checked numerically, along with the cumulant error formula that governs when the factoring is accurate); the across-layer coupling collapsed by forcing the *inverse* to be block-diagonal or block-tridiagonal, which the regression/precision picture says is the natural sparsity of an inverse covariance and which respects the fact that information only flows between adjacent layers; and the gap between this approximate model and the real loss got closed by damping the factors (with the `π` balance), rescaling the proposal against the exact Fisher, adapting `λ` and a separate `γ`, adding parameter-free momentum, and averaging `Ā` and `G` online — yielding a method whose updates are as powerful as a full second-order method's, directly invertible without an inner solver, and only a few times the cost of a plain gradient step.
+With random SPD `G` (3×3) and `Ā` (2×2), a random `gm`, and `damping=0.05`, this matches the dense `(Ā⊗G + 0.05·I)⁻¹ vec(gm)` solve to machine precision. But tracing it also reveals exactly which damping this is: adding the scalar to the eigenvalue *products* `dg·da` is the full Tikhonov `(λ+η)I⊗I` on the assembled block, not the factored `(Ā+π√λ I)⊗(G+(1/π)√λ I)` damping derived above — so this core is the simpler full-Tikhonov variant, and the factored-`π` damping is the refinement for when one wants to avoid ever assembling the product.

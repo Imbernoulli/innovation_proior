@@ -40,13 +40,13 @@ xⱼ sⱼ = 1/t   for all j       (perturbed complementarity)
 
 Stare at that last line. The actual optimality (KKT) conditions for the LP are the same three lines *except* the last would be `xⱼ sⱼ = 0` — complementary slackness, each pair has one of them zero. The barrier hasn't given me a different problem; it has given me a smooth deformation of the optimality conditions, with the hard combinatorial complementarity `xⱼsⱼ = 0` softened to `xⱼsⱼ = 1/t`. As `t → ∞`, `1/t → 0` and I recover true optimality. The minimizers `x*(t)` trace a smooth curve through the interior — call it the central path — and it ends at the optimum.
 
-And here's a payoff I didn't go looking for. `s` is *automatically dual feasible*: `Aᵀy + s = c` with `s > 0` is exactly feasibility for the LP dual `max bᵀy s.t. Aᵀy + s = c, s ≥ 0`. So every point on the central path hands me, for free, a feasible dual point and therefore a *lower bound* on the optimum. What's the gap? For any primal-dual feasible pair, `cᵀx = (Aᵀy+s)ᵀx = yᵀ(Ax) + sᵀx = bᵀy + sᵀx`, so the duality gap is `cᵀx − bᵀy = xᵀs`. Let me make sure I haven't fooled myself with that one-line algebra — it leans on `Ax = b` and `Aᵀy + s = c` simultaneously, which is easy to misremember. Take a random feasible triple (`m=4, n=9`, `x>0`, `s>0`, `b := Ax`, `c := Aᵀy + s`) and compare the two numbers: `cᵀx − bᵀy = 3.8242744543607063` versus `xᵀs = 3.8242744543607055`. Agree to fourteen digits — the identity is real, not a slip. Now on the central path `xⱼsⱼ = 1/t` for each of the `n` coordinates, so
+And here's a payoff I didn't go looking for. `s` is *automatically dual feasible*: `Aᵀy + s = c` with `s > 0` is exactly feasibility for the LP dual `max bᵀy s.t. Aᵀy + s = c, s ≥ 0`. So every point on the central path hands me, for free, a feasible dual point and therefore a *lower bound* on the optimum. What's the gap? For any primal-dual feasible pair, `cᵀx = (Aᵀy+s)ᵀx = yᵀ(Ax) + sᵀx = bᵀy + sᵀx`, so the duality gap is `cᵀx − bᵀy = xᵀs`. Now on the central path `xⱼsⱼ = 1/t` for each of the `n` coordinates, so
 
 ```
 gap = xᵀs = Σⱼ xⱼ sⱼ = n/t.
 ```
 
-(Quick sanity arithmetic: `n = 9`, `t = 7.3` gives `Σ 1/t = 9/7.3 = 1.23288…`, which is `n/t` on the nose.) That is clean and it's the whole game: if I can produce a central point with parameter `t`, I *know* I am within `n/t` of optimal, measured by a genuine dual certificate, not a heuristic. To get `ε`-optimal I need `t ≈ n/ε`. So the barrier is not just a penalty trick — its stationary points carry their own optimality certificate, and the parameter `t` is exactly the inverse gap. That reframes whether the late-1960s pessimism was about the right thing; I'll come back to it.
+That is clean and it's the whole game: if I can produce a central point with parameter `t`, I *know* I am within `n/t` of optimal, measured by a genuine dual certificate, not a heuristic. To get `ε`-optimal I need `t ≈ n/ε`. So the barrier is not just a penalty trick — its stationary points carry their own optimality certificate, and the parameter `t` is exactly the inverse gap. That reframes whether the late-1960s pessimism was about the right thing; I'll come back to it.
 
 So the algorithm wants to be: follow the central path, increasing `t`, until `n/t < ε`, then round to a vertex. The two questions are *how to move along it* and *how aggressively to raise `t`*. For the move: at a given `t`, the central point is the unconstrained (on the affine set `Ax=b`) minimizer of a smooth convex function `F_t`. The tool for minimizing a smooth convex function fast is Newton's method. Write the central-path conditions as a system and Newton it. With `Ax=b` always maintained and the barrier Hessian `∇²φ = diag(1/x²) =: X⁻²` (here `X = diag(x)`), one Newton step for `min t cᵀx − Σ ln xⱼ s.t. Ax = b` solves
 
@@ -81,7 +81,7 @@ What should `κ` be? Under `f → αf` the two sides scale differently (left by 
 |f'''(x)| = 2 · (f''(x))^{3/2},   exactly, for all x > 0.
 ```
 
-I want to be sure this is an identity and not just true at a point, so let me have it checked symbolically rather than trust the by-hand cancellation. Differentiating `−ln x` three times gives `f'' = x⁻²`, `f''' = −2x⁻³`, and `|f'''| − 2(f'')^{3/2} = 2/x³ − 2·(x⁻²)^{3/2} = 2/x³ − 2/x³ = 0` identically — confirmed. So with `κ = 2` the inequality holds with *equality* for `−ln x`, with no rescaling. That's the natural normalization: `κ = 2`, and `−ln x` is the boundary case of the class. The property is preserved under sums (third derivatives and Hessians add diagonally) and under adding a linear term (`t cᵀx` has zero third derivative), so `φ = −Σ ln xⱼ` and the whole family `F_t` inherit it. Call a function obeying `|D³f[h,h,h]| ≤ 2(D²f[h,h])^{3/2}` self-concordant. `F_t` is self-concordant for every `t`, automatically.
+an identity for every `x > 0`, not just a coincidence at one point. So with `κ = 2` the inequality holds with *equality* for `−ln x`, with no rescaling. That's the natural normalization: `κ = 2`, and `−ln x` is the boundary case of the class. The property is preserved under sums (third derivatives and Hessians add diagonally) and under adding a linear term (`t cᵀx` has zero third derivative), so `φ = −Σ ln xⱼ` and the whole family `F_t` inherit it. Call a function obeying `|D³f[h,h,h]| ≤ 2(D²f[h,h])^{3/2}` self-concordant. `F_t` is self-concordant for every `t`, automatically.
 
 Now does the convergence story actually come out frame-independent? Measure progress by the Newton decrement
 
@@ -111,7 +111,7 @@ t ← (1 + 0.1/√n) · t,   then one Newton step on F_t.
 
 Each step keeps `λ ≤ 0.1` and multiplies `t` by `1 + 0.1/√n`. To drive the gap `n/t` below `ε` from a starting `t₀`, I need `t` up by a factor `~ n/(ε t₀)`, which at rate `1 + 0.1/√n` per step takes `O(√n · log(n/(t₀ε)))` steps. That `√n`, not `n`, is the prize — and it comes directly from the `√ϑ` in the barrier's gradient bound. Each step is one Cholesky solve with `A D² Aᵀ`. And because each step *re-derives* the certificate from the current point, round-off does not accumulate the way it does in the ellipsoid method — an error in one step is just a slightly-off interior point that the next step corrects. The method is self-correcting.
 
-So I have a provably polynomial, practically-flavored interior algorithm: follow the central path with short Newton steps. Good. But let me revisit it the way the problem was actually first cracked, because there's a different route to the same interior idea that doesn't start from "trust the barrier" — it starts from "make a gradient step honest by rescaling," and it produces a strikingly clean potential-reduction argument.
+So I have a provably polynomial, practically-flavored interior algorithm: follow the central path with short Newton steps. Good. But there's a second, quite different route to the same interior idea, one that doesn't start from "trust the barrier" at all — it starts from "make a gradient step honest by rescaling," and it produces a strikingly clean potential-reduction argument of its own.
 
 Reduce the LP, by a preliminary transformation, to a canonical form: minimize `cᵀx` over `x` in the simplex `Δ = {x ≥ 0, Σxⱼ = 1}` intersected with a subspace `Ω = {Ax = 0}` (homogeneous), with the target minimum value known to be `0` and the simplex center `a₀ = e/n` a strictly feasible start. (I'll justify "known minimum value `0`" by combining the primal and dual into one problem in a moment.) Why the simplex? Because at the *center* of the simplex the geometry is as round as it gets: the largest inscribed ball `B(a₀,r)` and the smallest circumscribing ball `B(a₀,R)` satisfy `R/r = n−1`, a controlled ratio. If I'm at the center, I can take a real step.
 
@@ -129,7 +129,7 @@ The catch: after one step I'm no longer at the center. To take another good step
 T(a, a₀): x ↦ x′,   x′ⱼ = (xⱼ/aⱼ) / Σ_k (x_k/a_k),
 ```
 
-i.e. divide each coordinate by the current point's coordinate `aⱼ` and renormalize to the simplex. In matrix form with `D = diag(a)`, `x′ = D⁻¹x / (eᵀD⁻¹x)`. Let me check it does what I need rather than assume it. A simplex vertex `e_j` has `x_k/a_k = 0` for `k ≠ j`, so it maps to `e_j` — vertices fixed. The facet `xⱼ = 0` maps to `x′ⱼ = 0` — facets fixed. The current point `a` has `aⱼ/aⱼ = 1` for all `j`, so `x′ = (1,…,1)/n = a₀` — the current point goes to the center. And under it the homogeneous constraint `Σ Aᵢxᵢ = 0` becomes `Σ Aᵢaᵢ x′ᵢ = 0`, i.e. the columns rescale to `A′ᵢ = aᵢAᵢ` — still homogeneous. All three properties hold, so in the transformed space I'm at the center, I take my inscribed-ball step there, and then apply `T⁻¹` to come back. Repeat. This is the projective rescaling: instead of distorting the body to re-center, I re-center *by* a body-preserving projective change of coordinates. The affine-scaling instinct (Dikin) is the same instinct — rescale so the current point is central — but projective rather than affine, which is what keeps the simplex and its facets fixed and the constraints homogeneous.
+i.e. divide each coordinate by the current point's coordinate `aⱼ` and renormalize to the simplex. In matrix form with `D = diag(a)`, `x′ = D⁻¹x / (eᵀD⁻¹x)`. Check the three properties this needs. A simplex vertex `e_j` has `x_k/a_k = 0` for `k ≠ j`, so it maps to `e_j` — vertices fixed. The facet `xⱼ = 0` maps to `x′ⱼ = 0` — facets fixed. The current point `a` has `aⱼ/aⱼ = 1` for all `j`, so `x′ = (1,…,1)/n = a₀` — the current point goes to the center. And under it the homogeneous constraint `Σ Aᵢxᵢ = 0` becomes `Σ Aᵢaᵢ x′ᵢ = 0`, i.e. the columns rescale to `A′ᵢ = aᵢAᵢ` — still homogeneous. All three properties hold, so in the transformed space I'm at the center, I take my inscribed-ball step there, and then apply `T⁻¹` to come back. Repeat. This is the projective rescaling: instead of distorting the body to re-center, I re-center *by* a body-preserving projective change of coordinates. The affine-scaling instinct (Dikin) is the same instinct — rescale so the current point is central — but projective rather than affine, which is what keeps the simplex and its facets fixed and the constraints homogeneous.
 
 Now the snag that the path-following route also hit, in a new guise: I want to claim "a constant-factor reduction in the objective per `O(n)` steps," but the *objective* `cᵀx` is a linear function, and linear functions are *not* invariant under the projective map `T`. After transforming, `cᵀx` is no longer linear in `x′`. So I can't just track `cᵀx` across steps; I need a quantity that *is* well-behaved under projective maps, so that "reduce it by a constant per step" composes across steps. Ratios of linear functions *are* sent to ratios of linear functions by `T`. So build a potential out of logarithms of such ratios. The objective should appear in the numerator (so reducing it helps) and the barrier in the denominator (so I'm pushed off the boundary). Take
 
@@ -197,110 +197,9 @@ with a centering parameter `σ ∈ [0,1]`: `σ=1` aims straight at the central p
 
 The practical scheme that emerges (Mehrotra's predictor–corrector) does this in two solves sharing one factorization. First a *predictor*: solve with `σ=0` (the affine direction) and ask how much the complementarity `μ` would drop if I took that step — the ratio `μ_aff/μ` measures how good the affine direction is. Set the centering adaptively, `σ = (μ_aff/μ)³`: if the affine step is great (`μ_aff` tiny) `σ→0` and I barrel toward optimality; if it's poor, `σ→1` and I re-center. Then a *corrector* reuses the same factorization to add the second-order term: the affine step left a residual `Δx_aff ∘ Δs_aff` in the bilinear complementarity equation, so fold it into the right-hand side, `XSe → XSe + Δx_aff∘Δs_aff − σμe`, and solve again. Add the two directions, and finally choose step lengths by the *fraction-to-boundary* rule — take `η = 0.9995` of the largest step that keeps `x>0` and `s>0` — separately in the primal and dual. Stop when the relative residual `‖(Ax−b, Aᵀy+s−c, X S e)‖/(1+max(‖b‖,‖c‖))` is below tolerance, which is just the duality gap plus feasibility, the certificate I built at the very start.
 
-Let me write it.
+Let me write it — `solve_lp` is exactly the piece just derived: one Cholesky factorization of `A diag(x/s) Aᵀ` per iteration (with a `1e-10` diagonal nudge before the factorization, so a near-singular late-stage `D` doesn't kill the Cholesky), reused for the affine predictor and for the corrector that folds in `Δx_aff∘Δs_aff − σμe`, then a fraction-to-boundary step at `η = 0.9995`, stopping on the KKT residual `‖(Ax−b, Aᵀy+s−c, x∘s)‖`. The one piece not yet pinned down is the starting point. Take the least-norm primal solution `x = Aᵀ(AAᵀ)⁻¹b` and the least-squares dual `y` minimizing `‖Aᵀy − c‖` (so `s = c − Aᵀy`), then shift whichever of `x, s` has a non-positive entry into the interior by `1.5·|min|`, and push them further apart from `0` by half their inner product divided by the other's coordinate sum, so `x∘s` doesn't start too close to the boundary. Reasonable enough — though it's exactly this last heuristic, not the Newton iteration, that turns out to be the fragile part, as a later random-LP check exposes.
 
-```python
-import numpy as np
-from scipy.linalg import ldl, solve_triangular
-
-def solve_lp(A, b, c, tol=1e-8, max_iter=100, eta=0.9995):
-    """
-    Primal-dual interior-point (Mehrotra predictor-corrector) for
-        min cᵀx  s.t.  Ax = b, x ≥ 0,   dual  max bᵀy s.t. Aᵀy + s = c, s ≥ 0.
-    Drives the deformed KKT system  Ax=b, Aᵀy+s=c, x∘s = μe, x,s>0  to μ→0.
-    """
-    A = np.asarray(A, float); b = np.asarray(b, float); c = np.asarray(c, float)
-    m, n = A.shape
-    x, y, s = initial_point(A, b, c)          # strictly interior start
-    bc = 1.0 + max(np.linalg.norm(b), np.linalg.norm(c))
-
-    for k in range(max_iter):
-        # Residuals = the three KKT blocks; mu = average complementarity.
-        rb = A @ x - b                        # primal infeasibility
-        rc = A.T @ y + s - c                  # dual infeasibility
-        rxs = x * s                           # complementarity x∘s
-        mu = rxs.mean()                       # = gap/n on the central path
-
-        # Stopping test: relative size of the full KKT residual.
-        if np.linalg.norm(np.concatenate([rb, rc, rxs])) / bc < tol:
-            break
-
-        # One factorization of the normal-equations matrix A·diag(x/s)·Aᵀ,
-        # reused for predictor and corrector.
-        d = x / s                             # D² = S⁻¹X
-        M = A @ (d[:, None] * A.T)            # = A diag(x/s) Aᵀ  (SPD)
-        M[np.diag_indices_from(M)] += 1e-10   # tiny diagonal shift for late-stage stability
-        chol = np.linalg.cholesky(M)
-
-        # ---- Predictor (affine, σ = 0): aim straight at optimality. ----
-        dx_a, dy_a, ds_a = newton_dir(A, chol, d, x, s, rb, rc, rxs)
-        ax, as_ = step_len(x, s, dx_a, ds_a, 1.0)     # full (η=1) for the probe
-        mu_aff = ((x + ax * dx_a) @ (s + as_ * ds_a)) / n
-
-        # Mehrotra adaptive centering: good affine step -> small σ.
-        sigma = (mu_aff / mu) ** 3
-
-        # ---- Corrector: re-center by σμ and cancel the 2nd-order term. ----
-        rxs_cc = rxs + dx_a * ds_a - sigma * mu       # x∘s + Δx_a∘Δs_a − σμe
-        dx, dy, ds = newton_dir(A, chol, d, x, s, rb, rc, rxs_cc)
-
-        # ---- Fraction-to-boundary step, primal and dual separately. ----
-        ax, as_ = step_len(x, s, dx, ds, eta)
-        x = x + ax * dx
-        y = y + as_ * dy
-        s = s + as_ * ds
-
-    return x, y, s, float(c @ x)
-
-
-def newton_dir(A, chol, d, x, s, rb, rc, rxs):
-    """
-    Solve the Newton system for (Δx,Δy,Δs):
-        A Δx = -rb,  Aᵀ Δy + Δs = -rc,  S Δx + X Δs = -rxs.
-    Eliminate Δs = -(rxs + s∘Δx)/x and Δx, leaving the normal equations
-        A diag(x/s) Aᵀ Δy = -rb - A diag(x/s) (rc - rxs/x).
-    """
-    rhs = -rb - A @ (d * (rc - rxs / x))
-    dy = solve_triangular(chol.T, solve_triangular(chol, rhs, lower=True), lower=False)
-    dx = d * (A.T @ dy + rc - rxs / x)
-    ds = -(rxs + s * dx) / x
-    return dx, dy, ds
-
-
-def step_len(x, s, dx, ds, eta):
-    """Largest fraction η of the step keeping x>0 and s>0 (per cone)."""
-    ax = 1.0
-    neg = dx < 0
-    if neg.any():
-        ax = min(ax, eta * np.min(-x[neg] / dx[neg]))
-    as_ = 1.0
-    neg = ds < 0
-    if neg.any():
-        as_ = min(as_, eta * np.min(-s[neg] / ds[neg]))
-    return ax, as_
-
-
-def initial_point(A, b, c):
-    """
-    Mehrotra's starting point: least-norm primal/dual solutions, then
-    shift each into the strict interior so x>0, s>0.
-    """
-    AAt = A @ A.T
-    y = np.linalg.solve(AAt, A @ c)
-    s = c - A.T @ y
-    x = A.T @ np.linalg.solve(AAt, b)
-
-    dx = max(-1.5 * x.min(), 0.0)
-    ds = max(-1.5 * s.min(), 0.0)
-    x = x + dx
-    s = s + ds
-    pdct = 0.5 * (x @ s)
-    x = x + pdct / s.sum()
-    s = s + pdct / x.sum()
-    return x, y, s
-```
-
-Before I trust it, let me trace it on a problem I can solve by hand. Take `max 2x₁+3x₂` s.t. `x₁+x₂ ≤ 4, x₁−x₂ ≤ 1`. The corner `(0,4)` gives `12`; `(2.5,1.5)` gives `9.5`; `(0,0)` gives `0` — so the optimum is `12` at `(0,4)`. In standard form, negate to minimize and add slacks `x₃,x₄ ≥ 0`:
+Let me trace it on a problem I can solve by hand: `max 2x₁+3x₂` s.t. `x₁+x₂ ≤ 4, x₁−x₂ ≤ 1`. The corner `(0,4)` gives `12`; `(2.5,1.5)` gives `9.5`; `(0,0)` gives `0` — so the optimum is `12` at `(0,4)`. In standard form, negate to minimize and add slacks `x₃,x₄ ≥ 0`:
 
 ```
 A = [[1, 1, 1, 0],   b = [4, 1],   c = [-2, -3, 0, 0].
@@ -331,6 +230,3 @@ seed 5:  ipm=-10.99777  scipy=-10.99777  |diff|=1.7e-08  iters=6  feas=7.4e-14
 ```
 
 Six iterations to match a production solver to `~1e-8`, feasibility at machine level — and a sharp reminder that the `1e-10` diagonal shift and the `1.5·|min|` start are load-bearing heuristics, not decoration: the method's *convergence* is robust (self-correcting, as argued), but its *starting heuristic* assumes a reasonably scaled, dual-feasible-ish problem, and a casually-built instance can break the start before the self-correction ever gets a chance. That's a real limitation of this implementation, distinct from the theory, and worth keeping in mind.
-
-The causal chain, start to finish: the boundary is where simplex's combinatorial blowup lives, so go through the interior; a strictly interior point can't touch the boundary optimum, so soften `x≥0` with the log barrier `−Σ ln xⱼ`, weighted against the objective by a knob `t`; the barrier minimizers turn out to be a smooth deformation of the KKT conditions with complementarity `xⱼsⱼ = 0` relaxed to `1/t`, tracing the central path and handing back a dual certificate with gap exactly `n/t` (checked: the gap identity agrees to fourteen digits, and `n/t` matches on the path); following that path needs Newton, and Newton's classical convergence fear (ill-conditioning as `t→∞`) turns out to be measuring the wrong, frame-dependent thing — in the function's own metric the barrier is self-concordant, with `−ln x` the equality case `|f'''| = 2(f'')^{3/2}` that fixes the constant `2`; self-concordance gives a frame-independent quadratic-convergence region `{λ ≤ 1/4}` and, via the `√ϑ` gradient bound, short steps that raise `t` by `1+0.1/√n` for an `O(√n log(1/ε))` iteration count; the projective-transformation view re-centers the simplex with a body-preserving map, replaces the non-invariant linear objective by the invariant potential `n ln(cᵀx) − Σ ln xⱼ`, and gets the same geometric objective reduction from the round-body inscribed-ball bound `R/r = n−1`, with the per-step drop `δ` computed at `α=1/4` to be `0.156–0.181 > 1/8`; and the version that wins in practice keeps primal and dual together, Newton-stepping the deformed KKT system with adaptive Mehrotra centering, second-order correction, and fraction-to-boundary steps — verified to recover `(0,4)→12` by hand in 5 iterations and to match HiGHS in 6 on random LPs — every iteration one solve with `A diag(x/s) Aᵀ`, self-correcting against round-off, terminating on the same gap-plus-feasibility certificate the barrier produced.
-</content>

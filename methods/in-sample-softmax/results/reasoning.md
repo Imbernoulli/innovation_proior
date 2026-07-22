@@ -117,10 +117,8 @@ For `beta(a)>0`, the numerator is
 
 For `beta(a)=0`, I define the policy mass to be zero. So the algebra says the
 greedy policy is `exp(q/tau)` on the support and zero outside it -- the behavior
-probabilities supplied the support and then cancelled. Let me run the same
-numbers as before to make sure I have not fooled myself with a symbolic cancel
-that the explicit `-log beta` form would contradict. With `q=(1,2,5)`,
-`tau=0.5`, `pi_D=(0.9,0.1,0)`:
+probabilities supplied the support and then cancelled. With the same `q=(1,2,5)`,
+`tau=0.5`, `pi_D=(0.9,0.1,0)` as before:
 
     denominator = exp(2) + exp(4) = 7.389 + 54.598 = 61.987
     f(0) = 0.9 * exp(2 - log 0.9) / 61.987 = 0.9 * exp(2) / 0.9 / 61.987
@@ -129,11 +127,11 @@ that the explicit `-log beta` form would contradict. With `q=(1,2,5)`,
     f(2) = 0
     => f = (0.119, 0.881, 0).
 
-The explicit form and the cancelled form agree, and the 0.9/0.1 prior has
-genuinely vanished: where behavior-regularized improvement gave `(0.549, 0.451)`,
-this gives `(0.119, 0.881)`, putting nearly all mass on the better supported
-action. So I keep the support of behavior regularization but throw away its
-frequency skew. That is the property the bad-operator case demanded.
+The 0.9/0.1 prior has genuinely vanished: where behavior-regularized improvement
+gave `(0.549, 0.451)`, this gives `(0.119, 0.881)`, putting nearly all mass on
+the better supported action. So I keep the support of behavior regularization
+but throw away its frequency skew. That is the property the bad-operator case
+demanded.
 
 Now the sampling question. The sum over supported actions looks like it requires
 knowing the support of `pi_D`, but the same cancellation gives an expectation:
@@ -142,18 +140,12 @@ knowing the support of `pi_D`, but the same cancellation gives an expectation:
       = sum_{a: pi_D>0} pi_D(a|s) exp(q(s,a)/tau - log pi_D(a|s))
       = E_{a~pi_D(.|s)}[exp(q(s,a)/tau - log pi_D(a|s))].
 
-I should sanity-check the rewrite numerically too, since it underlies the whole
-estimator. The left side is `61.987` from above. The right side, summing
-`pi_D(a) exp(q(a)/tau - log pi_D(a))` over the support, is
-`0.9*exp(2 - log0.9) + 0.1*exp(4 - log0.1) = exp(2) + exp(4) = 61.987`. They
-match, as they must -- but seeing the `pi_D(a)` factor cancel against `exp(-log
-pi_D(a))` term by term is what convinces me the identity is not just a
-convenient-looking rearrangement. There is no division by zero because the
-expectation only ranges over the support. This changes the role of the behavior
-model. I still need an estimate of `log pi_D(a|s)` for dataset actions, but I do
-not need to sample candidate actions from that model and trust its support. A
-mistake in the density estimate changes a weight on an observed action; it does
-not create a new unsupported action for the max to exploit.
+There is no division by zero because the expectation only ranges over the
+support. This changes the role of the behavior model. I still need an estimate
+of `log pi_D(a|s)` for dataset actions, but I do not need to sample candidate
+actions from that model and trust its support. A mistake in the density
+estimate changes a weight on an observed action; it does not create a new
+unsupported action for the max to exploit.
 
 The next thing I owe myself is contraction. A nice closed form is useless if
 iterating the operator does not converge. Take two vectors `q1` and `q2` on a
@@ -175,13 +167,9 @@ Swapping `q1` and `q2` gives the other direction, so
 The trick is evaluating the second maximum at `pi1` rather than its own
 optimizer: that under-estimates the second `F`, which is the direction I need,
 and the matching entropy terms `tau H(pi1)` cancel so nothing about
-deterministic transitions enters. I want to be sure the bound is actually
-correct and not merely a chain of inequalities I have talked myself into, so I
-sampled 200,000 random pairs `(q1,q2)` on the three-action support at `tau=0.5`
-and measured `|F(q1)-F(q2)| / ||q1-q2||_infty`. The maximum ratio came out to
-`1.000000` and never exceeded it. So it is a non-expansion, and the bound is
-tight rather than loose -- which makes sense, since two `q` vectors differing by
-a constant shift `c` move `F` by exactly `c`.
+deterministic transitions enters. The bound is tight, not loose: two `q`
+vectors differing by a constant shift `c` move `F` by exactly `c`, so the
+non-expansion constant of `1` cannot be improved.
 
 The Bellman operator then follows:
 
@@ -197,8 +185,8 @@ For two action-value functions,
 
 For `gamma < 1`, this is a contraction, so the fixed point exists, is unique,
 and value iteration converges. I claimed earlier that as `tau -> 0` this object
-recovers the support-constrained hard max; let me check the rate rather than
-assert it, on the same example where the supported max is `q(1)=2`:
+recovers the support-constrained hard max; here is the rate, on the same
+example where the supported max is `q(1)=2`:
 
     tau=1.00:  F=2.3133,  greedy mass on a=1 = 0.731
     tau=0.50:  F=2.0635,  greedy mass on a=1 = 0.881
@@ -310,14 +298,34 @@ The critic objective can be written with the value network as
       [1/2 (r + gamma v_phi(s') - q_theta(s,a))^2].
 
 That is the clean conceptual target: bootstrap through a state value, not through
-a free max over next actions. In the concrete SAC-style loop, I can compute the
-same soft next-state value by sampling the current actor at `s'` and using the
-target critic:
+a free max over next actions. In the concrete SAC-style loop, I compute that
+next-state soft value directly instead of calling `v_phi(s')`, by sampling the
+current actor at `s'` and using the target critic:
 
-    r + gamma (min_i q_{target,i}(s',a') - tau log pi_psi(a'|s')),
+    r + gamma (1-done) (min_i q_{target,i}(s',a') - tau log pi_psi(a'|s')),
     a' ~ pi_psi(.|s').
 
-This is the target that trains `v_phi`, and it matches the simple training code.
+This is the target that trains `q_theta`, and it matches the simple training
+code.
+
+There is a fork worth naming here. I could instead push the in-sample softmax
+directly into the value update: fit `v_phi(s)` toward `q_theta(s,a) - tau log
+pi_omega(a|s)` for the single `a` the dataset actually gives me at `s`, which is
+exactly the summand from the sampling identity above and would put the support
+constraint explicitly inside the bootstrap instead of leaving it to the actor.
+But that identity turns a sum into an expectation over `pi_D`, and the dataset
+never gives me more than one action per state -- `N=1`. With one sample there
+is no averaging to fall back on: the log-sum-exp collapses to that single term,
+and the log of a sample average is not an unbiased estimate of the log of the
+true expectation it is standing in for. The policy-evaluation target above
+sidesteps this: it regresses toward the entropy-regularized value of whatever
+`pi_psi` currently is, an ordinary SAC-style quantity with no log-sum-exp bias,
+and support-safety rides on the actor's forward-KL projection instead of being
+baked into the critic. That is the simpler algorithm, so it is the one I build;
+folding the softmax explicitly into the critic is a real alternative, just a
+biased one given that each state in the data comes with only one sampled
+action to estimate the log-sum-exp from.
+
 The caveat is honest: early `pi_psi` may still put mass outside the data support,
 so the value update can temporarily evaluate unsupported actions. But the actor
 loss is sampled only on dataset actions and pushes the policy toward the
@@ -334,66 +342,16 @@ the `(0.119, 0.881)` against behavior regularization's `(0.549, 0.451)` is the
 whole point in one number. Forward KL then turns the greedy policy into a
 weighted behavior-cloning update, the value network supplies the normalizer, and
 the critic uses a soft value target instead of a hard max. I will call the
-resulting actor-critic In-Sample Actor-Critic.
-
-```python
-import torch
-
-class InSampleAC:
-    def __init__(self, pi, q, q_target, v, beh, tau, gamma=0.99,
-                 polyak=0.995, eps=1e-8, exp_clip=10000.0):
-        self.pi = pi
-        self.q = q
-        self.q_t = q_target
-        self.v = v
-        self.beh = beh
-        self.tau = tau
-        self.gamma = gamma
-        self.polyak = polyak
-        self.eps = eps
-        self.exp_clip = exp_clip
-
-    def loss_behavior(self, s, a):
-        return -self.beh.get_logprob(s, a).mean()
-
-    def loss_value(self, s):
-        v_phi = self.v(s).squeeze(-1)
-        with torch.no_grad():
-            a_pi, logp_pi = self.pi(s)
-            soft_target = self.q_t.min(s, a_pi) - self.tau * logp_pi
-        return (0.5 * (v_phi - soft_target) ** 2).mean()
-
-    def loss_critic(self, s, a, r, s2, done):
-        with torch.no_grad():
-            a2, logp2 = self.pi(s2)
-            soft_v2 = self.q_t.min(s2, a2) - self.tau * logp2
-            target = r + self.gamma * (1.0 - done) * soft_v2
-        q1, q2 = self.q(s, a)
-        loss1 = (0.5 * (target - q1.squeeze(-1)) ** 2).mean()
-        loss2 = (0.5 * (target - q2.squeeze(-1)) ** 2).mean()
-        return 0.5 * (loss1 + loss2)
-
-    def loss_actor(self, s, a):
-        logp = self.pi.get_logprob(s, a)
-        with torch.no_grad():
-            min_q = self.q.min(s, a)
-            value = self.v(s).squeeze(-1)
-            beh_logp = self.beh.get_logprob(s, a)
-            weight = torch.exp((min_q - value) / self.tau - beh_logp)
-            weight = torch.clip(weight, self.eps, self.exp_clip)
-        return -(weight * logp).mean()
-
-    def sync_target(self):
-        with torch.no_grad():
-            for p_t, p in zip(self.q_t.parameters(), self.q.parameters()):
-                p_t.data.mul_(self.polyak)
-                p_t.data.add_((1.0 - self.polyak) * p.data)
-```
+resulting actor-critic In-Sample Actor-Critic: a behavior model trained by
+likelihood, an actor trained by clipped-importance-weighted log-likelihood on
+dataset actions, a value network regressed to the sampled soft target, and a
+critic bootstrapped through that same soft value in the SAC style -- four
+losses on four networks, `pi_psi`, `q_theta`, `v_phi`, `pi_omega`.
 
 The temperature is the sharpness knob, and the small table above shows the
 trade-off concretely: as `tau` gets small the supported log-sum-exp approaches
 the supported hard max and the greedy policy concentrates on the best supported
 action; larger `tau` keeps the target more entropic, which is useful when the
 data is broad and noisy. The important part is that every temperature keeps the
-same support logic and the same contraction argument, since the non-expansion
-bound I checked held at every `tau` I tried.
+same support logic and the same contraction argument -- the non-expansion proof
+never assumed a particular `tau`.

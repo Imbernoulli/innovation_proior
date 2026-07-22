@@ -24,7 +24,7 @@ Mean regression gives the mean. What gives the upper tail? Here is where I start
 
   m_τ = argmin_m E[ L_2^τ(x − m) ],   L_2^τ(u) = |τ − 1(u<0)|·u².
 
-Let me work out what this does before I trust it. For a residual u = x − m: if u > 0 (a sample above my estimate) the weight is |τ − 0| = τ; if u < 0 (below) the weight is |τ − 1| = 1 − τ. At τ = 0.5 both weights are ½ and this is just MSE, so m_{0.5} is the mean. For τ > 0.5 the positive residuals — the samples *above* the estimate — are weighted more heavily, so to balance the gradient the estimate has to move *up*. The bigger the τ, the more the upper samples dominate, and m_τ should climb toward the top of the distribution. That's the verbal story; I don't believe it until I see the numbers, so let me put a concrete distribution through it.
+For a residual u = x − m: if u > 0 (a sample above my estimate) the weight is |τ − 0| = τ; if u < 0 (below) the weight is |τ − 1| = 1 − τ. At τ = 0.5 both weights are ½ and this is just MSE, so m_{0.5} is the mean. For τ > 0.5 the positive residuals — the samples *above* the estimate — are weighted more heavily, so to balance the gradient the estimate has to move *up*. The bigger the τ, the more the upper samples dominate, and m_τ should climb toward the top of the distribution. Put a concrete distribution through it to see whether that verbal story holds up numerically.
 
 Take a state where the behavior policy puts mass on three actions whose Q values are 0, 1, 4 with probabilities 0.5, 0.3, 0.2. The mean is 0.5·0 + 0.3·1 + 0.2·4 = 1.1; the in-support max is 4. Solving the expectile balance equation τ·E[(X−m)_+] = (1−τ)·E[(m−X)_+] for m at a few τ gives:
 
@@ -56,7 +56,7 @@ Construct a state with exactly *one* available action — so there is no action 
   τ = 0.7 → V(s) = 7
   τ = 0.9 → V(s) = 9
 
-There it is, computed: with no action choice at all, the naive expectile still reports 7 and then 9, climbing toward the lucky outcome 10. That extra 2 and 4 are pure dynamics-optimism — the method is being rewarded for the dice landing well, not for any action being better. Compounded over a long horizon, this is exactly the kind of optimism that produces a wildly overoptimistic value. So the direct objective is out: I must take the expectile over actions *only*, and average honestly over transitions.
+With no action choice at all, the naive expectile still reports 7 and then 9, climbing toward the lucky outcome 10. That extra 2 and 4 are pure dynamics-optimism — the method is being rewarded for the dice landing well, not for any action being better. Compounded over a long horizon, this is exactly the kind of optimism that produces a wildly overoptimistic value. So the direct objective is out: I must take the expectile over actions *only*, and average honestly over transitions.
 
 Separate the two. Introduce a value network V_ψ(s) whose job is purely the action-expectile, with the transition fixed:
 
@@ -80,7 +80,7 @@ First, monotonicity in τ: I claim τ₁ < τ₂ ⟹ V_{τ₁}(s) ≤ V_{τ₂}(
            ≤ E^{τ₂}_{a~μ}[ r(s,a) + γ E_{s'} E^{τ₂}_{a'~μ}[ r(s',a') + γ E_{s''}[V_{τ₁}(s'')] ] ]
            ≤ … ≤ V_{τ₂}(s),
 
-unrolling the recursion: each substitution replaces a V_{τ₁} by its definition and bumps one more expectile from τ₁ up to τ₂, and the chain of monotone backups carries the inequality all the way down. So higher τ gives a uniformly higher value. I read that as a *policy improvement* step — raising τ never lowers the value anywhere — which is the sign that the τ dial is doing real improvement rather than just curve-fitting. (I'd still want to sanity-check it on the maze diagnostic against the exact V*, where the learned value can be compared directly, before I fully trust the magnitude.)
+unrolling the recursion: each substitution replaces a V_{τ₁} by its definition and bumps one more expectile from τ₁ up to τ₂, and the chain of monotone backups carries the inequality all the way down. So higher τ gives a uniformly higher value. I read that as a *policy improvement* step — raising τ never lowers the value anywhere — which is the sign that the τ dial is doing real improvement rather than just curve-fitting.
 
 Next, an upper bound. For any τ, V_τ(s) ≤ max_{a : π_β(a|s)>0} Q*(s,a), where Q* is the optimal value *constrained to in-support actions*,
 
@@ -102,46 +102,13 @@ with advantage A = Q − V and inverse temperature β. This only ever evaluates 
 
 The pieces compose into two stages, and the structural fact that makes the staging legal is that the policy never feeds back into value training — V and Q are learned with no reference to π_φ — so extraction can run concurrently with, or entirely after, the value learning. Per gradient step I update V from the target critic by expectile regression, update the policy by advantage-weighted regression, update Q by MSE onto r + γ V(s'), and Polyak-update the target critic.
 
-Let me write it as real code. The networks first — a double critic, a value net, and a Gaussian policy with a state-independent standard deviation:
+Let me write it as real code. The critic, double-critic, and value net are exactly the `mlp`/`Critic`/`DoubleCritic`/`ValueNet` primitives already on hand; only the policy still needs filling in. Actions in this benchmark suite live in a bounded box, `[-1,1]^d`, so I want the policy's mean bounded to it too — but I don't want the log-probability machinery a *fully* tanh-squashed distribution needs (the `log|1-tanh(u)^2|` Jacobian correction, required so sampled actions and their entropy are still correctly normalized). I never sample from this policy during training — advantage-weighted regression only ever evaluates `log π(a|s)` at dataset actions, which already sit inside the box — so a plain Normal on a tanh-bounded mean is enough, and there's no correction term to get wrong:
 
 ```python
 import copy
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.distributions import Normal
-
-
-def mlp(sizes, act=nn.ReLU):
-    layers = []
-    for i in range(len(sizes) - 1):
-        layers += [nn.Linear(sizes[i], sizes[i + 1])]
-        if i < len(sizes) - 2:
-            layers += [act()]
-    return nn.Sequential(*layers)
-
-
-class Critic(nn.Module):
-    def __init__(self, obs_dim, act_dim, hidden=(256, 256)):
-        super().__init__(); self.net = mlp([obs_dim + act_dim, *hidden, 1])
-    def forward(self, s, a):
-        return self.net(torch.cat([s, a], -1)).squeeze(-1)
-
-
-class DoubleCritic(nn.Module):
-    def __init__(self, obs_dim, act_dim, hidden=(256, 256)):
-        super().__init__()
-        self.q1 = Critic(obs_dim, act_dim, hidden)
-        self.q2 = Critic(obs_dim, act_dim, hidden)
-    def forward(self, s, a):
-        return self.q1(s, a), self.q2(s, a)
-
-
-class ValueNet(nn.Module):
-    def __init__(self, obs_dim, hidden=(256, 256)):
-        super().__init__(); self.net = mlp([obs_dim, *hidden, 1])
-    def forward(self, s):
-        return self.net(s).squeeze(-1)
 
 
 class GaussianPolicy(nn.Module):
@@ -150,13 +117,13 @@ class GaussianPolicy(nn.Module):
         self.mean = mlp([obs_dim, *hidden, act_dim])
         self.log_std = nn.Parameter(torch.zeros(act_dim))   # state-independent std
     def dist(self, s):
-        mean = torch.tanh(self.mean(s))                # official JAX code bounds the Gaussian mean
+        mean = torch.tanh(self.mean(s))                     # bound the mean into the action box
         return Normal(mean, self.log_std.clamp(-5.0, 2.0).exp())
     def log_prob(self, s, a):
         return self.dist(s).log_prob(a).sum(-1)
 ```
 
-The expectile loss — the asymmetric square that turns mean regression into upper-tail regression. Let me trace it on the three-point example to be sure the code, not just the math, puts V where I expect: with Q values {0, 1, 4} (uniform) and the loss minimized over a grid of V, τ = 0.5 lands the minimizer at 1.67 (the mean of those three) and τ = 0.9 at 3.36 — above the mean, below the max 4, exactly the in-sample upper-tail estimate the construction calls for. The code matches the algebra:
+The expectile loss is a one-line reweighting of the MSE — the asymmetric square that turns mean regression into upper-tail regression:
 
 ```python
 def expectile_loss(diff, tau):
@@ -237,4 +204,4 @@ hp_antmaze = dict(tau=0.9, beta=10.0, discount=0.99, alpha=0.005)
 hp_kitchen_adroit = dict(tau=0.7, beta=0.5, discount=0.99, alpha=0.005)
 ```
 
-The chain, end to end: offline, the Q-learning max over a' queries out-of-distribution actions and overestimates, so the policy chases the error; SARSA's in-sample MSE is safe but only learns Q^{π_β} and does no improvement; one-step methods inherit that safety but can't iterate dynamic programming and so can't stitch. What I actually want is a max over *in-support* actions — improvement without OOD queries — but I can't compute it by sampling actions and querying Q. Read Q over the behavior actions as a per-state random variable: its mean is what SARSA gives, its in-support max is what I want, and the τ-expectile (asymmetric-L2 regression) estimates the upper tail of that random variable from in-sample actions alone — which I checked numerically climbs from the mean at τ=0.5 toward the support's sup as τ→1. Applying the expectile to the raw TD residual turned out, on a one-action stochastic-transition example, to be optimistic about lucky transitions (reporting 9 where the truth is 5), so I split it: a value net V takes the upper expectile over actions (Q_θ̂(s,a) − V regressed asymmetrically), and Q is backed up onto r + γ V(s') by honest MSE that averages the dynamics — which restores the correct 5. The construction is multi-step dynamic programming — V_τ is monotone in τ, bounded above by the in-support optimum, and converges to it as τ → 1, spanning SARSA (τ=0.5) to constrained Q-learning (τ→1) — with the maze diagnostic against exact V* left as the experiment I'd run to confirm the magnitudes. With clipped double-Q and a Polyak target for stability, the value training is entirely policy-free and never touches an unseen action; the policy is then extracted by advantage-weighted regression exp(β(Q−V))·log π_φ over dataset actions only — improvement-with-an-implicit-constraint, still no OOD query — which decouples cleanly from value learning and is what should make the result a good initialization for online finetuning.
+That's Implicit Q-Learning: a value net that estimates the in-support max by expectile regression over actions alone, backed up into Q by honest MSE over the dynamics, with the policy extracted afterward by advantage-weighted regression over dataset actions — never once touching an action the data didn't produce. The one experiment I'd want before trusting the magnitudes rather than just the direction: check V_τ against the exact V* on the stochastic maze diagnostic, since that's the one setting where the constrained-optimum claim can be verified directly instead of merely bounded.

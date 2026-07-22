@@ -31,12 +31,6 @@ There is no room left to hide. The number $e_2-e_1$ is a positive integer at mos
 $$v-u=e_2-e_1\in C_k.$$
 Then $u+(e_2-e_1)=v$ is a within-country sum, contradicting the assumption that no country contains one.
 
-Let me check that no count has slipped. The first pigeonhole step is $6\cdot329=1974<1978$, so I get $330$ in $C_1$ and hence $329$ differences. Then
-$$\lceil329/5\rceil=66,\quad \lceil65/4\rceil=17,\quad \lceil16/3\rceil=6,\quad \lceil5/2\rceil=3.$$
-Equivalently, the strict inequalities are $5\cdot65=325<329$, $4\cdot16=64<65$, $3\cdot5=15<16$, and $2\cdot2=4<5$. The chain of list sizes is
-$$330\to329\to66\to65\to17\to16\to6\to5\to3\to2,$$
-where each "members in one country" count is followed by one fewer difference, and the descent stops with two elements in the last country. Those two elements still have one positive difference, and that final difference has to belong to one of the six countries.
-
 The doubling case is also covered. The sum I produce has the form $u+d=v$, where $d=v-u$ is itself a member of the same country. It may happen that $u=d$; then $v=2u$, so the member numbered $v$ is twice the number of a member from his own country. If $u\ne d$, it is the sum of two distinct members from that country. The argument never needs the two summands to be distinct, which is exactly what the statement allows.
 
 This contradicts the assumption that all six countries avoid internal differences. Therefore at least one country contains numbers $x,y,z$, with $x$ and $y$ possibly equal, such that $x+y=z$.

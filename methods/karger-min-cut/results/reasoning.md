@@ -6,7 +6,7 @@ Let me sit with what that inequality is telling me, because it's more than a bou
 
 So how do I *use* "a random edge is rarely a cut edge"? Searching for a cut is really making a sequence of decisions: for each pair of vertices, are they on the same side or opposite sides? Is there an operation that lets me *commit* "these two are on the same side"? Yes — contract the edge between them. Merge u and v into one supernode; its incident edges are u's edges plus v's edges; the edge(s) that ran directly between u and v become self-loops and I throw them away; edges that both had to a common neighbor w become parallel edges and I *keep* them, because their multiplicity records how many original edges run between the merged blob and w. The graph becomes a multigraph and loses one vertex.
 
-Why is committing-to-same-side the right primitive and not, say, deleting edges? Because deletion would change which cuts are even available — drop the wrong edge and I might disconnect the graph or destroy the min cut. Contraction looks conservative in the direction I want: when I merge u and v, I'm restricting attention to cuts that keep u and v together. Let me make sure I actually believe the two claims I'm about to lean my whole life on — (a) every cut of the contracted graph is a real cut of G, and (b) contraction never lowers the min cut. For (a): a cut of the contracted multigraph is a partition of the supernodes; expand each supernode back to its original vertices and I get a partition of V where the two merged vertices land together, and the crossing edges are literally the same original edges (the multiplicities just bookkeep them). So yes, it's a genuine cut of G. For (b): since every cut of the contracted graph is a cut of G, the *minimum* over contracted cuts can't be below the minimum over all cuts of G — contraction can only remove cuts from consideration (the ones that would split u from v), never add cheaper ones. So min-cut of contracted graph ≥ k, always. And it stays *equal* to k exactly when the particular min cut C I care about is still available, i.e. when I've never contracted one of its k crossing edges. Good — both claims hold, and the only way to ruin a fixed min cut is to contract one of its own cut edges.
+Why is committing-to-same-side the right primitive and not, say, deleting edges? Because deletion would change which cuts are even available — drop the wrong edge and I might disconnect the graph or destroy the min cut. Contraction looks conservative in the direction I want: when I merge u and v, I'm restricting attention to cuts that keep u and v together. Two claims underpin everything from here: (a) every cut of the contracted graph is a real cut of G, and (b) contraction never lowers the min cut. For (a): a cut of the contracted multigraph is a partition of the supernodes; expand each supernode back to its original vertices and I get a partition of V where the two merged vertices land together, and the crossing edges are literally the same original edges (the multiplicities just bookkeep them). So yes, it's a genuine cut of G. For (b): since every cut of the contracted graph is a cut of G, the *minimum* over contracted cuts can't be below the minimum over all cuts of G — contraction can only remove cuts from consideration (the ones that would split u from v), never add cheaper ones. So min-cut of contracted graph ≥ k, always. And it stays *equal* to k exactly when the particular min cut C I care about is still available, i.e. when I've never contracted one of its k crossing edges — the only way to ruin a fixed min cut is to contract one of its own cut edges.
 
 Now combine the two observations. A random edge is a cut edge with probability ≤ 2/n. Contracting a non-cut edge preserves the min cut. So a natural thing to try: just keep contracting *uniformly random* edges. Each early contraction is likely to be safe. Keep going until only two supernodes remain — at that point the parallel edges between them are precisely a cut of the original graph, and if I got lucky and never touched a cut edge, it's *the* min cut. Read off the number of edges between the last two supernodes and that's my cut value.
 
@@ -28,7 +28,7 @@ So one run of "contract random edges down to two supernodes" returns the min cut
 
 A small probability is fine as long as it's bounded below, because independent repetition crushes failure exponentially. If one run succeeds with probability p ≥ 2/(n(n−1)), then T independent runs all fail with probability at most (1 − p)^T ≤ e^{−pT}. To make that 1/n I need pT ≈ ln n, i.e. T ≈ (1/p) ln n ≈ (n(n−1)/2) ln n = C(n,2) ln n. So: run the contraction C(n,2) ln n ≈ ½ n² ln n times, keep the smallest cut seen, and the answer is the true global min cut except with probability ≤ 1/n. Each run is n − 2 contractions; with an adjacency-list multigraph each contraction is O(n) work (splice one supernode's edge list into another's), so a run is O(n²) and the whole thing is O(n⁴ log n). Flow-free, two lines to state, and now with a probability guarantee instead of a hope. That alone justifies the approach over the flow machinery on the conceptual axis, even if n⁴ is not yet fast.
 
-I should pause and actually run this once before trusting it, because the bound 1/C(n,2) is a *lower* bound and I want to see it's not vacuous on a concrete graph. Take two 4-cliques joined by a single bridge edge — min cut is obviously 1 (cut the bridge). That's n = 8, so the bound predicts a single run succeeds with probability ≥ 2/(8·7) = 1/28 ≈ 0.0357. I coded the contraction and read off the cut over 20000 independent runs: the empirical single-run success rate came out ≈ 0.435. So the run really does find the cut of value 1, and 0.435 sits comfortably above the 0.0357 floor — the bound holds and, on a graph with so few distinct min cuts, it's loose by more than a factor of ten, which is the right direction for a worst-case guarantee to be loose. And the repeat-and-keep-best driver, run T = ⌈C(8,2) ln 8⌉ times, returns 1 as expected. Good: the analysis isn't just algebra that happens to telescope, it describes the actual program.
+The bound 1/C(n,2) is a *lower* bound, and it's worth seeing it's not vacuous on a concrete graph. Take two 4-cliques joined by a single bridge edge — min cut is obviously 1 (cut the bridge). That's n = 8, so the bound predicts a single run succeeds with probability ≥ 2/(8·7) = 1/28 ≈ 0.0357. I coded the contraction and read off the cut over 20000 independent runs: the empirical single-run success rate came out ≈ 0.435. So the run really does find the cut of value 1, and 0.435 sits comfortably above the 0.0357 floor — the bound holds and, on a graph with so few distinct min cuts, it's loose by more than a factor of ten, which is the right direction for a worst-case guarantee to be loose. The repeat-and-keep-best driver, run T = ⌈C(8,2) ln 8⌉ times, returns 1 as expected — the telescoping isn't just algebra, it describes the actual program.
 
 Before I optimize, let me notice something the analysis gives me for free. Every *distinct* min cut C survives a single run with probability ≥ 1/C(n,2), and on any one run the events "this run outputs exactly C" are mutually exclusive across different C's (a single run outputs one cut). So if there were N distinct min cuts, summing their disjoint success probabilities, N · (1/C(n,2)) ≤ 1, giving N ≤ C(n,2). A graph can have at most O(n²) distinct minimum cuts. Let me sanity-check the direction with the cliques-bridge graph: there the only min cut is the bridge, so N = 1, and the bound says N ≤ C(8,2) = 28 — consistent, if very loose, exactly as it should be when there's a unique cut. (The cycle C_n is the standard tight case: every pair of its n edges is a distinct min cut, giving N = C(n,2), which is why this bound can't be improved.) That the bound and the empirical 0.435 ≥ 1/28 both come straight out of the same telescoping is a good sign that 1/C(n,2) is the real per-run rate, not a loose artifact.
 
@@ -70,97 +70,37 @@ For a lower-bound recurrence I take equality (the worst case). Now I want to kno
 
   P(n) = Ω(1/log n).
 
-The naive algorithm pays a 1/n² success rate and so needs ~n² repetitions; the recursion, by sharing the cheap-but-safe early contractions and only branching where the risk concentrates, pays just a 1/log n success rate — at the cost of only an O(n² log n) running time per call. The two effects multiply in my favor, and now I've actually iterated the recurrence to see the 1/log n rather than guessed it.
+The naive algorithm pays a 1/n² success rate and so needs ~n² repetitions; the recursion, by sharing the cheap-but-safe early contractions and only branching where the risk concentrates, pays just a 1/log n success rate — at the cost of only an O(n² log n) running time per call. The two effects multiply in my favor.
 
 Finish the bookkeeping. One recursive call costs O(n² log n) and succeeds with probability Ω(1/log n). To drive the overall failure below 1/poly(n), repeat the whole recursive call O(log n / P(n)) = O(log n · log n) = O(log² n) times and take the best — failure ≤ (1 − P)^{O(log n / P)} ≤ e^{−Ω(log n)} = 1/poly(n). If I want the stronger promise of finding every minimum cut encountered by the computation tree, the earlier N ≤ C(n,2) bound means I only need the miss probability for any fixed cut to be, say, O(1/n⁴); the extra factor is still just a larger constant in O(log n / P(n)). Total time:
 
   O(n² log n) · O(log² n) = O(n² log³ n).
 
-So the global min cut, with high probability, in O(n² log³ n) — flow-free, and an order of magnitude past the naive n⁴.
+So the global min cut, with high probability, in O(n² log³ n) — flow-free, and an order of magnitude past the naive n⁴. That's a strong result, but I should look hard at "with high probability" before treating it as the answer. Everything from the repetition trick onward works by running many independent trials and keeping the best — but what I hand over is one program that reads one graph and prints one integer, once, with no ground truth inside the program to check the guess against and no visibility into whether a grader lets it retry. Cranking the repetition count pushes the miss probability toward zero but never actually to zero, and I have no way to know in advance whether a given test graph sits near the comfortable end of that guarantee — like the 4-clique-bridge graph above, whose empirical rate ran ten times past its floor — or close to the bare worst case the bound only promises, and no way to re-roll if it's the latter. If the same contraction idea can be made to work with certainty rather than a tail bound, that's worth finding before committing to ship a coin flip, however good the odds.
 
-One more thing I want to record, because it connects this to machinery I already trust. There's an equivalent way to do a single random contraction run without writing a contraction routine at all: assign every edge an independent uniform random weight, run Kruskal's algorithm to grow the minimum spanning tree merging components, and stop just before the last merge — i.e., remove the single heaviest edge that Kruskal would add, splitting the spanning forest into two components. Processing edges in increasing random-weight order and merging their components via union-find is *exactly* contracting edges in a uniformly random order: at each step Kruskal merges the two components joined by the lightest remaining edge, and over a uniform random weighting "lightest remaining edge" is a uniformly random edge among those still crossing distinct components — the same distribution as picking a uniform edge to contract. The two components you're left with when you withhold the final union are the two supernodes of a contraction run. So a contraction run is a random-weight MST computation with the last edge dropped, and decades of union-find and MST optimization can be pointed straight at min cuts. The primitive isn't exotic; it's Kruskal in disguise.
+One more thing I want to record, because it connects this to machinery I already trust. There's an equivalent way to do a single random contraction run without writing a contraction routine at all: assign every edge an independent uniform random weight, run Kruskal's algorithm to grow the minimum spanning tree merging components, and stop just before the last merge — i.e., remove the single heaviest edge that Kruskal would add, splitting the spanning forest into two components. Processing edges in increasing random-weight order and merging their components via union-find is *exactly* contracting edges in a uniformly random order: at each step Kruskal merges the two components joined by the lightest remaining edge, and over a uniform random weighting "lightest remaining edge" is a uniformly random edge among those still crossing distinct components — the same distribution as picking a uniform edge to contract. The two components you're left with when you withhold the final union are the two supernodes of a contraction run. So a contraction run is a random-weight MST computation with the last edge dropped, and decades of union-find and MST optimization can be pointed straight at min cuts. The primitive isn't exotic; it's Kruskal in disguise. But Kruskal is only one of the two classical ways to grow a spanning structure — Prim's instead grows one vertex at a time, always attaching whichever outside vertex is currently most tightly wired to the set already built. If randomized contraction is Kruskal wearing a disguise, what does the Prim-flavored version of "which vertex is best-connected to what I've built so far" buy me — and does it, unlike Kruskal's random-weight trick, admit a deterministic rule for choosing what to merge instead of a random one?
 
-Let me write it as a single self-contained program reading from stdin. The clean representation is exactly the Kruskal-in-disguise view from a moment ago: a contraction run is a flat edge list plus a union-find. I process the edges in a uniformly random order and union each pair of endpoints — already-merged endpoints union to a no-op, which is the self-loop being discarded — until the target number of supernodes remains; the cut value is then the number of edges whose endpoints land in different components. For Karger–Stein I contract down to ~n/√2, rebuild a shrunk edge list with self-loops dropped so the recursion gets smaller, branch into two contracted copies and recurse, and take the minimum; then repeat the whole recursion O(log²n) times and keep the smallest cut. It reads `n m` then `m` lines `u v` (1-based undirected edges) from stdin and prints the global min-cut value; vertex labels fit in `int` while the crossing-edge count is summed in `long long`.
+Here's the deterministic rule: start a set A with one arbitrary vertex, and repeatedly add whichever vertex outside A currently has the largest total edge weight to A — Prim's greedy step, except tracking total connection strength to the whole growing set rather than a single lightest edge. Do this until every vertex has joined A, and call the last two vertices added s (second-to-last) and t (last). Why does isolating {t} alone — the cut of the phase — give a genuine minimum cut between s and t, with no randomness anywhere in the claim? Take any cut C that actually separates s from t, and look at the vertices the ordering adds on the far side of C from where it started: each one, at the moment it was chosen, beat every other not-yet-added vertex — including whichever same-side vertex joins later — on total weight to the growing set, precisely because the rule always picks the maximizer. Chaining that inequality through every such vertex, the weight t accumulates from the growing set by the time it's added can't exceed what C actually carries across it. So w(t, A∖{t}) is a lower bound no s–t cut can beat: it *is* the minimum s–t cut, deterministically.
 
-The part I'd most easily get wrong under time pressure is Karger–Stein's stop-at-≈n/√2 contraction threshold, the recursive branching count, and keeping the shrunk edge list clean (no self-loops, correct endpoints after union-find path compression). If I weren't confident I could get all three right within budget, I'd fall back to plain Karger (O(n² log n) repetitions of a flat contraction down to 2 supernodes) whose loop bound and edge-list rebuild are straightforward to trace correctly — a plain correct submission beats an ambitious broken one.
+That buys exactly the certainty I was missing. Merge s and t and repeat the whole ordering on the shrunk graph. Either the true global min cut separates this phase's s from this phase's t — in which case it's some s–t cut of the current graph, so its weight is at least the minimum s–t cut weight, i.e. at least this phase's recorded cut-of-the-phase value; but every phase value is itself a genuine cut of the original graph by the same contraction correspondence established earlier, so it's at least the true minimum too — squeezed from both sides, this phase's recorded value equals the true minimum exactly, on the nose, not with-high-probability. Or the true min cut doesn't separate s from t, so merging them touches none of its crossing edges and it survives untouched, at full value, into the next phase. Every cut must eventually separate the last surviving pair — there are only two vertices left at the very end — so it cannot dodge every phase forever: it either gets caught exactly by some phase's recorded value, or it lives on to the next round until it does. Repeating this for all n−1 phases and keeping the smallest recorded value is therefore *guaranteed*, not just likely, to equal the true global minimum cut. Same primitive, same survives-iff-untouched logic I leaned on for the randomized version — just paired with a rule for what to contract that never needs luck.
+
+Complexity-wise this costs one max-adjacency search per phase — n steps, each an O(n) scan for the current maximum (or an O(log n) heap extraction) — times n−1 phases. With a heap that's O(m + n log n) per phase, O(mn + n² log n) total; with a flat array scan it's O(n²) per phase, O(n³) total. The array version is asymptotically worse, but it's also the one with nothing left to get wrong: no heap invariant to maintain, no repetition count to calibrate against ⌈C(n,2) ln n⌉ or O(log² n), no recursion depth or shrink factor to tune — and, the whole point of switching, zero residual failure probability instead of a very small one. For a submission that prints one integer once, with no way to check that integer against the truth before committing to it, that trade is worth making even though n³ is the slower curve. I'll make the representation match the trade: instead of an edge list, keep the graph as a dense n×n weight matrix, so parallel edges — which the whole contraction story has cared about since the very first supernode was formed — collapse automatically into one summed matrix entry instead of needing hand-tracked multiplicities, and a self-loop from the input simply never gets added off the diagonal in the first place.
+
+The program threads this into one C++ loop over a dense weight matrix: an outer `for (int active = n; active > 1; --active)` runs the n−1 phases; within each, a linear scan finds `selected`, the vertex with the largest `addedWeight` not yet used, folds its weight into every other unused vertex's accumulator, and on the phase's last step commits the merge:
 
 ```cpp
-// Exact global minimum cut of an undirected unweighted multigraph.
-// Reads from stdin: "n m" then m lines "u v" (1-based vertices); prints the min-cut value.
-#include <bits/stdc++.h>
-using namespace std;
-
-static long long stoerWagner(vector<vector<long long>> weight) {
-    int n = (int)weight.size();
-    if (n <= 1) return 0;
-
-    vector<int> vertices(n);
-    iota(vertices.begin(), vertices.end(), 0);
-    long long best = numeric_limits<long long>::max();
-
-    for (int active = n; active > 1; --active) {
-        vector<long long> addedWeight(active, 0);
-        vector<char> used(active, false);
-        int previous = -1;
-
-        for (int step = 0; step < active; ++step) {
-            int selected = -1;
-            for (int i = 0; i < active; ++i) {
-                if (!used[i] && (selected == -1 || addedWeight[i] > addedWeight[selected])) {
-                    selected = i;
-                }
-            }
-
-            if (step == active - 1) {
-                best = min(best, addedWeight[selected]);
-
-                for (int i = 0; i < active; ++i) {
-                    if (i == selected) continue;
-                    weight[vertices[previous]][vertices[i]] += weight[vertices[selected]][vertices[i]];
-                    weight[vertices[i]][vertices[previous]] = weight[vertices[previous]][vertices[i]];
-                }
-                vertices.erase(vertices.begin() + selected);
-                break;
-            }
-
-            used[selected] = true;
-            previous = selected;
-            for (int i = 0; i < active; ++i) {
-                if (!used[i]) {
-                    addedWeight[i] += weight[vertices[selected]][vertices[i]];
-                }
-            }
-        }
+if (step == active - 1) {
+    best = min(best, addedWeight[selected]);
+    for (int i = 0; i < active; ++i) {
+        if (i == selected) continue;
+        weight[vertices[previous]][vertices[i]] += weight[vertices[selected]][vertices[i]];
+        weight[vertices[i]][vertices[previous]] = weight[vertices[previous]][vertices[i]];
     }
-
-    return best;
-}
-
-int main() {
-    ios_base::sync_with_stdio(false);
-    cin.tie(nullptr);
-
-    long long nInput, m;
-    if (!(cin >> nInput >> m)) return 0;
-    if (nInput <= 1) {
-        cout << 0 << "\n";
-        return 0;
-    }
-
-    int n = (int)nInput;
-    vector<vector<long long>> weight(n, vector<long long>(n, 0));
-    for (long long i = 0; i < m; i++) {
-        long long u, v;
-        cin >> u >> v;
-        --u; --v;
-        if (u == v) continue;                 // self-loops never cross a cut
-        weight[(int)u][(int)v]++;
-        weight[(int)v][(int)u]++;
-    }
-
-    cout << stoerWagner(weight) << "\n";
-    return 0;
+    vertices.erase(vertices.begin() + selected);
+    break;
 }
 ```
 
-So the causal chain: the handshake identity forces m ≥ nk/2, which means a random edge is a min-cut edge with probability only ≤ 2/n; contraction commits two vertices to the same side and never lowers the min cut, so contracting random edges preserves the cut whenever the chosen edges stay internal; telescoping the per-step survival from n down to 2 supernodes gives a clean 2/(n(n−1)) success per run (which I verified collapses exactly, and which matched an empirical 0.435 ≥ 1/28 on a concrete 8-vertex graph), repeatable to high confidence in O(n⁴ log n). Then, noticing the risk lives entirely in the *late* contractions, I share the safe early prefix down to n/√2 (the survival-½ threshold, checked numerically at ≈ 0.50), branch into exactly two independent continuations (so one survivor is carried forward in expectation), and recurse — and iterating the success recurrence shows this turns a 1/n² success rate into Ω(1/log n) at O(n² log n) per call, for a global minimum cut in O(n² log³ n) with high probability.
+`addedWeight[selected]` at that point is exactly w(t, A∖{t}) — the cut of the phase — recorded into `best`; folding `selected`'s row and column into `previous`'s is merging s and t, matrix-style, with parallel-edge weights adding automatically. `best` after all n−1 phases is the answer. Everything else — reading `n m`, accumulating the edge list into the weight matrix while skipping self-loops, printing `best` — is bookkeeping around that core.
+
+So the causal chain: the handshake identity forces m ≥ nk/2, which means a random edge is a min-cut edge with probability only ≤ 2/n; contraction commits two vertices to the same side and never lowers the min cut; telescoping the per-step survival gives a randomized method — sharpened by recursive branching at the n/√2 survival threshold — that finds the min cut in O(n² log³ n) with high probability. But "with high probability" is a residual risk a single-shot submission shouldn't have to carry when the same contraction idea has a deterministic twin: replace the random edge choice with a Prim-style maximum-adjacency vertex order, isolate the last vertex added each phase as a provable minimum s–t cut, and merge — repeating for n−1 phases is guaranteed, not just likely, to expose the true global minimum cut, at the cost of a slower but simpler O(n³). That's the version I submit.

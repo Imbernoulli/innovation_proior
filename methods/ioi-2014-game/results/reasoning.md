@@ -6,7 +6,7 @@ For one queried pair $e=(u,v)$, saying no removes $e$ from $H$ and leaves $G$ al
 
 That is conceptually clean but too slow if I test it literally. A bridge test asks whether $u$ can still reach $v$ in $H-e$, which means a graph search over a dense graph. Doing that for $\Theta(n^2)$ queries is far too much. I need the bridge condition in a form that can be updated.
 
-Suppose I look at the connected components of $G$. If a queried edge goes between two current components $P$ and $Q$, then it is forced yes exactly when it is the last unasked pair crossing between $P$ and $Q$. If there is another unasked crossing pair, I can answer no and $H$ stays connected across that component cut. If this is the last one, answering no separates the two sides in $H$, so I must answer yes and merge the two components in $G$.
+Suppose I look at the connected components of $G$ instead of individual vertices, and track how many unasked pairs still run directly between any two of them.
 
 So a direct implementation keeps, for every pair of current $G$-components, a count $S(P,Q)$ of unasked crossing pairs. Initially every component is a singleton and $S(i,j)=1$. On a query between different components, if the count is bigger than one, I answer no and decrement it. If the count is one, I answer yes and merge the components; for any other component $X$, the new crossing count is the sum $S(P,X)+S(Q,X)$. There are at most $n-1$ yes answers because each yes merges two components, and each merge costs one pass over the components, so this already gives an $O(n^2)$ total strategy.
 
@@ -24,35 +24,11 @@ The obvious greedy choice is to say yes to the first pair of $E_w$ that gets que
 
 The failure points at the cure. To keep $G$ short, I want every yes edge to come as late as possible, so I should answer yes to the *last* queried pair of each $E_w$ instead of the first. Then the single yes of $E_w$ is deferred to the moment its set is exhausted. I cannot know in advance which pair of $E_w$ will be last, but I can recognize it when it arrives: keep a counter $c[w]$ of how many pairs from $E_w$ have been queried. The last one is precisely the moment after the increment when $c[w]=w$.
 
-So the online rule collapses to this. For a query $(u,v)$, set $w=\max(u,v)$, increment $c[w]$, and answer yes exactly when the counter reaches $w$. As a single-file program I read the sample grader's input from stdin -- the first line is $n$, then $r=n(n-1)/2$ lines each give a queried pair $u\ v$ -- and print one answer per line, $1$ for a claimed flight and $0$ otherwise.
+So the online rule collapses to this. For a query $(u,v)$, set $w=\max(u,v)$, increment $c[w]$, and answer yes exactly when the counter reaches $w$. That is one array of $n$ counters and, per query, one comparison to find the larger endpoint, one increment, and one equality test against $w$ -- nothing else to store.
 
-The last-query tree strategy, where the lazy spanning-tree adversary answers yes only on the last pair in each larger-endpoint owned set $E_w$, is the part I would most easily get wrong under time pressure; if I were not confident I could implement it correctly in the budget, I would fall back to the component-count bridge strategy with $S(P,Q)$ counts between current $G$-components that I have already traced as correct and ship that -- a plain correct submission beats an ambitious broken one.
+The last-query tree strategy, where the lazy spanning-tree adversary answers yes only on the last pair in each larger-endpoint owned set $E_w$, is the part I would most easily get wrong under time pressure; if I were not confident I could implement it correctly in the budget, I would fall back to the component-count bookkeeping with $S(P,Q)$ counts between current $G$-components, which is simple enough to get right under pressure even without the sharper tree argument -- a plain correct submission beats an ambitious broken one.
 
-```cpp
-// IOI 2014 "Game": lazy spanning-tree adversary.
-// Reads from stdin: line 1 is n; then r = n(n-1)/2 lines, each "u v".
-// For each query prints one line, 1 if a direct flight is claimed, else 0.
-#include <cstdio>
-
-static int c[1500];
-
-int main() {
-    int n;
-    if (scanf("%d", &n) != 1) return 0;
-    for (int i = 0; i < n; ++i) c[i] = 0;
-    long long r = (long long)n * (n - 1) / 2;
-    for (long long q = 0; q < r; ++q) {
-        int u, v;
-        if (scanf("%d %d", &u, &v) != 2) break;
-        int w = u > v ? u : v;          // owner = larger endpoint
-        int ans = (++c[w] == w) ? 1 : 0; // yes only on the last query owned by w
-        printf("%d\n", ans);
-    }
-    return 0;
-}
-```
-
-Before trusting the proof, I want to watch this rule run on the same $n=4$ instance, but with a friendlier order $(0,1),(0,2),(1,2),(0,3),(1,3),(2,3)$, and track both graphs by hand. Query $(0,1)$: $w=1$, $c[1]\to1=w$, yes, $G=\{(0,1)\}$. Query $(0,2)$: $w=2$, $c[2]\to1\ne2$, no. Query $(1,2)$: $w=2$, $c[2]\to2=w$, yes, $G=\{(0,1),(1,2)\}$. Query $(0,3)$: $w=3$, $c[3]\to1$, no. Query $(1,3)$: $w=3$, $c[3]\to2$, no. Query $(2,3)$: $w=3$, $c[3]\to3=w$, yes, $G=\{(0,1),(1,2),(2,3)\}$. So the confirmed graph stays as the path components $\{0,1\},\{2\},\{3\}$, then $\{0,1,2\},\{3\}$, and only becomes connected at the final answer. Counting $G$-components across the six prefixes I get $3,3,2,2,2,1$: it stays at least $2$ until the very last query and drops to $1$ exactly there. Meanwhile $H$, the confirmed-yes plus unasked pairs, is connected at every prefix; for instance after the third answer the unasked pairs $(0,3),(1,3),(2,3)$ alone already span all four vertices. That is the invariant in front of me on a concrete run.
+I want to watch this rule run on the same $n=4$ instance, but with a friendlier order $(0,1),(0,2),(1,2),(0,3),(1,3),(2,3)$, and track both graphs by hand. Query $(0,1)$: $w=1$, $c[1]\to1=w$, yes, $G=\{(0,1)\}$. Query $(0,2)$: $w=2$, $c[2]\to1\ne2$, no. Query $(1,2)$: $w=2$, $c[2]\to2=w$, yes, $G=\{(0,1),(1,2)\}$. Query $(0,3)$: $w=3$, $c[3]\to1$, no. Query $(1,3)$: $w=3$, $c[3]\to2$, no. Query $(2,3)$: $w=3$, $c[3]\to3=w$, yes, $G=\{(0,1),(1,2),(2,3)\}$. So the confirmed graph stays as the path components $\{0,1\},\{2\},\{3\}$, then $\{0,1,2\},\{3\}$, and only becomes connected at the final answer. Counting $G$-components across the six prefixes I get $3,3,2,2,2,1$: it stays at least $2$ until the very last query and drops to $1$ exactly there. Meanwhile $H$, the confirmed-yes plus unasked pairs, is connected at every prefix; for instance after the third answer the unasked pairs $(0,3),(1,3),(2,3)$ alone already span all four vertices. That is the invariant in front of me on a concrete run.
 
 One example with a convenient order is not a proof, and I am worried that a hostile order could trip it. So I checked the rule against all $720$ query orders of the $n=4$ instance, recomputing the components of $G$ and of $H$ after every prefix. In every order, $G$ is disconnected after each of the first five answers and connected only after the sixth, and $H$ is connected after every prefix. No order breaks it. The first-pair variant, run through the same check, fails as soon as a star forms at $0$, which matches the hand example above. That is enough to make me trust the general argument and write it out.
 

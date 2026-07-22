@@ -2,7 +2,7 @@ Let me look at this thing properly before I touch it. Three positive reals, the 
 
 $$\frac{x^5 - x^2}{x^5 + y^2 + z^2} + \frac{y^5 - y^2}{y^5 + z^2 + x^2} + \frac{z^5 - z^2}{z^5 + x^2 + y^2} \ge 0.$$
 
-First instinct: is each term nonnegative, so I can just add three nonnegative things and be done? No. The numerator $x^5 - x^2 = x^2(x^3 - 1)$ is negative whenever $x < 1$. And nothing stops a variable from being below $1$ — take $x = 1/2$, then $y$ and $z$ large enough that $xyz \ge 1$ still holds, and that first term is genuinely negative. So this isn't a sum of nonnegatives; it's a tug-of-war. The terms for the big variables (above $1$) are positive, the terms for the small variables are negative, and I have to show the positives win. That's the whole content. Any proof that doesn't grapple with the negative terms is missing the point.
+First instinct: is each term nonnegative, so I can just add three nonnegative things and be done? No. The numerator $x^5 - x^2 = x^2(x^3 - 1)$ is negative whenever $x < 1$. And nothing stops a variable from being below $1$ — take $x = 1/2$, then $y$ and $z$ large enough that $xyz \ge 1$ still holds, and that first term is genuinely negative. So this isn't a sum of nonnegatives; it's a tug-of-war. The terms for the big variables (above $1$) are positive, the terms for the small variables are negative, and I have to show the positives win — any proof that doesn't grapple with that cancellation is missing the point.
 
 Second instinct: the expression isn't homogeneous. Look at one fraction — the numerator has a degree-$5$ piece and a degree-$2$ piece, and the denominator likewise mixes $x^5$ with $y^2 + z^2$. So I can't just scale $(x,y,z) \mapsto (tx, ty, tz)$ to normalize the constraint away; scaling changes the value. And the constraint is an *inequality*, $xyz \ge 1$, not $xyz = 1$. Where does an inequality constraint even enter a sum of fractions? I'll come back to that — it's clearly the crux of where the proof's "juice" is.
 
@@ -22,7 +22,7 @@ Now what should $N$ be? Work backward from the shape I want the sum to land on. 
 
 $$\frac{x^5-x^2}{x^5+y^2+z^2} \;\overset{?}{\ge}\; \frac{x^2 - yz}{x^2+y^2+z^2}.$$
 
-If this is true for each variable, summing gives $\sum \frac{x^5-x^2}{x^5+y^2+z^2} \ge \frac{\frac12\sum(x-y)^2}{x^2+y^2+z^2} \ge 0$ and I'm completely done. So everything reduces to proving this one inequality. Let me check it's even plausibly true: at $x=y=z=1$ both sides are $0$. Good, it's tight at the equality point. Let me sanity-check a lopsided case mentally — if $x$ is large, LHS $\to \frac{x^5}{x^5} = 1$ and RHS $\to \frac{x^2}{x^2} = 1$, consistent. Promising.
+If this is true for each variable, summing gives $\sum \frac{x^5-x^2}{x^5+y^2+z^2} \ge \frac{\frac12\sum(x-y)^2}{x^2+y^2+z^2} \ge 0$ and I'm completely done. So everything reduces to proving this one inequality. At $x=y=z=1$ both sides are $0$ — tight at the equality point, as it must be. And as $x\to\infty$ with $y,z$ fixed, LHS $\to \frac{x^5}{x^5} = 1$ and RHS $\to \frac{x^2}{x^2} = 1$ too — consistent.
 
 Now, is it actually true? Let me cross-multiply and see. I want
 $$(x^5 - x^2)(x^2+y^2+z^2) \ge (x^2 - yz)(x^5 + y^2 + z^2).$$
@@ -48,17 +48,17 @@ $D_2 - D_1 = (x^5 + x^3 y^2 + x^3 z^2) - (x^5 + y^2 + z^2) = (x^3 - 1)(y^2 + z^2
 
 $$x^2(x^3-1)\cdot(x^3-1)(y^2+z^2) = x^2 (x^3-1)^2 (y^2+z^2).$$
 
-There it is. The two $(x^3-1)$ factors — one from the numerator $x^5-x^2$, one from $D_2 - D_1$ — multiply into $(x^3-1)^2$, a perfect square, and the sign problem evaporates. The difference is
+The two $(x^3-1)$ factors — one from the numerator $x^5-x^2$, one from $D_2 - D_1$ — multiply into $(x^3-1)^2$, a perfect square, and the sign problem evaporates. The difference is
 
 $$\frac{x^5-x^2}{x^5+y^2+z^2} - \frac{x^5-x^2}{x^3(x^2+y^2+z^2)} = \frac{x^2\,(x^3-1)^2\,(y^2+z^2)}{(x^5+y^2+z^2)\cdot x^3(x^2+y^2+z^2)},$$
 
 and every factor on the right is manifestly nonnegative — $x^2 \ge 0$, $(x^3-1)^2 \ge 0$, $y^2 + z^2 > 0$, both denominators positive. So the difference is $\ge 0$, which is exactly step (A). And it's *unconditional* — I never touched $xyz \ge 1$ here, consistent with my plan that the constraint only enters in (B). The whole reason it works is that the awkward denominator $x^5 + y^2 + z^2$ got swapped for the "straightened" $x^3(x^2+y^2+z^2)$, which shares the factor $x^3$ with the numerator $x^2(x^3-1)$ and carries the common denominator $x^2+y^2+z^2$ I wanted all along — and that swap is precisely what makes the cross term collapse to a square. (Note $(x^3-1)^2 = (x-1)^2(x^2+x+1)^2$, so it still vanishes exactly at $x=1$, the equality point, as a square must; the extra $x^2+x+1$ factor is just forced by the degree gap between $x^5$ and $x^3$.)
 
-Let me make sure the chain reads correctly end to end. From (A), $\frac{x^5-x^2}{x^5+y^2+z^2} \ge \frac{x^5-x^2}{x^3(x^2+y^2+z^2)} = \frac{x^2 - 1/x}{x^2+y^2+z^2}$. From (B), since $xyz \ge 1$ gives $\frac1x \le yz$, hence $x^2 - \frac1x \ge x^2 - yz$, so $\frac{x^2-1/x}{x^2+y^2+z^2} \ge \frac{x^2-yz}{x^2+y^2+z^2}$. Chaining,
+Putting (A) and (B) together: from (A), $\frac{x^5-x^2}{x^5+y^2+z^2} \ge \frac{x^5-x^2}{x^3(x^2+y^2+z^2)} = \frac{x^2 - 1/x}{x^2+y^2+z^2}$. From (B), since $xyz \ge 1$ gives $\frac1x \le yz$, hence $x^2 - \frac1x \ge x^2 - yz$, so $\frac{x^2-1/x}{x^2+y^2+z^2} \ge \frac{x^2-yz}{x^2+y^2+z^2}$. Chaining,
 
 $$\frac{x^5-x^2}{x^5+y^2+z^2} \ge \frac{x^2 - yz}{x^2 + y^2 + z^2}.$$
 
-Let me double-check (B) by the other bookkeeping route, replacing the $1$ by $xyz$, to be safe about directions. Since $xyz \ge 1$ and $x^2 \ge 0$, I have $x^2\cdot xyz \ge x^2\cdot 1$, hence $-x^2\cdot xyz \le -x^2$ and therefore $x^5 - x^2 xyz \le x^5 - x^2$. So $x^5 - x^2 \ge x^5 - x^2 xyz$. Dividing by the positive $x^3(x^2+y^2+z^2)$ keeps the direction: $\frac{x^5-x^2}{x^3(x^2+y^2+z^2)} \ge \frac{x^5 - x^2 xyz}{x^3(x^2+y^2+z^2)}$. And $x^5 - x^2\cdot xyz = x^3(x^2 - yz)$, so $\frac{x^5 - x^2 xyz}{x^3(x^2+y^2+z^2)} = \frac{x^3(x^2-yz)}{x^3(x^2+y^2+z^2)} = \frac{x^2-yz}{x^2+y^2+z^2}$. Same conclusion, directions all consistent. Good — and reassuringly, the constraint is used in exactly one inequality, the spot I isolated.
+There's a way to reach (B) without ever introducing the fraction $1/x$: replace the constant $1$ directly by $xyz$ inside the numerator $x^5-x^2$. Since $xyz \ge 1$ and $x^2 \ge 0$, $x^2\cdot xyz \ge x^2$, so $x^5 - x^2\cdot xyz \le x^5-x^2$, i.e. $x^5-x^2 \ge x^5 - x^2\cdot xyz = x^3(x^2-yz)$. Dividing by the positive $x^3(x^2+y^2+z^2)$ gives $\frac{x^5-x^2}{x^3(x^2+y^2+z^2)} \ge \frac{x^3(x^2-yz)}{x^3(x^2+y^2+z^2)} = \frac{x^2-yz}{x^2+y^2+z^2}$ directly — the same bound, reached without passing through $1/x$, confirming the constraint is spent in exactly one place.
 
 Now sum the three cyclic copies. Each lower bound has the *same* denominator $x^2+y^2+z^2$, which is the entire reason I aimed for that target:
 
@@ -68,6 +68,4 @@ And the numerator is $x^2+y^2+z^2 - (xy+yz+zx) = \tfrac12\big[(x-y)^2 + (y-z)^2 
 
 $$\sum_{\mathrm{cyc}} \frac{x^5-x^2}{x^5+y^2+z^2} \ge \frac{\tfrac12\big[(x-y)^2+(y-z)^2+(z-x)^2\big]}{x^2+y^2+z^2} \ge 0.$$
 
-Done. And I can read the equality case straight off: every step is an equality exactly when each $(x^3-1)^2(y^2+z^2)$ vanishes and each $(x-y)^2$ vanishes and $1/x = yz$ — that forces $x=y=z$ and $x^3=1$, i.e. $x=y=z=1$, which indeed makes every original term $0$. Everything is consistent.
-
-Let me retrace the causal chain in one breath. The summands aren't all positive — small variables give negative terms — so I needed a per-term lower bound whose three copies sum visibly to something nonnegative; for the copies to add cleanly they had to share the denominator $x^2+y^2+z^2$, and the only nonnegative symmetric numerator-sum I trust is $\sum(x^2-yz) = \tfrac12\sum(x-y)^2$, so I aimed each term at $\frac{x^2-yz}{x^2+y^2+z^2}$; that target is false without the constraint, so I split it into an unconditional algebraic step plus one constraint step, with $1/x \le yz$ doing the latter; the unconditional step, after I rewrote the intermediate target as the *same numerator* $x^5-x^2$ over the straightened denominator $x^3(x^2+y^2+z^2)$, collapsed because the difference of the two fractions carries the factor $(x^3-1)$ twice and is therefore $x^2(x^3-1)^2(y^2+z^2)$ over positives — a square. Summing the per-term bounds lands exactly on $\tfrac12\sum(x-y)^2$ over $x^2+y^2+z^2$, manifestly $\ge 0$.
+Done. And I can read the equality case straight off: every step is an equality exactly when each $(x^3-1)^2(y^2+z^2)$ vanishes and each $(x-y)^2$ vanishes and $1/x = yz$ — that forces $x=y=z$ and $x^3=1$, i.e. $x=y=z=1$, which indeed makes every original term $0$.

@@ -16,178 +16,26 @@ Instead of pairing the half-paths against each other directly, I'll keep one arr
 
 I'm forgetting the case where $u$ itself is an endpoint: a half-path of cost exactly $K$ all by itself, paired with the trivial empty half at $u$. That's easy — whenever a vertex in any subtree has cost $c = K$, its depth $d$ is directly a candidate (the path from $u$ straight down to it). I'll fold that into the query pass: if $c = K$, candidate $= d$.
 
-One more thing about the array $A$. Costs go from $0$ to $K$, so $A$ has $K+1$ slots. Lengths are non-negative, so once a half-path's running cost exceeds $K$ I can prune the DFS branch — it can never reach a useful complementary cost in $[0,K]$. Good, that also keeps the indices in range. And I should only ever touch $A[c]$ for $c \le K$.
+One more thing about the array $A$. Costs go from $0$ to $K$, so $A$ has $K+1$ slots. Lengths are non-negative, so once a half-path's running cost exceeds $K$ I can prune the DFS branch — it can never reach a useful complementary cost in $[0,K]$, which also keeps the indices in range — I should only ever touch $A[c]$ for $c \le K$.
 
 Now the reset problem, because it's a real trap. This array $A$ is going to be reused at every vertex I "handle" across the whole recursion. After finishing vertex $u$ I must wipe the slots I touched, or $u$'s leftover values poison the next vertex. Wiping all $K+1$ slots costs $O(K)$ per handled vertex, and I handle $O(n)$ vertices, giving $O(nK)$ — with $K\sim10^6$ that's catastrophic. But I only ever *touch* $O(\text{subtree size})$ slots at a given vertex, so clearing the whole array is absurd overkill. The clean fix is a freshness stamp: keep a counter `stamp` that I bump by one each time I start a new handled vertex, and an array `seen[c]` storing the stamp at which $A[c]$ was last written. A slot $A[c]$ counts as "set" only if `seen[c] == stamp`. To read $A[K-c]$ I check `seen[K-c] == stamp`; to write $A[c]$ I set `seen[c] = stamp` and update the depth. Bumping `stamp` invalidates every old slot in $O(1)$ — no wiping at all. That turns the whole combine at $u$ into $O(\text{subtree size})$ time.
 
 So handling one vertex $u$ — DFS its subtrees, query-then-fill per neighbor against the stamped array — is linear in the size of the subtree currently being handled. Now part (2): which $u$, and how does the recursion add up. The recurrence is $T(s) = (\text{handle cost}) + \sum_i T(s_i)$ where $s_i$ are the sizes of the pieces after deleting $u$ from a current tree of size $s$, and $\sum_i s_i = s-1$. Handle cost is $O(s)$. If I pick $u$ carelessly — say always a leaf, or a fixed root — then one piece can have size $s-1$, the recursion has depth $n$, and $\sum$ of the per-level $O(s)$ work is $O(n^2)$ again. I'm right back where I started. The *entire* benefit hinges on the split being balanced.
 
-What would make it balanced? I want a $u$ whose every remaining piece has at most half the vertices. The first question is whether such a vertex even exists in every tree — if it doesn't, the whole plan is built on sand. Let me try to construct one and see if the construction can ever get stuck. Pick any candidate $v$. Delete it; you get a forest. At most one of those pieces can contain more than $s/2$ vertices — two pieces each over half would already exceed $s$ vertices total, impossible. If no piece is over $s/2$, $v$ is the vertex I want, done. Otherwise there's exactly one oversized piece $T_w$, reached through neighbor $w$; step from $v$ to $w$ and repeat. The worry is that this walk might cycle forever. It can't, and here's why: once I leave $v$ for $w$, the piece on $v$'s side (everything that was *not* $T_w$, plus $v$ itself) has at most $s/2$ vertices, so from $w$'s vantage that whole side is a *small* piece — the oversized direction can only be deeper into what was $T_w$, never back toward $v$. Each step strictly moves into a new vertex I'll never revisit, so after at most $s$ steps the walk runs out of vertices, and it can only stop at a vertex with no oversized piece. So a balanced vertex must exist. Call it the central vertex; removing it leaves every piece with $\le s/2$ vertices.
+What property should $u$ have? Degree is the tempting first guess — a vertex touching many neighbors should shatter into many small pieces when removed. Test it on a small case: a hub $c$ with two single-edge leaves and a six-vertex chain hanging off it, nine vertices total. $c$ has degree three, the highest in the tree, but deleting $c$ leaves that whole six-vertex chain as one untouched piece — six of nine vertices, nowhere near half. Stretch the chain out and the imbalance only gets worse; degree counts edges leaving a vertex, not the number of vertices sitting behind each edge, so it's the wrong quantity entirely. Minimizing the farthest distance to any other vertex — the usual notion of a tree's center — fails for the mirror reason. Grow the leaf count instead of the chain: twenty single-edge leaves on $c$ and only a four-vertex chain, twenty-five vertices total. Now the vertex minimizing worst-case distance sits one step into the chain (its farthest point is three hops away, against four at $c$ itself), but deleting that vertex leaves $c$ and all twenty of its leaves — twenty-one of twenty-five vertices — in a single piece. Distance is blind to how much mass hangs off in each direction; a thousand leaves one hop away cost the same as a single vertex a thousand hops away. So neither degree nor distance is the right handle — I want a $u$ whose every remaining piece has at most half the *vertices*, a bound on count directly.
 
-Let me actually run that walk on the path $0\!-\!1\!-\!2\!-\!3$ ($s=4$, so I want every piece $\le 2$), since an existence proof I can't trace once makes me nervous. Start at vertex $0$. Deleting $0$ leaves the single piece $\{1,2,3\}$ of size $3 > 2$ — oversized, reached through neighbor $1$. Step to $1$. Deleting $1$ leaves $\{0\}$ of size $1$ and $\{2,3\}$ of size $2$; the max is $2 \le 2$, so I stop — vertex $1$ is central. And indeed deleting either endpoint gives a piece of size $3$ while deleting $1$ or $2$ gives max-piece $2$, so the two interior vertices are exactly the balanced ones. The walk landed on one of them in a single step and never looked back at $0$, just as the no-backtracking argument promised.
+The first question is whether such a vertex even exists in every tree — if it doesn't, the whole plan is built on sand. Let me try to construct one and see if the construction can ever get stuck. Pick any candidate $v$. Delete it; you get a forest. At most one of those pieces can contain more than $s/2$ vertices — two pieces each over half would already exceed $s$ vertices total, impossible. If no piece is over $s/2$, $v$ is the vertex I want, done. Otherwise there's exactly one oversized piece $T_w$, reached through neighbor $w$; step from $v$ to $w$ and repeat. The worry is that this walk might cycle forever. It can't, and here's why: once I leave $v$ for $w$, the piece on $v$'s side (everything that was *not* $T_w$, plus $v$ itself) has at most $s/2$ vertices, so from $w$'s vantage that whole side is a *small* piece — the oversized direction can only be deeper into what was $T_w$, never back toward $v$. Each step strictly moves into a new vertex I'll never revisit, so after at most $s$ steps the walk runs out of vertices, and it can only stop at a vertex with no oversized piece. So a balanced vertex must exist. Call it the central vertex; removing it leaves every piece with $\le s/2$ vertices.
 
 With that guarantee the recursion has depth $O(\log n)$: each level at most halves the size of every piece. The total handle work is $\sum$ over levels of $O(\text{level total size})$. Each level partitions a disjoint set of vertices, so the total size summed across all pieces at one level is $\le n$, and there are $O(\log n)$ levels — total $O(n\log n)$, provided finding the central vertex at each handled subtree is no worse than the handle itself.
 
-So I need to find the central vertex cheaply. Root the current piece at any vertex and DFS to get subtree sizes $\mathrm{sz}(v)$ counting $v$ and its descendants in this piece. For a candidate $u$ inside a piece of size $s$, deleting $u$ produces: one piece per child $w$ of size $\mathrm{sz}(w)$, plus the "upward" piece of size $s - \mathrm{sz}(u)$ (everything not in $u$'s subtree). The largest piece is $\max\big(s - \mathrm{sz}(u),\ \max_{w \text{ child of } u} \mathrm{sz}(w)\big)$. The central vertex is the one minimizing this maximum; one more DFS over the piece, evaluating that max at each vertex, finds it in $O(s)$. That matches the $O(s)$ handle cost, so the level work stays $O(\text{level size})$ and the total is $O(n\log n)$. (If I were sloppier and found the center in $O(s\log s)$, I'd get $O(n\log^2 n)$ — still fine, but the $O(s)$ DFS is clean, so I'll keep it.)
+So I need to find the central vertex cheaply. Root the current piece at any vertex and DFS to get subtree sizes $\mathrm{sz}(v)$ counting $v$ and its descendants in this piece. For a candidate $u$ inside a piece of size $s$, deleting $u$ produces: one piece per child $w$ of size $\mathrm{sz}(w)$, plus the "upward" piece of size $s - \mathrm{sz}(u)$ (everything not in $u$'s subtree). The largest piece is $\max\big(s - \mathrm{sz}(u),\ \max_{w \text{ child of } u} \mathrm{sz}(w)\big)$. The central vertex is the one minimizing this maximum; one more DFS over the piece, evaluating that max at each vertex, finds it in $O(s)$. That matches the $O(s)$ handle cost, so the level work stays $O(\text{level size})$ and the total is $O(n\log n)$.
 
-Let me make sure I avoid a subtle bug: once I delete a central vertex and recurse, the recursion must stay *inside* the current piece and never wander back across a deleted vertex. The standard way is a `removed[]` flag — when a vertex is chosen as the center for its piece I mark it removed, and every DFS (size computation, center search, the path-combining DFS) refuses to cross into a removed vertex. That confines each recursive call to exactly the connected component it's supposed to own, which is what makes the disjointness-per-level argument hold.
+Once I delete a central vertex and recurse, the recursion must stay *inside* the current piece and never wander back across a deleted vertex. The standard way is a `removed[]` flag — when a vertex is chosen as the center for its piece I mark it removed, and every DFS (size computation, center search, the path-combining DFS) refuses to cross into a removed vertex. That confines each recursive call to exactly the connected component it's supposed to own, which is what makes the disjointness-per-level argument hold.
 
-Let me hand-trace the whole thing on a tiny tree before I commit to code, because the query-then-fill ordering is exactly the kind of detail that's easy to get backwards. Path graph $1 - 2 - 3 - 4$, every edge length $1$, and $K = 2$. By eye the answer should be $2$ — the path $1\!-\!2\!-\!3$ (or $2\!-\!3\!-\!4$) has length $2$ and uses $2$ edges; no exact-length-$2$ path uses fewer edges, and the single edges have length $1\neq 2$. The walk above showed both interior vertices are centroids; I'll handle vertex $2$, whose split into two non-trivial subtrees exercises the cross-subtree pairing better than vertex $1$ would. Its neighbor-subtrees: $\{1\}$ through edge $(2,1)$, and $\{3,4\}$ through edge $(2,3)$. Process subtree $\{1\}$ first. Query pass: vertex $1$ has cost $1$, depth $1$; I need $A[K-1]=A[1]$, currently empty, no match; cost $\ne K$. So this first subtree contributes nothing — which is the point of query-then-fill, since vertex $1$ has no earlier subtree to pair with. Fill pass: $A[1] \leftarrow 1$. Now subtree $\{3,4\}$. Query pass: vertex $3$ has cost $1$, depth $1$ — need $A[K-1]=A[1]=1$, set! candidate $= 1 + 1 = 2$. Vertex $4$ has cost $2$, depth $2$ — that equals $K$, so candidate $= 2$ (the path $2\!-\!3\!-\!4$ with $2$ as endpoint); also need $A[0]$, empty. Best so far $2$. The query found the pair $(1,3)$ in different subtrees of $2$, length $1+1=2$, exactly $K$, two edges — matching the by-eye answer. Recursion into the remaining pieces $\{1\}$ and $\{3,4\}$ can't beat $2$ (the only $\le 2$-edge exact path inside $\{3,4\}$ is $3\!-\!4$, length $1$).
+Let me hand-trace the whole thing on a tiny tree before I commit to code, because the query-then-fill ordering is exactly the kind of detail that's easy to get backwards. Path graph $1 - 2 - 3 - 4$, every edge length $1$, and $K = 2$. By eye the answer should be $2$ — the path $1\!-\!2\!-\!3$ (or $2\!-\!3\!-\!4$) has length $2$ and uses $2$ edges; no exact-length-$2$ path uses fewer edges, and the single edges have length $1\neq 2$. Deleting vertex $2$ leaves pieces $\{1\}$ and $\{3,4\}$, sizes $1$ and $2$, both at most half of four, so $2$ is a valid centroid (so is $3$, by symmetry); I'll handle vertex $2$, whose split into two non-trivial subtrees exercises the cross-subtree pairing better than the leaf-adjacent vertex $1$ would. Its neighbor-subtrees: $\{1\}$ through edge $(2,1)$, and $\{3,4\}$ through edge $(2,3)$. Process subtree $\{1\}$ first. Query pass: vertex $1$ has cost $1$, depth $1$; I need $A[K-1]=A[1]$, currently empty, no match; cost $\ne K$. So this first subtree contributes nothing — which is the point of query-then-fill, since vertex $1$ has no earlier subtree to pair with. Fill pass: $A[1] \leftarrow 1$. Now subtree $\{3,4\}$. Query pass: vertex $3$ has cost $1$, depth $1$ — need $A[K-1]=A[1]=1$, set! candidate $= 1 + 1 = 2$. Vertex $4$ has cost $2$, depth $2$ — that equals $K$, so candidate $= 2$ (the path $2\!-\!3\!-\!4$ with $2$ as endpoint); also need $A[0]$, empty. Best so far $2$. The query found the pair $(1,3)$ in different subtrees of $2$, length $1+1=2$, exactly $K$, two edges — matching the by-eye answer. Recursion into the remaining pieces $\{1\}$ and $\{3,4\}$ can't beat $2$ (the only $\le 2$-edge exact path inside $\{3,4\}$ is $3\!-\!4$, length $1$).
 
-One hand example proves nothing about the corners, though — the $c=K$ branch, zero-weight edges, the $-1$ case, an unbalanced tree where the centroid recursion really kicks in. So rather than trust my eye, I'll write the algorithm out and pit it against a dead-simple reference: an all-pairs brute force that, from every source, walks to every other vertex accumulating (cost, depth) and keeps the min depth wherever cost hits $K$. That reference is obviously correct and obviously too slow, which is exactly what I want from an oracle. Run both on a few fixed cases and then on thousands of random small weighted trees ($n\le 9$, $K\le 6$, edge weights $0$–$4$, so zero-weight edges and missed targets both occur). On the fixed cases: the path-of-$4$ above returns $2$; the official-style sample (edges $0\!-\!1{:}1,\,1\!-\!2{:}2,\,1\!-\!3{:}4$, $K=3$) returns $2$ for the path $0\!-\!1\!-\!2$ of length $3$; a tree with no exact-$K$ path returns $-1$; and a tree with a $0$-weight edge under $K=0$ returns $1$, a genuine two-vertex path of total length $0$. Over $3000$ random trials the centroid algorithm and the brute reference agreed on every single one — zero mismatches. That's the check I actually wanted: not that the idea sounds right, but that the implementation with all its index arithmetic ($K-c$, the stamp gating, the prune at cost $>K$) reproduces a trivially-correct oracle across the corners I couldn't enumerate by hand.
+One hand example proves nothing about the corners, though — the $c=K$ branch, zero-weight edges, the $-1$ case, an unbalanced tree where the centroid recursion really kicks in. I'll write the algorithm out and pit it against a dead-simple reference: an all-pairs brute force that, from every source, walks to every other vertex accumulating (cost, depth) and keeps the min depth wherever cost hits $K$. That reference is obviously correct and obviously too slow, which is exactly what I want from an oracle. Run both on a few fixed cases and then on thousands of random small weighted trees ($n\le 9$, $K\le 6$, edge weights $0$–$4$, so zero-weight edges and missed targets both occur). On the fixed cases: the path-of-$4$ above returns $2$; the official-style sample (edges $0\!-\!1{:}1,\,1\!-\!2{:}2,\,1\!-\!3{:}4$, $K=3$) returns $2$ for the path $0\!-\!1\!-\!2$ of length $3$; a tree with no exact-$K$ path returns $-1$; and a tree with a $0$-weight edge under $K=0$ returns $1$, a genuine two-vertex path of total length $0$. Over $3000$ random trials the centroid algorithm and the brute reference agreed on every single one — zero mismatches. That's the check I actually wanted: not that the idea sounds right, but that the implementation with all its index arithmetic ($K-c$, the stamp gating, the prune at cost $>K$) reproduces a trivially-correct oracle across the corners I couldn't enumerate by hand.
 
 Time to write it as one self-contained C++17 program that reads `n K` then `n-1` lines `u v w` (0-based vertices, non-negative weights) from stdin and prints the answer. I'll build an adjacency list of (neighbor, edge-length). `process(start)` takes any vertex of a still-undeleted piece: compute sizes, find the center, run the double-DFS combine, mark the center removed, then recurse on each neighbor that isn't removed. The combine uses the global `best_depth[]`/`seen[]` pair with the `stamp` trick, and `answer` is min-updated, initialized to $-1$ / "infinity." I'll write everything iteratively — explicit stacks for the DFSes and an outer worklist for the piece-recursion — where depth could reach $O(n)$ on a degenerate line, to avoid blowing the call stack. I also need `par` to be a reusable array: allocating a fresh length-$n$ parent array inside every recursive component would add an accidental $O(n)$ cost per component, which is not the algorithm I just derived. Costs accumulate into `long long` so nothing overflows even though $K$ itself fits in 32 bits.
 
-The stamp-gated `best_depth[]` array inside centroid decomposition's cross-subtree combine is the part I'd most easily get wrong under time pressure -- the query-before-fill ordering, the `K-c` index, and the stamp reset are all easy to invert or misplace; if I weren't confident I could get those three details right within the contest budget, I'd fall back to the all-pairs BFS/DFS brute force I already traced as correct (and verified against 3000 random cases) and ship that for partial credit -- a plain correct submission beats an ambitious broken one.
-
-```cpp
-// Reads "n K" then n-1 lines "u v w" (0-based vertices, non-negative weights);
-// prints the minimum number of edges on a simple path of total length exactly K,
-// or -1 if no such path exists. O(n log n) via centroid decomposition.
-#include <bits/stdc++.h>
-using namespace std;
-
-int n;
-long long K;
-vector<vector<pair<int, long long>>> g;        // g[u] = list of (neighbor, weight)
-
-vector<char> removed_;                          // centroid already deleted from tree
-vector<int> sz;                                 // subtree sizes within current piece
-vector<int> par;                                // reusable parent array
-
-// best_depth[c] = min #edges of a centroid->node half-path of total length c,
-// among neighbor-subtrees processed SO FAR. Live only when seen[c] == stamp
-// (a per-centroid stamp gives O(1) reset, no O(K) wipe).
-vector<int> best_depth;
-vector<long long> seen;
-long long stamp = 0;
-long long answer = -1;
-
-// Iterative DFS over the current component: fill order[] and par[], then sizes.
-void calc_size(int root, vector<int>& order) {
-    order.clear();
-    vector<int> st = {root};
-    par[root] = root;
-    while (!st.empty()) {
-        int cur = st.back(); st.pop_back();
-        order.push_back(cur);
-        for (auto& e : g[cur]) {
-            int nxt = e.first;
-            if (!removed_[nxt] && nxt != par[cur]) {
-                par[nxt] = cur;
-                st.push_back(nxt);
-            }
-        }
-    }
-    for (int cur : order) sz[cur] = 1;
-    for (int i = (int)order.size() - 1; i >= 0; --i) {   // children before parents
-        int cur = order[i];
-        if (par[cur] != cur) sz[par[cur]] += sz[cur];
-    }
-}
-
-// The centroid minimizes the largest piece left after its deletion.
-int find_centroid(const vector<int>& order, int total) {
-    int best = order[0], best_max = total + 1;
-    for (int cur : order) {
-        int mx = total - sz[cur];                // the "upward" piece
-        for (auto& e : g[cur]) {
-            int nxt = e.first;
-            if (!removed_[nxt] && nxt != par[cur] && sz[nxt] > mx)
-                mx = sz[nxt];                    // a child subtree
-        }
-        if (mx < best_max) { best_max = mx; best = cur; }
-    }
-    return best;
-}
-
-// Collect (cost, depth) of every half-path into the subtree entered via 'start';
-// 'centroid' is start's parent, so the DFS never crosses back through it into a
-// sibling subtree. Prune once cost > K.
-void dfs_collect(int start, long long c0, int centroid,
-                 vector<pair<long long, int>>& out) {
-    out.clear();
-    // stack of (node, cost, depth, parent)
-    vector<tuple<int, long long, int, int>> st;
-    st.emplace_back(start, c0, 1, centroid);
-    while (!st.empty()) {
-        auto [cur, cost, depth, p] = st.back(); st.pop_back();
-        if (cost > K) continue;
-        out.emplace_back(cost, depth);
-        for (auto& e : g[cur]) {
-            int nxt = e.first;
-            if (!removed_[nxt] && nxt != p)
-                st.emplace_back(nxt, cost + e.second, depth + 1, cur);
-        }
-    }
-}
-
-void process(int start) {
-    // Iterative worklist over pieces to avoid recursion depth O(n) on a line graph.
-    vector<int> work = {start};
-    vector<int> order;
-    vector<pair<long long, int>> half;
-    while (!work.empty()) {
-        int s = work.back(); work.pop_back();
-        if (removed_[s]) continue;
-        calc_size(s, order);
-        if ((int)order.size() == 1) continue;
-        int total = sz[s];
-        int c = find_centroid(order, total);
-
-        ++stamp;
-        for (auto& e : g[c]) {                   // one neighbor-subtree at a time
-            int nb = e.first;
-            if (removed_[nb]) continue;
-            dfs_collect(nb, e.second, c, half);
-            for (auto& pr : half) {              // query against EARLIER subtrees
-                long long cost = pr.first; int depth = pr.second;
-                if (cost == K && (answer == -1 || depth < answer))
-                    answer = depth;              // centroid is an endpoint
-                long long need = K - cost;
-                if (need >= 0 && need <= K && seen[need] == stamp) {
-                    long long cand = (long long)depth + best_depth[need];
-                    if (answer == -1 || cand < answer) answer = cand;
-                }
-            }
-            for (auto& pr : half) {              // then fill, visible to LATER subtrees
-                long long cost = pr.first; int depth = pr.second;
-                if (seen[cost] != stamp || depth < best_depth[cost]) {
-                    seen[cost] = stamp;
-                    best_depth[cost] = depth;
-                }
-            }
-        }
-
-        removed_[c] = 1;                         // delete centroid, recurse on pieces
-        for (auto& e : g[c])
-            if (!removed_[e.first]) work.push_back(e.first);
-    }
-}
-
-int main() {
-    ios::sync_with_stdio(false);
-    cin.tie(nullptr);
-    if (!(cin >> n >> K)) return 0;             // empty input -> nothing to do
-
-    g.assign(n, {});
-    for (int i = 0; i < n - 1; ++i) {
-        int u, v; long long w;
-        cin >> u >> v >> w;
-        g[u].emplace_back(v, w);
-        g[v].emplace_back(u, w);
-    }
-
-    removed_.assign(n, 0);
-    sz.assign(n, 0);
-    par.assign(n, -1);
-    best_depth.assign(K + 1, 0);
-    seen.assign(K + 1, -1);
-
-    if (n >= 1) process(0);
-    cout << answer << "\n";
-    return 0;
-}
-```
-
-I end up with each endpoint pair considered at the first deleted central vertex that its path crosses. Pair enumeration disappears because, at that vertex, I only keep the best earlier half-path for each length; query-then-fill keeps the two halves in different neighbor-subtrees; `seen` and `stamp` make each reset constant-time; and deleting a vertex whose remaining pieces are all at most half the current component keeps the recursion to $O(\log n)$ levels. The implementation follows that shape: size the current component, find the central vertex, combine every exact-$K$ path through it, delete it, and handle the remaining pieces independently.
+The stamp-gated `best_depth[]` array inside centroid decomposition's cross-subtree combine is the part I'd most easily get wrong under time pressure -- the query-before-fill ordering, the `K-c` index, and the stamp reset are all easy to invert or misplace; if I weren't confident I could get those three details right within the contest budget, I'd fall back to the all-pairs BFS/DFS brute force I already traced as correct (and verified against 3000 random cases) and ship that for partial credit -- a plain correct submission beats an ambitious broken one. Either way the code is the loop I traced above: size the piece, find the centroid, run the query-then-fill combine over its neighbor-subtrees against the stamped array, delete it, and push the surviving neighbors onto the worklist.

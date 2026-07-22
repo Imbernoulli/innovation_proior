@@ -1,4 +1,4 @@
-Let me start from what actually hurts. I have a pile of unlabelled tabular vectors and I need to surface the rare, unusual ones — the anomalies — and rank everything by how anomalous it is. The two facts I'm handed about anomalies are almost too simple to be useful: they are *few* (a small minority) and they are *different* (their attribute values stand apart from the bulk). And yet every method I reach for spends its effort somewhere else. The whole model-based tradition does the same thing: build a profile of what "normal" looks like — fit a distribution, draw a one-class boundary, cluster the bulk — and then flag whatever falls outside. The trouble is the objective is aimed at the wrong target. I'm optimizing a model to *describe the normal majority*, when the thing I care about is the rare minority at the edges. A model can fit the bulk beautifully and still be badly calibrated for the handful of points I actually want, and then I get a flood of false alarms or I miss the real anomalies — because all the modelling capacity went into the part of the data that isn't the question.
+I have a pile of unlabelled tabular vectors and I need to surface the rare, unusual ones — the anomalies — and rank everything by how anomalous it is. The two facts I'm handed about anomalies are almost too simple to be useful: they are *few* (a small minority) and they are *different* (their attribute values stand apart from the bulk). And yet every method I reach for spends its effort somewhere else. The whole model-based tradition does the same thing: build a profile of what "normal" looks like — fit a distribution, draw a one-class boundary, cluster the bulk — and then flag whatever falls outside. The trouble is the objective is aimed at the wrong target. I'm optimizing a model to *describe the normal majority*, when the thing I care about is the rare minority at the edges. A model can fit the bulk beautifully and still be badly calibrated for the handful of points I actually want, and then I get a flood of false alarms or I miss the real anomalies — because all the modelling capacity went into the part of the data that isn't the question.
 
 And the methods that rank best make me pay for it. Distance-based detection — score a point by its distance to its k-th nearest neighbour, far-from-everything is anomalous — is conceptually clean, but the naive version is O(n^2), and even the clever pruning of something like ORCA, which processes points in random order and keeps a running cutoff so it can prune candidates whose partial score already fell below the n-th best, is only near-linear *in practice* and stays quadratic in the worst case; the cost *is* the distance computation, and it climbs with dimensionality. Density-based LOF is subtler — it compares a point's local reachability density to its neighbours', `LOF_k(A) = (1/|N_k(A)|) sum_{B in N_k(A)} lrd_k(B)/lrd_k(A)`, with `lrd` the inverse average reachability distance — so it can cope with clusters of different density, which plain distance methods can't. But it too computes a k-NN neighbourhood for every point, the same distance bill, and being *local* it can be fooled: a point in a tight little local group has `LOF ~ 1` even when it's a glaring *global* outlier. So I keep hitting the same wall: the good rankings cost distance computations that don't scale, and the cheap profiles aim at the wrong objective.
 
@@ -8,7 +8,7 @@ Let me make "separated early vs. late" precise, because it has to become a numbe
 
 But one such tree is a single random draw — one particular sequence of random cuts — and it'll be noisy. A normal point might get unlucky and be isolated early by a freak cut; an anomaly might survive a few cuts by chance. The cure is the standard one for high-variance random trees: build a whole ensemble of them, each from its own independent randomness, and *average* the path length of x across the trees. The law of large numbers turns the noisy per-tree h(x) into a stable estimate of the expected path length E(h(x)), and the random cuts that happened to be unlucky in one tree wash out across many. As a bonus, the random splits make the whole thing trivially parallel and robust to irrelevant attributes — an irrelevant attribute is just one of the many a tree might cut on, and averaging over many random trees dilutes its effect. So the object is: an ensemble of random partitioning trees, score by average path length.
 
-That last clause is exactly the kind of thing I'd be tempted to just assert, so before I hang the whole method on it I want to *believe* "anomalies have shorter expected path length," not just narrate it. Let me actually count. Forget the data for a second and think about a one-dimensional sorted set of points and the random partitioning over it. Take the simplest non-trivial case, three points `x_0 < x_1 < x_2`. There are only two distinct tree shapes the random cuts can make. If the very first cut falls in the gap between `x_0` and `x_1`, it peels off `x_0` at depth 1 and then `x_1, x_2` need one more cut — call that tree A. If the first cut falls between `x_1` and `x_2`, it peels off `x_2` at depth 1 — tree B. Under a uniform random split, the probability the first cut lands in a given gap is just that gap's width over the total span. So `P(tree A) = D_{0,1}/D_{0,2}` and `P(tree B) = D_{1,2}/D_{0,2}`, writing `D_{i,j}` for the distance from `x_i` to `x_j`. Now look at the middle point `x_1`: it's isolated at depth 2 in *both* trees, so `h(x_1) = 2` always. The extreme points `x_0` and `x_2` each get isolated at depth 1 in one tree and depth 2 in the other, so their expected depth is a mix of 1 and 2.
+That last clause is the crux the whole method hangs on, so I want to *believe* "anomalies have shorter expected path length," not just narrate it — let me actually count. Forget the data for a second and think about a one-dimensional sorted set of points and the random partitioning over it. Take the simplest non-trivial case, three points `x_0 < x_1 < x_2`. There are only two distinct tree shapes the random cuts can make. If the very first cut falls in the gap between `x_0` and `x_1`, it peels off `x_0` at depth 1 and then `x_1, x_2` need one more cut — call that tree A. If the first cut falls between `x_1` and `x_2`, it peels off `x_2` at depth 1 — tree B. Under a uniform random split, the probability the first cut lands in a given gap is just that gap's width over the total span. So `P(tree A) = D_{0,1}/D_{0,2}` and `P(tree B) = D_{1,2}/D_{0,2}`, writing `D_{i,j}` for the distance from `x_i` to `x_j`. Now look at the middle point `x_1`: it's isolated at depth 2 in *both* trees, so `h(x_1) = 2` always. The extreme points `x_0` and `x_2` each get isolated at depth 1 in one tree and depth 2 in the other, so their expected depth is a mix of 1 and 2.
 
 Let me put numbers on it so I'm not waving my hands. Set `x = (0, 9, 10)`, so `x_0` sits far out: `D_{0,1} = 9`, `D_{1,2} = 1`, `D_{0,2} = 10`. Then `x_0` is isolated at depth 1 with probability `9/10`, giving `E(h(x_0)) = 0.9*1 + 0.1*2 = 1.1`; `x_1` is always at depth 2; and `x_2` is isolated at depth 1 with probability `1/10`, giving `E(h(x_2)) = 0.1*1 + 0.9*2 = 1.9`. To be sure I haven't fooled myself with the gap argument, I simulate it directly — 200,000 trees, drawing a uniform first cut in `(0, 10)` and recursing — and read back the mean depths: `x_0 -> 1.099`, `x_1 -> 2.000`, `x_2 -> 1.901`. That matches the hand computation, and it's the shape I wanted: the far-out fringe point `x_0` has the *shortest* expected path length, the central point `x_1` the longest, and pushing `x_0` further out (a wider surrounding gap) only pulls its expected depth closer to 1. So in the smallest case the "easier to isolate" claim is not a story — it's a computed fact.
 
@@ -27,7 +27,7 @@ I don't want to take that on faith for a formula this fiddly, so let me check it
 
 Now I have to turn an average path length into a usable anomaly score, and there's a normalization problem I have to face squarely. A path length of, say, 8 means completely different things depending on how many points the tree was built from: in a tree over a thousand points, depth 8 is shallow; in a tree over sixteen points, depth 8 is about as deep as it gets. The maximum height of one of these trees grows roughly linearly in n, the average height only like log n, so a raw E(h) isn't comparable across trees of different sizes and isn't even bounded in a fixed range. I need to divide E(h) by the *typical* path length for a tree of that size, so the score becomes "how short is this point's path relative to a normal point's path." So what *is* the typical / average path length of one of these fully-grown random partitioning trees?
 
-Let me look hard at the structure of a fully-grown isolation tree — recursively split until every point is alone — and see if it matches anything I already know the cost of. Each split is a comparison `q < p`; each point lands at its own external node; isolating a point is exactly the process of an item falling off the bottom of a *binary search tree* at an external node — an *unsuccessful search*. So the average path length to an external node of my random tree should be the same quantity as the average cost of an unsuccessful search in a random BST, which is a classical, exact result. Let me re-derive that result so I actually trust the constant rather than just borrowing it. For a random BST built from m keys, the expected *internal* path length (sum of depths of the internal nodes) is `E[I_m] = 2(m+1)H_m - 4m`, with `H_m` the m-th harmonic number — this comes from the recurrence where a uniformly random key is the root and splits the rest into two random sub-BSTs, telescoping into the harmonic sum. The *external* path length (sum of depths of the m+1 external nodes, where an unsuccessful search terminates) satisfies the identity `E_m = I_m + 2m` for any binary tree with m internal nodes. So the average depth of an external node, i.e. the average unsuccessful-search path length, is `E_m/(m+1)`. For my tree built from n points, all isolated, there are n external nodes, which corresponds to a BST on `m = n - 1` keys; substituting and simplifying,
+Let me look hard at the structure of a fully-grown isolation tree — recursively split until every point is alone — and see if it matches anything I already know the cost of. Each split is a comparison `q < p`; each point lands at its own external node; isolating a point is exactly the process of an item falling off the bottom of a *binary search tree* at an external node — an *unsuccessful search*. So the average path length to an external node of my random tree should be the same quantity as the average cost of an unsuccessful search in a random BST, which is a classical, exact result. For a random BST built from m keys, the expected *internal* path length (sum of depths of the internal nodes) is `E[I_m] = 2(m+1)H_m - 4m`, with `H_m` the m-th harmonic number — this comes from the recurrence where a uniformly random key is the root and splits the rest into two random sub-BSTs, telescoping into the harmonic sum. The *external* path length (sum of depths of the m+1 external nodes, where an unsuccessful search terminates) satisfies the identity `E_m = I_m + 2m` for any binary tree with m internal nodes. So the average depth of an external node, i.e. the average unsuccessful-search path length, is `E_m/(m+1)`. For my tree built from n points, all isolated, there are n external nodes, which corresponds to a BST on `m = n - 1` keys; substituting and simplifying,
 
 ```
 c(n) = E_{n-1}/n = (I_{n-1} + 2(n-1))/n
@@ -55,114 +55,6 @@ So the whole training stage is: pick the number of trees t and the sub-sample si
 
 The evaluation stage: for a test point x, run it down each of the t trees by following the stored split rules — at each internal node compare `x[q]` to the node's split value and go left if smaller, else right — counting edges, and when it hits an external node return `edges + c(node.Size)` (the adjustment is 0 when the node holds a single isolated point, since `c(1) = 0`). Average that over the t trees to get `E(h(x))`, then `s(x, psi) = 2^{-E(h(x))/c(psi)}`, where I normalize by `c(psi)` because every tree was grown from psi points. The score is in (0, 1], higher means more anomalous, exactly the ranking I needed and at a cost set by psi and t, not by n.
 
-Let me write it the way it actually runs. I'll keep the height-limit recursion and the average-path-length adjustment, and at score time I'll work in the natural "average depth over trees" and exponentiate at the end. A library implementation can precompute each leaf's depth and its `_average_path_length(Size)` adjustment, but the accounting is the same.
+That whole procedure now translates directly into code: the training loop draws a fresh sub-sample of psi points without replacement per tree and recurses with the height limit, stopping a group at a leaf (recording its Size) once it is down to one point, every row identical, or the height cap is hit, and otherwise storing the split attribute and value at an internal node; scoring walks a test point down the stored splits, counts edges, adds `c(Size)` at whichever leaf it terminates at, and averages that over the t trees before the final `2^{-(.)/c(psi)}`.
 
-```python
-import numpy as np
-
-
-def _average_path_length(n):
-    # Average path length to an external node of a random binary tree on n points,
-    # = average unsuccessful-search depth of a random BST = 2 H(n-1) - 2(n-1)/n.
-    # scikit-learn uses H(i) ~= ln(i) + np.euler_gamma, with exact small cases.
-    n = np.asarray(n, dtype=float)
-    shape = n.shape
-    n = n.reshape(-1)
-    out = np.zeros_like(n, dtype=float)
-    mask_1 = n <= 1.0
-    mask_2 = n == 2.0
-    not_mask = ~(mask_1 | mask_2)
-    out[mask_2] = 1.0
-    out[not_mask] = (
-        2.0 * (np.log(n[not_mask] - 1.0) + np.euler_gamma)
-        - 2.0 * (n[not_mask] - 1.0) / n[not_mask]
-    )
-    out = out.reshape(shape)
-    return out.item() if out.shape == () else out
-
-
-class _Node:
-    __slots__ = ("left", "right", "split_att", "split_val", "size", "is_leaf")
-
-    def __init__(self):
-        self.left = self.right = None
-        self.split_att = -1
-        self.split_val = 0.0
-        self.size = 0
-        self.is_leaf = False
-
-
-def _grow(X, e, height_limit, rng):
-    # iTree(X, e, l): isolate points by random cuts until the height limit, |X|<=1,
-    # or all rows identical -- short paths fall out for the few-and-different points.
-    node = _Node()
-    n = X.shape[0]
-    if e >= height_limit or n <= 1:
-        node.is_leaf = True
-        node.size = n
-        return node
-    # stop if every row is identical (no attribute can split them)
-    mins, maxs = X.min(axis=0), X.max(axis=0)
-    splittable = np.flatnonzero(maxs > mins)
-    if splittable.size == 0:
-        node.is_leaf = True
-        node.size = n
-        return node
-    q = splittable[rng.integers(splittable.size)]   # random attribute
-    p = rng.uniform(mins[q], maxs[q])               # random split in (min, max)
-    left_mask = X[:, q] < p
-    node.split_att, node.split_val = int(q), float(p)
-    node.left = _grow(X[left_mask], e + 1, height_limit, rng)     # q < p
-    node.right = _grow(X[~left_mask], e + 1, height_limit, rng)   # q >= p
-    return node
-
-
-def _path_length(x, node, e):
-    # PathLength(x, T, e): edges to the terminating node, plus c(Size) for the
-    # unbuilt remainder when a path stops early at a node holding Size > 1 points.
-    if node.is_leaf:
-        return e + _average_path_length(node.size)
-    if x[node.split_att] < node.split_val:
-        return _path_length(x, node.left, e + 1)
-    return _path_length(x, node.right, e + 1)
-
-
-class CustomAnomalyDetector:
-    """Isolation-based anomaly scorer: an ensemble of random isolation trees,
-    each grown on a small sub-sample; score = 2^(-mean path length / c(psi))."""
-
-    def __init__(self, n_estimators=100, max_samples=256, random_state=0):
-        self.n_estimators = n_estimators
-        self.max_samples = max_samples       # sub-sample size psi (small on purpose)
-        self.random_state = random_state
-
-    def fit(self, X):
-        X = np.asarray(X, dtype=float)
-        n = X.shape[0]
-        rng = np.random.default_rng(self.random_state)
-        psi = min(self.max_samples, n)                  # "auto" = min(256, n)
-        self.psi_ = psi
-        self.c_psi_ = float(_average_path_length(psi))  # normalization constant
-        height_limit = int(np.ceil(np.log2(max(psi, 2))))   # l = ceil(log2(psi)) ~ avg height
-        self.trees_ = []
-        for _ in range(self.n_estimators):
-            idx = rng.choice(n, size=psi, replace=False)     # sub-sample WITHOUT replacement
-            self.trees_.append(_grow(X[idx], 0, height_limit, rng))
-        return self
-
-    def decision_function(self, X):
-        X = np.asarray(X, dtype=float)
-        m = X.shape[0]
-        depths = np.zeros(m)
-        for tree in self.trees_:
-            for i in range(m):
-                depths[i] += _path_length(X[i], tree, 0)
-        mean_depth = depths / len(self.trees_)           # E(h(x)) over the ensemble
-        if self.c_psi_ == 0.0:
-            return np.ones(m)                            # sklearn's single-sample guard
-        return 2.0 ** (-mean_depth / self.c_psi_)         # s(x, psi); higher = more anomalous
-```
-
-Every individual piece checked out, but the pieces interact, so before I trust the whole pipeline I want to run it on data where I know the answer. I draw 480 normal points from a 2D unit Gaussian and plant four obvious anomalies far out — `(8,8), (-7,6), (7,-7), (0,9)` — fit the detector with `t = 100, psi = 256`, and score all 484 points. `c(256)` comes out `10.245`, matching the constant I derived. The four planted anomalies score `0.832, 0.795, 0.808, 0.756`; the 480 normals average `0.424` with a maximum of `0.657`. So the anomalies all land above the `0.5` anchor and the normals all sit below it, exactly the partition the calibration predicted; the four planted points come out as the top four scored points, and the ranking AUC against the held-out labels is `1.0`. That's not a proof the method is good in general, but it confirms the code computes what the derivation says it should — short averaged path lengths for the far-out points, mapping through `2^{-E(h)/c(psi)}` to high scores — and that the sub-sampling and height limit don't break the ranking.
-
-The causal chain, start to finish: profiling normality aims at the wrong target and the good rankings cost distances that don't scale, so I drop normality-modelling and exploit "few and different" directly — anomalies are *easier to isolate* under random partitioning, which makes their root-to-leaf path length short (checked: a far-out point's expected depth is computed and simulated to be shorter than a central point's); one random tree is noisy so I average path length over an ensemble; the dome-shape count over all random trees, verified against brute-force enumeration, shows fringe (extreme) points genuinely have shorter expected path length; an isolation tree is a random BST so its average path length is the classical unsuccessful-search cost `c(n) = 2H(n-1) - 2(n-1)/n`, which normalizes the raw depth into the bounded score `s = 2^{-E(h)/c(psi)}` anchored at 0.5; building each tree from a *small sub-sample without replacement* relieves swamping and masking (both too-much-data pathologies) and pins the cost to psi rather than n; and a height limit at the average height `ceil(log2 psi)` with a `c(Size)` adjustment skips the wasted work of fully resolving the deep, already-normal points.
+The pieces were each derived separately, so let me see them interact on data where I know the answer. I draw 480 normal points from a 2D unit Gaussian and plant four obvious anomalies far out — `(8,8), (-7,6), (7,-7), (0,9)` — fit the detector with `t = 100, psi = 256`, and score all 484 points. `c(256)` comes out `10.245`, matching the constant I derived. The four planted anomalies score `0.832, 0.795, 0.808, 0.756`; the 480 normals average `0.424` with a maximum of `0.657`. The anomalies all land above the `0.5` anchor and the normals all sit below it, matching the calibration, and the ranking AUC against the held-out labels is `1.0` — a toy case, not a proof of general performance, but the sub-sampling and height limit are not breaking the ranking the derivation predicts.
