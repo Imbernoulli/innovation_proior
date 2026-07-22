@@ -62,9 +62,9 @@ that I can always close up. That's the feasibility criterion, and it's a gift: a
 have a legal tour I could snap to by adding the link `(t_{2i}, t_1)`. I never assemble a pile of swaps
 only to find at the end they can't be made into a tour.
 
-Before I go further I should pin down that the forced-`x_i` claim is actually a fact and not wishful
-thinking, because the whole "always one link from a tour" story rests on it. Let me take a concrete
-6-city tour `0-1-2-3-4-5-0` and run two steps by hand. Break `x_1 = (0,1)`, so `t_2 = 1`; add
+Let me check the forced-`x_i` claim on a concrete instance, since the whole "always one link from a
+tour" story rests on it. Take a concrete 6-city tour `0-1-2-3-4-5-0` and run two steps by hand. Break
+`x_1 = (0,1)`, so `t_2 = 1`; add
 `y_1 = (1,3)`, reaching `t_3 = 3`. City 3 has two tour links, `(2,3)` and `(3,4)`, so `x_2` is one of
 those. Try both, each time closing `t_4` back to `t_1 = 0`:
 
@@ -75,8 +75,8 @@ those. Try both, each time closing `t_4` back to `t_1 = 0`:
   `{(1,3),(4,0)}`: `0→4→5→0` closes after three cities while `1,2,3` form a separate loop. Two
   disjoint subtours. Infeasible.
 
-So exactly one of the two choices closes up — `x_2` really is forced — and it's the one I keep. Good;
-the "one link from a tour" property is not an aspiration, it holds.
+So exactly one of the two choices closes up — `x_2` really is forced, exactly as claimed, and it's the
+one I keep.
 
 That tells me how to evaluate "stop here." Before I commit to adding the open-ended `y_i`,
 let me check the close-up. Tentatively join `t_{2i}` to `t_1` with `y_i* = (t_{2i}, t_1)`; the gain of
@@ -119,9 +119,9 @@ If instead the partial sum wraps around — ending at index `j` with `1 ≤ j < 
 + g_n + g_1 + ... + g_j = (S_n - S_{k-1}) + S_j`. Now `S_j ≥ S_{k-1}` because `S_{k-1}` is the minimum
 prefix, so this is `≥ (S_n - S_{k-1}) + S_{k-1} = S_n > 0`. Positive again.
 
-So every partial sum of the cyclically-shifted sequence is positive. Let me not trust the algebra
-blindly — I'll run the construction on a sequence that's deliberately awkward, one that dips negative
-in the middle. Take `g = (3, -5, 4, -1, 2)`, total `= 3 > 0`. Read in the given order the partial
+So every partial sum of the cyclically-shifted sequence is positive. Let me check this on a sequence
+that's deliberately awkward, one that dips negative in the middle. Take `g = (3, -5, 4, -1, 2)`,
+total `= 3 > 0`. Read in the given order the partial
 sums are `3, -2, 2, 1, 3` — the second one is negative, so a naive left-to-right start *would* trip
 the positivity rule and abandon this chain. Now apply the recipe. The prefix sums are
 `S_0..S_5 = (0, 3, -2, 2, 1, 3)`; the minimum over `S_0..S_4` is `-2`, achieved last at `S_2`, so
@@ -172,8 +172,8 @@ I check the close-up of each by joining `t_4` to `t_1 = 0`:
 
 Cashing the depth-2 exchange — break `(0,2)` and `(1,3)`, add `(2,1)` and `(3,0)` — rebuilds the tour
 `0-1-2-3` of length 4. And the predicted length is `f(T) - G* = 4.8284 - 0.8284 = 4.0000`, which is
-exactly what the rebuilt tour measures. So the additive-gain identity `f(T') = f(T) - sum of g_i` isn't
-just bookkeeping I hoped would hold — on this instance it lands on the nose. Past this depth, if a
+exactly what the rebuilt tour measures — the additive-gain identity `f(T') = f(T) - sum of g_i`
+predicts the rebuilt length to four decimal places on this instance. Past this depth, if a
 `g_1 + g_2 + g_3 ≤ G*` ever showed up I'd cash the `k = 2` exchange; here there's nothing better to
 find since 4 is optimal. The depth that won was 2, chosen by the data rather than fixed in advance —
 the variable `k` I was after.
@@ -235,489 +235,56 @@ it is that the positive-gain gate plus the five-candidate cap are pruning hard e
 nominally unbounded depth almost never costs much — the chains that run deep are rare and the rest die
 quickly when their running gain crosses zero.
 
-Now let me land it on code. The complete single-file implementation below preserves the Python landing's edge-set reconstruction order while exposing the required stdin/stdout contract.
-
-The Lin-Kernighan non-sequential 4-opt extension at the alternate-`x_2` branch is the part I would most easily get wrong under time pressure; if I were not confident I could implement it correctly in the budget, I would fall back to the purely sequential Lin-Kernighan variable-depth exchange with the positive-gain criterion and forced close-up moves, which I have already traced as correct, and ship that -- a plain correct submission beats an ambitious broken one.
+Now let me land this on code. The state is a `Tour`: the visit order, each city's position within it,
+and its edge set as canonical `(min,max)` pairs packed into a single key. The close-up oracle from the
+derivation above — "does removing these broken links and adding these joined links leave a single
+Hamiltonian cycle?" — becomes a concrete `generate(broken, joined, out)`: rebuild the degree-2
+adjacency of `(tour edges − broken) + joined`, reject outright if any city ends up with degree other
+than 2, then walk from city 0 and accept only if the walk covers every city before returning:
 
 ```cpp
-// Lin-Kernighan variable-depth local search for the symmetric TSP.
-// Reads: n, then an n x n symmetric distance matrix (row-major) from stdin.
-// Writes: the tour (n city indices, 0-based, in visit order) and its length to stdout.
-#include <bits/stdc++.h>
-using namespace std;
-
-static int N;
-static vector<vector<double>> D;                 // symmetric cost matrix
-static vector<vector<int>> NB;                   // neighbour lists, nearest first
-
-static inline double dist(int i, int j) { return D[i][j]; }
-
-// undirected edge as an ordered pair (a < b)
-static inline long long key(int i, int j) {
-    if (i > j) swap(i, j);
-    return (long long)i * N + j;
+for (int step = 0; step < size; step++) {
+    out.push_back(cur);
+    int a = adj[cur][0], b = adj[cur][1];
+    int nxt = (step == 0) ? min(a, b) : ((a != prev) ? a : b);
+    prev = cur; cur = nxt;
+    if (cur == 0 && step + 1 < size) return false;  // premature return => subtours
 }
-
-struct PyEdgeSet {
-    static constexpr long long EMPTY = -1;
-    static constexpr long long DUMMY = -2;
-    static constexpr uint64_t P1 = 11400714785074694791ull;
-    static constexpr uint64_t P2 = 14029467366897019727ull;
-    static constexpr uint64_t P5 = 2870177450012600261ull;
-
-    vector<long long> table;
-    int used = 0, fill = 0;
-
-    explicit PyEdgeSet(int sz = 8) : table(sz, EMPTY) {}
-
-    static uint64_t rot(uint64_t x) { return (x << 31) | (x >> 33); }
-
-    static uint64_t tupleHash(long long e) {
-        int a = (int)(e / N), b = (int)(e % N);
-        uint64_t acc = P5;
-        for (uint64_t lane : {uint64_t(a), uint64_t(b)}) {
-            acc += lane * P2;
-            acc = rot(acc);
-            acc *= P1;
-        }
-        acc += (2ull ^ (P5 ^ 3527539ull));
-        return acc == UINT64_MAX ? 1546275796ull : acc;
-    }
-
-    pair<int,bool> lookup(long long e) const {
-        uint64_t h = tupleHash(e), perturb = h;
-        int mask = (int)table.size() - 1;
-        int i = (int)(h & (uint64_t)mask), freeslot = -1;
-        while (true) {
-            int probes = (i + 9 <= mask) ? 9 : 0;
-            while (true) {
-                long long cur = table[i];
-                if (cur == EMPTY) return {freeslot >= 0 ? freeslot : i, false};
-                if (cur == DUMMY) {
-                    if (freeslot < 0) freeslot = i;
-                } else if (cur == e) {
-                    return {i, true};
-                }
-                if (probes == 0) break;
-                probes--;
-                i++;
-            }
-            perturb >>= 5;
-            i = (int)(((uint64_t)i * 5 + 1 + perturb) & (uint64_t)mask);
-        }
-    }
-
-    void insertClean(long long e) {
-        uint64_t h = tupleHash(e), perturb = h;
-        int mask = (int)table.size() - 1;
-        int i = (int)(h & (uint64_t)mask);
-        while (true) {
-            if (table[i] == EMPTY) { table[i] = e; return; }
-            if (i + 9 <= mask) {
-                for (int j = 0; j < 9; j++) {
-                    i++;
-                    if (table[i] == EMPTY) { table[i] = e; return; }
-                }
-            }
-            perturb >>= 5;
-            i = (int)(((uint64_t)i * 5 + 1 + perturb) & (uint64_t)mask);
-        }
-    }
-
-    bool addNoResize(long long e) {
-        auto [idx, found] = lookup(e);
-        if (found) return false;
-        bool intoEmpty = table[idx] == EMPTY;
-        if (intoEmpty) fill++;
-        table[idx] = e;
-        used++;
-        return intoEmpty;
-    }
-
-    void resize(int minused) {
-        vector<long long> old = ordered();
-        int sz = 8;
-        while (sz <= minused) sz <<= 1;
-        table.assign(sz, EMPTY);
-        used = fill = (int)old.size();
-        for (long long e : old) insertClean(e);
-    }
-
-    void add(long long e) {
-        int oldUsed = used;
-        bool intoEmpty = addNoResize(e);
-        int mask = (int)table.size() - 1;
-        if (used != oldUsed && intoEmpty && (uint64_t)fill * 5 >= (uint64_t)mask * 3)
-            resize(used * 4);
-    }
-
-    void discard(long long e) {
-        auto [idx, found] = lookup(e);
-        if (found) {
-            table[idx] = DUMMY;
-            used--;
-        }
-    }
-
-    vector<long long> ordered() const {
-        vector<long long> out;
-        out.reserve(used);
-        for (long long e : table)
-            if (e != EMPTY && e != DUMMY) out.push_back(e);
-        return out;
-    }
-
-    bool contains(long long e) const { return lookup(e).second; }
-
-    void mergeFrom(const PyEdgeSet& other) {
-        if (other.used == 0) return;
-        int mask = (int)table.size() - 1;
-        if ((uint64_t)(fill + other.used) * 5 >= (uint64_t)mask * 3)
-            resize((used + other.used) * 2);
-        if (fill == 0 && table.size() == other.table.size() && other.fill == other.used) {
-            table = other.table;
-            fill = other.fill;
-            used = other.used;
-            return;
-        }
-        if (fill == 0) {
-            fill = used = other.used;
-            for (long long e : other.ordered()) insertClean(e);
-            return;
-        }
-        for (long long e : other.ordered()) add(e);
-    }
-
-    PyEdgeSet copySet() const {
-        PyEdgeSet result;
-        result.mergeFrom(*this);
-        return result;
-    }
-
-    void differenceUpdate(const PyEdgeSet& other) {
-        for (long long e : other.ordered()) discard(e);
-        int mask = (int)table.size() - 1;
-        if (fill - used > mask / 4) resize(used * 4);
-    }
-
-    static PyEdgeSet fromSequence(const vector<long long>& seq) {
-        PyEdgeSet s;
-        for (long long e : seq) s.add(e);
-        return s;
-    }
-
-    static PyEdgeSet difference(const PyEdgeSet& a, const PyEdgeSet& b) {
-        if ((a.used >> 2) > b.used) {
-            PyEdgeSet result = a.copySet();
-            result.differenceUpdate(b);
-            return result;
-        }
-        PyEdgeSet result;
-        for (long long e : a.ordered())
-            if (!b.contains(e)) result.add(e);
-        return result;
-    }
-
-    static PyEdgeSet setUnion(const PyEdgeSet& a, const PyEdgeSet& b) {
-        PyEdgeSet result = a.copySet();
-        result.mergeFrom(b);
-        return result;
-    }
-};
-
-struct Tour {
-    vector<int> order;                           // city visit order
-    vector<int> pos;                             // pos[city] = index in order
-    vector<long long> edgeOrder;                 // insertion order used by Python's set build
-    unordered_set<long long> edges;              // current tour edges (membership)
-    int size = 0;
-
-    explicit Tour(const vector<int>& o) : order(o), size((int)o.size()) {
-        pos.assign(size, 0);
-        edges.reserve(size * 2);
-        for (int i = 0; i < size; i++) pos[order[i]] = i;
-        for (int i = 0; i < size; i++) {
-            long long e = key(order[(i + size - 1) % size], order[i]);
-            edgeOrder.push_back(e);
-            edges.insert(e);
-        }
-    }
-
-    // the two tour-neighbours (predecessor, successor) of a city
-    pair<int,int> around(int node) const {
-        int idx = pos[node];
-        int pred = order[(idx + size - 1) % size];
-        int succ = order[(idx + 1) % size];
-        return {pred, succ};
-    }
-
-    bool contains(long long e) const { return edges.count(e) != 0; }
-
-    // New edge set = (tour - broken) + joined; rebuild and check it is ONE Hamiltonian cycle.
-    // The feasibility / close-up oracle. On success, fills out with the rebuilt order.
-    bool generate(const vector<long long>& brokenOrder,
-                  const vector<long long>& joinedOrder,
-                  vector<int>& out) const {
-        PyEdgeSet base = PyEdgeSet::fromSequence(edgeOrder);
-        PyEdgeSet broken = PyEdgeSet::fromSequence(brokenOrder);
-        PyEdgeSet joined = PyEdgeSet::fromSequence(joinedOrder);
-        vector<long long> pyEdges =
-            PyEdgeSet::setUnion(PyEdgeSet::difference(base, broken), joined).ordered();
-        if ((int)pyEdges.size() < size) return false;
-
-        vector<int> successor(size, -1);
-        int node = 0, mapped = 0;
-        while (!pyEdges.empty()) {
-            int removeAt = (int)pyEdges.size() - 1;          // Python removes the last iterated edge if no break fires
-            for (int idx = 0; idx < (int)pyEdges.size(); idx++) {
-                long long e = pyEdges[idx];
-                int a = (int)(e / N), b = (int)(e % N);
-                if (a == node) {
-                    successor[node] = b;
-                    node = b;
-                    removeAt = idx;
-                    mapped++;
-                    break;
-                }
-                if (b == node) {
-                    successor[node] = a;
-                    node = a;
-                    removeAt = idx;
-                    mapped++;
-                    break;
-                }
-            }
-            pyEdges.erase(pyEdges.begin() + removeAt);
-        }
-        if (mapped < size) return false;
-
-        out.clear();
-        out.push_back(0);
-        vector<char> visited(size, false);
-        visited[0] = true;
-        int succ = successor[0];
-        while (succ >= 0 && succ < size && !visited[succ]) {
-            visited[succ] = true;
-            out.push_back(succ);
-            succ = successor[succ];
-        }
-        return (int)out.size() == size;
-    }
-};
-
-struct LinKernighan {
-    vector<int> path;            // current best tour order
-    double cost;                 // its length
-    unordered_set<string> seen;  // tours already reached (cycle guard)
-
-    explicit LinKernighan(const vector<int>& p) : path(p) { cost = pathCost(p); }
-
-    static double pathCost(const vector<int>& p) {
-        double c = dist(p.back(), p.front());
-        for (size_t i = 1; i < p.size(); i++) c += dist(p[i - 1], p[i]);
-        return c;
-    }
-
-    static string tourKey(const vector<int>& p) {
-        string s;
-        s.reserve(p.size() * 4);
-        for (int x : p) { s += to_string(x); s += ','; }
-        return s;
-    }
-
-    // Candidate y_i = (t2i, node): keep only positive running gain G_i, not broken, not a tour
-    // edge; order by how good the next break looks. `gain` already holds G_{i-1} + |x_i|.
-    // Returns (node, G_i) pairs, best first.
-    vector<pair<int,double>> closest(int t2i, const Tour& tour, double gain,
-                                     const unordered_set<long long>& broken,
-                                     const unordered_set<long long>& joined) const {
-        // candidates kept in first-insertion order (neighbour-list order), then stably
-        // sorted by `diff` descending -- mirrors Python's dict + stable sorted().
-        vector<int> nodes;                               // distinct candidate nodes, in order
-        unordered_map<int, pair<double,double>> cand;    // node -> {diff, Gi}
-        for (int node : NB[t2i]) {
-            long long yi = key(t2i, node);
-            double Gi = gain - dist(t2i, node);          // running gain if we ADD y_i
-            if (Gi <= 0 || broken.count(yi) || tour.contains(yi))
-                continue;                                // POSITIVE-GAIN CRITERION + disjointness
-            auto pr = tour.around(node);
-            for (int s : {pr.first, pr.second}) {        // the x_{i+1} we could break next
-                long long xi = key(node, s);
-                if (!broken.count(xi) && !joined.count(xi)) {
-                    double diff = dist(node, s) - dist(t2i, node);
-                    auto it = cand.find(node);
-                    if (it == cand.end()) { cand[node] = {diff, Gi}; nodes.push_back(node); }
-                    else if (diff > it->second.first) it->second = {diff, Gi};
-                }
-            }
-        }
-        stable_sort(nodes.begin(), nodes.end(),          // descending by diff, ties keep order
-                    [&](int a, int b){ return cand[a].first > cand[b].first; });
-        vector<pair<int,double>> out;                    // (node, Gi)
-        for (int node : nodes) out.emplace_back(node, cand[node].second);
-        return out;
-    }
-
-    // Choose y_i from the close-up-ordered candidates: 5 at level 2, top-ranked only deeper.
-    bool chooseY(const Tour& tour, int t1, int t2i, double gain,
-                 const unordered_set<long long>& broken,
-                 const vector<long long>& brokenOrder,
-                 const unordered_set<long long>& joined) {
-        return chooseY(tour, t1, t2i, gain, broken, brokenOrder, joined, {});
-    }
-
-    bool chooseY(const Tour& tour, int t1, int t2i, double gain,
-                 const unordered_set<long long>& broken,
-                 const vector<long long>& brokenOrder,
-                 const unordered_set<long long>& joined,
-                 const vector<long long>& joinedOrder) {
-        auto ordered = closest(t2i, tour, gain, broken, joined);
-        int top = (broken.size() == 2) ? 5 : 1;
-        for (auto& nc : ordered) {
-            int node = nc.first; double Gi = nc.second;
-            long long yi = key(t2i, node);
-            auto added = joined;
-            auto addedOrder = joinedOrder;
-            if (added.insert(yi).second) addedOrder.push_back(yi);   // y_i = (t2i, node)
-            if (chooseX(tour, t1, node, Gi, broken, brokenOrder, added, addedOrder))
-                return true;
-            if (--top == 0) return false;
-        }
-        return false;
-    }
-
-    // Choose x_i to break from `last`; try to close up, else extend via chooseY.
-    bool chooseX(const Tour& tour, int t1, int last, double gain,
-                 const unordered_set<long long>& broken,
-                 const vector<long long>& brokenOrder,
-                 const unordered_set<long long>& joined) {
-        return chooseX(tour, t1, last, gain, broken, brokenOrder, joined, {});
-    }
-
-    bool chooseX(const Tour& tour, int t1, int last, double gain,
-                 const unordered_set<long long>& broken,
-                 const vector<long long>& brokenOrder,
-                 const unordered_set<long long>& joined,
-                 const vector<long long>& joinedOrder) {
-        vector<int> aroundNodes;
-        auto pr = tour.around(last);
-        if (broken.size() == 4) {                        // deep: commit to the longer x_i
-            aroundNodes.push_back(dist(pr.first, last) > dist(pr.second, last) ? pr.first : pr.second);
-        } else {
-            aroundNodes.push_back(pr.first);             // both tour links are candidate x_i
-            aroundNodes.push_back(pr.second);
-        }
-        for (int t2i : aroundNodes) {
-            long long xi = key(last, t2i);
-            double Gi = gain + dist(last, t2i);          // add |x_i| to the running gain
-            if (joined.count(xi) || broken.count(xi)) continue;  // keep X and Y disjoint
-            auto added = joined;
-            auto addedOrder = joinedOrder;
-            long long close = key(t2i, t1);
-            if (added.insert(close).second) addedOrder.push_back(close); // close-up edge (t2i, t1)
-            auto removed = broken;
-            auto removedOrder = brokenOrder;
-            if (removed.insert(xi).second) removedOrder.push_back(xi);
-            double relink = Gi - dist(t2i, t1);          // improvement G* if we close up here
-            vector<int> newTour;
-            bool isTour = tour.generate(removedOrder, addedOrder, newTour);
-            if (!isTour && added.size() > 2) continue;   // infeasible close-up allowed only at i = 2
-            if (isTour && seen.count(tourKey(newTour))) return false; // already seen -> avoid cycling
-            if (isTour && relink > 1e-12) {              // strictly better tour: take it
-                path = newTour;
-                cost -= relink;
-                return true;
-            }
-            bool choice = chooseY(tour, t1, t2i, Gi, removed, removedOrder, joined, joinedOrder); // else extend the chain
-            if (broken.size() == 2) {                    // full backtracking at level 2
-                if (choice) return true;
-            } else {
-                return choice;                           // single shot for i > 2
-            }
-        }
-        return false;
-    }
-
-    // Level 1: every start city, both choices of x1, up to five y1 candidates.
-    bool improve() {
-        Tour tour(path);
-        for (int t1 : path) {                            // try every start city
-            auto ar = tour.around(t1);
-            for (int t2 : {ar.first, ar.second}) {       // both choices of x1 (alternate x1)
-                long long x1 = key(t1, t2);
-                unordered_set<long long> broken; broken.insert(x1);
-                vector<long long> brokenOrder{x1};
-                double gain = dist(t1, t2);              // |x1|
-                auto close = closest(t2, tour, gain, broken, {}); // y1 with g1 > 0
-                int tries = 5;                           // limited level-1 backtracking (~5)
-                for (auto& nc : close) {
-                    int t3 = nc.first; double Gi = nc.second;
-                    if (t3 == ar.first || t3 == ar.second) continue; // t3 not a tour-neighbour of t1
-                    long long y1 = key(t2, t3);
-                    unordered_set<long long> joined; joined.insert(y1);
-                    vector<long long> joinedOrder{y1};
-                    if (chooseX(tour, t1, t3, Gi, broken, brokenOrder, joined, joinedOrder))
-                        return true;                     // improvement -> restart
-                    if (--tries == 0) break;
-                }
-            }
-        }
-        return false;
-    }
-
-    void optimise() {
-        // candidate neighbour lists, ordered by distance ascending (nearest first)
-        NB.assign(N, {});
-        for (int i = 0; i < N; i++) {
-            vector<pair<double,int>> nbrs;
-            for (int j = 0; j < N; j++)
-                if (j != i && dist(i, j) > 0) nbrs.emplace_back(dist(i, j), j);
-            sort(nbrs.begin(), nbrs.end());
-            for (auto& pr : nbrs) NB[i].push_back(pr.second);
-        }
-        seen.clear();
-        bool better = true;
-        while (better) {                                 // restart at every improving move
-            better = improve();
-            seen.insert(tourKey(path));
-        }
-    }
-};
-
-int main() {
-    ios::sync_with_stdio(false);
-    cin.tie(nullptr);
-    if (!(cin >> N) || N <= 0) return 0;
-    D.assign(N, vector<double>(N, 0.0));
-    for (int i = 0; i < N; i++)
-        for (int j = 0; j < N; j++) cin >> D[i][j];
-
-    vector<int> start(N);
-    iota(start.begin(), start.end(), 0);                 // identity tour 0,1,...,n-1
-    LinKernighan lk(start);
-    lk.optimise();
-
-    for (int i = 0; i < N; i++) cout << lk.path[i] << (i + 1 < N ? ' ' : '\n');
-    cout << fixed << setprecision(4) << lk.cost << '\n';
-    return 0;
-}
+return cur == 0 && (int)out.size() == size;
 ```
 
-So the causal chain: I refused to fix `k` because the right depth can't be known in advance, so I
-build the exchange one link at a time and let the depth fall out. Tying the breaks and adds to a city
-chain `t_1, t_2, t_3, ...` with `x_i = (t_{2i-1}, t_{2i})` and `y_i = (t_{2i}, t_{2i+1})` keeps me one
-forced break away from a closeable tour at every depth, so I can stop anywhere and read off a valid
-tour. Additive gains `g_i = |x_i| - |y_i|` let me track total profit as a running sum, and the
-cyclic-permutation fact proves that insisting every partial sum `G_i` stay positive — provided I try
-every start `t_1` — discards no improving move while pruning the search enormously. Nearest-neighbour
-preference for `y_i` keeps `|y_i|` small and the branching tight; disjointness of `X` and `Y` keeps the
-chain from undoing itself; the alternate infeasible `x_2` recovers some non-sequential power at one
-cheap spot; and backtracking limited to levels 1 and 2 with about five candidates each captures
-essentially all the gains because the right move is almost always the first one tried. The result is a
-variable-depth local search whose moves include every 2- and 3-exchange as special cases — so I expect
-its local optima to be at least 3-opt — at a fraction of the cost of fixed `k`, with running time
-growing about as `n^{2.2}`. As an end-to-end check I ran the coded version from an unshuffled start on
-a 12-city Euclidean instance: it returned a tour of length `2.4039`, and brute force over all `11!/2`
-tours of that instance returns the same `2.4039`. One instance proves nothing about the worst case,
-but it does confirm the pieces — the chain construction, the close-up oracle, the gain accounting —
-fit together into a procedure that actually finds the optimum here, not just a plausible-looking one.
+A premature return to city 0 is exactly the "two disjoint loops" failure from the 6-city hand trace —
+the walk closes early instead of covering all six cities.
+
+`LinKernighan` holds the current best tour and its cost. `closest(t2i, gain, broken, joined)` is the
+positive-gain-plus-nearest-neighbor step made concrete: it scans `t2i`'s neighbor list nearest-first,
+keeps only candidates whose running gain `Gi = gain - |y_i|` is positive and whose edge is neither
+already broken nor already a tour edge, and ranks survivors by how good the *next* break looks, so the
+search commits to profitable continuations rather than merely profitable current steps. `chooseX` sets
+up both of the current end's tour neighbors as candidate `x_i` and, in turn, tentatively closes each
+with the edge back to `t_1`, reusing `generate()` as the forced-`x_i` oracle from the hand trace:
+exactly one candidate closes into a valid tour, the other splits into two loops. A candidate that fails
+to close is simply dropped once more than the first close-up attempt has passed (`added.size() > 2`),
+so at that point only the closing (forced) candidate is ever pursued further; at the
+very first attempt, `i = 2` (`added.size() == 2`), it is kept and extended anyway via `chooseY` — the
+alternate-infeasible-`x_2` recovery made concrete. `chooseX` takes the move outright once a valid close
+strictly improves (`relink > 0`); once four links are already broken it stops branching on both
+neighbors and commits straight to the longer one, narrowing the search exactly where deep backtracking
+was shown not to pay. `chooseY` caps the fan-out to five candidates when `broken.size() == 2`, i.e.
+exactly at the level-2 choice of `y_2`, and to one thereafter; `improve()` applies the matching level-1
+cap (five `y_1` candidates) directly, over every start city and both choices of `x_1` — the
+backtracking budget the choice-number measurements justified. `optimise()` builds the nearest-neighbor
+candidate lists once and restarts `improve()` after every accepted move until a full pass finds nothing
+left to improve.
+
+The alternate-`x_2` branch is the part of this I would most easily get wrong under time pressure; if I
+were not confident I could implement it correctly in the budget, I would fall back to the purely
+sequential Lin-Kernighan variable-depth exchange with the positive-gain criterion and forced close-up
+moves, which I have already traced as correct, and ship that — a plain correct submission beats an
+ambitious broken one.
+
+With that landed, I run the coded procedure end to end from an unshuffled start on a 12-city Euclidean
+instance: it returns a tour of length `2.4039`, and brute force over all `11!/2` tours of that instance
+returns the same `2.4039`. One instance proves nothing about the worst case, but it confirms that the
+chain construction, the close-up oracle, and the gain accounting fit together into a procedure that
+actually finds the optimum here, not just a plausible-looking one.

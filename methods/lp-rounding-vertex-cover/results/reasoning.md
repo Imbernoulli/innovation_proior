@@ -1,8 +1,8 @@
-Let me start from what actually hurts. I have a graph G = (V, E), each vertex carries a weight w_v ≥ 0, and I want the cheapest set of vertices that touches every edge — a minimum-weight vertex cover. And this is NP-complete; Karp put it on the original list, and it stays hard even on planar cubic unit-weight graphs. So I am not going to compute the optimum exactly in polynomial time, full stop, unless P = NP. I have to settle for a cover that I can *prove* is within some fixed factor of optimal on every instance. That word "prove" is the whole problem. I can write down a thousand heuristics that look reasonable, but a guarantee means I bound (weight of what I output) divided by OPT, and OPT is exactly the thing I can't get my hands on. So how do I bound a ratio against a number I can't compute?
+I have a graph G = (V, E), each vertex carries a weight w_v ≥ 0, and I want the cheapest set of vertices that touches every edge — a minimum-weight vertex cover. And this is NP-complete; Karp put it on the original list, and it stays hard even on planar cubic unit-weight graphs. So I am not going to compute the optimum exactly in polynomial time, full stop, unless P = NP. I have to settle for a cover that I can *prove* is within some fixed factor of optimal on every instance. That word "prove" is the whole problem. I can write down a thousand heuristics that look reasonable, but a guarantee means I bound (weight of what I output) divided by OPT, and OPT is exactly the thing I can't get my hands on. So how do I bound a ratio against a number I can't compute?
 
 The only way out I can see is to find some *other* quantity LB that (a) I can compute in polynomial time and (b) I can prove is ≤ OPT, never above it. Then if I also arrange that my output ≤ α·LB, I get output ≤ α·LB ≤ α·OPT, and I never had to know OPT. The whole game is: find a computable lower bound on the optimum, and tie my algorithm's cost to that same lower bound. Two jobs for one quantity.
 
-Where would a lower bound on the cost of a cover come from? Let me think about the unweighted case first, because it's cleaner. Suppose I have a matching M — a set of edges with no shared endpoints. Any cover has to hit every one of those edges, and because the matched edges share no vertices, a single vertex can cover at most one of them. So a cover needs at least |M| vertices just to deal with M. There it is: |M| ≤ OPT, and |M| is trivially computable. That's my lower bound.
+Where would a lower bound on the cost of a cover come from? Let me think about the unweighted case first, because it's cleaner. Suppose I have a matching M — a set of edges with no shared endpoints. Any cover has to hit every one of those edges, and because the matched edges share no vertices, a single vertex can cover at most one of them. So a cover needs at least |M| vertices just to deal with M: |M| ≤ OPT, and |M| is trivially computable. That's my lower bound.
 
 Now can I turn that lower bound into a cover whose size I can charge to it? Take a *maximal* matching — keep adding disjoint edges greedily until I can't. Then output both endpoints of every matched edge. Is that even a cover? Suppose some edge (u,v) is uncovered. Then neither u nor v is an endpoint of any matched edge — but then (u,v) shares no vertex with M, so I could have added it, contradicting maximality. So it is a cover. And its size is exactly 2|M| ≤ 2·OPT. A 2-approximation, clean, combinatorial. Good.
 
@@ -44,7 +44,7 @@ And I already proved OPT_f ≤ OPT, so
 
 A 2-approximation for *weighted* vertex cover. The thing that broke the matching argument — weights — is handled, because the lower bound OPT_f was a weighted lower bound from the start, and the rounding charged each vertex against its own fractional weight. Both jobs done by the LP: it gave me the computable lower bound, and it gave me the fractional solution to round.
 
-Let me make sure I see why the threshold is exactly 1/2 and not something I pulled out of the air. The covering inequality has two terms summing to ≥ 1; by pure averaging, at least one of the two is ≥ 1/2. If instead I'd had an inequality with p terms summing to ≥ 1 — which is what a general set-cover constraint looks like, an element lying in p sets — then at least one term is ≥ 1/p, and rounding everything ≥ 1/p up to 1 would multiply costs by at most p and give a p-approximation. Vertex cover is the case where every "element" (edge) lies in exactly p = 2 sets (its two endpoint-vertices), so the threshold is 1/2 and the factor is 2. The 1/2 isn't a tuning choice; it's 1 over the number of vertices on an edge.
+The threshold is exactly 1/2, and it isn't arbitrary. The covering inequality has two terms summing to ≥ 1; by pure averaging, at least one of the two is ≥ 1/2. If instead I'd had an inequality with p terms summing to ≥ 1 — which is what a general set-cover constraint looks like, an element lying in p sets — then at least one term is ≥ 1/p, and rounding everything ≥ 1/p up to 1 would multiply costs by at most p and give a p-approximation. Vertex cover is the case where every "element" (edge) lies in exactly p = 2 sets (its two endpoint-vertices), so the threshold is 1/2 and the factor is 2. The 1/2 isn't a tuning choice; it's 1 over the number of vertices on an edge.
 
 There's an even lazier rounding I should check, because it might be cleaner: round up *every* nonzero coordinate, C' = { v : x*_v > 0 }. Does that still work, and what does it cost? Feasible, obviously — it's a superset of my C. Cost is the problem: I'd need x*_v > 0 to imply x*_v is not too small, and for an arbitrary fractional optimum that is false. A tiny positive coordinate would make the step 1 ≤ 2·x*_v fail completely. So before I know anything more about the structure of x*, "round all nonzero up" has no clean factor-2 proof. The ≥ 1/2 threshold is the safe rule because the inequality 1 ≤ 2·x*_v is built into the threshold itself.
 
@@ -63,7 +63,7 @@ Edge constraints: take an edge (u,v). If it was slack, x_u + x_v > 1, then a sma
 
 So y and z are both feasible, distinct from x, and average to x. Therefore any feasible x that is not half-integral is *not* an extreme point. Contrapositive: every extreme-point solution of the vertex-cover LP is half-integral — each coordinate is 0, 1/2, or 1. The triangle wasn't symmetry luck; the polyhedron has no fractional vertices other than ones built from halves.
 
-This is lovely, and it makes the rounding even more obviously right. Simplex (or any basic-solution LP method) returns an extreme point, so it returns a solution whose coordinates are already only 0, 1/2, 1. There's no general "fractional mess" to round — only halves to deal with. Round every 1/2 up to 1, leave the 0s and 1s; the cost can at worst double (each rounded coordinate went 1/2 → 1, a factor of exactly 2; the integer coordinates didn't move at all), and the 2-approximation is immediate, with the cost analysis collapsing to "1 ≤ 2·(1/2)."
+That makes the rounding even more obviously right. Simplex (or any basic-solution LP method) returns an extreme point, so it returns a solution whose coordinates are already only 0, 1/2, 1. There's no general "fractional mess" to round — only halves to deal with. Round every 1/2 up to 1, leave the 0s and 1s; the cost can at worst double (each rounded coordinate went 1/2 → 1, a factor of exactly 2; the integer coordinates didn't move at all), and the 2-approximation is immediate, with the cost analysis collapsing to "1 ≤ 2·(1/2)."
 
 Let me give a second, independent proof of the half-integrality, because I want to be sure it isn't an artifact of my perturbation choices — and because the constraint matrix has a very particular shape worth exploiting. A basic solution is obtained by taking a square nonsingular active-constraint matrix B and solving Bx = b. The active rows are tight edge constraints and tight bounds. After multiplying rows by −1 where convenient, every entry is in {0, ±1}; an edge row has two nonzeros, and a bound row has one. So every row of B has at most two nonzeros.
 
@@ -81,15 +81,13 @@ Check feasibility of that fractional exchange. Edges not incident to A are uncha
 
 Now replace S by S' = (S ∪ P) \ R. This forces in every omitted P-vertex and removes every included R-vertex. It is still a cover: edges touching R are covered by their P-neighbor, and all other edges were already covered unless their only covered endpoint was in R, which cannot happen. Its cost changes by w(A) − w(B) ≤ 0. Since S was already an optimal integer cover, S' is optimal too. That proves the persistency claim: some optimal integer cover agrees with the 0/1 part of x*, and only Q is genuinely undecided. The rounding cost increase lives exactly on Q, where the fractional solution pays w(Q)/2 and rounding all halves up pays w(Q).
 
-Let me make sure the whole chain is airtight, end to end, because each link mattered. (1) Vertex cover is the 0/1 program min Σ w_v x_v s.t. x_u + x_v ≥ 1, x_v ∈ {0,1}; its optimum is OPT. (2) Relax x_v ∈ {0,1} to 0 ≤ x_v ≤ 1: the feasible region only grows (every integral cover is still feasible), so the LP optimum OPT_f ≤ OPT — a computable lower bound, in weight units. (3) Solve the LP, get x* with x*_u + x*_v ≥ 1 on every edge, so every edge has an endpoint with x* ≥ 1/2. (4) Keep C = {v : x*_v ≥ 1/2}: feasible because every edge has such an endpoint; and rounding x*_v ≥ 1/2 up to 1 costs ≤ 2·w_v x*_v per vertex while dropped vertices cost 0 ≤ 2·w_v x*_v, so w(C) ≤ 2·Σ w_v x*_v = 2·OPT_f ≤ 2·OPT. Two-approximation. (5) Moreover every extreme-point x* is half-integral (perturbation proof; or the determinant-block proof from the two-per-row structure), so simplex/min-cut hands me a {0, 1/2, 1} solution and the rounding is literally "round the halves up," doubling at worst on the half-valued set.
-
 Here is the landing form — solve the relaxation, then keep the ≥ 1/2 vertices:
 
 ```python
 import pulp  # any LP oracle; the relaxation is poly-time solvable
 
 def vertex_cover_lp_rounding(G, w):
-    # (1)-(2) Build the LP relaxation of the 0/1 vertex-cover IP:
+    # Build the LP relaxation of the 0/1 vertex-cover IP:
     #   min sum_v w[v] x[v]  s.t.  x[u]+x[v] >= 1 for (u,v) in E, 0 <= x[v] <= 1.
     # Dropping x in {0,1} to 0 <= x <= 1 only enlarges the feasible set, so OPT_f <= OPT:
     # the LP optimum is a computable, weighted lower bound on the integral optimum.
@@ -98,16 +96,14 @@ def vertex_cover_lp_rounding(G, w):
     prob += pulp.lpSum(w[v] * x[v] for v in G.nodes)                  # objective
     for u, v in G.edges:
         prob += x[u] + x[v] >= 1                                      # every edge constraint
-    status = prob.solve(pulp.PULP_CBC_CMD(msg=False))                # (3) solve the relaxation
+    status = prob.solve(pulp.PULP_CBC_CMD(msg=False))                # solve the relaxation
     if pulp.LpStatus[status] != "Optimal":
         raise RuntimeError(f"LP solve failed with status {pulp.LpStatus[status]}")
 
-    # (4) Rounding: every edge has x*_u + x*_v >= 1, so at least one endpoint has x* >= 1/2.
+    # Rounding: every edge has x*_u + x*_v >= 1, so at least one endpoint has x* >= 1/2.
     # Keep exactly those. Feasible (each edge has such an endpoint); and 1 <= 2*x*_v there,
     # while dropped vertices cost 0 <= 2*w[v]*x*_v, so w(C) <= 2*OPT_f <= 2*OPT.
     tol = 1e-9
     C = {v for v in G.nodes if x[v].value() >= 0.5 - tol}             # round the halves up
     return C
 ```
-
-The causal chain in one breath: I needed a guarantee but couldn't see OPT, so I needed a computable lower bound; writing vertex cover as a 0/1 program and *relaxing integrality* to a linear program both (a) made it polynomially solvable and (b) gave OPT_f ≤ OPT for free, in weighted units, where the matching count had failed; the relaxed solution satisfies x_u + x_v ≥ 1 on every edge, which forces an endpoint ≥ 1/2 on every edge, so keeping the ≥ 1/2 vertices is automatically a feasible cover and rounding them up at most doubles their fractional cost, yielding w(C) ≤ 2·OPT_f ≤ 2·OPT; and because the vertex-cover polytope's extreme points are half-integral (two variables per inequality give nonseparable determinant blocks with absolute value at most 2, hence coordinates in {0, 1/2, 1}), the fractional optimum is already only halves and integers, so "round the halves up" is the entire algorithm and the factor 2 lives exactly on the half-valued vertices.

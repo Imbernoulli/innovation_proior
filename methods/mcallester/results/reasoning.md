@@ -70,23 +70,19 @@ I don't want to take "≤ 2 sqrt(n)" on faith — the constant is the whole poin
 
 This is the constant. A cruder route that drops the `sqrt` and carries `2n` instead is available, and it's worth knowing how much I'd lose by being lazy: the constant enters the certificate only through `log(2 sqrt(n)/delta)` versus `log(2n/delta)`, a difference of `½ log n` in the additive term, so for the `n ≈ 30000` bound sets I have in mind that's about `½ log 30000 ≈ 5.2` nats saved — not nothing once divided by `n`, but the real reason to keep the `sqrt` is that it's free now that I've done the Stirling bookkeeping.
 
-Before I commit to `sqrt(n)` as the *order*, I should rule out that I've been sloppy in the upper direction and the true moment is actually `O(1)` or `O(log n)`, which would mean my `2 sqrt(n)` is throwing away a real improvement. So let me bound the same binomial sum from *below*. Applying Stirling the other way, `m^m/m! ≥ e^m/(sqrt(2 pi m) e^{1/12m}) ≥ e^m/(sqrt(2 pi m) e^{1/6})` for `m ≥ 1`, and `n!/n^n ≥ sqrt(2 pi n) e^{−n}`, so the middle sum is at least `e^{−1/6} sqrt(n/(2 pi)) c_n`; adding back the two endpoint `1`'s gives the binomial sum `≥ e^{−1/6} sqrt(n/(2 pi)) c_n + 2`. Here I have to keep the *actual* `c_n`, not relax it to `c_n ≥ 1` — I tried that first and it's too lossy: at `n = 100`, `e^{−1/6} sqrt(100/(2 pi)) + 2 ≈ 5.38`, which sits *below* `sqrt(100) = 10`, so the crude `c_n ≥ 1` version fails to even establish the `sqrt(n)` lower bound. Keeping `c_n` itself (`c_n ≈ 2.10` at `n = 8`, `≈ 2.85` at `n = 100`, `→ pi`), the lower bound is `≈ 4.01` at `n = 8` against `sqrt(8) ≈ 2.83`, and `≈ 11.62` at `n = 100` against `10` — both clear `sqrt(n)`. Asymptotically the leading coefficient is `e^{−1/6}/sqrt(2 pi) · c_n → 0.337·pi ≈ 1.06 > 1`, so the moment really does grow like `sqrt(n)` (times a constant just above `1`), confirming it from below. So the moment is sandwiched between `sqrt(n)` and `2 sqrt(n)`: the `sqrt(n)` factor is genuinely in the answer, not slack I introduced, and no amount of tightening this route removes it. `M(P) = 2 sqrt(n)` it is.
+Is `sqrt(n)` really the order here, or is the upper bound sloppy and the true moment actually `O(1)` or `O(log n)` — throwing away a real improvement? Bound the same binomial sum from *below* to check. Applying Stirling the other way, `m^m/m! ≥ e^m/(sqrt(2 pi m) e^{1/12m}) ≥ e^m/(sqrt(2 pi m) e^{1/6})` for `m ≥ 1`, and `n!/n^n ≥ sqrt(2 pi n) e^{−n}`, so the middle sum is at least `e^{−1/6} sqrt(n/(2 pi)) c_n`; adding back the two endpoint `1`'s gives the binomial sum `≥ e^{−1/6} sqrt(n/(2 pi)) c_n + 2`. Here I have to keep the *actual* `c_n`, not relax it to `c_n ≥ 1` — I tried that first and it's too lossy: at `n = 100`, `e^{−1/6} sqrt(100/(2 pi)) + 2 ≈ 5.38`, which sits *below* `sqrt(100) = 10`, so the crude `c_n ≥ 1` version fails to even establish the `sqrt(n)` lower bound. Keeping `c_n` itself (`c_n ≈ 2.10` at `n = 8`, `≈ 2.85` at `n = 100`, `→ pi`), the lower bound is `≈ 4.01` at `n = 8` against `sqrt(8) ≈ 2.83`, and `≈ 11.62` at `n = 100` against `10` — both clear `sqrt(n)`. Asymptotically the leading coefficient is `e^{−1/6}/sqrt(2 pi) · c_n → 0.337·pi ≈ 1.06 > 1`, so the moment really does grow like `sqrt(n)` (times a constant just above `1`), confirming it from below. So the moment is sandwiched between `sqrt(n)` and `2 sqrt(n)`: the `sqrt(n)` factor is genuinely in the answer, not slack I introduced, and no amount of tightening this route removes it. `M(P) = 2 sqrt(n)` it is.
 
 Feed that back into the master bound with `D = kl`:
 
   kl( E_{h~Q}[r(h)] || E_{h~Q}[R(h)] )  ≤  ( KL(Q || P) + log( 2 sqrt(n) / delta ) ) / n.
 
-This is the tightest certificate on this route — the relative-entropy form. It controls the binary KL between the empirical and true risks of the randomized predictor, directly, with the sharp `2 sqrt(n)` constant. Compare to the linear bound: there the rate was `1/sqrt(n)` no matter what; here `kl(p || q)` blows up as `q` leaves `p` and is asymmetric near `0`, so I'd expect the certificate to get fast behavior when the empirical risk is near zero. Let me confirm that on the realizable extreme rather than assert it. If `E_Q[r] = 0`, then `kl(0 || q) = −log(1−q)`, which is `≥ q` for all `q ∈ [0,1)` (since `−log(1−q) = q + q²/2 + q³/3 + … ≥ q`; e.g. `−log(0.9) = 0.1054 ≥ 0.1`), so the constraint `kl(0 || E_Q[R]) ≤ c` with `c = (KL + log(2 sqrt(n)/delta))/n` forces `E_Q[R] ≤ −log(1 − E_Q[R]) ≤ c`, i.e. `E_Q[R] ≤ c`, which is `O(1/n)` rather than `O(1/sqrt(n))`. Put numbers on it to feel the size of the speedup: take `n = 30000`, `delta = 0.025`, and a modest `KL = 100`. Then `c = (100 + log(2 sqrt(30000)/0.025))/30000 = (100 + log(13856))/30000 = (100 + 9.54)/30000 ≈ 0.00365`, so the `kl`-form certifies `E_Q[R] ≲ 0.0037`. The Pinsker/linear form at the same numbers would give `sqrt(c/2) = sqrt(0.00365/2) ≈ 0.043` — an order of magnitude worse. So in the near-realizable regime the `kl`-form is the one that produces a tight number; keeping the comparison in `kl`-form rather than in raw differences is what buys it.
+This is the tightest certificate on this route — the relative-entropy form. It controls the binary KL between the empirical and true risks of the randomized predictor, directly, with the sharp `2 sqrt(n)` constant. Compare to the linear bound: there the rate was `1/sqrt(n)` no matter what; here `kl(p || q)` blows up as `q` leaves `p` and is asymmetric near `0`, so I'd expect the certificate to get fast behavior when the empirical risk is near zero. On the realizable extreme: if `E_Q[r] = 0`, then `kl(0 || q) = −log(1−q)`, which is `≥ q` for all `q ∈ [0,1)` (since `−log(1−q) = q + q²/2 + q³/3 + … ≥ q`; e.g. `−log(0.9) = 0.1054 ≥ 0.1`), so the constraint `kl(0 || E_Q[R]) ≤ c` with `c = (KL + log(2 sqrt(n)/delta))/n` forces `E_Q[R] ≤ −log(1 − E_Q[R]) ≤ c`, i.e. `E_Q[R] ≤ c`, which is `O(1/n)` rather than `O(1/sqrt(n))`. Put numbers on it to feel the size of the speedup: take `n = 30000`, `delta = 0.025`, and a modest `KL = 100`. Then `c = (100 + log(2 sqrt(30000)/0.025))/30000 = (100 + log(13856))/30000 = (100 + 9.54)/30000 ≈ 0.00365`, so the `kl`-form certifies `E_Q[R] ≲ 0.0037`. The Pinsker/linear form at the same numbers would give `sqrt(c/2) = sqrt(0.00365/2) ≈ 0.043` — an order of magnitude worse. So in the near-realizable regime the `kl`-form is the one that produces a tight number; keeping the comparison in `kl`-form rather than in raw differences is what buys it.
 
 But the relative-entropy form has a usability problem: it's *implicit* in the true risk. The certificate is "`E_Q[R]` is at most the upper end of the `kl`-ball of radius `c = (KL + log(2 sqrt(n)/delta))/n` around `E_Q[r]`," i.e. `E_Q[R] ≤ sup{ p ≥ E_Q[r] : kl(E_Q[r] || p) ≤ c }`. To *report* a number I'd invert `kl` numerically — fine, and I'll do exactly that for the final certificate. But to *train* against it, I want something differentiable in `Q` and additive, a closed expression I can backprop through. So I need an explicit upper bound on the `kl`-inverse.
 
 The simplest explicit relaxation is Pinsker's inequality. Pinsker says `kl(p || q) ≥ 2 (p − q)²`. So if `kl(E_Q[r] || E_Q[R]) ≤ c`, then `2 (E_Q[R] − E_Q[r])² ≤ c`, i.e. `(E_Q[R] − E_Q[r])² ≤ c/2`, i.e.
 
   E_{h~Q}[R(h)]  ≤  E_{h~Q}[r(h)]  +  sqrt( c / 2 )  =  E_{h~Q}[r(h)]  +  sqrt( ( KL(Q || P) + log( 2 sqrt(n) / delta ) ) / (2n) ).
-
-Let me make sure the `2n` in the denominator is right and I haven't dropped a factor. `c = (KL + log(2 sqrt(n)/delta))/n`. Then `sqrt(c/2) = sqrt( (KL + log(2 sqrt(n)/delta)) / (2n) )`. Yes — the `2` from Pinsker's `2(p−q)²` lands in the denominator inside the square root, turning the `/n` of the kl-form into `/(2n)` of the square-root form. This is the classic additive PAC-Bayes certificate:
-
-  E_{h~Q}[R(h)]  ≤  E_{h~Q}[r(h)]  +  sqrt( ( KL(Q || P) + log( 2 sqrt(n) / delta ) ) / (2n) ).
 
 It's exactly what I wanted for optimization: closed, additive, and differentiable in `Q` through `E_Q[r]` and `KL(Q || P)`. The price for that closed form is the Pinsker relaxation — I went from the sharp `kl`-ball to its quadratic under-estimate, so this bound is strictly looser than the `kl`-form, and in particular it shows the `1/sqrt(n)` rate rather than the `1/n` it came from. I'll pay that price for *training* but not for *reporting*: I'll train against this differentiable surrogate, then report the tighter `kl`-inverted number. (A momentary temptation: there's a refined Pinsker `kl(p || q) ≥ (p − q)²/(2q)` valid for `p < q`, which is sharper when `q < 1/4` and keeps an `E_Q[R]` under the root — but that puts the unknown true risk on the right-hand side, so it's a quadratic *in the thing I'm solving for*, not directly usable as an additive training objective. That's a different bound; here I want the plain additive one, so plain Pinsker is the right relaxation.)
 
@@ -96,92 +92,6 @@ Second, `KL(Q || P)`. The posterior over each weight is a Gaussian `N(mu_q, sigm
 
 Third, the empirical risk in the *reported* certificate. `E_{h~Q}[r(h)]` is itself not computable in closed form — it's an average over the posterior I can only sample. So I estimate it by Monte Carlo: draw `m` weight vectors `h_1, ..., h_m ~ Q` and average each sampled classifier's empirical 0-1 error on the bound set. This must be the Gibbs risk average, not a majority vote over the sampled classifiers, because the theorem certifies the randomized predictor. But a Monte Carlo estimate still is not the true `E_Q[r]`; it has its own sampling error, and a valid certificate must account for it. The same `kl`-concentration applies one level down: with probability `1 − delta'` over the `m` draws, `kl( emphat_m || E_Q[r] ) ≤ log(2/delta') / m`, so I `kl`-invert that to get a high-probability upper bound on the true empirical risk before I plug it into the outer certificate. The fully honest certificate is therefore a *nested* inversion — invert the inner `kl` to bound `E_Q[r]` from the MC estimate, then invert the outer `kl` with `c = (KL + log(2 sqrt(n)/delta))/n` to bound `E_Q[R]` — and it holds with probability `1 − delta − delta'`. For the reported 0-1 risk certificate I use exactly that nested inversion.
 
-Let me write it so it drops straight into the three empty methods of the harness. The combining rule first — that's the certificate `E_Q[r] + sqrt((KL + log(2 sqrt(n)/delta))/(2n))`, used both as the training objective's functional form and as the cross-entropy bound I report alongside:
+That's everything I need to wire into the harness's three empty methods. `compute_bound` is exactly the certificate above, `empirical_risk + sqrt((kl + log(2*sqrt(n)/delta))/(2n))`. `train_step` draws `h ~ Q` via a stochastic forward pass, builds the `pmin`-clamped, `log(1/pmin)`-rescaled NLL, and hands that surrogate plus `get_total_kl(model)` to `compute_bound` — so the training objective *is* the certificate, minimized directly. `compute_risk_certificate` runs the Monte Carlo loop over `mc_samples` posterior draws, averaging the sampled classifiers' 0-1 error and the same bounded NLL; applies the inner `inv_kl` with radius `log(2/delta_mc)/mc_samples` to correct both MC estimates; reads `KL(Q||P)` off one more stochastic pass; then applies the outer `inv_kl` with radius `(kl + log(2 sqrt(n_bound)/delta))/n_bound` to the corrected 0-1 risk for the number I report, and reuses `compute_bound` on the corrected NLL for the CE bound alongside it.
 
-```python
-import math
-import torch
-import torch.nn.functional as F
-
-
-class BoundOptimizer:
-    """PAC-Bayes certificate: train against the additive square-root bound
-    (Pinsker relaxation of the kl-form), report via nested binary-kl inversion."""
-
-    def __init__(self, learning_rate=0.001, momentum=0.95, prior_sigma=0.03,
-                 pmin=1e-5):
-        self.learning_rate = learning_rate
-        self.momentum = momentum
-        self.prior_sigma = prior_sigma
-        self.pmin = pmin
-
-    def compute_bound(self, empirical_risk, kl, n, delta):
-        # E_Q[r] + sqrt( (KL + log(2*sqrt(n)/delta)) / (2n) )
-        # the 2*sqrt(n) is the exponential-moment constant; the /(2n) is Pinsker.
-        kl_term = (kl + math.log(2.0 * math.sqrt(n) / delta)) / (2.0 * n)
-        return empirical_risk + torch.sqrt(kl_term)
-
-    def train_step(self, model, data, target, device, n_bound, delta):
-        # 0-1 loss has no gradient -> bounded cross-entropy surrogate.
-        output = model(data, sample=True)              # draw h ~ Q, forward
-        log_probs = F.log_softmax(output, dim=1)
-        log_probs = torch.clamp(log_probs, min=math.log(self.pmin))
-        nll = F.nll_loss(log_probs, target) / math.log(1.0 / self.pmin)
-        kl = get_total_kl(model)                        # sum of per-coordinate Gaussian KL(Q||P)
-        return self.compute_bound(nll, kl, n_bound, delta)   # minimize the certificate itself
-
-    def compute_risk_certificate(self, model, bound_loader, device, delta=0.025,
-                                 mc_samples=1000):
-        model.eval()
-        n_bound = len(bound_loader.dataset)
-        delta_mc = 0.01
-
-        # empirical Gibbs risks by Monte Carlo over h ~ Q, not majority vote
-        total_01, total_nll, total_samples = 0.0, 0.0, 0
-        with torch.no_grad():
-            for data, target in bound_loader:
-                data, target = data.to(device), target.to(device)
-                for _ in range(mc_samples):
-                    output = model(data, sample=True)
-                    pred = output.argmax(dim=1)
-                    total_01 += (pred != target).sum().item()
-                    log_probs = torch.clamp(F.log_softmax(output, dim=1),
-                                            min=math.log(self.pmin))
-                    batch_nll = F.nll_loss(log_probs, target, reduction="sum")
-                    total_nll += (batch_nll / math.log(1.0 / self.pmin)).item()
-                total_samples += target.size(0)
-        emp_risk_01_mc = total_01 / (total_samples * mc_samples)
-        emp_nll_mc = total_nll / (total_samples * mc_samples)
-
-        # inner MC correction: bound true E_Q empirical risk from m posterior samples
-        c_mc = math.log(2.0 / delta_mc) / mc_samples
-        emp_risk_01 = inv_kl(emp_risk_01_mc, c_mc)
-        emp_nll = inv_kl(emp_nll_mc, c_mc)
-
-        # KL(Q||P) from one stochastic pass
-        with torch.no_grad():
-            dummy = next(iter(bound_loader))[0][:1].to(device)
-            model(dummy, sample=True)
-            kl = get_total_kl(model).item()
-
-        # outer PAC-Bayes-kl inversion on the MC-corrected empirical 0-1 risk
-        c = (kl + math.log(2.0 * math.sqrt(n_bound) / delta)) / n_bound
-        risk_cert_01 = inv_kl(emp_risk_01, c)
-
-        # also report the additive square-root bound on the CE risk
-        ce_bound = self.compute_bound(torch.tensor(emp_nll),
-                                      torch.tensor(kl), n_bound, delta).item()
-
-        metrics = {
-            "empirical_01_risk_mc": emp_risk_01_mc,
-            "empirical_01_risk": emp_risk_01,
-            "empirical_nll_mc": emp_nll_mc,
-            "empirical_nll": emp_nll,
-            "kl_divergence": kl,
-            "ce_bound": ce_bound,
-            "delta_mc": delta_mc,
-        }
-        return risk_cert_01, metrics
-```
-
-The causal chain, start to finish: I needed a non-vacuous, computable, uniform-over-`Q` certificate for a randomized classifier, and the union-bound penalty `log|H|` was hopeless for rich `H`. Replacing "cover all hypotheses" with "measure how far the chosen `Q` moved from a fixed reference `P`" made `KL(Q || P)` the natural complexity term, and the change-of-measure inequality — which is just `KL ≥ 0` against the Gibbs tilt — let me transport per-hypothesis concentration onto the data-dependent `Q`. Running Hoeffding through that gave a linear bound with a free `lambda`, but it was stuck at `1/sqrt(n)` and blind to the realizable regime, so I switched the per-hypothesis discrepancy to the binary relative entropy `kl(r || R)`, which is sharp near zero. A single convex-`D` master bound packaged the change-of-measure-and-Markov step once and reduced everything to one constant, the prior-averaged exponential moment `E[e^{n kl(r || R)}]`; bounding it via the convexity-to-Bernoulli reduction, the binomial sum, Stirling, and the `∫ dt/sqrt(t(1−t)) = pi` Riemann sum gives `2 sqrt(n)` for `n ≥ 8` (sandwiched below by `sqrt(n)`, so the order is forced). That delivered the tight `kl`-form certificate; Pinsker's `kl(p||q) ≥ 2(p−q)²` relaxed it into the closed, differentiable additive form `E_Q[r] + sqrt((KL + log(2 sqrt(n)/delta))/(2n))`, which I minimize during training with a `pmin`-floored and range-rescaled cross-entropy surrogate. For the final number I use the sharper binary-`kl` inversion on the MC-corrected Gibbs 0-1 empirical risk — inner inversion for posterior-sampling error, outer inversion for sample generalization — reporting the tightest valid certificate while training against the most tractable one.
+What made this non-vacuous for a randomized classifier over a continuous hypothesis space was replacing "cover every hypothesis" with "charge for how far the chosen `Q` moved from a fixed `P`," and then replacing the raw-difference exponential moment with the binary-KL one so the certificate feels the realizable regime instead of being stuck at `1/sqrt(n)` — two swaps a plain union bound or a plain sub-Gaussian tail can't give.

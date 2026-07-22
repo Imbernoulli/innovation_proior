@@ -10,9 +10,9 @@ This chained-equations skeleton is genuinely the right shape — I want to keep 
 
 Stepping back, every one of these stalls on the same wall from a different side: each carries a restriction (one variable type), or a knob I must guess (`k`, `λ`), or a required preprocessing (standardization), or a structural assumption (linear, Gaussian, low-rank) that throws away the nonlinear, interaction-laden, mixed-type structure that real biological data is *made of*. So the chained-equations skeleton stays, but the thing I plug into each per-variable slot has to be different. Let me write down what that thing has to do, as a flat list of requirements, before I go looking for it: handle continuous and categorical inputs at once with no help from me; not care about scale, so no standardization; capture nonlinearities and interactions on its own; need no parametric family specified; and be robust enough that I don't have to nurse it through degenerate columns.
 
-What predictor meets all of that? A linear model fails the nonlinearity and the mixed-type requirements both. A single decision tree handles mixed types and nonlinearity and scale-invariance — a CART split asks "is variable `k` below a threshold" for a numeric variable or "is variable `k` in this set of levels" for a categorical one, and both are invariant to any monotone rescaling — but a single tree is high-variance and notoriously unstable; small data changes reshuffle its splits and the predictions are noisy. That instability is the one thing on my list it fails. The standard cure for a high-variance estimator is to average many of them, and the standard averaged-tree estimator is Breiman's random forest: grow many unpruned CART trees, each on a bootstrap resample of the rows, search each node's split only among a random `m_try`-subset of the variables, and average the trees (regression) or vote (classification). The forest inherits the tree's mixed-type, scale-free, nonlinear, parameter-free character and replaces the single tree's variance with the stability of an average. Going down the requirement list once more: mixed-type — yes, native CART splits; scale-free — yes, splits are rank-based; nonlinear and interactions — yes, a nested split *is* an interaction; no parametric family — yes; robust — that's what the averaging buys. It clears every item. So the move is: take the chained-equations round-robin, and make the per-variable conditional predictor a random forest.
+What predictor meets all of that? A linear model fails the nonlinearity and the mixed-type requirements both. A single decision tree handles mixed types and nonlinearity and scale-invariance — a CART split asks "is variable `k` below a threshold" for a numeric variable or "is variable `k` in this set of levels" for a categorical one, and both are invariant to any monotone rescaling — but a single tree is high-variance and notoriously unstable; small data changes reshuffle its splits and the predictions are noisy. That instability is the one thing on my list it fails. The standard cure for a high-variance estimator is to average many of them, and the standard averaged-tree estimator is Breiman's random forest: grow many unpruned CART trees, each on a bootstrap resample of the rows, search each node's split only among a random `m_try`-subset of the variables, and average the trees (regression) or vote (classification). The forest inherits the tree's mixed-type, scale-free, nonlinear, parameter-free character and replaces the single tree's variance with the stability of an average — it clears every item on the requirement list. So the move is: take the chained-equations round-robin, and make the per-variable conditional predictor a random forest.
 
-Now I have to make this concrete, because there's an immediate snag with "regress variable `s` on the others." Let me lay out the four pieces for a single variable `X_s` with missing entries at rows `i_mis`. There's the observed part of `X_s` itself, `y_obs` — those are my training targets. There's the missing part `y_mis` — what I want to predict. There are the *other* variables at the rows where `X_s` is observed, `x_obs` — my training inputs. And the other variables at the rows where `X_s` is missing, `x_mis` — the inputs I'll predict from. But here's the snag: `x_obs` and `x_mis` are themselves full of holes, because the rows where `X_s` happens to be observed are not magically complete in the *other* columns. So I can't just "fit a forest on `x_obs`" — the inputs have `NaN`s in them. Wall.
+Now I have to make this concrete, because there's an immediate snag with "regress variable `s` on the others." Let me lay out the four pieces for a single variable `X_s` with missing entries at rows `i_mis`. There's the observed part of `X_s` itself, `y_obs` — those are my training targets. There's the missing part `y_mis` — what I want to predict. There are the *other* variables at the rows where `X_s` is observed, `x_obs` — my training inputs. And the other variables at the rows where `X_s` is missing, `x_mis` — the inputs I'll predict from. But here's the snag: `x_obs` and `x_mis` are themselves full of holes, because the rows where `X_s` happens to be observed are not magically complete in the *other* columns. So I can't just "fit a forest on `x_obs`" — the inputs themselves have `NaN`s in them.
 
 The way out is the same trick the chained-equations skeleton was already using and I almost glossed over: keep a *fully completed working matrix* at all times. Start by filling every hole with something cheap — column means for numeric columns, the most frequent level for categorical ones — so that from the very first sweep, every predictor block is finite and a forest can be fit. Those initial fills are wrong, of course, but they're just a starting point; the iteration is what refines them. So the initial guess doesn't need to be clever, it only needs to be *complete*; the mean is fine because it's the best no-covariate constant and it's free. Now within a sweep, when I impute variable `s`, I train the forest with response `y_obs` (the genuinely observed values of `X_s` — I never train on my own guesses for `X_s`) and inputs the other columns of the *current working matrix* restricted to the observed-`s` rows; then I predict `y_mis` from the other columns at the missing-`s` rows; then I overwrite those holes in the working matrix with the predictions. Move to the next variable using the matrix I just updated — Gauss-Seidel, not Jacobi, so that the improved imputation of an earlier variable immediately helps the regression of a later one within the same pass.
 
@@ -26,7 +26,7 @@ so it's a relative, dimensionless number; and for the categorical variables, the
 
   Δ_F = (number of categorical entries that changed) / (number of missing categorical entries).
 
-Both are near zero when the imputation has stopped moving. Now, the obvious stopping rule is "stop when Δ drops below some tolerance." But that tolerance is yet another knob I'd have to pick, and against the whole no-tuning ethos — so before I commit to it, let me look at what Δ *actually does* over sweeps, because a random forest is not a noise-free map and I don't want to assume the trajectory I hope for. I ran the full procedure on the 5-column synthetic table and printed Δ and the true NRMSE each sweep:
+Both are near zero when the imputation has stopped moving. Now, the obvious stopping rule is "stop when Δ drops below some tolerance." But that tolerance is yet another knob I'd have to pick, against the whole no-tuning ethos. What does Δ actually do over sweeps? A random forest is not a noise-free map, so its trajectory need not settle monotonically. I ran the full procedure on the 5-column synthetic table and printed Δ and the true NRMSE each sweep:
 
   sweep 1  Δ=0.1032  NRMSE=0.612
   sweep 2  Δ=0.0041  NRMSE=0.586
@@ -42,9 +42,9 @@ Two things jump out, and one of them I half-expected and one I didn't fully trus
 
 So the rule writes itself from that trajectory, with no tolerance to invent: "keep sweeping while Δ is still *decreasing*, and stop the first time Δ *increases*." And when it increases, I don't return the current sweep (which already overshot into the jitter) — I return the *previous* sweep's matrix, the one that produced the minimum. In the run above that's the sweep-6 iterate, exactly the one sitting at the Δ minimum and at the NRMSE floor. For mixed data with both types present, I track Δ_N and Δ_F separately and only stop once *both* have turned up — as long as either type is still improving, keep going. I keep a safety cap, a maximum number of sweeps, in case the difference somehow never turns up; if I hit the cap, I just return the latest. Notice the run also vindicates the folklore that this fires fast: Δ was already at the 0.0003 floor by sweep 5, so on continuous data a handful of sweeps is all it takes and the cap is rarely the thing that ends it. And notice what I did *not* have to introduce: no tolerance to tune, no held-out validation set — the stopping rule reads the imputation's own dynamics.
 
-Now let me settle the forest's own knobs, because if I have to hand-tune those I've reintroduced exactly the kind of cost I was fleeing. The first is `m_try`, the number of variables considered at each split. The tempting thing is to search over all `p` variables at every node, which would make each individual tree as strong as possible. Breiman's analysis is the reason not to, and it's worth stating the mechanism precisely rather than waving at it. The forest's error isn't the average tree's error — averaging is what helps — and the bounds expose the lever. In classification, with `s` the strength and `ρ̄` the average correlation between trees' errors, `PE* ≤ ρ̄(1 − s²)/s²`; in regression, `PE*(forest) ≤ ρ̄ · PE*(tree)`. In both, the same product appears: error scales with `ρ̄`, so I want to drive the trees' errors *apart* while keeping each tree strong. If every tree sees all variables at every node, they all find nearly the same splits and are highly correlated — `ρ̄` near 1 — and averaging buys almost nothing. Restricting each node to a random `m_try`-subset decorrelates them, pushing `ρ̄` down, at the cost of each tree being individually a touch weaker.
+Now let me settle the forest's own knobs, because if I have to hand-tune those I've reintroduced exactly the kind of cost I was fleeing. The first is `m_try`, the number of variables considered at each split. The tempting thing is to search over all `p` variables at every node, which would make each individual tree as strong as possible. Breiman's analysis is the reason not to. The forest's error isn't the average tree's error — averaging is what helps — and the bounds expose the lever. In classification, with `s` the strength and `ρ̄` the average correlation between trees' errors, `PE* ≤ ρ̄(1 − s²)/s²`; in regression, `PE*(forest) ≤ ρ̄ · PE*(tree)`. In both, the same product appears: error scales with `ρ̄`, so I want to drive the trees' errors *apart* while keeping each tree strong. If every tree sees all variables at every node, they all find nearly the same splits and are highly correlated — `ρ̄` near 1 — and averaging buys almost nothing. Restricting each node to a random `m_try`-subset decorrelates them, pushing `ρ̄` down, at the cost of each tree being individually a touch weaker.
 
-That's a tradeoff with two ends, so let me actually look at both ends and the middle rather than trust the receipt. On a 9-column synthetic table (so `sqrt(p) ≈ 3`) I ran the full imputer at three settings of `m_try` and read off the final NRMSE:
+That's a tradeoff with two ends, so I check both ends and the middle directly. On a 9-column synthetic table (so `sqrt(p) ≈ 3`) I ran the full imputer at three settings of `m_try` and read off the final NRMSE:
 
   m_try = 1      NRMSE = 0.820
   m_try = 3      NRMSE = 0.746   (= floor(sqrt(p)))
@@ -56,7 +56,7 @@ The second knob is the number of trees. Here the law of large numbers is on my s
 
 The trees themselves I grow deep and unpruned — that's Breiman's prescription and it's right here too: a deep tree has low bias (it can carve out fine structure), and the variance that deep trees would suffer in isolation is exactly what the averaging over a hundred trees absorbs. In regression the terminal nodes get a small minimum size (around five observations) so the leaf means aren't computed from a single noisy point, and bootstrap resampling (sampling rows with replacement) is what both decorrelates the trees and, as a bonus I'll come back to, gives me an error estimate for free.
 
-That bonus is worth pausing on, because it solves a problem I'd otherwise have no clean answer to: how good *is* my imputation, when by definition I don't have the truth for the entries I just filled? With most methods I'd have to set aside known entries as a test set or run a cross-validation — wasteful of scarce data and laborious. But the forest hands me an estimate without either. Each tree is trained on a bootstrap sample of the rows, which omits any fixed row with probability `(1 − 1/n)^n`. Let me check that limit numerically rather than just citing `1/e`, because the whole OOB story rests on a non-trivial fraction of trees skipping each row:
+That bonus solves a problem I'd otherwise have no clean answer to: how good *is* my imputation, when by definition I don't have the truth for the entries I just filled? With most methods I'd have to set aside known entries as a test set or run a cross-validation — wasteful of scarce data and laborious. But the forest hands me an estimate without either. Each tree is trained on a bootstrap sample of the rows, which omits any fixed row with probability `(1 − 1/n)^n`. That fraction has to be substantial for OOB predictions to mean anything, so here it is computed directly across a realistic range of `n`:
 
   n=5    (1−1/n)^n = 0.328
   n=10   (1−1/n)^n = 0.349
@@ -66,7 +66,7 @@ That bonus is worth pausing on, because it solves a problem I'd otherwise have n
 
 So it climbs to ≈0.368 and is already within a couple of points of the limit even at the smallest `n` I'd realistically face — every row is out-of-bag for roughly 37% of the trees regardless of sample size. Predict that row using only the trees that didn't see it, and I get an honest held-out prediction; aggregate the squared error of these out-of-bag predictions over the observed-response rows and I have the out-of-bag error of that per-variable forest — an internal, essentially unbiased estimate of its generalization error, as accurate as a same-size test set. Since I fit a forest per variable anyway, I get an OOB error per variable for free. Aggregate them by type — average the per-variable OOB mean-squared errors over the continuous variables and normalize, average the OOB misclassification rates over the categorical ones — and I have an estimate of the imputation error itself, with no test set and no cross-validation. It's a real estimate of how trustworthy each completed column is. (To compare imputers when the truth *is* known, by artificially deleting entries, the accepted continuous yardstick is the NRMSE above and for categorical entries the proportion falsely classified.)
 
-Let me make sure the whole thing actually coheres as a fixed-point iteration before I write it down. I'm doing block coordinate descent on the imputed matrix: each variable's holes are a block, and re-imputing block `s` by regressing on the current values of all other blocks is a coordinate update toward mutual consistency — each variable made as predictable as possible from the rest. The Gauss-Seidel ordering (use the latest values within a sweep) propagates information faster than freezing the old matrix would, which is why the synthetic run had already done most of its work in sweep 1. Starting from the complete mean fill keeps every update well-defined from sweep one. The ascending-missingness order makes the early, most-reliable updates happen first so the later ones have better inputs. And the stop-when-the-change-turns-up rule reads off the point where further sweeps would only be churning forest noise — which is exactly the Δ-minimum I watched form on the page. The quiet headline across all of it: `m_try = floor(sqrt(p))`, a hundred trees, the difference-based stop — none of them is something I ask the analyst to tune, which is the entire contrast with `k` in KNNimpute and `λ` in the penalized methods.
+The whole loop is block coordinate descent on the imputed matrix: each variable's holes are a block, and re-imputing block `s` by regressing on the current values of all other blocks is a coordinate update toward mutual consistency — each variable made as predictable as possible from the rest. The Gauss-Seidel ordering (use the latest values within a sweep) propagates information faster than freezing the old matrix would, which is why the synthetic run had already done most of its work in sweep 1; starting from the complete mean fill keeps every update well-defined from sweep one; the ascending-missingness order makes the early, most-reliable updates happen first so the later ones have better inputs; and the stop-when-the-change-turns-up rule reads off the point where further sweeps would only churn forest noise — exactly the Δ-minimum I watched form on the page.
 
 So let me write it as the algorithm I'd actually run, then as code. The skeleton:
 
@@ -85,106 +85,38 @@ So let me write it as the algorithm I'd actually run, then as code. The skeleton
     Δ_old ← Δ_new
   return current matrix                         (only reached if the cap fires first)
 
-Now I can fill the one empty slot in the round-robin harness — the per-variable predictor and the convergence/return logic. For continuous tables the predictor is a `RandomForestRegressor` and the convergence test is the continuous Δ; with factor columns I use the same loop with modal-class initialization, a classifier for factor responses, and the PFC-style Δ_F.
+Now I can fill the one empty slot in the round-robin harness — the per-variable predictor and the convergence/return logic; the imports, the `fit`/`transform` wrappers, and the initial mean-fill loop are exactly the skeleton already sketched. Inside each sweep, in ascending-missingness order, this is the piece that was missing:
 
 ```python
-import numpy as np
-from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.ensemble import RandomForestRegressor
+mtry = max(1, int(np.floor(np.sqrt(n_features))))  # canonical m_try = floor(sqrt(p))
+for j in order:                           # Gauss-Seidel sweep
+    obs, mis = ~missing[:, j], missing[:, j]
+    others = [k for k in range(n_features) if k != j]
 
+    X_train = X_imp[obs][:, others]       # current fill of the other columns
+    y_train = X[obs, j]                   # genuinely observed targets only
+    X_pred = X_imp[mis][:, others]
 
-class CustomImputer(BaseEstimator, TransformerMixin):
-    """MissForest: iterative random-forest imputation.
+    rf = RandomForestRegressor(
+        n_estimators=self.n_estimators,   # ~100: error has flattened, runtime ~linear
+        max_features=min(mtry, len(others)),
+        min_samples_leaf=5,               # R randomForest regression nodesize default
+        bootstrap=True, oob_score=True,
+        random_state=self.random_state, n_jobs=-1,
+    )
+    rf.fit(X_train, y_train)
+    X_imp[mis, j] = rf.predict(X_pred)    # overwrite this variable's holes
 
-    Round-robin (chained-equations) skeleton with a random forest as the
-    per-variable predictor. Start from a complete mean fill; sweep the
-    variables in increasing order of missingness, each time fitting a forest
-    on the observed part of a variable against the current values of the other
-    variables and overwriting that variable's holes with the forest's
-    predictions; stop when the sweep-to-sweep change in the imputed matrix
-    first increases (return the iterate just before the rise), else at the cap.
-    """
-
-    def __init__(self, random_state=42, max_iter=10, n_estimators=100):
-        self.random_state = random_state
-        self.max_iter = max_iter
-        self.n_estimators = n_estimators
-
-    def fit(self, X, y=None):
-        # learn the imputation from X only (the observed entries); no test labels
-        self._impute(X)
-        return self
-
-    def transform(self, X):
-        return self._impute(X)
-
-    def fit_transform(self, X, y=None):
-        return self._impute(X)
-
-    def _impute(self, X):
-        X = np.asarray(X, dtype=float)
-        n_samples, n_features = X.shape
-        missing = np.isnan(X)                       # original missingness pattern
-
-        # initial complete fill: column means, so every predictor block is
-        # defined from the first sweep (the best no-covariate constant guess)
-        col_mean = np.nanmean(X, axis=0)
-        X_imp = X.copy()
-        for j in range(n_features):
-            X_imp[missing[:, j], j] = col_mean[j]
-
-        # variables that actually need imputing, sorted by ascending missingness:
-        # the most-complete variable trains the cleanest forest first, and its
-        # improved column then helps the harder variables later in the same sweep
-        miss_count = missing.sum(axis=0)
-        order = [j for j in np.argsort(miss_count) if miss_count[j] > 0]
-        if not order:
-            return X_imp
-
-        mtry = max(1, int(np.floor(np.sqrt(n_features))))  # canonical m_try = floor(sqrt(p))
-        X_best = X_imp.copy()                        # iterate to return
-        delta_old = np.inf
-        for _ in range(self.max_iter):
-            X_prev = X_imp.copy()
-
-            for j in order:                          # Gauss-Seidel sweep
-                obs = ~missing[:, j]
-                mis = missing[:, j]
-                others = [k for k in range(n_features) if k != j]
-                if not others:
-                    X_imp[mis, j] = np.nanmean(X[obs, j])
-                    continue
-
-                X_train = X_imp[obs][:, others]      # current fill of the other columns
-                y_train = X[obs, j]                  # genuinely observed targets only
-                X_pred = X_imp[mis][:, others]
-
-                rf = RandomForestRegressor(
-                    n_estimators=self.n_estimators,  # ~100: error has flattened, runtime ~linear
-                    max_features=min(mtry, len(others)),
-                    min_samples_leaf=5,               # R randomForest regression nodesize default
-                    bootstrap=True,
-                    oob_score=True,
-                    random_state=self.random_state,
-                    n_jobs=-1,
-                )
-                rf.fit(X_train, y_train)
-                X_imp[mis, j] = rf.predict(X_pred)    # overwrite this variable's holes
-
-            # relative squared change of the imputed matrix between sweeps
-            denom = np.sum(X_imp ** 2)
-            delta_new = np.sum((X_imp - X_prev) ** 2) / denom if denom > 0 else 0.0
-
-            # stop the first time the change turns back up: the previous sweep
-            # sat at the minimum, before the forest noise started churning
-            if delta_new > delta_old:
-                return X_best
-            X_best = X_imp.copy()
-            delta_old = delta_new
-
-        return X_best                                 # cap reached: return the latest
+# relative squared change of the imputed matrix between sweeps
+denom = np.sum(X_imp ** 2)
+delta_new = np.sum((X_imp - X_prev) ** 2) / denom if denom > 0 else 0.0
+if delta_new > delta_old:                 # change turned back up: stop here
+    return X_best                         # the iterate at the minimum
+X_best, delta_old = X_imp.copy(), delta_new
 ```
+
+For factor columns the same loop runs with modal-class initialization, a `RandomForestClassifier` per variable, and the PFC-style Δ_F in place of the continuous Δ.
 
 If I want a production harness rather than this explicit loop, scikit-learn's `IterativeImputer` gives me the same chained-equations shell: initial mean fill, ascending feature order, a per-feature `estimator.fit/predict`, and a `max_iter` cap. I should not pretend it is identical, though. Its built-in early stop is `max(abs(X_t - X_{t-1})) / max(abs(X[known_vals])) < tol`, and it returns the latest iterate; the original rule watches the relative squared change, stops when that change rises, and returns the previous iterate. So `IterativeImputer(estimator=RandomForestRegressor(...), initial_strategy="mean", imputation_order="ascending")` is the right sklearn skeleton, while the exact stop-return-previous behavior needs the custom loop above.
 
-I end where the requirements forced me to go. Mean imputation ignores the rest of the row — and the metric proves it, scoring ≈1 — so it cannot recover anything structural; I need to *predict* each hole from the other variables. Neighborhood prediction is continuous-only, needs a tuned `k`, needs standardization, and blurs nonlinearities. Model-based chained equations handle mixed types via per-variable conditional regressions iterated round-robin — the right skeleton — but make me specify a parametric model per variable and assume an implied joint distribution. The skeleton is keepable; the per-variable model is what's wrong. The requirement list for that predictor — mixed-type, scale-free, nonlinear, no parametric family, no tuning, robust — is met by a single CART tree on every count except stability, and the averaged-tree fix for stability is a random forest, so I plug a forest into each slot. To make "regress on the other variables" well-defined despite holes in those variables too, I keep a complete working matrix and refine it; within each sweep I take variables in ascending-missingness order so the best-trained forests run first and improve the inputs for the rest. Breiman's classification and regression bounds both point at low tree correlation without throwing away too much strength, and the `m_try` sweep I ran (1 → 0.82, sqrt(p) → 0.75, p → 0.73) shows `floor(sqrt(p))` captures the bulk of the accuracy before the correlation/runtime cost bites; the convergence of forest error as trees are added makes about 100 trees a precision/runtime knee rather than a tuning burden. The forest's out-of-bag rows, ≈37% per tree as the `(1−1/n)^n` table confirms, give a per-variable and hence per-type imputation-error estimate without any held-out set or cross-validation. And the iteration stops by reading its own dynamics — I watched Δ descend to a sweep-6 minimum and then turn up into forest-noise jitter, so I return the iterate at that minimum — which means the whole method carries no tuning parameter the analyst has to set.
+Mean imputation ignores the rest of the row — the metric proves it, scoring ≈1 — so the real move is to predict each hole from the other variables. Every prior predictor stalls on some restriction: continuous-only, a knob to guess, a required standardization, or a parametric/linear/low-rank assumption real biological data doesn't respect. The chained-equations skeleton was worth keeping; the per-variable model plugged into it was not, and a random forest is the one predictor that clears every item on the requirement list without asking me to tune anything. So I fit one per variable inside the same round-robin, in ascending-missingness order against a fully completed working matrix, and let the iteration's own dynamics — the sweep-to-sweep Δ falling to a minimum and then turning up into forest jitter — decide both when to stop and which iterate to keep.

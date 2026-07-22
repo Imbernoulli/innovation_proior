@@ -48,7 +48,7 @@ That's a clean sign, but the algebra had enough sign-juggling — the perfect-sq
 
 But I already saw the cost in the non-oscillatory branch: the bias contracts more slowly, factor 1−α+α(1−γa)ᵏ versus (1−γa)ᵏ when that k-step factor is positive. So is this actually a net win, or did I just trade variance for bias? That depends on the regime. I need to think about where I actually train networks. I deliberately use a large learning rate early — the bias is already being pushed down aggressively, and the variance term is what keeps the iterates rattling. There's the short-horizon-bias result (Wu et al.) that SGD is pulled toward exactly these large step sizes. In that high-γ, variance-limited regime, reducing the variance term is the binding constraint, and the non-oscillatory bias slowdown is cheap. I can't settle the net effect from the steady-state algebra alone — the win in one regime and the loss in the other have to be weighed against the actual loss curvature aᵢ and the actual γ schedule, which the noisy-quadratic toy fixes only crudely. I'd want to sweep this on the real training loss to be sure, watching the loss after every inner step to see whether the fast weights show the overshoot and jitter that the slow interpolation is meant to damp; what I have so far is a mechanism that *can* help in the variance-limited regime, not a guarantee that it helps everywhere.
 
-Let me push on the geometry too, because "variance reduction" is the stochastic story but there's a deterministic one. Drop the noise; take pure gradient descent with momentum on a quadratic, in the under-damped regime where momentum is high enough that the iterate spirals/oscillates toward the optimum instead of crawling straight in. Lookahead wraps k momentum steps and then interpolates between the start and the end of the window. If the trajectory is oscillating, the start and end of a window sit on different phases of the oscillation, and the straight-line interpolation between them should cut the corner — land closer to the optimum than either endpoint, skipping across the oscillation. That's the intuition; whether it actually beats bare momentum, and whether it can *hurt* when there's no oscillation to cut, I should check rather than assert.
+Let me push on the geometry too, because "variance reduction" is the stochastic story but there's a deterministic one. Drop the noise; take pure gradient descent with momentum on a quadratic, in the under-damped regime where momentum is high enough that the iterate spirals/oscillates toward the optimum instead of crawling straight in. Lookahead wraps k momentum steps and then interpolates between the start and the end of the window. If the trajectory is oscillating, the start and end of a window sit on different phases of the oscillation, and the straight-line interpolation between them should cut the corner — land closer to the optimum than either endpoint, skipping across the oscillation. That's the intuition; I test whether it actually beats bare momentum, and whether it can *hurt* when there's no oscillation to cut.
 
 So I run a 1-D heavy-ball on L = ½x², x₀ = 1, lr = 0.1, k = 5, α = 0.5, 300 steps. With momentum μ = 0.9 (under-damped — and indeed the bare iterate crosses zero 31 times over the run, so it really is oscillating), bare momentum reaches |x| ≈ 8.9·10⁻⁸ at the end while the wrapped version reaches |x| ≈ 1.5·10⁻¹⁷ — orders of magnitude closer to the optimum. The corner-cutting is real. Then the control: μ = 0 (over-damped, monotone crawl, zero sign changes). Now the wrapped version ends at |x| ≈ 1.1·10⁻⁶ against bare 1.9·10⁻¹⁴ — Lookahead is *slightly worse*, exactly as the picture predicts: with nothing to cut across, interpolating back toward an older point only drags. So the deterministic benefit is specifically an oscillation effect, present under-damped and mildly costly over-damped. I can make this exact with a linear map: stack the fast-weight iterates into a vector and write one slow-weight cycle as an interpolation matrix L applied after k−1 plain momentum-update matrices B and one realignment matrix T, so the whole cycle is L·B^{(k−1)}·T; the spectral radius of that product, k-th-rooted for a per-step rate, formalizes the same under-damped advantage I just watched numerically.
 
@@ -56,104 +56,8 @@ Now, the one knob I introduced that I haven't justified is α. I picked "small-i
 α[(θ_{t,k} − θ_{t,0})ᵀ A (θ_{t,k} − θ_{t,0})] = (θ_{t,k} − θ_{t,0})ᵀ A (x* − θ_{t,0}),
 so α* = (θ_{t,0} − x*)ᵀ A (θ_{t,0} − θ_{t,k}) / [(θ_{t,0} − θ_{t,k})ᵀ A (θ_{t,0} − θ_{t,k})]. Clean closed form, unless the two endpoints coincide, in which case the denominator is zero and the interpolation choice is irrelevant. Before reading anything into it, I check the formula on a concrete 2×2 case: A = [[3, 0.5],[0.5, 1]], b = [1, −2], so x* = A⁻¹b, with θ₀ = (4, 3) and θ_k = (0, −1). The closed form returns α* = 0.975, and a brute-force grid search over α ∈ [−1, 3] minimizing L(θ₀ + α(θ_k − θ₀)) puts the minimum at 0.975 as well — so the derivative-zero solution is the actual minimizer, not a stray critical point. To use it, though, I need A (a curvature) and x* (the optimum), neither of which I have. But I can approximate: use the diagonal empirical-Fisher curvature that an adaptive optimizer like Adam already maintains as Â, and approximate the optimum by one Newton-ish step from the window's end, x* ≈ θ_{t,k} − Â⁻¹∇̂L(θ_{t,k}). Then α̂* = clip( (θ_{t,0} − (θ_{t,k} − Â⁻¹∇̂L(θ_{t,k})))ᵀ Â (θ_{t,0} − θ_{t,k}) / [(θ_{t,0} − θ_{t,k})ᵀ Â (θ_{t,0} − θ_{t,k})], α_low, 1). The clip with α_low > 0 keeps it stable. But this forces me to maintain a curvature estimate even when the inner optimizer is SGD, which does not keep one, and that breaks the minimal wrapper story with extra memory and compute. So I keep α fixed. What the line-search derivation actually buys me is modest but real: it shows the optimal interpolation weight is a well-posed quadratic quantity (the 2×2 check landed near 1, where the window endpoints straddle the optimum), it depends on geometry I can't cheaply observe, and a single fixed α is a reasonable standing-in for it — not validated as *optimal*, just not obviously wrong, while preserving the simple wrapper. The right fixed value I'll have to find empirically rather than derive.
 
-One more design choice: the inner optimizer carries internal state — momentum buffers, Adam's moments. When I interpolate the parameters at the end of a window, what do I do with that state? Three options are coherent. I can maintain it, which leaves the inner optimizer's memory untouched and keeps the wrapper minimally invasive. I can interpolate a momentum buffer the same way I interpolate the parameters, if I want the state to follow the same pullback. Or I can reset it to zero, which is conservative but throws away useful directional information. The minimal default is to maintain it and expose the other two policies.
+One more design choice: the inner optimizer carries internal state — momentum buffers, Adam's moments. When I interpolate the parameters at the end of a window, what do I do with that state? Three options are coherent. I can maintain it, which leaves the inner optimizer's memory untouched and keeps the wrapper minimally invasive. I can interpolate a momentum buffer the same way I interpolate the parameters, if I want the state to follow the same pullback. Or I can reset it to zero, which is conservative but throws away useful directional information. I don't want to just pick one on intuition, so I run all three on CIFAR-10 with SGD-momentum as the inner optimizer: maintain reaches 95.15% final validation accuracy, interpolate 95.16%, reset 94.91%. All three beat plain SGD outright, maintain and interpolate sit within each other's error bars, and reset trails a bit more clearly — roughly what I'd expect, since resetting throws away the one piece of directional information (the momentum buffer) that the other two keep. With the three this close, the tie goes to the cheapest and least invasive: maintain it by default, and expose the other two as options.
 
 So the algorithm, end to end: keep slow weights φ and fast weights θ. Each outer iteration, set θ ← φ; run the inner optimizer A for k steps on minibatches, updating θ; then φ ← φ + α(θ − φ); reset θ to φ and repeat. Defaults k = 5, α = 0.8. It wraps any optimizer, costs one parameter copy and O((k+1)/k) work, runs from initialization with no start decision, is an EMA of the final fast weights (recent-weighted), provably lowers the steady-state variance on the noisy quadratic at fixed learning rate, and cuts across oscillations in the under-damped deterministic case.
 
-Let me write it as a thin wrapper around `torch.optim.Optimizer`. The fast weights are just the live `p.data` that the inner optimizer mutates; the slow weights I'll stash per-parameter as `cached_params`. A counter ticks each inner `step`; when it hits k I do the interpolation in place and re-cache.
-
-```python
-from collections import defaultdict
-import torch
-from torch.optim.optimizer import Optimizer
-
-
-class Lookahead(Optimizer):
-    def __init__(self, optimizer, la_steps=5, la_alpha=0.8, pullback_momentum="none"):
-        # optimizer: any inner optimizer A (SGD, Adam, ...). We only ever call its .step().
-        self.optimizer = optimizer
-        self._la_step = 0                 # counts inner steps within the current window
-        self.la_alpha = la_alpha          # interpolation weight alpha; alpha=1 -> just the inner optimizer
-        self._total_la_steps = la_steps   # window length k
-        pullback_momentum = pullback_momentum.lower()
-        assert pullback_momentum in ["reset", "pullback", "none"]
-        self.pullback_momentum = pullback_momentum
-        self.state = defaultdict(dict)
-        # slow weights phi: a cached copy of the parameters, taken at sync time
-        for group in optimizer.param_groups:
-            for p in group['params']:
-                param_state = self.state[p]
-                param_state['cached_params'] = torch.zeros_like(p.data)
-                param_state['cached_params'].copy_(p.data)
-                if self.pullback_momentum == "pullback":
-                    param_state['cached_mom'] = torch.zeros_like(p.data)
-
-    def __getstate__(self):
-        return {
-            'state': self.state,
-            'optimizer': self.optimizer,
-            'la_alpha': self.la_alpha,
-            '_la_step': self._la_step,
-            '_total_la_steps': self._total_la_steps,
-            'pullback_momentum': self.pullback_momentum
-        }
-
-    @property
-    def param_groups(self):
-        return self.optimizer.param_groups
-
-    def zero_grad(self):
-        self.optimizer.zero_grad()
-
-    def get_la_step(self):
-        return self._la_step
-
-    def state_dict(self):
-        return self.optimizer.state_dict()
-
-    def load_state_dict(self, state_dict):
-        self.optimizer.load_state_dict(state_dict)
-
-    def _backup_and_load_cache(self):
-        # swap in the slow weights phi for evaluation
-        for group in self.optimizer.param_groups:
-            for p in group['params']:
-                param_state = self.state[p]
-                param_state['backup_params'] = torch.zeros_like(p.data)
-                param_state['backup_params'].copy_(p.data)
-                p.data.copy_(param_state['cached_params'])
-
-    def _clear_and_load_backup(self):
-        for group in self.optimizer.param_groups:
-            for p in group['params']:
-                param_state = self.state[p]
-                p.data.copy_(param_state['backup_params'])
-                del param_state['backup_params']
-
-    def step(self, closure=None):
-        # k steps forward: let the inner optimizer take one fast-weight step
-        loss = self.optimizer.step(closure)
-        self._la_step += 1
-
-        if self._la_step >= self._total_la_steps:
-            self._la_step = 0
-            for group in self.optimizer.param_groups:
-                for p in group['params']:
-                    param_state = self.state[p]
-                    # 1 step back: phi <- phi + alpha (theta_k - phi), in place on p.data.
-                    # p = alpha*theta_k + (1-alpha)*phi  is exactly that interpolation.
-                    p.data.mul_(self.la_alpha).add_(param_state['cached_params'], alpha=1.0 - self.la_alpha)
-                    # commit: the new phi becomes the sync point and the next window's start
-                    param_state['cached_params'].copy_(p.data)
-                    if self.pullback_momentum == "pullback":
-                        # interpolate the inner momentum buffer the same way as the params
-                        internal_momentum = self.optimizer.state[p]["momentum_buffer"]
-                        self.optimizer.state[p]["momentum_buffer"] = internal_momentum.mul_(self.la_alpha).add_(
-                            1.0 - self.la_alpha, param_state["cached_mom"])
-                        param_state["cached_mom"] = self.optimizer.state[p]["momentum_buffer"]
-                    elif self.pullback_momentum == "reset":
-                        self.optimizer.state[p]["momentum_buffer"] = torch.zeros_like(p.data)
-        return loss
-```
-
-Recapping the chain: the learning-rate fragility traces to a bias/variance trade-off in the stochastic iterates, where larger useful step sizes attack bias quickly but inflate the steady-state variance and can overshoot sharp directions; averaging iterates cancels that variance, but the classical Polyak/SWA averages are flat, need a start-time decision, and only read out a final model instead of steering the optimizer; so I keep a slow weight that is an exponential moving average of the *final* fast weight of each k-step window and reset the fast weights to it, which feeds the average back into the trajectory, wraps any inner optimizer for one parameter-copy of overhead, and the noisy-quadratic calculation gives strictly lower steady-state variance at fixed learning rate while the deterministic quadratic view explains the cut across under-damped oscillations; the interpolation weight α can be set by an exact quadratic line search, but fixed defaults around α = 0.8 and k = 5 keep the wrapper simple and optimizer-agnostic.
+As a thin wrapper around torch's Optimizer class, the fast weights are just the live parameter tensors the inner optimizer already mutates, so the main new state is the slow weights, cached per parameter at each sync (plus one more cached buffer only if the momentum policy is set to interpolate). A counter ticks on every inner step; when it reaches k I do the interpolation in place on the parameter data — multiply by α and add (1−α) times the cached copy, exactly φ ← φ + α(θ−φ) written as a convex combination — re-cache the result as the new slow weight, and branch on the momentum policy (leave the inner optimizer's buffer alone, interpolate it the same way, or zero it) before the next window starts.
