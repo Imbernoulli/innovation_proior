@@ -28,13 +28,13 @@ So the difference of rewards comes out as the log-odds of preference, squashed t
 
 $$\mathrm{loss}(\theta) = -\,\mathbb{E}_{(x, y_w, y_l)\sim D}\Big[\log \sigma\big(r_\theta(x, y_w) - r_\theta(x, y_l)\big)\Big].$$
 
-Before I trust this, let me actually push a few numbers through it, because this loss is the spine of the whole method and a sign error here poisons everything downstream. Take a winner at $r_w=1.5$ and a loser at $r_l=0.3$, so $u=r_w-r_l=1.2$. Then $P(y_w\succ y_l)=\sigma(1.2)=0.769$ — the model says the winner wins about 77% of the time, which is the right side of even, and the per-pair loss is $-\log 0.769 = 0.263$. Now swap them so the model has the pair *backwards*, $r_w=0.3,\,r_l=1.5$: the loss jumps to $-\log\sigma(-1.2)=1.463$. Good — being wrong costs about $5.6\times$ more than being right-and-confident, which is the asymmetry I want.
+This loss is the spine of the whole method and a sign error here poisons everything downstream, so I push numbers through it. Take a winner at $r_w=1.5$ and a loser at $r_l=0.3$, so $u=r_w-r_l=1.2$. Then $P(y_w\succ y_l)=\sigma(1.2)=0.769$ — the model says the winner wins about 77% of the time, which is the right side of even, and the per-pair loss is $-\log 0.769 = 0.263$. Now swap them so the model has the pair *backwards*, $r_w=0.3,\,r_l=1.5$: the loss jumps to $-\log\sigma(-1.2)=1.463$. Good — being wrong costs about $5.6\times$ more than being right-and-confident, which is the asymmetry I want.
 
-The gradient is the part I most want to check. $\frac{d}{du}\big[-\log\sigma(u)\big] = -(1-\sigma(u)) = \sigma(u) - 1$, with $u = r_w - r_l$. So $\partial\,\mathrm{loss}/\partial r_w = \sigma(u) - 1$ and $\partial\,\mathrm{loss}/\partial r_l = 1 - \sigma(u)$. At $u=1.2$ those are $-0.231$ and $+0.231$: descent *raises* the winner and *lowers* the loser, exactly the direction I need, and equal-and-opposite so the pair's scores move apart without inflating the overall level. The magnitude is $1-\sigma(u)$, so when the model already has the pair right and confident ($u=1.2$) the pull is $0.231$, but when it has the pair backwards ($u=-1.2$) the pull is $0.769$ — over three times stronger on the cases it's getting wrong. The loss self-throttles, putting its gradient where the errors are.
+The gradient: $\frac{d}{du}\big[-\log\sigma(u)\big] = -(1-\sigma(u)) = \sigma(u) - 1$, with $u = r_w - r_l$. So $\partial\,\mathrm{loss}/\partial r_w = \sigma(u) - 1$ and $\partial\,\mathrm{loss}/\partial r_l = 1 - \sigma(u)$. At $u=1.2$ those are $-0.231$ and $+0.231$: descent *raises* the winner and *lowers* the loser, exactly the direction I need, and equal-and-opposite so the pair's scores move apart without inflating the overall level. The magnitude is $1-\sigma(u)$, so when the model already has the pair right and confident ($u=1.2$) the pull is $0.231$, but when it has the pair backwards ($u=-1.2$) the pull is $0.769$ — over three times stronger on the cases it's getting wrong. The loss self-throttles, putting its gradient where the errors are.
 
-And the gauge claim — let me make sure it's really invariant, not just plausibly so. Take four responses with rewards $[1.5, 0.3, -0.7, 2.1]$ ranked best-to-worst, average the loss over all six ordered pairs: I get $1.0885$. Add $3.7$ to *every* reward and recompute: $1.0885$, identical to six places. So the absolute level genuinely carries no signal; only differences do. That means the offset is free and I'll have to pin it down by hand before the reward number means anything to RL — I'll come back to that.
+And the gauge claim should be exact, not just plausible. Take four responses with rewards $[1.5, 0.3, -0.7, 2.1]$ ranked best-to-worst, average the loss over all six ordered pairs: I get $1.0885$. Add $3.7$ to *every* reward and recompute: $1.0885$, identical to six places. So the absolute level genuinely carries no signal; only differences do. That means the offset is free and I'll have to pin it down by hand before the reward number means anything to RL — I'll come back to that.
 
-What should $r_\theta$ actually *be*, architecturally? I don't want to learn "how to read English" from scratch just to judge responses. So take a model that already understands language — start from the supervised-fine-tuned model — and replace its final unembedding layer (the projection to vocabulary logits) with a small head that outputs a single scalar. The whole transformer does the heavy lifting of comprehension; I'm only learning the readout from "understood text" to "how good is it." A note on size: I might be tempted to make the reward model as big as the policy, but the biggest reward models are costly, unstable to train, and would later have to serve as the value function during RL, where instability is poison. A fixed mid-sized reward model is the safer engineering point: stable enough to initialize the value function and cheap enough to use for every policy size.
+What should $r_\theta$ actually *be*, architecturally? I don't want to learn "how to read English" from scratch just to judge responses. So take a model that already understands language — start from the supervised-fine-tuned model — and replace its final unembedding layer (the projection to vocabulary logits) with a small head that outputs a single scalar. The whole transformer does the heavy lifting of comprehension; I'm only learning the readout from "understood text" to "how good is it." A note on size: I might be tempted to make the reward model as big as the policy, and the largest reward model does have the potential to reach a lower validation loss — but its training is more unstable, and it would later have to serve as the value function during RL, where instability is poison, on top of multiplying the RL compute. A fixed mid-sized reward model behaves the opposite way in my probes: stable over a wide range of learning rates, and the policies trained against it come out just as strong. So the mid-sized reward model is the engineering point: stable enough to initialize the value function and cheap enough to use for every policy size.
 
 Now a practical problem in collecting the comparisons. Pairwise labeling is slow if I literally show two at a time. Better: show a labeler $K$ responses at once (say $K$ between 4 and 9) and have them *rank* all of them. One ranking of $K$ items gives me $\binom{K}{2}$ pairwise comparisons for the price of a single labeling session — a huge multiplier on human throughput. But now how do I feed those into training? The naive thing is to flatten every $\binom{K}{2}$ pair into the dataset as an independent example and shuffle. And that backfires. Each of the $K$ completions then appears in $K-1$ different pairs, so within one epoch the same completion drives $K-1$ separate gradient updates, and worse, all $\binom{K}{2}$ comparisons from one prompt are tightly correlated — they're rankings of the *same* set of responses. The reward model overfits after a single pass; it memorizes the prompt's particular completions rather than learning preference.
 
@@ -52,21 +52,21 @@ The first reason is the usual RL one: that estimator is high-variance, and an un
 
 $$\min\!\Big(\rho_t \hat A_t,\ \operatorname{clip}(\rho_t,\, 1-\epsilon,\, 1+\epsilon)\,\hat A_t\Big).$$
 
-Let me check the cases, because the sign matters. If $\hat A_t>0$, increasing $\rho_t$ helps until $\rho_t=1+\epsilon$; beyond that, the clipped term $(1+\epsilon)\hat A_t$ is smaller than $\rho_t\hat A_t$, so the $\min$ chooses the cap and removes the incentive to push higher. If $\hat A_t>0$ and $\rho_t$ is below the interval, the unclipped term is smaller, so the gradient still pushes the probability back up. If $\hat A_t<0$, decreasing $\rho_t$ helps until $\rho_t=1-\epsilon$; below that, multiplication by a negative advantage flips the ordering and the $\min$ chooses $(1-\epsilon)\hat A_t$, so there is no incentive to suppress the token further. If $\hat A_t<0$ and $\rho_t$ is too high, the unclipped term is even worse, so the objective still penalizes the overshoot. The $\min$ is pessimistic in the maximization form: it clips only the changes that would make the surrogate look better than I trust. In code, since I minimize a loss, this same rule appears as $\max(-\rho_t\hat A_t,\ -\operatorname{clip}(\rho_t,1-\epsilon,1+\epsilon)\hat A_t)$. This is a cheap, first-order trust region. I'll use a clip of $\epsilon = 0.2$, run the policy gradient with variance-reduced advantages from a learned value baseline (advantage $\hat A_t = \sum_l (\gamma\lambda)^l \delta_{t+l}$ with $\delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)$ — generalized advantage estimation, the standard variance/bias knob), reusing each batch for only a single inner epoch of minibatch updates. And I'll initialize the value function from the reward model — it already maps text to a scalar, which is most of what predicting return requires, so it's a far better start than random.
+The cases, since the sign matters. If $\hat A_t>0$, increasing $\rho_t$ helps until $\rho_t=1+\epsilon$; beyond that, the clipped term $(1+\epsilon)\hat A_t$ is smaller than $\rho_t\hat A_t$, so the $\min$ chooses the cap and removes the incentive to push higher. If $\hat A_t>0$ and $\rho_t$ is below the interval, the unclipped term is smaller, so the gradient still pushes the probability back up. If $\hat A_t<0$, decreasing $\rho_t$ helps until $\rho_t=1-\epsilon$; below that, multiplication by a negative advantage flips the ordering and the $\min$ chooses $(1-\epsilon)\hat A_t$, so there is no incentive to suppress the token further. If $\hat A_t<0$ and $\rho_t$ is too high, the unclipped term is even worse, so the objective still penalizes the overshoot. The $\min$ is pessimistic in the maximization form: it clips only the changes that would make the surrogate look better than I trust. In code, since I minimize a loss, this same rule appears as $\max(-\rho_t\hat A_t,\ -\operatorname{clip}(\rho_t,1-\epsilon,1+\epsilon)\hat A_t)$. This is a cheap, first-order trust region. I'll use a clip of $\epsilon = 0.2$, run the policy gradient with variance-reduced advantages from a learned value baseline (advantage $\hat A_t = \sum_l (\gamma\lambda)^l \delta_{t+l}$ with $\delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)$ — generalized advantage estimation, the standard variance/bias knob), reusing each batch for only a single inner epoch of minibatch updates. And I'll initialize the value function from the reward model — it already maps text to a scalar, which is most of what predicting return requires, so it's a far better start than random.
 
 The second reason is sharper and specific to optimizing a *learned* reward. My $r_\theta$ is not the true human preference; it's an approximation, and it's only trustworthy where it was trained — on responses near the distribution of the supervised policy that generated the comparison data. If I let the policy roam anywhere in the vast space of token sequences to maximize $r_\theta$, it *will* find regions where $r_\theta$ reports a high score but a real human would recoil — adversarial inputs to the reward model. The optimizer is a relentless adversary against any imperfect reward; it exploits the gaps. So the more I optimize, the more the policy drifts off-distribution and the more the reward model's number decouples from actual preference: the score keeps climbing while real quality stalls or falls, and nothing in the objective tells the optimizer that the high score out there is a lie. This is reward over-optimization, and it's the central danger.
 
 Both reasons point at the same remedy: keep the policy from wandering far from the supervised model, which is exactly the region where the reward model is valid *and* where the policy is well-behaved. So add a penalty for drifting away from the supervised policy $\pi^\text{SFT}$ — specifically a KL divergence $\mathrm{KL}(\pi_\phi \,\|\, \pi^\text{SFT})$. I don't have the full distributions to integrate, but I'm sampling $y \sim \pi_\phi$ anyway, and $\mathrm{KL}(\pi_\phi\|\pi^\text{SFT}) = \mathbb E_{y\sim\pi_\phi}[\log\pi_\phi(y\mid x) - \log\pi^\text{SFT}(y\mid x)]$ is already an expectation under the distribution I'm drawing from — so the per-sample log-ratio is an unbiased estimate of it, no integral needed.
 
-Let me make sure I believe that rather than just assert it, because "the log-ratio of one sample equals a KL" sounds too good. Tiny discrete check: let $\pi_\phi=[0.4,0.3,0.2,0.1]$ over four tokens and $\pi^\text{SFT}=[0.25,0.25,0.25,0.25]$. The true KL is $\sum_i p_i\log(p_i/q_i)=0.4\log1.6+0.3\log1.2+0.2\log0.8+0.1\log0.4=0.1064$. Now draw $y\sim\pi_\phi$ and average $\log\pi_\phi(y)-\log\pi^\text{SFT}(y)$ over many samples: $200{,}000$ draws give $0.1063$. It lands on the true value, which is what unbiasedness should look like. So the single-sample log-ratio really is a Monte-Carlo estimator of the KL, and I can fold it straight into the reward, per token. The reward the RL optimizer actually sees becomes
+"The log-ratio of one sample estimates a KL" sounds too good, so I check it on a tiny discrete example: let $\pi_\phi=[0.4,0.3,0.2,0.1]$ over four tokens and $\pi^\text{SFT}=[0.25,0.25,0.25,0.25]$. The true KL is $\sum_i p_i\log(p_i/q_i)=0.4\log1.6+0.3\log1.2+0.2\log0.8+0.1\log0.4=0.1064$. Now draw $y\sim\pi_\phi$ and average $\log\pi_\phi(y)-\log\pi^\text{SFT}(y)$ over many samples: $200{,}000$ draws give $0.1063$. It lands on the true value, which is what unbiasedness should look like. So the single-sample log-ratio really is a Monte-Carlo estimator of the KL, and I can fold it straight into the reward, per token. The reward the RL optimizer actually sees becomes
 
 $$R(x, y) = r_\theta(x, y) - \beta\Big(\log \pi_\phi(y\mid x) - \log \pi^\text{SFT}(y\mid x)\Big),$$
 
-with the reward-model score applied at the end of the sequence and the KL term applied as a per-token penalty along the way. This does double duty. It leashes the policy to the region where $r_\theta$ is honest, killing reward hacking, and because it penalizes collapsing onto any single high-reward response (that would blow up the KL), it acts as an entropy-like regularizer that also tames the variance/collapse problem. The coefficient $\beta$ is the leash length. Too small and the policy slips the leash and games the reward model; too large and it's pinned to the supervised model and can't improve. So there's a sweet spot somewhere small, and I'll have to find it by sweeping and watching both the reward and the KL — $\beta=0$ should invite hacking, and a large $\beta$ should pin the reward near the SFT level. Putting it together, the objective I maximize is
+with the reward-model score applied at the end of the sequence and the KL term applied as a per-token penalty along the way. This does double duty. It leashes the policy to the region where $r_\theta$ is honest, killing reward hacking, and because it penalizes collapsing onto any single high-reward response (that would blow up the KL), it acts as an entropy-like regularizer that also tames the variance/collapse problem. The coefficient $\beta$ is the leash length. Too small and the policy slips the leash and games the reward model; too large and it's pinned to the supervised model and can't improve. So there's a sweet spot somewhere small, and I find it by sweeping and watching both the reward and the KL — $\beta=0$ should invite hacking, and a large $\beta$ should pin the reward near the SFT level. The sweep lands at a small value, $\beta \approx 0.02$. Putting it together, the objective I maximize is
 
 $$\mathbb{E}_{(x,y)\sim \pi_\phi}\Big[r_\theta(x, y) - \beta\log\frac{\pi_\phi(y\mid x)}{\pi^\text{SFT}(y\mid x)}\Big].$$
 
-So the pipeline has assembled itself out of necessity: supervised fine-tune to get into instruction-following mode and to provide the anchor distribution; a reward model fit with the Bradley-Terry pairwise loss to turn cheap human comparisons into a dense scalar signal; PPO with a KL-to-SFT penalty to optimize that signal without being fooled by it. Each stage exists to break the previous stage's ceiling — imitation can't discriminate, so the reward model adds discrimination; humans can't be queried online, so the reward model is queried instead; the reward model can be gamed, so the KL leash keeps the optimization honest.
+The pipeline is now assembled: supervised fine-tuning to enter instruction-following mode and provide the anchor, the pairwise reward model to add the discrimination imitation lacks, and PPO with the KL leash to optimize that signal without being fooled by it.
 
 Now I run it, and a problem surfaces that I should have anticipated. After RL fine-tuning, I check the model on standard public NLP benchmarks — reading comprehension, QA, translation — and it has *regressed* relative to where the pretrained model was. I've made it more helpful on the prompt distribution at the cost of raw capability elsewhere. That's an alignment tax, and it's bad on its own terms (I don't want a model that obeys but forgets how to do things) and bad strategically: if aligning a model makes it dumber, there's an incentive to deploy the unaligned, more-capable one instead. I want the tax near zero.
 
@@ -76,162 +76,6 @@ So point there directly. Alongside the RL objective, keep training on the origin
 
 $$\mathrm{objective}(\phi) = \mathbb{E}_{(x,y)\sim \pi_\phi}\Big[r_\theta(x, y) - \beta\log\frac{\pi_\phi(y\mid x)}{\pi^\text{SFT}(y\mid x)}\Big] + \gamma\,\mathbb{E}_{x\sim D_\text{pretrain}}\big[\log \pi_\phi(x)\big].$$
 
-In practice I compute the PPO loss and the pretraining negative-log-likelihood loss in consecutive steps and accumulate both gradients before stepping; minimizing $L_{\mathrm{PPO}}+\gamma L_{\mathrm{ptx}}$ is the same sign as maximizing the objective above because $L_{\mathrm{ptx}}=-\mathbb E[\log \pi_\phi(x)]$. The coefficient $\gamma$ trades capability-preservation against alignment reward: I need it reasonably large — around $\gamma = 27.8$, with on the order of $\gamma \gtrsim 20$ enough to counter the worst regressions on the smaller model. I also need enough pretraining data per update for the gradient estimate to be clean: too little (a ratio of about four pretraining examples per RL episode) and the pretraining loss can creep up during training; a lot more (about thirty-two to one) makes the update much slower; eight-to-one is the compromise I'll take. Setting $\gamma = 0$ recovers the plain version without the pretraining mix. The version I want is the one whose gradient contains both forces: preference optimization from PPO and capability retention from the pretraining likelihood.
+In practice I compute the PPO loss and the pretraining negative-log-likelihood loss in consecutive steps and accumulate both gradients before stepping; minimizing $L_{\mathrm{PPO}}+\gamma L_{\mathrm{ptx}}$ is the same sign as maximizing the objective above because $L_{\mathrm{ptx}}=-\mathbb E[\log \pi_\phi(x)]$. The coefficient $\gamma$ trades capability-preservation against alignment reward, and sweeping it on the smaller model tells me it needs to be large — on the order of $\gamma \gtrsim 20$ to counter the worst regressions, landing at $\gamma \approx 27.8$. I also need enough pretraining data per update for the gradient estimate to be clean: too little (a ratio of about four pretraining examples per RL episode) and the pretraining loss can creep up during training; a lot more (about thirty-two to one) makes the update much slower; eight-to-one is the compromise I'll take. Setting $\gamma = 0$ recovers the plain version without the pretraining mix. The version I want is the one whose gradient contains both forces: preference optimization from PPO and capability retention from the pretraining likelihood.
 
-Let me write the code. The signs have to line up with the optimizer: comparison training minimizes $-\log\sigma(r_w-r_l)$, the token reward uses $-\beta(\log p-\log p_{\mathrm{ref}})$, and PPO minimizes the negative clipped surrogate with a `max`.
-
-```python
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
-def masked_mean(values, mask):
-    mask = mask.to(values.dtype)
-    return (values * mask).sum() / mask.sum().clamp_min(1)
-
-def gather_token_logprobs(logits, input_ids):
-    logp = F.log_softmax(logits[:, :-1], dim=-1)
-    labels = input_ids[:, 1:]
-    return logp.gather(-1, labels.unsqueeze(-1)).squeeze(-1)
-
-def response_nll(model, input_ids, loss_mask):
-    # Supervised demonstration fitting and the ptx term are the same next-token NLL;
-    # the mask selects response tokens for demonstrations or pretraining tokens for ptx.
-    out = model(input_ids)
-    logits = out.logits if hasattr(out, "logits") else out[0]
-    token_logp = gather_token_logprobs(logits, input_ids)
-    return -masked_mean(token_logp, loss_mask[:, 1:])
-
-def train_demonstration_model(model, demo_loader, optimizer):
-    for input_ids, loss_mask in demo_loader:
-        loss = response_nll(model, input_ids, loss_mask)
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-class PreferenceScorer(nn.Module):
-    # The language backbone reads the prompt-response text; the scalar head emits r(x, y).
-    def __init__(self, backbone, hidden_size):
-        super().__init__()
-        self.backbone = backbone
-        self.score = nn.Linear(hidden_size, 1)
-
-    def forward(self, input_ids, attention_mask):
-        out = self.backbone(input_ids, attention_mask=attention_mask, output_hidden_states=True)
-        h = out.hidden_states[-1]
-        last = attention_mask.long().sum(dim=1) - 1
-        row = torch.arange(h.size(0), device=h.device)
-        return self.score(h[row, last]).squeeze(-1)
-
-def preference_loss(scores_chosen, scores_rejected, margin=None, pair_mask=None):
-    # TRL RewardTrainer uses -logsigmoid(chosen - rejected), optionally with a margin.
-    # When scores are [prompts, pairs], average pairs within each prompt first.
-    diff = scores_chosen - scores_rejected
-    if margin is not None:
-        diff = diff - margin
-    losses = -F.logsigmoid(diff)
-    if pair_mask is not None:
-        pair_mask = pair_mask.to(losses.dtype)
-        pair_counts = pair_mask.sum(dim=-1).clamp_min(1)
-        per_prompt = (losses * pair_mask).sum(dim=-1) / pair_counts
-        valid_prompts = (pair_mask.sum(dim=-1) > 0).to(losses.dtype)
-        return (per_prompt * valid_prompts).sum() / valid_prompts.sum().clamp_min(1)
-    if losses.ndim > 1:
-        return losses.mean(dim=-1).mean()
-    return losses.mean()
-
-def train_preference_scorer(scorer, comparison_loader, optimizer):
-    # The loader can group all pairs from ranked prompts as [batch, pairs, tokens].
-    def score_pair_batch(input_ids, attention_mask):
-        if input_ids.dim() == 3:
-            bsz, pairs, seqlen = input_ids.shape
-            flat_scores = scorer(input_ids.reshape(bsz * pairs, seqlen),
-                                 attention_mask.reshape(bsz * pairs, seqlen))
-            return flat_scores.view(bsz, pairs)
-        return scorer(input_ids, attention_mask)
-
-    for batch in comparison_loader:
-        chosen = score_pair_batch(batch.input_ids_chosen, batch.attention_mask_chosen)
-        rejected = score_pair_batch(batch.input_ids_rejected, batch.attention_mask_rejected)
-        loss = preference_loss(chosen, rejected,
-                               margin=getattr(batch, "margin", None),
-                               pair_mask=getattr(batch, "pair_mask", None))
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-
-def token_rewards(scores, logprobs, ref_logprobs, masks, kl_coef):
-    # TRL's default KL penalty is logp - ref_logp, so reward = -beta * (logp - ref_logp).
-    kls = logprobs - ref_logprobs
-    non_score_rewards = -kl_coef * kls
-    rewards = non_score_rewards.clone()
-    for i, (score, mask) in enumerate(zip(scores, masks)):
-        last = mask.nonzero(as_tuple=False)[-1].item()
-        rewards[i, last] += score
-    return rewards, non_score_rewards, kls
-
-def masked_whiten(values, mask, shift_mean=True):
-    mean = masked_mean(values, mask)
-    var = masked_mean((values - mean) ** 2, mask)
-    whitened = (values - mean) * torch.rsqrt(var + 1e-8)
-    return whitened if shift_mean else whitened + mean
-
-def estimate_advantages(values, rewards, mask, gamma=1.0, lam=0.95):
-    # Same GAE recursion as TRL: delta_t = r_t + gamma V_{t+1} - V_t.
-    values = values * mask
-    rewards = rewards * mask
-    lastgaelam = 0
-    reversed_advantages = []
-    for t in reversed(range(rewards.shape[-1])):
-        nextvalues = values[:, t + 1] if t < rewards.shape[-1] - 1 else 0.0
-        delta = rewards[:, t] + gamma * nextvalues - values[:, t]
-        lastgaelam = delta + gamma * lam * lastgaelam
-        reversed_advantages.append(lastgaelam)
-    advantages = torch.stack(reversed_advantages[::-1]).transpose(0, 1)
-    returns = advantages + values
-    advantages = masked_whiten(advantages, mask).detach()
-    return values, advantages, returns
-
-def clipped_policy_loss(old_logprobs, values, logits, vpreds, logprobs,
-                        mask, advantages, returns, cliprange=0.2,
-                        cliprange_value=0.2, vf_coef=0.1):
-    vpred_clipped = torch.clamp(vpreds, values - cliprange_value, values + cliprange_value)
-    vf_losses1 = (vpreds - returns) ** 2
-    vf_losses2 = (vpred_clipped - returns) ** 2
-    vf_loss = 0.5 * masked_mean(torch.max(vf_losses1, vf_losses2), mask)
-
-    ratio = torch.exp(logprobs - old_logprobs)
-    pg_losses1 = -advantages * ratio
-    pg_losses2 = -advantages * torch.clamp(ratio, 1.0 - cliprange, 1.0 + cliprange)
-    pg_loss = masked_mean(torch.max(pg_losses1, pg_losses2), mask)
-
-    return pg_loss + vf_coef * vf_loss
-
-def train_policy(policy, value_model, scorer, reference_policy,
-                 prompt_loader, retention_loader, optimizer,
-                 kl_coef, retention_coef):
-    for prompts, retention_batch in zip(prompt_loader, retention_loader):
-        responses, old_logprobs = policy.generate_with_logprobs(prompts)
-        model_inputs = pack(prompts, responses)
-        response_mask = model_inputs.response_mask
-
-        with torch.no_grad():
-            ref_logprobs = reference_policy.logprobs(model_inputs)
-            scores = scorer(model_inputs.input_ids, model_inputs.attention_mask)
-            old_values = value_model(model_inputs)
-
-        rewards, _, _ = token_rewards(scores, old_logprobs, ref_logprobs, response_mask, kl_coef)
-        old_values, advantages, returns = estimate_advantages(old_values, rewards, response_mask)
-
-        logits, logprobs, vpreds = policy.forward_with_values(model_inputs)
-        ppo = clipped_policy_loss(old_logprobs.detach(), old_values.detach(), logits, vpreds,
-                                  logprobs, response_mask, advantages, returns.detach())
-
-        ptx = response_nll(policy, retention_batch.input_ids, retention_batch.loss_mask)
-
-        optimizer.zero_grad()
-        (ppo + retention_coef * ptx).backward()
-        optimizer.step()
-```
-
-The whole thing as one causal chain: the pretraining objective is misaligned with user intent and scale doesn't close the gap, so I fine-tune on demonstrations to enter instruction-following mode — but imitation can't tell better from worse and can't exceed the demonstrator. To get a "better-than" signal I'd optimize human preference directly, but humans can't ride inside an RL loop, so I fit a reward model to offline human *comparisons*; comparisons being more reliable than ratings, and the Bradley-Terry model turning "A beats B" into $\sigma(r_w - r_l)$ gives the $-\log\sigma$ pairwise loss. I then optimize the policy against that reward with PPO's clipped surrogate for a cheap trust region — but a learned reward gets gamed under hard optimization, so I add a per-token KL-to-SFT penalty that keeps the policy where the reward model is trustworthy. Finally, RL fine-tuning extracts an alignment tax that tightening KL can't repay, so I mix the pretraining gradient back in to anchor the capabilities while the PPO term keeps pushing on preference.
+When I write the code, the signs have to line up with the optimizer: comparison training minimizes $-\log\sigma(r_w-r_l)$, the token reward uses $-\beta(\log p-\log p_{\mathrm{ref}})$, and PPO minimizes the negative clipped surrogate with a `max`.
