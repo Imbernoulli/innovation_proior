@@ -168,8 +168,6 @@ hard zero floor.
 ## Final solver
 
 ```cpp
-// ale-30: Tower Placement for Signal Coverage.
-//
 // Minimise the number of chosen tower sites so that every demand node i
 // receives accumulated signal >= req[i], where a site j delivers power
 // P[i][j] to demand i.  This is the covering ILP

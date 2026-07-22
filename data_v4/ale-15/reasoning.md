@@ -206,8 +206,6 @@ holds at `≈ 1.9 s` inside the 2-second budget, with `< 5 MB` memory.
 ## Final solver
 
 ```cpp
-// ale-15 "Continuous Facility Layout".
-//
 // We are given N axis-aligned rectangles (facility footprints) with fixed sizes
 // and a W x H container. We choose an integer bottom-left corner for each
 // rectangle, keeping it fully inside the container, to MINIMISE
