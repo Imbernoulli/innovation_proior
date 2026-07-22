@@ -14,9 +14,9 @@ What makes a step rare-able? I get to pick, per node, which one child continues 
 
 $$s(c) \le \frac{s(v)}{2}.$$
 
-Every time a descent takes one of these "new-chain" edges — a step into a non-largest child — the subtree size of where I'm standing at least halves. The subtree size starts at $n$ (root) and can't drop below $1$, so a descent can take at most $\log_2 n$ such steps before the subtree would shrink below one node, which is impossible. So if I name the edge to the largest-subtree child the *heavy* edge and the rest *light* edges, and call a maximal run of consecutive heavy edges one chain, then any root-to-node path crosses a light edge — equivalently switches chains — at most $\log_2 n$ times, putting it on at most $O(\log n)$ chains. Notice this argument never mentioned the tree's shape; the halving comes purely from "$c$ is not the biggest child," so the broom, the caterpillar, the star-of-chains all obey the same $\log_2 n$ ceiling. Let me put a number on it to be sure I'm not fooling myself: at $n = 10^5$, $\log_2 n \approx 16.6$, so the worst descent touches at most $17$ chains, not the $10^5$ that the naive cut allowed. That is the gap I needed.
+Every time a descent takes one of these "new-chain" edges — a step into a non-largest child — the subtree size of where I'm standing at least halves. The subtree size starts at $n$ (root) and can't drop below $1$, so a descent can take at most $\log_2 n$ such steps before the subtree would shrink below one node, which is impossible. So if I name the edge to the largest-subtree child the *heavy* edge and the rest *light* edges, and call a maximal run of consecutive heavy edges one chain, then any root-to-node path crosses a light edge — equivalently switches chains — at most $\log_2 n$ times, putting it on at most $O(\log n)$ chains. Notice this argument never mentioned the tree's shape; the halving comes purely from "$c$ is not the biggest child," so the broom, the caterpillar, the star-of-chains all obey the same $\log_2 n$ ceiling. At $n = 10^5$, $\log_2 n \approx 16.6$, so the worst descent touches at most $17$ chains, not the $10^5$ that an unlucky cut allows.
 
-Let me sanity-check the "one continuing child" is well defined and that chains tile the tree. At each node I pick exactly one heavy child (the largest subtree; ties broken arbitrarily — if there are two equal-largest children, only one gets the heavy edge, and the halving still holds because the *other* equal one is then a non-largest child with subtree $\le s(v)/2$). Could a node be the heavy child of two parents? No — it has one parent. So the heavy edges form a set where each node has at most one heavy edge going down (its chosen heavy child) and at most one heavy edge coming in (it is the heavy child of at most its single parent). A graph where every vertex has in-degree and out-degree at most one in these edges is a disjoint union of simple paths — the heavy edges decompose into disjoint top-to-bottom runs, and every node lies on exactly one such chain (a node with no incoming heavy edge is the head; a node with no heavy child is a chain of length one). So the chains partition the vertices: disjoint and covering.
+The "one continuing child" rule has to actually tile the tree with chains. At each node I pick exactly one heavy child (the largest subtree; ties broken arbitrarily — if there are two equal-largest children, only one gets the heavy edge, and the halving still holds because the *other* equal one is then a non-largest child with subtree $\le s(v)/2$). Could a node be the heavy child of two parents? No — it has one parent. So the heavy edges form a set where each node has at most one heavy edge going down (its chosen heavy child) and at most one heavy edge coming in (it is the heavy child of at most its single parent). A graph where every vertex has in-degree and out-degree at most one in these edges is a disjoint union of simple paths — the heavy edges decompose into disjoint top-to-bottom runs, and every node lies on exactly one such chain (a node with no incoming heavy edge is the head; a node with no heavy child is a chain of length one). So the chains partition the vertices: disjoint and covering.
 
 Now the part I actually care about for the array: I want each chain to be a *contiguous* block of positions, so a query along (part of) a chain is one segment-tree range. This is where the DFS order I dismissed earlier comes back, but with a twist. Do the DFS, and at each node visit the **heavy child first**, before any light children. Then when I enter a node and walk down its heavy child, and that node's heavy child, and so on, I'm walking straight down a heavy chain, assigning consecutive `pos` values the whole way before I ever back up to take a light branch. So an entire heavy chain gets a run of consecutive `pos` values — top of the chain smallest, bottom largest. Each chain is now an interval `[pos[head], pos[bottom]]` of the array, where `head` is the topmost node of the chain. That's exactly the contiguity I need. And I'll store `head[v]` = the top node of $v$'s chain, so from any node I can see which chain it's on and jump to the top.
 
@@ -24,7 +24,7 @@ So `pos` lays all nodes into one flat array, chains are contiguous in it, and on
 
 Now answering `path_query(u, v)` by climbing chain by chain. The path is $u \to l \to v$. I don't even want to compute $l$ separately if I can avoid it — let me see if the climb finds it for free. Keep two pointers $u$ and $v$. If they're on the same chain (`head[u] == head[v]`), then the path between them is the slice of that one chain between their two positions, one range query, and I'm done. Otherwise they're on different chains. I want to lift one of them up a whole chain at a time. Which one? Lift the one whose chain *head is deeper*, because that node's chain head, being deeper, cannot be an ancestor of the other pointer — so the segment of the path on that chain, from the chain head down to the pointer, definitely belongs to the answer and can be aggregated now, and then I jump the pointer to the parent of its chain head, stepping up one light edge onto the next chain. Concretely: if `depth[head[u]] < depth[head[v]]` swap $u, v$ so $u$ is the one with the deeper head; aggregate the chain slice `query(pos[head[u]], pos[u])`; set `u = parent[head[u]]`. Repeat. Each iteration moves one pointer up one whole chain, i.e. across one light edge, and I argued a root-to-node path has $O(\log n)$ of those — so this loop runs $O(\log n)$ times. When the heads finally coincide, the two pointers are on the same chain, the deeper of them descended-from the shallower; the shallower one is the lowest common ancestor $l$, and the final `query` over `[pos[shallower], pos[deeper]]` adds the last stretch through $l$. The LCA dropped out of the climb — I never computed it on the side.
 
-I'm wary of an off-by-one here — double-counting the meeting node, or skipping the join. The structure of the argument is: while heads differ I aggregate `[pos[head[u]], pos[u]]` and then jump to `parent[head[u]]`, which is strictly above the chain I just consumed — so no overlap with what's left, and no gap either, because the parent of the chain head is the very next node up the path. When heads match I take `[pos[min], pos[max]]` inclusive, which should include $l$ exactly once and every node from $l$ down to the deeper pointer. But "should" is exactly the kind of claim I keep getting wrong by one, so let me not trust the prose and instead run the whole thing on a concrete tree.
+I'm wary of an off-by-one here — double-counting the meeting node, or skipping the join. The structure of the argument is: while heads differ I aggregate `[pos[head[u]], pos[u]]` and then jump to `parent[head[u]]`, which is strictly above the chain I just consumed — so no overlap with what's left, and no gap either, because the parent of the chain head is the very next node up the path. When heads match I take `[pos[min], pos[max]]` inclusive, which includes $l$ exactly once and every node from $l$ down to the deeper pointer. That prose is exactly where off-by-ones hide, so I run the whole thing on a concrete tree.
 
 Take this tree, rooted at $1$, with node values $10,20,\dots,70$:
 
@@ -42,9 +42,9 @@ Take this tree, rooted at $1$, with node values $10,20,\dots,70$:
 
 Subtree sizes: $s(1)=7$, $s(2)=4$, $s(3)=2$, $s(4)=2$, $s(5)=1$, $s(6)=1$, $s(7)=1$. Heavy children: at $1$, children $2$ (size $4$) and $3$ (size $2$), so heavy child is $2$; at $2$, children $4$ (size $2$) and $5$ (size $1$), heavy is $4$; at $4$, only child $7$, heavy is $7$; at $3$, only child $6$, heavy is $6$. The heavy edges $1\!-\!2$, $2\!-\!4$, $4\!-\!7$ form one chain with head $1$; $3\!-\!6$ is a chain with head $3$; and $5$ is a chain of length one. Three chains for seven nodes.
 
-Heavy-first DFS from $1$: I descend the heavy chain $1,2,4,7$ first, handing out `pos` $0,1,2,3$; then unwind to take light branches — node $5$ (light child of $2$) gets `pos` $4$; then node $3$ (light child of $1$) gets `pos` $5$ and its heavy child $6$ gets `pos` $6$. So `pos` $=\{1\!:\!0,\,2\!:\!1,\,4\!:\!2,\,7\!:\!3,\,5\!:\!4,\,3\!:\!5,\,6\!:\!6\}$, and `head` $=\{1\!:\!1,2\!:\!1,4\!:\!1,7\!:\!1,\,5\!:\!5,\,3\!:\!3,6\!:\!3\}$. Reading the values into `pos` order gives the array $[10,20,40,70,50,30,60]$ — and the chain $1,2,4,7$ does sit in the contiguous block of positions $0,1,2,3$, exactly the contiguity the heavy-first DFS was supposed to produce. (I ran the build code on this tree and it printed precisely these `pos`, `head`, and array values, so the second-pass stack ordering is doing what I described.)
+Heavy-first DFS from $1$: I descend the heavy chain $1,2,4,7$ first, handing out `pos` $0,1,2,3$; then unwind to take light branches — node $5$ (light child of $2$) gets `pos` $4$; then node $3$ (light child of $1$) gets `pos` $5$ and its heavy child $6$ gets `pos` $6$. So `pos` $=\{1\!:\!0,\,2\!:\!1,\,4\!:\!2,\,7\!:\!3,\,5\!:\!4,\,3\!:\!5,\,6\!:\!6\}$, and `head` $=\{1\!:\!1,2\!:\!1,4\!:\!1,7\!:\!1,\,5\!:\!5,\,3\!:\!3,6\!:\!3\}$. Reading the values into `pos` order gives the array $[10,20,40,70,50,30,60]$ — and the chain $1,2,4,7$ does sit in the contiguous block of positions $0,1,2,3$, exactly the contiguity the heavy-first DFS was supposed to produce.
 
-Now query the path between $7$ and $6$. By hand the path is $7\to4\to2\to1\to3\to6$, and its sum is $70+40+20+10+30+60 = 230$. Let me run the climb and see if it lands there without my ever computing the LCA. Start $u=7,\ v=6$. Heads: `head[7]`$=1$ (depth $0$), `head[6]`$=3$ (depth $1$). The deeper head is `head[6]`, so I lift $v=6$: aggregate `[pos[head[6]], pos[6]]` $=$ `[pos[3], pos[6]]` $=$ `[5,6]`, which is nodes $3$ and $6$, values $30+60 = 90$. Jump $v$ to `parent[head[6]]` $=$ `parent[3]` $=1$. Now $u=7,\ v=1$, and `head[7]` $=$ `head[1]` $=1$ — heads coincide, loop ends after exactly one iteration. The shallower pointer is $v=1$: that is the LCA, and I never asked for it directly; it just fell out as the surviving pointer. Final range `[pos[1], pos[7]]` $=$ `[0,3]`, nodes $1,2,4,7$, values $10+20+40+70 = 140$. Total $90 + 140 = 230$. That matches the by-hand path sum, the meeting node $1$ was counted once (only in the final range, not in the chain slice for $6$), and no node was skipped. I also re-ran the code's `path_query(7,6)` and it returned $230$, and checked all $49$ ordered pairs $(u,v)$ on this tree against a brute-force path walk — every one agreed. So the off-by-one I was worried about isn't there.
+Now query the path between $7$ and $6$. By hand the path is $7\to4\to2\to1\to3\to6$, and its sum is $70+40+20+10+30+60 = 230$. Let me run the climb and see if it lands there without my ever computing the LCA. Start $u=7,\ v=6$. Heads: `head[7]`$=1$ (depth $0$), `head[6]`$=3$ (depth $1$). The deeper head is `head[6]`, so I lift $v=6$: aggregate `[pos[head[6]], pos[6]]` $=$ `[pos[3], pos[6]]` $=$ `[5,6]`, which is nodes $3$ and $6$, values $30+60 = 90$. Jump $v$ to `parent[head[6]]` $=$ `parent[3]` $=1$. Now $u=7,\ v=1$, and `head[7]` $=$ `head[1]` $=1$ — heads coincide, loop ends after exactly one iteration. The shallower pointer is $v=1$: that is the LCA, and I never asked for it directly; it just fell out as the surviving pointer. Final range `[pos[1], pos[7]]` $=$ `[0,3]`, nodes $1,2,4,7$, values $10+20+40+70 = 140$. Total $90 + 140 = 230$. That matches the by-hand path sum, the meeting node $1$ was counted once (only in the final range, not in the chain slice for $6$), and no node was skipped — the off-by-one worry is dead.
 
 One more thing the trace settles: the climb never inspected the values, only positions and depths — at each step it asked the segment tree to combine a range, whatever "combine" means. So swapping the tree's combine to `max` (and identity to $-\infty$) leaves the climb untouched and returns the path maximum; the path-walking logic is aggregate-agnostic, and only the segment tree changes.
 
@@ -58,187 +58,5 @@ For the deliverable I want the single-file C++ that the judge actually scores �
 
 If I cannot confidently implement the heavy-child-first chain decomposition, the `pos`-indexed sum/max segment trees, and the chain-climb LCA logic within budget, I will fall back to the simpler standard HLD path-query variant I can verify and ship that, because a plain correct submission beats an ambitious broken one.
 
-```cpp
-// Heavy-light decomposition: online path sum / path max on a weighted tree.
-// Reads from stdin: n; then n-1 edges "a b" (1-based); then n node weights;
-// then q; then q operations, one per line:
-//   CHANGE u t  -> set node u's weight to t
-//   QMAX u v    -> print max weight on the path u..v
-//   QSUM u v    -> print sum of weights on the path u..v
-// Prints one line per QMAX/QSUM query to stdout. (ZJOI2008 "Tree Statistics".)
-#include <bits/stdc++.h>
-using namespace std;
 
-const long long NEG_INF = LLONG_MIN / 4;
-
-int n;
-vector<vector<int>> adj;
-vector<long long> wt;           // node weights, 1-based
-vector<int> parent, depth_, sz, heavy, head, pos_;
-
-// Two segment trees over the pos[] array: one for sum, one for max.
-struct SegSum {
-    int m;
-    vector<long long> t;
-    void init(const vector<long long>& base) {
-        m = (int)base.size();
-        t.assign(2 * m, 0);
-        for (int i = 0; i < m; i++) t[m + i] = base[i];
-        for (int i = m - 1; i > 0; i--) t[i] = t[2 * i] + t[2 * i + 1];
-    }
-    void update(int i, long long val) {
-        for (t[i += m] = val, i >>= 1; i; i >>= 1)
-            t[i] = t[2 * i] + t[2 * i + 1];
-    }
-    long long query(int l, int r) { // inclusive [l, r]
-        long long res = 0;
-        for (l += m, r += m + 1; l < r; l >>= 1, r >>= 1) {
-            if (l & 1) res += t[l++];
-            if (r & 1) res += t[--r];
-        }
-        return res;
-    }
-};
-
-struct SegMax {
-    int m;
-    vector<long long> t;
-    void init(const vector<long long>& base) {
-        m = (int)base.size();
-        t.assign(2 * m, NEG_INF);
-        for (int i = 0; i < m; i++) t[m + i] = base[i];
-        for (int i = m - 1; i > 0; i--) t[i] = max(t[2 * i], t[2 * i + 1]);
-    }
-    void update(int i, long long val) {
-        for (t[i += m] = val, i >>= 1; i; i >>= 1)
-            t[i] = max(t[2 * i], t[2 * i + 1]);
-    }
-    long long query(int l, int r) { // inclusive [l, r]
-        long long res = NEG_INF;
-        for (l += m, r += m + 1; l < r; l >>= 1, r >>= 1) {
-            if (l & 1) res = max(res, t[l++]);
-            if (r & 1) res = max(res, t[--r]);
-        }
-        return res;
-    }
-};
-
-SegSum segSum;
-SegMax segMax;
-
-// First pass (iterative): parent, depth, subtree size, heavy child.
-// Second pass (iterative, heavy child first): head[] and pos[], laying each
-// heavy chain into a contiguous block. Iterative to survive depth-n bamboos.
-void build(int root) {
-    parent.assign(n + 1, 0);
-    depth_.assign(n + 1, 0);
-    sz.assign(n + 1, 1);
-    heavy.assign(n + 1, 0);   // 0 = none (nodes are 1-based)
-    head.assign(n + 1, 0);
-    pos_.assign(n + 1, 0);
-
-    vector<int> order;
-    order.reserve(n);
-    vector<char> visited(n + 1, 0);
-    vector<int> stk;
-    stk.push_back(root);
-    parent[root] = 0;
-    depth_[root] = 0;
-    while (!stk.empty()) {
-        int v = stk.back(); stk.pop_back();
-        if (visited[v]) continue;
-        visited[v] = 1;
-        order.push_back(v);
-        for (int c : adj[v]) if (c != parent[v]) {
-            parent[c] = v;
-            depth_[c] = depth_[v] + 1;
-            stk.push_back(c);
-        }
-    }
-    for (int i = (int)order.size() - 1; i >= 0; i--) { // children before parents
-        int v = order[i];
-        int best = 0;
-        for (int c : adj[v]) if (c != parent[v]) {
-            sz[v] += sz[c];
-            if (sz[c] > best) { best = sz[c]; heavy[v] = c; }
-        }
-    }
-
-    // Heavy-child-first DFS: stack carries (vertex, chain head). Push light
-    // children first so the heavy child pops next (LIFO) -> chain stays contiguous.
-    int cur = 0;
-    vector<pair<int,int>> stk2;
-    stk2.emplace_back(root, root);
-    while (!stk2.empty()) {
-        auto [v, h] = stk2.back(); stk2.pop_back();
-        head[v] = h;
-        pos_[v] = cur++;
-        for (int c : adj[v]) if (c != parent[v] && c != heavy[v])
-            stk2.emplace_back(c, c);
-        if (heavy[v] != 0) stk2.emplace_back(heavy[v], h);
-    }
-
-    vector<long long> base(n, 0);
-    for (int v = 1; v <= n; v++) base[pos_[v]] = wt[v];
-    segSum.init(base);
-    segMax.init(base);
-}
-
-void updateNode(int u, long long val) {
-    wt[u] = val;
-    segSum.update(pos_[u], val);
-    segMax.update(pos_[u], val);
-}
-
-// Climb chain by chain, always lifting the deeper-headed pointer. The LCA
-// falls out as the surviving pointer; the climb is aggregate-agnostic.
-long long pathSum(int u, int v) {
-    long long res = 0;
-    while (head[u] != head[v]) {
-        if (depth_[head[u]] < depth_[head[v]]) swap(u, v);
-        res += segSum.query(pos_[head[u]], pos_[u]);
-        u = parent[head[u]];
-    }
-    if (depth_[u] > depth_[v]) swap(u, v);
-    res += segSum.query(pos_[u], pos_[v]);
-    return res;
-}
-
-long long pathMax(int u, int v) {
-    long long res = NEG_INF;
-    while (head[u] != head[v]) {
-        if (depth_[head[u]] < depth_[head[v]]) swap(u, v);
-        res = max(res, segMax.query(pos_[head[u]], pos_[u]));
-        u = parent[head[u]];
-    }
-    if (depth_[u] > depth_[v]) swap(u, v);
-    res = max(res, segMax.query(pos_[u], pos_[v]));
-    return res;
-}
-
-int main() {
-    ios_base::sync_with_stdio(false);
-    cin.tie(nullptr);
-    if (!(cin >> n)) return 0;
-    adj.assign(n + 1, {});
-    wt.assign(n + 1, 0);
-    for (int i = 0; i < n - 1; i++) {
-        int a, b; cin >> a >> b;
-        adj[a].push_back(b);
-        adj[b].push_back(a);
-    }
-    for (int i = 1; i <= n; i++) cin >> wt[i];
-    build(1);
-    int q; cin >> q;
-    string op; int u, v;
-    while (q--) {
-        cin >> op >> u >> v;
-        if (op == "CHANGE") updateNode(u, v);
-        else if (op == "QMAX") cout << pathMax(u, v) << '\n';
-        else if (op == "QSUM") cout << pathSum(u, v) << '\n';
-    }
-    return 0;
-}
-```
-
-The whole chain of reasoning: a path can sweep $\Theta(n)$ nodes, so re-summing it per query is $O(nq)$ and hopeless; a segment tree would give $O(\log n)$ per query if the path's nodes lived in a few contiguous array ranges, but plain DFS order makes subtrees contiguous and vertical ancestor-chains scattered; so I cut the tree into chains by always continuing into the largest-subtree (heavy) child, which forces any root-to-node path to cross only $O(\log n)$ light edges because each light step at least halves the subtree size; a heavy-child-first DFS lays every chain into a contiguous block of one flat array, so one segment tree handles all updates and range queries; and a path query climbs chain by chain, always lifting the deeper-headed pointer, which both aggregates each chain slice in one range query and lands the two pointers on the LCA — $O(\log n)$ chains times $O(\log n)$ per range query, $O(\log^2 n)$ per query, with $O(n)$ build and $O(\log n)$ updates.
+The deliverable assembles directly from this: the two iterative passes fill `parent`/`depth`/`sz`/`heavy` and then `head`/`pos`, the weights land in the array in `pos` order, two segment trees (sum and max) sit over that array, and `QSUM`/`QMAX` are the same chain-climb driven against the corresponding tree. The code is in the answer.
