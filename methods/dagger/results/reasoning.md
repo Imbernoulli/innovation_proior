@@ -456,19 +456,3 @@ class Top1DaggerGKDTrainer(GKDTrainer):
 
         return Trainer.training_step(self, model, inputs, num_items_in_batch)
 ```
-
-To recap the causal chain so it stays straight: plain behavior cloning trains on the expert's
-states but is graded on its own, and that mismatch makes its cost provably `T²ε` — quadratic,
-tight, and caused by never seeing the states its own mistakes create. Forward training fixes the
-distribution by training each timestep on its induced states and gets `uTε`, but builds a
-non-stationary policy you can't stop early. SMILe restores a stationary policy but only as an
-unstable stochastic mixture at a huge iteration cost. The resolution is to keep collecting states
-under the *learner's own* (optionally expert-mixed, with the mixing faded out) rollouts, label
-them with the expert, **aggregate all rounds and refit one policy** — which is Follow-The-Leader,
-hence a no-regret online learner — so the loss under the policy's own distribution is driven to
-`ε_N + γ_N` in the infinite-sample analysis, the gap between the mixed and learned policies is
-`≤ 2Tβ_i` and vanishes as `\bar β_N → 0`, and finite samples add the Azuma–Hoeffding term
-`ℓ_max √(2log(1/δ)/(mN))`. Once that sampling term is made small enough — `mN = O(T²log(1/δ))`
-for surrogate loss, or `O(u²T²log(1/δ))` after multiplying through the task-cost bound — the
-forward-training telescoping argument gives a produced *stationary deterministic* policy with
-`J(π̂) ≤ J(π*) + uTε_N + O(1)`; in the infinite-sample case this needs only `N = Õ(uT)`.

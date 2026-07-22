@@ -267,21 +267,3 @@ class UniPCBH:
             x = self.predictor(x, sigma, sigmas[i + 1], m_list, lam_list, order_p)
         return x
 ```
-
-The causal chain end to end: I want guided sampling in the extreme few-step regime, where every
-*predictor-only* solver (DDIM, DPM-Solver++, DEIS) leaves an uncorrected leading truncation error
-because order alone gives diminishing returns and is amplified by guidance. The cheapest extra order is
-a *corrector* — evaluate at the predicted point and refine — and in a multistep diffusion loop that
-evaluation is *already taken* at the start of the next step, so the corrector is free in NFE.
-Correctors were absent only because each order needs bespoke algebra; the fix is to write predictor and
-corrector as one update whose high-order coefficients come from solving a small linear system
-`R rho = b` in the `lambda`-ratios — which I checked reproduces the exact integral on a linear
-integrand to machine zero, and whose corrector is exact one polynomial degree above the same-cost
-predictor (quadratic error `0.042` for the predictor, `~0` for the corrector). The predictor solves the
-reduced `(p-1)`-system and the corrector the full `p`-system using the extra evaluation; the smallest
-cases are hardcoded to `0.5`, which I verified is the `hh -> 0` limit of the solve rather than its exact
-finite-`hh` value (`0.508` at `hh=-0.1`). A free scalar `B(h)` (default `bh2 = e^{hh}-1`) sets the
-error constant; `expm1` keeps the small-`h` factors honest; the order ramps with history and drops on
-the final step; and the whole thing runs at one network call per step — the same NFE as
-DPM-Solver++(kM), but with each step's leading error corrected, which is what wins in the 5–10 step
-regime.

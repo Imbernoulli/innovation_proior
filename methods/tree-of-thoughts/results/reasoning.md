@@ -157,5 +157,3 @@ class Game24Task(Task):
         value_map = {'impossible': 0.001, 'likely': 1, 'sure': 20}   # sure dominates; impossible ~kills
         return sum(v * names.count(name) for name, v in value_map.items())
 ```
-
-So the chain is: a left-to-right LM commits to pivotal early tokens and can't revise, which kills it on search-flavored problems; lift the unit of reasoning from token (too small to judge) or whole solution (too big to find) to a *thought* (one step, sized to be both generable-in-variety and evaluable); arrange thoughts as a tree of states; use the LM itself, prompted to deliberate, as the search heuristic — proposing or sampling next thoughts depending on whether the step-space is constrained or rich, and valuing or voting on states depending on whether progress is absolutely or only relatively scorable; and run BFS with a value-pruned beam where the tree is shallow, DFS with threshold-pruning and backtracking where it's deep. No training, just a prompted model deliberately searching its own thoughts.

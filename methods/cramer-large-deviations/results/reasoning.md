@@ -236,5 +236,3 @@ Logarithmic (large-deviation principle) form: for i.i.d. `X_i` with `Λ(t) = log
 ```
 lim_{n→∞} (1/n) log Prob( (X_1+…+X_n)/n ≥ a ) = − Λ*(a),   Λ*(a) = sup_t [ t a − Λ(t) ].
 ```
-
-The causal chain: I needed the *probability* of a sum at order `n`, not just at order `√n`; the central limit theorem goes trivial there, and additive expansions of `F_n − Φ` chase the wrong (centre) quantity; the only sharp tool, the CLT/LLN, works at the centre, so I exponentially re-weight the law (Esscher's tilt) to slide the rare value to the centre; the tilt is dialed by `h`, and the unique `h` that makes the tilted mean equal the target value is the saddle point; un-tilting pays an explicit exponential factor whose rate, evaluated at the saddle, is the Legendre transform of the cumulant generating function; Markov-on-`e^{tS_n}` with the free `t` optimized gives this exponent as an upper bound directly, and tilting-plus-LLN gives the matching lower bound, the two coinciding by convex duality — so the rate is *exactly* the Legendre transform, strictly positive away from the mean, which is precisely the magnitude a risk reserve must be sized against.

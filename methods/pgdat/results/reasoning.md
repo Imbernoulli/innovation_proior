@@ -116,5 +116,3 @@ class AdversarialTrainer:
 
         return {'loss': loss.item()}
 ```
-
-To recap the chain: I want a defense with a precise guarantee, so I write robustness as the saddle point `min_θ E[max_{δ∈S} L(θ,x+δ,y)]`, in which attack and defense are the inner and outer halves of one problem. The objection that the inner non-concave max is intractable loses force when I probe the loss landscape and find that random-start PGD lands at well-concentrated loss values across restarts and distinct basins, which makes PGD a reliable, universal first-order adversary. The objection that the outer step needs differentiation through the inner optimization dissolves through Danskin's theorem in the active-maximizer case: the gradient of the max is the gradient at the maximizer, so freezing the PGD-found perturbation and taking a plain SGD step on the adversarial loss is the descent step I need for the local adversarial objective. Put together with enough model capacity to represent the more contorted robust boundary, the procedure is: random-start `ℓ_∞` PGD to craft the worst-case batch, then one ordinary cross-entropy SGD step on it.

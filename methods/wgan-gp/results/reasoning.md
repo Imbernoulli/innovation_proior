@@ -169,5 +169,3 @@ def train_step(generator, critic, opt_g, opt_c, real, noise_dim,
 #   opt_c = torch.optim.Adam(critic.parameters(),    lr=1e-4, betas=(0.0, 0.9))
 #   opt_g = torch.optim.Adam(generator.parameters(), lr=1e-4, betas=(0.0, 0.9))
 ```
-
-The causal chain in one breath: disjoint manifolds kill the JS gradient, so move to the Earth-Mover distance and its 1-Lipschitz dual; weight clipping enforces that dual constraint badly (simple critics, exploding/vanishing gradients), so enforce the real constraint — bounded input-gradient — directly and softly; the optimal critic provably has unit-norm gradients on generated-to-real coupling segments, so penalize (||∇D|| - 1)² on uniformly interpolated real/fake points with λ = 10, drop batch norm for layer norm to keep the penalty per-example, and train a near-optimal critic with momentum-free Adam.

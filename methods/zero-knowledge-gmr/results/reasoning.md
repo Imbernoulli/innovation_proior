@@ -412,16 +412,3 @@ root protocol, sound to `2^{-|x|}`, simulated identically by the rewinding loop)
 nonresiduosity a statistically zero-knowledge one (the two-types cut-and-choose, simulated by the
 find-a-second-special-string loop) — the first zero-knowledge proofs for languages not known to be
 efficiently recognizable.
-
-The causal chain, end to end: a static NP proof leaks its witness because the verifier re-checks it, so
-I add interaction and randomness to let the verifier be convinced by the prover *passing random
-challenges* rather than by holding a certificate; "the verifier learns nothing extra" can only be a
-*computational* statement, so I define it as the verifier's *view* being reproducible by an efficient
-*simulator* given only `x ∈ L`, with indistinguishability borrowed from semantic-secure encryption and
-graded perfect/statistical/computational; the definition must range over all cheating verifiers (it's
-the prover that is zero-knowledge), give each its side information (so it composes), and put the
-verifier's coins in the view (so it catches the `gcd` leak); the simulator wins by *rewinding* — guess
-the secret challenge, build the transcript backwards, retry — which is impossible for a real prover and
-is exactly why a real prover gives nothing away; and quadratic residuosity (perfect) and
-nonresiduosity (statistical) are the witnesses that this definition is satisfiable for languages whose
-membership no one knows how to decide efficiently.

@@ -234,5 +234,3 @@ def build_strategy(config: TaskConfig) -> Strategy:
     return Strategy(config)
 
 ```
-
-So the chain that holds up: the random start sits at `|m| ~ d^{-1/2}`, so a degree-`s` link gives only `~ d^{-s/2}` signal at the equator; tying the model to one trainable direction and freezing the one-dimensional random-feature dictionary collapses the population loss to a scalar function of `m`, which in the ideal limit is monotone with stationary points only at the equator and the poles; the random-feature/RKHS bounds (needing `tau>1` for `beta>0`) keep the finite-width critical set from growing spurious middle points; empirical concentration plus a time-scale schedule lets gradient flow escape the degenerate equator and reach a pole at `Otilde(d^s)` for ReLU when `s>2`; and a separate ridge readout refit recovers a dimension-free link-estimation rate. The MLS-Bench implementation is the fixed-MLP version of the same bias-freezing idea, and its faithful code artifact is the local `frozen_bias.edit.py` block above.

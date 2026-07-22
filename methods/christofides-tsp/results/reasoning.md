@@ -223,16 +223,3 @@ def _shortcutting(circuit):
     nodes.append(nodes[0])     # close the tour
     return nodes
 ```
-
-The causal chain, start to finish: I needed a computable lower bound on `OPT`, and deleting an edge
-from the optimal tour showed the MST is one — `d(MST) <= OPT`. Turning a tree into a tour needs a
-closed covering walk, which needs all-even degrees (Euler); doubling the tree achieves that but costs
-a full extra copy of the MST, giving factor 2. The slack is that doubling fixes parity everywhere,
-when only the odd-degree vertices `O` are broken. Flipping the parity of exactly `O` is what a perfect
-matching on `O` does — one added edge per `O`-vertex — and `|O|` is even by the handshake lemma so it
-exists; take the cheapest one. Its cost is at most `OPT/2`, because shortcutting `OPT` onto `O`
-produces an even cycle of cost no more than `OPT`, and that even cycle splits into two perfect
-matchings whose total is its length. The cheaper one is at most half, and the minimum matching beats
-it. MST plus matching is even-degree and connected, so it has an Eulerian circuit of cost
-`d(MST) + d(P) <= OPT + OPT/2`, and shortcutting yields a Hamiltonian tour of cost at most
-`(3/2) OPT`.

@@ -162,5 +162,3 @@ def cem_plan(cell, reward_head, current_state, action_shape,
         stddev = sqrt(variance + 1e-6)
     return mean
 ```
-
-That gives me the complete causal chain. I learn a filtering latent dynamics model from pixel sequences; the state has deterministic memory and stochastic uncertainty; all image information passes through the sampled latent; the objective is reconstruction and reward likelihood minus posterior-to-prior KL with free nats; optional latent overshooting trains open-loop consistency across distances without image generation; and the policy is CEM/MPC in latent space, using predicted rewards and re-planning after each new observation.

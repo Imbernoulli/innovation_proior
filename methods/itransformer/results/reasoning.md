@@ -201,5 +201,3 @@ class Model(nn.Module):
             return dec_out[:, -self.pred_len:, :], attns
         return dec_out[:, -self.pred_len:, :]
 ```
-
-The causal chain is now clean. Temporal-token Transformers mix heterogeneous delayed variates into each timestamp token, normalize that mixture, and attend over an ordered axis with a permutation-friendly operator. Linear and MLP forecasters expose that temporal dependency is better handled by dense per-series maps. If I invert the tokenization, each token becomes one whole variate history; attention operates on the unordered variate set and supplies the missing multivariate interaction; the FFN and projection handle temporal representation and forecasting per token; LayerNorm stops blending unrelated channels; and the optional outer mean/std normalization handles window-level shift with the exact biased-variance plus $10^{-5}$ constants above.

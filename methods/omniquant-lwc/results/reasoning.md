@@ -208,15 +208,3 @@ class UniformAffineQuantizer(nn.Module):
         scale, zero_point = self.calibration(x)
         return self.fake_quant(x, scale, zero_point)
 ```
-
-The causal chain: PTQ collapses at low bit-widths because the min-max cover spends its few codes
-faithfully spanning outliers and coarsely rounds the bulk, irreversibly — measured at ≈1.8e-3 group MSE
-on the toy → the fix is to clip the range inward, but a swept curve shows the optimum is a *moderate*
-group-specific trim (≈0.94×) and that over-clipping backfires (≈30x worse), so the amount must be chosen
-per group against the loss, i.e. *learned* → learning needs a gradient through the round, supplied by the
-straight-through estimator → parameterize the clip as a sigmoid-gated factor so it can only shrink the
-range, starts at the min-max cover (`sigmoid(4) = 0.982`) and improves from there, with a gradient of
-≈0.018 at the init that stays stable at two bits → optimize the factors with a PTQ-grade *per-block local
-reconstruction* MSE on a small calibration set, no end-to-end backprop → recovering near-QAT low-bit
-accuracy at a PTQ budget, with activation outliers left to a complementary equivalent-transformation
-mechanism in weight-activation settings.

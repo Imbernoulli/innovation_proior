@@ -224,5 +224,3 @@ class PoweredDescentGuidance:
             return None
         return u.value * np.exp(z.value)
 ```
-
-The causal chain is now clear to me: the physical thrust band is an annulus because of the lower thrust limit; a slack Γ lifts it to a convex cone-and-box set; the maximum-principle and controllability argument force ‖T_c‖ = Γ at the optimum, so the lift is lossless for the control constraint; u = T_c/m, σ = Γ/m, and z = ln m make the dynamics linear; the exact thrust bounds become exponential in z, and the log-mass envelopes let me choose the quadratic upper approximation for the floor and the affine lower approximation for the ceiling with the correct inequality directions; pointing becomes a half-space in the lifted variables; glide slope and speed remain cones; the fixed-time transcription is an SOCP, and a one-dimensional flight-time search plus the two-step closest-landing/fuel solve covers the reachable and unreachable target cases.

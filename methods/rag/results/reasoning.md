@@ -128,5 +128,3 @@ def train(retriever, generator, data, steps, n_docs, mode="sequence"):
             loss = ragsequence_nll(seq_logits, y, doc_scores, n_docs).mean()
         opt.zero_grad(); loss.backward(); opt.step()
 ```
-
-The causal chain: a closed-book parametric model can't revise, can't cite, and hallucinates because its only memory is its weights; so give a general-purpose seq2seq generator a second, non-parametric memory of raw retrievable text, which makes knowledge editable and inspectable; with no labels on which document to use, treat the document as a latent variable and maximize the marginal likelihood of the output, which trains the retriever purely from the generation signal; build the dense retriever and the index from off-the-shelf pre-trained pieces and freeze the document encoder so the index never needs rebuilding; and offer two marginalizations — one document per sequence for short focused answers, a different document per token for blending evidence — that collapse to the same distribution whenever the target has one generated token.

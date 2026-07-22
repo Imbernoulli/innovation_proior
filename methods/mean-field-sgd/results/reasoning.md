@@ -154,5 +154,3 @@ def train_step(model, optimizer, x, y) -> float:
     optimizer.step()
     return float(loss.item())
 ```
-
-The causal chain in one breath: choose `1/N` scaling so the weights move and features can adapt to the hidden subset; sparsity plus the symmetric Gaussian init collapse SGD to a dimension-free gradient flow whose signal weights begin at the origin; from there a coordinate only gets a gradient once the supports below it are nonzero, so components are picked up in increasing degree at rate `t^{2^{k-1}}`; that climb reaches zero risk iff the supports can be ordered to add one new coordinate at a time, with the activation's nonzero derivatives at the origin keeping the cascade alive and the random readout giving the diversity that makes the final linear phase converge — and the bare degree-3 monomial, leaping straight to a high-degree support, is frozen at the origin and never learned.

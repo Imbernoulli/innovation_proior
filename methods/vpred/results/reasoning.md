@@ -111,24 +111,3 @@ def predict_x0(model_output, x_t, timesteps, schedule):
     sqrt_one_minus_alpha = schedule["sqrt_one_minus_alpha"][timesteps].view(-1, 1, 1, 1)  # sigma_t
     return sqrt_alpha * x_t - sqrt_one_minus_alpha * model_output
 ```
-
-The causal chain, end to end: noise prediction recovers the clean image by dividing by
-`alpha_t`, which is fine in the many-step regime but amplifies output errors without bound as
-`alpha_t -> 0` and collapses to a degenerate, zero-weighted task at SNR zero — invisible with
-hundreds of steps, fatal with few. Predicting the clean image directly cures the noisy end but
-breaks symmetrically at the clean end, dividing by `sigma_t -> 0` for the noise it implies. The
-two failures sit at opposite ends because both read off *fixed* axes of the `(x, eps)` plane,
-and the forward process is a rotation in that plane — `z_t = cos(phi) x + sin(phi) eps` with
-`phi = arctan(sigma_t / alpha_t)`. Predicting the *tangent* velocity `v = d z / d phi =
-alpha_t eps - sigma_t x` uses the direction that moves with `z_t`, making `{z_t, v}` an
-orthonormal rotation of `{x, eps}` whose inverse is bounded, so the recovery `x_hat = alpha_t z_t
-- sigma_t v` never divides by a vanishing coefficient and `v` smoothly becomes `eps` at high SNR
-and `-x` at low SNR — each parameterization's good behavior, used where it belongs. In this
-frame a DDIM step is a pure rotation by an angle `phi_s - phi_t`, with step coefficients that
-depend only on the angular step and not on the SNR, which is exactly why `v` stays stable when
-the steps are few and large. Plain mean-squared error on `v` works out to a clean-image loss
-weighted by `1 + alpha_t^2/sigma_t^2`, the "SNR + 1" weighting, which matches the proven SNR
-weighting at high SNR but floors the weight at one at SNR zero instead of vanishing there, so the
-low-SNR end the few-step sampler depends on keeps contributing to the gradient. The recovery is
-the exact algebraic inverse of the target, so training and sampling are consistent, and the
-whole thing is two lines that fill the two coupled slots in the existing harness.

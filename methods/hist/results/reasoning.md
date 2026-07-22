@@ -234,19 +234,3 @@ two concepts (the empty column dropped), the hidden stage discovered four concep
 `|e_shared_back + i_shared_back + individual_info − x_hidden|` came out at ~2e-7 (machine precision,
 confirming the decomposition is exact), and the output was one scalar per stock. The shapes and the
 edge-case handling are what the derivation predicted.
-
-So the causal chain. I was stuck with a per-stock encoder that can't see cross-stock structure, and
-the obvious fix — graph attention over a curated stock graph — fails twice: its edges are frozen so
-it can't track relevance that drifts day to day, and it's blind to themes the curators never
-labeled. Treating a concept as a node with a date-specific representation makes stock-concept
-relevance recomputed, not frozen: initialize each concept as a smoothed aggregate of member stocks,
-then let each stock choose a current mixture of concept vectors by cosine similarity and a softmax
-over concepts. The full concept-correction equation uses the other axis — softmax over stocks for a
-fixed concept — when I want to rewrite the concept nodes themselves. To reach the themes that are not
-labeled at all, I run a parameter-free clustering on the residual embedding after subtracting what
-the predefined module explained: seed one concept per stock, zero the diagonal so a stock cannot pick
-itself, connect each stock to its most similar other seed, delete empty seeds, and the survivors are
-discovered hidden concepts. A final residual leaves each stock's individual signal. The
-backcast-subtract telescoping is exact; the matching forecast-sum is the design choice that recombines
-the three slices additively, and an MSE objective over daily cross-sections trains the whole thing end
-to end.

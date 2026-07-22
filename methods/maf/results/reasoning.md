@@ -351,16 +351,3 @@ for x in dataloader:
     loss = -maf.log_prob(x).mean()
     optimizer.zero_grad(); loss.backward(); optimizer.step()
 ```
-
-So the causal chain: I wanted exact, one-pass density of arbitrary data, which pointed me at
-autoregressive models for the exact likelihood and at masking (MADE) to get that likelihood in one
-parallel pass; a single masked model with single-Gaussian conditionals is too rigid and order-sensitive,
-and the tell is that the random numbers it implies for the data don't come out standard normal; reading
-"x = f(u)" literally shows an autoregressive model already *is* a normalizing flow with a triangular
-Jacobian and log-det −Σα, so I can model those non-Gaussian random numbers with another such flow and
-stack, gaining multimodality from composition while keeping each layer a cheap invertible affine recursion;
-conditioning the layer on the data x (rather than on the random numbers u, which would give IAF) is what
-makes density evaluation one pass — and maximizing my likelihood turns out to be exactly the variational
-objective an implicit IAF would minimize, while the coupling layer of Real NVP is just my layer with a
-frozen prefix; reversing the order between layers and slotting an invertible batchnorm between them keeps
-the deep stack expressive and trainable.

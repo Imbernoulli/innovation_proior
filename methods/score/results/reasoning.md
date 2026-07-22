@@ -224,17 +224,3 @@ the flattest one, by a comfortable factor of roughly two even after normalizatio
 identifies it. (I also notice the leaf column is not perfectly flat — variance `11.6`, not `0` — which is
 the expected finite-sample blur; it is the *relative* flatness that the `argmin` exploits, which is why
 ranking columns is safer than thresholding any one of them against zero.)
-
-Let me trace the causal chain so nothing is hand-waved. I wanted the topological order — the irreducibly
-causal part of nonlinear ANM discovery — without the greedy, regression-based, error-compounding search
-that CAM and RESIT use. Looking at the *score* of the distribution, I found that for Gaussian-noise ANMs
-the `j`-th diagonal entry of the Hessian of `log p` is the constant `-1/σ_j^2` *plus* a term that varies
-with `x` only through `x_j`'s children — so a variable is a leaf exactly when that diagonal Hessian entry
-has zero variance over the data. That turns order recovery into a direct measurement: estimate the
-diagonal Hessian, take the min-variance column as the leaf, remove it (which leaves a smaller ANM),
-recurse, reverse. The diagonal Hessian is estimable from samples with no density via first- and
-second-order Stein identities under a Gaussian kernel — score `G = (K+η_G I)^{-1}∇K`, diagonal Hessian
-`-G^2 + (K+η_H I)^{-1}∇^2 K` — with a median-distance bandwidth and small ridge regularizers, all
-`O(n^3)`. With the order recovered, edge selection is CAM-style significance pruning, which is
-refinement, not correctness, since a correct order already yields consistent interventions. The result is
-a fast, search-free, distributionally-grounded recovery of the nonlinear causal DAG.

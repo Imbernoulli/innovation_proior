@@ -274,22 +274,3 @@ class GatedDeltaNet(nn.Module):
         o = o * F.silu(self.g_proj(x))                   # swish output gate
         return self.o_proj(o)
 ```
-
-So the chain, end to end. Plain additive linear attention never forgets and cross-talks; the two cures
-each act on a different axis — gating adds a data-dependent decay that fades memory globally but cannot
-localize removal, and the delta rule adds an error-correcting, content-addressed write that removes
-exactly the colliding association but has no global decay. The deficiency of each is on the axis the
-other acts on, so I composed them into one recurrence,
-`S_t = alpha_t (I - beta_t k_t k_t^T) S_{t-1} + beta_t v_t k_t^T`, and checked the composition rather than
-assumed it: it reduces (numerically, to round-off) to the delta rule at `alpha_t = 1` and to the pure
-scalar-gated decay skeleton at `beta_t = 0`, its combined transition has the eigenvalues `alpha_t(1 -
-beta_t)` along `k_t` and `alpha_t` on the complement (verified by diagonalizing an instance), and the
-chunk kernel matches the reference recurrence to `5.96e-08` across chunk boundaries at two different chunk
-sizes. The decay is a *scalar per head* — the smallest gate that does only global fading, which keeps the
-two mechanisms non-overlapping and, being scalar, telescopes cleanly (the off-diagonal weight
-`exp(decay_i - decay_j)` is just the product of intervening gates, checked by hand) so the delta rule's
-UT-transform chunk algorithm survives with the decay folded into a chunk-local cumulative-sum; it is
-parameterized Mamba2-style (`alpha_t = exp(-exp(A_log) softplus(a_proj(x) + dt_bias))`) for a near-1
-long-memory prior. L2-normalized keys keep both eigenvalue factors in `[0,1]`, so the recurrence is
-stable; SiLU + short conv, a learned `beta_t`, a per-head gated RMSNorm output and a swish gate complete
-a layer that drops into a pre-norm transformer block with no absolute position embeddings.

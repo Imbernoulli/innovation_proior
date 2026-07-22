@@ -180,21 +180,3 @@ def build_strategy():
 ```
 
 For a rectangular version I would replace `tau = 5n` by `tau = 5 sqrt(n_1 n_2)`, exactly as the numerical driver does. For the warm start I need the spectral norm of the sparse observed matrix; in this dense harness I compute it directly, while a large implementation would use a `normest`-style approximation.
-
-So the causal chain. I had the right convex objective handed to me — minimum nuclear norm
-subject to fitting the observed entries — but interior-point solvers couldn't scale it past
-`n=100`, ignored the low rank, and degenerated near the optimum, so I needed a first-order
-method built from cheap repeated operations. Soft-thresholding the singular values was the
-natural rank-sparsifying primitive, and proving it is the proximity operator of the nuclear
-norm (via the subgradient `UV^* + W`) made it the principled inner step, not a heuristic. The
-penalized iterative-shrinkage formulation forced cheapness and accuracy into conflict, so I
-decoupled the threshold from the step size and let the residual accumulate on its own track;
-reading that iteration as Uzawa's dual ascent revealed it solves `min tau||X||_* +
-(1/2)||X||_F^2 s.t. P_Omega(X) = P_Omega(M)`, whose strong convexity gives a unique solution
-and whose limit `tau → ∞` is exactly the nuclear-norm minimizer — so large `tau` now serves
-*both* accuracy and cheapness (low-rank `X^k`, sparse `Y^k`). The strong-monotonicity lemma
-gave a clean convergence proof for any `δ ∈ (0,2)`; the near-isometry let me push to the much
-faster `δ = 1.2/p`; the random-matrix scales fixed `tau = 5n`; the predetermined first steps
-gave the `k_0` warm start; and the KKT conditions gave a relative-residual stopping rule that
-tracks the true reconstruction error. The result drops into the recovery harness as one SVD-
-shrink and one masked residual update per iteration.

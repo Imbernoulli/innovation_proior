@@ -133,5 +133,3 @@ reconstructor.build_interaction_matrix(dm, wfs)
 reconstructor.build_command_matrix(conditioning=1e-3)
 final = close_loop(reconstructor, dm, wfs, atmos, gain=0.4)
 ```
-
-The causal chain, start to finish: the atmosphere imprints a moving phase aberration I can't measure directly; a Shack–Hartmann sensor turns it into local slopes on a grid; I build the command-to-slope forward map by poking the real mirror and storing the correction sign; I invert the actuator-by-slope interaction matrix with a regularized SVD pseudo-inverse; and I apply `control_matrix.T.dot(slopes)` inside an integrator, c_{k+1} = (1−ℓ)c_k + gRs_k, whose negative feedback drives the residual slopes to zero, whose integral action rejects the low-frequency bulk of the turbulence, whose gain stays under the delay-set stability ceiling, and whose optional leak or mean removal drains away components the sensor will never report.

@@ -71,5 +71,3 @@ This also clarifies the difference from topological fixed-point existence. A top
 The final theorem is therefore: in a nonempty complete metric space `(X,d)`, any self-map `T:X->X` for which there is a constant `q` with `0 <= q < 1` and `d(Tx,Ty) <= q d(x,y)` for all `x,y` has a unique fixed point `x*`. For any starting point `x_0`, the iterates `x_{n+1}=T x_n` converge to `x*`, and for `m>n`,
 
 `d(x_m,x_n) <= q^n (1-q^{m-n}) d(x_1,x_0)/(1-q) <= q^n d(x_1,x_0)/(1-q)`.
-
-Letting `m` tend to infinity gives `d(x*,x_n) <= q^n d(x_1,x_0)/(1-q)`, and comparing to the most recent jump gives `d(x*,x_{n+1}) <= q d(x_{n+1},x_n)/(1-q)`. The causal chain is the one the orbit on `(0,1]` and the run on `x*=2` together exhibited: a uniform contraction constant makes successive jumps geometrically summable; geometric summability makes the Picard orbit Cauchy; completeness — without which the `(0,1]` orbit had nowhere to land — supplies the limit; the contraction inequality passes the limit through the map; and the same inequality shrinks the distance between any two fixed points to zero.

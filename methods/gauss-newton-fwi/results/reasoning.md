@@ -349,20 +349,3 @@ The outer multiscale loop wraps all of this: low-pass the wavelet and the data t
 frequency band, run a few iterations to fix the smooth background, raise the corner frequency, repeat
 — each band starts from a model already within half a period of the data so the local optimizer never
 cycle-skips.
-
-So the causal chain, end to end: I want ∂J/∂m to drive a velocity model downhill; finite differences
-and forward sensitivities both cost one wave simulation per model parameter — millions — because the
-count of parameters sits in the expensive part. Treating the wave equation as a constraint F(u,m)=0
-and writing δJ = −(∂J/∂u)(∂F/∂u)⁻¹(∂F/∂m)δm, then regrouping that product right-to-left, moves the
-parameter count out of the expensive part: define the costate λ by the *transposed* wave equation
-(∂F/∂u)ᵀλ = ∂J/∂u, and the gradient is −(∂F/∂m)ᵀλ — one forward solve plus one adjoint solve, gradient
-against all grid points at once. The adjoint of the wave operator is the wave equation run backward in
-time, sourced by the data residual injected at the receivers; with the change of variable q(t)=λ(T−t)
-it's just another forward solve. Since m sits in front of ∂²u/∂t², the gradient is the zero-lag
-correlation ∂J/∂m = −Σ_s ∫ λ_s ∂²u_s/∂t² dt — the imaging principle, but exact — and in velocity it
-carries the factor 2/c³ from m=1/c². Steepest descent on this is mis-scaled by geometrical spreading,
-so I deconvolve by the Gauss–Newton Hessian — its diagonal as a cheap illumination preconditioner, or
-the full H_GN solved matrix-free by conjugate gradients. And because the oscillatory misfit cycle-skips
-whenever a predicted arrival is more than half a period off, I invert low frequencies first and add
-higher bands as the background sharpens, so every scale stays in the right basin. Two solves per shot,
-no matter how many model parameters.

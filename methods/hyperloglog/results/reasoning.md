@@ -183,5 +183,3 @@ class HyperLogLog:
     def count(self):
         return self.estimate()
 ```
-
-So the chain is: exact counting is linear, kill it; sampling can't see cardinality through replication, so hash to make every observable set-only and replication-blind; long leading-zero runs in uniform hashes thermometer log₂ n, but one such reading has σ over a bit, so split the hash into m independent buckets and average — stochastic averaging — to get 0.78/√m on full bitmaps; but a bitmap per bucket is L bits to recover one number, so keep only the max leading-zero run per bucket, a log-log-sized register, which is LogLog at 1.30/√m; and that 1.30 is the fat right tail of 2^{max} leaking through the geometric mean, so replace it with the harmonic mean — Z = (Σ 2^{-M[j]})^{-1}, E = α_m m² Z — which discounts the freak-large buckets and pulls the error down to 1.04/√m at the ~1/√m floor, in 5-bit registers; finally patch the two ends, linear counting from empty buckets when n is small and a collision-inversion when n nears the hash range, and the estimate is Gaussian within 1.04/√m of the truth.

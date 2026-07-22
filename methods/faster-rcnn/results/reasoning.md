@@ -247,5 +247,3 @@ def _filter_boxes(boxes, min_size):
     hs = boxes[:, 3] - boxes[:, 1] + 1
     return np.where((ws >= min_size) & (hs >= min_size))[0]
 ```
-
-The causal chain, end to end: the detector's convolutions got cheap, which made the external proposer the bottleneck; a faster-but-separate proposer would still waste the detector's feature map, so I moved proposal generation onto that shared map as a tiny fully-convolutional head; that head is translation-invariant by construction and nearly free because the convolutions are already paid for; the one obstacle — handling many scales from a single fixed-size feature — fell to anchors, a pyramid of reference boxes that carry scale in the regression targets instead of in the images or filters; I trained the head with a gated classification-plus-smooth-L1 multi-task loss, balanced sampling, and cross-boundary anchors dropped; and I welded the proposer and detector onto one shared backbone by alternating training with the convs frozen in the later steps, so at test time a single conv pass serves both heads.

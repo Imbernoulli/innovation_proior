@@ -87,5 +87,3 @@ If \(\theta(t)\sim t\), the first term is \(x/\log x\), and the integral is smal
 \[
 \pi(x)\sim \frac{x}{\log x}.
 \]
-
-The path is now clear. I do not count primes by listing them. I encode them in Euler's product, differentiate the logarithm so that the von Mangoldt weights appear, study the analytic continuation of \(\zeta\), clear the boundary line \(\operatorname{Re}s=1\) of zeros, and let a Tauberian bridge convert the lone pole at \(s=1\) into \(\psi(x)\sim x\). The prime number theorem is the shadow, on the real line, of that analytic singularity structure.

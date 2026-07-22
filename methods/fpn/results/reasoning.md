@@ -143,5 +143,3 @@ def assign_roi_to_level(
     k = torch.clamp(k, min=min_level, max=max_level)        # stay on the available levels
     return k.to(torch.int64)
 ```
-
-So the chain is: scale is the real problem; the image pyramid solves it with uniformly-strong levels but is too slow and not end-to-end trainable; the network already gives a multi-scale hierarchy for free but its high-res levels are semantically weak; the fix is to carry C5's strong semantics down through the resolutions with a top-down upsampling pathway, and re-inject precise localization at each level with 1×1 lateral connections from the same-resolution bottom-up map, then a 3×3 to de-alias — giving uniformly-strong maps {P2..P5} at marginal cost; a shared head then runs on every level, with one anchor scale per level for proposals, the region detector pools each RoI from the level k = ⌊k0 + log2(√(wh)/224)⌋ that an image pyramid would have placed it on, and dense mask proposals reuse the same scale axis with integer-octave and half-octave windows instead of a resized image pyramid.

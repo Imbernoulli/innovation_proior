@@ -121,5 +121,3 @@ class Reader(nn.Module):
         return start_logits.squeeze(-1), end_logits.squeeze(-1), select_logits.squeeze(-1)
         # span score = softmax(start)_s * softmax(end)_t ; pick passage by softmax(select)
 ```
-
-The causal chain: the open-domain accuracy collapse traces entirely to retrieval, so I attack retrieval; real-time serving over 21M passages forces a decomposable score, which forces a dual-encoder with an inner-product similarity served by MIPS; the only remaining degree of freedom is the training objective, and there the decisive move is the negatives — a row-wise softmax NLL over an in-batch score matrix turns every other question's positive passage into a free gold negative, and one BM25 hard negative per question supplies the topically confusable decoy that random negatives never provide. The final system is two independent BERT encoders trained with that NLL, a FAISS inner-product index over offline passage vectors, and a cross-attention reader over the retrieved top-k.

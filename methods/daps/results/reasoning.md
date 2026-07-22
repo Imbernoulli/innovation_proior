@@ -98,18 +98,3 @@ class DAPS(Algo):
 
         return x_t
 ```
-
-Let me trace the causal chain once more. Every training-free solver hits the intractable time-level
-likelihood score; the ones that keep nonlinearity generality (DPS, LGD) cope by approximating a guidance
-term inside a *single, coupled* reverse step on the noisy latent — where the clean-variable likelihood and
-the noisy-variable prior dynamics fight, and a bad guidance step propagates down the trajectory. Breaking
-that coupling meant letting consecutive iterates differ a lot: at each annealing level, run the prior's own
-unconditional ODE to turn `x_t` into a sharp *clean* estimate `x_0_hat` (the prior update, knowing nothing
-of `y`); sample the clean conditional `p(x_0 | x_t, y) ∝ N(x_0_hat, r_t^2) p(y | x_0)` by Langevin dynamics
-*on the clean variable*, where `A` is evaluated directly and no denoiser Jacobian appears (the likelihood
-correction, which I checked reproduces the closed-form posterior in the linear-Gaussian case); then re-noise
-the corrected clean sample to the next lower level to make the next `x_t`. The re-noising is what decouples —
-each iterate is freshly built from a clean correction rather than inherited as a small step, so errors do
-not propagate, nonlinear operators are handled without backprop through the network, and the Langevin
-noise keeps it a true sampler whose conditionals anneal to `p(x_0 | y)` (data-dominated until `sigma` falls
-well below `0.1`, the prior anchor taking over only near `sigma = 0`) instead of collapsing to a mode.

@@ -452,15 +452,3 @@ class ContinuousCQL:
 For discrete actions the only change is that `log Σ_a exp Q(s,a)` is exact — `torch.logsumexp` over
 the action dimension of the Q-head — and the backup uses `B*` (the max) instead of `B^π`; CQL drops
 on top of QR-DQN with the same `diff = logsumexp − Q(s, a_data)` penalty.
-
-So the causal chain, end to end: offline, the Bellman max bootstraps OOD-action values that the
-data never corrects, so estimates blow up; constraining the policy treats the symptom because the
-*Q-function* itself misvalues OOD actions under function-approximation coupling; so instead I make
-`Q` a provable lower bound by adding a push-down term `E_μ[Q]`, which alone gives a pointwise bound
-but over-penalizes; adding a push-up term `E_{π_β}[Q]` recovers a *tighter* bound on the policy
-*value* (and `π_β` is the unique distribution that keeps it a bound); maximizing over `μ` with an
-entropy regularizer turns the push-down into a self-targeting `log Σ_a exp Q`; the resulting backup
-is gap-expanding, so it lower-bounds value across iterations (given slow policy updates, hence the
-small actor learning rate), optimizes a well-defined penalized empirical-MDP objective, and yields
-a safe improvement over the behavior policy — all with a ~20-line critic-loss change on top of SAC
-or QR-DQN and no behavior-policy model.

@@ -181,5 +181,3 @@ print("m_pi^2    =", m2_pi)       # -> 0       : angular Goldstone mode is MASSL
 # zero mass. That massless boson is the Goldstone boson of the broken U(1) --
 # one for each broken continuous generator.
 ```
-
-The causal chain, once through: a continuous symmetry of the Lagrangian, plus a potential whose quadratic term has the wrong sign, pushes the minimum off the origin onto a *degenerate circle* of vacua; the vacuum must pick one point, and picking it breaks the symmetry with no asymmetric term anywhere; expanding about that point, the radial direction climbs the wall and is massive while the angular direction runs along the flat valley and is *exactly* massless, because moving along the valley is the symmetry operation and the symmetry says it costs nothing; and current conservation plus Lorentz covariance turn this from a feature of one model into a theorem — every spontaneously broken continuous symmetry forces a massless spinless boson into the spectrum, which on the fermion side is the dynamically generated mass with its accompanying massless pseudoscalar, the pion.

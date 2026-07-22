@@ -191,5 +191,3 @@ def fast_decoding(prefix, helper_model, target_model, max_len, lookahead=4,
 
     return prefix[:, :T]
 ```
-
-The causal chain, start to end: decoding is serial and memory-bound, so the accelerator is idle and a block of tokens costs about as much to score as a single one; therefore let a cheap model guess a block and verify it in one parallel target pass; to keep the guess's stochasticity exact, accept each token with probability `min(1, p/q)` and, on rejection, resample from the residual `norm(max(0, p − q))` — which provably reconstructs `p` for any guesser; the expected yield is `(1−α^{γ+1})/(1−α)` tokens per target pass and the latency factor is `(1−α^{γ+1})/((1−α)(cγ+1))`, so the method turns idle compute and the easy-step structure of language into fewer serial target passes when `α` is large enough relative to `c`, with the output distribution untouched.

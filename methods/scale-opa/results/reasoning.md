@@ -68,24 +68,3 @@ def compute_regularizer(splats, step, scene_scale):
     # gentle prior: small weights on the two footprint factors.
     return SCALE_REG * scale_loss + OPACITY_REG * opa_loss
 ```
-
-The causal chain, start to finish: the photometric loss is a pure data term, so the
-Gaussian fit is under-determined and gradient descent settles into wasteful configurations —
-floaters, needles, over-reconstructing splats — that pass on training views, fail on novel
-views, and waste memory and render time. I want a parsimony prior that drives a useless
-Gaussian to vanish so the surrounding recycle loop can reclaim it. My first try, penalizing
-opacity alone, fails because a Gaussian's visible footprint is the *product* of opacity and
-spatial extent: a big splat held just above the dead threshold pays almost nothing yet stays
-loud, and a tiny opaque speck gets penalized for nothing. Reading the footprint as a product
-forces a two-factor penalty — pressure on opacity *and* on extent — so opacity supplies the
-explicit death channel while scale collapse removes a harmful footprint that opacity alone can
-miss. Extent is exactly the scale vector, since `sqrt(eig_j(Σ)) = s_j`,
-and penalizing the three axes additively (not as a volume) squashes needles instead of letting
-them survive on a collapsed axis. I choose L1 over L2 because L1 gives non-vanishing pressure in
-the activated value while L2's pressure dies at zero. I apply the L1 to the *activated* opacity
-and scale, the quantities that actually enter the blending equation, and because sigmoid and exp
-are nonnegative the absolute value collapses to a mean, which is cheap and numerically safe. The
-weight `0.01` on each term keeps the prior gentle so it only bites in the slack the photos leave.
-The result is one `O(N)` scalar — `0.01·mean(exp(scales)) + 0.01·mean(sigmoid(opacities))` — added to the
-loss every step, pushing exactly the Gaussians the data term is indifferent to toward
-disappearing.
