@@ -30,14 +30,14 @@ with R^2 read from a boundary support vector. This is a workable data descriptio
 
 With one class, I need a fixed reference to push against. The only canonical feature-space point I get for free is the origin. So the question becomes: can I find a hyperplane that puts the mapped data on one side and the origin on the other, with maximum margin, and then use the data side as the accepted region?
 
-Whether such a separating hyperplane even exists is a property of the feature map, not something I should take on faith for a generic kernel, so let me look at the geometry for the kernel I actually intend to use. For the Gaussian kernel k(x,y) = exp(-||x-y||^2/c), every pairwise inner product k(x_i,x_j) is strictly positive, and k(x_i,x_i) = 1 for every i. So in feature space the mapped observations all have unit norm and all pairwise angles are acute. Let me make sure that really does separate them from the origin. If the points all sit in the positive orthant relative to some axis -- more precisely, if there is a direction w with <w, Phi(x_i)> > 0 for all i -- then the hyperplane {z : <w,z> = rho} with a small positive rho keeps the data strictly on the positive side while the origin sits at value 0 < rho on the negative side. With all pairwise inner products positive, the candidate w = sum_i Phi(x_i) gives <w, Phi(x_j)> = sum_i k(x_i,x_j) >= k(x_j,x_j) = 1 > 0, so this w works for every j. The data is separable from the origin, and the maximum-margin hyperplane cuts off a spherical cap containing the data. So the one-class margin problem is at least well posed for this kernel; I do not have to worry that the optimum is the degenerate w = 0.
+Whether such a separating hyperplane even exists is a property of the feature map, not something to take on faith for a generic kernel, so I look at the geometry for the kernel I actually intend to use. For the Gaussian kernel k(x,y) = exp(-||x-y||^2/c), every pairwise inner product k(x_i,x_j) is strictly positive, and k(x_i,x_i) = 1 for every i. So in feature space the mapped observations all have unit norm and all pairwise angles are acute -- a direction w with <w, Phi(x_i)> > 0 for all i would put the hyperplane {z : <w,z> = rho} with small positive rho strictly between the data and the origin. With all pairwise inner products positive, the candidate w = sum_i Phi(x_i) gives <w, Phi(x_j)> = sum_i k(x_i,x_j) >= k(x_j,x_j) = 1 > 0 for every j, so this w works. The data is separable from the origin, and the maximum-margin hyperplane cuts off a spherical cap containing the data: the one-class margin problem is well posed for this kernel, and the optimum cannot be the degenerate w = 0.
 
 Before committing to the margin form over the ball, I should check that they are not just two names for the same thing, and if they are, which is cheaper to carry. In the ball dual, the term sum_i alpha_i k(x_i,x_i) equals k(x,x) times sum_i alpha_i = k(x,x), a constant, whenever k(x,x) is constant in i. For translation-invariant kernels such as the Gaussian, k(x,x) is constant, so that linear term is a constant offset and drops out of the maximization. The ball optimization then has the same minimizer as
 
   minimize    sum_{ij} alpha_i alpha_j k(x_i,x_j)
   subject to  sum_i alpha_i = 1,   0 <= alpha_i <= 1/(nu l),
 
-and an irrelevant positive factor 1/2 will not change the minimizer. I do not want to take "same minimizer" on the strength of an algebraic remark, so let me actually solve both for a concrete sample. Take six points in R^2, an RBF kernel with gamma = 0.7, and nu = 0.5 so U = 1/(0.5*6) = 1/3. Solving the ball dual (maximize sum_i alpha_i K_ii - alpha'K alpha) and the stripped quadratic (minimize 1/2 alpha'K alpha) under the same box-and-equality constraints, the two optimizers come out as
+and an irrelevant positive factor 1/2 will not change the minimizer. That algebraic argument is worth confirming on numbers rather than trusting on sight: take six points in R^2, an RBF kernel with gamma = 0.7, and nu = 0.5 so U = 1/(0.5*6) = 1/3. Solving the ball dual (maximize sum_i alpha_i K_ii - alpha'K alpha) and the stripped quadratic (minimize 1/2 alpha'K alpha) under the same box-and-equality constraints, the two optimizers come out as
 
   ball:  [0.28521, 0.25269, 0.15159, 0.0, 0.04586, 0.26464]
   quad:  [0.28521, 0.25269, 0.15159, 0.0, 0.04586, 0.26464]
@@ -49,7 +49,7 @@ So I formulate the margin problem. I want <w, Phi(x_i)> to be at least rho for m
   minimize    1/2 ||w||^2 + (1/(nu l)) sum_i xi_i - rho
   subject to  <w, Phi(x_i)> >= rho - xi_i,   xi_i >= 0.
 
-The term -rho is what rewards moving the separating hyperplane away from the origin. The slack coefficient is scaled by 1/(nu l), and I should not trust that choice until the KKT conditions tell me what count it controls.
+The term -rho is what rewards moving the separating hyperplane away from the origin. The slack coefficient is scaled by 1/(nu l); the KKT conditions below will show exactly what count that controls.
 
 Introduce alpha_i >= 0 on the margin constraints and beta_i >= 0 on xi_i >= 0:
 
@@ -92,11 +92,11 @@ I want to see these two inequalities actually bracket nu, so let me fit on 200 p
 
 The support-vector fraction is above nu in every row, exactly as the lower bound predicts. The outlier side is more interesting: at nu=0.1 the measured 0.115 sits slightly above 0.1. That is not the bound failing -- it is the gap between "strictly positive slack" and the numerical test decision_function < 0. The clean inequality is on points with genuine positive slack at the exact optimum; the solver stops at a tolerance and a handful of points hover within numerical reach of the boundary, so counting "score below zero" can pick up a few extra. The asymptotic statement is the trustworthy one: under an analytic nonconstant kernel and a distribution without discrete components, the fraction of examples landing exactly on the margin vanishes, the two finite-sample slacks close, and the outlier and support-vector fractions both converge to nu. So the strange-looking coefficient 1/(nu l) together with the free rho is what turns a penalty constant into a count parameter, with nu sandwiched between an outlier fraction below and a support-vector fraction above.
 
-The two endpoint cases deserve an explicit check rather than a gesture, because they are where the formulation could quietly misbehave. Take nu = 1 first. Then the ceiling is 1/(nu l) = 1/l, and the constraints become 0 <= alpha_i <= 1/l with sum_i alpha_i = 1. The only vector of l nonnegative numbers each at most 1/l whose sum is 1 is the one with every entry equal to 1/l -- any entry below 1/l would force another above 1/l to keep the sum, which the box forbids. So alpha is pinned to (1/l, ..., 1/l) with no optimization left, and the expansion becomes (1/l) sum_i k(x_i,x) - rho, a thresholded Parzen-window estimate when the kernel is normalized as a density. (I confirmed the forced-uniform claim directly on a 3-point instance: with U = 1/3 and sum = 1, the box leaves only [1/3, 1/3, 1/3].) Now nu approaching 0: the ceiling 1/(nu l) goes to infinity, the box upper bound disappears, and the slack penalty coefficient 1/(nu l) becomes infinite, so paying any slack is prohibitive and the program tends to a hard-margin support estimator. It stays feasible because rho is unconstrained and can be driven very negative if it must. That freedom is load-bearing: if I had instead constrained rho >= 0, the rho stationarity would loosen to the inequality sum_i alpha_i >= 1, and the multipliers could diverge rather than giving the clean equality sum_i alpha_i = 1 that everything above depends on. So the single parameter sweeps from a hard-margin support set at one end to a full Parzen-window expansion at the other.
+The two endpoint cases deserve an explicit check rather than a gesture, because they are where the formulation could quietly misbehave. Take nu = 1 first. Then the ceiling is 1/(nu l) = 1/l, and the constraints become 0 <= alpha_i <= 1/l with sum_i alpha_i = 1. The only vector of l nonnegative numbers each at most 1/l whose sum is 1 is the one with every entry equal to 1/l -- any entry below 1/l would force another above 1/l to keep the sum, which the box forbids. So alpha is pinned to (1/l, ..., 1/l) with no optimization left, and the expansion becomes (1/l) sum_i k(x_i,x) - rho, a thresholded Parzen-window estimate when the kernel is normalized as a density. Now nu approaching 0: the ceiling 1/(nu l) goes to infinity, the box upper bound disappears, and the slack penalty coefficient 1/(nu l) becomes infinite, so paying any slack is prohibitive and the program tends to a hard-margin support estimator. It stays feasible because rho is unconstrained and can be driven very negative if it must. That freedom is load-bearing: if I had instead constrained rho >= 0, the rho stationarity would loosen to the inequality sum_i alpha_i >= 1, and the multipliers could diverge rather than giving the clean equality sum_i alpha_i = 1 that everything above depends on. So the single parameter sweeps from a hard-margin support set at one end to a full Parzen-window expansion at the other.
 
 There is also a resistance property worth naming. If a point already has positive slack, its alpha_i is pinned at 1/(nu l). Moving that outlying feature-space point locally in a direction parallel to w, without making the slack vanish, leaves the separating hyperplane unchanged, although the numerical representation of w and rho may shift. That is a local statement, not a claim about arbitrary remote moves, but it is exactly the bounded-influence behavior I was missing from density estimation, where a single faraway point can drag the estimate.
 
-I can also recycle intuition from binary SVMs. If (w, rho) is the supporting hyperplane for mapped points x_i, then (w, 0) separates the labelled symmetric set {(x_i, +1), (-x_i, -1)} through the origin with the corresponding margin. Conversely, a through-origin binary separator for labelled points can be viewed as a supporting hyperplane for the signed points y_i x_i. Margin errors in the binary picture correspond to outliers here. This is not a new optimization problem; it is the one-class geometry expressed in the language of the older margin theory, which is reassuring -- it means the convergence and capacity intuitions from binary SVMs carry over.
+The construction also folds back into ordinary two-class SVM geometry rather than sitting apart from it: if (w, rho) is the supporting hyperplane for the mapped points x_i, then (w, 0) separates the labelled symmetric set {(x_i, +1), (-x_i, -1)} through the origin with the same margin, and conversely a through-origin binary separator for labelled points is a supporting hyperplane for the signed points y_i x_i -- margin errors in that binary picture are exactly the outliers here. So the one-class problem is the older margin theory read in a different light, and the capacity intuitions built for binary SVMs carry over rather than needing to be rebuilt from scratch.
 
 Now I need to solve the dual at scale. A dense generic QP would be cubic in l, but this dual has only a box and one equality, so the smallest feasible move changes two multipliers at a time. Pick alpha_1 and alpha_2, freeze the rest, and define Delta = 1 - sum_{i>=3} alpha_i so alpha_1 + alpha_2 = Delta. Let K_ij = k(x_i,x_j), and let C_i = sum_{j>=3} alpha_j K_ij. The part of the objective involving the pair is
 
@@ -117,7 +117,7 @@ If alpha_2^* and alpha_1^* are the values before the step, and O_i = K_1i alpha_
 
   alpha_2 = alpha_2^* + (O_1 - O_2) / (K_11 + K_22 - 2K_12).
 
-That is just a Newton step along the equality-preserving direction. Let me make sure the two forms really coincide and really find the pair minimum, rather than trusting the algebra. On a 3-point instance with the third coefficient frozen at 0.3 (so Delta = 0.7), the closed form gives alpha_2 = 0.250556, the output-based Newton form gives alpha_2 = 0.250556, and a brute-force scan of the pair objective over alpha_2 in [0, Delta] bottoms out at 0.25055. All three agree, so the update is correct. After the step, alpha_2 has to be clipped to the feasible interval that keeps both pair variables in the box:
+That is just a Newton step along the equality-preserving direction, and the closed form and the output-based form should coincide and land on the true pair minimum: on a 3-point instance with the third coefficient frozen at 0.3 (so Delta = 0.7), the closed form gives alpha_2 = 0.250556, the output-based Newton form gives alpha_2 = 0.250556, and a brute-force scan of the pair objective over alpha_2 in [0, Delta] bottoms out at 0.25055. After the step, alpha_2 has to be clipped to the feasible interval that keeps both pair variables in the box:
 
   max(0, Delta - U) <= alpha_2 <= min(U, Delta),   U = 1/(nu l),
 
@@ -125,28 +125,4 @@ and then alpha_1 = Delta - alpha_2. I recompute rho after the pair update. To ch
 
 The practical interface has two sign conventions to settle. With an RBF kernel exp(-gamma ||x-y||^2), gamma controls locality: small gamma gives a smoother, looser region; large gamma gives a tighter, more variable boundary. The distances in that exponent make preprocessing important, because a large-scale feature can dominate ||x-y||^2. The signed decision value sum_i alpha_i k(x_i,x) - rho is positive for inliers and negative for outliers. An anomaly detector usually wants larger scores to mean more anomalous, so I return the negative of that signed value.
 
-```python
-from sklearn.svm import OneClassSVM
-
-
-class SupportRegionDetector:
-    """PyOD-style wrapper around sklearn's libsvm-backed one-class solver."""
-
-    def __init__(self, nu=0.5, gamma="auto", kernel="rbf"):
-        self.nu = nu
-        self.gamma = gamma
-        self.kernel = kernel
-        self.model = OneClassSVM(kernel=kernel, nu=nu, gamma=gamma)
-
-    def fit(self, X):
-        # X is unlabelled feature data; scale features before fitting an RBF kernel.
-        self.model.fit(X)
-        return self
-
-    def decision_function(self, X):
-        # sklearn returns sum_i alpha_i k(x_i, x) - rho, positive for inliers.
-        # PyOD inverts that ordering so larger values are more anomalous.
-        return -self.model.decision_function(X)
-```
-
-So the chain holds together. I start with support estimation rather than density estimation, replace literal input-space volume by the computable feature-space flatness regularizer, create a one-class margin problem by using the feature-space origin as the reference point, and check that Gaussian-kernel geometry makes that separation well posed. The Lagrangian gives the box-plus-equality dual, rho comes from a non-bound support vector, KKT pins strict outliers at the upper box constraint, and the counting argument -- which the fits bracket from both sides -- gives nu its meaning. The numerical check that the center-radius ball dual and the margin-cap dual share an optimizer for constant-diagonal kernels tells me to keep the simpler signed kernel expansion, implemented by the standard libsvm solver and inverted at the wrapper layer for anomaly scoring.
+The pair-update solver I just derived is exactly what a mature SVM library already implements at industrial strength, so there is no reason to hand-roll it: I wrap the fit/decision_function interface around `sklearn.svm.OneClassSVM`, which delegates to libsvm, passing through `nu`, `gamma`, and the RBF kernel choice, and negate the signed decision value on the way out so larger means more anomalous.

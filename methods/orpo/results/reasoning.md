@@ -57,17 +57,17 @@ And σ(−log g) = 1/(1 + e^{log g}) = 1/(1 + g) = [1 + odds_w/odds_l]^{−1}. C
 
   δ(d) = [ 1 + odds_θ(y_w|x)/odds_θ(y_l|x) ]^{−1}.
 
-Before I read meaning into δ, let me check the two limits I'm about to claim by just evaluating 1/(1+g) and σ(−log g) side by side across a sweep of g, to make sure the algebra σ(−log g) = 1/(1+g) didn't slip:
+Sweeping g across orders of magnitude shows the range this weight covers:
 
 ```
-g=1e-3   delta=0.99900   sigma(-log g)=0.99900
-g=0.1    delta=0.90909   sigma(-log g)=0.90909
-g=1.0    delta=0.50000   sigma(-log g)=0.50000
-g=10     delta=0.09091   sigma(-log g)=0.09091
-g=1e+3   delta=0.00100   sigma(-log g)=0.00100
+g=1e-3   delta=0.99900
+g=0.1    delta=0.90909
+g=1.0    delta=0.50000
+g=10     delta=0.09091
+g=1e+3   delta=0.00100
 ```
 
-They agree to every digit, so δ(d) = σ(−log g) holds and I can read off its behavior directly from the numbers. When the model already strongly prefers the chosen response, odds_w ≫ odds_l, so g is huge and δ → 0 (the g=1e3 row, δ ≈ 0.001) — this example stops pushing. When the model is getting it wrong, preferring the rejected, odds_w < odds_l, g < 1 and δ > 1/2, approaching 1 as g approaches 0 (the g=1e−3 row, δ ≈ 0.999) — the update fires strongly. So δ is an automatic difficulty weight: it accelerates the parameter update on examples where the model is currently more likely to generate the rejected response, and goes quiet once the example is solved. That self-pacing falls out of the log-sigmoid wrapping; I didn't have to design it separately.
+When the model already strongly prefers the chosen response, odds_w ≫ odds_l, so g is huge and δ → 0 (the g=1e3 row) — this example stops pushing. When the model is getting it wrong, preferring the rejected, odds_w < odds_l, g < 1 and δ > 1/2, approaching 1 as g approaches 0 (the g=1e−3 row) — the update fires strongly. So δ is an automatic difficulty weight: it accelerates the parameter update on examples where the model is currently more likely to generate the rejected response, and goes quiet once the example is solved. That self-pacing falls out of the log-sigmoid wrapping; I didn't have to design it separately.
 
 Now the direction, ∇_θ log g. Since g is a ratio of odds, log g = log odds_w − log odds_l, and log odds(y) = log P(y) − log(1 − P(y)), so
 
@@ -89,7 +89,7 @@ And 1 + odds(y) = 1 + P/(1−P) = (1−P+P)/(1−P) = 1/(1−P). So
 
   ∇_θ log odds(y) = ∇_θ log P(y) / (1 − P(y)).
 
-That last step folded two non-obvious identities together — ∇log(1−P) = −odds·∇logP, and the collapse to 1/(1−P) — so let me not just trust it. Model P as a sigmoid of a scalar parameter θ and finite-difference both sides at θ = 0.7, where P = 0.6682, odds = 2.0138:
+That last step folded two non-obvious identities together — ∇log(1−P) = −odds·∇logP, and the collapse to 1/(1−P). Finite-differencing both sides confirms it: model P as a sigmoid of a scalar parameter θ, at θ = 0.7 where P = 0.6682, odds = 2.0138:
 
 ```
 grad log(1-P)        = -0.66819      -odds * grad logP = -0.66819   (claim: equal)  ✓
@@ -111,9 +111,9 @@ dL_OR/d(rejected logit) = +0.6225   (positive: gradient descent lowers the rejec
 delta at this point = 1/(1+g) = 0.6225,  g = 0.6065
 ```
 
-Both signs come out the way the contrast demands — chosen up, rejected down — and the magnitude is exactly δ(d) = 0.6225 for this point, which is δ pulling harder than 1/2 precisely because the model is on the wrong side. So the derivation isn't just plausible on paper; the realized gradient does what I claimed.
+Both signs come out the way the contrast demands — chosen up, rejected down — and the magnitude is exactly δ(d) = 0.6225 for this point, which is δ pulling harder than 1/2 precisely because the model is on the wrong side.
 
-Let me also double back on the reference-free claim with the gradient in hand, because that's where the compute savings live. Nothing in δ(d) or h(d) involves a second model — they're all functions of the current θ's probabilities on y_w and y_l and their complements. So I genuinely need only one model in memory, and per batch only two forward passes — y_w and y_l through the single policy — versus DPO's four. No SFT warm-up either, since L_SFT is right there in the objective doing the adaptation from the pre-trained checkpoint. The efficiency isn't a separate trick; it's a consequence of making the chosen/rejected contrast internal to the current policy.
+The gradient also settles the reference-free claim, which is where the compute savings live: nothing in δ(d) or h(d) involves a second model — they're all functions of the current θ's probabilities on y_w and y_l and their complements. So I genuinely need only one model in memory, and per batch only two forward passes — y_w and y_l through the single policy — versus DPO's four. No SFT warm-up either, since L_SFT is right there in the objective doing the adaptation from the pre-trained checkpoint. The efficiency isn't a separate trick; it's a consequence of making the chosen/rejected contrast internal to the current policy.
 
 Now let me get the loss into the actual shape the training code wants, because there are numerical traps. The harness hands me, per response, a sum of token log-probs and a valid length; I want the *length-normalized* log-prob, so I divide the summed log-probs by the valid length to get c = log P_θ(y_w|x) and r = log P_θ(y_l|x), each a mean-per-token log-prob, hence ≤ 0 and corresponding to P ∈ (0,1). The log odds ratio I need is
 
@@ -199,5 +199,3 @@ class PreferenceTrainer:
         }
         return losses.mean(), metrics
 ```
-
-Let me trace the causal chain back to be sure it closes. I started stuck with a two-stage alignment pipeline that pays for a frozen reference model and a separate SFT warm-up, and I wanted one stage with no reference. Plain SFT can't be that stage alone because its cross-entropy only rewards label tokens and never penalizes anything, so it raises the likelihood of rejected responses right along with chosen ones — I need an added penalty that contrasts the two, in the spirit of unlikelihood training but with the rejected response itself as the dynamic unwanted set. The natural contrast is a ratio wrapped in a log-sigmoid, but I simulated the log probability ratio and it is tightly concentrated (63% of mass within ±1), so minimizing its log-sigmoid forces an extreme per-example margin that crushes rejected logits and degenerates a model still learning the domain. The odds ratio, on the same inputs, is roughly twice as spread out (only 32% within ±1, std 2.56 vs 1.41), because the logit explodes near P=1; that makes the required margin mild, the right intensity for penalizing during SFT. That gives L_OR = −log σ(log[odds_w/odds_l]), added with weight λ to the NLL on the chosen response. Differentiating log σ(log[odds_w/odds_l]) gives δ(d)h(d), with δ(d) = [1 + odds_w/odds_l]^{−1} and h(d) = ∇log P(y_w)/(1−P(y_w)) − ∇log P(y_l)/(1−P(y_l)); I checked the identities numerically (∇log odds = ∇logP/(1−P) to five digits) and the realized signs on a wrong-side example (chosen logit pushed up, rejected pushed down, magnitude δ = 0.62). Because the actual loss is the negative log-sigmoid, the loss gradient is −δ(d)h(d), so gradient descent moves in the +δ(d)h(d) direction. Length-normalizing the sequence log-prob keeps P in (0,1) and the odds well-defined; log1p(−exp(·)) and logsigmoid keep the loss numerically stable, and a concrete trace gave loss = 0.5247 dominated by the SFT term with a small penalty nudge; λ small keeps the penalty minor, which is all that's needed. One model, one stage, two forward passes per batch, the preference contrast folded straight into supervised fine-tuning.

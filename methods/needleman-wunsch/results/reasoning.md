@@ -20,13 +20,15 @@ with d the per-gap penalty. That's it — each cell from three smaller cells. I'
 
 I need the edges. F(0,0) = 0: comparing two empty prefixes scores nothing. F(i,0): comparing the first i residues of A against an empty B — every residue of A has to sit opposite a gap, i gaps, so F(i,0) = −i·d. Likewise F(0,j) = −j·d for the first j residues of B against empty A. These boundary rows encode "leading gaps cost." If I decide leading or trailing gaps shouldn't be charged — say one sequence is a fragment — I can set the corresponding borders to 0, but the strict global version charges them. Then I sweep the interior in any order that has the three predecessors ready — row by row, left to right works — and F(n,m) at the far corner is the maximum match for the whole sequences.
 
-Let me sanity-check this against how I'd compute it by hand the other way, because that's actually how I first reasoned it and I want to be sure they agree. Start with the pair-cell array instead of the prefix lattice, sit on the possible pair (Aᵢ,Bⱼ), and ask for the best score of a pathway that starts with that pair and runs toward the C-termini. The next paired cell must have larger indices. It can be the diagonal neighbor (Aᵢ₊₁,Bⱼ₊₁), or, if I open a gap, it can be a later cell in the next row or next column, with a penalty subtracted according to the gap I just made. So the direct operation is: add the current cell value to the largest already-computed value among the cells reachable forward along a legal pathway. Fill the array from the terminal side back toward the N-termini. In that border-origin version, the maximum match is the largest number in the first row or first column; in the stricter global version, the boundary penalties force the path from (0,0) to (n,m), so I read F(n,m).
+There's another way to reach the same number, working from the opposite end. Start with the pair-cell array instead of the prefix lattice: sit on a possible pair (Aᵢ,Bⱼ) and ask for the best score of a pathway that starts with that pair and runs toward the C-termini. The next paired cell must have larger indices. It can be the diagonal neighbor (Aᵢ₊₁,Bⱼ₊₁), or, if I open a gap, it can be a later cell in the next row or next column, with a penalty subtracted according to the gap I just made. So the direct operation is: add the current cell value to the largest already-computed value among the cells reachable forward along a legal pathway. Fill the array from the terminal side back toward the N-termini. In that border-origin version, the maximum match is the largest number in the first row or first column; in the stricter global version, the boundary penalties force the path from (0,0) to (n,m), so I read F(n,m).
 
-But wait — staring at "any cell along the next row or column" bothers me. For each cell I'm scanning a row and a column to find the best gap predecessor. That's O(n+m) extra work per cell, so O(nm(n+m)) overall. Can I avoid re-scanning? If the gap penalty is linear, d per skipped residue, then a long gap is just a sequence of one-residue gaps and its cost is additive. The best way to skip three residues then resume scores the same whether I treat it as one jump of length three or as three consecutive single steps. So I never need to look further than one cell. The best cell two or more away in the row is already folded into the immediate neighbor's value, recursively. That collapses the row/column scan down to a single left-neighbor and a single up-neighbor — and I'm right back at the three-term recurrence F(i,j) = max(diag+s, up−d, left−d). The forward three-cell version and the backward row/column-scan version compute the identical optimum under linear per-residue gaps; the three-cell one is just the efficient form. Good — they agree, and I'll keep the O(nm) three-cell form.
+But wait — staring at "any cell along the next row or column" bothers me. For each cell I'm scanning a row and a column to find the best gap predecessor. That's O(n+m) extra work per cell, so O(nm(n+m)) overall. Can I avoid re-scanning? If the gap penalty is linear, d per skipped residue, then a long gap is just a sequence of one-residue gaps and its cost is additive. The best way to skip three residues then resume scores the same whether I treat it as one jump of length three or as three consecutive single steps. So I never need to look further than one cell. The best cell two or more away in the row is already folded into the immediate neighbor's value, recursively. That collapses the row/column scan down to a single left-neighbor and a single up-neighbor — and I'm right back at the three-term recurrence F(i,j) = max(diag+s, up−d, left−d). The forward three-cell version and the backward row/column-scan version compute the identical optimum under linear per-residue gaps — the three-cell one is just the efficient form of the same recurrence, and it's the one I'll keep.
 
-Let me make sure I haven't fooled myself on the gap penalty's role. Why penalize at all? If d = 0, gaps are free, and the max will happily insert gaps everywhere to slide every coincidental match into register — two unrelated sequences get a spuriously high score. The penalty is a barrier: a gap is taken only when the matches it makes possible are worth more than d. Set d enormous and you forbid gaps entirely, recovering pure diagonal (frame-shift) comparison; set d to zero and you get the lax free-gap comparison; the interesting regime is in between, and d is a knob I'll sweep. And the penalty has to be subtracted *before* the max is taken — it has to actually deter the optimizer cell by cell, not be tallied afterward, or it changes which path wins.
+Why penalize a gap at all? If d = 0, gaps are free, and the max will happily insert gaps everywhere to slide every coincidental match into register — two unrelated sequences get a spuriously high score. The penalty is a barrier: a gap is taken only when the matches it makes possible are worth more than d. Set d enormous and you forbid gaps entirely, recovering pure diagonal (frame-shift) comparison; set d to zero and you get the lax free-gap comparison; the interesting regime is in between, and d is a knob I'll sweep. And the penalty has to be subtracted *before* the max is taken — it has to actually deter the optimizer cell by cell, not be tallied afterward, or it changes which path wins.
 
 Now the score is only half of what I want — I also need the *alignment itself*, not just its number. The fix falls right out of the recurrence: while filling F(i,j), remember which of the three terms won — diagonal, up, or left. That's the pointer back to the predecessor cell the optimum came through. After the table is full, start at the far corner (n,m) and follow pointers back to (0,0). Each diagonal pointer emits a paired column (Aᵢ over Bⱼ); each "up" emits Aᵢ over a gap symbol; each "left" emits a gap over Bⱼ. Reverse the emitted columns and I have the two aligned strings whose score is exactly F(n,m). If two terms tie, there are co-optimal alignments; I can follow either, or branch to list them all. This is the "record the origin of the number added to each cell" step, made concrete as a traceback.
+
+On a toy case this is concrete enough to check by hand: A = "AC", B = "AGC", identity scoring, d = 1. The boundary row/column are F(1,0)=−1, F(2,0)=−2, F(0,1)=−1, F(0,2)=−2, F(0,3)=−3. Then F(1,1), pairing A against A, is max(0+1, −1−1, −1−1) = 1, won by the diagonal. F(1,2), A against G, is max(−1+0, −2−1, 1−1) = 0, won by the left move — a gap opposite G. F(2,3), C against C, is max(F(1,2)+1, F(1,3)−1, F(2,2)−1) = max(1, −2, 0) = 1, again the diagonal. Reading the winning terms back from (2,3): diagonal (C over C), left (gap over G), diagonal (A over A); reversed, that's A-C aligned against A-G-C, for a score of 1 — matching F(2,3) exactly. Nothing here needed a fourth case, and the three-term max at each cell is carrying the whole alignment, not just its score.
 
 One more thing about the cell score s. The crude version is 1 for identical, 0 otherwise — then F is literally counting matched residues. But identity throws away that some mismatches are near-misses. Two amino acids whose codons differ in only one of three bases are a single point mutation apart; ones with no shared codon bases are far apart. So I can grade s: weight a pair by how many codon bases the two residues share (the codon tables of Marshall, Caskey & Nirenberg give this), or more generally read s off an empirical interchange table like Dayhoff's Atlas counts. The recurrence doesn't care what s is — it just needs a number per pair — so all this sophistication lives entirely inside s(·,·) and the DP machinery is untouched. That's a nice separation: scoring policy vs. optimization.
 
@@ -44,89 +46,4 @@ Let me also notice what happens if I flip the objective. Instead of maximizing m
 
 And a local twist, for when only a *region* of the two proteins is homologous and the rest is unrelated: I don't want leading/trailing junk to drag the score negative. Add a fourth option, 0, to the recurrence — H(i,j) = max(0, diag+s, up−d, left−d) — so any cell can reset to "start fresh here," and let the alignment begin and end wherever it likes. Then the best local match is the largest cell anywhere in the table, and traceback runs from that peak back to the first 0. That's a small mutation of the same machinery; the global version (origin corner to terminal corner, full traceback) is what I'll write first, since the question I started from — are these two whole proteins related — is global.
 
-Let me put the core, the global linear-gap version, into code. I'll keep one score table and one traceback table, fill with the three-term recurrence and the leading-gap boundaries, then walk back from the corner.
-
-```python
-import numpy as np
-
-GAP = 1.0  # penalty charged per gapped position; the barrier d
-
-def score_pair(a, b, match=1.0, mismatch=0.0):
-    # crude identity scoring; swap in a codon-/Dayhoff-weighted s(a,b) freely —
-    # the DP below never looks inside this function
-    return match if a == b else mismatch
-
-# diagonal / up / left moves, used by both the fill and the traceback
-DIAG, UP, LEFT = (1, 1), (1, 0), (0, 1)
-
-def build_table(seqA, seqB, gap=GAP, score=score_pair):
-    n, m = len(seqA), len(seqB)
-    F = np.zeros((n + 1, m + 1))          # F[i][j] = best score aligning A[:i], B[:j]
-    ptr = [[None] * (m + 1) for _ in range(n + 1)]
-    # boundaries: leading gaps cost one penalty per skipped residue
-    for i in range(1, n + 1):
-        F[i][0] = -i * gap
-        ptr[i][0] = UP
-    for j in range(1, m + 1):
-        F[0][j] = -j * gap
-        ptr[0][j] = LEFT
-    # the three-term recurrence: each cell from its diagonal, up, left predecessor
-    for i in range(1, n + 1):
-        for j in range(1, m + 1):
-            diag = F[i-1][j-1] + score(seqA[i-1], seqB[j-1])  # match/mismatch column
-            up   = F[i-1][j]   - gap                          # gap in B (consume A[i-1])
-            left = F[i][j-1]   - gap                          # gap in A (consume B[j-1])
-            best = max(diag, up, left)
-            F[i][j] = best
-            ptr[i][j] = DIAG if best == diag else (UP if best == up else LEFT)
-    return F, ptr
-
-def traceback(seqA, seqB, ptr):
-    i, j = len(seqA), len(seqB)
-    a_out, b_out = [], []
-    while i > 0 or j > 0:               # walk from the far corner back to the origin
-        di, dj = ptr[i][j]
-        if (di, dj) == DIAG:
-            a_out.append(seqA[i-1]); b_out.append(seqB[j-1])   # paired column
-        elif (di, dj) == UP:
-            a_out.append(seqA[i-1]); b_out.append('-')         # gap opposite A[i-1]
-        else:
-            a_out.append('-');       b_out.append(seqB[j-1])   # gap opposite B[j-1]
-        i, j = i - di, j - dj
-    return ''.join(reversed(a_out)), ''.join(reversed(b_out))
-
-def align(seqA, seqB, gap=GAP, score=score_pair):
-    F, ptr = build_table(seqA, seqB, gap, score)
-    a_aln, b_aln = traceback(seqA, seqB, ptr)
-    return F[len(seqA)][len(seqB)], a_aln, b_aln   # maximum match + the alignment
-```
-
-And the affine-gap version, when I want one long indel to be cheaper than many short ones — three tables, open vs. extend, still one pass:
-
-```python
-NEG = float('-inf')
-
-def align_affine(seqA, seqB, gap_open=2.0, gap_extend=0.5, score=score_pair):
-    n, m = len(seqA), len(seqB)
-    M  = [[NEG] * (m + 1) for _ in range(n + 1)]   # ends in match/mismatch
-    Ix = [[NEG] * (m + 1) for _ in range(n + 1)]   # ends with A aligned to a gap
-    Iy = [[NEG] * (m + 1) for _ in range(n + 1)]   # ends with B aligned to a gap
-    M[0][0] = 0.0
-    for i in range(1, n + 1):                       # leading gap in B: open then extend
-        Ix[i][0] = -gap_open - (i - 1) * gap_extend
-    for j in range(1, m + 1):
-        Iy[0][j] = -gap_open - (j - 1) * gap_extend
-    for i in range(1, n + 1):
-        for j in range(1, m + 1):
-            s = score(seqA[i-1], seqB[j-1])
-            M[i][j]  = s + max(M[i-1][j-1], Ix[i-1][j-1], Iy[i-1][j-1])
-            Ix[i][j] = max(M[i-1][j] - gap_open,
-                           Iy[i-1][j] - gap_open,
-                           Ix[i-1][j] - gap_extend)
-            Iy[i][j] = max(M[i][j-1] - gap_open,
-                           Ix[i][j-1] - gap_open,
-                           Iy[i][j-1] - gap_extend)
-    return max(M[n][m], Ix[n][m], Iy[n][m])
-```
-
-So the causal chain: I wanted an objective number for how well two ordered sequences match under gaps; pairings-that-respect-order are monotone paths on a grid, and there are exponentially many, so enumeration is out; but the best path restricted to any prefix is optimal for that prefix (optimal substructure), and the last column of a prefix-alignment is one of exactly three shapes, which gives F(i,j) = max(diag+s, up−d, left−d) with leading-gap boundaries — a table I fill in O(nm); remembering which term won lets me trace the actual alignment back from the corner; grading s carries all the biology of substitution scoring without touching the DP; and when a constant gap cost is too crude, splitting the state into match/gap-in-A/gap-in-B tables charges gap-open against gap-extend (affine) while staying O(nm). The same lattice read as a minimization is edit distance; with a max(0,·) reset it becomes local alignment.
+Putting this down concretely: one score table F filled by the three-term recurrence with the leading-gap boundaries, a parallel table recording which of the three terms won at each cell, and a single backward walk from (n,m) to (0,0) over that pointer table to emit the alignment. That's the whole global linear-gap aligner, one O(nm) pass to fill plus one O(n+m) pass to trace back, no enumeration anywhere. The affine-gap version is the same shape wearing three tables instead of one — M, X, Y filled by the three recurrences above, each cell still constant work, still O(nm) — with the traceback now also remembering which of the three tables it's in at each step so open-vs-extend bookkeeping survives into the emitted alignment.

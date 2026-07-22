@@ -1,4 +1,4 @@
-Let me start from what actually hurts. I have a black box `f: R^n -> R` to minimize, I can only read function values, and every value costs me a simulation. So the only thing I am allowed to spend is function evaluations, and the only sane currency for "did I do well" is how many of them I needed to reach a target. The landscapes that motivate this are the nasty ones: ill-conditioned, so the favorable directions are orders of magnitude narrower than the unfavorable ones; non-separable, so I cannot decompose the problem into `n` one-dimensional searches and just sweep each coordinate; non-convex and sometimes rugged or noisy, so anything that wants a clean gradient or Hessian — BFGS, conjugate gradients — is out. I have ranks of sampled points and nothing else.
+I have a black box `f: R^n -> R` to minimize, I can only read function values, and every value costs me a simulation. So the only thing I am allowed to spend is function evaluations, and the only sane currency for "did I do well" is how many of them I needed to reach a target. The landscapes that motivate this are the nasty ones: ill-conditioned, so the favorable directions are orders of magnitude narrower than the unfavorable ones; non-separable, so I cannot decompose the problem into `n` one-dimensional searches and just sweep each coordinate; non-convex and sometimes rugged or noisy, so anything that wants a clean gradient or Hessian — BFGS, conjugate gradients — is out. I have ranks of sampled points and nothing else.
 
 What should I sample from? I want a randomized search, and the most honest choice of distribution is a multivariate normal `N(m, C)`: among all distributions on `R^n` with prescribed (co)variances it has the largest entropy, so it commits to nothing beyond the second moments I have actually learned, and it distinguishes no coordinate direction, which is what I want from a general-purpose sampler that has not yet learned anything about the problem's orientation. A normal distribution is completely described by its mean `m` and covariance `C`, and `C` factorizes: with the eigendecomposition `C = B D^2 B^T`, where `B` has orthonormal columns (the principal axes) and `D` is diagonal (the axis lengths), I can sample by drawing `z ~ N(0, I)`, scaling by `D`, rotating by `B`, and shifting: `x = m + B D z ~ N(m, C)`. The one-`sigma` contour is the ellipsoid `(x-m)^T C^{-1} (x-m) = const`, principal axes given by the eigenvectors of `C`, axis lengths by `sigma` times square-roots of the eigenvalues. So the whole game is: out of ranked samples, manufacture a good mean and a good ellipsoid.
 
@@ -10,7 +10,7 @@ So how do I set those `(n^2+n)/2` parameters from ranks alone? The classical ans
 
   sigma_k = sigma * exp(xi_k),   x_k = x + sigma_k z_k,   z_k ~ N(0,I),
 
-pick the best offspring, repeat. The hope is that a strategy-parameter value that *produced* a selected step is a good value going forward. Let me actually stress-test this, because I am about to inherit its failure modes if I am not careful. The selection of a strategy-parameter value is *indirect*: a value of `sigma_k` is judged only through the single object point it happened to spawn, and two different `sigma_k` differ in their probability of being selected by a small, noisy margin — the better one is only slightly more likely to be selected, "slightly" being swamped by the randomness of which `z_k` it got paired with. So the selection signal on the strategy-parameter level is heavily disturbed. Worse, maximizing selection probability is not the same as maximizing progress rate, and the well-documented consequence is that this scheme tends to drive `sigma` *too small*. And the change rate I can realize per generation is bounded by the finite amount of selection information; when I have `n` or `(n^2+n)/2` strategy parameters to set, the per-parameter change rate has to drop, so adaptation slows, and the only knob that decouples change rate from mutation strength is the parent number `mu` — which forces the population to scale roughly linearly with the number of strategy parameters. Fitting a full covariance this way needs huge populations and burns my whole evaluation budget on estimating internal parameters. Wall. The indirection is the disease: I am inferring the strategy parameter from the noisy fact of which object point won, instead of reading it off the steps I actually took.
+pick the best offspring, repeat. The hope is that a strategy-parameter value that *produced* a selected step is a good value going forward. Let me actually stress-test this, because I am about to inherit its failure modes if I am not careful. The selection of a strategy-parameter value is *indirect*: a value of `sigma_k` is judged only through the single object point it happened to spawn, and two different `sigma_k` differ in their probability of being selected by a small, noisy margin — the better one is only slightly more likely to be selected, "slightly" being swamped by the randomness of which `z_k` it got paired with. So the selection signal on the strategy-parameter level is heavily disturbed. Worse, maximizing selection probability is not the same as maximizing progress rate, and the well-documented consequence is that this scheme tends to drive `sigma` *too small*. And the change rate I can realize per generation is bounded by the finite amount of selection information; when I have `n` or `(n^2+n)/2` strategy parameters to set, the per-parameter change rate has to drop, so adaptation slows, and the only knob that decouples change rate from mutation strength is the parent number `mu` — which forces the population to scale roughly linearly with the number of strategy parameters. Fitting a full covariance this way needs huge populations and burns my whole evaluation budget on estimating internal parameters — a dead end. The indirection is the disease: I am inferring the strategy parameter from the noisy fact of which object point won, instead of reading it off the steps I actually took.
 
 The cure has a name in this tradition — derandomization — and the principle is exactly to remove that indirection. The first level of it just decouples the realized change rate of `sigma` from the mutation strength used to probe it, by inserting a damping: `sigma_k = sigma * exp(xi_k / d)` with `d >= 1`, so I can probe with a large `xi` (for a clean selection difference) but only let `sigma` move a little. Useful, but still mutative — I am still mutating `sigma` and selecting indirectly. The decisive move is the second level: stop mutating the strategy parameter at all, and use the *realized* step to update it directly. After I take a step `sigma z_k`, I already know `z_k`; its length `||z_k||` tells me whether the step I just committed to was long or short compared to what an unselected step would have been. So
 
@@ -43,7 +43,7 @@ About those weights: instead of a flat `1/mu` over the best `mu`, let me allow a
 
 (using `sum_i w_i = 1`), the variance-effective selection mass. For flat weights `w_i = 1/mu` this is `(mu * 1/mu)^2 / (mu * 1/mu^2) = 1/(1/mu) = mu` exactly; for skewed weights Cauchy-Schwarz gives `(sum w_i)^2 <= mu sum w_i^2`, i.e. `mu_eff <= mu`, with equality only when all weights are equal — so in general `1 <= mu_eff <= mu`. Let me put a real number on it for the defaults I will land on. With the log-decreasing raw weights `w'_i = ln((lambda+1)/2) - ln i` over the positive half, at `n = 10` (so `lambda = 4 + floor(3 ln 10) = 10`, `mu = 5`) the normalized positive weights come out `[0.456, 0.271, 0.162, 0.085, 0.026]`, and `1/sum w_i^2 = 3.17`. So out of `mu = 5` retained parents the weighting effectively uses about `3.2` independent samples' worth of information — the skew toward the best ranks costs me roughly a third of the nominal count. At `n = 40` (`lambda = 15`, `mu = 7`) the same computation gives `mu_eff = 4.54` out of `7`. The ratio `mu_eff/mu ~ 0.6` is stable across `n`, which I will lean on later. So `mu_eff` is "how many independent samples' worth of information" my weighting actually uses, and it will be the single most important derived quantity in calibrating every learning rate, because every estimate I form from the selected steps has variance set by `mu_eff`, not by `mu`.
 
-Now, can I rely on a single generation's `C_mu`? No — and here is the wall. To get `C_mu` accurate enough that its condition number on the sphere is below, say, ten, I need `mu_eff` on the order of `10n`. That means a population of order `n` or more, which on an expensive `f` is exactly the budget I do not have, and which also defeats the point: I wanted *fast* search with small populations so that, for a fixed evaluation budget, I get *many* generations and thus many small reliable updates rather than a few large noisy ones. A one-shot per-generation estimate is unusable for small `mu_eff`. Wall.
+Now, can I rely on a single generation's `C_mu`? No — and here is the wall. To get `C_mu` accurate enough that its condition number on the sphere is below, say, ten, I need `mu_eff` on the order of `10n`. That means a population of order `n` or more, which on an expensive `f` is exactly the budget I do not have, and which also defeats the point: I wanted *fast* search with small populations so that, for a fixed evaluation budget, I get *many* generations and thus many small reliable updates rather than a few large noisy ones. A one-shot per-generation estimate is unusable for small `mu_eff`.
 
 The fix mirrors what I do everywhere I have a noisy per-step estimate: do not trust one generation, accumulate. Average the per-generation estimates `C_mu^{(i)}` over generations. A flat average over all past generations would work after enough of them, but it weights ancient generations — sampled from a long-gone distribution — as heavily as the current one, which is wrong because the geometry has moved. So use exponential smoothing, the same forgetting trick that turns a never-forgetting sum into a windowed estimate. With a learning rate `0 < c_mu <= 1`,
 
@@ -154,131 +154,6 @@ And the inverse-Hessian target I set at the start — does the assembled algorit
 
 `C` has tracked `H^{-1}` across six orders of magnitude in the eigenvalues; the search distribution learned the inverse Hessian from ranks alone, turning the ellipsoid into (almost) a sphere. (The cigar run earlier showed the same thing from the eigenvector side: longest `C`-axis aligned with the long problem axis, `cond(C) ~ 10^6`.) That is the quasi-Newton analogue I was aiming at, with no derivatives — and it is checked, not asserted.
 
-Now let me write the generation as the algorithm I would actually ship, sampling with the eigendecomposition, the mean recombination, the whitened path and the `sigma` update, the unwhitened path with the Heaviside guard, and the combined covariance update — this fills the single empty slot in the ask/tell harness, the rule that turns one ranked generation into the next `(m, sigma, C)`:
+That derivation is already the code, translated one formula at a time: `ask()` is the eigendecomposition sampler from the opening (`z ~ N(0,I)`, `y = B D z`, `x = m + sigma y`); `tell()` ranks the population, moves the mean by the weighted recombination, updates the whitened path and `sigma`, updates the unwhitened path with its Heaviside guard, forms the active rank-one and rank-`mu` terms, and folds them into `C` with the leading coefficient that keeps the update stationary. Nothing in that translation is invented — it fills the single empty slot in the ask/tell harness with exactly the equations derived above.
 
-```python
-import math
-import numpy as np
-
-_EPS = 1e-8
-_SIGMA_MAX = 1e32
-
-
-class CMA:
-    """(mu/mu_w, lambda)-CMA-ES: adapt the mean, the overall step size sigma,
-    and the full covariance C of the search distribution N(m, sigma^2 C) from
-    ranked samples, using only the ranking of f-values."""
-
-    def __init__(self, mean, sigma, population_size=None, seed=None):
-        n = len(mean)
-        self.dim = n
-        self.mean = np.asarray(mean, dtype=float).copy()
-        self.sigma = float(sigma)
-        self.C = np.eye(n)
-        self.p_c = np.zeros(n)            # evolution path for C (sign-aware, unwhitened)
-        self.p_sigma = np.zeros(n)        # conjugate path for sigma (whitened -> N(0,I))
-        self.g = 0
-        self.rng = np.random.RandomState(seed)
-        self.B = None
-        self.D = None
-
-        # population, full log-weight vector, and positive-weight effective mass
-        self.population_size = population_size or 4 + math.floor(3 * math.log(n))
-        self.mu = self.population_size // 2
-        weights_prime = np.array([
-            math.log((self.population_size + 1) / 2) - math.log(i + 1)
-            for i in range(self.population_size)
-        ])
-        me = (np.sum(weights_prime[: self.mu]) ** 2) / np.sum(weights_prime[: self.mu] ** 2)
-        me_minus = (np.sum(weights_prime[self.mu :]) ** 2) / np.sum(weights_prime[self.mu :] ** 2)
-        self.mu_eff = me
-
-        alpha_cov = 2.0
-        self.c_1 = alpha_cov / ((n + 1.3) ** 2 + me)
-        self.c_mu = min(
-            1 - self.c_1 - 1e-8,
-            alpha_cov * (me - 2 + 1 / me) / ((n + 2) ** 2 + alpha_cov * me / 2),
-        )
-        min_alpha = min(
-            1 + self.c_1 / self.c_mu,
-            1 + 2 * me_minus / (me + 2),
-            (1 - self.c_1 - self.c_mu) / (n * self.c_mu),
-        )
-        positive_sum = np.sum(weights_prime[weights_prime > 0])
-        negative_sum = np.sum(np.abs(weights_prime[weights_prime < 0]))
-        self.weights = np.where(
-            weights_prime >= 0,
-            weights_prime / positive_sum,
-            min_alpha * weights_prime / negative_sum,
-        )
-
-        # learning rates / damping, all derived from n and mu_eff
-        self.c_m = 1.0
-        self.c_sigma = (me + 2) / (n + me + 5)
-        self.d_sigma = 1 + 2 * max(0.0, math.sqrt((me - 1) / (n + 1)) - 1) + self.c_sigma
-        self.c_c = (4 + me / n) / (n + 4 + 2 * me / n)
-        self.chi_n = math.sqrt(n) * (1 - 1 / (4 * n) + 1 / (21 * n ** 2))   # E||N(0,I)||
-
-    def _eigen_decomposition(self):
-        if self.B is not None and self.D is not None:
-            return self.B, self.D
-        self.C = (self.C + self.C.T) / 2
-        D2, B = np.linalg.eigh(self.C)
-        D = np.sqrt(np.where(D2 < 0, _EPS, D2))
-        self.C = B @ np.diag(D ** 2) @ B.T
-        self.B, self.D = B, D
-        return B, D
-
-    def ask(self):
-        B, D = self._eigen_decomposition()
-        z = self.rng.randn(self.dim)                            # z ~ N(0, I)
-        y = B @ (D * z)                                          # y = B D z ~ N(0, C)
-        return self.mean + self.sigma * y                       # x ~ N(m, sigma^2 C)
-
-    def tell(self, solutions):
-        assert len(solutions) == self.population_size
-        n = self.dim
-        self.g += 1
-        solutions = sorted(solutions, key=lambda s: s[1])       # rank by f, best first
-        x = np.array([s[0] for s in solutions])
-        y = (x - self.mean) / self.sigma                        # selected steps in sigma-units
-
-        B, D = self._eigen_decomposition()
-        self.B, self.D = None, None                             # C changes below; cache expires
-        C_invsqrt = B @ np.diag(1.0 / D) @ B.T                  # C^{-1/2} = B D^{-1} B^T
-
-        # mean: weighted recombination of the mu best (reference = old mean)
-        y_w = np.sum(y[: self.mu].T * self.weights[: self.mu], axis=1)
-        self.mean = self.mean + self.c_m * self.sigma * y_w
-
-        # step-size: conjugate (whitened) path -> length test against chi_n
-        self.p_sigma = ((1 - self.c_sigma) * self.p_sigma
-                        + math.sqrt(self.c_sigma * (2 - self.c_sigma) * self.mu_eff)
-                        * (C_invsqrt @ y_w))
-        norm_ps = np.linalg.norm(self.p_sigma)
-        self.sigma *= math.exp((self.c_sigma / self.d_sigma) * (norm_ps / self.chi_n - 1))
-        self.sigma = min(self.sigma, _SIGMA_MAX)
-
-        # covariance: sign-aware (unwhitened) path for rank-one; Heaviside guard
-        h_sigma = (norm_ps / math.sqrt(1 - (1 - self.c_sigma) ** (2 * (self.g + 1)))
-                   < (1.4 + 2 / (n + 1)) * self.chi_n)
-        self.p_c = ((1 - self.c_c) * self.p_c
-                    + h_sigma * math.sqrt(self.c_c * (2 - self.c_c) * self.mu_eff) * y_w)
-        delta_h = (1 - h_sigma) * self.c_c * (2 - self.c_c)
-
-        # Active covariance weights: negative weights are length-normalized in C^{-1/2} coordinates.
-        w_io = self.weights * np.where(
-            self.weights >= 0,
-            1.0,
-            n / (np.linalg.norm(C_invsqrt @ y.T, axis=0) ** 2 + _EPS),
-        )
-
-        rank_one = np.outer(self.p_c, self.p_c)                 # c_1 term: aligned-axis stretch
-        rank_mu = np.einsum('i,ij,ik->jk', w_io, y, y)          # c_mu term, all lambda ranks
-        old_weight = 1 + self.c_1 * delta_h - self.c_1 - self.c_mu * np.sum(self.weights)
-        self.C = (old_weight * self.C
-                  + self.c_1 * rank_one
-                  + self.c_mu * rank_mu)
-```
-
-Let me trace the causal chain back to make sure every piece is load-bearing. I started stuck: black-box, expensive, ill-conditioned, non-separable, rank-only — and I needed a sampler that learns the problem's geometry from ranks. The maximum-entropy choice was a Gaussian, and the ideal covariance was the inverse Hessian, so the prize was learning `C`. Mutative self-adaptation could learn it in principle but selected strategy parameters indirectly through a noisy signal and needed huge populations — wall — so I took the derandomized principle of reading the adaptation off the *realized* steps directly. Estimating `C` from one generation forced the reference-mean question, and referencing the *old* mean (selected-steps estimator) rather than the selected-points' own mean was the hinge that grows variance in the productive direction instead of collapsing it. One generation was too unreliable for small populations — wall — so I accumulated with exponential smoothing into the rank-`mu` update, which let small populations win by giving more generations. The sign-blindness of the outer product — wall — pushed me to accumulate signed steps into an evolution path and use it for a rank-one update, which also amplifies persistent axes and learns a cigar in `O(n)`. The worst ranks carry information too, but negative covariance weights need bounded total mass and Mahalanobis length scaling so they shrink bad directions without breaking positive definiteness. The covariance still could not set the overall scale fast enough — wall — so I added cumulative step-size control: a *conjugate*, whitened path whose length is direction-independent, compared against `E||N(0,I)|| = chi_n`, driving `sigma` multiplicatively with a damping for explicit change-rate control, and unbiased on the log scale for stationarity. The Heaviside guard catches the badly-initialized-`sigma` transient, and the coefficient `1 + c_1 delta_h - c_1 - c_mu sum_i w_i` keeps the covariance accounting correct for both positive-only and active weights. Every learning rate scaled by `mu_eff` and `n` from "fast enough to learn, slow enough to stay reliable." And the things I demanded at the outset I checked rather than assumed: rank-only holds because no line reads an `f`-magnitude; rotation invariance holds *in distribution* (the `eigh` gauge breaks pathwise coupling, but axis-aligned and rotated ellipsoids converge to the same distribution over 40 seeds); the cigar is learned in roughly linear evaluations with `C`'s long axis snapping onto the problem's; and on the ill-conditioned ellipsoid the normalized `C` matches `H^{-1}` to within `0.05` across six orders of magnitude. Quasi-Newton behavior on a black box, from ranks alone — and now verified, not just argued.
+The invariances I fixed as hard constraints at the outset held under actual test rather than assumption: rank-only, because no line ever reads an `f`-magnitude, only its order; rotation invariance in distribution, because the `eigh` gauge breaks the pathwise coupling I first assumed, but the convergence distributions over 40 seeds match; and on the ill-conditioned ellipsoid the learned `C` tracks `H^{-1}` to within `0.05` after normalization — the inverse-Hessian target from the first paragraph, reached from ranks alone.

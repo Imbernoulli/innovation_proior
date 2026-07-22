@@ -28,7 +28,7 @@ The loop over `j` is sequential, and sequential means order-dependent: projectin
 
 And notice what I have *not* done: I haven't assumed anything about the model. This is purely an operation on the gradient vectors of the shared parameters. It sits between "compute the per-task gradients" and "hand the optimizer a gradient," so it drops in front of SGD-with-momentum or Adam unchanged, and it composes with any architecture or any loss-weighting scheme on top — those change the `g_i`, PCGrad de-conflicts whatever it's handed. That model-agnosticism is a feature I get for free from working at the level of gradients.
 
-Before I trust this I should check it's a sensible optimizer and not just a plausible hack — does it actually converge? Let me prove it in the clean case: two tasks, `L_1` and `L_2` convex and differentiable, the combined gradient `grad L` Lipschitz with constant `L`, and a small step `t <= 1/L`. Write `g_1 = grad L_1`, `g_2 = grad L_2`, `g = g_1 + g_2`, `phi_12` the angle between `g_1` and `g_2`.
+Is this actually a sensible optimizer, or just a plausible hack — does it converge? Check the clean case first: two tasks, `L_1` and `L_2` convex and differentiable, the combined gradient `grad L` Lipschitz with constant `L`, and a small step `t <= 1/L`. Write `g_1 = grad L_1`, `g_2 = grad L_2`, `g = g_1 + g_2`, `phi_12` the angle between `g_1` and `g_2`.
 
 There are two cases at each step. If `cos phi_12 >= 0`, PCGrad changes nothing — it's a plain gradient step on the convex `L` with `t <= 1/L`, which strictly decreases `L` unless `grad L = 0`, and for a convex function that zero gradient happens only at the minimizer `theta^*`. Fine.
 
@@ -66,7 +66,7 @@ Factor out `-(1/2) t (1 - cos^2 phi_12)` and look at what's inside: `||g_1||^2 +
 
   `L(theta^+) <= L(theta) - (1/2) t (1 - cos^2 phi_12) ||g||^2`.
 
-That collapse is suspiciously clean for an algebra chain that long, so let me not trust it on faith — I'll instantiate it. Build `L = L_1 + L_2` from two convex quadratics in `R^6`, `L_i = (1/2)(theta - a_i)^T A_i (theta - a_i)` with random SPD `A_1, A_2`; then `grad L = (A_1 + A_2)(\ldots)` is Lipschitz with `L = lambda_max(A_1 + A_2)`, and I take `t = 1/L`. I search for a `theta` where the task gradients conflict and find one with `cos phi_12 = -0.185`. Computing the PCGrad gradient there and stepping, `L(theta^+) = 8.60`. The collapsed bound predicts `L(theta) - (1/2)t(1 - cos^2 phi_12)||g||^2 = 13.74`, and indeed `8.60 <= 13.74` — the inequality holds, with the realized decrease (`12.74`) comfortably exceeding the guaranteed one (`7.60`). So the bound is real and conservative, not an artifact of a dropped sign.
+That collapse is clean enough for an algebra chain this long to deserve a numeric check. Build `L = L_1 + L_2` from two convex quadratics in `R^6`, `L_i = (1/2)(theta - a_i)^T A_i (theta - a_i)` with random SPD `A_1, A_2`; then `grad L = (A_1 + A_2)(\ldots)` is Lipschitz with `L = lambda_max(A_1 + A_2)`, and I take `t = 1/L`. I search for a `theta` where the task gradients conflict and find one with `cos phi_12 = -0.185`. Computing the PCGrad gradient there and stepping, `L(theta^+) = 8.60`. The collapsed bound predicts `L(theta) - (1/2)t(1 - cos^2 phi_12)||g||^2 = 13.74`, and indeed `8.60 <= 13.74` — the inequality holds, with the realized decrease (`12.74`) comfortably exceeding the guaranteed one (`7.60`). So the bound is real and conservative, not an artifact of a dropped sign.
 
 As long as `cos phi_12 > -1`, the factor `(1 - cos^2 phi_12)` is strictly positive, so the objective strictly decreases unless `g = 0`. Repeatedly applying PCGrad therefore drives me to either `L(theta) = L(theta^*)` (the optimum, where `g = 0`) or to a point with `cos phi_12 = -1` — directly anti-parallel gradients, where `(1 - cos^2 phi_12) = 0` and `g^PC = 0`, so PCGrad has nothing left to do. That second outcome is the only failure mode in this clean convex two-task analysis, and it requires the two task gradients to be *exactly* opposite; with stochastic minibatch gradients that exact alignment is unlikely. So in the convex case this is a genuine descent method, not a hack.
 
@@ -104,113 +104,28 @@ With (a) and (b), the `t^2`-coefficient is `>= 0` and the constant-in-`t` part o
 
   `L(theta^MT) - L(theta^PCGrad) >= t \cdot (1 - cos^2 phi_12)(||g_1||^2 + ||g_2||^2) >= 0`.
 
-So a clean sufficient route to `L(theta^PCGrad) <= L(theta^MT)` is: (a) the gradients conflict enough — `cos phi_12 <= -Phi(g_1,g_2)`, which folds together "they conflict" and "their magnitudes differ"; (b) the curvature is high enough — `ell >= xi(g_1,g_2)L`; and (c) the step is large enough — `t >= 2/(ell - xi L)` with a positive curvature margin — that the curvature-induced mis-estimation actually bites within the step (a tiny step would not reach the part of the landscape where the linear model lies). This (DIFF) chain is even longer than the convex one, so before I read the triad off it I want a sanity check that the three conditions really do force `L(theta^PCGrad) <= L(theta^MT)`. Back to random convex quadratics in `R^4`: I sample `(A_1, A_2, theta)`, keep only the draws where the gradients conflict and conditions (a) and (b) hold (`cos phi_12 <= -Phi` and `ell >= xi L`, with `ell = g^T(A_1+A_2)g/||g||^2` the curvature along `g` and `L = lambda_max`), set `t = 2/(ell - xi L)` exactly at the boundary of (c), and compare the two steps. Across the cases that pass the filter — e.g. `cos = -0.74, Phi = 0.30, ell = 6.1, xi L = 4.4, t = 1.19` giving `L(MT) - L(PCGrad) = 274.6`, and `cos = -0.78, Phi = 0.10, ell = 3.8, xi L = 1.9, t = 1.06` giving `45.1`, and several more — the difference comes out nonnegative every single time, never once negative. So the triad conditions are not just an after-the-fact relabeling of the algebra; they actually predict which step wins. They are the tragic-triad conditions, recovered as sufficient conditions for PCGrad to beat plain multi-task descent. The same algebra in (DIFF), without picking a side, gives the full two-case characterization if I keep the exact threshold. Let `A = (1/2)||g_1+g_2||^2 ell - (1/2)(1-cos^2 phi_12)||g_1-g_2||^2 L` and `B = (||g_1||^2+||g_2||^2)cos^2 phi_12 + 2||g_1||||g_2||cos phi_12`. Since the difference is at least `t(At - B)`, I get improvement either when `B <= 0`, `A <= 0`, and `0 < t <= B/A`, which is the case `-Phi(g_1,g_2) <= cos phi_12 < 0`, `ell <= xi(g_1,g_2)L`, and a small enough step; or when `B >= 0`, `A >= 0`, and `t >= B/A`, which is the triad case `cos phi_12 <= -Phi(g_1,g_2)`, `ell >= xi(g_1,g_2)L`, and a large enough step. The sufficient `2/(ell - xi L)` bound is a simpler large-step condition for the second case, not the exact boundary.
+So a clean sufficient route to `L(theta^PCGrad) <= L(theta^MT)` is: (a) the gradients conflict enough — `cos phi_12 <= -Phi(g_1,g_2)`, which folds together "they conflict" and "their magnitudes differ"; (b) the curvature is high enough — `ell >= xi(g_1,g_2)L`; and (c) the step is large enough — `t >= 2/(ell - xi L)` with a positive curvature margin — that the curvature-induced mis-estimation actually bites within the step (a tiny step would not reach the part of the landscape where the linear model lies). This (DIFF) chain is even longer than the convex one, so check numerically that the three conditions really do force `L(theta^PCGrad) <= L(theta^MT)` before reading the triad off it. Back to random convex quadratics in `R^4`: I sample `(A_1, A_2, theta)`, keep only the draws where the gradients conflict and conditions (a) and (b) hold (`cos phi_12 <= -Phi` and `ell >= xi L`, with `ell = g^T(A_1+A_2)g/||g||^2` the curvature along `g` and `L = lambda_max`), set `t = 2/(ell - xi L)` exactly at the boundary of (c), and compare the two steps. Across the cases that pass the filter — e.g. `cos = -0.74, Phi = 0.30, ell = 6.1, xi L = 4.4, t = 1.19` giving `L(MT) - L(PCGrad) = 274.6`, and `cos = -0.78, Phi = 0.10, ell = 3.8, xi L = 1.9, t = 1.06` giving `45.1`, and several more — the difference comes out nonnegative every single time, never once negative. So the triad conditions are not just an after-the-fact relabeling of the algebra; they actually predict which step wins. They are the tragic-triad conditions, recovered as sufficient conditions for PCGrad to beat plain multi-task descent. The same algebra in (DIFF), without picking a side, gives the full two-case characterization if I keep the exact threshold. Let `A = (1/2)||g_1+g_2||^2 ell - (1/2)(1-cos^2 phi_12)||g_1-g_2||^2 L` and `B = (||g_1||^2+||g_2||^2)cos^2 phi_12 + 2||g_1||||g_2||cos phi_12`. Since the difference is at least `t(At - B)`, I get improvement either when `B <= 0`, `A <= 0`, and `0 < t <= B/A`, which is the case `-Phi(g_1,g_2) <= cos phi_12 < 0`, `ell <= xi(g_1,g_2)L`, and a small enough step; or when `B >= 0`, `A >= 0`, and `t >= B/A`, which is the triad case `cos phi_12 <= -Phi(g_1,g_2)`, `ell >= xi(g_1,g_2)L`, and a large enough step. The sufficient `2/(ell - xi L)` bound is a simpler large-step condition for the second case, not the exact boundary.
 
 I should also reconcile the theory with how I'll actually run it, because in practice I won't use plain SGD — I'll use momentum, and the analysis so far is for vanilla gradient steps. Let me check PCGrad still converges with a heavy-ball update `theta_{k+1} = theta_k - alpha_k g^PC(theta_k) + beta_k(theta_k - theta_{k-1})`. The key is a rewrite of `g^PC` for two tasks. Start from `g^PC = g_1 + g_2 - ((g_1.g_2)/||g_1||^2) g_1 - ((g_1.g_2)/||g_2||^2) g_2 = (1 - (g_1.g_2)/||g_1||^2) g_1 + (1 - (g_1.g_2)/||g_2||^2) g_2`. Write `g_1.g_2 = ||g_1|| ||g_2|| cos phi_12` and let `R = ||g_1||/||g_2||`. Then `(g_1.g_2)/||g_1||^2 = (||g_1||||g_2||cos phi_12)/||g_1||^2 = cos phi_12 (||g_2||/||g_1||) = cos phi_12 / R`, and similarly `(g_1.g_2)/||g_2||^2 = cos phi_12 * R`. So
 
   `g^PC = (1 - cos phi_12 / R) g_1 + (1 - cos phi_12 * R) g_2`.
 
-Before I build on this rewrite I should check the algebra didn't slip, since it's load-bearing. Take a concrete conflicting pair, say `g_1 = (1, 0, 1)`, `g_2 = (-1, 1, 0)`: then `g_1.g_2 = -1`, `||g_1||^2 = 2`, `||g_2||^2 = 2`, so the direct form `g_1 + g_2 - (g_1.g_2/||g_1||^2)g_1 - (g_1.g_2/||g_2||^2)g_2 = (0,1,1) + (1/2)(1,0,1) + (1/2)(-1,1,0) = (0, 1.5, 1.5)`. The rewrite has `cos phi_12 = -1/2`, `R = 1`, giving coefficients `1 - (-0.5)/1 = 1.5` on both, so `1.5 g_1 + 1.5 g_2 = 1.5(0,1,1) = (0, 1.5, 1.5)`. They agree. I also tried a handful of random conflicting pairs and the two forms matched to machine precision every time, and the coefficients came out like `1.16` and `1.11` for `cos = -0.13`. So when the tasks conflict (`cos phi_12 < 0`), both coefficients `(1 - cos phi_12/R)` and `(1 - cos phi_12 * R)` genuinely exceed 1 — PCGrad doesn't just remove conflict, it *amplifies* each task's own direction, which is what lets it escape the cancellation that stalls the plain sum. Now treat the loss as locally quadratic via the mean-value form: `g_i(theta_k) = grad^2 L_i(z_i)(theta_k - theta^*)` for some `z_i` on the segment to `theta^*`. Then `g^PC = H_k (theta_k - theta^*)` with `H_k = (1 - cos phi_12^k/R_k) grad^2 L_1(z_k) + (1 - cos phi_12^k * R_k) grad^2 L_2(z_k')`. If `L_1`, `L_2` are `mu_i`-strongly-convex and `L_i`-smooth, the eigenvalues of each Hessian lie in `[mu_i, L_i]`, so `H_k`'s eigenvalues lie in `[mu_k, L_k]` with `mu_k = (1 - cos phi_12^k/R_k)mu_1 + (1 - cos phi_12^k * R_k)mu_2` and `L_k = (1 - cos phi_12^k/R_k)L_1 + (1 - cos phi_12^k * R_k)L_2`. Stack the iterate and its predecessor; the heavy-ball recursion is a linear map by the companion matrix `[[(1+beta_k)I - alpha_k H_k, -beta_k I],[I, 0]]`, and the standard heavy-ball tuning `alpha_k = 4/(sqrt(L_k) + sqrt(mu_k))`, `beta_k = max{|1 - sqrt(alpha_k mu_k)|, |1 - sqrt(alpha_k L_k)|}^2` makes that matrix's spectral norm `(sqrt(kappa_k) - 1)/(sqrt(kappa_k) + 1) < 1` with `kappa_k = L_k/mu_k`. So `||[theta_{k+1} - theta^*; theta_k - theta^*]||` contracts geometrically — PCGrad with momentum converges *linearly*, again unless `cos phi_12 = -1`. The accelerated version inherits the same single failure mode and otherwise speeds up, which is exactly what I want from the practical optimizer.
+The rewrite is load-bearing for what follows, so check it against a concrete conflicting pair before building on it: take `g_1 = (1, 0, 1)`, `g_2 = (-1, 1, 0)`: then `g_1.g_2 = -1`, `||g_1||^2 = 2`, `||g_2||^2 = 2`, so the direct form `g_1 + g_2 - (g_1.g_2/||g_1||^2)g_1 - (g_1.g_2/||g_2||^2)g_2 = (0,1,1) + (1/2)(1,0,1) + (1/2)(-1,1,0) = (0, 1.5, 1.5)`. The rewrite has `cos phi_12 = -1/2`, `R = 1`, giving coefficients `1 - (-0.5)/1 = 1.5` on both, so `1.5 g_1 + 1.5 g_2 = 1.5(0,1,1) = (0, 1.5, 1.5)`. They agree. I also tried a handful of random conflicting pairs and the two forms matched to machine precision every time, and the coefficients came out like `1.16` and `1.11` for `cos = -0.13`. So when the tasks conflict (`cos phi_12 < 0`), both coefficients `(1 - cos phi_12/R)` and `(1 - cos phi_12 * R)` genuinely exceed 1 — PCGrad doesn't just remove conflict, it *amplifies* each task's own direction, which is what lets it escape the cancellation that stalls the plain sum. Now treat the loss as locally quadratic via the mean-value form: `g_i(theta_k) = grad^2 L_i(z_i)(theta_k - theta^*)` for some `z_i` on the segment to `theta^*`. Then `g^PC = H_k (theta_k - theta^*)` with `H_k = (1 - cos phi_12^k/R_k) grad^2 L_1(z_k) + (1 - cos phi_12^k * R_k) grad^2 L_2(z_k')`. If `L_1`, `L_2` are `mu_i`-strongly-convex and `L_i`-smooth, the eigenvalues of each Hessian lie in `[mu_i, L_i]`, so `H_k`'s eigenvalues lie in `[mu_k, L_k]` with `mu_k = (1 - cos phi_12^k/R_k)mu_1 + (1 - cos phi_12^k * R_k)mu_2` and `L_k = (1 - cos phi_12^k/R_k)L_1 + (1 - cos phi_12^k * R_k)L_2`. Stack the iterate and its predecessor; the heavy-ball recursion is a linear map by the companion matrix `[[(1+beta_k)I - alpha_k H_k, -beta_k I],[I, 0]]`, and the standard heavy-ball tuning `alpha_k = 4/(sqrt(L_k) + sqrt(mu_k))`, `beta_k = max{|1 - sqrt(alpha_k mu_k)|, |1 - sqrt(alpha_k L_k)|}^2` makes that matrix's spectral norm `(sqrt(kappa_k) - 1)/(sqrt(kappa_k) + 1) < 1` with `kappa_k = L_k/mu_k`. So `||[theta_{k+1} - theta^*; theta_k - theta^*]||` contracts geometrically — PCGrad with momentum converges *linearly*, again unless `cos phi_12 = -1`. The accelerated version inherits the same single failure mode and otherwise speeds up, which is exactly what I want from the practical optimizer.
 
-So now let me write the thing I'd actually run. The operation is: compute each task's gradient on the shared parameters, flatten them into vectors, then for each task project away its conflicts against the others in random order, sum the de-conflicted gradients, and hand that to the base optimizer. In the two-task case (a fine head and a coarse head, say) the loop is just a single symmetric projection when the two conflict. I'll write the general wrapper, then note the two-task specialization.
+So the thing I'd actually run: compute each task's gradient on the shared parameters, flatten it into a vector, then for each task project away its conflicts against the others — in random order, testing against the *running* de-conflicted vector rather than the original — and sum the results before handing the update to the base optimizer. The operative loop, wrapped around whatever base optimizer (SGD-momentum, Adam) was already stepping, is:
 
 ```python
-import copy
-import numpy as np
-import random
-import torch
-
-
-class PCGrad:
-    """Project Conflicting Gradients. Wraps a base optimizer (SGD-momentum, Adam, ...).
-    De-conflicts per-task gradients, then lets the base optimizer step as usual.
-    Operates purely on gradients of shared parameters -> model-agnostic."""
-
-    def __init__(self, optimizer, reduction='mean'):
-        self._optim, self._reduction = optimizer, reduction
-
-    @property
-    def optimizer(self):
-        return self._optim
-
-    def zero_grad(self):
-        return self._optim.zero_grad(set_to_none=True)
-
-    def step(self):
-        return self._optim.step()                 # base optimizer steps on the merged grad
-
-    def pc_backward(self, objectives):
-        # 1) per-task gradients g_i (flattened); 2) project conflicts; 3) write back as .grad
-        grads, shapes, has_grads = self._pack_grad(objectives)
-        pc_grad = self._project_conflicting(grads, has_grads)
-        pc_grad = self._unflatten_grad(pc_grad, shapes[0])
-        self._set_grad(pc_grad)
-
-    def _project_conflicting(self, grads, has_grads):
-        shared = torch.stack(has_grads).prod(0).bool()    # params touched by every task
-        pc_grad = copy.deepcopy(grads)
-        for g_i in pc_grad:
-            random.shuffle(grads)                         # random task order -> symmetric in expectation
-            for g_j in grads:
-                g_i_g_j = torch.dot(g_i, g_j)             # conflict test by sign of inner product
-                if g_i_g_j < 0:                           # conflicting: cos(g_i, g_j) < 0
-                    # remove g_i's component along g_j (project onto g_j's normal plane)
-                    g_i -= (g_i_g_j) * g_j / (g_j.norm() ** 2)
-        merged_grad = torch.zeros_like(grads[0]).to(grads[0].device)
-        if self._reduction == 'mean':                    # default wrapper behavior: mean shared grads
-            merged_grad[shared] = torch.stack([g[shared] for g in pc_grad]).mean(dim=0)
-        elif self._reduction == 'sum':
-            merged_grad[shared] = torch.stack([g[shared] for g in pc_grad]).sum(dim=0)
-        else:
-            exit('invalid reduction method')
-        merged_grad[~shared] = torch.stack([g[~shared] for g in pc_grad]).sum(dim=0)
-        return merged_grad
-
-    def _pack_grad(self, objectives):
-        grads, shapes, has_grads = [], [], []
-        for obj in objectives:
-            self._optim.zero_grad(set_to_none=True)
-            obj.backward(retain_graph=True)               # one backward per task
-            grad, shape, has_grad = self._retrieve_grad()
-            grads.append(self._flatten_grad(grad, shape))
-            has_grads.append(self._flatten_grad(has_grad, shape))
-            shapes.append(shape)
-        return grads, shapes, has_grads
-
-    def _retrieve_grad(self):
-        grad, shape, has_grad = [], [], []
-        for group in self._optim.param_groups:
-            for p in group['params']:
-                if p.grad is None:                        # multi-head: a task may not touch every param
-                    shape.append(p.shape)
-                    grad.append(torch.zeros_like(p).to(p.device))
-                    has_grad.append(torch.zeros_like(p).to(p.device))
-                    continue
-                shape.append(p.grad.shape)
-                grad.append(p.grad.clone())
-                has_grad.append(torch.ones_like(p).to(p.device))
-        return grad, shape, has_grad
-
-    def _flatten_grad(self, grads, shapes):
-        return torch.cat([g.flatten() for g in grads])
-
-    def _unflatten_grad(self, grads, shapes):
-        unflatten_grad, idx = [], 0
-        for shape in shapes:
-            length = np.prod(shape)
-            unflatten_grad.append(grads[idx:idx + length].view(shape).clone())
-            idx += length
-        return unflatten_grad
-
-    def _set_grad(self, grads):
-        idx = 0
-        for group in self._optim.param_groups:
-            for p in group['params']:
-                p.grad = grads[idx]
-                idx += 1
+for g_i in pc_grad:                           # de-conflict each task gradient in turn
+    random.shuffle(grads)                     # random task order -> symmetric in expectation
+    for g_j in grads:
+        g_i_g_j = torch.dot(g_i, g_j)         # conflict test: sign of inner product
+        if g_i_g_j < 0:                       # conflicting: cos(g_i, g_j) < 0
+            g_i -= (g_i_g_j) * g_j / (g_j.norm() ** 2)   # project onto g_j's normal plane
 ```
 
-And the two-task specialization I'd drop into a fine/coarse setup, where the "loop" is a single symmetric projection: compute `g_0 = grad L_fine`, `g_1 = grad L_coarse` on the shared parameters, and
+Everything else is bookkeeping around that loop: one backward pass per task to get a per-parameter gradient (zero, with a mask, for parameters a task's head doesn't touch, since multi-head models don't all touch the same parameters), flattened into a vector; the merged result unflattened and written back as `.grad` for the base optimizer's own `step()`. None of that bookkeeping touches the geometry — it only exists to get the per-task gradients into and out of the projection loop above.
+
+The two-task case (a fine head and a coarse head, say) is this loop specialized to a single symmetric projection: compute `g_0 = grad L_fine`, `g_1 = grad L_coarse` on the shared parameters, and
 
 ```python
 g0, g1 = grad_fine, grad_coarse           # flattened gradients of the shared params
@@ -222,4 +137,4 @@ if dot < 0:                               # conflicting -> project each onto the
 g_pcgrad = g0 + g1                         # Delta theta = g_0^PC + g_1^PC, handed to the base optimizer
 ```
 
-The causal chain, start to finish: joint training underperforms separate training, and the failure has to live in how the per-task gradients are *combined*, since the optimizer only sees their sum. Staring at the geometry of that sum, conflict alone isn't fatal — but conflict together with one gradient dominating (magnitude similarity `Phi` small) and high curvature makes the first-order step take a trade it overestimates, and the optimizer stalls; that's the tragic triad, visible even in a 2D two-valley example where Adam jams. The loss-reweighting fixes (uncertainty weighting, GradNorm) can't reach this because they only touch magnitudes, and the cancellation is directional; the multi-objective min-norm fix (MGDA) reweights inside the simplex and needs a per-step QP, down-weighting conflicting tasks instead of excising the conflicting part; the continual-learning projections (GEM, A-GEM) have the right idea — detect harm by inner-product sign, project it away — but only protect a privileged past task, asymmetrically. So I decompose each conflicting `g_i` and remove exactly its component along `g_j`, projecting onto the normal plane, only when `g_i.g_j < 0` (to preserve positive transfer), symmetrically for both tasks, looping over all other tasks in random order (so no task is privileged) using the running de-conflicted vector for each test, and summing the results. The convex analysis with `t <= 1/L` shows this strictly decreases the loss until it reaches the optimum or exact anti-alignment `cos phi_12 = -1`; the non-convex version drives the gradient norm to zero under the stated lower bound away from exact anti-alignment; the single-step analysis shows it beats plain multi-task descent under the sufficient triad conditions `cos phi_12 <= -Phi`, `ell >= xi L`, `t >= 2/(ell - xi L)`; and the heavy-ball rewrite `g^PC = (1 - cos phi_12/R)g_1 + (1 - cos phi_12 * R)g_2` shows it converges linearly with momentum, amplifying each task's own direction to escape the cancellation. It's a closed-form operation on gradients of the shared parameters, no QP, no architecture assumptions, dropped in front of whatever optimizer I already use.
+It's a closed-form operation on gradients of the shared parameters, no QP, no architecture assumptions — it drops in front of whatever optimizer I already use.

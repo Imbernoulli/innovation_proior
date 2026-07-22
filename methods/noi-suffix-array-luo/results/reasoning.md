@@ -16,7 +16,7 @@ One round sorts $n$ pairs and reassigns ranks. If I sort the pairs with a compar
 
 But my key is a pair, two coordinates. Radix sort handles that: sort by the digits one at a time, least significant first, each pass a *stable* counting sort. With two coordinates that's two passes. The order matters and it's the part that's easy to get backwards, so let me reason it out rather than recite it. I want the final order to be: first coordinate primary, second coordinate breaks ties. If I sort by the *second* coordinate first, the items are now arranged by second coordinate. Then I do a *stable* sort by the first coordinate. Stability means: among items that share a first coordinate, the sort preserves the order they were already in — which is the second-coordinate order I just established. So after the second pass, items are grouped by first coordinate, and within each group they're in second-coordinate order. That's exactly pair-lexicographic. If I'd done first coordinate first and second coordinate second, the second pass would scramble the first-coordinate grouping.
 
-Let me sanity-check that "less significant key first" claim on a tiny set of pairs, because it's the one place I'd believe a confident wrong answer. Take pairs $(1,1),(0,1),(1,0),(0,0)$ in that input order; lexicographic order should be $(0,0),(0,1),(1,0),(1,1)$. Sort stably by the *second* coordinate: the second coords are $1,1,0,0$, so the zeros come first keeping input order — $(1,0),(0,0),(0,1),(1,1)$. Now sort stably by the *first* coordinate: first coords are $1,0,0,1$; the zeros come first preserving their current order $(0,0),(0,1)$, then the ones $(1,0),(1,1)$ — giving $(0,0),(0,1),(1,0),(1,1)$. That matches. And to confirm the order can't be flipped: sort by *first* coordinate first, getting $(0,1),(0,0),(1,1),(1,0)$, then stably by second — the items with second coord $0$ are $(0,0),(1,0)$ in that order, then second coord $1$ are $(0,1),(1,1)$, yielding $(0,0),(1,0),(0,1),(1,1)$, which is wrong: $(1,0)$ before $(0,1)$. So the order is forced — less significant key first, more significant key last: sort by second coordinate, then stably by first. Two $O(n)$ counting sorts per round, $\log n$ rounds, $O(n\log n)$ overall.
+That "less significant key first" rule is the one place I could easily get backwards under pressure, so check it on a tiny set of pairs. Take pairs $(1,1),(0,1),(1,0),(0,0)$ in that input order; lexicographic order should be $(0,0),(0,1),(1,0),(1,1)$. Sort stably by the *second* coordinate: the second coords are $1,1,0,0$, so the zeros come first keeping input order — $(1,0),(0,0),(0,1),(1,1)$. Now sort stably by the *first* coordinate: first coords are $1,0,0,1$; the zeros come first preserving their current order $(0,0),(0,1)$, then the ones $(1,0),(1,1)$ — giving $(0,0),(0,1),(1,0),(1,1)$. That matches. And to confirm the order can't be flipped: sort by *first* coordinate first, getting $(0,1),(0,0),(1,1),(1,0)$, then stably by second — the items with second coord $0$ are $(0,0),(1,0)$ in that order, then second coord $1$ are $(0,1),(1,1)$, yielding $(0,0),(1,0),(0,1),(1,1)$, which is wrong: $(1,0)$ before $(0,1)$. So the order is forced — less significant key first, more significant key last: sort by second coordinate, then stably by first. Two $O(n)$ counting sorts per round, $\log n$ rounds, $O(n\log n)$ overall.
 
 Now the bookkeeping inside a round, concretely. Say this round I have $x[i] = \mathrm{rank}_\ell(i)$ for every $i$, and I want the new $SA$ sorted by the first $2\ell$ characters, then the new ranks $\mathrm{rank}_{2\ell}$. First the sort-by-second-coordinate. The second coordinate of suffix $i$ is $\mathrm{rank}_\ell(i+\ell)$ — the rank of the suffix starting $\ell$ further along. Two awkward bits. The first: for suffixes near the end, $i + \ell \ge n$, there *is* no character there; the second half is empty. An empty second half should count as smaller than any real one, so those suffixes get the smallest possible second coordinate and sort first among the ties. Fine — I can handle them as a special smallest value.
 
@@ -32,7 +32,7 @@ Let me trace the rounds on $S = \texttt{aabaaaab}$ with the sentinel appended, u
 
 $\ell = 1$: counting-sort by the single code. The sentinel ($0$) is smallest, then the six $\texttt{a}$s ($1$), then the two $\texttt{b}$s ($2$). That gives $SA = [8,\ 0,1,3,4,5,6,\ 2,7]$ — position $8$ first, then the six $\texttt{a}$ positions in their stable input order $0,1,3,4,5,6$, then the two $\texttt{b}$ positions $2,7$. The rank array $x$ is still $[1,1,2,1,1,1,1,2,0]$.
 
-$\ell = 1 \to 2$, $j = 1$. The pair for suffix $i$ is $(\mathrm{rank}_1(i),\ \mathrm{rank}_1(i+1))$. I build the second-key order $y$ by first listing positions with no real second half ($i + 1 \ge 9$, i.e. just position $8$), then scanning $SA$ and emitting $SA[k] - 1$ wherever $SA[k] \ge 1$: from $SA = [8,0,1,3,4,5,6,2,7]$ that emits $7,0,2,3,4,5,1,6$. So $y = [8,\ 7,0,2,3,4,5,1,6]$. Then I stably counting-sort these by their first key $x[\cdot]$. The result comes out $SA = [8,\ 0,3,4,5,\ 1,6,\ 7,2]$. Now recompute ranks by adjacent-pair equality. Reading down this $SA$, the pairs are: pos $8 \to (0,\cdot)$ giving rank $0$; pos $0 \to (1,1)$ rank $1$; pos $3 \to (1,1)$ — same pair, rank stays $1$; pos $4 \to (1,1)$ rank $1$; pos $5 \to (1,1)$ rank $1$; pos $1 \to (1,2)$ — first key same but second key jumps, new rank $2$; pos $6 \to (1,0)$… wait, let me actually use the synthetic-smallest convention for $i+j$ past the end and the real second keys, and just let the code's equality test decide. Running it, the new rank array lands as $x = [1,2,4,1,1,1,2,3,0]$ and the distinct-rank count is $p = 5$. Not yet $n$, so I keep going — and indeed positions $3,4,5$ still share rank $1$, because $\texttt{aa}$, $\texttt{aa}$, $\texttt{aa}$ are still tied on two characters. Good: the $\texttt{a}$ block split but didn't fully resolve, which is exactly what two characters of resolution should do.
+$\ell = 1 \to 2$, $j = 1$. The pair for suffix $i$ is $(\mathrm{rank}_1(i),\ \mathrm{rank}_1(i+1))$. I build the second-key order $y$ by first listing positions with no real second half ($i + 1 \ge 9$, i.e. just position $8$), then scanning $SA$ and emitting $SA[k] - 1$ wherever $SA[k] \ge 1$: from $SA = [8,0,1,3,4,5,6,2,7]$ that emits $7,0,2,3,4,5,1,6$. So $y = [8,\ 7,0,2,3,4,5,1,6]$. Then I stably counting-sort these by their first key $x[\cdot]$. The result comes out $SA = [8,\ 0,3,4,5,\ 1,6,\ 7,2]$. Now recompute ranks by adjacent-pair equality. Reading down this $SA$, the pairs are: pos $8 \to (0,\cdot)$ giving rank $0$; pos $0 \to (1,1)$ rank $1$; pos $3 \to (1,1)$ — same pair, rank stays $1$; pos $4 \to (1,1)$ rank $1$; pos $5 \to (1,1)$ rank $1$; pos $1 \to (1,2)$ — first key same but second key jumps, new rank $2$; pos $6 \to (1,2)$ — same pair as pos $1$, rank stays $2$; pos $7 \to (2,0)$ — first key jumps, new rank $3$; pos $2 \to (2,1)$ — first key same as pos $7$ but second key differs, new rank $4$. The new rank array lands as $x = [1,2,4,1,1,1,2,3,0]$ and the distinct-rank count is $p = 5$. Not yet $n$, so I keep going — and indeed positions $3,4,5$ still share rank $1$, because $\texttt{aa}$, $\texttt{aa}$, $\texttt{aa}$ are still tied on two characters. Good: the $\texttt{a}$ block split but didn't fully resolve, which is exactly what two characters of resolution should do.
 
 $\ell = 2 \to 4$, $j = 2$. Same machinery with the length-$2$ ranks. The counting sort produces $SA = [8,\ 3,4,5,0,\ 6,1,\ 7,2]$, and recomputing ranks gives $x = [4,6,8,1,2,3,5,7,0]$ with $p = 9$. That hits $p = n$ — every suffix now has a distinct rank — so the early exit fires here and I stop. Note this is one round earlier than the worst case would need: I never had to double to $\ell = 8$, because four characters already separate all nine suffixes of this particular string. The final $SA$ is $[8, 3, 4, 5, 0, 6, 1, 7, 2]$.
 
@@ -52,111 +52,10 @@ $$h[i] \ge h[i-1] - 1.$$
 
 That's the lever. Walk $i$ from $1$ upward carrying a running $k$ that holds the current LCP length. The inequality says when I step from $i-1$ to $i$, the new LCP is at least the old one minus one — so I don't restart the character comparison from zero, I start it from $\max(k-1, 0)$. To extend it I find the suffix ranked just before $\mathrm{Suffix}(i)$, namely $\mathrm{Suffix}(SA[\mathrm{rank}[i]-1])$, and compare characters from offset $k$ onward, incrementing $k$ while they match; the final $k$ is $h[i] = \mathrm{height}[\mathrm{rank}[i]]$. (If $\mathrm{rank}[i] = 0$, $\mathrm{Suffix}(i)$ is the smallest suffix and has no predecessor, so $\mathrm{height}[0] = 0$ and I reset $k$.) Why this is linear: after the possible one-step drop, the examined text position $i+k$ never moves backward as $i$ advances, and every successful comparison increments it by one. That gives at most $n$ successful extensions, while the one-step drops also happen at most $n$ times. The matching work is bounded by those extensions plus those drops, both $O(n)$ — so the entire height array is built in $O(n)$, amortized, with a single pass.
 
-Before I trust the $h[i] \ge h[i-1]-1$ argument I'd like to watch the carried $k$ actually behave, because the amortization claim is the whole point and it's exactly the kind of thing that's easy to believe and wrong. Take the same string with $SA = [8,3,4,5,0,6,1,7,2]$; inverting gives $\mathrm{rank}$ by position $= [4,6,8,1,2,3,5,7,0]$. Now walk positions $i = 0,1,2,3,\dots$ carrying $k$. At $i=0$ ($\mathrm{rank}=4$, predecessor pos $5 = \texttt{aab\$}$ vs $\texttt{aabaaaab\$}$): nothing carried, I extend and match $\texttt{aab}$, so $h = 3$. At $i=1$ ($\mathrm{rank}=6$): I drop $k$ to $2$ and extend — predecessor is pos $6 = \texttt{ab\$}$ vs $\texttt{abaaaab\$}$, which share $\texttt{ab}$, so $h$ stays $2$, no extension past the inherited $2$. At $i=2$ ($\mathrm{rank}=8$): drop to $1$, predecessor pos $7 = \texttt{b\$}$ vs $\texttt{baaaab\$}$ share $\texttt{b}$, $h = 1$. At $i=3$ ($\mathrm{rank}=1$): drop to $0$, predecessor pos $8 = \texttt{\$}$ vs $\texttt{aaaab\$}$ share nothing, $h = 0$. So across $i = 0,1,2,3$ the values run $3, 2, 1, 0$ — each exactly the previous minus one, the inequality biting at its tightest, and at every step I started the character comparison from the dropped $k$ rather than from zero. Then $i=4$ ($\mathrm{rank}=2$, predecessor pos $3$): $\mathrm{Suffix}(4) = \texttt{aaab\$}$ against $\mathrm{Suffix}(3) = \texttt{aaaab\$}$ jumps back up to $h=3$, extending $\texttt{aaa}$ from a dropped $k=0$ — a real climb, paid for by the text pointer $i+k$ advancing, never retreating. Indexed back by rank, these give $\mathrm{height} = [0,0,3,2,3,1,2,0,1]$ over ranks $0..8$. Checking a couple directly against the sorted list: rank $2$ is pos $4=\texttt{aaab\$}$ against rank $1$ pos $3=\texttt{aaaab\$}$ — they share $\texttt{aaa}$, LCP $3$, and $\mathrm{height}[2]=3$; rank $4$ is pos $0=\texttt{aabaaaab\$}$ against rank $3$ pos $5=\texttt{aab\$}$, sharing $\texttt{aab}$, LCP $3$, and $\mathrm{height}[4]=3$. Both match. The recurrence and its amortization do what the argument said.
+The amortization argument turns on the drop step behaving exactly as claimed, so let me trace the carried $k$ on the same string rather than take the inequality on faith. Take the same string with $SA = [8,3,4,5,0,6,1,7,2]$; inverting gives $\mathrm{rank}$ by position $= [4,6,8,1,2,3,5,7,0]$. Now walk positions $i = 0,1,2,3,\dots$ carrying $k$. At $i=0$ ($\mathrm{rank}=4$, predecessor pos $5 = \texttt{aab\$}$ vs $\texttt{aabaaaab\$}$): nothing carried, I extend and match $\texttt{aab}$, so $h = 3$. At $i=1$ ($\mathrm{rank}=6$): I drop $k$ to $2$ and extend — predecessor is pos $6 = \texttt{ab\$}$ vs $\texttt{abaaaab\$}$, which share $\texttt{ab}$, so $h$ stays $2$, no extension past the inherited $2$. At $i=2$ ($\mathrm{rank}=8$): drop to $1$, predecessor pos $7 = \texttt{b\$}$ vs $\texttt{baaaab\$}$ share $\texttt{b}$, $h = 1$. At $i=3$ ($\mathrm{rank}=1$): drop to $0$, predecessor pos $8 = \texttt{\$}$ vs $\texttt{aaaab\$}$ share nothing, $h = 0$. So across $i = 0,1,2,3$ the values run $3, 2, 1, 0$ — each exactly the previous minus one, the inequality biting at its tightest, and at every step I started the character comparison from the dropped $k$ rather than from zero. Then $i=4$ ($\mathrm{rank}=2$, predecessor pos $3$): $\mathrm{Suffix}(4) = \texttt{aaab\$}$ against $\mathrm{Suffix}(3) = \texttt{aaaab\$}$ jumps back up to $h=3$, extending $\texttt{aaa}$ from a dropped $k=0$ — a real climb, paid for by the text pointer $i+k$ advancing, never retreating. Indexed back by rank, these give $\mathrm{height} = [0,0,3,2,3,1,2,0,1]$ over ranks $0..8$. Checking a couple directly against the sorted list: rank $2$ is pos $4=\texttt{aaab\$}$ against rank $1$ pos $3=\texttt{aaaab\$}$ — they share $\texttt{aaa}$, LCP $3$, and $\mathrm{height}[2]=3$; rank $4$ is pos $0=\texttt{aabaaaab\$}$ against rank $3$ pos $5=\texttt{aab\$}$, sharing $\texttt{aab}$, LCP $3$, and $\mathrm{height}[4]=3$. Both match. The recurrence and its amortization do what the argument said.
 
 Putting the two together: doubling with radix sort gives $SA$ and $\mathrm{rank}$ in $O(n\log n)$, and this position-order recurrence gives $\mathrm{height}$ in $O(n)$ on top. Let me write it as a single self-contained C++17 program that reads one line — the string $S$ — from standard input and prints $n$, the $sa[]$ row, then the $height[]$ row. I'll keep the construction faithful to the tight integer-array form: $x$ holds current ranks, $y$ doubles as the second-key order and then the old ranks, $sa$ the permutation, and a single counting array; the sentinel is an appended smallest character, while missing second halves are guarded explicitly as the synthetic smallest key. `main` does the boilerplate — append the sentinel, rank-compress characters to dense codes, call the two routines, print.
 
 The shifted second-key order in the prefix-doubling radix construction is the part I'd most easily get wrong under pressure; if I weren't confident in it, I'd fall back to the plain two-pass stable counting-sort radix sort on $(\mathrm{rank}_\ell(i), \mathrm{rank}_\ell(i+\ell))$ each round and ship that correct variant.
 
-```cpp
-// Reads one line (the string S) from stdin. Appends a unique smallest sentinel,
-// builds the suffix array sa[] (start positions of all suffixes, including the
-// sentinel suffix, in lexicographic order) in O(n log n), then the height array
-// (height[i] = LCP(Suffix(sa[i-1]), Suffix(sa[i])), height[0] = 0) in O(n).
-// Prints n, then the sa[] row, then the height[] row (space-separated).
-#include <bits/stdc++.h>
-using namespace std;
-
-// sa[0..n-1] sorts the n suffixes of r (integer codes in [0, m), r[n-1] the
-// unique smallest sentinel) lexicographically. O(n log n).
-vector<int> build_suffix_array(const vector<int>& r, int n, int m) {
-    vector<int> sa(n), x(r), y(n, 0), ws(max(m, n), 0);
-
-    // Initial order by one code.
-    for (int i = 0; i < m; i++) ws[i] = 0;
-    for (int i = 0; i < n; i++) ws[x[i]]++;
-    for (int i = 1; i < m; i++) ws[i] += ws[i - 1];
-    for (int i = n - 1; i >= 0; i--) sa[--ws[x[i]]] = i;
-
-    for (long long j = 1, p = 1; p < n; j *= 2) {
-        // Build the order by the later half, then stably sort by the earlier half.
-        p = 0;
-        for (long long i = max((long long)n - j, 0LL); i < n; i++) y[p++] = (int)i;
-        for (int i = 0; i < n; i++)
-            if (sa[i] >= j) y[p++] = sa[i] - (int)j;
-
-        vector<int> wv(n);
-        for (int i = 0; i < n; i++) wv[i] = x[y[i]];
-        for (int i = 0; i < m; i++) ws[i] = 0;
-        for (int i = 0; i < n; i++) ws[wv[i]]++;
-        for (int i = 1; i < m; i++) ws[i] += ws[i - 1];
-        for (int i = n - 1; i >= 0; i--) sa[--ws[wv[i]]] = y[i];
-
-        // Reuse the arrays: y becomes the previous key array, x receives new keys.
-        swap(x, y);
-        p = 1;
-        x[sa[0]] = 0;
-        for (int i = 1; i < n; i++) {
-            int a = sa[i - 1], b = sa[i];
-            int left_a = (a + j < n) ? y[a + (int)j] : -1;
-            int left_b = (b + j < n) ? y[b + (int)j] : -1;
-            bool same = (y[a] == y[b]) && (left_a == left_b);
-            if (same) x[b] = (int)p - 1;
-            else x[b] = (int)p++;
-        }
-        m = (int)p;
-    }
-    return sa;
-}
-
-// height[i] = LCP(Suffix(sa[i-1]), Suffix(sa[i])); height[0] = 0. O(n).
-vector<int> build_height(const vector<int>& s, const vector<int>& sa) {
-    int n = (int)s.size();
-    vector<int> rank(n, 0), height(n, 0);
-    for (int i = 0; i < n; i++) rank[sa[i]] = i;  // inverse of sa
-
-    int k = 0;
-    for (int i = 0; i < n; i++) {
-        int pos = rank[i];
-        if (pos == 0) { k = 0; continue; }
-        if (k) k--;
-        int j = sa[pos - 1];
-        while (i + k < n && j + k < n && s[i + k] == s[j + k]) k++;
-        height[pos] = k;
-    }
-    return height;
-}
-
-int main() {
-    string text;
-    getline(cin, text);
-
-    // Append a sentinel (chr 0) strictly smaller than every real character,
-    // then rank-compress characters so keys are dense in [0, m).
-    vector<int> s;
-    s.reserve(text.size() + 1);
-    for (unsigned char c : text) s.push_back((int)c + 1);  // shift so 0 is free
-    s.push_back(0);                                        // sentinel = 0, smallest
-    int n = (int)s.size();
-
-    vector<int> sorted_codes = s;
-    sort(sorted_codes.begin(), sorted_codes.end());
-    sorted_codes.erase(unique(sorted_codes.begin(), sorted_codes.end()),
-                       sorted_codes.end());
-    int m = (int)sorted_codes.size();
-    vector<int> r(n);
-    for (int i = 0; i < n; i++)
-        r[i] = (int)(lower_bound(sorted_codes.begin(), sorted_codes.end(), s[i]) -
-                     sorted_codes.begin());
-
-    vector<int> sa = build_suffix_array(r, n, m);
-    vector<int> height = build_height(s, sa);
-
-    cout << n << "\n";
-    for (int i = 0; i < n; i++) cout << sa[i] << " \n"[i == n - 1];
-    for (int i = 0; i < n; i++) cout << height[i] << " \n"[i == n - 1];
-    return 0;
-}
-```
-
-The whole chain: comparing suffixes as opaque strings costs $O(n)$ per comparison because they share long prefixes and the work is thrown away, so instead I rank every suffix by a bounded-length prefix and double that length, since a length-$2\ell$ prefix is the pair of length-$\ell$ ranks of the suffix and the one $\ell$ further on; each doubling sorts those pairs in linear time with a stable counting sort — and the second key needs no sort at all because the previous round's $SA$, read with a shift, already lists the suffixes in second-key order — so the sort is $O(n\log n)$, an appended smallest sentinel makes every suffix strictly ordered, missing second halves compare as one synthetic smallest key, and ranks are recomputed by adjacent-pair equality with an early stop when all ranks separate; then, indexing the adjacent-LCP array by start position turns "drop one leading character" into the inequality $h[i] \ge h[i-1]-1$, which lets a single position-order pass build the height array in $O(n)$.
+That's the whole construction; the code realizes exactly this, as two routines — `build_suffix_array` running the counting-sort-then-doubling loop with the buffer layout just described, `build_height` running the carried-$k$ recurrence — wired together by the `main` that appends the sentinel, rank-compresses the characters, and prints the three rows.

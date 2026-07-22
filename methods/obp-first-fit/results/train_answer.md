@@ -33,26 +33,17 @@ resource I must hope future items fit. First-Fit systematically spreads items ac
 and leaves a long tail of partially-filled bins that never get topped off, and that wasted capacity
 becomes extra bins.
 
-The implementation has to fit the harness, which is slightly awkward because the harness does not hand
-me the open bins in creation order with their fill levels. For the current item it hands me only the
-sub-array of remaining capacities of the bins that *can* fit the item — the valid bins — and asks me
-to score them; it then places the item in the highest-scoring bin, breaking ties toward the lowest
-index. Crucially the bins array is in a stable positional order (index $0$ is the first bin ever
-opened, and so on), so "first bin that fits" is exactly "the valid bin with the smallest index." I
-realize First-Fit by handing back a score that strictly decreases with the bin's position in the
-valid sub-array, so the earliest valid bin is the unambiguous maximum — the intent is unmistakable and
-does not lean on the tie-break convention. The new-bin behaviour then takes care of itself: the
-harness pre-fills a large bins array all sitting at full capacity, so if no already-used bin fits the
-item, the only valid bins left are still-full ones, and First-Fit takes the earliest of those, which
-*is* opening a new bin. There is nothing special to code — the rule is genuinely just "earliest valid
-bin," and the same one line both reuses and opens.
-
-As a single-file program the policy is even more direct than the priority-function form: I keep the
-open bins' remaining capacities in creation order, and for each item I sweep left to right and drop it
-into the first bin that still fits, opening a fresh bin only when the sweep finds none. The program
-reads the instance from stdin — capacity `C`, the item count `n`, then the `n` item sizes — and prints
-the number of bins First-Fit uses followed by the L1 lower bound `ceil(Σ items / C)` for reference.
-Capacities and the running total are `long long` so a long stream of large sizes cannot overflow.
+The implementation is a single vector I maintain myself: remaining capacities of the open bins, one
+entry per bin, appended in the exact order bins are opened, so index order and creation order coincide
+by construction. Placement is one left-to-right scan of that vector for the first entry whose
+remaining capacity is at least the incoming item's size — the earliest such index is exactly "first
+bin that fits." That same scan decides whether to reuse or open a new bin: if it finds a fit, that
+entry's capacity is decremented; if it reaches the end without one, a fresh entry with remaining
+capacity $C - s$ is appended — the very same append that created bin $0$ in the first place. The program
+reads the instance from stdin — capacity `C`, the item
+count `n`, then the `n` item sizes — and prints the number of bins First-Fit uses followed by the L1
+lower bound `ceil(Σ items / C)` for reference. Capacities and the running total are `long long` so a
+long stream of large sizes cannot overflow.
 
 ```cpp
 // Online 1-D bin packing, First-Fit policy.

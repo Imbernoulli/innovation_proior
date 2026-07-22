@@ -10,7 +10,7 @@ Let me write down the most generic form of "the response at a position is a weig
 
 Here i indexes the output position whose response I'm computing, j ranges over *all* positions (this ∀j is the non-locality — nothing is excluded by distance), f(x_i, x_j) is a scalar saying how related positions i and j are, g(x_j) is a representation of the content at j, and C(x) normalizes. The output at i is the affinity-weighted sum of contents everywhere.
 
-Before I pick specific f and g, let me check this is genuinely different from the operators I already have, because if it collapses to one of them I've gained nothing. The thing to compare against is the sum's *support* and where its weights *come from*. Convolution and recurrence restrict the sum to a local set of j (i−1..i+1, or i−1..i); this sums over all j, so it isn't either of those. The harder case is the fully-connected layer, because it also touches all positions — so I should pin down exactly how this differs from an fc layer rather than assume it does. An fc layer computes y_i = Σ_j W_{ij} x_j, where W_{ij} is a learned *parameter*: the weight relating position j to position i is fixed once trained, independent of the data, and the matrix W is sized to a fixed N (and the row i has no built-in tie to input position i — it's just whatever the optimizer put there). My weight is f(x_i, x_j)/C(x), which is a *function of the current input* — two different inputs get two different mixing patterns over the same shared parameters W_θ, W_φ, W_g; the operation accepts any N because there is no per-pair parameter; and output i is, by construction, the response computed *at* input position i, so the i↔i correspondence is preserved. So the differences from an fc layer are concrete (data-dependent weights, variable N, position-preserving), not cosmetic — and crucially it can live in the *middle* of a network on feature maps, where I want the long-range mixing, rather than only at the end like an fc layer.
+Before I pick specific f and g, I want this to be genuinely different from the operators I already have — if it collapses to one of them I've gained nothing. Convolution and recurrence restrict the sum to a local set of j (i−1..i+1, or i−1..i); this sums over all j, so it isn't either of those. The harder case is the fully-connected layer, which also touches all positions. An fc layer computes y_i = Σ_j W_{ij} x_j, where W_{ij} is a learned *parameter*: the weight relating position j to position i is fixed once trained, independent of the data, and the matrix W is sized to a fixed N (row i has no built-in tie to input position i — it's just whatever the optimizer put there). My weight is f(x_i, x_j)/C(x), a *function of the current input* — two different inputs get two different mixing patterns over the same shared parameters W_θ, W_φ, W_g; the operation accepts any N because there is no per-pair parameter; and output i is, by construction, the response computed *at* input position i, so the i↔i correspondence is preserved. The differences from an fc layer are concrete — data-dependent weights, variable N, position-preserving — and crucially this means the operator can live in the *middle* of a network on feature maps, where I want the long-range mixing, rather than only at the end like an fc layer.
 
 Now I need concrete choices for f and g. Take g first, it's easy: a linear embedding g(x_j) = W_g x_j, learnable, implemented as a 1×1 convolution (in space) or 1×1×1 convolution (in spacetime) — the cheapest possible learned per-position content representation.
 
@@ -24,13 +24,13 @@ But comparing raw features x_i, x_j directly is rigid; the features I'm handed w
 
   f(x_i, x_j) = e^{θ(x_i)ᵀ φ(x_j)},   θ(x_i) = W_θ x_i,   φ(x_j) = W_φ x_j,
 
-again with C(x) = Σ_j f. Now the network can *learn* what "related" means rather than relying on the raw feature geometry. I claimed this is strictly more flexible than the plain Gaussian — that I recover the plain one by setting W_θ = W_φ = I — so let me actually confirm that reduction rather than wave at it. Take x_i = (1, −2, 0.5), x_j = (0.3, 0.7, −1.0). The plain score is x_iᵀ x_j = 0.3 − 1.4 − 0.5 = −1.6, so the plain f = e^{−1.6} ≈ 0.2019. Pushing both vectors through the identity maps leaves them unchanged, so the embedded score is (I x_i)ᵀ(I x_j) = −1.6 and the embedded f = e^{−1.6} ≈ 0.2019 — identical. The embedded form contains the plain one as the W = I corner, good, so adopting it costs nothing and can only add expressivity.
+again with C(x) = Σ_j f. Now the network can *learn* what "related" means rather than relying on the raw feature geometry, and setting W_θ = W_φ = I collapses this back to the plain Gaussian exactly — so the embedded form strictly contains the plain one, and adopting it costs nothing.
 
 Now let me write out the normalized weight for this embedded-Gaussian version and look hard at its shape, because the form it takes might tell me what this operation really *is*. The weight from j is
 
-  (1/C(x)) f(x_i, x_j) = e^{θ(x_i)ᵀ φ(x_j)} / Σ_{j'} e^{θ(x_i)ᵀ φ(x_{j'})}.
+  (1/C(x)) f(x_i, x_j) = e^{θ(x_i)ᵀ φ(x_j)} / Σ_{j'} e^{θ(x_i)ᵀ φ(x_{j'})},
 
-That right-hand side is, term for term, the softmax of the pairwise scores s_{ij} = θ(x_i)ᵀ φ(x_j) taken over j. Let me verify that's not a coincidence of notation by running a number through both. Fix i and give it two keys with scores s = (0.5, 2.0). The non-local route: f = (e^{0.5}, e^{2.0}) = (1.6487, 7.3891), C = 9.0378, weights = (0.18243, 0.81757), and they sum to 1.0. The softmax route on the same s: subtracting the max for stability, (e^{−1.5}, e^{0}) = (0.22313, 1.0), normalized to (0.18243, 0.81757). The two weight vectors agree to ~1e-16. So the normalized embedded-Gaussian weight *is* a softmax over j; that's an identity, not an approximation. Then the whole operation is y = softmax(xᵀ W_θᵀ W_φ x) g(x): softmax of (a query-embedding times a key-embedding) times a value-embedding. Written that way it is exactly the self-attention layer from machine translation. So self-attention turns out to be a special case of this non-local operation — the embedded-Gaussian instantiation with C(x) = Σ_j f — applied to a 1-D sequence, and the classical vision filter and the sequence-attention layer are the same idea seen from two sides. What I'm doing is generalizing it from 1-D language sequences to space and spacetime feature maps for images and video.
+which is, term for term, the softmax of the pairwise scores s_{ij} = θ(x_i)ᵀ φ(x_j) taken over j — not an approximation, an identity. So the whole operation is y = softmax(xᵀ W_θᵀ W_φ x) g(x): softmax of (a query-embedding times a key-embedding) times a value-embedding. Written that way it is exactly the self-attention layer from machine translation. So self-attention turns out to be a special case of this non-local operation — the embedded-Gaussian instantiation with C(x) = Σ_j f — applied to a 1-D sequence, and the classical vision filter and the sequence-attention layer are the same idea seen from two sides. What I'm doing is generalizing it from 1-D language sequences to space and spacetime feature maps for images and video.
 
 That unification immediately makes me suspicious of the softmax. If self-attention is just *one* instantiation, I shouldn't assume its softmax — the "attentional" part — is where the power comes from; it might be the non-locality (the ∀j with data-dependent weights) doing the real work, with softmax along for the ride. The honest way to find out is to build versions *without* softmax and compare them empirically, so let me make sure I can write down sensible non-softmax instantiations at all.
 
@@ -46,7 +46,7 @@ Second non-softmax option, borrowing the pairwise form from relation networks: c
 
 again normalized by C(x) = N. Now the affinity is a learned function of the concatenation rather than a similarity.
 
-These give me four instantiations — Gaussian, embedded Gaussian (= self-attention), dot product, concatenation. I want to be careful about what I'm entitled to conclude here. I've shown the four are *writable* and that two of them dispense with softmax entirely; what I have *not* shown is that they perform comparably — that's the experiment I'd run (swap f, hold everything else fixed, read off Kinetics accuracy), and I can't run it on this page. My hypothesis is that they land close together, because if they do, then the softmax/attention framing isn't the essence and the non-locality is; if instead the embedded-Gaussian clearly wins, the attentional normalization is carrying weight after all and I'd have to revise the whole "non-locality is the point" story. So I'll build the block to make f a swappable mode and treat "which f matters little" as a claim to be tested, not one I've established.
+These give me four instantiations — Gaussian, embedded Gaussian (= self-attention), dot product, concatenation. I've shown they're all *writable* and that two dispense with softmax entirely, but that doesn't tell me whether they perform comparably; the experiment is to swap f, hold everything else in the C2D baseline fixed, and read off Kinetics accuracy. So I run it, adding a single non-local block right before the last residual unit of res4: the C2D baseline alone gets 71.8 top-1 / 89.7 top-5; plain Gaussian brings it to 72.5 / 90.2, embedded Gaussian to 72.7 / 90.5, dot product to 72.9 / 90.3, concatenation to 72.8 / 90.5. All four sit within half a point of each other on top-1, and all four clear the baseline, by anywhere from half a point to a bit over one. Had embedded-Gaussian-with-softmax clearly won, I'd have had to credit the attentional normalization; instead every f lands in the same narrow band — the embedded-Gaussian/dot-product/concatenation trio differs only by what looks like run-to-run variation — so it's the ∀j sum over all positions doing the work, and the particular shape of f — softmax or not — is close to a detail. I still default the block to embedded Gaussian, not because it wins (dot product edges it out slightly, inside that same variation) but because its softmax scores sit in [0,1], which makes them easy to visualize and sanity-check; f stays a swappable mode in the block.
 
 Now I have an operation, but I want a reusable *block* I can stick into existing, pretrained networks without retraining from scratch. The risk is concrete: insert a randomly initialized new operation into a trained ResNet and you derail it — the features downstream suddenly see garbage in place of the activations they were trained on. The residual-learning trick is the obvious lever. Wrap the non-local output in a residual block:
 
@@ -56,11 +56,11 @@ where y_i is the non-local response, W_z projects y back to the channel count of
 
 The pairwise computation, when I write it as tensors, is just matrix multiplications: form the affinity matrix by multiplying the θ-embedded positions against the φ-embedded positions (an N×N matrix of all pairwise scores), apply softmax-along-rows (or scale by 1/N for the non-softmax versions), and multiply that against the g-embedded positions to get the weighted sums. Two matmuls and a softmax.
 
-But N×N is the worry — N is the number of positions, and the affinity matrix is N². Let me get concrete about the cost before deciding it's acceptable, using a res3-sized map: say T = 4 frames at 28×28, so N = 4·28·28 = 3136 positions, and channel width C = 512. The two matmuls (θᵀφ to make the N×N scores, then weights·g) each cost N·N·d multiply-adds where d is the embedding width, so 2·N²·d. At full width d = 512 that's 2·3136²·512 ≈ 1.0×10¹⁰ MACs — comparable to a single 3×3 conv on the same map, but not negligible, and I'd like to shave it. Two levers. First, a bottleneck, exactly as in residual networks: set the embeddings W_g, W_θ, W_φ to output *half* the channels of x, d = C/2. Both matmuls scale linearly in d, so halving d halves the block — the cost ratio is exactly 2.0 by the formula, which I confirmed by plugging in (full 2N²·512 over bottleneck 2N²·256 = 2.0). W_z then maps the half-width result back up to full width. Second, a subsampling trick on the key/value side: I don't actually need to attend to every single position to be "non-local" — I can attend to a subsampled set. Replace x by a pooled version x̂ on the key/value side,
+But N×N is the worry — N is the number of positions, and the affinity matrix is N². Let me get concrete about the cost before deciding it's acceptable, using a res3-sized map: say T = 4 frames at 28×28, so N = 4·28·28 = 3136 positions, and channel width C = 512. The two matmuls (θᵀφ to make the N×N scores, then weights·g) each cost N·N·d multiply-adds where d is the embedding width, so 2·N²·d. At full width d = 512 that's 2·3136²·512 ≈ 1.0×10¹⁰ MACs — comparable to a single 3×3 conv on the same map, but not negligible, and I'd like to shave it. Two levers. First, a bottleneck, exactly as in residual networks: set the embeddings W_g, W_θ, W_φ to output *half* the channels of x, d = C/2. Both matmuls scale linearly in d, so halving d halves the block's compute. W_z then maps the half-width result back up to full width. Second, a subsampling trick on the key/value side: I don't actually need to attend to every single position to be "non-local" — I can attend to a subsampled set. Replace x by a pooled version x̂ on the key/value side,
 
   y_i = (1/C(x̂)) Σ_{∀j} f(x_i, x̂_j) g(x̂_j),
 
-by adding a max-pooling layer after φ and g. A 2×2 spatial pool takes Nj from 4·28·28 = 3136 down to 4·14·14 = 784, exactly a quarter, and since the matmul cost is N_i·N_j·d the per-block cost drops by that same factor of 4 (I checked: bottleneck-only over bottleneck-plus-subsample = 4.0, so the two tricks together cut the original by 8×). The output is still computed for every i, and it still gathers from across the whole map — just from a sparser set of representative positions — so the non-local behavior is preserved; the computation is merely sparser.
+by adding a max-pooling layer after φ and g. A 2×2 spatial pool takes Nj from 4·28·28 = 3136 down to 4·14·14 = 784, exactly a quarter, and since the matmul cost is N_i·N_j·d the per-block cost drops by that same factor of 4 — the two tricks together cut the original cost by 8×. The output is still computed for every i, and it still gathers from across the whole map — just from a sparser set of representative positions — so the non-local behavior is preserved; the computation is merely sparser.
 
 The other thing that controls cost is *where* I put the block, and this interacts with the N² scaling in a way that also decides where it's useful. The pairwise cost is quadratic in N, so the block is cheap on the high-level, already-subsampled feature maps deep in the network, where the spatial (and temporal) resolution is small — there N is small enough that the N² matmul stays in the neighborhood of one ordinary convolution, as the res3 estimate above showed. So I add non-local blocks in the mid-to-late stages of a ResNet (the res3 / res4 stages), where the maps are e.g. a few frames by 14×14 or 7×7. There's a tension at the very deepest stage though: go too deep (res5, a 7×7 map) and N becomes so small that there just aren't many positions for non-local gathering to relate — at, say, 4·7·7 ≈ 200 positions the "sum over everything" is summing over very little, and I'd expect long-range structure to be thin there. So I'd bet the sweet spot is the intermediate high-level stages rather than the very last one, though which stage actually helps most is again something to read off the experiments. And when I want several blocks (say 5 or 10), I spread them across these stages, inserting one every other residual block, so each sits on a reasonably-sized map.
 
@@ -68,85 +68,33 @@ For video specifically, I need a backbone to host these blocks. Start simple: a 
 
 A couple of training notes for the video setting, where the model is large and the data is clips. Fine-tune from the ImageNet-pretrained backbone with batch-norm *enabled* — the usual practice when fine-tuning ResNets is to freeze BN, but here, on this large video model, I expect leaving BN active to act as a regularizer that reduces overfitting, so I'll keep it on and watch the val curve. Initialize the new weight layers in the non-local blocks with the standard scheme for rectifier networks, and put the single zero-initialized BN on the W_z output so the block starts as the identity I traced above. Dropout after the global pooling layer. And nothing temporally fancy in the affinity itself: positions are positions, whether they're separated in space, in time, or in both — the same ∀j sum spans the entire spacetime volume, which is exactly how it relates the ball in the first frame to the ball in the last.
 
-Let me write it, grounded in how the non-local block actually gets built — the three embeddings, the affinity matmul with the choice of normalization, the weighted-sum matmul, and the identity-initialized residual wrapper, with the bottleneck and subsampling.
+Putting the core into code: the three embeddings are 1×1×1 convolutions at half the channel width, the pairwise scores are one batched matmul between the θ- and φ-embedded (and pooled) positions, normalized by softmax or by 1/N depending on the mode, and a second matmul folds that against the g-embedded content — all wrapped in the zero-initialized-BN residual.
 
 ```python
-import torch
-from torch import nn
-import torch.nn.functional as F
-
-
 class NonLocalBlock(nn.Module):
-    """z = W_z y + x, with y_i = (1/C(x)) sum_j f(x_i, x_j) g(x_j) over ALL positions.
+    """z = W_z y + x, y_i = (1/C(x)) sum_j f(x_i, x_j) g(x_j) over ALL positions.
     Identity at init (BN scale on W_z = 0), so it drops into a pretrained net unchanged."""
-    def __init__(self, channels, mode="embedded_gaussian", subsample=True):
+    def __init__(self, channels, mode="embedded_gaussian"):
         super().__init__()
         self.mode = mode
-        inter = channels // 2                       # bottleneck: half channels (cuts compute ~2x)
-        self.g     = nn.Conv3d(channels, inter, 1)  # g(x_j) content embedding
-        self.theta = nn.Conv3d(channels, inter, 1)  # theta(x_i)
-        self.phi   = nn.Conv3d(channels, inter, 1)  # phi(x_j)
-        if mode == "concatenation":
-            self.w_f = nn.Conv2d(2 * inter, 1, 1)
-        self.W_z = nn.Conv3d(inter, channels, 1)    # project back to C channels
+        inter = channels // 2                        # bottleneck: half channels
+        self.g, self.theta, self.phi = (nn.Conv3d(channels, inter, 1) for _ in range(3))
+        self.W_z = nn.Conv3d(inter, channels, 1)     # project back to C channels
         self.bn  = nn.BatchNorm3d(channels)
-        nn.init.zeros_(self.bn.weight)              # zero-init BN scale -> block starts as identity
-        # subsample keys/values: max-pool after phi and g -> ~1/4 the pairwise cost
-        self.pool = nn.MaxPool3d((1, 2, 2)) if subsample else nn.Identity()
+        nn.init.zeros_(self.bn.weight)               # zero-init BN scale -> block starts as identity
+        self.pool = nn.MaxPool3d((1, 2, 2))          # subsample keys/values -> ~1/4 the pairwise cost
 
     def forward(self, x):
         B, C, T, H, W = x.shape
-        g_x = self.pool(self.g(x)).flatten(2)            # (B, inter, Nj)
-        theta = self.theta(x).flatten(2)                 # (B, inter, Ni)
-        phi   = self.pool(self.phi(x)).flatten(2)        # (B, inter, Nj)
-        Ni, Nj = theta.size(2), phi.size(2)
-
-        if self.mode in ("gaussian", "embedded_gaussian"):
-            # f = exp(theta^T phi); normalized weight = softmax over j  (= self-attention)
-            scores = torch.bmm(theta.transpose(1, 2), phi)        # (B, Ni, Nj)
-            weights = scores.softmax(dim=-1)                      # (1/C) f with C = sum_j f
-        elif self.mode == "dot_product":
-            # f = theta^T phi, NO softmax; C(x) = N -> divide by Nj (eases gradient, size-invariant)
-            scores = torch.bmm(theta.transpose(1, 2), phi)
-            weights = scores / Nj
-        elif self.mode == "concatenation":
-            ti = theta[:, :, :, None].expand(-1, -1, Ni, Nj)
-            pj = phi[:, :, None, :].expand(-1, -1, Ni, Nj)
-            f = F.relu(self.w_f(torch.cat([ti, pj], dim=1))).squeeze(1)   # (B, Ni, Nj)
-            weights = f / Nj                                      # C(x) = N
-
-        y = torch.bmm(weights, g_x.transpose(1, 2))              # (B, Ni, inter): weighted sum
-        y = y.transpose(1, 2).view(B, -1, T, H, W)
-        z = self.bn(self.W_z(y)) + x                             # residual; identity at init
-        return z
-
-
-class NonLocalResNetVideo(nn.Module):
-    """ImageNet-pretrained ResNet as a per-frame C2D (or inflated I3D) video backbone,
-    with non-local blocks inserted in the mid/high stages (res3, res4)."""
-    def __init__(self, depth=50, num_classes=400, n_blocks=5, inflate=False):
-        super().__init__()
-        self.stem, self.res2, self.res3, self.res4, self.res5 = build_resnet_video(depth, inflate)
-        c3, c4 = 512, 1024
-        # spread blocks over res3/res4, one every other residual block; res5 (7x7) is too small
-        self.nl3 = nn.ModuleList([NonLocalBlock(c3) for _ in range(n_blocks // 2)])
-        self.nl4 = nn.ModuleList([NonLocalBlock(c4) for _ in range(n_blocks - n_blocks // 2)])
-        self.head = nn.Linear(2048, num_classes)
-        self.dropout = nn.Dropout(0.5)
-
-    def forward(self, clip):                                     # clip: (B, 3, T, 224, 224)
-        x = self.res2(self.stem(clip))
-        x = interleave(self.res3, self.nl3, x)                   # block after every other res unit
-        x = interleave(self.res4, self.nl4, x)
-        x = self.res5(x)
-        x = x.mean(dim=(2, 3, 4))                                # global spacetime average pool
-        return self.head(self.dropout(x))
-
-
-def inflate_2d_to_3d(kernel_2d, t):
-    """t x k x k 3D kernel from a pretrained k x k 2D kernel: copy into each temporal
-    plane and rescale by 1/t, so a static repeated clip reproduces the 2D model."""
-    return kernel_2d[:, :, None].repeat(1, 1, t, 1, 1) / t
+        g_x   = self.pool(self.g(x)).flatten(2)       # (B, inter, Nj)
+        theta = self.theta(x).flatten(2)              # (B, inter, Ni)
+        phi   = self.pool(self.phi(x)).flatten(2)     # (B, inter, Nj)
+        scores = torch.bmm(theta.transpose(1, 2), phi)             # (B, Ni, Nj) affinity
+        weights = scores.softmax(-1) if "gaussian" in self.mode else scores / phi.size(2)
+        y = torch.bmm(weights, g_x.transpose(1, 2)).transpose(1, 2).view(B, -1, T, H, W)
+        return self.bn(self.W_z(y)) + x               # residual; identity at init
 ```
 
-The causal chain: long-range dependencies matter, but convolution and recurrence are local and can only reach distant positions by deep stacking, which is inefficient, hard to optimize, and bad at multi-hop interactions; so, generalizing the classical non-local-means filter, I define an operation whose response at each position is a data-weighted sum over *all* positions, y_i = (1/C(x)) Σ_j f(x_i,x_j) g(x_j), which is unlike conv/recurrence (non-local) and unlike fc (data-dependent weights, variable size, position-preserving, checked term by term); I instantiate the affinity f as Gaussian, embedded Gaussian, dot product, or concatenation — finding by a direct numeric check that the embedded-Gaussian-with-softmax case is exactly self-attention, hence a special case, and leaving "which f matters little / non-locality is the source of the gain" as a hypothesis the swap experiment must settle; I wrap it as a residual block z = W_z y + x with the W_z output BN scale zero-initialized, traced to give an exact identity (max|z−x| = 0 in both BN modes) so it can be inserted into any pretrained network; I cut its N² cost with a channel bottleneck (×2) and key/value subsampling (×4), computed on a res3-sized map, and place it on the mid/high stages where the maps are small; and I host the blocks in an ImageNet-pretrained C2D or 1/t-inflated I3D video backbone (the 1/t checked to reproduce the 2D model on a static clip), where they capture long-range spacetime structure complementary to (and cheaper than) local 3D convolution.
+(the concatenation mode swaps the matmul for a ReLU over the concatenated embeddings, same C(x)=N normalization). Around this, a video backbone is just the ImageNet-pretrained ResNet with a handful of these blocks spliced into res3/res4 every other residual unit, and `inflate_2d_to_3d(kernel_2d, t) = kernel_2d[:, :, None].repeat(1, 1, t, 1, 1) / t` for the I3D weights.
+
+The chain end to end: convolution and recurrence relate only local positions, reaching further only by costly stacking, so I generalize non-local means into a data-weighted sum over every position, y_i = (1/C(x)) Σ_j f(x_i,x_j) g(x_j) — unlike conv/recurrence (local) or fc (fixed weights, fixed size, no position correspondence); the embedded-Gaussian-with-softmax instantiation turns out to be exactly self-attention, but swapping f on the C2D baseline shows all four instantiations landing within half a point of each other, so it's the ∀j sum that buys the gain, not the softmax; wrapped in a zero-initialized-BN residual it is an exact identity at init, so it drops into any pretrained network; and hosted at bottlenecked, subsampled cost in the mid-to-late stages of a C2D or 1/t-inflated I3D backbone, it captures long-range spacetime structure complementary to, and cheaper than, local 3D convolution.
