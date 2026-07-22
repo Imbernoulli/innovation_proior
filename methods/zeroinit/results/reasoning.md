@@ -172,12 +172,10 @@ zero branch that a pipeline can expose with `zero_steps` as the last zeroed step
 ```python
 import torch
 
-
 def optimized_scale(v_cond_flat, v_uncond_flat, eps=1e-8):
     dot = torch.sum(v_cond_flat * v_uncond_flat, dim=1, keepdim=True)
     squared_norm = torch.sum(v_uncond_flat ** 2, dim=1, keepdim=True) + eps
     return dot / squared_norm
-
 
 @torch.no_grad()
 def sample(pipeline, cond, uncond, w, num_steps, zero_steps=0, use_zero_init=True):
@@ -215,31 +213,6 @@ make the initial steps contribute no update at all. In code that is just the bra
 
 before the denoise-and-renoise update. The rest of the sampler can remain the existing guided
 DDIM or CFG++-style step:
-
-```python
-import torch
-
-
-@torch.no_grad()
-def sample_ddim_zeroinit(pipeline, prompt, cfg_guidance=7.5, K=2):
-    uc, c = pipeline.get_text_embed(null_prompt=prompt[0], prompt=prompt[1])
-    zt = pipeline.initialize_latent()
-
-    for step, t in enumerate(pipeline.scheduler.timesteps):
-        if step < K:
-            continue
-
-        at = pipeline.alpha(t)
-        at_prev = pipeline.alpha(t - pipeline.skip)
-
-        eps_uc, eps_c = pipeline.predict_noise(zt, t, uc, c)
-        eps_pred = eps_uc + cfg_guidance * (eps_c - eps_uc)
-
-        z0t = (zt - (1 - at).sqrt() * eps_pred) / at.sqrt()
-        zt = at_prev.sqrt() * z0t + (1 - at_prev).sqrt() * eps_uc
-
-    return pipeline.decode(zt)
-```
 
 The pieces now fit into one causal chain. CFG is brittle under velocity error because the
 guidance scale amplifies prediction errors as well as conditional signal. The Gaussian path

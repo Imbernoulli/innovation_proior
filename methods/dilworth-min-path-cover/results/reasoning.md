@@ -26,64 +26,6 @@ So the algorithm is settled: build the split bipartite graph, find a maximum mat
 
 Now I just wire it to the split graph. Each original vertex $v$ contributes left index $v$ (its $v_{\text{out}}$) and right index $v$ (its $v_{\text{in}}$); both sides have exactly $n$ indices. For each DAG edge $v \to w$ I add, in the bipartite adjacency, $w$ to the neighbor list of left vertex $v$, which is exactly the edge $v_{\text{out}} - w_{\text{in}}$. Then `main` runs Kuhn over these two $n$-vertex sides, counts the matching, and prints $n - M$. The program reads `n m` and then `m` lines of 1-based edges `u v` from stdin, and prints the single integer minimum path cover to stdout.
 
-
 The step I'd most easily fumble under time pressure is Kuhn's augmenting-path recursion — specifically, getting the `used` flag right and making sure the re-placement DFS actually fires when a greedy first pass would jam; if I weren't confident I could wire that correctly within budget, I'd fall back to a straightforward greedy matching pass that produces a valid but possibly suboptimal answer, note it may not achieve the true maximum, and double-check against a small hand-traced case before submitting — a plain correct submission beats an ambitious broken one.
-
-```cpp
-// Minimum path cover of a DAG via the split-vertex bipartite-matching reduction.
-// Reads from stdin: "n m" then m lines each "u v" (1-based) for a directed edge
-// u -> v of an acyclic graph. Writes to stdout the single integer minimum number
-// of vertex-disjoint paths covering every vertex exactly once, which equals
-// n - (maximum bipartite matching of the split graph).
-#include <bits/stdc++.h>
-using namespace std;
-
-int n;
-vector<vector<int>> adj;   // adj[v] = right copies w_in joined to left copy v_out
-vector<int> match_right;   // right vertex -> its matched left vertex, or -1
-vector<char> used;         // per-augmentation visited flag on right vertices
-
-// Kuhn's augmenting-path DFS: try to place left vertex u on some free/freeable
-// right vertex. Returns true on success.
-bool try_kuhn(int u) {
-    for (int w : adj[u]) {
-        if (!used[w]) {
-            used[w] = 1;
-            if (match_right[w] == -1 || try_kuhn(match_right[w])) {
-                match_right[w] = u;
-                return true;
-            }
-        }
-    }
-    return false;
-}
-
-int main() {
-    ios::sync_with_stdio(false);
-    cin.tie(nullptr);
-
-    long long m_ll;
-    if (!(cin >> n >> m_ll)) return 0;
-    long long m = m_ll;
-
-    adj.assign(n, {});
-    for (long long i = 0; i < m; ++i) {
-        int u, v;
-        cin >> u >> v;
-        --u; --v;                 // to 0-based
-        adj[u].push_back(v);      // bipartite edge v_out - w_in
-    }
-
-    match_right.assign(n, -1);
-    long long matching_size = 0;
-    for (int u = 0; u < n; ++u) {
-        used.assign(n, 0);
-        if (try_kuhn(u)) ++matching_size;
-    }
-
-    cout << (n - matching_size) << "\n";
-    return 0;
-}
-```
 
 The whole chain, in one breath: a disjoint-path cover is a choice of "successor on my path" for some vertices, and the only constraints are that each link is a real edge and that no vertex is used twice — once as a source, once as a target — which are *independent* one-time budgets, so I split each vertex into a source-copy and a target-copy and the legal successor choices become exactly the matchings of the resulting bipartite graph; turning on $M$ links glues $n$ singleton paths down to $n - M$, which the diamond ($M=2$, two paths) and the chain ($M=3$, one path) both confirm; minimizing paths is maximizing the matching and the answer is $n - M$; the bijection holds because an indegree-$\le 1$, outdegree-$\le 1$ subgraph of an *acyclic* graph is forced to be disjoint paths with no cycles — the directed 3-cycle, where the formula collapses to $0$, shows what acyclicity is buying — and on a poset this same $n - M$ is the minimum chain cover, equal by Dilworth's theorem to the largest antichain, as the V-poset's width of $2$ checks out.

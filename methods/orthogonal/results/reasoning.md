@@ -168,24 +168,4 @@ There is one practical distinction I should not blur. The mathematical tanh edge
 
 So the initialization hook becomes exactly this:
 
-```python
-def initialize_weights(model, config):
-    """Orthogonal initialization.
-
-    Conv2d & Linear: orthogonal matrix (gain=sqrt(2) for ReLU).
-    BatchNorm2d: weight=1, bias=0.
-    """
-    gain = nn.init.calculate_gain('relu')
-    for m in model.modules():
-        if isinstance(m, nn.Conv2d):
-            nn.init.orthogonal_(m.weight, gain=gain)
-        elif isinstance(m, nn.BatchNorm2d):
-            nn.init.constant_(m.weight, 1)
-            nn.init.constant_(m.bias, 0)
-        elif isinstance(m, nn.Linear):
-            nn.init.orthogonal_(m.weight, gain=gain)
-            if m.bias is not None:
-                nn.init.constant_(m.bias, 0)
-```
-
 Reading the chain back the way I built it: solving the linear dynamics turned learning into mode growth, with $\tau \dot u=2u(s-u)$ for a three-layer mode and a timescale of $O(\tau/s)$ that I confirmed numerically to four figures. In deeper nets the mode strength is a product across layers, and even after the stable learning rate shrinks like $1/(N_l s^2)$ — the eigenvalue formula I checked against the explicit Hessian — depth adds only a finite delay provided the initial composite strength is $O(1)$, which by $u_0=a_0^{N_l-1}$ forces a per-layer scale of exactly one. Scaled Gaussian weights satisfy the average-norm condition but, as the depth-50 product showed with a condition number of $10^{18}$, their products become non-normal and spectrally anisotropic, so gradients vanish in most directions. Isometric layer matrices keep all nonzero singular values at one and preserve that under multiplication (the depth-30 product stayed isometric to $10^{-15}$), and a nonlinearity-dependent gain — $\sqrt2$ for ReLU, from the second moment I checked — places the nonlinear network near the variance-propagating regime. The implementation calls the library's Haar-corrected semi-isometric initializer on convolutional and linear weights, leaves the bias-free convolution layers alone, zeroes the linear bias, and keeps batch-normalization affine parameters at the identity.
