@@ -1,20 +1,20 @@
 OK, let me think about what I actually have. The pair representation `z_ij` is a vector for every ordered pair of residues `(i, j)`. Semantically it's supposed to carry the *relation* between `i` and `j` — eventually their distance and relative orientation, because the thing I read it out into is a distogram: a predicted distribution over how far apart `i` and `j` are. So `z` is, really, an edge feature on the complete graph whose nodes are the residues. It gets born from a relative-position encoding plus an outer sum of the per-residue embeddings, and it keeps getting refreshed from the alignment by the outer-product mean, which pours coevolutionary signal into each `(i, j)`. Fine. The question is how to *update* `z` block after block so it gets better.
 
-The dumb thing to do is update each edge on its own — run a little MLP on `z_ij`, or do attention along one residue axis. Let me actually picture the axial option, because that's the strong baseline. Axial attention on a 2D grid: for a fixed row `i`, let `z_ij` attend over all the other entries in that row, `z_ik` for every `k`; then for a fixed column `j`, let `z_ij` attend over `z_kj` for every `k`. That's cheap — `O(N)` interactions per axis instead of `O(N²)` over all pairs of cells — and it's exactly the cost reduction that makes row/column mixing on large alignment-like grids tractable. So is that enough?
+The dumb thing to do is update each edge on its own — run a little MLP on `z_ij`, or do attention along one residue axis. Let me picture the axial option, because that's the strong baseline. Axial attention on a 2D grid: for a fixed row `i`, let `z_ij` attend over all the other entries in that row, `z_ik` for every `k`; then for a fixed column `j`, let `z_ij` attend over `z_kj` for every `k`. That's cheap — `O(N)` interactions per axis instead of `O(N²)` over all pairs of cells — and it's exactly the cost reduction that makes row/column mixing on large alignment-like grids tractable. So is that enough?
 
 Stare at what the edge `(i, j)` is allowed to see. Row attention lets it mix with `(i, k)`: same starting residue `i`, sweeping the other end. Column attention lets it mix with `(k, j)`: same ending residue `j`, sweeping the other end. Each of those is a perfectly good operation. But I notice that at no point does it put the two sides connected to the same third residue into the same message. It can see `(i, k)` in one operation and `(k, j)` in another, but it does not bind them as a triangle indexed by the same `k`. Is that a real loss or am I just noticing a cosmetic fact about the factorization? It only matters if `(i, k)` and `(k, j)` *together* tell me something about `(i, j)` that neither tells me alone. So let me check whether they do.
 
-The pair map is only worth anything if the distances it implies can actually be realized by points in 3D. And an arbitrary symmetric matrix of "distances" is almost never embeddable in three dimensions; metric geometry does not let me choose every `d_ij` independently. The first necessary condition is the triangle inequality: for any three residues `i, j, k`, the distance `d_ij` can't exceed `d_ik + d_kj`. Let me make that bite with actual numbers so I trust it. Suppose for some third residue `k` the network has become confident that `d_ik = 3` and `d_kj = 3`. Then `d_ij ≤ 6`, and also `d_ij ≥ |d_ik − d_kj| = 0` — but a single `k` doesn't pin `d_ij`. Now bring in a second third residue `k'` with `d_ik' = 1` and `d_jk' = 5`: that one forces `d_ij ≥ 4` (and `≤ 6`). Intersecting the two triangles, `d_ij ∈ [4, 6]`, which is far tighter than either side gives alone. So the constraint on `(i, j)` genuinely lives in the *pairs* of incident sides, accumulated over many third residues `k` — `(i, j)` sits in `N − 2` triangles and each one squeezes it a little. That answers my question: combining `(i, k)` with `(k, j)` for a common `k` is not cosmetic; it is where the geometric information is.
+The pair map is only worth anything if the distances it implies can actually be realized by points in 3D. And an arbitrary symmetric matrix of "distances" is almost never embeddable in three dimensions; metric geometry does not let me choose every `d_ij` independently. The first necessary condition is the triangle inequality: for any three residues `i, j, k`, the distance `d_ij` can't exceed `d_ik + d_kj`. Make that bite with actual numbers. Suppose for some third residue `k` the network has become confident that `d_ik = 3` and `d_kj = 3`. Then `d_ij ≤ 6`, and also `d_ij ≥ |d_ik − d_kj| = 0` — but a single `k` doesn't pin `d_ij`. Now bring in a second third residue `k'` with `d_ik' = 1` and `d_jk' = 5`: that one forces `d_ij ≥ 4` (and `≤ 6`). Intersecting the two triangles, `d_ij ∈ [4, 6]`, which is far tighter than either side gives alone. So the constraint on `(i, j)` genuinely lives in the *pairs* of incident sides, accumulated over many third residues `k` — `(i, j)` sits in `N − 2` triangles and each one squeezes it a little. That answers my question: combining `(i, k)` with `(k, j)` for a common `k` is not cosmetic; it is where the geometric information is.
 
 So now I can say what's wrong with axial attention concretely: it can route information along a triangle's sides one side at a time, but it never has the two sides tied to the same `k` present in one message, which is exactly the form the constraint takes. The update I want builds the message into edge `(i, j)` out of the other two sides of each triangle and aggregates over the third node `k`.
 
 The shape of the operation is therefore forced: for target edge `(i, j)`, walk every third residue `k`, grab the two directed tensor entries that represent the other two sides of the triangle, combine them into a message, and sum those messages over all `k`. This is message passing on a triangle: an edge gets messages routed through a third node. The only things left undecided are the combine function and the aggregation, and I want both cheap, because this runs inside a deep stack on sequences of hundreds to thousands of residues, and any "for all `k`" already costs a factor of `N` beyond the `N²` edges — `O(N³)` — so the constant must not be worse than it has to be.
 
-What's the cheapest symmetric way to take two `c`-dimensional edge vectors, combine them, and sum over `k`? My first instinct is attention again: compute a content-based weight between the two sides and do a weighted sum. But that's expensive and I haven't established I need content selection yet; right now I only need the two sides to *meet*. Because the tensor is directed, the geometric side between `j` and `k` can be read as `z_jk` or `z_kj`. Start with the `z_jk` readout. The frugal move is bilinear: form `a_{ik} ⊙ b_{jk}`, an elementwise product of two learned projections, and sum over `k`. Channel `c` of the message into `(i, j)` is `Σ_k a_{ik,c} · b_{jk,c}`. That's an outer-product-style contraction, the same flavor as the outer-product mean that already feeds `z` from the MSA, so I'm not inventing a new kind of primitive. It's one `einsum`, it's `O(N³ c)`, and it puts two sides of every directed triangle into every message:
+What's the cheapest symmetric way to take two `c`-dimensional edge vectors, combine them, and sum over `k`? My first instinct is attention again: compute a content-based weight between the two sides and do a weighted sum. But that's expensive and I haven't established I need content selection yet; right now I only need the two sides to *meet*. Because the tensor is directed, the geometric side between `j` and `k` can be read as `z_jk` or `z_kj`. Start with the `z_jk` readout. The frugal move is bilinear: form `a_{ik} ⊙ b_{jk}`, an elementwise product of two learned projections, and sum over `k`. Channel `c` of the message into `(i, j)` is `Σ_k a_{ik,c} · b_{jk,c}`. That's an outer-product-style contraction, the same flavor as the outer-product mean that already feeds `z` from the MSA, so I'm reusing a primitive the trunk already trusts. It's one `einsum`, it's `O(N³ c)`, and it puts two sides of every directed triangle into every message:
 
 `update_ij = Σ_k a_{ik} ⊙ b_{jk}`,  i.e. the einsum `ikc, jkc -> ijc`.
 
-Wait — I need to be careful about *which* two edges I'm pairing, because `z` is not symmetric. `z_ij ≠ z_ji` in general (it carries directed relational info), so the choice of which index of each incident edge is the shared apex `k` should matter. Let me not just assert that it matters; let me compute the smallest case and see. Take `N = 2`, one channel, and plug numbers into `a` and `b` directly as edge tables `a[i,k]`, `b[j,k]`:
+Wait — I need to be careful about *which* two edges I'm pairing, because `z` is not symmetric. `z_ij ≠ z_ji` in general (it carries directed relational info), so the choice of which index of each incident edge is the shared apex `k` should matter. The smallest case settles it: `N = 2`, one channel, numbers plugged into `a` and `b` directly as edge tables `a[i,k]`, `b[j,k]`:
 
 ```
 a = [[1, 2],        b = [[5, 6],
@@ -23,7 +23,7 @@ update[0,1] = Σ_k a[0,k]·b[1,k] = a[0,0]·b[1,0] + a[0,1]·b[1,1] = 1·7 + 2·
 update[1,0] = Σ_k a[1,k]·b[0,k] = a[1,0]·b[0,0] + a[1,1]·b[0,1] = 3·5 + 4·6 = 39
 ```
 
-`update[0,1] = 23 ≠ 39 = update[1,0]`, so this contraction is itself directed — it reads different entries for `(0,1)` than for `(1,0)`. Good; that confirms numerically that I can't get away with one orientation and call it symmetric. Now look hard at the indices in `Σ_k a_{ik} ⊙ b_{jk}`. The two edges I'm combining are `(i, k)` and `(j, k)`; in both, `k` is the *second* index — `k` is the common *target*, while `i` and `j` are the two *sources* pointing at the same `k`. From node `i` an edge goes out to `k`, from node `j` an edge goes out to `k`; both edges *leave* their source and share their destination `k`. Call this the "outgoing" pairing — `i` and `j` joined through a `k` they both emit toward.
+`update[0,1] = 23 ≠ 39 = update[1,0]`, so this contraction is itself directed — it reads different entries for `(0,1)` than for `(1,0)`, and I can't get away with one orientation and call it symmetric. Now look hard at the indices in `Σ_k a_{ik} ⊙ b_{jk}`. The two edges I'm combining are `(i, k)` and `(j, k)`; in both, `k` is the *second* index — `k` is the common *target*, while `i` and `j` are the two *sources* pointing at the same `k`. From node `i` an edge goes out to `k`, from node `j` an edge goes out to `k`; both edges *leave* their source and share their destination `k`. Call this the "outgoing" pairing — `i` and `j` joined through a `k` they both emit toward.
 
 But geometry doesn't privilege "both point at `k`." I could equally pair the two edges that *come from* a shared `k`: `(k, i)` and `(k, j)`, where now `k` is the common *source* and `i, j` are the two targets. That's a different contraction:
 
@@ -31,7 +31,7 @@ But geometry doesn't privilege "both point at `k`." I could equally pair the two
 
 Call it "incoming": both edges enter `i` and `j` from a shared origin `k`. Because `z` is directed — which I just watched produce `23 ≠ 39` — these two contractions read genuinely different entries of the pair map. Outgoing pulls from the `(i, .)` and `(j, .)` rows; incoming pulls from the `(. , i)` and `(. , j)` columns. They are not the same operation, and neither alone covers both orientations of the triangle relative to the directed edge. So I do both, as two consecutive updates in the block: outgoing then incoming. Together they give edge `(i, j)` both directed ways to read the third-residue evidence.
 
-Now, raw `Σ_k a_{ik} ⊙ b_{jk}` has problems I should fix before it's usable. First, magnitude: I'm summing `N` products. Let me estimate the scale honestly rather than wave at it. Treat the entries of `a` and `b` after their linear maps as roughly centered with unit scale and weakly correlated across `k`. Each term `a_{ik,c}·b_{jk,c}` (with `i ≠ j`) then has mean ≈ 0 and variance `E[a²]E[b²] ≈ 1`, and the `N` terms are roughly independent, so `Var(Σ_k) ≈ N` and the message standard deviation grows like `√N`. Let me verify that scaling instead of trusting the back-of-envelope — Monte-Carlo the sum `Σ_{k=1}^{n} a_k b_k` with `a, b ~ N(0,1)`:
+Now, raw `Σ_k a_{ik} ⊙ b_{jk}` has problems I should fix before it's usable. First, magnitude: I'm summing `N` products. Treat the entries of `a` and `b` after their linear maps as roughly centered with unit scale and weakly correlated across `k`. Each term `a_{ik,c}·b_{jk,c}` (with `i ≠ j`) then has mean ≈ 0 and variance `E[a²]E[b²] ≈ 1`, and the `N` terms are roughly independent, so `Var(Σ_k) ≈ N` and the message standard deviation grows like `√N`. A quick Monte-Carlo of `Σ_{k=1}^{n} a_k b_k` with `a, b ~ N(0,1)` confirms the scaling:
 
 ```
 n =  10 :  empirical var ≈   9.99,  √n = 3.162,  empirical std ≈ 3.160
@@ -39,13 +39,13 @@ n =  40 :  empirical var ≈  40.00,  √n = 6.325,  empirical std ≈ 6.324
 n = 160 :  empirical var ≈ 159.03,  √n = 12.649, empirical std ≈ 12.611
 ```
 
-The variance tracks `N` essentially exactly, so the message scale really is at the mercy of sequence length — a 200-residue protein and a 1000-residue protein would feed the rest of the block messages differing in magnitude by `√5 ≈ 2.2×`, with no learned reason. I need to renormalize after the sum. A LayerNorm on the contracted result centers and rescales the aggregated message back to a controlled magnitude regardless of how many `k` contributed, which is exactly the `√N` dependence I just measured. So there will be two normalizations: one on the input `z` before I project it, to keep the projections well-conditioned, and one on the summed result — the center norm — to kill the length dependence. The input one: LayerNorm `z_ij` first, then form `a` and `b` from the normalized thing.
+The variance tracks `N` essentially exactly, so the message scale really is at the mercy of sequence length — a 200-residue protein and a 1000-residue protein would feed the rest of the block messages differing in magnitude by `√5 ≈ 2.2×`, with no learned reason. I need to renormalize after the sum. A LayerNorm on the contracted result centers and rescales the aggregated message back to a controlled magnitude regardless of how many `k` contributed. So there will be two normalizations: one on the input `z` before I project it, to keep the projections well-conditioned, and one on the summed result — the center norm — to kill the length dependence. The input one: LayerNorm `z_ij` first, then form `a` and `b` from the normalized thing.
 
 Second problem: the "for all `k`" is indiscriminate. The hard padding mask removes nonexistent residues, but it cannot know which real residue pairs carry useful evidence. The soft, learnable stand-in is a gate: multiply each projected edge by a per-channel sigmoid gate before the contraction, so the network can learn to damp edges that shouldn't push signal into the product. So `a_{ij} = sigmoid(Linear(z_ij)) ⊙ Linear(z_ij)` and likewise `b_{ij} = sigmoid(Linear(z_ij)) ⊙ Linear(z_ij)`, each gate and each projection its own linear map. The gate is a differentiable selection knob on the edge features.
 
 Third: once I have a clean aggregated, normalized message and project it back up to `c_z` with a `Linear`, should I just dump it into `z_ij`? Probably not for every edge equally — some edges `(i, j)` may already be confident (strong coevolution signal) and I don't want a triangle aggregate to stomp on them, while others are uncertain and should absorb a lot. So gate the *output* too: `g_ij = sigmoid(Linear(z_ij)) ∈ ℝ^{c_z}`, and the final update is `g_ij ⊙ Linear(centernorm(Σ_k a_{ik} ⊙ b_{jk}))`. The output gate lets the target edge decide how much of the triangle-routed update it actually takes — and since the whole thing is added residually, that's the knob you want: a confident edge sets `g` low.
 
-Let me assemble the outgoing version end to end and check it makes sense. Start with `z_ij ← LayerNorm(z_ij)` to condition the input. From that normalized edge make two gated hidden projections, `a_ij = sigmoid(Linear(z_ij)) ⊙ Linear(z_ij)` and `b_ij = sigmoid(Linear(z_ij)) ⊙ Linear(z_ij)`, both in `ℝ^c`. Take `c = 128` here; this multiplicative update is the cheap `O(N³)` workhorse of the pair stack, so it can afford the wide hidden width. Also make the output gate `g_ij = sigmoid(Linear(z_ij)) ∈ ℝ^{c_z}`. The outgoing update is then `z̃_ij = g_ij ⊙ Linear(LayerNorm(Σ_k a_{ik} ⊙ b_{jk}))`. Incoming is identical except the sum is `Σ_k a_{ki} ⊙ b_{kj}`. In the block these are two residual sub-layers, outgoing first, then incoming.
+Assemble the outgoing version end to end. Start with `z_ij ← LayerNorm(z_ij)` to condition the input. From that normalized edge make two gated hidden projections, `a_ij = sigmoid(Linear(z_ij)) ⊙ Linear(z_ij)` and `b_ij = sigmoid(Linear(z_ij)) ⊙ Linear(z_ij)`, both in `ℝ^c`. Take `c = 128` here; this multiplicative update is the cheap `O(N³)` workhorse of the pair stack, so it can afford the wide hidden width. Also make the output gate `g_ij = sigmoid(Linear(z_ij)) ∈ ℝ^{c_z}`. The outgoing update is then `z̃_ij = g_ij ⊙ Linear(LayerNorm(Σ_k a_{ik} ⊙ b_{jk}))`. Incoming is identical except the sum is `Σ_k a_{ki} ⊙ b_{kj}`. In the block these are two residual sub-layers, outgoing first, then incoming.
 
 Now, is the multiplicative update enough? Look at what it can and can't do. It puts the two other directed sides into every message, so it has the right inputs for triangle consistency. But every `k` contributes through a fixed, content-blind path: the only thing that down-weights a `k` is the per-edge gate on `a` and `b`, which is a function of those edges alone, not of how well edge `(i, k)` actually matches edge `(i, j)`. There's no mechanism for edge `(i, j)` to say "residue `k` is especially informative for me specifically." Recall the two-triangle squeeze from before: `d_ij ∈ [4, 6]` came from a couple of decisive `k`, while most third residues were geometrically slack and contributed little. A content-blind sum gives the slack `k` the same channel into the message as the decisive ones. For sharpening onto the few `k` that actually pin `(i, j)`, I want a content-dependent, query-dependent selection — which is exactly what attention does and the Hadamard sum does not.
 
@@ -56,7 +56,7 @@ So I want a second operation: let `(i, j)` *attend* over the third node, choosin
 
 The `1/√c` is the usual dot-product temperature so the softmax doesn't saturate when `c` is moderate; here `c = 32` per head, `4` heads. And again a sigmoid output gate `g^h_{ij}` on the per-head value sum, the same "how much should this edge absorb" knob. This is the "starting node" version: every edge in the attention shares the starting residue `i` (the central edge `ij` and the left edges `ik` both start at `i`), and the bias edge `jk` closes the triangle. Its sibling shares the *ending* node: query `ij`, keys/values from `kj` (sharing ending residue `j`), bias from edge `ki`, i.e. `a^h_{ijk} = softmax_k( (1/√c) q^h_{ij}·k^h_{kj} + b^h_{ki} )` with values `v^h_{kj}`. Same reason as the multiplicative case for doing both — one orientation of the shared node isn't enough on a directed pair map.
 
-I want to make sure the bias is actually pulling its weight and isn't just a decorative extra term, so let me test the claim that without it the attention is degenerate. Construct a fixed start node `i`, query edge `ij`, and two candidate third residues `k₁, k₂` whose `ik` edges are *identical* but whose `jk` edges differ — geometrically two completely different triangles that happen to share one side. In vanilla attention the logit for `k` is `(1/√c) q_{ij}·k_{ik}`, a function of edges `ij` and `ik` only, so identical `ik` edges must give identical logits. Numerically, with `c = 4` and identical keys:
+The bias has to earn its place, so test the claim that without it the attention is degenerate. Construct a fixed start node `i`, query edge `ij`, and two candidate third residues `k₁, k₂` whose `ik` edges are *identical* but whose `jk` edges differ — geometrically two completely different triangles that happen to share one side. In vanilla attention the logit for `k` is `(1/√c) q_{ij}·k_{ik}`, a function of edges `ij` and `ik` only, so identical `ik` edges must give identical logits. Numerically, with `c = 4` and identical keys:
 
 ```
 vanilla logit(k₁) = 1.5198,  vanilla logit(k₂) = 1.5198   -> identical
@@ -69,157 +69,14 @@ triangular logit(k₁) = 3.5198,  triangular logit(k₂) = 0.0198
 softmax over {k₁, k₂} = [0.971, 0.029]
 ```
 
-The bias breaks the tie and concentrates attention on the relevant triangle. That's the concrete payoff: the affinity now depends on all three sides, so the model attends to a `k` based on the full triangle it forms rather than a single edge — which is why this deserves to be called *triangular* attention and not axial attention with a spurious extra term.
+The bias breaks the tie and concentrates attention on the relevant triangle: the affinity now depends on all three sides, so the model attends to a `k` based on the full triangle it forms rather than a single edge — which is what makes this *triangular* attention and not axial attention with a spurious extra term.
 
 One more shape worry on the attention: the bias `b^h_{jk}` ranges over `(j, k)`. For fixed starting node `i`, query index `j`, key index `k`, the bias is read from the `j`-th row and `k`-th column of the per-head scalar projection of `z`. The attention itself is row attention on `z`, so implementation-wise the bias has shape `[*, 1, H, J, K]`: it broadcasts over the starting node `i`, while its two residue axes align with query residue `j` and key residue `k`. For the ending-node version everything transposes: operate on columns of `z`, implemented as a `transpose(-2, -3)` before the same row-attention machinery and a transpose back after. Same operation, mirror index.
 
 Why keep both families, the multiplicative update and the attention, rather than just the richer attention? Because they trade off. The multiplicative update is cheap, fully symmetric in how it treats the `k`'s (no query at all), and the natural frugal contraction; it gives every block a broad triangle-shaped mixing pass at low constant cost. The attention is the content-routed refinement that can sharpen onto the decisive `k` — as the degeneracy check just showed it does — but it's the more expensive operation, so it runs at the narrower width (`c = 32`, 4 heads) while the multiplicative workhorse runs wide (`c = 128`). Stacking them — two multiplicative updates, then two attentions, then a transition MLP — gives both the cheap symmetric consistency pass and the selective refinement. The order is deliberate: broad triangle mixing first, content routing next, then a 4×-wide transition MLP digests the result.
 
-Now to the code. I'll mirror a clean implementation of both operators. The multiplicative update first.
+Now to the code. The multiplicative update realizes its einsum as permute → matmul → permute: stack `c` as a batch dimension and do a plain matrix multiply. For outgoing, permute `a` to `[*, c, i, k]` and `b` to `[*, c, k, j]`, matmul over `k` to `[*, c, i, j]`, permute back to `[*, i, j, c]`; incoming puts the first residue axis of both edges in the contracted slot instead of the second. The padding mask multiplies `a` and `b` before the contraction so padded residues never enter the sum over `k`, and the fp16 path divides `a` and `b` by their standard deviations first so the product can't overflow. Index gymnastics by eye is exactly where this kind of code breaks, so check both paths against the reference einsum on a small random tensor (`N = 3`, `c = 4`): outgoing against `torch.einsum('ikc,jkc->ijc', a, b)`, incoming against `torch.einsum('kic,kjc->ijc', a, b)`. Max absolute difference comes out `0.0` for both — the permutations are right, and the outgoing/incoming difference lives entirely in which axis gets contracted.
 
-```python
-import torch
-import torch.nn as nn
-from functools import partialmethod
+The attention sibling needs no new machinery: it reuses the trunk's gated multi-head `Attention`, and the whole triangle-closure lives in the one extra additive bias whose shape I pinned above — a per-head scalar projection of `z`, permuted to align its residue axes with query `j` and key `k` and unsqueezed to broadcast over `i`, passed in alongside the additive mask bias for padded keys. The module supplies the `1/√c` scaling, the sigmoid output gate, and the `concat_h → Linear` back to `c_z`. The ending-node version transposes the two residue axes, runs the same row attention, and transposes back; its columnwise dropout in the original orientation falls out as rowwise dropout applied while transposed.
 
-# Linear, LayerNorm, Attention, DropoutRowwise, DropoutColumnwise,
-# PairTransition, permute_final_dims, and is_fp16_enabled are trunk primitives.
-
-
-class TriangleMultiplicativeUpdate(nn.Module):
-    """Update z_ij from the other two edges of every triangle {i,j,k}.
-    _outgoing=True : message Σ_k a_ik ⊙ b_jk  (i,j share the target k)
-    _outgoing=False: message Σ_k a_ki ⊙ b_kj  (i,j share the source k)
-    """
-    def __init__(self, c_z, c_hidden, _outgoing=True):
-        super().__init__()
-        self.c_z = c_z
-        self.c_hidden = c_hidden          # c = 128: the wide, cheap workhorse
-        self._outgoing = _outgoing
-
-        self.layer_norm_in = LayerNorm(c_z)        # condition the input z
-        self.layer_norm_out = LayerNorm(c_hidden)  # renormalize the sum over k
-
-        self.linear_a_p = Linear(c_z, c_hidden)                  # left projection
-        self.linear_a_g = Linear(c_z, c_hidden, init="gating")   # left edge gate
-        self.linear_b_p = Linear(c_z, c_hidden)                  # right projection
-        self.linear_b_g = Linear(c_z, c_hidden, init="gating")   # right edge gate
-
-        self.linear_z = Linear(c_hidden, c_z, init="final")      # project message up
-        self.linear_g = Linear(c_z, c_z, init="gating")          # output gate g_ij
-        self.sigmoid = nn.Sigmoid()
-
-    def _combine_projections(self, a, b):
-        # a, b: [*, N, N, c]. Contract over the shared node k.
-        # outgoing -> 'ikc,jkc->ijc' ; incoming -> 'kjc,kic->ijc'
-        if self._outgoing:
-            a = permute_final_dims(a, (2, 0, 1))   # [*, c, i, k]
-            b = permute_final_dims(b, (2, 1, 0))   # [*, c, k, j]
-        else:
-            a = permute_final_dims(a, (2, 1, 0))   # [*, c, k, i]
-            b = permute_final_dims(b, (2, 0, 1))   # [*, c, k, j]
-        p = torch.matmul(a, b)                     # sum over k -> [*, c, i, j]
-        return permute_final_dims(p, (1, 2, 0))    # [*, i, j, c]
-
-    def forward(self, z, mask=None):
-        # z: [*, N, N, c_z]
-        if mask is None:
-            mask = z.new_ones(z.shape[:-1])
-        mask = mask.unsqueeze(-1)
-
-        z = self.layer_norm_in(z)                              # step 1
-        a = mask * self.sigmoid(self.linear_a_g(z)) * self.linear_a_p(z)  # gated left
-        b = mask * self.sigmoid(self.linear_b_g(z)) * self.linear_b_p(z)  # gated right
-        if is_fp16_enabled():
-            a_std = a.std()
-            b_std = b.std()
-            if a_std != 0.0 and b_std != 0.0:
-                a = a / a_std
-                b = b / b_std
-            with torch.cuda.amp.autocast(enabled=False):
-                x = self._combine_projections(a.float(), b.float())
-        else:
-            x = self._combine_projections(a, b)                # Σ_k a ⊙ b
-        x = self.layer_norm_out(x)                             # kill N-dependence
-        x = self.linear_z(x)                                   # back to c_z
-        g = self.sigmoid(self.linear_g(z))                     # output gate g_ij
-        return x * g                                           # step 4
-
-
-class TriangleMultiplicationOutgoing(TriangleMultiplicativeUpdate):   # Σ_k a_ik ⊙ b_jk
-    __init__ = partialmethod(TriangleMultiplicativeUpdate.__init__, _outgoing=True)
-
-class TriangleMultiplicationIncoming(TriangleMultiplicativeUpdate):   # Σ_k a_ki ⊙ b_kj
-    __init__ = partialmethod(TriangleMultiplicativeUpdate.__init__, _outgoing=False)
-```
-
-The `permute → matmul → permute` is meant to realize the `einsum` over `k`: stack `c` as a batch dimension and do a plain matrix multiply `[i,k]·[k,j]→[i,j]`, which should equal `Σ_k a_{ik}·b_{jk}` per channel. I don't fully trust index gymnastics by eye, so let me check the outgoing path against the reference einsum on a small random tensor (`N = 3`, `c = 4`): permute `a` to `[c,i,k]`, permute `b` to `[c,k,j]`, `matmul`, permute back to `[i,j,c]`, and compare to `torch.einsum('ikc,jkc->ijc', a, b)`. Max absolute difference comes out `0.0`. Repeat for the incoming path against `torch.einsum('kic,kjc->ijc', a, b)` (i.e. `Σ_k a_{ki} b_{kj}`): also `0.0`. So the permutations are right, and the outgoing/incoming difference is entirely in which axis gets put where before the matmul — outgoing contracts the second index of both edges, incoming the first. The mask zeros out padded residues so they never enter the sum over `k`.
-
-Now the attention sibling. The whole triangle-closure lives in one extra additive bias derived from `z` itself.
-
-```python
-class TriangleAttention(nn.Module):
-    """starting=True : attend over edges ik (share start i), bias from edge jk.
-       starting=False: attend over edges kj (share end j),   bias from edge ki."""
-    def __init__(self, c_in, c_hidden, no_heads, starting=True, inf=1e9):
-        super().__init__()
-        self.starting = starting
-        self.inf = inf
-        self.layer_norm = LayerNorm(c_in)
-        # per-head scalar bias read off the pair map -> closes the triangle
-        self.linear = Linear(c_in, no_heads, bias=False, init="normal")
-        # standard gated multi-head attention with the 1/sqrt(c) scaling and sigmoid gate
-        self.mha = Attention(c_in, c_in, c_in, c_hidden, no_heads)
-
-    def forward(self, x, mask=None):
-        # x: [*, I, J, c_in]
-        if mask is None:
-            mask = x.new_ones(x.shape[:-1])
-        if not self.starting:                 # ending-node = operate on columns
-            x = x.transpose(-2, -3)
-            mask = mask.transpose(-1, -2)
-
-        x = self.layer_norm(x)
-        mask_bias = (self.inf * (mask - 1))[..., :, None, None, :]   # mask padded keys
-        # the third-edge bias: project z to a per-head scalar, broadcast as a logit
-        triangle_bias = permute_final_dims(self.linear(x), (2, 0, 1)).unsqueeze(-4)
-        biases = [mask_bias, triangle_bias]   # logit = q·k/sqrt(c) + bias_jk + mask
-
-        x = self.mha(q_x=x, kv_x=x, biases=biases)
-        if not self.starting:
-            x = x.transpose(-2, -3)
-        return x
-
-
-TriangleAttentionStartingNode = TriangleAttention
-
-class TriangleAttentionEndingNode(TriangleAttention):
-    __init__ = partialmethod(TriangleAttention.__init__, starting=False)
-```
-
-Inside `Attention`, the per-head logit is `(1/√c) q^h·k^h` plus the additive `biases`; the `triangle_bias` is the `b^h_{jk}` term, and the module also applies the `sigmoid` output gate `g^h_{ij}` and the final `concat_h → Linear` back to `c_z`. So the attention's logit is `(1/√c) q^h_{ij}·k^h_{ik} + b^h_{jk}`, with the bias supplying the edge that vanilla row attention would never see — the edge that, in the degeneracy check above, was the only thing that could split `k₁` from `k₂`.
-
-And they sit together in the pair stack like this, each a residual sub-layer. The ending-node attention gets columnwise dropout in the original orientation; one PyTorch implementation obtains the same effect by transposing, applying rowwise dropout, and transposing back.
-
-```python
-class PairStack(nn.Module):
-    def __init__(self, c_z, pair_dropout=0.25):
-        super().__init__()
-        self.tri_mul_out = TriangleMultiplicationOutgoing(c_z, 128)
-        self.tri_mul_in = TriangleMultiplicationIncoming(c_z, 128)
-        self.tri_att_start = TriangleAttentionStartingNode(c_z, 32, 4)
-        self.tri_att_end = TriangleAttentionEndingNode(c_z, 32, 4)
-        self.pair_transition = PairTransition(c_z, n=4)
-        self.dropout_row = DropoutRowwise(pair_dropout)
-        self.dropout_col = DropoutColumnwise(pair_dropout)
-
-    def forward(self, z, pair_mask):
-        z = z + self.dropout_row(self.tri_mul_out(z, mask=pair_mask))
-        z = z + self.dropout_row(self.tri_mul_in(z, mask=pair_mask))
-        z = z + self.dropout_row(self.tri_att_start(z, mask=pair_mask))
-        z = z + self.dropout_col(self.tri_att_end(z, mask=pair_mask))
-        z = z + self.pair_transition(z, mask=pair_mask)
-        return z
-```
-
-Tracing the chain back to its start: `z_ij` is an edge feature, and a set of edges is only physical if every triple obeys the triangle inequality — which I watched tighten `d_ij` to `[4, 6]` once two third residues weighed in — so the constraint on `(i, j)` lives in the *pairs* of other sides, accumulated over `k`, and axis-local updates can only see those sides separately. Routing a message into `(i, j)` from two directed reads of those sides, summed over the third residue `k`, forces a third-node contraction; the cheapest symmetric form is the gated Hadamard product `Σ_k a ⊙ b`, in two flavors — share the target `k`, share the source `k` — because the pair map is directed (the `23 ≠ 39` check). A center LayerNorm tames the `√N`-scaling sum I measured, and an output gate controls absorption. Because that contraction is content-blind, a triangular attention sits on top: `(i, j)` picks the decisive `k` by `q·k` similarity while a bias `b_{jk}` or `b_{ki}` injects the missing third edge so the choice is made over the whole triangle — without it, identical `ik` edges collapse to identical logits. Two multiplicative updates, two attentions, a transition: each block nudges the pair representation toward a geometry that can actually be built in 3D.
+In the pair stack they sit as consecutive residual sub-layers — outgoing multiplication, incoming multiplication, starting-node attention, ending-node attention, then the pair transition — the first three under rowwise dropout, the ending-node attention under columnwise. The modules themselves are a direct transcription of what's derived above; each block nudges the pair representation toward a geometry that can actually be built in 3D.
