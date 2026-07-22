@@ -199,5 +199,3 @@ edited = diffusion.p_sample_loop(
     denoised_fn=denoised_fn,
 )[:batch_size]
 ```
-
-Pulling the threads together: the diffusion backbone gives a strong learned reverse process, and learned variance is what makes the reduced-step sampler practical. Language enters through both a global caption embedding and token-level attention context. The guidance rule I ended up with came out of carrying the score relation's minus sign through the extrapolation and watching the two signs cancel into a plain `ε`-space update; the noised-CLIP gradient is the comparable external alternative, and which of the two is stronger I would settle by comparing FID at fixed CLIP-score rather than by argument, though I lean toward the model's own conditional-minus-unconditional direction. The upsampler keeps semantic generation separate from high-resolution detail, and the inpainting fine-tune plus the known-pixel projection I traced above turns the same generator into a text-driven editor.

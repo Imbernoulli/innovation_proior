@@ -111,24 +111,3 @@ literal double-loop sum:
 ```
 prefix-sum rect weight: 1   direct sum: 1   match: True
 ```
-
-They agree, so the rectangle the warm start chooses really is the one maximising `Σ(Av − Bv)`, and
-`curScore` starts consistent with the score the cells carry. The remaining faithfulness claim — that
-the internal `a − b` the search tracks matches the frozen evaluator's exact point-in-polygon count to
-the unit on the emitted net — I cannot fully close on this page, since it needs the harness's exact
-geometry evaluator; I expect it to hold because the incremental delta `Av[c] − Bv[c]` and the cache
-refresh are both exact and local, but I would want to read it off a real run to be sure rather than
-declare it here.
-
-So the rung is the previous SA with a locally-maintained boundary cache feeding a directed
-edge-move operator, mixed with the uniform flip. What I expect, and what I will watch for in the
-feedback: the targeted move should lift exactly the instances where the previous rung plateaued
-against the perimeter ceiling — the overlapping-shoal layouts where the win comes from a coordinated
-"release this sardine cell, capture that mackerel cell" trade that undirected flips almost never
-propose. On easy seeds where the net is already near-optimal there is little misclassification to
-target, so the rung should hold the previous result, not regress. I would expect a modest but
-reproducible gain — the same character as the benchmark's `2880 → 3140`: not a new algorithm, but the
-same SA made to search in the right direction, with a cache that makes the directed proposals
-affordable. And there is no further rung past this in the same representation, because the next gains
-on the real benchmark come from a different kind of search — continuous-polygon representations,
-multi-net restarts — rather than from sharpening this local-move annealer.

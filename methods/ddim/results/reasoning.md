@@ -212,5 +212,3 @@ def make_seq(num_timesteps, num_sampling_steps, kind="uniform"):
         ).tolist()]
     raise NotImplementedError(kind)
 ```
-
-Training is untouched — the existing unweighted ε-MSE — and `sample` is the only thing that changed. Causal recap: the loss only ever saw the marginals q(x_t|x_0) and, with unshared per-t weights, only up to a reweighting, so a trained noise predictor is committed to nothing but those marginals; I built every non-Markovian inference process that keeps them (★) and checked numerically that it does, found one free per-step variance σ, showed its variational objective is L_γ for positive γ and hence shares the unweighted ε-MSE optimum already trained, confirmed the σ-value that reproduces the ancestral sampler, took σ→0 to get a deterministic implicit model whose update (◇) loses its noise term, recognized that update as an Euler step of an ODE in σ matching the probability-flow ODE, and — because the objective is indifferent to forward chain length — ran it on a short sub-sequence τ, where an oracle trace returns the target image even from a single jump: a thousand sequential passes turned into twenty without retraining.

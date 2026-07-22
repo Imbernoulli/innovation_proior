@@ -102,9 +102,3 @@ That oscillation tells me the certificate needs separate handling. I cannot prom
 ```text
 g(x_{k_hat}) <= 2 beta C_f/(K+2),  beta = 27/8.
 ```
-
-So the minimum gap over a window shrinks at the same O(1/K) scale as the primal error, even though no single gap does. The example is consistent with this: by k = 4 the gap has already touched 0, well inside the budget. The certificate I compute for stopping therefore also certifies progress, on average over a window rather than pointwise.
-
-The update also explains the iterate structure, which I can read straight off the run rather than assert. Each iteration introduces one new feasible atom s and convex-combines it with the old point. Starting from an atom, after k steps the point is a convex combination of at most k+1 atoms. In the trace, x_0 is one vertex, x_1 another vertex, and from k = 2 on the iterates use only two of the three simplex vertices — the third coordinate stays exactly 0 the whole way. That is sparsity appearing for free: on the simplex the iterate has few nonzeros, on a nuclear-norm ball the analogous statement is a sum of a few rank-one matrices. It is a direct consequence of using a linear minimization oracle and a convex-combination step instead of a projection, not an extra device bolted on.
-
-So the iteration that the bottleneck pushes me to is: do not repair infeasible gradient steps. Use the gradient only to build a linear objective, minimize that objective over the feasible set to get an atom s, and move partway toward s with gamma_k = 2/(k+2). Convexity of D gives feasibility for free, convexity of f gives the gap certificate for free, and the curvature constant gives the one-step descent inequality and the O(C_f/k) rate — all of which held numerically on the simplex least-squares run, exactly to the bound. The construction is projection-free because it never asks for the nearest feasible point in the first place.

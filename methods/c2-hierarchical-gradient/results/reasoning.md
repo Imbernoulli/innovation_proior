@@ -99,30 +99,3 @@ schedule both with the shipped kicks and with the kicks zeroed:
 shipped (kicks 0.06 / 0.03):  100-level 0.891535,  final 0.894706
 no kicks (0.0 / 0.0)       :  100-level 0.891887,  final 0.894363
 ```
-
-Without any kick Adam still climbs fine — in fact it edges slightly *higher* at the `100`-level (`0.891887`
-vs `0.891535`). The kick does not unstick a frozen optimizer; it is a small exploration nudge whose only
-visible payoff is at the final `500`-level, where it buys about `3e-4` (`0.894706` vs `0.894363`). I keep it,
-but for the honest reason: it is a cheap way to escape the *near*-symmetric basin the upscale lands in and find
-a marginally better fine structure, not a fix for a zero gradient. The kick stays small precisely so it
-perturbs rather than destroys the good coarse shape.
-
-So the rung is a ladder of free lifts with a gradient refinement between them: take the optimized `20`-piece
-profile, upscale `×5` to `100` and refine with `β`-annealed Adam, upscale `×5` again to `500` and refine.
-Running it end to end, the coarse seed feeds in at `R = 0.878951`, the `100`-level refinement lifts it to
-`0.891535` — past the `20`-piece `0.88922` reference and into the AlphaEvolve `50`-step band (`0.89628`) — and
-the `500`-level refinement adds the last stretch to `0.894706`, in the high `0.89`s. The climb is exactly the
-shape the lift principle predicts: each finer grid flattens the autoconvolution's cap a little more than the
-last could, and the gains shrink as resolution grows.
-
-What I do *not* reach is the `0.9016` of the Boyer–Li / Jaech–Joseph `~575`-step constructions, and the
-end-to-end numbers tell me why rather than my hoping so: I am within `0.007` of that frontier after a few
-thousand Adam steps per level, and the gap is the part that is known to be expensive — Boyer–Li ran on the
-order of `10^6` gradient trajectories, because the optimal autoconvolution is a deliberately irregular shape
-that only emerges after enormous refinement. The `100`→`500` step already shows the taper: a `×5` increase in
-resolution bought only `+0.003`. So this rung lands where the lift principle says it should and then flattens,
-limited by the refinement budget at this resolution. The taper is the opening for the endpoint: if more
-resolution and a longer, more carefully annealed gradient run keep paying — and the steady, if shrinking,
-gains here say they should — then the move is to lift once more to a few thousand pieces and spend a long,
-kicked, sharpening Adam schedule on it, pushing toward the `~0.9016` frontier of the published step-function
-results.

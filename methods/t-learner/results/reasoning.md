@@ -122,5 +122,3 @@ class CATEEstimator:
         # tau_hat(x) = mu1_hat(x) - mu0_hat(x), evaluated at every row.
         return self._models[1].predict(X) - self._models[0].predict(X)
 ```
-
-Let me trace this on a tiny case where I know the answer, just to be sure the masking and differencing are wired correctly. Generate N=400 units with X uniform on [0,1], T a fair coin, and Y = X + 2·T + tiny noise — so mu_0(x) = x, mu_1(x) = x+2, and the true tau is the constant 2 everywhere. Fit and then predict at x = 0.1, 0.5, 0.9. The returned effects are 2.003, 2.003, 1.990 — flat at 2 across the covariate, which is what a constant effect of 2 should give. The masks pick out the right rows, the per-arm fits recover the two parallel surfaces, and the difference cancels the shared x-trend and leaves the gap of 2. The wiring is right.

@@ -160,5 +160,3 @@ class CVaREfficientPortfolio:
         cp.Problem(cp.Maximize(objective), constraints).solve()
         return self.w.value
 ```
-
-So the whole chain, end to end: minimizing VaR over `w` is hopeless because a quantile is non-convex and tail-blind in `w`, and it even punishes diversification by failing subadditivity. The fix I want is the tail-mean — coherent and tail-aware — but written as `E[L | L ≥ VaR]` it's poisoned by an inner quantile-of-`w`. Freeing the threshold into an independent variable `ζ` and forming `F_α(w,ζ) = ζ + (1/(1−α))E[(L−ζ)⁺]` breaks that dependence: minimizing `F` over `ζ` makes the quantile interval appear as the argmin and lands the value on the tail-mean, and it does so *convexly* and even gets the discrete atom-splitting right. Because `F` is jointly convex in `(w, ζ)`, I minimize over the portfolio and the threshold *together* in one convex program — which, on scenario data with the positive part lifted to epigraph variables `u_k ≥ L_k − ζ, u_k ≥ 0`, is a plain linear program, with VaR recoverable as the lower endpoint of the optimal threshold interval.

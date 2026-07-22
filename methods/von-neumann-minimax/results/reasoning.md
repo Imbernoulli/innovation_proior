@@ -191,5 +191,3 @@ if __name__ == "__main__":
     assert np.min(xi @ RPS) >= v - 1e-9
     assert np.max(RPS @ eta) <= v + 1e-9
 ```
-
-The chain, start to finish: the opposition is circular, so I replace "play best" with "guarantee the most against the worst case," getting a floor $v_{\text{low}}$ and a ceiling $v_{\text{up}}$ with $v_{\text{low}}\le v_{\text{up}}$ always; pure strategies leave a strict gap because the real enemy is being found out, which only randomness defeats; randomizing replaces the arbitrary $g$ by the bilinear $\xi^\top A\eta$, whose convex structure is the whole opening; a separating-hyperplane argument yields the theorem of the alternative — either I guarantee $\ge 0$ or he holds me to $\le 0$, never a straddle of zero — and shifting the matrix by a constant $w$ slides that statement to every threshold, forcing floor and ceiling to coincide at a single value $v$ with a saddle pair $(\xi^\*,\eta^\*)$; the saddle's support obeys complementary slackness, so optimal play is to randomize precisely to make the opponent indifferent across his live options; and the whole thing is strong LP duality, so a linear program computes the value and the optimal mixes.

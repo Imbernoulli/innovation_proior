@@ -100,5 +100,3 @@ class ClassConditioner(nn.Module):
     def forward(self, h, class_emb):
         return h
 ```
-
-I should check that this route really lands in the `gamma = 1` corner and is not secretly doing something multiplicative. Inside a residual block the conditioning embedding is consumed by a linear projection `proj` and added to the features as a bias. With `emb = time_emb + class_emb` and `proj` linear, `proj(emb) = proj(time_emb) + proj(class_emb)`; I verified this separates cleanly on a random projection. So the class label's entire contribution is the additive term `proj(class_emb)`, a per-channel offset that does not scale or gate any feature. That is precisely `gamma = 1, beta(class) = proj(class_emb)`, and it explains why the hidden-state `ClassConditioner` can be a no-op: there is nothing left for it to do once the class bias is already injected through the existing conditioning path.

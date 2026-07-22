@@ -61,37 +61,3 @@ k = 500:  38
 k = 1000: 39
 k = 5000: 39
 ```
-
-This is the whole story of the method in one column. The first few dozen restarts get me to `37`,
-a hundred more reach `38`, and then it *stalls*: going from 100 to 1000 restarts buys exactly one
-more point, `38 → 39`, and 4000 further restarts buy nothing. The best-of-`k` curve flattens hard.
-And `39` is well short of the optimum `45`. The same pattern holds out further when I push the
-construction: `n = 6` with 3000 restarts returns `77` (floor `64`, optimum `112`), and `n = 7` with
-1000 restarts returns `147` (floor ~`128`, optimum `236`) — both verified valid by the checker. So
-the gap to the optimum is `0` at `n = 4`, then `6`, then `35`, then `89`: it widens fast.
-
-I want to be careful about *why* it widens, because that is the lesson this rung teaches and it
-determines what comes next. The diminishing-returns curve at `n = 5` is the tell. Random multi-start
-fixes the *bias* of a fixed order — it no longer collapses to a single rigid pattern, and its best-of-
-sample reliably clears the floor. But it does nothing about the *blindness*: every order it draws is
-uniform noise, with no preference for points sitting in symmetric or structured positions, no
-preference for points that block few future candidates over points that block many. It is a lottery
-over orders, and the `n = 5` curve shows the lottery's ceiling — once I have sampled the reachable
-right tail (around `38–39` here), buying the next point costs an order of magnitude more restarts,
-because the orders that would produce it are exponentially rarer. The tail thins faster than I can
-sample it, and the large optimal caps are built from algebraic regularities that uniform noise has
-essentially zero chance of stumbling onto in the right sequence.
-
-That is the wall, and it is a real one, not a tuning issue: more restarts cannot close a gap that
-grows with `n`, because the favorable orders vanish into the tail. To go further I cannot keep
-sampling orders uniformly — I have to *bias* the order, scoring each candidate vector by some
-structured priority that reflects the symmetry of `F_3^n` and feeding the same greedy admission rule
-a smarter sequence. That is the move from "random order" to "priority-function greedy," and it is
-the next rung.
-
-One implementation point so the numbers above are trustworthy: I fix the RNG seed so each reported
-best-of-`k` is exactly reproducible, and I run every returned cap through the incremental verifier
-(and the independent triple scan at small `n`) before recording its size. The multi-start changes
-which cap I report, not whether it is valid — validity follows from the admission rule regardless of
-order — but I check anyway, because the point of this task is that no reported size is taken on faith;
-every figure here (`20, 39, 77, 147`) is a checked cap, not an estimate.

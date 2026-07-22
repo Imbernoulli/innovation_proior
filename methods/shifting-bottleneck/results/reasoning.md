@@ -401,12 +401,3 @@ for(int it=0; it<n_mach; ++it){
 }
 // then last_reoptimize: cycle until a full sweep yields no makespan improvement.
 ```
-
-Makespan is a longest path in the oriented disjunctive graph; the orientation is NP-hard jointly, so I
-take it one machine at a time. Each machine, with the rest of the shop compressed into heads and tails
-by two longest-path passes, becomes an exact single-machine `1|r|L_max` problem; its optimal lateness is
-a computable measure of how hard that machine presses against the current graph bound, so I sequence
-the largest — the bottleneck — first and fix it into the graph. Fixing a machine changes every other
-machine's heads and tails, so I re-optimize the already-sequenced machines in a few cycles after each
-insertion, then grind to a local optimum at the end — and the bottleneck shifts from machine to machine
-as the graph fills in.

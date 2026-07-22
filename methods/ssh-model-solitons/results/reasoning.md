@@ -201,5 +201,3 @@ for occ, label in [(0, "empty"), (1, "single"), (2, "double")]:
     spin = 0.5 if occ == 1 else 0.0
     print(f"phi0 {label:6s}: Q = {Q:+d} e,  s = {spin}")
 ```
-
-This prints a mid-gap state with all its weight on even sites, the lattice sum landing on (4/3)ℓ, a soliton mass of about five electron masses, E_s ≈ 0.42 eV below the band-edge cost Δ = 0.70 eV, and the reversed charge–spin table (Q,s) = (+e,0), (0,½), (−e,0) for the empty, singly, and doubly occupied gap state.

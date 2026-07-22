@@ -201,5 +201,3 @@ def mel_l1(mel_real, mel_fake):
 #                       + feature_loss(mpd) + feature_loss(msd)
 #                       + 45 * mel_l1(mel(wav), mel(G(mel(wav))))
 ```
-
-The whole chain: speech is periodic, average-pooling discriminators low-pass that periodicity away and get fooled, so I reshape the waveform by period and use width-1 2D kernels to audit each periodic phase without filtering it — at prime periods to avoid redundant coverage — and keep the multi-scale discriminator for consecutive structure. The generator upsamples the mel with transposed convs and, after each upsample, fuses several differently-dilated residual blocks (sum then average) to see many receptive fields at once. The objective is LSGAN for non-vanishing gradients, anchored by a heavily-weighted mel-spectrogram L1 reconstruction and helped by a discriminator feature-matching term. The result is parallel synthesis that can be both fast and faithful because the discriminator finally polices the part of the signal the ear actually hears.

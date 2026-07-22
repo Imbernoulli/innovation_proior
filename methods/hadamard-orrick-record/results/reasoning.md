@@ -65,25 +65,3 @@ point. I compute the determinant of `R` the way the evaluator does — fraction-
 ```
 |det(R)| = 1188957517256767569920.
 ```
-
-Against the predicted record `2^28 · 7^12 · 320`, which is `1188957517256767569920` to the digit, this is
-an exact match: `|det(R)|` is divisible by `2^28 · 7^12` and the quotient is exactly `320`, so the multiplier
-is `320` on the nose and the score is `320 / 342 = 0.935673`. As a cross-check on the `det(R)² = det(G)`
-identity that motivated the whole Gram reframing, I also took `det(G)` directly by Bareiss; it came back as
-`1413619977841376753822343762242622088806400`, which is exactly `|det(R)|²` and exactly `(2^28 · 7^12 · 320)²`.
-The identity I was leaning on holds numerically on this matrix, not just in principle — which is the
-reassurance I wanted that I am reading the right object out of the right space.
-
-I want to be clear about what this rung is and is not. It is not a search that out-climbed the previous
-rung — local annealing genuinely plateaus near the machine-evolution band, and I am not going to dress
-that plateau up as something it isn't. It is the deliberate import of the dedicated maximal-determinant
-construction that the whole problem is about, reproduced from its primary source and verified here in the
-exact arithmetic that scores it. The ladder's earlier rungs measure how far autonomous local search gets;
-this final rung measures the gap that search leaves, by standing the verified human record next to it. The
-two numbers belong on the same page precisely because the distance between them — multiplier `184.6`
-reached by annealing versus `320` established by Gram-space search — is the real, still-open content of the
-`n = 29` problem. And `320` itself is not the end of the road: the Barba ceiling for `n ≡ 1 (mod 4)` is
-`(2n−1)^{1/2}(n−1)^{(n−1)/2}`, which at `n = 29` is `49·√57 ≈ 369.94` in multiplier terms — I checked the
-arithmetic, `369.9418…` — and that ceiling is unmet, so even the verified record is only *conjectured*
-optimal. The corridor from what we can search to what is provably best is still partly dark, and this rung
-marks where the lit part currently ends.

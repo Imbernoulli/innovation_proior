@@ -240,5 +240,3 @@ def parse_cell(weights, steps=4, k=2):
         start += n; n += 1
     return gene
 ```
-
-NAS is expensive because the architecture is discrete, so validation performance has no gradient w.r.t. it and I have to sample-and-train; I relax each per-edge categorical choice into a softmax mixture controlled by continuous logits α; I choose α for validation performance while w follows training loss, which gives the bilevel objective; I avoid solving the inner argmin by replacing w*(α) with one unrolled training step w' and differentiating through it; the chain rule gives a direct α term plus a −ξ Hessian-vector correction — which I checked numerically against a brute-force derivative on a scalar example, and whose finite-difference estimate I checked is second-order accurate in ε — and that finite-difference trick computes the correction from two training gradients with respect to α; setting ξ=0 recovers the cheaper first-order update; after search, I read off each discrete cell by keeping the strongest non-zero incoming operations.

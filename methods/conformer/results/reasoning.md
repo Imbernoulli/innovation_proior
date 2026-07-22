@@ -205,5 +205,3 @@ class ConformerEncoder(nn.Module):
             x = blk(x)
         return x
 ```
-
-Tracing the whole thing back: an ASR encoder must model both global, content-based dependencies and local, position-based feature patterns; self-attention is globally strong but a blunt local extractor, convolution is locally sharp but globally expensive, and patching a conv stack with a single averaged global summary can't model dynamic position-dependent global interactions; so I compose the two — self-attention to establish global context and a gated depthwise-convolution module to carve local detail on the globalized features (the order being my working choice, not a proven one) — each inside a pre-norm residual unit with relative positional attention I checked indexes correctly for length robustness; and following the ODE/Macaron view I bracket that core with two half-step feed-forward modules, whose 1/2 weighting I confirmed in isolation, and a closing layernorm, giving the conformer block.

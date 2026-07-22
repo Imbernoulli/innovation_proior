@@ -106,5 +106,3 @@ class GroupNorm(nn.Module):
             x = x * self.weight.reshape(shape) + self.bias.reshape(shape)
         return x
 ```
-
-I notice the same code generalizes for free to video: if the feature is (N, C, T, H, W), `spatial` is (T, H, W), the reshape exposes the group, and I reduce over (C/G, T, H, W) — group normalization over the spatial-temporal volume, no change needed, still batch-free. That falls out because the method was never about "spatial" specifically; it was about "the axes inside one sample, grouped on the channel axis."

@@ -47,33 +47,3 @@ condition has a product over neighbours:
 ```text
 P(A_i) <= x_i prod_{j in N(i)} (1 - x_j).
 ```
-
-Here `x_i` is the allowed conditional risk for event `A_i`. If this inequality holds for every `i`,
-the induction proves
-`P(A_i | any chosen set of other bad events did not occur) <= x_i`. Substituting those bounds back
-into the global chain-rule product gives
-`P(no A_i occurs) >= prod_i (1 - x_i) > 0`.
-
-The symmetric form is the memorable special case. If every event has probability at most `p` and has
-at most `d` neighbours, choose the same slack for every event: `x_i = 1/(d+1)`. Then the local product
-is at least `(1/(d+1))(d/(d+1))^d`, and this is at least `1/(e(d+1))`. Therefore the asymmetric
-hypothesis is satisfied whenever `e p (d+1) <= 1`.
-
-This is the conceptual shift: the cost of an event is no longer multiplied by the total number of
-bad events. It is compared with the size of the event's dependency neighbourhood. The lemma does not
-pretend that the bad events are globally independent. It says global independence is unnecessary
-when the dependence graph is sparse and every local failure is sufficiently unlikely.
-
-For hypergraph two-colouring, this changes the kind of theorem available. A random red-blue colouring
-makes a `k`-edge monochromatic with probability `2^{-(k-1)}`. The union bound can only say something
-when the total number of edges is below about `2^{k-1}`. The local lemma instead says that if each
-edge intersects only about `2^{k-1}/e` other edges, then a proper two-colouring exists, regardless of
-the total number of edges. The same pattern appears in `k`-SAT: the event that a clause is violated
-has probability `2^{-k}`, and satisfiability is guaranteed when each clause shares variables with
-few enough other clauses. Total clause count is not the controlling parameter; local dependency is.
-
-The original Erdos-Lovasz argument already captures the central move with a cruder constant: if each
-event depends on at most `d` others and `P(A_i) <= 1/(4d)`, the chance of avoiding all bad events is
-positive. The modern asymmetric statement keeps the same proof anatomy but replaces the local union
-bound in the denominator with a product of neighbour slacks. That refinement exposes the real form
-of the insight: sparse local dependence can be budgeted multiplicatively, event by event.

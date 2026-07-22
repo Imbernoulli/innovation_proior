@@ -144,5 +144,3 @@ def coordinate_items(A, a, h, D):
     T, k, intervals, cost = iterative_jrp(A, a, h, D)
     return intervals, cost
 ```
-
-Checking it on a small instance — $A=100$, $a=(10,20,5)$, $h=(1,0.5,2)$, $D=(100,50,200)$ — the iteration lands on $\mathbf k=(1,2,1)$ with $T\approx0.674$ and cost $\approx370.8$, the power-of-two variant lands on the *same* $(1,2,1)$ and cost, and the brute-force enumeration confirms that's the true minimum. And a single item with no minor cost gives back $T^\*=\sqrt{2K/(hD)}$ exactly — the EOQ I started from. So the whole chain closes: independent EOQ wastes the shared $A$; putting items on a common basic period with integer multiples lets them share it; the cost is EOQ-shaped in $T$ for fixed multiples (closed-form $T^\*$) and separable in the multiples for fixed $T$ (per-item convex rounding of $T_i/T$); alternating the two converges, sweeping the $T$-breakpoints globalizes it, and snapping the multiples to powers of two with a tuned base period buys a clean nested schedule that's provably within a couple percent of the true optimum.

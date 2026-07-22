@@ -97,7 +97,3 @@ def train_step(z0, t, c_t, c_image, model, opt, alpha_bar):
     opt.zero_grad(); loss.backward(); opt.step()               # only the copy + zero convs move
     return loss
 ```
-
-At inference, classifier-free guidance introduces another case distinction. The standard form is `epsilon_prd = epsilon_uc + beta_cfg (epsilon_c - epsilon_uc)`. A control condition can be present in both branches or only in the conditional branch, and the 13 control connections can be scaled to tune condition strength. That is an inference-strength mechanism, not a change to the training loss or the zero-convolution derivation.
-
-The pieces now hang together, and each load-bearing claim has been checked rather than assumed: keep the old model fixed; copy enough pretrained encoder capacity to learn the new control; connect the copy through zero-output adapters so the initial network reproduces the old one exactly (verified numerically on a small block); let the zero connectors learn because their own weight gradients depend on live inputs and live loss while only the input gradient is gated by `w` (verified by tracing two steps, where the output connector moves first and the branch behind it opens at the next step); and train with the original diffusion objective while sometimes removing the text shortcut.

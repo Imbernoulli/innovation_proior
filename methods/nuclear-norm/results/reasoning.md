@@ -178,5 +178,3 @@ class NuclearNormSVT:
 def build_strategy():
     return NuclearNormSVT(tau_factor=5.0, delta_factor=1.2, tol=1e-4)
 ```
-
-For a rectangular version I would replace `tau = 5n` by `tau = 5 sqrt(n_1 n_2)`, exactly as the numerical driver does. For the warm start I need the spectral norm of the sparse observed matrix; in this dense harness I compute it directly, while a large implementation would use a `normest`-style approximation.

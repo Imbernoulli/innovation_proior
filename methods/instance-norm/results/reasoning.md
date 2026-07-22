@@ -91,5 +91,3 @@ class InstanceNormalization(nn.Module):
         )
         return y.view_as(x)
 ```
-
-The architectural move is then to put this layer wherever the generator previously used batch normalization, in every block. The two-image check is the whole argument in miniature: the style objective wants content structure carried through but content contrast thrown away; batch norm carried the contrast through (disagreement 2.58 between the rescaled copies) and changed behavior at test time, while per-instance spatial moments collapsed the rescaled copies to the same output (disagreement ~5e-6) using the identical computation at train and test. The expensive nuisance part of the objective — the whole-image contrast reduction the conv stack was approximating badly and overfitting around — becomes a single built-in layer, reached by one axis change in the normalization statistics.

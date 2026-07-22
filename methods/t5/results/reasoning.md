@@ -355,5 +355,3 @@ def to_text_to_text(task, example):
                 example["answer"])
     raise ValueError(task)
 ```
-
-Tracing the chain one more time, tight: a fragmented field with no controlled testbed → cast every task as text-to-text so the head disappears and one loss / one decoder / orthogonal knobs remain → with that testbed, FLOP-matched comparison says encoder-decoder (bidirectional input plus cross-attention) wins over decoder-only and prefix-LM → denoising beats LM, and within denoising the variants tie on quality so pick the cheapest, which lands on span corruption at 15% with mean length 3, sentinels, predicting only the corrupted spans → simplify the Transformer with RMSNorm, pre-norm, no biases, relative scalar position biases bucketed log-spaced and shared across layers, and the 1/√d_k scaling folded into initialization → train it with Adafactor and an inverse-sqrt schedule on a large, clean, diverse English web corpus. Every piece earned its place by removing a specific failure of the thing before it.

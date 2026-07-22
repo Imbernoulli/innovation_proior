@@ -114,5 +114,3 @@ class SeqModel(nn.Module):
             x = layer(x, causal)
         return self.head(self.ln_f(x))
 ```
-
-The chain, end to end: the attention/feed-forward stack is permutation-equivariant, so order is invisible and must be added as a `d_model` vector → addition beats concatenation because a linear layer reads a projection off the added position at no extra width → a raw index is unbounded and a length-normalized index makes a fixed step mean different things, so I need a bounded, shift-consistent code → one bounded sinusoid aliases, so I use many geometrically spaced frequencies, a continuous counter with clocks at many scales → pairing `sin` with `cos` per frequency makes a position shift a fixed `t`-independent rotation, so relative offsets become a single linear map identical everywhere → because `sin`/`cos` are defined for all `t`, positions past the training length are not missing table entries → and the embedding is scaled by `√d_model` so the learned content and fixed position live on comparable scales at the sum.

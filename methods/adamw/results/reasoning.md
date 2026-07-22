@@ -192,5 +192,3 @@ def cosine_eta(T_cur, T_i):
     import math
     return 0.5 + 0.5 * math.cos(math.pi * T_cur / T_i)
 ```
-
-What I'm actually sure of at this point is the algebra: no L2 coefficient reproduces literal decay under a non-scalar preconditioner; the two-coordinate numbers show that mismatch is a ~100× per-coordinate distortion, not a quibble; and the fixed-preconditioner step checks out, to the digit, against a scale-adjusted L2. What I've only *argued* — and would want the (α, λ) error maps and matched-training-loss curves to confirm before I'd call it settled — is that this distortion is the dominant cause of Adam's generalization gap and that the √(b/BT) normalization transfers cleanly across the CIFAR-to-ImageNet32 budget jump. The one-line code change is small enough that running it costs little, so that's the next thing to do rather than reason about further.

@@ -159,5 +159,3 @@ def k_conventional(T, s_grid, V_mep, freqs, I_rot, Phi_R, sigma):
     i0 = int(np.argmin(np.abs(s_grid)))
     return k_generalized(i0, T, V_mep, freqs, I_rot, Phi_R, sigma)
 ```
-
-The conventional rate is recovered by refusing to scan — pinning the surface at s = 0. The variational rate is what you get by letting s move to the free-energy bottleneck. The microcanonical version replaces the per-s flux by the per-energy state count N^GT(E,s) and minimizes that at each E before Boltzmann-averaging; ICVT cuts the canonical sum off at the adiabatic ground-state threshold; the unified statistical factor multiplies in when N^GT(E,s) shows two bottlenecks. But the whole edifice rests on the one line I started from: the saddle is not special, the surface is mine to move, and the right place to put it is where the computed flux is least.

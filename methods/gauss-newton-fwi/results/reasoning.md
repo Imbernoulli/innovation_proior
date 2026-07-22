@@ -339,13 +339,3 @@ def fwi_gradient(solver, d_obs):
     solver.gradient(rec=residual, u=u, grad=grad)
     return grad
 ```
-
-The Gauss–Newton step, when I want the real thing instead of the diagonal, is the same pieces wired
-matrix-free: `BornOperator` applies G to a perturbation through the source term `-dm * u.dt2`, and
-`GradientOperator` applies Gᵀ to the resulting data residual. Conjugate gradients only need that
-composition to solve H_GN δm = −∇J; no matrix ever appears. The diagonal preconditioner is the same
-logic reduced to a pointwise scale, using the virtual-source energy from `u.dt2` with a stabilizer.
-The outer multiscale loop wraps all of this: low-pass the wavelet and the data to the lowest
-frequency band, run a few iterations to fix the smooth background, raise the corner frequency, repeat
-— each band starts from a model already within half a period of the data so the local optimizer never
-cycle-skips.

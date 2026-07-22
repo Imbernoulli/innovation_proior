@@ -168,5 +168,3 @@ class QuantLayer(nn.Module):
             self.init_step(v)
         return quantize(v, self.s, self.bits, self.is_activation)
 ```
-
-Looking back at the chain that got me here: at 2–4 bits the quantizer knob that controls level placement is the per-layer step size, so I made it a trained parameter; the round blocks the bin-transition path, so I applied STE to the round but differentiated the divide/clip/multiply honestly, and the interior branch −v/s + round(v/s) dropped out — verified against autograd, zero on a level and ±0.49 at a transition — giving the sensitivity-to-transitions the prior clip-learners had cancelled away. Then a balance check turned up a real problem: the step-size update is over-driven relative to its magnitude by a factor that the Monte Carlo confirmed scales like √(N·Q_P), so I divide the step-size gradient by exactly that — g = 1/√(N_W Q_P) for weights, 1/√(N_F Q_P) for activations, the correction measured to flatten R across a 256× range of layer sizes — and inject g and the round-STE through a single detach-based gradient trick. Initialize s ≈ 2⟨|v|⟩/√Q_P and fine-tune from a pretrained full-precision model.

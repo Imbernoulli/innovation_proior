@@ -148,11 +148,3 @@ out, latent_loss = model(img)
 recon_loss = nn.MSELoss()(out, img)
 loss = recon_loss + 0.25 * latent_loss.mean()
 ```
-
-At this point generation is still missing. Uniformly sampled codes will be off-manifold, because real top and bottom code grids have strong spatial dependencies — and I already saw that the uniform prior used during autoencoder training was only there to make the KL a constant, not to describe the codes. So I freeze the autoencoder, encode the dataset, and train priors on the indices. The top code represents long-range structure on a small `32x32` grid; that is `1024` positions, so causal self-attention over the grid is affordable and useful for capturing global geometry. The bottom code is `64x64`, i.e. `4096` positions, where full self-attention is roughly sixteen times more expensive in pairwise terms and also less necessary because the top code already supplies global context — a conditional gated convolutional prior is the better-matched choice there. Sampling then follows the factorization:
-
-  `p(c_top, c_bottom) = p_top(c_top) p_bottom(c_bottom | c_top)`,
-
-with class labels included for the class-conditional ImageNet setting. Draw top codes, draw bottom codes conditioned on the top, and decode both. The reference PyTorch prior script implements the same top-then-bottom structure with cross-entropy over code indices; its default script does not use the label it loads, so class conditioning belongs to the method specification rather than that default script.
-
-One last issue remains. Likelihood training covers the distribution, including rare or awkward modes, and a long ancestral chain over thousands of code positions can accumulate mistakes. A post-hoc filter gives a quality-diversity dial: generate class-conditional samples, score them with an independent ImageNet classifier by the probability assigned to the intended class, and keep a chosen top fraction. Tightening the fraction raises quality and lowers diversity; loosening it recovers the full model distribution. That gives a truncation-like control while leaving the learned likelihood model intact.

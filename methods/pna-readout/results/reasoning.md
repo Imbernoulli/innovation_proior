@@ -240,8 +240,3 @@ class PNAAggregation(nn.Module):
         # Tensor product: each scaler times the whole aggregator block.
         return torch.cat([agg, agg * amp, agg * att], dim=-1)  # [N, 12F]
 ```
-
-The twelve channels are then concatenated with the node's own state and pushed through the update MLP, which
-mixes them back to the layer width. The aggregator never had to be injective by itself — the lower bound
-says it cannot be — it only had to lose *complementary* things across its channels and stay degree-stable,
-so the update has enough surviving information to reconstruct what the task needs.

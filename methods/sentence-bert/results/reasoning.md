@@ -107,5 +107,3 @@ def encode(encoder, batches):
 def most_similar(query_vec, bank):                              # bank: [N, H] precomputed
     return F.cosine_similarity(query_vec.unsqueeze(0), bank).argmax()
 ```
-
-Training is short — fine-tune the pre-trained encoder for about one epoch on NLI with the softmax objective, batch size 16, Adam at 2e-5 with a linear warmup over the first 10% of steps, mean pooling. Then optionally continue on STS with the cosine-regression objective.

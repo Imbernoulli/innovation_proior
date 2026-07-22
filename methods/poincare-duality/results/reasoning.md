@@ -46,9 +46,3 @@ The differential-form version makes the same structure visible without singular 
 ```
 ([omega], [eta]) |-> int_M omega wedge eta.
 ```
-
-If I change `omega` by `dtheta`, the change in the integral is `int_M d(theta wedge eta)` up to the sign from the Leibniz rule, because `eta` is closed. With no boundary, Stokes' theorem makes this zero. The same holds if I change `eta` by an exact form. Compactness keeps ordinary forms from needing a compact-support qualification, and orientation gives a signed integral. So this is a well-defined cohomology pairing.
-
-For a noncompact manifold the same formula wants compact support on one side, because integration is fundamentally about compactly supported top-degree forms unless extra convergence data is supplied. That explains the clean closed case: compactness collapses `H_c^k` back to `H^k`. For a manifold with boundary, Stokes' theorem gives a boundary integral rather than zero, so the correct theorem has to bring in relative cohomology or boundary conditions. Boundaryless is exactly what prevents the top-degree test from leaking through the edge.
-
-The final picture is now rigid. Orientation supplies `[M]`. Cap product with `[M]` supplies the degree reversal. Cup product plus top evaluation turns that reversal into a nonsingular complementary pairing. De Rham theory rewrites the same pairing as integration of wedge products. The reason the theorem feels like self-duality is that the manifold is not being compared to a different object; its own top class makes its `k`-dimensional and `(n-k)`-dimensional information mirror each other.

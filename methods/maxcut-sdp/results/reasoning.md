@@ -108,5 +108,3 @@ def max_cut(graph):
     score = float(colors @ laplacian @ colors.T)             # weight of the produced cut
     return colors, score, bound
 ```
-
-So the whole chain, in one breath: the 1/2 barrier comes from measuring the cut as a fraction of the total weight, whose best universal fraction cannot exceed 1/2, so I needed a tighter denominator; encoding the cut as x^T L x and perturbing by a zero-on-the-cube diagonal gave a tight, polynomial-time eigenvalue upper bound; relaxing each ±1 to a unit *vector* and the product to an inner product turned MAX CUT into an SDP whose value is exactly that tight bound; cutting the resulting sphere with a uniformly random hyperplane cuts each edge with probability θ/π, exactly proportional to the angle the relaxation was maximizing; and the worst-angle ratio min_θ (2/π)θ/(1 − cos θ) = 0.87856 at θ* ≈ 133.6° is the approximation guarantee — the first jump past 1/2 in twenty years.
