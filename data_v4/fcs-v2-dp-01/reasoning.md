@@ -1,4 +1,4 @@
-**Reading the problem and pinning the contract.** I have an order-`k` linear recurrence over `Z_p`
+I have an order-`k` linear recurrence over `Z_p`
 with `p = 998244353`: `a[n] = c[0]*a[n-1] + ... + c[k-1]*a[n-k]` for `n >= k`, the seeds
 `a[0..k-1]` are given, and I must output `a[N] mod p`. The numbers that matter are the scales:
 `k <= 2*10^4` and `N <= 10^18`. The first thing I do is rule out the naive thing, because the naive

@@ -1,4 +1,4 @@
-**Reading the problem and pinning the contract.** I tile a `2 x N` board completely with `1 x 2`
+I tile a `2 x N` board completely with `1 x 2`
 dominoes — each domino lies either horizontally (two cells side by side in one row) or vertically (the
 two cells of one column) — and I count the distinct full tilings, call it `T(N)`, then report
 `T(N) mod p`. The input is `Q` queries, each a pair `(N, p)`; I print one line per query. Before any

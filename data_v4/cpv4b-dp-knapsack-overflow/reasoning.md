@@ -1,4 +1,4 @@
-**Reading the problem and pinning the contract.** I have `n` projector modules; module `i` draws
+I have `n` projector modules; module `i` draws
 `w[i]` watts and gives `b[i]` brightness. A single power supply caps the total draw at `C` watts. I
 switch on any subset whose summed wattage is at most `C`, and I want to maximize summed brightness;
 I print that maximum. Each module is on or off, used at most once — this is 0/1 knapsack with

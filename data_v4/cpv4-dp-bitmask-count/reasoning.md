@@ -1,4 +1,4 @@
-**Reading the problem and pinning the contract.** I have `n` employees, `n <= 18`, and `m <= 2*10^5`
+I have `n` employees, `n <= 18`, and `m <= 2*10^5`
 candidate squads, each squad a bitmask `S_j` over the `n` employees. A *roster* is a set of candidate
 squads that partitions everyone: pairwise disjoint, union equal to the full staff. Two rosters are the
 same if they use the same set of squads — order is irrelevant. I count rosters modulo `1e9+7`. Input

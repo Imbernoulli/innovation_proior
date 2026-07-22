@@ -1,4 +1,4 @@
-**Reading the problem and pinning the contract.** I have `q` independent queries; each gives `n`
+I have `q` independent queries; each gives `n`
 people in a circle (labels `1..n`) and a step `k`, and I count off `k` live people starting at person
 `1`, eliminate the `k`-th, resume from the next, and repeat until one survives. I print that
 survivor's original label. The numbers that matter for the algorithm choice are right there in the

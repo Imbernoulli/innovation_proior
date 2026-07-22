@@ -1,4 +1,4 @@
-**Reading the problem and pinning the contract.** I have a stream of `q <= 10^5`
+I have a stream of `q <= 10^5`
 operations over a sequence of integers, and the operations are *versioned*: each
 `insert`/`reverse` reads some version `v` and produces a brand-new version, while a
 `query` reads a version and produces nothing new. Version `0` is empty; the `k`-th

@@ -1,4 +1,4 @@
-**Reading the problem and pinning the contract.** I have a ring of `m` kilometre markers `0..m-1`,
+I have a ring of `m` kilometre markers `0..m-1`,
 addresses modulo `m`, and `n` floodlights. Floodlight `i` lights a contiguous clockwise arc of
 `len_i` markers starting at `s_i`: the markers `s_i, s_i+1, ..., s_i+len_i-1`, all mod `m`. I must
 switch on the fewest floodlights so that every marker is lit, or report `-1` if even all of them

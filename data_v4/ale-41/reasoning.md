@@ -1,4 +1,4 @@
-**Reading the problem and pinning the contract.** Items arrive one at a time. I
+Items arrive one at a time. I
 have `K` bins of fixed integer capacity, and each item carries a size `s` and a
 value `v`. The instant an item arrives I must commit it to a bin that still has
 room, or drop it, and I never get to revise that choice or peek at the next

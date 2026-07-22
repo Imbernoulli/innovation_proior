@@ -1,4 +1,4 @@
-**Reading the problem and pinning the contract.** I am renting one locker with `K` integer
+I am renting one locker with `K` integer
 space units, positions `1 .. K`. Fire code reserves the **last `g` units** as a buffer that
 must stay empty, so only the first part of the locker is usable. I have `n` items; item `i`
 occupies `s[i]` units and is worth `v[i]`, each usable at most once. A subset is legal if its

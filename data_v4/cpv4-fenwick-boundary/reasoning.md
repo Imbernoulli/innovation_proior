@@ -1,4 +1,4 @@
-**Reading the problem and pinning the contract.** A scanner logs `q` chronological events. `+ b`
+A scanner logs `q` chronological events. `+ b`
 puts badge `b` inside (it was not inside), `- b` takes it out (it was inside), and `? lo hi` asks how
 many badges currently inside have id in the **inclusive** range `[lo, hi]`, i.e. `lo <= b <= hi`. I
 print one count per `?`. The guarantees say a `+` never repeats an id already inside and a `-` always

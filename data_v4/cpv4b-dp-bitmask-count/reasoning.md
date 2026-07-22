@@ -1,4 +1,4 @@
-**Reading the problem and pinning the contract.** I have `n <= 16` adventurers and I must split *all*
+I have `n <= 16` adventurers and I must split *all*
 of them into teams — a set partition — where every team has size in `[L, R]` and contains no feuding
 pair, and I count distinct partitions modulo `998244353`. The decisive phrase is that teams are
 *unlabeled*: a partition is a set of teams, so reordering the teams gives the same object and must not

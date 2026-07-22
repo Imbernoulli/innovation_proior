@@ -1,4 +1,4 @@
-**Reading the problem and pinning the contract.** I have a tree on `n` vertices with positive integer
+I have a tree on `n` vertices with positive integer
 edge weights, a target `L`, and I must count unordered pairs of distinct vertices whose path-weight
 sum is exactly `L`. The tree guarantees a unique path between any two vertices, so the distance is
 well defined and there is no shortest-path subtlety — the path weight *is* the sum along the one path.

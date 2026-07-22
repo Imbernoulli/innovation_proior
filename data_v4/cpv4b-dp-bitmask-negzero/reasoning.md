@@ -1,4 +1,4 @@
-**Reading the problem and pinning the contract.** I have `n` stages and `n` artists, and an `n x n`
+I have `n` stages and `n` artists, and an `n x n`
 reward matrix `p` whose entry `p[i][j]` is the net reward — money minus fees and costs — for booking
 artist `i` on stage `j`. Crucially `p[i][j]` may be negative or zero. I must pick a *partial*
 matching: a subset of artists, each placed on a distinct stage, every artist at most once and every

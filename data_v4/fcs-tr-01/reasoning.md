@@ -1,4 +1,4 @@
-**Reading the problem and pinning the contract.** I have a tree on `n` cities (`n - 1` roads, connected),
+I have a tree on `n` cities (`n - 1` roads, connected),
 and `q` independent queries. Each query hands me a set `S` of *important* cities and asks: what is the
 fewest *non-important* cities I must delete so that, in the leftover forest, no two important cities sit in
 the same component? If two important cities of `S` are joined by a road there is no vertex to remove between
