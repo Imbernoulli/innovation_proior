@@ -6,13 +6,13 @@ But there's an immediate wall, and it's about the image side. If my "image token
 
 So I need to *compress* the image first — into a short sequence that throws away the perceptually negligible detail and keeps the recognizable structure. And critically, since I want to feed it to a transformer alongside text, the compressed representation should be a sequence of *discrete tokens*, just like text is. Discrete tokens from a fixed vocabulary slot straight into a shared softmax vocabulary; the transformer doesn't care whether a token is a word-piece or an image-patch-code.
 
-There's an existing recipe shaped like this: the two-stage idea from vector-quantized autoencoders. Stage one, learn an autoencoder that maps an image to a small grid of discrete codes and back; stage two, fit a powerful autoregressive model over those codes. The compressor is fast and feed-forward; the expensive autoregressive modeling happens only on the short code sequence. Let me check whether the numbers actually buy me a feasible sequence. Suppose I compress a 256×256×3 image down to a 32×32 grid of tokens — 1024 tokens. The raw pixel count is 256·256·3 = 196608, so the reduction in sequence length is 196608 / 1024 = 192×. That brings the image side from ~200k positions down to roughly a thousand, the same order of magnitude as a paragraph of text, which is the range where a transformer is actually trainable. So this is the lever I need. The cost is that the spatial resolution drops by a factor of 256/32 = 8 in each dimension, which throws away a lot — but I can partly pay it back by making the codebook vocabulary K large, say K = 8192, so each of the 1024 surviving tokens carries log₂(8192) = 13 bits rather than a handful. That's the trade I'll take.
+There's an existing recipe shaped like this: the two-stage idea from vector-quantized autoencoders. Stage one, learn an autoencoder that maps an image to a small grid of discrete codes and back; stage two, fit a powerful autoregressive model over those codes. The compressor is fast and feed-forward; the expensive autoregressive modeling happens only on the short code sequence. Do the numbers actually buy a feasible sequence? Compressing a 256×256×3 image down to a 32×32 grid of tokens gives 1024 tokens; the raw pixel count is 256·256·3 = 196608, so the reduction in sequence length is 196608 / 1024 = 192×. That brings the image side from ~200k positions down to roughly a thousand, the same order of magnitude as a paragraph of text, which is the range where a transformer is actually trainable. So this is the lever I need. The cost is that the spatial resolution drops by a factor of 256/32 = 8 in each dimension, which throws away a lot — but I can partly pay it back by making the codebook vocabulary K large, say K = 8192, so each of the 1024 surviving tokens carries log₂(8192) = 13 bits rather than a handful. That's the trade I'll take.
 
 Let me make the whole thing one probabilistic object so I know what I'm optimizing, because that will tell me how the two stages relate. I have images x, captions y, and image tokens z. Write the joint as p(x, y, z) = p_θ(x | y, z) · p_ψ(y, z): a decoder p_θ that produces the image from the tokens (and caption), and a transformer p_ψ that models the joint distribution of text and image tokens. Introduce the encoder q_φ(z | x) — the distribution over the 32×32 image tokens given the image — and the evidence lower bound on the joint likelihood drops out:
 
   ln p_{θ,ψ}(x, y) ≥ E_{z∼q_φ(z|x)}[ ln p_θ(x | y, z) − β·D_KL( q_φ(y, z | x) ‖ p_ψ(y, z) ) ].
 
-(I'll take y conditionally independent of x given z, since the tokens are meant to be a sufficient summary of the image.) The bound is exactly tight only at β = 1, but I'll keep β as a knob. Now I want to see whether this single objective actually justifies splitting the work into two separate training runs, or whether I'm fooling myself. The bound is a function of three parameter blocks: φ (encoder), θ (decoder), ψ (transformer prior). Look at which terms each block touches. The reconstruction term ln p_θ(x | y, z) depends on θ and, through the sampled z, on φ — but *not* on ψ. The KL term D_KL(q_φ ‖ p_ψ) depends on φ and ψ — but not on θ. So if I freeze ψ and optimize (φ, θ), the objective I'm climbing is reconstruction minus a KL that pulls the encoder's code distribution toward the *fixed* prior — which is precisely the training objective of a VAE on images alone, captions not even required. Then if I freeze (φ, θ) and optimize ψ, the reconstruction term is constant, so I'm left maximizing −D_KL(q_φ ‖ p_ψ) over ψ; with q_φ fixed, minimizing that KL is exactly fitting the prior p_ψ to the encoder's induced token distribution — i.e. maximum-likelihood training of the transformer over the tokens. Each block, holding the others fixed, recovers one of the two stages, and each step is non-decreasing in the same lower bound. So the two stages aren't two unrelated heuristics glued together; they're literally alternating (here, single-pass) coordinate ascent on one ELBO. That's reassuring — it means I can train the autoencoder once, freeze it, and train the transformer, and still be optimizing a coherent objective. (I did also try jointly optimizing all of φ, θ, ψ together, but couldn't beat the cleaner two-stage training, so I'll keep the split.)
+(I'll take y conditionally independent of x given z, since the tokens are meant to be a sufficient summary of the image.) The bound is exactly tight only at β = 1, but I'll keep β as a knob. Now I want to see whether this single objective actually justifies splitting the work into two separate training runs, or whether I'm fooling myself. The bound is a function of three parameter blocks: φ (encoder), θ (decoder), ψ (transformer prior). Look at which terms each block touches. The reconstruction term ln p_θ(x | y, z) depends on θ and, through the sampled z, on φ — but *not* on ψ. The KL term D_KL(q_φ ‖ p_ψ) depends on φ and ψ — but not on θ. So if I freeze ψ and optimize (φ, θ), the objective I'm climbing is reconstruction minus a KL that pulls the encoder's code distribution toward the *fixed* prior — which is precisely the training objective of a VAE on images alone, captions not even required. Then if I freeze (φ, θ) and optimize ψ, the reconstruction term is constant, so I'm left maximizing −D_KL(q_φ ‖ p_ψ) over ψ; with q_φ fixed, minimizing that KL is exactly fitting the prior p_ψ to the encoder's induced token distribution — i.e. maximum-likelihood training of the transformer over the tokens. Each block, holding the others fixed, recovers one of the two stages, and each step is non-decreasing in the same lower bound. So the two stages aren't two unrelated heuristics glued together; they're alternating (here, single-pass) coordinate ascent on one ELBO, which means I can train the autoencoder once, freeze it, and train the transformer while still optimizing a coherent objective. (I did also try jointly optimizing all of φ, θ, ψ together, but couldn't beat the cleaner two-stage training, so I'll keep the split.)
 
 Stage one, then: train the discrete autoencoder. The encoder outputs, at each of the 32×32 spatial positions, a vector of 8192 logits defining a *categorical* distribution over the codebook; q_φ is that product of categoricals; and I set the initial prior p_ψ to the *uniform* categorical over the 8192 codes. Now I hit the classic obstacle: q_φ is discrete. To train the reconstruction term I need to backpropagate through "sample a code from a categorical," and a categorical sample is piecewise constant in the logits — no reparameterization gradient.
 
@@ -24,115 +24,18 @@ Now the reconstruction term itself, ln p_θ(x | y, z) — what distribution do I
 
   f(x | μ, b) = (1/2b)·exp(−|logit(x) − μ|/b) · |dy/dx| = 1 / (2 b x (1−x)) · exp( −|logit(x) − μ| / b ).
 
-A density has to integrate to 1 — a check on whether I dropped a Jacobian factor: numerically integrating f over (0,1) at μ = 0.3, b = 0.8 gives 0.99999997, so the Jacobian is right. Call this the logit-Laplace and use its log as the reconstruction term. The negative log density is −ln f = ln(2 b x (1−x)) + |logit(x) − μ| / b, which is what I'll code as the per-pixel loss. The decoder then has to output, per pixel, both the location and the scale — six feature maps in total: three μ's for RGB and three ln b's. To avoid the x(1−x) in the denominator blowing up at the edges, I first remap pixels from [0, 255] into a strictly interior interval (ε, 1−ε) by x ↦ ((1−2ε)/255)·x + ε with ε = 0.1, encode that, and to reconstruct an image for viewing I just take x̂ = φ⁻¹(sigmoid(μ)), ignoring b (sigmoid(μ) is the median of the pushed-through Laplace, so it's the natural point estimate).
+Numerically integrating f over (0,1) at μ = 0.3, b = 0.8 gives 0.99999997, so no Jacobian factor was dropped. Call this the logit-Laplace and use its log as the reconstruction term. The negative log density is −ln f = ln(2 b x (1−x)) + |logit(x) − μ| / b, which is what I'll code as the per-pixel loss. The decoder then has to output, per pixel, both the location and the scale — six feature maps in total: three μ's for RGB and three ln b's. To avoid the x(1−x) in the denominator blowing up at the edges, I first remap pixels from [0, 255] into a strictly interior interval (ε, 1−ε) by x ↦ ((1−2ε)/255)·x + ε with ε = 0.1, encode that, and to reconstruct an image for viewing I just take x̂ = φ⁻¹(sigmoid(μ)), ignoring b (sigmoid(μ) is the median of the pushed-through Laplace, so it's the natural point estimate).
 
-One more stage-one question about β. The usual story is that raising the KL weight trades away reconstruction quality, so I'd expect β > 1 to *hurt* reconstruction. In practice I see the opposite: sweeping β, raising it to about 6.6 lowers reconstruction error at convergence and gives better codebook usage. That's surprising enough that I want a mechanism, not just the number. My read: at small β, the noise from the relaxation early in training nudges the optimizer to collapse codebook usage (only a few codes get used), which hurts the ELBO at convergence; a stronger KL pushes the average code distribution toward uniform, keeping the codebook fully used, and a fully-used codebook reconstructs better. That's consistent with the better codebook-usage measurement going hand in hand with the lower error. So I ramp β from 0 up to 6.6 over the first 5000 updates. One bookkeeping check on what β actually weights: I divide the *total* loss by the 256·256·3 = 196608 pixel count, while the KL is a single sum over the 32·32 = 1024 token positions. So per token position the effective KL multiplier is β · (1024 / 196608) = β / 192 — at β = 6.6 that's 6.6/192 ≈ 0.034. Worth keeping in mind: the "6.6" is large only because it's been pre-divided by the pixel count; the real per-position pressure is mild.
+One more stage-one question about β. The usual story is that raising the KL weight trades away reconstruction quality, so I'd expect β > 1 to *hurt* reconstruction. In practice I see the opposite: sweeping β, raising it to about 6.6 lowers reconstruction error at convergence and gives better codebook usage. That's surprising enough that I want a mechanism, not just the number. My read: at small β, the noise from the relaxation early in training nudges the optimizer to collapse codebook usage (only a few codes get used), which hurts the ELBO at convergence; a stronger KL pushes the average code distribution toward uniform, keeping the codebook fully used, and a fully-used codebook reconstructs better. That's consistent with the better codebook-usage measurement going hand in hand with the lower error. So I ramp β from 0 up to 6.6 over the first 5000 updates. One piece of bookkeeping on what β actually weights: the total loss is divided by the 256·256·3 = 196608 pixel count, while the KL is a single sum over the 32·32 = 1024 token positions, so per token position the effective KL multiplier is β · (1024 / 196608) = β / 192 — at β = 6.6 that's ≈ 0.034. The "6.6" is large only because it's been pre-divided by the pixel count; the real per-position pressure is mild.
 
 Stage two: freeze the encoder and decoder, and fit the prior p_ψ — the transformer — over the tokens. Now I assemble the single stream. The caption: lowercase it, BPE-encode it to at most 256 tokens from a vocabulary of 16384. The image: run it through the frozen encoder and take the tokens. Here I make a deliberate choice — I take the *argmax* of the encoder logits, no Gumbel noise. Strictly the ELBO wants me to *sample* the tokens from the encoder's categorical, and sampling does act as a useful regularizer when the model is overparameterized. But with a 12-billion-parameter transformer against 250 million pairs I'm in the *under*parameterized regime, so I don't need that regularization; deterministic argmax tokens are cleaner. Concatenate the up-to-256 text tokens with the 1024 image tokens into one sequence and model it autoregressively as a single stream.
 
-The prior is a decoder-only sparse transformer. Why sparse? The stream is up to 256 + 1024 = 1280 positions, and dense attention costs ~1280² ≈ 1.6M score entries per layer per head, across 64 layers — affordable once but wasteful when most of those entries connect image tokens that are nowhere near each other on the 32×32 grid. Dense attention across the whole stream in every one of the many layers is more than I want to pay. The image tokens have 2D structure (a 32×32 grid), so I can factorize attention over that grid: *row* attention, where a token attends within its row, and *column* attention, where it attends within its column — between them they cover the 2D neighborhood far more cheaply than dense attention. I alternate them across layers, and I also add, in the very last layer, a *convolutional* attention mask (an 11×11 local pattern with wraparound) which I find gives a small boost over row/dense there. The text-to-text part of the mask is a standard causal mask; the image part uses these row/column/conv masks. And I use a *single* attention operation that handles all three interactions at once — text attends to text, image attends to text, image attends to image — rather than separate, independently-normalized attentions, which works better. Each image token can attend to *all* text tokens in any layer, which is what lets the caption actually steer the image.
+The prior is a decoder-only sparse transformer. Why sparse? The stream is up to 256 + 1024 = 1280 positions, and dense attention costs ~1280² ≈ 1.6M score entries per layer per head, across 64 layers, with most of those entries connecting image tokens that are nowhere near each other on the 32×32 grid. The image tokens have 2D structure (a 32×32 grid), so I can factorize attention over that grid: *row* attention, where a token attends within its row, and *column* attention, where it attends within its column — between them they cover the 2D neighborhood far more cheaply than dense attention. I alternate them across layers, and I also add, in the very last layer, a *convolutional* attention mask (an 11×11 local pattern with wraparound) which I find gives a small boost over row/dense there. The text-to-text part of the mask is a standard causal mask; the image part uses these row/column/conv masks. And I use a *single* attention operation that handles all three interactions at once — text attends to text, image attends to text, image attends to image — rather than separate, independently-normalized attentions, which works better. Each image token can attend to *all* text tokens in any layer, which is what lets the caption actually steer the image.
 
 A few details the structure forces. Image tokens carry 2D position, so beyond the usual token embedding I add a *row* embedding and a *column* embedding to each image token (broadcast across the grid), so the transformer knows where in the 32×32 grid a token sits. For the text side, I cap captions at 256 tokens, but most captions are shorter — what fills the gap between the last text token and the start of the image? Rather than masking those padding positions to −∞, I *learn* a dedicated padding token for each of the 256 text positions, used only when no real token is there; it slightly raises validation loss but generalizes better to out-of-distribution captions. And in the loss, since I care primarily about images, I normalize the text and image cross-entropies each by their token count and then weight text by 1/8 and image by 7/8.
 
 To generate: feed a caption, sample the 1024 image tokens autoregressively from the transformer, and decode them through the frozen dVAE decoder to pixels. But a single sample can be hit-or-miss. So I draw *many* candidates — say N = 512 — and rerank them with a pretrained contrastive image-text model that scores how well each image matches the caption, keeping the top ones. It's a language-guided search: spend extra sampling compute to pull the best matches out of the model's distribution, without any change to training.
 
-Let me put the load-bearing pieces into code. The dVAE encoder is a convolutional ResNet of bottleneck resblocks that downsamples 256→32 (three max-pools) and ends in a 1×1 conv producing the 8192-way logits per position:
+Putting the load-bearing pieces into code lands directly on the choices above. The dVAE encoder is a convolutional ResNet of bottleneck resblocks — hidden width a quarter of the output width, three 3×3 convs and a closing 1×1 on the residual branch, a 1×1 conv on the skip path when the channel count changes — that downsamples 256→32 through three max-pools and ends in a 1×1 conv producing the 8192-way logits per position. Each resblock scales its residual branch by 1/n_layers², the small-constant init from earlier. The bottleneck adds Gumbel noise to the encoder logits, takes the softmax at temperature τ over the 8192 codes, and contracts the soft assignment with the codebook to get the relaxed code vector. The reconstruction loss is the logit-Laplace NLL, ln(2bx(1−x)) + |logit(x) − μ|/b per pixel, and a concrete plug-in confirms the coded expression really is −ln f: at pixel x = 0.42 with μ = 0.3, b = 0.8 it evaluates to −0.16376, matching −ln f(0.42) computed straight from the density formula. The KL term is the standard cross-entropy-minus-entropy form of the mean soft assignment against the uniform prior, Σ q (ln q + ln K).
 
-```python
-import torch
-from torch import nn
-import torch.nn.functional as F
-
-class EncoderBlock(nn.Module):           # bottleneck resblock: hidden width = out // 4
-    def __init__(self, n_in, n_out, n_layers):
-        super().__init__()
-        n_hid = n_out // 4
-        self.post_gain = 1 / (n_layers ** 2)                 # small-constant scaling for stable init
-        self.id_path = nn.Conv2d(n_in, n_out, 1) if n_in != n_out else nn.Identity()
-        self.res_path = nn.Sequential(
-            nn.ReLU(), nn.Conv2d(n_in,  n_hid, 3, padding=1),
-            nn.ReLU(), nn.Conv2d(n_hid, n_hid, 3, padding=1),
-            nn.ReLU(), nn.Conv2d(n_hid, n_hid, 3, padding=1),
-            nn.ReLU(), nn.Conv2d(n_hid, n_out, 1))
-    def forward(self, x):
-        return self.id_path(x) + self.post_gain * self.res_path(x)
-
-class Encoder(nn.Module):
-    def __init__(self, n_hid=256, n_blk=2, in_ch=3, vocab_size=8192):
-        super().__init__()
-        n_layers = 4 * n_blk
-        blk = lambda i, o: EncoderBlock(i, o, n_layers)
-        self.blocks = nn.Sequential(
-            nn.Conv2d(in_ch, n_hid, 7, padding=3),                                  # 7x7 input conv
-            *[blk(n_hid, n_hid) for _ in range(n_blk)], nn.MaxPool2d(2),             # 256 -> 128
-            blk(n_hid, 2*n_hid), *[blk(2*n_hid, 2*n_hid) for _ in range(n_blk-1)], nn.MaxPool2d(2),  # 128 -> 64
-            blk(2*n_hid, 4*n_hid), *[blk(4*n_hid, 4*n_hid) for _ in range(n_blk-1)], nn.MaxPool2d(2),# 64 -> 32
-            blk(4*n_hid, 8*n_hid), *[blk(8*n_hid, 8*n_hid) for _ in range(n_blk-1)],
-            nn.ReLU(), nn.Conv2d(8*n_hid, vocab_size, 1))                           # 1x1 -> 8192 logits
-    def forward(self, x):
-        return self.blocks(x)             # [B, 8192, 32, 32]
-```
-
-The discrete bottleneck via Gumbel-Softmax — add Gumbel noise to the logits, softmax at temperature τ, and the soft one-hot indexes (a convex combination of) the codebook; anneal τ down over training:
-
-```python
-def gumbel_softmax_codes(logits, codebook, tau):
-    # logits: [B, K, 32, 32]; codebook: [K, D]
-    g = -torch.log(-torch.log(torch.rand_like(logits) + 1e-9) + 1e-9)   # Gumbel(0,1) noise
-    soft = F.softmax((logits + g) / tau, dim=1)                          # [B, K, 32, 32], -> one-hot as tau->0
-    z = torch.einsum("bkhw,kd->bdhw", soft, codebook)                    # soft selection of code vectors
-    return soft, z
-
-def logit_laplace_nll(x, mu, ln_b):
-    # reconstruction term: negative log logit-Laplace density on (eps, 1-eps)-mapped pixels x
-    b = ln_b.exp()
-    return (torch.log(2 * b * x * (1 - x)) + (torch.logit(x) - mu).abs() / b).mean()
-
-def kl_uniform(soft):
-    # KL of the categorical (mean soft assignment) against the uniform prior over K codes
-    q = soft.mean(dim=(0, 2, 3))                       # average categorical
-    K = soft.shape[1]
-    return (q * (q.add(1e-9).log() + torch.log(torch.tensor(float(K))))).sum()
-```
-
-Checking that `logit_laplace_nll` really is −ln f: plug in a concrete pixel x = 0.42 with μ = 0.3, b = 0.8, the coded expression ln(2 b x (1−x)) + |logit(x) − μ| / b gives ln(2·0.8·0.42·0.58) + |logit(0.42) − 0.3|/0.8 = −0.16376, matching −ln f(0.42) computed directly from the density formula — the implemented loss is exactly the negative log logit-Laplace density. (And the KL above is the standard cross-entropy-minus-entropy form: Σ q ln(q / (1/K)) = Σ q (ln q + ln K), the KL of the mean categorical against uniform, which is what `kl_uniform` returns.)
-
-Stage-one training maximizes the relaxed ELBO — logit-Laplace reconstruction minus β times the KL to the uniform prior — with τ and β on their annealing schedules:
-
-```python
-# stage 1: train the dVAE on images alone
-opt = torch.optim.AdamW(list(encoder.parameters()) + list(decoder.parameters()),
-                        lr=1e-4, betas=(0.9, 0.999), eps=1e-8, weight_decay=1e-4)
-for step, img in enumerate(loader):
-    x = phi(img)                                   # map [0,255] -> (eps, 1-eps), eps=0.1
-    logits = encoder(x)
-    tau  = anneal(step, 1.0, 1/16, 150_000)        # cosine anneal temperature
-    beta = anneal(step, 0.0, 6.6, 5_000)           # cosine ramp KL weight
-    soft, z = gumbel_softmax_codes(logits, codebook, tau)
-    mu, ln_b = decoder(z).chunk(2, dim=1)          # 6 feature maps: 3 mu + 3 ln b
-    recon = logit_laplace_nll(x, mu, ln_b)
-    loss = recon + beta * kl_uniform(soft)
-    opt.zero_grad(); loss.backward(); opt.step()
-```
-
-Stage two freezes the dVAE, extracts image tokens by argmax, concatenates with BPE text tokens, and trains the autoregressive transformer with the 1/8–7/8 text/image cross-entropy weighting:
-
-```python
-# stage 2: fit the transformer prior over the concatenated text+image token stream
-@torch.no_grad()
-def image_tokens(encoder, img):
-    return encoder(phi(img)).argmax(dim=1).flatten(1)        # [B, 1024], argmax (no gumbel noise)
-
-opt = torch.optim.AdamW(transformer.parameters(), lr=4.5e-4, betas=(0.9, 0.96),
-                        eps=1e-8, weight_decay=4.5e-2)
-for text_tok, img in loader:                                  # text_tok: [B, 256] BPE tokens
-    img_tok = image_tokens(encoder, img)                      # [B, 1024]
-    stream = torch.cat([text_tok, img_tok + text_vocab], dim=1)  # shared vocab; image ids offset past text
-    logits = transformer(stream[:, :-1])                      # decoder-only, sparse row/col/conv attention
-    tgt = stream[:, 1:]
-    n_text, n_img = 256 - 1, 1024
-    ce = F.cross_entropy(logits.transpose(1, 2), tgt, reduction="none")
-    loss = (1/8) * ce[:, :n_text].mean() + (7/8) * ce[:, n_text:].mean()
-    torch.nn.utils.clip_grad_norm_(transformer.parameters(), 4.0)
-    opt.zero_grad(); loss.backward(); opt.step()
-```
+Stage-one training then just assembles these pieces: map pixels into (ε, 1−ε) with ε = 0.1, run the encoder, anneal τ from 1 to 1/16 and β from 0 to 6.6 on their cosine schedules, decode the soft codes into the six μ/ln b maps, and minimize logit-Laplace NLL plus β times the KL with AdamW. Stage two freezes the dVAE, extracts the 1024 image tokens by argmax, offsets their ids past the 16384-entry text vocabulary so text and image tokens share one stream and one output head, concatenates them after the BPE caption tokens, and trains the transformer on the count-normalized cross-entropy weighted 1/8 text and 7/8 image, with gradient clipping at norm 4.
