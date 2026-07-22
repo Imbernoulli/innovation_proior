@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0655",
+  "tier": "A",
+  "format": "A",
+  "family": "zellij-star-lattice",
+  "eval_form": "quality-metric",
+  "theme": "Islamic star mosaic with mixed star orders",
+  "title": "Star Lattice Interfaces",
+  "objective": "max",
+  "seed_problem": "planar patch of tiles assigned star motifs under a fixed edge-angle geometry",
+  "mutation": "composite: cells come in two kinds -- STAR cells restricted to a small fixed order palette, and interstitial ADAPTER cells free to use any order dividing the global angle modulus at a real cost -- coupling a mixed-rotational-order diversity/alignment bonus to a cost-budgeted adapter placement that must number-theoretically reconcile two zones' incompatible fixed angles; the interface language between star zones, not the stars themselves, becomes the design problem.",
+  "strategies": [
+    "trivial: build every star cell with a single fixed palette order, never build any adapter (reproduces the checker baseline)",
+    "naive greedy: keep the single fixed star order, but blindly build every adapter with the universal (most expensive) order regardless of how much cheaper a sufficient order would have been",
+    "insight (strong): per star cell, pick the order that first maximizes the canonical-phase bonus and second favors an order used least so far (maximizes order diversity for free); per adapter, compute the number-theoretically minimal sufficient order via gcd of its incident angle differences and only build when the strand-length payoff covers that (now minimal) cost",
+    "a general solver can go further: joint global assignment of star orders (e.g. weighted bipartite matching against palette slots) and a knapsack over which adapters to afford under a shared cost/length trade-off"
+  ]
+}

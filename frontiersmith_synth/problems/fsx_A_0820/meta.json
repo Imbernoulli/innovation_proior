@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0820",
+  "tier": "A",
+  "family": "domino-cascade-timing-logic",
+  "seed_problem": "fsx_A_0820 spec: domino-cascade-timing-logic (deterministic-cascade, placement-commit, timing-synchronization)",
+  "mutation": "composite: budget-committed candidate-edge network scored by a deterministic tick-cascade with AND-merge nodes gated on exact-tick synchronization (no known optimum: package selection under budget + tick-matching is combinatorial)",
+  "objective": "max",
+  "theme": "Lay a toppling network with synchronized arrivals",
+  "title": "Delay-Line Cascade: Synchronized Toppling Network",
+  "strategies": [
+    "single best one-hop grab (baseline / trivial)",
+    "value/cost knapsack incl. cheapest-branch merge attempts, ignoring tick sync (greedy trap)",
+    "knapsack using TRUE min-cost synchronized merge packages via exact tick-arithmetic search (strong)",
+    "open headroom: exact 0/1 DP knapsack over packages, smarter decoy-avoidance, multi-merge global trade-offs"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0660",
+  "tier": "A",
+  "format": "B",
+  "family": "cascade-gate-flood-policy",
+  "eval_form": "quality-metric",
+  "theme": "monsoon season on a three-dam river",
+  "title": "Monsoon Cascade: Three-Dam Flood Policy",
+  "objective": "minimize",
+  "source_frameworks": ["wave2b-lens:continuous-physical"],
+  "strategies": [
+    "constant-rate baseline: open every gate to a fixed fraction of its max rate for the whole horizon, ignoring storage, forecast, delay and the other dams entirely",
+    "per-dam reactive threshold: react only to each dam's own current storage fraction (release hard once nearly full, moderately once half full, otherwise hold) -- the obvious textbook rule, blind to the forecast and to the other dams",
+    "cascade-order backward just-in-time scheduling: for each dam in turn (1 then 2 then 3), compute the latest-feasible release trajectory that still meets every future no-overflow deadline under the rate cap, using the upstream dam's already-decided (delayed) release as part of the next dam's inflow forecast",
+    "anticipatory soft-cap refinement: shrink the downstream dam's effective capacity in a window just before the town's own forecast inflow peak so the backward schedule is forced to draw the dam down (a locally wasteful early release) before that peak, buying absorption headroom exactly when the town's local pulse and the routed upstream pulse would otherwise coincide"
+  ]
+}

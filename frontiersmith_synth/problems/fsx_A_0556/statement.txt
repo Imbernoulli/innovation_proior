@@ -1,0 +1,100 @@
+# Frozen Tables, Severed Cables
+
+## Problem
+A network of `n` routers is connected by `m` undirected bidirectional cables (a
+connected simple graph). You must install, at every router, a **static forwarding
+table** that never changes -- not even after a cable is cut.
+
+For every ordered pair (router `u`, destination `d`) with `u != d` you declare two
+next hops:
+
+- a **primary** neighbour `p` of `u`, and
+- a **backup** neighbour `b` of `u`.
+
+Both `p` and `b` must be neighbours of `u`; `b` may equal `p` (meaning "no real
+backup").
+
+## Forwarding rule
+Exactly one cable is cut. A packet addressed to `d` sitting at router `u != d` is
+handed to the link `(u, p)`. **If and only if `(u, p)` is the cut cable**, it is
+handed to the link `(u, b)` instead. If that link is *also* the cut cable (which can
+happen only when `b = p`), the packet is dropped. A packet that reaches `d` stops.
+
+Because the next hop depends only on the current router and `d`, forwarding is
+deterministic. Starting from a source `s`, the packet either reaches `d` or begins
+to repeat routers forever.
+
+## Delivery and objective
+Fix a cut cable `e`. An ordered pair `(s, d)`, `s != d`, is **delivered** if the
+packet started at `s` reaches `d` within `n` forwarding steps; otherwise (it loops
+or is dropped) it is **stranded**.
+
+Let `U(e)` be the number of stranded ordered pairs when cable `e` is the one cut.
+Your tables are judged by their **worst** cut:
+
+```
+F = max over all m cables e of U(e)
+```
+
+**Minimise `F`.** A single cable failure should strand as few communications as
+possible, in the worst case over which cable dies.
+
+## Scoring
+The judge builds a reference routing itself: each router's primary is a
+shortest-path next hop toward `d` (the neighbour nearest to `d`, smallest index on
+ties) with **no backup**, and computes its worst-cut value `B`. Your score on a
+test is
+
+```
+score = min(1.0, 0.1 * B / max(1, F))     (in [0, 1])
+```
+
+so the reference routing scores about `0.1`, and you improve by driving your
+worst-case `F` far below `B`. Some pairs are separated by a single cable whose loss
+no table can survive, so a perfect score is not attainable.
+
+## Input
+```
+n m
+u_1 v_1
+... (m lines)
+u_m v_m
+```
+Cables are undirected, listed once, no self-loops or repeats; the graph is
+connected.
+
+## Output
+For each destination `d` from `1` to `n`, and for each source `u` from `1` to `n`
+with `u != d` in increasing order of `u`, print one line
+
+```
+p b
+```
+
+the primary and backup next hop of `u` toward `d`. That is `n * (n - 1)` lines
+total.
+
+## Constraints
+- `3 <= n <= 250`
+- `n - 1 <= m <= 700`
+- Time limit: 5 s. Memory limit: 512 MB. Each input file <= 5 MB.
+
+## Example
+```
+4 4
+1 2
+2 3
+3 4
+4 1
+```
+The graph is a 4-cycle `1-2-3-4-1`. Consider destination `d = 1`. Shortest-path
+tables send `2 -> 1`, `4 -> 1`, and `3 -> 2` (tie broken to the smaller index).
+With no backup, cutting cable `(2,1)` strands both `2` and `3` from `1`. If instead
+router `3` uses primary `4` (the *other* shortest path) and router `2` uses backup
+`3`, then after `(2,1)` is cut the packet from `2` travels `2 -> 3 -> 4 -> 1` and is
+delivered: the escape works only because router `3`'s own route to `1` already runs
+the long way and does not return through `2`. A backup that is farther from `d` (or
+that returns through the cut) would loop instead. So resilience is a property of the
+whole induced route, not of individual hop distances. A worked score: if the
+reference's worst cut strands `B` pairs and your tables' worst cut strands
+`F = B / 4` pairs, your score is `min(1, 0.1 * 4) = 0.4`.

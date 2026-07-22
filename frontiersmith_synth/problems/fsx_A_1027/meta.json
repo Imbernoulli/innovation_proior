@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1027",
+  "tier": "A",
+  "format": "C",
+  "family": "subgroup-annihilator-sparse-poly",
+  "eval_form": "quality-metric",
+  "theme": "craft a skeleton key that opens marked doors only",
+  "title": "Skeleton-Key Polynomials over F_p",
+  "objective": "maximize",
+  "strategies": [
+    "narrow-window single binomial: only ever test a small fixed band of subgroup orders (12..25) for a matching coset",
+    "exhaustive single binomial: scan every divisor of p-1, keep the single best-fitting coset, ignore the rest",
+    "vanishing-polynomial interpolation: build the exact polynomial that vanishes on all of S (needs |S| terms, blows the term budget)",
+    "multi-coset composition: score every candidate subgroup order, then multiply together the several independently-good binomials (a product's root set is the union of the factors' cosets) to cover most of S in O(1) terms"
+  ]
+}

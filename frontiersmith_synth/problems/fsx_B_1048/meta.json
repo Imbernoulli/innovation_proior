@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_1048",
+  "tier": "B",
+  "format": "C",
+  "family": "cut-point-cascade-yields",
+  "eval_form": "quality-metric",
+  "theme": "moonshine still: choose your cuts",
+  "title": "Moonshine Still: Choose Your Cuts",
+  "objective": "max",
+  "strategies": [
+    "uniform K-slice single-pass sell-everything (the checker's own trivial baseline)",
+    "single-pass revenue-maximizing DP over cut points, with a post-hoc purity threshold that reclassifies low-purity fractions as recycle",
+    "joint two-pass co-design: search over a quarantine window [lo,hi) in pass 1 that is deliberately NOT locally revenue-optimal, sized to concentrate the overlap into one clean recycle stream that pass 2 re-cuts near-losslessly, taking the better of this and the single-pass plan"
+  ]
+}

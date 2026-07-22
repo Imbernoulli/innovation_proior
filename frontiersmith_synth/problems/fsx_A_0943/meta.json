@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0943",
+  "tier": "A",
+  "format": "A",
+  "family": "constellation-atlas-lines",
+  "seed_problem": "fsx_A_0943 seed spec (constellation-atlas-lines)",
+  "mutation": "composite: fixed point-clusters -> per-cluster spanning-tree drawing task with a\n  global (cross-cluster) non-crossing objective, a vertex angular-resolution objective, and a\n  portfolio-level shape-grammar role assignment (PATH/STAR/ZIGZAG) whose fit AND cross-cluster\n  diversity are both scored -- an open, no-known-optimum joint layout+assignment problem.",
+  "objective": "max",
+  "theme": "drawing a beautiful star atlas",
+  "title": "Star Atlas Portfolio -- Diverse Constellation Drawing",
+  "strategies": [
+    "trivial: connect each cluster's stars in raw input order as a chain; declare every constellation PATH (baseline, ratio ~0.1)",
+    "greedy: per-cluster Euclidean MST (textbook, locally near-optimal, self-crossing-free) with a locally-derived role guess -- fails to diversify the PORTFOLIO because i.i.d.-distributed clusters yield statistically similar MST shapes everywhere",
+    "strong: portfolio-level diversity-aware role assignment (balance PATH/STAR/ZIGZAG across clusters using each cluster's PCA elongation as an affinity signal) THEN a role-specific construction recipe per cluster (PCA-axis path / centroid hub-and-spoke star / axis-riffled zigzag) -- exploits the innovation hook directly",
+    "open: joint global optimization of angular resolution + cross-cluster non-crossing + role assignment + realized-shape diversity (no known optimal algorithm)"
+  ]
+}

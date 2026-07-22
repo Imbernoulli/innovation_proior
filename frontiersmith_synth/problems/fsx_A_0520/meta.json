@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0520",
+  "tier": "A",
+  "format": "A",
+  "family": "seasonal-depot-siting-worstcase",
+  "seed_problem": "Place P depots (fixed across K seasons) among N city addresses with seasonal demand; score the worst-season weighted nearest-depot assignment cost.",
+  "mutation": "composite: compose demand-geometry-clustering + facility-location + scenario-minimax. Depots are sited ONCE but graded on the MAXIMUM over K seasonal demand vectors of the weighted nearest-depot cost. The generator plants geographically disjoint per-season hot zones with EQUAL mass but UNEQUAL spread, so the pooled/average k-means recipe chases density and starves the spread zones, whose season becomes the worst; the insightful layout clusters against the worst-case (max-over-seasons) envelope and hedges depots into the spread zones.",
+  "objective": "min",
+  "theme": "courier depots that survive every season",
+  "title": "Courier Depots That Survive Every Season",
+  "strategies": [
+    "single-hub baseline: all P depots at the unweighted centroid (matches the checker baseline, ratio ~0.1)",
+    "pooled k-means (the trap): weighted Lloyd on the summed-over-seasons demand using L2 means; packs depots onto the compact/dense zones and starves the spread zones, so the worst season blows up",
+    "envelope minimax hedge (the insight): initialise on max-over-seasons demand, use L1 coordinate-wise weighted medians, and iteratively upweight the currently-worst season so extra depots migrate into the spread zones that set F",
+    "local-search reallocation: from any layout, move the depot cluster that helps the worst season most, re-evaluating the max each step"
+  ]
+}

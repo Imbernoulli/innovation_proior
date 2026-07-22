@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0565",
+  "tier": "A",
+  "format": "A",
+  "family": "quay-crane-monotone-matching",
+  "seed_problem": "K non-crossing quay cranes on one rail must be assigned M positioned container jobs and staggered in time; minimize makespan plus idle standby energy.",
+  "mutation": "composite: compose the non-crossing (monotone matching) feasibility rule, a heterogeneous crane-to-zone matching (standby powers), and a temporal-staggering rule (congested stretches force serialized busy intervals) into one coupled makespan+idle-energy objective; the naive load-balancing greedy cuts through congested blobs and pays serialization it never modelled.",
+  "objective": "min",
+  "theme": "container cranes on one shared rail unloading a ship",
+  "title": "Quay Cranes on One Rail: Zone Partition and Handoff Staggering",
+  "strategies": [
+    "even-count baseline: split position-sorted jobs into K equal-count contiguous zones, cranes 1..K, minimal staggered offsets (matches the checker baseline, ratio ~0.1)",
+    "load-balancing greedy: cut so each crane gets (almost) equal total hoisting work, ignoring the safety gaps and standby powers; on blob instances this slices congested clusters and forces long staggering",
+    "gap-aware partition + power matching: place zone boundaries at wide (>=S) bay gaps so nothing serializes, choose which cranes to deploy so high-standby-power cranes get the busiest zones, then local-search the cuts against the true objective",
+    "local search over cut positions and deployed-crane subset evaluating the exact makespan+idle cost"
+  ]
+}

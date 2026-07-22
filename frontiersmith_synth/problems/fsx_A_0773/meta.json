@@ -1,0 +1,19 @@
+{
+  "id": "fsx_A_0773",
+  "tier": "A",
+  "format": "B",
+  "family": "masked-cayley-completion",
+  "eval_form": "quality-metric",
+  "theme": "restore a shredded royal multiplication ledger",
+  "title": "Restore the Shredded Royal Multiplication Ledger",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:algebra-and-residues"],
+  "mechanisms": ["isotopy-reconstruction", "quadrangle-criterion-recognition"],
+  "innovation_hook": "The quadrangle criterion (if three corners of two rectangles agree, the fourth entries are equal in any group isotope) lets you infer erased cells from distant filled ones, and identifying the group up to isotopy from a small fragment determines the entire table.",
+  "strategies": [
+    "trivial: per-row 'list the missing symbols in column order' fill -- keeps every row Latin-valid by construction but has no column or group awareness, so correctness on destroyed cells is near chance level -> low score",
+    "greedy: generic Latin-square constraint propagation (naked-single elimination over row/column missing-sets, falling back to the smallest locally-consistent value) -- a genuinely reasonable recipe that does well under light damage but stalls into low-information guessing once erasure is heavy, because it only ever reasons about one row and one column at a time",
+    "strong: recognize which finite group (up to isomorphism, from a small library of the right order) the ledger is isotopic to, via a quadrangle-criterion-driven backtracking search that pins down the unknown row/column relabelling permutations from same-valued cells forcing equal abstract group products -- once found, the symbol relabelling and the ENTIRE table (including cells nowhere near any surviving data) follow for free",
+    "invalid: returns out-of-range codes for every cell -> rejected by shape/range validation -> 0 on every instance"
+  ]
+}

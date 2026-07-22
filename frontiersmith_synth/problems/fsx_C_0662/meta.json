@@ -1,0 +1,19 @@
+{
+  "id": "fsx_C_0662",
+  "tier": "C",
+  "format": "A",
+  "family": "shared-kerf-pairing",
+  "eval_form": "quality-metric",
+  "theme": "Plates that split one cut two ways",
+  "title": "Plates That Split One Cut Two Ways",
+  "objective": "max",
+  "seed_problem": "max-weight matching / edge-sharing on a graph of pairable parts",
+  "mutation": "composite: the goal becomes a bin-constrained hypergraph clustering (common-line-clustering) where each candidate shared cut may recruit ANY subset (>=2) of the parts on that line, coupled to a per-part heat-affected-zone budget that charges a shared cut its FULL length to every participant (vs half for a solo cut) -- turning what looks like max-weight pairing into a degree-constrained b-matching where many cheap contacts can out-earn the single best pair.",
+  "innovation_hook": "Heat budgets convert edge-sharing from a max-weight matching into a bin-constrained clustering where splitting savings across several small contacts dominates taking the single best pair.",
+  "strategies": [
+    "trivial: activate only the single best common line the checker itself would pick (reproduces the baseline -> ~0.1)",
+    "greedy (trap): process common lines by DESCENDING cut length, fully recruiting whoever can currently afford each -- locks the few high-heat-tolerant hub parts into the one giant line first, exhausting their budgets and starving many cheap lines that needed exactly those hubs to reach quorum",
+    "strong (insight): process common lines by ASCENDING cut length (many cheap contacts first) plus a repair pass that mops up any leftover budget on lines skipped in pass one -- avoids the quorum-starvation trap and captures roughly double the greedy's saved cut-length on the planted trap clusters",
+    "further headroom: a true b-matching / LP-relaxation-and-rounding solver that jointly reasons about which parts are scarce (few group memberships) vs abundant, rather than a fixed cheap-first order"
+  ]
+}

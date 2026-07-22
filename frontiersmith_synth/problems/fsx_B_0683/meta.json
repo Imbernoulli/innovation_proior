@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0683",
+  "tier": "B",
+  "format": "D",
+  "family": "nested-bin-progressive-quantizer",
+  "eval_form": "flops",
+  "theme": "Commit coarse bits before you can refine detail",
+  "title": "Nested Dyadic Quantization Under a Split Budget",
+  "objective": "min",
+  "strategies": [
+    "trivial: zero splits, every channel reconstructed by its own single-leaf weighted mean",
+    "greedy: myopic best-first tree growth -- at each step split whichever open leaf gives the largest IMMEDIATE SSE drop -- the CART-style recipe that is the trap",
+    "strong: per-channel tree-knapsack DP (exact SSE achievable at every local split budget) composed with a global knapsack DP allocating the shared budget across channels -- sees that an unattractive coarse split is sometimes the only gate to a much richer fine split",
+    "invalid: claims one more split than the shared budget allows"
+  ]
+}

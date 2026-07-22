@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0522",
+  "tier": "A",
+  "format": "C",
+  "family": "dirty-loop-writeback-cache",
+  "eval_form": "quality-metric",
+  "theme": "scriptorium monks deciding which wet-ink pages to shelve",
+  "title": "The Wet-Ink Scriptorium: A Two-Timescale Shelving Script",
+  "objective": "min",
+  "strategies": [
+    "trivial: least-recently-used shelving with no proactive drying -- thrashes on the k+2 desk-loop and pays every wet writeback (reproduces the checker baseline)",
+    "greedy: Belady farthest-in-future eviction, no proactive drying -- minimizes fetches but keeps shelving wet pages at the full writeback charge",
+    "strong: keep Belady's fetch-optimal eviction order but treat the wet/dry asymmetry as a second timescale -- proactively dry every page that will be shelved wet, in its safe window (after its last inking, before it leaves), converting each De writeback into Pc+Ce",
+    "headroom above strong: cost-aware eviction that sometimes shelves a clean page sooner to avoid a drying charge entirely, trading a fetch for a writeback"
+  ]
+}

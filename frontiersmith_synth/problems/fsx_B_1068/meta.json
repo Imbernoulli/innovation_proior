@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_1068",
+  "tier": "B",
+  "format": "C",
+  "family": "sonnet-stress-lattice",
+  "eval_form": "quality-metric",
+  "theme": "synthetic-lexicon sonnet under strict meter",
+  "title": "Scarce-Rhyme Sonnet Lattice",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:constrained-aesthetics"],
+  "strategies": [
+    "trivial: cycle the single richest rhyme class's distinct 0-inversion words through all 70 word-slots (checker's own baseline) -> ~0.1",
+    "greedy: rank rhyme classes once by raw 0-inversion word count and round-robin the 7 scheme pairs across only the top-3 ranked classes, never reconsidering that shortlist against the true 7-pair demand -> classes ranked 4th and lower sit unused even when plentiful, capping distinct-rhyme-word usage and any spent inversions cluster on the rhyme-critical foot",
+    "strong: solve a bipartite load-balancing assignment of the 7 rhyme-scheme pairs to rhyme classes BEFORE writing any line (maximize projected slack per class), THEN fill rhyme-critical words from the reserved class's distinct pool, THEN spend any leftover inversion budget deliberately across distinct metrical feet (not just the rhyme foot) to build entropy, THEN fill free slots by chasing the longest available same-initial-letter run across line boundaries",
+    "invalid: emit a rhyme-scheme-violating / out-of-range / malformed word sequence -> checker rejects -> 0"
+  ]
+}

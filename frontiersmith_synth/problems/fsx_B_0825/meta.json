@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0825",
+  "tier": "B",
+  "format": "D",
+  "family": "death-aware-segment-sweep",
+  "eval_form": "flops",
+  "theme": "night custodian emptying theater rows between acts",
+  "title": "Night Custodian: Emptying Rows Between Acts",
+  "objective": "minimize",
+  "strategies": [
+    "fixed numeric-order sweep, earliest-forced timing, cost-blind (trivial)",
+    "reactive space-yield sweeper: cheapest-seated-now row, only when forced, no lookahead (greedy)",
+    "exact bitmask DP over (round, swept-row-set) pruned by the free-row-floor deadlines: proactively banks slack by sweeping stable rows early so death-clustered rows can be deferred past their checkout burst (strong)",
+    "true minimum-cost feasible schedule under adversarial checkout/demand timing is open (uncovered ceiling)"
+  ]
+}

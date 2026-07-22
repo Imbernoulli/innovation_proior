@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0828",
+  "tier": "A",
+  "format": "E",
+  "family": "integer-recurrence-recovery",
+  "eval_form": "quality-metric",
+  "theme": "Extrapolate a sequence far past what you see",
+  "title": "The One-Big-Term Sequence — recovering a rational generating function that a short window can't reveal",
+  "objective": "min",
+  "strategies": [
+    "trivial: a single geometric term extrapolated from the last two visible values (the checker's own baseline) -> ~0.1",
+    "greedy: Prony's method at a FIXED order 2 -- fit a(n)=c1*a(n-1)+c2*a(n-2) by least squares, recover its two characteristic roots, extrapolate. Looks excellent on the visible window (dominated by one huge term) but the true generator has more terms whose tiny coefficients only overtake the dominant one far past the training window -> diverges by orders of magnitude on the far held-out indices",
+    "strong: exact Berlekamp-Massey over the RATIONALS certifies the true MINIMAL order from the exact integer data (not an approximate fit); exact trial-division factors its characteristic polynomial into integer roots; an exact Vandermonde solve recovers every integer amplitude -- emits the true closed-form generating function, correct at any index",
+    "headroom above strong: strong pays a parsimony penalty for the extra terms it must emit (D can be up to 6) and the checker's baseline is not maximally weak, so a policy that also finds a MORE economical exact representation (e.g. detecting when consecutive trap coefficients telescope) could still push the score higher"
+  ]
+}

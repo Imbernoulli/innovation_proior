@@ -1,0 +1,15 @@
+{
+  "id": "fsx_A_0753",
+  "tier": "A",
+  "format": "C",
+  "family": "burst-geometry-codebook",
+  "eval_form": "quality-metric",
+  "theme": "channel code tuned to a known noise fingerprint",
+  "title": "Codebook Tuned to a Published Burst-Error Fingerprint",
+  "objective": "maximize",
+  "strategies": [
+    "checker-reproduction baseline: a spread interleaved comb code with deliberately loose (larger than necessary) spacing",
+    "naive block code: dedicate one contiguous run of bits per message-index-bit, maximizing raw pairwise Hamming distance while ignoring the shape of the burst sweep",
+    "tight interleaved comb code: spread each message-index-bit across an arithmetic-progression comb with spacing exactly large enough to exceed every swept burst length"
+  ]
+}

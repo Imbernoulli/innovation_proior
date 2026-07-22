@@ -1,0 +1,102 @@
+# Place Clinics Before Queues Explode
+
+## Problem
+
+A district has `n` demand nodes (villages), each at integer coordinates
+`(x_i, y_i)` with a patient arrival rate `lambda_i`. You may open clinics at a
+subset of `m` candidate sites; site `j` has coordinates `(X_j, Y_j)`, a service
+rate `mu_j`, and an opening cost `cost_j`. Opening a subset of sites must not
+exceed a total budget `Bud`. Every demand node must then be routed to exactly
+one **open** site.
+
+Each open site behaves like a single queue: if the demand routed to site `f`
+sums to `lambda_f`, patients experience an average wait proportional to
+`lambda_f / (mu_f - lambda_f)` -- finite only while `lambda_f < mu_f`, and
+growing without bound as `lambda_f` approaches `mu_f`. A fixed conversion rate
+`QW` (cost per unit of expected wait, e.g. a value-of-time coefficient) turns
+that wait into the same currency as travel distance. Near saturation the
+`QW`-weighted wait term can dwarf any travel-distance saving, so the best
+routing may deliberately send some patients to a farther clinic that still has
+headroom.
+
+## Input
+
+```
+n m Bud QW
+x_1 y_1 lambda_1
+...
+x_n y_n lambda_n
+X_1 Y_1 mu_1 cost_1
+...
+X_m Y_m mu_m cost_m
+```
+All values are integers.
+
+## Output
+
+```
+k
+f_1 f_2 ... f_k
+a_1 a_2 ... a_n
+```
+`k` is the number of sites you open; `f_1..f_k` are their (distinct, 1-indexed)
+site numbers. `a_i` is the site (one of `f_1..f_k`) that demand node `i` is
+routed to.
+
+## Feasibility
+
+- `1 <= k <= m`; `f_1..f_k` distinct values in `[1,m]`.
+- `sum(cost_{f_t})` over the open sites `<= Bud`.
+- Every `a_i` is a member of `{f_1,...,f_k}`.
+- For every open site `f`, its routed load `lambda_f = sum of lambda_i` over
+  demand nodes assigned to it must satisfy `lambda_f < mu_f` **strictly**. Any
+  violation of the above (including `lambda_f >= mu_f`) scores `0` on that test.
+
+## Objective
+
+Minimize
+```
+F = sum_i lambda_i * dist(i, a_i)   +   QW * sum_{open f, lambda_f>0} lambda_f / (mu_f - lambda_f)
+```
+where `dist` is Euclidean distance. The first sum is total (arrival-rate
+weighted) travel; the second is total expected queueing delay across all open
+clinics, converted to cost via `QW`.
+
+## Scoring
+
+The checker computes its own reference number `B`: route every demand node to
+whichever of the `m` candidate sites is geometrically **nearest**, ignoring
+budget, cost and load entirely (a budget-blind nearest-facility routing; its
+queueing term uses a floor of `1` on `mu_f - lambda_f` so an over-saturated
+site never breaks the reference). Your score on a test is
+```
+ratio = min(1000, 100 * B / max(1, F)) / 1000
+```
+so a solution roughly ten times worse than `B` scores about `0.1`, and beating
+`B` scores higher (capped at `1.0`). Per-test ratios are averaged.
+
+## Constraints
+
+- `1 <= n <= 2000`, `1 <= m <= 60`.
+- `0 <= x_i, y_i, X_j, Y_j <= 20000`.
+- `1 <= lambda_i <= 200`, `1 <= mu_j <= 2*10^6`, `1 <= cost_j <= 2*10^4`.
+- `1 <= Bud`, `1 <= QW <= 2*10^4`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+Two villages, `(0,0)` and `(100,0)`, each `lambda=90` (total `180`). Two sites
+within budget: A at `(50,0)`, `mu=100`, cost `10` (cheap, central, low
+capacity); B at `(50,50)`, `mu=250`, cost `20` (farther, ample capacity).
+Budget `30` affords both; take `QW=1`.
+
+Routing everyone to nearer site A: `lambda_A = 180 >= mu_A = 100` --
+**infeasible**, scores `0`.
+
+Splitting `90` to A and `90` to B instead: `lambda_A=90<100` gives queueing
+term `90/10=9`; `lambda_B=90<250` gives `90/160=0.5625`. Sending both
+villagers to A costs `2*90*50=9000` travel; sending both to farther B costs
+`2*90*sqrt(50^2+50^2)~=12729` -- more travel, but avoiding A's near-saturation
+queueing term (which explodes as `lambda_A` approaches `100`) can still win
+once A nears its capacity. The best split balances B's extra travel against
+the marginal queueing delay saved at A -- the trade-off this problem grades.

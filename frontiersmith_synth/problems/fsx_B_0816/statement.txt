@@ -1,0 +1,104 @@
+# Route a Pipetting Protocol to Fill a Plate
+
+## Problem
+A lab has an infinite **stock** reservoir (concentration 1.0), an infinite
+**diluent** reservoir (concentration 0.0), and `N` wells (ids `1..N`). Wells
+`1..W` are **target** wells: each needs a target concentration and a minimum
+final volume. Wells `W+1..N` are free **scratch** wells usable however you
+like (e.g. as reusable intermediates).
+
+You write a **protocol**: an ordered list of pipetting operations. Each
+operation moves `vol` units (`1 <= vol <= Vmax`, a hard per-pipette-tip cap)
+from a `src` into a `dst` well. `src` is the stock (`-1`), the diluent (`-2`),
+or any well that currently holds undrawn liquid; `dst` is any well `1..N`
+(never the stock/diluent). A well's concentration after receiving `vol` from
+a source of concentration `s` is the volume-weighted average:
+`newConc = (oldVol*oldConc + vol*s) / (oldVol+vol)`. A well may be used as a
+`src` only for liquid it has not yet had drawn out of it (each unit is
+pipetted out once), using its running concentration at that moment -- so
+later operations build on earlier ones, forming a DAG. Every well has a
+lifetime capacity `Vcap`: the total volume ever added to it, over the whole
+protocol, may not exceed `Vcap`.
+
+## Input
+```
+W M Vmax Vcap stepCost stockAccessCost maxOps
+c_1 Vreq_1
+...
+c_W Vreq_W
+```
+`N = W+M`. `c_i` (0..1000) is well `i`'s target concentration (`c_i/1000`).
+`Vreq_i` is the minimum volume well `i` must end up holding. `maxOps` bounds
+the protocol length.
+
+## Output
+```
+K
+src_1 dst_1 vol_1
+...
+src_K dst_K vol_K
+```
+`0 <= K <= maxOps`.
+
+## Feasibility
+Each op must satisfy: `src in {-1,-2} or 1<=src<=N`; `1<=dst<=N`; `src != dst`;
+`1<=vol<=Vmax`; a well `src` must currently hold `>=vol` undrawn liquid;
+`dst`'s total received volume after the op must not exceed `Vcap`. Any
+violation scores this test **0**.
+
+## Objective (minimize)
+For each target well `i`, let `conc_i` be its final concentration and `recv_i`
+its final received volume. Define
+```
+acc_i = |conc_i - c_i/1000| + max(0, Vreq_i - recv_i) / Vreq_i
+```
+Let `D` = the number of **distinct wells** that ever receive liquid directly
+from the stock (`src = -1`), counted once each no matter how many stock
+chunks it takes (drawing from the shared reservoir needs a fresh,
+decontaminated tip per well touched, not per microliter). Minimize
+```
+F = 100 * sum_i(acc_i) + stepCost * K + stockAccessCost * D
+```
+Filling every well straight from stock+diluent hits every target and volume
+almost exactly, but every one of the `W` wells then counts toward `D`. Routing
+several wells through a handful of **shared intermediate wells** (each built
+once from stock/diluent, then reused as a source for many targets) keeps `D`
+small regardless of `W`, at the cost of routing/inversion work to find which
+shared concentration -- or which pair of them to blend -- hits each target.
+
+## Scoring
+The checker's own baseline is the empty protocol (`K=0`): every well stays at
+concentration 0 with `recv=0`, giving `B = 100 * sum_i(c_i/1000 + 1)` (always
+positive). Your score for a case is
+```
+ratio = min(1000, 100*B/max(1,F)) / 1000
+```
+so matching the baseline's `F` scores `0.1`, and cutting `F` to `B/10` or below
+caps the case at `1.0`. Overall score is the mean ratio over 10 cases.
+
+## Constraints
+- `6 <= W <= 150`, `M >= 20`, `1 <= Vmax <= 200`, `Vcap` generous but finite,
+  `1 <= stepCost,stockAccessCost`, `maxOps` generous.
+- Time limit: 5 s. Memory limit: 512 MB. All values fit in 64-bit integers.
+
+## Example
+```
+Input:
+3 4 50 5000 2 20 200
+500 100
+500 100
+0 100
+
+A feasible answer (direct fill, D=2 since well3 needs no stock):
+5
+-1 1 50
+-2 1 50
+-1 2 50
+-2 2 50
+-2 3 100
+```
+Wells 1,2 hit conc 0.5 exactly with 100 volume each; well 3 hits 0 exactly.
+`acc=0`, `K=5`, `D=2` (wells 1,2 both drew from stock). `F=0+2*5+20*2=50`.
+`B=100*(0.5+1 + 0.5+1 + 0+1)=400`. Ratio `= min(1000,100*400/50)/1000`, capped
+at `1.0`. A smarter plan builds one shared well at concentration 0.5 (one
+stock touch, `D=1`) and draws both wells 1 and 2 from it.

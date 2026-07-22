@@ -1,0 +1,88 @@
+# Wildcard Pattern Superstring
+
+## Problem
+You are given `n` pattern strings over the alphabet `{A,B,C,D,E,F,?}`, where `?` is a
+**wildcard** that matches any single letter. A pattern `p` of length `L` is said to *occur*
+at position `t` of a string `S` (which contains no wildcards) if for every offset
+`j` in `[0, L-1]`, either `p[j] = '?'` or `p[j] = S[t+j]`. Your task is to output a single
+string `S` over `{A,B,C,D,E,F}` (no `?` allowed in `S`) in which **every** given pattern
+occurs at least once, minimizing `|S|`.
+
+Think of each pattern as a short "read" of an unknown underlying sequence, corrupted at
+some positions to wildcards. Two patterns can often be spliced together with a much deeper
+overlap than their concrete letters alone reveal, because a wildcard on either side never
+blocks an overlap — only literal, non-`?` mismatches do. A construction that only trusts
+overlaps between literally-equal characters sees a far sparser overlap graph than the one
+that truly exists, and pays for it with a much longer output.
+
+## Input
+```
+n
+p_1
+p_2
+...
+p_n
+```
+- `1 <= n <= 200`
+- `3 <= |p_i| <= 30` for every pattern
+- every character of every `p_i` is one of `A B C D E F ?`
+
+## Output
+```
+L
+S
+```
+- `L` is the declared length of your superstring, and `S` (on the next line) must be exactly
+  that string.
+- `S` must be non-empty, satisfy `|S| = L`, and use only the letters `A B C D E F` (no `?`).
+- `L` must not exceed `5 * (sum of all |p_i|) + 100` (a generous slack bound so that a
+  correct-but-unoptimized construction is always accepted; this is not a tight limit you
+  need to reason about — any reasonably built `S` is far below it).
+
+## Feasibility
+Every pattern `p_i` (`1 <= i <= n`) must occur in `S` as defined above: there must exist
+some position `t` with `0 <= t <= |S| - |p_i|` such that for all `j`, `p_i[j] = '?'` or
+`p_i[j] = S[t+j]`. An output missing even one pattern, using a disallowed character, or
+violating the length cap scores 0.
+
+## Objective
+Minimize `|S|`, the length of the superstring.
+
+## Scoring
+Let `B` = the sum of the lengths of all `n` input patterns (the length of the "no merging
+at all" baseline: laying every pattern down end to end). Let `F = |S|` for your feasible
+output. Your ratio for the test is
+```
+ratio = min(1000, 100 * B / F) / 1000     (capped at 1.0)
+```
+The final score is the mean ratio over all tests. Merging patterns cleverly — choosing which
+pattern follows which, and how deep an overlap the true (wildcard-aware) content allows
+between them — is what drives `F` down and the ratio up.
+
+## Constraints
+- Time limit: 4 seconds. Memory limit: 512 MB.
+- `1 <= n <= 200`, `3 <= |p_i| <= 30`.
+
+## Example
+Input:
+```
+4
+AAB?
+?BCC
+CCDA
+BB??
+```
+`B = 4+4+4+4 = 16`.
+
+Output:
+```
+9
+BBAABCCDA
+```
+Check (`S` has length 9, 0-indexed): `BB??` occurs at `t=0` (`S[0..3]="BBAA"`: `B=B, B=B,
+?~A, ?~A`). `AAB?` occurs at `t=2` (`S[2..5]="AABC"`: `A=A, A=A, B=B, ?~C`). `?BCC` occurs
+at `t=3` (`S[3..6]="ABCC"`: `?~A, B=B, C=C, C=C`). `CCDA` occurs at `t=5` (`S[5..8]="CCDA"`,
+an exact match). All four patterns occur, so `S` is feasible, `F=9`, and
+`ratio = min(1000, 100*16/9)/1000 = min(1000, 177.8)/1000 = 1.0` (capped). A weaker
+construction that never merges anything — concatenating the four patterns in input order
+with every `?` replaced by `A` — gives `F=16=B`, ratio `0.1`.

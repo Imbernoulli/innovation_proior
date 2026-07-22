@@ -1,0 +1,17 @@
+{
+  "id": "fsx_G_0934",
+  "tier": "G",
+  "format": "B",
+  "family": "rpni-dfa-induction",
+  "eval_form": "quality-metric",
+  "theme": "Induce a small DFA that generalizes from samples",
+  "title": "Small Automaton, Big Generalization: Inducing a DFA from Labeled Strings",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:string-language-automata"],
+  "strategies": [
+    "keep the majority-class rule (ignore the strings entirely; reproduces the evaluator's weak a_triv anchor, ~0.1)",
+    "the literal prefix-tree acceptor (PTA): one state per distinct training prefix plus a reject sink for every unseen continuation; matches training perfectly but has as many states as distinct prefixes and collapses on held-out traces longer than the training log",
+    "RPNI-style evidence-based state merging: fold PTA states together whenever doing so stays consistent with every labeled example (propagating merges through shared transitions via union-find), recovering a small automaton close to the true device size that predicts unseen, longer traces",
+    "blue-fringe / EDSM-style merging that scores candidate merges by shared evidence count before committing, trading a slightly larger automaton for extra robustness against noisy or sparse coverage of some devices"
+  ]
+}

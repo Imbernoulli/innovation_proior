@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_0915",
+  "tier": "B",
+  "format": "B",
+  "family": "curbside-pooling-dispatch",
+  "eval_form": "quality-metric",
+  "theme": "shared shuttles fighting over scarce curb space",
+  "title": "Curb Reservations First: Pooled Shuttle Dispatch Under Curb-Slot Contention",
+  "objective": "min",
+  "strategies": [
+    "blind throughput-limited: dispatch at most one request per tick to the lowest-id idle vehicle, direct route only, no pooling, no curb choice (baseline)",
+    "nearest-vehicle instant dispatch: every tick, greedily match each idle vehicle to its closest pending request and send it straight to the request's preferred curb; never pools, never checks whether another vehicle is converging on the same curb the same tick",
+    "curb-reservation-first: group pending requests by pickup location, pool up to vehicle capacity into shared trips, spread the physical curb used across each request's tolerated options to avoid two events landing on the same curb the same tick, THEN match the nearest available vehicle to each resolved reservation"
+  ]
+}

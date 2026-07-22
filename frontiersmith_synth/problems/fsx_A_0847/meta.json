@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0847",
+  "tier": "A",
+  "format": "D",
+  "family": "bitsliced-transition-synthesis",
+  "eval_form": "flops",
+  "theme": "march 64 tiny automata in lockstep",
+  "title": "March of 64: Bitsliced FSM Transition Synthesis",
+  "objective": "min",
+  "strategies": [
+    "no-sharing per-domain-point minterm decoder, identity state numbering (trivial)",
+    "algebraic-normal-form (Reed-Muller) circuit compile, identity state numbering (greedy)",
+    "stochastic local search over state encodings to minimize ANF nonlinearity, then ANF-compile the winning encoding (strong)",
+    "true minimum-gate circuit under the true minimum-nonlinearity encoding is unknown / NP-hard to certify (open ceiling)"
+  ]
+}

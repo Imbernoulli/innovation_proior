@@ -1,0 +1,106 @@
+# Delay-Line Cascade: Synchronized Toppling Network
+
+## Problem
+
+Node `1` is the **source**: it emits a single pulse at tick `0`. You are given
+`M` **candidate track segments** (directed edges, always from a lower-id node
+to a higher-id node); each has an integer **propagation delay** `w` (ticks to
+cross it) and a **build cost**. You may **commit** any subset of candidates,
+subject to a total build **budget** `K` -- only committed segments conduct the
+pulse; everything else is inert scaffolding.
+
+The pulse propagates deterministically. Every node other than the source is
+**plain** or an **AND-merge**:
+* A **plain** node forwards the pulse the instant it first receives it: its
+  arrival tick is the minimum, over committed inbound segments whose tail is
+  already active, of (tail's arrival tick + segment delay). It then triggers
+  all of its own committed outbound segments.
+* An **AND-merge** node fires only if **at least two** committed inbound
+  segments deliver the pulse on the **exact same tick**; then it fires at the
+  earliest such shared tick and forwards from there. If every inbound pulse
+  lands on a different tick, it stays silent forever -- connected but never
+  toppled.
+
+Every node has an integer **value** (`0` if none). Toppling a node (having a
+defined arrival tick under the rules above) earns its value once. Routing
+every branch by its shortest/cheapest delay often desynchronizes an
+AND-merge's inbound branches; reaching it may require deliberately routing
+one branch through a longer, more expensive **delay line** so both branches
+land on the same tick.
+
+## Input
+
+```
+N M K
+```
+Then, for node `2..N` (node `1` is always the source):
+```
+req_sync value
+```
+`req_sync=1` marks an AND-merge, `0` a plain node. Then `M` lines, segment
+`i` (1-based):
+```
+u v w cost
+```
+with `1 <= u < v <= N` always.
+
+## Output
+
+Print an integer `c` (`0 <= c <= M`), then `c` distinct segment indices in
+`[1, M]` (the segments you commit), whitespace-separated. `c = 0` is valid.
+
+## Feasibility
+
+`c` in `[0, M]`; every index in `[1, M]`; all indices distinct; the sum of
+costs of committed segments `<= K`; no trailing tokens. Any violation scores
+`0`.
+
+## Objective
+
+Simulate the cascade as described (processing nodes `1..N` in order is valid
+since every segment goes low-id to high-id). Maximize `F`, the sum of values
+of every node with a defined arrival tick.
+
+## Scoring
+
+Let `B` be the value obtained by a one-hop-only reference plan: greedily fill
+budget `K`, by value-per-cost, using only *direct* segments out of node `1`
+into positive-value nodes -- entirely ignoring AND-merges. (`B` is always
+positive; it is a fixed, checker-computed number, not something you submit.)
+Your score for a test is
+```
+ratio = min(1000, 100 * F / max(1, B)) / 1000
+```
+so matching the reference exactly scores `0.1`, and real gains beyond it
+score higher, capped at `1.0` (ten times the reference).
+
+## Constraints
+
+* `2 <= N <= 1500`, `1 <= M <= 6500`, `K >= 1` (all fit in 64-bit).
+* `1 <= w, cost <= 2*10^9` (typical instances use small values); `0 <= value
+  <= 2*10^6`.
+* Time limit: 3 s. Memory limit: 512 MB.
+
+## Example
+
+Nodes: `1`=source, `2,3`=plain relays (value 0), `4`=AND-merge (value 100),
+`5`=plain target (value 20). Budget `K=12`. Segments (1-indexed): `1:(1,2,w=3,c=2)`
+[cheap], `2:(1,2,w=5,c=4)` [a delay line on the same connection], `3:(1,3,w=5,c=2)`,
+`4:(2,4,w=2,c=1)`, `5:(3,4,w=2,c=1)`, `6:(1,5,w=4,c=3)`.
+
+Reference `B`: the only affordable direct positive-value edge is segment `6`
+(`cost=3<=12`), so `B=20`.
+
+Cheapest edges everywhere -- commit `{1,3,4,5,6}` (cost `2+2+1+1+3=9<=12`):
+node `2` arrives at tick `3`, node `3` at tick `5`; node `4`'s inbound ticks
+are `5` (via segment 4) and `7` (via segment 5) -- they disagree, so the
+AND-merge never fires despite both branches being "connected". Only node `5`
+topples: `F=20`, ratio `0.1`, exactly the reference -- the merge spend was
+wasted.
+
+Swap in the delay line instead: commit `{2,3,4,5,6}` (cost
+`4+2+1+1+3=11<=12`). Node `2` now arrives at tick `5` (via the slower,
+pricier segment 2), matching node `3`; node `4`'s inbound ticks become `7`
+and `7` -- they coincide, the AND-merge fires, and node `5` still topples.
+`F=100+20=120`, ratio `0.6`. Paying `2` extra to slow one branch, instead of
+racing both for minimum cost/delay, unlocks the merge's value.

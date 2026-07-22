@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0859",
+  "tier": "A",
+  "format": "E",
+  "family": "variance-law-discovery",
+  "eval_form": "quality-metric",
+  "theme": "jeweler's scale whose wobble encodes the law",
+  "title": "The Jeweler's Wobbling Scale",
+  "objective": "min",
+  "strategies": [
+    "trivial: pool all training readings into one global constant variance about the known mean mu, ignoring the load entirely -> reproduces the checker's own baseline construction (~0.1)",
+    "greedy: notice the wobble grows with load and fit ONE smooth power law A*x^p to the (load, empirical-variance) pairs by log-log least squares over ALL training data; tracks the training window passably but a single smooth shape cannot express the mechanism's regime switch, so it extrapolates on the wrong curvature to heavier held-out loads",
+    "strong: recognise the signal lives in the SECOND moment and that the mechanism is two regimes (elastic multiplicative power law, then additive wear-rate law) pinned together at their INTERSECTION; grid-search the knee load x0, fit a power law left of it and a continuity-constrained line right of it, and emit the exact piecewise expression via a Heaviside step switch so it generalises past the training window",
+    "headroom above strong: refine the knee search with finer granularity / robust (non-OLS) sub-fits and account for the heteroscedastic weighting of the per-load variance estimates themselves to push held-out NLL further toward the noise floor"
+  ]
+}

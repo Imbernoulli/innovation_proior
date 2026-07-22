@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0788",
+  "tier": "A",
+  "format": "A",
+  "family": "truss-member-sizing",
+  "eval_form": "quality-metric",
+  "theme": "Size truss members for a target deflection",
+  "title": "Size Truss Members for a Target Deflection",
+  "seed_problem": "compliance-target truss sizing: fixed geometry/loads, target displacement at loaded nodes, discrete cross-section catalog, FEM forward-solve, mass-cost tradeoff (per seed fsx_A_0788)",
+  "mutation": "composite: couples a compliance-target (match a specific nonzero deflection, not just minimize it) with an FEM forward-solve (global K*u=F over the whole truss, not per-bar formulas) and a convex mass-cost tradeoff (catalog cost grows super-linearly in area), so the right amount AND placement of stiffness depends on inverting the structure's global sensitivity, not on any single bar's local force or stress",
+  "objective": "min",
+  "strategies": [
+    "trivial: every bar at the cheapest/most flexible catalog entry (the checker's own baseline construction)",
+    "greedy (trap): fully-stressed-design style -- one baseline solve, then hand out catalog tiers in proportion to each bar's OWN force magnitude; ignores that short bars can carry high force yet barely move the target deflection, and always drives the structure stiffer even when the target wants a middling deflection",
+    "strong (insight): rank bars once by baseline strain energy (E*A0/L * elongation^2), a compliance-sensitivity proxy that reveals the few dominant load-path members; search how large a top-ranked subset to upgrade to the top tier by actually re-solving the FEM system for each candidate profile (since the right amount of stiffening is target- and cost-weight-dependent), then locally refine tiers only within that dominant subset",
+    "invalid: emits an out-of-range catalog index (K, one past the valid [0,K-1] range) -- must score 0"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0865",
+  "tier": "B",
+  "format": "B",
+  "family": "block-reordering-balancer",
+  "eval_form": "quality-metric",
+  "theme": "Iterative matrix balancing (Sinkhorn) accelerated on nearly block-decomposable instances within an iteration budget.",
+  "title": "Coupling-Matrix Balancer: Block-Aware Over-Relaxed Sinkhorn Under an Operation Budget",
+  "objective": "min",
+  "strategies": [
+    "minimal effort: one blind row sweep then one blind column sweep, ignore the rest of the budget",
+    "obvious textbook recipe: plain alternating row/column Sinkhorn sweeps (omega=1) for the whole budget",
+    "adaptive over-relaxation only: tune omega on plain row/col sweeps without ever looking for block structure",
+    "block-aware: detect near-reducible blocks from the coupling pattern, settle within-block ratios with a few plain sweeps, then spend the rest of the budget on over-relaxed coarse block corrections -- falling back to plain sweeps when the regime-detector finds no real block structure"
+  ]
+}

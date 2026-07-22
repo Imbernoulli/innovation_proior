@@ -1,0 +1,18 @@
+{
+  "id": "fsx_G_0602",
+  "tier": "G",
+  "format": "C",
+  "family": "select-datacenter-cooling-retrofits",
+  "eval_form": "quality-metric",
+  "theme": "data center cooling retrofit set",
+  "title": "Data Center Cooling Retrofit Set Portfolio",
+  "objective": "max",
+  "bulk_factory": "budget-conflict-coverage-selection",
+  "salt": 459913000,
+  "strategies": [
+    "trivial: reproduce the checker cost-first feasible baseline",
+    "greedy: sort by value, capability weight, and cost density",
+    "strong: repeatedly add the feasible asset with best current marginal utility per cost",
+    "future: local search, swap neighborhoods, Lagrangian budget pricing, and conflict-aware coverage repair"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0549",
+  "tier": "S",
+  "format": "B",
+  "family": "correlated-multiway-partition",
+  "eval_form": "quality-metric",
+  "theme": "correlated fleet scheduling under hidden low-rank covariance",
+  "title": "Correlated Fleet Scheduling: Partition for Expected Makespan",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:topup-B-1"],
+  "strategies": [
+    "round-robin by index: send job i to machine i%k, ignoring both sizes and covariance (reproduces the evaluator's weak reference, ~0.1)",
+    "LPT on estimated means: sort jobs by probe-estimated mean processing time and drop each onto the least-mean-loaded machine -- balances first-order load but is blind to covariance, so it splits anti-correlated pairs",
+    "covariance-aware refine: seed with LPT then hill-climb the EMPIRICAL expected makespan over the probe scenarios via single-job relocations and pairwise swaps, discovering that co-locating anti-correlated jobs cancels their peaks",
+    "seeded metaheuristics on the empirical expected-makespan objective (perturb-and-reoptimize, tabu, simulated annealing) to squeeze the covariance structure further"
+  ]
+}

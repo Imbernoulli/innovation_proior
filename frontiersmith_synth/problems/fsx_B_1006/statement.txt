@@ -1,0 +1,86 @@
+# Cascade Reservoir Chain: Scheduling Irreversible Releases
+
+## Problem
+
+A chain of `K` reservoirs lies along a river, numbered `1..K` from the top down.
+Reservoir `1` receives a known exogenous inflow schedule over `T` periods. Every
+reservoir also serves a local demand schedule, drawn automatically from its own
+storage each period. You control, for every period `t = 1..T` and every reservoir
+`i = 1..K`, a release `r_i(t) >= 0`: water leaving reservoir `i` at period `t`
+travels down the channel and arrives at reservoir `i+1` **exactly `lag_i` periods
+later** (reservoir `K` has no downstream reservoir). A release, once made, is
+**irreversible** — it cannot be recalled, sped up, or slowed down in transit.
+
+Each period, at each reservoir, physics happens automatically, in this fixed order,
+*before* you choose that reservoir's release: (1) arriving water (exogenous inflow
+at reservoir 1; upstream releases/spills due at reservoir `i>1`) is added to
+storage; (2) local demand is drawn from storage — any shortfall is a **drought
+deficit**; (3) storage still above capacity is force-**spilled** (an uncontrollable
+flood overflow) downstream with the same lag as a normal release. Only *after*
+these three steps do you choose the release. Since the spill in step 3 already
+happened before your release choice, **you cannot prevent an overflow in the very
+period a big inflow spike lands** — the only way to avoid it is to have already
+emptied headroom *earlier*. Likewise, meeting a downstream demand on time requires
+releasing `lag` periods *before* it occurs, not when it is reported.
+
+## Input
+```
+K T
+Cap_1 S0_1 fw_1 dw_1
+...
+Cap_K S0_K fw_K dw_K
+lag_1 lag_2 ... lag_{K-1}
+I_1 I_2 ... I_T
+D_1_1 D_1_2 ... D_1_T
+...
+D_K_1 D_K_2 ... D_K_T
+```
+`Cap_i`/`S0_i`: capacity / initial storage of reservoir `i`. `fw_i`/`dw_i`: its
+flood / drought penalty weights. `lag_i`: periods from reservoir `i` to `i+1`.
+`I_t`: exogenous inflow to reservoir 1 at period `t`. `D_i_t`: local demand at
+reservoir `i`, period `t`.
+
+## Output
+`T*K` nonnegative integers, in order `t = 1..T`, and within each `t`, `i = 1..K`:
+the release `r_i(t)`.
+
+## Feasibility
+For every `(i,t)`, `0 <= r_i(t) <= avail_i(t)`, where `avail_i(t)` is the storage
+left at reservoir `i` in period `t` after that period's automatic arrival, demand
+draw, and forced spill — a quantity fixed by the input and by your *own earlier*
+releases only. Any release outside this range, or a malformed/incomplete/trailing
+output, scores `0`.
+
+## Objective
+Minimize `F = sum over all (i,t) of [ flood_i(t)*fw_i + deficit_i(t)*dw_i ]`, where
+`flood_i(t)` is the forced-spill volume and `deficit_i(t)` the unmet-demand volume
+at reservoir `i`, period `t`.
+
+## Scoring
+The checker additionally simulates the fixed "release nothing, ever" plan
+(`r = 0` everywhere) under the identical physics to get a baseline penalty `B`.
+Your score is `ratio = min(1000, 100*B / max(1,F)) / 1000` — `0.1` for reproducing
+the do-nothing baseline, strictly more for genuinely lower penalty, capped at `1.0`
+(ten times better than doing nothing). Per-test ratios are averaged.
+
+## Constraints
+`2 <= K <= 6`, `5 <= T <= 320`, `1 <= Cap_i <= 200000`, `0 <= S0_i <= Cap_i`,
+`1 <= fw_i, dw_i <= 10`, `1 <= lag_i <= 8`, `0 <= I_t, D_i_t <= 200000`.
+Time limit: 4s. Memory limit: 512MB.
+
+## Example
+
+`K=2, T=5`, `lag_1=1`. Reservoir 1: `Cap=50, S0=5, fw=3, dw=2`, no local demand.
+Reservoir 2: `Cap=30, S0=5, fw=4, dw=5`, demand `20` at `t=4` only. Inflow
+`I = [5,5,40,5,5]` — a spike of `40` at `t=3`.
+
+A reactive plan that only releases once reservoir 1 is nearly full cannot stop the
+spike from spilling: by `t=3` storage is untouched at `5+5+5=15`, and
+`15+40=55 > 50 = Cap_1` overflows by `5` *before* any release decision at `t=3`
+can help. A foresighted plan instead releases `5` at `t=1` (storage falls to `5`,
+refills to `10` by `t=2`), so at `t=3` storage is exactly `10`: `10+40=50=Cap_1`,
+no overflow. It then releases `20` at `t=3`, which (lag `1`) arrives at reservoir 2
+exactly at `t=4`, covering demand `20` there with zero deficit — `F=0`. A plan
+that reacts only to the current period, by contrast, both spills at reservoir 1
+and misses reservoir 2's `t=4` demand (it releases only when *asked*, one period
+too late), paying both penalties.

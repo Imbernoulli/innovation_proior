@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0970",
+  "tier": "S",
+  "format": "B",
+  "family": "prony-query-prospector",
+  "eval_form": "quality-metric",
+  "theme": "drill few boreholes to map a buried sparse seam",
+  "title": "Prony Query Prospector: Mapping a Buried Sparse Seam from a Few Boreholes",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:algebra-and-residues"],
+  "strategies": [
+    "trivial: guess a single constant term equal to the first reading (matches the evaluator's own baseline, fit_count=1) -> ~0.1",
+    "greedy: recognize the setup as textbook Ben-Or-Tiwari/Prony and fit a generic order-t linear recurrence from samples 0..2t-1, ignoring the stated AP exponent structure; correct on LOOSE instances (Q>=2t, enough data) but on TIGHT instances (Q<2t) the missing future samples get silently zero-padded, corrupting the recurrence and recovering the wrong seam",
+    "strong: exploit the arithmetic-progression exponent structure -- substitute x->g^x so the t unknown roots collapse onto a 2-parameter family g^a*(g^d)^i; brute-force the small (a,d) hypothesis space, solve a t x t linear system for the coefficients per hypothesis, and use the few leftover samples purely to verify/reject -- recovers the seam exactly even when Q < 2t",
+    "invalid: submit more terms than the stated sparsity t allows -- rejected outright on every instance"
+  ]
+}

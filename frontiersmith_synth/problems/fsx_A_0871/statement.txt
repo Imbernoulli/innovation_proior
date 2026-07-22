@@ -1,0 +1,98 @@
+# Journeymen, Masters, and Sweeteners
+
+## Problem
+
+A guild runs a market of `n` journeymen and `m` masters. Not every pair knows each
+other: the market lists `e` candidate pairs. For pair `(i, j)` you're given the
+journeyman's cardinal utility `a` for working under master `j`, the master's
+utility `b` for hiring journeyman `i`, and a **sweetener cap** `s` -- the largest
+side payment that relationship can carry (limited trust/liquidity).
+
+You choose a **partial matching**: each journeyman works for at most one listed
+master and vice versa. For every pair you actually match, you may also post an
+integer **side payment** `p` (positive: master pays journeyman; negative: the
+reverse). A payment is a pure transfer -- it does not create value -- but it moves
+value between the two realized utilities: the journeyman's realized utility becomes
+`a + p`, the master's becomes `b - p`.
+
+An unmatched candidate pair `(i, j)` **blocks** your matching if BOTH sides would
+gain by defecting to each other: journeyman `i`'s raw utility `a` for `j` exceeds
+`i`'s current realized utility, AND master `j`'s raw utility `b` for `i` exceeds
+`j`'s current realized utility. (An unmatched party's current utility is `0`.)
+Full stability (zero blocking pairs) is often only reachable by giving up huge
+welfare -- so instead of forbidding blocking pairs outright, each one simply costs
+you a fixed penalty `lambda`. Side payments let you buy some of that penalty back,
+but only where the cap allows it.
+
+## Input
+
+```
+n m e lambda
+```
+then `e` lines, one candidate pair each:
+```
+i j a b s
+```
+(`1<=i<=n`, `1<=j<=m`; no `(i,j)` pair repeats.)
+
+## Output
+
+```
+k
+```
+then `k` lines, the matched pairs:
+```
+i j p
+```
+Each `i` and each `j` may appear in at most one output line, and `(i,j)` must be a
+pair listed in the input.
+
+## Feasibility
+
+`0 <= k <= min(n,m)`. Every `(i,j)` you print must be a candidate pair from the
+input, with no journeyman or master reused. The payment must satisfy `-s <= p <=
+s`, and both realized utilities must stay non-negative: `a+p >= 0` and `b-p >= 0`.
+Any violation, or trailing tokens after your output, scores `0`.
+
+## Objective
+
+Let `W` = the sum of `a+b` over your matched pairs (payments cancel out of this
+total), and `K` = the number of candidate pairs that block your matching (checked
+against ALL `e` candidate pairs, matched or not, using the realized utilities your
+payments produce). Maximize `F = max(1, W - lambda * K)`.
+
+## Scoring
+
+The checker computes its own reference `B`: greedily scan the candidate pairs in
+the order given and match a pair whenever both sides are still free, with zero
+payments, scored by the same `F` formula. Your score on a test is
+```
+ratio = min(1000, 100 * F / max(1, B)) / 1000
+```
+so the reference construction scores `0.1`, and genuine improvement scores higher
+(capped at `1.0`, ten times the reference). Per-test ratios are averaged.
+
+## Constraints
+
+`1 <= n, m <= 2000`; `1 <= e <= 20000`; `1 <= a, b <= 1000000`; `0 <= s <=
+1000000`; `1 <= lambda <= 2000`. Time limit: 3 s. Memory limit: 512 MB.
+
+## Example
+
+`n=2, m=2, lambda=6`, edges `(1,1,a=10,b=10,s=5)`, `(1,2,a=8,b=3,s=2)`,
+`(2,1,a=9,b=9,s=1)`.
+
+Matching `{(2,1)}` with `p=0`: realized utilities `u_1=9, v_1=9` (journeyman 2 and
+master 1), everyone else `0`. Check edge `(1,1)`: `a=10>u_1(=0)` and
+`b=10>v_1(=9)` -- both true, it blocks. Edge `(1,2)`: `a=8>0` and `b=3>0` -- also
+blocks. `W=18`, `K=2`, `F = max(1, 18 - 6*2) = 6`.
+
+Pay `p=-1` on `(2,1)` instead (cap `s=1` allows it): `u_2 = 9-1=8`, `v_1 =
+9-(-1)=10`. Now edge `(1,1)` needs `b=10>v_1(=10)`, which is false -- no longer
+blocks. Edge `(1,2)` still blocks (nothing matched near it). `F = max(1, 18 -
+6*1) = 12`: the sweetener bought back one blocking pair.
+
+But matching `{(1,1)}` instead, `p=0`, gets `u_1=10, v_1=10`; edge `(2,1)` needs
+`b=9>v_1(=10)`, false -- no block at all, and edge `(1,2)` needs `b=3>v_2(=0)`
+true but `a=8>u_1(=10)` false -- no block either. `W=20, K=0, F=20`: here the
+*right matching* beats any payment patch on the wrong one.

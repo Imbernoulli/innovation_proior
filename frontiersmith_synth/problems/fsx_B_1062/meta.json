@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1062",
+  "tier": "B",
+  "format": "C",
+  "family": "relay-throughput-spacing",
+  "eval_form": "quality-metric",
+  "theme": "Space relays for the best multi-hop rate",
+  "title": "Relay Throughput Spacing",
+  "objective": "max",
+  "strategies": [
+    "baseline: one relay per pair at its own midpoint (reproduces the checker baseline)",
+    "greedy: split the relay budget evenly across all pairs, chain at minimum uniform hop distance",
+    "strong: max-min water-filling -- repeatedly hand the next relay to whichever pair currently realizes the global minimum throughput, and stop spending once no addition can lift that minimum",
+    "adaptive variants: bias allocation toward long/hard pairs while capping density on short/clustered pairs to limit co-hop interference"
+  ]
+}

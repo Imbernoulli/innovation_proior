@@ -1,0 +1,21 @@
+{
+  "id": "fsx_A_0920",
+  "tier": "A",
+  "format": "A",
+  "family": "time-expanded-contention-routing",
+  "eval_form": "quality-metric",
+  "theme": "route packets through consumed edge time-slots",
+  "title": "Tunnel Relay: Scheduling Couriers Through Single-Track Corridors",
+  "objective": "max",
+  "seed_problem": "route each timed packet along a shortest time-expanded path through a unit-capacity-per-timeslot network",
+  "mutation": "composite: unit edge-timeslot capacity consumption + shared-slot contention across packets + a coupled detour/no-detour structure, so the best strategy must decide WHICH packets to push off the durationwise-shortest route to protect the ones that cannot detour",
+  "source_frameworks": ["wave2b-lens:temporal-commitment"],
+  "mechanisms": ["capacity-consumption", "contention-reservation", "time-expanded-routing"],
+  "innovation_hook": "Delivering the most value means reserving the scarce bottleneck time-slots for packets that have no detour, not shortest-pathing every packet in isolation.",
+  "strategies": [
+    "trivial: always take the durationwise-shortest path per packet (ignoring all other packets), process packets in input order, wait for the same edge's next free slot -- the checker's own reference construction",
+    "greedy (the trap): same always-shortest-path routing, but process packets highest-value-first -- a real, deserved improvement when a little scarcity forces a few drops, but still blind to WHY an edge is scarce, so it lets high-value FLEXIBLE packets (which a slower detour would also have delivered on time) burn through a bottleneck's narrow admission window before any low-value CAPTIVE packet (which has no detour at all) gets a turn",
+    "strong: discover contended edges from how many packets' own shortest path uses them, recompute each packet's best route while heavily penalizing those edges to find who has a genuine detour, then schedule every detour-less packet onto the bottleneck FIRST and only afterwards route the packets with a real detour off it",
+    "further headroom: joint value/necessity scoring across overlapping cells, lookahead that reserves partial slack rather than a hard priority split, or a min-cost-flow relaxation over the whole time-expanded network"
+  ]
+}

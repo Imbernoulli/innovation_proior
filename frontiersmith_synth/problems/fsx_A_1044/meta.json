@@ -1,0 +1,15 @@
+{
+  "id": "fsx_A_1044",
+  "tier": "A",
+  "format": "C",
+  "family": "linear-ca-target-hitting",
+  "eval_form": "quality-metric",
+  "theme": "plant seeds so a garden blooms into portraits on schedule",
+  "title": "Garden of Iterated Light: Seeding Portraits on a Ring",
+  "objective": "maximize",
+  "strategies": [
+    "single-seed baseline: plant one cell that exactly hits its own target in isolation, ignore the rest",
+    "per-target diagonal recipe: rank portraits by importance and, for each in turn, solve its own cell exactly against everything planted so far, but never revisit an earlier choice once later cells start contributing to its (generally dense) linear functional",
+    "Gaussian elimination over F_p on the target equations (rows of M^{t_i}, computed via fast convolution-power exponentiation): jointly solve the highest-importance satisfiable subset under the sparsity budget, letting linearly dependent portraits (e.g. two targets sharing the same time t, which are cyclic shifts of one row) resolve for free"
+  ]
+}

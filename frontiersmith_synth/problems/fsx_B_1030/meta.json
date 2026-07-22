@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1030",
+  "tier": "B",
+  "format": "C",
+  "family": "cherrypick-rate-board",
+  "eval_form": "quality-metric",
+  "theme": "harvest job board posts per-field picking rates",
+  "title": "Harvest Job Board: Posted Picking Rates",
+  "objective": "max",
+  "strategies": [
+    "trivial: post one flat rate on every field, ignoring difficulty, deadline and who is arriving when (checker baseline)",
+    "greedy: post a rate proportional to each field's own difficulty -- a plausible piece-rate menu that still gets cherry-picked by whoever arrives first",
+    "strong: reformulate as an assignment problem (target-worker matching by true surplus, deadline-eligibility filtered) and price each field at the minimum rate that clears its assigned worker's reservation",
+    "headroom above strong: model that earlier, cheaper-cost-than-expected workers might defect onto a planned field and re-solve the matching/pricing jointly instead of once"
+  ]
+}

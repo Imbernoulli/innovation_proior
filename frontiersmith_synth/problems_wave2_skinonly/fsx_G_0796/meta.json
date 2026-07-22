@@ -1,0 +1,18 @@
+{
+  "id": "fsx_G_0796",
+  "tier": "G",
+  "format": "C",
+  "family": "freight-rail-inspection-allocation",
+  "eval_form": "quality-metric",
+  "theme": "freight rail inspection sensor allocation",
+  "title": "Freight Rail Inspection Sensor Allocation Portfolio",
+  "objective": "max",
+  "bulk_factory": "budget-conflict-coverage-selection",
+  "salt": 93865957,
+  "strategies": [
+    "trivial: reproduce the checker cost-first feasible baseline",
+    "greedy: sort by value, capability weight, and cost density",
+    "strong: repeatedly add the feasible asset with best current marginal utility per cost",
+    "future: local search, swap neighborhoods, Lagrangian budget pricing, and conflict-aware coverage repair"
+  ]
+}

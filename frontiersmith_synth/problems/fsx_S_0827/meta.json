@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0827",
+  "tier": "S",
+  "format": "A",
+  "family": "cellular-automaton-preimage",
+  "eval_form": "quality-metric",
+  "theme": "Find a seed that grows into a picture",
+  "title": "Halo Seed: Growing a Picture Backward Through a 2D Automaton",
+  "objective": "min",
+  "seed_problem": "2D cellular-automaton preimage recovery under a given local rule table and step count",
+  "mutation": "input: the target is a FINAL pattern reached after T>=1 chained forward steps of a general (non-totalistic) von Neumann-neighborhood CA rule, turning single-step inversion into a multi-step constraint-propagation search; composite objective couples exact-match mismatch with a live-cell cost so the optimum trades reachability against seed sparsity, exploiting the rule table's local injectivity/don't-care structure for cheaper preimages.",
+  "strategies": [
+    "trivial: output the all-dead grid (rule[0]=0 keeps it a fixed point) -> reproduces the checker's do-nothing baseline",
+    "naive greedy: invert the rule one step at a time in raster order, using the not-yet-updated layer's own values as a stand-in for each cell's true (still-unknown) neighbors -> compounds error over T steps on chaotic rules and never exploits center-don't-care freedom",
+    "insight (strong): warm-start with a cost-aware backward pass that zeroes out cells the rule table proves don't matter for the local output (exploiting the rule's don't-care/injectivity structure), then repair via bounded local search using windowed re-simulation of the T-step neighborhood coupling",
+    "a general solver could go further with exact per-layer constraint propagation (de Bruijn/transfer-matrix style) with the live-cell-minimizing objective baked directly into the search"
+  ]
+}

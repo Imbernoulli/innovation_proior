@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0991",
+  "tier": "A",
+  "format": "A",
+  "family": "field-braid-partitioner",
+  "eval_form": "quality-metric",
+  "theme": "tailor cutting one bolt of cloth for many patterns",
+  "title": "Bolt and Braid: One Shop's Cutting Cards",
+  "seed_problem": "vertical (column) partitioning of a record schema under a fixed query workload",
+  "mutation": "composite: add a global field-replication budget on top of vertical-partition design, so a field may live on a second card; the objective's cover cost then depends on a per-query cheapest SET COVER over each field's (<=2) hosting cards (a flat per-card pull fee K plus a footprint-proportional charge), not on a hard partition, which changes which structure is worth building.",
+  "objective": "min",
+  "strategies": [
+    "trivial: every component on one single card, no replication (reproduces the checker's do-nothing baseline)",
+    "naive greedy: mine RAW co-occurrence COUNT between component pairs and agglomeratively merge the strongest edges into cards under a fixed size cap, never spending the replication budget (mines affinity, but treats replication and traffic weight as irrelevant)",
+    "insight (strong): mine TRAFFIC-WEIGHTED affinity (not raw count) for the base clustering, quarantine wide/low-traffic components onto their own card instead of trusting affinity blindly, and spend the replication budget on the components whose braid collapses the most order-weight from a two-card cover down to one card"
+  ]
+}

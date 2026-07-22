@@ -1,0 +1,97 @@
+# Staggered Leaky Windbreaks Against the Steppe Gale
+
+## Problem
+
+Your orchard sits behind a strip of open steppe. Wind enters a lattice of `W`
+columns (the travel direction) by `H` lanes (lateral position), one integer speed
+`inflow[y]` per lane at column 0. You may plant trees only inside the **windbreak
+zone**, columns `0..Wb-1`, and only in lanes `Ymin..Ymax` (the strip you legally
+control). Each planted cell picks a **porosity level** `p` in `1..Pmax`: denser
+levels remove more local speed but concentrate what they remove into a sharp jet,
+while leakier levels remove less but spread it thinly. Wind speed can never be
+destroyed, only relocated column by column. `M` crop cells downwind (`x >= Wb`)
+are scored by the wind speed they end up receiving.
+
+**Per-column update** (deterministic simulation, run by the checker): before
+processing column `x`, add any pending "relief pool" left over from column `x-1`
+into the lane-speed vector `s[]`, then a rational crosswind drift rotates the whole
+vector by exactly one lane (wrapping around) every time an accumulator (adding
+`driftNum/driftDen` per column) crosses `1`. If `x < Wb`, every planted cell
+`(x,y)` with level `p` computes, from the lane speed *before this column's trees
+act*: `removed = floor(s[y]*drag[p]/1000)`. Of that, `jetAmt =
+floor(removed*jetfrac[p]/1000)` is thrown immediately onto lanes `y-1` and `y+1`
+(split as evenly as integers allow), and the rest (`removed - jetAmt`) is spread
+over the 5 lanes `y-2..y+2` with weights `1:2:4:2:1` into the pool used at column
+`x+1`. If a target lane would fall outside `[0,H-1]` it **mirrors back** into the
+field (so a wall that doesn't span the full field pushes its blocked flux out past
+its own tips). All trees in a column act simultaneously from the same snapshot.
+Every removed unit is accounted for exactly (nothing vanishes or appears).
+
+## Input
+
+```
+W H Wb Pmax
+Ymin Ymax
+K
+inflow[0] inflow[1] ... inflow[H-1]
+driftNum driftDen
+cost[1] ... cost[Pmax]
+drag[1] ... drag[Pmax]        (permille, i.e. parts per 1000)
+jetfrac[1] ... jetfrac[Pmax]  (permille)
+M
+x_1 y_1
+...
+x_M y_M
+```
+`cost`, `drag`, `jetfrac` are strictly increasing in `p`.
+
+## Output
+
+Print `Wb` lines of `H` integers each: `grid[x][y]` for `x=0..Wb-1`, `y=0..H-1`,
+each in `[0,Pmax]` (`0` = no tree). Only cells with `Ymin <= y <= Ymax` may be
+nonzero.
+
+## Feasibility
+
+A nonzero cell outside `[Ymin,Ymax]`, an out-of-range value, wrong token count, or
+`sum(cost[grid[x][y]]) > K` (summed over planted cells) scores `0`.
+
+## Objective
+
+Minimize `F = sum` over the `M` crop cells `(x,y)` of `(lane speed at column x,
+lane y after that column's update)^2`.
+
+## Scoring
+
+The checker also computes `B`, the same simulation with an all-zero grid (plant
+nothing). Score `= min(1000, 100*B/max(1,F)) / 1000`, so planting nothing scores
+`0.1`; each halving of `F` roughly doubles the score, up to a `1.0` cap.
+
+## Constraints
+
+`4 <= H <= 60`, `1 <= Wb <= 30`, `Wb < W <= 100`, `Pmax = 4`,
+`0 <= Ymin <= Ymax <= H-1`, `1 <= K <= 10^6`, `50 <= inflow[y] <= 2000`,
+`0 <= driftNum < driftDen <= 80`, `1 <= cost[p],drag[p],jetfrac[p] <= 1000`,
+`1 <= M <= 2000`, crop coordinates satisfy `Wb <= x < W`, `0 <= y < H`.
+Time limit: 3s. Memory limit: 256MB.
+
+## Example
+
+`W=6 H=4 Wb=2 Pmax=4`, `Ymin=1 Ymax=2`, `K=12`, `inflow=[100,300,280,120]`,
+`driftNum=0 driftDen=1`, `cost=[1,2,4,7]`, `drag=[200,400,650,850]`,
+`jetfrac=[100,300,600,900]`, `M=3` crops `(2,1) (3,2) (4,0)`.
+
+Planting nothing gives `B = 300^2+280^2+100^2 = 178400` (ratio `0.1`).
+
+Output
+```
+0 1 1 0
+0 0 0 0
+```
+plants leaky (`p=1`) trees at column 0, lanes 1 and 2. Column 0 removes 60 from
+lane 1 and 56 from lane 2, jets a small amount to lanes 0/2 and 1/3, and diffuses
+the rest into the pool for column 1. After column 0: `s=[103,243,227,122]`. Column
+1 (no trees) adds the pool: `s=[119,280,264,137]`. This vector carries unchanged
+through the crop zone (no drift here): crop `(2,1)=280^2=78400`,
+`(3,2)=264^2=69696`, `(4,0)=119^2=14161`, so `F=162257` and the score is
+`100*178400/162257 ≈ 109.9`, i.e. ratio `≈0.110`.

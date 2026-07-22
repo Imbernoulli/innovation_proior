@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0594",
+  "tier": "B",
+  "format": "C",
+  "family": "room-envelope-bottleneck-insulation",
+  "eval_form": "quality-metric",
+  "theme": "winterizing a drafty monastery",
+  "title": "The Frozen Scriptorium: Insulating a Monastery at the Thermal Min-Cut",
+  "objective": "min",
+  "strategies": [
+    "trivial: insulate nothing; the do-nothing envelope (checker baseline, ~0.1)",
+    "greedy energy audit: pour layers, one at a time, onto whichever EXTERIOR wall is currently bleeding the most heat; never flag interior doorways (blind to the short-circuit)",
+    "strong min-cut allocation: steepest descent on TOTAL network loss over ALL insulatable walls, recomputing each layer's marginal so the budget equalizes marginal resistance along the heater-to-outside min-cut -- often sealing the interior doorway that feeds a window-shorted buffer room",
+    "relaxation view: treat effective conductance from the fixed-temperature source set to ground; add resistance where it most raises the cut resistance, accounting for parallel short-circuits (stained-glass windows) that no exterior audit can fix"
+  ]
+}

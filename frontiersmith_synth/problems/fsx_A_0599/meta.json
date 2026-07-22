@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0599",
+  "tier": "A",
+  "format": "C",
+  "family": "tolerance-corner-divider-synthesis",
+  "eval_form": "quality-metric",
+  "theme": "analog circuit meets spec at every tolerance corner",
+  "title": "Matched-Batch Ladder: Dividers That Hold at Every Tolerance Corner",
+  "objective": "min",
+  "strategies": [
+    "trivial: realize every tap as a 1/2 divider from two matched units of value[0] (corner-invariant but ignores the targets) -> reproduces the checker baseline",
+    "greedy nominal fit: one distinct catalog value on top, one on bottom (count 1 each) closest to each target ratio -- nails nominal, but two different values carry independent corner signs and blow up at the worst corner",
+    "strong insight: since same-valued parts share one corner sign, build each tap from a matched integer ratio b/(a+b) of a single value so the correlated error cancels EXACTLY at every corner; residual is only the rational-approximation error",
+    "ceiling above strong: push the matched-ratio resolution (larger a+b) and spend the part budget on the hardest taps to shrink the residual further"
+  ]
+}

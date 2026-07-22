@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_1029",
+  "tier": "S",
+  "format": "C",
+  "family": "moment-doppelganger-stretch",
+  "eval_form": "quality-metric",
+  "theme": "forging a sprawling city that audits identically to a compact one",
+  "title": "Sprawl Doppelganger",
+  "objective": "max",
+  "strategies": [
+    "trivial: echo the zoning template H itself (matches the audit perfectly, zero stretch)",
+    "greedy: replicate H many times and wire the copies into a tree via one leaf vertex per copy -- passes the audit but diameter only grows like log(vertex budget)",
+    "strong: build an exact covering lift of H's unique cycle (break the cycle edge, replicate the spanning tree, re-glue copies into one necklace) -- passes the audit exactly (up to a fixed, L-independent leakage) while diameter grows linearly in the vertex budget",
+    "invalid: declare a vertex count above the stated cap"
+  ]
+}

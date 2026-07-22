@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0577",
+  "tier": "A",
+  "format": "A",
+  "family": "wang-frustration-tiling",
+  "eval_form": "quality-metric",
+  "theme": "Tile a grid maximizing matched colored edges",
+  "title": "Frustrated Wang Tiling: Route the Unavoidable Defects",
+  "objective": "max",
+  "seed_problem": "Wang-tile edge-matching tiling of an R x C grid",
+  "mutation": "composite: replace the decision problem 'does a perfectly matched Wang tiling exist' with a graded frustration-minimization objective (maximize matched borders) on an instance seeded so no perfect tiling exists; the ideal palette is a periodic phase field with a small set of tiles removed (forced defects) plus poison DECOY tiles that make the obvious scanline greedy cascade -- so the winning strategy is global periodic-field recovery + defect routing, not local edge-matching.",
+  "strategies": [
+    "trivial: alternating matched-domino rows A,B,A,B (reproduces the checker baseline R*floor(C/2))",
+    "greedy (trap): scanline placing the locally best-matching tile vs left+top neighbors; at each forced-defect cell it grabs the unique score-2 tile, the poison decoy, desynchronizing the rest of that row and column from the phase field",
+    "phase-field insight (strong): recognize tile(x,y) as an increment field, tile the grid periodically as tile(c%P, r%Q), and at each forced-defect cell route the defect by placing the present tile matching the most ideal neighbors -- never the decoy",
+    "general solver: local search / belief propagation over the frustrated constraint graph to push forced defects onto the globally cheapest seams"
+  ]
+}

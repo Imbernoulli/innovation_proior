@@ -1,0 +1,103 @@
+# Village Shield: Deflectors Over the Avalanche Line
+
+## Problem
+An alpine slope is a grid of `H` downslope rows (row `0` = release line, row
+`H-1` = the last row before the village) and `W` lateral columns. Column `c`
+carries a settlement weight `w_c >= 0` (village-core columns are heavily
+weighted; open slope is lightly weighted, but nowhere is weight `0` for every
+column -- there is no perfectly safe lateral position, only cheaper ones).
+
+`K` avalanche packets release at row `0`, each at its own **distinct** column
+`c_i`, with mass `m_i` and initial downslope momentum `p_i` (moving straight
+down: lateral drift `dCol = 0`). You place barrier segments under a total
+height budget `L`. Each barrier is `(row, col, orientation, height)`, one per
+cell, `orientation in {0=WALL, 1=LEFT-deflect, 2=RIGHT-deflect}`,
+`1 <= height <= 100`.
+
+**Simulation.** A packet steps one row per turn. If a barrier occupies its
+current cell:
+- **WALL**: must absorb the packet's *entire* momentum -- `cap = height *
+  SCALE >= p` -- to arrest it (momentum drops to `0`, permanently stopped).
+  If `cap < p` the barrier is **overtopped**: the packet passes through
+  completely unchanged.
+- **DEFLECT** (toward `dCol = -1` or `+1`): let `turn = |target - dCol|` (the
+  packet's current drift vs. the barrier's target direction), `turn in
+  {0,1,2}`. It only needs `cap >= normal = ceil(p * frac(turn) / 100)`, where
+  `frac(0)=15, frac(1)=40, frac(2)=85` (turning further costs more; continuing
+  an already-turning packet the *same* way is nearly free). On success the
+  packet's direction becomes `target` and its momentum drops further:
+  `p <- floor((p - normal) * DISS / 100)` (a fixed dissipation loss on top of
+  the turn). If `cap < normal`: unchanged, passes straight through.
+
+After any interaction the packet advances (row += 1, col += dCol). It stops
+mattering the instant it drifts off the grid (`col < 0` or `col >= W`,
+harmless) or its momentum reaches `0` (buried, harmless). If it survives past
+row `H-1` and lands at an in-range column `c`, it deposits impact
+`w_c * mass * momentum` on the objective.
+
+## Input
+```
+H W K L SCALE DISS
+w_0 w_1 ... w_{W-1}
+c_1 m_1 p_1
+...
+c_K m_K p_K
+```
+
+## Output
+```
+M
+r_1 c_1 o_1 h_1
+...
+r_M c_M o_M h_M
+```
+
+## Feasibility
+Every `(r_j, c_j)` pair distinct, `0<=r_j<H`, `0<=c_j<W`, `o_j in {0,1,2}`,
+`1<=h_j<=100`, and `sum h_j <= L`. Any violation, or trailing tokens, scores
+`0`.
+
+## Objective (minimize)
+Let `F_flow` = sum over all `K` packets of the impact they deposit (`0` if
+arrested, drifted off-grid, or stalled). Let `B_flow` be `F_flow` for the
+empty barrier set (`M=0`); `B_flow > 0`. Every season also carries a fixed
+**ambient hazard** `A = ceil(0.15 * B_flow)` -- residual wind-drift and
+settling snow off the mapped release zones that no barrier placement can
+touch (it depends only on the input, never on your barriers). Minimize
+`F = F_flow + A`.
+
+## Scoring
+Let `B = B_flow + A`. Your score is `ratio = min(1.0, 0.1 * B / F)`. Placing
+nothing gives `F = B`, `ratio = 0.1`; even a flawless defense of every
+modeled release (`F_flow = 0`) still leaves `F = A > 0`, so the score never
+saturates.
+
+## Constraints
+`1<=H<=60`, `2<=W<=80`, `1<=K<=40` (release columns pairwise distinct),
+`1<=L<=10000`, `1<=SCALE<=8`, `50<=DISS<=95`, `0<=w_c<=10`, `1<=m_i<=10000`,
+`1<=p_i<=3000`. Time limit `5s`, memory `512MB`. Each input `<=5MB`.
+
+## Example
+Input:
+```
+4 8 1 100 2 70
+1 1 6 1 1 1 1 1
+2 10 300
+```
+One packet: column `2` (weight `6`), mass `10`, momentum `300`. Baseline
+(no barriers): it falls straight to row `4` at column `2` unchanged:
+`B_flow = 6*10*300 = 18000`, ambient `A = ceil(0.15*18000) = 2700`,
+`B = 20700`.
+
+**Wall attempt**: barrier `(row=0, col=2, o=0, h=100)`. Needs `cap=100*2=200
+>= p=300` -- false, overtopped. The packet passes through unchanged, landing
+at column `2` with momentum `300`: `F=18000+2700=20700=B`, `ratio=0.1`. The
+tallest legal wall achieves nothing.
+
+**Deflect instead**: barrier `(row=0, col=2, o=2, h=60)`. `normal=
+ceil(300*40/100)=120`, `cap=60*2=120>=120` -- success. Momentum:
+`300-120=180`, then `floor(180*70/100)=126`; direction becomes `+1`. The
+packet drifts columns `3,4,5,6` and exits at column `6` (weight `1`) with
+momentum `126`: `F=1*10*126+2700=3960`, `ratio=min(1,0.1*20700/3960)=0.5227`.
+A far cheaper barrier, aimed to redirect rather than resist, does far
+better -- though the ambient floor stops it from maxing out.

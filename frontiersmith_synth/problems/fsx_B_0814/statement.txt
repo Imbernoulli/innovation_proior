@@ -1,0 +1,102 @@
+# Worn-Gear Gantry: The Backlash-Aware Pick Circuit
+
+## Problem
+
+A pick-and-place gantry moves over a 2D surface. Its X-motor and Y-motor are
+independent but both have **worn gear teeth**: whenever an axis's travel
+*reverses* sign, slack in that gear must be taken up before the carriage's true
+position matches the commanded one again. That slack is never silently absorbed --
+each reversal permanently adds to that axis's **positional error**, until the
+gantry is explicitly re-homed to the origin, which recalibrates both axes to zero
+error (at the cost of the travel time to get there).
+
+The gantry starts at `(0,0)`, no established direction on either axis, zero error.
+Your program outputs a sequence of moves; each move is either **home** (return to
+`(0,0)`, resetting both axes' error to `0` and clearing direction memory) or
+**visit point `i`** (move straight there). For a visit, check each axis
+separately: if its coordinate changes, and it had already moved the *opposite*
+sign since the last home, that axis's error increases by a penalty depending on
+**both the axis and the new direction** (X is worn differently going right than
+left, and differently again from Y -- four independent constants); the axis's
+remembered direction then updates. A point is **collected** (value credited, once)
+only if, immediately on arrival, *both* axes' current error are within that
+point's tolerance. Travel between any two consecutive locations (including home)
+costs time proportional to Chebyshev distance (`max(|dx|,|dy|)`).
+
+Because error is charged for *reversals*, not distance, a tour's true cost is
+governed by how many times each axis changes sign, not its geometric length -- a
+long straight sweep is "free," a short path that zigzags is expensive. A tour that
+simply minimizes travel distance reverses on almost every move and never re-homes,
+so its error only grows -- most points, especially tight-tolerance ones, become
+uncollectable.
+
+## Input
+
+```
+n bxp bxm byp bym C Lmax
+x_1 y_1 v_1 tol_1
+...
+x_n y_n v_n tol_n
+```
+`n` points; `bxp`/`bxm` are the X-axis reversal penalties when the new direction is
+`+X`/`-X`; `byp`/`bym` the same for Y. `C` is the time cost per unit Chebyshev
+distance. `Lmax` bounds your output length. Point `i` sits at `(x_i,y_i) != (0,0)`
+with value `v_i > 0` and tolerance `tol_i >= 0`.
+
+## Output
+
+```
+m
+t_1 t_2 ... t_m
+```
+`0 <= m <= Lmax` moves; each `t_j` is `0` (home) or a point index in `[1,n]`
+(visit). If `m = 0` the second line may be empty.
+
+## Feasibility
+
+`0 <= m <= Lmax`; every `t_j` in `[0,n]`; no trailing tokens. Any violation scores
+`0`. (Points may be revisited; a repeat visit costs travel but a point's value is
+credited at most once, the first time it is collected.)
+
+## Objective
+
+Simulate your move sequence from `(0,0)`. Let `V` be the total value collected and
+`Tcost` the total travel cost. Maximize `F = V - Tcost` (floored at `0`).
+
+## Scoring
+
+The checker computes its own reference value `B`: fetch the `min(n,6)` highest-value
+points **one at a time, each via its own home-then-visit round trip** (home always
+resets error to `0` first, so every one of them is guaranteed collected regardless
+of tolerance) -- a real, feasible, always-safe but unambitious construction. `B` is
+this construction's `F` (at least `1`). Your score is
+```
+ratio = min(1000, 100 * F / max(1, B)) / 1000
+```
+so reproducing it exactly scores `0.1`; genuine improvement scores higher, capped
+at `1.0` (10x the reference). Per-test ratios average over 10 tests.
+
+## Constraints
+
+- `15 <= n <= 80`, `Lmax = 3n + 15`.
+- `2 <= bxp,bxm,byp,bym <= 6`, `C = 1`.
+- Coordinates: `|x_i|,|y_i| <= 50`, `(x_i,y_i) != (0,0)`.
+- `30 <= v_i <= 900`, `0 <= tol_i <= 60`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+`n=4`, `bxp=3 bxm=2 byp=4 bym=3`, `C=1`, `Lmax=27`. Points: `1:(10,0) v=200 tol=0`,
+`2:(-8,5) v=150 tol=0`, `3:(6,-6) v=90 tol=30`, `4:(3,3) v=60 tol=30`. The
+reference (`min(n,6)=4`, all of them) does `home,1,home,2,home,3,home,4`: every
+visit directly follows a home, so error is `0` on arrival every time and all four
+tolerances (even the two `0`s) are met. Costs: `10,10,8,8,6,6,3` (no return needed
+after the last) -- `Tcost=51`. `V=500`, so `B=F=449`; reproducing this scores
+`ratio=0.1`. Contrast skipping all homing, `1,2,3,4` directly: `0->1` costs `10`
+(no reversal, `+200`); `1->2` costs `18`, X reverses (`ex=2`) so point `2`'s
+`tol=0` is missed; `2->3` costs `14`, X and Y both reverse (`ex=5,ey=3`), point
+`3`'s `tol=30` still survives, `+90`; `3->4` costs `9`, both reverse again
+(`ex=7,ey=7`), point `4` still survives, `+60`. Total `V=350`, and (here) also
+`Tcost=51` -- identical travel, `140` less value, purely from leaving the two
+tight-tolerance points unprotected. Shielding exactly the points that need it (not
+all, not none) is the trade the objective rewards.

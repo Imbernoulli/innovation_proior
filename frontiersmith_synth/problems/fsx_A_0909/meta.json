@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0909",
+  "tier": "A",
+  "family": "incremental-slitter-campaign",
+  "seed_problem": "cutting-stock / trim-loss minimization",
+  "mutation": "composite: goal generalized from a single-shot cutting-stock cover to a MIN-cost SEQUENCE of setups, with output constrained by a bounded knife-motion (reconfiguration-distance) chain between consecutive setups",
+  "objective": "min",
+  "theme": "Slitting coils when knives crawl, not jump",
+  "title": "Slitting Coils When Knives Crawl, Not Jump",
+  "strategies": [
+    "one-unit-at-a-time input-order baseline: never batch a pattern's full capacity, never reorder -- just visit each demand type once in the order given and repeat single-unit runs (trivial)",
+    "value-greedy cutting-stock: batch each pattern to its full useful capacity, but always chase the single highest-value pattern next, ignoring how far the knives must travel to reach it (greedy)",
+    "value-per-hop reachability planning: score every still-useful pattern by value divided by (1 + knife-motion hops from the current position), turning pattern selection into an implicit shortest path through pattern space that clusters nearby visits before paying to cross a gap (strong)",
+    "full joint optimization (headroom above strong): design patterns that intentionally combine MULTIPLE different demand widths per setup (not just one width repeated) and jointly plan pattern composition + order + run length via a real shortest-path/DP over the reachability graph"
+  ]
+}

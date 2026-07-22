@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0926",
+  "tier": "S",
+  "format": "E",
+  "family": "wear-law-identification-extrapolation",
+  "eval_form": "quality-metric",
+  "theme": "reverse-engineering a rival factory's tool-wear log",
+  "title": "Reverse-Engineering a Rival Factory's Tool-Wear Recursion",
+  "objective": "min",
+  "strategies": [
+    "trivial: submit the constant recursion '0' -- the tool never wears -- reproduces the checker's own no-wear baseline exactly (~0.1)",
+    "greedy: back out a per-row wear estimate from the given observation formula and fit an ordinary-least-squares LINE against the job's position in the sequence, ignoring Wprev/gap/load/material entirely -- a classic time-indexed curve fit that nails the short public window but has no mechanism to react to the five-times-longer horizon, the much longer idle 'maintenance' gaps, or the heavier load mix that only appear in the extrapolation split, so the linear trend runs away and misses every recovery event",
+    "strong: recognise the hypothesis class is a RECURSION over a latent wear state, not a function of position -- back out per-row wear estimates and fit a genuine one-step recursion by teacher forcing (regress each estimate against the PREVIOUS estimate plus gap/load/material), searching a small library of candidate FORMS (linear accumulation / exponential-decay recovery + linear gain / exponential-decay recovery + saturating gain) and keeping whichever family+constants minimizes in-sample residual -- because it is expressed in Wprev/gap/load/material rather than position, it transfers to any held-out horizon or load/gap mix",
+    "headroom above strong: finer constant grids, per-material decay rates instead of a single shared decay, robust (outlier-resistant) one-step regression instead of least squares, or joint (non-teacher-forced) trajectory fitting that accounts for estimation-noise propagation"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0862",
+  "tier": "A",
+  "format": "D",
+  "family": "gridcap-arm-speedscale",
+  "eval_form": "flops",
+  "theme": "factory arms sharing one breaker during a blackout drill",
+  "title": "Breaker Drill: Water-Filling K Robot Arms Under One Power Cap",
+  "objective": "minimize",
+  "strategies": [
+    "serialize every arm at speed 1, one distance unit per tick (trivial)",
+    "run each arm alone at its solo max feasible speed floor(sqrt(P)), one arm at a time in input order (greedy: wastes the cap on non-critical arms by never overlapping them with the critical arm)",
+    "water-filling: pick a shared makespan T balancing the A*T vs sum(D_i^2)/T trade-off, then run ALL arms in parallel at a near-constant per-arm speed D_i/T (equalizing marginal delay per watt across arms) so slack arms spend far less energy while the critical arm still finishes at essentially T (strong)",
+    "fully adaptive per-tick dual/multiplier retuning across the whole schedule, jointly re-optimizing T and the tick-by-tick allocation (open ceiling, uncovered)"
+  ]
+}

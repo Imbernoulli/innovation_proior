@@ -1,0 +1,19 @@
+{
+  "id": "fsx_A_0566",
+  "tier": "A",
+  "format": "A",
+  "family": "biased-fanout-search-tree",
+  "eval_form": "quality-metric",
+  "theme": "cartographers binding an atlas with unequal page sizes",
+  "title": "Binding the Atlas",
+  "objective": "min",
+  "seed_problem": "bind sorted tiles into a multiway search tree scored by cache-line touches over a weighted lookup + range-scan trace",
+  "mutation": "composite: fuse an order-constrained (alphabetic) Huffman depth-biasing of hot tiles, a bin-packing of tiles into fixed-width cache lines (fanout vs. line-count via ceil(f/B)), and a range-scan contiguity term (distinct storage pages touched) into one minimized objective, so the clean optimal-BST DP is broken and the three levers must be co-designed.",
+  "mechanisms": ["fanout-vs-linecount-tradeoff", "huffman-depth-biasing", "range-scan-coupling"],
+  "strategies": [
+    "trivial: balanced BINARY search tree (one tile per page) = the checker's baseline -> ratio ~0.1",
+    "greedy (obvious recipe): uniform B-tree -- pack size-B leaves, balance by count, demand-blind and scan-blind; shortens depth uniformly but never floats a hot tile shallow",
+    "insight (strong): weighted-quantile splits float hot tiles to shallow pages (order-constrained Huffman), AND suppress the split-weight of heavily-scanned tiles so a swept band stays packed into few fat pages instead of being shattered -- co-designing depth, fanout and contiguity",
+    "beyond strong: jointly optimize page sizing above B (fat root trading extra lines for depth) with per-band packing and exact demand-weighted depth -- intractable, so the ceiling stays open"
+  ]
+}

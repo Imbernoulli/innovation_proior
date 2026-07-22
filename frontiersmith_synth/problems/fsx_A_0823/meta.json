@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0823",
+  "tier": "A",
+  "format": "E",
+  "family": "coupled-mode-resonance",
+  "eval_form": "quality-metric",
+  "theme": "two hidden tuning forks in one box",
+  "title": "Two Tuning Forks in a Box: Extrapolating a Coupled-Mode Resonance",
+  "objective": "min",
+  "strategies": [
+    "trivial: predict a constant amplitude (mean of the training |X1| column), ignoring w entirely -> reproduces the checker baseline ~0.1",
+    "greedy: collapse the lock-in data to a scalar amplitude (discard the phase/quadrature channel entirely) and fit the textbook single driven-damped-oscillator Lorentzian A=c/sqrt((w0^2-w^2)^2+(gamma0*w)^2) by bounded nonlinear least squares. Matches the smooth, featureless training tail well, but a single Lorentzian has only ONE pole pair: extrapolated it predicts one resonance peak and a 1/w^2 high-frequency roll-off, where the true box holds two coupled oscillators with two split peaks (avoided crossing) and a 1/w^4 roll-off -- the trap on every instance, since the tail alone never shows a peak either way",
+    "strong: commit to the physical two-mode transfer function CLASS and fit ALL FIVE physical constants (Om1,Om2,g1,g2,kc) directly against the phase-resolved (Xre,Xim) data via bounded multi-start nonlinear least squares. A single Lorentzian structurally cannot represent a second natural frequency no matter how it is tuned; the two-mode form can, so even an imperfect fit to noisy tail-only data reproduces both resonance peaks, the avoided-crossing splitting between them, and the correct 1/w^4 asymptote once extrapolated -- because the RIGHT model class was chosen, not because more data was available",
+    "headroom above strong: better global optimization of the same 5-parameter physical model (e.g. a proper Levenberg-Marquardt/basin-hopping schedule, or reweighting residuals by local curvature) to push the recovered constants toward the training-noise floor"
+  ]
+}

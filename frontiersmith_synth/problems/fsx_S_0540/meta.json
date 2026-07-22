@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0540",
+  "tier": "S",
+  "format": "E",
+  "family": "collision-invariant-mining",
+  "eval_form": "quality-metric",
+  "theme": "alien billiards lab logbooks",
+  "title": "Ceiling-Regime Billiards -- mining collision invariants to extrapolate a two-ball map",
+  "objective": "minimize",
+  "strategies": [
+    "constant baseline: predict the mean logged post-velocity v1 (ignores structure) -> ~0.1",
+    "greedy black-box: least-squares polynomial v1 ~ [1,u1,u2,u1*u2,u1^2,u2^2] fit to the gentle logbook; interpolates it but its polynomial tail over-shoots the velocity ceiling and extrapolates poorly on the violent held-out shots",
+    "strong (invariant mining): recover the two hidden conserved-quantity constants (mass ratio r, velocity ceiling c) by fitting the exact two-ball collision map -- the unique map obeying the momentum-like and energy-like invariants plus the physical exchange branch -- to the logged (u1,u2)->(v1,v2) pairs, then emit that regime-independent closed form which extrapolates to the ceiling regime",
+    "alternatives: fit the invariants directly (impose p and E conserved across each logged pair to solve for r,c), finer joint (r,c) optimisation, or trading the complexity penalty against held-out error by simplifying the emitted expression"
+  ]
+}

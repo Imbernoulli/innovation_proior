@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0730",
+  "tier": "A",
+  "format": "B",
+  "family": "streaming-count-automaton",
+  "eval_form": "quality-metric",
+  "theme": "Tiny automaton approximating a stream statistic",
+  "title": "Firefly Census: a Tiny Automaton Counts Blinks",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:string-language-automata"],
+  "strategies": [
+    "always-guess-zero: never look at the stream at all, report a constant 0 hit-count (reproduces the evaluator's weak reference)",
+    "saturating exact counter: use all s states as a plain 0..s-1 tally that increments on every hit symbol and clamps at s-1; exact while the true count stays under the budget, but frozen and useless once it doesn't",
+    "calibrated geometric-bucket counter: split the s-state budget into n_levels x P states (level, phase); P consecutive hits advance one level, and decoding out(level,phase)=P*(2^level-1)+phase*2^level gives bounded RELATIVE error across a range that grows exponentially in n_levels; choose n_levels/P from the instance's alphabet/filter/length fields so exact small counts stay exact and large counts stay in relative-error range instead of clamping",
+    "seeded local refinement: start from a geometric-bucket design and perturb the level/phase split or the modular hit-classification to reduce mean relative error, deterministically, using only the public instance fields"
+  ]
+}

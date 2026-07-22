@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1026",
+  "tier": "A",
+  "format": "C",
+  "family": "refraction-lattice-lensing",
+  "eval_form": "quality-metric",
+  "theme": "ice wizard bending three colors of light",
+  "title": "Trichroic Ice Lattice: One Lens, Three Colors",
+  "objective": "maximize",
+  "strategies": [
+    "trivial: the all-zero lattice (checker's own baseline; no budget spent, rays go straight)",
+    "greedy: a single symmetric converging lens centered at the beam entry, tuned to focus ONLY the reference (middle-dispersion) color onto its target -- the classical achromatic-lens trap",
+    "strong: joint deterministic search over the lens's center/width/strength/extent that maximizes the COUPLED 3-color objective at once, exploiting chromatic-splitting (each color bends by a different amount through the same lattice) to route all three colors to distinct targets from one shared entry point",
+    "invalid: out-of-range refractive levels -> infeasible, scores 0"
+  ]
+}

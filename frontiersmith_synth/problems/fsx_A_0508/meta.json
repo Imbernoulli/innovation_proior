@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0508",
+  "tier": "A",
+  "format": "C",
+  "family": "sandpile-profile-sculptor",
+  "eval_form": "quality-metric",
+  "theme": "Pour grains in stages to sculpt a ridge",
+  "title": "Ridge Sculptor: Staged Pours Under the Angle of Repose",
+  "objective": "min",
+  "strategies": [
+    "do-nothing: pour zero grains every stage (reproduces the checker baseline)",
+    "myopic recipe: each stage pour into the currently most-deficient cell just enough to reach target -- builds plateaus early, so the runoff that floods the notches is charged over every remaining stage",
+    "horizon-priced planning: simulate the abelian settling, price each candidate pour by the overshoot it commits over the WHOLE remaining horizon, keep the pile under target and build the plateaus in the final stages, then local-search the exact composed objective",
+    "reserve-the-valley: because H-1 > S the notches cannot be held empty; accept the unavoidable flood but delay it, and place pours so downhill runoff lands in cells that still have headroom below target"
+  ]
+}

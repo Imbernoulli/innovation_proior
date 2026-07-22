@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0603",
+  "tier": "S",
+  "format": "C",
+  "family": "flow-network-remodel-resilience",
+  "eval_form": "quality-metric",
+  "theme": "a vein network that survives a cut",
+  "title": "Leaf Vein Remodeling: A Network That Survives a Cut",
+  "objective": "max",
+  "mechanisms": ["adaptive-conductance", "fault-tolerance-loops", "flow-network-remodeling"],
+  "innovation_hook": "Fluctuating/multi-load driving of the same remodeling rule is what preserves protective loops that a single steady load would prune away.",
+  "strategies": [
+    "do-nothing baseline: gamma=0 keeps every vein at unit conductance (the uniform mesh, the checker's own baseline)",
+    "aggregate-only reinforcement: drive the remodeling rule with only the all-sinks-at-once load and a moderate exponent -- efficient for that one load, but prunes veins the individual sinks needed and leaves a fragile trunk",
+    "fluctuating multi-load reinforcement: drive the SAME rule with the per-sink (and grouped) loads so every sink gets to reinforce its own path at some point, preserving redundant loops that survive any single cut",
+    "exponent + schedule co-tuning: search over both the loading weights and the reinforcement exponent to trade aggregate transport efficiency against worst-cut per-sink resilience"
+  ]
+}

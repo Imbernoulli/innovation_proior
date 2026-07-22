@@ -1,0 +1,15 @@
+{
+  "id": "fsx_C_1052",
+  "tier": "C",
+  "format": "C",
+  "family": "palindrome-avoidance-word",
+  "eval_form": "quality-metric",
+  "theme": "Long word with only short palindromic factors",
+  "title": "Palindrome-Bounded Word Stretching",
+  "objective": "max",
+  "strategies": [
+    "naive cyclic baseline: repeat 0,1,...,a-1 forever (reproduces the checker's own baseline -> ~0.1; over alphabets of size 3+ it never violates, but over a binary alphabet it is itself a run of nested palindromes and dies almost immediately)",
+    "one-pass greedy avoidance: extend the word letter by letter, always trying the smallest letter first, backtrack-free, stopping the moment every letter would create a too-long palindrome; over a binary alphabet this dead-ends after roughly pi*p characters no matter how large the target length is",
+    "morphism iteration tuned to the bound: pick a short substitution table (an explicit block-substitution for each letter, offline-searched and simulation-verified) whose infinite fixed point keeps every palindromic factor within the bound, then repeat/iterate it and truncate to the target length -- reaches the full target length even when greedy provably cannot. The best binary table found is the degenerate case where every letter maps to the same 6-block (i.e. a plain repeating period), which still beats every one-pass greedy scan"
+  ]
+}

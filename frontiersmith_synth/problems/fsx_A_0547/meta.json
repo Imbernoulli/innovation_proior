@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0547",
+  "tier": "A",
+  "format": "C",
+  "family": "reagent-mixing-manifold",
+  "eval_form": "quality-metric",
+  "theme": "Set inlet concentrations in a fixed mixing manifold",
+  "title": "Manifold Inversion: Setting Inlets to Hit Leaf Targets",
+  "objective": "min",
+  "strategies": [
+    "trivial: inject nothing (all inlets at zero) -> reproduces the do-nothing baseline",
+    "greedy: solve the unconstrained linear least-squares inverse per species (normal equations) then clip inlets into [0,cap] -- the box is ignored during the solve",
+    "strong: project onto the achievable zonotope {A x : 0<=x<=cap} via box-constrained regularized least squares (FISTA), trading the few high-influence trunk inlets against the many leaves they feed",
+    "exploit that shared ancestors couple leaves so the reachable output set is a cone; prioritize bottleneck inlets and respect the box throughout instead of clipping after an unconstrained solve"
+  ]
+}

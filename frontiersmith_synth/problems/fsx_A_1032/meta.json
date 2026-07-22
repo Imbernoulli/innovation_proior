@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1032",
+  "tier": "A",
+  "format": "C",
+  "family": "antiaffinity-replica-router",
+  "eval_form": "quality-metric",
+  "theme": "caterers plating banquet courses from shared kitchens",
+  "title": "Banquet Line Antiaffinity: Replica Kitchens for Shared Prep Stations",
+  "objective": "min",
+  "strategies": [
+    "naive baseline: frequency-balanced block placement (dish d -> kitchens [(d%G)*R,(d%G)*R+R)) plus always-serve-from-replica-#0 routing (ratio ~0.1)",
+    "obvious greedy: same frequency-balanced block placement, but adaptive per-course routing to the least-loaded available replica (beats the baseline, still collides on signature menus)",
+    "strong: co-occurrence-aware antiaffinity placement -- read the course trace, place each dish's replicas on the kitchens least claimed by dishes it is co-plated with (weighted by crowding exposure), then use the same per-course greedy routing",
+    "open: joint placement+routing optimization via LP relaxation / min-cost flow per course, or iterative local-search re-placement using realized routing regret (headroom above strong)"
+  ]
+}

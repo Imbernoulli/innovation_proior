@@ -1,0 +1,92 @@
+# Robotic Telescope Night Plan
+
+## Problem
+A robotic telescope observes `N` sky targets during one night. Target `i` sits at a
+1-D sky coordinate `p_i` and is worth `v_i`. The telescope starts the night at
+coordinate `0` with pointing **drift** `0`.
+
+The night proceeds as a sequence of **actions**:
+
+- **Observe target `i`.** The mount first *slews* from its current coordinate `c` to
+  `p_i`, travelling a distance `d = |c - p_i|`. Slewing costs `d` units of time and
+  **increases the drift by `k*d`** (motion-proportional drift). The observation then
+  collects a yield of `v_i * acc[min(drift, Dmax)]`, where the drift is the value
+  *after* this slew, and `acc[]` is a fixed, non-increasing accuracy profile given in
+  the input (`acc[0] = SCALE`, decaying steeply toward a small floor). The mount stays
+  at `p_i`.
+- **Recalibrate.** Resets the drift to `0` instantly, but costs `R` units of time. At
+  most `K` recalibrations may be performed during the night.
+
+The total time spent (all slews plus all recalibrations) may not exceed the night
+budget `Tb`. Each target may be observed at most once; targets you never observe simply
+contribute nothing.
+
+Accuracy is therefore a resource the tour itself creates and spends: every slew erodes
+it, every recalibration (paid for out of a scarce time budget, and limited to `K`
+uses) restores it. Because there are more valuable clusters of targets than there are
+recalibrations, you must decide **which** high-value regions deserve a fresh
+calibration and route the plan so those regions are observed while the drift is small.
+
+## Input
+```
+N P k K R Tb SCALE Dmax
+p_1 v_1
+...
+p_N v_N
+acc[0] acc[1] ... acc[Dmax]
+```
+Coordinates `p_i` are distinct integers in `[1, P]`. The final block lists `Dmax+1`
+integers, the accuracy profile.
+
+## Output
+First line: an integer `A`, the number of actions. Then `A` lines, each one of:
+
+- `1 i` — observe target `i` (`1 <= i <= N`), or
+- `0`  — recalibrate.
+
+## Feasibility
+The number of `0` actions is at most `K`; no target index appears in two `1 i`
+actions; and the total time (sum of slew distances plus `R` per recalibration) is at
+most `Tb`. Any violation, or a malformed/trailing token, scores `0`.
+
+## Objective
+Maximize `F`, the total yield summed over all observed targets, where each target
+contributes `v_i * acc[min(D_i, Dmax)]` and `D_i` is the drift at the instant it is
+observed.
+
+## Scoring
+Let `B` be the yield of the reference *monotone sweep*: visit every target in
+increasing coordinate order starting from `0`, performing no recalibration. Your score
+is
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+So a plan matching the baseline scores `0.1`; reaching `10*B` (or more) caps at `1.0`.
+Feasible-but-infeasible outputs score `0`.
+
+## Constraints
+`N` up to ~2000, `P` up to ~7300, `k = 1`, `2 <= K < C` recalibrations. Time limit
+3 s, memory limit 512 MB. Each input file is a few hundred KB.
+
+## Example
+Input (tiny, `SCALE = 1000`):
+```
+3 100 1 1 40 200 1000 100
+10 5
+90 900
+12 4
+0 0 0 ...   (acc[d] decays; e.g. acc[0]=1000, acc[80]~=6, acc[100]~=1)
+```
+Sorted by coordinate the targets are `#1(10,5), #3(12,4), #2(90,900)`. The monotone
+sweep observes `#2` at drift `90`, where `acc[90]` is tiny, so `B` is small. A stronger
+plan slews across the two cheap near targets, **recalibrates**, then slews the short
+remaining hop to the jackpot `#2` — observing its value `900` at near-zero drift, for a
+far larger `F` and a much higher ratio. Actions:
+```
+5
+1 1
+1 3
+0
+1 2
+```
+(observe `#1`, `#3`, recalibrate, observe `#2`).

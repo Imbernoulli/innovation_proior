@@ -1,0 +1,23 @@
+{
+  "id": "fsx_A_0885",
+  "tier": "A",
+  "format": "A",
+  "family": "franchise-majority-carve",
+  "eval_form": "quality-metric",
+  "theme": "bakery chain carves territories, each stocks one recipe",
+  "title": "Carving the Bakery Franchise Map",
+  "objective": "max",
+  "seed_problem": "partition a town of households (each with a favorite-of-6 recipe and a spend) into at most K edge-connected territories, each territory stocking its plurality-favorite recipe, to maximize captured spend",
+  "mutation": "composite: fuse a hard territory-count budget (K far below block count, so 'one household per territory' is infeasible), a strict-plurality (not majority) winner-take-all aggregator per territory, and an edge-connectivity constraint on arbitrary-shape territories into one maximized objective, so the optimal carve is gerrymandering: pack a scattered same-recipe minority into a thin, winding, connected territory of its own to flip a plurality that no compact/spatial partition would ever discover, without exceeding the territory budget.",
+  "mechanisms": [
+    "contiguity-constraint",
+    "plurality-aggregation-threshold",
+    "territory-partition"
+  ],
+  "strategies": [
+    "trivial: one whole-town territory (the checker's own baseline construction) -> ratio ~0.1",
+    "greedy (obvious recipe): spatial multi-source-BFS territory carving from K evenly-spread seeds -- always a valid connected partition, recovers the town's few broad geographic recipe regions reasonably well, but is completely blind to the recipe/spend data, so it never notices or isolates thin scattered same-recipe pockets embedded inside a region",
+    "insight (strong): reformulate the carve as component selection -- find every maximal same-recipe edge-connected component (a component is a 100%-pure territory candidate, since inside it every household's favorite already equals the only recipe present, so isolating it captures its spend outright), then repeatedly discard the globally weakest-value component into its best adjacent neighbor until at most K components remain, keeping the highest-value scattered pockets as their own territories -- exploiting exactly the family's gerrymander hook (pack minorities to flip a plurality; the obvious geometry-first greedy cannot see this because it never looks at the recipe data at all)",
+    "invalid: prints a territory id split across two disconnected block groups -> checker rejects (violates the edge-connectivity feasibility constraint) -> ratio 0"
+  ]
+}

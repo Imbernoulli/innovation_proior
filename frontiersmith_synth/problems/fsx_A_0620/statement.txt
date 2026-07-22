@@ -1,0 +1,69 @@
+# Resonant Beacon Cover
+
+## Problem
+Work over the alphabet `{0,...,q-1}` (`q` a small prime) with words of length `n`.
+The Hamming distance between two words is the number of coordinates in which they
+differ. You are given `M` **sites** (each an `n`-symbol word) that must be covered
+by **beacons** (also `n`-symbol words you choose). A base covering radius `r`
+applies everywhere, but two independent bonuses can extend it:
+
+1. **Per-site tolerance.** Each site `i` carries a tolerance bit `t_i in {0,1}`
+   (given in the input). A loose site (`t_i=1`) is easier to reach.
+2. **Algebraic resonance.** You are given an `m x n` parity-check matrix `H` over
+   `Z_q` (entries in `[0,q-1]`, arithmetic mod `q`). A beacon `c` is *resonant* if
+   `H*c ≡ 0 (mod q)` — i.e. `c` lies in the null space (a coset code) of `H`.
+   Resonant beacons reach one extra unit of radius, exactly the way a linear
+   code's coset structure lets its sphere packing tile more efficiently and
+   approach the sphere-covering bound.
+
+A beacon `c` covers site `i` iff `Hamming(c, x_i) <= r + t_i + res(c)`, where
+`res(c) = 1` if `c` is resonant and `0` otherwise. You choose a multiset `C` of
+beacons; every site must be covered by at least one beacon in `C`. Minimize `|C|`.
+
+## Input
+```
+q n r m M Kmax
+```
+then `m` lines of `n` integers each (rows of `H`, entries in `[0,q-1]`), then `M`
+lines each with `n+1` integers: the site's `n` symbols (`[0,q-1]`) followed by its
+tolerance bit `t_i in {0,1}`.
+
+## Output
+First line: `K`, the number of beacons (`1 <= K <= Kmax`). Then `K` lines, each
+`n` integers in `[0,q-1]` — one beacon per line. Beacons need not be distinct.
+
+## Feasibility
+Every symbol must lie in `[0,q-1]`; `1 <= K <= Kmax`; and every one of the `M`
+sites must be covered (as defined above) by at least one printed beacon. Any
+violation, or trailing/missing tokens, scores `0`.
+
+## Objective
+Minimize `F = K`, the number of beacons used.
+
+## Scoring
+Let `B = M` (the value of the fixed reference "one beacon per site", which plants
+each beacon exactly on its site so `Hamming = 0` always covers). Your ratio on a
+test is
+```
+ratio = min(1.0, 0.1 * B / F).
+```
+So the one-per-site reference scores `0.1`; using half as many beacons roughly
+doubles the score, capped at `1.0` (`10x` fewer beacons than the reference). The
+final score is the mean ratio over the 10 tests. An infeasible output scores `0`.
+
+## Constraints
+- `q` prime, `2 <= q <= 5`; `4 <= n <= 14`; `0 <= r <= 2`; `0 <= m <= 8`;
+  `1 <= M <= 2000`; `q^n <= 20000`; `Kmax = M`.
+- Time limit: 5 s. Memory limit: 512 MB. Each input file `<= 5 MB`.
+
+## Example
+`q=2, n=6, r=1, m=2`, `H` rows `(1,1,0,0,0,0)` and `(0,0,1,1,0,0)`. A beacon `c` is
+resonant iff its first two symbols agree AND its next two symbols agree (mod 2).
+Suppose two sites are given: `000000` (`t=0`) and `001100` (`t=0`). The all-zero
+beacon `000000` satisfies `H*c=0`, so it is resonant: `res=1`, giving effective
+radius `r+0+1=2` for both sites — `Hamming(000000,000000)=0<=2` and
+`Hamming(000000,001100)=2<=2`. So `K=1` beacon covers both sites: `F=1`, `B=M=2`,
+`ratio = min(1, 0.1*2/1) = 0.2`. A solver that instead used the sites themselves
+as non-resonant beacons (radius stays `r=1`) would need `2` separate beacons,
+scoring only `0.1` — the resonant beacon reaches an extra unit of radius for
+free, letting one algebraically-structured beacon replace two naive ones.

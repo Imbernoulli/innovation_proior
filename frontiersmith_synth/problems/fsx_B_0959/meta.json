@@ -1,0 +1,20 @@
+{
+  "id": "fsx_B_0959",
+  "tier": "B",
+  "format": "A",
+  "family": "cyclic-outcome-bracket-seeding",
+  "eval_form": "quality-metric",
+  "theme": "Seed an elimination bracket with cyclic matchups",
+  "title": "Cyclic Cup Seeding",
+  "objective": "max",
+  "seed_problem": "single-elimination bracket seeding with a transitive strength ranking (spread the top seeds apart)",
+  "mutation": "composite: replace the transitive strength assumption with a deterministic but possibly intransitive pairwise-outcome tournament (cyclic-path-routing), keep the seeding a one-shot committed permutation played out by a fixed knockout pairing rule (deterministic-bracket, seeding-commit), and generalize the goal from protecting one favourite to an increasing per-round payoff over K sponsor players who compete for the same deep bracket runs -- so the optimal seeding must route every sponsor through a chain of opponents it specifically beats round after round, not just win one easy round-1 match or separate high-aggregate-win-count players.",
+  "mechanisms": ["cyclic-path-routing", "deterministic-bracket", "seeding-commit"],
+  "innovation_hook": "With intransitive outcomes, seeding must carve a beatable path through the whole bracket rather than merely spreading strong players apart.",
+  "strategies": [
+    "trivial: identity seeding (player i in slot i) -- reproduces the checker's own baseline B exactly -> ratio 0.1",
+    "greedy (the trap): a single pass that only protects round 1 -- for each sponsor (highest bounty first) hand-pick a not-yet-used opponent it directly beats (preferring the weakest-looking one by aggregate win count), then pack every remaining player into the rest of the bracket by aggregate win count with zero lookahead beyond round 1; on near-regular/circulant tournaments (win counts carry no signal) and planted 'specialist' players (mid-table by win count but hand-picked to beat every sponsor outright) this protects round 1 only for it to lose the sponsor two rounds later, and it never resolves two sponsors' round-1 picks colliding further down the bracket",
+    "strong: simulation-guided local search (multi-start hill-climbing with random restarts) that directly evaluates the true bracket objective F on candidate seedings and hill-climbs via slot swaps -- discovers specific beatable-opponent chains spanning every round the aggregate-stat, round-1-only heuristic cannot see, and arbitrates which sponsor gets the deep run when two would otherwise collide",
+    "beyond strong: exact/near-exact per-sponsor path construction via backward induction over the bracket tree (decide, round by round from the final backward, which subtree must be filled with players the sponsor's eventual representative beats), combined with global sponsor-conflict resolution (max-weight matching of sponsors to disjoint bracket paths)"
+  ]
+}

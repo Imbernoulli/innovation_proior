@@ -1,0 +1,86 @@
+# Cliff Amphitheater: Aiming the Echo
+
+## Problem
+
+A cliff amphitheater has a single **clapper** at cell `S = (sx, sy)` that emits one
+sharp pulse at tick `0`. `M` **listeners** stand at fixed cells; you want to make each
+listener hear the loudest possible momentary echo. You may install **reflectors** on
+the rock: you are given `N` candidate reflector cells and an install budget `K`.
+
+Sound travels on the integer grid at a fixed lattice speed. The travel time between
+cells `a` and `b` is the **octile lattice distance**
+```
+D(a,b) = 2*max(|ax-bx|, |ay-by|) + min(|ax-bx|, |ay-by|)
+```
+(diagonal steps cost `3`, axial steps cost `2`). A reflector at cell `R`, if installed,
+catches the clapper's pulse and re-emits it in all directions, so listener `f` receives
+that reflected wavelet at tick `A(f,R) = D(S,R) + D(R,f)`.
+
+Each reflector cell `R` has an integer **gain** `g` and a **facet parity** `p in {0,1}`.
+A wavelet interferes with the direct wave by its path parity: at listener `f` the
+installed reflector `R` contributes amplitude `+g` if `(A(f,R) + p)` is **even**
+(constructive) and `-g` if it is **odd** (destructive). The clapper's direct pulse
+reaches listener `f` at tick `D(S,f)` with amplitude `+g0` (the phase reference).
+
+The amplitude listener `f` hears **at tick t** is the sum of every contribution whose
+arrival tick equals `t`. Their **peak** is the largest amplitude heard at any single
+tick:
+```
+peak(f) = max over ticks t of ( sum of amplitudes arriving exactly at tick t )
+```
+Because a reflector re-emits toward **every** listener, one installed reflector helps
+some listeners (lands in a loud tick with the right parity) and can hurt others (lands
+in another listener's peak tick with the wrong parity).
+
+## Input
+
+```
+G sx sy g0 M N K
+```
+Then `M` lines, listener `f` (1-based): `fx fy`.
+Then `N` lines, candidate `j` (1-based): `x y g p`.
+
+All coordinates are in `[1, G]`. `S` and every listener cell are distinct from every
+candidate cell.
+
+## Output
+
+Print an integer `c` (`0 <= c <= K`), then `c` distinct candidate indices in `[1, N]`
+(the reflectors you install), separated by whitespace. Printing `0` installs nothing.
+
+## Feasibility
+
+`c` must be in `[0, K]`; every index in `[1, N]`; all indices distinct; no trailing
+tokens. Any violation scores `0`.
+
+## Objective
+
+Maximize `F = sum over all listeners f of peak(f)`.
+
+## Scoring
+
+Let `B = M * g0` be the amplitude of the do-nothing field (every listener hears only the
+direct pulse, `peak(f) = g0`). Your score for a test is
+```
+ratio = min(1000, 100 * F / max(1, B)) / 1000
+```
+so installing nothing scores `0.1` and any real improvement scores higher, capped at
+`1.0` (ten times the direct field). Per-test ratios are averaged.
+
+## Constraints
+
+* `200 <= G <= 2000`; `1 <= M <= 20`; `1 <= N <= 3000`; `1 <= K <= N`
+  (the budget is scarce -- far smaller than the total number of good reflectors).
+* `g0 = 10`; `3 <= g <= 20`; `p in {0,1}`.
+* Time limit: 4 s. Memory limit: 512 MB.
+
+## Example
+
+`G=200`, `S=(8,100)`, `g0=10`, one listener `f=(192,100)`, so `D(S,f)=368` and the
+direct pulse gives `peak=10`. Suppose three candidates all have `A(f,R)=402` and parity
+that makes `(402+p)` even (gain `9` each): installing all three stacks `+27` at tick
+`402`, so `peak=27` and `ratio = 0.1*27/10 = 0.27`. A fourth candidate lands at a *lower*
+Euclidean detour but at tick `399` with odd parity: the continuous "shortest reflection"
+intuition would install it, yet on the lattice it sits in its own tick and adds nothing to
+`402`. The win comes from grouping cells by their **true integer arrival tick and parity**,
+not by their continuous distance.

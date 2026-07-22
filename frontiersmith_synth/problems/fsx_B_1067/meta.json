@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1067",
+  "tier": "B",
+  "format": "C",
+  "family": "retrofit-window-sequencing",
+  "eval_form": "quality-metric",
+  "theme": "power fleet decarbonization under a carbon budget",
+  "title": "Depleting the Budget: Retrofit Scheduling Against a Demand Calendar",
+  "objective": "maximize",
+  "strategies": [
+    "trivial: reproduce the checker's own naive fixed index-order fill-to-demand construction, never retrofitting any unit",
+    "greedy: classic dirtiest-unit-first retrofit ordering packed back-to-back starting at t=1, dispatch by cheapest-rate merit order to meet demand exactly -- oblivious to the demand calendar and to any bonus-dispatch opportunity",
+    "strong: schedule retrofits by searching, for each unit (processed in descending cleanup-payoff order), the offline window that minimizes the projected coverage shortfall against everyone already committed offline -- interleaving outages with demand troughs -- then dispatch by cheapest-rate merit order for mandatory coverage and treat remaining emissions-budget headroom as a depleting resource for admission-controlled bonus dispatch",
+    "invalid: reproduces the naive fill construction but zeroes out the mid-horizon step, violating the coverage constraint"
+  ]
+}

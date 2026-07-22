@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0506",
+  "tier": "G",
+  "format": "D",
+  "family": "flop-sparse-polynomial-factorization",
+  "eval_form": "flops",
+  "theme": "symbolic compiler for sparse polynomial evaluation",
+  "title": "Sparse Polynomial Factor Plans for a Symbolic Compiler",
+  "objective": "min",
+  "strategies": [
+    "expanded lowering: rebuild every monomial independently and accumulate each target",
+    "full-monomial common subexpression elimination across all targets",
+    "partial factorization: detect shared sparse cores and multiply them by signed linear tail forms",
+    "global weighted arithmetic-circuit search over alternative factor covers and prefix-product DAGs"
+  ]
+}

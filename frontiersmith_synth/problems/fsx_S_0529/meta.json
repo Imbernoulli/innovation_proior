@@ -1,0 +1,21 @@
+{
+  "id": "fsx_S_0529",
+  "tier": "S",
+  "format": "A",
+  "family": "frame-truss-load-ceiling",
+  "eval_form": "quality-metric",
+  "seed_problem": "gen emits pinned anchor nodes, deck load nodes, per-stratum rock ceilings and a steel ration; the contestant prints straight members; chk computes active (triangulated) members, integer member capacities, and the load ceiling as the deterministic min-cut of the force-path network; score = ceiling / canonical-ladder baseline.",
+  "mutation": "composite: compose integer force-balance (flow conservation), a member-length budget, and a triangulation-topology activation rule into a single load-ceiling objective that is a min-cut over rock strata, so the winning strategy is to water-fill rationed steel into the weakest stratum rather than to add tonnage.",
+  "objective": "max",
+  "theme": "bridge over a gorge from rationed steel",
+  "title": "Gorge Bridge from Rationed Steel",
+  "innovation_hook": "Maximum load is a min-cut-like property of force paths: sparse, correctly triangulated load paths crossing the weakest stratum beat dense meshes on strong strata, so quality comes from topology, not tonnage.",
+  "mechanisms": ["integer-force-balance", "member-budget", "triangulation-topology"],
+  "strategies": [
+    "trivial: copy the single canonical triangulated ladder (F == baseline B, ratio 0.1)",
+    "greedy: build a full single-diagonal triangulated sheet, then X-brace panels in reading order until the ration runs out (blind to which stratum is the bottleneck)",
+    "strong: min-cut-aware water-filling -- from the base sheet, repeatedly add the X-brace that raises actual max-flow the most, pouring spare steel into exactly the weakest stratum",
+    "local search / LP-relaxation of the flow-cut allocation across strata under the steel budget"
+  ],
+  "trap": "The obvious 'more bracing = stronger' heuristic reinforces whichever stratum it reaches first (and dense meshing / long direct spans waste ration or hinge to zero); on the planted weak-stratum cases it lands far below the min-cut-aware builder."
+}

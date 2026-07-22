@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0739",
+  "tier": "S",
+  "format": "E",
+  "family": "shared-law-nuisance-factoring",
+  "eval_form": "quality-metric",
+  "theme": "one physical law hiding behind six lab setups",
+  "title": "Six Miscalibrated Labs, One Law",
+  "objective": "min",
+  "strategies": [
+    "trivial: submit core(x)=0 -> reproduces the checker's flat calibration-mean baseline (~0.1)",
+    "greedy: search a single shared frequency w and fit y = A*sin(wx)+Q*cos(wx)+c*x+D by ONE global ordinary-least-squares regression over every regime's raw rows pooled together (single D for everybody); gets the right idea (there IS a shared oscillation) but never separates each regime's own (gain_r, offset_r), so wildly different regimes' vertical shifts corrupt both the offset and the frequency search -- sometimes stumbles close to the truth, often lands far off",
+    "strong: alternate, for each candidate frequency w, between (a) refitting each regime's own (gain_r, offset_r) via a 2-parameter OLS against the CURRENT shared-shape guess, and (b) pooling every regime's nuisance-corrected points ((y-offset_r)/gain_r) together and refitting the shared P*sin(wx)+Q*cos(wx)+c*x by OLS over the FULL pooled x-range -- well conditioned, unlike any single narrow window; multiple random restarts (the alternation is biconvex) plus a coarse-to-fine w grid pick the best-converged shared shape, which then extrapolates correctly to brand-new regimes and x range",
+    "headroom above strong: replace the grid+restart search with a proper joint nonlinear optimizer (e.g. Levenberg-Marquardt over all 3+2K parameters at once) and use robust (e.g. IRLS / Huber) regime fits to resist heavy-tailed calibration noise"
+  ]
+}

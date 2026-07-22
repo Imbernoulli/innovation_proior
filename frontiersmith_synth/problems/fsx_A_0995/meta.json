@@ -1,0 +1,20 @@
+{
+  "id": "fsx_A_0995",
+  "tier": "A",
+  "format": "A",
+  "family": "purge-carryover-scheduling",
+  "eval_form": "quality-metric",
+  "seed_problem": "Given L printed layers of regions with required color tolerance classes and an asymmetric purge-cost matrix between concrete colors, choose a concrete color per region and a per-layer print order to minimize total purge volume across the whole job, including the carryover transition between consecutive layers.",
+  "mutation": "composite: goal is genuinely open-ended construction (color assignment + ordering, no known optimum for large instances) AND the input is generalized with a THIRD degree of freedom -- each region's color is not fixed but drawn from a 2-3 option tolerance class -- turning what looks like a per-layer asymmetric-TSP touring problem into a global discrete recoloring problem that reshapes which transitions are even possible.",
+  "objective": "min",
+  "theme": "Rainbow 3D print that bleeds between colors",
+  "title": "Purge Carryover Scheduling: Rainbow Print Tolerance Recoloring",
+  "mechanisms": ["asymmetric-transition-costs", "cross-layer-carryover", "tolerance-class-recoloring"],
+  "innovation_hook": "The real leverage is in the discrete recoloring degrees of freedom that reshape the transition graph itself, not in touring the graph better: a bounded number of hard-locked anchor regions force a small, unavoidable number of expensive dark-to-light purges, but every other region's tolerance class contains an option in both the light and dark tiers -- a solver that recolors flex regions into whatever tier the CURRENT print run is committed to (ignoring which color is listed first) collapses nearly every layer-boundary carryover into a cheap transition, while a solver that only tours a fixed per-layer color assignment repeatedly eats extra full purges it could have recolored away.",
+  "strategies": [
+    "trivial: print each layer's regions in listed input order, using each region's first-listed tolerance color -- the checker's own do-nothing baseline",
+    "greedy (trap): fix every region's color to its tolerance class's first-listed entry, then build a per-layer nearest-neighbour tour over that fixed assignment -- the textbook greedy-TSP move, locally sensible layer by layer, but blind to the next layer's carryover color and to the recoloring freedom, so trap regions (wrong color listed first) and layer-boundary mismatches repeatedly trigger the expensive purge",
+    "strong: sweep layers maintaining one global committed tier; recolor every flex region into whatever tier is currently committed (scanning its whole tolerance class, not just the first entry), place the committed-tier block before any hard-locked opposite-tier anchor within a layer, and only flip the committed tier when an anchor forces it -- collapses purge volume to close to the unavoidable anchor-pivot floor",
+    "invalid: emits a color id == C (out of range) for one region -- infeasible, must score 0"
+  ]
+}

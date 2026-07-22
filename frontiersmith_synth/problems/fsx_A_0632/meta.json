@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0632",
+  "tier": "A",
+  "format": "E",
+  "family": "partial-load-law-recovery",
+  "eval_form": "quality-metric",
+  "theme": "reverse-engineer a mystery converter's loss law",
+  "title": "Mystery Converter — recovering the hidden loss law from a commissioning band",
+  "objective": "min",
+  "strategies": [
+    "trivial: predict a constant loss (mean of the training y column), ignoring load and temperature entirely -> reproduces the checker baseline ~0.1",
+    "greedy: take the two named mechanisms (standby + temperature-modulated resistive L^2 loss) at face value and fit exactly that basis {1, L^2, T*L^2} by least squares; it fits the 20-60% commissioning band closely, but no term can express the faster-than-quadratic saturation growth, so it drifts increasingly wrong as the held-out grid moves into the 80-110% overload band",
+    "strong: grid-search the saturation exponent p over a fine range, refitting the full mechanistic basis {1, L^2, T*L^2, L^p} by least squares for each candidate p and keeping the p (and its coefficients) that best explains the training residual -- this reads the faint in-band curvature the L^2-only fit could only partially absorb, and the recovered power-law term survives extrapolation into the overload band",
+    "headroom above strong: robustify the exponent search (cross-validated or residual-based rather than raw training RSS) against the training noise that occasionally misleads a single best-RSS pick, and/or jointly refine all four coefficients with the chosen p to push held-out error toward the sensor-noise floor"
+  ],
+  "source_frameworks": ["wave2b-lens:conversion-chain-systems"],
+  "innovation_hook": "The out-of-band term is nearly invisible in-band, but its second-order curvature fingerprint is present — mechanism-level fitting reads it while curve fitting cannot."
+}

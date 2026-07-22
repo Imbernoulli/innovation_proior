@@ -1,0 +1,117 @@
+# Wafer Stepper Exposure Order: Taming the Self-Made Hot Spot
+
+## Problem
+
+A photolithography **stepper** exposes a wafer one **field** (die site) at a time. Field
+`i` sits at integer grid coordinate `(x_i, y_i)` and carries a process weight `w_i` (some
+layers/resists need a hotter dose). Every exposure is a local heating event: it dumps
+energy at its own site, and that energy **diffuses across the wafer and decays** between
+exposures, like a point heat source spreading through a metal plate. Because later fields
+are exposed while earlier fields are still cooling, the residual heat under a field **at
+the moment it is exposed** shifts its focal plane and creates a lens **overlay error** —
+the tighter the stack of nearby, recent exposures, the worse that field's error.
+
+You choose the **order** of exposing all `N` fields (a permutation) — not positions or
+weights. A short, snappy tour that visits spatial neighbours back-to-back looks efficient,
+but it re-injects heat into the same neighbourhood over and over, so nearby fields never
+cool. Because the scored quantity is the **worst** overlay error on the wafer (not the
+average), a schedule that is usually fine but occasionally revisits a hot neighbourhood too
+soon scores as badly as one that is bad everywhere.
+
+Heat from field `k` (exposed at step `k`, weight `w_k`) contributes to the temperature seen
+by any field queried at step `t > k` and squared grid distance `r2` away as the standard 2D
+diffusion kernel with decay:
+
+```
+contribution(k -> t) = Q0 * w_k * exp(-alpha * (t-k)) * exp(-r2 / (4*D*(t-k))) / (4*pi*D*(t-k))
+```
+
+where `D` (diffusion rate), `alpha` (decay rate) and `Q0` (dose constant) are given in the
+input and vary per test. The overlay error of the field exposed at step `t` is the sum of
+`contribution(k -> t)` over every field `k` already exposed (`k < t`); the field exposed
+first (`t=1`) sees zero background heat.
+
+## Input
+
+```
+N
+D alpha Q0
+x_1 y_1 w_1
+x_2 y_2 w_2
+...
+x_N y_N w_N
+```
+
+`D`, `alpha`, `Q0` are positive reals (up to 6 decimal places). All `(x_i, y_i)` pairs are
+distinct integers. `w_i` is a positive integer.
+
+## Output
+
+A permutation of `1..N`: the field indices in the order you expose them.
+
+```
+p_1 p_2 ... p_N
+```
+
+## Feasibility
+
+The output is feasible iff it is a permutation of `1..N` (every value in `1..N` appears
+exactly once). Any other output scores 0.
+
+## Objective
+
+Let `p` be your exposure order. For step `t` (`1<=t<=N`), let
+
+```
+temp(t) = sum over k in 1..t-1 of Q0 * w[p_k] * exp(-alpha*(t-k)) * exp(-r2(p_t,p_k)/(4*D*(t-k))) / (4*pi*D*(t-k))
+```
+
+where `r2(a,b) = (x_a-x_b)^2 + (y_a-y_b)^2`. Minimize the worst-case overlay error
+
+```
+F = max over t in 1..N of temp(t).
+```
+
+## Scoring
+
+Let `B` be `F` for the **input-order** schedule `p_k = k` (always feasible). Your score on
+a test is
+
+```
+ratio = min(1.0, (B / max(1e-9, F)) / 10)
+```
+
+so matching the input-order baseline scores `0.1`, and cutting the worst-case error to a
+tenth of the baseline (or better) reaches the capped score `1.0`. Per-test scores are
+averaged.
+
+## Constraints
+
+- `8 <= N <= 2500`
+- `0 <= x_i, y_i <= 400`
+- `1 <= w_i <= 60`
+- `0.05 <= alpha <= 0.6`, `0.1 <= D <= 3.0`, `10 <= Q0 <= 500`
+- Time limit: 5s
+- Memory limit: 512 MiB
+
+## Example
+
+4 fields on a line, `D=1.0, alpha=0.2, Q0=100`:
+```
+4
+1.000000 0.200000 100.000000
+0 0 1
+1 0 1
+2 0 1
+3 0 1
+```
+Input-order baseline `p=(1,2,3,4)`: `temp(1)=0`. `temp(2)`: from field 1, `dt=1,r2=1`,
+`contribution = 100*exp(-0.2)*exp(-1/4)/(4*pi*1) ~= 100*0.8187*0.7788/12.566 ~= 5.074`.
+Field 3 and 4 accumulate even more (multiple nearby recent neighbours), so
+`B = temp(4) ~= 10.9` (worked out by summing all three prior contributions for `t=4`).
+
+Now try `p=(1,3,2,4)` — swap the two middle fields so the two *closest* pairs (1-2 and
+3-4, both distance 1) are no longer temporally adjacent. `temp(2)` (field 3 vs field 1,
+`dt=1, r2=4`) drops sharply since `r2` is now large relative to `4*D*dt`; `temp(3)` and
+`temp(4)` shrink for the same reason. The worst step falls well below `B`, giving a ratio
+above `0.1` — reordering, not shortening a tour, buys the improvement.

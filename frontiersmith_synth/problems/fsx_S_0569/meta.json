@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0569",
+  "tier": "S",
+  "format": "C",
+  "family": "fir-cascade-precompensation",
+  "eval_form": "quality-metric",
+  "theme": "Craft an input pulse for a fixed filter chain",
+  "title": "Precompensator: Shaping an Input Pulse for a Fixed Filter Cascade",
+  "objective": "min",
+  "strategies": [
+    "trivial: emit the zero input (reproduces the do-nothing baseline)",
+    "greedy: causal inverse filtering (polynomial long division) then clip to the amplitude bound -- unstable, blows up on non-minimum-phase cascades",
+    "strong: regularized frequency-domain shaping via Tikhonov normal equations (H^T H + lam I) x = H^T y*, then project to the box -- trades match against energy",
+    "beyond strong: solve the box-constrained QP directly (projected gradient / active-set) to exploit active amplitude limits the single clip leaves on the table"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0654",
+  "tier": "A",
+  "format": "D",
+  "family": "cascade-affine-plan-compression",
+  "eval_form": "flops",
+  "theme": "compute a year of plant state in fewest multiplies",
+  "title": "Greenhouse Ledger: Fewest-Multiplier Plan for a Banded Conversion Cascade",
+  "objective": "minimize",
+  "strategies": [
+    "dense per-day STEP-only plan, ignores banding and rotation (trivial)",
+    "banded BAND steps every day, exploits neighbor-only coupling but not the rotation (greedy)",
+    "BUILD once + PERIOD binary-exponentiation across long rotation runs between recalibration days, BAND for the fringes (strong)",
+    "sub-cubic composed-map construction / caching across independently-phased runs (open ceiling, uncovered)"
+  ]
+}

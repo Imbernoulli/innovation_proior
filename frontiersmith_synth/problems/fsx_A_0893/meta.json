@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0893",
+  "tier": "A",
+  "format": "A",
+  "family": "spectral-community-refine",
+  "eval_form": "quality-metric",
+  "theme": "Cut a graph whose communities hide from greedy",
+  "title": "Hidden Communities Behind Decoy Hubs",
+  "objective": "min",
+  "seed_problem": "planted-partition graph bisection minimizing normalized cut under a balance constraint",
+  "mutation": "composite: the output partition is scored by weighted normalized cut (cut divided by the harmonic combination of side volumes) rather than raw cut, and the generator plants decoy high-degree hub vertices whose edges point mostly at the opposite community -- a purely edge-local reading of the graph (highest-degree seeds, or a vertex's own loudest neighbor weight) is systematically misled, while a global spectral coordinate (approximate Fiedler vector via a fixed power-iteration budget) sees past a small number of loud vertices and, after a local boundary-swap refinement pass, recovers a low-cost balanced cut.",
+  "strategies": [
+    "trivial: label vertices 1..floor(n/2) side 0 and the rest side 1, ignoring the graph entirely -- this is exactly the checker's own baseline B, so it reproduces ratio 0.1",
+    "greedy: pick the two highest-weighted-degree vertices as seeds (a non-adjacent tiebreak for the second seed), then in one single pass -- processing remaining vertices in degree-descending order -- assign each vertex to whichever seed-grown side it currently has more edge weight toward; fix up balance by flipping the least-confident excess vertices. On trap tests the decoy hubs ARE the highest-degree vertices, so both seeds and the early cascade of decisions anchor on their misleading edges",
+    "strong: approximate the graph Laplacian's second-smallest eigenvector (Fiedler vector) via shifted power iteration deflated against the all-ones vector (a fixed iteration budget), sort vertices by that global coordinate, sweep every balance-feasible threshold with incremental cut/volume bookkeeping to pick the normalized-cut-minimizing split, then run a bounded boundary local-search pass that flips any vertex whose local neighbor-weight majority disagrees with its side, as long as the flip keeps balance -- global embedding first, local polishing second"
+  ]
+}

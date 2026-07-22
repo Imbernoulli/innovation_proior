@@ -1,0 +1,18 @@
+{
+  "id": "fsx_N_0502",
+  "tier": "N",
+  "format": "A",
+  "family": "geometric-flow-congestion-coverage",
+  "eval_form": "quality-metric",
+  "seed_problem": "Facility placement on a weighted grid with every demand point routed to an opened facility; feasibility is coverage by geometric reach and a valid canal path, while cost combines opening, distance, and convex edge congestion.",
+  "mutation": "composite: fuse capacitated-looking set cover, explicit routed flow on a canal grid, and squared Manhattan reach geometry. Cheap high-radius pumps can cover many basins but route all water through narrow canals; stronger solutions open a spread of district pumps and use congestion-aware detours.",
+  "objective": "min",
+  "theme": "flood-barrier pump placement on a canal grid",
+  "title": "Canal Floodwall Pump Siting",
+  "strategies": [
+    "all-open emergency baseline: open every pump and assign each basin to its co-located radius-0 emergency pump",
+    "coverage-per-cost greedy: open cheap high-reach pumps that cover the most still-uncovered basins, then route by shortest paths",
+    "spread placement: open the non-emergency district pumps instead of relying on a single central trap",
+    "congestion-aware routing: route heavy basins first with incremental convex edge-load costs so flow avoids narrow canals and relief routes are used"
+  ]
+}

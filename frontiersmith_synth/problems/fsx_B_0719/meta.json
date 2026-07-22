@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0719",
+  "tier": "B",
+  "format": "C",
+  "family": "paid-transposition-list-script",
+  "eval_form": "quality-metric",
+  "theme": "street vendor rearranging a spice rack between customers",
+  "title": "The Spice Rack Relay",
+  "objective": "min",
+  "strategies": [
+    "trivial: keep the jars in their input-given numbering, spend zero swaps all day",
+    "greedy: sort jars once by descending raw per-item access frequency (classic static-optimal list order), spend zero swaps",
+    "strong: rank by combined pair frequency so correlated jars are adjacent and correctly prioritized, then run a value/cost knapsack over each pair's detected burst window to spend the swap budget pre-positioning whole trains right before they fire",
+    "invalid: non-permutation initial line plus a swap-event count that exceeds the budget"
+  ]
+}

@@ -1,0 +1,108 @@
+# Rising Water, Staged Barriers
+
+## Problem
+
+You are given an `R x C` terrain grid of integer elevations. The grid's outer
+border is permanently flooded (elevation `0`, always water). Water is deterministic:
+at any moment with water level `L`, the *wet* cells are exactly those cells with
+elevation `<= L` that are connected to the border through a chain of 4-adjacent
+cells that (a) also have elevation `<= L` and (b) are joined by an edge you have
+not walled off. Water never recedes.
+
+The flood rises in `K` stages with a known, strictly increasing schedule of levels
+`L_1 < L_2 < ... < L_K`. Before stage `k`'s flood is computed you may build new
+**barrier walls** on grid edges (between two 4-adjacent cells) that permanently
+block water from ever crossing that edge again -- once built, a wall is never
+removed. Building costs one *wall unit* per edge, and the **total** number of wall
+units you have built by the end of stage `k` (summed over every stage up to and
+including `k`) may never exceed a cumulative allowance that grows stage by stage
+(you get more units as time goes on, but nothing already spent comes back, and
+nothing unspent is lost -- it just carries forward).
+
+The grid marks `NB` disjoint **protected zones** (each a small region of cells you
+want to keep dry) and one **forbidden zone** (a region you would also like to keep
+dry, but weighted less). After all `K` stages, the objective rewards the *fraction*
+of each protected zone that stayed dry, plus a smaller bonus for the fraction of
+the forbidden zone that stayed dry. There is no requirement that any zone be
+fully protected -- partial credit is real, but because every zone here forms one
+connected low-lying pocket behind a single point of entry, in practice a zone
+either stays essentially fully dry (its entry sealed in time) or floods entirely
+(the entry was breached).
+
+## Input (stdin)
+
+```
+R C K
+e_{0,0} ... e_{0,C-1}
+...
+e_{R-1,0} ... e_{R-1,C-1}
+NB
+size_1
+r c   (size_1 lines: cells of protected zone 1)
+size_2
+...
+size_NB
+r c   (cells of protected zone NB)
+Q
+r c   (Q lines: cells of the forbidden zone)
+L_1 L_2 ... L_K
+W_1 W_2 ... W_K
+ALPHA
+```
+Rows/cols are 0-indexed. `W_k` is the *incremental* budget added at stage `k`
+(cumulative allowance through stage `k` is `W_1+...+W_k`). `ALPHA` (a float) is
+the forbidden zone's scoring weight. Border cells (`r==0`, `r==R-1`, `c==0`, or
+`c==C-1`) always have elevation `0`. No protected or forbidden cell is on the
+border.
+
+## Output (stdout)
+
+```
+M
+s_1 r1_1 c1_1 r2_1 c2_1
+...
+s_M r1_M c1_M r2_M c2_M
+```
+`M` walls total. Each line commits one wall, at stage `s_i` (`1 <= s_i <= K`), on
+the edge between cells `(r1_i,c1_i)` and `(r2_i,c2_i)`.
+
+## Feasibility (hard -- any violation scores 0)
+
+- Every `(r,c)` in bounds; the two endpoints of each wall are 4-adjacent and
+  distinct.
+- No duplicate edge (same unordered pair), regardless of stage.
+- For every `k` in `1..K`: the number of walls with `s_i <= k` must not exceed
+  `W_1+...+W_k`.
+- No trailing tokens.
+
+## Objective (maximize)
+
+For protected zone `i` (size `size_i`), let `dry_i` be the fraction of its cells
+that end the process dry. Let `dryF` be the analogous fraction for the forbidden
+zone. The score is `F = 1 + sum_i(dry_i) + ALPHA * dryF`.
+
+## Scoring
+
+Let `B` be `F` computed for the "build nothing" plan. The reported score is
+`Ratio = min(1000, 100 * F / B) / 1000`. Building nothing always scores `Ratio
+= 0.1` by construction. Non-finite or infeasible output scores `0`.
+
+## Constraints
+
+- `4 <= R <= 16`, `20 <= C <= 60`. `4 <= K <= 7`. `1 <= NB <= 4`.
+- Elevations are integers in `[0, 900]`. Elevation `0` occurs **only** on border
+  cells; every non-border cell has elevation `>= 1`. (Equivalently: the set of
+  initially-wet cells, before any stage runs, is exactly the border ring.)
+- Time limit: 5s. Memory limit: 512MB. The checker runs in `O(K * R * C)` time.
+
+## Example (worked score)
+
+A tiny instance has one protected zone (5 cells) fully dry after a run that
+commits 2 walls early at the zone's one narrow high-ground entrance (before the
+water level reaches it), and one forbidden zone (3 cells) that floods entirely
+because its own entrance was never walled: `dry_1 = 1.0`, `dryF = 0.0`, so
+`F = 1 + 1.0 + ALPHA*0.0 = 2.0`. The "build nothing" baseline instead has both
+zones flood completely: `dry_1 = 0`, `dryF = 0`, `B = 1.0`. `Ratio = min(1000,
+100*2.0/1.0)/1000 = 0.200`. Spending those 2 walls on cells merely *near* the
+zone but not on its real (and only) point of entry would have left the zone
+fully flooded too, back down to `Ratio = 0.1`.

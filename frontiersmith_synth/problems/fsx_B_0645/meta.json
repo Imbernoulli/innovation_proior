@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_0645",
+  "tier": "B",
+  "format": "C",
+  "family": "slow-mix-atrium",
+  "eval_form": "quality-metric",
+  "theme": "designing a museum floorplan where visitors wander forever",
+  "title": "The Endless Atrium",
+  "objective": "max",
+  "strategies": [
+    "trivial: reproduce the checker's own compact near-square blob (baseline)",
+    "greedy: locally maximize graph diameter cell-by-cell up to the cap, then pad remaining cells wherever that keeps the diameter feasible (a distance-maximizing, conductance-blind recipe)",
+    "strong: exploit conductance-volume-balance -- when the diameter budget can hold all n cells as a straight corridor, use it (the extremal slow-mixing shape for a free diameter budget); otherwise decouple distance from volume via a hub-and-chamber (multi-throat 'dumbbell') layout: balanced compact 2D chambers, each attached through a single narrow throat to a short central hub, so the graph diameter only pays for chamber RADIUS (~sqrt(volume)) while conductance stays ~1/chamber-volume -- search over throat length and chamber count to find the best feasible layout under the cap"
+  ]
+}

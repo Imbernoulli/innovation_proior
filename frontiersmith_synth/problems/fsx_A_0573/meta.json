@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0573",
+  "tier": "A",
+  "format": "A",
+  "family": "lattice-wave-focus-timing",
+  "eval_form": "quality-metric",
+  "theme": "cliff amphitheater aiming an echo",
+  "title": "Cliff Amphitheater: Aiming the Echo",
+  "objective": "max",
+  "seed_problem": "wave2b-lens continuous-physical focusing (a parabolic/elliptical dish that equalizes path length to concentrate a wavefront at a focus)",
+  "mutation": "composite: (goal) replace continuous amplitude focusing with maximizing the PEAK of a discrete integer-tick interference sum, (input) run the wavefront on an integer octile lattice metric so 'equal path length' becomes equal INTEGER arrival tick + facet parity, and (output) install a budgeted subset of reflectors that must serve MANY listeners at once. A reflector re-emits toward every listener, so the K-budget choice is a coupled allocation with no single-pass optimum; the continuous focal-ellipse geometry (equal Euclidean sum) no longer equalizes the lattice ticks.",
+  "strategies": [
+    "trivial: install nothing -> every listener hears only the direct pulse g0 (reproduces the checker baseline B=M*g0, ratio 0.1)",
+    "naive/continuous greedy: install the loudest reflectors (the high-gain Euclidean-ellipse decoys) -- on the lattice their integer arrival ticks are scattered and parities random, so they give isolated single-cell peaks, not a tall stacked echo",
+    "insight (strong): read the simulator's TRUE metric -- group candidates per listener by exact integer arrival tick D(S,R)+D(R,f) AND facet parity, install the constructive iso-chronal cluster (which sits OFF the Euclidean ring, a staircase), then allocate the scarce budget across listeners by cluster value",
+    "beyond strong: jointly allocate under the cross-listener coupling (an installed reflector lands in other listeners' ticks too), trading a listener's cluster against destructive collisions elsewhere -- the residual headroom above the per-listener heuristic"
+  ]
+}

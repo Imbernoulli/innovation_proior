@@ -1,0 +1,18 @@
+{
+  "id": "fsx_B_0971",
+  "tier": "B",
+  "format": "A",
+  "family": "rotor-router-odometer-shape",
+  "eval_form": "quality-metric",
+  "theme": "derandomized dust piling into a shape",
+  "title": "Derandomized Dust: Sculpting a Rotor-Router Aggregate",
+  "seed_problem": "rotor-router aggregation (Propp machine / Eulerian walkers) from a fixed source, uniform initial rotors -> known disk limit shape",
+  "objective": "max",
+  "mutation": "output: the solver no longer just runs the process, it supplies the initial rotor phase of every cell (the free control variable) so the deterministic aggregate is scored against an arbitrary target shape instead of matching the natural disk limit; particles now enter through N fixed, instance-derived emission ports rather than a single shared source, and the total odometer (rotor firings) is capped at 6x a fixed reference so a wasteful/uncoordinated phase choice is outright infeasible",
+  "strategies": [
+    "trivial: leave every rotor at phase 0 (the textbook default) -- reproduces the checker's own disk-forming baseline exactly",
+    "naive greedy: pair the N ports with the N target cells in arbitrary (reversed input) order and route each pair by a plain shortest path -- ignores the ODOMETER: different ports' paths freely cross and share cells, whose rotor dilutes across visits, so the intended direction is often not what actually fires by the time a second path arrives",
+    "insight (strong): a genuine reformulation -- match each port to its NEAREST free target (closest pairs routed first), route every pair via a contention-aware search that actively avoids cells earlier paths already used (so each cell's rotor is spent by at most one path wherever the topology allows), then polish with a bounded, fully deterministic resimulation-based local search",
+    "a general solver can go further: solve the port-to-target assignment as a true min-cost matching (Hungarian-style) instead of a greedy nearest-pair heuristic, or model the rotor dilution at unavoidably-shared cells analytically"
+  ]
+}

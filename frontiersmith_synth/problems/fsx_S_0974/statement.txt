@@ -1,0 +1,86 @@
+# Duchy Flood Ledger: Where the Levee Should Fail
+
+## Problem
+A river runs through the duchy as `N` numbered segments, 1 (upstream, where the flood
+wave enters) through `N` (downstream, toward the sea). Segment `i` has a floodplain
+worth `value_i` damage-points per unit of water that floods it, and a finite floodplain
+**storage** capacity `store_i` (units it can absorb over the whole flood before it is
+full). Segment `i` also has a natural channel capacity `base_i`, raisable by building a
+levee of integer height `h_i >= 0`, giving effective capacity `base_i + h_i`. Raising
+segment `i`'s levee by one unit costs `cost_i` ducats; its levee can never exceed
+`Hmax_i`. You have a total construction **budget** `Budget` (ducats).
+
+A flood wave arrives as an inflow hydrograph `q_1..q_T` (volume entering segment 1 at
+each of `T` discrete time steps). It is routed downstream deterministically: segments
+are processed in order `i=1..N`, and within a segment, time steps in order `t=1..T`,
+with each segment's storage consumed cumulatively across all `T` steps (it never
+refills mid-flood). At segment `i`, time `t`, incoming volume `in_i[t]` (for `i=1` this
+is `q_t`; for `i>1` it is whatever segment `i-1` passed on at the *same* `t`). If
+`in_i[t]` exceeds capacity `base_i+h_i`, the excess **overtops**: as much of it as still
+fits in segment `i`'s remaining storage is diverted into the floodplain — this both adds
+`divert*value_i` to total damage and removes that volume from the wave, so it never
+reaches segment `i+1`. Once a segment's storage is full, further excess can no longer be
+diverted there and continues downstream untouched (no more damage there, but no more
+shaving either). Volume leaving segment `N` drains safely to the sea.
+
+Your job: choose the levee heights.
+
+## Input (stdin)
+```
+N T Budget
+base_1 Hmax_1 cost_1 value_1 store_1
+...
+base_N Hmax_N cost_N value_N store_N
+q_1 q_2 ... q_T
+```
+All values are non-negative integers.
+
+## Output (stdout)
+`N` integers `h_1 ... h_N` (whitespace-separated), the levee height built at each segment.
+
+## Feasibility
+- `0 <= h_i <= Hmax_i` for every segment.
+- `sum(cost_i * h_i) <= Budget`.
+Any violation scores 0.
+
+## Objective
+Minimize the total flood damage accumulated over the whole event, as defined by the
+routing process above: the sum, over all segments and time steps, of every diverted
+volume times that segment's `value_i`.
+
+## Scoring
+The checker simulates the routing exactly as specified to get your total damage `F`,
+and separately simulates the same river with every `h_i = 0` (no construction at all) to
+get a baseline damage `B`. Your ratio is `min(1, 0.1 * B / max(1, F))`; lower `F` scores
+higher, and you cannot do worse than 0 (a feasible submission with `F >= B` still scores
+around 0.1 or less, never negative). An infeasible output scores 0.
+
+## Constraints
+- `1 <= N <= 2600`, `1 <= T <= 500`.
+- All input integers fit in a 64-bit signed integer; use 64-bit arithmetic.
+- Time limit: 4s. Memory limit: 512MB.
+
+## Example
+```
+3 3 250
+10 50 5 2 40
+10 50 5 2 40
+10 50 5 500 3
+50 50 50
+```
+Segments 1,2 are cheap pastures (`value=2`, `store=40`); segment 3 is the capital
+(`value=500`, only `store=3`). The flood is a flat wave `q=50` for 3 steps against base
+capacity 10 everywhere.
+
+Strategy `h=(0,0,40)` (spend 200 of the 250-ducat budget on the capital alone, leave
+pastures untouched):
+segment 1 overtops by 40/step; its storage absorbs step 1's excess (damage `80`) then is
+full, so steps 2-3 pass through untouched; segment 2 repeats the pattern (damage `80`).
+Segment 3's capacity is now `10+40=50`, exactly matching the peak, so nothing overtops
+there. `F=160`. The do-nothing baseline gives `B=1660` (segment 3 overtops by 40 on the
+last step; its tiny storage barely helps). Ratio `= min(1, 0.1*1660/160) = 1.0`.
+
+Strategy `h=(16,16,0)` ("protect everyone a little" instead): segments 1-2 overtop less,
+so *less* volume is diverted into their cheap storage and *more* reaches segment 3
+unprotected — `F=1644`, essentially no better than doing nothing (`ratio ~= 0.101`).
+Protecting the pastures destroys the free detention they were providing.

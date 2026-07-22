@@ -1,0 +1,123 @@
+# Twin-Eye Transient Watch
+
+## Problem
+
+A fleet of `T` telescopes is split across two observing **sites** (site `0`
+and site `1`). Each telescope `i` starts, at tick `0`, parked at a fixed sky
+azimuth `pos[i]` (degrees, `0..359` on a circle) and can slew at an integer
+angular speed `speed[i]` (degrees/tick); slewing between two azimuths
+`p, q` costs exactly `ceil(angdist(p,q) / speed[i])` ticks, where
+`angdist(p,q) = min(|p-q|, 360-|p-q|)`.
+
+`M` transient targets are known in advance. Target `j` appears at tick
+`a[j]`, sits at azimuth `pos[j]`, and is worth `v[j]` at the instant it
+appears. Once it appears its worth **decays every tick**: after `d` ticks
+its worth is `v[j]` repeatedly multiplied by `P/Q` and floored (`P<Q`,
+integer division applied `d` times in sequence, not a single closed form).
+Observing target `j` occupies a telescope for exactly `o[j]` ticks.
+
+A telescope may only begin observing a target the **instant** it arrives
+there — no idling. If a telescope's previous commitment (or, for the first
+one, its parked start) ends at tick `e` at azimuth `p`, and it next observes
+target `j` at azimuth `q`, the start tick must equal exactly
+`e + ceil(angdist(p,q)/speed[i])` (or, for a first commitment,
+`ceil(angdist(pos[i],pos[j])/speed[i])`). It must also hold that the start
+tick is `>= a[j]`.
+
+Because a single dish cannot triangulate a transient's distance, a target
+only **scores** if it is observed by two telescopes from **different
+sites** whose observation-start ticks differ by at most `W`. If several
+telescopes end up observing the same target, only the best-scoring
+cross-site pair counts (each target pays out once). The payout uses the
+target's decayed worth at the tick the *later* of the two observations
+starts.
+
+## Input
+
+```
+T M H W P Q
+site[0] pos[0] speed[0]
+...
+site[T-1] pos[T-1] speed[T-1]
+a[0] pos[0] v[0] o[0]
+...
+a[M-1] pos[M-1] v[M-1] o[M-1]
+```
+
+`site[i] in {0,1}`. All ticks referenced by the input and by any valid
+schedule lie in `[0, H-1]`. `1 <= P < Q <= 1000`. `1 <= W <= 10`.
+
+## Output
+
+For each telescope `i` (in order `0..T-1`):
+```
+k_i
+t_1 j_1
+...
+t_{k_i} j_{k_i}
+```
+`k_i` visits, each a (start tick, target index), listed in the order the
+telescope performs them.
+
+## Feasibility
+
+For every telescope: `0 <= k_i`; every `j` in `[0,M-1]`; every `t` in
+`[0,H-1]`; `t + o[j] <= H`; `t >= a[j]`; and each visit's start tick must
+equal exactly the arrival tick computed from the *previous* visit's end
+(or the parked start, for the first visit), per the rule above. Any
+violation scores the whole output `0`.
+
+## Objective
+
+Maximize the sum, over all targets, of the payout of its best-scoring
+cross-site pair (0 if no such pair exists among the observations actually
+made).
+
+## Scoring
+
+The checker independently finds every target with `a[j]=0` for which some
+telescope of site `0` and some telescope of site `1` are *already parked*
+exactly at `pos[j]` (assigning each such telescope to at most one such
+target), and sums their `v[j]`; call the sum `B` (`B` is always `>= 1`,
+since every test plants at least one such target, and it grows with the
+size of the instance). Let `F` be your total payout.
+`Ratio = min(1000, 100*F/B) / 1000`.
+
+## Constraints
+
+`2 <= T <= 40`, `1 <= M <= 320`, `20 <= H <= 400`, time limit 5 s, memory
+512 MB.
+
+## Example
+
+```
+3 2 50 5 8 10
+0 0 10
+1 0 10
+1 170 10
+0 0 40 2
+0 90 1000 3
+```
+
+`B = 40` (telescopes 0 and 1, different sites, both parked at azimuth `0`,
+target `0` appears there at tick 0). One valid output:
+
+```
+1
+0 0
+1
+0 0
+1
+8 1
+```
+
+Telescope 0 observes target 0 at tick 0 (`F += 40`, no decay). Telescope 1
+also observes target 0 at tick 0, from a different site, `|0-0|<=5`: this
+pairs, payout `40`. Telescope 2 slews from `170` to `90`
+(`ceil(80/10)=8`) and observes target 1 starting at tick `8` — alone, no
+payout yet. If instead telescope 0, after finishing target 0 at tick `2`,
+slews to `90` (`ceil(90/10)=9`, arriving tick `11`) and observes target 1
+there, telescope 0 (site 0) and telescope 2 (site 1) both observed target
+1, start ticks `8` and `11`, gap `3 <= 5`: pairs at the later tick `11`.
+Decaying `1000` by `0.8` eleven times (integer floor each step) gives `84`.
+Total `F = 40 + 84 = 124`, `Ratio = min(1000, 100*124/40)/1000 = 0.31`.

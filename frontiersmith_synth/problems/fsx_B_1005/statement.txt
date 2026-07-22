@@ -1,0 +1,93 @@
+# Dragon-Forge Radiator Sculpting
+
+## Problem
+In the dragon-forge, molten ore keeps a segment of the workshop's stone wall
+glowing hot. You may carve a connected radiator out of the wall's own rock to
+bleed that heat into the cold forge air before it warps the furnace. Rock is
+scarce: you may use at most `M` blocks. Where you put them decides how well
+the radiator works, because heat must physically **conduct** through the rock
+before it can escape into the air, and every choice trades two limited
+resources against each other: how much rock carries heat forward (its
+conductive cross-section) and how much rock face is exposed to the cold air
+(its shedding surface).
+
+The wall occupies row `0`; a contiguous band of `BW` wall blocks, columns
+`[BC, BC+BW-1]`, is fixed forever at the furnace temperature `T_HOT` (an
+infinite reservoir). You choose a set `S` of at most `M` grid blocks, each
+with row in `[1,H]` and column in `[0,W-1]`, forming **one** 4-directionally
+connected piece that is attached to the hot wall (some block of `S` sits at
+row `1` directly above a hot wall column). Every other face of every block in
+`S` -- one bordering an unused cell, the wall outside `[BC,BC+BW-1]`, or the
+grid boundary -- radiates into the surrounding ambient air, fixed at `T_AMB`.
+
+## Steady state
+Each carved block `i` settles at a temperature `T_i` found by relaxing the
+balance law: heat conducted in from neighbors equals heat radiated out
+through exposed faces. Concretely, repeatedly update every block (e.g. a few
+thousand sweeps in row-major order always suffices at this scale) toward
+```
+T_i <- [K_COND * sum_{j in ConductNbr(i)} T_j + K_LOSS * exposed(i) * T_AMB]
+       / [K_COND * |ConductNbr(i)| + K_LOSS * exposed(i)]
+```
+where `ConductNbr(i)` is the set of `i`'s (up to 4) orthogonal neighbors that
+are also in `S`, or the hot wall itself (fixed at `T_HOT`), and
+`exposed(i) = 4 - |ConductNbr(i)|` counts the remaining faces.
+
+## Input
+```
+H W M T_HOT T_AMB K_COND K_LOSS
+BW BC
+```
+All values are integers.
+
+## Output
+```
+K
+r_1 c_1
+...
+r_K c_K
+```
+`K` chosen blocks (`0<=K<=M`), each `1<=r_i<=H`, `0<=c_i<=W-1`, no duplicates.
+
+## Feasibility
+- `K<=M`; every block inside the grid; no duplicate blocks.
+- If `K>0`, the blocks form one 4-connected piece, and at least one block sits
+  at row `1` with column in `[BC,BC+BW-1]`.
+Any violation scores `0`.
+
+## Objective
+Maximize the total heat shed at steady state:
+`F = sum_{i in S} K_LOSS * exposed(i) * (T_i - T_AMB)`.
+
+## Scoring
+The checker also relaxes its own reference radiator -- the single cheapest
+feasible one: ONE block attached to the wall's center column -- to get a
+positive baseline `B`. Your ratio is `min(1000, 100*F/B) / 1000`, capped at
+`1.0`.
+
+## Constraints
+`4<=H,W<=34`, `1<=BW<=W`, `1<=M<=H*W` (up to `260`), `50<=T_HOT<=1800`,
+`0<=T_AMB<=80`, always `T_HOT >= T_AMB+50` (the wall is guaranteed to be
+meaningfully hotter than the air, so `B` is always strictly positive),
+`1<=K_COND,K_LOSS<=60`. Time limit: 4 s. Memory: 512 MB. Each `.in` file is
+well under 5 MB.
+
+## Example
+`H=5 W=5 M=5 T_HOT=300 T_AMB=0 K_COND=10 K_LOSS=4`, wall `BW=1 BC=2`. A single
+straight column `(1,2)(2,2)(3,2)(4,2)(5,2)` gives every block only ONE
+conductive channel back to the wall; relaxing the law shows the far blocks
+sit close to `T_AMB` and shed almost nothing. A short, wider stump using the
+same 5 blocks, e.g. `(1,1)(1,2)(1,3)(2,2)(3,2)`, keeps every block hotter and
+sheds substantially more total heat, because two extra blocks near the wall
+buy real conductive cross-section instead of one more increasingly-useless
+inch of reach.
+
+## Notes on strategy
+A one-block-wide dendrite maximizes exposed-face *count*, but it chokes
+conduction to a trickle a few rows out -- past that point the tip sits at
+`T_AMB` and sheds nothing no matter how much farther it reaches. A single fat
+block wastes rock keeping already-hot faces even hotter instead of reaching
+farther out where more surface is still available. The winning shapes taper:
+wide enough near the wall to carry the flux forward, narrowing further out
+once less heat remains to carry -- a profile set by the conduction-to-loss
+ratio `K_COND`/`K_LOSS` given in the input, not by perimeter alone.

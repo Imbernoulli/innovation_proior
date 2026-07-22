@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1018",
+  "tier": "A",
+  "format": "C",
+  "family": "quasi-stationary-casino",
+  "eval_form": "quality-metric",
+  "theme": "designing casino floor routes that keep gamblers inside longest",
+  "title": "Casino Floor Router: Surviving the Cashier",
+  "objective": "max",
+  "strategies": [
+    "trivial: reproduce the checker's own reference construction -- mostly dump discretionary flow onto the tempting shortcut/return doors toward the high-cashier feature stations, only a small trickle keeps each loop going (scores ~0.1)",
+    "greedy: hold every cashier door at its mandatory floor (don't over-leak), then split the remaining discretionary flow EVENLY between the loop-continue door and the shortcut/return door at every pit/station -- a sensible per-row rule with no view of the whole cycle structure",
+    "strong: exploit that the Perron value is a cycle geometric mean, not a per-pit sum -- commit ALL discretionary flow to the low-cashier corridor loop (leaving every shortcut/return door at its bare floor), so the interior graph's dominant cycle never has to pass through a high-cashier feature station",
+    "invalid: emits a feature-station row with the return/ring/cashier doors below their mandatory floors (scores 0)"
+  ]
+}

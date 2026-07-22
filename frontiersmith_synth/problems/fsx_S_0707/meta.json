@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0707",
+  "tier": "S",
+  "format": "D",
+  "family": "xor-slp-planted-factor",
+  "eval_form": "flops",
+  "theme": "rewire a leaked cipher layer with fewest XOR gates",
+  "title": "Leaked Cipher Layer: Minimal XOR Rewiring",
+  "objective": "minimize",
+  "strategies": [
+    "independent per-row XOR chain, no sharing (trivial, == checker baseline)",
+    "single-pass pairwise common-subexpression elimination over raw columns (greedy)",
+    "row-weight clustering + row-space-difference peeling of the planted rank-1 correction (strong)",
+    "true shortest linear program (open ceiling, uncovered -- provably minimal SLP synthesis is NP-hard in general)"
+  ]
+}

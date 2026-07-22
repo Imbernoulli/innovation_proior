@@ -1,0 +1,18 @@
+{
+  "id": "fsx_B_0982",
+  "tier": "B",
+  "format": "A",
+  "family": "seepage-fair-irrigation-web",
+  "eval_form": "quality-metric",
+  "theme": "oasis cooperative shares one spring",
+  "title": "The Oasis Cooperative's Fair Ditch Web",
+  "objective": "max",
+  "seed_problem": "single-source network flow to multiple sinks with edge loss",
+  "mutation": "composite: multiplicative per-segment conveyance loss coupled to a shared per-segment capacity and a global ditch-length budget, with the aggregation changed from total delivered water to the MINIMUM across fields (maximin) -- the optimal topology class flips from a length-minimizing shared tree to a set of near-independent, loss-equalized routes with deliberately unequal flow splits.",
+  "strategies": [
+    "trivial: fewest-hops route per field (BFS), flat D/F-ish split of min(D,CAP) across all fields regardless of their route's loss -- reproduces the checker's own baseline, Ratio ~= 0.1",
+    "greedy (the trap): build the LENGTH-shortest-path (Dijkstra by ditch length) route per field -- the 'minimize total network cost' instinct -- then group fields by their shared first branch out of the spring and split that branch's share equally, further equally among fields in the group. This starves fields whose only route is a long forced chain or a lossy short segment, since equal splitting and length-minimization both ignore each route's retention product",
+    "strong (the insight): compute each field's LOG-LOSS-shortest path (Dijkstra with edge weight -ln(retention)) -- the straightest route in the multiplicative-loss metric, not the shortest in ditch length -- prioritize building the worst-retention fields' routes first under the length budget, then solve a water-filling equalization (binary search on a common target moisture tau, X_f = tau/R_f) across every field's chosen path so that FINAL delivered amounts converge to the same value: the farthest field gets fed disproportionately MORE raw flow to compensate for its heavier compounding loss, inverting the naive 'give more to whoever is cheapest to serve' intuition",
+    "headroom above strong: also solve for genuinely redundant parallel branches out of the spring (rather than committing each field to a single path) to relieve segment-capacity bottlenecks that a single-path water-filling solution cannot see, and jointly optimize path choice and flow split instead of treating them as two separate passes"
+  ]
+}

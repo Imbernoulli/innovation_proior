@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0898",
+  "tier": "B",
+  "format": "B",
+  "family": "embargo-shock-ordering-policy",
+  "eval_form": "quality-metric",
+  "theme": "shopkeeper survives every embargo in the almanac",
+  "title": "Shopkeeper Survives Every Embargo in the Almanac",
+  "objective": "maximize",
+  "source_frameworks": ["wave2b-lens:adversarial-sweep-robustness"],
+  "strategies": [
+    "trivial: order-up-to a bare minimum (mean demand times lead time only, no safety margin, no hoarding ever) -- runs chronically thin even in calm timelines",
+    "naive greedy: textbook base-stock policy sized from the sample mean/std of the revealed demand series, with a standard safety margin, but NEVER hoards -- completely blind to the precursor signal and to embargoes; this is the evaluator's own BASE reference by construction",
+    "insight (strong): compute the base-stock target from the demand data as greedy does, but ALSO read the precursor signal's OWN distribution across every timeline in the instance to set a statistically-separated trigger (mean + k*std of the signal), size a hoard buffer from the demand data to cover a plausible shock duration, and hold that elevated target for several days after each trigger (cooldown) since the signal itself fades before the embargo ends -- funding the insurance by staying lean everywhere else",
+    "a general solver could go further: fit the precursor ramp shape and typical shock duration directly from how long each detected plateau lasts, or search over (trigger, hoard_target, cooldown) jointly against a resimulated proxy objective built only from the public demand/signal data"
+  ]
+}

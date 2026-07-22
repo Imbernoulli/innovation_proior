@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0864",
+  "tier": "B",
+  "format": "B",
+  "family": "solver-portfolio-allocator",
+  "eval_form": "quality-metric",
+  "theme": "Spend a compute budget across rival solvers",
+  "title": "Rival-Solver Portfolio: Schedule a Shared Step Budget Across Four Deterministic Solvers",
+  "objective": "max",
+  "strategies": [
+    "fixed default solver, even per-case share, case order (baseline recipe)",
+    "single globally-best-on-average solver, funded fully on every case in case order",
+    "per-case argmin solver (reads the feature interaction) funded in case order",
+    "per-case argmin solver, scheduled by ascending cost so the shared budget buys the most solved cases (exchange argument)"
+  ]
+}

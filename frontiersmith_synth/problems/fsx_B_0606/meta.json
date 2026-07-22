@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0606",
+  "tier": "B",
+  "format": "C",
+  "family": "residue-epoch-purge-sequencing",
+  "eval_form": "quality-metric",
+  "theme": "industrial paint line color changeovers",
+  "title": "Paint-Line Purge Sequencing: Co-Locating Full Cleans with Costly Changeovers",
+  "objective": "min",
+  "strategies": [
+    "clean before every job in id order: no changeovers, all startups (baseline)",
+    "ATSP nearest-neighbour tour over the changeover matrix with reactive cleaning only when the residue cap would overflow (the obvious approach; ignores clean placement)",
+    "fix any order, then place cleans by an exact O(N^2) epoch-partition DP so boundaries fall on expensive dark->light transitions",
+    "optimize the order against the epoch-DP objective via 2-opt local search seeded by nearest-neighbour tours (co-locate resets with the costliest changeovers)"
+  ]
+}

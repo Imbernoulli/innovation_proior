@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0712",
+  "tier": "A",
+  "format": "B",
+  "family": "barter-cycle-steward",
+  "eval_form": "quality-metric",
+  "theme": "seed-swap network for heirloom plants",
+  "title": "Seed-Swap Network: Heirloom Steward",
+  "objective": "maximize",
+  "source_frameworks": ["wave2b-lens:mechanism-and-incentives"],
+  "strategies": [
+    "weak baseline: immediate length-2-cycles ONLY, first-found, no hoarding (reproduces the evaluator's reference; ~0.1)",
+    "textbook greedy: immediate length-2 then length-3 cycles, every round, exhaustively -- but burns scarce Moon-and-Stars holders on the first reciprocal partner it meets",
+    "type-flow-aware steward: force-resolves gardeners at their last valid round, always prefers length-3 cycles over length-2, and computes global have/want imbalance per type to bank non-forced holders of oversubscribed types for a bigger cycle instead of the first available one",
+    "(invalid: wrong top-level JSON key -> structurally rejected, scores 0)"
+  ]
+}

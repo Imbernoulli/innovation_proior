@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0562",
+  "tier": "A",
+  "format": "E",
+  "family": "buckingham-pi-collapse",
+  "eval_form": "quality-metric",
+  "theme": "wind-tunnel drag notebooks with mixed units",
+  "title": "Wind-Tunnel Drag Law — recovering a dimensionally forced monomial x g(Re)",
+  "objective": "min",
+  "strategies": [
+    "trivial: predict a constant drag (geometric mean of the training F column), ignoring the inputs and their units -> reproduces the checker baseline ~0.1",
+    "greedy: generic symbolic regression -- fit one free power-law monomial F=k*rho^p1*V^p2*D^p3*mu^p4 by log-linear least squares. Fits the notebook, but rho and mu barely vary in training so their exponents are unidentifiable and pinned to noise; on the held-out different-fluid/different-scale grid those bogus exponents diverge",
+    "strong: exploit dimensional homogeneity. The declared units FORCE the force scale to the monomial rho*V^2*D^2 and leave exactly one dimensionless group Re=rho*V*D/mu, so F=rho*V^2*D^2*g(Re). Do not fit the exponents -- the units give them. Collapse the 4D data to (Re, Cd=F/(rho*V^2*D^2)) and fit the single 1D curve g(Re)~a0+a1*Re^-0.5; the exact prefactor extrapolates where greedy blows up",
+    "headroom above strong: add the a2*Re^-1 (and higher) corrections to g and refine the Reynolds curve jointly, pushing held-out error toward the sensor-noise floor"
+  ]
+}

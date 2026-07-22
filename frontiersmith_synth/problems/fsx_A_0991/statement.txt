@@ -1,0 +1,101 @@
+# Bolt and Braid: One Shop's Cutting Cards
+
+## Problem
+
+A tailoring shop keeps a master schema of `F` measurement components (collar
+depth, cuff width, ...), each with a fixed **card-width** (how much space it
+takes on a printed pattern card). This season's order book has `Q` fixed
+pattern orders; order `i` needs a specific subset of `m_i` (between 2 and 6)
+components and will be cut in a batch of `rows_i` garments.
+
+Before cutting, the shop prints **cutting cards**, each identified by an id.
+Every component is printed on exactly one **home** card. A card's *footprint*
+is the sum of the widths of every component printed on it. To cut a batch you
+pull, for each needed component, some card carrying it. Handing any card
+across the table costs a flat fee `K` — no matter how little of it the batch
+needs — PLUS a backing-cloth cost proportional to the batch size times that
+card's whole footprint (a big card that also carries components you don't
+need this batch still charges its whole footprint). You pay both once per
+DISTINCT card pulled, so printing one component per card to dodge footprint
+still racks up a fee for every card you then must pull.
+
+The shop's stencils are precious, so a component's guide may additionally be
+**braided** onto one extra card — a second, different home — but at most `R`
+components total may be braided this season. A braided component may be
+pulled from either of its two cards, whichever helps an order dodge an
+extra card.
+
+## Input
+
+```
+F Q P K R
+```
+then `F` lines, one per component `f` (1-indexed): `w_f`
+then `Q` lines, one per order `i`: `rows_i m_i c_1 c_2 ... c_{m_i}` (the
+`m_i` distinct component ids order `i` needs).
+
+## Output
+
+`2*F` integers (any whitespace layout), giving `home_f braid_f` for every
+component `f` in input order. `braid_f = 0` means no second copy; otherwise
+it is a second, different card id.
+
+## Feasibility
+
+* `1 <= home_f <= 1,000,000`; `braid_f = 0` or `1 <= braid_f <= 1,000,000` with
+  `braid_f != home_f`.
+* The number of components with `braid_f != 0` is at most `R`.
+* Exactly `2*F` integers, nothing trailing.
+
+Any violation scores `0`.
+
+## Objective
+
+For order `i`, a **cover** is a set of cards such that every needed
+component has at least one of its (one or two) hosting cards in the set. Its
+cost is
+```
+K * (number of cards in the cover) + ceil(rows_i * (sum of footprints of the cards in the cover) / P)
+```
+You are scored on the CHEAPEST cover available to each order (a braided
+component may be supplied from either of its two hosts, chosen per order).
+Minimize `F_total`, the sum of every order's cheapest-cover cost.
+
+## Scoring
+
+Let `B` be the cost of the do-nothing reference: every component on one
+single card, no braids (every order pays the fee `K` once plus that card's
+full footprint). Your score on a test is
+```
+ratio = min(1000, 100 * B / max(1, F_total)) / 1000
+```
+so the one-card plan scores `0.1`; roughly halving `F_total` doubles the
+ratio, capped at `1.0`. Per-test ratios are averaged over 10 tests.
+
+## Constraints
+
+* `1 <= F <= 220`, `1 <= Q <= 6000`, `1 <= P <= 20000`, `1 <= K <= 500`,
+  `0 <= R <= F`.
+* `1 <= w_f <= 500`; `1 <= rows_i <= 3000`; `2 <= m_i <= 6`; component ids
+  within an order are distinct.
+* Time limit: 4 s. Memory limit: 512 MB.
+
+## Example
+
+`F=3 Q=2 P=1000 K=5 R=1`. Widths: `w_1=60, w_2=40, w_3=5`. Orders:
+`(rows=100, {1,3})`, `(rows=100, {2,3})`.
+
+* One card for everything (footprint `105`): each order pays
+  `5+ceil(10500/1000)=16`, total `B = 32`.
+* One component per card (no footprint shared, but 2 fees per order): order 1
+  pays `10+6+1=17`, order 2 pays `10+4+1=15`, total `32` — the fee `K` erases
+  whatever splitting apart saved.
+* Group `{1,3}` on card A (footprint 65), `{2}` on card B (footprint 40):
+  order 1 pays `5+7=12`, but order 2 still needs both B and A for component 3,
+  `10+4+7=21`, total `33` — worse, since grouping helped one order and hurt
+  the other.
+* Braid component 3 onto card B (home card `{1}`, footprint 60; card `{2}`
+  gets a copy, footprint 45): order 1's cheapest cover is `{1}` alone
+  (`5+6=11`); order 2's is `{2}` alone (`5+5=10`). Total `22`, ratio
+  `100*32/22/1000 = 0.1455` — beating every plan above, because the braid
+  buys BOTH orders a one-card cover at once.

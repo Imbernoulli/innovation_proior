@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0872",
+  "tier": "A",
+  "format": "B",
+  "family": "mode-k-symmetry-breaking",
+  "eval_form": "quality-metric",
+  "theme": "break the disk into exactly k petals",
+  "title": "Petal Press: Dispersion-Tuned Disk Fission",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:morphogenesis-and-growth"],
+  "strategies": [
+    "identity/no-op kernel with zero bias: no spatial coupling at all, so the ring's final sign pattern tracks raw noise crossings -- essentially never lands on any specific target k (reproduces the evaluator's weak 'naive' reference)",
+    "generic local-averaging/diffusive kernel (positive weights decaying with offset) plus one strong localized bias bump spent on the full budget: solves the k=1 case outright (a diffusive kernel's dispersion relation always favors the lowest surviving wavenumber under the zero-mean dynamics) but cannot be steered to any other target k, however the single bump is aimed",
+    "dispersion-shaped kernel: set kernel taps to a cosine tuned to the target wavenumber, w_j = A*cos(2*pi*k*j/N), so the linear growth-rate curve (the kernel's own Fourier transform) peaks at m=k and that mode robustly outgrows all competitors across the hidden noise ensemble before the cubic term saturates it -- no bias injection needed",
+    "windowed / tap-budgeted refinements: taper the cosine kernel (e.g. a raised-cosine envelope) or trade off amplitude against the allowed number of taps to avoid overshoot instabilities while keeping the growth-rate peak sharp, squeezing out additional robustness within the same L_max, W_max, B budget"
+  ]
+}

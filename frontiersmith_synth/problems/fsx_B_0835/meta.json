@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0835",
+  "tier": "B",
+  "format": "D",
+  "family": "shared-prep-decision-program",
+  "eval_form": "flops",
+  "theme": "triage patients when lab tests share reagents",
+  "title": "Shared-Reagent Triage Program",
+  "objective": "min",
+  "strategies": [
+    "full non-adaptive scan (run every test on every patient, in the given order)",
+    "entropy-greedy adaptive decision tree (textbook ID3, blind to prep cost)",
+    "cost-aware exact search over (candidate set, prepared-instruction set)",
+    "invalid: single always-wrong leaf"
+  ]
+}

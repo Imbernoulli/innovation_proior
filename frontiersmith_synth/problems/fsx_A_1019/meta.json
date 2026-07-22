@@ -1,0 +1,15 @@
+{
+  "id": "fsx_A_1019",
+  "tier": "A",
+  "format": "C",
+  "family": "endowment-friction-bazaar",
+  "eval_form": "quality-metric",
+  "theme": "relief supplies distributed before market day",
+  "title": "Relief Bazaar: Endowments Before the Trading Rounds",
+  "objective": "max",
+  "strategies": [
+    "uniform/proportional split reference, no trading foresight",
+    "myopic per-household marginal-utility greedy: ignores the trade network and the geometric-mean objective entirely",
+    "community-aggregate water-filling: routes each good by aggregate community demand, then hands out an oblivious round-robin split within each community, trusting the friction-limited replay to polish it toward a good fixpoint for free"
+  ]
+}

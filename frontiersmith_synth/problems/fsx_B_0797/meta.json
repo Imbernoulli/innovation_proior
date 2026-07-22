@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0797",
+  "tier": "B",
+  "format": "C",
+  "family": "cross-domain-dictionary-pack",
+  "eval_form": "quality-metric",
+  "theme": "one compression dictionary for twelve unlike corpora",
+  "title": "Twelve Corpora, One Dictionary",
+  "objective": "maximize",
+  "strategies": [
+    "empty dictionary: ship no entries, every document stays fully literal (always feasible, ratio_doc == 1 everywhere)",
+    "global frequency greedy: rank all candidate substrings of the whole 12-document corpus by count*(length-1) and fill the budget top-down, ignoring which document each substring belongs to",
+    "worst-document water-filling: repeatedly find the currently worst-ratio document and spend the next budget unit on whichever substring gives it the best marginal ratio gain per budget character, bonus-weighted by how many other documents that substring also occurs in",
+    "domain-uniform quota: split the budget into 12 equal shares and greedily fill each document's private share independently, ignoring cross-domain reuse"
+  ]
+}

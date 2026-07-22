@@ -1,0 +1,15 @@
+{
+  "id": "fsx_S_1084",
+  "tier": "S",
+  "format": "C",
+  "family": "airtanker-isochrone-cut",
+  "eval_form": "quality-metric",
+  "theme": "water bombers containing a spreading wildfire",
+  "title": "Airtanker Isochrone Cut",
+  "objective": "min",
+  "strategies": [
+    "do-nothing baseline: no drops at all, fire burns everything reachable by the horizon",
+    "reactive frontier-chasing: sort cells by their unprotected ignition time and race each plane to whichever unprotected cell ignites soonest, refuelling on demand",
+    "isochrone-cut search: compute the deterministic fire-arrival-time map, then for each candidate cut time T check whether the fleet (accounting for travel time and single-slot-per-lake refill queueing) can fireproof the entire boundary ring of the T-ball before it ignites; keep the schedulable cut with the smallest burned interior, then mop up with any leftover capacity"
+  ]
+}

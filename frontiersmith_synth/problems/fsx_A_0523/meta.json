@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0523",
+  "tier": "A",
+  "format": "C",
+  "family": "sweet-spot-unit-loading",
+  "eval_form": "quality-metric",
+  "theme": "district boiler fleet meets a winter heat demand",
+  "title": "Sweet-Spot Boiler Fleet: Co-Optimized Commitment and Loading for Winter Heat",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:conversion-chain-systems"],
+  "strategies": [
+    "trivial: every boiler online for the whole horizon, demand split proportional to capacity (raised to pmin) -- reproduces the checker reference, wastes no-load fuel and never sits on the sweet spot",
+    "greedy priority list: commit once a cheapest static prefix that covers PEAK demand, keep it online all horizon, split demand proportionally -- saves the no-load of unlit boilers but runs the committed fleet cold at the shoulders and loads it off the sweet spot",
+    "strong: co-optimize commitment and loading -- size the online fleet so it sits near its ~70% sweet spot at the CURRENT demand (fewer boilers at the shoulders, more at the peak), light/de-light along the demand ramp so ramp limits are met for free, and dispatch by equal marginal cost",
+    "co-optimization with anticipation: pre-position boilers before a sharp demand ramp and hold a boiler online through a short trough when its min-down time would forbid a timely restart"
+  ]
+}

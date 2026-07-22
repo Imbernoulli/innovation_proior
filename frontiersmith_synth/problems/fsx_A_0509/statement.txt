@@ -1,0 +1,87 @@
+# Sawmill with One Dying Thin Blade
+
+## Problem
+
+Your sawmill must break a rectangular sheet `W x H` into pieces using only
+**guillotine cuts**: a straight cut runs edge-to-edge across a rectangle, splitting
+it into two smaller rectangles; you then cut those recursively. The full plan is a
+binary **cut tree** whose leaves are finished rectangles.
+
+You own two blades. The **thick** blade has kerf `T` and unlimited life. The **thin**
+blade has kerf `t < T` but is dying: the *total length of all thin cuts you make*
+may not exceed a wear budget `L`. Every cut, whichever blade, physically **removes a
+kerf-wide strip** of wood: a cut on a rectangle of width `w`, height `h` uses kerf
+`kerf` and leaves two children whose sizes along the cut axis sum to `(axis - kerf)`.
+Because each cut eats a strip, the wood a plan wastes depends on the **shape of the
+cut tree**, not just on what you keep.
+
+You are given `D` demanded rectangles, each with a size `w_i x h_i` and a value
+`v_i`. A leaf of your tree **realizes** demand `i` (collecting `v_i`, once) exactly
+when that leaf's rectangle equals `w_i x h_i`. Maximize the total value realized.
+
+## Input
+
+```
+W H T t L D
+```
+then `D` lines, demand `i` (1-based, in input order):
+```
+w_i h_i v_i
+```
+
+## Output
+
+Print the cut tree in **pre-order** as a stream of integers. For the current
+rectangle (the root is the whole sheet `W x H`):
+
+* **Leaf:** `0 d`. `d = 0` marks waste; `d` in `[1, D]` claims demand `d` (its
+  rectangle must equal the leaf exactly). Each demand may be claimed at most once.
+* **Cut:** `1 o b a`, then the two children in pre-order (first child, then second).
+  `o = 0` vertical, `o = 1` horizontal. `b = 0` thick blade, `b = 1` thin blade;
+  let `kerf = T` if `b = 0` else `t`. `a` is the size of the **first** child along
+  the cut axis.
+  * vertical on `(w,h)`: child1 `= (a, h)`, child2 `= (w - kerf - a, h)`.
+  * horizontal on `(w,h)`: child1 `= (w, a)`, child2 `= (w, h - kerf - a)`.
+
+  You must have `a >= 1` and `(axis - kerf - a) >= 1`. A **thin** cut adds its
+  length to your wear total: a vertical cut costs `h`, a horizontal cut costs `w`.
+
+## Feasibility
+
+Every cut must respect the size rules above; the sum of all thin-cut lengths must be
+`<= L`; each demand is claimed at most once; and the token stream must describe
+exactly one complete tree with no trailing tokens. Any violation scores `0`. Printing
+just `0 0` (the whole sheet as waste) is feasible but realizes nothing.
+
+## Objective
+
+Maximize `F` = the sum of values of the demands your leaves realize.
+
+## Scoring
+
+Let `B` be the value of a fixed **thick-only** reference: group demands of equal
+height into shelves, and in each shelf place pieces widest-first with the thick blade
+(reserving kerf `T` per piece). Your score for a test is
+```
+ratio = min(1000, 100 * F / max(1, B)) / 1000
+```
+so the thick-only plan scores `0.1` and any real improvement scores higher, capped at
+`1.0` (ten times the reference). Per-test ratios are averaged.
+
+## Constraints
+
+* `200 <= W <= 6000`, `H` up to about `20000`.
+* `2 <= T <= 6`, `t = 1`, `1 <= L`.
+* `1 <= D <= 300`; `1 <= w_i < W`, `1 <= h_i < H`, `1 <= v_i`.
+* Time limit: 3 s. Memory limit: 512 MB.
+
+## Example
+
+Sheet width `44`, `T = 5`, `t = 1`, budget `L = 20`, two shelves. A shelf of height
+`10` holds a wide base `34 x 10` (value 25) and a narrow bonus `7 x 10` (value 300);
+the base alone fits with the thick blade, but the bonus fits beside it only if both
+vertical cuts use the thin blade (`34 + 7 + 2*1 = 43 <= 44`, whereas
+`34 + 7 + 2*5 = 51 > 44` would overflow). Upgrading that shelf costs `2*10 = 20` of
+wear. With one high-value shelf and one bulky low-value shelf competing for the same
+`L`, spending the budget on the piece with the best **value per unit of thin
+cut-length** beats grabbing the single most valuable piece.

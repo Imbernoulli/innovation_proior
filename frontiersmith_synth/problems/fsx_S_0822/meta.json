@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0822",
+  "tier": "S",
+  "format": "B",
+  "family": "evodevo-grn-knockout",
+  "eval_form": "quality-metric",
+  "theme": "a body plan that survives losing a gene",
+  "title": "The Gene You Can Lose",
+  "objective": "maximize",
+  "source_frameworks": ["wave2b-lens:morphogenesis-and-growth"],
+  "strategies": [
+    "mode-guess baseline: ignore position and knockouts entirely, always output the single most common target type (reproduces the evaluator's weak reference)",
+    "direct positional address: one gene per positional bit mirroring that bit exactly, with a lookup table fit to reproduce the wild-type target perfectly -- exact but has zero redundancy, so any single-gene knockout silently relabels roughly half the body to a different position's identity",
+    "duplicated / paralog encoding: every positional bit is mirrored onto TWO genes (paralogs); losing either twin still leaves the bit legible via its sibling, so the full positional address -- and hence the target match -- survives every single-gene knockout with no information loss",
+    "seeded local search over regulatory weights/decode tables to trade off wild-type fit against redundancy under a fixed gene budget"
+  ]
+}

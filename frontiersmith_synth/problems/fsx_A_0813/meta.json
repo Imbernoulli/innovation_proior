@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0813",
+  "tier": "A",
+  "format": "E",
+  "family": "rounded-ledger-dynamics",
+  "eval_form": "quality-metric",
+  "theme": "medieval bank ledger, exact to the coin",
+  "title": "The Guild Ledger — Recovering an Exact Compounding Rule from Rounded Coins",
+  "objective": "min",
+  "strategies": [
+    "trivial: submit (p=0, q=1, fee=0, theta=0) -- the 'nothing changes' rollout -- reproduces the checker's own flat baseline exactly (Ratio = 0.1)",
+    "greedy: estimate r as the mean of (b[t+1]-b[t])/b[t] over non-month-end days pooled across all accounts, round it to the nearest 1/1000 (a plausible-looking decimal rate), then estimate fee as the mean month-end shortfall vs. that rounded rate's prediction and theta as the mean month-start balance of months with a shortfall -- a reasonable curve-fit that matches training data to within a coin or two, but since the true denominator q rarely divides 1000 evenly, floor()'s boundary-crossing sensitivity makes the rounded rate's predictions silently drift by hundreds to tens of thousands of coins once rolled 300 days into fresh, unseen starting balances -- and the crude threshold/fee estimates further mis-classify which future months get fee'd",
+    "strong: exploit that each safe (non-month-end) observation (b[t], b[t+1]) pins r into the exact half-open interval [(b[t+1]-b[t])/b[t], (b[t+1]-b[t]+1)/b[t]); intersecting this interval across every safe day of every pooled account and taking the SIMPLEST fraction inside it (a Stern-Brocot / continued-fraction search) recovers the exact rational r = p/q -- the rounding 'residue' pattern is not noise, it is r written in disguise. With r exact, every month-end shortfall (grown_exact - b[t+1]) is EITHER exactly 0 or exactly the true fee, so the fee is read off directly and the poverty line theta is pinned to any integer strictly between the largest fee-triggering month-start balance and the smallest non-triggering one -- the recovered rule then matches the true rollout exactly for every future day, at every scale",
+    "headroom above strong: a policy that also certifies theta's exact boundary (not just a consistent interior point) against adversarially-placed month-start balances, or that recovers r from fewer pooled accounts via a tighter interval-narrowing schedule, would need no additional headroom on THIS metric (F already hits 0) -- true headroom lies in generalizing the interval-intersection idea to noisy/adversarial ledgers, which this deterministic instance does not exercise"
+  ]
+}

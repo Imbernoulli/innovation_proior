@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0633",
+  "tier": "A",
+  "format": "C",
+  "family": "change-ringing-blueline",
+  "eval_form": "quality-metric",
+  "theme": "composing a musical bell-ringing touch",
+  "title": "Composing a Musical Touch (Change-Ringing Blueline)",
+  "objective": "max",
+  "strategies": [
+    "trivial: the smallest possible valid touch (single out-and-back swap)",
+    "greedy: nearest-neighbor BFS visit of musical rows one at a time, ignoring the reflection structure -- can strand itself (fail to close true) when targets are spread out",
+    "strong: route only a HALF-length touch from rounds to the reverse row (the unique adjacency-preserving involution), then mirror the calls (index j -> n-j) to close automatically; a beam search chases musical rows valuing both a row and its automatic mirror image, so every hit near the pivot is worth double",
+    "invalid: garbage output that violates closure and trueness"
+  ]
+}

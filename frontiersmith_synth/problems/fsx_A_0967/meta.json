@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0967",
+  "tier": "A",
+  "format": "A",
+  "family": "tile-compress-fault-loom",
+  "eval_form": "quality-metric",
+  "theme": "weaver folding a tapestry to fit a narrow chest",
+  "seed_problem": "novel composite (no single classic seed): cache/tile-fault minimization under a byte-capacity LRU replay",
+  "mutation": "composite: instead of choosing only a memory layout, the solver jointly chooses (a) a rectangular row/col-cut tiling of the tapestry (space-filling-tile-layout) and (b) a per-tile compression level capped by the weakest-entropy cell inside that tile (per-tile-compression-choice); a fixed access trace is replayed through a byte-capacity LRU whose fault cost is the tile's own compressed footprint (capacity-fault-coupling), so compressing one region's tile only pays off by freeing bytes that let a DIFFERENT region's tile stay resident -- a cross-region externality invisible to any purely per-tile decision rule.",
+  "objective": "min",
+  "title": "The Narrow Chest",
+  "strategies": [
+    "trivial: fixed 16x16 uniform grid tiling, level 0 everywhere (no compression) -- the checker's own baseline, ignores entropy and trace entirely",
+    "greedy: same fixed 16x16 uniform grid tiling (the space-filling reflex), but per tile picks the locally-maximal compression level its own weakest cell allows -- correct per-tile logic, blind to tile SHAPE, so on tests where low-entropy patches are planted straddling the 16-line grid, most tiles get dragged down to level 0 anyway and the cache still thrashes",
+    "insight (strong): detect the entropy grid's true rectangular boundaries directly (a row/col is a cut iff it differs from its neighbor), so every tile ends up exactly homogeneous -- this isolates each low-entropy patch into its own small tile and lets every background tile compress to the maximum level, freeing enough byte-capacity for hot regions elsewhere to stay resident under LRU replay, which is exactly the cross-region externality per-tile reasoning cannot see"
+  ]
+}

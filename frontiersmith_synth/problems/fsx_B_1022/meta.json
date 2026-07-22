@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_1022",
+  "tier": "B",
+  "format": "C",
+  "family": "regatta-wake-fanout",
+  "eval_form": "quality-metric",
+  "theme": "sailing fleet racing through gates in churned water",
+  "title": "Regatta Wake Fanout",
+  "objective": "min",
+  "strategies": [
+    "single shared racing line, unsorted gate order, tick-0 launch (naive baseline, ~0.1)",
+    "per-boat shortest path to a fixed mark, still tick-0 launch for the whole fleet -- efficient alone, but the fleet still fully converges onto one lane (trap)",
+    "mean-field reformulation: schedule boats one at a time, replaying the shared wake field to pick each boat's own (lane, departure-tick) pair against the fleet already committed -- exploits lane spreading where the band has room and phase staggering beyond the decay window where a lane must be shared"
+  ]
+}

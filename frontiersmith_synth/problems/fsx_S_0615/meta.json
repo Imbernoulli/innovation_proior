@@ -1,0 +1,19 @@
+{
+  "id": "fsx_S_0615",
+  "tier": "S",
+  "format": "B",
+  "family": "latency-headroom-admission",
+  "eval_form": "quality-metric",
+  "theme": "admission control for a shared compute cluster",
+  "title": "Headroom Gate: Admission Control for a Shared Compute Cluster Under Self-Inflicted Congestion",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:topup-B-2"],
+  "mechanisms": ["queue-latency-buildup-feedback", "sla-deadline-penalty-ramp"],
+  "innovation_hook": "Reserve latency headroom by refusing marginal jobs whose admission would push the queue tail past the deadlines of premium jobs known to arrive soon.",
+  "strategies": [
+    "admit-nothing baseline: drop every job; the server idles, no value and no penalty, J=0 (reproduces the evaluator's do-nothing reference, ~0.1)",
+    "admit-all recipe (the trap): every job has positive value so 'admit anything positive' takes them all; on an uncongested stream this banks all the value, but when a burst of small low-value jobs precedes a tight-deadline premium job the burst busies the single FIFO server, the premium job starts late and is BOTH forfeited (no value) and charged the ramped SLA penalty",
+    "value-first headroom reservation (the insight): the whole arrival stream is public, so reformulate admission as subset selection on the FIFO-by-arrival server; consider jobs in value order and admit one only if EVERY already-selected job still finishes on time, so premium jobs claim the server's headroom first and a marginal low-value job is refused exactly when its size would push the FIFO tail past a premium deadline",
+    "optimal weighted on-time scheduler: additionally solve the twin-premium / mixed-congestion trade-off exactly (which jobs to sacrifice so the highest-value on-time set is served), since value-greedy selection is not optimal for weighted 1||sum w_j U_j and leaves score headroom above the strong solution"
+  ]
+}

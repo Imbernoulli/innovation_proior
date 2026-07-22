@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0641",
+  "tier": "A",
+  "family": "character-decorrelated-permutation",
+  "seed_problem": "fsx_A_0641 seed spec (wave2b-lens:algebra-and-residues)",
+  "mutation": "composite: replace 'output any decorrelated permutation' with a worst-channel-min-max\n objective over an input-given per-channel spy-strength weighting, and replace the\n textbook 'pick a nice permutation' goal with an explicit log-scaled relative-improvement\n score against a provably-worst do-nothing baseline (any pure shift).",
+  "objective": "min",
+  "theme": "shuffle a codebook so residue spies learn nothing",
+  "title": "Codebook Shuffle Against Residue Spies",
+  "strategies": [
+    "do-nothing shift (identity/translation): every channel leaks at its absolute maximum -- the checker's own worst-case baseline",
+    "randomized local search with naive from-scratch rescoring: swap-based hill climbing that must re-balance ~p simultaneous worst-channel constraints; O(p^2) per rescoring pass caps iterations hard at large p, plateauing near a sqrt(p)-scale statistical floor",
+    "closed-form monomial-map search: try sigma(x) = x^k mod p over a small set of k coprime to p-1, using chi(x^k) = chi(x)^k structure so every channel decorrelates simultaneously; pick the k with smallest worst-channel leak via cheap O(p^2) evaluation per candidate",
+    "monomial search with wider parameter sweep / affine dressing (a*x^k+b) and per-test tuning of the candidate list -- headroom above the reference strong solution"
+  ]
+}

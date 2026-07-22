@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0914",
+  "tier": "A",
+  "format": "B",
+  "family": "dilution-wheel-lot-sizing",
+  "eval_form": "quality-metric",
+  "theme": "glass furnace product wheel across demand streams",
+  "title": "Glass Furnace Product Wheel: Dilution-Routed Changeovers",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:state-coupled-scheduling"],
+  "strategies": [
+    "naive fixed-order wheel: visit every colour once in the given input order, size each lot to a generic demand share of a guessed cycle length (ignores routing and true cycle time entirely)",
+    "fixed-matrix nearest-neighbour recipe: compute the direct dilution changeover cost for every ordered colour pair once, build a single-visit wheel greedily by nearest-neighbour on that matrix, size lots with a self-consistent EOQ-style fixed point -- never questions whether a colour should be produced more than once",
+    "shortest-path-informed local search: compute the all-pairs shortest path over the direct dilution-cost graph (Floyd-Warshall) to expose non-additive shortcuts, seed several nearest-neighbour tours on that effective graph, refine with 2-opt and single-colour relocation scored on the TRUE lot-sized total-cost objective, then selectively expand tour edges into their real shortest paths (inserting genuine extra campaigns for catalyst colours) only when it demonstrably lowers total cost",
+    "stronger metaheuristics: simulated annealing / large-neighbourhood search over the joint (order, repeat-count, lot-size) space, or an exact small-K dynamic program over subsets with an explicit revisit budget"
+  ]
+}

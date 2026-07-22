@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0747",
+  "tier": "B",
+  "format": "B",
+  "family": "fatigue-balanced-routing",
+  "eval_form": "quality-metric",
+  "theme": "job routing across an aging machine fleet",
+  "title": "Wear Before the Rush: Fatigue-Budgeted Fleet Routing",
+  "objective": "max",
+  "strategies": [
+    "trivial: route every job to unit 0, ignoring capacity/fatigue/repair entirely -- constant, low throughput",
+    "greedy (throughput-first): every tick, pack jobs into units in decreasing-capacity order (fastest available unit first); never looks at fatigue or the hazard cliff, so the fast unit is driven hard continuously and is worn down or mid-repair right when the seeded demand surge needs it",
+    "strong (insight): order units by capacity ASCENDING instead -- route routine load to the least-capable available unit first, spilling over only when it is unavailable/saturated. This keeps the high-capacity, high-fatigue-rate unit nearly idle (banking fatigue headroom via recovery) through the quiet part of the horizon, so it enters the surge close to fully rested and can absorb several surge ticks before approaching its cliff -- a genuine reformulation (the exact reverse priority order), not greedy-plus-lookahead",
+    "beyond strong: explicit surge-window detection from the job-arrival density (rather than a fixed priority order) to decide, tick by tick, exactly how much fatigue budget each unit should spend now vs. reserve, and stagger which unit spends reserve budget first during the surge so multiple units don't cross their cliffs in lockstep"
+  ]
+}

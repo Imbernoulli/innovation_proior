@@ -1,0 +1,91 @@
+# Title
+Rotating Star Vertex: Symmetric Crease Selection
+
+# Problem
+A flat sheet folds flat around a single central vertex `O` with exact `k`-fold
+rotational symmetry about `O` (rotating the pattern by `360/k` degrees maps it
+onto itself). The circle around `O` splits into `k` equal *sectors* of width
+`360/k`; each sector boundary carries a mandatory *spoke* crease. Whatever
+interior creases you add inside one representative sector are automatically
+replicated, unchanged, into every other sector (the group orbit).
+
+Each sector is discretized into `S` equal angular *slots* `0..S-1` (slot `0`
+is the spoke). Legal interior creases sit at slots `1..S-1`. Choose at most
+`mmax` interior slots (the same set in every sector), then assign a Mountain
+(`M`) or Valley (`V`) fold to *every* individual crease around the full vertex
+(labels need not repeat the `k`-fold symmetry — only the geometry must).
+
+A crease pattern around a single vertex is flat-foldable only if it satisfies, at
+`O`, over the FULL set of `d` creases going all the way around:
+- **Maekawa's theorem**: `|#M - #V| = 2`.
+- **Kawasaki's theorem**: label the consecutive angular gaps between creases
+  `g_0, g_1, ..., g_{d-1}` in cyclic order starting from the spoke of sector 0;
+  then `g_0+g_2+g_4+... = g_1+g_3+g_5+...` (the alternating sum condition).
+
+Any output violating either condition is infeasible and scores 0.
+
+# Input
+```
+k S mmax beta1000 gamma1000
+v_1 v_2 ... v_{S-1}
+```
+`2<=k<=24`, `S` even, `6<=S<=60`, `1<=mmax<=S-1`, `beta1000,gamma1000` are the
+scoring coefficients `beta=beta1000/1000`, `gamma=gamma1000/1000` (both positive).
+`v_j` (`0<=v_j<=30`) is the value of placing an interior crease at slot `j` of the
+representative sector.
+
+# Output
+```
+extra
+r_1 r_2 ... r_extra
+label_1 label_2 ... label_d
+```
+`0<=extra<=mmax`; `r_1<...<r_extra` are the chosen interior slots (each in
+`[1,S-1]`), the same set used in every sector. `d = k*(extra+1)`. The `d` labels
+(`M`/`V`) are given in cyclic angular order starting at sector 0's spoke, then
+sector 0's interior creases (increasing slot), then sector 1's spoke, its interior
+creases, ..., ending with sector `k-1`'s interior creases.
+
+# Feasibility
+`extra<=mmax`, slots distinct/increasing/in range, exactly `d` labels each `M`/`V`,
+Maekawa and Kawasaki both hold exactly (integer/exact arithmetic — slot positions
+are exact angular units, no rounding).
+
+# Objective
+Maximize a score built from three ingredients that all involve the full `d`-crease
+vertex, not just one sector:
+- **Value**: `k * (sum of v_{r_i} over the chosen interior slots)` — the orbit
+  replicates every chosen slot's value `k` times.
+- **Transitions**: the number of cyclically-adjacent crease pairs around `O` whose
+  labels differ (rewards mountain/valley variety subject to Maekawa).
+- **Entropy**: the Shannon entropy (natural log) of the normalized gap sequence
+  `g_i / (k*S)` (rewards a well-spread, not lopsided, set of gaps).
+
+`F = Value + beta*Transitions + gamma*Entropy`.
+
+# Scoring
+The checker also builds its own naive reference vertex, independent of your
+output, to get a baseline value `B` (always positive), using the SAME `F`
+formula above. It never looks at `v`: take `t = mmax/2` (integer division);
+if `k` is even, use the largest even count `<=t` and fill it with slots
+`1,2,...,count` in plain index order; if `k` is odd, use the largest odd
+count `<=t` (at least 1) as `2*p+1` and fill it with the sector midpoint
+`S/2` plus the `p` lowest-index mirror pairs `(1,S-1), (2,S-2), ...`; if
+that count would be `0`, fall back to just the midpoint slot alone. Its `d`
+labels are the same alternating `M,V,M,V,...` pattern with the last label
+flipped to `M` that the Example below uses. Your score is
+`min(1000, 100*F/B) / 1000`, i.e. ratio 1.0 caps at 10x this baseline;
+beating it requires more than just picking more/better-valued slots.
+
+# Constraints
+Time limit: 3s. Memory limit: 512MB.
+
+# Example
+`k=2 S=6 mmax=1`, `beta=1.0 gamma=1.0`, `v=[3,5,4,3,2]` (slots 1..5).
+Output `extra=1`, slot `3` (the midpoint, so `d=4` creases, gaps `[3,3,3,3]`,
+Kawasaki holds), labels `M V M M` (`#M=3,#V=1`, `|3-1|=2` OK; 2 transitions
+around the cycle `M,V,M,M`: at positions (0,1) and (1,2)). `Value=2*4=8`,
+`beta*Transitions=1*2=2`, gaps all equal `3/12=0.25` so
+`Entropy=-4*0.25*ln(0.25)=1.386`. `F=8+2+1.386=11.386`. Here `mmax=1` is too
+small for the naive baseline to use more than one slot, so it also lands on
+the midpoint and `B=11.386`, giving ratio `100*F/B/1000=0.1` for this output.

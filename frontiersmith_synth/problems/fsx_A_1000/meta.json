@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_1000",
+  "tier": "A",
+  "format": "A",
+  "family": "lmsr-liquidity-allocator",
+  "eval_form": "quality-metric",
+  "seed_problem": "allocate a market-maker liquidity/subsidy budget across independent binary prediction markets to maximize resolved forecast accuracy net of subsidy cost",
+  "mutation": "composite: goal is a continuous resource-allocation optimization (not a single market's decision problem), and the input generalizes each market into a printed, order-dependent trader-budget replay sequence (budgeted-belief-trading-replay) whose closed-form marginal value in beta is only discoverable by simulation, coupled to a disagreement-targeting side-constraint (agreeing crowds need ~0 liquidity, disagreeing well-funded factions need a precisely sized liquidity) and a market-scoring-rule-subsidy penalty term that is itself a nonlinear (path-dependent, sometimes negative) function of beta.",
+  "objective": "max",
+  "theme": "guild forecast tournament across one hundred questions",
+  "title": "Guild Forecast Tournament: Liquidity Allocation Under the Market-Scoring Rule",
+  "strategies": [
+    "trivial: split the total liquidity budget B uniformly across all 100 questions (beta_q=B/N) -- reproduces the checker's internal baseline construction",
+    "naive greedy: allocate beta_q in proportion to the number of traders M_q who show up at each stall (more traffic -> more liquidity) -- piles liquidity onto high-traffic questions even when their traders already agree and self-converge for free, while starving the low-traffic questions whose two or three well-funded, disagreeing factions actually need a carefully sized beta to resolve correctly",
+    "insight (strong): for each question, replay the printed trader sequence at a discretized grid of candidate beta values (closed-form, deterministic) to build that question's exact, possibly non-concave value-vs-beta curve; then solve a multiple-choice-knapsack (DP over discretized liquidity units, one grid point chosen per question, subject to sum<=B) across all 100 curves simultaneously -- this both discovers each question's true marginal value of liquidity (not just its traffic) and correctly handles curves with more than one local optimum that a monotone/water-filling search would get stuck in",
+    "possible further improvement: refine the per-question grid adaptively (finer sampling near a DP-selected point) and warm-start a local re-optimization pass that reshuffles a few discretization units between neighboring questions to recover resolution lost to coarse discretization"
+  ]
+}

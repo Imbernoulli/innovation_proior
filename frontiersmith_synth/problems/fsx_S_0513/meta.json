@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0513",
+  "tier": "S",
+  "format": "C",
+  "family": "braess-pruning-equilibrium",
+  "eval_form": "quality-metric",
+  "theme": "Toll-free city removes roads to cut jams",
+  "title": "Roadwork: Cutting Streets to Un-jam a Selfish City",
+  "objective": "min",
+  "strategies": [
+    "trivial: keep only the free-flow shortest path and push all demand down it (ignores congestion; reproduces the single-path baseline)",
+    "greedy: keep the whole network and let the Wardrop equilibrium sort it out (walks into every Braess trap)",
+    "strong: equilibrium-aware edge deletion -- prune any edge whose removal strictly lowers the computed equilibrium travel time, exploiting non-monotonicity of equilibrium latency in the edge set",
+    "beyond-strong (open): combinatorial / global search over kept edge subsets, since single-edge local pruning is not optimal"
+  ]
+}

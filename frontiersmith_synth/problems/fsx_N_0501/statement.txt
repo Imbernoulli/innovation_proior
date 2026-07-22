@@ -1,0 +1,137 @@
+# Stormband Relay: Modular Emergency Radio Backbone
+
+## Problem
+
+After a regional storm, an emergency operations center must lease radio relay links
+between field stations. Each candidate link has a construction cost, a time window
+when it is usable, and a frequency drift. A selected set of links is installed for
+the whole incident, but in each time slot only links whose windows contain that slot
+can carry traffic.
+
+The cheapest fallback network is not enough. Its links are connected, but their
+path frequencies line up with the storm's interference band. You must choose a
+connected static relay subgraph that balances extra link cost against fewer
+time-windowed outages and fewer modular resonance penalties.
+
+## Input
+
+The first line contains four integers `N M T P`: the number of stations, candidate
+links, time slots, and the residue modulus.
+
+The second line contains two integers `O R`: the outage penalty multiplier and the
+resonance penalty multiplier.
+
+The third line contains `N` integers `w_1, ..., w_N`, the importance of each
+station. Station `1` is headquarters.
+
+The fourth line contains `T` integers `h_0, ..., h_{T-1}`. In time slot `t`, residues
+`h_t` and `(h_t + 1) mod P` are forbidden by storm interference.
+
+Each of the next `M` lines describes one undirected candidate link:
+
+`u v c l r a b`
+
+The link joins stations `u` and `v`, costs `c`, is active exactly for integer slots
+`l <= t <= r`, and contributes residue `(a + b*t) mod P` whenever it is traversed in
+slot `t`.
+
+The first `N-1` links are guaranteed to connect station `1` to every other station;
+they are the fallback tree used by the judge's baseline. Parallel links may appear
+and are distinct choices.
+
+## Output
+
+Print an integer `q`, the number of selected links, followed by `q` distinct link
+indices in any whitespace-separated format. Link indices are 1-based in input order.
+
+## Feasibility
+
+The selected links must form a connected graph on all `N` stations when link time
+windows are ignored. All printed link indices must be in range and distinct. A
+disconnected or malformed output is infeasible.
+
+## Objective
+
+For a selected subgraph `S`, the construction cost is the sum of costs of links in
+`S`.
+
+For every time slot `t`, consider only selected links active at `t`. A station `v`
+has a reachable residue `x` if there is an active relay route from headquarters
+`1` to `v` whose link residues sum to `x mod P`. Routes may revisit field
+stations, but headquarters is a source only and may not be re-entered after the
+route leaves station `1`.
+
+For every station `v != 1` and time `t`:
+
+* if no residue is reachable, add outage penalty `O * w_v`;
+* otherwise, if every reachable residue is forbidden, add resonance penalty `R * w_v`;
+* otherwise, add no penalty for that station and time.
+
+Minimize:
+
+`construction cost + all outage penalties + all resonance penalties`.
+
+## Scoring
+
+The checker computes `B`, the objective value of the guaranteed fallback tree
+formed by links `1..N-1`, and your feasible objective value `F`. Your score ratio is
+
+`min(1000, 100 * B / max(1, F)) / 1000`.
+
+The fallback tree therefore scores about `0.1`; a solution ten times better than
+the fallback reaches the cap.
+
+## Constraints
+
+`2 <= N <= 350`
+
+`N-1 <= M <= 2800`
+
+`1 <= T <= 50`
+
+`7 <= P <= 31`
+
+`1 <= O, R <= 500`
+
+`1 <= w_i <= 80`
+
+`1 <= c <= 5000`
+
+`0 <= l <= r < T`
+
+`0 <= a, b < P`
+
+Time limit: 5s
+
+Memory limit: 512m
+
+## Example
+
+Input:
+
+```text
+3 4 3 5
+100 30
+1 1 2
+0 1 2
+1 2 1 0 2 0 1
+1 3 1 0 2 0 1
+1 2 5 0 2 2 1
+2 3 3 0 2 0 0
+```
+
+Output:
+
+```text
+2
+3 4
+```
+
+Links `1` and `2` are the fallback tree. In every time slot their path residue is
+exactly `h_t`, so stations `2` and `3` both pay resonance penalties. Its objective
+is `2 + 3 * 30 * (1 + 2) = 272`, so `B = 272`.
+
+The sample output selects links `3` and `4`, which form the static path
+`1 - 2 - 3`. In every slot, station `2` has residue `h_t + 2`, and station `3` has
+the same residue because link `4` contributes zero. No residue is forbidden, so the
+objective is only `5 + 3 = 8`, and the score ratio is capped at `1.0`.

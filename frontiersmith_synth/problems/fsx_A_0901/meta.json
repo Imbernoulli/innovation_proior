@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0901",
+  "tier": "A",
+  "format": "E",
+  "family": "windup-controller-recovery",
+  "eval_form": "quality-metric",
+  "theme": "autopilot black box with a lazy throttle",
+  "title": "Lazy-Throttle Autopilot — recovering a saturating altitude-hold law",
+  "objective": "min",
+  "strategies": [
+    "trivial: plain-proportional throttle law u=Kp0*e fit from the calm log, no memory -> reproduces the checker's own baseline (~0.1)",
+    "greedy: recognise the PI structure and fit an UNCLAMPED linear law u=Kp*e+Ki*I by least squares; near-perfect on the never-saturating calm log, but on the stormy held-out flight the unmodelled authority limit lets the integral register run away, and the resulting windup blows the rollout off the true trajectory on the large-step cases",
+    "strong: notice the calm log's (e,I)->u map already carries a faint third-order (tanh) curvature; commit to the structurally right family u=Umax*tanh((Kp*e+Ki*I)/Umax), recover Umax by a 1-D profile search (each candidate Umax reduces to a closed-form linear fit via the atanh transform) -- generalises to the stormy flight where the throttle's real authority limit and its windup dominate",
+    "headroom above strong: jointly refine (Kp,Ki,Umax) with a proper nonlinear optimiser over BOTH the calm-log fit and cross-validated held-out-shape residuals, and model the measurement-noise floor explicitly to push the recovered law closer to the true one"
+  ]
+}

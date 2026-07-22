@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0530",
+  "tier": "A",
+  "format": "A",
+  "family": "staged-firebreak-forecaster",
+  "eval_form": "quality-metric",
+  "theme": "Cut firebreaks ahead of a spreading blaze",
+  "title": "Firebreaks Ahead of the Blaze",
+  "objective": "max",
+  "seed_problem": "Firefighter problem on a weighted graph with a per-timestep protection budget",
+  "mutation": "composite: the fire front is deliberately wider than the budget (defending the frontier is impossible), and value is hidden behind narrow multi-vertex gateways at varying depths; sealing a gateway of size g > B takes ceil(g/B) steps of lead, turning the objective into a value-weighted deadline-scheduling problem over which distant cut-sets to pre-commit budget to before the deterministic cascade arrives.",
+  "strategies": [
+    "trivial: protect nothing (reproduces the do-nothing baseline B0 -> ratio 0.1)",
+    "greedy frontier defense: each step protect the highest-value stands about to burn; because the front is wider than B and gateways exceed B, it only rescues a handful of stands per grove at the last instant and seals no distant gateway",
+    "insight (strong): recover each grove's gateway (its vertex cut) and arrival deadline from BFS, then commit budget by value-density to the gateways that can still be sealed in time (latest-fit deadline scheduling), pre-closing distant chokes before the flames get there",
+    "a general solver can beat the density heuristic by cutting a wide spine rung ahead of several groves or by solving the deadline knapsack more exactly"
+  ]
+}

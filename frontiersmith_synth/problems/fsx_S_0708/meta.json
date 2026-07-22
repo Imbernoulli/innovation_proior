@@ -1,0 +1,15 @@
+{
+  "id": "fsx_S_0708",
+  "tier": "S",
+  "format": "D",
+  "family": "slp-grammar-compress",
+  "eval_form": "flops",
+  "theme": "Smallest grammar generating one long string",
+  "title": "Mirror Grammar",
+  "objective": "min",
+  "strategies": [
+    "trivial: one terminal per character plus a left-to-right concatenation chain",
+    "greedy: bottom-up RePair (iteratively merge the globally most-frequent adjacent symbol pair) -- concatenation only, no reversal rule",
+    "strong: top-down memoized recursive factoring that reuses an exact substring outright and, when a substring equals the REVERSE of an already-built one, spends a single reverse-rule instead of re-deriving the mirrored substructure"
+  ]
+}

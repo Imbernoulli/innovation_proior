@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0639",
+  "tier": "A",
+  "format": "C",
+  "family": "blocked-access-assembly-order",
+  "eval_form": "quality-metric",
+  "theme": "Insert parts before their access corridors seal",
+  "title": "Sealed Corridors: The Assembly Insertion Order",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:temporal-commitment"],
+  "strategies": [
+    "index-order install: attempt parts in the order they were listed, skipping any whose footprint or corridor is already occupied (the checker's own weak reference)",
+    "value-first greedy: install the most valuable part first, then the next, with no lookahead into which corridors that seals for parts not yet installed",
+    "must-precede digraph + value-weighted cycle breaking: for every pair (u,v) where u's footprint would intersect v's corridor, add a 'v before u' constraint; repeatedly delete the cheapest part in any remaining cycle until the constraint graph is acyclic, then topologically sort the survivors",
+    "exact / near-exact feedback-vertex-set search (branch-and-bound or ILP over the must-precede digraph) for the true maximum-value acyclic subset, beyond the polynomial heuristic"
+  ]
+}

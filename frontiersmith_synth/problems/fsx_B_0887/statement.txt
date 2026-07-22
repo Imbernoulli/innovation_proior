@@ -1,0 +1,97 @@
+# Seating the Feuding Clans
+
+## Problem
+
+You are seating `N` guests along **one long banquet table** (a single line of
+seats, positions `1..N`). Every guest belongs to exactly one of `K` **clans**
+(a fixed label given in the input). You are also handed a flat list of `M`
+remembered exchanges from earlier in the evening -- `u v c` means guests `u`
+and `v` spoke to each other `c` times. This list is **not** sorted or grouped
+by clan in any way; it is just the order the exchanges happened to be
+recorded in.
+
+Seat the guests to minimize total table friction, which has two sources:
+
+1. **Distance friction.** Two guests who exchanged words often are annoyed if
+   they end up far apart at the table (they have to lean, wait, or shout).
+   The farther apart, the worse -- friction grows in buckets with the seat
+   distance, not linearly.
+2. **Clan-changeover tax.** Every time two seats next to each other hold
+   guests from *different* clans, the maître d' levies a fixed disruption
+   tax (regardless of whether those two guests ever exchanged a word) --
+   clan boundaries are just awkward moments at a shared table.
+
+A good arrangement is not simply "chain the loudest pairs together": it must
+also respect where the clan boundaries fall.
+
+## Input
+
+```
+N K M
+```
+then one line with `N` integers, `phase_1 .. phase_N`, guest `i`'s clan
+(`1..K`); then `M` lines, one per exchange:
+```
+u v c
+```
+guests `u` and `v` (`1 <= u,v <= N`, `u != v`) exchanged words `c` times.
+The same pair `(u,v)` may appear more than once (add the friction of each
+occurrence separately).
+
+## Output
+
+Print `N` integers: a permutation of `{1,...,N}`, the guests in seating
+order along the table (position 1 first).
+
+## Feasibility
+
+The output must contain every guest in `{1,...,N}` exactly once (no repeats,
+none missing), with no trailing tokens. Any violation scores 0.
+
+## Objective
+
+Let `pos[g]` be the 1-based seat index of guest `g` in your printed order,
+and `d = |pos[u] - pos[v]|` for an exchange `(u,v,c)`. Define
+```
+bucket(d) = 0   if d = 1
+            1   if 2 <= d <= 3
+            3   if 4 <= d <= 7
+            6   if d >= 8
+```
+Then, over all `M` exchange records,
+```
+TRANS = sum of  c * bucket(d)
+```
+and, over the `N-1` adjacent seat pairs,
+```
+TAX = 60 * (number of adjacent pairs whose two guests are in different clans)
+```
+Minimize `F = TRANS + TAX`.
+
+## Scoring
+
+Let `B` be `F` evaluated on the **identity order** `1,2,...,N` (do nothing
+clever). Your score for a test case is
+```
+ratio = min(1000, 100 * B / max(1, F)) / 1000
+```
+so the identity order scores `0.1`; a genuinely better arrangement scores
+higher (capped at `1.0`, ten times better than identity). Per-test ratios
+are averaged over all tests.
+
+## Constraints
+
+* `10 <= N <= 4200`, `2 <= K <= 6`, `1 <= M <= 8000`.
+* `1 <= c <= 1000000`.
+* Time limit: 4 seconds. Memory limit: 512 MB.
+
+## Example
+
+`N=5, K=2`, clans `1 1 2 2 1`, exchanges: `1 2 90`, `4 5 100`, `1 5 30`.
+Identity order `1 2 3 4 5`: `d(1,2)=1 -> 0`; `d(4,5)=1 -> 0`; `d(1,5)=4 ->
+bucket 3 -> 90`. Clan sequence `1 1 2 2 1` has 2 changeovers -> `TAX=120`.
+`B = 0+0+90+120 = 210`, so this order scores exactly `0.1`.
+Seating `2 1 5 4 3` (clan-contiguous: `1 1 1 2 2`, guest 3 isolated at the
+end since it exchanges with no one): `d(1,2)=1->0`; `d(4,5)=1->0`;
+`d(1,5)=1->0`; only 1 changeover -> `TAX=60`. `F=60`, `ratio =
+min(1000,100*210/60)/1000 = 0.35`.

@@ -1,0 +1,18 @@
+{
+  "id": "fsx_G_0503",
+  "tier": "G",
+  "format": "B",
+  "family": "ml-robust-threshold-policy",
+  "eval_form": "quality-metric",
+  "theme": "hospital early-warning triage threshold policy",
+  "title": "WardWatch: Robust Early-Warning Triage Thresholds under Shift and Alert Fatigue",
+  "objective": "max",
+  "source_frameworks": ["MLS-Bench", "breadth-fill (dataset/domain/task diversity)"],
+  "strategies": [
+    "trivial: use the conservative hospital default threshold 0.50 for every unit-acuity stratum, reproducing the evaluator's weak utility anchor at Ratio about 0.10",
+    "greedy: fit one global threshold on the labeled calibration stream using asymmetric miss and alert costs; better than the default but blind to stratum heterogeneity and target shift",
+    "strong: fit unit-by-acuity thresholds on calibration labels with shrinkage toward the global threshold, then use the unlabeled recent target stream to partially preserve source alert tails and avoid alert fatigue under distribution shift",
+    "future: richer robust policies can combine calibration-bin isotonic smoothing, constrained alert-budget optimization, and shift-aware cost-sensitive thresholding to beat the internal public-data reference",
+    "invalid: malformed/non-finite/wrong-shape policies are rejected and score 0"
+  ]
+}

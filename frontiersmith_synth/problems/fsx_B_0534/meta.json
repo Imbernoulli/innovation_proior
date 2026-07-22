@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0534",
+  "tier": "B",
+  "format": "C",
+  "family": "firebreak-ignition-lattice",
+  "eval_form": "quality-metric",
+  "theme": "cut firebreaks before an unknown arsonist strikes",
+  "title": "Firebreaks Against a Lattice Arsonist",
+  "objective": "max",
+  "strategies": [
+    "trivial: cut the F highest-fuel cells; removes local fuel but never partitions, so the worst compartment stays huge (checker baseline)",
+    "greedy: straight walls at uniform equal-AREA positions (recursive bisection) -- ignores where fuel sits, so a skewed map overloads one compartment",
+    "strong: balanced graph PARTITION -- place walls at fuel QUANTILES so every compartment carries equal fuel; also search the vertical/horizontal split the budget affords",
+    "headroom above strong: 2D balanced partition / isolating the few ignition points inside the heaviest compartment instead of a separable quantile cut"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0947",
+  "tier": "A",
+  "format": "A",
+  "family": "rising-water-barrier-staging",
+  "seed_problem": "fsx_A_0947 seed spec (rising-water-barrier-staging)",
+  "mutation": "composite: goal changed from a decision flood-plan to an optimization plan (maximize a\n  weighted dry-zone objective under a staged, cumulative, irreversible wall budget), and input\n  generalized from a single flood event to a K-stage rising-threshold schedule over an elevation\n  grid with a competing secondary (forbidden) zone -- an open, no-known-optimum staged\n  barrier-placement problem.",
+  "objective": "max",
+  "theme": "Wall off zones as a flood level rises in stages",
+  "title": "Rising Water, Staged Barriers",
+  "strategies": [
+    "trivial: build no walls at all (baseline, ratio ~0.1)",
+    "greedy: reactive perimeter defense -- each stage, wall the open edges of any dry cell about to flood that sits within a small grid-distance of the protected zone, closest first, ignoring the forbidden zone entirely; cannot distinguish a real corridor from a nearby dead-end notch and burns budget on decoys",
+    "strong: per-zone exact min-edge-cut via max-flow on the graph of ever-eligible cells, ignoring any cell/path that carries no source-to-zone flow (dead ends vanish automatically); brute-force selection of the best-value subset of zones (protected zones + the forbidden zone) that is schedulable within the staged cumulative budget, respecting each cut edge's elevation deadline",
+    "open: joint global scheduling + selection across many zones with interacting deadlines and a single shared cumulative budget has no known polynomial-optimal algorithm at scale (a budgeted, deadline-constrained cut-selection problem)"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0635",
+  "tier": "S",
+  "family": "billiard-unfold-cover",
+  "seed_problem": "R x C grid with blocked cells and a boundary light source; solver places up to B diagonal mirrors and picks the entry ray; checker traces the single ray (reflecting off mirrors and walls, absorbing at blocks) and scores distinct cells visited before it escapes or loops.",
+  "mutation": "composite: keep the single-ray/mirror-placement goal but (1) generalize the objective from plain cell-count to a hidden per-cell weight sum (so the interaction table lives in the input, not the statement) and (2) restrict the geometry to a pure 45-degree billiard (wall bounces flip one velocity component at a time) so the trajectory is exactly the classic unfold-to-a-straight-line construction, making coverage a function of gcd(R-1,C-1)-governed orbit structure rather than a locally-chaseable path.",
+  "objective": "max",
+  "theme": "Aim one ray to sweep a mirrored grid",
+  "title": "Aim One Ray to Sweep a Mirrored Grid",
+  "innovation_hook": "Reflections unfold to straight lines on a torus lattice; coverage is a number-theoretic period, not a local greedy chase.",
+  "strategies": [
+    "trivial: DIR=DR, zero mirrors (the checker's own baseline construction, ratio ~0.1)",
+    "greedy: simulate step by step and reactively drop a mirror at/near the current cell whenever the ray is about to revisit a state soon, using only local look-ahead (no notion of the global orbit)",
+    "strong: run the mirror-free simulation to discover the default orbit's low weighted coverage, then hill-climb over candidate mirror placements (favoring cells that could splice the current orbit into unreached high-weight regions), re-simulating the WHOLE trajectory after each trial and keeping only improving placements",
+    "invalid: places a mirror on a blocked cell / the source cell (deliberately infeasible)"
+  ]
+}

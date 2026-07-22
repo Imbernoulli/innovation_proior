@@ -1,0 +1,78 @@
+# Day-Night Courier Laplacians
+
+## Problem
+A city runs **two** courier networks over the same `n` hubs: a **day** crew and a **night**
+crew. Every road (edge) of the road graph must be assigned to exactly one crew's shift roster
+-- a road used by day is unavailable at night and vice versa. Each shift also has a cap on how
+many roads its crew can service.
+
+Packages left at the wrong hub diffuse toward the correct one along whichever roads are open
+during the current shift. If `x` is the vector of per-hub imbalances (mean-zero: total surplus
+= total deficit), one **day** shift evolves it by `x -> exp(-tau * L_day) x`, and one **night**
+shift by `x -> exp(-tau * L_night) x`, where `L_day` / `L_night` is the weighted graph Laplacian
+of the roads open that shift and `tau > 0` is a fixed constant. A full day-then-night period maps
+`x -> M x` with `M = exp(-tau * L_night) * exp(-tau * L_day)`.
+
+Because `L_day` and `L_night` generally do **not** commute, the ORDER matters, and the two shifts
+do not have to be individually good diffusers: a shift only has to erase whatever imbalance the
+*other* shift leaves slow. The scheduler's job is to choose which roads run by day and which by
+night so that leftover imbalances shrink as fast as possible, period after period.
+
+## Input
+```
+n m
+tau
+capDay capNight
+u_1 v_1 w_1
+...
+u_m v_m w_m
+```
+`n` hubs (1-indexed), `m` roads. `tau` is a positive real (diffusion time per shift). Road `i`
+connects hubs `u_i, v_i` (undirected, no self-loops, weight `w_i >= 1` an integer "bandwidth").
+The road graph (day + night roads together) is connected. `capDay + capNight >= m`.
+
+## Output
+`m` integers, one per road in input order: `0` if that road is on the day roster, `1` if it is
+on the night roster.
+
+## Feasibility
+Every road gets exactly one shift (you output exactly `m` tokens). The number of `0`s must be
+`<= capDay` and the number of `1`s must be `<= capNight`. Any violation scores 0.
+
+## Objective (minimize)
+Let `L_day`, `L_night` be the weighted Laplacians of the day-only and night-only subgraphs (on
+all `n` hubs; a hub with no roads open that shift is simply untouched that shift). Let `F` be the
+spectral radius (largest eigenvalue, which is always real and positive) of
+`M = exp(-tau*L_night) * exp(-tau*L_day)` restricted to the subspace of mean-zero vectors -- the
+worst-case per-period shrink factor of any leftover imbalance. **Minimize `F`.**
+
+## Scoring
+The checker computes your `F` (via a fixed, deterministic power iteration -- no randomness, same
+result every run) and compares it against its own reference `F_ref` for a simple baseline
+schedule (fill the day roster with the first `capDay` roads in input order, the rest to night):
+`score = min(1.0, 0.1 * F_ref / F)`. Smaller `F` (faster contraction) scores higher. An
+infeasible output scores 0.
+
+## Constraints
+`4 <= n <= 100`, `n-1 <= m <= 400`, `1 <= w_i <= 1000000000` fits a 32-bit int, `0.1 <= tau <= 5`.
+Time limit: **5 seconds**. Memory limit: **512 MB**.
+
+## Example
+```
+4 4
+1.000000
+2 2
+1 2 1
+1 3 1
+3 4 1
+2 4 1
+```
+Roads 1 (`1-2`) and 3 (`3-4`) are "local" pairs; roads 2 (`1-3`) and 4 (`2-4`) are "cross"
+pairs. Sending both local roads to day and both cross roads to night -- output `0 1 0 1` -- gives
+`F = 0.135335`. The checker's own baseline schedule (first `capDay=2` roads in input order, i.e.
+one local + one cross road, to day) gives `F_ref = 0.186614`, so the baseline scores exactly
+`0.1` and the local/cross split scores `min(1, 0.1 * 0.186614 / 0.135335) = 0.137890`. Because
+local roads and cross roads damp *different* leftover-imbalance directions, keeping each kind on
+one shift contracts imbalances noticeably faster than a schedule that mixes local and cross roads
+between the two shifts (which instead makes both shifts mediocre, generic diffusers). The checker
+prints the resulting `F` and `F_ref` together with the final `Ratio:` line.

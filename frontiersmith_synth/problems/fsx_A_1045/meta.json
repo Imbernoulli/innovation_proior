@@ -1,0 +1,15 @@
+{
+  "id": "fsx_A_1045",
+  "tier": "A",
+  "format": "C",
+  "family": "correlated-inflation-schedule",
+  "eval_form": "quality-metric",
+  "theme": "project plan robust to subsystem-wide delays",
+  "title": "Subsystem-Robust Release Schedule",
+  "objective": "minimize",
+  "strategies": [
+    "own-duration baseline: rank each job by its own nominal duration alone (descending), ignoring both downstream chain length and every published perturbation",
+    "nominal critical-path list scheduling: rank jobs by longest-remaining-nominal-path (tail length) and greedily list-schedule -- the standard textbook recipe for P|prec|Cmax, blind to which subsystem each job belongs to",
+    "worst-case-tail list scheduling: replace each job's weight by its worst published inflation before propagating tail lengths through the DAG, so priority reflects what a job could cost under the sweep, not just its nominal cost -- keeps subsystems that could become a long chain from also being queued behind 'safe' long-but-never-perturbed work"
+  ]
+}

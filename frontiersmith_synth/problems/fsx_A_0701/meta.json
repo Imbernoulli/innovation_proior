@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0701",
+  "tier": "A",
+  "format": "A",
+  "family": "voltage-graph-lift",
+  "eval_form": "quality-metric",
+  "theme": "Fold a big network onto a small labeled one",
+  "title": "Fold a Big Network onto a Small Labeled One",
+  "objective": "min",
+  "seed_problem": "graph compression / quotient-by-symmetry (novel family, not a prior open-sourced problem)",
+  "mutation": "composite: the target graph is generated as a randomly-rewired, randomly-relabeled group (voltage graph) lift of a small hidden base multigraph; the solver must jointly discover a class assignment (group-quotient-embedding), a voltage labeling (voltage-graph-lift), and minimize a walk-length 'dilation' objective over the reconstructed base multigraph (dilation-local-search), under a small fixed edge budget that makes only a compact, correct base efficient to explain the data with.",
+  "strategies": [
+    "trivial: one class for every vertex (k=1), no base edges -> reproduces the checker's B=8 baseline exactly",
+    "naive greedy: guess k=round(sqrt(N)) (structure-blind), assign classes via BFS-order chunking, then read off the most frequent (class,class,offset) triples from the real edges as base edges -- degree/BFS-order clustering does not align with the hidden voltage grid, so most real edges stay unreachable",
+    "strong (insight): restrict candidate k to divisors of N (a genuine lift forces a uniform fiber size n=N/k), then run local-search hill-climbing that swaps vertices between class/sheet slots to maximize how many real edges are directly explained by a compact top-frequency base-edge set, recovering the true small base and low-hop reconstruction",
+    "open headroom: simulated annealing / spectral seeding of the assignment, adaptive k search beyond divisors (to tolerate near-lifts), or exact voltage-group inference from cycle space would push F further below what the reference local search reaches"
+  ]
+}

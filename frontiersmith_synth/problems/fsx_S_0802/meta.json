@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0802",
+  "tier": "S",
+  "format": "D",
+  "family": "leveled-mult-depth-synthesis",
+  "eval_form": "flops",
+  "theme": "encrypt-friendly arithmetic: every level of depth doubles rent",
+  "title": "Doubling Rent: Leveled Circuits for Palindromic Polynomials",
+  "objective": "minimize",
+  "strategies": [
+    "monomial-by-monomial, no sharing between terms (trivial)",
+    "Horner's rule -- the textbook minimal-multiplication-count evaluator (greedy)",
+    "palindrome-paired terms combined with a memoized binary-exponentiation power ladder for log depth (strong)",
+    "open ceiling: better power-ladder sharing / smarter pairing below the strong reference (uncovered)"
+  ]
+}

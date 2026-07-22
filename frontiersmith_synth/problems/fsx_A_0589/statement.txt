@@ -1,0 +1,87 @@
+# Polyphonic Facade Bands
+
+## Problem
+A facade is a vertical stack of **B** ornamental border bands, which you design in full.
+Each band is an *infinite horizontal frieze pattern* of height `h`, described by its
+**fundamental tile**: a grid of `h` rows and `p` columns (its **orbit period** `p`),
+repeated horizontally forever. Cells use a palette of `P` colors. For every band you
+choose, independently, its period `p` (`1 <= p <= Q`) and the colors of its `h x p` tile.
+You also choose the **stacking order** (which band sits at which height).
+
+A tile must be **primitive**: its minimal horizontal period equals `p` (the tile does not
+already repeat with any smaller period).
+
+## Frieze group of a band
+Read the tile cyclically (column indices mod `p`). A band's **signature** is the 4 bits
+`(V,H,G,R)` recording which symmetries its infinite pattern has:
+- `V`: a *nontrivial* vertical mirror axis (some `a`: `T[r][x] == T[r][(a-x) mod p]`, not the identity map);
+- `H`: the horizontal mirror (row `r` equals row `h-1-r`, no horizontal shift);
+- `G`: a glide reflection (row `r` equals row `h-1-r` shifted by half a period; needs `p` even);
+- `R`: a 180-degree rotation center (some `a`: `T[r][x] == T[h-1-r][(a-x) mod p]`, `x`-map not the identity).
+
+## Seam harmony
+Bands are stacked top to bottom in your output order. Between consecutive bands `b` and
+`b+1` lies a seam. You are given a symmetric harmony table `M[.][.]` (integers `>= 0`).
+A seam is **harmonious only if the two orbit periods are divisibility-compatible**:
+`p_b | p_{b+1}` or `p_{b+1} | p_b`. For a harmonious seam let `L = max(p_b, p_{b+1})`; its
+harmony is the average over `x = 0..L-1` of `M[ bottomrow_b(x mod p_b) ][ toprow_{b+1}(x mod p_{b+1}) ]`,
+where `bottomrow_b` is row `h-1` of band `b` and `toprow_{b+1}` is row `0` of band `b+1`.
+An **incompatible seam contributes 0**.
+
+## Objective (maximize)
+Let `Groups` = number of DISTINCT signatures among your `B` bands, `Seam` = sum of the
+`B-1` seam harmonies, `Motif` = number of distinct tiles. The core value is
+
+```
+F = Groups * Seam + Motif
+```
+
+The three levers fight each other: reaching many distinct signatures forces orbit periods
+larger than 2 (only 4 signatures exist at period <= 2), and mixed periods create
+divisibility-incompatible seams that kill harmony unless the bands are ordered so that
+neighboring periods divide one another.
+
+## Input
+- Line 1: `B h P Q` (`h = 3`).
+- Next `P` lines: the `P x P` harmony table `M` (symmetric).
+
+## Output
+For each band, in stacking order top to bottom: a line with `p`, then `h` lines each with
+`p` integers in `[0,P)` — the tile, row 0 first (top row).
+
+## Feasibility
+`1 <= p <= Q`; every color in `[0,P)`; every tile primitive; exactly `B` bands. Any
+violation scores 0.
+
+## Scoring
+`ratio = min(1, F / (10 * B0))`, where `B0 = (B-1) * M[0][0] + 1` is the value of the
+all-identical monochrome facade (every band period 1, color 0). That monochrome facade
+scores exactly `0.1`; the ceiling `1.0` is `10 x` the monochrome value.
+
+## Constraints
+`2 <= B <= 9`, `h = 3`, `2 <= P <= 8`, `1 <= Q <= 12`, `0 <= M[i][j] <= 12`.
+Time limit 3 s, memory 512 MB, each input <= 5 MB.
+
+## Example
+Input:
+```
+2 3 2 2
+3 5
+5 3
+```
+Output:
+```
+1
+0
+0
+0
+2
+0 1
+0 1
+1 0
+```
+Top band: period 1, all color 0, signature `(V0,H1,G0,R0)`. Bottom band: period 2, tile
+rows `[0 1] / [0 1] / [1 0]`, primitive, signature `(0,0,0,0)`. So `Groups = 2`. The seam
+has `p=1` vs `p=2` (compatible, `1|2`), `L=2`: `bottomrow` of top band is color 0, `toprow`
+of bottom band is `[0,1]`, harmony `= (M[0][0]+M[0][1])/2 = (3+5)/2 = 4`, so `Seam = 4`.
+`Motif = 2`. `F = 2*4 + 2 = 10`, `B0 = 1*3 + 1 = 4`, `ratio = min(1, 10/40) = 0.25`.

@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_1066",
+  "tier": "B",
+  "format": "C",
+  "family": "fixture-calendar-weather-windows",
+  "eval_form": "quality-metric",
+  "theme": "sports season that rain cannot wreck",
+  "title": "Rainproof Season",
+  "objective": "minimize",
+  "strategies": [
+    "first-fit lexicographic edge coloring: place every pair on the earliest legal slot in pair order, blind to round-robin structure and to the weather scenarios",
+    "textbook circle-method round robin: the most compact possible single round robin (N-1 dates, zero slack used) -- every team is busy every date inside the compact zone, so it has zero common free slots there",
+    "scenario-aware covering design: start from the compact round robin, then run simulated annealing that directly minimizes the true worst-case-scenario objective, planting slack dates exactly where jointly-cancelled pairs of teams need a shared nearby free date"
+  ]
+}

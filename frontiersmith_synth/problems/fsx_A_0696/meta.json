@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0696",
+  "tier": "A",
+  "format": "C",
+  "family": "lock-chamber-green-wave",
+  "eval_form": "quality-metric",
+  "theme": "barges transiting a staircase of canal locks",
+  "title": "Green-Wave Scheduling at the Bottleneck Lock Chamber",
+  "objective": "min",
+  "strategies": [
+    "FCFS-with-batching by arrival order, ignoring due dates and the water budget (baseline, ratio ~0.1)",
+    "myopic earliest-due-first dispatch, batched but blind to the switch-cost asymmetry (greedy, chases due dates into frequent expensive switches)",
+    "budget the switch count from the water supply first (S_max = floor((W0-K_needed*ws)/(wa-ws))), then search a small family of evenly-spread direction-block skeletons and keep the one with the lowest realized objective (strong)",
+    "exact optimal water-aware batch scheduling under weighted tardiness (open; no known polynomial construction)"
+  ]
+}

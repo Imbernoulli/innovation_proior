@@ -1,0 +1,15 @@
+{
+  "id": "fsx_A_0607",
+  "tier": "A",
+  "format": "D",
+  "family": "shared-subplan-query-compiler",
+  "eval_form": "flops",
+  "theme": "one compiled plan serving eight analysts' queries",
+  "title": "Shared Sub-Plan Compiler: One Circuit for Eight Analysts",
+  "objective": "min",
+  "strategies": [
+    "trivial: naive per-query, per-monomial plan (reproduces the op-count baseline)",
+    "greedy: global common-subexpression elimination on the expanded monomials x_i*x_j",
+    "strong: recover the shared linear-form subspace common to all queries; compute F forms + their O(F^2) products once, then read each query off cheaply"
+  ]
+}

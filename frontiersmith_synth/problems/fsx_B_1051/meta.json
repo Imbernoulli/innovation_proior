@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_1051",
+  "tier": "B",
+  "format": "C",
+  "family": "complete-mapping-sequencer",
+  "eval_form": "quality-metric",
+  "theme": "parade every clan once with no repeated banner-gap",
+  "title": "Parade of the Two-Ring Clans",
+  "objective": "max",
+  "strategies": [
+    "canonical baseline: march the clans in plain lexicographic (house, guild) order",
+    "sequencing-only greedy: single deterministic pass, at each step append the unused clan that gives a brand-new cumulative drift, ignoring the banner-gap term entirely (the textbook 'sequenceable group' construction)",
+    "Sylow-2 regime detection + joint exchange search: classify G=Z_n1 x Z_n2 by whether its 2-part is trivial, cyclic-nontrivial, or non-cyclic (Hall-Paige/Gordon-type obstruction), derive the true achievable ceiling for drift-count + gap-count, and run bounded seeded restarts of a two-criterion greedy (each step prefers a clan that is simultaneously drift-new AND gap-new) stopping as soon as the regime-derived ceiling is reached"
+  ]
+}

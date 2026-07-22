@@ -20,7 +20,9 @@ Formats:
     B  evolve-a-heuristic against a frozen evaluator (evaluator.py)           -> AGENT_BRIEF_PY_PROGRAM.md
 
 Each spec fixes only the scaffold; the generation agent instantiates the full, novel problem.
-Default plan sums to 200; --per-tier N plans N per tier.
+Default plan sums to 200; --per-tier N plans N per tier. Use --full500 to assemble
+the canonical 500-spec base corpus. Use --current to assemble the checked-in current
+corpus: base 500 + subagent supplements + bulk seed packs.
 """
 import argparse, hashlib, json, re
 from pathlib import Path
@@ -118,14 +120,50 @@ def build(per_tier=None, batch=1, avoid_file=None):
     return specs
 
 
+def load_jsonl(path):
+    return [json.loads(line) for line in Path(path).open()]
+
+
+def build_full500():
+    specs = []
+    specs.extend(build(batch=1))
+    specs.extend(load_jsonl(HERE / "seed_list_b2.jsonl"))
+    specs.extend(load_jsonl(HERE / "novelty_seeds.jsonl"))
+    specs.extend(load_jsonl(HERE / "gen_seeds.jsonl"))
+    ids = [s["id"] for s in specs]
+    if len(specs) != 500 or len(set(ids)) != 500:
+        raise SystemExit(f"full500 assembly invariant failed: {len(specs)} specs, {len(set(ids))} unique ids")
+    return specs
+
+
+def build_current():
+    specs = build_full500()
+    specs.extend(load_jsonl(HERE / "subagent_seeds.jsonl"))
+    for path in sorted((HERE / "bulk_seed_packs").glob("pack_*.jsonl")):
+        specs.extend(load_jsonl(path))
+    ids = [s["id"] for s in specs]
+    if len(set(ids)) != len(ids):
+        raise SystemExit(f"current assembly invariant failed: {len(specs)} specs, {len(set(ids))} unique ids")
+    return specs
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("-o", "--out", default=str(HERE / "seed_list.jsonl"))
     ap.add_argument("--per-tier", type=int, default=None)
     ap.add_argument("--batch", type=int, default=1)
     ap.add_argument("--avoid", default=None, help="existing seed_list to exclude (family,theme) pairs from")
+    ap.add_argument("--full500", action="store_true",
+                    help="assemble the canonical 500-spec base corpus")
+    ap.add_argument("--current", action="store_true",
+                    help="assemble the current checked-in corpus")
     args = ap.parse_args()
-    specs = build(per_tier=args.per_tier, batch=args.batch, avoid_file=args.avoid)
+    if args.current:
+        specs = build_current()
+    elif args.full500:
+        specs = build_full500()
+    else:
+        specs = build(per_tier=args.per_tier, batch=args.batch, avoid_file=args.avoid)
     with open(args.out, "w") as f:
         for s in specs:
             f.write(json.dumps(s) + "\n")

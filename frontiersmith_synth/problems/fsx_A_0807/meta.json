@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0807",
+  "tier": "A",
+  "format": "E",
+  "family": "scaling-law-exponents",
+  "eval_form": "quality-metric",
+  "theme": "Recover the hidden scaling exponents",
+  "title": "One Dimensionless Knob — recovering a hidden calibration law",
+  "objective": "min",
+  "strategies": [
+    "trivial: predict a constant response (the geometric mean of the training y column), ignoring all four knobs -> reproduces the checker baseline ~0.1",
+    "greedy: the obvious recipe -- fit an ordinary multi-linear power law directly in the raw knobs by ordinary least squares in log space (log y ~ c0 + a1*log(x1)+a2*log(x2)+a3*log(x3)+a4*log(x4)), never touching the given grading matrix. This matches the narrow training band fine, but its four fitted exponents also absorb noise along the THREE directions that provably have zero true effect on y. Most held-out points are pushed along a mix of the true dimensionless direction and a large 'wasted' motion orthogonal to it; the raw fit's noise in those orthogonal directions gets amplified by that large motion and the prediction drifts far from the truth",
+    "strong: run Buckingham-Pi exactly -- compute the (unique, up to scale) integer null vector b of the given 3x4 grading matrix via exact rational Gaussian elimination (no fitting needed for the DIRECTION at all), form the single dimensionless group Pi = prod x_i**b_i, and fit only the one remaining scalar exponent p (plus amplitude C) via a 1-D log-log regression of y against Pi. Because Pi is computed exactly from the grading matrix rather than estimated, this single-parameter fit is immune to the orthogonal contamination that sinks greedy, and the SAME closed form extrapolates correctly however far the four knobs are individually pushed",
+    "headroom above strong: robustify the 1-D fit against training outliers (e.g. Theil-Sen / iteratively reweighted least squares instead of plain OLS on log Pi vs log y), or jointly refine (p, C) with a small nonlinear correction term, pushing held-out error further toward the measurement-noise floor"
+  ]
+}

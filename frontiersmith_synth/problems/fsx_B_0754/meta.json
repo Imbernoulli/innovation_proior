@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0754",
+  "tier": "B",
+  "format": "C",
+  "family": "proportional-fair-capacity-buy",
+  "eval_form": "quality-metric",
+  "theme": "Upgrade links so all flows share fairly",
+  "title": "Fair-Share Capacity Market",
+  "objective": "max",
+  "strategies": [
+    "trivial: replicate the checker's own reference purchase (spend budget in dollars proportional to each link's EXISTING capacity -- 'upgrade the biggest trunk first')",
+    "greedy: rank links by raw flows-crossing-it per dollar, dump the ENTIRE budget on the single top-ranked link (the textbook 'fix the busiest link / global min-cut' instinct)",
+    "strong: iterative marginal-value water-filling -- repeatedly re-solve the full proportional-fair dual equilibrium to get each link's true shadow price (the envelope-theorem marginal utility of its capacity), and spend each budget increment where price/cost is currently highest, capturing the nonlinear coupling greedy ignores",
+    "invalid: dump an astronomically large purchase on every link, blowing through the budget constraint"
+  ]
+}

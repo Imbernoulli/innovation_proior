@@ -1,0 +1,18 @@
+{
+  "id": "fsx_G_0830",
+  "tier": "G",
+  "format": "C",
+  "family": "glacier-field-camp-supply-manifest",
+  "eval_form": "quality-metric",
+  "theme": "glacier field-camp supply manifest",
+  "title": "Glacier Field Camp Supply Manifest Portfolio",
+  "objective": "max",
+  "bulk_factory": "budget-conflict-coverage-selection",
+  "salt": 239143558,
+  "strategies": [
+    "trivial: reproduce the checker cost-first feasible baseline",
+    "greedy: sort by value, capability weight, and cost density",
+    "strong: repeatedly add the feasible asset with best current marginal utility per cost",
+    "future: local search, swap neighborhoods, Lagrangian budget pricing, and conflict-aware coverage repair"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0610",
+  "tier": "B",
+  "format": "C",
+  "family": "decay-aware-regen-windows",
+  "eval_form": "quality-metric",
+  "theme": "catalyst reactor farm production schedule",
+  "title": "Catalyst Reactor Farm: Spending Freshness at the Price Peaks",
+  "objective": "max",
+  "strategies": [
+    "constant max: every reactor runs at full throughput every step, never regenerating (reproduces the checker baseline)",
+    "threshold maintenance: run flat-out, regenerate the moment marginal conversion drops below a fixed rate; ignores prices and demand",
+    "freshness-inventory: idle through cheap low-demand valleys to conserve catalyst, park the offline regenerations inside those valleys, and run flat-out only during high-price demand peaks so each peak is met fresh",
+    "coordinated freshness with valley harvesting: reserve enough reactors fresh for each demand peak while opportunistically selling to demand caps in valleys with the aged catalyst"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0856",
+  "tier": "S",
+  "format": "A",
+  "family": "sft-2d-density",
+  "eval_form": "quality-metric",
+  "seed_problem": "A set of forbidden small 2x2 windows and grid size RxC, seeded so all-ones is illegal. The solver outputs a 0/1 grid; the checker verifies no forbidden window appears and scores the density of ones.",
+  "mutation": "composite: keep the density-maximization goal but couple it to a genuine 2D subshift-of-finite-type feasibility constraint (row-to-row forbidden 2x2 windows) whose achievable density ceiling is a transfer-matrix (max-mean-cycle) capacity realized only by a periodic row pattern -- invisible to a myopic cell-by-cell greedy fill. Forbidden-window families were selected by simulating, for every grid width used, the BEST-CASE outcome over ALL possible tie-breaks of a one-step-lookahead row-to-row fill (via a max-mean-cycle on the tie-restricted transfer graph), and keeping only families where that best case -- and a left-to-right cell fill -- both land well short of the true transfer-matrix optimum.",
+  "objective": "max",
+  "theme": "Densest binary grid avoiding forbidden windows (loom-weave skin)",
+  "title": "Loom Weave: Densest Warp Pattern Avoiding Jamming Windows",
+  "strategies": [
+    "trivial: repeat the single always-legal sparse row pattern on every row",
+    "greedy: myopic cell-by-cell fill -- scan row by row, left to right; raise each thread unless doing so would complete a forbidden window against the three already-fixed neighbor cells, otherwise lower it",
+    "strong: build the transfer graph over all C-bit row patterns, find the maximum mean-weight cycle (Karp's algorithm) -- the subshift's per-site capacity -- and tile it periodically, patching the remainder",
+    "invalid: print an all-raised grid, which is always forbidden by construction"
+  ]
+}

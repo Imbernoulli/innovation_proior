@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0757",
+  "tier": "B",
+  "format": "A",
+  "family": "accretive-coral-surface",
+  "eval_form": "quality-metric",
+  "theme": "coral maximizing skin without toppling",
+  "title": "Coral Skin Against the Current",
+  "objective": "max",
+  "seed_problem": "accretive-coral-surface (fsx_B_0757 spec): lattice accretion under an overhang/support-cone feasibility gate, scored on directional exposed-skin against a nutrient current",
+  "mutation": "composite: a bottom-up layer-accretion growth rule IS the support constraint (each cell needs an occupied, itself-supported cell within +-S columns directly below it, transitively to bedrock, or the whole colony scores 0), coupled to a surface-maximization objective whose per-face value is skewed by a per-test current-direction bonus that must be read from the input, not hard-coded.",
+  "strategies": [
+    "trivial: a single 1-wide pillar (also the checker's own baseline construction) -> ratio 0.1",
+    "naive greedy: myopic max-marginal-exposed-face hill-climbing, one cell at a time, with no lookahead and no awareness of where to anchor the trunk relative to the current -- wastes grid width/height on tight-overhang, strongly one-sided-current tests",
+    "insight (strong): anchor a wide-enough buttress trunk near the grid edge opposite the current so there is maximal room to branch INTO the current, then grow isolated finger branches off the trunk top that drift by the full allowed overhang S per layer toward the current direction, trading a few 'wasted' trunk cells for much higher current-aligned exposed skin"
+  ]
+}

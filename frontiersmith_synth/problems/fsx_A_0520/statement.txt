@@ -1,0 +1,86 @@
+# Courier Depots That Survive Every Season
+
+## Problem
+A courier company serves `N` city addresses on an integer grid. Demand is **seasonal**:
+there are `K` seasons, and address `i` generates a known integer demand `w[i][k]` in
+season `k`. You must place `P` courier depots at integer grid points. The depots are
+**built once and stay fixed for every season** — you cannot move them when the season
+changes.
+
+In a given season every address is served from its nearest depot (Manhattan / L1
+distance). Because the depot layout is frozen, a layout that is cheap on average can be
+ruinous in the one season whose hot addresses it neglected. You are graded on your
+**worst season**, so you must hedge: site depots that stay tolerable in *every* season's
+demand pattern, not just the pooled average.
+
+## Input
+```
+N P K
+x_1 y_1 w_1_1 w_1_2 ... w_1_K
+x_2 y_2 w_2_1 w_2_2 ... w_2_K
+...
+x_N y_N w_N_1 w_N_2 ... w_N_K
+```
+- `x_i, y_i` are the integer coordinates of address `i`, with `0 <= x_i, y_i <= 100000`.
+- `w_i_k` is the (non-negative) integer demand of address `i` in season `k`.
+- Addresses may share coordinates.
+
+## Output
+Print `P` lines, each `dx dy`: the integer coordinates of a depot, with
+`0 <= dx, dy <= 100000`. Depots may coincide (a coincident depot simply wastes capacity).
+
+## Feasibility
+Exactly `P` lines, each two integers in `[0, 100000]`. Anything else (wrong count, an
+out-of-range or non-integer coordinate, trailing tokens) is infeasible and scores 0.
+
+## Objective (minimize)
+For address `i`, let `d_i = min over depots p of ( |x_i - dx_p| + |y_i - dy_p| )` be the
+Manhattan distance to its nearest depot. Note `d_i` depends only on the depot layout, not
+on the season. The cost of season `k` is
+```
+cost_k = sum over i of  w[i][k] * d_i
+```
+and your score is driven by the **worst season**:
+```
+F = max over k of cost_k
+```
+You minimize `F`. Lowering the average of the `cost_k` is not enough — a single neglected
+season sets `F`.
+
+## Scoring
+Let `B` be the worst-season cost `F` of the reference **single-hub** layout that places all
+`P` depots at the unweighted integer centroid of the addresses
+(`floor(mean x)`, `floor(mean y)`). Your ratio is
+```
+ratio = min( 1.0 , 0.1 * B / max(1, F) )
+```
+So the single-hub layout scores about `0.1`; halving the worst-season cost roughly doubles
+your ratio; the ratio is capped at `1.0` (a 10x improvement over the single hub). Higher is
+better. The 10 test cases are averaged.
+
+## Constraints
+- `1 <= K <= 8`, `1 <= P <= 40`, `1 <= N <= 3000`, `P` may be smaller or larger than `K`.
+- Time limit: 3 s. Memory limit: 512 MB.
+- All demands and coordinates are deterministic functions of the test id.
+
+## Example
+```
+4 2 2
+0 0 10 0
+0 10 10 0
+100 0 0 10
+100 10 0 10
+```
+Two seasons. Season 1's demand sits on the left two addresses; season 2's on the right two
+(nearly disjoint hot zones). With `P=2`, placing one depot on the left cluster
+`(0,5)` and one on the right `(100,5)` gives every hot address distance 5, so
+`cost_1 = 10*5 + 10*5 = 100`, `cost_2 = 100`, hence `F = 100`. A layout that instead
+minimized the pooled average by putting both depots near the middle would leave one season
+with distance ~100 addresses and blow up `F`. The single-hub centroid `(50,5)` yields
+`d_i = 50` for every hot address, so `B = 10*50 + 10*50 = 1000` and the good layout scores
+`0.1 * 1000 / 100 = 1.0`.
+```
+2
+0 5
+100 5
+```

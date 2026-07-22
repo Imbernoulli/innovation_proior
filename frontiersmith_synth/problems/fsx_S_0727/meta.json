@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0727",
+  "tier": "S",
+  "format": "D",
+  "family": "monotone-register-addition-chain",
+  "eval_form": "flops",
+  "theme": "Build target numbers using only additions",
+  "title": "Monotone Register Ratchet: Minimal Addition Program for a Target Set",
+  "objective": "minimize",
+  "strategies": [
+    "per-target independent binary double-and-add chains, no sharing (trivial)",
+    "adjacent-pair gcd sharing, commit to the shared base immediately, no replanning (greedy)",
+    "global pairwise-gcd mining + deferred commitment (build independents first so the shared doubling ladder is born with a large ratchet budget) + rebuild-on-exhaustion (strong)",
+    "true minimum-instruction ensemble/Steiner addition-chain schedule (open ceiling, uncovered)"
+  ]
+}

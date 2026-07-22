@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0740",
+  "tier": "B",
+  "format": "D",
+  "family": "pitlane-arm-ballet",
+  "eval_form": "flops",
+  "theme": "pit-crew robot arms servicing one car in parallel",
+  "title": "Pit-Lane Arm Ballet: Minimal-Tick Service Plan",
+  "objective": "minimize",
+  "strategies": [
+    "fully-sequential single-arm plan, input order (trivial)",
+    "forward index-order ASAP list scheduling, earliest-arm-earliest-sector (greedy)",
+    "descendant-weighted priority list scheduling that frees the bottleneck sector first (strong)",
+    "true minimal-makespan resource-constrained schedule (open ceiling, NP-hard, uncovered)"
+  ]
+}

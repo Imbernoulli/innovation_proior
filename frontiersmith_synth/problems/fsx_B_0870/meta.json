@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0870",
+  "tier": "B",
+  "format": "E",
+  "family": "percolation-scaling-extrapolation",
+  "eval_form": "quality-metric",
+  "theme": "Find the tipping point from below it",
+  "title": "Below the Tipping Point — recovering a hidden percolation scaling law",
+  "objective": "min",
+  "strategies": [
+    "trivial: predict a flat constant equal to the mean of the sub-critical census -> reproduces the checker baseline ~0.1",
+    "greedy: ignore the stated scaling ansatz and just fit a smooth polynomial (cubic) least-squares curve through the sub-critical (p, S) census, extrapolating it directly -- it tracks the slowly-rising sub-critical data closely, so a practitioner stops there, but a smooth polynomial has no threshold and no singular exponent baked in, so on the held-out near-and-above-threshold points it either flattens out or runs away, landing far from the truth on the cases where the transition is sharp",
+    "strong: take the given scaling ansatz S(p)=A*(W*g((p-p_c)/W))^beta seriously -- grid-search the unknown critical probability p_c and exponent beta (the crossover width W is given), fit the amplitude A in closed form for each candidate via least squares, cross-check with local refinement, and emit the resulting closed-form critical law -- it carries the actual singularity so it extrapolates through and beyond the threshold",
+    "headroom above strong: refine p_c/beta with a finer local optimizer, robustly downweight the noisiest deep sub-critical rows, or trade a smaller (fewer-node) law against accuracy to beat the parsimony tax"
+  ]
+}

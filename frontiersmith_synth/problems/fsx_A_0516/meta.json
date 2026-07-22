@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0516",
+  "tier": "A",
+  "format": "C",
+  "family": "grammar-golf-morphogen",
+  "eval_form": "quality-metric",
+  "theme": "shortest gene that grows the creature",
+  "title": "Morphogen Golf",
+  "objective": "min",
+  "mechanisms": ["exact-match-constraint", "kolmogorov-compression", "l-system-rewriting"],
+  "innovation_hook": "The image is the fixpoint of an unknown recursion; compression = discovering the generative rule, not tracing the outline.",
+  "strategies": [
+    "trivial: emit the developed transcript verbatim (trace the outline) -> gene = |T|",
+    "greedy: RePair grammar compression -> SLP of size ~ n = log|T| (a rule per level)",
+    "strong: recover the uniform morphism via automatic-sequence unfolding -> O(1)-token L-system"
+  ]
+}

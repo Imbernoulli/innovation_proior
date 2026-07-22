@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0517",
+  "tier": "A",
+  "format": "D",
+  "family": "hidden-factor-evaluation-dag",
+  "eval_form": "flops",
+  "theme": "alchemist recompresses an exploded formula scroll",
+  "title": "Recompressed Scroll: Minimal-Product Circuit for Shared Hidden Factors",
+  "objective": "min",
+  "strategies": [
+    "one product-chain per distinct expanded monomial with shared powers (trivial baseline)",
+    "generic common-subexpression elimination on the monomial list (greedy, the obvious optimization)",
+    "recover the hidden shared linear factorization via non-co-occurrence blocks + coefficient ratios, share factors as a DAG (strong)",
+    "cross-target sub-product sharing / optimal vector-addition-chain below the per-target factored bound (open ceiling, uncovered)"
+  ]
+}

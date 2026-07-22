@@ -1,0 +1,19 @@
+{
+  "id": "fsx_S_0528",
+  "tier": "S",
+  "format": "B",
+  "family": "replay-cascade-triage",
+  "eval_form": "quality-metric",
+  "theme": "power-grid load shedding under rolling line trips",
+  "title": "Blackstart Triage: Proactive Load Shedding under Rolling Line Trips",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:topup-B-2"],
+  "mechanisms": ["backlog-carryover-penalty", "cascading-load-redistribution"],
+  "innovation_hook": "Shed proactively along the predicted cascade frontier rather than at the present hotspot, keeping every redistribution below neighbor margins.",
+  "strategies": [
+    "do-nothing baseline: never shed; the whole cascade is absorbed or lost with no intervention (reproduces the evaluator's do-nothing reference, ~0.1)",
+    "hotspot relief (the trap): each step shed the currently-most-utilised live line down to a safe utilisation; ignores the public trip schedule, so it wastes the small shed budget on high-utilisation decoys and eats the corridor cascade",
+    "schedule-aware frontier shedding (the insight): read the public trip schedule, identify the live neighbours the next trip will hit, and PRE-shed exactly those frontier lines across the steps leading up to the trip (latest-first, within the per-step budget) so the incoming redistribution stays below their margin and the runaway cascade never starts",
+    "full multi-step planner: additionally pre-shed the scheduled line itself to shrink the wave, and optimise the timing/placement of curtailment against the convex carryover cost across multiple waves and cross-corridor bridges"
+  ]
+}

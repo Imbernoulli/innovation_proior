@@ -1,0 +1,101 @@
+# Cold Chain with Re-Chill Depots
+
+## Problem
+
+A produce network is a DAG on three node classes with strictly increasing ids:
+`S` **farms** (ids `1..S`), `J` **depot sites** (ids `S+1..S+J`), `T` **markets**
+(ids `S+J+1..S+J+T`). Directed edges (farm->depot, depot->market, and some
+farm->market "direct haul" edges) carry a **decay** `r` in `[1,999]`: crossing that
+edge multiplies quality by `r/1000` (integer floor). Every farm's produce starts at
+quality `1000`.
+
+You may install **re-chill stations** at up to `J` of the depot sites (a discrete
+choice, not all sites are worth wiring up). Installing at depot `d` costs `instcost[d]`
+once, taken from a shared budget `BUD`; afterwards every unit of flow that passes
+*through* `d` (i.e. `d` is an interior node of its route) has its quality **reset to
+1000** on arrival, and costs `energy[d]` per unit of flow that used it. A depot with
+no station installed is just a pass-through node -- no reset, ordinary decay.
+
+You route each farm's produce as a set of paths to markets. A market `k` only pays
+for delivered quality according to its own **price schedule**: a list of
+`(threshold, price)` pairs (ascending thresholds); a unit arriving with quality `q`
+earns the price of the highest threshold `<= q`, or `0` if `q` is below every
+threshold. Markets differ in how many tiers they offer and how much they pay -- a
+market with only a low tier never rewards a re-chill, one with a steep top tier pays
+a large premium for near-perfect quality.
+
+## Input
+
+```
+S J T BUD
+supply_1 ... supply_S              (one per line)
+instcost_{S+1} energy_{S+1}        (one line per depot id S+1..S+J)
+...
+cap_k m_k t_1 p_1 ... t_{m_k} p_{m_k}   (one line per market id S+J+1..S+J+T;
+                                          m_k tiers, thresholds strictly increasing)
+...
+E
+u v r                              (E edge lines, u<v, one per edge)
+```
+
+## Output
+
+```
+Kp
+d_1 ... d_Kp                       (installed depot ids, omit line if Kp=0)
+M
+s_1 snk_1 amt_1 L_1
+n_1 ... n_{L_1}
+... (M blocks)
+```
+`d_1..d_Kp` are distinct depot ids with `sum(instcost) <= BUD`. Each of the `M`
+blocks is a flow of `amt >= 1` units from farm `s` to market `snk` along an explicit
+path `n_1..n_L` with `n_1 = s`, `n_L = snk`, `L >= 2`, and every consecutive pair
+`(n_i, n_{i+1})` must be an edge given in the input.
+
+## Feasibility
+
+Every path edge must exist in the input edge list; the sum of `amt` sent from any
+farm must not exceed its `supply`; the sum of `amt` received by any market must not
+exceed its `cap`; installed depot ids must be distinct and their total `instcost`
+must not exceed `BUD`. Any violation, or trailing/garbage tokens, scores `0`.
+
+## Objective
+
+Replay quality along each path: starting from `1000`, each edge multiplies quality
+by `r/1000` (floor); on arriving at an installed depot, quality resets to `1000`
+instead. At the market, the final quality determines the price tier. Maximize
+```
+F = (sum of amt * price earned) - (sum of instcost of installed depots) - (sum over installed-depot visits of amt * energy)
+```
+Note a station's cost and benefit both scale with the **total flow that uses it**,
+so an installation only pays off if enough traffic is deliberately routed through it.
+
+## Scoring
+
+The checker computes `B`, the value of a fixed **naive** reference: process farms in
+id order, and route each farm's full supply along its *first-listed* direct
+farm->market edge (skipping depots entirely) to whatever remains of that market's
+capacity, wasting any excess. Your score for a test is
+```
+ratio = min(1000, max(0, 100 * F / max(1,B))) / 1000
+```
+so the naive reference scores `0.1`, and it is capped at `1.0`. Per-test ratios are
+averaged.
+
+## Constraints
+
+* `3 <= S <= 60`, `2 <= J <= 10`, `4 <= T <= 55`.
+* `1 <= r <= 999`; `1 <= instcost, energy`; thresholds/prices positive, `<= 1000`.
+* Time limit: 4 s. Memory limit: 512 MB.
+
+## Example
+
+`S=1,J=1,T=2`, farm supply `40`. Direct edge farm->market2, `r=800` (quality `800`).
+Market2 has tiers `(500,3)`: quality `800` earns price `3` -> naive/baseline
+`F=B=120`. Depot has `instcost=50, energy=1`; edges farm->depot `r=650`,
+depot->market1 `r=950`. Market1 has tiers `(500,3),(900,10)`. Routing all `40`
+units through the installed depot: quality resets to `1000` then decays to `950`
+(tier `900`, price `10`); `F = 40*10 - 50 - 40*1 = 350`, ratio `min(1,350/120)=1.0`
+(capped) -- funnelling supply into the depot beats the direct haul even though the
+direct edge alone looks like the "obvious" choice.

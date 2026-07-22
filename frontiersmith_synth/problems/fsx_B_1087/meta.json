@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_1087",
+  "tier": "B",
+  "format": "D",
+  "family": "gray-code-test-ordering",
+  "eval_form": "flops",
+  "theme": "Order experiments to minimize reconfiguration",
+  "title": "Reconfiguration Bench: Ordering Experiments on a Bit-Set Instrument",
+  "objective": "min",
+  "strategies": [
+    "visit experiments in input order (checker baseline)",
+    "unweighted Hamming nearest-neighbor greedy (ignores per-line costs; re-crosses expensive boundaries on trap cases)",
+    "cost-sorted recursive bit-nesting (weighted Gray nesting: master/regional lines outermost, cheap lines innermost) with boundary orientation plus deterministic 2-opt and adjacent-swap refinement"
+  ]
+}

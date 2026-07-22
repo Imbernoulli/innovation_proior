@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0587",
+  "tier": "A",
+  "format": "C",
+  "family": "linear-probe-cluster-sculpt",
+  "eval_form": "quality-metric",
+  "theme": "harbor master mooring boats along one long quay",
+  "title": "Breakwater Berths: Sculpting the Empty Slips of a Ring Marina",
+  "objective": "min",
+  "strategies": [
+    "home-order first-fit: moor each boat at the earliest free berth in its reach window (checker baseline)",
+    "frequency-first first-fit: give high-traffic boats priority for their home berth to cut successful-lookup cost, ignoring where empties land",
+    "breakwater sculpting: treat empty slips as a positionable resource, relocating them (by shifting whole blocks of boats one berth forward) into high-absent-weight zones so miss-scans terminate quickly",
+    "per-run trade-off: pay a little displacement to open an empty just downstream of a hot zone, cutting the forward miss-distance of every berth in it"
+  ]
+}

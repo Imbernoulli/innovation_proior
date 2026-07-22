@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0931",
+  "tier": "B",
+  "format": "B",
+  "family": "multiscale-error-refinement-allocator",
+  "eval_form": "quality-metric",
+  "theme": "adaptive-mesh cell-budget allocation",
+  "title": "Front-Chasing Refinement: Equidistribute a Fixed Cell Budget Against an Estimated Error Indicator",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:topup-B-1"],
+  "strategies": [
+    "uniform grid: ignore the probe data, cut the domain into B equal-width cells (the reference)",
+    "top-k raw curvature: compute a second-difference indicator at every interior probe node and put a cut at the (B-1) largest values, with no budget accounting or recycling",
+    "equidistributing DP: treat the probe samples as a proxy field and find the exact partition of the base blocks into B groups that minimizes total within-group probe variance -- the closed-form fixed point of coarsen-the-flat / refine-the-front / recycle-the-freed-cell",
+    "iterative coarsen-refine loop: repeatedly estimate a per-cell error indicator from local probe samples, split the worst cell, and merge the two lowest-indicator adjacent cells to pay for it, holding the total cell count fixed"
+  ]
+}

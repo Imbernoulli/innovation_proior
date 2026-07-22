@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0876",
+  "tier": "S",
+  "format": "A",
+  "family": "veneer-grain-marquetry",
+  "eval_form": "quality-metric",
+  "theme": "wood marquetry with flowing grain",
+  "title": "Flow-Matched Marquetry",
+  "seed_problem": "source veneer sheet with a smooth grain-direction field + target polyomino panel with a desired flow field; solver places non-overlapping piece poses on the sheet AND poses tiling the panel, scored on seam grain mismatch + waste - shape diversity",
+  "objective": "min",
+  "mutation": "composite: each output object is ONE physical piece carrying TWO independently chosen poses (a sheet-cut pose and a panel-glue pose) whose rotation DIFFERENCE alone determines the glued-in grain angle, coupling a sheet packing and a panel packing through every piece; the objective additionally rewards distinct-shape usage, composing dual-packing-coupling + grain-flow-continuity + piece-shape-diversity into one score.",
+  "strategies": [
+    "trivial: place zero piece instances (reproduces the checker's own do-nothing baseline)",
+    "area-first greedy: tile the panel largest-shape-first by geometric fit alone, cut each piece from the sheet by blind first-fit (rotation 0 preferred, then row-major position) -- fully ignores both grain fields",
+    "pose-pair search (strong): for every accepted panel placement, exhaustively search the sheet over ALL (position, sheet-rotation) pairs and keep the one whose net-rotation-shifted angles best match the panel's local desired flow field; gate piece size by how much the target field varies across the candidate footprint (small/diverse shapes in curved regions, large shapes in flat regions)",
+    "general solver headroom: jointly optimize panel-side rotation too (not just geometric fit), or use local search / simulated annealing over the whole instance list to escape the row-major scan order"
+  ]
+}

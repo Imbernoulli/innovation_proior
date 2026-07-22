@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0969",
+  "tier": "A",
+  "format": "B",
+  "family": "probe-certified-tolerance",
+  "eval_form": "quality-metric",
+  "theme": "Inspector who must guarantee, not guess",
+  "title": "Inspector Who Must Guarantee, Not Guess",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:geometry-fabrication"],
+  "strategies": [
+    "spend nothing: certify with the published global cap m_cap (always sound, useless)",
+    "lie: certify with a fixed small bound; the grader recomputes what was actually earned from the (empty) probe history and catches it as unsound",
+    "textbook coverage: pre-plan a regular, edge-to-edge 4x4 grid across the whole panel before looking at any history, spend only as much of the (larger) budget as that fixed plan needs, then honestly compute the tightest bound the grader's own formula allows over the official inspection grid -- a strong, near-optimal BLIND layout that leaves the rest of the budget completely unused, since it never asks whether a reading is worth reacting to",
+    "minimax against the bound formula: every single round, recompute the grader's own certified-envelope formula over the SAME official inspection grid using the observed history so far, and probe at its CURRENT argmax -- with no signal yet this naturally disperses like good coverage, but the instant a probe lands near a hidden defect the envelope right there becomes the new worst point and pulls the next probe toward it, closing in over several rounds on a defect no fixed layout could ever land inside"
+  ]
+}

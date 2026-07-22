@@ -61,11 +61,15 @@ the co-located ground-truth source (gen/labels/laws) to regenerate the answer. C
 judge only through the text protocol (public instance in, answer out); the hidden answer never leaves the
 parent. `G5c` enforces it (fails any evaluator that doesn't sandbox, or any environment without bwrap).
 
-## 4. The tiered plan (档) — 200 problems
+## 4. The tiered plan (档) and current corpus
 
-Research-grounded (`reports/taxonomy_proposal.json`), importance-ranked. Default sums to 200;
-`build_seed_list.py --per-tier 200` plans 200 per tier (800). 36 families; every spec is a unique
-(family × theme × variant) scaffold with a scale sweep for generalization.
+The researched base taxonomy (`reports/taxonomy_proposal.json`) is importance-ranked and still
+regenerates a controlled **200-problem** batch by default. The checked-in corpus is the broader
+**1006-problem** plan assembled with `build_seed_list.py --current`: taxonomy batch 1 (200) +
+taxonomy batch 2 (200) + 16 bespoke-novelty problems + 84 breadth-fill problems that target thin
+scientific-law, op-count, ML-method, discrete-construction, and domain-specific task families + 6
+subagent-generated extensions + 500 bulk constructive-selection extensions. Every spec is a unique
+`(family x theme x variant)` or supplement scaffold.
 
 | Tier | 档 | Focus | Families | Count | Formats |
 |---|---|---|---|---|---|
@@ -74,7 +78,18 @@ Research-grounded (`reports/taxonomy_proposal.json`), importance-ranked. Default
 | **B** | 应用前沿 | engineering + scientific optimization | 8 | **30** | B, D, E |
 | **C** | 方法与异域前沿 | ML-method design + exotic construction | 6 | **20** | B, C |
 
-Format mix over the 200: A≈80, B≈49, C≈52, D≈11, E≈8.
+Current 1006-problem mix:
+
+| Group | Count | Role |
+|---|---:|---|
+| S | 160 | graph/combinatorial core |
+| A | 140 | math-discovery / heuristic evolution |
+| B | 60 | engineering + scientific optimization |
+| C | 40 | ML-method design + exotic construction |
+| N | 18 | bespoke high-novelty, composite/mechanism-twist problems |
+| G | 588 | breadth-fill plus bulk constructive-selection domains |
+
+Format mix over the 1006: A=184, B=126, C=620, D=41, E=35.
 
 ## 5. Critical analysis — improvements over FrontierSmith (辩证)
 
@@ -95,8 +110,8 @@ Format mix over the 200: A≈80, B≈49, C≈52, D≈11, E≈8.
 ## 6. Reproduce
 
 ```bash
-cd FrontierSmith/synth
-python3 seeds/build_seed_list.py                      # -> seeds/seed_list.jsonl (200; or --per-tier 200)
+cd frontiersmith_synth
+python3 seeds/build_seed_list.py --current            # -> seeds/seed_list.jsonl (current 1006)
 python3 harness/validate_problem.py   harness/_selftest      # A/C/D/E self-check
 python3 harness/validate_problem.py   harness/_selftest_C
 python3 harness/validate_pyproblem.py harness/_selftest_B    # B self-check

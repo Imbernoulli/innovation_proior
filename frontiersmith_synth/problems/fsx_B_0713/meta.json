@@ -1,0 +1,18 @@
+{
+  "id": "fsx_B_0713",
+  "tier": "B",
+  "format": "C",
+  "family": "phototropic-canopy-lsystem",
+  "eval_form": "quality-metric",
+  "theme": "grow a tree that outsmarts its own shade",
+  "title": "Canopy Spacing: A Tree That Outgrows Its Own Shade",
+  "objective": "maximize",
+  "mechanisms": ["biomass-cost", "parametric-l-system", "self-shading-light-model"],
+  "innovation_hook": "Light harvest is capped by self-occlusion, so the win is geometric spacing of foliage rather than adding more of it.",
+  "strategies": [
+    "trivial baseline: reproduce the checker's own modest fixed-angle reference canopy",
+    "textbook greedy: hard-code the classic ~22 degree fractal-tree branching angle with full leaf retention (taper=1), ignoring the instance's cost coefficients and sun schedule -- self-shades once the crown gets deep or the sun schedule is wide",
+    "adaptive local search: simulate the checker's own harvested-light-minus-biomass-cost objective locally and run a seeded coordinate/random search over (length ratio, branching angle, leaf taper, asymmetry) against the actual instance data",
+    "(headroom above strong): a smarter continuous optimizer / exchange argument tuned per sun-ray weight could still find better spacing than the local search's ~320 evaluations"
+  ]
+}

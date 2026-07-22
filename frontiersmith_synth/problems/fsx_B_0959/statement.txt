@@ -1,0 +1,89 @@
+# Cyclic Cup Seeding
+
+## Problem
+A knockout cup has `N = 2^k` competitors and a fixed pairwise results table: for
+every pair of distinct players `(i, j)` exactly one of them beats the other,
+always the same way whenever they meet. This table can be **intransitive** --
+rock-paper-scissors triples are allowed, so no single "power ranking" predicts
+every match.
+
+The organiser has designated `K` **sponsor** players, each with a bounty value.
+Before a single match is played you must **commit** one seeding: an assignment of
+all `N` players to the `N` bracket slots. The bracket then plays out completely
+mechanically -- slot `2i-1` meets slot `2i` in round 1, the winner of that pairing
+advances, and this halves the field every round for `k = log2(N)` rounds until one
+champion remains. You get no say once the seeding is locked.
+
+## Input
+```
+N K
+N lines, each an N-character string of '0'/'1'
+  (row i, char j = '1' iff player i beats player j; diagonal is '0')
+K integers: the sponsor players' ids (1-indexed, distinct)
+K integers: the sponsor players' bounty values, aligned with the id list above
+```
+
+## Output
+```
+N integers: a permutation of 1..N -- the player placed in slot 1, slot 2, ..., slot N
+```
+
+## Feasibility
+The output must be a permutation of `1..N` (each id appears exactly once, all in
+range). Any repeat, out-of-range value, or wrong count scores 0.
+
+## Objective (maximize)
+Play out the bracket deterministically from your seeding. For each sponsor player
+`p`, let `rounds(p)` be the number of consecutive rounds `p` wins (0 if `p` loses
+round 1; `k` if `p` becomes the champion -- at most one player can be champion, so
+sponsors compete for the same deep runs). Your score is
+```
+F = sum over sponsor players p of  bounty(p) * (rounds(p) + 1)
+```
+Every extra round a sponsor survives adds one more full copy of their bounty, and
+because only one player can occupy the final, the sponsors' bracket paths trade
+off against each other -- routing one sponsor deep can cost another sponsor its
+own easy early rounds.
+
+## Scoring
+The checker seeds its own baseline by placing player `i` in slot `i` for every `i`
+(the identity seeding) and computes that construction's objective, call it `B`
+(`B >= sum of the bounty values > 0`, always). Your ratio for a case is
+```
+ratio = min(1000, 100 * F / max(1, B)) / 1000
+```
+so matching the identity seeding scores `0.1`; reaching `10*B` caps at `1.0`. The
+final score is the mean ratio over the 10 test cases.
+
+## Constraints
+- `4 <= N <= 1024`, `N` a power of two. `2 <= K <= 12`, `K <= N`.
+- Bounty values are positive integers `<= 500`.
+- The results form a full tournament (every unordered pair has a deterministic
+  winner) and may contain cycles: results are NOT guaranteed to come from any
+  single strength ranking, so spreading players apart by an aggregate win tally
+  can still route a sponsor straight into someone who beats them every time, and a
+  player who looks weak on total wins can be the exact specialist who eliminates
+  every sponsor they meet.
+- Time limit: 5 s. Memory limit: 512 MB. Everything above is fully deterministic.
+
+## Example
+`N=4, K=2`. Results: `1` beats `2`; `3` beats `1`; `4` beats `1`; `2` beats `3`;
+`4` beats `2`; `3` beats `4`. Sponsors: player `1` (bounty `10`), player `3`
+(bounty `5`).
+```
+4 2
+0100
+0010
+1001
+1100
+1 3
+10 5
+```
+Seeding `1 2 3 4` (slot order): round 1 pairs `(1,2)` and `(3,4)`; `1` beats `2`,
+`3` beats `4`. Final: `3` beats `1`. So `rounds(1)=1, rounds(3)=2`, giving
+`F = 10*(1+1) + 5*(2+1) = 20 + 15 = 35`. This is exactly the identity baseline
+`B`, so this seeding scores `0.1`. Player `1` never beats `3` or `4`, so `rounds(1)` can
+never exceed 1 no matter the seeding -- every seeding that pairs player `1` with
+anyone but `2` in round 1 scores worse on that term. A stronger seeding must find,
+for every sponsor, an opponent they actually beat at each round they hope to
+survive, not just avoid the players with the highest overall win totals.

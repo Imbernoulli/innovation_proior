@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_1004",
+  "tier": "A",
+  "format": "A",
+  "family": "crease-star-flatfold",
+  "eval_form": "quality-metric",
+  "seed_problem": "given a convex polygon sheet, rotational order k and crease budget, output straight creases with mountain/valley labels satisfying Maekawa+Kawasaki at every interior vertex, plus k-fold rotational invariance, scored on crease count + vertex-degree-type diversity + fold-angle entropy",
+  "mutation": "composite: abstracted to the single central vertex O of a k-fold symmetric star crease pattern (the fixed point of the rotational group action). Interior crease *positions* are chosen once per sector and forced into orbits of size k by the symmetry requirement, but mountain/valley *labels* are free per crease (not forced symmetric) -- so the fold-condition constraints (Maekawa, Kawasaki) apply to the ORBIT SUM of gaps/labels at O, producing an exact modular-parity classification (period p=extra+1 odd & k even => Kawasaki auto-satisfied for ANY slot subset; otherwise an explicit local alternating-gap-balance condition, solvable via a mirror-pair/palindrome construction) that a naive value-greedy slot pick almost never satisfies for odd k.",
+  "objective": "max",
+  "theme": "flat-foldable origami star crease pattern",
+  "title": "Rotating Star Vertex: Symmetric Crease Selection",
+  "strategies": [
+    "trivial: the checker's own naive (no value information) reference construction -- interior slots picked by plain index order up to ~mmax/2 of them, parity-adjusted per k (even k: index-order even count; odd k: midpoint + naive low-index mirror pairs), falling back to a single midpoint crease when that count would be zero -- with a near-max-transition M,V,...,M labeling; reproduces the checker's own baseline B exactly",
+    "greedy: take the mmax highest-value interior slots regardless of position (ignoring Kawasaki entirely), use a blocky M-block/V-block labeling, and only fall back to the same naive baseline construction as trivial.cpp if the naive pick turns out infeasible",
+    "insight (strong): classify the instance by k's parity and the chosen interior count's parity -- if k is even, an EVEN number of interior slots (any positions) automatically satisfies Kawasaki at the orbit-sum level (no balance search needed), so grab the top-value slots freely; otherwise (k odd, or an odd interior count) build a mirror-symmetric (palindromic) slot set -- pairs (j,S-j) ranked by combined value plus the self-mirrored midpoint slot -- which provably satisfies the alternating-gap-balance condition for ANY value table, then labels creases with a max-transition interleave-with-one-flip pattern",
+    "possible further improvement: full DP over (slot, count-chosen, running even-minus-odd gap difference) to find the value-optimal balanced subset exactly rather than relying on the mirror-pair sufficient construction"
+  ]
+}

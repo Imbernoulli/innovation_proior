@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0722",
+  "tier": "A",
+  "format": "C",
+  "family": "rlc-ladder-response-fitting",
+  "eval_form": "quality-metric",
+  "theme": "Pick R,L,C values for a target filter curve",
+  "title": "Ladder Filter Synthesis from a Target Curve",
+  "objective": "minimize",
+  "strategies": [
+    "trivial: leave every component unpopulated (bare resistor divider) -- reproduces the checker's own baseline",
+    "greedy: split the frequency axis into N equal log-bands, one per component slot, and pick each component so its own reactance alone equals Z0 at its band's center frequency -- always fully populates, never revisits a choice once made, ignores how every other component also shifts the same resonance",
+    "strong: estimate the passband-to-stopband corner (the -3dB crossing) directly from the target curve, use it to invert the classical doubly-terminated ladder recurrence for ALL component values jointly (the pole-zero-consistent taper), quantize to the nearest allowed discrete values, then locally refine (including dropping marginal components) against the true cascaded transfer function",
+    "invalid: malformed / out-of-range / non-finite artifact"
+  ]
+}

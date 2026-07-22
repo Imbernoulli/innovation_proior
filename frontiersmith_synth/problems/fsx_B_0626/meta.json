@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0626",
+  "tier": "B",
+  "format": "D",
+  "family": "conjugated-permutation-reversible-synthesis",
+  "eval_form": "flops",
+  "theme": "rebuild a shuffling machine from its behavior alone",
+  "title": "Conjugated Shuffle: Minimal-Weight Reversible Resynthesis",
+  "objective": "minimize",
+  "strategies": [
+    "canonical structure-blind cycle-fixup with a fixed full-bit-width transposition gadget (trivial)",
+    "cycle decomposition + best-star-center shortest-Hamming-path transpositions, plus a cheap single-axis invariance check (greedy)",
+    "global linear-subspace search recovering the conjugating change of basis, then CNOT-only basis change + tiny local resynthesis (strong)",
+    "true minimum-weight reversible circuit search (open ceiling, uncovered)"
+  ]
+}

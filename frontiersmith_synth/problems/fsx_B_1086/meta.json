@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1086",
+  "tier": "B",
+  "format": "D",
+  "family": "shared-addition-chains",
+  "eval_form": "flops",
+  "theme": "Compute target values from 1 with fewest operations",
+  "title": "Batch Power Precompute on Shared Rails",
+  "objective": "min",
+  "strategies": [
+    "independent binary-method chain per target (baseline)",
+    "union of per-target binary chains, reusing already-computed registers",
+    "recursive largest-difference construction with register reuse",
+    "joint (vectorial) addition-chain search: Bos-Coster-style largest-two reduction (subtract / halve / approximate-GCD) that inverts the op count into a shared build DAG over all targets"
+  ]
+}

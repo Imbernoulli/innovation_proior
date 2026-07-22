@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0863",
+  "tier": "A",
+  "format": "B",
+  "family": "adaptive-titration-controller",
+  "eval_form": "quality-metric",
+  "theme": "Titrate unknown samples to a target pH curve",
+  "title": "Titrate the Unknown: Closed-Loop Equivalence-Point Control",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:inverse-design"],
+  "strategies": [
+    "trivial: blind fixed-increment titration (V_max/max_rounds every round), stop the first time the reading crosses the target -- reproduces the evaluator's own reference construction, no feedback beyond a crossing check",
+    "greedy: proportional controller with ONE fixed gain (Kp = V_max/14, the only global scale the instance advertises) -- reacts to the live pH error but never re-tunes to local buffer capacity, so it crawls gentle high-capacity plateaus and overshoots steep low-capacity equivalence jumps by the same margin",
+    "strong: online secant-slope estimate of local buffer capacity from the two most recent readings, inverted via a damped Newton step, wrapped in a genuine trust-region policy (curvature-check on consecutive secant slopes, growth cap relative to the last step taken, and a final-approach throttle) so it can close in on a hidden steep jump instead of vaulting across it -- purely reconstructed from the given round history each call, no persistent state",
+    "invalid: claims to add 10^9 mL on round 0 without reading the instance, blowing the V_max feasibility bound -> 0 on every instance"
+  ]
+}

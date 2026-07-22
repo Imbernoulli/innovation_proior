@@ -1,0 +1,103 @@
+# Valve Segmentation Under a Double-Burst Sweep
+
+## Problem
+
+A water utility's pipe network is a tree: `N` junctions and `M = N-1` pipes,
+each carrying a fixed daily **demand**. A subset `C` of the pipes are **valve
+sites** — the only places you may install a shutoff valve, budget `V` valves
+total. Removing every valved pipe splits the network into a **forest of
+segments**; when any un-valved pipe bursts, the whole segment containing it
+must be shut down (you cannot isolate less than that).
+
+The utility also keeps a curated **double-burst list**: pairs of pipes known
+to fail together (shared trenching, correlated corrosion, ...). If a listed
+pair's pipes end up in the *same* segment, shutting it covers both. If they
+end up in *different* segments, you must shut **both** at once — so a
+double-burst can force the loss of two segments that each look small alone.
+
+Choose at most `V` valve sites to **minimize the worst-case demand lost**,
+ranging over every single-pipe burst and every listed double-burst pair.
+
+## Input
+
+```
+N M V C
+c_1 c_2 ... c_C
+u_1 v_1 d_1
+...
+u_M v_M d_M
+L
+i_1 j_1
+...
+i_L j_L
+```
+`c_1..c_C` are the 1-indexed pipes (ascending) eligible for a valve — no other
+pipe can ever be valved. Pipe `k` (1-indexed, input order) connects junctions
+`u_k, v_k`, demand `d_k`. Each of the last `L` lines names a double-burst
+pair by pipe index; both indices are guaranteed to lie outside `C`.
+
+## Output
+
+Print `k` (`0 <= k <= V`) — the number of valves you install — on the first
+line, then `k` distinct pipe indices from `{c_1,...,c_C}` on the second line
+(omit the line, or leave it empty, if `k = 0`).
+
+## Feasibility
+
+`0 <= k <= V`; every printed index is distinct and appears in `c_1..c_C`. Any
+violation (out-of-range index, duplicate, non-candidate pipe, `k > V`,
+trailing tokens) scores `0`.
+
+## Objective
+
+Remove your `k` valved pipes from the tree; every remaining pipe belongs to
+exactly one connected **segment**, whose demand is the sum of the (non-valved)
+pipe demands inside it. Let `seg(p)` be the segment containing un-valved pipe
+`p`. Define
+```
+F = max( max_p seg-demand(seg(p)),
+         max_{(i,j) in double-burst list} loss(i,j) )
+```
+where the first max ranges over every un-valved pipe `p` (a single burst there
+loses its whole segment) and
+```
+loss(i,j) = seg-demand(seg(i))                          if seg(i) == seg(j)
+loss(i,j) = seg-demand(seg(i)) + seg-demand(seg(j))      otherwise
+```
+Minimize `F`.
+
+## Scoring
+
+Let `B` be the demand lost by installing **no valves at all** (the whole
+network is one segment, so `B` equals the total demand of every pipe — every
+burst and every double-burst pair loses everything). Your score on a test is
+```
+ratio = min(1000, 100 * B / max(1, F)) / 1000
+```
+so doing nothing scores `0.1`, and any real improvement scores higher, capped
+at `1.0` (ten times better than doing nothing). Per-test ratios are averaged.
+
+## Constraints
+
+* `2 <= N <= 2600`, `M = N - 1`, `1 <= C <= M`, `1 <= V <= C`.
+* `1 <= d_k <= 10000`.
+* `0 <= L <= 50`; each `i_k, j_k` is a valid pipe index outside `C`.
+* Time limit: 3 s. Memory limit: 512 MB.
+
+## Example
+
+Three hubs `A - B - C` in a path: valve-eligible pipes `AB`=1, `BC`=2 (each
+demand `1`). Each hub also feeds two branch pipes of demand `10`, except `B`,
+whose own extra branch pipe `9` carries demand `500`. Total demand
+`B = 6*10 + 500 + 1 + 1 = 562` (do-nothing reference, ratio `0.1`). No
+double-burst pairs.
+
+Valving only pipe `1` isolates `{A}` (demand `20`) but leaves `{B,C}` at
+`10+10+10+500+1 = 531` — still the bottleneck, since `B`'s huge branch pipe
+is still bundled with `C`'s pipes. Valving **both** `1` and `2` isolates `B`
+alone: `{A}`=`20`, `{B}`=`500`, `{C}`=`20`. The worst segment drops only to
+`500`: fencing off the single big pipe never shrinks the loss below its own
+demand, because the loss is the whole segment it sits in. A richer instance
+additionally needs the double-burst list honored — separating two listed
+pipes into different segments is never free, since their combined demand
+becomes the new worst case.

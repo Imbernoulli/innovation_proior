@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0622",
+  "tier": "S",
+  "format": "A",
+  "family": "collective-influence-immunization",
+  "eval_form": "quality-metric",
+  "theme": "Remove key people to shatter a network",
+  "title": "Shatter the Syndicate",
+  "objective": "min",
+  "seed_problem": "optimal-percolation network dismantling under a node-removal budget",
+  "mutation": "composite: bond-percolation giant-component dismantling summed over S deterministic threshold-coupled scenarios, coupled to a cost-weighted node-immunization budget K (not a plain head count); the population is planted as several dense, internally-redundant communities (plain clusters or near-clique hub cores) stitched by low-degree cut-vertex bridges, so the objective landscape rewards radius-ELL collective influence over raw degree or betweenness.",
+  "strategies": [
+    "trivial: immunize nobody (reproduces the checker baseline B, ratio 0.1)",
+    "greedy: immunize people in decreasing raw structural degree, skipping anyone who would blow the budget (the obvious hub-removal recipe; hubs sit inside redundantly connected communities so removing them barely dents the percolating giant, and it never reaches the low-degree bridge people)",
+    "strong: adaptive collective influence -- CI_ell(i) = (deg_i-1) * sum of (deg_j-1) over the radius-ell frontier, recomputed after every removal, ranked by CI-per-cost so the budget is spent efficiently; a bridge's frontier reaches a whole neighbouring community giving it outsized CI despite minimal own degree",
+    "general: could evaluate exact marginal giant-component reduction per candidate via incremental union-find, use articulation-point/2-edge-connectivity decomposition, or a fractional relaxation of the cost-budget knapsack"
+  ]
+}

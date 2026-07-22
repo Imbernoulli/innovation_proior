@@ -1,0 +1,115 @@
+# Firebreak Grid: Hardening a Power Network Against Any Single Trip
+
+## Problem
+
+A power grid is a set of `L` transmission **lines**. Line `i` normally carries a
+**base load** `w_i` and serves a demand worth `v_i` (its *value*). If a line ever
+carries more load than its **capacity**, it trips offline; its value is lost and its
+load is instantly **rerouted** onto other lines, which may in turn trip -- a
+**cascade**.
+
+You are the grid planner. You have a total **capacity budget** `B` to divide among
+the lines: choose an integer capacity `cap_i >= 0` for each line with
+`sum_i cap_i <= B`. You cannot buy capacity for every line; you must decide where it
+matters.
+
+Rerouting is fixed and given. When line `u` trips carrying load `Lu`, for each listed
+reroute edge `(u, j, num)` line `j` receives `floor(Lu * num / 1000)` extra load; the
+remaining fraction (numerators for `u` sum to at most `1000`) is **shed to ground**
+and disappears harmlessly. Load sent to an already-tripped line is also shed.
+
+## Cascade rule (deterministic)
+
+For a scenario that trips line `t`, capacities `cap`:
+1. `load_i = w_i` for all `i`. Mark `t` tripped. Also mark tripped every line with
+   `load_i > cap_i` (overloaded at rest).
+2. Repeat in rounds: every line tripped in the previous round distributes its current
+   load along its reroute edges (adding to non-tripped lines). After all such
+   distributions in the round, mark tripped every non-tripped line now exceeding its
+   capacity. Stop when a round trips nothing new.
+
+Each tripped line distributes exactly once; the process is order-independent and
+terminates. The **served demand** of the scenario is
+`served(t) = (sum of all v_i) - (sum of v_i over tripped lines)`.
+
+## The sweep
+
+A list of `S` **scenario lines** is given. Your grid is judged by its **worst**
+scenario:
+
+```
+F = min over the S scenarios of served(t).
+```
+
+Maximize `F`. Capacity is not armor -- it is *routing*: where you withhold capacity
+decides where each cascade dies. Making a low-value, ground-shedding line trip early
+can steer a cascade off the high-value backbone, at a cost far below defending the
+backbone line-by-line.
+
+## Input
+
+```
+L M S B
+w_0 v_0
+...
+w_{L-1} v_{L-1}
+u_1 j_1 num_1
+...
+u_M j_M num_M
+t_1 t_2 ... t_S
+```
+
+Lines are `0..L-1`. Then `M` reroute edges, then the `S` distinct scenario line
+indices. All numbers are integers.
+
+## Output
+
+Print `L` integers `cap_0 .. cap_{L-1}` (whitespace-separated).
+
+## Feasibility
+
+Feasible iff every `0 <= cap_i <= B` and `sum_i cap_i <= B`. An infeasible or
+malformed output scores `0`.
+
+## Scoring
+
+Let `U = floor(B / L)` and let `Bsl = F` evaluated for the **uniform** grid
+`cap_i = U` for all `i` (the generator guarantees `Bsl > 0`). Your score for a test is
+
+```
+ratio = min(1000, 100 * F / max(1, Bsl)) / 1000
+```
+
+so the uniform grid scores exactly `0.1`, and driving the worst-case served demand up
+to `10 x` the uniform baseline reaches `1.0`. Per-test ratios are averaged.
+
+## Constraints
+
+* `1 <= L <= 2000`, `1 <= M <= 8000`, `1 <= S <= 50`.
+* `0 <= w_i`, `0 <= v_i`, values and loads fit in 32-bit; `B` fits in 32-bit.
+* Reroute numerators for any fixed source sum to at most `1000`.
+* Time limit: 4 s. Memory limit: 512 MB.
+
+## Example
+
+```
+3 1 1 300
+100 15
+0 1000
+250 30
+0 1 700
+0
+```
+
+Lines: `0` a feeder (load 100, value 15), `1` the backbone (load 0, value 1000),
+`2` a ground pocket (load 250, value 30). Reroute: if line `0` trips it sends
+`floor(load*700/1000)` to line `1`. Scenario: trip line `0`.
+
+Uniform `U = 100`: line `2` (load 250 > 100) trips at rest and grounds; tripping
+line `0` sends `70` to line `1`, whose load `70 > 100`? no -- it survives. Served
+`= 1045 - 30 - 15 = 1000`, so `Bsl = 1000`.
+
+Better: `cap = [100, 70, 0]` (sum `170 <= 300`) sacrifices the pocket but keeps the
+feeder and backbone up: line `2` trips (grounds), line `1` reaches load `70 <= 70`
+and survives. Served `= 1045 - 30 - 15 = 1000`, `ratio = 0.1`. Concentrating budget
+on the backbone entrance while sacrificing the pocket is what wins at scale.

@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0688",
+  "tier": "A",
+  "format": "A",
+  "family": "facility-congestion-balancing",
+  "eval_form": "quality-metric",
+  "theme": "Place clinics before queues explode",
+  "title": "Place Clinics Before Queues Explode",
+  "seed_problem": "capacitated facility location with nearest-assignment (k-median style)",
+  "objective": "min",
+  "mutation": "composite: budget-constrained facility SELECTION coupled to a load-BALANCING assignment, scored by travel cost plus an M/M/1-style queueing-delay term lambda_f/(mu_f-lambda_f) that is superlinear near saturation -- turning a plain k-median distance minimization into a distance-vs-congestion trade-off.",
+  "strategies": [
+    "trivial: open the single largest-capacity affordable site and funnel every demand node to it (reproduces roughly the checker's budget-blind nearest-facility baseline order of magnitude, ignores distance and load entirely)",
+    "naive greedy: open sites cheapest-cost-first while budget allows, then route every demand node to its geometrically nearest open site, ignoring load -- overloads cheap central sites and can miss high-value sites entirely (needle/junk trap)",
+    "insight (strong): select sites by capacity-served per unit budget, then assign demand nodes (largest arrival rate first) to whichever open site minimizes travel cost PLUS the marginal increase in that site's queueing term -- naturally spreads load away from near-saturated sites even at extra travel distance",
+    "a general solver can go further with full local-search reassignment / an LP relaxation of the assignment coupled to a knapsack relaxation of the site selection"
+  ]
+}

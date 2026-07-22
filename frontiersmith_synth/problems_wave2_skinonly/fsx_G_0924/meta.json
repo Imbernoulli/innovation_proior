@@ -1,0 +1,18 @@
+{
+  "id": "fsx_G_0924",
+  "tier": "G",
+  "format": "C",
+  "family": "museum-exhibit-loan-curation",
+  "eval_form": "quality-metric",
+  "theme": "temporary museum artifact loan curation",
+  "title": "Temporary Museum Artifact Loan Curation Portfolio",
+  "objective": "max",
+  "bulk_factory": "budget-conflict-coverage-selection",
+  "salt": 474511510,
+  "strategies": [
+    "trivial: reproduce the checker cost-first feasible baseline",
+    "greedy: sort by value, capability weight, and cost density",
+    "strong: repeatedly add the feasible asset with best current marginal utility per cost",
+    "future: local search, swap neighborhoods, Lagrangian budget pricing, and conflict-aware coverage repair"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0850",
+  "tier": "A",
+  "format": "A",
+  "family": "hedge-maze-veiled-symmetry",
+  "eval_form": "quality-metric",
+  "theme": "unicursal hedge labyrinth that looks fourfold",
+  "title": "Veiled Fourfold Hedge",
+  "seed_problem": "Hamiltonian-path-in-grid / perfect-maze construction",
+  "mutation": "composite: the corridor must be a single unbranching entrance-to-center path near-covering the grid (hamiltonian-corridor-path), scored not by length but by a 3-way weighted objective coupling wall-set D4 symmetry defect, turn-sequence rhythm entropy, and depth-to-center oscillation -- and a corner entrance makes perfect symmetry provably infeasible (orbit-counting bound), so the optimal strategy must approach, not reach, that bound.",
+  "objective": "max",
+  "strategies": [
+    "trivial: plain spiral-matrix traversal from entrance to center; no attempt at symmetry/rhythm/oscillation (checker baseline, ratio ~0.1)",
+    "naive greedy: patch the spiral with a bounded 2-opt local search that ONLY accepts moves raising turn-rhythm entropy, with no mechanism to protect or seek symmetry/oscillation; since a spiral's 2-opt slack is almost entirely ring-crossing, those two terms move as unplanned side effects and greedy fares far worse than strong whenever the input weights make them matter",
+    "insight (strong): reformulate as local search over the FULL joint weighted objective, using two structural facts -- (1) the entrance corner's D4 orbit makes symScore=1.0 provably unreachable, so the search should chase the reachable bound via direct orbit re-scoring, not blind symmetrization; (2) plain spiral depth is piecewise-constant per ring (oscScore=0 identically), so only ring-crossing 2-opt moves can earn oscillation credit -- optimizing the composite (not a single term) directly discovers and keeps exactly the moves that are net-positive across all three mechanisms"
+  ]
+}

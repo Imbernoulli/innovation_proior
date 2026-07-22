@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_1010",
+  "tier": "B",
+  "format": "C",
+  "family": "fractal-dimension-lacunarity-match",
+  "eval_form": "quality-metric",
+  "theme": "match both the roughness and the gaps",
+  "title": "Digit-Selection Carpet: Matching Roughness and Gaps",
+  "objective": "min",
+  "strategies": [
+    "single-cardinality floor baseline: round n^D* DOWN to an integer N, keep the first N cells of the n x n grid in row-major order at every level (matches neither target well)",
+    "single-cardinality rounded greedy: round n^D* to the NEAREST integer N, keep the first N row-major cells at every level (nails the dimension, still ignores lacunarity entirely -- the trap)",
+    "decoupled search: search a small set of per-level cardinality schedules to fit D* (allowing two different cardinalities across levels to hit a fractional target), THEN independently search cell-placement patterns per level (compact/blob vs maximally-dispersed farthest-point vs mixed) to fit Lam*, since the dimension of a digit-selection carpet depends only on the per-level cardinalities while lacunarity depends on which cells are chosen"
+  ]
+}

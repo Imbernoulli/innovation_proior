@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0611",
+  "tier": "S",
+  "format": "C",
+  "family": "pixel-font-coherence",
+  "eval_form": "quality-metric",
+  "theme": "designing a coherent 26-glyph pixel typeface",
+  "title": "Coherent Pixel Typeface: Distinct Yet On-Style",
+  "objective": "max",
+  "strategies": [
+    "trivial baseline: a low-distance arm code (consecutive glyphs differ in a single row) -- coherent but easily confused",
+    "distance-only greedy: random 4-connected glyphs, greedily kept to maximize min pairwise Hamming distance -- distinct but noise-like, huge motif vocabulary",
+    "ECC reformulation (strong): fix one stroke motif (full-row arms on a shared spine), then place glyphs as an even-weight code so every pair differs in >=2 rows -- distinctness and a tiny vocabulary at once",
+    "open headroom: richer motif bases or nonlinear codes can push distance higher while keeping vocabulary small, above the reference strong solution"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "id": "fsx_A_1008",
+  "tier": "A",
+  "format": "C",
+  "family": "multi-automaton-shared-reset",
+  "eval_form": "quality-metric",
+  "theme": "One word that resets a family of automata",
+  "title": "One Word to Reset Them All",
+  "objective": "maximize",
+  "strategies": [
+    "trivial: repeat one fixed letter for a while, ignoring the transition tables entirely",
+    "greedy: for each automaton independently, find A synchronizing word (pairwise-state-merge BFS, the textbook recipe), then bin-pack as many distinct per-automaton words as fit in the budget, cheapest first",
+    "strong: build the same per-automaton candidate words, but empirically test each one against EVERY automaton to discover shared/product transition structure, then pick the subset of words (by 0/1 subset search) whose UNION of resets is largest within the length budget -- one shared word can reset many automata at the cost of one"
+  ]
+}

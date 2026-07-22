@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0868",
+  "tier": "S",
+  "format": "E",
+  "family": "conserved-quantity-recurrence-forecaster",
+  "eval_form": "quality-metric",
+  "theme": "Recover late-stage dynamics from early trajectory",
+  "title": "The Alternate-Bearing Orchard",
+  "objective": "max",
+  "strategies": [
+    "constant predictor (mean of the training years) -> reproduces the checker baseline ~0.1",
+    "greedy: fit a flexible degree-2 polynomial in (x(t), x(t-1)) by least squares over the early-record window and roll it forward autoregressively; nails the training years (they span a narrow range) but iterated over the held-out decades the fit errors compound multiplicatively and the forecast diverges or lands far from the true bounded boom-bust orbit on several test ids",
+    "strong: notice the residuals of any memoryless value-space fit do not shrink no matter the polynomial degree -- the recurrence is RATIONAL, not polynomial; posit the family x(t+1) = (a + x(t)) / x(t-1) and recover 'a' via a robust (median) estimator over the training triples, which by construction reproduces the exact reserve invariant and keeps the long rollout on the true orbit",
+    "headroom above strong: refine 'a' with a nonlinear local search against training rollout error (rather than the one-shot median) and/or model the small per-year process shock's autocorrelation to shave the residual gap toward the shock noise floor; the smooth non-saturating score transform (CAP=0.9) guarantees this headroom is never fully reachable"
+  ]
+}

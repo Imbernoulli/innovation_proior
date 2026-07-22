@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0619",
+  "tier": "S",
+  "format": "D",
+  "family": "bilinear-mult-scheme",
+  "eval_form": "flops",
+  "theme": "wiring the cheapest polynomial multiplier chip",
+  "title": "Cheapest Polynomial Multiplier Chip",
+  "objective": "min",
+  "strategies": [
+    "trivial: schoolbook (d+1)^2 products = the checker baseline",
+    "greedy: recursive Karatsuba (field-independent; leaves products on the table)",
+    "strong: CRT over F_p[x] -- linear moduli (field points, cost 1) plus irreducible quadratic moduli (cost 3, cover 2) to approach the 2d+1 rank bound",
+    "open headroom: exact bilinear rank of poly-mult over small F_p is unknown; better mixed-moduli schemes may beat the reference"
+  ]
+}

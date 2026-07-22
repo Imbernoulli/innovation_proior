@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0578",
+  "tier": "S",
+  "format": "D",
+  "family": "fault-tolerant-sorting-network",
+  "eval_form": "flops",
+  "theme": "sorting hardware that tolerates one dead comparator",
+  "title": "Dead-Comparator-Proof Sorting Network: Minimal Redundancy by Shared Mop-Up",
+  "objective": "min",
+  "strategies": [
+    "triplicate every comparator (3S) -- calibration baseline (trivial)",
+    "duplicate every comparator (2S) -- the obvious fault-tolerance recipe / documented trap (greedy)",
+    "compact sort + a few shared odd-even mop-up rounds that repair every single-deletion fault at once (strong)",
+    "true minimum 1-fault-tolerant network (unknown; overhead below ~1.5x is open frontier)"
+  ]
+}

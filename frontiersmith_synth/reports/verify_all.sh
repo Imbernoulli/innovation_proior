@@ -1,6 +1,6 @@
 #!/bin/bash
 # Re-verify every problem with the correct harness (auto-detect program vs stdout mode).
-cd /scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/synth
+cd "$(dirname "$0")/.."
 verify_one() {
   d="$1"; id=$(basename "$d")
   if [ -f "$d/evaluator.py" ]; then

@@ -1,0 +1,140 @@
+# Canal Floodwall Pump Siting
+
+## Problem
+
+A storm surge is filling a rectangular canal grid. Several low basins feed water into
+the grid, and a set of candidate flood-barrier pumps can be opened. Each candidate pump
+has a fixed opening cost and a geometric reach radius. Every basin must be assigned to
+one opened pump within that pump's Manhattan reach, and the basin's water must be routed
+to the pump along adjacent canal cells.
+
+The catch is that the fastest-looking plan can be a bad one. A cheap central pump may
+cover every basin geometrically, but if all routed water crosses the same low-width
+canal, the convex congestion charge becomes large. Better submissions spread pumps
+across districts and route some water around narrow canals.
+
+## Input
+
+```
+line 1: H W N P
+next H lines: a grid row of W characters
+next N lines: r_i c_i d_i
+next P lines: x_j y_j f_j R_j
+```
+
+`H` and `W` are the grid dimensions. A grid character is either `#` for a blocked levee
+cell or a digit `1`..`9` for a canal cell. The digit is the local canal width.
+
+There are `N` basins. Basin `i` is at row `r_i`, column `c_i`, and has demand `d_i`.
+There are `P` candidate pumps. Pump `j` is at row `x_j`, column `y_j`, has opening cost
+`f_j`, and Manhattan reach radius `R_j`. Rows and columns are 1-indexed. Basins and pumps
+are always placed on canal cells.
+
+For generated tests, the first `N` pumps are radius-0 emergency pumps placed exactly on
+the `N` basin cells. Thus opening every pump and assigning each basin to its co-located
+emergency pump is always feasible.
+
+## Output
+
+First print an integer `K`, the number of opened pumps, followed by `K` distinct pump
+indices.
+
+Then print `N` basin route lines. For basin `i`, print
+
+```
+p_i L_i v_0 v_1 ... v_{L_i}
+```
+
+where `p_i` is the opened pump assigned to basin `i`, `L_i` is the number of grid edges in
+the route, and each `v_t` is a 1-indexed cell id `v = (row-1)*W + column`. The route must
+start at basin `i`'s cell (`v_0`) and end at pump `p_i`'s cell (`v_{L_i}`). Consecutive
+cells must share a side and must both be canal cells. `L_i` may be 0.
+
+## Feasibility
+
+A submission is feasible iff all of the following hold:
+
+- The opened pump list contains distinct indices in `1..P`.
+- For every basin `i`, pump `p_i` is opened.
+- The Manhattan distance from basin `i` to pump `p_i` is at most `R_{p_i}`.
+- The route for basin `i` starts at the basin cell, ends at the pump cell, stays on canal
+  cells, and moves only between side-adjacent cells.
+- There is no trailing output after the last route line.
+
+Any violation makes the whole output infeasible and scores 0.
+
+## Objective
+
+Let `load_e` be the sum of demands of all basin routes using undirected canal edge `e`.
+For an edge between canal cells of widths `a` and `b`, define
+
+```
+capacity_e = 4 * min(a,b) + 2.
+```
+
+For a feasible output, minimize
+
+```
+F =
+  sum(opened pump costs)
+  + sum over basins i of 8 * d_i * L_i
+  + sum over basins i of 3 * d_i * Manhattan(i, p_i)^2
+  + sum over canal edges e of ceil(load_e^2 / capacity_e).
+```
+
+The first term rewards opening few pumps, the next two terms reward short and geometrically
+near routes, and the last term penalizes routing too much water through narrow canals.
+
+## Scoring
+
+Let `B` be the checker-built emergency baseline cost: open every pump and route every
+basin to its co-located radius-0 emergency pump. Since those emergency routes have length
+0 and distance 0, `B = sum_j f_j`.
+
+Your ratio on a test is
+
+```
+ratio = min(1.0, (B / F) / 10).
+```
+
+The emergency all-open construction scores `0.1`. A feasible construction with objective
+at most one tenth of `B` scores `1.0`. Infeasible output scores `0`. The final score is
+the mean ratio over all generated tests.
+
+## Constraints
+
+- `2 <= H, W <= 60`, `H * W <= 3600`.
+- `1 <= N <= 400`, `N <= P <= 650`.
+- `1 <= d_i <= 30`.
+- `1 <= f_j <= 10000`, `0 <= R_j <= H+W`.
+- Route lengths must satisfy `0 <= L_i <= H*W - 1`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+```
+2 3 2 4
+999
+919
+1 1 3
+2 3 3
+1 1 1000 0
+2 3 1000 0
+1 3 120 3
+2 1 120 3
+```
+
+One feasible output is
+
+```
+2 3 4
+4 1 1 4
+3 1 6 3
+```
+
+The two opened pumps cost `240`. Basin 1 uses cell route `1 -> 4` to pump 4, and basin 2
+uses `6 -> 3` to pump 3. Both routes have length 1, demand 3, and Manhattan distance 1,
+so the route-plus-geometry cost is `2 * (8*3*1 + 3*3*1^2) = 66`. Each used edge has
+capacity `38`, load `3`, and congestion `ceil(9/38)=1`, adding `2`. Thus `F = 308`.
+The emergency baseline opens all pumps, so `B = 2240`, and the ratio is
+`min(1.0, (2240/308)/10) = 0.727272...`.

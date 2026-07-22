@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0843",
+  "tier": "A",
+  "format": "A",
+  "family": "hot-block-floorplan-thermal",
+  "eval_form": "quality-metric",
+  "theme": "cramming a steamworks into one deck",
+  "title": "Steamworks Deck: Cold-Rail Block Stowage",
+  "objective": "min",
+  "seed_problem": "polyomino floorplan packing with per-block power dissipation on a grid with a cold (fixed-temperature) boundary; minimize peak steady-state temperature",
+  "mutation": "composite: a pure non-overlapping polyomino packing goal is coupled to a discrete diffusion objective (integer Jacobi relaxation with a Dirichlet-zero rim) so the score is a nonlinear, superposed function of every block's placement simultaneously, not a sum of independent per-block costs; feasibility keeps the packing/rotation constraints but the objective now rewards a specific spatial ordering relative to the cold boundary rather than density or adjacency.",
+  "strategies": [
+    "trivial: left-to-right shelf packing in input order at rotation 0 (reproduces the checker's own baseline B exactly)",
+    "naive greedy: sort blocks by wattage descending and place each one to MAXIMIZE its distance from already-placed blocks (spread hot sources apart, checkerboard-style); with nothing placed yet the heaviest block defaults to the deck's geometric center -- ignores the cold rim entirely",
+    "insight (strong): sort blocks by wattage descending, then scan candidate cells in rim-distance-ascending order (ties broken by angle around the deck center, walking the rim) so heavy blocks claim the closest-to-rail slots first and are spread around the perimeter rather than clumped in one corner -- collapses the 2D placement search into a 1D walk along the cold boundary, exploiting that boundary distance is the first-order term of the diffusion field"
+  ]
+}

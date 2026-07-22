@@ -1,0 +1,19 @@
+{
+  "id": "fsx_S_0841",
+  "tier": "S",
+  "format": "B",
+  "family": "skew-aware-shard-assignment",
+  "eval_form": "quality-metric",
+  "theme": "key-value shard rebalancing under a bounded migration budget",
+  "title": "Hot-Key Repair: Bounded Migration under Power-of-Two Choices",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:topup-B-1"],
+  "mechanisms": ["bounded-migration-repair", "key-skew-diagnosis", "power-of-two-choices"],
+  "innovation_hook": "Diagnose the heavy tail first and spend the scarce migration budget only on the hottest keys via power-of-two-choices, leaving the light majority in place.",
+  "strategies": [
+    "do-nothing baseline: keep every key on shard0[i] (reproduces the evaluator's do-nothing reference, exactly 0.1)",
+    "id-order power-of-two pass (the trap): scan keys in creation-id order, moving each to the less-loaded of its two alternative shards if that beats its current shard's running load, until the budget is spent; ignores weight entirely, so on skewed instances it exhausts the budget on ordinary early keys and never reaches the viral tail at the end of the id list",
+    "weight-diagnosed power-of-two pass (the insight): sort keys by weight descending so the scarce budget is spent on the handful of heavy keys first, routing each to the lighter of its two precomputed alternatives against a running load state (so later heavy keys see earlier moves and don't pile onto the same relief shard), leaving the light majority untouched",
+    "multi-hotspot-aware planner: additionally reasons jointly across two independent hotspots and any residual budget on next-heaviest keys to further shave the max load"
+  ]
+}

@@ -1,0 +1,93 @@
+# One Broken Mat: Auspicious Tatami Court Layout
+
+## Problem
+
+You are laying tatami mats in a ceremonial court: an `H x W` grid (`H`, `W`
+both odd) with some cells permanently blocked by pillars. You have unlimited
+`1x2` mats (placed horizontally or vertically) and, by tradition, **exactly
+one** `1x1` mat -- the single "broken" mat that keeps the room's total mat
+count from forcing an all-domino tiling. You do not have to cover every free
+cell: place as many non-overlapping mats as you like, in any arrangement,
+subject to the feasibility rules below, and your layout is scored by how
+auspicious it looks.
+
+**Tatami rule (feasibility, not a soft bonus):** at any interior grid point
+whose four surrounding cells are all covered by mats, those four cells must
+not belong to four *different* mats. Two or three different mats meeting at
+a point is fine (that's a normal seam or a T-shaped joint); four meeting at
+a single point is forbidden.
+
+## Input
+
+```
+H W
+```
+then `H` lines of `W` characters: `.` (free) or `#` (pillar). Both `H` and
+`W` are odd; the grid's exact centre cell, row `(H-1)/2`, column `(W-1)/2`,
+is always free.
+
+## Output
+
+```
+M
+```
+then `M` lines, each `T r c` (0-indexed):
+* `H r c` -- a mat covering `(r,c)` and `(r,c+1)`.
+* `V r c` -- a mat covering `(r,c)` and `(r+1,c)`.
+* `S r c` -- the required `1x1` mat, covering `(r,c)` alone.
+
+## Feasibility
+
+Every covered cell must be free and covered by at most one mat; `S` must
+appear **exactly once**; and the tatami rule above must hold everywhere.
+Any violation scores `0`.
+
+## Objective
+
+Let `covered` be the number of free cells your mats cover and `free` the
+total number of free cells. Four quantities are combined:
+
+* `coverage = covered / free`.
+* `entropy`: slide every `4x4` window of cells over the grid. In a window
+  containing at least one `H` or `V` mat's anchor cell (`H`'s `(r,c)`, `V`'s
+  `(r,c)`), compute the Shannon entropy (base 2) of the H-vs-V mix in that
+  window (max `1.0` at a perfect 50/50 mix). `entropy` is the mean over all
+  such non-empty windows (windows with no mat anchor are skipped).
+* `motif`: among interior points whose four surrounding cells are ALL
+  covered, the fraction where exactly three distinct mats meet (a
+  T-junction) rather than two (a straight seam).
+* `symmetry`: reflect the grid 180 degrees through its centre,
+  `(r,c) -> (H-1-r, W-1-c)`. Among edges between orthogonally adjacent
+  cells whose own two cells AND both of their mirror-image cells are all
+  covered, the fraction where "is there a seam here?" (the two cells belong
+  to different mats) agrees with the same question at the mirrored edge.
+
+```
+F = 1000 * (0.18*coverage + 0.37*entropy + 0.10*motif + 0.35*symmetry)
+```
+
+Your score for a test is `F` compared against a fixed internal reference
+layout `B` (a plain even-rows-only tiling): `ratio = min(1000, 100*F/B) /
+1000`. Per-test ratios are averaged. The reference scores `0.1`; a genuine
+improvement scores higher, capped at `1.0`.
+
+## Constraints
+
+* `15 <= H, W <= 151` (both odd); at most a few percent of cells are
+  pillars, always placed in point-symmetric pairs (`(r,c)` blocked implies
+  `(H-1-r, W-1-c)` is too), and the exact centre cell is never a pillar.
+* Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+A small `7x7` court, no pillars. Every row tiled with horizontal dominoes at
+the same column alignment gives zero orientation entropy, and at every
+column boundary shared by two rows, four different mats meet -- infeasible.
+Offsetting alternate rows by one column (a "running-bond" brick pattern)
+fixes feasibility but stays all-horizontal (`entropy = 0`) and drops its
+`1x1` mat wherever the row scan runs out of pairs, rarely the centre, so
+`symmetry` stays near chance (~`0.5`). Placing the `1x1` mat exactly on the
+centre and mirroring the rest through it (mixing horizontal and vertical
+mats so the whole pattern reflects onto itself) raises both `entropy` and
+`symmetry` well above the running-bond layout, at some coverage cost from
+the care mixed orientations need to stay tatami-legal.

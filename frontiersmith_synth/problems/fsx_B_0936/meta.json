@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0936",
+  "tier": "B",
+  "format": "B",
+  "family": "coupled-inventory-rebalancing",
+  "eval_form": "quality-metric",
+  "theme": "Stock stations before bikes run out",
+  "title": "Coupled Bike-Share Restocking: Beat the Stockout Gradient, Not the Net Demand",
+  "objective": "min",
+  "strategies": [
+    "equal split: divide the whole budget evenly across every station, clipped to dock capacity (baseline)",
+    "net-demand water-fill: rank stations by trips-originated-minus-trips-received over the whole horizon and fill the neediest first (the obvious recipe -- blind to WHEN each station's flow happens, and never touches the simulator)",
+    "sequential marginal-gradient construction: place bikes one at a time, each time replaying the schedule against the CURRENT allocation to find which station's next bike has the biggest real marginal payoff -- the coupled-flow stockout-probability gradient, queried directly rather than approximated",
+    "the marginal-gradient allocation polished by a short local search of single-bike swaps against the real joint simulator"
+  ]
+}

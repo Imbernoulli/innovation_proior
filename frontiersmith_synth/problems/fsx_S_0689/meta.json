@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0689",
+  "tier": "S",
+  "format": "C",
+  "family": "mirror-spectrum-relay",
+  "eval_form": "quality-metric",
+  "theme": "tuning a spin chain to teleport a pulse intact",
+  "title": "Mirror Relay: Teleporting a Pulse Across a Defected Spin Chain",
+  "objective": "max",
+  "strategies": [
+    "trivial: uniform coupling at the midpoint of the allowed range, no tuning (checker's own baseline)",
+    "greedy: model it as a continuous-time quantum walk and 1-D-search a single GLOBAL uniform coupling strength that best matches the given time horizon; never adapts the coupling SHAPE around defects/frozen edges",
+    "strong: invert the given time horizon T for the target spectral gap c=pi/(2T), lay down the mirror-symmetric near-linear-spectrum shape J_k=c*sqrt(k(N-k)) on the free edges, then locally refine per-edge to absorb the on-site defects and frozen-edge mismatches that break exact mirror symmetry",
+    "beyond strong: jointly co-design the shape AND the defect-compensation perturbation (not just refine around a frozen shape), or search over degenerate spectral configurations (multiple commensurate gap ratios, not just the single linear ladder) for a better fit to a given T"
+  ]
+}

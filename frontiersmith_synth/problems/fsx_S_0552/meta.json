@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0552",
+  "tier": "S",
+  "format": "C",
+  "family": "hp-lattice-self-avoiding-folder",
+  "eval_form": "quality-metric",
+  "theme": "Fold a chain on a lattice without self-trapping",
+  "title": "Resonant Folds: Binding an H/P Chain Without Self-Trapping",
+  "objective": "max",
+  "strategies": [
+    "trivial: hairpin (2-row serpentine) fold; reproduces the checker baseline",
+    "greedy: coarse width search (small widths, sqrt(L), hairpin) keeping the best-scoring compact fold",
+    "strong: fine sweep over every serpentine width, exploiting the checkerboard parity invariant to find the hidden resonant width where opposite-parity binding residues stack into contacts",
+    "insight: only opposite-parity (odd chain-distance) residues can bind; the score-maximising fold width is a non-round value the coarse search skips, and choosing it stops late residues from being stranded"
+  ]
+}

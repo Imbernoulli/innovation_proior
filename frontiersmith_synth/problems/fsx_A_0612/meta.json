@@ -1,0 +1,20 @@
+{
+  "id": "fsx_A_0612",
+  "tier": "A",
+  "format": "C",
+  "family": "backward-heat-sourcing",
+  "eval_form": "quality-metric",
+  "theme": "Place heat sources to reach a temperature snapshot",
+  "title": "Backward Heat Sourcing: Reaching a Temperature Snapshot",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:inverse-design"],
+  "innovation_hook": "Diffusion is a low-pass filter, so the target's high-frequency content is fundamentally unreachable -- project onto the reachable subspace and spend a few well-placed, correctly-scaled sources.",
+  "mechanisms": ["ill-posed-inversion", "sparsity-of-sources", "spectral-regularization"],
+  "strategies": [
+    "do-nothing baseline: emit the all-zero source field, matching J(0) = ||y||^2 (Ratio 0.1)",
+    "naive placement greedy: matching pursuit on the raw target residual with source amplitude set equal to the desired temperature -- undershoots by the diffusion attenuation and is lured by high-frequency spikes into the wrong cells",
+    "spectral-regularized sparse pursuit (strong): select on the low-passed residual F(res) so unreachable high-frequency detail cannot mislead placement, use the least-squares amplitude <res,atom>/<atom,atom> to undo the attenuation, and add a source only while its marginal error drop exceeds the per-source charge",
+    "joint non-negative least squares refinement over the chosen support (reachable headroom above strong that an RL policy can discover): co-optimize overlapping source amplitudes instead of fixing them sequentially",
+    "naive inversion trap (infeasible): backward-diffuse / deconvolve y, which amplifies high frequencies into oscillating negative sources and is rejected"
+  ]
+}

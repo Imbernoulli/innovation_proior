@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0535",
+  "tier": "A",
+  "format": "B",
+  "family": "congestion-marginal-cost-tolling",
+  "eval_form": "quality-metric",
+  "theme": "Set tolls so selfish drivers behave socially",
+  "title": "Corridor Tolls: Steering Selfish Drivers to the Social Optimum",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:nonlinear-network-effects"],
+  "strategies": [
+    "do-nothing: charge no tolls and accept the untolled selfish (Wardrop) equilibrium -- reproduces the evaluator's do-nothing baseline (~0.1)",
+    "congestion-proportional toll (the trap): run the untolled equilibrium, then toll each route by the congestion delay it currently shows, tau_e = a_e*f_e^p_e; this drops the marginal factor p_e and, on routes with mixed exponents, under-tolls the steep routes and steers flow the wrong way",
+    "marginal-cost internalisation (the insight): solve the social optimum at the representative demand and price each route at its marginal externality f_e*l_e'(f_e)=a_e*p_e*f_e^p_e, evaluated at the social-optimum flow (not the untolled flow), carrying the p_e factor",
+    "distribution-robust tolling: search over the fixed toll vector to minimise the average travel time across the sampled demand scenarios, fitting the whole demand spread rather than a single representative demand -- beats the single-point marginal toll and approaches (but cannot reach) the per-scenario ideal"
+  ]
+}

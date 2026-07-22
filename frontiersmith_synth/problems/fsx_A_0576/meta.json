@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0576",
+  "tier": "A",
+  "format": "C",
+  "family": "hidden-block-orbit-cover",
+  "eval_form": "quality-metric",
+  "theme": "courier routes through a city with secret districts",
+  "title": "Secret Districts: Maximum-Reach Courier Routes",
+  "objective": "max",
+  "strategies": [
+    "trivial baseline: spam the intra-district shuffle (move 1) at increasing lengths -- stays inside the seed district",
+    "greedy: sample many random routes, keep the k that add the most new addresses -- random routes concentrate in a few districts near the seed and churn within them",
+    "strong: recover the hidden district partition via the pair-orbit closure (imprimitivity block recovery), find the inter-district move as the generator with non-trivial district-action, BFS a short route per distinct district (transversal), then fill reached districts with leftover budget",
+    "insight: coverage grows by a district-size factor per route once you permute whole districts transversally instead of adding addresses one at a time"
+  ]
+}

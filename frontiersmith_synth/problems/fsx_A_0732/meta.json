@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0732",
+  "tier": "A",
+  "format": "A",
+  "family": "competitive-front-seeding",
+  "eval_form": "quality-metric",
+  "seed_problem": "influence-maximisation seeding under a fixed budget",
+  "objective": "max",
+  "theme": "Win a two-sided idea war on a network",
+  "title": "Win a Two-Sided Idea War on a Network",
+  "mutation": "composite: the graph is a disjoint union of arenas, each with 3 control nodes and 1 incumbent node pre-seeded with a competing contagion; every market node connects to the incumbent and to exactly 2 of the 3 controls (its backing pair). Synchronous majority-threshold dynamics (not a static coverage/influence score) determine the outcome: a lone control seed always ties against the incumbent's fixed vote and never converts anything, while the MATCHING PAIR of controls converts every market node of that pair's type in one round. The objective becomes a 0/1 group-knapsack over which arenas to back and with which control pair/triple, not a per-node coverage count -- a classic influence-maximisation pick turns into a front-selection decision where raw node value is a decoy (controls are worth 0 individually).",
+  "strategies": [
+    "trivial: ignore value and structure, visit arenas in a fixed order and grab one arbitrary market node per arena (reproduces the checker's baseline)",
+    "naive greedy: pick the single highest-value available node in each arena, spread across as many arenas as the budget allows (classic influence-maximisation / value-grab move) -- controls are worth 0 so this never touches them and never converts anything beyond the node itself",
+    "insight (strong): identify the 3 controls and the incumbent per arena (a control has no incumbent neighbour, a market node has exactly one), tally each of the 3 control-pairs' total backed value, and solve a 0/1 group knapsack over arenas choosing between 'back the best pair' (cost 2) or 'back all three controls' (cost 3) or skip",
+    "stronger: a general solver could also weigh partially-unlocked arenas against leftover single-node grabs more precisely, or model cross-arena spillover if the generator ever couples arenas together"
+  ]
+}

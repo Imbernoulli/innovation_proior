@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_1069",
+  "tier": "S",
+  "format": "D",
+  "family": "min-multiply-poly-evaluator",
+  "eval_form": "flops",
+  "theme": "Build a min-multiply evaluator for a fixed polynomial",
+  "title": "Depressed-Square Evaluator: Minimum-Multiplication Straight-Line Programs",
+  "objective": "min",
+  "strategies": [
+    "naive power-chain-then-scale construction, 2n-1 multiplications (trivial)",
+    "textbook Horner's rule on the raw coefficients, n multiplications (greedy)",
+    "recover the planted completing-the-square shift b/2, Taylor-shift the coefficients, evaluate y=(x+b/2)^2 then Horner in y, n/2+1 multiplications (strong)",
+    "the true minimum multiplication count for a fixed general polynomial is an open problem in algebraic complexity (open ceiling, uncovered)"
+  ]
+}

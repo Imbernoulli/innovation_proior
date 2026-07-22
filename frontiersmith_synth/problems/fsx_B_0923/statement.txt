@@ -1,0 +1,98 @@
+# Charging Depots for the Bridge City
+
+## Problem
+
+A city is a connected graph of `n` hubs and `m` two-way roads (each one road
+segment long). Each hub `v` has a population `p_v`. The city is built from
+several **dense blocks** (hubs richly interconnected, many alternate routes
+between any two of them) joined together by **thin bridges** -- long single
+lanes of hubs with no alternate route at all.
+
+You must choose exactly `k` hubs as EV charging depots. A resident at hub `v`
+who needs to charge performs a **simple random walk**: starting at `v`, at
+every step they move to a uniformly random road out of their current hub,
+and they stop the instant they first arrive at ANY depot. Their expected
+number of road-crossings is `v`'s **access time** `a(v)`.
+
+Formally, `a(v)` is the unique solution of:
+```
+a(v) = 0                                              if v is a depot
+a(v) = 1 + (1 / deg(v)) * sum over roads (v,u) of a(u)  otherwise
+```
+where `deg(v)` is the number of roads touching `v`. This is governed by the
+city's diffusion/resistance geometry, not by shortest-path hop count: a hub
+buried inside a dense block can have a tiny access time even if its shortest
+hop-path to a depot is long, because a random walker there has many
+alternate routes and rarely wanders far before stumbling onto a way in.
+A hub in the middle of a long thin bridge, by contrast, can have a huge
+access time even at a modest hop distance, because a walker stuck on a
+single lane with no alternate route tends to wander back and forth for a
+long time before reaching either end.
+
+## Input
+```
+n m k
+p_1 p_2 ... p_n
+u_1 v_1
+...
+u_m v_m
+```
+`1 <= n <= 450`, `1 <= k < n`, edges 1-indexed, undirected, no self-loops or
+duplicate roads, graph connected. `1 <= p_v <= 1000000`.
+
+## Output
+`k` distinct integers in `[1, n]` -- the chosen depot hubs (any order,
+whitespace-separated).
+
+## Feasibility
+Exactly `k` tokens, each an integer in `[1, n]`, all distinct. No trailing
+tokens. Any violation scores `0`.
+
+## Objective
+Minimize the population-weighted average access time:
+```
+F = ( sum_v p_v * a(v) ) / ( sum_v p_v )
+```
+
+## Scoring
+The checker solves the linear system above **exactly** for your chosen depot
+set to get `F`, and also computes `B`, the same objective for a fixed
+structure-oblivious reference placement (depots evenly spaced by raw hub
+number). Your ratio is
+```
+ratio = min(1000, 100 * B / max(1e-9, F)) / 1000        (in [0, 1])
+```
+so matching the reference scores `~0.1`, and beating it scores higher (score
+saturates only far above the reference).
+
+## Constraints
+Time limit: 4 seconds. Memory limit: 512 MB.
+
+## Example
+```
+10 12 1
+10 10 10 10 2 2 2 10 10 10
+1 2
+2 3
+3 4
+1 3
+2 4
+4 5
+5 6
+6 7
+7 8
+8 9
+9 10
+8 10
+```
+Hubs 1-4 form a dense block (population 10 each), hubs 8-10 form a second
+dense block (population 10 each), and hubs 5-7 are a thin bridge of
+population-2 hubs between them. With `k=1`, output `4` (a member of the
+larger-population block, adjacent to the bridge):
+```
+4
+```
+The checker computes `F = 19.868421`, and the reference placement (depot at
+hub `1`, evenly spaced by id for `k=1`) gives `B = 32.552632`, so
+`ratio = min(1000, 100*32.552632/19.868421)/1000 = 0.163841`. Placing the
+depot at hub `1` instead reproduces the reference exactly (`ratio = 0.1`).

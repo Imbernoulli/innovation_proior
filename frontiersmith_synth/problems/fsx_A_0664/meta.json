@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0664",
+  "tier": "A",
+  "format": "D",
+  "family": "state-encoding-gates",
+  "eval_form": "flops",
+  "theme": "Encode DFA states to minimize logic literals",
+  "title": "Gray-Adjacent State Encoding",
+  "objective": "minimize",
+  "strategies": [
+    "identity/lexicographic encoding, codeword(u) = binary(u) (trivial)",
+    "single-symbol clustering (sort by next-state under one fixed symbol) + Gray layout (greedy)",
+    "multi-round bisimulation-style partition refinement over ALL symbols + Gray layout (strong)",
+    "true minimum-literal state assignment search (NP-hard in general, open ceiling, uncovered)"
+  ]
+}

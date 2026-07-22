@@ -1,0 +1,103 @@
+# Size Truss Members for a Target Deflection
+
+## Problem
+
+You are given a fixed 2D truss: `N` nodes with known positions and support
+conditions, and `M` bars (fixed connectivity, fixed geometry) between node
+pairs. A subset of nodes carry a known external load, and each loaded node also
+has a target displacement -- not necessarily zero, and not necessarily "as
+small as possible": your job is to choose, for every bar, a cross-section from
+a shared discrete catalog so that when the structure is analyzed under the
+loads, the loaded nodes end up as close as possible to their targets, while
+also keeping the total material cost down.
+
+Each node has a support code: `0` free (both x,y unknown), `1` pinned (x and y
+fixed to 0), `2` roller (only y fixed to 0). Every bar behaves as a standard 2D
+truss (axial) element: with Young's modulus `E` (shared by all bars), area `A`
+(from your chosen catalog entry) and length `Len`, its axial stiffness is
+`E*A/Len`. Assembling every bar's stiffness into the global system and solving
+for the free-node displacements under the given loads is a **linear system
+`K*u = F`** -- the whole truss's response is coupled, not a per-bar quantity.
+
+## Input
+
+```
+N M K
+x_1 y_1 sup_1
+...
+x_N y_N sup_N
+a_1 b_1
+...
+a_M b_M
+Area_0 Cost_0
+...
+Area_{K-1} Cost_{K-1}
+E
+Wdisp Wcost
+L
+node_1 Fx_1 Fy_1 Tx_1 Ty_1
+...
+node_L Fx_L Fy_L Tx_L Ty_L
+```
+Bars and nodes are 1-indexed. Catalog entries `k=0..K-1` are given in
+increasing area (and increasing, super-linear cost) order; larger index means
+a stiffer, disproportionately pricier section. Every loaded node has support
+code `0`. `Wdisp, Wcost` are positive weights fixing how much target-mismatch
+matters relative to cost for this test.
+
+## Output
+
+Print `M` integers (one per line or space-separated, in bar input order): the
+chosen catalog index `0..K-1` for each bar.
+
+## Feasibility
+
+Every printed index must lie in `[0, K-1]`; there must be exactly `M` of them
+and nothing trailing. Any violation scores `0`.
+
+## Objective
+
+Assemble the global stiffness matrix from your chosen areas, solve `K*u = F`
+for the free-node displacements (fixed supports get `u=0`), and compute the
+Euclidean mismatch `DispErr = ||u_loaded - target||_2` over all loaded nodes'
+free coordinates, plus the total cost `Cost = sum(cost(bar) * length(bar))`.
+Minimize
+```
+F = Wdisp * DispErr + Wcost * Cost
+```
+
+## Scoring
+
+Let `B` be `F` for the reference choice "every bar at catalog index 0" (the
+cheapest, most flexible section everywhere). Your score on a test is
+```
+ratio = min(1000, 100 * B / max(1e-6, F)) / 1000
+```
+so the all-cheapest reference scores `0.1`, and a genuinely better sizing
+(lower `F`) scores higher, capped at `1.0` (a 10x improvement over the
+reference). Per-test ratios are averaged.
+
+## Constraints
+
+* `3 <= N <= 170`, `3 <= M <= 350`, `K = 5`.
+* Coordinates, forces, targets, `E`, costs: integers, magnitude `<= 10^6`.
+* `1 <= L <= 6`.
+* Time limit: 4 s. Memory limit: 512 MB.
+
+## Example
+
+A 2-panel Warren truss: nodes `1(0,0)` pinned, `2(52,0)` free, `3(104,0)`
+roller, `4(26,30)` free, `5(78,30)` free; bars `1-2, 2-3, 1-4, 2-5, 4-2, 5-3,
+4-5`; catalog `(Area,Cost)` = `(12,16) (20,31) (35,67) (59,135) (100,276)`;
+`E=733`; `Wdisp=1511, Wcost=1`; node `5` is loaded with `Fx=0, Fy=-699` and
+target `(Tx,Ty)=(0,-2)`.
+
+All bars at index `0` (the cheapest/most flexible reference) gives
+`DispErr` such that `F = B = 12409.99`, scoring `ratio = 0.1` by definition.
+Bumping just two bars -- bar 2 (`2-3`) and bar 6 (`5-3`) -- from index `0` to
+index `1` costs a little more but pulls node 5's deflection closer to the
+target `(0,-2)`: the new `F = 10844.09`, so
+`ratio = min(1000, 100*12409.99/10844.09)/1000 = 0.1144`. Sizing every bar the
+same, or sizing by which bar carries the most force, does not find this: bar
+6 is not the highest-force member, but it lies on the path that actually
+controls node 5's deflection.

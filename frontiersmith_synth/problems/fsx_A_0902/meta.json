@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0902",
+  "tier": "A",
+  "format": "D",
+  "family": "hole-shape-op-reordering",
+  "eval_form": "flops",
+  "theme": "firmware arena squeezed into tiny RAM",
+  "title": "Boot Arena: Scheduling a Firmware Heap",
+  "objective": "min",
+  "strategies": [
+    "allocate-all-then-free-all in the given topological index order (trivial, reproduces the checker's own baseline, no hole ever reused, ~0.1)",
+    "free every buffer at the earliest legal instant while allocating strictly in the given index order (greedy, the standard liveness heuristic -- minimizes concurrently-live bytes at every step, but the given index order round-robins several independent sliding-window chains, forcing them all to stay simultaneously resident, and eager per-buffer freeing still lets first-fit wedge undersized buffers into holes that a same-chain buffer needed intact)",
+    "decompose into weakly-connected DAG components and process them one at a time (never interleaved) -- provably optimal ordering, since a self-contained component's frees always retract the allocator's wilderness top back to where it started; PLUS, within each component, search over exactly WHEN (not just how soon) to free each buffer, scored with the real first-fit+coalescing simulation instead of the live-byte surrogate (strong, exploits that peak footprint is an emergent hole-geometry state of the allocator, not a function of how eagerly you free)",
+    "global lookahead placement that plans several buffers' addresses jointly (e.g. reserving a hole shape for a specific future buffer before it is needed) beyond simple per-component delay search (open ceiling above strong, uncovered by the reference ladder)"
+  ]
+}

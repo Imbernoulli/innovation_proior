@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0778",
+  "tier": "A",
+  "format": "C",
+  "family": "match-rate-crowdout",
+  "eval_form": "quality-metric",
+  "theme": "museum designs a donation-matching curve",
+  "title": "Museum Match Curve: Inverse Design Against Crowd-Out",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:mechanism-and-incentives"],
+  "strategies": [
+    "no-match baseline: offer a flat schedule with rate 0 everywhere; every donor gives their own unmatched log-utility optimum and the museum spends nothing",
+    "forward-tweaked flat match: pick ONE global match rate applied from the first dollar and binary-search it to spend the whole budget, never distinguishing counterfactual giving from marginal response",
+    "inverse threshold-and-rate design: estimate each donor's unmatched optimum, shield a high quantile of it from any match (a no-match tier), then back out via bisection the rate on the tier above that exactly spends the budget, and grid-search the shield quantile for the best total",
+    "personalized / multi-tier dual-informed design: use more than two tiers (up to K_MAX) with tier-specific rates set from each tier's shadow price of the budget constraint, further separating unresponsive high-warm-glow givers from price-elastic marginal donors"
+  ]
+}

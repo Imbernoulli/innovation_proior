@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0799",
+  "tier": "A",
+  "format": "C",
+  "family": "comb-dodging-stiffness",
+  "eval_form": "quality-metric",
+  "theme": "stiffening a bridge against a marching drum corps",
+  "title": "Drum-Corps Bridge: Band-Gap Stiffness Allocation",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:spectral-and-resonance"],
+  "strategies": [
+    "uniform stiffness spread over all segments (baseline, ~0.1 -- exactly the spectrum the comb was planted on)",
+    "marginal-gain greedy fill: repeatedly add one budget unit to whichever single segment most reduces resonance (localized defect patches, gets stuck)",
+    "periodic (period-P) stiffness modulation that opens a genuine band gap at the comb's heavy band -- the intended insight",
+    "open: hybrid periodic + local-search refinement, non-uniform period schedules, chirped modulation"
+  ]
+}

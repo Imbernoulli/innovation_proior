@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0616",
+  "tier": "A",
+  "format": "C",
+  "family": "sediment-pulse-land-builder",
+  "eval_form": "quality-metric",
+  "theme": "engineered mud floods rebuild a sinking marsh",
+  "title": "Delta Foreman: Scheduling Mud Floods to Out-Build a Sinking Marsh",
+  "objective": "max",
+  "innovation_hook": "Deposits are not just score, they are terrain that steers future flow -- the release schedule is a program controlling a self-modifying router.",
+  "mechanisms": ["deposition-kinetics", "release-scheduling", "self-channelization"],
+  "strategies": [
+    "trivial baseline: dump the whole budget in the final release; it channelises straight down the incised trap-channel to the deep-water edge and builds almost no land (this is the checker's reference B)",
+    "greedy recipe: spread the budget uniformly over all T releases; splitting into pulses beats a single dump, but a flat schedule under-invests early and never programs an efficient trap",
+    "strong insight: a crescendo (geometric ramp-up), searched and locally refined against the exact simulator -- small early pulses are spent to aggrade a near-shore platform that flattens the local slope and steers later flow sideways, so the big late releases land on engineered terrain and are retained in full despite subsidence",
+    "trap: releasing everything early (or naively late to dodge subsidence) both fail -- early mass subsides away, late mass channelises out to sea; only shaping-then-filling wins"
+  ]
+}

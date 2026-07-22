@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0974",
+  "tier": "S",
+  "family": "levee-sacrifice-flood-ledger",
+  "seed_problem": "N/A (novel family, no textbook seed problem): a levee-height budget allocation problem on a river routed through N segments with a flood hydrograph.",
+  "mutation": "composite: goal is an open-ended minimization of routed flood damage (not a decision problem), output is a per-segment integer levee-height vector under a joint height-cap and shared-budget constraint (height-budget-allocation), and the objective couples that allocation to a deterministic multi-timestep flood-wave routing simulation with per-segment cumulative sacrificial floodplain storage (flood-wave-routing + sacrificial-storage) -- so the true objective landscape is highly non-monotone in levee height: raising a cheap upstream segment's levee can strictly INCREASE downstream damage by destroying that segment's free detention effect.",
+  "objective": "min",
+  "theme": "duchy budgets its riverbank walls",
+  "title": "Duchy Flood Ledger: Where the Levee Should Fail",
+  "strategies": [
+    "trivial: build nothing (h=0 everywhere) -- exactly the checker's own baseline construction, ratio ~= 0.1",
+    "greedy (the trap): sort segments by the ducat cost of fully armouring them against the peak inflow, ascending; fully protect as many as the budget affords, cheapest first -- a natural 'protect what you can afford' heuristic that happily maxes out cheap pastures, destroying their sacrificial storage and delivering the (nearly) full wave to the high-value capital segments",
+    "strong (the insight): sort segments by damage value descending; armour the highest-value segments as fully as the remaining budget allows, leaving every low-value segment deliberately at height 0 so its floodplain storage absorbs volume for free and shaves the wave before it reaches the segments actually worth protecting",
+    "invalid: emits a height above Hmax_i for a chosen segment, always infeasible"
+  ]
+}

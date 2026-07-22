@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0993",
+  "tier": "A",
+  "format": "A",
+  "family": "quilt-sampler-anticlone",
+  "eval_form": "quality-metric",
+  "theme": "sampler quilt where no two blocks repeat",
+  "title": "Sampler Quilt: No Two Blocks Repeat",
+  "objective": "max",
+  "seed_problem": "quilt-sampler-anticlone (B x B blocks of half-square-triangle b x b cells)",
+  "mutation": "composite: block pattern-distinctness credited only up to a quota (dihedral-distinctness-quota), coupled to a seam-interface-continuity term counted across block borders, coupled to a hard global-color-balance feasibility gate that is decoupled from the pattern channel entirely -- so a solver must satisfy three simultaneously-active mechanisms with genuinely competing pulls on the same output.",
+  "strategies": [
+    "trivial: one fixed all-\\ pattern in every block (perfect seam continuity, 1 equivalence class) with a global continuous round-robin coloring -- reproduces the checker's own baseline exactly",
+    "naive greedy: an independent pseudo-random pattern per block (ignores borders -> seams match only ~50% of Smax by chance) with a coloring counter that RESTARTS every block -- on tests where c does not divide b*b this restart bias compounds over B*B blocks and blows the color-balance tolerance, scoring 0",
+    "insight (strong): fix every block's border ring to a single constant so all seams match automatically (Smax), then enumerate the free interior cells in canonical-form order (dihedral quotient via the 8 symmetries of the square) to certify Q pairwise-distinct block patterns cheaply, using a global continuous-counter round-robin for colors so the balance gate is always satisfied regardless of B"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0766",
+  "tier": "S",
+  "format": "C",
+  "family": "redundant-arm-path-planning",
+  "eval_form": "quality-metric",
+  "theme": "Steer a redundant arm along a drawn path",
+  "title": "Null-Space Steering: A Redundant Arm on a Drawn Path",
+  "objective": "minimize",
+  "strategies": [
+    "memory-less obstacle-aware IK: solve every waypoint independently from the neutral rest pose, searching for any collision-free branch at that single waypoint (the checker's own baseline)",
+    "continuity-only warm-started IK: chain CCD from the previous waypoint's configuration for smoothness, but never consult the obstacle list (the obvious 'first attempt' -- fails whenever the natural configuration threads a link through an obstacle)",
+    "joint null-space resolution: warm-start from the previous configuration AND, only when the primary solution would collide, spend the arm's spare degrees of freedom via null-space perturbation + re-solve to keep both continuity and clearance",
+    "damped-least-squares Jacobian IK with an explicit secondary (obstacle-repulsion / previous-config-attraction) task projected into the null space of the end-effector Jacobian"
+  ]
+}

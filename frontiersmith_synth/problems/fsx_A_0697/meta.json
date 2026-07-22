@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0697",
+  "tier": "A",
+  "format": "C",
+  "family": "lifetime-shelf-packer",
+  "eval_form": "quality-metric",
+  "theme": "warehouse clerk stacking crates that leave on schedule",
+  "title": "Loading-Dock Shelf: Reuse Under a Known Departure Schedule",
+  "objective": "minimize",
+  "source_frameworks": ["wave2b-lens:data-structure-by-trace"],
+  "strategies": [
+    "bump allocator: give every crate its own never-reused shelf offset in id order (the checker's own baseline, ~0.1)",
+    "unified best-fit sweep (offline dynamic storage allocation): process births/deaths in time order, always reuse the smallest free hole that fits, breaking ties by lowest address -- shrinks the footprint but is blind to which crates get checked often, so it scatters hot crates across whichever hole happened to be free",
+    "hotness-bucketed best-fit: split the free-hole pool into a 'hot' bucket (holes vacated by, and preferentially reused by, frequently-checked crates) and a 'cold' bucket for everything else, computed from the checked-crate trace, and only fall back to the other bucket or a fresh bump region when the preferred bucket has no fit -- trades a little footprint for far fewer distinct aisles touched",
+    "further metaheuristics: simulated annealing / exchange search over hole assignment jointly optimizing footprint and aisle-touch count within the time budget"
+  ]
+}

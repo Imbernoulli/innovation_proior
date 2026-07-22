@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0891",
+  "tier": "A",
+  "format": "E",
+  "family": "legacy-signal-rule-induction",
+  "eval_form": "quality-metric",
+  "theme": "decoding a retired traffic engineer's intersection controller",
+  "title": "The Retired Engineer's Intersection Controller",
+  "objective": "max",
+  "strategies": [
+    "trivial: PRIORITY q (raw queue length only) -> reproduces the checker's own baseline construction, ~0.1",
+    "greedy: fit a single weighted-queue score w*q from the training log (correlation/least-squares over the bulk episodes) and submit PRIORITY w*q; this recipe is a near-perfect account of the training regime (3-way/4-way junctions, where an approach almost always gets served before it ever waits long) but has no term for the starvation override, so it collapses whenever an approach is left waiting -- which the held-out 5-way/6-way junctions make routine, not rare",
+    "strong: notice the matched counterfactual pairs in the log -- identical (q,w) states whose recorded winner flips the instant one approach's age crosses a fixed threshold -- and identical-q states whose winner flips only when one approach's weight is boosted; this isolates BOTH the starvation override and the weighted-queue term as separate, degree-independent mechanisms (not a per-topology lookup), and further notices exact weighted-queue ties resolve by clockwise order (cw), which it encodes as a tiny numeric tie-break perturbation; submits PRIORITY BIG*step(a-K+0.5) + w*q - eps*cw with K,BIG,eps recovered from the probes",
+    "headroom above strong: the fixed threshold K and the exact override precedence among simultaneously-starved approaches (max age, not merely age>=K) can be refined further from more probe density; genuinely ambiguous near-simultaneous overrides keep even the best recoverable rule below the ceiling"
+  ]
+}

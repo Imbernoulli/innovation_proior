@@ -1,0 +1,19 @@
+{
+  "id": "fsx_S_0930",
+  "tier": "S",
+  "format": "A",
+  "family": "superlinear-flow-splitting",
+  "eval_form": "quality-metric",
+  "theme": "compressed-air city grid layout",
+  "title": "Compressed-Air City Grid: Booster Siting Under Quadratic Line Loss",
+  "objective": "min",
+  "seed_problem": "flow network with per-edge quadratic dissipation r*f^2, sources/sinks with required deliveries, and K discrete booster units placed on flagged edges to cut their resistance",
+  "mutation": "composite: goal is joint discrete siting (which booster-ready pipes to reinforce) plus continuous routing (how to split flow) under a quadratic per-pipe loss, so the same instance couples a combinatorial choice to a linear-system equilibrium that the choice itself perturbs.",
+  "innovation_hook": "Without boosters, minimizing sum r_e*f_e^2 under fixed nodal injections is exactly Thomson's principle: the unique minimizer is the electrical-current equilibrium of the resistor network, obtainable by solving one Laplacian linear system instead of searching. Booster siting perturbs a subset of resistances; re-solving the linear system after each tentative boost (rather than ranking pipes by their pre-boost loss) is what finds boosters that matter after the network re-equilibrates.",
+  "strategies": [
+    "trivial: route every source's flow to its nearest unmet sink along one fixed shortest-hop path, never splitting across parallel pipes and never using any booster (reproduces the checker's reference construction exactly)",
+    "greedy: route the same way but along resistance-weighted shortest paths, then boost the K booster-ready pipes with the highest dissipation UNDER THAT UNSPLIT ROUTING -- a plausible one-pass recipe that never revisits the routing after boosting and is fooled by parallel bundles and decoy bridges",
+    "strong (insight): solve the resistor-network Laplacian once for the true current-division equilibrium (Thomson's principle), then greedily site each booster by tentatively re-solving the Laplacian for every remaining candidate and keeping whichever pipe's boost lowers the re-equilibrated total dissipation the most, repeating until K boosters are placed",
+    "invalid: deliberately boosts a non-booster-ready pipe (cand=0), which must be rejected and scored 0"
+  ]
+}

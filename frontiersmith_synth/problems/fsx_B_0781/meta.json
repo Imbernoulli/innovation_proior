@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0781",
+  "tier": "B",
+  "format": "E",
+  "family": "backlash-gear-identification",
+  "eval_form": "quality-metric",
+  "theme": "worn clocktower gear train",
+  "title": "The Worn Clocktower Gear Train — separating rational ratio from backlash",
+  "objective": "min",
+  "strategies": [
+    "constant zero output (ignores the drive) -> reproduces the checker baseline ~0.1",
+    "greedy: memoryless through-origin proportional fit y = a*x by least squares on the training sweep; the sweep is quasi-monotone so this looks like an excellent fit (backlash lag is nearly constant and gets absorbed into a slightly wrong slope a), but on the fast, many-reversal held-out drive there is no state to track the alternating deadband lag -> error grows every reversal",
+    "strong: estimate the ratio from CONSECUTIVE-SAMPLE differences within sustained-direction runs (these differences are backlash-invariant, since the contact point moves 1-for-1 with the input once engaged), snap that estimate to the nearest small p/q rational (small gear tooth counts), then separately recover the deadband half-width from the residual offset between rising and falling runs; emit a STATE/OUT program implementing the exact backlash play operator (clip the previous contact into the current [x-D,x+D] band) times the recovered rational ratio",
+    "headroom above strong: refine D and the rational snap jointly (e.g. weighted/robust regression over transient-excluded windows) to push held-out MSE toward the sensor-noise floor"
+  ]
+}

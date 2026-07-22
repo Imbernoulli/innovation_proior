@@ -1,0 +1,19 @@
+{
+  "id": "fsx_A_0514",
+  "tier": "A",
+  "format": "A",
+  "family": "nested-bottleneck-bridging",
+  "eval_form": "quality-metric",
+  "seed_problem": "Weighted graph with a hidden hierarchy of nested bottleneck cuts plus a budget B; adding edge (u,v) costs hop-distance(u,v) in the original graph; checker recomputes the Laplacian and scores lambda_2 by deterministic iteration.",
+  "mutation": "composite: compose algebraic-connectivity (maximize lambda_2) with distance-priced edges (cost = original hop distance) and nested-bottleneck planting (ring-lattice clusters joined by a recursive-bisection bridge hierarchy whose cuts increase with depth, so the top bisection is sparsest and the bottleneck migrates to deeper scales as it is repaired). Localized bridge ports keep gateways hop-cheap while deep extreme-Fiedler nodes are hop-expensive.",
+  "objective": "max",
+  "theme": "reinforcing footbridges across a branching canyon system",
+  "title": "Reinforcing Footbridges across a Branching Canyon System",
+  "innovation_hook": "Fixing the top Cheeger cut is a mirage: repairing it migrates the bottleneck to a deeper nested cut, so the winning move maximizes (Fiedler-jump)^2 / cost and re-diagnoses via successive Fiedler vectors, spreading the budget across scales with cheap gateway bridges instead of expensive deep extreme-node bridges.",
+  "strategies": [
+    "trivial: build nothing -> algebraic connectivity equals the checker baseline, ratio ~0.1",
+    "greedy (trap): compute the Fiedler vector once, bridge the two most-separated (extreme) platforms across the top cut, dump the whole budget there -> expensive deep bridges, blind to the migrated bottleneck; plateaus well below strong",
+    "strong: iterated value/cost augmentation -- add bridges maximizing (f_u - f_v)^2 / hopdist near gateways, RECOMPUTE the Fiedler vector so the bottleneck migration is chased across nested scales, spreading budget over many cheap mid-range bridges",
+    "invalid: emit a self-loop bridge -> infeasible, scores 0"
+  ]
+}

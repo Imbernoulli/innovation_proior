@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0983",
+  "tier": "A",
+  "format": "A",
+  "family": "flat-fold-crease-order",
+  "eval_form": "quality-metric",
+  "theme": "Fold a strip into a target layered silhouette",
+  "title": "Accordion Silhouette Scheduling",
+  "objective": "max",
+  "seed_problem": "1D strip flat-folding with a target layered silhouette (mountain/valley fold order under access-blocking and a Maekawa/Kawasaki-style parity invariant)",
+  "mutation": "composite: turns strip flat-folding into an ordering-optimization objective. Each crease, once exposed (boundary or a folded neighbor), may be committed at any chosen step; its silhouette contribution is weight times commit-step (fold-order-commit), so late commits are worth more -- but access-blocking-order forbids reordering within a chain, and a global Maekawa/Kawasaki-style mountain/valley parity target (layer-parity-invariant) halves the ENTIRE score on a miss, coupling per-crease direction choice to a global feasibility-flavored bonus.",
+  "strategies": [
+    "trivial: commit creases in plain ascending index order 1..n-1, always folding Mountain (ignores req_i and T entirely; reproduces the checker baseline)",
+    "naive greedy: at each step commit whichever of the two currently-exposed creases has the BIGGER weight, using its required direction; never touches the parity target",
+    "insight (strong): commit the SMALLER of the two exposed weights first (frontier-min sweep), saving heavy creases for late, high-multiplier steps; then repair the global M/V parity by dropping the cheapest crease (if k's parity can't reach T) and flipping the minimum-cost set of directions to land exactly on T",
+    "further headroom: a full interval/DP search over all commit interleavings (not just the frontier-min heuristic) can extract more value than the strong reference on adversarial weight profiles"
+  ]
+}

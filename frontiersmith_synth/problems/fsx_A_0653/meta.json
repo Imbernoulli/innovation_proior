@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0653",
+  "tier": "A",
+  "format": "A",
+  "family": "skip-pointer-loom",
+  "eval_form": "quality-metric",
+  "theme": "ferry routes threaded between two riverbank towns",
+  "title": "Ferry Ropes Across the Two Riverbank Towns",
+  "seed_problem": "multi-way skip-pointer intersection with a global skip-pointer budget",
+  "objective": "min",
+  "mutation": "composite: skip-pointer placement across a shared pool of sorted lists queried by many fixed multi-way AND lookups, coupled through a single global skip budget; the checker's own fixed traversal is the only way to discover which positions are worth a skip, turning placement into a facility-location problem coupled across queries.",
+  "strategies": [
+    "trivial: string no ropes at all (reproduces the checker's do-nothing baseline)",
+    "naive greedy: allocate the rope budget proportionally to each lane's length and space ropes at uniform index intervals within a lane, ignoring which lanes are ever queried or where values actually make the dispatcher stall",
+    "insight (strong): replay the fixed dispatcher once over every convoy with no ropes, record at which (lane, position) the walk stalls and how far it must walk before the values catch up (a binary search on the lane's own sorted values), aggregate savings across every convoy that revisits that exact position, and globally rank all candidate ropes by estimated probes-saved to spend the shared budget where it pays back the most",
+    "a general solver can go further: re-simulate after each placement (exact marginal savings instead of a one-shot estimate), or solve the shared-budget allocation as a weighted matroid/knapsack over candidate ropes"
+  ]
+}

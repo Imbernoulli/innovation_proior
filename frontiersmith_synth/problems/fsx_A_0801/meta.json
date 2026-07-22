@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0801",
+  "tier": "A",
+  "format": "C",
+  "family": "physarum-steiner-maze",
+  "eval_form": "quality-metric",
+  "theme": "slime mold wiring a city through walls",
+  "title": "Protoplasm Wiring Diagram — Slime Mold Steiner Maze",
+  "objective": "min",
+  "strategies": [
+    "do nothing: neutral mu=1.0, no thickness seed (baseline, ratio ~0.1)",
+    "reinforce every pairwise shortest path at mu=1.0 (textbook recipe; overlapping redundant tubes)",
+    "half-strength pairwise seed + geometric-median hub nudge + mu>1 flow-merging exponent (discovers a true Steiner junction)",
+    "multi-hub / iterative re-seeding search over mu and candidate junction sets (open)"
+  ]
+}

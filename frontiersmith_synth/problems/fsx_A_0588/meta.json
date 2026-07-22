@@ -1,0 +1,20 @@
+{
+  "id": "fsx_A_0588",
+  "tier": "A",
+  "format": "A",
+  "family": "pinch-cascade-matching",
+  "eval_form": "quality-metric",
+  "theme": "design a factory's heat-exchanger web",
+  "title": "Factory Heat-Exchanger Web",
+  "objective": "min",
+  "seed_problem": "heat-integration / pinch analysis: match hot and cold process streams with exchangers to minimize external hot+cold utility under a minimum-approach constraint",
+  "mutation": "composite: the network is emitted as an ORDERED stream of exchanger matches replayed against per-stream running temperatures (temperature-feasibility-ordering); each stream's duty may be SPLIT across many matches (stream-split-matching); the objective is total external utility (utility-minimization). Instances are planted with a sharp pinch so the obvious hottest-to-coldest greedy transfers heat across it and strands whole clusters.",
+  "innovation_hook": "A single discovered scalar -- the pinch temperature -- partitions the instance into two independent subproblems with a provable utility floor; never moving heat across it converts messy matching into two tractable halves.",
+  "mechanisms": ["stream-split-matching", "temperature-feasibility-ordering", "utility-minimization"],
+  "strategies": [
+    "trivial: no exchangers; all heat bought as external utility (reproduces baseline B -> 0.1)",
+    "greedy (trap): pair the hottest hot with the coldest cold and dump max feasible heat; drives high-cluster heat across the pinch, stranding high-cluster colds and low-cluster hots -> recovers ~half",
+    "strong (insight): serve each cold with the COLDEST adequate hot (minimum driving force); this confines every match within its temperature cluster and never crosses the pinch -- one-to-one, no splitting",
+    "beyond strong (head-room): pinch decomposition + optimal split-matching / residual re-distribution recovers the hot heat the one-to-one match leaves stranded"
+  ]
+}

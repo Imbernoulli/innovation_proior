@@ -1,0 +1,103 @@
+# Fold a Big Network onto a Small Labeled One
+
+## Problem
+
+You receive a large simple graph `G` on `N` vertices. `G` was assembled by
+picking a small **base multigraph** `H` on `k0` vertices whose edges each
+carry a **voltage** — an element of a cyclic group `Z_n0` — then **lifting**
+it: replace every base vertex `u` by `n0` sheets `(u,0..n0-1)`, and every
+base edge `(u,v,g)` by the `n0` edges `(u,i)-(v, i+g mod n0)`. A fraction of
+the lifted edges were then rewired at random (removed and replaced by random
+pairs) and finally every vertex was relabeled with a random permutation, so
+the base structure is completely hidden in `G`'s vertex order.
+
+Your job: propose a small base multigraph with a voltage assignment (a
+labeling by residues mod some `n`) and a placement of every vertex of `G`
+into a **class × sheet** slot, such that this candidate structure explains
+`G`'s real edges with short "voltage walks". You do not know `k0`, `n0`, or
+which edges were rewired.
+
+## Input
+
+```
+N M
+u_1 v_1
+...
+u_M v_M
+```
+`1 <= u_i < v_i <= N`, all pairs distinct (no self-loops, no repeats).
+
+## Output
+
+```
+k n
+b_1 s_1
+...
+b_N s_N
+E
+p_1 q_1 g_1
+...
+p_E q_E g_E
+```
+Line `i` (`1<=i<=N`) gives vertex `i`'s class `b_i` and sheet `s_i`. Then `E`
+base edges: `p_j,q_j` are classes, `g_j` a voltage.
+
+## Feasibility
+
+* `1 <= k <= 20`, `1 <= n <= 1000`.
+* `0 <= b_i < k`, `0 <= s_i < n` for every vertex.
+* The pairs `(b_i, s_i)` must be **pairwise distinct** across all `N`
+  vertices (each vertex gets its own class×sheet slot).
+* `0 <= E <= 64`; each base edge has `0 <= p_j,q_j < k`, `0 <= g_j < n`.
+* Any violation (out-of-range token, duplicate slot, wrong token count,
+  trailing garbage) scores `0`.
+
+## Objective (minimize)
+
+For a base edge `(p,q,g)`, walking it from class `p` moves you to class `q`
+while advancing your sheet index by `g` (mod `n`); walking it backwards from
+`q` moves to `p` advancing by `n-g`. For classes `p,q` and a target sheet
+offset `delta` (mod `n`), let `hops(p,q,delta)` be the fewest base edges in
+such a walk from `p` to `q` whose advances sum to `delta mod n` (infinite /
+undefined if no such walk exists among your `E` edges).
+
+For every real edge `(a,b)` of `G`, let `delta = (s_b - s_a) mod n` using
+**your** assignment, and let `dilation(a,b) = hops(b_a, b_b, delta)`, capped
+at `8` (any walk of length `>8`, or no walk at all, also counts as `8`).
+
+```
+F = ( sum over all M real edges of dilation(a,b) ) / M
+```
+
+Minimize `F`. `F` is always in `[1, 8]` (a slot pair with `b_a != b_b` or
+distinct sheets needs at least one hop).
+
+## Scoring
+
+`B = 8` (the value achieved by declaring one class for everything, so every
+real edge is unreachable). Your score on a test is
+```
+ratio = min(1000, 100 * B / F) / 1000
+```
+so a construction that explains nothing scores `0.1`, and every real hop you
+save pushes the ratio up (capped at `1.0`). Per-test ratios are averaged.
+
+Because your `E` budget is only `64`, a **large** `k` (many classes, so each
+class-pair carries only a handful of real edges) forces you to spend a
+separate base edge on almost every distinct offset you see, exhausting the
+budget with most edges still unreachable. A base close to the true `k0`
+reuses the same `~k0` base edges across hundreds of sheets, covering nearly
+all of `M` inside the 64-edge budget — the budget itself is what rewards
+finding the small, correct base.
+
+## Constraints
+
+* `10 <= N <= 2000`. Time limit: `4 s`. Memory limit: `512 MB`.
+
+## Example
+
+`N=15` vertices, built from a tiny 3-class, 5-sheet cyclic base with edges
+`(0,1,1),(1,2,1),(2,0,1)`, lifted then lightly rewired. A good output has
+`k=3,n=5`, recovers each vertex's `(class,sheet)`, and reports those same 3
+base edges: every un-rewired real edge then gets `dilation=1`, so `F` stays
+close to `1`, well under the `B=8` baseline.

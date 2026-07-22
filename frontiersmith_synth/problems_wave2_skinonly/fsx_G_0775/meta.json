@@ -1,0 +1,18 @@
+{
+  "id": "fsx_G_0775",
+  "tier": "G",
+  "format": "C",
+  "family": "protected-bike-lane-pilot-segments",
+  "eval_form": "quality-metric",
+  "theme": "protected bike lane pilot segment selection",
+  "title": "Protected Bike Lane Pilot Segment Portfolio",
+  "objective": "max",
+  "bulk_factory": "budget-conflict-coverage-selection",
+  "salt": 751450506,
+  "strategies": [
+    "trivial: reproduce the checker cost-first feasible baseline",
+    "greedy: sort by value, capability weight, and cost density",
+    "strong: repeatedly add the feasible asset with best current marginal utility per cost",
+    "future: local search, swap neighborhoods, Lagrangian budget pricing, and conflict-aware coverage repair"
+  ]
+}

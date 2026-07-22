@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0605",
+  "tier": "A",
+  "format": "E",
+  "family": "delayed-density-ecology",
+  "eval_form": "quality-metric",
+  "theme": "lynx-hare census with lagged crowding",
+  "title": "Lynx-Hare Census — recovering the hidden lagged-crowding law",
+  "objective": "min",
+  "strategies": [
+    "persistence x_next=x (ignore the dynamics) -> reproduces the checker baseline ~0.1",
+    "greedy: fit the textbook UNDELAYED seasonal logistic x_next = a_s*x + g_s*x*x by least squares; it tracks the quiescent training census to the noise floor, so a practitioner stops -- but an undelayed law only relaxes smoothly and cannot ring, so on the held-out population CRASH it lands far from the truth",
+    "strong: the delay hides under a well-fitting logistic; probe the RESIDUAL STRUCTURE by refitting a delayed-crowding law x_next = a_s*x + g_s*x*lag_d for each candidate lag d and keep the delay that best explains the census, then emit that seasonal delayed law -- it carries the delay that makes the crash ring, so it extrapolates into the oscillatory regime",
+    "headroom above strong: joint-refine tau with the seasonal table, denoise the census before fitting, or trade a smaller (fewer-node) law against accuracy to beat the parsimony tax"
+  ]
+}

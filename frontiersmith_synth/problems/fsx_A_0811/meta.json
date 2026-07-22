@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0811",
+  "tier": "A",
+  "format": "A",
+  "family": "valve-segment-isolation",
+  "eval_form": "quality-metric",
+  "theme": "water valves bound the damage of any burst",
+  "title": "Valve Segmentation Under a Double-Burst Sweep",
+  "seed_problem": "min-max balanced graph partitioning under a cut-edge budget",
+  "objective": "min",
+  "mutation": "composite: goal becomes minimizing the worst segment demand over an enumerated burst sweep (single pipe bursts, exhaustively) AND a curated double-burst list whose pairwise segment-union loss can dominate the single-burst max, so the intended solution is a demand-balanced tree segmentation that pre-empts which valve-eligible cuts would separate a listed pair.",
+  "strategies": [
+    "trivial: install no valves at all (the checker's own do-nothing reference, ratio 0.1)",
+    "naive greedy: sort pipes by their OWN demand descending and spend the valve budget fencing off whichever junction hub feeds the single biggest pipe, ignoring total segment demand and the double-burst list entirely",
+    "insight (strong): recover the valve-eligible contraction tree, pre-glue every double-burst pair's two segments by forbidding cuts on the tree path between them, then binary-search the smallest max-segment achievable by removing at most V of the remaining cut sites (a demand-balanced tree partition) -- this both avoids the flagship-pipe trap and anticipates which pairs would otherwise union",
+    "further headroom: exact/ILP tree partitioning with double-burst coupling, or local search that trades a slightly worse single-segment balance for fewer forced double-burst unions"
+  ]
+}

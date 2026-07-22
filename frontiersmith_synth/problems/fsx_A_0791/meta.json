@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0791",
+  "tier": "A",
+  "format": "B",
+  "family": "perishable-price-shaping",
+  "eval_form": "quality-metric",
+  "theme": "dynamic pricing of perishable event tickets",
+  "title": "Last Curtain Call: Dynamic Ticket Pricing",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:topup-B-2"],
+  "strategies": [
+    "flat frozen discount: read only the day-one demand curve, undercut it to guarantee a sellout, hold that single price the whole event (reproduces the evaluator's weak reference; blind to drift, anchoring, and stock)",
+    "per-period myopic monopolist: repost the revenue-maximizing price for each period's live demand curve; adapts to the changing schedule but ignores remaining stock and remaining time, so it depletes inventory too fast on back-loaded or scarce instances and leaves a richer late crowd unserved",
+    "inventory-pacing / shadow-value proxy: solve each period's demand curve for the price that sells at the rate remaining_stock / remaining_periods, letting scarcity relative to time-left pull price up (ration) and abundance relative to time-left pull price down (clear stock before it perishes)",
+    "exact dynamic programming / model-predictive re-optimization over the full known schedule, or learned corrections to the pacing target, to push closer to the never-reached ceiling"
+  ]
+}

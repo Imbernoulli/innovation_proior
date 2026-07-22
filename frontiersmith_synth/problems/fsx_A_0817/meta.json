@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0817",
+  "tier": "A",
+  "format": "E",
+  "family": "symmetry-generator-discovery",
+  "eval_form": "quality-metric",
+  "theme": "Discover the transformation a dataset ignores",
+  "title": "The Flat Direction: Discovering an Affine Symmetry Generator",
+  "objective": "max",
+  "strategies": [
+    "trivial: declare a fixed pure-translation generator along +x, ignoring the data entirely -> reproduces the checker's own baseline construction, Ratio ~0.1",
+    "greedy: pool every point from every stencil group into one global least-squares linear regression label~b0+b1*x+b2*y, and declare the null direction (perpendicular to the fitted gradient) as a universal translation-invariance direction. Correct regime for translation-type instances, but has no way to represent a center, so it is systematically wrong (and, since the fit is global, curvature-biased) whenever the true symmetry is a rotation or scaling about a hidden point -- exactly the trap on >=3 of the 10 cases",
+    "strong: use the input's own local finite-difference stencils to estimate the label's GRADIENT at each anchor. A rotation's gradient is radial (points at the center) and a scaling's gradient is tangential (perpendicular to the radius); either way, a simple direction derived from the gradient traces a LINE through the true center. Intersecting these lines (least-squares) across many anchors recovers the exact center in closed form, without ever fitting the label surface -- and lets the declared generator's flow agree with the true label far outside the training slab. Falls back to averaged-gradient translation when no line concurrency is found",
+    "headroom above strong: robustify the center solve against finite-difference/curvature bias (e.g. weighted line intersection, or a second-order correction using the group's own quadratic stencil residual) to push the surviving error toward the residual discretization floor"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "id": "fsx_A_0725",
+  "tier": "A",
+  "format": "B",
+  "family": "diffusion-frontier-intervention",
+  "eval_form": "quality-metric",
+  "theme": "quarantine and immunization on a contact network",
+  "title": "The Frontier Ring: Quarantine on a Contact Chain",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:topup-B-2"],
+  "mechanisms": ["intervention-budget-reallocation", "network-sir-diffusion"],
+  "innovation_hook": "Immunize the ring just ahead of the diffusion frontier to cut transmission paths before they are traversed, not the already-exposed core.",
+  "strategies": [
+    "trivial: spend no budget at all (the evaluator's own do-nothing weak reference, ~0.1)",
+    "greedy (the trap): rank all nodes ONCE by static whole-graph degree and immunize the top-ranked nodes first, filling each round up to the per-round cap until the total budget is spent -- ignores which nodes are already infected/recovered and where the outbreak's frontier currently is, so it wastes budget on the origin cluster's own (already-infected) hub and on a densely-connected decoy cluster's globally-highest-degree hub that the outbreak reaches late or never, while the real chokepoints go unprotected",
+    "strong: simulate the deterministic outbreak forward internally and, each round, immunize the CURRENT frontier ring (susceptible nodes adjacent to an infectious node) ranked by remaining future-exposure potential, reallocating the scarce total budget to wherever the outbreak is about to go next instead of to a static global ranking",
+    "further headroom: predictive multi-round lookahead (immunize nodes that will become frontier 2-3 rounds ahead, not just the immediate ring), or a min-cut/flow formulation over the time-expanded graph to choose the cheapest set of edges-worth-of-nodes to sever across the whole horizon at once, rather than a per-round greedy ring"
+  ]
+}

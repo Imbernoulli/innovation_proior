@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1007",
+  "tier": "B",
+  "format": "C",
+  "family": "clamp-margin-sequencing",
+  "eval_form": "quality-metric",
+  "theme": "Milling away the very material you clamp",
+  "title": "Frame Mill: Clamp-Margin Sequencing",
+  "objective": "max",
+  "strategies": [
+    "single-clamp reactive snap: whenever the next cut point drifts unsafe, yank the single farthest clamp to hug it, never planning ahead (cheap but geometrically blind)",
+    "row-major panic rebracket: whenever the cut point drifts unsafe, snap ALL four clamps into a tight bracket around just that one cell, re-approaching from the pad on every new row (safe locally, but the refixture bill explodes on long corridors)",
+    "column-major wavefront sweep: order removal by distance along the corridor, and before each batch of cuts pick a wide, forward-looking clamp bracket that already covers several batches ahead -- few repositions, consistently high margin",
+    "exact-optimal search (ILP/DP over the joint order+bracket space) -- intractable at scale, only useful to sanity check tiny instances"
+  ]
+}

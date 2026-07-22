@@ -1,0 +1,104 @@
+# Ridgeline Valley: Planting the New Rootstock
+
+## Problem
+
+Ridgeline Valley's `n` orchard households are linked by a mutual-visits
+trust network: `m` undirected ties, each with a weight `w` measuring how
+much household `u`'s current rootstock choice weighs on household `v`'s
+decision (and vice versa). Every household `i` farms `p_i` acres and is
+either still on the OLD rootstock (`s_i=0`) or has already switched to the
+NEW one (`s_i=1`). Recruiting household `i` as a permanent **seed grower**
+-- someone who publicly commits to the new rootstock and never reverts, no
+matter what the neighbors do -- costs `c_i` (sponsorship, grafting stock,
+demo-plot money).
+
+Every autumn, for `R` seasons, every household that is NOT a seed grower
+re-weighs its trusted neighbors' **previous season's** choice: it sums the
+tie weight of every trusted neighbor currently on NEW (`w1`) against the
+tie weight of every trusted neighbor currently on OLD (`w0`). If `w1>w0` it
+switches to NEW next season; if `w1<w0` it stays/reverts to OLD; an exact
+tie (including a household with no ties) leaves it unchanged. All
+non-seed households update SIMULTANEOUSLY, once per season, from the SAME
+snapshot of last season's choices; seed growers stay NEW forever, from
+season 0 onward.
+
+You are given the trust network, everyone's acreage, sponsorship cost, and
+starting choice, plus the season budget `R` and a target coverage `tau`
+(percent). Choose a set of households to sponsor as seed growers before
+season 1. Spend as little sponsorship money as you can while getting at
+least `tau`% of the valley's total ACREAGE onto the new rootstock by the
+end of season `R`.
+
+## Input
+
+```
+n m R tau
+```
+then `n` lines, household `i=1..n`: `p_i c_i s_i` (acres, sponsorship
+cost, starting choice 0/1)
+then `m` lines: `u v w` (an undirected trust tie between households `u`
+and `v`, weight `w`; no self-ties, no repeated pair)
+
+## Output
+
+```
+k
+z_1 z_2 ... z_k
+```
+`k` distinct household indices (1-indexed) to sponsor as seed growers.
+`k=0` is allowed (an empty second line, or omit it).
+
+## Feasibility
+
+* `0 <= k <= n`; every `z_j` in `[1,n]`, all distinct.
+* Simulate exactly `R` seasons as described above (seed growers fixed to
+  NEW from season 0 onward). Let `A` be the total acreage on NEW after
+  season `R`. You must have `100*A >= tau * (total acreage)`.
+* Miss the target, or output anything malformed (out of range, duplicated,
+  or with trailing tokens), and you score `0`.
+
+## Objective
+
+Minimize the total sponsorship cost, `sum of c_i` over your chosen seed
+growers, subject to Feasibility.
+
+## Scoring
+
+Let `B = sum of c_i over ALL n households` -- the cost of sponsoring
+literally everyone (always feasible, since then every household is NEW
+from season 0 regardless of `R`). Your score on a test is
+```
+ratio = min(1000, 100 * B / max(1, cost)) / 1000
+```
+so sponsoring everyone scores `0.1`; a plan half as expensive scores
+`0.2`, capped at `1.0`. Per-test ratios are averaged over 10 tests.
+
+## Constraints
+
+* `4 <= n <= 4000`, `0 <= m <= 5n`, `1 <= R <= 40`, `1 <= tau <= 99`.
+* `1 <= p_i <= 200`, `1 <= c_i <= 100`, `s_i` in `{0,1}`, `1 <= w <= 9`.
+* Time limit: 4 s. Memory limit: 512 MB.
+
+## Example
+
+10 households. A dense pocket `{1,2,3,4}` (all six ties among them,
+weight 4), acreage 40 each, cost 6 each. A hub `5` (acreage 2, cost 2) tied
+(weight 1) to all of a 5-household background ring `{6..10}` (ring ties
+weight 2, acreage 10 each, cost 8 each), plus one weak bridge tie `(4,6)`
+weight 1. All start OLD. `R=4`, `tau=40` (total acreage 212, need >=85
+acres NEW).
+
+* Sponsor the hub alone (cost 2): its own 5 weak ties can each move at
+  most 1 of a background household's weight-6 total -- nothing ever flips
+  besides the hub itself. Final NEW acreage: 2 (0.9%). Infeasible.
+* Sponsor one pocket household, say `1` (cost 6): its neighbors `2,3,4`
+  each see only 4 of their own >=12 weight tied to NEW -- outvoted, no one
+  flips. Final NEW acreage: 40 (18.9%). Still infeasible.
+* Sponsor two pocket households, `1` and `2` (cost 12): household `3`
+  (neighbors `1,2,4`, weight 4 each) now sees `8` NEW vs `4` OLD -- flips.
+  Household `4` (neighbors `1,2,3,6`, weight `4,4,4,1`) sees `8` NEW vs `5`
+  OLD -- flips too, same season. The whole pocket is NEW after season 1
+  and stays that way (self-sustaining: each member always sees the other
+  three, weight >=8, outvoting anything outside). Final NEW acreage: 160
+  (75.5%) -- feasible, and this is the cheapest feasible plan on this test:
+  `ratio = min(1000, 100*66/12)/1000 = 0.550`.

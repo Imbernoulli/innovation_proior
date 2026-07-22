@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1056",
+  "tier": "C",
+  "format": "C",
+  "family": "layout-vs-language-mix",
+  "eval_form": "quality-metric",
+  "theme": "one keyboard for three quarrelling languages",
+  "title": "One Keyboard, Three Quarrelling Languages: Envelope-Optimal Keyslot Assignment",
+  "objective": "min",
+  "strategies": [
+    "identity assignment: symbol i -> slot i (reproduces the checker's own baseline, ~0.1)",
+    "pooled-frequency centrality greedy: sum raw digraph counts across all languages, rank symbols by pooled demand, rank slots by centrality, match highest-to-cheapest -- dominated by whichever language has the largest absolute corpus, starves the others",
+    "consensus/conflict decomposition: normalize each language's digraphs to its own probability mass, extract the elementwise-min consensus core and place it on the cheapest slots first, then place the remaining periphery symbols by the MAX (not sum) of per-language idiosyncratic weight so the single most-affected language is protected on each contested slot",
+    "further headroom: true joint optimization (e.g. local search / simulated annealing over the full envelope objective) beyond the two-phase heuristic"
+  ]
+}

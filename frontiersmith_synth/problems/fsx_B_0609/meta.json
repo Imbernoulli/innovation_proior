@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0609",
+  "tier": "B",
+  "format": "C",
+  "family": "gap-seeded-packed-array",
+  "eval_form": "quality-metric",
+  "theme": "A librarian leaves deliberate holes on the shelves before a donation arrives",
+  "title": "Gap-Seeded Shelf — offline slack placement for a known insert-and-scan future",
+  "objective": "min",
+  "strategies": [
+    "trivial: pack all keys flush at the front, gaps at the tail -> reproduces the checker baseline (~0.1); scans are cheap but every insert shifts a long block to the far gap",
+    "greedy: textbook packed-memory-array reflex -- spread keys uniformly over the whole capacity so inserts always have a nearby gap; blind to the visible trace, it dilutes EVERY scan and wastes slack on cold regions that never receive an insert (the amortized-worst-case hedge is the trap)",
+    "strong: treat gap placement as a TRANSPORT problem -- count how many future inserts land in each inter-key interval and carve a reservoir there sized to that demand, leaving scan-heavy cold intervals packed solid and parking spare capacity far to the right; inserts land near-free while dense regions keep scans cheap",
+    "alternatives: demand-weighted density gradient, occasional targeted rebuilds before a hotspot re-heats, or a cost-model DP over per-interval slack vs scan traffic"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0585",
+  "tier": "B",
+  "format": "C",
+  "family": "quantile-hedged-cargo-manifest",
+  "eval_form": "quality-metric",
+  "theme": "cargo manifest graded at the 20th percentile",
+  "title": "Hedged Cargo Manifest at the 20th Percentile",
+  "objective": "max",
+  "strategies": [
+    "trivial: value-blind lightest-items fill to ~1/3 capacity -- tiny low-value bundle (checker baseline)",
+    "greedy: expected-value knapsack -- rank items by mean payoff per resource and fill both capacities; maximizes the average total but piles into high-mean HI items that all crash together at the low-f scenarios, craters the 20th-percentile",
+    "strong: portfolio/CVaR view -- fill by how much each item lifts the CURRENT bundle's tail (sum of lowest-k scenario totals), automatically pulling in anti-correlated LO items to hedge the market crash the HI-heavy bundle is exposed to",
+    "headroom above strong: exact tail-quantile optimization / pair-aware search over which HI+LO combinations balance every scenario rather than a one-pass tail-greedy"
+  ]
+}

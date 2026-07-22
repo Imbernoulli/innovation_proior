@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1064",
+  "tier": "B",
+  "format": "C",
+  "family": "deposit-arbitrage-borders",
+  "eval_form": "quality-metric",
+  "theme": "bottle deposits across twelve cantons with haulers",
+  "title": "Twelve Cantons, One Bottle Market",
+  "objective": "maximize",
+  "strategies": [
+    "uniform deposit: post the same fixed deposit everywhere, always arbitrage-free but forfeits all regional elasticity gains",
+    "per-canton standalone elasticity optimum: solve each canton's own return-rate curve in isolation, ignoring the hauler network entirely",
+    "graph-Lipschitz projection: compute the shortest-path transport metric over the corridor graph, then take the McShane-Whitney Lipschitz extension of the per-canton targets so no pairwise differential is exploitable",
+    "projection plus coordinate ascent: initialize from the Lipschitz-safe vector, then let each canton ride back up to the tight polytope face against its neighbours whenever that raises the total replayed objective"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0542",
+  "tier": "A",
+  "format": "A",
+  "family": "failure-mask-backbone-sparsifier",
+  "eval_form": "quality-metric",
+  "theme": "one backbone network versus targeted outages",
+  "title": "Grid Spine Under Targeted Outages",
+  "objective": "min",
+  "mutation": "composite: budgeted link selection (sparsification) + planted single-link cut scenarios + a connectivity-penalty/shortest-path-stretch objective, so the intended solution is a hitting set over the cuts the scenario family collectively attacks -- not per-failure patching or uniform thickening",
+  "strategies": [
+    "spine-only baseline: keep exactly the M spine links, buy no reinforcement (scores 0.1)",
+    "per-scenario patch (trap): for each outage add the cheapest spare parallel to the destroyed link; exhausts the 2C budget after healing 2C of 3C scenarios, leaving C severed",
+    "hitting-set insight: every scenario attacks a link inside some block, so one wide end-to-end link per block heals all three of that block's scenarios; C reinforcements heal all 3C outages within budget",
+    "budget-aware refinement (headroom): after the hitting set, spend spare budget on narrow spares to shorten the detour distance on the most-evaluated blocks"
+  ]
+}

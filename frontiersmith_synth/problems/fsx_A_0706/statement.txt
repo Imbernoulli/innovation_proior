@@ -1,0 +1,79 @@
+# Tailor Matching Plaid Across Every Seam
+
+## Problem
+A striped fabric roll has fixed width `W` and an infinite length; the stripe
+pattern repeats every `r` units along the length. You must cut `N` rectangular
+garment pieces from it. Piece `i` has width `w_i` and length `h_i`. You place
+piece `i` with its bottom-left corner at integer coordinates `(x_i, y_i)`
+(`x` across the width, `y` along the length) and an orientation `f_i in {0,1}`:
+`f_i=0` is as cut, `f_i=1` is the piece flipped end-to-end (180 degrees) along
+the length axis. Rotation never changes a piece's `w_i x h_i` footprint.
+
+Every piece is printed with its own registration mark, at distance `req_i`
+from its length-`0` edge in the unflipped orientation, that must land exactly
+on a stripe line (global phase `0 mod r`) once cut. If `f_i=0` this requires
+`y_i mod r == (-req_i) mod r`. If `f_i=1`, the mark sits `h_i - req_i` from the
+new bottom, requiring `y_i mod r == (req_i - h_i) mod r`. (`req_i in [0, r)` is
+given per piece.) This is the piece's own **stripe-repeat-congruence**.
+
+Additionally `M` **seams** are given, each joining one edge of one piece to one
+edge of another: `(i, e_i) ~ (j, e_j)`, where an edge is `0` = the piece's
+bottom (`y_i`) or `1` = its top (`y_i + h_i`). Sewing two pieces at a seam only
+looks right if the stripe phase is continuous across it, so the checker
+requires the two edges' global phases (each edge's `y`-value mod `r`) to be
+equal. Each `(piece, edge)` appears in at most one seam.
+
+## Input
+```
+N W r
+w_1 h_1 req_1
+...
+w_N h_N req_N
+M
+i_1 e_1 j_1 e_1'
+...
+i_M e_M j_M e_M'
+```
+All indices are 0-based, `0 <= i,j < N`, edges are `0` or `1`.
+
+## Output
+`N` lines, one per piece in input order: `x_i y_i f_i`.
+
+## Feasibility
+For every `i`: `0 <= x_i`, `x_i + w_i <= W`, `y_i >= 0`, `f_i in {0,1}`. No two
+placed rectangles may overlap (touching is fine). Every piece must satisfy its
+own stripe-repeat-congruence under its printed `f_i`. Every seam's two edges
+must have equal phase mod `r`. Any violation, or trailing/missing tokens,
+scores `0`.
+
+## Objective
+Minimize `F`, the total fabric length consumed: `F = max_i (y_i + h_i)`.
+
+## Scoring
+Let `B = sum_i h_i`, the length a "do-nothing" cutter would consume by never
+sharing the fabric's width at all (every piece given its own private strip,
+one after another). Your ratio on a test is `ratio = min(1, 0.1 * B / F)`, so
+matching the do-nothing baseline scores `0.1`, and packing `k` pieces per row
+on average (while still honoring every phase constraint) scores roughly
+`0.1*k`, capped at `1.0`. The final score is the mean ratio over the 10
+tests. An infeasible output scores `0`.
+
+## Constraints
+`1 <= N <= 600`; `1 <= W <= 20000`; `3 <= r <= 20000`; `1 <= w_i <= W`;
+`1 <= h_i <= 2*10^5`; `0 <= req_i < r`; `0 <= M <= N`; each `(piece, edge)`
+used by at most one seam. Time limit: `5s`. Memory limit: `512MB`. Each input
+file `<= 5MB`.
+
+## Example
+`N=2, W=10, r=4`. Piece 0: `w=6,h=5,req=1`. Piece 1: `w=6,h=3,req=0`. One
+seam: `(0,1) ~ (1,0)` (piece 0's top meets piece 1's bottom).
+
+Piece 0 with `f_0=0` needs `y_0 mod 4 == (-1) mod 4 == 3`; take `y_0=3`, top
+phase `(3+5) mod 4 = 0`. The seam forces piece 1's bottom to phase `0` too;
+with `f_1=0` piece 1 already needs `y_1 mod 4 == 0`, so take `y_1=0` for
+free. Since `w_0=w_1=6` and `W=10`, any two placements overlap in `x`
+(`6+6>10`), so the pieces stack in `y`: `[0,3)` then `[3,8)` (touching only,
+no overlap). Output `0 3 0` then `0 0 0`. `F=max(3+5,0+3)=8`, `B=5+3=8`,
+`ratio=min(1,0.1*8/8)=0.1` (this narrow instance can't beat do-nothing). With
+a wider fabric, independent chains needing the same residue class can share
+a row's width and score well above `0.1`.

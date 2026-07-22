@@ -1,0 +1,20 @@
+{
+  "id": "fsx_B_0806",
+  "tier": "B",
+  "format": "A",
+  "family": "mirror-hall-laserglyph",
+  "eval_form": "quality-metric",
+  "theme": "laser light-drawing in a hall of mirrors",
+  "title": "Mirror Hall Laserglyph",
+  "objective": "max",
+  "seed_problem": "n x n grid, mirror budget M, target symmetry group (C2 or D4), a fixed boundary emitter; solver outputs '/' and '\\' mirror placements; checker deterministically traces the beam and scores inverse symmetry defect of the illuminated-cell SET plus distinct illuminated 3x3 motif count",
+  "mutation": "composite: couples beam-trace-symmetry (fraction of touched orbits under G that end up fully illuminated) with mirror-budget (a hard feasibility cap on placed mirrors) and path-vs-trace-decoupling (the score reads only the illuminated cell SET, never the direction/order the single directed beam traversed it, so a G-invariant footprint must be engineered by routing a single asymmetric traversal onto a G-invariant shape, not by making the mirror hardware itself G-symmetric)",
+  "mechanisms": ["beam-trace-symmetry", "mirror-budget", "path-vs-trace-decoupling"],
+  "innovation_hook": "You must design a path whose set-image is group-invariant while the traversal itself cannot be -- decoupling trace symmetry from path symmetry via the order in which orbits are visited.",
+  "strategies": [
+    "trivial: place no mirrors -> the beam draws the straight emitter column; this is exactly the checker's own baseline B, ratio 0.1",
+    "greedy (trap): mirror the HARDWARE under the target group -- pick a handful of cells along the beam's natural straight path and place a mirror at each of them AND at all of its G-images, assuming symmetric hardware yields a symmetric trace; in reality only the on-path mirrors are ever reached, the first one deflects the beam away almost immediately, and every off-path image is inert budget",
+    "strong (insight): pick a centred shape whose CELL SET is G-invariant by construction (an axis-aligned centred rectangle for C2, a centred square for D4 since only a square is 90-degree-rotation-invariant) and use a handful of mirrors to route the single directed beam so it closes onto that shape's border -- symmetry lives in the footprint the beam leaves behind, not in the mirror layout or the order cells were visited",
+    "beyond strong: chain several nested centred shapes (or add symmetric notches) through the mirror budget for a richer glyph with more distinct 3x3 motifs, at the cost of a few extra connector mirrors and a small symmetry defect at each join -- deliberately left unexploited by the reference solution"
+  ]
+}

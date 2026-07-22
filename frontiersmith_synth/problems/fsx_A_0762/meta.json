@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0762",
+  "tier": "A",
+  "format": "C",
+  "family": "tug-escort-chaining",
+  "eval_form": "quality-metric",
+  "theme": "harbor tugs escorting ships through tidal channels",
+  "title": "Tug Escort Chains Through the Tide",
+  "objective": "minimize",
+  "strategies": [
+    "fixed round-robin team assignment: cycle through tug ids in listed job order, ignoring geometry and free times entirely",
+    "per-ship nearest-tug dispatch: process ships by release time, grab the k geographically nearest tugs regardless of when they actually become free (falls for the straggler trap)",
+    "crew-pairing by chaining: group ships by required crew size k, route ONE persistent team through each group in a nearest-neighbour chain, preferring currently-idle tugs when forming a fresh team so a soon-free-but-far tug beats a near-but-still-busy one",
+    "(headroom above strong) exact team-routing optimization, e.g. branch-and-bound or ILP over team formation + job sequencing + window choice jointly"
+  ]
+}

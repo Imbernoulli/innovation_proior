@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0544",
+  "tier": "B",
+  "format": "C",
+  "family": "pin-budget-drift-cache",
+  "eval_form": "quality-metric",
+  "theme": "lighthouse keeper bolting lamps to a rotating cliff",
+  "title": "Bolting Lamps to a Rotating Cliff -- budgeted cache pinning under drift",
+  "objective": "min",
+  "strategies": [
+    "trivial: bolt nothing -> reproduces the no-bolt LRU baseline (~0.1)",
+    "greedy: each epoch bolt the top-p lamps by this epoch's raw access frequency, within bandwidth -- bolts the L2-served decoy and is one epoch late at every regime",
+    "strong: shortest-path DP over (epoch, bolt-set) states ranking lamps by avoided cost (freq x cost-if-unbolted) and pre-bolting an incoming lamp the epoch before it peaks when a regime turns >Bmax lamps hot at once",
+    "headroom: the per-key benefit ignores L2 coupling between bolted lamps and the finite candidate window, so a jointly-optimal schedule scores above strong"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0957",
+  "tier": "S",
+  "format": "A",
+  "family": "aperiodic-facade-tiles",
+  "eval_form": "quality-metric",
+  "seed_problem": "A Wang-style tile catalog (edge-colored unit squares) that admits both an easy periodic tiling and a rich low-repetition one; solver outputs an exact edge-matching tiling of an R x W panel; checker verifies matching then scores by (1 - max horizontal-shift self-match fraction) blended with distinct-4x4-window count.",
+  "mutation": "composite: goal changed from decision (does a valid tiling exist) to open-ended optimization (maximize a periodicity-penalty + motif-diversity blend over ALL valid tilings), and the catalog is engineered so the smallest-index-first local-matching heuristic is provably a deterministic function on a tiny boundary-color state space, forcing it into a short cycle regardless of tie-break details.",
+  "objective": "max",
+  "theme": "facade tiling that never repeats",
+  "title": "The Unrepeating Facade",
+  "strategies": [
+    "trivial: repeat the smallest-index self-loop tile everywhere (checker's own baseline construction)",
+    "greedy: row-major smallest-index-first local edge matching with no lookahead -- a deterministic function on the 2-color x 2-color boundary state space, so it is forced into a short horizontal cycle (period <= 2) after a brief transient, zeroing the periodicity term",
+    "strong: derive the catalog's hidden horizontal/vertical boundary-color alphabets, then lay down two independent maximal-length LFSR (m-sequence) recurrences -- a hierarchical substitution system -- to pick the boundary color at every column/row, which by the classical two-valued out-of-phase autocorrelation property of m-sequences provably avoids collapsing onto any short-period shift",
+    "invalid: prints an out-of-catalog-range tile index at every cell (infeasible by construction)"
+  ]
+}

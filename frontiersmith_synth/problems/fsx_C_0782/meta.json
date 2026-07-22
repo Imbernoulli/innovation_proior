@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_0782",
+  "tier": "C",
+  "format": "C",
+  "family": "palate-adaptation-flight-order",
+  "eval_form": "quality-metric",
+  "theme": "wine flight ordering for judged discrimination",
+  "title": "Palate-Adaptation Flight Order",
+  "objective": "max",
+  "strategies": [
+    "trivial: taste the samples in whatever order they arrived, no cleansers at all -- the checker's own reference construction",
+    "greedy (trap): sort light-to-dark (the sommelier recipe) and spend the cleanser budget on an evenly-spaced, weight-blind schedule -- minimizes consecutive contrast jumps but marches the adaptation EMA into deep saturation across any long monotone run, crushing gain (and any flagship sample) inside it",
+    "strong (insight): split the sorted samples into a low half and a high half and interleave them by matched percentile rank (L[i], H[i], L[i+1], H[i+1], ...) -- a band-limited zigzag that keeps the adaptation EMA oscillating near center (bounding gain loss) while each jump stays a bounded, percentile-matched gap (bounding contrast damage) -- then spends the cleanser budget resetting adaptation immediately before the highest-weight flagship samples so their readings land at maximum gain and neutral contrast",
+    "further headroom: jointly optimize the pairing/interleave order and cleanser placement against the exact per-step error (not just percentile-matched zigzag + weight-ranked cleansers) -- a local-search / exchange-argument pass over the full schedule"
+  ]
+}

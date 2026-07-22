@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1061",
+  "tier": "A",
+  "format": "C",
+  "family": "additive-energy-minimizer",
+  "eval_form": "quality-metric",
+  "theme": "space radio channels so echoes never stack",
+  "title": "Two-Scale Echo Suppression — Channel Sets Across a Coarse-Band Chain",
+  "objective": "min",
+  "strategies": [
+    "concentrated multiples of the coarse divisor D (baseline, worst on the coarse term)",
+    "flat greedy Sidon/B2 construction in Z_M that ignores the coarse term entirely (single-scale optimum, uncontrolled coarse penalty)",
+    "CRT lift: a true Sidon set in the large coprime factor M/D combined index-aligned with the provably-optimal balanced residue distribution over Z_D (controls both quotients at once)",
+    "further local search on top of the CRT lift, or handling longer subgroup chains D1|D2|...|M (open)"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0714",
+  "tier": "S",
+  "format": "D",
+  "family": "cache-trace-reorder",
+  "eval_form": "flops",
+  "theme": "rearrange a librarian's errands to stop re-shelving",
+  "title": "Grid Librarian: Reordering Errands to Stop Re-Shelving",
+  "objective": "min",
+  "strategies": [
+    "topological order by ascending errand id, cart-blind (trivial)",
+    "myopic one-step cart-affinity list scheduling (greedy)",
+    "recover hidden reading-list collections via union-find on shared read addresses, then commit to one collection at a time (race its clearances, batch its consultations) (strong)",
+    "true optimal cache-oblivious / dependence-respecting schedule (open ceiling, unreached)"
+  ]
+}

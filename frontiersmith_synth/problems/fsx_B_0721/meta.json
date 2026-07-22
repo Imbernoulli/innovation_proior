@@ -1,0 +1,18 @@
+{
+  "id": "fsx_B_0721",
+  "tier": "B",
+  "format": "A",
+  "family": "tatami-court-layout",
+  "eval_form": "quality-metric",
+  "theme": "auspicious tatami mat layout of a court",
+  "title": "One Broken Mat: Auspicious Tatami Court Layout",
+  "objective": "max",
+  "seed_problem": "tatami-tiling: cover a room with 1x2 mats (+1 forced 1x1) so no four mat corners meet at a point",
+  "mutation": "composite: the exact-cover decision problem is opened into a packing/arrangement optimum -- a partial mat layout is scored (never forced to fully tile), and the objective couples three mechanisms into one number: local orientation-mix entropy over sliding windows, a T-junction motif fraction gated by the same no-four-corner feasibility rule, and a 180-degree mirror-symmetry bonus over the seam graph. The single required 1x1 mat is a parity defect: its placement is a free choice that determines which globally symmetric seam graphs are even reachable, so the placement decision precedes and controls the rest of the construction.",
+  "strategies": [
+    "trivial: cover only even rows with a fixed left-to-right pairing, drop the 1x1 mat on the first free odd-row cell -- reproduces the checker's own baseline",
+    "greedy (running-bond / brick): dense fixed-phase horizontal-only offset tiling covering almost the whole court, satisfies the no-four-corner rule trivially by row-parity offset alone, drops the 1x1 mat wherever the scan first stalls -- zero orientation entropy, chance-level (~0.5) mirror symmetry",
+    "strong (insight): reserve the court's true centre for the 1x1 defect FIRST, partition the rest into mirror-paired blocks, build one block of each mirror pair with a running-bond pattern (alternating horizontal/vertical by block parity) and derive its partner by reflecting every mat through the centre -- trades some coverage for high orientation entropy and near-perfect (~0.95+) mirror symmetry",
+    "beyond strong: mix orientations WITHIN a block (not just between blocks) using a locally-verified safe stagger, or search over which cell is the parity defect rather than always taking the geometric centre, to close the remaining coverage/entropy trade-off"
+  ]
+}

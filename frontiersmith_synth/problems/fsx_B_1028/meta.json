@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_1028",
+  "tier": "B",
+  "format": "C",
+  "family": "patrol-phase-cover",
+  "eval_form": "quality-metric",
+  "theme": "two guards, every corridor, no long blind window",
+  "title": "Flower Patrol: Two Guards, No Long Blind Window",
+  "objective": "min",
+  "strategies": [
+    "naive out-and-back baseline: both guards patrol every petal identically, treating each petal as a dead-end corridor (walk to the tip and back) instead of using the closing edge -- pure redundancy, no coordination at all",
+    "opposite-direction split (the trap): both guards do an efficient one-directional loop over all petals, guard 2 in reverse petal order -- looks like real coordination, but for an odd number of petals with the two end petals equal length (or all petals equal), reversal fixes the MIDDLE petal's relative timing, so the guards keep colliding there every cycle regardless of how many laps pass",
+    "joint period/phase search: keep the efficient loop shape but search a small space of per-guard period padding (extra hub-wait steps) and time-rotation (relative starting phase) to find an offset -- sometimes with slightly UNEQUAL effective periods -- that lets the two guards' hub-visit residues interleave instead of collide, exploiting the joint temporal structure rather than re-routing either guard's geography"
+  ]
+}

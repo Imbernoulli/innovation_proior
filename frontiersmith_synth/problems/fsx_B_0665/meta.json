@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0665",
+  "tier": "B",
+  "format": "B",
+  "family": "phase-shift-cache-policy",
+  "eval_form": "quality-metric",
+  "theme": "one cache policy versus a gauntlet of access rhythms",
+  "title": "One Cache Policy vs a Gauntlet of Access Rhythms",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:adversarial-sweep-robustness"],
+  "strategies": [
+    "trivial: all weights zero (score(y)=0 for every resident line, ties broken by lowest line id) -- no real signal at all, a static arbitrary rule",
+    "greedy: pure LRU (w1=1 on recency, everything else 0) -- the obvious 'textbook cache policy' first attempt; near-zero hit rate on any pure cyclic scan longer than the cache (sequential-flooding pathology) even though it looks fine on short loops",
+    "strong: pure predicted-wait rule (w4=1, everything else 0) -- evict the resident line whose OWN observed inter-access gap predicts the FARTHEST next use (an online, per-line, self-estimated analog of Belady's offline optimal 'evict the line needed farthest in the future'); this single feature automatically behaves like MRU on long single scans, like LRU/LFU-favoring-short-cycles on overloaded short loops, and discounts one-off noise addresses, without any hardcoded regime switch",
+    "invalid: missing/garbage/non-finite weights -- rejected by the answer schema check, scores 0 on every instance"
+  ]
+}

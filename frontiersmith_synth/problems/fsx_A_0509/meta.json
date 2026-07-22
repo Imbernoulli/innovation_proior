@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0509",
+  "tier": "A",
+  "format": "A",
+  "family": "kerf-ledger-guillotine-planning",
+  "eval_form": "quality-metric",
+  "theme": "Sawmill with one dying thin blade",
+  "title": "Sawmill with One Dying Thin Blade",
+  "objective": "max",
+  "seed_problem": "guillotine cutting-stock with kerf, valued rectangles",
+  "mutation": "composite: guillotine cut-tree output annotated with a per-cut blade choice, coupled to a global thin-blade wear (cut-length) budget and a kerf-consumption ledger; the objective becomes value extracted under a resource that the recursion itself spends, turning packing feasibility into a function of the cut-tree shape.",
+  "strategies": [
+    "trivial: cut only the wide base of every shelf with the reliable thick blade (reproduces the checker baseline)",
+    "naive greedy: spend the thin-blade budget on the highest-VALUE bonus pieces first (buys tall premium shelves, blows the budget, starves the many cheap shelves)",
+    "cut-order greedy: use the thin blade on the first/longest structural cuts encountered top-down (exhausts L on long cuts that unlock nothing)",
+    "insight (strong): ration the wear budget by VALUE PER UNIT thin cut-length (density / fractional-knapsack), filling up on efficient shelves; a general solver can go further by mixing blades within a shelf"
+  ]
+}

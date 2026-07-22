@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0756",
+  "tier": "B",
+  "format": "C",
+  "family": "overbook-compensation-ladder",
+  "eval_form": "quality-metric",
+  "theme": "sleeper-train berths across a ninety-night season",
+  "title": "Sleeper-Train Overbooking: One Ladder, Ninety Nights",
+  "objective": "max",
+  "strategies": [
+    "trivial: sell only a small conservative fraction of each night's berths, never overbook (reproduces the checker's own do-nothing baseline)",
+    "greedy: compute ONE global average no-show rate pooled over every passenger on every night, use it to set the same aggressive sell-up-to-headroom cap on every night, and build the ladder from pooled percentiles of all thresholds regardless of which night they came from -- this mean-based recipe is blind to the correlation between high-fare nights, their unusually low no-show rate, and their unusually high volunteer thresholds, so it detonates in involuntary-bump penalties exactly on those nights",
+    "strong (insight): recognize that once the ladder is fixed the season decomposes into N independent per-night subproblems (each with only a handful of legal sale caps), so evaluate every legal cap exactly per night against the printed passenger data; search candidate ladders built from FARE-WEIGHTED quantiles of the threshold distribution (so a night's revenue-at-risk, not its raw count, decides how much its thresholds shape the shared ladder) and keep the ladder+per-night-cap pair with the best total; this reliably backs off high-fare nights whose threshold quantile the current ladder cannot cover, while still maxing out ordinary nights",
+    "a general solver can go further: joint local search / simulated annealing over the discrete (ladder, cap-vector) space using the exact per-night simulator as the objective, escaping the quantile-heuristic's local optimum"
+  ]
+}

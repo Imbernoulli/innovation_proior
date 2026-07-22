@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0785",
+  "tier": "S",
+  "format": "E",
+  "family": "stride-law-prefetcher",
+  "eval_form": "quality-metric",
+  "theme": "railway dispatcher learning a ghost train's timetable",
+  "title": "Ghost Train Timetable — extrapolating the epoch drift law with a 2-slot prefetch budget",
+  "objective": "max",
+  "strategies": [
+    "trivial: order-1 local delta persistence (predict h1+(h1-h2), 1 slot) -- this IS the checker's own internal baseline -> reproduces it, ratio ~0.1",
+    "greedy: the obvious textbook move -- average the interior (non-epoch-boundary) per-tick deltas over the whole training log into one stationary stride estimate, then add it to the last observed platform. Denoises the local jitter and beats the raw 2-point delta on most ticks, but it silently assumes the epoch anchor never moves, so it is blind exactly at the epoch boundary -- which is where every held-out query re-enters after skipping an unseen epoch",
+    "strong: recognize that platform values sampled at phase 0 (tick = epoch*P) isolate B0+B1*r+B2*r^2 from the inner stride; fit that quadratic in the epoch index r by least squares over training's phase-0 samples, recover S0 from the residual interior deltas, then emit the closed-form law B0+B1*t//P+B2*(t//P)^2+S0*(t mod P) evaluated at the query tick -- this extrapolates correctly to epochs never seen in training. Uses slot2 as a +1 hedge against the un-recoverable bit-mixed jitter term",
+    "headroom above strong: the jitter term is built from xor/shift bit-mixing, which is NOT expressible in the +,-,*,//,%,** grammar, so no reference solution reaches saturation -- but a policy that also models the jitter's *distribution* (e.g. a smarter 2-slot hedge, or noticing partial correlation with t) can still climb above the reference"
+  ]
+}

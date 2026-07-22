@@ -1,0 +1,80 @@
+# Title
+Codebook Shuffle Against Residue Spies
+
+## Problem
+You maintain a codebook indexed by the residues `0, 1, ..., p-1` modulo an odd prime `p`.
+You must choose a **shuffle**: a permutation `sigma` of `{0,...,p-1}`, so that the codeword
+previously stored at index `i` is relocated to index `sigma(i)`.
+
+A network of *residue spies* is listening. Spy channel `d` (for each `d = 1, ..., p-1`)
+watches every pair of indices that are `d` apart and asks: "does the *shuffled* gap between
+them look like a quadratic residue, the same way the *original* gap `d` does?" Formally, let
+`chi(x)` be the Legendre symbol of `x` modulo `p` (`chi(x) = +1` if `x` is a nonzero
+quadratic residue mod `p`, `chi(x) = -1` if it is a non-residue; `x` is never `0` in what
+follows). Define, for each channel `d`:
+
+```
+T(d) = sum_{i=0}^{p-1} chi( (sigma(i) - sigma((i-d) mod p)) mod p )
+```
+
+`T(d)` is large in absolute value exactly when the shuffle leaks a strong, consistent bias
+for channel `d` (every `i` agrees on the same sign). Each channel has a **spy strength**
+`W[d]`, a positive integer given in the input (some channels are watched harder than
+others). The whole codebook's **leak** is the *worst* watched channel:
+
+```
+Leak(sigma) = max_{d=1}^{p-1}  W[d] * |T(d)|
+```
+
+Your goal is to choose `sigma` to **minimize** `Leak(sigma)`.
+
+## Input
+```
+p
+W_1 W_2 ... W_{p-1}
+```
+`p` is an odd prime. `W_1, ..., W_{p-1}` are positive integers (the spy strength of channels
+`1` through `p-1`).
+
+## Output
+One line with `p` integers `sigma(0) sigma(1) ... sigma(p-1)`: a permutation of
+`{0, 1, ..., p-1}`.
+
+## Feasibility
+The output must be a valid permutation of `{0,...,p-1}` (each value in range, all distinct).
+Any other output scores `0`.
+
+## Objective
+Minimize `Leak(sigma)` as defined above.
+
+## Scoring
+The checker computes a baseline `B` = the leak of the "do-nothing" shuffle (any pure shift
+`sigma(x) = x + c`, e.g. the identity) — this is provably the *worst possible* leak: every
+`T(d)` for a shift equals `p * chi(d)`, its maximum possible magnitude, simultaneously for
+every channel. Improving on `B` is therefore always possible and always meaningful.
+
+Because a single well-chosen shuffle can drive `Leak` down by orders of magnitude relative
+to `B`, the score rewards *relative* (multiplicative) improvement on a log scale:
+
+```
+ratio = 0.1 + 0.9 * (ln(B) - ln(max(Leak(sigma), 1))) / (ln(B) - ln(0.1))
+```
+clamped to `[0, 1]`. `ratio = 0.1` exactly when `Leak(sigma) = B` (no better than doing
+nothing); `ratio` climbs towards `1` as `Leak(sigma)` shrinks far below `B`. An infeasible
+output scores `0`.
+
+## Constraints
+- `3 <= p <= 5000`, `p` prime.
+- `1 <= W[d] <= 1000` for all `d`.
+- Time limit: 4 seconds. Memory limit: 512 MB.
+
+## Example
+Let `p = 5` (so quadratic residues mod 5 are `{1, 4}`, non-residues are `{2, 3}`) and spy
+strengths `W = [3, 1, 2, 1]` (channels `1,2,3,4`).
+
+The do-nothing shuffle `sigma = [0,1,2,3,4]` gives `T(d) = 5*chi(d)` for every `d`, so
+`|T(d)| = 5` always, and `Leak = max(3*5, 1*5, 2*5, 1*5) = 15 = B`, i.e. `ratio = 0.1`.
+
+Now try `sigma = [0,1,3,2,4]` (this is `x -> x^3 mod 5`). Direct computation gives
+`T(1)=1, T(2)=-1, T(3)=-1, T(4)=1`, so `Leak = max(3*1, 1*1, 2*1, 1*1) = 3`.
+`ratio = 0.1 + 0.9 * (ln 15 - ln 3) / (ln 15 - ln 0.1) = 0.1 + 0.9 * ln(5) / 5.0106 ≈ 0.389`.

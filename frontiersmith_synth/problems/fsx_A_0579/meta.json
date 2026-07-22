@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0579",
+  "tier": "A",
+  "format": "C",
+  "family": "damper-seating-chart",
+  "eval_form": "quality-metric",
+  "theme": "quieting a skyscraper with a handful of shock absorbers",
+  "title": "Seating Chart for Shock Absorbers",
+  "objective": "max",
+  "strategies": [
+    "antinode concentration (trap/baseline): pour every unit onto the floors with the largest fundamental-mode amplitude; over-damps the slow mode until it detaches and creeps back toward the imaginary axis, and starves every other mode",
+    "uniform spread (obvious recipe): distribute the units evenly across all floors; balanced but wastes budget on already-quiet modes and never targets the least-damped one",
+    "spectral-abscissa coordinate ascent (insight): treat -max Re(lambda) as a nonsmooth minimax over the mode family; repeatedly identify the currently rightmost (least-damped) eigenmode, use its eigenvector to rank each floor's marginal effect on that mode's decay, and shift a unit toward the best floor, verifying against the true state matrix",
+    "full local search / annealing over unit moves (headroom above strong): exchange moves scored directly by the recomputed decay margin can push past the coordinate-ascent local optimum"
+  ]
+}

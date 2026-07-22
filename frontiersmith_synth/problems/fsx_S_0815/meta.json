@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0815",
+  "tier": "S",
+  "format": "B",
+  "family": "bus-bunching-stabilizer",
+  "eval_form": "quality-metric",
+  "theme": "buses on a loop line that bunch like beads",
+  "title": "Beads on a Wire: Loop-Line Holding Control",
+  "objective": "minimize",
+  "source_frameworks": ["wave2b-lens:fleet-choreography"],
+  "strategies": [
+    "never hold: let dwell-feedback run free (reproduces the evaluator's weak never-hold baseline)",
+    "target-schedule chasing: hold each bus back toward the nominal headway using only its OWN observed gap, with a fixed one-size-fits-all gain (ignores the instance's actual feedback strength and the coupling to the following bus)",
+    "two-way looking search: replicate the evaluator's own coupled-ring dynamics internally and grid-search a linear holding law that reacts to BOTH a bus's own gap and the gap of the bus behind it, trading off correction speed against capacity (hold) cost per instance",
+    "spectral placement: derive the holding gain that drives the ring's slowest-damped (antisymmetric, alternating) mode toward its fastest possible decay instead of only reacting locally"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0704",
+  "tier": "B",
+  "format": "C",
+  "family": "anneal-ramp-defect-kinetics",
+  "eval_form": "quality-metric",
+  "theme": "master swordsmith's tempering chart",
+  "title": "The Swordsmith's Tempering Chart",
+  "objective": "min",
+  "strategies": [
+    "do-nothing baseline: submit an empty schedule (n=0), leaving the blade exactly as forged",
+    "mean-threshold recipe: estimate one 'safe' temperature from the average nucleation threshold across the whole billet and hold it for every affordable step",
+    "internal system-identification search: replicate the stated kinetics in-process, sweep candidate constant plateaus (anchored at every distinct threshold value present in the billet) together with early stopping along each simulated trajectory, and keep the plateau+duration pair with the lowest simulated final defect count",
+    "protect-vs-sacrifice trade study: explicitly compare 'hold just under the coldest grain's threshold' against 'accept runaway damage in a fragile minority to heat the majority faster', choosing whichever the simulated trajectory actually minimizes"
+  ]
+}

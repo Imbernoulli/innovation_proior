@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0709",
+  "tier": "B",
+  "format": "A",
+  "family": "jammer-grid-coverage",
+  "eval_form": "quality-metric",
+  "theme": "radio towers that survive a mobile jammer",
+  "title": "Dispersed Relay Coverage Under a Roaming Jammer",
+  "objective": "max",
+  "mutation": "composite: weighted-disc-coverage (per-point weight and a per-point resilience target 1..3 giving saturating min(count,target)/target credit) + a deletion-disc-adversary that picks the worst of M published jammer positions and destroys every tower within its radius R + anti-clustering-redundancy emerging from scoring only the adversary's worst case, so redundant coverage invested inside the reach of one jammer candidate is worthless no matter how it is arranged internally -- the intended solution allocates and PLACES towers (not just selects which demand point to serve) to keep worst-case survival high, including offsetting a tower off its target point to stay within coverage radius r while stepping outside a threatening jammer's radius R when r>R makes that possible",
+  "strategies": [
+    "grid baseline (trivial): a fixed uniform grid over [0,L]x[0,L] sized only from K, ignoring weights/targets/jammers entirely (this is exactly the checker's reference B, so it reproduces ratio ~0.1)",
+    "nominal weighted-coverage greedy (trap): repeatedly place the next tower AT the demand point (from among the N given points) with the largest immediate uncapped marginal gain in sum w_i*min(count_i,t_i)/t_i, completely ignoring jammer positions; this piles redundant towers directly onto the highest-weight cluster/needle, which a single published jammer position centered on that cluster then wipes out almost entirely, and it never notices that a nearby demand point just outside that jammer's radius (but still within tower coverage radius r, since r>R) would have kept the same weight alive",
+    "rank-weighted soft-minimax greedy (strong): reformulate F = min_g C(g) as a covering game -- at each step weight every jammer position by its harmonic rank among current C(g) values (the worst gets weight 1, second-worst 1/2, ...) and place the tower maximizing the weighted sum of marginal gains across jammers it survives; this keeps crediting a candidate for every jammer it survives (unlike a hard argmin, which zeroes any candidate a single dedicated jammer can kill and gets stuck never investing in real clusters at all) while still steadily reinforcing whichever jammer position is currently starved, so it both discovers escape positions that dodge a cluster's dedicated jammer and spreads redundancy across independently-threatened regions instead of stacking it behind one deletion disc",
+    "invalid (infeasible): outputs a coordinate outside [0,L] / wrong line count so the checker's bounded reads reject it -- scores 0"
+  ]
+}

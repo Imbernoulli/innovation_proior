@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0997",
+  "tier": "A",
+  "format": "A",
+  "family": "multi-load-truss-margin",
+  "eval_form": "quality-metric",
+  "theme": "bridge frame surviving sixteen different loadings",
+  "title": "Sixteen-Load Truss Margin",
+  "objective": "max",
+  "seed_problem": "single-load-case truss topology sizing under a material budget",
+  "mutation": "composite: the objective is swept over 16 simultaneous load cases (gravity, four wind profiles, eleven moving point loads) and scored by the WORST-CASE-over-cases stress margin of a real linear-elastic truss solve, coupled to a member-selection + cross-section budget; a member only pays off if it survives every case, not the case a naive solver happens to check.",
+  "strategies": [
+    "trivial: chords + verticals + one diagonal per bay (fixed direction), smallest cross-section everywhere -- the checker's own weak-but-stable reference",
+    "naive greedy: size cross-sections from GRAVITY alone (the single case carrying the most total load), upgrading the members gravity stresses hardest -- blind to the 15 other cases",
+    "insight (strong): test each candidate second diagonal's marginal effect on the WORST-CASE-over-16-cases margin directly, and rank cross-section upgrades by each member's worst utilization across the full case sweep -- finds the bays/members that sit at the intersection of many load paths instead of the ones gravity alone flags",
+    "a general solver can go further with iterative local search / LP relaxation over the full 16-case stress field"
+  ]
+}

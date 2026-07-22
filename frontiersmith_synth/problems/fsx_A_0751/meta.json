@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0751",
+  "tier": "A",
+  "format": "B",
+  "family": "lattice-aware-hash-policy",
+  "eval_form": "quality-metric",
+  "theme": "load-balance packages mailed by a colluding cartel",
+  "title": "Consignment Sort: Hashing the Cartel's Manifest",
+  "objective": "minimize",
+  "source_frameworks": ["wave2b-lens:algebra-and-residues"],
+  "strategies": [
+    "raw mod-B routing: bucket every tracking code by code mod B directly, with no hash parameters at all (reproduces the evaluator's weak reference)",
+    "static multiplicative hashing with a fixed power-of-two modulus: pick one large odd multiplier and a table size that is a power of two, reused unchanged for every instance regardless of the actual codes",
+    "lattice detection + coprimality certificate: compute the GCD of pairwise code differences to recover the planted batch stride, factor it, and search for a hash modulus that shares no prime factor with it before choosing a coprime multiplier",
+    "detection plus local refinement: after picking a coprime modulus, sweep nearby multipliers/shifts and keep whichever minimizes the observed max truck load on the given instance"
+  ]
+}

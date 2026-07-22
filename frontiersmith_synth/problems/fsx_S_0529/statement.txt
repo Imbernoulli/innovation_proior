@@ -1,0 +1,108 @@
+# Gorge Bridge from Rationed Steel
+
+## Problem
+
+You must span a gorge with a pin-jointed steel truss built from a strictly rationed
+supply of steel. The build site is an integer lattice with rows `0..H` (top to bottom)
+and columns `0..W`. Node `(i,j)` has id `i*(W+1)+j`. The **deck** is the top row (`i=0`),
+where the roadway load is applied; the **bedrock anchors** are the bottom row (`i=H`),
+pinned into the rock. Between consecutive rows lies a **rock stratum**: stratum `i`
+(for `i=0..H-1`) has an integer *ceiling* `C_i` that limits how much force any member
+crossing it may carry.
+
+You output a set of straight **members**, each joining two lattice nodes. The bridge's
+**load ceiling** is the largest total load the deck can shed to the anchors. Maximize it.
+
+## Input
+
+```
+H W Budget
+C_0 C_1 ... C_{H-1}
+```
+
+- `2 <= H <= 6`, `2 <= W <= 7`; `Budget` is the total steel ration.
+- `C_i >= 1` is the ceiling of rock stratum `i` (between rows `i` and `i+1`).
+
+## Output
+
+```
+M
+a_1 b_1
+...
+a_M b_M
+```
+
+`M` members (`M >= 0`); each line is two distinct node ids `a b` (`0 <= a,b <= (H+1)(W+1)-1`).
+No member may be repeated (in either order).
+
+## Feasibility
+
+For a member between nodes `a` and `b`, let `d2 = dx*dx + dy*dy` be its squared length
+(column and row differences). The **steel cost** of the member is `d2`. The output is
+feasible iff all ids are in range, all members are distinct, no member is a self-loop,
+and the total steel cost `sum d2 <= Budget`. Any infeasible output scores `0`.
+
+## Objective
+
+Only a member that is part of a **rigid triangle** carries force. Concretely, a member
+`(a,b)` is **active** iff there exists a third node `c` such that members `(a,c)` and
+`(b,c)` are both present AND `a,b,c` are not collinear. A member in no such triangle
+"hinges" and carries zero force (it still costs steel).
+
+An active member spanning strata has integer **capacity** `cap = max(0, C - d2)`, where
+`C` is the minimum ceiling `C_i` over the strata it crosses (a purely horizontal member
+crosses none, and uses `C = max_i C_i`).
+
+Model the force flow as a flow network: a super-source feeds every deck node, every
+anchor node drains to a super-sink, and each active member is an undirected edge of
+capacity `cap`. The **load ceiling** `F` is the maximum source-to-sink flow — equivalently
+the **min-cut**: the total capacity of the weakest cross-section the force paths must pass.
+You are maximizing `F`.
+
+## Scoring
+
+Let `B` be the load ceiling of a single canonical triangulated ladder built in the two
+leftmost columns (the smallest self-supporting load path). Your score on a test is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+Copying the canonical ladder scores `0.1`; a ten-fold ceiling caps at `1.0`. The overall
+score is the mean ratio across the 10 tests.
+
+## Constraints
+
+- Time limit: 5 s. Memory limit: 512 MB.
+- Deterministic scoring; each input is tiny.
+
+## Example
+
+Input:
+
+```
+2 2 26
+51 48
+```
+
+A `2 x 2` grid (rows/cols `0..2`). Building a full single-diagonal triangulated sheet and
+spending the spare ration on X-braces at the binding stratum reaches `F = 297` against the
+canonical ladder `B = 140`, scoring `min(1.0, 0.1 * 297 / 140) = 0.2121`.
+
+A valid worked output (the canonical ladder, scoring `0.1`):
+
+```
+5
+0 3
+1 4
+0 1
+0 4
+3 4
+```
+
+## Notes
+
+More steel is not more strength: the ceiling is set by the *weakest* stratum the load
+must cross, so redundant members and dense meshing on a strong stratum are wasted ration.
+Untriangulated quadrilaterals hinge and carry nothing. Read the per-stratum ceilings and
+put your rationed steel where the force paths are actually pinched.

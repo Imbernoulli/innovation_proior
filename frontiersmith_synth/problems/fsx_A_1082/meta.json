@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1082",
+  "tier": "A",
+  "format": "D",
+  "family": "vcg-shared-counterfactual",
+  "eval_form": "flops",
+  "theme": "honest payments for a land-plot auction, cheaply",
+  "title": "Honest Frontage: Minimum-Gate VCG Payments for a Row of Land Plots",
+  "objective": "min",
+  "strategies": [
+    "recompute every leave-one-out economy from scratch with redundant forward+backward double-checking (trivial/baseline)",
+    "recompute every leave-one-out economy from scratch using the efficient O(n) welfare recurrence, but never share work across economies (greedy, ~4n^2 gates)",
+    "one shared forward prefix DP + one shared backward suffix DP; every leave-one-out welfare and VCG payment is an O(1) stitch of the two (strong, ~9n gates)",
+    "further common-subexpression sharing across the n payment tails / fused comparison-multiply gates (open ceiling, uncovered)"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0567",
+  "tier": "B",
+  "format": "C",
+  "family": "dual-medium-hold-arbitrage",
+  "eval_form": "quality-metric",
+  "theme": "battery versus hydrogen vault energy arbitrage",
+  "title": "Twin-Store Energy Arbitrage: Battery vs. Hydrogen Vault",
+  "objective": "max",
+  "strategies": [
+    "trivial baseline: execute only the single most profitable battery-only round trip (reproduces the checker baseline)",
+    "greedy single-medium: rank the two stores by round-trip efficiency, route every detected buy/sell pair to the cheaper-round-trip battery, skip pairs the battery cannot profit on",
+    "strong duration routing: for each parcel compare the battery's compounding retention rB^d against the vault's fixed tax etaV and route by hold duration, sending long holds to the vault",
+    "the loss-crossover horizon d* = ln(etaV)/ln(rB) segments trades by intended sleep time rather than by any static which-store-is-better ranking"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0695",
+  "tier": "A",
+  "format": "C",
+  "family": "flood-margin-release-ladder",
+  "eval_form": "quality-metric",
+  "theme": "one dam release calendar for wet and dry years",
+  "title": "One Release Calendar for Wet and Dry Years",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:scenario-robust-design"],
+  "strategies": [
+    "drain-fast bang-bang schedule that only satisfies the corridor edge-to-edge (checker baseline, ratio ~0.1)",
+    "safety-heavy schedule that hugs the low-storage edge of the true corridor (feasible everywhere, wastes head)",
+    "single-scenario robust plan built from whichever scenario has the largest FINAL total inflow (looks rigorous, overflows whenever a different, smaller-total scenario peaks earlier)",
+    "running max/min-over-scenarios envelope of cumulative inflow, releasing the bare minimum needed against the true worst prefix at every week (keeps storage -- and head -- high in every scenario at once)"
+  ]
+}

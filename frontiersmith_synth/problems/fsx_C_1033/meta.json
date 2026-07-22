@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1033",
+  "tier": "C",
+  "format": "C",
+  "family": "c-rate-spread-charging",
+  "eval_form": "quality-metric",
+  "theme": "electric ferry's overnight charging bill",
+  "title": "Overnight Ferry Charging: Water-Filling Under Session Fees",
+  "objective": "min",
+  "strategies": [
+    "flat baseline: one constant rate for the whole overnight window (single session, no price awareness)",
+    "price-sorted greedy bin-fill: blast the rate cap into the cheapest steps until the energy target is met, ignoring quadratic loss equalization and session structure",
+    "threshold-swept water-filling: for each rank-k cheapest support set, bisect the water level that equalizes price plus marginal quadratic loss and meets the energy target exactly, price the realized session/demand-charge cost from the resulting positive-rate pattern, and keep the cheapest k",
+    "invalid: non-finite output, must be rejected"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_0916",
+  "tier": "C",
+  "format": "A",
+  "family": "hotspot-rank-sampler",
+  "eval_form": "quality-metric",
+  "theme": "surveyor placing mile markers on a mountain road",
+  "title": "Benchmark Stakes on the Mountain Road",
+  "objective": "min",
+  "seed_problem": "1-D k-median / facility location under a weighted query distribution",
+  "mutation": "composite: symmetric k-median mutated into a ONE-SIDED (asymmetric) facility-location cost derived from a directional walk-and-probe reading process (a stake only serves queries at or beyond it), coupled with a discrete W-quantized probe-count metric (space-probe-duality), applied against a query trace whose weight mass is organized into multiple hotspot clusters of varying width/weight/location (query-hotspot-mining).",
+  "strategies": [
+    "trivial: ignore the trace, space K stakes uniformly across the road (reproduces the checker's uniform-spacing baseline)",
+    "naive greedy: try several standard SYMMETRIC 1-D k-median/k-means recipes (quantile/equal-length bucketing, Lloyd's algorithm from uniform or farthest-point seeds, greedy incremental facility placement) each of which plants stakes at a bucket's WEIGHTED MEDIAN or MEAN -- the textbook-correct facility choice for symmetric L1/L2 distance, wrong here -- and keeps whichever recipe scores best; still never reasons about which side of a stake a query falls on",
+    "insight (strong): recognize the distance is one-sided (a stake only helps positions at or beyond it), so within any group the best stake sits at the group's LEFT EDGE, not its median; combine this with a DP over an optimal weighted partition of the trace (not a fixed bucket cut) to decide which positions share a stake, using the W-quantized probe cost directly in the DP"
+  ]
+}

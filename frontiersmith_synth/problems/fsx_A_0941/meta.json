@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0941",
+  "tier": "A",
+  "format": "E",
+  "family": "censored-window-physics-recovery",
+  "eval_form": "quality-metric",
+  "theme": "inferring an oven's physics from scrap tickets",
+  "title": "Scrap Tickets from the Annealing Oven",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:state-coupled-scheduling"],
+  "strategies": [
+    "predict a flat 0 (\"just barely on the boundary\") normalized margin for every held-out job, reproducing the checker's own baseline, Ratio ~ 0.1",
+    "textbook single-parameter exponential fit: search for ONE relaxation constant k that best reproduces the training pass/fail bits, assuming heating and cooling share the same rate AND that every hold segment starts from ambient (ignoring the ramp segment even when present); this recipe reads the physics FORM correctly but throws away both the asymmetry and the segment composition, so it matches training tickets tolerably but the fitted single k is a biased compromise that breaks on short, wide-ranging, multi-segment held-out schedules",
+    "constraint-propagation physics inversion: treat every ticket's pass/fail bit as an inequality constraint on the latent (k_heat, k_cool) pair, jointly grid-search both rates (coarse-to-fine) for the pair consistent with the most training tickets -- correctly composing the ramp-then-hold trajectory with whichever rate applies to each segment's own direction -- then answer any held-out schedule, however short or however far its setpoints extrapolate beyond the training range, by re-simulating the same closed-form two-rate law exactly"
+  ]
+}

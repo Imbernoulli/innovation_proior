@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0551",
+  "tier": "A",
+  "format": "C",
+  "family": "terrain-sculpt-erosion-delta",
+  "eval_form": "quality-metric",
+  "theme": "river god sculpting a farm delta",
+  "title": "The River God's Delta",
+  "objective": "max",
+  "strategies": [
+    "trivial: reproduce the checker's routing baseline (route spring to zone, mild stall)",
+    "greedy: route water into the zone and dig a flat catch pond so it pools",
+    "strong: engineer the derivative of the slope -- a steep entraining plunge above the zone builds a large sediment load, then a gentle traverse across the zone sheds it exactly on target",
+    "invalid: emit an out-of-range edit"
+  ],
+  "mechanisms": ["erosion-transport-rules", "heightfield-shaping", "outlet-routing"],
+  "innovation_hook": "Score depends on the change in transport capacity, not the flow: design the derivative of the slope -- accelerate to entrain, then stall to deposit."
+}

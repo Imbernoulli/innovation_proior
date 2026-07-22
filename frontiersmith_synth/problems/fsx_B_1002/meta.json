@@ -1,0 +1,20 @@
+{
+  "id": "fsx_B_1002",
+  "tier": "B",
+  "format": "A",
+  "family": "single-boiler-surfing-queue",
+  "eval_form": "quality-metric",
+  "theme": "espresso bar with one temperamental boiler",
+  "title": "The Surfing Barista",
+  "objective": "max",
+  "seed_problem": "single-machine weighted-tardiness scheduling with a per-job target window",
+  "mutation": "composite: couple the per-job scheduling objective to an EXTERNAL, uncontrollable deterministic state machine -- the machine's own quality depends not on when a job is scheduled relative to other jobs, but on where a two-setpoint hysteresis oscillator (heater ON/OFF between T_LO/T_HI, drifting toward T_HOT or T_COLD) happens to sit at that instant, plus a scarce zero-time control action (flush) that can shift the oscillator's state but not command it directly.",
+  "mechanisms": ["free-control-actions", "quality-window-scoring", "two-setpoint-thermal-oscillation"],
+  "innovation_hook": "The machine's limit cycle is a resource: schedule to intercept the oscillation instead of forcing setpoints, turning waiting time into free control.",
+  "strategies": [
+    "trivial: serve orders strictly in arrival order, each at the earliest tick the boiler is free (skip if that would miss its own deadline); no temperature check, no flush -- mirrors the checker's own back-to-back arrival-order reference",
+    "greedy (trap): earliest-deadline-first scheduling, serve each order as soon as the boiler is free within its window; a solid SCHEDULING heuristic that still never looks at the temperature and never flushes, so it fights the oscillation instead of riding it -- planted phase-swept clusters (arrive together, correct pull ticks are several ticks apart) get served back-to-back starting at arrival, a constant phase offset from every true target; flush-only-reachable orders are never reached at all",
+    "strong (insight): simulate the fully known, deterministic trajectory ahead of time; phase 1 walks the natural (no-flush) sweep and only pulls an order once the trajectory is ALREADY inside its window (patience is free), preferring higher weight when several are simultaneously ready; phase 2 re-simulates with one flush inserted a few ticks after each still-unserved order's arrival, committing the flush only if it both rescues that order AND leaves every already-committed pull's window intact under the new trajectory -- spending the scarce free-control budget only where the sweep alone cannot reach in time",
+    "invalid: pulls order 0 one tick after its own deadline -- must be rejected and score 0"
+  ]
+}

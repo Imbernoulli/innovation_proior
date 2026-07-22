@@ -1,0 +1,20 @@
+{
+  "id": "fsx_A_0589",
+  "tier": "A",
+  "format": "A",
+  "family": "frieze-band-polyphony",
+  "eval_form": "quality-metric",
+  "seed_problem": "frieze-band facade coloring (detect each band's frieze group, harmonize seams)",
+  "mutation": "composite: score = (#distinct frieze signatures) x (sum of divisibility-gated seam harmonies) + distinct-tile count; seam harmony is realized only when neighboring orbit periods divide one another, coupling group diversity to stacking order",
+  "objective": "max",
+  "theme": "stacked ornamental border bands on a facade",
+  "title": "Polyphonic Facade Bands",
+  "mechanisms": ["band-ordering-compatibility", "interband-color-harmony", "multi-frieze-group-satisfaction"],
+  "innovation_hook": "Seam harmony is gated by whether one band's orbit period divides its neighbor's, so ordering bands into a divisibility chain is the hidden structure that unlocks simultaneous group diversity AND harmony.",
+  "strategies": [
+    "trivial: monochrome period-1 facade (the baseline)",
+    "greedy: maximize seam harmony only -- one repeated period-1 tile on the best color pair; Groups=1 so the multiplier is wasted",
+    "diversity-blind: pick many distinct signatures but stack them in arbitrary order -> non-divisible neighbors zero out most seams",
+    "strong: SA co-search over period/tile/order/colors with a divisibility-reorder move -- thread diverse frieze groups onto a divisibility chain while landing scarce high-harmony pairs on compatible seams"
+  ]
+}

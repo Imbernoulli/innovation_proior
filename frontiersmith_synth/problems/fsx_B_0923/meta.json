@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0923",
+  "tier": "B",
+  "format": "A",
+  "family": "commute-time-depots",
+  "eval_form": "quality-metric",
+  "theme": "placing charging depots in a city of dense blocks and thin bridges",
+  "title": "Charging Depots for the Bridge City",
+  "objective": "min",
+  "seed_problem": "k-facility location minimizing average hop-distance to the nearest chosen center",
+  "mutation": "composite: the objective is scored via the exact random-walk hitting-time recurrence to a SET of depots (a principal-submatrix linear system on the graph Laplacian, solved exactly by the checker), on a generated 'blob-tree' city (dense moderately-connected blocks joined by thin degree-2 bridges/pendant corridors) so that hop-distance k-median and access-time-optimal placement systematically disagree: dense blocks collapse to near-zero access cost per depot (many redundant parallel routes) while thin corridors blow up superlinearly with no depot at either end, so budget is best spent breaking up the longest corridors rather than evenly covering hop-distance.",
+  "strategies": [
+    "trivial: depots at vertex ids 1..k (clusters inside a single district, reproduces roughly the checker's own 'do nothing structural' scale)",
+    "naive greedy: classic greedy k-median/facility-location using HOP distance (BFS) as the metric -- repeatedly add the vertex maximizing the population-weighted reduction in nearest-depot hop distance",
+    "insight (strong): recognize hop distance is the wrong metric for a random walk; cheaply sketch the resistance/access geometry by weighting each road 1/min(deg(u),deg(v)) (dense-block roads ~free, thin-bridge roads ~full cost), run the SAME greedy construction on this weighted (Dijkstra) metric, then a bounded relocate-to-worst-served local search -- this stops wasting depots deep inside well-connected blocks and instead reaches out along (and splits) the longest thin corridors, which is what the exact hitting-time objective actually rewards"
+  ]
+}

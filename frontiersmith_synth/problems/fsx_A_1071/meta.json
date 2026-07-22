@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1071",
+  "tier": "A",
+  "format": "C",
+  "family": "weighing-matrix-defect",
+  "eval_form": "quality-metric",
+  "theme": "balance a chemist's scale with signed reference weights",
+  "title": "Chemist's Scale: Signed Weighing Design",
+  "objective": "minimize",
+  "strategies": [
+    "sliding-window baseline: session i loads references i..i+k-1 all on the left pan (always feasible, badly correlated)",
+    "row-by-row greedy: build each session by loading the k least-used references so far, sign chosen to cancel the running column sum, plus a small bounded local-swap repair -- never reconsiders earlier rows",
+    "circulant + quadratic-residue construction: pick a prime p=k with p = 3 (mod 4), border a p x p Jacobsthal circulant (first row = Legendre symbol of the shift) with an all-ones row/column to get a (p+1) x (p+1) block with EXACT zero defect; tile n // (p+1) disjoint copies of this block down the diagonal",
+    "two-block patching: when n is not an exact multiple of p+1, tile as many perfect blocks as fit and cover the leftover rows with a sliding-window fallback so the design stays feasible even where no perfect weighing matrix embeds"
+  ]
+}

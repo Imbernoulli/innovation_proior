@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0657",
+  "tier": "S",
+  "family": "toroidal-sidon-marks",
+  "seed_problem": "Place marks on an H x W torus so all pairwise difference vectors (mod H, mod W) are distinct (a planar B2/Sidon set); maximize the sum of weights on marked cells.",
+  "mutation": "composite: keep the planar-Sidon feasibility goal but couple the linear weight sum with a NONLINEAR completeness bonus F = S*(1+LAMBDA*coverage), where coverage=m(m-1)/(N-1) is the fraction of the N-1 possible difference vectors realized. This is quadratic in the mark count m, so it disproportionately rewards whichever strategy reaches the true algebraic ceiling (a perfect/planar difference set, m=n+1 covering ALL of Z_N when H*W=n^2+n+1 and gcd(H,W)=1) over any strategy that only ever grows m incrementally by local collision-avoidance.",
+  "objective": "max",
+  "theme": "Marks with all-distinct difference vectors on a torus",
+  "title": "Toroidal Sidon Beacon Placement",
+  "strategies": [
+    "trivial: place a single mark at the heaviest cell (m=1 is always Sidon-feasible; matches the checker baseline B, ratio ~0.1)",
+    "greedy-repair-search: scan all cells once in descending weight order, accepting a cell only if it keeps the running set Sidon-feasible on the torus and discarding it for good otherwise; a myopic single pass with no notion of the underlying algebraic structure, so it plateaus well short of the algebraic ceiling on the planted difference-set moduli (it burns its early picks on a cluster of mutually-conflicting heavy cells and never recovers)",
+    "randomized multi-start local search: many weight-perturbed greedy passes with a fixed-seed RNG, keep the best feasible set found -- a generic heuristic upgrade with no structural insight",
+    "singer-cyclic-construction: when H*W=N=n^2+n+1 and gcd(H,W)=1, back-track a perfect (N,n+1,1) difference set in Z_N (Singer/planar difference set family), fold it onto the torus via the CRT map r -> (r mod H, r mod W) (a ring isomorphism, so differences transport exactly), then exhaustively search all N shifts and all units mod N (both are difference-set automorphisms) to pick the translate/scaling that maximizes the weighted sum -- reaches the exact algebraic ceiling m=n+1, coverage=1, invisible to any incremental collision-avoidance heuristic"
+  ]
+}

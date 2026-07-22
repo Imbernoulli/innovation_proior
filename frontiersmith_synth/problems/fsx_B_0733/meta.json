@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0733",
+  "tier": "B",
+  "format": "A",
+  "family": "hub-dilution-shortcuts",
+  "eval_form": "quality-metric",
+  "theme": "adding express tunnels so every courier reaches the depot fast",
+  "title": "Express Tunnels to the Depot",
+  "objective": "min",
+  "seed_problem": "add k shortcut edges to minimize the worst-case random-walk hitting time to a marked depot",
+  "mutation": "composite: the objective is scored via the exact commute-time identity C(u,t)=2*m*R(u,t) (mass times effective resistance), and candidate shortcuts are restricted to a fixed input list containing planted 'tied-pair' arm structures -- so choosing which k of the M candidates to add is a combinatorial resistance-vs-mass-dilution trade-off, not a single textbook shortest-path/MST/max-flow computation.",
+  "strategies": [
+    "trivial: add zero shortcuts (reproduces the checker's do-nothing baseline exactly)",
+    "naive greedy: repeatedly locate the single currently-farthest vertex (BFS-distance proxy for hitting time) and wire it to whatever nearby candidate shortens ITS distance the most, always spending the full budget k",
+    "insight (strong): maintain the exact effective-resistance matrix via a Sherman-Morrison rank-1 update per candidate, greedily add only the shortcut that most reduces the TRUE global worst-case C(u,t) = 2*m*R(u,t), and STOP once no remaining candidate beats the mass it would add -- this favors 'tied-pair' cross-links (which cut two symmetric bottleneck resistances in half for one unit of mass) over the deceptively appealing single 'direct-to-depot' shortcuts that fix one courier but barely move the global worst case"
+  ]
+}

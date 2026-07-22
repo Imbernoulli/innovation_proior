@@ -1,0 +1,97 @@
+# Star Lattice Interfaces
+
+## Problem
+
+You are designing an Islamic star mosaic on a fixed planar cell graph. Angles
+are measured in a global unit so a full turn is `L = 24` units; every shared
+edge between two cells has a fixed direction `a` (an integer in `[0,24)`)
+baked into the layout. A cell built with **star-order** `k` (`k` divides 24)
+and **rotation** `r` (an integer in `[0,24)`) presents continuous strands at
+the angles `{ (r + t*(24/k)) mod 24 : t = 0..k-1 }`. Equivalently, a cell can
+be built with order `k` **iff every one of its incident edges' angles is
+congruent to the same value modulo `step = 24/k`** — that common residue is
+then `r mod step`.
+
+Cells come in two kinds. **STAR** cells must use an order from a small fixed
+palette (given in the input). **ADAPTER** cells may use any order from
+`{3,4,6,8,12,24}` — the richer "interstitial" vocabulary needed where a
+junction's edges carry genuinely different angles that no small palette order
+can reconcile at once. Building an adapter with order `k` costs
+`cost_i * k` (a per-cell unit cost times the order), charged against the
+score; star cells are free to build.
+
+You choose, per cell, whether to build it and (if so) its `(k, r)`.
+
+## Input
+
+```
+N M
+type_1 ... type_N                (0 = STAR, 1 = ADAPTER)
+p
+k_1 C_1 k_2 C_2 ... k_p C_p       (palette order -> canonical phase, C_j in [0, 24/k_j))
+W1 W2 W3
+cost_1 ... cost_N                 (adapter unit cost; 0 for star cells)
+```
+then `M` lines, each `u v a len` (0-indexed cell ids, edge angle `a` in
+`[0,24)`, strand length `len >= 1`): an undirected edge between cells `u`
+and `v`.
+
+## Output
+
+`N` lines, one per cell in order: `b k r`.
+`b = 0`: the cell is not built (`k`, `r` are ignored, print `0 0`).
+`b = 1`: the cell is built with order `k` and rotation `r` (`0 <= r < 24`).
+`k` must be in the star palette for a STAR cell, or in `{3,4,6,8,12,24}` for
+an ADAPTER cell.
+
+## Feasibility
+
+For every built cell `i` with chosen `(k, r)` and `step = 24/k`: for **every**
+edge incident to `i` with angle `a`, require `a mod step == r mod step`. This
+must hold simultaneously across all of a cell's edges — one `(k,r)` must
+reconcile every edge the cell touches. Any violation, an unrecognized `k`, or
+malformed/trailing output scores `0` on that test.
+
+## Objective
+
+Maximize
+```
+F = max(0, W1*D*SYM + W2*LEN - W3*COST)
+```
+where: `D` = number of distinct orders used among built star cells;
+`SYM` = sum over built star cells of `10` if `(r mod step) == C_k` (the
+input's canonical phase for that order) else `3`; `LEN` = sum of `len` over
+edges whose both endpoints are built; `COST` = sum over built adapter cells
+of `cost_i * k_i`.
+
+## Scoring
+
+The checker computes an internal baseline `B`: build every star cell with the
+single fixed order `k_1` (the palette's first order — always self-consistent,
+since every star cell's own edges share one angle) and never build any
+adapter. Your score on a test is `min(1000, 100*F/max(1,B)) / 1000`, so that
+reference scores `0.1` and doing meaningfully better scores higher (capped at
+`1.0`, ten times the reference). Per-test scores are averaged.
+
+## Constraints
+
+* `1 <= N <= 4100`, `1 <= M <= 4600`.
+* `2 <= p <= 4`; palette orders divide 24; `0 <= cost_i <= 10^6`.
+* `1 <= len <= 10^6`; time limit 3 s; memory limit 512 MB.
+
+## Example
+
+Palette `{(4,0), (6,0)}`, `W1=6, W2=1, W3=3`. Two star cells (0,1) both tagged
+angle `4` connected to each other (`len=50`), bridged to a third star cell (2,
+tagged angle `16`) through an adapter cell 3 (edges `3-1` angle `4`, `3-2`
+angle `16`, each `len=60`, cost `1`). Cells 0,1 can use order `4` (step 6,
+`4 mod 6 = 4`, phase 4, bonus 3) or order `6` (step 4, `4 mod 4 = 0`, phase 0,
+bonus 10 — matches `C=0`). Cell 2's angle 16 gives order 6 phase `16 mod 4=0`
+(bonus 10) too. The adapter's angle gcd is `|16-4|=12`, `gcd(12,24)=12`, so
+the cheapest valid order is `4` (step 6, since `12 mod 6==0`), costing
+`1*4*3=12`, well under its `120` length payoff. Building all four cells with
+order 6 for the stars gives `D=1, SYM=30, LEN=170, COST=12`,
+`F=6*1*30+170-36=314`; using order 4 on cell 0 and order 6 on cells 1,2
+instead gives `D=2, SYM=23, LEN=170, COST=12`, `F=6*2*23+170-36=410` — mixing
+orders across the interface, once the adapter makes it consistent, beats a
+single uniform order.

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_N_0853",
+  "tier": "N",
+  "format": "B",
+  "family": "resistance-sparing-control",
+  "eval_form": "quality-metric",
+  "theme": "integrated pest management in an agro-ecosystem",
+  "title": "Rationed Sprays, Standing Guard",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:topup-B-2"],
+  "strategies": [
+    "never spray, never release: zero risk, zero action -- reproduces the evaluator's own do-nothing reference, r = 0.1",
+    "spray full dose whenever P_t exceeds damage_thresh, otherwise do nothing; never release predators -- the obvious reactive rule",
+    "compute the critical predator density q* = r_pest/attack_rate, judge from spray_eff0/pred_kill0/resist_gain whether a short calibrated opening spray is worth its cost, release predators up to release_cap until Q reaches q*, hold it there, and ration chemical use to genuine emergencies",
+    "full trajectory optimization over the plan space using the known dynamics as an internal simulator to refine the predator-establishment strategy toward the season-minimal cost"
+  ]
+}

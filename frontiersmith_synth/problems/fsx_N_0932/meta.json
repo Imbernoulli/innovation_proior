@@ -1,0 +1,17 @@
+{
+  "id": "fsx_N_0932",
+  "tier": "N",
+  "format": "B",
+  "family": "concession-timed-bargaining",
+  "eval_form": "quality-metric",
+  "theme": "multi-supplier procurement negotiation",
+  "title": "Ten Rounds to Close: Multi-Supplier Procurement Under Timed Concessions",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:topup-B-2"],
+  "strategies": [
+    "trivial: spend the whole quantity on the outside option at round 1 (the evaluator's own do-nothing reference) -> exactly 0.1",
+    "greedy: each round, one-step-lookahead 'press whoever quotes best right now' -- simulate one concession step for every active supplier plus the current outside price, negotiate an evenly spread lot (Q/T) with the single best of those, else buy from outside; never sacrifices a round on a currently-worse supplier to discover a better floor, and only reaches for the outside option reactively (once it stops being the cheapest choice) rather than locking a known shortfall in early, so it can even underperform doing nothing on instances where suppliers run dry mid-campaign and the outside price has compounded away -> ~0.23",
+    "strong: rank suppliers by FLOOR price (not opening/current price), commit fully to one supplier at a time in floor order riding each to its floor (or as close as its own deadline allows, catching the near-deadline soften window), and lock any capacity shortfall via the outside option at round 1 (round 1 is always its cheapest point since it only decays) -> ~0.76, headroom below 1.0",
+    "invalid: negotiate an out-of-range supplier index every round -> malformed answer -> rejected -> 0 on every instance"
+  ]
+}

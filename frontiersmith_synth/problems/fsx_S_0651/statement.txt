@@ -1,0 +1,84 @@
+# Bus Lines for Weekdays, Weekends, and Stadium Nights
+
+## Problem
+
+A city's street network has `N` stops and `M` two-way streets (street `i` joins
+stops `u_i,v_i` and takes `w_i` minutes). You must design a shared bus network: at
+most `L` bus lines, each a walk over streets, whose **total traversed length**
+(summed over all lines, edges counted every time they are used) is at most a
+budget `BUDGET`. The same network must serve **three demand scenarios**: weekday
+commutes, weekend trips, and stadium-night crowds heading to a stadium stop. Each
+scenario `s` (0=weekday, 1=weekend, 2=stadium night) has its own list of
+origin-destination pairs with demand weights, and ships a precomputed **oracle
+cost** `oracle_s` — the cost achieved by a strong construction built with the SAME
+`L`/`BUDGET` but dedicated entirely to scenario `s` alone.
+
+Riding is only fast on streets your lines actually cover: a covered street costs
+its real minutes; an uncovered street costs **5x** its minutes (walking/no-service
+penalty). For a demand pair, travel time is the shortest path over the whole
+street network under this rule. Scenario `s`'s cost is the demand-weighted sum of
+these travel times. Your **regret** on scenario `s` is `cost_s / oracle_s`
+(1.0 = you matched the dedicated reference for that scenario alone). You must
+**minimize the worst scenario's regret**: `F = max(regret_0, regret_1, regret_2)`.
+Because regret is a *ratio*, a scenario with a cheap oracle (easy to nail with one
+direct line) can dominate `F` even though it carries little total demand — ignore
+it and its regret can hit the full 5x penalty ceiling, however small its weight.
+
+## Input
+```
+N M
+u_1 v_1 w_1        (M lines, streets, 1-indexed, undirected)
+L BUDGET
+D_0 oracle_0
+u v w              (D_0 lines: weekday demand pairs)
+D_1 oracle_1
+u v w              (D_1 lines: weekend demand pairs)
+D_2 oracle_2
+u v w              (D_2 lines: stadium-night demand pairs)
+```
+
+## Output
+Print exactly `L` lines. Line `i`: `k s_1 s_2 ... s_k` — `k>=1` stops (1-indexed);
+consecutive stops `s_j,s_{j+1}` must be joined by a street. `k=1` is a valid
+degenerate (unused) line of length 0. A line may revisit stops/streets, but every
+traversal is charged again.
+
+## Feasibility
+Every consecutive pair in every line must be a real street. The sum, over all
+lines and all consecutive pairs, of the streets' minutes must be `<= BUDGET`. Any
+violation, or trailing/malformed output, scores `0`.
+
+## Objective
+Minimize `F = max_s (cost_s / oracle_s)` as defined above.
+
+## Scoring
+The checker also builds an internal minimal-effort reference: pool all demand
+pairs from all three scenarios, sort by weight descending, and greedily try to
+build a *single* line for the heaviest pair using only 3% of `BUDGET` (stopping
+the moment one doesn't fit) — call its worst-case regret `B`. Your score is
+`ratio = min(1000, 100*B/F) / 1000`, so this bare-minimum reference scores `~0.1`
+and a genuinely well-balanced network scores higher (capped at `1.0`).
+
+## Constraints
+`14 <= N <= 45`, `1 <= w_i <= 15`, `5 <= L <= 7`, `1 <= D_s`. Time limit: 4s.
+Memory limit: 512 MB.
+
+## Example
+Stops `1..5` (`1`=hub, `2,3`=suburbs, `4`=spur, `5`=stadium). Streets: `1-2`(4),
+`1-3`(4), `1-4`(3), `4-5`(3). `L=2, BUDGET=10`. Weekday: `(1,2,10),(1,3,9)`,
+`oracle_0=76`. Weekend: `(2,1,6)`, `oracle_1=24`. Stadium night: `(1,5,4)`,
+`oracle_2=24`.
+
+Pooling all four pairs by weight and greedily using both lines on the two
+heaviest (`1-2` then `1-3`, total length 8) looks natural — it exactly matches
+weekday's own oracle (`cost_0=76`) — but stadium night's street `1-4-5` never
+gets built: `cost_2 = 4*5*6 = 120`, `regret_2 = 5.0`, so `F=5.0`.
+
+Building the stadium line first (`1-4-5`, length 6, leaving budget 4) and then
+the single remaining affordable pair `1-2` (length 4) instead gives `cost_0 =
+10*4 + 9*(5*4) = 220` (`regret_0=2.895`), `cost_1=24` (`regret_1=1.0`),
+`cost_2=24` (`regret_2=1.0`): `F=2.895` — worse on weekday alone, but far better
+in the worst case, because stadium night's cheap oracle made it the
+regret-critical scenario. Here `B=5.0` (the minimal reference also misses
+everything), so this submission scores `min(1000,100*5.0/2.895)/1000 = 0.173`
+versus `0.1` for the pooled-greedy plan.

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0888",
+  "tier": "A",
+  "format": "E",
+  "family": "finite-size-percolation-law",
+  "eval_form": "quality-metric",
+  "theme": "coffee percolating through sieves of many sizes",
+  "title": "Coffee Percolating Through Sieves of Many Sizes",
+  "objective": "min",
+  "strategies": [
+    "constant 0.5 prediction (ignores the data) -> reproduces the checker baseline ~0.1",
+    "greedy: fit each small sieve size's crossing curve as its own independent logistic (per-L midpoint and width), then extrapolate midpoint and width to L=128/512 via SEPARATE straight-line-in-1/L fits (the textbook leading-order finite-size guess); looks excellent on the training range but the two independently-extrapolated curves do not obey the shared exponent that ties them together, so predictions drift far from truth at the untested large sieve sizes",
+    "strong: pool ALL training rows across every small L into one JOINT regression for a single (pc, nu) under the ansatz Pi=0.1+0.8*sigmoid((p-pc)*L**(1/nu)); recovers a genuine power law that extrapolates correctly to L=128/512 because it is fit as one, instead of two independently mis-shaped curves",
+    "headroom above strong: refine the joint (pc, nu) fit with a finer local search / better optimizer to shave the residual estimation error further, pushing held-out MSE closer to the irreducible measurement-noise floor"
+  ]
+}

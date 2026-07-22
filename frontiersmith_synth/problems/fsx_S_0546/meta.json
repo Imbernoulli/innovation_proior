@@ -1,0 +1,15 @@
+{
+  "id": "fsx_S_0546",
+  "tier": "S",
+  "format": "C",
+  "family": "kolam-single-stroke-mandala",
+  "eval_form": "quality-metric",
+  "theme": "one-stroke kolam curve around a dot grid",
+  "title": "Kolam Mandala: One Stroke Against Symmetry",
+  "objective": "max",
+  "strategies": [
+    "trivial: blindly merge the loop system into one stroke (weight- and orbit-blind first bridge)",
+    "greedy: break symmetry at the cheapest tiles by weight, ignoring the orbit-clustering interaction",
+    "strong: minimum-cost symmetry-breaking that also spreads breaks across C4 orbits to dodge the interaction penalty"
+  ]
+}

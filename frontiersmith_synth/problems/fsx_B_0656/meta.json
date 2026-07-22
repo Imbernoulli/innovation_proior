@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0656",
+  "tier": "B",
+  "format": "C",
+  "family": "pigment-metamerism-matching",
+  "eval_form": "quality-metric",
+  "theme": "Mix pigments to match a color under many lights",
+  "title": "Metamer-Proof Pigment Recipe",
+  "objective": "minimize",
+  "strategies": [
+    "trivial: uniform mixture over the whole palette (checker's own baseline)",
+    "greedy: Frank-Wolfe fit of the target's tristimulus point under only the first illuminant, wrongly assuming pure-pigment reflectances mix linearly -- falls for cheap metameric decoy pigments",
+    "strong: invert the Kubelka-Munk formula to get a per-band linear residual in concentrations, then Frank-Wolfe fit the FULL reflectance spectrum (all bands at once) -- illuminant-invariant by construction",
+    "invalid: negative, non-normalized concentration vector (must score 0)"
+  ]
+}

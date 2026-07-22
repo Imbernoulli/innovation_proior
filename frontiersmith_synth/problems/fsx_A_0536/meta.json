@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0536",
+  "tier": "A",
+  "format": "C",
+  "family": "resistance-portrait-fitting",
+  "eval_form": "quality-metric",
+  "theme": "wiring a sensor mesh to prescribed electrical distances",
+  "title": "Resistance Portrait: Fitting a Sensor Mesh to Prescribed Electrical Distances",
+  "objective": "min",
+  "strategies": [
+    "trivial: uniform conductance-1 backbone path over the active terminals, ignoring targets (reproduces the checker baseline)",
+    "greedy: light backbone plus a direct wire of conductance 1/target for the most important pairs -- overshoots because every wire lowers all resistances (Rayleigh monotonicity)",
+    "strong: damped fixed-point on the coupled pseudoinverse -- recompute ALL pairwise resistances and multiplicatively correct each shared wire toward its residual, keeping the best iterate by exact error",
+    "advanced: joint least-squares / Newton over the conductance vector with edge-budget allocation that reinforces the backbone shared by many targets rather than fitting pairs one at a time"
+  ]
+}

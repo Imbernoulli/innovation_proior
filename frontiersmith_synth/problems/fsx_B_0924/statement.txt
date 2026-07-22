@@ -1,0 +1,93 @@
+# Grow a Sharp Crystal, Not a Blob
+
+## Problem
+
+A crystal nucleates from a single seed cell at the origin and grows one cell at a
+time by an **Eden process** on the integer lattice: repeatedly, some empty cell
+adjacent (4-neighbor) to the current cluster attaches. You do not choose which
+cell attaches. Instead, you declare, once, an **anisotropy field**: 72
+nonnegative numbers `w[0..71]`, one per 5-degree direction bin (bin `i` covers
+angles `[5*i, 5*(i+1))`, measured from the seed). The simulator converts `w`
+into an exact per-bin cell **budget** by apportioning `M-1` cells across the 72
+bins in proportion to `w` (largest-remainder rounding, so the budgets are
+integers summing to `M-1`). Growth then proceeds: at each step a candidate
+frontier cell (empty, touching the cluster) is drawn uniformly at random; if
+its direction bin's budget is already used up, that cell is set aside;
+otherwise it attaches and its bin's spent budget increases by one. Each
+direction's final reach is thus a **hard, self-limiting function of its
+declared budget** -- no direction can "run away" no matter how large its
+weight, since it stops the instant its own budget is spent. If concentrating
+almost all budget on a few bins ever makes every reachable candidate blocked
+before mass `M` is reached (no path to the budgeted bins exists yet), the
+simulator falls back to plain unconstrained growth for the remaining cells --
+so mass always reaches exactly `M`, but starving reachability this way never
+helps your silhouette match. All randomness comes from a seed in the input
+(never from your output), so the same `w` always regrows the exact same
+cluster on a given test.
+
+Separately, the input describes a **target shape**: `K` vertices, vertex `i`
+placed at angle `2*pi*i/K` and distance `r_i` from the seed, connected in order
+(and the last back to the first) into a star-shaped polygon around the seed. A
+lattice cell is "inside" the target if its distance from the seed does not
+exceed the polygon boundary's distance in that exact direction (the ray from
+the seed through the cell). `M` is defined as the number of lattice cells
+inside this target region, so your grown cluster and the target region always
+have equal size `M`; only their overlap can differ.
+
+## Input
+
+```
+SEED K M
+r_0 r_1 ... r_{K-1}
+```
+`SEED` seeds the growth simulator. `4 <= K <= 16`. `r_i` are positive integers.
+
+## Output
+
+One line: 72 nonnegative real numbers `w[0] ... w[71]` (the anisotropy field).
+
+## Feasibility
+
+Exactly 72 tokens, each a finite real in `[0, 1e12]`, no trailing tokens, and not
+all zero. Any violation scores `0`.
+
+## Objective
+
+Maximize the overlap between your grown cluster and the target region.
+
+## Scoring
+
+Let the simulator grow a cluster `C` from your `w` (mass `M`, as above), and let
+`F = |C intersect Target|`. Let `B` be the intersection size obtained the exact
+same way using the **isotropic** field `w[i] = 1` for all `i` (an equal budget
+in every direction -- the KPZ-universal round blob of the same mass `M`). Your
+ratio for a test is
+```
+ratio = min(1000, 100 * F / max(1, B)) / 1000
+```
+so the isotropic split always scores `0.1`, and any anisotropy that raises the
+overlap scores higher (capped at `1.0`). Final score is the mean ratio over 10
+tests.
+
+## Constraints
+
+* `4 <= K <= 16`, `1 <= r_i <= 200`.
+* `M` is at most about `5000` (derived from `K, r_i`; never chosen by you).
+* Time limit: 3 s. Memory limit: 512 MB.
+
+## Example
+
+With `K=4` and `r = [6,6,6,6]` the target is a small, direction-independent
+diamond: the isotropic field already covers it well, so this scale mainly
+sanity-checks the format. On harder tests most vertices sit at a short "facet"
+radius (say `6..9`) while a few spike out to a much longer "tip" radius (say
+`80..120`): the target becomes a thin, spiky star. An isotropic split gives
+every direction the SAME final reach, fixed by `M`'s total area alone -- it
+can never stretch to the tips no matter how the single global budget is tuned.
+Reading off the target's own boundary radius at a single sample angle per bin
+still routes too little budget toward a bin that straddles a spike, since the
+true radius there rockets from small to huge within just 5 degrees and a point
+sample misses that concentrated area. Properly accounting for how much of the
+target's AREA actually falls in each bin (radius squared, integrated across
+the bin's arc, not sampled at one angle) routes the right budget to the tips
+and starves the facets correctly, matching the star far better than `0.1`.

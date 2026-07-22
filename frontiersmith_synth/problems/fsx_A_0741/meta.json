@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0741",
+  "tier": "A",
+  "format": "D",
+  "family": "compaction-cadence-planner",
+  "eval_form": "flops",
+  "theme": "archivist merging boxes of letters between reading-room hours",
+  "title": "Archivist's Compaction Cadence",
+  "objective": "min",
+  "strategies": [
+    "trivial: never merge anything, every box stays its own block forever",
+    "greedy: box-count threshold trigger -- compact everything alive the moment more than 6 boxes exist, blind to when requests will land",
+    "strong: price a full compaction against the ENTIRE remaining lookup schedule (visible upfront) before committing -- merge only when the saved probes over the rest of the timeline outweigh the rewrite cost, so it clusters compactions right before demand and defers freely during write-only stretches",
+    "true optimal selective (non-global) merge schedule, jointly timed and grouped across overlapping runs (open ceiling, uncovered)"
+  ]
+}

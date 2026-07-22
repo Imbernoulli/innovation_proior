@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0955",
+  "tier": "A",
+  "format": "A",
+  "family": "evac-assignment-fire-scenarios",
+  "eval_form": "quality-metric",
+  "theme": "evacuation placards printed once, fires vary",
+  "title": "Placards Printed Once, Fires Vary",
+  "objective": "min",
+  "seed_problem": "static room-to-exit route assignment simulated over a worst-case ensemble of fire scenarios with time-expanded corridor congestion",
+  "mutation": "composite: a per-room STATIC route assignment (room-to-route-assignment) is scored by simulating deterministic time-expanded corridor congestion (load on a corridor determines how many discrete throughput 'waves' it takes to clear, scaled by the corridor's scenario-specific capacity) under EVERY scenario in a fixed fire ensemble, then taking the worst scenario's clearance time (worst-scenario-clearance-time) as the objective to minimize -- turning routing into a minimax hedge against an adversarial ensemble rather than a shortest-path problem.",
+  "strategies": [
+    "trivial: route every room to the nearest exit by raw HOP COUNT (unweighted BFS), ignorant of transit weights, capacity, and every fire scenario -- reproduces the checker's baseline construction",
+    "naive greedy: route every room via the actual-shortest WEIGHTED path (Dijkstra by transit time) to its nearest exit, ignoring capacity and the fire ensemble entirely -- in this topology this always funnels 100% of every cluster through the fast hub corridor, which is exactly the corridor the planted scenario ensemble targets in >=3 of the 10 tests",
+    "insight (strong): for each cluster, read off the worst-case scenario-damaged capacity of BOTH its hub corridor and its private bypass corridor, then solve the two-route load-balance that equalizes worst-case congestion time on each (an exchange/equalization argument, not a shortest path), splitting neighboring rooms of the same cluster across the fast-but-exposed and slow-but-private corridors -- this hedges space (which corridor a given fire burns) and time (how much simultaneous load any surviving corridor must swallow) simultaneously",
+    "a general solver can go further: jointly optimize the split across ALL clusters accounting for the shared hub->exit aggregator edge, or use a proper minimax/LP relaxation over the full K-scenario ensemble instead of the per-cluster worst-case heuristic"
+  ]
+}

@@ -1,0 +1,100 @@
+# Accordion Silhouette Scheduling
+
+## Problem
+
+A strip of `n` unit panels numbered `1..n` is joined by `n-1` creases; crease `i`
+sits between panel `i` and panel `i+1`. You fold the strip flat into a stack by
+**committing creases one at a time**. A commit is irrevocable, and it is what
+clears access to the strip's interior: crease `i` is **exposed** (fold-able) at a
+given moment iff `i` is an end crease (`i = 1` or `i = n-1`), or at least one of
+its neighboring creases (`i-1` or `i+1`) has **already been committed**.
+Initially only the two end creases are exposed; committing a crease exposes its
+still-unfolded neighbor. Interior creases stay buried under uncommitted material
+until a neighboring fold clears the way to them.
+
+Each crease `i` also carries a required direction `req_i` (Mountain or Valley)
+printed in the input — the direction the target silhouette wants there. You may
+commit crease `i` in **either** direction; matching `req_i` earns full credit,
+mismatching earns half (see Scoring).
+
+The final stack's outermost, most visible layers are exactly the **last**-committed
+folds. If you commit `k` creases total (any subset, `0 <= k <= n-1`, chosen by
+you — folding everything is not required), the `t`-th crease you commit (1-indexed
+by print order) gets **prominence multiplier `t`**: waiting longer to fold a crease
+makes it more prominent and worth more, but you cannot fold it before it is exposed,
+and once you start committing a chain of buried creases you cannot reorder that
+chain's internal sequence — it must proceed strictly inward.
+
+A flat-foldable strip also needs a global Mountain/Valley balance. The input gives
+an integer target `T` (a Maekawa/Kawasaki-style parity target). Let `Mc, Vc` be the
+number of committed creases folded Mountain / Valley (`Mc + Vc = k`). If
+`Mc - Vc == T` exactly, your **entire** silhouette earns full credit; otherwise the
+strip does not lie flat and your **entire** silhouette earns only half credit.
+Flipping a crease's direction only changes `Mc - Vc` by 2, and dropping one crease
+changes `k`'s parity — sometimes the only way to reach `T` is to leave one crease
+unfolded, sacrificing that fold's own contribution to save the multiplier on
+everything else.
+
+## Input
+```
+n T
+req_1 req_2 ... req_{n-1}      (each token "M" or "V")
+w_1 w_2 ... w_{n-1}             (positive integers, silhouette weight of crease i)
+```
+
+## Output
+```
+k
+c_1 d_1
+...
+c_k d_k
+```
+`c_j` (distinct integers in `[1, n-1]`) is the crease committed at step `j` — this
+order **is** the commit order; `d_j` is `"M"` or `"V"`. `0 <= k <= n-1`.
+
+## Feasibility
+`k` in `[0, n-1]`; all `c_j` distinct, in `[1, n-1]`; each `d_j` exactly `"M"` or
+`"V"`. At step `j`, crease `c_j` must be exposed given only `c_1..c_{j-1}` already
+committed. Any violation, out-of-range token, repeated crease, or trailing output
+scores `0`.
+
+## Objective (maximize)
+For step `j` committing crease `c` with direction `d`:
+`contribution = w_c * j * (1 if d == req_c else 0.5)`.
+`RAW = sum of contributions` over all `k` steps. With `Mc, Vc` as above, the
+silhouette score is `F = RAW * (1 if Mc - Vc == T else 0.5)`.
+
+## Scoring
+The checker also builds its own reference: commit every crease in plain index
+order `1, 2, ..., n-1`, always folding **Mountain** (never reading `req_i`,
+never reasoning about `T`). Call its score `B` (guaranteed positive). Your
+ratio for a test is `min(1000, 100*F/max(1,B)) / 1000`, averaged over 10 tests.
+
+## Constraints
+`3 <= n <= 200000`; `|T| <= n-1`; `1 <= w_i <= 50000`. Time limit: 3s. Memory: 512MB.
+
+## Example
+`n=5` (creases `1..4`), `T=0`, `req = M V M V`, `w = 10 100 10 10`. Output:
+```
+4
+1 M
+4 V
+2 V
+3 M
+```
+Step 1 folds crease 1 (boundary) `M` matches `req_1=M` -> `10*1*1=10`.
+Step 2 folds crease 4 (boundary) `V` matches `req_4=V` -> `10*2*1=20`.
+Step 3 folds crease 2 (exposed: neighbor 1 already committed) `V` matches
+`req_2=V` -> `100*3*1=300`.
+Step 4 folds crease 3 (exposed: neighbor 2 or 4 already committed) `M` matches
+`req_3=M` -> `10*4*1=40`.
+`RAW = 370`. Directions used: `M,V,V,M` so `Mc=2, Vc=2, Mc-Vc=0=T` -> full credit,
+`F = 370`. The reference `B` folds `1,2,3,4` in that fixed order, always
+Mountain (ignoring `req`): crease 1 matches (`req_1=M`) for `10*1*1=10`; creases
+2 and 4 want Valley but get Mountain, so they earn half credit
+(`100*2*0.5=100`, `10*4*0.5=20`); crease 3 matches for `10*3*1=30`. That is
+`RAW_B = 160`, and the reference's own gap is `4` (all Mountain) which misses
+`T=0`, halving again: `B = 80`. Ratio `= min(1000, 100*370/80)/1000 = 0.4625`.
+Delaying crease 2 (the heaviest weight) to step 3 instead of folding it
+immediately is the core idea — folding it at step 1 would only score
+`100*1*1=100` toward `RAW` instead of `300`.

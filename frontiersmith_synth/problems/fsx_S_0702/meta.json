@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0702",
+  "tier": "S",
+  "format": "B",
+  "family": "adaptive-lns-facility-placement",
+  "eval_form": "quality-metric",
+  "theme": "multi-scale demand micro-depot placement",
+  "title": "Meridian County Micro-Depot Network",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:topup-B-1"],
+  "strategies": [
+    "trivial: open the K cheapest candidate sites (cost-only, geometry-blind) and assign every household to its nearest open depot -- reproduces the evaluator's weak reference",
+    "greedy: farthest-point sampling (k-center greedy) opens sites that maximize spread, so it covers every district once before ever doubling up inside one -- the textbook single-pass spatial heuristic",
+    "strong: adaptive destroy/reinsert search that diagnoses local demand density (k-NN scale) per household, sizes the destroy radius to that density (surgical inside dense pockets, sweeping in the sparse countryside), and uses a threshold-acceptance schedule to escape the coarse-scale local optimum that greedy locks onto",
+    "invalid: submits a facility list with duplicate site indices, violating the distinctness contract"
+  ]
+}

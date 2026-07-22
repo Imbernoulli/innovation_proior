@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0532",
+  "tier": "S",
+  "format": "E",
+  "family": "hidden-affine-sparse-poly",
+  "eval_form": "quality-metric",
+  "theme": "decode a scrambled sensor's calibration curve",
+  "title": "Scrambled Sensor: Recover a Sparse Calibration Law Through a Hidden Affine Change of Variable",
+  "objective": "optimize",
+  "strategies": [
+    "constant baseline: emit the mean of the training targets (no structure, ~0.1)",
+    "quadratic (low-order) least-squares fit in the raw reading x: fits the narrow window, wrong shape, extrapolates poorly -> the obvious-recipe trap",
+    "affine-conjugation sparse search: grid the hidden (a,b), pull data back to u=a*x+b, select the sparsest t-term polynomial whose train residual hits the noise floor -> recovers the law and extrapolates",
+    "headroom above strong: finer (a,b) grid / continuous refinement / integer-coefficient snapping drives held-out error toward the irreducible noise floor"
+  ]
+}

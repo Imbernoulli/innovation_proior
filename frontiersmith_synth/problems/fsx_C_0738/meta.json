@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_0738",
+  "tier": "C",
+  "format": "C",
+  "family": "lock-chamber-parity-batching",
+  "eval_form": "quality-metric",
+  "theme": "canal lock master's daily transit plan",
+  "title": "Lock Master's Parity Plan",
+  "objective": "min",
+  "strategies": [
+    "trivial: batch each direction to capacity K, earliest-deadline-first within a direction (the checker's own reference construction), but run all of one direction's lockages before ever switching to the other -- deadline- and capacity-aware, but blind to the water-parity bit",
+    "greedy (trap): batch boats into full lockages by direction -- process all of one direction's boats (earliest-deadline-first, chunked to capacity K) as one long block, then switch to the other direction -- minimizes the number of direction switches, which looks efficient, but every lockage after the first inside each block repeats the previous direction and pays the expensive W_same water cost again and again",
+    "strong (insight): batch boats into the same capacity-K, deadline-ordered chunks per direction, but SEQUENCE the chunks by always alternating direction whenever the other direction still has boats waiting -- this drives the number of same-direction repeats down to the combinatorial minimum max(0, |m0-m1|-1) set by the arrival imbalance, instead of the (m0-1)+(m1-1) a block batcher pays",
+    "further headroom: jointly optimize chunk membership and interleaving order against the lateness term (not just deadline-sorted fixed chunks) -- a full exchange-argument / local-search pass over which boats sit in which lockage"
+  ]
+}

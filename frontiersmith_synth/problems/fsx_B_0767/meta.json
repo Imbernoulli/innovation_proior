@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0767",
+  "tier": "B",
+  "format": "C",
+  "family": "forbidden-window-debruijn",
+  "eval_form": "quality-metric",
+  "theme": "Shortest cyclic string hitting all allowed windows",
+  "title": "Balanced Tour of the Forbidden-Window de Bruijn Graph",
+  "objective": "min",
+  "strategies": [
+    "trivial: per-edge BFS stitching in a fixed unrelated order (checker's own baseline)",
+    "greedy: single continuous DFS walk preferring unused local edges, falls back to blind retracing when stuck",
+    "strong: reformulate as an Eulerian-tour problem on the (L-1)-mer de Bruijn graph with forbidden edges deleted; compute per-node in/out imbalance and splice in shortest allowed paths (a greedy min-cost transportation matching) to restore balance before running Hierholzer's algorithm",
+    "invalid: emits a string missing required windows / containing a forbidden window"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "id": "fsx_S_0985",
+  "tier": "S",
+  "family": "cyclotomic-sparse-sum",
+  "seed_problem": "none (novel algebraic family; no classic decision-problem seed) - bespoke",
+  "mutation": "goal: replace 'find any exact representation' with an open-ended minimization: given a target cyclotomic integer as a padded, non-negative strike-count vector over the n-th roots of unity, output a minimum-cardinality non-negative multiset of roots summing to the exact same ring element. The obvious floating-point angle-matching approach is a trap; the intended insight is the Lam-Leung theorem that every non-negative vanishing relation among n-th roots of unity decomposes into rotated full prime-order cycles, turning the search into an integer program over that prime-relation lattice.",
+  "objective": "min",
+  "theme": "tune a chord using the fewest pure bell tones",
+  "title": "Tuning a Chord with Pure Bell Tones",
+  "strategies": [
+    "trivial: replay the given strike multiset verbatim (baseline)",
+    "greedy: floating-point matching pursuit toward the target's complex value, with an exactness-verified fallback to verbatim replay",
+    "strong: solves the full (signed) two-prime relation lattice as the LP dual of a min-cost transportation problem (min-cost flow between p-orbits and q-orbits, potentials read off the tight edges), falling back to alternating full exhaustion of each prime's cycles if the flow-derived voicing does not verify exactly -- finds re-voicings that borrow bells not in the original chord, not just subsets of it"
+  ]
+}

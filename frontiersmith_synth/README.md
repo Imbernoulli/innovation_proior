@@ -7,6 +7,9 @@ FrontierSmith's withheld orchestrator + test/checker generators, broadened acros
 FrontierCS, ALE-Bench, MLS-Bench). **Deterministic scoring only** — no wall-time/GPU; kernels appear
 only as FLOPs/op-count. See `DESIGN.md` for the full method + critical analysis.
 
+Current corpus: **1006 generated problems**, **1006/1006 machine-verified PASS**, with unique IDs and a
+one-to-one match between `seeds/seed_list.jsonl` and `problems/fsx_*`.
+
 ## Layout
 ```
 DESIGN.md                      method, 5 formats, tiered plan, improvements over FrontierSmith
@@ -19,8 +22,8 @@ harness/
   testlib.h                    testlib for compiling gen.cpp / chk.cc
   _selftest, _selftest_C, _selftest_B   regression fixtures (one per harness path)
 seeds/
-  build_seed_list.py           taxonomy → seed_list.jsonl (200; --per-tier 200 → 800)
-  seed_list.jsonl              the 200 problem specs (tier/format/family/theme/scale/variant)
+  build_seed_list.py           taxonomy/supplements → seed_list.jsonl (`--current` for corpus)
+  seed_list.jsonl              the 1006 problem specs (tier/format/family/theme/scale/variant)
 reports/
   taxonomy_proposal.json       researched cross-framework taxonomy (5 formats, 4 tiers, 36 families)
   verify_all.sh                re-verify every problem with the correct harness (ground truth)
@@ -51,12 +54,15 @@ fails). The corpus survived three rounds of adversarial Codex review + independe
 
 ## Regenerate / extend
 ```bash
-python3 seeds/build_seed_list.py                 # rebuild the 200-spec plan (or --per-tier 200)
+python3 seeds/build_seed_list.py --current        # rebuild the current 1006-spec plan
 bash   reports/verify_all.sh                      # ground-truth re-verify all problems
 python3 reports/aggregate.py                       # → reports/summary.{json,md}
 # batch generation is driven by the Workflow tool over compact {id,format} routes:
 #   Workflow(scriptPath=generate_problems.workflow.js, args=[{"id":"fsx_S_0001","format":"A"}, ...])
 ```
+
+Without `--current`, `build_seed_list.py` emits the original 200-spec taxonomy batch for controlled
+experiments; `--full500` rebuilds the base corpus before the subagent and bulk extensions.
 
 ## Using the problems
 - **Format A** plugs straight into the Frontier-CS algorithmic judge (same file layout: `statement.txt`,

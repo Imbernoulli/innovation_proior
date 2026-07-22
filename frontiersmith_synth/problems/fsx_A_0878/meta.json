@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0878",
+  "tier": "A",
+  "format": "B",
+  "family": "cache-phase-oracle",
+  "eval_form": "quality-metric",
+  "theme": "loading-dock pallet cache with a noisy runner forecast",
+  "title": "Loading Dock Phase Shift: Calibrated Eviction",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:wildcard-hybrid"],
+  "strategies": [
+    "always-LRU: ignore the runner's forecast entirely, evict the least-recently-used pallet (reproduces the evaluator's weak baseline)",
+    "blind forecast trust: always evict whichever resident pallet the runner's forecast claims is safest (Belady-on-the-forecast); wins when the runner is reliable, gets actively misled when the runner is guessing or backwards",
+    "calibrated adaptive blend: use the given calibration shift (same recipe, different draw) to backtest several trust levels / phase-edge settings, then submit a policy that tracks the runner's recent hit-rate online and re-anchors its trust estimate whenever a miss-rate spike signals the workload's regime just changed",
+    "static 50/50 blend: average the forecast rank and recency rank with a fixed, non-adaptive weight -- steadier than blind trust but still blind to phase edges"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1078",
+  "tier": "B",
+  "format": "C",
+  "family": "dilworth-antichain-schedule",
+  "eval_form": "quality-metric",
+  "theme": "Batch tasks by hidden chain structure",
+  "title": "Foundry Line Batching: Track Assignment Under a Hidden Chain Ceiling",
+  "objective": "max",
+  "strategies": [
+    "trivial: reproduce the checker's own baseline -- the k individually most profitable tasks, each alone on its own line",
+    "greedy: sort all tasks by profit descending, first-fit-append each onto the first production line it is precedence-consistent with (the trap -- cannot see that mutually-incomparable high-profit tasks each burn a whole line)",
+    "strong: compute a minimum chain (path) cover of the whole precedence poset via maximum bipartite matching on the reachability graph (Dilworth/Fulkerson duality), trim each recovered chain to its top-H-profit order-preserving subsequence, then keep the min(k, #chains) most valuable trimmed chains",
+    "invalid: dump every task onto one unordered line, violating both the horizon cap and precedence"
+  ]
+}

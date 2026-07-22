@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0505",
+  "tier": "G",
+  "format": "E",
+  "family": "sci-electrochem-aging-law",
+  "eval_form": "quality-metric",
+  "theme": "battery lab degradation extrapolation",
+  "title": "Battery Aging Law from Cold-Start Lab Cycling - high-cycle heat extrapolation",
+  "objective": "min",
+  "strategies": [
+    "constant baseline: predict the mean observed capacity loss from the training cells -> about 0.1",
+    "polynomial/interaction fit in cycle count, temperature, depth-of-discharge and charge rate: tracks the local trend but misses Arrhenius curvature and the high-cycle activation",
+    "structured electrochemical basis with diffusion-like growth, throughput-rate interaction, and a smooth high-cycle/high-temperature term: fit nonlinear exponents by a small grid and solve linear coefficients",
+    "alternatives: robust regression against noisy low-temperature rows, monotone/nonnegative constraints on mechanism amplitudes, or trading a compact mechanistic expression against the complexity penalty"
+  ]
+}

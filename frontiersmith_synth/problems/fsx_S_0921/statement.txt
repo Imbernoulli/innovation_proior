@@ -1,0 +1,94 @@
+# Dicing a Scarred Wafer into Unequal Chips
+
+## Problem
+
+A silicon **wafer** is an `N x N` grid of cells. Fabrication left some cells
+**defective** (they cluster). You dice the wafer with **full guillotine
+lines**: every horizontal cut and every vertical cut spans the *entire*
+wafer, so choosing the cut positions is really two independent 1D layout
+decisions (row-cut positions, column-cut positions) whose product still
+determines every rectangle on the wafer at once. A fixed **catalog** of `K`
+die types is available in unlimited supply; type `i` has dimensions
+`a_i x b_i` cells and value `v_i`. Larger dies are worth *disproportionately*
+more per cell than small ones (value grows faster than area), so big dies
+are the prize -- but a die can only be realized from a resulting rectangle
+that is **entirely defect-free**, and because the cut lines are global, a
+cut you place to dodge a defect in one region reshapes every rectangle in
+that row-band or column-band, everywhere on the wafer.
+
+## Input
+
+```
+N K
+K lines: a_i b_i v_i        (die type i: a_i x b_i cells, value v_i)
+D
+D lines: r c                 (a defective cell, 1-indexed)
+```
+Exactly one die type has `a_i = b_i = 1` (the base unit die).
+
+## Output
+
+```
+H p_1 p_2 ... p_H
+V q_1 q_2 ... q_V
+then (H+1)*(V+1) integers, one per resulting rectangle
+```
+`p_1 < ... < p_H` (each in `[1,N-1]`) are horizontal cut positions: a cut
+after row `p` separates row `p` from row `p+1`. `q_1 < ... < q_V` (each in
+`[1,N-1]`) are vertical cut positions, defined the same way on columns.
+Together they partition the wafer into `(H+1)` row-bands times `(V+1)`
+column-bands = `(H+1)*(V+1)` rectangles. List one integer per rectangle, in
+row-major order (row-bands top to bottom, and within each row-band,
+column-bands left to right): `0` means "leave this rectangle bare", any `j`
+in `[1,K]` means "realize die type `j` here" (rotations allowed: die `j`
+realizes a `w x h` rectangle iff `(a_j<=w and b_j<=h)` or `(b_j<=w and
+a_j<=h)`; excess area is simply wasted, no partial credit).
+
+## Feasibility
+
+Cut positions strictly increasing, in range, no duplicates. The token count
+must equal `(H+1)*(V+1)`. For every rectangle assigned a nonzero die `j`:
+the die must fit the rectangle (as above) **and** every cell of that
+rectangle must be defect-free. Any violation scores `0`.
+
+## Objective (maximize)
+
+`F` = sum of `v_j` over every rectangle assigned a fitting die (dies are
+unlimited, no die is "used up"). Maximize `F`.
+
+## Scoring
+
+The grader independently builds the finest possible dicing (every legal
+line drawn, so every rectangle is a single `1x1` cell) and realizes the base
+unit die on every defect-free cell; call its total value `B` (`B` is always
+positive -- every test has at least one clean cell). Your submitted `F` is
+compared against this baseline:
+```
+Ratio = min(1000, 100 * F / max(1, B)) / 1000
+```
+printed as `Ratio: <float>`. Cutting the finest possible grid and only ever
+using the base unit die always scores exactly `0.100000`. Per-test ratios
+are averaged over 10 tests.
+
+## Constraints
+
+`6 <= N <= 160`; `3 <= K <= 5`; `1 <= a_i, b_i <= N`; `1 <= v_i <= 5*10^5`;
+`0 <= D <= N*N - 1`; `0 <= H, V <= N-1`. Time limit **4s**. Memory limit
+**512MB**.
+
+## Example
+
+`N=6, K=2`: die 1 = `1x1` value `4`; die 2 = `3x3` value `40`. One defect at
+`(5,5)`.
+
+Output `H=1 {3}`, `V=1 {3}` (one cut after row 3, one after column 3) makes
+four `3x3` rectangles. Three are clean -> assign die `2` to each (`40` each).
+The fourth (rows 4-6, cols 4-6) contains the defect at `(5,5)` -> must be
+left bare (`0`).
+```
+1 3
+1 3
+2 2 2 0
+```
+`F = 40+40+40+0 = 120`. Baseline `B`: 35 clean cells x value 4 = `140`.
+`Ratio = min(1000, 100*120/140)/1000 = 0.857142`.

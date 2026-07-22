@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0671",
+  "tier": "B",
+  "format": "E",
+  "family": "aliased-oscillator-recovery",
+  "eval_form": "quality-metric",
+  "theme": "strobe-lit fan blade speed law",
+  "title": "Strobe-Lit Fan Law — recovering a monotone speed law from Nyquist-folded readings",
+  "objective": "min",
+  "strategies": [
+    "trivial: emit the flat geometric mean of the training READINGS (the raw, aliased values) as a constant law -- reproduces the checker's own baseline, Ratio ~0.1",
+    "greedy: textbook log-log least-squares power-law fit reading = A'*x^p' over the RAW readings, as if they were unaliased -- tracks x well when the camera rate is high enough that few or no folds occur in training, but once the true frequency starts wrapping into [0, fs/2] the readings stop tracking x monotonically and the fitted exponent collapses toward near-zero, badly under-predicting the much larger held-out truth",
+    "strong: joint integer unfolding via the monotone-zone invariant -- because f_true(x) is monotone increasing, its Nyquist zone index z=floor(f_true/(fs/2)) is provably NON-DECREASING along sorted x; hypothesize the first point's zone (a small integer), walk forward picking the zone-consistent unfold candidate closest to a running power-law prediction, then globally score each starting-zone hypothesis by how well its FULL unfolded curve fits a single smooth power law across all training points -- picks the one true lattice-consistent unfolding even across a deliberate mid-sweep sampling gap that jumps many zones at once",
+    "headroom above strong: a true joint (non-sequential) integer program over all zone assignments simultaneously, robust/IRLS refitting, or adaptively choosing more than one bootstrap anchor point to guard against local mis-steps right after the sampling gap"
+  ]
+}

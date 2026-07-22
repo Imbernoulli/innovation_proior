@@ -1,0 +1,92 @@
+# Wire-Bending Robot That Keeps Hitting Itself
+
+## Problem
+
+A CNC wire bender holds a straight wire of length `L`, with `m` **bend stations**
+at fixed arc-length positions `x_1 < x_2 < ... < x_m` (the wire's own
+base-to-tip order; the base sits at position `0`, the free tip at `L`). Station
+`i` has a **target** turning angle `theta_i` (degrees), but the metal springs
+back by a known `delta_i` degrees after every bend. The machine can choose an
+**applied** angle `a_i` to pre-compensate, limited to `|a_i - theta_i| <= c`
+(a fixed compensation budget). The wire actually turns by the **realized**
+angle `a_i + delta_i`.
+
+You choose the **order** in which the `m` stations are bent (any permutation)
+and the applied angle for each. The machine always clamps the base-side
+structure and swings everything strictly beyond the pivot. The swept **reach**
+of bending station `i` is the arc-length distance from `x_i` out to the
+*nearest station beyond it that has already been bent* (or to the free tip
+`L` if none has yet) — an unshaped run has no intermediate brace and must
+swing as one un-braced arm, while an already-bent station lets the machine
+re-index against it. The farthest point of that arm sweeps a chord of length
+`2 * reach * sin(|realized| / 2 degrees)`. If this chord exceeds the
+clearance `K`, the bend **collides**: station `i` is never matched (scores
+`0` there) and the wire beyond it stays unshaped. Otherwise station `i`
+becomes bent (bracing the reach of later bends on its base side).
+
+## Input
+
+```
+m L c TOL K
+```
+then `m` lines, station `i = 1..m` in fixed geometric order:
+```
+x_i theta_i delta_i w_i
+```
+
+## Output
+
+`m` lines, the bending order you choose, each `i a_i`: station index `i`
+(a permutation of `1..m`) and its applied angle `a_i` (integer).
+
+## Feasibility
+
+Every station index `1..m` must appear **exactly once**; `|a_i - theta_i| <= c`
+for every printed `a_i`. Any violation, or trailing tokens, scores `0`.
+
+## Objective
+
+Maximize `F = sum over successfully-bent stations of w_i * max(0, 1 - |realized_i - theta_i| / TOL)`,
+where `realized_i = a_i + delta_i` and collided stations contribute `0`.
+
+## Scoring
+
+Let `B` be `F` for the fixed reference: bend stations in **plain geometric
+order** `1, 2, ..., m` with `a_i = theta_i` (no precompensation), simulated by
+the same rule. Your score is
+```
+ratio = min(1000, 100 * F / max(1, B)) / 1000
+```
+so the plain-order/no-compensation reference scores `0.1`, and doing
+meaningfully better scores higher (capped at `1.0`, ten times the reference).
+Per-test ratios are averaged.
+
+## Constraints
+
+* `3 <= m <= 150`; `1 <= x_i < L <= 45000`, strictly increasing.
+* `15 <= |theta_i| <= 155`; `1 <= |delta_i| <= 25`; `1 <= w_i <= 30`.
+* `5 <= c <= 10`; `9 <= TOL <= 13`; `K >= 1`.
+* Time limit: 4 s. Memory limit: 512 MB.
+
+## Example
+
+`L=60, c=5, TOL=10, K=35`, stations `(x,theta,delta,w)`:
+`1:(10,40,6,6)`, `2:(30,-70,4,10)`, `3:(50,25,-3,4)`.
+
+Output `2 -74 / 1 35 / 3 28` (bend the middle station first):
+- Station 2: nothing bent yet, reach `= L-30 = 30`; realized `=-74+4=-70`;
+  chord `=60*sin(35deg)=34.4 <= 35` -> OK, quality `1`, contributes `10`.
+- Station 1: nearest bent station beyond it is 2, reach `=30-10=20`;
+  realized `=35+6=41`; chord `=40*sin(20.5deg)=14.0` -> OK, quality `0.9`,
+  contributes `5.4`.
+- Station 3: reach `=60-50=10`; realized `=28-3=25`; chord `=20*sin(12.5deg)
+  =4.3` -> OK, quality `1`, contributes `4`.
+`F = 19.4`.
+
+Baseline (order `1,2,3`, no compensation): station 1's reach is the full
+`L-10=50` (nothing shaped yet) with realized `=46`, chord `=100*sin(23deg)
+=39.1 > 35` -> **collides**, contributes `0`; stations 2 and 3 still succeed
+(their reach only looks beyond them) contributing `6.0` and `2.8`.
+`B = 8.8`.
+
+`ratio = min(1000, 100*19.4/8.8)/1000 = 0.2205`.

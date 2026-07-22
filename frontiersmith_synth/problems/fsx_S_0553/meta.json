@@ -1,0 +1,20 @@
+{
+  "id": "fsx_S_0553",
+  "tier": "S",
+  "format": "A",
+  "family": "pierce-heat-choreography",
+  "eval_form": "quality-metric",
+  "theme": "Laser cutter that warps its own sheet",
+  "title": "Laser Cutter That Warps Its Own Sheet",
+  "objective": "max",
+  "seed_problem": "valued rectangles nested on a sheet plus a cutting order under a self-heating scrap field",
+  "mutation": "composite: the placement of parts and the order they are cut are fused into ONE ordered space-time layout; a reciprocal decay-in-time-and-space heat field (contour-order-coupling + thermal-decay-field) scraps any part whose accumulated field at cut-time exceeds a threshold, so irregular-nesting feasibility becomes a function of the schedule, not just the packing.",
+  "mechanisms": ["contour-order-coupling", "irregular-nesting", "thermal-decay-field"],
+  "innovation_hook": "The score couples a spatial packing to a temporal schedule through a decaying field, so the true decision variable is a space-time layout, not a layout plus a tour.",
+  "strategies": [
+    "trivial: drop a few parts on a widely-spaced grid and cut them in input order (reproduces the checker baseline)",
+    "greedy (obvious): cram every part densely with a next-fit shelf pack to maximize placed value, then apply a farthest-first cooling cut order and cut everything -- max density is thermally unsalvageable by any schedule and doomed cuts still heat neighbours",
+    "strong (insight): co-design the space-time layout -- leave thermal gaps, schedule remaining adjacencies apart, and cut ONLY the parts that survive; iterate placement + order + subset together",
+    "an optimal solver packs adaptively tighter where the schedule can hide the heat and picks a higher-value surviving subset -> headroom above strong"
+  ]
+}

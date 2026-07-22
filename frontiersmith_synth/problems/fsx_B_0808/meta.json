@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0808",
+  "tier": "B",
+  "format": "B",
+  "family": "stratified-reservoir-variance",
+  "eval_form": "quality-metric",
+  "theme": "Streaming reservoir sampler that minimizes estimator variance when stratum frequencies and variances are unknown and skewed.",
+  "title": "Field-Camera Trap Network: Adaptive Reservoir Budgeting Across Unknown, Skewed Species Strata",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:topup-B-1"],
+  "strategies": [
+    "trivial: equal-share allocation n_s = K/S for every stratum, ignoring the burn-in entirely (the evaluator baseline; always feasible) -> ~0.1",
+    "greedy: allocate proportional to raw burn-in occurrence counts (n_s ~ count_s), the obvious 'sample more where I've seen more' recipe; ignores variance and trusts small counts at face value, so an unseen/rarely-seen high-variance stratum gets starved -> far from strong on trap instances",
+    "strong: Dirichlet-smoothed frequency estimate (survives zero counts) combined with an uncertainty-inflated per-stratum variance estimate (shrinks toward the pooled burn-in variance AND is inflated further the fewer observations a stratum has, hedging against an unseen-but-erratic class) -> Neyman-style reallocation n_s ~ w_hat_s * sigma_hat_s(inflated), largest-remainder rounded to sum exactly K",
+    "invalid: dump the entire reservoir budget onto stratum 0 regardless of S/K (wrong-shaped/degenerate allocation on most instances) -> infeasible or catastrophic variance -> 0"
+  ]
+}

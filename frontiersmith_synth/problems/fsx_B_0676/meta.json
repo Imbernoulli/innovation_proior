@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_0676",
+  "tier": "B",
+  "format": "C",
+  "family": "head-coupled-release-scheduling",
+  "eval_form": "quality-metric",
+  "theme": "river dam staircase power dispatch",
+  "title": "River Staircase: Head-Coupled Release Scheduling",
+  "objective": "max",
+  "strategies": [
+    "constant-fraction bleed of current level every step, no lookahead (baseline)",
+    "myopic max-flow release every step to maximize instantaneous power (trap: collapses head, dumps un-buffered pulses downstream)",
+    "topological per-reservoir planning using the full known inflow series: a backward suffix-sum prices future capacity needs and proactively lowers the release target ahead of floods, otherwise holding a high-head target band (value-function / potential-energy ledger argument)"
+  ]
+}

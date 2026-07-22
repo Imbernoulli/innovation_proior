@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0698",
+  "tier": "B",
+  "format": "C",
+  "family": "order-sensitive-blend-ladders",
+  "eval_form": "quality-metric",
+  "theme": "fuel blending through a fixed tank ladder",
+  "title": "Sacrificial Premixes on a Fixed Tank Ladder",
+  "objective": "max",
+  "strategies": [
+    "trivial: fill each tank with a single homogeneous feedstock, picking whichever one prices best alone (checker baseline)",
+    "greedy: fill each tank directly with a 2-feedstock split chosen under a LINEAR (volume-weighted average) blending assumption -- never premixes, and the true power-law mixing rule makes it mispredict which corridor it lands in",
+    "strong: evaluates recipes under the TRUE power-mean mixing law and searches 2-stage plans -- transfer a whole earlier tank (a sacrificial off-spec premix) into a later tank alongside one more feedstock, reaching compositions no direct <=2-feedstock recipe can reach, net of the opportunity cost of not selling the premix tank on its own",
+    "headroom above strong: deeper premix chains (3+ stages), joint global assignment of which tanks feed which (not just a last-to-first local exchange), and searching 2-feedstock remainder fills instead of one"
+  ]
+}

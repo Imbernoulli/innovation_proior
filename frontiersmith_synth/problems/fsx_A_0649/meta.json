@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0649",
+  "tier": "A",
+  "format": "E",
+  "family": "stick-slip-friction-law",
+  "eval_form": "quality-metric",
+  "theme": "sled on waxed wood, jerky pulls",
+  "title": "Waxed-Sled Pull Response — recovering a hidden stick-slip automaton",
+  "objective": "min",
+  "strategies": [
+    "trivial: predict the constant mean training displacement -> reproduces the checker baseline exactly (~0.1)",
+    "greedy: fit ONE smooth regression y ~ b0+b1*F+b2*ln(1+r)+b3*F*ln(1+r) by least squares over all training rows; a flexible-looking basis but still a single continuous formula, so it averages the tiny creep slope and the much larger sliding slope into one wrong intermediate slope near the guard and under extrapolation",
+    "strong: realise the mechanism is a hybrid automaton, not a function -- find the natural gap in displacement values for an initial stuck/slip split, alternately refit each mode's trivially-simple law (through-origin creep in F*ln(1+r); linear-in-F sliding) and reclassify points to whichever mode fits better (hard-EM), then fit a linear separator in (F, ln(1+r)) space to recover the aging static-friction guard itself; emits a ternary expression with the recovered guard and two simple per-mode laws",
+    "headroom above strong: better boundary recovery near the guard (e.g. weighted/iteratively-reweighted separator, or explicit margin maximisation) and per-mode robust regression to shrink noise-driven residual error further toward the sensor-noise floor"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1017",
+  "tier": "A",
+  "format": "C",
+  "family": "atam-self-assembly",
+  "eval_form": "quality-metric",
+  "theme": "Fewest tile types to self-assemble a shape",
+  "title": "Ripple Window: Minimum Tile Types for a Counting Rectangle",
+  "objective": "min",
+  "strategies": [
+    "per-cell tiling: one bespoke, unshared tile type for every grid cell -- always correct, O(n*W) types",
+    "row-tagged cooperative counter: a fresh 4-type south+west ripple-carry gadget instantiated per bit row (plus a per-row column-0 filler and a row-0 LSB flip-flop) -- O(W) = O(log n) types, misses that the gadget is row-independent",
+    "position-invariant cooperative counter: the SAME 4-type ripple-carry gadget reused at every interior row (temperature-2 south+west cooperative binding), plus 2 boundary types for row 0 and 1 for column 0 -- O(1) types regardless of n or W",
+    "any other temperature-2 tile system a solver's program derives that still assembles the exact target window"
+  ]
+}

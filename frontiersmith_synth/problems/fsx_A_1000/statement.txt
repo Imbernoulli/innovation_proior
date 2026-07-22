@@ -1,0 +1,91 @@
+# Guild Forecast Tournament: Liquidity Allocation Under the Market-Scoring Rule
+
+## Problem
+The Cartographers' Guild runs a forecast tournament on N=100 binary questions. For
+each question q the Guild opens a logarithmic-market-scoring-rule (LMSR) stall with
+liquidity beta_q>0 that YOU choose, subject to a shared subsidy budget. A fixed,
+printed roster of traders then visits the stall **in order** and trades against the
+price your beta_q implies; you never see or control what any trader does beyond
+setting beta_q up front.
+
+Every question starts at price p=0.5 (logit x=0). The LMSR cost function with
+liquidity beta is C(q_yes,q_no) = beta * ln( e^{q_yes/beta} + e^{q_no/beta} ), and the
+current price of YES is p = e^{q_yes/beta} / (e^{q_yes/beta}+e^{q_no/beta}).
+
+Trader i (belief b_i in (0,1), budget w_i>0) trades toward their belief: if b_i
+implies a price above the current price they buy YES shares (q_yes increases, q_no
+unchanged); if below, they buy NO shares (q_no increases, q_yes unchanged). Each
+purchase costs C(after)-C(before). A trader keeps buying, spending real money, until
+EITHER the price exactly reaches their belief OR their entire budget w_i runs out --
+whichever binds first. If beta_q=0 the stall never opens: price stays 0.5, nobody
+trades.
+
+After the last trader, let p_q be the final price and q_yes,q_no the final
+outstanding shares of question q. When the true outcome resolves, the Guild pays $1
+per outstanding share of the winning side, and keeps the revenue C(final)-C(0,0) =
+C(final) - beta_q*ln2 collected from traders along the way. Define the REALIZED
+SUBSIDY of question q as subsidy_q = payout_q - revenue_q (payout_q = final q_yes if
+outcome=1, else final q_no) -- money the Guild had to add out of pocket to run that
+stall (it can be negative: a stall the Guild happened to profit from).
+
+## Input
+Line 1: `N B lambda` -- N=100 questions, total liquidity budget B (integer), subsidy
+weight lambda (decimal), identical for every question.
+Then for each question q=1..N:
+  Line: `M_q outcome_q` (M_q traders follow; outcome_q in {0,1}, 1 means YES resolved).
+  M_q lines: `belief_i budget_i` -- belief_i is an integer percent 1..99 (true belief
+  = belief_i/100), budget_i a positive integer -- printed IN TRADING ORDER.
+
+## Output
+N lines, one real number beta_q each: the liquidity you allocate to question q.
+
+## Feasibility
+- Each beta_q must be exactly 0, or lie in [0.01, B].
+- sum_q beta_q <= B (tolerance 1e-6*B).
+- Every value must be finite (no nan/inf).
+Any violation scores 0.
+
+## Objective (maximize)
+F = sum_q [ log(p_q)-log(0.5) if outcome_q=1 else log(1-p_q)-log(0.5) ]
+    - lambda * sum_q subsidy_q
+i.e. total forecasting-accuracy gain over an uninformative 0.5 prior, minus lambda
+times the total money spent subsidizing the stalls. Replaying a question's printed
+trader list under a chosen beta is exact and fully deterministic, so for any
+candidate beta_q the value that question would contribute is a function you can
+compute and re-evaluate as many times as you like before deciding how to spend B.
+
+## Scoring
+Your F is compared against an internal reference construction; the ratio is reported
+to 6 decimals, `Ratio: <float>`. Spreading B uniformly, or in proportion to how many
+traders show up at each stall, are both known to be poor recipes: a question where
+the crowd already agrees converges to nearly the same price at almost any beta_q and
+wastes subsidy sitting there, while a question that swings between confident,
+well-funded, disagreeing factions only pays off at a carefully sized beta_q -- too
+small and the final price is dictated by whichever faction happened to trade last,
+too large and no faction can afford to move the price away from 0.5 at all.
+
+## Constraints
+N=100. 2<=M_q<=50. 1<=belief_i<=99. 1<=budget_i<=9000. B=10000, lambda=0.005000 in
+every test. Time limit: 4s. Memory limit: 512MB.
+
+## Example
+Two questions, B=100, lambda=0.01.
+```
+2 100 0.010000
+2 1
+90 1000
+60 50
+2 0
+80 30
+20 30
+```
+Q1 (outcome=1): trader1 (belief 0.90, budget 1000) can easily afford to push the price
+all the way to 0.90; trader2 (belief 0.60, budget 50) then pulls it back down toward
+0.60. With beta_1=60 the final price is p_1=0.6000, contributing log(0.6)-log(0.5) =
+0.1823, at a realized subsidy of 10.94.
+Q2 (outcome=0): symmetric traders push the price to 0.80 then back to about 0.36; with
+beta_2=40 the final price is p_2=0.3608, contributing log(1-0.3608)-log(0.5)=0.2456,
+at a realized subsidy of 9.82.
+F = 0.1823+0.2456 - 0.01*(10.94+9.82) = 0.2203. A uniform split (beta=50 each)
+instead gives F=0.1838 here -- worse, because it under-funds Q1 (where the second,
+smaller-budget trader needed more room to pull the price back) and over-funds Q2.

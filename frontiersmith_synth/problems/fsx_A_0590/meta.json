@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0590",
+  "tier": "A",
+  "format": "C",
+  "family": "four-bar-coupler-tracing",
+  "eval_form": "quality-metric",
+  "theme": "Tune a four-bar linkage to trace a path",
+  "title": "Four-Bar Coupler Tracing: Fit a Linkage to a Target Path",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:inverse-design"],
+  "strategies": [
+    "baseline: emit a fixed un-tuned Grashof crank-rocker sized from the ground span (reproduces the checker baseline, ~0.1)",
+    "greedy recipe: blind local optimization of all five linkage parameters (a,b,c,u,v) from random restarts, minimizing the point-set distance -- wanders into shallow local minima and barely-rotating linkages",
+    "strong insight: read the radial invariants -- every target point lies at distance in [a-rho, a+rho] from pivot O0 and [c-rho2, c+rho2] from O1 -- to recover a, rho=|P-A|, c, rho2=|P-B| algebraically, collapsing the 5-D search to a 1-D sweep over the coupler length b (u,v then pinned by law of cosines), then a light polish",
+    "full local-search refinement of the strong seed on both assembly branches"
+  ]
+}

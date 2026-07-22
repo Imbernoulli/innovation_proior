@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0679",
+  "tier": "A",
+  "format": "C",
+  "family": "erasure-grid-mds",
+  "eval_form": "quality-metric",
+  "theme": "Lay out data to survive a row and column loss",
+  "title": "Diagonal Parity Grid",
+  "objective": "maximize",
+  "strategies": [
+    "minimal-covering-diagonal baseline: raw cells only along a covering diagonal (few raw cells), rest parity with injective Cauchy tags -- safe but wasteful",
+    "spread layout + collision-prone coefficient tags (small modulus reused across many parity cells): keeps a near-maximal raw count but loses independence (rank) on larger grids where the tag range is smaller than the number of parity cells",
+    "spread layout + globally-injective Cauchy/Vandermonde-style coefficient tags (distinct field element per cell, e.g. linear index): guarantees full rank for every row+column erasure pattern simultaneously, hitting the combinatorial rank bound with a near-maximal raw count",
+    "row+column reservation with per-cell weighting / exchange search over which cells to sacrifice as parity"
+  ]
+}

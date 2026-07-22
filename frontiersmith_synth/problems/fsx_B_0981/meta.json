@@ -1,0 +1,19 @@
+{
+  "id": "fsx_B_0981",
+  "tier": "B",
+  "format": "A",
+  "family": "fm-synth-timbre-matching",
+  "eval_form": "quality-metric",
+  "theme": "Program FM operators to match a timbre",
+  "title": "Bessel Sideband Inversion",
+  "objective": "min",
+  "seed_problem": "given a fixed FM synth topology (one carrier, K parallel modulators) and a target harmonic magnitude spectrum, choose each operator's frequency ratio and modulation index to match the spectrum",
+  "mutation": "composite: goal is a continuous+combinatorial spectral-matching optimum (no known exact optimum) coupled to a per-slot hardware-window assignment (ratio range + index cap fixed per slot, forcing an inversion of which operator role fits which target region) and a cost penalty on total modulation energy",
+  "mechanisms": ["bessel-sideband-synthesis", "harmonic-matching", "operator-topology-inversion"],
+  "innovation_hook": "Placing energy at target harmonics requires inverting the Bessel sideband structure that governs FM spectra: J_n(I) is non-monotonic and bounded (peaks near I~1.84 for n=1, then falls and oscillates), so 'index proportional to desired amplitude' systematically misses, and multiple modulators' sidebands land on and interfere (constructively or destructively) at shared harmonics, so slots cannot be tuned independently.",
+  "strategies": [
+    "trivial: all ratios at window minimum, all indices 0 -> only the bare carrier sounds -> exactly the checker's baseline B -> ratio 0.1",
+    "greedy (the trap): assign each slot's ratio to its best-matching uncovered target harmonic, then set that slot's index by a LINEAR guess index = target_amplitude * (Cmax/typical_peak) -- ignores that J_n(I) is non-monotonic (overshoots/undershoots the true Bessel peak) and ignores cross-modulator interference at shared harmonics, so it does well on smooth low-amplitude targets but is far off on needle/interference/cost-pressure test cases",
+    "strong: for each candidate (slot, sideband-order) pairing, invert J_n via a fine 1-D scan over I in [0,Cmax_i] to find the index nearest the target amplitude (not linear scaling), then run coordinate-descent / local search over the joint (ratio, index) assignment evaluating the ACTUAL achieved spectrum (so it accounts for cross-modulator interference and the lambda cost term), keeping any improving joint move"
+  ]
+}

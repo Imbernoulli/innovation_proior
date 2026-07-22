@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1081",
+  "tier": "B",
+  "format": "C",
+  "family": "gore-strain-paneling",
+  "eval_form": "quality-metric",
+  "theme": "Sewing a flat skin onto a curved drum",
+  "title": "Curvature-Tracking Gores: Sewing a Flat Skin onto a Curved Drum",
+  "objective": "min",
+  "strategies": [
+    "trivial: one giant panel, zero seam budget spent -- reproduces the checker's own baseline (worst-case unrelieved curvature)",
+    "greedy (the trap): cut the skin into K equal-width vertical meridian strips, K as large as the seam budget allows under uniform spacing -- the textbook balloon-gore recipe, blind to where the curvature actually sits, which is optimal only for a surface of revolution",
+    "strong: compute the discrete angle defect (Gaussian curvature) at every interior vertex directly from the 3D geometry, rank by |curvature|, and greedily carve small budget-aware panels around the highest-curvature vertices first, merging nearby peaks into one shared cheap boundary instead of paying for isolated cuts -- exploits that seams are a budgeted resource for absorbing curvature and should track the intrinsic curvature field",
+    "beyond strong: jointly optimize which subset of curvature peaks to isolate under the budget (a weighted knapsack/set-cover view over merge clusters) rather than a single greedy pass down the ranked list"
+  ]
+}

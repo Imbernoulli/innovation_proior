@@ -1,0 +1,92 @@
+# Binding the Atlas
+
+## Problem
+A cartographers' guild binds an atlas of `N` map tiles numbered `1..N` (in sorted
+order) onto a **multiway search tree** of bound pages. Every page (a tree node)
+stores a non-empty, strictly increasing set of tile numbers -- its *separators* --
+and has one child page in each gap around them: a page holding `f` tiles has exactly
+`f + 1` children (some may be empty).
+
+Reading machines have a fixed **line width** `B`. A page holding `f` tiles occupies
+`ceil(f / B)` scan lines, and **touching a page costs its line count**
+`L = ceil(f / B)`.
+
+You are given, per tile `i`, a **lookup demand** `w_i` (how often that tile is
+opened), and a list of **range scans** `lo hi c` (a reader sweeping consecutive
+tiles `lo..hi`, done `c` times).
+
+## The search tree (feasibility)
+The tiles must form a valid ordered search tree: the in-order walk of the pages
+(child_0, key_1, child_1, key_2, ..., key_f, child_f) must visit tiles
+`1, 2, ..., N` exactly once. So every tile lives in exactly one page and separator
+ordering holds.
+
+## Costs
+Let `L(P) = ceil(f_P / B)` be the line count of page `P`.
+
+- **Lookup of tile `x`** descends from the root to the page holding `x`; its cost is
+  the sum of `L(P)` over every page `P` on that root-to-page path. Tile `x`
+  contributes `w_x * (path cost)`.
+- **Range scan `lo hi c`.** Let `T` be the set of *distinct pages that store at
+  least one tile in `[lo, hi]`*. Its cost is `c * sum_{P in T} L(P)`: consecutive
+  tiles packed onto one fat page are swept in a single touch; tiles scattered across
+  many pages each cost a touch.
+
+Total to **minimise**:
+```
+F = sum_x  w_x * lookup_path_cost(x)   +   sum_scans  c * scan_cost(lo, hi)
+```
+
+Three forces pull against each other. Hot tiles want shallow pages (depth biasing),
+yet the tile order is fixed so you cannot freely reorder them into a Huffman code.
+A fat page shortens depth but costs more lines per touch (fanout vs. line count).
+And range scans reward keeping consecutive tiles together on few fat pages
+(contiguity) -- which can force a hot, heavily-scanned tile deeper than isolating it
+would. A good binding **co-designs all three**; isolating every hot tile shatters
+the bands that scans sweep.
+
+## Input
+```
+N B S
+w_1 w_2 ... w_N
+S lines:  lo hi c        (1 <= lo <= hi <= N,  c >= 1)
+```
+
+## Output
+```
+M r
+```
+then `M` lines; the `i`-th describes page `i`:
+```
+f  k_1 ... k_f  c_0 c_1 ... c_f
+```
+with `f >= 1` strictly increasing tiles in `1..N` and `f + 1` child page ids in
+`0..M` (`0` = empty child). The tree is rooted at page `r`, every page must be
+reachable, and the in-order walk must be `1..N`. Any `1 <= M <= N` is allowed.
+
+## Scoring
+The judge builds its own reference: the balanced **binary** search tree over `1..N`
+(one tile per page, ignoring `B`, demand and scans), of total cost `Bref`. Your
+score on a test is
+```
+score = min(1.0, 0.1 * Bref / max(1, F))      (in [0, 1])
+```
+so the binary reference scores about `0.1`; you improve by driving `F` below it.
+The optimal binding is intractable, so a perfect score is not expected.
+
+## Constraints
+- `3 <= N <= 12000`, `2 <= B <= 8`, `0 <= w_i <= 100000`, `1 <= c <= 900`.
+- Time limit: 3 s. Memory limit: 512 MB. Each input file <= 5 MB.
+
+## Example
+```
+6 2 1
+5 1 1 1 1 9
+5 6 3
+```
+Six tiles, line width `2`; tile `1` (demand 5) and tile `6` (demand 9) are hot, and
+`5..6` is scanned 3 times. Binding `{2,3,4,5}` as a fat root with side pages `{1}`
+and `{6}` puts both hot tiles at depth 1, but the scan of `5..6` then touches two
+pages (`{2,3,4,5}` holds `5`, page `{6}` holds `6`). Pairing `5,6` onto one page
+makes that scan a single touch yet pushes tile `6` deeper. Trading depth against
+scan contiguity is exactly the choice being scored.

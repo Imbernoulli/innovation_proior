@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0592",
+  "tier": "B",
+  "format": "B",
+  "family": "drift-aware-heavy-hitter-budget",
+  "eval_form": "quality-metric",
+  "theme": "Fixed-memory streaming summarizer that must recover the eventual heavy hitters despite mid-stream distribution drift.",
+  "title": "Drift-Aware Heavy-Hitter Budget",
+  "objective": "max",
+  "mechanisms": ["change-point-detection", "tail-reserve", "weighted-sketch-reallocation"],
+  "innovation_hook": "Detect the drift online and exponentially deweight pre-drift counts so late risers can evict stale leaders before the window closes.",
+  "strategies": [
+    "trivial: keep K distinct tokens chosen at random (do-nothing budget use)",
+    "greedy: keep the K most-frequent tokens in the prefix (stale-leader trap)",
+    "strong: change-point detection + exponential pre-drift deweighting + tail-reserve for late risers"
+  ]
+}

@@ -1,0 +1,81 @@
+# Pottery Kiln Firing Queue
+
+## Problem
+A single pottery kiln must fire `N` glaze jobs one after another. The kiln temperature is an
+integer number of degrees **above ambient** (ambient = 0). It starts at 0.
+
+Two things change the temperature, and they are **asymmetric**:
+
+- **Heating is paid and instantaneous.** You may raise the temperature from `T` to any `T' >= T`
+  at once, paying `cheat * (T' - T)` energy. You can never heat *downward*.
+- **Cooling is free but takes time and slows down.** One idle unit of time replaces the
+  temperature `T` by `floor(T * cool_num / cool_den)` (with `0 < cool_num < cool_den`). Repeated
+  idling drives `T` toward 0, but each step removes a shrinking amount: the closer to ambient,
+  the flatter the cooling tail, so reaching a *low* target costs disproportionately many idle
+  units.
+
+Time advances only while idling or firing. Job `i` has a firing window `[lo_i, hi_i]`, a firing
+duration `d_i`, a deadline `D_i`, and a lateness weight `w_i`. To fire job `i` the kiln must sit
+at a **constant** temperature `F_i` with `lo_i <= F_i <= hi_i` for the whole `d_i` time units
+(the kiln holds that temperature for free during firing; cooling happens only while idle).
+
+## Input
+```
+N cheat cool_num cool_den
+lo_1 hi_1 d_1 D_1 w_1
+...
+lo_N hi_N d_N D_N w_N
+```
+Jobs are given in an arbitrary order (1-indexed by input line).
+
+## Output
+Print `N` lines, one per firing position, in the order you fire them:
+```
+job_id idle F
+```
+Meaning: idle `idle >= 0` units (temperature cools as above), then heat up to firing temperature
+`F` and fire that job for its duration. `job_id` must be a permutation of `1..N`.
+
+## Feasibility
+Process your lines in order, tracking temperature `T` (start 0) and clock `t` (start 0).
+For each line `(job_id=i, idle, F)`:
+1. Idle: `T <- floor(T * cool_num / cool_den)` applied `idle` times; `t <- t + idle`.
+2. Require `T <= hi_i` (you cannot fire above the window; idle more if too hot).
+3. Require `lo_i <= F <= hi_i` **and** `F >= T` (heating only). Pay energy `cheat * (F - T)`.
+4. Fire: `t <- t + d_i`; the job's completion time is this `t`; then `T <- F`.
+Any violated requirement, a non-permutation, or trailing output is infeasible (score 0).
+
+## Objective (minimize)
+```
+COST = total_heating_energy  +  sum_i w_i * max(0, completion_time_i - D_i)
+```
+Energy sums `cheat * (F - T)` over every firing; the second term is weighted lateness.
+
+## Scoring
+Let `COST` be your feasible objective and `B` the objective of the reference baseline
+(fire in **input order**, idle the minimum needed to enter each window, heat only up to `lo_i`).
+Your ratio is
+```
+ratio = B / (B + 9 * COST)
+```
+Higher is better; the baseline (COST = B) scores 0.1, and the score rises toward 1 as your
+COST shrinks below the baseline. Ratios are averaged over 10 hidden cases. An
+infeasible output scores 0.
+
+## Constraints
+`1 <= N <= 2000`, `1 <= cheat <= 10`, `1 <= cool_num < cool_den <= 10`,
+`1 <= lo_i <= hi_i <= 1000`, `1 <= d_i <= 15`, `1 <= D_i <= 10^7`, `1 <= w_i <= 8`.
+Time limit: 3 s. Memory limit: 512 MB.
+
+## Example
+Input:
+```
+2 3 8 10
+5 10 4 3 5
+40 60 4 100 2
+```
+Firing in input order: job1 idles 0 (T=0<=10), heat 0->5 (energy 15), fires to t=4,
+completion 4 > deadline 3 -> lateness 5*(4-3)=5, T=5. Job2: T=5<=60, heat 5->40 (energy 105),
+t=8. COST = 15+5+105 = 125 = B, ratio 0.1. Firing job2 first (heat 0->40=120, t=4), then job1
+(idle 5->... down to <=10, several units; completion pushed past 3) is worse here, but on larger
+cases riding hottest-first into deadline-tight cool jobs is the trap.

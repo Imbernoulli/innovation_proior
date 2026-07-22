@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0563",
+  "tier": "A",
+  "format": "A",
+  "family": "slew-drift-observation-tour",
+  "eval_form": "quality-metric",
+  "theme": "robotic telescope night plan",
+  "title": "Robotic Telescope Night Plan",
+  "objective": "max",
+  "seed_problem": "value-collecting tour of sky targets under a motion-accumulated pointing-drift accuracy penalty",
+  "mutation": "composite: couple a value-weighted observation tour to a motion-proportional pointing drift and a limited pool of time-costed recalibrations, so accuracy becomes a currency the tour itself creates and spends; routing and reset placement must be co-designed rather than solving a shortest tour then inserting resets.",
+  "strategies": [
+    "trivial: monotone coordinate sweep, no recalibration (reproduces the checker baseline)",
+    "greedy: shortest-tour sweep with recalibrations spread UNIFORMLY (spends the drift budget evenly, wastes it on cheap stretches, and reaches the far jackpot clusters at collapsed accuracy)",
+    "value-rush: go straight to the biggest cluster first -> arrives with drift = k*(huge distance), accuracy collapses",
+    "insight (strong): keep the near-monotone sweep so each step is short, then recalibrate RIGHT BEFORE the highest-value clusters (choosing which clusters to reset for, since C>K) so their large value is observed at near-zero drift"
+  ]
+}

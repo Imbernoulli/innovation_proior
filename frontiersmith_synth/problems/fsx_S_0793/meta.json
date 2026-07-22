@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0793",
+  "tier": "S",
+  "format": "A",
+  "family": "reverse-engineered-ca-seeder",
+  "eval_form": "quality-metric",
+  "theme": "Seed a cellular automaton to grow a target",
+  "title": "Grow the Glyph",
+  "objective": "max",
+  "seed_problem": "seed a deterministic totalistic CA to hit a target pattern at step T",
+  "mutation": "composite: the CA is a radius-2 LINEAR (XOR) rule, so the whole T-step map is a fixed GF(2) linear operator; the seed budget forces solvers to find a low-weight representative inside the operator's solution coset (its null space = an exploitable dynamical invariant) rather than any single feasible preimage",
+  "strategies": [
+    "trivial: seed nothing (the all-zero fixed point) -> reproduces the checker's do-nothing baseline",
+    "naive greedy: seed exactly the cells that are live in the target, budget-capped, and hope the rule leaves it alone -- the mixing rule scrambles it within a few steps",
+    "insight (strong): rebuild the single-step update as an NxN matrix over GF(2), obtain the T-step operator by repeated squaring, solve the linear system by Gauss-Jordan elimination to get a particular precursor plus a null-space basis, then use the null space (the rule's invariant directions -- seed changes invisible to the T-step outcome) to trade cost down until the precursor fits the budget",
+    "a general solver could go further: search for a MINIMUM-weight coset representative (exact algebraic dual of the budget constraint) instead of a first feasible one"
+  ]
+}

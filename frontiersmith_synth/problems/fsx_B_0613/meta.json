@@ -1,0 +1,18 @@
+{
+  "id": "fsx_B_0613",
+  "tier": "B",
+  "format": "D",
+  "family": "sorting-network-partial-order",
+  "eval_form": "flops",
+  "theme": "Custom sorting network for pre-ordered wires",
+  "title": "Pre-Ordered Wires: Sorting Networks That Skip Known Relations",
+  "objective": "min",
+  "mechanisms": ["comparator-network", "depth-vs-size-tradeoff", "planted-partial-order-exploit"],
+  "innovation_hook": "A sorting network only needs to resolve the incomparable pairs of the input poset; known relations are comparators you can delete.",
+  "strategies": [
+    "insertion-sort network baseline: emit the full n(n-1)/2 compare-exchange bubble network on all wires, ignoring the partial order (reproduces the checker baseline, ~0.1)",
+    "general-purpose recipe: drop in Batcher's odd-even mergesort pruned to n wires -- fewer comparators than insertion sort, but it re-sorts inside the already-ordered runs and never reads the partial order",
+    "partial-order exploit: recover the already-sorted runs (chains) from the relations and only MERGE them (balanced-tree Batcher odd-even MERGE), deleting every comparator that would re-verify a known relation; spend the saved budget trimming depth via the alpha weight",
+    "beyond-strong headroom: minimal / optimal merging networks and size-depth co-optimized merge trees per the instance's alpha, plus best-known small sorting networks on the residual incomparable structure"
+  ]
+}

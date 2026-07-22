@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0774",
+  "tier": "B",
+  "format": "C",
+  "family": "word-autocorrelation-realize",
+  "eval_form": "quality-metric",
+  "theme": "Build a word with exactly the target borders",
+  "title": "Realize the Border Set",
+  "objective": "max",
+  "strategies": [
+    "trivial: ignore targets, cycle through the K allowed letters",
+    "greedy: naive prefix=suffix stitching per target border, processed in input order, oblivious to interactions",
+    "strong: compute the Fine-and-Wilf forcing closure of the target periods, then realize exactly that closure via a union-find letter assignment (one distinct letter per equivalence class, up to the alphabet budget)",
+    "invalid: wrong length + out-of-alphabet letter"
+  ]
+}

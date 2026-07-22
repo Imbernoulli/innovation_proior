@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0742",
+  "tier": "B",
+  "format": "C",
+  "family": "reserve-efficiency-tension",
+  "eval_form": "quality-metric",
+  "theme": "island grid with mandatory spinning reserve",
+  "title": "Island Microgrid Dispatch Under a Mandatory N-1 Spinning-Reserve Rule",
+  "objective": "min",
+  "strategies": [
+    "proportional-by-capacity baseline: park the swing unit at zero (always N-1-safe) and split demand among the rest by raw capacity share, ignoring every efficiency curve",
+    "merit-order dispatch by linear fuel rate up to each unit's sweet spot, then patch any N-1 violation by shrinking the reserve-eligible group proportionally to current load and dumping the freed output onto whichever units have spare headroom",
+    "shadow-price dispatch: solve the two-multiplier KKT system (lambda for the demand balance, mu for the reserve-group capacity cap) via nested bisection, so displacement is allocated inversely to each unit's efficiency-curve curvature",
+    "iterative local search around the shadow-price solution that also re-optimizes which units belong to a tie-broken swing set"
+  ]
+}

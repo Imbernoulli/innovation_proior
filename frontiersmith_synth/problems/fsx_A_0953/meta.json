@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0953",
+  "tier": "A",
+  "format": "B",
+  "family": "drift-tracking-probes",
+  "eval_form": "quality-metric",
+  "theme": "tuning a drifting pirate radio",
+  "title": "Tuning a Drifting Pirate Radio",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:hidden-law-discovery"],
+  "strategies": [
+    "do-nothing baseline: spend zero probes, predict the fixed-shape/constant-loudness naive reading using only the midpoints of the public hint windows (reproduces the evaluator's zero-probe reference exactly)",
+    "single-snapshot sweep: spend the whole budget hunting for the station once near the start of the observed window, fit its shape and instantaneous position/loudness precisely, then extrapolate that STATIC fit unchanged into the future window -- captures the receiver's fixed shape but not either drift, so it is blindsided once the frequency has crept away and the loudness cycle has turned around",
+    "timescale-split allocation: a cheap shape fit riding along for free, a few widely time-separated anchor sweeps to regress the frequency's LINEAR drift, then the bulk of the remaining budget spent thinly across many ticks (one probe per tick, dialled onto the just-fitted moving peak) to read the loudness trace and fit its SINUSOID via a small grid search over candidate periods drawn from the public hint",
+    "regime-aware prediction: for every held-out query, evaluate the fitted linear frequency and harmonic loudness models at that future tick and apply the closed-form reception shape, instead of holding either quantity fixed at its last observed value"
+  ]
+}

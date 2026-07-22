@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0558",
+  "tier": "A",
+  "format": "C",
+  "family": "beat-envelope-forge",
+  "eval_form": "quality-metric",
+  "theme": "composing a slow shimmer from only high piano strings",
+  "title": "Beat Forge: A Slow Shimmer from Forbidden-High Strings",
+  "objective": "min",
+  "strategies": [
+    "trivial: one high tone -> flat envelope at the target's mean level (matches DC only)",
+    "greedy: FFT the target envelope E, spread the budget into equal-amplitude beat pairs at its dominant spacings matched in phase (amplitude-domain, uniform strength, ignores window)",
+    "strong: reformulate in difference-frequency/POWER space -- decompose E^2 into DC + slow cosines, realize each chosen harmonic as a disjoint beat pair with window-compensated discrete amplitudes and matched phase, jointly fitting the power DC",
+    "invalid: frequencies outside the forbidden-low band -> rejected"
+  ]
+}

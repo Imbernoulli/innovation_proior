@@ -1,0 +1,101 @@
+# Silencing a War-Drum Rehearsal Hall
+
+## Problem
+
+A war-drum rehearsal hall is a rectangular room `W x H`. A drum sits at cell
+`(sx, sy)` and pulses at a fixed period, driving the room into a set of
+standing-wave resonance patterns ("channels"). You are hired to install
+absorber panels on the wall ring to protect the listener seats.
+
+The room's acoustics have already been analyzed into `NM` channels (indices
+`0..NM-1`; the last one is special, see below). Channel `k` is described by
+four numbers:
+
+* `Delta_k` -- how far the drum's driving frequency is from that channel's
+  natural resonance. Small `Delta_k` means a dangerously resonant channel.
+* `Gamma0_k` -- the channel's baseline damping from the untreated walls.
+* `S_k` -- how strongly the drum excites this channel (the channel's
+  standing-wave amplitude *at the drum*).
+* `L_k` -- how strongly this channel is heard at the listener seats (its
+  amplitude *at the listeners*, already combined in energy over every seat).
+
+The last channel (`k = NM-1`) is the direct sound plus its first specular wall
+reflection (the mirror-image construction): no detuning, the drum always
+couples fully, and only a handful of panels -- the true geometric reflection
+points for the drum/listener pair -- can damp it at all.
+
+Install absorber panels on any subset of `M` candidate wall cells (their
+`(x, y)` position is given for your own geometric reasoning). Panel `i` costs
+`cost_i` and has absorption strength `alpha_i` (0-1000, parts per thousand).
+Panel `i`'s effect on channel `k` is given directly as `phi2[i][k]`: **the
+square of channel `k`'s standing-wave amplitude at panel `i`'s position.**
+That is the whole mechanism: a panel damps a channel in proportion to how
+loud that channel already is *at the panel* -- not at the listener. Cost and
+strength are independent of position, so a panel's distance to the listener
+tells you nothing; only the `phi2` table does.
+
+## Input
+
+```
+W H
+sx sy
+NL
+lx_1 ly_1
+...
+lx_NL ly_NL
+NM
+Delta_0 Gamma0_0 S_0 L_0
+...
+Delta_{NM-1} Gamma0_{NM-1} S_{NM-1} L_{NM-1}
+Budget
+M
+id_1 x_1 y_1 cost_1 alpha_1 phi2[1][0] ... phi2[1][NM-1]
+...
+id_M x_M y_M cost_M alpha_M phi2[M][0] ... phi2[M][NM-1]
+```
+
+## Output
+
+Print `K` (number of panels installed), then `K` distinct panel ids from
+`1..M` (in any order).
+
+## Feasibility
+
+All `K` ids must be distinct and in `[1, M]`; the sum of their `cost_i` must
+not exceed `Budget`. Any violation scores 0. Installing nothing (`K = 0`) is
+feasible.
+
+## Objective
+
+For each channel `k`, your extra damping is
+`Gamma_extra(k) = sum over installed panels i of alpha_i * phi2[i][k] / 1000`
+(integer division). Total damping is `Gamma(k) = Gamma0_k + Gamma_extra(k)`.
+Channel `k`'s leaked energy is the Lorentzian
+`E(k) = S_k^2 * 1e6 / max(1, Delta_k^2 + Gamma(k)^2)`.
+**Minimize** `F = sum_k E(k) * L_k` -- the total noise reaching the listeners.
+
+## Scoring
+
+Let `B` be `F` computed with every `Gamma_extra(k) = 0` (installing nothing --
+the trivial reference). Your score on a test is
+`ratio = min(1000, 100 * B / max(1, F)) / 1000`, so doing nothing scores
+`0.1`, and any real reduction of `F` scores higher (capped at `1.0`).
+Per-test ratios are averaged.
+
+## Constraints
+
+* `8 <= W, H <= 40`; `1 <= NL <= 6`; `NM <= 200`; `1 <= M <= 200`.
+* `1 <= cost_i <= 10`; `0 <= alpha_i <= 1000`; `0 <= phi2 <= 1e6`.
+* Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+A small room has one dominant channel with a tiny `Delta` (near-perfect
+resonance) whose `S` is huge because the drum sits at that channel's
+antinode, near a corner. The listener sits at the room's center, an *exact
+node* of that channel (`phi2` is 0 there for nearby wall cells). Spending the
+whole budget on panels adjacent to the listener barely changes
+`Gamma_extra` for the dominant channel -- `F` barely moves. Spending it on
+the few panels near the drum's corner, where that channel's `phi2` is
+largest, collapses the denominator and cuts `F` sharply, even though those
+panels are the farthest thing from where the noise is measured.

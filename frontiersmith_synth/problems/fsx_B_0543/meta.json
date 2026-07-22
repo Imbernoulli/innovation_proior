@@ -1,0 +1,20 @@
+{
+  "id": "fsx_B_0543",
+  "tier": "B",
+  "format": "A",
+  "family": "taxiway-crossing-waves",
+  "eval_form": "quality-metric",
+  "theme": "aircraft taxiing across an active runway between gates",
+  "title": "Wave Crossings on the Active Runway",
+  "objective": "min",
+  "seed_problem": "route aircraft from gates across an active runway that opens only in periodic slots",
+  "mutation": "composite: couple pushback scheduling (gate-alley blocking spaces same-alley pushbacks by d) with runway crossing that is legal only inside periodic width-W slots and one-lane (<=W aircraft per slot = a wave), scored by total weighted taxi delay; minimizing delay requires assembling full waves upstream, not routing aircraft one at a time.",
+  "mechanisms": ["pushback-blocking", "runway-crossing-slots", "wave-batching"],
+  "innovation_hook": "Slots reward BATCHED crossings, so the winning move is to shape pushback times upstream to assemble full waves at the crossing -- scheduling the queue, not the aircraft.",
+  "strategies": [
+    "trivial: reproduce the judge baseline -- input order, push back ASAP, cross each aircraft alone in the next open slot (one per slot) -> ratio 0.1",
+    "greedy (the trap): FCFS -- push everyone back as early as release+alley allow in release order, then let the runway pass aircraft in arrival order into the earliest free slot tick; packs waves but ignores weight and never shapes the queue, so heavy aircraft spill to late waves",
+    "strong (insight): schedule the QUEUE into waves -- order pushbacks within each alley by weight (heavy first) so costly aircraft reach the crossing earliest, assign crossing ticks in weight order to pack each wave's W lanes, then pairwise-exchange ticks to polish weighted delay",
+    "beyond strong: joint search over pushback order and wave-to-slot assignment (local search / DP over the periodic slot structure) toward the weighted-completion-time optimum"
+  ]
+}

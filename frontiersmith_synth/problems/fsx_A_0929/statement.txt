@@ -1,0 +1,104 @@
+# Collapsing Pigeonhole Cabinets
+
+## Problem
+
+A regional mail depot is being re-fitted. It runs `K` independent sorting
+cabinets side by side on the same floor; cabinet `c` reads a `D_c`-bit binary
+postcode one address prefix at a time and routes the parcel deeper into the
+cabinet, one **decision point** ("probe") per bit-group read. At a probe you
+may install a **collapsed unit** that reads a *stride* `s >= 1` bits at once
+instead of one bit at a time: this replaces several small probes with one
+wider probe, but the wider unit must physically hold `2^s` pigeonhole slots
+(one per possible bit-group value) at every place it is installed.
+
+Cabinet `c` already has a fixed **occupancy profile** `T_c[0..D_c]`, surveyed
+from its current wiring: `T_c[0] = 1`, and `T_c[d]` (`1 <= T_c[d] <= 2*T_c[d-1]`)
+is the number of live sub-units that still need further subdivision after
+`d` bits have been read. If you place a probe that starts at depth `d` and
+reads stride `s` (ending at depth `d+s`), it must be replicated once for
+every one of the `T_c[d]` live sub-units alive at depth `d`, costing
+`T_c[d] * 2^s` pigeonhole slots. A full plan for cabinet `c` is a sequence of
+strides `s_1, ..., s_m` (each `>= 1`) summing exactly to `D_c`; every parcel
+routed through cabinet `c` then costs exactly `m` probes.
+
+All `K` cabinets **share one physical floor with a single total pigeonhole
+budget `M`** — slots are not pre-partitioned per cabinet; a slot spent
+widening one cabinet's probe is a slot unavailable to every other cabinet.
+Historical parcel volume gives each cabinet a popularity weight `W_c`. Design
+all `K` cabinets' stride plans to minimize the popularity-weighted total
+probe count, without the combined slot usage exceeding `M`. There is no
+known closed-form optimum: per-cabinet compression cost curves are wildly
+different (sparse cabinets can gain many free/cheap probe reductions, bushy
+cabinets need much more memory per probe saved), so spending the shared
+budget well requires comparing marginal value **across** cabinets, not just
+optimizing each cabinet in isolation.
+
+## Input
+
+```
+K M
+D_1 W_1
+T_1[0] T_1[1] ... T_1[D_1]
+D_2 W_2
+T_2[0] ... T_2[D_2]
+...
+D_K W_K
+T_K[0] ... T_K[D_K]
+```
+All values are integers. `1 <= K <= 500`, `1 <= M <= 2*10^9`,
+`1 <= D_c <= 20`, `1 <= W_c <= 200000`, `1 <= T_c[d] <= 2*T_c[d-1]` for
+`d>=1`, `T_c[0] = 1`.
+
+## Output
+
+`K` lines. Line `c` starts with `m_c` (number of probes for cabinet `c`,
+`1 <= m_c <= D_c`) followed by `m_c` positive integers `s_1 ... s_{m_c}`
+(strides), which must sum exactly to `D_c`.
+
+## Feasibility
+
+Every `m_c` in `[1, D_c]`; every stride in `[1, D_c]`; strides of cabinet
+`c` sum exactly to `D_c`. Let `mem_c = sum_j T_c[p_{j-1}] * 2^{s_j}`, where
+`p_0=0` and `p_j = p_{j-1}+s_j` (the running depth). The total
+`sum_c mem_c` must not exceed `M`. Any violation (wrong count, out-of-range
+stride, wrong sum, or budget exceeded) scores `0`.
+
+## Objective (minimize)
+
+```
+F = sum_c W_c * m_c
+```
+
+## Scoring
+
+The checker also builds the "do-nothing" reference plan for every cabinet
+(all strides equal to `1`, i.e. `m_c = D_c`) and computes its objective `B`
+(this plan always fits the budget). Your score for a test is
+```
+ratio = min(1000, 100 * B / max(1, F)) / 1000
+```
+so the do-nothing plan scores `0.1`; halving `F` relative to it roughly
+doubles the ratio, capped at `1.0`. Per-test ratios are averaged.
+
+## Constraints
+
+Time limit: 3 s. Memory limit: 512 MB.
+
+## Example
+
+`K=2`, `M=24`.
+Cabinet A: `D_A=3, W_A=1`, `T_A=[1,2,4,8]` (bushy — every sub-unit splits).
+Cabinet B: `D_B=3, W_B=10`, `T_B=[1,1,1,2]` (mostly a single chain).
+
+Do-nothing (`1,1,1` each): `mem_A = 1*2+2*2+4*2=14`, `mem_B = 1*2+1*2+1*2=6`,
+total `20 <= 24`; `B = 1*3 + 10*3 = 33`.
+
+Cabinet A is fully bushy, so a single wide probe (`s=3`) costs
+`T_A[0]*2^3=8` — *less* memory than three narrow probes *and* only 1 probe;
+there is no reason ever to split it. Cabinet B is a thin chain, so merging
+its last two bits (`1,2`) costs `T_B[0]*2+T_B[1]*4=2+4=6`, the *same*
+memory as three narrow probes but only 2 probes — a free win, and going all
+the way to one probe (`s=3`) costs `T_B[0]*8=8`, 2 slots more than
+do-nothing. Spending the leftover `4` slots (after A's `8`) on B's cheap
+2-probe merge (uses `6 <= 8+6=14 <= 24`) reaches `F = 1*1 + 10*2 = 21`,
+better than splitting slots evenly between the two cabinets.

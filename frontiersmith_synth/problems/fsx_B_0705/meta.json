@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0705",
+  "tier": "B",
+  "format": "C",
+  "family": "petri-yield-firing-sequence",
+  "eval_form": "quality-metric",
+  "theme": "Fire reactions in order without starving intermediates",
+  "title": "Culture Flask Scheduling: Reserve the Catalyst, Don't Chase the Brightest Reaction",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:temporal-commitment"],
+  "strategies": [
+    "trivial: spend the whole raw-material budget on group 0's direct route only (the checker's own baseline) -> ~0.1",
+    "greedy: pick the single group with the best per-firing DIRECT yield-per-raw-material rate and dump the entire budget into it, never building the co-reagent Y or touching the scarce catalyst Z -> beats trivial but misses the combo bonus",
+    "strong: reformulate as a 2D unbounded knapsack over (raw-material budget, catalyst budget) with items {Direct_g, Combo_g}, solve by DP, and reconstruct a DAG-valid firing sequence that reserves catalyst + co-reagent stock for the best combo route(s)",
+    "invalid: fire a Combo reaction before any precursor exists -> immediate infeasibility -> 0"
+  ]
+}

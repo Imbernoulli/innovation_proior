@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0692",
+  "tier": "B",
+  "format": "D",
+  "family": "stack-shuffle-codegen",
+  "eval_form": "flops",
+  "theme": "juggler keeps every plate spinning without a table",
+  "title": "Plate-Stack Codegen: Residency Planning for a Shared-Value DAG",
+  "objective": "min",
+  "strategies": [
+    "naive per-output tree recompute, zero sharing awareness (trivial)",
+    "Sethi-Ullman-style DAG walk that unconditionally spills every shared value to memory (greedy)",
+    "residency planning: keep single-output ('local') shared values in the cheap top-3 shuffle window, reserve STORE/LOAD for genuinely cross-output ('far') shared values (strong)",
+    "true optimal instruction scheduling / register-allocation-style interference-graph residency assignment (open ceiling, uncovered)"
+  ]
+}

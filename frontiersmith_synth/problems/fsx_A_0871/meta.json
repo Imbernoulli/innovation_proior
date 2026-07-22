@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0871",
+  "tier": "A",
+  "format": "A",
+  "family": "near-stable-welfare-forge",
+  "eval_form": "quality-metric",
+  "theme": "journeymen matched to masters with side payments",
+  "title": "Journeymen, Masters, and Sweeteners",
+  "seed_problem": "bipartite stable matching (Gale-Shapley) on cardinal utilities",
+  "mutation": "composite: replace the decision goal (find A stable matching) with a graded objective (maximize welfare minus a priced penalty per blocking pair), and add a bounded per-pair side-payment channel that can locally re-price which pairs actually block -- so a matching's stability becomes a spendable, capped resource instead of a hard constraint.",
+  "objective": "max",
+  "strategies": [
+    "trivial: greedy-by-input-order matching, zero payments (reproduces the checker baseline)",
+    "greedy: sort edges by combined utility a+b descending and augment a matching greedily; never pays -- chases raw welfare and drowns in blocking penalties on contested-star tests",
+    "strong: build the same weight-sorted matching, then compute the zero-payment envy boundary (which matched pairs are actually threatened) and spend each pair's sweetener cap only there, favoring whichever side clears more blocking edges per unit of cap, with a second pass for knock-on exposure -- payments a pure transfer, welfare unchanged, blocking count driven down surgically",
+    "invalid: claims more matched pairs than min(n,m) allows -- infeasible on every test"
+  ]
+}

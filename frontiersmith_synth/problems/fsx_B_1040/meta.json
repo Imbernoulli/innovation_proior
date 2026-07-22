@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_1040",
+  "tier": "B",
+  "format": "C",
+  "family": "anchor-set-geometry-regimes",
+  "eval_form": "quality-metric",
+  "theme": "locator beacons for open plazas and narrow corridors",
+  "title": "Locator Beacons: One Anchor Layout, Five Viewpoint Regimes",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:scenario-robust-design"],
+  "strategies": [
+    "trivial: a fixed-radius ring of anchors evenly spaced by angle around the whole site's centroid -- angularly diverse from the centroid, but most of the site (plaza2, the corridor, the perimeter, the mouths) sees the ring nearly edge-on",
+    "greedy: iterated farthest-point sampling over all open cells (maximize pairwise Euclidean spacing) -- ignores line-of-sight and bearing entirely, so it wastes anchors on scenarios that are already easy and leaves the corridor's targets seeing only near-collinear anchors along the corridor's own axis",
+    "strong: seed with the same farthest-point spread, then run a worst-case-aware local EXCHANGE search that recomputes each target's true visibility-gated bearing-diversity score (the checker's own GDOP formula) and swaps anchors to reduce a LEXICOGRAPHIC (worst-scenario-mean, then sum-of-means) objective -- lets the search keep improving an under-served scenario even while a different scenario is still the reported bottleneck, which is exactly what is needed to place anchors where they actually break the corridor's collinearity (at bends/mouths) instead of spreading them by raw distance",
+    "other viable directions: an explicit two-phase design (solve each scenario's minimum-anchor-count cover separately, then merge/dedupe positions); simulated annealing directly on the worst-regime objective; treating each scenario's required bearing coverage as an angular set-cover and picking anchors that jointly cover the union"
+  ]
+}

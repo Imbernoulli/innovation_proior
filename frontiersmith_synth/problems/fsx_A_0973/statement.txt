@@ -1,0 +1,98 @@
+# Phased-Array Drift-Anchored Calibration Sweep
+
+## Problem
+
+A phased-array antenna field has `N` elements, indexed `0..N-1`. Element `0` is
+the array's master reference: its phase is always perfectly known (zero error).
+Every other element `i` has a local-oscillator **drift rate** `d_i >= 1`: while
+element `i`'s phase has not been pinned down by a measurement for `tau` time
+units, its phase estimate accumulates `d_i * tau` of extra uncertainty.
+
+A calibration session runs exactly `T` discrete time steps. At each step
+`t = 1..T` you direct the array's cross-correlator to measure **one pair**
+`(u_t, v_t)`, `u_t != v_t`. A measurement reads out the phase difference between
+`u_t` and `v_t`, contaminated by (a) each side's drift accumulated since it was
+last measured, and (b) a fixed pairwise measurement floor `w(u,v)` that depends
+only on physical placement: `w(u,v) = |x_u - x_v| + |y_u - y_v|` (elements
+further apart see more multipath / path-loss noise on their shared correlator
+link — this term never changes).
+
+Maintain, per element `i`: `connected_i` (true only for `i=0` initially),
+`err_i` (propagated error, `err_0=0`), `last_i` (last time `i` was measured,
+`last_0=0`). Process `t=1..T` in order, for the pair `(u,v)` read at step `t`:
+
+- **Neither connected:** no reference available either side; wasted, state
+  unchanged.
+- **Exactly one connected** (`a`, the other `b`): `b` becomes connected:
+  `err_b = err_a + d_a*(t-last_a) + d_b*t + w(u,v)` (`b` was never pinned
+  before, so its own drift is charged from `t=0`). Then `last_a=last_b=t` —
+  **both** elements were just involved in this measurement, so both clocks
+  reset, even though only `b`'s error was set.
+- **Both connected:** a redundant cross-check. Let
+  `cand_u = err_v + d_v*(t-last_v) + d_u*(t-last_u) + w(u,v)` (symmetrically
+  `cand_v`). Set `err_u=min(err_u,cand_u)`, `err_v=min(err_v,cand_v)` (a
+  cross-check only ever improves or holds). Then `last_u=last_v=t` regardless.
+
+`w` is fixed by geometry, but every drift term depends on **when** an element
+was last touched — so the total error is a function of the whole schedule,
+not just of which pairs get measured.
+
+## Input
+```
+N T
+x_0 y_0 d_0
+x_1 y_1 d_1
+...
+x_{N-1} y_{N-1} d_{N-1}
+```
+`2 <= N <= 200`, `N-1 <= T <= N+120`, `0 <= x_i,y_i <= 2000`, `d_0 = 0`,
+`1 <= d_i <= 300` for `i >= 1`.
+
+## Output
+`T` lines, each `u v` — the measured pair for time step `t = 1..T`
+(`0 <= u,v < N`, `u != v`).
+
+## Feasibility
+Exactly `T` lines, each a valid distinct in-range pair. Every element
+`1..N-1` must end **connected** after all `T` steps. Any violation scores `0`.
+
+## Objective
+Minimize `F = sum_{i=1}^{N-1} err_i` after processing all `T` steps: the total
+propagated alignment error across the field.
+
+## Scoring
+The checker computes an internal baseline `B`: the naive construction that
+cables elements together in raw index order in fixed-size **runs of 6** --
+each new element measures against the previous one, `(1,2),(2,3),...`,
+except every 6th element which resets against the reference `(0,k)`. Formally
+`parent(i) = 0` if `(i-1) mod 6 == 0`, else `parent(i) = i-1`, measured as
+`(parent(i), i)` at `t=i` for `i=1..N-1`. This ignores geometry, drift and
+timing. Score:
+```
+ratio = min(1000, 100 * B / max(1, F)) / 1000
+```
+so the naive baseline scores `0.1`; a genuinely better schedule scores higher
+(capped at `1.0`, ten times the baseline).
+
+## Constraints
+Time limit: `3s`. Memory limit: `512MB`.
+
+## Example
+`N=3, T=3`. Elements: `0:(0,0) d=0`, `1:(10,0) d=5`, `2:(0,10) d=2`.
+`w(0,1)=10, w(0,2)=10, w(1,2)=20`. Output:
+```
+0 1
+0 2
+1 2
+```
+Step 1 connects `1` via `0`: `err_1 = 0 + 0*1 + 5*1 + 10 = 15`, `last_0=last_1=1`.
+Step 2 connects `2` via `0`: `err_2 = 0 + 0*1 + 2*2 + 10 = 14`, `last_0=last_2=2`.
+Step 3 cross-checks `1,2` (both connected): `cand_1 = 14 + 2*1 + 5*2 + 20 = 46`
+(worse, ignored), `cand_2 = 15 + 5*2 + 2*1 + 20 = 47` (worse, ignored); only the
+clocks reset. `F = err_1+err_2 = 29`.
+
+The baseline `B` cables `0-1` then `1-2` instead: `err_1 = 15` as above, then
+`err_2 = err_1 + d_1*(2-1) + d_2*2 + w(1,2) = 15 + 5 + 4 + 20 = 44`
+(it inherits `1`'s error on top of its own, since it never returns to the
+zero-error reference), so `B = 15 + 44 = 59`. Star-plus-cross-check beats the
+naive chain here: `ratio = min(1000, 100*59/29)/1000 = 0.2034`.

@@ -1,0 +1,83 @@
+# Title
+Tuning a Chord with Pure Bell Tones
+
+## Problem
+A set of tuned bells stands around a circle. Bell number `e` (for `0 <= e < n`)
+rings the complex "pure tone" `zeta = exp(2*pi*i*e/n)`, an n-th root of unity.
+`n` has **exactly two distinct prime factors** `p` and `q` (e.g. `n = 12 =
+2^2*3`, primes `2` and `3`).
+
+You are given a target chord: a multiset of bell strikes, `a_i` strikes of
+bell `i` for each `i = 0..n-1`. The chord's sound is simply the complex sum
+of the tones struck. Because `n` is composite, the ring `Z[zeta_n]` has
+**vanishing relations**: whenever all `p` bells of a full evenly-spaced
+"p-cycle" are struck once each (bells `j, j+n/p, j+2n/p, ..., j+(p-1)n/p`),
+their tones sum to *exactly* 0 — and likewise for full `q`-cycles. By a
+theorem of Lam and Leung, when `n` has exactly two distinct prime factors,
+every way of padding a chord with extra strikes while leaving its sound
+unchanged (using only non-negative strike counts) is built out of exactly
+these rotated `p`-cycles and `q`-cycles — nothing else. (This clean
+generating set is special to the two-prime-factor case; with three or more
+distinct prime factors extra relations can appear that are not combinations
+of prime cycles, which is why `n` here always has exactly two.) Your job:
+re-strike the identical chord (the identical complex sum) using as **few
+total bell strikes as possible**. Any bell multiset with the same sound is
+accepted — it need not be a subset of the given strikes. A smaller voicing
+may need to *borrow*: strike a few bells that were not given at all,
+compensating by discarding several `p`- or `q`-cycles elsewhere, for a net
+reduction plain discarding-what-you-see can never reach. So both primes'
+cycles must be reasoned about jointly, as one linear system, not peeled off
+one at a time in a fixed order.
+
+## Input
+Line 1: integer `n` (`6 <= n <= 60`, exactly 2 distinct prime factors).
+Line 2: `n` integers `a_0 a_1 ... a_{n-1}` (`0 <= a_i <= 2000`), the given
+strike counts. At least one `a_i > 0`.
+
+## Output
+Line 1: integer `t` (`0 <= t <= 2000000`), the number of strikes you use.
+Line 2: `t` integers `e_1 ... e_t` (each `0 <= e_k <= n-1`), the bells you
+strike, in any order, repeats allowed. (If `t = 0`, line 2 may be empty.)
+
+## Feasibility
+Let `T = sum_i a_i * zeta_n^i` be the target chord's sound and
+`Y = sum_k zeta_n^{e_k}` be your chord's sound, both viewed as elements of
+`Z[zeta_n] = Z[x]/(Phi_n(x))` (`Phi_n` the n-th cyclotomic polynomial).
+Your output is feasible iff `Y = T` **exactly** — equivalently, the two
+strike-count polynomials, reduced modulo `Phi_n(x)`, must yield identical
+coordinate vectors of length `phi(n)`. Any malformed, out-of-range, or
+mismatching output scores 0.
+
+## Objective
+Minimize `t`, the total number of strikes.
+
+## Scoring
+The checker computes `B = sum_i a_i` — the size of the chord exactly as
+handed to you, which is always itself a feasible (if wasteful) answer — as
+its internal baseline, and `F = t` from your feasible output. Your ratio is
+`min(1, 0.1 * B / max(1, F))`. Reproducing the chord verbatim (no
+cancellation at all) always scores `0.1`; every strike you legally remove by
+exploiting a hidden prime cycle raises your ratio.
+
+## Constraints
+- `6 <= n <= 60`, exactly 2 distinct prime factors.
+- `0 <= a_i <= 2000`, `sum a_i >= 1` (so `t <= 2000000` always suffices to
+  replay the chord verbatim, and the verbatim replay is always feasible).
+- Time limit: 3 seconds. Memory limit: 256 MB.
+
+## Example
+`n = 6` (primes 2, 3). Input:
+```
+6
+2 0 0 1 0 0
+```
+Here `T = 2*zeta^0 + 1*zeta^3 = 2*1 + 1*(-1) = 1` (since `zeta_6^3 = -1`).
+The baseline is `B = 2+0+0+1+0+0 = 3`. Bells `0` and `3` form a full prime-2
+cycle (`zeta^0 + zeta^3 = 0`), so one copy of it can be silently discarded,
+leaving a single strike on bell `0`:
+```
+1
+0
+```
+Check: `zeta^0 = 1 = T`. Feasible, with `F = 1`, giving ratio
+`min(1, 0.1*3/1) = 0.3` — three times the verbatim-replay baseline.

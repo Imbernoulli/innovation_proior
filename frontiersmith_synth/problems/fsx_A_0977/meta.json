@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0977",
+  "tier": "A",
+  "format": "A",
+  "family": "tensegrity-prestress-shaping",
+  "eval_form": "quality-metric",
+  "theme": "Choose cable rest-lengths to reach a target shape",
+  "title": "Retensioning the Ground-Braced Mast Array",
+  "objective": "min",
+  "seed_problem": "tensegrity cable rest-length inverse design",
+  "mutation": "composite: the target shape is scored only if it is a STABLE equilibrium of the whole spring/strut network (force-balance-equilibrium + prestress-inversion), and the objective couples shape error to a prestress-magnitude cost (shape-target), so the intended construction must invert desired forces into stiffness-aware, minimal-but-sufficient cable tensions rather than matching lengths to the target.",
+  "strategies": [
+    "trivial: halve every cable's target-shape gap, ignoring stiffness and force balance (the checker's own baseline)",
+    "naive greedy: set every cable's rest length to (target gap - fixed margin), tensioning every cable uniformly regardless of stiffness -- unbalanced on stiffness-mismatched pairs and over-taut/wasteful everywhere",
+    "insight (strong): match TENSIONS (not lengths) on each free node's opposing cable pair via r = gap - T/k with equal T on both sides, using the smallest tension that is unambiguously stable -- exact force balance, low prestress cost",
+    "general RL headroom: dial the shared tension T down per-node toward the minimal stable threshold (instead of a fixed cap) and route through the least-cost grounded neighbors, shaving the residual prestress-cost term further"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0700",
+  "tier": "S",
+  "format": "C",
+  "family": "phase-mask-holography",
+  "eval_form": "quality-metric",
+  "theme": "Etch a phase plate to project an image",
+  "title": "Two-Plane Phase Plate: One Etched Mask, Two Fresnel Focal Images",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:inverse-design"],
+  "strategies": [
+    "single-shot inverse: average the two targets in target space, treat sqrt(target) as the desired focal amplitude, one inverse Fresnel propagation through ONE plane's operator, read off the phase (ignores the fixed-amplitude aperture constraint and the other plane entirely)",
+    "two-plane Gerchberg-Saxton: alternately propagate to plane A / impose sqrt(target_A) amplitude / propagate back / impose the fixed uniform aperture amplitude, then repeat for plane B using the updated mask -- iterated alternating projection onto both constraint sets",
+    "multi-restart GS with best-iterate tracking (guards against stalls/cycles)",
+    "direct local search / simulated annealing over the phase mask using the checker's own objective as a black-box score"
+  ]
+}

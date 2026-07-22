@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0945",
+  "tier": "B",
+  "format": "B",
+  "family": "regrowth-timed-rotation",
+  "eval_form": "quality-metric",
+  "theme": "rotational grazing across a paddock grid",
+  "title": "Rotational Grazing on a Paddock Grid",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:topup-B-2"],
+  "strategies": [
+    "stay put: never move the herd off the starting paddock; graze whatever regrows there each day and pay supplemental feed for the shortfall (reproduces the evaluator's weak reference)",
+    "reactive greenest-first: every day move to whichever paddock currently has the most standing grass, ignoring relocation cost and how today's grazing reshapes tomorrow's diffusion neighbourhood",
+    "period-matched compact rotation: estimate the regrowth-diffusion recovery time constant from the instance's own r/D, then tour a nearest-neighbour loop over a handful of paddocks sized so the revisit period matches that constant, picking the best of several candidate loop sizes by internally replaying the season",
+    "full local search: jointly optimize loop membership, visit order and dwell time via a seeded multi-restart hill-climb over the replayed-season objective"
+  ]
+}

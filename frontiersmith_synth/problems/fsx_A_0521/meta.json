@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0521",
+  "tier": "A",
+  "format": "C",
+  "family": "peloton-courier-drafting",
+  "eval_form": "quality-metric",
+  "theme": "bicycle courier pelotons sharing slipstreams across a city",
+  "title": "Slipstream Couriers: Convoy Formation and Lead Rotation",
+  "objective": "min",
+  "mechanisms": ["deadline-routing", "drafting-energy-benefit", "leadership-rotation"],
+  "innovation_hook": "Energy-optimal solutions deliberately DETOUR to merge into shared corridors and rotate the lead position; the real problem is convoy formation and leadership scheduling, not routing.",
+  "strategies": [
+    "trivial: independent shortest path per courier, ride ASAP, everyone solo -- reproduces the checker baseline (~0.1); staggered spur delays mean no two couriers ever share an edge on the same tick, so no drafting happens",
+    "greedy: discover the shared corridor, wait/detour to synchronize into a convoy so followers draft, but keep ONE fixed leader the whole way -- the obvious convoy idea that ignores the growing lead-streak penalty",
+    "strong: same synchronized convoy, but ROTATE the lead every edge so no courier accumulates a streak; rotation is what makes a convoy cheaper than riding solo, and is scheduled per-edge over the changing convoy membership",
+    "beyond: jointly optimize which couriers to merge (given deadline slack), where to detour, and a lead-rotation schedule that also balances partial-overlap couriers entering and leaving the corridor"
+  ]
+}

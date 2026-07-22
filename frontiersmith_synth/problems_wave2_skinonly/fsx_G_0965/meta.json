@@ -1,0 +1,18 @@
+{
+  "id": "fsx_G_0965",
+  "tier": "G",
+  "format": "C",
+  "family": "bus-stop-amenity-upgrade-packages",
+  "eval_form": "quality-metric",
+  "theme": "bus stop amenity upgrade package selection",
+  "title": "Bus Stop Amenity Upgrade Package Portfolio",
+  "objective": "max",
+  "bulk_factory": "budget-conflict-coverage-selection",
+  "salt": 607749822,
+  "strategies": [
+    "trivial: reproduce the checker cost-first feasible baseline",
+    "greedy: sort by value, capability weight, and cost density",
+    "strong: repeatedly add the feasible asset with best current marginal utility per cost",
+    "future: local search, swap neighborhoods, Lagrangian budget pricing, and conflict-aware coverage repair"
+  ]
+}

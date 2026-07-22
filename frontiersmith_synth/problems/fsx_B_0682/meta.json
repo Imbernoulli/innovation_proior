@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0682",
+  "tier": "B",
+  "family": "grain-seed-boundary-minimizer",
+  "seed_problem": "Place k Voronoi sites in a region to minimize a covering/partition cost; classic site-placement problems reward spreading sites apart under a plain metric.",
+  "mutation": "composite: replace the plain-metric Voronoi partition with a competitive-growth-front simulation under a per-cell zone resistance AND a per-seed crystallographic orientation that warps the local travel cost anisotropically (8 directions, misalignment-dependent multiplier); couple the resulting grain-boundary length to a second, non-additive fill-time term (peak solidification time) so the seed-placement objective is genuinely two competing quantities, not one.",
+  "objective": "min",
+  "theme": "casting a single-crystal turbine blade",
+  "title": "Single-Crystal Blade Casting: Seed Placement Under Warped Growth",
+  "strategies": [
+    "trivial: one seed at the first cavity cell in row-major scan order, orientation 0 -> reproduces the checker baseline (~0.1)",
+    "greedy: textbook farthest-point (max-min Euclidean) sampling that spends the whole seed budget K, blind to zone resistance and to the anisotropic growth metric -> in wide bulges it plants seeds that split open, low-value territory (long boundary for no fill-time benefit); with K in short supply it also fails to see that a well-placed single split is worth more than several badly-placed ones",
+    "strong: measures each row's cavity width, locates the region's narrow waists (local minima of width), and -- when the seed budget can't use every waist -- chooses which ones to cut via a balanced chain partition (minimizing the longest row-span any one seed must cover) rather than just picking the narrowest waists; each seed then sits at its segment's row-midpoint (balancing reach to both segment ends) so every front collision is forced through a short waist while peak solidification time stays low",
+    "alternatives: a full multi-source-Dijkstra-in-the-loop local search that tries adding/removing/moving one seed at a time and re-simulates, or a k-median-style relaxation over the anisotropic shortest-path metric"
+  ]
+}

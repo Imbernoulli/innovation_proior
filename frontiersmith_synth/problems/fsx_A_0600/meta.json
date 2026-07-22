@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0600",
+  "tier": "A",
+  "format": "C",
+  "family": "epidemic-threshold-eigendrop",
+  "eval_form": "quality-metric",
+  "theme": "Cut a few links to stop an outbreak",
+  "title": "Snip the Superspreader Links",
+  "objective": "min",
+  "strategies": [
+    "trivial baseline: cut the first k listed contacts (the checker's normalizer) -- negligible spectral drop",
+    "weight greedy: cut the k heaviest-weight contacts; looks most infectious but the heavy edges sit off the spectral core (the planted trap)",
+    "degree greedy: cut edges incident to the highest-degree nodes; still blind to eigenvector placement",
+    "eigen-leverage greedy (strong): cut the edge maximizing w * x_i * x_j on the current Perron vector, recomputing the leading eigenvector after every cut"
+  ]
+}

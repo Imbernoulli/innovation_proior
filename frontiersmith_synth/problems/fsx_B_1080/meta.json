@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_1080",
+  "tier": "B",
+  "format": "D",
+  "family": "prefix-commit-codebook-schedule",
+  "eval_form": "flops",
+  "theme": "Assign codewords as symbols arrive, no rebalancing",
+  "title": "Fixed-ROM Codeword Binding",
+  "objective": "min",
+  "strategies": [
+    "big-symbols-get-big-slots worst-case binding (trivial; provably the maximum of F by the rearrangement inequality)",
+    "adaptive rank-within-arrived-window binding (greedy trap: adaptive-Huffman-style, blind to unseen future symbols)",
+    "final-frequency exchange-argument sort-and-pair (strong: rearrangement inequality over the fixed slot multiset)"
+  ]
+}

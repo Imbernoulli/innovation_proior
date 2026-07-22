@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0958",
+  "tier": "A",
+  "format": "E",
+  "family": "hidden-response-law-recovery",
+  "eval_form": "quality-metric",
+  "theme": "Reverse-engineer a hidden response law",
+  "title": "Small-Signal Log: Recover the Saturating-Resonant Response Law",
+  "objective": "minimize",
+  "strategies": [
+    "constant baseline: predict the mean training response (ignores frequency and amplitude entirely)",
+    "quadratic-surface recipe: ordinary-least-squares y = c0+c1*f+c2*a+c3*f^2+c4*a^2+c5*f*a; tracks the mild curvature visible inside the small-signal/sub-resonant training box but has no saturation ceiling and no resonance peak, so it explodes or keeps climbing monotonically once extrapolated into the large-signal / near-and-past-resonance held-out region",
+    "structural recovery: exploit the stated SEPARABLE product structure -- for any candidate (f0, w, As), z(f,a)=tanh(a/As)/(1+((f-f0)/w)**2) makes the whole surface a single linear regressor y~p*z; grid-search only the three shape parameters, the gain drops out via 1-D least squares",
+    "invalid: emit a disallowed token (attribute access) -> Ratio 0.0"
+  ]
+}

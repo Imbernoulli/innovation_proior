@@ -1,0 +1,19 @@
+{
+  "id": "fsx_A_0550",
+  "tier": "A",
+  "format": "B",
+  "family": "propagating-frontier-dispatch",
+  "eval_form": "quality-metric",
+  "theme": "firefighting crews on a wildfire cell grid",
+  "title": "Firebreak Dispatch on the Advancing Front",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:topup-B-2"],
+  "mechanisms": ["crew-commitment-lockin", "wildfire-cellular-spread"],
+  "innovation_hook": "Pre-position firebreaks on the deterministic future frontier implied by wind and fuel, spending commitment before the fire arrives.",
+  "strategies": [
+    "do-nothing baseline: dispatch no crews; the fire burns everything it reaches within the horizon (evaluator's weak anchor, ~0.1)",
+    "flame-edge greedy (TRAP): wall the cells the front reaches soonest that are still buildable, dispatching every crew at t=0; in open terrain the fire streams around the short wall, funnels through the far chokepoint, and burns the town anyway",
+    "future-frontier gating (STRONG): simulate the fire forward to get arrival times and the shortest-path tree, score cells by the sub-tree value they gate (the ridge gap that guards the town gates the whole town), and pre-build breaks on those buildable chokepoints so they stand finished before the front arrives",
+    "headroom above strong: staggered dispatch to build more breaks than crews over time, exact min-cut sealing, and multi-gap value trade-offs the greedy gate-ranking does not fully optimize"
+  ]
+}

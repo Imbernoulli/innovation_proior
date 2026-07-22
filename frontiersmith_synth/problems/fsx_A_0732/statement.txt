@@ -1,0 +1,86 @@
+# Win a Two-Sided Idea War on a Network
+
+## Problem
+
+The network is a disjoint union of **arenas**. Arena `r` has three **control**
+nodes and one **incumbent** node, already committed to your rival's idea
+(contagion `B`). It also has a set of **market** nodes; each market node is
+wired to the incumbent and to exactly **two** of the three controls (its
+"backing pair") — which two varies from market node to market node.
+
+You may pre-commit exactly `K` nodes (never an incumbent) to your own idea
+(contagion `A`) anywhere across any arenas, spending your whole budget as you
+like. Contagion then spreads by **synchronous majority-threshold dynamics**:
+in each round, every still-uncommitted node looks at the colours its
+neighbours held at the *start* of that round. If strictly more neighbours
+hold `A` than `B`, it commits to `A`; if strictly more hold `B` than `A`, it
+commits to `B`; a tie (including no coloured neighbours at all) leaves it
+uncommitted for that round. All updates in a round happen simultaneously.
+Once a node commits (whether pre-seeded or by voting) it never changes again.
+The process runs until nothing changes.
+
+Maximize the total value of nodes that end up committed to `A`.
+
+## Input
+
+```
+N M K S
+```
+then one line with `N` integers `v_1 ... v_N` (node `i`'s value; control and
+incumbent nodes have value 0), then `M` lines `u v` (an undirected edge),
+then one line with `S` integers: the ids of the rival-seeded incumbent nodes.
+
+## Output
+
+`K` distinct integers in `[1, N]`, none of them a rival-seeded id: the nodes
+you pre-commit to `A`.
+
+## Feasibility
+
+Exactly `K` ids, pairwise distinct, none of them rival-seeded, no trailing
+tokens. Any violation scores `0`.
+
+## Objective
+
+Maximize `F` = the total value of nodes committed to `A` once the dynamics
+reach a fixed point.
+
+## Scoring
+
+The checker also builds a reference: visiting arenas in a fixed order, it
+picks one arbitrary market node per arena (ignoring value and structure)
+until `K` nodes are chosen, runs the same dynamics, and calls the result `B`.
+Your score on a test is
+```
+ratio = min(1000, 100 * F / max(1, B)) / 1000
+```
+so matching that arbitrary reference scores `0.1`; a real improvement scores
+higher, capped at `1.0`. Per-test ratios are averaged.
+
+## Constraints
+
+* `1 <= N <= 2000`, `1 <= M <= 5000`, `2 <= K <= N`.
+* Time limit: 3 s. Memory limit: 512 MB.
+
+## Example
+
+One arena: controls `c0, c1, c2`, incumbent `h`, and 10 market nodes wired as
+follows (value, backing pair): `12,{c0,c1}`, `11,{c0,c1}`, `10,{c0,c1}`,
+`9,{c0,c1}`, `13,{c0,c2}`, `12,{c0,c2}`, `11,{c0,c2}`, `14,{c1,c2}`,
+`13,{c1,c2}`, `12,{c1,c2}`. Budget `K = 2`.
+
+Seeding only `c0`: every market node backed by `c0` now sees one `A` vote
+(from `c0`) and one `B` vote (from `h`) — a tie, so none of them ever commits.
+`F = 0`: a single control, however well-connected, is out-voted everywhere it
+touches.
+
+Seeding the two highest-value market nodes directly instead (values `14` and
+`13`, both backed by `{c1,c2}`): both are pre-committed, no vote needed.
+`F = 27`.
+
+Seeding the **pair** `{c0, c1}`: every market node backed by exactly that
+pair now sees two `A` votes against the incumbent's one and commits to `A` in
+round one — all four of the `{c0,c1}` nodes, worth `12+11+10+9 = 42`. Even
+though `{c1,c2}`'s single best node (`14`) beats any `{c0,c1}` node, the
+`{c0,c1}` PAIR backs more total value than either other pair, and unlocking
+a matched pair beats grabbing individually valuable nodes: `F = 42 > 27`.

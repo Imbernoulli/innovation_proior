@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0694",
+  "tier": "A",
+  "format": "B",
+  "family": "interference-aware-curriculum",
+  "eval_form": "quality-metric",
+  "theme": "training montage planner for a multi-skill apprentice",
+  "title": "Apprentice's Montage: Interference-Aware Skill Curriculum",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:state-coupled-scheduling"],
+  "strategies": [
+    "grind-the-weakest: spend the entire budget re-drilling the single skill that starts lowest (the evaluator's own weak baseline); every other skill decays untouched the whole time",
+    "round-robin: cycle through all K skills in a fixed index order, equal shares for everyone, oblivious to the interference matrix and to which skills have already saturated",
+    "interference-graph block scheduling with a maximin-sized closing refresher: cluster skills into low-interference cliques by thresholding the pairwise antagonism matrix, order clique-blocks from least to most vulnerable-to-later-decay, size each skill's practice count to its diminishing-returns saturation point, then spend the remaining budget on myopic refreshers of whichever skill is currently worst so the maximin skill's LAST refresher lands late with minimal subsequent decay",
+    "full simulation-guided local search over the whole T-length sequence, using swaps/reinsertions to directly hill-climb the true maximin objective (open; strong is not optimal)"
+  ]
+}

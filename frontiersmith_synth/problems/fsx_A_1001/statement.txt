@@ -1,0 +1,110 @@
+# Wafer Probe Compression on Symmetric Fault Cubes
+
+## Problem
+
+A chip has `K` numbered control pins. Test engineers have derived a list of
+`N` suspected stuck-at **faults**. Each fault `i` is described by a small
+**detection cube**: a set of `(pin, required bit)` pairs. A **probe** is a
+full assignment of `0`/`1` to all `K` pins. Probe `v` **detects** fault `i`
+if and only if `v` agrees with every `(pin, required bit)` pair of fault
+`i`'s cube (pins outside the cube may be anything -- the fault does not care
+about them). You must output a set of probes such that **every** fault is
+detected by **at least one** probe, using as **few probes as possible**.
+
+Two cubes with no fixed pin in common are always simultaneously satisfiable
+by one probe (set each cube's own pins, anything elsewhere). Two cubes that
+share a pin but require the same bit there are also compatible. Only a
+shared pin with **conflicting** required bits forces two faults into
+different probes. Some faults are literal subsets of others (fewer, matching
+requirements) -- any probe that satisfies the larger cube automatically
+satisfies the smaller one for free.
+
+## Input
+
+```
+K N
+c_1 p_1 v_1 p_2 v_2 ... p_{c_1} v_{c_1}
+... (N lines total, one per fault)
+```
+
+- `1 <= K <= 2000`, `1 <= N <= 2000`.
+- Each fault line starts with its cube size `1 <= c_i <= 20`, followed by
+  `c_i` pairs. `0 <= p <= K-1`, `v in {0,1}`. Positions are distinct within
+  one fault's cube.
+
+## Output
+
+```
+P
+probe_1
+...
+probe_P
+```
+
+`1 <= P <= N` (P never needs to exceed N -- a dedicated probe per fault is
+always feasible). Each `probe_j` is a string of exactly `K` characters, each
+`0` or `1`, with no separators.
+
+## Feasibility
+
+An output is feasible iff `1 <= P <= N`, every probe line has length exactly
+`K` over the alphabet `{0,1}`, and for every fault `i` there exists a `j`
+such that probe `j` agrees with every `(pin, required bit)` pair of fault
+`i`'s cube. Any violation scores `0`.
+
+## Objective
+
+Minimize `P`, the number of probes used.
+
+## Scoring
+
+The checker computes an internal baseline `B = N` (the objective of the
+trivial construction: one dedicated probe per fault, built by fixing that
+fault's own required pins and leaving every other pin `0`). Let `F = P` be
+your probe count. The score for one test is
+
+```
+Ratio = min(1000, 100 * B / max(1, F)) / 1000
+```
+
+Matching the baseline (`F = N`) scores `0.1`. Using a tenth as many probes
+as the baseline saturates the cap at `1.0`. The overall score is the mean
+`Ratio` across the 10 tests.
+
+## Constraints
+
+- `1 <= K, N <= 2000`, cube size `1 <= c_i <= 20`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+```
+6 4
+2 0 1 1 1
+1 2 1
+1 3 1
+1 0 1
+```
+
+Here `K=6`, and the 4 faults are: fault 0 needs pins `0` and `1` both `1`;
+fault 1 needs pin `2 = 1`; fault 2 needs pin `3 = 1`; fault 3 needs only
+pin `0 = 1` (a subset of fault 0's requirement -- it is automatically
+detected whenever fault 0 is).
+
+The trivial baseline uses 4 probes (one per fault), scoring `Ratio = 0.1`.
+A better answer uses `P = 2`:
+
+```
+2
+110000
+001100
+```
+
+`110000` sets pins `0,1 = 1`: it detects fault 0 (both required pins match)
+and, for free, fault 3 (its single requirement is a subset of fault 0's).
+`001100` sets pins `2,3 = 1`: since faults 1 and 2 require **disjoint**
+pins, this single probe satisfies both simultaneously. All 4 faults are
+detected with `F = 2` probes, giving `Ratio = min(1000, 100*4/2)/1000 =
+0.2`. Reasoning about which cubes are pairwise compatible -- rather than
+building one probe per fault and hoping for accidental overlap -- is what
+lets a single probe cover several faults at once.

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0533",
+  "tier": "S",
+  "format": "C",
+  "family": "reset-word-cerny",
+  "eval_form": "quality-metric",
+  "theme": "Shortest word that collapses every DFA state",
+  "title": "Collapse the Automaton: Synchronizing a Hidden Cerny Machine",
+  "objective": "min",
+  "strategies": [
+    "trivial rotate-and-contract: recover the cycle+contraction but walk several extra full turns between contractions (valid, long) -> reproduces the checker baseline",
+    "greedy pairwise merge (Eppstein): precompute shortest merging words for all pairs by one backward BFS from the diagonal, repeatedly merge the closest active pair; blind to the global algebra, lands well above optimum",
+    "subset BFS over the 2^n powerset: exact but explodes for these sizes",
+    "strong / insight: read the planted permutation+contraction algebra -- identify the n-cycle R and the single contraction C (x -> its R-successor y), then emit the Cerny word C (R^{n-1} C)^{n-2} of near-quadratic length (n-1)^2"
+  ]
+}

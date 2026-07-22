@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0786",
+  "tier": "A",
+  "format": "A",
+  "family": "attrition-routing-upgraders",
+  "eval_form": "quality-metric",
+  "theme": "cold-chain produce network with re-chill stations",
+  "title": "Cold Chain with Re-Chill Depots",
+  "seed_problem": "facility location + multi-commodity routing with edge decay",
+  "objective": "max",
+  "mutation": "composite: DAG routing with multiplicative per-hop quality decay, coupled to a discrete budget-constrained placement of restorative depots whose reset+energy cost is charged per unit of flow through them, coupled to per-market tiered spec pricing -- placement and routing become inseparable because a depot's payoff is a function of the traffic the solver chooses to route through it.",
+  "strategies": [
+    "trivial: no depots installed; each farm dumps its full supply on the first-listed direct haul edge, wasting any excess over that market's remaining capacity (reproduces the checker baseline)",
+    "greedy: no depots installed; each farm independently routes its supply via direct haul edges only, to whichever reachable market with remaining capacity currently pays best -- never considers that rerouting through a depot could unlock a higher tier",
+    "insight (strong): evaluate each candidate depot's realizable net value if farm supply were deliberately funneled through it (value-density knapsack over the budget), install the best depot(s), route as much flow as profitable through the chosen hub(s) even when its first leg alone looks worse than a direct haul, then mop up leftover supply with the greedy direct-haul fallback",
+    "a general solver could go further: bipartite-matching the hub's reachable farms/markets exactly (min-cost flow) instead of greedy density ranking, or considering multi-depot joint routing when several installs are affordable"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "fsx_B_0896",
+  "tier": "B",
+  "format": "E",
+  "family": "hopper-discharge-law-recovery",
+  "eval_form": "quality-metric",
+  "theme": "grain silo master's secret gauge",
+  "title": "The Silo Master's Secret Gauge — recovering the hidden hopper-discharge law",
+  "objective": "max",
+  "strategies": [
+    "trivial: predict the flat geometric mean of the training Q column, ignoring D, d, and rho entirely -> reproduces the checker's own baseline, Ratio ~0.1",
+    "greedy: the obvious recipe for 'three numeric columns predicting one numeric column' -- a single global multiplicative power law Q = k0 * D^a * d^b * rho^c, fit by ordinary least squares in log-log space over all three predictors at once. It recovers rho's exponent correctly (rho is uncorrelated with D,d so log-log regression nails c=1 by accident), tracks the training band's scale reasonably, but it has no way to express an ADDITIVE offset between D and d -- it can only ever produce a symmetric multiplicative D^a*d^b shape. On the held-out grid (apertures 2-20x wider, grain sizes never seen in training) its exponent on D is biased high (it partially and incorrectly absorbs the offset's near-threshold curvature from the training band into a's value) and its exponent on d has the wrong sign, so the law drifts increasingly wrong",
+    "strong: hypothesize the offset directly -- for a grid of candidate offset multipliers k, form the shifted variable X = D - k*d and check whether log(Q/rho) becomes LINEAR in log(X) (re-linearizing after the shift). Only the correct k makes this relationship clean; a plot of the training residual RSS against candidate k has a sharp minimum there. At that k, ordinary linear regression on the re-linearized data reads off the exponent p directly. Because Q = C*rho*(D-k*d)^p is the true functional form (not a multiplicative patch), it keeps predicting correctly on the held-out grid where the offset survives at the same relative importance the exponent p implies",
+    "headroom above strong: refine the k grid search continuously (golden-section or Newton refinement around the coarse minimum) instead of a fixed step, and/or use a robust (trimmed / IRLS) regression at the re-linearization stage against the noise floor, or jointly refine (C, k, p) by nonlinear least squares seeded from the two-stage estimate"
+  ],
+  "source_frameworks": ["wave2b-lens:continuous-physical"],
+  "innovation_hook": "The exponent only becomes clean after the right variable shift — hypothesizing a hidden offset and re-linearizing beats any direct regression."
+}

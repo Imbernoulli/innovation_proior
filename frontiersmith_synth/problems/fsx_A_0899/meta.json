@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0899",
+  "tier": "A",
+  "format": "B",
+  "family": "online-fiedler-secretary",
+  "eval_form": "quality-metric",
+  "theme": "an engineer buying cables one truck at a time",
+  "title": "Cable Trucks to the Substations",
+  "objective": "maximize",
+  "source_frameworks": ["wave2b-lens:spectral-and-resonance"],
+  "strategies": [
+    "myopic-greedy baseline: on each truck (the program is invoked once per truck, online), buy it iff it is affordable right now AND strictly raises the exact lambda_2 of the network built so far -- reproduces the evaluator's internal weak reference and burns the budget on many small-but-real early gains",
+    "reject-everything trivial: keep only the free backbone, spend nothing",
+    "spectral-leverage adaptive threshold pacing (strong): each call, take a cheap Fiedler-vector sketch of the network built so far, score this truck's cable by (x_u - x_v)^2 / cost, spend an initial slice of trucks purely observing that distribution (via the private cross-call 'state' blob), then accept only cables clearing a percentile bar that adapts to (budget remaining / trucks remaining) -- correctly recognizes that decoy cables inside an already-adequate cluster barely move the Fiedler vector while cables crossing the bottleneck move it a lot, and paces spending so budget survives to the late high-leverage cables it can never see in advance",
+    "greedy plus arbitrary fixed absolute threshold on marginal gain: same myopic failure mode as the reference baseline, just with a different cutoff"
+  ]
+}

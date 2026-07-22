@@ -1,0 +1,93 @@
+# Seasonal Spectrum Assignment
+
+## Problem
+
+A rural radio operator maintains `N` towers and must give every tower one of
+`C` available channels — a single choice that stands for the whole year. Two
+towers that share a channel interfere, but *how much* depends on the season:
+summer foliage swallows some signal paths while winter's clear air lets others
+carry much farther, so the same pair of towers can be nearly harmless in one
+season and costly in another. You are given, for every interfering pair of
+towers, its conflict weight in each of exactly **7 seasons**.
+
+Because the channel map is fixed year-round, any pair of towers you let share
+a channel will cost you in *every* season where that pair happens to matter —
+but you do not have to keep all seven seasons calm. Only the two worst seasons
+of the year count against you; the other five can be as bad as they like.
+The skill is figuring out which pair of seasons your assignment is actually
+going to be judged on, and protecting only that pair.
+
+## Input
+
+Line 1: `N C M` — number of towers, number of channels, number of interfering
+pairs.
+
+Then `M` lines, each `u v w1 w2 w3 w4 w5 w6 w7`: towers `u`, `v`
+(1-indexed, `u != v`), and the conflict weight `w_s` this pair contributes to
+season `s` if `u` and `v` end up on the same channel (`0 <= w_s <= 1000000`;
+`w_s = 0` means this pair does not interfere in season `s`). Each unordered
+pair `{u,v}` appears at most once.
+
+## Output
+
+One line with `N` integers `ch_1 ... ch_N`, `ch_i` in `[1,C]`: the channel
+assigned to tower `i`.
+
+## Feasibility
+
+Every tower must be assigned exactly one channel in `[1,C]`, printed in order
+`1..N`. There is **no** requirement that interfering towers use different
+channels — any complete, in-range assignment is feasible. A missing/extra
+token or an out-of-range channel scores 0.
+
+## Objective
+
+For a season `s`, its conflict total is
+`S_s = sum of w_s(u,v) over all interfering pairs (u,v) that share a channel`.
+Let `F` = the **sum of the two largest** values among `S_1, ..., S_7`.
+**Minimize `F`.**
+
+## Scoring
+
+The checker also computes `B`, the value of `F` for the fixed round-robin
+reference `ch_i = ((i-1) mod C) + 1` (it ignores every weight). Your ratio on
+a test is
+```
+ratio = min(1000, 100 * B / max(1, F)) / 1000
+```
+so matching the round-robin reference scores `0.1`, halving `F` scores `0.2`,
+and so on, capped at `1.0` (a ten-fold improvement). Per-test ratios are
+averaged over 10 tests.
+
+## Constraints
+
+- `2 <= N <= 500`, `2 <= C <= 6`.
+- `1 <= M <= 8000`.
+- Time limit: 4 s. Memory limit: 512 MB.
+
+## Example
+
+`N=4, C=2`, and all six pairs among the four towers interfere:
+```
+4 2 6
+1 2 20 0 0 0 0 0 0
+2 3 0 20 0 0 0 0 0
+1 3 0 0 0 0 0 50 50
+2 4 0 0 0 0 0 50 50
+1 4 0 20 0 0 0 0 0
+3 4 20 0 0 0 0 0 0
+```
+Round-robin gives `ch = 1 2 1 2`, so towers `{1,3}` and `{2,4}` share a
+channel (the other four pairs differ). Both `(1,3)` and `(2,4)` contribute
+`50` to season 6 *and* `50` to season 7, so `S = (0,0,0,0,0,100,100)`, giving
+`F = B = 100+100 = 200` and ratio `0.1` — as always for the round-robin
+reference.
+
+A better assignment `ch = 1 1 2 2` instead makes `{1,2}` and `{3,4}` share a
+channel: pair `(1,2)` contributes `20` to season 1, pair `(3,4)` contributes
+`20` to season 1, and no other pair collides. So `S = (40,0,0,0,0,0,0)`,
+giving `F = 40 + 0 = 40` (only one season is nonzero, so the second-largest
+is `0`). Ratio `= min(1000, 100*200/40)/1000 = 0.5` — five times the
+round-robin score, by choosing *which* pairs are allowed to collide (and
+which two seasons that damage lands on) instead of just minimizing how many
+pairs collide.

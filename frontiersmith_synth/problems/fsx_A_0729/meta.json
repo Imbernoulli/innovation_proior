@@ -1,0 +1,20 @@
+{
+  "id": "fsx_A_0729",
+  "tier": "A",
+  "format": "A",
+  "family": "quasirandom-tournament-forge",
+  "eval_form": "quality-metric",
+  "seed_problem": "construct a regular round-robin tournament (orientation of the complete graph K_n) on n vertices",
+  "mutation": "composite: the goal is changed from mere existence/regularity of a tournament to minimizing an explicit two-part quasirandomness defect (degree-skew plus a codegree/4-cycle skew that measures how detectably non-random the schedule is), and the input is generalized from the narrow parameter set where the classical Paley construction applies directly (primes q = 3 mod 4) to ARBITRARY odd n, forcing the solver to compose the algebraic construction via lexicographic products and vertex-patching to cover the general case",
+  "objective": "min",
+  "theme": "schedule a round-robin no bettor can exploit",
+  "title": "No-Tell Round Robin",
+  "mechanisms": ["character-sum-construction", "product-patching", "quasirandomness-defect"],
+  "innovation_hook": "Paley tournaments (edge i->j iff j-i is a quadratic residue mod a prime q = 3 mod 4) make the codegree/4-cycle term collapse to a much smaller order than a merely-regular tournament achieves, via quadratic character-sum cancellation -- but the construction only exists natively for that narrow family of primes. The real insight is: (1) build Paley tournaments on the prime factors of n that happen to be = 3 mod 4, (2) combine them into a tournament on the product of those primes via the lexicographic (tensor) product, which is provably still perfectly degree-regular, and (3) patch on the leftover vertices (n minus that product) with a balanced insertion rule, recursing on the leftover count -- tracking exactly how the defect degrades as the patched fraction of n grows.",
+  "strategies": [
+    "trivial: rank all n teams 1..n and let the higher rank always win (fully transitive schedule) -- the calibration baseline; both terms of the defect are maximal.",
+    "greedy: a single fixed circulant/rotational tournament (team i beats team j iff (j-i) mod n lies in {1,...,(n-1)/2}) -- this is regular (DegreeSkew=0 for every n) so it looks fine on the standings, but it has no algebraic cancellation and its QuadSkew stays roughly proportional to the fully transitive baseline's, i.e. it never escapes the same polynomial order as doing nothing -- the trap: an average solver sees 'make it regular' as the whole problem and stops there.",
+    "strong: factor n greedily against the list of primes = 3 mod 4, build the Paley tournament on each chosen prime, combine them via the lexicographic product (still exactly regular), and recursively patch on the remaining n-minus-product vertices with an alternating-parity cross rule -- this drives QuadSkew far below the circulant construction's, by 1-3+ orders of magnitude depending on how cleanly n factors.",
+    "beyond: choose the factor DECOMPOSITION (not just a greedy largest-first pick) and the product ORDER to minimize the realized composed defect, or design a better patch rule (e.g. a small Paley-like structure on the patch set itself, recursively) that keeps the leftover fraction's contribution smaller still."
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "id": "fsx_S_0736",
+  "tier": "S",
+  "format": "D",
+  "family": "egraph-shared-extraction",
+  "eval_form": "flops",
+  "theme": "pick one dish per stall so ingredients overlap",
+  "title": "Stall Menu DAG",
+  "objective": "min",
+  "strategies": [
+    "per-stall greedy / bottom-up tree-cost DP (textbook e-graph extraction, ignores sharing)",
+    "coalition exchange search: cluster stalls by shared-ingredient signature and evaluate\n     joint switches, since a single stall's switch is never locally attractive on its own",
+    "exact ILP / SAT-style joint optimization over the whole selected set (in principle;\n     out of scope for a fast reference solution, but the true target of the objective)"
+  ]
+}

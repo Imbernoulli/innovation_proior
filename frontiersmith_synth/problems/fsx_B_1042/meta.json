@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1042",
+  "tier": "B",
+  "format": "C",
+  "family": "phase-switch-broth-fleet",
+  "eval_form": "quality-metric",
+  "theme": "algae fuel pond fleet on one feed line",
+  "title": "One Feed Line, Many Ponds: Staggered Growth-to-Harvest Scheduling",
+  "objective": "maximize",
+  "strategies": [
+    "single-pipe baseline: feed only one pond for the whole horizon, ignore the rest of the fleet",
+    "obvious recipe: split the horizon into P equal fixed turns in input order, give each pond the full cap for its whole turn, no reordering or batching",
+    "staggered-offset search: brute-force the fleet concurrency level K, place ponds into sequential batches sharing C/K, refine batch membership with pairwise-exchange local search, and solve each pond's own optimal-stopping window against its batch's effective feed",
+    "invalid: claim every pond draws the full cap simultaneously for the whole horizon (violates the shared feed cap)"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "fsx_B_0887",
+  "tier": "B",
+  "format": "A",
+  "family": "phase-aware-code-layout",
+  "eval_form": "quality-metric",
+  "theme": "seat quarrelsome guests along one long table",
+  "title": "Seating the Feuding Clans",
+  "objective": "min",
+  "seed_problem": "profile-guided basic-block layout (Pettis-Hansen edge chaining) scored by taken-branch count plus distance-bucketed jump penalty over a recorded execution trace",
+  "mutation": "composite: recast as seating N guests, each belonging to one of K clans, along one long table from a flat, unlabeled-by-position list of pairwise exchange counts; the objective couples a distance-bucketed exchange-friction cost (linear-arrangement + trace-transition-modeling) to an explicit per-adjacent-seat clan-changeover tax (global-phase-separation), and the exchange list mixes dense within-clan chatter (sparse per-guest gossip chains) with scattered cross-clan bridge remarks so that a short-sighted nearest-neighbour chaining heuristic, blind to the clan label, fragments clans across the table whenever it runs dry mid-chain and falls back to id order",
+  "strategies": [
+    "trivial: identity order 1,2,...,N (reproduces the checker's own baseline construction)",
+    "naive greedy: short-sighted nearest-neighbour walk -- from the current guest, hop to whichever unseated exchange-partner talked the most, and once no exchange partner remains unseated fall back to the next unseated guest in id order -- it never looks at the clan label at all, so once it runs dry mid-clan (a very sparse per-guest chain) the id-order fallback drops it into an effectively random other clan, fragmenting clans across the table and stranding heavy in-clan pairs far apart",
+    "insight (strong): un-mix the exchange list by clan FIRST, reconstruct one contiguous chain per clan directly from that clan's own edges (immune to the entry-point fragility above), then order the resulting clan-blocks with a small greedy nearest-neighbour pass over aggregated inter-clan exchange weight before concatenating",
+    "a general solver could go further: jointly optimise the clan-block order against the full inter-clan weight distribution (a weighted TSP over K clan-nodes solved near-optimally), or run local search (block-swap / 2-opt within and across clan boundaries) directly on the real F"
+  ]
+}

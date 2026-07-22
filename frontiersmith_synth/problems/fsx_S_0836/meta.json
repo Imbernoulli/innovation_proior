@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0836",
+  "tier": "S",
+  "format": "E",
+  "family": "traffic-shockwave-law",
+  "eval_form": "quality-metric",
+  "theme": "highway sensor loops before the jam",
+  "title": "Highway Sensor Loops Before the Jam — recovering the hidden conserved flux",
+  "objective": "min",
+  "strategies": [
+    "trivial: submit the checker's own zero-flux baseline f(rho)=0 (no traffic ever moves) -> reproduces the baseline exactly, Ratio ~0.1",
+    "greedy: treat the calm-day snapshots as a rigidly translating pattern; cross-correlate consecutive profiles to find one bulk shift speed c and submit the density-independent flux f(rho)=c*rho. Fits the smooth training data reasonably but has no way to make characteristics converge, so it cannot predict where or how fast the held-out steep initial condition breaks into a shockwave",
+    "strong: recognise the CONSERVED quantity's own structure -- rearrange rho_t=-(f(rho))_x=-f'(rho)*rho_x into a LINEAR least-squares problem for the coefficients of f'(rho) (a low-degree polynomial in rho) using finite-difference estimates of rho_t and rho_x from the sensor grid, then integrate to recover f(rho) itself. This exploits characteristics visible even in smooth data to extrapolate the correct concave shape (and hence the correct Rankine-Hugoniot shock speed) to the unseen high-density regime",
+    "headroom above strong: better-conditioned finite differences (e.g. total-variation-regularised or higher-order stencils), a wider polynomial family, or explicit noise-aware weighting of the conservation-law regression could push held-out MAE further toward the numerical-scheme's own discretization floor"
+  ]
+}

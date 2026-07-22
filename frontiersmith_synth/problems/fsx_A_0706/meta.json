@@ -1,0 +1,20 @@
+{
+  "id": "fsx_A_0706",
+  "tier": "A",
+  "format": "A",
+  "family": "stripe-phase-nesting",
+  "eval_form": "quality-metric",
+  "seed_problem": "strip packing (2D bin packing, minimize consumed length)",
+  "mutation": "composite: pieces are restricted to rotations {0,180} (restricted-rotation-packing), every piece additionally carries its own mandatory stripe-repeat-congruence (its printed registration mark must land on the fabric's period-r stripe grid, and which of two residues that requires depends on the chosen rotation), and a set of seam pairs forces the phases of specific piece edges to agree mod r (seam-matching-constraints). Solving the pure 2D nesting first and patching phase afterward fails structurally: once a piece's own congruence pins its y mod r to a fixed residue class, translation can never repair a seam mismatch caused by the wrong rotation -- only re-deriving the whole seam chain's residues before packing (quotienting by the phase lattice) does.",
+  "objective": "min",
+  "theme": "Tailor matching plaid across every seam",
+  "title": "Tailor Matching Plaid Across Every Seam",
+  "mechanisms": ["restricted-rotation-packing", "seam-matching-constraints", "stripe-repeat-congruence"],
+  "innovation_hook": "Modular congruence constraints turn continuous nesting into a lattice-coset problem: walk each seam chain once (from its free end) to derive every piece's required residue and rotation BEFORE packing, collapsing the joint chain constraint into one independent number per piece; a width-aware shelf packer can then place every piece with only its own bounded (< r) rounding cost, versus a naive packer that nests first and discovers rotation mismatches only afterward, at which point translation alone cannot fix them and the whole affected chain must be re-serialized from scratch.",
+  "strategies": [
+    "trivial: get every phase constraint right via the same chain propagation every valid answer needs, but place every piece in its own private column (no width sharing at all) -- the checker's own area-bound calibration point",
+    "greedy: assume rotation f=0 for every piece (never consider flipping) and pack width-aware with a standard height-sorted shelf heuristic, rounding each piece's y to its own phase requirement under f=0; only afterward check whether each seam chain's f=0 guess actually holds (right ~2^-(k-1) of the time for a length-k chain) -- when it fails, the whole chain must be thrown away and re-laid out single-column at the tail, since translation cannot repair a wrong rotation",
+    "strong: walk every seam chain once from its free-bottom end to derive the unique required residue and rotation for every piece before any packing decision, then run the same width-aware shelf heuristic using those already-known targets -- no chain is ever revisited, so every piece pays only its own bounded rounding cost",
+    "beyond: joint optimization of shelf-row boundaries against the per-piece residues (rather than pure height-sorted NFDH), or exact/ILP placement for the hardest instances"
+  ]
+}

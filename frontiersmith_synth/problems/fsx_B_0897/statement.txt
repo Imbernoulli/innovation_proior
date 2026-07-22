@@ -1,0 +1,85 @@
+# Stencil Counters: Bridging the Floating Middles
+
+## Problem
+
+A laser-cut stencil has a rigid outer **frame** and some floating interior pieces
+called **counters** (like the middle bar of "H" or the dot of "i") that are not
+attached to anything. You must add rectangular blocks of **bridge** material,
+cut from the surrounding background, to anchor every counter to the frame — and
+you want the bridges to be as visually unobtrusive as possible.
+
+The stencil is a grid of `R` rows x `C` columns (1-indexed). Every cell is one of:
+frame (`#`), one of `K` counters (digit `1..K`, a solid axis-aligned rectangle
+per counter), or background (`.`, buildable). A second grid gives a **visual
+cost** `0-9` per cell (higher near strokes — frame or counter cells — where a
+bridge is most distracting).
+
+A **bridge** is an axis-aligned rectangle of background cells you convert to
+material, PLUS a chosen orientation `o` (you state it — required widths can
+legitimately exceed the span length, so shape alone would be ambiguous):
+`o=0` **vertical**, long axis along rows, length `L = h` (row-span), width
+`W = w` (column-span); `o=1` **horizontal**, `L = w` (column-span),
+`W = h` (row-span). A vertical bridge must have empty rows `r1-1` (its
+**front**) and `r2+1` (its **back**) — the single row strip just above and
+just below it — each entirely one structure (all `#`, or all one counter's
+digit), and the two structures must differ. A horizontal bridge works the same
+way with columns `c1-1`/`c2+1`. Bridges may not overlap each other or existing
+frame/counter cells.
+
+**The stiffness rule (why shape beats size).** A bridge resists being stretched
+along its own long axis cheaply: it contributes `A * W / L` to the stiffness
+along its own axis. Perpendicular to its axis it resists bending far less
+efficiently (a classic cantilever): it contributes `W^3 / (BD * L^3)` to the
+stiffness across its axis (`A`, `BD` given in the input). A **vertical** bridge
+feeds its axial term into a touched counter's **row-stiffness** and its bending
+term into that counter's **column-stiffness**; a **horizontal** bridge does the
+reverse. A counter's row/column-stiffness is the sum of contributions from every
+bridge touching it (frame-side or counter-side). Each counter `i` needs BOTH
+totals `>= Sreq_i` (given in the input).
+
+## Input
+
+```
+R C K A BD
+```
+`R` lines of `C` characters (structure grid), then `R` lines of `C` characters
+(cost grid, digits `0-9`), then `K` lines `id Sreq_id`.
+
+## Output
+
+`M`, then `M` lines `o r1 c1 r2 c2` — one axis-aligned rectangle each, with its
+declared orientation.
+
+## Feasibility
+
+Every bridge must obey the geometry rules above (bounds, front/back single
+structure, no overlap); every counter must reach the frame through the bridge
+graph (frame and counters as nodes, bridges as edges); every counter's row- and
+column-stiffness must meet its threshold. Any violation scores `0`.
+
+## Objective
+
+Minimize `F`, the sum of visual costs of all bridge cells.
+
+## Scoring
+
+The checker computes an internal baseline `B`: for each counter, one oversized
+(1.4x safety-margin) rod in its nearest single direction. Score per test is
+`ratio = min(1000, 100*B/max(1,F)) / 1000`, averaged over tests.
+
+## Constraints
+
+`R, C` up to about `600`; `1 <= K <= 3`; `A, BD` positive integers; time limit
+4 s, memory 512 MB.
+
+## Example
+
+`A=22, BD=4`. A 62x62 grid: frame border, one counter at rows/cols `12..51`
+(a 40x40 block), gap `L=10` to the frame on every side, `Sreq_1 = 3`. Assume
+every open cell costs `1`. One rod straight up needs width `max(ceil(3*10/22),
+ceil(10*cbrt(3*4))) = max(2, 23) = 23` (bending, not axial, dictates it) — cost
+`23*10 = 230`. The 1.4x-margin baseline uses width `33`, cost `B = 330`
+(`ratio = 0.14`). But a **vertical** rod up (width `ceil(3*10/22)=2`, cost `20`)
+plus a **horizontal** rod left (same, cost `20`) together give row-stiffness
+`22*2/10 = 4.4 >= 3` and column-stiffness `4.4 >= 3` — both satisfied for total
+cost `40` (`ratio = 0.825`), less than a sixth of the single fat rod's cost.

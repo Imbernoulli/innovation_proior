@@ -1,0 +1,92 @@
+# Cross-Dock Door Draw and Pallet Relay
+
+## Problem
+
+An overnight cross-dock has one loading wall with `D` door slots in a row, numbered
+`1..D`, one metre apart, joined by a single straight aisle. Tonight `T_in` inbound
+trucks (arriving loaded) and `T_out` outbound trucks (departing loaded) each occupy one
+door slot for the whole shift, so `D = T_in + T_out`. You choose the **door draw**:
+which slot every truck backs into. Any truck, inbound or outbound, may take any slot.
+
+Between consecutive slots `k` and `k+1` lies aisle segment `k` (there are `D-1`
+segments). Every pallet moved from inbound truck `i` to outbound truck `j` must be
+carried by forklift straight down the aisle between their assigned doors, crossing
+every segment strictly between the two doors.
+
+Inbound truck `i` owes `f_{i,j}` pallets to outbound truck `j` (only pairs with
+`f_{i,j} > 0` are given, `M` of them). A forklift carries at most `K` pallets per trip.
+For every listed pair you must split its `f_{i,j}` pallets into one or more trips, each
+of size `1..K`, summing to `f_{i,j}` — this is your **batch plan**.
+
+Segments congest overnight: if `L` trips (over all pairs) cross segment `s`, EACH of
+those `L` crossings costs `1 + (L/cap)^2` time units there (`cap` is the segment's
+design throughput). A trip spanning several segments pays this cost on every one it
+crosses. Because the cost is convex in `L`, piling many crossings onto a few central
+segments is far worse than spreading the same crossings across the wall.
+
+## Input
+```
+T_in T_out M K cap
+i_1 j_1 f_1
+...
+i_M j_M f_M
+```
+`1 <= i <= T_in`, `1 <= j <= T_out`, `f >= 1`. Trucks are numbered `1..T_in` (inbound)
+then `T_in+1..T_in+T_out` (outbound, truck `T_in+j` is outbound truck `j`).
+
+## Output
+```
+door_1 door_2 ... door_D
+m_1 s_1 s_2 ... s_{m_1}
+...
+m_M s_1 s_2 ... s_{m_M}
+```
+Line 1: a permutation of `1..D` — `door_k` is the slot given to truck `k`. Then, in the
+same order as the input's `M` pairs, one line per pair: trip count `m_e` followed by
+`m_e` trip sizes (each `1..K`) that sum to `f_e`.
+
+## Feasibility
+- `door_1..door_D` is a permutation of `1..D`.
+- For every pair `e`: each printed size lies in `[1,K]` and the sizes sum exactly to
+  `f_e`.
+Any violation scores 0.
+
+## Objective
+For a trip crossing doors `a,b` (`a != b`), it crosses every segment `s` with
+`min(a,b) <= s < max(a,b)`. Let `L_s` be the total number of trips (over every pair)
+crossing segment `s`. Minimize total forklift time
+```
+F = sum over segments s of  L_s * (1 + (L_s/cap)^2)
+```
+(a trip's own cost is the sum of the segment costs it crosses; summed over all trips
+this equals the formula above, since each crossing of segment `s` pays that segment's
+per-crossing cost once).
+
+## Scoring
+The checker also builds its own **block-and-singles** baseline `B`: door draw = trucks
+in input order (`1..T_in` get slots `1..T_in`, outbound truck `j` gets slot
+`T_in+j`), every pallet moved in its own single-pallet trip. `B` is `F` evaluated on
+that construction (always positive). Your score on a test is
+```
+ratio = min(1.0, B / (10 * max(1, F)))
+```
+so matching the baseline scores `0.1`; cutting cost to a tenth of baseline (or below)
+saturates at `1.0`.
+
+## Constraints
+`2 <= T_in, T_out <= 30`, `1 <= M <= 400`, `1 <= f_e <= 200`, `1 <= K <= 20`,
+`4 <= cap <= 600000`. Time limit: **4s**. Memory limit: **512MB**.
+
+## Example
+`T_in=2, T_out=2, K=3, cap=2`, pairs `(1,2,3)`, `(2,1,3)` (trucks 1,2 inbound; 3,4
+outbound, so 3=outbound1, 4=outbound2). Door draw `3 2 1 4` puts each owing pair in
+adjacent doors. Unbatched (`3` size-1 trips per pair): pair(1,2) doors 3->4 crosses
+only segment 3 (`L_3=3`); pair(2,1) doors 2->1 crosses only segment 1 (`L_1=3`).
+Cost at `L=3`: `3*(1+(3/2)^2)=9.75` per loaded segment, `F = 19.5`.
+
+The block baseline (inbound1,2 in slots 1,2; outbound1,2 in slots 3,4): pair(1,2)
+doors 1->4 crosses segments 1,2,3; pair(2,1) doors 2->3 crosses segment 2. Unbatched:
+`L_1=L_3=3` (cost `9.75` each), `L_2=6` (cost `6*(1+3^2)=60`). `B=9.75+60+9.75=79.5`.
+
+`ratio = min(1, 79.5/(10*19.5)) = 0.408`. Batching into single size-3 trips on the
+good draw would cut `F` further, raising the score toward the `1.0` cap.

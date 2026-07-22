@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0803",
+  "tier": "A",
+  "format": "E",
+  "family": "critical-exponent-extrapolation",
+  "eval_form": "quality-metric",
+  "theme": "magnet near its Curie point",
+  "title": "Collapse to the Curie Point — recovering a non-analytic scaling law",
+  "objective": "min",
+  "strategies": [
+    "trivial: predict a constant magnetization (the geometric mean of the training m column), ignoring T and h entirely -> reproduces the checker baseline ~0.1",
+    "greedy: generic smooth regression -- fit m as an ordinary least-squares quadratic in T with linear-in-log(h) terms (m ~ c0+c1*T+c2*T^2+c3*log(h)+c4*log(h)*T+c5*log(h)*T^2). Matches the training band, which never gets close to Tc and never crosses it, but the true law is non-analytic at Tc (|Tc-T|^beta) and folds onto |T-Tc| on the far side; the smooth polynomial has no cusp and does not fold, so it misses badly wherever the held-out grid sits close to or past the transition",
+    "strong: search for the change of variables under which every field-curve collapses onto one curve. Grid-search the crossover pair (Tc, phi) (with beta and the amplitude A solved in closed form at each grid point via a linear regression in log space against u=|Tc-T| and x=h/u^phi), refine coarse-to-fine, and read off Tc, beta, phi, A directly -- the SAME closed form then extrapolates correctly to both near-Tc and far-side held-out points",
+    "headroom above strong: refine the scaling function F(x) beyond the planted (1+x^2)^-p form (e.g. add a correction term) and jointly re-optimize all five parameters, pushing held-out error toward the sensor-noise floor"
+  ]
+}

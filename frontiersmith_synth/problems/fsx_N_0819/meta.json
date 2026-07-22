@@ -1,0 +1,17 @@
+{
+  "id": "fsx_N_0819",
+  "tier": "N",
+  "format": "B",
+  "family": "latent-regime-prepositioning",
+  "eval_form": "quality-metric",
+  "theme": "disaster-relief supply pre-positioning across depots",
+  "title": "The Cyclone's Wake",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:topup-B-2"],
+  "strategies": [
+    "do nothing: no shipments at all -- reproduces the evaluator's do-nothing baseline",
+    "reactive safety-stock rebalancing off the CURRENT bin's coarse per-cluster reading, guessing a modest one-size-fits-all top-up whenever a depot's cluster looks active right now -- never anticipates, so every shipment lands L steps late and misses the strike itself",
+    "keep that reactive backstop, but ALSO use the current bin's per-cluster reading to identify the currently-active storm cluster with confidence, exploit the known cyclic transition structure to predict the NEXT cluster, and pre-stage a full-sized hub batch toward it immediately -- catching the strike a purely reactive policy always misses; the candidate is invoked once per bin (causally, seeing only elapsed bins) so this genuinely requires forecasting, not lookup",
+    "the same regime-aware pre-positioning, generalizing across fast-cycling and slow-dwell instances alike"
+  ]
+}

@@ -1,0 +1,94 @@
+# Derandomized Dust: Sculpting a Rotor-Router Aggregate
+
+## Problem
+
+An `L x L` toroidal grid (edges wrap around) has one source point and a set of
+`N` **emission ports**: the `N` cells closest to the source (by grid distance),
+found by a BFS outward from the source that skips the source and every target
+cell (defined below). The ports are fixed by the grid, source and target --
+you do not choose them.
+
+Every cell, including source and ports, owns a **rotor** that cycles through
+East, North, West, South (fixed order, wrapping) -- each time a rotor *fires*
+it hands out its current direction, then advances one notch for next time.
+One particle is emitted from each port (port `k` emits particle `k`) and
+walks deterministically: at its current cell, that cell's rotor fires; the
+particle steps onto the neighbor just indicated (torus wraparound). If that
+neighbor is unoccupied, it becomes occupied and the particle stops; otherwise
+the particle keeps walking from there, firing that cell's rotor again.
+
+You choose the **initial phase** (0-3) of every cell's rotor before emission
+starts. This single choice entirely determines the whole deterministic
+process. With every rotor at phase 0, the aggregate is known to round itself
+into a disk centered on the source. You are given a specific target shape
+instead, and must choose phases that steer the dust toward it. Because a cell
+visited by more than one particle's path fires a DIFFERENT direction on each
+visit, the difficulty is not just picking a good direction per port, but
+keeping different particles' paths from fighting over the same cells' rotors.
+
+## Input
+
+```
+L N
+sx sy
+```
+then `N` lines, the target cell coordinates (0-indexed, distinct, none equal to
+the source, and together forming a single 4-connected shape):
+```
+x_i y_i
+```
+
+## Output
+
+`L` lines of `L` integers each: `phase[y][x]` for `y = 0..L-1`, `x = 0..L-1`
+(row `y`, columns `x` left to right), each in `{0,1,2,3}` -- the initial rotor
+state of cell `(x,y)`.
+
+## Feasibility
+
+Every printed value must be an integer in `[0,3]`; the output must contain
+exactly `L*L` of them and nothing else. Additionally, run the process to
+completion: let `S` be the total number of rotor firings across all `N`
+particles (the **odometer**). Compute `D0`, the sum over the `N` fixed ports
+of that port's shortest-path distance to the nearest target cell (a fixed
+quantity depending only on the instance). Your phases must keep `S <= 6*D0`:
+the walk has to actually settle efficiently, not merely eventually. Any
+violation of either rule scores `0`.
+
+## Objective
+
+Let `O` be the occupied set after the process completes (`|O| = N`). Maximize
+```
+quality = |O ∩ T| / |O ∪ T|
+```
+the Jaccard overlap between `O` and the target `T` (`|T| = N`, so quality `= 1`
+only when `O = T` exactly).
+
+## Scoring
+
+Let `B` be `quality` for the reference construction where every rotor starts at
+phase 0 (the disk-forming default, using the same fixed ports). Your score for
+a test is
+```
+ratio = min(1000, 100 * quality*1e6 / max(1, B*1e6)) / 1000
+```
+so the all-phase-0 default scores `0.1`, and genuine shape control scores
+higher, capped at `1.0` (ten times the default). Per-test ratios are averaged.
+
+## Constraints
+
+* `10 <= L <= 28`; `N` roughly `18%` of `L*L` (a few dozen up to a couple
+  hundred).
+* `T` is always a single 4-connected shape touching the source's neighborhood.
+* Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+`L=10`, source `(5,5)`, target a short corridor of `N=5` cells running east then
+north: `(6,5) (7,5) (8,5) (8,6) (8,7)`. The 5 ports are the 5 non-target cells
+closest to the source. At phase 0, particles scatter across all four compass
+directions from their ports and mostly miss the corridor. Assigning each port
+to the nearby corridor cell it should feed, phasing each cell along its route
+so the first firing advances one step further, and giving different routes
+different cells wherever possible (so their rotors don't dilute each other)
+fills the whole corridor: `quality = 1`, odometer `S` near the minimum.

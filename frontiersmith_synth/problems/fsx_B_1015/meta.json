@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1015",
+  "tier": "B",
+  "format": "C",
+  "family": "self-trapping-reward-tour",
+  "eval_form": "quality-metric",
+  "theme": "Walk a grid collecting rewards without dead-ending",
+  "title": "The Spine, the Spurs, and the Vault",
+  "objective": "max",
+  "strategies": [
+    "trivial: a reward-blind, fixed direction-priority walker (right>down>up>left) -- happens to skip decoys (right beats down) but also takes the WRONG fork (right beats down) and starves at the locked gate; reproduces the checker's own baseline B exactly",
+    "greedy: one-step lookahead -- always step to the legal unvisited neighbour with the biggest immediate reward -- dives into the first decoy spur for its fat entrance reward and gets permanently stuck in that dead end, forfeiting the rest of the spine, the key, the gate and the vault",
+    "strong: exhaustive lookahead search over the (linear-size) decision tree -- evaluates each branch by its TOTAL downstream reward, tracks which keys are actually held before each gate, always skips every decoy, always takes the key branch through the fork, and rides the unlocked gate into the long high-reward vault tail",
+    "headroom above strong: none of the reference solutions revisit their own frontier cells opportunistically or exploit partial-credit corner cases in how ties are broken at the fork/decoy boundary reward values -- a policy that reasons about slightly finer reward thresholds or plans multi-key chains in larger instances still has room to climb"
+  ]
+}

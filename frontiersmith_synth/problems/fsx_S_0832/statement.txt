@@ -1,0 +1,108 @@
+# Wire Power to Comm So Both Survive
+
+## Problem
+
+A region runs two separate infrastructure networks over the same `N` sites: a
+**power grid** `P` and a **communication/SCADA network** `C`, each an undirected
+graph on its own copy of the sites `1..N` (site `i` of `P` and site `i` of `C`
+are different devices that happen to share a location number). Every
+substation needs a comm device to monitor it, and every comm device needs
+power — so before anything fails, you must fix a **one-to-one coupling**
+between power substations and comm devices.
+
+Disaster strikes as a set of attack **scenarios**, each removing some
+substations from `P` directly (storm damage, sabotage — always physical,
+always on the power side). Given a coupling, failures spread by the standard
+interdependent-cascade rule, applied to each scenario independently with the
+*same* coupling:
+
+1. In each layer, a node that is not part of its layer's current **largest
+   connected component** (the giant component, among currently-alive nodes)
+   fails — an islanded substation shuts down; an islanded relay goes dark. If
+   several components tie for largest, the one containing the lowest-numbered
+   surviving site is kept as the giant component; every node in every other
+   tied component fails.
+2. A node whose coupled partner has failed also fails (a substation with no
+   working comm link is not controllable; a comm device with no power is dead).
+3. Repeat steps 1–2, alternating between layers, until nothing changes.
+
+A node's final status only depends on the coupling and the attack, not on order
+of computation. Your job: choose the coupling **before** any attack happens,
+so that it survives all the given scenarios as well as possible.
+
+## Input
+
+```
+N M_P M_C
+M_P lines: u v          (edge of P; 1<=u,v<=N)
+M_C lines: u v          (edge of C; 1<=u,v<=N)
+K
+K lines: A t_1 t_2 ... t_A     (scenario: A power sites removed at the start)
+```
+Both `P` and `C` are connected and share the site numbering `1..N` — co-location
+alone tells you nothing about either one's importance in its own layer; read
+the edges to find out.
+
+## Output
+
+`N` integers, one per line: line `i` is the comm-site coupled to power-site `i`.
+These `N` values must form a permutation of `1..N`.
+
+## Feasibility
+
+Feasible iff the `N` printed values are all in `[1,N]` and pairwise distinct
+(a valid bijection). Infeasible output scores 0.
+
+## Objective
+
+For scenario `t`, run the cascade to its fixed point and let `s_t` = number of
+power-sites still alive. Maximize `F = sum over t of s_t`.
+
+## Scoring
+
+Let `B` be `F` computed for the **identity coupling** (site `i` paired with site
+`i`), always feasible. Your score on a test is
+`ratio = min(1, (F / max(1,B)) / 10)`, averaged over tests. Matching the identity
+baseline scores `0.1`; ten times its survivors (or more) caps at `1.0`. Scoring
+below `0.1` is possible if your coupling does *worse* than doing nothing.
+
+## Constraints
+
+- `4 <= N <= 320`, `1 <= K <= 20`
+- Time limit: 4s. Memory limit: 512 MiB.
+
+## Example
+
+`P` (5 edges): 1-2, 2-3, 3-4, 4-1, 1-3 — sites 1 and 3 are power hubs (degree 3).
+`C` (3 edges): 1-3, 2-3, 3-4 — a star: site 3 is the sole comm relay hub, 1/2/4 are leaves.
+One scenario: `A=1`, attacked site `1` (a power hub).
+
+Input:
+```
+4 5 3
+1 2
+2 3
+3 4
+4 1
+1 3
+1 3
+2 3
+3 4
+1
+1 1
+```
+
+Identity coupling gives `B = 3`: site 1 fails (attacked), dragging down
+comm-leaf 1, but the comm hub (site 3) never depends on the attacked power
+hub, so `C`'s star stays fully connected.
+
+Now consider the output `3 2 1 4` (power-hub 1 paired with **comm-hub** 3,
+power-hub 3 with comm-leaf 1, power-leaf 2 with comm-leaf 2, power-leaf 4 with
+comm-leaf 4). Attacking power-hub 1 now kills comm-hub 3 too. `C`'s star loses
+its centre: the three remaining comm leaves have no edges left between them,
+so at most one survives the giant-component tie-break — the other two die,
+dragging power sites 2 and 4 down with them. Only power-site 3 is left:
+`F = 1`, giving `ratio = min(1, (1/3)/10) = 0.0333` — *worse* than doing
+nothing, because pairing the two networks' hubs together turned one attacked
+substation into a network-wide collapse. Coupling the power hub to an
+unimportant comm leaf instead keeps `C`'s giant component intact.

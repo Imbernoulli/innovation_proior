@@ -1,0 +1,94 @@
+# Mirror Hall Laserglyph
+
+## Problem
+A laser hall is an `n x n` grid of cells (`n` even). A fixed emitter sits at the top
+boundary above column `ec` and fires a beam straight **south** into cell `(0, ec)`.
+You may place up to `M` mirrors on distinct cells: each is `/` or `\`. Whenever the
+beam enters a mirrored cell it turns 90 degrees (`/` swaps N<->E and S<->W; `\` swaps
+N<->W and S<->E); an empty cell leaves its direction unchanged. The beam keeps moving,
+cell by cell, until it either leaves the grid or repeats an exact `(cell, direction)`
+state (from then on it would only retrace itself, so tracing stops there). The
+**illuminated set** `S` is every distinct cell the beam passed through.
+
+You are also given a target symmetry group `G` acting on the grid about its centre:
+`C2 = {identity, 180-degree rotation}` or `D4 = {identity, the 3 nontrivial rotations,
+and the 4 axis/diagonal reflections}`. `G` partitions the grid into **orbits** (each
+cell's orbit is the set of its images under every element of `G`).
+
+## Input
+```
+n M group
+ec
+```
+`n`: grid side (even). `M`: mirror budget. `group`: the token `C2` or `D4`. `ec`: the
+emitter's column, `0 <= ec < n`.
+
+## Output
+```
+K
+r_1 c_1 t_1
+...
+r_K c_K t_K
+```
+`K` mirrors (`0 <= K <= M`), each a distinct cell `0 <= r,c < n` and a type `t` in
+`{/, \}` (write `\` literally, one backslash character).
+
+## Feasibility
+`K <= M`; every `(r,c)` in range and pairwise distinct; every `t` is `/` or `\`. Any
+violation (or trailing/malformed tokens) scores 0.
+
+## Objective (maximize)
+Trace the beam through your mirrors to get `S`. Let an orbit be **touched** if it
+shares at least one cell with `S`. Define
+```
+Sym  = average, over touched orbits O, of |O intersect S| / |O|         (0 < Sym <= 1)
+Motif = number of DISTINCT 3x3 illumination patterns (each of the 9 cells marked
+        illuminated/dark) among all 3x3 windows of the grid that contain at least
+        one illuminated cell, capped at 15.
+F = round(100 * Sym) * (1 + Motif)
+```
+`Sym` is the *inverse symmetry defect* of the footprint: it is `1` exactly when `S`
+is a union of complete orbits, i.e. the illuminated **set** is `G`-invariant, however
+the beam actually walked through it. `Motif` rewards a visually rich glyph, not a bare
+line or a single blob.
+
+## Scoring
+`B` is `F` for the mirror-free trace (the straight column under `ec`), computed by the
+checker itself; `B` is always positive. The reported ratio is
+```
+Ratio = min(1000, 100 * F / max(1, B)) / 1000
+```
+Placing no mirrors reproduces `B` exactly, i.e. `Ratio = 0.1`. The score is a
+deterministic function of your output.
+
+## Constraints
+- `8 <= n <= 40` (even); `M` given, comfortably above the ~5 mirrors a single closed
+  loop needs, but every mirror still counts against it.
+- Time limit: 4 s. Memory limit: 512 MB. Each input file is well under 1 KB.
+
+## Example
+`n=8, M=12, group=C2, ec=2`. Placing no mirrors: the beam draws the straight column
+`(0,2)..(7,2)`. Under `C2` (no fixed cells for even `n`) each of these 8 cells sits in
+its own untouched-partner orbit, so every touched orbit is exactly half-covered:
+`Sym=0.5`. The straight line crosses 3 distinct 3x3 window patterns depending on how
+far a window's edge lies from the line, so `Motif=3`. `F = round(50) * (1+3) = 200`,
+and by definition `B=200`, `Ratio=0.1`.
+
+A solver who instead uses 5 mirrors to route the beam onto a loop around a centred
+4x4 square (4 corner mirrors plus one redirect mirror where the incoming column meets
+the square) reaches `Sym=0.8125`, `Motif=25` (capped to 15), `F = 81*16 = 1296`, and
+`Ratio = min(1000, 100*1296/200)/1000 = 0.648` -- far above the do-nothing baseline,
+using well under the budget.
+
+## Notes on strategy
+Mirroring the *hardware* under `G` does **not** mirror the *light*: the beam enters
+each orbit from one side only, so a `G`-symmetric mirror layout usually deflects the
+beam away after the very first bounce, wasting most of the placed mirrors on cells the
+beam never reaches. What actually earns `Sym=1` is choosing a shape whose **cell set**
+is `G`-invariant (a centred, axis-aligned rectangle for `C2`; it must be a centred
+*square* for `D4`, since only a square maps onto itself under a 90-degree turn) and
+routing the single directed beam so it eventually closes onto that shape -- the
+traversal itself, and the order in which it visits each orbit, need not be symmetric
+at all. Larger or more elaborate centred shapes (extra notches, nested rings chained
+through the budget) raise `Motif` further; the reference solution does not chase that,
+leaving room above it.

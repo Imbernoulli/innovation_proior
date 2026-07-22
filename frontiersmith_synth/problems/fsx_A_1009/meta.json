@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1009",
+  "tier": "A",
+  "format": "C",
+  "family": "probe-matrix-fault-disambiguation",
+  "eval_form": "quality-metric",
+  "theme": "few diagnostic probes pinpoint any hidden fault",
+  "title": "Deep-Space Array: Probing Against the Fault Sweep",
+  "objective": "optimize",
+  "strategies": [
+    "block-partition baseline: split the n components into contiguous blocks, one probe per block (checker's own reference construction, always valid, very coarse)",
+    "textbook binary-splitting matrix: give every component a unique ceil(log2 n)-bit address and probe one bit-plane per row; perfectly separates every single fault but ignores the published double-fault list entirely, so many designated pairs alias onto the same OR-pattern",
+    "targeted-disjunctness: keep the binary-splitting core, then spend the small leftover probe budget on extra single-component pivot probes chosen greedily to maximally split the CURRENT collision buckets among the published sweep (singles + listed doubles only), buying non-aliasing exactly where the adversary's list needs it",
+    "full 2-disjunct matrix construction over all C(n,2) potential pairs (theoretically optimal disambiguation for every conceivable double fault, not just the published ones) -- provably correct but needs far more probes than the budget allows at this scale"
+  ]
+}

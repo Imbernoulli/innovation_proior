@@ -1,0 +1,18 @@
+{
+  "id": "fsx_B_0720",
+  "tier": "B",
+  "format": "A",
+  "family": "batch-heat-handshake-scheduling",
+  "eval_form": "quality-metric",
+  "theme": "brewery batches sharing one thermal storage tank",
+  "title": "Brewery Batches Sharing One Thermal Storage Tank",
+  "objective": "min",
+  "seed_problem": "interval scheduling of movable-start tasks against one shared capacitated resource pool",
+  "mutation": "composite: the shared pool is not a passive buffer but a MIXER whose state (a volume-weighted temperature) updates on every deposit and is read by every withdrawal, so the objective (external heating cost) becomes a function of the full timeline ORDER induced by each task's chosen start time within its window, not just of aggregate supply/demand quantities; hot donors form a scarce, unassigned shared pool (any donor can serve any consumer) instead of a 1:1 resource, turning scheduling into an implicit value-ranked assignment problem; a capacity cap adds an overflow side-constraint that further punishes indiscriminate early deposits.",
+  "strategies": [
+    "trivial: earliest-start for everyone (s_i=e_i) -- reproduces the checker's own baseline construction; hot donors fire immediately and get diluted by the persistent trickle of background cold donors long before any consumer draws",
+    "naive greedy: correctly defers background cold donors out of the way (the easy half of the insight), and correctly matches the scarce hot-donor pool to heat-sensitive consumers one tick before each draw -- but picks WHICH consumer gets a donor by ENCOUNTER order (earliest window first), never asking how much a match is actually worth (price*requirement); with donors scarcer than consumers this routinely burns a donor on a cheap consumer while an expensive one goes unmet",
+    "insight (strong): the same causal placement (donor deferred to one tick before its consumer's draw, everything irrelevant pushed to the end of its own window), but ranks consumers by VALUE = price*requirement and greedily assigns the scarce donor pool to the highest-value consumers first -- an exchange argument (swapping a donor from a cheaper consumer to a pricier one that could also use it never hurts) that recovers most of the value quantity/order-based matching leaves on the table",
+    "invalid: prints an out-of-window start time -- the checker's bounded read rejects it, scoring 0"
+  ]
+}

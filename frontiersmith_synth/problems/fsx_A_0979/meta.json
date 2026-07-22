@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0979",
+  "tier": "A",
+  "format": "A",
+  "family": "bloom-bit-cascade-splitter",
+  "eval_form": "quality-metric",
+  "theme": "customs officers with limited stamps at nested checkpoints",
+  "title": "Nested Customs Stamps",
+  "objective": "min",
+  "seed_problem": "per-tier Bloom filter sizing to minimize average false-positive rate under a bit budget",
+  "mutation": "composite: replaces analytic average-FP-rate optimization with an exact, exponentially-cost-skewed cascade objective -- the checker literally builds each tier's Bloom filter from the fixed seeded hash and replays the fixed trace container-by-container, charging 2^(i-1) ink for every real manifest check (true or false alarm) a checkpoint triggers, coupling bit-budget-apportionment across 8 tiers with the tiered-probe-cascade's exponential cost skew and exact-fp-replay of a fully known trace.",
+  "strategies": [
+    "trivial: split the ink budget evenly across all 8 checkpoints with a fixed k=4 stamps (reproduces the checker's own baseline)",
+    "naive greedy: the textbook Bloom-filter recipe -- allocate bits proportional to each checkpoint's watch-list size n_i (so every tier gets the same m_i/n_i ratio) and pick k_i by the closed-form optimal-FP-rate formula k=round((m_i/n_i)*ln2); this equalizes the ANALYTIC false-positive rate across tiers, ignoring that a false alarm at checkpoint 8 costs 128x a false alarm at checkpoint 1",
+    "insight (strong): since SEED1/SEED2 and the whole trace are fully known, replay it exactly under trial allocations -- start from the minimum-bits floor, greedily hand budget chunks to whichever checkpoint's REAL simulated total cost drops the most (cost-weighted, not size-weighted), then locally refine each k_i against the exact replay; this systematically overspends on rarely-populated deep checkpoints (whose false alarms are ruinous) and lets cheap shallow checkpoints run a higher false-positive rate, because it optimizes the exact realized cascade cost instead of an average FP-rate formula"
+  ]
+}

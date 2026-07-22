@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0575",
+  "tier": "B",
+  "format": "C",
+  "family": "support-shadow-extraction",
+  "eval_form": "quality-metric",
+  "theme": "3D print whose scaffolding must escape the cage",
+  "title": "Escape the Cage: Extractable Support Scaffolding",
+  "objective": "min",
+  "strategies": [
+    "trivial: print in the given orientation, drop a straight vertical support column beneath every overhang down to the first solid or the plate",
+    "greedy: try all 6 build directions, keep the one whose straight-column support uses the LEAST material (overhang minimisation) -- ignores whether that support can be removed",
+    "strong: score each build direction by ESCAPABLE shadow volume (material + a penalty for support with no line-of-sight extraction ray) and route supports along <=45-degree slopes toward open corridors so they can be pulled free",
+    "beyond strong: jointly optimise orientation and a branching support tree so nearly every voxel escapes while sharing trunks -- the true optimum is unknown"
+  ]
+}

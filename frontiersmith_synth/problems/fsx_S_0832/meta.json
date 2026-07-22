@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0832",
+  "tier": "S",
+  "family": "interdependent-coupling-robustness",
+  "seed_problem": "gen.cpp emits two networks (power and communication) and requires a one-to-one coupling between their nodes; each node survives only if it stays in its own layer's giant component AND its partner survives. chk.cc removes an initial node set and runs the back-and-forth interdependent cascade to a fixed point, reporting the surviving mutually-connected component size (maximize). Trap: coupling hub-to-hub feels robust but amplifies cascades; degree-anticorrelated coupling raises the mutual-percolation threshold.",
+  "mutation": "composite: instantiate the family directly -- goal is a design (choose the P<->C node coupling), output is a permutation, and the objective couples giant-component percolation with a two-way interdependent cascade evaluated across a bank of fixed attack scenarios (deliberate strikes on the power hubs/backup tier, and broad storm/untargeted damage) that the SAME coupling must survive simultaneously. Power grid P is built redundant (cycle backbone + chords) so direct node loss barely fragments it; comm net C is built fragile (star clusters around a few relay hubs) so losing a relay hub fragments its whole cluster; P and C additionally share a site numbering under which a power hub is SOMETIMES also a comm hub (partial correlation), so even the 'do nothing, pair site i with site i' baseline carries real hub-collision risk. testId 1-7 face only broad storm/untargeted damage (degree-correlated coupling is genuinely good there -- a comm hub parked on the sturdiest power site survives); testId 8-10 face deliberate hub-targeted strikes (the same correlated coupling now guarantees a comm hub dies with its power-hub partner). A strong solution must read the given attack scenarios to tell which regime it is in, not apply one fixed rule everywhere.",
+  "objective": "max",
+  "theme": "Wire power to comm so both survive",
+  "title": "Wire Power to Comm So Both Survive",
+  "strategies": [
+    "identity baseline: couple P-node i to C-node i (always feasible, matches the checker baseline, ratio ~0.1 by construction)",
+    "hub-to-hub degree matching: sort both node sets by degree descending and pair by rank -- looks 'balanced' and is genuinely decent under storm damage, but deterministically routes power-hub failures onto comm-net relay hubs, fragmenting the fragile star clusters and triggering a cascading collapse under the targeted attack scenarios",
+    "regime-adaptive coupling: inspect the attack scenarios themselves (does any of them disproportionately hit the high-degree power sites relative to a uniform draw of the same size?) and switch between degree-correlated pairing (safe, storm-only regime) and a three-band anti-correlated hedge -- power hubs paired with cheap comm leaves, comm hubs paired with the well-connected-but-not-targeted backup tier -- when targeting is detected",
+    "regime-adaptive coupling + hub-pool local search: start from the regime-appropriate construction above, then hill-climb by swapping the C-partners of the highest- and lowest-degree P-nodes against each other, re-simulating every given cascade to keep only improving swaps -- recovers the residual value the closed-form rule leaves on the table in either regime"
+  ]
+}

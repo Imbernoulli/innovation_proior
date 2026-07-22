@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1037",
+  "tier": "A",
+  "format": "C",
+  "family": "percentile-triage-replication",
+  "eval_form": "quality-metric",
+  "theme": "backups that deliberately abandon the nastiest disasters",
+  "title": "Tail-Risk Backups: Abandoning the Nastiest Disasters",
+  "objective": "max",
+  "strategies": [
+    "throttled single-replica round robin: only bother spending a fraction of the replica budget, giving each covered shard one replica cycling through machines in index order regardless of value, oblivious to which failure pair the checker will actually judge you on (reproduces the checker's own weak reference, ~0.1)",
+    "value-priority first-fit double coverage: sort shards by value, give the top shards up to two replicas each on the first machine (by plain increasing index) with spare room -- a minimax instinct that tries to protect every shard a little everywhere instead of choosing which disaster to abandon, so it fragments coverage across many small machines",
+    "percentile-aware sacrifice-pair concentration: designate the two highest-capacity machines as a single deliberately-abandoned failure pair, pack as many high-value shards as budget/capacity allow with exactly one replica on each of those two machines (making them immune to every OTHER disaster at half the cost of true immunity), and spend only the leftover budget on single-replica coverage elsewhere",
+    "multi-pair sacrifice search: exact or near-exact small-scale optimization over which K-1 disasters to write off and how to divide the remaining replica budget across the surviving frontier of machine pairs"
+  ]
+}

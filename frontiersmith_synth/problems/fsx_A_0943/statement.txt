@@ -1,0 +1,101 @@
+# Star Atlas Portfolio — Diverse Constellation Drawing
+
+## Problem
+
+A cartographer has already grouped `N` catalogued stars into `K` proto-constellations
+(given — you do not choose it). For every one you must draw a **spanning tree** on its
+stars using straight segments (exactly `size - 1` segments joining that constellation's
+own stars, connected, no cycle). You must also declare, per constellation, which
+**shape grammar** it is meant to evoke: `0 = PATH` (a smooth wandering line), `1 = STAR`
+(one bright hub with spokes), `2 = ZIGZAG` (a sharp switchback line).
+
+The atlas is judged as a **portfolio**, not star-by-star: it should (a) have
+generously spread-out junctions, (b) stay visually clean — segments from *any*
+constellations should not cross or overlap, (c) have each constellation's drawn shape
+actually resemble its declared grammar, and (d) make the collection of constellations
+look genuinely *different* from each other, not like `K` copies of the same blob.
+
+## Input (stdin)
+
+```
+N K
+x_1 y_1 c_1
+x_2 y_2 c_2
+...
+x_N y_N c_N
+```
+Star `i` (1-indexed, line order) sits at integers `(x_i, y_i)`, belongs to constellation
+`c_i` (`0 <= c_i < K`). Every constellation has at least 5 stars. All `(x_i, y_i)` distinct.
+
+## Output (stdout)
+
+```
+r_0 r_1 ... r_{K-1}
+u_1 v_1
+u_2 v_2
+...
+u_{N-K} v_{N-K}
+```
+`r_c` is constellation `c`'s declared grammar (0/1/2). Each `(u_i, v_i)` is a drawn segment
+between two star ids (1-indexed). Exactly `N - K` segments total, in any order.
+
+## Feasibility (hard — any violation scores 0)
+
+- Each `r_c` is one of `{0,1,2}`.
+- Every `(u,v)` has `1 <= u,v <= N`, `u != v`, both stars in the **same** constellation.
+- No duplicate segment; for every constellation, its own segments form a single spanning
+  tree over exactly its own stars (exactly `size-1` segments, connected, no cycle).
+- No trailing tokens.
+
+**Crossing and shape quality are NOT feasibility requirements** — they are graded
+continuously below, so an imperfect atlas still earns partial credit.
+
+## Objective (maximize)
+
+Let `F = 0.06*ang + 0.06*cross + 0.33*fit + 0.55*div`, a weighted blend of four terms,
+each in `[0,1]`. Style fidelity and, above all, portfolio diversity dominate the score —
+a geometrically tidy atlas that never diversifies its constellations still scores low:
+
+1. **Angular resolution** — for every star that is an endpoint of 2+ segments (any
+   constellation), its *local* angular resolution is the smallest angle between two
+   segments meeting there. This term is the **average**, over every such junction, of
+   that value divided by `π`. Spiky, near-collinear junctions pull it down.
+2. **Crossing-freeness** — over all pairs of drawn segments (any constellations), the
+   fraction that do **not** improperly intersect. Segments sharing a drawn endpoint may
+   touch there; any other intersection, T-touch, or overlap counts against you.
+3. **Style fidelity** — for each constellation, how well its *actual* drawn shape (its
+   maximum branching degree and average turning sharpness at degree-2 stars) matches its
+   *declared* grammar, averaged over all `K` constellations.
+4. **Portfolio diversity** — every constellation's realized shape is a 2-D fingerprint
+   (branching, turning-sharpness). This term is the average pairwise Euclidean distance
+   between fingerprints across all `K` constellations, normalized to `[0,1]`. A portfolio
+   where every constellation ends up with the same fingerprint scores near 0 here —
+   however good each individual tree is.
+
+## Scoring
+
+Let `B` be `F` for the checker's own baseline atlas (chain the stars of every
+constellation in the order they appear in the input, and declare every constellation
+`PATH`). The reported score is `Ratio = min(1000, 100 * F / B) / 1000`. The baseline
+itself scores `0.1`; an atlas ten times richer than baseline caps at `1.0`.
+Non-finite or infeasible output scores `0`.
+
+## Constraints
+
+- `18 <= N <= 300`, `3 <= K <= 14`, each constellation has `5 <= size <= 30` stars.
+- Coordinates are integers in `[0, 2200]`.
+- Time limit: 5s. Memory limit: 512MB. The checker runs in `O(N^2)` time.
+
+## Example (worked score)
+
+`N=15, K=3`: constellation 0 and 2 are wavy lines, constellation 1 is a loose blob.
+
+**Baseline** (chain each in input order, declare all `PATH`): `ang=0.387, cross=0.970,
+fit=0.258, div=0.254` &rarr; `B = F = 0.306`, always `Ratio = 0.1` by construction.
+
+**A better submission** — `PATH` for constellation 0 (wavy chain), `STAR` for
+constellation 1 (hub-and-spoke from one star), `ZIGZAG` for constellation 2 (its own
+wavy chain, which is already a switchback): `ang=0.494, cross=1.000, fit=0.651,
+div=0.504` &rarr; `F = 0.582`, `Ratio = min(1000, 100*0.582/0.306)/1000 = 0.190`.
+Declaring three *different* grammars instead of `PATH` for all three is what pushes
+`fit` and, above all, `div` up together.

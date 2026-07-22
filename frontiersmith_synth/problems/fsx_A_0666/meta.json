@@ -1,0 +1,20 @@
+{
+  "id": "fsx_A_0666",
+  "tier": "A",
+  "format": "A",
+  "family": "sinr-power-channel-packing",
+  "eval_form": "quality-metric",
+  "theme": "Pack wireless links against additive interference",
+  "title": "Additive Interference Spectrum Packing",
+  "objective": "max",
+  "seed_problem": "link scheduling under a channel-conflict graph (colour links so no two conflicting links share a channel)",
+  "mutation": "composite: replaces the pairwise conflict-graph feasibility test with a genuine additive-SINR feasibility test (a receiver's interference is the SUM of every co-channel transmitter's power it hears, not just its worst single neighbour), and couples channel assignment to a per-link DISCRETE POWER choice, so an accepted link can trade power (and therefore the interference it imposes on others) for spatial reuse -- something no graph colouring can express.",
+  "source_frameworks": ["wave2b-lens:nonlinear-network-effects"],
+  "innovation_hook": "Feasibility is a cumulative-interference constraint, not a pairwise conflict, so power-controlled spatial reuse beats any graph-coloring assignment.",
+  "strategies": [
+    "trivial: no spatial reuse at all -- give the min(N,C) highest-value links one link per channel at max power (reproduces the checker's baseline, ratio ~0.1)",
+    "naive greedy: build a PAIRWISE conflict graph (max power, one interferer at a time) and colour it with C colours, turning every link ON at max power; blind to additive interference, so dense clusters of individually-mild co-channel interferers collectively drown each other",
+    "insight (strong): admit links value-first against the TRUE cumulative SINR, using the MINIMUM power level that still clears threshold for each accepted link so it imposes the least possible interference on channel-mates -- trading power for reuse to pack far more value per channel than any coloring",
+    "a general solver can go further with local search: swap channels/power levels of already-accepted links, or re-order admission by value-density under the current interference state, to escape the greedy admission order's local optima"
+  ]
+}

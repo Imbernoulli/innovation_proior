@@ -1,0 +1,94 @@
+# Master Keys for the Wing Complex
+
+## Problem
+A facility has `K` building wings. Every door in wing `k` has a code: a length-`L`
+string over the digits `{0,1,2,3}` (a 4-position tumbler). Wing `k` publishes the
+full list of its `n_k` door codes (its "demands"). You design a small dictionary of
+**master-key templates** -- strings of length `L` over `{0,1,2,3}` -- each installed
+with its own Hamming service radius. A door code is **served** if it lies within its
+template's radius of that template (Hamming distance = number of differing
+positions). A door needs only ONE template to serve it.
+
+Installing a template at radius `r` costs `(r+1)^2` units from a single shared
+budget (bigger radii cost much more, per template). You may install up to `M_max`
+templates in total.
+
+## Input
+```
+K M_max L Rmax Budget
+n_1
+(n_1 lines)  a length-L demand string, alphabet 0..3
+n_2
+(n_2 lines)  ...
+...
+n_K
+(n_K lines)  ...
+```
+
+## Output
+```
+T
+template_1 radius_1
+template_2 radius_2
+...
+template_T radius_T
+```
+`T` is the number of templates you install (`0 <= T <= M_max`). Each `template_i` is
+a length-`L` string over `{0,1,2,3}`; each `radius_i` is an integer in `[0, Rmax]`.
+
+## Feasibility
+- `0 <= T <= M_max`.
+- Every template has exactly `L` characters, each in `{0,1,2,3}`.
+- Every radius is an integer in `[0, Rmax]`.
+- `sum_i (radius_i + 1)^2 <= Budget`.
+Any violation (wrong length, bad symbol, radius out of range, budget exceeded,
+wrong token count) is rejected and scores 0.
+
+## Objective (maximize)
+For wing `k`, let `served_k` be the number of wing-`k` demand strings within
+distance `radius_i` of some installed `template_i`. Your objective is the **worst
+wing's** served fraction:
+```
+F = min over k=1..K of ( served_k / n_k ) .
+```
+A single neglected wing caps your entire score, no matter how well the others are
+served -- the templates must work for every wing, not just the easiest ones.
+
+## Scoring
+The checker independently builds a simple per-wing reference: for each wing `k`, the
+fraction of wing `k`'s own demands within a fixed reference radius of wing `k`'s
+first published demand string, averaged across wings, giving a baseline `B > 0`. The
+reported ratio is
+```
+Ratio = min(1000, 100 * F / B) / 1000 ,
+```
+capped at `1.0`. Higher worst-wing coverage raises the ratio.
+
+## Constraints
+- `3 <= K <= 10`, `24 <= L <= 24`, `4 <= Rmax <= 6`.
+- `n_k` up to a few thousand; total input size per test <= 5 MB.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+Two wings, `L = 4`, `Rmax = 3`, `Budget = 20`. Wing 1 demands: `0000`, `0001`,
+`1000` (all near `0000`). Wing 2 demands: `2222`, `3222`, `2223` (all near `2222`).
+Output:
+```
+2
+0000 1
+2222 1
+```
+Cost `= 4 + 4 = 8 <= 20`. Template `0000` radius 1 serves all of wing 1 (each demand
+differs from `0000` in at most 1 position); template `2222` radius 1 serves all of
+wing 2. `served_1/n_1 = 1`, `served_2/n_2 = 1`, so `F = 1`, the best possible.
+
+## Notes on strategy
+Demand strings in a wing are not arbitrary -- each wing's codes cluster around a
+handful of hidden "motifs" (some wings around a single dominant one, others spread
+across several). Because the objective is a **minimum**, budget spent polishing an
+already well-served wing is wasted: check every wing's current served fraction and
+route the next template toward whichever wing is worst off. A template placed near a
+motif that recurs across several wings raises all of their floors for the price of
+one, which is far more valuable per budget unit than a template tuned to only the
+wing it came from -- but that motif-sharing structure lives in the data, not in this
+statement, so you must discover it from the published demand lists.

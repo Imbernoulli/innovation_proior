@@ -1,0 +1,19 @@
+{
+  "id": "fsx_B_0661",
+  "tier": "B",
+  "format": "A",
+  "family": "chain-detonation-closure",
+  "eval_form": "quality-metric",
+  "theme": "Ignite a few charges to route a chain reaction",
+  "title": "Quarry Ignition: Routing a Chain Detonation Through Shielded Charges",
+  "objective": "max",
+  "seed_problem": "closure-routed threshold cascade over a directed radius-reach graph with a limited ignition budget",
+  "mutation": "composite: goal is a graded ignition-set optimization (not decision) over a directed, per-node-radius reach graph; output is restricted to an 'ignitable' subset while high-value 'shielded' charges require a distinct-source detonation threshold, so feasibility itself encodes the routing constraint",
+  "source_frameworks": ["wave2b-lens:temporal-commitment"],
+  "strategies": [
+    "trivial: pick the M ignitable charges with the largest own value, ignoring reach entirely -- exactly the checker's baseline construction -> ratio 0.1",
+    "greedy: single continuous marginal-gain pass -- each round ignite whichever remaining charge adds the most SIMULATED total value right now. Legitimate and generally decent (never wastes a pick on an already-saturated cluster), but myopic across components: a shielded target that needs TWO distinct feeder chains lit together never looks attractive round-by-round, since lighting only one feeder unlocks nothing, so its small standalone marginal gain keeps losing to another cluster/decoy's larger visible payoff and the pair is never committed together",
+    "strong: decompose the reach graph into weakly-connected components, compute each component's best achievable value for every ignition budget k (via bounded local search per component, since components are small and isolated by construction), then solve a 0/1 group-knapsack over components to allocate the global M-budget -- this is the only tier that can 'see' a shielded target's value jump only when BOTH of its distinct feeder chains are lit together, which a single running marginal-gain pass (biased toward smooth, always-visible cluster gains) systematically starves of budget",
+    "invalid: prints ignition index 0, which is out of range [1,N] -- infeasible on every case -> 0"
+  ]
+}

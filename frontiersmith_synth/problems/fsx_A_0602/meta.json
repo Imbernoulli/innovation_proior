@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0602",
+  "tier": "A",
+  "format": "C",
+  "family": "priority-lane-selfselect",
+  "eval_form": "quality-metric",
+  "theme": "theme-park fast-pass pricing",
+  "title": "Fast-Pass Pricing on the Far Side of the Crowd",
+  "objective": "max",
+  "strategies": [
+    "trivial: post the given cheap reference price on every ride (floods the fast lanes)",
+    "greedy: per-ride static demand-curve pricing assuming an empty fast lane (ignores crowding + budgets, underprices, floods)",
+    "strong: reparametrize each ride by equilibrium buyer count F, price at the marginal-indifference price p(F)=v_[F]*Savings(F), keep the lane scarce -- prices ABOVE the static-demand optimum",
+    "headroom: jointly account for the cross-ride cardinality-budget coupling (visitors juggle at most K passes), which the per-ride strong solution ignores"
+  ]
+}

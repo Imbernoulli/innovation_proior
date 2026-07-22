@@ -49,16 +49,29 @@ def sandbox_available():
 SANDBOX_ENV = {"HOME": "/tmp", "PATH": "/usr/bin:/bin", "TMPDIR": "/tmp",
                "OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1",
                "NUMEXPR_NUM_THREADS": "1", "VECLIB_MAXIMUM_THREADS": "1"}
+_BWRAP_NETNS_ERRORS = (
+    "NETLINK_ROUTE",
+    "CLONE_NEWNET",
+    "network namespace",
+    "Operation not permitted",
+)
 
 
-def _bwrap_cmd(cand_in_tmp, py):
-    return [_BWRAP, "--dev-bind", "/", "/",
-            "--tmpfs", SYNTH_ROOT,          # hide ALL judge/problem source (gen/checker/labels/laws)
-            "--tmpfs", "/tmp",
-            "--ro-bind", cand_in_tmp, "/tmp/cand.py",
-            "--unshare-pid", "--unshare-net", "--unshare-ipc", "--unshare-uts",
-            "--proc", "/proc", "--die-with-parent", "--new-session", "--chdir", "/tmp",
-            py, "-I", "--", "/tmp/cand.py"]
+def _bwrap_netns_failed(stderr):
+    return any(s in (stderr or "") for s in _BWRAP_NETNS_ERRORS)
+
+
+def _bwrap_cmd(cand_in_tmp, py, unshare_net=True):
+    cmd = [_BWRAP, "--dev-bind", "/", "/",
+           "--tmpfs", SYNTH_ROOT,          # hide ALL judge/problem source (gen/checker/labels/laws)
+           "--tmpfs", "/tmp",
+           "--ro-bind", cand_in_tmp, "/tmp/cand.py",
+           "--unshare-pid"]
+    if unshare_net:
+        cmd.append("--unshare-net")
+    return cmd + ["--unshare-ipc", "--unshare-uts", "--proc", "/proc",
+                  "--die-with-parent", "--new-session", "--chdir", "/tmp",
+                  py, "-I", "--", "/tmp/cand.py"]
 
 
 def run_candidate(candidate_path, public_instance, timeout=20):
@@ -84,6 +97,13 @@ def run_candidate(candidate_path, public_instance, timeout=20):
         try:
             p = subprocess.run(cmd, input=payload, capture_output=True, text=True,
                                timeout=timeout, env=env)
+            # Some managed HPC/container nodes allow bwrap mount/pid namespaces but reject
+            # creating a network namespace. Retry without netns for that platform error while
+            # preserving source-tree and /proc isolation.
+            if _BWRAP and p.returncode != 0 and _bwrap_netns_failed(p.stderr):
+                p = subprocess.run(_bwrap_cmd(cand_tmp, py, unshare_net=False),
+                                   input=payload, capture_output=True, text=True,
+                                   timeout=timeout, env=env)
         except subprocess.TimeoutExpired:
             return None, "TLE"
         except Exception as e:

@@ -1,0 +1,74 @@
+# Avalanche Sculptor
+
+## Problem
+You sculpt a shape out of sand avalanches. On an `N x N` grid, an **abelian sandpile**
+evolves by *toppling*: whenever a cell holds `>= 4` grains it loses 4 grains and sends
+one grain to each of its four orthogonal neighbours. A grain sent off the grid, or onto
+a **sink cell**, vanishes. Toppling repeats until every non-sink cell holds `0..3`
+grains. The sinks and the boundary drain the pile, so the final **stable configuration
+is unique** and independent of the order of topplings.
+
+You are given a stable **target** configuration `T`. You may add grains only at a fixed
+set of `K` **source** cells. Starting from the empty grid, you drop `a_i` grains at
+source `i`, let the whole pile stabilize, and are scored by how closely the resulting
+stable configuration `S` matches `T`.
+
+## Input
+```
+N K B
+nSink
+(nSink lines)  r c      an internal sink cell (0-indexed)
+(K lines)      r c       a source cell (distinct, non-sink, interior), in order
+(N lines)      N ints     target T; entry in 0..3 (sink cells printed as 0)
+(N lines)      N ints     weight W; W[r][c] >= 0 (sink cells printed as 0)
+```
+Grid is 0-indexed. Sink cells never hold grains and are excluded from scoring.
+
+## Output
+`K` nonnegative integers `a_1 .. a_K` (whitespace-separated): grains dropped at each
+source, in the input order.
+
+## Feasibility
+Each `a_i` is an integer with `0 <= a_i <= B`, and `a_1 + ... + a_K <= B`. Any other
+output (a value out of range, the budget exceeded, wrong count, extra tokens) is
+rejected and scores 0.
+
+## Objective (maximize)
+Drop the grains, stabilize the pile to get `S`, and maximize the weighted agreement
+```
+F = sum over non-sink cells (r,c) of  W[r][c] * [ S[r][c] == T[r][c] ] .
+```
+Only exact per-cell matches earn that cell's weight.
+
+## Scoring
+Let `Base = sum over non-sink cells of W[r][c] * [ T[r][c] == 0 ]` — the agreement of
+the empty grid (dropping nothing). The reported ratio is
+```
+Ratio = min(1000, 100 * F / max(1, Base)) / 1000 .
+```
+Dropping nothing yields `F == Base`, i.e. `Ratio = 0.1`. Higher agreement raises the
+ratio (capped at 1.0). The score is a deterministic function of your output.
+
+## Constraints
+- `6 <= N <= 36`; `2 <= K`; internal sinks may form walls that split the grid.
+- `0 <= a_i <= B`, `sum a_i <= B`; the budget `B` comfortably exceeds the grain mass
+  needed to build `T`.
+- Time limit: 4 s. Memory limit: 512 MB. Each input file is a few hundred KB.
+
+## Example
+Take `N = 3`, one source at the centre `(1,1)`, budget `B = 40`, no sinks, and suppose
+`T` has `T[1][1] = 0` with the four edge-centres equal to 1 (a small cross), all corners
+0, and unit weights. Dropping `a = 4` at the centre topples it once: the centre returns
+to 0 and each edge-centre receives 1 grain — reproducing the cross exactly. The four
+corner zeros and the centre zero also match, so `F` counts every non-sink cell and the
+ratio is high. Dropping `a = 0` instead leaves the four edge-centres at 0, matching only
+the zero cells: `F = Base`, `Ratio = 0.1`.
+
+## Notes on strategy
+Because toppling is abelian, the stable result of dropping at several sources at once is
+the **superposition** of the individual drops — arbitrary targets are reached by
+*combining* sources, not by enlarging one pile. Concentrating the whole budget on a
+single best pile only recreates one localized avalanche lobe; a target assembled from
+spread-out drops (and split by sink walls) needs a coordinated combination across many
+sources. The weights `W` and the exact target live in the input, so read them and
+reason about which drops reproduce which cells.

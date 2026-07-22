@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0838",
+  "tier": "A",
+  "format": "A",
+  "family": "walk-affinity-page-binder",
+  "eval_form": "quality-metric",
+  "theme": "zookeeper housing animals along a fixed tour route",
+  "title": "The Keeper's Feeding Cart",
+  "objective": "min",
+  "seed_problem": "novel composite (no single classic seed): cache-aware graph layout / LRU page placement",
+  "mutation": "composite: fix a temporal traversal (the tour) instead of asking to build one, and score a node-to-page placement purely by replaying that trace through a bounded LRU cache; a structural adjacency graph is given as a plausible-looking but scoring-irrelevant distractor, so the placement objective is driven entirely by within-trace reuse-window co-occurrence, not graph topology.",
+  "strategies": [
+    "trivial: assign shelves by animal-id order in fixed-size chunks (ceil(i/pageCap)) -- the checker's own baseline, ignores both graph and tour",
+    "graph-locality greedy: BFS/DFS the paddock-adjacency graph and chunk shelves in visitation order -- recovers the zone structure but plants each hub-group animal wherever its single structural edge lands it, inside its home zone rather than with the other hubs it is actually co-visited with",
+    "insight (strong): build a windowed co-visit weight graph directly from the fixed trace (pairs of animals within the last L*pageCap tour steps of each other), then greedily merge the highest-weight pairs into shared shelves under the capacity cap -- this reformulation recovers the hub group as one shelf regardless of where the paddock graph structurally embeds each hub, and is what the LRU-replay objective actually rewards"
+  ]
+}

@@ -1,0 +1,83 @@
+# Reinforcing Footbridges across a Branching Canyon System
+
+## Problem
+A ranger network spans a branching canyon system: `n` mesa-top platforms are linked by `m`
+existing footbridges, forming one connected graph `G` (every bridge has unit strength). The
+canyons hide a nested hierarchy of thin crossings, so the network is fragile in a way measured
+by its **algebraic connectivity** `lambda_2(G)` — the second-smallest eigenvalue of the graph
+Laplacian `L = D - A`. Larger `lambda_2` means no cheap cut can nearly sever the network.
+
+You may build **new** footbridges to raise `lambda_2`. Building a bridge between platforms `u`
+and `v` requires spanning the canyon between them, so it **costs** `d_G(u, v)`: the hop distance
+(number of bridges on a shortest path) between `u` and `v` in the **original** network `G`.
+You are given a total budget `B`. Choose new bridges to maximize the algebraic connectivity of
+the reinforced network.
+
+## Input
+```
+n m B
+u_1 v_1
+...
+u_m v_m
+```
+`n` platforms (1-indexed), `m` existing footbridges, integer budget `B`. Each of the next `m`
+lines is an existing bridge `{u_i, v_i}`. `G` is connected and simple (no self-loops, no repeats).
+
+## Output
+```
+K
+a_1 b_1
+...
+a_K b_K
+```
+`K >= 0` new footbridges, each an unordered pair `{a_j, b_j}` of platforms.
+
+## Feasibility
+- `1 <= a_j, b_j <= n` and `a_j != b_j`.
+- No new bridge may duplicate an existing bridge, and no new bridge may be listed twice.
+- Each new bridge has unit strength and costs `d_G(a_j, b_j)` (hop distance in the ORIGINAL `G`).
+- Total cost `sum_j d_G(a_j, b_j) <= B`.
+Any violation (self-loop, duplicate, out-of-range, over budget, trailing tokens) scores 0.
+`K = 0` (build nothing) is feasible.
+
+## Objective
+Let `G'` be `G` plus your new bridges (a simple graph; all edges unit weight). Maximize
+`F = lambda_2(G')`, the algebraic connectivity of `G'`. The grader recomputes `L' = D' - A'` and
+evaluates `lambda_2` by a fixed deterministic Lanczos iteration with Sturm bisection.
+
+## Scoring
+Let `Bb = lambda_2(G)` be the algebraic connectivity of the ORIGINAL network. Your score on a
+test is
+```
+ratio = min(1, 0.1 * F / Bb).
+```
+Building nothing gives `F = Bb` and `ratio = 0.1`; driving `lambda_2` to `10x` its original value
+caps the ratio at `1`. The final score is the mean ratio over 10 tests.
+
+Why it is open-ended: `lambda_2` is governed by the sparsest balanced cut, and repairing that cut
+makes a **different, deeper** cut the new bottleneck — so marginal return migrates between scales.
+The first-order gain of a bridge `{u,v}` is proportional to `(f_u - f_v)^2` where `f` is a Fiedler
+vector, while its price is the hop distance; the best bridges trade these off, and the shifting
+bottleneck means no single cut, and no one-shot placement, is optimal.
+
+## Constraints
+- `1 <= n <= 1100`, `G` connected. `1 <= B <= 3000`. Budgets/costs are integers.
+- Time limit: 5 s. Memory limit: 512 MB.
+- Deterministic scoring: identical output always yields an identical score.
+
+## Example
+Input:
+```
+4 3 3
+1 2
+2 3
+3 4
+```
+A path on 4 platforms. `d_G(1,4) = 3`, `d_G(1,3) = 2`, `d_G(2,4) = 2`. With `B = 3` you could
+build `{1,4}` (cost 3) to close the path into a 4-cycle, or `{1,3}` (cost 2). Closing the cycle
+raises `lambda_2` from `2 - sqrt(2) ~= 0.586` to `2`, giving `F = 2`, `Bb = 0.586`, and
+`ratio = min(1, 0.1 * 2 / 0.586) = 0.341`. Output:
+```
+1
+1 4
+```

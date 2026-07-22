@@ -1,0 +1,21 @@
+{
+  "id": "fsx_A_0548",
+  "tier": "A",
+  "format": "D",
+  "family": "xor-straight-line-share",
+  "eval_form": "flops",
+  "theme": "Minimum-XOR circuits for GF(2) linear maps",
+  "title": "Cancel-and-Share: Minimum-XOR Straight-Line Programs for GF(2) Linear Maps",
+  "objective": "min",
+  "strategies": [
+    "trivial: independent per-row XOR-fold (= checker baseline)",
+    "greedy: Paar-style monotone common-subexpression sharing (cancellation-free)",
+    "strong: build the all-ones sum S once, realise dense rows as S ^ (missing-bit fold) via intermediate cancellation"
+  ],
+  "mechanisms": [
+    "cancellation-allowed-basis",
+    "common-subexpression-sharing",
+    "linear-straight-line-program"
+  ],
+  "innovation_hook": "Allowing intermediate cancellation, not just monotone subexpression reuse, unlocks shorter linear circuits than any greedy shared-sum heuristic finds."
+}

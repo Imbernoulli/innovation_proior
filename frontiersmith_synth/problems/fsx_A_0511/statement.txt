@@ -1,0 +1,98 @@
+# Forbidden Factory: Maximal k-mer Coverage on a Mutilated de Bruijn Graph
+
+## Problem
+
+A test lab prints one long tape of symbols and inspects every window of length `k`
+that slides across it. Some length-`k` patterns are **forbidden factors** (they jam
+the printer). A tape is thrown out the instant *any* of its length-`k` windows is a
+forbidden factor.
+
+Among tapes that never print a forbidden factor, you want the one that exercises the
+most distinct **allowed** length-`k` patterns. Formally you are given an alphabet of
+size `a` (symbols are the digits `0, 1, ..., a-1`), a factor length `k`, and a set `F`
+of forbidden length-`k` strings. Output one string `S` of digits such that no
+length-`k` substring of `S` lies in `F`, **maximizing the number of distinct
+length-`k` substrings of `S`** (necessarily all allowed).
+
+Think of the de Bruijn graph `B(a,k)`: its vertices are the `a^(k-1)` strings of
+length `k-1`, and each length-`k` string is an edge from its length-`(k-1)` prefix to
+its length-`(k-1)` suffix. Any string `S` is a **walk** in this graph, and its distinct
+length-`k` substrings are the distinct edges the walk traverses. Forbidding factors
+**deletes edges**. Your score is the number of distinct surviving edges you manage to
+cover with a single walk that never uses a deleted edge.
+
+## Input
+
+```
+a k f
+<f lines, each a length-k forbidden string of digits 0..a-1>
+```
+
+- `2 <= a <= 6`, and `a^k <= 1_100_000` (so both `f` and any tape stay manageable).
+- `0 <= f`; the `f` forbidden strings are distinct.
+
+## Output
+
+A single line: your string `S` of digits `0..a-1`. It must satisfy
+`k <= |S| <= 6*a^k + 2k + 10` (ample room to re-traverse allowed edges as connectors).
+
+## Feasibility
+
+`S` is feasible iff every character is a digit in `0..a-1`, its length is in
+`[k, 6*a^k + 2k + 10]`, and **no length-`k` substring of `S` belongs to `F`**. Any infeasible tape scores `0`. (In particular, a full de Bruijn sequence,
+which contains every length-`k` string, is infeasible whenever `F` is non-empty.)
+
+## Objective
+
+Let `F_cov` = the number of **distinct** length-`k` substrings occurring in `S`
+(equivalently, distinct allowed de Bruijn edges your walk covers). You are
+**maximizing** `F_cov`.
+
+## Scoring
+
+The checker builds an internal baseline `B`: the coverage of the **naive greedy
+walk**. Start at the lexicographically smallest vertex (length-`(k-1)` string) that
+has an allowed outgoing edge; repeatedly append the smallest symbol whose new
+length-`k` window is allowed and not yet used; stop when no such symbol exists. `B`
+is the number of edges this walk covers (`B >= 1`). Let `T = a^k - |F|` be the total
+number of allowed length-`k` factors.
+
+The score for one test is the affine map
+
+```
+ratio = clamp( 0.1 + 0.8 * (F_cov - B) / (T - B),  0, 1 )
+```
+
+Matching the naive baseline (`F_cov = B`) scores `0.1`; covering **every** allowed
+factor (`F_cov = T`, only possible if the whole allowed graph were one
+walk-coverable trail) approaches `0.9`. Because a single walk lives in one connected
+piece of the graph, no submission can cover every allowed factor, so the ceiling
+stays open. The overall score is the mean ratio across the 10 tests.
+
+## Constraints
+
+- `2 <= a <= 6`, `a^k <= 1_100_000`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+```
+2 3 2
+000
+111
+```
+
+Here `a=2`, `k=3`. The de Bruijn graph `B(2,3)` has vertices `00, 01, 10, 11` and 8
+edges (the 8 length-3 strings). Forbidding `000` and `111` deletes the two self-loops
+(edges `00->00` and `11->11`), leaving 6 allowed edges.
+
+Naive baseline: the smallest vertex with an allowed out-edge is `00` (its `000`
+self-loop is gone, but `001` remains). Greedy from `00`: `00` --1--> `01` --0-->
+`10` --0--> `00` (edges `001`, `010`, `100`), then from `00` the only allowed out-edge
+`001` is already used, so it stops. String `00100`, covering `B = 3` edges.
+
+A better tape is `S = 00110100`: its length-3 windows are `001, 011, 110, 101, 010,
+100` -- 6 distinct allowed factors (`= T`), none forbidden. Then `F_cov = 6` and
+`ratio = 0.1 + 0.8 * (6 - 3) / (6 - 3) = 0.9`. (The insight: viewing coverage as a
+max-edge walk on the mutilated graph, one tape can splice every allowed edge instead
+of stalling at the first sink the naive walk reaches.)

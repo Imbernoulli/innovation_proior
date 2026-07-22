@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0596",
+  "tier": "A",
+  "format": "C",
+  "family": "datum-tree-error-budget",
+  "eval_form": "quality-metric",
+  "theme": "Machinist choosing what to measure everything from",
+  "title": "Datum Tree Error Budget: What to Measure Everything From",
+  "objective": "min",
+  "strategies": [
+    "trivial: attach every feature to its first-listed (deep) allowed datum and buy no precise slots -- reproduces the checker baseline (~0.1)",
+    "greedy: shallowest datum tree, then spend precise slots on the deepest / longest datum chains -- weight- and betweenness-blind, wastes the budget on private chains",
+    "strong: route every critical pair through a common deep trunk and allocate precise slots by criticality-weighted path-betweenness on the bottleneck, so a few shared trunk edges cap the weighted worst case",
+    "open: co-optimize the datum tree and slot allocation jointly, then reinvest any leftover budget on the residual private edges of the top-weighted pairs"
+  ]
+}

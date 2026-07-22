@@ -1,0 +1,20 @@
+{
+  "id": "fsx_B_0911",
+  "tier": "B",
+  "format": "A",
+  "family": "ducting-channel-gradient",
+  "eval_form": "quality-metric",
+  "theme": "radio channels that survive freak propagation days",
+  "title": "Ducting Days: Channels That Survive the Sweep",
+  "objective": "min",
+  "seed_problem": "assign channels to stations along a corridor to minimize interference",
+  "mutation": "composite: couple ordinary channel-assignment (base interference graph) with a SWEEP of K=40 published ducting scenarios whose active long-range edge sets form one sliding geometric family (separation-distance bands that shift by a fixed step across scenarios), and score the worst-case (max) scenario cost -- turning a single coloring problem into a worst-case-over-a-scenario-family optimization.",
+  "mechanisms": ["channel-assignment", "directional-gradient-structure", "edge-activation-set-sweep"],
+  "innovation_hook": "The 40 ducting scenarios are not arbitrary graphs -- their active-edge bands slide by a fixed step across one separation-distance axis (one geometric family). A channel assignment that encodes each station's corridor position into its channel via a spatial period chosen to fall OUTSIDE the entire swept distance range dodges essentially all 40 scenarios at once, instead of trying to reconcile 40 separate colorings.",
+  "strategies": [
+    "trivial: round-robin channel c_i = 1 + ((i-1) mod C), oblivious to both interference structure and ducting -- reproduces exactly the checker's own baseline B, ratio 0.1",
+    "greedy (the trap): a correct, locally-optimal greedy coloring of the BASE interference graph only (process stations in corridor order, assign the smallest channel unused by already-colored base-neighbours) -- this nails local interference almost perfectly, but its natural coloring period is small (roughly the local clique size), so on uniform-spacing corridors some multiple of that period always lands inside the wide 40-scenario sweep, causing a mass simultaneous collision on the worst day",
+    "insight (strong): treat station position as a coordinate to encode. Search a ladder of candidate spatial 'block widths' W, assign a macro channel via floor(x_i / W) mod C so the repeat period W*C is pushed outside the union of all 40 swept ducting bands, then run a local min-conflict repair pass restricted to base edges to clean up any residual local collisions inside a block -- one global formula handles all 40 scenarios at once instead of solving them one by one",
+    "beyond strong: joint local search (simulated annealing / tabu) directly over the worst-scenario objective, or an exact small-instance ILP/relaxation over the union graph"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0874",
+  "tier": "B",
+  "format": "E",
+  "family": "eclipse-timing-perturbation",
+  "eval_form": "quality-metric",
+  "theme": "moons of a far planet keep running late",
+  "title": "The Late Moon — separating a growing drift from a bounded wobble in sparse eclipse timings",
+  "objective": "min",
+  "strategies": [
+    "trivial: constant-period linear ephemeris a+b*k fit to the training cycles -> reproduces the checker's own baseline, ~0.1",
+    "greedy: grid-search a SINGLE stationary period for a sinusoidal timing correction (textbook period-finding) and add it to the linear ephemeris; searches ALL candidate periods including implausibly long ones, so on cases where the true wobble period exceeds the campaign it happily 'explains' the slow secular drift as an oscillation with a huge, essentially uncalibrated period -- which stays BOUNDED forever and misses the ever-growing true offset at the far-future grading epochs",
+    "strong: fits a stationary sinusoid only within a period range that is actually RESOLVABLE inside the campaign (requires several full cycles to trust periodicity); if no candidate period clears a significance bar against the plain linear fit, it instead attributes the residual smooth trend to an explicit quadratic (secular) term -- i.e. it decides which of the two hidden mechanisms is present by asking whether its signature is a resolvable oscillation or an unresolvable slow trend, not by which fits the training window best (both fit it about equally well in the trap cases)",
+    "headroom above strong: jointly re-estimate the drift coefficient and the resolvable-wobble amplitude with a variance-aware (e.g. shrinkage/robust) estimator instead of plain OLS, and validate the period choice via held-in cross-validated bands rather than a single SSE-ratio threshold"
+  ]
+}

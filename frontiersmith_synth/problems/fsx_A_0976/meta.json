@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0976",
+  "tier": "A",
+  "format": "A",
+  "family": "bottleneck-aware-shelter-siting",
+  "eval_form": "quality-metric",
+  "theme": "shelters sited for the worst flood-day traffic",
+  "title": "Shelters Sited for the Worst Flood-Day Traffic",
+  "objective": "min",
+  "seed_problem": "facility placement on a road network minimizing worst-case evacuation time",
+  "mutation": "composite: distance-based facility placement is replaced by a capacitated-flow-evacuation objective that must be equalized across a published sweep of blockage scenarios -- the goal becomes siting shelters so that every scenario's surviving min-cut (not any single scenario, and not proximity) stays healthy, coupling facility-placement + blockage-scenario-sweep + capacitated-flow-evacuation into one non-additive max-over-scenarios objective.",
+  "strategies": [
+    "trivial: take the first S candidate sites in input presentation order (reproduces the checker baseline)",
+    "naive greedy: BFS hop-distance/coverage siting on the raw unblocked road graph, always preferring the nearest possible site to each district -- ignores capacities and every published blockage scenario entirely",
+    "insight (strong): reformulate the objective via max-flow/min-cut -- completion time per scenario is governed by the surviving cut capacity to the chosen shelters, so build the shelter set by marginal-gain on the worst-scenario max-flow (computed with real per-scenario Dinic), then locally improve by swaps; this explicitly equalizes surviving cut capacity across every scenario instead of chasing proximity"
+  ]
+}

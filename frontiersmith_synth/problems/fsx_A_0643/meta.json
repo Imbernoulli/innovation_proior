@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0643",
+  "tier": "A",
+  "format": "E",
+  "family": "drag-law-crossover-recovery",
+  "eval_form": "quality-metric",
+  "theme": "infer fluid drag law beyond the measured regime",
+  "title": "Flume Drag Crossover — recovering a hidden second mechanism from tail curvature",
+  "objective": "min",
+  "strategies": [
+    "trivial: emit the flat geometric mean of the training Cd values as a constant law -- reproduces the checker's own baseline, Ratio ~0.1",
+    "greedy: textbook log-log least-squares power-law fit Cd = A'*Re^p' over ALL training rows; it tracks the quiescent flume sweep to the noise floor (excellent in-sample), but a single power law can only carry one exponent -- extrapolated far past the flume's reach it decays at the wrong (steep, Stokes-like) rate and misses the shallow high-Re tail badly",
+    "strong: residual archaeology -- fit the dominant exponent p from the LOW-Re half of the sweep only (where it truly dominates), subtract that term from every training row, then fit the RESIDUAL's log-log slope over the training TAIL (largest-Re rows, where the residual signal is cleanest) to recover the hidden second exponent q and coefficient B; emit A*powv(Re,p)+B*powv(Re,q) -- this carries the correct asymptotic decay rate into the held-out extrapolation grid",
+    "headroom above strong: robust (e.g. trimmed/IRLS) two-stage fits against the noise floor, adaptive choice of the low-Re/tail split point per instance, or joint nonlinear refinement of (A,p,B,q) after the two-stage initialization"
+  ]
+}

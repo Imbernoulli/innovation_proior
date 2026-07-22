@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0728",
+  "tier": "B",
+  "format": "C",
+  "family": "mv-thickness-balancing",
+  "eval_form": "quality-metric",
+  "theme": "Origami that must fold flat AND thin",
+  "title": "Pleat-Stack Routing: Minimizing Peak Layer Thickness Under a Maekawa Floor",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:geometry-fabrication"],
+  "strategies": [
+    "trivial: resolve every vertex group's residual parity freedom with a fixed low-index-first Mountain tie-break (this is also the checker's own baseline construction) -> ~0.1",
+    "greedy: resolve the same parity floor with a different but equally position-blind tie-break (high-index-first Mountains); a plausible first attempt that fixates on feasibility and never looks at where the routing walk sends the flaps",
+    "strong: for each vertex group's residual freedom, simulate every valid Mountain/Valley arrangement's effect on the routing walk and commit to whichever keeps the running peak column weight lowest -- exploiting the fact that Valley choices spread flaps into new columns while Mountain choices reflect the walk back over itself",
+    "invalid: assign every free crease Valley without ever checking the vertex-group parity target -> fails the Maekawa-style feasibility floor -> 0"
+  ]
+}

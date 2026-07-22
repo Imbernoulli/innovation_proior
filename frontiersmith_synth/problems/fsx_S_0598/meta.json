@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0598",
+  "tier": "S",
+  "format": "C",
+  "family": "thue-rewrite-distinctness",
+  "eval_form": "quality-metric",
+  "theme": "Most pairwise-inequivalent words under rewriting",
+  "title": "Quotient Quorum: Maximizing Inequivalent Words modulo a Rewriting Congruence",
+  "objective": "max",
+  "strategies": [
+    "trivial: dump every short word (length <= 3) and hope they are distinct classes",
+    "greedy trap: enumerate words and de-duplicate by raw string equality, taking the Nmax shortlex-first distinct words -- normalization then collapses many into one class",
+    "strong: reduce every word to its forward normal form under the given rules and keep one representative per normal form (recognizes the confluent part of the congruence)",
+    "optimal (headroom): Knuth-Bendix complete / close the congruence over all bounded words, so divergent critical pairs are merged and exactly one representative per true class is emitted"
+  ]
+}

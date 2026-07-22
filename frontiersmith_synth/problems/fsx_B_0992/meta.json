@@ -1,0 +1,18 @@
+{
+  "id": "fsx_B_0992",
+  "tier": "B",
+  "format": "A",
+  "family": "contamination-flywheel-dilution",
+  "eval_form": "quality-metric",
+  "theme": "aluminum recycling plant run for 300 days",
+  "title": "The Flywheel Furnace: 300-Day Blend & Purge Planning",
+  "objective": "max",
+  "seed_problem": "novel composite family (wave2b-lens:conversion-chain-systems); no classic decision-problem ancestor",
+  "mutation": "composite: recycle-loop-accumulation (a well-mixed internal return-scrap pool that receives a fixed fraction of every day's melted output, at that day's blend ppm, after a fixed lag) + slow-state-shadow-pricing (the pool's ppm is a slow state that must be proactively diluted BEFORE a scarce attractive opportunity arrives, not merely kept under the hard cap day-to-day) + virgin-dilution-budget (a single lifetime-total virgin tonnage budget shared across all T days, not replenished daily) + a nonlinear quality-discount price coupling (sale price falls as the square of blend ppm relative to the cap), composed into one profit objective",
+  "strategies": [
+    "do-nothing baseline: melt only virgin metal up to min(daily capacity, remaining lifetime budget) every day, never touch scrap or the pool (checker's own baseline construction)",
+    "myopic value-ranked fractional knapsack: every day, rank return scrap / lots / virgin by a FLAT margin (ignoring the nonlinear quality-price coupling), fill the furnace best-value-first up to the hard ppm cap, draw the pool to the hilt because it's free -- no look-ahead, no pool-health management",
+    "shadow-price purge/harvest control: track the pool's ppm as a slow state; when it drifts above a safe fraction of the hard cap, deliberately cap TODAY's blend far below the hard cap (skipping cheap-but-dirty lots, backfilling with virgin) even at reduced daily margin, to dilute what re-enters the pool weeks later and preserve capacity for future high-value opportunities; run the ordinary value-ranked fill only when the pool is already clean",
+    "uniform-density trap (folklore pattern the myopic tier resembles): treat every cheap-but-contaminated lot as equally worth maximizing today, which loads the recycle loop with concentrated scrap right before the biggest planted opportunities arrive"
+  ]
+}

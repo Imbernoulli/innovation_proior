@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0794",
+  "tier": "A",
+  "format": "E",
+  "family": "stackup-scaling-law",
+  "eval_form": "quality-metric",
+  "theme": "Why long assemblies wobble more than the math says",
+  "title": "Assembly Stack-Up Variability — the batch you shipped it in matters",
+  "objective": "min",
+  "strategies": [
+    "trivial: predict a constant deviation (geometric mean of the training D column), ignoring n/m/S2/B2 entirely -> reproduces the checker baseline ~0.1",
+    "greedy: textbook root-sum-square (RSS) tolerance stacking -- fit a single global scale c on D ~= c*sqrt(S2) by least squares, treating parts as independent and ignoring the batch layout (m, B2) entirely. Matches the pilot-line log well (the correlated term is a small fraction of S2 there, comparable to sensor noise) but on the held-out log -- long assemblies shipped in a handful of large batches, where B2 grows quadratically with n while S2 only grows linearly -- it systematically underestimates D",
+    "strong: hypothesize the additive-under-sqrt composition D = sqrt(S2 + TAU2*B2) implied by same-batch common-mode correlation, and recover TAU2 from the training rows via a 1-D least-squares fit of the residual (D^2 - S2) against B2 (forced through the origin, clipped non-negative). The fitted TAU2 is tiny relative to any single row's noise, but averaging over many rows recovers it -- and once recovered it extrapolates correctly to the large-batch regime where greedy diverges",
+    "headroom above strong: robust/weighted regression of TAU2 (e.g. down-weighting rows with small B2 where the signal-to-noise ratio is worst), or per-instance re-estimation that also accounts for the mild multiplicative bias E[exp(2*noise)] in the D^2 residual, pushing held-out error further toward the sensor-noise floor"
+  ]
+}

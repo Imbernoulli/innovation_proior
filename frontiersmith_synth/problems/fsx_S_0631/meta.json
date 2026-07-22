@@ -1,0 +1,19 @@
+{
+  "id": "fsx_S_0631",
+  "tier": "S",
+  "format": "B",
+  "family": "rotation-policy-forge",
+  "eval_form": "quality-metric",
+  "theme": "bonsai gardener pruning between visitor seasons",
+  "title": "Bonsai Ledger: Pruning Between Visitor Seasons",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:data-structure-by-trace"],
+  "mechanisms": ["hop-vs-restructure-accounting", "phase-aware-adaptation", "self-adjusting-rotation-rules"],
+  "innovation_hook": "The winning policy meters its own amortized benefit online — rotating only when recent-access statistics prove the phase will repay restructuring — i.e., it implements a phase detector, not an access rule.",
+  "strategies": [
+    "never-rotate baseline: leave the display tree exactly as given and only pay hop cost, reproducing the evaluator's own reference (~0.10)",
+    "always-splay recipe (the trap): move every requested tag straight to the root before its own search, regardless of season weight or repeat likelihood; wins big during cheap repeat-visit phases but pays the season's inflated per-rotation cost for zero payoff during peak-season one-pass processions, echo-walks, and raffle draws -- on those instances it can land far below even the never-rotate baseline",
+    "amortized phase-meter (the insight): maintain a sliding window over the recent access keys, estimate the current repeat-traffic probability from it, and splay a tag only when the estimated future payoff (repeat probability times an amortization horizon, boosted if the tag itself has recently reappeared) exceeds THIS visit's season_weight -- so it splays liberally in cheap, hot phases and gets out of the way in expensive or repeat-free phases",
+    "exact online optimum via richer state: additionally track per-branch subtree access frequencies (not just a flat recent-key window) and season-weight lookahead to time restructuring even more precisely, trading a little more bookkeeping for a tighter approximation of the true offline-optimal rotation schedule -- headroom remains above the sliding-window meter"
+  ]
+}

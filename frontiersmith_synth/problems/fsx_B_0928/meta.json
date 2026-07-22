@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0928",
+  "tier": "B",
+  "family": "anchorage-swing-circles",
+  "seed_problem": "wave2b-lens:fleet-choreography (seed fsx_B_0928)",
+  "mutation": "composite: goal is value-maximizing acceptance of ships into a tidal anchorage (open-ended selection), with output tightened so a valid schedule must jointly satisfy heterogeneous-radii swing-circle packing, a small discrete tide-window entry/exit grid, and time-space continuity (fixed anchor point held for the whole stay, non-overlap only enforced across shared epochs) -- the composition is what makes optimal construction NP-hard, not any single mechanism.",
+  "objective": "max",
+  "theme": "ships swinging at anchor in a crowded bay",
+  "title": "Slack Water: Scheduling Ships at a Tidal Anchorage",
+  "strategies": [
+    "trivial: accept only the single best individually-feasible ship (the checker's own baseline construction)",
+    "greedy: arrival-order processing, maximal (literal arr..dep) tick span, first-fit spiral-from-centre placement -- no reuse planning",
+    "strong: epoch-graph reformulation -- value-descending processing order plus minimal-span tick-pair search (few epochs -> cheap to enumerate), so scarce high-value ships claim their slot before cheap flexible ships squat on it for the whole horizon; repair pass for leftovers",
+    "invalid: entry tick == exit tick and an out-of-bounds anchor point, must score 0 on every test"
+  ]
+}

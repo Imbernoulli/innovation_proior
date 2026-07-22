@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0621",
+  "tier": "S",
+  "format": "D",
+  "family": "adaptive-sparsity-probe-plan",
+  "eval_form": "flops",
+  "theme": "compile one plan for many sparse matrix shapes",
+  "title": "One Plan, Many Shapes: Cheapest Adaptive Probe Tree for a Sparsity Sweep",
+  "objective": "min",
+  "strategies": [
+    "static plan: multiply the union of all nonzero blocks, no tests (trivial baseline)",
+    "probe-all: test every block, then multiply the ones that came back nonzero (greedy, the obvious adaptive recipe)",
+    "find the cheapest splitting invariant of the pattern family and build a shallow decision tree keyed on the discriminating blocks, so each pattern pays only its own multiplies plus a few identity tests (strong)",
+    "provably-optimal min-worst-case decision tree over the sweep with cross-branch multiply sharing (open ceiling, uncovered)"
+  ]
+}

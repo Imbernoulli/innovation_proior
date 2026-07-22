@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0717",
+  "tier": "A",
+  "format": "C",
+  "family": "mutant-suite-cross-family",
+  "eval_form": "quality-metric",
+  "theme": "tiny test suite that catches every bug tribe",
+  "title": "Cross-Family Mutant Kill Suite",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:scenario-robust-design"],
+  "strategies": [
+    "round-robin baseline: split the point budget evenly across the K bug families and aim at a few evenly-spaced mutants per family (the checker's own baseline)",
+    "pooled maximum-coverage greedy: repeatedly add the point that kills the most not-yet-killed mutants overall, ignoring family boundaries -- races through the numerous whole-segment families and starves the rare narrow-region families",
+    "max-min water-filling / exchange argument: repeatedly add the point that most helps whichever family currently has the smallest kill-fraction, scored by its full cross-family side effect -- directly targets each family's smallest discrimination region"
+  ]
+}

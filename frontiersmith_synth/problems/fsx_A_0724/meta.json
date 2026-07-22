@@ -1,0 +1,19 @@
+{
+  "id": "fsx_A_0724",
+  "tier": "A",
+  "format": "B",
+  "family": "measurement-budget-water-filling",
+  "eval_form": "quality-metric",
+  "theme": "Assign an integer measurement budget across quantities with cost-to-precision curves and hidden cross-coverage couplings.",
+  "title": "Water-Filling a Measurement Budget Across Coupled Quantities",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:topup-B-1"],
+  "mechanisms": ["information-gain-probe", "integer-rounding-repair", "water-filling-allocation"],
+  "innovation_hook": "Allocate to equalize marginal variance-reduction across quantities (water-filling on the information matrix), counting a measurement's cross-coverage so shared measurements are funded only once.",
+  "strategies": [
+    "trivial: split the integer budget evenly across all measurements (round-robin, clamped to caps) -- the evaluator's own weak reference",
+    "greedy (the trap): for each quantity pick its single steepest-initial-slope measurement in isolation (ignoring prior precision and ignoring caps/state), rank quantities by that slope, and sequentially fund each quantity's designated measurement up to its cap in that fixed priority order -- wins on calm instances but on trap instances it dumps budget into an already-well-estimated quantity's deceptively steep private probe while the truly needy quantities (weak private slope, reachable only via a shared probe) go unfunded",
+    "strong: integer water-filling one budget unit at a time -- after every unit, recompute the CURRENT worst quantity (real posterior info, prior included) and fund whichever available measurement gives it the largest marginal gain, so a shared measurement's cross-coverage is naturally funded once and felt by every quantity it covers, and budget never keeps chasing an already-adequately-covered quantity",
+    "local-search polish: from the water-filled allocation, hill-climb by moving single budget units between measurement pairs, keeping any move that lowers the worst-case posterior variance, to squeeze out further headroom below the evaluator's own (non-optimal) internal reference"
+  ]
+}

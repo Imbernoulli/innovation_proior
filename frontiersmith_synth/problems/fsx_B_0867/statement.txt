@@ -1,0 +1,92 @@
+# Firebreak on the Downwind Line
+
+## Problem
+Rangers defend a tinder-dry valley, an `H x W` grid (row `0` = north).
+Every cell has a terrain type: `R` (bare rock, never burns, worth nothing),
+`G` (grass, cheap fuel), or `B` (brush, dense fuel). Every non-rock cell also
+carries a standing fuel value `v(y,x) >= 0`.
+
+A single ember catches at cell `(IY, IX)`. Fire spreads on the 4-connected
+grid (N/S/E/W only). Stepping INTO a non-rock cell costs `BASE(terrain) *
+factor(step)` ticks, where `BASE(grass)=2`, `BASE(brush)=5`, and `factor`
+depends on how the step aligns with the fixed wind vector `(WX,WY)` (one of
+the 4 unit directions): a step taken *with* the wind (`dot=+1`) costs factor
+`1` (fast); *across* the wind (`dot=0`) costs factor `CF = max(2, floor(S/2))`
+(integer division); *against* the wind (`dot=-1`) costs factor `S` (slow).
+`S in [4,10]` is the wind strength. A cell's arrival time is the shortest total cost from the
+ignition (Dijkstra); it burns iff that time is `<= T`. Rock cells are never
+entered by fire (impassable, from any side).
+
+You may clear up to `BUDGET` non-ignition, non-rock cells before the fire
+starts. A cleared cell is stripped of fuel: it can never burn AND fire can
+never pass through it -- but its own standing value is gone too, whether or
+not it would have burned. Crews cannot approach the flame front: every
+cleared cell must be at Manhattan distance `>= D` from the ignition.
+
+## Input
+```
+H W T S D BUDGET WX WY IY IX
+H lines, each a length-W string over {R,G,B}      (terrain)
+H lines, each W non-negative integers              (fuel value, 0 on R cells)
+```
+
+## Output
+```
+M
+y_1 x_1
+...
+y_M x_M
+```
+
+## Feasibility
+`0 <= M <= BUDGET`. Every `(y,x)`: in range, pairwise distinct, terrain
+`!= R`, not equal to `(IY,IX)`, and Manhattan distance to `(IY,IX) >= D`. Any
+violation, or trailing tokens, scores `0`.
+
+## Objective (maximize)
+Simulate the fire (with your cleared cells blocking spread, as above). Let
+`F` = sum of `v(y,x)` over every non-rock, non-cleared cell whose arrival
+time exceeds `T` (survives unburned). Let `B` = the same `F` computed with
+NO clearing at all (the natural, do-nothing burn) -- `B` depends only on the
+input.
+
+## Scoring
+`ratio = min(1.0, 0.1 * F / max(1, B))`. Clearing nothing gives `F=B` (so
+`ratio=0.1`) on every instance where the natural burn leaves any value
+unburned at all; `B` is floored at `1` only in the degenerate case where it
+would otherwise be `0`.
+
+## Constraints
+`4<=H<=40`, `4<=W<=60`, `1<=T<=200`, `4<=S<=10`, `0<=D<=10`,
+`0<=BUDGET<=30`, `(WX,WY)` one of `(1,0),(-1,0),(0,1),(0,-1)`,
+`0<=v(y,x)<=10`. Time limit `5s`, memory `512MB`. Each input `<=5MB`.
+
+## Example
+Input:
+```
+4 6 13 4 1 2 -1 0 1 5
+RRRRRG
+BBGGGG
+RRRRRG
+RRRRRG
+0 0 0 0 0 0
+8 8 1 1 1 0
+0 0 0 0 0 0
+0 0 0 0 0 0
+```
+Wind blows west (`WX=-1`); the ignition at `(1,5)` sits at the mouth of a
+row-1 corridor flanked by rock. Two high-value brush cells (`v=8` each) sit
+at the far end, `x=0,1`. Standoff `D=1` forbids clearing `x=5`.
+
+**Clear nothing**: fire runs west along row 1 at 2 ticks/grass-cell, 5
+ticks/brush-cell: arrival times are `x=4:2, x=3:4, x=2:6, x=1:11, x=0:16`.
+By `T=13` everything up to `x=1` has burned; only `x=0` (`v=8`) survives.
+`B=8`, `ratio=0.1`.
+
+**Clear `x=4`** (distance `1 >= D`, cost `1 <= BUDGET`): the corridor is
+severed one cell from the ignition. `x=4` itself is stripped (forfeits its
+`v=1`), but `x=3,2,1,0` are now unreachable and all survive: `F = 1+1+8+8 =
+18`. `ratio = min(1, 0.1*18/8) = 0.225` -- more than double, from clearing a
+single cheap grass cell right past the standoff line rather than a wide ring
+around the ignition (which here would cost far more than `BUDGET` allows,
+for cells the fire barely threatens anyway).

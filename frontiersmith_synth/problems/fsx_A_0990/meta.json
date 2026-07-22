@@ -1,0 +1,19 @@
+{
+  "id": "fsx_A_0990",
+  "tier": "A",
+  "format": "A",
+  "family": "dictionary-vs-domain-corpora",
+  "eval_form": "quality-metric",
+  "seed_problem": "K=3 synthetic 'domain' corpora (legal, chat, code) built from shared hidden stems plus domain-specific affixes; solver outputs a shared dictionary of at most Dmax substrings; a FIXED greedy longest-match parser compresses each corpus with it; score = the MINIMUM per-domain savings ratio over the 3 corpora, relative to a domain-blind frequency baseline.",
+  "mutation": "composite: compose a frozen-greedy-parser cost model (longest-match, fixed per-match token cost) with substring-dictionary-construction (choose <=Dmax entries, each length in [3,12]) and worst-corpus-savings aggregation (objective = min ratio over 3 heterogeneous corpora, not their sum/average). Domain sizes and affix diversity are skewed (legal >> chat >> code, legal near-boilerplate, code highly diverse) so pooled-frequency substring mining is dominated by the largest domain's whole words.",
+  "objective": "max",
+  "theme": "one compression dictionary for legal, chat, and code",
+  "title": "One Dictionary for Legal Contracts, Chat Logs, and Code",
+  "innovation_hook": "Because the three domains share hidden morphological stems that compose with each domain's own (disjoint) prefixes/suffixes under the frozen greedy parser, spending dictionary slots on those shared stems strictly dominates memorizing long, domain-exclusive whole words -- a factorization that ranking substrings by pooled (summed) frequency, weighted or not by length, never surfaces, because pooled frequency is dominated by whichever domain is largest and most repetitive.",
+  "strategies": [
+    "trivial: the grader's own domain-blind reference -- the Dmax most frequent length-3 substrings pooled over the concatenation of all corpora, no other length considered -> ratio ~0.1",
+    "greedy (trap): rank ALL candidate substrings (length 3..12) by pooled frequency times (length - token cost) summed across the 3 corpora, take the top Dmax -- a natural 'smarter' pooled-frequency dictionary trainer, but still domain-blind: it happily spends the budget on long, domain-exclusive whole words from the largest (legal) corpus, which never match inside the smallest (code) corpus, so the worst-domain ratio stays low",
+    "strong: for each candidate substring, score it by the MINIMUM across the 3 domains of (per-domain occurrence count * (length-token cost) / that domain's raw length) -- i.e. its worst-case NORMALIZED contribution -- and restrict the search to substrings that actually occur in the smallest corpus (code); this surfaces the shared cross-domain stems instead of any single domain's private vocabulary",
+    "invalid: claims an absurdly large dictionary size D far beyond Dmax -> infeasible, scores 0"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0746",
+  "tier": "B",
+  "format": "B",
+  "family": "pi-controlled-step-integrator",
+  "eval_form": "quality-metric",
+  "theme": "self-tuning step controller for a plant with a wandering stiff transient",
+  "title": "Boiler Startup: Step-Size Control for a Relaxation Trajectory with a Wandering Stiff Transient",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:topup-B-1"],
+  "strategies": [
+    "trivial: uniform non-adaptive grid of explicit RK4 steps spending (almost) the full evaluation budget, snapped onto every checkpoint -- the evaluator's own baseline construction, always feasible -> ~0.1",
+    "greedy: classic embedded step-doubling (RK4 h vs 2x RK4 h/2) driving h up/down by local-error tolerance, explicit-only, no stiffness awareness; survives on generous instances (modest win over trivial) but on tight instances must crawl through the stiff window with thousands of stability-limited steps and blows the evaluation budget -> infeasible -> 0 there",
+    "strong: embedded local-error estimate (same step-doubling) + a PI controller on the error ratio (uses current AND previous accepted step's error, smoother than greedy's bang-bang doubling) for step sizing in smooth regions, PLUS a stiffness indicator -- look ahead at the worst-case K over the prospective interval and compare its stability limit h_stab=STAB/K to the accuracy-driven h; only while that indicator fires does it flip to an unconditionally-stable implicit (backward Euler) update and stride through the whole stiff run in a handful of big steps instead of crawling",
+    "invalid: empty step schedule -- covers nothing, hits no checkpoint, never reaches T -> infeasible -> 0 on every instance"
+  ]
+}

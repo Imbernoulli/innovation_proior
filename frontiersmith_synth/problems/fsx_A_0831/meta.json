@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0831",
+  "tier": "A",
+  "format": "E",
+  "family": "hidden-radix-digit-law",
+  "eval_form": "quality-metric",
+  "theme": "an abacus cult encodes tributes in a secret base",
+  "title": "The Abacus Cult's Secret Radix",
+  "objective": "max",
+  "strategies": [
+    "trivial: submit (b=3, a2=0, a1=0, a0=q//2) -- the 'blind guess' flat prediction that ignores the training rows entirely and reproduces the checker's own baseline construction exactly (Ratio = 0.1)",
+    "greedy: assume the ambient counting base b=10 (the natural first reading of 'digit sum' for a coder who does not realize the radix is a secret cult parameter), then least-squares fit a quadratic a2*d^2+a1*d+a0 against the base-10 digit sum d of each training tribute x -- this reproduces the training rows reasonably well in an approximate, noisy sense (the mod-q wraps look like scatter to a real-valued fit) but the recovered curve is tied to base-10 digit statistics that have nothing to do with the cult's actual radix, so on tributes with dozens to hundreds of digits (where held-out is drawn) the predicted blessing value is essentially uncorrelated with the true one",
+    "strong: exploit that switching coordinates from x to s = digitsum_b(x) is exactly what turns the cult's law into a plain quadratic -- brute-force scan every candidate radix b in [3,40] (only 38 candidates), and for each one take three training tributes whose digit sums in that base are pairwise distinct and solve the 3x3 Vandermonde system for (a2,a1,a0) exactly in the field GF(q) (q is prime, public); then VERIFY the recovered quadratic reproduces every other training row exactly. Only the true radix passes verification on all rows (an accidental match across dozens of independent rows under a wrong radix is astronomically unlikely), so a handful of exact comparisons per candidate base pins down b, after which the quadratic law is exact and extrapolates correctly to tributes of any size",
+    "headroom above strong: this instance carries no observation noise, so the true (b,a2,a1,a0) reproduces the held-out blessings with zero error; the checker's eps-floor caps even that exact recovery at Ratio = 0.9, leaving headroom for a policy that also certifies WHY no other base could have produced the training rows (a formal uniqueness argument), rather than relying on empirical verification against a finite sample"
+  ]
+}

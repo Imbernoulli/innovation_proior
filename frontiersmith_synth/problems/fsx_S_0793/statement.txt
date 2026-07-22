@@ -1,0 +1,90 @@
+# Grow the Glyph
+
+## Problem
+
+`N` cells sit on a ring, each either dead (`0`) or alive (`1`). A 5-bit mask `M`
+picks a set of offsets from `{-2,-1,0,1,2}`: bit `(d+2)` of `M` is set exactly when
+offset `d` participates. Every step, **every cell simultaneously** recomputes as the
+XOR (parity) of its participating neighbors' current values:
+
+```
+next[i] = XOR over every offset d with bit (d+2) of M set, of state[(i+d) mod N]
+```
+
+Starting from a seed you choose, this rule is applied for exactly `T` steps. You are
+given the **target** pattern the ring must show after those `T` steps. Print up to
+`B` cells to make alive at step 0 (all others start dead); every other cell's state
+at every later step is entirely determined by the rule.
+
+Because XOR is linear, the T-step outcome is a fixed linear function of your seed:
+changing a seed cell always flips a fixed, seed-independent set of cells at step
+`T`. A single naive pass at "inverting" the rule -- peeling one layer at a time by
+solving for one neighbor tap while guessing at the rest from the layer you're
+inverting -- is exact only when the mask has a single tap; with several taps active
+it accumulates drift and never quite lands on an exact precursor, however you tune
+it. To do well you must account for the WHOLE ring-wide system the T-step map
+induces (directly, or by working backward through it correctly), and recognize that
+some seed changes are invisible to the final outcome -- exploiting that freedom lets
+you trade cells for budget without hurting your match.
+
+## Input
+
+```
+N T B M
+```
+then one line: the length-`N` target string (each character `0` or `1`).
+
+## Output
+
+```
+k
+p_1 p_2 ... p_k
+```
+`k` (`0 <= k <= B`) is how many cells you seed; `p_1..p_k` are **distinct** cell
+indices in `[0, N-1]` to make alive at step 0. (If `k = 0` print an empty second
+line.)
+
+## Feasibility
+
+`0 <= k <= B`; every `p_i` in `[0, N-1]`; all `p_i` distinct; no trailing tokens.
+Any violation scores `0`.
+
+## Objective
+
+Simulate `T` synchronous steps from your seed under rule `M`. Let `F` be the number
+of cells whose state at step `T` matches the target. Maximize `F`.
+
+## Scoring
+
+Let `B_base` be the number of `0`s in the target (this is exactly what the all-dead
+seed achieves, since the all-zero state is a fixed point of every XOR rule). Your
+score for a test is
+```
+ratio = min(1000, 100 * F / max(1, B_base)) / 1000
+```
+so seeding nothing scores `0.1`, and any real improvement scores higher, capped at
+`1.0` (ten times the reference). Per-test ratios are averaged over all 10 tests.
+
+## Constraints
+
+- `8 <= N <= 200`.
+- `2 <= T <= 30`.
+- `1 <= M <= 31`, and `M` always has between 2 and 4 of its 5 bits set (never a bare
+  shift or the identity).
+- `1 <= B <= N`; the target is always constructible from some seed of weight `<= B`.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+`N=8 T=1 B=2 M=6` (`0b00110`, bits for offsets `-1` and `0`, i.e.
+`next[i] = state[i-1] XOR state[i]`), target `01100000`. Seeding `{1,2}` (cells `1`
+and `2` alive, all else dead) gives step-1 state: cell `0` = `state[7] XOR
+state[0]` = `0 XOR 0 = 0`; cell `1` = `state[0] XOR state[1]` = `0 XOR 1 = 1`; cell
+`2` = `state[1] XOR state[2]` = `1 XOR 1 = 0`; cell `3` = `state[2] XOR state[3]` =
+`1 XOR 0 = 1`; cells `4..7` stay `0`. Result `01010000` matches the target in `6` of
+`8` cells (`F=6`); the target has `B_base=6` zero cells, so `ratio =
+min(1000, 100*6/6)/1000 = 0.1` here -- no better than seeding nothing. This mask has
+only two taps, so a single-tap backward guess already drifts (it only gets the
+example right because `T=1`); at the larger `T` used on most tests, that drift
+compounds step after step, landing well short of an exact reconstruction of the
+rule's actual precursor.

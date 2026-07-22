@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0784",
+  "tier": "B",
+  "format": "C",
+  "family": "gantry-head-proximity-throttle",
+  "eval_form": "quality-metric",
+  "theme": "multi-head plotter painting a mural without vibration",
+  "title": "Gantry Heads on a Mural Rail",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:fleet-choreography"],
+  "strategies": [
+    "trivial: one head does every stroke alone in the given (position) order, swapping whenever the color changes -- exactly the checker's own baseline",
+    "greedy (color-setup-batching only): hand each color to one head round robin, sweep that head's strokes color-block by color-block -- minimizes swap count but ignores proximity, so on interleaved-color instances every head sweeps the whole rail and stays mutually throttled almost the entire run",
+    "strong (insight): partition the rail into H contiguous space-time territories assigned to the nearest head (keeps heads > D apart, throttling collapses to ~0), then INSIDE each territory group strokes into color runs ordered by mean position -- trades a little extra local backtracking for far fewer swaps, without ever paying the throttle penalty",
+    "beyond strong: search over territory boundaries / assignment instead of fixed equal splits, or locally interleave two adjacent color runs when their spans overlap enough that a merged sweep is cheaper than two separate runs"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0759",
+  "tier": "A",
+  "format": "E",
+  "family": "latent-graph-diffusion-id",
+  "eval_form": "quality-metric",
+  "theme": "heat spreading through a hidden pipe network",
+  "title": "Hidden Pipe Network: Identifying a Shared Diffusion Operator from Impulse Responses",
+  "objective": "min",
+  "strategies": [
+    "trivial: submit the empty graph (no diffusion, A=identity) -- reproduces the checker's own no-diffusion baseline exactly (~0.1)",
+    "greedy: build a pairwise CORRELATION graph over all pooled training snapshots and keep the top-correlated pairs as edges -- treats the data as a family of co-moving curves; wires up nodes that merely sit on the same diffusion front (indirect echoes a few hops apart) as if they were directly piped, so it partially fits the training impulses but regularly mis-wires the network and transfers only partially to impulses at unseen junctions",
+    "strong: recognise that all 5 impulse responses obey the SAME sparse operator A -- pool every (x[t]->x[t+1]) transition from all sources into one regression per target node, and recover a tightly capped support (orthogonal matching pursuit, ~3 terms) instead of a dense row; five pooled impulses vastly overdetermine a handful of per-row unknowns even though they hopelessly underdetermine a dense row, and symmetrising each edge's two independent row-estimates adds a free consistency check from the shared-operator structure",
+    "headroom above strong: cross-validated per-row support size instead of a fixed constant, iterative reweighting / debiasing after support selection, or a joint sparse-precision-matrix style estimator that solves all rows simultaneously under a global edge budget"
+  ]
+}

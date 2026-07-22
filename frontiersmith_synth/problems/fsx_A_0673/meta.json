@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0673",
+  "tier": "A",
+  "format": "B",
+  "family": "pinned-cache-trace-hedging",
+  "eval_form": "quality-metric",
+  "theme": "one cache config against five workload personalities",
+  "title": "One Cache Config Against Five Workload Personalities",
+  "objective": "maximize",
+  "source_frameworks": ["wave2b-lens:scenario-robust-design"],
+  "strategies": [
+    "trivial: pin nothing, pure LRU (w_lru=1, everything else 0) -- the do-nothing reference the evaluator itself anchors to",
+    "greedy: pin the pin_budget globally most-frequent keys (summed across all five traces) and keep plain LRU -- the obvious 'read the data, sort by count' recipe; wins on zipf/phase/bursty but the adversarial-loop trace's period exceeds the shrunken managed region (LRU worst case) and the scan trace's one-shot sweep still flushes whatever the policy resists, so the worst-trace score barely beats trivial",
+    "smarter pin + hedge weights: pin whichever keys appear (even lightly) across the MOST traces first (the true cross-trace intersection, cheap insurance for every personality at once), then spend any leftover pin budget with a maximin/water-filling step -- repeatedly add the single unpinned key that most improves the CURRENTLY worst trace's hit rate -- and pair it with a fixed hedge of weights (moderate LRU, moderate MRU to blunt the loop, a touch of LFU, and a scan-admission gate keyed off a windowed 'fraction of first-time keys' signal) so the one static formula reacts differently to a steady zipf trace than to a one-shot scan sweep or a long cyclic loop",
+    "local refinement: from a maximin pin set, hill-climb by swapping pinned keys for unpinned ones and perturbing the four weights on a coarse grid, keeping any change that raises the worst-trace hit rate, to squeeze out further headroom below the offline-optimal ceiling"
+  ]
+}

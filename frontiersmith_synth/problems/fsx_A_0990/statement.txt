@@ -1,0 +1,108 @@
+# One Dictionary for Legal Contracts, Chat Logs, and Code
+
+## Problem
+Three text corpora were harvested from different domains, always given in this fixed
+order: **legal** contracts, **chat** logs, **code** identifiers. Each is a string over
+lowercase letters `a`-`z`. You must design **one shared dictionary** of at most `Dmax`
+substrings that will be used to compress *all three* corpora with the same, fixed
+compression procedure.
+
+The compressor is a **frozen greedy longest-match parser**: scanning a corpus left to
+right, at each position it looks for the *longest* dictionary entry that matches the text
+starting there (only lengths 3..12 are ever tried, since every dictionary entry has length
+in `[3,12]`). If some entry matches, it emits one **token** (cost **2** compressed units)
+and skips past the matched text. If no entry matches, it emits the single next byte
+literally (cost **1** unit) and advances by one character. This exact procedure is applied
+independently to each of the three corpora with your dictionary; you do not implement it,
+the grader does.
+
+## Input
+```
+K Dmax
+R_1
+corpus_1
+R_2
+corpus_2
+R_3
+corpus_3
+```
+`K = 3` (always). `Dmax >= 1` is the maximum dictionary size. For each domain (legal, chat,
+code in that order): `R_i` is its length in bytes, followed by the corpus itself as a single
+token of exactly `R_i` lowercase letters (no other characters, no whitespace inside it).
+
+## Output
+```
+D
+s_1
+...
+s_D
+```
+`0 <= D <= Dmax` dictionary entries, each a nonempty string of lowercase letters with
+length between 3 and 12, all pairwise distinct.
+
+## Feasibility
+- `D` must lie in `[0, Dmax]`.
+- Every entry length must lie in `[3, 12]`, using only `a`-`z`.
+- No two entries may be equal. No trailing tokens after the last entry.
+Any violation scores 0.
+
+## Objective
+For a dictionary `S`, let `savings_d(S) = R_d - encoded_d(S)`, where `encoded_d(S)` is the
+total cost (in compressed units) the frozen parser produces on domain `d`'s corpus using
+`S`. Let `ratio_d(S) = savings_d(S) / R_d`. Your objective is the **worst domain**:
+```
+F(S) = min(ratio_legal(S), ratio_chat(S), ratio_code(S))
+```
+Maximize `F(S)`. A dictionary that helps two domains a lot but ignores the third is capped
+by that third domain's ratio.
+
+## Scoring
+The grader also builds its own **reference dictionary** `B_set`: the `Dmax` substrings of
+length **exactly 3** with the highest total occurrence count in the concatenation of all
+three corpora (ties broken lexicographically), i.e. the plainest, domain-blind frequency
+count with no attempt to balance across domains or to consider any other length. Let
+`Bb = F(B_set)` (guaranteed positive). Your score on a test is
+```
+ratio = min(1, 0.075 * F(S) / Bb).
+```
+The final score is the mean ratio over 10 tests.
+
+Why it is open-ended: the corpora share a hidden vocabulary of stems combined with
+domain-specific prefixes/suffixes, so a stem's *pooled* count is inflated mostly by
+whichever domain is largest and most repetitive. Ranking substrings by raw pooled frequency
+(or frequency times length) buries this: it happily spends the budget memorizing a few
+long, domain-exclusive whole words from the biggest corpus, which the frozen parser can
+never match inside the other two. Maximizing the *worst* domain's normalized gain instead
+surfaces the shorter substrings that recur across all three and compose with each domain's
+own affixes -- fewer, shorter slots that help every corpus at once. No closed form predicts
+which substrings these are; they must be discovered from the byte statistics.
+
+## Constraints
+- `1 <= R_legal, R_chat, R_code <= 40000`. `1 <= Dmax <= 48`.
+- Time limit: 5 s. Memory limit: 512 MB.
+- Deterministic scoring: identical output always yields an identical score.
+
+## Example
+Input:
+```
+3 2
+9
+aaaaaaaaa
+9
+bbbbbbbbb
+9
+aaabbbaba
+```
+Output:
+```
+2
+aaa
+bbb
+```
+Parsing `legal="aaaaaaaaa"` with `{aaa,bbb}` gives three "aaa" matches: cost `2*3=6`,
+`savings=3`, `ratio=0.3333`. Symmetrically `chat` gives `ratio=0.3333`. Parsing
+`code="aaabbbaba"` matches "aaa" (pos 0-2) then "bbb" (pos 3-5), leaving "aba" unmatched
+(3 literal bytes): cost `2+2+1+1+1=7`, `savings=2`, `ratio=0.2222`. So
+`F = min(0.3333,0.3333,0.2222) = 0.2222`. The grader's own top-2 most frequent length-3
+substrings pooled over all three corpora are also exactly `{aaa,bbb}` (each occurs 8 times,
+tied lexicographically first), so `Bb = 0.2222` too, giving `ratio = min(1, 0.075*1) = 0.075`.

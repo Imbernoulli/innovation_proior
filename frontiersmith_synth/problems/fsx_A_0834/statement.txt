@@ -1,0 +1,106 @@
+# Canal Patrol Placement: Corridor-Bundle Interdiction
+
+## Problem
+
+A trading canal system is a chain of hubs `0, 1, ..., n-1` joined by `m`
+directed channels, each with a transit **cost** and an inspection
+**capacity**. Several channels may run in parallel between the same two hubs
+(a **corridor bundle**) -- alternative routes for the same cargo. `K`
+shipments move cargo; shipment `i` carries `vol_i` units worth `val_i` each
+from hub `s_i` to hub `t_i`. You choose a set of **at most `B`** channels to
+place a patrol post on.
+
+Every smuggler is a deterministic best-responder: shipment `i` travels the
+path from `s_i` to `t_i` minimizing total weight, where a channel's weight is
+`cost + PEN` if it carries a patrol post and just `cost` otherwise
+(`PEN = 2000000`, fixed and known); ties between equal-weight channels break
+toward the smaller channel index. Consequently: if a bundle has several
+parallel, equal-cost channels and even ONE is left unpatrolled, every
+shipment glides onto that free channel for free -- patrolling the rest
+achieves nothing. Only a **fully closed bundle** forces shipments through a
+patrol post.
+
+When a shipment's chosen path first reaches a patrolled channel, that post
+seizes `min(vol_i, cap)` units of cargo (`cap` of that channel), worth
+`seize * val_i`; the rest of the shipment is not inspected further (only the
+first patrol post on the route matters). A shipment whose route never touches
+a patrolled channel is never checked.
+
+## Input
+
+```
+n m K B
+u_1 v_1 cost_1 cap_1
+...
+u_m v_m cost_m cap_m
+s_1 t_1 vol_1 val_1
+...
+s_K t_K vol_K val_K
+```
+Channels are 0-indexed in listed order. `0 <= u_i,v_i < n`, `1 <= cost_i,cap_i,vol_i,val_i <= 10^9`.
+`0 <= s_i,t_i < n`. `1 <= B <= m`.
+
+## Output
+
+```
+c
+e_1 e_2 ... e_c
+```
+`c` (`0 <= c <= B`) is the number of patrolled channels, followed by `c`
+distinct channel indices in `[0, m-1]`.
+
+## Feasibility
+
+`0 <= c <= B`; every `e_j` is a valid, distinct channel index. Any violation
+scores 0.
+
+## Objective
+
+Maximize `F`, the total value seized across all `K` shipments under the
+best-response mechanic above.
+
+## Scoring
+
+The checker computes its own baseline `B_ref` by patrolling ONLY channel 0
+(the generator always makes channel 0 a lone chokepoint -- the sole channel
+out of hub 0 -- so every shipment starting there is forced through it
+regardless of penalty). Then
+
+```
+Ratio = min(1, F / (10 * B_ref))
+```
+
+Matching `B_ref` (patrol just that one entrance) scores `0.1`; reaching
+`10*B_ref` or more caps the score at `1.0`. The reported score is the mean
+`Ratio` over 10 tests.
+
+## Constraints
+
+`2 <= n <= 30`, `1 <= m <= 70`, `1 <= K <= 30`. Time limit: 5 s. Memory
+limit: 512 MB.
+
+## Example
+
+Excerpt of the actual judged `testdata/1.in`: 9 hubs, 20 channels, 9
+shipments, `B = 6`. Channel 0 = `0 1 17 24` (hub 0's only out-channel, the
+baseline anchor). Channel 1 = `1 2 21 24`, also a lone chokepoint. Channels
+2-10 are nine parallel `2 -> 3` channels (a decoy bundle -- channel 10 is a
+pricier bypass, cost 152 vs. cost 20 for the other eight). Channels 11-14 are
+four parallel, equal-cost `3 -> 4` channels (a medium bundle).
+
+- Patrol just channel 0: `F = 4920 = B_ref`, `Ratio = 0.1` (the baseline).
+- Patrol `{0, 1, 11}` (both chokepoints plus ONE of the four medium
+  channels): `F = 6240`, `Ratio = 0.127` -- almost no gain, since shipments
+  crossing hub 3->4 simply glide onto 12/13/14 for free.
+- Patrol `{0, 1, 11, 12, 13, 14}` (both chokepoints plus the WHOLE medium
+  bundle, same 6 posts): `F = 13342`, `Ratio = 0.271` -- over double the
+  value from the identical post count, purely because the last posts closed
+  a bundle COMPLETELY instead of leaving one channel open.
+
+This is the corridor-bundle trap: an edge-by-edge marginal-value ranking
+cannot distinguish these two 6-post allocations (every medium channel looks
+equally "valuable" alone), yet one wastes 4 posts for `0.127` while the
+other reaches `0.271`. The larger 9-channel decoy bundle is deliberately
+unaffordable here, and even fully closing its eight ordinary channels would
+still leave the cost-152 bypass channel 10 open -- another way a large,
+plausible cut buys zero.

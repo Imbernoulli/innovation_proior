@@ -1,0 +1,96 @@
+# Move the Toll Booths, Shrink the Engines
+
+## Problem
+
+A factory runs several independent assembly pipelines, each a simple chain of
+**stations** joined by **belts**. Every belt may already host some **toll booths** —
+checkpoints certifying all work since the previous booth (or the pipeline's start)
+finished within one shift clock `T`. Every station runs one of 2–3 **engine
+variants**: cheap-slow, pricier-fast, or an optional middle choice. Choose the engine
+at every station AND relocate the toll booths along each pipeline's belts (legality
+below) to meet every shift-clock check while spending as little total budget as
+possible.
+
+**Booth relocation legality.** For each pipeline, replace its belts' booth counts
+with any new non-negative integers, as long as the **total booths on that pipeline is
+unchanged** (booths are physical units: slide them anywhere along their own pipeline,
+or stack several on one belt, but never create, destroy, or share them across
+pipelines).
+
+## Input
+
+```
+N K T
+L_1 L_2 ... L_K
+```
+`N` stations (numbered 1..N), `K` pipelines, shift clock `T`. Pipeline `p` consists of
+the next `L_p` stations in increasing order (pipeline 1 = stations `1..L_1`, pipeline 2
+= the next `L_2` stations, etc.); `sum(L_p) = N`, every `L_p >= 2`.
+
+Then `N` lines, one per station `v` (in order 1..N):
+```
+Kv  d_0 a_0  d_1 a_1  [d_2 a_2]
+```
+`Kv` (2 or 3) engine variants for station `v`. Variant `i` has processing delay `d_i`
+and area cost `a_i`. Delays strictly decrease and areas strictly increase with `i`
+(variant 0 = cheapest/slowest, variant `Kv-1` = priciest/fastest).
+
+Then `M = N - K` lines (grouped by pipeline, in belt order within each pipeline — belt
+`i` of a pipeline connects its local stations `i` and `i+1`):
+```
+w c
+```
+current booth count `w` (>=0) and per-booth relocation cost `c` (>=1) for that belt.
+
+## Output
+
+Two lines.
+Line 1: `N` integers `x_1 .. x_N`, the chosen engine variant (`0 <= x_v <= Kv-1`) per
+station.
+Line 2: `M` integers, the new booth count per belt, in the same order as the input.
+
+## Feasibility
+
+1. Each `x_v` is a valid variant index for station `v`.
+2. Per pipeline, new belt counts are non-negative and sum to the original total.
+3. Walk each pipeline in order to get arrival times: a station right after the
+   pipeline start, or right after a belt whose **new** count is `>= 1`, starts a
+   fresh run (arrival = its own delay); otherwise arrival = previous arrival + its
+   own delay.
+4. Every station that is last-of-pipeline, or precedes a belt with new count `>= 1`,
+   must have arrival `<= T`.
+Any violation scores 0.
+
+## Objective
+
+Minimize total budget: `F = sum(area of chosen variant, over all stations) +
+sum(new booth count * relocation cost, over all belts)`.
+
+## Scoring
+
+The checker builds its own reference `B`: keep every belt's original booth count and
+run every station at its priciest (fastest) variant — this is always feasible. Ratio
+`= min(1000, 100 * B / F) / 1000`, so matching `B` scores 0.1; halving it scores 0.2;
+a tenth of it caps the ratio at 1.0. Infeasible output scores 0.
+
+## Constraints
+
+`4 <= N <= ~1700`, `1 <= K <= N/2`, `2 <= L_p`, `2 <= Kv <= 3`, delays/areas/costs are
+positive integers within a few hundred, `T` fits in a 64-bit budget derived from the
+instance. Time limit: 3s. Memory limit: 512MB.
+
+## Example
+
+One pipeline (`K=1`), 4 stations, each with variants `(d=20,a=2)` then `(d=5,a=20)`.
+Belts: `(w=3,c=5) (w=0,c=5) (w=0,c=5)`, `T=25`.
+
+Baseline `B`: keep booths `[3,0,0]`, run everyone fast: area `4*20=80`, booth cost
+`3*5=15`, `B=95`.
+
+A **retimed** answer — booths `[1,1,1]`, everyone on the cheap variant — is legal
+(total booths still 3) and every run is a single cheap station (`20 <= T=25`): area
+`4*2=8`, booth cost `1*5+1*5+1*5=15`, `F=23`. Ratio `= 100*95/23 = 413` -> `0.413`.
+
+Keeping booths `[3,0,0]` and only upsizing engines (no relocation) forces stations
+2–4 to run fast to survive the long unbroken 3-station run (`20+20+20=60 > T`): area
+`2+20+20+20=62`, booth cost `15`, `F=77`, ratio `0.123` — far worse than relocating.

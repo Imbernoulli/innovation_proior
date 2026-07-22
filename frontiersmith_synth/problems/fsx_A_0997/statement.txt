@@ -1,0 +1,103 @@
+# Sixteen-Load Truss Margin
+
+## Problem
+
+A simply-supported 2D pin-jointed bridge frame spans `W` equal bays between a
+bottom chord and a top chord of height `H`. Bottom node `i` (`0<=i<=W`) sits at
+`x = i*SPAN`, `y = 0`; top node `i` sits at `x = i*SPAN`, `y = H`. Node `0` is a
+**pin** support (fixes both directions); node `W` is a **roller** (fixes only
+the vertical direction).
+
+You are given `M` **candidate members**, listed in this fixed order: the `W`
+bottom-chord segments, the `W` top-chord segments, the `W+1` verticals, `W`
+diagonals of type **A** (bottom `i` to top `i+1`), then `W` diagonals of type
+**B** (top `i` to bottom `i+1`) — so bay `i` has exactly two candidate
+diagonals, one each direction. You choose a subset of members to build and,
+for each, a cross-section from `NAREA` given area classes; every unselected
+member is simply absent. The **cost** of a build is `sum(length * area)` over
+selected members and must not exceed the given `BUDGET`.
+
+The frame is checked against `K=16` load cases (1 gravity case load at every
+node; 4 wind cases on the top chord — a uniform push, an alternating
++/- checkerboard by bay, and two oppositely-shaped ramps; and 11 moving
+point loads cycled over the bottom chord's interior nodes); each case lists
+the exact point loads applied. For each case the checker solves real 2D linear-elastic pin-jointed
+equilibrium (direct-stiffness method) for your selected members and areas,
+then computes each member's **utilization** = `|axial stress| / SIGMA_Y`. A
+bay with no diagonal at all (or any other kinematic mechanism) is detected and
+treated as **unstable** for any case whose displacement solution blows up.
+The **margin** of a case is `1 - (max utilization over your members)`, clamped
+to `[0,1]`; an unstable case scores margin `0`.
+
+## Input
+
+```
+W K
+N M
+SPAN H E SIGMA_Y
+NAREA a_1 ... a_NAREA
+BUDGET
+PIN_NODE ROLLER_NODE
+x_0 y_0
+...
+x_{N-1} y_{N-1}
+u_0 v_0
+...
+u_{M-1} v_{M-1}
+K
+L f0_node f0_x f0_y f1_node f1_x f1_y ...   (one line per case, L point loads)
+```
+`N = 2*(W+1)`. Bottom node `i` has id `i`; top node `i` has id `(W+1)+i`.
+
+## Output
+
+```
+S
+m_1 c_1
+...
+m_S c_S
+```
+`S` = number of selected members; each line names a candidate member index
+`m` (`0<=m<M`, no repeats) and its area-class index `c` (`0<=c<NAREA`).
+
+## Feasibility
+
+Every `m` and `c` must be in range with no member repeated; total cost must
+not exceed `BUDGET`. Any violation scores `0`.
+
+## Objective
+
+Maximize `F` = the **minimum margin over all 16 load cases** — your worst-case
+safety margin, the case that fails you first.
+
+## Scoring
+
+Let `B` be the same worst-case margin for a fixed weak reference: every
+chord and vertical plus only the type-A diagonal in every bay, all at the
+*smallest* area class (always affordable, always kinematically stable).
+```
+ratio = min(1, 0.1 * F / B)
+```
+Reproducing the reference scores `0.1`; a materially safer worst-case margin
+scores higher, up to the `1.0` cap.
+
+## Constraints
+
+`2 <= W <= 14`, `1 <= NAREA <= 3`, `2 <= K` (always `16` here). Time limit:
+5 s. Memory limit: 512 MB.
+
+## Example
+
+Take one bay (`W=1`): pin bottom-left, roller bottom-right, a top node above
+each. Chords + verticals only (no diagonal) is a mechanism: under a pure
+downward (gravity) load it carries that load with zero stress in every
+member (gravity has no component along the bay's *horizontal* racking
+freedom) — but a *horizontal* wind load excites that same racking mode,
+displacements blow up, and the case scores margin `0`. Add either diagonal
+and the bay is fully determinate, surviving every load direction with some
+finite margin. Across 16 cases, a build sized only for the biggest single
+case (gravity) can leave a bay's lateral margin thin, or its second diagonal
+unbuilt — invisible until another case is checked. Spending budget on the
+members that stay load-bearing across MANY of the 16 cases, rather than the
+ones the single dominant case flags, raises the worst-case margin, not just
+the gravity-case margin.

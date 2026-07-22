@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0783",
+  "tier": "A",
+  "format": "C",
+  "family": "outbreak-prepositioned-stockpile",
+  "eval_form": "quality-metric",
+  "theme": "vaccine stockpiles placed before anyone is sick",
+  "title": "Prepositioned Doses: Hedging Against the Worst Seed City",
+  "objective": "minimize",
+  "strategies": [
+    "do-nothing baseline: zero doses everywhere (matches the checker's own baseline)",
+    "population-proportional greedy: fully dose the highest-population cities first until the budget runs out",
+    "multi-scenario separator hitting-set: for every scenario build a shortest-mobility-path tree from its seed city, credit each city with the downstream population that would be cut off if it alone were dosed, then knapsack-greedily buy cities by (summed cross-scenario cut population)/cost so cheap cities that separate MANY scenarios' spread trees get bought before expensive high-population cities that only help one scenario",
+    "invalid: negative dose counts / budget overspend"
+  ]
+}

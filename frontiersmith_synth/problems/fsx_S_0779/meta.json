@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0779",
+  "tier": "S",
+  "format": "B",
+  "family": "trabecular-stress-remodeling",
+  "eval_form": "quality-metric",
+  "theme": "bone that grows toward the load",
+  "title": "Trabecular Growth: Load-Adaptive Bone Remodeling Without the Checkerboard",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:morphogenesis-and-growth"],
+  "strategies": [
+    "trivial: uniform seed density at the target volume fraction, never remodel (move_limit=0) -- exactly the evaluator's own baseline() construction -> ~0.1",
+    "greedy: uniform seed, filter_radius=0 (purely local stress-following), moderate move_limit -- chases raw per-cell strain-energy sensitivity into spatially incoherent, checkerboard-like density patterns that are numerically 'stiff' in the coarse per-cell sense but not physically supported by their neighbours; the disclosed roughness penalty in the scored objective exposes this, so on multi-load-case instances greedy often lands at or below the do-nothing baseline",
+    "strong: uniform seed, a moderate sensitivity-filter radius (spatial regularization of the sensed signal before it drives a density update) with a smaller move_limit -- keeps every remodeling step spatially coherent, converging to a genuinely load-bearing, low-roughness structure across all seeded load cases",
+    "invalid: seed_density with the wrong array length -> evaluator's strict shape check rejects it -> 0 on every instance"
+  ]
+}

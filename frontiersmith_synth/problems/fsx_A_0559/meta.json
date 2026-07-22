@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0559",
+  "tier": "A",
+  "format": "C",
+  "family": "laffer-ledge-tax",
+  "eval_form": "quality-metric",
+  "theme": "kingdom treasury sets guild tax brackets",
+  "title": "Guild Ledger: Setting the Kingdom's Tax Brackets",
+  "objective": "max",
+  "strategies": [
+    "trivial: emit the mild flat reference tax (reproduces the checker baseline, ~0.1)",
+    "greedy: textbook monotone-progressive schedule at income percentiles, floor-repaired by shaving the top rate -- ignores elasticity and over-taxes the elastic middle band",
+    "strong: coordinate-ascent the bracket rates against the true population best-response subject to the welfare floor, letting each bracket settle near its own Laffer point -> a NON-MONOTONE schedule that cuts the rate exactly on the elastic middle mass and taxes the inelastic bands hard",
+    "open ceiling: joint threshold+rate search / per-mass bracket placement can beat the local coordinate-ascent reference"
+  ]
+}

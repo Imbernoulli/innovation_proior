@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0903",
+  "tier": "A",
+  "format": "D",
+  "family": "dronescript-barrier-compile",
+  "eval_form": "flops",
+  "theme": "compiling a swarm dance into the cheapest flight program",
+  "title": "DroneScript Barrier Compiler: Pricing the Swarm's Safety Proof",
+  "objective": "optimize",
+  "strategies": [
+    "per-drone isolation baseline: one MOVE then its own BARRIER for every drone, never batching anything (trivial)",
+    "fixed-priority admission: scan lanes in declaration order and fill the shared Ccap budget first-come-first-served every round, draining every short lane before the long lane ever gets a slot (greedy)",
+    "collision-dependence-graph + longest-remaining-first admission: group drones into their (y,z) row components (provably independent), then spend the shared Ccap budget on whichever lane's remaining critical path is longest each round so no lane's latency is ever paid for twice (strong)",
+    "true minimum-makespan schedule under Ccap with multiple simultaneous long lanes / non-uniform lane shapes (open ceiling, uncovered)"
+  ]
+}

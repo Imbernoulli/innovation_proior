@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0595",
+  "tier": "A",
+  "format": "A",
+  "family": "guillotine-cut-tree-planner",
+  "eval_form": "quality-metric",
+  "theme": "Slice a sheet into valued pieces, cuts never rejoin",
+  "title": "Order Slab",
+  "objective": "max",
+  "seed_problem": "guillotine cutting stock: carve a sheet into demanded valued rectangles",
+  "mutation": "composite: exact-size guillotine cutting stock with per-type sale CAPS, scored by the leaf-size distribution of the WHOLE cut tree (fragments never recombine, no compaction) rather than by the piece a cut immediately yields; the objective is a bounded, cap-saturated value whose optimum needs matching the band-height/width leaf distribution to the demand multiset, not grabbing the highest-value piece.",
+  "strategies": [
+    "trivial: best single shelf -- one band of the type maximizing v*min(c, W/w) (reproduces the checker baseline B, ratio ~0.1)",
+    "greedy: value-first shelf packing -- open bands top-down, each filled with copies of the highest PER-PIECE value type that still fits and has cap (grabs shiny needles, one type per band, wastes width, ignores density and height fit)",
+    "strong (insight): choose each band's height and its width-mix to maximize value DENSITY under the global caps -- a density-ordered bounded fill per candidate height, committing the best band each step -> diversifies to match the demand leaf-size distribution",
+    "beyond strong: true 2D guillotine knapsack / DP over band heights and stacked sub-columns with shared caps -- leaves headroom above the reference"
+  ]
+}

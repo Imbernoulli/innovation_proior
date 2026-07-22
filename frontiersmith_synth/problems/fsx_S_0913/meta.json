@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0913",
+  "tier": "S",
+  "format": "E",
+  "family": "reporting-operator-epidemics",
+  "eval_form": "quality-metric",
+  "theme": "plague scrolls counted only on market days",
+  "title": "Plague Scrolls Counted Only on Market Days",
+  "objective": "min",
+  "strategies": [
+    "trivial: flat continuation of the last training week's mean -> reproduces the checker baseline ~0.1",
+    "greedy: single log-linear trend fit to the RAW reported counts (ignores the market rhythm and the scribe-capacity saturation), extrapolated by naively rescaling its one fitted slope by the announced decree factor -- the saturation biases the slope low late in training and the rescaling compounds the error the moment the regime actually changes",
+    "strong: recover the growth rate from an invariant (ratios of the SAME weekday across early, unsaturated weeks cancel both the rhythm and the cap), then recover the reporting operator by a per-weekday linear fit of 1/reported against exp(-beta*t) (the saturating link is linear in that transform), then extrapolate by rescaling ONLY the recovered growth rate by the decree factor and pushing it back through the SAME unchanged reporting operator",
+    "headroom above strong: jointly refine (beta, w, Cap) by nonlinear least squares over all training rows instead of the two closed-form stages, and model the residual day-to-day noise correlation to shrink held-out RMSE further"
+  ]
+}

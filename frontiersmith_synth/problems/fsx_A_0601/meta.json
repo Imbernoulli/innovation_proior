@@ -1,0 +1,20 @@
+{
+  "id": "fsx_A_0601",
+  "tier": "A",
+  "format": "A",
+  "family": "eigen-drift-quarantine",
+  "eval_form": "quality-metric",
+  "seed_problem": "spectral-radius minimization by edge deletion on a contact graph with overlapping planted dense cores",
+  "mutation": "composite: minimize the adjacency spectral radius under an exact-k edge-deletion budget with a connectivity side-constraint, on inputs planted with several near-degenerate dense cores so the certifying principal eigenvector migrates under the solver's own edits (minimax-over-cores objective)",
+  "objective": "min",
+  "theme": "cutting contact links to suppress an epidemic threshold",
+  "title": "Quarantine Cuts on a Drifting Contact Graph",
+  "strategies": [
+    "trivial: delete the k least-central (smallest endpoint degree-product) non-tree edges -> barely moves lambda (the checker baseline; ratio ~0.1)",
+    "greedy (the trap): rank edges by x_u*x_v of the ORIGINAL principal eigenvector and delete the top k -> dumps the whole budget into the dominant core; once it drops below a secondary core the top eigenvalue migrates and the remaining cuts are wasted",
+    "strong: iterated re-ranking / certificate-following -- delete in small batches, recompute the principal eigenvector after each batch so cuts track the drifting eigenvector, water-filling suppression across all cores to minimize the max residual core spectral radius",
+    "restarted local search: seed with a balanced allocation across cores, then swap individual cuts to greedily reduce the recomputed Rayleigh quotient"
+  ],
+  "mechanisms": ["adjacency-spectral-radius", "edge-deletion-budget", "eigenvector-migration"],
+  "innovation_hook": "the certifying principal eigenvector rotates under the solver's own edits, so the real problem is a minimax over which community hosts the top eigenvalue after intervention"
+}

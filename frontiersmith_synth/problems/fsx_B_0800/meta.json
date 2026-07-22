@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_0800",
+  "tier": "B",
+  "format": "C",
+  "family": "quota-season-fishery",
+  "eval_form": "quality-metric",
+  "theme": "lagoon fishery sets weekly quotas for five years",
+  "title": "Lagoon Quotas: Pulsing Through the Depensation Dip",
+  "objective": "max",
+  "strategies": [
+    "flat baseline: a tiny constant quota (1.2% of the initial stock) every legally open week, never adapting to stock or regime",
+    "steady-state MSY heuristic: estimate today's surplus production at S0 and harvest a constant fraction of it for all 260 weeks, ignoring the printed drought regime window",
+    "pulse-fishing policy search: voluntarily close during the legal season AND the printed low-recruitment regime window, and outside those windows alternate short near-ceiling bursts (while stock is safely above the Allee threshold) with short closures that let depensation-limited growth compound, searched over a small family of (burst length, rest length, burst size, safety margin) cycles"
+  ]
+}

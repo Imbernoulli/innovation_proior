@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0769",
+  "tier": "A",
+  "format": "B",
+  "family": "pre-escalation-triage",
+  "eval_form": "quality-metric",
+  "theme": "emergency-room bay assignment and preemption",
+  "title": "Ridgemont ER: Pre-Escalation Bay Triage",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:topup-B-2"],
+  "strategies": [
+    "single-bay FCFS baseline: use only bay 0 and ignore every other bay, serving the longest-waiting arrived patient with no preemption and no acuity awareness at all -- minimal effort, no parallelism, no urgency reasoning (the evaluator's calibrated trivial reference)",
+    "chase-the-sickest reactive greedy: every step, point every bay at the currently highest-acuity waiting patient, preempting whenever a waiting patient now looks worse than whoever a bay is treating -- reacts to crises instead of preventing them, and repeatedly pays the switch penalty plus setup downtime chasing flashy newcomers while quieter fast-climbers get ignored",
+    "predictive time-to-tip scheduling: use each waiting patient's own public rate/acuity to compute (C - acuity) / rate as a deterministic deadline, fill idle bays by soonest-to-tip first, and almost never preempt a running treatment (only a bounded, rare sacrifice to save a patient about to hit the death cap with no bay free) -- treats mid-acuity patients before they escalate instead of after",
+    "capacity-budgeted lookahead: with the full seeded arrival/rate schedule visible up front, solve a small assignment/matching problem per congestion window to decide who each bay should serve before it, further tightening the schedule beyond simple soonest-to-tip ranking"
+  ]
+}

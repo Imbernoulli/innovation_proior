@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0545",
+  "tier": "A",
+  "format": "A",
+  "family": "byproduct-symbiosis-loops",
+  "eval_form": "quality-metric",
+  "seed_problem": "max-weight integer circulation on a byproduct-exchange network",
+  "mutation": "composite: material-balance feasibility forces value onto closed multi-hop loops, with a per-unit transport tax (waste penalty) and planted long near-lossless cycles hidden among strongly-taxed noise; the bilateral 2-cycle matching is a calibrated trap baseline",
+  "objective": "max",
+  "theme": "eco-industrial park waste-exchange network",
+  "title": "Eco-Industrial Park: Waste-Exchange Loops",
+  "strategies": [
+    "bilateral matching: circulate every profitable two-plant 2-cycle only (the baseline; ratio ~0.1)",
+    "short-cycle greedy: also enumerate profitable 3-cycles, still blind to longer loops",
+    "cycle-centric search: negative-cost cycle canceling / bounded-depth loop finding on the residual graph, capturing the long planted loops that dominate the objective",
+    "min-cost circulation relaxation with loop rounding for the deepest loops the bounded search misses"
+  ]
+}

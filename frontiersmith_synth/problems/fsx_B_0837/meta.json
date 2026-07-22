@@ -1,0 +1,21 @@
+{
+  "id": "fsx_B_0837",
+  "tier": "B",
+  "format": "A",
+  "family": "grid-reinforcement-load-patterns",
+  "eval_form": "quality-metric",
+  "seed_problem": "gen emits a capacitated R x C grid substation network (one generator column, an upgrade budget, and K scenarios each pairing a demand pattern over the far columns with a set of outaged lines); the contestant prints edge upgrades within budget; chk computes, per scenario, the max-flow-served demand under the upgraded (and that scenario's outaged) network and scores the negative of the WORST scenario's unserved demand against a do-nothing baseline.",
+  "mutation": "composite: compose a budgeted capacity-upgrade choice, a per-scenario max-flow feasibility/service check, and a minimax-over-scenarios objective into one score, so the winning strategy must identify the reinforcement that helps the most scenarios' worst-case cut at once rather than the line that looks busiest in any one scenario.",
+  "objective": "min",
+  "theme": "which power lines to thicken before winter",
+  "title": "Which Lines to Thicken Before Winter",
+  "innovation_hook": "The budget buys the most when spent on the min-cut that RECURS across scenarios' residual graphs: computing each scenario's max-flow min-cut and crediting edges by how many (and how badly) unserved scenarios they gate up-weights the shared bottleneck, which a single-scenario 'reinforce the busiest line' pass never notices because that shared cut is not the busiest line under normal, no-outage conditions.",
+  "mechanisms": ["budgeted-capacity-upgrade", "per-scenario-maxflow-check", "unserved-demand-minimax"],
+  "strategies": [
+    "trivial: spend no budget (do-nothing network, ratio 0.1 by construction)",
+    "greedy: solve the single calmest (fewest-outage) scenario's max-flow, rank lines by raw megawatts carried in that one solve, and dump the budget into the busiest lines first",
+    "strong: each round, solve ALL K scenarios' max-flows, read each one's min-cut off the residual-graph reachable frontier for free, credit every edge with the summed unserved demand of every scenario whose cut it belongs to, and spend on the best benefit/cost edge -- repeat, re-solving as the picture changes",
+    "LP relaxation of the multi-scenario cut-covering allocation under the budget; local search that swaps which line gets the next unit of budget by simulated re-solve"
+  ],
+  "trap": "Five of the ten generated instances plant a pair of permanently weak, cheap, never-outaged crossing lines alongside several generous, pricier crossing lines that carry the bulk of nominal-condition flow. Five of each such instance's ten scenarios simultaneously knock out every generous crossing line and push demand well past what the two weak lines alone can carry, so those scenarios' true bottleneck is always the SAME weak-line pair -- invisible to a solver that only ever looks at the calm, no-outage scenario, whose busiest lines are exactly the (irrelevant, soon-to-be-outaged) generous ones."
+}

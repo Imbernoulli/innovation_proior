@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1085",
+  "tier": "B",
+  "format": "C",
+  "family": "seek-window-arrangement",
+  "eval_form": "quality-metric",
+  "theme": "gramophone needle gliding across a custom-pressed record",
+  "title": "Custom Pressing for a Look-Ahead Pickup Arm",
+  "objective": "min",
+  "strategies": [
+    "trivial: press cells onto grooves in raw cell-id order, packed to the capacity of each groove (checker baseline)",
+    "greedy: sort cells by how often the cue sheet plays them and press the hottest cells onto the centre grooves, coldest at the rim -- ignores which cells are ever CUED NEAR EACH OTHER",
+    "strong: build a co-occurrence graph from pairs of cue-sheet entries within w of each other (the arm's only reachable reorderings), cluster it under the groove-capacity budget, then chain the clusters into a groove order by inter-cluster affinity -- designs the pressing so the FIXED look-ahead rule itself sweeps each cluster's grooves in order",
+    "headroom above strong: refine the within-cluster groove order (not just cluster order) from the same co-occurrence weights, and reconcile cases where the mandatory-coverage visit and the hot extra visits disagree on cluster boundaries"
+  ]
+}

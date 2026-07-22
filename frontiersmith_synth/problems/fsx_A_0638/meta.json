@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0638",
+  "tier": "A",
+  "format": "A",
+  "family": "porous-windbreak-array",
+  "eval_form": "quality-metric",
+  "theme": "shielding orchards from steppe wind",
+  "title": "Staggered Leaky Windbreaks Against the Steppe Gale",
+  "objective": "min",
+  "seed_problem": "porous-windbreak-array (wave2b-lens:continuous-physical)",
+  "mutation": "input: a lattice advection-diffusion solver over W columns x H lanes replaces a static blocking model -- planted trees only ever RELOCATE momentum (drag removes it locally, but a permille split sends part of it as an immediate jet onto the two nearest lanes, mirrored back at the plantable band's true edges, and the rest into a wider 5-lane diffusion pool one column downwind), coupled to a rational crosswind drift that rotates the whole lane vector downwind and a per-cell porosity-level menu (cost/drag/jet all increasing with density) the solver must budget across a staggered footprint.",
+  "strategies": [
+    "trivial: plant nothing (reproduces the checker's own do-nothing baseline)",
+    "naive greedy: build the densest wall you can afford in the very first column, prioritizing the raw-windiest lanes, ignoring crop locations, drift, and tip-jet effects entirely",
+    "insight (strong): simulate the exact conservation-law mechanics and rank every (column,lane,porosity) placement by simulated marginal score-per-cost, then greedily fill the budget and locally refine -- this consistently prefers several cheap leaky plantings staggered across columns over one expensive solid wall, because a sum-of-squares objective punishes concentrated jets harder than thinly spread relief",
+    "a general solver can go further: jointly optimize placement + drift compensation + tip-avoidance with proper search (simulated annealing / ILP relaxation) instead of the marginal-then-refine heuristic"
+  ]
+}

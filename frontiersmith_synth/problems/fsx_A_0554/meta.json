@@ -1,0 +1,15 @@
+{
+  "id": "fsx_A_0554",
+  "tier": "A",
+  "format": "C",
+  "family": "congruence-sublattice-harvest",
+  "eval_form": "quality-metric",
+  "theme": "mining dense veins inside a crystal lattice",
+  "title": "Vein Harvest in a Crystal Lattice",
+  "objective": "min",
+  "strategies": [
+    "trivial: submit the k shortest rows of the given (scrambled) basis -- reproduces the checker baseline",
+    "greedy: size-reduce the full basis (Babai rounding, no reordering) and take the k shortest independent rows",
+    "strong: for every candidate linear form a in (Z/p)^n, intersect the lattice with its index-p congruence sublattice {v : a.v == 0 mod p}, LLL-reduce that, and harvest the k shortest independent vectors across all candidates -- the one correct residue class exposes the planted dense vein"
+  ]
+}

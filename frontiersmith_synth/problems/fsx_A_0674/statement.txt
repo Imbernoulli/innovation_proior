@@ -1,0 +1,94 @@
+# Blizzard Fleet Bootstrap
+
+## Problem
+
+A city's streets form a connected undirected graph on `N` intersections and `M`
+streets (edges); street `e` has length `len_e`. `K` snowplow crews start together
+at a depot intersection. Every street must be **cleared** exactly once, by driving
+over it in **plow mode**, which costs `len_e * SLOW` time. Once a street has been
+cleared (by *any* crew), from that moment on *any* crew may drive over it (either
+direction, any number of times) in **fast mode**, costing only `len_e * FAST`
+(`FAST < SLOW`). A street may **not** be driven over in fast mode before it has been
+cleared — the first traversal of a street must be its (unique) plow-mode clearing.
+
+Crews move independently and concurrently. Each crew's own moves happen strictly
+back-to-back (a crew cannot start its next move before finishing the current one),
+but different crews advance on independent clocks — a crew may deliberately delay a
+move (e.g. to let a teammate clear a shared street first) by giving that move a
+later start time. Because clearing a street speeds up *everyone*, not just the crew
+that cleared it, the real decision is *which streets to invest early clearing effort
+in* before splitting the fleet to mop up the rest of the city.
+
+## Input
+
+```
+N M K
+u_1 v_1 len_1
+...
+u_M v_M len_M
+SLOW FAST
+depot
+```
+`1 <= u_i, v_i <= N`, `u_i != v_i`, streets may repeat between the same pair. The
+graph is connected. `1 <= depot <= N`.
+
+## Output
+
+For each crew `p = 1..K`, in order:
+```
+m_p
+e_1 mode_1 t_1
+...
+e_{m_p} mode_{m_p} t_{m_p}
+```
+`m_p >= 0` is the number of moves crew `p` makes. Each move names a street
+`e_j` (`1 <= e_j <= M`), a `mode_j` in `{P, F}` (plow / fast), and a non-negative
+integer start time `t_j`. The street named must be incident to the crew's *current*
+position (it starts at the depot); after the move the crew is at the street's other
+endpoint.
+
+## Feasibility
+
+For every crew, moves must be time-ordered: `t_1 >= 0` and `t_{j} >=
+t_{j-1} + len_{e_{j-1}} * (SLOW or FAST accordingly)` (no overlapping moves). Across
+the whole output, every one of the `M` streets must appear as a `P`-mode move
+**exactly once** (that is its unique clearing); any other use of that street, by any
+crew, must be `F`-mode with a start time no earlier than the finish time of its
+`P`-mode clearing move. Any violation (bad street id, wrong mode token, time going
+backwards, a street used fast before it's cleared, a street plowed zero or more than
+once) scores this test `0`.
+
+## Objective (minimize)
+
+Let `finish_p` be the time crew `p`'s last move ends (`0` if it makes no moves).
+Let `MAKESPAN = max_p finish_p` (when the whole city is finally clear) and
+`TOTAL = sum_p finish_p` (total fleet time spent). Minimize
+```
+F = 4 * K * MAKESPAN + TOTAL
+```
+`TOTAL` alone barely reacts to how work is split (the same streets get
+cleared either way), so `MAKESPAN` is weighted heavily: the objective mostly
+rewards finishing fast, i.e. balancing the fleet's workloads well, with
+`TOTAL` breaking ties between equally-fast plans.
+
+## Scoring
+
+The checker also builds an internal reference `B`: a single crew clears every
+street in some fixed order, never exploiting any parallelism. Your score for a
+test is `ratio = min(1000, 100 * B / max(1, F)) / 1000`, so the single-crew
+reference scores `0.1`; using the fleet and the speed-up well scores higher, up
+to `1.0` (10x the reference). Per-test ratios are averaged.
+
+## Constraints
+
+- `2 <= N <= 400`, `1 <= M <= 800`, `1 <= K <= 6`.
+- `1 <= len_e <= 80`, `1 <= FAST < SLOW <= 40`.
+- Time limit: 4 s. Memory limit: 512 MB.
+
+## Example
+
+`N=4 M=3 K=2`, streets `(1,2,10) (2,3,5) (2,4,5)`, `SLOW=4 FAST=1`, depot `1`.
+Crew 1: clear street 1 (`P`, `t=0`, finishes `t=40`), then street 2 (`P`, `t=40`,
+finishes `t=60`). Crew 2 waits for street 1, crosses it fast (`F`, `t=40`,
+finishes `t=50`, now at node 2), then clears street 3 (`P`, `t=50`, finishes
+`t=70`). `finish = (60, 70)`, `MAKESPAN=70`, `TOTAL=130`, `F = 4*2*70+130 = 690`.

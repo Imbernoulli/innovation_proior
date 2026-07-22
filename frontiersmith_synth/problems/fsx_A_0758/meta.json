@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0758",
+  "tier": "A",
+  "format": "C",
+  "family": "canyon-rewrite-descent",
+  "eval_form": "quality-metric",
+  "theme": "cross the ridge to reach the lower valley",
+  "title": "Canyon Rewrite: Expand Before You Can Collapse",
+  "objective": "minimize",
+  "strategies": [
+    "do nothing: submit zero moves (reproduces the checker's own do-nothing baseline)",
+    "single-step hill-climbing: repeatedly apply whichever legal move improves the running cost most right now, stop when no move helps (never expands, since every expand rule here is individually cost-increasing, so it can never reach the collapses that only exist after an expand)",
+    "two-move opportunity reformulation: score every legal 'expand-then-collapse' pair as one atomic combo by its net benefit (even though the first half raises cost), rank all 1-move and 2-move opportunities by benefit-per-move, and apply them greedily within the budget",
+    "exhaustive/backtracking search over move sequences (infeasible at the larger scales; illustrates why the reformulation above is needed rather than brute force)"
+  ]
+}

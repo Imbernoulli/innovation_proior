@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0963",
+  "tier": "A",
+  "format": "E",
+  "family": "notch-schedule-forensics",
+  "eval_form": "quality-metric",
+  "theme": "reconstructing a lost tax code from payroll scrolls",
+  "title": "The Notch in the Scrolls — reconstructing a lost bracket from a bunching pile-up",
+  "objective": "min",
+  "strategies": [
+    "trivial: flat single-rate guess from hours/wages using only the lower half of the archived wage window -> reproduces the checker's own baseline (~0.1)",
+    "greedy: textbook flat single-rate fit from hours/wages using the WHOLE archive; folds the bunched workers in as ordinary data points rather than recognizing a pile-up at a hidden threshold, so it never reconstructs a second bracket and carries no structural information about the unobserved upper bracket",
+    "strong: locate the bunching ATOM in the z=wage*hours histogram (not a curve fit) to read off the notch z0; fit tau_lo on the smooth region only, excluding the bunched cluster; the bunched fraction of the archive, combined with the known wage window, directly locates the wage of the marginal buncher; combine with the given surcharge dT to solve a closed-form indifference equation for the unobserved upper-bracket rate tau_hi",
+    "headroom above strong: robustify the atom-detection against mis-transcribed (outlier) scroll entries and correct for the small residual bias the through-origin tau_lo fit inherits from noise, pushing held-out error toward the idiosyncratic labor-supply noise floor"
+  ]
+}

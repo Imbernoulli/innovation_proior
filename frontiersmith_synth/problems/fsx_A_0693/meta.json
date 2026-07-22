@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0693",
+  "tier": "A",
+  "format": "E",
+  "family": "censored-queue-saturation",
+  "eval_form": "quality-metric",
+  "theme": "call-center hold times with hang-ups",
+  "title": "Call-Center Hold Times Near Saturation — recovering a censored divergence",
+  "objective": "min",
+  "strategies": [
+    "trivial: predict the constant mean of the (censored) training hold times -> reproduces the checker baseline exactly (~0.1)",
+    "greedy: fit ONE smooth quadratic hold ~ b0+b1*rho+b2*rho^2 by least squares over all training rows, treating every logged hold time (including rows capped at the hang-up threshold T) at face value; a flexible-looking basis but still a single bounded polynomial, so it is dragged toward T exactly where the divergence signal is strongest and cannot reproduce a pole, systematically underestimating held-out near-critical loads",
+    "strong: realise the observation process is part of the model -- treat each row as a right-censored exponential draw with mean c/(1-rho/rho_max), profile out the scale c in closed form (a total-time-on-test statistic) for any candidate pole rho_max, and grid-search the single remaining shape parameter rho_max by maximum likelihood (folding in the censoring indicators, i.e. the fraction of capped calls per load, not just the raw logged values); emits the exact recovered divergence expression c/|1-rho/rho_max|",
+    "headroom above strong: a finer/adaptive grid or a proper Newton step on the profile likelihood, robust down-weighting of small-sample bins, or jointly modelling a residual additive term would shrink the remaining held-out error further toward the finite-sample noise floor"
+  ]
+}

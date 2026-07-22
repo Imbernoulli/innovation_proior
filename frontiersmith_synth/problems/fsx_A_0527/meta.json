@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0527",
+  "tier": "A",
+  "format": "B",
+  "family": "online-admission-value-drift",
+  "eval_form": "quality-metric",
+  "theme": "deep-water berth admission under a drifting tariff regime",
+  "title": "Tidewater Berth: Admission Under Value Drift",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:topup-B-1"],
+  "strategies": [
+    "open-door: bar 0 everywhere, admit any vessel that still fits in arrival order -- reproduces the evaluator's weak anchor (~0.1)",
+    "early-fitted per-class bar: admit any vessel whose fee beats its class's published early-regime mean, flat across berth-fullness and drift -- the obvious move, spends credits on cheap early water and misses the late deep-sea whales on drifting tides",
+    "shadow-price reservation: read the full class schedule, reserve credits for the scarce deep-sea demand, gate coastal/regional admission on how full the berth is (rem_bucket) so the last credits are held for whales; release the bar once the drift probe (sig_bucket) detects the tariff regime shifting up",
+    "richer bid-price / drift-detection policies: shape the bar surface across (class, rem_bucket, sig_bucket) more finely -- e.g. earlier drift detection, per-class shadow prices, tuned reserve lines -- to push admitted value above the reserving baseline toward the offline hindsight optimum"
+  ]
+}

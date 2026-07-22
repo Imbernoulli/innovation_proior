@@ -1,0 +1,94 @@
+# Weaving a Fast Gossip Network Across a Long Ridge of Villages
+
+## Problem
+A long mountain ridge holds `n` villages, numbered `1..n` from west to east,
+sitting at fixed integer positions `x_1 < x_2 < ... < x_n` on the ridge line
+(the ridge folds back and forth, so gaps between neighboring villages vary
+wildly). You are weaving a gossip network: choose pairs of villages to link
+directly so that news spreads fast between ANY two villages, subject to a
+per-village link cap and a total cable-length (wirelength) budget.
+
+News-spreading speed is measured by the network's **algebraic connectivity**
+(the second-smallest eigenvalue of its normalized graph Laplacian, sometimes
+called the spectral gap) -- a graph-theoretic proxy for how fast a rumor
+mixes through the whole network regardless of where it starts. Higher is
+faster. A disconnected network (or one where some village never hears
+anything) scores zero, since news then never reaches everyone.
+
+## Input
+```
+n k d W
+x_1 x_2 ... x_n
+```
+- `n = 2^k` (villages), `3 <= k <= 8`.
+- `d`: maximum number of direct links any single village may have.
+- `W`: total wirelength budget (an integer).
+- `x_1 < x_2 < ... < x_n`: strictly increasing integer positions (meters
+  along the ridge, west to east).
+
+## Output
+```
+m
+a_1 b_1
+a_2 b_2
+...
+a_m b_m
+```
+`m` links, each an unordered pair of distinct villages `1 <= a_t, b_t <= n`,
+`a_t != b_t`. No unordered pair may repeat.
+
+## Feasibility
+- Every village's link count (degree in the chosen graph) must be `<= d`.
+- The total wirelength `sum_t |x_{a_t} - x_{b_t}|` must be `<= W`.
+- No self-links, no duplicate links. Any violation scores 0.
+
+## Objective
+Maximize the algebraic connectivity of the resulting graph `G`: let `A` be
+its adjacency matrix, `D` the diagonal degree matrix, and
+`L = I - D^{-1/2} A D^{-1/2}` the normalized Laplacian. `L` has `n` real
+eigenvalues `0 = mu_1 <= mu_2 <= ... <= mu_n <= 2`. Your score depends on
+`mu_2`. If `G` is disconnected (or you output no links), `mu_2` counts as 0.
+
+## Scoring
+The checker also builds, purely for calibration, (a) the trivial plain path
+`1-2-3-...-n` and (b) a reference multi-scale "fold-bridge" network (not
+disclosed further -- an insightful strategy has to be discovered from the
+input, not read off the statement). Your raw `mu_2` is mapped by a fixed
+increasing function of these two calibration points onto a `[0,1]` score: the
+path's own `mu_2` maps to `0.1`, the reference network's `mu_2` maps to
+`0.85`, and everything is interpolated/extrapolated linearly from there (a
+network beating the reference scores above `0.85`, up to `1.0`; a
+disconnected/empty network scores `0`). This means the exact bonus you get
+for extra spectral gap is something you must reason about from the numbers
+in each input, not a constant.
+
+## Constraints
+- `8 <= n <= 256`.
+- `1 <= d <= 40`.
+- `1 <= W <= 5*10^5`.
+- `0 <= x_i <= 5*10^5`.
+- Time limit: 5 seconds. Memory limit: 512 MB.
+
+## Example
+Input (`n=8, k=3`):
+```
+8 3 9 42625
+0 1025 3074 4099 8196 9221 11270 12295
+```
+Output (the plain path, i.e. the trivial calibration point itself):
+```
+7
+1 2
+2 3
+3 4
+4 5
+5 6
+6 7
+7 8
+```
+This uses `7 <= 9` links per village (max degree 2) and wirelength
+`1025+2049+1025+4097+1025+2049+1025 = 12295 <= 42625`, so it is feasible. Its
+`mu_2` is, by construction, exactly the checker's own path baseline, so it
+scores `0.100000`. A network that instead links villages across the ridge's
+big folds (not just adjacent villages) reaches a far higher `mu_2` for a
+similar or smaller slice of the wirelength budget, scoring well above `0.1`.

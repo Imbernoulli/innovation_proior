@@ -1,0 +1,19 @@
+{
+  "id": "fsx_A_0824",
+  "tier": "A",
+  "format": "B",
+  "family": "probe-tree-shared-across-priors",
+  "eval_form": "quality-metric",
+  "theme": "one questioning strategy versus differently-shuffled haystacks",
+  "title": "One Question, Four Shuffled Haystacks",
+  "objective": "min",
+  "source_frameworks": [
+    "wave2b-lens:scenario-robust-design"
+  ],
+  "strategies": [
+    "trivial: ignore the pools, scan items 0,1,2,... one at a time (no adaptivity, ~0.1)",
+    "greedy: pool the 4 priors into one mixture distribution and build a textbook weighted binary-search tree over items in id order, always cutting the current contiguous range as close to half the mixture mass as possible -- optimal for the AVERAGE pool, but a cut can straddle a single pool's own clumped cluster and cost that pool extra probes",
+    "strong: infer each pool's home cluster from the given weights, then build the tree top-down over WHOLE clusters only -- at each step exhaustively choose which still-undetermined clusters to bucket into the probe so the pooled mass split is as even as possible while never slicing through a cluster, so no individual scenario's clumping is ever wastefully straddled; only within a single resolved cluster does it fall back to a plain weighted binary search",
+    "invalid: guesses item 0 for every target without ever probing -- wrong almost everywhere, scores 0.0"
+  ]
+}

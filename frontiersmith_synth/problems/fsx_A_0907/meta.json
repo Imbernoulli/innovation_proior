@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0907",
+  "tier": "A",
+  "format": "B",
+  "family": "gauss-southwell-block-descent",
+  "eval_form": "quality-metric",
+  "theme": "river-delta gauge network recalibration under a fixed coordinate-update budget",
+  "title": "Riverdelta Levee Network: Budgeted Gauge Recalibration",
+  "objective": "minimize",
+  "source_frameworks": ["wave2b-lens:topup-B-1"],
+  "strategies": [
+    "fixed-index repeat: hammer one gauge for the whole budget, leaving the rest of the network untouched (reproduces the evaluator's weak reference; trivial)",
+    "cyclic index sweep: visit gauges 0..n-1 round-robin until the budget runs out, oblivious to the coupling graph (greedy / obvious textbook coordinate descent)",
+    "block-partition + Gauss-Southwell: diagnose connected components from the edge list, give every isolated gauge exactly one visit, then repeatedly spend remaining budget on whichever coupled gauge currently has the largest exact single-step decrease g_i^2/(4*(a_i+S_i)) (strong; exploits the planted structure)",
+    "full re-optimization / multi-pass local search over update orders beyond a single greedy Southwell pass (open ceiling, uncovered)"
+  ]
+}

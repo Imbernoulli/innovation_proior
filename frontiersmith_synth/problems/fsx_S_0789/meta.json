@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0789",
+  "tier": "S",
+  "format": "E",
+  "family": "conserved-quantity-discovery",
+  "eval_form": "quality-metric",
+  "theme": "Find what a discrete system conserves",
+  "title": "Boost Ring — the conserved quantity is a null vector, not a fit",
+  "objective": "max",
+  "strategies": [
+    "trivial: submit the checker's own fixed candidate 'XY' -> reproduces the baseline ~0.1",
+    "greedy: build the feature vector [X,Y,XX,XY,YY] at every TRAIN STATE and take the direction of smallest VALUE-variance across the sample (bottom principal component of the raw feature values) -- a fit of the state distribution. On the narrow training ring this reliably locks onto X^2+Y^2 (Euclidean radius-squared, almost constant purely because the ring is narrow), which is NOT what the hyperbolic-boost map conserves, so it decays hard on the larger-radius held-out ring",
+    "strong: form Delta_i = theta(next_i)-theta(state_i) over the same features for every TRAIN TRANSITION and take the right null vector (smallest singular value) of the stacked Delta matrix -- a fit of the DYNAMICS' variation, not the state values. Recovers X^2-Y^2 (up to scale), the true invariant, and it generalises to the held-out ring because it is a law, not a sampling artifact",
+    "headroom above strong: recover (p1..p6) or the exact twist shape to denoise the recovered null vector further, or search a wider/adaptive feature library to shave the residual parsimony tax"
+  ]
+}

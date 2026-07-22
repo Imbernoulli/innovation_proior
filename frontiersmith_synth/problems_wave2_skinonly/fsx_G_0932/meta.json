@@ -1,0 +1,18 @@
+{
+  "id": "fsx_G_0932",
+  "tier": "G",
+  "format": "C",
+  "family": "aquifer-recharge-site-prioritization",
+  "eval_form": "quality-metric",
+  "theme": "managed aquifer recharge site portfolio",
+  "title": "Managed Aquifer Recharge Site Portfolio",
+  "objective": "max",
+  "bulk_factory": "budget-conflict-coverage-selection",
+  "salt": 901137984,
+  "strategies": [
+    "trivial: reproduce the checker cost-first feasible baseline",
+    "greedy: sort by value, capability weight, and cost density",
+    "strong: repeatedly add the feasible asset with best current marginal utility per cost",
+    "future: local search, swap neighborhoods, Lagrangian budget pricing, and conflict-aware coverage repair"
+  ]
+}

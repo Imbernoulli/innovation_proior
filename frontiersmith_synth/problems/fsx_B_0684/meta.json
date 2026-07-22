@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0684",
+  "tier": "B",
+  "format": "D",
+  "family": "shoulder-shadow-turning",
+  "eval_form": "flops",
+  "theme": "Lathe recipe as a counted instruction tape",
+  "title": "Shoulder-Shadow Turning: Stiffness-Aware Cut Interleaving",
+  "objective": "min",
+  "strategies": [
+    "trivial: mimic the checker's own always-feasible baseline (unit-depth passes, single finishing tool, descending-target order)",
+    "greedy: fully finish one band at a time in a precedence-safe order (descending target), always taking the deepest currently-legal pass -- ignores that finishing a small-x band early collapses the prefix-min stiffness needed by not-yet-cut large-x bands",
+    "strong: roughs the deep, chatter-sensitive (large axial distance) bands FIRST while the whole rod is still full-thickness (max stiffness), reserves the shallow/easy bands for later, and batches all finishing passes at the end to also minimize tool-changes",
+    "invalid: emits a pass whose depth exceeds its tool's legal range (or otherwise malformed output) -> infeasible"
+  ]
+}

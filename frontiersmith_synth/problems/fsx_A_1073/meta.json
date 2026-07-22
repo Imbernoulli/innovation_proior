@@ -1,0 +1,15 @@
+{
+  "id": "fsx_A_1073",
+  "tier": "A",
+  "format": "C",
+  "family": "inversion-robust-probe-panel",
+  "eval_form": "quality-metric",
+  "theme": "diagnostic probes that catch every engineered variant",
+  "title": "Worst-Class Probe Panel",
+  "objective": "maximize",
+  "strategies": [
+    "single-shift forward tiling: one probe per stressed locus at the canonical window start (fails segment-inversion entirely, and fails SNP-cluster edits whose fixed offsets fall in that window)",
+    "two-end forward hedging: probes at both ends of the locus window, still forward-only (still blind to inversion; the published SNP damage bands are built to hit both fixed ends)",
+    "per-locus dodge search plus dual orientation: read the published SNP-cluster offsets and the published mutant panel, scan every shift to find the damage-free sub-window for the forward probe, and add a reverse-complement probe at every stressed locus so segment-inversion is matched exactly"
+  ]
+}

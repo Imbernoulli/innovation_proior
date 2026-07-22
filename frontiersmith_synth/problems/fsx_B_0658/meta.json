@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0658",
+  "tier": "B",
+  "format": "B",
+  "family": "variance-adaptive-quadrature-budget",
+  "eval_form": "quality-metric",
+  "theme": "Allocate a sampling budget across domain regions with wildly heterogeneous hidden integrand variance.",
+  "title": "Variance-Adaptive Quadrature Budget: Pilot-Probe, Then Neyman-Allocate",
+  "objective": "min",
+  "strategies": [
+    "trivial: spend zero extra budget, rely on the pilot batch alone (reproduces the grader baseline (~0.1))",
+    "greedy: spread the extra budget evenly across all regions, ignoring both width and the pilot's noise signal -> on the spiked-variance traps it wastes budget on calm regions and starves the narrow, loud one",
+    "strong: estimate each region's noise from its pilot sample's standard deviation, floor the estimate against a small pilot's own sampling noise (a stopping-rule hedge), then run Neyman allocation -- budget proportional to width times the floored noise estimate -- concentrating the budget on the regions whose width-times-uncertainty product is largest",
+    "alternatives: allocate purely by region width (still blind to noise), or a fuller iterative water-filling refinement over marginal variance reduction per unit budget"
+  ]
+}

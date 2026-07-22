@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0591",
+  "tier": "A",
+  "format": "D",
+  "family": "preconditioned-poly-eval",
+  "eval_form": "flops",
+  "theme": "Evaluate a fixed polynomial with fewest multiplies",
+  "title": "Reshape a Fixed Polynomial: Fewest Online Multiplications",
+  "objective": "min",
+  "strategies": [
+    "trivial: compute every power x^2..x^d independently from scratch, scale, sum (d(d-1)/2 nonscalar mults)",
+    "greedy: Horner's rule, one nonscalar multiply per degree (d mults) -- the textbook 'optimal' that is the trap",
+    "strong: Paterson-Stockmeyer baby-step/giant-step -- precompute x^2..x^k, form blocks with free scalar ops, Horner in y=x^k (~2*sqrt(d) mults)",
+    "invalid: emit a program that is not identically p(x)"
+  ]
+}

@@ -7,7 +7,7 @@ export const meta = {
   ],
 }
 
-const SYNTH = '/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/synth'
+const SYNTH = '/scratch/gpfs/CHIJ/bohan/fs/innovation_prior/frontiersmith_synth'
 const SEEDS = `${SYNTH}/seeds/seed_list.jsonl`
 let A = args
 if (typeof A === 'string') { try { A = JSON.parse(A) } catch (e) { A = {} } }

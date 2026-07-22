@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0842",
+  "tier": "B",
+  "format": "B",
+  "family": "drift-anticipating-prefetch",
+  "eval_form": "quality-metric",
+  "theme": "edge-cache prefetching for a content network",
+  "title": "Edge Cache: Prefetching Along the Drifting Hot Set",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:topup-B-2"],
+  "strategies": [
+    "trivial: best FIXED cache chosen once by total weight over the whole horizon, held forever (== the evaluator baseline) -> ~0.1",
+    "greedy: textbook reactive LRU/LFU replay -- admits the C items with the highest just-observed weight[t] at each step; because of the one-step fetch latency this can defend step t+1 at best, so it is always chasing the deterministic drift from behind, missing the leading edge of the hot block every step and churning (evict/refetch) on ids that cyclically return",
+    "strong: lookahead-value ranking -- score every item by its linearly-decayed (future weight * miss_cost) over a short lookahead starting at t+1, discount UNcached items by their flat fetch_cost, keep the top-C combined scores; this fills the cache with the NEXT hot ids before they ever miss and only evicts when a costlier upcoming arrival needs the slot, directly exploiting that the drift is deterministic and already visible in the given table",
+    "invalid: try to cache the whole catalog every step -> exceeds the hard per-step capacity cap on every instance -> infeasible -> 0"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0524",
+  "tier": "S",
+  "format": "C",
+  "family": "loom-draft-symmetry-forge",
+  "eval_form": "quality-metric",
+  "theme": "handloom weaving draft design",
+  "title": "Loom Draft Symmetry Forge",
+  "objective": "max",
+  "strategies": [
+    "trivial: plain weave (tabby) -- the checker's internal baseline; fully symmetric but only two distinct motifs, F ~ lambda",
+    "greedy trap: fill threading/treadling with a varied pseudo-random assignment and repair illegal floats -- raises motif diversity but treats the drawdown as a free canvas and forgets symmetry, so random factors give mirror/rotation agreement ~0.5 and the whole score is halved",
+    "greedy alt: point-draw (diamond) twill -- perfectly symmetric but the monotone triangular wave revisits the same few shaft windows, so motif diversity is near zero",
+    "strong insight: the drawdown is the rank-<=S boolean product tieup[treadling][threading], so (1) make the threading/treadling FACTORS palindromic to get all mirror + rotation symmetry for free, (2) exploit that the float cap DECOUPLES per treadle (horizontal) and per shaft (vertical) into 1-D constraints on the factor sequences, (3) pack each half-sequence as a de-Bruijn-like code that maximizes distinct k-windows under those constraints",
+    "headroom above strong: trade a little symmetry for more diversity, or find a better distinct-window packing of the small-alphabet factor sequences"
+  ]
+}

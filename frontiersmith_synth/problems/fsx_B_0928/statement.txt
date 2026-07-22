@@ -1,0 +1,91 @@
+# Slack Water: Scheduling Ships at a Tidal Anchorage
+
+## Problem
+
+A harbourmaster manages a rectangular anchorage `W x H` metres. Ships may only
+cross the harbour mouth -- entering to anchor or leaving -- at one of `K`
+scheduled **tide windows** `T_1 < T_2 < ... < T_K` (slack-water moments; the
+rest of the time the current is too strong to manoeuvre). `K` is small: the
+tide grid splits the day into only `K-1` **epochs**, epoch `j` running from
+tide `T_j` to `T_{j+1}`.
+
+Each candidate ship `i` has a swing radius `r_i` (while anchored it drifts
+in a full circle of this radius around its anchor point and that circle must
+never leave the basin), a value `v_i`, and an availability window
+`[arr_i, dep_i]`: it can only enter at a tide `>= arr_i` and must leave at a
+tide `<= dep_i`. You choose, for every ship you decide to service, an actual
+entry tide and exit tide (both from the `K`-tide grid, entry strictly before
+exit) and a fixed anchor point it holds for its whole stay. Two ships that
+are both anchored during any shared epoch must keep their swing circles
+disjoint; ships whose stays never share an epoch may occupy the very same
+spot at different times.
+
+## Input
+
+```
+W H K
+T_1 T_2 ... T_K
+N
+r_1 v_1 arr_1 dep_1
+...
+r_N v_N arr_N dep_N
+```
+All values are integers. `T` is strictly increasing. `0 <= arr_i < dep_i <= T_K`.
+
+## Output
+
+```
+M
+i_1 x_1 y_1 a_1 b_1
+...
+i_M x_M y_M a_M b_M
+```
+`M` ships accepted, then for each: its 1-indexed input position `i`, its
+anchor point `(x_i, y_i)`, and its entry/exit tide **indices** `a_i, b_i`
+(`1 <= a_i < b_i <= K`), meaning it enters at `T_{a_i}` and leaves at
+`T_{b_i}` (occupying epochs `a_i .. b_i - 1`).
+
+## Feasibility
+
+Each ship index appears at most once. For every accepted ship: `T_{a_i} >=
+arr_i` and `T_{b_i} <= dep_i`; its circle stays in the basin
+(`r_i <= x_i <= W - r_i`, `r_i <= y_i <= H - r_i`); and for every OTHER
+accepted ship `j` whose epoch range `[a_j, b_j)` shares an epoch with `i`'s
+(`max(a_i,a_j) < min(b_i,b_j)`), the two circles do not overlap
+(`dist((x_i,y_i),(x_j,y_j)) >= r_i + r_j`). Any violation scores `0` for the
+whole test.
+
+## Objective
+
+`F` = sum of `v_i` over accepted ships. The checker also computes an
+internal reference `B`: the largest `v_i` among ships that are feasible to
+anchor completely alone. Your ratio for a test is `min(1000, 100*F/B) /
+1000`; per-test ratios are averaged. `B` corresponds to ratio `0.1`; genuine
+extra value scores higher, capped at `1.0`.
+
+## Constraints
+
+* `3 <= K <= 9`, `10 <= W, H <= 400`, `1 <= N <= 500`.
+* `1 <= r_i <= floor(min(W,H)/2)` is not guaranteed -- some ships may have a
+  radius too large ever to fit; such ships must simply be rejected.
+* `1 <= v_i <= 1000`.
+* Time limit: 4 s. Memory limit: 512 MB.
+
+## Example
+
+`W=H=10`, `K=3`, tides `[0, 5, 10]` (epoch 1 = `[0,5]`, epoch 2 = `[5,10]`).
+Ship 1: `r=2, v=30, arr=0, dep=10` (available the whole day). Ship 2:
+`r=4, v=100, arr=4, dep=10` (can only use epoch 2 -- entry tide `T_2=5`,
+exit `T_3=10`).
+
+Reading ship 1's window literally and anchoring it for its whole *allowed*
+span (`a=1,b=3`, both epochs) at the basin centre `(5,5)` looks safe -- but
+ship 2's feasible anchor points all lie within `[4,6]x[4,6]`, at most `1.4`
+from `(5,5)`, far short of the `r_1+r_2=6` clearance ship 2 would then need.
+Ship 2 is shut out: `F=30`, ratio `0.03`.
+
+Anchoring ship 1 only for the epoch it actually needs (`a=1,b=2`) instead
+frees epoch 2 entirely -- the two ships' stays no longer share an epoch, so
+no clearance is required between them at all, and both fit: `F=130`, ratio
+`0.13`. The saving scales up sharply once many cheap, flexible ships would
+otherwise squat, full-span, on the one spot a rare high-value ship needs.

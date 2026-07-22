@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0667",
+  "tier": "B",
+  "format": "C",
+  "family": "integer-consensus-tuning",
+  "eval_form": "quality-metric",
+  "theme": "syncing a relay-clock network with rationed cable upgrades",
+  "title": "Relay-Clock Sync: Rationed Cable Upgrades Under Node Caps",
+  "objective": "max",
+  "strategies": [
+    "trivial: leave every cable at its installed base weight 1, spend no budget (reproduces the checker's do-nothing floor)",
+    "greedy: compute the Fiedler vector once on the base network, rank cables by that static sensitivity, and fill them in that fixed order to their cap/budget limit -- fixates on the visible bottleneck cable, which is capped almost exactly at its current load, and wastes or crudely dumps the remainder",
+    "strong: cap-aware coordinate ascent -- spend the budget in small increments, always on the currently highest-Fiedler-sensitivity cable with spare node-cap room, recomputing the Fiedler vector after every increment so the spend spills onto cap-free parallel detour cables once the bottleneck saturates",
+    "invalid: dumps the whole budget onto one cable, blowing through its node's weighted-degree cap"
+  ]
+}

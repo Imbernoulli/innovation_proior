@@ -1,0 +1,17 @@
+{
+  "id": "fsx_N_0809",
+  "tier": "N",
+  "format": "B",
+  "family": "equilibrium-steering-toll",
+  "eval_form": "quality-metric",
+  "theme": "adaptive road tolling to steer commuter flow",
+  "title": "Anticipatory Tolls: Steering the Commuter Equilibrium",
+  "objective": "minimize",
+  "source_frameworks": ["wave2b-lens:topup-B-2"],
+  "strategies": [
+    "do nothing: post zero toll every round and let the crowd's own best-response dynamic settle wherever it settles",
+    "reactive congestion pricing: each round, tax every edge in proportion to how much its LAST-round latency exceeded the currently-cheapest edge, chasing whichever edge is hot right now",
+    "anticipatory marginal-cost pricing: solve for the system-optimal flow split up front (equalize marginal cost across edges via water-filling), then post the one constant toll per edge that makes that split a fixed point of the crowd's own best-response rule",
+    "seeded local search over toll schedules: start from a constructive schedule (e.g. the marginal-cost one) and perturb per-round, per-edge tolls to squeeze out further reductions in total realized travel time"
+  ]
+}

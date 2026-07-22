@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0973",
+  "tier": "A",
+  "format": "A",
+  "family": "drift-anchored-spanning-calibration",
+  "eval_form": "quality-metric",
+  "theme": "phased-array antenna field alignment",
+  "title": "Phased-Array Drift-Anchored Calibration Sweep",
+  "objective": "min",
+  "seed_problem": "minimum spanning tree over a static pairwise-cost graph",
+  "mutation": "composite: edge costs are no longer static -- each measurement's error is charged by how long its two endpoints have gone un-touched since they were last involved in ANY measurement (a schedule-dependent drift term), on top of a fixed geometric floor; the objective sums the error propagated to every element through the measurement graph, so topology (which pairs to measure) and rhythm (when / how often to re-touch a hub) must be co-designed -- a static MST over the geometric floor alone is provably not optimal.",
+  "strategies": [
+    "trivial: measure (0,i) in raw index order, ignoring geometry and drift entirely (reproduces the checker baseline)",
+    "naive greedy: build a minimum spanning tree over the static geometric floor w(u,v) only, then emit it in fixed BFS level order with no re-touches -- this is blind to drift rate and to the timing gaps its own traversal order creates",
+    "insight (strong): an online dynamic-Prim variant that, at every step, picks the connecting pair minimizing the CURRENT schedule-dependent incremental cost (inherited error + each side's drift-since-last-touch + geometric floor), which naturally front-loads high-drift elements and re-uses freshly-touched hubs consecutively instead of leaving them stale; any left-over time budget is then spent on redundant cross-check re-touches that most reduce total error",
+    "a max-cost-flow / LP-relaxation view of the same schedule-cost trade-off could go further, but is not required to beat greedy"
+  ]
+}

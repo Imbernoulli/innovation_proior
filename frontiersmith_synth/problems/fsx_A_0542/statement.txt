@@ -1,0 +1,79 @@
+# Grid Spine Under Targeted Outages
+
+## Problem
+
+You operate one backbone network: an undirected weighted **multigraph** on `n` nodes
+with `m` candidate links. A fixed set of `M` links (indices `0..M-1`) is the existing
+**spine**; the remaining `m-M` links are optional **reinforcements** you may buy. You
+may keep at most `Bbudget` links in total.
+
+An adversary has prepared `K` **outage scenarios**. Scenario `k` simultaneously
+destroys a fixed set of links (by index). You must serve `D` **demand pairs**. Under
+each scenario, on the links you kept that survive that scenario, every demand pair is
+either still connected (you pay its weighted shortest-path distance) or severed (you
+pay a fixed penalty `P`). Choose the links to keep so the total pay is small.
+
+## Input
+
+```
+n m M K D Bbudget P
+```
+Then `m` lines, link `i` (0-indexed): `u v w` — an undirected link between nodes `u`,`v`
+(`0 <= u,v < n`) of weight `w >= 1`. Links `0..M-1` are the spine.
+Then `D` lines: `s e` — a demand pair (`s != e`).
+Then `K` lines, scenario `k`: `c d_1 ... d_c` — it destroys the `c` links with these indices.
+
+## Output
+
+Print `q`, the number of links you keep, then `q` **distinct** link indices (any order):
+```
+q
+i_1 i_2 ... i_q
+```
+
+## Feasibility
+
+`0 <= q <= Bbudget`; every index in `[0, m-1]`; no index repeated. Any violation, or a
+non-integer / out-of-range token, scores `0`. Keeping nothing (`q = 0`) is feasible but
+severs every demand.
+
+## Objective (minimize)
+
+Let `S` be your kept links. For scenario `k`, let `G_k` = `S` with scenario `k`'s destroyed
+links removed. For a demand `(s,e)`:
+```
+cost_k(s,e) = P                    if s,e are disconnected in G_k
+            = dist_{G_k}(s,e)      otherwise   (weighted shortest path)
+```
+Your objective is `F = sum over all scenarios k and demand pairs of cost_k(s,e)`.
+
+## Scoring
+
+Let `B` be the objective of the **spine-only** reference: keep exactly links `0..M-1` and
+buy no reinforcement. Your score on a test is
+```
+ratio = min(1000, 100 * B / max(1, F)) / 1000
+```
+so the spine-only plan scores `0.1`, and cutting `F` below `B` scores higher, capped at
+`1.0` (a ten-fold improvement). Per-test ratios are averaged over the tests.
+
+## Constraints
+
+- `n` up to about `1600`; `m` up to about `1700`; `M = m - 4C` spine links for `C` clusters.
+- `K` up to `48`; `D` up to `16`; weights up to a few hundred; `P` up to about `12000`.
+- `Bbudget = M + 2C`, so you can afford only a fraction of the reinforcements.
+- Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+The spine is a path threaded through `C` equal blocks; a demand pair sits at the two ends
+of each block, so every scenario that destroys one spine link *inside* a block severs that
+block's pair (penalty `P`). Two reinforcement types exist for a block: several **narrow**
+copies, each a spare parallel to one interior link (it heals exactly that one cut), and one
+**wide** link joining the block's two ends directly (it heals *every* interior cut of that
+block at once, but routes at a longer distance). With three scenarios attacking three
+different interior links of each block, spending one reinforcement to patch each scenario
+individually exhausts the budget after `2C` patches and leaves `C` scenarios severed. The
+paying observation is that the whole scenario family only ever attacks links *inside* the
+blocks: buying one wide link per block — a small hitting set over the threatened cuts —
+heals all `3C` scenarios using just `C` reinforcements, well inside budget.

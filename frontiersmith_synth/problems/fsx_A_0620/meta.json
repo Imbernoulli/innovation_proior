@@ -1,0 +1,20 @@
+{
+  "id": "fsx_A_0620",
+  "tier": "A",
+  "format": "A",
+  "family": "hamming-covering-code",
+  "eval_form": "quality-metric",
+  "seed_problem": "minimum covering code (dominating set of the Hamming graph)",
+  "mutation": "composite: input is relaxed from the full Hamming space to an explicit weighted target list (sites), each with its own tolerance bit (radius-coverage), and the objective is coupled to an algebraic side-structure -- a given parity-check matrix H over Z_q whose null space grants any beacon that lies in it (a coset code) one extra unit of covering radius (algebraic-perfect-code). Minimizing beacon count now requires jointly deciding WHICH structure (null-space vs raw site points) to center beacons on, not just accumulating balls (covering-code).",
+  "objective": "min",
+  "theme": "Fewest codewords covering all strings in radius r",
+  "title": "Resonant Beacon Cover",
+  "mechanisms": ["algebraic-perfect-code", "covering-code", "radius-coverage"],
+  "innovation_hook": "Structured algebraic codes (beacons drawn from the null space of H, a coset/perfect-code-like construction) beat greedy set-cover restricted to raw site points at approaching the sphere-covering bound: a null-space beacon is both better-centered on a planted cluster AND gets a free +1 radius bonus, so one algebraic beacon can replace many greedy picks.",
+  "strategies": [
+    "trivial: place one beacon exactly on each site (M beacons, the calibration baseline)",
+    "greedy: weighted set-cover restricted to candidates drawn from the site list itself, repeatedly adding the site whose ball (radius r+t_i, essentially never resonant) covers the most still-uncovered sites -- cannot see or exploit the null space of H",
+    "strong: brute-force the null space of H (q^n is capped small enough to enumerate), then run set-cover greedy over THAT candidate set -- every candidate is automatically resonant (radius r+t_i+1) and, because sites are planted as small perturbations of null-space vectors, a single null-space beacon recovers an entire planted cluster that raw-site greedy needs many picks to approximate; leftover uncovered sites fall back to being their own beacon",
+    "beyond: syndrome/coset-leader decoding to find near-null-space beacons even when q^n is too large to enumerate, or joint optimization over which sites to assign the tolerance/resonance bonuses to"
+  ]
+}

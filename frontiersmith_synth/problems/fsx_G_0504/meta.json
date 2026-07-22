@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_0504",
+  "tier": "G",
+  "format": "C",
+  "family": "combinatorial-design-cover-free-hypergraph",
+  "eval_form": "quality-metric",
+  "theme": "privacy-preserving sensor activation codes",
+  "title": "Privacy-Preserving Sensor Activation Codes",
+  "objective": "max",
+  "strategies": [
+    "checker baseline: deterministic first-fit over a short public pseudo-random constant-weight stream",
+    "larger shuffled first-fit stream that packs more rows while checking overlap and cover-free constraints incrementally",
+    "multi-start shuffled construction with local repair: replace small conflicting blocker sets, then greedily refill",
+    "stronger approaches could use simulated annealing, SAT/ILP repair neighborhoods, or cover-free-code specific algebraic seeds; the finite optimum is not known in closed form"
+  ]
+}

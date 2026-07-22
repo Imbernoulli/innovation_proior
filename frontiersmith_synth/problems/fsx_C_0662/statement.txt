@@ -1,0 +1,95 @@
+# Plates that split one cut two ways
+
+## Problem
+
+A sheet-metal shop has `N` plate parts, `1..N`. Part `i` has a heat-affected-zone
+budget `H_i`: the total heat its material can absorb from laser cuts before it
+warps. There are `M` **common lines**: line `g` is a straight cut on the sheet
+that lies flush against the edges of a specific set of parts `S_g` (`|S_g| >= 2`),
+with nominal length `L_g` (even).
+
+Every part must eventually have its edge on every common line it touches cut
+somehow. **Solo:** part `i` fires its own pass along line `g`, costing `L_g / 2`
+heat. **Shared:** two or more parts of `S_g` agree to be cut by the *same* laser
+pass along `g` -- the sheet only pays for the cut once (saving `L_g` of total
+cut length per extra participant), but a shared pass runs hotter and dwells
+longer, so **every** participant is charged the **full** `L_g` heat, not half.
+
+You choose, for each line, whether to activate it as a shared cut and, if so,
+which subset of `S_g` (size >= 2) participates; everyone else on that line just
+cuts solo. A part's total heat use must not exceed its budget `H_i`.
+
+## Input
+
+```
+N M
+H_1 H_2 ... H_N
+```
+then for each line `g = 1..M`:
+```
+k_g L_g
+m_1 m_2 ... m_{k_g}
+```
+`m_1..m_{k_g}` are the (distinct, 1-based) parts of `S_g`.
+
+## Output
+
+```
+K
+g_1 t_1 p_1 p_2 ... p_{t_1}
+...
+g_K t_K p_1 p_2 ... p_{t_K}
+```
+`K` is the number of lines you activate as shared cuts (`0 <= K <= M`, each line
+id used at most once). For each activated line `g`, `t >= 2` is the number of
+participants and `p_1..p_t` are distinct members of `S_g`.
+
+## Feasibility
+
+* Every `g` is a valid, distinct line id in `[1,M]`; every `p_j` is an actual
+  member of `S_g`, listed at most once per line.
+* `t >= 2` and `t <= |S_g|` for every activated line.
+* For every part `i`, total heat must not exceed `H_i`: solo heat (`L_g/2`) for
+  every line it lies on but does *not* join, plus full heat (`L_g`) for every
+  line it *does* join (`J_i`). Equivalently:
+  `sum_{g in J_i} (L_g / 2) <= H_i - sum_{all g with i in S_g} (L_g / 2)`.
+* Any violation, malformed token, or trailing token scores `0`.
+
+## Objective
+
+Maximize `F` = the total cut length saved by sharing:
+`F = sum over activated lines g of (t_g - 1) * L_g`.
+
+## Scoring
+
+The checker computes `B`, the best result achievable using **only a single**
+activated line (whichever line and eligible subset maximizes `(m-1)*L_g`, `m`
+being how many of `S_g` could afford that one line alone). Your score for a test
+case is
+```
+ratio = min(1000, 100 * F / max(1, B)) / 1000
+```
+so grabbing only the single best line scores `0.1`; genuine multi-line clustering
+scores higher, capped at `1.0`. Per-test ratios are averaged.
+
+## Constraints
+
+* `2 <= N <= 340`, `1 <= M <= 260`.
+* `2 <= k_g <= 20`, `2 <= L_g <= 4000` (even). `1 <= H_i <= 2*10^5`.
+* Time limit: 4 s. Memory limit: 512 MB.
+
+## Example
+
+`N=6, M=4`, `H = [50,50,30,30,20,20]`. Lines: `g1={1,2}, L=20`; `g2={1,3,4},
+L=16`; `g3={2,5}, L=10`; `g4={5,6}, L=8`.
+
+Extra ("shareable") budgets after solo baselines: part 1 has `50-18=32`, part 2
+has `50-15=35`, part 3 has `22`, part 4 has `22`, part 5 has `11`, part 6 has
+`16`. The single best line is `g2` (all three members afford it): `B = 2*16 =
+32` -> the trivial reference scores `0.1`.
+
+But every line is jointly affordable: part 1 spends `10+8=18<=32` (lines g1,g2),
+part 2 spends `10+5=15<=35` (g1,g3), part 5 spends `5+4=9<=11` (g3,g4). Activating
+**all four** lines gives `F = 20+32+10+8 = 70`, ratio `~0.219` -- splitting the
+heat budget across several small shared contacts beats grabbing the single most
+valuable line.

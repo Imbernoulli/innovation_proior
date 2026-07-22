@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1039",
+  "tier": "B",
+  "format": "C",
+  "family": "nutrient-ledger-rotation-plan",
+  "eval_form": "quality-metric",
+  "theme": "market garden over eight seasons",
+  "title": "Market Garden: Rotation Plans as Soil Limit Cycles",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:state-coupled-scheduling"],
+  "strategies": [
+    "monoculture baseline: plant one fixed crop on every plot every season, ignoring soil state, pest memory and market glut entirely (reproduces the checker's own reference construction)",
+    "per-plot myopic greedy: every season, on every plot independently, plant whichever crop maximizes that season's price*yield given the plot's own current soil and pest state; because every plot starts identical this synchronizes all plots onto the same crop every season, tripping the market-glut discount, building pest pressure through repeated families, and running the season's limiting nutrient toward zero with nothing left to replenish it",
+    "sustainable-orbit search with phase staggering: simulate every candidate short rotation (monocultures and complementary crop-family pairs) on a single plot to find one whose planted depletion and replenishment cancel out into a genuine limit cycle in soil-state space, then split plots into phase-offset groups running that same cycle out of step with each other so the planted families stay diversified across plots every season instead of synchronizing into a glut"
+  ]
+}

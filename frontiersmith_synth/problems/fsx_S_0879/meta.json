@@ -1,0 +1,19 @@
+{
+  "id": "fsx_S_0879",
+  "tier": "S",
+  "format": "B",
+  "family": "family-setup-batch-scheduler",
+  "eval_form": "quality-metric",
+  "theme": "Order deadline-weighted jobs with family setup times to maximize on-time weighted throughput.",
+  "title": "Foundry Order Book: Deadline-Weighted Jobs with Family Setup Switching",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:topup-B-1"],
+  "mechanisms": ["batch-aware-sequencing", "family-clustering-diagnosis", "reinsertion-local-move"],
+  "innovation_hook": "Cluster by family to amortize setups, then interleave batches by a deadline-versus-setup trade-off, using reinsertion moves to rescue high-weight jobs stranded between families.",
+  "strategies": [
+    "do-minimum baseline: submit jobs in the exact input order with no sorting; the evaluator's admission control skips whatever misses its deadline (reproduces the weak input-order reference)",
+    "earliest-deadline-first (the trap): sort every job globally by deadline and submit in that order, ignoring family entirely; on trap instances where family assignment interleaves with deadline rank this pays a setup on almost every job and thrashes, and it can even be lured into chasing several tight low-weight decoy jobs across families while a stranded high-weight job's deadline blows",
+    "batch-aware family clustering with reinsertion (the insight): search family-block permutations AND a family-granularity batch-interleave heuristic (visit whichever family's next pending job is most urgent, drain its queue while still feasible, then switch), refine every candidate with single-job reinsertion moves that pull a high-weight job stranded inside a low-priority family out to an early slot without dragging its low-value packmates along, and keep the best result",
+    "full local-search planner: additionally restart reinsertion from multiple candidate base orders and iterate to a fixpoint, trading a little extra compute for a schedule that is robust across interleaved, stranded, and mixed/held-out family-deadline structures"
+  ]
+}

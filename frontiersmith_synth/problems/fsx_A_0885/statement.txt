@@ -1,0 +1,90 @@
+# Carving the Bakery Franchise Map
+
+## Problem
+A bakery franchise operates across a town laid out as an `R`-row by
+`C`-column grid of city blocks. Block `(r,c)` has one household with a
+favorite recipe `f(r,c)` (an integer `1..6`) and a weekly spend `s(r,c)`
+(a positive integer).
+
+Headquarters will carve the town into **at most `K` territories**. Every
+block must belong to exactly one territory, and each territory must be
+**edge-connected**: its blocks form a single connected region under
+4-directional (up/down/left/right) adjacency -- a territory may not be
+split into disconnected pieces.
+
+Each territory stocks **exactly one** recipe: whichever recipe is preferred
+by the largest number of households inside that territory (a strict
+**plurality**, not a majority -- the most votes, not necessarily more than
+half). If two or more recipes tie for the most votes in a territory, the
+lowest-numbered tied recipe is stocked.
+
+## Scoring
+A household's weekly spend is **captured** if and only if its own favorite
+recipe equals the recipe stocked in its own territory. The objective is the
+**total captured spend**, to maximize:
+```
+F = sum over territories T of  sum_{block in T : f(block) == stocked(T)}  s(block)
+```
+Spend from a household whose favorite loses the plurality in its territory
+is never captured, however large it is. The scoring is deliberately
+non-linear: a territory that already wins its plurality by a landslide
+captures no more spend than one that wins by a single vote, but pulling one
+more household onto the winning side -- or founding a brand-new, small
+territory around a recipe that never wins locally -- can swing a large
+amount of spend in or out. Compact, "reasonable-looking" territories earn
+nothing for their shape; only for which recipe crosses the plurality line
+inside them. A recipe that is scattered thinly across the town, never a
+local plurality anywhere, can still be captured in full if you draw one
+thin, winding territory that threads through only its own households --
+as long as that territory stays edge-connected and the town does not run
+out of its `K` allowed territories elsewhere.
+
+## Input
+```
+R C K
+f(1,1) f(1,2) ... f(1,C)
+...
+f(R,1) ... f(R,C)
+s(1,1) ... s(1,C)
+...
+s(R,1) ... s(R,C)
+```
+
+## Output
+`R` lines, each with `C` integers: the `j`-th integer on line `i` is the
+territory id (in `1..K`) assigned to block `(i,j)`.
+
+## Feasibility
+- Every distinct territory id that is used must label an edge-connected
+  set of blocks (one connected component, not several).
+- Every block gets exactly one id in `1..K`; unused ids are allowed.
+
+## Constraints
+- `1 <= R`, `1 <= C`, `R * C <= 3600`, `2 <= K <= 12`.
+- `1 <= f(r,c) <= 6`.
+- `1 <= s(r,c) <= 2000`.
+- Time limit: 4 s. Memory limit: 512 MB. Each input file `<= 5` MB.
+
+## Example
+```
+3 4 3
+1 2 1 1
+1 2 1 1
+1 1 1 1
+1 10 1 1
+1 10 1 1
+1 1 1 1
+```
+`R=3, C=4, K=3`. Recipe grid then spend grid. Households at `(1,2)` and
+`(2,2)` prefer recipe 2 with spend 10 each; every other household prefers
+recipe 1 with spend 1.
+
+A single whole-town territory has 10 households favoring recipe 1 versus
+2 favoring recipe 2, so it stocks recipe 1 and captures only the ten
+recipe-1 households (total spend `10`) -- the recipe-2 pair is wasted.
+Carving out `{(1,2),(2,2)}` as its own territory (it is edge-connected --
+the two blocks are vertically adjacent) lets it stock recipe 2, capturing
+spend `20`; the remaining 10 blocks (still edge-connected once that pair
+is removed) stay recipe 1 and capture spend `10`. Total `F = 30`, using
+only 2 of the 3 allowed territories -- every household's spend is
+captured.

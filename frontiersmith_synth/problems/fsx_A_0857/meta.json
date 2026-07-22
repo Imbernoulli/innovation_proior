@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0857",
+  "tier": "A",
+  "format": "E",
+  "family": "congestion-law-extrapolation",
+  "eval_form": "quality-metric",
+  "theme": "Learn the jam law from light traffic only",
+  "title": "Merge-Junction Delay: Learn the Jam Law from Light Traffic Only",
+  "objective": "minimize",
+  "strategies": [
+    "constant baseline: predict the mean training delay (ignores load entirely)",
+    "multi-linear recipe: ordinary least-squares y = c0 + c1*x0 + c2*x1 + c3*x2; uses all three flows but assumes an additive LINEAR effect, so it misses the shared superlinear exponent and under-predicts heavy-traffic delay",
+    "structural recovery: log-log reformulation -- for each candidate coupling-weight pair (w1,w2), log(y) vs log(x0+w1*x1+w2*x2) is an ordinary (well-conditioned) linear regression whose slope IS the shared exponent k; grid-search only has to find (w1,w2), the exponent and scale drop out in closed form",
+    "invalid: emit a disallowed token (attribute access / unknown name)"
+  ]
+}

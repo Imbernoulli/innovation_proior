@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0564",
+  "tier": "A",
+  "format": "C",
+  "family": "recourse-aware-crew-roster",
+  "eval_form": "quality-metric",
+  "theme": "hospital roster that a dumb dispatcher must repair",
+  "title": "Standby by Design: Rostering for a Dumb Dispatcher",
+  "objective": "min",
+  "strategies": [
+    "trivial: canonical roster -- fill each shift with the lowest-index qualified nurse (concentrates load on the low-index specialists)",
+    "greedy: even workload balancing -- assign each shift to the qualified nurse with the fewest shifts so far; ignores scenarios and the repair rule",
+    "strong: co-optimize with the frozen greedy dispatcher -- evaluate the true worst-scenario cost via the published repair simulation and local-search the roster so scarce-skill reserves stay free exactly where the low-index scan will reach them",
+    "reserve-the-specialist heuristic: keep scarce-skill nurses off common shifts so a standby specialist survives most callouts (partial insight)"
+  ]
+}

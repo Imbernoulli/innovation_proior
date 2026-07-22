@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0518",
+  "tier": "A",
+  "format": "E",
+  "family": "thermostat-hysteresis-recovery",
+  "eval_form": "quality-metric",
+  "theme": "reverse-engineer an antique greenhouse thermostat",
+  "title": "Antique Greenhouse Thermostat — recovering hidden hysteresis + actuation delay",
+  "objective": "min",
+  "strategies": [
+    "constant heater value (ignores the drive) -> reproduces the checker baseline ~0.1",
+    "greedy: memoryless static curve y=off+amp*sig((thr-d)*g) fit to the slow training branch; near-perfect on train, but one heater value per drive value cannot express the two hysteresis branches and misses the actuation delay -> fails the fast held-out reversals",
+    "strong: notice residuals of the memoryless fit correlate with drive DIRECTION not VALUE; posit a Schmitt latch (recover band edges from where the latch flips while rising vs falling) plus a k-step delay (recover by the shift that best explains training); emit a stateful latch+delayed-tap DSL program that generalises to the fast regime",
+    "headroom above strong: model the unmodelled FRACTIONAL lag (blend two adjacent delayed latch taps) and refine the band/delay jointly to push held-out MSE toward the sensor-noise floor"
+  ]
+}

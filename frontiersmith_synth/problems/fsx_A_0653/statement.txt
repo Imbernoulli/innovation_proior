@@ -1,0 +1,97 @@
+# Ferry Ropes Across the Two Riverbank Towns
+
+## Problem
+
+Two riverbank towns are linked by `M` ferry **lanes**. Lane `c` is a sorted list
+of `n_c` mooring-post markers (strictly increasing integers). The harbor office
+runs `Q` **convoy checks**: convoy `q` names `2` or `3` lanes and must find their
+**joint layover posts** (values common to all named lanes) using one fixed,
+mechanical dispatcher.
+
+The dispatcher keeps one pointer per named lane, all starting at position `0`.
+Repeat until some pointer runs off the end of its lane:
+* Let `v` be the maximum of the values currently pointed at.
+* If every pointer's value equals `v`: that is a joint layover; advance **every**
+  pointer by one position (this costs `k` probes, one per lane).
+* Otherwise, every pointer whose value is `< v` is *behind*. For each behind
+  pointer at position `p` on lane `c`: if a **shortcut rope** has been strung
+  from `p` to some later position `t` on lane `c`, **and** the value at `t` does
+  not exceed `v`, the pointer jumps straight to `t` (**1 probe**). Otherwise it
+  walks to `p+1` (**1 probe**).
+
+You may string up to `B` shortcut ropes **in total, town-wide**, spread across
+the `M` lanes however you like — the same lane can host several ropes, and a
+rope on one lane helps **every** convoy that touches that lane. Your job:
+choose the ropes to minimize the dispatcher's total probe count summed over
+all `Q` convoys.
+
+## Input
+
+```
+M Q B
+```
+then for lane `c = 1..M`: `n_c`, then a line of `n_c` strictly increasing
+integers (lane `c`'s markers). Then for convoy `q = 1..Q`: `k` (`2` or `3`),
+then `k` distinct lane indices (1-indexed).
+
+## Output
+
+For lane `c = 1..M`, in order: an integer `k_c` (ropes on lane `c`), then `k_c`
+lines `pos target` — `0 <= pos < target <= n_c - 1`, using 0-indexed positions
+into lane `c`'s marker list. Each position may host at most one rope. The sum
+of all `k_c` must not exceed `B`.
+
+## Feasibility
+
+Every `pos`/`target` must be a valid, in-range lane position with `pos <
+target`; no position may host two ropes; the total rope count must be `<= B`;
+the output must contain exactly the described tokens with nothing trailing.
+Any violation scores `0`. Printing `k_c = 0` for every lane (no ropes at all)
+is always feasible.
+
+## Objective
+
+Minimize `F`, the dispatcher's total probe count summed over every convoy,
+under the fixed algorithm above (correctness of the "joint layover" result is
+not judged — only how many probes the mechanical walk takes).
+
+## Scoring
+
+Let `Bval` be `F` when **no ropes at all** are strung (the do-nothing
+construction, identical to the dispatcher rule above). Your score for a test is
+```
+ratio = min(1000, 100 * Bval / max(1, F)) / 1000
+```
+so stringing no ropes scores `0.1`, and cutting the probe count below the
+do-nothing walk scores higher, capped at `1.0` (a 10x reduction). Per-test
+ratios are averaged.
+
+## Constraints
+
+* `2 <= M <= 100`, `3 <= Q <= 600`, `1 <= B <= 500`.
+* `2 <= n_c <= ~200`; markers fit comfortably in a signed 64-bit range.
+* Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+`M=3` lanes, `B=2`: lane 1 = `[1, 2, 3, 4, 5, 100]`, lane 2 =
+`[50, 51, 52, 53, 100]`, lane 3 = `[3, 6, 9]`. One convoy over lanes `{1, 2}`.
+With no ropes, the dispatcher walks lane 1's pointer one post at a time
+(`1,2,3,4,5`, five probes) before it reaches `100`, which matches lane 2's
+`100`; lane 2's pointer sits still meanwhile (it holds the running maximum),
+then, once lane 1 catches up to `100`, lane 2 becomes the laggard and walks
+`50,51,52,53` (four probes) before it too reaches `100`. The final matched
+pair costs `2` more probes. Total `Bval = 5 + 4 + 2 = 11`.
+
+Two ropes fix both walks at once: a rope on lane 1 from position `0` to
+position `4` (value `5`) fires immediately (`5 <= 50`, no overshoot) and jumps
+lane 1's pointer straight to `5`'s post in one probe; a rope on lane 2 from
+position `0` to position `4` (value `100`) only fires later, once lane 1's
+value has climbed to `100` (`100 <= 100`, no overshoot) — at that instant it
+jumps lane 2's pointer straight past the four intermediate posts in one probe.
+Replaying the dispatcher with both ropes gives `F = 1 + 1(lane1 to 100) + 1
+(lane2 skip) + 2(match) = 5`, well below `Bval = 11`. Placing either rope on
+lane 3 instead (which this convoy never touches) would waste it, and a rope
+whose target value exceeds the pivot at the moment it is reached never fires
+at all — the payoff depends on exactly when, in the dispatcher's own walk,
+each lane becomes the laggard.

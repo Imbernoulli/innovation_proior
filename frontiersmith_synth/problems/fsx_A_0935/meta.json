@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0935",
+  "tier": "A",
+  "format": "B",
+  "family": "notch-shaping-disturbance-controller",
+  "eval_form": "quality-metric",
+  "theme": "one controller versus twenty-five hostile disturbances",
+  "title": "One Controller Versus Twenty-Five Hostile Disturbances",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:adversarial-sweep-robustness"],
+  "innovation_hook": "The disturbance suite is published, so the frontier move is inverse loop-shaping against the listed spectrum -- treating the sweep itself as the design specification instead of tuning on aggregate error.",
+  "strategies": [
+    "trivial: fixed plant-naive gains (kp=1.5, kd=0.5, ki=0) -- ignores m/c/k and the entire published disturbance suite",
+    "greedy: aggressive pole placement to 4x the plant's own open-loop frequency, tuned only from the plant model, damping left light (zeta=0.18) -- never reads the published spectrum. On the trap instances a published sinusoid sits exactly on the resulting closed-loop resonance and dominates the worst-case aggregate",
+    "strong: base gains pushed to the validator's own kp<=320/kd<=13 budget limit (the best any spectrum-ignorant search over base gains alone can do at this budget is ~0.71 mean, verified by grid search), plus one internal-model resonator dropped on each of the highest-amplitude PUBLISHED sinusoids (up to the allowed budget); the resonators are what actually close the remaining gap to ~0.78 mean, since there is no more base-gain budget left to spend -- reads the sweep as the design spec",
+    "invalid: emits kp outside the validator's declared range -- rejected, scores 0 on every instance"
+  ]
+}

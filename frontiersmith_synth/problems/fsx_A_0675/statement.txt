@@ -1,0 +1,75 @@
+# Title
+Quick-Change Dressing Rooms
+
+# Problem
+A touring production has `P` actors and `S` shared dressing rooms. Each dressing room `r`
+has exactly `K` costume racks (a fixed physical capacity). Long before opening night, the
+stagehand must permanently assign every actor to exactly one dressing room — actors never
+move rooms once assigned.
+
+During the run, the stage manager's cue sheet fires `T` costume cues in order. Cue `t`
+names one actor `a_t` who must dash to their assigned room and grab their costume. If that
+actor's costume is *already hanging on a rack* in their room (because it was put there
+recently and hasn't been bumped), it's a fast **quick change** — free. Otherwise it's a
+slow **full change**: the actor's costume must be fetched and hung, and if all `K` racks in
+the room are already occupied, the **least-recently-used** occupant's costume is bumped off
+its rack to make room (standard LRU rack management, tracked independently per room).
+
+Formally: each room keeps an LRU set of at most `K` actor-ids ("currently racked"). Process
+cues `1..T` in order. For cue `t`, let `r` be the room assigned to actor `a_t`. If `a_t` is
+in room `r`'s racked set, mark it most-recently-used (no cost). Otherwise this is a **slow
+change**: add 1 to the cost, insert `a_t` into room `r`'s racked set as most-recently-used,
+evicting the least-recently-used occupant first if the set already has `K` members. Rooms
+start empty.
+
+The stagehand's job: choose the room assignment (fixed for the whole show) that minimizes
+the total number of slow changes over the whole cue sheet. Two actors who are both
+extremely popular but are only ever cued during disjoint stretches of the show can safely
+share a room for free; two only-moderately-popular actors whose cues constantly alternate
+back and forth can wreck a room even though neither looks "busy" in isolation. The right
+assignment depends on *when* actors are cued relative to each other, not merely *how often*.
+
+# Input
+Line 1: four integers `P S K T` — number of actors, number of dressing rooms, racks per
+room, and number of cues.
+Line 2: `T` integers `a_1 a_2 ... a_T` (each in `[1, P]`) — the actor named at each cue, in
+order.
+
+# Output
+One line with `P` integers `c_1 c_2 ... c_P`, each in `[1, S]` — the dressing room assigned
+to actor `i`.
+
+# Feasibility
+Every `c_i` must satisfy `1 <= c_i <= S`. Any other token, wrong count, or out-of-range
+value is rejected (score 0). Every assignment is otherwise feasible (there is no cap on how
+many actors may share a room).
+
+# Objective
+Minimize the total number of slow changes produced by replaying the whole cue sheet against
+your assignment, as defined above.
+
+# Scoring
+The checker replays the cue sheet against your assignment to get your slow-change count `F`,
+and against its own fixed reference assignment (`c_i = ((i-1) mod S) + 1`) to get a baseline
+count `B`. Your score is `min(1000, 100 * B / max(1, F)) / 1000`, i.e. it rewards assignments
+whose slow-change count is *below* the reference; matching the reference scores about 0.1,
+and a much better assignment scores higher (capped at 1.0). Total score is the mean over 10
+test cases.
+
+# Constraints
+`1 <= P <= 1500`, `2 <= S <= 30`, `1 <= K <= 4`, `1 <= T <= 15000`.
+Time limit: 4s. Memory limit: 512MB.
+
+# Example
+`P=4 S=2 K=1 T=6`
+```
+4 2 1 6
+1 2 1 2 3 3
+```
+Reference assignment `c = (1, 2, 1, 2)` (actor `i -> ((i-1) mod 2)+1`) puts actors 1,3 in
+room 1 and actors 2,4 in room 2. Replaying: cue1 (a=1,room1) slow(room1 empty)->racked{1};
+cue2 (a=2,room2) slow->racked{2}; cue3 (a=1,room1) hit; cue4 (a=2,room2) hit; cue5 (a=3,
+room1,K=1) slow, evicts 1->racked{3}; cue6 (a=3,room1) hit. `B = 3`.
+A smarter assignment `c = (1, 2, 2, 1)` puts actors {1,3} split and {2,4} split so that
+actor 3 (only ever cued once, at the end) shares room... any assignment giving `F <= 2`
+already beats the baseline and scores above 0.1.

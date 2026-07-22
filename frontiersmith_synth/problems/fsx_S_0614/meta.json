@@ -1,0 +1,19 @@
+{
+  "id": "fsx_S_0614",
+  "tier": "S",
+  "format": "B",
+  "family": "synergy-multiknapsack-dual",
+  "eval_form": "quality-metric",
+  "theme": "pack items into capacity-limited bins where co-locating certain item pairs grants hidden synergy bonuses",
+  "title": "Synergy Bin Packing: Dual-Priced Assignment with Hidden Co-location Bonuses",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:topup-B-1"],
+  "mechanisms": ["ejection-chain-repair", "lagrangian-dual-price", "synergy-aware-rounding"],
+  "innovation_hook": "Price bin capacity with Lagrange multipliers and treat synergistic pairs as merged super-items during rounding, so the dual makes room for pairs that are only jointly worthwhile.",
+  "strategies": [
+    "do-nothing baseline: leave every item out; obj=0, reproduces the evaluator's reference (~0.1)",
+    "ratio-greedy first-fit (the trap): sort items by standalone value/weight and drop each into the first bin with room; ignores the synergy table entirely, fills capacity with high-ratio decoys, and almost never co-locates a synergy pair -- so on trap instances it collects little of the bonus mass",
+    "dual-priced super-item rounding (the insight): merge each synergy pair (and small chain-cluster) into one super-item, price capacity with a Lagrange multiplier mu on weight (bisected so admitted weight fits the bins) to decide which pairs are jointly worthwhile, place blocks emptiest-bin-first, and use ejection chains + a co-location pass to repair the packing",
+    "full solver: exact/ILP or long local search over the block selection and bin assignment, capturing more of the synergy mass than the reference heuristic"
+  ]
+}

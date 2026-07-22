@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0972",
+  "tier": "B",
+  "format": "B",
+  "family": "online-macro-acquisition",
+  "eval_form": "quality-metric",
+  "theme": "invent shorthand live while the dictation continues",
+  "title": "Live Shorthand: Coining Radio-Brevity Codes While the Dictation Keeps Coming",
+  "objective": "min",
+  "strategies": [
+    "identity transcription: never coin any shorthand (baseline)",
+    "reactive frequency chasing: each round, coin the single phrase with the largest net token savings THIS round alone, one per round while the codebook has room",
+    "reserve-then-spend: never coin anything in round 0; from round 1 on, first spend one slot on the best phrase that has recurred across >=2 distinct rounds (real cross-round evidence, not a one-off spike), then spend any remaining slots on the best fresh local spike",
+    "same reserve-then-spend idea generalized with a trend/momentum estimate of a phrase's growing share of the stream instead of a hard 2-round recurrence bar"
+  ]
+}

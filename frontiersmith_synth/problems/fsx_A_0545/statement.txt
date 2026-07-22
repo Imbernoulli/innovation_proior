@@ -1,0 +1,76 @@
+# Eco-Industrial Park: Waste-Exchange Loops
+
+## Problem
+An eco-industrial park has **N** plants and **M** directed transfer pipes. Pipe `e`
+runs from plant `u_e` to plant `v_e`: plant `u_e` can pipe up to `cap_e` units/hour of
+one of its byproducts to plant `v_e`, which consumes it as feedstock. Routing one unit
+along pipe `e` changes the park's net waste-disposal bill by `rev_e` (positive = waste
+avoided; negative = a transport tax that outweighs the benefit).
+
+No plant may stockpile or dump material: in steady state, whatever a plant receives it
+must ship back out. Hence **every unit of routed material must travel around a closed
+loop** — value lives in *cycles* of exchanges, not in one-off transfers.
+
+Choose an integer flow `x_e >= 0` on each pipe to **maximize** total waste avoided.
+
+## Input
+```
+N M
+u_1 v_1 cap_1 rev_1
+...
+u_M v_M cap_M rev_M
+```
+Plants are numbered `1..N`. `1 <= cap_e`, and `rev_e` may be negative. There may be
+several pipes between the same ordered pair of plants.
+
+## Output
+List the pipes you route flow on:
+```
+K
+e_1 f_1
+...
+e_K f_K
+```
+`K` lines follow; each names a pipe index `e in [1,M]` and an integer flow `f in [1,cap_e]`.
+Every pipe index may appear at most once; unlisted pipes carry flow 0.
+
+## Feasibility
+* `1 <= f_j <= cap_{e_j}` and the `e_j` are distinct.
+* **Material balance**: at every plant, total inflow equals total outflow, i.e.
+  `sum_{e into i} x_e == sum_{e out of i} x_e` for all `i`.
+Any output that breaks a rule scores 0.
+
+## Objective
+Maximize `F = sum_e rev_e * x_e`. Because balance forces all flow onto closed loops,
+`F` equals the sum, over the loops you circulate, of (loop flow) x (sum of `rev` around
+the loop). A loop only pays if its rewards outweigh its transport taxes.
+
+## Scoring
+The judge computes `B`, the value of the best **bilateral** plan: the total of every
+profitable two-plant reciprocal exchange (a `u -> v -> u` 2-cycle taking the highest-`rev`
+pipe each way, filled to capacity). Your score is
+```
+ratio = max(0, min(1, F / (10 * B)))
+```
+So matching the bilateral plan scores about `0.1`; the loops that dominate `10 * B` are
+longer multi-hop cycles that no pairwise matching can see.
+
+## Constraints
+* `N <= 3000`, `M <= 60000`, `cap_e <= 30`, `|rev_e| <= 60`.
+* Time limit: 3 s. Memory limit: 512 MB. Each input file <= 5 MB.
+
+## Example
+Input:
+```
+4 5
+1 2 10 3
+2 3 10 3
+3 1 10 3
+1 4 10 4
+4 1 10 4
+```
+Pipes 1,2,3 form a 3-loop `1->2->3->1` (per-unit gain 9); pipes 4,5 form a 2-loop
+`1<->4` (per-unit gain 8). The judge's bilateral baseline uses only the 2-loop:
+`B = 8 * 10 = 80`. Circulating **both** loops at flow 10 gives
+`F = 9*10 + 8*10 = 170`, so `ratio = min(1, 170 / 800) = 0.2125`. A plan that also
+found longer loops would score higher.

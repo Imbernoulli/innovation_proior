@@ -1,0 +1,79 @@
+# Firebreaks Ahead of the Blaze
+
+## Problem
+A wildfire spreads through a forest of `N` stands (vertices) joined by `M` fire-corridors
+(undirected edges). At time 0 a set of `S` source stands is already ablaze. Time advances in
+discrete steps. Before the fire moves each step you may permanently **protect** up to `B`
+currently-unburnt stands; a protected stand never catches fire and blocks the blaze. Protection
+is irreversible and a stand that has already burned can never be protected.
+
+Each stand `v` has a value `w_v >= 0` (its timber). Maximize the total value of stands that
+**never** burn.
+
+Formally, for step `t = 1, 2, ...`:
+1. **protect** — choose a set `P_t` of at most `B` stands, each currently unburnt and not already
+   protected; mark them protected forever.
+2. **spread** — every currently-burning stand ignites each neighbour that is, at that instant,
+   unburnt and unprotected.
+
+The process runs until the fire can spread no further (quiescence).
+
+## Input
+- Line 1: `N M B S`.
+- Line 2: `w_1 ... w_N` (non-negative integers).
+- Line 3: `S` distinct source ids (the initially-burning stands).
+- Next `M` lines: `u v`, an undirected corridor between stands `u` and `v`.
+
+## Output
+- Line 1: `K`, the number of steps you describe (`0 <= K <= N`).
+- Then `K` lines; line `t` is `c  a_1 ... a_c` with `0 <= c <= B`, the stands you protect at
+  step `t`. You may leave a step empty (`c = 0`).
+
+## Feasibility
+`c <= B` on every line; every id in `[1, N]`; a stand may not be protected after it has burned,
+and no stand may be protected twice (ids across all steps are distinct). Any violation scores 0.
+
+## Objective
+Maximize `F = sum of w_v over all stands v that are not burning at quiescence`.
+
+## Scoring
+Let `B0` be the value saved by doing nothing — the total value of stands the fire can never
+reach from the sources. The judge simulates your schedule to obtain `F` and reports
+`ratio = min(1.0, (F / B0) / 10)`. Doing nothing scores exactly `0.1`; saving ten times the
+do-nothing value caps the score at `1.0`. An infeasible output scores `0`.
+
+Note: the fire front is wide (many corridors run in parallel), so you can never wall off the
+whole advancing frontier. Value hides behind narrow gateways deep in the forest; a gateway of
+`g` stands takes `ceil(g / B)` steps of protection to seal, so a distant gateway can only be
+closed if you commit budget to it **before** the flames arrive.
+
+## Constraints
+`2 <= N <= 6000`, `1 <= M <= 40000`, `2 <= B <= 3`, `1 <= S`. All `w_v` fit in 32 bits.
+Time limit 3 s. Memory limit 512 MB. Each input file is at most 5 MB.
+
+## Example
+Input:
+```
+8 8 1 1
+0 0 0 0 0 10 10 4
+1
+1 2
+2 3
+3 4
+3 5
+4 6
+4 7
+5 6
+5 7
+```
+Here stand 8 is isolated (value 4, unreachable) so `B0 = 4`. Stands {6,7} (value 10 each) sit
+behind the gateway {4,5}: to save them BOTH gateway stands must be protected before stand 3's
+fire crosses at step 3, and with `B = 1` that needs two steps of lead. The output
+```
+2
+1 4
+1 5
+```
+protects stand 4 at step 1 and stand 5 at step 2 (both before the fire reaches them). The fire
+burns 1,2,3 and stops; stands {4,5,6,7,8} survive, so `F = 0+0+10+10+4 = 24` and
+`ratio = min(1.0, (24/4)/10) = 0.6`.

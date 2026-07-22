@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0703",
+  "tier": "A",
+  "format": "B",
+  "family": "multiscale-reservoir-release",
+  "eval_form": "quality-metric",
+  "theme": "dam release scheduling against seeded rainfall",
+  "title": "Two-Speed Reservoir: Dam Release Scheduling Against Seeded Rainfall",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:topup-B-2"],
+  "strategies": [
+    "trivial: release 0 every day -- reproduces the evaluator's own weak baseline (~0.1); the level only ever rises until it spills",
+    "greedy: react to a FIXED target of 80% of capacity, releasing only the excess above it each day capped by Rmax -- 'keep the reservoir full for water security'; oblivious to the untagged slow-vs-fast structure of the inflow record, so any storm burst whose excess exceeds Rmax overtops it on the day it lands",
+    "strong: detect storm bursts via a rolling-median local baseline over the known inflow record, compute how much headroom (beyond what Rmax can absorb reactively) each upcoming burst needs within a lookahead window, and preemptively lower a dynamic release target in the days before -- scaled by the instance's own flood_coef/shortage_coef trade-off and floored above min_level so pre-draining never itself causes a shortage",
+    "headroom above strong: exact dynamic-programming / MPC-style optimization over the full release sequence (or a proper convex/LP relaxation of the water-balance constraints) to find the true minimum-penalty schedule, versus strong's single-pass lookahead heuristic which is not optimal"
+  ]
+}

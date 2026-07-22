@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0829",
+  "tier": "S",
+  "format": "B",
+  "family": "regime-switch-tour-builder",
+  "eval_form": "quality-metric",
+  "theme": "Build and refine a visiting order for point sets that are unlabeled as clustered, uniform, or grid-like.",
+  "title": "Right Basin First: Regime-Aware Tour Building",
+  "objective": "minimize",
+  "source_frameworks": ["wave2b-lens:topup-B-1"],
+  "strategies": [
+    "trivial: submit the input-order (identity) tour with no construction at all -- reproduces the evaluator's own weak reference exactly",
+    "greedy: plain nearest-neighbor construction from point 0, then let the evaluator's shared budgeted 2-opt/Or-opt refine polish it -- the obvious first algorithm; blind to whether the layout is clustered, uniform, or grid, so on strongly clustered instances it strands a few points and creates long late 'return' jumps that the small shared refine budget cannot fully undo",
+    "strong (insight): classify the layout from a cheap nearest-neighbor-distance histogram (mean NN distance vs. the value expected under a uniform Poisson layout of the same density), pick a matching constructor -- cluster-first (MST-cut clustering + entry/exit-aware chaining between clusters) for strongly clustered layouts, a boustrophedon sweep for uniform/grid layouts -- then locally replay the evaluator's own exact budgeted refine on both nearest-neighbor and the regime-matched candidate and submit whichever comes out shorter, so refinement starts in (and stays in) the right basin",
+    "beyond strong: tune the MST cut threshold and cluster-linking order adaptively per instance (e.g. small 2-opt/held-out search over the cut ratio), or blend a partial cluster-first / partial sweep construction when the classifier's regime call is borderline, to close the remaining gap to the internal near-optimal anchor"
+  ]
+}

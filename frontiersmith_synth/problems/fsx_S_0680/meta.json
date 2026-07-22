@@ -1,0 +1,19 @@
+{
+  "id": "fsx_S_0680",
+  "tier": "S",
+  "format": "B",
+  "family": "shifting-bottleneck-dispatch",
+  "eval_form": "quality-metric",
+  "theme": "Sequence operations per machine in a job shop where the truly critical machine depends on the whole routing.",
+  "title": "Shifting Bottleneck: Sequence Every Machine in a Job Shop",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:topup-B-1"],
+  "mechanisms": ["critical-path-swap", "one-machine-bottleneck-identify", "shifting-bottleneck-priority"],
+  "innovation_hook": "Identify the bottleneck by solving each machine's one-machine subproblem under current heads and tails, sequence that machine first, and reoptimize as the bottleneck shifts.",
+  "strategies": [
+    "do-nothing baseline: order every machine's operations by ascending id (job index, then position); reproduces the evaluator's own reference construction exactly, so it always scores 0.1",
+    "shortest-processing-time dispatch (the trap): Giffler-Thompson active-schedule generation with an SPT conflict tie-break -- the standard first-attempt JSP heuristic; it has no notion of head/tail slack, so on trap instances it mis-sequences the low-load machine whose few operations are squeezed between long chains, inflating makespan",
+    "shifting bottleneck heuristic (the insight): repeatedly compute heads/tails on the current partial precedence graph, solve every unsequenced machine's one-machine 1|r_i|L_max relaxation via a Schrage (largest-tail-first) heuristic, fix the machine with the largest one-machine bound, then re-derive heads/tails as the bottleneck shifts; after all machines are fixed once, reoptimize already-fixed machines against the completed graph and apply critical-path adjacent swaps to shave remaining idle time",
+    "full solver: exact/ILP (disjunctive graph formulation) or long simulated annealing over machine permutations, capturing more of the makespan reduction than the reference heuristic"
+  ]
+}

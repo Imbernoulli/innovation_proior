@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0889",
+  "tier": "S",
+  "format": "D",
+  "family": "hazard-and-cache-coscheduling",
+  "eval_form": "flops",
+  "theme": "hand-scheduling a hot loop for a toy core",
+  "title": "Hot-Loop Scheduler for an In-Order Dual-Issue Core",
+  "objective": "min",
+  "strategies": [
+    "ascending-id topological order, core-blind (trivial)",
+    "round-robin list scheduling across independent accumulate chains to maximize dual-issue occupancy, assuming every load hits (greedy / textbook fixed-latency scheduling)",
+    "union-find the chains into cache-set equivalence classes via their touched addresses mod S, serialize chains within a class, round-robin only across classes (strong)",
+    "true optimal joint hazard+cache schedule (open ceiling, unreached)"
+  ]
+}

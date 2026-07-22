@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0737",
+  "tier": "S",
+  "format": "E",
+  "family": "noisy-automaton-rule-mining",
+  "eval_form": "quality-metric",
+  "theme": "flickering lantern row follows a secret rule",
+  "title": "The Flickering Lantern Row",
+  "objective": "min",
+  "strategies": [
+    "trivial: guess the identity rule (lanterns never change) -> reproduces the checker's own baseline, ~0.1",
+    "greedy: pool every consecutive LOGBOOK pair as if it were one tick apart and majority-vote a radius-1 rule table from the pooled (window -> next-cell) counts; ignores the recorded tick gaps entirely, so on gappy pairs the same 3-window maps to inconsistent outcomes and the vote absorbs noise",
+    "strong: constraint satisfaction over the finite 256-rule space -- for each candidate rule, roll it forward EXACTLY the recorded gap between each snapshot pair and score by total mismatch; the rule consistent with every gap simultaneously is (almost always) the true one, recovered without ever fitting a single-step transition directly",
+    "headroom above strong: resolve residual ambiguity when sparse/noisy snapshots leave >1 rule near-tied (e.g. weight pairs by gap length, or bootstrap over noise-plausible snapshot reconstructions) to push the held-out 500-tick rollout mismatch closer to the fixed 18% observation-noise floor"
+  ]
+}

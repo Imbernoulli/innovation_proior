@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0940",
+  "tier": "A",
+  "format": "B",
+  "family": "calorimeter-mixing-probe",
+  "eval_form": "quality-metric",
+  "theme": "budgeted tastings to map a phase change",
+  "title": "Budgeted Tastings: Mapping a Hidden Phase Plateau",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:hidden-law-discovery"],
+  "strategies": [
+    "do-nothing baseline: run zero experiments, predict the energy-conservation-only weighted average everywhere (reproduces the evaluator's zero-experiment reference)",
+    "composition-space-filling sweep at a fixed B-fraction, then sort readings by the linear predictor and 1-D interpolate/extrapolate a single smooth curve; ignores the public transition-window hint and the B-fraction dependence of the plateau's width, so it is blind on the narrow transition band",
+    "anchor-plus-window-focused design: a few broad anchor experiments plus the bulk of the budget swept finely inside the public transition-window hint at a moderately large B-fraction, using repeated flat readings to read off the transition temperature directly and bisecting toward its edges to pin the latent-heat scale",
+    "regime-classifying prediction from the fitted (transition temperature, latent-heat scale) pair, applying the matching closed form per test mix instead of one global curve"
+  ]
+}

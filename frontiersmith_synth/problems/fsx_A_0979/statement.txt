@@ -1,0 +1,90 @@
+# Nested Customs Stamps
+
+## Problem
+
+A shipping port has `T = 8` nested customs checkpoints, numbered `1` (outer
+gate) to `8` (innermost vault). Checkpoint `i` keeps a compact *stamp ledger*
+(a Bloom filter) recording a known set `C_i` of container IDs that truly
+belong on checkpoint `i`'s watch-list. You choose, for every checkpoint `i`,
+a ledger size `m_i` (bits) and a stamp count `k_i` (hash slots), from a total
+ink budget `B` shared across all `8` ledgers.
+
+Given fixed 64-bit seeds `SEED1, SEED2`, a container ID `x`'s ledger position
+for stamp `j` (`0 <= j < k_i`) at checkpoint `i` is
+`pos = (h1(x) + j * h2(x)) mod m_i`, where `h1(x) = mix(x, SEED1)`,
+`h2(x) = mix(x, SEED2)`, and `mix` is the fixed 64-bit mixer:
+```
+mix(x, seed):
+  x = x + seed + 0x9e3779b97f4a7c15
+  x = (x ^ (x >> 30)) * 0xbf58476d1ce4e5b9
+  x = (x ^ (x >> 27)) * 0x94d049bb133111eb
+  x = x ^ (x >> 31)
+  return x   (all arithmetic mod 2^64, unsigned)
+```
+Checkpoint `i`'s ledger has bit `pos` set to `1` for every stamp of every ID
+in `C_i` (a standard Bloom filter, so it never mis-reports a true member as
+absent).
+
+A trace of `Q` arriving containers is processed in order. For each container
+`x`, checkpoints are visited `i = 1, 2, ..., 8` until it is resolved:
+- If checkpoint `i`'s ledger says **absent** (some stamp bit is `0`), `x`
+  is released for free and moves to checkpoint `i+1` (no cost).
+- If checkpoint `i`'s ledger says **present** (all `k_i` stamp bits are
+  `1`), an officer performs the real, expensive manifest check costing
+  `2^(i-1)` ink units. If `x` truly is in `C_i`, `x` is resolved and
+  processing stops. If not (a false alarm), the ink is wasted and `x`
+  still moves on to checkpoint `i+1`.
+If `x` reaches past checkpoint `8` without ever being confirmed, processing
+simply ends (it only paid for whatever real checks its false alarms cost
+along the way).
+
+## Input
+```
+T B SEED1 SEED2
+```
+then for `i = 1..T`: a line `n_i` followed by `n_i` space-separated
+distinct integers -- the true watch-list `C_i` (all `C_i` pairwise disjoint).
+Then a line `Q`, then `Q` space-separated integers -- the arriving trace, in
+order. All IDs are in `[1, 2*10^9]`.
+
+## Output
+`T` lines, one per checkpoint `i = 1..T`, each `m_i k_i`.
+
+## Feasibility
+`m_i` integer with `m_i >= 64`; `k_i` integer with `1 <= k_i <= 10`;
+`sum_{i=1}^{T} m_i <= B`.
+
+## Objective
+
+Minimize `F`, the total ink cost of processing the whole trace (sum over all
+`Q` containers of every real manifest check they trigger, per the rules
+above).
+
+## Scoring
+
+The checker also builds its own naive reference: every checkpoint gets an
+equal share `floor(B/T)` of the budget with a single fixed stamp (`k=1`), giving
+baseline cost `B_ref`. It scores
+`ratio = min(1000, 100 * B_ref / max(1, F)) / 1000` (capped at `1.0`).
+Since `T`, `SEED1`, `SEED2` and every `C_i`/trace ID are fixed and known,
+which specific queries misfire at which checkpoint is fully determined --
+not a matter of an average false-positive-rate formula.
+
+## Constraints
+
+`T = 8` (fixed). `1 <= n_i <= 20000`, `sum n_i <= 40000`. `1 <= Q <= 40000`.
+`B` up to `2*10^6`. Time limit: `5s`. Memory limit: `512MB`.
+
+## Example
+
+`T=2` (illustrative), `B=400`, watch-lists `C_1={7}`, `C_2={30}`, trace
+`= [7, 30, 99]`. Suppose your chosen `(m_1,k_1)=(64,2)`, `(m_2,k_2)=(64,2)`
+make checkpoint `1`'s ledger present only for `7`, and checkpoint `2`'s
+ledger present only for `30`. Then `7` is caught at checkpoint `1` (cost
+`1`), `30` passes checkpoint `1` free, is caught at checkpoint `2` (cost
+`2`), and `99` passes both checkpoints free (cost `0`). `F = 3`. If instead
+you starved checkpoint `1` (tiny `m_1`) so it wrongly flags every ID as
+present, all three containers get an (unnecessary, for `99` and `30`) cost-1
+check at checkpoint `1` before `30` and `99` continue -- `F` grows. Spending
+ink where false alarms are truly expensive (deep checkpoints), not spreading
+it evenly or by watch-list size, is what keeps `F` low.

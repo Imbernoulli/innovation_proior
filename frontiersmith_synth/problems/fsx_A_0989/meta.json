@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0989",
+  "tier": "A",
+  "format": "A",
+  "family": "discrete-turing-field-design",
+  "eval_form": "quality-metric",
+  "theme": "program the leopard's exact spots",
+  "title": "Program the Leopard's Exact Spots",
+  "objective": "max",
+  "strategies": [
+    "single fixed formulation (baseline/trivial): paint the same shortest-reach catalogue formulation over the whole pelt regardless of what each patch wants",
+    "global best-fit (greedy/obvious recipe): fit ONE formulation to the average requested wavelength across all patches and paint it everywhere -- correct on average, wrong almost everywhere the demand is heterogeneous",
+    "per-region calibration lookup (strong/insight): treat the published (feed,kill)->wavelength table as an invertible dispersion relation and independently choose, for every patch, the formulation whose calibrated wavelength is nearest its own target -- exploits that the parameters must be a spatially designed FIELD, not a constant",
+    "boundary-aware field refinement (headroom above strong): the checker actually simulates the coupled CA, so state values bleed across formulation boundaries; a solver that anticipates this bleed (e.g. biasing choices near sharp target discontinuities, or locally searching around the calibration-table optimum using the true simulated match) can out-score plain per-region lookup"
+  ]
+}

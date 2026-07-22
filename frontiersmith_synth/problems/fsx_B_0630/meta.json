@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0630",
+  "tier": "B",
+  "format": "B",
+  "family": "twin-car-shaft-elevators",
+  "eval_form": "quality-metric",
+  "theme": "two elevator cars per shaft serving a morning rush",
+  "title": "Morning Rush: Twin-Car Shaft Dispatch",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:fleet-choreography"],
+  "strategies": [
+    "trivial: pure round-robin across ALL 2*S cars by arrival index -- no floor information used at all, not even a fixed midpoint split; park every lower car at the bottom, every upper car at the top",
+    "greedy (trap): nearest-car dispatch -- process calls in arrival order and hand each one to whichever of the 2*S cars has the smallest predicted distance to the origin floor (predicted position updates to the call's destination). Never checks whether the target floor is even reachable given the safety gap to its shaft partner, so it routinely assigns a lower-role car a pickup ABOVE (partner_floor - G) -- permanently unreachable while the partner holds its resting floor -- and drags both cars of a shaft toward the same busy zone",
+    "strong (insight): demand-tuned floor-band partition with anticipatory, partner-aware re-parking -- slice the whole known call set by origin into S load-balanced shaft groups, split each shaft's slice by DESTINATION (not origin, which is uninformative when pickups cluster) into a lower/upper car band, park each car at the median of everywhere it will ever touch but sized off the PARTNER's required reach so neither car can rest where the other must go, then repair any call whose origin would be unreachable by reassigning it to the role that can safely serve it",
+    "invalid: park both cars of a shaft with fewer than G floors between them at t=0 (physically impossible starting configuration) -- must be rejected and score 0"
+  ]
+}

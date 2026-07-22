@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0882",
+  "tier": "A",
+  "format": "E",
+  "family": "scaling-exponent-regime-extrapolator",
+  "eval_form": "quality-metric",
+  "theme": "Predict extreme-regime behavior from a mid band",
+  "title": "Past the Congestion Threshold — recovering a cascade's scaling exponent",
+  "objective": "max",
+  "strategies": [
+    "trivial: predict the flat geometric mean of the training y values everywhere -- reproduces the checker's own internal baseline, Ratio ~0.1",
+    "greedy: single global power law through the origin, y = C*x^p, fit by ordinary least squares in log-log space over ALL training rows. This looks like scaling analysis and tracks the training band reasonably (both regimes are monotone increasing), but it never tests for a regime boundary -- it silently assumes the power law starts at x=0 rather than at the true congestion threshold xc. That misattributes calm-regime curvature into the fitted exponent p, which then diverges from the true cascade exponent alpha and extrapolates at the wrong rate far past the training band",
+    "strong: search over candidate boundary points for the split xc_hat under which (a) a quadratic fits the LEFT side well and (b) the log-log-transformed RIGHT-side residual (relative to the quadratic's value at xc_hat) is most linear; read off the scaling exponent directly from that transformed regression, and report y0 + B*(x-xc)^alpha. Because this is the true functional form rather than a local patch through the origin, it carries the correct growth rate arbitrarily far into the held-out congestion-cascade regime",
+    "headroom above strong: adaptive/finer boundary search (continuous refinement instead of a decile grid), robust (trimmed/IRLS) regression at both stages against the noise floor, or joint nonlinear refinement of (xc, y0, alpha, B) after the two-stage initialization"
+  ]
+}

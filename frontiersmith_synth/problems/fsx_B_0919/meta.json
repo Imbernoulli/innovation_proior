@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0919",
+  "tier": "B",
+  "format": "B",
+  "family": "thermal-spread-placement",
+  "eval_form": "quality-metric",
+  "theme": "datacenter rack workload placement under thermal limits",
+  "title": "Rack Grid Thermal Placement: Diffusion, Hysteresis, and the Coolest-Node Trap",
+  "objective": "max",
+  "strategies": [
+    "blind round-robin: cycle jobs across nodes in id order, start every job the instant it can legally start, ignore heat entirely (baseline)",
+    "coolest-node-now greedy: track a crude private heat proxy per node (own load only, decayed by a fixed factor, no neighbor coupling, no hysteresis state), always assign the incoming job to whichever node's proxy is currently lowest, start immediately",
+    "coolest-node-now greedy with a shorter delay tolerance (same trap, slightly different pacing) -- included as a second discriminative recipe point",
+    "physics-aware simulate-and-place: for every job, actually run the SAME diffusion+hysteresis simulation the evaluator uses (over all jobs committed so far) for every candidate (node, start-time-in-a-delay-window) pair, and commit whichever option maximizes that job's own throttle-adjusted contribution -- this lets the policy see cascading neighbor heat and hysteresis lock-in before it happens, and deliberately DELAY a job (preemptively idle a node) rather than start it into a coming hotspot"
+  ]
+}

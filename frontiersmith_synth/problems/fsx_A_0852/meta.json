@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0852",
+  "tier": "A",
+  "format": "B",
+  "family": "portfolio-expansion-budget",
+  "eval_form": "quality-metric",
+  "theme": "algorithm-portfolio node-expansion budgeting",
+  "title": "Sleeper Solvers: Budgeting a Node-Expansion Portfolio",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:topup-B-1", "algorithm portfolios / anytime meta-search"],
+  "strategies": [
+    "trivial: dump the whole budget onto the first-listed solver, ignoring the probes entirely",
+    "greedy: read the value at the LAST probe checkpoint for every solver, commit the entire budget to whichever currently looks best (the obvious single-armed recipe -- falls for the fast-saturating decoy on trap instances)",
+    "strong: fit an extrapolated final-value estimate per solver from the probe's successive increments (accelerating trend -> optimistic compounding extrapolation; decelerating trend -> saturating-tail extrapolation), rank by that estimate, and split the budget across the top few ranked solvers with decaying weights so a correctly-flagged late bloomer still gets the majority share while a wrong call doesn't zero out the runner-up",
+    "invalid: allocate far more node-expansions than the budget allows, violating sum(alloc) <= budget"
+  ]
+}

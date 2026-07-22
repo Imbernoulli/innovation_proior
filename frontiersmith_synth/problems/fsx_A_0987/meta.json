@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0987",
+  "tier": "A",
+  "family": "sync-frequency-seating",
+  "seed_problem": "sync-frequency-seating (fsx_A_0987 spec)",
+  "mutation": "composite: label-assignment (seating bijection) + laplacian-pseudoinverse-flow (grounded-Laplacian electrical-flow objective) + slow-eigenvector-orthogonality (bottleneck-cut trap requires avoiding alignment with the graph's slow/Fiedler modes)",
+  "objective": "min",
+  "theme": "seating quarrelsome metronomes around a coupled table so they entrain",
+  "title": "Quarrelsome Metronomes on a Coupled Table",
+  "strategies": [
+    "trivial: do-nothing identity seating (also the checker's own baseline construction)",
+    "greedy: hand extreme-magnitude metronomes to the lowest-degree seats and near-zero ones to hub seats (a 'protect the seats with fewer arms' heuristic) -- uses only each seat's own arm-count, never reasons about which side of a structural bottleneck a seat sits on, so it still leaves one side of a cut net-heavy",
+    "strong: approximate the graph's Fiedler (slow) eigenvector via shifted power iteration, order seats along it, and interleave the sorted frequency multiset from both extremes (min,max,2nd-min,2nd-max,...) along that order so every sweep-cut's net current stays near zero, then run a bounded exact local-refinement pass (resolve the true balance equations, find the worst-loaded arm, swap in whichever seat's metronome erases its imbalance, verified against the true objective) -- exploits the spectral orthogonality insight plus an exchange-argument polish",
+    "invalid: prints a degenerate constant sequence that is not a permutation -> checker rejects (Ratio 0.0)"
+  ]
+}

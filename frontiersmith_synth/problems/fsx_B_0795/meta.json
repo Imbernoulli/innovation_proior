@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_0795",
+  "tier": "B",
+  "format": "C",
+  "family": "coset-precomputation-table",
+  "eval_form": "quality-metric",
+  "theme": "stock a workshop so any commissioned gear assembles quickly",
+  "title": "Stocking the Coset Workshop",
+  "objective": "minimize",
+  "strategies": [
+    "dedicated-part baseline: stock every target as its own table entry (m=T, 1 factor each) -- the checker's own reference construction",
+    "whole-group baby-step-giant-step: build a table sized ~sqrt(p-1) around the given primitive root and look up every target uniformly, ignoring that most targets share a small hidden coset",
+    "hidden-subgroup inference: derive the hidden subgroup's exact order algebraically from the largest prime factor of p-1, build a 2-part table (coset representative + one subgroup generator), classify every other target by an exact membership test, and give each genuine target a short 1-2 factor recipe while decoys get one dedicated part each"
+  ]
+}

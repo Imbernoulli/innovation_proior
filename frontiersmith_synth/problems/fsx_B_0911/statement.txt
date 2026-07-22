@@ -1,0 +1,103 @@
+# Ducting Days: Channels That Survive the Sweep
+
+## Problem
+A chain of `N` radio stations sits along a single transmission corridor (a coastal
+road, a valley, a pipeline right-of-way — a genuinely 1-D geography). Station `i`
+has an integer position `x_i` along the corridor (`x_1 < x_2 < ... < x_N`). You
+must assign every station a channel `c_i` in `[1, C]`.
+
+Two things cause interference. **Base interference**: stations closer than
+`R_base` always interfere (short-range noise); each such pair carries its own
+positive integer weight given in the input (NOT simply a function of distance —
+some nearby pairs are cheap, some expensive, so an adaptive assignment can beat a
+rigid pattern). **Ducting**: on a "freak propagation day", an atmospheric layer
+channels a station's signal far down the corridor, activating long-range
+interference between stations whose *separation distance* falls in a narrow band.
+The input publishes `K` such ducting scenarios. Crucially, the scenarios are
+**not arbitrary** — scenario `s`'s active band `[Lo_s, Hi_s]` slides by a fixed
+step as `s` increases, so the `K` scenarios are one continuous sweep across
+separation distances (a single geometric family), not `K` unrelated graphs. Base
+interference is always active; on any given day exactly one ducting scenario is
+also active, and you don't know which — you are scored against the worst one.
+
+## Input
+```
+N C K
+x_1 x_2 ... x_N
+M0
+i_1 j_1 w_1
+...  (M0 lines: a base-interference edge between stations i_1-indexed, weight w)
+M_1
+i j w   (M_1 lines: ducting edges active ONLY in scenario 1)
+M_2
+...     (ducting edges for scenario 2)
+...
+M_K
+...     (ducting edges for scenario K)
+```
+All indices are `1..N`. Every listed edge (base or ducting) has a positive integer
+weight. `K = 40` in every test.
+
+## Output
+`N` integers `c_1 ... c_N` (whitespace/newline separated), the channel assigned to
+each station in order.
+
+## Feasibility
+Exactly `N` tokens, each an integer in `[1, C]`. Nothing else on the output. Any
+violation scores 0. (There is no hard "no-conflict" requirement — conflicts cost
+score, they don't make an output infeasible.)
+
+## Objective (minimize)
+For a channel assignment, let `base_conflict` = total weight of base edges whose
+two endpoints share a channel. For scenario `s`, let `duct_conflict(s)` = total
+weight of scenario-`s` edges whose endpoints share a channel. The scenario-`s`
+cost is `base_conflict + duct_conflict(s)` (base interference is always live).
+Your objective is
+```
+F = max over s in 1..K of ( base_conflict + duct_conflict(s) )
+```
+the worst single freak-propagation day. **Minimize F.**
+
+## Scoring
+The checker computes `B`, the objective `F` of the "round-robin" reference
+assignment `c_i = 1 + ((i-1) mod C)`, on the SAME input. Your score for a case is
+```
+ratio = min(1000, 100 * B / max(1, F)) / 1000
+```
+so matching the round-robin baseline scores `0.1`; cutting the worst-day cost to a
+tenth of it caps the case at `1.0`. Overall score is the mean ratio over 10 cases.
+
+## Constraints
+- `6 <= N <= 900`, `3 <= C <= 60`, `K = 40` fixed.
+- `R_base` is implied by which pairs appear as base edges; ducting bands reach
+  separations far larger than `R_base`.
+- Time limit: 5 s. Memory limit: 512 MB. Each `.in` file is well under 5 MB.
+- Deterministic: the checker only replays your assignment against the listed
+  edges; no randomness at judge time.
+
+## Example
+Input (`N=5, C=3, K=3`, positions `0,3,6,9,12`, base range effectively 4):
+```
+5 3 3
+0 3 6 9 12
+4
+1 2 2
+2 3 2
+3 4 2
+4 5 2
+3
+1 3 10
+2 4 10
+3 5 10
+0
+2
+1 4 10
+2 5 10
+```
+(Scenario 1 catches gap-2 pairs at distance 6; scenario 2 is empty here;
+scenario 3 catches gap-3 pairs at distance 9.)
+
+The round-robin output `1 2 3 1 2` has zero base and zero scenario-1 conflict,
+but stations 1&4 and 2&5 (gap 3) repeat their channel, so scenario 3 costs
+`10+10=20`. `F = B = 20`, ratio `0.1`. A pattern avoiding a repeat at gap 3
+(e.g. `1 2 3 2 1`) removes that collision and drives the ratio above `0.1`.

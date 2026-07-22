@@ -1,0 +1,15 @@
+{
+  "id": "fsx_A_0531",
+  "tier": "A",
+  "format": "C",
+  "family": "crease-carry-stress-order",
+  "eval_form": "quality-metric",
+  "theme": "Bookbinder folding a map without cracking it",
+  "title": "The Bookbinder's Pocket Fold",
+  "objective": "min",
+  "strategies": [
+    "accordion baseline: fold one slot at a time from the left (k=1) until the width fits -- carries every layer, high stress (the checker's baseline)",
+    "halve-each-time greedy: always fold at the middle line to shrink fastest -- front-loads thickness by folding the heavy centre early and blindly bends the reinforced spine",
+    "thin-margins-first / order search: beam search over fold ORDER that folds light outer flaps first and routes folds around reinforced creases, so the heavy centre is carried as few times as possible"
+  ]
+}

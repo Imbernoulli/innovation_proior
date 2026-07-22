@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0539",
+  "tier": "A",
+  "format": "D",
+  "family": "dont-care-guided-synthesis",
+  "eval_form": "flops",
+  "theme": "build the lock that only real keys visit",
+  "title": "The Lock Only Real Keys Visit: Minimum-Gate Circuit on a Partial Truth Table",
+  "objective": "min",
+  "strategies": [
+    "affine-oblivious per-monomial Reed-Muller circuit in free coordinates (trivial/baseline)",
+    "shared-variable factoring of the quadratic part (greedy) -- one AND per variable",
+    "detect the affine flat, collapse to symplectic normal form -> rank/2 AND gates (strong)",
+    "further linear-form sharing / sub-rank multiplicative complexity below the symplectic reference (open ceiling, uncovered)"
+  ]
+}

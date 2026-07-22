@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0840",
+  "tier": "A",
+  "format": "B",
+  "family": "annealing-schedule-design",
+  "eval_form": "quality-metric",
+  "theme": "Tune the cooling curve for a fixed searcher",
+  "title": "Blindfolded Blacksmith: Tuning the Quench",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:wildcard-hybrid"],
+  "strategies": [
+    "do-nothing / T=0: pure greedy hill-climbing, drives every trap block straight to its u=0 consolation value and never leaves; reproduces the evaluator's own baseline",
+    "single fixed-guess monotone cooling: pick one plausible T0 (informed only by public block sizes, since the hidden reward slope is never shown) and decay it once across the whole step budget with no restarts -- solves shallow traps whose barrier happens to be near the guessed scale, but a fixed guess is systematically wrong on instances whose hidden slope is far from that guess and never recovers",
+    "acceptance-adaptive compounding reheat: start from a modest temperature, and whenever a stagnation window shows both a low realised acceptance rate and no improvement in the best score, ESCALATE the temperature multiplicatively (compounding across repeated events) and resume from the best state found so far -- self-calibrates to whatever the hidden slope actually is, rather than assuming it, and gets many independent attempts to cross each trap instead of one",
+    "seeded local refinement of the escalating policy: perturb window/stagnation_window/reheat_factor/restart_mode around a working adaptive baseline and keep whichever setting yields a higher observed acceptance-rate recovery per event, deterministically, using only public fields"
+  ]
+}

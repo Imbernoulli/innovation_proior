@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0608",
+  "tier": "A",
+  "format": "C",
+  "family": "single-track-meetpass-rhythm",
+  "eval_form": "quality-metric",
+  "theme": "opposing trains sharing one mountain track with passing loops",
+  "title": "Mountain Meet: A Rhythm for the Single Track",
+  "objective": "min",
+  "strategies": [
+    "direction-batched baseline: run every eastbound train as one tight H-spaced pipeline, then every westbound after the line clears (checker's baseline, always feasible, very late)",
+    "earliest-due-date dispatch: sort trains by due date and insert each as early as feasible; locally sensible but scrambles the meeting phase and piles up one-sided waits",
+    "cadence pattern-then-fit: enumerate a small family of periodic meeting templates (period P, per-direction phases), snap every train onto the nearest cadence slot for its direction, keep the template with least weighted cost",
+    "phase-fit refinement: for the chosen period, sweep the two direction phases against the release grid so opposing meets land on sidings"
+  ]
+}

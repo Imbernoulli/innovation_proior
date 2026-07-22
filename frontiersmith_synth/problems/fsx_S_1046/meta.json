@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_1046",
+  "tier": "S",
+  "format": "C",
+  "family": "defect-sounding-probes",
+  "eval_form": "quality-metric",
+  "theme": "tapping a cast bell to find any hidden crack",
+  "title": "Bell-Sounding: Worst-Case Crack Probes",
+  "objective": "max",
+  "mechanisms": ["current-focusing", "dirichlet-to-neumann-gap", "worst-case-probe-cover"],
+  "innovation_hook": "Detection power for a single defect is the leading eigenvalue of that defect's DtN (boundary response) perturbation operator restricted to the zero-sum current subspace; because the score is a MIN over the whole defect family of the BEST probe for that defect, choosing q probes under budget is a spectral covering problem, not a per-defect optimization -- neither fact is visible from the circuit diagram alone.",
+  "strategies": [
+    "trivial: reproduces the checker's own reference construction exactly -- a tight flanking (straddle) dipole around each of the first q listed defects, cycling through the list if q>m. Looks locally sensitive but barely pushes current past the rim, so it never really reaches the defect layer.",
+    "greedy: the obvious multimeter recipe -- for each of the first q listed defects, fire a spread (diametrically opposite) two-electrode dipole straight through its rim position. No worst-case reasoning about which defects go uncovered when q<m, and never more than 2 non-zero probe entries, so it cannot jointly focus AND diversify.",
+    "strong: for each defect, compute the leading eigenvector of that defect's DtN-perturbation quadratic form restricted to the zero-sum subspace (round to the integer/magnitude-bounded feasible set, falling back to the spread dipole only if it scores no worse), then greedily aim probes at whichever defect is currently worst-covered -- this both focuses current at the right depth AND spectrally covers the family within the probe budget.",
+    "invalid: emits a current pattern that both exceeds the per-electrode magnitude bound and fails current conservation (sum != 0) -- must be rejected, Ratio: 0.0."
+  ]
+}

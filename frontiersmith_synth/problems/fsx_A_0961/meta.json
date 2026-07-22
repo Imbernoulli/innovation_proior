@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0961",
+  "tier": "A",
+  "format": "B",
+  "family": "stealth-frontier-detector-tuning",
+  "eval_form": "quality-metric",
+  "theme": "intrusion detector tuned against ever-stealthier attacks",
+  "title": "SOC Sensor Fusion: Budgeting the 1% Alert Allowance",
+  "objective": "maximize",
+  "source_frameworks": ["wave2b-lens:adversarial-sweep-robustness"],
+  "strategies": [
+    "single fixed sensor at its own strict quantile (reproduces the evaluator's weak reference; only ever catches whichever attack family happens to fingerprint that one sensor)",
+    "equal-share global operating point: split the 1% false-positive allowance evenly across every sensor channel and OR-fuse them (the obvious 'maximize average detection' recipe; dilutes the allowance across channels that do not need it and starves the channel guarding the hardest family)",
+    "per-family private-budget probe: for each attack family, find its best single sensor and the threshold that family alone would want if it had the whole 1% to itself (reveals which sensor is each family's fingerprint and how much allowance it actually needs)",
+    "max-min budget reallocation: starting from the equal-share point, repeatedly move slices of the shared 1% allowance from a channel serving an already-comfortable family to the channel serving the currently worst-off family, verifying the exact fused false-positive rate after every transfer, until no reallocation still respecting the cap can raise the floor further"
+  ]
+}

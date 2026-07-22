@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1024",
+  "tier": "B",
+  "format": "C",
+  "family": "coproduct-envelope-riding",
+  "eval_form": "quality-metric",
+  "theme": "combined heat-and-power plant serving a campus",
+  "title": "Campus CHP: Riding the Extraction-Condensing Envelope",
+  "objective": "min",
+  "strategies": [
+    "trivial: always operate at the top envelope vertex U(t), dump all overflow -- always feasible but overproduces heat and pays needless dump fees (reproduces the checker baseline)",
+    "greedy: track the paired heat demand pointwise, Q_t = DQ[t], never touch the tank -- feasible every period but sits inside the envelope (not at a vertex) whenever demand is not extremal, paying the concave part-load fuel penalty over and over",
+    "strong: exploit that fuel cost is CONCAVE in Q at fixed power, so only the two envelope vertices L(t)/U(t) are ever fuel-efficient; run a small dynamic program over a discretized tank level that hops between vertices and uses the tank (plus occasional priced dumping) to reconcile the vertex trajectory against the actual demand trace",
+    "headroom above strong: exact (non-discretized) LP/network-flow solution of the vertex-selection + buffer-chain problem, or a finer multi-resolution grid DP"
+  ]
+}

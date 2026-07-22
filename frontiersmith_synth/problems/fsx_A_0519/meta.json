@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0519",
+  "tier": "A",
+  "format": "A",
+  "family": "thermal-inertia-firing-order",
+  "seed_problem": "single-machine state-coupled scheduling with asymmetric heat/cool dynamics",
+  "mutation": "composite: order a queue of temperature-window jobs under paid-instant-heating vs free-but-exponentially-slowing cooling, minimizing heating energy plus weighted lateness",
+  "objective": "min",
+  "theme": "pottery kiln firing queue",
+  "title": "Pottery Kiln Firing Queue",
+  "strategies": [
+    "input-order minimal-idle baseline (fire as given, cool just into each window, heat only to lo)",
+    "hottest-first ride-the-cooling-curve greedy (temperature-monotone; the trap -- flat cooling tail blows deadline-tight cool jobs done last)",
+    "deadline-driven / EDD ordering that ascends in temperature so the kiln heats up monotonically with almost no wasted idle",
+    "structured-candidate + adjacent-swap local search on the exact objective, inserting a reheat spike only where it is cheaper than the deadline penalty",
+    "fire-temperature shaping (fire hotter to preserve heat for the next hot job vs fire at lo to save energy) -- unexploited headroom above the reference"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "id": "fsx_S_0525",
+  "tier": "S",
+  "format": "C",
+  "family": "thin-film-optical-stack",
+  "eval_form": "quality-metric",
+  "theme": "Design a multilayer coating to hit a reflectance spectrum",
+  "title": "Thin-Film Coating: Hit a Reflectance Spectrum",
+  "objective": "min",
+  "strategies": [
+    "trivial: deposit zero layers (bare substrate) -> reproduces the checker baseline",
+    "greedy: repeatedly add a quarter-wave layer that nulls the single worst wavelength, treating wavelengths independently (ignores inter-wavelength coupling; plateaus on banded targets)",
+    "strong: reason in optical-admittance space -- alternating high/low quarter-wave layers move admittance multiplicatively (additively in log-admittance) and build a reflectance band; enumerate that structural family over all material pairs/period counts, refine thicknesses by deterministic coordinate descent against the full band, keep the smallest penalized objective"
+  ]
+}

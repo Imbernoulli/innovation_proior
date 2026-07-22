@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1074",
+  "tier": "B",
+  "format": "D",
+  "family": "settle-net-minimal",
+  "eval_form": "flops",
+  "theme": "guild clearinghouse settles a season of IOUs",
+  "title": "Guild Clearinghouse: Minimal-Transfer Settlement",
+  "objective": "minimize",
+  "strategies": [
+    "ascending-party-id prefix-carry chain, blind to any grouping (trivial)",
+    "iterative largest-creditor-vs-largest-debtor cash-flow matching (greedy)",
+    "net every obligation, then hunt exact pair/triple zero-sum subsets of the balance vector and settle each found subset internally (strong)",
+    "true maximum disjoint zero-sum partition (NP-hard in general; open ceiling, uncovered)"
+  ]
+}

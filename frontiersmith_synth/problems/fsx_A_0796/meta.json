@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0796",
+  "tier": "A",
+  "format": "E",
+  "family": "transducer-rational-induction",
+  "eval_form": "quality-metric",
+  "theme": "Recover a transducer that generalizes to longer inputs",
+  "title": "The Lighthouse Relay — Recovering a Register Formula That Survives the Busy Season",
+  "objective": "max",
+  "strategies": [
+    "trivial: predict the constant mean(train y), ignoring n and s entirely -- reproduces the checker's own constant baseline exactly (~0.1)",
+    "greedy: recognise the reading levels off (not a raw polynomial) and fit ONE pooled rational (Mobius) curve y=(n+B)/(C*n+D) to all training rows via cross-multiply linearisation -- a real step up from naive curve-fitting, bounded and correctly shaped, but ignores the gear column s entirely; since the 3 gears have different coefficients, one pooled curve is a single compromise asymptote that is systematically wrong for whichever gears its curve doesn't happen to match, and training's modest ship counts never expose that gear-by-count interaction",
+    "strong: split the training rows by gear s FIRST, then apply the SAME cross-multiply linearisation separately per gear (each gear's ~30 rows exactly determine its own Mobius map up to scale), and combine the three recovered curves into one expression via a degree-2 Lagrange selector on s (no branching syntax needed) -- a rational map recovered from finitely many exact points is the SAME function at any n, so it extrapolates correctly no matter how far the busy season pushes the ship count",
+    "headroom above strong: robust/iterative reweighting of the per-gear linear systems against training noise, or exploiting near-degenerate curvature within a gear's training range (when a gear's knee point sits well beyond n=90) to sharpen the recovered asymptote toward the sensor-noise floor"
+  ]
+}

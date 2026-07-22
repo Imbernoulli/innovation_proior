@@ -1,0 +1,110 @@
+# Halo Seed: Growing a Picture Backward Through a 2D Automaton
+
+## Problem
+
+A 2D cellular automaton lives on an `N x N` toroidal grid of bits (rows and
+columns wrap around). Each cell's next state depends only on its own current
+state and its four orthogonal neighbors (up, down, left, right) — the **von
+Neumann neighborhood**. The transition is a **rule table**: for a neighborhood
+```
+v = 16*center + 8*up + 4*down + 2*left + 1*right     (0 <= v <= 31)
+```
+the cell's next state is `rule[v]`. The rule always satisfies `rule[0] = 0`
+(an all-dead neighborhood stays dead), so the all-dead grid is always a fixed
+point of the automaton.
+
+You are given the rule table, a step count `T`, and a **target** `N x N` bit
+pattern — the picture that should appear after `T` forward steps. Design a
+**seed**: an initial pattern that, evolved `T` steps under the rule, grows
+into (approximately) the target, using as few live cells as possible.
+Every cell's next state is coupled to its four neighbors, so a cell's correct
+predecessor depends on what its neighbors' predecessors turn out to be, and
+that dependency chains for `T` rounds — a good seed can only be found by
+reasoning about whole neighborhoods together, not one cell at a time.
+
+## Input
+
+```
+N T alpha beta
+<32-character string: rule[0] rule[1] ... rule[31], each '0' or '1'>
+<N lines, each an N-character string of '0'/'1': the target grid, row-major>
+```
+`alpha` is the mismatch weight and `beta` is the live-cell weight (see
+Objective). `rule[0]` is guaranteed to be `'0'`.
+
+## Output
+
+`N` lines, each an `N`-character string of `0`/`1`: your seed grid,
+row-major, same orientation as the target.
+
+## Feasibility
+
+Every output line must be exactly `N` characters long, using only `0`/`1`,
+with no extra or missing lines and no trailing tokens. Any violation scores
+`0` on that test.
+
+## Objective
+
+Evolve your seed `T` steps under the given rule with toroidal wraparound to
+get a final grid `S`. Let `H` = the number of cells where `S` differs from
+the target, and `L` = the number of live (`1`) cells in your seed grid.
+**Minimize**
+```
+F = alpha * H + beta * L
+```
+An exact match is worth buying only up to a point — a sparser seed that
+lands close can beat a dense seed that matches exactly, or vice versa,
+depending on `alpha` and `beta`.
+
+## Scoring
+
+The checker computes an internal baseline `B = alpha * (number of live cells
+in the target)`: the cost of the trivial all-dead seed (`H` = target's own
+live-cell count, `L = 0`). Your score on a test is
+```
+ratio = min(1000, 100 * B / max(1, F)) / 1000
+```
+so the do-nothing seed scores `0.1`; a seed that reaches the target
+genuinely more cheaply scores higher, capped at `1.0` (10x the baseline).
+Per-test ratios are averaged.
+
+## Constraints
+
+`1 <= N <= 200`, `1 <= T <= 6`, `1 <= alpha, beta <= 20`. Time limit: 5 s.
+Memory limit: 512 MB.
+
+## Example
+
+`N=4`, `T=1`, `alpha=3`, `beta=1`. The rule ignores the center entirely and
+turns a cell on iff *any* orthogonal neighbor is on: `rule[v] = 1` iff
+`(v & 15) != 0` (so `rule[0]=0` holds). Target:
+```
+0101
+1000
+0000
+1000
+```
+**Seed A** (insightful) — a single live cell at `(0,0)`:
+```
+1000
+0000
+0000
+0000
+```
+Evolving one step (toroidal) lights every orthogonal neighbor of `(0,0)` —
+`(0,1)`, `(0,3)`, `(1,0)`, `(3,0)` — and nothing else, reproducing the target
+exactly: `H=0`, `L=1`, `F = 3*0 + 1*1 = 1`. Baseline `B = 3*4 = 12` (target
+has 4 live cells). `ratio = min(1000, 100*12/1)/1000 = 1.0` (capped).
+
+**Seed B** (naive — just copy the target as the seed):
+```
+0101
+1000
+0000
+1000
+```
+Evolving this one step does **not** reproduce the target: the rule only
+looks at *neighbors*, so a cell's own state never survives. This lands
+`H=11` away from the target with `L=4` live cells: `F = 3*11 + 1*4 = 37`,
+`ratio ≈ 100*12/37/1000 ≈ 0.032` — worse than doing nothing. Copying the
+picture is not the same as growing it.

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_1011",
+  "tier": "A",
+  "format": "C",
+  "family": "interleaved-reheat-temper-shop",
+  "eval_form": "quality-metric",
+  "theme": "blacksmith juggling several workpieces at one forge",
+  "title": "One Forge, Many Blades: Interleaved Temper Schedule",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:state-coupled-scheduling"],
+  "strategies": [
+    "always-reheat baseline: reheat immediately before every single operation and process workpieces strictly one at a time, never trusting natural cooling (reproduces the checker's own reference construction)",
+    "finish-one-at-a-time recipe: work each piece's full three-operation chain to completion (waiting out its own natural cooling between operations) before touching the next piece in queue",
+    "earliest-deadline-first interval choreography: treat each pending operation's temperature window as a closed-form time interval from its own cooling curve, and always run whichever ready piece's interval closes soonest, jumping the idle clock forward to the next interval's opening instead of reheating",
+    "reheat only when forced: fall back to reheating a piece only once every remaining piece has already cooled past its window, picking the most-overdue piece first"
+  ]
+}

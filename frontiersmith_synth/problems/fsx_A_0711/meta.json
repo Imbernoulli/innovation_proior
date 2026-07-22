@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0711",
+  "tier": "A",
+  "format": "C",
+  "family": "nodal-line-gardening",
+  "eval_form": "quality-metric",
+  "theme": "drawing a picture in sand on a vibrating plate",
+  "title": "Sand Garden: Mass-Loading a Chladni Plate to Steer a Nodal Line",
+  "objective": "max",
+  "strategies": [
+    "trivial: reproduce the checker's own uniform mass-spread baseline (no targeting at all)",
+    "greedy: pile mass directly onto the target cells up to the per-cell cap, spend any leftover uniformly elsewhere -- ignores that this can swap which mode ends up ranked k",
+    "strong: simulate the actual generalized eigenproblem, co-design the mass loading and the resulting mode ordering via a bounded local search that evaluates candidates by the true post-load mode-k identity, not by a static heuristic",
+    "invalid: emit an infeasible / wrong-length / out-of-range / non-finite loading"
+  ]
+}

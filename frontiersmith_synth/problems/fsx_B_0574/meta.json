@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0574",
+  "tier": "B",
+  "format": "C",
+  "family": "modular-booster-staging",
+  "eval_form": "quality-metric",
+  "theme": "Distribute engines across drop-away rocket stages",
+  "title": "Drop-Away Booster Staging — loss-aware engine and propellant allocation",
+  "objective": "max",
+  "strategies": [
+    "trivial: one engine per stage, equal propellant split -> reproduces the grader baseline (~0.1)",
+    "greedy: classic loss-free geometric staging (equal mass ratio per stage) with a fixed uniform engine count of 2, blind to the loss table L_i -> it piles the most propellant onto the high-L bottom stage and lets it burn long, so on the spiked-loss traps it wastes delta-v",
+    "strong: loss-aware joint coordinate ascent over integer engine counts and continuous propellant split; on a bottom-spike it shortens that burn (adds engines and pulls propellant off the spiked stage) and reallocates freed mass up the stack where the downstream jettison cascade pays for it",
+    "alternatives: continuous relaxation + rounding, per-stage marginal delta-v/loss balancing, or a fuller mixed-integer search over engine counts"
+  ]
+}

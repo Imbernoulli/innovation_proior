@@ -1,0 +1,19 @@
+{
+  "id": "fsx_A_0929",
+  "tier": "A",
+  "format": "A",
+  "family": "variable-stride-trie-budget",
+  "eval_form": "quality-metric",
+  "theme": "postal sorters collapsing pigeonhole cabinets",
+  "title": "Collapsing Pigeonhole Cabinets",
+  "seed_problem": "Srinivasan-Varghese controlled-prefix-expansion (variable-stride multibit trie) DP with a per-trie memory budget",
+  "objective": "min",
+  "mutation": "composite: the classic single-trie stride-selection DP (goal unchanged: minimize weighted probe count under a memory budget) is generalized to K independent cabinets that share ONE global memory budget instead of K separate per-cabinet budgets (cross-subtree-space-coupling), each cabinet's probe count is weighted by an independent popularity weight (popularity-weighted-depth), and within each cabinet the solver freely chooses a variable stride sequence trading probes for pigeonhole slots (variable-stride-node-merging).",
+  "strategies": [
+    "trivial: do-nothing plan, every cabinet uses stride 1 at every level (reproduces the checker baseline B)",
+    "naive greedy: reserve each cabinet's do-nothing memory, then split the LEFTOVER budget proportionally to popularity weight W_c and run the correct per-cabinet stride-selection DP independently within that fixed share -- the textbook per-trie DP applied to a budget that was silently pre-partitioned",
+    "insight (strong): run the same per-cabinet DP to get each cabinet's exact (memory, probes) trade-off curve, then globally greedy-exchange one probe-reduction step at a time across ALL cabinets, always taking whichever affordable step has the cheapest memory-cost-per-popularity-weighted-probe-saved (a discrete Lagrangian / market clearing over the shared budget) instead of trusting a fixed per-cabinet share"
+  ],
+  "innovation_hook": "The classic per-trie DP silently assumes a separable budget; making the budget global turns the problem into a Lagrangian/market allocation across subtrees, which is the non-obvious reformulation.",
+  "mechanisms": ["cross-subtree-space-coupling", "popularity-weighted-depth", "variable-stride-node-merging"]
+}

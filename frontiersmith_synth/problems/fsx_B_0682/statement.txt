@@ -1,0 +1,132 @@
+# Single-Crystal Blade Casting: Seed Placement Under Warped Growth
+
+## Problem
+
+You are casting a single-crystal turbine blade. The mold cross-section is an `H x W`
+grid of cells; some cells are the casting cavity (the metal), the rest is mold wall
+(`#`, impassable). Every cavity cell belongs to a local resistance zone, given as a
+digit `0..4` mapping to a solidification-resistance multiplier `R`: `0->1.00, 1->1.50,
+2->2.00, 3->2.50, 4->3.00`. High-`R` zones (root fillets, thick platforms) resist the
+solidification front more than low-`R` zones.
+
+You choose up to `K` grain seeds. Seed `i` sits at a cavity cell and carries a discrete
+crystallographic orientation index `p in {0,...,5}` (a lattice tilt of `15*p` degrees).
+All seeds begin growing simultaneously; growth is a competitive front that expands over
+the 8-connected grid (4 orthogonal + 4 diagonal neighbours). Moving into cavity cell `v`
+costs, for a front grown from a seed with orientation `p`:
+
+```
+cost = floor( baselen(dir) * R(v) * factor(dir, p) / 10000 )
+baselen: 1000 for an orthogonal step, 1414 for a diagonal step
+factor(dir, p): the angular gap between the travel direction and the seed's nearest
+  crystal easy axis (crystal symmetry repeats every 90 degrees).
+  gap 0 deg -> factor 100, 15 deg -> 150, 30 deg -> 200, 45 deg -> 250
+```
+
+The travel direction's angle is `0,45,90,...,315` for E,NE,N,NW,W,SW,S,SE respectively
+(row increases "south"); the easy-axis angle is `15*p` (mod 90, repeating). A cell's
+**solidification time** is the minimum cumulative cost of any path from any seed to it
+under that seed's own orientation; its **owner** is the seed achieving that minimum
+(ties resolved in favour of the lower-indexed seed).
+
+Two quantities are then measured over the whole cavity:
+- `G` = grain-boundary length: the number of orthogonally-adjacent cavity-cell pairs
+  owned by different seeds (a real manufacturing defect).
+- `M = floor(maxtime / 1000)`, where `maxtime` is the largest solidification time over
+  all cavity cells (the moment the last pocket finally solidifies; slow fingers risk
+  porosity/misruns).
+
+## Input
+
+```
+H W K
+LAMBDA
+row_1
+row_2
+...
+row_H
+```
+
+- Line 1: grid height `H`, width `W`, and your seed budget `K`.
+- Line 2: integer `LAMBDA`, the fill-time defect weight.
+- Each `row_i` is a string of `W` characters, each `#` (mold wall) or a digit `0..4`
+  (cavity cell, resistance class). The cavity is a single connected region (8- and
+  4-connectivity coincide here by construction).
+
+## Output
+
+```
+m
+r_1 c_1 p_1
+...
+r_m c_m p_m
+```
+
+- Line 1: number of seeds you use, `1 <= m <= K`.
+- Each following line: seed `i`'s row `r_i` (`0..H-1`), column `c_i` (`0..W-1`), and
+  orientation index `p_i` (`0..5`).
+
+## Feasibility
+
+- `1 <= m <= K`.
+- Every `(r_i, c_i)` names a cavity cell (not `#`), in bounds.
+- All `(r_i, c_i)` pairs are pairwise distinct.
+- Every `p_i` is in `0..5`.
+Any violation scores 0.
+
+## Objective
+
+Minimize `F = G + LAMBDA * M` over your feasible seed placement.
+
+## Scoring
+
+Let `B` be `F` for the single-seed baseline: one seed at the first cavity cell in
+row-major (top-to-bottom, then left-to-right) scan order, orientation `p=0`. Your score
+on a test is
+
+```
+ratio = min(1.0, (B / max(1, F)) / 10)
+```
+
+so matching the baseline scores `0.1`; halving `F` scores `0.2`; reaching one tenth of
+the baseline (or better) reaches the capped score `1.0`.
+
+## Constraints
+
+- `1 <= H, W`, `H*W <= 20000`.
+- `1 <= K <= 8`.
+- `1 <= LAMBDA <= 20`.
+- Time limit: 5 seconds. Memory limit: 512 MB.
+
+## Example
+
+```
+9 9 2
+4
+#########
+##00000##
+##00000##
+##00000##
+####2####
+##22222##
+##22222##
+##22222##
+#########
+```
+
+This is a root bulge (zone `0`, rows 1-3) joined through a one-cell waist (zone `2`,
+row 4) to a tip bulge (zone `2`, rows 5-7). The baseline (one seed at cavity cell
+`(1,2)`, orientation `0`) must snake all the way to the far tip, giving `B = 64`
+(`G=0, M=16`).
+
+Placing two seeds, one per bulge, with orientation `0`:
+```
+2
+2 4 0
+6 4 0
+```
+The front collision lands exactly inside the one-cell-wide waist: `G=1`, `M=6`,
+`F = 1 + 4*6 = 25`, `ratio = min(1, (64/25)/10) = 0.256`. A single seed at the
+geometric centre `(2,4)` instead gives `F=52` (`ratio approx 0.123`): fewer seeds is
+not automatically better once the far bulge must be reached through a slow, narrow
+passage.

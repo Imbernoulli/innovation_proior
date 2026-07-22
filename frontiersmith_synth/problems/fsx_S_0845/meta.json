@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0845",
+  "tier": "S",
+  "format": "B",
+  "family": "bloc-manipulation-voting-rule",
+  "eval_form": "quality-metric",
+  "theme": "election rule that blunts organized strategic blocs",
+  "title": "The Bloc-Proof Ballot",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:adversarial-sweep-robustness"],
+  "strategies": [
+    "plain plurality: elect whoever has the most first-place votes; trivially demolished by a b-voter COMPROMISE bloc that bullet-votes a weaker contender past the leader",
+    "Borda count: sums rank points; slightly steadier than plurality on some sweeps but still swung hard by a bloc concentrating first-place votes on its target",
+    "unweighted lowest-index Condorcet completion: restrict to the Smith set but break residual cycles by raw candidate index, so a bloc that manufactures a 3-way cycle can reliably steer the outcome to whichever cycle member has the smallest index",
+    "Smith-set restriction + minimax (Simpson) margin tie-break + a ballot-content-keyed deterministic tie-break for any residual tie: never elects outside the top cycle, and among cycle members prefers the one with the smallest worst pairwise defeat, denying the bloc a stable, index-predictable target"
+  ]
+}

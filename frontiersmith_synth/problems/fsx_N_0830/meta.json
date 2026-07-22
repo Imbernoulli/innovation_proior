@@ -1,0 +1,17 @@
+{
+  "id": "fsx_N_0830",
+  "tier": "N",
+  "format": "B",
+  "family": "exploratory-secretary",
+  "eval_form": "quality-metric",
+  "theme": "sequential hiring with a short recall window",
+  "title": "The Calibrated Recall",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:topup-B-2"],
+  "strategies": [
+    "reject everyone: zero risk, zero value -- reproduces the evaluator's weak (0.1) baseline",
+    "classic secretary sample-then-threshold on the raw interview score, assuming higher score always means higher value, and never using the recall window",
+    "infer the active value regime from the shape of the early score stream, convert scores to drift-adjusted estimated values under that regime, and maintain a dynamically retargeted acceptance bar against the remaining pool's estimated richness -- using recall as a backstop for early passes",
+    "exact optimization over the estimated-value array respecting the round/slot/recall-window constraints, for a provably near-optimal policy under the inferred regime"
+  ]
+}

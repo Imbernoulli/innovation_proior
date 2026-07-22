@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0988",
+  "tier": "S",
+  "format": "A",
+  "family": "scoring-rule-procurement",
+  "seed_problem": "60 suppliers with printed cost curves bid best-response (quality,price) pairs against an announced scoring function from a 12-parameter family; the checker replays best responses, picks the winner, and scores the buyer's printed TRUE utility, which differs from the announcement.",
+  "mutation": "composite: goal is choosing an ANNOUNCED scoring rule (not a direct allocation) whose induced best-response game (efficient-score ranking + second-price rent) determines the winner; output constrained to a 5-parameter monotone scoring family (weights WQ/WP, kink q0/slopeHi, price cap Pcap) so the optimal announcement is a genuine search, not a closed-form truthful report.",
+  "objective": "max",
+  "theme": "castle commissions bridge builders via scoring auction",
+  "title": "Castle Commission: The Bridge-Builders' Scoring Auction",
+  "strategies": [
+    "trivial baseline: announce flat unit weights with no kink and no price cap (WQ=WP=1, q0=Q, slopeHi=1, Pcap=Pmax)",
+    "greedy truthful mirror: fit the printed V table exactly into the 2-piece scoring family and announce it verbatim, ignoring every guild's printed cost table",
+    "strong parameter search: evaluate the full best-response + second-price simulation (using every guild's printed cost table) over a grid/local search of (WQ,q0,slopeHi,Pcap) and keep the best found",
+    "invalid: announce an out-of-range or non-monotone-inducing parameter (e.g. WP=0) so the scoring rule is infeasible"
+  ]
+}

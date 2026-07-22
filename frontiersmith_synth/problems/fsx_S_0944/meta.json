@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0944",
+  "tier": "S",
+  "format": "B",
+  "family": "opportunity-cost-online-binpack",
+  "eval_form": "quality-metric",
+  "theme": "depot parcel loading with a silent size-mix surge",
+  "title": "Depot Loading Under a Silent Surge",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:topup-B-1"],
+  "strategies": [
+    "next-fit-commit: keep filling the current truck online, never revisit, never repack (reproduces the evaluator's weak reference)",
+    "online best-fit: load each arriving parcel into whichever open truck leaves the least slack, opening a new truck only when nothing fits (textbook, but tight best-fit leaves no slack for a later size-mix shift)",
+    "probe + reserve-headroom + timed repack: track the running fraction of 'large' parcels in the stream so far; while it stays low, cap how full a truck may get (hold real slack back); the moment the running fraction crosses a threshold (a surge is starting), spend the repack budget immediately to merge near-full trucks into fewer fuller ones before absorbing the surge; spend any leftover budget on a final cleanup consolidation"
+  ]
+}

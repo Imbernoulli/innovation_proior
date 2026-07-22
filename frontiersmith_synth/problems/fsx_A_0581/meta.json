@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0581",
+  "tier": "A",
+  "format": "C",
+  "family": "vascular-space-colonization",
+  "eval_form": "quality-metric",
+  "theme": "one artery feeds every organ",
+  "title": "One Artery Feeds Every Organ: Trunks That Split Late",
+  "objective": "min",
+  "strategies": [
+    "star baseline: wire every organ straight to the arterial source (minimizes delivery, pays full Murray material per organ; == checker baseline B, ~0.1)",
+    "nearest-reach growth: grow the tree by repeatedly attaching each organ to its nearest already-connected node via an obstacle-free segment (space-colonization greedy) -- chains organs, aggregates a little but zig-zags",
+    "shared-trunk aggregation: cluster organs by direction, run one thick trunk from the source to a Weiszfeld-optimal junction per cluster and fan out late (Murray cube law makes material concave in flow, so a shared trunk over the long haul is far cheaper); route around obstacles",
+    "reformulation: total cost = sum over edges of len*(Wm*flow^(2/3) + Wd*flow) with flow = downstream demand; a weighted geometric-median (Steiner) placement of junctions minimizes it for a fixed aggregation topology"
+  ]
+}

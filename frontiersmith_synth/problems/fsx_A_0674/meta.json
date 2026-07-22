@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0674",
+  "tier": "A",
+  "format": "A",
+  "family": "plow-backbone-bootstrap",
+  "eval_form": "quality-metric",
+  "theme": "snowplows clearing a city where cleared streets speed everyone up",
+  "title": "Blizzard Fleet Bootstrap",
+  "objective": "min",
+  "seed_problem": "multi-vehicle arc routing (Chinese postman with a fleet)",
+  "mutation": "composite: single-tour arc routing is generalized to a K-vehicle split (fleet-partition) whose edge traversal cost is state-dependent (self-accelerating-network: the first, plow-mode, traversal of a street is slow but permanently unlocks fast traversal for every future crew), coupling the vehicle-to-work assignment to a network-wide investment decision.",
+  "strategies": [
+    "trivial: one crew clears the whole city alone in arbitrary (input) order via a DFS double-cover, the other crews idle (reproduces the checker baseline)",
+    "naive greedy: after crossing the shared trunk street, split the city's regions across crews round-robin by nearest-spoke order, ignoring how much local work each region actually contains",
+    "insight (strong): find the bridge edges (the backbone/trunk+spokes) generically, clear them cooperatively first so every crew gets fast repositioning, then assign whole regions to crews by total workload (longest-processing-time bin-packing) to balance finish times",
+    "a general solver can go further: dynamically re-balance mid-route, split a single region between two crews, or route so multiple crews share partial prefixes of the backbone"
+  ]
+}

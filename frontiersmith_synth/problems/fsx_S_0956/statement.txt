@@ -1,0 +1,83 @@
+# Autocatalytic Refinery: Byproduct Loops Under a Footprint Budget
+
+## Problem
+
+A starship's parts fabricator holds a catalog of **module types**. Matter
+comes in **K** typed grades `0..K-1`: grade `0` is raw feedstock (a bounded
+per-run supply `R`), grade `K-1` is the target product `Z`. Each module
+converts grade `t` into grade `t+1`: per unit of input it yields
+`outRatio/100` units of main output. Some modules also vent a **byproduct**
+of type `byType` at rate `byRatio/100` per unit of input; whenever a module
+has a byproduct, `byType` equals its OWN input grade `t`. Wiring that
+byproduct back into the module's own input port closes an autocatalytic
+loop: if a fraction `g = byRatio/100 < 1` of its processed volume returns as
+fresh input, steady state gives throughput `external/(1-g)`, i.e. the
+module's true effective ratio is `outRatio/100 / (1-g)` — a modest-looking
+gain can outperform a "better ratio" module by a wide margin, but only if
+you notice it and can afford it.
+
+Each module INSTANCE you build costs its type's fixed **footprint**
+regardless of throughput, and you may build at most a type's stated
+**instance limit** copies. Total footprint of built instances `<= S`.
+
+Present a complete, self-consistent flow: which instances you build, and
+how matter moves between a RAW source (grade 0, total outflow `<= R`), the
+instances, and a SINK (accepts only grade `Z = K-1`).
+
+## Input
+
+Line 1: `K M S R`. Next `M` lines (module type id = 0-indexed line order):
+`inType outType outRatio byType byRatio footprint maxCount`. `byType = -1`
+means no byproduct (`byRatio = 0` then). Ratios are integers in `[1,99]`
+(percent); `footprint` in `[1,50]`; `maxCount` in `[1,20]`. Always
+`outType = inType + 1`, and when `byType != -1`, `byType = inType`.
+
+## Output
+
+Line 1: `P E` (instances built, edges, `P` may be `0`). Line 2: `P` integers,
+the module type of instance `0..P-1` (blank if `P=0`). Next `E` lines:
+`sk sid port dk did amount`. `sk=0`: source is RAW, and `sid`/`port` are
+then unused (still write valid placeholders, e.g. `-1 0`). `sk=1`: source
+is instance `sid`'s main output (`port=0`) or byproduct (`port=1`, only if
+that module has one). `dk=0`: sink, and `did` is then unused (only legal if
+the edge's type is `Z`). `dk=1`: feeds instance `did`'s input, and `did` is
+then required (only legal if the edge's type equals that instance's input
+type — including an instance feeding its own byproduct back into itself).
+`amount` is real, `[0,1e7]`.
+
+## Feasibility
+
+- Total footprint `<= S`; per module type, instances built `<= maxCount`.
+- Total RAW-sourced amount `<= R`.
+- For instance `j`, let `in(j)` = sum of amounts on edges into `j`. Sum of
+  its main-output edges `<= in(j)*outRatio/100`; sum of its byproduct edges
+  `<= in(j)*byRatio/100` (0 if no byproduct).
+- Every edge's implied type must match what its endpoints actually
+  produce/require.
+
+Any violation scores 0.
+
+## Objective / Scoring
+
+Maximize `F`, the total amount delivered to the sink. The checker also
+computes an internal baseline `B`: the single-instance chain using the
+first-listed module for each hop `0->1->...->K-1`, byproducts unused, fed
+the full supply `R`. Score `= min(1, F / (10*B))` — matching the naive
+baseline scores `0.1`; better constructions score higher, capped at `1.0`.
+
+## Constraints
+
+`3<=K<=8`, `1<=M<=400`, `0<=P<=4000`, `0<=E<=40000`. Time limit: 3s.
+Memory limit: 256 MB. (`P=0` is legal but scores `F=0`.)
+
+## Example
+
+`K=3 M=4 S=14 R=1000`, modules: `(0) 0 1 60 -1 0 2 5`, `(1) 0 1 75 -1 0 6 3`,
+`(2) 1 2 55 -1 0 2 5`, `(3) 1 2 50 1 80 10 1`. Build instances `[0, 3]`
+(module 0 for hop 0->1, module 3 for hop 1->2) with edges: `RAW->0` amount
+`1000`; `0->1` amount `600` (module 0's output feeds instance 1); `1->1`
+byproduct amount `2400` (instance 1's own byproduct fed back to itself).
+Instance 1's total input is `in(1)=600+2400=3000`, self-consistent since
+module 3's gain `g=0.80` gives `in(1)*g=2400` exactly. Its main output is
+`in(1)*0.50=1500`, routed `1->SINK`: `F=1500`. Baseline (no loop):
+`B=1000*0.60*0.55=330`. Score `= min(1, 1500/3300) = 0.4545`.

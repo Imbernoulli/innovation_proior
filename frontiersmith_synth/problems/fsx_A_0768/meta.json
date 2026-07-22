@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0768",
+  "tier": "A",
+  "format": "B",
+  "family": "motif-segment-coder",
+  "eval_form": "quality-metric",
+  "theme": "Compress symbol sequences containing hidden repeated motifs at irregular, multi-scale spacing.",
+  "title": "Multi-Scale Motif Coder",
+  "objective": "minimize",
+  "source_frameworks": ["wave2b-lens:topup-B-1"],
+  "strategies": [
+    "pure-literal baseline: encode the whole sequence as one literal run, no dictionary (the evaluator's own weak reference)",
+    "fixed-window LZ greedy: scan left to right, match only against the last WINDOW symbols, take the longest match that clears a length floor, else extend a literal run -- decent when repeats are close together but blind to any repeat separated by more than WINDOW symbols",
+    "diagnose-then-DP: histogram LEFT-MAXIMAL common-run lengths to find the true recurring scales (immune to noise and to nested-substring double counting), greedily keep only dictionary candidates with positive expected net savings, then run a forward shortest-path DP over positions (given that fixed dictionary) to find the globally cheapest literal/reference segmentation -- captures long-range repeats a bounded window can never reach and never locks into a locally-longest match that blocks a cheaper global parse"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "id": "fsx_S_0710",
+  "tier": "S",
+  "format": "C",
+  "family": "interbank-clearing-injection",
+  "eval_form": "quality-metric",
+  "theme": "Bail out banks to stop a default domino",
+  "title": "Firebreak: Rescue Cash in an Interbank Clearing Network",
+  "objective": "min",
+  "strategies": [
+    "do-nothing baseline: never inject any cash (the checker's own reference construction)",
+    "own-shortfall greedy: rank banks by (obligations - own cash) ignoring the network entirely, fully fund the worst gaps first until the budget runs out",
+    "marginal fixed-point water-filling: repeatedly re-clear the network, probe every currently-defaulting bank for the drop in total system-wide shortfall a small cash slice there would cause, and spend each slice where the CASCADE benefit is largest -- re-simulating after every slice so newly-unlocked or newly-defaulting banks are always accounted for"
+  ]
+}

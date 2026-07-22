@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0651",
+  "tier": "S",
+  "format": "A",
+  "family": "regret-bounded-transit-lines",
+  "eval_form": "quality-metric",
+  "theme": "bus lines for weekdays, weekends, and stadium nights",
+  "title": "Bus Lines for Weekdays, Weekends, and Stadium Nights",
+  "objective": "min",
+  "seed_problem": "route-network design under a shared length budget serving multiple OD-matrix scenarios",
+  "mutation": "composite: minimax-regret-vs-oracle (score = worst-case ratio to a per-scenario dedicated reference, not raw cost) coupled with route-network-design (one shared set of L bus-line paths under a total length budget) across od-matrix-scenarios (weekday/weekend/stadium-night demand matrices); a scenario's regret weight is decoupled from its demand volume, so a low-volume but cheap-to-serve scenario can dominate the objective if starved.",
+  "strategies": [
+    "trivial: minimal-effort reference -- pool all demand by weight, try one line for the heaviest pair using only 3% of the budget, stop the moment it doesn't fit",
+    "greedy: fit lines to the pooled/summed OD matrix (highest weekday/weekend weight pairs first) -- nearly matches weekday's own oracle but leaves the stadium spur completely unserved, so stadium-night regret hits the full walk-penalty ceiling",
+    "strong (insight): read each scenario's shipped oracle cost, estimate each scenario's do-nothing regret to find which scenario is regret-critical, and buy that scenario's corridor FIRST before spending remaining budget on the pooled/highest-weight remainder",
+    "invalid: emits an out-of-range stop index, guaranteed infeasible"
+  ]
+}

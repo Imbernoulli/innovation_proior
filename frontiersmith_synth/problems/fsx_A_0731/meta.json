@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0731",
+  "tier": "A",
+  "format": "C",
+  "family": "levee-budget-hydrograph-sweep",
+  "eval_form": "quality-metric",
+  "theme": "raise levees before an unknown storm season",
+  "title": "Levee Budget Against a Storm Sweep",
+  "objective": "minimize",
+  "strategies": [
+    "trivial: spread the height budget evenly across every cell (the checker's own reference construction)",
+    "greedy: rank cells by their own historical (unleveed) worst-case flood damage across the sweep and fully protect the worst cells first, cell by cell",
+    "strong: iteratively re-simulate the whole storm sweep to find which local ridge (saddle) is the binding pour-point for the most value at risk, and spend the budget raising that saddle -- rerouting overflow to the next-weakest saddle rather than chasing the deepest historical pixel",
+    "invalid: emits negative levee heights (infeasible)"
+  ]
+}

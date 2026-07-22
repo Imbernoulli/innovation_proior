@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0716",
+  "tier": "S",
+  "family": "exposure-heat-interleave-overlay",
+  "seed_problem": "gen.cpp emits an F-field grid; exposing a field deposits heat that diffuses and decays on the grid between steps, and a field's overlay error equals the local temperature at its own exposure moment. The solver outputs a permutation of fields; chk.cc runs the exact discrete diffusion and reports the maximum error (Ratio improves as it falls). Trap: boustrophedon raster order, the universal default, drags a traveling hot spot across the wafer; spatially interleaved low-discrepancy orders cut the max error severalfold, and the minimax score gives zero credit for being good on average.",
+  "mutation": "composite: goal is a scheduling/ordering optimization (not a tour-length problem) coupled to a continuous local-heat-deposition-diffusion side-effect that the schedule itself creates, scored by a minimax (worst single field, not average) objective. No positions/weights are chosen -- only the order -- so the NP-hard core is a pure permutation search over a coupled physical simulation with no closed-form optimum.",
+  "objective": "min",
+  "theme": "wafer stepper exposure ordering",
+  "title": "Wafer Stepper Exposure Order: Taming the Self-Made Hot Spot",
+  "strategies": [
+    "input-order baseline: expose fields in the order listed in the input, no reasoning about the schedule at all (matches the checker baseline, ratio ~0.1)",
+    "boustrophedon raster scan or coarse fixed-grid block round-robin: the systematic default (serpentine across rows -- the stage-motion-minimizing default, keeps visiting spatial neighbours at consecutive steps) and a partition-into-blocks round-robin (a genuine but SINGLE fixed-scale attempt at spreading, correct only when the natural neighbourhood scale happens to match the chosen block size) are both this tier's flavor of 'obvious, un-insightful' recipe",
+    "raster-index bit-reversal (van der Corput) interleave: sort fields into one spatial (row-major) list, then visit them in generalized bit-reversal order of that list's index so consecutive time steps are maximally spread across the spatial ordering AT EVERY SCALE simultaneously, giving diffused heat time to decay before nearby fields are revisited -- reframes the tour problem as a discrepancy-minimization problem",
+    "local search / simulated annealing on the schedule: start from any order and repeatedly swap two exposure times when it lowers the current worst-case temperature, using the checker's own objective as the search signal"
+  ]
+}

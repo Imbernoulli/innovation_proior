@@ -1,0 +1,82 @@
+# No-Tell Round Robin
+
+## Problem
+You are scheduling a full round robin among `n` teams (`n` odd, `3 <= n <= 1001`),
+labelled `1..n`. Every pair of teams plays exactly once and every match has a
+definite winner (no ties). You choose the outcome of every match — you are
+designing the schedule, not predicting one.
+
+A bettor studies published schedules for two tells: (1) **standings skew** —
+some team's win count is far from the fair share `(n-1)/2`, easy money on "the
+team that wins more"; (2) **local pattern skew** — for two teams `u,v`, their
+**common victims** (teams both beat) should hover near `(n-2)/4` for *every*
+pair in a genuinely unpredictable schedule; if it swings wildly the bettor
+reads off correlated cliques and prices accordingly.
+
+Pick a schedule (an orientation of every match) minimizing a **quasirandomness
+defect** combining both tells. Lower is better; near the theoretical minimum
+means the schedule looks statistically like independent coin flips per match.
+
+## Input
+One line: the integer `n`.
+
+## Output
+`n-1` lines. Line `i` (`1 <= i <= n-1`) contains a string of `n-i` characters
+over `{0,1}`. Its `k`-th character (`1 <= k <= n-i`) describes the match between
+team `i` and team `i+k`: `'1'` means team `i` beat team `i+k`; `'0'` means team
+`i+k` beat team `i`. Every one of the `n(n-1)/2` matches is described exactly
+once this way (team `i` vs team `j`, `i<j`, appears on line `i`).
+
+## Feasibility
+Every line must have the exact required length and contain only `'0'`/`'1'`
+characters; no extra or missing output. Any violation scores `0`.
+
+## Objective
+Let `outdeg(v)` be team `v`'s win count. Let `common(u,v)` (for `u != v`) be the
+number of teams beaten by both `u` and `v`. Minimize
+```
+D = DegreeSkew + QuadSkew
+DegreeSkew = sum_v ( 2*outdeg(v) - (n-1) )^2
+QuadSkew   = sum_{u<v} ( 4*common(u,v) - (n-2) )^2
+```
+`DegreeSkew` is zero exactly when every team's record is as fair as integrally
+possible. `QuadSkew` is zero exactly when every pair's common-victim count
+hits its ideal value `(n-2)/4` on the nose; it is the harder term — plenty of
+schedules zero out `DegreeSkew` (any "regular" schedule does) while leaving
+`QuadSkew` enormous, because looking fair in the standings and looking fair
+under every pairwise cross-check are different, much stiffer requirements.
+
+## Scoring
+The checker also builds its own reference schedule — teams ranked `1..n`, higher
+rank always wins (`i` beats `j` whenever `i<j`) — and computes its defect `B`
+the same way. Your ratio on a test is a fixed, smooth, increasing function of
+`B/D` that equals exactly `0.1` when `D = B` (matching the reference) and
+approaches (but never reaches) `1.0` as `D` shrinks far below `B`; it never
+exceeds `1.0`. Producing any smaller `D` than the ranked reference always
+raises your ratio above `0.1`. The final score is the mean ratio over the 10
+tests. An infeasible output scores `0`.
+
+## Constraints
+- `3 <= n <= 1001`, `n` odd.
+- Time limit: 3 s. Memory limit: 512 MB. Each input file `<= 5 MB`.
+
+## Example
+`n = 5`. Consider the "rotational" schedule: team `i` beats team `j` iff
+`(j - i) mod 5` is `1` or `2`. Concretely: `1` beats `2,3`; `2` beats `3,4`;
+`3` beats `4,5`; `4` beats `5,1`; `5` beats `1,2`. Every team wins exactly `2`
+of its `4` matches, so `outdeg(v) = 2 = (n-1)/2` for all `v` and
+`DegreeSkew = 0`. Working out every pairwise common-victim count gives
+`QuadSkew = 50`, so `D = 50`. The ranked reference (`i` beats `j` iff `i<j`)
+has `outdeg` values `4,3,2,1,0` (very skewed) and works out to `B = 210`. Since
+`D` is well below `B`, the ratio is noticeably above the `0.1` floor — here it
+comes out to about `0.501`. The required output for this schedule is:
+```
+1100
+110
+11
+1
+```
+Line 1 covers team `1` vs teams `2,3,4,5`: beats `2,3` (`'1','1'`), loses to
+`4,5` (`'0','0'`) -> `"1100"`. Line 2 covers team `2` vs `3,4,5`: beats `3,4`,
+loses to `5` -> `"110"`. Line 3 covers team `3` vs `4,5`: beats both -> `"11"`.
+Line 4 covers team `4` vs `5`: beats it -> `"1"`.

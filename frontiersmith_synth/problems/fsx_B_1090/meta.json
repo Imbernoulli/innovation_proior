@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1090",
+  "tier": "B",
+  "format": "C",
+  "family": "scenario-consensus-battery-plan",
+  "eval_form": "quality-metric",
+  "theme": "battery bids that no scenario can bankrupt",
+  "title": "Storm-Proof Battery Bids — scenario-consensus commitment plan",
+  "objective": "max",
+  "strategies": [
+    "trivial: commit nothing; collect terminal value of the initial charge in every scenario -> 0.1",
+    "greedy (the trap): expected-value threshold dispatch on the mean price curve, buy bottom-quantile / sell top-quantile at full power; ignores that each scenario voids different hours -> void + shortfall penalties crater the worst scenario (0.0 on 7 of 10 planted trap cases)",
+    "strong: treat uncommitted charge as the real product (optionality). Stage 1 commits only in scenario-consensus hours with SoC buffers so the plan executes identically in every scenario; stage 2 evaluates the TRUE min-over-scenarios profit and hedges it: shrink commitments the worst scenario voids, re-open exposure only where penalty-adjusted worst-case math pays",
+    "alternatives above the reference: scenario-waterfilling the binding scenario set, robust LP/SOCP relaxations with clipping recourse, local search on the true min-scenario objective"
+  ]
+}

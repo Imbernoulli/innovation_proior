@@ -1,0 +1,88 @@
+# Mining the Cannibal River
+
+## Problem
+A waste-heat river runs through T ordered segments (water flows from segment 1
+toward segment T; it never reverses and never speeds up). At segment i a
+tributary joins, carrying flow q_i and temperature theta_i (Kelvin). The instant
+before reaching segment i, the accumulated main stream (everything from segments
+1..i-1) mixes with that tributary as a flow-weighted average of temperature.
+
+You may install converter units at up to K distinct segments and choose how much
+thermal energy to extract at each. The river only flows one way: heat you pull
+out at segment i is heat that no unit further downstream will ever see again —
+extracting hard upstream starves the units you place later, but extracting too
+little wastes the segment you're standing on. This is a common-pool problem in
+temperature space, not a set of independent taps.
+
+Each unit is Carnot-bounded and has a finite physical size. As a unit draws heat
+from the passing stream, the stream's temperature falls *during* the extraction,
+so the instantaneous conversion efficiency keeps shrinking toward zero as the
+outlet temperature nears the sink temperature Tsink: efficiency = eta_i * (T -
+Tsink) / T, where T is the *current* (falling) stream temperature inside that
+unit and eta_i in (0,1] is the unit's own hardware quality at that segment
+(given whether or not you use it). A unit's payoff is therefore the integral of
+this instantaneous efficiency over the whole temperature drop you impose on it
+— not a flat rate times a quantity. Each unit also has a hardware capacity cap_i:
+even with plenty of hot flow available, it can extract at most cap_i.
+
+## Input
+Line 1: `T K Tsink`
+Next T lines: `q_i theta_i eta_i cap_i` for i = 1..T
+ - flow q_i, tributary temperature theta_i (theta_i > Tsink, Kelvin),
+   1000*efficiency-quality eta_i (integer 1..1000, real value eta_i/1000),
+   hardware capacity cap_i (integer, same units as extraction amount x).
+
+## Output
+Line 1: `m` (0 <= m <= K)
+Next m lines: `p x` — install a converter at segment p (1<=p<=T, all p distinct)
+extracting heat amount x (nonnegative integer) there.
+
+## Feasibility
+Process installed segments in increasing order of p. Let F_p be the cumulative
+flow reaching p (sum of q_1..q_p) and Tpre_p the mixed temperature entering p,
+accounting for every upstream extraction already applied (cooled outflow
+re-mixes with later tributaries exactly like the natural stream). You must have
+`0 <= x <= min(cap_p, F_p * (Tpre_p - Tsink))` — you may never cool a stream
+below Tsink, and never exceed a unit's hardware capacity. Segments without a
+converter pass through unchanged (Tpost = Tpre).
+
+## Objective (maximize)
+For an installed segment p extracting x, let Tpost_p = Tpre_p - x / F_p. It
+generates
+`E_p = eta_p * F_p * [ (Tpre_p - Tpost_p) - Tsink * ln(Tpre_p / Tpost_p) ]`
+(eta_p = eta_p_input / 1000). Maximize the total `F = sum of E_p` over all
+installed segments.
+
+## Scoring
+The checker independently computes a baseline B: over every segment i, the
+electricity a single converter installed only at i would generate under the
+*natural* (no other extraction) mixing profile, extracting up to min(cap_i,
+its own Tsink-limited maximum); B is the best such single-segment value. Score
+`ratio = min(1, F / (10*B))`. A feasible output scores in [0,1]; an infeasible
+output scores 0.
+
+## Constraints
+1<=T<=4000, 1<=K<=T, 200<=Tsink<=320, 1<=q_i<=500, Tsink<theta_i<=Tsink+900,
+1<=eta_i<=1000, 1<=cap_i<=2*10^6. Time limit: 4s. Memory limit: 512MB.
+
+## Example
+`T=3 K=2 Tsink=300`
+```
+100 900 800 300
+50 350 900 500
+80 700 700 200
+```
+Natural profile: Tpre_1=900, Tpre_2=716.667, Tpre_3=710.870 (flows 100,150,230).
+The best single-segment baseline is segment 2 (its cap=500 lets it exploit a
+solid temperature gap despite not being the hottest spot): B ~= 261.188.
+
+Output:
+```
+2
+1 250
+2 400
+```
+Segment 1: Tpre=900, Tpost=897.5, E_1 ~= 133.241.
+Segment 2: Tpre=715.0 (cooled by segment 1's extraction), Tpost=712.333,
+E_2 ~= 208.669.
+F = 341.909, ratio = min(1, 341.909/2611.88) ~= 0.1309.

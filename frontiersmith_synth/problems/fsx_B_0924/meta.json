@@ -1,0 +1,18 @@
+{
+  "id": "fsx_B_0924",
+  "tier": "B",
+  "format": "A",
+  "family": "anisotropic-eden-facet",
+  "eval_form": "quality-metric",
+  "theme": "grow a sharp crystal, not a blob",
+  "seed_problem": "isotropic Eden growth (uniform random-cell-attachment lattice growth)",
+  "mutation": "goal: replace 'grow a mass-M cluster' with 'grow a mass-M cluster whose silhouette matches a given star-shaped Wulff target', by exposing a directional (72-bin) attachment-anisotropy field as the only output; the field is converted into a hard, self-limiting per-bin cell BUDGET (largest-remainder apportionment) that gates a deterministic Eden process (random tape seeded from the input alone), turning the choice of field into the sole lever on the grown shape.",
+  "objective": "max",
+  "title": "Grow a Sharp Crystal, Not a Blob",
+  "strategies": [
+    "trivial: isotropic field w[i]=1 for all 72 bins -- reproduces the checker's own uniform-budget baseline exactly (ratio 0.100 on every test)",
+    "naive greedy: sample the target's boundary radius r(theta) at each bin's CENTER angle and use it directly as the budget weight -- points in the right directions but a single point sample badly misjudges any bin whose 5-degree arc straddles a sharp spike vertex",
+    "insight (strong): recognize that a bin's budget should match the AREA of the target actually falling in that bin -- the integral of r(theta)^2 across the bin's whole arc (Simpson quadrature), not a value read at one angle -- this is the Wulff-shape consequence that no isotropic (direction-blind) rule, and no single-point sample, can recover regardless of tuning",
+    "a general solver could go further: iteratively refine w from a first grown sample (feedback / local search on the realized overlap) rather than a single closed-form integration pass"
+  ]
+}

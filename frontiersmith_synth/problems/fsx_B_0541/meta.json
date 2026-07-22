@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0541",
+  "tier": "B",
+  "format": "C",
+  "family": "sacrificial-dressing-wear-schedule",
+  "eval_form": "quality-metric",
+  "theme": "grinding shop where soft jobs dress the wheel",
+  "title": "Dressing the Wheel: Scheduling Hidden Maintenance in a Grinding Shop",
+  "objective": "min",
+  "strategies": [
+    "trivial: process jobs in the given order with no re-dressing (the baseline schedule)",
+    "greedy: run jobs biggest-first and re-dress whenever wear crosses a threshold -- treats wear as monotone and pays the reset cost repeatedly",
+    "strong: recognise the small soft jobs as disguised maintenance and interleave them just before hard clusters, keeping wear in a low band and spending explicit re-dresses only on the residual damage soft capacity cannot absorb",
+    "local search: polish any seed schedule with re-dress toggles and adjacent swaps"
+  ]
+}

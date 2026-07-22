@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0745",
+  "tier": "A",
+  "format": "C",
+  "family": "multiscale-grammar-compress",
+  "eval_form": "quality-metric",
+  "theme": "Shortest program that prints the given string",
+  "title": "Multi-Scale Grammar Compression",
+  "objective": "minimize",
+  "strategies": [
+    "literal baseline: one rule listing every character as a terminal (no reuse at all)",
+    "LZW-style greedy dictionary: single left-to-right pass, extend the current phrase by one character while the extended phrase is already a known dictionary entry, otherwise emit a reference for the current phrase and register a new +1-character dictionary entry",
+    "RePair-style bottom-up digram merging: repeatedly find the most frequent adjacent symbol pair across the WHOLE current sequence (of terminals and already-built rules) and factor it into one new reusable rule, iterating until no pair repeats -- rediscovers atoms, then blocks of atoms, then sections of blocks, bottom-up",
+    "hybrid: run bottom-up digram merging to convergence, then re-scan the surviving top-level sequence for any remaining length-2 run to squeeze a little further"
+  ]
+}

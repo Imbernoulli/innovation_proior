@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_1014",
+  "tier": "A",
+  "format": "C",
+  "family": "pipe-network-valve-balancing",
+  "eval_form": "quality-metric",
+  "theme": "Set valves to balance a water network",
+  "title": "Valve Balancing on a Looped Water Trunk",
+  "objective": "min",
+  "mechanisms": ["actuator-parsimony", "network-inversion", "nonlinear-flow-balance"],
+  "innovation_hook": "Iteratively linearize around the operating point and use loop/cutset structure to pick the minimal set of valves that decouples the outlets.",
+  "strategies": [
+    "no-op baseline: leave every valve open (x=0 everywhere), reproduces the checker's own baseline B",
+    "naive linear single-shot control: model each outlet's own trunk pipe as an isolated linear (Ohm's-law) resistor and solve for its resistance directly from the target, ignoring the quadratic law, the parallel bypass, cross-tie reroutes, and downstream coupling",
+    "iterative-linearization + cutset selection: run a source-to-outlet min-cut over the valve-capable pipes to find a minimal covering valve set, then Gauss-Newton re-solve the TRUE nonlinear network each iteration (re-linearizing the conductance Jacobian around the current operating point) and backward-prune any valve whose removal does not hurt the objective"
+  ]
+}

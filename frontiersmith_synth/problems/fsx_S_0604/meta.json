@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0604",
+  "tier": "S",
+  "format": "D",
+  "family": "crosscountry-jacobian-order",
+  "eval_form": "flops",
+  "theme": "chart the cheapest route through a derivative mountain range",
+  "title": "Derivative Mountain Range: Cross-Country Jacobian Accumulation",
+  "objective": "min",
+  "mechanisms": ["mixed-mode-ad-planning", "narrow-cut-exploitation"],
+  "innovation_hook": "Optimal Jacobian accumulation is not a mode choice but a graph-cut discovery problem; planted bottlenecks make mixed elimination dominant.",
+  "strategies": [
+    "trivial: forward mode (topological vertex elimination) = checker baseline",
+    "greedy: mode selection = cheaper of pure forward / pure reverse mode",
+    "strong: cross-country divide-at-narrowest-cut (pre-accumulate around each waist)",
+    "invalid: sequence that is not the intermediate-vertex set"
+  ]
+}

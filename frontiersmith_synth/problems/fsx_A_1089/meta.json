@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1089",
+  "tier": "A",
+  "format": "D",
+  "family": "regex-circuit-flops",
+  "eval_form": "flops",
+  "theme": "Smallest circuit computing a regular predicate",
+  "title": "Gate Diet: the Smallest Circuit for a Badge Predicate",
+  "objective": "min",
+  "strategies": [
+    "naive sum-of-products: one independent product term per accepted n-bit string, fresh NOT gate per 0-bit per string, no sharing of any kind (trivial, == checker baseline)",
+    "textbook two-level minimization: enumerate accepted strings, Quine-McCluskey prime implicants + essential primes + greedy set cover, shared input negations only (greedy)",
+    "automaton-state-sharing circuit: subset construction with forward-reachable/backward-live trim, backward per-position Boolean DP, global hash-consing CSE with constant folding (strong)",
+    "deeper multi-level synthesis: XOR/adder structure for counting predicates, BDD-style complemented-edge sharing, functional decomposition, SAT-based exact minimization (open ceiling, uncovered)"
+  ]
+}

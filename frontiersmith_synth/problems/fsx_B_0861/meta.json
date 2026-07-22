@@ -1,0 +1,18 @@
+{
+  "id": "fsx_B_0861",
+  "tier": "B",
+  "format": "A",
+  "family": "static-detour-robust-route",
+  "eval_form": "quality-metric",
+  "theme": "delivery route driven blind through road closures",
+  "title": "Blind Delivery Through Road Closures",
+  "objective": "min",
+  "seed_problem": "robust vehicle routing under scenario-based edge closures with a fixed, order-blind replanning rule",
+  "mutation": "composite: a fixed visiting-order (permutation) is scored not by its nominal length but by replaying it under K weighted road-closure scenarios via a FIXED deterministic detour rule (drive the shortest currently-open path to the next stop); the objective becomes a scenario-weighted sum of realized travel, coupling permutation design to a structural avoidance problem over the closure ensemble rather than a shortest-tour problem.",
+  "strategies": [
+    "trivial: identity order 2,3,...,N (reproduces the checker's own baseline construction)",
+    "naive greedy: plain nearest-neighbour TSP construction on the raw, undisturbed road network, ignoring which roads any scenario would block -- repeatedly depends on scenario-fragile shortcuts because they look cheap in raw terms",
+    "insight (strong): price every road at raw length + LAMBDA * (sum of the weights of scenarios that block it), turning scenario risk into an edge cost; nearest-neighbour construction on this risk-adjusted graph naturally avoids repeatedly depending on heavily-threatened roads, then an exact-delta 2-opt local search refines the tour against the REAL scenario-weighted objective via precomputed per-scenario all-pairs distances",
+    "a general solver could go further: jointly optimise the crossing POSITION between structural regions against the full scenario-weight distribution (a weighted min-cut / exposure-minimisation view), or run simulated annealing directly on the real objective"
+  ]
+}

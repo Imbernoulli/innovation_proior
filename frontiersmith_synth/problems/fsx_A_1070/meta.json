@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1070",
+  "tier": "A",
+  "format": "D",
+  "family": "burner-preheat-fuel-plan",
+  "eval_form": "flops",
+  "theme": "firing a dragon-kiln for one perfect glaze",
+  "title": "Dragon-Kiln Firing Plan: Exact Glaze Rendezvous",
+  "objective": "min",
+  "strategies": [
+    "full-window nearest-burner blast, deduplicated (trivial, the checker's own baseline)",
+    "per-target nearest-burner reflex with a distance-blind naive duration formula (greedy; fails on far-target trap cases)",
+    "kernel-hump set cover over precomputed per-window contributions + exchange/pruning to the exact minimum (strong)",
+    "true minimal-fuel firing plan (open ceiling: exact joint timing/power co-optimization across overlapping kernels, uncovered)"
+  ]
+}

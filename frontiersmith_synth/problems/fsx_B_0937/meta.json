@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0937",
+  "tier": "B",
+  "format": "E",
+  "family": "weyl-echo-extrapolation",
+  "eval_form": "quality-metric",
+  "theme": "hearing the shape of pans, then predicting a baking sheet",
+  "title": "Hearing the Shape of Pans",
+  "objective": "min",
+  "strategies": [
+    "blind constant guess: hard-coded area-scaling coefficient, no data fit, no perimeter term (trivial)",
+    "single-term least squares: fit one effective (area * lam) coefficient pooling all training pans, ignore the boundary entirely (greedy trap)",
+    "log-log single power law N ~ c*lam^p fit across all shapes (also lands in the greedy trap)",
+    "regime-sequenced decomposition: recover the area coefficient from the high-lam rows where it alone dominates, then recover the perimeter and constant coefficients from the residual on the low-lam rows, and compose the two-term Weyl-style law (strong)"
+  ]
+}

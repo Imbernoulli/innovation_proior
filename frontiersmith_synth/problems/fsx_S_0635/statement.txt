@@ -1,0 +1,105 @@
+# Title
+Aim One Ray to Sweep a Mirrored Grid
+
+# Problem
+You are given an R x C grid of unit cells. One cell, marked `S`, holds a light
+source; it sits on the grid boundary. Every other cell is either empty (`.`)
+or blocked (`#`). Each non-blocked cell also carries a positive integer
+*value*.
+
+A single ray leaves `S` and travels forever at 45 degrees, moving one cell
+diagonally per step (direction always has both components in {-1,+1}, i.e.
+one of NE/NW/SE/SW). It behaves like a billiard ball:
+- If the next step would cross the top/bottom edge, the vertical component
+  of its direction flips (a wall bounce); the left/right edge independently
+  flips the horizontal component. This is the standard billiard-in-a-box
+  rule, exactly what an "unfolding" argument turns into a straight line on a
+  mirrored lattice of boxes.
+- After any such edge-bounce, if the cell about to be entered is blocked
+  (`#`), the ray is absorbed there and the simulation stops (the blocked
+  cell is never counted).
+- If that cell instead holds a small internal reflector, the ray bounces off
+  it exactly like an edge: an `H` reflector flips the vertical component of
+  the direction (dr -> -dr), a `V` reflector flips the horizontal component
+  (dc -> -dc). A single flipped component always sends the ray onto the
+  *other* diagonal family — this is what lets a reflector reroute the ray
+  into cells the unbroken box would never reach.
+- The ray never truly leaves the grid, so eventually its full state (cell,
+  direction) must repeat; the simulation stops there (not double-counted).
+
+You may place up to B reflectors (each `H` or `V`, your choice) into distinct
+currently-empty (`.`) cells before the ray is launched, and you choose the
+ray's initial direction out of `S` (one of UL, UR, DL, DR, meaning
+(dr,dc) = (-1,-1), (-1,1), (1,-1), (1,1) respectively). `S` itself may never
+hold a reflector.
+
+# Input
+```
+R C B
+sr sc
+row_1            (R strings of length C: '.', '#', or exactly one 'S')
+...
+row_R
+w_1_1 ... w_1_C  (R lines of C nonnegative integers; blocked cells' weights are 0)
+...
+w_R_1 ... w_R_C
+```
+`(sr,sc)` (0-indexed) is the location of `S` and always lies on the boundary
+(row 0, row R-1, column 0, or column C-1).
+
+# Output
+```
+DIR                (one of UL, UR, DL, DR)
+k                  (0 <= k <= B)
+r_1 c_1 t_1        (k lines; 0-indexed cell, t in {H, V})
+...
+r_k c_k t_k
+```
+
+# Feasibility
+Each reflector cell must be in-bounds, distinct from every other listed
+cell and from `(sr,sc)`, and must be `.` in the input grid. `k` <= `B`.
+
+# Objective (maximize)
+Simulate the ray as described (using the grid with your reflectors added) and
+let V be the set of distinct cells it visits, starting with `S` itself, up
+to (but excluding) the first repeated cell/absorption. Your score is driven
+by W = sum of w[cell] over cell in V — the total value swept by the ray.
+
+# Scoring
+The checker also simulates the trivial choice (DIR = DR, no reflectors
+placed) to get a baseline value W0 > 0 (always positive since `S` itself has
+positive weight). Your ratio is `min(1000, 100 * W / W0) / 1000`, capped at
+1.0. An infeasible output scores 0.
+
+# Constraints
+7 <= R, C <= 140; 0 <= B <= 20; 1 <= w[cell] <= 50 for non-blocked cells.
+Time limit: 4s. Memory limit: 512MB.
+
+# Example
+```
+9 7 2
+0 0
+S......
+.......
+.......
+.......
+.......
+.......
+.......
+.......
+.......
+(9 lines of 7 ones, one per cell)
+```
+Every non-blocked cell has weight 1 (score = distinct cells visited).
+Diagonal motion preserves the parity of (row+col), so only the 32 cells with
+even row+col are ever reachable from `S`. With DIR=DR and zero reflectors,
+the ray loops after visiting only 22 of those 32 cells — baseline W0=22.
+Placing a single `H` reflector at (5,3), which the bare trajectory passes
+through, reroutes it onto the other diagonal family there; the new
+trajectory sweeps 30 of 32 reachable cells, W=30, ratio =
+min(1000,100*30/22)/1000 = 0.136364. A myopic strategy that only reacts at
+the moment of repeat, or aims mirrors at nearby high-value cells without
+simulating the effect, generally lands on a smaller loop — on larger boards,
+where the default loop is locked onto a small gcd(R-1,C-1)-governed
+sub-lattice, that gap grows far larger.

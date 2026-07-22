@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0855",
+  "tier": "A",
+  "format": "A",
+  "family": "web-integrity-punching",
+  "eval_form": "quality-metric",
+  "theme": "Punching holes without dropping the sheet",
+  "title": "Punching Holes Without Dropping the Sheet",
+  "objective": "min",
+  "seed_problem": "web-safe punch-order scheduling with turret rotation cost (family spec fsx_A_0855)",
+  "mutation": "composite: a plain turret-rotation-minimizing tour over punch jobs is coupled to a hard structural side-constraint (the remaining sheet must stay attached to its clamps after every prefix of the order) whose feasibility is defined by the GEOMETRY of the blank (frame/void/job layout), not by the jobs' tool labels; a violation is scored, not rejected, so the objective itself becomes a function of the order's shape through the geometry-induced poset.",
+  "strategies": [
+    "trivial: punch jobs in the sheet's raw row-major listing order, ignoring both turret cost and web safety -- reproduces the checker's own baseline construction (B)",
+    "naive greedy: sort all punches by turret tool ascending so same-tool jobs run back to back, ignoring geometry entirely -- walks straight through any single-cell corridor the moment its tool comes up, stranding whatever room sits behind it",
+    "web-safe-only heuristic: peel cells in a connectivity-respecting order (never disconnect) but tool-agnostic -- avoids violations but thrashes the turret with zero tool locality",
+    "insight (strong): multi-source BFS from the frame gives each job cell its distance to the nearest clamp on the ORIGINAL (unpunched) sheet -- exactly the level of the geometry-induced poset (\"cut inland before coast\"); process cells in decreasing distance (a linear extension of that poset) and, within each equal-distance layer, greedily match the turret to the nearest still-available tool -- this balances web-safety and rotation cost at the same time instead of trading one off blindly for the other"
+  ]
+}

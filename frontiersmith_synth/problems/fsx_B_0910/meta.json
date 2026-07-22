@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0910",
+  "tier": "B",
+  "format": "B",
+  "family": "adaptive-word-guessing",
+  "eval_form": "quality-metric",
+  "theme": "guess hidden structured strings in fewest tries",
+  "title": "Automaton Combination Lock: Guessing a Grammar-Constrained Secret in Few Tries",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:string-language-automata"],
+  "strategies": [
+    "trivial: non-adaptive sweep -- guess automaton-accepted strings of length N in ascending lexicographic order, ignoring all feedback -> baseline reference (evaluator's `hi`), pinned at ~0.1",
+    "greedy: naive position-by-position elimination -- sweep symbols 0..A-1 at the leftmost unlocked position (later positions filled with 0) and lock the first symbol whose per-prefix STATE-match feedback is 1, treating that as 'this symbol is confirmed'; correct on history-independent (no state-merge) instances but permanently derailed when the automaton merges two different symbols onto the same next state, since it can lock the wrong symbol and every later position's feedback then silently stops matching for the rest of the game",
+    "strong: entropy-guided search over the automaton-accepted candidate set -- maintains the exact set of strings still consistent with every past (guess, feedback) pair (filtered in automaton STATE-trajectory space, so merges are handled correctly rather than assumed away) and each round picks the guess that best splits the remaining candidates (Knuth-style minimize sum of squared bucket sizes) instead of ever trusting a single position's feedback in isolation",
+    "invalid: always emits an out-of-range symbol -> every instance rejected as infeasible -> 0"
+  ]
+}

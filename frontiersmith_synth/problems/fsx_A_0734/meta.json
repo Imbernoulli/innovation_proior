@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0734",
+  "tier": "A",
+  "format": "B",
+  "family": "reference-price-coupon",
+  "eval_form": "quality-metric",
+  "theme": "grocery app schedules a year of coupons",
+  "title": "Loyalty Ledger: A Year of Grocery-App Coupons",
+  "objective": "maximize",
+  "source_frameworks": ["wave2b-lens:mechanism-and-incentives"],
+  "strategies": [
+    "always give the biggest coupon every week (never touches the pilot data; reference price converges to the discounted price almost immediately, permanently thinning margin)",
+    "set-and-forget: solve a one-shot profit-maximizing constant discount using a generic assumed elasticity, then apply that same depth every week all year (ignores hidden per-segment elasticity and the erosion the constant policy itself causes)",
+    "identify each segment's hidden memory constant and price sensitivity from the closed-form pilot data, decide whether the segment is worth discounting at all, then ration the discount as short recovery-spaced pulses tuned via a local replay of the reference-price law",
+    "invalid: submit a schedule with discount depths above max_discount on every segment/week, failing validation"
+  ]
+}

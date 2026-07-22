@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0975",
+  "tier": "A",
+  "format": "A",
+  "family": "eulerized-cut-routing",
+  "seed_problem": "fsx_A_0975 seed spec (wave2b-lens:geometry-fabrication)",
+  "mutation": "goal: replace contour-by-contour torch scheduling with a minimum-cost open-trail decomposition (Eulerization) of a shared-edge cut graph, coupling pierce count to a graph invariant (odd-degree vertices) and airtime to a geometric matching/sequencing choice",
+  "objective": "min",
+  "theme": "One torch, many parts, least dead travel",
+  "title": "One Torch, Many Parts: Least Dead Travel",
+  "eval_form": "quality-metric",
+  "strategies": [
+    "trivial: pierce-cut-retract every required edge individually, in input order (no batching at all)",
+    "greedy: one pierce per part, contour its remaining (unclaimed) edges, visit parts in input order -- the universal CAM baseline",
+    "strong: Eulerize the cut graph -- pair odd-degree vertices with nearest-neighbor phantom (airtime) edges, take one Eulerian circuit over cuts+phantoms via Hierholzer, and slice it into trails at the phantom crossings, dropping the priciest phantom as the unclosed loop boundary",
+    "reference-headroom: exact minimum-weight perfect matching (e.g. Blossom) on odd-degree vertices instead of nearest-neighbor, plus cross-component trail-order optimization, both left as headroom above the reference strong solution"
+  ]
+}

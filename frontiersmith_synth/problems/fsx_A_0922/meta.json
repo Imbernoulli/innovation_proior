@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0922",
+  "tier": "A",
+  "format": "B",
+  "family": "congestion-routing-policy",
+  "eval_form": "quality-metric",
+  "theme": "Route packets without causing a jam storm",
+  "title": "Jam Storm: Anticipatory Packet Routing",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:nonlinear-network-effects"],
+  "strategies": [
+    "static cheapest-link routing: pick the one link with the lowest base (zero-load) latency and send every packet, every round, through it (ignores load entirely; the evaluator's own weak reference)",
+    "myopic least-latency routing: each round, look at the link states as of the START of the round (before this round's own packets land), pick the single currently-cheapest link, and dump the ENTIRE round onto it -- blind to the pile-on it is itself causing; triggers herding and queue-carry congestion collapse on symmetric / bursty rounds",
+    "marginal-cost water-filling: within each round, insert packets one at a time onto whichever link currently has the lowest MARGINAL delay increase (recomputing after every insertion), so a policy internalizes the load it is concurrently committing and spreads bursts instead of herding",
+    "multi-round lookahead / dynamic programming over the queue-carry trajectory to shave the remaining gap to the (unreachable) continuous water-filling floor (open headroom)"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0917",
+  "tier": "A",
+  "family": "matroid-intersection-packing",
+  "seed_problem": "max-weight common independent set of a graphic matroid and a partition matroid over a shared weighted ground set of candidate edges",
+  "objective": "max",
+  "theme": "Pick items obeying two independence rules at once",
+  "title": "Terrace Irrigation Retrofit",
+  "mutation": "composite: candidate edges (pipe segments) are simultaneously constrained by a graphic matroid (installed segments must form a forest over the terraces) and a partition matroid (a global per-material-batch installation cap); parallel edges between the same terrace pair, drawn from different capped batches, turn 'which batch gets a scarce slot' into a genuine two-matroid exchange problem rather than a single-constraint knapsack.",
+  "strategies": [
+    "trivial: install only standard-stock (batch-1, uncapped) segments via a max-weight forest (Kruskal) -- reproduces the checker's own baseline exactly",
+    "naive greedy: sort ALL segments (every batch) by flow value descending and accept each one iff it keeps the installed set a forest and stays within its batch's remaining cap -- the obvious single-pass recipe",
+    "insight (strong): recognize the two independence rules as two matroids on the same ground set and run weighted matroid intersection (Lawler's successive shortest augmenting-path algorithm over the exchange graph) to find the true max-weight common independent set -- this correctly reallocates which batch pays for which terrace pair instead of greedily spending a scarce batch's cap on the single heaviest segment",
+    "a general solver can go further with LP-relaxation / exchange-argument refinements, but any exact treatment of the two constraints together reduces to the same augmenting-path structure"
+  ]
+}

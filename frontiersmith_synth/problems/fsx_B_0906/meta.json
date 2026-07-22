@@ -1,0 +1,19 @@
+{
+  "id": "fsx_B_0906",
+  "tier": "B",
+  "format": "B",
+  "family": "production-mix-ordering",
+  "eval_form": "quality-metric",
+  "theme": "Order raw materials to hit a product mix",
+  "title": "Raw-Material Order Book: Hitting a Product Mix Through Batch Yields",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:inverse-design"],
+  "mechanisms": ["integrality-gap", "lp-inversion", "yield-uncertainty"],
+  "innovation_hook": "The inverse must respect batch integrality and project the target onto the reachable output cone, since some product ratios are simply unattainable.",
+  "strategies": [
+    "do-minimum baseline: buy exactly one batch (one lot) of raw type 0 and nothing else, ignoring the target ratio entirely (reproduces the evaluator's own weak single-cheapest-batch reference on many instances)",
+    "naive per-product LP inversion (the trap): for each of the 3 products independently pick whichever single raw type looks like the best yield-per-cost source, buy each chosen source in proportion to that product's target share out of a modest fixed budget, round to whole lots -- on trap instances this double-counts side yields from overlapping mixed recipes, chases unreachable target ratios by over-buying the 'best' source, and ignores full-yield thresholds so a source planned at full rate is actually running degraded",
+    "cone-projection with threshold-aware batch search (the insight): recognize that the reachable ratios are exactly the convex hull of the raw types' own normalized yield directions, find the nearest reachable point to the target via exact pairwise-segment projection (closed-form breakpoints under L1 distance), then fix the chosen 1-2 raw types' actual integer batch counts by directly simulating the true admitted output -- respecting lot integrality and each source's full-yield threshold/degradation -- rather than assuming continuous full-rate yield forever",
+    "a general solver could go further: search convex combinations of 3+ raw types simultaneously (not just pairs), or jointly optimise total production scale against the integrality/threshold trade-off via a proper mixed-integer search"
+  ]
+}

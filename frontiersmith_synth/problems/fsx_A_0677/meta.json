@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0677",
+  "tier": "A",
+  "format": "A",
+  "family": "raked-garden-flowlines",
+  "eval_form": "quality-metric",
+  "theme": "raking a zen garden around rocks",
+  "title": "Raked Garden Flowlines",
+  "objective": "min",
+  "seed_problem": "vertex-disjoint path/grid-cover raking around obstacles",
+  "mutation": "composite: disjoint-path-cover output (vertex-disjoint rake lines with a coverage band) coupled to two objective terms derived from a single scalar potential -- distance-to-nearest-rock -- namely a weighted-uncovered penalty concentrated on the near-rock level sets (obstacle-level-sets) and the population variance of every sand cell's graph-gap to the nearest raked cell (spacing-variance-minimization); the winning strategy must design and threshold that potential rather than route lines one at a time.",
+  "strategies": [
+    "trivial: fill sand cells in plain row-major reading order until the coverage floor is met (clusters at the top, ignores rocks and spacing entirely)",
+    "naive greedy: rule a fixed number of evenly spaced FULL rows straight across the whole garden -- excellent global spacing in open sand, but blind to where the rocks are, so it misses most of the near-rock ring zone whenever a rock's ring band happens to fall between two selected rows",
+    "insight (strong): compute the scalar potential D(cell) = multi-source BFS distance to the nearest rock (rocks that are close together automatically share a basin); unconditionally extract the sub-level-set {D <= M} first (guaranteeing the near-rock rings), then spend the remaining coverage budget on the same evenly-spaced sweep used by greedy -- so far-field spacing stays just as regular while the obstacle rings are never missed",
+    "a general local-search/ILP solver could go further: jointly optimize which level sets to keep and how to route the extra budget to also minimize spacing variance near basin boundaries/saddles"
+  ]
+}

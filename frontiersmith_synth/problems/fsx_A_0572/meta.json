@@ -1,0 +1,19 @@
+{
+  "id": "fsx_A_0572",
+  "tier": "A",
+  "format": "B",
+  "family": "sequential-probe-disambiguation",
+  "eval_form": "quality-metric",
+  "theme": "adaptive materials assay selecting which sample to test",
+  "title": "The Aliased Assay: Which Sample to Test",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:topup-B-2"],
+  "mechanisms": ["bayesian-hidden-state-narrowing", "measurement-cost-noise-budget"],
+  "innovation_hook": "Choose assays for their power to break the theta-variance aliasing between surviving hypotheses, not for marginal information under the current posterior.",
+  "strategies": [
+    "do nothing: run no assay; report the prior-weighted mean of theta (reproduces the evaluator baseline, ~0.1)",
+    "information-per-cost greedy: myopically buy the affordable assay with the largest identification-entropy reduction per lab-hour until the budget is spent -- the textbook adaptive-experiment recipe, which follows prior-weight and ignores theta spread, so it breaks the wrong (high-weight, low-variance) alias",
+    "variance-targeted design + local search: optimise the true objective (within-class weighted theta-variance + gamma*cost) directly by greedy addition then budget-respecting remove/add/swap local search, spending the budget on the theta-extreme aliases that dominate the estimation error",
+    "stronger search: knapsack/ILP over assay subsets, submodular-with-cost lazy greedy on the variance objective, beam search or simulated annealing over designs, or an adaptive (sequential) decision policy"
+  ]
+}

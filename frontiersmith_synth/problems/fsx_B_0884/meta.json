@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0884",
+  "tier": "B",
+  "format": "D",
+  "family": "nonlinear-propagation-flop-schedule",
+  "eval_form": "flops",
+  "theme": "Compute a diffusion cheaply via structure",
+  "title": "Community Diffusion: Minimal-Op Circuit for a Saturating Fixed Point",
+  "objective": "min",
+  "strategies": [
+    "per-agent, per-individual-edge, per-round dense simulation from x^(0)=0 (trivial baseline)",
+    "per-community aggregate sums reused across agents each round, but still re-deriving one node per agent (greedy, the obvious CSE optimization)",
+    "collapse the N-agent dynamics to its true K-dimensional community quotient (automorphism of the symmetric start state), bake multiplicities into single constants, broadcast the K representatives to all N agents for free (strong)",
+    "cross-round algebraic shortcuts / closed-form saturation-time circuits below the K-dimensional bound (open ceiling, uncovered)"
+  ]
+}

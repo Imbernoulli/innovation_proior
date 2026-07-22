@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0787",
+  "tier": "A",
+  "format": "C",
+  "family": "carillon-canon-weaver",
+  "eval_form": "quality-metric",
+  "theme": "melody that harmonizes with its own echoes",
+  "title": "Carillon Round: A Melody That Answers Its Own Echoes",
+  "objective": "max",
+  "strategies": [
+    "trivial: hold a single drone pitch as long as it stays consonant with its own delayed/transposed echoes (near-zero entropy, but always feasible)",
+    "greedy: extend left-to-right, always taking the lowest pitch class consonant with everything already written, no lookahead -- deadlocks (truncates) on sparsely-consonant instances",
+    "strong: treat the melody as a walk in the product automaton of the melody's shifted/transposed copies of itself; backtracking search ordered to balance pitch-class usage (entropy) with a 1-step outgoing-edge check to dodge dead states, escaping traps greedy cannot see coming",
+    "invalid: emit a pitch class outside [0,11] -- must score 0.0"
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "id": "fsx_S_0960",
+  "tier": "S",
+  "format": "B",
+  "family": "commit-cut-stream-policy",
+  "eval_form": "quality-metric",
+  "theme": "Cutting parts the moment each order arrives",
+  "title": "Commit-Cut: Streaming Panel Orders on a Kerf-Locked Sheet",
+  "objective": "max",
+  "source_frameworks": [
+    "wave2b-lens:geometry-fabrication"
+  ],
+  "mechanisms": [
+    "discard-option-valuation",
+    "irrevocable-online-placement",
+    "kerf-clearance-geometry"
+  ],
+  "innovation_hook": "With irrevocable cuts, empty area is not fungible -- the policy must manage the shape grammar of remaining space and treat discards as options purchased against the known arrival mixture.",
+  "strategies": [
+    "trivial: never discard, scan row-major from the origin for the first legal spot, no rotation, no lookahead",
+    "greedy (the trap): classic bottom-left-fill -- never discard, try both rotations, always take the lowest-y-then-lowest-x legal spot on the whole sheet; it fragments the sheet with kerf-locked slivers on cheap early orders and has no notion that a rare, value-dense order is coming",
+    "strong (the insight): classify orders by an adaptive value-density quantile computed from the instance itself, reserve a corridor sized to the kerf-inflated footprint of the value-dense class via a shelf-pack estimate, then replay the stream causally -- value-dense orders try the corridor first, everything else is confined to the general zone and DISCARDED rather than allowed to intrude on the corridor and kerf-lock away room the value tail will need",
+    "full local-search planner: refine the corridor-aware placement with post-hoc swap/relocate perturbations across multiple candidate quantile thresholds, keeping the best causal replay -- trades extra compute for robustness across interleaved, reversed, and held-out mixture instances"
+  ]
+}

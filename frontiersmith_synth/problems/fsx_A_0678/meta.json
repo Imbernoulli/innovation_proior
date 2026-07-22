@@ -1,0 +1,19 @@
+{
+  "id": "fsx_A_0678",
+  "tier": "A",
+  "format": "A",
+  "family": "antenna-array-beam-shaping",
+  "eval_form": "quality-metric",
+  "theme": "Excite an antenna array to shape its beam",
+  "title": "Phase-Only Beam Shaping on a Linear Array",
+  "seed_problem": "phase-only array-factor pattern synthesis with sidelobe-null placement",
+  "objective": "min",
+  "mutation": "composite: pattern-matching objective (array-factor-synthesis) coupled to a hard non-linear sidelobe-null penalty (sidelobe-null-placement), both evaluated under a fixed-magnitude phase-only aperture constraint (phase-only-constraint) so the excitation search space is a non-convex product of circles, not a free complex vector.",
+  "strategies": [
+    "trivial: do-nothing uniform phasing phi_i=0 for all elements (reproduces the checker baseline)",
+    "naive greedy: steer a single conventional beam at the single strongest target angle (textbook phased-array steering), ignoring secondary lobes, the rest of the pattern shape, and all null constraints",
+    "insight (strong): alternating projection between the desired complex far-field (replace magnitude by the target/threshold-consistent value, keep the current phase) and the fixed-magnitude phase-only aperture (adjoint back-projection then re-project each element's excitation onto its fixed-magnitude circle), with adaptive reweighting of violated null angles across iterations"
+  ],
+  "innovation_hook": "Phase-only synthesis is a projection problem -- alternate between the desired pattern and the fixed-magnitude aperture constraint rather than inverting once.",
+  "mechanisms": ["array-factor-synthesis", "phase-only-constraint", "sidelobe-null-placement"]
+}

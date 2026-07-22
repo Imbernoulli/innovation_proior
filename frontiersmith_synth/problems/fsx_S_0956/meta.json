@@ -1,0 +1,18 @@
+{
+  "id": "fsx_S_0956",
+  "tier": "S",
+  "format": "A",
+  "family": "module-catalog-chain-synthesis",
+  "eval_form": "quality-metric",
+  "seed_problem": "N/A (novel family, wave2b spec fsx_S_0956): a starship-refinery module catalog with typed conversions, footprint budgets, and byproduct outputs.",
+  "mutation": "input+output: the catalog is not a plain DAG of conversions; some modules emit a byproduct of their OWN input type, so a valid solution is a typed flow network (not a path) that may contain self-feeding cycles, verified by explicit per-instance conservation instead of a canonical answer.",
+  "objective": "max",
+  "theme": "starship refinery built from a parts catalog",
+  "title": "Autocatalytic Refinery: Byproduct Loops Under a Footprint Budget",
+  "strategies": [
+    "naive chain: instantiate the first catalog-listed module for every hop 0->1->...->K-1, ignore byproducts entirely",
+    "ratio-greedy knapsack: pick, per hop, the module with the best raw conversion ratio subject to the footprint budget (DP), still ignoring byproducts",
+    "loop-aware knapsack: for every candidate module compute its EFFECTIVE ratio (out_ratio/(1-byproduct_gain) when the byproduct feeds its own input), then run the same footprint-budget DP over effective ratios and wire the discovered self-loops",
+    "local search: perturb a loop-aware solution's module choices and footprint allocation, keep improvements"
+  ]
+}

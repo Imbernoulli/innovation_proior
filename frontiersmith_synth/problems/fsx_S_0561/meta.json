@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0561",
+  "tier": "S",
+  "format": "D",
+  "family": "scrambled-circuit-core-recovery",
+  "eval_form": "flops",
+  "theme": "archaeologist strips graffiti off an ancient machine",
+  "title": "Graffiti Removal: Recovering the Core of a Scrambled Logic Circuit",
+  "objective": "min",
+  "strategies": [
+    "resubmit the scrambled circuit verbatim (trivial baseline)",
+    "syntactic peephole + structural CSE + dead-code elimination -- strips shallow identity padding but is blind to distant-node dead logic and redundant recomputation (greedy trap)",
+    "functional-signature view: truth-table fold of globally-constant wires + merge of equal-signature distant nodes, then DCE (strong insight)",
+    "true sub-signature Boolean minimization / algebraic factoring below the fold+CSE floor (open ceiling, uncovered)"
+  ]
+}

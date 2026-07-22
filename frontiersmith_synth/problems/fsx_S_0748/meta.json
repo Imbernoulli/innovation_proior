@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0748",
+  "tier": "S",
+  "format": "C",
+  "family": "cell-stiffness-load-path",
+  "eval_form": "quality-metric",
+  "theme": "growing coral to hold a lighthouse",
+  "title": "Reef Cradle: Growing Coral to Hold a Lighthouse",
+  "objective": "minimize",
+  "strategies": [
+    "trivial: reproduce the checker's own per-mound independent straight-conduit reference layout (no sharing, no widening)",
+    "greedy: connect each new mound to whichever built point is nearest via a Chebyshev-looking diagonal-first shortcut (silently corner-only / disconnected whenever the nearest point isn't row- or column-aligned), then dump all leftover budget into reinforcing the first mound's path uniformly",
+    "strong: grow one shared Steiner-style tree face-adjacent-only (fusing nearby mounds onto a common trunk instead of paying for each independently), then spend leftover budget tapering -- widening highest-combined-force trunk segments nearest the anchor first",
+    "invalid: leave the first mound's conduit one cell short of the mound itself, so the mound is never covered by material"
+  ]
+}

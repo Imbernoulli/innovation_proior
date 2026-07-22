@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1031",
+  "tier": "B",
+  "format": "C",
+  "family": "apical-dominance-heterochrony",
+  "eval_form": "quality-metric",
+  "theme": "time the hormones to shape the shrub",
+  "title": "Founding-Instant Apical Dominance — schedule the auxin dips to sculpt the branch set",
+  "objective": "max",
+  "strategies": [
+    "trivial: r_t=1 for every tick (constant 'always release') -> every bud passes its founding check, the plant grows fully bushy in creation order -> reproduces the grader baseline (~0.1)",
+    "greedy: the natural next idea after 'a constant level is all-or-nothing' -- a single switch time W (auxin high for a prefix, released forever after), brute-forced over all budget-feasible W. Still a scalar (a threshold TIME), so it can only ever protect a contiguous prefix of buds -- blind to arrested buds born after the switch, and it sacrifices every real target born before it",
+    "strong: exploits that a bud's fate is sealed at its OWN founding instant -- spend the growth budget as a scattered schedule, suppressing auxin for exactly one tick each at precisely the founding instant of every bud that must stay arrested, leaving every target bud's own founding tick released. Full precision at minimal, position-independent cost -- the temporal PATTERN of the schedule, not its aggregate strength, is what sculpts the branching set",
+    "alternatives: prioritizing which arrested buds to veto first under a tighter budget, or jointly optimizing the residual accumulation dynamics to also fix commit-order inversions among surviving targets"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "id": "fsx_A_0818",
+  "tier": "A",
+  "format": "B",
+  "family": "ruggedness-adaptive-blackbox",
+  "eval_form": "quality-metric",
+  "theme": "Self-tuning black-box optimizer over a mix of smooth-unimodal and rugged-multimodal functions under a query budget.",
+  "title": "Ridge-Blind Prospecting: Self-Tuning a Black-Box Landscape Scan",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:topup-B-1"],
+  "mechanisms": ["adaptive-stepsize-population", "elite-seeded-restart", "ruggedness-correlation-probe"],
+  "innovation_hook": "Spend a few structured probes to estimate the landscape's correlation length, then set exploration step and restart aggressiveness from it -- small steps for smooth, elite-seeded restarts for rugged.",
+  "strategies": [
+    "trivial: ignore every pilot reading, spend the whole drilling budget as fixed-seed uniform-random points across the box (reproduces the evaluator's own weak blind-sweep reference)",
+    "greedy (the trap): trust only the neighbourhood you started in -- pick the best of the start point and the short-hop local probes taken right around it, then drill a fixed-radius jittered cluster of wells around that single point, never looking at the coarse scan_probes -- on instances where the tallest deposit sits elsewhere in the box (only visible via scan_probes) this caps out at the secondary deposit it started next to, however precisely it refines there",
+    "strong: use the local probes to estimate the field's correlation length (how fast value changes over short hops near the start); if the field looks smooth, seed one tight small-step cluster around the single best pilot reading; if it looks rugged, don't trust the local neighbourhood alone -- seed several elite-restart clusters from the best pilot readings across the WHOLE box (including scan_probes near distant deposits) with a wider step size per cluster",
+    "alternatives: pure hill-climbing multi-start from every pilot reading with a fixed step regardless of ruggedness, or a wider blind low-discrepancy sweep that never exploits the pilot readings at all"
+  ]
+}

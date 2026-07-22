@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_1013",
+  "tier": "B",
+  "format": "C",
+  "family": "gears-spiro-annulus",
+  "eval_form": "quality-metric",
+  "theme": "spirograph portfolio filling an annulus evenly",
+  "title": "Spirograph Portfolio for Annulus Coverage",
+  "objective": "max",
+  "strategies": [
+    "naive full-budget baseline: Q evenly-spaced curves with minimal pen offset (checker's own reference construction)",
+    "greedy per-curve maximization: pick each curve's (R,r) coprime for max petal count, maximize pen offset, ignore how R interacts with the fixed sampling budget S",
+    "insight-driven portfolio: pick R values coprime to the sampling budget S (not merely coprime to r) so every curve sweeps all S distinct angle indices (a fine, full sweep of its band, up to the harmless left-right symmetry of cos), and use phase offsets to make any forced non-coprime curve's collapsed points complement the bins already covered by other curves"
+  ]
+}

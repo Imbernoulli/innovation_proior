@@ -1,0 +1,99 @@
+# Express Tunnels to the Depot
+
+## Problem
+
+A courier network is a connected graph on `n` hubs, with `m` roads (edges,
+each length 1) and a marked depot `t`. A courier starting at hub `u` performs
+a **simple random walk**: at every step it moves to a uniformly random
+neighbor, until it first reaches `t`. Its expected round trip
+(`u -> t -> u`) is the *commute time* `C(u,t)`. A classical identity ties this
+directly to the network's **electrical structure**: if `R(u,t)` is the
+effective resistance between `u` and `t` when every edge is a unit resistor,
+then
+
+```
+C(u,t) = 2 * m * R(u,t)
+```
+
+i.e. commute time is **mass** (`m`, the total number of roads) times
+**resistance**. You are given `M` candidate new roads ("express tunnels").
+Choose up to `k` of them to build. Every tunnel you build adds `1` to `m` for
+**every** hub in the network -- it is a shared tax -- while it can only cut
+`R(u,t)` for the hubs actually near the tunnel. A tunnel is worth building
+only if the resistance it cuts outweighs the mass it dilutes.
+
+## Input
+
+```
+n m t k M
+```
+then `m` lines, the original roads (1-indexed, undirected):
+```
+u v
+```
+then `M` candidate tunnels, 1-indexed by line order (tunnel `i` is line `i`
+of this block):
+```
+a b
+```
+
+## Output
+
+Print `c` (`0 <= c <= k`), the number of tunnels you build, then `c` distinct
+integers in `[1, M]` -- the indices of the tunnels you choose to add.
+
+## Feasibility
+
+`c` must be in `[0,k]`; the `c` indices must be distinct and lie in
+`[1,M]`; no trailing tokens. Any violation scores `0`. Printing `0` (build
+nothing) is always feasible.
+
+## Objective
+
+Let the final network have all original roads plus your chosen tunnels
+(mass `m' = m + c`). Minimize the worst courier's commute time:
+```
+F = max over hubs u != t of  C(u,t) = 2 * m' * R(u,t)
+```
+`R(u,t)` is the effective resistance of the *final* network (unit resistors,
+one per road/tunnel, parallel edges allowed and combine normally).
+
+## Scoring
+
+The checker computes an internal baseline `B` = `F` on the ORIGINAL network
+(build nothing). Your score on a test is
+```
+ratio = min(1000, 100 * B / max(1e-9, F)) / 1000
+```
+so building nothing always scores exactly `0.1`; a genuinely better plan
+scores higher (up to `1.0`, ten times the baseline); a plan that makes the
+worst commute time *longer* than baseline (mass added without enough
+resistance cut to pay for it) scores *below* `0.1`. Per-test ratios are
+averaged.
+
+## Constraints
+
+`2 <= n <= 300`, `n-1 <= m`, `1 <= k <= M`, `M` up to a few thousand.
+Time limit: 4 s. Memory limit: 512 MB.
+
+## Example
+
+`n=4, m=3, t=1, k=1`, roads `1-2, 2-3, 3-4` (hub 4 is three hops out on a dead
+end). `M=2` tunnels: tunnel 1 = `(4,1)` (wire the far hub straight to the
+depot); tunnel 2 = `(2,1)` (a second road parallel to the depot's own
+neighbor, which is already close).
+
+Baseline: `R(2,1)=1, R(3,1)=2, R(4,1)=3`, worst is hub 4, `B = 2*3*3 = 18`.
+
+Building tunnel 1: mass becomes `4`; hub 4 now has two parallel routes to the
+depot (length 1 and length 3), so its resistance falls and the recomputed
+worst hub gives `F = 8`. Output `1` then `1` scores `ratio =
+min(1000, 100*18/8)/1000 = 0.225` -- more than double the baseline.
+
+Building tunnel 2 instead: it only touches hub 2's already-short resistance
+(a nearly-redundant parallel road right next to the depot) while hub 4's
+resistance is untouched at `3`, and mass still grew to `4`, giving
+`F = 20 > B`. Output `1` then `2` scores `ratio = min(1000, 100*18/20)/1000
+= 0.09` -- *below* the do-nothing baseline. The tunnel that looks locally
+cheap and safe (reinforcing the depot's own neighborhood) actively hurts
+every courier once its shared mass cost is counted.

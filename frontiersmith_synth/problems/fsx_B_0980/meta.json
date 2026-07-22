@@ -1,0 +1,20 @@
+{
+  "id": "fsx_B_0980",
+  "tier": "B",
+  "format": "A",
+  "family": "cannibal-cascade-heat-mining",
+  "eval_form": "quality-metric",
+  "theme": "mining a waste-heat river with converter units",
+  "title": "Mining the Cannibal River",
+  "objective": "max",
+  "seed_problem": "place converters and extraction amounts along a cooling stream to maximize generated electricity",
+  "mutation": "composite: couple a Carnot-bounded, physically-integrated conversion payoff (concave in extraction depth) with serial temperature drawdown along a single flowing stream (upstream extraction cools every downstream unit via re-mixing) and a per-unit hardware capacity, under a global count budget K on installed units -- the true optimum equalizes a marginal conversion value across the active chain instead of greedily draining the hottest spots first.",
+  "mechanisms": ["carnot-bounded-conversion", "marginal-value-equalization", "serial-temperature-drawdown"],
+  "innovation_hook": "Serial extraction is a common-pool problem in temperature space; the optimality condition is an equalized marginal conversion value along the chain (dE/dx = eta_i*(Tpost_i-Tsink)/Tpost_i equal across all active units), which solvers must derive from the physics, not receive as a stated rule.",
+  "strategies": [
+    "trivial: scan every segment under the natural (no-extraction) mixing profile, pick the single segment whose own capped/Tsink-limited drain yields the most electricity, install only there -> reproduces the checker's baseline B exactly, ratio 0.1",
+    "greedy (the trap): rank segments by raw natural pre-mix temperature only (ignoring eta and hardware capacity), take the hottest K, then fully exploit each up to its capacity in position order without accounting for how upstream draining dilutes everything downstream -- on planted dilution/eta-decoy/needle cases this either wastes slots on a temperature decoy with terrible eta, or drains an upstream spike so hard that every later chosen unit is left with a stream barely above Tsink",
+    "insight (strong): build a generous candidate pool (local temperature peaks plus top-by-temperature segments), then greedily forward-select up to K of them; for any candidate SET, solve the equalized-marginal-value condition by a ternary/binary search over a shadow price lambda that determines each active unit's own outlet temperature Tpost_i = Tsink/(1-lambda/eta_i), simulated forward through the real chain (so downstream Tpre correctly reflects upstream restraint) -- this systematically leaves upstream units under-drained on purpose to preserve heat for the rest of the chain",
+    "beyond strong: joint combinatorial search over which K segments to use AND their exact depths (e.g. simulated annealing over the whole (S, x) pair, or an exact DP relaxation) to close the remaining gap to the true optimum"
+  ]
+}

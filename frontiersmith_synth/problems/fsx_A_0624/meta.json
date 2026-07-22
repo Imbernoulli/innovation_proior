@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0624",
+  "tier": "A",
+  "format": "C",
+  "family": "quota-chain-schoolmatch",
+  "eval_form": "quality-metric",
+  "theme": "apprentices assigned to workshops across districts",
+  "title": "Seat Quotas for the Apprentice Match",
+  "objective": "max",
+  "strategies": [
+    "uniform quotas: split the seat budget as evenly as possible across workshops (the checker baseline)",
+    "demand-proportional quotas: hand out seats in proportion to first-choice demand (the trap: starves sleeper lifelines, over-funds decoy workshops)",
+    "chain-aware coordinate ascent: simulate the actual deferred-acceptance matching and move seats between workshops only when the true rank-utility rises, catching rejection chains at the sleepers",
+    "seed a good init from demand, then repair the worst rejection cascades by shifting seats from low-marginal-value workshops onto the workshops that intercept the longest chains"
+  ]
+}

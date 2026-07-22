@@ -1,0 +1,19 @@
+{
+  "id": "fsx_S_0634",
+  "tier": "S",
+  "format": "C",
+  "family": "gear-train-ratio-cutting",
+  "eval_form": "quality-metric",
+  "theme": "Cut integer gears to hit target ratios",
+  "title": "Gear Train Ratio Cutting",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:inverse-design"],
+  "mechanisms": ["continued-fraction-approx", "error-cost-tradeoff", "integer-factorization-search"],
+  "innovation_hook": "A continued-fraction / Stern-Brocot decomposition of the target ratio distributes the approximation across stages far more accurately than independent per-stage rounding.",
+  "strategies": [
+    "trivial baseline: every stage of every train is set to (mid, mid) with mid = floor((Tmin+Tmax)/2), i.e. ratio 1, completely ignoring every target and every cost weight",
+    "sequential per-stage greedy: process a target's G stages left to right; at each stage round to the single best-achievable-teeth ratio for the geometric-mean root of the CURRENT remaining target, update the remainder, repeat -- never looks ahead, never reconsiders an earlier stage, and always ignores the cost weight (chases pure precision even when lambda is large)",
+    "seeded local search around the greedy path: after the sequential pass, perturb one stage at a time (try nearby teeth) and keep improving moves -- fixes small local mistakes but still commits to the greedy backbone and rarely escapes its remainder trap",
+    "joint bounded-integer search over stage combinations (strong): precompute all achievable two-stage products with their teeth cost, sorted by value; for the remaining stage, binary-search the sorted table for the joint combination -- across ALL stages at once -- that minimizes relerr + lambda*cost together, which is exactly a bounded best-rational-approximation search (continued-fraction/Stern-Brocot in spirit) instead of independent per-stage rounding, and it is the only strategy that actually trades precision for cost when lambda is large"
+  ]
+}

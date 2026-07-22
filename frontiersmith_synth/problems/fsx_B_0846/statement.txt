@@ -1,0 +1,96 @@
+# Pick a Team That Clicks But Does Not Crowd
+
+## Problem
+You are staffing a team from `N` candidates, numbered `0..N-1`. Candidate `i`
+brings individual value `v_i`. Some pairs of candidates have positive
+**chemistry**: an undirected edge `(i,j)` with synergy weight `s_ij > 0` that
+is realized only if *both* `i` and `j` are on the team. But chemistry has a
+dark side: every candidate `i` also has a **crowd tolerance** `cap_i`. If
+*more than* `cap_i` of `i`'s chemistry-partners are also chosen, candidate
+`i` feels crowded out and costs the team `pen_i` points for **every**
+partner selected beyond the tolerance.
+
+You choose one team `S subseteq {0,...,N-1}` (any size, including empty) to
+maximize the total value. Chemistry rewards clustering (more selected
+partners is better, up to a point); crowding punishes it (too many selected
+partners is worse). Mixing a reward that grows with cluster size and a
+penalty that also grows with cluster size means the objective is **neither**
+submodular **nor** supermodular: adding one candidate can change how every
+other already-chosen candidate's crowd penalty is computed, not just its own.
+
+## Input
+```
+N M
+v_0 v_1 ... v_{N-1}
+cap_0 cap_1 ... cap_{N-1}
+pen_0 pen_1 ... pen_{N-1}
+M lines, each: i j s        (0 <= i < j < N, edge with synergy s)
+```
+
+## Output
+```
+k
+i_1 i_2 ... i_k
+```
+`k` is the team size (`0 <= k <= N`); the second line lists the `k` chosen
+candidate indices (omit the line if `k = 0`).
+
+## Feasibility
+Every index must lie in `[0, N-1]` and all `k` indices must be distinct.
+Any violation (out of range, duplicate, wrong count) scores 0.
+
+## Objective (maximize)
+For your team `S`, let `deg_S(i)` be the number of `i`'s chemistry-partners
+(neighbours in the edge list) that are also in `S`. The raw score is
+```
+raw = sum_{i in S} v_i  +  sum_{(i,j) in E : i,j in S} s_ij
+      - sum_{i in S} pen_i * max(0, deg_S(i) - cap_i)
+F = max(0, raw)
+```
+You want `F` as large as possible. Note the crowd term is charged **per
+selected candidate**, using that candidate's **own** cap/pen against how
+many of its selected partners it has — so pulling in one extra candidate
+can simultaneously raise several already-chosen candidates' crowd counts
+and their charges.
+
+## Scoring
+The checker computes an internal baseline `B` = the total value of all
+candidates that have **zero** chemistry edges (always safe to take: no
+synergy, no crowding, ever). `B` is guaranteed positive. Your score for a
+case is
+```
+ratio = min(1000, 100 * F / max(1, B)) / 1000
+```
+so matching the baseline scores `0.1`, and reaching `10*B` net value caps
+the case at `1.0`. The final score is the mean ratio over the 10 test
+cases.
+
+## Constraints
+- `1 <= N <= 400`, `0 <= M <= 6000`.
+- `1 <= v_i <= 200`, `1 <= s_ij <= 80`, `0 <= cap_i <= N-1`, `0 <= pen_i <= 200`.
+- No self-loops, no duplicate edges.
+- Time limit: 4 s. Memory limit: 512 MB. Fully deterministic: the checker
+  replays your team on the given graph.
+
+## Example
+```
+6 6
+30 30 30 30 50 60
+2 2 2 2 0 0
+20 20 20 20 0 0
+0 1 10
+0 2 10
+0 3 10
+1 2 10
+1 3 10
+2 3 10
+```
+Nodes `0..3` form a clique (chemistry `10` on every pair, cap `2`, penalty
+`20`); nodes `4,5` are isolated (`v=50,60`). The baseline takes only `4,5`:
+`B = 110`, ratio `0.1`. Taking all of `0..3` gives crowd degree `3 > cap 2`
+for every one of them (`raw = 120 + 60 - 20*1*4 = 100`); adding `4,5` too
+gives `F=210`, ratio `~0.191`. But taking only three of the clique
+(`0,1,2`, each has crowd degree `2 = cap`, no penalty) plus `4,5` gives
+`raw = 90 + 30 + 110 = 230`, `F=230`, ratio `~0.209` — strictly better than
+grabbing the whole clique, because the fourth member's own gain does not
+cover the crowd charge it *retroactively* imposes on the other three.

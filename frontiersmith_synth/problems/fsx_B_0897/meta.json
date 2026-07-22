@@ -1,0 +1,18 @@
+{
+  "id": "fsx_B_0897",
+  "tier": "B",
+  "format": "A",
+  "family": "bridge-anchored-stencil",
+  "eval_form": "quality-metric",
+  "theme": "Stencil letters whose middles must not fall out",
+  "title": "Stencil Counters: Bridging the Floating Middles",
+  "objective": "min",
+  "seed_problem": "island-anchoring / cantilever-support construction (novel bridge-anchored-stencil family)",
+  "mutation": "composite: a stencil's floating interior pieces ('counters') must be reattached to the surrounding frame with rectangular material bridges; feasibility couples an island-connectivity requirement with a per-axis cantilever-deflection stiffness rule (axial vs. cubic-bending scaling by bridge orientation), and the objective is the visual cost (a weighted map, expensive near strokes) of the bridge footprint -- turning 'how much material' into 'what shape of material'.",
+  "strategies": [
+    "trivial: bridge each island via its single nearest direction with a generously oversized (1.4x) rod -- reproduces the checker's safety-first baseline",
+    "greedy: bridge each island via its single nearest direction, but size the rod to the exact minimum width the beam formula demands (still relies on the weak cubic bending term for the cross-axis) -- the obvious competent approach",
+    "strong (insight): for each island, compare the best single rod against the best pair of orthogonal (vertical + horizontal) rods, each sized via the cheap axial-only formula for its own axis, and keep whichever is actually cheaper under the real visual-cost map -- triangulated geometry beats raw material",
+    "a general solver could go further: share bridges between adjacent islands, or route around the weighted-cost map non-orthogonally"
+  ]
+}

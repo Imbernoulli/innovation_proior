@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0880",
+  "tier": "A",
+  "format": "B",
+  "family": "spacetime-reservation-dispatch",
+  "eval_form": "quality-metric",
+  "theme": "container-crane and AGV scheduling in a yard",
+  "title": "Container Yard: Corridor Reservation Dispatch",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:topup-B-2"],
+  "strategies": [
+    "overcautious avoidance: take the shortest path but refuse any move whose route touches a single-lane shortcut at all, forfeiting its throughput even when no other AGV would ever contend for it",
+    "uncoordinated shortest-path racing: every AGV departs immediately down its graph-shortest path with no awareness of others, so two AGVs entering the same shortcut from opposite ends at overlapping times meet head-on -- a deadlock that jams the corridor and strands every later move that still needed it",
+    "space-time corridor reservation: dispatch moves in release order while booking each shortcut's committed occupancy windows in a table; delay entry into a shortcut until a free window opens (or take the longer ring-only detour when that finishes sooner than waiting), so no two AGVs ever occupy the same shortcut at once and no head-on can occur",
+    "reservation is what lets a coordinator recover the moves an uncoordinated dispatch wipes out via cascading corridor jams -- at the modest cost of a little wait or a longer detour"
+  ]
+}

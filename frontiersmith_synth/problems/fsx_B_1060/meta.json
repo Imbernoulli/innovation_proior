@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_1060",
+  "tier": "B",
+  "format": "C",
+  "family": "overhang-support-additive-print",
+  "eval_form": "quality-metric",
+  "theme": "Print a solid layer by layer with overhang rules",
+  "title": "Overhang-Supported Additive Print",
+  "objective": "minimize",
+  "strategies": [
+    "solid bounding-box baseline: box in the whole target footprint and fill every non-target cell up to the top as support",
+    "per-column straight support: support each overhanging target column with its own vertical pillar down to the plate, ignoring neighbours",
+    "top-down cascading set cover: plan layer-by-layer from the top down, letting each support voxel's 45-degree shadow cover as much of the NEXT layer's requirement as possible, and preferring support columns with no future part voxel above them (never trapped)"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0894",
+  "tier": "B",
+  "format": "B",
+  "family": "coupled-water-filling-rates",
+  "eval_form": "quality-metric",
+  "theme": "crosstalk-coupled DSL vectoring binder",
+  "title": "Binder Hub: Crosstalk-Coupled Line Vectoring",
+  "objective": "maximize",
+  "source_frameworks": ["wave2b-lens:topup-B-1"],
+  "strategies": [
+    "uniform power split, index decode order (do-nothing baseline)",
+    "single-shot independent water-filling ignoring the coupling matrix entirely, index decode order (the obvious first approach; textbook single-user water-filling)",
+    "probe the interference graph to rank lines by how much crosstalk they impose on others, choose a cancellation-friendly decode order from that probe, then run interference-aware iterative water-filling (alternate: recompute each line's effective noise from currently-uncancelled crosstalk under the chosen order, re-water-fill against that effective noise, repeat to a fixed point)",
+    "compare several probe-driven orders (static out-degree sort vs. greedy peeling on the live interference graph) plus the coupling-free fallback, keep whichever converged allocation achieves the highest true sum-rate"
+  ]
+}

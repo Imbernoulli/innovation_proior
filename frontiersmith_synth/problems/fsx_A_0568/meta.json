@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0568",
+  "tier": "A",
+  "format": "C",
+  "family": "mobile-torque-atelier",
+  "eval_form": "quality-metric",
+  "theme": "Calder-style hanging mobile sculpture",
+  "title": "Calder Atelier: Torque-Balanced Mobile with a Wide, Deep Silhouette",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:constrained-aesthetics"],
+  "strategies": [
+    "trivial: complete balanced tree over a fixed leaf order with minimal arms, collision-repaired by bumping rod scales (checker's reference baseline; one depth, spine-hugging silhouette)",
+    "greedy: chain leaves onto a spine and balance each rod with minimal integer arms -- 'just balance it', never spends the free rod-scale, so the silhouette stays cramped",
+    "strong: exploit that balance fixes only the arm RATIO -- scale each rod (aL,aR)=(t*wR/g,t*wL/g) up toward the arm ceiling to fling leaves into distinct horizontal bins, and group high-gcd/equal-weight subtrees so t can run large; pick a topology giving varied leaf depths; keep the best feasible construction",
+    "insight: the divisor structure of subtree weights (gcd) controls how far a rod can be scaled within [1,Amax], decoupling geometry from statics"
+  ]
+}

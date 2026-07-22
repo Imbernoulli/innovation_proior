@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0750",
+  "tier": "A",
+  "format": "D",
+  "family": "medial-tool-coverage-count",
+  "eval_form": "flops",
+  "theme": "Clearing a pocket with the fewest counted moves",
+  "title": "Chambered Pocket Clearing: Fewest Counted Stamps",
+  "objective": "minimize",
+  "strategies": [
+    "all-size-1 single-block program (trivial)",
+    "raster-scan biggest-tool-that-fits-here, single pass, no lookahead (greedy)",
+    "size-tier global max-new-coverage search, batched by tool size (strong)",
+    "true minimum-cost stamp program is open (unknown optimum, headroom remains)"
+  ]
+}

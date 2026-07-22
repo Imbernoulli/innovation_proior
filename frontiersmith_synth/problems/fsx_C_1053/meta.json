@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1053",
+  "tier": "C",
+  "format": "C",
+  "family": "saturating-coverage-placement",
+  "eval_form": "quality-metric",
+  "theme": "Cover a network with diminishing overlap",
+  "title": "Saturating Sensor Placement with Critical Double-Cover Bonuses",
+  "objective": "max",
+  "strategies": [
+    "trivial: place all K sensors on the first K node ids (0..K-1), reproducing the checker's naive baseline",
+    "greedy: repeatedly add the site with the largest marginal gain to the honestly-recomputed total objective (bonus included) -- optimal for submodular coverage but myopic, so it never invests a critical node's costly-looking first sensor and hence never unlocks its double-cover bonus",
+    "strong: build the greedy plan, then explicitly search for BUNDLE swaps -- for each critical node, evaluate its two best-reaching candidate sites jointly against the weakest currently-placed sites, and commit the pair swap whenever the joint gain is positive even though neither site alone would pass; polish with single-site exchanges",
+    "invalid: emits K copies of a single out-of-range node id (duplicate + out-of-range) -> must score 0"
+  ]
+}

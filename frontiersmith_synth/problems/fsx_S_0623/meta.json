@@ -1,0 +1,15 @@
+{
+  "id": "fsx_S_0623",
+  "tier": "S",
+  "format": "C",
+  "family": "cospectral-decoy-mints",
+  "eval_form": "quality-metric",
+  "theme": "minting twin coins that ring identically but weigh differently",
+  "title": "Twin Coins: Cospectral Decoy Mints",
+  "objective": "max",
+  "strategies": [
+    "single-switch baseline: swap one 6-vertex gadget block for its cospectral mate (matches the checker's own reference construction)",
+    "fixed small switch count: swap a constant number of blocks (e.g. 2) regardless of instance size -- the obvious 'apply the trick once or twice' recipe",
+    "full gadget composition: swap every available block for its cospectral mate, exploiting that disjoint-union spectra are multiset unions so per-block swaps are free and additive"
+  ]
+}

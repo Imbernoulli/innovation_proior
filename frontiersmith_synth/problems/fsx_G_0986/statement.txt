@@ -1,0 +1,90 @@
+# Couple Oscillators Just Enough to Synchronize
+
+## Problem
+
+A network has `N` chaotic oscillators. Oscillator `i` holds a value `x_i` in
+`[0,1]` that updates by the logistic map `f(x) = R * x * (1-x)` (the same `R`
+for every oscillator, so in isolation each one is a generic, distinct
+realization of the same chaotic system). `M` candidate coupling edges are
+given; edge `e = (u,v)` has a maximum coupling strength `cap_e`. You choose a
+coupling strength `c_e` in `[0, cap_e]` for every candidate edge (0 means
+"don't use it"). Writing `deg_i` for the sum of `c_e` over edges incident to
+`i`, the network then evolves **synchronously** for `T` steps:
+
+```
+f_i(t) = R * x_i(t) * (1 - x_i(t))
+x_i(t+1) = (1 - deg_i) * f_i(t) + sum over edges (i,j) of c_e * f_j(t)
+```
+
+Each node's next value is a weighted blend of its own image and its coupled
+neighbors' images. Because the weights `(1 - deg_i)` and each `c_e` are all
+`>= 0` and sum to `1`, this keeps every `x_i(t)` inside `[0,1]` automatically
+-- but only if `deg_i` never exceeds `1`. Synchronization is a threshold
+phenomenon: a coupling structure with a wide enough spectral gap relative to
+the map's chaotic divergence locks nodes onto a common trajectory; a
+structure below that threshold lets nodes drift apart forever, no matter how
+much *total* coupling was spent.
+
+## Input
+
+```
+N M R C T W
+x_1 x_2 ... x_N
+```
+then `M` lines, edge `e` (1-indexed nodes, undirected):
+```
+u v cap
+```
+
+## Output
+
+Print `M` reals `c_1 ... c_M`, the coupling strength chosen for each edge in
+input order.
+
+## Feasibility
+
+For every edge, `0 <= c_e <= cap_e`. For every node `i`, `deg_i <= 1`
+(the coupling-DEGREE cap -- a fixed rule, not per-test data). The total
+`sum(c_e) <= C` (the coupling BUDGET). Any violation, or a non-finite value,
+scores `0`.
+
+## Objective
+
+Simulate the `T` steps above. Over the trailing `W` steps, let `xbar(t)` be
+the mean of all `x_i(t)`, and let `dev_i` be the root-mean-square of
+`x_i(t) - xbar(t)` across those `W` steps. Each node contributes
+`score_i = 0.05 + 0.95 * exp(-dev_i / 0.12)` (so a node tracking the network
+mean tightly throughout the window scores near 1; a node that never tracks it
+scores near the 0.05 floor). Maximize `F = sum_i score_i`.
+
+## Scoring
+
+Let `B` be `F` for the all-zero coupling assignment (every oscillator
+evolving independently). Your score for a test is
+```
+ratio = min(1000, 100 * F / max(1e-9, B)) / 1000
+```
+so spending nothing scores `0.1`, and genuinely better coupling scores
+higher (capped at `1.0`, ten times the baseline). Per-test ratios are
+averaged over 10 tests.
+
+## Constraints
+
+* `8 <= N <= 120`, `M` up to about `3600`.
+* `R = 3.9` (fixed). `0.03 <= C`. `T = 60`, `W = 20` (fixed).
+* `0 < cap_e <= 0.4` for every edge.
+* Time limit: 5 s. Memory limit: 256 MB.
+
+## Example
+
+`N=8, M=16, R=3.9, C=4, T=60, W=20`. Six edges connect `{1,2,3,4}` densely
+(cap `0.35` each), six connect `{5,6,7,8}` densely (cap `0.35` each), and 4
+more low-visibility edges cross between the two groups (cap `0.40` each,
+e.g. `4-7`, `3-8`, `2-6`, `1-5`) -- nothing in the input marks them as
+special. Spending the whole budget `C=4` inside the two dense groups (an
+"obvious", locally-reasonable allocation) leaves the crossing edges unfunded:
+`ratio ~ 0.135`, barely above doing nothing (`ratio = 0.1`). Recognizing that
+those 4 edges are the *only* path between the two groups, and funding them
+first, then spreading what remains, reaches `ratio ~ 0.69`: the two groups
+lock onto one common trajectory instead of drifting apart as two independent
+chaotic systems.

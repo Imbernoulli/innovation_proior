@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_1057",
+  "tier": "B",
+  "format": "C",
+  "family": "byte-knapsack-admission",
+  "eval_form": "quality-metric",
+  "theme": "pawn shop with one shelf and clairvoyant appraiser",
+  "title": "The Pawnbroker's One Shelf",
+  "objective": "min",
+  "strategies": [
+    "always-bypass: never shelve anything (the checker's own trivial baseline)",
+    "size-aware LRU: always admit on a miss, evicting the least-recently-used residents first, with no lookahead at all",
+    "whole-trace clairvoyant admission: precompute each visit's exact next-use distance, bypass objects with no future use, and only evict residents whose own next use is no sooner than the newcomer's (a Belady/MIN-style exchange argument generalized to variable sizes with an explicit bypass action)"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0637",
+  "tier": "A",
+  "format": "B",
+  "family": "stock-surplus-harvest",
+  "eval_form": "quality-metric",
+  "theme": "multi-zone fishery quota setting over a long horizon",
+  "title": "Tideline Commons: Multi-Zone Fishery Quota Setting",
+  "objective": "maximize",
+  "source_frameworks": ["wave2b-lens:topup-B-2"],
+  "strategies": [
+    "do-nothing / tiny fixed-rate skim: cull a small constant fraction of the current stock every step, no target level, no collapse reasoning -- safe but leaves most of the sustainable surplus unharvested",
+    "static generic-floor greedy: assume one fixed safety buffer (a fraction of carrying capacity) is safe for every zone and harvest everything above it -- underharvests zones whose true max-growth point is higher, and drives some zones straight through their own (higher, hidden) collapse threshold",
+    "max-growth-point holding: harvest only the surplus above each zone's own K/2 (the maximum-growth point), which is provably above every zone's guaranteed threshold bound -- captures close to the per-step sustainable-yield ceiling in every zone without ever risking collapse",
+    "seeded per-zone tuning / local search: adjust each zone's holding target and warm-up schedule (e.g. from logged trial trajectories) to trade a small collapse-risk margin for extra yield, or to better exploit the finite horizon's endgame"
+  ]
+}

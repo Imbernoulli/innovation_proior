@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0854",
+  "tier": "A",
+  "format": "D",
+  "family": "shared-subexpression-linear-circuit",
+  "eval_form": "flops",
+  "theme": "Compute many linear forms sharing intermediates",
+  "title": "Shared XOR Circuits for Many Linear Forms",
+  "objective": "min",
+  "strategies": [
+    "fully independent per-target chain-XOR, zero sharing (trivial)",
+    "one-shot most-frequent-raw-variable-pair factoring, no recomputation (greedy)",
+    "iterative re-mined pool: commit to the shared partial sum with the most co-occurring targets each round, recomputing after every commit (strong)",
+    "true minimum-gate GF(2) circuit (NP-hard in general, open ceiling, uncovered)"
+  ]
+}

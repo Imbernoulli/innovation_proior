@@ -1,0 +1,115 @@
+# Castle Commission: The Bridge-Builders' Scoring Auction
+
+## Problem
+
+The castle of Aldermoor needs a bridge and will award the contract through a
+**scoring auction**. There are `n` guilds. Guild `j` has a *printed* cost table
+`c_j[0..Q]`: `c_j[q]` silver is the cost for guild `j` to build a bridge of
+quality `q` (`0 <= q <= Q`), non-decreasing in `q`, with `c_j[0] = 0`. The
+castle also has a *printed, private* true value table `V[0..Q]`
+(`V[q]` = how much the castle truly values quality `q`), non-decreasing,
+`V[0] = 0` — but the guilds never see `V`.
+
+Instead the castle **announces** a scoring rule from a 5-parameter family and
+publishes it to all guilds:
+
+```
+f(q) = q                          if q <= q0
+f(q) = q0 + slopeHi * (q - q0)    if q >  q0
+
+Score(q, p) = WQ * f(q) - WP * p
+```
+
+Every guild knows the announced `(WQ, WP, q0, slopeHi, Pcap)` and every rival's
+printed cost table (guild costs are a matter of public record in Aldermoor).
+Each guild plays its best response:
+
+1. Guild `j`'s **efficient score** is `E_j = max{ WQ*f(q) - WP*c_j[q] : 0<=q<=Q, c_j[q] <= Pcap }`
+   (the best score it could offer while breaking exactly even). Let `q_j` be
+   the smallest `q` attaining this maximum.
+2. The guild with the **highest** `E_j` wins (ties -> smallest guild index).
+   Let `E*` be the winner's score and `E2` be the **second-highest** `E_j`
+   among the other guilds (competitive pressure forces the winner to match
+   the runner-up, exactly like second-price competition).
+3. The winner delivers quality `q* = q_{j*}` at price
+   `p* = clamp( (WQ*f(q*) - E2) / WP, 0, Pcap )`.
+
+## Input
+
+```
+Q n Pmax
+V_0 V_1 ... V_Q
+c_1[0] c_1[1] ... c_1[Q]
+...
+c_n[0] c_n[1] ... c_n[Q]
+```
+All values are non-negative integers; `V` and every `c_j` are non-decreasing
+with `V_0 = c_j[0] = 0`.
+
+## Output
+
+One line: five integers `WQ WP q0 slopeHi Pcap` — your announced scoring rule.
+
+## Feasibility
+
+`1 <= WQ <= 300`, `1 <= WP <= 300`, `0 <= q0 <= Q`, `0 <= slopeHi <= 8`,
+`0 <= Pcap <= Pmax`. Any violation scores `0`.
+
+## Objective
+
+Run the best-response procedure above with your rule to get the winner's
+delivered `(q*, p*)`. You are **maximizing** the castle's TRUE surplus
+`V[q*] - p*` — a quantity you never announce and the guilds never see.
+A rule that matches `V`'s shape as closely as the 5-parameter family allows
+(same kink, same slopes where an integer `slopeHi` can represent them) is
+legal but not generally optimal: it tells every guild almost exactly how
+much slack you'll pay for, tuning the rule to the winner's own cost curve
+instead of to the competitive gap that actually sets the price.
+
+## Scoring
+
+Let `F = max(0, V[q*] - p*)` for your announced rule, and `B` the same
+quantity for the reference rule
+`(WQ,WP,q0,slopeHi,Pcap) = (clamp(Pmax/Q, 1, 300), 1, max(1,floor(Q/3)), 0, Pmax)`
+-- a rule with a hard cap on credited quality at the one-third point, scaled
+only from `Pmax` and `Q`, never from `V` or any guild's cost table.
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+Mean ratio over all tests is the final score.
+
+## Constraints
+
+`2 <= n <= 24`, `4 <= Q <= 28`, `1 <= Pmax <= 20000`. Time limit: 5 s.
+Memory limit: 512 MB.
+
+## Example
+
+```
+4 2 100
+0 10 20 20 20
+0 2 4 6 8
+0 9 18 19 20
+```
+
+`Q=4, n=2`. `V = [0,10,20,20,20]` (saturates at q=2). Guild 1: cheap
+uniformly, `c_1=[0,2,4,6,8]`. Guild 2: steep pre-kink but cheap past q=2,
+`c_2=[0,9,18,19,20]`.
+
+Announcing the rule `WQ=10,WP=1,q0=2,slopeHi=0,Pcap=100` (mirrors `V`
+exactly here, since `V`'s post-kink slope is `0`, always representable):
+`f=[0,1,2,2,2]`. Guild 1's efficient score `10*f(q)-c_1[q]` is maximized at
+`q=2` -> `20-4=16`. Guild 2: best at `q=2` -> `20-18=2`. Winner = guild 1,
+`E2=2`, `p* = (20-2)/1 = 18`, `q*=2` -> surplus `20-18=2`.
+
+Guild 1 wins with a large gap over guild 2 (`16` vs `2`), so nearly all of
+`V`'s value becomes guild 1's rent, leaving the castle only `2`. Retuning the
+rule (e.g. shifting `q0`, or a nonzero `slopeHi` past it) changes both
+guilds' efficient scores and hence `E2`, which can shrink the winner's rent
+and raise the castle's true surplus. Which retuning helps depends on the
+printed cost tables, not on `V` alone -- searching this small space against
+the tables, not mirroring `V`, is the intended strategy.
+
+A valid worked output: `10 1 2 0 100`.

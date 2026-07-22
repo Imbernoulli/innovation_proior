@@ -1,0 +1,89 @@
+# Title
+Additive Interference Spectrum Packing
+
+## Problem
+A wireless operator owns `C` shared radio channels and wants to serve as many of
+`N` candidate point-to-point links as possible. Link `i` has a transmitter at
+integer point `(tx_i, ty_i)` and a receiver at integer point `(rx_i, ry_i)`, and
+carries a positive value `w_i` if it is served successfully. You may switch each
+link ON or OFF. Every ON link must be given one of `C` channels and one of `K`
+discrete power levels `P_1 < P_2 < ... < P_K`.
+
+Two transmissions on the **same channel** interfere with each other. Critically,
+interference is **additive**: a receiver suffers the sum of the power it picks up
+from every other transmitter sharing its channel, not just the strongest one.
+Treating "who conflicts with whom" as a pairwise yes/no relationship and coloring
+that conflict graph ignores this — several individually-mild interferers can add
+up and drown a receiver that none of them would drown alone.
+
+The channel gain between two points `a` and `b` is `g(a,b) = 1 / D(a,b)^(alpha/2)`,
+where `D(a,b) = max(1, squared Euclidean distance between a and b)` and `alpha`
+(an even integer, 2 or 4) is the path-loss exponent. For an ON link `i` using
+power level `P_{k_i}` on channel `c_i`, define:
+
+```
+signal_i       = P_{k_i} * g(tx_i, rx_i)
+interference_i = N0 + sum over ON links j != i with c_j = c_i of  P_{k_j} * g(tx_j, rx_i)
+SINR_i         = signal_i / interference_i
+```
+
+Link `i` is **successful** if it is ON and `SINR_i >= theta`.
+
+## Input
+```
+N C K
+alpha theta N0
+P_1 P_2 ... P_K
+tx_1 ty_1 rx_1 ry_1 w_1
+...
+tx_N ty_N rx_N ry_N w_N
+```
+`alpha` in {2,4}; `theta` and all other listed quantities are non-negative
+integers except `theta`, which may have up to 6 decimal digits. `1 <= N <= 200`,
+`1 <= C <= 6`, `3 <= K <= 6`, `1 <= P_1 < ... < P_K <= 10^5`, `1 <= N0 <= 10`,
+coordinates have absolute value `<= 2*10^6`, `1 <= w_i <= 2000`.
+
+## Output
+`N` lines. Line `i` has two integers `c k`:
+- `c = -1, k = -1` if link `i` is OFF, or
+- `1 <= c <= C` and `1 <= k <= K` if link `i` is ON, using channel `c` and power
+  level `P_k`.
+
+## Feasibility
+Every line must have exactly this two-integer shape (`c` in `[-1,C]`; if `c=-1`
+then `k` must equal `-1`; otherwise `1<=k<=K`). Any out-of-range token, wrong
+line count, or trailing data is rejected outright (score 0). There is no
+requirement that an ON link be successful — unsuccessful ON links are simply
+worth nothing.
+
+## Objective
+Maximize the total value of successful links:
+`F = sum over ON links i with SINR_i >= theta of w_i`.
+
+## Scoring
+The checker also builds a reference "no-reuse" allocation: the `min(N,C)`
+highest-value links (ties broken by smaller index), each given its own
+channel at the top power level `P_K` and left as the only ON link on that
+channel (always feasible, since it faces only noise `N0`). Its value is the
+baseline `B > 0`. Your score is `ratio = min(1000, 100 * F / B) / 1000`
+(capped at 1.0). Total score is the mean ratio over 10 hidden tests.
+
+## Constraints
+Time limit: 3 seconds. Memory limit: 512 MB.
+
+## Example
+`N=3, C=1, K=3`, `alpha=2, theta=4, N0=2`, powers `12 24 48`.
+Links: `(0,0)-(1,0) w=10`, `(0,0)-(0,1) w=10`, `(50,50)-(51,50) w=10`.
+Output:
+```
+1 3
+-1 -1
+1 3
+```
+Link 1 (tx (0,0)) interferes with link 3's receiver at negligible gain
+(far away) but strongly with link 2's receiver (distance 1). Link 3 is far
+from both and always succeeds alone. Turning link 2 off avoids drowning
+either itself or link 1: link 1 gets `SINR=48/2=24>=4` (success), link 3 gets
+`SINR=48/2=24>=4` (success). `F = 10+10 = 20`. Baseline picks the single
+highest-value link (any of the three, value 10) alone at `P_3=48`: `B=10`.
+`ratio = min(1000, 100*20/10)/1000 = 1.0`.

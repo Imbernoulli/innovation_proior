@@ -1,0 +1,98 @@
+# Brewery Batches Sharing One Thermal Storage Tank
+
+## Problem
+
+A brewery runs `N` batch tasks sharing **one** thermal storage tank of
+capacity `C`. Task `i` is either a **donor** (deposits `vol_i` liters of hot
+wastewater at temperature `temp_i`) or a **consumer** (withdraws `vol_i`
+liters that must be at least `req_i` degrees, or the shortfall is paid for
+with external heating at a per-task price `price_i`). Each task may run at
+any integer start time `s_i` inside its own window `[e_i, l_i]` — the only
+decision you make. Donors are not pre-assigned to consumers: any donor's
+deposit can end up serving any consumer's draw, depending only on timing.
+
+The tank is **not a buffer, it is a mixer**. When a donor's deposit is
+accepted, the tank's temperature updates by the volume-weighted rule
+`T' = (V*T + a*temp_i) / (V + a)`, where `a = min(vol_i, C - V)` is the
+volume actually accepted (the rest overflows) and `V' = V + a`. A
+consumer's withdrawal removes liquid at the tank's *current* temperature
+without changing it. All tasks are simulated in one global timeline,
+ordered by `(s_i, i)` (ties broken by input index) — so **the order
+deposits and withdrawals land, not just their sizes, determines every later
+temperature**. Hot supply is scarce: not every consumer that wants heat can
+get a fresh, undiluted deposit, so deciding which ones deserve it — and
+placing that donor immediately before its draw, so nothing dilutes it in
+between — is the whole game.
+
+## Input
+
+```
+N H C
+```
+then `N` lines, task `i` (1-indexed, in this order):
+```
+type vol e l p1 p2
+```
+`type = 0` (donor): `p1 = temp_i`, `p2 = 0` (unused).
+`type = 1` (consumer): `p1 = req_i`, `p2 = price_i`. `H` bounds every window
+(`0 <= e_i <= l_i <= H`).
+
+## Output
+
+Print `N` integers `s_1 ... s_N` (whitespace-separated), one per task in
+input order: your chosen start time for task `i`, with `e_i <= s_i <= l_i`.
+
+## Feasibility
+
+Every `s_i` must lie in `[e_i, l_i]`. That's it — any such choice is
+feasible (deposits truncate at capacity, shortfalls are always payable), so
+every valid output is scored, and the intended optimum is intractable to
+compute exactly.
+
+## Objective
+
+Simulate the tasks in `(s_i, i)` order from an empty tank (`V=0, T=0`). For
+each consumer, let `e = min(vol_i, V)` be the volume served from the tank
+and `sh = vol_i - e` the unmet volume. It pays
+`price_i * (e * max(0, req_i - T) + sh * req_i)`, then `V -= e` (temperature
+unchanged). **Minimize** `F`, the total price paid over all consumers.
+
+## Scoring
+
+The checker also simulates the **earliest-start** schedule (`s_i = e_i` for
+every task) to get a baseline cost `B > 0`. Your ratio for a test is
+`min(1000, 100 * B / max(1, F)) / 1000`, so matching the earliest-start
+baseline scores `0.1`, and cutting the cost scores higher (capped at `1.0`
+= a 10x reduction). Per-test ratios are averaged.
+
+## Constraints
+
+* `1 <= N <= 300`, `1 <= H <= 3000`, `100 <= C <= 400`.
+* `1 <= vol_i <= 300`, `0 <= temp_i, req_i <= 120`, `1 <= price_i <= 10`.
+* Time limit: 4 s. Memory limit: 512 MB.
+
+## Example
+
+`N=4, H=100, C=200`. Task 1 (forced-open consumer): `vol=50, e=l=1, req=20,
+price=2`. Task 2 (consumer A, cheap): `vol=100, e=40, l=45, req=90,
+price=2`. Task 3 (consumer B, expensive): `vol=100, e=60, l=65, req=90,
+price=8`. Task 4 (the only hot donor): `vol=100, e=2, l=100, temp=95`.
+
+Task 1 always runs alone at `t=1`, paying `2*50*20=2000` regardless. There
+is only ONE hot donor for two thirsty consumers, so the schedule must
+choose who gets it. The earliest-start default (`s_i=e_i` everywhere)
+deposits the donor at `t=2`, long before either consumer, so it naturally
+serves whoever is encountered first: A draws at `t=40` (`T=95>=90`, pays
+`0`), then B draws at `t=60` from an empty tank (`T=0`, pays
+`8*100*90=72000`) — total `74000`. That is exactly the earliest-start
+construction the checker uses as its baseline (`B=74000`), so it scores
+`0.1`.
+
+Aiming the *same* donor at B instead — deposit at `t=59`, draw B at `t=60`
+(`0`), leaving A to draw at `t=40` from an empty tank (`2*100*90=18000`) —
+totals `2000+18000=20000`, under a third the cost: ratio
+`min(1000,100*74000/20000)/1000=0.370`. B's higher price (8 vs 2) makes its
+deficit far more expensive per degree, so routing the scarce donor to the
+*encountered-first* consumer instead of the *highest-value* one
+(`price*req`) is exactly the trap — and with many consumers and few
+donors, that mistake compounds.

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0646",
+  "tier": "A",
+  "format": "C",
+  "family": "menu-spiral-insurance",
+  "eval_form": "quality-metric",
+  "theme": "guild insurance for caravan expeditions",
+  "title": "The Merchants' Guild: Screening Caravan Insurance",
+  "objective": "max",
+  "strategies": [
+    "trivial: one full-coverage contract priced at the raw (zero-markup) population-mean expected loss -- reproduces the checker's own weak fair-price anchor, roughly break-even",
+    "greedy: one full-coverage contract priced at a flat markup over the population-mean expected loss, ignoring each agent's outside option entirely -- collapses under adverse selection whenever risk and participation are correlated across a hidden type mixture",
+    "strong: filter agents by their participation ceiling (-u_i - p_i*L_i > 0) to decide who is profitable to serve AT ALL, split the servable pool by a risk gap into two tiers, run an exact sweep-optimal single-price search per tier (accounting for the risk-aversion variance penalty of partial coverage), and only add the low-coverage tier if it clears an incentive-compatibility check against the full-coverage tier",
+    "invalid: emits a menu with more than 6 contracts / coverage outside [0,1] / a negative premium -- rejected"
+  ]
+}

@@ -1,0 +1,91 @@
+# Compressed-Air City Grid: Booster Siting Under Quadratic Line Loss
+
+## Problem
+
+A city's compressed-air network has `V` junctions and `E` undirected pipes. Pipe `e` connects
+junctions `u_e` and `v_e` and has a base loss coefficient (resistance) `r_e >= 1`: pushing a
+signed flow `f_e` through it dissipates `r_e * f_e^2` units of energy (positive `f_e` means the
+flow runs from `u_e` to `v_e`; negative means the reverse direction). `S` junctions are
+**compressor sources**, each required to inject a fixed amount of air; `T` junctions are
+**consumer sinks**, each required to absorb a fixed amount; every other junction must pass flow
+through unchanged (net zero). Total supply always equals total demand.
+
+Some pipes are **booster-ready** (flagged `cand=1` in the input) — a compressor station can be
+mounted mid-pipe to re-pressurize the flow, cutting that pipe's loss coefficient from `r_e` down
+to `r_e - gain_e` (never below 1, and never applied to a `cand=0` pipe). You may site at most `K`
+boosters, one per pipe, choosing freely among the booster-ready pipes. You control both **where
+the `K` boosters go** and **how every unit of flow is routed and split** across the whole network
+— the two choices interact tightly, since the cheapest way to route flow depends on which pipes
+just got cheaper, and the best pipes to boost depend on how flow is currently routed.
+
+## Input
+
+```
+V E S T K
+```
+then `S` lines `node amt` (compressor sources), then `T` lines `node amt` (consumer sinks), then
+`E` lines, pipe `e` in input order (1-indexed):
+```
+u v r cand gain
+```
+(`cand=0` means the pipe cannot be boosted and `gain=0`; `cand=1` means a booster there would
+lower its coefficient from `r` to `r-gain`).
+
+## Output
+
+A single whitespace-separated token stream:
+```
+M b_1 b_2 ... b_M f_1 f_2 ... f_E
+```
+`M` (`0 <= M <= K`) is the number of boosted pipes; `b_1..b_M` are their indices (distinct, each
+with `cand=1` in the input); `f_1..f_E` is a real-valued signed flow for every pipe, in input
+order.
+
+## Feasibility
+
+Every `b_i` lies in `[1,E]`, all distinct, and `cand[b_i]=1`. Every `f_e` is finite with
+`|f_e| <= 10^6`. At every source node, net outflow equals its required amount; at every sink
+node, net inflow equals its required amount (tolerance `1e-3`); at every other junction, net
+flow is exactly zero (same tolerance). Any violation scores `0`.
+
+## Objective
+
+Minimize `F = sum_e r'_e * f_e^2`, where `r'_e = r_e - gain_e` if pipe `e` was boosted, else
+`r'_e = r_e`.
+
+## Scoring
+
+The checker independently builds a reference value `B`: process sources in increasing node id;
+for each, repeatedly send its still-unsatisfied amount to the nearest (fewest-pipes) sink that
+still has unmet demand, along one single fixed path — never splitting flow across parallel
+pipes and never using a booster. `B` (always positive) is the total dissipation of that
+reference routing. Your score on a test is
+```
+ratio = min(1000, 100 * B / max(1e-9, F)) / 1000
+```
+so reproducing the reference scores `0.1`; any real improvement scores higher, capped at `1.0`
+(ten times better than the reference). The final score is the mean ratio over the 10 tests.
+
+## Constraints
+
+`3 <= V <= 140`, `V-1 <= E <= 260`, `1 <= S,T <= 4`, `1 <= K <= 8`, `1 <= r_e <= 60`,
+`1 <= gain_e < r_e` whenever `cand=1`. `1 <= amt <= 500` (source/sink amounts). The graph is
+connected. Time limit: 4s. Memory limit: 512MB.
+
+## Example
+
+`V=3 E=3 S=1 T=1 K=1`. Source: node 1, amount 12. Sink: node 3, amount 12. Pipes:
+`1 2 8 1 6` (pipe 1, booster-ready, gain 6), `1 2 8 0 0` (pipe 2, a plain parallel twin of
+pipe 1), `2 3 2 0 0` (pipe 3).
+
+Routing everything through pipe 1 alone (`f = (12, 0, 12)`, no booster) gives
+`F = 8*144 + 0 + 2*144 = 1440` — exactly the reference `B`, ratio `0.1`.
+
+Splitting evenly across the parallel twins 1 and 2 (`f = (6, 6, 12)`, no booster) gives
+`F = 8*36 + 8*36 + 2*144 = 864`, ratio `~0.167`: dividing the flow between two equal pipes
+quarters each pipe's own loss but only halves the flow, so the pair's total loss halves.
+
+Boosting pipe 1 (its coefficient drops `8 -> 2`) and re-splitting proportionally to the new
+conductances (`f = (9.6, 2.4, 12)`) gives `F = 2*92.16 + 8*5.76 + 2*144 = 518.4`, ratio
+`~0.278`: the booster and the re-split reinforce each other, and neither choice alone reaches
+this value.

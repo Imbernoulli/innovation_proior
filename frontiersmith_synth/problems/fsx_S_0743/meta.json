@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0743",
+  "tier": "S",
+  "format": "D",
+  "family": "macro-plotter-economy",
+  "eval_form": "flops",
+  "theme": "cheapest plotter program for a symmetric emblem",
+  "title": "Symmetric Emblem Compiler",
+  "objective": "min",
+  "strategies": [
+    "literal per-cell DOT of the full orbit closure (trivial)",
+    "one macro over every given anchor + 8 symmetry calls, no dedup (greedy)",
+    "dedup anchors to one representative per underlying orbit before macro+8-calls (strong)",
+    "nested subgroup-chain macro composition to shrink the +8 tail toward O(log|G|) (open ceiling, uncovered)"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0881",
+  "tier": "A",
+  "format": "E",
+  "family": "quench-law-regime-extrapolation",
+  "eval_form": "quality-metric",
+  "theme": "reverse-engineering the smith's quench log",
+  "title": "The Smith's Quench Log — recovering a hidden two-regime cooling law",
+  "objective": "max",
+  "strategies": [
+    "trivial: predict a flat constant delta (the mean of the logged dT column) -> reproduces the checker's own baseline exactly, Ratio ~= 0.1",
+    "greedy: fit a single-mechanism affine model dT = p*T + q by ordinary least squares on the logged rows; explains the logged range almost perfectly (the cubic term barely perturbs any single point there) but omits the radiative regime entirely, so it collapses on the far-hotter held-out temperatures where that term dominates",
+    "strong: the insight -- don't trust the affine model's already-excellent training R^2 as proof there is nothing more to model (the cubic term is smaller than the reading noise on every single row, so no in-sample goodness-of-fit signal singles it out); commit instead to the physically-motivated two-term additive decomposition dT = a*(T-AMBIENT) + b*(T-AMBIENT)**3 and jointly fit BOTH coefficients by ordinary least squares over the entire log at once -- by Frisch-Waugh-Lovell this is exactly the correctly-partialled residual signal, and aggregating every row (not any single point) is what makes the small coefficient recoverable, so the law now extrapolates correctly",
+    "headroom above strong: robustify the coefficient recovery (e.g. iteratively re-weighted or trimmed least squares against the noisy log) to shave the remaining held-out error toward the irreducible noise floor"
+  ]
+}

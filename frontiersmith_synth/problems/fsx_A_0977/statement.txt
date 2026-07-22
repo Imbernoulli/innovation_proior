@@ -1,0 +1,96 @@
+# Retensioning the Ground-Braced Mast Array
+
+## Problem
+
+A 1-D tensegrity array has `n` nodes, positioned along a line at fixed **target**
+coordinates `target[0..n-1]`. Node `0` is the ground anchor, permanently at
+position `0`. Every other node is one of two kinds:
+
+* **Strut node**: rigidly welded to some earlier node by a fixed signed offset
+  `d` (`position[v] - position[u] = d`, always, non-negotiable). A node
+  connected to the ground through a chain of struts is **grounded**: its
+  position is forever exactly `target[node]`.
+* **Free node**: not welded to anything. Instead it is held by two or more
+  **cables** — tension-only springs, each running to a grounded node, with a
+  given stiffness `k` and a rest length **you choose**. A free node's actual
+  position is wherever its incident cables balance: the unique `x` minimizing
+  `e(x) = sum over its cables of 0.5 * k * max(0, |x - anchor_pos| - rest)^2`
+  (a cable pulls once stretched taut past its rest length; it goes slack —
+  zero force — once compressed to or below rest length).
+
+You are given the full network (struts, cables, every cable's stiffness) and
+must output a rest length for every cable. The network is then released and
+settles to its physical equilibrium. You are scored on how close every free
+node's equilibrium lands to its target, on how little unnecessary tension
+your prestress carries, and on whether the target is a **stable** equilibrium
+at all — pulling a free node from only one side lets it be shoved off target
+for free the instant it's disturbed; it needs a taut cable resisting BOTH
+directions.
+
+## Input
+
+```
+n s c
+target_0 target_1 ... target_{n-1}
+```
+then `s` lines (struts): `u v d` meaning `position[v] - position[u] = d`.
+Then `c` lines (cables): `u v k` meaning a spring of stiffness `k` between `u`
+and `v`; you supply its rest length.
+
+## Output
+
+Print `c` non-negative real numbers, the rest length of cable `i` (input
+order), one per line.
+
+## Feasibility
+
+Every rest length must be a finite real in `[0, 100000]`. Any violation (out
+of range, non-finite, wrong count, trailing tokens) scores `0`.
+
+## Objective
+
+Minimize
+```
+F = sum over free nodes (equilibrium_x - target)^2
+  + 0.05 * sum over cables k * max(0, |equilibrium_gap| - rest)
+  + 2.5  * (# free nodes lacking a taut cable pulling from BOTH sides)
+```
+The first term is shape error. The second is the actual tension every cable
+carries at equilibrium (unnecessary prestress is charged). The third punishes
+a free node that isn't genuinely braced from both directions — even if it
+sits at its target, it isn't a *stable* fixed point. A cable counts as "taut"
+once its force exceeds `0.03`.
+
+## Scoring
+
+Let `B` be the objective of the checker's own reference: every cable's rest
+length set to exactly the target-shape distance between its two endpoints (so
+every cable is unstretched — zero tension — at the target). Your score for a
+test case is
+```
+ratio = min(1000, 100 * B / max(1e-6, F)) / 1000
+```
+so that reference scores `0.1`; a real improvement scores higher, capped at
+`1.0`. Per-test ratios are averaged over 10 cases.
+
+## Constraints
+
+* `3 <= n <= 120`, node `0` is the anchor.
+* Every strut's `d` is a nonzero integer; every cable's `k` is an integer in
+  `[1, 20]`.
+* Every free node has at least one cable to a grounded node on each side
+  (smaller and larger target position).
+* Time limit: 4 s. Memory limit: 512 MB.
+
+## Example
+
+`n=3, s=1, c=2`. Targets `0 8 20`. Strut `0 2 20` (node 2 rigidly at `20`).
+Cables `1 0 10` and `1 2 10` (node 1 is free, pulled by two stiffness-10
+cables to the grounded nodes 0 and 20; its target is `8`, so the gaps are `8`
+and `12`).
+
+Output `7.95` then `11.95`: both cables carry the same tension (`0.5`), so
+node 1's forces cancel exactly at `x=8` — the target — and both stay taut, so
+it's a stable brace. `B` (rest = `8` and `12` exactly) leaves both cables at
+zero tension there: unstable, penalized, scoring only `0.1`; this construction
+scores far higher.

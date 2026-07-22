@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1077",
+  "tier": "A",
+  "format": "D",
+  "family": "linear-map-add-minimization",
+  "eval_form": "flops",
+  "theme": "Wire a fixed linear map with fewest additions",
+  "title": "Butterfly Wiring: Minimal-Addition Straight-Line Program for a Fixed Linear Map",
+  "objective": "minimize",
+  "strategies": [
+    "independent per-row dot product, one instruction per nonzero entry (trivial)",
+    "single left-to-right chain per row with exact-prefix memoization (greedy)",
+    "iterative best-shared-pair discovery across ALL rows (Boyar-Peralta-style CSE), recovering the planted butterfly/sparse-factorization structure (strong)",
+    "true minimum-addition SLP (shortest linear program) is NP-hard in general -- open ceiling, uncovered"
+  ]
+}

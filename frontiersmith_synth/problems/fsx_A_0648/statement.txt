@@ -1,0 +1,111 @@
+# Four Looms, One Rope
+
+## Problem
+
+A workshop conducts `n` typed manufacturing steps (nodes) that must be run on a
+machine with `K` issue **lanes** per cycle (think four looms weaving strands into
+one rope). Every step has a fixed lane-type in `[0, K)`; at most one step of each
+type may issue per cycle, so at most `K` steps issue per cycle overall. Step `v`
+depends on a list of predecessor steps: it may only be **produced** once every
+predecessor's value is currently **held** on the floor. A value produced in cycle
+`c` becomes usable starting cycle `c+1` (never the same cycle it was made).
+
+The floor has only `R` **holding fixtures** (registers). A produced value occupies
+one fixture until you explicitly **release** it (free, no lane cost). Once released,
+if you need that value again later you must **re-make** it: an unconditional
+**recompute** instruction (same lane-type cost as the original, but legal as soon
+as the step has been made at least once and is currently released) that also
+requires that step's own predecessors to be currently held. There is exactly one
+required final step, node `n` (the finished rope): the schedule ends once it has
+been made and it must still be held when you stop.
+
+## Input
+
+```
+n m R K
+type_1 type_2 ... type_n
+```
+then `m` lines, one dependency edge each:
+```
+u v
+```
+meaning step `v` needs step `u`'s value. Edges satisfy `u < v`. Node `n` has no
+outgoing edges; it is the unique step required at the end.
+
+## Output
+
+Print `T` (the number of cycles you use), then `T` lines, one per cycle:
+```
+p  op_1 v_1 op_2 v_2 ... op_p v_p   d  w_1 w_2 ... w_d
+```
+`p` (`0 <= p <= K`) is how many steps issue this cycle: each `(op, v)` pair is
+`op=0` (make `v` for the first time) or `op=1` (recompute `v`). `d` is how many
+values you release this cycle (list their ids `w_1..w_d`); a release is free and
+not lane-limited. Within one cycle no two issued steps may share a lane-type.
+
+## Feasibility
+
+* Each step is made (`op=0`) **exactly once**, ever.
+* `op=1` on `v` is only legal if `v` was already made and is currently released.
+* For any issued `(op, v)`, every predecessor of `v` must currently be held
+  (made/remade at a strictly earlier cycle than the current one, and not
+  released since).
+* A release must name a currently-held value.
+* After a cycle's instructions and releases, the number of currently-held
+  values must be `<= R`.
+* Node `n` must be held when the last cycle ends.
+Any violation scores `0`.
+
+## Objective
+
+Minimize `T`, the number of cycles used.
+
+## Scoring
+
+Let `B = n` (the cost of the simplest valid plan: make each step once, one lane
+per cycle, releasing every value right after its true last use -- always
+feasible). Your score on a test is
+```
+ratio = min(1000, 100 * B / max(1, T)) / 1000
+```
+so the one-lane baseline scores `0.1`, and packing all `K` lanes well scores
+higher (capped at `1.0`). Per-test ratios are averaged.
+
+## Constraints
+
+* `4 <= n <= 900`, `K = 4` always.
+* `1 <= R <= n`.
+* Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+```
+7 6 4 4
+0 1 2 3 0 1 2
+1 2
+2 3
+4 5
+5 6
+1 5
+3 7
+6 7
+```
+Two 3-step strands (`1->2->3` and `4->5->6`) braid into rope `7`; strand two's
+middle step `5` also needs strand one's root `1`. A schedule using both lanes
+every cycle:
+```
+4
+2 0 1 0 4 0
+2 0 2 0 5 2 1 4
+2 0 3 0 6 2 2 5
+1 0 7 2 3 6
+```
+Cycle 1 makes both roots (`1`,`4`); cycle 2 makes `2` and `5` (root `1` was still
+held), then releases `1` and `4` since nothing needs them again; cycle 3 makes
+`3` and `6`, releasing `2` and `5`; cycle 4 makes the rope from `3` and `6`. Peak
+held count never exceeds `2`, well under `R=4`. `T=4`, `B=7`, so
+`ratio = min(1000, 100*7/4)/1000 = 0.175`. A plan that instead held `1` alive
+the whole time (never releasing it after cycle 1's use) would need one more
+fixture but reach the same `T`; the fixture crunch only bites once many strands
+braid in parallel with rare, far-apart reuses -- releasing eagerly and
+re-making cheap roots on demand is what keeps every lane busy at scale.

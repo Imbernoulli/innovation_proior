@@ -1,0 +1,19 @@
+{
+  "id": "fsx_A_0866",
+  "tier": "A",
+  "format": "B",
+  "family": "deadtime-damped-regulation",
+  "eval_form": "quality-metric",
+  "theme": "microgrid frequency regulation via reserve dispatch",
+  "title": "Reserve Dispatch Against a Dead-Time Actuator",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:topup-B-2"],
+  "mechanisms": ["actuator-deadtime-lag", "oscillation-instability-threshold"],
+  "innovation_hook": "Command reserves against the predicted post-lag state, damping the deterministic delay instead of the visible error.",
+  "strategies": [
+    "trivial: constant feedforward reserve equal to the forecast's mean -- no feedback, no model use at all",
+    "greedy: deadbeat proportional controller that cancels the currently visible deviation using the true a/b/d model but without accounting for the actuator's L-step dead-time -- overshoots into sustained oscillation across the instability threshold whenever the lag is not small relative to the grid's memory or the disturbance is abrupt",
+    "strong: dead-time (Smith-predictor-style) compensator -- propagates the known model L steps ahead using the public forecast and the already-committed in-flight commands, and damps that PREDICTED post-lag state instead of the visible error",
+    "invalid: ignores the u_max box constraint -- scores 0 on every instance"
+  ]
+}

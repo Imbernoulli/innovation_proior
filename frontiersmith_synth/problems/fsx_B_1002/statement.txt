@@ -1,0 +1,97 @@
+# The Surfing Barista
+
+## Problem
+A tiny espresso bar has exactly one boiler and a queue of `N` drink orders.
+The boiler temperature is an integer in **centi-degrees Celsius** (`9000`
+means `90.00C`). It is controlled only by a bang-bang heater with hysteresis
+-- never set directly. Each tick `t = 0,1,2,...`, given heater state `H`, the
+temperature updates by `T += ((target - T) * P) / Q` (integer division,
+truncated toward zero), where `(target,P,Q) = (T_HOT,PH,QH)` while `H=1`
+(heating), or `(T_COLD,PC,QC)` while `H=0` (cooling). After the update, `H`
+becomes `1` if `T <= T_LO`, becomes `0` if `T >= T_HI`, else stays unchanged.
+Since `T_HOT > T_HI` and `T_COLD < T_LO`, the boiler drifts up past `T_HI`,
+down past `T_LO`, forever -- a fully deterministic, perpetual oscillation you
+cannot command, only ride.
+
+At any tick you may take **at most one action**: **pull** a specific pending
+order, or **flush** (drop the boiler by a fixed `FLUSH_DROP`, floored at 0) --
+a flush costs no serving time, but only `FMAX` total flushes exist. A pull
+never changes the temperature; it only reads it.
+
+Order `i` arrives at tick `a_i` and, if served at all, must be pulled at some
+tick in `[a_i, d_i]`. It wants the boiler within `[lo_i, hi_i]` and has weight
+`w_i`. Let `band` be `0` if the pull temperature is inside `[lo_i,hi_i]`, else
+the distance to the nearer bound. Then
+`Q_i = max(0, 1000 - 2*band - 12*max(0, (t_i - a_i) - 3))`
+(3 free ticks of wait, then 12 quality lost per extra tick; 2 quality lost
+per centi-degree of miss). An unpulled order scores `0`. Objective:
+`F = sum_i w_i * Q_i`, maximized.
+
+## Input
+```
+N Tmax T_LO T_HI T_HOT PH QH T_COLD PC QC T0 H0 FLUSH_DROP FMAX
+a_1 d_1 lo_1 hi_1 w_1
+...
+a_N d_N lo_N hi_N w_N
+```
+All integers; `T0` is the temperature at tick 0, `H0` the initial heater
+state, `PH<QH` and `PC<QC` are both positive.
+
+## Output
+```
+M
+t_1 k_1
+...
+t_M k_M
+```
+`M` actions with strictly increasing ticks. `k_j = -1` means flush at `t_j`;
+`k_j` in `[0,N-1]` means pull order `k_j` at `t_j`.
+
+## Feasibility
+- `0 <= M <= Tmax`; every `t_j` in `[0,Tmax-1]`, strictly increasing.
+- Every `k_j` in `[-1,N-1]`; each order index pulled at most once, only at a
+  tick in `[a_i,d_i]`.
+- At most `FMAX` actions have `k_j = -1`.
+Any violation scores 0.
+
+## Scoring
+The checker also builds its own simple reference from the input alone
+(serving orders back-to-back in arrival order, on the boiler's never-flushed
+trajectory, without regard to temperature accuracy) for a positive baseline
+`B`. Reported ratio: `min(1000, 100*F/B) / 1000`, capped at `1.0`.
+
+## Constraints
+`6 <= N <= 260`, `150 <= Tmax <= 1900`, all temperatures fit in `[0,20000]`.
+Time limit: 3 s. Memory: 512 MB. Each `.in` file is well under 5 MB.
+
+## Example
+`N=6 Tmax=150 T_LO=9000 T_HI=9700 T_HOT=15000 PH=1 QH=30 T_COLD=3000 PC=1
+QC=30 T0=9000 H0=1 FLUSH_DROP=400 FMAX=1`. Two interesting orders:
+`0: a=0 d=5 lo=9500 hi=9650 w=3` and `1: a=0 d=1 lo=8750 hi=8850 w=3`; orders
+2-5 are filler with unreachable windows (e.g. `lo=19000 hi=19500`), left
+unserved, contributing `0`. With no action the boiler runs
+`T[0..4] = 9000, 9200, 9393, 9579, 9759` (heating throughout), so order 0's
+window is hit naturally at `t=3` (`T=9579`). Order 1's window is never
+reached that early naturally (`T[1]=9200`) -- only flushing at `t=0` (drop to
+`8600`) then heating one step gives `T[1]=8600+((15000-8600)*1)/30 = 8813`,
+inside `[8750,8850]`. Output:
+```
+3
+0 -1
+1 1
+3 0
+```
+Order 1 at `t=1`, `T=8813`, `wait=0`: `Q_1=1000`, contributes `3000`. Order 0
+at `t=3`, `T=9579`, `wait=0`: `Q_0=1000`, contributes `3000`. `F=6000`. The
+checker's own back-to-back reference (never flushes, so it misses order 1 and
+only partly catches order 0) gives `B=900`, so
+`Ratio = min(1000, 100*6000/900)/1000 = 0.667`.
+
+## Notes on strategy
+The oscillation happens regardless of what you do, so pulling the instant an
+order arrives usually misses its window -- waiting for the boiler's own sweep
+is free. A flush is the only way to reach a value the current leg has
+already passed, and there are never enough of them, so spend them where a
+window is otherwise unreachable before its deadline, not as a shortcut for
+patience. With one action per tick, a busy stretch also means choosing which
+pending order is worth the slot.

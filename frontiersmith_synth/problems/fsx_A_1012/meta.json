@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1012",
+  "tier": "A",
+  "format": "C",
+  "family": "haul-switchback-pipeline",
+  "eval_form": "quality-metric",
+  "theme": "mine haul trucks cycling a narrow switchback road",
+  "title": "Switchback Haul Road: Phase-Locked Convoy Pipeline",
+  "objective": "max",
+  "strategies": [
+    "serial baseline: run one truck through complete round trips while the rest of the fleet sits idle at the pit (reproduces the checker's own trivial baseline)",
+    "reactive dispatch: every truck advances the instant its next segment and pullout are free and its heat allows it, with no fleet-wide plan (a strong coder's first instinct)",
+    "phase-locked convoy: simulate one truck's descent to find the bottleneck segment time and any mandatory cooldown stop, derive a single cadence r from both, and launch the whole fleet as direction-segregated waves spaced exactly r apart",
+    "cadence search / local perturbation around the phase-locked wave (fine-tune r and wave boundaries per instance)"
+  ]
+}

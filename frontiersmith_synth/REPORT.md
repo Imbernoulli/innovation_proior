@@ -5,7 +5,7 @@ models that *generalize* across the "LLM writes code to optimize a scored object
 re-implements the withheld parts of **FrontierSmith** (arXiv 2605.14445) and extends the idea across
 the whole evolutionary-search / scientific-discovery landscape.
 
-**Result: 500 problems, all machine-verified, spanning 12 source frameworks, 136 task-types, 134 domains.**
+**Result: 1006 problems, all machine-verified, spanning 638 families and 1006 unique scaffolds.**
 
 ---
 
@@ -45,28 +45,26 @@ a 10×-better solution caps at 1.0. Every problem ships a 4-rung **solution ladd
 
 ---
 
-## 3. The 500-problem corpus
+## 3. The 1006-problem corpus
 
 | by format | count | | by tier (band) | count |
 |---|---|---|---|---|
-| A testlib combinatorial | 182 (36%) | | S graph/combinatorial core | 160 |
-| B evolve-a-heuristic | 125 | | A math-discovery / heuristic | 140 |
-| C constructive + verifier | 119 | | G breadth-fill (domains/tasks) | 84 |
-| D FLOPs / op-count kernel | 40 | | B engineering + science | 60 |
-| E symbolic / scientific-law | 34 | | C ML-method + exotic | 40 |
-| | | | N bespoke-novelty | 16 |
+| A testlib combinatorial | 184 | | S graph/combinatorial core | 160 |
+| B evolve-a-heuristic | 126 | | A math-discovery / heuristic | 140 |
+| C constructive + verifier | 620 | | G breadth-fill and bulk domains/tasks | 588 |
+| D FLOPs / op-count kernel | 41 | | B engineering + science | 60 |
+| E symbolic / scientific-law | 35 | | C ML-method + exotic | 40 |
+| | | | N bespoke-novelty | 18 |
 
-- **Scoring types:** quality-metric 418 · flops 47 · correctness 35.
-- **Datasets/frameworks represented:** Frontier-CS 167 · AlphaEvolve 104 · ALE-Bench 95 · Frontier-Eng
-  92 · SimpleTES 71 · MLS-Bench 67 · OpenEvolve 63 · ThetaEvolve 42 · TTT-Discover 42 · FunSearch 41 ·
-  FrontierSmith 16.
-- **136 distinct task-types, 134 distinct domains** — incl. 20 hard-science domains for the E format
-  (astrophysics, chemistry, systems biology, economics, ML-scaling laws, materials, epidemiology, fluid
-  dynamics, thermodynamics, pharmacology, quantitative finance, …) and op-count kernels for D (matmul
-  tensor rank, addition chains, sorting networks, XOR circuits, reversible circuits, QAOA SWAP count, …).
+- **Scoring types:** quality-metric 923 · flops 48 · correctness 35.
+- **Source tags represented:** the original cross-framework taxonomy, bespoke novelty additions,
+  breadth-fill supplements, and the new bulk Format-C constructive-selection tranche.
+- **638 distinct families and 1006 unique `(family, theme, variant)` scaffolds** — including hard-science
+  E-format domains, op-count D-format kernels, isolated B-format heuristic evaluators, and 500 new
+  budget/conflict/coverage/diversity constructive domains.
 
-The distribution is deliberately flattened toward the generalization-relevant tail: combinatorial-A was
-cut from 42%→36% and the reproducible-kernel + scientific-discovery share (D+E) raised 9%→14%.
+The distribution is deliberately expanded toward the generalization-relevant constructive tail: the
+latest bulk tranche adds 500 budget/conflict/coverage/diversity Format-C tasks across distinct domains.
 
 ---
 
@@ -156,19 +154,19 @@ synth/
     validate_pyproblem.py              8-gate harness (program mode: B)
     isorun.py                          bwrap-sandboxed candidate runner
     testlib.h  _selftest{,_C,_B}
-  seeds/build_seed_list.py             taxonomy → seed_list.jsonl (500 specs; --batch/--per-tier)
+  seeds/build_seed_list.py             taxonomy/supplements → seed_list.jsonl (`--current` = 1006 specs)
   reports/
     taxonomy_proposal.json             researched cross-framework taxonomy
     verify_all.sh  scan_defects.py  aggregate.py
     blind*_MAPPING_secret.json         blind-comparison results
   generate_problems.workflow.js        fan-out: 1 agent/problem, author → self-validate → repair
   research_frameworks.workflow.js      the 10-framework research + synthesis workflow
-  problems/<id>/                       the 500 problems (testdata/ regenerates via the harness)
+  problems/<id>/                       the 1006 problems (testdata/ regenerates via the harness)
 ```
 
 ```bash
 cd synth
-python3 seeds/build_seed_list.py                 # regenerate the seed plan
+python3 seeds/build_seed_list.py --current        # regenerate the current 1006-spec seed plan
 bash   reports/verify_all.sh                      # ground-truth re-verify every problem (needs bwrap)
 python3 reports/aggregate.py                       # → summary.{json,md}
 # generation is driven by the Workflow tool over compact {id,format} routes.

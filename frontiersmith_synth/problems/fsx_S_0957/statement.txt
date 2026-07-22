@@ -1,0 +1,94 @@
+# The Unrepeating Facade
+
+## Problem
+
+A cladding studio has cut a catalog of square **Wang tiles** for a building facade.
+Every tile has four edge colors — North, East, South, West. Two tiles may sit
+side by side only if their touching edges share the same color: the tile to the
+left's East color must equal the tile to the right's West color (horizontal
+rule), and the tile above's South color must equal the tile below's North
+color (vertical rule). Rotations are not allowed; you place tiles exactly as
+listed in the catalog.
+
+The studio wants to clad an `R`-row by `W`-column facade panel using this
+catalog (tiles may be reused any number of times). Architecturally, a facade
+that repeats itself every few columns reads as cheap and mass-produced; one
+that never settles into a short repeating band, yet still shows rich local
+texture, reads as bespoke. The catalog does not tell you which tiles form a
+repeating loop and which don't — you have to work that out from the edge
+colors yourselves.
+
+Any fully edge-matching tiling of the panel is feasible; there is no known
+optimal tiling, and simple heuristics (local matching, randomized repair) are
+easy to write but tend to walk straight into a repeating loop.
+
+## Input
+
+Line 1: three integers `R W T` — panel rows, panel columns, catalog size.
+Each of the next `T` lines describes one catalog tile (1-indexed by order):
+```
+N E S W
+```
+four integers, the tile's North/East/South/West edge colors.
+
+## Output
+
+Print `R` lines of `W` space-separated integers: the tile index (`1..T`,
+reuse allowed) placed at each panel cell, row-major.
+
+## Feasibility
+
+An output is feasible iff every printed index lies in `1..T`, every
+horizontally adjacent pair satisfies `East(left) == West(right)`, and every
+vertically adjacent pair satisfies `South(above) == North(below)`. Any
+infeasible output scores `0`.
+
+## Objective
+
+Let `matchFrac(p)` (for a horizontal shift `1 <= p <= floor(W/2)`) be the
+fraction of cells `(i,j)` with `j+p < W` such that your tile at `(i,j)` equals
+your tile at `(i,j+p)`. Let `periodicity = 1 - max_p matchFrac(p)` — high when
+no shift makes the facade look like a copy of itself, 0 when the facade is
+exactly periodic with some period `<= W/2`.
+
+Let `motif` be the number of **distinct** 4x4 windows of tile indices that
+appear anywhere in your panel (an aperiodic, hierarchically-structured tiling
+naturally shows far more distinct local texture than a periodic one).
+
+You are **maximizing** a blend of the two:
+```
+F = 10 + 60*periodicity + 40*min(1, motif/30)
+```
+
+## Scoring
+
+Let `B` be `F` for the checker's own baseline: repeat the catalog's
+smallest-index self-loop tile (a tile with `N==S` and `E==W`) at every cell
+(always feasible; `periodicity=0`, `motif=1`). The score for a test is
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+The overall score is the mean ratio across all tests.
+
+## Constraints
+
+`6 <= R <= 32`, `12 <= W <= 320`, `T` is always `16` (every combination of two
+North/South colors and two East/West colors). Time limit: 5 s. Memory: 512 MB.
+
+## Example
+
+Catalog (`T=4`, toy-sized for illustration):
+```
+1: N=1 E=1 S=1 W=1
+2: N=1 E=2 S=1 W=1
+3: N=1 E=1 S=1 W=2
+4: N=1 E=2 S=1 W=2
+```
+For an `R=4, W=6` panel, repeating tiles `2,3,2,3,2,3` in every row is
+feasible (edges match: `2`'s East=2 meets `3`'s West=2; `3`'s East=1 meets
+`2`'s West=1). It has `periodicity = 0` (fully period-2) but two distinct 4x4
+windows (`2,3,2,3` vs `3,2,3,2`), so `motif=2`: `F = 10 + 0 + 40*(2/30) =
+12.667`. The baseline repeats tile `1` everywhere: `F = B = 10 + 40*(1/30) =
+11.333`. Score: `min(1.0, 0.1*12.667/11.333) = 0.112` — barely above the
+do-nothing floor, because a short repeating band still zeroes the dominant
+`periodicity` term.

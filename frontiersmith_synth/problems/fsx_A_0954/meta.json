@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0954",
+  "tier": "A",
+  "format": "B",
+  "family": "state-matched-dispatch-policy",
+  "eval_form": "quality-metric",
+  "theme": "job router for a shop of aging machines",
+  "title": "Job Router for a Shop of Aging Machines",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:state-coupled-scheduling"],
+  "strategies": [
+    "trivial: round-robin over machines, ignoring job type/weight/size and every machine's state (~0.1 by construction, matches the evaluator's own weak recipe)",
+    "greedy: shortest-queue dispatch -- always send the job to whichever machine currently becomes free soonest, ignoring abrasion/polish sensitivity and job type; load-balances queue length but spreads wear evenly instead of concentrating it, so it never builds a genuinely fast machine and never protects one from cheap abrasive filler -- lands far from strong on the trap instances where filler abrasive jobs are cheap/low-weight and finishing jobs are rare/high-weight or arrive in short alternating bursts",
+    "strong: portfolio dispatch -- route abrasive jobs toward whichever machine has the lowest abrasion sensitivity (cheapest to sacrifice) and finishing jobs toward whichever machine has the highest polish sensitivity (deliberately builds a fast machine for the valuable work), with a queueing-overflow safety valve that falls back to real-time earliest-completion when the preferred machine's queue has drifted too far ahead; degenerates gracefully to load-balancing when machines are symmetric",
+    "invalid: requests a machine id far out of range on the first job -> the whole instance is voided, scores 0.0"
+  ]
+}

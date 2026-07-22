@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0627",
+  "tier": "S",
+  "format": "B",
+  "family": "probe-budget-mechanism-id",
+  "eval_form": "quality-metric",
+  "theme": "twenty questions against a sealed physics box",
+  "title": "Twenty Questions Against a Sealed Physics Box",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:hidden-law-discovery"],
+  "strategies": [
+    "do-nothing baseline: never probe, predict flat zero everywhere (reproduces the evaluator's predict-zero reference)",
+    "uniform-sweep regression: spend the entire budget on a single uniform grid of probes over the queryable window, then piecewise-linearly interpolate/extrapolate; ignores the stated symmetry and never adapts, so it resolves smooth interior it didn't need and is blind on the un-probeable tail",
+    "adaptive bisection toward breakpoints: after a coarse sweep, refine probes near detected slope-kinks so each breakpoint is pinned instead of smeared",
+    "symmetry-exploiting experiment design: triangulate the hidden reflection center/offset from probed pairs, adaptively localize breakpoints, and predict the un-probeable tail by reflecting through the identified symmetry instead of extrapolating"
+  ]
+}

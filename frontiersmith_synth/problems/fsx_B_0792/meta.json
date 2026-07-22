@@ -1,0 +1,19 @@
+{
+  "id": "fsx_B_0792",
+  "tier": "B",
+  "format": "A",
+  "family": "granular-deflector-village-shield",
+  "eval_form": "quality-metric",
+  "theme": "alpine village braces for avalanche season",
+  "title": "Village Shield: Deflectors Over the Avalanche Line",
+  "objective": "min",
+  "seed_problem": "avalanche/rockfall protective barrier placement (defensive wall design)",
+  "mutation": "composite: barrier orientation decomposes an incoming packet's momentum into a normal component the barrier must fully absorb (wall) versus a much smaller turn-dependent fraction (oblique deflector) it must absorb, a further fixed-percentage energy loss applies only on a successful deflection (cascading dissipation that compounds over a chain of turns), and every barrier is capped at a physically low per-cell height so no wall, at any budget, can ever arrest the calibrated high-momentum releases -- routing around is the only mechanism that structurally works, even though a straight wall directly above the settlement looks like the safer instinct.",
+  "innovation_hook": "Barriers are strongest against the flow's weak axis -- steering beats stopping, so optimal designs are diagonal and 'open', contradicting the protective-wall instinct.",
+  "strategies": [
+    "trivial: place no barriers at all -- reproduces the checker's own do-nothing baseline B (ratio 0.1)",
+    "greedy: build one WALL barrier directly above each release column, right before the village, splitting the total height budget evenly -- catches the planted low-momentum 'stoppable' releases but is structurally overtopped (height capped at HMAX, unreachable at any budget) on every high-momentum 'trap' release, which breach through completely undissipated",
+    "strong: prioritize releases by unmitigated impact (weight*mass*momentum), then place ONE cheap oblique DEFLECT barrier early on each affordable one, turning it away from the village's peak-weight column -- absorbing only the turn's weak-axis fraction of momentum (fits under HMAX across the whole planted range) and triggering a dissipation cascade that leaves the packet's residual momentum small wherever it eventually lands",
+    "beyond strong: could chain multiple deflections per packet exploiting the turn=0 same-direction discount after the first successful turn, solve the budget allocation as an explicit fractional knapsack over exact simulated marginal impact reduction per candidate barrier, or search over deflection rows/targets instead of a single fixed early row"
+  ]
+}

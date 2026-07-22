@@ -1,0 +1,104 @@
+# Shatter the Syndicate
+
+## Problem
+A criminal syndicate is a contact network of `N` people (nodes) joined by `M`
+undirected relationships (edges). Each relationship `j` carries a fixed integer
+robustness threshold `t_j`. The network is stress-tested under `S` contagion
+scenarios; scenario `s` has a strength `p_s`, and relationship `j` is **active**
+in scenario `s` if and only if `t_j < p_s` (a fixed, fully deterministic rule --
+nothing here is randomized at judge time).
+
+Each person `i` also has an **immunization cost** `c_i`. You may immunize any set
+of people `R` whose costs sum to at most a budget `K` (this is a spending budget,
+not a head count -- some targets are pricier than others). Immunizing a person
+deletes that person and every relationship touching them.
+
+For each scenario, the surviving people split into connected clusters over that
+scenario's active relationships. The scenario's **reach** is the size of its
+largest cluster. Immunize people so the syndicate shatters: minimize the total
+reach summed over all `S` scenarios.
+
+A rule of thumb from epidemiology: near the point where a network's connectivity
+is fragile, the people whose removal fragments it most are not necessarily those
+with the most direct contacts. What matters is a person's **collective
+influence** -- how their removal's effect propagates outward -- which can make a
+modest-degree "connector" between two otherwise-separate groups far more
+valuable to immunize than a person buried inside one well-connected group, whose
+neighbors mostly reach each other anyway.
+
+## Input
+```
+N M ELL K S
+u_1 v_1 t_1
+...
+u_M v_M t_M
+c_1 c_2 ... c_N
+p_1 p_2 ... p_S
+```
+`ELL` is a suggested analysis radius (informational). Edges are simple
+(`1 <= u_j, v_j <= N`, no self-loops, no repeated pairs), `1 <= t_j <= 999999`.
+Costs `c_i >= 1`. Strengths `1 <= p_s <= 999999`.
+
+## Output
+An integer `m` (people immunized), then `m` distinct integers in `[1, N]`.
+
+## Feasibility
+The `m` ids must be distinct, each in `[1, N]`, and `sum_{i in R} c_i <= K`. Any
+violation, or a malformed/trailing token, scores `0`.
+
+## Objective (minimize)
+Let `R` be your immunized set. For scenario `s`, keep only the active
+relationships (`t_j < p_s`) whose both endpoints are outside `R`, over the
+surviving people `V \ R`. Let `L_s` be the size of the largest connected
+component of that graph (a survivor with no active relationship left is its own
+component of size `1`). Minimize
+
+```
+F = sum over s of L_s .
+```
+
+## Scoring
+Let `B` be the value of `F` for the empty immunization set (immunize nobody);
+`B > 0`. Your score is
+
+```
+ratio = min(1.0, 0.1 * B / F) .
+```
+
+Immunizing nobody gives `F = B` and `ratio = 0.1`. The more you shrink the total
+reach, the higher the score, up to the cap `1.0`.
+
+## Constraints
+`1 <= N <= 4000`, `1 <= M <= 20000`, `1 <= ELL <= 4`, `1 <= S <= 6`,
+`1 <= c_i <= 3`, `1 <= K < N`. Time limit 5 s, memory 512 MB. Each input file is
+at most 5 MB.
+
+## Example
+Input:
+```
+7 8 1 1 1
+1 2 500000
+2 3 500000
+3 1 500000
+3 4 500000
+4 5 500000
+5 6 500000
+6 7 500000
+7 5 500000
+1 1 1 1 1 1 1
+600000
+```
+Two triangles `{1,2,3}` and `{5,6,7}`, joined only through node `4` (edges `3-4`
+and `4-5`). One scenario, strength `600000`, so every edge (`t=500000`) is
+active, and the whole graph is one cluster of `7` -> `B = 7`.
+
+Budget `K=1`. Node `4` has degree `2` -- the *lowest* in the graph (triangle
+members have degree `3`, e.g. node `3` or node `5`). Immunizing the
+highest-degree node `3` instead: the surviving graph keeps `{1,2}` (size `2`) and
+`{4,5,6,7}` (size `4`, since `4-5` still links node `4` into the second
+triangle) -- reach `F=4`, `ratio = min(1, 0.1*7/4) = 0.175`.
+
+Immunizing node `4` (the low-degree connector) instead: the two triangles
+`{1,2,3}` and `{5,6,7}` fully separate -- reach `F=3`, `ratio = min(1, 0.1*7/3)
+= 0.2333`. The lower-degree connector is the better spend: it is a person of
+modest personal reach whose radius-`1` neighborhood already spans both triangles.

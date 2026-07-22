@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0617",
+  "tier": "A",
+  "format": "B",
+  "family": "no-compaction-heap-allocator",
+  "eval_form": "quality-metric",
+  "theme": "Place allocations that can never be moved",
+  "title": "Cold Vault: Place What Can Never Move",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:temporal-commitment"],
+  "strategies": [
+    "fresh-slab / bump allocator: give every block a private, ever-growing byte range and never reuse a freed one (reproduces the evaluator's weak fresh-slab baseline)",
+    "arrival-order first-fit: process blocks in birth order and drop each at the lowest address free of every currently-alive block, reusing holes but blind to future death times",
+    "lifetime-keyed placement: process blocks in an order keyed on death time (segregating the longest-lived 'spine' low, packing each equal-death cohort together) so cohorts vacate one contiguous hole per stage instead of many stranded fragments",
+    "multi-order search: try several lifetime-based processing orders (death-desc, longevity-desc, explicit spine/cohort split, death-asc, arrival) and keep whichever yields the lowest high-water mark"
+  ]
+}

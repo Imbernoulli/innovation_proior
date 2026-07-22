@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1043",
+  "tier": "B",
+  "format": "C",
+  "family": "weld-pull-cancellation",
+  "eval_form": "quality-metric",
+  "theme": "Welding a frame that flinches at every joint",
+  "title": "Welding a Frame That Flinches at Every Joint",
+  "objective": "min",
+  "strategies": [
+    "trivial: weld struts in input order, every side +1 (this is also the checker's own baseline construction)",
+    "greedy: weld struts in input order; choose each side to balance a RUNNING UNDISCOUNTED ledger per joint (the 'equal and opposite ratings cancel' intuition) -- never looks at the actual 1/(1+stiffness) divisor, so on components with several same-rating struts it leaves a large, systematic residual",
+    "strong: split the frame into its connected components, then run a seeded local search per component that simulates the EXACT stiffness-discounted accumulation while searching over weld order and side jointly -- exploits matched-stiffness pairing rather than matched-rating pairing",
+    "invalid: emits a weld-order list that omits/repeats a strut index"
+  ]
+}

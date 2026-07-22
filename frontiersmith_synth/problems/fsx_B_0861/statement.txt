@@ -1,0 +1,126 @@
+# Blind Delivery Through Road Closures
+
+## Problem
+
+A delivery driver must visit every stop in a town whose road network has
+`N` intersections (intersection `1` is the depot) and `M` two-way roads.
+You plan the driver's **visiting order** once, in advance. The driver then
+executes it on the actual delivery day, but the road authority has **not
+told you** which of `K` closure scenarios will occur that day.
+
+Some roads are permanently reliable (they are never closed). The rest are
+**fragile**: each closure scenario `s` (1..K) blocks a specific set of
+fragile roads for that day. On the actual day, exactly one scenario's
+closures are in effect, and the driver follows one **fixed, unintelligent
+rule** at every step: *drive the shortest currently-open route to the next
+stop on your list.* The driver has no map foresight beyond "shortest open
+path right now" — if a stretch of your intended route is closed, the driver
+is forced onto whatever detour is shortest given today's closures, however
+long that turns out to be.
+
+Since you don't know which scenario will occur, your order is scored across
+**all** `K` scenarios, weighted by how much each scenario matters (`w_s`).
+Minimize the total weighted travel the driver racks up. A good order isn't
+necessarily the geometrically shortest one — it is one whose legs rarely
+depend on roads that closure scenarios actually touch.
+
+## Input
+
+```
+N M K
+```
+then `M` lines, one per road (road `i` is the i-th such line, 1-indexed):
+```
+u v len
+```
+then `K` closure scenarios, each as two lines:
+```
+B_s w_s
+id_1 id_2 ... id_{B_s}
+```
+`B_s` road ids (from the numbering above) are blocked under scenario `s`,
+which carries importance weight `w_s`.
+
+## Output
+
+Print `N-1` integers: a permutation of `{2, ..., N}`, the order in which the
+driver visits the remaining stops after leaving the depot (intersection 1).
+
+## Feasibility
+
+The output must contain every intersection in `{2,...,N}` exactly once
+(no repeats, none missing), with no trailing tokens. Any violation scores 0.
+
+## Objective
+
+For scenario `s`, remove its blocked roads from the network and let
+`dist_s(x,y)` be the shortest-path distance between `x` and `y` in what
+remains (this is exactly the distance the fixed detour rule realizes,
+whether or not the driver's original route happened to touch a blocked
+road). Walking depot `-> order[1] -> order[2] -> ... -> order[N-1]`, let
+`C_s` be the sum of the `N-1` leg distances `dist_s`. Minimize
+```
+F = sum over s of  w_s * C_s
+```
+
+## Scoring
+
+Let `B` be `F` evaluated on the **identity order** `2,3,...,N` (do nothing
+clever). Your score for a test case is
+```
+ratio = min(1000, 100 * B / max(1, F)) / 1000
+```
+so the identity order scores `0.1`; a genuinely better order scores higher
+(capped at `1.0`, ten times better than identity). Per-test ratios are
+averaged over all tests.
+
+## Constraints
+
+* `6 <= N <= 131`, `N-1 <= M <= 400`, `2 <= K <= 14`.
+* `1 <= len <= 1000000`; `1 <= w_s <= 50`; every scenario blocks `>= 1` road.
+* A fixed spanning-tree subset of the roads is never blocked by any scenario
+  (the network is always connected, whatever closes).
+* Time limit: 3 s. Memory limit: 512 MB.
+
+## Example
+
+`N=5, M=6, K=2`:
+```
+5 6 2
+1 2 5
+2 3 5
+1 4 5
+4 5 5
+2 4 2
+3 5 6
+1 6
+5
+1 4
+6
+```
+Roads 1-4 (the hub-to-arm chains `1-2-3` and `1-4-5`) are the reliable
+backbone. Road 5 (`2-4`, length 2) and road 6 (`3-5`, length 6) are the only
+two ways to cross between the two arms without going back through the
+depot. Scenario 1 blocks road 5 (weight 6, the *heavier* threat); scenario
+2 blocks road 6 (weight 4).
+
+The identity order `2 3 4 5` crosses arms at the `(3,4)` pair, whose
+shortest route (`3-2-4`, cost 7) uses road 5. Under scenario 1 (road 5
+blocked) this leg detours to cost 11 (`3-5-4` via road 6), so
+`C_1 = 5+5+11+5 = 26`; under scenario 2 (road 6 blocked) the leg is
+untouched, `C_2 = 5+5+7+5 = 22`. That gives
+`B = 6*26 + 4*22 = 244` (this is exactly the checker's baseline; a
+submission printing `2 3 4 5` scores `0.1` on this test) — and because road
+5 is the cheaper road, the *heavier* scenario (weight 6) is the one that
+gets to hurt it.
+
+The order `2 3 5 4` instead crosses arms at the `(3,5)` pair, whose
+shortest route is the *direct* road 6 (cost 6). Under scenario 1 (road 5
+blocked, irrelevant here) this leg is untouched, `C_1 = 5+5+6+5 = 21`;
+under scenario 2 (road 6 blocked) it detours to cost 12 (`3-2-4-5`), so
+`C_2 = 5+5+12+5 = 27`. Now `F = 6*21 + 4*27 = 234 < B`, so
+`ratio = min(1000, 100*244/234)/1000 = 0.1043` — a real, if modest,
+improvement from matching the crossing point to the road that only the
+*lighter* scenario can block, instead of the road that is merely nominally
+cheapest. On larger inputs with many possible crossing points this effect
+compounds substantially.

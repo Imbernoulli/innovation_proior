@@ -1,0 +1,85 @@
+# Factory Heat-Exchanger Web
+
+## Problem
+
+Your factory has `NH` **hot** process streams that must be cooled and `NC` **cold**
+streams that must be heated. Stream *i* carries a constant heat-capacity flow `CP`
+(heat released or absorbed per degree of temperature change). A **hot** stream enters
+at supply temperature `THs` and must leave at target `THt < THs`; it must shed
+`capH = CP*(THs-THt)` units of heat. A **cold** stream goes from `TCs` up to
+`TCt > TCs`, absorbing `capC = CP*(TCt-TCs)` units.
+
+You recover heat by installing **exchangers**, each moving heat from a hot stream to a
+cold stream. Anything not recovered by exchangers must be bought as external
+**utility** (extra cooling for hot streams, extra heating for cold streams). Minimize
+the total external utility.
+
+## Input
+
+```
+NH NC dTmin
+```
+then `NH` hot lines `THs THt CP` (with `THs > THt`), then `NC` cold lines
+`TCs TCt CP` (with `TCs < TCt`). Streams are given in arbitrary order.
+
+## Output
+
+```
+M
+```
+then `M` lines `h c Q`: an exchanger transferring `Q >= 1` units of heat from hot
+stream `h` to cold stream `c`. A stream may appear in many matches (its duty is
+**split** across exchangers). Matches are applied **in the order listed**; each stream
+keeps a running exchanged-heat total `q`. Printing `0` (no matches) is feasible.
+
+## Feasibility
+
+Apply matches in order. Before a match, hot `h` has exchanged `qh` and cold `c` has
+exchanged `qc`. Their **entering** temperatures are `Hin = THs - qh/CP_h` and
+`Cin = TCs + qc/CP_c`; the **exiting** temperatures after moving `Q` are
+`Hout = THs-(qh+Q)/CP_h` and `Cout = TCs+(qc+Q)/CP_c`. A counter-current exchanger is
+feasible only when the minimum approach holds at **both** ends:
+
+```
+Hin - Cout >= dTmin      and      Hout - Cin >= dTmin
+```
+
+and no stream may pass its target: `qh+Q <= capH` and `qc+Q <= capC`. Because all
+temperatures and `CP` are integers, both approach tests are checked exactly after
+multiplying through by `CP_h*CP_c`. Any violation, an out-of-range index, or trailing
+tokens scores `0`.
+
+## Objective
+
+Let `R` be the total recovered heat (sum of all `Q`). External utility is
+`F = (sum capH - sum qh) + (sum capC - sum qc) = B - 2R`, where `B = sum capH + sum capC`
+is the do-nothing utility. **Minimize `F`** (equivalently, maximize recovered heat).
+
+## Scoring
+
+With `B` the do-nothing baseline, your score for a test is
+```
+ratio = min(1000, 100 * B / max(1, F)) / 1000
+```
+so doing nothing scores `0.1` and every unit of recovered heat lowers `F` and raises
+the ratio, capped at `1.0` (utility ten times below baseline). Per-test ratios are
+averaged.
+
+## Constraints
+
+* `4 <= NH, NC <= 32`; `dTmin = 10`.
+* Temperatures up to a few thousand; `1 <= CP <= 12`.
+* Time limit: 3 s. Memory limit: 512 MB.
+
+## Example
+
+Two hot streams `A=(320->220, CP 5)` and `B=(720->620, CP 5)`, two cold streams
+`P=(100->200, CP 5)` and `Q=(600->700, CP 5)`, `dTmin = 10`. Hot `B` is hot enough to
+feed either cold; hot `A` can only reach cold `P` (it can never warm `Q`, whose
+temperatures sit above `A`). Pairing the **hottest** hot `B` with the **coldest** cold
+`P` (driving force `520`) transfers all 500 units of `B` into `P`; then cold `Q` has no
+hot left that can reach it and hot `A`'s sink `P` is full, so both are stranded --
+`R = 500`, `F = 2000-1000 = 1000`, ratio `0.2`. Instead matching **within
+temperature clusters** -- `B->Q` and `A->P` -- recovers `R = 1000`, `F = 0`, ratio
+`1.0`. The scalar separating the two clusters is the **pinch**: never move heat across
+it.

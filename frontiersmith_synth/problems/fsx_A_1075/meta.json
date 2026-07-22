@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1075",
+  "tier": "A",
+  "format": "D",
+  "family": "shared-contraction-forest",
+  "eval_form": "flops",
+  "theme": "brew fifty potions from one shared stockpot",
+  "title": "Shared Stockpot Chain: A Forest of Brew Orders",
+  "objective": "minimize",
+  "strategies": [
+    "naive per-order left-to-right fold, no sharing at all (trivial)",
+    "per-order optimal matrix-chain DP solved independently for every brew order (greedy)",
+    "shared candidate-point coarsening: restrict every order to a common cut-point set and solve one globally memoized DP so overlapping orders reuse the same stockpot nodes (strong)",
+    "joint global optimization over the full DAG of all 50 orders simultaneously (open ceiling, uncovered)"
+  ]
+}

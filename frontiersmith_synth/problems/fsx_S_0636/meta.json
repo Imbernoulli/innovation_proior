@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0636",
+  "tier": "S",
+  "format": "B",
+  "family": "spill-aware-conflict-coloring",
+  "eval_form": "quality-metric",
+  "theme": "Color an interference graph with limited colors to minimize weighted spill of the uncolorable nodes.",
+  "title": "Spill-Aware Register Coloring on a Budget",
+  "objective": "minimize",
+  "source_frameworks": ["wave2b-lens:topup-B-1"],
+  "strategies": [
+    "raw index-order first-fit: color nodes 0..n-1 in given order with the smallest free color, weight-blind (reproduces the evaluator's weak baseline, ~0.1)",
+    "DSATUR (saturation-degree-order) coloring, weight-blind: always color the most-saturated uncolored node next, tie-break by static degree then index; beats raw order generically but is trapped when a cheap dense cluster saturates first and strands an expensive hub node",
+    "weight-biased DSATUR: same saturation-degree order but tie-break by spill weight first, so expensive nodes get seated before a cheap cluster can consume every color around them",
+    "weight-biased DSATUR + Kempe-chain repair: after the initial pass, rescue any still-spilled node by flipping a Kempe chain (a connected 2-color-alternating component, always safe to flip) to free a blocking color, or by evicting a strictly cheaper blocking neighbor when no safe chain exists"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0873",
+  "tier": "A",
+  "format": "D",
+  "family": "redex-order-optimization",
+  "eval_form": "flops",
+  "theme": "prune the hydra before it clones its heads",
+  "title": "Prune the Hydra Before It Clones Its Heads",
+  "objective": "minimize",
+  "strategies": [
+    "eager / call-by-value: fully reduce both sides before combining (trivial; = checker's own baseline)",
+    "leftmost-outermost / normal order: the provably-safe textbook strategy, fires S the instant it is recognized, duplicating unresolved arguments (greedy)",
+    "hybrid: fire K/I immediately at the head, but pre-normalize an S-redex's z argument (via the same strategy) before firing S, so duplication always copies the smallest possible form (strong)",
+    "true cost-optimal reduction order / Levy-style optimal sharing (open ceiling, uncovered)"
+  ]
+}

@@ -1,0 +1,100 @@
+# Desert Temple of a Thousand Mirrors
+
+## Problem
+
+A temple tower stands at the origin of an integer ground grid. Priests have
+surveyed `P` candidate heliostat sites, each a distinct nonzero lattice point
+`(x, y)` carrying a raw quality `q` (how much light a mirror there could
+gather; the survey shows it decays with distance from the tower). Choose at
+most `M` sites to actually build mirrors on.
+
+The day is swept by `K` discrete sun positions ("steps"). Step `k` gives a
+ground **shadow offset** `(dx_k, dy_k)` and an **energy multiplier** `e_k` --
+the offset is the lattice vector, from a mirror toward the sun's ground
+projection, along which that mirror casts its shadow at that moment (at
+local noon the sun is overhead and the offset is `(0,0)`; near dawn/dusk the
+offset is long, pointing toward a low sun).
+
+Two mirrors interfere:
+
+* **Shading.** At step `k`, a built mirror at `(x, y)` produces NO energy
+  for that step if some OTHER built mirror sits at EXACTLY
+  `(x + dx_k, y + dy_k)` -- it stands between that mirror and the sun.
+* **Blocking.** Reduce a site's position to its primitive direction from the
+  tower: `(x, y)` divided by `g = gcd(|x|, |y|)` gives a "spoke" direction,
+  and `g` is how many steps out along that spoke the site sits. A built
+  mirror is **permanently blocked** (contributes 0 for the ENTIRE day) if
+  another built mirror shares its spoke direction with a strictly smaller
+  `g` -- that nearer mirror sits directly between it and the tower and
+  intercepts its reflected beam.
+
+A mirror that is not blocked, and not shaded at step `k`, contributes
+`q * e_k` for that step. Its total contribution is `q` times the sum of
+`e_k` over all steps where it is neither blocked nor shaded.
+
+## Input
+
+```
+P M K
+```
+then `P` lines, site `i` (1-based, in input order):
+```
+x_i y_i q_i
+```
+then `K` lines, sun step `k` (1-based, in input order):
+```
+dx_k dy_k e_k
+```
+
+## Output
+
+Print `S` (the number of mirrors you build, `0 <= S <= M`), then `S`
+distinct site ids in `[1, P]` on the following line(s).
+
+## Feasibility
+
+`S <= M`; every id is in `[1, P]`; no id repeats; no trailing tokens after
+the list. Any violation scores `0`.
+
+## Objective
+
+Maximize `F`, the total energy delivered over the day: the sum, over your
+built (unblocked) mirrors, of `q` times the sum of `e_k` over the sun steps
+at which that mirror is neither blocked nor shaded (see above).
+
+## Scoring
+
+Let `B` be the value (computed with the exact same shading/blocking rules)
+of a fixed naive reference: build at the first `min(M, P)` sites in input
+order, ignoring quality and geometry entirely. Your score for a test is
+```
+ratio = min(1000, 100 * F / max(1, B)) / 1000
+```
+so the naive reference scores `0.1`, and any real improvement scores
+higher (capped at `1.0`, ten times the reference). Per-test ratios are
+averaged.
+
+## Constraints
+
+* `1 <= P <= 2000`, `1 <= M <= P`, `1 <= K <= 11`.
+* `|x_i|, |y_i| <= 60` (not both zero), `1 <= q_i <= 110`.
+* `|dx_k|, |dy_k| <= 10`, `1 <= e_k <= 25`.
+* Time limit: 4 s. Memory limit: 512 MB.
+
+## Example
+
+`K=1` sun step with offset `(1,0)`, `e_1 = 10`, budget `M = 2`. Four sites:
+`1: (4,0) q=20`, `2: (1,0) q=100`, `3: (0,1) q=95`, `4: (6,0) q=10`.
+
+The naive baseline builds the first `min(M,P)=2` ids, sites `1` and `2`.
+Both reduce to spoke `(1,0)` (site 1 has `g=4`, site 2 has `g=1`), so site 1
+is **blocked** by the nearer site 2 (contributes 0); site 2's shadow target
+`(1+1,0)=(2,0)` is not built, so site 2 is unshaded: `B = 100*10 = 1000`.
+
+Building sites `2` and `3` instead avoids the trap: they lie on different
+spokes (`(1,0)` and `(0,1)`), so neither is blocked. Site 2's shadow target
+`(2,0)` is not built and site 3's shadow target `(1,1)` is not built
+either, so both are unshaded: `F = 100*10 + 95*10 = 1950`. Score
+`= min(1000, 100*1950/1000)/1000 = 0.195`, nearly double the baseline's
+`0.1` -- simply by not wasting a mirror slot on a spoke that was already
+claimed by a stronger neighbour.

@@ -1,0 +1,19 @@
+{
+  "id": "fsx_A_0851",
+  "tier": "A",
+  "format": "B",
+  "family": "online-manifold-quantizer",
+  "eval_form": "quality-metric",
+  "theme": "Quantize a stream hiding on a curve",
+  "title": "Quantize a Stream Hiding on a Curve",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:wildcard-hybrid"],
+  "mechanisms": ["latent-manifold-exploit", "online-codebook-adaptation", "regret-controlled-update"],
+  "innovation_hook": "Reconstruction error is minimized by spending the codebook budget along the data manifold's intrinsic coordinate, not the ambient variance directions.",
+  "strategies": [
+    "trivial: on round 0, commit the mean of round 0's own points (repeated K times) and never revisit it -- every later round just echoes back whatever codebook it was handed (zero movement, trivially inside any budget). This is exactly the evaluator's own F_base reference construction, so it reproduces Ratio = 0.1 by construction",
+    "greedy (the trap): the obvious first recipe, run FRESH each round with no memory of the manifold beyond using the previous codebook purely as a movement anchor -- fit an ordinary ambient-space warm-started Lloyd/K-means to THIS round's own points only, then drag the previous codebook's slots toward the freshly-fit local centroids, scaling the WHOLE move down by the same uniform factor if it would exceed move_budget. Because the candidate is invoked in a fresh isolated subprocess every round and genuinely cannot see future (or past raw) data, this recipe is honestly online -- but it treats every slot's shortfall identically, so slots that have been left stranded far behind the drift only close part of the gap while slots that barely needed to move waste some of the budget on a pointless nudge",
+    "strong (the insight): fitting a good codebook for the round you can see is not the hard part (PCA-informed K-means already does that about as well as the greedy recipe's fit). The genuine leverage is in HOW the movement budget is spent: match this round's freshly-fit target slots to the previous round's slots by minimum-total-distance (Hungarian assignment, so 'movement' reflects real drift rather than an arbitrary relabelling of which fitted cluster is called slot k), rank slots by how far the drift has left them behind their target, and spend the budget completing FULL relocations for as many of the most-stranded slots as it can afford end to end -- leaving already-well-placed slots untouched rather than nudging every slot a little. A slot moved all the way to a useful position immediately starts winning the nearest-neighbour competition for nearby points; the same total movement smeared thinly across every slot usually doesn't change which slot wins for anyone",
+    "headroom above strong: the evaluator's LB reference assumes FULL foreknowledge of each round's own points before that round is even observed (a per-round-independent best-effort K-means fit with no slot-continuity or movement-budget constraint at all), which no genuinely online policy -- one that is re-invoked as a fresh, memory-less subprocess every round -- can ever match, and LB is further deflated by 20% besides. A policy that also models the CONSISTENT DIRECTION of drift across consecutive rounds (extrapolating one round ahead rather than only reacting to what has just arrived) would close more of the remaining gap without ever reaching LB"
+  ]
+}

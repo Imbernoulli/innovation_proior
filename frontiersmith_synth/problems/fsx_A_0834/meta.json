@@ -1,0 +1,20 @@
+{
+  "id": "fsx_A_0834",
+  "tier": "A",
+  "format": "A",
+  "family": "audit-cutset-inspector",
+  "eval_form": "quality-metric",
+  "seed_problem": "Given a flow network and a patrol budget, place patrols on edges so that a deterministic best-responding adversary is maximally interdicted.",
+  "mutation": "composite: reformulate single-edge interdiction as CORRIDOR-BUNDLE closure. Parallel channels between the same two hubs are indifferent substitutes at equal cost, so a partial patrol of a bundle is evaded for free and realizes zero marginal capture; only a FULLY closed bundle forces a deterministic best-responding smuggler into either genuine seizure or, for decoy bundles with a hidden higher-cost bypass channel, an escape that makes even full closure worthless. The optimum is therefore a bundle-level knapsack, not an edge-level marginal-value ranking.",
+  "objective": "max",
+  "theme": "canal patrols checking cargo manifests",
+  "title": "Canal Patrol Placement: Corridor-Bundle Interdiction",
+  "mechanisms": ["evasion-rerouting", "inspection-placement", "partial-cut-nonmonotonicity"],
+  "innovation_hook": "Interdiction value lives in cut structure, not edges: patrolling most of one corridor bundle is worth nothing because smugglers glide onto the one unpatrolled parallel channel for free, while fully closing a much smaller bundle elsewhere forces a real, capacity-limited seizure -- a non-submodular threshold effect no per-edge marginal-value greedy can see.",
+  "strategies": [
+    "trivial: patrol only the harbor mouth (edges leaving node 0), ignore the rest of the budget",
+    "greedy (trap): tally each edge's value under the zero-patrol shortest-path routing, patrol the top-B edges by that tally -- spreads one patrol per bundle across many bundles, closing none of the multi-channel ones",
+    "strong: group edges into (u,v) corridor bundles (including any pricier bypass channel), simulate each bundle's true full-closure capture, and greedily knapsack bundles by value-per-channel-closed -- always takes every free chokepoint, then fully closes the best-ROI multi-channel bundles it can afford",
+    "invalid: names an out-of-range edge index -- infeasible, must score 0"
+  ]
+}

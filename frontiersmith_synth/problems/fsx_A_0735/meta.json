@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0735",
+  "tier": "A",
+  "format": "B",
+  "family": "root-carbon-foraging-policy",
+  "eval_form": "quality-metric",
+  "theme": "roots gambling on hidden nutrient patches",
+  "title": "Roots on the Gamble: Carbon Allocation over Hidden Nutrient Patches",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:morphogenesis-and-growth"],
+  "strategies": [
+    "trivial: spread the step budget evenly over every active tip every step, ignoring sensed readings (reproduces the evaluator's weak recipe, ~0.1)",
+    "greedy: dump the whole step budget into whichever active tip currently senses the highest concentration, ties to lowest id -- full commitment, no portfolio; strands on shallow decoys and never advances a currently-boring tip far enough to find a bigger deep patch",
+    "strong: bet-hedging portfolio -- every active tip always gets a guaranteed minimum probe share (so every tip keeps revealing new depth all episode), and the remainder is a softmax-weighted share tilted by a UCB-style running-average-plus-exploration-bonus score reconstructed from the replayed history",
+    "invalid: request 50x+1000 the step budget on every tip -> fails validation, scores 0.0"
+  ]
+}

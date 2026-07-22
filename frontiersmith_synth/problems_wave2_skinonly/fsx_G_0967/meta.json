@@ -1,0 +1,18 @@
+{
+  "id": "fsx_G_0967",
+  "tier": "G",
+  "format": "C",
+  "family": "robotics-team-parts-bin-selection",
+  "eval_form": "quality-metric",
+  "theme": "student robotics competition parts-bin selection",
+  "title": "Student Robotics Competition Parts Bin Portfolio",
+  "objective": "max",
+  "bulk_factory": "budget-conflict-coverage-selection",
+  "salt": 808572619,
+  "strategies": [
+    "trivial: reproduce the checker cost-first feasible baseline",
+    "greedy: sort by value, capability weight, and cost density",
+    "strong: repeatedly add the feasible asset with best current marginal utility per cost",
+    "future: local search, swap neighborhoods, Lagrangian budget pricing, and conflict-aware coverage repair"
+  ]
+}

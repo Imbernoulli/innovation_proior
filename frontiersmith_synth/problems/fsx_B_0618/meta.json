@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0618",
+  "tier": "B",
+  "format": "C",
+  "family": "spanning-cut-net-compaction",
+  "eval_form": "quality-metric",
+  "theme": "Unfolding a gemstone into the smallest sticker",
+  "title": "Gemstone Sticker: Fold-Compaction Under Overlap Avoidance",
+  "objective": "minimize",
+  "strategies": [
+    "textbook spanning tree: scan the given fusion edges in input order and keep an edge whenever it does not close a cycle (Kruskal-order forest, oblivious to where facets actually land)",
+    "cut-everything baseline: discard every fusion edge and ship each facet as its own 1x1 sticker (always feasible, always maximal piece-count penalty)",
+    "flat/fold decomposition + per-boundary local search: union all opposite-tab (flat) fusion edges first to recover rigid panels, then for each fold junction simulate every redundant hinge candidate, reject any that overlaps already-placed facets, and keep the one minimizing incremental bounding-box growth, falling back to a fresh piece when every candidate collides",
+    "global backtracking / simulated annealing over the full space of spanning forests, jointly optimizing all hinge choices and piece boundaries at once (left as headroom above the strong reference)"
+  ]
+}

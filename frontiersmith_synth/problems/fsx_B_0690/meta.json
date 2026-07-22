@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0690",
+  "tier": "B",
+  "format": "C",
+  "family": "bundle-referendum-logroll",
+  "eval_form": "quality-metric",
+  "theme": "town meeting votes on public-works bundles",
+  "title": "Town Meeting Logrolling: Referendum Bundle Partition",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:mechanism-and-incentives"],
+  "strategies": [
+    "trivial: the checker's own internal baseline -- project 0 (the guaranteed-safe consensus project) alone in bundle 1, every other project lumped into bundle 2 -> ~0.1",
+    "greedy: sort all projects by descending welfare weight and load-balance them across the K bundles via classic LPT bin-packing; never reads a supporter/opposer index, so it fails to rediscover the planted polarizer+sweetener pairings and often sinks a good bundle by dropping a poison project into it",
+    "strong: exact voter-set algebra -- test every project alone, then for every solo-failing project search all other projects for an exact bundle-pass recheck (which union of supporter/opposer sets crosses the majority threshold), greedily match the highest-value flips within the bundle budget, and isolate unrescuable/poison projects so they never contaminate a passing bundle",
+    "invalid: assigns every project to bundle id K+1 (out of range) -> rejected, 0.0"
+  ]
+}

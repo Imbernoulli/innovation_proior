@@ -1,0 +1,15 @@
+{
+  "id": "fsx_A_0699",
+  "tier": "A",
+  "format": "C",
+  "family": "stained-rosette-partition",
+  "eval_form": "quality-metric",
+  "theme": "rose window lead-line and glass color design",
+  "title": "Rosette: Lead-Line Partition and Glass Colour Design",
+  "objective": "max",
+  "strategies": [
+    "trivial: R concentric full-ring faces, colours alternate 1,2 by ring parity (checker's own baseline)",
+    "greedy: k equal radial pie-wedges (full height), colours alternate 1,2 by wedge index -- the obvious rotationally-symmetric candy-stripe design; INFEASIBLE whenever k is odd (odd cycle needs 3 colours)",
+    "strong: co-designs geometry with the colouring obstruction -- always doubles the angular resolution to 2k arcs (so the quotient cycle length is always even, sidestepping the parity trap for ANY k), searches a small set of radial band counts and the best colour pair from the palette by harmony, and checkerboard-colours the result"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0912",
+  "tier": "S",
+  "format": "B",
+  "family": "developmental-tape-error-correction",
+  "eval_form": "quality-metric",
+  "theme": "a genome that develops right despite typos",
+  "title": "Typo-Proof Genome: Growing a Body Through a Noisy Tape",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:morphogenesis-and-growth"],
+  "strategies": [
+    "do-nothing baseline: a single NOP byte; every cell defaults to type 0 (matches the evaluator's own normalization anchor, ~0.1)",
+    "dense relative-chain greedy: CKPT(0) once, then walk left to right with (SET, MOVE(+1)) pairs -- a short, natural exact reconstruction (not the shortest possible; DIV-compression beats it), but every MOVE is load-bearing so one corrupted MOVE permanently shifts the head and cascades wrongness through the rest of the tape",
+    "checkpoint-anchored, majority-voted strong: address every cell ABSOLUTELY via CKPT (killing cascades), run-length-compress same-type runs with DIV to free up length budget, then spend the freed budget casting up to 3 independent CKPT+SET votes per cell round-robin so the vote-tally rule majority-corrects a single-bit typo in any one repeat",
+    "budget-aware prioritization: with a tight L_max, spread redundancy round-robin across cells instead of front-loading a few, raising the worst cell's vote count first"
+  ]
+}

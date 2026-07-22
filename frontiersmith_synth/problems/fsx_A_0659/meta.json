@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0659",
+  "tier": "A",
+  "format": "B",
+  "family": "aging-aware-arbitrage",
+  "eval_form": "quality-metric",
+  "theme": "grid battery arbitrage against seeded prices",
+  "title": "Ridgeline Grid: Aging-Aware Battery Arbitrage",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:topup-B-2"],
+  "strategies": [
+    "do nothing: never charge or discharge, zero profit, zero risk (reproduces the evaluator's do-nothing reference)",
+    "fixed-margin threshold trader: buy/sell at full power whenever price crosses a flat +/-8% band around the series mean, ignoring the instance's own efficiency and aging-cost fields and never shallow-cycling",
+    "breakeven-aware peak/valley exchange decomposition: compute the true marginal breakeven spread from eta_c/eta_d/aging_coeff/degradation_price, keep only valley-to-peak legs that clear it, and ladder execution across a short window around each extremum to keep discharges shallow",
+    "global capacity-budgeted planning: rank all surviving legs by expected net value and solve a small knapsack/LP over the whole horizon to allocate capacity optimally across every seeded swing, discounting for compounding aging"
+  ]
+}

@@ -1,0 +1,107 @@
+# Flow-Matched Marquetry
+
+## Problem
+
+A veneer **sheet** (`Ws x Hs` grid cells) carries a smooth **grain-direction
+field**: every sheet cell has a grain angle in degrees, taken **mod 180**
+(a grain line has no arrowhead, so `0` and `180` are the same direction). A
+**panel** is a polyomino region (a `Wp x Hp` bounding box with a `#`/`.`
+mask) that has its own desired **flow field**, one target angle per masked
+cell.
+
+A fixed catalog of `K` polyomino **piece shapes** is available in unlimited
+supply. You build a marquetry by choosing physical piece **instances**. Each
+instance is cut from the sheet at a **sheet pose** (position + one of 4
+rotations) and glued into the panel at an independently chosen **panel
+pose** (position + one of 4 rotations) — the SAME piece, two poses. Because
+it is one physical object, its grain angle once glued equals the sheet angle
+it was cut from, shifted by `90 * (panel_rotation - sheet_rotation)` degrees,
+mod 180: only the rotation **difference** matters, so the two poses are
+linked, not independent.
+
+## Input
+
+```
+Ws Hs
+Hs lines of Ws ints       (sheet grain angle, degrees in [0,179])
+Wp Hp
+Hp lines of Wp chars      ('#'/'.' panel mask, no spaces)
+Hp lines of Wp ints       (desired flow angle; 0 where mask is '.')
+K
+K blocks, each:
+  ncells
+  ncells lines "dx dy"    (canonical shape cell offsets, dx,dy >= 0, includes (0,0))
+lambda mu Cu               (objective weights, integers)
+```
+Rotating offset `(dx,dy)` by `r in {0,1,2,3}` (90 degrees CW each step) gives
+`(dx,dy)`, `(-dy,dx)`, `(-dx,-dy)`, `(dy,-dx)`.
+
+## Output
+
+```
+M
+M lines: shape_id xs ys rs xp yp rp
+```
+For local cell index `j` of `shape_id`, the sheet cell is
+`(xs,ys) + rot(offset_j, rs)` and the panel cell is `(xp,yp) + rot(offset_j, rp)`.
+
+## Feasibility
+
+`0 <= shape_id < K`, `rs,rp in {0,1,2,3}`. All sheet cells of all instances
+lie in `[0,Ws) x [0,Hs)` and are pairwise disjoint. All panel cells lie
+inside the panel bounding box, on a `#` mask cell, and are pairwise
+disjoint. Full panel coverage is **not** required — uncovered cells are
+simply penalized. Any violation scores 0.
+
+## Objective (minimize)
+
+For each instance and local cell `j`: `angle_j = (sheet_angle + 90*((rp-rs) mod 4)) mod 180`.
+```
+F = SeamMismatch + TargetFlowMismatch + Cu*Uncovered + lambda*SheetWaste - mu*DistinctShapes
+```
+* `SeamMismatch`: sum over 4-adjacent panel cells covered by **two different**
+  instances of their angular mismatch `min(|a-b|, 180-|a-b|)` (0..90).
+* `TargetFlowMismatch`: sum over covered panel cells of the mismatch between
+  `angle_j` and that cell's desired flow angle.
+* `Uncovered`: masked panel cells covered by no instance.
+* `SheetWaste`: sheet cells cut by no instance.
+* `DistinctShapes`: number of distinct `shape_id` actually used at least once.
+`F` is floored at 1.
+
+## Scoring
+
+The grader computes the do-nothing baseline `B = Cu*(#masked cells) +
+lambda*(Ws*Hs)` and your `F`, then `ratio = min(1000, 100*B/F) / 1000`.
+Placing zero instances always scores exactly `0.1`. Per-test ratios are
+averaged.
+
+## Constraints
+
+`4 <= Ws=Hs=Wp=Hp <= 14`, `K = 7`, `1 <= ncells <= 4`, `0 <= M <= 4000`.
+Time limit: 4 s. Memory limit: 512 MB.
+
+## Example
+
+`Ws=Hs=Wp=Hp=2`, sheet angles `[[0,30],[60,90]]` (row-major, `src[y][x]`),
+panel fully masked, desired angles `[[0,0],[90,90]]`. Catalog: shape 0 =
+monomino `(0,0)`, shape 1 = horizontal domino `(0,0),(1,0)`.
+`lambda=55, mu=25, Cu=150`.
+
+Output two horizontal dominoes, each cut with `rs=0` and glued with `rp=0`
+(net rotation 0, so `angle_j` equals the raw sheet angle):
+```
+2
+1 0 0 0 0 0 0
+1 0 1 0 0 1 0
+```
+Row-0 instance covers sheet/panel `(0,0),(1,0)` with angles `0,30` against
+targets `0,0`: `TargetFlowMismatch += 0+30`. Row-1 instance covers
+`(0,1),(1,1)` with angles `60,90` against targets `90,90`:
+`TargetFlowMismatch += 30+0`. Total `TargetFlowMismatch = 60`. The two
+instances are vertically adjacent at both columns with angle pairs `(0,60)`
+and `(30,90)`, each mismatching by `60`: `SeamMismatch = 120`. Coverage is
+full (`Uncovered=SheetWaste=0`), one distinct shape is used
+(`DistinctShapes=1`). `F = 120+60+0+0-25 = 155`.
+`B = 150*4 + 55*4 = 820`. `ratio = min(1000, 100*820/155)/1000 = 0.529`.
+Since `F` is minimized, a better pose-pair choice would push `F` lower and the
+ratio higher still.

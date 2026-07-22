@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_1023",
+  "tier": "B",
+  "format": "C",
+  "family": "cursor-biased-rope",
+  "eval_form": "quality-metric",
+  "theme": "scribe editing a scroll that never leaves the desk",
+  "title": "Cursor-Biased Scroll: Finger Anchors Across Jump Epochs",
+  "objective": "min",
+  "strategies": [
+    "do-nothing baseline: never install a bookmark, service every touch from the fixed central spindle (checker's own reference construction)",
+    "uniform-window greedy: split the M touches into F equal-sized chronological chunks and drop one bookmark at each chunk's median position at the chunk's start -- the obvious 'use my whole finger budget evenly' recipe, blind to where the real epoch boundaries and revisited hubs actually are",
+    "changepoint segmentation: detect genuine jump epochs from the trace itself (a robust local-step threshold), merge/reuse bookmarks for epochs that revisit a nearby earlier hub instead of relocating, and only pay the linear relocation cost for a segment when its length times the log-cost savings exceeds that cost -- reframing anchor placement as a segmentation + cost-benefit decision instead of a fixed schedule"
+  ]
+}

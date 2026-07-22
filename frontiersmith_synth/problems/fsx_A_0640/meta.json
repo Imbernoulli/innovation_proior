@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0640",
+  "tier": "A",
+  "format": "A",
+  "family": "tail-swing-bend-order",
+  "eval_form": "quality-metric",
+  "theme": "Wire-bending robot that keeps hitting itself",
+  "title": "Wire-Bending Robot That Keeps Hitting Itself",
+  "objective": "max",
+  "seed_problem": "sequencing bends on a fixed part with a per-step feasibility constraint (bend-sequence-feasibility) coupled to bounded springback pre-compensation (springback-precompensation) and a rigid swept-tail collision test (swept-tail-collision)",
+  "mutation": "composite: goal is an optimization (maximize matched, springback-corrected bend value under a chosen order) not a decision problem; output is a permutation of bend stations plus a per-station applied-angle choice, and feasibility of each individual bend is now a function of how much of the part is ALREADY built (order-history-dependent collision test), turning order selection itself into the hard combinatorial core.",
+  "strategies": [
+    "trivial: bend in plain geometric (path) order 1..m, apply the raw target angle with no precompensation -- reproduces the checker's baseline B",
+    "naive greedy: same path order (\"the order the part is drawn in\"), but do the obviously-correct springback precompensation within the +/-c budget -- still swings the full unshaped remainder on every early bend, so it keeps colliding on the heavy near-base trap stations",
+    "insight (strong): balance-point recursion -- bend the station that splits the remaining index range most evenly FIRST (bracing both halves for everything that follows), recurse on each half; this keeps every subsequent swept reach roughly halved instead of growing to the full remaining wire, so far fewer of the heavy trap stations ever collide",
+    "a general solver can go further: dynamically re-rank remaining stations by (current reach x sin(|target|/2)) each step, or search order+angle jointly with local search / beam search over the collision-feasible permutations"
+  ]
+}

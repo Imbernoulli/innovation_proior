@@ -1,0 +1,19 @@
+{
+  "id": "fsx_A_0938",
+  "tier": "A",
+  "format": "B",
+  "family": "programmable-matter-selfrecon",
+  "eval_form": "quality-metric",
+  "theme": "a robot swarm that reshapes itself",
+  "title": "Wavefront Filling: Self-Reconfiguring Modular Swarms",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:morphogenesis-and-growth"],
+  "mechanisms": ["gradient-coordination", "local-rule-table", "self-reconfiguration"],
+  "innovation_hook": "Purely local greedy motion jams, so reconfiguration needs a propagating coordinating signal that sequences moves without a central planner.",
+  "strategies": [
+    "do-nothing: STAY on every local pattern (reproduces the evaluator's do-nothing reference, exactly 0.1)",
+    "target-field-only local descent (the trap): move toward the first neighbour that strictly reduces distance-to-nearest-target; ignore the seed gradient entirely. Works fine on independent-lane instances but permanently self-blocks the instant a module reaches any single-file target region, since its own distance is already at the global minimum there and no neighbour can look better -- it freezes and blocks everyone behind it",
+    "two-phase target-then-seed local descent (the insight): approach via the target field as above, but once that field can no longer improve, keep advancing via the seed gradient (which strictly decreases toward the seed placed at the target region's far end). This makes the swarm fill single-file regions from the far end backward, a self-organizing conveyor with no module aware of any other module's plan",
+    "capacity-aware planners: additionally detect when a target lane is already full and reroute the remaining modules toward a different reachable target lane (relevant on the multi-tube held-out instance, where the two-phase rule alone still leaves excess modules stranded)"
+  ]
+}

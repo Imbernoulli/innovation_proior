@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0648",
+  "tier": "A",
+  "format": "A",
+  "family": "vliw-chain-interleave-scheduling",
+  "eval_form": "quality-metric",
+  "theme": "conduct four assembly lines braiding one rope",
+  "title": "Four Looms, One Rope",
+  "objective": "min",
+  "seed_problem": "list scheduling of a DAG on a VLIW machine with a bounded register file",
+  "mutation": "composite: goal becomes minimizing makespan under a joint constraint of typed 4-wide slot-packing AND a bounded live-register file, and the output alphabet is extended with an unconditional 'recompute' instruction (selective rematerialization) as a first-class scheduling primitive alongside compute/discard -- turning register-pressure relief into part of the search, not just a feasibility side-constraint.",
+  "strategies": [
+    "trivial: process every node once, one instruction per cycle in dependency order, never recomputing, discarding only after each node's true last use (reproduces the checker's B=n baseline)",
+    "naive list-scheduling greedy: pack all 4 lanes every cycle by topological readiness, hold every value alive until its recorded last use, and self-throttle new work only when the register file is literally full -- this launches every braided chain in lockstep, drives simultaneous register demand toward ~2x the chains-in-flight, and stalls lanes for long stretches once the file saturates",
+    "insight (strong): discard every value EAGERLY right after each individual use (not at last use) and unconditionally re-materialize cheap zero-predecessor 'root' values one cycle before their next distant use -- this keeps the live-register set tiny at every cycle so all 4 lanes stay busy with useful work almost the whole schedule, trading a few cheap recompute instructions for a large cut in stalls",
+    "a general solver could go further with lookahead / integer-programming over exactly which values to pin vs rematerialize and when, balancing recompute-instruction overhead against register headroom per cycle"
+  ]
+}

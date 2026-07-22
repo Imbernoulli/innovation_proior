@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0760",
+  "tier": "S",
+  "family": "refreeze-window-convoy-waves",
+  "seed_problem": "Route K convoys through a shared channel graph; edges have a thickness cap that breaking reduces to zero and that regrows linearly over time; breaking costs thickness^1.5 plus a fixed fuel fee, and a convoy may take any walk from its origin to its destination.",
+  "mutation": "composite: turn static convoy routing into an open-ended min-cost SPACE-TIME reuse problem by (1) making the per-edge break cost a state that depends on real elapsed time since the edge was last broken by ANY convoy (shared, decaying asset -- work-benefit-decay), (2) making that cost superlinear in the current thickness (thickness^1.5 -- superlinear-thickness-effort), and (3) letting many convoys' chosen walks legally overlap on the same edges so the true cost of a plan depends on the GLOBAL temporal order of every convoy's edge crossings, not on any single convoy's route in isolation (shared-path-temporal-reuse). A per-convoy shortest path is well-defined and easy, but the joint schedule that minimizes total cost is not.",
+  "objective": "min",
+  "theme": "icebreaker escorting convoys through refreezing channels",
+  "title": "Refreeze Window: Convoy Wave Scheduling",
+  "strategies": [
+    "trivial: BFS fewest-hop path per convoy (ignores all costs and reuse), start at ready time -- matches the checker's own baseline construction",
+    "greedy: independent Dijkstra shortest path per convoy using each edge's virgin (fully-refrozen) cost as a static weight -- the obvious 'treat every corridor as fixed-cost' approach; never notices that a corridor another convoy just broke is temporarily cheap",
+    "strong: precompute all-pairs virgin-cost distances, then process convoys in ready-time order maintaining the REAL per-edge break/regrow state; for each convoy compare (a) its own current dynamic-cost shortest path against (b) 'investing' in breaking a not-yet-warm corridor now because the aggregate discount it gives to itself plus the near-future convoys that fall inside that edge's regrow window exceeds the one-time superlinear premium of breaking it -- an explicit amortized cost-benefit exchange argument over the shared decaying asset",
+    "local-search variants: perturb the strong plan's edge/cluster assignment and re-simulate, accepting swaps that lower total realized cost"
+  ]
+}

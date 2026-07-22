@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0672",
+  "tier": "A",
+  "format": "B",
+  "family": "spaced-rehearsal-call-sheet",
+  "eval_form": "quality-metric",
+  "theme": "theater rehearsal calendar before opening night",
+  "title": "Call Sheet: Rehearsals Before Opening Night",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:state-coupled-scheduling"],
+  "strategies": [
+    "trivial: one rehearsal per scene, earliest free & conflict-free day, scene-index order, no lookahead -> matches the evaluator's own weak baseline, ratio ~0.1",
+    "greedy: each day, fill rooms with whichever conflict-free scenes have had the FEWEST rehearsals so far (fair round-robin, completely decay/weight-agnostic) -- spreads practice evenly across the whole calendar, so fast-forgetting scenes' early reps decay to near-zero by opening and the scarce tech-week rooms aren't reserved for whoever needs them most",
+    "strong: walk days BACKWARD from opening night; each day, greedily seat the conflict-free scenes with the highest decay-discounted marginal value (capped by remaining need) for that specific day -- naturally reserves the valuable late days for fast-forgetting/high-weight scenes and lets bottleneck (heavy shared-actor) scenes fall back onto the roomier early days as leftover capacity",
+    "invalid: schedule every scene in every room slot of every day, ignoring room caps and actor conflicts entirely -> infeasible on every instance -> 0"
+  ]
+}

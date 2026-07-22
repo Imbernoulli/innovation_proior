@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_1034",
+  "tier": "B",
+  "format": "C",
+  "family": "gamelan-colotomic-grid",
+  "eval_form": "quality-metric",
+  "theme": "layered gong-cycle rhythm design",
+  "title": "Colotomic Grid: Phasing a Nested Gong Cycle",
+  "objective": "optimize",
+  "source_frameworks": ["wave2b-lens:constrained-aesthetics"],
+  "strategies": [
+    "trivial block-packing: nest the hierarchy as consecutive integer prefixes and bolt each free instrument onto its own disjoint block right after -- always valid, badly uneven",
+    "textbook phase-0 Euclidean rhythms with local repair: build every instrument as a canonical maximally-even pattern starting on the downbeat, then nudge individual onsets that blow the collision cap to the nearest open beat",
+    "CRT residue-disjoint phasing: keep every instrument a perfect arithmetic progression (evenness stays 1.0, since evenness is rotation-invariant) and choose each free instrument's phase to land in a residue class, modulo its gcd with every instrument it must avoid, distinct from theirs -- removing collisions at zero evenness cost",
+    "entropy-aware residue search: among all CRT-safe phase choices, search further (not just the first valid one) for the assignment that also maximizes the merged inter-onset-interval entropy bonus"
+  ]
+}

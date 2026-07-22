@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1072",
+  "tier": "B",
+  "format": "C",
+  "family": "lyndon-necklace-packing",
+  "eval_form": "quality-metric",
+  "theme": "Cyclic string covering the most necklaces",
+  "title": "Rotation-Free Ribbon: Necklace-Class Coverage",
+  "objective": "maximize",
+  "strategies": [
+    "constant-symbol baseline: repeat a single character (always feasible, exactly 1 necklace class, this is also the checker's own internal baseline)",
+    "substring-maximizing greedy walk: a de-Bruijn-style linear walk that greedily avoids repeating any exact k-length SUBSTRING, unaware that many of the substrings it visits are cyclic rotations of each other (same necklace, wasted length)",
+    "necklace-canonical packing: enumerate lexicographically-minimal-rotation (Lyndon-style) representatives of distinct necklaces and concatenate them back-to-back with zero overlap, so every aligned window buys one guaranteed-fresh necklace class",
+    "ordering / rotation-choice refinements on top of canonical packing to also harvest bonus coverage from the boundary-crossing windows"
+  ]
+}

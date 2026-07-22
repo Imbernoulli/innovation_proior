@@ -1,0 +1,19 @@
+{
+  "id": "fsx_S_0560",
+  "tier": "S",
+  "format": "B",
+  "family": "morphogen-french-flag-grn",
+  "eval_form": "quality-metric",
+  "theme": "stripes that hold under a stretching gradient",
+  "title": "Stripes That Hold Under a Stretching Gradient",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:morphogenesis-and-growth"],
+  "mechanisms": ["grn-thresholds", "morphogen-gradient", "scale-invariance-robustness"],
+  "innovation_hook": "Correct proportioning under unknown rescaling requires reading relative not absolute concentration, i.e. building scale invariance into the network.",
+  "strategies": [
+    "absolute thresholds calibrated on the nominal gradient (greedy trap): read the concentration at the 25% and 75% positions of the visible field and threshold every cell there; perfect on the nominal embryo but collapses once amplitude / offset / slope are rescaled",
+    "relative (min-max) readout: normalise the field to [0,1] and cut at 0.25/0.75; cancels amplitude and offset (affine rescaling) but a nonlinear slope/shape-exponent change still bends the stripe boundaries",
+    "rank / positional readout (the insight): label by the cell's concentration RANK fraction, which is invariant to ANY monotone rescaling (amplitude, offset, AND slope), recovering relative position directly and holding the 1:2:1 proportions",
+    "rank readout plus neighbour smoothing and cut tuning: average over the GRN neighbourhood to denoise local rank swaps and nudge the cut points against the residual low-frequency bump bias, pushing accuracy toward the (bump/noise-capped) ceiling"
+  ]
+}

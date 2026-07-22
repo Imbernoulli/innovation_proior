@@ -1,0 +1,93 @@
+# Dispersed Relay Coverage Under a Roaming Jammer
+
+## Problem
+
+You are placing `K` radio towers on an `L x L` grid to serve `N` weighted demand
+points. Point `i` has weight `w_i` and a **resilience target** `t_i` (`1..3`):
+it only earns full credit once at least `t_i` *surviving* towers reach it, and
+partial credit if fewer do. An adversary has published `M` candidate jammer
+positions; before scoring, the adversary picks the ONE position that hurts you
+most and every tower within its jamming radius `R` is destroyed. Your payoff is
+the weighted, resilience-aware coverage that survives the *worst* published
+jammer position — so credit stacked near a single spot is only as safe as that
+spot is from every jammer candidate that can reach it.
+
+## Input
+
+```
+N K M L r R
+x_1 y_1 w_1 t_1
+...
+x_N y_N w_N t_N
+gx_1 gy_1
+...
+gx_M gy_M
+```
+All values are integers, `0 <= x_i,y_i,gx_j,gy_j <= L`. `w_i >= 1`, `t_i in {1,2,3}`.
+`r` is each tower's coverage radius; `R` is the (shared) jamming radius.
+
+## Output
+
+Exactly `K` lines, one tower each:
+```
+x_1 y_1
+...
+x_K y_K
+```
+`0 <= x_k,y_k <= L`, integers (towers may coincide, though that wastes one).
+
+## Feasibility
+
+Not exactly `K` lines, a non-integer token, a coordinate outside `[0,L]`, or
+trailing tokens after the `K`-th line all score `0`.
+
+## Objective (maximize)
+
+Let `d2(a,b)` be squared Euclidean distance. For jammer position `g`, tower `j`
+**survives** `g` iff `d2(tower_j, g) > R^2`; otherwise it is destroyed. Demand
+point `i` is **reached** by a surviving tower `j` iff `d2(tower_j, point_i) <= r^2`.
+Let `cnt_i(g)` be the number of surviving towers that reach point `i` when `g`
+is the active jammer. The coverage value under `g` is
+```
+C(g) = sum_i  w_i * min(cnt_i(g), t_i) / t_i
+```
+and your objective is the adversary's worst case:
+```
+F = min over g in {1..M} of C(g)
+```
+(maximize `F`). A tower whose only useful reach is destroyed by whichever
+jammer position threatens it the most contributes nothing to `F`.
+
+## Scoring
+
+The checker also builds one fixed reference layout — a uniform grid over
+`[0,L]x[0,L]` sized only from `K`, ignoring weights, targets and jammer data —
+and evaluates the same `F` on it to get baseline `B > 0`. Your score on a test is
+```
+ratio = min(1000, 100 * F / B) / 1000
+```
+so matching the location-agnostic grid scores `0.1`; every unit of worst-case,
+resilience-aware survival above it raises your ratio, capped at `1.0` (10x `B`).
+Per-test ratios are averaged.
+
+## Constraints
+
+`3 <= N <= 130`, `2 <= K <= 30`, `2 <= M <= 130`, `20 <= L <= 500`,
+`1 <= r,R <= L`. Time limit: 4s. Memory limit: 512MB.
+
+## Example
+
+`L=20, r=6, R=5`. Points: `P1=(2,2,w=10,t=2)`, `P2=(10,10,w=6,t=1)`,
+`P3=(18,18,w=4,t=1)`. Jammers: `g1=(2,2)`, `g2=(18,18)` (parked exactly on two
+demand points). `K=2`.
+
+Placing towers **at** `P1` and `P2` looks natural but under `g1`: the tower at
+`P1` has `d2=0 <= 25`, destroyed; only the `P2` tower survives, so `C(g1)=6`
+(only `P2` reached). `F = min(6, C(g2)) = 6`.
+
+Placing towers at `(8,2)` and `P2` instead: `(8,2)` is still within `r` of `P1`
+(`d2=36<=36`, reached) but `d2` to `g1` is `36 > 25` — it **survives** `g1`.
+Now both towers survive both jammers, `C(g1)=C(g2)=0.5*10 + 1*6 = 11`, so
+`F=11` — nearly double, from moving one tower off the exact demand point it
+was defending so the jammer that threatens that point can no longer also
+destroy it.

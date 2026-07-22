@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0510",
+  "tier": "A",
+  "format": "C",
+  "family": "crt-difference-cover",
+  "eval_form": "quality-metric",
+  "theme": "beacon frequencies reused across a ring of relay towers",
+  "title": "Ring Beacons: Clean-Beat Reuse over a Composite Frequency Ring",
+  "objective": "max",
+  "strategies": [
+    "trivial baseline: pick k residues uniformly at random from Z_n (reproduces the checker's reference construction)",
+    "direct greedy set-cover: repeatedly add the residue (best of a random batch) that hits the most new target beat-differences in Z_n; ignores the composite structure and plateaus in a huge ring",
+    "CRT decomposition: recognize |D(B) cap T| = prod_i |D(B_i) cap A_i| for a residue product B=B1 x B2 x B3; split k=k1*k2*k3, design a near-perfect per-factor difference cover B_i in each small Z_{m_i}, take the CRT product",
+    "budget-split search: enumerate factorizations k=k1*k2*k3 and per-factor local-search the difference covers, keeping the assignment maximizing the coverage product"
+  ]
+}

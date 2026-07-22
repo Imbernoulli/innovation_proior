@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1076",
+  "tier": "A",
+  "format": "C",
+  "family": "snowflake-cutfold-program",
+  "eval_form": "quality-metric",
+  "theme": "paper snowflake from folds and one cut",
+  "title": "Fold-and-Cut Snowflake: Orbit-Aware Hole Design",
+  "objective": "max",
+  "strategies": [
+    "single generic mark: reproduces the checker's own trivial reference construction",
+    "single-blob greedy: BFS-grow one connected cut region from a fixed seed until its mirrored images hit the 1/3 area target, ignoring the fold axes entirely",
+    "orbit-aware multi-motif: place several pairwise-incongruent small cut motifs each kept at a safe clearance from every reflection/rotation axis of the fold group, so their orbits stay disjoint and each contributes a distinct hole shape, then top up area with repeats",
+    "invalid: claims more cut marks than the stated budget allows"
+  ]
+}

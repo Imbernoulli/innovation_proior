@@ -1,0 +1,79 @@
+# Wave Crossings on the Active Runway
+
+## Problem
+An active runway splits an airport into two halves. Aircraft parked at gates must
+**push back**, taxi to the single **crossing point**, and cross the runway to reach
+their departure side. The runway is live, so it may only be crossed during short,
+**periodic slots**: a tick `t` is crossable iff `t mod P < W` (slots open at
+`0, P, 2P, ...`, each `W` ticks wide, with `W < P`). The crossing is one lane wide:
+**at most one aircraft crosses per tick**, so a single slot can pass at most `W`
+aircraft — a *wave*. You control, for every aircraft, its pushback time and the tick
+at which it crosses.
+
+## Input
+```
+N P W d
+N lines, one per aircraft i (0-indexed):  rel_i  tau_i  w_i  alley_i
+```
+`rel_i` = earliest pushback tick. `tau_i` = taxi ticks from finishing pushback to
+reaching the crossing. `w_i` = delay weight. `alley_i` = the gate alley the aircraft
+sits in. All values are non-negative integers.
+
+## Output
+```
+N lines, one per aircraft i in input order:  s_i  x_i
+```
+`s_i` = the pushback tick you assign aircraft i. `x_i` = the tick it crosses.
+
+## Feasibility (any violation scores 0)
+1. `s_i >= rel_i`.
+2. **Pushback blocking:** pushing back occupies the gate alley for `d` ticks, so any
+   two aircraft in the same alley must have pushbacks at least `d` apart:
+   `|s_i - s_j| >= d` whenever `alley_i == alley_j`.
+3. **Arrival:** `x_i >= s_i + tau_i` (you cannot cross before you reach the crossing).
+4. **Slot:** `0 <= x_i` and `x_i mod P < W` (you cross only inside an open slot).
+5. **One lane:** all `x_i` are distinct.
+
+## Objective (minimize)
+Let `eft_i = rel_i + tau_i` be the earliest tick aircraft i could ever reach the
+crossing. Its delay is `x_i - eft_i >= 0`. Minimize the total weighted delay
+```
+F = sum_i  w_i * (x_i - eft_i).
+```
+
+## Scoring
+The judge builds a reference baseline `B`: process aircraft in **input order**; give
+each the earliest pushback its release and alley allow; then send it across **alone**
+in the next free slot (one aircraft per slot, at the slot's opening tick). `B = F` of
+that construction. Your score for a case is
+```
+ratio = min(1000, 100 * B / max(1, F)) / 1000
+```
+so reproducing the baseline scores `0.1`, and reaching `10*B`-fold lower delay caps at
+`1.0`. The overall score is the mean ratio over the 10 cases.
+
+## Constraints
+- `12 <= N <= 400`, `16 <= P <= 40`, `2 <= W <= 5` (`W < P`), `3 <= d <= 12`.
+- `0 <= rel_i, tau_i`; `1 <= w_i <= 1000`; `0 <= s_i, x_i <= 1e9`.
+- Time limit: 3 s. Memory limit: 512 MB. Deterministic: the judge replays your
+  pushbacks and crossings exactly.
+
+## Example
+Input:
+```
+2 10 2 5
+0 3 4 0
+2 3 9 0
+```
+Slots open at ticks `0,1 / 10,11 / 20,21 / ...` (`P=10, W=2`). Both aircraft share
+alley `0`, so their pushbacks must be `>= 5` apart. `eft_0 = 3`, `eft_1 = 5`.
+
+Baseline (input order, one per slot): aircraft 0 pushes at `s=0`, reaches at tick 3,
+crosses alone at slot-opening `x=10` (delay 7); aircraft 1 pushes at `s=5`
+(`>= 0+d`), reaches at tick 8, crosses alone at `x=20` (delay 15). So
+`B = 4*7 + 9*15 = 163`.
+
+A stronger answer pushes the **heavy** aircraft 1 first: `s_1=2, x_1=10` (delay 5),
+then `s_0=7, x_0=11` (delay 8). `F = 9*5 + 4*8 = 77`, ratio `= 100*163/77/1000 =
+0.212`. Filling each wave and ordering pushbacks by weight — not sending aircraft one
+at a time — is what wins.

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0752",
+  "tier": "A",
+  "format": "C",
+  "family": "rll-constrained-code",
+  "eval_form": "quality-metric",
+  "theme": "Huffman-style code obeying a channel constraint",
+  "title": "Run-Limited Channel Code: Huffman Under a Bit-Run Ceiling",
+  "objective": "min",
+  "strategies": [
+    "flat baseline: one fixed length L for every symbol, L = the smallest length at which enough run-legal codewords exist (reproduces the checker baseline)",
+    "textbook greedy: build the ordinary (unconstrained) Huffman tree from the frequencies and use it as-is if it happens to respect the run limit, otherwise fall back to the safe flat code -- optimal recipe, no attempt to reshape the tree around the constraint",
+    "capacity-aware construction: recursively split the most probable cluster of still-tied symbols along the run-limit automaton's actual branching (which sometimes offers only one legal next bit), giving each split its fair share of probability mass instead of assuming every node branches in two",
+    "exact automaton growth accounting: solve for the automaton's growth recurrence to know, at every depth, exactly how many legal codewords are available, and align code lengths to that count rather than to the plain binary count 2^L"
+  ]
+}

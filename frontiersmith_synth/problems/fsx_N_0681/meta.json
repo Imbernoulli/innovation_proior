@@ -1,0 +1,17 @@
+{
+  "id": "fsx_N_0681",
+  "tier": "N",
+  "format": "B",
+  "family": "arrival-mix-gatekeeping",
+  "eval_form": "quality-metric",
+  "theme": "platform seller-approval and moderation queue",
+  "title": "The Gatekeeper's Ledger",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:topup-B-2"],
+  "strategies": [
+    "reject everyone: zero risk, zero revenue -- reproduces the evaluator's weak (0.1) baseline",
+    "per-applicant Bayes-optimal expected-value threshold: approve iff P(legit | score, current mix health) clears today's break-even bar implied by trust/costs, recomputed each round from the current state alone",
+    "short-horizon rollout / lookahead planning: project several candidate acceptance bars forward under the public dynamics, detect when continuing today's break-even bar would push mix health below the cascade threshold within the lookahead window, and preemptively tighten (trading immediate expected value for avoiding the reputation-spiral regime) -- then relax back once the danger has passed",
+    "full dynamic-programming / value-iteration over the discretized (mix health, trust, volume, spiral) state space for a provably-optimal policy"
+  ]
+}

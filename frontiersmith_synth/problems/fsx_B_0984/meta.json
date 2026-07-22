@@ -1,0 +1,18 @@
+{
+  "id": "fsx_B_0984",
+  "tier": "B",
+  "format": "A",
+  "family": "ligament-compliance-hinge",
+  "eval_form": "quality-metric",
+  "theme": "Cutting a stiff sheet until it bends like leather",
+  "title": "Living-Hinge Curvature Fit",
+  "objective": "min",
+  "seed_problem": "novel composite family (wave2b-lens:geometry-fabrication); no classic decision-problem ancestor",
+  "mutation": "composite: cubic compliance-to-curvature inverse design (compliance-to-curvature-mapping) + a hard per-column net-section-strength-floor + a single shared cross-column slit budget that turns per-column inverse-cubic fitting into a multiple-choice knapsack (slit-pattern-synthesis)",
+  "strategies": [
+    "do-nothing baseline: slit nothing, every column stays at full material (checker's own baseline construction)",
+    "tangent-line monotone greedy: linearize the cubic compliance law at full material, estimate cuts needed per column from that linear model, and serve the neediest-looking columns first until the shared budget runs out",
+    "exact-inverse multiple-choice knapsack: compute the true cubic cost/error curve per column and solve the shared-budget allocation exactly with a DP over the budget dimension",
+    "uniform slit density (trap pattern from the classic living-hinge folklore): spend the budget evenly across all columns, which can only realize a nearly constant curvature and badly misses any varying target profile"
+  ]
+}

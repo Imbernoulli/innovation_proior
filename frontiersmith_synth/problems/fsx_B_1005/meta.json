@@ -1,0 +1,20 @@
+{
+  "id": "fsx_B_1005",
+  "tier": "B",
+  "format": "A",
+  "family": "fin-taper-perimeter-tradeoff",
+  "eval_form": "quality-metric",
+  "theme": "dragon-forge radiator sculpting",
+  "seed_problem": "grid polyomino perimeter maximization under a material budget",
+  "mutation": "composite: replace raw perimeter counting with a coupled steady-state conduction simulation -- the objective is no longer a function of shape geometry alone but of a physical relaxation (conduction-bottleneck through the shape's own emergent cross-section vs. exposure-perimeter loss at every exposed face), and the output constraint (one 4-connected polyomino attached to a fixed hot wall segment, budget M) forces a genuine shape-taper trade-off with no closed-form optimum.",
+  "objective": "max",
+  "title": "Dragon-Forge Radiator Sculpting",
+  "mechanisms": ["conduction-bottleneck", "exposure-perimeter", "shape-taper"],
+  "innovation_hook": "Effective fin length is set by the conduction-to-loss ratio K_COND/K_LOSS, so an emergent optimal branch-width profile exists that pure perimeter counting can never find.",
+  "strategies": [
+    "trivial: the checker's own reference radiator -- the single cheapest feasible one, ONE block on the wall's center column; spends almost none of the budget and does no thermal reasoning at all",
+    "greedy (trap): at every step, scan all cells row-major and add the reachable, unused cell that maximizes the IMMEDIATE exposed-perimeter delta (4-2*occupiedNeighbors), ties broken by a fixed positional hash, growing a SINGLE connected structure (a second wall column is only reachable once it borders an already-placed block, not for free) -- a pure 'maximize surface area' instinct that never accepts a cell with 2+ occupied neighbors while a 1-neighbor cell exists, so it never builds anything wider than one block and spends most of its budget on branches whose tips have already decayed to T_AMB",
+    "strong (insight): re-implements the checker's own relaxation law internally and SEARCHES a family of tapered trunk profiles (starting width w0, narrowing by 1 every ds rows, centered on the wall) plus the uniform-width limit, picking whichever profile the simulation itself scores highest -- exploiting the actual conduction-to-loss ratio read from the input instead of any fixed rule of thumb",
+    "invalid: outputs a block at row H+1 (outside the grid) -- must be rejected and score 0"
+  ]
+}

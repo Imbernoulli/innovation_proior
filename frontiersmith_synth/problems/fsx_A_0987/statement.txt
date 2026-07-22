@@ -1,0 +1,78 @@
+# Quarrelsome Metronomes on a Coupled Table
+
+## Problem
+`n` metronomes must be seated at the `n` seats of a table. Seat `i` and seat `j` are
+linked by a rigid coupling arm iff `(i,j)` is one of the `m` given edges of a connected,
+undirected seat graph (a lone edge can be the table's only path between two regions).
+Each metronome `k` has a fixed, hard-wired tempo deviation `f_k` (an integer; negative =
+runs slow, positive = runs fast) from the ensemble's mean tempo; the `n` deviations are
+supplied and always sum to exactly `0`. You choose a seating: a bijection from metronomes
+to seats.
+
+Once seated, the table settles into a steady linear synchronization state. Writing
+`omega_i` for the deviation of whichever metronome sits at seat `i`, the coupling arms
+carry internal correction currents `x` (one potential per seat, pinned so `x_1 = 0`) that
+exactly balance every seat's mismatch against its neighbors: for every seat `i`,
+`sum over neighbors j of (x_i - x_j) = omega_i`. (This is the pseudoinverse-flow equation
+`L x = omega` for the seat graph's Laplacian `L`; the minimum-norm solution `L^+ omega` is
+one particular solution of this system, and pinning `x_1 = 0` picks out a different
+representative of the same affine solution set, equal to `L^+ omega` up to an additive
+constant. Every representative gives the SAME arm currents below, since only differences
+`x_u - x_v` are ever used.) The arm joining seats `u, v` then carries current `x_u - x_v`. An overloaded
+arm is the one that snaps and desyncs the whole table — so you want NO single arm to
+carry too much current, even though minimizing each arm's *local* mismatch with its own
+neighbors is not the same as minimizing the worst arm overall.
+
+## Input (stdin)
+```
+n m
+u_1 v_1
+...
+u_m v_m
+f_1 f_2 ... f_n
+```
+`1<=u,v<=n` are 1-indexed seats; the seat graph is simple, undirected and connected.
+`f_1..f_n` are the metronome deviations (integers, `sum f_k = 0`).
+
+## Output (stdout)
+```
+p_1 p_2 ... p_n
+```
+`p_i` is the index (`1..n`) of the metronome seated at seat `i`; `p` must be a permutation
+of `1..n`.
+
+## Feasibility
+`p` must contain each value in `1..n` exactly once. Any violation scores `Ratio: 0.0`.
+
+## Objective
+Let `omega_i = f_{p_i}`. Solve the balance equations above for `x` (with `x_1=0`) and let
+`F = max` over arms `(u,v)` of `|x_u - x_v|`. **Minimize `F`.**
+
+## Scoring
+The checker also solves the SAME balance equations for the "do-nothing" seating
+`omega = f` (metronome `k` at seat `k`, i.e. the identity `p_i = i`), giving its own
+baseline flow `B`. Then:
+```
+sc = min(1000.0, 100.0 * max(B, 1e-9) / max(F, 1e-9))
+Ratio = sc / 1000.0
+```
+Reproducing the do-nothing seating scores `Ratio ~= 0.1`; halving the worst arm's current
+roughly doubles the ratio (capped at `1.0`).
+
+## Constraints
+- `4 <= n <= 150`, `n-1 <= m <= min(3000, n*(n-1)/2)`.
+- `|f_k| <= 1000`, `sum f_k = 0` exactly, and at least one `f_k != 0` (so `B > 0`).
+- Time limit: 3s. Memory limit: 256m.
+
+## Example
+`n=4`, edges form a 4-cycle `(1,2),(2,3),(3,4),(4,1)`, `f = [-3,-1,1,3]`.
+
+The do-nothing seating `p=[1,2,3,4]` gives `omega=(-3,-1,1,3)`; solving the balance
+equations gives arm currents `0.5, 1.5, 0.5, 2.5` on `(1,2),(2,3),(3,4),(4,1)`
+respectively, so `B = 2.5`.
+
+A candidate output `p = [1,4,2,3]` gives `omega=(-3,3,-1,1)` (seat 2 gets metronome 4,
+seat 3 gets metronome 2, seat 4 gets metronome 3): the equations give arm currents
+`2, 1, 0, 1`, so `F = 2`. Then `sc = 100*2.5/2 = 125`, `Ratio = 0.125` — better than the
+do-nothing seating, even though seats 1 and 2 (adjacent) now hold the two MOST dissimilar
+metronomes (`-3` and `3`).

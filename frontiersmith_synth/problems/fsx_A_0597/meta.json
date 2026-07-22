@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0597",
+  "tier": "A",
+  "format": "D",
+  "family": "shared-addition-chain-batch",
+  "eval_form": "flops",
+  "theme": "one furnace schedule to forge many alloys",
+  "title": "One Furnace, Many Alloys: Shared Addition-Chain Batch Exponentiation",
+  "objective": "min",
+  "strategies": [
+    "independent square-and-multiply per exponent, no sharing (trivial = baseline)",
+    "one shared g,g^2,g^4,... square table + binary assembly per exponent (greedy)",
+    "recover hidden modulus m, decompose e=q*m+r, share one g^m chain + residue table (strong)",
+    "jointly optimal addition sequence over the whole batch below the residue split (open ceiling, uncovered)"
+  ]
+}

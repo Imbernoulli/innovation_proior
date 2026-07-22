@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0996",
+  "tier": "A",
+  "format": "A",
+  "family": "sturmian-factor-complexity",
+  "eval_form": "quality-metric",
+  "theme": "Maximal distinct factors under a balance rule",
+  "seed_problem": "sturmian-factor-complexity spec (fsx_A_0996)",
+  "mutation": "composite: a balanced-word feasibility gate (per-letter frequency + windowed-balance tolerance) coupled to a two-term objective (raw factor complexity + palindromic richness), scored against a short-period internal baseline",
+  "objective": "max",
+  "title": "Balanced Word Maximal Factor Richness",
+  "strategies": [
+    "exact short-period (period<=12) fair-share cycling matching the target ratios directly (the checker's own trivial baseline): by the classical balance theorem an exact-ratio balanced binary word is FORCED into the reduced fraction's own short period, so factor/palindrome counts saturate almost immediately regardless of how carefully it is implemented",
+    "off-ratio fair-share (deficit) construction with the nudge magnitude shrunk at the WRONG rate (1/sqrt(L) instead of 1/L): the qualitative idea (abandon the exact input ratio) is present, but the whole-word count drift this causes grows like sqrt(L) instead of staying bounded, so it matches the correct construction on small/medium instances and is silently rejected (frequency-tolerance violation) once L grows -- the insight applied with the wrong scaling-law derivation",
+    "off-ratio fair-share (deficit) construction with the nudge magnitude correctly shrunk as Theta(1/L): the SAME family of construction, but derived from the invariant that whole-word drift = L * nudge must stay within tol_g at any L, so it stays feasible at every tested scale and produces a word whose ratio is irrational-for-all-practical-purposes at the tested window K -- balanced, high factor-complexity, and rich in palindromic factors"
+  ]
+}

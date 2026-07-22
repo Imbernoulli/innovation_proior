@@ -1,0 +1,111 @@
+# Tunnel Relay: Scheduling Couriers Through Single-Track Corridors
+
+## Problem
+
+A transit network has `N` stations and `M` one-way tunnels. Tunnel `i` runs
+from station `u_i` to `v_i` and takes `dur_i` whole time units to cross.
+Every tunnel is **single-track**: at most one courier may DEPART on tunnel
+`i` at any given integer time `t`. Once a courier departs tunnel `i` at
+time `t`, that `(tunnel, time)` slot is consumed forever -- no other
+courier may ever depart the same tunnel at the same time.
+
+You dispatch `K` couriers ("packets"). Courier `k` has a source `s_k`, a
+destination `t_k`, a release time `r_k` (earliest it may leave its source),
+a deadline `d_k` (latest allowed arrival), and a value `v_k`. Route as many
+or as few couriers as you like; an unrouted courier delivers nothing.
+
+A route for courier `k` is a sequence of tunnels `e_1,...,e_L` forming a
+path from `s_k` to `t_k`, with departure times `tau_1 <= ... <= tau_L`. A
+courier may wait at any station for free (waiting has no capacity limit),
+but once it commits to a tunnel at a time it consumes that slot.
+
+## Input
+
+```
+N M K T
+u_1 v_1 dur_1
+...
+u_M v_M dur_M
+s_1 t_1 r_1 d_1 v_1
+...
+s_K t_K r_K d_K v_K
+```
+
+Tunnels are numbered `0..M-1` in input order. `T` bounds every departure
+time you may report.
+
+## Output
+
+`K` lines, one per courier, in input order. Either the single integer `-1`
+(courier not delivered), or
+```
+L tau_1 e_1 tau_2 e_2 ... tau_L e_L
+```
+-- the hop count (`1 <= L <= 20`) followed by each `(departure time,
+tunnel id)` pair, in travel order.
+
+## Feasibility
+
+For a delivered courier `k`, ALL must hold: tunnel `e_1` starts at `s_k`;
+tunnel `e_L` ends at `t_k`; consecutive tunnels connect (`e_j` ends where
+`e_{j+1}` starts); `tau_1 >= r_k`; for every `j`, `tau_{j+1} >= tau_j +
+dur(e_j)` (may not leave the next tunnel before finishing the current one;
+waiting longer is fine); final arrival `tau_L + dur(e_L) <= d_k`. Across
+**every** delivered courier in your whole output, no `(tunnel, time)` pair
+may repeat. Any violation, or a malformed/out-of-range token, scores the
+entire output `0`.
+
+## Objective
+
+Maximize `F`, the total value of delivered couriers.
+
+## Scoring
+
+The checker computes an internal baseline `B`: route couriers in input
+order, each taking its OWN durationwise-shortest tunnel path (ignoring
+every other courier), waiting for that same path's next free slot when
+needed. `B` is that construction's total delivered value (always
+positive). Your score on a test is
+```
+ratio = min(1000, 100 * F / max(1, B)) / 1000
+```
+so matching the naive baseline scores `0.1`; `10x` its value reaches the
+`1.0` cap. The shortest tunnel is not always the right choice for every
+courier: one with a comfortable deadline may afford a longer, uncontested
+detour, freeing its shortcut's scarce slots for a courier whose deadline
+allows no detour at all.
+
+## Constraints
+
+* `1 <= N <= 600`, `1 <= M <= 600`, `1 <= K <= 300`.
+* `1 <= dur_i <= 20`. `0 <= r_k <= d_k <= T <= 500`. `1 <= v_k <= 2000`.
+* Time limit: 5s. Memory limit: 512MB.
+
+## Example
+
+```
+7 7 2 9
+0 2 1
+3 5 1
+1 2 1
+3 6 1
+2 3 2
+2 4 3
+4 3 3
+0 5 0 9 50
+1 6 0 4 20
+```
+
+Stations 0,1 are the couriers' sources; 2 = Lhub, 3 = Rhub, 4 = Dmid; 5,6
+are the sinks. Tunnel 4 (`2->3`, duration 2) is the shortcut both couriers
+want; tunnels 5,6 (`2->4->3`, total duration 6) are a slower detour that
+only courier 0 can afford (deadline 9 vs 4).
+
+Sending courier 0 over the shortcut first (`3 0 0 1 4 3 1`) grabs tunnel
+4's `t=1` slot, forcing courier 1 to depart it at `t=2` and arrive at
+`5 > 4`: dropped. `F = 50 = B`, ratio `0.1`.
+
+Routing courier 0 over the detour instead
+(`4 0 0 1 5 4 6 7 1`) leaves tunnel 4's `t=1` slot open, so courier 1
+delivers on time (`3 0 2 1 4 3 3`): `F = 70`,
+`ratio = min(1000, 100*70/50)/1000 = 0.14`.

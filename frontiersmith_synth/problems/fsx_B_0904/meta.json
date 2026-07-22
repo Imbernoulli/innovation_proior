@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0904",
+  "tier": "B",
+  "format": "B",
+  "family": "thermal-hysteresis-idling",
+  "eval_form": "quality-metric",
+  "theme": "forge furnace idling between sporadic jobs",
+  "title": "Forge Furnace Setback Ladder: Graded Idling Under Autocorrelated Job Gaps",
+  "objective": "min",
+  "strategies": [
+    "blind constant setback: hold the same fixed setback level every gap, ignoring all data (baseline)",
+    "classic ski-rental: compute one aggregate average gap length from everything observed so far and commit to the cheaper of the two extreme levels (hold vs full shutdown)",
+    "regime-static ladder: use the given short/long regime means to pick a single expectation-optimal ladder level for the whole run, without reacting to recent history",
+    "Bayesian regime filtering + expected-cost ladder: forward-filter a belief over which regime is currently active from every gap observed so far, and choose the ladder level minimizing the FULL expected cost under that belief each chunk"
+  ]
+}

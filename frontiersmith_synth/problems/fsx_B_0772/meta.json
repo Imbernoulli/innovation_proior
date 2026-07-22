@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0772",
+  "tier": "B",
+  "format": "C",
+  "family": "slab-direction-decomposition",
+  "eval_form": "quality-metric",
+  "theme": "Sculpture built from crossed plywood stacks",
+  "title": "Crossed Stacks: Slicing a Plywood Sculpture at the Pin-Sheet Trade",
+  "objective": "min",
+  "strategies": [
+    "trivial: keep the sculpture's own feature blocks as regions; for each one, use the first axis (X, then Y, then Z) whose cross-section fits a stock sheet, ignoring neighbours and the pin budget entirely (reproduces the checker's baseline, ~0.1)",
+    "greedy single-axis: try all three candidate slicing axes applied uniformly to the WHOLE sculpture, keep whichever is globally feasible and cheapest -- zero alignment pins, but a thin feature running the 'wrong' way relative to the chosen axis simply cannot be milled from any stock sheet, so a sculpture with arms in two different directions has no feasible global axis at all",
+    "strong isoperimetric allocation: let every block pick its own best-fitting axis independently, then spend the alignment-pin budget exactly where matching a neighbour's axis is worth it -- decoupling interior packing efficiency from boundary interface cost, which a single global axis (no freedom) or a per-block-only optimum (no budget awareness) can never reach",
+    "invalid: emit one region spanning the whole bounding grid, which necessarily swallows empty (non-solid) space and fails the reconstruction gate"
+  ]
+}

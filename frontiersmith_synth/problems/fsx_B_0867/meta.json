@@ -1,0 +1,19 @@
+{
+  "id": "fsx_B_0867",
+  "tier": "B",
+  "format": "A",
+  "family": "firebreak-wind-anisotropy",
+  "eval_form": "quality-metric",
+  "theme": "rangers defend a tinder-dry valley",
+  "title": "Firebreak on the Downwind Line",
+  "objective": "max",
+  "seed_problem": "wildfire firebreak / barrier placement to protect land value from a spreading fire",
+  "mutation": "composite: fire spread is an anisotropic shortest-arrival-time field (a directional eikonal/Dijkstra CA) coupling three mechanisms into one objective -- wind-direction-dependent per-step cost (downwind cheap, crosswind medium, upwind expensive), heterogeneous fuel (grass vs brush: different spread cost AND different standing value, with a planted low-value fast corridor leading to a high-value slow cluster), and a mandatory standoff distance forbidding any clearing near the flame front (so a tight 'seal the source' ring is either unaffordable or, if attempted, wastes its budget on directions the fire barely reaches within the horizon) -- with clearing itself costing the cleared cell's own standing value, so cheap low-value ground must be chosen for the cut, not the valuable ground being protected.",
+  "innovation_hook": "Containment under anisotropy is interception in spacetime, not enclosure in space -- the break belongs where the cone is narrow relative to remaining time.",
+  "strategies": [
+    "trivial: clear nothing -- reproduces the checker's own baseline B (ratio 0.1 exactly)",
+    "greedy: build a topological ring of cleared cells at the minimum legal standoff radius D, enumerated in a fixed wind-oblivious raster order (by column, east to west) until the budget runs out -- this protects real value whenever the true downwind direction happens to fall early in that fixed order, but on every test where the fire's cone actually points west it never reaches the critical arc before the budget is spent, and the cells it did build (upwind/crosswind of the ignition, where the fire barely spreads within the horizon) buy almost nothing",
+    "strong: Dijkstra the natural (unobstructed) spread once, then search over candidate downwind cut-lines beyond the mandatory standoff for the one whose reachable cross-section is cheapest to seal (using rock as free anchors) yet protects the most value beyond it -- exploiting that any path to a still-doomed cell must cross every such line, so a short, cheap arc placed where the cone is narrow suffices; as a fallback (when no such corridor exists to exploit) it also prices out a full ring at the minimum legal radius and keeps whichever construction the checker's own re-simulation scores higher",
+    "beyond strong: fractional-knapsack the residual budget across multiple candidate cut-lines when more than one threatened pocket exists, or jointly optimize cut placement against the standoff-adjacent forfeited value instead of always cutting at the very first affordable line"
+  ]
+}

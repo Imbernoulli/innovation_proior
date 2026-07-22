@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0776",
+  "tier": "B",
+  "format": "C",
+  "family": "hydraulic-trunk-sizing",
+  "eval_form": "quality-metric",
+  "theme": "Size pipes for quadratic pressure loss",
+  "title": "Reservoir Trunk Main: Sizing Pipes Against Quadratic Head Loss",
+  "objective": "min",
+  "strategies": [
+    "uniform baseline: give every pipe the same diameter, the largest whose network-wide uniform cost fits the budget (reproduces the checker's own baseline)",
+    "linear demand-share greedy: water-fill the budget proportional to each edge's own downstream flow Q_e (a plausible but LINEAR exchange rate)",
+    "exact marginal-value greedy: repeatedly buy the single diameter upgrade with the best true (unmet-demand reduction)/(marginal cost), evaluated exactly via the subtree-wide impact of each edge's head loss -- exploits the Q^2/D^5 convexity and downstream compounding that the linear recipe misses",
+    "invalid: out-of-range diameter indices, rejected by feasibility validation"
+  ]
+}

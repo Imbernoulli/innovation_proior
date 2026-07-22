@@ -1,0 +1,95 @@
+# Living-Hinge Curvature Fit
+
+## Problem
+A stiff sheet is cut into a strip of `m` columns. Every column starts with `k`
+parallel load-bearing ligaments (thin uncut bridges of material). Slitting some
+of a column's ligaments lowers its remaining net section `r` and raises its
+local bending compliance under a fixed applied moment `M`. The realized
+curvature of a column with `r` remaining ligaments is the deterministic,
+**cubic** law
+```
+curvature(r) = M / r^3
+```
+(fewer ligaments bend far more than proportionally less material would
+suggest). Every column also has a **net-section strength floor** `S`: cutting
+a column below `r = S` ligaments makes it structurally unsafe and is
+forbidden. Finally, slitting is a physical, budgeted operation: the **total**
+number of ligaments removed across the whole strip cannot exceed a shared
+budget `C` (you are synthesizing one global slit pattern, not choosing each
+column in isolation).
+
+You are given a target curvature profile (one value per column) and must
+choose how many ligaments to slit from each column so the realized curvature
+profile matches the target as closely as possible, without violating the
+strength floor or the shared budget.
+
+## Input
+```
+m k S M C
+target_1 target_2 ... target_m
+```
+`target_i` is the desired curvature of column `i`, given as an integer equal
+to `round(1000 * kappa_target_i)` (i.e. divide by 1000 to get the real value).
+
+## Output
+One line with `m` integers:
+```
+r_1 r_2 ... r_m
+```
+`r_i` is the number of ligaments left standing in column `i` after slitting.
+
+## Feasibility
+- For every column, `S <= r_i <= k`.
+- `sum_i (k - r_i) <= C` (total ligaments removed across the whole strip).
+Any violation scores 0.
+
+## Objective (minimize)
+```
+F = sum_i | M / r_i^3 - target_i / 1000 |
+```
+the total absolute mismatch between the curvature you realize and the target
+curvature profile, summed over all columns.
+
+## Scoring
+Let `B` be the objective `F` obtained by the do-nothing construction
+`r_i = k` for every column (no slits at all; this always satisfies both
+constraints). Your score for a test case is
+```
+ratio = min(1000, 100 * B / max(1, F)) / 1000
+```
+(F and B are compared after an internal fixed-point scaling so the formula is
+exact and deterministic). `F = B` (doing nothing) scores `0.1`; closing 90% of
+the mismatch scores about `1.0`, which is the cap. The overall score is the
+mean ratio over the 10 test cases.
+
+## Constraints
+- `6 <= m <= 160`, `8 <= k <= 34`, `2 <= S <= k - 4`.
+- `M` is a positive integer (the applied moment); `C` is a positive integer
+  budget with `C <= m * (k - S)`.
+- `curvature(r)` is convex in the cut count `k - r`: flat near `r = k`, steep
+  near `r = S`. A naive proportional ("more cuts = more bend") estimate of
+  cuts needed is usually far off near the floor, and the shared budget means
+  what you spend on one column is unavailable to another.
+- Uniform slit density (every column cut the same amount) realizes only a
+  single constant curvature and badly misses a varying target profile.
+- Time limit: 5 s. Memory limit: 256 MB. Fully deterministic; the checker
+  recomputes curvature from your `r_i` values exactly.
+
+## Example
+Input (at the smallest allowed size, `m=6, k=8`):
+```
+6 8 2 1024 25
+7430 2720 1838 15920 120064 3263
+```
+Here `S=2, M=1024, C=25`; targets are `7.43, 2.72, 1.838, 15.92, 120.064, 3.263`.
+
+Do-nothing (`r = 8 8 8 8 8 8`, cost 0): curvature is `1024/512 = 2.0` in every
+column, so `F = 5.43+0.72+0.162+13.92+118.064+1.263 = 139.559 = B`, ratio `0.1`.
+
+A better, still simple answer spends 6 of the 25-cut budget entirely on the
+fifth column, cutting it to the floor (`r = 8 8 8 8 2 8`, cost `6 <= 25`):
+curvature there becomes `1024/8 = 128.0`, close to its target `120.064`, while
+every other column is untouched. `F = 5.43+0.72+0.162+13.92+7.936+1.263 =
+29.431`, giving `ratio = 100*139.559/29.431/1000 ≈ 0.474` -- one well-aimed
+floor cut closes most of the gap, but columns 1 and 4 still have cheap,
+unexploited improvements left.

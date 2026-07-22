@@ -1,0 +1,93 @@
+# Balanced Word Maximal Factor Richness
+
+## Problem
+You must output a binary word `w` of length `L` (an alphabet of two letters,
+`0` and `1`) that satisfies a strict **balance rule**, while making the word
+as *structurally rich* as possible in two coupled senses at once: many
+distinct short blocks (factors) should appear in it, and many of those
+blocks should read the same forwards and backwards (palindromes).
+
+**Balance.** Fix a target letter-1 count `freq[1]` (and `freq[0] = L -
+freq[1]`). Your word must contain close to `freq[c]` copies of each letter
+`c` overall, and — this is the hard part — for **every** window length `m`
+from `1` to `K`, if you look at all `L-m+1` contiguous windows of length
+`m`, the number of times letter `c` appears must not vary by more than a
+small tolerance across those windows. A word that satisfies this for every
+`m` up to `K` is called `K`-balanced. Uniform random words are almost never
+balanced even for small `m` — some window will be letter-heavy, another
+letter-light, purely by chance.
+
+## Input (stdin)
+```
+a L K tol_w tol_g w_pal
+freq_0 freq_1
+```
+- `a` = 2 (alphabet size; alphabet is always `{0,1}` in this problem).
+- `L` = target word length.
+- `K` = the largest factor/window length that is checked and scored.
+- `tol_w` = the window-balance tolerance (see Feasibility).
+- `tol_g` = the whole-word frequency tolerance (see Feasibility).
+- `w_pal` = the weight given to the palindromic-richness term of the score.
+- `freq_0, freq_1` = target counts of letter `0` and letter `1` (sum to `L`).
+
+## Output (stdout)
+A single line containing your word `w`: exactly `L` characters, each `0` or
+`1`.
+
+## Feasibility
+An output is valid iff **all** hold:
+- `w` has length exactly `L`, over the alphabet `{0,1}`;
+- **global frequency**: for each letter `c`, `|count_c(w) - freq[c]| <=
+  tol_g`;
+- **windowed balance**: for every window length `m = 1..K` and every
+  letter `c`, `max(count_c over all length-m windows) - min(count_c over
+  all length-m windows) <= tol_w`.
+Any violation scores `Ratio: 0.0`.
+
+## Objective
+Only for a feasible `w`, define:
+- `FactorScore = sum_{l=1..K} (number of DISTINCT length-l substrings of
+  w)`;
+- `PalScore = number of DISTINCT length-l substrings of w, for l = 1..K,
+  that read the same forwards and backwards`;
+- `F = FactorScore + w_pal * PalScore`.
+Maximize `F`.
+
+## Scoring
+The checker also builds its own simple reference word `B_w`: a short
+repeating letter-cycling pattern (period at most 12) whose long-run
+proportions match `freq[]` exactly. `B` is `B_w`'s own `F`-value (always
+`>= 1`). Your score is
+```
+sc = min(1000.0, 100.0 * F / B)
+Ratio = sc / 1000.0
+```
+Matching the reference's richness scores `Ratio = 0.1`; `10x` richer caps
+at `Ratio = 1.0`. A short-period word can satisfy balance easily but its
+factor/palindrome counts saturate quickly once `l` passes the period — it
+cannot keep growing as `l -> K`.
+
+## Constraints
+- `48 <= L <= 3000`, `8 <= K <= 48`, `K` well below `L`.
+- `tol_w in {1}`, `tol_g in {2}` (both `>= 0`, read from input; do not
+  assume these exact values in your solver).
+- `w_pal >= 1`.
+- Time limit 4s, memory 256MB.
+
+## Example
+`a=2 L=48 K=8 tol_w=1 tol_g=2 w_pal=2`, `freq = (24, 24)`.
+
+The word `010101...01` (24 copies of `01`) is `8`-balanced and hits the
+frequency target exactly, but it is period-`2`: EVERY window length has
+only `2` distinct factors (`FactorScore = 2*8 = 16`) and only alternating
+lengths contribute a palindrome (`PalScore = 8`), so `F = 16 + 2*8 = 32` —
+exactly the checker's own reference, `Ratio = 0.1`.
+
+A word that keeps the same balance and frequency but avoids settling into a
+short repeating pattern — e.g. one built by nudging the target 1-frequency
+slightly away from exactly `1/2`, then greedily keeping running counts
+close to that nudged target at every prefix — instead gets `l+1` distinct
+factors at every length `l = 1..8` (`2,3,4,...,9`, the maximum a balanced
+binary word can have), `FactorScore = 44`, plus `PalScore = 12`, so
+`F = 44 + 2*12 = 68`, `Ratio = 0.2125` — more than double the short-period
+reference, while staying perfectly `8`-balanced.

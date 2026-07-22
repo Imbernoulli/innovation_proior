@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0723",
+  "tier": "A",
+  "format": "C",
+  "family": "self-describing-tableau",
+  "eval_form": "quality-metric",
+  "theme": "Build the largest self-counting number table",
+  "title": "Twin-Row Tally Tableau",
+  "objective": "optimize",
+  "strategies": [
+    "round-robin fill: cycle column index mod base through the free cells, ignore the self-reference constraints entirely",
+    "synchronous recount-and-rewrite: repeatedly overwrite every counter cell with the digit count computed from the previous grid (Jacobi fixed-point iteration), which can 2-cycle forever on cross-row-paired counters",
+    "single-cell coordinate descent with O(1) incremental recount: since changing one free cell's digit changes exactly two digit tallies (old digit down, new digit up), evaluate each candidate digit's exact marginal effect on the weighted-satisfied total and only ever take non-decreasing moves, sweeping to a monotone fixpoint",
+    "weighted local search restarts from different deterministic sweep orders to escape shallow local fixpoints"
+  ]
+}

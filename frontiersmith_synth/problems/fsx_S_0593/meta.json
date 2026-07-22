@@ -1,0 +1,19 @@
+{
+  "id": "fsx_S_0593",
+  "tier": "S",
+  "format": "B",
+  "family": "quote-flow-inventory-control",
+  "eval_form": "quality-metric",
+  "theme": "market maker quoting against a scripted order flow",
+  "title": "Skew Ahead: Quoting a Market Book Against Adverse Scripted Order Flow",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:topup-B-2"],
+  "mechanisms": ["adversarial-scripted-orderflow", "inventory-risk-carryover"],
+  "innovation_hook": "Skew quotes to lean against the inventory you will be forced to hold through the anticipated price move, trading spread for terminal risk control.",
+  "strategies": [
+    "quote-nothing baseline: post zero size on both sides; nothing fills, inventory and PnL stay 0 (reproduces the evaluator's do-nothing reference, ~0.1)",
+    "max-capture recipe (the trap): every step post the spread that maximizes myopic per-step capture (hb=ha=W/2, full size, symmetric), ignoring the public price path; on an adverse instance the pre-move buy burst lifts the ask and loads a large SHORT right before the up-move (or a large LONG before the down-move), so the maker bleeds the move for a sliver of spread",
+    "skew-ahead inventory control (the insight): read the public mid path and flow, reformulate as choosing a TARGET inventory that leans the way the coming move pays, invert the fill model to hit that target on one side while WITHDRAWING the other so the adverse burst cannot push you the wrong way, start accumulating EARLY before the burst chokes the interest you need, then unwind after the move to shed the convex holding charge",
+    "full stochastic-control planner: additionally optimize the accumulate/unwind timing and the spread-vs-holding-cost trade-off across multiple moves and the position cap (the twin-regime instances), banking spread on the flat legs while pre-positioning for each move"
+  ]
+}

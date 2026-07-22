@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0668",
+  "tier": "B",
+  "format": "C",
+  "family": "sequencing-budget-drain",
+  "eval_form": "quality-metric",
+  "theme": "estate auction house schedules two hundred lots",
+  "title": "Estate Auction House: Two Hundred Lots",
+  "objective": "max",
+  "strategies": [
+    "trivial: sell lots in input order with reserve 0 everywhere (matches the checker baseline)",
+    "greedy: sort lots by their single highest bidder value, descending, reserve 0 (textbook 'sell the marquee stuff first, second price is already optimal' instinct)",
+    "structure-aware local search: build a bidder-overlap graph from each lot's top-2 bidders, round-robin/interleave the sale order across bidders' groups so no single rich bidder's budget gets burned in one consecutive block, seed reserves near each lot's second-highest value (with a monopoly bump on uncontested lots), then hill-climb order swaps and reserve deltas directly against the true replay objective under a wall-clock budget",
+    "invalid: outputs a non-permutation (repeats one lot id) to demonstrate the feasibility gate"
+  ]
+}

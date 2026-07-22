@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_0749",
+  "tier": "B",
+  "format": "C",
+  "family": "vesting-lockin-allocator",
+  "eval_form": "quality-metric",
+  "theme": "Allocate capital into vesting, locked instruments",
+  "title": "Vesting Lock-in Allocator",
+  "objective": "max",
+  "strategies": [
+    "do-nothing baseline (never commit)",
+    "myopic current-best-rate chase (ignores lock window and future schedule)",
+    "backward DP over release-time value (anticipates rate windows, times lock maturities to land on high-return openings)"
+  ]
+}

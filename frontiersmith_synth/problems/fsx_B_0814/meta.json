@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0814",
+  "tier": "B",
+  "format": "A",
+  "family": "hysteresis-reversal-tour",
+  "seed_problem": "visit a set of valued target points with a mobile agent, maximizing value collected minus travel cost",
+  "mutation": "composite: the cost of a move is not distance but a per-axis STATE cost -- each axis independently accumulates a directional-backlash error whenever its travel sign reverses since the last home, a point only pays off if the current error is within its own tolerance, and homing to the origin is the only way to clear accumulated error (at travel cost). The tour must therefore be planned in a monotonicity norm (reversal count) rather than a distance norm.",
+  "objective": "max",
+  "theme": "pick-and-place gantry with worn gears",
+  "title": "Worn-Gear Gantry: The Backlash-Aware Pick Circuit",
+  "strategies": [
+    "trivial: visit points in the given input order with no homing at all -- reproduces the checker's own do-nothing-clever baseline exactly",
+    "greedy: nearest-unvisited-point-by-raw-distance, never homing -- the obvious 'shortest tour' first instinct; because it is blind to axis-sign reversals it zigzags on a generic point cloud, so its per-axis error only ever grows and most tight-tolerance points become uncollectable",
+    "strong (insight): reformulate the cost as a monotonicity norm -- bucket points into y-ordered row-bands and sweep each row in alternating (serpentine/boustrophedon) x-direction, so reversals occur only O(sqrt n) times at row boundaries instead of on almost every move; additionally, home immediately before any zero-tolerance point (homing clears direction memory, so the very next move can never register as a reversal), co-optimizing tour geometry with the hysteresis state instead of treating them separately",
+    "a further solver could go beyond fixed row-banding: locally reorder within/across rows via 2-opt restricted to moves that do not increase the reversal count, or decide home-insertions by an actual cost/benefit threshold per point's value and tolerance rather than a blanket zero-tolerance rule"
+  ]
+}

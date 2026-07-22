@@ -1,0 +1,15 @@
+{
+  "id": "fsx_A_1038",
+  "tier": "A",
+  "format": "C",
+  "family": "phase-lattice-nulling",
+  "eval_form": "quality-metric",
+  "theme": "aiming a lighthouse array while keeping harbors dark",
+  "title": "Lighthouse Lattice: Harbors Lit, Harbors Dark",
+  "objective": "maximize",
+  "strategies": [
+    "checker-matching single comb: find the largest divisor d of N (d<=K) that divides every harbor bearing but no protected bearing, and fire only that one d-element comb (scores exactly the checker's own baseline, ~0.1)",
+    "textbook phase-conjugate beamforming: split the K-emitter budget into T contiguous sub-arrays, one per harbor, each phase-conjugated toward its own bearing to maximize gain there -- never reasons about the protected bearings, so it leaks whatever sidelobe the conjugate phasing happens to produce and gets zeroed on the planted trap cases",
+    "zeros-budget/gain-budget split (polynomial root placement): treat the array response as the array polynomial evaluated at N-th roots of unity; pick a protected-safe divisor d of N and spend the remaining L-1 = K/d - 1 combs (same d, brute-forced offsets and per-comb phases) purely on gain, since every comb of spacing N/d is EXACTLY zero at every non-multiple-of-d bearing regardless of its phase or offset -- hard nulls come for free, so the whole remaining budget goes to maximizing the worst-illuminated harbor"
+  ]
+}

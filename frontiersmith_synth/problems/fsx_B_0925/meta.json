@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0925",
+  "tier": "B",
+  "format": "E",
+  "family": "dual-arrhenius-crossover",
+  "eval_form": "quality-metric",
+  "theme": "bread that rises fast then stalls with heat",
+  "title": "Proofing Box Crossover -- recovering a hidden second kinetic channel from Arrhenius-plot curvature",
+  "objective": "min",
+  "strategies": [
+    "trivial: emit the flat geometric mean of the training rise-rate values as a constant law -- reproduces the checker's own baseline, Ratio ~0.1",
+    "greedy: textbook Arrhenius fit r = A'*expv(-theta'/T) by ordinary least squares of log(r) against 1/T over ALL training rows; it tracks the proofing-window sweep to the noise floor (R^2 > 0.99, excellent in-sample), but a single exponential channel can only carry one characteristic temperature -- extrapolated into the oven-overshoot regime it keeps climbing past the true turnover, and into the fridge-retard regime it decays too steeply",
+    "strong: treat the small, systematic Arrhenius-plot curvature as a hypothesis test (quadratic-vs-linear fit comparison on binned data) between a single mechanism and two competing ones; once curvature is confirmed real (not noise), reformulate the harmonic (resistors-in-series) combination r=k1*k2/(k1+k2) as an ADDITIVE model in reciprocal space, 1/r = c1*expv(theta1/T) + c2*expv(-theta2/T), which is linear in (c1,c2) for any fixed (theta1,theta2); grid-search + locally refine (theta1,theta2) against the noise-reduced (binned) reciprocal-rate data to recover both channels -- this carries the correct turnover into the held-out extrapolation regimes",
+    "headroom above strong: joint nonlinear (Gauss-Newton/Levenberg-Marquardt) refinement of all four parameters after the grid-search initialization, robust/trimmed binning against the noise floor, or adaptive bin-count and grid resolution per instance"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "fsx_B_0966",
+  "tier": "B",
+  "format": "A",
+  "family": "retained-heat-batch-chains",
+  "eval_form": "quality-metric",
+  "theme": "heat-treatment furnace with batch loads",
+  "title": "Furnace Retained-Heat Batch Chains",
+  "objective": "min",
+  "seed_problem": "batch scheduling with sequence-dependent setup and weighted tardiness",
+  "mutation": "composite: batch composition (which jobs share a load, under a capacity cap) is coupled to a DIRECTIONAL sequence-dependent cost (retained furnace heat decays from the previous batch's temperature, so heating up is cheap but forcing the furnace down is expensive and slow) and to weighted tardiness against the batch sequence's completion times, turning batching+sequencing into a chain-decomposition problem rather than a similarity-clustering problem.",
+  "strategies": [
+    "trivial: naive sequential first-fit packing in raw input-index order, ignoring temperature and due dates (reproduces the checker baseline)",
+    "naive greedy: bin-pack jobs into batches sorted by required temperature and process strictly ascending (captures the carryover savings but is deadline-blind)",
+    "insight (strong): build the batch sequence in due-date order first (deadline-aware skeleton), then run a deterministic local search that swaps batch order and moves jobs between adjacent batches to recover most of the ascending-chain carryover savings while keeping urgent jobs on time -- braiding several short ascending chains instead of one long deadline-blind one",
+    "invalid: assigns one job to two different batches (infeasible partition)"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1036",
+  "tier": "A",
+  "format": "C",
+  "family": "dfa-intersection-witness",
+  "eval_form": "quality-metric",
+  "theme": "One string maximizing weighted DFA acceptance",
+  "title": "One Passphrase, Many Gatekeepers",
+  "objective": "max",
+  "strategies": [
+    "single-DFA baseline: pick the heaviest DFA that has any reachable accepting string within Lmax, output only its own shortest accepting string",
+    "weight-priority merge: process DFAs heaviest-first, greedily extend a shared candidate string whenever the next DFA's requirement is consistent with what is already committed, else skip it permanently",
+    "weighted product-automaton search: track every reachable joint (per-DFA) state as the string is extended symbol by symbol, and take the best total weight seen at any reachable joint state up to length Lmax -- a genuine subset-selection DP, not a priority order",
+    "randomized multi-restart local search over strings, repaired for feasibility, keeping the best weighted acceptance found"
+  ]
+}

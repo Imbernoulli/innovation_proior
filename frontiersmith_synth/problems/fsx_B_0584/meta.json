@@ -1,0 +1,18 @@
+{
+  "id": "fsx_B_0584",
+  "tier": "B",
+  "family": "precedence-aware-reuse-distance-ordering",
+  "seed_problem": "topological ordering of a task DAG replayed through an exact LRU scratchpad to minimize cache misses",
+  "mutation": "composite: (goal) turn topological ordering into an LRU-miss-minimizing linear-extension problem; (input) couple DAG precedence with a shared-page structure whose globally-hot pages recur across clusters, so the objective is jointly shaped by dag-precedence, lru-eviction-state, and reuse-distance shaping",
+  "objective": "min",
+  "theme": "compiling a task graph on a tiny scratchpad",
+  "title": "Compiling a Task Graph on a Tiny Scratchpad",
+  "mechanisms": ["dag-precedence", "lru-eviction-state", "reuse-distance-shaping"],
+  "innovation_hook": "The schedule does not react to the cache, it authors the reuse-distance profile; the right mental model is shaping a distance histogram under DAG constraints, not chasing locality.",
+  "strategies": [
+    "trivial: emit the given order 1..N (the reference baseline)",
+    "greedy: cluster tasks by shared pages -- bucket each task by its rarest (signature) page and emit signature-group by signature-group; cache-oblivious, so globally-hot pages get a whole-cluster reuse distance and are reloaded every cluster (the trap)",
+    "strong: cache-state-aware list scheduling that shapes the reuse-distance histogram -- keep globally-hot pages resident by packing their touches, even at the cost of breaking cluster locality; picks the best of several reuse-distance-shaping passes",
+    "invalid: emit an out-of-range task id (infeasible) -> score 0"
+  ]
+}

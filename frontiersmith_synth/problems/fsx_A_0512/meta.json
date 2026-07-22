@@ -1,0 +1,19 @@
+{
+  "id": "fsx_A_0512",
+  "tier": "A",
+  "format": "A",
+  "family": "cascade-capacity-hardening",
+  "eval_form": "quality-metric",
+  "theme": "power grid survives any single line trip",
+  "title": "Firebreak Grid: Hardening a Power Network Against Any Single Trip",
+  "objective": "max",
+  "seed_problem": "capacity-budgeted cascade robustness under a worst-of-sweep single-line-trip sweep",
+  "mutation": "composite: capacity-budgeting + fixed proportional load-redistribution cascade + worst-of-sweep (min over scenarios) served-demand scoring; capacities are routing, not margins",
+  "source_frameworks": ["wave2b-lens:adversarial-sweep-robustness"],
+  "strategies": [
+    "uniform baseline: split the budget equally across all lines (the checker's reference; high-base lines trip at rest and cascade)",
+    "proportional-to-load greedy: buy capacity in proportion to base load -- covers every base load but leaves only a thin uniform surge cushion, so backbone entrances trip in the worst cascade and the pocket bait wastes budget",
+    "value-at-risk hardening: cover base loads then add surge margin to the highest-cascade-value lines sized to the worst sweep surge",
+    "firebreak (strong): deliberately under-provision low-value ground-shedding pockets so cascades die there, redirecting the freed budget into surge margin on backbone entrances so every scenario's cascade stops before crossing a backbone"
+  ]
+}

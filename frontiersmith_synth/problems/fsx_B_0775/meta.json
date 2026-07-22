@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_0775",
+  "tier": "B",
+  "format": "C",
+  "family": "algebraic-key-hash-tuning",
+  "eval_form": "quality-metric",
+  "theme": "hash function versus fifty hostile key patterns",
+  "title": "Hash Function Versus the Published Key-Family Sweep",
+  "objective": "min",
+  "strategies": [
+    "mod-M reduction is a bijective relabeling of x mod M, so any pipeline that reduces\n     via MODM without an avalanche stage first is defeated by an AP family whose stride\n     is a multiple of M, regardless of the multiplier/offset chosen",
+    "a single fixed textbook multiplicative constant (Fibonacci hashing) has an exact\n     algebraic resonance: pick an AP stride S with A0*S = small_delta (mod 2^64), and the\n     whole family collapses into a handful of adjacent top-bit buckets",
+    "reading the actual published sweep and searching per-instance for a multiplier that\n     avoids every planted resonance (instead of trusting one canonical constant) recovers\n     near-pigeonhole-optimal worst-case load on every family type in the sweep"
+  ]
+}

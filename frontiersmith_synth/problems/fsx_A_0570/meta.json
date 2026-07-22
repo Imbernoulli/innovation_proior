@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0570",
+  "tier": "A",
+  "format": "D",
+  "family": "vectorial-addition-chain",
+  "eval_form": "flops",
+  "theme": "One multiplier ladder for many exponents",
+  "title": "One Ladder, Many Exponents: A Shared Addition Sequence",
+  "objective": "min",
+  "strategies": [
+    "independent square-and-multiply per target (trivial, = baseline)",
+    "one shared doubling ladder + per-target set-bit sums (greedy)",
+    "meet-in-the-middle split: assemble the shared low chunk once, reuse it (strong)",
+    "Yao windowing + shared common high-window sub-sums below strong (open ceiling, uncovered)"
+  ]
+}

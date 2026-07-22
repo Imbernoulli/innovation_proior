@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0763",
+  "tier": "B",
+  "format": "C",
+  "family": "cuckoo-orientation-stash",
+  "eval_form": "quality-metric",
+  "theme": "innkeeper assigning regulars to their two favorite rooms",
+  "title": "The Innkeeper's Ledger",
+  "objective": "min",
+  "strategies": [
+    "first-fit in ledger order: walk keys in input order, place each in the first open slot (room1-cot1, room1-cot2, room2-cot1, room2-cot2, annex), never revisit a placement",
+    "frequency-priority first-fit: sort regulars by visit frequency descending, then first-fit -- locks in slots greedily and can never evict a seated guest to relieve a cycle",
+    "min-cost-flow reformulation: build a flow network (regular -> its 4 (room,cot) options + a shared annex sink with capacity s), solve exact min-cost max-flow so the annex is used proactively as a cycle-breaking relief valve whenever it lowers total weighted cost, not merely when a regular has nowhere else to go",
+    "randomized local search / simulated annealing over the assignment with annex-swap moves"
+  ]
+}

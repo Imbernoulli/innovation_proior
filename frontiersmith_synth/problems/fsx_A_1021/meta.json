@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1021",
+  "tier": "A",
+  "format": "C",
+  "family": "cooldown-aware-charging-berths",
+  "eval_form": "quality-metric",
+  "theme": "overnight electric bus depot",
+  "title": "Depot Patience: Cooldown-Aware Overnight Charging",
+  "objective": "min",
+  "strategies": [
+    "immediate full-power FCFS (checker's own baseline, and the trivial tier): charge every bus the instant it arrives at max power, first-come-first-served over the shared berths",
+    "flat moderate-power FCFS (the obvious 'average coder' recipe): charge every bus the instant a berth is free at a single fixed half-max power, never voluntarily delaying and never adapting power to any one bus's own heat",
+    "best-improvement exchange local search: start every bus at the always-feasible immediate full-power schedule, then repeatedly find and apply the single (bus, one-power-step-gentler) move with the largest degradation payoff that is still feasible against the live shared berth timeline, re-scanning after every move until no beneficial move remains",
+    "any other feasibility-respecting schedule (e.g. a global optimizer, simulated annealing over per-bus power profiles) is valid input space too"
+  ]
+}

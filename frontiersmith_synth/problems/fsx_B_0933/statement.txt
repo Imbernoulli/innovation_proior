@@ -1,0 +1,83 @@
+# Combination-Lock Rewiring Against Nudge Attacks
+
+## Problem
+
+A combination lock has `p` dial positions, labelled `0..p-1` (`p` is an odd prime).
+A **rewiring** is a permutation `pi` of `{0,...,p-1}`: turning the dial to raw
+position `x` opens contact `pi(x)`. A **nudge attack** repeatedly turns the dial by
+some fixed physical amount `s != 0` (mod `p`) from many different starting
+positions `x`, and watches the contact *change* `pi(x+s) - pi(x) (mod p)`. If, for
+some shift `s` and some observed change `c`, an unusually large number of starting
+positions `x` all produce that same `(s, c)`, the attacker has found a reliable
+signal: nudging by `s` predicts the contact shift `c` far more often than chance,
+regardless of the raw position. Your job is to rewire the lock so that **no**
+`(s, c)` pair leaks that badly, for the *worst-case* pair.
+
+## Input
+
+A single line with one integer:
+```
+p
+```
+
+## Output
+
+Print `p` integers `pi(0) pi(1) ... pi(p-1)` (space- or newline-separated): your
+rewiring.
+
+## Feasibility
+
+Your output must be a genuine rewiring: a permutation of `{0,...,p-1}` (each value
+used exactly once). It must also actually rewire every position: `pi(x) != x` for
+every `x` (a position that maps to itself is an instant giveaway to an attacker who
+tries "turn by 0 first"). Any violation scores `0`.
+
+## Objective
+
+For a shift `s` in `{1,...,p-1}` and a change `c` in `{0,...,p-1}`, let
+`count(s,c)` = the number of `x` in `{0,...,p-1}` with
+`(pi((x+s) mod p) - pi(x)) mod p == c`. Define the **peak leakage**
+```
+F = max over all s in {1,...,p-1}, c in {0,...,p-1} of count(s,c).
+```
+`F >= 2` always (a perfectly flat, leak-free rewiring is provably impossible for a
+bijection on an odd-size set). Minimize `F`.
+
+## Scoring
+
+The checker also builds one fixed **reference rewiring** for the same `p`, using no
+attack-resistance logic at all: split `{0,...,p-1}` into consecutive blocks of size
+`round(5 * sqrt(p))`, independently Fisher-Yates-shuffle the positions *within*
+each block using a fixed seed derived from `p`, then repair any position left
+mapped to itself by swapping it with its right neighbour (repeat until none
+remain). Let `B` be that reference's peak leakage `F`. Your score for a test is
+```
+ratio = min(1000, 100 * B / max(1, F)) / 1000
+```
+so reproducing the reference scores `0.1`, and a smaller `F` scores higher, capped
+at `1.0` (ten times the reference). Per-test ratios are averaged.
+
+## Constraints
+
+* `101 <= p <= 7351`, `p` prime.
+* Time limit: 3 s. Memory limit: 512 MB.
+
+## Example
+
+Let `p = 53`. The reference rewiring the checker builds for `p=53` has block size
+`round(5*sqrt(53)) = 36` (two blocks: positions `0..35` and `36..52`) and its peak
+leakage happens to be `B = 6`.
+
+Candidate A: `pi(x) = (x+3) mod 53` (a bare rotation). Every shift `s` produces the
+*same* change `c=s` for **all 53** starting positions (`pi(x+s)-pi(x) = s`
+identically), so `count(s,s) = 53` and `F = 53`. Score
+`= min(1000, 100*6/53)/1000 = 0.0113` — far worse than the reference, because a
+rotation leaks its own shift amount perfectly to every nudge.
+
+Candidate B: `pi(x) = (x^3 + 4) mod 53` (feasible: cubing is a bijection mod 53
+since `gcd(3, 52) = 1`, and no `x` satisfies `x^3+4 = x`). Its peak leakage is
+`F = 2` — the best possible value. Score
+`= min(1000, 100*6/2)/1000 = 0.30`, three times the reference, because for a
+monomial map the change `(x+s)^3 - x^3` is only a *quadratic* in `x`, so it can
+repeat the same value for at most 2 starting positions no matter which shift is
+nudged.

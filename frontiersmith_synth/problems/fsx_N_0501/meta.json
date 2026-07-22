@@ -1,0 +1,18 @@
+{
+  "id": "fsx_N_0501",
+  "tier": "N",
+  "format": "A",
+  "family": "temporal-network-modular-resilience",
+  "seed_problem": "Choose emergency radio relay links so every station has a low-interference temporal path from headquarters; the first N-1 cheap fallback links are connected but deliberately resonate with the storm band.",
+  "mutation": "composite: mutate a cheap connected-subgraph design problem by adding time-windowed link activation and a modular path-signature constraint. A station is safe in a time slot only if some active selected path reaches it with total frequency residue outside the storm's forbidden residues. The objective minimizes construction cost plus outage and modular-resonance penalties, so the cheapest connected fallback tree is a trap and better solutions buy extra timed links only where their resonance relief beats their cost.",
+  "objective": "min",
+  "theme": "emergency radio relays with time-windowed interference and modular resonance",
+  "title": "Stormband Relay: Modular Emergency Radio Backbone",
+  "strategies": [
+    "fallback baseline: select the guaranteed first N-1 cheap links, producing a connected but storm-resonant network",
+    "HQ-edge greedy: add direct headquarters relays and obvious high-importance links whose time windows usually avoid the forbidden residues",
+    "marginal temporal-residue local search: start from the greedy build, evaluate exact objective gains for promising timed links, then prune redundant fallback links while preserving static connectivity",
+    "cluster-aware modular routing: discover planted relay modules where one safe timed bridge plus zero-residue internal links cleans many station-time pairs",
+    "needle handling: spend on isolated high-importance stations whose expensive nonresonant path is hidden among cheap resonant decoys"
+  ]
+}

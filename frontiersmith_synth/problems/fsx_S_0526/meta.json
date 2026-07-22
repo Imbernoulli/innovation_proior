@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0526",
+  "tier": "S",
+  "format": "D",
+  "family": "reversible-circuit-affine-peel",
+  "eval_form": "flops",
+  "theme": "Golfing quantum-style reversible logic gates",
+  "title": "Affine Peel: Golfing a Reversible Permutation Circuit",
+  "objective": "min",
+  "strategies": [
+    "structure-blind compute-swap-uncompute over the full-table ANF, one Toffoli per residue monomial per output bit (trivial = checker baseline)",
+    "same synthesis but sharing each residue monomial across output bits via a scratch wire (greedy)",
+    "peel the GF(2)-affine shell (b=P(0), M columns from P(e_i)), pay Toffolis only for the small triangular residue T=M^{-1}(P(.)^b) (strong)",
+    "true minimal weighted-gate synthesis: min-CNOT linear part + a possibly-cheaper residue factoring -- NP-hard, optimum unknown (open ceiling above strong)"
+  ]
+}

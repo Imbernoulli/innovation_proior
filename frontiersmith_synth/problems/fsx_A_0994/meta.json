@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0994",
+  "tier": "A",
+  "format": "A",
+  "family": "mirror-field-shading-ballet",
+  "eval_form": "quality-metric",
+  "theme": "desert temple of a thousand mirrors",
+  "title": "Desert Temple of a Thousand Mirrors",
+  "objective": "max",
+  "seed_problem": "heliostat field layout under sun-position-integrated shading and blocking",
+  "mutation": "composite: candidate mirror sites are given on an integer lattice around a tower with a radius-decaying quality AND a radius-decaying candidate DENSITY (density-gradient-layout); the objective sums each mirror's energy over a discrete sweep of sun steps (angular-sweep-coverage), each step contributing only if the mirror is not exactly shaded (from the sun) or radially blocked (toward the tower) by another chosen mirror (mutual-shading) -- turning a per-site value-maximization into a placement problem whose true value is coupled through exact geometric interference.",
+  "strategies": [
+    "trivial: build mirrors at the first min(M,P) candidate sites in raster (input) order -- reproduces the checker's baseline construction",
+    "naive greedy: sort all candidates by raw quality and take the top M -- piles into the dense, high-quality hot zone around the tower where it self-shades and self-blocks",
+    "insight (strong): exchange argument -- at most one mirror per radial spoke direction can ever have nonzero value (farther ones are blocked), so restrict to one representative per spoke and treat which member of a spoke to use as free; then run a LAZY marginal-gain (submodular) greedy across spokes -- since a candidate's realized value only ever drops as more neighbours get built, repeatedly commit whichever spoke's best current option is highest, re-scoring on the fly -- followed by a bounded local-search swap pass that trades a currently weak pick for a leftover spoke's candidate when that raises total realized value",
+    "possible further improvement: exact or near-exact joint optimization over the full spoke-assignment + sun-step interaction (e.g. an LP relaxation of the spoke-selection knapsack, or simulated annealing over the full placement)"
+  ]
+}

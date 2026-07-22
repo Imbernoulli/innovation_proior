@@ -1,0 +1,20 @@
+{
+  "id": "fsx_B_0629",
+  "tier": "B",
+  "format": "A",
+  "family": "masterkey-template-cover",
+  "eval_form": "quality-metric",
+  "theme": "master key templates for many building wings",
+  "title": "Master Keys for the Wing Complex",
+  "objective": "max",
+  "seed_problem": "covering-code / radius-r covering design over a Hamming space",
+  "mutation": "composite: turn a single-scenario covering-radius design into a multi-scenario, budget-constrained, FAIRNESS objective -- couple Hamming-ball service to a min-over-scenarios coverage fraction and a convex per-template radius cost, so the intended solution must both size each template's radius (radius-covering-design) and decide WHICH scenario each template serves (min-scenario-coverage-fraction).",
+  "mechanisms": ["hamming-ball-service", "min-scenario-coverage-fraction", "radius-covering-design"],
+  "innovation_hook": "Coverage budget must be apportioned by each scenario's intrinsic covering difficulty (its motif entropy), and the strongest templates straddle motifs shared by the HARD scenarios -- a covering-design view, not a frequency view.",
+  "strategies": [
+    "trivial: one template per wing = that wing's own first demand string at a fixed radius equal to the checker's baseline radius -- feasible, touches every wing, reproduces roughly the checker's reference construction",
+    "greedy (trap): pooled frequency-greedy set cover at a SINGLE fixed radius, scenario-agnostic -- samples candidates from the globally uncovered pool and always accepts the biggest raw newly-covered count (a raw sample point, never denoised); discovers the two showcase wings and the five motifs shared across annex wings (both have large pooled counts) but a fixed radius only reaches part of each motif's corruption spread from a raw sample center, and the budget runs out before most annex wings' small unique-residual motifs are ever reached, leaving several annex wings permanently capped well below the showcase wings",
+    "strong (insight): two compounded ideas -- (1) DENOISE: gather a local cluster of nearby uncovered demands and take the position-wise MAJORITY VOTE as the template center (the Hamming-space geometric median), reconstructing the hidden motif almost exactly so a much smaller radius closes the whole cluster, instead of the ~2x radius a raw-sample center needs; (2) BOTTLENECK TARGETING: each round draws candidate seeds from the union of the currently WORST few wings' own uncovered demands, and scores each denoised candidate/radius pair by (per-wing scarcity weight 1/(coverage+eps)^4) x (coverage gain) / cost, so a denoised template landing on a motif shared by several still-poor annex wings is recognized as far more valuable than one that only helps a single wing -- apportioning the radius budget by each scenario's intrinsic covering difficulty rather than by raw pooled frequency",
+    "invalid: template strings with out-of-alphabet symbols / wrong length, or a set of templates whose declared radii overrun the announced Budget -- must be rejected and score 0"
+  ]
+}

@@ -1,0 +1,92 @@
+# Raked Garden Flowlines
+
+## Problem
+
+A zen garden is an `R x C` grid of cells. Some cells hold a **rock** (`#`); the
+rest is **sand** (`.`). You must rake the sand with a set of **rake lines**: each
+line is a sequence of distinct sand cells where consecutive cells share an edge
+(4-adjacent), and every line has at least 2 cells. Across *all* lines, every cell
+may appear in **at most one** line (a cell is either raked once or not at all) --
+the lines form a vertex-disjoint partial cover of the sand.
+
+For every sand cell, define its **potential** `D(cell)` as the graph distance
+(king-move / 8-directional steps through sand) to the nearest rock cell. The
+level sets of this field -- `D(cell) <= M` for the given radius `M` -- are the
+"ring" zone that should visibly flow as concentric rings around the rocks (rocks
+close together share one basin and one ring zone).
+
+## Input
+
+```
+R C
+M Wr CovMin CovMax Sc
+```
+then `R` lines of `C` characters each (`.` sand, `#` rock).
+
+- `M` (ring radius), `Wr` (ring-cell penalty weight), `Sc` (spacing coefficient)
+  are positive integers.
+- `CovMin`, `CovMax` are integers in `[0,1000]`: your total raked (covered) sand
+  cells, expressed in **permille** of all sand cells, must satisfy
+  `CovMin <= 1000*covered/total_sand <= CovMax`.
+
+## Output
+
+```
+P
+```
+then for each of the `P` lines, in order:
+```
+L
+r_1 c_1
+r_2 c_2
+...
+r_L c_L
+```
+`L >= 2` is the line's length; `(r_i, c_i)` are 1-indexed grid coordinates, each
+a sand cell, consecutive cells edge-adjacent, no cell repeated anywhere in the
+whole output.
+
+## Feasibility
+
+Every printed cell must be sand, in range, part of a legally adjacent chain, and
+used by at most one line overall; the total covered-cell count must land inside
+the `[CovMin, CovMax]` permille band. Any violation scores `0`.
+
+## Objective
+
+Minimize `F = WeightedUncovered + Sc * Var(gap)`, where:
+- `WeightedUncovered` sums, over every **uncovered** sand cell, `Wr` if
+  `D(cell) <= M` (it lies in a rock's ring zone) else `1`.
+- `gap(cell)` is the graph distance (8-directional, through sand) from a sand
+  cell to the nearest **covered** (raked) cell (`0` if it is itself covered).
+  `Var(gap)` is the population variance of `gap` over all sand cells -- low
+  variance means the raked lines are spread with consistently even spacing.
+
+## Scoring
+
+Let `B` be the objective of a fixed naive reference (fill sand cells in reading
+order until the coverage floor is met). Your score for a test is
+```
+ratio = min(1000, 100 * B / max(1e-9, F)) / 1000
+```
+so the naive fill scores about `0.1`, and any genuine improvement scores higher
+(capped at `1.0`).
+
+## Constraints
+
+- `1 <= R, C <= 70`. Time limit: 4 s. Memory limit: 512 MB.
+
+## Example
+
+A `6 x 6` garden, one rock at `(3,3)`, `M=1`, `Wr=4`, band `[500,850]`, `Sc=2`.
+Raking every other full row ignores the rock's four ring cells `(2,3),(3,2),
+(3,4),(4,3)` whenever they fall on a skipped row -- easy in open sand, costly
+near the rock. Extracting the sub-level-set `{D(cell) <= 1}` around the rock
+first (guaranteeing those 4 cells are raked), then filling the remaining budget
+with the same evenly-spaced rows, keeps the far-field spacing just as regular
+while never missing the ring: this is exactly why designing the potential field
+and thresholding it beats routing each rake line by hand.
+
+## Constraints (recap)
+
+`1 <= M`; `1 <= Wr, Sc <= 10^6`; `0 <= CovMin < CovMax <= 1000`.

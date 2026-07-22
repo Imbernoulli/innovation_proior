@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1055",
+  "tier": "C",
+  "format": "C",
+  "family": "ballistic-deposition-relief",
+  "eval_form": "quality-metric",
+  "theme": "grow a film into a target landscape",
+  "title": "Shadowed Film Growth",
+  "objective": "min",
+  "strategies": [
+    "trivial: round-robin flux across all columns, oblivious to the target and to the capture/shadowing dynamics (the checker's own reference construction)",
+    "greedy (trap): each time step, aim directly at the column with the largest nominal deficit (target - current height), updating an internal model that assumes the shot lands exactly where aimed -- never accounts for shadowing capture, so whenever a tall column sits within the capture radius of a low neighbor, shots aimed at the neighbor keep getting stolen by the tall column, feeding a runaway peak while the valley never moves",
+    "strong (insight): at every time step, SIMULATE the true shadowing-capture landing rule for every candidate aim column, pick the aim whose actual (not nominal) landing minimizes the resulting squared error -- pre-compensates for shadowing instead of depositing to shape, so it recognizes and steers budget away from doomed runaway-capture columns",
+    "further headroom: multi-step lookahead / global scheduling that jointly orders which columns to fully commit to before shadowing gaps open up, instead of a 1-step simulated choice"
+  ]
+}

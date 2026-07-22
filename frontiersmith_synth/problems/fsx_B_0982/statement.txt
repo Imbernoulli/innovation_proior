@@ -1,0 +1,103 @@
+# The Oasis Cooperative's Fair Ditch Web
+
+## Problem
+
+An oasis cooperative shares one spring. The spring, the routing junctions, and the
+member fields are all nodes of a graph; each candidate ditch segment is an edge with
+a **length** (its share of your digging budget) and a **retention rate**: the
+fraction of water that survives crossing it, since porous desert soil absorbs some
+water into the ground on every segment it flows through. Loss is **multiplicative**
+— water crossing a chain of segments survives the *product* of their retention
+rates, so a route's real cost compounds with every extra hop, not just with its
+physical length. Every field connects to the rest of the network through exactly
+one inlet segment. You may build any subset of the candidate segments, and — since
+a segment, once dug, can carry water toward several different fields — the routes
+you commit for different fields may overlap in part, run fully separately, or
+together trace out a network with cycles in it (built segments are shared
+infrastructure; each individual field's own route must still be a simple walk
+that never revisits a node).
+
+You plan a *water-delivery plan*: out of the spring's fixed total discharge `D`,
+decide how much to commit to each of one or more paths ending at a field, and which
+segments to build to carry them. Every candidate segment has the same carrying
+capacity `CAP`; every commitment that routes through a segment adds to what that
+segment must carry. The cooperative's fairness rule: only the **worst-served**
+field's moisture counts, so an efficient plan that starves one distant field is
+worthless next to a plan that keeps everyone irrigated.
+
+## Input
+
+```
+N M F D CAP L
+f_1 f_2 ... f_F
+u_1 v_1 len_1 ret_1
+...
+u_M v_M len_M ret_M
+```
+
+`N` nodes, `0`-indexed, node `0` is the spring. `M` candidate undirected ditch
+segments; `len_i>=1` is its digging cost, `ret_i` in `[500,995]` is its retention in
+**parts per thousand** (fraction retained = `ret_i/1000`). No two segments join the
+same pair of endpoints, and no segment joins a node to itself. The `F` field node
+ids follow on their own line (each has exactly one incident candidate segment).
+`D`, `CAP`, `L` are positive integers: total spring discharge, per-segment
+capacity, and total ditch-length budget.
+
+## Output
+
+```
+K
+f_1 X_1 Lp_1 p_1[0] ... p_1[Lp_1-1]
+...
+f_K X_K Lp_K p_K[0] ... p_K[Lp_K-1]
+```
+
+`K` commitments (`0<=K<=600`). Each line: a field `f_i`, a nonnegative real `X_i`
+(water pushed into this path from the spring, before any losses), a path length
+`Lp_i<=260` and its node ids, `p[0]=0` through `p[Lp-1]=f_i`, consecutive nodes
+joined by a real candidate segment, no repeated node. You may commit several
+separate paths to the same field.
+
+## Feasibility
+
+Every path must be a real, simple, spring-to-field walk over candidate segments.
+Walking a committed path, the amount **entering** its first segment is `X_i`; the
+amount entering each later segment is what survived every earlier segment on that
+same path. For every segment that appears in *some* committed path, the sum — over
+every commitment using it — of the amount entering it there must not exceed `CAP`.
+The sum of all `X_i` must not exceed `D`. The total length of the *distinct*
+segments referenced by any commitment must not exceed `L`. Any violation scores `0`.
+
+## Objective
+
+For field `f`, its moisture is the sum, over its commitments, of what finally
+survives to reach it (the path's full retention product times that commitment's
+`X_i`). Maximize `F = min` moisture over all `F` fields.
+
+## Scoring
+
+Let `B` be the delivery of a reference plan that gives every field its fewest-hops
+route from the spring and splits `min(D,CAP)` **flatly** across all `F` fields (no
+compensation for the worse-off). `ratio = min(1000, 100*F/max(1e-9,B))/1000`, so
+the flat-split reference scores `0.1`, and a plan that lifts the worst field well
+above that reference scores higher, capped at `1.0`. Per-test ratios are averaged.
+
+## Constraints
+
+`8<=N<=180`, `M<=350`, `2<=F<=10`, `1<=len_i<=10`. Time limit 4s, memory 512MB.
+
+## Example
+
+Spring `0`. Hub `1` (edge `0-1`, len `2`, ret `950`). Near field `2` off the hub
+(edge `1-2`, len `1`, ret `900`). Far field `4`, reached only via `1-3` (len `3`,
+ret `900`) then `3-4` (len `2`, ret `850`). `D=1000, CAP=1000, L=20`.
+
+The flat-split reference sends `500` to each: field `2` gets
+`500*0.95*0.9=427.5`; field `4` gets `500*0.95*0.9*0.85=363.375`; so `B=363.375`.
+A plan that instead gives field `2` only `300` and field `4` `700` gets
+`300*0.95*0.9=256.5` and `700*0.95*0.9*0.85=508.7`: the minimum *dropped* to
+`256.5` — moving flow toward the already-favored near field never helps the
+worst-served field. The winning move goes the other way: equalize deliveries by
+solving `X_2*0.855 = X_4*0.72675` subject to `X_2+X_4<=1000`, giving roughly
+`X_2=459.5, X_4=540.5`, both landing near `392.8` — beating `B` on the minimum,
+even though it sends the far field *more* raw water than the near one.

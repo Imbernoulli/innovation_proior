@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0647",
+  "tier": "A",
+  "format": "C",
+  "family": "wang-tile-shape-assembly",
+  "eval_form": "quality-metric",
+  "theme": "fewest LEGO types that build themselves",
+  "title": "Self-Assembling Chimney: Fewest Brick Types",
+  "objective": "minimize",
+  "strategies": [
+    "one-tile-per-cell map: a boustrophedon path visits every cell of the k x (T+1) target once, each step a brand-new single-use glue -- always correct, cost = area",
+    "row-unary counter: reuse one tile type across an entire row (rows look identical left-to-right) but still mint one fresh type per row index to know when to stop -- cost linear in T, ignores any lateral/column interaction",
+    "randomized local hill-climb over small hand-tuned tile sets, checked by re-running the simulator and keeping whatever doesn't blow up -- can shave a few types off the unary recipe but not the underlying O(T) scaling",
+    "temperature-2 cooperative binary/ripple-borrow counter: seed row 0 with T's own bits (k tiles), then reuse a small O(1)-per-column full-adder-style rule at every later row; the most-significant column's missing 'still borrowing after reading zero' tile is exactly the halt condition -- cost O(log T)"
+  ]
+}

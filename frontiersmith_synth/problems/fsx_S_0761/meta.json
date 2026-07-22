@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0761",
+  "tier": "S",
+  "format": "D",
+  "family": "pivot-order-multi-pattern",
+  "eval_form": "flops",
+  "theme": "one factorization order for many sparsity patterns",
+  "title": "One Pivot Order for K Sparsity Patterns: Shared-Separator Elimination",
+  "objective": "minimize",
+  "strategies": [
+    "identity vertex order, ignore structure entirely (trivial)",
+    "dynamic minimum-degree elimination on the UNION of all K patterns' edges (greedy)",
+    "mine the edge INTERSECTION across all K patterns to recover the hidden shared separator hierarchy, then eliminate leaves-before-separators on that clean skeleton (strong)",
+    "true joint-optimal order across K noisy instances (NP-hard in general, open ceiling)"
+  ]
+}

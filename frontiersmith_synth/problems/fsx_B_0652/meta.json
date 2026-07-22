@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0652",
+  "tier": "B",
+  "format": "C",
+  "family": "conveyor-dual-arm-expiry",
+  "eval_form": "quality-metric",
+  "theme": "two robot arms picking parts off a moving belt",
+  "title": "Belt Duet: Scheduling the Shared Zone",
+  "objective": "max",
+  "strategies": [
+    "do-nothing / single-arm EDF baseline (matches the checker's own reference, ratio ~0.1)",
+    "myopic two-arm EDF: sort parts by deadline, assign each to whichever eligible arm is free soonest, patch mutex conflicts with a reactive delay-or-drop -- ignores that the zone is a single shared resource until it's too late",
+    "schedule-the-mutex: alternately pre-assign contested zone parts between the two arms in deadline order so each arm's flank work naturally vacates the zone for the other, then locally re-assign any part that would otherwise be dropped",
+    "exchange-argument repair pass on top of the alternation plan"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_0860",
+  "tier": "B",
+  "format": "A",
+  "family": "dual-reset-assay-lineup",
+  "eval_form": "quality-metric",
+  "seed_problem": "high-throughput analyzer run ordering with a single carryover-avoidance objective (minimize sum of concentration drops)",
+  "mutation": "composite: add a second, orthogonal usage-count drift error with its own independent reset budget (recalibration vs. tip change), couple the two processes with a multiplicative interaction term (an uncorrected carryover drop amplifies that sample's drift cost), and add hard stat-sample position deadlines that force interruptions to the carryover-minimizing sort order -- turning a single-mechanism ordering problem into a joint order + dual-budget-placement problem",
+  "objective": "min",
+  "theme": "high-throughput lab analyzer run plan",
+  "title": "Analyzer Lineup: Tips and Recalibrations",
+  "strategies": [
+    "trivial: identity run order (p_j=j), no tip changes, no recalibrations -- the checker's own baseline B",
+    "naive greedy: sort samples ascending by concentration and patch in stat deadlines via a standard latest-free-slot EDF construction, then allocate the two reset budgets independently -- top-K1 raw gaps for tip changes, evenly-spaced positions for recalibrations -- ignoring the (1+BOOST) carryover/drift coupling entirely and never checking whether a candidate tip position already got a recalibration (or vice versa)",
+    "insight (strong): keep the same order construction, but always pick tip positions by the TRUE marginal saving GAP_COEF*gap(j) + DRIFT_COEF*BOOST*e(j)^2 recomputed after recalibration placement (a position that already has e=1 from a nearby recalibration has little left to gain from a tip change, so budget is automatically re-routed to other large breaks instead of double-spending both currencies on the same spot); for the recalibration placement itself, build BOTH a near-equal-spacing candidate and a bounded-window snap-to-largest-local-gap candidate (co-locating drift resets with deadline-forced carryover breaks), evaluate the true objective for both paired with their own optimal tip choice, and keep whichever wins -- this makes the joint order+dual-budget placement provably never worse than greedy's independent picks, with the snap candidate winning specifically on the trap tests where breaks are large and clustered"
+  ]
+}

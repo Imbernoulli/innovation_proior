@@ -1,0 +1,88 @@
+# Veiled Fourfold Hedge
+
+## Problem
+
+Plant an `n x n` grid of hedge cells (`n` odd, 0-indexed `0..n-1`) as a **unicursal**
+labyrinth: starting at boundary **entrance** `(0,0)`, a single branch-free, loop-free
+corridor must wind through nearly the whole hedge and arrive at **center** `(m,m)`,
+`m=(n-1)/2`. From outside it should *look* fourfold-symmetric (a classic quatrefoil
+parterre), but the entrance itself already breaks that symmetry. You decide which walls
+between adjacent cells are open (corridor) or closed (hedge), scored on how well you
+balance three things at once: closeness to true fourfold symmetry, rhythm of the path's
+turns, and how much the path's distance to center wanders instead of just shrinking.
+
+## Input
+
+One line: `n wSym wTurn wOsc` — grid size (odd, `5 <= n`) and three positive integer
+weights for the scoring terms below.
+
+## Output
+
+Print the wall set as two blocks (`1`=wall/closed, `0`=open/corridor):
+- `n` lines, each with `n-1` integers: line `r` gives, for `c=0..n-2`, the wall status
+  between cell `(r,c)` and `(r,c+1)`.
+- `n-1` lines, each with `n` integers: line `r` gives, for `c=0..n-1`, the wall status
+  between cell `(r,c)` and `(r+1,c)`.
+
+## Feasibility (hard constraints — any violation scores 0)
+
+Let the *corridor graph* connect two adjacent cells whenever their shared wall is open.
+1. Every cell's corridor-degree (open edges touching it) is 0, 1 or 2.
+2. Exactly two cells have degree 1: the entrance `(0,0)` and the center `(m,m)` (this is
+   "unicursal, no branches").
+3. Walking open edges from the entrance, never revisiting a cell, reaches the center after
+   `L` cells with no cycle.
+4. Total open edges in the whole output `== L-1` (no stray loop/segment off the one path).
+5. `L >= ceil(0.9 * n * n)` — the corridor covers at least 90% of all cells.
+
+## Objective (maximize)
+
+Three terms, each in `[0,1]`:
+- **symScore**: take the 8 symmetries of the square (identity + 3 rotations + 4
+  reflections). Store each open edge's *travel direction* along the path (closed edges
+  just store "closed"). For every edge and every one of the 7 non-identity symmetries `g`,
+  check whether transforming the edge's state by `g` (closed stays closed; an open edge's
+  direction is rotated/reflected by `g`'s linear part) equals the actual state of its
+  image edge under `g`. symScore = fraction of these checks that match. Because the
+  entrance is a grid corner and every non-identity symmetry maps corners to corners, a
+  perfectly symmetric wall set would force the other three corners to *also* be
+  corridor-degree-1 dead ends — impossible with constraint 2. So symScore=1.0 is provably
+  unreachable; the best constructions only approach it.
+- **turnScore**: walk the unique path entrance-to-center; classify every interior step as
+  Straight / Left / Right by comparing incoming and outgoing direction. Let `p_S,p_L,p_R`
+  be their fractions; `turnScore = -(p_S*log2(p_S)+p_L*log2(p_L)+p_R*log2(p_R)) / log2(3)`
+  (Shannon entropy of the 3-way distribution, normalized by its max value log2(3) so it
+  lands in `[0,1]`; a 0-probability term contributes 0).
+- **oscScore**: let `depth(cell) = max(|r-m|,|c-m|)` (Chebyshev distance to center). Let
+  `TV` be the sum of `|depth` change`|` between consecutive path cells. Since `TV` can never
+  be less than `depth(entrance) = m`, define `oscScore = min(1, (TV - m) / (n*n/5))`.
+
+`F = (wSym*symScore + wTurn*turnScore + wOsc*oscScore) / (wSym+wTurn+wOsc)`.
+
+Let `B` be the same `F` for a plain reference construction (a boundary-to-center spiral
+fill, no attempt at any of the three terms). Your `Ratio = min(1, F / (10*B))`, so matching
+the reference scores `Ratio = 0.1`; better constructions score higher, up to a cap of `1.0`.
+
+## Constraints
+
+`5 <= n <= 30`, `1 <= wSym,wTurn,wOsc <= 12`. Time limit: 5s. Memory limit: 512MB.
+
+## Example
+
+Input: `5 3 4 4` (n=5, m=2). One feasible output (the plain spiral baseline):
+```
+0 0 0 0
+0 0 0 1
+1 0 1 1
+1 0 0 1
+0 0 0 0
+1 1 1 1 0
+0 1 1 0 0
+0 0 1 0 0
+0 1 1 1 0
+```
+This spirals `(0,0) -> (0,1) -> ... -> (2,2)=center`, covering all 25 cells (`L=25`). Here
+`symScore~=0.521`, `turnScore~=0.588`, `oscScore=0` (a ring-by-ring spiral's distance to
+center only shrinks, never wanders), giving `F=(3*0.521+4*0.588+4*0)/11~=0.356=B`, so
+`Ratio=0.100`. A construction threading a few moves across ring boundaries for oscillation
+credit, while nudging the turn rhythm, reaches `F~=0.453` here, i.e. `Ratio~=0.127`.

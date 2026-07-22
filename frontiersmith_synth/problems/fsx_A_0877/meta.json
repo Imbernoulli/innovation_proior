@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0877",
+  "tier": "A",
+  "format": "B",
+  "family": "nonlinear-channel-precoder",
+  "eval_form": "quality-metric",
+  "theme": "Pre-distort messages for a memory channel",
+  "title": "Static on the Line: Pre-Distorting a Memory Channel",
+  "objective": "minimize",
+  "source_frameworks": ["wave2b-lens:inverse-design"],
+  "strategies": [
+    "all-zero input: transmit nothing (reproduces the evaluator's weak baseline anchor)",
+    "per-symbol static inversion: invert the saturating nonlinearity using only the leading tap h_0, ignoring the memory taps h_1..h_L entirely (the obvious first attempt; fails badly once the memory taps carry real energy, since ignored inter-symbol interference compounds across the sequence)",
+    "causal decision-feedback precoding (Tomlinson/Volterra-style): process the sequence in order, subtracting the already-known contribution of recently chosen symbols before inverting the nonlinearity for the current target, so the whole sequence is jointly precompensated rather than inverted symbol by symbol",
+    "energy-aware refinement: within the amplitude budget, trade a small residual mismatch against the input energy it would cost to erase it, especially where the causal inversion would otherwise need to clip"
+  ]
+}

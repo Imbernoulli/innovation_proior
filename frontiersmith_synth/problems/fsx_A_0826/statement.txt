@@ -1,0 +1,93 @@
+# Biogas Villages: Digesters Versus Pipelines
+
+## Problem
+A rural cooperative has `M` farms on the plane. Farm `i` sits at integer point
+`(x_i, y_i)` and produces `w_i` units of waste per season. You must convert this waste
+into biogas by building **digesters** at chosen sites, then piping every farm's waste to
+the digester it is assigned to.
+
+A digester may be built at **any integer point** on the map. Building a digester that ends
+up processing aggregate capacity `cap` (the summed waste of every farm piped to it) costs
+```
+A + Bc * cap^0.6
+```
+The exponent `0.6` is **concave**: doubling `cap` less than doubles the cost, so bigger
+digesters are cheaper per unit of waste (economies of scale). Meanwhile every farm `i`
+piped to a digester at distance `d` loses `L * w_i * d` of value to pipeline leakage/decay
+(**linear** in distance and volume) — `L` is given as `Lm / 1000`. Consolidating farms
+into one big digester saves on the concave facility term but costs more on the linear
+pipeline term, and which effect wins depends on how far apart the farms actually are.
+
+Real cooperatives cluster geographically at **more than one scale**: farms bunch into
+tight villages, and villages themselves are scattered at a coarser scale across the
+countryside. The right layout is a *hierarchy*: some village clusters are close enough
+together that one shared regional digester beats separate village digesters; others are
+far enough apart that separate digesters win. You must read this out of each instance —
+no single clustering resolution is correct everywhere.
+
+## Input
+```
+M A Bc Lm
+x_1 y_1 w_1
+...
+x_M y_M w_M
+```
+`1 <= M <= 2000`, `0 <= x_i,y_i <= 100000`, `1 <= w_i <= 150`, `1 <= A,Bc <= 20000`,
+`1 <= Lm <= 100` (so `L = Lm/1000`).
+
+## Output
+```
+K
+dx_1 dy_1
+dx_2 dy_2
+...
+dx_K dy_K
+a_1 a_2 ... a_M
+```
+`K` is the number of digesters you build (`1 <= K <= M`). Each `(dx_j, dy_j)` is an
+integer digester site with `0 <= dx_j, dy_j <= 100000` (sites need not be distinct and
+need not coincide with any farm). `a_1..a_M` assign every farm (`a_i` in `1..K`) to the
+digester it ships waste to.
+
+## Feasibility
+`K` in `[1,M]`; every `dx_j, dy_j` integer in `[0,100000]`; every `a_i` in `[1,K]`; no
+trailing tokens. Anything else scores 0.
+
+## Objective (minimize)
+Let `cap_j` = sum of `w_i` over farms with `a_i = j`. Let `d_i` = Euclidean distance from
+farm `i` to its digester's site. Minimize
+```
+F = sum_j ( A + Bc * cap_j^0.6 )  +  sum_i ( L * w_i * d_i )
+```
+
+## Scoring
+The checker also computes `B`, the cost of a naive **uniform grid** of `round(sqrt(M))`
+digesters spread evenly over the farms' bounding box (every farm piped to its nearest grid
+digester — no reasoning about capacity economics or the planted cluster structure at all).
+Your ratio is `min(1, 0.1 * B / max(1,F))`, averaged over 10 tests. Lower `F` (relative to
+`B`) is better; the naive grid layout scores ~0.1.
+
+## Constraints
+Time limit: 4s. Memory limit: 512 MB.
+
+## Example
+Farms `1:(0,0,w=100)`, `2:(0,20,w=100)` form one tight village; `3:(100,0,w=100)`,
+`4:(100,20,w=100)` form a second village 100 units away. `A=500, Bc=100, Lm=20` (`L=0.02`).
+
+*Two separate digesters* (site `(0,0)` for farms 1-2, site `(100,0)` for farms 3-4): each
+processes `cap=200`, cost `500 + 100*200^0.6 ≈ 2903` each (`5806` total), plus pipeline
+loss `0.02*100*20 = 40` per village (`80` total) = **5886**.
+
+*One merged digester at `(0,0)`*: `cap=400`, cost `500 + 100*400^0.6 ≈ 4142`, plus pipeline
+loss `0.02*100*(20 + 100 + 101.98) ≈ 444` = **4586**. Merging wins here because the two
+villages are close (gap 100) relative to their tightness (gap 20): the concave saving
+(`5806-4142=1664`) beats the extra pipeline loss (`444-80=364`). If the second village sat
+at `x=1000` instead, the same arithmetic flips: merging would cost far more in pipeline
+loss than it saves — the correct answer depends on the actual spacing, not a fixed rule.
+```
+1
+0 0
+1 1 1 1
+```
+(one merged digester at `(0,0)`, all four farms assigned to it — matches the winning
+layout above.)

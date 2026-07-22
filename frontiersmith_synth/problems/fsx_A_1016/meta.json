@@ -1,0 +1,15 @@
+{
+  "id": "fsx_A_1016",
+  "tier": "A",
+  "format": "C",
+  "family": "stick-weld-routing",
+  "eval_form": "quality-metric",
+  "theme": "Plumbing a maze from fixed-length pipe sticks",
+  "title": "Pipe Maze: Stick-Congruent Routing",
+  "objective": "min",
+  "strategies": [
+    "naive wall-hugging walk toward the target with fixed direction priority and DFS backtracking (ignores stock sticks entirely)",
+    "plain BFS shortest path from A to B (minimizes raw geometric length only, oblivious to stick length L / bend allowance a / weld cost W -- scatters bends wherever the maze forces them)",
+    "augmented-state shortest path over (cell, incoming direction, remaining capacity of the current stick), fusing routing with the optimal stick-partition DP, allowing voluntary early welds to set up clean full-length sticks -- finds the route that is jointly optimal for path shape AND stick partition, even when that route is geometrically longer than the shortest path"
+  ]
+}

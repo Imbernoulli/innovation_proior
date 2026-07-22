@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0895",
+  "tier": "A",
+  "format": "B",
+  "family": "accumulation-aware-titration",
+  "eval_form": "quality-metric",
+  "theme": "sequential drug-dose titration for a patient cohort",
+  "title": "Steady-State Titration Ward",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:topup-B-2"],
+  "strategies": [
+    "one-size-fits-all constant dosing: ignore the probe curve entirely and dose every patient the published target concentration every step (reproduces the evaluator's do-nothing-clever baseline)",
+    "titrate-to-current-response: estimate sensitivity from only the last probe reading and last probe dose (a single ratio), assume the drug has no memory, and hold that constant dose for the whole treatment phase -- overshoots into toxicity on slow-clearance patients",
+    "accumulation-aware steady-state control: regress hidden sensitivity from the WHOLE noisy probe curve against the known retention-weighted basis, then dose to the true steady-state fixed point (dividing out the 1/(1-rho) accumulation multiplier) with a one-step deadbeat correction for the first dose",
+    "held-out generalization across a spread of retention regimes (fast- and slow-clearance patients, several target/window scales) to check the estimator and controller aren't overfit to one accumulation strength"
+  ]
+}

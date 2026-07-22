@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0715",
+  "tier": "B",
+  "format": "E",
+  "family": "stoichiometric-yield-inference",
+  "eval_form": "quality-metric",
+  "theme": "alchemist mixing ratios and potion yields",
+  "title": "The Alchemist's Limiting Reagent — recovering integer stoichiometry from noisy brews",
+  "objective": "minimize",
+  "strategies": [
+    "constant baseline: predict the mean training yield (ignores reagents entirely) -> ~0.1",
+    "ordinary least squares y ~ 1 + q1 + q2 + q3 + q4: fits the near-balanced training cluster (where every reagent moves together) but extrapolates as a SUM of positive contributions, so it wildly over-predicts yield once one reagent becomes truly scarce",
+    "integer-lattice snap: enumerate small coprime stoichiometric vectors s in {1..6}^4, fit the single gain g by closed-form least squares against min_i(q_i/s_i) for each candidate, keep the s minimising training SSE, and emit the exact min-law expression",
+    "alternatives: wider integer search range, robust/median-based g estimation, or a coarse-to-fine local search around the best lattice point"
+  ]
+}

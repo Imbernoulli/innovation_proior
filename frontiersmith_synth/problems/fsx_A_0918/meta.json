@@ -1,0 +1,19 @@
+{
+  "id": "fsx_A_0918",
+  "tier": "A",
+  "format": "B",
+  "family": "pipage-assignment-rounding",
+  "eval_form": "quality-metric",
+  "theme": "Round a fractional generalized-assignment LP to an integral solution when the fractional support forms hidden cycles.",
+  "title": "Rounding a Fractional Task-Assignment Plan Along Its Hidden Cycles",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:topup-B-1"],
+  "mechanisms": ["lp-relaxation", "pipage-cycle-rounding", "value-improving-swap-repair"],
+  "innovation_hook": "Round along the fractional cycles two variables at a time (pipage), preserving marginals and feasibility, then repair residual violations with value-improving swaps.",
+  "strategies": [
+    "trivial: send every task to the always-affordable overflow desk -- ignores value entirely, the evaluator's own weak reference",
+    "greedy (the trap): process tasks in index order, for each task grab its highest-value desk that currently has room -- wins on calm instances but on the planted cycle instances a task's locally-fine desk is exactly the desk a later task badly needed, and once spent there is no going back, so the later task is forced onto the low-value overflow desk",
+    "strong: relax the mandatory-total-1-per-task, capacity-per-desk assignment LP (not totally unimodular once weight depends on both task and desk); the optimal fractional vertex's support decomposes into paths and cycles alternating task/desk/task/desk -- peel leaf desks directly, and for each remaining cycle try BOTH of its two alternating integral colorings and keep whichever earns more value (pipage, two variables of the cycle rounded together)",
+    "swap-repair polish: after cycle rounding, any residual capacity overshoot (paths/cycles bound loads only approximately) is fixed by local search -- move or swap tasks between desks, always preferring the value-improving option, falling back to the overflow desk only as a last resort"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_N_0908",
+  "tier": "N",
+  "format": "B",
+  "family": "deterrence-coverage-review",
+  "eval_form": "quality-metric",
+  "theme": "fraud and abuse review queue with adaptive attackers",
+  "title": "Deterrence Beat: Staffing the Review Queue Against an Unpredictable Swarm",
+  "objective": "maximize",
+  "source_frameworks": ["wave2b-lens:topup-B-2"],
+  "strategies": [
+    "uniform baseline: split every round's review budget evenly across all categories, ignoring both the forecast volume and the migration graph (reproduces the evaluator's weak reference)",
+    "forecast-matching: allocate proportional to volume times harm value under the noise-free law, self-simulating the population forward -- well-informed and fully reactive, but spends its whole budget on a precise forecast, so it is fully exposed to the round's UNPREDICTABLE extra migration hop that the deterministic law cannot foresee",
+    "structural-floor + reactive top-up: power-iterate the public migration matrix (weighted by harm value) to find where migration pressure structurally accumulates, reserve a floor of the budget there every round regardless of that round's forecast, and spend the rest efficiently on the forecast",
+    "structural-floor + smoothing (strong): as above, but blend the reactive top-up SLOWLY toward last round's allocation so coverage never lurches to chase a single round's forecast wiggle -- robust to exactly where the unpredictable hop lands"
+  ]
+}

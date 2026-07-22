@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0875",
+  "tier": "S",
+  "format": "E",
+  "family": "interference-law-extrapolation",
+  "eval_form": "quality-metric",
+  "theme": "reverse-engineering why a drone fleet slows near itself",
+  "title": "Drone Fleet Drag — recovering a saturating pairwise interference law",
+  "objective": "max",
+  "strategies": [
+    "constant identity model (KERNEL 0, OUT v) -> reproduces the checker's own baseline ~0.1",
+    "greedy: model the slowdown purely as a function of neighbor COUNT (a flat KERNEL, ignoring the logged distances entirely) and grid-search a single saturating scale against training rows; count and true interference correlate well enough on the logged 3-8-drone flights, but the held-out swarms are DENSER at the same or higher count, so the count-only recipe has no way to see the extra per-neighbor interference and systematically under-predicts the slowdown",
+    "strong: treat the log as a DESIGNED EXPERIMENT -- use the isolated-pair rows alone (single kernel term, no confound) to grid-search the kernel's softening offset and scale, then refine against the controlled equal-spacing clusters (which push into the larger-S regime and expose the saturating shape), then lightly polish against everything; plug the recovered kernel into a bounded reciprocal outer form so it extrapolates correctly",
+    "headroom above strong: jointly refine (a,c) via a finer nonlinear least-squares pass (e.g. Gauss-Newton in y-space rather than the linearized proxy) to shave the residual bias the linearization leaves, pushing held-out MSE closer to the sensor-noise floor"
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "fsx_A_1001",
+  "tier": "A",
+  "format": "A",
+  "family": "stuckat-test-compression",
+  "eval_form": "quality-metric",
+  "seed_problem": "Given a set of fault signatures on a chip's control pins, output probe vectors so every fault is detected by some probe; minimize the number of probes.",
+  "mutation": "composite: reformulate a raw fault-covering problem as MINIMUM COMPATIBLE-CUBE PARTITIONING. Each fault is a detection cube (a partial pin/value assignment); a probe detects a fault iff it extends the cube. The instance plants (a) a clique block of pairwise-conflicting full-pattern cubes forcing a genuine floor, (b) symmetric 'orbit' clusters of faults on pairwise-DISJOINT pins (always mutually compatible, so one probe kills a whole orbit) that a 0-filled per-fault greedy never merges, and (c) dominance chains (subset cubes automatically covered by a superset probe) that a coverage-based greedy DOES find. The strong solution reasons about pairwise cube compatibility (a graph-coloring-style partition) instead of raw per-fault candidates.",
+  "objective": "min",
+  "theme": "find every broken wire with the fewest probes",
+  "title": "Wafer Probe Compression on Symmetric Fault Cubes",
+  "mechanisms": ["fault-dominance-collapse", "symmetry-aware-covering"],
+  "innovation_hook": "The covering problem has a hidden quotient structure -- reasoning about fault equivalence classes and symmetry orbits, not raw faults, collapses the objective.",
+  "strategies": [
+    "dedicated probe per fault (trivial baseline): 0-fill every position outside the fault's own cube -- always feasible, P = N",
+    "weighted greedy set cover over 0-filled per-fault candidates (obvious first attempt): correctly finds fault-dominance via real coverage simulation, but a 0-filled candidate for one orbit member never happens to satisfy another orbit member (which needs bit=1 on a position the candidate left at 0), so it pays roughly one probe per orbit member -- far from optimal",
+    "minimum compatible-cube partitioning (strong): sort faults most-constrained-first and first-fit merge each into the first probe it is PAIRWISE COMPATIBLE with (checked against the probe's accumulated constraints); disjoint-position orbit members are always compatible and collapse into one probe, dominance chains collapse for free too -- this is reasoning about equivalence classes instead of raw faults",
+    "stronger metaheuristics: proper graph coloring (DSATUR / Brelaz), local search that splits/merges probe groups, or an LP-relaxation-guided rounding of the compatibility graph"
+  ]
+}

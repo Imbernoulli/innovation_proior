@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0949",
+  "tier": "A",
+  "format": "A",
+  "family": "threshold-firebreak-blocking",
+  "seed_problem": "threshold-cascade node-blocking under a node budget",
+  "mutation": "composite: goal (block a threshold cascade under a node-removal budget) + input (planted amplifier nodes whose activation multiplies their outgoing influence) so the optimal firebreak set is a deep structural cut point, not a source-adjacent set or a static min-cut",
+  "objective": "min",
+  "theme": "Cut firebreaks to stop a spreading cascade",
+  "title": "Deep Firebreaks: Blocking a Threshold Cascade Before It Amplifies",
+  "strategies": [
+    "trivial: place no firebreaks (do-nothing) -- reproduces the checker's own baseline cascade, ~0.1",
+    "greedy: rank nodes within hop-distance 1 of the sources by raw outgoing edge weight and remove the top-K -- the textbook 'build the firebreak next to the fire' move; the source neighbourhood is a redundant mesh (many alternate paths) so this barely dents the cascade, and it never even considers the deep amplifier nodes",
+    "strong: restrict the search to the amplifier-flagged nodes (amp_v>1) and run an exact marginal-gain (resimulate-and-pick) selection over that small candidate set under the K-node budget -- this finds the deep, budget-tight combination of amplifier cut points that starves the largest downstream floods",
+    "open ceiling: joint search over amplifier AND funnel/mesh combinations, or better tie-breaking when the branch count exceeds the budget, can beat the reference marginal-gain-over-amplifiers heuristic"
+  ]
+}

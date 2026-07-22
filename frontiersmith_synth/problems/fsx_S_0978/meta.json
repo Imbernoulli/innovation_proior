@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0978",
+  "tier": "S",
+  "family": "crossdock-door-flowfield",
+  "seed_problem": "A cross-dock with doors around a rectangular floor and an aisle grid; assign trucks to doors and route forklifts carrying pallets between inbound and outbound trucks; checker replays nonlinear aisle congestion and scores total completion time.",
+  "mutation": "composite: the goal is a 1-D door-slot assignment (a QAP-flavoured permutation of trucks to a shared line of door slots, inbound and outbound trucks freely interleaved) that jointly determines (a) how many aisle segments each pallet flow crosses and (b) a transfer-batch plan (trip sizes capped at K) that must be chosen per inbound-outbound pair; segment cost is a convex BPR-style congestion function of the total trip count sharing that segment, so the objective composes quadratic-assignment geometry with nonlinear congestion and batching granularity into one non-additive score.",
+  "objective": "min",
+  "theme": "forklifts shuttling pallets between truck doors overnight",
+  "title": "Cross-Dock Door Draw and Pallet Relay",
+  "strategies": [
+    "block-and-singles baseline (checker's own B): trucks kept in input order (inbound block then outbound block), every pallet moved as its own single-pallet trip -- ratio ~0.1",
+    "trivial: same block-in-input-order door draw as the baseline, single-pallet trips (no batching) -- matches B exactly",
+    "greedy (the trap): keep the given input-order door draw untouched (never touches geometry) but 'optimize routing' by batching every pair into maximal K-sized trips -- cuts trip counts a lot but the flow field still crosses the whole wall through the same central segments",
+    "strong: reformulate as a weighted-graph linear-arrangement problem -- sort (i,j,f) pairs by flow descending and greedily chain-merge inbound/outbound trucks into adjacent runs of a single order (largest flows pull their two trucks together first, propagating through merged clusters), turning the door draw into an approximately laminar flow field where matched pairs sit next to each other and rarely share a segment with unrelated flow; combined with maximal K-sized batching",
+    "invalid: every truck backs into slot 1 (door draw is not a permutation) -- must score 0"
+  ]
+}

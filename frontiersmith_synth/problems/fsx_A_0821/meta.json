@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0821",
+  "tier": "A",
+  "format": "E",
+  "family": "crt-interleaved-recurrence-law",
+  "eval_form": "quality-metric",
+  "theme": "predict a comet logged by observatories with different clocks",
+  "title": "One Comet, Many Clocks",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:algebra-and-residues"],
+  "strategies": [
+    "predict 0 for every query (reproduces the checker's own baseline, Ratio ~ 0.1)",
+    "per-observatory recipe: for each logged clock prime, fit an order-d linear recurrence directly on that prime's own residues (Berlekamp-Massey-style window solve mod that prime); answers queries against an already-logged clock exactly, but for a brand-new clock it just centers the majority clock's coefficients into (-p/2,p/2] and reuses them as the presumed true law -- correct only when the true law already fits under that ONE clock's Nyquist bound, which the generator avoids, so it aliases and the extrapolation for new clocks is essentially arbitrary",
+    "CRT-fusion of the shared law: solve the order-d system mod EACH logged clock prime separately, then CRT-combine the per-clock coefficient vectors into the exact integer characteristic polynomial (valid because the logged primes' product exceeds twice the true coefficient bound); bootstrap the exact initial state via Newton's identities (no data needed beyond the recovered polynomial); answer any query, against any modulus, via one fast companion-matrix exponentiation mod that modulus"
+  ]
+}

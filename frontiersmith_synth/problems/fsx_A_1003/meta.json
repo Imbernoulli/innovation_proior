@@ -1,0 +1,20 @@
+{
+  "id": "fsx_A_1003",
+  "tier": "A",
+  "format": "A",
+  "family": "parallax-scope-pairing",
+  "eval_form": "quality-metric",
+  "seed_problem": "T telescopes at fixed sky parks with angular slew speed limits must catch transient targets that appear at known (time, position, value); value decays geometrically; a target scores only if observed by TWO telescopes from different sites within a short time window.",
+  "mutation": "composite: goal is MAXIMIZE total decayed payout of cross-site co-observed transients, output is a per-telescope timed pointing schedule with an exact-arrival (no-idling) rule that ties the achievable pairing gap directly to slew-route sequencing. The generator plants (a) one guaranteed zero-travel co-located pair (the baseline), (b) an 'obvious' rendezvous reachable with exact synced arrival by two designated scout telescopes regardless of window size, (c) many 'hidden' rendezvous whose azimuth is chosen so a specific, non-obvious cross-site telescope pair's natural (undirected) arrival ticks land within the window, and (d) one zero-travel personal lure per ordinary cluster telescope, worth more per-tick than any single-scope value a distant rendezvous could offer once decay is applied -- so a telescope that only ever chases its own best-looking reachable value grabs the lure and never reaches a rendezvous at all.",
+  "objective": "max",
+  "theme": "telescope fleet catching transients that need two eyes",
+  "title": "Twin-Eye Transient Watch",
+  "mechanisms": ["co-observation-matching", "decaying-target-value", "slew-cost-sequencing"],
+  "innovation_hook": "The unit of decision is the RENDEZVOUS (a scope-pair committing to a target window), so reformulating the input as a time-expanded pair-assignment graph -- evaluating candidate (target, site-0 scope, site-1 scope) triples by the pairing value each achieves given the scopes' CURRENT tail state, committing the best one, and repeating -- then sequencing slews within each scope from that commitment history, dominates any per-scope value chasing.",
+  "strategies": [
+    "personal-lure grab (trivial baseline): each anchor telescope observes only the single zero-slew, zero-decay target already parked at its own start position -- feasible, but nothing pairs beyond the one planted baseline pair",
+    "per-scope value chasing (obvious first attempt): each telescope independently and repeatedly walks to whichever REACHABLE target currently has the highest decayed value for IT ALONE, ignoring whether any other-site telescope will ever show up there -- reliably grabs its own zero-travel personal lure and the exact-synced 'obvious' rendezvous, but a same-site lure can never pair (same site) and it has no way to notice which hidden rendezvous a specific partner telescope's own geometry would sync with, so most planted hidden rendezvous value is left on the table",
+    "time-expanded pair-assignment matching (strong): repeatedly evaluate every (target, site-0 scope, site-1 scope) triple by the payout it would achieve from the scopes' CURRENT tail state, commit the single best triple (updating both scopes' tail state), and repeat -- directly targets what actually pays out (a completed cross-site pair) instead of per-scope apparent value",
+    "stronger metaheuristics: an LP-relaxation / min-cost-flow view of the time-expanded graph with backtracking or 2-opt re-sequencing of each scope's visit order, or beam search over commitment order"
+  ]
+}

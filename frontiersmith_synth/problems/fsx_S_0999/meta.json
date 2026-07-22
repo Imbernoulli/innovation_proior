@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0999",
+  "tier": "S",
+  "family": "day-night-laplacian",
+  "seed_problem": "seed spec fsx_S_0999 (day-night-laplacian / edge-schedule-partition + floquet-multiplier + non-commutativity-exploit)",
+  "mutation": "composite: goal is a graded MIN of a Floquet (product-of-exponentials) spectral radius instead of any decision property, and the input is generalized to an edge-labeled multigraph-like weighted graph whose edge set must be scheduled (partitioned with per-shift caps) into two non-commuting diffusion operators",
+  "objective": "min",
+  "theme": "alternating two courier networks between day and night shifts",
+  "title": "Day-Night Courier Laplacians",
+  "strategies": [
+    "trivial: prefix-fill day up to cap in input order, overflow to night",
+    "greedy: blind hill-climbing local search (random single-edge day<->night swaps) against an internal Floquet-radius estimate -- converges to a 'balanced half graph' for each shift",
+    "strong: local search augmented with node-block consolidation moves (move a whole hub's incident edges onto whichever shift already holds more of them), discovering edge-disjoint substructures that keep a slow-subspace-killing pairing coherent across shifts",
+    "invalid: dumps every edge into the day shift, violating capDay"
+  ]
+}

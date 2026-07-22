@@ -1,0 +1,20 @@
+{
+  "id": "fsx_A_0511",
+  "tier": "A",
+  "format": "A",
+  "family": "debruijn-forbidden-cover",
+  "eval_form": "quality-metric",
+  "seed_problem": "Given alphabet size a, factor length k, and a forbidden set F of length-k strings, output one string S that contains no forbidden factor; maximize the number of distinct ALLOWED length-k factors it covers.",
+  "mutation": "composite: reformulate maximum k-mer coverage as a constrained MAX-EDGE walk on a MUTILATED de Bruijn graph. Forbidden factors delete edges individually, so the survivor is deliberately UN-balanced (many local sinks); a naive/greedy single trail stalls at a sink and strands most reachable factors, while the strong solution takes the largest strongly-connected component, Eulerizes it by repeating a few allowed edges, and sweeps all its edges with one Eulerian circuit.",
+  "objective": "max",
+  "theme": "Cover k-mers while dodging forbidden factors",
+  "title": "Forbidden Factory: Maximal k-mer Coverage on a Mutilated de Bruijn Graph",
+  "mechanisms": ["de-bruijn-graph", "euler-walk", "forbidden-factor-avoidance"],
+  "innovation_hook": "Forbidden factors turn a clean Eulerian cover into a max-edge rural-postman walk on a mutilated de Bruijn graph; the strong solution reformulates coverage as an Eulerian trail and splices leftover cycles with Hierholzer.",
+  "strategies": [
+    "naive lexicographic greedy walk (baseline): start at the smallest legal vertex, always append the smallest allowed-and-unused symbol, stop when stuck at a sink -- strands most factors",
+    "best-of-many-starts trail with dead-end avoidance: try many start vertices, at each step prefer the edge whose target has the most remaining unused out-edges; reaches further but, as a single trail, still stalls at a sink and cannot recover edges behind it",
+    "max-edge-walk reformulation (strong): take the largest strongly-connected component, Eulerize it with a few repeated allowed edges (repeats are free since coverage counts DISTINCT factors), and sweep every edge with one Eulerian circuit; keep whichever of this circuit or a long trail covers more",
+    "trap: dumping a full de Bruijn sequence ignores the forbidden set, contains a forbidden factor, and is disqualified"
+  ]
+}

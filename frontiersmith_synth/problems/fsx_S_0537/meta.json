@@ -1,0 +1,19 @@
+{
+  "id": "fsx_S_0537",
+  "tier": "S",
+  "format": "A",
+  "family": "braess-toll-surgeon",
+  "eval_form": "quality-metric",
+  "seed_problem": "congestion-pricing on a road network with equilibrium routing",
+  "mutation": "composite: replace exact-answer routing with an open-ended toll-design objective under a budget, scored by the total travel time of a deterministic best-response equilibrium; plant Braess paradox gadgets so that surgically deleting shortcut edges beats any smooth congestion-proportional pricing, plus decoy gadgets where deletion hurts",
+  "objective": "min",
+  "theme": "city road tolls before festival weekend",
+  "title": "Toll Surgeon: Taming Braess Traffic Before the Festival",
+  "strategies": [
+    "trivial: post no tolls (the do-nothing equilibrium, the calibration baseline)",
+    "greedy: smooth congestion-proportional pricing -- spread the whole budget over roads in proportion to their congestion sensitivity a_e; never taxes the zero-latency Braess shortcuts and mis-spends on decoy districts",
+    "recipe (stronger than greedy, weaker than strong): marginal / latency*flow proportional pricing of congested roads -- indirectly relieves each single Braess paradox but cannot concentrate the scarce budget",
+    "strong: counterfactual network surgery -- decompose into districts, binary-search the minimum toll that deletes each road, keep only deletions that lower total travel time, knapsack the scarce budget by benefit/cost, then marginal-price the surviving congested roads with the leftover",
+    "beyond strong: full social-optimum pricing of the post-surgery network and partial (non-deleting) tolls, which can cut travel time further below the split equilibrium"
+  ]
+}

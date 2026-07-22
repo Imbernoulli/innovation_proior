@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0946",
+  "tier": "A",
+  "format": "B",
+  "family": "frost-front-pipe-routing",
+  "eval_form": "quality-metric",
+  "theme": "plumbing a village above the permafrost",
+  "title": "Plumbing the Village Above the Permafrost",
+  "objective": "minimize",
+  "source_frameworks": ["wave2b-lens:continuous-physical"],
+  "strategies": [
+    "flat-depth straight-line chain: connect buildings in input order via L-shaped segments, bury everything at 1.5x the worst possible cover-type depth (reproduces the evaluator's own naive baseline reference)",
+    "geometric nearest-neighbor MST (Manhattan distance, terrain never consulted while routing) plus a correctly-computed but uniform flat depth sized to the worst cover type the route happens to cross",
+    "warped-metric nearest-terminal Dijkstra Steiner heuristic: build the pipe network in the cost space where each cell weighs required_depth(cover_type)^2 (not 1), correctly identify that snow-holding ground's worst winter is a low-snow one rather than the coldest one, and bury each cell at exactly its own required depth"
+  ]
+}

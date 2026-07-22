@@ -1,0 +1,90 @@
+# Title
+Bessel Sideband Inversion
+
+# Problem
+You are programming the operators of an FM synthesizer voice. The voice has one
+fixed **carrier** at frequency ratio `rc` (an integer multiple of the fundamental
+`f0`) and `K` **modulator** operators wired in parallel: each modulator phase-modulates
+the *same* carrier simultaneously. The resulting steady-state signal is
+
+  `s(t) = cos( 2*pi*rc*f0*t + sum_{i=1}^{K} I_i * sin(2*pi*r_i*f0*t) )`
+
+where, for operator `i`, `r_i` is its chosen integer frequency ratio and `I_i >= 0`
+its chosen modulation index. Expanding `s(t)` with the Jacobi-Anger identity places
+a cosine of amplitude `prod_i J_{n_i}(I_i)` at *signed* frequency index
+`hsum = rc + sum_i n_i*r_i`, for every combination `(n_1,...,n_K)` of signed sideband
+orders (each `|n_i| <= N_MAX = 10`; contributions beyond that are defined to be
+zero -- this truncation is exact, not an approximation). A physical cosine has no
+sign of frequency, so combinations with `hsum = +h` AND `hsum = -h` land on the
+*same* harmonic `h` and add together (with sign -- constructive or destructive)
+before the magnitude is taken. The achieved magnitude at harmonic `h` (for
+`h = 1..H`) is therefore
+`A(h) = | sum over valid (n_1,...,n_K) with |rc+sum n_i*r_i| = h of prod_i J_{n_i}(I_i) |`.
+
+You are given a target magnitude spectrum `T(1..H)` (the timbre to match) and, for
+each modulator slot `i = 1..K`, a fixed **hardware window**: an allowed ratio range
+`[Rlo_i, Rhi_i]` and an index cap `Cmax_i`. Program each operator: choose its ratio
+inside its own window and its index inside its own cap.
+
+# Input
+Line 1: `K H rc lambda`
+Next `K` lines (i = 1..K): `Rlo_i Rhi_i Cmax_i`
+Next line: `H` reals `T(1) T(2) ... T(H)`
+
+`1<=K<=5, 1<=H<=32, 1<=rc<=20, 0<=lambda<=1, 1<=Rlo_i<=Rhi_i<=20, 0.2<=Cmax_i<=8.0`,
+`0<=T(h)<=3.0`.
+
+# Output
+`K` lines (i = 1..K): `r_i I_i` — integer ratio `Rlo_i<=r_i<=Rhi_i` and real index
+`0<=I_i<=Cmax_i`.
+
+# Feasibility
+Every `r_i` must be an integer inside its slot's window; every `I_i` must be finite
+and inside `[0, Cmax_i]`. Any violation scores 0.
+
+# Objective (minimize)
+`F = sum_{h=1}^{H} (A(h) - T(h))^2  +  lambda * sum_{i=1}^{K} I_i`
+
+i.e. squared spectral error against the target plus a cost penalty on total
+modulation energy used. Lower is better; there is no known optimum (the search
+space is continuous x combinatorial and the checker never claims exactness).
+
+# Scoring
+The checker also builds an internal baseline: all ratios at their window minimum,
+all indices 0 (silent modulation — only the bare carrier sounds). Let `B` be that
+baseline's `F`, floored at `1e-9` (only relevant if the baseline already matches
+the target almost exactly). Your score is `ratio = min(1.0, 0.1 * B / max(1e-9, F))`.
+Matching the baseline exactly scores 0.1; beating it scores higher, up to 1.0.
+
+# Constraints
+Time limit: 4s. Memory limit: 512MB.
+
+# Example
+K=2, H=4, rc=1, lambda=0.05
+Slot 1: Rlo=1 Rhi=3 Cmax=2.0
+Slot 2: Rlo=2 Rhi=5 Cmax=2.0
+Target: T = [0.30, 0.40, 0.10, 0.05]
+
+Baseline (r=[1,2], I=[0,0]): only h=1 sounds, A=[1,0,0,0], giving
+`B = (1-0.30)^2+(0-0.40)^2+(0-0.10)^2+(0-0.05)^2 = 0.6625`.
+
+A candidate answer:
+```
+1 1.84
+3 0.90
+```
+Slot 1's ratio 1 puts its order-1 sideband on harmonic 2 (rc+1*1=2, target
+0.40); rather than scaling the index linearly with that target (e.g.
+`I_1 = 0.40*Cmax_1 = 0.8`, which undershoots because `J_1(I)` is far from
+linear and peaks near `I~1.84` — a full 0.582, well past what a linear guess
+reaches), it sits near that peak. Because both slots' sidebands combine
+*multiplicatively* across every harmonic, and because `hsum=+h` and
+`hsum=-h` fold onto the same bin, the actual achieved spectrum is a joint
+outcome: `A = [0.190, 0.385, 0.305, 0.125]` for h=1..4, giving
+`F = sum(A(h)-T(h))^2 + 0.05*(1.84+0.90) ~ 0.1972` and
+`ratio = min(1, 0.1*0.6625/0.1972) ~ 0.336`.
+
+# Note
+`N_MAX = 10` and the Bessel identity `J_{-n}(x) = (-1)^n J_n(x)` for integer `n`
+fully define `A(h)`; nothing about the target's exact numeric structure is stated
+here beyond the ranges above — read it from the input.

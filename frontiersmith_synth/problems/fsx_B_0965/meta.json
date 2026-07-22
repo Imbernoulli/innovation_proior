@@ -1,0 +1,18 @@
+{
+  "id": "fsx_B_0965",
+  "tier": "B",
+  "format": "E",
+  "family": "multiplicative-function-recovery",
+  "eval_form": "quality-metric",
+  "theme": "census clerk's number-stamped brass tags",
+  "title": "The Brass-Tag Registry: Recovering a Multiplicative Law Across the Prime-Power Basis",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:hidden-law-discovery"],
+  "strategies": [
+    "trivial: predict f(n) = n (the checker's own baseline construction) -> Ratio ~= 0.10",
+    "greedy: ordinary least squares straight line f(n) ~= c*n + d fit on the training (n, obs) rows and extrapolated to the withheld tag range -- captures only the AVERAGE multiplicative discount across the training population, so it is far off for any withheld tag whose factor structure departs from that average",
+    "strong: re-basis the problem onto the coordinate system the law actually respects -- prime powers p**k, grouped by which of THREE classes the prime p falls in (p==2, p%4==1, p%4==3). Any training tag that is itself a pure prime power gives a direct, uncontaminated read of the local discount; majority-voting those reads per class recovers the exact integer law, which the checker then reconstructs on withheld tags by multiplying over their own prime-power factorization",
+    "invalid: emit an expression that divides by zero on evaluation -> infeasible (0)"
+  ],
+  "notes": "Format-E symbolic regression skinned as a census clerk's number-stamped brass tags. gen.py prints noisy stamped registry numbers f(n) for tags n = 1..N_train (N_train and noise level ramp with testId). f is a MULTIPLICATIVE arithmetic function: f(1)=1 and f(mn)=f(m)f(n) for coprime m,n, with f(p**k) = p**k - a(p)*p**(k-1) where the integer discount a(p) depends only on which of three prime-residue classes p belongs to (p==2, p%4==1, p%4==3); the three discounts vary per testId (COEF_TABLE). The withheld evaluation split is tag numbers uniformly sampled from [100000, 1000000] -- 30x-300x beyond the training range -- regenerated deterministically inside the checker. The solver's OUTPUT FORMAT makes the coordinate-system choice explicit and symmetric: 'MODE N' submits a closed-form expression of the tag number n directly (the order the data arrived in); 'MODE PP' submits a closed-form expression of a prime p and exponent k (the order the law respects), which the checker evaluates once per prime-power factor of each withheld tag and multiplies together. f is wildly non-smooth in n (a withheld prime tag and an adjacent highly-composite tag can differ by 2x in relative discount) but is an exact 3-parameter lookup table over the prime-residue basis -- the innovation hook is choosing that basis instead of curve-fitting in n. A fixed engraving-tolerance floor is added inside the score formula (to both the participant's and the baseline's error) so that even an exact law recovery does not saturate the ratio at 1.0. Deterministic CPU only; no wall-time, no shipped groundtruth module, no law/seed printed by gen.py."
+}

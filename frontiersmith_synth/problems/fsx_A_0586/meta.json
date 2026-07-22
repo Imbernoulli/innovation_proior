@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0586",
+  "tier": "A",
+  "format": "C",
+  "family": "downwash-formation-morph",
+  "eval_form": "quality-metric",
+  "theme": "drone light show morphing between 3D figures",
+  "title": "Empty Cones: Downwash-Aware Formation Morphing",
+  "objective": "min",
+  "strategies": [
+    "identity baseline: keep the target labels as listed and fly everyone at once (reproduces the checker baseline)",
+    "min-distance greedy: match each drone to the Euclidean-nearest target (iterative closest pair) and fly a single simultaneous wave -- ignores the downwash cones",
+    "rotational in-layer matching: spend the free permutation to keep every drone in its own layer (angular-order match per ring), so drones orbit horizontally instead of diving through the stack",
+    "layered top-first descent: schedule one ring per wave, highest layer first, so a moving ring never shares a tick with a ring directly beneath it -- the cones stay empty"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0942",
+  "tier": "A",
+  "format": "E",
+  "family": "latent-charge-leak-forensics",
+  "eval_form": "quality-metric",
+  "theme": "infer a pressure vessel's leak law from patchy logs",
+  "title": "Pressure Vessel Leak Forensics — recovering a leak exponent behind unlogged deliveries",
+  "objective": "min",
+  "strategies": [
+    "trivial: force alpha=1 (proportional leak), fit k from raw uncorrected daily deltas -> reproduces the checker's own baseline, ~0.1",
+    "greedy: treat every day's net level change as pure decay (ignore the daily delivery total entirely), fit a power law by OLS to log(level) vs log(apparent rate) -- looks reasonable, even nails a few low-delivery instances, but on delivery-heavy instances the unmodelled deliveries masquerade as suppressed decay and drag the fitted exponent/constant far from truth, blowing up under extrapolation",
+    "strong: the insight -- delivery TIMES are unobserved and unrecoverable, but mass balance over a full day is exact regardless of timing: decay_lost = Q_d + E_(d-1) - E_d, on EVERY day, charge or not. This deconvolves the hidden delivery events from the decay signal via bookkeeping alone (no curve flexibility, no event-time estimation), then a weighted log-log regression on the recovered decay-only signal recovers the exponent cleanly and generalises to the held-out high-level regime",
+    "headroom above strong: recover the within-day delivery timing itself (not just its net effect) via a joint nonlinear fit against the exact closed-form decay solution, squeezing out the residual bias the linear mass-balance proxy leaves in the representative level per day"
+  ]
+}

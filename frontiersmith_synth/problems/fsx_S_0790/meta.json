@@ -1,0 +1,19 @@
+{
+  "id": "fsx_S_0790",
+  "tier": "S",
+  "format": "B",
+  "family": "backbone-guided-weighted-sat",
+  "eval_form": "quality-metric",
+  "theme": "Maximize satisfied constraint weight in a weighted CSP with a planted backbone hidden among free variables.",
+  "title": "The Quiet Chain: Weighted Constraints with a Hidden Backbone",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:topup-B-1"],
+  "mechanisms": ["focused-flip-walksat", "tabu-restart", "unit-propagation-backbone-probe"],
+  "innovation_hook": "Probe the backbone by propagating forced literals from the heaviest constraints, freeze those variables, and focus stochastic flips only on the free set.",
+  "strategies": [
+    "trivial: static per-variable weighted-majority vote (no search) -- reproduces the evaluator's own baseline exactly (~0.1)",
+    "greedy (the trap): plain WalkSAT over ALL variables uniformly, greedy break/make flips with noise, a few full random restarts -- handles the numerous light noise clauses fine but, having no notion that some variables matter more, drifts backbone variables toward whatever the light decoy clauses locally prefer, losing the rare-but-heavy anchor clauses that need those same variables at the opposite value",
+    "strong (the insight): probe the backbone by running unit propagation restricted to the heaviest clauses (found via the largest gap in the sorted weight spectrum, not a hardcoded constant) -- heavy unit clauses pin a variable directly, heavy 2-literal clauses chain-propagate the rest; freeze the recovered backbone, then run focused WalkSAT + a short tabu list + periodic free-only restarts on just the remaining variables",
+    "headroom above strong: exact/near-exact MAX-SAT solving on the free-variable subproblem (e.g. ILP relaxation, better local-search schedules, smarter tabu tenure tuning) to squeeze more of the light-clause weight beyond what a fixed-budget WalkSAT recovers"
+  ]
+}

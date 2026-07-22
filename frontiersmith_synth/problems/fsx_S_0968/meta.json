@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0968",
+  "tier": "S",
+  "format": "B",
+  "family": "gust-detuning-mass-ballast",
+  "eval_form": "quality-metric",
+  "theme": "rope bridge in a haunted canyon",
+  "title": "The Hollow-Span: Ballast Against the Canyon Choir",
+  "objective": "maximize",
+  "source_frameworks": ["wave2b-lens:continuous-physical"],
+  "strategies": [
+    "do-nothing-ish spread: divide most of the ballast budget evenly across every plank with no structural analysis, then linearly scan cargo loads for the largest safe one (reproduces the evaluator's weak internal reference from the wrong side)",
+    "biggest-swinger textbook move: run a modal analysis, find the plank with the largest amplitude in the dominant mode, dump the WHOLE ballast budget there, then scan cargo -- the obvious first idea, but it only ever looks at the mode it started from",
+    "spectral exchange search: build the mass/stiffness model, solve the true eigenmodes, and run exchange-move local search (move ballast units between planks) that directly minimizes the resonance overlap with the gust spectrum, from several starting layouts, alternating with re-picking the cargo",
+    "joint ballast/cargo co-design: treat cargo as part of the mass matrix too (it detunes the bridge while it's being carried) and refine ballast and cargo together across a couple of rounds instead of optimizing them in isolation"
+  ]
+}

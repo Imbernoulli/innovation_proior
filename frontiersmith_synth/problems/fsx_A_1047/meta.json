@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1047",
+  "tier": "A",
+  "format": "C",
+  "family": "version-checkpoint-atlas",
+  "eval_form": "quality-metric",
+  "theme": "monastery copying illuminated manuscripts at chosen years",
+  "title": "Scriptorium Atlas: Exemplars and Glosses",
+  "objective": "min",
+  "strategies": [
+    "single-exemplar baseline: keep only the Urtext (root) as a full copy, chain every recension upward to its source",
+    "popularity-ranked greedy: keep the Urtext plus the most-requested recensions the budget affords, always chain upward to the source (never reorient toward a descendant exemplar)",
+    "value-density facility location with directed shortest paths: multi-source Dijkstra over the asymmetric ascent/descent arc graph (letting each recension point at whichever neighbor -- source or derivative -- is cheapest), with exemplars chosen by weighted-savings per unit vellum cost, re-evaluated after each addition",
+    "reoriented local search: start from the popularity-ranked exemplar set, then repeatedly flip individual recensions' gloss direction (ascend <-> descend) whenever the neighbor-wise cost is asymmetric and cheaper the other way"
+  ]
+}

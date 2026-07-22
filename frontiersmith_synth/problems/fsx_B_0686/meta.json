@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_0686",
+  "tier": "B",
+  "family": "wildcard-superstring",
+  "seed_problem": "Given n pattern strings containing '?' wildcards (matching any letter), output one superstring S (no wildcards) in which every pattern occurs as a wildcard-respecting substring; minimize |S|.",
+  "mutation": "input: relax literal-overlap shortest-common-superstring to a wildcard-aware occurrence rule, so the true overlap graph (computed by wildcard-compatible suffix/prefix matching) is far denser than what a literal-character overlap computation can see, coupled with a genuine Hamiltonian-path search over that graph (an ordering/insertion decision, not just a pairwise merge) to realize the compression.",
+  "objective": "min",
+  "theme": "Shortest superstring of wildcard patterns",
+  "title": "Wildcard Pattern Superstring",
+  "strategies": [
+    "trivial: concatenate all patterns in input order, replacing every '?' with a fixed letter -- no merging at all; matches the checker's baseline B exactly, ratio ~0.1",
+    "greedy-literal-nearest-neighbor: compute pairwise overlaps using ONLY plain character equality (a '?' is treated as an ordinary literal character that must literally coincide with another '?' to count as an overlap position, exactly like the classical shortest-common-superstring greedy-overlap heuristic applied naively to strings containing '?'); build a single nearest-neighbor Hamiltonian chain from a fixed start using this metric and concatenate along it. This is the obvious first attempt a strong coder writes, and it systematically UNDER-counts overlap whenever the shared region straddles wildcard positions, so on heavily-masked planted clusters it merges almost nothing and the resulting S stays close to the trivial baseline",
+    "strong-wildcard-overlap: redefine the similarity metric before running the same class of algorithm -- compute the TRUE maximal overlap between every ordered pair of patterns by wildcard-compatible suffix/prefix matching (position i compatible iff either character is '?' or they are literally equal), exposing overlaps invisible to literal comparison; then search several different Hamiltonian-chain starting points (multi-start nearest neighbor over this corrected, much denser overlap graph) and keep the best resulting S. Because the overlap metric itself is corrected, this exploits the planted wildcard-masked chains that greedy cannot see, collapsing sum(|p_i|) down toward the size of the underlying hidden cores"
+  ]
+}

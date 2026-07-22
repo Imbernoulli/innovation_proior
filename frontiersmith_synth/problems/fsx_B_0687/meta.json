@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0687",
+  "tier": "B",
+  "format": "C",
+  "family": "surge-roster-boundary-stagger",
+  "eval_form": "quality-metric",
+  "theme": "staff a clinic against every plausible rush",
+  "title": "Clinic Roster: Staggering the Boundary Against the Surge Lattice",
+  "objective": "min",
+  "strategies": [
+    "trivial: cluster every worker's shift at the same first allowed hour (maximal, undodgeable coverage dip)",
+    "greedy: spread the fixed headcount evenly across the allowed start hours anchored at the first one, ignoring the surge sweep entirely",
+    "strong: recognize that headcount and shift length are fixed, so the only lever is WHERE the roster's unavoidable low-coverage hours fall; rotate the phase of the uniform roster over every allowed anchor hour and keep the rotation whose worst-case peak queue over the whole surge sweep is smallest",
+    "invalid: wrong token count / non-finite values -> rejected by the feasibility gate"
+  ]
+}

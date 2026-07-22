@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0777",
+  "tier": "A",
+  "format": "A",
+  "family": "wirelength-expander-loom",
+  "eval_form": "quality-metric",
+  "theme": "weaving a fast gossip network across a long ridge of villages",
+  "title": "Weaving a Fast Gossip Network Across a Long Ridge of Villages",
+  "objective": "max",
+  "seed_problem": "n points with fixed positions on a line, degree cap d, wirelength budget; maximize the algebraic connectivity (spectral gap) of the chosen graph",
+  "mutation": "composite: villages are placed via a recursive fold hierarchy (every level contributes the same total fold-length, so wirelength is geometrically summable across scales) instead of arbitrary/uniform points; the objective couples that hierarchical-geometric layout to a wirelength-budget constraint AND a spectral-gap objective in one scorer, so the winning topology must exploit the fold structure directly rather than just avoiding long edges or building a generic expander",
+  "strategies": [
+    "trivial: connect the plain path along the ridge (village i -- i+1); reproduces the checker's own baseline exactly",
+    "naive greedy: weave a local mesh, connecting nearest villages first (bandwidth 1,2,3,...) until degree cap/budget is exhausted -- never crosses a big fold, stays locally dense but globally thin",
+    "insight (strong): recursively bisect the village index range and add two fold-crossing bridge edges per split (extremes of each half-pair) at every level -- an index-only, coordinate-free hierarchical topology with O(log n) max degree and O(n) edges whose wirelength stays low because the fold-gaps are geometrically summable across levels, giving O(log n) hop-diameter (near-expander spectral gap) for a fraction of a naive strategy's wirelength"
+  ]
+}

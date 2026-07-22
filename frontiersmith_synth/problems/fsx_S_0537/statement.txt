@@ -1,0 +1,93 @@
+# Toll Surgeon: Taming Braess Traffic Before the Festival
+
+## Problem
+The city is a directed graph with **N** intersections and **M** one-way roads.
+Road `e`, when carrying `x` commuters, costs **each** commuter on it a travel time
+(latency) of `L_e(x) = a_e * x^{k_e} + b_e` minutes. **D** commuters each drive from
+an origin to a destination.
+
+Before the festival you may post an integer toll `t_e >= 0` on each road, subject to a
+total toll budget `sum_e t_e <= T`. Tolls are **not** travel time; they only change
+which routes commuters pick.
+
+## How the city settles
+Given your tolls, traffic settles by a deterministic best-response process. When a
+commuter is about to join road `e`, that road's **perceived cost** is
+`L_e(flow_e + 1) + t_e` (its latency once this commuter is added, plus the toll), where
+`flow_e` is the number of commuters currently routed through `e`. Each commuter always
+takes the minimum-perceived-cost route from its origin to its destination.
+
+Procedure (exactly reproducible):
+1. **Insertion.** For commuter `i = 1..D` in order, route `i` on its cheapest route and
+   add it to the flows.
+2. **Rounds.** Repeat `R` times: for `i = 1..D` in order, remove commuter `i` from the
+   flows, then re-route it on its cheapest route and re-add it.
+
+Cheapest route = minimum total perceived cost, found by Dijkstra that updates a node's
+parent only on a **strict** cost improvement — so the chosen route is uniquely determined.
+
+## Objective
+After settling, road `e` carries `flow_e` commuters, each spending `L_e(flow_e)` minutes.
+Total travel time is
+```
+F = sum_e  flow_e * L_e(flow_e)
+```
+**Minimize F.** (Latency uses the settled flow; tolls are excluded — they are only a
+steering tool.)
+
+## Output
+`M` integers `t_1 ... t_M` (one per road, in input order), with `0 <= t_e <= T` and
+`sum_e t_e <= T`.
+
+## Scoring
+Let `B` be the total travel time when all tolls are zero — the do-nothing equilibrium the
+checker computes itself. Your score on a test is
+```
+ratio = min(1, 0.1 * (B / max(1, F)) ^ 1.4)
+```
+so posting no tolls (`F = B`) scores `0.1`, and the score rises super-linearly as you cut
+travel time. The final score is the mean ratio over the 10 tests.
+
+## Why "just toll the busy roads" fails
+Some roads are **Braess shortcuts**: commuters greedily overuse them, so pricing such a
+road out of use (a prohibitive toll that effectively deletes it) can *lower* total travel
+time. But a shortcut has tiny latency, so congestion-proportional pricing never taxes it;
+and the budget is scarce, so smearing small tolls across the visibly busy roads barely
+moves the equilibrium. Meanwhile other shortcut-shaped roads are genuinely useful, and
+tolling them makes `F` **worse**. You must reason about the settled equilibrium
+counterfactually — which roads to (near-)delete, and where a scarce budget actually
+changes the outcome.
+
+## Input format
+```
+N M D T R
+u_e v_e a_e k_e b_e      (M lines: road e from u_e to v_e, latency a_e*x^k_e + b_e)
+s_i t_i                  (D lines: commuter i drives from s_i to t_i)
+```
+Nodes are 1-indexed.
+
+## Constraints
+- `1 <= N <= 400`, `1 <= M <= 400`, `1 <= D <= 600`, `1 <= R <= 60`, `0 <= T`.
+- `0 <= a_e, b_e <= 10^6`, `0 <= k_e <= 5`. All latencies fit in 64-bit integers.
+- Time limit **3 s**, memory **512 MB**.
+
+## Example
+Input (one district `S=1, A=2, B=3, T=4`, six commuters `1 -> 4`, budget `T=0`):
+```
+4 5 6 0 40
+1 2 1 2 0
+2 4 0 1 37
+1 3 0 1 37
+3 4 1 2 0
+2 3 0 1 0
+1 4
+1 4
+1 4
+1 4
+1 4
+1 4
+```
+Roads: `1->2` and `3->4` are congestion `x^2`; `2->4` and `1->3` are fixed `37`; `2->3` is
+the zero-latency shortcut. With `T = 0` all six flood `1->2->3->4`, giving `F = B` and
+`ratio = 0.1`. With budget to spare, a toll of `37` on road 5 (`2->3`) prices the shortcut
+out; traffic splits `1->2->4` and `1->3->4`, cutting `F` and raising the ratio above `0.1`.

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0826",
+  "tier": "A",
+  "format": "A",
+  "family": "concave-consolidation-siting",
+  "seed_problem": "Site converters among farms on the plane; converter cost is concave in throughput (a + b*capacity^0.6), transport loss is linear in distance*volume, and the planted instance has two spatial scales of farm clustering.",
+  "mutation": "composite: compose cluster-hierarchy-reading + distance-loss-tradeoff + economies-of-scale-costs into one siting objective. Digesters may only be built at farm locations; a digester's cost is concave in its aggregate assigned capacity (A + Bc*cap^0.6) while every farm pays a linear pipeline-loss cost proportional to its distance to its digester. The generator plants farms into tight villages, and villages into groups whose inter-village spacing alternates 'tight' (regional consolidation is cost-beneficial under the instance's own A/Bc/L) and 'loose' (consolidation would lose) using the SAME global cost parameters throughout one instance -- so no single clustering radius is correct across the whole map; the solver must read the instance's own cluster spectrum and decide, group by group, whether to merge villages into a shared regional digester.",
+  "objective": "min",
+  "theme": "biogas villages: digesters versus pipelines",
+  "title": "Biogas Villages: Digesters Versus Pipelines",
+  "strategies": [
+    "trivial: one digester for every farm, sited at farm 1 (matches the checker's baseline B, ratio ~0.1)",
+    "greedy (the trap): single-pass geometric clustering with ONE global distance threshold (3-4x the median nearest-neighbour distance) forms correct village-level digesters but never re-evaluates whether nearby villages should share a regional digester -- it misses every beneficial regional consolidation because its threshold is calibrated to intra-village spacing, not the instance's actual A/Bc/L crossover",
+    "strong (the insight): two-phase cost-aware agglomeration -- phase 1 forms villages via the same geometric threshold, phase 2 treats each village as a node and greedily merges the closest pair of villages/clusters ONLY if the concave facility saving (A + Bc*cap^0.6 combined vs separate) exceeds the added linear pipeline loss, using the instance's own A, Bc, L; this reads the planted two-scale spectrum per-group instead of applying one clustering resolution",
+    "local exchange: reassigning a single farm to a neighbouring digester when it strictly lowers F, applied after either construction"
+  ]
+}

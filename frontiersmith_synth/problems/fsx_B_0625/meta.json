@@ -1,0 +1,20 @@
+{
+  "id": "fsx_B_0625",
+  "tier": "B",
+  "format": "A",
+  "family": "abelian-sandpile-sculptor",
+  "eval_form": "quality-metric",
+  "theme": "sculpt a shape out of avalanches",
+  "title": "Avalanche Sculptor",
+  "objective": "max",
+  "seed_problem": "abelian sandpile on an NxN grid; drop grains and stabilize by toppling",
+  "mutation": "composite: turn sandpile stabilization into an inverse-design objective -- reconstruct a published target stable configuration by choosing grain counts at a fixed set of drop sites, under a grain budget, with internal sink walls (boundary-shaping) that split avalanches. Because toppling is abelian the joint pile is a linear superposition of the per-site drops, so the objective couples abelian dynamics + boundary shaping + superposition-linearity.",
+  "mechanisms": ["abelian-sandpile", "boundary-shaping", "superposition-linearity"],
+  "innovation_hook": "Arbitrary targets are reachable by a linear combination of drops across many sources, not by tuning one pile.",
+  "strategies": [
+    "trivial: drop nothing -> empty grid matches exactly the zero cells of the target (checker baseline)",
+    "greedy (trap): tune a SINGLE pile -- pick the one source+amount that scores best; reproduces one localized fractal lobe and misses the rest",
+    "strong (insight): exploit abelian superposition -- coordinate ascent that combines drops across MANY sources, re-stabilizing incrementally, to reconstruct the multi-lobe target",
+    "beyond strong: solve the integer toppling equation T = D - L*u for u>=0 with D supported on the sources (reduced-Laplacian / least-action view)"
+  ]
+}

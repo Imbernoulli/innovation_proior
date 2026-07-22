@@ -1,0 +1,15 @@
+{
+  "id": "fsx_A_0718",
+  "tier": "A",
+  "format": "C",
+  "family": "constellation-downlink-phasing",
+  "eval_form": "quality-metric",
+  "theme": "satellites racing to downlink imagery through few ground stations",
+  "title": "Downlink Rush: Periodic Ground-Station Phasing",
+  "objective": "maximize",
+  "strategies": [
+    "single-best-station reproduction: every satellite only ever uses the highest-drain station's window, every orbit (the checker's own baseline)",
+    "greedy opportunism: every satellite transmits during every window it has to every station, every orbit, with no coordination -- piles satellites onto the best station and triggers co-channel quartering plus buffer overflow",
+    "periodic phase coloring: bucket satellites by orbital phase, round-robin contending satellites across distinct stations (or time-slice a shared station window into non-overlapping full-rate sub-slots) once on the periodic quotient, then replicate the same conflict-free assignment across every orbit"
+  ]
+}

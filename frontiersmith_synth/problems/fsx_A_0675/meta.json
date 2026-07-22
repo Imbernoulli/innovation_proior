@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0675",
+  "tier": "A",
+  "format": "A",
+  "family": "cache-color-conflict-weave",
+  "eval_form": "quality-metric",
+  "theme": "stagehands assigning actors to shared dressing rooms",
+  "seed_problem": "direct-mapped cache page-to-set coloring to minimize trace misses",
+  "mutation": "composite: fixed per-actor room (color) assignment replayed against an LRU-capacity-K trace, where conflict cost is driven by temporal alternation between actors rather than static pairwise co-occurrence or raw access frequency",
+  "objective": "min",
+  "title": "Quick-Change Dressing Rooms",
+  "strategies": [
+    "address-modulo / round-robin room assignment (the checker's own baseline)",
+    "frequency-first load balancing: sort actors by total cue count, bin-pack into rooms by running load (ignores WHEN actors are cued relative to each other)",
+    "alternation-graph mining + capacity-aware coloring + local search: build a weighted graph from consecutive-cue transitions, greedily color by descending edge weight respecting K, then refine with randomized recolor moves scored by re-simulating the actual slow-change count"
+  ]
+}

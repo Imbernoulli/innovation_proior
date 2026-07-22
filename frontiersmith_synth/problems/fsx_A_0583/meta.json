@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0583",
+  "tier": "A",
+  "format": "E",
+  "family": "modular-switching-recurrence",
+  "eval_form": "quality-metric",
+  "theme": "temple bell-ringing ledger with corrupted lines",
+  "title": "Temple Bell Ledger: Two Laws Wearing One Mask",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:hidden-law-discovery"],
+  "strategies": [
+    "predict 0 for every held-out line (reproduces the checker baseline, Ratio ~ 0.1)",
+    "single-recurrence least squares: fit one order-2 linear recurrence a(n)=A*a(n-1)+B*a(n-2)+C over the whole window and roll it forward -- blind to the residue-class switching and dragged off by the corrupted lines, so it drifts on extrapolation",
+    "residue-class decomposition + robust recovery: split the equations by n mod m for each candidate modulus m, recover each class's short law by exact-consensus (outlier-immune) solving of equation triples, pick the smallest m that explains all lines, then forward-simulate the clean latent from the clean seed lines to extrapolate exactly",
+    "Berlekamp-Massey / long-recurrence fitting: absorbs the switching into a long recurrence that fits the finite window but derails within a few extrapolated steps and is poisoned by the corrupted lines"
+  ]
+}

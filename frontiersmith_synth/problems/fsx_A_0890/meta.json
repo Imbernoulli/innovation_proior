@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0890",
+  "tier": "A",
+  "format": "B",
+  "family": "reorder-policy-demand-families",
+  "eval_form": "quality-metric",
+  "theme": "one shopkeeper brain for seasonal, bursty, trending demand",
+  "title": "One Shopkeeper Brain: Reorder Policies Across Demand Families",
+  "objective": "maximize",
+  "source_frameworks": ["wave2b-lens:scenario-robust-design"],
+  "strategies": [
+    "flat-mean order-up-to, no adaptation (reproduces the evaluator's own weak baseline reference)",
+    "textbook mean + 1-std safety stock applied identically to every line (no classification, no seasonal shape, no trend, no reactive hedge, no cost-aware buffer sizing)",
+    "cheap online hypothesis test per line (zero-fraction / variance-to-mean ratio / seasonal between-phase strength / trend R^2) to classify the family, then a newsvendor critical-fractile empirical-quantile buffer sized from the cost parameters, plus a small always-on reactive hedge against a regime shift the calibration window could not have seen"
+  ]
+}

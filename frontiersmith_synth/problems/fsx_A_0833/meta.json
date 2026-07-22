@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0833",
+  "tier": "A",
+  "format": "E",
+  "family": "dispersion-law-echo",
+  "eval_form": "quality-metric",
+  "theme": "deducing a crystal's spring law from muffled echo sweeps",
+  "title": "Muffled Echo Sweeps — recovering a buried crystal's pole law",
+  "objective": "min",
+  "strategies": [
+    "constant frequency (ignores j, N) -> reproduces the checker baseline ~0.1",
+    "greedy: peak-pick each training chain's echoes, number them 1..k by ascending frequency, and fit ONE straight line through the origin in the natural wavenumber variable j/(N+1) (the textbook 'linear dispersion' / Debye approximation); this fits the training band (all small-angle, low-order modes) almost perfectly but has no notion of a bounded zone edge, so it overshoots true resonances by up to ~57% for high-mode-index / large-N held-out chains",
+    "strong: recognise that the echo POSITIONS, not the amplitude curve shape, are the generalizing object; a finite uniform chain's poles must saturate (a normal mode cannot exceed the top of the band), so fit the SAME single proportionality constant against the correct nonlinear feature sin(j*pi/(2*(N+1))) pooled across every training chain size jointly -- this recovers the pole law itself and predicts far out-of-band, far-larger-N resonances accurately",
+    "headroom above strong: a higher-harmonic anharmonic correction ramps up with chain size and is exactly zero at every training-sized chain (so it is invisible in the data shown), but is present in the held-out large chains; a single-parameter sine fit cannot see or remove it, so noticing and modelling that size-dependent residual pushes held-out error further down without ever reaching zero"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_1025",
+  "tier": "B",
+  "format": "C",
+  "family": "feedback-delay-reverb-design",
+  "eval_form": "quality-metric",
+  "theme": "Design a delay network for a target decay",
+  "title": "Feedback Delay Network: Matching a Decay Curve and an Echo-Density Curve",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:inverse-design"],
+  "strategies": [
+    "trivial: reproduce the checker's own baseline (multiples of Lmin, constant gain 0.7)",
+    "greedy: evenly-spaced (step=2) delay lengths + a single global gain fit from the endpoint decay level -- the textbook single-exponential recipe",
+    "strong: pairwise-coprime greedy delay-length selection (controls echo density via reachable-sum density) combined with a two-gain-group closed-form fit (fast/slow modal decay rates from local target-curve slopes) -- exploits that decay shape and echo density are two independent, separately-controlled descriptors",
+    "other viable directions: local hill-climbing refinement of gains/lengths from a coprime seed; more than two gain groups for a smoother multi-stage decay; prime-power delay lengths for maximal pairwise coprimality"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0765",
+  "tier": "A",
+  "format": "E",
+  "family": "aesthetic-law-cryptanalysis",
+  "eval_form": "quality-metric",
+  "theme": "reverse-engineering a hidden beauty formula",
+  "title": "The Ornament Ledger — orbit, area, or motif?",
+  "objective": "min",
+  "strategies": [
+    "constant beauty score (mean of the training labels) -> reproduces the checker's own constant baseline ~0.1",
+    "greedy: the obvious recipe -- ordinary least squares of B on the raw columns D, H, K (ignoring n, g, M, A entirely). Fits the training ledger fine, but training only ever shows fold order g=8 so a linear model has no way to see that the defect term must be DIVIDED by the orbit count M, not left as a raw count -- and raw D grows with the orbit count while the true contribution stays bounded. On the held-out ledger (bigger grids AND finer fold orders up to g=40) this mismatch blows up.",
+    "strong: decompose the composite score into its three named pieces and identify which invariant normalises each -- symmetry defect D per ORBIT (D/M, not per area, not per motif K), motif count K per AREA (K/A), spacing entropy H already scale-free -- then fit a linear model of B on [1, sqrt(D/M), H, K/A] by ordinary least squares. Because these engineered features are themselves scale-invariant, the fit recovered on small g=8 rosettes survives the jump to bigger, finer-order kaleidoscopes.",
+    "headroom above strong: held-out label noise sets an irreducible floor, and a smarter estimator (e.g. robust/weighted least squares, or per-row denoising across the two decoy normalisations D/A and D/K to detect and downweight outlier rows) can push held-out error further toward that floor."
+  ]
+}

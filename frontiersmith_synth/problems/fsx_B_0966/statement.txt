@@ -1,0 +1,104 @@
+# Furnace Retained-Heat Batch Chains
+
+## Problem
+
+You run a heat-treatment furnace processing `n` job orders. Job `i` needs a
+required soak temperature `T_i`, has a size `s_i`, a due date `d_i`, and a
+tardiness weight `w_i`. Partition all `n` jobs into **batches**, each with
+total size at most capacity `V`, and choose the **order** the furnace
+processes them in. A batch's operating temperature is the max requirement
+among its jobs (the furnace must be raised to the hottest job present).
+
+The furnace does not fully cool between batches: it keeps **retained heat**,
+but a FIXED amount `DECAY` leaks away between batches regardless of how hot it
+was. Before batch `k` fires, the temperature it inherits is
+```
+R_k = max(0, PrevTemp - DECAY)
+```
+where `PrevTemp` is the previous batch's temperature (`R0` for the first
+batch). Reaching target `Temp_k` from `R_k` is **directional**: topping up
+what leaked away is cheap and fast; forcing the furnace *down* below `R_k` is
+slower and pricier per degree:
+```
+if Temp_k >= R_k:  cost_k = C_HEAT*(Temp_k-R_k),  heat_time_k = T_HEAT*(Temp_k-R_k)
+else:               cost_k = C_COOL*(R_k-Temp_k),  heat_time_k = T_COOL*(R_k-Temp_k)
+```
+with `C_COOL > C_HEAT` and `T_COOL > T_HEAT` given in the input. Since `DECAY`
+is FIXED, an ascending/flat run of batches pays a small, roughly constant cost
+per step regardless of temperature level -- but one big forced descent pays
+for the whole drop at the costlier rate. Batch `k` takes `dur_k = BASE_TIME +
+PROC_PER_UNIT*size_k + heat_time_k` (`size_k` = total size of its jobs).
+Completion times accumulate: `C_k = C_{k-1} + dur_k` (`C_0=0`). A job in batch
+`k` finishes at `C_k`; past its due date, it owes a weighted tardiness penalty.
+
+So the batch order is not just "similar temperatures together": an
+all-ascending sweep is cheap but may strand urgent jobs near the end, and the
+best schedules braid several short ascending runs, occasionally paying one
+deliberate reset, to keep due dates.
+
+## Input
+```
+n V LAMBDA
+DECAY R0
+C_HEAT C_COOL T_HEAT T_COOL BASE_TIME PROC_PER_UNIT
+T_1 s_1 d_1 w_1
+...
+T_n s_n d_n w_n
+```
+All values are non-negative integers, 1-indexed jobs in input order.
+
+## Output
+```
+m
+c_1 idx_1 idx_2 ... idx_{c_1}
+...
+c_m idx_1 ... idx_{c_m}
+```
+`m` batches, listed in processing order; batch `k`'s line gives its job count
+`c_k` followed by its job indices (any order within the line).
+
+## Feasibility
+Every job index `1..n` must appear in **exactly one** batch; each batch's total
+size must be `<= V`; no trailing tokens after the last batch. Any violation
+scores 0.
+
+## Objective
+Minimize `F = sum_k cost_k + LAMBDA * sum_i w_i * max(0, C_k(i) - d_i)`, the
+total heating/cooling energy plus the weighted tardiness, where `C_k(i)` is the
+completion time of the batch containing job `i`.
+
+## Scoring
+The checker computes an internal baseline `B`: a naive sequential first-fit
+packing in raw job-index order (ignoring temperature and due dates), processed
+in that order. In a degenerate instance (e.g. a single job whose temperature
+exactly equals the starting retained heat and whose due date never binds) `B`
+can legitimately compute to `0`; `max(1,B)` floors it so the ratio stays
+well-defined. Your score on a test is
+```
+ratio = min(1000, 100 * max(1,B) / max(1, F)) / 1000
+```
+so reproducing the baseline scores `0.1`; a worse plan can score *below* 0.1;
+real improvement scores higher, capped at `1.0`.
+
+## Constraints
+`1 <= n <= 120`; `1 <= V <= 100`; `1 <= s_i <= V`; `0 <= T_i <= 2000`;
+`0 <= d_i <= 200000`; `1 <= w_i <= 100`; `1 <= LAMBDA <= 20`;
+`1 <= DECAY <= 500`; `DECAY < R0 <= 2000`; `1 <= C_HEAT < C_COOL <= 20`;
+`1 <= T_HEAT < T_COOL <= 20`; `1 <= BASE_TIME <= 100`;
+`0 <= PROC_PER_UNIT <= 20`. Time limit 3 s; memory limit 512 MB.
+
+## Example
+`n=5 V=10 LAMBDA=5`, `DECAY=45 R0=150`, `C_HEAT=3 C_COOL=9 T_HEAT=1 T_COOL=3
+BASE_TIME=10 PROC_PER_UNIT=1`. Jobs: `(90,4,1000,1)`, `(95,4,1000,1)`,
+`(150,4,1000,1)`, `(155,4,1000,1)`, `(230,4,150,12)` -- job 5 is urgent (due
+`150`) but hottest. `R1 = max(0,150-45) = 105`.
+
+Naive (process strictly ascending, ignore due dates): batches `[1],[2],[3],
+[4],[5]`. Job 5 finishes at `435`, tardy by `285`, penalty `5*12*285=17100`;
+`F=18195`. Checker baseline `B` (index-order first-fit, `[1,2],[3,4],[5]`)
+gets `F=B=10065` (`ratio=0.1`) -- naive scores **below** it: `ratio=0.0553`.
+
+Smart (pull job 5 first -- one reset `105->230` costing `375` -- then resume
+`1,2,3,4`, paying one reset back down `230->90` costing `855`, then cheap):
+batches `[5],[1],[2],[3],[4]`. Job 5 finishes at `139`, on time. `F=1830`,
+`ratio = min(1000, 100*10065/1830)/1000 = 0.55`.

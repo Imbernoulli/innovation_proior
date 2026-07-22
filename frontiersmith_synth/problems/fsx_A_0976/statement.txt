@@ -1,0 +1,96 @@
+# Shelters Sited for the Worst Flood-Day Traffic
+
+## Problem
+
+A city's road graph has `N` intersections (nodes) and `M` undirected road
+segments (edges), each with a throughput capacity (people/time-unit). Some
+intersections have resident population that must evacuate. The city has `C`
+candidate shelter sites, each on a graph node with its own intake capacity
+(evacuees/time-unit it can absorb). Choose exactly `S` of the `C` sites to
+build.
+
+The city has published `K` **blockage scenarios** — forecasts of which road
+segments a flood day could take out; in a scenario the listed edges are
+removed and every other edge keeps its capacity. Given your shelter set, a
+scenario's **evacuation completion time** is `ceil(total population /
+max-flow from all population nodes to your built shelters in the surviving
+graph)`. You are judged by the **worst** of the `K` scenarios: site shelters
+that keep the worst flood day as short as possible — a nearby shelter a
+scenario cuts off is worthless.
+
+## Input
+
+```
+N M C S K
+p_1 p_2 ... p_N
+```
+`p_i` is the resident population at node `i` (`1`-indexed; most nodes are `0`).
+Then `M` lines, road segments (0-indexed by input order, `0..M-1`), `u v cap`:
+an undirected road between `u` and `v` with throughput capacity `cap`. Then
+`C` lines, candidate shelter sites (0-indexed, `0..C-1`), `node cap`: the
+graph node hosting the site and its intake capacity. Then `K` lines, one per
+published blockage scenario, `b e_1 e_2 ... e_b`: `b` blocked road-segment
+indices (into the `M` list) impassable in that scenario.
+
+## Output
+
+`S` distinct integers in `[0, C-1]`: the indices of the candidate sites you build.
+
+## Feasibility
+
+Exactly `S` tokens, each a valid candidate index, no repeats.
+
+## Objective
+
+Minimize `F` = the maximum, over all `K` published scenarios, of the evacuation
+completion time `ceil(P / maxflow_scenario)`, where `P` is total population and
+`maxflow_scenario` is the max-flow from every population node (source capacity =
+its population) to your built shelters (sink capacity = each site's intake
+capacity) in that scenario's surviving road graph. If no population can reach any
+built shelter in a scenario, that scenario's completion time is `P` (treated as
+1 unit/time-step of total system throughput).
+
+## Scoring
+
+The checker also builds its own naive reference (the first `S` candidate sites in
+input order) to get a baseline objective `B`, then scores
+`ratio = min(1000, 100 * B / max(1, F)) / 1000` (capped at `1.0`). A worse
+(larger) `F` than the naive reference scores below `0.1`; a much smaller `F`
+scores close to `1.0`.
+
+## Constraints
+
+`2 <= S < C <= 30`, `N <= 60`, `M <= 60`, `1 <= K <= 20`; every edge capacity
+and every site's intake capacity is an integer in `[1, 10^9]`; node
+populations are non-negative integers up to `10^9` (most nodes have no
+resident population) and their sum is positive. Time limit: `4s`. Memory
+limit: `512MB`.
+
+## Example
+
+`N=8 M=6 C=4 S=2 K=2`, population `100 80 0 0 0 0 0 0` (nodes `1,2` are the
+two district gateways). Edges: `1-3 cap20` (district 1's only surviving
+bridge to hub 1), `2-4 cap18` (district 2's bridge to hub 2), `1-5 cap30`
+(district 1's *nearby* shelter link, site `0` at node `5`, intake `80`),
+`2-6 cap25` (district 2's nearby link, site `2` at node `6`, intake `70`),
+`3-7 cap50` (hub 1 to *far* site `1` at node `7`, intake `40`), `4-8 cap45`
+(hub 2 to far site `3` at node `8`, intake `35`). Scenario `0` blocks both
+nearby links: `2 2 3`. Scenario `1` blocks nothing: `0`.
+
+Baseline (checker's own naive first-`S` pick, sites `0,1`): scenario `0`
+loses site `0` (its only link is cut) and keeps `20` flow into site `1`, so
+`T_0 = ceil(180/20) = 9`; scenario `1` adds site `0`'s direct `30` for `50`
+total, `T_1 = ceil(180/50) = 4`. `B = max(9,4) = 9`.
+
+Output `0 2` (both *nearby* sites — the obvious "closest to population"
+pick): in scenario `0` both nearby links are cut, so zero flow reaches any
+built shelter; `T_0 = ceil(180/1) = 180` (nothing gets through). Scenario `1`
+gives `30+25=55`, `T_1 = 4`. `F = max(180,4) = 180`, far worse than `B = 9` —
+ratio `= min(1000, 100*9/180)/1000 = 0.005`.
+
+Output `1 3` (both *far* sites, reached only through the surviving bridges):
+both scenarios deliver `20` (via hub 1) `+ 18` (via hub 2) `= 38`, since
+neither bridge is ever blocked; `F = ceil(180/38) = 5 < B = 9` — ratio
+`= min(1000, 100*9/5)/1000 = 0.18`. Reasoning about which links *survive*
+every scenario, not which shelter is physically closest, is what shortens
+the worst flood day.

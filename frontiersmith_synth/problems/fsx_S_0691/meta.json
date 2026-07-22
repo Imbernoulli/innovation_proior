@@ -1,0 +1,19 @@
+{
+  "id": "fsx_S_0691",
+  "tier": "S",
+  "format": "B",
+  "family": "regenerating-ca-organism",
+  "eval_form": "quality-metric",
+  "theme": "a creature that regrows what you cut off",
+  "title": "Wound-Ring: A Regenerating Cellular Organism",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:morphogenesis-and-growth"],
+  "mechanisms": ["asynchronous-ca", "positional-information", "self-repair"],
+  "innovation_hook": "Regeneration is impossible without an internally reconstructable coordinate system, so the rule must maintain positional information, not just a shape.",
+  "strategies": [
+    "do-nothing baseline: the identity rule; the seed cell never spreads (reproduces the evaluator's do-nothing reference, ~0.1)",
+    "copy-and-freeze (the trap): simulate one forward growth trace and memorize per-pattern transitions with a fixed neighbor-priority order, then never revisit an already-alive cell; usually grows the shape once but a reopened wound's multi-neighbor context was never seen, so it heals wrong or not at all",
+    "distance-relaxation invariant (the insight): each cell's correct state is 1 + the minimum ring value among its live, non-wall neighbors (the seed self-sustains); this invariant holds everywhere in the target, is order-independent under asynchronous sweeps, and re-derives any wound's interior from surviving local context alone -- true self-repair",
+    "invariant + broad drilled coverage: additionally harvest the relaxation rule's outputs over many synthetic hole-and-heal drills (varied sizes/positions) so the emitted lookup table generalizes to wounds it never specifically saw, closing residual gaps left by a single growth trace"
+  ]
+}

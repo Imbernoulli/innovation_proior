@@ -1,0 +1,20 @@
+{
+  "id": "fsx_S_0557",
+  "tier": "S",
+  "format": "A",
+  "family": "bootstrap-seed-nucleation",
+  "eval_form": "quality-metric",
+  "seed_problem": "gen.cpp emits a large sparse graph and a threshold r; a node activates once at least r of its neighbours are active. The solver outputs k initial seed nodes; chk.cc simulates bootstrap percolation to a fixed point and reports the final activated count (maximize).",
+  "mutation": "composite: couple bootstrap-percolation dynamics with k-core-nucleation (a seeded over-threshold PAIR must ignite each dense pocket) and budget-allocation (divide k seeds across pockets whose payoffs are all-or-nothing, and whose ignition cost drops from two seeds to one inside disjoint synergy pairs), so no single-node ranking is the intended solution and the highest-degree heuristic is a trap.",
+  "objective": "max",
+  "theme": "Ignite an idea that spreads only in clusters",
+  "title": "Ignite the Idea: Clustered Seeding in a Threshold Network",
+  "innovation_hook": "Threshold contagion spreads by nucleating locally over-threshold clusters (a seeded k-core), so clustered seeding beats spreading seeds across hubs.",
+  "mechanisms": ["bootstrap-percolation", "budget-allocation", "k-core-nucleation"],
+  "strategies": [
+    "scatter baseline: seed the k smallest-degree people (no pocket ever nucleates) -> the calibration point",
+    "degree greedy (trap): seed the k highest-degree people; hubs and lone anchors barely nucleate because scattered seeds never give any node r simultaneously-active neighbours",
+    "nucleation pairwise-marginal search (strong): rank adjacent dense-core PAIRS by true simulated spread and commit the best pair each round, igniting whole pockets while ignoring hubs",
+    "synergy-aware allocation (optimum, above strong): exploit that igniting a pocket auto-activates its paired pocket's gateway, so the partner needs only ONE extra seed -- allocate the budget across disjoint synergy pairs to ignite more pockets than a two-seeds-each heuristic can"
+  ]
+}

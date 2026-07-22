@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0810",
+  "tier": "S",
+  "format": "E",
+  "family": "morphism-growth-discovery",
+  "eval_form": "quality-metric",
+  "theme": "Infer the substitution behind an observed word",
+  "title": "Word Machine — inferring a hidden substitution from its own iterates",
+  "objective": "max",
+  "strategies": [
+    "trivial: guess the identity substitution (letter maps to itself, word never grows) -> reproduces the calibrated baseline (~0.1-0.2)",
+    "greedy: fit a log-linear (exponential) regression of the observed word length vs iteration count on the short training window, then fabricate a toy morphism (one letter self-repeated to hit the fitted rate) that reproduces that scalar growth number; ignores the letter-mix entirely and the fitted rate itself is biased by sub-dominant-eigenvalue transients in the short window -> lands far from strong on horizons tens of iterations out",
+    "strong: notice the axiom's own image is directly readable (w_1), then reconstruct EVERY letter's image by brute-force testing the (small, stated) space of per-letter image lengths for the one length assignment under which every consecutive training level segments into consistent per-letter blocks; emits the recovered morphism exactly -> its incidence matrix's Perron eigenvalue/eigenvector reproduce both the exact growth rate and the exact asymptotic letter mix",
+    "headroom above strong: none of the reference solutions attempt to blend multiple length-assignment candidates when training coverage is marginal, or to exploit residual structure across ALL n_train levels jointly (vs. our pairwise-consecutive check) for extra robustness on adversarial/near-ambiguous instances"
+  ]
+}

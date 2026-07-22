@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0962",
+  "tier": "A",
+  "format": "B",
+  "family": "externality-adoption-pricing",
+  "eval_form": "quality-metric",
+  "theme": "Price a product to spark network adoption",
+  "title": "Cascade Pricing: Igniting Network Adoption Across Regions",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:nonlinear-network-effects"],
+  "strategies": [
+    "flat pricing: charge every region the same revenue-maximizing single price -- reproduces the evaluator's network-blind, region-blind floor (~0.1)",
+    "myopic per-region pricing (the trap): maximize each region's own revenue in isolation, assuming v_i = base_i and ignoring the influence network W entirely -- prices high-downstream-influence regions for their own local demand curve, never sacrificing margin, so the cascade that a coordinated price could ignite in dependent regions never fires",
+    "cascade-igniting pricing (the insight): rank regions by downstream revenue-weighted influence sum_j gamma_j*W[j][i]*pop_j, sacrifice the top few below their own myopic price (toward zero) to push their adoption toward 1 through the best-response equilibrium, then re-price every other region upward against the network-boosted value the cascade now delivers -- trying a small set of (how many regions, how deep) choices and keeping the best simulated total revenue",
+    "full coordinate-ascent search: joint per-region price refinement from multiple sacrifice-depth starting points -- captures the residual gains from fine-tuning follower prices after the cascade ignites, approaching but (after the evaluator's headroom rescaling) never reaching the score ceiling"
+  ]
+}

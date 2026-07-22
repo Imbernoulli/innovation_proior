@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1050",
+  "tier": "B",
+  "format": "C",
+  "family": "irreversible-agglomerative-dendrogram",
+  "eval_form": "quality-metric",
+  "theme": "Merge clusters permanently toward a good partition",
+  "title": "Chain-Trap Dendrogram: Merging Toward a Kept Cut",
+  "objective": "maximize",
+  "strategies": [
+    "trivial: reproduce the checker's own naive fixed index-pairing merge order (ignores geometry and affinity entirely)",
+    "greedy: classic single-linkage -- always merge the two currently-closest clusters by centroid distance, oblivious to the bonus/penalty matrix and to the horizon-weighted schedule",
+    "strong: choose the K-cluster target partition first via a correlation-clustering-style greedy on the bonus matrix (judging every merge by the final cut it commits toward), build each target cluster's internal merge tree by local nearest-centroid, then globally schedule all merges by descending raw cost so expensive-but-necessary merges land early (low horizon weight) and cheap merges land late (high horizon weight)",
+    "invalid: emits a structurally-shaped but infeasible merge sequence (references a cluster id that was never created) to probe the feasibility gate"
+  ]
+}

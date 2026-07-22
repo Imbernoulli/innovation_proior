@@ -1,0 +1,102 @@
+# Purge Carryover Scheduling: Rainbow Print Tolerance Recoloring
+
+## Problem
+
+A rainbow 3D printer builds a part as `L` layers, printed in fixed order
+`1, 2, ..., L` (the build direction cannot be reordered). Layer `l` contains
+`R_l` regions; region `r` must be printed in one of `C` concrete nozzle
+colors (`0..C-1`), but its exact color is not fixed -- it is only
+constrained to a short **tolerance class**: a list of 2 or 3 acceptable
+concrete colors, any of which meets that region's design spec. You choose,
+for every region, ONE concrete color from its tolerance class, and, for
+every layer, the ORDER in which its regions print.
+
+Switching the nozzle from color `a` to color `b` costs `P[a][b]` units of
+purge volume (flushing pigment residue) -- and `P` need not be symmetric:
+some directions are cheap, others are drastically expensive (mimicking a
+dark residue bleeding into a light color, which ruins it and must be fully
+flushed, while the reverse direction barely matters). Every consecutive pair
+of prints in the WHOLE job pays this cost, printed in the global order
+layer 1's regions, then layer 2's regions, and so on -- so the transition
+from a layer's LAST printed region to the next layer's FIRST printed region
+(the **carryover**) is charged exactly like any transition inside a layer.
+
+## Input
+
+```
+L C
+P[0][0] P[0][1] ... P[0][C-1]
+...
+P[C-1][0] ... P[C-1][C-1]
+R_1
+k c_1 ... c_k          (region 1 of layer 1's tolerance class)
+...                     (R_1 such lines)
+R_2
+...
+```
+repeated for layers `1..L`. `0 <= P[a][b] <= 2*10^6`, `P[a][a] = 0`. Each
+region's line starts with its tolerance class size `k` (`2` or `3`)
+followed by `k` distinct colors in `[0, C-1]`.
+
+## Output
+
+For each layer `l = 1..L`, two lines:
+```
+i_1 i_2 ... i_{R_l}      (a permutation of 0..R_l-1: the print order)
+c_1 c_2 ... c_{R_l}      (chosen color for the region printed j-th, i.e.
+                           c_j is the color used for region i_j)
+```
+
+## Feasibility
+
+Every layer's permutation line must be a valid permutation of its region
+indices. Every chosen color must lie in the corresponding region's
+tolerance class. Any violation scores 0.
+
+## Objective
+
+Minimize `F`, the total purge volume: the sum of `P[color of print t][color
+of print t+1]` over every consecutive pair `t` in the full job (concatenating
+all layers in order), including every layer-to-layer carryover.
+
+## Scoring
+
+The checker computes its own baseline `B`: print every layer in the LISTED
+input order using each region's FIRST-listed tolerance color (no reordering,
+no recoloring -- pure do-nothing). Then
+```
+Ratio = min(1, B / (10 * max(1, F)))
+```
+Matching `B` scores `0.1`; the score rises as `F` falls below `B`, capping
+at `1.0` once `10*F <= B` (a degenerate `F = 0` is floored to `F = 1` before
+dividing, so it is never a division by zero, and only reaches `1.0` once
+`B >= 10`). The reported score is the mean `Ratio` over 10 tests.
+
+## Constraints
+
+`2 <= L <= 300`, `4 <= C <= 12`, `2 <= R_l <= 25`. Time limit: 5 s. Memory
+limit: 512 MB.
+
+## Example
+
+`testdata/1.in`: `L=3, C=4` (so `P[a][b]` for `a in {2,3}, b in {0,1}` is
+huge -- `P[2][0]=499, P[2][1]=493, P[3][0]=505, P[3][1]=499` -- while every
+other direction costs `0..6`). Layer 2's region 2 has tolerance class
+`{3,2}` -- BOTH options are in the expensive-source range, an unavoidable
+anchor forcing a purge somewhere.
+
+- **Baseline** (input order, first-listed color): `F = 519`, `Ratio = 0.100`.
+- **Greedy** (fix every color to the first listed, then nearest-neighbour
+  tour each layer alone): layer 1 ends on color 3, layer 2's tour then opens
+  on color 1 (nobody told it to align) -- carryover `P[3][1] = 499` alone.
+  `F = 522`, `Ratio = 0.099` -- actually *worse* than doing nothing.
+- **Strong** (recolor every region into whichever tier the run is currently
+  committed to, ignoring listing order; only pivot when an anchor forces
+  it, and place that anchor last in its layer): layer 1's flex regions all
+  recolor to `0/1`, layer 2's two flex regions also recolor to `0/1` and are
+  printed BEFORE its forced-dark anchor, layer 3 stays entirely on the dark
+  side the anchor already paid for. `F = 16`, `Ratio = 1.0`.
+
+The lesson: an ordinary per-layer tour cannot beat, or even match, doing
+nothing, because the tolerance classes -- not the tour -- are what decide
+whether the expensive direction gets crossed at all.

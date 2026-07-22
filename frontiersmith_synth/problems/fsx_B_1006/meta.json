@@ -1,0 +1,19 @@
+{
+  "id": "fsx_B_1006",
+  "tier": "B",
+  "format": "A",
+  "family": "cascade-reservoir-release",
+  "eval_form": "quality-metric",
+  "theme": "Release water down a reservoir chain in time",
+  "title": "Cascade Reservoir Chain: Scheduling Irreversible Releases",
+  "objective": "min",
+  "seed_problem": "chain of reservoirs with capacities, a deterministic inflow schedule, downstream travel lags, and demand nodes with flood/drought penalties",
+  "mutation": "composite: releases are irreversible (forward-only storage bookkeeping, no recall), water travels downstream with a per-hop lag before it counts as arrival, and the full inflow+demand schedule is known in advance so the checker's automatic spill/deficit order (arrival -> demand draw -> forced spill, all BEFORE the period's release choice) makes same-period reaction structurally incapable of preventing a spike overflow -- only a released headroom created in an earlier period can.",
+  "innovation_hook": "Because releases cannot be recalled and travel with lag, you must pre-empt future inflow spikes and deficits rather than react period by period.",
+  "strategies": [
+    "trivial: release nothing, ever (reproduces the checker's do-nothing baseline exactly)",
+    "reactive greedy: release to satisfy the CURRENT period's reported downstream demand (ignoring the lag it will actually take to arrive) plus dump any storage above a fixed high-fill threshold -- reacts to what is visible right now, never anticipates",
+    "insight (strong): recursively shift all downstream local demand backward through the lag chain into a per-reservoir per-period release TARGET (a dual/pull-through reformulation independent of physical simulation), then additionally release ahead of any forecast future arrival that would otherwise overflow capacity within a lookahead window -- pre-fills before droughts and pre-empties before spikes",
+    "a general solver could go further with a rolling-horizon LP/DP over the full K x T grid instead of the closed-form backward-shift + fixed window"
+  ]
+}

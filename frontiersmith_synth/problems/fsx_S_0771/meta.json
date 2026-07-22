@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0771",
+  "tier": "S",
+  "format": "C",
+  "family": "self-supporting-truss-build-order",
+  "eval_form": "quality-metric",
+  "theme": "Build a bridge stable at every intermediate step",
+  "title": "Cantilever Deck: Order-Constrained Truss Assembly",
+  "objective": "max",
+  "strategies": [
+    "trivial: per-deck-node widest-bottleneck path union, built anchor-outward (safe, weak)",
+    "greedy: maximum-capacity spanning tree plus bonus high-capacity braces, output sorted by decreasing capacity (ignores build-order feasibility -> collapses when strong members sit above weak anchor risers)",
+    "strong: max-flow decomposition of the full candidate graph (deck-source to anchor-sink) selects a genuinely redundant final structure, built in non-decreasing BFS-distance-from-anchor order so every joint's support arrives no later than the load it carries",
+    "invalid: out-of-range / duplicate member indices"
+  ]
+}

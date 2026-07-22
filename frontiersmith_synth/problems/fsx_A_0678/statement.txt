@@ -1,0 +1,99 @@
+# Phase-Only Beam Shaping on a Linear Array
+
+## Problem
+
+You control a linear antenna array of `N` elements placed at positions
+`x_i = d * i` wavelengths (`i = 0..N-1`, `d` given). Element `i` radiates with a
+**fixed** magnitude `a_i > 0` (an aperture taper you cannot change) and a phase
+`phi_i` that you choose freely — a **phase-only** excitation. The far-field array
+factor at angle `theta` is the complex sum
+
+```
+AF(theta) = sum_i a_i * exp( j * ( phi_i + 2*pi*d*i*cos(theta) ) )
+```
+
+and the normalized radiated power is `P(theta) = |AF(theta)|^2 / Pmax^2`, where
+`Pmax = sum_i a_i` is the (unreachable-except-at-one-angle) fully-coherent cap, so
+`0 <= P(theta) <= 1` always, regardless of your phases.
+
+You are given a target power pattern `T(theta)` on a grid of `M` angles, a
+per-angle weight `W(theta)`, and a subset of the grid marked as **hard null**
+angles with a shared power threshold `thresh`: at every hard-null angle the
+realized power should stay at or below `thresh`. Choose the `N` phases to make
+your realized pattern match the target and respect the nulls as well as
+possible. There is no known closed-form optimum: the phase-only constraint
+(`|excitation_i| = a_i` fixed, only the angle is free) makes this a non-convex
+problem, and with `M` typically well above `N` an exact fit is generally
+impossible — you are trading off angles against each other.
+
+## Input
+
+```
+N M D1000
+a_1 ... a_N            (A*1000, integers)
+ang_1 ... ang_M         (millidegrees, 0..180000, strictly increasing)
+tgt_1 ... tgt_M         (T*10000, integers, 0..10000)
+w_1 ... w_M             (integer weights, >=1)
+K
+idx_1 ... idx_K          (1-based indices into the angle grid; empty if K=0)
+thresh10000              (thresh*10000, integer)
+```
+`d = D1000/1000`. Element `i`'s magnitude is `a_i = a\_i*1000 / 1000`.
+
+## Output
+
+Print `N` integers `phi_1 ... phi_N`, each in `[0, 3599]`: phase in units of
+`0.1` degree (`phi_i` represents `phi_i/10` degrees).
+
+## Feasibility
+
+Exactly `N` integers, each in `[0, 3599]`, no extra tokens. Any violation
+scores `0`.
+
+## Objective (minimize)
+
+Let `P_m` be the realized normalized power at grid angle `m` (using your phases),
+`T_m = tgt_m/10000`, `thresh = thresh10000/10000`.
+
+```
+err = ( sum_m w_m * (P_m - T_m)^2 ) / ( sum_m w_m )                 [pattern-match term]
+pen = ( sum_{m in null set} max(0, P_m - thresh)^2 ) * 4 / max(1,K)  [hard-null penalty]
+F   = err + pen
+```
+
+Minimize `F`. `err` rewards matching the whole shaped pattern (weights are
+larger at hard-null angles, so missing a null also costs there); `pen` is a
+separate, steeper penalty that specifically punishes exceeding the null
+threshold — a pattern that is close in the weighted-MSE sense but leaks power
+through a required null is still penalized hard.
+
+## Scoring
+
+The checker also builds the "do-nothing" reference `phi_i = 0` for all `i`
+and computes its objective `B`. Your score for a test is
+```
+ratio = min(1000, 100 * B / max(1, F)) / 1000
+```
+so the do-nothing phasing scores `0.1`; halving `F` relative to it roughly
+doubles the ratio, capped at `1.0` (`F` ten times better than `B`). Per-test
+ratios are averaged.
+
+## Constraints
+
+* `8 <= N <= 64`, `16 <= M <= 180`, `450 <= D1000 <= 550`.
+* `100 <= a_i*1000 <= 1000`.
+* `0 <= K <= 10`.
+* `1 <= thresh10000 <= 2000`.
+* Time limit: 3 s. Memory limit: 512 MB.
+
+## Example
+
+`N=4`, `d=0.5`, all `a_i=1` (`Pmax=4`). Angles `{60000, 90000, 120000}`
+millidegrees, target `{10000, 2000, 10000}` (two lobes), weights
+`{20,20,20}`, one hard null at index `2` (90 degrees), `thresh10000=500`. A
+phasing that steers a single beam at 60 degrees fits that lobe but leaves the
+120-degree lobe near zero, and leaves the 90-degree null essentially to
+chance — a single steered beam cannot reproduce two lobes and a null at once.
+An iterative adjustment that alternates between "what pattern is wanted" and
+"what the fixed-magnitude aperture can realize" trades the lobes and the null
+off jointly and reaches a much lower `F`.

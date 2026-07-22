@@ -1,0 +1,92 @@
+# Frustrated Wang Tiling: Route the Unavoidable Defects
+
+## Problem
+
+A **Wang tile** is a unit square with a colored edge on each side: West, East,
+North, South. You are given `T` tile *types* and must fill every cell of an
+`R x C` grid with a tile type. **Types are reusable** — the same type may be
+placed in any number of cells; there is no other placement constraint.
+
+Two neighboring cells share a border, which either **matches** or does not:
+
+* a **horizontal** border between cell `(r,c)` and `(r,c+1)` matches iff the
+  **East** color of the left tile equals the **West** color of the right tile;
+* a **vertical** border between cell `(r,c)` and `(r+1,c)` matches iff the
+  **South** color of the top tile equals the **North** color of the bottom tile.
+
+The instances are seeded so that **no assignment makes every border match** — a
+fixed number of defects is forced. Your job is to place the defects well.
+
+## Input
+
+```
+R C T
+```
+then `T` lines, tile type `i` (0-indexed, in input order):
+```
+W_i E_i N_i S_i
+```
+each a non-negative integer color.
+
+## Output
+
+Print `R * C` tile-type indices in **row-major order** (row `0` first, left to
+right), each in `[0, T-1]`. Whitespace and line breaks are ignored; you may print
+`C` indices per line for readability. Every index must be in range and the count
+must be exactly `R * C`, or the output is infeasible and scores `0`.
+
+## Feasibility
+
+Exactly `R * C` integers, each in `[0, T-1]`, no trailing tokens. Any violation
+scores `0`.
+
+## Objective
+
+Maximize `F` = the number of matched borders (horizontal plus vertical) over the
+whole grid.
+
+## Scoring
+
+Let `B = R * floor(C/2)` be the value of a fixed **alternating-domino** reference:
+fill every row with a single matched horizontal pair repeated (`A,B,A,B,...`),
+which realizes one matched border per pair and nothing else. Your score for a test
+is
+```
+ratio = min(1000, 100 * F / max(1, B)) / 1000
+```
+so the alternating-domino plan scores `0.1` and improvements score higher, capped
+at `1.0`. Per-test ratios are averaged.
+
+## Constraints
+
+* `2 <= R, C <= 220`; `1 <= T <= 400`.
+* Colors fit in a 32-bit signed integer.
+* Time limit: 5 s. Memory limit: 512 MB.
+
+## Example
+
+A `2 x 3` grid with these `4` tile types (`W E N S`):
+
+```
+2 3 4
+0 1 3 4     # type 0
+1 2 3 4     # type 1
+2 0 3 4     # type 2
+0 1 4 3     # type 3
+```
+
+Types `0,1,2` form a horizontal chain (`E` of one equals `W` of the next, cycling
+mod 3); their North/South colors (`3` over `4`) never agree vertically. Type `3`
+reverses the North/South colors.
+
+Placing the periodic field `[[0,1,2],[3,3,3]]`: the top row matches both horizontal
+borders (`0->1`, `1->2`); the bottom row matches neither horizontal border of type
+`3` with itself (`E=1` vs `W=0`); the three vertical borders check `S` of the top
+row (`4`) against `N` of the bottom row (`4`) — all three match. That is
+`2 + 0 + 3 = 5` matched borders, so `F = 5`. Here `B = 2 * floor(3/2) = 2`, giving
+`ratio = min(1000, 100 * 5 / 2)/1000 = 0.25`.
+
+A scanline greedy that fixes the top row, then at `(1,0)` grabs whatever tile best
+matches its single top neighbor, can lock itself onto choices that block the row's
+horizontal and the column's vertical borders at once — the hallmark of frustration:
+local matches that foreclose global ones.

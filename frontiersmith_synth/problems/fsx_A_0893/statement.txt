@@ -1,0 +1,99 @@
+# Hidden Communities Behind Decoy Hubs
+
+## Problem
+
+You are given an undirected weighted graph on `n` vertices built from two hidden
+communities glued together by ordinary weak links -- and, on some inputs, by a
+handful of decoy "hub" vertices whose edges point mostly at the *other* community,
+purely to mislead a solver that trusts raw edge weight. Vertex IDs are **not**
+sorted by community: adjacent IDs can belong to either side. Partition the
+vertices into two labeled sides so that the weighted **normalized cut** between
+them is small, while keeping the two sides balanced.
+
+## Input
+
+```
+n m lo hi
+u_1 v_1 w_1
+...
+u_m v_m w_m
+```
+
+`n` vertices (1-indexed), `m` undirected edges each with a positive integer weight
+`w_i` (no self loops, no duplicate edges). `lo` and `hi` bound the size of side 0.
+
+## Output
+
+One line with `n` integers `label_1 ... label_n`, `label_i` in `{0,1}`: the side
+of vertex `i`.
+
+## Feasibility
+
+Exactly `n` tokens, each `0` or `1`. Let `c0` = number of vertices labeled `0`;
+you must have `lo <= c0 <= hi`. Any violation (wrong token count, out-of-range
+label, unbalanced `c0`, trailing tokens) scores `0`.
+
+## Objective
+
+Let `deg(v)` be the sum of weights of edges touching `v`. For your labeling with
+sides `A` (label 0) and `B` (label 1), let `cut` = sum of weights of edges with
+endpoints on different sides, `vol(A) = sum_{v in A} deg(v)`, `vol(B)` likewise.
+Minimize the **normalized cut**
+
+```
+F = cut * (1/vol(A) + 1/vol(B))
+```
+
+Low `F` means few, low-weight edges cross a *balanced* boundary; a lopsided or
+edge-heavy boundary is penalized twice -- once by `cut`, once by shrunken volume.
+
+## Scoring
+
+The checker also computes `B`, the normalized cut `F` would take under the fixed
+reference labeling "vertices `1..floor(n/2)` get side 0, the rest side 1" (a
+structure-blind split, since community membership is **not** correlated with ID
+order). Your test score is
+
+```
+ratio = min(1000, 60 * B / max(F, 1e-9)) / 1000
+```
+
+so matching the reference scores `0.06`, and a genuinely better cut scores
+higher, up to a cap of `1.0` (achieved only once `F` drops to `1/16.7` of `B` or
+below). The final score is the mean ratio over all tests.
+
+## Constraints
+
+`30 <= n <= 5000`; `m` up to about `50000`; `1 <= w_i <= 10`; `1 <= lo <= hi <=
+n-1`. Every vertex touches at least one edge (`deg(v) >= 1`). Time limit: 4 s.
+Memory limit: 512 MB.
+
+## Example
+
+`n=6`, edges (triangle `1-3-5` weight `3` each, triangle `2-4-6` weight `3` each,
+one bridge `5-6` weight `1`), `lo=2, hi=4`:
+
+```
+6 7 2 4
+1 3 3
+3 5 3
+1 5 3
+2 4 3
+4 6 3
+2 6 3
+5 6 1
+```
+
+Output `0 1 0 1 0 1` (vertices `1,3,5` side 0; `2,4,6` side 1) puts only the
+bridge edge `5-6` on the boundary: `cut=1`, `vol(A)=vol(B)=19`, `F =
+1*(1/19+1/19) = 0.10526`. The reference splits by ID (`{1,2,3}` vs `{4,5,6}`),
+cutting 4 of the 7 edges: `cut=12`, `vol({1,2,3})=18`, `vol({4,5,6})=20`, `B =
+12*(1/18+1/20) = 1.26667`. Ratio `= min(1000, 60*1.26667/0.10526)/1000 =
+0.722` (`B/F = 12.03`, comfortably below the 16.7x needed to hit the cap).
+
+This shows why trusting vertex order -- or trusting a vertex's own loudest
+edges -- can be far worse than finding the two sides that make the *whole*
+boundary thin: on larger inputs a handful of high-weight decoy edges can
+dominate a purely local read of the graph, while a global coordinate that sees
+the whole graph at once is not fooled by a few loud vertices, and needs only
+local polishing near the boundary afterward.

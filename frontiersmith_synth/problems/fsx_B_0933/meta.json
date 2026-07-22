@@ -1,0 +1,18 @@
+{
+  "id": "fsx_B_0933",
+  "tier": "B",
+  "format": "A",
+  "family": "flat-differential-permutation",
+  "eval_form": "quality-metric",
+  "theme": "design a lock rewiring immune to nudge attacks",
+  "title": "Combination-Lock Rewiring Against Nudge Attacks",
+  "objective": "min",
+  "seed_problem": "flat-differential-permutation design over F_p",
+  "mutation": "composite: the objective couples differential-spectrum-flattening (minimize the WORST-CASE shift/change collision count of a permutation of F_p) with monomial-map-theory (a permutation exponent d controls the difference polynomial's degree via gcd(d,p-1), hence bounds achievable flatness) and a hard derangement side-constraint (pi(x) != x), which forces affine dressing of the chosen monomial to stay feasible.",
+  "strategies": [
+    "trivial: reproduce the checker's own reference construction (block-local Fisher-Yates shuffle with fixed seed, fixed points repaired by adjacent swap) -- reproduces the baseline exactly",
+    "greedy: one full-range random shuffle + repair (uniform random + repair, the canonical first attempt; no algebraic structure at all)",
+    "insight (strong): scan odd exponents d coprime to p-1, evaluate each candidate's peak leakage in O(p) via the shift-invariant substitution u=x/s (which reduces every shift's difference distribution to the single canonical polynomial (u+1)^d - u^d), keep the best d, then affine-dress it (pi(x) = a*x^d + c) searching (a,c) via a forbidden-value set to kill every fixed point without touching the peak leakage",
+    "half-insight trap: use the smallest valid exponent found by the gcd(d,p-1)=1 criterion without scanning further candidates -- often ties the true optimum, but on primes where p-1 has several small prime factors (3, 5, 7, ...) it lands on a distinctly worse exponent than a real scan would find"
+  ]
+}

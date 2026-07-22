@@ -1,0 +1,99 @@
+# Terrace Irrigation Retrofit
+
+## Problem
+
+A hillside vineyard has `V` terraces (numbered `1..V`). An engineer has surveyed
+`E` **candidate pipe segments**; segment `i` would connect two terraces `u_i` and
+`v_i`, deliver flow value `w_i`, and is stocked from **material batch** `b_i`
+(one of `K` batches). Batch `1` is standard stock and is never in short supply.
+Every other batch is a limited premium shipment: at most `cap_b` segments of
+batch `b` may be installed anywhere on the estate.
+
+Two independent installation rules must both hold for whatever set of segments
+you choose to install:
+
+* **No closed loop.** The installed segments, viewed as edges over the `V`
+  terraces, must form a **forest** (no cycle) — a closed loop of pipe at equal
+  elevation causes destructive water-hammer resonance and is forbidden. (The
+  installed set need not connect every terrace; isolated terraces are fine.)
+* **Shipment caps.** For every batch `b`, the number of installed segments from
+  that batch is at most `cap_b`.
+
+Choose a set of segments obeying both rules that maximizes total flow value.
+Two candidate segments may share the same pair of terraces (parallel pipes from
+different batches over the same route) — installing both of them always closes
+a loop, so at most one of a parallel pair can ever be used.
+
+## Input
+
+```
+V E K
+cap_1 cap_2 ... cap_K
+```
+then `E` lines, segment `i` (1-based, in input order):
+```
+u_i v_i w_i b_i
+```
+`cap_1` is always `>= E` (standard stock never binds).
+
+## Output
+
+An integer `m`, then `m` distinct segment indices (1-indexed into the input
+list), in any order.
+
+## Feasibility
+
+Every index must lie in `[1, E]` with no repeats; the chosen segments must form
+a forest over the `V` terraces (union-find test); for every batch `b`, the
+count of chosen batch-`b` segments must be `<= cap_b`. Any violation scores `0`.
+Printing `m = 0` (install nothing) is always feasible.
+
+## Objective
+
+Maximize `F`, the total flow value `sum w_i` of the installed segments.
+
+## Scoring
+
+Let `B` be the value of the **standard-stock-only** reference: the maximum-
+weight forest built using *only* batch-1 segments (Kruskal on batch-1 edges
+alone — always feasible, since batch 1 never binds). Your score for a test is
+```
+ratio = min(1000, 100 * F / max(1, B)) / 1000
+```
+so the *best possible* standard-stock-only plan scores exactly `0.1` (a
+submission that leaves value on the table, e.g. an incomplete or suboptimal
+forest, scores below `0.1`); using premium batches well pushes the score
+above `0.1`, capped at `1.0` (a 10x improvement over the standard-stock
+baseline). Per-test ratios are averaged.
+
+## Constraints
+
+* `2 <= V <= 2000`, `1 <= E <= 2500`, `1 <= K <= 10`.
+* `1 <= w_i <= 10^6`; `1 <= cap_b`.
+* At least one segment has `b_i = 1` (so the standard-stock baseline `B` is
+  always `> 0`, making the `0.1` reference point well-defined).
+* Time limit: 4 s. Memory limit: 512 MB.
+
+## Example
+
+`V=10, E=7, K=3`, caps `= 17 1 1` (batch 1 unlimited, batches 2 and 3 capped
+at 1 segment each):
+```
+1: 8-9  w=2  b=1     5: 9-10 w=2  b=1
+2: 1-2  w=12 b=2      6: 1-2  w=11 b=3
+3: 3-4  w=10 b=2      7: 6-7  w=5  b=1
+4: 5-6  w=5  b=1
+```
+Baseline `B` = all batch-1 segments (1,4,5,7): `2+5+2+5 = 14`.
+
+Installing segment 2 alone (weight 12, the heaviest) uses batch 2's only slot;
+segment 6 then can't be added (segments 2 and 6 both run `1-2` — a parallel
+pipe closes a loop), and segment 3 is blocked purely by the batch-2 cap, even
+though `3-4` shares no terrace with `1-2`. That leaves `F = 12 + 14 = 26`.
+
+Installing segment 6 (weight 11, batch 3) **instead of** segment 2 frees batch
+2's slot for segment 3 (weight 10, a different terrace pair, no loop with
+segment 6): `11 + 10 = 21 > 12`. Spending the two scarce batches on two
+*different* terrace pairs beats spending both on the single heaviest segment:
+`F = 21 + 14 = 35`. Weight order alone picks the wrong pair to spend a scarce
+batch on; only comparing whole combinations across both batches finds it.

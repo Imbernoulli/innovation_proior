@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1041",
+  "tier": "A",
+  "format": "C",
+  "family": "transition-cost-codebook",
+  "eval_form": "quality-metric",
+  "theme": "bell-ringer arranging chimes to minimize arm travel",
+  "title": "Bell-Tower Chime Rack: Minimizing Mallet Travel",
+  "objective": "minimize",
+  "strategies": [
+    "trivial: canonical ID-order near-balanced code (checker's own baseline construction; ignores strike frequency and strike order entirely)",
+    "greedy (trap): classic Huffman coding on per-chime strike counts (optimizes depth-vs-frequency in isolation) but assigns leaf positions with no regard to which chimes strike back-to-back, so co-occurring chimes end up scattered across the rack",
+    "strong: builds an undirected chime-adjacency graph from consecutive strike pairs, orders chimes via a max-weight nearest-neighbor chain (greedy graph traversal favoring frequently-co-occurring chimes), then recursively bisects that order into a balanced binary rack -- embedding the transition graph into the tree metric instead of only balancing depth by frequency",
+    "invalid: emits the same single address for every chime (violates both uniqueness and the prefix-free constraint)"
+  ]
+}

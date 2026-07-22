@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0939",
+  "tier": "S",
+  "format": "E",
+  "family": "pipeline-hazard-law-recovery",
+  "eval_form": "quality-metric",
+  "theme": "clock a mystery CPU with a stopwatch",
+  "title": "Clock the Mystery Pipeline — recovering a compounding structural-hazard law",
+  "objective": "max",
+  "strategies": [
+    "trivial: emit the constant mean(train cycles) -> reproduces the checker's own baseline, ~0.1",
+    "greedy: additive per-opcode/per-hazard-count linear regression cycles ~ b0 + b1*n + b2*cLU + b3*cMF + b4*cST, fit by least squares on the training table; near-perfect on train (the training probes only ever contain 0-2 adjacent same-unit MUL pairs, where the true law is nearly linear) but the shared multiply unit's single-server backlog is a TRIANGULAR (quadratic) function of the run length, not a per-pair constant, so this model catastrophically underestimates the long hazard-dense held-out runs",
+    "strong: recognize that a non-pipelined shared functional unit hit by a run of R back-to-back consumers backlogs like a single-server queue (service time > arrival interval), so the correct regressor is the triangular number cST*(cST+1)/2, not cST itself; refit the SAME linear regression with that one feature swapped in -> the fitted coefficients transfer correctly to the long, hazard-dense held-out probes",
+    "headroom above strong: jointly re-derive the exact integer coefficients (2, 1, 1) from first principles instead of a noisy least-squares fit, and model the measurement jitter's distribution to shave the residual held-out error further"
+  ]
+}

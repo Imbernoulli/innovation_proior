@@ -1,0 +1,20 @@
+{
+  "id": "fsx_B_0816",
+  "tier": "B",
+  "format": "A",
+  "family": "serial-dilution-routing",
+  "eval_form": "quality-metric",
+  "theme": "Route a pipetting protocol to fill a plate",
+  "title": "Route a Pipetting Protocol to Fill a Plate",
+  "objective": "min",
+  "seed_problem": "fill W wells to target concentrations from a stock and a diluent via a DAG of pipetting transfers, scored by accuracy + pipetting cost",
+  "mutation": "input: allow any earlier well (not just stock/diluent) to be a transfer source, forming a reuse DAG; objective: replace a plain per-transfer step cost with a per-DISTINCT-WELL stock-access surcharge, so the routing decision (who shares an intermediate) determines the score, not just the volumes",
+  "mechanisms": ["combinatorial-routing", "dilution-tree-inversion", "volume-cost"],
+  "innovation_hook": "Reusing intermediate wells as a shared dilution tree lets downstream concentrations cascade from a handful of stock-touching builds, turning a flat per-well fill into a routing/recombination problem.",
+  "strategies": [
+    "trivial: empty protocol (K=0) -- reproduces the checker's own do-nothing baseline exactly, ratio 0.1",
+    "greedy (the trap): fill every target well directly from stock+diluent, chunked at Vmax -- near-perfect accuracy and volume, but every well touches stock directly so D=W; the obvious first approach, and it dominates cost when W is large",
+    "strong (the insight): build a small, capacity-aware palette of shared intermediate wells (fixed concentration grid plus extra points at the input's most frequent target concentrations), invert the two-point mix equation to route each target well through one exact-match intermediate or a blend of two bracketing ones, and only start a fresh instance of a palette point when the current one's Vcap is exhausted -- D stays roughly proportional to the number of distinct concentrations actually needed, not W",
+    "beyond strong: recursively cascade intermediates from other intermediates (not just stock/diluent) to shrink D further, or jointly optimize palette placement against the accuracy/step-count trade-off"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "fsx_B_0812",
+  "tier": "B",
+  "format": "A",
+  "family": "retime-and-size-pipeline",
+  "eval_form": "quality-metric",
+  "theme": "move the toll booths, then shrink the engines",
+  "title": "Move the Toll Booths, Shrink the Engines",
+  "objective": "min",
+  "seed_problem": "sequential circuit sizing with a fixed register placement and a per-gate implementation menu",
+  "mutation": "composite: couple discrete gate/engine sizing to a booth (register) relocation freedom along each pipeline under a total-conserved-per-pipeline budget, where relocation cost varies per belt -- so the cheap-vs-fast sizing choice and the checkpoint layout must be co-optimized, not solved as fixed-registers-then-upsize.",
+  "strategies": [
+    "trivial: keep the original booth placement, run every station at its priciest/fastest variant (reproduces the checker baseline)",
+    "greedy: keep the original booth placement (no retiming), start every station at its cheapest variant, then repeatedly upsize the largest-delay station in any run that exceeds the clock -- the obvious 'fixed registers, size up the critical path' recipe",
+    "insight (strong): compute how many booths a cheapest-everywhere chunking of each pipeline would actually need against the clock; when the pipeline's conserved booth total covers that (the planted trap cases), relocate booths to the computed chunk boundaries and dump any spare booths on the cheapest-relocation belt, letting nearly the whole pipeline run on the cheap variant",
+    "invalid: emits an out-of-range engine-variant index (deliberately infeasible)"
+  ]
+}

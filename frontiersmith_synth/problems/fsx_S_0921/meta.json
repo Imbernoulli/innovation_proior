@@ -1,0 +1,19 @@
+{
+  "id": "fsx_S_0921",
+  "tier": "S",
+  "format": "A",
+  "family": "defect-aware-line-dicing",
+  "eval_form": "quality-metric",
+  "theme": "Dicing a scarred wafer into unequal chips",
+  "title": "Dicing a Scarred Wafer into Unequal Chips",
+  "seed_problem": "wafer dicing / guillotine-cut die packing with defect maps",
+  "objective": "max",
+  "mutation": "composite: guillotine cuts are forced GLOBAL (every line spans the whole N x N wafer, so row-cut and column-cut choices are two coupled 1D layouts, not local per-region decisions); die values are superadditive in area so bigger dies are worth disproportionately more per cell, creating a risk/reward tension against defect-cell-avoidance that a per-region packer cannot resolve because it cannot move a line without reshaping every other rectangle in that band.",
+  "innovation_hook": "Global lines couple all regions, so the solution is a 1D x 1D spacing design that sacrifices defect-dense bands deliberately -- a quarantine strategy no local packer discovers.",
+  "strategies": [
+    "trivial: dice the finest possible grid (every legal line drawn) and realize only the base 1x1 die on every defect-free cell -- reproduces the checker's own baseline B exactly, ratio == 0.1",
+    "greedy: pick the single highest-value catalog die (always the largest square, since value grows faster than area) and tile the ENTIRE wafer at that die's fixed uniform pitch starting from the corner, ignoring the defect map; any resulting cell that contains a defect is wasted outright -- on trap tests the fixed pitch straddles dense defect bands so almost every cell along that band is wasted",
+    "strong: compute per-row and per-column defect flags (dirty if ANY defect touches that row/column), then greedily grow row-bands (and, independently, column-bands) up to the largest catalog square's side while a run stays all-clean, but immediately close off and isolate any dirty row/column as its own singleton 1-cell-thin band -- quarantining defect-dense bands into cheap thin dies (a dedicated elongated 1xS die is realized on the thin bands) while clean regions keep the large uniform pitch and realize the expensive big square die",
+    "headroom above strong: jointly search row-cut and column-cut positions (not independently per axis) with local search / simulated annealing to reclaim clean sub-rectangles the axis-independent quarantine heuristic still wastes near band boundaries, and consider non-maximal band heights when a mid-size catalog die's value density beats greedily maximizing band height"
+  ]
+}

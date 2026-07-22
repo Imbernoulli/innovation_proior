@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0669",
+  "tier": "B",
+  "format": "C",
+  "family": "phyllotaxis-angle-schedule",
+  "eval_form": "quality-metric",
+  "theme": "pack seeds on a growing sunflower",
+  "title": "Beyond the Golden Angle: A Boundary-Aware Divergence Schedule",
+  "objective": "max",
+  "strategies": [
+    "trivial: constant angular step 360/N ('spokes'), ignores the growth law entirely",
+    "greedy: the textbook constant golden angle 137.50776..., asymptotically near-optimal but blind to the finite growth-law transition and disk boundary",
+    "strong: decompose into golden-angle bulk + a boundary-aware coordinate-descent correction over the scored rim window, evaluated against the real rim Voronoi-uniformity objective so every accepted move is a verified improvement",
+    "other viable ideas: detect the bulk/rim growth-law transition from the input and re-derive a locally-appropriate divergence step there; simulated-annealing over the whole schedule; sequential maximin deposition using the known future radius sequence"
+  ]
+}

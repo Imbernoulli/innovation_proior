@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0644",
+  "tier": "B",
+  "format": "C",
+  "family": "min-cut-redundancy-reliability",
+  "eval_form": "quality-metric",
+  "theme": "Buy redundancy so the link never drops",
+  "title": "Buy Redundancy So The Link Never Drops",
+  "objective": "max",
+  "strategies": [
+    "trivial: spend nothing, every edge stays at its base failure probability (== the checker's own zero-upgrade baseline) -> ~0.1",
+    "greedy: fractional-knapsack over EDGES in isolation -- rank every (edge, next upgrade level) item by its own probability delta per unit cost and buy top-ranked affordable items in that fixed order, never looking at how much redundancy already backs an edge up",
+    "strong: decompose the network by 2-edge-connectivity (Tarjan bridges) into independent bridge/blob multiplicative factors, then do exact steepest-ascent hill climbing on the TRUE reliability (recomputing the real marginal delta of every candidate purchase every step) -- correctly discovers that value concentrates on lone bridge edges (which sit in every near-minimum cut of their group) while a redundant parallel fan is already self-insuring and further spend there is nearly wasted",
+    "invalid: push every edge's upgrade level to 99 (far past its cap) -> infeasible, scores 0"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0770",
+  "tier": "A",
+  "format": "A",
+  "family": "room-mode-absorber-tuning",
+  "eval_form": "quality-metric",
+  "theme": "silencing a war-drum rehearsal hall",
+  "title": "Silencing a War-Drum Rehearsal Hall",
+  "objective": "min",
+  "seed_problem": "acoustic-panel placement under a resonant standing-wave field",
+  "mutation": "composite: a periodically-driven rectangular hall is decomposed into resonance channels (standing-wave modes, plus one geometric first-reflection channel from the mirror-image construction); a weighted absorber-panel budget must be spent on wall positions whose damping benefit is proportional to that position's OWN modal amplitude, not the listener's -- coupling coefficients and listener position are decoupled from panel cost/strength so proximity to the listener carries no information.",
+  "strategies": [
+    "trivial: install no panels (reproduces the checker's baseline B exactly)",
+    "naive greedy: install panels on wall cells nearest the listener(s), cheapest affordable first -- ignores the given per-channel coupling table entirely",
+    "insight (strong): use the input's own Delta/Gamma0/S/L table to weight each panel by its estimated marginal reduction of F on the currently most-vulnerable (smallest-denominator) channels, then run a marginal-gain (submodular) greedy that re-evaluates the true objective after each pick -- correctly finds that panels far from the listener, at a resonant mode's antinode near the drum, dominate the payoff"
+  ]
+}

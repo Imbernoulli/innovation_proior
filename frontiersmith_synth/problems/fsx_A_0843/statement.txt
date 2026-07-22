@@ -1,0 +1,96 @@
+# Steamworks Deck: Cold-Rail Block Stowage
+
+## Problem
+
+You are cramming a steamworks into one deck: a `W x H` grid of cells. The
+rim (every cell with `x=0`, `x=W-1`, `y=0`, or `y=H-1`) is welded to the
+ship's **cold rail**, a heat sink permanently at temperature `0`. Stow `N`
+engine blocks on the deck: block `i` is a fixed polyomino of `k_i` cells,
+dissipating `w_i` watts split evenly across them. Place each block anywhere
+fully inside the deck, in any of 4 axis-aligned rotations; blocks may not
+overlap.
+
+Heat spreads deck-wide by discrete diffusion and the rim continuously carries
+it away. Minimize the **peak steady-state temperature** anywhere on the deck.
+
+## Input
+
+```
+W H N ITERS
+```
+then for each block `i = 1..N` (in this order):
+```
+w_i k_i
+dx_1 dy_1 dx_2 dy_2 ... dx_{k_i} dy_{k_i}
+```
+`(dx_j, dy_j)` are the shape's cell offsets, normalized so the minimum `dx`
+and minimum `dy` are both `0`. `ITERS` is the exact relaxation step count the
+scorer runs (see Scoring), given so you can reason about it directly.
+
+## Output
+
+`N` lines, one per block in input order:
+```
+x_i y_i r_i
+```
+`(x_i, y_i)` is the anchor; `r_i` in `{0,1,2,3}` rotates every offset before
+translation: `r=0: (dx,dy)`, `r=1: (dy,-dx)`, `r=2: (-dx,-dy)`,
+`r=3: (-dy,dx)`. Re-shift the rotated offsets so their minimum `dx`,`dy` are
+again `0`, then add `(x_i, y_i)` — that shifted, translated set is block
+`i`'s absolute cells.
+
+## Feasibility
+
+Every block's absolute cells must lie inside `[0,W) x [0,H)`. No two blocks'
+cells may coincide. `r_i` must be one of `0,1,2,3`. Any violation, or trailing
+output after the `N`-th line, scores `0`.
+
+## Objective
+
+Build the per-cell source array `S`: for each placed block `i`, add
+`floor(1000 * w_i / k_i)` to `S` at each of its `k_i` cells. Minimize the
+resulting peak temperature `F` (see Scoring).
+
+## Scoring
+
+Start with `T = 0` everywhere. Repeat `ITERS` times, each step computed from
+the **previous** step's values only (Jacobi update): every cell with
+`0 < x < W-1` and `0 < y < H-1` becomes
+`T[x][y] = (T[x-1][y] + T[x+1][y] + T[x][y-1] + T[x][y+1] + 4*S[x][y]) / 4`
+(integer division). Rim cells (`x=0`, `x=W-1`, `y=0`, or `y=H-1`) are held at
+`T=0` forever, regardless of any source placed there — a block flush against
+the rail dumps that portion of its heat for free. `F` = the maximum `T` value
+over the whole deck after all `ITERS` steps (this is what you minimize).
+
+Let `B` be the peak temperature of a fixed reference stowage: shelf-pack the
+`N` blocks in input order at rotation `0` (fill a row left-to-right until the
+next block's bbox would cross `x=W`, then start a new row below it), then
+**re-center** that whole packed stack of rows inside the deck — shift it
+vertically so the row stack is centered on `y`, and shift each row
+horizontally so it is centered on `x` — rather than leaving it anchored at
+the corner (a corner anchor would accidentally hug the rim for free, since a
+small stack started at `(0,0)` sits near the rim whenever the deck has spare
+room around it; centering keeps `B` honestly rim-blind). Run the same
+diffusion on this reference to get `B`. Your score for a test is
+```
+ratio = min(1000, 100 * B / max(1, F)) / 1000
+```
+so the shelf-packing reference scores `0.1` and genuine improvement scores
+higher, capped at `1.0` (ten times the reference). Per-test ratios are
+averaged.
+
+## Constraints
+
+* `9 <= W, H <= 34`; `3 <= N <= 16`; each block has `1 <= k_i <= 5` cells.
+* `1 <= w_i <= 1200`.
+* Time limit: 4 s. Memory limit: 512 MB.
+
+## Example
+
+A `9 x 9` deck, one block: a domino (`k=2`, `w=40`). At anchor `(0,3)`
+rotation `0` (cells `(0,3),(1,3)`), the `x=0` cell is on the rail
+(contributes nothing) and only `(1,3)` heats the interior — peak temperature
+stays low. The same block at anchor `(3,3)` (cells `(3,3),(4,3)`) puts both
+cells far from every rail cell, with nowhere close to dump heat, so the peak
+is much higher for identical wattage. A block's rim distance, not its
+distance from other blocks, dominates its contribution to the peak.

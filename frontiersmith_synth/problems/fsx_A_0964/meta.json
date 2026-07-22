@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0964",
+  "tier": "A",
+  "format": "E",
+  "family": "hidden-trs-induction",
+  "eval_form": "quality-metric",
+  "theme": "reconstruct a dead language's grammar from translations",
+  "title": "The Kessar Tablets — recovering a hidden length-reducing rewrite grammar",
+  "objective": "max",
+  "strategies": [
+    "trivial: submit a single inert placeholder rule -> reproduces the checker's identity baseline (~0.1)",
+    "greedy: mine only length-2/3 (word,root) diffs via direct substring substitution and apply them with maximal-munch (longer-LHS-first) priority; reproduces the short training corpus essentially perfectly but structurally cannot represent any length-4/5 rule, which almost never fires inside a length<=9 training word but dominates the length 24-36 held-out inscriptions",
+    "strong: bootstrap length by length (2,3,4,5) -- at each length, only credit a NEW rule when the rules already confirmed at shorter lengths fail to explain a training pair under the true leftmost/highest-priority rewrite procedure; assign each newly confirmed length's rules better priority than everything shorter. Recovers rules a length<=3 diff can't represent and composes correctly on long extrapolation strings.",
+    "headroom above strong: exploit the training pairs whose length-4/5 windows were NOT sampled (partial coverage by design) via cross-validation against the medium-length (6-9) flavor pairs to recover the residual few rules strong's direct bootstrap misses"
+  ]
+}

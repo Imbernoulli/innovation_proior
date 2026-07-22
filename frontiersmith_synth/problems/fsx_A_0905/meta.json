@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0905",
+  "tier": "A",
+  "format": "A",
+  "family": "mosaic-gradient-tessera",
+  "eval_form": "quality-metric",
+  "seed_problem": "fsx_A_0905 seed spec (mosaic-gradient-tessera, wave2b-innovation)",
+  "mutation": "composite: fixed-palette transportation (exact tile multiset -> assignment cost) + gradient-fidelity objective (radial target function) + a same-color orthogonal run-length cap that turns the pure transportation optimum (sorted-by-radius, ring-monochrome) infeasible, forcing deliberate blue-noise dispersion of unavoidable mismatched tiles around each radius annulus; dispersion multiplies fidelity rather than just adding to it",
+  "objective": "max",
+  "theme": "tile mosaic approximating a radial gradient",
+  "title": "Ringless Radial Tessera",
+  "strategies": [
+    "trivial: gradient-blind diagonal-residue construction color(i,j) = (i+j) mod c -- provably run-cap safe for any K>=1 with zero adaptivity, and the checker's own reference baseline",
+    "greedy: single row-major pass, blended score = remaining_supply - gamma*|value-target| among cap-legal colors -- chases the gradient locally but has no notion of rings, so its cap-forced substitutions land wherever the scan happens to bite instead of being spread out",
+    "strong: greedy's construction refined by a ring-aware local search that accepts a color swap between two cells (mostly same-ring) iff it improves fidelity*(1+BONUS*ring_dispersion) -- deliberately trades a little fidelity to scatter unavoidable mismatches evenly around each annulus, exploiting the multiset-boundary/run-cap interaction the sorted-by-radius optimum cannot satisfy",
+    "invalid: floods every cell with color 1, breaking both the fixed multiset and the run-cap everywhere"
+  ]
+}

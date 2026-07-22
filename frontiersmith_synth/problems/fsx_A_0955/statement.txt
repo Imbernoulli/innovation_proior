@@ -1,0 +1,93 @@
+# Placards Printed Once, Fires Vary
+
+## Problem
+
+Fire-evacuation placards are printed **once**: every room gets a single fixed
+route to a single exit, unchanged no matter which fire breaks out. You are given
+the corridor graph and `K` possible fire scenarios; you do not know which will
+happen, so your placard must hold up against **all** of them.
+
+The building is a graph of `M` nodes: `N` rooms (each with a fixed population)
+and `X` exits, connected by undirected **corridors**, each with a normal-conditions
+**capacity** (people admitted per time step) and a **length** (time steps to
+cross). Assign every room one simple path to some exit -- this is the placard.
+
+A fire scenario cuts some corridors' capacity to a percentage of normal (near-
+total blockage = a low percentage, e.g. `5%`); undamaged corridors keep `100%`.
+Routes are fixed, so a corridor may be shared by many rooms; if the population
+funneled onto a corridor exceeds its (possibly damaged) capacity, they cross in
+successive throughput "waves," each wave costing the corridor's full length again.
+
+Formally: `load(e)` = total population of all rooms whose route uses corridor `e`
+(scenario-independent, since routes are fixed). In scenario `s`, `e`'s effective
+capacity is `effCap_s(e) = max(1, floor(cap(e)*pct_s(e)/100))`. A room using `e`
+in scenario `s` spends `len(e) * ceil(load(e)/effCap_s(e))` time steps on it; a
+room's clearance time in `s` is the sum over its route. `F(s)` is the **maximum**
+clearance time over all rooms. The objective is the **worst scenario**:
+`G = max over s of F(s)`.
+
+## Input
+
+```
+N M E X K
+```
+then one line with `X` exit node ids (in `[1,M]`), one line with `N` populations
+`p_1 ... p_N` (room `i` = node `i`), then `E` lines `u v cap len` (corridor
+between `u`,`v`, `1<=u,v<=M`, `cap>=1`, `len>=1`; at most one corridor per pair),
+then `K` scenario blocks, each a line `D_s` followed by `D_s` lines `edgeId pct`
+(`edgeId` = 1-based index, in input order, of a damaged corridor; `1<=pct<=100`
+= percent of normal capacity kept; corridors not listed keep `100`).
+
+## Output
+
+`N` lines, one per room in order `1..N`:
+```
+k v_1 v_2 ... v_k
+```
+a simple path (`k>=2`, all `v_j` distinct) with `v_1 = i`, `v_k` an exit id, and
+every consecutive `(v_j, v_{j+1})` a corridor given in the input.
+
+## Feasibility
+
+Every path must be simple, start at the room's own node, end at an exit, and use
+only given corridors, or the test scores `0`. No trailing tokens after route `N`.
+
+## Objective
+
+Minimize `G`, the worst-scenario clearance time defined above.
+
+## Scoring
+
+Let `B` = the clearance time `G` of the reference placard that sends every room to
+the exit **nearest by number of corridors** (ignoring lengths, capacities, and
+every scenario). Score per test:
+```
+ratio = min(1000, 100 * B / max(1, G)) / 1000
+```
+so the naive reference scores `0.1`; real improvement scores higher, up to `1.0`
+(ten times better than `B`). Per-test ratios are averaged.
+
+## Constraints
+
+* `1 <= N <= 60`, `M <= N+10`, `E <= N+20`, `2 <= X <= 4`, `1 <= K <= 20`.
+* `1 <= p_i <= 10^5`; `1 <= cap <= 10^6`; `1 <= len <= 100`.
+* Time limit: 4 s. Memory limit: 512 MB.
+
+## Example
+
+Two rooms (`1,2`, pop `20,20`) share junction `3`; exits `4` (fast/narrow, via
+`3-4` cap `8` len `4`) and `6` (slow/wide, via `3-6` cap `40` len `15`); each room
+also has a private `room-3` corridor (cap `999` len `1`, always contributes `1`).
+Two scenarios: scenario 1 cuts `3-4` to `10%` (`effCap=max(1,floor(0.8))=1`);
+scenario 2 cuts `3-6` to `10%` (`effCap=max(1,floor(4))=4`).
+
+Both via `4`: load `40` on `3-4`. Scenario 1: `1+4*ceil(40/1)=161`; scenario 2
+(cap `8` undamaged): `1+4*ceil(40/8)=21`. Worst `161`.
+Both via `6`: load `40` on `3-6`. Scenario 1 (cap `40` undamaged): `16`;
+scenario 2: `1+15*ceil(40/4)=151`. Worst `151`.
+Split (room 1 via `4`, room 2 via `6`, so each corridor carries load `20` only):
+scenario 1 -- room 1 `1+4*ceil(20/1)=81`, room 2 `1+15*ceil(20/40)=16`, worst
+`81`; scenario 2 -- room 1 `1+4*ceil(20/8)=13`, room 2 `1+15*ceil(20/4)=76`,
+worst `76`. Splitting's worst case `max(81,76)=81` beats committing everyone to
+either single corridor (`161` or `151`): no single scenario can load more than
+half the population onto the corridor it happens to damage.

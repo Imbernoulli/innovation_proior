@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0755",
+  "tier": "B",
+  "format": "C",
+  "family": "quantized-comb-filter",
+  "eval_form": "quality-metric",
+  "theme": "carving a radio filter from integer gears",
+  "title": "Carving a Radio Filter from Integer Gears",
+  "objective": "min",
+  "strategies": [
+    "do-nothing stencil (all teeth zero) -- reproduces the checker's own baseline",
+    "textbook design: exact real filter hitting PASS/STOP bins with DONTCARE pinned to zero, scale-to-budget, round pointwise, repair by shaving the largest coefficients",
+    "null-space noise shaping: the same PASS/STOP-exact particular solution, but DONTCARE bins are left as free real degrees of freedom and an error-feedback loop (round + least-squares re-fit into the DONTCARE subspace, iterated) steers the unavoidable integer-rounding residue into the unscored bins instead of the scored ones, then binary-searches the largest budget-feasible amplitude",
+    "alternatives: exact ILP/branch-and-bound over small instances, simulated annealing on the integer lattice, higher-order noise-shaping feedback filters"
+  ]
+}

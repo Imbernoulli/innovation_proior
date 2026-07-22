@@ -1,0 +1,102 @@
+# Loom Weave: Densest Warp Pattern Avoiding Jamming Windows
+
+## Problem
+
+A programmable loom weaves a rectangular cloth of `R` rows (weft passes, top to
+bottom) by `C` columns (warp threads, left to right). On every row, each warp
+thread is either **raised** (`1`) or **lowered** (`0`). The mechanism jams if a
+small set of local `2x2` thread patterns ever appears between two consecutive
+rows and two adjacent threads. You are given `K` such forbidden `2x2` windows.
+Your job: weave a cloth that never jams, with as many raised threads as
+possible (a denser weave is a stronger, more valuable cloth).
+
+Formally: produce an `R x C` grid of bits `g[r][c]` (`0 <= r < R`, `0 <= c < C`)
+avoiding every forbidden window, maximizing the total number of `1`-cells.
+
+This is a two-dimensional constrained-density problem: the set of legal grids
+forms a *subshift of finite type* (a grid is legal iff every local `2x2`
+window it contains is allowed). The highest density such a system can sustain
+is a well-defined ceiling, but it need not be achieved by any single row
+pattern repeated forever -- it can require a **periodic cycle of several
+distinct row patterns**, discoverable only by reasoning about the full graph
+of which rows may legally follow which (a transfer-matrix argument), not by
+greedily choosing the best-looking next row.
+
+## Input
+
+Line 1: three integers `R C K`.
+
+Each of the next `K` lines has four integers `w x y z` (each `0` or `1`),
+describing one forbidden window: for row `r` and column `c`,
+
+```
+row r  , col c : w  x
+row r+1, col c : y  z
+```
+
+is illegal for any `0 <= r < R-1`, `0 <= c < C-1`, i.e. you may never have
+`g[r][c]=w, g[r][c+1]=x, g[r+1][c]=y, g[r+1][c+1]=z` simultaneously anywhere
+in the grid. The pattern `(1,1,1,1)` is always one of the `K` forbidden
+windows (an all-raised cloth always jams). Every forbidden window has `z=1`
+(its bottom-right bit is raised); consequently no window with `z=0` is ever
+forbidden -- lowering a thread can never by itself complete a jam.
+
+## Output
+
+Print `R` whitespace-separated tokens, each a string of exactly `C`
+characters over `{0,1}`: row `0`, then row `1`, ..., then row `R-1`, top to
+bottom, columns left to right within each row. Printing one row per line is
+conventional but not required -- only the sequence of `R` tokens matters.
+
+## Feasibility
+
+An output is feasible iff it consists of exactly `R` tokens, each exactly
+`C` binary characters, and no forbidden window (as defined above) occurs at
+any `(r,c)`. Any infeasible output scores `0`.
+
+## Objective
+
+Maximize `F`, the total number of `1`-cells in the grid.
+
+## Scoring
+
+The checker computes an internal reference baseline `B`: the best density
+achievable by repeating a *single* row pattern on every one of the `R` rows
+(the best "static" legal weave). Since no `z=0` window is ever forbidden, at
+least one such static pattern (e.g. only the first thread ever raised) is
+always legal, so `B > 0`. Your score is
+
+```
+ratio = min(1.0, 0.1 * F / B)
+```
+
+Beating the static baseline scores above `0.1`; matching it scores `0.1`.
+The gap between `B` and the true achievable ceiling depends on the specific
+forbidden set given in the input -- you must read it and reason about it,
+not assume a fixed shape.
+
+## Constraints
+
+- `4 <= C <= 9`, `6 <= R <= 15005`.
+- `3 <= K <= 5`.
+- Time limit: 5 seconds. Memory limit: 512 MB.
+
+## Example
+
+`R=4, C=4, K=5`, forbidden windows:
+`(0,0,0,1) (0,0,1,1) (0,1,0,1) (1,1,0,1) (1,1,1,1)`.
+
+One feasible output (repeating the static row `1000`):
+
+```
+1000
+1000
+1000
+1000
+```
+
+`F = 4` (one raised thread per row). The best static row here also has
+weight `1`, so `B = 4 * 1 = 4`, giving `ratio = min(1, 0.1 * 4/4) = 0.100`.
+A cloth that legally cycles through several different row patterns instead
+of repeating one can raise more threads per row on average and score well
+above `0.1`.

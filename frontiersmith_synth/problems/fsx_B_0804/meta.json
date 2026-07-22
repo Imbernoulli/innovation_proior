@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0804",
+  "tier": "B",
+  "format": "C",
+  "family": "shared-humidity-coat-staggering",
+  "eval_form": "quality-metric",
+  "theme": "varnish workshop where wet coats humidify the room",
+  "title": "Varnish Workshop: Humidity-Coupled Coat Staggering",
+  "objective": "minimize",
+  "strategies": [
+    "trivial: fully sequential, one coat wet at a time across the whole workshop (always feasible, congestion-free, slow)",
+    "greedy: apply every coat the instant it becomes eligible (maximal fan-out / ASAP), ignoring the shared humidity buildup",
+    "strong: reformulate as a concurrency-capped admission schedule; use the quadratic congestion law to seed an analytic steady-state concurrency K*=1/c, then sweep nearby caps and keep whichever simulates to the smallest makespan",
+    "invalid: negative application times (infeasible on any instance)"
+  ]
+}

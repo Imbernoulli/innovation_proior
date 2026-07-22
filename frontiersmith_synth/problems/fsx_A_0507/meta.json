@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0507",
+  "tier": "A",
+  "format": "C",
+  "family": "heat-corridor-sink-placement",
+  "eval_form": "quality-metric",
+  "theme": "cooling a lava-tunnel server vault",
+  "title": "Lava-Tunnel Vault: Cooling-Corridor Placement",
+  "objective": "min",
+  "strategies": [
+    "trivial: upgrade nothing -> reproduces the checker do-nothing baseline (Ratio ~ 0.1)",
+    "greedy blanket: spend the whole budget tiling a Manhattan disk around the highest-power sources; lowers the local gradient but leaves the long escape path intact, so deep sources barely cool",
+    "series-circuit insight: build contiguous high-conductivity CORRIDORS along the shortest open path from each hot source to its nearest vent, funding sources by power*path-length; collapses the dominant series resistance",
+    "minimax budget allocation: with a budget too small to corridor every source, iteratively fund the source that currently sets the maximum temperature (open-ended, no clean optimum)"
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "id": "fsx_B_0846",
+  "tier": "B",
+  "format": "A",
+  "family": "synergy-congestion-team",
+  "eval_form": "quality-metric",
+  "theme": "Pick a team that clicks but does not crowd",
+  "title": "Pick a Team That Clicks But Does Not Crowd",
+  "objective": "max",
+  "seed_problem": "subset selection with pairwise synergy bonuses on a graph",
+  "mutation": "composite: couple supermodular pairwise synergy (chemistry edges realized only when both endpoints are chosen) with an anti-coordination crowding penalty charged PER selected node against how many of ITS selected neighbours it has beyond a personal cap -- because adding one node retroactively raises the crowd charge of every already-chosen neighbour, the objective is neither sub- nor supermodular and a myopic per-node marginal-gain greedy that omits this externality overshoots into overcrowded cliques.",
+  "mechanisms": ["anti-coordination-nonsubmodular", "subset-selection", "supermodular-synergy"],
+  "innovation_hook": "Combining pairwise synergy with a crowding penalty makes the objective neither sub- nor super-modular, breaking greedy's guarantee.",
+  "strategies": [
+    "trivial: select exactly the zero-degree (no-chemistry-edge) candidates -- always safe, reproduces the checker baseline B exactly -> ratio 0.1",
+    "greedy (the trap): repeated per-node marginal-gain forward selection -- for each unselected candidate k, score(k) = v_k + synergy(k, current team) - pen_k*max(0, deg(k)-cap_k) using ONLY k's own crowd charge, add the best-scoring positive candidate, repeat. This omits the externality: adding k also raises deg_S(j) for every already-selected neighbour j of k, silently inflating THEIR crowd charge, which this local score never re-checks. It walks whole tight-cap cliques past their true optimum and can drive a cluster's realized value to zero.",
+    "strong (the insight): build with the same forward pass, then repeatedly run full-objective local search (try dropping each selected node, try swapping a selected node for an unselected one, evaluating the TRUE total F -- which correctly re-prices every neighbour's crowd charge) from several random restarts/orders, keeping the best full team found; this finds the interior crowd-respecting core of each clique instead of overshooting it.",
+    "invalid: emits an out-of-range / duplicate candidate index -> checker scores 0"
+  ]
+}

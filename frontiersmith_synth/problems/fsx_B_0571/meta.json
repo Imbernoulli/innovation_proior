@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0571",
+  "tier": "B",
+  "format": "B",
+  "family": "illconditioned-fixedpoint-solver",
+  "eval_form": "quality-metric",
+  "theme": "iterative refinement rule for fixed-point maps whose conditioning ranges from benign to near-critical across the instance set",
+  "title": "Regime-Aware Relaxation: Accelerating Ill-Conditioned Fixed-Point Maps",
+  "objective": "min",
+  "strategies": [
+    "trivial: keep iterating the plain map (omega=1, no Aitken) -- equals the baseline",
+    "greedy: estimate the rate from the last step-norm ratio, assume a real mode, over-relax with omega=1/(1-rate) and always run Aitken -- diverges on the oscillatory traps",
+    "strong: fit the 2-term step recurrence to diagnose real vs complex dominant mode; over-relax + Aitken for a real mode, under-relax + no Aitken for a complex (oscillatory) mode",
+    "richer: emit a full per-step omega schedule and hand-tuned Aitken cadence beyond the single-mode heuristic"
+  ]
+}

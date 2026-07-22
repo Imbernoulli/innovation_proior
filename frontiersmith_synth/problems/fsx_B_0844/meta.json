@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_0844",
+  "tier": "B",
+  "format": "E",
+  "family": "orbit-modulus-forensics",
+  "eval_form": "quality-metric",
+  "theme": "reverse-engineer a lottery machine from old draws",
+  "title": "Lottery Machine Forensics",
+  "objective": "max",
+  "strategies": [
+    "repeat-last-draw baseline (no recovery attempt)",
+    "gcd-of-determinant-combinations modulus recovery + a single GLOBAL modular inverse to solve the multiplier/increment (trap: silently trusts the gcd magnitude as m, and any planted frozen prime component poisons the whole global modulus and blocks every consecutive-difference inverse)",
+    "gcd-of-determinant-combinations modulus recovery corrected by DISTINCT-prime-factor extraction (strips the bonus p^2 a frozen component adds), then PER-PRIME regime diagnosis (frozen-constant vs affine) with CRT-recombined fast-forward"
+  ]
+}

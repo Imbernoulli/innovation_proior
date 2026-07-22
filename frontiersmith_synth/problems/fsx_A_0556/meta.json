@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_0556",
+  "tier": "A",
+  "format": "A",
+  "family": "static-routing-under-link-death",
+  "eval_form": "quality-metric",
+  "theme": "routers with frozen tables outlive any cable cut",
+  "title": "Frozen Tables, Severed Cables",
+  "objective": "min",
+  "seed_problem": "static next-hop tables scored by worst single-edge-failure delivery",
+  "mutation": "composite: couple static per-(node,destination) forwarding tables with a full single-edge-failure sweep and a loop-freedom-bounded delivery simulation; the objective becomes the worst-case count of stranded ordered pairs, minimized -- turning routing quality into a property of the induced per-destination forwarding DAG rather than of shortest-path lengths.",
+  "strategies": [
+    "trivial: shortest-path next hop, no backup (= the checker's reference baseline) -> ratio ~0.1; any cut tree edge strands its whole subtree",
+    "greedy (obvious recipe): shortest-path primary plus a classic loop-free alternate = a STRICTLY-CLOSER backup neighbor; protects nodes with a second closer neighbor but leaves same-distance 'rung' layers unprotected",
+    "insight (strong): a backup neighbor is valid iff its own primary route to d avoids the protected node (arc-disjoint in the forwarding DAG), even if it is NOT strictly closer -- accept the longer detour to survive the cut",
+    "beyond strong: co-design primaries away from shortest paths so every node gains two arc-disjoint downhill escapes (redundant/independent trees), pushing worst-case stranded pairs toward the unavoidable bridge floor"
+  ]
+}

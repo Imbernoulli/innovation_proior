@@ -1,0 +1,18 @@
+{
+  "id": "fsx_G_0986",
+  "tier": "G",
+  "format": "A",
+  "family": "chaotic-map-sync-coupling",
+  "eval_form": "quality-metric",
+  "theme": "Couple oscillators just enough to synchronize",
+  "title": "Couple Oscillators Just Enough to Synchronize",
+  "objective": "max",
+  "seed_problem": "network of coupled chaotic logistic maps with a total edge-coupling budget; verify.py iterates the coupled maps and counts nodes that lock to the network mean within epsilon",
+  "mutation": "composite: the seed's binary lock-count is generalized to a smooth per-node tracking score (coupled-map-synchronization) evaluated over a trailing window, subject to a global coupling-BUDGET plus a per-node coupling-DEGREE cap that makes hub investment self-limiting, so the only way to raise the network's synchronization is to identify and strengthen the sparsest cut of the candidate graph -- a data-dependent proxy for the coupling Laplacian's spectral gap (spectral-gap-threshold) -- rather than spend on locally abundant, already-well-connected edges.",
+  "strategies": [
+    "trivial: zero coupling everywhere (every oscillator evolves independently; reproduces the checker's baseline construction exactly)",
+    "naive greedy: walk the candidate edges in input order, greedily claim coupling up to each edge's cap / the remaining budget / both endpoints' degree headroom -- exhausts the coupling-degree budget on the numerous locally-abundant edges long before (if ever) reaching the sparse, decisive cut edges",
+    "cut-aware insight (strong): build a spanning tree (union-find) over the candidate graph, then for every tree edge count how many candidate edges have their tree-path crossing it (a classic '+1/+1/-2 at the LCA, subtree-sum' trick) and normalize by the smaller side's node count -- a low ratio flags a genuine sparse-cut bottleneck (Cheeger-style proxy for the spectral gap); fund every edge crossing a flagged cut first, then max-min water-fill the remaining budget over everything else",
+    "invalid: claim every edge at its full capacity, ignoring the per-node coupling-degree cap and the total budget -- immediately infeasible"
+  ]
+}

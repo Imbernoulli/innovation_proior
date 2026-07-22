@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0642",
+  "tier": "B",
+  "format": "C",
+  "family": "power-free-frequency",
+  "eval_form": "quality-metric",
+  "theme": "Long power-free word hitting target letter mix",
+  "title": "Long Square-Free Word Hitting a Target Letter Mix",
+  "objective": "max",
+  "strategies": [
+    "trivial: reproduce the checker's own target-blind separator scaffold (flat 0.25/0.25/0.25/0.25 mix)",
+    "greedy: per-letter frequency-deficit order with square-free feasibility and single-step backtracking (tracks only running letter counts, blind to the target transition preference)",
+    "strong: steer the same square-free construction by a weighted combination of frequency deficit AND the target letter-transition preference, matching the checker's own 0.25/0.75 weighting",
+    "invalid: emit a word that opens with an immediate square (\"00\") to fail the feasibility gate"
+  ]
+}

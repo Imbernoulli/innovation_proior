@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_0555",
+  "tier": "S",
+  "format": "C",
+  "family": "nfa-biclique-golf",
+  "eval_form": "quality-metric",
+  "theme": "Smallest NFA separating two string samples",
+  "title": "State Golf: Smallest NFA Separating Two String Samples",
+  "objective": "min",
+  "strategies": [
+    "trivial: emit the prefix-trie acceptor of P (one state per distinct prefix); matches the checker baseline",
+    "greedy: build the minimal DFA of the exact positive set P (minimize the trie via Moore) and emit it as an NFA -- deterministic, cannot exploit nondeterminism, stays large",
+    "strong: reframe minimality as a COVER. Each 'k-th-symbol-from-the-end == c' predicate is a candidate NFA branch; a predicate is USABLE iff it fires on no reject string; greedily set-cover the accept strings with usable predicates sharing one start and one accept chain, giving ~1+maxOffset states",
+    "headroom: sample-specific structure may admit an even smaller separating NFA than the positional cover"
+  ]
+}

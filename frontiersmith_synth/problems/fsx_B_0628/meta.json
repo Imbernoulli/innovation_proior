@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0628",
+  "tier": "B",
+  "format": "D",
+  "family": "pit-reset-pacing-plan",
+  "eval_form": "flops",
+  "theme": "endurance race stint and pace planner",
+  "title": "Pit-Reset Pacing: Bang-Bang Stints Under Nonconvex Tire Wear",
+  "objective": "min",
+  "strategies": [
+    "coast at minimum intensity, never pit (trivial baseline)",
+    "best single constant pace with evenly spaced pits (greedy textbook stint)",
+    "stint-position-aware ramp: coast early / push late, pit boundaries chosen jointly via per-stint DP (strong)",
+    "true joint optimum over intensity ramps + uneven stint lengths on the wear envelope (open ceiling, uncovered)"
+  ]
+}

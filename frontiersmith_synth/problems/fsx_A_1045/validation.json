@@ -1,0 +1,161 @@
+{
+  "probdir": "/scratch/gpfs/CHIJ/bohan/fs/innovation_prior/frontiersmith_synth/problems/fsx_A_1045",
+  "gates": {
+    "G0_files": true,
+    "G1_compile": true,
+    "G2_generate": true,
+    "G3_bounds": true,
+    "G4_determinism": true,
+    "G5b_adversarial": true,
+    "G5_feasibility": true,
+    "G6_baseline": true,
+    "G7_discrimination": true,
+    "G8_divergence": true
+  },
+  "metrics": {
+    "config": {
+      "n_cases": 10,
+      "time_s": 5.0,
+      "memory_mb": 512,
+      "checker": "verify.py"
+    },
+    "testdata_bytes": [
+      144,
+      88,
+      420,
+      74,
+      805,
+      101,
+      1037,
+      159,
+      196,
+      238
+    ],
+    "invalid_mean": 0.0,
+    "trivial_mean": 0.300516,
+    "strong_mean": 0.407411,
+    "greedy_mean": 0.340151,
+    "strong_minus_trivial": 0.106895,
+    "exec_divergence": 0.097328
+  },
+  "solutions": {
+    "greedy": {
+      "tier": "greedy",
+      "compiled": true,
+      "mean": 0.340151,
+      "scores": [
+        0.1588,
+        0.1531,
+        0.328,
+        0.19,
+        0.5062,
+        0.2724,
+        0.58,
+        0.3383,
+        0.3884,
+        0.4863
+      ],
+      "statuses": [
+        "OK",
+        "OK",
+        "OK",
+        "OK",
+        "OK",
+        "OK",
+        "OK",
+        "OK",
+        "OK",
+        "OK"
+      ]
+    },
+    "invalid": {
+      "tier": "invalid",
+      "compiled": true,
+      "mean": 0.0,
+      "scores": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "statuses": [
+        "OK",
+        "OK",
+        "OK",
+        "OK",
+        "OK",
+        "OK",
+        "OK",
+        "OK",
+        "OK",
+        "OK"
+      ]
+    },
+    "strong": {
+      "tier": "strong",
+      "compiled": true,
+      "mean": 0.407411,
+      "scores": [
+        0.1588,
+        0.1726,
+        0.328,
+        0.2755,
+        0.5062,
+        0.3239,
+        0.58,
+        0.4902,
+        0.534,
+        0.7048
+      ],
+      "statuses": [
+        "OK",
+        "OK",
+        "OK",
+        "OK",
+        "OK",
+        "OK",
+        "OK",
+        "OK",
+        "OK",
+        "OK"
+      ]
+    },
+    "trivial": {
+      "tier": "trivial",
+      "compiled": true,
+      "mean": 0.300516,
+      "scores": [
+        0.1227,
+        0.1522,
+        0.2485,
+        0.19,
+        0.3767,
+        0.2724,
+        0.4296,
+        0.3383,
+        0.3884,
+        0.4863
+      ],
+      "statuses": [
+        "OK",
+        "OK",
+        "OK",
+        "OK",
+        "OK",
+        "OK",
+        "OK",
+        "OK",
+        "OK",
+        "OK"
+      ]
+    }
+  },
+  "verdict": "PASS",
+  "errors": []
+}

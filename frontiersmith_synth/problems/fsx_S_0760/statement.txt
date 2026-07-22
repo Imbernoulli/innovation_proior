@@ -1,0 +1,115 @@
+# Refreeze Window: Convoy Wave Scheduling
+
+## Problem
+
+An icebreaker fleet keeps a network of shipping **channels** open between `N` ports. Each
+channel (edge) `e` has a **thickness cap** `C_e`: freshly refrozen ice on it is exactly
+`C_e` thick. Breaking a channel while it has thickness `x` costs energy
+
+```
+cost(e, x) = f_e + x^1.5
+```
+
+where `f_e` is a fixed fuel fee. Breaking it resets its thickness to `0`; afterwards it
+**regrows** at a fixed rate `r_e` per unit time, capped at `C_e`. So if a channel was last
+broken at time `t0` and is crossed again at time `t >= t0`, its thickness then is
+`min(C_e, r_e*(t-t0))` — crossing it again *soon* is cheap (ice still thin); waiting lets
+it fully refreeze and the next crossing costs full price again. This applies globally:
+**any** convoy's crossing breaks the channel for **everyone** — it is a shared, decaying
+asset, not a private resource.
+
+You must route `K` convoys. Convoy `i` has an origin `o_i`, a destination `d_i`, and a
+ready time `ready_i` (it cannot depart before then). You choose each convoy's departure
+time and its walk (sequence of channels) from `o_i` to `d_i`; different convoys' walks may
+freely reuse the same channels. Traversing channel `e` takes `L_e` time units.
+
+## Input
+
+```
+N M K
+u_1 v_1 L_1 C_1 r_1 f_1
+...
+u_M v_M L_M C_M r_M f_M
+o_1 d_1 ready_1
+...
+o_K d_K ready_K
+```
+
+- `1 <= u_i, v_i <= N`, channels are undirected. The graph is connected.
+- `1 <= o_i, d_i <= N`, `o_i != d_i`.
+
+## Output
+
+Print exactly `K` lines, one per convoy in input order:
+
+```
+t P e_1 e_2 ... e_P
+```
+
+`t` is the convoy's departure time (`t >= ready_i`); `P` is the number of channels in its
+walk; `e_1..e_P` are 1-indexed channel ids forming a walk from `o_i` to `d_i` (consecutive
+channels must share an endpoint).
+
+## Feasibility
+
+For every convoy: `t >= ready_i`; `1 <= P <= 200`; every `e_j` is a valid channel id;
+the walk actually starts at `o_i` and ends at `d_i`. Any violation scores 0.
+
+## Objective
+
+Collect every convoy's channel crossings as timestamped events: convoy `i`'s `j`-th
+crossing happens at time `t_i + (sum of L of its first j-1 channels)`. Sort **all** events
+from **all** convoys by time (ties broken by convoy, then position). Replay them in that
+order, maintaining each channel's thickness as described above (starting fully frozen at
+`C_e`). Minimize the total energy
+
+```
+F = sum over all events of ( f_e + thickness_e(at that event's time)^1.5 )
+```
+
+## Scoring
+
+Let `B` be the total cost of the checker's own fewest-channel-hop path for every convoy
+(ties broken by smallest channel id), each path costed as if every channel on it were
+fully virgin. Your score on a test is
+
+```
+ratio = min(1.0, (B / max(1, F)) / 10)
+```
+
+so matching `B` scores `0.1`; cutting cost to a tenth of `B` (or below) caps at `1.0`.
+Per-test scores are averaged.
+
+## Constraints
+
+- `2 <= N <= 80`, `1 <= M <= 300`, `1 <= K <= 120`
+- `1 <= L_e <= 10`, `1 <= C_e <= 260`, `1 <= r_e <= 10`, `0 <= f_e <= 50`
+- `0 <= ready_i <= 20000`
+- Time limit: 4s. Memory limit: 512 MiB.
+
+## Example
+
+Input:
+```
+4 3 2
+1 2 2 10 2 1
+2 3 3 8 1 2
+4 2 1 6 3 0
+1 3 0
+4 3 3
+```
+
+Channel 2 (`2-3`, cap 8) is shared by both convoys. Output:
+```
+0 2 1 2
+3 2 3 2
+```
+
+Convoy 1 departs at `t=0`, crosses channel 1 (virgin, cap 10: `1+10^1.5=32.62->33`)
+reaching node 2 at `t=2`, then channel 2 (virgin, cap 8: `2+8^1.5=24.63->25`) reaching
+node 3 at `t=5`. Convoy 2 departs at `t=3`, crosses channel 3 (virgin, cap 6:
+`0+6^1.5=14.70->15`) reaching node 2 at `t=4`, then channel 2 again at `t=4`. Channel 2
+was last broken at `t=2`; elapsed `2`, regrow rate `1`, thickness `min(8,1*2)=2`: cost
+`2+2^1.5=4.83->5`. Total `F=33+25+15+5=78`. The fewest-hop baseline routes both convoys
+the same way but assumes channel 2 is virgin both times: `B=33+25+15+25=98`. Ratio
+`= min(1,(98/78)/10) = 0.1256`.

@@ -1,0 +1,19 @@
+{
+  "id": "fsx_S_0764",
+  "tier": "S",
+  "format": "B",
+  "family": "drought-tail-storage-portfolio",
+  "eval_form": "quality-metric",
+  "theme": "off-grid polar research station power policy",
+  "title": "Two Strata of Cold: A Polar Station's Storage Portfolio",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:conversion-chain-systems"],
+  "mechanisms": ["multi-timescale-buffering", "policy-program-design", "tail-event-hedging"],
+  "innovation_hook": "The two stores serve different probability strata -- the lossy store's optimal steady state is 'nearly always idle', which every efficiency metric calls waste; recognizing insurance as its job is the leap.",
+  "strategies": [
+    "trivial: request zero action on both stores -- generation serves load directly whenever it can, but any drought is entirely unhedged; reproduces the evaluator's own do-nothing baseline (~0.1)",
+    "greedy (the trap): maximize round-trip efficiency by cycling ONLY the small, efficient battery and never routing power through the lossy fuel store at all (its idle 80-90% duty cycle looks like pure waste to any efficiency metric); handles routine noise fine but is defenseless against a multi-tick drought, since the battery's tiny capacity drains in a couple of ticks",
+    "strong (the insight): recognize that the two stores hedge different probability strata -- keep the battery-first behavior for ordinary noise (where it already suffices) but, for windows whose total shortfall clearly exceeds what the battery could ever cover, reallocate ordinary surplus AWAY from the battery and INTO the lossy fuel store over a long lead-in before the drought (the lossy store needs far more raw surplus over far more ticks to bank the same delivered energy), topping the battery back off only in the last few ticks; during the drought itself the fuel store carries the steady bulk of the shortfall while the battery smooths residual spikes",
+    "headroom above strong: solve the joint charge/discharge schedule as an explicit LP/DP over the whole trace (rather than a heuristic lead-in split) to squeeze closer to the rate-limited theoretical ceiling, and to handle overlapping/back-to-back droughts (the twin instances) optimally instead of via independent per-window planning"
+  ]
+}

@@ -1,0 +1,19 @@
+{
+  "id": "fsx_A_0998",
+  "tier": "A",
+  "format": "A",
+  "family": "zealot-majority-tipping",
+  "eval_form": "quality-metric",
+  "theme": "Plant a few zealots to flip a crowd",
+  "title": "Ridgeline Valley: Planting the New Rootstock",
+  "seed_problem": "minimum target-set selection for majority-threshold (bootstrap-percolation-style) dynamics on a graph",
+  "mutation": "composite: (1) replace the uniform-cost exact minimum target set with a NON-UNIFORM recruitment cost per node (a knapsack-flavored budget dimension) and (2) replace 'convert the whole graph to a fixed point' with 'reach a POPULATION-WEIGHTED coverage threshold tau within a FIXED R-round horizon', which removes the classic fixed-point/monotone-closure endpoint and makes both WHICH nodes and HOW MANY within a time budget matter",
+  "objective": "min",
+  "mechanisms": ["majority-dynamics", "opinion-tipping-stubborn", "seed-budget"],
+  "innovation_hook": "Majority-dynamics tipping is achieved by nucleating self-sustaining local-majority domains, favoring dense pockets over global hubs.",
+  "strategies": [
+    "trivial: recruit every household as a seed grower (reproduces the checker's do-everything baseline, always feasible, ratio ~0.1)",
+    "naive greedy: rank households once by raw weighted trust-degree (the 'best-connected household is most influential' recipe), binary-search the smallest degree-ranked prefix that clears the coverage target -- ignores cost and is drawn to cheap-looking high-degree hubs whose ties carry little leverage over any single neighbor",
+    "insight (strong): rank households once by a leverage score -- for each tie, the SQUARE of the tie weight divided by the neighbor's own total trust-weight, cost-normalized -- which rewards nodes whose neighbors are themselves low-degree (dense pocket members, where one tie is a big share of a neighbor's vote) over hub nodes (whose many neighbors are each barely moved by one hub tie), then binary-searches the smallest leverage-ranked prefix that clears the target; this nucleates whole pockets into self-sustaining NEW domains instead of chasing raw connectivity"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_1020",
+  "tier": "B",
+  "format": "C",
+  "family": "differential-adhesion-sorting",
+  "eval_form": "quality-metric",
+  "theme": "cells that sort into a chosen pattern",
+  "title": "Frustrated Adhesion: Sorting Cells Into a Chosen Ring Pattern",
+  "objective": "min",
+  "strategies": [
+    "do-nothing baseline: J = 0 everywhere (no adhesion preference, dynamics never moves a cell, arrangement stays at its random initial state) -- reproduces the checker's own internal baseline",
+    "like-likes-like (diagonal-dominant): J[a][a] = -Jmax (maximally sticky same-type), J[a][b] = +Jmax for a!=b (maximally repulsive cross-type), used unconditionally regardless of the requested target topology -- the classical Steinberg differential-adhesion intuition; this nails engulfment/blob targets but actively drives AWAY from interleaved targets, since it maximizes same-type clustering when the target wants the opposite -- the trap",
+    "target-aware frustration search: read target_type, then simulate (using the SAME deterministic swap dynamics the checker uses) a small menu of candidate matrices spanning both signs and magnitudes -- diagonal-dominant, fully frustrated (off-diagonal favored over diagonal, the counter-intuitive choice), and half-strength variants of each -- and submit whichever candidate's simulated final arrangement gets closest to the requested topology; this exploits that non-blob (interleaved) targets are only stable minima under frustrated adhesion, the opposite of the intuitive like-likes-like rule"
+  ]
+}

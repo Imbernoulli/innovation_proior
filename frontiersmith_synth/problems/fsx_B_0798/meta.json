@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0798",
+  "tier": "B",
+  "format": "C",
+  "family": "optical-launch-power-reach",
+  "eval_form": "quality-metric",
+  "theme": "Tune laser power against nonlinear fiber noise",
+  "title": "Fiber Reach Tuning",
+  "objective": "max",
+  "strategies": [
+    "trivial: one amplifier at the transmitter, smallest allowed power, no spacing or power decision at all",
+    "greedy: amplify every candidate node (maximum density) and blast every span at the largest allowed power (obvious 'more is always better' recipe)",
+    "strong: reformulate as a DAG over amplifier positions where a span's contribution depends only on the noise accumulated so far, then run a Pareto-frontier dynamic program (maximize reach, minimize accumulated noise) that lets each span's power sit near its own interior SNR optimum instead of one power for the whole line",
+    "invalid: first amplifier is not the transmitter node, and a power level outside the allowed discrete set"
+  ]
+}

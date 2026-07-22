@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_0650",
+  "tier": "C",
+  "format": "C",
+  "family": "crowd-energy-hysteresis-setlist",
+  "eval_form": "quality-metric",
+  "theme": "concert setlist against a modeled crowd",
+  "title": "Setlist Against the Crowd: Manufacturing the Pre-Encore Valley",
+  "objective": "max",
+  "strategies": [
+    "baseline: play the calmest (lowest-energy) songs first and don't even use the whole time budget (checker's own trivial reference, ~0.1)",
+    "greedy: sort candidate songs by energy descending, add whichever fit the time budget, play in that order -- ignores the saturating (1-E) marginal value and the similarity-fatigue memory entirely, so it front-loads the finale and then dumps a long run of same-style bait songs that crashes the crowd state right before the set ends",
+    "strong: identify the style-group holding the loudest song(s), reserve them to close the set; build the opening from a marginal-value/exchange test (include an opener only if it does not hurt the exact simulated score against the reserved closers) which naturally favors cheap, stylistically diverse filler over same-style bait runs, manufacturing a deliberate low-energy valley that buys back (1-E) headroom right before the climax; a bounded deterministic relocation pass polishes the order",
+    "further headroom above strong: smarter combinatorial search over which/how-many songs to reserve as multi-song closer runs, adaptive valley depth tuned to the exact alpha/decay/gamma triple, or exact DP/ILP over subset+order for small N"
+  ]
+}

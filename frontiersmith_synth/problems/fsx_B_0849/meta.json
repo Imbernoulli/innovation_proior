@@ -1,0 +1,18 @@
+{
+  "id": "fsx_B_0849",
+  "tier": "B",
+  "format": "A",
+  "family": "channel-map-interference-seasons",
+  "eval_form": "quality-metric",
+  "seed_problem": "seasonal weighted frequency assignment (assign one channel per tower to minimize weighted same-channel conflict)",
+  "mutation": "composite: the objective is not the sum or max of per-season conflict, but the SUM OF THE TWO WORST of seven season-specific conflict totals, over a single year-round assignment (fixed frequency-assignment coupled with seasonal-conflict-weights and sum-of-worst-two-scoring)",
+  "objective": "min",
+  "theme": "radio channels that endure summer foliage and winter clarity",
+  "title": "Seasonal Spectrum Assignment",
+  "strategies": [
+    "trivial: round-robin channel assignment ch_i = ((i-1) mod C) + 1, ignoring all weights (the checker's own baseline B)",
+    "naive greedy: order towers by total edge weight summed over ALL seven seasons and greedily assign each the channel minimizing incremental TOTAL weighted conflict -- this average-weighting proxy is blind to which two seasons actually end up binding, so it happily lets 'individually cheap-looking' hot-season edges collide while fighting to avoid 'individually expensive-looking' edges whose damage is actually spread thin across five non-binding seasons",
+    "union-conservative variant: the same failure mode reframed as trying to avoid every interfering pair regardless of season, burning channel diversity on conflicts that never co-occur in a single season",
+    "insight (strong): directly optimize the true sum-of-worst-two objective with incremental coordinate descent -- for each tower, evaluate the resulting top-two season sum (not a total-weight proxy) for every channel choice, always steering collisions away from whichever pair of seasons is currently binding and load-balancing the sacrificed conflict across the five non-binding seasons so none of them grows large enough to become binding either"
+  ]
+}

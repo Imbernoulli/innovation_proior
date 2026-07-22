@@ -1,0 +1,17 @@
+{
+  "id": "fsx_S_0927",
+  "tier": "S",
+  "format": "B",
+  "family": "dispatcher-over-instance-families",
+  "eval_form": "quality-metric",
+  "theme": "one solver that must never meet its nemesis",
+  "title": "One Circuit, No Nemesis",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:scenario-robust-design"],
+  "strategies": [
+    "x-sort baseline: visit stops left to right by x-coordinate only, ignoring all other structure (reproduces the evaluator's weak reference)",
+    "single-recipe nearest-neighbor: always hop to the closest unvisited stop; a genuinely useful heuristic that nonetheless gets stranded on radiating spoke networks (commits to one spoke's tip, then pays a huge unavoidable jump back) and on winding corridors (nearest unvisited stop can be across the fold rather than along the path)",
+    "probe-then-dispatch: compute two cheap O(n log n)/O(n^2) structural probes from the raw points (coefficient of variation of nearest-neighbor distances; convex-hull vertex fraction), route to whichever of {nearest-neighbor, angular sweep, row-band boustrophedon} avoids that probe signature's known failure mode, then apply a shared bounded 2-opt polish that every branch reuses",
+    "exhaustive local search from any construction: seeded, deterministic 2-opt refinement passes on top of a chosen starting tour to squeeze out remaining crossings"
+  ]
+}

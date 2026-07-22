@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0951",
+  "tier": "A",
+  "format": "B",
+  "family": "crossfeeding-biofilm-layout",
+  "eval_form": "quality-metric",
+  "theme": "microbes that feed on each other's waste",
+  "title": "Waste-Fed Row: Cross-Feeding Biofilm Layout",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:morphogenesis-and-growth"],
+  "strategies": [
+    "naive monoculture: inoculate every cell with the same fixed species regardless of the instance (matches the evaluator's own weak reference, ratio ~0.1)",
+    "single most efficient consumer: read vmax off every species and fill the whole strip with the single highest-vmax species -- the tempting but self-poisoning trap",
+    "avoid-inhibition monoculture: fill the strip with a slower but uninhibited species to dodge self-poisoning -- still a monoculture, still leaves cross-feeding on the table",
+    "spatial cross-feeding layout: interleave the fast producer with its waste-consuming partner (chosen by comparing vmax*yield across all species matching its byproduct type) so waste never accumulates and both grow"
+  ]
+}

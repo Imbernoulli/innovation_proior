@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_0883",
+  "tier": "A",
+  "format": "D",
+  "family": "bwt-run-minimization",
+  "eval_form": "flops",
+  "theme": "Choose ordering to minimize BWT runs",
+  "title": "Custom-Order BWT: Minimize Runs by Reordering and Rotating",
+  "objective": "minimize",
+  "strategies": [
+    "identity alphabet order, no rotation (trivial, the textbook default)",
+    "single-pass clustering: sort symbols by their single most-common predecessor, r=0 (greedy)",
+    "predecessor-clustering seeded local search (simulated annealing) over the order plus an informed rotation search (strong)",
+    "true run-count-minimizing alphabet order (finding it is a hard combinatorial ordering problem; open ceiling, uncovered)"
+  ]
+}

@@ -37,6 +37,30 @@ SYNTH_ROOT = str(HARNESS_DIR.parent)           # hidden from sandboxed solutions
 _BWRAP = shutil.which("bwrap")
 _SB_ENV = {"HOME": "/tmp", "PATH": "/usr/bin:/bin", "TMPDIR": "/tmp",
            "OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1", "MKL_NUM_THREADS": "1"}
+_BWRAP_NETNS_ERRORS = (
+    "NETLINK_ROUTE",
+    "CLONE_NEWNET",
+    "network namespace",
+    "Operation not permitted",
+)
+
+
+def _bwrap_netns_failed(stderr):
+    return any(s in (stderr or "") for s in _BWRAP_NETNS_ERRORS)
+
+
+def _solution_bwrap_cmd(cmd, exe, dst, unshare_net=True):
+    inner = (cmd[:-1] + [f"/tmp/{'sol.py' if exe.endswith('.py') else 'sol'}"])
+    if exe.endswith(".py"):
+        inner = [sys.executable or "python3", "-I", "--", "/tmp/sol.py"]
+    bcmd = [_BWRAP, "--dev-bind", "/", "/", "--tmpfs", SYNTH_ROOT, "--tmpfs", "/tmp",
+            "--ro-bind", dst, f"/tmp/{'sol.py' if exe.endswith('.py') else 'sol'}",
+            "--unshare-pid"]
+    if unshare_net:
+        bcmd.append("--unshare-net")
+    bcmd += ["--unshare-ipc", "--unshare-uts", "--proc", "/proc",
+             "--die-with-parent", "--new-session", "--chdir", "/tmp"]
+    return bcmd + inner
 
 
 def sandbox_run_solution(cmd, inf, outf, timeout, cwd):
@@ -49,13 +73,7 @@ def sandbox_run_solution(cmd, inf, outf, timeout, cwd):
         dst = os.path.join(tmpd, "sol")
         shutil.copyfile(exe, dst); os.chmod(dst, 0o755)
         if _BWRAP:
-            inner = (cmd[:-1] + [f"/tmp/{'sol.py' if exe.endswith('.py') else 'sol'}"])
-            if exe.endswith(".py"):
-                inner = ["python3", "-I", "--", "/tmp/sol.py"]
-            bcmd = [_BWRAP, "--dev-bind", "/", "/", "--tmpfs", SYNTH_ROOT, "--tmpfs", "/tmp",
-                    "--ro-bind", dst, f"/tmp/{'sol.py' if exe.endswith('.py') else 'sol'}",
-                    "--unshare-pid", "--unshare-net", "--unshare-ipc", "--unshare-uts",
-                    "--proc", "/proc", "--die-with-parent", "--new-session", "--chdir", "/tmp"] + inner
+            bcmd = _solution_bwrap_cmd(cmd, exe, dst)
             env = dict(_SB_ENV)
         else:
             bcmd, env = cmd, None
@@ -63,6 +81,16 @@ def sandbox_run_solution(cmd, inf, outf, timeout, cwd):
             try:
                 r = subprocess.run(bcmd, stdin=fi, stdout=fo, stderr=subprocess.PIPE,
                                    timeout=timeout, env=env)
+                # Some managed HPC/container nodes allow bwrap mount/pid namespaces but reject
+                # creating a network namespace. Keep source-tree and /proc isolation instead of
+                # falling all the way back to an unsandboxed run.
+                if _BWRAP and r.returncode != 0 and _bwrap_netns_failed(r.stderr.decode("utf-8", "replace")):
+                    fi.seek(0)
+                    fo.seek(0)
+                    fo.truncate()
+                    r = subprocess.run(_solution_bwrap_cmd(cmd, exe, dst, unshare_net=False),
+                                       stdin=fi, stdout=fo, stderr=subprocess.PIPE,
+                                       timeout=timeout, env=env)
                 return r.returncode, False
             except subprocess.TimeoutExpired:
                 return None, True

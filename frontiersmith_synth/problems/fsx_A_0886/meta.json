@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_0886",
+  "tier": "A",
+  "format": "B",
+  "family": "percolation-firebreak-placement",
+  "eval_form": "quality-metric",
+  "theme": "firebreaks against an unpredictable blaze",
+  "title": "Firebreaks Against an Unpredictable Blaze",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:morphogenesis-and-growth"],
+  "strategies": [
+    "trivial: spend none of the budget (empty firebreak placement); reproduces the evaluator's own do-nothing baseline exactly, ~0.1",
+    "greedy: wall off the single most-likely downwind path out of the historical hot zone -- a straight firebreak line starting just outside the hot zone in the prevailing wind direction, thickened perpendicular if budget remains; defends one corridor and ignores the rest of the connected flammable cluster and the days the wind blows some other way",
+    "strong: recursive BFS-distance-layer bisection of the giant flammable component(s) -- repeatedly cuts the currently-largest fragment at the distance layer (from an extreme corner) that fits the remaining budget and best balances the two resulting sides, capping the size any ignition can reach regardless of where it starts or which way the wind blows that day; never looks at the hot zone or wind at all",
+    "invalid: request 5x+50 cells, all duplicates of the same cell -- fails both the budget cap and the distinctness check, scores 0.0"
+  ]
+}

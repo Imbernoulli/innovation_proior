@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0950",
+  "tier": "B",
+  "format": "E",
+  "family": "shading-law-scaler",
+  "eval_form": "quality-metric",
+  "theme": "decoding rug merchants' haggling rule",
+  "title": "The Rug Merchants' Haggling Ledger",
+  "objective": "min",
+  "strategies": [
+    "trivial: predict price = v (quote the full appraisal, no haggling at all) -> reproduces the checker's own baseline exactly, Ratio ~= 0.1",
+    "greedy: the domain-obvious recipe -- estimate the empirical shading ratio price/v separately for each training n in {2..6}, fit a plain LINEAR trend of that ratio against n, and multiply by v for any (n,v). Nails the quiet-day training range but has no saturation (the ratio keeps climbing past 1.0 when linearly extrapolated to n=25/60) and no value-curvature term at all (pure multiplicative model), so it misses the appraisal-risk surcharge entirely and blows up on both held-out axes",
+    "strong: impose the economic asymptote as a HYPOTHESIS-SPACE constraint before fitting anything -- posit price = v*(n-1)/((n-1)+rho) + kappa*(v-mu)**2/mu (shading -> 0 as competition -> infinity, by construction; risk term a pure function of value only). For each candidate rho the risk coefficient kappa is a closed-form 1-D least squares fit on the shading residual, so a 1-D scan over rho (coarse then refined) recovers both parameters from the quiet-day ledger. Because the FORM is right, it generalises to n=25/60 and to extreme appraisals it never trained on",
+    "headroom above strong: also model the mild v-dependence of rho itself (search whether shading strength drifts with appraisal size, not just n) and use a robust loss for the noisy quiet-day rows to push the rho/kappa estimates toward the noise floor"
+  ]
+}

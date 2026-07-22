@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0580",
+  "tier": "B",
+  "format": "C",
+  "family": "cascade-seed-subsidy",
+  "eval_form": "quality-metric",
+  "theme": "heat-pump rebates spreading through a village",
+  "title": "Corridor Rebates: Budgeted Subsidies for a Heat-Pump Cascade",
+  "objective": "max",
+  "strategies": [
+    "uniform baseline: split the budget evenly across every household; only the already-eager ones flip",
+    "cheapest-to-convert knapsack: pay each household's own self-activation cost theta_i/r_i in ascending order until the budget runs out, ignoring the network",
+    "continuation-value allocation: fund a household only for the downstream cascade it unlocks -- enter a corridor once, then spend near-threshold top-ups to walk the whole chain",
+    "corridor knapsack: treat each induced chain as an item (adopters gained vs. head + top-up cost) and pack corridors against the budget, funding heads only where the last node pays off"
+  ]
+}

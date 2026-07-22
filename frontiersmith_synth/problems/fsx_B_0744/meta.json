@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_0744",
+  "tier": "B",
+  "format": "C",
+  "family": "metabolic-flux-tuning",
+  "eval_form": "quality-metric",
+  "theme": "Set enzyme levels for target metabolic fluxes",
+  "title": "Enzyme Staging for Target Flux",
+  "objective": "min",
+  "strategies": [
+    "trivial: set every enzyme to e_max_i/2, ignoring the target entirely -- reproduces the checker's own baseline (~0.1)",
+    "greedy: invert the Michaelis-Menten law per reaction using the GIVEN nominal reference concentration x_ref (the steady state at a uniform e=1 profile), treating that concentration as fixed regardless of the target -- correct when the target is close to nominal, badly wrong wherever the target redistributes flux across a shared branch point (the actual concentration there swings far from x_ref, flipping some reactions between the saturated and limiting regime)",
+    "strong: derive the concentration EACH metabolite would have to sit at for the target flux vector itself to be self-consistent (via the tree's production/consumption balance), classify each reaction against its Km at that derived concentration, and invert the exact rate law there instead of at the stale reference -- an exchange of 'assume x is fixed' for 'solve for the x the target implies'",
+    "invalid: emits non-finite (NaN) enzyme values"
+  ]
+}
