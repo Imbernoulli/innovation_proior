@@ -6,36 +6,7 @@ If the weights are frozen, then whatever I learn has to live in the *input*. Whe
 
 That suggests a reframing I want to test rather than assume: that a "word", as far as the frozen model is concerned, just *is* a vector at this lookup boundary, and the vocabulary the model can talk about is exactly the set of vectors that enter the transformer. If that's true, then to teach the model a new concept I don't need a new sentence and I don't need new weights — I need a new *vector*. The plan would be: designate a placeholder string, call it $S_*$, make sure it tokenizes to one token, and intercept that token's embedding lookup with a learnable vector $v_*$. Then any prompt containing $S_*$ — "a photo of $S_*$", "an oil painting of $S_*$" — gets tokenized, the placeholder position receives $v_*$, and the rest of the frozen pipeline treats it as an ordinary word.
 
-Before I get attached to this, I should check the two mechanical claims it rests on, because if either is false the whole approach is dead. Claim one: the placeholder really does collapse to a single token I can target. With a BERT-style tokenizer, a tokenized string comes back padded to a fixed length with zeros, so a one-token word should look like `[CLS] token [SEP] 0 0 …`. Counting nonzeros is then a clean test — three for a genuine single token, four if the "word" secretly split into two pieces. Let me run that out:
-
-```
-single-token  ids = [101, 1037,  102,    0,   0,   0]  -> count_nonzero = 3
-two-token     ids = [101, 1037, 2061,  102,   0,   0]  -> count_nonzero = 4
-ids[0,1] = 1037   # the token I'd actually grab
-```
-
-So `assert count_nonzero == 3` is exactly the guard I want, and `ids[0,1]` picks out the placeholder's token id. Good — the single-token assumption is enforceable, not just hoped for.
-
-Claim two is the substitution itself: when a prompt contains $S_*$ at some arbitrary position, can I swap *that slot's* embedding for $v_*$ and leave everything else untouched, across a whole batch where the placeholder lands in different positions? Let me trace it concretely. Take two prompts in a batch, placeholder token id 7, and a tiny embedding dimension of 4 so I can read the tensors:
-
-```
-tokenized = [[1, 2, 3, 7, 99],     # placeholder in slot 3
-             [1, 2, 7, 4, 99]]      # placeholder in slot 2
-positions = where(tokenized == 7) = (rows [0,1], cols [3,2])
-v_star    = [-1, -2, -3, -4]
-```
-
-After `embedded[positions] = v_star`:
-
-```
-row 0:  [ 0  1  2  3]      row 1:  [20 21 22 23]
-        [ 4  5  6  7]              [24 25 26 27]
-        [ 8  9 10 11]              [-1 -2 -3 -4]   <- slot 2 replaced
-        [-1 -2 -3 -4]   <- slot 3 replaced   [32 33 34 35]
-        [16 17 18 19]              [36 37 38 39]
-```
-
-That's what I wanted: `torch.where` finds the placeholder in each row independently — slot 3 in the first, slot 2 in the second — and `v_*` is broadcast into precisely those positions while every other embedding is byte-for-byte unchanged. So I really am injecting a pseudo-word into the model's vocabulary, at whatever position it appears, without changing the tokenizer or the old embedding table. And whether composition "comes for free" is now a concrete empirical question rather than a slogan: $v_*$ sits in the same space as every real word, so *if* the frozen transformer already knows how to combine words, it should combine this one too — but that's something the editability experiments will have to actually show, not something I get to declare here.
+Two mechanical questions decide whether this plan even parses. First: does the placeholder really tokenize to one slot I can target? A BERT-style tokenizer pads every string to a fixed length with zeros, so a one-token word comes back as `[CLS] token [SEP] 0 0 …` — three nonzero entries — while a word that silently splits into two sub-word pieces comes back with four. `assert torch.count_nonzero(ids) == 3` is therefore a real guard, not a hope, and `ids[0,1]` is the token id to grab. Second: can I swap *that slot's* embedding for $v_*$ and leave every other position untouched, even though the placeholder lands at a different index in every prompt in a batch? `torch.where(tokenized_text == placeholder_id)` returns the (row, column) pairs where the placeholder sits, independently per row, so `embedded_text[positions] = v_*` broadcasts the new vector into exactly those slots and nowhere else — no change to the tokenizer, no change to any other word's embedding. So I really can inject a pseudo-word into the model's vocabulary, at whatever position it appears. Whether that pseudo-word then *composes* the way a real word would — combining with "on the beach" or "as an oil painting" the way "cat" does — is a separate, empirical question that the editability experiments below will have to answer; sitting in the same space as real words is necessary for that but not sufficient.
 
 Now, what objective do I optimize $v_*$ with? This is where I have to be careful. There's earlier work that put representations in this same embedding space using contrastive or language-completion losses, and at first that seems like the natural precedent to follow. But think about what those losses *require*. A contrastive loss asks: is this embedding close to the image in some joint space? A completion loss asks: does this embedding predict plausible surrounding text? Neither one ever forces the embedding to encode enough to *redraw* the object pixel by pixel. They can be fully satisfied by an embedding that means "a sculpture-ish thing" — coarse semantics — while staying blind to the specific geometry and surface. And the thing I'm going to ask the model to do is *synthesize the appearance*. The objective should match the downstream use. So I want to optimize the embedding with the exact objective the model uses for synthesis: the denoising reconstruction loss. If the embedding is good, then conditioning on it should let the frozen denoiser reconstruct my images from noise. Reconstruction is the one objective that can't be satisfied without putting fine visual detail into the vector — you cannot denoise back to *my* sculpture's silhouette and texture from a vector that only knows "sculpture-ish".
 
@@ -43,22 +14,13 @@ Concretely, I reuse the model's own training loss, unchanged:
 $$v_* = \arg\min_v \; \mathbb{E}_{z\sim\mathcal{E}(x),\,y,\,\epsilon\sim\mathcal{N}(0,1),\,t}\big[\lVert \epsilon - \epsilon_\theta(z_t, t, c_\theta(y))\rVert_2^2\big],$$
 where $x$ ranges over my few images, $z=\mathcal{E}(x)$ is its latent, $z_t$ is that latent noised to time $t$, and the prompt $y$ is a short neutral template containing $S_*$. Both $c_\theta$ (text encoder) and $\epsilon_\theta$ (denoiser) stay frozen; the *only* thing the gradient should update is $v_*$.
 
-But "should update only $v_*$" is itself a claim I should verify, not assume — $v_*$ flows through the frozen encoder and the frozen denoiser before it ever reaches the loss, and it would be easy to be wrong about whether gradient quietly leaks into those frozen modules. Let me build a stripped-down analogue: a "frozen encoder" matrix $W_{\text{enc}}$ and "frozen denoiser" $W_{\text{den}}$, both with `requires_grad=False`, one trainable leaf $v_*$ substituted into a slot of the embedding, push it through both matrices to a prediction, take the MSE against a noise target, and backprop:
-
-```
-v_star.grad is not None : True
-v_star.grad nonzero     : True
-W_enc.requires_grad / W_den.requires_grad : False  False
-W_enc.grad : None     W_den.grad : None
-```
-
-So gradient does reach $v_*$ (non-None and actually nonzero — the update is real), and the two frozen matrices receive `grad = None` even though they sit squarely on the forward path. Freezing them with `requires_grad_(False)` is enough; nothing else moves. That's the property the whole method depends on, and it holds. Same training scheme as the original model, same loss, one trainable vector. There's something satisfying about that — I'm not inventing a new loss, I'm asking "what single embedding, plugged into your existing machinery, makes you able to denoise images of my concept?"
+$v_*$ flows through the frozen encoder and the frozen denoiser before it reaches the loss, so it's worth being precise about what "optimize only $v_*$" requires in practice: `requires_grad_(False)` on the autoencoder, the denoiser, and the text encoder is sufficient on its own. Both frozen modules sit squarely on the forward path yet come back with `grad = None`; the substituted leaf $v_*$ is the only tensor that receives a real, nonzero gradient. Nothing needs to be masked or detached — the optimizer just has to be built over $[v_*]$ and no other parameter. Same training scheme as the original model, same loss, one trainable vector: I'm not inventing a new loss, I'm asking what single embedding, plugged into the existing frozen machinery, lets it denoise images of my concept.
 
 The prompts $y$: I don't want to overfit to one phrasing, and I don't have a caption for the concept anyway. So I sample neutral context templates — "a photo of a $S_*$", "a rendition of a $S_*$", "a cropped photo of the $S_*$", "a close-up photo of the $S_*$", and so on — the kind of generic, content-free scaffolding used for class templates. Randomizing over them means $v_*$ has to carry the concept's appearance regardless of the surrounding boilerplate, rather than entangling with one specific sentence.
 
 Initialization. Starting $v_*$ from random noise seems wasteful — I actually know a coarse category for the concept ("sculpture", "cat"). The embedding of that single coarse word already sits in a sensible region of the space and already pulls the right kind of prior. So initialize $v_*$ with the embedding of a one-word descriptor. It gives the optimization a running start in the right neighborhood instead of wandering in from nowhere.
 
-Let me sanity-check the optimization itself. I have one embedding vector — 1280 dimensions in this LDM text encoder — and a handful of images. The loss is the standard diffusion loss, so I keep the original hyperparameters; the only knob with real leverage is the learning rate. A few thousand steps should be plenty for one vector. Fine.
+The optimization itself is modest in scale: one 1280-dimensional embedding vector against a handful of images, using the standard diffusion loss and the original LDM hyperparameters — the only knob with real leverage on the result should be the learning rate, and a few thousand steps ought to be plenty for a single vector.
 
 Now — is one vector enough? My instinct says I'm leaving capacity on the table. A single embedding has to encode an entire object's appearance, and intuitively that's a tight bottleneck. This is exactly where the GAN-inversion playbook is screaming at me, because GAN inversion is the established craft of "find a latent that reproduces this image," and it learned hard lessons I should not have to relearn. Let me bring its moves over and actually try them, because the embedding space here is uncharted and I have no idea which of its intuitions transfer.
 
@@ -116,26 +78,6 @@ class EmbeddingManager(nn.Module):
 
 emb = EmbeddingManager(ldm.cond_stage_model, "*", "sculpture")
 optimizer = torch.optim.AdamW([emb.v_star], lr=0.04)  # 0.005 base, scaled by 2 GPUs x batch 4
-
-templates = ["a photo of a {}", "a rendering of a {}", "a close-up photo of the {}", ...]
-
-for step in range(5000):
-    img = sample_concept_batch()                   # the 3-5 photos, repeatedly sampled
-    with torch.no_grad():
-        posterior = ldm.encode_first_stage(img)
-        z = ldm.get_first_stage_encoding(posterior)
-    eps = torch.randn_like(z)
-    t   = torch.randint(0, ldm.num_timesteps, (z.shape[0],), device=z.device)
-    z_t = ldm.q_sample(x_start=z, t=t, noise=eps)
-
-    prompts = [random.choice(templates).format("*") for _ in range(z.shape[0])]
-    c = ldm.cond_stage_model.encode(prompts, embedding_manager=emb)
-
-    eps_pred = ldm.apply_model(z_t, t, c)
-    loss = F.mse_loss(eps_pred.float(), eps.float())   # the unchanged epsilon objective
-    loss.backward()
-    optimizer.step()
-    optimizer.zero_grad()
 ```
 
-The causal chain, start to end: I can't describe my concept in words, and finetuning would forget the prior, so I freeze the model and look for the most directly optimizable place the input enters — the per-token embedding boundary, where I checked that a single placeholder token can be isolated and its embedding swapped position-independently across a batch. A "word" to this model is just a vector there, so a new concept is a new vector $v_*$. Because generation is visual, I optimize that vector with the model's own denoising-reconstruction loss over a few images in neutral templates, seeding it from a coarse-word embedding and optimizing only that standalone replacement parameter — and I confirmed the gradient really does reach only $v_*$ while the frozen modules on its path stay at `grad = None`. Reaching for GAN-inversion tricks — more vectors, progressive growth, regularization, per-image tokens — buys nothing or hurts once I measure reconstruction and editability separately, because the real structure is a distortion–editability tradeoff, and a single vector already sits at a good point on it whose location I tune with the learning rate; verbose human captions are worse still, since selective attention lets a long description crowd out the requested edit. One learnable vector, frozen everything else: a new word in the model's vocabulary.
+Everything around that class is just the LDM's own training step, wired to route through the embedding manager: freeze the autoencoder, the denoiser, and the text encoder; encode the concept images into latents; noise them to a random timestep; sample a neutral template with the placeholder inside it; run the frozen forward pass through `EmbeddingManager` and the denoiser; and take the same unchanged epsilon-prediction MSE the original model was trained with. Five thousand steps of that, over the 3-5 concept photos resampled each step, is the entire procedure — no new loss term, no architecture change, one parameter.

@@ -2,7 +2,7 @@ Let me start from what actually fails in front of me. The job is long-term multi
 
 So what is on the shelf. The linear forecasters, DLinear-style, take each series, split it into a moving-average trend and a remainder, run one linear map per piece straight from the `T`-step past to the `S`-step future, and sum. Channel-independent, no attention, and they hold their own against the temporal-attention Transformers. That tells me something useful right away: the *generation* step — turning a learned representation of the past into the whole future horizon — is well handled by a plain linear map. I should not be building a decoder that autoregresses the future. But DLinear is useless for my actual problem: being channel-independent and linear, it has no way to let a side channel touch the target. Exogenous information is simply invisible to it.
 
-PatchTST is the obvious next rung. It chops each series into subseries-level patches, embeds each patch as a token, and runs self-attention over the patch tokens, with one shared backbone per series — channel independence again. The patching is the good idea: a single time point is too local to be a meaningful unit, but a patch of `P` consecutive steps carries local temporal semantics, and attention over patches reads off the intra-series temporal dependency cleanly. For modeling the *target's own* temporal structure this is exactly what I want. But it is channel-independent by construction. It never mixes channels. So just like DLinear, the side channels can't reach the target — the cross-variate correlation I need is outside its hypothesis class entirely.
+PatchTST is the obvious next candidate. It chops each series into subseries-level patches, embeds each patch as a token, and runs self-attention over the patch tokens, with one shared backbone per series — channel independence again. The patching is the good idea: a single time point is too local to be a meaningful unit, but a patch of `P` consecutive steps carries local temporal semantics, and attention over patches reads off the intra-series temporal dependency cleanly. For modeling the *target's own* temporal structure this is exactly what I want. But it is channel-independent by construction. It never mixes channels. So just like DLinear, the side channels can't reach the target — the cross-variate correlation I need is outside its hypothesis class entirely.
 
 iTransformer pushes the other lever. It inverts what a token is: take a variate's whole look-back, all `T` points, and make *that* one token via a linear `R^T → R^D` map, so I get `C` tokens, one per channel, and the stock encoder's self-attention now runs *across* channels. The score between channel `i`'s token and channel `j`'s token is a clean cross-variate correlation — finally the side channels can influence the target. But look at what it cost. The target's whole series got crushed into a single coarse vector by one linear projection; all the fine intra-series temporal detail that PatchTST's patches preserved is gone. And it treats every channel as an equal token: self-attention over `C` tokens is `O(C²)`, and most of that compute is modeling interactions *into* channels I never predict, while letting their noise flow straight into the target's representation. For ECL that's 320 informer channels, for Traffic 861 — quadratic in exactly the dimension that is largest, spent on the part I care least about. Crossformer does mix both time and variate, but only by redesigning the attention layer and patching every channel, which is the same noise-from-irrelevant-channels problem plus new machinery.
 
@@ -20,11 +20,11 @@ So I need a meeting point: some representation of the target that is at the *sam
 
 Where have I seen a single node whose only job is to aggregate a whole token sequence into one summary? The vision Transformer's class token. It's a learnable parameter — not a function of any one patch — that you prepend to the patch sequence, and through self-attention it is forced to collect information from the whole image and become the global descriptor. The mechanism is the point: because it shares the self-attention with the patches, it both *reads* from all of them (aggregates) and, on the next layer, is something the patches can *read back* from. That is precisely the dual role I need. So introduce a learnable global token `G` for the target series: one extra `D`-dimensional learnable vector, concatenated onto the `N` patch tokens.
 
-Let me check that this `G` does the three jobs I need, by running it through the attentions. First, fold `G` into the target's self-attention: attend over the concatenation `[P_en, G]`, all `N + 1` tokens together. Inside that single self-attention three interactions happen at once. Patch-to-patch: the ordinary intra-target temporal dependency, unchanged from PatchTST. Patch-to-global: each patch attends to `G`, so once `G` carries the exogenous influence, every patch can read it. Global-to-patch: `G` attends to all patches, aggregating the whole target series into itself — the class-token behavior. One stock self-attention layer over `[P_en, G]` gives me all three for free; I don't have to write them separately.
+Running `G` through the attentions, it does three jobs at once. First, fold `G` into the target's self-attention: attend over the concatenation `[P_en, G]`, all `N + 1` tokens together. Inside that single self-attention three interactions happen at once. Patch-to-patch: the ordinary intra-target temporal dependency, unchanged from PatchTST. Patch-to-global: each patch attends to `G`, so once `G` carries the exogenous influence, every patch can read it. Global-to-patch: `G` attends to all patches, aggregating the whole target series into itself — the class-token behavior. One stock self-attention layer over `[P_en, G]` gives me all three for free; I don't have to write them separately.
 
 Second, the bridge to the side channels. I want exogenous information to flow into the target but not the reverse — in the single-endogenous setting I never predict the side channels, and I don't want the target's patches sending noise into them or paying to model that direction. That one-directional read is exactly what cross-attention does in multi-modal fusion: queries from one stream, keys and values from the other, so the query side reads from the value side without the value side reading back. So make the *global token the query* and the exogenous variate tokens the keys and values: `G` attends over `V_ex`, pulling in whatever the side channels say, and the side channels get nothing back. And because only `G` queries them — not all `N` patches — the cross-attention for one target is `O(C_ex)` in the number of exogenous variate tokens, not `O(N·C_ex)` and not the `O(C_ex²)` self-attention among informers would cost. For 320 or 861 informer channels that is the difference that matters, and it falls out naturally from routing everything through the single bridge node instead of letting every patch talk to every channel.
 
-Let me make sure the bridge actually reaches the patches. The path is: exogenous variate tokens → (cross-attention) → `G` → (the next self-attention over `[patches, G]`, via global-to-patch) → patches. In the current block the global token absorbs the external information after the endogenous self-attention has already run; the FFN is position-wise, so it does not mix that information into the patch tokens by itself. The distribution to patches happens when the next block's self-attention lets patches attend to the updated global token. If there is only one block, the flattened head still sees both the patch tokens and the exogenous-updated global token directly. That's the whole information pathway, and it only works because `G` lives in both the target-token sequence and the exogenous cross-attention.
+The path from exogenous tokens back to patches runs entirely through `G`: exogenous variate tokens → (cross-attention) → `G` → (the next self-attention over `[patches, G]`, via global-to-patch) → patches. In the current block the global token absorbs the external information after the endogenous self-attention has already run; the FFN is position-wise, so it does not mix that information into the patch tokens by itself. The distribution to patches happens when the next block's self-attention lets patches attend to the updated global token. If there is only one block, the flattened head still sees both the patch tokens and the exogenous-updated global token directly. That's the whole information pathway, and it only works because `G` lives in both the target-token sequence and the exogenous cross-attention.
 
 Should the exogenous tokens attend among *themselves*? I have the option: instead of cross-attending `G` against `V_ex`, I could concatenate the exogenous variate tokens with the target tokens and self-attend over everything, which would add attention *within* the exogenous set. Reason about when that helps. Sometimes the interaction *between* side channels is itself informative — two informers that jointly predict the target better than either alone — and on a dataset with rich inter-channel structure (think dense, spatially-related sensors) that extra within-exogenous attention could pay off. But it is not universally valid: on many datasets the side channels don't usefully interact, and forcing self-attention among them spends `O(C²)` again and lets their mutual noise in. The robust default, the one that doesn't assume the informers help each other, is cross-attention only: `G` reads the side channels, the side channels don't read each other. So I keep cross-attention as the design and treat within-exogenous attention as the thing I'm deliberately *not* assuming.
 
@@ -38,30 +38,9 @@ The head. The linear forecasters already told me the generation step is a linear
 
 Now the task in front of me is the full multivariate one: the harness hands me all channels stacked as `x_enc ∈ [B, T, enc_in]` and scores me on *every* channel's horizon, not one. So I want each channel to take its turn as the target while the others inform it — and I already argued nothing here is tied to a single target. The clean way to do that is channel independence on the endogenous side: treat every one of the `enc_in` channels as an endogenous series, patch-embed *all* of them at once into `[P_en, G]` tokens with shared weights — permute `x_enc` to `[B, enc_in, T]` and run the same patch+global embedding so each channel becomes its own `N+1`-token endogenous block. For the side information each channel reads, the canonical multivariate path variate-embeds the full multivariate look-back into a shared pool of variate tokens, folding the time-feature marks in as extra tokens on the same axis when present. That pool includes the channel's own variate token as well as the others; the single-target path is the one that explicitly removes the endogenous last channel from the exogenous input. In multivariate mode every channel's global token cross-attends against the shared pool, so the cross-attention cost is `O(enc_in · C_pool)` for the whole all-channel pass even though it is still `O(C_pool)` per target. Run the encoder, take each channel's `N+1` output tokens through the flatten-head to the horizon, and shape the output as `[B, pred_len, c_out]` with `c_out == enc_in` — a forecast for every channel at once.
 
-Let me write the embeddings first, since they carry the two granularities. The endogenous embedding patchifies the target, projects each patch with a bias-free linear and adds the sinusoidal positions, and concatenates the learnable global token:
+Let me write the embeddings first, since they carry the two granularities. The endogenous embedding patchifies the target, projects each patch with a bias-free linear, adds the sinusoidal positions (the stock `PositionalEmbedding` on the shelf, unchanged), and concatenates the learnable global token:
 
 ```python
-import math
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
-
-class PositionalEmbedding(nn.Module):
-    def __init__(self, d_model, max_len=5000):
-        super().__init__()
-        pe = torch.zeros(max_len, d_model).float()
-        pe.require_grad = False
-        position = torch.arange(0, max_len).float().unsqueeze(1)
-        div_term = (torch.arange(0, d_model, 2).float() * -(math.log(10000.0) / d_model)).exp()
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        self.register_buffer("pe", pe.unsqueeze(0))
-
-    def forward(self, x):                                   # x: [*, L, D]
-        return self.pe[:, :x.size(1)]
-
-
 class EnEmbedding(nn.Module):
     """Target series -> N patch tokens (+ positions) and one learnable global token."""
 
@@ -106,48 +85,9 @@ class DataEmbedding_inverted(nn.Module):
         return self.dropout(x)                              # [B, C(+marks), D]
 ```
 
-Now the block. Standard attention/cross-attention from the shelf, then the encoder layer that ties together the self-attention over `[patches, global]`, the cross-attention that updates only the global token against the exogenous tokens, and the FFN:
+Now the block. `FullAttention` and its multi-head `AttentionLayer` wrapper come straight off the shelf, unchanged, for both the self-attention and the cross-attention below. The new part is the encoder layer that ties together the self-attention over `[patches, global]`, the cross-attention that updates only the global token against the exogenous tokens, and the FFN:
 
 ```python
-class FullAttention(nn.Module):
-    def __init__(self, mask_flag=True, factor=5, scale=None, attention_dropout=0.1,
-                 output_attention=False):
-        super().__init__()
-        self.scale = scale
-        self.dropout = nn.Dropout(attention_dropout)
-
-    def forward(self, queries, keys, values, attn_mask, tau=None, delta=None):
-        B, L, H, E = queries.shape
-        scale = self.scale or 1.0 / math.sqrt(E)
-        scores = torch.einsum("blhe,bshe->bhls", queries, keys)
-        A = self.dropout(torch.softmax(scale * scores, dim=-1))
-        V = torch.einsum("bhls,bshd->blhd", A, values)
-        return V.contiguous(), None
-
-
-class AttentionLayer(nn.Module):
-    def __init__(self, attention, d_model, n_heads, d_keys=None, d_values=None):
-        super().__init__()
-        d_keys = d_keys or (d_model // n_heads)
-        d_values = d_values or (d_model // n_heads)
-        self.inner_attention = attention
-        self.query_projection = nn.Linear(d_model, d_keys * n_heads)
-        self.key_projection = nn.Linear(d_model, d_keys * n_heads)
-        self.value_projection = nn.Linear(d_model, d_values * n_heads)
-        self.out_projection = nn.Linear(d_values * n_heads, d_model)
-        self.n_heads = n_heads
-
-    def forward(self, queries, keys, values, attn_mask, tau=None, delta=None):
-        B, L, _ = queries.shape
-        _, S, _ = keys.shape
-        H = self.n_heads
-        queries = self.query_projection(queries).view(B, L, H, -1)
-        keys = self.key_projection(keys).view(B, S, H, -1)
-        values = self.value_projection(values).view(B, S, H, -1)
-        out, attn = self.inner_attention(queries, keys, values, attn_mask, tau=tau, delta=delta)
-        return self.out_projection(out.view(B, L, -1)), attn
-
-
 class EncoderLayer(nn.Module):
     def __init__(self, self_attention, cross_attention, d_model, d_ff=None,
                  dropout=0.1, activation="relu"):
@@ -185,26 +125,9 @@ class EncoderLayer(nn.Module):
         y = self.dropout(self.activation(self.conv1(y.transpose(-1, 1))))
         y = self.dropout(self.conv2(y).transpose(-1, 1))
         return self.norm3(x + y)
-
-
-class Encoder(nn.Module):
-    def __init__(self, layers, norm_layer=None, projection=None):
-        super().__init__()
-        self.layers = nn.ModuleList(layers)
-        self.norm = norm_layer
-        self.projection = projection
-
-    def forward(self, x, cross, x_mask=None, cross_mask=None, tau=None, delta=None):
-        for layer in self.layers:
-            x = layer(x, cross, x_mask=x_mask, cross_mask=cross_mask, tau=tau, delta=delta)
-        if self.norm is not None:
-            x = self.norm(x)
-        if self.projection is not None:
-            x = self.projection(x)
-        return x
 ```
 
-The head flattens the target's `N+1` output tokens and maps to the horizon — the linear generation step:
+Stack `L` of these in a stock loop-plus-final-LayerNorm `Encoder`. The head then flattens the target's `N+1` output tokens and maps to the horizon — the linear generation step:
 
 ```python
 class FlattenHead(nn.Module):
@@ -227,37 +150,19 @@ And the whole model, wiring the two embeddings into the encoder and wrapping the
 class Model(nn.Module):
     def __init__(self, configs):
         super().__init__()
-        self.task_name = configs.task_name
-        self.features = configs.features
-        self.seq_len = configs.seq_len
-        self.pred_len = configs.pred_len
-        self.use_norm = configs.use_norm
-        self.patch_len = configs.patch_len
+        ...                                                                  # standard config bookkeeping
         self.patch_num = int(configs.seq_len // configs.patch_len)
-        self.n_vars = 1 if configs.features == "MS" else configs.enc_in
+        self.n_vars = 1 if configs.features == "MS" else configs.enc_in     # single-target vs multivariate
 
         self.en_embedding = EnEmbedding(self.n_vars, configs.d_model, self.patch_len, configs.dropout)
         self.ex_embedding = DataEmbedding_inverted(configs.seq_len, configs.d_model,
                                                    configs.embed, configs.freq, configs.dropout)
-
-        self.encoder = Encoder(
-            [
-                EncoderLayer(
-                    AttentionLayer(
-                        FullAttention(False, configs.factor, attention_dropout=configs.dropout,
-                                      output_attention=False),
-                        configs.d_model, configs.n_heads),
-                    AttentionLayer(
-                        FullAttention(False, configs.factor, attention_dropout=configs.dropout,
-                                      output_attention=False),
-                        configs.d_model, configs.n_heads),
-                    configs.d_model, configs.d_ff,
-                    dropout=configs.dropout, activation=configs.activation,
-                )
-                for _ in range(configs.e_layers)
-            ],
-            norm_layer=torch.nn.LayerNorm(configs.d_model),
-        )
+        self.encoder = Encoder([EncoderLayer(AttentionLayer(FullAttention(...), configs.d_model, configs.n_heads),
+                                              AttentionLayer(FullAttention(...), configs.d_model, configs.n_heads),
+                                              configs.d_model, configs.d_ff, dropout=configs.dropout,
+                                              activation=configs.activation)
+                                 for _ in range(configs.e_layers)],
+                                norm_layer=torch.nn.LayerNorm(configs.d_model))
 
         self.head_nf = configs.d_model * (self.patch_num + 1)               # +1 for the global token
         self.head = FlattenHead(configs.enc_in, self.head_nf, configs.pred_len,
@@ -305,17 +210,7 @@ class Model(nn.Module):
             dec_out = dec_out * stdev[:, 0, :].unsqueeze(1).repeat(1, self.pred_len, 1)
             dec_out = dec_out + means[:, 0, :].unsqueeze(1).repeat(1, self.pred_len, 1)
         return dec_out
-
-    def forward(self, x_enc, x_mark_enc, x_dec, x_mark_dec, mask=None):
-        if self.task_name in ("long_term_forecast", "short_term_forecast"):
-            if self.features == "M":
-                dec_out = self.forecast_multi(x_enc, x_mark_enc, x_dec, x_mark_dec)
-            else:
-                dec_out = self.forecast(x_enc, x_mark_enc, x_dec, x_mark_dec)
-            return dec_out[:, -self.pred_len:, :]
-        return None
+    # forward() keeps the shell's own dispatch: forecast_multi under features="M", forecast otherwise.
 ```
 
-What I like about how this landed is that the multivariate task didn't need a separate architecture — it's the single-target machinery applied with every channel taking its turn as a target, shared self- and cross-attention weights, channel independence over the self-attention, and the patch count `N+1` driving an `O((T/P+1)²)` endogenous self-attention cost per channel. The exact implementation has two paths: `forecast` predicts the last channel from the remaining channels, while `forecast_multi` predicts all channels and lets all global tokens query the shared full-channel variate pool. So the one-target "informed by side channels" view is the conceptual primitive, and the all-channel path is the batched version with total cross-attention `O(enc_in · C_pool)`.
-
-Let me trace the causal chain to be sure it hangs together. Each channel's prediction is asymmetric in the exogenous setting — its side channels inform it and shouldn't be modeled *into* — and no single-granularity tool fits: channel-independent patch/linear models capture the target's temporal detail but can't let side channels touch it, while variate-token models let channels interact but crush the target into one coarse vector and pay `O(C²)` modeling every channel's interactions. The resolution was to refuse to pick one granularity: keep patches for the target (fine temporal detail) and one variate token per side channel or shared channel in the context pool (cheap series-level summary). That created a granularity mismatch, which a single learnable global token — the class-token idea — resolves by living inside the target's self-attention (aggregating the series and broadcasting back to patches) and being the sole query per target in a cross-attention against the variate tokens, so information flows through channels → global → patches without updating the variate-token pool. Patches are non-overlapping with sinusoidal positions; the variate token needs none. A per-series normalize/de-normalize wrapper handles non-stationarity, and a single linear head turns each target's `N+1` output tokens into the whole horizon, trained with L2 — no decoder, since the linear forecasters showed generation is a linear map's job. The full multivariate task is this same primitive run in parallel over all channels via channel independence, with the canonical code using the full multivariate input as the shared variate-token pool. Not one Transformer component was changed; only the granularity assignment and the bridge token are new.
+What I like about how this landed is that the multivariate task didn't need a separate architecture: it's the single-target machinery run with every channel taking its turn as target, channel-independent self-attention over the `N+1` patch-plus-global tokens, and shared cross-attention weights against the pool. `forecast` predicts one designated channel from the rest; `forecast_multi` runs every channel in parallel against the shared full-channel pool — the batched version of the same primitive, with every channel scored.

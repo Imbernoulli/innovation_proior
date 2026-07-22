@@ -2,7 +2,7 @@ Let me start from the thing that actually defeats me in practice, which is that 
 
 Make it concrete. I have a finite but astronomically large set of configurations and a cost `f` that scores each one; I want the configuration of minimum cost. Traveling salesman is the clean case: `N` cities, a tour is a permutation, `f` is the total length, and the number of tours is `(N-1)!/2`, which is hopeless to enumerate past a handful of cities. The decision problem is NP-complete and the optimization problem is NP-hard, so exact methods cost exponential effort and die at modest sizes. For anything real I need a heuristic whose effort grows like a small power of `N`. Fine. The standard heuristic is iterative improvement: start somewhere, define a local move (swap two cities, reverse a segment), and repeatedly apply moves, accepting one only if it lowers `f`, until no move improves. It's a downhill walk.
 
-The claim I keep hearing is that this downhill walk gets stuck in a poor local minimum, and before I build anything on top of that complaint I want to see it happen, not take it on faith. Let me actually run greedy 2-swap hill-climbing on a random Euclidean instance — `N = 60` cities in the unit square — from forty different random starting tours, walking each to its first local minimum (no swap improves), and look at the lengths I land on. The forty runs settle at lengths spread from about `8.72` to `11.55`, mean `10.31`. Two things in that spread. First, they are genuinely *different* values — `8.72 ≠ 11.55` — so these are forty different local minima, not the same optimum reached forty ways; the walk really is freezing wherever it happens to fall. Second, the worst is a third longer than the best, so which basin I start in matters enormously, and a single greedy run is a coin flip over a wide range of mediocre answers. That is the wall, and now I've seen it rather than asserted it.
+The claim I keep hearing is that this downhill walk gets stuck in a poor local minimum. Let me actually run greedy 2-swap hill-climbing on a random Euclidean instance — `N = 60` cities in the unit square — from forty different random starting tours, walking each to its first local minimum (no swap improves), and look at the lengths I land on. The forty runs settle at lengths spread from about `8.72` to `11.55`, mean `10.31`. Two things in that spread. First, they are genuinely *different* values — `8.72 ≠ 11.55` — so these are forty different local minima, not the same optimum reached forty ways; the walk really is freezing wherever it happens to fall. Second, the worst is a third longer than the best, so which basin I start in matters enormously, and a single greedy run is a coin flip over a wide range of mediocre answers. That is the wall.
 
 I should be careful, though, because the trap is not universal, and it's worth knowing when it bites. I also brute-forced a tiny 5-city instance and enumerated every tour: the optimum is length `5248.3`, and when I check which tours are 2-swap local minima — no single swap shortens them — there turns out to be exactly one, and it *is* the global optimum. So on five cities greedy 2-swap cannot get stuck anywhere bad; the neighborhood is rich enough relative to the tiny space that every basin drains to the bottom. The pathology is a large-`N` phenomenon: as the configuration space explodes, local moves stop connecting basins, and the landscape fills with local minima far above the floor. That sharpens the problem statement. I'm not fighting a defect of small examples; I'm fighting something that only appears at the scale I actually care about, which is exactly where I can't enumerate to check.
 
@@ -48,7 +48,7 @@ Let me pin down "high temperature where essentially all moves accepted." At the 
 
 The simplest law that has the right qualitative shape is geometric: `T_{k+1} = α T_k` with a constant ratio `α` a little below one (something like `0.9`). Why geometric and not, say, linear in the step count? Two reasons. Linear cooling (`T` decreasing by a fixed amount each stage) spends equal absolute time per unit of temperature, so with a wide temperature range it can burn many stages where everything is still molten and then cross the low-temperature relative changes too coarsely. Geometric cooling, equivalently linear in `log T`, automatically slows down in absolute `T`-units as `T` gets small, so each stage is a comparable fractional change. And geometric cooling is *scale-free*: it doesn't require me to know the absolute energy scale of the problem in advance, only a ratio. There is a known result that a *logarithmic* schedule, `T_k ∝ c / log k`, is slow enough to guarantee convergence to the global optimum in the limit — but it is impractically, uselessly slow, cooling so gradually that you'd never finish. So I take the geometric schedule as the practical compromise: fast enough to run, slow enough to anneal rather than quench, and I accept that I'm trading the asymptotic guarantee for a method that actually terminates.
 
-Concretely I'll often parameterize it by the endpoints and the number of steps rather than by `α` directly: pick a starting temperature `T_max` (molten) and a final temperature `T_min` (frozen) and interpolate geometrically between them over the planned number of steps. Geometric interpolation in `T` is linear interpolation in `log T`, so if I run for `S` total steps, the temperature at step `s` is `T(s) = T_max · (T_min/T_max)^{s/S} = T_max · exp( -ln(T_max/T_min) · s/S )`. Let me check the endpoints rather than just assert them: at `s = 0` the exponent is `0`, so `T = T_max · e^0 = T_max`; at `s = S` the exponent is `-ln(T_max/T_min)`, so `T = T_max · e^{-ln(T_max/T_min)} = T_max · (T_min/T_max) = T_min`. Both endpoints land where I want, and in between it's a smooth geometric cool from molten to frozen. I still want enough moves *per temperature* that the walk re-equilibrates before `T` drops appreciably — equivalently, `S` large enough that consecutive temperatures are close — because re-equilibration at each `T` is the whole reason slow cooling beats quenching; cooling faster than the walk can equilibrate is just quenching with extra steps.
+Concretely I'll often parameterize it by the endpoints and the number of steps rather than by `α` directly: pick a starting temperature `T_max` (molten) and a final temperature `T_min` (frozen) and interpolate geometrically between them over the planned number of steps. Geometric interpolation in `T` is linear interpolation in `log T`, so if I run for `S` total steps, the temperature at step `s` is `T(s) = T_max · (T_min/T_max)^{s/S} = T_max · exp( -ln(T_max/T_min) · s/S )`. At `s = 0` the exponent is `0`, so `T = T_max · e^0 = T_max`; at `s = S` the exponent is `-ln(T_max/T_min)`, so `T = T_max · e^{-ln(T_max/T_min)} = T_max · (T_min/T_max) = T_min` — both endpoints land where I want, and in between it's a smooth geometric cool from molten to frozen. I still want enough moves *per temperature* that the walk re-equilibrates before `T` drops appreciably — equivalently, `S` large enough that consecutive temperatures are close — because re-equilibration at each `T` is the whole reason slow cooling beats quenching; cooling faster than the walk can equilibrate is just quenching with extra steps.
 
 There's a nice secondary diagnostic the physics hands me for *where* to cool slowly. With `k_B = 1`, the canonical identity is `C(T) = d⟨E⟩/dT = Var(E)/T^2`, so the variance of the cost at a fixed temperature tells me where the specific heat spikes. Those spikes mark temperatures where the system undergoes a phase-transition-like reorganization — where the large-scale structure of the solution is being decided. A peak in `C(T)` tells me which temperature ranges are critical and deserve extra-slow cooling. I won't always need it, but it's there: it says the dangerous, must-not-quench part of the schedule is exactly near the cost-variance peak.
 
@@ -56,240 +56,39 @@ One more practical point. As I cool, the walk wanders, and the configuration sit
 
 Let me also make sure I'm computing `ΔE` efficiently, because the inner loop runs millions of times. For a local move I usually don't need to recompute `f` from scratch; the move touches a small part of the configuration, so I can compute the *incremental* `ΔE` directly. For a tour, swapping or reversing a segment only changes the few edges at the cut points, so `ΔE` is the difference of a handful of edge lengths, not the whole tour length. The Metropolis test only ever needs `ΔE`, never the absolute cost, which is exactly why this is cheap — and it's the same reason the algorithm is generic: it asks the problem only for a move and the resulting `ΔE` (or, if incremental bookkeeping is awkward, a fresh `f` it can difference). Four ingredients are all the method needs from any problem: a representation of a configuration, a random move that rearranges it, a cost function (energy), and a cooling schedule of temperatures and steps. Everything else is the same loop.
 
-Before I commit, I want to confirm the whole thing actually beats the wall I opened with, on the same instance. So I take the `N = 60` Euclidean case where greedy froze across `8.72`–`11.55` (mean `10.31`), wrap it in the Metropolis-plus-geometric-cooling loop, melt it and cool it slowly, and return the best tour seen. It comes back at length `8.29` — below even the *best* of the forty greedy runs, and well under their mean. And I instrument the acceptance rate to check the picture I built the method on: in the first 5% of the run (hot) the walk accepts `0.98` of its moves — molten, roaming — and in the last 5% (cold) it accepts `0.018` — essentially frozen, downhill-only. That is precisely the molten-to-frozen profile the temperature dial was supposed to produce, measured rather than assumed, and the final length confirms that the slow cool is finding a basin that no single greedy descent from a random start reached. The method does what the physics promised.
+To confirm the whole thing actually beats the wall I opened with, I run it on the same instance: the `N = 60` Euclidean case where greedy froze across `8.72`–`11.55` (mean `10.31`). Wrapped in the Metropolis-plus-geometric-cooling loop, melted and cooled slowly, it returns a best tour of length `8.29` — below even the *best* of the forty greedy runs, and well under their mean. Instrumenting the acceptance rate confirms the picture the method was built on: in the first 5% of the run (hot) the walk accepts `0.98` of its moves — molten, roaming — and in the last 5% (cold) it accepts `0.018` — essentially frozen, downhill-only. That is precisely the molten-to-frozen profile the temperature dial was supposed to produce, and the final length shows the slow cool finding a basin that no single greedy descent from a random start reached.
 
 So the algorithm, end to end. Pick a starting configuration. Set `T = T_max`, hot enough that almost all moves are accepted. Loop: propose a local move, compute `ΔE`; accept it if `ΔE ≤ 0`, or if a uniform random `u < e^{-ΔE/T}`; otherwise restore the previous configuration. Every step lower `T` toward `T_min` geometrically. Keep the best configuration ever seen. Stop when `T` reaches `T_min` or the system is effectively frozen, and return the best. At high `T` it explores and ignores cost; as `T` falls it concentrates into a good valley; near `T_min` it descends to a minimum. If the cooling is slow enough relative to the mixing time, that minimum can be the global one; in ordinary finite runs the honest promise is a much better shot at a low-cost basin than a greedy descent gets from the same start — which is exactly what the `8.29`-versus-`10.31` comparison showed.
 
-Let me write it, mirroring a clean general-purpose implementation: an abstract problem exposing `move()` and `energy()`, and an anneal loop that does the geometric cooling and the Metropolis test.
+Let me write it, mirroring a clean general-purpose implementation: an abstract problem exposing `move()` and `energy()`, and an anneal loop that does exactly this — geometric cooling, the Metropolis test, and best-tracking.
 
 ```python
-import copy
-import math
-import random
-import time
-from collections import defaultdict
+Tfactor = -math.log(self.Tmax / self.Tmin)
+T = self.Tmax
+E = self.energy()
+prev_state, prev_energy = self.copy_state(self.state), E
+self.best_state, self.best_energy = self.copy_state(self.state), E
 
+step = 0
+while step < self.steps:
+    step += 1
+    T = self.Tmax * math.exp(Tfactor * step / self.steps)        # geometric cool
 
-def round_figures(x, n):
-    if x == 0:
-        return 0.0
-    return round(x, int(n - math.ceil(math.log10(abs(x)))))
-
-
-class Annealer:
-    """Minimize a black-box cost over a discrete configuration space by
-    simulated annealing. A subclass supplies move() and energy()."""
-
-    Tmax = 25000.0   # starting "molten" temperature: nearly all moves accepted
-    Tmin = 2.5       # final "frozen" temperature: essentially no uphill moves
-    steps = 50000    # total Metropolis steps over the whole cooling schedule
-    updates = 100
-    copy_strategy = "deepcopy"
-    user_exit = False
-
-    def __init__(self, initial_state):
-        self.state = self.copy_state(initial_state)
-        self.best_state = None
-        self.best_energy = None
-        self.start = None
-
-    def move(self):
-        """Perturb self.state by one local rearrangement, in place.
-        Return the energy change dE (cheap incremental delta), or None
-        to signal 'recompute energy from scratch'."""
-        raise NotImplementedError
-
-    def energy(self):
-        """Cost of the current configuration. Lower is better."""
-        raise NotImplementedError
-
-    def copy_state(self, state):
-        if self.copy_strategy == "deepcopy":
-            return copy.deepcopy(state)
-        if self.copy_strategy == "slice":
-            return state[:]
-        if self.copy_strategy == "method":
-            return state.copy()
-        raise RuntimeError("unknown copy strategy")
-
-    def set_schedule(self, schedule):
-        self.Tmax = schedule["tmax"]
-        self.Tmin = schedule["tmin"]
-        self.steps = int(schedule["steps"])
-        self.updates = int(schedule["updates"])
-
-    def update(self, step, T, E, acceptance, improvement):
-        pass
-
-    def anneal(self):
-        # Geometric cooling: T(step) interpolates Tmax -> Tmin linearly in log T,
-        # i.e. T = Tmax * exp(Tfactor * step/steps) with Tfactor = -ln(Tmax/Tmin),
-        # so step 0 -> Tmax and step `steps` -> Tmin. Slow cool = anneal, not quench.
-        if self.Tmin <= 0.0:
-            raise ValueError("geometric cooling requires Tmin > 0")
-        Tfactor = -math.log(self.Tmax / self.Tmin)
-        self.start = time.time()
-
-        T = self.Tmax
+    dE = self.move()                                             # incremental delta
+    if dE is None:                                               # move() didn't supply one
         E = self.energy()
-        prev_state = self.copy_state(self.state)   # to restore on rejection
-        prev_energy = E
-        self.best_state = self.copy_state(self.state)   # track best ever seen
-        self.best_energy = E
-        trials = accepts = improves = 0
-        if self.updates > 0:
-            update_wavelength = self.steps / self.updates
-            self.update(0, T, E, None, None)
-        else:
-            update_wavelength = None
+        dE = E - prev_energy
+    else:
+        E += dE
+    if dE > 0.0 and math.exp(-dE / T) < random.random():
+        self.state, E = self.copy_state(prev_state), prev_energy  # rejected: restore, recount
+    else:
+        prev_state, prev_energy = self.copy_state(self.state), E  # accepted
+        if E < self.best_energy:
+            self.best_state, self.best_energy = self.copy_state(self.state), E
 
-        step = 0
-        while step < self.steps and not self.user_exit:
-            step += 1
-            T = self.Tmax * math.exp(Tfactor * step / self.steps)   # cool
-
-            dE = self.move()
-            if dE is None:                      # no incremental delta supplied
-                E = self.energy()
-                dE = E - prev_energy
-            else:
-                E += dE                         # cheap: only the touched edges
-
-            trials += 1
-            # Metropolis test: reject an uphill move with prob 1 - exp(-dE/T).
-            # Equivalently accept iff dE <= 0 or random() <= exp(-dE/T).
-            if dE > 0.0 and math.exp(-dE / T) < random.random():
-                self.state = self.copy_state(prev_state)   # rejected: restore
-                E = prev_energy
-            else:                                        # accepted
-                accepts += 1
-                if dE < 0.0:
-                    improves += 1
-                prev_state = self.copy_state(self.state)
-                prev_energy = E
-                if E < self.best_energy:                 # remember the best
-                    self.best_state = self.copy_state(self.state)
-                    self.best_energy = E
-            if update_wavelength and self.updates > 1:
-                crossed = (step // update_wavelength) > ((step - 1) // update_wavelength)
-                if crossed:
-                    self.update(step, T, E, accepts / trials, improves / trials)
-                    trials = accepts = improves = 0
-
-        self.state = self.copy_state(self.best_state)
-        return self.best_state, self.best_energy
-
-    def auto(self, minutes, steps=2000):
-        def run(T, steps):
-            E = self.energy()
-            prev_state = self.copy_state(self.state)
-            prev_energy = E
-            accepts = improves = 0
-            for _ in range(steps):
-                dE = self.move()
-                if dE is None:
-                    E = self.energy()
-                    dE = E - prev_energy
-                else:
-                    E = prev_energy + dE
-                if dE > 0.0 and math.exp(-dE / T) < random.random():
-                    self.state = self.copy_state(prev_state)
-                    E = prev_energy
-                else:
-                    accepts += 1
-                    if dE < 0.0:
-                        improves += 1
-                    prev_state = self.copy_state(self.state)
-                    prev_energy = E
-            return E, accepts / float(steps), improves / float(steps)
-
-        step = 0
-        self.start = time.time()
-        T = 0.0
-        E = self.energy()
-        self.update(step, T, E, None, None)
-        while T == 0.0:
-            step += 1
-            dE = self.move()
-            if dE is None:
-                dE = self.energy() - E
-            T = abs(dE)
-
-        E, acceptance, improvement = run(T, steps)
-        step += steps
-        while acceptance > 0.98:
-            T = round_figures(T / 1.5, 2)
-            E, acceptance, improvement = run(T, steps)
-            step += steps
-            self.update(step, T, E, acceptance, improvement)
-        while acceptance < 0.98:
-            T = round_figures(T * 1.5, 2)
-            E, acceptance, improvement = run(T, steps)
-            step += steps
-            self.update(step, T, E, acceptance, improvement)
-        Tmax = T
-
-        while improvement > 0.0:
-            T = round_figures(T / 1.5, 2)
-            E, acceptance, improvement = run(T, steps)
-            step += steps
-            self.update(step, T, E, acceptance, improvement)
-        Tmin = T
-
-        elapsed = time.time() - self.start
-        duration = round_figures(int(60.0 * minutes * step / elapsed), 2)
-        return {"tmax": Tmax, "tmin": Tmin, "steps": duration, "updates": self.updates}
-
-
-def distance(a, b):
-    R = 3963
-    lat1, lon1 = math.radians(a[0]), math.radians(a[1])
-    lat2, lon2 = math.radians(b[0]), math.radians(b[1])
-    return math.acos(math.sin(lat1) * math.sin(lat2) +
-                     math.cos(lat1) * math.cos(lat2) * math.cos(lon1 - lon2)) * R
-
-
-class TravellingSalesmanProblem(Annealer):
-    """State is a permuted list of cities; energy is the closed tour length."""
-
-    def __init__(self, state, distance_matrix):
-        self.distance_matrix = distance_matrix
-        super().__init__(state)
-
-    def move(self):
-        # Swap two cities; return the resulting change in tour length.
-        initial_energy = self.energy()
-        a = random.randint(0, len(self.state) - 1)
-        b = random.randint(0, len(self.state) - 1)
-        self.state[a], self.state[b] = self.state[b], self.state[a]
-        return self.energy() - initial_energy
-
-    def energy(self):
-        e = 0.0
-        for i in range(len(self.state)):
-            e += self.distance_matrix[self.state[i - 1]][self.state[i]]
-        return e
-
-
-cities = {
-    "New York City": (40.72, 74.00),
-    "Los Angeles": (34.05, 118.25),
-    "Chicago": (41.88, 87.63),
-    "Houston": (29.77, 95.38),
-    "Phoenix": (33.45, 112.07),
-}
-initial_state = list(cities)
-random.shuffle(initial_state)
-
-distance_matrix = defaultdict(dict)
-for ka, va in cities.items():
-    for kb, vb in cities.items():
-        distance_matrix[ka][kb] = 0.0 if kb == ka else distance(va, vb)
-
-tsp = TravellingSalesmanProblem(initial_state, distance_matrix)
-tsp.set_schedule(tsp.auto(minutes=0.02, steps=200))
-tsp.copy_strategy = "slice"
-best_state, best_energy = tsp.anneal()
+self.state = self.copy_state(self.best_state)
+return self.best_state, self.best_energy
 ```
 
-To recap the causal chain: greedy descent over a rugged cost freezes in a local minimum — I watched forty greedy runs settle at forty different mediocre lengths — because it forbids any uphill step; to escape I must accept worse moves, but in a disciplined way, which I find by reading my cost as a physical energy — a system at temperature `T` visits configurations with Boltzmann probability `e^{-f/T}`, whose `T → 0` limit puts its mass on the minima; once downhill moves are always accepted, the Metropolis uphill probability `e^{-ΔE/T}` is forced by detailed balance for symmetric proposals, which I confirmed by reproducing the Boltzmann occupancy ratio on a two-state chain; its temperature dial interpolates between roaming and greedy descent, as the acceptance numbers `0.98` hot and `0.02` cold bear out; but a fixed `T` never commits and an instant drop to `T = 0` quenches into a trap, so I cool `T` slowly from molten to frozen — annealing, not quenching — geometrically, track the best configuration seen, calibrate the endpoints from acceptance and improvement rates, and get a low-cost configuration — `8.29` where greedy averaged `10.31` — from a method that asks each problem for nothing but a configuration, a move, and a cost.
+The rest of the class is bookkeeping around this loop: `move()`/`energy()` are filled in per problem — for the travelling-salesman instance, `move` swaps two cities and returns the length delta, `energy` sums the tour's edges — and an `auto()` heater finds `Tmax`/`Tmin` automatically by the same acceptance/improvement-rate calibration argued above (drive the acceptance rate to about one, then find where the improvement rate hits zero), rather than trusting the `25000`/`2.5` I settled on by hand from the acceptance arithmetic above, which was only ever calibrated to the rough scale of a five-city problem.

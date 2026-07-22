@@ -34,7 +34,7 @@ Put it together. For *any* N points on S^{n-1},
 
 So a lower bound that depends only on h, not on the configuration. The two requirements on h were: (i) h(t) <= a(t) = f(2 - 2t) pointwise on [-1,1), and (ii) all Gegenbauer coefficients alpha_i >= 0. Within those two constraints I'm free, and I want to *maximize* N^2 alpha_0 - N h(1). That's a linear functional of the coefficients, subject to linear constraints (the pointwise domination is a linear inequality at each t, the positivity is alpha_i >= 0). It's a linear program — an infinite-dimensional one, but I can discretize the domination constraint on a fine grid of t-values and solve a finite LP numerically. This is the generalization of the Delsarte / Kabatiansky–Levenshtein LP bound for codes; in fact I can recover those by taking a to be +infinity above a threshold inner product and 0 below — the energy becomes 0 for a valid code and +infinity otherwise, and the bound on N falls out.
 
-Before I push the theory further, let me actually run this LP and see whether it's strong enough to be worth chasing. I code up h(t) = sum_i alpha_i C_i^{1/2}(t) on S^2 (lambda = 1/2, so the C_i are Legendre polynomials), sample the domination constraint on a grid of ~2000 values of t in [-1,1), and let the solver maximize N^2 alpha_0 - N h(1).
+To see whether this is strong enough to be worth chasing, I set up the LP on S^2: h(t) = sum_i alpha_i C_i^{1/2}(t) (lambda = 1/2, so the C_i are Legendre polynomials), the domination constraint sampled on a grid of ~2000 values of t in [-1,1), and the solver maximizing N^2 alpha_0 - N h(1).
 
 Start with the case I trust: N = 12, Coulomb. Steepest descent gave me the icosahedron; let me compute its energy directly and compare against the LP. The icosahedron comes out with energy 98.33051. The LP with a degree-5 polynomial returns 98.33104. Those agree to four decimals — the residual 0.0005 is exactly the kind of error a finite grid should produce (the domination constraint is only sampled, so the LP is slightly optimistic). Pushing the grid finer and the degree to 6 leaves the value essentially unchanged at 98.33104, which tells me degree 5 is already doing all the work and degree 6 buys nothing. So for the icosahedron the bound looks *tight*: the LP value sits right on top of the configuration's energy. That's the first piece of real evidence that this dual approach can actually certify, not just bound loosely.
 
@@ -42,7 +42,7 @@ Now the contrast. N = 20, Coulomb, where I know the minimizer is *not* the dodec
 
 When is the bound sharp for a configuration S? Trace back through the inequalities and find what must be equalities. First, sum_{x != y} a(<x,y>) = sum_{x != y} h(<x,y>) needs h(t) = a(t) at every inner product t that actually occurs between distinct points of S — otherwise I'm strictly losing energy there. Second, in sum_i alpha_i sum_{x,y} C_i >= alpha_0 N^2, every i > 0 term with alpha_i > 0 must contribute exactly zero, i.e. sum_{x,y} C_i(<x,y>) = 0. But that's a familiar condition: sum_{x,y} C_i(<x,y>) = |sum_x ev_{i,x}|^2 = 0 means the degree-i spherical harmonics all sum to zero over S, and by Delsarte–Goethals–Seidel that holds for 1 <= i <= M exactly when S is a spherical M-design. So if h is positive-definite with degree at most M and S is an M-design, the second batch of equalities is automatic.
 
-Let me check this is really true of the icosahedron rather than take it on faith, since the whole tightness story hinges on it. I compute the actual sums sum_{x,y} C_i(<x,y>) over the 12 icosahedron vertices, with C_i the Legendre polynomials:
+The whole tightness story hinges on this holding for the icosahedron, so I compute the actual sums sum_{x,y} C_i(<x,y>) over its 12 vertices, with C_i the Legendre polynomials:
 
    i = 0:  144      (= N^2 = 12^2, as it must)
    i = 1:  4.6e-15
@@ -58,7 +58,7 @@ Now I can see the *shape* of the configurations that will work. I need S to have
 
 So the target: given a sharp configuration with inner products t_1,...,t_m and given a completely monotonic f, construct a polynomial h of degree 2m - 1 such that h <= a on [-1,1), h = a at each t_i, and h is positive-definite. Three demands. Let me try to build it.
 
-The first instinct: just interpolate a at the m points t_i. That's a degree m - 1 polynomial agreeing with a at t_1,...,t_m. But that's only first-order contact, and h will generically cross a at each t_i — on one side h > a, violating domination. I need h to *stay below* a. The fix is to make contact to *second* order at each t_i: demand h(t_i) = a(t_i) and h'(t_i) = a'(t_i). That's Hermite interpolation at the m points, each to order 2, giving a polynomial of degree 2m - 1 — which is exactly the degree the design strength supports. Second-order contact means h touches a tangentially and bounces back, no sign change, so I can hope h <= a everywhere. Let me check that hope is justified rather than wishful, and let me check it concretely on the icosahedron before trusting it in general.
+The first instinct: just interpolate a at the m points t_i. That's a degree m - 1 polynomial agreeing with a at t_1,...,t_m. But that's only first-order contact, and h will generically cross a at each t_i — on one side h > a, violating domination. I need h to *stay below* a. The fix is to make contact to *second* order at each t_i: demand h(t_i) = a(t_i) and h'(t_i) = a'(t_i). That's Hermite interpolation at the m points, each to order 2, giving a polynomial of degree 2m - 1 — which is exactly the degree the design strength supports. Second-order contact means h touches a tangentially and bounces back, no sign change, so h <= a everywhere is plausible — check it concretely on the icosahedron first.
 
 Build the degree-5 Hermite interpolant of a(t) = (2 - 2t)^{-1/2} matching a and a' at t = -1, -1/sqrt(5), +1/sqrt(5). Solving the 6x6 interpolation system gives an explicit h, and now the question is whether a - h >= 0 on the whole interval. I evaluate a - h on a grid across (-1, 1): at the three nodes it is 0 (to machine precision, as it must be by construction), and elsewhere the minimum value I find is +1.0e-8 — nonnegative, never dipping below zero. So h does stay under a, touching it tangentially at exactly the three inner products and rising away from it in between. The construction does what I hoped on this example.
 
@@ -92,55 +92,4 @@ And the striking thing is what the argument *didn't* depend on. It never used wh
 
 One configuration resists the clean argument: the 600-cell, n = 4, N = 120. Its distinct inner products are -1, 0, +/-1/2, and (+/-1 +/- sqrt(5))/4, eight values in all. It is an 11-design, not a 15-design, so the straightforward second-order Hermite polynomial for all eight roots has degree 15 and the design strength is not enough to make the sharpness condition automatic. Even the antipodal refinement, where I stop asking for derivative matching at -1, still leaves a degree-14 polynomial outside the clean 11-design range, and the standard Hermite choice gives a suboptimal bound. The way out has to use the extra symmetry of the 600-cell. Although degree 12 harmonics are a problem, the harmonics of degrees 13 through 19 sum to zero over the vertices, and the missing degree can be neutralized. I choose a polynomial of degree at most 17 that matches a at all eight inner products, matches a' at the seven inner products other than -1, and imposes alpha_11 = alpha_12 = alpha_13 = 0 on its Gegenbauer coefficients. The alpha_12 condition removes the degree that the design and symmetry do not kill; the alpha_11 and alpha_13 conditions are part of the exact interpolation system that makes the later inequalities work. There is no clean conductivity proof here. The remaining checks are exact-arithmetic inequalities over Q(sqrt(5)): every Gegenbauer coefficient is nonnegative, and h(t) <= a(t) on [-1,1). So the same LP certificate proves optimality, but the elegant Hermite/conductivity argument has a real exceptional case.
 
-Let me write the numerical side of the sphere certificate as code, the finite LP probe corresponding to the dual bound — the same probe I just used to get 98.331 for N = 12 and 301.445 for N = 20. The proof needs h(t) <= a(t) on the whole interval, or an exact construction like the Hermite certificate above. The code only imposes that inequality on a grid, so it is a way to search for auxiliary polynomials and compare against candidate energies; it is not, by itself, the continuous certificate — which is exactly why the N = 12 value comes back 0.0005 *below* the true energy, and why I have to check domination off-grid before calling any LP value a proof.
-
-```python
-import numpy as np
-from scipy.special import gegenbauer
-from scipy.optimize import linprog
-
-def lp_energy_lower_bound(n, N, f_of_squared_dist, degree=12, grid=600):
-    # Finite LP probe for h(t)=sum_i alpha_i C_i^{lambda}(t), lambda=n/2-1.
-    # The grid constraints approximate h(t) <= f(2-2t); exact domination
-    # must be checked separately before the returned value is a proof.
-    lam = n / 2.0 - 1.0
-    C1 = np.array([gegenbauer(i, lam)(1.0) for i in range(degree + 1)])
-    # maximize N^2 * alpha_0 - N * h(1) = N^2 alpha_0 - N sum_i alpha_i C_i(1)
-    obj = np.array([N * N if i == 0 else 0.0 for i in range(degree + 1)]) - N * C1
-    c = -obj
-    ts = np.linspace(-1 + 1e-3, 1 - 1e-4, grid)
-    A_ub = np.array([[gegenbauer(i, lam)(t) for i in range(degree + 1)] for t in ts])
-    b_ub = np.array([f_of_squared_dist(2 - 2 * t) for t in ts])
-    res = linprog(c, A_ub=A_ub, b_ub=b_ub, bounds=[(0, None)] * (degree + 1),
-                  method="highs")
-    return -res.fun, res.x
-
-def coulomb(R):  # f(R) = R^{-1/2}, R = squared distance -> 1/dist
-    return R ** -0.5
-
-def icosahedron():
-    phi = (1 + np.sqrt(5)) / 2
-    raw = []
-    for a in (-1, 1):
-        for b in (-phi, phi):
-            raw += [(0, a, b), (a, b, 0), (b, 0, a)]
-    P = np.unique(np.array(raw, float), axis=0)
-    return P / np.linalg.norm(P[0])
-
-def energy(P, f):
-    E = 0.0
-    for i in range(len(P)):
-        for j in range(len(P)):
-            if i != j:
-                E += f(np.sum((P[i] - P[j]) ** 2))
-    return E
-
-if __name__ == "__main__":
-    bound, alpha = lp_energy_lower_bound(3, 12, coulomb)
-    P = icosahedron()
-    print("LP grid value       :", bound)
-    print("icosahedron energy  :", energy(P, coulomb))
-    print("gap (energy-bound)  :", energy(P, coulomb) - bound)
-```
-
-The causal chain, start to finish: searching configurations can't prove optimality because the landscape has exponentially many traps, so I move to a dual bound; writing energy in the inner-product variable and dominating the potential from below by a polynomial h reduces everything to controlling the all-pairs sum of h; the all-pairs sum is controllable precisely in the Gegenbauer basis, where Schoenberg's positive-definiteness makes every coefficient's contribution have a fixed sign and the constant term yields N^2 alpha_0; that turns "best bound" into a linear program (which I ran — tight on the N = 12 icosahedron at 98.331, with a real 0.32 gap on N = 20, telling me tightness is special); for a configuration with m distances that is also a (2m - 1)-design — a sharp configuration, like the icosahedron with its three inner products and measured 5-design strength — Hermite-interpolating the potential to second order at its m inner products produces an h that dominates (because complete monotonicity makes the remainder's high derivative nonnegative — confirmed by the grid check that a - h stays >= 0), interpolates exactly (so the bound is tight), and is positive-definite (because the interpolation modulus F^2 is conductive, built up from the design property and the closure of positive-definite functions under products); and since the construction only ever used absolute monotonicity, the same configuration minimizes every completely monotonic energy at once.
+That leaves the numerical side: the finite LP probe corresponding to this dual bound is the same probe I just used to get 98.331 for N = 12 and 301.445 for N = 20 — a function that builds the Gegenbauer matrix on a grid of t, sets up the objective N^2 alpha_0 - N h(1), and calls a linear-program solver, next to a direct pairwise energy evaluator and constructors for candidate configurations like the icosahedron. Grid enforcement of h(t) <= a(t) is not the same as domination on the whole interval, though — that's exactly why the N = 12 value comes back 0.0005 *below* the true energy. Turning that probe into a proof means replacing the sampled grid constraint with an exact argument: the Hermite construction above for the sharp configurations, or the exact arithmetic in Q(sqrt(5)) that the 600-cell needs.

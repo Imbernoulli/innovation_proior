@@ -1,10 +1,10 @@
-Let me start from what actually hurts. I have a `d`-parameter network, `d` is north of a hundred million, and I want to train it across `M` workers. Each worker computes a stochastic gradient on its slice of data, and before anyone can take a step those gradients have to meet — go up to a parameter server, get aggregated, come back down. The usual accounting is a 32-bit float per coordinate on upload and another 32-bit float on the return path. With `d > 10^8` the arithmetic is cheap and the *communication* is the wall: `64 M d` bits an iteration, and it gets worse the more workers I add, which is exactly backwards from what I want parallelism to do. So the real problem isn't "optimize faster," it's "say less per coordinate." If I could get the message down to one bit per coordinate — and ideally one bit on the way *back* too — the communication wall basically disappears.
+I have a `d`-parameter network, `d` is north of a hundred million, and I want to train it across `M` workers. Each worker computes a stochastic gradient on its slice of data, and before anyone can take a step those gradients have to meet — go up to a parameter server, get aggregated, come back down. The usual accounting is a 32-bit float per coordinate on upload and another 32-bit float on the return path. With `d > 10^8` the arithmetic is cheap and the *communication* is the wall: `64 M d` bits an iteration, and it gets worse the more workers I add, which is exactly backwards from what I want parallelism to do. So the real problem isn't "optimize faster," it's "say less per coordinate." If I could get the message down to one bit per coordinate — and ideally one bit on the way *back* too — the communication wall basically disappears.
 
 The crudest possible compression of a number is its sign: throw away the exponent and the mantissa entirely, keep one bit. So the temptation is just to send `sign` of each gradient coordinate and step `x_{k+1} = x_k - delta * sign(g~_k)`. That's as compressed as it gets. The question is whether it can possibly converge, and whether I can *prove* it converges, because the field is littered with compression schemes that work on a benchmark and have no theory, and with schemes that have theory that turns out to be vacuous.
 
-Before I commit, let me look hard at why the existing approaches don't already solve this, because the gaps will tell me what a real solution has to do. Sign-based updates aren't new — Rprop, from Riedmiller and Braun, has been around for decades. Its move is to ignore the gradient magnitude and act only on its sign, adapting a per-weight step size: bump the step up by ~1.2 if a weight's last two gradient signs agree, cut it by ~0.5 if they flip. That's robust and fast in full batch, and it's the ancestor of RMSprop and Adam. But there's a famous reason it dies on minibatches, and I should internalize it because it's the trap I'm walking toward. SGD's whole logic is that, with a small enough learning rate, consecutive steps *average* the gradient over successive minibatches. A pure sign rule destroys that average. Picture a weight that gets gradient `+0.1` on nine minibatches and `-0.9` on the tenth. Its true average gradient is `(9*0.1 - 0.9)/10 = 0` — it should sit still. But a sign rule sees nine `+` votes and one `-` vote and increments nine times, decrements once by about the same amount, so over the ten minibatches it nets eight `+delta` steps and marches a long way in the wrong direction. Magnitude-blindness and minibatch noise are a bad combination, and any analysis I write has to survive this example rather than wave it away.
+Sign-based updates aren't new, and the gaps in the existing ones will tell me what a real solution has to do. Rprop, from Riedmiller and Braun, has been around for decades. Its move is to ignore the gradient magnitude and act only on its sign, adapting a per-weight step size: bump the step up by ~1.2 if a weight's last two gradient signs agree, cut it by ~0.5 if they flip. That's robust and fast in full batch, and it's the ancestor of RMSprop and Adam. But there's a famous reason it dies on minibatches, and I should internalize it because it's the trap I'm walking toward. SGD's whole logic is that, with a small enough learning rate, consecutive steps *average* the gradient over successive minibatches. A pure sign rule destroys that average. Picture a weight that gets gradient `+0.1` on nine minibatches and `-0.9` on the tenth. Its true average gradient is `(9*0.1 - 0.9)/10 = 0` — it should sit still. But a sign rule sees nine `+` votes and one `-` vote and increments nine times, decrements once by about the same amount, so over the ten minibatches it nets eight `+delta` steps and marches a long way in the wrong direction. Magnitude-blindness and minibatch noise are a bad combination, and any analysis I write has to survive this example rather than wave it away.
 
-RMSprop's fix — which is what made the whole Adam family work — was to keep a moving average of the squared gradient and divide by its root, `g / sqrt(<g^2>)`, so adjacent minibatches divide by *similar* numbers and the average is restored. Notice what that division is, though: it's a soft, smoothed version of dividing by `|g|`, which is a soft version of taking the sign. Adam's step is `<g>_{beta1} / sqrt(<g^2>_{beta2})` — a mean over a root-mean-square. Let me actually take the limit rather than assert it: if I let both exponential-average timescales shrink to zero, `beta1, beta2 -> 0`, every average collapses to the current single sample and the step becomes `g~ / sqrt(g~^2)`. Coordinatewise that is `g~_i / sqrt(g~_i^2) = g~_i/|g~_i|`, which for any nonzero `g~_i` is exactly `±1` — I checked elementwise on a random vector that `g~/sqrt(g~^2)` and `sign(g~)` agree component for component, and they do. So `sign(g~)` is literally the zero-memory limit of Adam. That's a comforting thought and a worrying one at once: comforting because the most successful optimizers in deep learning are *already* secretly sign-flavored, so the sign can't be crazy; worrying because the very averaging I'd be throwing away is what the nine-vs-one example says I need. Whatever I prove will have to confront the biased, magnitude-blind sign head-on rather than smoothing it away.
+RMSprop's fix — which is what made the whole Adam family work — was to keep a moving average of the squared gradient and divide by its root, `g / sqrt(<g^2>)`, so adjacent minibatches divide by *similar* numbers and the average is restored. Notice what that division is, though: it's a soft, smoothed version of dividing by `|g|`, which is a soft version of taking the sign. Adam's step is `<g>_{beta1} / sqrt(<g^2>_{beta2})` — a mean over a root-mean-square. Take the limit directly: if I let both exponential-average timescales shrink to zero, `beta1, beta2 -> 0`, every average collapses to the current single sample and the step becomes `g~ / sqrt(g~^2)`. Coordinatewise that is `g~_i / sqrt(g~_i^2) = g~_i/|g~_i|`, which for any nonzero `g~_i` is exactly `sign(g~_i)`. So `sign(g~)` is literally the zero-memory limit of Adam. That's a comforting thought and a worrying one at once: comforting because the most successful optimizers in deep learning are *already* secretly sign-flavored, so the sign can't be crazy; worrying because the very averaging I'd be throwing away is what the nine-vs-one example says I need. Whatever I prove will have to confront the biased, magnitude-blind sign head-on rather than smoothing it away.
 
 Why not just keep the magnitude and compress it some other way? That's what the principled compression schemes do, and their gap is instructive. QSGD and TernGrad stochastically round each coordinate to a few discrete levels in such a way that the compressed gradient is an *unbiased* estimate of the true gradient. Unbiasedness is seductive because it lets you bootstrap standard SGD theory verbatim — the compressed gradient is still a valid stochastic gradient, just noisier. But "just noisier" is the whole problem: to make a one-bit message unbiased you have to randomize it hard, and that inflates the variance. For one-bit QSGD the variance blows up by a factor of order `sqrt(d)`, and with `d > 10^8` the SGD-style bound it inherits has a `sqrt(d)`-sized constant — it's technically a theorem and it says nothing. And the return trip is worse: when the server sums up a bunch of quantized updates the result isn't one-bit anymore, so the broadcast back to the workers picks up log factors, `(2 + log(2M+1)) M d` bits. Seide's 1-bit SGD takes the opposite tack — quantize to a thresholded sign and carry the discarded magnitude forward as an error-feedback residual added to the next minibatch. That's near-lossless in practice on speech nets, but it's a heuristic with no convergence guarantee; the error accumulator is a corrective bolt-on nobody had characterized.
 
@@ -20,7 +20,7 @@ The step is `x_{k+1}-x_k = -delta_k sign(g~_k)`, and each `(sign)_i^2 = 1`, so t
 
   f_{k+1} - f_k <= -delta_k g_k^T sign(g~_k) + (delta_k^2/2)||L||_1.
 
-Now I have to deal with `g_k^T sign(g~_k)`, where the gradient `g_k` is true but the sign is taken on the *noisy* `g~_k`. Coordinate by coordinate, `g_{k,i} sign(g~_{k,i})` equals `+|g_{k,i}|` when the signs agree and `-|g_{k,i}|` when they disagree. Write that as one expression: `g_{k,i} sign(g~_{k,i}) = |g_{k,i}| - 2|g_{k,i}| I[sign(g~_{k,i}) != sign(g_{k,i})]`, where `I[.]` is the indicator. Summing, `g_k^T sign(g~_k) = ||g_k||_1 - 2 sum_i |g_{k,i}| I[disagree]`. Before I lean on this identity, let me make sure I rearranged it right by checking it on a random instance: drawing a length-20 `g` and a noisy `g~`, the left side `g^T sign(g~)` came out `6.583068` and the right side `||g||_1 - 2 sum_i |g_i| I[disagree]` came out `6.583068` — identical, so the algebra is clean. Substitute:
+Now I have to deal with `g_k^T sign(g~_k)`, where the gradient `g_k` is true but the sign is taken on the *noisy* `g~_k`. Coordinate by coordinate, `g_{k,i} sign(g~_{k,i})` equals `+|g_{k,i}|` when the signs agree and `-|g_{k,i}|` when they disagree. Write that as one expression: `g_{k,i} sign(g~_{k,i}) = |g_{k,i}| - 2|g_{k,i}| I[sign(g~_{k,i}) != sign(g_{k,i})]`, where `I[.]` is the indicator. Summing, `g_k^T sign(g~_k) = ||g_k||_1 - 2 sum_i |g_{k,i}| I[disagree]`. Substitute:
 
   f_{k+1} - f_k <= -delta_k ||g_k||_1 + 2 delta_k sum_i |g_{k,i}| I[disagree] + (delta_k^2/2)||L||_1.
 
@@ -32,7 +32,7 @@ Everything now rides on `|g_{k,i}| P[wrong sign]` — exactly the product I poke
 
   |g_{k,i}| P[sign(g~_{k,i}) != sign(g_{k,i})] <= sigma_{k,i}.
 
-This is the cancellation I want, and since it's the load-bearing step of the whole argument I should not just believe it from the algebra — let me check the claimed bound `|g_i| P[wrong] <= sigma_i` against the exact numbers for Gaussian noise of standard deviation `sigma_i = 1`. At `g_i = 0.1` the exact `|g_i| P[wrong] = 0.1 * Phi(-0.1) = 0.046`; at `g_i = 1` it is `1 * Phi(-1) = 0.159`; at `g_i = 3` it is `3 * Phi(-3) = 0.0041`; at `g_i = 0.01` it is `0.005`. Every one of these is comfortably `<= 1`, the right-hand `sigma_i`, and the tightest case is around `g_i = sigma_i` where the product peaks near `0.16 sigma_i` — a factor of six of slack, not a violation. So the bound holds with room to spare, and the Markov-then-Jensen chain isn't throwing the argument away. The bias problem is tamed not by removing the bias but by capping its damage at the noise scale, independent of how big or small the gradient is. And `sigma_{k,i}` is the noise after averaging a minibatch of size `n_k`, so `sigma_{k,i} <= sigma_i / sqrt(n_k)`. Substituting:
+This is the cancellation I want, and it's the load-bearing step of the whole argument, so let me check the claimed bound `|g_i| P[wrong] <= sigma_i` against the exact numbers for Gaussian noise of standard deviation `sigma_i = 1`. At `g_i = 0.1` the exact `|g_i| P[wrong] = 0.1 * Phi(-0.1) = 0.046`; at `g_i = 1` it is `1 * Phi(-1) = 0.159`; at `g_i = 3` it is `3 * Phi(-3) = 0.0041`; at `g_i = 0.01` it is `0.005`. Every one of these is comfortably `<= 1`, the right-hand `sigma_i`, and the tightest case is around `g_i = sigma_i` where the product peaks near `0.16 sigma_i` — a factor of six of slack, not a violation. So the bound holds with room to spare, and the Markov-then-Jensen chain isn't throwing the argument away. The bias problem is tamed not by removing the bias but by capping its damage at the noise scale, independent of how big or small the gradient is. And `sigma_{k,i}` is the noise after averaging a minibatch of size `n_k`, so `sigma_{k,i} <= sigma_i / sqrt(n_k)`. Substituting:
 
   E[f_{k+1}-f_k | x_k] <= -delta_k ||g_k||_1 + 2 (delta_k/sqrt(n_k)) ||sigma||_1 + (delta_k^2/2)||L||_1.
 
@@ -135,101 +135,14 @@ The momentum reads cleanly as a bias-variance knob: the `||sigma||_1 sqrt(1-beta
 
 One discretization detail to pin down before code: `sign(0)`. The original ICML reproduction code used a sign function that maps zero to `0`; the later majority-vote/compressor path I am matching for the wire format uses `tensor >= 0`, so zero maps to `+1`. The `>= 0` convention keeps every communicated coordinate binary; in majority vote it also means an exact tie in the vote sum is broadcast as `+1`.
 
-Now let me land this in the codec slot. The compression map is the sign of the gradient, stored as `uint8` bits in this simple implementation; the side information for reconstruction is just the shape; decode maps the bits back to `±1`; and the server-side aggregate is the majority vote, `sign(sum of the per-worker sign vectors)`, with ties following the same `>= 0` convention. Signum is the same encoder with a momentum buffer interposed before the sign. The update direction the codec returns is `±1` per coordinate, and the training loop scales it by the learning rate — so `delta` is the entire step size, exactly the trust-region radius of the `l_inf` box that the non-stochastic version is doing steepest descent on.
+Now let me land this in the codec slot. Encode is just the sign bit, `(grad >= 0)`, with the shape carried along as side information; decode unpacks the bit back to `±1` and reshapes. The piece actually worth writing out is the aggregate, since it's the majority-vote formula I just derived:
 
 ```python
-import torch
-
-
-class SignSGDCodec:
-    """signSGD / majority-vote codec. Each coordinate is transmitted as a single
-    sign bit; the server combines worker bits by majority vote (1-bit each way)."""
-
-    def __init__(self):
-        self.state = {}
-
-    def encode(self, grad, name):
-        # sign compression: the wire message is one bit per coordinate.
-        # sign(0) -> +1 via (grad >= 0), so every coordinate emits a binary code.
-        shape = grad.shape
-        bits = (grad.flatten() >= 0).to(torch.uint8)        # sign(g~) stored as uint8
-        return [bits], shape                                 # message, ctx(=shape)
-
-    def aggregate(self, messages):
-        # majority vote: sign(sum_m sign(g~_m)). Decode each worker's bits to +-1,
-        # sum the votes, re-sign -> a single bit broadcast back to every worker.
-        votes = sum(b.to(torch.float32) * 2 - 1 for [b] in messages)
-        return [(votes >= 0).to(torch.uint8)]               # 1-bit return message
-
-    def decode(self, received, ctx):
-        # bits -> +-1 update direction, reshaped to the parameter's shape.
-        shape = ctx
-        [bits] = received
-        return (bits.to(torch.float32) * 2 - 1).view(shape)  # -delta * this = the step
-
-
-class SignumCodec(SignSGDCodec):
-    """Signum: sign of the momentum. Accumulate m = beta*m + (1-beta)*g~ per
-    parameter, then take its sign. Momentum lowers the noise (sigma sqrt(1-beta))
-    at the cost of curvature bias (delta||L||_1/(1-beta)); beta tunes the trade."""
-
-    def __init__(self, momentum=0.9):
-        super().__init__()
-        self.momentum = momentum
-        self.buf = {}
-
-    def encode(self, grad, name):
-        shape = grad.shape
-        g = grad.flatten()
-        beta = self.momentum
-        m = self.buf.get(name)
-        if m is None:
-            m = torch.zeros_like(g)
-        m = beta * m + (1 - beta) * g                        # m_{k+1}=beta*m_k+(1-beta)*g~_k
-        self.buf[name] = m
-        bits = (m >= 0).to(torch.uint8)                      # sign(m_{k+1})
-        return [bits], shape
+# server side: unpack each worker's bits to +-1, sum the votes, re-sign
+votes = sum(bits.to(torch.float32) * 2 - 1 for bits in worker_messages)
+majority_bit = (votes >= 0).to(torch.uint8)   # one bit broadcast back to every worker
 ```
 
-Equivalently, when there's no parameter server and Signum is just a local optimizer, it's the same rule written as an update: form the rescaled gradient, keep a momentum state, take its sign, optionally apply the decoupled MXNet-style `wd_lh` shrink, then step by `delta`. Here I mirror the original MXNet/local-optimizer convention for exact zeros, so `sign(0)` produces a zero step.
+Signum is the same encoder with a momentum buffer interposed before the sign: `m <- beta*m + (1-beta)*g~`, then sign that instead of the raw gradient. The update direction the codec returns is `±1` per coordinate, and the training loop scales it by the learning rate — so `delta` is the entire step size, exactly the trust-region radius of the `l_inf` box that the non-stochastic version is doing steepest descent on.
 
-```python
-import torch
-
-
-class Signum:
-    """Local Signum optimizer: state = beta*state + (1-beta)*rescaled_grad.
-    beta = 0 recovers signSGD. torch.sign mirrors the original ICML code:
-    sign(0) produces a zero step."""
-
-    def __init__(self, params, lr=0.01, momentum=0.9, weight_decay=0.0,
-                 decoupled_weight_decay=0.0):
-        self.params = list(params)
-        self.lr, self.momentum, self.wd = lr, momentum, weight_decay
-        self.wd_lh = decoupled_weight_decay
-        self.state = {id(p): None for p in self.params}
-
-    @torch.no_grad()
-    def step(self):
-        beta = self.momentum
-        for p in self.params:
-            if p.grad is None:
-                continue
-            g = p.grad
-            if self.wd != 0:
-                g = g.add(p, alpha=self.wd)                  # rescaled_grad includes wd*weight
-            if beta != 0:
-                m = self.state[id(p)]
-                if m is None:
-                    m = torch.zeros_like(g)
-                m.mul_(beta).add_(g, alpha=1 - beta)         # state=beta*state+(1-beta)*rescaled_grad
-                self.state[id(p)] = m
-                direction = torch.sign(m)
-            else:
-                direction = torch.sign(g)
-            if self.wd_lh != 0:
-                p.mul_(1 - self.lr * self.wd_lh)             # decoupled MXNet Signum shrink
-            p.add_(direction, alpha=-self.lr)                # x <- x - delta*sign(...)
-```
-
-Let me trace the causal chain back. Communication, not computation, is the bottleneck in distributed training, so the goal was to say one bit per coordinate in both directions while keeping an SGD-class non-convex rate. The crudest one-bit message is the sign of the gradient, and the field's principled compressors avoided the *biased* sign by randomizing to unbias — which inflates variance by `sqrt(d)` and makes their guarantees vacuous at deep-learning scale. So I went the other way: keep the biased sign, and confront the bias. A flipped sign with nonzero true gradient needs the noise to beat the signal, so `P[wrong] <= sigma_i/|g_i|`, and the magnitude cancels — the damage of bias is capped purely by the noise scale `sigma_i`, independent of the gradient size (I checked the inequality against exact Gaussian flip probabilities and it held with a factor of six to spare). With coordinate-wise smoothness (the natural majorization for a box-shaped sign step), a one-step descent bound plus a growing batch and `delta ~ 1/sqrt(||L||_1 K)` telescoped to the `1/sqrt N` rate in `l_1` — and translating through the density `phi(v) = ||v||_1^2/(d||v||_2^2)` gave the ratios `R_1 = sqrt(phi(L))/phi(g)` and `R_2 = phi(sigma)/phi(g)`, which a head-to-head on the sparse-noise toy quadratic and a Welford measurement on a real net both put in the favorable dense-gradient regime. Under unimodal-symmetric noise, Gauss's inequality sharpened the flip probability and gave a small-batch rate with a mixed `l_1`/variance-weighted-`l_2` norm. The return trip was compressed by majority vote, `sign[sum_m sign(g~_m)]`: a sign that's right more than half the time turns the workers into a repetition code, and under symmetry the binomial tail gives the full `sqrt M` variance reduction of distributed SGD with one bit each way — while a bimodal counterexample showed concretely that *without* symmetry, majority vote drives the error toward certainty instead. Folding momentum *inside* the sign gave Signum, where a martingale variance bound and a Hessian-splitting bias bound made `beta` an explicit bias-variance knob, all of it riding a single master lemma that only asks how often the signed quantity agrees with the true gradient. And the whole thing drops into the parameter-server codec as: encode = sign bit, aggregate = majority vote with the implementation's `>= 0` tie convention, decode = `±1` — one bit, both directions.
+Equivalently, when there's no parameter server and Signum is just a local optimizer, it's the same rule read off directly as an update: form the rescaled gradient (ordinary weight decay folds in here), keep a momentum state `m <- beta*m + (1-beta)*rescaled_grad`, take its sign (`beta=0` recovers plain signSGD), optionally apply the decoupled MXNet-style `wd_lh` shrink to the weights, then step by `-delta` times that sign. Here I mirror the original local-optimizer convention for exact zeros, so `sign(0)` produces a zero step — a different convention from the wire format's `>= 0` above, since a local optimizer never has to keep every coordinate binary for transmission.

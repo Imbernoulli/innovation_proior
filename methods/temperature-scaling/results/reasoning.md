@@ -20,13 +20,13 @@ So I want the *smallest* transform that can fix a uniform scale problem and noth
 
 with a single scalar $T>0$ shared across all classes and all examples. Borrow the name from where this operation already lives — statistical mechanics, and the soft targets in distillation — and call $T$ the temperature.
 
-Before I get attached to this, I should actually check what dividing by $T$ does, on numbers, not in my head. Take a 3-class logit vector $\mathbf z=(3.0,\,1.0,\,0.5)$. At $T=1$ the softmax is $(0.821,\,0.111,\,0.067)$ — confidence $0.821$, predicting class 0. Raise $T$ to 2: the exponents halve and I get $(0.605,\,0.222,\,0.173)$ — still class 0 on top, but confidence has fallen to $0.605$. At $T=5$: $(0.439,\,0.294,\,0.266)$, class 0 still winning, confidence down to $0.439$. Push $T$ to 1000 and it is $(0.334,\,0.333,\,0.333)$, essentially the uniform $1/3$. Push it the other way, $T=0.1$, and it is $(1.0,\,0.0,\,0.0)$, collapsed onto the argmax. So the picture is: class 0 is on top in every one of these — the ranking never moved — and the only thing that changed is how peaked the distribution is, monotonically softening as $T$ grows and sharpening as it shrinks.
+What does dividing by $T$ actually do, on numbers? Take a 3-class logit vector $\mathbf z=(3.0,\,1.0,\,0.5)$. At $T=1$ the softmax is $(0.821,\,0.111,\,0.067)$, predicting class 0 with confidence $0.821$. Raise $T$ to 2: the exponents halve and I get $(0.605,\,0.222,\,0.173)$ — still class 0 on top, confidence down to $0.605$. Push $T$ to 1000 and it flattens to $(0.334,\,0.333,\,0.333)$, essentially uniform; push it the other way to $T=0.1$ and it collapses to $(1.0,\,0.0,\,0.0)$. Class 0 is on top in every one of these — the ranking never moves — and the only thing changing is how peaked the distribution is, monotonically softening as $T$ grows and sharpening as it shrinks.
 
-That the ranking is frozen is not luck, and I can see why from the example: dividing all three logits by the same positive number is a monotone map, so it preserves order, $\arg\max_k z_k/T=\arg\max_k z_k$. Since $\hat y$ is exactly that argmax, the predicted class is identical for every input, so the test accuracy after scaling equals the accuracy before — not approximately, identically. That is the guarantee matrix scaling could not give, and I just watched it hold across $T\in\{0.1,1,2,5,1000\}$. And the limits I read off the numbers are the general behavior: $T\to\infty$ flattens every logit gap to zero so $\hat q_i\to 1/K$; $T=1$ is the identity; $T\to0^+$ lets the largest logit dominate and the mass collapses onto the argmax (up to ties). So the one knob does exactly one thing — bleed confidence out of an overconfident model toward uniform — which is the single degree of freedom the shared-scale hypothesis asked for, and with one parameter there is almost nothing to overfit on the held-out set.
+That the ranking is frozen is not luck, and I can see why from the example: dividing all three logits by the same positive number is a monotone map, so it preserves order, $\arg\max_k z_k/T=\arg\max_k z_k$. Since $\hat y$ is exactly that argmax, the predicted class is identical for every input, so the test accuracy after scaling equals the accuracy before — not approximately, identically. That is the guarantee matrix scaling could not give, and I just watched it hold across $T\in\{0.1,1,2,1000\}$. And the limits I read off the numbers are the general behavior: $T\to\infty$ flattens every logit gap to zero so $\hat q_i\to 1/K$; $T=1$ is the identity; $T\to0^+$ lets the largest logit dominate and the mass collapses onto the argmax (up to ties). So the one knob does exactly one thing — bleed confidence out of an overconfident model toward uniform — which is the single degree of freedom the shared-scale hypothesis asked for, and with one parameter there is almost nothing to overfit on the held-out set.
 
 How do I pick $T$? I want the probabilities to be honest, and the clean differentiable objective that rewards honest probabilities is the negative log-likelihood — in expectation, it is minimized when the predicted distribution matches the truth. The expected-calibration-error metric I care about is binned and non-differentiable, a bad thing to optimize directly; NLL is its smooth, well-behaved cousin and it is the same objective whose over-optimization exposed the scale problem, so it is the right lever to pull the logits back. So: freeze the network, run it once over the validation set to cache the logits and labels, and minimize the validation NLL over the single scalar $T$.
 
-I should test whether that objective actually does what I am claiming — that minimizing held-out NLL over $T$ pulls an overconfident model's confidence down toward its accuracy — rather than just asserting it. Let me build a small overconfident validation set by hand. Six examples, all with true class 0, all with a large logit gap so the model is very sure; but the model is right on only four of them: four logit vectors $(4,0,0)$ that correctly predict class 0, plus one $(0,4,0)$ and one $(0,0,4)$ that confidently predict the *wrong* class. So accuracy is $4/6\approx0.667$, while at $T=1$ each $(4,0,0)$ softmaxes to $(0.965,0.018,0.018)$ and the average top confidence is $0.965$ — a textbook overconfident set, $0.965$ confidence on $0.667$ accuracy. Now sweep $T$ and read off the NLL: at $T=1$ it is $1.369$; the minimizer over a fine grid sits at $T^\star\approx2.89$, where the NLL has dropped to $0.868$. And at that $T^\star$, $(4,0,0)$ softmaxes to $(0.666,0.167,0.167)$, so the average top confidence has fallen from $0.965$ to $0.666$ — essentially equal to the $0.667$ accuracy. So minimizing validation NLL over a single $T$ did, on this set, exactly the calibration job: it found $T^\star>1$ and softened the confidence until it matched the accuracy, without my ever optimizing ECE directly. That is the behavior I needed to see before trusting the one-parameter fit. (And the converse is worth noting for honesty: had the model been *under*confident on this set, the same minimization would have driven $T^\star<1$ and sharpened it — $T$ corrects in whichever direction the data demand; it is not hard-wired to soften.) One parameter, a couple hundred optimizer iterations, done.
+Does minimizing held-out NLL over $T$ actually pull an overconfident model's confidence down toward its accuracy? Let me build a small overconfident validation set by hand. Six examples, all with true class 0, all with a large logit gap so the model is very sure; but the model is right on only four of them: four logit vectors $(4,0,0)$ that correctly predict class 0, plus one $(0,4,0)$ and one $(0,0,4)$ that confidently predict the *wrong* class. So accuracy is $4/6\approx0.667$, while at $T=1$ each $(4,0,0)$ softmaxes to $(0.965,0.018,0.018)$ and the average top confidence is $0.965$ — a textbook overconfident set, $0.965$ confidence on $0.667$ accuracy. Now sweep $T$ and read off the NLL: at $T=1$ it is $1.369$; the minimizer over a fine grid sits at $T^\star\approx2.89$, where the NLL has dropped to $0.868$. And at that $T^\star$, $(4,0,0)$ softmaxes to $(0.666,0.167,0.167)$, so the average top confidence has fallen from $0.965$ to $0.666$ — essentially equal to the $0.667$ accuracy. So minimizing validation NLL over a single $T$ did, on this set, exactly the calibration job: it found $T^\star>1$ and softened the confidence until it matched the accuracy, without my ever optimizing ECE directly. (The converse holds too: had the model been *under*confident on this set, the same minimization would have driven $T^\star<1$ and sharpened it instead — $T$ corrects in whichever direction the data demand, it is not hard-wired to soften.) One parameter, a couple hundred optimizer iterations.
 
 Now I want to know whether "divide the logits by a constant and minimize NLL" is a principled thing or just a lucky hack that happened to match my overconfidence story. It worked on my toy set, but one example is not a derivation; I'd trust it far more if it dropped out of a clean optimization principle rather than only matching a hand-built case.
 
@@ -56,109 +56,8 @@ This is positive automatically, so the nonnegativity constraint I set aside is s
 
 That is a softmax of the logits scaled by $\lambda$ — and I did not put that form in by hand, it fell out of the stationarity condition. I want the positive-temperature member of this family, so I identify $\lambda = 1/T$ and get $q_i^{(k)}=\sigma_\text{SM}(\mathbf z_i/T)^{(k)}$, the exact transform I was rescaling by. So dividing the logits by a shared scalar is not an ad hoc trick: it is the maximum-entropy distribution consistent with matching the average true-class logit, and the single scalar is the lone Lagrange multiplier of the single coupling constraint — which is why one parameter is not merely a convenient small choice but the natural count.
 
-The derivation says raising $T$ (lowering $\lambda$) should raise the output entropy back toward what the data support; let me confirm that direction on the same $(4,0,0)$ vector I used before. Its softmax entropy is $0.177$ nats at $T=1$, $0.666$ at $T=2$, $0.868$ at the fitted $T^\star=2.89$, and $1.080$ at $T=10$, climbing monotonically toward the ceiling $\ln 3\approx1.099$. So an overconfident model is exactly a low-entropy one, and turning $T$ up is turning the entropy back up — the optimization principle and the overconfidence story are the same statement seen from two sides.
+The derivation says raising $T$ (lowering $\lambda$) should raise the output entropy back toward what the data support. On the same $(4,0,0)$ vector: entropy is $0.177$ nats at $T=1$, $0.666$ at $T=2$, $0.868$ at the fitted $T^\star=2.89$, and $1.080$ at $T=10$, climbing monotonically toward the ceiling $\ln 3\approx1.099$. An overconfident model is exactly a low-entropy one, and turning $T$ up is turning the entropy back up — the optimization principle and the overconfidence story are the same statement seen from two sides.
 
 A couple of things to nail down for the implementation. When I cache the validation logits, I must run the network in eval mode so batch-norm uses its frozen running statistics rather than recomputing batch statistics — otherwise the very thing I'm calibrating shifts under me. And since the argmax-preservation argument requires $T>0$, I'll optimize an unconstrained $\log T$ and exponentiate it inside the scaling step. L-BFGS is fine on the cached logits, since it is a smooth one-parameter problem and a generous iteration cap is still cheap. I'll initialize $T$ above 1 (say 1.5), since I expect an overconfident model to need softening rather than sharpening. The binned ECE diagnostic should be computed from the logits before and after fitting, but the optimizer itself should step on NLL.
 
-Let me trace the whole procedure end to end. Train the network normally and freeze it. Hold out a validation split. Push that split through the frozen network once, in eval mode, and stash the logits and labels. Minimize the validation NLL over the scalar $T$ by dividing every cached logit vector by $T$, taking the softmax cross-entropy against the labels, and stepping L-BFGS. At test time, the calibrated confidence for an input is $\max_k\sigma_\text{SM}(\mathbf z/T)^{(k)}$ with the fitted $T$; the predicted label is unchanged. That's the entire method, and the code mirrors it: a thin decorator around the trained model holding one learnable scalar.
-
-```python
-import torch
-from torch import nn, optim
-from torch.nn import functional as F
-
-
-class ModelWithTemperature(nn.Module):
-    """A thin decorator that wraps a classifier with temperature scaling.
-    The wrapped model must output raw logits, not softmax or log-softmax."""
-    def __init__(self, model):
-        super(ModelWithTemperature, self).__init__()
-        self.model = model
-        self.log_temperature = nn.Parameter(torch.log(torch.ones(1) * 1.5))
-
-    @property
-    def temperature(self):
-        return self.log_temperature.exp()
-
-    def forward(self, input):
-        logits = self.model(input)
-        return self.temperature_scale(logits)
-
-    def temperature_scale(self, logits):
-        temperature = self.temperature.unsqueeze(1).expand(logits.size(0), logits.size(1))
-        return logits / temperature
-
-    def set_temperature(self, valid_loader):
-        nll_criterion = nn.CrossEntropyLoss()
-        ece_criterion = _ECELoss()
-
-        wrapper_training = self.training
-        model_training = self.model.training
-        try:
-            device = next(self.model.parameters()).device
-        except StopIteration:
-            device = self.log_temperature.device
-        self.to(device)
-        self.eval()  # prevent BatchNorm statistics from changing while logits are cached
-
-        logits_list, labels_list = [], []
-        with torch.no_grad():
-            for input, label in valid_loader:
-                input = input.to(device)
-                label = label.to(device)
-                logits_list.append(self.model(input))
-                labels_list.append(label)
-        logits = torch.cat(logits_list)
-        labels = torch.cat(labels_list)
-
-        before_temperature_nll = nll_criterion(logits, labels).item()
-        before_temperature_ece = ece_criterion(logits, labels).item()
-        print('Before temperature - NLL: %.3f, ECE: %.3f' %
-              (before_temperature_nll, before_temperature_ece))
-
-        optimizer = optim.LBFGS([self.log_temperature], lr=0.01, max_iter=200)
-
-        def closure():
-            optimizer.zero_grad()
-            loss = nll_criterion(self.temperature_scale(logits), labels)
-            loss.backward()
-            return loss
-
-        optimizer.step(closure)
-
-        after_temperature_nll = nll_criterion(self.temperature_scale(logits), labels).item()
-        after_temperature_ece = ece_criterion(self.temperature_scale(logits), labels).item()
-        print('Optimal temperature: %.3f' % self.temperature.item())
-        print('After temperature - NLL: %.3f, ECE: %.3f' %
-              (after_temperature_nll, after_temperature_ece))
-
-        self.train(wrapper_training)
-        self.model.train(model_training)
-        return self
-
-
-class _ECELoss(nn.Module):
-    """Expected Calibration Error over equally spaced confidence bins."""
-    def __init__(self, n_bins=15):
-        super(_ECELoss, self).__init__()
-        bin_boundaries = torch.linspace(0, 1, n_bins + 1)
-        self.bin_lowers = bin_boundaries[:-1]
-        self.bin_uppers = bin_boundaries[1:]
-
-    def forward(self, logits, labels):
-        softmaxes = F.softmax(logits, dim=1)
-        confidences, predictions = torch.max(softmaxes, 1)
-        accuracies = predictions.eq(labels)
-
-        ece = torch.zeros(1, device=logits.device)
-        for bin_lower, bin_upper in zip(self.bin_lowers, self.bin_uppers):
-            in_bin = confidences.gt(bin_lower.item()) & confidences.le(bin_upper.item())
-            prop_in_bin = in_bin.float().mean()
-            if prop_in_bin.item() > 0:
-                accuracy_in_bin = accuracies[in_bin].float().mean()
-                avg_confidence_in_bin = confidences[in_bin].mean()
-                ece += torch.abs(avg_confidence_in_bin - accuracy_in_bin) * prop_in_bin
-        return ece
-```
-
-The chain, start to finish: modern high-capacity, lightly-regularized networks can be accurate but overconfident, and the training curves show how NLL can overfit through sharper probabilities while 0/1 error still improves. That points to a dominant scale error in the logits, while the post-hoc goal is to leave the class ranking alone. The minimal transform that corrects a uniform scale error without touching the ranking is dividing every logit by a single shared positive temperature $T$, which leaves the argmax — and hence the accuracy — unchanged and simply softens the distribution toward uniform as $T$ grows. Fitting $T$ by minimizing the held-out negative log-likelihood uses one parameter with very little capacity to overfit, and the same operation falls out as the unique maximum-entropy distribution that matches the average true-class logit — so the lone parameter is the lone Lagrange multiplier, and raising it restores the entropy supported by the validation data.
+That's the entire method: a thin decorator around the frozen model, holding the one learnable scalar as $\log T$ so positivity is free, that caches the validation logits once in eval mode and hands them to L-BFGS to minimize NLL over that scalar — after which every logit, at test time too, gets divided by the fitted $T$ before the softmax, with the predicted label untouched.

@@ -61,10 +61,9 @@ the mixture instead of against the raw target.
 
 So for the direction I care about, define `p̃ = (1−α)·p + α·q_θ` for the skewed teacher, with `α` small,
 and `D_SRKL^α(p, q_θ) = D_KL(q_θ, p̃) = D_KL(q_θ, (1−α)·p + α·q_θ)`. At `α = 0` this is exactly
-reverse KL, `D_KL(q_θ, p)`; as `α` grows, the mixture floor rises. Before I trust this I have to actually
-work out the gradient, because `p̃` *itself* depends on `θ` through its `α·q_θ` leg, and it would be easy
-to write down `log r_{q_θ,p̃} + 1` by analogy and miss the extra term that dependence creates. Let me
-differentiate honestly. `D_SRKL^α = Σ q_θ·log q_θ − Σ q_θ·log p̃`. The first sum differentiates to
+reverse KL, `D_KL(q_θ, p)`; as `α` grows, the mixture floor rises. `p̃` *itself* depends on `θ` through
+its `α·q_θ` leg, so writing down `log r_{q_θ,p̃} + 1` by analogy would miss the extra term that
+dependence creates — differentiate honestly. `D_SRKL^α = Σ q_θ·log q_θ − Σ q_θ·log p̃`. The first sum differentiates to
 `Σ (log q_θ + 1)·∇q_θ`. The second is the trap: `∇[Σ q_θ·log p̃] = Σ (log p̃)·∇q_θ + Σ q_θ·(∇p̃)/p̃`, and
 `∇p̃ = α·∇q_θ`, so the second piece is `Σ (α·q_θ/p̃)·∇q_θ = Σ α·r_{q_θ,p̃}·∇q_θ`. (Both `Σ∇q_θ = 0` terms
 that would otherwise appear cancel because the per-vocab pieces are themselves the coefficients.)
@@ -72,22 +71,22 @@ Subtracting, the per-token coefficient is `log q_θ − log p̃ + 1 − α·r_{q
 α·r_{q_θ,p̃}`, so `∇_θ D_SRKL^α(p, q_θ) = (log r_{q_θ,p̃} + 1 − α·r_{q_θ,p̃})·∇_θ q_θ(y|x)` with
 `r_{q_θ,p̃} = q_θ/p̃`.
 
-I do not want to take that derivation on faith — the `−α·r` term is exactly the piece I might have gotten
-wrong. Let me check it numerically against a finite difference. Fix a teacher `p` over a small vocab,
+The `−α·r` term is exactly the piece I could have gotten wrong, so check it numerically against a finite
+difference. Fix a teacher `p` over a small vocab,
 parameterize the student as `q_θ = softmax(z)` so the chain through `p̃`'s `α·q_θ` leg is genuinely
 present, and compare `d/dz` of the full-vocab `KL(q_θ, p̃)` against `Σ_v coef_v · (∂q_v/∂z)` using
 `coef_v = log(q_v/p̃_v) + 1 − α·(q_v/p̃_v)` and the softmax Jacobian `∂q_v/∂z_j = q_v(δ_{vj} − q_j)`. With
 `α = 0.1`, `V = 6`, a random `p` and `z`, the two gradients agree to `1e−6`: numeric `[−0.1278,
 −0.0413, 0.1873, −0.1537, 0.1207, 0.0148]` against analytic `[−0.1278, −0.0413, 0.1873, −0.1537,
-0.1207, 0.0148]`. So the coefficient is right, `−α·r` term and all — and as a side check, dropping that
-term breaks the match, which is the concrete reason I cannot just reuse plain reverse KL's coefficient.
+0.1207, 0.0148]`. So the coefficient is right, `−α·r` term and all — dropping that term breaks the match,
+which is the concrete reason I cannot just reuse plain reverse KL's coefficient.
 
 Now does this coefficient actually stay bounded where plain reverse KL detonates? Compare to plain
 reverse KL's `log r_{q_θ,p} + 1`. Two things changed. The ratio inside the log is now `q_θ/p̃` instead
 of `q_θ/p`, and on an SGO where `p ≈ 0` the mixture still has the `α·q_θ` leg, so `p̃ ≥ α·q_θ` and
 `r_{q_θ,p̃} ≤ 1/α`; the log can no longer diverge. The new `−α·r_{q_θ,p̃}` term subtracts from the
 positive reverse-KL coefficient and grows when the ratio grows, pulling the coefficient back down where
-it would otherwise run away. Let me put numbers on the worst case to be sure the bound bites. Take a
+it would otherwise run away. Take a
 token the teacher essentially rules out, `p = 1e−9`, that the student emitted with `q_θ = 0.5`, and
 `α = 0.1`. Plain reverse KL: `log(0.5/1e−9) + 1 = 21.03`, and it keeps growing like `−log p` as `p`
 shrinks. Skewed: `p̃ = 0.9·1e−9 + 0.1·0.5 = 0.05`, so `r_{q_θ,p̃} = 0.5/0.05 = 10.0` — exactly the `1/α`
@@ -95,8 +94,8 @@ ceiling, independent of how small `p` got — and the coefficient is `log 10 + 1
 = 2.303`. Twenty-one versus two, and the skewed value cannot grow past its ceiling no matter how
 surprised the teacher is. The mixture floor is doing precisely the job I designed it for.
 
-For completeness let me work the forward direction the same way, because I will want both as options and
-I want to be sure the floor mechanism is not special to reverse. Define the skewed forward KL
+I'll want both directions available, so work the forward direction the same way and check that the
+floor mechanism isn't special to reverse. Define the skewed forward KL
 `D_SKL^α(p, q_θ) = D_KL(p, α·p + (1−α)·q_θ)` — mix the *student* leg up with a sliver of teacher,
 `q̃_θ = α·p + (1−α)·q_θ`. Here the outer weight `p` is `θ`-independent, so only the `−Σ p·log q̃_θ` leg
 contributes: `∇ = −Σ p·(∇q̃_θ)/q̃_θ = −Σ p·((1−α)∇q_θ)/q̃_θ = −(1−α)·Σ (p/q̃_θ)·∇q_θ`, giving
@@ -153,7 +152,7 @@ This also tells me to ask whether skewing is really different from the generaliz
 reached for, or whether I have just re-derived a corner of it. JSD interpolates by
 `D_JSD^β(p, q_θ) = β·D_KL(p, M) + (1−β)·D_KL(q_θ, M)`, `M = β·p + (1−β)·q_θ`. Claim to test: this equals
 `β·D_SKL^β(p, q_θ) + (1−β)·D_SRKL^{1−β}(p, q_θ)`, a *sum of two skewed KLs whose skew parameters are
-tied to the same `β`*. Let me verify the decomposition rather than assert it. The forward leg `D_KL(p, M)`
+tied to the same `β`*. The forward leg `D_KL(p, M)`
 is `D_SKL^α(p,q_θ)` with inner mixture `α·p + (1−α)·q_θ`; setting `α = β` makes that mixture `β·p +
 (1−β)·q_θ = M`. The reverse leg `D_KL(q_θ, M)` is `D_SRKL^α` with inner mixture `(1−α)·p + α·q_θ`;
 setting `α = 1−β` makes that `β·p + (1−β)·q_θ = M` again. So *if* the algebra is right, the forward leg
@@ -243,8 +242,8 @@ def skewed_forward_kl(logits, teacher_logits, no_model_batch, lam=0.1):
     return distil_loss
 ```
 
-Before I trust the code I want to trace it on a tiny input, because the sign convention and the
-keep-both-legs point are exactly where an off-by-a-term bug would hide silently. Take one batch, two
+The sign convention and the keep-both-legs point are exactly where an off-by-a-term bug would hide
+silently, so trace the code on a tiny input. Take one batch, two
 positions, vocab size 4, random teacher and student logits, and a label `[5, −100]` so the second
 position is masked out and only the first should count. Running `skewed_reverse_kl` returns `0.46541`. As
 an independent reference I compute `KL(q_θ, p̃)` directly at position 0 from the softmaxed logits with
@@ -255,23 +254,7 @@ is not `KL(q_θ, p̃)` and is not even a divergence (it would not be zero when `
 leg is load-bearing — it is the `+1` normalization term made concrete — and the comment in the code is
 literally what the numbers force.
 
-Let me trace the chain end to end. I wanted mode-seeking distillation on the student's own generations,
-because reverse KL cures forward KL's mode-averaging and SGOs cure the off-policy training-inference
-mismatch — but the combination trains badly. The gradient analysis says why: forward KL's coefficient
-`r_{p,q_θ}` explodes where the student vanishes, reverse KL's `log r_{q_θ,p}` explodes where the teacher
-vanishes, and on SGOs the teacher vanishes constantly, so my chosen configuration sits exactly in
-reverse KL's blow-up regime. The blow-up is caused by a raw distribution going to zero in a denominator,
-so I floor that denominator by skewing the KL against a mixture: skewed reverse KL `D_KL(q_θ, (1−α)p +
-α q_θ)`, whose minimized-loss gradient coefficient `log r_{q_θ,p̃} + 1 − α·r_{q_θ,p̃}` (finite-difference-
-checked) cannot diverge on teacher-vanishing samples because `p̃ ≥ α q_θ`, so `r ≤ 1/α` — at `p = 1e−9`
-the coefficient is `2.3` instead of plain reverse KL's `21`. Skewing also reduces the inverse-`α`
-contribution in the empirical L2 estimation bound, but normalizing by the gradient scale introduces
-inverse-`(1−α)` terms and makes the useful curve convex with an interior minimum; that pushes me to a mild
-`α = 0.1` — still 90% teacher in the reverse target, strong enough to floor the denominator. This is
-structurally distinct from generalized JSD: I verified the identity `D_JSD^β = β·D_SKL^β +
-(1−β)·D_SRKL^{1−β}` numerically, so JSD's single `β` ties the two legs' skews to `β` and `1−β` and cannot
-make both mild at once, whereas one freely tuned skewed KL hits the operating point JSD cannot reach. The
-data-side scheduling (adaptive SGO probability, off-policy replay buffer) is a separate, orthogonal
-system whose success rides on the skewed loss's fast early convergence; the loss itself is the masked,
-vocabulary-summed skewed reverse KL at `α = 0.1`, keeping both legs of the reverse-KL gradient and
-guarding `±inf` logits — traced on a tiny input to confirm it computes `KL(q_θ, p̃)` with the right sign.
+So the loss is the masked, vocabulary-summed skewed reverse KL at `α = 0.1`, keeping both legs of the
+reverse-KL gradient and guarding `±inf` logits, with the skewed forward variant carried alongside on the
+same skeleton for whichever direction a future setup needs — the scheduler and replay buffer stay the
+separate, orthogonal system I set aside earlier.
