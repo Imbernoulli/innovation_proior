@@ -14,7 +14,7 @@ Direction one — context predicts center. Take the 2c context words, look up ea
 
 Direction two — center predicts context. Use the center word's input vector, and for each surrounding word run a softmax to predict it. Each surrounding word is a separate prediction sharing the same input vector, so for a fixed radius c the objective around position t is Σ_{−c≤j≤c, j≠0} log p(w_{t+j} | w_t). With a window of c on each side that's up to 2c predictions per center word, so it's more expensive per center word, but it manufactures far more (input, target) training pairs, and I suspect that's exactly what helps rare words and semantic structure: each word gets used as a predictor of many neighbors. With a tree output layer the usual cost expression is Q = C·(D + D·log₂V): for each selected context position I touch the input vector and then a path of output vectors. One refinement falls out naturally here. Distant words are usually less related to the center than near words, so I'd like to weight near context more. The clumsy way is to attach distance weights. The cheap way: for each center word, draw a window radius R uniformly from 1 to c, and use only the R words on each side. A word at distance 1 is included for every R; a word at distance c only when R = c. So nearer words get sampled into training more often — I've implemented a soft distance-weighting with zero extra parameters, just by randomizing the window size. I'll take that.
 
-I'll keep both architectures — call them CBOW (the continuous-bag-of-words, context→center) and Skip-gram (center→context) — and let the data decide. CBOW is cheaper per center word; Skip-gram makes more pairs and I expect it to be stronger on semantics. Now both of them still have the *other* cost center sitting in them: that softmax over V. With the hidden layer gone, the softmax normalization is now the *entire* cost. So everything hinges on making it cheap. Let me write it down honestly.
+I'll keep both architectures — call them CBOW (the continuous-bag-of-words, context→center) and Skip-gram (center→context) — and let the data decide. CBOW is cheaper per center word; Skip-gram makes more pairs and I expect it to be stronger on semantics. Now both of them still have the *other* cost center sitting in them: that softmax over V. With the hidden layer gone, the softmax normalization is now the *entire* cost. So everything hinges on making it cheap.
 
 For either direction the expensive piece is the same. Given the input representation h and target word w_O, the full softmax is
 
@@ -28,7 +28,7 @@ First idea: keep it a genuine normalized probability, but factor the normalizati
 
   p(w | h) = Π_j σ( (1 − 2·code_j) · v'_{point_j} · h ).
 
-Before I trust this, I should check it's actually a distribution and not just a product of numbers in [0,1] that happens to live near a leaf. The mechanism is supposed to be that σ(z) is the probability of going one way and σ(−z) = 1 − σ(z) the probability of going the other, and the two children at every node therefore split the mass arriving at that node. Let me make that concrete on the smallest non-trivial tree. Take V = 3 leaves. Put leaf A as the left child of the root, and let the root's right child be an internal node m whose own children are leaves B (left) and C (right). For a fixed h, the only things that matter are the two inner-node scores; pick arbitrary ones, z_root = v'_root·h = 0.7 and z_m = v'_m·h = −0.4. Reading off the three root-to-leaf paths and using σ(z) for "go left":
+This factorization is a genuine distribution only if the mechanism actually works as claimed: σ(z) is the probability of going one way and σ(−z) = 1 − σ(z) the probability of the other, so the two children at every node split the mass arriving at that node. Concretely, on the smallest non-trivial tree — V = 3 leaves, leaf A as the left child of the root, and the root's right child an internal node m whose own children are leaves B (left) and C (right). For a fixed h, the only things that matter are the two inner-node scores; pick arbitrary ones, z_root = v'_root·h = 0.7 and z_m = v'_m·h = −0.4. Reading off the three root-to-leaf paths and using σ(z) for "go left":
 
   p(A) = σ(z_root) = σ(0.7) = 0.6682
   p(B) = (1 − σ(z_root))·σ(z_m) = 0.3318·σ(−0.4) = 0.3318·0.4013 = 0.1332
@@ -38,7 +38,7 @@ and p(A) + p(B) + p(C) = 0.6682 + 0.1332 + 0.1987 = 1.0000 — to the digits I c
 
 Now I get to choose the tree, and the choice isn't free — the shape determines the path lengths. A balanced tree gives every word a path of log₂ V. But word frequencies are wildly skewed: a handful of words ("the", "of", "a") account for a huge fraction of tokens. If I give *those* short paths and rare words longer paths, the *expected* path length over the token stream drops well below log₂ V. That's exactly what a Huffman code does — it's the optimal prefix code, assigning short codes to frequent symbols. So build the tree as a Huffman tree over word frequencies. The expected number of nodes per training word becomes about log₂ of the unigram perplexity rather than log₂ V; for a million-word vocab that's a further ~2× speedup. Bookkeeping note on parameters: in this hierarchical scheme each *word* keeps its input vector v_w, but the output side is now one vector per *inner node* (there are V−1 of them), not one per word. That's fine; the inner-node vectors are exactly the logistic-regression weights of the path decisions.
 
-Let me nail the gradient, because I'll be coding it. Each node on the path is a binary logistic regression: target is "which child", prediction is f = σ(h · v'_n). If I encode the path with a bit code_j ∈ {0,1} at node j (the Huffman code bit telling me which child the true word's path takes), then maximizing log p means the per-node loss is the logistic loss with label (1 − code_j). The gradient of the logistic log-likelihood is (label − prediction) times the other factor, so with step size α: g = (1 − code_j − f)·α; then accumulate the input-representation gradient as g·v'_n using the old node vector, update the node vector v'_n += g·h, and apply the accumulated gradient to the input vector or context vectors at the end. Clean — it's just a chain of logistic regressions sharing the same input representation.
+Each node on the path is a binary logistic regression: target is "which child", prediction is f = σ(h · v'_n). If I encode the path with a bit code_j ∈ {0,1} at node j (the Huffman code bit telling me which child the true word's path takes), then maximizing log p means the per-node loss is the logistic loss with label (1 − code_j). The gradient of the logistic log-likelihood is (label − prediction) times the other factor, so with step size α: g = (1 − code_j − f)·α; then accumulate the input-representation gradient as g·v'_n using the old node vector, update the node vector v'_n += g·h, and apply the accumulated gradient to the input vector or context vectors at the end. Clean — it's just a chain of logistic regressions sharing the same input representation.
 
 So that route works and stays exactly normalized. But it carries a tree, the inner-node bookkeeping, and the Huffman construction, and its cost still scales with path length. Let me see if I can get away with something even simpler; that pushes me to a second idea, which abandons normalization entirely.
 
@@ -58,7 +58,7 @@ So let me ask the irreverent question: I only want good vectors, not a likelihoo
 
   P(D=1 | w, c) = exp(v'_c · v_w) / ( exp(v'_c · v_w) + 1 ).
 
-Write z = v'_c · v_w and x = exp(z); the right side is x/(x+1). Divide top and bottom by x and this is 1/(1 + 1/x) = 1/(1 + e^{−z}) = σ(z) — algebraically the logistic. Let me confirm I haven't fooled myself with a substitution, by evaluating both sides at a few z: at z = −2, x/(x+1) = 0.1192 and σ(−2) = 0.1192; at z = 0, 0.5 and 0.5; at z = 1.5, 0.8176 and 0.8176. They agree to every digit, so
+Write z = v'_c · v_w and x = exp(z); the right side is x/(x+1). Divide top and bottom by x and this is 1/(1 + 1/x) = 1/(1 + e^{−z}) = σ(z) — algebraically the logistic. Evaluating both sides at a few z confirms it: at z = −2, x/(x+1) = 0.1192 and σ(−2) = 0.1192; at z = 0, 0.5 and 0.5; at z = 1.5, 0.8176 and 0.8176 — agreement to every digit, so
 
   P(D=1 | w, c) = σ(v'_c · v_w)
 
@@ -78,176 +78,10 @@ One more nuisance in the data itself, and it's the same frequency skew that moti
 
   P(discard w) = 1 − √( t / f(w) ),
 
-where f(w) is the word's relative frequency. Let me check it has the three properties by evaluating it across frequencies with the standard threshold t = 10^{−3}. At f = 10^{−4} (a rare word, below t): 1 − √(10) = 1 − 3.16 = −2.16, which clamps to 0 — kept always, untouched, as I wanted. At f = t = 10^{−3}: 1 − √1 = 0, the crossover, still always kept. At f = 5·10^{−3} (a moderately frequent word): 1 − √(0.2) = 1 − 0.447 = 0.553, so it's discarded about half the time. At f = 5·10^{−2} (something like "the"): 1 − √(0.02) = 1 − 0.141 = 0.859, dropped most of the time. Those discard values increase monotonically with f (−2.16 → 0 → 0.553 → 0.859), so the rule never reorders relative frequencies — a more frequent word is always thinned at least as hard as a less frequent one. All three properties I wanted hold. It's a heuristic, but it does what I designed it to. The payoff is double: training should spend far fewer updates on near-empty frequent-word pairs, *and* rare-word vectors should see cleaner neighborhoods — with the frequent words thinned out, the effective window reaches across more content words, so a center word now sees more of its genuinely informative neighbors within the same window radius. In the low-level trainer I will use the keep-probability min(1, (√(f/t)+1)·t/f) = min(1, √(t/f) + t/f), a slightly less aggressive form with the same leading √(t/f) behavior for very frequent words.
+where f(w) is the word's relative frequency. Evaluating it across frequencies with the standard threshold t = 10^{−3} confirms the three properties. At f = 10^{−4} (a rare word, below t): 1 − √(10) = 1 − 3.16 = −2.16, which clamps to 0 — kept always, untouched, as I wanted. At f = t = 10^{−3}: 1 − √1 = 0, the crossover, still always kept. At f = 5·10^{−3} (a moderately frequent word): 1 − √(0.2) = 1 − 0.447 = 0.553, so it's discarded about half the time. At f = 5·10^{−2} (something like "the"): 1 − √(0.02) = 1 − 0.141 = 0.859, dropped most of the time. Those discard values increase monotonically with f (−2.16 → 0 → 0.553 → 0.859), so the rule never reorders relative frequencies — a more frequent word is always thinned at least as hard as a less frequent one. All three properties I wanted hold. It's a heuristic, but it does what I designed it to. The payoff is double: training should spend far fewer updates on near-empty frequent-word pairs, *and* rare-word vectors should see cleaner neighborhoods — with the frequent words thinned out, the effective window reaches across more content words, so a center word now sees more of its genuinely informative neighbors within the same window radius. In the low-level trainer I will use the keep-probability min(1, (√(f/t)+1)·t/f) = min(1, √(t/f) + t/f), a slightly less aggressive form with the same leading √(t/f) behavior for very frequent words.
 
 Let me also pin the small but load-bearing optimization choices, because at this scale they matter. SGD with backprop; learning rate starts around 0.025 and decays *linearly* as raw corpus tokens are consumed — simple, and it spends the early high-rate phase moving fast and the late phase settling even when subsampling removes many updates. Initialize the input vectors to small uniform random values in roughly [−0.5/D, 0.5/D]: small so that initial dot products land in the near-linear middle region of σ where gradients are healthy, and scaled by 1/D so the dot product of two D-dim vectors doesn't blow up with dimension. Initialize the *output* vectors to exactly zero: then at the very first step every σ(v'·v) = σ(0) = 0.5, so there's no arbitrary initial push in any direction — the model starts perfectly agnostic and lets the data write the geometry. And since σ saturates, precompute it on a grid over, say, [−6, 6] and clamp outside that range to 0 or 1; outside ±6, σ is within 0.0025 of its asymptote, so clamping costs nothing and saves an exp() on every single one of the billions of updates.
 
 Now let me assemble the whole thing into the training loop, because the pieces interlock in a specific order. For each sentence: first thin it with the frequent-word discard. Then slide over positions; at each center word, draw the dynamic window radius R uniformly in [1, c]. For CBOW: average the input vectors of the R-on-each-side context words into h, run the cheap output layer (hierarchical-softmax path *or* negative sampling) with h as the input vector and the center word as the positive target, accumulate the hidden-vector error, and apply that same accumulated error to every context word's input vector, which matches the low-level scatter update scale. For Skip-gram: for each context word in the window, treat the *center* word's input vector as the input and that context word as the positive target, run the cheap output layer, and update. The cheap output layer is itself swappable: hierarchical softmax walks the Huffman path of the target word doing the per-node logistic updates; negative sampling does one positive plus k draws from U^{3/4} doing the per-sample logistic updates. Decay α linearly against the raw token count. Ship the input vectors.
 
-Here is the implementation, mirroring the structure of the standard C trainer (syn0 = input vectors = the embeddings we keep; syn1 = hierarchical-softmax inner-node vectors; syn1neg = negative-sampling output vectors). I'll write it in Python for clarity but keep it faithful to that structure.
-
-```python
-import numpy as np
-
-MAX_EXP = 6.0
-def build_sigmoid_table(size=1000):
-    # precompute sigma on [-MAX_EXP, MAX_EXP]; clamp outside (sigma within 0.0025 of 0/1)
-    xs = (np.arange(size) / size * 2 - 1) * MAX_EXP
-    return 1.0 / (1.0 + np.exp(-xs)), size
-EXP_TABLE, EXP_SIZE = build_sigmoid_table()
-def sigm(x):
-    if x >= MAX_EXP:  return 1.0
-    if x <= -MAX_EXP: return 0.0
-    return EXP_TABLE[int((x + MAX_EXP) * (EXP_SIZE / MAX_EXP / 2))]
-
-# ---- frequent-word subsampling: discard with prob 1 - sqrt(t/f) -------------
-def subsample_keep(count, train_words, t, rng):
-    if t <= 0: return True
-    fr = count / train_words
-    keep_p = (np.sqrt(fr / t) + 1.0) * (t / fr) if fr > 0 else 1.0  # C trainer's keep form
-    return keep_p >= 1.0 or rng.random() < keep_p
-
-# ---- Huffman tree for hierarchical softmax: short codes for frequent words --
-def build_huffman(counts):
-    # Counts are in descending vocabulary order, as in the C trainer.
-    V = len(counts)
-    count = list(counts) + [10**15] * (V - 1)     # internal nodes start "infinite"
-    binary = [0] * (2 * V - 1); parent = [-1] * (2 * V - 1)
-    pos1, pos2 = V - 1, V
-    def take_min():
-        nonlocal pos1, pos2
-        if pos1 >= 0 and count[pos1] < count[pos2]:
-            idx = pos1; pos1 -= 1
-        else:
-            idx = pos2; pos2 += 1
-        return idx
-    for a in range(V - 1):                          # merge two smallest each step
-        min1, min2 = take_min(), take_min()
-        count[V + a] = count[min1] + count[min2]
-        parent[min1] = parent[min2] = V + a; binary[min2] = 1
-    root = 2 * V - 2
-    codes, points = [], []                          # per word: path bits + inner-node ids
-    for a in range(V):
-        code, path, b = [], [], a
-        while True:                                  # climb from leaf to root
-            code.append(binary[b]); path.append(b); b = parent[b]
-            if b == root: break
-        # store root->leaf order; one inner-node point per code bit
-        codes.append(list(reversed(code)))
-        inner_nodes = [root] + list(reversed(path[1:]))
-        points.append([n - V for n in inner_nodes])
-    return codes, points
-
-# ---- the two cheap output layers (each fills the "predict cheaply" slot) ----
-def hs_update(h, word, syn1, codes, points, alpha):
-    grad = np.zeros_like(h)
-    for code_bit, node in zip(codes[word], points[word]):
-        f = sigm(np.dot(h, syn1[node]))
-        g = (1 - code_bit - f) * alpha            # (label - prediction)*alpha, label = 1-code
-        grad += g * syn1[node]                     # accumulate input-side gradient
-        syn1[node] += g * h                        # learn inner-node vector
-    return grad
-
-def neg_update(h, word, syn1neg, unigram_table, k, alpha, rng):
-    grad = np.zeros_like(h)
-    for d in range(k + 1):
-        if d == 0:
-            target, label = word, 1                # the true (positive) pair
-        else:
-            target = unigram_table[rng.integers(len(unigram_table))]  # ~ U(w)^{3/4}
-            if target == word: continue
-            label = 0
-        f = sigm(np.dot(h, syn1neg[target]))
-        g = (label - f) * alpha
-        grad += g * syn1neg[target]
-        syn1neg[target] += g * h
-    return grad
-
-def build_unigram_table(counts, size=10**8, power=0.75):
-    w = np.power(np.asarray(counts, dtype=np.float64), power); w /= w.sum()  # U(w)^{3/4} / Z
-    table, i, cum = np.empty(size, dtype=np.int64), 0, w[0]
-    for a in range(size):
-        table[a] = i
-        if a / size > cum and i < len(w) - 1: i += 1; cum += w[i]
-    return table
-
-# ---- fill the generic scaffold slots ---------------------------------------
-def predict(h, target, syn1, syn1neg, codes, points, table, k, hs, neg, alpha, rng):
-    grad = np.zeros_like(h)                           # input-side gradient for this prediction
-    if hs:  grad += hs_update(h, target, syn1, codes, points, alpha)
-    if neg: grad += neg_update(h, target, syn1neg, table, k, alpha, rng)
-    return grad
-
-class TrainingState:
-    def __init__(self, counts, V, D, window, k, arch, hs, neg, sample, table_size, rng):
-        self.counts = np.asarray(counts, dtype=np.float64)
-        self.train_words = float(self.counts.sum())
-        self.window, self.k, self.arch = window, k, arch
-        self.hs, self.neg, self.sample = hs, neg, sample
-        self.syn0 = (rng.random((V, D)) - 0.5) / D    # syn0: input vectors kept as embeddings
-        self.syn1 = np.zeros((V - 1, D)) if hs else None      # syn1: HS inner-node vectors
-        self.syn1neg = np.zeros((V, D)) if neg else None      # syn1neg: NEG output vectors
-        self.codes, self.points = build_huffman(self.counts) if hs else (None, None)
-        self.table = build_unigram_table(self.counts, size=table_size, power=0.75) if neg else None
-
-def configure_training(counts, V, D, options, rng):
-    return TrainingState(counts, V, D,
-                         window=options.get("window", 5),
-                         k=options.get("k", 5),
-                         arch=options.get("arch", "skipgram"),
-                         hs=options.get("hs", False),
-                         neg=options.get("neg", True),
-                         sample=options.get("sample", 1e-3),
-                         table_size=options.get("table_size", 10**8),
-                         rng=rng)
-
-def prepare_sentence(sentence, state, rng):
-    return [w for w in sentence
-            if subsample_keep(state.counts[w], state.train_words, state.sample, rng)]
-
-def window_context(sentence, pos, window, rng):
-    b = int(rng.integers(window)) if window > 0 else 0  # dynamic radius = window - b
-    return [sentence[i] for i in range(pos - window + b, pos + window + 1 - b)
-            if 0 <= i < len(sentence) and i != pos]
-
-def training_step(sentence, pos, state, alpha, rng):
-    center = sentence[pos]
-    ctx = window_context(sentence, pos, state.window, rng)
-    if not ctx: return
-    if state.arch == "cbow":
-        h = state.syn0[ctx].mean(axis=0)               # average context -> predict center
-        grad = predict(h, center, state.syn1, state.syn1neg, state.codes,
-                       state.points, state.table, state.k, state.hs, state.neg, alpha, rng)
-        for w_ctx in ctx:                              # C-style scatter, no /len(ctx)
-            state.syn0[w_ctx] += grad
-    else:                                              # skip-gram: center -> each context
-        for w_ctx in ctx:
-            grad = predict(state.syn0[center], w_ctx, state.syn1, state.syn1neg,
-                           state.codes, state.points, state.table, state.k,
-                           state.hs, state.neg, alpha, rng)
-            state.syn0[center] += grad
-
-def linear_alpha(alpha0, seen, total):
-    return max(alpha0 * (1 - seen / total), alpha0 * 1e-4)
-
-def train(corpus, counts, V, D=100, window=5, k=5, arch="skipgram",
-          hs=False, neg=True, alpha0=0.025, sample=1e-3, table_size=10**8,
-          epochs=5, seed=1):
-    rng = np.random.default_rng(seed)
-    state = configure_training(counts, V, D,
-                               {"window": window, "k": k, "arch": arch, "hs": hs,
-                                "neg": neg, "sample": sample, "table_size": table_size},
-                               rng)
-    total, seen = epochs * state.train_words, 0
-    for _ in range(epochs):
-        for sentence in corpus:
-            raw_len = len(sentence)
-            alpha = linear_alpha(alpha0, seen, total)
-            sent = prepare_sentence(sentence, state, rng)
-            for pos, _ in enumerate(sent):
-                training_step(sent, pos, state, alpha, rng)
-            seen += raw_len
-    return state.syn0   # the learned word embeddings
-```
-
-So the causal chain, start to finish: I wanted crisp *linear* regularities in a word space, the empirical clue said they appear only at a scale the expensive neural language models can't reach, so the real adversary was per-word cost; I traced the cost to a non-linear hidden layer and a vocabulary-sized softmax, killed the hidden layer to get a log-linear model (which also fits the linearity I'm after), built two minimal log-linear architectures (CBOW averaging context to predict the center, Skip-gram using the center to predict each neighbor with a randomized window for cheap distance-weighting), then attacked the softmax two ways — a Huffman-tree hierarchical softmax that keeps an exact normalized distribution at O(log V) cost, and, by starting from NCE's data-vs-noise classifier and brutally setting k·p_n = 1 so the posterior collapses to a plain σ(v'·v), a negative-sampling objective that needs only samples from a flattened U^{3/4} noise distribution; finally I thinned the frequency-dominated stream with the 1 − √(t/f) discard rule, kept input and output vectors separate to avoid the self-prediction pathology, and pinned the SGD/init/σ-table details — leaving a model cheap enough to train on billions of words, which is exactly the scale the linear regularities were waiting for.
+That loop is the whole trainer: `syn0` holds the kept input embeddings, `syn1` the Huffman-tree hierarchical-softmax vectors, `syn1neg` the negative-sampling output vectors, with hierarchical softmax and negative sampling as swappable fills of the same "predict cheaply" slot.
