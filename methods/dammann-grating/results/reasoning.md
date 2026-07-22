@@ -30,11 +30,9 @@ Look at the boundary terms first: the j=0 piece has sin(2πm·0) = 0, and the ve
 
   a_m = (1/(πm)) Σ_{j=1}^{K} 2(−1)^{j-1} sin(2πm x_j) = (2/(πm)) Σ_{j=1}^{K} (−1)^{j-1} sin(2πm x_j).
 
-There it is — the order amplitudes are a closed-form sum of sines of the transition points, with alternating signs. That's exactly the structure I hoped for: each diffraction order is a simple trigonometric function of where I put the flips, and the flips are shared across all the equations. The sign flips (−1)^{j-1} are the fingerprint of a binary ±1 profile.
+So the order amplitudes collapse to a closed-form sum of sines of the transition points, with alternating signs — each diffraction order is a simple trigonometric function of where I put the flips, and the flips are shared across all the equations. The sign flips (−1)^{j-1} are the fingerprint of a binary ±1 profile.
 
 The zeroth order is special because cos drops to 1: a_0 = 2 ∫_0^{1/2} t dx = 2 Σ_j (−1)^j (x_{j+1} − x_j). So a_0 is just the *signed length balance* of the period — how much of the half-period is +1 minus how much is −1. That's the knob for the central spot.
-
-Let me sanity-check the signs before I trust it. Take two arbitrary transitions, say x = {0.1, 0.2}. The zeroth term is a_0 = 2[(0.1) − (0.1) + (0.3)] = 0.6. For m = 1 the sine sum is (2/π)(sin(0.2π) − sin(0.4π)), which is negative because the second transition contributes with the opposite sign and a larger sine. That is exactly what the interval picture says should happen: the middle negative band is wider in Fourier phase than the first positive band. No missing endpoint term, no extra factor of two.
 
 Now the design. I have K interior transitions — K real numbers — so I can impose on the order of K independent conditions. If I target the nonnegative orders m = 0, …, L, the cleanest statement is
 
@@ -50,71 +48,6 @@ This is transcendental — a polynomial in x_1 set equal to a sine — so there'
 
 For more spots I add transitions and the equal-magnitude conditions stop having a tidy bracket — the sum has several sine terms and the system is genuinely multidimensional and nonconvex, with many local solutions. So I don't try to be clever; I optimize. Define a cost that is primarily the *non-uniformity* of the target orders, (I_max − I_min)/(I_max + I_min), which is zero exactly when they're all equal, and add a small penalty for low captured power so that two perfectly uniform layouts prefer the brighter one. Then run a derivative-free search (Nelder–Mead) from many random starting layouts and keep the best, because a single start lands in a bad local minimum. For two transitions aiming at five equal orders, this settles to a layout with the five target orders uniform to numerical zero and about 77% efficiency in them — three-quarters of the light, and better than the three-order case because two transitions give the spectrum more room to flatten and suppress leakage.
 
-Let me make sure I haven't smuggled in anything the math doesn't support. The transitions must stay ordered and inside (0, 1/2); I clip and sort them inside the cost so the optimizer can't cross or escape them. The efficiency I report is exactly Σ over the target orders of |a_m|² (with the ±m counted twice), nothing normalized away. And the whole construction is wavelength-independent in pattern: x_j are pure numbers on the normalized period; only the physical period d (which sets spot spacing through sinθ_m = mλ/d) and the half-wave etch depth λ/(2(n−1)) carry the wavelength. Same mask, any λ, just re-scale the depth.
+The transitions must stay ordered and inside (0, 1/2); I clip and sort them inside the cost so the optimizer can't cross or escape them. The efficiency I report is exactly Σ over the target orders of |a_m|² (with the ±m counted twice), nothing normalized away. And the whole construction is wavelength-independent in pattern: x_j are pure numbers on the normalized period; only the physical period d (which sets spot spacing through sinθ_m = mλ/d) and the half-wave etch depth λ/(2(n−1)) carry the wavelength. Same mask, any λ, just re-scale the depth.
 
-So the recipe that's emerged, end to end: far field = Fourier coefficients of one period; demand equal magnitudes on a symmetric target set, which would be lossy for an amplitude mask, so go to a pure phase element to conserve power; pick two phase levels 0 and π for one-etch fabrication and maximal contrast; make the period even so the coefficients are real and the fan-out is symmetric; that leaves only the sign-flip positions as variables; the order amplitudes are then the closed-form sum a_m = (2/(πm)) Σ_j (−1)^{j-1} sin(2πm x_j) with a_0 the signed length balance; equalize their magnitudes and maximize the captured power by solving for the transition points numerically. Let me write it.
-
-```python
-import numpy as np
-from scipy.optimize import brentq, minimize
-
-def binary_profile(x, transitions, start=+1.0):
-    """Render one even +/-1 period from sign-flip positions on the half-period."""
-    transitions = np.sort(np.asarray(transitions, float))
-    edges = np.concatenate(([0.0], transitions, [0.5]))
-    idx = np.searchsorted(edges, np.abs(x), side="right") - 1
-    idx = np.clip(idx, 0, len(edges) - 2)
-    return start * (-1.0) ** idx
-
-def order_amplitudes(transitions, M):
-    """a_0..a_M for an even +/-1 profile with transitions in (0, 1/2)."""
-    t = np.sort(np.asarray(transitions, float))
-    a = np.zeros(M + 1)
-    edges = np.concatenate(([0.0], t, [0.5]))
-    a[0] = 2.0 * np.sum(((-1.0) ** np.arange(len(edges) - 1)) * np.diff(edges))
-    if M >= 1 and len(t):
-        m = np.arange(1, M + 1)
-        sign = (-1.0) ** np.arange(len(t))
-        S = (sign[None, :] * np.sin(2 * np.pi * np.outer(m, t))).sum(axis=1)
-        a[1:] = (2.0 / (np.pi * m)) * S
-    return a
-
-def design_cost(transitions, num_nonnegative, efficiency_weight=0.05):
-    """Equalize m=0..num_nonnegative-1 and prefer higher captured power."""
-    t = np.sort(np.clip(transitions, 1e-4, 0.5 - 1e-4))
-    I = order_amplitudes(t, num_nonnegative - 1) ** 2
-    target = I[:num_nonnegative]
-    eta = I[0] + 2.0 * np.sum(I[1:num_nonnegative])
-    uniformity = (target.max() - target.min()) / (target.max() + target.min() + 1e-12)
-    return uniformity + efficiency_weight * (1.0 - eta)
-
-def design(num_nonnegative, num_transitions=None, restarts=400, seed=0):
-    """Multistart search for a 2*num_nonnegative-1 order fan-out."""
-    K = num_nonnegative - 1 if num_transitions is None else num_transitions
-    rng = np.random.default_rng(seed)
-    best = None
-    for _ in range(restarts):
-        t0 = np.sort(rng.uniform(0.01, 0.49, K))
-        r = minimize(design_cost, t0, args=(num_nonnegative,), method='Nelder-Mead',
-                     options=dict(xatol=1e-8, fatol=1e-10, maxiter=20000))
-        if best is None or r.fun < best.fun:
-            best = r
-    t = np.sort(np.clip(best.x, 1e-4, 0.5 - 1e-4))
-    I = order_amplitudes(t, num_nonnegative - 1) ** 2
-    eta = I[0] + 2.0 * np.sum(I[1:num_nonnegative])
-    target = I[:num_nonnegative]
-    uniformity = (target.max() - target.min()) / (target.max() + target.min() + 1e-12)
-    return t, eta, uniformity, I
-
-for q in (2, 3):                                          # q=2 -> 1x3, q=3 -> 1x5
-    t, eta, uniformity, I = design(q, restarts=400)
-    print(f"{2*q-1} equal orders: transitions={np.round(t, 4)}  "
-          f"eff={eta*100:.2f}%  non-unif={uniformity*100:.3f}%")
-
-f = lambda t1: (4 * t1 - 1) ** 2 - (2 / np.pi * np.sin(2 * np.pi * t1)) ** 2
-t1 = brentq(f, 0.30, 0.39)
-a0, a1 = 4 * t1 - 1, 2 / np.pi * np.sin(2 * np.pi * t1)
-print(f"[1x3] t1={t1:.5f}  I0=I1={a0**2:.5f}  eff={(a0**2 + 2*a1**2)*100:.3f}%")
-```
-
-The causal chain, once more so I trust it: periodic phase profile → far field is its Fourier series, so order m carries |c_m|²; demanding equal |c_m| on a symmetric target set rules out a lossy amplitude mask and forces a pure phase element; a binary 0/π profile is the one I can etch in a single step and gives real, symmetric coefficients when the period is made even; that leaves only the sign-flip positions, and the coefficients come out as the closed-form sine sums above; equalizing their magnitudes while keeping the most power gives a small nonlinear system, solved in closed form for the three-order case (t₁≈0.368 for the positive-DC branch, ~66%) and by multistart search for more spots (five orders, ~77%) — a single thin transparent grating that splits one beam into an array of equally bright ones.
+Time to turn this into code. The only free parameters left are the transition points, so I need three pieces: a function that evaluates a_0 and the sine sums above from a sorted transition array; a scalar objective that combines the uniformity gap (I_max − I_min)/(I_max + I_min) with a small penalty for low captured power, so two perfectly uniform layouts prefer the brighter one; and, since the equal-magnitude system stops being tidy past one transition, a multistart Nelder–Mead over that objective from many random transition sets, keeping the best. For the K=1 case I can skip the general optimizer and just hand F(x_1) = (4x_1−1)² − [(2/π)sin(2πx_1)]² to a bracketing root-finder, since I already know the root sits between 0.30 and 0.39. Rendering the profile itself for a mask (mapping the ±1 sign back to a phase of 0 or π on either side of each transition) is a direct lookup: given a coordinate, find which transition-bounded interval it falls in and read off the sign.

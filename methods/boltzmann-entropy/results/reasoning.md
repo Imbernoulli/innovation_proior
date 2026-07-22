@@ -25,7 +25,7 @@ How many complexions give a particular list (w_0,…,w_p)? This is just: in how 
 
     P = n! / (w_0! w_1! … w_p!).
 
-Let me sanity-check on something small enough to list by hand, because if the picture is right the most-arrangeable distribution should be visibly the most balanced one. Take seven molecules, total energy seven units, rungs up to seven. The constraints Σw_i = 7 and Σi·w_i = 7 are tight enough that I can write out every state distribution; there turn out to be fifteen of them. Rather than trust my eye, let me compute P = 7!/(Πw_i!) for each and actually find the maximum. A few representative ones: the distribution "three molecules at 0, two at 1, one at 2, one at 3" — I'll write it as the digit-string 0001123 — has P = 7!/(3!·2!·1!·1!) = 5040/12 = 420. The lopsided distribution "six molecules at 0, one at 7," written 0000007, has P = 7!/(6!·1!) = 7. Running the full table, the largest P is 420 (the 0001123 distribution), and the next-largest is 210 — so the balanced distribution wins, and wins by a clear factor of two over its nearest competitor and by 420/7 = 60 over the lopsided pile-it-on-one extreme. Good: the most-balanced distribution is the unique most-arrangeable one, not a tie, even at n = 7. With Avogadro's number of molecules the winning margin isn't sixty, it's an exponential of something enormous; the most-balanced distribution would then own essentially all the complexions compatible with the constraints, to any precision a thermometer could resolve. So the overwhelming likelihood of "spread out" over "piled up" is already visible in a seven-molecule toy, and it sharpens as N grows. That dominance is what I'll want to identify with the second law — but let me hold that identification until I've checked it against Clausius, not assert it now.
+Something small enough to list by hand makes the picture concrete. Take seven molecules, total energy seven units, rungs up to seven. The constraints Σw_i = 7 and Σi·w_i = 7 are tight enough that every state distribution can be written out; there turn out to be fifteen of them. Compute P = 7!/(Πw_i!) for each. A few representative ones: the distribution "three molecules at 0, two at 1, one at 2, one at 3" — the digit-string 0001123 — has P = 7!/(3!·2!·1!·1!) = 5040/12 = 420. The lopsided distribution "six molecules at 0, one at 7," written 0000007, has P = 7!/(6!·1!) = 7. Running the full table, the largest P is 420 (the 0001123 distribution), and the next-largest is 210: the balanced distribution wins by a factor of two over its nearest competitor and by 420/7 = 60 over the lopsided pile-it-on-one extreme. It is the unique most-arrangeable distribution, not a tie, even at n = 7. With Avogadro's number of molecules the winning margin isn't sixty, it's an exponential of something enormous; the most-balanced distribution would then own essentially all the complexions compatible with the constraints, to any precision a thermometer could resolve. The overwhelming likelihood of "spread out" over "piled up" is already visible in a seven-molecule toy, and it sharpens as N grows — the identification with the second law still needs checking against Clausius, not asserted yet.
 
 So the equilibrium state distribution should be the one that maximizes P. Maximize n!/(w_0!…w_p!): the numerator is fixed, so I want to *minimize the denominator* w_0! w_1! … w_p!, subject to the two constraints. Products of factorials are nasty to differentiate, so I'll minimize the logarithm instead — minimizing a product is minimizing its log — and the log turns the product into a sum:
 
@@ -64,8 +64,6 @@ Solve x/(1−x) = λ/n: cross-multiply, nx = λ(1−x) = λ − λx, so x(n+λ) 
 
     x = λ / (n + λ).
 
-Let me check this actually satisfies the constraint I imposed, rather than trust the algebra blind. Put λ/n = 1 (mean energy one rung per molecule, as in the seven-molecule case): then x = 1/(1+1) = ½, and x/(1−x) = (½)/(½) = 1 = λ/n. The mean energy per molecule comes back out as 1. So x = λ/(n+λ) does reproduce the energy constraint — good.
-
 Now what does this *mean*? The total energy is L = λε = n·μ, where μ = L/n is the mean kinetic energy per molecule. So λ/n = μ/ε, and therefore n/λ = ε/μ. Then
 
     x = λ/(n+λ) = 1/(1 + n/λ) = 1/(1 + ε/μ) ≈ e^{−ε/μ}   for small ε/μ.
@@ -76,11 +74,11 @@ So the probability that a molecule sits on rung s — has energy E = sε — is
 
 The exponential of minus the energy over the temperature scale. In this one-coordinate count the scale μ plays the role of kT, the energy unit attached to temperature, so this is the Boltzmann factor e^{−E/kT} falling out of pure counting. And notice the thing that makes it physics rather than bookkeeping: x depends *only* on the ratio λ/n, the mean energy per molecule, not on n or λ separately. Two gases with the same mean energy per molecule have the same energy distribution regardless of size. The distribution is set by temperature alone. That's exactly the scale-invariance a temperature-controlled law must have, and it's reassuring that the counting respects it.
 
-Before I go to the continuum I should make sure I've actually got a *minimum* of M, not a maximum or a saddle. The Hessian quadratic form comes from differentiating w_i ln w_i twice in w_i, giving 1/w_i, so
+The Hessian quadratic form confirms this is actually a minimum of M, not a maximum or a saddle: differentiating w_i ln w_i twice in w_i gives 1/w_i, so
 
     δ²M = Σ_i (δw_i)² / w_i ,
 
-which is positive for any nonzero variation, since every w_i > 0. So M is genuinely minimized, P genuinely maximized. Good — it's a peak, the gas really does pile up here.
+positive for any nonzero variation, since every w_i > 0. M is genuinely minimized, P genuinely maximized — the gas really does pile up here.
 
 Now the continuum. Let ε → 0, write w_i = ε f(iε) so f is a smooth density. The sum Σ w_i ln w_i, after pulling out the constant pieces involving ε and n (they're the same for every state distribution, so they can't affect *which* distribution wins), becomes an integral, and the quantity to maximize is
 
@@ -96,7 +94,7 @@ For this to vanish for arbitrary δf, the bracket must vanish:
 
 The continuous version of the same exponential. The Hessian quadratic form for Ω is δ²Ω = − ∫ (δf)²/f dx, strictly negative since f > 0, so this is a clean maximum. In energy the equilibrium density is f(x) ∝ e^{−hx}.
 
-Before I celebrate, let me test this against the one piece of equilibrium physics I already trust — Maxwell's distribution — because if my count is right it had better reproduce his speed law. Maxwell's law for a three-dimensional gas of spheres is f(speed) ∝ v² e^{−mv²/2kT}: a Gaussian *times v²*. Take my result f(E) ∝ e^{−hE} in energy and convert it to a speed distribution. Energy is E = (m/2)v², so dE = m v dv, and the density transforms as f(E) dE = e^{−h(m/2)v²}·(m v) dv. That carries a factor of v¹, not v². So I get f(speed) ∝ v·e^{−(hm/2)v²}, and Maxwell has v²·e^{−(…)v²}. They disagree by exactly one power of v. My count is missing a factor of v.
+This should reproduce Maxwell's distribution, the one piece of equilibrium physics already trusted — if my count is right it had better match his speed law. Maxwell's law for a three-dimensional gas of spheres is f(speed) ∝ v² e^{−mv²/2kT}: a Gaussian *times v²*. Take my result f(E) ∝ e^{−hE} in energy and convert it to a speed distribution. Energy is E = (m/2)v², so dE = m v dv, and the density transforms as f(E) dE = e^{−h(m/2)v²}·(m v) dv. That carries a factor of v¹, not v². So I get f(speed) ∝ v·e^{−(hm/2)v²}, and Maxwell has v²·e^{−(…)v²}. They disagree by exactly one power of v. My count is missing a factor of v.
 
 So something about how I seeded the count is wrong, and the discrepancy is specific enough to point at the culprit. When I built the urn of energy-labeled slips I tacitly assumed equal numbers of slips for each equal *energy* interval — equal weight per dx of energy. But the molecules don't live in energy-space; they live in velocity-space, and the natural, mechanically-correct uniform measure is equal weight per *volume of velocity space*, du dv dw, not per interval of energy. Energy is (m/2)(u²+v²+w²), so a thin shell of energy corresponds to a thick shell of velocity — the Jacobian dE = mv dv means equal-energy slices are *not* equal-velocity-volume slices — and that conversion is exactly the factor of v I dropped. So I must redo the counting with the three velocity components as the variables, seeding the urn uniformly in du dv dw. Minimize Σ w ln w over cells in velocity space with the constraint that the total kinetic energy (m/2)(u²+v²+w²) summed over molecules is fixed. The same variational calculation gives
 
@@ -138,7 +136,7 @@ The thermodynamic entropy of the gas equals two-thirds of my permutability measu
 
 And now the two deficiencies I started with are gone in one stroke. Ω is defined for *any* state distribution, not just equilibrium ones — I can write down −∫ f ln f for any f whatsoever, in or out of equilibrium. So the gas spreading through the box, with no temperature and no Clausius entropy, *does* have an Ω at every instant, and the most numerous states are precisely the ones with the largest Ω. The second law's increase should be the gas climbing from a low-multiplicity macrostate to the overwhelmingly-dominant high-multiplicity one. It "increases" not because mechanics forbids the reverse but because the reverse is the lottery's 1-2-3-4-5: allowed, and never seen.
 
-There's a trap here I have to mark, or someone will fall in it. One might guess that this Ω is the logarithm of the *phase-space volume the system occupies* as it moves. It is not, and it can't be — because by Liouville's theorem that volume is conserved along the motion: a blob of initial conditions, dξ…dw, evolves into dΞ…dW with exactly the same volume. If entropy were the log of that volume it would be constant in time, and nothing would ever increase. The resolution is that Ω is the log of the number of complexions of a *coarse-grained* description — the state distribution, the occupation numbers — not of a fine-grained phase volume. The blob keeps its volume but stretches into ever-finer filaments that thread through ever-more coarse cells, so the coarse multiplicity grows while the fine volume doesn't. The coarse-graining — the step where I stopped caring *which* molecule is where and counted only *how many* are in each cell — is not a sloppiness to apologize for; it is the very thing that lets entropy increase.
+One trap to avoid: guessing that this Ω is the logarithm of the *phase-space volume the system occupies* as it moves. It is not, and it can't be — because by Liouville's theorem that volume is conserved along the motion: a blob of initial conditions, dξ…dw, evolves into dΞ…dW with exactly the same volume. If entropy were the log of that volume it would be constant in time, and nothing would ever increase. The resolution is that Ω is the log of the number of complexions of a *coarse-grained* description — the state distribution, the occupation numbers — not of a fine-grained phase volume. The blob keeps its volume but stretches into ever-finer filaments that thread through ever-more coarse cells, so the coarse multiplicity grows while the fine volume doesn't. The coarse-graining — the step where I stopped caring *which* molecule is where and counted only *how many* are in each cell — is not a sloppiness to apologize for; it is the very thing that lets entropy increase.
 
 So far this is a story about *probability*: equilibrium is the most-arrangeable state, the gas is overwhelmingly likely to be there. But "overwhelmingly likely" still leaves me wanting an actual *dynamical* statement — a quantity that I can show, from the collisions themselves, can only fall (or rise) as time runs forward. I want to watch the gas relax and prove the relaxation is one-way. Let me build the collisions in.
 
@@ -176,64 +174,10 @@ always. H can only decrease, never increase, and it stops changing only when s =
 
 Take the log: ln f(x) + ln f(x′) = ln f(ξ) + ln f(x+x′−ξ) whenever the energies before equal the energies after. So ln f must be a quantity that is *conserved in collisions and additive over the pair*. In the rest frame, after molecule number and total energy are fixed, that leaves a constant plus the energy. Hence ln f(x) = −h x + const, i.e. f(x) ∝ e^{−hx} — the exponential again, the Maxwell distribution, now arrived at from a completely different direction: as the stationary point of the relaxation. The distribution that makes H stop falling is exactly the distribution that maximizes the number of complexions. The dynamics and the counting agree: H falls unless f is Maxwellian, and Maxwellian is where Ω = −H is maximal.
 
-I should check H doesn't simply fall forever to minus infinity — it can't, because at fixed molecule number and fixed total energy the value of H is bounded below, with the Maxwell distribution as the minimizing stationary state. Under this collision description any stationary endpoint must be Maxwellian, and once that state is reached it remains there. And since −H is, up to the constant k, exactly the entropy Ω I matched to Clausius, this *is* the second law made dynamical: entropy ∝ −H rises monotonically until the maximum-entropy, maximum-multiplicity, Maxwell-distributed state is reached.
+H doesn't simply fall forever to minus infinity: at fixed molecule number and fixed total energy the value of H is bounded below, with the Maxwell distribution as the minimizing stationary state. Under this collision description any stationary endpoint must be Maxwellian, and once that state is reached it remains there. And since −H is, up to the constant k, exactly the entropy Ω I matched to Clausius, this *is* the second law made dynamical: entropy ∝ −H rises monotonically until the maximum-entropy, maximum-multiplicity, Maxwell-distributed state is reached.
 
 Let me also be honest with myself about what this proof rests on, because the time-reversibility worry from the start hasn't actually gone away — it's been *located*. The microdynamics is reversible; my dH/dt ≤ 0 is monotone. How? The asymmetry entered at exactly one point: the collision-number ansatz, where I assumed the two molecules about to collide have *uncorrelated* energies — that the pair density factorizes as f(x)f(x′) *before* the collision. After a collision the two molecules are correlated (their energies are linked by what just happened), so the assumption is not symmetric in time; it's a statement about the state *before* collisions, not after. That is where the irreversibility enters. It's not a theorem of mechanics that the pre-collision energies are uncorrelated; it's an overwhelmingly-good probabilistic statement about a gas of enormously many molecules — the same overwhelming likelihood as the lottery picture. So the monotone H-theorem is not in contradiction with reversible mechanics; it's a probabilistic statement wearing a dynamical coat, and the coat fits because the number of molecules is astronomically large. The reversibility objection — that I could reverse all velocities and make H climb — is correct *as a statement about a single measure-zero set of contrived microstates*, and irrelevant as a statement about what a real gas does, for the very same reason the gas never crawls back into the corner of the box. The two pictures, counting and dynamics, are the same picture.
 
-The chain is now tight. Clausius's entropy is real but meaningless at the molecular level, undefined out of equilibrium, and unexplained as to its increase. I reconceive the gas's state in three tiers — macrostate, state distribution, complexion — and grant every complexion equal likelihood. The probability of a macrostate is then the *number of complexions* it contains, which for discretized energy is the multinomial n!/Πw_i!. Maximizing that count, via Stirling and two Lagrange multipliers, forces the occupations into a geometric/exponential ladder w_i ∝ x^i with x set by the mean energy alone — Maxwell's distribution, gotten by counting. The logarithm of the maximal count, Ω = −∫ f ln f, is forced to be the entropy because entropy is additive while complexion-counts multiply, and the log is the unique converter of products into sums — S = k log W. Plugged into the ideal gas, Ω matches Clausius's ∫dQ/T exactly (up to the unit factor), so the abstract count *is* the thermodynamic entropy; and being defined for any f, it supplies the missing non-equilibrium entropy and explains the increase as the climb to the dominant macrostate. When I build the collisions explicitly, H = ∫ f ln f carries the same functional with the opposite sign, and the four-fold symmetry of a collision forces dH/dt ≤ 0 with equality only at the exponential — so the collision dynamics drives the gas toward Maxwell, the maximum-multiplicity state, while entropy rises to its maximum. The second law is the overwhelming statistical likelihood of high-multiplicity macrostates, and entropy is the logarithm of how many ways a macrostate can be.
+The second law is the overwhelming statistical likelihood of high-multiplicity macrostates, and entropy is the logarithm of how many ways a macrostate can be.
 
-```python
-from math import factorial, log
-
-# --- The complexion count: how many labeled-molecule arrangements give a macrostate ---
-# macrostate = occupation list (w_0, w_1, ...): w_i molecules on energy rung i.
-def arrangements(occ):
-    # P = n! / (w_0! w_1! ...)  -- the multinomial; this is "W", the multiplicity.
-    n = sum(occ)
-    p = factorial(n)
-    for w in occ:
-        p //= factorial(w)
-    return p
-
-# --- Entropy = k * log(multiplicity).  log forced by additivity (W multiplies, S adds). ---
-def entropy(occ, k=1.0):
-    return k * log(arrangements(occ))            # S = k log W
-
-# --- Enumerate macrostates of n molecules, total energy = units (each rung i contributes i) ---
-def macrostates(n, units, max_level):
-    def rec(level, left_mol, left_energy):
-        if level == 0:                            # rung 0 mops up the remaining molecules
-            if left_energy == 0:
-                yield (left_mol,)
-            return
-        for w in range(left_mol + 1):
-            if w * level <= left_energy:
-                for tail in rec(level - 1, left_mol - w, left_energy - w * level):
-                    yield tail + (w,)
-    yield from rec(max_level, n, units)
-
-# --- Most probable macrostate = the one with the most complexions (= equilibrium) ---
-def most_probable(n, units, max_level):
-    return max(macrostates(n, units, max_level), key=arrangements)
-
-# --- The equilibrium occupations in the large-n limit: geometric ladder w_i ∝ x^i, ---
-#     x = (mean energy)/(mean energy + 1 rung) -> Boltzmann factor e^{-i / mean}. ---
-def equilibrium_occupations(n, units, max_level):
-    mean = units / n                              # mean energy per molecule (sets "temperature")
-    x = mean / (mean + 1.0)                       # x = lambda/(n+lambda) per rung; ~ e^{-1/mean}
-    raw = [x**i for i in range(max_level + 1)]
-    Z = sum(raw)
-    return [n * r / Z for r in raw]               # w_i ∝ x^i  (Maxwell–Boltzmann)
-
-if __name__ == "__main__":
-    # Boltzmann's hand-checkable case: 7 molecules, total energy 7 units, rungs 0..7.
-    eq = most_probable(7, 7, 7)
-    print("most-probable macrostate (w_0..w_7):", eq)        # (3,2,1,1,0,0,0,0)
-    print("its multiplicity W =", arrangements(eq))          # 420  -- the maximum
-    print("its entropy  S = log W =", round(entropy(eq), 4))
-    # the lopsided 'all energy on one molecule' macrostate, for contrast:
-    lop = (6,0,0,0,0,0,0,1)
-    print("lopsided W =", arrangements(lop))                 # 7  -- 60x fewer arrangements
-    print("large-n occupations w_i (geometric/Boltzmann ladder):",
-          [round(w, 3) for w in equilibrium_occupations(7, 7, 7)])
-```
+The multinomial count and the maximization translate directly into a check: enumerate every occupation tuple satisfying Σw_i = n and Σi·w_i = λ, score each by P = n!/Πw_i!, and take the arg-max — for the seven-molecule case that reproduces the (3,2,1,1,0,0,0,0) table above, W = 420 against the lopsided W = 7. The large-n limit needs no enumeration at all: w_i ∝ x^i with x = λ/(n+λ) gives the equilibrium occupations in closed form directly from the Lagrange-multiplier solution.

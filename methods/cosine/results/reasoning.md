@@ -10,9 +10,9 @@ And on the gradient-based side there's a sharper, more mechanistic story. O'Dono
 
 That last picture is the one I want to import. A restart is a *reset of the acceleration phase*: throw away the accumulated velocity that's now carrying you in a stale direction, and start descending fresh from where you are. Restarting is useful precisely when the curvature is unknown and drifting — which is exactly my situation, a non-convex deep net where the local geometry changes completely as the weights move. So my instinct is: don't just decay eta once over 200 epochs; periodically restart the descent.
 
-But let me actually try to port the restart literally and watch it break, because the details matter. Option one: literally do what O'Donoghue does — zero the momentum and reset the iterate as the new origin. The iterate reset is meaningless here (there's no canonical origin in weight space; "the current iterate as a new start" just means keep x), but zeroing the momentum vector v at each restart — I could do that. Except momentum in these nets is doing real work; the velocity I've built up along consistent descent directions is hard-won, and slamming it to zero throws that away and stalls me right after every restart. I don't want a *hard* reset that discards state. Wall.
+But let me actually try to port the restart literally and watch it break, because the details matter. Option one: literally do what O'Donoghue does — zero the momentum and reset the iterate as the new origin. The iterate reset is meaningless here (there's no canonical origin in weight space; "the current iterate as a new start" just means keep x), but zeroing the momentum vector v at each restart — I could do that. Except momentum in these nets is doing real work; the velocity I've built up along consistent descent directions is hard-won, and slamming it to zero throws that away and stalls me right after every restart. I don't want a *hard* reset that discards state.
 
-Option two: use O'Donoghue's adaptive restart *test* — restart when the loss goes up, or when the momentum-gradient angle turns obtuse. The trouble is the setting. Their analysis is on a smooth deterministic quadratic, where f(x^k) and grad f(y^k) are exact. Mine are stochastic: f_t and grad f_t are computed on a single minibatch of 128 and swing wildly from batch to batch. The loss "goes up" between consecutive batches constantly, just from sampling noise, and the gradient-angle test flips sign on noise too. To use either test honestly I'd have to denoise — average the loss and the gradient over, say, a whole epoch — before I could trust a restart trigger. That's doable but it adds machinery and a smoothing window I'd have to tune, and it makes the whole thing reactive and fiddly. Wall again, softer.
+Option two: use O'Donoghue's adaptive restart *test* — restart when the loss goes up, or when the momentum-gradient angle turns obtuse. The trouble is the setting. Their analysis is on a smooth deterministic quadratic, where f(x^k) and grad f(y^k) are exact. Mine are stochastic: f_t and grad f_t are computed on a single minibatch of 128 and swing wildly from batch to batch. The loss "goes up" between consecutive batches constantly, just from sampling noise, and the gradient-angle test flips sign on noise too. To use either test honestly I'd have to denoise — average the loss and the gradient over, say, a whole epoch — before I could trust a restart trigger. That's doable but it adds machinery and a smoothing window I'd have to tune, and it makes the whole thing reactive and fiddly — not the clean fix I want.
 
 So both literal ports fail for the same underlying reason: a *hard, triggered* restart is wrong for a stochastic deep-net run. I don't want to discard state, and I can't reliably detect the right moment from noisy signals. Let me back up and ask what a restart *is*, functionally, stripped of the mechanism. It's: stop refining in the current basin, and start exploring broadly again. And I already know how to make the optimizer explore broadly versus refine — that's the learning rate. A high eta is the exploratory, large-step regime; a low eta is the refining, small-step regime. So I can *emulate* a restart without touching the momentum or the iterate at all: just push eta back up. Don't reset v; raise the learning rate, and the large steps that follow will override the stale velocity on their own — the bigger the jump in eta, the more the new gradients dominate the accumulated v, which is to say the LR jump itself is a soft knob on "how much of the old acceleration survives the restart." This is a *warm* restart: it keeps the partial progress, it needs no momentum surgery, and — the part that dissolves the second wall — it's *scheduled*, not triggered, so I never have to detect a noisy condition. I decide in advance when to raise eta. That sidesteps the stochastic-test problem entirely.
 
@@ -40,7 +40,7 @@ So within the i-th run the learning rate is
 
   eta_t = eta_min^i + (1/2)(eta_max^i - eta_min^i)(1 + cos(pi · T_cur / T_i)).
 
-Let me sanity-check the endpoints in these original units, not just in g. At a restart, T_cur = 0, cos(0) = 1, so eta_t = eta_min + (1/2)(eta_max - eta_min)(2) = eta_min + (eta_max - eta_min) = eta_max. Good — every cycle starts at the full exploratory rate, the kick. At the end of a run, T_cur = T_i, cos(pi) = -1, so eta_t = eta_min + (1/2)(eta_max - eta_min)(0) = eta_min. Good — the cosine bottoms out at eta_min. And one implementation nicety I want to bake in: I'll update T_cur every *batch*, not every epoch, so T_cur takes fractional values like 0.1, 0.2, and the curve is genuinely smooth within an epoch rather than a per-epoch step. (On a log-axis plot the cosine's characteristic shape gets obfuscated, but on a linear axis it's the smooth S I derived.)
+In these original units, T_cur = 0 gives eta_t = eta_min + (1/2)(eta_max - eta_min)(2) = eta_max — every cycle starts at the full exploratory rate, the kick — and T_cur = T_i gives eta_t = eta_min + (1/2)(eta_max - eta_min)(0) = eta_min, the trough. One implementation nicety I want to bake in: I'll update T_cur every *batch*, not every epoch, so T_cur takes fractional values like 0.1, 0.2, and the curve is genuinely smooth within an epoch rather than a per-epoch step. (On a log-axis plot the cosine's characteristic shape gets obfuscated; on a linear axis it's the smooth S I derived.)
 
 Now the cross-cycle structure — the restart schedule itself. Simplest: a fixed period, restart every T_0 epochs, T_i = T_0 for all i. That already gives me the smooth, anytime-friendly schedule. But I have the CMA-ES anytime trick sitting right there: start with a small period and grow it. Set T_i = T_0 · T_mult^{i} with T_mult ≥ 1 — for instance T_0 = 1, T_mult = 2 restarts after 1 epoch, then 2, then 4, then 8…, or T_0 = 10, T_mult = 2 restarts after 10, 20, 40…. Why doubling rather than fixed? Anytime performance, exactly as in the gradient-free case: the first restart comes quickly so I get a first decent annealed solution early, and each subsequent cycle is longer, giving progressively more refinement. With T_mult = 1 I recover the fixed-period schedule as the special case. I'll keep eta_max^i and eta_min^i the *same* for every i rather than decaying them per restart — I could decay them to tamp down each restart's divergence, but holding them fixed keeps the hyperparameter count minimal, which was a stated goal; the only knobs are eta_max, eta_min, and the period schedule (T_0, T_mult). For the floor, eta_min I'll set to 0 (or something tiny): I want each cycle to anneal all the way down for the sharpest possible final fit, and a floor of 0 also gives the maximum-contrast kick when the next cycle jumps back to eta_max.
 
@@ -77,86 +77,16 @@ def get_lr(epoch, total_epochs, base_lr, config):
     return base_lr * 0.5 * (1.0 + math.cos(math.pi * epoch / total_epochs))
 ```
 
-And the general schedule, cosine annealing *with warm restarts*, where I keep the cross-cycle bookkeeping — T_cur counting within the current run, T_i the current run length, doubled (or not) at each restart — and anneal from eta_max to eta_min along the same half-cosine inside each run. The rate calculation itself is still just the endpoint-checked formula: T_cur=0 gives eta_max, T_cur=T_i gives eta_min. The scheduler bookkeeping decides when a completed run becomes the next run, and I want that bookkeeping to match the way a real training loop calls the scheduler, including fractional epoch values when I step once per batch:
+And the general schedule, cosine annealing *with warm restarts*, where I keep the cross-cycle bookkeeping — T_cur counting within the current run, T_i the current run length, doubled (or not) at each restart — and anneal from eta_max to eta_min along the same half-cosine inside each run. The rate calculation itself is still just the endpoint-checked formula: T_cur=0 gives eta_max, T_cur=T_i gives eta_min. Wrapping that in a stateful scheduler that a training loop calls once per batch, most of it is bookkeeping that can't go wrong — store each parameter group's eta_max, validate T_0/T_mult/eta_min, call the same get_lr formula off whatever T_cur and T_i currently are. The one piece that takes real thought is resuming from an arbitrary absolute epoch without replaying every batch from zero: since the run lengths stack as T_i = T_0 · T_mult^i, the epoch at which the n-th restart happens is the geometric sum T_0·(T_mult^n − 1)/(T_mult − 1), so placing a given epoch means inverting that sum for n and reading off T_cur as the remainder:
 
 ```python
-import math
-
-
-class CosineAnnealingWarmRestarts:
-    """Cosine annealing with warm restarts.
-
-    Each parameter group's initial lr is its eta_max. Within run i, anneal that
-    base lr to eta_min along a half-cosine; after the run length T_i is reached,
-    wrap T_cur into the next run and grow T_i by T_mult.
-
-        eta_t = eta_min + 0.5 * (eta_max - eta_min) * (1 + cos(pi * T_cur / T_i))
-    """
-
-    def __init__(self, optimizer, T_0, T_mult=1, eta_min=0.0, last_epoch=-1):
-        if T_0 <= 0 or not isinstance(T_0, int):
-            raise ValueError("T_0 must be a positive integer")
-        if T_mult < 1 or not isinstance(T_mult, int):
-            raise ValueError("T_mult must be an integer >= 1")
-        if not isinstance(eta_min, (float, int)):
-            raise ValueError("eta_min must be a number")
-
-        self.optimizer = optimizer
-        self.base_lrs = [group["lr"] for group in optimizer.param_groups]
-        self.eta_min = eta_min
-        self.T_0 = T_0
-        self.T_i = T_0
-        self.T_mult = T_mult
-        self.T_cur = last_epoch
-        self.last_epoch = last_epoch
-        self.step(0 if last_epoch < 0 else last_epoch)
-
-    def get_lr(self):
-        return [
-            self.eta_min
-            + 0.5 * (base_lr - self.eta_min)
-            * (1.0 + math.cos(math.pi * self.T_cur / self.T_i))
-            for base_lr in self.base_lrs
-        ]
-
-    def step(self, epoch=None):
-        # epoch may be fractional, e.g. epoch + batch_index / batches_per_epoch.
-        if epoch is None and self.last_epoch < 0:
-            epoch = 0
-
-        if epoch is None:
-            epoch = self.last_epoch + 1
-            self.T_cur += 1
-            if self.T_cur >= self.T_i:
-                self.T_cur -= self.T_i
-                self.T_i *= self.T_mult
-        else:
-            if epoch < 0:
-                raise ValueError("epoch must be non-negative")
-            if epoch >= self.T_0:
-                if self.T_mult == 1:
-                    self.T_cur = epoch % self.T_0
-                else:
-                    n = int(math.log(
-                        epoch / self.T_0 * (self.T_mult - 1) + 1,
-                        self.T_mult,
-                    ))
-                    self.T_cur = (
-                        epoch
-                        - self.T_0 * (self.T_mult**n - 1) / (self.T_mult - 1)
-                    )
-                    self.T_i = self.T_0 * self.T_mult**n
-            else:
-                self.T_i = self.T_0
-                self.T_cur = epoch
-
-        self.last_epoch = math.floor(epoch)
-        lrs = self.get_lr()
-        for group, lr in zip(self.optimizer.param_groups, lrs):
-            group["lr"] = lr
-        return lrs
+if epoch >= self.T_0:
+    if self.T_mult == 1:
+        self.T_cur = epoch % self.T_0
+    else:
+        n = int(math.log(epoch / self.T_0 * (self.T_mult - 1) + 1, self.T_mult))
+        self.T_cur = epoch - self.T_0 * (self.T_mult**n - 1) / (self.T_mult - 1)
+        self.T_i = self.T_0 * self.T_mult**n
 ```
 
-That `step` method is fiddlier than the formula, so before I trust it I want to run it forward by hand on a case with restarts and see whether the bookkeeping actually does what I claim. Take T_0 = 10, T_mult = 2, eta_max = 0.1, eta_min = 0, and call step(epoch) for a sweep of epochs. The restart boundaries *should* fall at cumulative epochs 10, 30, 70, ... (run lengths 10, 20, 40 stacking up), the lr should snap back to 0.1 at each boundary, and T_i should double across boundaries. Stepping through the `epoch >= T_0` branch: at epoch 9 we're still in run 0, T_i = 10, T_cur = 9, so lr = 0.05·(1 + cos(0.9π)) = 0.05·(1 − 0.951) = 0.00245 — nearly at the floor, as a trough should be. At epoch 10 the `n = int(log_2(10/10·1 + 1)) = int(log_2 2) = 1` branch fires, giving T_i = 10·2^1 = 20 and T_cur = 10 − 10·(2^1 − 1)/1 = 0, so lr = 0.05·(1 + cos 0) = 0.1 — the kick, exactly. At epoch 11, T_cur = 1, T_i = 20, lr = 0.05·(1 + cos(π/20)) = 0.0994. At epoch 29, T_cur = 19, T_i = 20, lr = 0.05·(1 + cos(19π/20)) = 0.00062 — trough again. At epoch 30, n = int(log_2(30/10·1 + 1)) = int(log_2 4) = 2, so T_i = 10·4 = 40, T_cur = 30 − 10·(4 − 1)/1 = 0, lr = 0.1 — the second restart, on schedule. Epoch 50 sits mid-run-2 at T_cur = 20, T_i = 40, lr = 0.05 — the midpoint of a length-40 run, the steepest point. Epoch 70: n = int(log_2(70/10 + 1)) = int(log_2 8) = 3, T_i = 80, T_cur = 0, lr = 0.1. So the restarts land at 10, 30, 70, the lr resets to eta_max at each one, the troughs sit near eta_min just before, and T_i goes 10 → 20 → 40 → 80. The closed-form resume logic reproduces the same boundaries I'd get from incrementing T_cur one step at a time, which is the property I actually needed from it (you can start training from an arbitrary epoch and land on the right phase). I won't pretend I derived the `n = floor(log_{T_mult}(...))` inversion from first principles in one go — it's just the geometric-series sum T_0(T_mult^n − 1)/(T_mult − 1) solved for n — but having traced it on this case I believe it.
-
-Let me trace the causal chain back to the start. I was stuck hand-tuning a discontinuous staircase — drop epochs and a drop factor, all pinned to a fixed budget — that gave a usable solution only at the very end. The staircase was a crude two-phase explore-then-refine, so I asked for the same transition done smoothly, and for good solutions at more points than just the last. The restart literature pointed the way: in gradient-free search you restart and grow the budget each time for anytime performance, and in gradient-based optimization a momentum method ripples because the right momentum depends on an unknown, locally-varying condition number, so restarting the acceleration phase exposes a square-root-condition-number timescale and can recover fast convergence. I tried to port a restart literally — zeroing momentum throws away hard-won velocity, and the adaptive restart *test* needs deterministic f and grad I don't have under minibatch noise — so instead I emulated a restart by *raising* the learning rate: a warm restart that keeps state and is scheduled rather than triggered, dodging both walls. Then I derived the within-cycle shape from what a cycle has to do: start flat and high to keep exploring, end flat and low for a clean, fine landing that doubles as a smooth restart point — g(0)=1, g(1)=0, g'(0)=g'(1)=0, monotone — which the half-cosine (1/2)(1+cos(pi s)) satisfies exactly while linear, exponential, and polynomial each violate a slope condition; among the S-curves meeting all four conditions the cosine is the parameter-free half-period with the right flat endpoints. Mapping it to [eta_min, eta_max] gives eta_t = eta_min + (1/2)(eta_max - eta_min)(1 + cos(pi T_cur/T_i)), which hits eta_max at each restart and eta_min at each trough; growing T_i by T_mult per restart imports the anytime doubling, and reporting the trough iterate (not the kicked last iterate) gives a clean recommendation with no validation set. The whole thing collapses, when I take one cycle over the full budget with eta_min=0, to a single smooth cosine decay base_lr·(1/2)(1+cos(pi epoch/total_epochs)) from base_lr to 0 — two hyperparameters, no milestones — which is the schedule I'd drop into the training loop in place of the staircase.
+That inversion is fiddlier than the formula, so before I trust it I want to run it forward by hand on a case with restarts and see whether the bookkeeping actually does what I claim. Take T_0 = 10, T_mult = 2, eta_max = 0.1, eta_min = 0, and call step(epoch) for a sweep of epochs. The restart boundaries *should* fall at cumulative epochs 10, 30, 70, ... (run lengths 10, 20, 40 stacking up), the lr should snap back to 0.1 at each boundary, and T_i should double across boundaries. Stepping through the `epoch >= T_0` branch: at epoch 9 we're still in run 0, T_i = 10, T_cur = 9, so lr = 0.05·(1 + cos(0.9π)) = 0.05·(1 − 0.951) = 0.00245 — nearly at the floor, as a trough should be. At epoch 10 the `n = int(log_2(10/10·1 + 1)) = int(log_2 2) = 1` branch fires, giving T_i = 10·2^1 = 20 and T_cur = 10 − 10·(2^1 − 1)/1 = 0, so lr = 0.05·(1 + cos 0) = 0.1 — the kick, exactly. At epoch 11, T_cur = 1, T_i = 20, lr = 0.05·(1 + cos(π/20)) = 0.0994. At epoch 29, T_cur = 19, T_i = 20, lr = 0.05·(1 + cos(19π/20)) = 0.00062 — trough again. At epoch 30, n = int(log_2(30/10·1 + 1)) = int(log_2 4) = 2, so T_i = 10·4 = 40, T_cur = 30 − 10·(4 − 1)/1 = 0, lr = 0.1 — the second restart, on schedule. Epoch 50 sits mid-run-2 at T_cur = 20, T_i = 40, lr = 0.05 — the midpoint of a length-40 run, the steepest point. Epoch 70: n = int(log_2(70/10 + 1)) = int(log_2 8) = 3, T_i = 80, T_cur = 0, lr = 0.1. So the restarts land at 10, 30, 70, the lr resets to eta_max at each one, the troughs sit near eta_min just before, and T_i goes 10 → 20 → 40 → 80. The closed-form resume logic reproduces the same boundaries I'd get from incrementing T_cur one step at a time, which is the property I actually needed from it (you can start training from an arbitrary epoch and land on the right phase). I won't pretend I derived the `n = floor(log_{T_mult}(...))` inversion from first principles in one go — it's just the geometric-series sum T_0(T_mult^n − 1)/(T_mult − 1) solved for n — but having traced it on this case I believe it. The rest of the scheduler — the constructor's validation, storing each group's eta_max, the plain per-epoch increment path when `step` is called with no explicit epoch (fractional per-batch stepping just calls it with that explicit epoch instead, hitting the branch above) — is bookkeeping around this same recurrence and the get_lr formula above, nothing left to derive.

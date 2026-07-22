@@ -38,7 +38,7 @@ $$
 
 That is the comparison I want in code. It computes products of integer differences and never forms a fractional breakpoint. In Python those products are exact because integers widen automatically; in a fixed-width language I would evaluate this comparison in a wider type than the raw DP values, because the cross-products can overflow even when each line value fits in 64 bits.
 
-I want to sanity-check the direction before trusting it, because the easiest mistake here is to get the inequality backwards and silently keep redundant lines (still correct, just slower) or, worse, drop a line that owns a real interval (wrong answers). Let $L_1=2x$, $L_2=0$, and $L_3=-2x$. All three meet at the origin, so the middle line owns no positive-width interval and should be removed. The left side is $(0-0)(2-(-2))=0$ and the right side is $(-2-0)(0-0)=0$, so the inequality $\ge$ holds and the middle line is removed. If I lower the middle line to $L_2=-5$, the left side becomes $(-5-0)\cdot4=-20$ while the right side remains $0$, so the inequality is false and the middle line survives. I also check this against the geometry directly: the outer lines cross at $x^*=0$, where both sit at height $0$; the middle line sits at height $0$ in the first case (not below, so redundant) and at $-5$ in the second (strictly below, so it carves out an interval). The cross-product test and the direct height comparison agree on both cases, so the sign is right.
+The easiest mistake here is to get the inequality backwards, which would silently keep redundant lines (still correct, just slower) or, worse, drop a line that owns a real interval (wrong answers). Let $L_1=2x$, $L_2=0$, and $L_3=-2x$. All three meet at the origin, so the middle line owns no positive-width interval and should be removed. The left side is $(0-0)(2-(-2))=0$ and the right side is $(-2-0)(0-0)=0$, so the inequality $\ge$ holds and the middle line is removed. If I lower the middle line to $L_2=-5$, the left side becomes $(-5-0)\cdot4=-20$ while the right side remains $0$, so the inequality is false and the middle line survives. I also check this against the geometry directly: the outer lines cross at $x^*=0$, where both sit at height $0$; the middle line sits at height $0$ in the first case (not below, so redundant) and at $-5$ in the second (strictly below, so it carves out an interval). The cross-product test and the direct height comparison agree on both cases, so the sign is right.
 
 Insertion is now simple. A new line belongs at the back because its slope is no larger than the slopes already stored. While the last stored line is made unnecessary by the line before it and the newcomer, I pop from the back. Then I append the new line. A line can be appended once and removed from the back at most once.
 
@@ -46,89 +46,8 @@ Querying uses the other monotonicity. Since $x=a[i]$ never decreases, the best l
 
 Those two one-way movements are the amortization: every state line is inserted once, then it either stays, leaves from the back during a later insertion, or leaves from the front during a later query. The total number of deque mutations is linear, and each failed while-loop comparison is attached to one outer operation, so the per-step work is amortized constant and the full DP is $O(n)$.
 
-Before I trust the whole machine, the sign check on one inequality is not enough — I have argued each piece in isolation, but I have not watched the deque actually reproduce the DP. So I run a concrete instance by hand. Take $a=[0,1,2,4,7]$ (non-decreasing) and $b=[5,3,3,-1,-4]$ (non-increasing). I want to see the equal-slope branch, a front pop, and the final value.
-
-- Register $j=0$: line $(5,0)$. Deque $[(5,0)]$.
-- $i=1$, $x=a_1=1$: only one line, query returns $5\cdot1+0=5$, so $dp_1=5$. Register $(3,5)$: slopes differ, back has one line, append. Deque $[(5,0),(3,5)]$.
-- $i=2$, $x=2$: front two are $(5,0)$ giving $10$ and $(3,5)$ giving $11$; the second is higher, so no front pop, $dp_2=10$. Now register $(3,10)$ — same slope as the back line $(3,5)$, and $5\le10$, so the new line is dominated and dropped. Deque unchanged $[(5,0),(3,5)]$. This is the equal-slope branch firing, and it matters: $a_2=a_1$ would otherwise have stuffed a useless duplicate slope into the hull.
-- $i=3$, $x=4$: front two give $5\cdot4+0=20$ and $3\cdot4+5=17$; the second is lower, so I pop $(5,0)$ from the front and stop. $dp_3=17$. Register $(-1,17)$. Deque $[(3,5),(-1,17)]$.
-- $i=4$, $x=7$: front two give $3\cdot7+5=26$ and $-1\cdot7+17=10$; pop $(3,5)$, stop. $dp_4=10$. Register $(-4,10)$.
-
-So the method produces $dp=[0,5,10,17,10]$. I check the last value against the brute definition: $dp_4=\min_j(dp_j+b_j\cdot7)$ over $j=0..3$ is $\min(0+35,\,5+21,\,10+21,\,17-7)=\min(35,26,31,10)=10$. It matches, and the front pops at $i=3,4$ are exactly the query pointer walking forward as $x$ grows from $2$ to $4$ to $7$ — the behavior the monotone-query assumption promised. The two earlier values check the same way: $dp_3=\min(0+20,5+12,10+12)=17$ and $dp_2=\min(0+10,5+6)=10$. Running the full $dp$ array against the $O(n^2)$ definition on this instance, and on a few thousand random monotone instances, gives identical arrays, so the construction is not just locally plausible but globally reproduces the DP.
+The algebra has been argued piece by piece; watching the deque actually reproduce the DP is a different kind of check. Take $a=[0,1,2,4,7]$ (non-decreasing) and $b=[5,3,3,-1,-4]$ (non-increasing). Line $(5,0)$ registers for $j=0$. At $i=1$ the lone line gives $dp_1=5\cdot1+0=5$; line $(3,5)$ appends, since its slope is smaller than the one on file. At $i=2$: the front two give $5\cdot2+0=10$ and $3\cdot2+5=11$, so no front pop and $dp_2=10$. Registering $j=2$ hits the equal-slope case head-on, $b_2=b_1=3$, and since the incoming intercept $10$ is not smaller than the stored $5$, the new line is dropped rather than stuffed in as a useless duplicate slope. At $i=3$: $5\cdot4+0=20$ against $3\cdot4+5=17$, so $(5,0)$ pops from the front and $dp_3=17$; line $(-1,17)$ registers. At $i=4$: $3\cdot7+5=26$ against $-1\cdot7+17=10$, so $(3,5)$ pops and $dp_4=10$. Checking against the brute definition, $\min_j(dp_j+b_j\cdot7)=\min(35,26,31,10)=10$, matches, and the two front pops at $i=3,4$ are exactly the query pointer advancing as $x$ grows — the behavior the monotone-query assumption promised.
 
 If I am not confident I can get the monotone deque hull's equal-slope cleanup and exact three-line cross-product back-pop test right under the budget, I would fall back to a coordinate-compressed Li Chao tree over the given `a[i]` queries, which is slower but is the standard correct CHT variant for this recurrence.
 
-```cpp
-// Reads n, then arrays a[0..n-1] and b[0..n-1] from stdin; prints dp[n-1].
-// dp[i] = min_{0<=j<i}(dp[j] + b[j]*a[i]), dp[0]=0, with b non-increasing,
-// a non-decreasing. Solved in O(n) by the monotone convex hull trick.
-#include <bits/stdc++.h>
-using namespace std;
-
-struct Transition {
-    // Lower-envelope of lines (slope, intercept) kept in a deque.
-    deque<pair<long long, long long>> lines;
-
-    // Make one finished state available to later transitions.
-    void register_line(long long slope, long long value) {
-        if (!lines.empty() && lines.back().first == slope) {
-            if (lines.back().second <= value) return;
-            lines.pop_back();
-        }
-        pair<long long, long long> nw{slope, value};
-        while (lines.size() >= 2) {
-            long long m1 = lines[lines.size() - 2].first;
-            long long c1 = lines[lines.size() - 2].second;
-            long long m2 = lines.back().first;
-            long long c2 = lines.back().second;
-            long long m3 = nw.first, c3 = nw.second;
-            // Keep the middle line only if it dips below the envelope of the
-            // outer two: (c2-c3)(m1-m3) < (m3-m2)(c3-c1). Use __int128 since the
-            // cross-products can overflow 64-bit even when each value fits.
-            __int128 lhs = (__int128)(c2 - c3) * (m1 - m3);
-            __int128 rhs = (__int128)(m3 - m2) * (c3 - c1);
-            if (lhs < rhs) break;
-            lines.pop_back();
-        }
-        lines.push_back(nw);
-    }
-
-    // Return the best transition value at x (x non-decreasing across calls).
-    long long query(long long x) {
-        while (lines.size() >= 2) {
-            long long m1 = lines[0].first, c1 = lines[0].second;
-            long long m2 = lines[1].first, c2 = lines[1].second;
-            if (m2 * x + c2 > m1 * x + c1) break;
-            lines.pop_front();
-        }
-        return lines[0].first * x + lines[0].second;
-    }
-};
-
-int main() {
-    ios_base::sync_with_stdio(false);
-    cin.tie(nullptr);
-
-    int n;
-    if (!(cin >> n)) return 0;
-    vector<long long> a(n), b(n);
-    for (int i = 0; i < n; ++i) cin >> a[i];
-    for (int i = 0; i < n; ++i) cin >> b[i];
-
-    vector<long long> dp(n, 0);
-    dp[0] = 0;
-
-    Transition tr;
-    tr.register_line(b[0], dp[0]);
-
-    for (int i = 1; i < n; ++i) {
-        dp[i] = tr.query(a[i]);
-        tr.register_line(b[i], dp[i]);
-    }
-
-    cout << dp[n - 1] << "\n";
-    return 0;
-}
-```
-
-The recurrence becomes linear because the expression contributed by each finished state is a line, the ordered slopes let me repair the useful lower boundary by popping from the back, the ordered queries let me discard expired front lines permanently, and the redundancy comparison stays exact by using the cross-product inequality instead of a divided breakpoint.
+Turning this into code is direct: a deque of `(slope, intercept)` pairs, `register_line` collapsing an equal-slope duplicate and then running the back-pop while-loop with the `__int128` cross-product test, `query` running the front-pop while-loop and returning the winning line's value at $x$. Both are amortized $O(1)$, so looping over all $i$ once, querying then registering, is $O(n)$ end to end.

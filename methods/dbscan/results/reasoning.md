@@ -39,7 +39,7 @@ With those two relations I can finally define the object. A *cluster* `C` (with 
 
 Maximality says the cluster swallows everything its members can reach — so it doesn't stop short of the true boundary; connectivity says it's all one piece — so it doesn't accidentally fuse two genuinely separate dense regions just because both got dragged into the set. And then *noise* is the cheap leftover: the set of points belonging to no cluster at all. That's demand four, satisfied by construction — noise isn't a special case I have to detect, it's simply what's not dense-connected to anything.
 
-Let me sanity-check one thing that should follow and had better: does a cluster necessarily contain at least `MinPts` points? Suppose `C` is a cluster. It's non-empty, so it has some point `p`. By connectivity, `p` is density-connected to itself, which means there's a core point `o` with `p` density-reachable from `o`. But `o` being core means `|N_Eps(o)| ≥ MinPts` — `o` alone has at least `MinPts` neighbors, all of which (being directly density-reachable from the core `o`) are in `C` by maximality. So `|C| ≥ MinPts`. Good — a cluster can't be a tiny sliver; the core condition floors its size. That's a quiet confirmation the definitions cohere.
+One thing should follow from these two conditions: does a cluster necessarily contain at least `MinPts` points? Suppose `C` is a cluster. It's non-empty, so it has some point `p`. By connectivity, `p` is density-connected to itself, which means there's a core point `o` with `p` density-reachable from `o`. But `o` being core means `|N_Eps(o)| ≥ MinPts` — `o` alone has at least `MinPts` neighbors, all of which (being directly density-reachable from the core `o`) are in `C` by maximality. So `|C| ≥ MinPts` — a cluster can't be a tiny sliver; the core condition floors its size.
 
 Now the definitions are pretty, but they describe a cluster; they don't tell me how to *find* one without already knowing where it is. I need the bridge from "here is the predicate a cluster satisfies" to "here is a procedure that produces clusters." The intuition I'll lean on: a cluster is determined by any one of its core points, because from a core point I can reach the whole thing. Let me try to prove that, since the whole algorithm is going to hang on it.
 
@@ -74,7 +74,7 @@ Let me write the expansion as actual pseudocode, because the bookkeeping is wher
               seeds.remove(currentP)
           return True
 
-A few details I want to make sure I have right. When `currentP` turns out to be a border point (`|result| < MinPts`), that one query has served only to prove it cannot propagate; I do *not* append its neighbors to the seeds, because border points have no density to flow outward. When a point currently labeled NOISE shows up inside a core point's `result`, I relabel it to the cluster — it was a border point all along — but I do *not* push it onto the seed list, because a point already labeled NOISE has already been region-queried and found sub-`MinPts`, so it has nothing to expand. Only UNCLASSIFIED points get pushed, since those still need to be checked for core-hood. And the order of the outer scan: by Lemma 2 the *set* of points a cluster contains is independent of which core point I seed from, so the clustering is independent of visiting order — except for the genuinely ambiguous case of a border point that lies within `Eps` of core points of two *different* clusters. Such a border point gets assigned to whichever cluster's expansion reaches it first. That can only happen when two clusters come within `Eps` of each other, and which of two clusters a single rim point lands in is of little practical interest; it's the one order-dependence, and I'll expect it to be negligible.
+Two bookkeeping details matter here, plus one consequence for the outer scan. When `currentP` turns out to be a border point (`|result| < MinPts`), that one query has served only to prove it cannot propagate; I do *not* append its neighbors to the seeds, because border points have no density to flow outward. When a point currently labeled NOISE shows up inside a core point's `result`, I relabel it to the cluster — it was a border point all along — but I do *not* push it onto the seed list, because a point already labeled NOISE has already been region-queried and found sub-`MinPts`, so it has nothing to expand. Only UNCLASSIFIED points get pushed, since those still need to be checked for core-hood. And the order of the outer scan: by Lemma 2 the *set* of points a cluster contains is independent of which core point I seed from, so the clustering is independent of visiting order — except for the genuinely ambiguous case of a border point that lies within `Eps` of core points of two *different* clusters. Such a border point gets assigned to whichever cluster's expansion reaches it first. That can only happen when two clusters come within `Eps` of each other, and which of two clusters a single rim point lands in is of little practical interest; it's the one order-dependence, and I'll expect it to be negligible.
 
 This bookkeeping is exactly where an off-by-one or a wrong push could ruin everything, so let me stop arguing and run the procedure by hand on a deliberately small case that contains every kind of point. Take `Eps = 1`, `MinPts = 3`, and six points laid out in the plane: a chain `A=(0,0), B=(1,0), C=(2,0), D=(3,0)` spaced one apart, a point `E=(0,1)` hanging off `A`, and `F=(10,0)` flung far away. First I compute each `N_Eps`, counting the self-point, and read off core-hood (`count ≥ 3`):
 
@@ -87,7 +87,7 @@ E : {A,E}    count 2  border
 F : {F}      count 1  noise
 ```
 
-So `A,B,C` are the dense backbone; `D` (only `C` and itself within 1) and `E` (only `A` and itself) are sub-threshold; `F` is alone. Now I walk the algorithm. The outer scan reaches `A` first — core and UNCLASSIFIED — so I label `A`→cluster 0 and push it. Pop `A` (core): its neighborhood is `{A,B,E}`; `B` is UNCLASSIFIED so it gets labeled 0 and pushed, `E` is UNCLASSIFIED so it gets labeled 0 but — since `E` is *not* core — it is **not** pushed. Pop `B` (core): neighborhood `{A,B,C}`, only `C` is still unlabeled, so `C`→0, pushed (core). Pop `C` (core): neighborhood `{B,C,D}`, only `D` unlabeled, so `D`→0, and `D` is *not* core so it is not pushed. Stack empty. Cluster 0 = `{A,B,C,D,E}`. The scan continues to `D,E` (already labeled, skipped), then `F`: `F` is not core, so it never seeds, and nothing ever reached it, so it keeps the noise label. Final labels: `A,B,C,D,E → 0`, `F → -1`, one cluster. I ran the actual `fit` on these six points to be sure I didn't fool myself, and it returns precisely `{A:0,B:0,C:0,D:0,E:0,F:-1}` with `n_clusters=1`, and the pop sequence is exactly `A,B,C` — only the three core points ever expand. That is the behavior my eye wants: the whole dense chain plus both rim points (`D` at the far end, `E` dangling off the side) form one cluster, and the lone far point is set aside as noise. Crucially it exercised the two branches I was nervous about — a border point (`E`) claimed-but-not-pushed during expansion, and an isolated point (`F`) left as noise without ever being grown from — and both did the right thing.
+So `A,B,C` are the dense backbone; `D` (only `C` and itself within 1) and `E` (only `A` and itself) are sub-threshold; `F` is alone. Now I walk the algorithm. The outer scan reaches `A` first — core and UNCLASSIFIED — so I label `A`→cluster 0 and push it. Pop `A` (core): its neighborhood is `{A,B,E}`; `B` is UNCLASSIFIED so it gets labeled 0 and pushed, `E` is UNCLASSIFIED so it gets labeled 0 but — since `E` is *not* core — it is **not** pushed. Pop `B` (core): neighborhood `{A,B,C}`, only `C` is still unlabeled, so `C`→0, pushed (core). Pop `C` (core): neighborhood `{B,C,D}`, only `D` unlabeled, so `D`→0, and `D` is *not* core so it is not pushed. Stack empty. Cluster 0 = `{A,B,C,D,E}`. The scan continues to `D,E` (already labeled, skipped), then `F`: `F` is not core, so it never seeds, and nothing ever reached it, so it keeps the noise label. Final labels: `A,B,C,D,E → 0`, `F → -1`, one cluster, only `A,B,C` ever popped and expanded — the whole dense chain plus both rim points (`D` at the far end, `E` dangling off the side) form one cluster, and the lone far point is set aside as noise, exactly what my eye wants. The trace exercised the two branches I was unsure of: a border point (`E`) claimed but not pushed during expansion, and an isolated point (`F`) left as noise without ever being grown from. Both hold.
 
 Now I should count the work, because efficiency was demand three and the whole reason I leaned on the index. The key structural fact, visible in the pseudocode: `regionQuery` is called *exactly once per point in the database*. Each point is region-queried once — either as the seed `p` in some `ExpandCluster`, or as a `currentP` pulled off a seed list — and never again, because once a point has a definite cluster label it's skipped by the outer scan, and a point only enters a seed list while UNCLASSIFIED and is queried once when popped. So total run time is `n` region queries plus the bookkeeping, i.e. `O(n · Q)` where `Q` is the cost of one region query. With no index, a region query scans the whole database, `Q = O(n)`, and the algorithm is `O(n^2)` — already as good as the connectivity methods I admired, and with arbitrary shape and noise that they couldn't all give me. With the R\*-tree, a small region query descends only a few subtrees: in the regime that matters — `Eps`-neighborhoods small relative to the whole data space, so each query returns few points and touches few paths — a single query runs in roughly `O(log n)` on average, and the whole algorithm in roughly `O(n log n)` on average. I should be careful to state that as an *average*-case observation about small queries riding the index, not a worst-case guarantee — there's no theorem that a region query is `O(log n)` in the worst case, and if the queries aren't small the index doesn't save me. But the practical point stands: one query per point, cheap queries on an index, and the quadratic floor only in the degenerate case. Either way I've decoupled the cost from the all-pairs blowup that sank Ejcluster.
 
@@ -114,83 +114,4 @@ Let me step back and try to name what this construction *is*, because if it line
 
 Now let me commit the whole thing to code, filling the one empty slot in the clustering estimator — the assignment rule inside `fit` — and using the spatial index for the region queries exactly as the complexity argument assumed. I'll write it in the mode a real implementation uses: bulk-compute every point's `Eps`-neighborhood once with an indexed radius query, mark the core points by the count, then flood-fill connected components over the core points, absorbing border points but never expanding from them. That flood-fill is exactly the `ExpandCluster` loop above, just phrased as a stack-based traversal of the core-point graph; "connected components of core points, with non-core neighbors pulled in but not expanded" is precisely density-reachability. The metric the neighborhoods are read through is the Euclidean distance, the `dist` whose `Eps`-ball shapes `N_Eps`.
 
-```python
-import numpy as np
-from sklearn.base import BaseEstimator, ClusterMixin
-from sklearn.neighbors import NearestNeighbors
-
-NOISE = -1
-
-
-class CustomClustering(BaseEstimator, ClusterMixin):
-    """Density-based clustering: a cluster is a maximal set of density-connected
-    points. Core points (>= min_samples neighbors within eps) form the dense
-    backbone; clusters are the connected components of core points, with their
-    non-core eps-neighbors absorbed as border points; everything else is noise."""
-
-    def __init__(self, eps=0.5, min_samples=5, n_clusters=None, random_state=42):
-        self.eps = eps                      # Eps: the neighborhood radius (KDE bandwidth)
-        self.min_samples = min_samples      # MinPts: the core-point density threshold
-        self.n_clusters = n_clusters        # unused; #clusters falls out of the data
-        self.random_state = random_state
-        self.labels_ = None
-
-    def fit(self, X):
-        X = np.asarray(X, dtype=float)
-        n = X.shape[0]
-
-        # One region query per point, via the spatial index.
-        # radius_neighbors returns N_Eps(p) INCLUDING p itself (dist(p,p)=0 <= eps),
-        # which is the count the core test uses.
-        nn = NearestNeighbors(radius=self.eps, metric="euclidean").fit(X)
-        neighborhoods = nn.radius_neighbors(X, return_distance=False)
-
-        # Core test: |N_Eps(p)| >= MinPts. (self-point is included in the count.)
-        n_neighbors = np.array([len(nb) for nb in neighborhoods])
-        is_core = n_neighbors >= self.min_samples
-
-        labels = np.full(n, NOISE, dtype=np.intp)
-        cluster_id = 0
-
-        for i in range(n):
-            # Skip points already assigned, and non-core seeds. Noise is the
-            # initial/provisional label; a later core expansion may still claim
-            # a non-core point as border.
-            if labels[i] != NOISE or not is_core[i]:
-                continue
-
-            # i is core and unclassified: by Lemma 2 its cluster is exactly the
-            # set density-reachable from i. Flood-fill it (stack-based ExpandCluster).
-            labels[i] = cluster_id
-            stack = [i]
-            while stack:
-                p = stack.pop()
-                # Only CORE points propagate density outward; border points are
-                # absorbed but never expanded (no density to flow).
-                if not is_core[p]:
-                    continue
-                for q in neighborhoods[p]:        # q directly density-reachable from p
-                    if labels[q] == NOISE:
-                        labels[q] = cluster_id     # claim core or border point
-                        if is_core[q]:
-                            stack.append(q)        # only core points expand
-            cluster_id += 1
-
-        # Anything never reached from a core point remains noise.
-        self.labels_ = labels
-        self.n_clusters_ = cluster_id
-        self.core_sample_indices_ = np.where(is_core)[0]
-        return self
-
-    def predict(self, X):
-        if self.labels_ is None:
-            self.fit(X)
-        return self.labels_
-
-
-def custom_distance(x, y):
-    # Euclidean distance: its Eps-ball is the shape of the Eps-neighborhood N_Eps.
-    return np.sqrt(np.sum((x - y) ** 2))
-```
-
-Let me trace the causal chain end to end so I'm sure nothing was bolted on. I started from the one fact my eye confirmed — groups are dense, gaps and noise are sparse — and demanded four things at once: no `k`, arbitrary shape, large-scale efficiency, explicit noise. Partitioning (k-means, k-medoid, CLARANS) fails three of them because "nearest representative" is a Voronoi tessellation and forces convex, noise-free, `k`-fixed clusters. The hierarchical/connectivity methods get shape via "walk in small steps" (Ejcluster) but cost `O(n^2)` or need an unsettable termination threshold; grid-histograms get shape but are heavy and cell-size-sensitive. So I formalized density directly as a count in a radius, `|N_Eps(p)|`, metric-agnostic and exactly what a spatial region query returns. Demanding high density of *every* cluster point broke on border points, whose rims are genuinely sparse, so I split points into core (dense enough themselves) and border (sparse but vouched for by a core neighbor) via directly-density-reachable — asymmetric exactly at the core/border seam. Chaining that through core points gave density-reachability (transitive, shape-free — arbitrary clusters fall out of "follow the dense backbone"), and routing two border points through a common core gave the symmetric density-connectivity that glues a cluster together. A cluster became a maximal, density-connected set; noise its complement. Lemma 1 showed a core point generates a cluster as its density-reachable set; Lemma 2 showed regrowing from any core point recovers the whole cluster — which *is* the algorithm: one region query per point, flood-fill from core points, absorb borders, leave the rest noise. That single-query-per-point structure gives `O(n^2)` unindexed and roughly `O(n log n)` average riding an R\*-tree on small queries — efficiency without all-pairs cost. `MinPts` is the density-smoothing threshold, fixable (≈4 in 2-D, ≈2·dim generally) because the result is insensitive to it; `Eps` is read off the knee of the sorted `k-dist` graph (with `MinPts = k+1` for the self-point), the one decision a human makes by eye. And the whole thing is exactly minimum-density-level-set clustering — connected components of the super-level set of a uniform-kernel density estimate with bandwidth `Eps` and level `MinPts/n` — which is why it reproduces what the eye does.
+Translating the pseudocode into this shape changes idiom, not substance: the index supports a bulk call, so instead of issuing `regionQuery` one point at a time I query every point's `Eps`-neighborhood in one indexed pass, `is_core` drops out as a single boolean array (`n_neighbors ≥ min_samples`), and the seed list becomes an explicit stack, popped exactly the way `ExpandCluster`'s while-loop drains it. One shortcut falls out for free: noise needs no separate marking step at all. Every label starts at `-1`, and is only ever overwritten when some core point's flood-fill claims it — so a point never reached from any core point, i.e. never density-reachable from a core point, is simply left at its initial value, which is exactly the definition of noise. The rest is a direct transcription of the derivation above into working code.

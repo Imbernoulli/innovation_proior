@@ -2,16 +2,15 @@ I have a sharp, uncomfortable diagnosis to start from: the structural signal tha
 graphs — neighborhood overlap, the common-neighbor / Adamic–Adar / resource-allocation family — is
 exactly what a plain message-passing GNN cannot represent, because a GNN gives one embedding per node
 and two automorphic nodes get identical embeddings, so for a fixed source u it cannot distinguish a
-true neighbor v from a structurally-identical non-neighbor v′. Let me make sure I actually believe that
-before I build a whole method around it, because the whole argument rests on it. Take the smallest
-graph I can: a star where p1 and p2 both attach to a hub s, and separately q1 attaches to t1 and q2 to
-t2. Then p1 and q1 are both degree-1 leaves — to a message-passing GNN their rooted neighborhoods are
-identical, so they receive identical embeddings. But the *link* (p1, p2) has one common neighbor (s)
-while the link (q1, q2) has zero. So two links whose endpoints a GNN cannot tell apart have different
-overlap structure. A scorer that reads only node embeddings is forced to give them the same score; the
-overlap signal is invisible to it. That is the wall, confirmed on four nodes. And the tool that *can*
-see it — extract the k-hop enclosing subgraph around each pair, label every node by its distances to
-the two endpoints, run a GNN with pooling — does so only by recomputing massively overlapping subgraph
+true neighbor v from a structurally-identical non-neighbor v′. Take the smallest graph that shows this:
+a star where p1 and p2 both attach to a hub s, and separately q1 attaches to t1 and q2 to t2. p1 and q1
+are both degree-1 leaves — to a message-passing GNN their rooted neighborhoods are identical, so they
+receive identical embeddings. But the *link* (p1, p2) has one common neighbor (s) while the link
+(q1, q2) has zero. So two links whose endpoints a GNN cannot tell apart have different overlap
+structure: a scorer that reads only node embeddings is forced to give them the same score; the overlap
+signal is invisible to it. That is the wall, confirmed on four nodes. And the tool that *can* see it —
+extract the k-hop enclosing subgraph around each pair, label every node by its distances to the two
+endpoints, run a GNN with pooling — does so only by recomputing massively overlapping subgraph
 structure once per candidate edge, which is O(|E|) per edge on power-law graphs and overflows memory if
 I try to precompute the subgraphs. So I want the expressiveness of the subgraph method at the cost of a
 plain GNN. The thing I have to find is whether the per-edge subgraph computation can be replaced by
@@ -23,18 +22,17 @@ subgraph, every node w carries a label (d(w,u), d(w,v)) — its distance to each
 downstream GNN reads these labels and pools. What does pooling over those labels amount to? At bottom
 it is *counting*: how many nodes are at distance d_u from u and d_v from v, for each small (d_u, d_v).
 Call that count A_{uv}[d_u, d_v] = number of nodes at distance exactly d_u from u and exactly d_v from
-v. Is this really the load-bearing content of the labeling, and does the lowest cell really equal the
-classical overlap signal? Let me check it concretely rather than assert it. I take a small graph with
-u = 0, v = 1, shared neighbors 2 and 3 (both adjacent to 0 and 1), plus some peripheral nodes hanging
-off at distance 2, and compute exact shortest-path distances. The exact-distance table comes out
-A[1,1] = 2, A[1,2] = 0, A[2,1] = 0, A[2,2] = 1. And counting common neighbors directly,
-|N(0) ∩ N(1)| = |{2, 3}| = 2 — which is exactly A[1,1]. So on this graph A[1,1] *is* the common-neighbor
-count, not approximately but on the nose. A[1,2] and A[2,1] count the one-hop/two-hop overlap, A[2,2]
-the two-hop/two-hop overlap, and so on. So the distance-label counts subsume the overlap heuristics:
-CN is A[1,1], and a learned function of the whole count table can express AA, RA, Katz-like mixtures,
-whatever the data wants. Most of the LP signal sits in the *low*-distance counts, since A[1,1] is the
-dominant heuristic across these benchmarks, so if the predictive power of the subgraph method really
-sits in these counts I may not need the subgraph at all. I need the counts.
+v. Does the lowest cell equal the classical overlap signal? I take a small graph with u = 0, v = 1,
+shared neighbors 2 and 3 (both adjacent to 0 and 1), plus some peripheral nodes hanging off at distance
+2, and compute exact shortest-path distances. The exact-distance table comes out A[1,1] = 2, A[1,2] = 0,
+A[2,1] = 0, A[2,2] = 1. And counting common neighbors directly, |N(0) ∩ N(1)| = |{2, 3}| = 2 — which is
+exactly A[1,1]. So on this graph A[1,1] *is* the common-neighbor count, not approximately but on the
+nose. A[1,2] and A[2,1] count the one-hop/two-hop overlap, A[2,2] the two-hop/two-hop overlap, and so
+on. So the distance-label counts subsume the overlap heuristics: CN is A[1,1], and a learned function of
+the whole count table can express AA, RA, Katz-like mixtures, whatever the data wants. Most of the LP
+signal sits in the *low*-distance counts, since A[1,1] is the dominant heuristic across these
+benchmarks, so if the predictive power of the subgraph method really sits in these counts I may not need
+the subgraph at all. I need the counts.
 
 So restate the goal precisely: for each candidate pair (u, v), compute the count table
 {A_{uv}[d_u, d_v] : d_u, d_v ≤ k} for a small receptive field k, plus the "boundary" counts
@@ -44,18 +42,17 @@ subgraph, ideally from quantities I can attach to each node once. Let me write t
 neighborhoods. Let N_d(u) be the set of nodes within distance ≤ d of u. The number of nodes within d_u
 of u and within d_v of v is just an *intersection cardinality* C_{uv}[d_u, d_v] = |N_{d_u}(u) ∩
 N_{d_v}(v)|, a cumulative quantity. To get the *exact*-distance count A from these cumulative C's I have
-to peel off the nearer shells, and I should check that the peeling arithmetic is actually right before I
-trust it. The natural guess is two-sided inclusion–exclusion: A[d_u, d_v] = C[d_u, d_v] − C[d_u−1, d_v]
-− C[d_u, d_v−1] + C[d_u−1, d_v−1] (with C[0, ·] and C[·, 0] the endpoint-only counts). On the same
-small graph I compute every cumulative C[a, b] = |N_{≤a}(u) ∩ N_{≤b}(v)| by brute force and then run the
-four-term formula for each (a, b) with a, b from 1 to 3 — and every reconstructed A[a, b] matches the
-directly-counted exact-distance table. So the cumulative intersection cardinalities, run through this
-four-term subtraction, recover the exact counts; the boundary then follows the same way,
-B_{uv}[d] = |N_d(u)| − (within-window joint mass already attributed), peeling the within-window joint
-counts off the d-hop neighborhood of u. So everything reduces to two primitives per node pair: the
-cardinality of each node's d-hop neighborhood, |N_d(u)|, and the cardinality of the intersection of two
-nodes' neighborhoods, |N_{d_u}(u) ∩ N_{d_v}(v)|. If I can get those two cheaply, I get the whole count
-table by arithmetic.
+to peel off the nearer shells. The natural guess is two-sided inclusion–exclusion: A[d_u, d_v] =
+C[d_u, d_v] − C[d_u−1, d_v] − C[d_u, d_v−1] + C[d_u−1, d_v−1] (with C[0, ·] and C[·, 0] the
+endpoint-only counts). On the same small graph I compute every cumulative C[a, b] = |N_{≤a}(u) ∩
+N_{≤b}(v)| by brute force and then run the four-term formula for each (a, b) with a, b from 1 to 3 —
+and every reconstructed A[a, b] matches the directly-counted exact-distance table. So the cumulative
+intersection cardinalities, run through this four-term subtraction, recover the exact counts; the
+boundary then follows the same way, B_{uv}[d] = |N_d(u)| − (within-window joint mass already
+attributed), peeling the within-window joint counts off the d-hop neighborhood of u. So everything
+reduces to two primitives per node pair: the cardinality of each node's d-hop neighborhood, |N_d(u)|,
+and the cardinality of the intersection of two nodes' neighborhoods, |N_{d_u}(u) ∩ N_{d_v}(v)|. If I can
+get those two cheaply, I get the whole count table by arithmetic.
 
 Now the obstacle: computing |N_{d_u}(u) ∩ N_{d_v}(v)| exactly for every candidate pair means
 intersecting potentially huge sets, and storing N_d(u) explicitly for every node is back to the memory
@@ -70,16 +67,16 @@ so that the Hamming similarity between two MinHash sketches estimates their *Jac
 J(S, T) = |S ∩ T| / |S ∪ T|; its sketch of a union is the elementwise *min*. If I want an intersection
 size, neither sketch gives it alone, but together they might: |S ∩ T| = J(S, T) · |S ∪ T|, so if MinHash
 delivers J and HyperLogLog delivers |S ∪ T| via the max-merged sketch, the product is the intersection.
-Let me make sure that decomposition and the two union properties are not wishful. On two concrete sets
-S = {1..6}, T = {4..8}: |S ∩ T| = 3, and J · |S ∪ T| = (3/8) · 8 = 3 — the identity is exact, as it must
-be since it is just the definition of Jaccard rearranged. For the union/min property: I MinHash two
-random 400-element subsets of a 2000-element universe with 256 permutations and check that the
-elementwise minimum of their two sketches equals the MinHash computed directly on the union — it does,
-exactly, every register. And the Hamming similarity of the two sketches estimates Jaccard 0.07 against
-a true 0.091 — close, with the gap the expected sampling noise at 256 permutations, tightening with more
-permutations. So the estimator is |S ∩ T| ≈ H(MinHash(S), MinHash(T)) · card(max(HLL(S), HLL(T))): MinHash
-gives the Jaccard, HyperLogLog gives the union size, the product gives the intersection size — and the
-sketch sizes are fixed constants independent of graph size, with a precision/cost knob.
+On two concrete sets S = {1..6}, T = {4..8}: |S ∩ T| = 3, and J · |S ∪ T| = (3/8) · 8 = 3 — exact, as it
+must be since it is just the definition of Jaccard rearranged. The union properties need checking too: I
+MinHash two random 400-element subsets of a 2000-element universe with 256 permutations and check that
+the elementwise minimum of their two sketches equals the MinHash computed directly on the union — it
+does, exactly, every register. And the Hamming similarity of the two sketches estimates Jaccard 0.07
+against a true 0.091 — close, with the gap the expected sampling noise at 256 permutations, tightening
+with more permutations. So the estimator is |S ∩ T| ≈ H(MinHash(S), MinHash(T)) · card(max(HLL(S),
+HLL(T))): MinHash gives the Jaccard, HyperLogLog gives the union size, the product gives the
+intersection size — and the sketch sizes are fixed constants independent of graph size, with a
+precision/cost knob.
 
 This makes the per-node primitive concrete. Give each node u an initial sketch pair (m_u^{(0)},
 h_u^{(0)}) — the MinHash and HyperLogLog of the singleton {u}. The d-hop neighborhood decomposes as
@@ -92,22 +89,22 @@ up to d = k, in O(k|E|·h) time with h the sketch size — node-level, once, no 
 candidate pair (u, v) I read off |N_{d_u}(u)| ≈ card(h_u^{(d_u)}), |N_{d_u}(u) ∩ N_{d_v}(v)| ≈
 H(m_u^{(d_u)}, m_v^{(d_v)}) · card(max(...)), and turn those into the count table A and boundary B by the
 inclusion-exclusion arithmetic I checked above. The expensive per-edge subgraph construction has been
-replaced by cheap per-pair sketch comparisons on fixed-size summaries. One caveat I should keep honest:
+replaced by cheap per-pair sketch comparisons on fixed-size summaries. One caveat worth keeping honest:
 the inclusion-exclusion above was verified on *exact* counts; with sketch estimates the four-term
-subtraction can produce small negatives from estimation noise, so I will clamp the counts at zero rather
-than pretend the estimates are exact. The expressiveness argument is about the exact counts; the
+subtraction can produce small negatives from estimation noise, so I clamp the counts at zero rather than
+pretend the estimates are exact. The expressiveness argument is about the exact counts; the
 implementation is about good estimates of them.
 
-That is the structural side. The other half of a link predictor is node *features*, and here I should
-not overthink it. The subgraph method propagates node features over the subgraph; I can propagate them
-over the *whole graph* with an ordinary GNN, or — and this is the scalability lever — I can fix the
-feature propagation, on the bet that fixed and learned propagation give nearly equivalent link-prediction
-performance (worth verifying empirically, but it is what the decoupled-propagation line has found for
-node tasks and I expect it to carry over to links). A fixed sparse propagation x_u^{(l)} = mean_{v ∈
-N(u)} x_v^{(l−1)} can be precomputed once with scatter operations, and concatenating the features
-diffused at each hop, Z = [X^{(0)} ‖ X^{(1)} ‖ … ‖ X^{(k)}], gives a multi-scale node feature with no
-message passing at training time at all. This is the decoupling-propagation-from-learning idea (SGC/SIGN,
-Wu et al. 2019; Rossi et al. 2020) applied to the feature stream.
+That is the structural side. The other half of a link predictor is node *features*. The subgraph method
+propagates node features over the subgraph; I can propagate them over the *whole graph* with an
+ordinary GNN, or — and this is the scalability lever — I can fix the feature propagation, on the bet
+that fixed and learned propagation give nearly equivalent link-prediction performance: the
+decoupled-propagation line found exactly this for node tasks, and I expect it to carry over to links. A
+fixed sparse propagation x_u^{(l)} = mean_{v ∈ N(u)} x_v^{(l−1)} can be precomputed once with scatter
+operations, and concatenating the features diffused at each hop, Z = [X^{(0)} ‖ X^{(1)} ‖ … ‖ X^{(k)}],
+gives a multi-scale node feature with no message passing at training time at all. This is the
+decoupling-propagation-from-learning idea (SGC/SIGN, Wu et al. 2019; Rossi et al. 2020) applied to the
+feature stream.
 
 Now assemble the predictor. For a pair (u, v): take the multi-scale node features z_u, z_v (propagated
 or GNN-encoded), combine them by the Hadamard product z_u ⊙ z_v, and *concatenate* the structural count
@@ -115,19 +112,18 @@ features {B_{uv}[d], A_{uv}[d_u, d_v] : d, d_u, d_v ≤ k}. Pass the concatenati
 single logit: p(u, v) = ψ(z_u ⊙ z_v, {B_{uv}[d], A_{uv}[d_u, d_v]}). The MLP learns *how* to weight the
 structural counts — and since A[1,1] just turned out to be the common-neighbor count, a linear readout
 on the count vector already contains CN, and a nonlinear one can reach AA, RA, or any mixture the data
-prefers — and *how* to fuse them with the feature interaction. Two design points need settling, and for
-each I have a reason rather than a default. The endpoints: should I pool the two node representations at
-the *edge* level (Hadamard of z_u and z_v) or pool over all subgraph nodes (graph-level)? Graph-level
-pooling drags the subgraph back in, which is the whole cost I am trying to escape, so edge pooling wins
-on cost alone — and it is the standard, well-performing choice for links. The structural counts: feed
-them as *direct inputs to the MLP*, or propagate them as labels through a GNN? Since the predictive
-content concentrates in the low-distance counts — A[1,1] and its immediate neighbors — and those are
-already a short fixed vector, an MLP directly on them has nothing to gain from further propagation and
-keeps the model an MLP; so direct inputs. The receptive field k is small — k = 2 or 3 — both because the
-low-distance counts dominate (I would not expect A[3,3] to add much over A[1,1]) and because keeping k
-below the size scale gives a fixed-length, size-independent feature vector that resists overfitting; the
-sketch sizes (HyperLogLog precision p, number of MinHash permutations) are the accuracy/speed knobs,
-again independent of N.
+prefers — and *how* to fuse them with the feature interaction. Two design points need settling. The
+endpoints: should I pool the two node representations at the *edge* level (Hadamard of z_u and z_v) or
+pool over all subgraph nodes (graph-level)? Graph-level pooling drags the subgraph back in, which is the
+whole cost I am trying to escape, so edge pooling wins on cost alone — and it is the standard,
+well-performing choice for links. The structural counts: feed them as *direct inputs to the MLP*, or
+propagate them as labels through a GNN? Since the predictive content concentrates in the low-distance
+counts — A[1,1] and its immediate neighbors — and those are already a short fixed vector, an MLP
+directly on them has nothing to gain from further propagation and keeps the model an MLP; so direct
+inputs. The receptive field k is small — k = 2 or 3 — both because the low-distance counts dominate (I
+would not expect A[3,3] to add much over A[1,1]) and because keeping k below the size scale gives a
+fixed-length, size-independent feature vector that resists overfitting; the sketch sizes (HyperLogLog
+precision p, number of MinHash permutations) are the accuracy/speed knobs, again independent of N.
 
 Two distinct realizations fall out of *when* I compute the sketches. The full-graph version folds the
 sketch propagation (min for MinHash, max for HyperLogLog) and the feature propagation into the
@@ -144,25 +140,17 @@ the GPU. The cost is O(kEd) for feature propagation plus O(kEh) for sketch propa
 then O(k²h + kd²) per link prediction — both independent of the size of the graph, which is the entire
 point.
 
-Let me revisit the expressiveness claim with what I now have, because it is the justification for the
-structural counts existing at all. A plain message-passing GNN assigns automorphic nodes identical
-embeddings, so it cannot separate certain non-automorphic *links* whose endpoints are automorphic — the
-four-node star example made that concrete: leaves p1 and q1 are indistinguishable to the GNN, yet link
-(p1, p2) has A[1,1] = 1 and link (q1, q2) has A[1,1] = 0. The structural counts A_{uv}[d_u, d_v] are
-computed *relative to the pair* — they depend on the joint neighborhood geometry of u and v, not on
-either node alone — so exactly those links a GNN collapses can carry different count tables and thus
-different scores. With exact counts the model separates every pair a GNN separates (it can ignore the
-counts and use the embeddings) and additionally separates pairs like (p1,p2) vs (q1,q2) that the GNN
-cannot, so it is strictly more expressive on this family; A[1,1] = common neighbors is the concrete
-witness, a quantity a GNN cannot count and this model reads off directly. With *sketch* estimates rather
+The four-node witness now closes the expressiveness argument: leaves p1 and q1 are indistinguishable to
+a plain GNN, yet A[1,1] = 1 for the link (p1, p2) and A[1,1] = 0 for (q1, q2). The structural counts
+A_{uv}[d_u, d_v] are computed *relative to the pair* — they depend on the joint neighborhood geometry of
+u and v, not on either node alone — so exactly those links a GNN collapses can carry different count
+tables and thus different scores. With exact counts the model separates every pair a GNN separates (it
+can ignore the counts and use the embeddings) and additionally separates pairs like (p1, p2) vs (q1, q2)
+that the GNN cannot, so it is strictly more expressive on this family. With *sketch* estimates rather
 than exact counts the separation holds whenever the estimation error is smaller than the gap between the
 two count tables, which is why the sketch sizes are a knob and not free.
 
-So the method is: per node, propagate MinHash and HyperLogLog sketches by elementwise min/max for k
-hops to summarize every d-hop neighborhood; per candidate pair, estimate the neighborhood intersection
-and cardinality from those sketches and convert them by the verified inclusion-exclusion into the
-distance-label count table A and boundary counts B; combine those structural counts, as direct MLP
-inputs, with the Hadamard product of multi-scale (precomputable) node features; and read out a single
-link logit through an MLP. ELPH does this in-loop on the full graph; BUDDY precomputes the sketches and
-features so the learned model is an MLP on cached edge features — subgraph-class expressiveness at
-GCN-class cost.
+BUDDY is that answer: sketches and multi-scale features precomputed once per node, per-pair structural
+counts read off in constant time by the inclusion-exclusion arithmetic above, and the entire learned
+model reduced to an MLP on cached edge features — subgraph-class expressiveness at GCN-class cost, work
+that grows with the graph once at preprocessing time rather than per candidate edge.
