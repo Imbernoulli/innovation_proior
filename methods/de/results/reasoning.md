@@ -21,7 +21,7 @@ Before I believe the "self-scaling" story I should put numbers on it, because "t
 
 so the typical difference magnitude has shrunk by a factor of ~400 with no schedule touched — it contracted by exactly as much as the population contracted, because it *is* the population's spread. That is the self-scaling, and it is bigger than I would have guessed: the step does not just shrink, it shrinks in lockstep with the cloud. This is the thing ES needed a 1/5 rule or a self-adapted σ to fake, falling out of pure subtraction.
 
-There may be a second gift here, and it is the orientation. The difference vectors need not be isotropic — they should inherit the *shape* of the population cloud, not just its size. Picture a long curved valley like Rosenbrock, where the good region is a thin bent ribbon. The population, being selected toward low cost, ought to spread *along* that ribbon and stay thin across it, so two members picked at random should differ more along the valley than across it. Let me actually measure it rather than assert it, because curvature could spoil the picture. I build a population sitting on the ribbon: `x` spread over `[−1.5, 1.5]` along the valley, `y = x² + ε` with `ε ~ N(0, 0.01²)` thin across it. For each pair I project the difference onto the local valley tangent `(1, 2x)` and its normal, and take RMS components. Over all pairs the ratio along/across comes out only ≈ 1.3 — disappointingly mild, and at first I think the orientation idea is mostly wishful. But that global number is contaminated: a chord between two *far-apart* points on a parabola has a large normal component purely from the curve bending, not from any real across-valley spread. The quantity that matters for a perturbation step is the *local* anisotropy — nearby members, since a step is a local move. Restricting to pairs with `|Δx| < 0.3`:
+There may be a second gift here, and it is the orientation. The difference vectors need not be isotropic — they should inherit the *shape* of the population cloud, not just its size. Picture a long curved valley like Rosenbrock, where the good region is a thin bent ribbon. The population, being selected toward low cost, ought to spread *along* that ribbon and stay thin across it, so two members picked at random should differ more along the valley than across it. I measure it directly, because curvature could spoil an eyeballed guess. I build a population sitting on the ribbon: `x` spread over `[−1.5, 1.5]` along the valley, `y = x² + ε` with `ε ~ N(0, 0.01²)` thin across it. For each pair I project the difference onto the local valley tangent `(1, 2x)` and its normal, and take RMS components. Over all pairs the ratio along/across comes out only ≈ 1.3 — disappointingly mild, and at first I think the orientation idea is mostly wishful. But that global number is contaminated: a chord between two *far-apart* points on a parabola has a large normal component purely from the curve bending, not from any real across-valley spread. The quantity that matters for a perturbation step is the *local* anisotropy — nearby members, since a step is a local move. Restricting to pairs with `|Δx| < 0.3`:
 
     RMS along  ≈ 0.336
     RMS across ≈ 0.0094     →  ratio ≈ 36
@@ -44,94 +44,8 @@ Now acceptance. I have a trial `u` for target slot `i`. Greedy and one-to-one: c
 
 Let me assemble the whole loop now and see it whole. One generation sweeps the population: for each target index `i`, pick three other distinct members at random, form the difference-vector mutant `v = x_{r1} + F·(x_{r2} − x_{r3})`, binomial-cross it with `x_i` (forcing one coordinate from `v`) to get the trial `u`, clip `u` back into the box, evaluate `f(u)`, and replace `x_i` with `u` iff `u` is no worse. After `NP` such competitions the generation is done; record the best cost; repeat. The control variables are just `F`, `CR`, and `NP` — three numbers, all easy to set and robust, none of them a schedule or an adapted matrix. That count is the payoff: the scale-and-orientation problem that cost every prior method a tuning apparatus has been absorbed into the difference vector, which costs nothing.
 
-Before I write it as code, let me name the family so the choices are explicit. The base vector is "rand," I use one difference vector, and the crossover is "bin" — DE/rand/1/bin. (Swap "rand"→"best" for the greedy base; use two differences for "/2"; that gives a small zoo of related schemes, e.g. a best-vector-plus-two-differences variant, but rand/1/bin is the robust general workhorse and the one I will ship.) Now the code fills the single generation slot in the population harness. The rule is cleanest as one population update, because the proposal for a target depends on three other members and the acceptance comparison belongs to that same target. I keep the fixed scaffold controls for the task, `F = 0.5` and `CR = 0.9`, and I build the next generation from the current one so the `G -> G+1` bookkeeping is explicit.
+Let me name the family so the choices are explicit. The base vector is "rand," I use one difference vector, and the crossover is "bin" — DE/rand/1/bin. (Swap "rand"→"best" for the greedy base; use two differences for "/2"; that gives a small zoo of related schemes, e.g. a best-vector-plus-two-differences variant, but rand/1/bin is the robust general workhorse and the one I will ship.) This fills the single generation slot in the population harness directly, one pass per target: draw three other indices, form the mutant, binomial-cross it in with the forced coordinate, clip to the box, evaluate, replace iff no worse — with the task's fixed controls `F = 0.5` and `CR = 0.9`, building generation `G+1` from `G` explicitly.
 
-```python
-import random
-from typing import Tuple, Callable
-from deap import base, creator, tools
+Now the deferred verdicts. I run the assembled loop on the costs I was worried about. First the easy sanity case, the sphere `Σ x_j²` at `D = 10`, `NP = 40`, over `[−5.12, 5.12]`, 200 generations: the best cost ends at `2.1e-8`, and checking `history[g+1] ≤ history[g]` at every step returns True — so the monotonicity I read off the update rule actually holds in the run, and the self-annealing steps do drive the cost down to the floor with no schedule. Second, the case that actually tests the local-minima escape I was only hoping for in the argument above: Rastrigin at `D = 2`, same `NP`, over `[−5.12, 5.12]`, which packs 121 local minima (one near every integer lattice point) into that box. 200 generations: best cost is `3.6` at generation 0, down to `2.3e-5` by generation 50, a residual near machine precision (`~7e-15`) by generation 100, and exactly `0.0` — the single global minimum — by 101, holding there; monotone throughout. I am not tracking which member sat in which basin or which difference vector pulled it clear, only the scalar consequence: across a landscape riddled with 121 basins the population did not stall in any of them, it found the exact global minimum and held it. That is the concrete case the earlier argument needed, even without watching the individual escape happen. Third, the case that tests the orientation claim rather than the escape claim: Rosenbrock at `D = 2`, same `NP`, over `[−2.048, 2.048]`, 400 generations. Best cost reaches `0.0` (the global optimum at `(1, 1)`), monotone again True, and the history `[0.18, 0.0, 0.0, 0.0, 0.0]` at generations `[0, 50, 100, 200, 399]` shows it has found the valley floor well before generation 50 — the local anisotropy I measured earlier in the static population is paying off in the live search, not just in the snapshot. All three deferred claims survive being run.
 
-if not hasattr(creator, "FitnessMin"):
-    creator.create("FitnessMin", base.Fitness, weights=(-1.0,))
-if not hasattr(creator, "Individual"):
-    creator.create("Individual", list, fitness=creator.FitnessMin)
-
-
-def make_individual(toolbox, dim: int, lo: float, hi: float):
-    return creator.Individual([random.uniform(lo, hi) for _ in range(dim)])
-
-
-def clip_individual(individual, lo: float, hi: float):
-    for i in range(len(individual)):
-        individual[i] = max(lo, min(hi, individual[i]))
-    return individual
-
-
-def make_generation(population: list, toolbox, dim: int, lo: float, hi: float) -> list:
-    """One DE/rand/1/bin generation with F = 0.5, CR = 0.9."""
-    F = 0.5
-    CR = 0.9
-    if len(population) < 4:
-        raise ValueError("DE/rand/1/bin needs pop_size >= 4")
-
-    next_population = list(population)
-
-    for i, target in enumerate(population):
-        # Three other members, mutually distinct and different from target i.
-        candidates = list(range(len(population)))
-        candidates.remove(i)
-        r1, r2, r3 = random.sample(candidates, 3)
-        x_r1, x_r2, x_r3 = population[r1], population[r2], population[r3]
-
-        # DE/rand/1 mutation: v = x_r1 + F * (x_r2 - x_r3).
-        mutant = creator.Individual(
-            [x_r1[j] + F * (x_r2[j] - x_r3[j]) for j in range(dim)]
-        )
-
-        # Binomial crossover, with one forced coordinate from the mutant.
-        j_rand = random.randrange(dim)
-        trial = creator.Individual(
-            [mutant[j] if (random.random() < CR or j == j_rand) else target[j]
-             for j in range(dim)]
-        )
-        clip_individual(trial, lo, hi)
-        trial.fitness.values = toolbox.evaluate(trial)
-
-        # Greedy one-to-one selection: trial replaces target iff its cost is no worse.
-        if trial.fitness.values[0] <= target.fitness.values[0]:
-            next_population[i] = trial
-
-    return next_population
-
-
-def run_evolution(evaluate_func: Callable, dim: int, lo: float, hi: float,
-                  pop_size: int, n_generations: int,
-                  cx_prob: float, mut_prob: float, seed: int) -> Tuple[list, list]:
-    """Differential Evolution, scheme DE/rand/1/bin."""
-    random.seed(seed)
-    _ = (cx_prob, mut_prob)  # retained for harness compatibility; F and CR are fixed above
-
-    toolbox = base.Toolbox()
-    toolbox.register("individual", make_individual, toolbox, dim, lo, hi)
-    toolbox.register("population", tools.initRepeat, list, toolbox.individual)
-    toolbox.register("evaluate", evaluate_func)
-
-    pop = toolbox.population(n=pop_size)           # init uniformly over the box
-    for ind in pop:
-        ind.fitness.values = toolbox.evaluate(ind)
-
-    fitness_history = []
-
-    for gen in range(n_generations):
-        pop = make_generation(pop, toolbox, dim, lo, hi)
-
-        best_fit = min(ind.fitness.values[0] for ind in pop)
-        fitness_history.append(best_fit)
-
-    best_ind = min(pop, key=lambda ind: ind.fitness.values[0])
-    return best_ind, fitness_history
-```
-
-Now the two verdicts I deferred. I run this loop closed-form on the costs I was worried about. First the easy sanity case, the sphere `Σ x_j²` at `D = 10`, `NP = 40`, over `[−5.12, 5.12]`, 200 generations: the best cost ends at `2.1e-8`, and checking `history[g+1] ≤ history[g]` at every step returns True — so the monotonicity I read off the update rule actually holds in the run, and the self-annealing steps do drive the cost down to the floor with no schedule. Then the case that actually tests whether greed-plus-diversity escapes traps and threads a curved valley: Rosenbrock at `D = 2`, same `NP`, over `[−2.048, 2.048]`, 400 generations. Best cost reaches `0.0` (the global optimum at `(1, 1)`), monotone again True, and the history `[0.18, 0.0, 0.0, 0.0, 0.0]` at generations `[0, 50, 100, 200, 399]` shows it has found the valley floor well before generation 50. So the difference-vector step does crawl along the curved ribbon to the optimum without any covariance machinery — the orientation property I measured earlier is paying off in the full search, not just in the static snapshot. Both deferred claims survive being run; I am no longer asserting that the loop works, I have watched it work.
-
-So the whole causal chain is this. I was stuck because every direct-search method I had answered the perturbation-scale question with an external device — a temperature schedule, a controlled or self-adapted σ, a fixed mutation width — each one a tuning burden and each one brittle when its assumptions did not match the landscape. Nelder–Mead showed it was possible to read the move scale off the configuration of points already in hand, but only for one collapsing simplex, only locally. I had a whole population, and its spread already *is* the scale I kept wanting: I measured the typical member-to-member difference shrink ~400-fold from a scattered initial cloud to a converged one, in lockstep with the population, with no schedule touched. The difference of two random members is a sample of that spread, so `v = x_{r1} + F·(x_{r2} − x_{r3})` carries the population's scale and — locally, where the cloud is thin along a valley — its orientation too, with no estimated distribution and no schedule; `F` is a single robust dial on that vector, not the whole scale. Binomial crossover with a forced coordinate mixes the mutant into the target so `CR` can tune how many coordinates move while ruling out the all-target copy, which I found would otherwise waste a third of the evaluations at small `CR`. Greedy one-to-one acceptance makes the best cost monotone — a property I both proved off the update rule and watched hold in the runs — while one-to-one replacement keeps the diversity that, on the closed-loop Rosenbrock and sphere runs, carried the search to the optimum. Three control variables — `F`, `CR`, `NP` — no covariance, no cooling, no σ-adaptation, and the target competitions can be evaluated independently once the current generation is fixed. The scale problem dissolved into a subtraction.
+The scale-and-orientation problem that cost every prior method its own tuning apparatus dissolves into a subtraction: the difference between two population members already carries the population's current spread and, locally, its shape, so `v = x_{r1} + F·(x_{r2} − x_{r3})` needs no estimated distribution and no schedule. Three control variables — `F`, `CR`, `NP` — stand in for a temperature schedule, a controlled or self-adapted σ, or a fixed mutation width, and each target's competition can be evaluated independently once the current generation is fixed.

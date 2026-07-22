@@ -48,9 +48,9 @@ C21 = A21B11 + A22B21. I have A21B11 in P2 (= A21B11 + A22B11) and A22B21 in P4 
 
 Now the diagonal outputs, and I have two products left to spend (I'm allowing myself seven; this is P6, P7). C11 = A11B11 + A12B21. I have A11B11 sitting inside P1. Let me see what combination of what-I-have yields C11. Try P1 + P4 − P5: P1 = A11B11 + A11B22 + A22B11 + A22B22; P4 = A22B21 − A22B11; −P5 = −A11B22 − A12B22. Sum so far: A11B11 + A22B22 + A22B21 − A12B22. The A11B22 and A22B11 from P1 cancelled against P4 and P5 — good, the junk is dying. What's left is A11B11 (want it) + A22B22 (don't want it in C11) + A22B21 (don't want) − A12B22 (don't want). I still need to turn A22B22 + A22B21 − A12B22 into +A12B21, and clean up. That's a mess of leftover terms involving A12, A22 and B21, B22. This is exactly the kind of corner I need one more *product of two sums* to sweep up — the leftover monomials all live in the A12/A22 × B21/B22 quadrant.
 
-The leftover I want to fix is: I have +A11B11 + A22B22 + A22B21 − A12B22 and I want +A11B11 + A12B21. So I need to add (A12B21 − A22B22 − A22B21 + A12B22) = A12(B21 + B22) − A22(B21 + B22) = (A12 − A22)(B21 + B22). That factors perfectly into one bilinear product. Call P7 = (A12 − A22)(B21 + B22). Then C11 = P1 + P4 − P5 + P7. Let me double check by expanding P7 = A12B21 + A12B22 − A22B21 − A22B22 and adding to the running A11B11 + A22B22 + A22B21 − A12B22: the A22B22 cancels, the A22B21 cancels, the A12B22 cancels (−A12B22 + A12B22), leaving A11B11 + A12B21. Exactly C11. Seven... wait, I've only used P1, P4, P5, P7 here and P2, P3 elsewhere; P6 is still free. Good, C11 = P1 + P4 − P5 + P7.
+The leftover I want to fix is: I have +A11B11 + A22B22 + A22B21 − A12B22 and I want +A11B11 + A12B21. So I need to add (A12B21 − A22B22 − A22B21 + A12B22) = A12(B21 + B22) − A22(B21 + B22) = (A12 − A22)(B21 + B22). That factors perfectly into one bilinear product. Call P7 = (A12 − A22)(B21 + B22). Then C11 = P1 + P4 − P5 + P7 — expanding P7 = A12B21 + A12B22 − A22B21 − A22B22 and adding to the running A11B11 + A22B22 + A22B21 − A12B22 confirms it: A22B22 cancels, A22B21 cancels, A12B22 cancels, leaving A11B11 + A12B21. That uses P1, P4, P5, P7; P2 and P3 are already spoken for by C21 and C12, and P6 is still free for C22.
 
-Last one: C22 = A21B12 + A22B22, with one product, P6, left. I have A22B22 in P1. By the mirror of the C11 construction, try P1 − P2 + P3 + (last product). P1 = A11B11 + A11B22 + A22B11 + A22B22; −P2 = −A21B11 − A22B11; P3 = A11B12 − A11B22. Sum: A11B11 + A22B22 − A21B11 + A11B12 (the A11B22 cancels with P3, the A22B11 cancels with −P2). I want C22 = A21B12 + A22B22, so I need to add (A21B12 + A22B22) − (A11B11 + A22B22 − A21B11 + A11B12) = A21B12 + A21B11 − A11B11 − A11B12 = A21(B12 + B11) − A11(B11 + B12) = (A21 − A11)(B11 + B12). One bilinear product. Call P6 = (A21 − A11)(B11 + B12). Then C22 = P1 − P2 + P3 + P6. Check: P6 = A21B11 + A21B12 − A11B11 − A11B12; add to A11B11 + A22B22 − A21B11 + A11B12: A11B11 cancels, A21B11 cancels, A11B12 cancels, leaving A22B22 + A21B12 = C22. 
+Last one: C22 = A21B12 + A22B22, with one product, P6, left. I have A22B22 in P1. By the mirror of the C11 construction, try P1 − P2 + P3 + (last product). P1 = A11B11 + A11B22 + A22B11 + A22B22; −P2 = −A21B11 − A22B11; P3 = A11B12 − A11B22. Sum: A11B11 + A22B22 − A21B11 + A11B12 (the A11B22 cancels with P3, the A22B11 cancels with −P2). I want C22 = A21B12 + A22B22, so I need to add (A21B12 + A22B22) − (A11B11 + A22B22 − A21B11 + A11B12) = A21B12 + A21B11 − A11B11 − A11B12 = A21(B12 + B11) − A11(B11 + B12) = (A21 − A11)(B11 + B12). One bilinear product. Call P6 = (A21 − A11)(B11 + B12). Then C22 = P1 − P2 + P3 + P6: P6 = A21B11 + A21B12 − A11B11 − A11B12, and adding it to A11B11 + A22B22 − A21B11 + A11B12 cancels A11B11, A21B11, and A11B12, leaving A22B22 + A21B12 = C22.
 
 So with seven products
   P1 = (A11 + A22)(B11 + B22)
@@ -68,20 +68,13 @@ I recover
 
 Seven multiplications instead of eight. Let me count the additions: P1 needs 2 (one sum on each side), P2 1, P3 1, P4 1, P5 1, P6 2, P7 2 — that's 10 additions to form the operands. Then the recombination: C11 needs 3, C12 1, C21 1, C22 3 — 8 more. Eighteen additions/subtractions total. Doesn't matter for the exponent; it's O(n²) glue.
 
-Before I trust this enough to recurse, two things have to hold, and I've only hand-waved both: that the cancellations are exact for *all four* blocks (I checked them one at a time while building, which is exactly the way to fool myself), and that nothing I did secretly relied on the blocks commuting. Let me nail both.
+Two things about this aren't nailed down yet: whether the cancellations are exact for *all four* blocks together — I checked them one at a time while building, which is exactly the way to fool myself — and whether anything here secretly relied on the blocks commuting.
 
-Let me make sure I actually believe the cancellations as a formal identity, not just on the diagonal I checked. Treat all eight blocks as non-commuting symbols and expand C11 = P1 + P4 − P5 + P7:
- P1 = A11B11 + A11B22 + A22B11 + A22B22
- P4 = A22B21 − A22B11
- −P5 = −A11B22 − A12B22
- P7 = A12B21 + A12B22 − A22B21 − A22B22
-Sum: A11B11 (stays) + A11B22 − A11B22 (0) + A22B11 − A22B11 (0) + A22B22 − A22B22 (0) + A22B21 − A22B21 (0) − A12B22 + A12B22 (0) + A12B21 (stays) = A11B11 + A12B21. For C12 = P3 + P5, the expansion is A11B12 − A11B22 + A11B22 + A12B22 = A11B12 + A12B22. For C21 = P2 + P4, it is A21B11 + A22B11 + A22B21 − A22B11 = A21B11 + A22B21. For C22 = P1 − P2 + P3 + P6, it is A11B11 + A11B22 + A22B11 + A22B22 − A21B11 − A22B11 + A11B12 − A11B22 + A21B11 + A21B12 − A11B11 − A11B12 = A21B12 + A22B22. In each of the four expansions I only ever concatenate an A-side symbol with a B-side symbol in that order, and every cancellation is between two identical ordered words — so the equalities don't use commuting anywhere.
+For the first: look back at how C11 = P1 + P4 − P5 + P7 was assembled. Every unwanted monomial paired off against an identical occurrence with the opposite sign — A11B22 in P1 against −A11B22 in P5, A22B11 in P1 against −A22B11 in P4, A22B21 in P4 against −A22B21 in P7, A12B22 in −P5 against +A12B22 in P7 — leaving exactly A11B11 + A12B21. C12, C21, C22 cancel the same way, using the pairings already found while building P3–P6. In every one of these cancellations an A-side symbol is written before its B-side partner and stays there; nothing ever needed A11B22 = B22A11.
 
-Symbolic expansion is where I make sign errors, though, so let me ground it with numbers before I commit. Take the scalar 2×2 case (1×1 blocks, where I can also see the answer by hand): A = [[1,2],[3,4]], B = [[5,6],[7,8]], so AB = [[1·5+2·7, 1·6+2·8],[3·5+4·7, 3·6+4·8]] = [[19,22],[43,50]]. Now run the seven products. P1 = (1+4)(5+8) = 5·13 = 65; P2 = (3+4)·5 = 35; P3 = 1·(6−8) = −2; P4 = 4·(7−5) = 8; P5 = (1+2)·8 = 24; P6 = (3−1)(5+6) = 2·11 = 22; P7 = (2−4)(7+8) = −2·15 = −30. Recombine: C11 = P1+P4−P5+P7 = 65+8−24−30 = 19 ✓; C12 = P3+P5 = −2+24 = 22 ✓; C21 = P2+P4 = 35+8 = 43 ✓; C22 = P1−P2+P3+P6 = 65−35−2+22 = 50 ✓. All four match [[19,22],[43,50]]. The arithmetic survives a concrete instance, which catches the sign slips the symbolic pass can hide.
+That argument is symbolic, and symbolic algebra is where sign errors hide, so I check it on numbers too. Take the scalar case A = [[1,2],[3,4]], B = [[5,6],[7,8]], so AB = [[19,22],[43,50]]. P1 = (1+4)(5+8) = 65, P2 = (3+4)·5 = 35, P3 = 1·(6−8) = −2, P4 = 4·(7−5) = 8, P5 = (1+2)·8 = 24, P6 = (3−1)(5+6) = 22, P7 = (2−4)(7+8) = −30. Recombining: C11 = 65+8−24−30 = 19, C12 = −2+24 = 22, C21 = 35+8 = 43, C22 = 65−35−2+22 = 50 — all four match.
 
-That instance was scalar, though, and scalars commute — so it can't tell me whether I'm secretly leaning on A11B12 = B12A11 somewhere. I need a case where the blocks genuinely don't commute. So take 2×2 blocks that are themselves 2×2 matrices: pick eight random integer 2×2 matrices for A11…B22, with (say) A11B12 ≠ B12A11 (easy to arrange and easy to check). Form the four output blocks both by the seven-product recombination and by honest 4×4 multiplication A B, and compare. When I do this the two agree entry for entry. Since the block entries here demonstrably fail to commute and the answer is still exact, the identity is using only the non-commutative algebra — multiplying A-side by B-side on the correct sides — and nothing else. That is the property the recursion depends on.
-
-So the identity is a *polynomial identity in 8 non-commuting indeterminate matrices*: every P_k is (a combination of A-blocks) on the left times (a combination of B-blocks) on the right, no product ever multiplies two A-blocks or two B-blocks, and no factor is ever reordered. It therefore stays true when the eight entries are matrix blocks, and the recursion is legitimate.
+That instance was scalar, though, and scalars commute — it can't rule out a hidden reliance on A11B12 = B12A11 somewhere. So I need blocks that genuinely don't commute: take eight random integer 2×2 matrices for A11…B22 (with A11B12 ≠ B12A11, easy to arrange), form the four outputs both by the seven-product recombination and by direct 4×4 multiplication, and compare. They agree entry for entry. Since the block entries here demonstrably fail to commute and the answer is still exact, the identity really is a polynomial identity in 8 non-commuting indeterminates — every P_k is an A-side combination times a B-side combination, in that order, no factor ever reordered — and it stays true when the entries are matrix blocks. That is the property the recursion depends on.
 
 So the recurrence is now T(n) = 7T(n/2) + O(n²). Master theorem, 7 > 4: T(n) = Θ(n^{log₂ 7}). log₂ 7 = 2.807…. Subcubic. The cubic barrier is broken, and broken by a finite algebraic identity recursed — nothing about the structure of A or B, just seven products and a recombination.
 
@@ -109,132 +102,4 @@ Let me write the witness as real, runnable code, because the whole thing has to 
 
 If I were not confident I could implement Strassen's seven-product block recurrence and the P1..P7 recombination correctly within the budget, I would fall back to the standard cubic matrix multiplication kernel for this problem and ship that instead.
 
-```cpp
-// Reads n, then two n x n integer matrices A and B from stdin (row-major,
-// whitespace-separated); prints C = A*B (n rows, space-separated) to stdout.
-// Recursive Strassen (7 block products) with a cubic leaf kernel; long long
-// accumulation to avoid overflow.
-#include <bits/stdc++.h>
-using namespace std;
-
-using ll = long long;
-using Mat = vector<vector<ll>>;
-
-static const int LEAF = 64;
-
-// Cubic leaf kernel / ground truth: C = A*B for two s x s matrices.
-Mat matmul_naive(const Mat& A, const Mat& B) {
-    int s = (int)A.size();
-    Mat C(s, vector<ll>(s, 0));
-    for (int i = 0; i < s; i++)
-        for (int k = 0; k < s; k++) {
-            ll a = A[i][k];
-            if (a == 0) continue;
-            for (int j = 0; j < s; j++)
-                C[i][j] += a * B[k][j];
-        }
-    return C;
-}
-
-Mat add(const Mat& A, const Mat& B) {
-    int s = (int)A.size();
-    Mat C(s, vector<ll>(s));
-    for (int i = 0; i < s; i++)
-        for (int j = 0; j < s; j++) C[i][j] = A[i][j] + B[i][j];
-    return C;
-}
-
-Mat sub(const Mat& A, const Mat& B) {
-    int s = (int)A.size();
-    Mat C(s, vector<ll>(s));
-    for (int i = 0; i < s; i++)
-        for (int j = 0; j < s; j++) C[i][j] = A[i][j] - B[i][j];
-    return C;
-}
-
-// Recursive Strassen for an s x s matrix where s is even (or <= LEAF).
-Mat strassen(const Mat& X, const Mat& Y) {
-    int n = (int)X.size();
-    if (n <= LEAF || (n & 1)) return matmul_naive(X, Y);
-
-    int m = n / 2;
-    Mat a(m, vector<ll>(m)), b(m, vector<ll>(m)), c(m, vector<ll>(m)), d(m, vector<ll>(m));
-    Mat e(m, vector<ll>(m)), f(m, vector<ll>(m)), g(m, vector<ll>(m)), h(m, vector<ll>(m));
-    for (int i = 0; i < m; i++)
-        for (int j = 0; j < m; j++) {
-            a[i][j] = X[i][j];     b[i][j] = X[i][j + m];
-            c[i][j] = X[i + m][j]; d[i][j] = X[i + m][j + m];
-            e[i][j] = Y[i][j];     f[i][j] = Y[i][j + m];
-            g[i][j] = Y[i + m][j]; h[i][j] = Y[i + m][j + m];
-        }
-
-    // Seven products: each is (A-side combination) x (B-side combination),
-    // A always on the left, so the identity lifts to non-commuting blocks.
-    Mat p1 = strassen(add(a, d), add(e, h));   // (A11+A22)(B11+B22)
-    Mat p2 = strassen(add(c, d), e);           // (A21+A22) B11
-    Mat p3 = strassen(a, sub(f, h));           // A11 (B12-B22)
-    Mat p4 = strassen(d, sub(g, e));           // A22 (B21-B11)
-    Mat p5 = strassen(add(a, b), h);           // (A11+A12) B22
-    Mat p6 = strassen(sub(c, a), add(e, f));   // (A21-A11)(B11+B12)
-    Mat p7 = strassen(sub(b, d), add(g, h));   // (A12-A22)(B21+B22)
-
-    // Recombine; cross terms cancel exactly by the Strassen identity.
-    Mat c11 = add(sub(add(p1, p4), p5), p7);   // C11 = p1 + p4 - p5 + p7
-    Mat c12 = add(p3, p5);                      // C12 = p3 + p5
-    Mat c21 = add(p2, p4);                      // C21 = p2 + p4
-    Mat c22 = add(add(sub(p1, p2), p3), p6);    // C22 = p1 - p2 + p3 + p6
-
-    Mat C(n, vector<ll>(n));
-    for (int i = 0; i < m; i++)
-        for (int j = 0; j < m; j++) {
-            C[i][j] = c11[i][j];     C[i][j + m] = c12[i][j];
-            C[i + m][j] = c21[i][j]; C[i + m][j + m] = c22[i][j];
-        }
-    return C;
-}
-
-// Pad to the next even size when needed so the halving always works.
-Mat recursive_matmul(const Mat& A, const Mat& B) {
-    int n = (int)A.size();
-    if (n == 0) return Mat();
-    if (n <= LEAF) return matmul_naive(A, B);
-
-    int s = (n & 1) ? n + 1 : n;
-    if (s == n) return strassen(A, B);
-
-    Mat Ap(s, vector<ll>(s, 0)), Bp(s, vector<ll>(s, 0));
-    for (int i = 0; i < n; i++)
-        for (int j = 0; j < n; j++) { Ap[i][j] = A[i][j]; Bp[i][j] = B[i][j]; }
-    Mat Cp = strassen(Ap, Bp);
-    Mat C(n, vector<ll>(n));
-    for (int i = 0; i < n; i++)
-        for (int j = 0; j < n; j++) C[i][j] = Cp[i][j];
-    return C;
-}
-
-int main() {
-    ios::sync_with_stdio(false);
-    cin.tie(nullptr);
-
-    int n;
-    if (!(cin >> n)) return 0;
-    Mat A(n, vector<ll>(n)), B(n, vector<ll>(n));
-    for (int i = 0; i < n; i++)
-        for (int j = 0; j < n; j++) cin >> A[i][j];
-    for (int i = 0; i < n; i++)
-        for (int j = 0; j < n; j++) cin >> B[i][j];
-
-    Mat C = recursive_matmul(A, B);
-
-    for (int i = 0; i < n; i++) {
-        for (int j = 0; j < n; j++) {
-            if (j) cout << ' ';
-            cout << C[i][j];
-        }
-        cout << '\n';
-    }
-    return 0;
-}
-```
-
-The causal chain, start to finish: the cubic count came from believing every monomial a_ik b_kj must be formed, but bilinear forms can be built from *combinations* with cancellation, as Karatsuba already showed for polynomials; recursion alone reproduces cubic because eight block products is 2³, so the only lever is the multiplication count, whose log₂ becomes the exponent; an algebraic hunt — one central product of sums to grab two diagonal monomials, auxiliary products to cancel the junk and sweep the corners — yields seven block products that reconstruct all four output blocks without ever multiplying two same-side blocks, so the identity holds for non-commuting matrix entries and recurses to Θ(n^{log₂ 7}); and finally, reading "number of multiplications" as the rank of the matrix-multiplication tensor turns the recursion into a tensor power, with rank submultiplicativity explaining why the base rank bound lands in the exponent bound.
+That plan — seven products recursively down to a crossover size, a cubic kernel at the leaf, padding for odd sizes so the halving always works, and `long long` accumulation throughout — is what I implement.

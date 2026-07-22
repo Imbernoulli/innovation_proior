@@ -10,9 +10,9 @@ So "distance to goal" and "goal-conditioned value function" turn out to be the s
 
 and then train `V` to satisfy the goal-conditioned Bellman equations, then at convergence `||phi(s) - phi(g)|| ≈ -V(s,g) ≈ d*(s,g)` — the embedding distances would equal temporal distances. The value-learning machinery would do the work of injecting `d*` into `phi`, and I'd never need a distance label.
 
-Before I trust this I want to see it on something concrete, where I can compute `d*` by hand. Take the simplest case: a 5-node chain `0 - 1 - 2 - 3 - 4` with undirected unit edges, so `d*(i, j) = |i - j|`. Does a `phi` with the claimed property even exist here? Put `phi_i = i` in `R^1`. Then `||phi_i - phi_j|| = |i - j| = d*(i, j)` exactly, for all pairs — I check this numerically across all 25 ordered pairs and it holds to machine precision. With this `phi`, `V(2,2) = -||phi_2 - phi_2|| = 0` and `V(0,4) = -|0-4| = -4 = -d*(0,4)`. So on the chain the parameterization recovers `V* = -d*` exactly and isn't just plausible; the embedding really is the temporal metric. Good — and it also exposes the three things the form gives me before any training. First, it's *symmetric in its two arguments* — `||phi(s) - phi(g)|| = ||phi(g) - phi(s)||` — so a single network `phi`, shared between states and goals, suffices; I encode a state and a goal with the very same map and just take the distance between their codes. Second, `V(s, s) = -||phi(s) - phi(s)|| = 0` falls out with no learning at all, which is correct, since being already at the goal costs nothing (I just saw `V(2,2)=0` for free). Third, `V <= 0` always, also correct since temporal distance is nonnegative. The parameterization bakes in three facts the value function would otherwise have to discover. And the goal representation I'd hand downstream is simply `phi(g)` itself — encode the raw goal with `phi`, and that vector replaces `g` everywhere.
+To see whether that's more than wishful thinking, try it on something concrete where `d*` can be computed by hand. Take the simplest case: a 5-node chain `0 - 1 - 2 - 3 - 4` with undirected unit edges, so `d*(i, j) = |i - j|`. Does a `phi` with the claimed property even exist here? Put `phi_i = i` in `R^1`. Then `||phi_i - phi_j|| = |i - j| = d*(i, j)` exactly, for every pair. With this `phi`, `V(2,2) = -||phi_2 - phi_2|| = 0` and `V(0,4) = -|0-4| = -4 = -d*(0,4)`. So on the chain the parameterization recovers `V* = -d*` exactly and isn't just plausible; the embedding really is the temporal metric. Good — and it also exposes the three things the form gives me before any training. First, it's *symmetric in its two arguments* — `||phi(s) - phi(g)|| = ||phi(g) - phi(s)||` — so a single network `phi`, shared between states and goals, suffices; I encode a state and a goal with the very same map and just take the distance between their codes. Second, `V(s, s) = -||phi(s) - phi(s)|| = 0` falls out with no learning at all, which is correct, since being already at the goal costs nothing (I just saw `V(2,2)=0` for free). Third, `V <= 0` always, also correct since temporal distance is nonnegative. The parameterization bakes in three facts the value function would otherwise have to discover. And the goal representation I'd hand downstream is simply `phi(g)` itself — encode the raw goal with `phi`, and that vector replaces `g` everywhere.
 
-But the chain was rigged: it's symmetric, and temporal distance in general is *not* symmetric. Getting up a cliff costs more than coming down; a one-way passage costs infinity one way and one step the other. So `d*(s, g) != d*(g, s)` in general, and it's really a quasimetric — triangle inequality and `d*(s,s)=0` hold, but symmetry fails. My `||phi(s) - phi(g)||` is rigidly symmetric. How badly does that hurt? Let me build the smallest asymmetric example and actually fit it, rather than wave at it. Take a directed 3-cycle `0 -> 1 -> 2 -> 0`, each edge a one-way unit step. Then `d*(0,1)=1` but `d*(1,0)=2` (you have to go `1 -> 2 -> 0`); by symmetry of the cycle every adjacent forward hop is `1` and its reverse is `2`. A symmetric `||·||` is forced to assign one number to the unordered pair `{i,j}`, so it physically cannot represent `1` in one direction and `2` in the other. The best it can do per pair is split the difference: the least-squares symmetric distance for `{i,j}` is the mean `(1+2)/2 = 1.5`, identical for all three pairs. That uniform "1.5 between every pair" *is* realizable in `l2` — it's an equilateral triangle of side `1.5`, which I place in `R^2` — and I compute the resulting fit: every directed distance comes out `1.5`, against true values that are `1` or `2`, for a total squared error of `1.5` that no symmetric embedding can drive below. So the symmetry isn't a bug I can engineer away; it's a hard floor on how well this form fits an asymmetric MDP. That reframes the goal. I am not going to use this parameterized `V(s,g)` to drive the policy directly — I only want `phi` as a *representation*, a coordinate system handed to the downstream agent — so the question isn't "is the symmetric metric exactly `d*`" but "is the best symmetric approximation good enough to control on." And there's a second obstruction even if I drop asymmetry: not every metric, even a symmetric one, embeds isometrically into a Euclidean space — there are finite metric spaces with no isometric `l2` embedding (Indyk–Matoušek; Pitis et al.). So an *exact* isometry is off the table on two counts, and the honest target is the best *approximate* symmetric Hilbert embedding of the MDP's temporal structure — which is precisely what a least-squares value objective optimizes. I'll keep the symmetric form, accept the residual the 3-cycle just showed me, and let the downstream success rate adjudicate whether the approximation is good enough. (My prior: in maze and manipulation tasks most of the geometry is locally near-symmetric, so the floor I just measured should be small in practice — but that's a claim about real environments I can only confirm empirically, not derive here.)
+But the chain was rigged: it's symmetric, and temporal distance in general is *not* symmetric. Getting up a cliff costs more than coming down; a one-way passage costs infinity one way and one step the other. So `d*(s, g) != d*(g, s)` in general, and it's really a quasimetric — triangle inequality and `d*(s,s)=0` hold, but symmetry fails. My `||phi(s) - phi(g)||` is rigidly symmetric. How badly does that hurt? Build the smallest asymmetric example and fit it directly. Take a directed 3-cycle `0 -> 1 -> 2 -> 0`, each edge a one-way unit step. Then `d*(0,1)=1` but `d*(1,0)=2` (you have to go `1 -> 2 -> 0`); by symmetry of the cycle every adjacent forward hop is `1` and its reverse is `2`. A symmetric `||·||` is forced to assign one number to the unordered pair `{i,j}`, so it physically cannot represent `1` in one direction and `2` in the other. The best it can do per pair is split the difference: the least-squares symmetric distance for `{i,j}` is the mean `(1+2)/2 = 1.5`, identical for all three pairs. That uniform "1.5 between every pair" *is* realizable in `l2` — it's an equilateral triangle of side `1.5`, which I place in `R^2` — and I compute the resulting fit: every directed distance comes out `1.5`, against true values that are `1` or `2`, for a total squared error of `1.5` that no symmetric embedding can drive below. So the symmetry isn't a bug I can engineer away; it's a hard floor on how well this form fits an asymmetric MDP. That reframes the goal. I am not going to use this parameterized `V(s,g)` to drive the policy directly — I only want `phi` as a *representation*, a coordinate system handed to the downstream agent — so the question isn't "is the symmetric metric exactly `d*`" but "is the best symmetric approximation good enough to control on." And there's a second obstruction even if I drop asymmetry: not every metric, even a symmetric one, embeds isometrically into a Euclidean space — there are finite metric spaces with no isometric `l2` embedding (Indyk–Matoušek; Pitis et al.). So an *exact* isometry is off the table on two counts, and the honest target is the best *approximate* symmetric Hilbert embedding of the MDP's temporal structure — which is precisely what a least-squares value objective optimizes. I'll keep the symmetric form, accept the residual the 3-cycle just showed me, and let the downstream success rate adjudicate whether the approximation is good enough. (My prior: in maze and manipulation tasks most of the geometry is locally near-symmetric, so the floor I just measured should be small in practice — but that's a claim about real environments I can only confirm empirically, not derive here.)
 
 Why insist the embedding space be Euclidean with the `l2` norm specifically, rather than some other metric — `l1`, `l∞`, a learned quasimetric? The `l2` norm has a property the others lack: it is induced by an inner product, `||x||_2 = sqrt(x^T x)`, so the space is a *Hilbert* space — a complete vector space with an inner product `<x,y>` whose induced metric is the norm distance. The `l1` and `l∞` norms give metric spaces but not Hilbert spaces; there is no inner product consistent with them. Right now I only strictly need a metric to talk about goal-reaching distance, so why pay for the inner product? Because the inner product is latent structure I'll want to spend later — it's what lets me, at test time, talk about *directions* in the representation space and do elementary linear-algebra operations (projections, regressions, midpoints) on goal codes, not just distances. A bare quasimetric gives me distances and nothing else; a Hilbert geometry gives me distances *and* an algebra. Since fixing `Z = R^D` with `l2` costs me nothing in the representation-learning objective, I take the stronger geometry: embed temporal distance into a Hilbert space, not merely into an arbitrary metric set.
 
@@ -22,7 +22,7 @@ The tool for this is expectile regression, the move behind IQL. Recall the expec
 
   L_2^tau(u) = |tau - 1(u < 0)| * u^2,   with tau in (0, 1).
 
-For `tau > 1/2` this weights positive residuals `u > 0` more heavily than negative ones — by `tau` versus `1 - tau`. Why would that approximate a max? Picture fitting a single scalar `v` to a distribution of targets `q` by minimizing `E[L_2^tau(q - v)]`. With ordinary squared error (`tau = 1/2`) the minimizer is the mean of `q`. The hope is that as I crank `tau` upward, the asymmetric penalty makes it more and more expensive to sit below the high targets, pulling the fitted `v` toward the top of the support. I don't want to take that on faith, so let me fit it on a concrete spread of targets and watch the minimizer move. Take backups `q = {-5, -4, -4, -3, -1}` — say five candidate next-step values out of some state, the best of which is `-1`. The mean is `-3.4` and the max is `-1.0`. Solving `argmin_v E[L_2^tau(q-v)]` by gradient descent for a few `tau`:
+For `tau > 1/2` this weights positive residuals `u > 0` more heavily than negative ones — by `tau` versus `1 - tau`. Why would that approximate a max? Picture fitting a single scalar `v` to a distribution of targets `q` by minimizing `E[L_2^tau(q - v)]`. With ordinary squared error (`tau = 1/2`) the minimizer is the mean of `q`. The hope is that as I crank `tau` upward, the asymmetric penalty makes it more and more expensive to sit below the high targets, pulling the fitted `v` toward the top of the support. Fit it on a concrete spread of targets and watch the minimizer move. Take backups `q = {-5, -4, -4, -3, -1}` — say five candidate next-step values out of some state, the best of which is `-1`. The mean is `-3.4` and the max is `-1.0`. Solving `argmin_v E[L_2^tau(q-v)]` by gradient descent for a few `tau`:
 
   tau = 0.50 -> v = -3.40   (exactly the mean, as it should be)
   tau = 0.70 -> v = -2.89
@@ -40,9 +40,7 @@ with `V_bar` a slowly-updated target network for stability, and substituting the
 
   E[ L_2^tau( -1(s != g) - gamma ||phi_bar(s') - phi_bar(g)|| + ||phi(s) - phi(g)|| ) ],
 
-where `phi_bar` is the target representation. Let me sanity-check the signs, because a flipped sign here would be silent and fatal. The TD residual inside the loss is `target - prediction`. The prediction is `V(s,g) = -||phi(s)-phi(g)||`, so `-V(s,g) = +||phi(s)-phi(g)||` — that's why the current-distance term enters with a *plus*. The target is `-1(s!=g) + gamma V_bar(s',g) = -1(s!=g) - gamma||phi_bar(s')-phi_bar(g)||` — that's the `-1` and the `-gamma||·||` terms. Residual `= target - prediction = (-1(s!=g) - gamma||phi_bar(s')-phi_bar(g)||) - (-||phi(s)-phi(g)||)`, which is exactly the expression above. Good, the signs are consistent.
-
-I should pause on the discount `gamma`, because `d*` is *undiscounted* — it's a raw step count — yet I've written `gamma` into the backup. Why? Without a discount, the goal-reaching value can be a large negative number that grows with horizon, and the undiscounted fixed-point iteration is numerically nastier to fit with bootstrapped TD on a function approximator. The discount keeps the backup contractive and the magnitudes bounded, at the cost that what I converge to is a *discounted* approximation of the temporal structure rather than the exact step count. Combined with the symmetry approximation and the embeddability obstruction, the honest description of what this objective finds is "the best discounted symmetric Hilbert approximation of the MDP's temporal distances," not an exact isometry. I'll accept that — `phi` only has to be a *useful* coordinate system, and the downstream task will tell me if it is.
+where `phi_bar` is the target representation. I should pause on the discount `gamma`, because `d*` is *undiscounted* — it's a raw step count — yet I've written `gamma` into the backup. Why? Without a discount, the goal-reaching value can be a large negative number that grows with horizon, and the undiscounted fixed-point iteration is numerically nastier to fit with bootstrapped TD on a function approximator. The discount keeps the backup contractive and the magnitudes bounded, at the cost that what I converge to is a *discounted* approximation of the temporal structure rather than the exact step count. Combined with the symmetry approximation and the embeddability obstruction, the honest description of what this objective finds is "the best discounted symmetric Hilbert approximation of the MDP's temporal distances," not an exact isometry. I'll accept that — `phi` only has to be a *useful* coordinate system, and the downstream task will tell me if it is.
 
 One more numerical landmine in the parameterization. The norm `||phi(s) - phi(g)|| = sqrt(sum_i (phi(s)_i - phi(g)_i)^2)` has a square root, and the derivative of `sqrt(x)` is `1/(2 sqrt(x))`, which blows up as `x -> 0`. At the start of training, or for `s` near `g`, the squared distance is tiny and the gradient through the `sqrt` explodes, giving NaNs. The fix is to floor the argument of the square root: compute `sqrt(max(squared_dist, eps))` with a small `eps` (say `1e-6`). That bounds the gradient by `1/(2 sqrt(eps))` near zero and removes the singularity, while being negligible everywhere the distance is healthy. It's a small constant but it's load-bearing — without it the whole thing diverges on the first batch.
 
@@ -81,133 +79,12 @@ So the middle term is at most `eps_d + [ ||z'*(s,g) - phi(g)|| - (||phi(s)-phi(g
 
 The left side is the absolute difference of two *integers* (`d*` is an integer step count). If `4 eps_e + eps_d < 1`, that integer-valued quantity is strictly less than 1, hence it is *exactly zero*. So `d*(s_hat', g) = d*(s,g) - 1`: the recommended step reduces the true temporal distance by exactly one, which means the direction-following policy is optimal at `(s,g)`. Applied at every state along the way, it's an optimal goal-reaching policy. The rounding-to-an-integer step is what turns an approximate distance bound into an *exact* optimality guarantee — small enough embedding error and the discreteness of step counts snaps the answer to optimal.
 
-Let me make sure that threshold is a real gate and not vacuously satisfied. Plug in some honest error budgets. With a decent embedding, say `eps_e = 0.1` and a directional error `eps_d = 0.2`: `4(0.1) + 0.2 = 0.6 < 1`, the bound is `< 1`, the integer snaps, optimality holds. Loosen to `eps_e = 0.2, eps_d = 0.25`: `4(0.2) + 0.25 = 1.05`, now the bound is `> 1` and the argument gives nothing — the integer could be `0` or `1`, i.e. the greedy latent step might *not* be the optimal one. So the guarantee genuinely has teeth: it demands the embedding be accurate to within roughly a fifth of a step locally, and it visibly fails to certify anything once the error crosses that line. That's the right shape for a guarantee — it tells me precisely how good `phi` has to be, and the asymmetry/discount/embeddability slack I accepted earlier all feed straight into `eps_e`, so the better I control that residual the wider the region where direction-following is provably optimal.
+That threshold is a real gate, not automatically satisfied: plug in some honest error budgets. With a decent embedding, say `eps_e = 0.1` and a directional error `eps_d = 0.2`: `4(0.1) + 0.2 = 0.6 < 1`, the bound is `< 1`, the integer snaps, optimality holds. Loosen to `eps_e = 0.2, eps_d = 0.25`: `4(0.2) + 0.25 = 1.05`, now the bound is `> 1` and the argument gives nothing — the integer could be `0` or `1`, i.e. the greedy latent step might *not* be the optimal one. So the guarantee genuinely has teeth: it demands the embedding be accurate to within roughly a fifth of a step locally, and it visibly fails to certify anything once the error crosses that line. That's the right shape for a guarantee — it tells me precisely how good `phi` has to be, and the asymmetry/discount/embeddability slack I accepted earlier all feed straight into `eps_e`, so the better I control that residual the wider the region where direction-following is provably optimal.
 
 I should also pin down why the directional objective — maximize the inner product `< phi(s') - phi(s), (phi(g)-phi(s))/||phi(g)-phi(s)|| >` subject to a unit latent step — actually lands at that ideal point `z'*` when `z'*` is reachable. By Cauchy–Schwarz, `< phi(s')-phi(s), u > <= ||phi(s')-phi(s)|| * ||u||` for the unit vector `u = (phi(g)-phi(s))/||phi(g)-phi(s)||`, and with the constraint `||phi(s')-phi(s)|| <= 1` and `||u|| = 1` the objective is at most 1. The point `z'* = phi(s) + u` gives `< z'* - phi(s), u > = < u, u > = 1`, attaining the upper bound. So whenever `z'*` is a feasible next latent state, the inner-product objective selects exactly it — confirming that "move to maximize directional progress" and "move one unit toward `phi(g)`" coincide. This is exactly the place the *inner product* of the Hilbert space earns its keep: the optimality argument runs through Cauchy–Schwarz, which needs the inner product, not just the metric. The choice of `l2`/Hilbert back at the start wasn't decoration; it's what makes the goal-reaching guarantee go through. And it tells me the representation is more than a passive feature extractor: because the geometry is a Hilbert geometry, the *direction* `phi(g) - phi(s)` is itself an actionable control signal, so the downstream agent can be steered by elementary algebra on goal codes rather than re-learning geometry on top of frozen features.
 
-So let me put this into the code I'd actually ship. The representation should live inside the goal-conditioned value module itself, because the object I am fitting is a value function whose last operation is a distance. The agent keeps a separate target copy of that value module, and its `phi` method exposes the first ensemble member as the goal code. The value module is a two-member ensemble of layer-normalized representation MLPs mapping observations to `R^D`, with no final activation, and its call returns `V(s,g) = -sqrt(max(||phi(s)-phi(g)||^2, 1e-6))`. The loss is the twin-expectile goal-conditioned value loss: rewrite the sampled goal-reaching reward/mask, build the conservative target with the minimum target head, key the expectile weight on the target advantage, and regress each online head to its own per-head bootstrap target.
+So here is the code for the slot. The representation lives inside the goal-conditioned value module itself, because the object I am fitting is a value function whose last operation is a distance. `phi` is a two-member ensemble of layer-normalized MLPs mapping observations to `R^D` with no final activation, shared between states and goals; the module's call returns `V(s,g) = -sqrt(max(||phi(s)-phi(g)||^2, 1e-6))`, and a `get_phi` accessor exposes the first ensemble member as the reusable goal code. The value loss is exactly the twin-expectile construction just derived: rewrite the sampled transition so `reward = -1` unless terminal and `mask` is zeroed at the goal, bootstrap `next_v` from the minimum of the two target heads, key the expectile weight on the shared target advantage `q - v_t`, and regress each online head to its own per-head target. Nothing else goes into the slot — the agent's optimizer and actor loss are untouched, they simply now consume `phi(g)` in place of the raw goal observation.
 
-```python
-import jax
-import jax.numpy as jnp
-import flax.linen as nn
-from typing import Callable, Sequence
+The target value network is a deep copy of this same value module, initialized from the online value parameters and then updated by exponential moving average in the agent's outer loop, with a smoothing coefficient on the order of `0.005`. The downstream goal code is just `agent.network(g, method='phi')`.
 
-from jaxrl_m.networks import MLP, ensemblize, default_init
-from jaxrl_m.typing import PRNGKey, Shape, Dtype, Array
-
-
-class LayerNormMLP(nn.Module):
-    hidden_dims: Sequence[int]
-    activations: Callable = nn.gelu
-    activate_final: bool = False
-    kernel_init: Callable[[PRNGKey, Shape, Dtype], Array] = default_init()
-
-    @nn.compact
-    def __call__(self, x):
-        for i, size in enumerate(self.hidden_dims):
-            x = nn.Dense(size, kernel_init=self.kernel_init)(x)
-            if i + 1 < len(self.hidden_dims) or self.activate_final:
-                x = self.activations(x)
-                x = nn.LayerNorm()(x)
-        return x
-
-
-class LayerNormRepresentation(nn.Module):
-    hidden_dims: tuple = (256, 256)
-    activate_final: bool = True
-    ensemble: bool = True
-
-    @nn.compact
-    def __call__(self, observations):
-        module = LayerNormMLP
-        if self.ensemble:
-            module = ensemblize(module, 2)
-        return module(self.hidden_dims, activate_final=self.activate_final)(observations)
-
-
-class Representation(nn.Module):
-    hidden_dims: tuple = (256, 256)
-    activate_final: bool = True
-    ensemble: bool = True
-
-    @nn.compact
-    def __call__(self, observations):
-        module = MLP
-        if self.ensemble:
-            module = ensemblize(module, 2)
-        return module(self.hidden_dims, activate_final=self.activate_final,
-                      activations=nn.gelu)(observations)
-
-
-class GoalConditionedPhiValue(nn.Module):
-    hidden_dims: tuple = (256, 256)
-    readout_size: tuple = (256,)
-    skill_dim: int = 2
-    use_layer_norm: bool = True
-    ensemble: bool = True
-    encoder: nn.Module = None
-
-    def setup(self):
-        repr_class = LayerNormRepresentation if self.use_layer_norm else Representation
-        phi = repr_class((*self.hidden_dims, self.skill_dim),
-                         activate_final=False, ensemble=self.ensemble)
-        if self.encoder is not None:
-            phi = nn.Sequential([self.encoder(), phi])
-        self.phi = phi
-
-    def get_phi(self, observations):
-        return self.phi(observations)[0]
-
-    def __call__(self, observations, goals=None, info=False):
-        phi_s = self.phi(observations)
-        phi_g = self.phi(goals)
-        squared_dist = ((phi_s - phi_g) ** 2).sum(axis=-1)
-        return -jnp.sqrt(jnp.maximum(squared_dist, 1e-6))
-
-
-def expectile_loss(adv, diff, expectile):
-    weight = jnp.where(adv >= 0, expectile, 1.0 - expectile)
-    return weight * (diff ** 2)
-
-
-def compute_value_loss(agent, batch, network_params):
-    batch['masks'] = 1.0 - batch['rewards']
-    batch['rewards'] = batch['rewards'] - 1.0
-
-    next_v1, next_v2 = agent.network(
-        batch['next_observations'], batch['goals'], method='target_value')
-    next_v = jnp.minimum(next_v1, next_v2)
-    q = batch['rewards'] + agent.config['discount'] * batch['masks'] * next_v
-
-    v1_t, v2_t = agent.network(
-        batch['observations'], batch['goals'], method='target_value')
-    v_t = (v1_t + v2_t) / 2.0
-    adv = q - v_t
-
-    q1 = batch['rewards'] + agent.config['discount'] * batch['masks'] * next_v1
-    q2 = batch['rewards'] + agent.config['discount'] * batch['masks'] * next_v2
-    v1, v2 = agent.network(
-        batch['observations'], batch['goals'], method='value', params=network_params)
-    v = (v1 + v2) / 2.0
-
-    value_loss1 = expectile_loss(adv, q1 - v1, agent.config['expectile']).mean()
-    value_loss2 = expectile_loss(adv, q2 - v2, agent.config['expectile']).mean()
-    value_loss = value_loss1 + value_loss2
-
-    return value_loss, {
-        'value_loss': value_loss,
-        'v max': v.max(),
-        'v min': v.min(),
-        'v mean': v.mean(),
-        'abs adv mean': jnp.abs(adv).mean(),
-        'adv mean': adv.mean(),
-        'adv max': adv.max(),
-        'adv min': adv.min(),
-        'accept prob': (adv >= 0).mean(),
-    }
-```
-
-The target value network is a deep copy of this same value module, initialized from the online value parameters and then updated by exponential moving average in the agent's outer loop, with a smoothing coefficient on the order of `0.005`. The downstream goal code is just `agent.network(g, method='phi')`, which calls `get_phi` and returns the first ensemble member.
-
-Let me close the loop on the causal chain. Raw goal observations are a bad coordinate system for goal reaching because visual/coordinate proximity has nothing to do with reachability, and the agent is forced to learn the environment's geometry tangled with control. The only proximity that matters is temporal distance `d*`, and the classical identity `V*(s,g) = -d*(s,g)` says temporal distance *is* a goal-conditioned value function — which I can learn offline. So I parameterize the value as a distance between embeddings, `V(s,g) = -||phi(s)-phi(g)||`, which makes the learned `phi` an approximate isometry from the MDP's temporal structure into a vector space, and gives `V(s,s)=0`, `V<=0`, and a single shared symmetric encoder for free. I make the space `l2`/Hilbert rather than a bare metric because the inner product is structure I'll spend at test time and — as the optimality proof shows via Cauchy–Schwarz — it's what turns the representation into an actionable control direction. I learn it from suboptimal offline data with action-free expectile regression, whose upper expectile approximates the optimal in-sample max backup so I recover `d*` rather than behavior distance, using the twin-head target-advantage-keyed scheme for stability and a square-root floor to keep the gradient finite. I accept that asymmetry of `d*`, the embeddability obstruction, and the stabilizing discount make this the best discounted symmetric Hilbert *approximation* rather than an exact isometry — and the goal-reaching theorem proves that as long as the embedding error is below the `4 eps_e + eps_d < 1` threshold, following the latent direction to the goal is exactly optimal, the integer-valued step count snapping the approximate bound to a hard guarantee. The result is a goal representation whose coordinates already encode reachability, handed to the downstream agent as `phi(g)`.
+The result is a goal representation whose coordinates already encode reachability — trained by nothing more than the value-learning machinery the offline-GCRL stack already runs — handed to the downstream agent as `phi(g)`.

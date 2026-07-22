@@ -14,7 +14,7 @@ Let me sit with the Z problem, because it feels like it should be avoidable. Wha
 
 Z(o,θ) doesn't depend on a — it's already integrated over all a — so ∇_a log Z(o,θ) = 0. The intractable term differentiates away. The score is just −∇_a E_θ(o,a), with no normalizer anywhere. So if I work with the *gradient field* of the action distribution instead of the distribution itself, the entire reason IBC was unstable — estimating Z by negative sampling — never arises. Whether that's a real escape or just relocates the difficulty I won't know until I have a concrete way to *learn* that gradient field from data without ever forming Z, and a way to *generate* an action from a learned gradient field. Let me see whether such machinery exists; the closest thing I know lives in a corner of the field built for generating images.
 
-The generative machinery is the denoising-diffusion construction. Take a clean data point x⁰, and define a fixed forward process that drips Gaussian noise onto it over K steps until it's pure noise: q(xᵏ|xᵏ⁻¹) = N(√(1−βₖ) xᵏ⁻¹, βₖ I). The one identity that makes this usable is that you can jump to any noise level in closed form. Let me actually verify it instead of quoting it. Write αₖ = 1−βₖ. Then xᵏ = √αₖ xᵏ⁻¹ + √(1−αₖ) zₖ with zₖ ~ N(0,I). Substitute xᵏ⁻¹ = √αₖ₋₁ xᵏ⁻² + √(1−αₖ₋₁) zₖ₋₁:
+The generative machinery is the denoising-diffusion construction. Take a clean data point x⁰, and define a fixed forward process that drips Gaussian noise onto it over K steps until it's pure noise: q(xᵏ|xᵏ⁻¹) = N(√(1−βₖ) xᵏ⁻¹, βₖ I). The one identity that makes this usable is that you can jump to any noise level in closed form. Write αₖ = 1−βₖ. Then xᵏ = √αₖ xᵏ⁻¹ + √(1−αₖ) zₖ with zₖ ~ N(0,I). Substitute xᵏ⁻¹ = √αₖ₋₁ xᵏ⁻² + √(1−αₖ₋₁) zₖ₋₁:
 
   xᵏ = √(αₖαₖ₋₁) xᵏ⁻² + √αₖ√(1−αₖ₋₁) zₖ₋₁ + √(1−αₖ) zₖ.
 
@@ -38,7 +38,7 @@ The coefficient of xᵏ: √ᾱₖ₋₁ βₖ/((1−ᾱₖ)√ᾱₖ) + √α�
 
   μ̃ₖ = (1/√αₖ)( xᵏ − (βₖ/√(1−ᾱₖ)) ε ).
 
-That was a long cancellation and the kind of place I drop a √ somewhere, so let me check it against the raw two-term posterior mean at one concrete level before building on it. With the same 20-step schedule, k=12, x⁰ = 2.3, ε = 0.7 (so xᵏ = √ᾱ₁₂·2.3 + √(1−ᾱ₁₂)·0.7), the raw formula (√ᾱ₁₁βₖ/(1−ᾱₖ))x⁰ + (√αₖ(1−ᾱ₁₁)/(1−ᾱₖ))xᵏ evaluates to 2.387889, and the collapsed form (1/√αₖ)(xᵏ − βₖ/√(1−ᾱₖ)·0.7) also evaluates to 2.387889. The cancellation held. The posterior mean is the noisy point minus a multiple of the noise that was added. So if I let the network predict that noise, ε_θ(xᵏ,k) ≈ ε, and set
+That cancellation is long enough to hide a dropped √, so check it against the raw two-term posterior mean at one concrete level. With the same 20-step schedule, k=12, x⁰ = 2.3, ε = 0.7 (so xᵏ = √ᾱ₁₂·2.3 + √(1−ᾱ₁₂)·0.7), the raw formula (√ᾱ₁₁βₖ/(1−ᾱₖ))x⁰ + (√αₖ(1−ᾱ₁₁)/(1−ᾱₖ))xᵏ evaluates to 2.387889, and the collapsed form (1/√αₖ)(xᵏ − βₖ/√(1−ᾱₖ)·0.7) also evaluates to 2.387889. The cancellation held. The posterior mean is the noisy point minus a multiple of the noise that was added. So if I let the network predict that noise, ε_θ(xᵏ,k) ≈ ε, and set
 
   μ_θ(xᵏ,k) = (1/√αₖ)( xᵏ − (βₖ/√(1−ᾱₖ)) ε_θ(xᵏ,k) ),
 
@@ -50,7 +50,7 @@ And empirically the unweighted version — drop the βₖ²/(2σₖ²αₖ(1−�
 
   L_simple = E_{k,x⁰,ε} ‖ε − ε_θ(√ᾱₖ x⁰ + √(1−ᾱₖ) ε, k)‖².
 
-There's a reason predicting ε might be more than an algebra convenience, and it's the link back to the score I was chasing. Take the closed form xᵏ = √ᾱₖ x⁰ + √(1−ᾱₖ) ε. The conditional q(xᵏ|x⁰) is Gaussian with mean √ᾱₖ x⁰ and variance (1−ᾱₖ), and for a Gaussian the score is ∇_{xᵏ} log q(xᵏ|x⁰) = −(xᵏ − √ᾱₖ x⁰)/(1−ᾱₖ). Substituting xᵏ − √ᾱₖ x⁰ = √(1−ᾱₖ) ε, this is −√(1−ᾱₖ) ε/(1−ᾱₖ) = −ε/√(1−ᾱₖ). I don't fully trust an identity I derived by staring at it, so let me check it numerically before leaning on it. Fix a noise level (ᾱ = 0.84 say), draw a few ε, form xᵏ = √ᾱ x⁰ + √(1−ᾱ) ε, and compare the analytic Gaussian score −(xᵏ − √ᾱ x⁰)/(1−ᾱ) against −ε/√(1−ᾱ): for ε = (−0.65, −1.30, −0.29, 0.57, 0.49) both expressions return (−1.635, −3.269, −0.728, 1.423, 1.218) to every digit. So the noise ε really is the *negative* score of the noised conditional Gaussian, scaled by √(1−ᾱₖ). Under MSE the best network returns E[ε | xᵏ], so −ε_θ/√(1−ᾱₖ) estimates the score of the noised data density at that level. That's the object I wanted three paragraphs ago to dodge Z — and I'm getting it from a plain regression on Gaussian noise, no negative sampling, no normalizer, ever. The instability that made IBC unusable came from estimating Z; here Z is never formed, because the score never sees it. So the route out of the IBC wall is concrete: model the *gradient field* of the action density by denoising, rather than the energy or the density itself.
+There's a reason predicting ε might be more than an algebra convenience, and it's the link back to the score I was chasing. Take the closed form xᵏ = √ᾱₖ x⁰ + √(1−ᾱₖ) ε. The conditional q(xᵏ|x⁰) is Gaussian with mean √ᾱₖ x⁰ and variance (1−ᾱₖ), and for a Gaussian the score is ∇_{xᵏ} log q(xᵏ|x⁰) = −(xᵏ − √ᾱₖ x⁰)/(1−ᾱₖ). Substituting xᵏ − √ᾱₖ x⁰ = √(1−ᾱₖ) ε, this is −√(1−ᾱₖ) ε/(1−ᾱₖ) = −ε/√(1−ᾱₖ). Check it numerically. Fix a noise level (ᾱ = 0.84 say), draw a few ε, form xᵏ = √ᾱ x⁰ + √(1−ᾱ) ε, and compare the analytic Gaussian score −(xᵏ − √ᾱ x⁰)/(1−ᾱ) against −ε/√(1−ᾱ): for ε = (−0.65, −1.30, −0.29, 0.57, 0.49) both expressions return (−1.635, −3.269, −0.728, 1.423, 1.218) to every digit. So the noise ε really is the *negative* score of the noised conditional Gaussian, scaled by √(1−ᾱₖ). Under MSE the best network returns E[ε | xᵏ], so −ε_θ/√(1−ᾱₖ) estimates the score of the noised data density at that level. That's the object I wanted three paragraphs ago to dodge Z — and I'm getting it from a plain regression on Gaussian noise, no negative sampling, no normalizer, ever. The instability that made IBC unusable came from estimating Z; here Z is never formed, because the score never sees it. So the route out of the IBC wall is concrete: model the *gradient field* of the action density by denoising, rather than the energy or the density itself.
 
 Why ε and not predict x⁰ directly, or predict μ̃? Predicting μ̃ is the literal posterior-mean target, but it ties the network's output to the posterior coefficients instead of to the perturbation that created xᵏ. Predicting x⁰ asks the network to reconstruct the clean sample even when the input is nearly pure noise, so its target scale and difficulty change awkwardly across k. Predicting ε keeps the target as the actual Gaussian perturbation, yields the score interpretation, and gives the clean unweighted loss. So ε-prediction is the parameterization that matches both the algebra and the sampler.
 
@@ -76,7 +76,7 @@ That settles "x is the action." But should x be one action or a sequence? Here's
 
 Predicting a chunk raises one more decision: how much of it to execute. If I predict T_p steps and execute all T_p before replanning, I'm running open-loop for T_p steps — temporally consistent but unreactive to anything that happens mid-chunk. If I execute one and replan every step, I'm maximally reactive but I've thrown away the consistency I just bought and I'm paying K denoising passes every single step. The balance is receding-horizon control: predict T_p, execute the first T_a (with 1 < T_a < T_p), then replan from the new observation. T_a is the knob trading consistency against reactivity; too large is sluggish, too small is jittery and expensive. This is the standard MPC idea, and it's the natural fit for a model that outputs a short plan.
 
-Let me make sure this whole construction actually does the right thing on a case where I know the answer, because I've been reasoning by analogy a lot. Take a linear plant s_{t+1} = A s_t + B a_t + w_t with Gaussian process noise w_t, and demonstrations from a linear feedback law a_t = −K s_t (say from an LQR). Imitating this needs no fancy distribution — it's unimodal — but if my method is right it had better reproduce it. Set T_p = 1 so I'm denoising a single action conditioned on the state. What is the optimal denoiser? The training target is the demonstrated action, which here is deterministic given the state: a⁰ = −K s. I noise it, aᵏ = √ᾱₖ a⁰ + √(1−ᾱₖ) ε (the variance-preserving form; the compact additive-noise notation is the α≈1 special case), and ask ε_θ(s, aᵏ, k) to predict ε under MSE. The MSE-optimal predictor of ε given (s, aᵏ) is the conditional expectation E[ε | s, aᵏ]. But given s and aᵏ, ε is *determined*: from aᵏ = √ᾱₖ(−Ks) + √(1−ᾱₖ) ε, solve ε = (aᵏ + √ᾱₖ K s)/√(1−ᾱₖ). So the optimal denoiser is
+Everything so far has been argued by analogy to image generation; check it on a case where the right answer is known independently. Take a linear plant s_{t+1} = A s_t + B a_t + w_t with Gaussian process noise w_t, and demonstrations from a linear feedback law a_t = −K s_t (say from an LQR). Imitating this needs no fancy distribution — it's unimodal — but if my method is right it had better reproduce it. Set T_p = 1 so I'm denoising a single action conditioned on the state. What is the optimal denoiser? The training target is the demonstrated action, which here is deterministic given the state: a⁰ = −K s. I noise it, aᵏ = √ᾱₖ a⁰ + √(1−ᾱₖ) ε (the variance-preserving form; the compact additive-noise notation is the α≈1 special case), and ask ε_θ(s, aᵏ, k) to predict ε under MSE. The MSE-optimal predictor of ε given (s, aᵏ) is the conditional expectation E[ε | s, aᵏ]. But given s and aᵏ, ε is *determined*: from aᵏ = √ᾱₖ(−Ks) + √(1−ᾱₖ) ε, solve ε = (aᵏ + √ᾱₖ K s)/√(1−ᾱₖ). So the optimal denoiser is
 
   ε_θ(s, a, k) = (a + √ᾱₖ K s)/√(1−ᾱₖ),   which becomes ε_θ(s,a,k) = (1/σₖ)[a + K s] in the α≈1 additive-noise normalization.
 
@@ -86,110 +86,8 @@ Now run the deterministic (DDIM, η=0) sampler with this denoiser. At each step 
 
 That's a striking little fact: to clone a state-feedback behavior over a horizon, the policy has to implicitly carry a (task-relevant) model of the plant dynamics (A − BK)^{t'} — the dynamics are latent in the optimal action-sequence predictor. If the plant or the policy were nonlinear this prediction would generally become multimodal again, which is exactly the regime where I needed the expressive class in the first place. So the sanity check passes and even tells me something: action-sequence diffusion isn't ignoring dynamics, it's encoding them.
 
-A couple of architecture and bookkeeping decisions fall out of the construction rather than from taste. The denoiser ε_θ needs the scalar step index k injected — a sinusoidal/positional embedding of k, passed through a small MLP, concatenated in — because the network must behave very differently at high noise (coarse) versus low noise (fine), and it shares weights across k. For low-dimensional state observations the backbone is just an MLP over the concatenation of the noisy action, the step embedding, and the observation; for images you'd use a temporal CNN with FiLM conditioning (the observation modulates every conv layer) or a transformer, but the conditioning principle is the same: observation in as a condition, k in as an embedding, predict the noise. Two normalization points matter. First, the actions must be scaled to the box [−1,1] per dimension, *not* zero-mean unit-variance, because the sampler clips the running prediction back into [−1,1] each step for stability, and with a unit-variance normalization that clipping would make part of the action range unreachable. Second, the standard diffusion trick of keeping an exponential moving average of the weights for evaluation interacts badly with BatchNorm in the vision encoder (the EMA weights see stale running statistics), so use GroupNorm there; I'll keep the EMA copy of the denoiser weights regardless, since it's a well-established stabilizer and I evaluate with it. And for real-time deployment, train with many denoising steps for fidelity but sample with fewer using a deterministic strided sampler (DDIM), which decouples training K from inference K.
+A couple of architecture and bookkeeping decisions fall out of the construction rather than from taste. The denoiser ε_θ needs the scalar step index k injected — a sinusoidal/positional embedding of k, passed through a small MLP, concatenated in — because the network must behave very differently at high noise (coarse) versus low noise (fine), and it shares weights across k. For low-dimensional state observations the backbone is just an MLP over the concatenation of the noisy action, the step embedding, and the observation; for images the default is a temporal CNN with FiLM conditioning (the observation modulates every conv layer, channel-wise), and it trains reliably with little tuning even when the vision encoder is fit end-to-end through it. But temporal convolutions have their own inductive bias toward low-frequency signals, and the thing being denoised here is a whole action sequence: on tasks whose demonstrated actions change sharply and quickly — a velocity-command action space, high-rate action changes — that bias over-smooths the prediction, a real regression error and not just an aesthetic one. A transformer decoder over the action tokens, with the observation entering each block by cross-attention and a causal mask so an action only attends to itself and earlier actions, is the way to cut that over-smoothing. Attention networks are harder to tune, though, so the CNN is still the first thing to try on a new task, and the transformer is the fallback once a CNN backbone visibly can't track a fast-changing action stream. Two normalization points matter. First, the actions must be scaled to the box [−1,1] per dimension, *not* zero-mean unit-variance, because the sampler clips the running prediction back into [−1,1] each step for stability, and with a unit-variance normalization that clipping would make part of the action range unreachable. Second, the standard diffusion trick of keeping an exponential moving average of the weights for evaluation interacts badly with BatchNorm in the vision encoder (the EMA weights see stale running statistics), so use GroupNorm there; I'll keep the EMA copy of the denoiser weights regardless, since it's a well-established stabilizer and I evaluate with it. And for real-time deployment, train with many denoising steps for fidelity but sample with fewer using a deterministic strided sampler (DDIM), which decouples training K from inference K.
 
-Now strip this back to the case the offline-control benchmark actually wants: a Markov policy on low-dimensional state, one action out, no sequence, no vision encoder, no critic. The action is the variable to denoise; the state is the condition; train ε_θ by the noise-prediction MSE; sample one action per environment by running the reverse chain from Gaussian noise. This is pure diffusion behavior cloning — the generative core of everything above, with the closed-loop and vision pieces set aside because the benchmark is single-step state-based. Let me write it against the concrete pieces, filling the empty slots from the harness: the backbone that maps (noisy action, step index, observation) to a predicted noise; the `loss` that is exactly ‖ε_θ − ε‖² on a randomly-noised action; the `sample` that runs the ancestral reverse chain and clips to the box; the EMA update.
+Now strip this back to the case the offline-control benchmark actually wants: a Markov policy on low-dimensional state, one action out, no sequence, no vision encoder, no critic. The action is the variable to denoise; the state is the condition; train ε_θ by the noise-prediction MSE; sample one action per environment by running the reverse chain from Gaussian noise. This is pure diffusion behavior cloning — the generative core of everything above, with the closed-loop and vision pieces set aside because the benchmark is single-step state-based. Filling the harness's three empty slots: the backbone is an MLP over the noisy action, a sinusoidal embedding of the step index k (through its own small MLP, since the network must behave differently at each noise level), and the observation, outputting a predicted noise the same shape as the action; the loss is the plain ‖ε_θ − ε‖² on an action noised to a randomly drawn step; sampling runs the ancestral reverse chain from N(0,I), clipping the network's implied x⁰ at every step back into [−1,1] — the box the actions are normalized to — and reads out the EMA copy of the weights for evaluation, with the number of reverse steps a free knob separate from the training K.
 
-```python
-import numpy as np
-import torch
-import torch.nn as nn
-
-
-def cosine_alpha_sigma(t, s=0.008):
-    # iDDPM-style square-cosine schedule in the (alpha, sigma) variance-preserving form:
-    # alpha_k = sqrt(abar_k), sigma_k = sqrt(1 - abar_k), so x_k = alpha_k*x0 + sigma_k*eps.
-    alpha = (np.pi / 2.0 * (t.clip(0., 0.9946) + s) / (1 + s)).cos() / np.cos(np.pi / 2.0 * s / (1 + s))
-    sigma = (1.0 - alpha ** 2).sqrt()
-    return alpha, sigma
-
-
-def positional_embed(k, dim):                      # sinusoidal embedding of the denoising step index k
-    half = dim // 2
-    freqs = torch.exp(-np.log(10000) * torch.arange(half, device=k.device) / (half - 1))
-    args = k[:, None].float() * freqs[None]
-    return torch.cat([args.sin(), args.cos()], dim=-1)
-
-
-class NoisePredMLP(nn.Module):
-    """eps_theta(O, A^k, k): predicts the noise added to the action, conditioned on the
-    observation and the step index. The 'gradient field' of the action density."""
-    def __init__(self, obs_dim, act_dim, emb_dim=64):
-        super().__init__()
-        self.emb_dim = emb_dim
-        self.time_mlp = nn.Sequential(
-            nn.Linear(emb_dim, emb_dim * 2), nn.Mish(), nn.Linear(emb_dim * 2, emb_dim))
-        self.mid = nn.Sequential(
-            nn.Linear(obs_dim + act_dim + emb_dim, 256), nn.Mish(),
-            nn.Linear(256, 256), nn.Mish(),
-            nn.Linear(256, 256), nn.Mish())
-        self.head = nn.Linear(256, act_dim)
-
-    def forward(self, x, k, obs):                  # x: (b, act_dim)  k: (b,)  obs: (b, obs_dim)
-        t = self.time_mlp(positional_embed(k, self.emb_dim))
-        return self.head(self.mid(torch.cat([x, t, obs], dim=-1)))
-
-
-class DiffusionBC:
-    """Diffusion behavior cloning: a conditional denoising diffusion model on the action.
-    Trained by noise-prediction MSE; sampled by the ancestral reverse chain. No critic."""
-    def __init__(self, obs_dim, act_dim, diffusion_steps=1000, lr=3e-4,
-                 ema_rate=0.995, device="cpu"):
-        self.K = diffusion_steps
-        self.device = device
-        self.act_low, self.act_high = -1.0, 1.0          # actions normalized to the box [-1, 1]
-        self.net = NoisePredMLP(obs_dim, act_dim).to(device)
-        self.net_ema = NoisePredMLP(obs_dim, act_dim).to(device)
-        self.net_ema.load_state_dict(self.net.state_dict())
-        for p in self.net_ema.parameters():
-            p.requires_grad_(False)
-        self.opt = torch.optim.Adam(self.net.parameters(), lr=lr)
-        self.ema_rate = ema_rate
-        # discretize [eps, 1] into K levels and precompute alpha_k, sigma_k
-        t_grid = torch.linspace(1e-3, 1.0, self.K, device=device)
-        self.alpha, self.sigma = cosine_alpha_sigma(t_grid)
-
-    def add_noise(self, x0):                              # forward process: x_k = alpha_k x0 + sigma_k eps
-        k = torch.randint(self.K, (x0.shape[0],), device=self.device)
-        eps = torch.randn_like(x0)
-        a, s = self.alpha[k][:, None], self.sigma[k][:, None]
-        return a * x0 + s * eps, k, eps
-
-    def loss(self, act, obs):                             # L_simple = || eps_theta(O, A^k, k) - eps ||^2
-        xt, k, eps = self.add_noise(act)
-        return ((self.net(xt, k, obs) - eps) ** 2).mean()
-
-    @torch.no_grad()
-    def ema_update(self):
-        for p, pe in zip(self.net.parameters(), self.net_ema.parameters()):
-            pe.mul_(self.ema_rate).add_(p, alpha=1 - self.ema_rate)
-
-    @torch.no_grad()
-    def _clip_eps(self, eps, xt, a, s):                  # keep the implied x0 = (xt - s*eps)/a inside [-1,1]
-        lo = (xt - a * self.act_high) / s
-        hi = (xt - a * self.act_low) / s
-        return eps.clip(lo, hi)
-
-    @torch.no_grad()
-    def sample(self, obs, n_samples, steps=None, use_ema=True, temperature=1.0):
-        net = self.net_ema if use_ema else self.net
-        act_dim = net.head.out_features
-        steps = self.K if steps is None else steps
-        sched = torch.linspace(0, self.K - 1, steps + 1, device=self.device).long()
-        a, s = self.alpha[sched], self.sigma[sched]
-        # ancestral (DDPM) per-step std: stds[i] = (s[i-1]/s[i]) * sqrt(1 - (a[i]/a[i-1])^2)
-        stds = torch.zeros(steps + 1, device=self.device)
-        stds[1:] = s[:-1] / s[1:] * (1 - (a[1:] / a[:-1]) ** 2).sqrt()
-        xt = torch.randn(n_samples, act_dim, device=self.device) * temperature   # A^K ~ N(0, I)
-        for i in reversed(range(1, steps + 1)):
-            k = torch.full((n_samples,), int(sched[i]), dtype=torch.long, device=self.device)
-            eps = net(xt, k, obs)
-            eps = self._clip_eps(eps, xt, a[i], s[i])            # box-clip the running prediction
-            # x_{k-1} = (a[i-1]/a[i])(xt - s[i] eps) + sqrt(s[i-1]^2 - stds[i]^2) eps   (+ noise if i>1)
-            xt = (a[i - 1] / a[i]) * (xt - s[i] * eps) + (s[i - 1] ** 2 - stds[i] ** 2 + 1e-8).sqrt() * eps
-            if i > 1:
-                xt = xt + stds[i] * torch.randn_like(xt)
-        return xt.clip(self.act_low, self.act_high)
-```
-
-Stepping back, the causal chain is one move repeated. Behavior cloning with squared error fails because it's a unimodal Gaussian fit that averages the multiple valid actions in branchy demonstrations. The expressive fixes — discretization, mixtures, clustering — each force me to pre-specify the modes and, worse, model each timestep independently, so even when the per-step marginals are right the executed trajectory chatters between plans. The energy-based policy is the honestly multimodal one, but maximum-likelihood training of an EBM needs the intractable normalizer Z, estimated by negative sampling, and that estimate's noise is what makes IBC training oscillate so badly that checkpoint selection requires hardware evaluation. The unlock is that I never need Z: the gradient of the log-density in the action kills the ∇ log Z term identically, so working with the *score* — the gradient field of the action density — gives me energy-based expressivity with no normalizer. Denoising diffusion is precisely a way to learn that score by regressing predicted noise against the noise actually added (ε is the negative score times the noise scale), which I verified by reducing the variational bound to the unweighted ‖ε − ε_θ‖² objective; and generation is Langevin-style noisy ascent on the learned log-density, whose random init and injected noise restore the multimodality I needed. Making the observation a *condition* rather than part of the denoised variable keeps the model at p(A|O), runs the vision encoder once instead of K times, and lets it train end-to-end. Letting the denoised variable be a high-dimensional action *sequence* — cheap only because diffusion scales — kills the temporal-inconsistency pathology, and receding-horizon execution trades consistency against reactivity. The linear-LQR sanity check — traced numerically, not just argued — has the deterministic sampler converge to a = −Ks from random noise starts, and over a horizon the optimal denoiser implicitly carries the plant dynamics. Strip the sequence and the vision encoder for a single-step state-based benchmark and what remains is diffusion behavior cloning: a conditional noise-prediction network, the ‖ε − ε_θ‖² loss, and an ancestral reverse-chain sampler clipped to the action box.
+That's the shape of the object I set out to build: multimodal because it's diffused rather than regressed, with no normalizer because I trained on the score instead of the density; temporally consistent because the denoised variable is a sequence rather than a per-step marginal; and real-time because the observation conditions the denoiser rather than sharing the noising process with it.
