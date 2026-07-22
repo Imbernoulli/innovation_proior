@@ -6,7 +6,7 @@ So I want a comparison that never goes blind — a *total* order, so I can alway
 
 Two things give me pause, and I want to be precise about each before I decide. First, `theta`. It's a single fixed scalar that sets the convergence-vs-diversity tradeoff for the *entire run* and for *every* sub-problem and for *every* problem instance. The reports I trust say there's no value of `theta` that works well across different problems and different numbers of objectives — too small and the population converges but bunches up, too large and it spreads but stalls short of the front. A fixed knob I have to re-tune per problem is exactly the kind of fragility I'm trying to escape, and it's worse in many objectives where I have the least intuition for where to set it.
 
-Second, and this one I should actually check rather than assert: `d_2` is a *Euclidean* perpendicular distance, and I have a suspicion it's contaminated by convergence — that it grows just from a solution being far out, even when the solution is perfectly on-direction. Let me put numbers to it. Take a 2D case, reference weight `w = (1,1)`, and a solution `f = (3,1)` (measuring displacement from `z*` already at the origin). Project: `u = (1,1)/√2`, `d_1 = |f·u| = |3+1|/√2 = 2.828`, and `d_2 = ||f - d_1 u|| = ||(3,1)-(2,2)|| = ||(1,-1)|| = 1.414`. Now scale that same solution out along its own direction by 5×, `f = (15,5)` — same direction, just farther from the ideal. Recomputing: `d_1 = 20/√2 = 14.142` and `d_2 = ||(15,5)-(10,10)|| = ||(5,-5)|| = 7.071`. The off-line distance went from 1.414 to 7.071 — it scaled by exactly 5 — even though the solution's *direction* never changed. So `d_2` isn't a clean diversity reading at all; it's `||displacement||` times the sine of the angle, and the `||displacement||` factor is the convergence information leaking into the diversity term. As `M` grows and the front's scale varies, that unbounded, convergence-coupled off-line distance is a nightmare to normalize across sub-problems. So PBI has a workable skeleton — one scalar per direction — but the diversity measure inside it is the wrong quantity.
+Second: `d_2` is a *Euclidean* perpendicular distance, and I have a suspicion it's contaminated by convergence — that for a fixed angular deviation from the direction, it grows just from the solution being farther out, so it isn't a clean reading of direction-mismatch alone. Let me put numbers to it. Take a 2D case, reference weight `w = (1,1)`, and a solution `f = (3,1)` (measuring displacement from `z*` already at the origin). Project: `u = (1,1)/√2`, `d_1 = |f·u| = |3+1|/√2 = 2.828`, and `d_2 = ||f - d_1 u|| = ||(3,1)-(2,2)|| = ||(1,-1)|| = 1.414`. Now scale that same solution out along its own direction by 5×, `f = (15,5)` — same direction, just farther from the ideal. Recomputing: `d_1 = 20/√2 = 14.142` and `d_2 = ||(15,5)-(10,10)|| = ||(5,-5)|| = 7.071`. The off-line distance went from 1.414 to 7.071 — it scaled by exactly 5 — even though the solution's *direction* never changed. So `d_2` isn't a clean diversity reading at all; it's `||displacement||` times the sine of the angle, and the `||displacement||` factor is the convergence information leaking into the diversity term. As `M` grows and the front's scale varies, that unbounded, convergence-coupled off-line distance is a nightmare to normalize across sub-problems. So PBI has a workable skeleton — one scalar per direction — but the diversity measure inside it is the wrong quantity.
 
 Let me stare at `d_2` and ask what it's really trying to capture. It wants to say: how far is this solution from its prescribed direction? But it answers in absolute length, which — as the 5× check just showed — couples to distance-from-ideal. What I actually want is the *direction mismatch*, independent of how far out the solution is. The quantity that captures direction-without-magnitude is the angle. Take the translated objective vector and the reference direction, and ask for the acute angle between them. Does an angle have the properties `d_2` lacks? Bounded, yes — for first-quadrant vectors `cos θ ∈ [0,1]`, so `θ ∈ [0, π/2]`. Scale-invariant — let me actually verify it on the same vectors I just used. Reference direction `v = (1,0)`, solution `f = (3,1)`: `cos θ = (3·1 + 1·0)/(√10 · 1) = 3/3.162 = 0.9487`, so `θ = 18.43°`. Scale it out 5×, `f = (15,5)`: `cos θ = 15/(√250) = 15/15.811 = 0.9487` — the same, to every digit, `θ = 18.43°`. So where PBI's `d_2` jumped from 1.414 to 7.071 under that exact 5× scaling, the angle didn't move at all. That's the decoupling I wanted made concrete: the cosine has `||f||` in its denominator, which cancels the `||f||` that scaling multiplies in, so the reading is blind to distance-from-ideal and sees only direction. The angle is a clean diversity signal. And convergence I can now measure separately and just as cleanly: after I translate the objectives so the ideal point sits at the origin, the *length* of the translated objective vector *is* its distance to the ideal point. So I have two genuinely orthogonal readings — length for convergence, angle for diversity — instead of PBI's two entangled distances.
 
@@ -16,7 +16,7 @@ Now the selection itself. Each generation, after the usual μ+λ shuffle — com
 
 So what's the scalar that picks the survivor inside a subpopulation? I have two readings: convergence `||f'_i||` (smaller is better) and diversity, the angle `θ_{i,j}` to the associated vector (smaller is better — closer to your prescribed direction). PBI added them; I argued that addition is what entangles them. Let me try *scaling* instead: take the convergence distance and inflate it by a factor that grows with the angle. Something like `d = (1 + penalty(θ)) · ||f'_i||`. Watch what this gives me. If a solution is perfectly on-direction, `θ = 0`, the penalty is zero, and `d = ||f'_i||` — pure convergence distance, so among on-direction solutions I simply keep the one closest to the front. If a solution is off-direction, its convergence distance gets inflated in proportion to how far out it already is, so a far-out, badly-aligned solution is penalized hard while a far-out but well-aligned one is barely touched. The multiplicative form makes the penalty's *effect* scale with `||f'||`, which is right: pushing a solution off its niche matters more the further out it is. This is the angle-penalized distance — a scaled convergence distance, where the scaling is the diversity penalty. Call it the APD.
 
-Now I have to actually design `penalty(θ)`, and I want to derive its shape from the search dynamics rather than guess. Think about what the right convergence-vs-diversity balance is at different stages. Early in the run the population is far from the front and scattered; the urgent thing is to *get to the front* — diversity is premature, because spreading out a population that hasn't converged just spreads it out in the wrong place. So early, I want almost pure convergence pressure: `penalty ≈ 0`, `d ≈ ||f'||`, and within each niche I just race toward the front. Late in the run the population is near the front; now convergence is mostly done and the urgent thing is to *spread evenly* along it — so the angle penalty should bite, pushing each niche's survivor toward its own reference direction and away from crowding its neighbours. So the penalty should start near zero and grow as the search proceeds. The cleanest dial for "how far along the search am I" is the generation ratio `t/t_max`, which runs from 0 to 1. A penalty that's `(t/t_max)` raised to a power gives me exactly the profile I want: small for most of the run, ramping up near the end. Raise it to `α`: with `α > 1` the ramp is convex, staying nearly flat for a long while and then climbing steeply near `t_max`, which matches "converge for most of the run, spread hard at the end." `α = 2`, a quadratic ramp, is a natural default — gentle enough that convergence dominates the early and middle game, sharp enough that diversity takes over at the close. So a factor `(t/t_max)^α` belongs in the penalty.
+Now to design `penalty(θ)` itself, and its shape should come from the search dynamics. Think about what the right convergence-vs-diversity balance is at different stages. Early in the run the population is far from the front and scattered; the urgent thing is to *get to the front* — diversity is premature, because spreading out a population that hasn't converged just spreads it out in the wrong place. So early, I want almost pure convergence pressure: `penalty ≈ 0`, `d ≈ ||f'||`, and within each niche I just race toward the front. Late in the run the population is near the front; now convergence is mostly done and the urgent thing is to *spread evenly* along it — so the angle penalty should bite, pushing each niche's survivor toward its own reference direction and away from crowding its neighbours. So the penalty should start near zero and grow as the search proceeds. The cleanest dial for "how far along the search am I" is the generation ratio `t/t_max`, which runs from 0 to 1. A penalty that's `(t/t_max)` raised to a power gives me exactly the profile I want: small for most of the run, ramping up near the end. Raise it to `α`: with `α > 1` the ramp is convex, staying nearly flat for a long while and then climbing steeply near `t_max`, which matches "converge for most of the run, spread hard at the end." `α = 2`, a quadratic ramp, is a natural default — gentle enough that convergence dominates the early and middle game, sharp enough that diversity takes over at the close. So a factor `(t/t_max)^α` belongs in the penalty.
 
 But `(t/t_max)^α · θ` alone isn't right yet, and the reason exposes the next subtlety. My reference vectors are *not* perfectly uniform in angular spacing. The simplex-lattice puts them evenly on the hyperplane, but the map to the sphere distorts spacing, and once I start adapting the vectors (which I'll need to, in a moment) the spacing gets genuinely irregular — some vectors end up with close neighbours, some isolated. Now suppose two niches: niche A whose vector has a neighbour only a tiny angle away, niche B whose nearest neighbour is far. A solution sitting at angle `θ` from its vector means very different things in the two niches. In A, `θ` might already overlap the neighbouring niche's territory — that solution is poaching, it should be penalized. In B, the same `θ` is still comfortably inside its own wide niche — no poaching, leave it alone. A raw `θ` penalty can't tell these apart; it would penalize a solution in B the same as one in A. What I need is `θ` measured *relative to the niche's own width*. So define, for each reference vector `v_j`, the angle to its nearest neighbour among the other reference vectors — `γ_{v_j} = min_{i≠j} angle(v_i, v_j)` — and normalize: `θ / γ_{v_j}`. Let me check this does the discriminating I want on a concrete set. Put three unit vectors in 2D: `v_0 = (1,0)`, `v_1 ∝ (0.9, 0.2)`, `v_2 = (0,1)`. The nearest-neighbour angles come out `γ_0 = γ_1 = 12.5°` (v_0 and v_1 are crammed together) and `γ_2 = 77.5°` (v_2 is off on its own — a wide niche). Now take the *same* raw deviation `θ = 12°` in two different niches. In the narrow niche v_0: `θ/γ_0 = 12/12.5 = 0.958` — nearly a full niche-width off, almost into v_1's territory, so the penalty factor is large, as it should be. In the wide niche v_2: `θ/γ_2 = 12/77.5 = 0.155` — barely a sixth of the way to its nearest neighbour, still well inside its own territory, so the penalty factor is small. Same raw angle, penalty differing by 6× depending on the niche width — exactly the discrimination a raw `θ` couldn't make. So `θ/γ` reads "how big is your angular deviation relative to your niche's spacing," the scale-free quantity I want, comparable across dense and sparse regions of the reference set. Crucially I'm normalizing the *angle*, not the objectives — so the actual objective values, which carry the convergence information `||f'||` reads off, are left untouched, and the normalization is done independently inside each subspace, so adjusting one niche's penalty doesn't perturb another's.
 
@@ -30,9 +30,7 @@ and the angle-penalized distance is
 
 Within each subpopulation I keep the individual of minimum APD; that's my survivor, one per reference vector. The two regimes are the whole point of the construction, so let me not just argue them — let me run a small case and see which solution actually wins early versus late. Two reference directions in 2D, `v_0 ∝ (1, 0.2)` and `v_1 ∝ (0.2, 1)` after normalizing; their nearest-neighbour angle works out to `γ = 67.4°` each. Now two candidates that both associate to `v_0`: candidate A `= (5, 1)` sits essentially on `v_0`'s direction (its angle to `v_0` is `0°`) but is a bit farther from the ideal, `||A|| = 5.10`; candidate B `= (3.5, 2.6)` is closer to the front, `||B|| = 4.36`, but tilted off toward `v_1`, angle `25.3°` from `v_0`. Which should survive? Early in the run I argued convergence should rule — and indeed at `t = 10, t_max = 400` the ramp `(10/400)^2 = 0.000625` is tiny, so `APD(A) = (1+~0)·5.10 = 5.10` and `APD(B) = (1+~0)·4.36 = 4.36`; B wins, the solution closer to the front, exactly as I want when the population is still far out. Late in the run the angle should bite: at `t = 399`, ramp `≈ 0.995`, B's penalty is `M·ramp·θ/γ = 2·0.995·(25.3°/67.4°) = 0.747`, so `APD(B) = (1+0.747)·4.36 = 7.62`, while A's penalty is essentially zero so `APD(A) = 5.10`. Now A wins — the on-direction solution beats the off-direction one even though B is genuinely closer to the front. So the same formula flips its preference from convergence-first to spread-later across the run, on a concrete pair, with no change but `t`. That's the behavior I designed the ramp to produce, and it's not something I had to assert — the two `argmin`s came out as I hoped.
 
-And the contrast with PBI is worth restating now that the formula is built: PBI's `theta` is a fixed scalar with no good cross-problem setting, whereas this penalty *self-adapts* — normalized to a comparable range by `γ` regardless of how dense or sparse the vectors are, and shifting with `t` over the run, so the single `α` shouldn't need re-tuning per problem the way PBI's `theta` does; and where PBI's diversity used that unbounded, convergence-coupled Euclidean off-line distance, this uses the bounded, scale-invariant angle I verified is decoupled from `||f'||`. Both of my original complaints about PBI are answered, and both answers traced back to the one decision to make the diversity reading an angle.
-
-Now the scaling problem I deferred. I assumed I could compare angles across reference vectors as if the objectives were all on a common `[0,1]` scale. But real many-objective problems have objectives scaled to wildly different ranges — one objective in the hundreds, another in tenths (the WFG problems, the scaled DTLZ problems). When the objectives are scaled like that, a uniform fan of reference vectors does *not* produce a uniform spread of solutions: the vectors point into the cube `[0,1]^M`, but the front lives in a stretched box, so most vectors miss the front's bulk and the solutions clump. I need to fit the reference vectors to the actual scale of the front. The obvious move is to normalize the objectives — that's what NSGA-III does, estimating extreme points and intercepts each generation and rescaling everything onto the unit hyperplane. But I can't do that, and the reason is exactly my own design. Normalization *changes the actual objective values*, and my selection criterion *reads* the actual objective values — both the convergence length `||f'||` and the angle depend on where the translated vectors really sit. Let me check what normalization does to my geometry on a concrete pair before I commit to it. Take two translated vectors `f'_1 = (0.1, 2)` and `f'_2 = (1, 10)`. Their raw separation is `||f'_2 - f'_1|| = ||(0.9, 8)|| = 8.05`, and the raw angle between them — the quantity my criterion would actually use to associate and penalize — is `2.85°`, so as far as my reading is concerned they point in almost the same direction. Now normalize each objective by its observed maximum: they become `(0.1, 0.2)` and `(1, 1)`. The dominance relation survives — `f'_1` still dominates `f'_2` on both coordinates — which is exactly why NSGA-III can normalize safely, since dominance is invariant to any monotone per-objective rescaling. But look at what happens to the quantities I care about. The separation collapses from 8.05 to `||(0.9, 0.8)|| = 1.20`. And the angle between the two, which was `2.85°` raw, blows up to `18.43°` after normalization — the same two solutions now look 6.5× farther apart in direction. The angle is precisely my diversity reading, and per-objective rescaling has rewritten it wholesale. Worse, the running max drifts generation to generation, so this distortion isn't even a fixed reframing — it's a different distortion every generation, and the criterion would never sit still on top of it. So objective normalization, which is exactly the right tool for a dominance-based method, is poison for a geometry-based one like mine. I can't take this route.
+Now the scaling problem I deferred. I assumed I could compare angles across reference vectors as if the objectives were all on a common `[0,1]` scale. But real many-objective problems have objectives scaled to wildly different ranges — one objective in the hundreds, another in tenths (the WFG problems, the scaled DTLZ problems). When the objectives are scaled like that, a uniform fan of reference vectors does *not* produce a uniform spread of solutions: the vectors point into the cube `[0,1]^M`, but the front lives in a stretched box, so most vectors miss the front's bulk and the solutions clump. I need to fit the reference vectors to the actual scale of the front. The obvious move is to normalize the objectives — that's what NSGA-III does, estimating extreme points and intercepts each generation and rescaling everything onto the unit hyperplane. But I can't do that, and the reason is exactly my own design. Normalization *changes the actual objective values*, and my selection criterion *reads* the actual objective values — both the convergence length `||f'||` and the angle depend on where the translated vectors really sit. Take two translated vectors `f'_1 = (0.1, 2)` and `f'_2 = (1, 10)`. Their raw separation is `||f'_2 - f'_1|| = ||(0.9, 8)|| = 8.05`, and the raw angle between them — the quantity my criterion would actually use to associate and penalize — is `2.85°`, so as far as my reading is concerned they point in almost the same direction. Now normalize each objective by its observed maximum: they become `(0.1, 0.2)` and `(1, 1)`. The dominance relation survives — `f'_1` still dominates `f'_2` on both coordinates — which is exactly why NSGA-III can normalize safely, since dominance is invariant to any monotone per-objective rescaling. But look at what happens to the quantities I care about. The separation collapses from 8.05 to `||(0.9, 0.8)|| = 1.20`. And the angle between the two, which was `2.85°` raw, blows up to `18.43°` after normalization — the same two solutions now look 6.5× farther apart in direction. The angle is precisely my diversity reading, and per-objective rescaling has rewritten it wholesale. Worse, the running max drifts generation to generation, so this distortion isn't even a fixed reframing — it's a different distortion every generation, and the criterion would never sit still on top of it. So objective normalization, which is exactly the right tool for a dominance-based method, is poison for a geometry-based one like mine. I can't take this route.
 
 So I have to fit the front's scale without touching the objectives — which means the thing I move can't be the objectives, it has to be the reference vectors. If the front is stretched by some per-objective range, stretch each reference vector by the same range and it will once again point into the front's bulk, while every objective value stays exactly where it is. Concretely: estimate the per-objective range from the current population, `z^max - z^min` over the survivors, take each *original* unit reference vector `v_{0,i}` (the pristine simplex-lattice direction, kept around from initialization), scale it component-wise by that range, and renormalize back to unit length:
 
@@ -42,147 +40,37 @@ where `∘` is the Hadamard (element-wise) product. Let me confirm this tilts th
 
 How often should I adapt? My instinct is "every generation, to track the scale as tightly as possible," but I think that's wrong, and Giagkiozis and colleagues observed why: if the reference vectors keep moving every generation, the niches keep shifting under the population's feet, the association of solutions to vectors churns, and convergence destabilizes — the algorithm spends its effort chasing a moving target instead of settling into the front. Unlike objective normalization, which a dominance method *must* redo every generation, reference-vector adaptation can be occasional: I only need to correct the scale a handful of times over the run. So introduce a frequency `f_r` and adapt only every `⌈f_r · t_max⌉` generations. With `f_r = 0.1`, that's ten adaptations across the run — frequent enough to track a drifting scale, rare enough to keep convergence stable. And it's nearly free: `O(MN / (f_r · t_max))` amortized.
 
-Let me settle the remaining knobs and the offspring side, then check the cost. Offspring: I deliberately use *no fitness-biased mating selection*. Normally you'd select good parents to breed, but here every individual in the population is already the elitist of one subspace, so each survivor represents its niche; there's no reason to bias mating toward some niches over others, and a fancy selection would only cost time. So I sample parents uniformly and pair them at random — every survivor has equal probability of breeding — and apply the standard real-coded operators: SBX with distribution index `η_c` and polynomial mutation with `η_m`, `p_c = 1.0` (always cross), `p_m = 1/n` (about one decision variable mutated per child on average). The reference-vector selection downstream does all the convergence-and-diversity balancing, which is what lets me get away with such a plain offspring stage. For the indices I take `η_c = 30` (a touch more local than the usual 20, keeping children near parents so the well-placed niche survivors aren't disrupted too much) and `η_m = 20`. And `α = 2`, `f_r = 0.1` as derived above.
+Let me settle the remaining knobs and the offspring side, then check the cost. Offspring: I deliberately use *no fitness-biased mating selection*. Normally you'd select good parents to breed, but here every individual in the population is already the elitist of one subspace, so each survivor represents its niche; there's no reason to bias mating toward some niches over others, and a fancy selection would only cost time. So I sample parents uniformly and pair them at random — every survivor has equal probability of breeding — and apply the standard real-coded operators: SBX with distribution index `η_c` and polynomial mutation with `η_m`, `p_c = 1.0` (always cross), `p_m = 1/n` (about one decision variable mutated per child on average). The reference-vector selection downstream does all the convergence-and-diversity balancing, which is what lets me get away with such a plain offspring stage. For the indices I take `η_c = 30` (a touch more local than the usual 20, keeping children near parents so the well-placed niche survivors aren't disrupted too much) and leave `η_m = 20` at its standard setting — mutation strength isn't part of what the APD selection needs to compensate for, so there's no reason to move it off the default. And `α = 2`, `f_r = 0.1` as derived above.
 
 The cost, per generation: objective translation is `O(MN)`; the population partition compares `N` solutions against `N` reference vectors, `O(MN^2)`; the APD computation and the per-niche elitism are `O(MN^2)` and `O(N^2)`; the occasional adaptation is `O(MN/(f_r t_max))` amortized. So the whole generation is `O(MN^2)`, dominated by the partition — and notably there's no non-dominated sort and no dominance comparison anywhere, which is the same `O(MN^2)` order as NSGA-II's sort but without the partial-order pathology that made that sort useless in many objectives. The memory is one population plus `N` reference vectors and their `γ` spacings, linear in the population.
 
 The harness hooks are `select` (who mates), `vary` (produce offspring), `survive` (who carries forward), and `on_generation` (adaptive state). The mapping is natural: `select` just hands back the roster (no fitness-biased mating selection), `vary` does the random-pair SBX+PM, `survive` is the whole APD machine — translate, partition by angle, score by APD, keep the min-APD survivor per non-empty reference vector — and `on_generation` fires the reference-vector adaptation on the `f_r·t_max` schedule and recomputes `γ`. The reference vectors, their pristine copies, and the running ideal are state set up once. Two details to handle: if a reference vector's subpopulation is empty I simply skip it (no survivor from an empty niche), and because empty niches mean I may return fewer than `pop_size` survivors, I top up from the remaining individuals by smallest distance-to-ideal so the population stays at size `N`. The numpy core is direct — angles via `arccos` of the normalized-dot-product matrix, `γ` via the second-largest cosine per vector (the largest is the vector with itself), APD as the scaled distance.
 
 ```python
-import random
-from copy import deepcopy
+# gamma_j: nearest-neighbour angle for reference vector v_j (arccos of the
+# second-largest cosine in v_j's row of V @ V.T; the largest is v_j with itself).
+cos = np.clip(V @ V.T, -1.0, 1.0)
+gamma = np.arccos(np.sort(cos, axis=1)[:, -2])
 
-import numpy as np
-from deap import tools   # cxSimulatedBinaryBounded, mutPolynomialBounded, uniform_reference_points
-
-
-class CustomMOEA:
-    """RVEA: a reference-vector guided EA for many-objective optimization.
-    Selection is a total order per reference vector via the angle-penalized
-    distance (APD = scaled distance-to-ideal), so it never goes blind the way
-    Pareto dominance does once everything is mutually non-dominated; reference
-    vectors are adapted to the objective scales rather than normalizing the
-    objectives (which would corrupt the angle/length geometry)."""
-
-    def __init__(self, pop_size, n_obj, n_var, bounds,
-                 cx_eta=30.0, mut_eta=20.0, mut_prob=None):
-        self.n_obj = n_obj
-        self.n_var = n_var
-        self.bounds = bounds                       # (low, up) of the box decision space
-        self.cx_eta = cx_eta                       # SBX distribution index (RVEA uses 30)
-        self.mut_eta = mut_eta                     # polynomial-mutation index (20)
-        self.mut_prob = mut_prob if mut_prob is not None else 1.0 / n_var
-        self.alpha = 2.0                           # APD penalty ramp exponent
-        self.fr = 0.1                              # reference-vector adaptation frequency
-        self.max_gen = 400                         # horizon for the (t/t_max)^alpha ramp;
-                                                   #   the driver can overwrite it per problem
-
-        # N evenly spread reference points (Das-Dennis simplex-lattice), mapped to
-        # the unit sphere: directions, not simplex weights, since the criterion is angular.
-        p = pop_size - 1 if n_obj == 2 else 12
-        V0 = np.asarray(tools.uniform_reference_points(n_obj, p=p), dtype=float)
-        self.V0 = self._unit(V0)                   # pristine unit reference vectors
-        self.V = self.V0.copy()                    # current (adaptable) reference vectors
-        self.pop_size = len(self.V0)
-        self.gamma = self._gamma(self.V)           # per-vector nearest-neighbour angle
-        self.z_min = None                          # running ideal (per-objective min)
-        self._gen = 0
-
-    @staticmethod
-    def _unit(V):
-        norms = np.linalg.norm(V, axis=1, keepdims=True)
-        norms[norms < 1e-12] = 1e-12
-        return V / norms
-
-    def _gamma(self, V):
-        # smallest acute angle from each v_j to any OTHER reference vector:
-        # arccos of the second-largest cosine in each row (largest = v_j with itself).
-        cos = np.clip(V @ V.T, -1.0, 1.0)
-        cos_sorted = np.sort(cos, axis=1)          # ascending; last col is self (cos=1)
-        gamma = np.arccos(cos_sorted[:, -2])       # second-largest cosine -> nearest neighbour
-        return np.maximum(gamma, 1e-12)
-
-    def select(self, population, k):
-        # No fitness-biased mating selection: each individual already elitist of its
-        # own subspace, so all represent their niche equally. Hand back the roster.
-        return [deepcopy(ind) for ind in population]
-
-    def vary(self, parents):
-        # Random pairing + standard real-coded operators; the APD selection in
-        # survive() does all the convergence/diversity balancing.
-        offspring = [deepcopy(ind) for ind in parents]
-        random.shuffle(offspring)
-        lo, hi = self.bounds
-        for i in range(0, len(offspring) - 1, 2):
-            tools.cxSimulatedBinaryBounded(offspring[i], offspring[i + 1],
-                                           eta=self.cx_eta, low=lo, up=hi)  # p_c = 1
-            del offspring[i].fitness.values
-            del offspring[i + 1].fitness.values
-        for ind in offspring:
-            tools.mutPolynomialBounded(ind, eta=self.mut_eta, low=lo, up=hi,
-                                       indpb=self.mut_prob)
-            if ind.fitness.valid:
-                del ind.fitness.values
-        return offspring
-
-    def _apd_select(self, valid, gen):
-        F = np.array([ind.fitness.values for ind in valid], dtype=float)
-        # Step 1: translate so the ideal point is the origin; ||f'|| = distance to ideal.
-        z = np.min(F, axis=0)
-        self.z_min = z if self.z_min is None else np.minimum(self.z_min, z)
-        Fp = F - self.z_min
-        dist = np.linalg.norm(Fp, axis=1)          # convergence reading
-        dist[dist < 1e-12] = 1e-12
-        # Step 2: partition by acute angle to the reference vectors (v unit -> cos = Fp_hat . v).
-        cos = np.clip((Fp / dist[:, None]) @ self.V.T, -1.0, 1.0)
-        angle = np.arccos(cos)                      # (n, N) acute angles; diversity reading
-        assoc = np.argmin(angle, axis=1)           # nearest reference vector (min angle)
-        # Step 3: APD per non-empty subpopulation, keep the min-APD survivor.
-        ramp = (gen / max(self.max_gen, 1)) ** self.alpha   # (t/t_max)^alpha
-        survivors = []
-        for j in range(self.pop_size):
-            members = np.where(assoc == j)[0]
-            if len(members) == 0:
-                continue
-            theta = angle[members, j]
-            penalty = self.n_obj * ramp * (theta / self.gamma[j])
-            apd = (1.0 + penalty) * dist[members]  # scaled distance-to-ideal
-            survivors.append(int(members[int(np.argmin(apd))]))
-        # Top up to pop_size from the leftover individuals by smallest distance-to-ideal.
-        if len(survivors) < self.pop_size:
-            chosen = set(survivors)
-            leftover = [i for i in range(len(valid)) if i not in chosen]
-            leftover.sort(key=lambda i: dist[i])
-            for i in leftover:
-                survivors.append(i)
-                if len(survivors) >= self.pop_size:
-                    break
-        return [valid[i] for i in survivors[:self.pop_size]]
-
-    def survive(self, population, offspring):
-        combined = population + offspring          # mu + lambda elitism shell
-        valid = [ind for ind in combined if ind.fitness.valid]
-        if len(valid) <= self.pop_size:
-            return valid
-        return self._apd_select(valid, self._gen)
-
-    def on_generation(self, gen, population):
-        # Remember the generation index for the APD ramp, and adapt the reference
-        # vectors to the objective scales every ceil(fr * max_gen) generations.
-        self._gen = gen
-        period = max(1, int(np.ceil(self.fr * self.max_gen)))
-        if gen % period == 0 and population:
-            F = np.array([ind.fitness.values for ind in population
-                          if ind.fitness.valid], dtype=float)
-            if len(F) == 0:
-                return
-            z_min, z_max = np.min(F, axis=0), np.max(F, axis=0)
-            rng = z_max - z_min
-            rng[rng < 1e-12] = 1e-12
-            # v = v0 ◦ (z_max - z_min), renormalized; rebuild from the pristine V0
-            # so scaling errors don't accumulate. Objectives are left untouched.
-            self.V = self._unit(self.V0 * rng)
-            self.gamma = self._gamma(self.V)       # niche widths moved -> recompute gamma
+# inside survive(), on the combined parent+offspring pool's objective matrix F:
+z_min = np.minimum(z_min, F.min(axis=0))               # running ideal estimate
+Fp = F - z_min                                         # translate: ideal -> origin
+dist = np.linalg.norm(Fp, axis=1)                      # convergence: ||f'||
+cos = np.clip((Fp / dist[:, None]) @ V.T, -1.0, 1.0)
+angle = np.arccos(cos)                                 # (n, N) acute angle to each v_j
+assoc = np.argmin(angle, axis=1)                       # partition: nearest reference vector
+ramp = (t / max_gen) ** alpha                          # (t/t_max)^alpha
+survivors = []
+for j in range(N):
+    members = np.where(assoc == j)[0]
+    if len(members) == 0:
+        continue                                       # empty niche: no survivor from it
+    penalty = n_obj * ramp * (angle[members, j] / gamma[j])
+    apd = (1.0 + penalty) * dist[members]               # angle-penalized distance
+    survivors.append(members[np.argmin(apd)])           # keep the min-APD elitist per vector
+# leftover niches (fewer than N survivors) topped up from the rest by smallest dist-to-ideal
 ```
 
-So the causal chain is this. Dominance gives only a partial order, and as the number of objectives grows nearly every pair of solutions becomes mutually non-dominated almost immediately, so the dominance sort can no longer separate individuals and the convergence pressure collapses, leaving a density tie-break — itself degraded in high dimensions — to do a job it was never meant for. I wanted a total order, so I turned to scalarization, and PBI had the right skeleton (one scalar per direction, convergence plus diversity, selection within each direction) but the wrong diversity term: a fixed, un-tunable penalty `theta` and an unbounded Euclidean off-line distance entangled with how far the solution sits from the ideal. Insisting the diversity reading be an *angle* fixed both problems at once — bounded, scale-invariant, decoupled from convergence — and once I translate the objectives so the ideal is the origin, the length of the translated vector gives convergence for free, so I have two orthogonal readings, length and angle. Scaling the convergence distance by `(1 + penalty(angle))` rather than adding the penalty keeps the two readings from tangling and makes the penalty's effect proportional to distance-from-front. The penalty's shape I derived from the dynamics: nearly zero early (converge first), growing as `(t/t_max)^α` so diversity takes over late, normalized per reference vector by the nearest-neighbour angle `γ` so it's comparable across dense and sparse niches without touching the objectives, and scaled by `M` for the growing sparsity. Badly-scaled fronts I couldn't fix by normalizing objectives — that would corrupt the very angle-and-length geometry my criterion reads, and re-corrupt it every generation — so I adapted the reference vectors to the objective ranges instead, stretching the pristine vectors by `z^max - z^min` and renormalizing, leaving the objectives untouched, and only occasionally (every `f_r·t_max` generations) so the niches don't churn, recomputing `γ` each time the vectors move. With no fitness-biased mating selection needed and the standard SBX/PM operators on top of the μ+λ elitism shell, the result is one population-based run that keeps full total-order selection pressure in many objectives, spreads through reference directions instead of a density device, shifts from convergence-first to spread-later on its own, and tolerates differently scaled fronts — all at `O(MN^2)` per generation with no dominance comparison anywhere.
+That's the selection criterion assembled from the pieces I derived (numerical guards against zero-length vectors omitted here for clarity); the rest — imports, `__init__` bookkeeping, mapping the simplex-lattice points to the unit sphere, the random-pair SBX/polynomial-mutation offspring step, and firing this reference-vector adaptation on the `⌈f_r·t_max⌉` schedule with `γ` recomputed afterward — is direct plumbing around it, no design choices left open.
+
+The result is one population-based run that replaces dominance with a total order per reference direction — translated length for convergence, angle for diversity, combined by scaling rather than adding so the two never re-entangle — shifting on its own from convergence-first to spread-later as `t` runs, staying comparable across crowded and sparse niches through `γ`, and absorbing badly-scaled fronts by moving the vectors rather than the objectives. No dominance comparison survives anywhere in it, and the per-generation cost is `O(MN^2)`, the same order as NSGA-II's non-dominated sort but without the partial-order pathology that sort suffers in many objectives.

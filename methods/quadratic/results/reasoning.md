@@ -6,7 +6,7 @@ Now I need the actual inequality. The strongest classical one controls not the d
 
   kl( Lhat_S(Q) || L(Q) )  <=  ( KL(Q || Q0) + log( 2 sqrt(n) / delta ) ) / n.
 
-Let me make sure I believe this and understand where every piece comes from, because everything I build will be a relaxation of it and I had better know what I'm relaxing. Start per-hypothesis. For a fixed `h`, the empirical loss `M(h(S))` is an average of `n` i.i.d. `[0,1]` variables with mean the true loss `h(D)`. The clean way to control `kl(M(h(S)) || h(D))` is the exponential moment: I want `E_S[ e^{ n kl( M(h(S)), h(D) ) } ]` to be small. The claim I keep seeing quoted is that for `n >= 8` this expectation is at most `2 sqrt(n)`. I don't want to take the `sqrt(n)` order on faith — it controls the whole `log` term — so let me reduce it to something I can actually compute. The integrand is largest when `M(h(S))` deviates from `h(D)`; the worst case is a Bernoulli loss, and reducing the general `[0,1]` case to Bernoulli is a convexity argument — `e^{n kl}` is convex, so its expectation over `[0,1]` variables is dominated by the expectation over the corresponding Bernoulli variables with the same mean. For Bernoulli `M(h(S))` takes values `k/n`, so the whole expectation is the explicit finite sum `sum_{k=0}^{n} C(n,k) mu^k (1-mu)^{n-k} e^{n kl(k/n || mu)}` for `mu = h(D)`. That I can just evaluate. Sweeping `mu` over `0.1, 0.3, 0.5` and `n` over `8, 32, 128, 512`, the worst-over-`mu` value comes out `4.25, 7.77, 14.86, 29.03`. Lay those next to `sqrt(n) = 2.83, 5.66, 11.31, 22.63` and `2 sqrt(n) = 5.66, 11.31, 22.63, 45.25`: each value sits between `sqrt(n)` and `2 sqrt(n)`, and the ratio of successive values (`29.03/14.86 ≈ 1.95`, `14.86/7.77 ≈ 1.91`) tracks the `sqrt(4) = 2` you'd expect from quadrupling `n` — so the growth really is `Θ(sqrt(n))`, not constant and not linear, and `2 sqrt(n)` really is a valid envelope on every row, never violated. Good — that pins down the order I cared about. The heuristic behind it is that after the kl exponential cancels the binomial probability in each term, Stirling leaves something of order `1/sqrt(n)` per `k` summed over `n+1` values of `k`; the numbers above are the version of that I trust. The upshot is that the `2 sqrt(n)` in the numerator's logarithm is the sharp price of the moment inequality, and it makes the bound's `log` term grow like `log sqrt(n) = (1/2) log n` rather than `log n` — a real halving over the older constant, and free, so I keep it.
+Everything below is a relaxation of pb-kl, so I want the sharp `2 sqrt(n)` constant pinned down rather than taken on faith — it controls the whole `log` term. Start per-hypothesis. For a fixed `h`, the empirical loss `M(h(S))` is an average of `n` i.i.d. `[0,1]` variables with mean the true loss `h(D)`. The clean way to control `kl(M(h(S)) || h(D))` is the exponential moment `E_S[ e^{ n kl( M(h(S)), h(D) ) } ]`, claimed to be at most `2 sqrt(n)` for `n >= 8`. The integrand is largest when `M(h(S))` deviates from `h(D)`; the worst case is a Bernoulli loss, and reducing the general `[0,1]` case to Bernoulli is a convexity argument — `e^{n kl}` is convex, so its expectation over `[0,1]` variables is dominated by the expectation over the corresponding Bernoulli variables with the same mean. For Bernoulli `M(h(S))` takes values `k/n`, so the whole expectation is the explicit finite sum `sum_{k=0}^{n} C(n,k) mu^k (1-mu)^{n-k} e^{n kl(k/n || mu)}` for `mu = h(D)`, which I can just evaluate. Sweeping `mu` over `0.1, 0.3, 0.5` and `n` over `8, 32, 128, 512`, the worst-over-`mu` value comes out `4.25, 7.77, 14.86, 29.03`. Lay those next to `sqrt(n) = 2.83, 5.66, 11.31, 22.63` and `2 sqrt(n) = 5.66, 11.31, 22.63, 45.25`: each value sits between `sqrt(n)` and `2 sqrt(n)`, and the ratio of successive values (`29.03/14.86 ≈ 1.95`, `14.86/7.77 ≈ 1.91`) tracks the `sqrt(4) = 2` you'd expect from quadrupling `n` — the growth is `Θ(sqrt(n))`, and `2 sqrt(n)` is a valid envelope on every row. The heuristic behind it is that after the kl exponential cancels the binomial probability in each term, Stirling leaves something of order `1/sqrt(n)` per `k` summed over `n+1` values of `k`. So the `2 sqrt(n)` in the numerator's logarithm is the sharp price of the moment inequality, and it makes the bound's `log` term grow like `log sqrt(n) = (1/2) log n` rather than `log n` — a real halving over the older constant, and free, so I keep it.
 
 Now lift from a fixed `h` to a data-dependent `Q`. This is the only subtle step. I have a per-hypothesis moment bound under `P` (the fixed reference), but I want a statement about `E_{W~Q}` where `Q` depends on the sample. The tool is a change of measure. For any `Q` absolutely continuous w.r.t. `P` and any function `f`,
 
@@ -32,7 +32,7 @@ The textbook relaxation is Pinsker's inequality, `kl(qh || p) >= 2(p - qh)^2`. L
 
   L(Q)  <=  Lhat_S(Q) + sqrt( ( KL(Q || Q0) + log(2 sqrt(n)/delta) ) / (2n) ).
 
-Call the complexity quantity `kl_term = (KL + log(2 sqrt(n)/delta)) / (2n)`. This is clean, it's explicit, it's optimizable — replace the 0-1 loss with a smooth surrogate and minimize over `Q`. This is essentially the objective that gave the first non-vacuous neural-net bounds. But stare at it in the regime I actually live in. A trained network drives `Lhat_S(Q)` toward zero. Then the bound becomes `0 + sqrt(kl_term)` — it collapses to `sqrt(kl_term)`. The complexity enters through a *square root*. If `kl_term` is small, say `1e-3`, the certificate is `sqrt(1e-3) ≈ 0.032`. The empirical error is essentially zero and the network might have a couple percent test error, yet my certificate sits at 3%+, dominated entirely by `sqrt(complexity)`, and it refuses to get smaller as I train harder because `Lhat_S(Q) -> 0` already saturated the additive term. The certificate is non-vacuous but it is loose, and it is loose *exactly where it matters*. Wall.
+Call the complexity quantity `kl_term = (KL + log(2 sqrt(n)/delta)) / (2n)`. This is clean, it's explicit, it's optimizable — replace the 0-1 loss with a smooth surrogate and minimize over `Q`. This is essentially the objective that gave the first non-vacuous neural-net bounds. But stare at it in the regime I actually live in. A trained network drives `Lhat_S(Q)` toward zero. Then the bound becomes `0 + sqrt(kl_term)` — it collapses to `sqrt(kl_term)`. The complexity enters through a *square root*. If `kl_term` is small, say `1e-3`, the certificate is `sqrt(1e-3) ≈ 0.032`. The empirical error is essentially zero and the network might have a couple percent test error, yet my certificate sits at 3%+, dominated entirely by `sqrt(complexity)`, and it refuses to get smaller as I train harder because `Lhat_S(Q) -> 0` already saturated the additive term. The certificate is non-vacuous but it is loose, and it is loose *exactly where it matters*.
 
 Why is it loose there? My suspicion is that Pinsker is the loose lower bound on `kl` in the small-`p` regime. `kl(qh || p) >= 2(p - qh)^2` is a *parabola* lower bound, symmetric in `p` around `qh`. But the true `kl` is asymmetric — for `qh < p`, as `p` shrinks toward `qh`, `kl` grows faster than a symmetric parabola allows. There is a sharper, asymmetric Pinsker variant for that side: `kl(qh || p) >= (p - qh)^2 / (2p)`, valid for `qh < p`. Comparing the two prefactors algebraically — `1/(2p)` for the refined one versus `2` for the standard — refined should beat standard exactly when `1/(2p) > 2`, i.e. `p < 1/4`. Before I rebuild the bound around that claim I want to see the actual numbers, including that I haven't fooled myself with an inequality that *overshoots* the true `kl` (which would be invalid as a lower bound). Take `qh = 0` and tabulate `kl`, the standard bound `2p^2`, and the refined bound `p^2/(2p) = p/2` at `p = 0.05, 0.1, 0.2, 0.25, 0.3, 0.4`:
 
@@ -49,7 +49,7 @@ Substitute `kl(qh || p) >= (p - qh)^2/(2p)` with `qh = Lhat_S(Q)`, `p = L(Q)` in
 
   L(Q)  <=  Lhat_S(Q) + sqrt( 2 L(Q) C ).        (★)
 
-And there's the catch that everyone hits next: `L(Q)` appears on *both* sides — under the square root on the right. So (★) is not an explicit upper bound, I can't just minimize the right side because the right side contains the thing I'm bounding. This is exactly why this inequality "is not immediately useful for optimization." Wall, again, but a different kind — this one is algebraic, not a regime problem, and algebraic walls have a way out.
+And there's the catch: `L(Q)` appears on *both* sides — under the square root on the right. So (★) is not an explicit upper bound; I can't minimize the right side because the right side contains the thing I'm bounding, so as it stands this relaxation is useless as a training objective. A different kind of wall than before — this one is algebraic, not a regime problem, and algebraic walls have a way out.
 
 The way out: (★) is a quadratic inequality, just not in `L`. It's quadratic in `sqrt(L)`. Set `x = sqrt(L)`, so `L = x^2`. Then (★) reads `x^2 <= Lhat + sqrt(2C) x`, i.e.
 
@@ -67,9 +67,9 @@ Let me clean this up, because I suspect it has a nicer form. Pull the `1/2` insi
 
   L(Q)  <=  ( sqrt( Lhat_S(Q) + C/2 ) + sqrt( C/2 ) )^2.
 
-And `C/2 = (KL + log(2 sqrt(n)/delta))/(2n)` — the same `kl_term` shape as the classic bound, with the factor `2n` now explained: the `n` is from pb-kl, the `2` is the `2` that came out of `(L - Lhat)^2 <= 2 L C`. I check the algebra by expanding both forms. The compact form gives `(sqrt(Lhat + C/2) + sqrt(C/2))^2 = Lhat + C + 2 sqrt((Lhat + C/2)(C/2)) = Lhat + C + sqrt(C(2Lhat + C))`. The larger-root form gives `(sqrt(2C) + sqrt(2C+4Lhat))^2/4 = Lhat + C + sqrt(2C(2C+4Lhat))/2 = Lhat + C + sqrt(C(2Lhat + C))`. Same expression, so the two derivations agree.
+And `C/2 = (KL + log(2 sqrt(n)/delta))/(2n)` — the same `kl_term` shape as the classic bound, with the factor `2n` now explained: the `n` is from pb-kl, the `2` is the `2` that came out of `(L - Lhat)^2 <= 2 L C`.
 
-Algebraic agreement only tells me I simplified consistently; it doesn't tell me I solved the *right* equation. The real test is whether the value I get actually saturates (★): plug `L` back into `(L - Lhat)^2/(2L)` and see if it returns `C`. Let me evaluate the compact form and that residual at a few `(Lhat, C)`. At `(0, 0.001)`: `L = 0.002000`, and `(0.002 - 0)^2/(2·0.002) = 0.000004/0.004 = 0.001000 = C`. At `(0.02, 0.005)`: `L = 0.040000`, and `(0.04 - 0.02)^2/(2·0.04) = 0.0004/0.08 = 0.005000 = C`. At `(0.1, 0.2)`: `L = 0.582843`, and `(0.582843 - 0.1)^2/(2·0.582843) = 0.233137/1.165685 = 0.200000 = C`. The residual hits `C` to all printed digits in every case, and the three forms (compact, larger-root, `Lhat + C + sqrt(C(2Lhat+C))`) all return the identical `L`. So the quadratic was solved correctly: this `L` is the exact value at which refined-Pinsker-relaxed pb-kl holds with equality.
+The real test of whether this is the value at which refined-Pinsker-relaxed pb-kl holds with equality, rather than an artifact of a sign slip somewhere in solving the quadratic, is to plug `L` back into `(L - Lhat)^2/(2L)` and check it returns `C`. At `(Lhat, C) = (0.02, 0.005)`: the compact form gives `L = 0.040000`, and `(0.04 - 0.02)^2/(2·0.04) = 0.0004/0.08 = 0.005000 = C` exactly. So this `L` is the exact root, not an approximation.
 
 The crucial thing about this form: `L(Q)` is gone from the right side. It is an explicit upper bound on `L(Q)` in terms of `Lhat_S(Q)`, `KL`, `n`, `delta` — exactly what I need to minimize by gradient descent. So solving the refined-Pinsker relaxation as a quadratic in `sqrt(L)` simultaneously (i) used the inequality that's tight in my small-loss regime and (ii) eliminated the implicit `L`. The bound is `(sqrt(Lhat + kl_term) + sqrt(kl_term))^2` with `kl_term = (KL + log(2 sqrt(n)/delta))/(2n)`.
 
@@ -97,140 +97,8 @@ Now the final certificate — the number I actually report — which is *not* th
 
 I need `f*` numerically, and there's no closed form. Monotonicity hands me bisection: bracket `p` between `q` and `1 - epsilon`, halve, move the bracket according to the sign of `c - kl(q || p)`, stop when the relative width is tiny. No derivatives, and monotonicity guarantees convergence. I handle the `q = 0` and `q = 1` edges where one of the two kl terms is `0 * log` and should be dropped.
 
-Let me trace the routine once on a concrete input to be sure it returns what I think it does, since the whole certificate hangs on it. Take an empirical risk `q = 0.01` and a budget `c = 0.05` — roughly the scale of a small posterior on the bound set. Running the bisection to its `1e-5` relative-width tolerance returns `p = 0.078098`. The test of correctness isn't the procedure, it's the output: does `kl(0.01 || 0.078098)` actually equal the budget `0.05`? Computing it, `0.01·log(0.01/0.078098) + 0.99·log(0.99/0.921902) = 0.050000`. It lands on the budget to all printed digits, and `0.078 > 0.01 = q`, so it returned the *upper* root, the largest true risk consistent with the budget — exactly the `sup` in the definition of `f*`. The certificate inflates the empirical `1%` to a guaranteed `7.8%` at this budget, which is the right direction and a sane magnitude. So the inverter is doing its job.
+Tracing the routine on a concrete input: take an empirical risk `q = 0.01` and a budget `c = 0.05` — roughly the scale of a small posterior on the bound set. Running the bisection to its `1e-5` relative-width tolerance returns `p = 0.078098`, and checking it against the definition, `0.01·log(0.01/0.078098) + 0.99·log(0.99/0.921902) = 0.050000` lands on the budget to all printed digits, with `0.078 > 0.01 = q` confirming it returned the *upper* root — the `sup` in the definition of `f*`, not the trivial lower one. The certificate inflates the empirical `1%` to a guaranteed `7.8%` at this budget, the right direction and a sane magnitude.
 
 Let me also keep a cross-entropy-style training-bound number for diagnostics: take the inner-corrected bounded-CE empirical risk and pass it through the quadratic `compute_bound`. That's a secondary metric; the headline is the 0-1 risk certificate from the nested pb-kl inversion.
 
-The empty slot is now concrete: `compute_bound` is the quadratic formula, `train_step` is the differentiable objective, `compute_risk_certificate` is the final nested-kl evaluation:
-
-```python
-import math
-import torch
-import torch.nn.functional as F
-
-
-class BoundObjective:
-    """PAC-Bayes-quadratic (fquad) objective and risk certificate."""
-
-    def __init__(self, learning_rate=0.001, momentum=0.95, prior_sigma=0.03,
-                 pmin=1e-5, delta=0.025, delta_test=0.01,
-                 mc_samples=1000, kl_penalty=1.0):
-        self.learning_rate = learning_rate
-        self.momentum = momentum
-        self.prior_sigma = prior_sigma
-        self.pmin = pmin
-        self.delta = delta
-        self.delta_test = delta_test
-        self.mc_samples = mc_samples
-        self.kl_penalty = kl_penalty
-        self._loss_scale = 1.0 / math.log(1.0 / pmin)
-
-    def compute_empirical_risk(self, outputs, targets, bounded=True):
-        empirical_risk = F.nll_loss(outputs, targets)
-        if bounded:
-            empirical_risk = empirical_risk * self._loss_scale
-        return empirical_risk
-
-    def compute_losses(self, net, data, target, clamping=True):
-        outputs = net(data, sample=True, clamping=clamping, pmin=self.pmin)
-        loss_ce = self.compute_empirical_risk(outputs, target, clamping)
-        pred = outputs.max(1, keepdim=True)[1]
-        loss_01 = 1.0 - pred.eq(target.view_as(pred)).sum().item() / target.size(0)
-        return loss_ce, loss_01, outputs
-
-    def compute_bound(self, empirical_risk, kl, n, delta):
-        kl = kl * self.kl_penalty
-        kl_term = (kl + math.log(2.0 * math.sqrt(n) / delta)) / (2.0 * n)
-        inner = torch.clamp(empirical_risk + kl_term, min=0.0)
-        kl_term_clamped = torch.clamp(kl_term, min=0.0)
-        return (torch.sqrt(inner) + torch.sqrt(kl_term_clamped)) ** 2
-
-    def train_step(self, net, data, target, n_posterior, clamping=True):
-        kl = net.compute_kl()
-        loss_ce, loss_01, outputs = self.compute_losses(net, data, target, clamping)
-        train_obj = self.compute_bound(loss_ce, kl, n_posterior, self.delta)
-        return train_obj, kl / n_posterior, outputs, loss_ce, loss_01
-
-    def mc_sampling(self, net, input=None, target=None, data_loader=None,
-                    device="cuda", clamping=True):
-        error, cross_entropy = 0.0, 0.0
-        if data_loader is not None:
-            batches = 0
-            for data_batch, target_batch in data_loader:
-                data_batch = data_batch.to(device)
-                target_batch = target_batch.to(device)
-                ce_mc, err_mc = 0.0, 0.0
-                for _ in range(self.mc_samples):
-                    loss_ce, loss_01, _ = self.compute_losses(
-                        net, data_batch, target_batch, clamping
-                    )
-                    ce_mc += loss_ce
-                    err_mc += loss_01
-                cross_entropy += ce_mc / self.mc_samples
-                error += err_mc / self.mc_samples
-                batches += 1
-            return cross_entropy / batches, error / batches
-
-        ce_mc, err_mc = 0.0, 0.0
-        for _ in range(self.mc_samples):
-            loss_ce, loss_01, _ = self.compute_losses(net, input, target, clamping)
-            ce_mc += loss_ce
-            err_mc += loss_01
-        return ce_mc / self.mc_samples, err_mc / self.mc_samples
-
-    def compute_risk_certificate(self, net, n_posterior, n_bound, input=None,
-                                 target=None, data_loader=None, device="cuda",
-                                 clamping=True):
-        kl = net.compute_kl()
-        error_ce, error_01 = self.mc_sampling(
-            net, input, target, data_loader, device, clamping
-        )
-
-        mc_c = math.log(2.0 / self.delta_test) / self.mc_samples
-        empirical_risk_ce = inv_kl(float(error_ce.item()), mc_c)
-        empirical_risk_01 = inv_kl(float(error_01), mc_c)
-
-        train_bound = self.compute_bound(
-            torch.tensor(empirical_risk_ce, device=kl.device),
-            kl,
-            n_posterior,
-            self.delta,
-        )
-
-        # Outer certificate budget is the PAC-Bayes-kl budget: divide by n, not 2n.
-        c = (kl.item() + math.log(2.0 * math.sqrt(n_bound) / self.delta)) / n_bound
-        risk_ce = inv_kl(empirical_risk_ce, c)
-        risk_01 = inv_kl(empirical_risk_01, c)
-        return (
-            train_bound.item(),
-            kl.item() / n_bound,
-            empirical_risk_ce,
-            empirical_risk_01,
-            risk_ce,
-            risk_01,
-        )
-
-
-def inv_kl(qs, ks):
-    izq, dch = qs, 1 - 1e-10
-    qd = 0
-    while (dch - izq) / dch >= 1e-5:
-        p = (izq + dch) * 0.5
-        if qs == 0:
-            ikl = ks - ((1 - qs) * math.log((1 - qs) / (1 - p)))
-        elif qs == 1:
-            ikl = ks - (qs * math.log(qs / p))
-        else:
-            ikl = ks - (
-                qs * math.log(qs / p)
-                + (1 - qs) * math.log((1 - qs) / (1 - p))
-            )
-        if ikl < 0:
-            dch = p
-        else:
-            izq = p
-        qd = p
-    return qd
-```
-
-The causal chain I end with is this. Over-parameterized networks generalize but every capacity-based certificate for them is vacuous, because capacity dwarfs the sample. PAC-Bayes escapes that by certifying a randomized predictor and charging complexity as `KL(Q || Q0)`, which is small when the posterior stays near the prior regardless of parameter count. The tightest classical statement, pb-kl, controls `kl(Lhat || L)` — I re-derived it from a change of measure, the sharp `2 sqrt(n)` moment bound, Markov, and Jensen — but it bounds a binary kl, not `L`, so it isn't directly optimizable. Relaxing it with the standard Pinsker inequality gives the classic additive bound `Lhat + sqrt(kl_term)`, whose complexity enters as a square root that doesn't shrink as `Lhat -> 0`, so the certificate stalls loose exactly in the small-loss regime a trained network reaches. The diagnosis: standard Pinsker is the looser lower bound on `kl` when the true-risk argument is below `1/4`; the refined Pinsker `kl(qh || p) >= (p - qh)^2/(2p)` is the tighter lower bound there. Relaxing pb-kl with the refined inequality gives `L <= Lhat + sqrt(2 L C)`, which has `L` on both sides — but it's a quadratic in `sqrt(L)`, and solving it yields the explicit, optimizable `(sqrt(Lhat + kl_term) + sqrt(kl_term))^2` with `kl_term = (KL + log(2 sqrt(n)/delta))/(2n)`. At zero empirical loss this is `4 kl_term`, linear in the complexity, versus the classic `sqrt(kl_term)` — the fast rate, a factor `1/(4 sqrt(kl_term))` tighter (`7.9×` at `kl_term=1e-3`, `25×` at `1e-4` by the table I worked out), valid in the below-`1/4` risk regime. To use it I bound and rescale the cross-entropy surrogate into `[0,1]` via the `pmin` floor and the `1/log(1/pmin)` factor, learn a diagonal-Gaussian posterior with the reparameterization gradient and closed-form KL, keep the KL small with a data-dependent prior trained on a disjoint split, and report the headline 0-1 certificate by first upper-bounding the Monte-Carlo empirical risk with an inner `inv_kl`, then applying the outer pb-kl inversion with the `/n` certificate budget. The quadratic relaxation drives training; the nested sharp inversion delivers the number.
+Putting it together: `compute_bound` implements the quadratic formula with the clamped square roots, `train_step` runs a stochastic forward pass through the harness's `net.compute_kl()` and feeds the bounded surrogate into `compute_bound`, and `compute_risk_certificate` performs the two-level nested-kl evaluation — Monte-Carlo sampling, the inner `inv_kl` correction, then the outer pb-kl inversion at the `/n` budget — the three pieces wired into a `BoundObjective` class around the existing `compute_losses`, `mc_sampling`, and bisection-based `inv_kl` of the harness.

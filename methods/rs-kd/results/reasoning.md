@@ -8,7 +8,7 @@ dL/dx_j = - sum_i t_i (1/p_i) dp_i/dx_j
         = sum_i t_i p_j - sum_i t_i 1{i=j}
         = (sum_i t_i) p_j - t_j.
 ```
-There it is. I'll keep the *un-simplified* form `dL/dx_j = (sum_i t_i) p_j - t_j` rather than immediately setting `sum_i t_i = 1`, because I have a hunch that any sparse summary I build will not sum to one, and then that leading factor stops being innocuous. When the target is a genuine distribution — the full teacher, or a one-hot label under cross-entropy — `sum_i t_i = 1` and the gradient is the clean `dL/dx_j = p_j - t_j`, whose only zero is `p = t`. So full distillation drives the student to *exactly* the teacher distribution, and students trained this way come out beautifully calibrated, matching the teacher's confidence. That's the behavior I want a sparse summary to reproduce. Cross-entropy on the one-hot label is the same gradient with `t = e_{label}`, and it's also calibrated, but it throws away all of the teacher's soft structure — the relative mass on the wrong tokens, the "dark knowledge" that made distillation worth doing in the first place. So full distillation is my ceiling, CE is my floor, and I need a sparse thing that lands near the ceiling.
+I'll keep the *un-simplified* form `dL/dx_j = (sum_i t_i) p_j - t_j` rather than immediately setting `sum_i t_i = 1`, because I have a hunch that any sparse summary I build will not sum to one, and then that leading factor stops being innocuous. When the target is a genuine distribution — the full teacher, or a one-hot label under cross-entropy — `sum_i t_i = 1` and the gradient is the clean `dL/dx_j = p_j - t_j`, whose only zero is `p = t`. So full distillation drives the student to *exactly* the teacher distribution, and students trained this way come out beautifully calibrated, matching the teacher's confidence. That's the behavior I want a sparse summary to reproduce. Cross-entropy on the one-hot label is the same gradient with `t = e_{label}`, and it's also calibrated, but it throws away all of the teacher's soft structure — the relative mass on the wrong tokens, the "dark knowledge" that made distillation worth doing in the first place. So full distillation is my ceiling, CE is my floor, and I need a sparse thing that lands near the ceiling.
 
 The obvious sparse summary is the one everybody reaches for: keep the top-`K` highest-probability tokens of the teacher and throw the rest away. Set `t^s_i = t_i` for `i` in the top-`K` set, zero otherwise. It feels right, and I can even justify it locally. Suppose I'm forced to keep only `K` entries and renormalize them to sum to one; which `K` minimize the error to the true `t`? Let me measure error in `L1`. Write the kept-and-renormalized distribution `v_i = t_i / a` for `i` in the kept set `K`, zero otherwise, with `a = sum_{i in K} t_i`. Then
 ```
@@ -19,7 +19,7 @@ L1 = sum_i |t_i - v_i|
    = (1 - a) + (1 - a)
    = 2(1 - a).
 ```
-So the `L1` error is `2(1 - a)`, and to minimize it I should make `a`, the kept mass, as large as possible — which means keeping the `K` *largest* probabilities. Top-`K` is the `L1`-optimal `K`-subset. Let me make sure I didn't drop a factor: take a little Zipf teacher `t ∝ 1/i` over `V = 8` (normalized: `t = [0.368, 0.184, 0.123, 0.092, 0.074, 0.061, 0.053, 0.046]`), keep the top `K = 3`. Then `a = 0.368 + 0.184 + 0.123 = 0.675`, the formula predicts `2(1 - a) = 0.651`, and summing `|t_i - v_i|` over all eight coordinates directly gives `0.651`. They agree, so the `L1` story is real and the intuition checks out. And yet the known failure mode of top-`K` caches is exactly the thing the `L1` story does not predict: as `K` gets small, the student becomes over-confident and badly miscalibrated, and a sparse cache needs far more kept tokens than the storage budget wants. The teacher is calibrated, CE students are calibrated, full-distillation students are calibrated — but top-`K` students are not. Something about the truncation is poisoning the target in a way that "least `L1` error per token" completely fails to capture. So `L1`-per-token optimality is the wrong yardstick; whatever is going wrong, it is not visible at the level of reconstructing one token's distribution.
+So the `L1` error is `2(1 - a)`, and to minimize it I should make `a`, the kept mass, as large as possible — which means keeping the `K` *largest* probabilities. Top-`K` is the `L1`-optimal `K`-subset. Let me make sure I didn't drop a factor: take a little Zipf teacher `t ∝ 1/i` over `V = 8` (normalized: `t = [0.368, 0.184, 0.123, 0.092, 0.074, 0.061, 0.053, 0.046]`), keep the top `K = 3`. Then `a = 0.368 + 0.184 + 0.123 = 0.675`, the formula predicts `2(1 - a) = 0.651`, and summing `|t_i - v_i|` over all eight coordinates directly gives `0.651`. They agree. And yet the known failure mode of top-`K` caches is exactly the thing the `L1` story does not predict: as `K` gets small, the student becomes over-confident and badly miscalibrated, and a sparse cache needs far more kept tokens than the storage budget wants. The teacher is calibrated, CE students are calibrated, full-distillation students are calibrated — but top-`K` students are not. Something about the truncation is poisoning the target in a way that "least `L1` error per token" completely fails to capture. So `L1`-per-token optimality is the wrong yardstick; whatever is going wrong, it is not visible at the level of reconstructing one token's distribution.
 
 Let me go back to the gradient I was careful to keep un-simplified, because that's where the poison must be. With a top-`K` target (the non-renormalized version, `t^s_i = t_i` on `K` and `0` off it), the sum `sum_i t^s_i` in the gradient is no longer one — it's `sum_{i in K} t_i = a < 1`. So the logit gradient under top-`K` KL is
 ```
@@ -79,79 +79,4 @@ One thing I have to be careful about in the offline setting, because it's a corr
 
 Let me also sanity-check the loss/divergence choice while I'm here, since I committed to forward KL. The reason isn't aesthetic — it's that the whole unbiasedness-of-the-gradient argument is a *forward-KL* fact. Forward KL's logit gradient is `(sum t) p_j - t_j`, which under an unbiased, normalized sampled target becomes `p_j - t^s_j` with expectation `p_j - t_j`; that exact-in-expectation property is what makes sampling equivalent to full distillation, and it is special to this loss. Reverse KL is mode-seeking — it would have the student chase the teacher's dominant mode and ignore the tail — which is the opposite of what I want when the point is to faithfully reproduce the *whole* teacher distribution, tail included. Forward KL is mean-seeking; it spreads the student to cover the teacher's support, which is precisely the behavior the tail problem demands. So forward KL is the loss whose gradient the sampling argument is built around.
 
-So let me assemble the actual code, filling the two empty slots — the downsampling that builds the cache-able sparse target, and the loss that consumes it. The downsampler at `tau = 1` is just: draw `N` token ids from the teacher distribution with replacement, give each a weight `1/N`, and scatter those into a sparse vector (so a token drawn `c_i` times accumulates `c_i/N`). The loss is the forward KL of the student log-probabilities against that sparse target.
-
-```python
-import torch
-import torch.nn.functional as F
-
-
-def downsample(teacher_probs, N=50):
-    """Random Sampling KD downsampler (tau = 1): sample N token ids ~ teacher,
-    accumulate counts/N into a sparse target. Unbiased: E[c_i/N] = t_i for all i."""
-    # sample N token ids per position, with replacement, with probability teacher_probs
-    sampled_idx = torch.multinomial(teacher_probs, N, replacement=True)   # [B, N]
-    # each draw contributes 1/N; a token drawn c_i times accumulates c_i/N
-    values = torch.full((teacher_probs.size(0), N), 1.0 / N,
-                        device=teacher_probs.device,
-                        dtype=teacher_probs.dtype)                         # [B, N]
-    sparse_target = torch.zeros_like(teacher_probs)                       # [B, V]
-    sparse_target.scatter_add_(1, sampled_idx, values)                    # accumulate counts/N
-    return sparse_target                                                  # sparse: <= N nonzeros
-
-
-def distillation_loss(student_logits, sparse_target):
-    """Forward KL( sparse_target || student ). For tau=1 this equals the average
-    cross-entropy of the student against the N sampled token ids."""
-    student_log_probs = F.log_softmax(student_logits, dim=-1)
-    return F.kl_div(student_log_probs, sparse_target, reduction="batchmean")
-```
-
-And to be faithful to the single-loss surface I'd actually plug this into — where both teacher and student logits over the same tokens are handed to me, with `labels` marking the completion positions and `-100` on padding/prompt — the same idea, written as one loss body that samples the teacher, builds the counts/N target, takes forward KL, and masks the non-completion positions before reducing:
-
-```python
-import torch
-import torch.nn.functional as F
-
-
-def compute_distill_loss(student_logits, teacher_logits, labels=None,
-                         N=50, reduction="batchmean"):
-    # Random Sampling KD: sample from the teacher, train on the empirical counts/N target.
-    # tau = 1 (the proposal is the teacher itself), so each sampled draw has weight 1/N
-    # and the importance ratio t_i/q_i is identically 1 -- no reweighting needed.
-    B, T, V = student_logits.shape
-    teacher_probs = F.softmax(teacher_logits, dim=-1).reshape(B * T, V)   # full teacher dist
-
-    # Sample N token ids ~ teacher per position; accumulate counts/N into a sparse target.
-    # Unbiased estimator of the teacher: E[c_i / N] = t_i for every token i (head AND tail),
-    # so the logit gradient (p_j - t^s_j) equals the full-distillation gradient in expectation.
-    sampled_idx = torch.multinomial(teacher_probs, N, replacement=True)   # [B*T, N]
-    sparse_target = torch.zeros_like(teacher_probs)                       # [B*T, V]
-    sparse_target.scatter_add_(
-        1, sampled_idx,
-        torch.full_like(sampled_idx, 1.0 / N, dtype=teacher_probs.dtype)  # each draw -> 1/N
-    )                                                                     # t^s sums to 1
-
-    # Forward KL( t^s || p ); for tau=1 this is the avg cross-entropy over the sampled ids.
-    student_log_probs = F.log_softmax(student_logits, dim=-1).reshape(B * T, V)
-    per_token = F.kl_div(student_log_probs, sparse_target,
-                         reduction="none").sum(dim=-1)                    # [B*T]
-
-    if labels is not None:                                               # exclude pad/prompt
-        mask = labels.reshape(-1) != -100
-        per_token = per_token[mask]
-        denom = mask.sum().clamp_min(1)
-    else:
-        denom = torch.tensor(max(per_token.numel(), 1),
-                             device=per_token.device, dtype=per_token.dtype)
-
-    if reduction == "batchmean":
-        return per_token.sum() / denom
-    elif reduction == "sum":
-        return per_token.sum()
-    elif reduction == "mean":
-        return per_token.mean()
-    return per_token
-```
-
-Let me trace the causal chain once, to make sure the pieces are load-bearing and not decorative. I started unable to afford caching the full teacher distribution, so I had to summarize it sparsely. The intuitive summary, top-`K`, is `L1`-optimal per token (`2(1-a)`, which I checked numerically) but it creates miscalibrated students; computing the KL logit gradient and verifying its stationary point on a small example showed why — truncation makes the target sub-stochastic, the `(sum t) p_j - t_j` gradient then scales the kept probabilities up by `1/a` (over-confidence, worse as `K` shrinks) and drives the tail to zero (no rare-token supervision). The ghost token repaired the in-`K` gradient back to `p_j - t_j` — I confirmed the cancellation on random students, both in-`K` and off-`K` — but it collapsed the tail into one bucket, so it still lacked per-token tail signal; label smoothing and naive fixes shared the same root flaw, because all of them begin by *deleting* the tail. Reframing top-`K` as a proposal with zero probability on the tail revealed the precise defect: it violates the support condition that makes an importance-sampling estimate unbiased. Sampling token ids from the teacher and caching the empirical distribution `c_i/N` fixes this — multinomial counts give `E[c_i/N] = t_i` for every token including the tail (verified by simulation to `~10^-4`), the target is automatically normalized so there's no `1/a` up-scaling, and the resulting logit gradient `p_j - t^s_j` equals the full-distillation gradient `p_j - t_j` in expectation (also verified by simulation), so large batches average toward the full-distillation signal while storing a dozen numbers. The tempered proposal `q ∝ t^tau` is a bias-free variance knob, and the variance sweep put its minimum exactly at `tau = 1`, where the importance weights are identically one and the cache is just counts. Forward KL is the loss whose gradient the whole argument hinges on, and at `tau = 1` the objective is just the average cross-entropy against the sampled ids. About `N = 50` rounds yield about a dozen unique tokens *for the peaked distributions a real teacher emits* (checked across Zipf exponents), and the `c_i/N` form quantizes exactly into `7` bits, giving `3` bytes per unique token. Align the teacher and student sequences so the cached contexts match. That's the method: sample the teacher, train on the counts.
+The two empty slots now resolve directly from what I've already derived. The downsampler at `tau = 1` draws `N` token ids from the teacher distribution with replacement and scatters each occurrence as a weight `1/N` into an otherwise-zero vector, so a token drawn `c_i` times accumulates `c_i/N`. The loss is the forward KL of the student log-probabilities against that sparse target, restricted to the completion positions (excluding padding and prompt tokens) the same way the ground-truth cross-entropy term already is. That's the whole method: sample the teacher, train on the counts.

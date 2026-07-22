@@ -32,9 +32,9 @@ But A is now known to be K log, so K log(Σn_j) = H + K Σ_i p_i log n_i. Solve 
 
 and K is just a choice of unit; take K = 1 with base-2 logs and H is in bits.
 
-Now I stare at this and it's familiar. −Σ p log p, with p a probability over states — that's the entropy of statistical mechanics, Boltzmann's H, the Gibbs entropy of a distribution over phase-space cells. I've read enough Tolman to recognize it on sight; this is an old form. I don't need anyone to christen it for me — the function I derived *is* entropy, the same quantity that's maximal for the uniform distribution and additive over independent systems, and I'll call it that. Good that the names agree, but the justification isn't the analogy; the justification is that the three properties leave no other choice, and beyond that, that the definition is going to *earn* its keep in the theorems that follow.
+Now I stare at this and it's familiar. −Σ p log p, with p a probability over states — that's the entropy of statistical mechanics, Boltzmann's H, the Gibbs entropy of a distribution over phase-space cells. I've read enough Tolman to recognize it on sight; this is an old form. I don't need anyone to christen it for me — the function I derived *is* entropy, the same quantity that's maximal for the uniform distribution and additive over independent systems, and I'll call it that. The names agreeing is a coincidence of history, not the justification — that comes from the three properties leaving no other choice, and from the definition earning its keep in the theorems ahead.
 
-Let me check the properties fall out. H = 0 only when one p_i is 1 and the rest 0 — certainty, no choice, as it must be. For fixed n, H is maximal and equals log n when all p_i = 1/n — maximum uncertainty is the uniform case, also right. And independence: H(x,y) ≤ H(x) + H(y), with equality exactly when x and y are independent, since conditioning can only remove uncertainty, H(x,y) = H(x) + H_x(y) and H_x(y) ≤ H(y). So a correlated source has *less* entropy than the sum of its marginals — which is precisely the redundancy of English showing up as a number. The entropy of a Markov source is the average over states of the per-symbol entropy of its transition distribution, and for English it's well below log 26. Now I have the first of my two numbers: the rate at which a source produces information.
+The properties fall out immediately. H = 0 only when one p_i is 1 and the rest 0 — certainty, no choice, as it must be. For fixed n, H is maximal and equals log n when all p_i = 1/n — maximum uncertainty is the uniform case, also right. And independence: H(x,y) ≤ H(x) + H(y), with equality exactly when x and y are independent, since conditioning can only remove uncertainty, H(x,y) = H(x) + H_x(y) and H_x(y) ≤ H(y). So a correlated source has *less* entropy than the sum of its marginals — which is precisely the redundancy of English showing up as a number. The entropy of a Markov source is the average over states of the per-symbol entropy of its transition distribution, and for English it's well below log 26. Now I have the first of my two numbers: the rate at which a source produces information.
 
 But "rate of producing information" is still just a name unless I can show this H is *the* thing that controls how compactly the source can be represented. So I need to connect H to actual coding. Take long sequences of length N from the source. By the law of large numbers, in a typical sequence each symbol i appears about p_i·N times, so the probability of a typical sequence is about Π_i p_i^{p_i N}. With base-2 logs, the log of that probability is Σ_i (p_i N) log p_i = −N·H, so the probability itself is ≈ 2^{−HN}. And since the typical sequences carry essentially all the probability and each has about the same probability 2^{−HN}, there must be about 2^{HN} of them. Out of the s^N = 2^{N log s} conceivable sequences, only about 2^{HN} ever really occur, and they're nearly equiprobable. The rest form a set of vanishing total probability.
 
@@ -58,7 +58,7 @@ Now define the channel's capacity as the best rate it can be driven to:
 
 Capacity is a property of the channel, so I optimize over how I feed it. For a noiseless channel H_y(x) = 0 and this reduces to the maximum input entropy — consistent with the noiseless definition.
 
-Here's where I expect to lose something, and where it turns out I don't. The folklore says: to push the error probability toward zero on a noisy channel you must pile on redundancy — repeat the message, vote on the copies — and as the error requirement tightens the redundancy grows without bound and the *rate* sinks toward zero. If that were true there'd be no single capacity, only a rate that depends on how much error you'll tolerate. Let me see whether it's actually true, because if it is, C is far less interesting than I hoped.
+Here's where I expect to lose something. The folklore says: to push the error probability toward zero on a noisy channel you must pile on redundancy — repeat the message, vote on the copies — and as the error requirement tightens the redundancy grows without bound and the *rate* sinks toward zero. If that were true there'd be no single capacity, only a rate that depends on how much error you'll tolerate. Let me see whether it's actually true, because if it is, C is far less interesting than I hoped.
 
 It is not true, and the reason is the typical-set picture again, now on both ends. Drive the channel with the maximizing source S0 and look at length-T blocks. The inputs that occur are about 2^{T H(x)} typical ones. The outputs that occur are about 2^{T H(y)} typical ones. A typical input has its own cloud of likely outputs, but decoding turns on the reverse question: once an output is received, how many typical inputs could reasonably have caused it? That reverse fan has about 2^{T H_y(x)} inputs. That is the ambiguity the code must prevent from containing two messages at once.
 
@@ -74,64 +74,6 @@ The η > 0 is doing all the work, and it's worth saying out loud what it means. 
 
 The converse closes it. If I try to transmit a source of entropy C + a per unit time and claim an equivocation as low as a − ε, then the delivered rate would be (C + a) − (a − ε) = C + ε, which contradicts C being the *maximum* possible value of H(x) − H_y(x). So you cannot beat C: above it, nature charges an equivocation at least equal to the excess. There is room to make uncertainty vanish only up to C; past it the uncertainty is forced on you.
 
-So both numbers exist and both are entropy. Let me trace the chain once. Strip meaning: a message is a selection from a set, so information is about probabilities, not semantics. Demand the measure be additive ⇒ logarithm ⇒ bits. Real sources are statistical, so model the source as an ergodic Markov process and ask for a per-symbol uncertainty H(p) obeying continuity, monotonicity in the uniform case, and invariance to staging the choice ⇒ those three force H = −Σ p log p uniquely, which is exactly the entropy of statistical mechanics. Long blocks concentrate on ≈ 2^{HN} nearly-equiprobable typical sequences, so the source compresses to H bits/symbol and no further — entropy is the compression limit. Add noise: the right toll is the equivocation H_y(x), the leftover uncertainty about the input, so the achievable rate is H(x) − H_y(x); maximizing over inputs defines the capacity C. And the typical-set fans, counted under a random code and averaged, show that for every rate below C reliable communication is possible with error → 0 at fixed rate, while above C it is impossible. Two definitions and two theorems, and the same quantity — entropy — sits at the center of both.
+Both numbers I set out to find turn out to be the same quantity: entropy sets the source's compression floor and, through the equivocation, the channel's capacity ceiling.
 
-A small computation just to see the source half breathe — the uncertainty of a distribution and a prefix code whose average length lands on the same floor:
-
-```python
-import heapq
-import math
-from collections import Counter
-from itertools import count
-
-def empirical_distribution(symbols):
-    n = len(symbols)
-    if n == 0:
-        raise ValueError("sample must be non-empty")
-    return {s: c / n for s, c in Counter(symbols).items()}
-
-def information_measure(distribution):
-    # H = -sum p log2 p, the unique additive measure of uncertainty.
-    if any(p < 0 for p in distribution.values()):
-        raise ValueError("probabilities must be non-negative")
-    return -sum(p * math.log2(p) for p in distribution.values() if p > 0)
-
-def prefix_code(distribution):
-    # Merge the two least likely subtrees until one prefix tree remains.
-    serial = count()
-    heap = []
-    for sym, p in distribution.items():
-        if p < 0:
-            raise ValueError("probabilities must be non-negative")
-        if p > 0:
-            heap.append([p, next(serial), {sym: ""}])
-    if not heap:
-        raise ValueError("distribution must have positive mass")
-    heapq.heapify(heap)
-    if len(heap) == 1:
-        return heap[0][2]                   # no binary choice is needed
-    while len(heap) > 1:
-        p_lo, _, lo = heapq.heappop(heap)
-        p_hi, _, hi = heapq.heappop(heap)
-        merged = {sym: "0" + bits for sym, bits in lo.items()}
-        merged.update({sym: "1" + bits for sym, bits in hi.items()})
-        heapq.heappush(heap, [p_lo + p_hi, next(serial), merged])
-    return heap[0][2]
-
-def average_length(code, distribution):
-    return sum(p * len(code[s]) for s, p in distribution.items() if p > 0)
-
-def source_coding_check(symbols):
-    dist = empirical_distribution(symbols)
-    H = information_measure(dist)
-    code = prefix_code(dist)
-    L = average_length(code, dist)
-    return H, L, code
-
-if __name__ == "__main__":
-    text = "the source coding limit is the entropy of the source"
-    H, L, code = source_coding_check(text)
-    print(f"H = {H:.3f} bits/symbol; avg code length = {L:.3f} bits/symbol")
-    assert L + 1e-12 >= H
-    assert L < H + 1 + 1e-12
-```
+On paper, for any sample of symbols, the empirical entropy −Σ p log₂ p and the average length of a binary prefix code built by repeatedly merging the two least-likely subtrees sit within one bit of each other, closing toward equality as the coded blocks get longer — the compression floor holding exactly where the typical-set argument put it.

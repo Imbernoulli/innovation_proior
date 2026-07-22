@@ -1,16 +1,18 @@
-Let me start from what actually hurts. I'm fine-tuning a language model on math with RL, and the thing I keep tripping over is the advantage. In PPO the advantage comes out of a learned critic V, and that critic is killing me on two fronts at once: it's a second network the size of the policy, so it roughly doubles my memory and compute on a single GPU, and — worse — in this setting the reward only lands on the very last token of the response, so the critic has almost no signal to learn an accurate per-token value from. It's expensive *and* it's the unreliable part. So my first instinct is the obvious one: get rid of V entirely. But the critic was never decoration; its whole job was to be the baseline that I subtract from the return to reduce the variance of the policy gradient. If I delete it, I have a hole exactly where the baseline used to be, and the entire question becomes: what do I put there?
+I'm fine-tuning a language model on math with RL, and the thing I keep tripping over is the advantage. In PPO the advantage comes out of a learned critic V, and that critic is killing me on two fronts at once: it's a second network the size of the policy, so it roughly doubles my memory and compute on a single GPU, and — worse — in this setting the reward only lands on the very last token of the response, so the critic has almost no signal to learn an accurate per-token value from. It's expensive *and* it's the unreliable part. So my first instinct is the obvious one: get rid of V entirely. But the critic was never decoration; its whole job was to be the baseline that I subtract from the return to reduce the variance of the policy gradient. If I delete it, I have a hole exactly where the baseline used to be, and the entire question becomes: what do I put there?
 
 Let me get the structure of the gradient straight before I choose a baseline, because the answer to "what baseline" lives in that structure. The reward in this task is only at EOS — there is no meaningful intermediate reward, no real per-token credit to assign from the environment. So modeling each token as its own timestep with a bootstrapped value at every step is solving a problem I don't have. The honest model is the bandit one: the whole generation o is a single action, the prompt q is the state, and I'm maximizing E_{o~π_θ}[ R(o,q) ] with the score-function gradient E_{o~π_θ}[ R(o,q) ∇_θ log π_θ(o|q) ]. That's plain REINFORCE on full sequences. And with reward only at the end and a single action, the natural discount is γ = 1 — there's nothing to discount, the return of the action *is* the terminal reward.
 
-Before I commit to that, let me check what the full GAE machinery actually does at γ = λ = 1 with V ≡ 0, since I'd like the critic-free skeleton to be GAE's own limit rather than a separate ad hoc thing. GAE is A_t = Σ_l (γλ)^l δ_{t+l} with δ_t = r_t + γ V(o_{t+1}) − V(o_t). Take V ≡ 0, γ = λ = 1, and put the reward only on the last step: take a length-6 response with r = (0,0,0,0,0,1). Then δ = (0,0,0,0,0,1), and A_t = Σ_{l≥0} δ_{t+l} sums every δ from t onward, so A_t = 1 for every t — I just traced it and all six tokens get advantage 1, the full terminal return, with no bootstrapping. So GAE at this limit collapses to "every token of the response carries the sequence's whole return," which is precisely the bandit picture. Good — the skeleton is full-sequence REINFORCE, γ = 1, and a baseline I have to manufacture from the rewards themselves instead of from a value network.
+Before I commit to that, let me check what the full GAE machinery actually does at γ = λ = 1 with V ≡ 0, since I'd like the critic-free skeleton to be GAE's own limit rather than a separate ad hoc thing. GAE is A_t = Σ_l (γλ)^l δ_{t+l} with δ_t = r_t + γ V(o_{t+1}) − V(o_t). Take V ≡ 0, γ = λ = 1, and put the reward only on the last step: take a length-6 response with r = (0,0,0,0,0,1). Then δ = (0,0,0,0,0,1), and A_t = Σ_{l≥0} δ_{t+l} sums every δ from t onward, so A_t = 1 for every t — I just traced it and all six tokens get advantage 1, the full terminal return, with no bootstrapping. So GAE at this limit collapses to "every token of the response carries the sequence's whole return," which is precisely the bandit picture. So the skeleton is full-sequence REINFORCE, γ = 1, and a baseline I have to manufacture from the rewards themselves instead of from a value network.
 
 The variance-reduction fact I'm leaning on: for any baseline b that doesn't depend on the sampled action, E[(R − b) ∇log π] = E[R ∇log π] (because E[b ∇log π] = b E[∇log π] = b·∇∫π = 0), so subtracting b leaves the gradient unbiased while shrinking its variance if b correlates with R. So I'm free to pick any action-independent b, and I want one that's close to R on average. With the critic gone, the cheapest source of "what R typically is for this prompt" is other samples for the same prompt.
 
 So who's already done this and where do they stop? RLOO's move is clean: sample k responses per prompt, and baseline each one with the mean of the *other* k−1, A_i = r(o_i) − (1/(k−1)) Σ_{j≠i} r(o_j). The leave-one-out is the elegant part — the baseline for o_i genuinely doesn't depend on o_i, so the estimator stays exactly unbiased, no fudge. But stare at the variance of that baseline. With k = 4 or 8, I'm estimating "the typical reward for this prompt" from three or seven samples. That's a noisy baseline, and — this is the part that nags me — the advantages it produces for *different* prompts are never put on any common scale. Prompt A might have rewards clustered near 1, prompt B near 0; the leave-one-out advantages from A and from B land in incomparable ranges and get summed into one gradient as if they were on the same footing.
 
-GRPO tries to fix the scale problem head-on: don't just subtract the group mean, also divide by the group standard deviation, A_i = (r_i − mean(r)) / (std(r) + ε), broadcast to every token. Now within each prompt the advantages are standardized to roughly unit spread, so prompts of different reward scales contribute comparably. That feels right at first. But two things start to bother me, and one of them I think I can actually pin down rather than just suspect.
+GRPO tries to fix the scale problem head-on: don't just subtract the group mean, also divide by the group standard deviation, A_i = (r_i − mean(r)) / (std(r) + ε), broadcast to every token. Now within each prompt the advantages are standardized to roughly unit spread, so prompts of different reward scales contribute comparably. That feels right at first. But a few things start to bother me, and one of them I think I can actually pin down rather than just suspect.
 
 The cheap-to-see problem first: the group is tiny, k = 4 or 8. Picture a prompt where all k sampled responses happen to get the same reward — easy prompt everyone solves, or a hard one everyone fails. I have to be precise here: under the exact formula A_i = (r_i − mean)/(std + ε), the centered numerator vanishes with the std, so the standardized residual is not literally unbounded; it is bounded. The problem is still real, just subtler. A four-sample std is a brittle scale estimate: exact ties give no ranking signal, one discrete reward flip can create an order-one standardized residual from a tiny group, and every token in that prompt inherits a scale chosen by only those few samples. The statistic that is supposed to stabilize scale is itself the noisiest object in the estimator.
+
+There's a second cost to dividing by the group's own spread, and it's not a numerical one — it's about what the objective is actually rewarding. Standardizing by the local std turns "have a good response" into "rank above your k−1 siblings by more standard deviations," a relative statement, not an absolute one. A prompt where all k samples are mediocre but happen to differ slightly still produces large normalized advantages for what are basically cosmetic differences; a prompt every sample gets equally wrong — the hard prompt where I most need progress — has no internal spread to rank against and can contribute almost nothing. Optimizing that signal can push the policy toward manufacturing diversity on prompts it can already solve rather than making headway on the ones it can't, which is the opposite of what an RL fine-tune on a hard-problem set should be doing. A scale set by the whole batch doesn't carry that per-prompt ranking pressure: no single prompt's own difficulty gets to decide its own reward units.
 
 Now the deeper problem, the one I want to nail down rather than wave at: is (r_i − mean)/std even an unbiased estimate of the per-sample advantage? My gut says the numerator and denominator are computed from the *same* handful of rewards, so they can't be independent, and if they're correlated then dividing one by the other biases the result. Let me actually check, because if it's true it's the real reason to abandon local normalization, not just the small-sample brittleness.
 
@@ -44,7 +46,7 @@ So a first cut: drop the per-group std entirely, and instead whiten the advantag
 
 That gives me a two-step estimator. Step one, reshape with a local baseline: A'_i = r_i − mean_{group(i)}(r). Step two, stabilize with global statistics: standardize A' over the whole batch, A_i^norm = (A'_i − mean_batch(A')) / (std_batch(A') + ε). The group mean handles per-prompt difficulty and reward-scale reshaping; the batch std handles cross-prompt scale and is computed from a pool large enough that any one sample has little leverage. The dangerous small-sample std is simply gone.
 
-Edge case I have to handle before I trust it: what if a prompt has only one sample in this batch (group size 1)? Then there's no "other responses" to form a mean, and "subtract the group mean" would subtract the sample from itself and give exactly zero advantage — wiping the signal. The honest fallback is to set the group mean to 0 for singletons: keep the raw score, let the *global* whitening center it relative to the rest of the batch. So singletons get no local baseline but still get the batch-level standardization. If I stopped after group-mean centering, I would have removed the brittle local std but left the gradient magnitudes unscaled across prompts; the batch whitening is the part that puts all valid tokens back on one common scale.
+Edge case I have to handle: what if a prompt has only one sample in this batch (group size 1)? Then there's no "other responses" to form a mean, and "subtract the group mean" would subtract the sample from itself and give exactly zero advantage — wiping the signal. The honest fallback is to set the group mean to 0 for singletons: keep the raw score, let the *global* whitening center it relative to the rest of the batch. So singletons get no local baseline but still get the batch-level standardization. If I stopped after group-mean centering, I would have removed the brittle local std but left the gradient magnitudes unscaled across prompts; the batch whitening is the part that puts all valid tokens back on one common scale.
 
 Now, tokens. The actor loss is per-token: it wants an advantage at every response position, not one scalar per sequence. The reward is a scalar at EOS, and my A'_i is one scalar per response. The standard move is to broadcast that scalar to every valid token of the response — every token of a correct response shares the same outcome advantage. But here's a choice in *when* I whiten: do I whiten the per-sequence scalars (one number per response) and then broadcast, or do I broadcast first and whiten over the pool of *tokens*? Let me think about what each pool means. If I whiten per-sequence, every response counts once regardless of length. If I broadcast to tokens first and then whiten over all valid tokens in the batch, a 600-token response contributes 600 entries to the mean and std while a 50-token response contributes 50 — the statistics become *length-weighted*. For a token-level policy loss that's the consistent choice: I'm standardizing the actual per-token quantities that enter the gradient, over the actual set of tokens that enter the gradient. Each token's advantage is put on a common scale with every other token the loss will touch. So: broadcast the centered per-sequence advantage to all valid tokens, mask out the padding, then whiten over all valid response tokens in the batch, then mask again to be safe. The return tensor this critic-free API hands downstream can be the same tensor as the advantages; there is no separate bootstrapped value target to compute.
 
@@ -60,59 +62,22 @@ And the k3 coefficient is not just direction-wrong, it's dangerous, which I can 
 
 At this point the construction is just PPO with three changes: the critic V is deleted; GAE is taken at λ = 1, γ = 1 so the advantage is just the full return (no bootstrapping, consistent with reward-only-at-EOS, as I traced above); and the baseline that V used to provide is replaced by a two-step normalization — subtract the per-prompt group mean, then whiten across the global batch. The clipped surrogate, the old-policy ratio, the reference KL — all unchanged. I've only swapped the source of the advantage.
 
-Let me write the estimator as the code that drops into the registry, filling the single slot the harness left me. It takes per-token rewards, the response mask, and the per-sample group ids; it returns per-token advantages and returns. Everything runs under no_grad — this is advantage computation, not part of the differentiable loss.
+Let me write the estimator as the code that drops into the registry, filling the single slot the training loop left me. It takes per-token rewards, the response mask, and the per-sample group ids, and everything has to run under no_grad — this is advantage computation, not part of the differentiable loss. The outcome scalar per response is just the row sum of the per-token rewards, since the reward only lives at EOS. The two derived steps are then a group-by-group loop and a broadcast-then-whiten:
 
 ```python
-from collections import defaultdict
-from typing import Optional
+for idx in id2score:
+    if len(id2score[idx]) == 1:
+        id2mean[idx] = torch.tensor(0.0)          # singleton: no local baseline, let global whitening center it
+    else:
+        id2mean[idx] = torch.mean(torch.stack(id2score[idx]))   # step 1: group-mean centering
+for i in range(bsz):
+    scores[i] = scores[i] - id2mean[index[i]]
 
-import torch
-import verl.utils.torch_functional as verl_F
-from verl.trainer.config import AlgoConfig
-
-
-@register_adv_est(AdvantageEstimator.REINFORCE_PLUS_PLUS_BASELINE)
-def compute_reinforce_plus_plus_baseline_outcome_advantage(
-    token_level_rewards: torch.Tensor,   # (bs, response_length), outcome reward already placed on tokens
-    response_mask: torch.Tensor,         # (bs, response_length) 1 on valid response tokens
-    index: torch.Tensor,                 # (bs,) group id; equal id == responses to the same prompt
-    epsilon: float = 1e-6,
-    config: Optional[AlgoConfig] = None,
-    **kwargs,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    response_length = token_level_rewards.shape[-1]
-    # outcome scalar per response: reward only lives at EOS, so summing the row recovers it (bandit return)
-    scores = token_level_rewards.sum(dim=-1)            # (bs,)
-
-    id2score = defaultdict(list)                        # gather scores by prompt group
-    id2mean = {}
-
-    with torch.no_grad():
-        bsz = scores.shape[0]
-        for i in range(bsz):
-            id2score[index[i]].append(scores[i])
-        for idx in id2score:
-            if len(id2score[idx]) == 1:
-                # singleton group: no local baseline available -> 0, let global whitening center it
-                id2mean[idx] = torch.tensor(0.0)
-            elif len(id2score[idx]) > 1:
-                # local centering = group mean (the stable part of group normalization;
-                # reshapes rewards so 0/1 and -1/1 schemes both center near zero)
-                id2mean[idx] = torch.mean(torch.stack(id2score[idx]))
-            else:
-                raise ValueError(f"no score in prompt index: {idx}")
-        for i in range(bsz):
-            # step 1: subtract the per-prompt group mean (centering / reshaping)
-            scores[i] = scores[i] - id2mean[index[i]]
-
-        # broadcast the centered per-sequence advantage to every valid token, mask padding
-        scores = scores.unsqueeze(-1).tile([1, response_length]) * response_mask
-        # step 2: whiten over ALL valid response tokens in the batch; one sample has little leverage,
-        # and the token-level pool makes the stats length-weighted, matching the per-token policy loss
-        scores = verl_F.masked_whiten(scores, response_mask) * response_mask
-
-    # no critic target is computed, so this API returns the same tensor for advantages and returns
-    return scores, scores
+scores = scores.unsqueeze(-1).tile([1, response_length]) * response_mask   # broadcast to every valid token
+scores = verl_F.masked_whiten(scores, response_mask) * response_mask       # step 2: whiten over ALL valid tokens
+return scores, scores                                                      # no critic target, so same tensor twice
 ```
 
-So the causal chain, start to finish. The critic was an expensive, unreliable baseline in the sparse-reward LLM regime, so I deleted it and modeled the generation as a single bandit action with γ = 1 — which I confirmed is exactly GAE's own λ = γ = 1, V ≡ 0 limit, every token taking the full terminal return — leaving a hole where the baseline used to be. RLOO's leave-one-out and GRPO's group-standardization both fill it from the same prompt's few samples, but the small group is the problem: GRPO's local std is a noisy prompt-sized scale, and the local-std estimator is biased for every finite N because the centered numerator and denominator are computed from the same sample. I checked this three ways that agree: E[D²|ε_i] = α + βε_i² matched the simulation to four decimals; the centered-residual bound forces |A_i| ≤ sqrt(N−1); and the simulated E[A_1|ε_1] at N = 4 saturates under that bound (1.53 at ε_1 = 3 vs the harmless-shrinkage 2.25). The same numerics showed β decaying ~190× from N = 4 to N ≈ 1000, which pointed straight at the fix: keep the stable, reward-reshaping group mean (verified to center both 0/1 and −1/1 rewards about zero), but compute the *scale* normalization over the global batch, whose large pool makes the statistics behave like constants; this is standard PPO advantage whitening, just pooled globally. Broadcasting the centered scalar to tokens and whitening over all valid tokens makes the standardization length-weighted and consistent with the per-token loss, with the variance floor now just a numerical guard under a batch variance. For the separate KL loss, autograd confirmed the three surrogates have gradients 1·, ℓ·, and (1−exp(−ℓ))·∇log π_θ; only k2's coefficient ℓ is the reverse-KL gradient, and a ratio sweep showed k3's coefficient blowing up like 1/ratio (−99999 at ratio 1e−5) while k2's grows only like log. Net: PPO with no critic, γ = λ = 1, and a group-mean-then-global-whiten baseline.
+That's the whole estimator once it's wrapped in the registered function signature and the bookkeeping that gathers each row's score into its prompt-group bucket before the loop above runs.
+
+Net: PPO with the critic deleted, GAE taken at γ = λ = 1 so the advantage is just the centered full terminal return, the value baseline replaced by group-mean-then-global-whiten because the local std is the biased, brittle, badly-incentivized part and a large pool is what makes normalization statistics behave like constants, and the separate KL loss switched to k2 for the one gradient among the three sample forms that actually matches the reverse-KL direction without an exploding importance ratio.

@@ -12,15 +12,15 @@ Seed it: the first `k` records. The `k` records I'm holding are trivially a unif
 
 Now the `(t+1)`-st record shows up. For the invariant to survive, the new collection must be a uniform sample of `t+1` records. In a true uniform sample of size `k` drawn from `t+1` records, what's the chance the `(t+1)`-st record is in it? By symmetry every one of the `t+1` records is equally likely to be among the chosen `k`, so each is in with probability `k/(t+1)`. So that pins down my acceptance rule with no freedom: I *must* take the new record into the reservoir with probability exactly `k/(t+1)`. Anything else and the new record's inclusion probability is wrong and the invariant breaks.
 
-If I accept it, it has to push something out — I only have `k` slots. Which slot? I want the survivors to stay a uniform sample, so I shouldn't favor any of them. Evict a *uniformly random* one of the `k` current holders. Intuitively that keeps the holders exchangeable; let me not hand-wave it though, let me check the survivors' probabilities actually come out right.
+If I accept it, it has to push something out — I only have `k` slots. Which slot? I want the survivors to stay a uniform sample, so I shouldn't favor any of them. Evict a *uniformly random* one of the `k` current holders. Intuitively that keeps the holders exchangeable — but the survivor probabilities need to actually check out, not just look plausible.
 
-So the rule is: when the `(t+1)`-st record arrives, accept it with probability `k/(t+1)`; if accepted, overwrite a uniformly random one of the `k` slots; if not, drop it and move on. Let me verify the invariant propagates. The first check is the marginal one: assume after `t` records each seen record sits in the buffer with probability `k/t`. Take some old record `x` that's currently in with probability `k/t`. Does it survive the `(t+1)`-st step with the right probability `k/(t+1)`?
+So the rule is: when the `(t+1)`-st record arrives, accept it with probability `k/(t+1)`; if accepted, overwrite a uniformly random one of the `k` slots; if not, drop it and move on. Does the invariant propagate? Marginals first: assume after `t` records each seen record sits in the buffer with probability `k/t`. Take some old record `x` that's currently in with probability `k/t`. Does it survive the `(t+1)`-st step with the right probability `k/(t+1)`?
 
 `x` survives the step in two disjoint ways. Either the new record is rejected — probability `1 - k/(t+1)` — and then nothing moves, `x` stays. Or the new record is accepted — probability `k/(t+1)` — but the evicted slot isn't `x`'s; given acceptance, the evicted slot is uniform over the `k` slots, so `x` is spared with probability `1 - 1/k`. So, conditioning on `x` having been in (probability `k/t`),
 
 `Pr[x still in] = (k/t) * [ (1 - k/(t+1)) + (k/(t+1))(1 - 1/k) ]`.
 
-Let me grind the bracket. `(1 - k/(t+1)) + (k/(t+1)) - (k/(t+1))(1/k)`. The `-k/(t+1)` and `+k/(t+1)` cancel, and `(k/(t+1))(1/k) = 1/(t+1)`, so the bracket is `1 - 1/(t+1) = t/(t+1)`. Then `Pr[x still in] = (k/t) * (t/(t+1)) = k/(t+1)`. The new record itself is in with probability `k/(t+1)` by construction. So every one of the `t+1` records now has the right inclusion probability.
+The bracket expands: `(1 - k/(t+1)) + (k/(t+1)) - (k/(t+1))(1/k)`. The `-k/(t+1)` and `+k/(t+1)` cancel, and `(k/(t+1))(1/k) = 1/(t+1)`, so the bracket is `1 - 1/(t+1) = t/(t+1)`. Then `Pr[x still in] = (k/t) * (t/(t+1)) = k/(t+1)`. The new record itself is in with probability `k/(t+1)` by construction. So every one of the `t+1` records now has the right inclusion probability.
 
 But marginals are not the whole invariant. I need every size-`k` subset, not just every item, to have equal probability. Take a fixed size-`k` subset `A` of the first `t+1` records. If `A` does not contain the new record, then the only way to end at `A` is that the old buffer was exactly `A` and the new record was rejected. That probability is `(1 / C(t,k)) * (1 - k/(t+1)) = (1 / C(t,k)) * ((t+1-k)/(t+1)) = 1 / C(t+1,k)`. If `A` does contain the new record, write `B` for the `k-1` old records in `A`. Before the step, the old buffer must have been `B` plus one extra old record `z`, and there are `t-k+1` choices for `z`. Each old buffer has probability `1 / C(t,k)`; then the new record must be accepted and `z` must be the one evicted, with probability `(k/(t+1)) * (1/k) = 1/(t+1)`. So `Pr[final buffer = A] = (t-k+1) * (1 / C(t,k)) * (1/(t+1)) = 1 / C(t+1,k)`. Good: the full subset law, not only the marginals, propagates. Base case `t = k` holds, induction carries it to `t = N`, and the construction never touched `N`.
 
@@ -46,7 +46,7 @@ Now hold `w` fixed and let records stream by. Each one is admitted independently
 
 What happens to `w` at an admission? The new record's tag is below `w`, so it joins the `k` smallest and the *old* largest-of-the-small (the old `w`) gets evicted. The threshold tightens to the new maximum of the `k` retained tags. I need the distribution of the new `w` given the old. The retained set after the swap is `k` tags each known only to lie below the old `w`; conditioned on that, each is uniform on `(0, w_old)`, and the new threshold is their maximum. Maximum of `k` iid uniforms on `(0, w_old)` is `w_old` times the maximum of `k` iid `U(0,1)` — which I just showed is distributed as `U^{1/k}`. So `w_new = w_old * U^{1/k}`. The threshold just gets multiplied by a fresh `U^{1/k}` each time something enters. `w` marches monotonically downward, admissions get rarer and rarer — exactly mirroring `k/i` shrinking as `i` grows, but now I never compute `k/i` and never look at a rejected record.
 
-Let me also confirm I haven't broken which slot gets the new record. If I were literally maintaining all the virtual tags, I would evict the current threshold-holder. But the tags are only a way to generate the same distribution of admission times; the subset proof already told me what replacement must look like once an admission happens. The old records in the buffer are exchangeable, so I drop the new record into a uniformly random one of the `k` slots. The acceptance schedule comes from the threshold `w`; the uniform eviction keeps the subset invariant.
+Which slot gets the new record, though? If I were literally maintaining all the virtual tags, I would evict the current threshold-holder. But the tags are only a way to generate the same distribution of admission times; the subset proof already told me what replacement must look like once an admission happens. The old records in the buffer are exchangeable, so I drop the new record into a uniformly random one of the `k` slots. The acceptance schedule comes from the threshold `w`; the uniform eviction keeps the subset invariant.
 
 So the optimized loop is: after filling `k` slots, set `w = U^{1/k}` and draw the next geometric gap `floor(log(U)/log(1-w))`; the admitted position is one past those skipped records. The `+1` is because after skipping `g` rejects, the next position is the one that gets admitted. When the stream pointer reaches that position, I overwrite a random slot, tighten `w` by multiplying it by a fresh `U^{1/k}`, and only then draw the following gap from the new threshold. `log(1-w)` is negative and `log(U)` is negative, so the ratio is positive. When `w` is small, `log(1-w) ~= -w`, so the skip is about `-log(U)/w`, a wait on the order of `1/w` records; as `w` shrinks, admissions thin out exactly as they should deep into a long stream. The number of random draws is now constant per admission, and the expected number of admissions after the initial fill is `k(H_N - H_k)`, so the draw count has the optimal order `O(k(1 + log(N/k)))`.
 
@@ -54,98 +54,6 @@ Now a different generalization that I want while I'm here: what if records carry
 
 Online and `O(k)`: keep a min-heap of the `k` largest keys; its minimum is the current threshold `T`. For each arriving `(item, w)`, form `key = random()^{1/w}`; if the heap isn't full, push; else if `key > T`, replace the heap's min and update `T`. That's the weighted reservoir — `O(log k)` per admission, one draw per record. The min-heap is the weighted analogue of the single scalar `w` from the uniform case: it has to track `k` separate thresholds because the keys are no longer order statistics of a *common* uniform — they each have their own exponent.
 
-Can I get the same skip-the-rejects speedup here? The uniform case worked because rejections shared one parameter `w`. In the weighted case admissions happen when a key beats `T`, and the "budget" until the next admission accumulates in *weight*, not in count. Let `S_w` be the total weight of items skipped before the next entry; because each item independently clears the threshold with a probability tied to its own weight and the common threshold, the *weighted* waiting time is exponential. So draw an exponential budget once and walk the stream subtracting weights until the budget is exhausted, admitting the item that crosses it. Concretely, with threshold key `T_w` (the current heap min), draw `r ~ U(0,1)` and set the budget `X_w = log(r)/log(T_w)` (both logs negative, so `X_w > 0`); then advance through items subtracting `w_c, w_{c+1}, ...` until the running sum first reaches `X_w` — that item enters. When it enters I need to give it a key consistent with "it cleared `T_w`": draw the new key from the conditional, `t_w = T_w^{w_i}`, `r2 ~ U(t_w, 1)`, key `= r2^{1/w_i}` (which forces `key > T_w`), then refresh `T_w` to the new heap min and draw the next budget. Random draws drop from `O(n)` to `O(k log(n/k))`, the weighted echo of the same logarithmic acceptance count.
+Can I get the same skip-the-rejects speedup here? The uniform case worked because rejections shared one parameter `w`. In the weighted case an item of weight `w_j` clears the current threshold `T` exactly when `key_j = u_j^{1/w_j} > T`, i.e. when `u_j > T^{w_j}` — so it's rejected with probability `T^{w_j}`, tied to its own weight rather than one shared Bernoulli rate. But chain a run of rejections: the probability that a stretch of items with total weight `S` are *all* rejected is the product of each one's rejection probability, `prod_j T^{w_j} = T^{sum_j w_j} = T^S`, since the exponents just add. So `Pr[run of weight S all rejected] = T^S = exp(S log T)`, which is exactly the survival function of an exponential distribution in `S` with rate `-log T` — the accumulated *weight*, not the item count, plays the role the uniform case's step count played. So draw that exponential budget once and walk the stream subtracting weights until it is exhausted, admitting the item that crosses it. Concretely, with threshold key `T_w` (the current heap min), draw `r ~ U(0,1)` and invert: `Pr[X_w > S] = T_w^S` should equal `r` at `S = X_w`, giving `X_w = log(r)/log(T_w)` (both logs negative, so `X_w > 0`); then advance through items subtracting `w_c, w_{c+1}, ...` until the running sum first reaches `X_w` — that item enters. When it enters I need to give it a key consistent with "it cleared `T_w`": draw the new key from the conditional, `t_w = T_w^{w_i}`, `r2 ~ U(t_w, 1)`, key `= r2^{1/w_i}` (which forces `key > T_w`), then refresh `T_w` to the new heap min and draw the next budget. Random draws drop from `O(n)` to `O(k log(n/k))`, the weighted echo of the same logarithmic acceptance count.
 
-The basic per-item rule is still the one I want when `N` is not huge and the random-draw count does not dominate. The gap-driven uniform version fills the same interface, and the weighted versions use the same bounded-buffer shape with a heap for the keys. Putting it into real, runnable code:
-
-```python
-import math, random, heapq
-
-class StreamSampler:
-    def __init__(self, k):
-        self.k = k
-        self.buffer = []
-        self.i = 0
-
-    def add(self, item):
-        self.i += 1
-        if len(self.buffer) < self.k:
-            self.buffer.append(item)
-        else:
-            j = random.randrange(self.i)        # uniform in {0,...,i-1}
-            if j < self.k:                      # probability k/i
-                self.buffer[j] = item
-
-    def sample(self):
-        return self.buffer
-
-def sample_stream(stream, k):
-    sampler = StreamSampler(k)
-    for item in stream:
-        sampler.add(item)
-    return sampler.sample()
-
-class FastStreamSampler:
-    def __init__(self, k):
-        self.k = k
-        self.buffer = []
-        self.i = 0
-        self.schedule_state = 1.0
-        self.next_i = None
-
-    def _schedule_next(self):
-        gap = math.floor(math.log(random.random()) / math.log(1.0 - self.schedule_state))
-        self.next_i += gap + 1
-
-    def add(self, item):
-        self.i += 1
-        if len(self.buffer) < self.k:
-            self.buffer.append(item)
-            if len(self.buffer) == self.k:
-                self.schedule_state = math.exp(math.log(random.random()) / self.k)
-                self.next_i = self.k
-                self._schedule_next()
-        elif self.i == self.next_i:
-            self.buffer[random.randrange(self.k)] = item
-            self.schedule_state *= math.exp(math.log(random.random()) / self.k)
-            self._schedule_next()
-
-    def sample(self):
-        return self.buffer
-
-def sample_stream_fast(stream, k):
-    sampler = FastStreamSampler(k)
-    for item in stream:
-        sampler.add(item)
-    return sampler.sample()
-
-def sample_stream_weighted(stream, k):
-    heap = []
-    for item, weight in stream:
-        key = random.random() ** (1.0 / weight)
-        if len(heap) < k:
-            heapq.heappush(heap, (key, item))
-        elif key > heap[0][0]:
-            heapq.heapreplace(heap, (key, item))
-    return [item for _key, item in heap]
-
-def sample_stream_weighted_fast(stream, k):
-    it = iter(stream)
-    heap = []
-    for _ in range(k):
-        item, weight = next(it)
-        heapq.heappush(heap, (random.random() ** (1.0 / weight), item))
-    threshold = heap[0][0]
-    budget = math.log(random.random()) / math.log(threshold)
-    for item, weight in it:
-        budget -= weight
-        if budget <= 0:
-            cutoff = threshold ** weight
-            key = random.uniform(cutoff, 1.0) ** (1.0 / weight)
-            heapq.heapreplace(heap, (key, item))
-            threshold = heap[0][0]
-            budget = math.log(random.random()) / math.log(threshold)
-    return [item for _key, item in heap]
-```
-
-The whole chain, end to end: I can't know `N` and can't store the stream, so I demand only that what I'm holding always be a uniform sample of what I've seen — which forces the `(t+1)`-st item to enter with probability `k/(t+1)` and forces uniform eviction, and an induction on `t` shows that single local rule gives every size-`k` subset probability `1/C(t,k)` all the way to `t = N`. That basic rule is correct but spends a random draw on every record while only `~k ln(N/k)` later records ever enter, so I reframe each item as carrying a uniform tag and keep the `k` smallest tags; the admission threshold is just the scalar `w = U^{1/k}`, fixed-threshold admissions are independent so the gap between them is geometric and I leap it with one `floor(log U / log(1-w))`, tightening `w` by a fresh `U^{1/k}` after each admission. Bending the tag to `u^{1/w}` makes the largest keys land on the heaviest items with probability `w_i / sum_j w_j`, giving weighted sampling without replacement via a `k`-element min-heap, and replacing the count budget with an exponential weight budget jumps over the rejects there too.
+The basic per-item rule is still the one I want when `N` is not huge and the random-draw count does not dominate. The gap-driven uniform version fills the same interface, and the weighted versions use the same bounded-buffer shape with a heap standing in for the single scalar threshold — a heap because the keys are no longer order statistics of one common uniform, each item having its own exponent. From here, turning each of the four rules (per-item, gap-skipping, weighted heap, weighted-with-jumps) into code is a direct transcription of the update rule already pinned down above; nothing about the implementation adds a new decision.

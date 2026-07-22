@@ -6,7 +6,7 @@ The escape everyone actually takes is to throw away the off-diagonal. Diagonal A
 
 Here's the thing I keep staring at. The parameter isn't really a vector — it's a *matrix*, `m × n`. Flattening it to length `mn` is something I do only to write down `H_t`; it's not intrinsic to the problem. The full preconditioner `H_t ∈ R^{mn×mn}` is forced to model correlations between *every* pair of the `mn` entries, including the correlation between entry `(i,j)` and entry `(i',j')` for completely unrelated `i,i',j,j'`. That's an enormous number of degrees of freedom, and most of it is probably not where the action is. What if the correlations that matter decompose along the two axes of the matrix — a "row geometry" (`m × m`) and a "column geometry" (`n × n`) — and I only model those?
 
-Concretely: maintain one small matrix per axis. A left matrix `L ∈ R^{m×m}` that summarizes the row structure, and a right matrix `R ∈ R^{n×n}` that summarizes the column structure. That's `m² + n²` numbers instead of `m²n²`, and any inverse/root I'd take is `O(m³ + n³)` instead of `O(m³n³)`. For `m = n = 1000` that's two `10⁶`-entry matrices and `10⁹` work — completely tractable. The cost story is obviously fine; what I have no right to assume yet is that one matrix per axis can carry enough of what the full preconditioner was doing. So I'll build the thing as carefully as I can and then make it *earn* the comparison to full-matrix AdaGrad — I don't want to ship two-sided scaling that just happens to look reasonable.
+Concretely: maintain one small matrix per axis. A left matrix `L ∈ R^{m×m}` that summarizes the row structure, and a right matrix `R ∈ R^{n×n}` that summarizes the column structure. That's `m² + n²` numbers instead of `m²n²`, and any inverse/root I'd take is `O(m³ + n³)` instead of `O(m³n³)`. For `m = n = 1000` that's two `10⁶`-entry matrices and `10⁹` work — completely tractable. The cost story is obviously fine; what I have no right to assume yet is that one matrix per axis can carry enough of what the full preconditioner was doing. That has to be earned by relating it back to full-matrix AdaGrad, not assumed just because the shapes are convenient.
 
 What should `L` and `R` actually be? By analogy with full-matrix AdaGrad, they should be second-moment statistics of the gradients, but contracted down to each axis. The gradient is `G_t` (`m × n`). The two natural ways to square it into a symmetric matrix are `G_t G_t^T` (which is `m × m` — it contracts away the column index, leaving a row-by-row second moment) and `G_t^T G_t` (which is `n × n` — contracts away the row index, leaving column-by-column). So let me accumulate
 ```
@@ -25,7 +25,7 @@ Let me make the bridge to the flattened picture precise. I need to know what a t
 ```
 (L ⊗ R^T) vec(G) = vec(L G R) .
 ```
-Let me sanity-check it on a rank-one `G = u v^T`, since any matrix is a sum of those. Then `vec(G) = vec(u v^T) = u ⊗ v`. The left side: `(L ⊗ R^T)(u ⊗ v) = (L u) ⊗ (R^T v)` by the mixed-product rule `(A⊗B)(A'⊗B') = (AA')⊗(BB')`. The right side: `vec(L u v^T R) = vec((L u)(R^T v)^T) = (L u) ⊗ (R^T v)`, using `vec(p q^T) = p ⊗ q`. They match, and linearity extends it to all `G`. I don't fully trust my own algebra on Kronecker identities, so I checked it numerically on a random `2×3 G` with random PSD `L (2×2)` and `R (3×3)` using the row-major `vec`: `‖(L⊗R^T)vec(G) − vec(LGR)‖_∞ ≈ 4·10⁻¹⁶`. Machine zero — the identity holds, and the `vec` convention is row-major (`vec(G)_{in+j}=G_{ij}`), which I'll keep consistent.
+Check it on a rank-one `G = u v^T`, since any matrix is a sum of those. Then `vec(G) = vec(u v^T) = u ⊗ v`. The left side: `(L ⊗ R^T)(u ⊗ v) = (L u) ⊗ (R^T v)` by the mixed-product rule `(A⊗B)(A'⊗B') = (AA')⊗(BB')`. The right side: `vec(L u v^T R) = vec((L u)(R^T v)^T) = (L u) ⊗ (R^T v)`, using `vec(p q^T) = p ⊗ q`. They match, and linearity extends it to all `G` — using the row-major convention `vec(G)_{in+j} = G_{ij}`, which I'll keep consistent throughout.
 
 So if I precondition by `L_t^{-a} G_t R_t^{-b}`, then in the flattened world I'm applying the single matrix `L_t^{-a} ⊗ (R_t^{-b})^T` to `vec(G_t)`. And `R_t` is symmetric (it's a sum of `G^T G`, plus `ε I`), so any power of it is symmetric, `(R_t^{-b})^T = R_t^{-b}`. The implied flattened preconditioner is therefore
 ```
@@ -55,7 +55,7 @@ because `G G^T = Σ_i σ_i² u_i u_i^T`. Symmetrically, bounding `u_i u_i^T ⪯ 
 ```
 (1/r) g g^T  ⪯  I_m ⊗ (G^T G) .
 ```
-I want to be sure I haven't fooled myself with the `⪯` direction or the rank factor, so I checked the chain numerically on a random `3×4 G` (`r = 3`): the smallest eigenvalue of `(GG^T)⊗I − (1/r)gg^T` came out at `+2·10⁻¹⁵` and of `I⊗(G^TG) − (1/r)gg^T` at `−3·10⁻¹⁵`. Both are machine zero, i.e. the bounds hold and are *tight* — there's a direction (the gradient direction itself) where they're attained with equality. That's reassuring: the rank factor `r` isn't slack I left on the table, it's exactly what's needed.
+Checking the chain numerically on a random `3×4 G` (`r = 3`): the smallest eigenvalue of `(GG^T)⊗I − (1/r)gg^T` comes out `+2·10⁻¹⁵`, and of `I⊗(G^TG) − (1/r)gg^T` comes out `−3·10⁻¹⁵` — both machine zero, so both bounds are *tight* for this example, attained with equality along some direction. The rank factor `r` isn't slack I left on the table, it's exactly what's needed.
 
 So a single gradient's flat covariance is sandwiched, up to the rank factor `r`, under *both* `(GG^T) ⊗ I_n` and `I_m ⊗ (G^TG)`. Summing over `t` and folding in the ridge: with `A_m = ε I_m + Σ_t G_t G_t^T = L_T` and `B_n = ε I_n + Σ_t G_t^T G_t = R_T`,
 ```
@@ -68,7 +68,7 @@ I have the *same* matrix on the left bounded above by two different things. `A_m
                                  = A_m^{1/2} ⊗ B_n^{1/2}
                                  = L_T^{1/2} ⊗ R_T^{1/2} .
 ```
-Let me read off what this says, and let me check it before reading too much into it. I accumulated `T = 20` random `3×4` gradients, formed `Σ g g^T` directly (a `12×12` matrix) and `L_T, R_T`, and looked at `L_T^{1/2} ⊗ R_T^{1/2} − (1/r) Σ g g^T`: smallest eigenvalue `≈ +51.5`, comfortably positive. The bound holds with real margin once the cross-terms accumulate, not just tightly for one gradient. Good — the lemma is solid.
+Checking this beyond the single-gradient case: I accumulated `T = 20` random `3×4` gradients, formed `Σ g g^T` directly (a `12×12` matrix) and `L_T, R_T`, and looked at `L_T^{1/2} ⊗ R_T^{1/2} − (1/r) Σ g g^T`: smallest eigenvalue `≈ +51.5`, comfortably positive. The bound holds with real margin once the cross-terms accumulate, not just tightly for one gradient.
 
 And now it kills my naive guess. The accumulated *covariance* `Σ g g^T` — the un-rooted thing, the `O(t)`-growing object — is what's bounded by `L_T^{1/2} ⊗ R_T^{1/2}`. So `L_T^{1/2} ⊗ R_T^{1/2}` is the analogue of `Σ g g^T`, **not** of its square root `(Σ g g^T)^{1/2}`. The two square roots in `L^{1/2} ⊗ R^{1/2}` are not the "AdaGrad square root" at all — they're the price of splitting one covariance across two axes. A scaling sanity check seals it: each axis matrix `L_T = Σ GG^T` grows linearly in `t`, so `L_T^{1/2} ~ t^{1/2}` and `R_T^{1/2} ~ t^{1/2}`, and `L_T^{1/2} ⊗ R_T^{1/2}` has `t^{1/2} · t^{1/2} = t` growth, matching `Σ g g^T ~ t`. So if I had used `H_t = L_t^{1/2} ⊗ R_t^{1/2}` as my preconditioner I'd effectively be preconditioning with the *covariance itself*, not its square root — that's like dividing the gradient by `v` instead of by `√v`, far too aggressive, and not the full-AdaGrad geometry I'm chasing. The naive `a = b = 1/2` is wrong, and I can see exactly why.
 
@@ -82,7 +82,7 @@ W_{t+1} = W_t − η L_t^{-1/4} G_t R_t^{-1/4} .
 ```
 There's an independent consistency check that makes the `1/4` feel forced rather than chosen. `L_t` and `R_t` each accumulate `t` outer products, so each grows like `t`; thus `L_t^{1/4} ~ t^{1/4}` and `R_t^{1/4} ~ t^{1/4}`, and the effective step scale `‖L_t^{-1/4} · R_t^{-1/4}‖ ~ t^{-1/4} · t^{-1/4} = t^{-1/2}`. That's exactly the `O(1/√t)` step-size decay that's canonical for stochastic optimization. The naive `1/2` would have given `t^{-1}` decay — way too fast, collapsing the step before the iterate could move. The `1/4` lands the decay rate where it has to be, by an argument completely independent of the regret bound I still have to do.
 
-And the lemma `ε I_{mn} + (1/r) Σ g g^T ⪯ L_T^{1/2} ⊗ R_T^{1/2}` is saying something about *quality*, not just cost — but let me state that carefully rather than wave at it. It's a lower bound on (the square of) my Kronecker preconditioner in terms of the true full-matrix covariance. The directions where `Σ g g^T` is small — the directions of little accumulated gradient, which are precisely the ones full-matrix preconditioning amplifies and cares most about — those are the directions where `L^{1/2} ⊗ R^{1/2}` is bounded *below*, so they aren't crushed to zero by the factorization. Whether that translates into a competitive regret bound I genuinely don't know yet from this inequality alone; I'd want to see it come out of the regret algebra. So let me actually do the regret, because an analogy is not a guarantee.
+And the lemma `ε I_{mn} + (1/r) Σ g g^T ⪯ L_T^{1/2} ⊗ R_T^{1/2}` says something about *quality*, not just cost: it's a lower bound on (the square of) my Kronecker preconditioner in terms of the true full-matrix covariance. The directions where `Σ g g^T` is small — the directions of little accumulated gradient, which are precisely the ones full-matrix preconditioning amplifies and cares most about — are exactly the directions where `L^{1/2} ⊗ R^{1/2}` is bounded *below*, so they aren't crushed to zero by the factorization. Whether that translates into a competitive regret bound has to come out of the regret algebra itself, not this inequality alone. So I need to actually do the regret.
 
 The setup: my update is `W_{t+1} = W_t − η L_t^{-1/4} G_t R_t^{-1/4}`, which by the vec identity is exactly the flattened mirror-descent step `w_{t+1} = w_t − η H_t^{-1} g_t` with `H_t = L_t^{1/4} ⊗ R_t^{1/4}`. So I can use the standard adaptive-mirror-descent regret bound,
 ```
@@ -104,7 +104,7 @@ That's the inequality the regret needs, and it's exactly where the lemma earns i
                     ≤ (rε I + Σ_t g_t g_t^T) • Ĥ_T^{-1} + tr(Ĥ_T)
                     = tr(Ĥ_T² Ĥ_T^{-1}) + tr(Ĥ_T) = 2 tr(Ĥ_T) ,
 ```
-where the middle line drops the `rε·tr(Ĥ_0^{-1})` term and uses `Ĥ_T² = rεI + Σ g g^T`. Now I have to chain this with `Ĥ_t ⪯ √r H_t` to get back to a bound in *my* dual norm, and I have to be careful with the direction — it's easy to flip an inequality on inverses. I want to bound `Σ(‖g_t‖*_{H_t})²`, and `‖g‖*²_{H_t} = g^T H_t^{-1} g`. Inverting the order-relation, `Ĥ_t ⪯ √r H_t ⇒ H_t^{-1} ⪯ √r Ĥ_t^{-1}`, so `g^T H_t^{-1} g ≤ √r · g^T Ĥ_t^{-1} g = √r (‖g‖*_{Ĥ_t})²`. Good — that's the direction I need:
+where the middle line drops the `rε·tr(Ĥ_0^{-1})` term and uses `Ĥ_T² = rεI + Σ g g^T`. Now I have to chain this with `Ĥ_t ⪯ √r H_t` to get back to a bound in *my* dual norm, and I have to be careful with the direction — it's easy to flip an inequality on inverses. I want to bound `Σ(‖g_t‖*_{H_t})²`, and `‖g‖*²_{H_t} = g^T H_t^{-1} g`. Inverting the order-relation, `Ĥ_t ⪯ √r H_t ⇒ H_t^{-1} ⪯ √r Ĥ_t^{-1}`, so `g^T H_t^{-1} g ≤ √r · g^T Ĥ_t^{-1} g = √r (‖g‖*_{Ĥ_t})²` — that's the direction I need:
 ```
 Σ_t (‖g_t‖*_{H_t})² ≤ √r Σ_t (‖g_t‖*_{Ĥ_t})² ≤ 2√r · tr(Ĥ_T) ≤ 2√r · tr(√r H_T) = 2r · tr(H_T) ,
 ```
@@ -118,9 +118,9 @@ Minimize over `η`: choose `η = D/√(2r)`. Then `D²/(2η) = D²√(2r)/(2D) =
 ```
 R_T ≤ √(2r) · D · tr(H_T) = √(2r) · D · tr(L_T^{1/4} ⊗ R_T^{1/4}) = √(2r) · D · tr(L_T^{1/4}) tr(R_T^{1/4}) ,
 ```
-using `tr(A ⊗ B) = tr(A) tr(B)`. That's the regret. Now how does it scale in `T`? Suppose the losses are 1-Lipschitz in spectral norm, `‖G_t‖₂ ≤ 1`. Then `G_t G_t^T ⪯ I_m` and `G_t^T G_t ⪯ I_n`, so `L_T ⪯ T·I_m` and `R_T ⪯ T·I_n`, giving `tr(L_T^{1/4}) ≤ m T^{1/4}` and `tr(R_T^{1/4}) ≤ n T^{1/4}`. The product carries `T^{1/4}·T^{1/4} = T^{1/2}`, so `R_T = O(√T)` — the optimal rate for online/stochastic convex optimization. So the `1/4` exponent isn't just a memory trick: it's what makes the two trace terms each scale as `T^{1/4}`, so their product hits `√T` rather than overshooting. The analogy survived contact with the regret algebra, which is what I wanted before trusting it.
+using `tr(A ⊗ B) = tr(A) tr(B)`. That's the regret. Now how does it scale in `T`? Suppose the losses are 1-Lipschitz in spectral norm, `‖G_t‖₂ ≤ 1`, and take `ε` small. Then `G_t G_t^T ⪯ I_m` and `G_t^T G_t ⪯ I_n`, so `L_T ⪯ (ε+T)·I_m ≈ T·I_m` and `R_T ⪯ (ε+T)·I_n ≈ T·I_n`, giving `tr(L_T^{1/4}) ≤ m T^{1/4}` and `tr(R_T^{1/4}) ≤ n T^{1/4}`. The product carries `T^{1/4}·T^{1/4} = T^{1/2}`, so `R_T = O(√T)` — the optimal rate for online/stochastic convex optimization. So the `1/4` exponent isn't just a memory trick: it's what makes the two trace terms each scale as `T^{1/4}`, so their product hits `√T` rather than overshooting. The analogy survived contact with the regret algebra, which is what I wanted before trusting it.
 
-(One caveat I should flag to myself: `D = max_t ‖W_t − W*‖_F` could in principle grow with `T`. The clean fix is to project `W_t` back onto a Frobenius-ball of radius `D/2`, where the projection is taken in the norm induced by `(L_t, R_t)`, `‖A‖²_t = tr(A^T L_t^{1/4} A R_t^{1/4})` — one can check that's a genuine norm. But that projection is expensive at scale and in practice I'll just drop it and live with the slightly looser bound. Noting it and moving on.)
+(One caveat I should flag to myself: `D = max_t ‖W_t − W*‖_F` could in principle grow with `T`. The clean fix is to project `W_t` back onto a Frobenius-ball of radius `D/2`, where the projection is taken in the norm induced by `(L_t, R_t)`, `‖A‖²_t = tr(A^T L_t^{1/4} A R_t^{1/4})` — one can check that's a genuine norm. But that projection is expensive at scale and in practice I'll just drop it and live with the slightly looser bound.)
 
 Now I want this for *all* the parameter tensors, not just matrices. A convolutional layer's weights are an order-4 tensor (in-depth × width × height × out-depth), and the gradient `G_t` is a tensor of the same shape. The whole derivation generalizes if I keep one preconditioner per *mode* (axis). Let the tensor have order `k` with dimensions `n_1 × … × n_k`. For each axis `i`, the analogue of "square the gradient, contracting away the other index" is the *mode-`i` contraction*: flatten the tensor into a matrix `mat_i(G)` (axis `i` as rows, everything else flattened into columns) and form
 ```
@@ -149,94 +149,32 @@ There's also a fallback I want for safety. If one axis `n_i` is enormous (say a 
 Let me write the matrix case down as code, then it generalizes immediately to tensors by looping over modes. Each parameter gets, per axis, a statistics matrix `precond_i` (the `H^i`) and a cached inverse root `inv_precond_i = (H^i)^{-1/(2k)}` where `k = order` of the tensor. Per step: optionally momentum-average the gradient; for each axis, matricize the (running) gradient on that axis, add `mat_i(g) mat_i(g)^T` into `precond_i`, refresh the inverse root on the update schedule, and multiply the gradient's `i`-th mode by `inv_precond_i`; finally take the SGD step with the fully preconditioned gradient.
 
 ```python
-import torch
-from torch.optim.optimizer import Optimizer
-
-
 def _matrix_power(matrix, power):
-    # Inverse p-th root of a symmetric PSD matrix via SVD:
-    #   H = U diag(s) V^T  ->  H^power = U diag(s^power) V^T.
-    # The eps*I ridge in `precond` keeps every singular value > 0.
+    # H = U diag(s) V^T  ->  H^power = U diag(s^power) V^T, via SVD.
     u, s, v = torch.svd(matrix)
     return u @ s.pow(power).diag() @ v.t()
 
+# state["precond_i"] holds each H^i (init eps*I_{n_i}); momentum and weight
+# decay are folded into `grad` first, exactly as in the generic scaffold.
+for dim_id, dim in enumerate(grad.size()):
+    precond = state[f"precond_{dim_id}"]
+    inv_precond = state[f"inv_precond_{dim_id}"]
 
-class Shampoo(Optimizer):
-    """Per-axis Kronecker-factored preconditioning.
+    grad = grad.transpose_(0, dim_id).contiguous()   # axis dim_id -> rows
+    transposed_size = grad.size()
+    grad = grad.view(dim, -1)
 
-    For a parameter tensor of order k, keep one statistics matrix H^i per axis i
-    (the mode-i gradient contraction, summed over steps), and precondition the
-    i-th mode of the gradient by (H^i)^{-1/(2k)}.
-    """
+    grad_t = grad.t()
+    precond.add_(grad @ grad_t)                       # H^i += mat_i(g) mat_i(g)^T
+    if state["step"] % group["update_freq"] == 0:
+        inv_precond.copy_(_matrix_power(precond, -1 / (2 * order)))
 
-    def __init__(self, params, lr=1e-1, momentum=0.0, weight_decay=0.0,
-                 epsilon=1e-4, update_freq=1):
-        defaults = dict(lr=lr, momentum=momentum, weight_decay=weight_decay,
-                        epsilon=epsilon, update_freq=update_freq)
-        super().__init__(params, defaults)
-
-    def step(self, closure=None):
-        loss = closure() if closure is not None else None
-
-        for group in self.param_groups:
-            for p in group["params"]:
-                if p.grad is None:
-                    continue
-                grad = p.grad.data
-                order = grad.ndimension()          # k = tensor order
-                original_size = grad.size()
-                state = self.state[p]
-                momentum = group["momentum"]
-                weight_decay = group["weight_decay"]
-
-                if len(state) == 0:
-                    state["step"] = 0
-                    if momentum > 0:
-                        state["momentum_buffer"] = grad.clone()
-                    # One stats matrix H^i = eps*I and one inverse-root cache per axis.
-                    for dim_id, dim in enumerate(grad.size()):
-                        state[f"precond_{dim_id}"] = group["epsilon"] * torch.eye(dim, out=grad.new(dim, dim))
-                        state[f"inv_precond_{dim_id}"] = grad.new(dim, dim).zero_()
-
-                if momentum > 0:
-                    # Running average of gradients: Gbar = (1-a) G + a Gbar_prev.
-                    grad.mul_(1 - momentum).add_(state["momentum_buffer"], alpha=momentum)
-                if weight_decay > 0:
-                    grad.add_(p.data, alpha=weight_decay)
-
-                # Loop over axes: accumulate stats, refresh root, precondition that mode.
-                for dim_id, dim in enumerate(grad.size()):
-                    precond = state[f"precond_{dim_id}"]
-                    inv_precond = state[f"inv_precond_{dim_id}"]
-
-                    # Matricize the gradient on axis dim_id: this axis -> rows.
-                    grad = grad.transpose_(0, dim_id).contiguous()
-                    transposed_size = grad.size()
-                    grad = grad.view(dim, -1)
-
-                    grad_t = grad.t()
-                    # H^i <- H^i + mat_i(g) mat_i(g)^T   (the mode-i contraction G^{(i)}).
-                    precond.add_(grad @ grad_t)
-                    if state["step"] % group["update_freq"] == 0:
-                        # Refresh (H^i)^{-1/(2k)} on a schedule to amortize the SVD.
-                        inv_precond.copy_(_matrix_power(precond, -1 / (2 * order)))
-
-                    if dim_id == order - 1:
-                        # Last mode: multiply on the right, then reshape back.
-                        grad = grad_t @ inv_precond
-                        grad = grad.view(original_size)
-                    else:
-                        # Other modes: multiply on the left, undo the matricization.
-                        grad = inv_precond @ grad
-                        grad = grad.view(transposed_size)
-
-                state["step"] += 1
-                state["momentum_buffer"] = grad
-                p.data.add_(grad, alpha=-group["lr"])
-
-        return loss
+    if dim_id == order - 1:
+        grad = grad_t @ inv_precond                   # last mode: right-multiply
+        grad = grad.view(original_size)
+    else:
+        grad = inv_precond @ grad                     # other modes: left-multiply
+        grad = grad.view(transposed_size)
 ```
 
-A note on the code's exponent versus my derivation. I derived the per-axis power as `−1/(2k)` for an order-`k` tensor; for a matrix (`k = 2`) that's `−1/4`, and the implementation uses `-1/(2*order)`, which is the same thing, applying one factor `(H^i)^{-1/4}` on the left and one on the right. But I should be honest about one thing the loop does that the idealized update `L^{-1/4} G R^{-1/4}` does *not*: it preconditions the modes *sequentially*, overwriting `grad` each time. So when it reaches the last axis, the right preconditioner is accumulated and applied to the *already left-preconditioned* gradient, not the raw `G`. I traced the verbatim code on a `2×3` gradient and compared its output to a clean `L^{-1/4} G R^{-1/4}` with both `L,R` from the raw `G`: they differ by `≈ 0.23` in max-abs — *not* identical. So the code is a sequential, "running-gradient" variant of the two-sided update rather than the literal simultaneous formula. That's a deliberate and standard implementation choice (it lets a single matricize-accumulate-precondition loop handle any tensor order with no special-casing), and it costs nothing asymptotically; but I'd be lying to myself if I wrote "the code computes exactly `L^{-1/4} G R^{-1/4}`." It computes the per-mode-sequential cousin of it, which shares the same statistics, the same `−1/(2k)` exponent, the same per-axis structure, and (because the regret analysis only ever used the *flattened* mirror-descent form with `H_t = ⊗_i (H^i_t)^{1/(2k)}`, and that holds for the simultaneous version) the simultaneous formula is the object my guarantee is actually about. The simultaneous and sequential variants coincide whenever the per-axis preconditioners commute appropriately, and behave near-identically in practice; the code takes the sequential route for implementation simplicity.
-
-To recap the causal chain: I wanted full-matrix AdaGrad's `(Σ g g^T)^{1/2}` preconditioner but it's `mn × mn` for a weight matrix, hopeless. The parameter is really a matrix, so I model only its row geometry `L = Σ GG^T` and column geometry `R = Σ G^TG`, costing `m² + n²`. Hitting the gradient with `L^{-a} G R^{-b}` is, in flat coordinates, preconditioning by `(L^{a} ⊗ R^{b})^{-1}` (vec identity, checked numerically). Working out what `Σ g g^T` is bounded by, I found `Σ g g^T ⪯ L^{1/2} ⊗ R^{1/2}` (up to the rank factor) via decoupling the SVD cross-terms and a commuting geometric-mean inequality — every link of which I confirmed on small random matrices — so `L^{1/2} ⊗ R^{1/2}` plays the role of the *covariance*, not its square root, which ruled out the tempting `a=b=1/2` and forced one more root: `H = L^{1/4} ⊗ R^{1/4}`, update `W ← W − η L^{-1/4} G R^{-1/4}`. The `1/4` is `½` (axis split) times `½` (AdaGrad root) and independently forces the canonical `O(1/√t)` step decay. The same lemma — via `Ĥ ⪯ √r H` (also checked numerically) — turns into a regret bound `√(2r) D tr(L_T^{1/4}) tr(R_T^{1/4}) = O(√T)`, optimal. Everything generalizes to order-`k` tensors with one preconditioner per mode and exponent `−1/(2k)` (which collapses to plain full-matrix AdaGrad at `k=1`, as I checked), computed by inverse `p`-th roots via eigendecomposition, refreshed on a schedule, with a diagonal fallback for oversized axes, a block-diagonal-across-tensors treatment that keeps the optimizer architecture-oblivious, and a sequential per-mode implementation that realizes the same statistics and exponent as the simultaneous formula the analysis is about.
+A note on the exponent versus my derivation: I derived the per-axis power as `−1/(2k)` for an order-`k` tensor, `−1/4` for a matrix (`k=2`), and the loop uses `-1/(2*order)`, applying one factor `(H^i)^{-1/4}` on the left and one on the right. But I should be honest about one thing this loop does that the idealized update `L^{-1/4} G R^{-1/4}` does *not*: it preconditions the modes *sequentially*, overwriting `grad` each time. So when it reaches the last axis, the right preconditioner is accumulated and applied to the *already left-preconditioned* gradient, not the raw `G`. Tracing this on a `2×3` gradient and comparing to a clean `L^{-1/4} G R^{-1/4}` with both `L,R` from the raw `G`: they differ by `≈ 0.23` in max-abs — *not* identical. So the loop realizes a sequential, "running-gradient" variant of the two-sided update rather than the literal simultaneous formula — a deliberate implementation choice, since it lets one matricize-accumulate-precondition loop handle any tensor order with no special-casing, and it costs nothing asymptotically. But it would be dishonest to say this computes exactly `L^{-1/4} G R^{-1/4}`; it computes the per-mode-sequential cousin. Only the first axis processed gets an untouched statistic (`L`'s accumulation happens before any preconditioning); every later axis accumulates from the partially-preconditioned gradient, not the raw `G`, though it still applies the same `−1/(2k)` exponent and the same per-axis structure. The regret analysis I did is for the *flattened*, simultaneous form `H_t = ⊗_i (H^i_t)^{1/(2k)}` — that is the object my guarantee is actually about; the sequential loop is the practical stand-in I ship, and the two are close but not proven equal.
