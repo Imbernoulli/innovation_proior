@@ -218,3 +218,19 @@ class StockTrendModel(nn.Module):
         pred_all = self.fc_out(all_info).squeeze()
         return pred_all
 ```
+
+The tensor details matter because the axes are the method. The predefined initialization divides
+each member's contribution by the membership-masked concept degree plus one, so empty concepts stay
+zero and singleton concepts are smoothed before zero rows are deleted. The concept-to-stock
+attention uses `Softmax(dim=1)` because each row is a stock choosing among concept columns. The
+hidden-module assignment is a single masked row-argmax: remove the diagonal self-score, keep exactly
+one remaining maximum per stock, restore the chosen values, re-add the diagonal only for surviving
+columns, and delete empty columns. The `+ 1e-6` in the cosine guards the zero-norm case.
+
+Before trusting any of this I ran the full forward once on a tiny synthetic day — six stocks, three
+concept columns with the last column empty and the last stock untagged. The predefined stage kept
+two concepts (the empty column dropped), the hidden stage discovered four concepts from six seeds
+(so the deletion did fire, two seeds removed), the telescoping residual
+`|e_shared_back + i_shared_back + individual_info − x_hidden|` came out at ~2e-7 (machine precision,
+confirming the decomposition is exact), and the output was one scalar per stock. The shapes and the
+edge-case handling are what the derivation predicted.

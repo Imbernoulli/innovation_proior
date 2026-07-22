@@ -117,3 +117,5 @@ def hyperband(space, R, eta, rng,
     # return the configuration with the smallest validation loss seen anywhere
     return min(all_results, key=lambda cfg_loss_r: cfg_loss_r[1])[0]
 ```
+
+That is the form I want to preserve in code: the outer loop is the bracket hedge, the inner loop is plain successive halving, every ranking is by validation loss with smaller better, and the returned configuration is the best intermediate loss seen anywhere in the sweep. A class wrapper can add bookkeeping such as result dictionaries, counters, and optional early-stop flags, but those are implementation details around the same two loops, not a different allocation policy.

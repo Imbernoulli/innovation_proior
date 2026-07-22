@@ -71,3 +71,11 @@ The implementation should preserve exactly that coupling without extra machinery
 CE(p, lambda*e_a + (1-lambda)*e_b) [dense soft target] = 1.08717
 lambda*CE(p, e_a) + (1-lambda)*CE(p, e_b)              = 1.08717
 ```
+
+They match to five places, so the two-term weighted loss is exactly cross-entropy against the dense soft target. Good — that means the implementation needs no custom loss, just two ordinary cross-entropy calls with the original and shuffled labels.
+
+The design choices now fit together. Random partners cover more of the span of high-dimensional training data than a nearest-neighbor rule and avoid choosing a metric. Raw input interpolation constrains the classifier where it is actually evaluated, even when the virtual input is not perceptually natural. Two-example mixtures keep the procedure cheap, while adding more examples with Dirichlet weights increases cost without changing the core prior. If `alpha <= 0` in code, setting `lambda = 1` turns the routine back into ordinary minibatch training, consistent with the `alpha -> 0` concentration I measured.
+
+There is still a limitation inside the same prior. If an interpolated point lands on the true data manifold with a soft target that conflicts with the real label there, the constraint can cause underfitting. That does not invalidate the construction; it names the assumption. I am imposing local linear behavior between sampled examples unless the data geometry makes that bias wrong.
+
+So what survives all the checks is a coupled vicinal rule: supervise both the synthetic input position and the synthetic target with the same interpolation coefficient. It is not input averaging alone — that gave the cliff and the plateaus. It is not target smoothing alone — that ignored the partner and the distance. It is the demand that predictions vary linearly along data-dependent chords, made enforceable because the target attached to each chord varies linearly too, and made smoothing-provable because that shared coefficient is exactly what lets the partner term cancel.

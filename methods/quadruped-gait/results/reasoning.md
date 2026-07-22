@@ -169,3 +169,5 @@ def run(env, cpg, n_steps, foot_y=0.0838,
         speeds.append(env.robot.GetBaseLinearVelocity()[0])     # forward speed = objective
     return np.mean(speeds[-1000:])
 ```
+
+So the controller is a tiny network of Hopf limit cycles, one per leg: each leg's amplitude and frequency are explicit parameters, the angular speed switches between a swing and a stance value so I can set the two half-durations (and hence speed and duty) independently, and Kuramoto sinusoidal coupling whose stable fixed points are a phase-offset matrix locks the four legs into whatever gait that matrix encodes — trot, walk, pace, bound — re-locking after any disturbance. The oscillator state maps to a foot trajectory (fore/aft from r cosθ, lift gated by the sign of sinθ), inverse kinematics and PD turn that into joint torques, and because the whole behavior reduces to a handful of interpretable knobs, I can optimize those few numbers — black-box or evolutionary, in simulation — to push forward speed.

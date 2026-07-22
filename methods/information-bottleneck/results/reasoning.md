@@ -72,3 +72,5 @@ def ib_step(p_x, p_y_given_x, p_t_given_x, beta):
     logits = broadcast(log(p_t)) if beta == 0 else log(p_t)[None, :] - beta * d
     return softmax_over_t(logits)
 ```
+
+Putting it together, the representation I get is an approximate minimal sufficient statistic: it keeps the information in `X` that matters for `Y` and discards as much other information as the tradeoff allows. The code is not a reconstruction of `X`; it is a compressed carrier of relevance. The distinctive move is that the relationship between `X` and `Y` supplies the distortion through `D_KL[p(y|x) || p(y|t)]`, turning feature selection into a variational information problem.

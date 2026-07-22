@@ -91,3 +91,36 @@ out:
  [ 0.     9.221  0.215  0.250]   # cluster B
  [ 0.    10.739  0.250  0.291]]  # cluster B
 ```
+
+Shape preserved, every entry non-negative, and each cell pooled with its true cluster partner rather
+than across clusters — the gene-0 cells stay gene-0-dominant, the gene-1 cells stay gene-1-dominant.
+The dropout zeros even get partially filled: cell 1's gene-3 count was 0 and comes back as 0.25 from
+its partner. One thing I did not expect and should be honest about: the output library sums are not
+exactly the inputs — 11 went to 10.68, 13 to 12.29. That is because the library factor is computed
+in square-root space and then re-applied to an *averaged* sqrt-profile whose sum is no longer the
+cell's own; squaring afterward does not put it back. So per-cell depth is approximately, not
+exactly, preserved. For this denoising purpose that is fine — the point was to keep cells at their
+own scale rather than collapse them to one mean, and they clearly do — but I would not advertise it
+as exact normalization.
+
+Now `k` itself, which is a genuine bias-variance lever. Small `k` averages few cells, so it removes
+little noise (the `μ/m` table says pool of 5 still leaves a fifth of the variance) but distorts
+little signal; large `k` removes more noise but, because the pool is a hard uniform average, it
+eventually reaches past the boundary of the local state and blends in cells that are not quite the
+same, smearing real biological variation. And there is no single `k` that is right everywhere: a
+cell in a dense region has many genuine neighbors and could tolerate a large pool, while a cell on
+the edge of a trajectory has few and a large `k` drags in strangers. That a single global `k` cannot
+be right for both is the structural flaw of the whole approach. I will tune one value on the tune
+set and report it honestly; given the `μ/m` curve — most of the variance reduction is already bought
+by a pool of around ten — I would start searching near `k≈10` and not expect to need it much larger.
+
+What I expect from the feedback, then, is a real jump off zero: the variance check says a ten-cell
+pool removes ninety percent of the per-gene noise, so neighbor averaging should close a large
+fraction of the gap to the rate. But I also expect a clear gap remaining below a graph-diffusion
+rung, for the two reasons I built in on purpose. The neighbors are chosen on noisy profiles, so some
+of the pooling is simply wrong — the depth check shows the distance becomes meaningful once I
+normalize, but it says nothing about dropout corrupting *which* cell is nearest, and that corruption
+is exactly what survives here. And the pool is a hard uniform average with one global `k`, so it
+cannot adapt its bandwidth to the local density of the manifold the way a weighted affinity graph
+can. Denoising the space neighbors are found in, and replacing the hard uniform pool with an
+adaptive-bandwidth, transitive diffusion, is what the next rung would have to do.

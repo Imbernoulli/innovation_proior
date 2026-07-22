@@ -166,3 +166,5 @@ if __name__ == "__main__":
         h = x[1] - x[0]
         print(f"N={Ne}: E={E:.5f} Ha, N_check={np.sum(n)*h:.4f}, eps[:3]={np.round(eps[:3],4)}")
 ```
+
+Running it, the density integrates to exactly the number of electrons and the self-consistency loop converges to a stable energy — the auxiliary non-interacting system is faithfully reproducing the density I asked for, with the kinetic energy carried honestly by the orbitals and only the small exchange-correlation piece approximated.

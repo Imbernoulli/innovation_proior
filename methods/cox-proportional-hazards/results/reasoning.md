@@ -118,3 +118,5 @@ def fit_cox_ph(time, event, X, max_iter=50, tol=1e-8, ridge=1e-9):
 def hazard_ratio(beta, x_a, x_b):
     return float(np.exp((np.asarray(x_a) - np.asarray(x_b)) @ beta))
 ```
+
+The final shape is exactly the one the problem asked for: a proportional hazards regression in which `exp(beta_k)` is a covariate hazard ratio, the baseline hazard remains unspecified during coefficient estimation, and the risk-set conditional likelihood supplies the estimating objective.

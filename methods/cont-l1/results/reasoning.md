@@ -141,3 +141,5 @@ def training_step(vla, action_head, batch, num_patches):
     loss = torch.nn.L1Loss()(ground_truth_actions, predicted_actions)      # mean |.|
     return loss
 ```
+
+The pieces line up with the chain: empty positionally-marked action embeddings + bidirectional attention give the single-pass parallel decode; the K·D action-position hidden states, regrouped per timestep, feed a small pre-norm MLP-ResNet that regresses continuous normalized actions, dodging the discretization ceiling at negligible cost; and the mean absolute error trains it, robust and precise on focused demonstrations, single-pass-cheap where diffusion would not be. Throughput jumps because the K·D sequential passes became one, success rises because chunking cuts compounding error and continuous regression keeps the action precise, and the recipe stays simple enough to fold extra inputs into the same single forward pass.

@@ -165,3 +165,5 @@ class Compressor:
         tensor_decompressed.scatter_(0, indices, values)   # dropped coords are 0 (held in e)
         return tensor_decompressed.view(shape)
 ```
+
+So I end with a compressor that is as simple as the original greedy sparsifier but no longer forgets its mistakes. The proof object is not the sparse update by itself; it is the pair of the sparse update and the residual. Top-k gives me the contraction parameter `δ = k/d`, the residual recursion keeps the delayed mass bounded, and the virtual iterate identity tells me exactly why the real iterate shadows SGD. In the smooth case, the constant-correct bound is the `ρ`-parameterized one, with the `δ` term strictly higher order for fixed `ρ`; in the non-smooth convex case, `δ` must enter the leading constant because there is no Lipschitz-gradient bridge between `x_t` and `x̃_t`. The code is just that mechanism made local to each tensor: add residual, take absolute top-k, scatter-decompress, and store what was not sent.

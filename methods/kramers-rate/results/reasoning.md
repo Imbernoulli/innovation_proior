@@ -180,3 +180,5 @@ print("turnover peak at eta/omegab =", etas[i]/omegab, " k_peak/k_eq =", true_ra
 assert abs(transmission_factor(omegab, 1e-4*omegab) - 1.0) < 1e-3
 assert abs(transmission_factor(omegab, 1e4*omegab) - 1.0/1e4) / (1.0/1e4) < 1e-3
 ```
+
+Running it through in my head against the closed forms: at η/ω_b ≪ 1 the spatial branch sits at the plateau (κ → 1) while the energy branch rises linearly and is the smaller — so the true rate is the rising energy branch; they cross where η·(E_b/T) ≈ ω, i.e. η ≈ ω·T/E_b, which for E_b/T = 10 is η ≈ 0.1·ω — the peak sits just below the plateau right there. For η/ω_b ≫ 1 the spatial branch falls as 1/η and is the smaller — recrossing-limited. The two slopes and the plateau between them are the turnover. The equilibrium prefactor is the ceiling, touched only in the middle band.

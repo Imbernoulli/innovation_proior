@@ -121,3 +121,5 @@ def flash_attention2_backward(Q, K, V, O, dO, L, B_r, B_c, *, causal=False, soft
 
     return dQ, dK, dV
 ```
+
+This preserves the exact attention operator — the worked row reproduces single-pass softmax and the random-example backward reproduces autograd. The improvements are all about schedule and representation: keep the unnormalized accumulator until the end so each inner block drops a division, save logsumexp instead of max plus denominator so the backward can recompute `P` from one scalar, launch forward workers over query row blocks for occupancy, launch backward workers over key/value column blocks with `dQ` accumulation, and split query rows across warps so the forward path avoids inter-warp reductions.

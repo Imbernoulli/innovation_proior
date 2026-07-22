@@ -177,3 +177,5 @@ class FixupResNet(nn.Module):
         x = self.fc(x + self.bias2)
         return x
 ```
+
+For a bottleneck branch with `m = 3` the exponent and the zeroed layer change: scale the first two convs by `num_layers ** (-1/(2*3-2)) = num_layers ** (-0.25)` and zero the third conv; the scalar-bias pattern extends to `bias1a/bias1b`, `bias2a/bias2b`, and `bias3a/bias3b`, with one multiplier and the zeroed classifier unchanged.

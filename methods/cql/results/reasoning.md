@@ -448,3 +448,7 @@ class ContinuousCQL:
         q = torch.min(self.critic_1(obs, a), self.critic_2(obs, a))
         return (ent_alpha * logp - q).mean()
 ```
+
+For discrete actions the only change is that `log Σ_a exp Q(s,a)` is exact — `torch.logsumexp` over
+the action dimension of the Q-head — and the backup uses `B*` (the max) instead of `B^π`; CQL drops
+on top of QR-DQN with the same `diff = logsumexp − Q(s, a_data)` penalty.

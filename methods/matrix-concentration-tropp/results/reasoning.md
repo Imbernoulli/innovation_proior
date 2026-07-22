@@ -80,3 +80,9 @@ The master bound therefore gives
 P{lambda_max(sum_k xi_k A_k) >= t}
   <= d exp(-t^2/(2 ||sum_k A_k^2||)).
 ```
+
+The two-sided norm bound only adds symmetry and a union over the top eigenvalue of `Y` and of `-Y`. The rectangular case is not a separate proof; the self-adjoint dilation converts singular values into eigenvalues and turns the variance into the maximum of the row and column sums of squares.
+
+For positive semidefinite bounded summands, I use a scalar chord bound for `exp(theta x)` on `[0,L]` and transfer it through the spectrum. For centered bounded summands, I expose `X` and `X^2` in the exponential remainder and use the monotonicity of `(exp(theta x) - theta x - 1)/x^2` below the upper eigenvalue bound. These steps are ordinary only after the noncommutative cgf machinery is in place. The semidefinite mgf estimates feed into the same master inequality and produce matrix Chernoff, Bennett, and Bernstein bounds.
+
+What makes the insight deep is that the hard step is not a sharper scalar inequality. The hard step is choosing the only object where independence, trace, logarithm, and noncommutativity can coexist. Golden-Thompson is a beautiful two-matrix substitute for multiplication, but it separates the summands and loses the matrix variance. Lieb's theorem lets me keep the sum inside one trace exponential by replacing multiplication with cgf subadditivity. That is why the method is not scalar Chernoff plus linear algebra. It is a new noncommutative proof path for the exponential-moment method.

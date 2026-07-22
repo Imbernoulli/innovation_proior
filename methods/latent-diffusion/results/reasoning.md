@@ -287,3 +287,5 @@ class LatentDiffusion(nn.Module):
                 z = z0
         return self.decode_latent(z)
 ```
+
+The chain, end to end: pixel-space diffusion wastes its sequential budget on a near-semantics-free perceptual-compression regime, so I move that regime into a frozen, perceptual+adversarial autoencoder and run an ordinary equal-weight noise-prediction diffusion model in its small, 2D-structured latent — cutting per-step cost by about f² while compressing only mildly enough to keep reconstructions faithful — and I condition it by concatenation when the input is spatially aligned and by modality-agnostic cross-attention when it isn't, inheriting diffusion's cheap latent-space test-time guidance along the way.

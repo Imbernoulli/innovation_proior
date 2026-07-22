@@ -349,3 +349,15 @@ class DAdaptAdam(torch.optim.Optimizer):
             grp['k'] = group['k'] + 1
         return loss
 ```
+
+The Adam blocks map to the EMA derivation: `v` is Adam's v̂ so the un-weighted step `x -= m/(√v̂+eps)` is ordinary Adam; `s` carries the EMA weighted gradient sum; `sksq_weighted = ‖s‖²_{A⁻¹}`, `gsq_weighted = Σ dlr²‖g‖²_{A⁻¹}`, and `d_hat = (sksq_weighted/(1−β₂) − gsq_weighted)/‖s‖₁` is the inverted bound in the coordinate-wise weighted norm, with the (1−β₂) scale correction. Same ratchet `d = max(d, …)`. The coordinate-wise (AdaGrad) version is the same skeleton with `alphak = Σg²` as the per-coordinate denominator and `d_hat = (‖s‖²_{A⁻¹} − Σdlr²‖g‖²_{A⁻¹})/‖s‖₁`.
+
+One more guarantee worth nailing down: where does d actually settle? I claimed it parks below D; can I bound how far below? Suppose x_n → x* in norm. By triangle inequality D ≤ ‖x_n − x*‖ + ‖x_n − x₀‖ = ‖x_n − x*‖ + γ_n‖s_n‖, and the first term → 0, so D ≤ lim γ_n‖s_n‖. I need γ_n‖s_n‖ in terms of d_n. Redo the Young step but with a tunable split θ: 2αβ ≤ α² + β² with α² = θ d_{n+1}²/γ_{n+1}, β² = (γ_{n+1}/θ)‖s_{n+1}‖². Then 2d_{n+1}‖s_{n+1}‖ ≤ θd²/γ + (γ/θ)‖s‖², and bounding (γ/θ)‖s‖² ≤ (2/θ)d‖s‖ + (1/θ)Σγλ²‖g‖² and the gradient term ≤ 2d²/(θγ), I get
+
+    2(1 − 1/θ) d_{n+1}‖s_{n+1}‖ ≤ (θ + 2/θ) d_{n+1}²/γ_{n+1},
+
+so γ_{n+1}‖s_{n+1}‖ ≤ [(θ + 2/θ)/(2(1 − 1/θ))] d_{n+1} = [(θ² + 2)/(2(θ − 1))] d_{n+1}. Minimize the bracket over θ: d/dθ of (θ²+2)/(2(θ−1)) = 0 gives θ² − 2θ − 2 = 0, θ* = 1 + √3, and the optimal value is (θ*² + 2)/(2(θ*−1)) = 1 + √3. So γ_n‖s_n‖ ≤ (1+√3) d_n, hence D ≤ (1+√3) lim d_n, i.e.
+
+    lim_n d_n ≥ D / (1 + √3) ≈ 0.366 D.
+
+So d doesn't have to reach D, and it generally won't — but under a mild convergence assumption it stabilizes at no less than about a third of D, which is plenty: the d-weighted-average rate cancels d_{n+1} anyway, so any constant fraction of D gives the optimal rate. And this is exactly what I watched the |x| trace do earlier: from d₀ = 0.1 it parked at d ≈ 0.61 with D = 1, i.e. d/D ≈ 0.61. The floor I just derived is D/(1+√3) ≈ 0.366D, and 0.61 > 0.366 — so the observed settling point sits where the theorem says it must (above the floor), not at it, which is the right relationship for a lower bound on the limit. It would have been a red flag if the run had settled *below* 0.366; it didn't.

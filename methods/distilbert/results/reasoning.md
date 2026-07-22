@@ -104,3 +104,7 @@ def build_student_from_teacher(teacher_cfg, teacher_state, Encoder,
     student.load_state_dict(s_state)
     return student
 ```
+
+The `if s_state[s_name].shape == p.shape` guard is doing real work here: it's the safety check that the copy is only meaningful because I kept the width fixed. Every embedding and per-layer tensor I try to copy has to have a matching shape in the student, and it does precisely because hidden size and head count are unchanged — only the layer *count* shrank. If I had narrowed the model, this guard would silently skip most tensors and I'd effectively be back to random init, which is the failure mode I'm avoiding.
+
+Then the loop is plain large-batch MLM with gradient accumulation, dynamic masking, no NSP, AdamW with linear warmup, teacher frozen.

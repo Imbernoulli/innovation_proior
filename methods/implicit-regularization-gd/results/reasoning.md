@@ -140,3 +140,11 @@ Only the residual component perpendicular to `what` matters to first order. Ther
 ```text
 L(w(t)) = (1/t) sum_{n in S} exp(-rho(t)^T x_n) + smaller terms,
 ```
+
+so it is `O(1/t)`.
+
+This separation of rates explains why the theorem matters. The loss can look essentially finished while the classifier direction is still moving slowly toward the large-margin separator. To get an `epsilon` direction error, I need roughly `log t` on the order of `1/epsilon`, so the loss has already become exponentially small in `1/epsilon`. Continuing optimization past zero training error is not just polishing a numerical objective; it keeps changing the normalized predictor.
+
+It also explains the validation-loss paradox. If the limiting training separator misclassifies a validation point, then the norm growth makes that point's logistic loss grow like `log t`, even while margins and classification error can improve. So validation loss can rise for a reason that is not ordinary overfitting. The correct observable for this asymptotic story is classification error or margin behavior, not loss alone.
+
+The final result I arrive at is this: for separable homogeneous linear classification with a smooth monotone loss whose negative derivative has a tight exponential tail, fixed-step gradient descent with a small enough step size satisfies `w(t) = what log t + rho(t)`, where `what` is the hard-margin `L_2` SVM solution; the residual is bounded generically and grows at most like `log log t` in degenerate cases; therefore the normalized iterate converges to the `L_2` max-margin direction. The reason is the exponential tail's support-vector concentration plus the `log t` cancellation that keeps the residual bounded. The insight is not merely that optimization matters; it is that the asymptotic gradient has an invariant support-vector geometry that exposes the optimizer's hidden regularizer.

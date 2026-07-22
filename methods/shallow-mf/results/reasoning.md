@@ -210,3 +210,5 @@ class ShallowMatrixFactorization(MatrixRecoveryStrategy):
         with torch.no_grad():
             return self._e2e(model).detach().cpu()     # the recovered matrix on all entries
 ```
+
+The chain of it: descending on `X` directly gives the minimum-Frobenius fit, which for completion is the useless impute-zeros matrix; switching to a full-dimensional factorization `X = U U^T` changes the `X`-dynamics from `Ẋ = -A^*(r)` to `Ẋ = -A^*(r)X - X A^*(r)`, a multiplicative, manifold-confined flow; on the commutative curved manifold, taking the initialization to zero forces the amplifier `exp(A^*(s))` to support the limit only where the rescaled dual reaches eigenvalue `1`, which is exactly the complementary-slackness condition for the minimum-nuclear-norm SDP; the same preference is conjectured in the non-commuting case and is visible in the singular-value dynamics as a size-proportional growth rate that opens a power-law gap, i.e. a low-rank, low-nuclear-norm solution, all from plain gradient descent on the factors with no explicit penalty.

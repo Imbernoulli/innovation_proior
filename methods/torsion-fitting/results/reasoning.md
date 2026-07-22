@@ -173,3 +173,5 @@ def estimate_rotational_coefficients(qm_file, mm_file, dih_dir, coeff=4,
 
     return result
 ```
+
+The chain start to finish: the bond/angle/nonbonded terms structurally miss the rotational barrier, so a QM relaxed scan gives the truth E_QM(phi); subtracting the torsion-free MM energy isolates the residual DeltaE(phi) that the torsion term alone must reproduce; that term is a Fourier cosine series, and pinning its phases to the natural {0, 180} via the sign of the amplitudes makes it *linear* in the amplitudes; least squares over the scan then has a quadratic objective whose gradient-zero condition is the linear system M K = B, solved in one shot for all dihedral types sharing parameters; regularization or bounds tame overfitting, optional weights focus the fit on populated conformers, and a closed-form relabeling exports the result to the Ryckaert–Bellemans convention.

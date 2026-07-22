@@ -179,3 +179,5 @@ def run_causal_discovery(X: np.ndarray) -> GeneralGraph:
                 G.add_directed_edge(nodes[i], nodes[j])
     return dag2cpdag(G)
 ```
+
+I should be honest with myself about the failure mode I'm accepting. This is a greedy local search, and the space of DAGs is riddled with local optima — there's no guarantee the structure I stop at is the global best, only that no single-arc edit improves on it. With enough data I can hope the score landscape is informative, but the empty-graph start plus best single-arc improvements can certainly get stuck. The honest patches, if I wanted them, are well known: keep climbing past the first local optimum by allowing the best *non-worsening* move while forbidding recently visited graphs (a tabu list), and/or perturb the structure with a batch of random edits and re-climb several times (random restarts), keeping the best graph seen. Those add robustness at the cost of more compute and a couple of knobs; the core procedure is the plain best-improvement climb above, and the extensions bolt straight onto the same `local_scores` / delta machinery.

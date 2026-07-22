@@ -194,3 +194,5 @@ if __name__ == "__main__":
     print("optimum ", sorted(opt), "value", opt_value)
     print("ratio   ", round(ratio, 3))
 ```
+
+So the whole chain is tight and simple: f is monotone and submodular; the max-marginal move beats each single element of OPT and therefore the weakened 1/k sum over OPT; submodularity makes the unscaled sum dominate the joint gain f(S_i ∪ O) - f(S_i), so the weakened sum dominates the 1/k-scaled joint gain; monotonicity turns that joint gain into the remaining gap f(OPT) - f(S_i); the recurrence closes a 1/k fraction of that gap per round; and after k rounds only a (1 - 1/k)^k <= 1/e residue can remain. The code is just that recurrence made operational on a value oracle: scan the remaining elements, add the largest marginal, and repeat until the budget is spent or no positive marginal remains.

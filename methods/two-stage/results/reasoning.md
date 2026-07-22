@@ -97,3 +97,7 @@ The implementation signs now follow the derivation. If I form the true loss grad
 G = (1/n) Z.T [ (Y - f_hat) outer a / sqrt(p) * sigma'(Z W.T) ],
 W <- W + eta G.T.
 ```
+
+There is no per-step projection of the rows back to the sphere in the reference code or in the stated update. The initial rows are on the sphere in the theory, and the notebooks use Gaussian rows with norm near one, but the giant-step dynamics are analyzed through the projection ratio after the update — which, as the `ell = 1` and `ell = 2` runs above showed, is exactly the quantity that moves — not by normalizing every step. If a benchmark scaffold adds row projection for stability, that is a scaffold variation, not part of the canonical algorithm.
+
+So the procedure that comes out of all this is: initialize first-layer rows near the unit sphere and freeze small output weights, optionally paired for the exact zero initial output I checked above; train only `W` for one or a few large-batch steps using fresh batches and a learning rate on the `p sqrt(n/d)` scale; then freeze `W` and solve a ridge problem on the scaled post-activation features from a fresh batch. The first stage decides which subspace is reachable: `V_ell*` for one step at batch `d^ell`, or the staircase-reachable subspace for multiple linear-batch steps. The second stage reaches the best predictor available from those learned features, and so is bounded below by the variance of `f*` left after conditioning on the learned subspace — no better than the directions the first stage actually managed to expose.

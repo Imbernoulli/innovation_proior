@@ -208,3 +208,5 @@ def step(u: torch.Tensor, v: torch.Tensor,
     # applied coordinate-wise to each parameter vector.
     return u - lr * grad_u, v - lr * grad_v, state
 ```
+
+That is the whole method in the harness: subtract a fixed multiple of the gradient and return the two updated parameter vectors plus the state. If I want the asymptotically exact version the theory points to — convergence to the optimum, not just to a noise ball — I keep the same subtraction and let `lr` follow the `1/k`-type schedule `gamma_k = gamma_0/(1 + gamma_0 * lambda * k)`, which starts tame and decays like `1/(lambda k)`. I choose the asymptotic constant with the same strict condition as the induction, `1/lambda > 1/(c mu)`, so `sum gamma = infinity`, `sum gamma^2 < infinity`, and the `O(1/k)` bound all line up.

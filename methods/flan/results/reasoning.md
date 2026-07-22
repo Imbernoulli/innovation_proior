@@ -126,3 +126,5 @@ def train_checkpoint(model, clusters, datasets, eval_cluster):
         optimizer=Adafactor(learning_rate=3e-5),
     )
 ```
+
+The chain I now trust, because I checked the load-bearing links rather than asserting them: zero-shot prompts fail when a task description is too unlike a pretraining continuation; supervised examples can be rewritten as natural-language requests, and tracing one ANLI example confirms the rendered request reads like ordinary text with a target that is a valid listed option; many tasks and many templates teach the model to map descriptions to actions; cluster-level held-out splits keep the transfer claim honest only if the eval cluster is unioned into its own blocked set, which I verified by watching the buggy version leak the held-out NLI datasets back into training; options make ranked classification recover the right label where open-vocabulary argmax would have split the yes-mass and picked no; and the benefit should depend on both task diversity and model scale, which is what the breadth and size sweeps are there to falsify rather than to confirm.

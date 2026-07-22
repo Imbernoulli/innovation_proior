@@ -226,3 +226,5 @@ model = InceptionV3(num_classes=1000, aux_logits=True)
 optimizer = torch.optim.RMSprop(model.parameters(), lr=0.045, alpha=0.9, eps=1.0)
 scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.94)   # every 2 epochs
 ```
+
+The whole thing is one idea applied with discipline: spend compute where principles say it pays. Factorize expensive filters into stacks of 3×3 and asymmetric 1×n / n×1 convolutions where the grid scale supports it; reduce dimension before spatial aggregation; reduce the grid with parallel conv-and-pool branches so there's never a bottleneck; widen only on the coarsest grid where high-dimensional local processing helps most; regularize with dropout, a batch-normalized auxiliary head, and a label-smoothed objective; and train it with RMSProp, exponential decay, gradient clipping, and a parameter EMA. That is the full candidate I would now test against the batch-normalized predecessor under the same ImageNet evaluation protocol.

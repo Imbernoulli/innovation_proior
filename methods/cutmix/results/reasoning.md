@@ -128,3 +128,5 @@ def train(epoch):
         loss.backward()
         optimizer.step()
 ```
+
+The chain: a classifier bets on one discriminative patch, so occlusion and localization both fail; regional dropout (Cutout) fixes that by deleting a region, but the deleted region is wasted zeros; Mixup wastes nothing by blending whole images but its translucent composite is unnatural and has no coherent occlusion, so localization suffers. Fill Cutout's deleted region with a real patch cut from another image instead of zeros — now there is a genuine occluded region (whole-object attention survives), no pixel is wasted (data-efficient), and the composite is locally natural (sharp real patches, no ghost). Set the soft label to the area-proportional mix λy_A + (1−λ)y_B with λ the surviving-A fraction; draw the box as a √(1−λ)-scaled copy of the image placed uniformly, re-adjust λ to the true clipped area (which I traced shrinking 0.5 → 0.835 in a corner case), and exploit cross-entropy's linearity — checked numerically to four places — to train against the two integer labels with weights λ and 1−λ, a few lines on top of an otherwise unchanged training loop.

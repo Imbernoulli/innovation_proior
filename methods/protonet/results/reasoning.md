@@ -88,3 +88,5 @@ class CustomFewShotMethod(FewShotClassifier):
         # -log p_phi(y=k|x): cross-entropy on negative squared-distance logits == the episodic NLL
         return F.cross_entropy(scores, labels)
 ```
+
+One implementation detail is worth making explicit because it is easy to blur: the score must be the negative squared Euclidean distance, not just negative Euclidean norm. Both give the same nearest-prototype decision if the embedding is fixed, but the softmax probabilities, gradients, and the spherical-Gaussian / linear-head interpretation are different. Since the whole derivation leaned on the quadratic, the implementation has to keep the square.

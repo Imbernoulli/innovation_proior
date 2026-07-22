@@ -212,3 +212,5 @@ kTc = optimize.brentq(Tc_condition, 1e-6, 1.0)
 print("kTc:", kTc, " weak-coupling 1.14*exp(-1/N0V):", 1.14*np.exp(-1/N0V))
 print("gap-to-Tc ratio 2*eps_0(0)/kTc:", 2*D/kTc, " (weak-coupling universal ~3.5)")
 ```
+
+Running it: the pair energy comes out $-2.55\times10^{-3}$ against the weak-coupling $-2e^{-2/N(0)V}=-2.55\times10^{-3}$ — negative, so the sea is unstable, and matched. The gap is $\epsilon_0=0.0714$, equal to $1/\sinh(1/N(0)V)=0.0714$ to four figures and close to $2e^{-1/N(0)V}=0.0713$. And $kT_c=0.0404$ against $1.14\,e^{-1/N(0)V}=0.0407$, with the ratio printing $3.53$. Every hand-derived form lands on its numerical solution, and the dimensionless gap-to-$T_c$ ratio is the $\approx3.5$ I'll take to the experiments. Nothing in the chain needed an adjustable parameter to make a number come out right.

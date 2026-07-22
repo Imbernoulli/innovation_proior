@@ -131,3 +131,9 @@ phi_i(v) =
   sum_{S subseteq N \ {i}}
     |S|! (n-|S|-1)! / n! * [ v(S union {i}) - v(S) ].
 ```
+
+The expression looks like an average because it is one: draw a uniformly random order in
+which the grand coalition forms, watch the extra value player `i` creates at the moment they
+arrive, and take the expectation. The theorem says that this expected marginal contribution
+is exactly the unique payoff rule compatible with efficiency, symmetry, dummy players, and
+additivity.

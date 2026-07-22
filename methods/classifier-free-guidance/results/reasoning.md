@@ -225,3 +225,5 @@ def sample(model, c, schedule, w, shape, v):
         z = reverse_step(z, lam, lam_next, x_pred, v)
     return x_pred
 ```
+
+Tracing the whole chain back: I wanted a GAN-style truncation knob for diffusion, and the naive moves (scaling scores, shrinking noise) fail. Truncation is distributionally a sharpening `p̃(x|c) ∝ p(x|c) p(c|x)^w`, whose score is `∇log p(z|c) + w ∇log p(c|z)`. Classifier guidance gets `∇log p(c|z)` from a separately trained noisy-data classifier — but that's an extra pipeline and the step is a classifier-gradient adversarial direction. Bayes rewrites `∇log p(c|z) = ∇log p(z|c) − ∇log p(z)`, the implicit classifier, eliminating the real one; substituting collapses the tilted score to `(1+w)∇log p(z|c) − w∇log p(z)`, i.e. in noise space `ε̃ = (1+w)ε_c − w ε_∅`. A single network with a null token, trained by dropping the label with probability `p_uncond`, supplies both `ε_c` and `ε_∅`, so the whole thing is a one-line change at training and a one-line combination at sampling; since the learned vector fields need not be conservative, the update is not generally the gradient of any classifier likelihood.
