@@ -25,31 +25,35 @@ def casimir_pressure(a, hbar=1.0, c=1.0):
 
 def casimir_scalar_energy_per_area(a, hbar=1.0, c=1.0):
     """
-    Scalar/polarization contribution to the energy per area.
+    Single-polarization contribution to the energy per area.
     E_s/A = -pi^2 * hbar * c / (1440 * a^3)
     """
     return -(np.pi**2) * hbar * c / (1440.0 * a**3)
 
-def verify_via_zeta_regularization(a, hbar=1.0, c=1.0):
+def verify_via_zeta_regularization():
     """
-    Reproduce the scalar energy using analytic regularization:
-    sum_n n^3 -> zeta(-3) = 1/120.
+    Rebuild the scalar coefficient -pi^2/1440 from the raw regularization
+    steps rather than the closed form: Gamma(-3/2) from the proper-time
+    integral and zeta(-3) from the analytic continuation of sum_n n^3,
+    folded with the same prefactors used in the derivation.
     """
-    zeta_val = zeta(-3)  # 1/120
-    prefactor = -hbar * c * np.pi**2 / 1440.0
-    return prefactor / a**3, zeta_val
+    g = gamma(-1.5)   # should equal 4*sqrt(pi)/3
+    z3 = zeta(-3)     # should equal 1/120
+    raw_coefficient = -1.0 / (16.0 * np.pi**1.5) * g * np.pi**3 * z3
+    closed_form = -np.pi**2 / 1440.0
+    return raw_coefficient, closed_form
 
 if __name__ == "__main__":
-    a = 1.0e-6  # one micron, in natural units hbar=c=1 for illustration
-    E = casimir_energy_per_area(a)
-    P = casimir_pressure(a)
-    Es = casimir_scalar_energy_per_area(a)
-    E_check, z3 = verify_via_zeta_regularization(a)
+    raw_coefficient, closed_form = verify_via_zeta_regularization()
+    print(f"scalar coefficient from raw Gamma(-3/2), zeta(-3): {raw_coefficient:.10f}")
+    print(f"scalar coefficient from closed form -pi^2/1440   : {closed_form:.10f}")
+    print(f"the two regulators agree: {np.isclose(raw_coefficient, closed_form)}")
 
-    print(f"a = {a}")
-    print(f"scalar energy/area   = {Es:.6e}")
-    print(f"EM energy/area       = {E:.6e}")
-    print(f"pressure (attraction)= {P:.6e}")
-    print(f"zeta(-3)             = {z3:.6e}")
-    print(f"scalar check matches : {np.isclose(Es, E_check)}")
+    hbar_SI = 1.0546e-34  # J s
+    c_SI = 2.998e8        # m/s
+    a_SI = 1.0e-6         # m, one micron
+    E = casimir_energy_per_area(a_SI, hbar_SI, c_SI)
+    P = casimir_pressure(a_SI, hbar_SI, c_SI)
+    print(f"energy/area at a = 1 micron: {E:.3e} J/m^2")
+    print(f"pressure at a = 1 micron   : {P:.3e} Pa")
 ```
