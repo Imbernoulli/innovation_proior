@@ -61,7 +61,7 @@ clipped double Q = true on HumanoidBench/episodic settings, false otherwise
 
 ## Faithful PyTorch Equivalent
 
-The official implementation is JAX/Flax. This is the same architecture boundary in PyTorch: running
+My reference version uses JAX/Flax. This is the same architecture boundary in PyTorch: running
 statistics are an observation wrapper, while the actor and critic modules contain the residual
 encoder and heads.
 

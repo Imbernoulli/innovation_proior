@@ -58,10 +58,10 @@ relative-key tensor; the usual $L(M+L)$ attention logits still exist.
 
 ## Code
 
-This is the canonical PyTorch `attn_type=0` core, adapted to the local scaffold.
-The official repository additionally uses adaptive input embeddings, projected
-adaptive softmax, sampled softmax, `same_length`, external training-script
-initialization, and optional pre-LayerNorm and absolute-position variants.
+This is the `attn_type=0` core computation. The full implementation additionally
+uses adaptive input embeddings, projected adaptive softmax, sampled softmax,
+`same_length`, training-script initialization, and optional pre-LayerNorm and
+absolute-position variants.
 
 ```python
 import torch

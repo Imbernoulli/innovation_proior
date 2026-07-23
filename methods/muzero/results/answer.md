@@ -176,7 +176,7 @@ def run_mcts(model, observation, legal_actions, num_simulations=50, discount=0.9
 def compute_target_value(root_values, rewards, index, td_steps=10, discount=0.997):
     b = index + td_steps
     value = root_values[b] * discount ** td_steps if b < len(root_values) else 0.0
-    # Same indexing as the DeepMind pseudocode: rewards[i] is the reward
+    # Indexing: rewards[i] is the reward
     # following the action stored at history index i.
     for i, r in enumerate(rewards[index:b]):
         value += r * discount ** i

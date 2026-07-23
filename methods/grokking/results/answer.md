@@ -26,11 +26,11 @@ The primitive-root check is that nonzero multiplication mod `p` is addition mod 
 
 ## Training Recipe
 
-For the main experiments, use a 2-layer decoder-only transformer with width `128`, `4` attention heads, causal masking, and about `4e5` non-embedding parameters. Score only the right-hand side after the equals sign. In the official code this is a shifted language-model objective over the answer symbol and trailing EOS token.
+For the main experiments, use a 2-layer decoder-only transformer with width `128`, `4` attention heads, causal masking, and about `4e5` non-embedding parameters. Score only the right-hand side after the equals sign, via a shifted language-model objective over the answer symbol and trailing EOS token.
 
 The common configuration is AdamW with learning rate `1e-3`, betas `(0.9, 0.98)`, epsilon `1e-8`, linear warmup over `10` updates, minibatch size `min(512, ceil(train_size / 2))`, weight decay `1`, and `1e5` gradient updates. The learning-time curves use `5e5` updates. The dramatic modular-division curve uses `50%` training data, Adam with no weight decay, and `1e6` updates to make the late transition visible.
 
-The reference code lives under `code/openai-grok/`. Its CLI defaults are not all the configuration defaults above: `scripts/train.py` defaults to `train_data_pct=5` and `weight_decay=0`, so the runs above must pass the desired operator, train percentage, max steps, and weight decay explicitly.
+A bare-bones training script's own defaults are not all the configuration defaults above: it may default to `train_data_pct=5` and `weight_decay=0`, so the runs above must pass the desired operator, train percentage, max steps, and weight decay explicitly.
 
 ## Empirical Signature
 

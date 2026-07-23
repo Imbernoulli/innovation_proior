@@ -37,7 +37,7 @@ machinery:
 3. **Single-stream state content.**
    Remove the old duplicate content projection `f`. One projection `x_mid`
    both computes the slice logits/temperatures and supplies the state content.
-   This is the speedup marked in the single-stream algorithm and matches the official code's
+   This is the speedup marked in the single-stream algorithm: a single
    `in_project_x` with no `in_project_fx`.
 
 4. **Distributed state means.**
@@ -80,12 +80,11 @@ machinery:
 
 ## Reference-faithful implementation
 
-The official repository writes `dist_nn.all_reduce(slice_norm, ...)` and
-`dist_nn.all_reduce(slice_token, ...)` without assignment. In the local PyTorch
-2.7.1 API, `torch.distributed.nn.all_reduce` returns the reduced tensor. The
-code below binds those return values to implement the distributed-state algorithm exactly;
-apart from that return binding, names, shapes, constants, and class structure
-match the canonical implementation.
+In the PyTorch 2.7.1 API, `torch.distributed.nn.all_reduce` returns the
+reduced tensor rather than mutating its argument in place, so a call like
+`dist_nn.all_reduce(slice_norm, ...)` must have its return value assigned back
+for the reduction to take effect. The code below binds those return values to
+implement the distributed-state algorithm exactly.
 
 ```python
 import torch

@@ -33,7 +33,7 @@ severely depressed Q-values.
 
 ## Canonical Implementation
 
-The official implementation keeps the standard SAC+CQL backbone:
+The implementation keeps the standard SAC+CQL backbone:
 
 - twin critics and clipped double-Q Bellman targets;
 - optional max-target backup over `cql_n_actions` sampled next actions;
@@ -43,7 +43,7 @@ The official implementation keeps the standard SAC+CQL backbone:
   policy log probabilities for policy samples;
 - online fine-tuning with an offline/online batch mixture.
 
-When `enable_calql=True`, the official code applies
+When `enable_calql=True`, the implementation applies
 `maximum(policy_candidate_q, mc_return)` to current and next policy-action candidates. The flag is
 not canonically disabled at the online transition; online trajectories in the supported sparse-reward
 environments are added with their own Monte Carlo returns. The CQL weight may be changed at the

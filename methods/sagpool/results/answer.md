@@ -80,8 +80,7 @@ pooling layer = one `F×1` convolution weight, independent of `N`.
 ## Working code
 
 A SAGPool layer (scalar GCN score, `tanh` gate, sparse adjacency index) and a hierarchical
-`GraphReadout` built from three conv-then-pool blocks with summed max||mean readouts, matching
-the official implementation order:
+`GraphReadout` built from three conv-then-pool blocks with summed max||mean readouts:
 
 ```python
 import torch
@@ -118,7 +117,7 @@ class SAGPool(nn.Module):
 
 class GraphReadout(nn.Module):
     """Hierarchical SAGPool readout: 3 x (GCN conv -> SAGPool), each block summarized
-    by max||mean in the official-code order; block summaries are summed."""
+    by max||mean; block summaries are summed."""
 
     def __init__(self, hidden_dim, num_layers, ratio=0.5):
         super().__init__()

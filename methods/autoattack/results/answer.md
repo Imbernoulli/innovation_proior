@@ -66,7 +66,7 @@ for k = 1 .. N-1:
     update (x_max, f_max) if f(x^(k+1)) > f_max
     if k is a checkpoint w_j:
         # Condition 1: sum_{i=w_{j-1}}^{w_j-1} 1[f(x^(i+1))>f(x^(i))] < rho*(w_j - w_{j-1})
-        #              official code implements the threshold as <= rho*window
+        #              implemented here as <= rho*window
         # Condition 2: eta unchanged since w_{j-1} AND f_max unchanged since w_{j-1}
         if Condition 1 or Condition 2:
             eta <- eta / 2
@@ -152,7 +152,7 @@ class APGD:
         return dlr_loss_targeted(z, y, y_target)
 
     def _check_oscillation(self, loss_steps, j, k):
-        # Condition 1 in the official implementation: halve when successes <= rho*k
+        # Condition 1: halve when successes <= rho*k
         t = torch.zeros(loss_steps.shape[1], device=self.device)
         for c in range(k):
             t += (loss_steps[j - c] > loss_steps[j - c - 1]).float()

@@ -64,7 +64,7 @@ At a consensus `theta^infty`, the displacements vanish, `h^t -> (1/m) sum_k grad
 ## Defaults and why
 
 - `alpha = 0.1` on Dirichlet non-IID image/character benchmarks (canonical sweep `{1e-3, 1e-2,
-  1e-1}`; the official code scales it per client by data fraction). `alpha` is the single knob: it
+  1e-1}`; my implementation scales it per client by data fraction). `alpha` is the single knob: it
   is the quadratic-anchor strength and the gradient-to-displacement scale; larger `alpha`
   convexifies the local subproblem (Hessian `grad^2 L_k + alpha I`) and pulls harder to the
   broadcast model, smaller `alpha` lets clients move more but weakens the correction.
@@ -102,10 +102,10 @@ for t = 1, 2, ... T:
 
 ## Working code
 
-The strategy fills the harness's open slots: a per-client accumulated-displacement state `H_k`, a
+The implementation below realizes a per-client accumulated-displacement state `H_k`, a
 server running sum `h_sum = (1/m) sum_k H_k`, the regularizer-gradient add in the local loop, and
-the server reconstruction `theta^t = active-average + h_sum`. Verified against the official
-implementation (alpemreacar/FedDyn): `loss_algo = alpha * sum(theta * (-theta^{t-1} + H_k))` plus
+the server reconstruction `theta^t = active-average + h_sum`. Concretely,
+`loss_algo = alpha * sum(theta * (-theta^{t-1} + H_k))` plus
 weight-decay `alpha` realizes the same per-step gradient `alpha(theta - theta^{t-1} + H_k)`, the
 client state accumulates `H_k += (theta_k - theta^{t-1})`, and the cloud model is `avg +
 mean_over_m(H_k)`.

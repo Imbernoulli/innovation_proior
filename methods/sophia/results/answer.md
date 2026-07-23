@@ -85,7 +85,7 @@ which has no condition-number or largest-eigenvalue dependence in that idealized
 
 ## Reference-Code Faithful Sophia-G
 
-This is the official non-capturable SophiaG path, reduced to the essential PyTorch logic. The released code stores the unscaled sampled-label gradient square in `hessian`; the `bs` argument supplies the \(B\) factor from the GNB estimator.
+This is the non-capturable SophiaG path, reduced to the essential PyTorch logic. It stores the unscaled sampled-label gradient square in `hessian`; the `bs` argument supplies the \(B\) factor from the GNB estimator.
 
 ```python
 import torch
@@ -180,4 +180,4 @@ for it in range(max_iters):
         optimizer.zero_grad(set_to_none=True)
 ```
 
-Paper defaults are \(\beta_1=0.96\), \(\beta_2=0.99\), \(\epsilon=10^{-12}\), \(k=10\); the official code/configs use \(\beta_1=0.965\), `1e-15` in the denominator, and tune `rho` by the unclipped fraction (`win_rate`, roughly 0.1-0.5).
+The defaults stated above are \(\beta_1=0.96\), \(\beta_2=0.99\), \(\epsilon=10^{-12}\), \(k=10\); the released training configuration uses \(\beta_1=0.965\), `1e-15` in the denominator, and tunes `rho` by the unclipped fraction (`win_rate`, roughly 0.1-0.5).

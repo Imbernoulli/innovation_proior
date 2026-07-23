@@ -89,6 +89,6 @@ self._dynamics = mlp(cfg.latent_dim + cfg.action_dim + cfg.task_dim,
                      2 * [cfg.mlp_dim], cfg.latent_dim, act=SimNorm(cfg))
 ```
 
-The official code uses plain `F.softmax(x, dim=-1)`, i.e. the table's default `τ = 1`. A
+This implementation uses plain `F.softmax(x, dim=-1)`, i.e. the table's default `τ = 1`. A
 temperature-aware variant would divide the logits before the softmax
 (`x = F.softmax(x / self.tau, dim=-1)`).

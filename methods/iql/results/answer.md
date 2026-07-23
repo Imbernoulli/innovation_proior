@@ -100,7 +100,7 @@ class GaussianPolicy(nn.Module):
         self.mean = mlp([obs_dim, *hidden, act_dim])
         self.log_std = nn.Parameter(torch.zeros(act_dim))      # state-independent std
     def dist(self, s):
-        mean = torch.tanh(self.mean(s))                        # official code bounds the Gaussian mean
+        mean = torch.tanh(self.mean(s))                        # tanh bounds the Gaussian mean
         return Normal(mean, self.log_std.clamp(-5.0, 2.0).exp())
     def log_prob(self, s, a):
         return self.dist(s).log_prob(a).sum(-1)

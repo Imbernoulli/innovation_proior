@@ -40,7 +40,7 @@ for episode k = 1,...,K:
         receive r_h^k and observe x_{h+1}^k
 ```
 
-The ridge term makes `Lambda_h` invertible and bounds the capacity of the value class. The bonus is the self-normalized elliptical uncertainty width: it is large along feature directions with few effective samples and small along well-observed directions. The canonical implementation artifact is the algorithm pseudocode itself; no official code release was found.
+The ridge term makes `Lambda_h` invertible and bounds the capacity of the value class. The bonus is the self-normalized elliptical uncertainty width: it is large along feature directions with few effective samples and small along well-observed directions. The algorithm pseudocode above is the implementation in full; there is no separate code artifact beyond it.
 
 ## Theorem
 

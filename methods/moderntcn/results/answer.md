@@ -4,9 +4,6 @@ ModernTCN is a pure-convolution backbone for general time series analysis that r
 the five TS tasks by importing the modern-ConvNet recipe (large depthwise kernels + pointwise channel
 mixing, à la ConvNeXt) and adapting it to the two channel-like axes of a multivariate series. One
 backbone serves forecasting, imputation, anomaly detection, and classification by swapping only the head.
-Introduced as "ModernTCN: A Modern Pure Convolution Structure for General Time Series Analysis" (Donghao
-& Xue, ICLR 2024 Spotlight, https://openreview.net/forum?id=vpJMJerXHU; official code
-https://github.com/luodhhh/ModernTCN).
 
 ## Problem it solves
 

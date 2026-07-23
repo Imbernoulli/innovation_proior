@@ -31,7 +31,7 @@ All variants share num_heads N = [1, 2, 5, 8], sr_ratios = [8, 4, 2, 1], patch-e
 | B4 | (64, 128, 320, 512) | (3, 8, 27, 3) | (8, 8, 4, 4) |
 | B5 | (64, 128, 320, 512) | (3, 6, 40, 3) | (4, 4, 4, 4) |
 
-Channels grow as resolution shrinks, and stage 3 carries most of the depth. Decoder channel C = 256 for B0/B1 and C = 768 for B2-B5. (Depths and FFN expansions above follow the MiT architecture table; the released reference code differs slightly — uniform FFN expansion 4 across stages, and B2 stage-2 depth 4 rather than 3.)
+Channels grow as resolution shrinks, and stage 3 carries most of the depth. Decoder channel C = 256 for B0/B1 and C = 768 for B2-B5. (Depths and FFN expansions above follow the MiT architecture table; one common implementation variant differs slightly — uniform FFN expansion 4 across stages, and B2 stage-2 depth 4 rather than 3.)
 
 ## Runnable PyTorch
 
@@ -244,16 +244,3 @@ if __name__ == "__main__":
 ## Training protocol
 
 Encoder pre-trained on ImageNet-1K; decoder randomly initialised; the full model fine-tuned with AdamW, initial learning rate 6e-5, "poly" LR decay (power 1.0), on ADE20K (150 classes), Cityscapes (19 classes), and COCO-Stuff (172 classes). Augmentation: random resize (ratio 0.5–2.0), random horizontal flip, random crop (512² on ADE20K/COCO-Stuff, 1024² on Cityscapes; 640² for B5 on ADE20K). No OHEM, auxiliary, or class-balance losses. Metric: mean IoU.
-
-## Verification (each detail grounded in the retrieved source)
-
-- **Two modules; 4×4 input patches; strides {1/4, 1/8, 1/16, 1/32}; mask at H/4 × W/4 × N_cls** — `src/sec3_method.tex`, Method intro: "divide it into patches of size 4×4", "multi-level features at {1/4, 1/8, 1/16, 1/32}", "predict the segmentation mask at a H/4 × W/4 × N_cls resolution".
-- **MiT-B0..B5; hierarchical F_i at H/2^{i+1} × W/2^{i+1} × C_i with C_{i+1} > C_i** — `src/sec3_method.tex`, Hierarchical Feature Representation.
-- **Overlapped patch merging; K/S/P = (7,4,3) and (3,2,1)** — `src/sec3_method.tex`, Overlapped Patch Merging: "K=7, S=4, P=3, and K=3, S=2, P=1". Per-stage values in `src/tables/arch.tex`.
-- **Efficient self-attention: Softmax(QKᵀ/√d_head)V, O(N²); reduce K via Reshape(N/R, C·R) then Linear(C·R, C) → O(N²/R); R = [64,16,4,1]** — `src/sec3_method.tex`, Efficient Self-Attention, Eqs. (1)–(2): "we set R to [64, 16, 4, 1] from stage-1 to stage-4". The conv realisation (kernel=stride=sr_ratio, sr_ratios=[8,4,2,1], sequence shrinks by sr_ratio²) is the canonical `mix_transformer.py`, captured in `refs/nvlabs_segformer_impl.md`, consistent with R = sr_ratio².
-- **Mix-FFN: 3×3 conv leaks position via zero padding, replaces PE; x_out = MLP(GELU(Conv3x3(MLP(x_in)))) + x_in; depthwise** — `src/sec3_method.tex`, Mix-FFN, Eq. (3): "positional encoding is actually not necessary", "a 3×3 Conv in the feed-forward network", "depth-wise convolutions". The PE-vs-Mix-FFN resolution-robustness experiment is `src/sec4_exper.tex`, Mix-FFN vs. PE.
-- **All-MLP decoder four steps, Eq. (4): Linear(C_i,C) → Upsample to 1/4 → Linear(4C,C)∘Concat → Linear(C,N_cls)** — `src/sec3_method.tex`, Lightweight All-MLP Decoder. `linear_fuse` as a 1×1 ConvModule + BN + ReLU and `linear_pred`, plus the c4,c3,c2,c1 concat order, confirmed in `segformer_head.py` (`refs/nvlabs_segformer_impl.md`).
-- **"Works because larger ERF": encoder local at early stages, non-local at stage 4; a thin decoder fails on CNN backbones (ERF bounded by stage-4)** — `src/sec3_method.tex`, Effective Receptive Field Analysis.
-- **num_heads N=[1,2,5,8]; sr_ratios=[8,4,2,1]; per-variant depths/expansions; decoder C=256 (B0/B1) / 768 (rest)** — `src/tables/arch.tex` and `src/sec4_exper.tex`, Influence of C: "we choose C=256 for our real-time models B0, B1 and C=768 for the rest". embed_dims/depths cross-checked against `refs/nvlabs_segformer_impl.md` (note: the architecture table lists FFN expansion 8 for the two early stages of B0–B4 and the depths in the table above; the released code uses a uniform expansion of 4).
-- **Training: mmsegmentation; ImageNet-1K encoder pretrain; AdamW; lr 6e-5; poly power 1.0; crops 512²/1024²/512² (640² for B5 on ADE20K); no OHEM/aux/class-balance; mIoU** — `src/sec4_exper.tex`, Implementation details.
-- **Datasets: ADE20K (150 classes, 20210 imgs), Cityscapes (19 classes, 5000 hi-res imgs), COCO-Stuff (172 classes, 164k imgs)** — `src/sec4_exper.tex`, Datasets.

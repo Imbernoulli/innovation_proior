@@ -159,8 +159,8 @@ or dropout.
 
 ## Reference implementation sketch (PyTorch)
 
-Paper-faithful core math with placeholder model APIs; this is meant to fix the indexing
-and loss conventions, not to be a drop-in replacement for the released codebase.
+Core math with placeholder model APIs; this is meant to fix the indexing
+and loss conventions, not to be a full production implementation.
 
 ```python
 import torch
@@ -341,38 +341,3 @@ def adaptive_grad_clip(params, clip=0.3, eps=1e-3):
             p.grad.mul_(clip * w_norm / (g_norm + 1e-12))
 # opt = LaProp(params, lr=4e-5, betas=(0.9, 0.99), eps=1e-20)    # RMSProp-then-momentum
 ```
-
-## Verification
-
-Checked against `methods/dreamerv3/src/sections/algorithm.tex`,
-`sections/methods.tex`, and `tables/hparams.tex`.
-
-- **symlog / symexp** — `symlog(x)=sign(x)ln(|x|+1)`, `symexp(x)=sign(x)(exp(|x|)-1)`,
-  matching `eq:symlog`; symexp is the exact inverse. `log1p`/`expm1` are the numerically
-  stable forms. ✓
-- **two-hot** — entry $k$ weight $|b_{k+1}-x|/|b_{k+1}-b_k|$, entry $k+1$ weight
-  $|b_k-x|/|b_{k+1}-b_k|$, $k=\sum_j\delta(b_j<x)$ (`eq:twohot`). Code: `w_below=(hi-y)/(hi-lo)`
-  on bin $k$, `w_above=(y-lo)/(hi-lo)` on bin $k+1$; weights sum to 1, more mass on the
-  nearer bin. ✓ Readout $\mathrm{softmax}(f)^\top B$, bins $B=\mathrm{symexp}([-20..20])$,
-  with separate positive/negative summation as noted in `methods.tex`. ✓ Critic loss is two-hot cross-entropy
-  $-\mathrm{twohot}(y)^\top\log\mathrm{softmax}(f)$ (`eq:twohotloss`). ✓
-- **free bits / KL balance** — $\beta_{\mathrm{pred}}=\beta_{\mathrm{dyn}}=1$,
-  $\beta_{\mathrm{rep}}=0.1$ (`eq:wm`, hparams); both KLs floored at 1 nat via `max(1,·)`;
-  dynamics = `KL[sg(post)||prior]`, representation = `KL[post||sg(prior)]` (`L_dyn`,
-  `L_rep`). Code uses `post.detach()` / `prior.detach()` on the matching sides. ✓
-- **lambda-return** — $R^\lambda_t=r_t+\gamma c_t((1-\lambda)v_t+\lambda R^\lambda_{t+1})$,
-  $R^\lambda_T=v_T$ (`eq:lambda`), with $c_t$ as per-step discount; the code aligns
-  transition rewards/continues with the next-state value branch (`reward[1:]`,
-  `value[1:]`) and subtracts the source-state baseline `value[:-1]`. $\gamma=0.997$,
-  $\lambda=0.95$, $H=15$ (hparams). ✓
-- **percentile return norm** — $S=\mathrm{EMA}(\mathrm{Per}(R,95)-\mathrm{Per}(R,5),0.99)$,
-  divisor $\max(1,S)$ with $L=1$; only divide (offset is baseline-absorbed); entropy
-  scale $\eta=3\times10^{-4}$; Reinforce surrogate sign and stop-gradient on the advantage
-  match the actor loss. ✓
-- **critic stabilization** — zero-init output weights; EMA self-regularizer (decay 0.98);
-  $\beta_{\mathrm{val}}=1$, $\beta_{\mathrm{repval}}=0.3$. ✓
-- **1% unimix** — 99% softmax + 1% uniform on encoder, dynamics, and actor categoricals
-  (`Distributions`). ✓
-- **optimizer** — AGC at 30% of weight L2 norm, $\epsilon=10^{-3}$; LaProp
-  $\epsilon=10^{-20}$, $\beta_1=0.9$, $\beta_2=0.99$, lr $4\times10^{-5}$ (`Optimizer`,
-  hparams). ✓

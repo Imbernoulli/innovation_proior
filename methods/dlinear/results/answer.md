@@ -45,17 +45,17 @@ trend and seasonal residuals fit through separate parameter matrices.
 
 - **DMS not IMS:** predicts the whole horizon in one forward pass, avoiding recursive
   error accumulation and matching the forecasting strategy used by the Transformer baselines.
-- **Kernel 25, endpoint repeated:** the official code uses a fixed odd moving-average
+- **Kernel 25, endpoint repeated:** my implementation uses a fixed odd moving-average
   kernel of 25. Repeating 12 endpoint values on each side makes AvgPool1d preserve length:
   `L + 24 - 25 + 1 = L`.
 - **Seasonal residual sign:** `seasonal = x - moving_mean`, not the reverse.
 - **Channel sharing:** the default formulation applies one pair of temporal linears to every
-  channel and does not model spatial correlation. The official code also supports
+  channel and does not model spatial correlation. The implementation also supports
   `configs.individual`; when true, it uses one seasonal and one trend linear per channel.
 - **Parameters:** PyTorch has biases, so the shared DLinear path has `2 * (T * L + T)`
   trainable scalar parameters. The bias-free count is `2 * T * L`; the
   individual path multiplies the linear-layer count by `C`.
-- **Visualization initialization:** the official code leaves `1 / seq_len` weight
+- **Visualization initialization:** my implementation leaves `1 / seq_len` weight
   initialization commented out for weight-heatmap visualization. It is not active by default.
 
 ## Final algorithm
@@ -72,7 +72,7 @@ loss        = MSE(output, y_true)
 
 ## Working code
 
-Faithful to the official `cure-lab/LTSF-Linear` `models/DLinear.py` implementation:
+A faithful, runnable implementation:
 
 ```python
 import torch
@@ -152,7 +152,7 @@ class Model(nn.Module):
 ```
 
 NLinear is the sibling variant for distribution shift: subtract the last observed value,
-apply the temporal linear map, and add that value back. The official implementation also
+apply the temporal linear map, and add that value back. This implementation also
 supports the `individual` channel-wise option:
 
 ```python

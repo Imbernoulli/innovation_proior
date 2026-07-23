@@ -15,7 +15,7 @@ X = {x_0, ..., x_M},  x_0 = x,
 x_m in R^{floor(P / 2^m) x C}.
 ```
 
-The default downsampler is average pooling with window `2`. The official implementation
+The default downsampler is average pooling with window `2`. The implementation
 also supports `max`, `avg`, `conv`, or no downsampling through `configs.down_sampling_method`.
 
 Embed each scale and pass the list through stacked Past-Decomposable-Mixing blocks. In each block,
@@ -56,16 +56,16 @@ mimics an average ensemble by scaling predictors by `1 / (M + 1)`.
 ## Implementation Notes
 
 - Default decomposition is moving-average `series_decomp(configs.moving_avg)`. The
-  official code also includes an optional `DFT_series_decomp` branch.
+  implementation also includes an optional `DFT_series_decomp` branch.
 - One reversible normalization module is created per scale. Each scale is normalized before
   embedding; the summed forecast is denormalized with scale-0 statistics.
 - In `channel_independence == 1`, each variate is reshaped into the batch dimension, embedded as
   a univariate sequence, projected with `d_model -> 1`, reshaped back to `[B, F, C]`, and summed.
-- In `channel_independence == 0`, the official code uses a joint `enc_in -> d_model` embedding,
+- In `channel_independence == 0`, the implementation uses a joint `enc_in -> d_model` embedding,
   applies a `cross_layer` to decomposed season/trend inside PDM, and adds a residual regression
   path in `out_projection`.
-- The PDM formula has a residual FeedForward after recombining season and trend. In
-  the official code this final `ori + out_cross_layer(...)` is applied only in the
+- The PDM formula has a residual FeedForward after recombining season and trend. This
+  final `ori + out_cross_layer(...)` is applied only in the
   channel-independent branch.
 - If `use_future_temporal_feature` is enabled, known decoder-side temporal features are embedded
   and added before projection. This uses known calendar/covariate information, not target future
@@ -75,8 +75,7 @@ mimics an average ensemble by scaling predictors by `1 / (M + 1)`.
 
 ## Forecasting Code Core
 
-Faithful forecast-path excerpt aligned with `code/TimeMixer_official.py` and the current official
-`kwuking/TimeMixer` `models/TimeMixer.py`:
+A faithful forecast-path excerpt:
 
 ```python
 import torch

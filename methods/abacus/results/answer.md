@@ -92,7 +92,7 @@ class Abacus(torch.nn.Module):
         index = torch.arange(mask.size(1)).repeat(mask.size(0), 1).to(device)
 
         # reset_index[segment] = absolute index where that run started.
-        # This mirrors the official code; a one-token all-digit tensor would need one extra bin.
+        # (a one-token all-digit tensor would need one extra bin)
         reset_index = torch.zeros_like(mask).long()
         second_term = index * starts.long()
         reset_index = reset_index.scatter_add(1, segment_ids, second_term)
@@ -122,7 +122,7 @@ class Abacus(torch.nn.Module):
 - **Bounded extrapolation**: this is an absolute embedding, so it cannot use rows beyond the
   largest trained (`longest digit run + largest sampled zero-based shift`). Increase the shift
   range to extend reach.
-- **Reference edge case**: the official scatter helper is faithful for ordinary arithmetic
+- **Edge case**: the scatter helper above is faithful for ordinary arithmetic
   sequences, including multiple digit runs and non-digit gaps. A degenerate one-token all-digit
   tensor would need an extra reset bin in a hardened standalone utility.
 - Pairs naturally with input injection and looped (weight-tied) transformer layers, which
