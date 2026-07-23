@@ -1601,7 +1601,7 @@ Now replace the NOTEARS body with stage one (residual-variance order) and stage 
 
     while remaining:
         if len(ordering) == 0:
-            # First variable: pick the one with highest marginal variance
+            # First variable: pick the one with smallest marginal variance
             # (root causes tend to have variance = noise variance only)
             scores = []
             for j in remaining:
@@ -1917,7 +1917,7 @@ Replace CAM's residual-variance order with the Stein diagonal-Hessian leaf remov
 
     while remaining:
         if len(ordering) == 0:
-            # First variable: pick the one with highest marginal variance
+            # First variable: pick the one with smallest marginal variance
             # (root causes tend to have variance = noise variance only)
             scores = []
             for j in remaining:

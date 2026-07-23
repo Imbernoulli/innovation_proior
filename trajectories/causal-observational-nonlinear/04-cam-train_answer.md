@@ -39,7 +39,7 @@ def run_causal_discovery(X: np.ndarray) -> np.ndarray:
 
     while remaining:
         if len(ordering) == 0:
-            # First variable: pick the one with highest marginal variance
+            # First variable: pick the one with smallest marginal variance
             # (root causes tend to have variance = noise variance only)
             scores = []
             for j in remaining:
