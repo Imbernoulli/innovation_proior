@@ -8,28 +8,13 @@ The effect is most visible where the action space is large and approximation err
 
 ```python
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
-
-class QNetwork(nn.Module):
-    def __init__(self, num_actions):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Conv2d(4, 32, 8, stride=4), nn.ReLU(),
-            nn.Conv2d(32, 64, 4, stride=2), nn.ReLU(),
-            nn.Conv2d(64, 64, 3, stride=1), nn.ReLU(),
-            nn.Flatten(),
-            nn.Linear(3136, 512), nn.ReLU(),
-            nn.Linear(512, num_actions),
-        )
-
-    def forward(self, x):
-        return self.net(x.float() / 255.0)
 
 
 def double_dqn_target(rewards, discounts, next_obs, online_net, target_net):
-    """y = r + discount * Q_target(s', argmax_a Q_online(s', a))."""
+    """Return y = r + discount * Q_target(s', argmax_a Q_online(s', a)).
+
+    `discounts` is gamma for nonterminal transitions and 0 for terminal ones.
+    """
     with torch.no_grad():
         selector_q = online_net(next_obs)
         next_actions = selector_q.argmax(dim=1, keepdim=True)
@@ -38,7 +23,8 @@ def double_dqn_target(rewards, discounts, next_obs, online_net, target_net):
         return rewards + discounts * next_q
 
 
-def clipped_td_loss(td_error, grad_error_bound=1.0):
+def clipped_td_error_loss(td_error, grad_error_bound=1.0):
+    """Huber/clipped-error loss matching the DQN clipped TD-error gradient."""
     abs_error = td_error.abs()
     quadratic = torch.minimum(
         abs_error, torch.full_like(abs_error, grad_error_bound)
@@ -47,16 +33,13 @@ def clipped_td_loss(td_error, grad_error_bound=1.0):
     return (0.5 * quadratic.pow(2) + grad_error_bound * linear).mean()
 
 
-def train_step(batch, gamma, online_net, target_net, optimizer):
+def double_dqn_loss(batch, gamma, online_net, target_net):
     obs, actions, rewards, next_obs, dones = batch
     discounts = gamma * (1.0 - dones.float())
     target = double_dqn_target(rewards, discounts, next_obs, online_net, target_net)
-    q_sa = online_net(obs).gather(1, actions.long().unsqueeze(1)).squeeze(1)
-    loss = clipped_td_loss(target - q_sa)
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
-    return loss
+    q_sa = online_net(obs).gather(1, actions.long().view(-1, 1)).squeeze(1)
+    td_error = target - q_sa
+    return clipped_td_error_loss(td_error)
 ```
 
-The training loop remains the standard DQN loop: act epsilon-greedily with the online network, store transitions in replay, sample minibatches, run the update above, and periodically copy the online weights into the target network. The only difference from DQN is that argmax is computed on the online network while the corresponding value is gathered from the target network. That single-line change is what turns a self-referential maximum into a decoupled selection-evaluation pair and removes the systematic overestimation bias.
+This is the target/loss slot only; the rest of the DQN training loop is unchanged. That loop still acts epsilon-greedily with the online network, stores transitions in replay, samples minibatches, computes `double_dqn_loss` above, backpropagates through the online network's parameters, and periodically copies the online weights into the target network. The only difference from DQN is that the `argmax` is computed from `online_net(next_obs)` while the selected value is gathered from `target_net(next_obs)`. That single-line change is what turns a self-referential maximum into a decoupled selection-evaluation pair and removes the systematic overestimation bias.
