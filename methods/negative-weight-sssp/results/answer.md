@@ -46,9 +46,11 @@ The deliverable is one self-contained C++17 program. It reads a single instance 
 `n m s` then `m` edges `u v w` (0-indexed, weights may be negative) — and prints either
 `NEGATIVE CYCLE` (a negative cycle is reachable from the source) or the `n` distances
 $\operatorname{dist}(s,v)$, one per line (`INF` if unreachable). It is the price-function method
-reduced to its load-bearing core for one query: $\textsf{ElimNeg}$'s marked-frontier hybrid sweep
+reduced to its load-bearing core for one query: a queue-driven marked-frontier sweep —
+$\textsf{ElimNeg}$'s relaxation core without its Dijkstra phase, so the $\eta(v)+1$-pass bound is
+surrendered and the price-finding worst case is the Bellman–Ford $O(mn)$ —
 builds a non-negativizing price function $h[v]=\operatorname{dist}(s_{\text{super}},v)\le 0$ from a
-virtual super-source (settling each vertex within $\eta(v)+1$ passes, and doubling as the
+virtual super-source (doubling as the
 negative-cycle detector via a relaxation counter plus one confirming sweep), after which a single
 Dijkstra on the reweighted non-negative graph recovers
 $\operatorname{dist}_G(s,v)=\operatorname{dist}_{\text{reduced}}(s,v)-h[s]+h[v]$. All arithmetic is
@@ -62,8 +64,8 @@ in `long long` for overflow safety.
 //
 // Core idea (Johnson reweighting): find an integral price function phi with every reduced weight
 // w(u,v)+phi[u]-phi[v] >= 0, then a single Dijkstra on the reweighted graph yields true distances.
-// The price function is produced by ElimNeg, the Dijkstra+Bellman-Ford hybrid whose cost is governed
-// by eta (the number of negative edges shortest paths must use); a super-source reaching every
+// The price function is produced by a queue-driven relaxation sweep (ElimNeg's marked-frontier core
+// without its Dijkstra phase, so the price-finding worst case is Bellman-Ford O(mn)); a super-source reaching every
 // source-reachable vertex makes phi[v]=dist(s_super,v) a non-negativizing price function, and
 // Bellman-Ford with an early-exit / extra relaxation round doubles as the negative-cycle detector.
 
@@ -108,13 +110,14 @@ int main() {
         }
     }
 
-    // ---- Step 1: ElimNeg-style price function via Bellman-Ford from a super-source ----
+    // ---- Step 1: price function via queue-driven Bellman-Ford from a super-source ----
     // A virtual super-source has a weight-0 edge to every reachable vertex, so h[v] = dist(super, v)
     // <= 0 is defined on the reachable subgraph and is a non-negativizing price function: for any
     // reachable edge (u,v),
-    // h[v] <= h[u] + w  =>  w + h[u] - h[v] >= 0.  We run the hybrid sweep: keep a queue of vertices
-    // whose label changed (the "marked" frontier) and relax their out-edges; this settles a vertex
-    // within eta(v)+1 rounds, so it tracks the negative-edge count rather than always doing n-1 rounds.
+    // h[v] <= h[u] + w  =>  w + h[u] - h[v] >= 0.  We run a queue-driven sweep: keep a queue of vertices
+    // whose label changed (the "marked" frontier) and relax their out-edges. Without ElimNeg's Dijkstra
+    // phase there is no eta(v)+1-round bound -- this is Bellman-Ford, O(mn) worst case; the frontier
+    // merely skips work on benign instances.
     vector<ll> h(n, 0);                            // h[v] starts at 0 for reachable vertices
     vector<char> inq(n, 0);
     deque<int> q;
@@ -190,5 +193,5 @@ The near-linear machinery the proof builds — `ScaleDown`'s four phases, the lo
 decomposition `LDD` with geometric ball radii, `FixDAGEdges`, the scaling outer loop, and the Las
 Vegas/`FindThresh` wrapper — is what drives $\eta$ to polylog and the asymptotic bound to
 $O(m\log^8 n\log W)$; the single-query program above keeps the same price-function skeleton
-($\textsf{ElimNeg}$ then Dijkstra) and the same negative-cycle semantics. Nothing beyond Dijkstra,
+(queue-driven price-finding sweep, then Dijkstra) and the same negative-cycle semantics. Nothing beyond Dijkstra,
 Bellman–Ford, and price-function reweighting appears.

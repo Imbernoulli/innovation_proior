@@ -34,8 +34,8 @@ As a competition landing I give the single-file C++17 program below. It reads on
 //
 // Core idea (Johnson reweighting): find an integral price function phi with every reduced weight
 // w(u,v)+phi[u]-phi[v] >= 0, then a single Dijkstra on the reweighted graph yields true distances.
-// The price function is produced by ElimNeg, the Dijkstra+Bellman-Ford hybrid whose cost is governed
-// by eta (the number of negative edges shortest paths must use); a super-source reaching every
+// The price function is produced by a queue-driven relaxation sweep (ElimNeg's marked-frontier core
+// without its Dijkstra phase, so the price-finding worst case is Bellman-Ford O(mn)); a super-source reaching every
 // source-reachable vertex makes phi[v]=dist(s_super,v) a non-negativizing price function, and
 // Bellman-Ford with an early-exit / extra relaxation round doubles as the negative-cycle detector.
 
@@ -80,13 +80,14 @@ int main() {
         }
     }
 
-    // ---- Step 1: ElimNeg-style price function via Bellman-Ford from a super-source ----
+    // ---- Step 1: price function via queue-driven Bellman-Ford from a super-source ----
     // A virtual super-source has a weight-0 edge to every reachable vertex, so h[v] = dist(super, v)
     // <= 0 is defined on the reachable subgraph and is a non-negativizing price function: for any
     // reachable edge (u,v),
-    // h[v] <= h[u] + w  =>  w + h[u] - h[v] >= 0.  We run the hybrid sweep: keep a queue of vertices
-    // whose label changed (the "marked" frontier) and relax their out-edges; this settles a vertex
-    // within eta(v)+1 rounds, so it tracks the negative-edge count rather than always doing n-1 rounds.
+    // h[v] <= h[u] + w  =>  w + h[u] - h[v] >= 0.  We run a queue-driven sweep: keep a queue of vertices
+    // whose label changed (the "marked" frontier) and relax their out-edges. Without ElimNeg's Dijkstra
+    // phase there is no eta(v)+1-round bound -- this is Bellman-Ford, O(mn) worst case; the frontier
+    // merely skips work on benign instances.
     vector<ll> h(n, 0);                            // h[v] starts at 0 for reachable vertices
     vector<char> inq(n, 0);
     deque<int> q;
