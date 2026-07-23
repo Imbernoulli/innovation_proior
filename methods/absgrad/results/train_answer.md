@@ -7,103 +7,53 @@ The method is AbsGS, absolute-gradient densification. Instead of accumulating th
 AbsGS is implemented as a conservative two-channel rule. The original signed average gradient continues to drive clone decisions for small primitives, because small under-covered primitives already produce a coherent signed signal. The absolute average gradient is reserved for split decisions on large primitives, because that is the failure mode caused by cancellation. The split threshold must be raised relative to the clone threshold, since the absolute statistic is systematically larger. Pruning, opacity reset, and the refinement schedule remain unchanged. The only implementation requirement is that the rasterizer must expose per-pixel absolute-gradient accumulations, for example through an `absgrad` flag; taking the absolute value of the already-collapsed signed gradient after backward, `info["means2d"].grad.abs()`, cannot undo cancellation. A practical gsplat-style drop-in variant renders with `absgrad=True` and applies the absolute statistic to both clone and split at one raised threshold; that is faithful to the core idea but less surgical than the two-threshold rule, which keeps the original signed signal for clone and reserves the absolute signal for split.
 
 ```python
-import torch
-from dataclasses import dataclass
-from typing import Any, Dict
+@torch.no_grad()
+def update_density_state(params, state, info, key="means2d"):
+    signed = info[key].grad.clone()
+    absgrad = info[key].absgrad.clone()  # per-pixel |dL/dmu_x|, |dL/dmu_y| summed in backward
 
-@dataclass
-class AbsGS:
-    """Absolute-gradient densification for 3D Gaussian Splatting."""
-    prune_opa: float = 0.005
-    grow_grad2d: float = 2e-4       # signed threshold for clone
-    grow_grad2d_abs: float = 4e-4   # absolute threshold for split
-    grow_scale3d: float = 0.01
-    prune_scale3d: float = 0.1
-    refine_start_iter: int = 500
-    refine_stop_iter: int = 15_000
-    reset_every: int = 3000
-    refine_every: int = 100
+    signed[..., 0] *= info["width"] / 2.0 * info["n_cameras"]
+    signed[..., 1] *= info["height"] / 2.0 * info["n_cameras"]
+    absgrad[..., 0] *= info["width"] / 2.0 * info["n_cameras"]
+    absgrad[..., 1] *= info["height"] / 2.0 * info["n_cameras"]
 
-    def initialize_state(self, scene_scale: float = 1.0) -> Dict[str, Any]:
-        return {
-            "signed_grad2d": None,
-            "abs_grad2d": None,
-            "count": None,
-            "scene_scale": scene_scale,
-        }
+    n = len(list(params.values())[0])
+    if state["signed_grad2d"] is None:
+        device = signed.device
+        state["signed_grad2d"] = torch.zeros(n, device=device)
+        state["abs_grad2d"] = torch.zeros(n, device=device)
+        state["count"] = torch.zeros(n, device=device)
 
-    def step_pre_backward(self, params, optimizers, state, step, info):
-        info["means2d"].retain_grad()
+    visible = (info["radii"] > 0.0).all(dim=-1)
+    ids = torch.where(visible)[1]
 
-    def step_post_backward(self, params, optimizers, state, step, info,
-                           duplicate, split, remove, reset_opa):
-        if step >= self.refine_stop_iter:
-            return
+    state["signed_grad2d"].index_add_(0, ids, signed[visible].norm(dim=-1))
+    state["abs_grad2d"].index_add_(0, ids, absgrad[visible].norm(dim=-1))
+    state["count"].index_add_(0, ids, torch.ones_like(ids, dtype=torch.float32))
 
-        # Signed gradient for parameter updates and clone decisions.
-        signed = info["means2d"].grad.clone()
-        # Homodirectional gradient for split decisions; requires rasterizer support.
-        if hasattr(info["means2d"], "absgrad"):
-            absgrad = info["means2d"].absgrad.clone()
-        else:
-            absgrad = signed.abs()  # fallback; cannot undo rasterizer cancellation
 
-        # Undo image-space normalization used by gsplat-style gradients.
-        signed[..., 0] *= info["width"] / 2.0 * info["n_cameras"]
-        signed[..., 1] *= info["height"] / 2.0 * info["n_cameras"]
-        absgrad[..., 0] *= info["width"] / 2.0 * info["n_cameras"]
-        absgrad[..., 1] *= info["height"] / 2.0 * info["n_cameras"]
+@torch.no_grad()
+def grow_abs_gs(params, optimizers, state, duplicate, split,
+                tau_clone=0.0002, tau_split=0.0004, grow_scale3d=0.01):
+    count = state["count"].clamp_min(1)
+    signed_avg = state["signed_grad2d"] / count
+    abs_avg = state["abs_grad2d"] / count
 
-        n = len(list(params.values())[0])
-        if state["signed_grad2d"] is None:
-            device = signed.device
-            state["signed_grad2d"] = torch.zeros(n, device=device)
-            state["abs_grad2d"] = torch.zeros(n, device=device)
-            state["count"] = torch.zeros(n, device=device)
+    scale_max = torch.exp(params["scales"]).max(dim=-1).values
+    is_small = scale_max <= grow_scale3d * state["scene_scale"]
 
-        visible = (info["radii"] > 0.0).all(dim=-1)
-        ids = torch.where(visible)[1]
+    clone_mask = (signed_avg >= tau_clone) & is_small
+    split_mask = (abs_avg >= tau_split) & ~is_small
 
-        state["signed_grad2d"].index_add_(0, ids, signed[visible].norm(dim=-1))
-        state["abs_grad2d"].index_add_(0, ids, absgrad[visible].norm(dim=-1))
-        state["count"].index_add_(0, ids, torch.ones_like(ids, dtype=torch.float32))
+    n_clone = int(clone_mask.sum().item())
+    if n_clone:
+        duplicate(params=params, optimizers=optimizers, state=state, mask=clone_mask)
 
-        if step > self.refine_start_iter and step % self.refine_every == 0:
-            count = state["count"].clamp_min(1)
-            signed_avg = state["signed_grad2d"] / count
-            abs_avg = state["abs_grad2d"] / count
-            scene_scale = state["scene_scale"]
-
-            scale_max = torch.exp(params["scales"]).max(dim=-1).values
-            is_small = scale_max <= self.grow_scale3d * scene_scale
-
-            clone_mask = (signed_avg >= self.grow_grad2d) & is_small
-            split_mask = (abs_avg >= self.grow_grad2d_abs) & ~is_small
-
-            if clone_mask.any():
-                duplicate(params=params, optimizers=optimizers, state=state, mask=clone_mask)
-
-            # Newly cloned primitives are appended; do not split them this step.
-            split_mask = torch.cat([
-                split_mask,
-                torch.zeros(int(clone_mask.sum().item()),
-                            dtype=torch.bool, device=split_mask.device),
-            ])
-            if split_mask.any():
-                split(params=params, optimizers=optimizers, state=state, mask=split_mask)
-
-            # Opacity-floor and oversized prune, inherited from the baseline.
-            is_prune = torch.sigmoid(params["opacities"].flatten()) < self.prune_opa
-            if step > self.reset_every:
-                is_prune = is_prune | (scale_max > self.prune_scale3d * scene_scale)
-            if is_prune.any():
-                remove(params=params, optimizers=optimizers, state=state, mask=is_prune)
-
-            state["signed_grad2d"].zero_()
-            state["abs_grad2d"].zero_()
-            state["count"].zero_()
-
-        if step > 0 and step % self.reset_every == 0:
-            reset_opa(params=params, optimizers=optimizers, state=state,
-                      value=self.prune_opa * 2.0)
+    # Newly cloned primitives are appended and should not be split in the same refinement.
+    split_mask = torch.cat([
+        split_mask,
+        torch.zeros(n_clone, dtype=torch.bool, device=split_mask.device),
+    ])
+    if split_mask.any():
+        split(params=params, optimizers=optimizers, state=state, mask=split_mask)
 ```
