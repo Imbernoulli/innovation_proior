@@ -135,13 +135,25 @@ def end_on_assistant(convs):
     return convs
 
 # ---------- (a) methods : single-turn ----------
-# Theory/analysis methods whose answer.md has no runnable code: the discovery-writeup pass invented
-# a Python block for their train_answer.md (never executed, never reviewed; audited sample had a
-# hard bug). While such a train_answer still carries a code fence, the answer channel presents
-# answer.md itself (the reviewed, codeless deliverable) instead of the contaminated write-up.
-_taf = 'sft/use_answer_for_theory.txt'
-_THEORY_ANSWER = ({x.strip() for x in open(_taf) if x.strip() and not x.startswith('#')}
-                  if os.path.isfile(_taf) else set())
+# train_answer.md code-integrity gate. The discovery-writeup contract says train_answer's code is
+# copied VERBATIM from answer.md (the reviewed canonical deliverable); the 2026-07 audit found 548
+# methods violating it — code invented from thin air (theory methods whose answer has no code) or
+# silently re-implemented (never executed, never reviewed; sampled files had hard bugs). For those
+# suspect slugs the answer channel uses train_answer ONLY IF every large code fence in it is a
+# whitespace-normalized substring of answer.md's fences; otherwise it presents answer.md itself.
+# Self-healing: a train_answer later fixed to verbatim (or to a codeless artifact ending where
+# answer.md has no code) is used again automatically. Missing train_answer falls back to answer.md.
+_sus_f = 'sft/train_answer_suspects.txt'
+_TA_SUSPECTS = ({x.strip() for x in open(_sus_f) if x.strip() and not x.startswith('#')}
+                if os.path.isfile(_sus_f) else set())
+_FENCE_RE = re.compile(r'```[a-zA-Z0-9_+-]*\n(.*?)```', re.S)
+def _ta_code_ok(ta_text, ans_text):
+    hay = re.sub(r'\s+', '', ''.join(_FENCE_RE.findall(ans_text)))
+    for b in _FENCE_RE.findall(ta_text):
+        nb = re.sub(r'\s+', '', b)
+        if len(nb) >= 200 and nb not in hay:
+            return False
+    return True
 methods = json.load(open('methods.json'))
 for m in methods:
     slug, yr = m['slug'], m.get('year')
@@ -149,12 +161,19 @@ for m in methods:
         _decon_stats['methods_dropped'] += 1
         continue
     d = f'methods/{slug}/results'
-    if not all(os.path.isfile(f'{d}/{f}.md') for f in ('context', 'reasoning', 'train_answer')):
+    if not all(os.path.isfile(f'{d}/{f}.md') for f in ('context', 'reasoning')):
         continue
-    ans_text = read(f'{d}/train_answer.md')
-    if slug in _THEORY_ANSWER and '```' in ans_text and os.path.isfile(f'{d}/answer.md'):
+    has_ta, has_ans = os.path.isfile(f'{d}/train_answer.md'), os.path.isfile(f'{d}/answer.md')
+    if not has_ta and not has_ans:
+        continue
+    if not has_ta:
         ans_text = read(f'{d}/answer.md')
-        stats['method_theory_answer'] = stats.get('method_theory_answer', 0) + 1
+        stats['method_answer_fallback'] = stats.get('method_answer_fallback', 0) + 1
+    else:
+        ans_text = read(f'{d}/train_answer.md')
+        if slug in _TA_SUSPECTS and has_ans and not _ta_code_ok(ans_text, read(f'{d}/answer.md')):
+            ans_text = read(f'{d}/answer.md')
+            stats['method_ta_bypass'] = stats.get('method_ta_bypass', 0) + 1
     examples.append({'conversations': [{'from':'human','value':read_with_note(f'{d}/context.md')},
                                         {'from':'gpt','value':think(read(f'{d}/reasoning.md'), ans_text)}],
                      'system': METHOD_SYS.format(year=yr), '_kind':'method', '_id':slug})
