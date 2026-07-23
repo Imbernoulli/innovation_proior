@@ -33,7 +33,7 @@ mechanism to test where a fixed curve has little remaining headroom. Channel-wis
 is the SE module; the activation additionally reshapes its gradient via `p_1, p_2`.
 
 **Hyperparameters.** ACON-C: per-channel `p_1, p_2, β`, initialized as `p_1=1`, `p_2=0`, `β=1`
-(an intentional SiLU-start choice; the official `acon.py` samples `p_1,p_2` from `randn`). meta-ACON:
+(an intentional SiLU-start choice; the released `acon.py` samples `p_1,p_2` from `randn`). meta-ACON:
 SE bottleneck reduction `r=16`
 with an implementation floor of `r` bottleneck channels; use ACON-C as the underlying form. Drop in
 for ReLU/Swish.

@@ -205,8 +205,8 @@ class STID(nn.Module):
         return prediction
 ```
 
-## Faithfulness Notes
+## Implementation Notes
 
-The temporal indices are read from the final history step, not the future window. The reference implementation indexes them per node as `[B, N]`; the preprocessing tiles the same time value across nodes for traffic, but the shape remains per-node. The `future_data` argument is accepted for the runner interface and is not used by this architecture.
+The temporal indices are read from the final history step, not the future window. The implementation indexes them per node as `[B, N]`; the preprocessing tiles the same time value across nodes for traffic, but the shape remains per-node. The `future_data` argument is accepted for the runner interface and is not used by this architecture.
 
 The compact formula assumes all three identity tables are enabled and have the same width. The code supports ablations by turning any identity branch off and by choosing separate widths.

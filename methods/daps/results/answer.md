@@ -53,7 +53,7 @@ deblurring, HDR) where trajectory-guidance solvers (DPS, LGD, ΠGDM) are most br
 
 ## Working code (canonical reference form)
 
-Faithful to the official DAPS sampler: an outer annealing loop, an unconditional PF-ODE prior update, a
+The canonical DAPS sampler: an outer annealing loop, an unconditional PF-ODE prior update, a
 clean-variable Langevin inner loop, and a re-noising step.
 
 ```python

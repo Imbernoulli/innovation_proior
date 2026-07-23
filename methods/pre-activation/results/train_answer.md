@@ -55,7 +55,7 @@ class PreActBlock(nn.Module):
         return shortcut + out                      # clean add; no activation after it
 ```
 
-The pre-activation bottleneck unit, matching the official `resnet-1k-layers` CIFAR implementation, applies the same $\text{BN}\to\text{ReLU}\to\text{Conv}$ ordering to a $1\times1\to3\times3\to1\times1$ branch. Equal-shape units use a raw identity shortcut; dimension-changing units share a common first BN-ReLU before both the residual branch and the projection shortcut, with the downsampling stride on the first $1\times1$ conv and on the $1\times1$ projection:
+The pre-activation bottleneck unit, matching the `resnet-1k-layers` CIFAR implementation, applies the same $\text{BN}\to\text{ReLU}\to\text{Conv}$ ordering to a $1\times1\to3\times3\to1\times1$ branch. Equal-shape units use a raw identity shortcut; dimension-changing units share a common first BN-ReLU before both the residual branch and the projection shortcut, with the downsampling stride on the first $1\times1$ conv and on the $1\times1$ projection:
 
 ```python
 class PreActBottleneck(nn.Module):

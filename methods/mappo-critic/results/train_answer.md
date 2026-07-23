@@ -72,7 +72,7 @@ class CentralVCritic(nn.Module):
         return self.fc3(x)
 ```
 
-In the official on-policy stack, AS/FP/death-masked value inputs are already assembled as `share_obs` / `cent_obs`; the critic maps that centralized observation to one scalar value and the replay buffer stores `(T+1, rollout_threads, n_agents, 1)` value and return tensors.
+In the full on-policy stack, AS/FP/death-masked value inputs are already assembled as `share_obs` / `cent_obs`; the critic maps that centralized observation to one scalar value and the replay buffer stores `(T+1, rollout_threads, n_agents, 1)` value and return tensors.
 
 ```python
 import torch.nn as nn

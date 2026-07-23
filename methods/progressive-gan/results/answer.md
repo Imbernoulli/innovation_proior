@@ -239,7 +239,7 @@ class Discriminator(nn.Module):
         return self.head(h)
 
 def process_reals(x, lod):
-    # Matches the official pipeline: the dataset loader has already selected
+    # Matches the training pipeline: the dataset loader has already selected
     # the current resolution implied by lod.
     old_weight = float(lod - np.floor(lod))
     if old_weight > 0.0:

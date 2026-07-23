@@ -18,10 +18,8 @@ class CustomMixer(nn.Module):
     Taylor-2 kernel k(q,k) = 1 + q^T k + (q^T k)^2 / 2 (which equals
     <phi(q), phi(k)>) and apply a causal mask. This is mathematically
     identical to the recurrent / cumulative-sum view but uses memory
-    O(B*T^2) instead of O(B*T*F*D), which is what the official BASED
-    repo also does during training (see
-    https://github.com/HazyResearch/zoology/blob/main/zoology/mixers/based.py
-    `train_view`).
+    O(B*T^2) instead of O(B*T*F*D) — the right trade during training,
+    where the quadratic view parallelizes better.
     """
 
     def __init__(self, d_model: int, seq_len: int, feature_dim: int = 16):

@@ -57,7 +57,7 @@ class RNN(nn.Module):
         num_layers (int): number of hidden layers
         rnn_arch (str): rnn architecture
         use_attn (bool): whether use attention layer.
-            we use concat attention as https://github.com/fulifeng/Adv-ALSTM/
+            we use concat (additive-style) attention.
         dropout (float): dropout rate
     """
 

@@ -43,3 +43,5 @@ def balance_loss_global(probs_list, topi_list, N, alpha=1e-2):
 #   biased top-k uses (router_logits + b);  after each step, per layer:
 #   f, _ = layer_f_P(probs, topi, N);  c = f * N;  cbar = c.mean()
 #   b += u * torch.sign(cbar - c)         # u = 1e-3
+
+```

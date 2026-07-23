@@ -67,13 +67,13 @@ an unseen future regime, given that the periods (their number `K` and boundaries
 4. Inference: forward pass through GRU + head (L_pred only).
 ```
 
-## Working code (qlib `ADARNN`, faithful to `pytorch_adarnn.py`)
+## Working code (qlib `ADARNN` wrapper)
 
 The network (`AdaRNN`) — stacked single-layer GRUs, optional bottleneck, per-layer gate weights for
 warmup, boosting-updated weights, and the per-state matching — is exactly the form derived in the
-reasoning trace (see `reasoning.md` for the full network and the distance functions
-`cosine`/`CORAL`/`MMD_loss`/`adv`/`TransferLoss`). The qlib wrapper below drives that network. The
-general greedy period search lives in the transferlearning `data_process.TDC` code; the qlib finance
+reasoning above, with the distance functions `cosine`/`CORAL`/`MMD_loss`/`adv` composed by
+`TransferLoss`. The qlib wrapper below drives that network. The
+general greedy period search lives in the `TDC` routine; the qlib finance
 wrapper uses an even split of training days into `n_splits` periods before running the same
 pre-epoch and boosting phases.
 
@@ -226,7 +226,7 @@ class ADARNN(Model):
 `[batch, len_seq, d_feat]`, and inference uses the same reshape before calling `predict`.
 `test_epoch` computes IC/ICIR/RankIC and the selected validation metric for early stopping. The
 boosting rule `update_weight_Boosting` and the network (`AdaRNN`, `TransferLoss`, and the distance
-functions) are listed in full in `reasoning.md`.
+functions) are given in full in the derivation above.
 
 ## Why the choices
 

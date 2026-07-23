@@ -151,12 +151,26 @@ def _fences(text):
         text = text + '\n```'
     return _FENCE_RE.findall(text)
 def _ta_code_ok(ta_text, ans_text):
+    if '~~~' in ta_text or '<pre>' in ta_text or '</code>' in ta_text:
+        return False                   # non-backtick code carriers the parser can't see: fail closed
     hay = re.sub(r'\s+', '', ''.join(_fences(ans_text)))
+    small_div = 0
     for b in _fences(ta_text):
         nb = re.sub(r'\s+', '', b)
-        if len(nb) >= 200 and nb not in hay:
+        if nb in hay:
+            continue
+        if len(nb) >= 200:
             return False
-    return True
+        small_div += len(nb)
+    return small_div < 200             # many small divergent fences aggregate like one big one
+# The bypass target is trained text: strip generation-pipeline audit sections that leaked into a
+# few answer.md files (a "## Verification" block citing repo paths / source LaTeX the sample never
+# contains). Only sections whose header names Verification/Grounding AND whose body cites such a
+# path are dropped — in-frame mathematical verification sections survive.
+_VERIF_RE = re.compile(r'\n#{2,3} [^\n]*(?:Verification|Grounding)[^\n]*\n.*?(?=\n#{1,3} |\Z)', re.S)
+_LEAKPATH_RE = re.compile(r'results/[a-z_]+\.md|src/[\w/.-]+\.(?:tex|md)|reasoning\.md|context\.md')
+def _scrub_answer(text):
+    return _VERIF_RE.sub(lambda m: '\n' if _LEAKPATH_RE.search(m.group(0)) else m.group(0), text)
 methods = json.load(open('methods.json'))
 for m in methods:
     slug, yr = m['slug'], m.get('year')
@@ -169,17 +183,21 @@ for m in methods:
     has_ta, has_ans = os.path.isfile(f'{d}/train_answer.md'), os.path.isfile(f'{d}/answer.md')
     if not has_ta and not has_ans:
         continue
+    doc_landing = False
     if not has_ta:
-        ans_text = read(f'{d}/answer.md')
+        ans_text = _scrub_answer(read(f'{d}/answer.md'))
+        doc_landing = True
         stats['method_answer_fallback'] = stats.get('method_answer_fallback', 0) + 1
     else:
         ans_text = read(f'{d}/train_answer.md')
         if has_ans and not _ta_code_ok(ans_text, read(f'{d}/answer.md')):
-            ans_text = read(f'{d}/answer.md')
+            ans_text = _scrub_answer(read(f'{d}/answer.md'))
+            doc_landing = True
             stats['method_ta_bypass'] = stats.get('method_ta_bypass', 0) + 1
     examples.append({'conversations': [{'from':'human','value':read_with_note(f'{d}/context.md')},
                                         {'from':'gpt','value':think(read(f'{d}/reasoning.md'), ans_text)}],
-                     'system': METHOD_SYS.format(year=yr), '_kind':'method', '_id':slug})
+                     'system': METHOD_SYS.format(year=yr), '_kind':'method', '_id':slug,
+                     '_doc_landing': doc_landing})
     stats['method'] += 1
 
 # ---------- (a2) v4 competition deliverables : single-turn, OVERSAMPLED into the mix ----------
@@ -227,7 +245,7 @@ def step_answer(d, st):
         ta_text = read(ta)
         if ans_p and os.path.isfile(ans_p) and not _ta_code_ok(ta_text, read(ans_p)):
             stats['traj_ta_bypass'] = stats.get('traj_ta_bypass', 0) + 1
-            return read(ans_p)
+            return _scrub_answer(read(ans_p))
         return ta_text
     return read(ans_p) if ans_p and os.path.isfile(ans_p) else ''
 
@@ -383,7 +401,8 @@ def tag_example(ex):
     return {'id': ex.get('_id'), 'kind': ex.get('_kind'),
             'reads_stdin': bool(_STDIN_RE.search(txt)), 'has_cpp': bool(_CPP_RE.search(txt)),
             'defines_class': bool(_CLASS_RE.search(txt)), 'has_fallback': bool(_FALLBACK_RE.search(txt)),
-            'has_code': '```' in txt}
+            'has_code': '```' in txt,
+            'doc_landing': bool(ex.get('_doc_landing'))}
 
 # ---------- uniform schema (load-safety, 2026-07) ----------
 # A file that uses the per-turn `loss` flag ANYWHERE must carry it EVERYWHERE, and every optional

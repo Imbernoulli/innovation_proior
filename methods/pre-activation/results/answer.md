@@ -98,7 +98,7 @@ class PreActBlock(nn.Module):
         return shortcut + out                      # clean add; no activation after it
 ```
 
-Pre-activation bottleneck unit, matching the official `resnet-1k-layers` CIFAR implementation,
+Pre-activation bottleneck unit, matching the `resnet-1k-layers` CIFAR implementation,
 uses 1x1 -> 3x3 -> 1x1 convs, each in `BN -> ReLU -> Conv` order. Equal-shape units use a raw
 identity shortcut. Dimension-changing units use a common first BN-ReLU before both the residual
 branch and the projection shortcut; the downsampling stride is on the first 1x1 conv and the

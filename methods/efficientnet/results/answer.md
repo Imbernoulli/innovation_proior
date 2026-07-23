@@ -167,7 +167,7 @@ class MBConv(nn.Module):
         return h
 
 
-# (expand, kernel, stride, input, output, repeats), matching the official strings:
+# (expand, kernel, stride, input, output, repeats), matching the canonical block strings:
 # r1_k3_s11_e1_i32_o16_se0.25, ..., r1_k3_s11_e6_i192_o320_se0.25
 BASE_STAGES = [
     (1, 3, 1, 32, 16, 1),

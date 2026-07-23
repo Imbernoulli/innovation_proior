@@ -74,7 +74,7 @@ L(φ) = (1/|M|) Σ_(b,t,i)∈M max( (V_φ(x_bti) − R̂_bti)^2,
                                 (V_clip − R̂_bti)^2 )
 ```
 
-The value loss is written here with squared errors; the official on-policy trainer applies the same
+The value loss is written here with squared errors; the full on-policy trainer applies the same
 clipped-error structure with Huber loss (`δ = 10`) and PopArt-normalized returns. GAE:
 `δ_t = r_t + γ V(s_{t+1}) − V(s_t)`, `A_t = Σ_{l≥0} (γλ)^l δ_{t+l}`, with `V` denormalized before forming
 `δ_t`. Recurrent (GRU) variants additionally sum over time and train with BPTT on fixed-length chunks.
@@ -167,7 +167,7 @@ class CentralVCritic(nn.Module):
         return self.fc3(x)
 ```
 
-In the official on-policy stack, AS/FP/death-masked value inputs are already assembled as `share_obs` /
+In the full on-policy stack, AS/FP/death-masked value inputs are already assembled as `share_obs` /
 `cent_obs`; the critic maps that centralized observation to one scalar value and the replay buffer stores
 `(T+1, rollout_threads, n_agents, 1)` value and return tensors.
 

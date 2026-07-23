@@ -180,7 +180,7 @@ def mfla_step(
 ):
     """One first-layer update.
 
-    match_notebook_noise=True reproduces the official notebook:
+    match_notebook_noise=True reproduces the companion notebook:
         noise = 2 * sqrt(lr * inv_temp) * N(0, I).
     match_notebook_noise=False uses Eq. 10:
         noise = sqrt(2 * lr * inv_temp) * N(0, I).
