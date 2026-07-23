@@ -135,6 +135,13 @@ def end_on_assistant(convs):
     return convs
 
 # ---------- (a) methods : single-turn ----------
+# Theory/analysis methods whose answer.md has no runnable code: the discovery-writeup pass invented
+# a Python block for their train_answer.md (never executed, never reviewed; audited sample had a
+# hard bug). While such a train_answer still carries a code fence, the answer channel presents
+# answer.md itself (the reviewed, codeless deliverable) instead of the contaminated write-up.
+_taf = 'sft/use_answer_for_theory.txt'
+_THEORY_ANSWER = ({x.strip() for x in open(_taf) if x.strip() and not x.startswith('#')}
+                  if os.path.isfile(_taf) else set())
 methods = json.load(open('methods.json'))
 for m in methods:
     slug, yr = m['slug'], m.get('year')
@@ -144,8 +151,12 @@ for m in methods:
     d = f'methods/{slug}/results'
     if not all(os.path.isfile(f'{d}/{f}.md') for f in ('context', 'reasoning', 'train_answer')):
         continue
+    ans_text = read(f'{d}/train_answer.md')
+    if slug in _THEORY_ANSWER and '```' in ans_text and os.path.isfile(f'{d}/answer.md'):
+        ans_text = read(f'{d}/answer.md')
+        stats['method_theory_answer'] = stats.get('method_theory_answer', 0) + 1
     examples.append({'conversations': [{'from':'human','value':read_with_note(f'{d}/context.md')},
-                                        {'from':'gpt','value':think(read(f'{d}/reasoning.md'), read(f'{d}/train_answer.md'))}],
+                                        {'from':'gpt','value':think(read(f'{d}/reasoning.md'), ans_text)}],
                      'system': METHOD_SYS.format(year=yr), '_kind':'method', '_id':slug})
     stats['method'] += 1
 
