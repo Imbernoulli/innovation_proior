@@ -62,3 +62,5 @@ def update_loss_free_bias(bias, probs, topi, N, u=1e-3):
         bias += u * torch.sign(c.mean() - c)
     return bias
     # biased top-K: torch.topk(router_logits + bias, K)
+
+```

@@ -135,21 +135,24 @@ def end_on_assistant(convs):
     return convs
 
 # ---------- (a) methods : single-turn ----------
-# train_answer.md code-integrity gate. The discovery-writeup contract says train_answer's code is
-# copied VERBATIM from answer.md (the reviewed canonical deliverable); the 2026-07 audit found 548
-# methods violating it — code invented from thin air (theory methods whose answer has no code) or
-# silently re-implemented (never executed, never reviewed; sampled files had hard bugs). For those
-# suspect slugs the answer channel uses train_answer ONLY IF every large code fence in it is a
-# whitespace-normalized substring of answer.md's fences; otherwise it presents answer.md itself.
-# Self-healing: a train_answer later fixed to verbatim (or to a codeless artifact ending where
-# answer.md has no code) is used again automatically. Missing train_answer falls back to answer.md.
-_sus_f = 'sft/train_answer_suspects.txt'
-_TA_SUSPECTS = ({x.strip() for x in open(_sus_f) if x.strip() and not x.startswith('#')}
-                if os.path.isfile(_sus_f) else set())
+# train_answer.md code-integrity gate — applied to EVERY method. The discovery-writeup contract
+# says train_answer's code is copied VERBATIM from answer.md (the reviewed canonical deliverable);
+# the 2026-07 audit found 548 methods violating it outright (code invented from thin air or fully
+# re-implemented — never executed, never reviewed; sampled files had hard bugs) plus 39 more with
+# near-verbatim blocks carrying small silent edits or an extra invented block. The gate is the
+# contract mechanized, so it needs no suspect list: the answer channel uses train_answer ONLY IF
+# every large code fence in it is a whitespace-normalized substring of answer.md's fences;
+# otherwise it presents answer.md itself. Self-healing: a train_answer later fixed to verbatim (or
+# to a codeless artifact ending where answer.md has no code) is used again automatically. Missing
+# train_answer falls back to answer.md. (sft/train_answer_suspects.txt documents the audit scope.)
 _FENCE_RE = re.compile(r'```[a-zA-Z0-9_+-]*\n(.*?)```', re.S)
+def _fences(text):
+    if text.count('```') % 2:          # unclosed final fence: markdown closes it at EOF
+        text = text + '\n```'
+    return _FENCE_RE.findall(text)
 def _ta_code_ok(ta_text, ans_text):
-    hay = re.sub(r'\s+', '', ''.join(_FENCE_RE.findall(ans_text)))
-    for b in _FENCE_RE.findall(ta_text):
+    hay = re.sub(r'\s+', '', ''.join(_fences(ans_text)))
+    for b in _fences(ta_text):
         nb = re.sub(r'\s+', '', b)
         if len(nb) >= 200 and nb not in hay:
             return False
@@ -171,7 +174,7 @@ for m in methods:
         stats['method_answer_fallback'] = stats.get('method_answer_fallback', 0) + 1
     else:
         ans_text = read(f'{d}/train_answer.md')
-        if slug in _TA_SUSPECTS and has_ans and not _ta_code_ok(ans_text, read(f'{d}/answer.md')):
+        if has_ans and not _ta_code_ok(ans_text, read(f'{d}/answer.md')):
             ans_text = read(f'{d}/answer.md')
             stats['method_ta_bypass'] = stats.get('method_ta_bypass', 0) + 1
     examples.append({'conversations': [{'from':'human','value':read_with_note(f'{d}/context.md')},
@@ -212,12 +215,21 @@ stats['v4_unique'] = v4_n
 # ---------- (b) trajectories ----------
 trajs = {x['task']: x for x in json.load(open('trajectories.json'))}
 def step_answer(d, st):
+    # Same code-integrity gate as methods: a rung train_answer whose large code fences are not a
+    # verbatim (whitespace-normalized) subset of the rung answer's fences carries silently edited
+    # code (audit: 32/678 rungs, incl. out-of-frame citations inside docstrings) — prefer the
+    # scored answer file for those.
     rsn_f = st.get('reasoning')
     ta = os.path.join(d, os.path.basename(rsn_f).replace('-reasoning.md', '-train_answer.md'))
-    if os.path.isfile(ta):
-        return read(ta)
     ans_f = st.get('answer')
-    return read(os.path.join(d, ans_f)) if ans_f and os.path.isfile(os.path.join(d, ans_f)) else ''
+    ans_p = os.path.join(d, ans_f) if ans_f else None
+    if os.path.isfile(ta):
+        ta_text = read(ta)
+        if ans_p and os.path.isfile(ans_p) and not _ta_code_ok(ta_text, read(ans_p)):
+            stats['traj_ta_bypass'] = stats.get('traj_ta_bypass', 0) + 1
+            return read(ans_p)
+        return ta_text
+    return read(ans_p) if ans_p and os.path.isfile(ans_p) else ''
 
 for meta_p in sorted(glob.glob('trajectories/*/meta.json')):
     task = os.path.basename(os.path.dirname(meta_p))

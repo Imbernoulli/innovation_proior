@@ -39,3 +39,5 @@ def balance_loss_switch(probs_list, topi_list, N, alpha=1e-2):
 
 # At training time f is computed per micro-batch: split the batch into 4 micro-splits,
 # evaluate balance_loss_switch on each, and average — the micro-batch locality penalty.
+
+```

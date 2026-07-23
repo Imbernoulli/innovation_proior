@@ -239,4 +239,3 @@ The PME reciprocal energy converges to the brute-force value, with the relative
 error falling as the interpolation order p (hence the grid spacing exponent 2p)
 increases — exactly the (a_k/K_k)^{2p} behaviour of the error bound — while the
 cost stays O(N log N) in the number of charges.
-```

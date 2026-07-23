@@ -57,3 +57,5 @@ def balance_loss_switch(probs_list, topi_list, N, alpha=1e-2):
 # At training time the micro-batch locality is realized by splitting the batch
 # into a few micro-splits, evaluating the loss on each, and averaging:
 #   lb = sum(balance_loss_switch(split_probs, split_topi, N) for split) / n_splits
+
+```
