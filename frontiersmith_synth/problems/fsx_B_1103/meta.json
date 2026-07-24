@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1103",
+  "tier": "B",
+  "format": "D",
+  "family": "embroidery-jump-scheduler",
+  "eval_form": "flops",
+  "theme": "cheapest machine-embroidery stitch plan",
+  "title": "Orbit Stitcher: Cheapest Multicolor Embroidery Run",
+  "objective": "min",
+  "strategies": [
+    "input-order construction, jumping whenever not adjacent (checker baseline)",
+    "color-locked global plan: sort segments by color (minimal color changes) and chain monochromatic trails with nearest-neighbor jumps across the whole lattice",
+    "orbit-interleave hybrid: Eulerian-style trail cover inside each congruent region (orbit representative) plus a TSP tour over the region orbit, deliberately re-buying color changes when the group geometry makes one lattice sweep cheaper than one color sweep per color",
+    "infeasible: stitches a segment twice"
+  ]
+}

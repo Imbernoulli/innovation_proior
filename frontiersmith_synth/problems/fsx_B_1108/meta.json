@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1108",
+  "tier": "B",
+  "format": "C",
+  "family": "radiative-hotspot-sinks",
+  "eval_form": "quality-metric",
+  "theme": "Place heat sinks against fourth-power radiation",
+  "title": "Chill the Grid: Sinking Heat Against Fourth-Power Radiation",
+  "objective": "min",
+  "strategies": [
+    "place the k sinks at junctions 0..k-1 (checker baseline; wastes them on the cool shell)",
+    "rank junctions by heat generation and sink the top-k loudest sources",
+    "solve the nonlinear steady state and repeatedly sink the emergent hottest junction, re-solving as hotspots migrate",
+    "swap-polish: move any sink whose relocation onto the current hottest free junction lowers the peak further"
+  ]
+}

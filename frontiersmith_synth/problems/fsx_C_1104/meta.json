@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1104",
+  "tier": "C",
+  "format": "C",
+  "family": "crt-schedule-packing",
+  "eval_form": "quality-metric",
+  "theme": "Interleave periodic jobs without collisions",
+  "title": "Beacon Hill: Phasing Periodic Transmissions on a Shared Channel",
+  "objective": "min",
+  "strategies": [
+    "all-zero phases (reproduces the checker baseline, ~0.1)",
+    "duty-cycle greedy: sort jobs by d_i/p_i descending, place each at the offset of least exact marginal waste -- places the high-duty flexible family first, scattering it over expensive residue classes as singles and forcing late rigid jobs' unavoidable overlap onto heavy instants",
+    "CRT residue tiling: detect the cheap residue class c* mod 4 from the posted weights; route every d=1, 4|p job wholesale into c* (their mutual excess is priced at the cheap rate), place rigid jobs first on the expensive classes while still empty, then exact-marginal local search",
+    "headroom above strong: joint optimization of rigid-family staggering (which rigid pairs may align at gcd beats), better use of leftover cheap-class capacity, smarter local search / ILP-ish moves"
+  ]
+}
