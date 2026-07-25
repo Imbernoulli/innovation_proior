@@ -15,9 +15,7 @@ differently. If the open floor cannot be paved at all (for instance, it has an o
 open cells), the count is `0`.
 
 This is the planar **domino-tiling enumeration** problem on a grid with holes. The grid is
-short but very wide (`h <= 14`, `w <= 1000`), which is exactly the regime where the contour
-between paved and unpaved territory — not the full set of placed panels — is the only state
-that matters.
+short but very wide (`h <= 14`, `w <= 1000`).
 
 ## Input / output contract
 
@@ -67,7 +65,7 @@ ever materializing a placement of every panel:
 Judged on hidden tests covering: tiny boards checked against backtracking; boards with an odd
 number of open cells (answer `0`); fully blocked boards (`#` everywhere, the empty paving, count
 `1`); boards split into independent regions by walls of pillars; thin `1 x w` and `2 x w`
-strips with known closed forms (a `2 x w` open strip has `Fib(w+1)` pavings); the largest boards
+strips with known closed forms; the largest boards
 `h = 14`, `w = 1000` for both speed and `64`-bit-safe modular accumulation; and assorted moduli
 including `p = 2`, small primes, and large primes such as `998244353` and `10^9 + 7`, plus the
 degenerate `p = 1`.
