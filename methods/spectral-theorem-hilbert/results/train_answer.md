@@ -10,36 +10,10 @@ The theorem also gives a bounded Borel functional calculus: for every bounded Bo
 
 When the spectrum is finite, the spectral theorem collapses to ordinary diagonalization. Each singleton {lambda} yields the projection P_lambda = E({lambda}), and the integral becomes the finite sum sum_lambda lambda P_lambda. When the spectrum is continuous, the integral absorbs the multiplication-by-coordinate example: E(B) is multiplication by the indicator of B, and integrating the coordinate function recovers the multiplication operator. The same theorem therefore spans finite matrices, compact operators with countable eigenexpansions, and operators with purely continuous spectrum.
 
-I verify the finite-dimensional case numerically with a small Python illustration. The script constructs a random Hermitian matrix, computes its eigenvalues and eigenprojectors, checks that the matrix equals the sum of eigenvalue-weighted projectors, and then approximates a spectral projection onto an interval by summing the projectors for eigenvalues inside that interval.
-
-```python
-import numpy as np
-
-np.random.seed(0)
-n = 5
-A = np.random.randn(n, n) + 1j * np.random.randn(n, n)
-A = (A + A.conj().T) / 2  # make A Hermitian
-
-eigvals, eigvecs = np.linalg.eigh(A)
-P = [np.outer(v, v.conj()) for v in eigvecs.T]  # orthogonal spectral projections
-
-reconstruction = sum(lam * p for lam, p in zip(eigvals, P))
-print("Reconstruction error:", np.max(np.abs(A - reconstruction)))
-
-a, b = -1.0, 1.0
-mask = (eigvals >= a) & (eigvals <= b)
-interval_projection = sum(P[i] for i in range(n) if mask[i])
-print("Is interval projection idempotent/hermitian?",
-      np.allclose(interval_projection @ interval_projection, interval_projection),
-      np.allclose(interval_projection, interval_projection.conj().T))
-
-# verify spectral measure property E(B)E(C)=E(B cap C) on two intervals
-B = (eigvals >= a) & (eigvals <= b)
-C = (eigvals >= 0.0) & (eigvals <= 2.0)
-PB = sum(P[i] for i in range(n) if B[i])
-PC = sum(P[i] for i in range(n) if C[i])
-P_inter = sum(P[i] for i in range(n) if B[i] and C[i])
-print("Projection intersection property:", np.allclose(PB @ PC, P_inter))
-```
-
-The output confirms that the finite atomic picture is exactly the spectral theorem in action. In the infinite-dimensional setting the same logic persists, but the atomic sums become integrals and the eigenprojectors become the projection-valued measure. The theorem is usually called the spectral theorem for bounded normal operators on Hilbert space, and it is the foundation on which functional calculus, quantum-mechanical observables, and spectral analysis of differential operators are built.
+Collecting the four construction stages gives the theorem in its complete and final form. Let $H$ be a complex Hilbert space and let $N \in B(H)$ be normal, with spectrum $K = \sigma(N)$, a compact subset of $\mathbb{C}$. There is a unique projection-valued measure
+$$E : \mathrm{Borel}(K) \to B(H)$$
+such that
+$$N = \int_K z \, dE(z).$$
+The measure $E$ satisfies four properties, each of which I built directly out of the construction above: $E(\emptyset) = 0$, $E(K) = I$, and every $E(B)$ is an orthogonal projection; $E(B \cap C) = E(B)E(C)$ for Borel sets $B, C \subset K$, which is the multiplicativity of the functional calculus applied to indicator functions; for pairwise disjoint $B_1, B_2, \dots$ with union $B$, $E(B)x = \sum_n E(B_n)x$ in norm for every $x \in H$, which is strong countable additivity inherited from the scalar measures $\mu_x$; and for every bounded Borel function $f : K \to \mathbb{C}$, the operator $f(N) := \int_K f \, dE$ is bounded with $\|f(N)\| \le \|f\|_\infty$, and $f \mapsto f(N)$ is a unital $*$-homomorphism, so in particular $N^* = \int_K \bar z \, dE(z)$. When $A = A^*$ the spectrum is real and this specializes to
+$$A = \int_{\sigma(A)} \lambda \, dE(\lambda).$$
+When the spectrum is a finite set $\{\lambda_j\}$, writing $P_{\lambda_j} = E(\{\lambda_j\})$ collapses the integral to the ordinary finite sum $A = \sum_j \lambda_j P_j$, which is exactly the diagonalization I started from; when the spectrum is continuous, as for multiplication by the coordinate on $L^2([0,1])$, $E(B)$ is multiplication by $\mathbf{1}_B$ and the same integral recovers the multiplication operator. This is the spectral theorem for bounded normal operators on Hilbert space: the projection-valued measure $E$ is the exact replacement for an eigenbasis, valid whether the spectrum is a finite set of eigenvalues, a countable accumulation as for compact operators, or a full continuum with no eigenvectors at all, and it is the object on which the bounded Borel functional calculus, the spectral analysis of quantum-mechanical observables, and the resolution of self-adjoint differential operators are built.
