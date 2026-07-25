@@ -16,66 +16,14 @@ There is an unavoidable cost. Exact Solomonoff induction is incomputable. To eva
 
 Machine dependence is real but bounded in the usual algorithmic-information sense. A different universal machine changes program lengths by at most an additive compiler constant, so prior weights change by multiplicative constants rather than by a data-dependent refitting of the language. Still, the reference machine must be chosen before seeing the data. That requirement is essential; without it the universal prior could become a disguised way to encode the answer after the fact.
 
-In practice I can only approximate the ideal. The code below illustrates the principle with a small finite collection of simple programs, each assigned a description length. Given an observed binary prefix, it weights every compatible program by 2^{-|p|} and predicts the next bit by conditioning that mixture. It is not Solomonoff induction in full, because the true universal class is infinite and incomputable, but it captures the same structure on a toy scale.
+What this analysis delivers in the end is not a runnable predictor but a precise formal object, and stating it exactly is the place to land. Fix once, before any data is seen, a universal prefix Turing machine $U$. For a finite observed binary string $x$, the universal semimeasure is
 
-```python
-import math
+$$M_U(x) \;=\; \sum_{p\,:\, U(p)\ \text{outputs a string beginning with}\ x} 2^{-|p|},$$
 
-def generate(rule, n):
-    """Generate the first n bits of a simple computable sequence."""
-    if rule == "zeros":
-        return "0" * n
-    if rule == "ones":
-        return "1" * n
-    if rule == "alt01":
-        return ("01" * ((n // 2) + 1))[:n]
-    if rule == "alt10":
-        return ("10" * ((n // 2) + 1))[:n]
-    if rule == "repeat_0011":
-        return ("0011" * ((n // 4) + 1))[:n]
-    if rule == "fibonacci_parity":
-        a, b = 0, 1
-        out = ""
-        for _ in range(n):
-            out += str(a % 2)
-            a, b = b, a + b
-        return out
-    return ""
+the sum, over every program $p$ whose output on $U$ begins with $x$, of $2^{-|p|}$, where $|p|$ is the length of $p$ in bits. Prediction is Bayesian conditioning of this prior on the observed data: having seen $x$, the probability assigned to a continuation $y$ is
 
-rules = {
-    "zeros": 2,
-    "ones": 2,
-    "alt01": 4,
-    "alt10": 4,
-    "repeat_0011": 6,
-    "fibonacci_parity": 8,
-}
+$$P(y \mid x) \;=\; \frac{M_U(xy)}{M_U(x)},$$
 
-def finite_solomonoff_predict(x, rules):
-    """Weight each compatible rule by 2^{-description length} and condition."""
-    mass_0 = 0.0
-    mass_1 = 0.0
-    total = 0.0
-    for rule, length in rules.items():
-        n = len(x) + 1
-        gen = generate(rule, n)
-        if gen.startswith(x):
-            weight = 2.0 ** (-length)
-            total += weight
-            if gen[len(x)] == "0":
-                mass_0 += weight
-            else:
-                mass_1 += weight
-    if total == 0:
-        return 0.5, 0.5
-    return mass_0 / total, mass_1 / total
-
-if __name__ == "__main__":
-    observed = "01010"
-    p0, p1 = finite_solomonoff_predict(observed, rules)
-    print(f"Observed prefix: {observed}")
-    print(f"P(next = 0) = {p0:.4f}")
-    print(f"P(next = 1) = {p1:.4f}")
-```
+the mass of programs consistent with $xy$ measured against the mass of programs consistent with $x$ alone. Neither equation can be sharpened further without giving up either the universality of the hypothesis class or the fixed-machine discipline that keeps the prior honest — and no finite illustration on a handful of toy programs can stand in for them, because a small enough sample of candidate programs almost always leaves only one of them consistent with the data, collapsing the "mixture" back into the single-best-program rule this whole construction was built to avoid.
 
 So the final summary of Solomonoff induction is this. I fix a universal machine before seeing data. I assign every program a prior weight that decreases exponentially with its length. I sum those weights over all programs compatible with the observed prefix to obtain the universal semimeasure. I condition that measure to predict future observations. The method is incomputable in its exact form, but it provides a clean ideal theory of induction in which the only restrictions on hypotheses are computability and a fixed reference machine. It is best understood not as another model-selection criterion, but as a gold-standard answer to the question of how to generalize from evidence without secretly choosing the answer in advance.
