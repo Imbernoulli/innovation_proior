@@ -6,19 +6,18 @@ The method I propose is the Graph Isomorphism Network with a sum-based Jumping K
 
 At each layer the node update is MLP((1 + epsilon) * h_v + sum of h_u over neighbors u). The sum is the only standard permutation-invariant aggregator that can be injective over multisets: with a suitable element map, summing assigns a unique code to each possible multiset, preserving exact counts. The (1 + epsilon) weight on the center node keeps the root distinct from its surrounding multiset; it is injective for almost every choice of epsilon, including all irrational values. The MLP is essential because a single linear layer followed by a nonlinearity is not a universal approximator of multiset functions and can collapse different multisets with equal sums. The first layer can omit the pre-sum MLP when inputs are one-hot because summing one-hot vectors is already injective.
 
-The graph-level readout must also be injective on the multiset of final node vectors, so it uses sum pooling rather than mean or max. Depth is another source of tension: later layers see larger receptive fields and can distinguish distant structures, but in densely connected regions deep embeddings get washed out, while earlier layers retain more local information. GIN-sum therefore reads every layer, not just the last one. Each layer's node embeddings are sum-pooled into a graph-level vector and the resulting vectors are concatenated side by side, a form of Jumping Knowledge. Concatenation is lossless and low-parameter, which is well suited to the small graph-classification benchmarks, and the downstream classifier learns how to weight each scale. A per-layer batch normalization on the pooled vectors can be added to keep different layers on a common optimization scale without affecting injectivity, since it is invertible.
+The graph-level readout must also be injective on the multiset of final node vectors, so it uses sum pooling rather than mean or max. Depth is another source of tension: later layers see larger receptive fields and can distinguish distant structures, but in densely connected regions deep embeddings get washed out, while earlier layers retain more local information. GIN-sum therefore reads every layer, not just the last one. Each layer's node embeddings are sum-pooled into a graph-level vector and the resulting vectors are concatenated side by side, a form of Jumping Knowledge. Concatenation is lossless and low-parameter, which is well suited to the small graph-classification benchmarks, and the downstream classifier learns how to weight each scale, with no bottleneck projection afterward since shrinking that concatenated vector would reintroduce the kind of lossy collapse the whole construction was built to avoid.
 
 Together these choices give a network that trains end-to-end, represents similarity in a learned embedding space, and matches the expressive power of the 1-WL test. Below is a compact PyTorch Geometric implementation that bundles the GIN backbone with the sum Jumping Knowledge readout and a small classifier head.
 
 ```python
-import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import GINConv, JumpingKnowledge, global_add_pool
 
 
 class GINBackbone(nn.Module):
-    """Sum neighbors, add the weighted center node, and update with an MLP."""
+    """h_v = MLP((1 + eps) * h_v + sum_{u in N(v)} h_u)."""
 
     def __init__(self, input_dim, hidden_dim, num_layers, train_eps=False):
         super().__init__()
@@ -33,9 +32,7 @@ class GINBackbone(nn.Module):
                 nn.ReLU(),
                 nn.Linear(hidden_dim, hidden_dim),
             )
-            self.convs.append(
-                GINConv(update, eps=0.0, train_eps=train_eps, aggr="add")
-            )
+            self.convs.append(GINConv(update, eps=0.0, train_eps=train_eps, aggr="add"))
             self.norms.append(nn.BatchNorm1d(hidden_dim))
 
     def forward(self, x, edge_index, batch=None):
@@ -48,36 +45,21 @@ class GINBackbone(nn.Module):
 
 
 class SumJKReadout(nn.Module):
-    """Sum-pool each layer's node embeddings, then concatenate the graph vectors."""
+    """Sum-pool each layer, then concatenate the graph vectors."""
 
     def __init__(self, hidden_dim, num_layers):
         super().__init__()
-        self.hidden_dim = hidden_dim
-        self.num_layers = num_layers
         self.output_dim = hidden_dim * num_layers
-        self.graph_bns = nn.ModuleList([
-            nn.BatchNorm1d(hidden_dim) for _ in range(num_layers)
-        ])
         self.jk = JumpingKnowledge(mode="cat")
 
     def forward(self, x, edge_index, batch, layer_outputs):
-        pooled = [
-            self.graph_bns[i](global_add_pool(h, batch))
-            for i, h in enumerate(layer_outputs)
-        ]
+        pooled = [global_add_pool(h, batch) for h in layer_outputs]
         return self.jk(pooled)
 
 
 class GraphClassifier(nn.Module):
-    def __init__(
-        self,
-        input_dim,
-        hidden_dim,
-        num_classes,
-        num_layers,
-        dropout=0.5,
-        train_eps=False,
-    ):
+    def __init__(self, input_dim, hidden_dim, num_classes, num_layers, dropout=0.5,
+                 train_eps=False):
         super().__init__()
         self.backbone = GINBackbone(input_dim, hidden_dim, num_layers, train_eps)
         self.readout = SumJKReadout(hidden_dim, num_layers)
