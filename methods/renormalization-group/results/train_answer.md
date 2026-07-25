@@ -16,44 +16,10 @@ In higher dimensions the same structure becomes quantitative through the epsilon
 
 The evaluation of the method is therefore both structural and numerical. Structurally, it explains why critical systems become scale invariant, why only a few parameters need to be tuned, and why microscopic details drop out. Numerically, it gives algorithms such as the epsilon expansion and real-space decimation that produce concrete values for critical exponents. The key insight is that the solution to a critical phenomenon is not a single microscopic or macroscopic formula, but the flow of effective theories under change of scale, together with the fixed points and linearized directions that organize that flow.
 
-I close with a short Python simulation that computes the renormalization-group flow of the one-dimensional Ising coupling under decimation, identifies the fixed points, and visualizes how any finite initial coupling flows to the disordered fixed point.
+The artifact this analysis delivers is not an illustrative simulation but the renormalization-group transformation itself, stated precisely enough to serve as a calculational object in its own right. Write the coarse-graining-and-rescale step as a map on the space of couplings, in general infinite-dimensional,
+$$K' = R_b(K),$$
+where $b>1$ is the length-rescaling factor of one step. A fixed point $K^{*}$ obeys $R_b(K^{*}) = K^{*}$, and linearizing around it, $R_b(K^{*}+\delta K) \approx K^{*} + \hat{L}\,\delta K$, gives an operator $\hat{L}$ whose eigenvalues $b^{y_i}$ classify every direction in coupling space: $y_i>0$ is relevant and must be tuned to zero to reach criticality, $y_i<0$ is irrelevant and is forgotten by the flow, and $y_i=0$ is marginal and needs higher-order treatment. The critical exponents of the system are exactly these $y_i$ — structural properties of $R_b$ at its fixed point, not parameters fit to any one material.
 
-```python
-import numpy as np
-import matplotlib.pyplot as plt
-
-def rg_step(K):
-    """One decimation step for the 1D Ising model: K' = 0.5 * log(cosh(2K))."""
-    return 0.5 * np.log(np.cosh(2.0 * K))
-
-def iterate_rg(K0, n_steps=20):
-    trajectory = [K0]
-    K = K0
-    for _ in range(n_steps):
-        K = rg_step(K)
-        trajectory.append(K)
-        if K < 1e-12:
-            break
-    return np.array(trajectory)
-
-# Verify the fixed-point equation.
-K_values = np.linspace(0, 5, 500)
-K_next = rg_step(K_values)
-fixed_points = K_values[np.isclose(K_values, K_next, atol=1e-6)]
-print("Fixed points of the decimation map:", np.unique(np.round(fixed_points, 6)))
-
-# Plot the RG map and several trajectories.
-plt.figure(figsize=(8, 6))
-plt.plot(K_values, K_next, label="K' = 0.5 log(cosh(2K))", color="blue")
-plt.plot(K_values, K_values, linestyle="--", color="gray", label="K' = K")
-for K0 in [0.1, 0.5, 1.0, 2.0, 3.0]:
-    traj = iterate_rg(K0, n_steps=15)
-    plt.plot(range(len(traj)), traj, marker="o", label=f"K0={K0}")
-plt.xlabel("Iteration")
-plt.ylabel("Coupling K")
-plt.title("1D Ising RG decimation flow")
-plt.legend()
-plt.grid(True)
-plt.tight_layout()
-plt.show()
-```
+In closed form, for the one-dimensional Ising chain this transformation is the exact decimation map
+$$K' = \frac{1}{2}\ln\cosh(2K), \qquad \text{equivalently} \qquad \tanh K' = \tanh^{2} K,$$
+whose only fixed points are the stable sink $K^{*}=0$ and the unstable source $K^{*}=\infty$; because no fixed point exists at any finite positive $K$, the transformation itself is the proof that the chain has no finite-temperature phase transition. For $\phi^4$ theory the same $R_b$, linearized about the Gaussian fixed point in $d = 4-\epsilon$ dimensions, develops a second fixed point — Wilson-Fisher — displaced from the Gaussian one by an amount controlled by $\epsilon$, and the eigenvalues of $\hat{L}$ there give the critical exponents order by order in the $\epsilon$-expansion. This transformation, together with its fixed points and the classification of directions around them, is the finished method: a map that replaces the search for one universal microscopic formula with the structural fact that criticality is a fixed point of $R_b$ and universality is membership in its basin of attraction.

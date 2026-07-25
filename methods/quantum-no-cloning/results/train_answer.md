@@ -28,58 +28,8 @@ Several important consequences follow from this single fact. Classical informati
 
 Finally, the no-cloning property is not merely a limitation; it is a resource. If information is encoded in non-orthogonal alternatives, such as photon polarizations chosen from a rectilinear or diagonal basis kept secret from an eavesdropper, then any attempt to intercept and copy the carrier must either fail or disturb the state, leaving detectable traces. This is the physical foundation of quantum key distribution.
 
-The following Python script illustrates the obstruction for a qubit. It constructs a linear operator that copies the computational basis states $|0\rangle$ and $|1\rangle$, applies it to the superposition $|+\rangle$, and compares the resulting two-register state with the true clone $|+\rangle|+\rangle$. It also verifies the inner-product argument by showing that a hypothetical perfect cloner would have to change the overlap between two non-orthogonal states from $\langle\psi|\phi\rangle$ to $\langle\psi|\phi\rangle^2$, which no unitary can do.
+The two arguments above are not separate results; they are the same fact seen twice, and together they give the theorem its exact, final form. Let $\mathcal{H}$ be a Hilbert space, $|\Sigma\rangle$ a fixed blank state, and $|A_{\mathrm{ready}}\rangle$ any fixed machine ready state. Then there is no unitary $U$ acting on the system, target, and machine registers such that
 
-```python
-import numpy as np
+$$U\big(|\psi\rangle|\Sigma\rangle|A_{\mathrm{ready}}\rangle\big) = |\psi\rangle|\psi\rangle|A_\psi\rangle \qquad \text{for every normalized } |\psi\rangle \in \mathcal{H},$$
 
-# Computational basis
-ket0 = np.array([1.0, 0.0])
-ket1 = np.array([0.0, 1.0])
-ket_plus = (ket0 + ket1) / np.sqrt(2)
-
-# Tensor product helper
-def kron(*states):
-    out = states[0]
-    for s in states[1:]:
-        out = np.kron(out, s)
-    return out
-
-# A linear "copying" map that copies |0> and |1> perfectly.
-# We represent it as a matrix on three qubits: system, target, apparatus.
-# U |0>|0>|0> = |0>|0>|0>
-# U |1>|0>|0> = |1>|1>|0>
-U = np.zeros((8, 8), dtype=complex)
-U[:, 0] = kron(ket0, ket0, ket0)  # |0>|0>|0> -> |0>|0>|0>
-U[:, 4] = kron(ket1, ket1, ket0)  # |1>|0>|0> -> |1>|1>|0>
-for j in [1, 2, 3, 5, 6, 7]:
-    U[:, j] = np.eye(8)[:, j]       # complete the remaining columns
-
-# Input |+>|0>|0>
-input_state = kron(ket_plus, ket0, ket0)
-forced_output = U @ input_state
-
-# Compare with true clone |+>|+>|0>
-true_clone = kron(ket_plus, ket_plus, ket0)
-
-fidelity = abs(np.vdot(true_clone, forced_output))**2
-print("Fidelity of forced linear output with true clone:", fidelity)
-print("Forced output amplitudes:", np.round(forced_output, 4))
-
-# Reduced density matrix of the first two qubits from the forced output
-rho_forced = np.outer(forced_output, forced_output.conj())
-rho_forced = rho_forced.reshape(4, 2, 4, 2)
-rho_two = np.trace(rho_forced, axis1=1, axis2=3)
-rho_true = np.outer(kron(ket_plus, ket_plus), kron(ket_plus, ket_plus).conj())
-print("Trace distance between two-register states:",
-      0.5 * np.linalg.norm(rho_two - rho_true, ord='nuc'))
-
-# Inner-product argument: for non-orthogonal |+> and |0>,
-# a cloner would map overlap <+|0> = 1/sqrt(2) to (1/sqrt(2))^2 = 1/2.
-overlap_in = np.vdot(ket_plus, ket0)
-overlap_out = overlap_in**2
-print("Input overlap:", overlap_in)
-print("Cloning would require output overlap:", overlap_out)
-```
-
-Running the script shows that the linearly forced output has a low fidelity with the true clone and that the required overlap change is impossible, confirming the no-cloning theorem for arbitrary unknown qubit states.
+even when the final machine state $|A_\psi\rangle$ is permitted to depend on $\psi$; the no-machine form $U\big(|\psi\rangle|\Sigma\rangle\big) = |\psi\rangle|\psi\rangle$ is the special case in which $|A_\psi\rangle$ is absent. The superposition argument exhibits the failure concretely, in any basis one chooses to grant the machine for free; the inner-product argument removes the choice of basis and pins down the boundary exactly: a single fixed unitary can copy a family of states if and only if that family is mutually orthogonal, $|\langle\psi|\phi\rangle| \in \{0,1\}$ for every pair in it. No choice of basis for the machine to start from changes this, because the obstruction is not about apparatus engineering but about the algebra of $U$ itself: cloning demands an operation quadratic in the unknown state, and every physically allowed evolution is linear. That mismatch, and the mutual-orthogonality boundary it forces, is the complete content of the no-cloning theorem, and it is the single fact from which the safety of relativity against FLASH, the free copying of classical bits, the impossibility of no-deleting, the commuting condition of no-broadcasting, and the security of quantum key distribution all follow as corollaries.
