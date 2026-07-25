@@ -33,15 +33,12 @@ def extract(a, t, shape):
 
 def apply_conditioning(x, cond, action_dim=0):
     for tstep, val in cond.items():
-        x[:, tstep, action_dim:] = val.clone()
+        x[:, tstep, action_dim:] = val.clone()  # clamp leading state(s) to observed history
     return x
 
 
 class SinusoidalPosEmb(nn.Module):
-    def __init__(self, dim):
-        super().__init__()
-        self.dim = dim
-
+    def __init__(self, dim): super().__init__(); self.dim = dim
     def forward(self, k):
         half = self.dim // 2
         f = torch.exp(torch.arange(half, device=k.device) * -(math.log(10000) / (half - 1)))
@@ -53,14 +50,12 @@ class ResidualTemporalBlock(nn.Module):
     def __init__(self, c_in, c_out, embed_dim, kernel=5):
         super().__init__()
         pad = kernel // 2
-        self.conv1 = nn.Sequential(
-            nn.Conv1d(c_in, c_out, kernel, padding=pad),
-            nn.GroupNorm(8, c_out), nn.Mish())
-        self.conv2 = nn.Sequential(
-            nn.Conv1d(c_out, c_out, kernel, padding=pad),
-            nn.GroupNorm(8, c_out), nn.Mish())
-        self.time_mlp = nn.Sequential(
-            nn.Mish(), nn.Linear(embed_dim, c_out), nn.Unflatten(-1, (c_out, 1)))
+        self.conv1 = nn.Sequential(nn.Conv1d(c_in, c_out, kernel, padding=pad),
+                                   nn.GroupNorm(8, c_out), nn.Mish())
+        self.conv2 = nn.Sequential(nn.Conv1d(c_out, c_out, kernel, padding=pad),
+                                   nn.GroupNorm(8, c_out), nn.Mish())
+        self.time_mlp = nn.Sequential(nn.Mish(), nn.Linear(embed_dim, c_out),
+                                      nn.Unflatten(-1, (c_out, 1)))
         self.res = nn.Conv1d(c_in, c_out, 1) if c_in != c_out else nn.Identity()
 
     def forward(self, x, emb):
@@ -69,19 +64,20 @@ class ResidualTemporalBlock(nn.Module):
 
 
 class TemporalUnet(nn.Module):
+    """Canonical temporal U-Net denoiser; cond is carried in the signature because
+    the diffusion wrapper clamps observed state columns with the same dictionary."""
     def __init__(self, horizon, transition_dim, dim=128, dim_mults=(1, 2, 4, 8),
                  returns_condition=True, condition_dropout=0.25):
         super().__init__()
         dims = [transition_dim, *map(lambda m: dim * m, dim_mults)]
         in_out = list(zip(dims[:-1], dims[1:]))
-        self.time_mlp = nn.Sequential(
-            SinusoidalPosEmb(dim), nn.Linear(dim, dim * 4), nn.Mish(),
-            nn.Linear(dim * 4, dim))
+        self.time_mlp = nn.Sequential(SinusoidalPosEmb(dim), nn.Linear(dim, dim * 4),
+                                      nn.Mish(), nn.Linear(dim * 4, dim))
         self.returns_condition = returns_condition
         if returns_condition:
-            self.returns_mlp = nn.Sequential(
-                nn.Linear(1, dim), nn.Mish(), nn.Linear(dim, dim * 4), nn.Mish(),
-                nn.Linear(dim * 4, dim))
+            self.returns_mlp = nn.Sequential(nn.Linear(1, dim), nn.Mish(),
+                                             nn.Linear(dim, dim * 4), nn.Mish(),
+                                             nn.Linear(dim * 4, dim))
             self.mask_dist = Bernoulli(probs=1 - condition_dropout)
             embed_dim = 2 * dim
         else:
@@ -102,31 +98,28 @@ class TemporalUnet(nn.Module):
                 ResidualTemporalBlock(co * 2, ci, embed_dim),
                 ResidualTemporalBlock(ci, ci, embed_dim),
                 nn.ConvTranspose1d(ci, ci, 4, 2, 1) if not last else nn.Identity()]))
-        self.final = nn.Sequential(
-            nn.Conv1d(dim, dim, 5, padding=2), nn.GroupNorm(8, dim), nn.Mish(),
-            nn.Conv1d(dim, transition_dim, 1))
+        self.final = nn.Sequential(nn.Conv1d(dim, dim, 5, padding=2),
+                                   nn.GroupNorm(8, dim), nn.Mish(),
+                                   nn.Conv1d(dim, transition_dim, 1))
 
     def forward(self, x, cond, time, returns=None, use_dropout=True, force_dropout=False):
         x = einops.rearrange(x, 'b h c -> b c h')
         t = self.time_mlp(time)
         if self.returns_condition:
+            assert returns is not None
             z = self.returns_mlp(returns)
             if use_dropout:
-                mask = self.mask_dist.sample((z.size(0), 1)).to(z.device)
-                z = mask * z
+                z = self.mask_dist.sample((z.size(0), 1)).to(z.device) * z  # drop y -> ∅
             if force_dropout:
-                z = 0 * z
+                z = 0 * z                                                   # the ∅ branch
             t = torch.cat([t, z], dim=-1)
         h = []
         for a, b, down in self.downs:
-            x = b(a(x, t), t)
-            h.append(x)
-            x = down(x)
+            x = b(a(x, t), t); h.append(x); x = down(x)
         x = self.mid2(self.mid1(x, t), t)
         for a, b, up in self.ups:
             x = torch.cat((x, h.pop()), dim=1)
-            x = b(a(x, t), t)
-            x = up(x)
+            x = b(a(x, t), t); x = up(x)
         x = self.final(x)
         return einops.rearrange(x, 'b c h -> b h c')
 
@@ -146,7 +139,7 @@ class GaussianInvDynDiffusion(nn.Module):
         self.inv_model = nn.Sequential(
             nn.Linear(2 * observation_dim, hidden_dim), nn.ReLU(),
             nn.Linear(hidden_dim, hidden_dim), nn.ReLU(),
-            nn.Linear(hidden_dim, action_dim))
+            nn.Linear(hidden_dim, action_dim))           # a_t = f_phi(s_t, s_{t+1})
         betas = cosine_beta_schedule(n_timesteps)
         ac = torch.cumprod(1 - betas, 0)
         ac_prev = torch.cat([torch.ones(1), ac[:-1]])
@@ -162,42 +155,41 @@ class GaussianInvDynDiffusion(nn.Module):
         discounts = loss_discount ** torch.arange(horizon, dtype=torch.float32)
         discounts = discounts / discounts.mean()
         lw = discounts[:, None] * torch.ones(horizon, observation_dim)
-        lw[0] = 0.
+        lw[0] = 0.                                      # first state clamped -> no signal
         self.register_buffer('loss_weight', lw)
 
     def q_sample(self, x_start, k, noise):
-        return (extract(self.sqrt_ac, k, x_start.shape) * x_start
-                + extract(self.sqrt_1m_ac, k, x_start.shape) * noise)
+        return extract(self.sqrt_ac, k, x_start.shape) * x_start \
+            + extract(self.sqrt_1m_ac, k, x_start.shape) * noise
 
     def predict_start_from_noise(self, x_k, k, noise):
         if self.predict_epsilon:
-            return (extract(self.sqrt_recip_ac, k, x_k.shape) * x_k
-                    - extract(self.sqrt_recipm1_ac, k, x_k.shape) * noise)
+            return extract(self.sqrt_recip_ac, k, x_k.shape) * x_k \
+                - extract(self.sqrt_recipm1_ac, k, x_k.shape) * noise
         return noise
 
     def q_posterior(self, x_start, x_k, k):
-        mean = (extract(self.post_mean_c1, k, x_k.shape) * x_start
-                + extract(self.post_mean_c2, k, x_k.shape) * x_k)
+        mean = extract(self.post_mean_c1, k, x_k.shape) * x_start \
+             + extract(self.post_mean_c2, k, x_k.shape) * x_k
         return mean, extract(self.post_log_var, k, x_k.shape)
 
     def p_losses(self, x_start, cond, k, returns=None):
         eps = torch.randn_like(x_start)
         x_k = apply_conditioning(self.q_sample(x_start, k, eps), cond, action_dim=0)
-        pred = self.model(x_k, cond, k, returns)
+        pred = self.model(x_k, cond, k, returns)         # condition-dropout inside
         target = eps if self.predict_epsilon else x_start
         if not self.predict_epsilon:
             pred = apply_conditioning(pred, cond, action_dim=0)
         return (self.loss_weight * (pred - target) ** 2).mean()
 
     def loss(self, trajectory, cond, returns=None):
-        obs = trajectory[:, :, self.action_dim:]
+        obs = trajectory[:, :, self.action_dim:]         # diffuse over states only
         act = trajectory[:, :, :self.action_dim]
         b = obs.shape[0]
         k = torch.randint(0, self.n_timesteps, (b,), device=obs.device).long()
         diffuse_loss = self.p_losses(obs, cond, k, returns)
         s, s_next, a = obs[:, :-1], obs[:, 1:], act[:, :-1]
-        pred_a = self.inv_model(
-            torch.cat([s, s_next], -1).reshape(-1, 2 * self.observation_dim))
+        pred_a = self.inv_model(torch.cat([s, s_next], -1).reshape(-1, 2 * self.observation_dim))
         inv_loss = F.mse_loss(pred_a, a.reshape(-1, self.action_dim))
         return 0.5 * (diffuse_loss + inv_loss)
 
@@ -214,7 +206,7 @@ class GaussianInvDynDiffusion(nn.Module):
     @torch.no_grad()
     def p_sample(self, x, cond, k, returns=None):
         mean, log_var = self.p_mean_variance(x, cond, k, returns)
-        noise = self.noise_std * torch.randn_like(x)
+        noise = self.noise_std * torch.randn_like(x)                 # low-temperature std
         nonzero = (1 - (k == 0).float()).reshape(-1, *((1,) * (x.dim() - 1)))
         return mean + nonzero * (0.5 * log_var).exp() * noise
 
@@ -222,8 +214,8 @@ class GaussianInvDynDiffusion(nn.Module):
     def p_sample_loop(self, cond, returns=None, horizon=None):
         b = len(cond[0])
         horizon = horizon or self.horizon
-        x = self.noise_std * torch.randn(
-            (b, horizon, self.observation_dim), device=self.betas.device)
+        x = self.noise_std * torch.randn((b, horizon, self.observation_dim),
+                                         device=self.betas.device)
         x = apply_conditioning(x, cond, action_dim=0)
         for i in reversed(range(self.n_timesteps)):
             k = torch.full((b,), i, device=x.device, dtype=torch.long)
@@ -235,5 +227,5 @@ class GaussianInvDynDiffusion(nn.Module):
     def plan_action(self, obs, target_return):
         cond = {0: obs}
         x = self.p_sample_loop(cond, returns=target_return)
-        return self.inv_model(torch.cat([x[:, 0], x[:, 1]], -1))
+        return self.inv_model(torch.cat([x[:, 0], x[:, 1]], -1))     # a_t = f_phi(s_t, s_{t+1})
 ```
