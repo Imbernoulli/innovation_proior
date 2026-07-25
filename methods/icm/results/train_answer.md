@@ -13,11 +13,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-PHI_DIM = 288
-HID = 256
-BETA = 0.2
-LAMBDA = 0.1
-ETA = 1.0
+PHI_DIM, HID = 288, 256
+BETA, LAMBDA, ETA = 0.2, 0.1, 1.0
 
 class Encoder(nn.Module):
     def __init__(self):
@@ -26,46 +23,34 @@ class Encoder(nn.Module):
             nn.Conv2d(4, 32, 3, stride=2, padding=1), nn.ELU(),
             nn.Conv2d(32, 32, 3, stride=2, padding=1), nn.ELU(),
             nn.Conv2d(32, 32, 3, stride=2, padding=1), nn.ELU(),
-            nn.Conv2d(32, 32, 3, stride=2, padding=1), nn.ELU(),
-        )
-
+            nn.Conv2d(32, 32, 3, stride=2, padding=1), nn.ELU())
     def forward(self, s):
-        return self.conv(s).flatten(1)
+        return self.conv(s).flatten(1)                       # (B, 288)
 
 class ICM(nn.Module):
     def __init__(self, n_actions):
         super().__init__()
         self.n_actions = n_actions
         self.phi = Encoder()
-        self.inverse = nn.Sequential(
-            nn.Linear(2 * PHI_DIM, HID), nn.ReLU(),
-            nn.Linear(HID, n_actions)
-        )
-        self.forward_net = nn.Sequential(
-            nn.Linear(PHI_DIM + n_actions, HID), nn.ReLU(),
-            nn.Linear(HID, PHI_DIM)
-        )
+        self.inverse = nn.Sequential(nn.Linear(2 * PHI_DIM, HID), nn.ReLU(),
+                                     nn.Linear(HID, n_actions))
+        self.forward_net = nn.Sequential(nn.Linear(PHI_DIM + n_actions, HID), nn.ReLU(),
+                                         nn.Linear(HID, PHI_DIM))
 
     def losses_and_reward(self, s_t, a_t, s_tp1):
-        phi_t = self.phi(s_t)
-        phi_tp1 = self.phi(s_tp1)
+        phi_t, phi_tp1 = self.phi(s_t), self.phi(s_tp1)
         a_onehot = F.one_hot(a_t, self.n_actions).float()
-
-        logits = self.inverse(torch.cat([phi_t, phi_tp1], dim=1))
+        logits = self.inverse(torch.cat([phi_t, phi_tp1], dim=1))      # predict action
         L_I = F.cross_entropy(logits, a_t)
-
-        phi_hat = self.forward_net(torch.cat([phi_t, a_onehot], dim=1))
+        phi_hat = self.forward_net(torch.cat([phi_t, a_onehot], dim=1))# predict next features
         per_sample = 0.5 * (phi_hat - phi_tp1).pow(2).sum(dim=1)
         L_F = per_sample.mean()
-
-        r_i = (ETA * per_sample).detach()
+        r_i = (ETA * per_sample).detach()                              # intrinsic reward (signal only)
         return L_I, L_F, r_i
 
 def icm_objective(L_I, L_F):
-    return (1 - BETA) * L_I + BETA * L_F
-
-def total_reward(r_extrinsic, r_intrinsic):
-    return r_extrinsic + r_intrinsic
+    return (1 - BETA) * L_I + BETA * L_F                               # ICM trained on its own losses
+# A3C consumes r_t = r_t^i + r_t^e; full objective adds -LAMBDA * E_pi[sum_t r_t] over theta_P.
 ```
 
-In use, an A3C agent consumes the total reward r_t = r_t^i + r_t^e. The ICM updates are performed on sampled transitions using the icm_objective, while the policy updates treat r_i as a fixed scalar signal. This separation is essential: it keeps the intrinsic reward an honest measure of the model's ignorance, and it makes the agent robust to distractors while still driven to explore and master the controllable structure of its environment.
+In use, an A3C agent consumes the total reward r_t = r_t^i + r_t^e. The ICM updates are performed on sampled transitions using the icm_objective, while the policy updates treat r_i as a fixed scalar signal, added to it through the outer A3C objective rather than backpropagated through. This separation is essential: it keeps the intrinsic reward an honest measure of the model's ignorance, and it makes the agent robust to distractors while still driven to explore and master the controllable structure of its environment.
