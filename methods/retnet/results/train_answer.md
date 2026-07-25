@@ -12,85 +12,212 @@ A single decay rate would restrict the model to one memory horizon, so RetNet us
 
 In practice the retention layer is inserted into a Transformer-style pre-norm residual block: layer normalization, multi-scale retention, residual connection, layer normalization, feed-forward network, residual connection. Position embeddings can be dropped because the rotary phase already encodes relative position. The value dimension is often widened to give the recurrent state more capacity, and the feed-forward intermediate dimension is adjusted to keep parameter counts comparable to a Transformer of the same width and depth.
 
-The code below implements a minimal, self-contained version of the core idea. It provides both the parallel and recurrent evaluation modes for a single-head-equivalent retention layer and verifies that they produce the same output up to numerical tolerance.
+The code below is the reference implementation of multi-scale retention, and it is built exactly around the three faces described above. An RMSNorm module supplies the per-head normalization, kept scale-invariant by never subtracting a mean. A rotate_every_two and theta_shift pair implement the RoPE-style rotation, applied identically to queries and keys so that the rotated dot product depends only on relative position. RetNetRelPos precomputes everything that is shared across heads and does not depend on content: the sin/cos rotation angles, the per-head decay rates gamma_h = 1 - 2^{-5-h}, the causal decay-and-mask matrix D for the parallel path (row-normalized by its square-rooted row sum for numerical stability), the four-way (inner mask, cross-chunk decay, query-side decay, value-side decay) bundle for the chunkwise path, and the bare per-head decay for the recurrent path. MultiScaleRetention then holds the actual projections, q_proj, k_proj, v_proj, g_proj, out_proj, plus the per-head RMSNorm group_norm, and its forward method dispatches to one of three private methods depending on what is passed in: parallel_forward multiplies the rotated Q and K, applies the decay mask, clamps the row-absolute-sum for stability, and multiplies by V; recurrent_forward keeps a running key-value state together with a running scale factor in an incremental_state dictionary, updating both every step so that decode is O(1); chunk_recurrent_forward runs the inner-chunk term as a masked parallel form and the cross-chunk term as a state carried between chunks, then reconciles the two by dividing through by whichever of their two internal scale trackers is larger. After whichever path runs, the output is normalized per head and multiplied by a swish-gated projection of the input before the final output projection.
 
 ```python
 import torch
-import torch.nn as nn
+from torch import nn
+import torch.nn.functional as F
 
 
-def rotate_half(x):
-    x1, x2 = x.chunk(2, dim=-1)
-    return torch.cat((-x2, x1), dim=-1)
-
-
-def apply_rope(x, cos, sin):
-    return x * cos + rotate_half(x) * sin
-
-
-class MinimalRetention(nn.Module):
-    def __init__(self, d_model=64, n_heads=4, gamma=0.96):
+class RMSNorm(nn.Module):
+    def __init__(self, dim, eps=1e-6, elementwise_affine=True):
         super().__init__()
-        self.d_model = d_model
-        self.n_heads = n_heads
-        self.dk = d_model // n_heads
-        self.gamma = gamma
-        self.Wq = nn.Linear(d_model, d_model, bias=False)
-        self.Wk = nn.Linear(d_model, d_model, bias=False)
-        self.Wv = nn.Linear(d_model, d_model, bias=False)
-        self.Wo = nn.Linear(d_model, d_model, bias=False)
+        self.eps = eps
+        self.weight = nn.Parameter(torch.ones(dim)) if elementwise_affine else None
 
-    def _project(self, x):
-        b, n, _ = x.shape
-        q = self.Wq(x).view(b, n, self.n_heads, self.dk).transpose(1, 2)
-        k = self.Wk(x).view(b, n, self.n_heads, self.dk).transpose(1, 2)
-        v = self.Wv(x).view(b, n, self.n_heads, self.dk).transpose(1, 2)
-        return q, k, v
-
-    def _rope(self, q, k, n):
-        pos = torch.arange(n, dtype=torch.float32, device=q.device)
-        inv_freq = 1.0 / (10000 ** (torch.arange(0, self.dk, 2, device=q.device) / self.dk))
-        angles = pos[:, None] * inv_freq[None, :]
-        cos = torch.cos(angles).repeat_interleave(2, dim=-1)
-        sin = torch.sin(angles).repeat_interleave(2, dim=-1)
-        cos = cos.unsqueeze(0).unsqueeze(0)
-        sin = sin.unsqueeze(0).unsqueeze(0)
-        return apply_rope(q, cos, sin), apply_rope(k, cos, sin)
-
-    def parallel(self, x):
-        b, n, _ = x.shape
-        q, k, v = self._project(x)
-        q, k = self._rope(q, k, n)
-        distances = torch.arange(n, device=x.device).view(n, 1) - torch.arange(n, device=x.device).view(1, n)
-        D = torch.tril(self.gamma ** distances)
-        scores = (q @ k.transpose(-2, -1)) * D.unsqueeze(0)
-        out = scores @ v
-        return out.transpose(1, 2).reshape(b, n, self.d_model)
-
-    def recurrent(self, x):
-        b, n, _ = x.shape
-        q, k, v = self._project(x)
-        q, k = self._rope(q, k, n)
-        S = torch.zeros(b, self.n_heads, self.dk, self.dk, device=x.device)
-        outputs = []
-        for t in range(n):
-            S = self.gamma * S + k[:, :, t:t+1].transpose(-2, -1) @ v[:, :, t:t+1]
-            o = q[:, :, t:t+1] @ S
-            outputs.append(o.squeeze(2))
-        return torch.stack(outputs, dim=1).reshape(b, n, self.d_model)
-
-    def forward(self, x, mode="parallel"):
-        out = self.parallel(x) if mode == "parallel" else self.recurrent(x)
-        return self.Wo(out)
+    def forward(self, x):
+        x = x * torch.rsqrt(x.pow(2).mean(dim=-1, keepdim=True) + self.eps)
+        return x if self.weight is None else x * self.weight
 
 
-if __name__ == "__main__":
-    torch.manual_seed(0)
-    layer = MinimalRetention(d_model=64, n_heads=4, gamma=0.96)
-    x = torch.randn(2, 32, 64)
-    y_par = layer(x, mode="parallel")
-    y_rec = layer(x, mode="recurrent")
-    diff = (y_par - y_rec).abs().max().item()
-    print("max diff parallel vs recurrent:", diff)
-    assert torch.allclose(y_par, y_rec, atol=1e-5)
+def rotate_every_two(x):
+    x1 = x[:, :, :, ::2]
+    x2 = x[:, :, :, 1::2]
+    return torch.stack((-x2, x1), dim=-1).flatten(-2)
+
+
+def theta_shift(x, sin, cos):
+    return (x * cos) + (rotate_every_two(x) * sin)
+
+
+class RetNetRelPos(nn.Module):
+    def __init__(self, embed_dim, num_heads, chunk_size=512):
+        super().__init__()
+        angle = 1.0 / (
+            10000 ** torch.linspace(0, 1, embed_dim // num_heads // 2)
+        )
+        angle = angle.unsqueeze(-1).repeat(1, 2).flatten()
+        decay = torch.log(
+            1 - 2 ** (-5 - torch.arange(num_heads, dtype=torch.float))
+        )
+        self.register_buffer("angle", angle)
+        self.register_buffer("decay", decay)
+        self.recurrent_chunk_size = chunk_size
+
+    def forward(self, slen, activate_recurrent=False, chunkwise_recurrent=False):
+        if activate_recurrent:
+            sin = torch.sin(self.angle * (slen - 1))
+            cos = torch.cos(self.angle * (slen - 1))
+            return (sin, cos), self.decay.exp()
+
+        index = torch.arange(slen).to(self.decay)
+        sin = torch.sin(index[:, None] * self.angle[None, :])
+        cos = torch.cos(index[:, None] * self.angle[None, :])
+
+        if chunkwise_recurrent:
+            b = self.recurrent_chunk_size
+            block_index = torch.arange(b).to(self.decay)
+            tri = torch.tril(torch.ones(b, b).to(self.decay))
+            raw = torch.masked_fill(
+                block_index[:, None] - block_index[None, :],
+                ~tri.bool(),
+                float("inf"),
+            )
+            raw = torch.nan_to_num(torch.exp(raw * self.decay[:, None, None]))
+
+            value_inner_decay = raw[:, -1] / raw[:, -1].sum(dim=-1, keepdim=True)
+            value_inner_decay = value_inner_decay.unsqueeze(-1)
+            scale = raw.sum(dim=-1, keepdim=True).sqrt()
+            inner_mask = raw / scale
+
+            cross_decay = torch.exp(self.decay * b)[:, None, None]
+            query_inner_decay = torch.exp(self.decay[:, None] * (block_index + 1))
+            query_inner_decay = query_inner_decay[:, :, None] / (
+                scale / raw[:, -1].sum(dim=-1)[:, None, None]
+            )
+            return (sin, cos), (
+                inner_mask,
+                cross_decay,
+                query_inner_decay,
+                value_inner_decay,
+            )
+
+        tri = torch.tril(torch.ones(slen, slen).to(self.decay))
+        raw = torch.masked_fill(index[:, None] - index[None, :], ~tri.bool(), float("inf"))
+        mask = torch.nan_to_num(torch.exp(raw * self.decay[:, None, None]))
+        mask = mask / mask.sum(dim=-1, keepdim=True).sqrt()
+        return (sin, cos), mask
+
+
+class MultiScaleRetention(nn.Module):
+    def __init__(self, embed_dim, value_dim, num_heads, gate_fn="swish", layernorm_eps=1e-6):
+        super().__init__()
+        self.embed_dim = embed_dim
+        self.value_dim = value_dim
+        self.num_heads = num_heads
+        self.head_dim = value_dim // num_heads
+        self.key_dim = embed_dim // num_heads
+        self.scaling = self.key_dim ** -0.5
+        self.gate_fn = F.silu if gate_fn == "swish" else F.gelu
+
+        self.q_proj = nn.Linear(embed_dim, embed_dim, bias=False)
+        self.k_proj = nn.Linear(embed_dim, embed_dim, bias=False)
+        self.v_proj = nn.Linear(embed_dim, value_dim, bias=False)
+        self.g_proj = nn.Linear(embed_dim, value_dim, bias=False)
+        self.out_proj = nn.Linear(value_dim, embed_dim, bias=False)
+        self.group_norm = RMSNorm(
+            self.head_dim, eps=layernorm_eps, elementwise_affine=False
+        )
+
+    def parallel_forward(self, qr, kr, v, mask):
+        bsz, tgt_len, _ = v.size()
+        vr = v.view(bsz, tgt_len, self.num_heads, self.head_dim).transpose(1, 2)
+        qk = (qr @ kr.transpose(-1, -2)) * mask
+        qk = qk / qk.detach().abs().sum(dim=-1, keepdim=True).clamp(min=1, max=5e4)
+        return (qk @ vr).transpose(1, 2)
+
+    def recurrent_forward(self, qr, kr, v, decay, incremental_state):
+        bsz = v.size(0)
+        v = v.view(bsz, self.num_heads, self.head_dim, 1)
+        kv = kr * v
+        if "prev_key_value" in incremental_state:
+            prev_kv = incremental_state["prev_key_value"]
+            prev_scale = incremental_state["scale"]
+            scale = prev_scale * decay + 1
+            old = prev_kv * (prev_scale.sqrt() * decay / scale.sqrt()).view(
+                self.num_heads, 1, 1
+            )
+            new = kv / scale.sqrt().view(self.num_heads, 1, 1)
+            kv = old + new
+        else:
+            scale = torch.ones_like(decay)
+        incremental_state["prev_key_value"] = kv
+        incremental_state["scale"] = scale
+        return torch.sum(qr * kv, dim=3)
+
+    def chunk_recurrent_forward(self, qr, kr, v, inner_mask):
+        mask, cross_decay, query_inner_decay, value_inner_decay = inner_mask
+        bsz, tgt_len, _ = v.size()
+        chunk_len = mask.size(1)
+        assert tgt_len % chunk_len == 0
+        num_chunks = tgt_len // chunk_len
+
+        qr = qr.view(
+            bsz, self.num_heads, num_chunks, chunk_len, self.key_dim
+        ).transpose(1, 2)
+        kr = kr.view(
+            bsz, self.num_heads, num_chunks, chunk_len, self.key_dim
+        ).transpose(1, 2)
+        v = v.view(
+            bsz, num_chunks, chunk_len, self.num_heads, self.head_dim
+        ).transpose(2, 3)
+
+        kr_t = kr.transpose(-1, -2)
+        qk = (qr @ kr_t) * mask
+        inner_scale = qk.detach().abs().sum(dim=-1, keepdim=True).clamp(min=1)
+        qk = qk / inner_scale
+        inner_output = qk @ v
+
+        kv = kr_t @ (v * value_inner_decay)
+        kv_recurrent, cross_scale = [], []
+        kv_state = torch.zeros(bsz, self.num_heads, self.key_dim, self.head_dim).to(v)
+        kv_scale = torch.ones(bsz, self.num_heads, 1, 1).to(v)
+        for i in range(num_chunks):
+            kv_recurrent.append(kv_state / kv_scale)
+            cross_scale.append(kv_scale)
+            kv_state = kv_state * cross_decay + kv[:, i]
+            kv_scale = (
+                kv_state.detach()
+                .abs()
+                .sum(dim=-2, keepdim=True)
+                .max(dim=-1, keepdim=True)
+                .values
+                .clamp(min=1)
+            )
+        kv_recurrent = torch.stack(kv_recurrent, dim=1)
+        cross_scale = torch.stack(cross_scale, dim=1)
+
+        all_scale = torch.maximum(inner_scale, cross_scale)
+        inner_output = inner_output / (all_scale / inner_scale)
+        cross_output = ((qr * query_inner_decay) @ kv_recurrent) / (
+            all_scale / cross_scale
+        )
+        return (inner_output + cross_output).transpose(2, 3)
+
+    def forward(self, x, rel_pos, chunkwise_recurrent=False, incremental_state=None):
+        bsz, tgt_len, _ = x.size()
+        (sin, cos), inner_mask = rel_pos
+        q = self.q_proj(x)
+        k = self.k_proj(x)
+        v = self.v_proj(x)
+        g = self.g_proj(x)
+
+        k = k * self.scaling
+        q = q.view(bsz, tgt_len, self.num_heads, self.key_dim).transpose(1, 2)
+        k = k.view(bsz, tgt_len, self.num_heads, self.key_dim).transpose(1, 2)
+        qr = theta_shift(q, sin, cos)
+        kr = theta_shift(k, sin, cos)
+
+        if incremental_state is not None:
+            output = self.recurrent_forward(qr, kr, v, inner_mask, incremental_state)
+        elif chunkwise_recurrent:
+            output = self.chunk_recurrent_forward(qr, kr, v, inner_mask)
+        else:
+            output = self.parallel_forward(qr, kr, v, inner_mask)
+
+        output = self.group_norm(output).reshape(
+            bsz, tgt_len, self.head_dim * self.num_heads
+        )
+        return self.out_proj(self.gate_fn(g) * output)
 ```
