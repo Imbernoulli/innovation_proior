@@ -8,8 +8,8 @@ Integer data make this exact. If a solution exists, determinant bounds put one i
 import math
 import numpy as np
 
-
 def as_integer_system(Arows, brhs):
+    """Validate integer data for Arows x <= brhs."""
     Arows = np.asarray(Arows, dtype=float)
     brhs = np.asarray(brhs, dtype=float).reshape(-1)
     if Arows.ndim != 2 or brhs.shape[0] != Arows.shape[0]:
@@ -18,21 +18,26 @@ def as_integer_system(Arows, brhs):
         raise ValueError("expected at least one inequality")
     if not np.all(np.isfinite(Arows)) or not np.all(np.isfinite(brhs)):
         raise ValueError("all coefficients must be finite")
-    Aint, bint = np.rint(Arows), np.rint(brhs)
+    Aint = np.rint(Arows)
+    bint = np.rint(brhs)
     if not np.array_equal(Arows, Aint) or not np.array_equal(brhs, bint):
         raise ValueError("this decision wrapper expects integer coefficients")
     return Aint.astype(float), bint.astype(float)
 
-
 def encoding_length(Arows, brhs):
+    """Binary encoding length for an integer system Arows x <= brhs."""
     Arows, brhs = as_integer_system(Arows, brhs)
     s = sum(math.log2(abs(int(a)) + 1) for a in np.ravel(Arows))
     s += sum(math.log2(abs(int(bi)) + 1) for bi in np.ravel(brhs))
     s += math.log2(max(1, Arows.shape[0] * Arows.shape[1]))
     return int(math.ceil(s)) + 1
 
+def residual(Arows, brhs, x):
+    """sigma(x) = max_i (A_i @ x - b_i)."""
+    return float(np.max(np.asarray(Arows, dtype=float) @ np.asarray(x, dtype=float) - brhs))
 
 def separation_for_system(Arows, brhs, tol=0.0):
+    """Return a center-valid cut normal, or None inside the residual tolerance."""
     Arows, brhs = as_integer_system(Arows, brhs)
 
     def separate(x):
@@ -45,8 +50,12 @@ def separation_for_system(Arows, brhs, tol=0.0):
 
     return separate
 
-
 def decide_feasibility(separate, n, R, max_iters, inflate=1.0):
+    """Central-cut ellipsoid feasibility from a separation oracle.
+
+    The oracle returns None when the center is accepted; otherwise it returns a
+    normal a such that every feasible y satisfies a @ (y - x) <= 0.
+    """
     if n < 2:
         raise ValueError("the central-cut update below assumes n >= 2")
     x = np.zeros(n, dtype=float)
@@ -71,8 +80,13 @@ def decide_feasibility(separate, n, R, max_iters, inflate=1.0):
 
     return None
 
-
 def decide_linear_inequalities(Arows, brhs, max_iters=None, tol=None):
+    """Decide integer LP feasibility for Arows x <= brhs.
+
+    With the default tolerance, a returned center may be epsilon-feasible
+    rather than exactly feasible; the integer residual gap makes the status
+    exact in the bounded-precision decision model.
+    """
     Arows, brhs = as_integer_system(Arows, brhs)
     n = Arows.shape[1]
     L = encoding_length(Arows, brhs)
@@ -83,8 +97,8 @@ def decide_linear_inequalities(Arows, brhs, max_iters=None, tol=None):
     x = decide_feasibility(sep, n, R, max_iters)
     return ("feasible", x) if x is not None else ("infeasible", None)
 
-
 def maximize_linear(base_separate, c, n, L, tol=None):
+    """Maximize c.x over P by bisection, using only centered separation for P."""
     c = np.asarray(c, dtype=float)
     R = 2.0**L
     max_iters = 16 * n * n * L
