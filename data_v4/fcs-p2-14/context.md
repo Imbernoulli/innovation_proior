@@ -46,27 +46,11 @@ Output:
 (The best legal circular selection is indices `1, 3, 5` summing to `11`. On the *path* the best would
 be `15` via indices `0, 3, 5`, but on the *circle* indices `0` and `5` are adjacent, so that is illegal.)
 
-## Background
-
-The constraint "no two chosen cyclically adjacent" makes this a constrained selection problem on a
-cycle. Several approaches are on the table before committing to one:
-
-- **Greedy by value.** Repeatedly take the largest remaining positive element and forbid its two
-  (cyclic) neighbours. `O(n log n)` and trivial to write; the open question is whether grabbing the
-  largest element is optimal under a *global* adjacency constraint.
-- **Single-pass circular DP.** Run the standard left-to-right path DP once over `a[0..n-1]` and hope a
-  small tweak accounts for the wrap. The open question is whether one pass can correctly forbid the
-  simultaneous use of both endpoints without double-counting or wrongly excluding valid selections.
-- **Two linear DP passes.** Observe that a valid circular selection cannot use both endpoints, split on
-  which endpoint is forbidden, and run the proven path DP twice. `O(n)`; the open question is the exact
-  split and the small-`n` corners.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: all-positive arrays, arrays with negatives and zeros, the empty array
 (`n = 0`), single element (`n = 1`), a pair (`n = 2`), all-negative arrays (answer should be `0`),
-selections forced apart by the wrap edge, and large `n = 2*10^5` with values near `10^9` (so the running
-sum can exceed a 32-bit integer).
+selections forced apart by the wrap edge, and large `n = 2*10^5` with values near `10^9`.
 
 ## Code framework
 
