@@ -8,31 +8,25 @@ At lambda=0 the estimator reduces to the one-step TD residual, which has low var
 
 In practice the infinite sum is computed by a backward recursion, A_hat_t = delta_t + gamma lambda A_hat_{t+1}, resetting at episode terminals. The advantages are used inside a KL-constrained policy update, which to second order yields the natural policy gradient direction. The value function itself is fit to Monte-Carlo discounted returns and updated only after the policy step, because computing advantages with a freshly fitted V would drive the residuals toward zero and wipe out the policy gradient. GAE thus provides a single, cheap, principled estimator that makes policy gradient methods practical for high-dimensional continuous control.
 
+I don't evaluate that recursion with an explicit per-step Python loop, since a first-order linear recurrence like A_hat_t - gamma*lambda*A_hat_{t+1} = delta_t is exactly a one-pole IIR filter applied to the delta sequence run in reverse time, so a single vectorized call handles a whole path in O(T). The same filter at discount gamma, applied to the raw rewards instead of the residuals, gives the Monte-Carlo value targets, so one primitive does double duty:
+
 ```python
 import numpy as np
+import scipy.signal
 
 
 def discount_cumsum(x, discount):
-    """Backward discounted cumulative sum.
-
-    out[t] = x[t] + discount * x[t+1] + discount^2 * x[t+2] + ...
-    """
-    out = np.zeros_like(x, dtype=np.float32)
-    running = 0.0
-    for t in reversed(range(len(x))):
-        running = x[t] + discount * running
-        out[t] = running
-    return out
+    # out[t] - discount*out[t+1] = x[t]: a one-pole IIR filter run in reverse
+    # time. out[t] = x[t] + discount*x[t+1] + discount^2*x[t+2] + ...
+    return scipy.signal.lfilter([1], [1, -float(discount)], x[::-1], axis=0)[::-1]
 
 
 def compute_gae_path(rewards, values, gamma, lam, last_value=0.0):
-    """Generalized Advantage Estimation for one path.
+    """GAE for one path.
 
-    rewards:  r_0, ..., r_{T-1}
-    values:   V(s_0), ..., V(s_{T-1}) from the old value function
-    last_value: V(s_T); use 0.0 for terminal paths
-
-    Returns advantages and Monte-Carlo discounted value targets.
+    rewards: r_0 .. r_{T-1}
+    values:  V(s_0) .. V(s_{T-1}) from the old value function
+    last_value: V(s_T) for a truncated path; 0 for a terminal path
     """
     values_ext = np.append(values, last_value)
     deltas = rewards + gamma * values_ext[1:] - values_ext[:-1]
@@ -41,13 +35,12 @@ def compute_gae_path(rewards, values, gamma, lam, last_value=0.0):
     rewards_ext = np.append(rewards, last_value)
     value_targets = discount_cumsum(rewards_ext, gamma)[:-1]
     return advantages, value_targets
+```
 
+When a rollout array spans several episodes instead of one clean path, the same recursion just needs a per-timestep done-flag: the running advantage and the running return both get masked to zero at each terminal before rolling into the next episode, so nothing bootstraps across an episode boundary.
 
+```python
 def compute_gae_batch(rewards, values, dones, last_value, gamma, lam):
-    """GAE for a rollout array that may span several episodes.
-
-    dones[t] == 1 if s_{t+1} is terminal, blocking bootstrap across it.
-    """
     T = len(rewards)
     advantages = np.zeros(T, dtype=np.float32)
     value_targets = np.zeros(T, dtype=np.float32)
