@@ -9,71 +9,76 @@ import numpy as np
 
 
 def pod_basis(S, r):
-    """Leading r left singular vectors of snapshot matrix S (n x n_s)."""
+    """Leading r left singular vectors of snapshots S (n x n_s).
+       Eckart-Young => optimal rank-r least-squares fit; columns by descending sing. value."""
     U, sv, _ = np.linalg.svd(S, full_matrices=False)
     return U[:, :r], sv
 
 
 def deim_indices(U):
-    """Greedy DEIM point selection."""
+    """Greedy DEIM selection: each new index sits where the residual
+       r = u_l - U c (mode l minus its interpolation through previous modes/points)
+       is largest in magnitude -- maximizing |r_inf| caps the growth of ||(P^T U)^-1||."""
     n, m = U.shape
     P = np.empty(m, dtype=int)
-    P[0] = np.argmax(np.abs(U[:, 0]))
+    P[0] = np.argmax(np.abs(U[:, 0]))                 # seed at ||u_1||_inf
     for ell in range(1, m):
         Ue, Pe = U[:, :ell], P[:ell]
-        c = np.linalg.solve(Ue[Pe, :], U[Pe, ell])
-        r = U[:, ell] - Ue @ c
-        P[ell] = np.argmax(np.abs(r))
+        c = np.linalg.solve(Ue[Pe, :], U[Pe, ell])    # (P^T U) c = P^T u_l
+        r = U[:, ell] - Ue @ c                         # residual, zero at previous P
+        P[ell] = np.argmax(np.abs(r))                  # argmax |r|
     return P
 
 
-# Full-order model: 1-D cubic reaction-diffusion, dy/dt = A y + F(y)
+# --- full-order model: 1-D cubic reaction-diffusion, dy/dt = A y + F(y) -------
 n = 1024
-x = np.linspace(0.0, 1.0, n)
-h = x[1] - x[0]
+x = np.linspace(0.0, 1.0, n); h = x[1] - x[0]
 eps = 0.015
 main, off = -2.0 * np.ones(n), np.ones(n - 1)
 Lap = (np.diag(main) + np.diag(off, 1) + np.diag(off, -1)) / h**2
-Lap[0, 1] = 2.0 / h**2
-Lap[-1, -2] = 2.0 / h**2
+Lap[0, 1] = 2.0 / h**2; Lap[-1, -2] = 2.0 / h**2      # Neumann ends
 A = eps**2 * Lap
 
 
-def F(v, t=0.0):
+def F(v, t=0.0):                                       # componentwise cubic nonlinearity
     return v * (v - 0.1) * (1.0 - v) + 0.05
 
 
 dt, nt = 1e-5, 4000
-y0 = np.zeros(n)
-y0[:50] = 0.5
+y0 = np.zeros(n); y0[:50] = 0.5
 
-# Collect state and nonlinear snapshots
+# --- collect state and nonlinear snapshots along the trajectory ---------------
 yy, SY, SF = y0.copy(), [], []
 for j in range(nt):
     yy = yy + dt * (A @ yy + F(yy))
     if j % 20 == 0:
-        SY.append(yy.copy())
-        SF.append(F(yy).copy())
+        SY.append(yy.copy()); SF.append(F(yy).copy())
 full = yy.copy()
 SY, SF = np.array(SY).T, np.array(SF).T
 
-# Offline assembly: two POD bases, DEIM points, n-independent operators
+# --- offline assembly: two POD bases + DEIM points + n-independent operators ---
 k, m = 10, 12
-Vk, _ = pod_basis(SY, k)
-U, svf = pod_basis(SF, m)
+Vk, _   = pod_basis(SY, k)                              # state POD basis  (n x k)
+U,  svf = pod_basis(SF, m)                              # nonlinear POD basis (n x m)
 P = deim_indices(U)
-At = Vk.T @ A @ Vk
-B = Vk.T @ U @ np.linalg.inv(U[P, :])
-Vp = Vk[P, :]
+At = Vk.T @ A @ Vk                                      # k x k linear part
+B  = Vk.T @ U @ np.linalg.inv(U[P, :])                  # k x m, V_k^T U (P^T U)^{-1}
+Vp = Vk[P, :]                                           # m x k, rows of V_k = P^T V_k
 
-# Online integration: POD-DEIM touches only m rows per step
-yd = Vk.T @ y0
+# --- online: integrate the reduced system two ways ----------------------------
+yp = Vk.T @ y0                                          # POD-Galerkin: touches all n rows
+yd = Vk.T @ y0                                          # POD-DEIM:     touches only m rows
 for j in range(nt):
+    yp = yp + dt * (At @ yp + Vk.T @ F(Vk @ yp))
     yd = yd + dt * (At @ yd + B @ F(Vp @ yd))
 
-error = np.linalg.norm(Vk @ yd - full) / np.linalg.norm(full)
-magn = np.linalg.norm(np.linalg.inv(U[P, :]), 2)
-print(f"n={n} k={k} m={m}  DEIM points: {P}")
-print(f"||(P^T U)^-1||_2 = {magn:.3g}  sigma_(m+1)/sigma_1 = {svf[m]/svf[0]:.2e}")
-print(f"POD-DEIM rel. error = {error:.3e}  (F at m={m} rows/step)")
+eP = np.linalg.norm(Vk @ yp - full) / np.linalg.norm(full)
+eD = np.linalg.norm(Vk @ yd - full) / np.linalg.norm(full)
+magn = np.linalg.norm(np.linalg.inv(U[P, :]), 2)        # ||(P^T U)^{-1}||_2
+
+print(f"n={n}  k={k}  m={m}   DEIM points: {P}")
+print(f"||(P^T U)^-1||_2 = {magn:.3g}    sigma_(m+1)/sigma_1 = {svf[m] / svf[0]:.2e}")
+print(f"POD-Galerkin rel. error = {eP:.3e}   (F at n={n} rows/step)")
+print(f"POD-DEIM     rel. error = {eD:.3e}   (F at m={m} rows/step)")
+print(f"nonlinear-evaluation work cut by n/m = {n / m:.0f}x")
 ```
