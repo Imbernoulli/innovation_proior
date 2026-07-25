@@ -31,27 +31,12 @@ Example: for
 
 the answer is `6` (worker 0 -> task 2 = 3, worker 1 -> task 1 = 0, worker 2 -> task 0 = 3).
 
-## Background
-
-A valid assignment is a permutation `p` of `{0,...,n-1}` with total cost `sum_i cost[i][p[i]]`; we
-want the minimum over all `n!` permutations. Two families of approach are on the table before
-committing to one:
-
-- **Cheapest-available greedy.** Repeatedly take the smallest remaining cell `cost[i][j]` whose
-  worker `i` and task `j` are both still free, then forbid that worker and that task; or, the
-  row-by-row variant where worker `i` grabs its cheapest still-free task. Both are `O(n^2 log n)` and
-  a few lines. The open question is whether locally grabbing the cheapest cell is actually optimal
-  under the perfect-matching constraint.
-- **Bitmask dynamic programming over the set of assigned tasks.** Place workers in index order; the
-  state is the *set* of tasks already used. This is `O(n^2 * 2^n)`; the open question is the exact
-  recurrence and whether `2^n` is affordable at `n <= 18`.
-
 ## Evaluation settings
 
-Judged on hidden tests covering: matrices where the cheapest-available greedy is strictly
-suboptimal, all-equal matrices, matrices with negative and zero costs, the empty matrix (`n = 0`),
-a single worker (`n = 1`, including a negative cost), tie-heavy matrices, and the largest case
-`n = 18` with costs near `10^9` (so the total can exceed a 32-bit integer).
+Judged on hidden tests covering: matrices where a naive greedy assignment is strictly suboptimal,
+all-equal matrices, matrices with negative and zero costs, the empty matrix (`n = 0`), a single
+worker (`n = 1`, including a negative cost), tie-heavy matrices, and the largest case `n = 18` with
+costs near `10^9`.
 
 ## Code framework
 
