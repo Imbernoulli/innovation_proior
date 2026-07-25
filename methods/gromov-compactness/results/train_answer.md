@@ -4,102 +4,12 @@ The method that fixes this is Gromov compactness. It abandons fixed coordinates 
 
 For pseudoholomorphic curves the same principle appears with energy as the controlling quantity. A sequence of J-holomorphic curves with a uniform energy bound may fail to converge as parametrized maps because energy can concentrate at points and bubbles can form. Gromov compactness says that, after allowing reparametrization and after enlarging the limit category to stable maps, a subsequence does converge: smoothly away from finitely many concentration points, with bubbles or nodes recording the energy that would otherwise vanish. Bounded energy means only finitely many bubbles above any positive threshold, so the extraction mechanism is a diagonal argument across energy scales. The theorem does not forbid degeneration; it classifies the degeneration that bounded energy permits.
 
-Both versions share one idea: identify the natural intrinsic measurement of the family, prove uniform bounds on it, enlarge the notion of limit only as much as those bounds require, and extract a subsequence in that intrinsic compactification. Metric bounds give finite epsilon-nets and distance matrices; energy bounds give regions of bounded energy density plus finitely many concentration points. The implementation below illustrates the metric form: it represents compact metric spaces, builds epsilon-nets with uniformly bounded cardinality, compares their distance matrices, and extracts a convergent subsequence by a diagonal construction.
+Both versions share one idea: identify the natural intrinsic measurement of the family, prove uniform bounds on it, enlarge the notion of limit only as much as those bounds require, and extract a subsequence in that intrinsic compactification. Metric bounds give finite epsilon-nets and distance matrices; energy bounds give regions of bounded energy density plus finitely many concentration points. Stated precisely, the metric form is the theorem that gives the whole argument its name: let $(X_k, d_k)$ be a sequence of compact metric spaces with $\operatorname{diam}(X_k) \le D$ for every $k$, and suppose that for every $\varepsilon > 0$ there is an integer $N(\varepsilon)$, not depending on $k$, such that each $X_k$ admits an $\varepsilon$-net of at most $N(\varepsilon)$ points, equivalently a cover by $N(\varepsilon)$ balls of radius $\varepsilon$. Then there is a subsequence $(X_{k_j}, d_{k_j})$ and a compact metric space $(X_\infty, d_\infty)$ with
+$$d_{GH}(X_{k_j}, X_\infty) \longrightarrow 0,$$
+where the Gromov-Hausdorff distance is
+$$d_{GH}(X,Y) = \inf_{Z,\,\iota_X,\,\iota_Y} d_H^Z\big(\iota_X(X),\, \iota_Y(Y)\big),$$
+the infimum ranging over metric spaces $Z$ and isometric embeddings $\iota_X : X \hookrightarrow Z$, $\iota_Y : Y \hookrightarrow Z$, with $d_H^Z$ the Hausdorff distance between the two embedded images; equivalently $d_{GH}(X,Y)$ is half the infimal distortion $\operatorname{dis}(R) = \sup_{(x,y),(x',y') \in R} |d_X(x,x') - d_Y(y,y')|$ over correspondences $R \subset X \times Y$ relating every point of one space to some point of the other. The limit $X_\infty$ is unique up to isometry, and it need not be a manifold even when every $X_k$ is one: curvature can force collapse or singularities, but the limit is always a genuine compact metric space, recovered from nothing more than the diameter bound and the uniform net-size function $N(\varepsilon)$.
 
-```python
-import numpy as np
-from itertools import permutations
-
-class MetricSpace:
-    """Finite metric space represented by its distance matrix."""
-    def __init__(self, dist_matrix, name=""):
-        self.d = np.asarray(dist_matrix, dtype=float)
-        self.n = self.d.shape[0]
-        self.name = name
-        assert np.allclose(self.d, self.d.T) and np.all(np.diag(self.d) == 0)
-        assert np.all(self.d >= 0)
-
-    def epsilon_net(self, eps):
-        """Greedy eps-net: returns indices of centers."""
-        remaining = set(range(self.n))
-        centers = []
-        while remaining:
-            c = min(remaining)
-            centers.append(c)
-            covered = {i for i in remaining if self.d[c, i] < eps}
-            remaining -= covered
-        return centers
-
-
-def net_distance_matrix(space, eps):
-    """Distance matrix of an eps-net of a metric space."""
-    centers = space.epsilon_net(eps)
-    return space.d[np.ix_(centers, centers)]
-
-
-def matrix_distortion(A, B):
-    """Minimum max-norm distance between A and B over all relabelings.
-    Returns infinity if the matrices have different sizes."""
-    A, B = np.asarray(A), np.asarray(B)
-    if A.shape != B.shape:
-        return float('inf')
-    n = A.shape[0]
-    best = float('inf')
-    for perm in permutations(range(n)):
-        Ap = A[np.ix_(perm, perm)]
-        best = min(best, np.max(np.abs(Ap - B)))
-    return best
-
-
-def extract_convergent_subsequence(spaces, covering_bound):
-    """Given a sequence of metric spaces with uniform covering bounds,
-    extract a subsequence whose epsilon-net distance matrices are close
-    at every scale. This is the computational skeleton of Gromov compactness.
-
-    covering_bound(eps) should return the maximum number of eps-balls
-    needed to cover any space in the family.
-    """
-    eps_scales = [2.0 ** (-k) for k in range(1, 6)]
-    remaining = list(range(len(spaces)))
-
-    for eps in eps_scales:
-        max_size = covering_bound(eps)
-        remaining = [i for i in remaining
-                     if len(spaces[i].epsilon_net(eps)) <= max_size]
-        if not remaining:
-            raise ValueError(f"No spaces satisfy covering bound at eps={eps}")
-
-        # Find a large subsequence whose eps-net matrices are pairwise close.
-        groups = {}
-        for i in remaining:
-            mat = net_distance_matrix(spaces[i], eps)
-            key = (round(mat.shape[0]), round(np.max(mat) * 10))
-            groups.setdefault(key, []).append(i)
-
-        # Keep the group with the most members at this scale.
-        remaining = max(groups.values(), key=len)
-
-    return remaining
-
-
-# Example: a sequence of metric spaces converging to a 4-point metric space.
-base = np.array([[0.0, 1.0, 1.0, 1.4],
-                 [1.0, 0.0, 1.4, 1.0],
-                 [1.0, 1.4, 0.0, 1.0],
-                 [1.4, 1.0, 1.0, 0.0]])
-sequence = []
-for k in range(12):
-    noise = np.random.RandomState(k).rand(4, 4) * 0.05
-    noisy = base + (noise + noise.T) / 2
-    np.fill_diagonal(noisy, 0.0)
-    sequence.append(MetricSpace(noisy, name=f"perturbed_{k}"))
-
-if __name__ == "__main__":
-    def covering_bound(eps):
-        return 4 if eps > 0.01 else 10
-
-    subseq = extract_convergent_subsequence(sequence, covering_bound=covering_bound)
-    print("Extracted indices:", subseq)
-    for i in subseq:
-        print(sequence[i].name)
-```
+The curve form of the theorem replaces the covering bound by an energy bound and replaces the limit metric space by a stable map. If $u_k : (\Sigma_k, j_k) \to (M, \omega, J)$ is a sequence of $J$-holomorphic curves with energy $E(u_k) = \int_{\Sigma_k} u_k^*\omega \le E_0$ for every $k$, then there exist a subsequence, reparametrizations $\phi_k$, finitely many bubbling points $z_1, \dots, z_m$ on the limiting domain, and a stable map $u_\infty : \Sigma_\infty \to M$ -- a possibly nodal curve carrying a $J$-holomorphic map on each of its components, with every component of zero energy stabilized by at least three special points -- such that $u_k \circ \phi_k \to u_\infty$ in $C^\infty_{loc}$ away from $z_1,\dots,z_m$, and the energy is conserved in the limit,
+$$E(u_k) \longrightarrow E(u_\infty) + \sum_{i=1}^{m} E(\text{bubble}_i).$$
+Because each nonconstant bubble carries at least the minimal energy $\hbar > 0$ of a nonconstant $J$-holomorphic sphere, the energy bound forces $m \le E_0/\hbar$, so only finitely many bubbles can form: the same uniform-bound-to-finite-structure mechanism as the metric case, with energy in place of covering number.
