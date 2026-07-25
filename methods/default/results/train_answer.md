@@ -32,18 +32,17 @@ def init_model(model: nn.Sequential) -> None:
 
 
 def parity_labels(x: torch.Tensor, secret) -> torch.Tensor:
-    # y = parity (sum-mod-2 / XOR) of the bits at the hidden indices.
     idx = torch.tensor(secret, dtype=torch.long, device=x.device)
     return x.index_select(1, idx).sum(dim=1).remainder(2).to(torch.float32)
 
 
-def make_online_batch(secret, n_features: int, batch_size: int, generator):
-    # Fresh i.i.d. uniform binary batch -> unbiased sample of the same population gradient.
+def make_online_batch(secret, n_features, batch_size, generator):
+    # Fresh i.i.d. uniform binary batch -> unbiased sample of the SAME population gradient.
     x = torch.randint(0, 2, (batch_size, n_features), generator=generator).float()
     return x, parity_labels(x, secret)
 
 
-def make_test_set(secret, n_features: int, test_size: int, generator):
+def make_test_set(secret, n_features, test_size, generator):
     x = torch.randint(0, 2, (test_size, n_features), generator=generator).float()
     return x, parity_labels(x, secret)
 
@@ -82,11 +81,10 @@ def train_parity(secret, n_features, width=512, batch_size=128, steps=100_000,
         xb, yb = xb.to(device), yb.to(device)
         opt.zero_grad(set_to_none=True)
         loss = criterion(model(xb).view(-1), yb)
-        loss.backward()
-        opt.step()
+        loss.backward()                       # noisy estimate of the population gradient
+        opt.step()                            # relevant coordinates drift up by ~gamma
         if t % 250 == 0:
             print(f"step {t}  loss {loss.item():.4f}  rho {state_probe(model, init_state):.4f}")
-
     with torch.no_grad():
         preds = model(test_x.to(device)).view(-1)
         acc = ((preds >= 0.5) == (test_y.to(device) >= 0.5)).float().mean().item()
