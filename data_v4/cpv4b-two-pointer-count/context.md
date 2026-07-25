@@ -12,11 +12,6 @@ The catch is scale. There can be up to a million forks, so the number of compati
 the order of `n^2 / 2`, i.e. hundreds of billions — too many to enumerate, and large enough that the
 count itself must be reported **modulo `1 000 000 007`**. Output that count modulo the prime.
 
-This is the counting/constructive face of the two-pointer technique: after sorting, every fork has a
-contiguous band of admissible partners, and a pair of sliding indices sweeps those bands in one pass.
-The whole difficulty is arithmetic hygiene — counting each unordered pair exactly once, getting the
-half-open window endpoints right, and applying the modulus only at the very end.
-
 ## Input / output contract
 
 - Input (stdin):
@@ -32,19 +27,6 @@ Note `L` may be `0`, in which case two forks of *equal* frequency are compatible
 that `R` can exceed any achievable gap, in which case the band's upper bound never binds.
 
 Example: for `n = 6`, `L = 2`, `R = 5`, and `f = [10, 1, 4, 8, 13, 5]`, the answer is `8`.
-
-## Background
-
-Two routes are on the table before committing to one.
-
-- **Quadratic enumeration.** Check all `C(n, 2)` pairs directly. This is obviously correct and is the
-  reference oracle, but at `n = 10^6` it is `~5*10^11` operations — hopelessly over the time limit.
-- **Sort, then two pointers.** Sort the frequencies. For a fixed *larger* element the set of
-  admissible partners (the elements whose value sits in `[f[j] - R, f[j] - L]`) is a contiguous block
-  of the sorted array, and as the larger element advances rightward both ends of that block only move
-  rightward. Two indices chasing those two ends give an `O(n log n)` algorithm dominated by the sort.
-  The open questions are the exact window endpoints, whether to use `<` or `<=`, and — the dangerous
-  one — how to count each unordered pair once rather than twice.
 
 ## Evaluation settings
 
