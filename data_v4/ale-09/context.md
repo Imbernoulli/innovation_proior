@@ -11,8 +11,7 @@ bins used is as small as possible**.
 Because items *depart*, a bin that is full now can become reusable later — so this is not ordinary bin
 packing but **temporal / dynamic bin packing** (a.k.a. interval bin packing or dynamic storage
 allocation). It is NP-hard, there is no known efficient optimum, and the score is continuous: how close
-you get to the unavoidable lower bound (the peak simultaneous load divided by capacity). The lever is a
-strong construction plus a rebalancing local search that repeatedly tries to free whole bins.
+you get to the unavoidable lower bound (the peak simultaneous load divided by capacity).
 
 ## Input / output contract
 
@@ -27,26 +26,6 @@ strong construction plus a rebalancing local search that repeatedly tries to fre
 
 Example: `N=3, C=10`, items `(0,5,6) (0,5,6) (0,5,6)` all overlap and each needs more than half the
 capacity, so no two share a bin — the best answer uses 3 bins (e.g. `0`, `1`, `2`).
-
-## Background
-
-Two ingredients are on the table before committing to a method:
-
-- **Online best-fit construction.** Process items in arrival order and drop each into the *tightest*
-  bin it still fits (largest peak load over the item's lifetime), opening a new bin only when none fits.
-  Best-fit keeps bins dense, which is exactly what later makes whole bins emptyable. The open question
-  is how to test "fits over `[a_i, d_i)`" cheaply, because a naive recheck of a bin's whole schedule is
-  expensive when there are hundreds of bins and thousands of items.
-- **Rebalancing local search.** A construction alone gets stuck; the number of bins drops only if some
-  bin can be fully *emptied* by relocating its items elsewhere. The open question is the neighborhood:
-  blindly moving single items rarely frees a bin, and re-evaluating capacity from scratch after every
-  move is far too slow inside a time budget.
-
-The non-obvious design choices are (1) an **incremental fill representation** — a per-bin time-profile
-array so that placing, removing, or testing an item touches only the cells in its lifetime window, and
-(2) a **"repack the fullest/lightest few bins"** move that tries to *empty a target bin entirely*
-(ruin-and-recreate / LNS), which is what actually reduces the bin count, rather than aimless single-item
-swaps.
 
 ## Evaluation settings
 
@@ -67,8 +46,8 @@ The solution is scored by a deterministic local scorer (`verify/score.py`):
 **Instances** (`verify/gen.py`, parameter: integer `seed`) are generated deterministically: `N` in
 `[400, 1200]`, capacity `C` in `[20, 60]`, a time horizon `T` scaling with `N`, and a mixture of
 long-lived "background" items (large size, span much of the horizon) and many short-lived "burst" items
-(small-to-medium size). This regime makes the peak simultaneous load comfortably exceed `C` — forcing
-many bins — while leaving genuine reassignment slack that the first-fit baseline wastes.
+(small-to-medium size). This regime makes the peak simultaneous load comfortably exceed `C`, forcing
+many bins.
 
 ## Code framework
 
@@ -86,8 +65,7 @@ int main() {
     for (int i = 0; i < N; ++i) scanf("%d %d %d", &A[i], &D[i], &S[i]);
 
     // TODO: assign every item to a bin so that no bin's alive load ever exceeds C,
-    // minimizing the number of distinct bins used. Start from a feasible best-fit
-    // construction (always valid), then rebalance to free whole bins.
+    // minimizing the number of distinct bins used.
     vector<int> bin(N, 0);
 
     // print one bin index per item, in item order
