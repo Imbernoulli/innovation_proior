@@ -12,105 +12,16 @@ The theorem also justifies baselines. If we replace Q^pi(s,a) by Q^pi(s,a) - b(s
 
 A second consequence is the compatible critic condition. If we want to replace the true action value by a learned critic f_w(s,a), simply plugging in an arbitrary approximator would bias the gradient. The theorem shows that the bias disappears if the critic is trained to a least-squares fixed point and its features match the policy score: d f_w(s,a) / d w = grad_theta log pi_theta(a|s). Under this compatibility condition, the critic's approximation error is orthogonal to the only direction used by the policy update, so the actor-critic update becomes exact gradient ascent when the critic is at its fixed point. For a softmax policy with linear preferences theta^T phi(s,a), the score is phi(s,a) - sum_b pi_theta(b|s) phi(s,b), so the compatible critic is linear in the centered features and naturally estimates an advantage-like signal.
 
-Putting the pieces together, the Policy Gradient Theorem is the foundation of modern policy-gradient and actor-critic methods. It explains why we can safely differentiate only the policy log probabilities, why state baselines do not bias the update, and why a critic trained with the right features can replace the true action value. Below is a small, self-contained Python verification on a tiny tabular MDP. It builds a softmax policy, computes the exact policy gradient using the occupancy form of the theorem, and compares it with a sample-based Monte Carlo gradient obtained from trajectories. The two estimates agree up to Monte Carlo noise, which confirms the identity in a concrete setting.
+Putting the pieces together, the Policy Gradient Theorem is the foundation of modern policy-gradient and actor-critic methods. It explains why we can safely differentiate only the policy log probabilities, why state baselines do not bias the update, and why a critic trained with the right features can replace the true action value. Gathered in one place, this is the deliverable. For a Markov decision process with transition kernel $P(s'\mid s,a)$ and reward $R(s,a)$, and a differentiable policy $\pi_\theta(a\mid s)$, let $d^\pi(s)$ denote the stationary state distribution in the average-reward setting, or the unnormalized discounted occupancy $d^\pi(s) = \sum_{t\ge 0}\gamma^t \Pr(S_t=s\mid S_0=s_0,\pi)$ in the discounted start-state setting. The theorem states
 
-```python
-import numpy as np
+$$\frac{\partial \rho(\theta)}{\partial \theta} \;=\; \sum_s d^\pi(s) \sum_a \frac{\partial \pi_\theta(a\mid s)}{\partial \theta}\, Q^\pi(s,a) \;=\; \sum_s d^\pi(s)\, \mathbb{E}_{a\sim \pi_\theta(\cdot\mid s)}\Big[\nabla_\theta \log \pi_\theta(a\mid s)\, Q^\pi(s,a)\Big],$$
 
-np.random.seed(0)
+with no derivative of $d^\pi$ anywhere on the right, so the gradient is estimable from on-policy trajectories alone. Any state-only baseline is free: replacing $Q^\pi(s,a)$ by $Q^\pi(s,a) - b(s)$ leaves the expectation unchanged, since $\sum_a \partial_\theta \pi_\theta(a\mid s)\,b(s) = b(s)\,\partial_\theta \sum_a \pi_\theta(a\mid s) = 0$; the natural choice $b(s)\approx V^\pi(s)$ turns $Q^\pi$ into an advantage. And a learned critic $f_w(s,a)$ may replace $Q^\pi(s,a)$ exactly, not merely approximately, provided it is fit on-policy to its least-squares fixed point and its parameter gradient equals the policy score,
 
-# Tiny MDP: two states, two actions.
-nS, nA = 2, 2
-# Transition kernel P[s,a,s'] is deterministic for simplicity.
-P = np.zeros((nS, nA, nS))
-P[0, 0, 0] = 1.0
-P[0, 1, 1] = 1.0
-P[1, 0, 1] = 1.0
-P[1, 1, 0] = 1.0
-# Expected rewards R[s,a].
-R = np.array([[1.0, 0.0],
-              [0.0, 2.0]])
-gamma = 0.95
-start_state = 0
+$$\frac{\partial f_w(s,a)}{\partial w} = \nabla_\theta \log \pi_\theta(a\mid s).$$
 
-# Softmax tabular policy parameterized by theta[s,a].
-def policy(theta):
-    e = np.exp(theta - theta.max(axis=1, keepdims=True))
-    return e / e.sum(axis=1, keepdims=True)
+For a soft-max policy with linear preferences $\theta^\top \phi(s,a)$, this compatibility condition forces the closed form
 
-def score(theta, s, a):
-    pi = policy(theta)
-    return np.eye(nA)[a] - pi[s]
+$$f_w(s,a) = w^\top\Big[\phi(s,a) - \sum_b \pi_\theta(b\mid s)\,\phi(s,b)\Big],$$
 
-def value_iteration(theta, tol=1e-12):
-    pi = policy(theta)
-    V = np.zeros(nS)
-    while True:
-        Q = R + gamma * (P @ V)
-        V_new = (pi * Q).sum(axis=1)
-        if np.max(np.abs(V_new - V)) < tol:
-            break
-        V = V_new
-    Q = R + gamma * (P @ V)
-    return V, Q
-
-def discounted_occupancy(theta):
-    pi = policy(theta)
-    # M[s',s] = Pr(S_{t+1}=s' | S_t=s)
-    M = (pi[:, :, None] * P).sum(axis=1).T
-    d = np.zeros(nS)
-    d[start_state] = 1.0
-    occ = np.zeros(nS)
-    power = 1.0
-    for _ in range(2000):
-        occ += power * d
-        d = M @ d
-        power *= gamma
-        if power < 1e-14:
-            break
-    return occ
-
-def exact_gradient(theta):
-    pi = policy(theta)
-    _, Q = value_iteration(theta)
-    occ = discounted_occupancy(theta)
-    grad = np.zeros_like(theta)
-    for s in range(nS):
-        for a in range(nA):
-            grad[s] += occ[s] * pi[s, a] * score(theta, s, a) * Q[s, a]
-    return grad
-
-def sample_gradient(theta, n_traj=10000, horizon=200):
-    pi = policy(theta)
-    _, Q_true = value_iteration(theta)
-    accum = np.zeros_like(theta)
-    for _ in range(n_traj):
-        s = start_state
-        traj_log_grad = []
-        rewards = []
-        states = []
-        actions = []
-        for t in range(horizon):
-            a = np.random.choice(nA, p=pi[s])
-            states.append(s)
-            actions.append(a)
-            traj_log_grad.append(score(theta, s, a))
-            rewards.append(R[s, a])
-            s = np.random.choice(nS, p=P[s, a])
-        # Compute discounted returns and accumulate gradient.
-        G = 0.0
-        for t in range(horizon - 1, -1, -1):
-            G = rewards[t] + gamma * G
-            accum[states[t]] += traj_log_grad[t] * G
-    return accum / n_traj
-
-theta = np.random.randn(nS, nA)
-grad_exact = exact_gradient(theta)
-grad_sample = sample_gradient(theta, n_traj=20000, horizon=150)
-
-print("Exact policy gradient (occupancy form):")
-print(grad_exact)
-print("\nSample-based Monte Carlo policy gradient:")
-print(grad_sample)
-print("\nRelative error (Frobenius norm):", np.linalg.norm(grad_exact - grad_sample) / (np.linalg.norm(grad_exact) + 1e-8))
-```
+which is mean-zero over actions in every state, so the compatible critic is always an advantage estimator and never an absolute estimate of $Q^\pi$. That is the full result: differentiate the value recursion instead of the one-step reward, let stationarity or discounted unrolling cancel the transported derivative term, convert the surviving policy derivative into a log-probability score, and the baseline- and critic-corrected forms above are exactly what an on-policy actor-critic update is licensed to compute.
