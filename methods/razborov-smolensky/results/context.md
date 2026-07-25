@@ -1,5 +1,5 @@
-## 问题位置
-Razborov-Smolensky 方法属于 1980 年代小深度电路下界路线的下一步：在 Ajtai/Furst-Saxe-Sipser/Yao/Hastad 用随机限制证明 `PARITY` 不在 `AC0` 之后，它把目标扩展到带模计数门的 `AC0[p]`。核心问题是：一个常深、可多项式大小、允许 `MOD_p` 门的电路，能否计算不同模数的计数函数 `MOD_q`。
+## Problem location
+The Razborov-Smolensky method is the next step in the 1980s line of small-depth circuit lower bounds: after Ajtai/Furst-Saxe-Sipser/Yao/Hastad used random restrictions to prove that `PARITY` is not in `AC0`, it extends the target to `AC0[p]`, circuits with mod-counting gates. The core question is: can a constant-depth, polynomial-size circuit that allows `MOD_p` gates compute the counting function `MOD_q` for a different modulus?
 
-## 电路模型
-`AC0[p]` 指常深、多项式大小、无界扇入的 `AND`、`OR`、`NOT`、`MOD_p` 门电路，其中 `p` 通常取素数。Razborov 与 Smolensky 的典型结论是：若 `p` 与 `q` 是不同素数，则 `MOD_q` 不属于 `AC0[p]`；更定量地，深度为 `d` 的 `AC0[p]` 电路要计算 `MOD_q` 需要指数型大小下界，常见讲义形式为 `2^{Omega(n^{1/(2d)})}`。
+## Circuit model
+`AC0[p]` denotes constant-depth, polynomial-size, unbounded fan-in circuits of `AND`, `OR`, `NOT`, `MOD_p` gates, where `p` is usually taken to be prime. The typical Razborov-Smolensky result is: if `p` and `q` are distinct primes, then `MOD_q` is not in `AC0[p]`; more quantitatively, an `AC0[p]` circuit of depth `d` computing `MOD_q` needs an exponential-size lower bound, commonly stated in lecture notes as `2^{Omega(n^{1/(2d)})}`.
