@@ -22,53 +22,6 @@ The same argument can be packaged as a minimal-counterexample proof. Suppose som
 
 Geometrically, for $q>2$ the equation $x^2+y^2-q\,xy-q=0$ is a hyperbola symmetric about the line $y=x$, with two branches. A first-quadrant lattice point $(x,y)$ with $x<y$ is sent by the companion-root relation to $(x,qx-y)$ on the other branch; the sign argument keeps this point in the first quadrant. Reflecting across $y=x$ gives $(qx-y,x)$ back on the original branch, with strictly smaller coordinates because $qx-y=(x^2-q)/y<x<y$. Repeating this flip-and-reflect slide marches the lattice point down the hyperbola until it reaches the axis at $(0,y)$, and substituting $x=0$ gives $q=y^2$. The algebraic descent and the geometric picture are the same proof.
 
-What makes the method work in one sentence is this: the divisibility condition, once written as $a^2-q\,ab+b^2-q=0$, is quadratic in each variable separately, so every solution has a second integer root with the same $q$. Choosing the flip that decreases the solution turns that second root into a descent, and the descent terminates exactly where the quotient is forced to be a square. I therefore propose the canonical name Vieta jumping for this technique.
+What makes the method work in one sentence is this: the divisibility condition, once written as $a^2-q\,ab+b^2-q=0$, is quadratic in each variable separately, so every solution has a second integer root with the same $q$. Choosing the flip that decreases the solution turns that second root into a descent, and the descent terminates exactly where the quotient is forced to be a square. I therefore propose the canonical name Vieta jumping for this technique, and the theorem it delivers is exactly this: if $a,b$ are positive integers and $(ab+1)\mid(a^2+b^2)$, then $q=(a^2+b^2)/(ab+1)$ is a perfect square.
 
-```python
-import math
-
-def is_square(n):
-    r = int(math.isqrt(n))
-    return r * r == n
-
-def admissible_pairs(limit):
-    """List unordered admissible pairs (a,b) with 0 <= a <= b <= limit."""
-    found = []
-    for a in range(limit + 1):
-        for b in range(a, limit + 1):
-            denom = a * b + 1
-            numer = a * a + b * b
-            if numer % denom == 0:
-                found.append((a, b, numer // denom))
-    return found
-
-def vieta_descent(a, b):
-    """Descend (a,b) with a >= b to a base pair (r,0), returning the path and q."""
-    assert a >= b
-    q = (a * a + b * b) // (a * b + 1)
-    path = [(a, b)]
-    while b != 0:
-        a, b = b, q * b - a
-        path.append((a, b))
-    return path, q
-
-# Brute-force check: every quotient up to 300 is a perfect square.
-pairs = admissible_pairs(300)
-assert all(is_square(q) for _, _, q in pairs)
-print(f"Found {len(pairs)} admissible pairs with 0 <= a <= b <= 300.")
-print(f"Largest quotient seen: {max((q for _, _, q in pairs), default=0)}.")
-
-# Illustrate the two classical solution families.
-for r in (2, 3):
-    q = r * r
-    seq = [0, r]
-    for _ in range(6):
-        seq.append(q * seq[-1] - seq[-2])
-    print(f"q={q} family: {seq[:8]}")
-
-# Trace a concrete descent.
-path, q = vieta_descent(112, 30)
-print(f"Descent for (112,30): {path}, q={q}")
-path, q = vieta_descent(240, 27)
-print(f"Descent for (240,27): {path}, q={q}")
-```
+The technique itself is worth stating independently of this one relation, because the descent never used more than the shape of the equation. Fix a positive integer $q$ and let $(a,b)$ be non-negative integers with $a>b\ge1$ satisfying the binary quadratic relation $a^2-q\,ab+b^2-q=0$. Then the companion root $a'=qb-a=(b^2-q)/a$ is again a non-negative integer, the pair $(a',b)$ satisfies the same relation with the same $q$, and $a'<b<a$. Iterating the flip on the larger coordinate therefore produces a strictly decreasing sequence of non-negative-integer solutions with $q$ held invariant, and by well-ordering this sequence must terminate at a pair with a zero coordinate, where $q$ is forced to equal the square of the surviving coordinate. That is the complete, portable form of the method: hold every variable but one fixed, read the resulting equation as a monic quadratic in the remaining variable, let Vieta's sum-and-product relations manufacture the second root for free, verify — from the equation's own positivity, not from the formula's apparent sign — that the new root is integral and non-negative, and let the strict size decrease force termination at the base case that pins down the invariant. Applied to $a^2-q\,ab+b^2-q=0$ this delivers the perfect-square theorem above; applied to any other binary quadratic Diophantine relation with an invariant playing the role of $q$, the same three checks — integrality from the sum of roots, non-negativity from the equation's positivity, and strict decrease from the product of roots — carry the descent through to the same kind of terminal base case.
