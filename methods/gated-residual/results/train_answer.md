@@ -10,6 +10,8 @@ Why zero rather than 1 or 1/sqrt(d)? Starting at alpha = 1 places the block on t
 
 The same idea drops into Transformers without special handling. Replacing LayerNorm and gating each layer with one shared zero-initialized scalar across the attention and feed-forward sublayers gives x_{i+1} = x_i + alpha_i sublayer(x_i). At init the sublayers are off, so J = I despite the LayerNorm and softmax pathologies. Under aggressive one-cycle schedules the linearity of alpha near init can destabilize training, so in that regime the residual weights should use a small constant learning rate while the rest of the network follows the full schedule; ordinary schedules need no special treatment.
 
+The residual block below implements this directly: two convolutions form the branch F, `resweight` is the scalar alpha sitting only on that branch, and the shortcut is left untouched except for the 1x1 projection needed when the block changes shape.
+
 ```python
 import torch
 import torch.nn as nn
@@ -27,24 +29,32 @@ class CustomBlock(nn.Module):
         self.conv2 = nn.Conv2d(planes, planes, 3, padding=1, bias=False)
         self.bn2 = nn.BatchNorm2d(planes)
 
-        self.shortcut = nn.Sequential()
+        self.shortcut = nn.Sequential()                 # identity skip when shapes match
         if stride != 1 or in_planes != planes * self.expansion:
-            self.shortcut = nn.Sequential(
+            self.shortcut = nn.Sequential(              # 1x1 only to match dimensions
                 nn.Conv2d(in_planes, planes * self.expansion, 1, stride=stride, bias=False),
                 nn.BatchNorm2d(planes * self.expansion),
             )
 
-        self.resweight = nn.Parameter(torch.zeros(1))  # alpha, init 0
+        self.resweight = nn.Parameter(torch.zeros(1))   # alpha, initialized at zero
 
     def forward(self, x):
-        out = F.relu(self.bn1(self.conv1(x)))  # F(x)
+        out = F.relu(self.bn1(self.conv1(x)))           # F(x): residual branch
         out = self.bn2(self.conv2(out))
-        out = self.shortcut(x) + self.resweight * out  # x + alpha * F(x)
+        out = self.shortcut(x) + self.resweight * out   # x_{i+1} = x_i + alpha * F(x)
         return out
+```
+
+The same gate carries over unchanged into a Transformer encoder layer: LayerNorm is dropped, one `resweight` scalar is shared across the attention and feed-forward sublayers, and each sublayer's output is scaled by it before the residual add.
+
+```python
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
 
 class RZTXEncoderLayer(nn.Module):
-    """ReZero Transformer layer: x_{i+1} = x_i + alpha * sublayer(x_i)."""
+    """ReZero Transformer encoder layer: x_{i+1} = x_i + alpha * sublayer(x_i)."""
     def __init__(self, d_model, nhead, dim_feedforward=2048, dropout=0.1, activation="relu"):
         super().__init__()
         self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout)
@@ -53,14 +63,21 @@ class RZTXEncoderLayer(nn.Module):
         self.dropout = nn.Dropout(dropout)
         self.dropout1 = nn.Dropout(dropout)
         self.dropout2 = nn.Dropout(dropout)
-        self.activation = F.relu if activation == "relu" else F.gelu
-        self.resweight = nn.Parameter(torch.zeros(1))  # shared alpha, init 0
+        if activation == "relu":
+            self.activation = F.relu
+        elif activation == "gelu":
+            self.activation = F.gelu
+        self.resweight = nn.Parameter(torch.zeros(1))   # alpha, init 0, shared
 
     def forward(self, src, src_mask=None, src_key_padding_mask=None):
-        src2 = self.self_attn(src, src, src, attn_mask=src_mask,
+        src2 = src
+        src2 = self.self_attn(src2, src2, src2, attn_mask=src_mask,
                               key_padding_mask=src_key_padding_mask)[0]
-        src = src + self.dropout1(src2 * self.resweight)
-        src2 = self.linear2(self.dropout(self.activation(self.linear1(src))))
-        src = src + self.dropout2(src2 * self.resweight)
+        src2 = src2 * self.resweight
+        src = src + self.dropout1(src2)                         # x + alpha * attn(x)
+        src2 = src
+        src2 = self.linear2(self.dropout(self.activation(self.linear1(src2))))
+        src2 = src2 * self.resweight
+        src = src + self.dropout2(src2)                         # x + alpha * ffn(x)
         return src
 ```
