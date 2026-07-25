@@ -41,27 +41,13 @@ Example. For the `3 x 3` grid
 the answer is `1`: go down `(0,0)->(1,0)` (height `1 -> 3`, one boost, cost 1), then
 `(1,0)->(2,0)->(2,1)->(2,2)` along heights `3 -> 3 -> 3 -> 1`, all glides at cost 0. Total `1`.
 
-## Background
-
-The grid is a graph whose vertices are cells and whose edges are the (directed) adjacency moves with
-weight 0 (glide) or 1 (boost). Two shortest-path tools are on the table before committing:
-
-- **Plain breadth-first search.** Push `(0,0)`, expand a FIFO queue, set each cell's value to its
-  parent's value plus one when first discovered. BFS is `O(nm)` and the textbook tool for
-  shortest paths "on a grid". The open question is *what* it minimizes when the edges are not all the
-  same weight.
-- **0-1 BFS.** A deque-based variant: relax a weight-0 edge by pushing the neighbour to the **front**
-  of the deque and a weight-1 edge by pushing to the **back**, so the deque stays sorted by distance
-  within a window of two consecutive values. Also `O(nm)`; the open question is the exact relaxation
-  rule and why the front/back discipline is needed here.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: grids where the min-energy path is far longer (in moves) than the
 min-moves path; flat grids (all heights equal, answer `0`); strictly increasing corridors (every step
 a boost); `1 x m` and `n x 1` lines; the `1 x 1` grid; large `1000 x 1000` grids with heights up to
-`10^9` (so height comparisons must not overflow and the running cost can be large); and grids where
-the only cheap route doubles back. The answer is the energy, not the number of moves.
+`10^9`; and grids where the only cheap route doubles back. The answer is the energy, not the number
+of moves.
 
 ## Code framework
 
