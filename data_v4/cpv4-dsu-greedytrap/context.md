@@ -13,9 +13,7 @@ destination `t_k` (`s_k != t_k`) and asks for the **maximum throughput over all 
 the *widest path* / maximin bottleneck. Output that value for each request.
 
 This is the bottleneck-connectivity question that underlies reliability routing, network-capacity
-planning, and "at what threshold do two nodes become connected" subproblems. The single direct bridge
-between the endpoints is almost never the answer, and a hop-by-hop greedy walk can be arbitrarily bad,
-so the exact structure — and the right data structure — matters.
+planning, and "at what threshold do two nodes become connected" subproblems.
 
 ## Input / output contract
 
@@ -41,20 +39,16 @@ Two families of approach are on the table before committing to one:
   highest-capacity neighbour and reports the minimum along that walk. Both are `O(1)` or `O(path)` per
   request and trivial to write; the open question is whether a locally-best choice can reconstruct a
   globally-widest path under the maximin objective.
-- **Union–Find over capacity-sorted edges (Kruskal-style).** Add bridges from highest capacity to
-  lowest, maintaining connected components with a disjoint-set union. Two islands' widest-path
-  bottleneck equals the capacity of the edge at which they *first* land in the same component — which
-  is exactly the minimum edge on their path in the **maximum spanning tree**. The open question is the
-  precise claim (why the max-spanning-tree path-minimum is the maximin bottleneck) and the exact
-  bookkeeping.
+- **Union–Find over capacity-sorted edges (Kruskal-style).** Sort bridges by capacity and add them one
+  at a time, maintaining connected components with a disjoint-set union, then use however the
+  components merge to answer each request.
 
 ## Evaluation settings
 
 Judged on hidden tests covering: requests whose answer is *not* the direct edge between the endpoints;
 "trap" instances where the highest-capacity first hop leads into a low-capacity dead end; parallel
 edges between the same pair with different capacities; `n = 2` (one bridge); large capacities near
-`10^9` (the answer is a single capacity, so it must be carried in a 64-bit-safe value and never
-truncated); and large connected graphs with `m` up to `2*10^5` and up to `2000` requests.
+`10^9`; and large connected graphs with `m` up to `2*10^5` and up to `2000` requests.
 
 ## Code framework
 

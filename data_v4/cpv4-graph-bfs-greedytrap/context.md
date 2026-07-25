@@ -16,9 +16,6 @@ whole trip is free.
 Output the minimum number of transfers needed to get from station `0` to station `n-1`. If `0 == n-1`
 output `0`. If station `n-1` is unreachable, output `-1`.
 
-This is a shortest-path question in disguise, but the cost lives on *line changes*, not on edges or
-stations, which is exactly where an edge-counting intuition goes wrong.
-
 ## Input / output contract
 
 - Input (stdin): the first line has two integers `n` and `m`
@@ -34,20 +31,6 @@ Example: with stations `0..4` and connections
 the answer is `0`: ride `0 -> 1 -> 3 -> 4` entirely on line 5, changing trains zero times — even
 though that path is longer (3 connections) than the 2-connection route `0 -> 2 -> 4`, which would
 cost 1 transfer.
-
-## Background
-
-The cost being minimized is the number of line changes along a walk, not the number of connections.
-Two families of approach are on the table before committing to one:
-
-- **Plain BFS / greedy by connections.** Run an ordinary breadth-first search over stations, or a
-  greedy that keeps extending the current line as far as it can and only switches when forced. Both
-  are `O(n + m)` and trivial to write; the open question is whether minimizing the number of
-  connections (or locally avoiding switches) actually minimizes the number of *transfers*.
-- **Shortest path on an augmented state.** Recognize that "free to stay on a line, pay to switch"
-  is a `0/1` edge-cost structure, and search a state space that knows which line you are currently
-  riding. This is the `0-1`-BFS / Dijkstra family; the open question is the exact state and how to
-  keep the state space from exploding on high-degree stations.
 
 ## Evaluation settings
 
