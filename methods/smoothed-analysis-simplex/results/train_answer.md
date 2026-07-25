@@ -10,57 +10,12 @@ The small-angle event then splits into a product of a distance factor and an inc
 
 This shadow bound alone does not yet give a complete algorithm, because the projection plane depends on the data and a real implementation needs a feasible starting vertex, infeasibility detection, and positive right-hand sides. These issues are resolved by a two-phase construction. In the first phase, choose a well-conditioned random d-by-d minor by sampling several random d-subsets and keeping the one with largest smallest singular value; use it to build an auxiliary linear program LP prime with a known feasible basis and known starting objective. In the second phase, introduce an interpolation variable that morphs LP prime back into the original LP, and run shadow-vertex on the interpolated program. The perturbation is split into two independent Gaussians; the first fixes the projection plane, the second supplies the randomness for the shadow bound. Non-Gaussian ratio distributions that arise during interpolation are handled locally by density comparison, and the many-good-choices lemma guarantees that the start minor is well-conditioned with overwhelming probability. The final theorem states that the two-phase shadow-vertex method has polynomial smoothed complexity: the expected number of pivots is bounded by a polynomial in n, d, and one over sigma, capped by the trivial binomial worst-case bound. The optimized exponent is large, but the explanatory core is the clean shadow-size bound, which shows that small real-world noise is enough to destroy adversarial hardness.
 
-The following Python script illustrates the central probabilistic claim. It samples Gaussian-perturbed linear programs, computes the optimal basis, and measures the smallest angle between the objective and any facet of the optimal basis's normal cone. The empirical probability that this angle is below epsilon grows roughly linearly in epsilon, matching the linear angle bound that underlies the shadow-size theorem.
+What the argument delivers, stated with the precision the method earns, is two theorems. The shadow-size theorem: let $d \ge 3$, $n > d$, let $z$ and $t$ be independent objectives, and let $a_1,\dots,a_n \in \mathbb{R}^d$ be independent Gaussians of standard deviation $\sigma$ centered at points of norm at most $1$; then
 
-```python
-import numpy as np
-from itertools import combinations
+$$\mathbb{E}\big[\,|\mathrm{Shadow}_{t,z}(a_1,\dots,a_n)|\,\big] \;\le\; 58{,}888{,}678 \cdot \frac{n\,d^{3}}{\min\!\big(\sigma,\ 1/(3\sqrt{d\ln n})\big)^{6}},$$
 
+so the expected number of shadow edges is $O(n d^3/\sigma^6)$ — polynomial in $n$, $d$, and $1/\sigma$ — with the sliver-penalizing simplex-volume factor and the small-angle combination lemma doing all the work of keeping that constant finite. Carried through the two-phase start construction, this becomes the main theorem: there exist a polynomial $P$ and a constant $\sigma_0 > 0$ such that for every $n > d \ge 3$, every $\bar a \in \mathbb{R}^{n\times d}$, $\bar y \in \mathbb{R}^n$, $z \in \mathbb{R}^d$, and every $\sigma > 0$, if $A, y$ are Gaussian perturbations of $\bar a, \bar y$ of standard deviation $\sigma \cdot \max_i \|(\bar y_i, \bar a_i)\|$, then the expected number of pivots the two-phase shadow-vertex method takes on $(A,y,z)$ satisfies
 
-def optimal_basis(A, y, z):
-    n, d = A.shape
-    best_val, best_basis = -np.inf, None
-    for I in combinations(range(n), d):
-        AI = A[list(I), :]
-        if np.linalg.matrix_rank(AI) < d:
-            continue
-        x = np.linalg.solve(AI, y[list(I)])
-        if np.all(A @ x <= y + 1e-8):
-            val = z @ x
-            if val > best_val + 1e-8:
-                best_val, best_basis = val, I
-    return best_basis
+$$\mathbb{E}_{A,y}\big[\,C(A,y,z)\,\big] \;\le\; \min\!\Big(P\big(d,\ n,\ 1/\min(\sigma,\sigma_0)\big),\ \binom{n}{d} + \binom{n}{d+1} + 2\Big).$$
 
-
-def angle_to_cone_boundary(z, A, basis):
-    A_I = A[list(basis), :]
-    angs = []
-    for j in range(A_I.shape[0]):
-        rows = np.delete(A_I, j, axis=0)
-        proj = rows.T @ np.linalg.solve(rows @ rows.T, rows @ z)
-        cos = np.linalg.norm(proj) / (np.linalg.norm(z) + 1e-12)
-        angs.append(np.arccos(np.clip(cos, 0, 1)))
-    return min(angs)
-
-
-def sample_angle(d, n, sigma, seed):
-    rng = np.random.default_rng(seed)
-    A_bar = rng.normal(0, 1, (n, d))
-    A_bar = A_bar / np.maximum(np.linalg.norm(A_bar, axis=1, keepdims=True), 1.0)
-    A = A_bar + rng.normal(0, sigma, A_bar.shape)
-    y = np.full(n, 3.0) + rng.normal(0, sigma, n)
-    z = rng.normal(0, 1, d)
-    z = z / np.linalg.norm(z)
-    basis = optimal_basis(A, y, z)
-    return angle_to_cone_boundary(z, A, basis) if basis else None
-
-
-if __name__ == "__main__":
-    d, n, sigma = 3, 10, 0.05
-    angles = [a for a in (sample_angle(d, n, sigma, i) for i in range(1000)) if a is not None]
-    angles = np.array(angles)
-    print(f"sampled {len(angles)} feasible instances")
-    for eps in [0.002, 0.005, 0.01, 0.02, 0.05]:
-        p = np.mean(angles < eps)
-        print(f"eps={eps:.3f}: P(angle<eps)={p:.4f}, p/eps={p/eps:.1f}")
-```
+This is the deliverable: the simplex method, run with the shadow-vertex rule and started by the two-phase construction, has polynomial smoothed complexity. The exponents inside $P$ are large and not worth optimizing — the substance is that whatever instance an adversary chooses, a Gaussian perturbation of any fixed positive scale $\sigma$ reduces the expected pivot count from the exponential worst case to a polynomial in $n$, $d$, and $1/\sigma$, because the Klee–Minty-style configurations that make the worst case exponential are exactly the ill-conditioned, near-degenerate arrangements that Gaussian noise renders exponentially improbable.
