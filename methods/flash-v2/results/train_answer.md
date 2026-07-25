@@ -29,6 +29,7 @@ def _attn_fwd(
     BLOCK_DMODEL: tl.constexpr,
     IS_CAUSAL: tl.constexpr,
 ):
+    # One program = one query row block of one head.
     start_m = tl.program_id(0)
     off_hz = tl.program_id(1)
 
@@ -41,19 +42,23 @@ def _attn_fwd(
     offs_n = tl.arange(0, BLOCK_N)
     offs_d = tl.arange(0, BLOCK_DMODEL)
 
+    # Q loaded once; scale + log2(e) folded into the tile before QK^T.
     q_ptrs = Q + q_offset + offs_m[:, None] * stride_qm + offs_d[None, :] * stride_qk
     q = tl.load(q_ptrs, mask=offs_m[:, None] < seqlen, other=0.0)
     q = (q * (sm_scale * 1.44269504)).to(tl.float16)
 
-    m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
-    l_i = tl.zeros([BLOCK_M], dtype=tl.float32) + 1.0
-    acc = tl.zeros([BLOCK_M, BLOCK_DMODEL], dtype=tl.float32)
+    m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")   # running max
+    l_i = tl.zeros([BLOCK_M], dtype=tl.float32) + 1.0            # first alpha=0 makes this a zero seed
+    acc = tl.zeros([BLOCK_M, BLOCK_DMODEL], dtype=tl.float32)    # UNNORMALIZED output
 
+    # Causal -> two passes; upper-triangle blocks never iterated.
     if IS_CAUSAL:
+        # floor to a BLOCK_N multiple so pass 1 covers only whole below-diagonal blocks
         non_causal_end = (start_m * BLOCK_M // BLOCK_N) * BLOCK_N
     else:
         non_causal_end = seqlen
 
+    # Pass 1: no-mask blocks (strictly below the diagonal; all columns valid).
     for start_n in range(0, non_causal_end, BLOCK_N):
         start_n = tl.multiple_of(start_n, BLOCK_N)
         k_ptrs = K + k_offset + (start_n + offs_n[:, None]) * stride_kn + offs_d[None, :] * stride_kk
@@ -70,11 +75,11 @@ def _attn_fwd(
         acc += tl.dot(p.to(v.dtype), v)
         m_i = m_new
 
+    # Pass 2: boundary block(s) on the diagonal (mask applied).
     if IS_CAUSAL:
         hi = (start_m + 1) * BLOCK_M
     else:
         hi = non_causal_end
-
     for start_n in range(non_causal_end, hi, BLOCK_N):
         start_n = tl.multiple_of(start_n, BLOCK_N)
         k_ptrs = K + k_offset + (start_n + offs_n[:, None]) * stride_kn + offs_d[None, :] * stride_kk
@@ -94,6 +99,7 @@ def _attn_fwd(
         acc += tl.dot(p.to(v.dtype), v)
         m_i = m_new
 
+    # Normalize once, then store output plus base-2 logsumexp.
     m_i = m_i + tl.math.log2(l_i)
     acc = acc / l_i[:, None]
     m_ptrs = M + off_hz * seqlen + offs_m
@@ -109,12 +115,14 @@ def custom_attention_forward(q, k, v, causal=True, sm_scale=None):
         sm_scale = 1.0 / math.sqrt(headdim)
     o = torch.empty_like(q)
     m = torch.empty((batch, nheads, seqlen), device=q.device, dtype=torch.float32)
+    # Per-headdim block sizes.
     if headdim <= 64:
         BLOCK_M, BLOCK_N = 128, 64
     elif headdim <= 128:
         BLOCK_M, BLOCK_N = 128, 64
     else:
         BLOCK_M, BLOCK_N = 64, 64
+    # Grid: parallel over row blocks (sequence length) AND batch*heads.
     grid = (triton.cdiv(seqlen, BLOCK_M), batch * nheads)
     _attn_fwd[grid](
         q, k, v, o, m, sm_scale,
