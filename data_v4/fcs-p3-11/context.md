@@ -17,11 +17,6 @@ the index can be as large as `10^18`, so the term `P(N)` itself is an astronomic
 (it grows like `(1 + sqrt 2)^N`) and only its residue modulo `p` is ever asked for. The number of
 queries can also be large, so each query must be answered in time logarithmic in `N`.
 
-This is the canonical "evaluate a linear recurrence at a gigantic index under a modulus" task. The
-honest difficulty is entirely in the index range: the small-index values form a short, tidy,
-*memorable* table, which makes a lookup look attractive — but the hidden evaluation indices live far
-out of any table's reach.
-
 ## Input / output contract
 
 - Input (stdin):
@@ -62,27 +57,11 @@ out of any table's reach.
 (The first six lines are just the small Pell numbers `0, 1, 2, 5, 70, 2378` read off the table; the
 last two are `P(10^18)` reduced modulo two different primes — values no table contains.)
 
-## Background
-
-Two broad strategies are on the table before committing to one:
-
-- **Tabulate the small terms.** The early Pell numbers are short and easy to list, and many queries in
-  any informal test set use small `N`. One could precompute `P(0..K)` for some modest `K` and answer
-  by lookup. The open question is what happens when `N` exceeds `K` — and whether the evaluation
-  indices stay inside any feasible `K`.
-- **Logarithmic-time recurrence evaluation.** Either exponentiate the `2x2` companion matrix
-  `M = [[2, 1], [1, 0]]` (so that `M^n = [[P(n+1), P(n)], [P(n), P(n-1)]]`), or use the equivalent
-  *fast-doubling* identities, to jump from index `k` to index `2k`/`2k+1` directly. This is
-  `O(log N)` per query. The open questions are the exact doubling identities and the modular
-  arithmetic needed to multiply two residues that are each near `10^18` without overflow.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: the smallest indices (`N = 0, 1, 2, 3`); a spread of mid-range
-indices; **many queries with `N` near `10^18`** (well outside any precomputable table); tiny moduli
-(`p = 2, 3, 5, 7`, where residues collapse to a few values); large prime moduli near `10^18` (so two
-residues multiplied together overflow 64 bits and need 128-bit intermediates); and large query counts
-`T = 2 * 10^5` to enforce the per-query `O(log N)` budget.
+indices; many queries with `N` near `10^18`; tiny moduli (`p = 2, 3, 5, 7`); large prime moduli near
+`10^18`; and large query counts `T = 2 * 10^5` to enforce the per-query `O(log N)` budget.
 
 ## Code framework
 
