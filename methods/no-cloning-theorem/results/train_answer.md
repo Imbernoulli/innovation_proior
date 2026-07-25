@@ -1,4 +1,4 @@
-I will present the No-Cloning Theorem as a fundamental constraint on quantum information processing and then give a short numerical illustration that makes the linearity contradiction concrete.
+I will present the No-Cloning Theorem as a fundamental constraint on quantum information processing and then state it in its full, precise form as the deliverable.
 
 The canonical name for this result is the No-Cloning Theorem. It states that no fixed quantum operation can perfectly copy an arbitrary unknown pure quantum state. More precisely, there is no unitary operator U such that, for every normalized pure state |ψ⟩ and a fixed blank state |b⟩, we have U(|ψ⟩ ⊗ |b⟩) = |ψ⟩ ⊗ |ψ⟩. This is not a statement that individual states can never be duplicated; known orthogonal basis states can be copied by controlled operations. The theorem rules out a universal copier that would work for all possible input states at once.
 
@@ -16,45 +16,12 @@ One might wonder whether extra auxiliary states or environmental degrees of free
 
 The practical importance of the theorem extends to quantum cryptography and quantum communication. Because an eavesdropper cannot clone an unknown quantum state, protocols such as quantum key distribution can detect interception by the disturbance it causes. The theorem also shapes the design of quantum error correction, which must protect quantum information without ever making unauthorized copies of an unknown logical state.
 
-To make the central linearity check concrete, here is a small Python script that compares what a linear cloning device would produce for a superposition with what a true two-copy state would be.
-
-```python
-import numpy as np
-
-# Computational basis states for one qubit
-ket0 = np.array([1.0, 0.0])
-ket1 = np.array([0.0, 1.0])
-
-# Two-qubit basis states
-ket00 = np.kron(ket0, ket0)
-ket01 = np.kron(ket0, ket1)
-ket10 = np.kron(ket1, ket0)
-ket11 = np.kron(ket1, ket1)
-
-# Choose a non-trivial superposition, e.g. a = sqrt(1/3), b = sqrt(2/3)
-a = np.sqrt(1.0 / 3.0)
-b = np.sqrt(2.0 / 3.0)
-psi = a * ket0 + b * ket1
-
-# What a linear device would output if it clones |0> -> |00> and |1> -> |11>
-linear_output = a * ket00 + b * ket11
-
-# What a true two-copy state of psi would be
-true_copy = np.kron(psi, psi)
-
-# Compare the two vectors
-overlap = np.vdot(linear_output, true_copy)
-linear_norm = np.linalg.norm(linear_output)
-true_norm = np.linalg.norm(true_copy)
-
-print("Amplitudes of linear output:", linear_output)
-print("Amplitudes of true two-copy state:", true_copy)
-print("Overlap between the two states:", overlap)
-print("Norm of linear output:", linear_norm)
-print("Norm of true copy:", true_norm)
-print("Are they equal up to numerical precision?", np.allclose(linear_output, true_copy))
-```
-
-Running this script shows that the linear output and the true two-copy state are not the same. The linear output retains the original amplitudes a and b on the |00⟩ and |11⟩ components, while the true copy spreads the squared amplitudes a², b² and cross-amplitudes ab across all four basis states. For a = √(1/3) and b = √(2/3), the linear output is √(1/3)|00⟩ + √(2/3)|11⟩, whereas the genuine two-copy state is (1/3)|00⟩ + (√2/3)|01⟩ + (√2/3)|10⟩ + (2/3)|11⟩. The overlap between them is (a³ + b³), which is strictly less than one for any non-trivial superposition. This numerical check mirrors the general proof: a unitary that clones the basis states is forced by linearity to produce a state different from the desired universal clone.
-
 In summary, the No-Cloning Theorem tells us that arbitrary unknown quantum states cannot be duplicated by any fixed physical process. The obstacle is built into the linear, inner-product-preserving character of quantum mechanics. Orthogonal or identical states remain copyable, but the continuous set of all pure quantum states cannot be universally cloned. This result marks a deep departure from classical information theory and underpins many of the security and communication primitives unique to quantum information science.
+
+The result, stated in full, is this. Fix a blank ancilla state $|b\rangle$. There is no unitary operator $U$ such that
+$$U\big(|\psi\rangle \otimes |b\rangle\big) = |\psi\rangle \otimes |\psi\rangle$$
+holds for every normalized pure state $|\psi\rangle$. Equivalently: if a single unitary $U$ clones two candidate states, $U(|\psi\rangle\otimes|b\rangle) = |\psi\rangle\otimes|\psi\rangle$ and $U(|\phi\rangle\otimes|b\rangle) = |\phi\rangle\otimes|\phi\rangle$, then unitarity forces
+$$\langle\psi|\phi\rangle = \langle\psi|\phi\rangle^2,$$
+whose only solutions are $\langle\psi|\phi\rangle = 0$ or $\langle\psi|\phi\rangle = 1$ — the two states must be orthogonal or identical. The conclusion survives even if the device is allowed to leave a correlated residue $|A_\psi\rangle$ in an apparatus or environment, so that the full output is $|\psi\rangle\otimes|\psi\rangle\otimes|A_\psi\rangle$: unitarity then gives
+$$\langle\psi|\phi\rangle = \langle\psi|\phi\rangle^2\,\langle A_\psi|A_\phi\rangle,$$
+and since $|\langle A_\psi|A_\phi\rangle| \le 1$, the right-hand side is strictly smaller in magnitude than $\langle\psi|\phi\rangle$ whenever $0 < |\langle\psi|\phi\rangle| < 1$, so no auxiliary degree of freedom can buy back the copy. A fixed unitary evolution can therefore duplicate a pair of states only when they are orthogonal or identical — which is exactly why no physical process can clone an arbitrary unknown quantum state, since a generic pair of states drawn from the space is neither.
