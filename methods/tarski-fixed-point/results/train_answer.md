@@ -12,59 +12,14 @@ The canonical names for the extremal fixed points are therefore \(\text{lfp}(f) 
 
 The proof uses nothing beyond completeness and monotonicity. Contraction arguments would have asked for distances and shrinking constants and would have usually produced uniqueness, which is neither available nor desired here. Topological arguments would have asked for compactness, convexity, and continuity, none of which are part of the order-theoretic data. The complete lattice supplies global joins and meets, and monotonicity keeps the collections of one-sided stable bounds closed under \(f\) until the inequalities collapse to equality. Order alone carries the whole structure.
 
-The Python illustration below verifies the theorem on a small finite complete lattice, the power set of \(\{0, 1, 2\}\) ordered by inclusion. The code defines a monotone map with several fixed points, computes the least and greatest fixed points using the Knaster–Tarski formulas, checks that they really are fixed, and checks that the fixed-point set is closed under joins and meets.
+Put together, this is the finished result, stated with its hypotheses and with the extremal fixed points and the completeness of the fixed-point set built directly into the statement.
 
-```python
-from itertools import chain, combinations
+Let \((L, \leq)\) be a complete lattice and let \(f : L \to L\) be a monotone self-map, meaning \(x \leq y \implies f(x) \leq f(y)\). Then the fixed-point set
 
-# Power set of {0, 1, 2} as a complete lattice under inclusion.
-universe = {0, 1, 2}
-all_sets = [frozenset(s) for s in chain.from_iterable(combinations(universe, r) for r in range(4))]
+$$\mathrm{Fix}(f) = \{x \in L \mid f(x) = x\}$$
 
-def f(S):
-    # A deliberately non-linear monotone map with several fixed points.
-    # Fixed points are exactly the sets that contain 0 and contain 2 whenever they contain 1.
-    return S | {0} | ({2} if 1 in S else set())
+is nonempty, and it is itself a complete lattice under the order inherited from \(L\): every subset \(A \subseteq \mathrm{Fix}(f)\), including the empty subset, has a join and a meet computed inside \(\mathrm{Fix}(f)\). Its least and greatest elements are given in closed form by
 
-# Verify monotonicity on the whole lattice: A <= B implies f(A) <= f(B).
-assert all(
-    not (A <= B) or f(A) <= f(B)
-    for A in all_sets for B in all_sets
-)
+$$\mathrm{lfp}(f) = \bigwedge \{x \in L \mid f(x) \leq x\}, \qquad \mathrm{gfp}(f) = \bigvee \{x \in L \mid x \leq f(x)\},$$
 
-P = [S for S in all_sets if f(S) <= S]   # pre-fixed points
-Q = [S for S in all_sets if S <= f(S)]   # post-fixed points
-
-lfp = frozenset.intersection(*P)
-gfp = frozenset.union(*Q)
-
-assert f(lfp) == lfp, "lfp is fixed"
-assert f(gfp) == gfp, "gfp is fixed"
-
-fixed = [S for S in all_sets if f(S) == S]
-assert lfp in fixed and gfp in fixed
-assert all(lfp <= s for s in fixed), "lfp is least"
-assert all(s <= gfp for s in fixed), "gfp is greatest"
-
-# Verify that the fixed-point set is closed under joins and meets in itself.
-def meet_in_fixed(A):
-    return frozenset.intersection(*A)
-
-def join_in_fixed(A):
-    return frozenset.union(*A)
-
-# For every family of fixed points, their meet and join in the lattice are already fixed.
-for r in range(len(fixed) + 1):
-    for family in combinations(fixed, r):
-        m = meet_in_fixed(family) if family else gfp
-        j = join_in_fixed(family) if family else lfp
-        assert f(m) == m
-        assert f(j) == j
-
-print("lfp =", sorted(lfp))
-print("gfp =", sorted(gfp))
-print("all fixed points:", [sorted(s) for s in fixed])
-print("Knaster-Tarski verification passed.")
-```
-
-Running this script confirms that the least fixed point is \(\{0\}\), the greatest fixed point is \(\{0, 1, 2\}\), and the fixed-point set is exactly the family of sets containing \(0\) and containing \(2\) whenever they contain \(1\). It also confirms that arbitrary intersections and unions of fixed points remain fixed, which is the finite manifestation of the theorem’s claim that \(\text{Fix}(f)\) is a complete lattice. The Knaster–Tarski fixed-point theorem is the right statement whenever order, rather than metric or topological structure, is the primitive that governs a self-map.
+the meet of all pre-fixed points and the join of all post-fixed points, respectively. More generally, for any \(A \subseteq \mathrm{Fix}(f)\), writing \(s = \bigvee_L A\) and \(t = \bigwedge_L A\) for the join and meet computed in \(L\) itself, the join of \(A\) inside \(\mathrm{Fix}(f)\) is the least fixed point of \(f\) restricted to the stable interval \([s, \top]\), and the meet of \(A\) inside \(\mathrm{Fix}(f)\) is the greatest fixed point of \(f\) restricted to the stable interval \([\bot, t]\); taking \(A = \varnothing\) recovers \(\mathrm{lfp}(f)\) and \(\mathrm{gfp}(f)\) as the join and meet of the empty family. No metric, no topology, no compactness, no convexity, and no continuity enters any of this: completeness of \(L\) is what supplies the joins and meets on which the argument runs, and monotonicity of \(f\) is the only property of the map that is used, at every stage, to keep one-sided inequalities in force until they are forced to collapse into equalities. That is the whole content of the Knaster–Tarski fixed-point theorem, and it is the right statement whenever order, rather than metric or topological structure, is the primitive that governs a self-map.
