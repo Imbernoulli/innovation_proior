@@ -29,8 +29,8 @@ class SparseAttention(nn.Module):
         self.num_heads = num_heads
         self.block_size = block_size
         self.density_budget = density_budget
-        # 4 attention sinks: enough to recover almost all the dense-attention
-        # quality on streaming inputs.
+        # Default: 4 attention sinks — enough to recover almost all the
+        # dense-attention quality on streaming inputs.
         self.num_sinks = 4
         self.last_density = None
 
