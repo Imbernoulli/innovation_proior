@@ -17,19 +17,19 @@ from gsplat.utils import normalized_quat_to_rotmat
 
 @dataclass
 class EDCStrategy(Strategy):
-    """Efficient Density Control: Long-Axis Split + Recovery-Aware Pruning."""
+    """Efficient Density Control: Long-Axis Split (split-only) + Recovery-Aware Pruning."""
 
     refine_start_iter: int = 500
     refine_stop_iter: int = 15_000
     refine_every: int = 100
     reset_every: int = 3000
-    grow_grad2d: float = 0.0002      # raise to 0.0004 with AbsGS-style gradients
+    grow_grad2d: float = 0.0002      # raise (e.g. 0.0004) when using AbsGS homodirectional grads
     prune_opa: float = 0.005         # standard low-opacity prune floor
     absgrad: bool = False
     key_for_gradient: str = "means2d"
-    # Long-Axis Split constants
+    # Long-Axis Split constants (sweep extrema; +-0.05 robust)
     las_opa_factor: float = 0.6      # child opacity = 0.6 * parent
-    las_short_factor: float = 0.85   # non-longest axes shrunk to 0.85
+    las_short_factor: float = 0.85   # non-longest axes -> 0.85
     las_long_div: float = 2.0        # longest axis halved
     # Recovery-Aware Pruning
     recovery_offset: int = 300       # iters after each reset
@@ -48,23 +48,22 @@ class EDCStrategy(Strategy):
         if len(sel) == 0:
             return
 
-        scales = torch.exp(params["scales"][sel])
+        scales = torch.exp(params["scales"][sel])                  # [S,3]
         quats = F.normalize(params["quats"][sel], dim=-1)
-        rotmats = normalized_quat_to_rotmat(quats)
+        rotmats = normalized_quat_to_rotmat(quats)                 # [S,3,3]
 
-        a = scales.argmax(dim=-1, keepdim=True)
+        a = scales.argmax(dim=-1, keepdim=True)                    # longest-axis index
         e_local = torch.zeros_like(scales).scatter_(1, a, 1.0)
-        direction = torch.einsum("sij,sj->si", rotmats, e_local)
-        s_max = scales.gather(1, a).squeeze(-1)
+        direction = torch.einsum("sij,sj->si", rotmats, e_local)   # world dir d = R e_a
+        s_max = scales.gather(1, a).squeeze(-1)                    # [S]
 
-        offset = 0.5 * s_max.unsqueeze(-1) * direction
-        samples = torch.stack([offset, -offset], dim=0)
+        offset = 0.5 * s_max.unsqueeze(-1) * direction             # +- (1/2) s_max d
+        samples = torch.stack([offset, -offset], dim=0)            # [2,S,3]
 
-        new_scales = scales * self.las_short_factor
-        new_scales.scatter_(1, a, s_max.unsqueeze(-1) / self.las_long_div)
+        new_scales = scales * self.las_short_factor                # other axes -> 0.85
+        new_scales.scatter_(1, a, s_max.unsqueeze(-1) / self.las_long_div)  # long axis / 2
 
-        a_child = (self.las_opa_factor *
-                   torch.sigmoid(params["opacities"][sel])).clamp(1e-6, 1 - 1e-6)
+        a_child = (self.las_opa_factor * torch.sigmoid(params["opacities"][sel])).clamp(1e-6, 1 - 1e-6)
         new_opa_logit = torch.logit(a_child)
 
         def param_fn(name, p):
@@ -77,9 +76,7 @@ class EDCStrategy(Strategy):
                 p_split = new_opa_logit.repeat(repeats)
             else:
                 p_split = p[sel].repeat(repeats)
-            return torch.nn.Parameter(
-                torch.cat([p[rest], p_split]), requires_grad=p.requires_grad
-            )
+            return torch.nn.Parameter(torch.cat([p[rest], p_split]), requires_grad=p.requires_grad)
 
         def optimizer_fn(key, v):
             v_split = torch.zeros((2 * len(sel), *v.shape[1:]), device=v.device)
@@ -93,8 +90,7 @@ class EDCStrategy(Strategy):
         if scene is not None:
             scene.on_split(sel, rest)
 
-    def step_post_backward(self, params, optimizers, state, step, info,
-                           packed=False, scene=None):
+    def step_post_backward(self, params, optimizers, state, step, info, packed=False, scene=None):
         if step >= self.refine_stop_iter:
             return
 
@@ -118,21 +114,20 @@ class EDCStrategy(Strategy):
         state["grad2d"].index_add_(0, ids, grad_values.norm(dim=-1))
         state["count"].index_add_(0, ids, torch.ones_like(ids, dtype=torch.float32))
 
+        # Recovery-Aware Pruning: 300 iters after each reset
         if step > self.reset_every and (step - self.recovery_offset) % self.reset_every == 0:
             not_recovered = torch.sigmoid(params["opacities"].flatten()) < self.recovery_opa
             if not_recovered.sum() > 0:
-                remove(params=params, optimizers=optimizers, state=state,
-                       mask=not_recovered, scene=scene)
+                remove(params=params, optimizers=optimizers, state=state, mask=not_recovered, scene=scene)
 
         if step > self.refine_start_iter and step % self.refine_every == 0:
             avg_grads = state["grad2d"] / state["count"].clamp_min(1)
             is_high = avg_grads > self.grow_grad2d
             if is_high.sum() > 0:
-                self._long_axis_split(params, optimizers, state, is_high, scene=scene)
+                self._long_axis_split(params, optimizers, state, is_high, scene=scene)   # split-only
             is_prune = torch.sigmoid(params["opacities"].flatten()) < self.prune_opa
             if is_prune.sum() > 0:
-                remove(params=params, optimizers=optimizers, state=state,
-                       mask=is_prune, scene=scene)
+                remove(params=params, optimizers=optimizers, state=state, mask=is_prune, scene=scene)
             state["grad2d"].zero_()
             state["count"].zero_()
             torch.cuda.empty_cache()
