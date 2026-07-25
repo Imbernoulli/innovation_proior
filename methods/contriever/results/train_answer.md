@@ -26,8 +26,8 @@ class Contriever(transformers.BertModel):
         out = super().forward(input_ids=input_ids, attention_mask=attention_mask)
         last = out["last_hidden_state"]
         last = last.masked_fill(~attention_mask[..., None].bool(), 0.0)
-        emb = last.sum(dim=1) / attention_mask.sum(dim=1)[..., None]
-        if normalize:
+        emb = last.sum(dim=1) / attention_mask.sum(dim=1)[..., None]   # mean pooling
+        if normalize:                                 # optional L2 normalize before scoring
             emb = F.normalize(emb, dim=-1)
         return emb
 
@@ -56,11 +56,11 @@ class MoCo(nn.Module):
     """InfoNCE with a momentum-encoder queue."""
     def __init__(self, opt):
         super().__init__()
-        self.temperature = opt.temperature
-        self.momentum = opt.momentum
-        self.queue_size = opt.queue_size
-        self.label_smoothing = opt.label_smoothing
-        self.norm = opt.normalize
+        self.temperature = opt.temperature           # ~0.05
+        self.momentum = opt.momentum                 # ~0.9995
+        self.queue_size = opt.queue_size             # up to ~131072
+        self.label_smoothing = opt.label_smoothing   # optional, mild regularizer
+        self.norm = opt.normalize                    # L2-normalize embeddings (optional)
         self.encoder_q = Contriever.from_pretrained(opt.model_id)
         self.encoder_k = copy.deepcopy(self.encoder_q)
         for p in self.encoder_k.parameters():
@@ -86,18 +86,18 @@ class MoCo(nn.Module):
         with torch.no_grad():
             self._momentum_update()
             k = self.encoder_k(k_tokens, k_mask, normalize=self.norm)
-        l_pos = torch.einsum("nc,nc->n", q, k).unsqueeze(-1)
+        l_pos = torch.einsum("nc,nc->n", q, k).unsqueeze(-1)          # positive at column 0
         l_neg = torch.einsum("nc,ck->nk", q, self.queue.clone().detach())
         logits = torch.cat([l_pos, l_neg], dim=1) / self.temperature
         labels = torch.zeros(q.size(0), dtype=torch.long, device=q.device)
-        loss = F.cross_entropy(logits, labels, label_smoothing=self.label_smoothing)
+        loss = F.cross_entropy(logits, labels, label_smoothing=self.label_smoothing)  # InfoNCE
         self._dequeue_and_enqueue(k)
         return loss
 
 
 def train(trainer, loader, opt):
     optim = torch.optim.AdamW((p for p in trainer.parameters() if p.requires_grad), lr=opt.lr)
-    for batch in loader:
+    for batch in loader:                              # batches mix Wikipedia + CCNet
         loss = trainer(batch["q_tokens"], batch["q_mask"], batch["k_tokens"], batch["k_mask"])
         loss.backward(); optim.step(); optim.zero_grad()
 ```
