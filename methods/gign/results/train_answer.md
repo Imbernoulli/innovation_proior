@@ -18,7 +18,7 @@ from torch_geometric.nn import global_add_pool
 
 
 def _rbf(D, D_min=0.0, D_max=20.0, D_count=16, device="cpu"):
-    """Gaussian RBF expansion of distances along a new last axis."""
+    """Gaussian RBF embedding of distances along a new last axis (D_count channels)."""
     D_mu = torch.linspace(D_min, D_max, D_count, device=device).view(1, -1)
     D_sigma = (D_max - D_min) / D_count
     D_expand = torch.unsqueeze(D, -1)
@@ -47,15 +47,17 @@ class HIL(MessagePassing):
 
     def forward(self, x, edge_index_intra, edge_index_inter, pos=None, size=None):
         row_cov, col_cov = edge_index_intra
+        coord_diff_cov = pos[row_cov] - pos[col_cov]
         radial_cov = self.mlp_coord_cov(
-            _rbf(torch.norm(pos[row_cov] - pos[col_cov], dim=-1),
+            _rbf(torch.norm(coord_diff_cov, dim=-1),
                  D_min=0., D_max=6., D_count=9, device=x.device))
         out_node_intra = self.propagate(
             edge_index=edge_index_intra, x=x, radial=radial_cov, size=size)
 
         row_ncov, col_ncov = edge_index_inter
+        coord_diff_ncov = pos[row_ncov] - pos[col_ncov]
         radial_ncov = self.mlp_coord_ncov(
-            _rbf(torch.norm(pos[row_ncov] - pos[col_ncov], dim=-1),
+            _rbf(torch.norm(coord_diff_ncov, dim=-1),
                  D_min=0., D_max=6., D_count=9, device=x.device))
         out_node_inter = self.propagate(
             edge_index=edge_index_inter, x=x, radial=radial_ncov, size=size)
@@ -65,28 +67,36 @@ class HIL(MessagePassing):
         return out_node
 
     def message(self, x_j: Tensor, x_i: Tensor, radial, index: Tensor):
-        return x_j * radial
+        x = x_j * radial               # elementwise distance-filter gating (cfconv-style)
+        return x
 
 
 class FC(nn.Module):
     """Regression head."""
 
-    def __init__(self, d_in, d_hidden, n_layers, dropout, n_out):
-        super().__init__()
-        layers = []
-        for j in range(n_layers):
+    def __init__(self, d_graph_layer, d_FC_layer, n_FC_layer, dropout, n_tasks):
+        super(FC, self).__init__()
+        self.d_graph_layer = d_graph_layer
+        self.d_FC_layer = d_FC_layer
+        self.n_FC_layer = n_FC_layer
+        self.dropout = dropout
+        self.predict = nn.ModuleList()
+        for j in range(self.n_FC_layer):
             if j == 0:
-                layers += [nn.Linear(d_in, d_hidden), nn.Dropout(dropout),
-                           nn.LeakyReLU(), nn.BatchNorm1d(d_hidden)]
-            if j == n_layers - 1:
-                layers.append(nn.Linear(d_hidden, n_out))
+                self.predict.append(nn.Linear(self.d_graph_layer, self.d_FC_layer))
+                self.predict.append(nn.Dropout(self.dropout))
+                self.predict.append(nn.LeakyReLU())
+                self.predict.append(nn.BatchNorm1d(d_FC_layer))
+            if j == self.n_FC_layer - 1:
+                self.predict.append(nn.Linear(self.d_FC_layer, n_tasks))
             else:
-                layers += [nn.Linear(d_hidden, d_hidden), nn.Dropout(dropout),
-                           nn.LeakyReLU(), nn.BatchNorm1d(d_hidden)]
-        self.layers = nn.ModuleList(layers)
+                self.predict.append(nn.Linear(self.d_FC_layer, self.d_FC_layer))
+                self.predict.append(nn.Dropout(self.dropout))
+                self.predict.append(nn.LeakyReLU())
+                self.predict.append(nn.BatchNorm1d(d_FC_layer))
 
     def forward(self, h):
-        for layer in self.layers:
+        for layer in self.predict:
             h = layer(h)
         return h
 
@@ -112,4 +122,10 @@ class GIGN(nn.Module):
         x = global_add_pool(x, data.batch)
         x = self.fc(x)
         return x.view(-1)
+
+
+# build + train (MSE on -logKd/Ki)
+# model = GIGN(node_dim=35, hidden_dim=256)
+# optimizer = torch.optim.Adam(model.parameters(), lr=5e-4, weight_decay=1e-6)
+# criterion = torch.nn.MSELoss()
 ```
