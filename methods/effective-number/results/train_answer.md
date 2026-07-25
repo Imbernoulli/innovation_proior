@@ -7,42 +7,58 @@ The method is Class-Balanced Loss. It weights each class inversely to its effect
 ```python
 import numpy as np
 import torch
-import torch.nn.functional as F
 
 
 def class_balanced_weights(samples_per_cls, num_classes, beta):
     """Per-class weights from the effective number of samples.
 
-    E_n = (1 - beta**n) / (1 - beta); the (1 - beta) cancels in 1/E_n.
-    Returns a length-num_classes tensor whose entries sum to num_classes.
+    effective_num[c] = 1 - beta**n_c              # 1 - beta^{n_c}
+    weights[c]       = (1 - beta) / effective_num # (1-beta)/(1-beta^{n_c})  proportional to 1/E_{n_c}
+    weights          = weights / sum(weights) * C # normalize so the weights sum to num_classes
     """
     samples_per_cls = np.asarray(samples_per_cls, dtype=np.float64)
     effective_num = 1.0 - np.power(beta, samples_per_cls)
     weights = (1.0 - beta) / np.array(effective_num)
     weights = weights / np.sum(weights) * num_classes
-    return torch.tensor(weights, dtype=torch.float32)
+    return torch.tensor(weights).float()
+```
+
+Applying that weight to a base loss gathers the per-class weight onto each sample's label and dispatches on loss type; the focal case is factored out into its own numerically stable helper so the modulating term `(1 - p_t)^γ` never has to touch raw probabilities:
+
+```python
+import torch
+import torch.nn.functional as F
 
 
-def cb_loss(labels, logits, samples_per_cls, num_classes, loss_type, beta, gamma=2.0):
-    """Class-Balanced Loss: ((1-beta)/(1-beta^n)) * base_loss, normalized to sum to C."""
+def focal_loss(labels, logits, alpha, gamma):
+    """Focal loss = -alpha_t * (1 - p_t)^gamma * log(p_t), using one-vs-all signed logits."""
+    bce = F.binary_cross_entropy_with_logits(logits, labels, reduction="none")
+    if gamma == 0.0:
+        modulator = 1.0
+    else:
+        # numerically stable (1 - p_t)^gamma
+        modulator = torch.exp(-gamma * labels * logits
+                              - gamma * torch.log1p(torch.exp(-logits)))
+    loss = modulator * bce
+    weighted = alpha * loss
+    return weighted.sum() / labels.sum()
+
+
+def cb_loss(labels, logits, samples_per_cls, num_classes, loss_type, beta, gamma):
+    """Class-balanced loss: ((1-beta)/(1-beta^n)) * L(labels, logits), normalized to sum to C."""
     weights = class_balanced_weights(samples_per_cls, num_classes, beta).to(logits.device)
-    labels_one_hot = F.one_hot(labels, num_classes).float()
 
-    # Gather the per-sample class weight and broadcast over classes.
+    labels_one_hot = F.one_hot(labels, num_classes).float()
+    # gather each sample's class weight, broadcast across the C logits
     w = weights.unsqueeze(0).repeat(labels_one_hot.shape[0], 1) * labels_one_hot
     w = w.sum(1).unsqueeze(1).repeat(1, num_classes)
 
+    if loss_type == "focal":
+        return focal_loss(labels_one_hot, logits, w, gamma)
+    if loss_type == "sigmoid":
+        return F.binary_cross_entropy_with_logits(logits, labels_one_hot, weight=w)
     if loss_type == "softmax":
         pred = logits.softmax(dim=1)
         return F.binary_cross_entropy(pred, labels_one_hot, weight=w)
-    if loss_type == "sigmoid":
-        return F.binary_cross_entropy_with_logits(logits, labels_one_hot, weight=w)
-    if loss_type == "focal":
-        bce = F.binary_cross_entropy_with_logits(logits, labels_one_hot, reduction="none")
-        modulator = torch.exp(
-            -gamma * labels_one_hot * logits
-            - gamma * torch.log1p(torch.exp(-logits))
-        )
-        return (w * modulator * bce).sum() / labels_one_hot.sum()
-    raise ValueError(f"Unknown loss_type: {loss_type}")
+    raise ValueError(loss_type)
 ```
