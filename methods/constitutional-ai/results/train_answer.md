@@ -7,87 +7,45 @@ The method is Constitutional AI (CAI). It has two stages: SL-CAI, a supervised f
 RL-CAI then refines this model with reinforcement learning using AI-generated harmlessness labels. SL-CAI generates pairs of responses to red-team prompts. A feedback model is shown the prompt, a sampled constitutional principle, and the two candidate responses as a multiple-choice question asking which is more harmless. The normalized log-probabilities of the "(A)" and "(B)" tokens give a soft preference label. Optionally, the feedback model first reasons step by step before answering; this raises accuracy but tends to be overconfident, so the resulting probability is clamped to a middle band around 40–60% to avoid extreme PM targets that would destabilize RL. These AI harmlessness comparisons are mixed with existing human helpfulness comparisons to train a preference model, and SL-CAI is fine-tuned against it with standard PPO plus a KL penalty. Using SL-CAI for both response generation and RL initialization keeps the preference model matched to the policy distribution. The final model is RL-CAI: harmless, non-evasive, and trained without any human labels for harm.
 
 ```python
-PRINCIPLES = [
-    # ~16 short written rules; each has a critique_request and revision_request
-    {
-        "critique_request": "Identify specific ways the assistant's last response is harmful, unethical, racist, sexist, toxic, dangerous, or illegal.",
-        "revision_request": "Rewrite the assistant response to remove all harmful content.",
-    },
-    # ... additional principles sampled per step for diversity
-]
+PRINCIPLES = [ ... ]  # ~16 short written rules; each has a critique_request + revision_request
 
-
+# SL-CAI: supervised critique -> revision data.
 def make_harmless_sft_data(helpful_model, red_team_prompts, principles, n_revisions=4):
-    """Generate supervised critique->revision data for SL-CAI."""
     data = []
     for prompt in red_team_prompts:
-        resp = sample(helpful_model, prompt, T=1.0)  # usually harmful
+        resp = sample(helpful_model, prompt, T=1.0)              # usually harmful
         for _ in range(n_revisions):
-            p = random.choice(principles)
-            critique = sample(
-                helpful_model,
-                FEWSHOT + prompt + resp + p["critique_request"],
-                T=1.0,
-            )
-            revision = sample(
-                helpful_model,
-                FEWSHOT + prompt + resp + critique + p["revision_request"],
-                T=1.0,
-            )
-            data.append((prompt, revision))  # keep every revision in the chain
-            resp = revision  # iterate critique -> revision
+            p = random.choice(principles)                         # diversity
+            critique = sample(helpful_model, FEWSHOT + prompt + resp + p.critique_request, T=1.0)
+            revision = sample(helpful_model, FEWSHOT + prompt + resp + critique + p.revision_request, T=1.0)
+            data.append((prompt, revision))                       # keep revision from every step
+            resp = revision                                       # iterate
     return data
 
-
-def ai_label(feedback_model, prompt, response_a, response_b, principle, use_cot=False):
-    """Return P(response A is more harmless than response B) under the principle."""
+# RL-CAI: AI feedback -> PM -> RL.
+def ai_label(fb, prompt, a, b, principle, use_cot=False):
     if use_cot:
-        cot = sample(
-            feedback_model,
-            COT_FEWSHOT + prompt + principle + response_a + response_b
-            + "\nAssistant: Let's think step-by-step:",
-            T=1.0,
-        )
-        ctx = prompt + principle + response_a + response_b + cot + "\nThe answer is:"
+        cot = sample(fb, COT_FEWSHOT + prompt + principle + a + b
+                     + "\nAssistant: Let's think step-by-step:", T=1.0)
+        ctx = prompt + principle + a + b + cot + "\nThe answer is:"
     else:
-        ctx = FEWSHOT + prompt + principle + response_a + response_b + "\nThe answer is:"
-
-    p_a = logprob(feedback_model, ctx, " (A)")
-    p_b = logprob(feedback_model, ctx, " (B)")
-    prob_a = softmax([p_a, p_b])[0]
-
-    if use_cot:
-        # Clamp overconfident chain-of-thought judgments for calibration.
-        prob_a = min(0.6, max(0.4, prob_a))
-    return prob_a
-
+        ctx = FEWSHOT + prompt + principle + a + b + "\nThe answer is:"
+    p = softmax([logprob(fb, ctx, " (A)"), logprob(fb, ctx, " (B)")])[0]
+    return min(0.6, max(0.4, p)) if use_cot else p               # clamp overconfident CoT
 
 def make_harmless_preference_data(sl_cai, red_team_prompts, principles, use_cot=True):
-    """Generate AI-labeled harmlessness preference comparisons for RL-CAI."""
     prefs = []
     for prompt in red_team_prompts:
-        a = sample(sl_cai, prompt, T=1.0)
-        b = sample(sl_cai, prompt, T=1.0)
-        principle = random.choice(principles)
-        label = ai_label(feedback_model, prompt, a, b, principle, use_cot=use_cot)
-        prefs.append(((prompt, a, b), label))
+        a, b = sample(sl_cai, prompt, T=1.0), sample(sl_cai, prompt, T=1.0)
+        p = random.choice(principles)
+        prefs.append(((prompt, a, b), ai_label(feedback_model, prompt, a, b, p, use_cot)))
     return prefs
 
-
 def build_assistant():
-    # Stage 1: supervised Constitutional AI (SL-CAI)
-    sft_data = make_harmless_sft_data(helpful_rlhf, red_team_prompts, PRINCIPLES)
-    sl_cai = finetune(
-        pretrained,
-        sft_data + helpfulness_samples,  # mix to retain helpfulness
-        lr=0.5 * PRETRAIN_LR,
-        epochs=1,
-        batch_size=1024,
-    )
-
-    # Stage 2: reinforcement learning from AI feedback (RL-CAI)
+    sft = make_harmless_sft_data(helpful_rlhf, red_team_prompts, PRINCIPLES)
+    sl_cai = finetune(pretrained, sft + helpfulness_samples,
+                      lr=0.5 * PRETRAIN_LR, epochs=1, batch_size=1024)
     prefs = make_harmless_preference_data(sl_cai, red_team_prompts, PRINCIPLES)
     pm = train_preference_model(prefs + human_helpfulness_comparisons)
-    rl_cai = rlhf(sl_cai, all_prompts, pm, ref_model=sl_cai)
-    return rl_cai
+    return rlhf(sl_cai, all_prompts, pm, ref_model=sl_cai)        # RL-CAI
 ```
