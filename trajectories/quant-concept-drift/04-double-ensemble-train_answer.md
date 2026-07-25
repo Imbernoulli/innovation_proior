@@ -22,7 +22,7 @@ The bar this must clear is LGBM's aggregate $\approx 0.571$, or the framework ad
 # EDITABLE: CustomModel — implement your stock prediction model here
 # =====================================================================
 # DoubleEnsemble wrapped around a LightGBM
-# base learner, faithful to qlib/contrib/model/double_ensemble.py (DEnsembleModel).
+# base learner, following qlib/contrib/model/double_ensemble.py (DEnsembleModel).
 import lightgbm as lgb
 from typing import Text, Union
 from qlib.model.interpret.base import FeatureInt
