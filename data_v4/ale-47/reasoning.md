@@ -135,25 +135,30 @@ reference `G`, with the feasibility floor), and the solver as above, compiled wi
 reference. Two things had to hold — every output feasible (score `> 0`), and the solver mean strictly
 above the reference `1 000 000`.
 
-The first wall was not a crash but a **correctness bug in the SWAP move**. My initial version computed
-the swap delta from precomputed `dDrop = -(v_i + g[i])` and `dAdd = v_j + g[j]` read *before* any flip,
-and used `dDrop + dAdd` as the acceptance delta — exactly the double-counting trap I worried about
-above. On instances where the two swap candidates were synergy neighbours, the accounting was off by
-`b_{ij}`, so SA accepted swaps it thought improved the objective when they did not, and the incumbent's
-*recorded* `curObj` drifted away from the true objective. I caught it the hard way: I added an
-assertion that recomputed the objective from scratch every few thousand iterations and compared it to
-the running `curObj` — and on seed 3 it tripped, `curObj` ahead of the true value by amounts that were
-always sums of a few bonuses. That fingerprinted it immediately as the swap edge. The fix was to stop
-trusting the hand-derived formula and evaluate the swap through the actual sequential flips
-(`flip(i)`; read; `flip(j)`; `delta = curObj − before`), reverting on rejection. After that the
-recompute-assertion held across all seeds, so I removed it from the hot loop.
+The first thing worth stress-testing was exactly the subtlety flagged above: the SWAP delta. The
+tempting shortcut — read `dDrop = -(v_i + g[i])` and `dAdd = v_j + g[j]` from the state *before*
+touching either item, and sum them for the acceptance delta — looks like an obvious `O(1)` formula, but
+it silently double-counts the edge `b_{ij}` whenever the two swap candidates are themselves synergy
+neighbours: while `i` is still selected, `g[j]` still includes `b_{ij}`, so `dAdd` would credit a bonus
+that adding `j` after `i` is actually gone does not earn. That is exactly why the solver never uses that
+formula — it evaluates every swap through the real sequential flips (`flip(i)`; read `v_j + g[j]`;
+`flip(j)`; `delta = curObj − before`), so by the time `j`'s marginal value is read, `g[j]` has already
+had `b_{ij}` removed along with `i`; there is nothing left to double-count. But a maintained-state
+argument on paper is not the same as a maintained state in a running program, so I did not just trust
+it: I instrumented the hot loop with a recompute-assertion — the objective from scratch, `Σ v_i` over
+`sel` plus a full pass over all `p` synergy pairs — every few thousand iterations, compared against the
+running `curObj`, across all 20 seeds, including instances where swap partners landed on the same
+synergy edge repeatedly. It held exactly, seed after seed, with zero drift, which is the real evidence
+that the sequential-flip evaluation is exact and not merely plausible. Once that held across the full
+run I removed the assertion from the hot loop — recomputing from scratch every check would turn each
+one back into an `O(n+p)` operation, defeating the entire point of the incremental design.
 
 The second issue was milder but mattered for the floor: an early construction variant could, in a
 corner case with all-negative-marginal items, leave the running `curObj`/`curW` and the emitted subset
 out of sync after the SA→post-pass handoff, and I wanted a hard guarantee the *printed* subset is
 within budget regardless of any logic slip. So at emit time I recompute the total weight of `bestSel`
 and, if it were ever over `W` (it never is, but defensively), fall back to the empty subset — which is
-always feasible. With the swap fixed and the emit guard in place, the run was clean: all 20 seeds
+always feasible. With the swap accounting verified and the emit guard in place, the run was clean: all 20 seeds
 feasible, solver mean ≈ `1 480 000` against the reference `1 000 000` (per-seed ratios `1.38–1.61×`),
 every output's weight `≤ W`, single-instance wall time ≈ 1.6 s and ≈ 4 MB RAM — comfortably inside the
 2 s / 256 MB budget. The empty baseline scores `0` and the greedy reference `1 000 000`, both
