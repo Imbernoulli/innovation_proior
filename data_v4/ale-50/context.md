@@ -55,18 +55,12 @@ reference points frame the design.
   spends the same way regardless of how much budget is actually left. This is the strategy the scorer
   normalizes against.
 
-- **Dual-variable budget pacing (the strong method).** The established strong approach for budgeted
-  online allocation is **primal-dual pacing**: maintain a dual price `lambda >= 0` on the budget
-  constraint — the *shadow cost* of spending one unit of budget — and accept an item iff its utility
-  beats the dual cost of the budget it would consume, `value_t >= lambda * (expected price)`. After
-  each round, update `lambda` online (online mirror descent / an exponentiated-gradient step) against
-  the per-round budget target `B / T`: spend faster than the target and `lambda` rises (become
-  stingier); spend slower and `lambda` falls (become more willing). The single dual variable turns a
-  global budget constraint into a local per-round bid decision that **automatically tracks** `B / T`,
-  reallocating the budget toward the genuinely high utility-per-cost items as the realized prices
-  reveal themselves. The open design choices are the step size, how to estimate an item's expected
-  cost from a noisy hint, and how to bake in a hard guarantee that the budget is **never** breached
-  (a single overspend floors the score to 0).
+- **Adaptive pacing schemes.** More generally, budgeted online-allocation problems (online matching,
+  ad-auction pacing, online knapsack) admit a family of heuristics that adjust how aggressively to bid
+  as realized spend diverges from a planned trajectory, instead of committing to one constant
+  multiplier up front. Designing one here means deciding what signal to react to and how quickly, how
+  to estimate an item's expected cost from a noisy hint, and how to bake in a hard guarantee that the
+  budget is **never** breached (a single overspend floors the score to 0).
 
 ## Evaluation settings
 
@@ -97,8 +91,7 @@ value (correlation ~0.4..0.8) plus independent mass and item-level spread; the *
 base price observed with multiplicative noise in `[0.80, 1.20]`, and the **hidden true price** is the
 base times an *unseen* per-round multiplier in `[0.70, 1.40]` — so a bid must hedge against price
 uncertainty. The budget `B` is a fraction `[0.20, 0.45]` of the total true price of all items, so only
-a minority of rounds is affordable: pacing is forced, which is exactly the regime where an adaptive
-dual-variable schedule beats a fixed-fraction sweep.
+a minority of rounds is affordable: pacing is forced.
 
 ## Code framework
 
