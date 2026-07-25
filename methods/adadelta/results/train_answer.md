@@ -44,20 +44,19 @@ class Adadelta(Optimizer):
                 state = self.state[p]
                 if len(state) == 0:
                     state['step'] = 0
-                    state['square_avg'] = torch.zeros_like(p, memory_format=torch.preserve_format)
-                    state['acc_delta'] = torch.zeros_like(p, memory_format=torch.preserve_format)
-
+                    state['square_avg'] = torch.zeros_like(p, memory_format=torch.preserve_format)   # E[g^2]
+                    state['acc_delta'] = torch.zeros_like(p, memory_format=torch.preserve_format)    # E[dx^2]
                 square_avg, acc_delta = state['square_avg'], state['acc_delta']
                 state['step'] += 1
 
                 if group['weight_decay'] != 0:
                     grad = grad.add(p, alpha=group['weight_decay'])
 
-                square_avg.mul_(rho).addcmul_(grad, grad, value=1 - rho)
-                std = square_avg.add(eps).sqrt_()
-                delta = acc_delta.add(eps).sqrt_().div_(std).mul_(grad)
-                p.add_(delta, alpha=-group['lr'])
-                acc_delta.mul_(rho).addcmul_(delta, delta, value=1 - rho)
+                square_avg.mul_(rho).addcmul_(grad, grad, value=1 - rho)   # E[g^2]_t
+                std = square_avg.add(eps).sqrt_()                          # RMS[g]_t
+                delta = acc_delta.add(eps).sqrt_().div_(std).mul_(grad)    # positive preconditioned gradient
+                p.add_(delta, alpha=-group['lr'])                          # lr=1.0 gives the derived update
+                acc_delta.mul_(rho).addcmul_(delta, delta, value=1 - rho)  # E[dx^2]_t
 
         return loss
 ```
