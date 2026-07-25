@@ -8,6 +8,7 @@ The implementation keeps the standard three-layer Atari conv trunk—32 filters 
 
 ```python
 import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -37,15 +38,15 @@ class DuelingQNetwork(nn.Module):
         feat = self.feature(x / 255.0)
         if torch.is_grad_enabled() and feat.requires_grad:
             feat.register_hook(lambda grad: grad * self.trunk_grad_scale)
-        value = self.value_stream(feat)           # (B, 1)
-        advantage = self.advantage_stream(feat)   # (B, |A|)
-        # Mean-subtraction aggregator: Q = V + (A - mean_a' A).
+        value = self.value_stream(feat)               # (B, 1)
+        advantage = self.advantage_stream(feat)       # (B, |A|)
+        # Q = V + (A - mean_a' A): blocks the V+c / A-c trade and preserves action ranks.
         return value + (advantage - advantage.mean(dim=1, keepdim=True))
 
 
 def train_step(q_network, target_network, optimizer, data, gamma, max_grad_norm=10.0):
     with torch.no_grad():
-        # Double DQN: online network selects, target network evaluates.
+        # Double DQN: online net selects, target net evaluates.
         next_actions = torch.argmax(q_network(data.next_observations), dim=1, keepdim=True)
         next_q = target_network(data.next_observations).gather(1, next_actions).squeeze(1)
         y = data.rewards.flatten() + gamma * next_q * (1 - data.dones.flatten())
