@@ -30,6 +30,7 @@ def init_weights(net):
 
 
 class ResnetBlock(nn.Module):
+    """Residual block: out = x + r(x). Identity prior keeps scene structure."""
     def __init__(self, dim, norm_layer, use_bias):
         super().__init__()
         self.conv_block = nn.Sequential(
@@ -44,6 +45,7 @@ class ResnetBlock(nn.Module):
 
 
 class ResnetGenerator(nn.Module):
+    """Downsample -> residual blocks -> upsample. Instance norm, reflection pad, Tanh."""
     def __init__(self, in_nc, out_nc, ngf=64, n_blocks=9,
                  norm_layer=functools.partial(nn.InstanceNorm2d, affine=False)):
         super().__init__()
@@ -71,6 +73,7 @@ class ResnetGenerator(nn.Module):
 
 
 class NLayerDiscriminator(nn.Module):
+    """70x70 PatchGAN: C64-C128-C256-C512 -> 1-channel patch-score map."""
     def __init__(self, in_nc, ndf=64, n_layers=3,
                  norm_layer=functools.partial(nn.InstanceNorm2d, affine=False)):
         super().__init__()
@@ -93,6 +96,7 @@ class NLayerDiscriminator(nn.Module):
 
 
 class GANLoss(nn.Module):
+    """Least-squares GAN loss: regress to 1 (real) / 0 (fake)."""
     def __init__(self):
         super().__init__()
         self.loss = nn.MSELoss()
@@ -103,6 +107,7 @@ class GANLoss(nn.Module):
 
 
 class ImagePool:
+    """50-image history buffer to decorrelate discriminator updates."""
     def __init__(self, pool_size=50):
         self.pool_size, self.num, self.images = pool_size, 0, []
 
@@ -126,13 +131,14 @@ class ImagePool:
 
 
 class CycleGAN:
+    # G_A = G (X->Y), G_B = F (Y->X), D_A = D_Y, D_B = D_X
     def __init__(self, in_nc=3, out_nc=3, lambda_cyc=10.0, lambda_idt=0.5, lr=2e-4):
         if lambda_idt > 0:
             assert in_nc == out_nc, "identity loss requires matching input/output channels"
-        self.G_A = ResnetGenerator(in_nc, out_nc)   # X -> Y
-        self.G_B = ResnetGenerator(out_nc, in_nc)   # Y -> X
-        self.D_A = NLayerDiscriminator(out_nc)      # judges Y
-        self.D_B = NLayerDiscriminator(in_nc)       # judges X
+        self.G_A = ResnetGenerator(in_nc, out_nc)
+        self.G_B = ResnetGenerator(out_nc, in_nc)
+        self.D_A = NLayerDiscriminator(out_nc)
+        self.D_B = NLayerDiscriminator(in_nc)
         for net in (self.G_A, self.G_B, self.D_A, self.D_B):
             init_weights(net)
         self.fake_A_pool, self.fake_B_pool = ImagePool(), ImagePool()
@@ -146,10 +152,10 @@ class CycleGAN:
                                       lr=lr, betas=(0.5, 0.999))
 
     def forward(self, real_A, real_B):
-        self.fake_B = self.G_A(real_A)
-        self.rec_A = self.G_B(self.fake_B)
-        self.fake_A = self.G_B(real_B)
-        self.rec_B = self.G_A(self.fake_A)
+        self.fake_B = self.G_A(real_A)       # G(x)
+        self.rec_A = self.G_B(self.fake_B)   # F(G(x)) ~ x
+        self.fake_A = self.G_B(real_B)       # F(y)
+        self.rec_B = self.G_A(self.fake_A)   # G(F(y)) ~ y
 
     def backward_G(self, real_A, real_B):
         lam, lam_i = self.lambda_cyc, self.lambda_idt
