@@ -11,11 +11,6 @@ if the **total space it occupies is at most the usable amount** `U = K - g`. Amo
 subsets, output the **maximum total value**. The empty subset is always legal, so the answer
 is at least `0`.
 
-This is a 0/1 knapsack whose capacity is not given directly but is `K - g`, a *difference of
-two boundaries*. Getting the usable capacity exactly right — and iterating the DP table over
-exactly the right inclusive range — is the whole game: a one-unit slip in `U` or in the loop
-bounds silently lets in (or wrongly forbids) a configuration that sits right on the edge.
-
 ## Input / output contract
 
 - Input (stdin): the first line has three integers `n`, `K`, `g`
@@ -31,28 +26,12 @@ Example: `n = 4`, `K = 10`, `g = 3` (so `U = 7`), items `(s,v) = (3,8), (4,9), (
 The answer is `17`: items `0` and `1` occupy `3 + 4 = 7 <= 7` for value `8 + 9 = 17`, which beats
 any single item and also beats the other space-`7` combination `(5,10)+(2,5)=15`.
 
-## Background
-
-The constraint "total occupied space at most `U`, each item used at most once" is the
-textbook 0/1 knapsack. Two design questions are live before committing:
-
-- **What is the capacity, exactly?** It is `U = K - g`, a subtraction of two given boundaries.
-  Because the locker positions are `1 .. K` and the *last* `g` of them are reserved, the
-  usable positions are `1 .. (K - g)`, i.e. exactly `K - g` units. Whether that should be
-  `K - g`, `K - g + 1`, or `K - g - 1` is precisely the inclusive/exclusive boundary that has
-  to be nailed down by counting, not guessed.
-- **How to iterate the DP.** The standard one-dimensional table `dp[c]` = best value using
-  occupied space at most `c` is filled per item by scanning `c` from high to low so each item
-  is used at most once. The open question is the exact range of `c` (inclusive of `U`?) and
-  the lower cutoff (`c >= s[i]`), both of which are off-by-one-prone.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: the buffer exactly consuming the locker (`g = K`, so
 `U = 0`), the buffer exceeding the locker (`g > K`), no buffer at all (`g = 0`, plain
 knapsack), items that exactly fill the usable space, items strictly too large for `U`,
-single-item and `n = 2000` cases, and values near `10^9` with many items selected so the
-total exceeds the 32-bit range (`sum` can reach `~2*10^12`, requiring 64-bit accumulation).
+single-item and `n = 2000` cases, and values near `10^9` with many items selected.
 
 ## Code framework
 
@@ -70,8 +49,8 @@ int main() {
     for (int i = 0; i < n; i++) cin >> s[i] >> v[i];
 
     // Usable space U = K - g (clamp to 0 if non-positive).
-    // TODO: 0/1 knapsack with capacity U; print the best value reachable with
-    //       total occupied space at most U.
+    // TODO: choose a subset of items (each at most once) with total space at
+    //       most U; print the maximum achievable total value.
     long long answer = 0;
 
     cout << answer << "\n";
