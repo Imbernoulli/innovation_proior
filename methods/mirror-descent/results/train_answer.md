@@ -52,52 +52,20 @@ x_{k+1, i} = x_{k, i} exp(-t_k g_{k, i}) / sum_j x_{k, j} exp(-t_k g_{k, j}).
 
 The multiplicative update appears because logarithmic dual coordinates are the right coordinates for distributions. Negative entropy is 1-strongly convex with respect to the l1 norm, the dual norm is l_infinity, and the uniform starting point has entropy radius at most log n. The rate therefore scales like sqrt(2 log n) ||g||_infinity / sqrt(k) instead of the Euclidean sqrt(n) ||g||_infinity / sqrt(k). The distinctive insight is exactly this: we adapt the mirror map to the problem so the gradient acts in dual coordinates, then return through the induced Bregman geometry to the feasible set.
 
-The code below illustrates the entropy variant of mirror descent on a small expert-style problem. We minimize the maximum of three linear loss functions over the probability simplex in R^3. Because the loss vectors are bounded coordinatewise, the natural subgradient norm is l_infinity and the entropy mirror map removes the Euclidean dimension penalty. The implementation starts from the uniform distribution, computes a subgradient of the piecewise-linear objective, takes the multiplicative exponential update in log coordinates, and normalizes back to the simplex. After the prescribed number of iterations it reports the best objective value seen and compares it with the value achieved by ordinary projected subgradient descent using the same step size.
+This is the complete method, stated as a protocol rather than a single formula. Fix the feasible set X, a norm ||.|| on the primal space with dual norm ||.||_*, and a differentiable potential psi that is sigma-strongly convex with respect to ||.||. Initialize x_1 in X. At each step k, query a subgradient g_k in partial f(x_k), form the dual-coordinate update
 
-```python
-import numpy as np
+grad psi(x_{k+1}) = grad psi(x_k) - t_k g_k,
 
-def f(x, A):
-    return np.max(A @ x)
+and recover the next primal iterate by the Bregman projection that reconciles this dual step with the constraint set,
 
-def subgrad(x, A):
-    idx = np.argmax(A @ x)
-    return A[idx]
+0 in t_k g_k + grad psi(x_{k+1}) - grad psi(x_k) + N_X(x_{k+1}),
 
-def mirror_descent_entropy(A, n_iter=2000, step=0.05):
-    n = A.shape[1]
-    x = np.ones(n) / n
-    best = float('inf')
-    for _ in range(n_iter):
-        g = subgrad(x, A)
-        log_y = np.log(x + 1e-300) - step * g
-        y = np.exp(log_y - np.max(log_y))
-        x = y / y.sum()
-        val = f(x, A)
-        if val < best:
-            best = val
-    return x, best
+equivalently x_{k+1} = argmin_{x in X} { t_k <g_k, x> + B_psi(x, x_k) }. This protocol carries the guarantee
 
-def projected_subgradient(A, n_iter=2000, step=0.05):
-    n = A.shape[1]
-    x = np.ones(n) / n
-    best = float('inf')
-    for _ in range(n_iter):
-        g = subgrad(x, A)
-        y = x - step * g
-        y = np.maximum(y, 0.0)
-        s = y.sum()
-        x = y / s if s > 0 else np.ones(n) / n
-        val = f(x, A)
-        if val < best:
-            best = val
-    return x, best
+min_{s <= k} f(x_s) - f(x*) <= (B_psi(x*, x_1) + (1/(2 sigma)) sum_{s=1}^k t_s^2 ||g_s||_*^2) / sum_{s=1}^k t_s,
 
-if __name__ == "__main__":
-    np.random.seed(0)
-    A = np.random.randn(3, 3)
-    x_md, best_md = mirror_descent_entropy(A)
-    x_eu, best_eu = projected_subgradient(A)
-    print("Mirror descent best value:", best_md)
-    print("Euclidean subgradient best value:", best_eu)
-```
+and with the horizon-optimal step t_s = sqrt(2 sigma B_psi(x*, x_1)) / (L sqrt(k)) for a known bound ||g_s||_* <= L, this collapses to the closed-form rate L sqrt(2 B_psi(x*, x_1) / sigma) / sqrt(k). Choosing psi(x) = (1/2)||x||_2^2 recovers ordinary projected subgradient descent with its Euclidean sqrt(n) dependence. Choosing psi to be negative entropy on the simplex instead makes sigma = 1 in the l1 norm, bounds the Bregman radius by log n, and turns the abstract protocol into the closed-form multiplicative weights update
+
+x_{k+1, i} = x_{k, i} exp(-t_k g_{k, i}) / sum_j x_{k, j} exp(-t_k g_{k, j}),
+
+running at the dimension-free rate sqrt(2 log n) ||g||_infinity / sqrt(k). The mirror map psi is the single design choice that carries all of this: it fixes the dual coordinates in which the subgradient step is additive, the Bregman divergence through which the iterate returns to the feasible set, and the constant sigma that ultimately sets the convergence rate.
