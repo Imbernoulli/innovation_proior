@@ -6,14 +6,20 @@ The method is called Cutout. During training only, after converting the image to
 
 The reported settings use one hole per image, with length 16 on CIFAR-10, length 8 on CIFAR-100, and length 20 on SVHN. The operation slots directly into the standard torchvision pipeline after ToTensor and normalization, leaving the model and optimizer untouched. The only hyperparameter to tune is the patch length, selected on a held-out validation split. An early targeted variant tried to hide regions with the highest feature activation, but random fixed-size regions matched its accuracy without any saliency bookkeeping, so the final method keeps the random placement. The key design rules are to apply the mask only during training, to apply it after normalization so zero corresponds to the dataset mean, to use a single randomly placed square in the usual setting, to sample the center inside the image and clip the patch at the boundary, to avoid any test-time rescaling, and to keep the original label and cross-entropy objective.
 
+Here is the transform itself, exactly as it runs on a tensor image after normalization:
+
 ```python
 import torch
 import numpy as np
-from torchvision import transforms
 
 
 class Cutout(object):
-    """Randomly mask out one or more patches from an image."""
+    """Randomly mask out one or more patches from an image.
+
+    Args:
+        n_holes (int): Number of patches to cut out of each image.
+        length (int): The length (in pixels) of each square patch.
+    """
     def __init__(self, n_holes, length):
         self.n_holes = n_holes
         self.length = length
@@ -39,25 +45,32 @@ class Cutout(object):
             x1 = np.clip(x - self.length // 2, 0, w)
             x2 = np.clip(x + self.length // 2, 0, w)
 
-            mask[y1:y2, x1:x2] = 0.
+            mask[y1: y2, x1: x2] = 0.
 
         mask = torch.from_numpy(mask)
         mask = mask.expand_as(img)
         img = img * mask
 
         return img
+```
+
+For the even lengths used above, an unclipped patch works out to exactly length by length pixels; the slicing is what produces the boundary clipping described a moment ago, since the upper bound is exclusive and both `y1`/`y2` and `x1`/`x2` get clamped into `[0, h]` and `[0, w]` independently. Wiring it into a standard CIFAR-10 pipeline is just as direct: build the ordinary crop-flip-tensor-normalize sequence and append Cutout as the very last transform, so the zeroed pixels land after normalization and read as the dataset mean rather than raw black:
+
+```python
+from torchvision import transforms
 
 
-train_transform = transforms.Compose([
-    transforms.RandomCrop(32, padding=4),
-    transforms.RandomHorizontalFlip(),
-    transforms.ToTensor(),
-    transforms.Normalize(
-        mean=[x / 255.0 for x in [125.3, 123.0, 113.9]],
-        std=[x / 255.0 for x in [63.0, 62.1, 66.7]],
-    ),
-    Cutout(n_holes=1, length=16),
-])
+normalize = transforms.Normalize(
+    mean=[x / 255.0 for x in [125.3, 123.0, 113.9]],
+    std=[x / 255.0 for x in [63.0, 62.1, 66.7]],
+)
+
+train_transform = transforms.Compose([])
+train_transform.transforms.append(transforms.RandomCrop(32, padding=4))
+train_transform.transforms.append(transforms.RandomHorizontalFlip())
+train_transform.transforms.append(transforms.ToTensor())
+train_transform.transforms.append(normalize)
+train_transform.transforms.append(Cutout(n_holes=1, length=16))
 ```
 
 That is the entire method: a small, cheap input transform that makes the network learn from images with genuinely missing evidence.
