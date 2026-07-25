@@ -29,26 +29,15 @@ diagonal of length 5, e.g. `(3,0)`–`(0,4)`.
 The brute-force reading is immediate: try all `O(n^2)` pairs and keep the largest squared distance.
 That is obviously correct and is exactly what a checker would use on small inputs, but at `n = 2*10^5`
 it is `~2*10^10` pair evaluations — far beyond a 1-second budget. The task is to get the same exact
-answer while only doing near-linear work.
-
-Two structural facts about the diameter frame the faster approach, and both need to be earned rather
-than assumed:
-
-- **The farthest pair lies on the convex hull.** If a point is strictly interior to the hull, it
-  cannot be an endpoint of the diameter, so we may discard all interior points first. Building the
-  hull is `O(n log n)`.
-- **The hull has few "antipodal" pairs.** The diameter is realised by two vertices that admit parallel
-  supporting lines; sweeping a pair of supporting lines around a convex polygon visits only `O(h)`
-  such candidate pairs for a hull of `h` vertices. The open questions are the exact sweep rule and
-  how it behaves when the hull degenerates (two points, or a straight segment of collinear inputs).
+answer while only doing near-linear work, which means finding and exploiting whatever structure the
+diameter of a planar point set actually has.
 
 ## Evaluation settings
 
 Judged on hidden tests covering: generic random clouds; the two-point minimum (`n = 2`); all points
-identical (answer `0`); all points collinear, including a vertical line and a single repeated segment;
-dense small lattices that force many duplicate and collinear triples (the case that breaks fragile hull
-code); coordinates at the `±10^9` extremes so the squared distance reaches `8*10^18` and must be held
-in 64-bit; and full-size `n = 2*10^5` inputs that must finish within the time limit.
+identical; all points collinear, including a vertical line and a single repeated segment; dense small
+lattices that force many duplicate and collinear points; coordinates at the `±10^9` extremes; and
+full-size `n = 2*10^5` inputs that must finish within the time limit.
 
 ## Code framework
 
