@@ -19,7 +19,7 @@ class AlexNet(nn.Module):
         self.features = nn.Sequential(
             nn.Conv2d(3, 64, kernel_size=11, stride=4, padding=2),
             nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=3, stride=2),
+            nn.MaxPool2d(kernel_size=3, stride=2),          # overlapping pooling
             nn.Conv2d(64, 192, kernel_size=5, padding=2),
             nn.ReLU(inplace=True),
             nn.MaxPool2d(kernel_size=3, stride=2),
@@ -49,14 +49,12 @@ class AlexNet(nn.Module):
         return self.classifier(x)
 
 
-# Local response normalization as used after ReLU on the early conv layers.
+# LRN as in the original net (after ReLU on early conv layers):
 lrn = nn.LocalResponseNorm(size=5, alpha=1e-4, beta=0.75, k=2.0)
 
 model = AlexNet(num_classes=1000, dropout=0.5)
 criterion = nn.CrossEntropyLoss()
-optimizer = torch.optim.SGD(
-    model.parameters(), lr=0.01, momentum=0.9, weight_decay=5e-4
-)
+optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum=0.9, weight_decay=5e-4)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.1)
 
 for m in model.features:
