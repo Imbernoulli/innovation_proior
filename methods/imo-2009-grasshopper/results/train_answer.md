@@ -18,65 +18,6 @@ Now suppose $x$ itself is mined and there is no active mine to its right. I remo
 
 Finally, suppose $x$ is mined and there is also an active mine $z$ strictly to the right of $x$. Then a single final jump $a_n$ is impossible because it would require standing on the mined point $x$. Instead I look for a two-jump ending. For each $i < n$, define $y_i = S - a_n - a_i$ and $p_i = S - a_i$, with the intended ending $y_i \to p_i \to S$ using jumps $a_n$ then $a_i$. The points $y_i$ all lie below $x$ and are distinct, while the points $p_i$ all lie above $x$ and are distinct, and no $y_i$ can equal a $p_j$. Therefore any active mine other than $x$ can block at most one such pair. Since there are $n - 1$ candidate pairs and at most $n - 2$ blocking mines other than $x$, at least one pair has both $y_i$ and $p_i$ unmined. I choose such an $i$. The remaining $n - 2$ lengths sum to $y_i$, and because both $x$ and $z$ lie to the right of $y_i$, at most $n - 3$ active mines lie in the recursive active window for those remaining lengths. By induction I can order them to reach the safe point $y_i$, then jump $a_n$ to the safe point $p_i$, and finally $a_i$ to $S$. The first of these two final jumps crosses $x$, and the mine $z$ is crossed either by the first final jump if $z < p_i$ or by the last final jump if $z > p_i$.
 
-These four cases cover all possibilities, and each recursive call satisfies the required mine budget. Therefore the strengthened statement holds by induction, and the original problem is solved. The canonical name for this method is Grasshopper mine-avoidance via strengthened induction.
+These four cases cover all possibilities, and each recursive call satisfies the required mine budget. Therefore the strengthened statement holds by induction, and the original problem is solved. The canonical name for this method is Grasshopper mine-avoidance via strengthened induction, and the object I have actually produced is the strengthened claim itself, stated in full: for sorted lengths $0<a_1<a_2<\cdots<a_N$ with total $S=a_1+\cdots+a_N$, call a mine active when it lies in $(0,S-a_1]$; then whenever $S$ is unmined and at most $N-1$ mines are active, the lengths admit an order under which the grasshopper never lands on a mine. The original problem is the case $N=n$ with $|M|=n-1$ and $s\notin M$, where every mine of $M$ is either active or already past the reach of a non-final landing, so its hypothesis is met with the active-mine budget saturated exactly at $N-1$.
 
-```python
-import itertools
-import random
-
-
-def find_safe_order_bruteforce(lengths, mines):
-    """Return a mine-avoiding permutation, or None if none exists."""
-    total = sum(lengths)
-    mine_set = set(mines)
-    for perm in itertools.permutations(lengths):
-        position = 0
-        safe = True
-        for a in perm:
-            position += a
-            if position != total and position in mine_set:
-                safe = False
-                break
-        if safe:
-            return list(perm)
-    return None
-
-
-def verify_strengthened_claim(lengths, mines):
-    """Check the theorem for one instance: n-1 active mines in (0, S - min]."""
-    n = len(lengths)
-    total = sum(lengths)
-    a_min = min(lengths)
-    active = {m for m in mines if 0 < m <= total - a_min}
-    if total in mines or len(active) > n - 1:
-        return True  # outside the theorem's hypotheses
-    return find_safe_order_bruteforce(lengths, mines) is not None
-
-
-def test_random_instances(trials=500, max_n=7):
-    random.seed(0)
-    for n in range(2, max_n + 1):
-        for _ in range(trials):
-            lengths = random.sample(range(1, 40), n)
-            total = sum(lengths)
-            candidates = [m for m in range(1, total) if m != total]
-            if len(candidates) < n - 1:
-                continue
-            mines = random.sample(candidates, n - 1)
-            assert verify_strengthened_claim(lengths, mines), \
-                f"Failed for lengths={lengths}, mines={mines}"
-    print(f"Verified {trials * (max_n - 1)} random instances.")
-
-
-if __name__ == "__main__":
-    # Concrete illustration: six jumps and five mines.
-    lengths = [3, 5, 8, 13, 21, 34]
-    mines = {10, 18, 30, 45, 60}
-    order = find_safe_order_bruteforce(lengths, mines)
-    print("Lengths:", lengths)
-    print("Mines:", mines)
-    print("Safe order:", order)
-    positions = list(itertools.accumulate(order))
-    print("Landing positions:", positions)
-    test_random_instances()
-```
+What I have really constructed is an algorithm, since the induction builds the order rather than merely asserting it exists. At each stage I take the current largest unused length $a_N$, set $x=S-a_N$, and check whether I can place $a_N$ last: if $x$ is unmined and the active mines below it still leave the smaller instance $a_1,\ldots,a_{N-1}$ within its own budget, I recurse to reach $x$ and then jump to $S$, crossing whatever active mines lie beyond $x$ without landing on them. If the recursive order I would get instead lands on the single active mine $m$ it cannot dodge, I swap that hop for $a_N$ and move the displaced length to the end, which pushes the bad landing from $m$ to $m+(a_N-a_k)$ — past every active mine, since $m$ was the largest of them. If $x$ itself is the obstruction, the same swap applied to the hop landing on $x$ pushes the intermediate point to $S-a_k$, again clear of every active mine. And if $x$ is mined with a further active mine $z$ beyond it, I replace the single final jump by the two-jump ending $y_i\to p_i\to S$, with $y_i=x-a_i$ and $p_i=S-a_i$, choosing the index $i$ that the pigeonhole count of $N-1$ candidate pairs against at most $N-2$ remaining blockers guarantees exists. Unwinding this recursion from $N$ down to the base case $N=1$ is the complete procedure: given the sorted lengths and the mine set satisfying the hypothesis, it returns an explicit mine-avoiding order in at most $N$ steps, which is exactly the object the problem asks for.
