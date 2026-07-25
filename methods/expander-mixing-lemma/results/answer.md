@@ -1,11 +1,11 @@
-Expander Mixing Lemma 的核心贡献，是把扩展图的组合均匀性翻译成谱间隙控制下的线性代数事实。
+The core contribution of the Expander Mixing Lemma is that it translates the combinatorial uniformity of expander graphs into a linear-algebra fact controlled by the spectral gap.
 
-对 d-正则图 G，任意两个点集 S,T 的边数可写为 1_S^T A 1_T。全 1 特征向量给出随机 d-正则图应有的主项 d|S||T|/n；非平凡特征向量承载所有偏离均匀性的方向。如果这些非平凡特征值都被 lambda 控住，误差就被压到
+For a d-regular graph G, the edge count between any two vertex sets S,T can be written as 1_S^T A 1_T. The all-ones eigenvector gives the main term d|S||T|/n that a random d-regular graph should have; the nontrivial eigenvectors carry all the directions that deviate from uniformity. If all these nontrivial eigenvalues are bounded by lambda, the error is squeezed to
 
 |e(S,T) - d|S||T|/n| <= lambda sqrt(|S||T|).
 
-这就是它的独特洞察：用谱间隙把“像随机图”变成一个二次型和特征向量分解上的不等式。随机性不再是视觉类比或经验判断，而是一个可以验证、可以复用的证书。
+This is its distinctive insight: using the spectral gap to turn "looking like a random graph" into an inequality derived from a quadratic form and an eigenvector decomposition. Randomness is no longer a visual analogy or an empirical judgment call, but a certificate that can be verified and reused.
 
-这也解释了它为什么对构造性伪随机性重要。显式构造只要能保证小的第二特征值，就能自动继承大量随机图式的边分布性质；后续应用只需调用这个 mixing 结论，而不用重新证明每个场景中的均匀性。于是，扩展图从“稀疏但连通性强的图”变成一种通用伪随机组件，可以迁移到网络鲁棒性、独立集和染色界、采样、复杂性理论与伪随机生成等问题中。
+This is also why it matters for constructive pseudorandomness. An explicit construction only needs to guarantee a small second eigenvalue, and it automatically inherits a large number of random-graph-like edge-distribution properties; downstream applications only need to invoke this mixing conclusion, without re-proving uniformity in every scenario. In this way, expander graphs go from being "sparse but highly connected graphs" to a general-purpose pseudorandom component, transferable to problems in network robustness, independent-set and coloring bounds, sampling, complexity theory, and pseudorandom generation.
 
-它的边界也清楚：lemma 主要保证集合间边计数的均匀性，不等于拥有随机图的一切性质；非正则或更高阶对象还需要相应推广。但作为“谱间隙 -> 组合伪随机性”的翻译器，它是扩展图方法最可复用的核心之一。
+Its boundaries are also clear: the lemma mainly guarantees uniformity of edge counts between sets, not that the graph possesses every property of a random graph; irregular or higher-order objects require corresponding generalizations. But as a translator from "spectral gap" to "combinatorial pseudorandomness," it is one of the most reusable core pieces of the expander-graph method.

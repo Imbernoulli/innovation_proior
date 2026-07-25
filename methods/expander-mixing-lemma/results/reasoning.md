@@ -1,18 +1,18 @@
-设 G 是 n 个顶点的 d-正则图，邻接矩阵为 A。因为 G 是 d-正则，全 1 向量是 A 的特征向量，对应特征值 d。这个方向代表完全均匀的边密度：如果只看集合指示向量在全 1 方向上的投影，S 和 T 之间应有 d|S||T|/n 条有序边。
+Let G be a d-regular graph on n vertices with adjacency matrix A. Because G is d-regular, the all-ones vector is an eigenvector of A with eigenvalue d. This direction represents completely uniform edge density: if we only look at the projection of the set indicator vectors onto the all-ones direction, there should be d|S||T|/n ordered edges between S and T.
 
-对任意集合 S,T，把指示向量分解为均匀部分和正交扰动：
+For arbitrary sets S,T, decompose the indicator vectors into a uniform part and an orthogonal perturbation:
 
-1_S = (|S|/n)1 + x_S, 其中 x_S 与 1 正交；
-1_T = (|T|/n)1 + x_T, 其中 x_T 与 1 正交。
+1_S = (|S|/n)1 + x_S, where x_S is orthogonal to 1;
+1_T = (|T|/n)1 + x_T, where x_T is orthogonal to 1.
 
-代入边数表达式 e(S,T)=1_S^T A 1_T。由于 A1=d1，交叉项消失，主项正好是 d|S||T|/n，误差项是 x_S^T A x_T。
+Substitute into the edge-count expression e(S,T)=1_S^T A 1_T. Since A1=d1, the cross terms vanish, and the main term is exactly d|S||T|/n, with the error term being x_S^T A x_T.
 
-如果 A 的所有非平凡特征值绝对值都不超过 lambda，那么 A 限制在 1 的正交补上时，算子范数至多为 lambda。因此
+If all nontrivial eigenvalues of A have absolute value at most lambda, then A restricted to the orthogonal complement of 1 has operator norm at most lambda. Hence
 
 |x_S^T A x_T| <= lambda ||x_S|| ||x_T|| <= lambda sqrt(|S||T|).
 
-这就是 Expander Mixing Lemma 的证明骨架。它的力量在于，边分布的所有集合级偏差都被同一个谱参数统一控制。直觉上，随机图不会让某个子集方向保留很大的结构性偏差；线性代数上，这正对应于非平凡特征方向没有大的特征值。
+This is the proof skeleton of the Expander Mixing Lemma. Its power lies in the fact that all set-level deviations of edge distribution are controlled by this same single spectral parameter. Intuitively, a random graph would not let any subset direction retain a large structural deviation; in linear-algebra terms this corresponds exactly to the nontrivial eigen-directions having no large eigenvalue.
 
-从伪随机性的角度看，这个 lemma 把构造问题变成了谱设计问题。我们不需要直接枚举指数多个子集来验证均匀性；只要证明图的第二特征值小，就得到所有集合对的 mixing 保证。这让显式构造的稀疏图可以在许多应用中替代随机图，因为应用通常只需要某种可量化的均匀边分布，而不需要真正独立随机的生成过程。
+From the perspective of pseudorandomness, this lemma turns the construction problem into a spectral design problem. We don't need to directly enumerate exponentially many subsets to verify uniformity; it suffices to prove that the graph's second eigenvalue is small, and we get a mixing guarantee for every pair of subsets. This lets explicitly constructed sparse graphs substitute for random graphs in many applications, because applications usually only need some quantifiable uniform edge distribution, not a genuinely independent random generative process.
 
-因此，Expander Mixing Lemma 的可迁移性来自一个清晰接口：谱间隙输入，组合均匀性输出。不同领域可以各自使用同一个输出性质，例如把大独立集排除掉、证明小割不存在、控制随机游走采样偏差，或在复杂性理论中提供有限随机性的替代结构。它把“看起来随机”变成“由二次型界证明的随机式行为”。
+So the transferability of the Expander Mixing Lemma comes from a clean interface: spectral gap in, combinatorial uniformity out. Different fields can each make use of the same output property — for example, to rule out large independent sets, to prove the nonexistence of small cuts, to control the sampling bias of random walks, or to provide a substitute structure with bounded randomness in complexity theory. It turns "looking random" into "random-like behavior certified by a quadratic-form bound."

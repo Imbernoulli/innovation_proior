@@ -1,17 +1,17 @@
-## 问题背景
+## Problem background
 
-研究的对象是稀疏正则图与随机图在边分布上的关系。给定一个 n 个顶点、d-正则的图 G，人们关心它的边在顶点子集之间是不是“撒得均匀”：在一个随机 d-正则图里，两个子集 S,T 之间的边数大约是 d|S||T|/n。一个自然的问题是，对一个具体的、确定性构造出来的正则图，它的边数能在多大程度上接近这个随机期望值。
+The object of study is the relationship between sparse regular graphs and random graphs in terms of edge distribution. Given an n-vertex, d-regular graph G, people care about whether its edges are "spread evenly" among subsets of vertices: in a random d-regular graph, the number of edges between two subsets S,T is roughly d|S||T|/n. A natural question is: for a specific, deterministically constructed regular graph, how closely can its edge count approach this random expectation.
 
-边数本身用有序端点计数：e(S,T) 数的是一个端点在 S、另一个端点在 T 的有序对；当 S 与 T 相交时，内部边按两次计数。
+The edge count itself is counted using ordered endpoints: e(S,T) counts ordered pairs where one endpoint lies in S and the other in T; when S and T intersect, internal edges are counted twice.
 
-## 线性代数视角
+## Linear algebra perspective
 
-把集合 S,T 写成指示向量 1_S,1_T，子集间的边数就是邻接矩阵 A 的二次型 1_S^T A 1_T。这把组合量直接交给了线性代数。
+Writing the sets S,T as indicator vectors 1_S,1_T, the number of edges between the subsets is exactly the quadratic form 1_S^T A 1_T of the adjacency matrix A. This hands the combinatorial quantity directly over to linear algebra.
 
-对 d-正则图，全 1 向量是 A 的特征向量，对应特征值 d，这是它的最大特征值，称为平凡特征值。其余特征值都与全 1 向量正交，按绝对值排列后，第二大的那个（通常记作 lambda 或 lambda_2）刻画了图在平凡方向之外的谱。谱在很多场合都被用来度量图的连通性与“扩展性”：第二特征值越小，图越接近一个高度连通、混合迅速的对象。
+For a d-regular graph, the all-ones vector is an eigenvector of A with eigenvalue d, which is its largest eigenvalue, called the trivial eigenvalue. All other eigenvalues correspond to eigenvectors orthogonal to the all-ones vector, and when sorted by absolute value, the second largest one (usually denoted lambda or lambda_2) characterizes the graph's spectrum outside the trivial direction. The spectrum is used in many settings to measure a graph's connectivity and "expansion": the smaller the second eigenvalue, the closer the graph is to being a highly connected, rapidly mixing object.
 
-## 伪随机性与构造
+## Pseudorandomness and construction
 
-随机 d-正则图在很多方面表现良好——边分布均匀、连通性强、混合快——但它们是随机的，难以显式写下来。许多应用（独立集与染色界、采样、网络鲁棒性、复杂性理论、伪随机生成）希望有确定性、可显式构造的图，同时仍然继承随机图的某些好性质。
+Random d-regular graphs behave well in many respects — uniform edge distribution, strong connectivity, fast mixing — but they are random, and hard to write down explicitly. Many applications (bounds for independent sets and colorings, sampling, network robustness, complexity theory, pseudorandom generation) want deterministic, explicitly constructible graphs that still inherit some of the good properties of random graphs.
 
-显式构造小第二特征值的正则图（扩展图）是这一方向上活跃的课题。这里关心的核心问题是：一个正则图的谱信息（尤其是 d 与第二特征值 lambda）与它的组合性质（具体到任意子集对之间的边数）之间，能建立怎样的定量联系。
+Explicitly constructing regular graphs with small second eigenvalue (expander graphs) is an active topic in this direction. The core question of interest here is: what quantitative connection can be established between a regular graph's spectral information (particularly d and the second eigenvalue lambda) and its combinatorial properties (specifically, the edge count between arbitrary pairs of subsets)?
