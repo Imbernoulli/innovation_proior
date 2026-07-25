@@ -14,34 +14,37 @@ For an array of focal spots meant to be equally bright, plain Gerchberg–Saxton
 
 In Weighted Gerchberg–Saxton, let V_m be the complex field delivered at spot m and let I_m = |V_m|^2 be its intensity. I define the average delivered amplitude over the spots as ⟨|V|⟩ and update each weight multiplicatively by w_m ← w_m · ⟨|V|⟩ / |V_m|. The multiplicative form keeps weights positive and compounds gently; ratio-to-the-mean corrects the spread directly; and the fixed point is exactly the desired uniform state, because when |V_m| equals the mean for every m the ratio is one and the weights stop changing. Equivalently, in intensities, the update reads w_m ← w_m · √(I_target / I_m) with I_target = ⟨|V|⟩^2. I insert this update between forward propagation and modulus replacement, using the weighted amplitudes w_m in place of the flat target. The same monotone-error reasoning applies, because the weighting only changes the target modulus being projected onto; the phase-projection steps are unchanged. The practical metrics are efficiency e = Σ_m I_m, the fraction of power landing in the wanted spots, and uniformity u = 1 - (max I_m - min I_m) / (max I_m + min I_m), which equals one when all spots are identical.
 
+For image or picture targets I run the loop directly with an FFT between the SLM and target planes, and for spot arrays I add the weight feedback that turns it into Weighted Gerchberg–Saxton:
+
 ```python
 import numpy as np
 
 def synthesize_phase(target_amplitude, illumination=1.0, n_iter=30):
-    '''Gerchberg–Saxton phase-only synthesis for a target Fourier-plane amplitude.'''
+    """target_amplitude: desired Fourier-plane amplitude, normalized to [0,1].
+    Returns (phase mask to write on the SLM, final delivered intensity)."""
     h, w = target_amplitude.shape
-    phase = np.random.rand(h, w)
+    phase = np.random.rand(h, w)                       # random seed
     I = None
     for _ in range(n_iter):
-        u = illumination * np.exp(1j * phase)
-        U = np.fft.fftshift(np.fft.fft2(u))
+        u = illumination * np.exp(1j * phase)          # |A| fixed, keep phase  (project onto M_o)
+        U = np.fft.fftshift(np.fft.fft2(u))            # lens: SLM -> target plane
         I = np.abs(U) ** 2
         psi = np.angle(U)
-        U = target_amplitude * np.exp(1j * psi)
-        u = np.fft.ifft2(np.fft.ifftshift(U))
-        phase = np.angle(u)
+        U = target_amplitude * np.exp(1j * psi)        # keep phase, reset modulus (project onto M_F)
+        u = np.fft.ifft2(np.fft.ifftshift(U))          # lens: target -> SLM plane
+        phase = np.angle(u)                            # discard amplitude -> phase-only hologram
     return phase, I
 
 
 def synthesize_balanced_phase(target_amplitude, n_iter=30):
-    '''Weighted Gerchberg–Saxton: drive target spot intensities to uniformity.'''
+    """Weighted GS: drive the spot intensities to uniformity."""
     def normalization(a):
         a_min = a.min()
         a_max = a.max()
         return (a - a_min) / (a_max - a_min + 1e-12)
 
     h, w = target_amplitude.shape
-    mask = (target_amplitude == 1)
+    mask = (target_amplitude == 1)                     # locations we care about
     phase = np.random.rand(h, w)
     weights = target_amplitude.astype(float).copy()
     prev_w = weights.copy()
@@ -52,34 +55,40 @@ def synthesize_balanced_phase(target_amplitude, n_iter=30):
         I = np.abs(U) ** 2
         Inorm = normalization(I)
         psi = np.angle(U)
-        weights[mask] = np.sqrt(
-            target_amplitude[mask] / np.maximum(Inorm[mask], 1e-12)
-        ) * prev_w[mask]
-        weights = normalization(weights)
+        # feedback: w <- w * sqrt(I_target / normalized I)
+        weights[mask] = np.sqrt(target_amplitude[mask] / np.maximum(Inorm[mask], 1e-12)) * prev_w[mask]
+        weights = normalization(weights)                # bound level, correct relative spread
         prev_w = weights.copy()
-        U = weights * np.exp(1j * psi)
+        U = weights * np.exp(1j * psi)                 # impose WEIGHTED target amplitude, keep GS phase
         u = np.fft.ifft2(np.fft.ifftshift(U))
         phase = np.angle(u)
     return phase, I
+```
 
+For an array of focal spots I skip the full 2-D FFT and propagate directly through the known per-pixel-to-spot phase ramps δ_{j,m}, summing the contributions from every SLM pixel to every spot in real space, with the same weighted-projection update:
+
+```python
+import numpy as np
 
 def synthesize_spot_phase(delta, illumination, n_iter=30):
-    '''Weighted GS for focal-spot arrays via direct Fourier-optics propagation.
-    delta[j, m] is the propagation phase from SLM pixel j to spot m.'''
+    """delta: (N_pixels, M) propagation phases; illumination: (N_pixels,) fixed |A|.
+    Returns (hologram phase phi_j, efficiency e, uniformity u)."""
     N, M = delta.shape
-    theta = np.random.rand(M) * 2 * np.pi
-    w = np.ones(M)
+    theta = np.random.rand(M) * 2 * np.pi              # random per-spot phase (random-superposition seed)
+    w = np.ones(M)                                     # equal weights to start
     phi = np.zeros(N)
     I = np.zeros(M)
     e = u = None
     for _ in range(n_iter):
-        field = (w * np.exp(1j * theta))[None, :] * np.exp(1j * delta)
-        phi = np.angle(field.sum(axis=1))
+        # backward propagation: weighted, phased superposition of single-spot ramps -> SLM phase
+        field = (w * np.exp(1j * theta))[None, :] * np.exp(1j * delta)    # (N, M)
+        phi = np.angle(field.sum(axis=1))                                 # phi_j = arg sum_m w_m e^{i(delta_jm + theta_m)}
+        # forward propagation: hologram back to each spot
         A = illumination * np.exp(1j * phi)
-        V = (A[:, None] * np.exp(-1j * delta)).sum(axis=0) / N
+        V = (A[:, None] * np.exp(-1j * delta)).sum(axis=0) / N            # V_m
         I = np.abs(V) ** 2
-        theta = np.angle(V)
-        w = w * (np.mean(np.abs(V)) / np.abs(V))
+        theta = np.angle(V)                                              # GS: keep computed per-spot phase
+        w = w * (np.mean(np.abs(V)) / np.abs(V))                         # WGS weight update
         e = np.sum(I)
         u = 1 - (I.max() - I.min()) / (I.max() + I.min())
     return phi, e, u
