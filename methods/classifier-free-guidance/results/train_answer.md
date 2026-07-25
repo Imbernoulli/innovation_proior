@@ -17,6 +17,7 @@ import torch.nn.functional as F
 
 
 def alpha_sigma(lam):
+    # variance-preserving: alpha_lambda^2 = sigmoid(lambda), sigma_lambda^2 = 1 - alpha^2
     alpha_sq = torch.sigmoid(lam)
     return alpha_sq.sqrt(), (1.0 - alpha_sq).sqrt()
 
@@ -36,37 +37,40 @@ def prob_mask_like(shape, prob, device):
 
 
 class NoisePredictor(nn.Module):
-    """ε_θ(z_λ, λ, c). A learned null embedding lets one network act as both
-    the conditional denoiser and the unconditional baseline."""
+    """ε_θ(z_λ, λ, c). A learned null embedding ∅ lets one network act as both
+    the conditional model ε_θ(z, c) and the unconditional model ε_θ(z, ∅)."""
+
     def __init__(self, num_classes, cond_dim, backbone):
         super().__init__()
         self.class_emb = nn.Embedding(num_classes, cond_dim)
-        self.null_emb = nn.Parameter(torch.randn(cond_dim))
-        self.backbone = backbone
+        self.null_emb = nn.Parameter(torch.randn(cond_dim))  # the ∅ token
+        self.backbone = backbone  # any net consuming (z, lambda, conditioning embedding)
 
     def forward(self, z, lam, c, cond_drop_prob=0.0):
         cond = self.class_emb(c)
         if cond_drop_prob > 0:
             keep = prob_mask_like((z.shape[0],), 1.0 - cond_drop_prob, z.device)
             null_cond = self.null_emb[None, :].expand_as(cond)
-            cond = torch.where(keep[:, None], cond, null_cond)
+            cond = torch.where(keep[:, None], cond, null_cond)  # drop label -> ∅
         return self.backbone(z, lam, cond)
 
     @torch.no_grad()
     def forward_with_cond_scale(self, z, lam, c, cond_scale=1.0):
-        eps_c = self.forward(z, lam, c, cond_drop_prob=0.0)
+        """Classifier-free estimate with cond_scale = w + 1."""
+        eps_c = self.forward(z, lam, c, cond_drop_prob=0.0)          # ε_θ(z, c)
         if cond_scale == 1.0:
             return eps_c
-        eps_uncond = self.forward(z, lam, c, cond_drop_prob=1.0)
+        eps_uncond = self.forward(z, lam, c, cond_drop_prob=1.0)     # ε_θ(z, ∅)
         return eps_c + (eps_c - eps_uncond) * (cond_scale - 1.0)
 
 
 def diffusion_loss(model, x, c, p_uncond=0.1):
-    lam = sample_log_snr(x.shape[0], x.device)
+    """Joint training: denoising MSE with conditioning dropout."""
+    lam = sample_log_snr(x.shape[0], x.device)           # λ ~ p(λ)
     eps = torch.randn_like(x)
     a, s = alpha_sigma(expand_to_data(lam, x))
-    z = a * x + s * eps
-    eps_pred = model(z, lam, c, cond_drop_prob=p_uncond)
+    z = a * x + s * eps                                  # z_λ = α_λ x + σ_λ ε
+    eps_pred = model(z, lam, c, cond_drop_prob=p_uncond)  # the one-line training change
     return F.mse_loss(eps_pred, eps)
 
 
@@ -77,16 +81,17 @@ def guided_eps(model, z, lam, c, w):
 
 def predict_x_from_eps(z, lam, eps_hat):
     a, s = alpha_sigma(expand_to_data(lam, z))
-    return (z - s * eps_hat) / a
+    return (z - s * eps_hat) / a                         # x_θ = (z_λ − σ_λ ε̃)/α_λ
 
 
 @torch.no_grad()
 def sample(model, c, schedule, w, shape, v):
-    z = torch.randn(shape, device=c.device)
+    """Conditional sampling with guidance strength w."""
+    z = torch.randn(shape, device=c.device)              # z ~ N(0, I)
     x_pred = None
-    for lam, lam_next in schedule:
-        eps_hat = guided_eps(model, z, lam, c, w)
+    for lam, lam_next in schedule:                       # increasing log-SNR
+        eps_hat = guided_eps(model, z, lam, c, w)        # ε̃ = (1+w)ε_c − w ε_∅
         x_pred = predict_x_from_eps(z, lam, eps_hat)
-        z = reverse_step(z, lam, lam_next, x_pred, v)
+        z = reverse_step(z, lam, lam_next, x_pred, v)    # ancestral step (or DDIM)
     return x_pred
 ```
