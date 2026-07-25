@@ -1,4 +1,4 @@
-# Aliens-Trick Job Split — maximum value of exactly k disjoint segments
+# Exactly-k Disjoint Segments — maximum total job value
 
 ## Research question
 
@@ -27,32 +27,11 @@ the right number of segments at each position depends on the whole array.
 Example: for `n = 8`, `k = 2`, `a = [3, -1, 4, -1, 5, -9, 2, 6]` the answer is `18`
 (take `a[0..4] = 3-1+4-1+5 = 10` and `a[6..7] = 2+6 = 8`).
 
-## Background
-
-Let `f(k)` be the optimum for exactly `k` segments. Two families of approach are on the
-table before committing to one:
-
-- **Per-`k` dynamic programming.** Define `dp[i][j]` = best value using the prefix
-  `a[0..i-1]` with exactly `j` segments, carrying a second "currently inside a segment"
-  layer so segments stay contiguous. This is exact and easy to defend, but it is `O(nk)`
-  in both time and (naively) memory. With `n, k` up to `2*10^5`, `nk` reaches `4*10^10` —
-  far past what a 1-second limit allows.
-- **The Lagrangian / "Aliens" trick.** If `f(k)` is concave in `k`, charge a penalty
-  `lambda` per opened segment, solve the *unconstrained* problem "any number of segments,
-  each costing `lambda`" in `O(n)`, and binary-search `lambda` so that the optimal number
-  of segments lands on `k`. The open questions are whether `f` really is concave here, how
-  to make the penalized DP report the right number of segments under ties, and how to
-  recover `f(k)` from the penalized optimum.
-
 ## Evaluation settings
 
-Judged on hidden tests covering: all-positive arrays (where every segment helps),
-all-negative arrays (where every forced segment hurts, so the optimum is the `k`
-least-bad single cells), arrays mixing signs with long negative runs (so the marginal
-value of an extra segment can be very negative), `k = 1` (single best subarray, Kadane),
-`k = ceil(n/2)` (the maximum number of segments, forcing a near-fixed parity layout),
-small `n`, and large `n = 2*10^5` with `|a[i]|` near `10^9` (so both the running sum and
-the penalized accumulator can exceed a 64-bit integer).
+Judged on hidden tests covering: all-positive arrays, all-negative arrays, arrays mixing
+signs with long negative runs, `k = 1`, `k = ceil(n/2)` (the maximum number of segments),
+small `n`, and large `n = 2*10^5` with `|a[i]|` near `10^9`.
 
 ## Code framework
 
