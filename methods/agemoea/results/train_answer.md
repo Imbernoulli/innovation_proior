@@ -15,23 +15,24 @@ import random
 from copy import deepcopy
 
 import numpy as np
-from deap import tools
+from deap import tools   # sortNondominated, cxSimulatedBinaryBounded, mutPolynomialBounded
 
 
 class AGEMOEA:
-    """Adaptive GEometry Estimation based MOEA."""
+    """Adaptive GEometry estimation based MOEA."""
 
     def __init__(self, pop_size, n_obj, n_var, bounds,
                  cx_eta=20.0, mut_eta=20.0, mut_prob=None):
         self.pop_size = pop_size
         self.n_obj = n_obj
         self.n_var = n_var
-        self.bounds = bounds
+        self.bounds = bounds                      # (low, up) arrays
         self.cx_eta = cx_eta
         self.mut_eta = mut_eta
         self.mut_prob = mut_prob if mut_prob is not None else 1.0 / n_var
 
     def select(self, population, k):
+        """Binary tournament: front rank, ties by survival score."""
         fronts = tools.sortNondominated(population, len(population))
         for rank, front in enumerate(fronts):
             for ind in front:
@@ -44,19 +45,18 @@ class AGEMOEA:
             elif b._rank < a._rank:
                 out.append(deepcopy(b))
             else:
-                sa = getattr(a, "_score", 0.0)
-                sb = getattr(b, "_score", 0.0)
+                sa, sb = getattr(a, "_score", 0.0), getattr(b, "_score", 0.0)
                 out.append(deepcopy(a if sa >= sb else b))
         return out
 
     def vary(self, parents):
+        """SBX crossover + polynomial mutation."""
         offspring = [deepcopy(ind) for ind in parents]
         lo, hi = self.bounds
         for i in range(0, len(offspring) - 1, 2):
             if random.random() < 0.9:
                 tools.cxSimulatedBinaryBounded(
-                    offspring[i], offspring[i + 1],
-                    eta=self.cx_eta, low=lo, up=hi)
+                    offspring[i], offspring[i + 1], eta=self.cx_eta, low=lo, up=hi)
                 del offspring[i].fitness.values
                 del offspring[i + 1].fitness.values
         for ind in offspring:
@@ -76,12 +76,14 @@ class AGEMOEA:
             for ind in front:
                 ind._rank = rank
 
+        # geometry from the first (best) front
         f1_idx = [index_of[id(ind)] for ind in fronts[0]]
         ideal = np.min(F[f1_idx], axis=0)
         s1, p, normalization = self._survival_score(F[f1_idx], ideal)
         for local, gi in enumerate(f1_idx):
             score[gi] = s1[local]
 
+        # deeper fronts: proximity-only, same normalization and p
         for rank in range(1, len(fronts)):
             idx = [index_of[id(ind)] for ind in fronts[rank]]
             fr = F[idx] / normalization
@@ -208,7 +210,8 @@ class AGEMOEA:
 
     @staticmethod
     def _minkowski_distances(A, B, p):
-        m1, m2 = A.shape[0], B.shape[0]
+        m1 = A.shape[0]
+        m2 = B.shape[0]
         dist = np.zeros((m1, m2))
         for i in range(m1):
             for j in range(m2):
