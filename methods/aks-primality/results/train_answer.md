@@ -12,111 +12,24 @@ Correctness rests on a beautiful lower bound and upper bound for the same group.
 
 The complexity is dominated by the main loop. The search for r is polynomial because r is bounded by O((log n)^5) using elementary estimates, or even O((log n)^3) using deeper analytic number theory. Step 5 performs O(sqrt(r) log n) polynomial exponentiations, each costing O(log n) multiplications of degree-r polynomials with O(log n)-bit coefficients. With the stronger bound on r this gives an overall time of roughly O-tilde((log n)^(15/2)), while the elementary bound still gives O-tilde((log n)^(21/2)). Both are polynomial in the input size.
 
-To make the algorithm concrete, here is a compact Python implementation that follows the same logical steps. It is intended for illustration and for checking moderate inputs; an industrial implementation would use asymptotically faster integer and polynomial arithmetic.
+To make the algorithm concrete, here is the procedure stated as the six steps I have derived, with all logarithms base 2 and ord_r(n) the multiplicative order of n modulo r. The polynomial congruence in the last test is computed by repeated squaring in the quotient ring, reducing coefficients modulo n and folding X^k to X^(k mod r) after every multiplication; nothing here needs more than the gcd, order, and quotient-ring arithmetic already described above.
 
-```python
-import math
+```text
+Input: integer n > 1
 
-def is_perfect_power(n):
-    if n < 4:
-        return False
-    max_b = int(math.log2(n)) + 1
-    for b in range(2, max_b + 1):
-        a = int(round(n ** (1.0 / b)))
-        for cand in range(max(2, a - 2), a + 3):
-            p = pow(cand, b)
-            if p == n:
-                return True
-            if p > n:
-                break
-    return False
+1. If n = a^b for integers a > 1 and b > 1, output COMPOSITE.
 
-def mult_order(n, r):
-    order = 1
-    cur = n % r
-    while cur != 1:
-        cur = (cur * n) % r
-        order += 1
-    return order
+2. Find the smallest r for which gcd(n,r) = 1 and ord_r(n) > (log n)^2.
 
-def euler_phi(m):
-    result = m
-    x = m
-    p = 2
-    while p * p <= x:
-        if x % p == 0:
-            while x % p == 0:
-                x //= p
-            result -= result // p
-        p += 1
-    if x > 1:
-        result -= result // x
-    return result
+3. For every integer a with 1 <= a <= r:
+      if 1 < gcd(a,n) < n, output COMPOSITE.
 
-def find_r(n):
-    logn = math.log2(n)
-    target = logn ** 2
-    r = 2
-    while True:
-        if math.gcd(n, r) == 1 and mult_order(n, r) > target:
-            return r
-        r += 1
+4. If n <= r, output PRIME.
 
-def poly_mul(p, q, r, mod):
-    res = [0] * r
-    for i in range(r):
-        if p[i] == 0:
-            continue
-        for j in range(r):
-            if q[j] == 0:
-                continue
-            k = i + j
-            if k >= r:
-                k -= r
-            res[k] = (res[k] + p[i] * q[j]) % mod
-    return res
+5. Let ell = floor(sqrt(phi(r)) log n).
+   For a = 1,2,...,ell:
+      if (X+a)^n != X^n+a in (Z/nZ)[X]/(X^r-1),
+          output COMPOSITE.
 
-def poly_pow(base, exp, r, mod):
-    result = [1] + [0] * (r - 1)
-    while exp > 0:
-        if exp & 1:
-            result = poly_mul(result, base, r, mod)
-        base = poly_mul(base, base, r, mod)
-        exp >>= 1
-    return result
-
-def aks_is_prime(n):
-    if n < 2:
-        return False
-    if is_perfect_power(n):
-        return False
-
-    r = find_r(n)
-
-    for a in range(1, r + 1):
-        g = math.gcd(a, n)
-        if 1 < g < n:
-            return False
-
-    if n <= r:
-        return True
-
-    logn = math.log2(n)
-    limit = int(math.sqrt(euler_phi(r)) * logn)
-
-    for a in range(1, limit + 1):
-        base = [a % n, 1] + [0] * (r - 2)
-        left = poly_pow(base, n, r, n)
-        right = [0] * r
-        right[0] = a % n
-        right[n % r] = (right[n % r] + 1) % n
-        if left != right:
-            return False
-
-    return True
-
-if __name__ == "__main__":
-    test_values = [2, 3, 4, 17, 18, 97, 100, 541, 1009, 1729]
-    for n in test_values:
-        print(n, "prime" if aks_is_prime(n) else "composite")
+6. Output PRIME.
 ```
