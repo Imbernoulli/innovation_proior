@@ -16,56 +16,12 @@ where the Occam factor is P(w_MP | H) (2π)^(k/2) |A|^(-1/2) and A is the Hessia
 
 In the standard quadratic interpolation case, with Gaussian noise precision β and a Gaussian weight prior precision α, the evidence for fixed hyperparameters is the ratio of normalizing constants P(D | α, β, H) = Z_M / (Z_w Z_n). Maximizing this evidence yields the effective number of parameters γ = Σ_a λ_a / (λ_a + α), where λ_a are the eigenvalues of β Φ^T Φ. The stationary conditions become 2α E_w^MP = γ and 2β E_n^MP = N − γ, where E_w and E_n are the regularizer and data-misfit energies at w_MP. These equations set the regularization strength and the noise scale together: well-measured parameters each explain about one unit of noise, while poorly measured parameters are controlled by the prior and do not count. Whole model families are then ranked by integrating the evidence over their hyperparameter priors; when that surface is peaked, the integral is again well approximated by the height times the width in log α and log β. The result is the characteristic Occam trade-off: too-simple models lose by data misfit, and over-flexible models lose by unused parameter volume.
 
-```python
-import numpy as np
-from numpy.linalg import slogdet, solve
+That trade-off becomes a usable comparison rule only once it is written down as a single expression, rather than left as a qualitative story about hills and penalties. Whole model families — not just parameter vectors within one family — are ranked by the evidence integrated over their own hyperparameters,
 
-def polynomial_basis(x, degree):
-    return np.vander(x, degree + 1, increasing=True)
+$$P(D \mid H) \;=\; \int P(D \mid \alpha, \beta, H)\, P(\alpha, \beta \mid H)\, d\alpha \, d\beta ,$$
 
-def fit_evidence(Phi, t, alpha_init=1.0, beta_init=1.0, max_iter=100, tol=1e-6):
-    """Type-II ML estimate of alpha, beta and log evidence for a linear-Gaussian model."""
-    N, k = Phi.shape
-    alpha, beta = alpha_init, beta_init
-    for _ in range(max_iter):
-        A = alpha * np.eye(k) + beta * Phi.T @ Phi
-        w = solve(A, beta * Phi.T @ t)
-        Ew = 0.5 * np.dot(w, w)
-        En = 0.5 * np.sum((Phi @ w - t) ** 2)
-        eigenvalues = np.linalg.eigvalsh(beta * Phi.T @ Phi)
-        gamma = np.sum(eigenvalues / (eigenvalues + alpha))
-        alpha_new = gamma / (2.0 * Ew)
-        beta_new = (N - gamma) / (2.0 * En)
-        if max(abs(alpha_new - alpha), abs(beta_new - beta)) < tol:
-            alpha, beta = alpha_new, beta_new
-            break
-        alpha, beta = alpha_new, beta_new
-    A = alpha * np.eye(k) + beta * Phi.T @ Phi
-    w = solve(A, beta * Phi.T @ t)
-    Ew = 0.5 * np.dot(w, w)
-    En = 0.5 * np.sum((Phi @ w - t) ** 2)
-    sign, logdetA = slogdet(A)
-    assert sign > 0
-    log_ev = (
-        -alpha * Ew
-        - beta * En
-        - 0.5 * logdetA
-        + 0.5 * k * np.log(alpha)
-        + 0.5 * N * np.log(beta)
-        - 0.5 * N * np.log(2.0 * np.pi)
-    )
-    return w, alpha, beta, log_ev
+where $P(D\mid\alpha,\beta,H) = Z_M(\alpha,\beta)/\big(Z_w(\alpha)Z_n(\beta)\big)$ is evaluated at the stationary point $(\hat\alpha,\hat\beta)$ fixed by the pair of self-consistent conditions derived above, $2\hat\alpha E_w^{MP} = \gamma$ and $2\hat\beta E_n^{MP} = N - \gamma$, with $\gamma = \sum_a \lambda_a/(\lambda_a+\hat\alpha)$ read off the eigenvalues of $\hat\beta\,\Phi^\top\Phi$. When this $(\alpha,\beta)$ surface has a sharp peak at $(\hat\alpha,\hat\beta)$ — the generic case once the data measure more than a handful of directions — the same Laplace step used at the parameter level collapses the integral to
 
-# Synthetic noisy interpolation data
-gen_degree = 3
-x = np.linspace(-1, 1, 30)
-true_w = np.array([0.0, -1.0, 0.5, 0.2])
-Phi_true = polynomial_basis(x, gen_degree)
-t = Phi_true @ true_w + np.random.normal(scale=0.2, size=x.shape)
+$$P(D \mid H) \;\approx\; P(D \mid \hat\alpha, \hat\beta, H)\; P(\hat\alpha, \hat\beta \mid H)\; (2\pi)\, \Delta(\log\alpha)\, \Delta(\log\beta),$$
 
-# Compare polynomial degrees by Bayesian Occam factor
-for deg in range(1, 9):
-    Phi = polynomial_basis(x, deg)
-    _, alpha, beta, log_ev = fit_evidence(Phi, t)
-    print(f"degree {deg}: log_ev={log_ev:.3f}, alpha={alpha:.3f}, beta={beta:.3f}")
-```
+the peak evidence times the width, in log-log coordinates, of the hyperparameter region the data leave plausible. Every factor in this expression is a volume the model committed to before the data arrived, never a term appended afterward as a fine for flexibility: the family with the largest integrated evidence is the one whose predictive mass, propagated honestly through both the parameter level and the hyperparameter level, concentrates most heavily on the data set that actually occurred. Best-fit comparison can never recover this, because it only ever reads off $P(D\mid w_{MP},H)$, the numerator of the decomposition; the Occam factor was always the missing denominator's business — the width of an integral that maximum likelihood had thrown away.
