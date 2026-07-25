@@ -8,74 +8,10 @@ The compression comes from the fingerprint. Because T is small, there are far fe
 
 The key insight is the change in information granularity. Exact enumeration of all independent sets is too expensive, but a coarse family of approximate shells is cheap. Once the containers are built, counting reduces to bounding the total number of subsets inside all containers, typical-structure questions reduce to describing the few remaining dense or near-extremal containers, and sparse-random problems reduce to taking a union bound over containers instead of over all independent sets. This is why the same container framework applies across graph enumeration, Ramsey theory, additive combinatorics, and random discrete structures.
 
-The following implementation captures the algorithmic skeleton of the method. Given an r-uniform hypergraph and an independent set, it greedily removes high-degree vertices, records a fingerprint whenever a removed vertex belongs to the independent set, and returns a container consisting of that fingerprint together with the remaining low-degree candidate set.
+The mechanism that makes this compression rigorous is a peeling process governed by a codegree ladder, and it is precise enough to be stated as a theorem in its own right rather than illustrated by a script. Fix a $k$-uniform hypergraph $H$ on vertex set $V(H)$ with $|V(H)|=n$ and $e(H)$ edges. For $1 \le \ell \le k$, let $\Delta_\ell(H)$ denote the largest number of hyperedges of $H$ containing any fixed $(\ell-1)$-element subset of $V(H)$ — so $\Delta_1(H)=e(H)$ trivially, $\Delta_2(H)$ is the maximum vertex degree, and $\Delta_k(H)$ is the largest codegree among $(k-1)$-sets, the quantity a naive top-level argument would stop at. Fix a fingerprint budget $b>0$ and a scale parameter $0<r\le 1$. The container lemma's hypothesis is that the codegree bound holds at every level simultaneously, not just at the top:
+$$\Delta_\ell(H) \;\le\; \left(\frac{b}{n}\right)^{\ell-1}\frac{e(H)}{r}, \qquad \ell = 1,\dots,k.$$
+A single bound on $\Delta_k(H)$ alone is not sufficient: $H$ can hide an $\ell$-uniform skeleton, for some $\ell<k$, that touches every hyperedge while itself having very few edges relative to $\Delta_\ell(H)$, and a peeling process that only watches the top level stalls silently against that hidden bottleneck. The full ladder, running from single vertices up through $(k-1)$-sets, is what rules this out.
 
-```python
-from itertools import combinations
-from typing import List, Set, Tuple
+Under this hypothesis, for every independent set $I$ of $H$ there is a fingerprint $T\subseteq I$ with $|T|\le (k-1)b$ and a container $C(T)\supseteq I$, depending on $T$ alone, such that $C(T)$ is smaller than $V(H)$ by the definite margin $r$: peeling one round of the lemma shrinks the candidate region by a fixed fraction governed by $r$, no matter which forbidden pattern $H$ encodes. Since a container is determined entirely by its fingerprint, the number of distinct containers that can arise is at most $\sum_{i=0}^{(k-1)b}\binom{n}{i}$ — a quantity controlled purely by $b$, however large the independent-set family itself is.
 
-
-def degrees(vertices: Set[int], edges: List[Tuple[int, ...]]) -> dict:
-    deg = {v: 0 for v in vertices}
-    for e in edges:
-        if all(v in vertices for v in e):
-            for v in e:
-                deg[v] += 1
-    return deg
-
-
-def hypergraph_container(
-    edges: List[Tuple[int, ...]],
-    independent_set: Set[int],
-    tau: float,
-) -> Tuple[Set[int], Set[int]]:
-    """
-    Build a fingerprint T and a container C for `independent_set`.
-
-    Returns (T, C) such that independent_set is a subset of C.
-    The construction keeps removing a highest-degree vertex from the
-    current candidate set until the maximum degree is at most
-    tau * |candidate|. Whenever the removed vertex belongs to the
-    independent set, it is added to the fingerprint.
-    """
-    vertices = {v for e in edges for v in e}
-    candidate = set(vertices)
-    fingerprint = set()
-
-    while candidate:
-        deg = degrees(candidate, edges)
-        v, d = max(((v, deg[v]) for v in candidate), key=lambda x: x[1])
-        if d <= tau * len(candidate):
-            break
-        if v in independent_set:
-            fingerprint.add(v)
-        candidate.remove(v)
-
-    container = fingerprint | candidate
-    return fingerprint, container
-
-
-def triangle_hyperedges(n: int) -> Tuple[List[Tuple[int, int]], List[Tuple[int, ...]]]:
-    """Vertices are edges of K_n; hyperedges are triples forming a triangle."""
-    node_edges = list(combinations(range(n), 2))
-    index = {e: i for i, e in enumerate(node_edges)}
-    hyperedges = []
-    for tri in combinations(range(n), 3):
-        e1 = index[tuple(sorted((tri[0], tri[1])))]
-        e2 = index[tuple(sorted((tri[0], tri[2])))]
-        e3 = index[tuple(sorted((tri[1], tri[2])))]
-        hyperedges.append((e1, e2, e3))
-    return node_edges, hyperedges
-
-
-if __name__ == "__main__":
-    # K_5 has 10 edges and 10 triangles. A 5-cycle is triangle-free.
-    node_edges, edges = triangle_hyperedges(5)
-    cycle = {(0, 1), (1, 2), (2, 3), (3, 4), (4, 0)}
-    cycle_edges = {node_edges.index(tuple(sorted(e))) for e in cycle}
-
-    T, C = hypergraph_container(edges, cycle_edges, tau=0.25)
-    print("Fingerprint size:", len(T))
-    print("Container size:", len(C))
-    print("Cycle contained?", cycle_edges.issubset(C))
-```
+One round only buys this fixed-fraction shrinkage, not sparsity outright, so the theorem bootstraps: whenever a container is still edge-dense, the same lemma is reapplied to the hypergraph induced on that container, treated as a smaller instance of the identical problem, multiplying the container count by a bounded factor while cutting size or edge count by a constant factor each round. After boundedly many rounds this produces the container theorem in its usable form: a family $\mathcal{C}$ of at most $\sum_{i=0}^{(k-1)b}\binom{n}{i}$ subsets of $V(H)$ such that every independent set of $H$ lies inside some $C\in\mathcal{C}$, and every $C\in\mathcal{C}$ is either genuinely sparse or structurally close to one of finitely many extremal configurations for the pattern $H$ encodes. Every downstream application is now the same three-step reduction on $\mathcal{C}$ in place of the exponential family of independent sets: bound $\sum_{C\in\mathcal{C}}2^{|C|}$ to count, examine the few dense containers to describe typical structure, and union-bound over $\mathcal{C}$ rather than over all independent sets to get sparse-random and Ramsey-type thresholds. That reduction is the deliverable — one container lemma, built from a codegree ladder instead of a single top-level bound, standing in for the bespoke construction each forbidden pattern used to require on its own.
