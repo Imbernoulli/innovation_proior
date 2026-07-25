@@ -1,25 +1,25 @@
-Zig-zag product 的核心答案是：不要一次性显式写出一个“像随机图”的大图，而是把扩展性拆成两个可组合的来源。
+The core answer of the zig-zag product is this: rather than explicitly writing down a single large graph that “looks random” all at once, split expansion into two composable sources.
 
-给定一个大的 `D`-正则图 `G` 和一个小的 `d`-正则图 `H`，其中 `H` 的顶点数等于 `G` 的度数 `D`，zig-zag product 把 `G` 的每个顶点替换成一个 `H` 的小云。新图的顶点是 `(v,a)`：`v` 是大图顶点，`a` 是大图的一条边标签。一步行走是：
+Given a large `D`-regular graph `G` and a small `d`-regular graph `H`, where the number of vertices of `H` equals the degree `D` of `G`, the zig-zag product replaces each vertex of `G` with a small cloud that is a copy of `H`. A vertex of the new graph is `(v,a)`: `v` is a vertex of the large graph, and `a` is an edge label of the large graph. One step of the walk is:
 
-1. 在当前云内沿 `H` 走一步，打散边标签。
-2. 用打散后的标签在 `G` 中走一步，完成全局移动。
-3. 在目标云内再沿 `H` 走一步，修复到达后的局部分布。
+1. Take one step along `H` inside the current cloud, scrambling the edge label.
+2. Use the scrambled label to take one step in `G`, completing the global move.
+3. Take one more step along `H` inside the destination cloud, repairing the local distribution after arrival.
 
-于是新图大约继承 `G` 的规模，继承 `H` 控制的低度数，并且继承二者组合后的扩展性。这个结构的独特洞察是：大图负责全局扩展，小图负责局部扩展；局部混合让全局边选择不再被少数标签支配，全局移动又把质量送到远处。两者不是简单叠加，而是互相补位。
+The new graph therefore inherits roughly the size of `G`, the low degree controlled by `H`, and the combined expansion of both. The distinctive insight of this construction is: the large graph is responsible for global expansion, the small graph for local expansion; local mixing keeps the global edge choice from being dominated by a handful of labels, while the global move carries mass far away. The two are not simply stacked together — they complement each other.
 
-这突破了“随机图存在但显式构造困难”的障碍。随机正则图说明常数度扩展图大量存在，但随机证明没有给出一个可递归生成、可本地寻址、可逐步验证的邻接规则。Zig-zag product 把问题改写成一个稳定的构造循环：
+This breaks through the obstacle that “random graphs exist, but explicit construction is hard.” Random regular graphs show that constant-degree expanders exist in abundance, but the randomness argument gives no adjacency rule that is recursively generatable, locally addressable, and verifiable step by step. The zig-zag product rewrites the problem as a stable construction loop:
 
 ```text
-当前常数度扩展图
-  -> 图平方：增强全局扩展，但度数升高
-  -> zig-zag：用固定小扩展图恢复低度数，同时保留足够扩展
-  -> 更大的常数度扩展图
+current constant-degree expander
+  -> square the graph: strengthens global expansion, but raises the degree
+  -> zig-zag: use a fixed small expander to restore low degree, while retaining enough expansion
+  -> a larger constant-degree expander
 ```
 
-只要一开始硬编码一个固定大小的小扩展图，每轮都能确定性地产生更大的图。邻居查询只是若干次 rotation map 调用，因此是显式的；扩展性由乘积定理递归保证，因此不需要在指数大的候选空间中搜索随机图。
+As long as a fixed-size small expander is hardwired at the start, every round can deterministically produce a larger graph. A neighbor query is only a handful of rotation-map calls, so it is explicit; the expansion is recursively guaranteed by the product theorem, so there is no need to search a candidate space of exponential size for a random graph.
 
-一句话概括：zig-zag product 把“随机全局连通性”分解成“可迭代的全局放大 + 可复用的局部混合”，从而在保持低度数的同时构造出任意大的显式扩展图。
+In one line: the zig-zag product decomposes “random global connectivity” into “iterable global amplification + reusable local mixing,” constructing arbitrarily large explicit expanders while keeping the degree low.
 
 ## Code illustration
 
