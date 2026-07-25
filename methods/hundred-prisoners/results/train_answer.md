@@ -10,45 +10,16 @@ Because these events are disjoint, the failure probability, which is the probabi
 
 The cycle-following strategy is also optimal. Consider a relaxed version of the game in which opened boxes remain visible to later prisoners, a prisoner whose number is already visible succeeds immediately, and a prisoner stops once their number is found. Any strategy for the original game can be played in this easier game, so the original optimum is at most the relaxed optimum. In the relaxed game, once previous successes are given, every still-closed box is equally likely to contain any still-hidden number, so the probability of collective success does not depend on which closed boxes are chosen next. Therefore all strategies in the relaxed game share the same success probability. If we play cycle-following in the relaxed game, a prisoner whose number is already visible must lie on a cycle that some earlier prisoner fully exposed while succeeding, and that cycle has length at most fifty, so the prisoner would also succeed within fifty steps in the original game. If the number is not visible, the prisoner starts walking a fresh cycle and succeeds exactly when that cycle has length at most fifty. Thus cycle-following succeeds in the relaxed game on precisely the same permutations as in the original game, namely those with no cycle longer than fifty. Since the relaxed game upper-bounds the original game and cycle-following attains this bound, no original strategy can exceed 1 minus (H_100 - H_50).
 
-The final protocol is therefore clear and requires no communication once the game begins. Each prisoner simply remembers their own number, opens the matching labeled box, and follows the numbers for up to fifty boxes. The prisoners win whenever the random permutation of the warden has all cycles of length at most fifty, an event whose probability is roughly 0.3118. The code below gives a small Python verification: it defines the cycle-following procedure, checks the exact harmonic probability for one hundred prisoners, and estimates the same probability by Monte Carlo simulation over random permutations.
+The final protocol is therefore clear and requires no communication once the game begins: each prisoner remembers their own number, opens the box carrying that label, and repeatedly opens the box whose label is the number just read, stopping after at most fifty openings. Writing the hidden arrangement as a permutation $\sigma$ of $\{1,\ldots,100\}$ with box $j$ containing $\sigma(j)$, this rule has prisoner $p$ open boxes $p,\sigma(p),\sigma^2(p),\ldots$ and it succeeds exactly when the cycle of $\sigma$ through $p$ has length at most fifty. All one hundred prisoners are freed exactly on those permutations whose longest cycle is at most fifty, this strategy is optimal among all strategies, and so the deliverable of the analysis is the exact success probability
 
-```python
-import random
-import math
+$$
+\Pr(\text{all freed}) = 1-\left(H_{100}-H_{50}\right) = 1-\sum_{k=51}^{100}\frac{1}{k} \approx 0.3118278207,
+$$
 
-def follows_cycle(perm, prisoner, limit):
-    """Return True if prisoner finds their own number within limit openings."""
-    current = prisoner
-    for _ in range(limit):
-        current = perm[current - 1]  # boxes indexed 0..99, labels 1..100
-        if current == prisoner:
-            return True
-    return False
+together with its general form for $2n$ prisoners each allowed $n$ openings,
 
-def all_freed(perm, n, limit):
-    """Return True if every prisoner succeeds under cycle-following."""
-    return all(follows_cycle(perm, p, limit) for p in range(1, n + 1))
+$$
+\Pr(\text{success}) = 1-\left(H_{2n}-H_n\right),
+$$
 
-def exact_success_probability(n):
-    """Success probability with 2n prisoners opening n boxes each."""
-    return 1.0 - sum(1.0 / k for k in range(n + 1, 2 * n + 1))
-
-def estimate_by_simulation(n, trials=200_000):
-    prisoners = 2 * n
-    limit = n
-    success = 0
-    for _ in range(trials):
-        perm = list(range(1, prisoners + 1))
-        random.shuffle(perm)
-        if all_freed(perm, prisoners, limit):
-            success += 1
-    return success / trials
-
-if __name__ == "__main__":
-    n = 50
-    exact = exact_success_probability(n)
-    estimated = estimate_by_simulation(n)
-    print(f"Exact success probability for 100 prisoners: {exact:.16f}")
-    print(f"Estimated success probability (Monte Carlo): {estimated:.6f}")
-    print(f"Limiting value 1 - ln(2): {1 - math.log(2):.16f}")
-```
+which decreases monotonically as $n$ grows and tends to the limit $1-\ln 2 \approx 0.3068528194$.
