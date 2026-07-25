@@ -14,33 +14,8 @@ Several of the design decisions are forced by the underlying chemistry. Two prim
 
 In practice the read-out is simple. After the cycling is complete, a small sample of the reaction is loaded onto an agarose gel and stained with ethidium bromide. If the primers are specific and the cycling is efficient, a single bright band appears at the length of the interval between the two primers. The product can then be sequenced directly, probed with an allele-specific oligonucleotide, or cut with a restriction enzyme to distinguish the normal and sickle-cell alleles. The same procedure works for any target for which two flanking primers can be designed, which is why PCR became a universal tool rather than a specialized fix for one disease mutation.
 
-```python
-import math
-
-def pcr_population(n_cycles, long_correction=True):
-    """
-    Simplified PCR population model.
-    Bounded amplicons enter the doubling pool from cycle 3 onward.
-    Long one-ended products grow only linearly from the original template.
-    """
-    long_products = 2 * n_cycles  # two one-ended strands per cycle from two genomic strands
-    # bounded strands: first appear in cycle 2, then double each subsequent cycle
-    if n_cycles < 2:
-        bounded = 0
-    else:
-        bounded = 2 ** (n_cycles - 1)
-        if long_correction and n_cycles >= 3:
-            # small linear correction from long-product feeding; kept symbolic here
-            bounded = max(0, bounded - n_cycles)
-    return bounded, long_products
-
-for n in (10, 20, 25, 30, 35):
-    bounded, longs = pcr_population(n)
-    ratio = bounded / longs if longs else float('inf')
-    print(f"cycles={n:2d}: bounded ≈ {bounded:>12,}, long ≈ {longs:>4,}, ratio ≈ {ratio:.2e}")
-
-# Sanity check: 30 cycles should give roughly one billion bounded amplicons.
-bounded_30, _ = pcr_population(30)
-assert 5e8 <= bounded_30 <= 1.1e9, f"unexpected amplification: {bounded_30}"
-print("PCR amplification simulation complete.")
-```
+Collected into one statement, the method is the protocol and the growth law together. Combine, in a single tube, template DNA containing the target interval; primer $P$, complementary to the bottom strand with its $3'$ end pointing into the interval; primer $Q$, complementary to the top strand with its $3'$ end pointing the opposite way into the interval, so that $P$ and $Q$ flank the target with their $3'$ ends facing inward; the four dNTPs; thermostable Taq polymerase, added once; and Mg$^{2+}$-buffered reaction mix. Repeat the three-step cycle — denature at $94$–$98\,^{\circ}\mathrm{C}$ for $20$–$30\,\mathrm{s}$, anneal at $50$–$65\,^{\circ}\mathrm{C}$ for $20$–$40\,\mathrm{s}$, extend at $72\,^{\circ}\mathrm{C}$ for about a minute — for $n$, typically $25$ to $35$, cycles. Let $N(n)$ be the number of copies of the strand bounded on both ends by $P$ and $Q$ after $n$ cycles, and $L(n)$ the number of one-ended long products still being fed by the two original genomic strands. Then
+$$
+N(n) \;\approx\; 2^{\,n} - c\,n, \qquad L(n) \;\approx\; 2n, \qquad n \geq 3,
+$$
+where the linear term $c\,n$ in $N(n)$ is exactly the trickle of newly bounded strands still being produced each round from $L(n)$-type templates, and is negligible next to $2^n$ once $n$ is more than a few cycles. Because $N$ grows geometrically while $L$ grows only linearly, $N(n)/L(n) \to \infty$: by $n=30$, $N(30) \approx 2^{30} \approx 1.07\times10^{9}$ while $L(30) \approx 60$, so the fixed-length fragment spanning $P$ to $Q$ — and only that fragment — becomes the dominant species in the tube, at exactly the length the two primers were chosen to set. That is the whole of what converts a single copy of a chosen sequence, one part in three billion, into a species abundant and discrete enough to read.
