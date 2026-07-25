@@ -22,7 +22,7 @@ import torch.nn.functional as F
 
 class CIGConv(nn.Module):
     """Covalent Interaction Graph Convolution (intra-molecular).
-    Message ReLU(src + edge_feat), sum aggregation, residual, MLP."""
+    Message ReLU(src + edge), sum aggregation, residual, MLP."""
     def __init__(self, input_dim, output_dim, drop=0.1):
         super().__init__()
         self.mlp = nn.Sequential(
@@ -43,7 +43,8 @@ class CIGConv(nn.Module):
 
 class NIGConv(nn.Module):
     """Non-covalent Interaction Graph Convolution (inter-molecular).
-    Edge weights gate source features, mean aggregation, self term, and bias."""
+    Edge weights gate the source features, mean aggregation; fc_neigh after
+    aggregation when in_feats == out_feats; plus a self term and bias."""
     def __init__(self, in_feats, out_feats, feat_drop=0.0):
         super().__init__()
         self.feat_drop = nn.Dropout(feat_drop)
@@ -90,13 +91,8 @@ class FC(nn.Module):
 
 
 class AffinityModel(nn.Module):
-    """EHIGN: Heterogeneous Interaction Graph Network.
-
-    Uses CIGConv for intra-molecular edges and NIGConv for inter-molecular
-    contacts. Reads out as a sum of per-contact atom-atom affinities with an
-    attention-normalized bias correction, averaged over ligand->pocket and
-    pocket->ligand directional views.
-    """
+    """EHIGN: heterogeneous interaction graph network with a sum-of-atom-pair
+    affinity readout, attention bias correction, and bidirectional prediction."""
     def __init__(self, lig_dim, poc_dim, intra_edge_dim, inter_edge_dim):
         super().__init__()
         H = 256
@@ -114,34 +110,23 @@ class AffinityModel(nn.Module):
         self.nig_pl = nn.ModuleList([NIGConv(H, H, 0.1) for _ in range(num_layers)])
 
         # atom-atom affinity heads
-        self.prj_lp_src = nn.Linear(H, H)
-        self.prj_lp_dst = nn.Linear(H, H)
-        self.prj_lp_edge = nn.Linear(H, H)
-        self.fc_lp = nn.Linear(H, 1)
-        self.prj_pl_src = nn.Linear(H, H)
-        self.prj_pl_dst = nn.Linear(H, H)
-        self.prj_pl_edge = nn.Linear(H, H)
-        self.fc_pl = nn.Linear(H, 1)
+        self.prj_lp_src = nn.Linear(H, H); self.prj_lp_dst = nn.Linear(H, H)
+        self.prj_lp_edge = nn.Linear(H, H); self.fc_lp = nn.Linear(H, 1)
+        self.prj_pl_src = nn.Linear(H, H); self.prj_pl_dst = nn.Linear(H, H)
+        self.prj_pl_edge = nn.Linear(H, H); self.fc_pl = nn.Linear(H, 1)
 
         # bias correction (L->P)
-        self.bc_lp_prj_src = nn.Linear(H, H)
-        self.bc_lp_prj_dst = nn.Linear(H, H)
+        self.bc_lp_prj_src = nn.Linear(H, H); self.bc_lp_prj_dst = nn.Linear(H, H)
         self.bc_lp_prj_edge = nn.Linear(H, H)
         self.bc_lp_att = nn.Sequential(nn.PReLU(), nn.Linear(H, 1))
-        self.bc_lp_w_src = nn.Linear(H, H)
-        self.bc_lp_w_dst = nn.Linear(H, H)
-        self.bc_lp_w_edge = nn.Linear(H, H)
-        self.bc_lp_fc = FC(H, 200, 2, 0.1, 1)
-
+        self.bc_lp_w_src = nn.Linear(H, H); self.bc_lp_w_dst = nn.Linear(H, H)
+        self.bc_lp_w_edge = nn.Linear(H, H); self.bc_lp_fc = FC(H, 200, 2, 0.1, 1)
         # bias correction (P->L)
-        self.bc_pl_prj_src = nn.Linear(H, H)
-        self.bc_pl_prj_dst = nn.Linear(H, H)
+        self.bc_pl_prj_src = nn.Linear(H, H); self.bc_pl_prj_dst = nn.Linear(H, H)
         self.bc_pl_prj_edge = nn.Linear(H, H)
         self.bc_pl_att = nn.Sequential(nn.PReLU(), nn.Linear(H, 1))
-        self.bc_pl_w_src = nn.Linear(H, H)
-        self.bc_pl_w_dst = nn.Linear(H, H)
-        self.bc_pl_w_edge = nn.Linear(H, H)
-        self.bc_pl_fc = FC(H, 200, 2, 0.1, 1)
+        self.bc_pl_w_src = nn.Linear(H, H); self.bc_pl_w_dst = nn.Linear(H, H)
+        self.bc_pl_w_edge = nn.Linear(H, H); self.bc_pl_fc = FC(H, 200, 2, 0.1, 1)
 
     def _edge_softmax(self, scores, batch_idx, num_graphs):
         max_scores = torch.full((num_graphs, 1), -1e9, device=scores.device)
@@ -153,19 +138,15 @@ class AffinityModel(nn.Module):
 
     def _forward_heads(self, batch):
         B = batch.labels.size(0)
-        lig_h = self.lin_node_l(batch.lig_x)
-        poc_h = self.lin_node_p(batch.poc_x)
-        lig_e = self.lin_edge_ll(batch.lig_edge_attr)
-        poc_e = self.lin_edge_pp(batch.poc_edge_attr)
-        lp_e = self.lin_edge_lp(batch.l2p_edge_attr)
-        pl_e = self.lin_edge_pl(batch.p2l_edge_attr)
+        lig_h = self.lin_node_l(batch.lig_x); poc_h = self.lin_node_p(batch.poc_x)
+        lig_e = self.lin_edge_ll(batch.lig_edge_attr); poc_e = self.lin_edge_pp(batch.poc_edge_attr)
+        lp_e = self.lin_edge_lp(batch.l2p_edge_attr); pl_e = self.lin_edge_pl(batch.p2l_edge_attr)
 
         for i in range(len(self.cig_l)):
             lig_in, poc_in = lig_h, poc_h
             lig_intra = self.cig_l[i](lig_in, batch.lig_edge_index, lig_e)
             poc_intra = self.cig_p[i](poc_in, batch.poc_edge_index, poc_e)
-            lig_inter = torch.zeros_like(lig_in)
-            poc_inter = torch.zeros_like(poc_in)
+            lig_inter = torch.zeros_like(lig_in); poc_inter = torch.zeros_like(poc_in)
             if batch.l2p_edge_index.size(1) > 0:
                 poc_inter = self.nig_lp[i](lig_in, poc_in, batch.l2p_edge_index, lp_e, poc_in.size(0))
             if batch.p2l_edge_index.size(1) > 0:
@@ -179,6 +160,7 @@ class AffinityModel(nn.Module):
         pred_lp = torch.zeros(B, 1, device=logit_lp.device)
         pred_lp.index_add_(0, batch.inter_batch, logit_lp)
 
+        # P->L edges use pocket as source, while projections keep ligand/pocket roles.
         p2l_src, p2l_dst = batch.p2l_edge_index
         p2l_batch = batch.lig_batch[p2l_dst]
         i_pl = self.prj_pl_edge(pl_e) * self.prj_pl_dst(poc_h)[p2l_src] * self.prj_pl_src(lig_h)[p2l_dst]
@@ -206,9 +188,8 @@ class AffinityModel(nn.Module):
         pred_lp, pred_pl = self._forward_heads(batch)
         return (pred_lp + pred_pl) / 2
 
-    def compute_loss(self, batch):
+    def compute_loss(self, batch, labels):
         pred_lp, pred_pl = self._forward_heads(batch)
-        labels = batch.labels
         return (F.mse_loss(pred_lp, labels) + F.mse_loss(pred_pl, labels)
                 + F.mse_loss(pred_lp, pred_pl)) / 3
 ```
