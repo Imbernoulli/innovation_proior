@@ -8,6 +8,8 @@ The static form has matrices `B` in `R^{1 x n}`, `A_m` in `R^{n x 1}`, and `A_r`
 
 The extra cost is small. For expansion rate `n`, each static module has `n(n+2)` parameters, and each dynamic module adds `O(d n)` parameters plus two scalar scales. The main added computation is a width matmul of cost `O(d n^2)` per token, which is negligible next to attention and the feed-forward network for small `n`. In practice `n = 2` already breaks the seesaw on modest budgets, while `n = 4` is the standard setting for large language-model experiments. The connection parameters are gains rather than weight matrices, so they should be placed in a no-weight-decay optimizer group.
 
+The module below implements this exactly. `dim` is the model width `d`, `rate` is the expansion `n`, and `layer_id` is the residual-site index `k` that fixes which one-hot stream `A_m` reads from at initialization; passing `dynamic=False` collapses the module to the pure static base. `width_connection` normalizes `h`, forms the dynamic corrections through `dynamic_alpha_fn`/`dynamic_beta_fn` and a bounded `tanh`, adds them onto the static `alpha`/`beta`, and returns the mixed tensor `mix_h` together with the write weights `beta`; the sublayer then runs on `mix_h[..., 0, :]` exactly as it would on an ordinary Pre-Norm input. `depth_connection` distributes the sublayer's output across the streams with `beta` and adds it to the carried streams `mix_h[..., 1:, :]`, producing the updated `H` for the next residual site. Wiring one of these modules around attention or the feed-forward network is three lines each — call `width_connection` for the branch input, run the sublayer and its own normalization on that single vector, then call `depth_connection` on the sublayer's output — and every Transformer layer holds two such modules, one for attention and one for the feed-forward network. Only after the last residual site are the `n` streams reduced, `H.sum(dim=-2)`, and only then does the ordinary final normalization and output head run:
+
 ```python
 import torch
 import torch.nn as nn
@@ -15,106 +17,54 @@ import torch.nn.functional as F
 from torch.nn import LayerNorm
 
 
+# h: hyper hidden matrix (BxLxNxD)
 class HyperConnection(nn.Module):
-    """One residual site. h: (B, T, n, D). Static base = Pre-Norm on n copies;
-    dynamic projections zero-init -> exactly Pre-Norm at initialization."""
+    def __init__(self, dim, rate, layer_id, dynamic, device=None):
+        super(HyperConnection, self).__init__()
 
-    def __init__(self, dim, rate, site_id, dynamic=True):
-        super().__init__()
         self.rate = rate
+        self.layer_id = layer_id
         self.dynamic = dynamic
 
-        # B = 1_{1 x n}: write the full sublayer output into every stream.
-        self.static_beta = nn.Parameter(torch.ones(rate))
+        self.static_beta = nn.Parameter(torch.ones((rate,), device=device))
 
-        # [A_m | A_r] = [e_{site_id mod n} | I_n]
-        init_alpha0 = torch.zeros(rate, 1)
-        init_alpha0[site_id % rate, 0] = 1.0
+        init_alpha0 = torch.zeros((rate, 1), device=device)
+        init_alpha0[layer_id % rate, 0] = 1.0
         self.static_alpha = nn.Parameter(
-            torch.cat([init_alpha0, torch.eye(rate)], dim=1)
-        )  # (n, n+1)
+            torch.cat([init_alpha0, torch.eye((rate), device=device)], dim=1)
+        )
 
         if self.dynamic:
-            self.dynamic_alpha_fn = nn.Parameter(torch.zeros(dim, rate + 1))
-            self.dynamic_alpha_scale = nn.Parameter(torch.ones(1) * 0.01)
-            self.dynamic_beta_fn = nn.Parameter(torch.zeros(dim))
-            self.dynamic_beta_scale = nn.Parameter(torch.ones(1) * 0.01)
-            self.layer_norm = LayerNorm(dim, bias=False)
+            self.dynamic_alpha_fn = nn.Parameter(torch.zeros((dim, rate + 1), device=device))
+            self.dynamic_alpha_scale = nn.Parameter(torch.ones(1, device=device) * 0.01)
+            self.dynamic_beta_fn = nn.Parameter(torch.zeros((dim,), device=device))
+            self.dynamic_beta_scale = nn.Parameter(torch.ones(1, device=device) * 0.01)
+            self.layer_norm = LayerNorm(dim)
 
     def width_connection(self, h):
         if self.dynamic:
             norm_h = self.layer_norm(h)
-            wc = torch.tanh(norm_h @ self.dynamic_alpha_fn) * self.dynamic_alpha_scale
-            alpha = wc + self.static_alpha  # (B, T, n, n+1)
-            dc = torch.tanh(norm_h @ self.dynamic_beta_fn) * self.dynamic_beta_scale
-            beta = dc + self.static_beta    # (B, T, n)
+
+        if self.dynamic:
+            wc_weight = norm_h @ self.dynamic_alpha_fn
+            wc_weight = F.tanh(wc_weight)
+            dynamic_alpha = wc_weight * self.dynamic_alpha_scale
+            alpha = dynamic_alpha + self.static_alpha[None, None, ...]
         else:
             alpha = self.static_alpha[None, None, ...]
+
+        if self.dynamic:
+            dc_weight = norm_h @ self.dynamic_beta_fn
+            dc_weight = F.tanh(dc_weight)
+            dynamic_beta = dc_weight * self.dynamic_beta_scale
+            beta = dynamic_beta + self.static_beta[None, None, ...]
+        else:
             beta = self.static_beta[None, None, ...]
-        mix_h = alpha.transpose(-1, -2) @ h  # (B, T, n+1, D)
+
+        mix_h = alpha.transpose(-1, -2) @ h
         return mix_h, beta
 
     def depth_connection(self, mix_h, h_o, beta):
-        # h_o: (B, T, D); distribute it over the n streams, then add carried streams.
-        return torch.einsum('btd,btn->btnd', h_o, beta) + mix_h[..., 1:, :]
-
-
-class GPTWithHyperConnections(nn.Module):
-    """Example wiring inside a GPT-like model. CausalSelfAttention, MLP, LayerNorm,
-    and block definitions are kept unchanged; HyperConnection drives them from the
-    forward loop over an n-stream tensor H of shape (B, T, n, D)."""
-
-    def __init__(self, config):
-        super().__init__()
-        # ... standard embeddings, transformer blocks, final ln, and head ...
-        self.config = config
-        self.hc_rate = 2  # expansion rate n; n=2 already breaks the seesaw.
-        self.hc = nn.ModuleList([
-            HyperConnection(config.n_embd, self.hc_rate, site_id=k, dynamic=True)
-            for k in range(2 * config.n_layer)  # attention and MLP are two sites per layer
-        ])
-
-    def forward(self, idx):
-        # ... token + position embeddings ...
-        x = self.transformer.wte(idx) + self.transformer.wpe(
-            torch.arange(idx.size(1), device=idx.device)
-        )
-        x = self.transformer.drop(x)
-
-        # Lift the single stream into n identical copies.
-        H = x.unsqueeze(-2).expand(-1, -1, self.hc_rate, -1).contiguous()
-
-        s = 0
-        for block in self.transformer.h:
-            # Attention residual site.
-            mix_h, beta = self.hc[s].width_connection(H)
-            h0 = block.attn(block.ln_1(mix_h[..., 0, :]))
-            H = self.hc[s].depth_connection(mix_h, h0, beta)
-            s += 1
-
-            # MLP residual site.
-            mix_h, beta = self.hc[s].width_connection(H)
-            h0 = block.mlp(block.ln_2(mix_h[..., 0, :]))
-            H = self.hc[s].depth_connection(mix_h, h0, beta)
-            s += 1
-
-        # Reduce the n streams back to one vector for final normalization and head.
-        x = H.sum(dim=-2)
-        x = self.transformer.ln_f(x)
-        logits = self.lm_head(x)
-        return logits
-
-    def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
-        hc_ids = {id(p) for p in self.hc.parameters()}
-        param_dict = {pn: p for pn, p in self.named_parameters() if p.requires_grad}
-        decay_params = [p for n, p in param_dict.items() if p.dim() >= 2 and id(p) not in hc_ids]
-        nodecay_params = [p for n, p in param_dict.items() if p.dim() < 2 and id(p) not in hc_ids]
-        hc_params = [p for n, p in param_dict.items() if id(p) in hc_ids]
-        optim_groups = [
-            {'params': decay_params, 'weight_decay': weight_decay},
-            {'params': nodecay_params, 'weight_decay': 0.0},
-            {'params': hc_params, 'weight_decay': 0.0},
-        ]
-        optimizer = torch.optim.AdamW(optim_groups, lr=learning_rate, betas=betas)
-        return optimizer
+        h = torch.einsum("blh,bln->blnh", h_o, beta) + mix_h[..., 1:, :]
+        return h
 ```
