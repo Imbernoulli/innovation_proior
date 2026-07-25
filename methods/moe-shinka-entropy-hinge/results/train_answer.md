@@ -44,29 +44,22 @@ def layer_f_P(probs, topi, N):
     P = probs.mean(0)
     return f, P
 
-
 def balance_loss_shinka(probs_list, topi_list, N):
-    """ShinkaEvolve's discovered load-balancing loss:
-
-        L = N * (1/L) sum_l sum_i f_{l,i} P_{l,i}                  [global-batch LBL]
-          + (0.1/L) sum_l s(P_l) * sum_i max(0, tau - f_{l,i})     [entropy-hinge]
-
-        s(P_l) = 0.5 + (1 - H(P_l) / log N)   entropy-complement (peakedness) weight
-        tau    = 0.064 / N                     per-expert usage floor
-
-    The hinge fires only for under-floor experts, scaled by router peakedness; its
-    gradient flows through the differentiable P of those experts."""
+    """ShinkaEvolve discovered loss:
+       global-batch LBL + entropy-weighted under-utilization hinge."""
     L = len(probs_list)
     tau = 0.064 / N
     term1 = 0.0
     term2 = 0.0
     for probs, topi in zip(probs_list, topi_list):
         f, P = layer_f_P(probs, topi, N)
-        term1 = term1 + N * (f.detach() * P).sum()              # global-batch LBL
+        term1 = term1 + N * (f.detach() * P).sum()                 # global-batch LBL
         Pn = P / (P.sum() + 1e-9)
-        H = -(Pn * (Pn + 1e-9).log()).sum()                    # router entropy
-        s = 0.5 + (1.0 - H / math.log(N))                      # peakedness weight
-        under = (tau - f.detach() > 0).float()                 # experts below the floor
+        H = -(Pn * (Pn + 1e-9).log()).sum()                        # router entropy
+        s = 0.5 + (1.0 - H / math.log(N))                          # entropy-complement weight
+        under = (tau - f.detach() > 0).float()                     # experts below the floor
+        # hinge gradient flows through P of the under-used experts (raise their mass)
         term2 = term2 + s.detach() * (under * torch.clamp(tau - P, min=0.0)).sum()
     return (term1 / L) + (0.1 / L) * term2
+
 ```
