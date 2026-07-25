@@ -20,21 +20,22 @@ def run_causal_discovery(X: np.ndarray) -> GeneralGraph:
     from causallearn.utils.DAG2CPDAG import dag2cpdag
 
     N = X.shape[1]
-    # Decomposable BDeu local score; lower is better.
-    # parameters=None auto-detects cardinalities and uses N' = 1.
+    # Decomposable BDeu local score (lower is better). parameters=None ->
+    # observed cardinalities auto-detected; N' = 1 and structure_prior = 1.
     score_func = LocalScoreClass(
         data=X, local_score_fun=local_score_BDeu, parameters=None
     )
 
     nodes = [GraphNode(f"X{i + 1}") for i in range(N)]
-    adj = np.zeros((N, N), dtype=int)  # adj[i, j] == 1 means i -> j
+    adj = np.zeros((N, N), dtype=int)            # adj[i, j] == 1  means i -> j
 
+    # Per-node local scores; total = sum (decomposability). Start: no parents.
     local_scores = np.zeros(N)
     for j in range(N):
         local_scores[j] = score_func.score(j, [])
 
     def _has_path(src, tgt):
-        """DFS: is there a directed path src -> ... -> tgt in adj?"""
+        """DFS: directed path src -> ... -> tgt in adj? (acyclicity guard)."""
         visited, stack = set(), [src]
         while stack:
             node = stack.pop()
@@ -59,7 +60,7 @@ def run_causal_discovery(X: np.ndarray) -> GeneralGraph:
                     continue
 
                 if adj[i, j] == 0 and adj[j, i] == 0:
-                    # ADD i -> j (legal iff it closes no cycle)
+                    # ADD i -> j  (legal iff i not already reachable from j)
                     if not _has_path(j, i):
                         pj_new = sorted(np.where(adj[:, j] == 1)[0].tolist() + [i])
                         delta = score_func.score(j, pj_new) - local_scores[j]
@@ -67,24 +68,22 @@ def run_causal_discovery(X: np.ndarray) -> GeneralGraph:
                             best_delta, best_op = delta, ("add", i, j)
 
                 elif adj[i, j] == 1:
-                    # DELETE i -> j
+                    # DELETE i -> j  (only Pi_j changes)
                     pj_new = [p for p in np.where(adj[:, j] == 1)[0] if p != i]
                     delta = score_func.score(j, sorted(pj_new)) - local_scores[j]
                     if delta < best_delta - 1e-6:
                         best_delta, best_op = delta, ("delete", i, j)
 
-                    # REVERSE i -> j to j -> i (both Pi_j and Pi_i change)
-                    adj[i, j] = 0
+                    # REVERSE i -> j  to  j -> i  (Pi_j and Pi_i both change)
+                    adj[i, j] = 0                      # illegal iff i can still reach j
                     if not _has_path(i, j):
                         pj_del = sorted(np.where(adj[:, j] == 1)[0].tolist())
                         pi_new = sorted(np.where(adj[:, i] == 1)[0].tolist() + [j])
-                        delta = (
-                            (score_func.score(j, pj_del) - local_scores[j])
-                            + (score_func.score(i, pi_new) - local_scores[i])
-                        )
+                        delta = ((score_func.score(j, pj_del) - local_scores[j])
+                                 + (score_func.score(i, pi_new) - local_scores[i]))
                         if delta < best_delta - 1e-6:
                             best_delta, best_op = delta, ("reverse", i, j)
-                    adj[i, j] = 1
+                    adj[i, j] = 1                      # restore
 
         if best_op is not None:
             op, i, j = best_op
@@ -96,14 +95,13 @@ def run_causal_discovery(X: np.ndarray) -> GeneralGraph:
                 adj[i, j] = 0
                 adj[j, i] = 1
             local_scores[j] = score_func.score(
-                j, sorted(np.where(adj[:, j] == 1)[0].tolist())
-            )
+                j, sorted(np.where(adj[:, j] == 1)[0].tolist()))
             if op == "reverse":
                 local_scores[i] = score_func.score(
-                    i, sorted(np.where(adj[:, i] == 1)[0].tolist())
-                )
+                    i, sorted(np.where(adj[:, i] == 1)[0].tolist()))
             improved = True
 
+    # Observational data identifies only the equivalence class -> CPDAG.
     G = GeneralGraph(nodes)
     for i in range(N):
         for j in range(N):
