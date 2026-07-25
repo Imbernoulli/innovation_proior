@@ -12,70 +12,8 @@ Fix a point x. For each other point y, the function g_{xy} agrees with f at y, s
 
 The theorem explains why point separation is not merely a necessary condition but the only obstruction in the real compact setting. Any family that cannot separate two points also cannot approximate a continuous function that takes different values there, so separation is necessary. The Stone-Weierstrass theorem shows that once separation is satisfied and the family is an algebra containing constants, no further obstruction remains. This perspective also clarifies the complex case: without conjugation, separation is not enough because complex algebras can be analytically rigid. When conjugation is included, the real and imaginary parts of every function stay in the algebra, the real theorem applies to the self-adjoint real-valued part, and real and imaginary parts of any continuous complex function can be approximated separately and recombined.
 
-The following Python script gives a small concrete illustration rather than a formal proof. It approximates the continuous but non-polynomial function f(x) = absolute value of (x - 0.5) on the unit interval by polynomials, showing that the uniform error shrinks as the polynomial degree grows. It also demonstrates that an algebra that fails to separate points, here the algebra of even polynomials around x = 0.5, cannot approximate the simple linear function g(x) = x no matter how high the degree, because every even polynomial assigns the same value to 0.5 - d and 0.5 + d.
+The theorem is valuable because it turns approximation from a hunt for special formulas into a structural question about closed algebras. In machine learning it helps us understand when a parametric family of functions is rich enough to approximate arbitrary continuous functions on a compact domain: if the family is closed under the algebraic operations, contains constants, and can distinguish inputs, then uniform approximation is guaranteed. The result is not constructive in the sense of giving an explicit approximant for every target, but it is powerfully diagnostic: density follows once the right algebraic and separation invariants are in place, and point separation is the only obstacle left standing in the real compact setting.
 
-```python
-import numpy as np
-
-
-def chebyshev_nodes(n, a=0.0, b=1.0):
-    """Return n Chebyshev nodes in the interval [a, b]."""
-    k = np.arange(n)
-    t = np.cos((2 * k + 1) * np.pi / (2 * n))
-    return 0.5 * (b - a) * t + 0.5 * (a + b)
-
-
-def lagrange_interpolant(xs, ys):
-    """Barycentric Lagrange interpolant for nodes xs and values ys."""
-    n = len(xs)
-    w = np.ones(n)
-    w[0] = 0.5
-    w[-1] = 0.5
-    w *= (-1.0) ** np.arange(n)
-
-    def p(t):
-        t = np.atleast_1d(np.asarray(t, dtype=float))
-        out = np.zeros_like(t)
-        for i, ti in enumerate(t):
-            exact = np.isclose(xs, ti)
-            if np.any(exact):
-                out[i] = ys[np.argmax(exact)]
-                continue
-            num = np.sum(w * ys / (ti - xs))
-            den = np.sum(w / (ti - xs))
-            out[i] = num / den
-        return out
-
-    return p
-
-
-def uniform_error(f, g, a=0.0, b=1.0, n=2001):
-    xs = np.linspace(a, b, n)
-    return np.max(np.abs(f(xs) - g(xs)))
-
-
-if __name__ == "__main__":
-    a, b = 0.0, 1.0
-    f = lambda x: np.abs(x - 0.5)
-    print("Stone-Weierstrass illustration: polynomial approximation of |x-0.5| on [0,1]")
-    for n_nodes in [5, 9, 17, 33, 65]:
-        xs = chebyshev_nodes(n_nodes, a, b)
-        ys = f(xs)
-        p = lagrange_interpolant(xs, ys)
-        err = uniform_error(f, p, a, b)
-        print(f"  degree {n_nodes - 1}: uniform error = {err:.2e}")
-
-    print("\nNon-separating algebra: even polynomials around 0.5 cannot approximate x")
-    g = lambda x: x
-    for n_nodes in [5, 9, 17, 33, 65]:
-        xs = chebyshev_nodes(n_nodes, a, b)
-        t = (xs - 0.5) ** 2
-        deg = (n_nodes - 1) // 2
-        coeffs = np.polyfit(t, g(xs), deg)
-        q = np.poly1d(coeffs)
-        xs_test = np.linspace(a, b, 2001)
-        err = np.max(np.abs(g(xs_test) - q((xs_test - 0.5) ** 2)))
-        print(f"  even-poly degree {2*deg}: uniform error = {err:.4f}")
-```
-
-The Stone-Weierstrass theorem is valuable because it turns approximation from a hunt for special formulas into a structural question about closed algebras. In machine learning it helps us understand when a parametric family of functions is rich enough to approximate arbitrary continuous functions on a compact domain: if the family is closed under the algebraic operations, contains constants, and can distinguish inputs, then uniform approximation is guaranteed. The result is not constructive in the sense of giving an explicit approximant for every target, but it is powerfully diagnostic. It tells us that density follows once the right algebraic and separation invariants are in place, and it identifies point separation as the only remaining obstacle in the real compact setting.
+Stated in its finished form, this is the theorem the argument delivers. Let $X$ be a compact Hausdorff space and let $C(X,\mathbb{R})$ be the Banach algebra of continuous real-valued functions on $X$ under the supremum norm $\|\cdot\|_\infty$. If $A \subseteq C(X,\mathbb{R})$ is a real subalgebra that contains the constant functions and separates points — for every $x \neq y$ in $X$ there exists $h \in A$ with $h(x) \neq h(y)$ — then $A$ is dense in $C(X,\mathbb{R})$: for every $f \in C(X,\mathbb{R})$ and every $\varepsilon > 0$ there exists $g \in A$ with
+$$\|f-g\|_\infty = \sup_{x \in X} |f(x)-g(x)| < \varepsilon.$$
+The complex version adds exactly one hypothesis: if $A \subseteq C(X,\mathbb{C})$ is a complex subalgebra that contains constants, separates points, and is closed under complex conjugation ($u \in A \Rightarrow \bar u \in A$), then $A$ is dense in $C(X,\mathbb{C})$ in the same uniform sense. Drop the conjugation hypothesis and the conclusion can fail, because a closed, point-separating complex algebra can still carry hidden analytic rigidity. With conjugation in place where it is needed, point separation together with the algebra-and-constants structure is the entire obstruction to uniform density on a compact Hausdorff space — nothing else stands between a family of functions and all of $C(X,\mathbb{R})$.
