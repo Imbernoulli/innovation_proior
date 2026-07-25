@@ -12,8 +12,6 @@ integers `a[1..n]` (a value can be negative: a loss). Two kinds of requests arri
 
 In other words, each query asks for the maximum-sum contiguous subarray restricted to `a[l..r]`,
 where the empty subarray (sum `0`) is allowed, and updates change single entries between queries.
-This is the canonical "maximum subarray on a range with point updates" task; getting the segment-tree
-merge exactly right — and resisting the wrong but tempting greedy — is the whole point.
 
 ## Input / output contract
 
@@ -51,27 +49,11 @@ The first query over the whole array: the best contiguous block is `[3,-2,5]` (o
 — note that the positive values `3,5,4,2` sum to `14` but they are **not** contiguous. After the
 update `a[5] = 4` the array is `[3,-2,5,-1,4,4,2]`, and `[3,-2,5,-1,4,4,2]` itself sums to `15`.
 
-## Background
-
-Each query is a maximum-subarray (Kadane) problem, but confined to an arbitrary window and
-interleaved with point updates, so a per-query linear scan is `O(nq)` and too slow. Two routes are
-on the table before committing:
-
-- **Greedy: sum the positives in the window.** For a query `[l, r]`, add up every `a[i] > 0`. It is
-  trivial and `O(window)` per query (or `O(log n)` with a positive-sum Fenwick tree). The open
-  question is whether "take all the gains, drop all the losses" is even a valid block — the answer
-  must be a single *contiguous* run, and a positive can be marooned behind a deep negative.
-- **Segment tree of merged statistics.** Store at each node four numbers — total sum, best prefix,
-  best suffix, best inner block — and merge children in `O(1)`. Build is `O(n)`, each update and each
-  query is `O(log n)`. The open question is the exact merge formula and how the empty-block rule is
-  encoded so all four fields stay consistent.
-
 ## Evaluation settings
 
-Judged on hidden tests covering: all-positive windows (greedy looks right here), windows whose only
-gains are split by a large loss (greedy fails), all-negative windows (answer `0`), single-element
-windows and `n = 1`, heavy update/query interleavings, and large `n = q = 2*10^5` with values near
-`10^9` so a window sum can reach `2*10^14` and overflow 32 bits.
+Judged on hidden tests covering: all-positive windows, windows whose only gains are split by a large
+loss, all-negative windows, single-element windows and `n = 1`, heavy update/query interleavings, and
+large `n = q = 2*10^5` with values near `10^9`.
 
 ## Code framework
 
