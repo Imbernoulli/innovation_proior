@@ -20,81 +20,8 @@ One honest caveat closes the picture, and the inequality direction must be exact
 $$F_{2,\lambda}\ \ge\ \tfrac12\,F_{1,2\lambda},\qquad 0\le\lambda\le\tfrac12.$$
 The factor $\tfrac12$ and doubled error budget are not slack in a loose proof: the gap is genuine. Selecting a "mediocre" element (rank in $[n/3,2n/3]$) needs $2n/3$ comparisons for any deterministic algorithm in the worst case, yet a randomized algorithm with error $\lambda$ samples $O(\log(1/\lambda))$ elements and returns their sample median in $O(\log(1/\lambda))$ comparisons, the failure probability decaying exponentially in the sample size. The order-of-magnitude win lives entirely in the error-allowed regime, so equality *must* fail there — and the principle correctly degrades to a one-sided bound precisely where allowing error genuinely buys speed, while remaining a tight equality in the errorless case that is its workhorse.
 
-```
-Yao's minimax principle.
-
-Model. Finite decision-tree / comparison model. 𝒜 = deterministic algorithms;
-𝒳 = inputs; r(A,x) = cost (probes / comparisons) of deterministic A on input x —
-the payoff matrix entry.
-
-  • Randomized algorithm R ≡ distribution q over 𝒜; expected cost on input x is
-    E(R,x) = Σ_A q(A) r(A,x); worst-case cost max_x E(R,x).
-  • Input distribution d over 𝒳; average cost of deterministic A is
-    C(A,d) = Σ_x d(x) r(A,x).
-  • Randomized complexity      F₂ = inf_R max_x E(R,x).
-  • Distributional complexity   F₁ = sup_d min_A C(A,d).
-
-Theorem (errorless / Las Vegas equality).  F₂ = F₁. That is,
-
-    inf_R max_x E(R,x) = sup_d min_A C(A,d).
-
-  Two-sided form: max_D min_A E_{x∼D}[c(A,x)] = min_R max_x E[c(R,x)].
-
-Proof. The cost matrix r(A,x) defines a finite zero-sum game; the designer
-minimizes, the adversary maximizes. A randomized algorithm is the designer's
-mixed strategy, so F₂ = min_q max_x Σ_A q(A) r(A,x), the minmax value. An input
-distribution is the adversary's mixed strategy, so F₁ = max_d min_A Σ_x d(x) r(A,x),
-the maxmin value. Von Neumann's minimax theorem (1928) gives minmax = maxmin for
-any finite zero-sum matrix game (equivalently, strong LP duality: the optimal
-mixed strategies solve a primal/dual LP pair). Hence F₂ = F₁. ∎
-
-Easy direction (used directly for lower bounds, no minimax needed).
-For any randomized R and any input distribution d,
-
-    max_x E(R,x) ≥ Σ_x d(x) E(R,x) = Σ_A q(A) C(A,d) ≥ min_A C(A,d),
-
-using max ≥ weighted-average, reordering the finite double sum, then average ≥ min.
-The right-hand side has no R, so it bounds F₂ = inf_R max_x E(R,x) from below.
-
-Lower-bound recipe.
-  1. Model deterministic algorithms as rows, inputs as columns, cost r(A,x) as
-     the payoff.
-  2. Exhibit ONE input distribution d (use any symmetry of the problem to make d
-     uniform on isomorphism / relabelling classes — such a symmetric d is provably
-     an optimal hard distribution; this also reduces F₁ to a small linear program).
-     For selection problems the uniform distribution over all n! orderings is the
-     hardest.
-  3. Prove EVERY deterministic algorithm has average cost ≥ b under d — a
-     deterministic argument, no coin-flips.
-  4. Conclude EVERY randomized algorithm has worst-case expected cost ≥ b. In the
-     errorless case this is tight (F₂ = F₁).
-
-Error (Monte Carlo) caveat.
-Allow the algorithm to err with probability ≤ λ. Let ε(A,x) ∈ {0,1} flag a wrong
-answer; q is "λ-tolerant" if sup_x Σ_A q(A) ε(A,x) ≤ λ. Define
-
-    F_{1,λ} = sup_d min_{A : Σ_x d(x) ε(A,x) ≤ λ} C(A,d),
-    F_{2,λ} = inf over λ-tolerant R of max_x E(R,x).
-
-The worst-case-on-every-input error constraint on q and the under-d error
-constraint on A are asymmetric, so the two feasible sets are not dual
-mixed-strategy simplices of one matrix game; von Neumann does not give equality.
-The surviving bound is one-sided:
-
-    F_{2,λ} ≥ ½ · F_{1,2λ},   for 0 ≤ λ ≤ ½.
-
-Reason for the factor and doubled error: fix a λ-tolerant q, any d, and
-T = max_x Σ_A q(A) r(A,x). Then Σ_A q(A) C(A,d) ≤ T and Σ_A q(A) err_d(A) ≤ λ.
-Therefore some deterministic A has C(A,d) ≤ 2T and err_d(A) ≤ 2λ: for λ,T > 0,
-average C(A,d)/(2T) + err_d(A)/(2λ); if λ = 0, supported trees have zero d-average
-error, and if T = 0, supported trees have zero d-average cost while the error
-average still gives err_d(A) ≤ 2λ. Thus min_{err_d(A)≤2λ} C(A,d) ≤ 2T for every d,
-so T ≥ ½ F_{1,2λ}; inf over λ-tolerant q gives the bound.
-
-The gap is genuine: finding a "mediocre" element (rank in [n/3, 2n/3]) needs 2n/3
-comparisons for any deterministic algorithm in the worst case, but a randomized
-algorithm with error λ can sample O(log(1/λ)) elements and return their sample
-median using O(log(1/λ)) comparisons. The error probability decays exponentially
-in the sample size, so the order-of-magnitude advantage of randomization here lives
-entirely in the error-allowed regime and equality must fail there.
-```
+Stated the way I would hand it to a colleague, this is the theorem and the protocol it licenses. Fix any finite family $\mathcal{A}$ of deterministic algorithms and any finite set $\mathcal{X}$ of inputs, with cost $r(A,x)$; a randomized algorithm $R\equiv q$ has expected cost $E(R,x)=\sum_A q(A)\,r(A,x)$ on input $x$, and a distribution $d$ over $\mathcal{X}$ gives a deterministic $A$ average cost $C(A,d)=\sum_x d(x)\,r(A,x)$. Then
+$$F_2:=\inf_R\max_x E(R,x)\;=\;\sup_d\min_A C(A,d)=:F_1,$$
+the best randomized algorithm's worst-case expected cost equals the best deterministic algorithm's average cost against the hardest input distribution, because $r$ is the payoff matrix of a finite zero-sum game — the designer minimizing over mixed strategies $q$, the adversary maximizing over mixed strategies $d$ — whose minmax value is $F_2$, whose maxmin value is $F_1$, and whose two values von Neumann's theorem identifies. This is the protocol it licenses: exhibit one distribution $d$ on $\mathcal{X}$, symmetrized over any relabelling symmetry the problem has so that it is provably an optimal hard distribution and $F_1$'s defining supremum collapses to a linear program over isomorphism classes rather than over all of $\mathcal{X}$ (for selection, this forces the uniform distribution over all $n!$ orderings); show that every $A\in\mathcal{A}$ satisfies $C(A,d)\ge b$, a claim about finitely many deterministic decision trees with no coin-flips in it anywhere; and conclude $F_2\ge b$, tight whenever the chosen $d$ attains $F_1$. Where error up to $\lambda$ is allowed — $q$ is $\lambda$-tolerant if its worst-case error is $\le\lambda$, a competing $A$ if its $d$-weighted error is $\le\lambda$ — the same averaging argument keeps only one direction,
+$$F_{2,\lambda}\;\ge\;\tfrac12\,F_{1,2\lambda},\qquad 0\le\lambda\le\tfrac12,$$
+with the constants $\tfrac12$ and $2\lambda$ forced by the argument, not slack in a loose proof, and not improvable: the mediocre-element gap already shows the two sides genuinely separate once error is on the table, so this one-sided form, not equality, is the honest bound in the Monte Carlo regime.
