@@ -17,9 +17,9 @@ import torch.nn.functional as F
 
 
 class LabelSmoothingCrossEntropy(nn.Module):
-    """Cross-entropy for q'_k = (1 - eps) 1[k=y] + eps/K.
+    """Cross-entropy for q'_k = (1-eps) 1[k=y] + eps/K.
 
-    This matches the Inception formula and the TensorFlow/PyTorch
+    This matches the Inception formula and TensorFlow's
     softmax_cross_entropy(label_smoothing=eps) convention.
     """
 
@@ -43,23 +43,4 @@ class LabelSmoothingCrossEntropy(nn.Module):
         if self.reduction == "sum":
             return loss.sum()
         return loss.mean()
-
-
-if __name__ == "__main__":
-    # Quick sanity check: for uniform logits, the loss equals log(K).
-    K = 10
-    logits = torch.zeros(4, K)
-    target = torch.randint(0, K, (4,))
-    criterion = LabelSmoothingCrossEntropy(smoothing=0.1)
-    loss = criterion(logits, target)
-    print("loss on uniform logits:", loss.item(), "expected log(K):", torch.log(torch.tensor(float(K))).item())
-
-    # Check that the loss explodes when an incorrect probability is driven to zero.
-    z = torch.zeros(1, K)
-    z[0, 0] = 1e4
-    z[0, 1] = -1e4
-    hard = LabelSmoothingCrossEntropy(smoothing=0.0)
-    smooth = LabelSmoothingCrossEntropy(smoothing=0.1)
-    print("hard loss with one near-zero incorrect prob:", hard(z, torch.tensor([0])).item())
-    print("smoothed loss with one near-zero incorrect prob:", smooth(z, torch.tensor([0])).item())
 ```
