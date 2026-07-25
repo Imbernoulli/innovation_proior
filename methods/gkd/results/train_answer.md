@@ -13,33 +13,34 @@ from trl.models.utils import unwrap_model_for_generation
 
 def generalized_jsd_loss(student_logits, teacher_logits, labels=None,
                          beta=0.5, temperature=1.0, reduction="batchmean"):
-    """Per-token divergence between teacher and student over completion tokens.
-    beta: 0 -> forward KL(p_T || p_S), 1 -> reverse KL(p_S || p_T),
-    in between -> generalized JSD with mixture M = beta * p_T + (1 - beta) * p_S."""
+    """Generalized JSD per-token loss. student_logits, teacher_logits: [B, T, V].
+    beta: endpoints branch to KL limits; strict interior uses generalized JSD.
+    labels: [B, T], -100 on prompt/padding positions to ignore."""
     student_logits = student_logits / temperature
     teacher_logits = teacher_logits / temperature
-
     student_log_probs = F.log_softmax(student_logits, dim=-1)
     teacher_log_probs = F.log_softmax(teacher_logits, dim=-1)
 
     if beta == 0:
         jsd = F.kl_div(student_log_probs, teacher_log_probs,
-                       reduction="none", log_target=True)
+                       reduction="none", log_target=True)        # KL(p_T || p_S)
     elif beta == 1:
         jsd = F.kl_div(teacher_log_probs, student_log_probs,
-                       reduction="none", log_target=True)
+                       reduction="none", log_target=True)        # KL(p_S || p_T)
     else:
-        beta_t = torch.tensor(beta, dtype=student_log_probs.dtype, device=student_log_probs.device)
+        # log M, M = (1-beta)*p_S + beta*p_T, in log space via logsumexp
+        beta = torch.tensor(beta, dtype=student_log_probs.dtype)
         mixture_log_probs = torch.logsumexp(
-            torch.stack([student_log_probs + torch.log1p(-beta_t),
-                         teacher_log_probs + torch.log(beta_t)]),
+            torch.stack([student_log_probs + torch.log(1 - beta),
+                         teacher_log_probs + torch.log(beta)]),
             dim=0,
         )
+        # F.kl_div(input=log_q, target=log_p, log_target=True) computes KL(p || q)
         kl_teacher = F.kl_div(mixture_log_probs, teacher_log_probs,
-                              reduction="none", log_target=True)
+                              reduction="none", log_target=True)  # KL(p_T || M)
         kl_student = F.kl_div(mixture_log_probs, student_log_probs,
-                              reduction="none", log_target=True)
-        jsd = beta_t * kl_teacher + (1 - beta_t) * kl_student
+                              reduction="none", log_target=True)  # KL(p_S || M)
+        jsd = beta * kl_teacher + (1 - beta) * kl_student
 
     if labels is not None:
         mask = labels != -100
@@ -55,6 +56,8 @@ def generalized_jsd_loss(student_logits, teacher_logits, labels=None,
 
 
 def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=None):
+    """Student + frozen teacher forward over the same tokens; slice to completion
+    positions (logit at n predicts token n+1); take the generalized-JSD loss."""
     student_outputs = model(input_ids=inputs["input_ids"],
                             attention_mask=inputs["attention_mask"])
     self.teacher_model.eval()
@@ -62,15 +65,15 @@ def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=N
         teacher_outputs = self.teacher_model(input_ids=inputs["input_ids"],
                                              attention_mask=inputs["attention_mask"])
 
-    prompt_len = inputs["prompts"].shape[1]
-    student_logits = student_outputs.logits[:, prompt_len - 1 : -1, :]
-    teacher_logits = teacher_outputs.logits[:, prompt_len - 1 : -1, :]
-    labels = inputs["labels"][:, prompt_len:]
+    prompt_lengths = inputs["prompts"].shape[1]
+    shifted_student_logits = student_outputs.logits[:, prompt_lengths - 1 : -1, :]
+    shifted_teacher_logits = teacher_outputs.logits[:, prompt_lengths - 1 : -1, :]
+    shifted_labels = inputs["labels"][:, prompt_lengths:]
 
     loss = self.generalized_jsd_loss(
-        student_logits=student_logits,
-        teacher_logits=teacher_logits,
-        labels=labels,
+        student_logits=shifted_student_logits,
+        teacher_logits=shifted_teacher_logits,
+        labels=shifted_labels,
         beta=self.beta,
     )
     return (loss, student_outputs) if return_outputs else loss
@@ -78,6 +81,8 @@ def compute_loss(self, model, inputs, return_outputs=False, num_items_in_batch=N
 
 @staticmethod
 def generate_on_policy_outputs(model, inputs, generation_config, pad_token_id=None):
+    """Roll out the provided generator on the prompts and relabel its generations as the batch.
+    The generated token ids are reassigned as fixed training data."""
     generated_outputs = model.generate(
         input_ids=inputs["prompts"],
         attention_mask=inputs.get("prompt_attention_mask", None),
@@ -94,6 +99,8 @@ def generate_on_policy_outputs(model, inputs, generation_config, pad_token_id=No
 
 
 def training_step(self, model, inputs, num_items_in_batch=None):
+    """With probability lmbda, train on the student's own generations; `seq_kd`
+    uses teacher generations. Backward and optimizer handling stay in the parent trainer."""
     if self.seq_kd:
         with unwrap_model_for_generation(self.teacher_model, self.accelerator) as unwrapped_model:
             new_input_ids, new_attention_mask, new_labels = self.generate_on_policy_outputs(
