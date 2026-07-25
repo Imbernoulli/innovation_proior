@@ -14,14 +14,16 @@ import torch.nn as nn
 
 
 class VariableAggregator(nn.Module):
-    """Cross-attention variable aggregation.
+    """Learnable-query cross-attention variable aggregation.
 
-    A single learnable query attends over the V variable tokens at each
-    spatial location, producing one token per location.
+    A single trainable query attends over the V variable tokens at each spatial
+    location, producing one token per location.
 
-    Input:  x : [B, V, L, D]  -- V variable tokens at each of L spatial patches.
-    Output:     [B, L, D]     -- one aggregated token per spatial location.
-    V is read from the input shape at runtime, so any number of variables is accepted.
+    Args:
+        embed_dim (int): embedding dimension D.
+        num_heads (int): number of attention heads.
+        num_vars (int):  number of variables V (informational; the set size is read
+                         from the input at runtime, so any V is accepted).
     """
 
     def __init__(self, embed_dim, num_heads, num_vars):
@@ -29,20 +31,24 @@ class VariableAggregator(nn.Module):
         self.embed_dim = embed_dim
         self.num_heads = num_heads
         self.num_vars = num_vars
-        # One learnable query. Zero-init gives uniform attention at step 0,
-        # so fine-tuning starts from mean-pooling behavior and learns
-        # content-dependent weights from there.
+        # one learnable query, zero-init -> uniform weights over the projected
+        # variable tokens, then learns content-dependent weights
         self.var_query = nn.Parameter(torch.zeros(1, 1, embed_dim), requires_grad=True)
         self.var_agg = nn.MultiheadAttention(embed_dim, num_heads, batch_first=True)
 
     def forward(self, x):
+        """
+        Args:
+            x: [B, V, L, D] — per-variable patch embeddings.
+        Returns:
+            [B, L, D] — aggregated representation per spatial location.
+        """
         b, v, l, d = x.shape
-        # Treat each (example, location) pair as an independent set of V tokens.
         x = x.permute(0, 2, 1, 3)   # [B, L, V, D]
-        x = x.reshape(b * l, v, d)  # [B*L, V, D]
+        x = x.reshape(b * l, v, d)  # [B*L, V, D]: each (example, location) is one set
 
         query = self.var_query.expand(b * l, -1, -1)  # [B*L, 1, D]
-        out, _ = self.var_agg(query, x, x)           # [B*L, 1, D]
+        out, _ = self.var_agg(query, x, x)            # [B*L, 1, D]: softmax over the V tokens
         out = out.squeeze(1)                          # [B*L, D]
 
         out = out.reshape(b, l, d)  # [B, L, D]
