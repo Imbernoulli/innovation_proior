@@ -6,69 +6,22 @@ The method is called algorithmic stability, and the specific form used here is u
 
 For regularized learning in a reproducing kernel Hilbert space, the stability rate can be computed explicitly. Minimizing the average loss plus lambda times the squared RKHS norm yields beta <= sigma^2 kappa^2 / (2 lambda m), where sigma is the Lipschitz constant of the loss and kappa bounds the kernel diagonal. This gives a concrete knob: larger lambda makes the algorithm less sensitive, while smaller lambda lets it fit the sample more closely but weakens the certificate. The theorem does not promise good approximation; it promises that the algorithm will not overfit, after which the usual bias-variance tradeoff can be studied.
 
-```python
-import numpy as np
-from sklearn.metrics.pairwise import rbf_kernel
+Putting the concentration argument and the stability bound together gives the finished certificate. Whenever a learning rule $A$ is uniform-stable at rate $\beta$ with respect to a loss $\ell$ bounded by $M$, then for a sample $S$ of size $m$, with probability at least $1-\delta$ over the draw of $S$,
 
+$$
+R(A,S) \;\le\; R_{\mathrm{emp}}(A,S) \;+\; 2\beta \;+\; (4m\beta + M)\sqrt{\frac{\log(1/\delta)}{2m}},
+$$
 
-def rbf_kernel_function(x, y, gamma=1.0):
-    """Compute the scalar RBF kernel k(x, y) = exp(-gamma ||x-y||^2)."""
-    return float(np.exp(-gamma * np.sum((x - y) ** 2)))
+and running the same concentration argument against the leave-one-out estimate instead of the empirical one gives the tighter
 
+$$
+R(A,S) \;\le\; R_{\mathrm{loo}}(A,S) \;+\; \beta \;+\; (4m\beta + M)\sqrt{\frac{\log(1/\delta)}{2m}},
+$$
 
-def kernel_ridge_stability(train_X, train_y, lambda_reg, loss_lipschitz=1.0, gamma=1.0):
-    """
-    Fit kernel ridge regression and certify a uniform-stability rate.
+with a single $\beta$ rather than $2\beta$ because the leave-one-out predictor has already performed the deletion swap that the bias term is paying for. Either bound is a genuine certificate: it converts a quantity the algorithm actually computes, $R_{\mathrm{emp}}$ or $R_{\mathrm{loo}}$, into a bound on the true risk using nothing about the algorithm except its stability rate. For the RKHS case this closes into a single number: with $k(x,x) \le \kappa^2$ and a $\sigma$-admissible loss,
 
-    The algorithm is A(S) = argmin_g (1/m) sum_i (g(x_i) - y_i)^2 + lambda ||g||_k^2
-    in the RKHS induced by the RBF kernel. For the squared loss truncated to
-    [0, M] we can apply the standard RKHS stability bound: beta is at most
-    sigma^2 * kappa^2 / (2 * lambda * m), where sigma is the Lipschitz constant
-    of the loss in its first argument and kappa^2 = sup_x k(x, x).
+$$
+\beta \;\le\; \frac{\sigma^2 \kappa^2}{2\lambda m},
+$$
 
-    Returns the fitted coefficients, the predictions on training data, and the
-    certified uniform-stability rate beta.
-    """
-    m = train_X.shape[0]
-    K = rbf_kernel(train_X, train_X, gamma=gamma)
-    # ||g||_k^2 = alpha^T K alpha, so the penalty is lambda * alpha^T K alpha.
-    alpha = np.linalg.solve(K + m * lambda_reg * np.eye(m), train_y)
-    predictions = K @ alpha
-
-    kappa_sq = 1.0  # RBF kernel satisfies k(x, x) = 1
-    beta = (loss_lipschitz ** 2 * kappa_sq) / (2.0 * lambda_reg * m)
-    return alpha, predictions, beta
-
-
-def generalization_bound(empirical_risk, m, beta, loss_bound, delta=0.05):
-    """
-    High-probability bound from uniform stability.
-
-    With probability at least 1 - delta:
-        R(A,S) <= R_emp(A,S) + 2*beta + (4*m*beta + M) * sqrt(log(1/delta)/(2*m))
-    """
-    sampling_term = (4.0 * m * beta + loss_bound) * np.sqrt(np.log(1.0 / delta) / (2.0 * m))
-    return empirical_risk + 2.0 * beta + sampling_term
-
-
-# Example usage on a tiny synthetic regression task.
-if __name__ == "__main__":
-    np.random.seed(0)
-    m = 100
-    X = np.random.randn(m, 2)
-    y = X[:, 0] + 0.5 * X[:, 1] + 0.1 * np.random.randn(m)
-
-    lambda_reg = 0.01
-    alpha, preds, beta = kernel_ridge_stability(X, y, lambda_reg)
-
-    # Truncate squared loss to [0, M] for the stability theorem.
-    residuals = preds - y
-    squared_losses = np.clip(residuals ** 2, 0.0, 1.0)
-    empirical_risk = float(np.mean(squared_losses))
-    loss_bound = 1.0
-
-    bound = generalization_bound(empirical_risk, m, beta, loss_bound, delta=0.05)
-    print(f"Empirical risk: {empirical_risk:.4f}")
-    print(f"Certified uniform stability beta: {beta:.4f}")
-    print(f"95% generalization upper bound: {bound:.4f}")
-```
+so that the whole proof obligation for a regularized learning rule is to check this one inequality and substitute the resulting $\beta$ into either bound above — the certificate for any new stable algorithm reduces to exactly that step.
