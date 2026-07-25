@@ -52,34 +52,19 @@ The first term is asymptotic to $x/\log x$, while the integral is $O(x/\log^2 x)
 \pi(x)\sim\frac{x}{\log x}.
 \]
 
-The canonical method name I propose is "prime number theorem via the Riemann zeta function." The essence is to stop counting primes one by one, encode them in Euler's product, differentiate the logarithm to expose the von Mangoldt weights, use the analytic continuation and the zero-free line to isolate the pole at $s=1$, and let a Tauberian bridge carry that analytic information back to the real asymptotic. The code below gives a small numerical illustration: it sieves primes, reports $\pi(x)$, and compares the ratio $\pi(x)\log x/x$ to $1$ over a range of $x$.
+The canonical method name I propose is "prime number theorem via the Riemann zeta function." The essence is to stop counting primes one by one, encode them in Euler's product, differentiate the logarithm to expose the von Mangoldt weights, use the analytic continuation and the zero-free line to isolate the pole at $s=1$, and let a Tauberian bridge carry that analytic information back to the real asymptotic. There is no computation left to run; the deliverable is the theorem itself, assembled from exactly the analytic facts I used above.
 
-```python
-def sieve(limit):
-    is_prime = bytearray(b"\x01") * (limit + 1)
-    is_prime[0:2] = b"\x00\x00"
-    for p in range(2, int(limit**0.5) + 1):
-        if is_prime[p]:
-            step = p
-            start = p * p
-            is_prime[start:limit + 1:step] = b"\x00" * ((limit - start) // step + 1)
-    return is_prime
-
-def pi_table(limit):
-    primes = sieve(limit)
-    counts = [0] * (limit + 1)
-    c = 0
-    for n in range(limit + 1):
-        if primes[n]:
-            c += 1
-        counts[n] = c
-    return counts
-
-LIMIT = 2_000_000
-counts = pi_table(LIMIT)
-print(f"{'x':>12} {'pi(x)':>10} {'pi(x)*log(x)/x':>18}")
-for x in [100, 1_000, 10_000, 100_000, 1_000_000, 2_000_000]:
-    import math
-    ratio = counts[x] * math.log(x) / x
-    print(f"{x:>12} {counts[x]:>10} {ratio:>18.6f}")
-```
+**Theorem (prime number theorem, via $\zeta$).** As $x\to\infty$,
+\[
+\pi(x)\sim \frac{x}{\log x}.
+\]
+Equivalently, with $\Lambda(n)=\log p$ when $n=p^k$ for a prime $p$ and integer $k\ge 1$ (and $\Lambda(n)=0$ otherwise),
+\[
+\theta(x)=\sum_{p\le x}\log p\sim x,\qquad
+\psi(x)=\sum_{n\le x}\Lambda(n)\sim x.
+\]
+The hypotheses the proof actually spends are: the Euler product $\zeta(s)=\prod_p(1-p^{-s})^{-1}$ on $\operatorname{Re}s>1$; the meromorphic continuation of $\zeta$, whose only singularity on $\operatorname{Re}s\ge 1$ is a simple pole at $s=1$ with residue $1$; and the zero-free line $\zeta(1+it)\neq 0$ for every real $t$, which the trigonometric inequality $3+4\cos u+\cos 2u=2(1+\cos u)^2\ge 0$ forces by ruling out a fourth-order zero at $1+it$ balancing the simple pole at $1$. Under these three facts the Tauberian step is mechanical: a Dirichlet series with nonnegative coefficients whose only boundary singularity is a simple pole of residue $c$ at $s=1$ has $\sum_{n\le x}a_n\sim cx$, and taking $a_n=\Lambda(n)$, $c=1$ gives $\psi(x)\sim x$. Removing the $o(x)$ contribution of prime powers gives $\theta(x)\sim x$, and one partial summation,
+\[
+\pi(x)=\frac{\theta(x)}{\log x}+\int_2^x\frac{\theta(t)}{t\log^2 t}\,dt,
+\]
+turns that into $\pi(x)\sim x/\log x$. This chain — Euler product, logarithmic derivative, pole at $1$, zero-free line, Tauberian bridge, partial summation — is the complete method, and the asymptotic above is its output.
