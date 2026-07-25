@@ -11,7 +11,6 @@ import torch as th
 
 
 def linear_route(gamma_max):
-    """ECSI straight-line path: alpha (x0 weight), beta (xT weight), gamma (noise)."""
     alpha = lambda t: 1 - t
     alpha_deriv = lambda t: -th.ones_like(t)
     beta = lambda t: t
@@ -22,7 +21,6 @@ def linear_route(gamma_max):
 
 
 def get_sigmas_karras(n, t_min, t_max, rho, device="cpu"):
-    """EDM-style rho-ramp; rho < 1 concentrates steps near the sharp endpoint."""
     ramp = th.linspace(0, 1, n, device=device)
     min_inv_rho = t_min ** (1 / rho)
     max_inv_rho = t_max ** (1 / rho)
@@ -31,53 +29,42 @@ def get_sigmas_karras(n, t_min, t_max, rho, device="cpu"):
 
 def to_d_stoch(x, x0_hat, x_T, alpha, alpha_deriv, beta, beta_deriv,
                gamma, gamma_deriv, epsilon):
-    """ECSI Euler-SDE drift and diffusion coefficient."""
-    z_hat = (x - alpha * x0_hat - beta * x_T) / gamma
-    drift = (alpha_deriv * x0_hat + beta_deriv * x_T
-             + (gamma_deriv + epsilon / gamma) * z_hat)
+    z_hat = (x - alpha * x0_hat - beta * x_T) / gamma           # normalized residual ẑ
+    drift = alpha_deriv * x0_hat + beta_deriv * x_T + (gamma_deriv + epsilon / gamma) * z_hat
     diffusion = (2 * epsilon) ** 0.5
     return drift, diffusion
 
 
 @th.no_grad()
-def sample_ecsi(denoiser, x, sigmas, route, eta=1.0, smooth=0.0):
-    """
-    ECSI sampler. eta=0 gives the deterministic ODE; eta=1 gives full DDBM-strength noise.
-    The last two steps are deterministic to sharpen the endpoint.
-    smooth>0 convolves the source with Gaussian noise to restore conditional diversity.
-    """
+def sample_stoch(
+    denoiser, x, sigmas, route, progress=False, callback=None,
+    churn_step_ratio=0.0, route_scaling=0, smooth=0.0
+):
     x_T = x
-    x = x + smooth * th.randn_like(x)      # π_T = π_cond * N(0, smooth² I)
+    x = x + smooth * th.randn_like(x)        # π_T = π_cond * N(0, b²I), b = smooth
     x_T_s = x
     s_in = x.new_ones([x.shape[0]])
     alpha, alpha_d, beta, beta_d, gamma, gamma_d = route
-    epsilon = lambda t: eta * (
+    epsilon = lambda t: churn_step_ratio * (
         gamma(t) * gamma_d(t) - alpha_d(t) / alpha(t) * gamma(t) ** 2)
 
-    path = [x.detach().cpu()]
-    pred_x0 = [x.detach().cpu()]
-
-    for i in range(len(sigmas) - 1):
-        x0_hat = denoiser(x, sigmas[i] * s_in, x_T)     # one budgeted denoiser call
-        dt = sigmas[i + 1] - sigmas[i]                  # negative: sigmas decrease to 0
-
-        if i >= len(sigmas) - 3:
-            # Last two steps: deterministic DBIM transition for a sharp endpoint.
-            x = (alpha(sigmas[i + 1]) * x0_hat
-                 + beta(sigmas[i + 1]) * x_T_s
+    path, x0_est = [x.detach().cpu()], [x.detach().cpu()]
+    indices = range(len(sigmas) - 1)
+    for i in indices:
+        x0_hat = denoiser(x, sigmas[i] * s_in, x_T)            # one budgeted denoiser call
+        x0_est.append(x0_hat.detach().cpu())
+        dt = sigmas[i + 1] - sigmas[i]                         # negative: schedule decreases
+        if i >= len(indices) - 2:                              # last two steps: ε=0, sharp endpoint
+            x = (alpha(sigmas[i + 1]) * x0_hat + beta(sigmas[i + 1]) * x_T_s
                  + (gamma(sigmas[i + 1]) / gamma(sigmas[i]))
                  * (x - alpha(sigmas[i]) * x0_hat - beta(sigmas[i]) * x_T_s))
-        else:
-            # Early/middle steps: Euler-SDE, valid for any epsilon >= 0.
+        else:                                                  # Euler-SDE (any ε ≥ 0)
             drift, diffusion = to_d_stoch(
                 x, x0_hat, x_T_s,
                 alpha(sigmas[i]), alpha_d(sigmas[i]),
                 beta(sigmas[i]), beta_d(sigmas[i]),
                 gamma(sigmas[i]), gamma_d(sigmas[i]), epsilon(sigmas[i]))
             x = x + drift * dt + th.randn_like(x) * (dt.abs() ** 0.5) * diffusion
-
         path.append(x.detach().cpu())
-        pred_x0.append(x0_hat.detach().cpu())
-
-    return x, path, pred_x0
+    return x, path, x0_est
 ```

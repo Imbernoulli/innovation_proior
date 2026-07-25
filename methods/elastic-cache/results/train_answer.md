@@ -25,9 +25,9 @@ def generate_with_elastic_cache(model, prompt, gen_length=512, window_length=16,
                                 tokens_per_iter=1, gamma=0.9, track_num=1,
                                 block_caching=True):
     """Elastic-Cache decoding for a bidirectional masked-diffusion LM.
-       gamma: attention-similarity refresh trigger; window_length: sliding window beta;
+       gamma: attention-similarity refresh trigger;  window_length: sliding window beta;
        track_num: number of most-attended tokens used as the drift probe."""
-    for block in model.model.transformer.blocks:
+    for block in model.model.transformer.blocks:        # reset per-layer cache + probe
         block.x_cache = block.q_cache = block.k_cache = block.v_cache = None
         block.track_token = None
 
@@ -45,14 +45,14 @@ def generate_with_elastic_cache(model, prompt, gen_length=512, window_length=16,
     while True:
         query_masked_position = masked_position[:window_length] if block_caching else masked_position
 
-        if i == 0:
+        if i == 0:                                       # first step: full forward, fill cache
             x_query, start_reset = x, -1
-        else:
+        else:                                            # later: window + tracked rows only
             query_position = torch.cat([track_position, new_decoded_position, query_masked_position], dim=0)
             x_query, start_reset = x[:, query_position], L
 
         positions = [query_position, track_position, query_masked_position, masked_position]
-        lengths = [x.shape[1], start_reset, gamma, track_num]
+        lengths   = [x.shape[1], start_reset, gamma, track_num]   # attention mutates lengths[1]
 
         logits = model(x_query, use_cache=True, lengths=lengths, positions=positions).logits
         logits = (logits[:, query_masked_position, :] if logits.shape[1] == x.shape[1]
@@ -65,11 +65,9 @@ def generate_with_elastic_cache(model, prompt, gen_length=512, window_length=16,
                                    dim=0).unique(sorted=False)
 
         if threshold is not None:
-            x, new_decoded_position, eos_pos = _commit_confident(
-                logits, query_masked_position, x, threshold, eos_id)
+            x, new_decoded_position, eos_pos = _commit_confident(logits, query_masked_position, x, threshold, eos_id)
         else:
-            x, new_decoded_position, eos_pos = _commit_topk(
-                logits, query_masked_position, x, tokens_per_iter, eos_id)
+            x, new_decoded_position, eos_pos = _commit_topk(logits, query_masked_position, x, tokens_per_iter, eos_id)
         masked_position = masked_position[~torch.isin(masked_position, new_decoded_position)]
 
         nfe += 1
@@ -78,7 +76,7 @@ def generate_with_elastic_cache(model, prompt, gen_length=512, window_length=16,
             decoded_eos = True
             masked_position = masked_position[masked_position <= eos_pos]
 
-        num_computed += L - lengths[1]
+        num_computed   += L - lengths[1]                 # canonical accounting from start_reset
         total_computed += L
         if masked_position.numel() == 0:
             break
@@ -89,7 +87,7 @@ def generate_with_elastic_cache(model, prompt, gen_length=512, window_length=16,
 def _commit_confident(logits, query_masked, x, threshold, eos_id=EOS_ID):
     p = F.softmax(logits.to(torch.float64), dim=-1)
     conf, pred = torch.max(p, dim=-1)
-    keep = (conf >= min(threshold, conf.max()))
+    keep = (conf >= min(threshold, conf.max()))          # clear threshold; never stall
     commit = query_masked[keep[0]]
     pred = pred[:, keep[0]]
     x[:, commit] = pred
@@ -113,18 +111,18 @@ def elastic_attention(block, x, positions, lengths, block_idx, qkv_fn, attn_fn, 
     query_position, track_position, query_masked, masked_position = positions
     key_len, start_reset, gamma, track_num = lengths
 
-    if block_idx > start_reset:
+    if block_idx > start_reset:                  # already past boundary: full hidden input
         block.x_cache = x
-    else:
+    else:                                        # reuse: overwrite only queried rows of hidden
         block.x_cache[:, query_position, :] = x
-        if block_idx == start_reset:
+        if block_idx == start_reset:             # first update layer restores full hidden
             x = block.x_cache
 
-    q, k, v = qkv_fn(x)
+    q, k, v = qkv_fn(x)                           # (B, heads, T, d_head)
 
-    if block_idx >= start_reset:
+    if block_idx >= start_reset:                 # CACHE UPDATE: overwrite full KV cache
         block.q_cache, block.k_cache, block.v_cache = q, k, v
-    else:
+    else:                                         # CACHE REUSE: write queried rows, keep rest
         past_k = block.k_cache.clone()
         block.k_cache[:, :, query_position, :] = k
         block.v_cache[:, :, query_position, :] = v
@@ -132,20 +130,20 @@ def elastic_attention(block, x, positions, lengths, block_idx, qkv_fn, attn_fn, 
         block.q_cache[:, :, query_position, :] = q
         k, v = block.k_cache, block.v_cache
 
-    att, att_weight = attn_fn(q, k, v, need_weights=True)
+    att, att_weight = attn_fn(q, k, v, need_weights=True)     # bidirectional attention + weights
 
     if block_idx >= start_reset:
         masked_att = att_weight[:, :, query_masked, :]
-    else:
+    else:                                                     # drift trigger in the reuse branch
         masked_att = att_weight[:, :, -query_masked.shape[0]:, :]
         cur_track_att = att_weight[:, :, :track_position.shape[0], :]
         past_att = torch.softmax(past_q @ past_k.transpose(-2, -1) * scale, dim=-1)
         sim = F.cosine_similarity(past_att, cur_track_att, dim=1).mean()
-        if sim < gamma:
+        if sim < gamma:                                       # next layer becomes first update layer
             lengths[1] = block_idx + 1
 
-    masked_att = masked_att.sum(dim=(0, 1, 2))
-    masked_att[masked_position] = 0.0
+    masked_att = masked_att.sum(dim=(0, 1, 2))               # this layer's next-step probe
+    masked_att[masked_position] = 0.0                         # only decoded tokens are candidates
     block.track_token = masked_att.topk(k=track_num, dim=0, largest=True)[1]
     return x, att
 ```
