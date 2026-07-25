@@ -21,7 +21,7 @@ import torch.nn.functional as F
 
 
 def make_nf4_grid(k=4):
-    """Normalized asymmetric N(0,1) 4-bit quantile table with exact zero."""
+    """The normalized asymmetric N(0,1) quantile table, with an exact zero."""
     if k != 4:
         raise ValueError("Only the NF4 table is specified here.")
     return torch.tensor([
@@ -53,54 +53,44 @@ def from_fp8(x):
 
 
 def quantize_nf4(W, grid, blocksize=64):
-    """Block-wise NF4 quantization: per-block absmax scale, nearest grid code."""
     flat, n_weights = _pad_flat(W.float(), blocksize)
     blocks = flat.view(-1, blocksize)
-    c2 = blocks.abs().max(dim=1, keepdim=True).values
+    c2 = blocks.abs().max(dim=1, keepdim=True).values                 # first-level constants
     safe_c2 = torch.where(c2 == 0, torch.ones_like(c2), c2)
-    normed = blocks / safe_c2
-    codes = (normed.unsqueeze(-1) - grid).abs().argmin(dim=-1).to(torch.uint8)
+    codes = ((blocks / safe_c2).unsqueeze(-1) - grid).abs().argmin(-1).to(torch.uint8)
     return codes, c2, n_weights
 
 
 def double_quantize_constants(c2, blocksize=256):
-    """Quantize the positive first-level constants to 8-bit with second-level FP32 scales."""
     flat, n_constants = _pad_flat(c2.float(), blocksize)
     mean = flat.mean()
-    centered = flat - mean
-    blk = centered.view(-1, blocksize)
-    c1 = blk.abs().max(dim=1, keepdim=True).values
+    blk = (flat - mean).view(-1, blocksize)                            # center -> symmetric
+    c1 = blk.abs().max(dim=1, keepdim=True).values                     # second-level constants
     safe_c1 = torch.where(c1 == 0, torch.ones_like(c1), c1)
-    c2_fp8 = to_fp8(blk / safe_c1)
-    return c2_fp8, c1, mean, n_constants
+    return to_fp8(blk / safe_c1), c1, mean, n_constants
 
 
 def double_dequant(c2_fp8, c1, mean, n_constants, codes, grid, blocksize, shape, n_weights):
-    """Recover the original weights from double-quantized NF4 storage."""
     c2 = (from_fp8(c2_fp8) * c1).flatten()[:n_constants] + mean
-    W = (grid[codes.long()].view(-1, blocksize) * c2.view(-1, 1))
+    W = grid[codes.long()].view(-1, blocksize) * c2.view(-1, 1)
     return W.flatten()[:n_weights].view(shape)
 
 
 class QLoRALinear(nn.Module):
-    """Frozen NF4 base weight + trainable BF16 LoRA adapter."""
     def __init__(self, linear, r=64, alpha=16, blocksize=64, dropout=0.1):
         super().__init__()
-        W_fp = linear.weight.detach().T.contiguous()
-        self.shape = tuple(W_fp.shape)
-        self.blocksize = blocksize
-        grid = make_nf4_grid(4)
-        self.register_buffer("grid", grid)
+        W_fp = linear.weight.detach().T.contiguous()                   # source convention: x @ W
+        self.shape, self.blocksize = tuple(W_fp.shape), blocksize
+        grid = make_nf4_grid(4); self.register_buffer("grid", grid)
         codes, c2, self.n_weights = quantize_nf4(W_fp, grid, blocksize)
         c2_fp8, c1, mean, self.n_constants = double_quantize_constants(c2)
         for n, t in [("codes", codes), ("c2_fp8", c2_fp8), ("c1", c1), ("mean", mean)]:
-            self.register_buffer(n, t)
+            self.register_buffer(n, t)                                 # frozen, no gradient
         self.register_buffer("bias", None if linear.bias is None else linear.bias.detach().clone())
         h, o = self.shape
-        self.lora_A = nn.Parameter(torch.randn(h, r) * (1.0 / r ** 0.5))
-        self.lora_B = nn.Parameter(torch.zeros(r, o))
-        self.scaling = alpha / r
-        self.drop = nn.Dropout(dropout)
+        self.lora_A = nn.Parameter(torch.randn(h, r) / r ** 0.5)
+        self.lora_B = nn.Parameter(torch.zeros(r, o))                  # zero update at init
+        self.scaling, self.drop = alpha / r, nn.Dropout(dropout)
 
     def forward(self, x):
         W = double_dequant(self.c2_fp8, self.c1, self.mean,
@@ -109,35 +99,27 @@ class QLoRALinear(nn.Module):
         base = x @ W
         if self.bias is not None:
             base = base + self.bias.to(x.dtype)
-        update = (self.drop(x) @ self.lora_A) @ self.lora_B
-        return base + self.scaling * update
+        return base + self.scaling * ((self.drop(x) @ self.lora_A) @ self.lora_B)
 
 
 def quantize_model(model, r=64, alpha=16):
-    """Replace every Linear with QLoRALinear and freeze the base."""
     for p in model.parameters():
         p.requires_grad_(False)
     for module in model.modules():
-        for child_name, child in module.named_children():
-            if isinstance(child, nn.Linear):
-                setattr(module, child_name, QLoRALinear(child, r=r, alpha=alpha))
+        for cn, child in list(module.named_children()):
+            if isinstance(child, nn.Linear):                           # LoRA on ALL linear layers
+                setattr(module, cn, QLoRALinear(child, r=r, alpha=alpha))
     return model
 
 
-def build_optimizer(model, lr=2e-4):
-    params = [p for p in model.parameters() if p.requires_grad]
-    import bitsandbytes as bnb
-    return bnb.optim.PagedAdamW(params, betas=(0.9, 0.999), lr=lr)
-
-
 def train(model, loader):
+    import bitsandbytes as bnb
     model.gradient_checkpointing_enable()
-    optim = build_optimizer(model)
-    for batch in loader:
+    params = [p for p in model.parameters() if p.requires_grad]        # only LoRA factors
+    optim = bnb.optim.PagedAdamW(params, betas=(0.9, 0.999), lr=2e-4)
+    for batch in loader:                                               # group-by-length, constant LR
         loss = model(batch["input_ids"], labels=batch["labels"]).loss
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(
-            [p for p in model.parameters() if p.requires_grad], 0.3)
-        optim.step()
-        optim.zero_grad()
+        torch.nn.utils.clip_grad_norm_(params, 0.3)
+        optim.step(); optim.zero_grad()
 ```
