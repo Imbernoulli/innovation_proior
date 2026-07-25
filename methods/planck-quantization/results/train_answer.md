@@ -14,48 +14,10 @@ With ε=hν, the entropy becomes S=k[(1+U/(hν))log(1+U/(hν))-(U/(hν))log(U/(h
 
 The same expression now follows from counting rather than interpolation, and it unifies the two classical limits automatically. When hν is much smaller than kT, expand the exponential to first order; the denominator becomes hν/kT, so U tends to kT and u tends to 8πν²kT/c³, the classical equipartition or Rayleigh-Jeans law. In this limit the energy elements are so small compared to thermal energy that the lumpiness is invisible. When hν is much larger than kT, the exponential dominates and u tends to (8πhν³/c³)e^{-hν/kT}, Wien's law. Because high-frequency modes cost a whole quantum hν that greatly exceeds kT, they are exponentially suppressed, and the integral over all frequencies is finite and scales as T⁴, restoring Stefan-Boltzmann. The divergence of classical equipartition is cured by discreteness.
 
-The price is a finite quantum of action h. As long as h is imagined to be arbitrarily small, the classical continuum reappears and equipartition returns. But the data require h to be a definite nonzero constant. A smallest unit of action has no place in a physics of continuous variation, so the derivation implies that continuity itself is broken at the atomic scale. The second universal constant k, Boltzmann's constant, also emerges from the counting, linking entropy to molecular mass scales. The result is a single law of nature: energy is counted, not poured.
+The price is a finite quantum of action h. As long as h is imagined to be arbitrarily small, the classical continuum reappears and equipartition returns. But the data require h to be a definite nonzero constant. A smallest unit of action has no place in a physics of continuous variation, so the derivation implies that continuity itself is broken at the atomic scale. The second universal constant k, Boltzmann's constant, also emerges from the counting, linking entropy to molecular mass scales. The result is a single law of nature: energy is counted, not poured, and it is worth stating in its final, precise form.
 
-```python
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy.constants import h, k, c
-from scipy.integrate import quad
-
-# Spectral energy density of black-body radiation per unit frequency (Planck)
-def planck_nu(nu, T):
-    return (8.0 * np.pi * h * nu**3 / c**3) / (np.exp(h * nu / (k * T)) - 1.0)
-
-def wien_nu(nu, T):
-    # Short-wavelength limit coefficient chosen to match Planck prefactor
-    return (8.0 * np.pi * h * nu**3 / c**3) * np.exp(-h * nu / (k * T))
-
-def rayleigh_jeans_nu(nu, T):
-    return 8.0 * np.pi * nu**2 * k * T / c**3
-
-nu = np.linspace(1e11, 1.5e15, 2000)
-T = 5000.0
-
-# Verify limiting behavior
-rj_ok = np.allclose(planck_nu(nu[:50], T), rayleigh_jeans_nu(nu[:50], T), rtol=0.05)
-wien_ok = np.allclose(planck_nu(nu[-200:], T), wien_nu(nu[-200:], T), rtol=0.05)
-print("Rayleigh-Jeans low-frequency match:", rj_ok)
-print("Wien high-frequency match:", wien_ok)
-
-# Verify Stefan-Boltzmann scaling by numerical integration
-def total_density(T):
-    val, _ = quad(planck_nu, 1e8, 1e16, args=(T,), limit=200)
-    return val
-
-T_vals = np.array([3000.0, 4000.0, 5000.0, 6000.0])
-densities = np.array([total_density(T) for T in T_vals])
-log_T = np.log(T_vals)
-log_rho = np.log(densities)
-power = np.polyfit(log_T, log_rho, 1)[0]
-print(f"Numerical Stefan-Boltzmann exponent: {power:.3f}")
-print(f"Total energy densities (J/m^3): {densities}")
-
-# Theoretical Stefan-Boltzmann constant for energy density
-sigma_energy = 8.0 * np.pi**5 * k**4 / (15.0 * h**3 * c**3)
-print(f"Theoretical rho = a T^4 with a = {sigma_energy:.3e}")
-```
+The quantization hypothesis is this: a resonator of frequency $\nu$ cannot exchange energy continuously with the radiation field; its energy is restricted to integer multiples of a finite element $\varepsilon=h\nu$, with $h$ the universal constant of action fixed by Wien's displacement law. That restriction, run through Boltzmann's counting and the resonator entropy derived above, gives the mean energy of one resonator in equilibrium at temperature $T$,
+$$ U(\nu,T) = \frac{h\nu}{e^{h\nu/kT}-1}, $$
+and, through the mode bridge $u=(8\pi\nu^2/c^3)U$, the spectral energy density of the cavity itself,
+$$ u(\nu,T) = \frac{8\pi h\nu^3}{c^3}\,\frac{1}{e^{h\nu/kT}-1}. $$
+This is Planck's law. It reduces to $u\to 8\pi\nu^2 kT/c^3$, the classical equipartition law, when $h\nu\ll kT$, and to $u\to (8\pi h\nu^3/c^3)e^{-h\nu/kT}$, Wien's distribution, when $h\nu\gg kT$; integrated over all frequencies it is finite and scales as $T^4$, as Stefan and Boltzmann required. Two universal constants, $h$ and $k$, and one hypothesis — that energy comes in whole multiples of $h\nu$ — are enough to fix the entire spectrum in both limits and at every frequency between them.
