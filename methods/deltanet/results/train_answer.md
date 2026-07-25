@@ -6,141 +6,96 @@ The method I propose is DeltaNet. It keeps the fixed-size state and readout of l
 
 The obstacle to training the delta rule at scale is that the value written at step t depends on the running state through v_t^old, so the writes cannot be precomputed and matmul'd the way additive linear attention writes can. DeltaNet removes that obstacle in two steps. First, by induction the state can be written as a sum of outer products S_t = sum_i u_i k_i^T for pseudo-values u_t = beta_t (v_t - sum_{i<t} u_i (k_i^T k_t)). Likewise the product of transition matrices has a compact WY form I - sum_i w_i k_i^T where w_t satisfies the same triangular recurrence with k in place of v. Second, that recurrence is a single unit lower-triangular linear system: with B = diag(beta) and L = tril(B K K^T, -1), we have (I + L) W = B K, so W = (I + L)^{-1} B K and U = (I + L)^{-1} B V. The inverse of the unit lower-triangular I + L is computed by forward substitution, which is a short loop of matrix multiplications inside each chunk. The chunkwise algorithm then mirrors additive linear attention exactly, only with the value matrix V replaced by the corrected pseudo-values U - W S^T. Everything is dense matmul, giving O(L C d + L d^2) FLOPs with O(L/C) sequential steps for chunk size C. For memory, chunk boundary states are recomputed in the backward pass rather than stored.
 
-The architectural details are chosen to keep the recurrence stable and the code simple. Queries and keys pass through a short depthwise causal convolution of kernel size 4 and a SiLU nonlinearity, then are L2-normalized per head so the transition is a true projection when beta_t is near one. The query is scaled by d_k^{-1/2} before the Q K^T products. Values receive the same short convolution. The writing strength beta_t is one scalar per head computed from the input. Before the output projection, a per-head RMSNorm stabilizes the layer. The code below implements a self-contained training-time DeltaNet mixer; it pads the sequence to a multiple of the chunk size, builds the triangular inverse within each chunk, and carries the d_k by d_v state from chunk to chunk.
+The architectural details are chosen to keep the recurrence stable and the code simple. Queries and keys pass through a short depthwise causal convolution of kernel size 4 and a SiLU nonlinearity, then are L2-normalized so the transition is a true projection when beta_t is near one. The query is scaled by d_k^{-1/2} before the Q K^T products. Values receive the same short convolution. The writing strength beta_t is one sigmoid scalar per head computed from the input. Before the output projection, a per-head RMSNorm stabilizes the layer. Below is the training kernel exactly as derived: it pre-multiplies beta into k and v, builds the triangular inverse of I + L by forward substitution within each chunk, and carries the d_k by d_v state S from chunk to chunk while emitting the corrected write u_i - w_i S at every step.
+
+```python
+import torch
+from einops import rearrange
+
+
+def delta_rule_chunkwise(q, k, v, beta, chunk_size=64):
+    """Chunkwise-parallel delta-rule forward.
+    q,k,v: [b, h, L, d_k] (q,k already SiLU + L2-normalized); beta: [b, h, L] in (0,1)."""
+    b, h, L, d_k = q.shape
+    q = q * (d_k ** -0.5)                  # softmax-style scaling
+    v_beta = v * beta[..., None]           # V_beta = diag(beta) V
+    k_beta = k * beta[..., None]           # K_beta = diag(beta) K
+    assert L % chunk_size == 0
+
+    q, k, v_beta, k_beta = map(
+        lambda x: rearrange(x, 'b h (n c) d -> b h n c d', c=chunk_size),
+        (q, k, v_beta, k_beta),
+    )
+
+    # A = (I + tril(diag(beta) K K^T, -1))^{-1}; beta is folded into K_beta/V_beta.
+    tri = torch.triu(torch.ones(chunk_size, chunk_size, dtype=torch.bool, device=q.device), 0)
+    attn = -(k_beta @ k.transpose(-1, -2)).masked_fill(tri, 0)        # row r, col i: -beta_r k_r^T k_i
+    for i in range(1, chunk_size):                                    # invert (I + L) in place
+        attn[..., i, :i] = attn[..., i, :i] + (attn[..., i, :, None].clone()
+                                               * attn[..., :, :i].clone()).sum(-2)
+    attn = attn + torch.eye(chunk_size, dtype=torch.float, device=q.device)
+
+    u = attn @ v_beta                    # U = A V_beta = T V
+    w = attn @ k_beta                    # W = A K_beta = T K
+
+    S = k.new_zeros(b, h, d_k, v_beta.shape[-1])      # transposed state [d_k, d_v]
+    o = torch.zeros_like(v_beta)
+    tri1 = torch.triu(torch.ones(chunk_size, chunk_size, dtype=torch.bool, device=q.device), 1)
+    for i in range(L // chunk_size):
+        q_i, k_i = q[:, :, i], k[:, :, i]
+        a_i = (q_i @ k_i.transpose(-1, -2)).masked_fill_(tri1, 0)     # intra-chunk causal Q K^T
+        u_i = u[:, :, i] - w[:, :, i] @ S                            # corrected writes
+        o[:, :, i] = q_i @ S + a_i @ u_i                            # inter- + intra-chunk read
+        S = S + k_i.transpose(-1, -2) @ u_i                         # transposed state update
+    return rearrange(o, 'b h n c d -> b h (n c) d'), S
+```
+
+That function is the whole delta-rule mechanism; the surrounding layer only has to supply the projections, the short convolutions above, and the writing-strength scalar, then hand q, k, v, beta to it. In production the L2-normalization of q and k is fused into the kernel rather than called out as a separate step, and the layer dispatches to a fused single-step recurrent form — the bare S_t = S_{t-1}(I - beta_t k_t k_t^T) + beta_t v_t k_t^T recurrence this was derived from — whenever the sequence is short enough (T <= 64) that chunking would only add overhead; otherwise it calls the chunkwise op above:
 
 ```python
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-
-
-class RMSNorm(nn.Module):
-    def __init__(self, dim, eps=1e-6):
-        super().__init__()
-        self.eps = eps
-
-    def forward(self, x):
-        return x * torch.rsqrt(x.pow(2).mean(-1, keepdim=True) + self.eps)
+from einops import rearrange
+from fla.modules import RMSNorm, ShortConvolution
+from fla.ops.delta_rule import chunk_delta_rule, fused_recurrent_delta_rule
 
 
 class DeltaNet(nn.Module):
-    """Self-contained training-time DeltaNet token mixer.
-
-    Replaces softmax attention with a delta-rule linear attention layer.
-    Input shape: (batch, seq_len, hidden_size).
-    Output shape: (batch, seq_len, hidden_size).
-    """
-
-    def __init__(self, hidden_size=1024, num_heads=16, chunk_size=64,
-                 conv_size=4, norm_eps=1e-6):
+    def __init__(self, hidden_size, num_heads, mode="chunk", conv_size=4, norm_eps=1e-5):
         super().__init__()
-        self.hidden_size = hidden_size
+        assert mode in ["chunk", "fused_recurrent"]
+        self.mode = mode
         self.num_heads = num_heads
         self.head_dim = hidden_size // num_heads
-        self.chunk_size = chunk_size
-
         self.q_proj = nn.Linear(hidden_size, hidden_size, bias=False)
         self.k_proj = nn.Linear(hidden_size, hidden_size, bias=False)
         self.v_proj = nn.Linear(hidden_size, hidden_size, bias=False)
-        self.b_proj = nn.Linear(hidden_size, num_heads, bias=False)
-
-        self.q_conv = nn.Conv1d(hidden_size, hidden_size, conv_size,
-                                groups=hidden_size, bias=False)
-        self.k_conv = nn.Conv1d(hidden_size, hidden_size, conv_size,
-                                groups=hidden_size, bias=False)
-        self.v_conv = nn.Conv1d(hidden_size, hidden_size, conv_size,
-                                groups=hidden_size, bias=False)
-
-        self.o_norm = RMSNorm(self.head_dim, eps=norm_eps)
+        self.b_proj = nn.Linear(hidden_size, num_heads, bias=False)        # writing strength
+        self.q_conv1d = ShortConvolution(hidden_size=hidden_size, kernel_size=conv_size,
+                                         bias=False, activation="silu")
+        self.k_conv1d = ShortConvolution(hidden_size=hidden_size, kernel_size=conv_size,
+                                         bias=False, activation="silu")
+        self.v_conv1d = ShortConvolution(hidden_size=hidden_size, kernel_size=conv_size,
+                                         bias=False, activation="silu")
+        self.o_norm = RMSNorm(self.head_dim, eps=norm_eps, dtype=torch.float32)
         self.o_proj = nn.Linear(hidden_size, hidden_size, bias=False)
 
-    def _short_conv(self, x, conv):
-        # x: (B, T, C) -> causal depthwise conv -> (B, T, C)
-        B, T, C = x.shape
-        x = x.transpose(1, 2)                       # (B, C, T)
-        x = F.pad(x, (conv.kernel_size[0] - 1, 0))
-        x = conv(x)[..., :T]
-        return x.transpose(1, 2)                    # (B, T, C)
-
-    def forward(self, x):
-        B, T, _ = x.shape
-        pad = (self.chunk_size - T % self.chunk_size) % self.chunk_size
-        if pad:
-            x = torch.cat([x, x.new_zeros(B, pad, x.shape[-1])], dim=1)
-        Tp = x.shape[1]
-
-        q = F.silu(self._short_conv(self.q_proj(x), self.q_conv))
-        k = F.silu(self._short_conv(self.k_proj(x), self.k_conv))
-        v = F.silu(self._short_conv(self.v_proj(x), self.v_conv))
-
-        q = q.view(B, Tp, self.num_heads, self.head_dim)
-        k = k.view(B, Tp, self.num_heads, self.head_dim)
-        v = v.view(B, Tp, self.num_heads, self.head_dim)
-
-        q = F.normalize(q, dim=-1)
-        k = F.normalize(k, dim=-1)
-
-        q = q.transpose(1, 2)      # (B, H, Tp, D)
-        k = k.transpose(1, 2)
-        v = v.transpose(1, 2)
-
-        beta = self.b_proj(x).sigmoid().transpose(1, 2)  # (B, H, Tp)
-
-        o, _ = delta_rule_chunkwise(q, k, v, beta, self.chunk_size)
-
-        o = o.transpose(1, 2)      # (B, Tp, H, D)
+    def forward(self, x, recurrent_state=None, use_cache=False):
+        q, _ = self.q_conv1d(x=self.q_proj(x), cache=None, output_final_state=False)
+        k, _ = self.k_conv1d(x=self.k_proj(x), cache=None, output_final_state=False)
+        v, _ = self.v_conv1d(x=self.v_proj(x), cache=None, output_final_state=False)
+        q, k, v = map(lambda t: rearrange(t, 'b t (h d) -> b t h d', h=self.num_heads), (q, k, v))
+        beta = self.b_proj(x).sigmoid()                  # [B,T,H], beta_t in (0,1)
+        mode = "fused_recurrent" if x.shape[1] <= 64 else self.mode
+        op = fused_recurrent_delta_rule if mode == "fused_recurrent" else chunk_delta_rule
+        o, recurrent_state = op(
+            q=q, k=k, v=v, beta=beta,
+            initial_state=recurrent_state,
+            output_final_state=use_cache,
+            use_qk_l2norm_in_kernel=True,
+        )
         o = self.o_norm(o)
-        o = o.reshape(B, Tp, self.hidden_size)
-
-        if pad:
-            o = o[:, :T]
-        return self.o_proj(o)
-
-
-def delta_rule_chunkwise(q, k, v, beta, chunk_size=64):
-    """Chunkwise-parallel delta-rule forward pass.
-
-    q, k, v: (B, H, L, D); beta: (B, H, L)
-    Returns output (B, H, L, D) and the final state.
-    """
-    B, H, L, D = q.shape
-    q = q * (D ** -0.5)
-    v_beta = v * beta[..., None]
-    k_beta = k * beta[..., None]
-    assert L % chunk_size == 0
-    n = L // chunk_size
-
-    q = q.view(B, H, n, chunk_size, D)
-    k = k.view(B, H, n, chunk_size, D)
-    v_beta = v_beta.view(B, H, n, chunk_size, D)
-    k_beta = k_beta.view(B, H, n, chunk_size, D)
-
-    # Build A = (I + L)^{-1}, where L = tril(diag(beta) K K^T, -1).
-    # beta is already folded into k_beta, so -L = -(k_beta @ k^T).
-    triu_mask = torch.triu(torch.ones(chunk_size, chunk_size,
-                                      device=q.device, dtype=torch.bool), 0)
-    attn = -(k_beta @ k.transpose(-1, -2)).masked_fill(triu_mask, 0)
-    for i in range(1, chunk_size):
-        attn[..., i, :i] = attn[..., i, :i] + (
-            attn[..., i, :, None].clone() * attn[..., :, :i].clone()
-        ).sum(-2)
-    A = attn + torch.eye(chunk_size, device=q.device, dtype=q.dtype)
-
-    u = A @ v_beta          # pseudo-values U = A V_beta
-    w = A @ k_beta          # pseudo-keys   W = A K_beta
-
-    S = q.new_zeros(B, H, D, D)
-    o = torch.zeros_like(v_beta)
-    causal_mask = torch.triu(torch.ones(chunk_size, chunk_size,
-                                        device=q.device, dtype=torch.bool), 1)
-
-    for i in range(n):
-        q_i = q[:, :, i]
-        k_i = k[:, :, i]
-        a = (q_i @ k_i.transpose(-1, -2)).masked_fill(causal_mask, 0)
-        u_i = u[:, :, i] - w[:, :, i] @ S
-        o[:, :, i] = q_i @ S + a @ u_i
-        S = S + k_i.transpose(-1, -2) @ u_i
-
-    return o.view(B, H, L, D), S
+        return self.o_proj(rearrange(o, 'b t h d -> b t (h d)')), recurrent_state
 ```
+
+This layer drops into a pre-norm transformer block in place of softmax self-attention, with no positional embedding needed since the recurrence itself carries order, giving constant-memory inference together with the targeted, content-addressed forgetting that neither additive linear attention nor the elementwise-gated variants can provide.
