@@ -24,59 +24,25 @@ class MixedOp(nn.Module):
             if 'pool' in name:
                 op = nn.Sequential(op, nn.BatchNorm2d(C, affine=False))
             self.ops.append(op)
-
     def forward(self, x, weights):
         return sum(w * op(x) for w, op in zip(weights, self.ops))
 
-class Cell(nn.Module):
-    def __init__(self, steps, multiplier, C, reduction):
-        super().__init__()
-        self.steps = steps
-        self.multiplier = multiplier
-        self.reduction = reduction
-        self.ops = nn.ModuleList()
-        for i in range(steps):
-            for j in range(2 + i):
-                stride = 2 if reduction and j < 2 else 1
-                self.ops.append(MixedOp(C, stride))
-
-    def forward(self, s0, s1, weights):
-        states, offset = [s0, s1], 0
-        for _ in range(self.steps):
-            s = sum(self.ops[offset + j](h, weights[offset + j])
-                    for j, h in enumerate(states))
-            offset += len(states)
-            states.append(s)
-        return torch.cat(states[-self.multiplier:], dim=1)
-
 class SearchNetwork(nn.Module):
     def _initialize_alphas(self, steps=4):
-        k = sum(1 for i in range(steps) for _ in range(2 + i))
-        self.alphas_normal = nn.Parameter(torch.zeros(k, len(PRIMITIVES)))
+        k = sum(1 for i in range(steps) for _ in range(2+i))
+        self.alphas_normal = nn.Parameter(torch.zeros(k, len(PRIMITIVES)))  # uniform softmax at init
         self.alphas_reduce = nn.Parameter(torch.zeros(k, len(PRIMITIVES)))
-
     def arch_parameters(self):
         return [self.alphas_normal, self.alphas_reduce]
-
     def named_weight_parameters(self):
         arch_ids = {id(p) for p in self.arch_parameters()}
         return [(n, p) for n, p in self.named_parameters() if id(p) not in arch_ids]
-
     def weight_parameters(self):
         return [p for _, p in self.named_weight_parameters()]
-
-    def forward(self, x):
-        s0 = s1 = self.stem(x)
-        for cell in self.cells:
-            alpha = self.alphas_reduce if cell.reduction else self.alphas_normal
-            s0, s1 = s1, cell(s0, s1, F.softmax(alpha, dim=-1))
-        return self.classifier(self.global_pooling(s1).view(s1.size(0), -1))
-
     def genotype(self):
         return {
             'normal': parse_cell(F.softmax(self.alphas_normal, dim=-1).detach().cpu()),
             'reduce': parse_cell(F.softmax(self.alphas_reduce, dim=-1).detach().cpu()),
-            'concat': range(2 + self.steps - self.multiplier, self.steps + 2),
         }
 
 def _concat(xs):
@@ -88,7 +54,7 @@ def construct_model_from_theta(model, theta):
     offset = 0
     for name, p in model.named_weight_parameters():
         n = p.numel()
-        model_dict[name] = theta[offset:offset + n].view_as(p)
+        model_dict[name] = theta[offset:offset+n].view_as(p)
         offset += n
     assert offset == theta.numel()
     model_new.load_state_dict(model_dict)
@@ -96,8 +62,8 @@ def construct_model_from_theta(model, theta):
 
 def compute_unrolled_model(model, train_batch, eta, weight_opt, momentum, weight_decay):
     weights = list(model.weight_parameters())
-    loss = L_train(model, train_batch)
     theta = _concat([p.detach() for p in weights])
+    loss = L_train(model, train_batch)
     moment = _concat([weight_opt.state[p].get('momentum_buffer', torch.zeros_like(p))
                       for p in weights]) * momentum
     grads = torch.autograd.grad(loss, weights)
@@ -105,51 +71,46 @@ def compute_unrolled_model(model, train_batch, eta, weight_opt, momentum, weight
     return construct_model_from_theta(model, theta - eta * (moment + dtheta))
 
 def hessian_vector_product(model, train_batch, vector, r=1e-2):
-    weights = list(model.weight_parameters())
+    weights = list(model.weight_parameters())            # perturb current w, not unrolled w'
     R = r / _concat(vector).norm()
-    for p, v in zip(weights, vector):
-        p.data.add_(R, v)
-    grads_p = torch.autograd.grad(L_train(model, train_batch), model.arch_parameters())
-    for p, v in zip(weights, vector):
-        p.data.sub_(2 * R, v)
-    grads_n = torch.autograd.grad(L_train(model, train_batch), model.arch_parameters())
-    for p, v in zip(weights, vector):
-        p.data.add_(R, v)
-    return [(gp - gn) / (2 * R) for gp, gn in zip(grads_p, grads_n)]
+    for p, v in zip(weights, vector): p.data.add_(R, v)
+    g_plus = torch.autograd.grad(L_train(model, train_batch), model.arch_parameters())
+    for p, v in zip(weights, vector): p.data.sub_(2*R, v)
+    g_minus = torch.autograd.grad(L_train(model, train_batch), model.arch_parameters())
+    for p, v in zip(weights, vector): p.data.add_(R, v)
+    return [(gp - gm) / (2*R) for gp, gm in zip(g_plus, g_minus)]
 
-def architect_step(model, train_batch, val_batch, eta, weight_opt, arch_opt, unrolled=True):
+def arch_step(model, train_batch, val_batch, eta, weight_opt, arch_opt, unrolled=True):
     arch_opt.zero_grad()
     if not unrolled or eta == 0:
         L_val(model, val_batch).backward()
     else:
-        unrolled_model = compute_unrolled_model(
+        unrolled = compute_unrolled_model(
             model, train_batch, eta, weight_opt, momentum=0.9, weight_decay=3e-4)
-        L_val(unrolled_model, val_batch).backward()
-        dalpha = [a.grad.detach().clone() for a in unrolled_model.arch_parameters()]
-        vector = [p.grad.detach().clone() for p in unrolled_model.weight_parameters()]
+        L_val(unrolled, val_batch).backward()
+        dalpha = [a.grad.detach().clone() for a in unrolled.arch_parameters()]
+        vector = [p.grad.detach().clone() for p in unrolled.weight_parameters()]
         implicit = hessian_vector_product(model, train_batch, vector)
         for alpha, da, h in zip(model.arch_parameters(), dalpha, implicit):
             alpha.grad = (da - eta * h).detach().clone()
     arch_opt.step()
 
 def search(model, train_loader, val_loader):
-    weight_opt = torch.optim.SGD(model.weight_parameters(), lr=0.025,
-                                 momentum=0.9, weight_decay=3e-4)
-    arch_opt = torch.optim.Adam(model.arch_parameters(), lr=3e-4,
-                                betas=(0.5, 0.999), weight_decay=1e-3)
-    for train_batch in train_loader:
-        val_batch = next(iter(val_loader))
-        eta = weight_opt.param_groups[0]['lr']
-        architect_step(model, train_batch, val_batch, eta, weight_opt, arch_opt, unrolled=True)
-        weight_opt.zero_grad()
-        L_train(model, train_batch).backward()
+    opt_w = torch.optim.SGD(model.weight_parameters(), lr=0.025, momentum=0.9, weight_decay=3e-4)
+    opt_a = torch.optim.Adam(model.arch_parameters(), lr=3e-4, betas=(0.5, 0.999), weight_decay=1e-3)
+    for tb in train_loader:
+        vb = next(iter(val_loader))
+        eta = opt_w.param_groups[0]['lr']
+        arch_step(model, tb, vb, eta, opt_w, opt_a, unrolled=True)
+        opt_w.zero_grad()
+        L_train(model, tb).backward()
         nn.utils.clip_grad_norm_(model.weight_parameters(), 5)
-        weight_opt.step()
+        opt_w.step()
 
 def parse_cell(weights, steps=4, k=2):
     gene, start, n = [], 0, 2
     for _ in range(steps):
-        node_edges = weights[start:start + n]
+        node_edges = weights[start:start+n]
         keep = sorted(range(n),
                       key=lambda j: -max(node_edges[j][op].item()
                                          for op in range(len(PRIMITIVES)) if op != NONE))[:k]
@@ -157,7 +118,6 @@ def parse_cell(weights, steps=4, k=2):
             op = max((op for op in range(len(PRIMITIVES)) if op != NONE),
                      key=lambda op: node_edges[j][op].item())
             gene.append((PRIMITIVES[op], j))
-        start += n
-        n += 1
+        start += n; n += 1
     return gene
 ```
