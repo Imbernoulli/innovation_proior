@@ -17,21 +17,18 @@ from torch.nn import functional as F
 class FullAttentionResiduals(nn.Module):
     def __init__(self, config):
         super().__init__()
-        # One query per sublayer destination (attention + MLP per layer)
-        # plus one query for the final readout before the head.
         self.queries = nn.Parameter(torch.zeros(2 * config.n_layer, config.n_embd))
         self.query_out = nn.Parameter(torch.zeros(config.n_embd))
 
     def attend(self, sources, query):
-        # sources: list of (B, T, D) tensors; query: (D,)
-        stacked = torch.stack(sources, dim=0)                 # (S, B, T, D)
-        keys = F.rms_norm(stacked, (stacked.size(-1),))       # score keys only
+        stacked = torch.stack(sources, dim=0)                         # (S, B, T, D)
+        keys = F.rms_norm(stacked, (stacked.size(-1),))               # RMSNorm keys
         logits = torch.einsum('d, s b t d -> s b t', query, keys)
-        weights = logits.softmax(dim=0)                       # (S, B, T)
+        weights = logits.softmax(dim=0)
         return torch.einsum('s b t, s b t d -> b t d', weights, stacked)
 
     def start(self, x):
-        return [x]                                            # source 0 = embedding
+        return [x]                                                    # embedding is source 0
 
     def before_sublayer(self, sources, q_index):
         return self.attend(sources, self.queries[q_index])
@@ -50,8 +47,7 @@ class FullAttentionResiduals(nn.Module):
         return {id(p) for p in self.query_parameters()}
 
     def optimizer_groups(self, learning_rate):
-        return [{'params': self.query_parameters(),
-                 'lr': learning_rate * 0.1, 'weight_decay': 0.0}]
+        return [{'params': self.query_parameters(), 'lr': learning_rate * 0.1, 'weight_decay': 0.0}]
 
 
 class GPT(nn.Module):
@@ -82,13 +78,11 @@ class GPT(nn.Module):
         for block in self.transformer.h:
             h = self.depth_flow.before_sublayer(sources, q)
             q += 1
-            sources = self.depth_flow.after_sublayer(
-                sources, block.attn(block.ln_1(h)))
+            sources = self.depth_flow.after_sublayer(sources, block.attn(block.ln_1(h)))
 
             h = self.depth_flow.before_sublayer(sources, q)
             q += 1
-            sources = self.depth_flow.after_sublayer(
-                sources, block.mlp(block.ln_2(h)))
+            sources = self.depth_flow.after_sublayer(sources, block.mlp(block.ln_2(h)))
 
         x = self.depth_flow.readout(sources)
         x = self.transformer.ln_f(x)
@@ -104,9 +98,9 @@ class GPT(nn.Module):
 
     def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
         query_ids = self.depth_flow.extra_parameter_ids()
-        param_dict = {pn: p for pn, p in self.named_parameters() if p.requires_grad}
-        decay = [p for n, p in param_dict.items() if p.dim() >= 2 and id(p) not in query_ids]
-        nodecay = [p for n, p in param_dict.items() if p.dim() < 2 and id(p) not in query_ids]
+        pd = {n: p for n, p in self.named_parameters() if p.requires_grad}
+        decay = [p for n, p in pd.items() if p.dim() >= 2 and id(p) not in query_ids]
+        nodecay = [p for n, p in pd.items() if p.dim() < 2 and id(p) not in query_ids]
         optim_groups = [
             {'params': decay, 'weight_decay': weight_decay},
             {'params': nodecay, 'weight_decay': 0.0},
