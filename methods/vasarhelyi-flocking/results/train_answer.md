@@ -10,154 +10,110 @@ Third, confinement and obstacle avoidance are handled by the same braking-gated 
 
 Fourth, a self-propulsion term drives the agent along its current heading at the target flocking speed. This sets the cruise speed while the alignment term synchronizes headings. The four terms are summed vectorially and the resulting desired velocity is capped in magnitude at the vehicle's maximum speed, preserving direction. The real acceleration then follows a first-order relaxation toward that capped command with bounded acceleration, exactly as the hardware does.
 
-The method has eleven coupled parameters, including repulsion cutoff and gain, friction offset and gain, braking-curve parameters, wall-shill parameters, and the shill speed. Their map to collective behavior is nonlinear, multimodal, and noisy, so I do not hand-tune them. Instead I optimize them with CMA-ES. The objective is a single conjunctive scalar fitness built from measurable order parameters: velocity correlation, collision risk, wall excursion, mean speed relative to the target, number of disconnected agents, and minimum cluster size. Each requirement is mapped smoothly into the unit interval, with a soft peak for quantities that should be near zero such as collision risk, so the optimizer retains a gradient even when the flock is performing badly. CMA-ES runs for roughly a hundred generations on a population of about a hundred individuals, each evaluation being a stochastic multi-agent flight, and the process is repeated for different target speeds because the friction law must scale with speed rather than being fixed once and for all.
+The method has eleven coupled parameters, including repulsion cutoff and gain, friction offset and gain, braking-curve parameters, wall-shill parameters, and the shill speed. Their map to collective behavior is nonlinear, multimodal, and noisy, so I do not hand-tune them. Instead I optimize them with CMA-ES. The objective is a single conjunctive scalar fitness built from measurable order parameters: velocity correlation, collision risk, wall excursion, mean speed relative to the target, number of disconnected agents, and minimum cluster size. Each requirement is mapped smoothly into the unit interval, with a soft peak for quantities that should be near zero such as collision risk, so the optimizer retains a gradient even when the flock is performing badly. CMA-ES runs for roughly a hundred and fifty generations on a population of about a hundred individuals, each evaluation being a stochastic multi-agent flight, and the process is repeated for different target speeds because the friction law must scale with speed rather than being fixed once and for all.
 
-The following Python script is a compact, runnable illustration of the core idea. It simulates a small two-dimensional flock with the braking-gated friction, linear repulsion, wall shills, and self-propulsion. The agents are integrated with simple delayed, inertia-limited dynamics, and the script prints the final velocity correlation and minimum pairwise distance so you can see that the flock remains ordered and collision-free.
+The two pieces below are the actual onboard control-law code: the braking curve, and the per-agent desired-velocity generator called every control cycle by each vehicle (or by each simulated agent). The generator turns any nearby terrain higher than the vehicle's own altitude into virtual obstacle shills that push it away from the surface, forms the self-propulsion term along the current heading at $v_\text{flock}$, sums the linear half-spring repulsion and the braking-gated friction over whatever neighbors are within communication range, folds in the same braking-gated correction against every wall and obstacle shill — with the slack term dropped and the gain fixed to one — and finally caps the summed command's magnitude at $v_\text{max}$ before handing it back as the horizontal velocity set-point.
 
-```python
-import numpy as np
+```matlab
+function D = Dfunction(r, a, p)
+    % ideal braking curve: linear (gain p) near 0, constant-deceleration sqrt-branch at range; C^1 at r = a/p^2
+    D = r*0;
+    temp       = r < a/p/p;
+    condition1 = r > 0 & temp;          % 0 < r < a/p^2  -> r*p
+    condition2 = ~temp;                 % r >= a/p^2     -> sqrt(2ar - a^2/p^2)
+    D(condition1) = r(condition1) * p;
+    D(condition2) = sqrt(2*a*r(condition2) - a*a/(p*p));
+end
+```
 
-# --- parameters ---
-N = 40
-DT = 0.05
-STEPS = 4000
-L = 120.0          # arena half-size
-V_FLOCK = 6.0
-V_MAX = 8.0
-A_MAX = 6.0
-TAU_CTRL = 1.0
-COMM_RANGE = 50.0
-R_REP_0 = 8.0
-P_REP = 0.6
-R_FRICT_0 = 6.0
-C_FRICT = 0.8
-V_FRICT_SLACK = 0.5
-P_FRICT = 0.35
-A_FRICT = 3.0
-R_SHILL_0 = 3.0
-V_SHILL = 2.0
-P_SHILL = 0.5
-A_SHILL = 4.0
+```matlab
+function [posDesired_id, velDesired_id, accDesired_id, control_mode_id] = ...
+        Vasarhelyi_module_generate_desire_i(id, state_i, states_neighbor, ...
+                                            dis_to_neighbor, posid_to_neighbor, terrain, terrain_params)
+    file_name_param = 'Vasarhelyi_module_parameters';
+    [~, str_core] = get_multi_core_value();
+    fun_params = str2func([file_name_param, str_core]);
 
-# --- braking curve ---
-def Dfunction(r, a, p):
-    out = np.zeros_like(r)
-    r = np.asarray(r, dtype=float)
-    cross = a / (p * p)
-    mask_lin = (r > 0) & (r < cross)
-    mask_sqrt = r >= cross
-    out[mask_lin] = r[mask_lin] * p
-    out[mask_sqrt] = np.sqrt(np.maximum(0.0, 2 * a * r[mask_sqrt] - a * a / (p * p)))
-    return out
+    % 11 tuned control-law knobs + vehicle/world constants
+    [r_com, v_flock, r_rep_0, p_rep, r_frict_0, c_frict, v_frict, p_frict, a_frict, ...
+     r_shill_0, v_shill, p_shill, a_shill, v_max, dim, height, dr_shill, ...
+     pos_shill, vel_shill] = fun_params();
 
-# --- state ---
-np.random.seed(0)
-pos = np.random.uniform(-L * 0.6, L * 0.6, size=(N, 2))
-vel = np.random.randn(N, 2)
-vel = V_FLOCK * vel / np.linalg.norm(vel, axis=1, keepdims=True)
+    VELOCITY_HORIZONTAL_CONTROL_TYPE = 7;
+    posDesired_id   = [state_i(1:2); height; 0];
+    velDesired_id   = zeros(4,1);  accDesired_id = zeros(4,1);
+    control_mode_id = VELOCITY_HORIZONTAL_CONTROL_TYPE;
+    pos2DId        = state_i(1:2);   vel2DId = state_i(4:5);
+    vel2D_neighbor = states_neighbor(4:5,:);
 
-# simple delay buffer: store recent positions/velocities
-delay_steps = int(1.0 / DT)
-history_pos = [pos.copy() for _ in range(delay_steps + 1)]
-history_vel = [vel.copy() for _ in range(delay_steps + 1)]
+    % build obstacle shill agents from local terrain (each pushes the agent away from the obstacle)
+    if ~isempty(terrain)
+        r_w = 5;
+        r_sub = floor((pos2DId(2)-terrain_params(2,1))/terrain_params(2,2));
+        c_sub = floor((pos2DId(1)-terrain_params(1,1))/terrain_params(1,2));
+        h_sub = floor(r_w/terrain_params(2,2));  w_sub = floor(r_w/terrain_params(1,2));
+        [h,w] = size(terrain);
+        r_min = max(1,r_sub-h_sub); r_max = min(h,r_sub+h_sub);
+        c_min = max(1,c_sub-w_sub); c_max = min(w,c_sub+w_sub);
+        terrain_sub = terrain(r_min:r_max,c_min:c_max);
+        [r_obs,c_obs] = find(terrain_sub > state_i(3));
+        if ~isempty(r_obs)
+            r_obs = r_obs + r_min - 1;  c_obs = c_obs + c_min - 1;
+            temp_p_shill = [(c_obs'*terrain_params(1,2))+terrain_params(1,1);
+                            (r_obs'*terrain_params(2,2))+terrain_params(2,1)];
+            temp = pos2DId - temp_p_shill;
+            vel_shill = [vel_shill, temp./vecnorm(temp)];
+            pos_shill = [pos_shill, temp_p_shill];
+        end
+    end
 
-def wall_shills(p):
-    shills = []
-    # four inward-moving wall shills near each side
-    shills.append((np.array([-L, p[1]]), np.array([ V_SHILL, 0.0])))
-    shills.append((np.array([ L, p[1]]), np.array([-V_SHILL, 0.0])))
-    shills.append((np.array([p[0], -L]), np.array([0.0,  V_SHILL])))
-    shills.append((np.array([p[0],  L]), np.array([0.0, -V_SHILL])))
-    return shills
+    % self-propulsion toward v_flock along current heading
+    velIdNorm = norm(vel2DId);
+    if velIdNorm == 0
+        vr = rand(dim,1); vr = vr/norm(vr); vFlockId = v_flock * vr;
+    else
+        vFlockId = v_flock * vel2DId/velIdNorm;
+    end
 
-for step in range(STEPS):
-    # delayed perception
-    delayed_pos = history_pos[0]
-    delayed_vel = history_vel[0]
-    history_pos.append(pos.copy())
-    history_vel.append(vel.copy())
-    history_pos.pop(0)
-    history_vel.pop(0)
+    vRepId = zeros(2,1); vFrictId = zeros(2,1);
+    if ~isempty(dis_to_neighbor)
+        % linear half-spring repulsion
+        inRep = find(dis_to_neighbor < r_rep_0);
+        if ~isempty(inRep)
+            d = repmat(dis_to_neighbor(inRep), dim, 1);
+            vRepId = p_rep * sum((r_rep_0 - d) .* posid_to_neighbor(:,inRep)./d, 2);
+        end
+        % braking-gated velocity alignment
+        vijFrictMax = max(v_frict, Dfunction(dis_to_neighbor - r_frict_0, a_frict, p_frict));
+        velij = repmat(vel2DId,1,length(dis_to_neighbor)) - vel2D_neighbor;
+        vij   = sqrt(sum(velij.^2,1));
+        inFr  = find(vij > vijFrictMax);
+        if ~isempty(inFr)
+            vN = repmat(vij(inFr),dim,1); vM = repmat(vijFrictMax(inFr),dim,1);
+            vFrictId = -c_frict * sum((vN - vM).*velij(:,inFr)./vN, 2);
+        end
+    end
 
-    desired = np.zeros_like(pos)
-    for i in range(N):
-        v = vel[i]
-        v_norm = np.linalg.norm(v)
-        if v_norm < 1e-6:
-            v_dir = np.random.randn(2)
-            v_dir /= np.linalg.norm(v_dir)
-        else:
-            v_dir = v / v_norm
-        v_self = V_FLOCK * v_dir
+    % walls/obstacles: braking-gated form vs shill agents, no slack, gain 1
+    vShillId = zeros(dim,1);
+    posis = repmat(pos2DId,1,size(pos_shill,2)) - pos_shill;
+    disis = sqrt(sum(posis.^2,1));
+    inS   = find(disis < r_com); disisIn = disis(inS);
+    visFrictMax = Dfunction(disisIn - r_shill_0, a_shill, p_shill);
+    velis = repmat(vel2DId,1,length(disisIn)) - v_shill * vel_shill(:,inS);
+    vis   = sqrt(sum(velis.^2,1));
+    inFrS = find(vis > visFrictMax);
+    if ~isempty(inFrS)
+        vN = repmat(vis(inFrS),dim,1); vM = repmat(visFrictMax(inFrS),dim,1);
+        vShillId = - sum((vN - vM).*velis(:,inFrS)./vN, 2);
+    end
 
-        # linear half-spring repulsion
-        v_rep = np.zeros(2)
-        for j in range(N):
-            if i == j:
-                continue
-            dvec = pos[i] - delayed_pos[j]
-            dist = np.linalg.norm(dvec)
-            if dist < R_REP_0 and dist > 1e-6:
-                v_rep += P_REP * (R_REP_0 - dist) * dvec / dist
-
-        # braking-gated friction
-        v_frict = np.zeros(2)
-        for j in range(N):
-            if i == j:
-                continue
-            dvec = delayed_pos[i] - delayed_pos[j]
-            dist = np.linalg.norm(dvec)
-            if dist > COMM_RANGE:
-                continue
-            vij = np.linalg.norm(delayed_vel[i] - delayed_vel[j])
-            threshold = max(V_FRICT_SLACK, Dfunction(np.array([dist - R_FRICT_0]), A_FRICT, P_FRICT)[0])
-            if vij > threshold:
-                dv = delayed_vel[i] - delayed_vel[j]
-                v_frict -= C_FRICT * (vij - threshold) * dv / vij
-
-        # wall/obstacle shills
-        v_shill = np.zeros(2)
-        for p_s, v_s in wall_shills(pos[i]):
-            dvec = pos[i] - p_s
-            dist = np.linalg.norm(dvec)
-            threshold = Dfunction(np.array([dist - R_SHILL_0]), A_SHILL, P_SHILL)[0]
-            vis = np.linalg.norm(vel[i] - v_s)
-            if vis > threshold:
-                dv = vel[i] - v_s
-                v_shill -= (vis - threshold) * dv / vis
-
-        v_cmd = v_self + v_rep + v_frict + v_shill
-        s = np.linalg.norm(v_cmd)
-        if s > V_MAX:
-            v_cmd = v_cmd / s * V_MAX
-        desired[i] = v_cmd
-
-    # realistic dynamics: first-order relaxation + bounded acceleration
-    dv = desired - vel
-    for i in range(N):
-        n = np.linalg.norm(dv[i])
-        if n > 1e-6:
-            dv[i] = dv[i] / n * min(n / TAU_CTRL, A_MAX)
-    vel += dv * DT
-    pos += vel * DT
-
-# --- diagnostics ---
-corr = 0.0
-count = 0
-min_dist = float('inf')
-for i in range(N):
-    for j in range(i + 1, N):
-        d = np.linalg.norm(pos[i] - pos[j])
-        if d < min_dist:
-            min_dist = d
-        vi, vj = vel[i], vel[j]
-        ni, nj = np.linalg.norm(vi), np.linalg.norm(vj)
-        if ni > 1e-6 and nj > 1e-6:
-            corr += np.dot(vi, vj) / (ni * nj)
-            count += 1
-corr /= max(1, count)
-print(f"velocity correlation: {corr:.3f}")
-print(f"minimum pairwise distance: {min_dist:.2f} m")
+    % superpose and cap magnitude (keep direction) at v_max
+    v2D = vFlockId + vRepId + vFrictId + vShillId;
+    s = norm(v2D);
+    if s > v_max,  v2D = v2D./s * v_max;  end
+    velDesired_id(1:2) = v2D;
+end
 ```
 
 In short, the Vásárhelyi flocking model solves real-robot flocking by redesigning alignment around the hard kinematic fact that braking distance scales with the square of speed. Soft linear repulsion prevents crowding, the braking curve gates velocity synchronization so it damps only dangerous relative motion, virtual shill agents enforce confinement and obstacle avoidance, self-propulsion sets the cruise, and CMA-ES tunes the coupled parameters against a conjunctive fitness of order parameters. The result is a control law that remains coherent, bounded, and collision-free across the high speeds where earlier fixed-friction rules fail.
