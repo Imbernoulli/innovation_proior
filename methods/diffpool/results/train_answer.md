@@ -14,52 +14,51 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 def diff_pool(x, adj, s, normalize=True):
-    # x: [B, n, d] embeddings; adj: [B, n, n]; s: [B, n, m] raw assignment scores
-    s = torch.softmax(s, dim=-1)                                  # row-stochastic S
-    x_next = torch.matmul(s.transpose(1, 2), x)                   # X' = S^T Z  -> [B, m, d]
-    adj_next = torch.matmul(torch.matmul(s.transpose(1, 2), adj), s)  # A' = S^T A S
-    link_loss = torch.norm(adj - torch.matmul(s, s.transpose(1, 2)), p=2)
+    # x: [B,n,d] embeddings (Z) ; adj: [B,n,n] ; s: [B,n,m] raw assignment scores
+    s = torch.softmax(s, dim=-1)                                      # S = softmax(scores), row-wise
+    out     = torch.matmul(s.transpose(1, 2), x)                      # X' = Sᵀ Z      -> [B,m,d]
+    out_adj = torch.matmul(torch.matmul(s.transpose(1, 2), adj), s)   # A' = Sᵀ A S    -> [B,m,m]
+    link_loss = adj - torch.matmul(s, s.transpose(1, 2))              # A - S Sᵀ
+    link_loss = torch.norm(link_loss, p=2)                            # ‖A - S Sᵀ‖_F
     if normalize:
         link_loss = link_loss / adj.numel()
-    ent_loss = (-s * torch.log(s + 1e-15)).sum(dim=-1).mean()
-    return x_next, adj_next, link_loss, ent_loss
+    ent_loss = (-s * torch.log(s + 1e-15)).sum(dim=-1).mean()         # mean_i H(S_i)
+    return out, out_adj, link_loss, ent_loss
 
 class GNN(nn.Module):
-    """Two-layer GCN-style message passing on dense (adj, x)."""
+    """GCN-style message passing on a dense (adj, x); permutation-equivariant."""
     def __init__(self, in_dim, hidden_dim, out_dim):
         super().__init__()
-        self.w1 = nn.Linear(in_dim, hidden_dim)
-        self.w2 = nn.Linear(hidden_dim, out_dim)
-        self.bn = nn.BatchNorm1d(hidden_dim)
+        self.W1 = nn.Linear(in_dim, hidden_dim)
+        self.W2 = nn.Linear(hidden_dim, out_dim)
+        self.bn1 = nn.BatchNorm1d(hidden_dim)
 
     def norm_adj(self, adj):
-        adj = adj + torch.eye(adj.size(-1), device=adj.device)
+        adj = adj + torch.eye(adj.size(-1), device=adj.device)        # Ã = A + I
         dinv = adj.sum(-1, keepdim=True).clamp(min=1).pow(-0.5)
-        return dinv * adj * dinv.transpose(1, 2)
+        return dinv * adj * dinv.transpose(1, 2)                       # D̃^{-1/2} Ã D̃^{-1/2}
 
     def forward(self, adj, x):
         a = self.norm_adj(adj)
-        h = F.relu(torch.matmul(a, self.w1(x)))
+        h = F.relu(torch.matmul(a, self.W1(x)))
         b, n, c = h.shape
-        h = self.bn(h.reshape(b * n, c)).reshape(b, n, c)
-        h = torch.matmul(a, self.w2(h))
-        return F.normalize(h, p=2, dim=-1)
+        h = self.bn1(h.reshape(b * n, c)).reshape(b, n, c)
+        h = torch.matmul(a, self.W2(h))
+        return F.normalize(h, p=2, dim=-1)                            # ℓ2-normalize per node
 
 class DiffPoolNet(nn.Module):
     def __init__(self, in_dim, hidden, num_classes, max_nodes, assign_ratio=0.25, num_pool=1):
         super().__init__()
-        self.embed_gnns = nn.ModuleList()
-        self.pool_gnns = nn.ModuleList()
+        self.embed_gnns, self.pool_gnns = nn.ModuleList(), nn.ModuleList()
         n, d_in = max_nodes, in_dim
         for _ in range(num_pool):
-            m = max(int(assign_ratio * n), 1)
+            m = max(int(assign_ratio * n), 1)                         # n_{l+1} = α · n_l
             self.embed_gnns.append(GNN(d_in, hidden, hidden))
             self.pool_gnns.append(GNN(d_in, hidden, m))
             n, d_in = m, hidden
         self.final_embed = GNN(d_in, hidden, hidden)
         self.classifier = nn.Sequential(
-            nn.Linear(hidden, hidden), nn.ReLU(), nn.Linear(hidden, num_classes)
-        )
+            nn.Linear(hidden, hidden), nn.ReLU(), nn.Linear(hidden, num_classes))
 
     def forward(self, adj, x):
         link_total = ent_total = 0.0
@@ -67,10 +66,9 @@ class DiffPoolNet(nn.Module):
             z = embed_gnn(adj, x)
             s = pool_gnn(adj, x)
             x, adj, lp, ent = diff_pool(z, adj, s)
-            link_total += lp
-            ent_total += ent
+            link_total, ent_total = link_total + lp, ent_total + ent
         z = self.final_embed(adj, x)
-        graph_vec = z.sum(dim=1)
+        graph_vec = z.sum(dim=1)                                      # final S = ones -> single graph vector
         return self.classifier(graph_vec), link_total, ent_total
 
 def train_step(model, batch, opt):
