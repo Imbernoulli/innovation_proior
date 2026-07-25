@@ -32,29 +32,11 @@ always finite.
 Example: for `n = 5`, `K = 2`, `L = 2`, `a = [1, 5, 5, 1, 5]` the answer is `17`
 (rugs `[1,1]`, `[2,3]`, `[4,5]` cost `3 + 7 + 7`).
 
-## Background
-
-The covering is a partition of the index line `1..n` into consecutive inclusive blocks, with a
-per-block cost and a per-block length cap. Two families of approach are on the table before
-committing:
-
-- **Greedy laying.** Walk left to right and, at each step, lay the longest legal rug (or the
-  locally cheapest rug). It is `O(n)` and trivial to write; the open question is whether a local
-  choice of where to end the current rug can be globally optimal when the cost only charges for the
-  roughest panel under each rug.
-- **Partition dynamic programming.** Let `dp[i]` be the minimum cost to cover the first `i` panels.
-  The last rug covers some inclusive suffix `[j+1, i]` of legal length, and `dp[i]` is the best over
-  all legal split points `j`. This is `O(n * L)`; the open question is the exact recurrence — in
-  particular which index the running `max` and the length cap are measured against, since `[l, r]`
-  is inclusive on both ends.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: `L = 1` (every panel is its own rug), `L = n` (one rug may cover
-everything), `L = n - 1` (the cap just barely forbids the full hallway), `K = 0` (only the roughness
-matters), large `K` (the per-rug fee dominates and pushes toward fewer, longer rugs), arrays with a
-single very rough panel that wants to be isolated, `n = 1`, and large `n = 5000` with values near
-`10^9` (so the total can exceed a 32-bit integer).
+everything), `L = n - 1` (the cap just barely forbids the full hallway), `K = 0`, large `K`, arrays
+with a single very rough panel, `n = 1`, and large `n = 5000` with values near `10^9`.
 
 ## Code framework
 
