@@ -16,51 +16,14 @@ The Neyman-Pearson lemma also sets the boundary of what is possible. If I demand
 
 In practice I may not know the exact alternative P1, or the null may not be simple. The lemma still serves as a benchmark. A test that is most powerful against a representative alternative, or that has high power against a broad class of alternatives, is often judged by how close it comes to the Neyman-Pearson envelope. In signal detection, for example, the matched filter is the likelihood-ratio detector for a known signal in additive white Gaussian noise, and its optimality follows immediately from the lemma.
 
-I will now illustrate the lemma with a small simulation. I consider a test that observes a single real number X and must decide between H0: X is standard normal and H1: X is normal with mean mu and variance one. The likelihood ratio is proportional to exp(mu X - mu^2/2), which is a monotone function of X when mu is positive. Therefore the most powerful test rejects H0 when X exceeds a threshold. I simulate many draws under both hypotheses, implement the threshold test at a target size, and compare its empirical power to the power of a naive test that rejects when |X| exceeds a different threshold chosen to match the same size. The naive two-sided test is natural if I did not know the direction of the alternative, but against the one-sided alternative it wastes size on the left tail, where the likelihood ratio is small. The simulation shows that the likelihood-ratio test achieves higher empirical power while controlling the empirical size.
+To see the mechanism in the simplest possible case, consider a single real observation X and the choice between H0: X is standard normal and H1: X is normal with mean mu and variance one, mu positive. The likelihood ratio is proportional to exp(mu X - mu^2/2), which is a strictly increasing function of X: the exponential-family structure of the normal collapses the abstract instruction "reject on the largest values of p1/p0" into the simplest possible sufficient statistic, X itself. The most powerful level-alpha test therefore rejects H0 exactly when X exceeds the (1-alpha) quantile of the standard normal, and its power is the probability that a draw from N(mu,1) clears that same threshold. A test that instead rejects on |X| exceeding the two-sided (1-alpha) critical value — the natural choice if I did not know the sign of the alternative in advance — spends half of its size budget on the event that X is very negative, which under H1 has vanishing probability once mu is appreciably positive; that half of the budget buys essentially no power, which is exactly the situation the exchange argument forbids at an optimum. This one example is the general theorem in miniature: whenever a family has monotone likelihood ratio in some statistic T(x), the same argument that orders points by p1/p0 orders them by T, and the most powerful test collapses to a threshold rule on T directly — this is why so many classical tests already look like likelihood-ratio tests without having been built that way on purpose.
 
-```python
-import numpy as np
-
-np.random.seed(0)
-
-mu = 0.5
-alpha = 0.05
-n = 200_000
-
-x0 = np.random.normal(loc=0.0, scale=1.0, size=n)
-x1 = np.random.normal(loc=mu, scale=1.0, size=n)
-
-# Most powerful test for H0: N(0,1) vs H1: N(mu,1) with mu > 0.
-# Likelihood ratio is monotone in x, so reject when x > c.
-c_np = np.quantile(x0, 1.0 - alpha)
-reject_np_h0 = x0 > c_np
-reject_np_h1 = x1 > c_np
-size_np = reject_np_h0.mean()
-power_np = reject_np_h1.mean()
-
-# Naive two-sided test calibrated to the same empirical size.
-c_two = np.quantile(np.abs(x0), 1.0 - alpha)
-reject_two_h0 = np.abs(x0) > c_two
-reject_two_h1 = np.abs(x1) > c_two
-size_two = reject_two_h0.mean()
-power_two = reject_two_h1.mean()
-
-# Theoretical power of the Neyman-Pearson test.
-from math import erfc
-power_theory = 0.5 * erfc((c_np - mu) / np.sqrt(2))
-
-print(f"Neyman-Pearson threshold: {c_np:.4f}")
-print(f"NP empirical size: {size_np:.4f} (target {alpha})")
-print(f"NP empirical power: {power_np:.4f}")
-print(f"NP theoretical power: {power_theory:.4f}")
-print(f"Two-sided threshold: {c_two:.4f}")
-print(f"Two-sided empirical size: {size_two:.4f}")
-print(f"Two-sided empirical power: {power_two:.4f}")
-
-# Verify the likelihood-ratio ordering directly.
-log_lr = mu * x1 - 0.5 * mu**2
-print(f"Mean log-likelihood-ratio for rejected NP points: {log_lr[reject_np_h1].mean():.4f}")
-print(f"Mean log-likelihood-ratio for accepted NP points: {log_lr[~reject_np_h1].mean():.4f}")
-```
-
-The Neyman-Pearson lemma remains the foundational statement of optimality in hypothesis testing. It turns the vague idea that a test should be powerful into a precise optimization problem, and it shows that the likelihood ratio is the natural quantity for ordering observations. Whenever I design or evaluate a statistical test, I am either using the lemma directly or comparing my procedure to the benchmark it provides.
+Whenever I design or evaluate a statistical test, I am either using the lemma directly or comparing my procedure to the benchmark it sets, so it is worth pinning the statement and its proof down completely, with every symbol fixed. A test is a measurable function $\phi:\mathcal X\to[0,1]$, the probability of rejecting $H_0$ after observing $x$; against the common dominating measure its size is $E_0\phi=\int \phi\,p_0$ and its power against $H_1$ is $E_1\phi=\int \phi\,p_1$. For a prescribed size $\alpha$, the most powerful level-$\alpha$ test is
+$$
+\phi^*(x)=\begin{cases}1, & p_1(x)>c\,p_0(x),\\[4pt] \gamma(x), & p_1(x)=c\,p_0(x),\\[4pt] 0, & p_1(x)<c\,p_0(x),\end{cases}
+$$
+where the threshold $c\ge 0$ and the boundary rule $0\le\gamma(x)\le1$ are chosen so that $E_0\phi^*=\alpha$ exactly. For any competing test $\psi$ with $E_0\psi\le\alpha$, the power gap between $\phi^*$ and $\psi$ decomposes as
+$$
+E_1(\phi^*-\psi)=\int(\phi^*-\psi)(p_1-c\,p_0)\;+\;c\int(\phi^*-\psi)\,p_0 .
+$$
+The first integral is nonnegative pointwise: on $\{p_1>c\,p_0\}$, $\phi^*=1\ge\psi$, so the factor $(\phi^*-\psi)$ is nonnegative where $(p_1-c\,p_0)$ is positive; on $\{p_1<c\,p_0\}$, $\phi^*=0\le\psi$, so $(\phi^*-\psi)$ is nonpositive exactly where $(p_1-c\,p_0)$ is negative, again making the product nonnegative; on the boundary the factor $(p_1-c\,p_0)$ vanishes outright. The second integral equals $c\,(E_0\phi^*-E_0\psi)=c\,(\alpha-E_0\psi)\ge0$, since $c\ge0$ and $\psi$ respects the size constraint. Both terms are nonnegative, so $E_1\phi^*\ge E_1\psi$ for every test $\psi$ of size at most $\alpha$: $\phi^*$ is the most powerful level-$\alpha$ test, and no rule that spends the same null probability differently can beat it.
