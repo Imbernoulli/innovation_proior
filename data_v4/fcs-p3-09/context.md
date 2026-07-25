@@ -44,16 +44,7 @@ regular:
 
 So the non-zero values `1, 3, 11, 41, 153, 571, ...` march along in a tidy pattern. The challenge is
 that the constraints push `N` all the way to `10^18`, far beyond anything you can fill in a table or
-iterate column by column. Two ingredients are on the table before committing to an implementation:
-
-- **A linear recurrence over even indices.** The even-index counts appear to satisfy a fixed-order
-  recurrence with constant coefficients; if so, the value at index `N` is a linear function of a
-  bounded window of earlier values, which is the gateway to logarithmic-time evaluation.
-- **The column-profile transfer matrix.** Tilings of a `3 x N` strip can be built one column at a
-  time, where the only state carried between columns is which rows have a horizontal domino
-  protruding into the next column. There are `2^3 = 8` such profiles, and the number of tilings is an
-  entry of the `N`-th power of an `8 x 8` non-negative integer matrix. The open question is exactly
-  which matrix, and how to keep the whole computation correct modulo a possibly-composite `m`.
+iterate column by column.
 
 ## Evaluation settings
 
