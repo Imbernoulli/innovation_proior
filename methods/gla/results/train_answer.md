@@ -14,9 +14,9 @@ from einops import rearrange
 
 
 def naive_recurrent_gla(q, k, v, gk, scale=None):
-    """Reference recurrence the chunkwise kernel parallelizes.
+    """Reference recurrence the chunk kernel parallelizes.
     q, k, gk: (B, T, H, d_k);  v: (B, T, H, d_v).  gk = log forget gate (<= 0)."""
-    q, k, v, gk = (x.transpose(1, 2).float() for x in (q, k, v, gk))
+    q, k, v, gk = (x.transpose(1, 2).float() for x in (q, k, v, gk))   # -> (B, H, T, .)
     B, H, T, d_k = q.shape
     d_v = v.shape[-1]
     scale = d_k ** -0.5 if scale is None else scale
@@ -24,9 +24,9 @@ def naive_recurrent_gla(q, k, v, gk, scale=None):
     o = torch.zeros_like(v)
     for i in range(T):
         q_i = q[:, :, i] * scale
-        kv_i = k[:, :, i][..., None] * v[:, :, i][..., None, :]
-        h = h * gk[:, :, i].exp()[..., None] + kv_i
-        o[:, :, i] = (q_i[..., None] * h).sum(-2)
+        kv_i = k[:, :, i][..., None] * v[:, :, i][..., None, :]        # outer product k^T v
+        h = h * gk[:, :, i].exp()[..., None] + kv_i                    # forget, then add
+        o[:, :, i] = (q_i[..., None] * h).sum(-2)                      # q_t S_t
     return o.transpose(1, 2)
 
 
@@ -36,38 +36,41 @@ class GatedLinearAttention(nn.Module):
                  use_output_gate=True, norm_eps=1e-5):
         super().__init__()
         self.num_heads = num_heads
-        self.key_dim = int(hidden_size * expand_k)
-        self.value_dim = int(hidden_size * expand_v)
+        self.key_dim = int(hidden_size * expand_k)          # d_k = d/2
+        self.value_dim = int(hidden_size * expand_v)        # d_v = d
         self.head_k_dim = self.key_dim // num_heads
         self.head_v_dim = self.value_dim // num_heads
-        self.gate_logit_normalizer = gate_logit_normalizer
+        self.gate_logit_normalizer = gate_logit_normalizer  # temperature tau
         self.use_output_gate = use_output_gate
-        self.use_pos_emb = False
+        self.use_pos_emb = False                            # decay encodes relative position
 
         self.q_proj = nn.Linear(hidden_size, self.key_dim, bias=False)
         self.k_proj = nn.Linear(hidden_size, self.key_dim, bias=False)
         self.v_proj = nn.Linear(hidden_size, self.value_dim, bias=False)
         if use_output_gate:
             self.g_proj = nn.Linear(hidden_size, self.value_dim, bias=False)
-        self.gk_proj = nn.Sequential(
-            nn.Linear(hidden_size, gate_low_rank_dim, bias=False),
-            nn.Linear(gate_low_rank_dim, self.key_dim, bias=True),
-        )
-        self.g_norm = nn.RMSNorm(self.head_v_dim, eps=norm_eps)
+        # low-rank gate projection: d -> 16 -> d_k
+        self.gk_proj = nn.Sequential(nn.Linear(hidden_size, gate_low_rank_dim, bias=False),
+                                     nn.Linear(gate_low_rank_dim, self.key_dim, bias=True))
+        self.g_norm = nn.RMSNorm(self.head_v_dim, eps=norm_eps)   # per-head output norm
         self.o_proj = nn.Linear(self.value_dim, hidden_size, bias=False)
 
-    def forward(self, x):
+    def forward(self, x):                                   # x: (B, T, d)
         q = rearrange(self.q_proj(x), '... (h d) -> ... h d', d=self.head_k_dim)
         k = rearrange(self.k_proj(x), '... (h d) -> ... h d', d=self.head_k_dim)
         v = rearrange(self.v_proj(x), '... (h d) -> ... h d', d=self.head_v_dim)
+        # log alpha_t = logsigmoid(low-rank logits) / tau  ==  log( sigmoid(.)^{1/tau} ), <= 0
         gk = rearrange(self.gk_proj(x), '... (h d) -> ... h d', d=self.head_k_dim)
         gk = F.logsigmoid(gk) / self.gate_logit_normalizer
 
-        o = naive_recurrent_gla(q, k, v, gk)
-        o = self.g_norm(o)
+        # training: replace with chunk_gla (chunkwise + secondary tiling + recomputation);
+        # short sequences / decoding: fused_recurrent_gla. Same outputs as this reference loop.
+        o = naive_recurrent_gla(q, k, v, gk)               # (B, T, H, d_v)
+
+        o = self.g_norm(o)                                 # normalize each head
         o = rearrange(o, '... h d -> ... (h d)')
         if self.use_output_gate:
-            o = o * F.silu(self.g_proj(x))
+            o = o * F.silu(self.g_proj(x))                 # Swish output gate
         return self.o_proj(o)
 ```
 
