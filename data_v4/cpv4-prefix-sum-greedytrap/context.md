@@ -14,8 +14,7 @@ Output that maximum. Because harvesting nothing is allowed, the answer is always
 
 This is the "minimum-length segments, weighted, maximize" member of the prefix-sum segment family: the
 sum of any candidate lot `[j, i-1]` is `P[i] - P[j]` once prefix sums `P` are precomputed, which is the
-whole reason prefix sums show up here. The catch is the *selection* across lots — a local "grab the best
-lot" rule is tempting and wrong.
+whole reason prefix sums show up here.
 
 ## Input / output contract
 
@@ -28,29 +27,12 @@ lot" rule is tempting and wrong.
 Example: for `n = 8`, `L = 3`, `a = [3, -1, 4, -10, 2, 2, -1, 5]` the answer is `14` (take the lot
 `[0,2] = 3-1+4 = 6` and the lot `[4,7] = 2+2-1+5 = 8`; the day with `-10` is left unharvested).
 
-## Background
-
-The sum of a candidate lot `[j, i-1]` is `P[i] - P[j]` where `P[i] = a[0] + ... + a[i-1]`, so prefix
-sums turn each lot's value into an `O(1)` lookup. Two families of approach are on the table before
-committing:
-
-- **Greedy by best lot.** Repeatedly find the single maximum-sum lot of length `>= L` among the
-  still-free days, take it, and recurse on the free runs left and right; stop when no positive lot
-  remains. It is simple and *feels* optimal. The open question is whether grabbing the globally best
-  block can ever block a strictly better pair of blocks.
-- **Linear prefix DP.** Sweep the day boundaries left to right; `dp[i]` is the best total over the first
-  `i` days, either leaving day `i-1` unharvested (`dp[i-1]`) or closing a lot `[j, i-1]` of length
-  `>= L` (`dp[j] + P[i] - P[j]`). The inner `max` over `j` is kept in `O(1)` by carrying the running
-  best of `dp[j] - P[j]` as `j` becomes eligible. `O(n)` total; the open question is the exact eligibility
-  offset and the data types.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: all-positive days, mixes with negatives and zeros, the empty input
-(`n = 0`), `L = 1` (every length is allowed, so it reduces to "sum of all positive lots"), `L = n`
-(only the whole array or nothing), `L > n` (no lot fits, answer `0`), all-negative days (answer `0`),
-adversarial instances where the best single lot strictly beats greedy, and large `n = 2*10^5` with
-values near `10^9` so the total can reach `~2*10^14` and exceed a 32-bit integer.
+(`n = 0`), `L = 1`, `L = n`, `L > n` (no lot fits, answer `0`), all-negative days (answer `0`),
+adversarial instances that stress the selection across lots, and large `n = 2*10^5` with values near
+`10^9`.
 
 ## Code framework
 
