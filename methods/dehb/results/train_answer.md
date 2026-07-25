@@ -31,15 +31,15 @@ class DE:
     def __init__(self, space, pop_size, F=0.5, p=0.5, rng=None):
         self.space, self.pop_size = space, pop_size
         self.F, self.p, self.rng = F, p, rng
-        self.min_parents = 3
+        self.min_parents = 3                                   # rand/1 needs 3 distinct parents
         self.population = np.array([space.encode(space.sample_uniform(rng))
                                     for _ in range(pop_size)])
-        self.fitness = np.full(pop_size, np.inf)
+        self.fitness = np.full(pop_size, np.inf)               # np.inf = unevaluated (minimizer)
         self.ptr = 0
 
     def next_target(self):
         idx = self.ptr
-        self.ptr = (self.ptr + 1) % self.pop_size
+        self.ptr = (self.ptr + 1) % self.pop_size              # rolling pointer over the subpopulation
         return idx
 
     def sample_population(self, alt_pop=None, target=None):
@@ -56,7 +56,7 @@ class DE:
         return population[idx]
 
     def mutation_rand1(self, r1, r2, r3):
-        return r1 + self.F * (r2 - r3)
+        return r1 + self.F * (r2 - r3)                         # v = r1 + F*(r2 - r3)
 
     def mutation(self, current=None, alt_pop=None):
         r1, r2, r3 = self.sample_population(alt_pop=alt_pop, target=current)
@@ -65,13 +65,13 @@ class DE:
     def crossover_bin(self, target, mutant):
         mask = self.rng.rand(self.space.dim) < self.p
         if not mask.any():
-            mask[self.rng.randint(self.space.dim)] = True
+            mask[self.rng.randint(self.space.dim)] = True      # j_rand: >=1 coord from the mutant
         return np.where(mask, mutant, target)
 
     def boundary_check(self, vec):
         bad = (vec < 0) | (vec > 1)
         vec = vec.copy()
-        vec[bad] = self.rng.rand(int(bad.sum()))
+        vec[bad] = self.rng.rand(int(bad.sum()))               # resample out-of-range coords
         return vec
 
     def init_mutant_population(self, pop_size, population, target):
@@ -87,8 +87,8 @@ class DE:
         return self.boundary_check(trial)
 
     def select(self, target_idx, trial_vec, trial_score):
-        if trial_score <= self.fitness[target_idx]:
-            self.population[target_idx] = trial_vec
+        if trial_score <= self.fitness[target_idx]:            # '<=' keeps exploring plateaus
+            self.population[target_idx] = trial_vec            # immediate update
             self.fitness[target_idx] = trial_score
 
 
@@ -107,8 +107,8 @@ class DEHB:
         self.de = {f: DE(space, self.max_pop[f], F, p, self.rng) for f in self.fidelities}
 
         self.iteration = 0
-        self.promotion = {f: [] for f in self.fidelities}
-        self.inc_score, self.inc_config = np.inf, None
+        self.promotion = {f: [] for f in self.fidelities}      # queued promotions (init iteration)
+        self.inc_score, self.inc_config = np.inf, None         # anytime incumbent
 
     def _get_pop_sizes(self):
         max_pop = {}
@@ -185,6 +185,6 @@ class DEHB:
     def tell(self, job, score):
         fidelity, target_idx, config_vec = job["fidelity"], job["target_idx"], job["config_vec"]
         self.de[fidelity].select(target_idx, config_vec, score)
-        if score < self.inc_score:
+        if score < self.inc_score:                             # minimizer; flip sign for maximization
             self.inc_score, self.inc_config = score, config_vec
 ```
