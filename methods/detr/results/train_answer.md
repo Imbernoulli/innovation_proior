@@ -16,10 +16,10 @@ from scipy.optimize import linear_sum_assignment
 from torchvision.ops.boxes import box_area
 
 
+# ----- box geometry + GIoU --------------------------------------------------
 def box_cxcywh_to_xyxy(b):
     cx, cy, w, h = b.unbind(-1)
-    return torch.stack([cx - 0.5 * w, cy - 0.5 * h,
-                        cx + 0.5 * w, cy + 0.5 * h], dim=-1)
+    return torch.stack([cx - 0.5 * w, cy - 0.5 * h, cx + 0.5 * w, cy + 0.5 * h], dim=-1)
 
 
 def box_iou(boxes1, boxes2):
@@ -39,16 +39,18 @@ def generalized_box_iou(boxes1, boxes2):
     lt = torch.min(boxes1[:, None, :2], boxes2[:, :2])
     rb = torch.max(boxes1[:, None, 2:], boxes2[:, 2:])
     wh = (rb - lt).clamp(min=0)
-    area = wh[:, :, 0] * wh[:, :, 1]
-    return iou - (area - union) / area
+    area = wh[:, :, 0] * wh[:, :, 1]          # |C|, smallest enclosing box
+    return iou - (area - union) / area        # GIoU
 
 
+# ----- model ----------------------------------------------------------------
 class MLP(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim, num_layers):
         super().__init__()
+        self.num_layers = num_layers
         h = [hidden_dim] * (num_layers - 1)
-        self.layers = nn.ModuleList(
-            nn.Linear(n, k) for n, k in zip([input_dim] + h, h + [output_dim]))
+        self.layers = nn.ModuleList(nn.Linear(n, k)
+                                    for n, k in zip([input_dim] + h, h + [output_dim]))
 
     def forward(self, x):
         for i, layer in enumerate(self.layers):
@@ -62,9 +64,9 @@ class DETR(nn.Module):
         self.num_queries = num_queries
         self.transformer = transformer
         hidden_dim = transformer.d_model
-        self.class_embed = nn.Linear(hidden_dim, num_classes + 1)
+        self.class_embed = nn.Linear(hidden_dim, num_classes + 1)   # +1 for no-object
         self.bbox_embed = MLP(hidden_dim, hidden_dim, 4, 3)
-        self.query_embed = nn.Embedding(num_queries, hidden_dim)
+        self.query_embed = nn.Embedding(num_queries, hidden_dim)    # object queries
         self.input_proj = nn.Conv2d(backbone.num_channels, hidden_dim, kernel_size=1)
         self.backbone = backbone
         self.aux_loss = aux_loss
@@ -72,23 +74,28 @@ class DETR(nn.Module):
     def forward(self, samples):
         features, pos = self.backbone(samples)
         src, mask = features[-1].decompose()
+        assert mask is not None
         hs = self.transformer(self.input_proj(src), mask,
-                              self.query_embed.weight, pos[-1])[0]
+                              self.query_embed.weight, pos[-1])[0]   # [layers, b, N, d]
         outputs_class = self.class_embed(hs)
         outputs_coord = self.bbox_embed(hs).sigmoid()
         out = {'pred_logits': outputs_class[-1], 'pred_boxes': outputs_coord[-1]}
         if self.aux_loss:
-            out['aux_outputs'] = [{'pred_logits': a, 'pred_boxes': b}
-                                  for a, b in zip(outputs_class[:-1], outputs_coord[:-1])]
+            out['aux_outputs'] = self._set_aux_loss(outputs_class, outputs_coord)
         return out
 
+    @torch.jit.unused
+    def _set_aux_loss(self, outputs_class, outputs_coord):
+        return [{'pred_logits': a, 'pred_boxes': b}
+                for a, b in zip(outputs_class[:-1], outputs_coord[:-1])]
 
+
+# ----- bipartite matching ---------------------------------------------------
 class HungarianMatcher(nn.Module):
     def __init__(self, cost_class=1, cost_bbox=5, cost_giou=2):
         super().__init__()
-        self.cost_class = cost_class
-        self.cost_bbox = cost_bbox
-        self.cost_giou = cost_giou
+        self.cost_class, self.cost_bbox, self.cost_giou = cost_class, cost_bbox, cost_giou
+        assert cost_class != 0 or cost_bbox != 0 or cost_giou != 0, "all costs cant be 0"
 
     @torch.no_grad()
     def forward(self, outputs, targets):
@@ -97,8 +104,8 @@ class HungarianMatcher(nn.Module):
         out_bbox = outputs["pred_boxes"].flatten(0, 1)
         tgt_ids = torch.cat([v["labels"] for v in targets])
         tgt_bbox = torch.cat([v["boxes"] for v in targets])
-        cost_class = -out_prob[:, tgt_ids]
-        cost_bbox = torch.cdist(out_bbox, tgt_bbox, p=1)
+        cost_class = -out_prob[:, tgt_ids]                    # -prob of true class
+        cost_bbox = torch.cdist(out_bbox, tgt_bbox, p=1)      # L1
         cost_giou = -generalized_box_iou(box_cxcywh_to_xyxy(out_bbox),
                                          box_cxcywh_to_xyxy(tgt_bbox))
         C = (self.cost_bbox * cost_bbox + self.cost_class * cost_class
@@ -109,32 +116,45 @@ class HungarianMatcher(nn.Module):
                 for i, j in indices]
 
 
+# ----- set criterion --------------------------------------------------------
 class SetCriterion(nn.Module):
     def __init__(self, num_classes, matcher, weight_dict, eos_coef, losses):
         super().__init__()
         self.num_classes = num_classes
         self.matcher = matcher
         self.weight_dict = weight_dict
+        self.eos_coef = eos_coef
         self.losses = losses
         empty_weight = torch.ones(num_classes + 1)
-        empty_weight[-1] = eos_coef
+        empty_weight[-1] = eos_coef                           # down-weight no-object ~10x
         self.register_buffer('empty_weight', empty_weight)
 
     def _get_src_permutation_idx(self, indices):
-        batch_idx = torch.cat([torch.full_like(src, i)
-                               for i, (src, _) in enumerate(indices)])
+        batch_idx = torch.cat([torch.full_like(src, i) for i, (src, _) in enumerate(indices)])
         src_idx = torch.cat([src for (src, _) in indices])
         return batch_idx, src_idx
 
-    def loss_labels(self, outputs, targets, indices, num_boxes):
+    def loss_labels(self, outputs, targets, indices, num_boxes, log=True):
         src_logits = outputs['pred_logits']
         idx = self._get_src_permutation_idx(indices)
         target_classes_o = torch.cat([t["labels"][J] for t, (_, J) in zip(targets, indices)])
         target_classes = torch.full(src_logits.shape[:2], self.num_classes,
                                     dtype=torch.int64, device=src_logits.device)
         target_classes[idx] = target_classes_o
-        return {'loss_ce': F.cross_entropy(src_logits.transpose(1, 2),
-                                           target_classes, self.empty_weight)}
+        losses = {'loss_ce': F.cross_entropy(src_logits.transpose(1, 2),
+                                             target_classes, self.empty_weight)}
+        if log and target_classes_o.numel() > 0:
+            pred = src_logits[idx].argmax(-1)
+            losses['class_error'] = 100 - 100 * (pred == target_classes_o).float().mean()
+        return losses
+
+    @torch.no_grad()
+    def loss_cardinality(self, outputs, targets, indices, num_boxes):
+        pred_logits = outputs['pred_logits']
+        device = pred_logits.device
+        tgt_lengths = torch.as_tensor([len(v["labels"]) for v in targets], device=device)
+        card_pred = (pred_logits.argmax(-1) != pred_logits.shape[-1] - 1).sum(1)
+        return {'cardinality_error': F.l1_loss(card_pred.float(), tgt_lengths.float())}
 
     def loss_boxes(self, outputs, targets, indices, num_boxes):
         idx = self._get_src_permutation_idx(indices)
@@ -146,25 +166,43 @@ class SetCriterion(nn.Module):
         return {'loss_bbox': loss_bbox.sum() / num_boxes,
                 'loss_giou': loss_giou.sum() / num_boxes}
 
-    def forward(self, outputs, targets):
-        outputs_without_aux = {k: v for k, v in outputs.items() if k != 'aux_outputs'}
-        indices = self.matcher(outputs_without_aux, targets)
+    def get_loss(self, loss, outputs, targets, indices, num_boxes, **kwargs):
+        loss_map = {
+            'labels': self.loss_labels,
+            'boxes': self.loss_boxes,
+            'cardinality': self.loss_cardinality,
+        }
+        return loss_map[loss](outputs, targets, indices, num_boxes, **kwargs)
+
+    def _normalized_num_boxes(self, outputs, targets):
         num_boxes = sum(len(t["labels"]) for t in targets)
         num_boxes = torch.as_tensor([num_boxes], dtype=torch.float,
                                     device=next(iter(outputs.values())).device)
-        num_boxes = torch.clamp(num_boxes, min=1).item()
+        if torch.distributed.is_available() and torch.distributed.is_initialized():
+            torch.distributed.all_reduce(num_boxes)
+            world_size = torch.distributed.get_world_size()
+        else:
+            world_size = 1
+        return torch.clamp(num_boxes / world_size, min=1).item()
+
+    def forward(self, outputs, targets):
+        outputs_without_aux = {k: v for k, v in outputs.items() if k != 'aux_outputs'}
+        indices = self.matcher(outputs_without_aux, targets)
+        num_boxes = self._normalized_num_boxes(outputs_without_aux, targets)
         losses = {}
         for loss in self.losses:
-            losses.update(getattr(self, f'loss_{loss}')(outputs, targets, indices, num_boxes))
+            losses.update(self.get_loss(loss, outputs, targets, indices, num_boxes))
         if 'aux_outputs' in outputs:
             for i, aux_outputs in enumerate(outputs['aux_outputs']):
                 indices = self.matcher(aux_outputs, targets)
                 for loss in self.losses:
-                    l_dict = getattr(self, f'loss_{loss}')(aux_outputs, targets, indices, num_boxes)
+                    kwargs = {'log': False} if loss == 'labels' else {}
+                    l_dict = self.get_loss(loss, aux_outputs, targets, indices, num_boxes, **kwargs)
                     losses.update({k + f'_{i}': v for k, v in l_dict.items()})
         return losses
 
 
+# ----- inference postprocessing ---------------------------------------------
 class PostProcess(nn.Module):
     @torch.no_grad()
     def forward(self, outputs, target_sizes):
