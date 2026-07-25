@@ -11,11 +11,21 @@ import torch
 import torch.nn as nn
 
 
-class GroupNorm(nn.Module):
-    """Group Normalization: normalize each group of channels inside each sample.
+def group_norm_forward(x, gamma, beta, G, eps=1e-5):
+    # x: [N, C, H, W]; gamma, beta: per-channel scale/shift, shape [1, C, 1, 1].
+    N, C, H, W = x.shape
+    assert C % G == 0
+    x = x.reshape(N, G, C // G, H, W)              # expose the group axis
+    mean = x.mean(dim=(2, 3, 4), keepdim=True)     # per (sample, group); N and G kept
+    var = x.var(dim=(2, 3, 4), keepdim=True, unbiased=False)
+    x = (x - mean) / torch.sqrt(var + eps)
+    x = x.reshape(N, C, H, W)
+    return x * gamma + beta                         # per-channel affine
 
-    Drop-in replacement for BatchNorm2d that is independent of batch size.
-    """
+
+class GroupNorm(nn.Module):
+    """Structurally identical to torch.nn.GroupNorm: same statistics in train and eval,
+    no running buffers, per-channel affine of size num_channels."""
 
     def __init__(self, num_groups, num_channels, eps=1e-5, affine=True):
         super().__init__()
@@ -25,8 +35,8 @@ class GroupNorm(nn.Module):
         self.eps = eps
         self.affine = affine
         if affine:
-            self.weight = nn.Parameter(torch.ones(num_channels))
-            self.bias = nn.Parameter(torch.zeros(num_channels))
+            self.weight = nn.Parameter(torch.ones(num_channels))   # gamma
+            self.bias = nn.Parameter(torch.zeros(num_channels))    # beta
         else:
             self.register_parameter("weight", None)
             self.register_parameter("bias", None)
@@ -35,7 +45,7 @@ class GroupNorm(nn.Module):
         N, C = x.shape[0], x.shape[1]
         spatial = x.shape[2:]                       # (H, W) for images, (T, H, W) for video
         x = x.reshape(N, self.num_groups, C // self.num_groups, *spatial)
-        dims = tuple(range(2, x.dim()))             # within-group channels + all spatial axes
+        dims = tuple(range(2, x.dim()))             # within-group channels + all spatial
         mean = x.mean(dim=dims, keepdim=True)
         var = x.var(dim=dims, keepdim=True, unbiased=False)
         x = (x - mean) / torch.sqrt(var + self.eps)
