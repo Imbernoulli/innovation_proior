@@ -1,4 +1,4 @@
-# Cut vertices on every path (block-cut tree queries)
+# Cut vertices on every path
 
 ## Research question
 
@@ -13,11 +13,6 @@ Equivalently, `w` lies on **every** path between `u` and `v`.
 For each query, report **how many** essential vertices there are. If `u` and `v`
 are already in different connected components (no path exists at all), report
 `-1`. If `u == v`, report `0`.
-
-These essential vertices are exactly the **articulation points (cut vertices)**
-that separate `u` from `v`. The task is the path-query version of articulation-point
-analysis: not "which vertices are cut vertices globally" but "how many cut vertices
-sit between *this* pair", asked many times over.
 
 ## Input / output contract
 
@@ -78,13 +73,12 @@ Two families of approach are on the table before committing to one.
   right tool for *checking* a fast solution, but it is hopeless at the stated scale.
 - **Structural / decomposition.** Articulation points partition the graph into
   **biconnected components** (maximal subgraphs with no internal articulation
-  point). Contracting that structure yields a tree-like skeleton on which "which
-  cut vertices separate `u` from `v`" becomes a path question. The open questions
-  are *which* skeleton makes the count exact, how to build it in linear time at
-  `n, m <= 2*10^5`, and how to answer each path query in better than linear time.
+  point). The open questions are how a global decomposition like this could be
+  turned into fast answers for many `(u, v)` pair queries, how to build it in
+  linear time at `n, m <= 2*10^5`, and how to answer each query in better than
+  linear time.
 
-The scale rules out anything superlinear per query; the intended solution builds a
-linear-size decomposition once and then answers each query in `O(log n)`.
+The scale rules out anything superlinear per query.
 
 ## Evaluation settings
 
@@ -121,8 +115,7 @@ int main() {
         (void)u; (void)v;
     }
 
-    // TODO: decompose the graph into biconnected components and articulation
-    //       points; build the block-cut tree; preprocess it for path queries.
+    // TODO: preprocess the graph so each query below can be answered quickly.
 
     int q;
     cin >> q;
