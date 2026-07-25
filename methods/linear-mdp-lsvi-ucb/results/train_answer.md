@@ -10,107 +10,26 @@ For regret accounting, the per-episode optimistic gap telescopes into a martinga
 
 What makes LSVI-UCB more than regression plus UCB is the precise way these ingredients fit together. The linear MDP factorization closes the Bellman backup under the feature class. The uniform concentration argument justifies using the learned future value as a regression target. Recursive optimism turns local confidence intervals into a global exploration policy. And the elliptical-potential lemma converts the geometry of feature visits into a sublinear regret bound. Without any one of these pieces, the analysis collapses either statistically or computationally.
 
-The following Python script gives a small, self-contained illustration of the core mechanics on a synthetic linear MDP. It constructs an environment where transitions and rewards are linear in a known feature map, then runs the LSVI-UCB backward sweep and greedy rollouts for several episodes. The code also computes the realized regret against the optimal policy and verifies that the optimistic value estimates indeed upper-bound the optimal values at the initial states, giving a concrete sanity check of the algorithm's design.
+The method is fully specified by the backward least-squares value-iteration sweep run once per episode, followed by the greedy rollout through the horizon. At the start of episode k, for h running from H down to 1, I form the regularized design matrix Lambda_h from every feature vector observed at step h in the k-1 preceding episodes plus the ridge term lambda I, then solve for w_h by ridge regression against the targets r_h^tau plus the greedy optimistic value at the successor state. The optimistic Q_h combines the linear prediction <w_h, phi(x,a)> with the elliptical bonus beta times the square root of phi(x,a)^T Lambda_h^{-1} phi(x,a), clipped at H. Once every step's w_h and Lambda_h are refreshed, the episode is played by acting greedily on Q_h at each h in turn, and the newly observed transitions are folded back into the design matrices before the next episode's sweep. This pseudocode is the algorithm in full; there is no separate numerical artifact beyond it:
 
-```python
-import numpy as np
+```text
+Input: feature map phi, lambda=1, beta=c d H sqrt(log(2dT/p))
 
-np.random.seed(0)
+for episode k = 1,...,K:
+    receive x_1^k
 
-H = 5          #horizon
-A = 3          #number of actions
-d = 4          #feature dimension
-K = 200        #episodes
-LAMBDA = 1.0
-BETA = 2.0 * d * H * np.sqrt(np.log(2 * d * H * K / 0.05))
+    for h = H,...,1:
+        Lambda_h = sum_{tau<k} phi_h^tau (phi_h^tau)^T + lambda I
+        w_h = Lambda_h^{-1} sum_{tau<k} phi_h^tau
+              [ r_h^tau + max_a Q_{h+1}(x_{h+1}^tau,a) ]
 
-def phi(s, a):
-    x = np.zeros(d)
-    x[0] = 1.0
-    x[1] = (s - 4.5) / 4.5
-    x[2] = np.sin(2 * np.pi * a / A)
-    x[3] = np.cos(2 * np.pi * a / A)
-    return x / np.linalg.norm(x)
+        Q_h(x,a) = min{
+            <w_h, phi(x,a)>
+            + beta sqrt(phi(x,a)^T Lambda_h^{-1} phi(x,a)),
+            H
+        }
 
-S = list(range(10))
-true_theta = np.random.randn(H, d) * 0.1
-true_mu = np.random.randn(H, d, len(S))
-for h in range(H):
-    for i in range(d):
-        true_mu[h, i] = np.abs(true_mu[h, i])
-        true_mu[h, i] /= true_mu[h, i].sum()
-
-def true_reward(h, s, a):
-    return np.clip(phi(s, a) @ true_theta[h], 0.0, 1.0)
-
-def sample_next(h, s, a):
-    probs = phi(s, a) @ true_mu[h]
-    probs = np.clip(probs, 0, None)
-    probs /= probs.sum()
-    return np.random.choice(S, p=probs)
-
-def compute_optimal():
-    Q = np.zeros((H, len(S), A))
-    V = np.zeros((H + 1, len(S)))
-    for h in range(H - 1, -1, -1):
-        for s in S:
-            for a in range(A):
-                r = true_reward(h, s, a)
-                exp_v = sum((phi(s, a) @ true_mu[h])[sp] * V[h + 1, sp] for sp in range(len(S)))
-                Q[h, s, a] = r + exp_v
-            V[h, s] = Q[h, s].max()
-    return Q, V
-
-Q_opt, V_opt = compute_optimal()
-
-Lambda = [LAMBDA * np.eye(d) for _ in range(H)]
-Phi_sum = [np.zeros(d) for _ in range(H)]
-target_sum = [np.zeros(d) for _ in range(H)]  #sum of phi * (r + V_next)
-W = [np.zeros(d) for _ in range(H)]
-
-def optimistic_value(h, s, a):
-    f = phi(s, a)
-    return min(f @ W[h] + BETA * np.sqrt(f @ np.linalg.inv(Lambda[h]) @ f), H)
-
-def optimistic_V(h, s):
-    return max(optimistic_value(h, s, a) for a in range(A))
-
-total_regret = 0.0
-regrets = []
-
-for ep in range(K):
-    for h in range(H - 1, -1, -1):
-        W[h] = np.linalg.solve(Lambda[h], target_sum[h])
-
-    s = np.random.choice(S)
-    episode_value_opt = V_opt[0, s]
-    episode_value_alg = 0.0
-    trajectory = []
-
-    for h in range(H):
-        a = max(range(A), key=lambda a: optimistic_value(h, s, a))
-        r = true_reward(h, s, a)
-        sp = sample_next(h, s, a)
-        trajectory.append((h, s, a, r, sp))
-        episode_value_alg += r
-        s = sp
-
-    for h, s, a, r, sp in trajectory:
-        f = phi(s, a)
-        Lambda[h] += np.outer(f, f)
-        bonus_next = optimistic_V(h + 1, sp) if h + 1 < H else 0.0
-        target_sum[h] += f * (r + bonus_next)
-
-    total_regret += episode_value_opt - episode_value_alg
-    regrets.append(total_regret)
-
-W = [np.linalg.solve(Lambda[h], target_sum[h]) for h in range(H)]
-violations = 0
-for s in S:
-    if optimistic_V(0, s) < V_opt[0, s] - 1e-6:
-        violations += 1
-
-print(f"Total regret after {K} episodes: {total_regret:.3f}")
-print(f"Optimism violations at h=0: {violations} out of {len(S)} states")
-print(f"Final regret / sqrt(K): {total_regret / np.sqrt(K):.3f}")
+    for h = 1,...,H:
+        a_h^k = argmax_a Q_h(x_h^k,a)
+        receive r_h^k and observe x_{h+1}^k
 ```
