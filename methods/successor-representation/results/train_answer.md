@@ -10,42 +10,29 @@ The successor representation is learnable from experience without a supplied tra
 
 This construction occupies a useful middle ground. A purely model-free value function is compact, but reward information and transition information are entangled; if the reward changes, new values must be backed up through experience. A full model is flexible, but it stores one-step dynamics and needs planning or repeated dynamic-programming updates to turn those dynamics into values. The successor representation compiles multi-step occupancy statistics instead. If rewards change while transitions stay fixed, one only has to multiply the same M by the new R. If transitions themselves change, M must be relearned, so the method trades transition flexibility for reward flexibility. This separation also explains latent learning: an agent can wander through an environment before any reward is present and still build a useful M, because the predictive occupancy structure does not depend on what the rewards will eventually be.
 
-A concrete verification on a small random chain confirms both the analytic factorization and the TD learning rule. The code below constructs a five-state Markov chain, computes M from the transition matrix directly, compares it with M learned from sampled transitions, and checks that the value vector obtained from M R agrees with the fixed-point value. Running it should show a small finite-sample error that shrinks as the number of sampled transitions grows.
+The whole construction reduces to three short pieces of code: the closed-form successor representation as a matrix inverse, the value read-out as a single matrix-vector product, and the TD(0) rule that learns the successor matrix row by row from sampled transitions alone. The learning routine takes a callable that samples the next state given the current one, the number of states, the discount, the step size, and the number of steps, and it returns the learned M_hat by running exactly the vector-valued update derived above, one row at a time, without ever forming the transition matrix explicitly.
 
 ```python
 import numpy as np
 
-rng = np.random.default_rng(0)
-n = 5
+def successor_representation(P, gamma):
+    n = P.shape[0]
+    return np.linalg.inv(np.eye(n) - gamma * P)
 
-"""Build a random stochastic transition matrix."""
-P = rng.random((n, n))
-P = P / P.sum(axis=1, keepdims=True)
-gamma = 0.9
-R = rng.random(n)
+def value(M, R):
+    return M @ R
 
-"""Analytic successor representation and value."""
-M_exact = np.linalg.inv(np.eye(n) - gamma * P)
-V_exact = M_exact @ R
-print("V from analytic SR:", V_exact)
-
-"""Learn M by TD(0) over successor-state occupancy indicators."""
-alpha = 0.05
-n_steps = 50_000
-M_hat = np.zeros((n, n))
-s = rng.integers(n)
-for _ in range(n_steps):
-    s_next = rng.choice(n, p=P[s])
-    onehot = np.zeros(n)
-    onehot[s] = 1.0
-    delta = onehot + gamma * M_hat[s_next] - M_hat[s]
-    M_hat[s] += alpha * delta
-    s = s_next
-
-V_learned = M_hat @ R
-print("V from learned SR:", V_learned)
-print("Frobenius error ||M_exact - M_hat||:", np.linalg.norm(M_exact - M_hat, 'fro'))
-print("Value error ||V_exact - V_learned||:", np.linalg.norm(V_exact - V_learned))
+def td_learn_sr(sample_next_state, n_states, gamma, alpha, n_steps, rng):
+    M_hat = np.zeros((n_states, n_states))
+    s = rng.integers(n_states)
+    for _ in range(n_steps):
+        s_next = sample_next_state(s)
+        onehot = np.zeros(n_states)
+        onehot[s] = 1.0
+        delta = onehot + gamma * M_hat[s_next] - M_hat[s]
+        M_hat[s] += alpha * delta
+        s = s_next
+    return M_hat
 ```
 
 In summary, the canonical name for this approach is the successor representation. It replaces the usual state-feature map with a predictive occupancy matrix, turning long-run value estimation into the product of a learned temporal structure and a per-state reward vector. The representation is trained with the same TD machinery used for scalar values, but the reward signal is replaced by the identity of the state that is currently visited. Once learned, the successor representation supports fast reward reevaluation and encodes the environment's temporal geometry directly in the feature space.
