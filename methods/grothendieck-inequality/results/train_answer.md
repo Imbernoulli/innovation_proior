@@ -6,60 +6,8 @@ The theorem works in several languages at once. In functional analysis, it says 
 
 The practical message is that the vector program is a reliable surrogate for the sign program. Whenever a combinatorial objective can be cast as a bilinear optimization over signs, solving or bounding the SDP vector relaxation gives a value that is at most a universal constant away from the true discrete optimum. Constructive proofs of the inequality also supply rounding schemes that convert near-optimal vectors back into near-optimal signs, making the bridge algorithmic. The precise value of the best real constant K_G^R is a separate and difficult problem, but the existence of such a universal constant is the main content of the theorem.
 
-```python
-import itertools
-import numpy as np
-import cvxpy as cp
-
-
-def sign_optimum(A):
-    """Exact sign optimum by exhaustive search (only for small matrices)."""
-    A = np.asarray(A, dtype=float)
-    m, n = A.shape
-    best = -np.inf
-    best_pair = None
-    for eps in itertools.product([-1, 1], repeat=m):
-        eps = np.array(eps, dtype=float)
-        # For fixed eps, the best delta_j is the sign of (A^T eps)_j.
-        v = A.T @ eps
-        delta = np.sign(v)
-        delta[delta == 0] = 1
-        val = eps @ A @ delta
-        if val > best:
-            best = val
-            best_pair = (eps.copy(), delta.copy())
-    return best, best_pair
-
-
-def vector_optimum_sdp(A):
-    """SDP relaxation for the vector optimum via a Gram matrix."""
-    A = np.asarray(A, dtype=float)
-    m, n = A.shape
-    # Gram matrix for m x-vectors and n y-vectors on the unit sphere.
-    G = cp.Variable((m + n, m + n), symmetric=True)
-    constraints = [G >> 0, cp.diag(G) == 1]
-    XY = G[:m, m:]
-    objective = cp.sum(cp.multiply(A, XY))
-    prob = cp.Problem(cp.Maximize(objective), constraints)
-    prob.solve(solver=cp.SCS, verbose=False)
-    return prob.value, G.value
-
-
-def empirical_grothendieck_ratio(A):
-    opt_sign, _ = sign_optimum(A)
-    opt_vec, _ = vector_optimum_sdp(A)
-    if opt_sign <= 0:
-        return np.inf
-    return opt_vec / opt_sign
-
-
-if __name__ == "__main__":
-    np.random.seed(0)
-    A = np.random.randn(6, 5)
-    opt_sign, _ = sign_optimum(A)
-    opt_vec, _ = vector_optimum_sdp(A)
-    ratio = empirical_grothendieck_ratio(A)
-    print(f"OPT_sign = {opt_sign:.4f}")
-    print(f"OPT_vec  = {opt_vec:.4f}")
-    print(f"Empirical OPT_vec / OPT_sign = {ratio:.4f}")
-```
+What this write-up delivers, in the form the field states it, is the following. Fix real numbers $a_{ij}$ for $1 \le i \le m$, $1 \le j \le n$, and define
+$$\mathrm{OPT}_{\mathrm{sign}}(A) = \max_{\varepsilon_i, \delta_j \in \{-1,1\}} \sum_{i=1}^m \sum_{j=1}^n a_{ij}\, \varepsilon_i \delta_j, \qquad \mathrm{OPT}_{\mathrm{vec}}(A) = \max_{x_i, y_j \in S^{m+n-1}} \sum_{i=1}^m \sum_{j=1}^n a_{ij}\, \langle x_i, y_j \rangle.$$
+Grothendieck's inequality is the theorem that
+$$\mathrm{OPT}_{\mathrm{sign}}(A) \;\le\; \mathrm{OPT}_{\mathrm{vec}}(A) \;\le\; K_G^{\mathbb{R}}\, \mathrm{OPT}_{\mathrm{sign}}(A)$$
+for a constant $K_G^{\mathbb{R}}$ that is the same for every $m$, $n$, and every matrix $A$ — the complex case satisfies the same two-sided bound with a generally different constant $K_G^{\mathbb{C}}$. A constructive rounding proof pins this constant on both sides without closing the gap between them: it gives $K_G^{\mathbb{R}} \le \pi/(2\ln(1+\sqrt{2})) \approx 1.7822$, and a separate lower-bound construction keeps $K_G^{\mathbb{R}}$ above roughly $1.677$; the exact real Grothendieck constant between those two numbers remains open. What is not open, and what is the actual content of the theorem, is that some such universal $K_G^{\mathbb{R}}$ exists at all — that a bilinear form's behavior on the corners of a cube and on the surface of a sphere can never drift apart by more than a fixed, dimension-independent factor.
