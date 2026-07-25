@@ -10,39 +10,14 @@ This shift from global to local has concrete consequences. For hypergraph two-co
 
 The original Erdős-Lovász argument gave a slightly cruder version with `4d` instead of `e(d+1)`, and the modern asymmetric form refines the constant while keeping the same anatomy. What matters in every version is the same idea: we do not need the bad events to be globally independent, and we do not need their total probability to be below one. We only need each event to be unlikely compared with the small set of events on which it can depend. The lemma therefore occupies a natural middle ground between the easy product formula that applies under full independence and the conservative union bound that applies with no independence assumptions at all.
 
-The accompanying code illustrates the symmetric condition on a tiny random `5`-SAT instance. Each clause has length five, so a random assignment violates it with probability `2^{-5}`. With only a handful of clauses over eight Boolean variables, the maximum dependency degree is small enough that `e p (d+1) <= 1` holds. The script then checks the condition explicitly and exhaustively searches all `2^8` assignments to confirm that a satisfying assignment exists.
+The deliverable this argument earns is not an illustrative computation but the precise sufficient condition itself, since it is that condition alone — not any particular instance of it — that a two-colouring or a $k$-SAT construction invokes to certify existence. Gathering the dependency-graph hypothesis and both forms into one statement: let $A_1, \dots, A_n$ be events on a common probability space, and let $G$ be a graph on $\{1, \dots, n\}$ such that, for every $i$, $A_i$ is mutually independent of the family of events $\{A_j : j \notin N[i]\}$, where $N[i] = \{i\} \cup N(i)$ is the closed neighbourhood of $i$ in $G$. If there exist reals $x_i \in [0,1)$, one per event, such that
 
-```python
-import itertools, math, random
+$$P(A_i) \;\le\; x_i \prod_{j \in N(i)} (1 - x_j) \qquad \text{for every } i,$$
 
-def random_clause(n, k, rng):
-    vars = sorted(rng.sample(range(n), k))
-    return [(v, rng.choice([True, False])) for v in vars]
+then
 
-def shares_variable(c1, c2):
-    return not set(l[0] for l in c1).isdisjoint(l[0] for l in c2)
+$$P\!\left(\bigcap_{i=1}^n \overline{A_i}\right) \;\ge\; \prod_{i=1}^n (1 - x_i) \;>\; 0,$$
 
-def dependency_degree(clauses, i):
-    return sum(1 for j, _ in enumerate(clauses) if j != i and shares_variable(clauses[i], clauses[j]))
+so a random object avoiding every bad event exists with positive probability. Setting $x_i = 1/(d+1)$ uniformly whenever $P(A_i) \le p$ and every event has at most $d$ neighbours in $G$ recovers the symmetric form actually used in practice — the one that decides existence for a hypergraph two-colouring or a $k$-SAT instance by checking a single inequality between the event probability, Euler's constant, and the local dependency degree, regardless of how many events there are in total:
 
-def violated(clause, assignment):
-    return all((assignment[v] if val else not assignment[v]) is False for v, val in clause)
-
-def satisfies_all(clauses, assignment):
-    return not any(violated(c, assignment) for c in clauses)
-
-rng = random.Random(0)
-n, k, m = 8, 5, 4
-clauses = [random_clause(n, k, rng) for _ in range(m)]
-d = max(dependency_degree(clauses, i) for i in range(m))
-p = 2 ** (-k)
-print(f"Clauses: {m}, k={k}, max dependency degree d={d}")
-print(f"Symmetric LLL condition e*p*(d+1)={math.e*p*(d+1):.4f} <= 1? {math.e*p*(d+1) <= 1}")
-sat = next((assign for assign in itertools.product([False, True], repeat=n)
-            if satisfies_all(clauses, assign)), None)
-print("Satisfying assignment found:", sat is not None)
-if sat:
-    print("Assignment:", sat)
-```
-
-In summary, the Lovász Local Lemma gives a general way to prove existence when bad events are locally entangled but globally numerous. By modelling dependence as a sparse graph and charging each event only for its own neighbourhood, it replaces the union bound's global pessimism with a local sufficient condition. The symmetric version `e p (d+1) <= 1` and the asymmetric version with weights `x_i` are the standard forms used in combinatorics and theoretical computer science, and they remain the canonical way to certify that a good object exists even though many independent-looking constraints cannot be enforced simultaneously by simpler tools.
+$$e\,p\,(d+1) \;\le\; 1 \quad\Longrightarrow\quad P\!\left(\bigcap_{i=1}^n \overline{A_i}\right) > 0.$$
