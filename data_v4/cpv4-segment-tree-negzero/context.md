@@ -40,21 +40,18 @@ Two families of approach are on the table before committing:
 
 - **Re-scan per query.** Answer each `2 l r` with a fresh Kadane scan over `a[l..r]`, and apply each
   update in `O(1)`. Correct and trivial, but `O(nq)` worst case; it only survives if both `n` and
-  `q` are tiny. Useful as an independent brute-force oracle, not as the shipped solution.
-- **Segment tree of "subarray summaries".** Each node over a range stores four longs: the best
-  prefix sum, the best suffix sum, the total sum, and the best subarray sum inside that range. Two
-  adjacent summaries combine in `O(1)`, so build is `O(n)`, each update is `O(log n)`, and each
-  query is `O(log n)`. The open questions are the exact merge formulas and — the crux — the
-  **identity element** used for out-of-range / empty segments so that an empty piece can never be
-  mistaken for a valid non-empty subarray.
+  `q` are tiny. Useful as an independent brute-force oracle.
+- **Segment tree over range summaries.** A tree whose nodes each carry enough information about
+  their range to answer a query in `O(log n)` after an `O(log n)` point update. What exactly each
+  node needs to store, how two adjacent summaries combine, and how out-of-range or empty pieces are
+  represented are all open.
 
 ## Evaluation settings
 
 Judged on hidden tests covering: all-positive ranges; ranges mixing negatives, zeros, and
-positives; all-negative ranges (answer is a negative single element); all-zero ranges (answer `0`);
-single-element ranges `l == r`; updates that flip a range from positive-containing to all-negative
-and back; and large `n, q = 2*10^5` with values near `10^9`, so a range total can reach
-`~2*10^14` and must use 64-bit arithmetic.
+positives; all-negative ranges; all-zero ranges; single-element ranges `l == r`; updates that flip
+a range from positive-containing to all-negative and back; and large `n, q = 2*10^5` with values
+near `10^9`.
 
 ## Code framework
 
