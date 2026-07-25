@@ -4,61 +4,8 @@ The method that fills the gap is Brouwer's fixed-point theorem proved via Sperne
 
 Sperner's lemma itself is proved by induction on dimension. In dimension one, a Sperner-labeled segment must change colors an odd number of times, yielding an odd number of rainbow edges. For dimension n, count the facets of cells that carry exactly the colors {1, …, n}. A rainbow cell contributes one such facet, a cell using only those n colors contributes two, and all other cells contribute zero, so the total count has the same parity as the number R of rainbow cells. Counting the same facets by location, interior facets are shared by two cells and cancel modulo two, while boundary facets must lie on the face spanned by corners 1, …, n. That face is itself a Sperner-labeled (n−1)-simplex, so by the induction hypothesis it has an odd number of rainbow facets. Therefore R is odd. This parity argument is the finite, hand-checkable shadow of the degree obstruction on the boundary sphere.
 
-```python
-import numpy as np
-
-def triangulate_simplex(m):
-    """Regular m-subdivision of the 2-simplex in barycentric coordinates."""
-    pts, idx = [], {}
-    for i in range(m + 1):
-        for j in range(m + 1 - i):
-            k = m - i - j
-            idx[(i, j, k)] = len(pts)
-            pts.append(np.array([i, j, k], dtype=float) / m)
-    pts = np.array(pts)
-    tris = []
-    for i in range(m + 1):
-        for j in range(m + 1 - i):
-            k = m - i - j
-            if k == 0:
-                continue
-            a = idx[(i, j, k)]
-            b = idx[(i + 1, j, k - 1)]
-            c = idx[(i, j + 1, k - 1)]
-            tris.append([a, b, c])
-            if j > 0:
-                d = idx[(i + 1, j - 1, k)]
-                tris.append([a, d, b])
-    return pts, np.array(tris)
-
-def sperner_color(x, fx):
-    """Choose an index i with fx_i < x_i (guaranteed if x != fx on the simplex)."""
-    return int(np.where(fx < x - 1e-12)[0][0])
-
-def find_rainbow_triangles(pts, tris, f):
-    colors = np.array([sperner_color(p, f(p)) for p in pts])
-    rainbow = [tri for tri in tris if len(set(colors[tri])) == 3]
-    return np.array(rainbow), colors
-
-def approx_fixed_point(f, m=64):
-    pts, tris = triangulate_simplex(m)
-    rainbow, _ = find_rainbow_triangles(pts, tris, f)
-    if len(rainbow) == 0:
-        return None
-    return pts[rainbow[0]].mean(axis=0)
-
-# Example continuous self-map of the 2-simplex.
-def example_map(x):
-    A = np.array([
-        [0.2, 0.5, 0.3],
-        [0.6, 0.1, 0.3],
-        [0.2, 0.4, 0.4]
-    ])
-    y = A @ x
-    return 0.5 * x + 0.5 * y  # stays inside the simplex
-
-x_star = approx_fixed_point(example_map, m=32)
-print("approx fixed point:", x_star)
-print("f(x*):            ", example_map(x_star))
-print("|f(x*) - x*|:     ", np.linalg.norm(example_map(x_star) - x_star))
-```
+Collecting the pieces gives the theorem in the precise form it deserves, hypotheses included: for every nonempty compact convex set $K \subset \mathbb{R}^n$ and every continuous map $f : K \to K$, there exists $x^* \in K$ with $f(x^*) = x^*$. Neither hypothesis is decorative — compactness is what turns the shrinking sequence of rainbow cells into an actual limit point, and convexity (no hole) is what makes $K$ homeomorphic to a ball or a simplex in the first place, which is the only route the argument has into $K$; drop either one and the standard counterexamples reappear ($f(x) = x^2$ on the open interval $(0,1)$ has no fixed point, and rotation of an annulus has none). The reusable engine underneath deserves to be isolated as its own statement, because it is what makes the theorem elementary: Sperner's lemma says that if the vertices of any triangulation of the standard simplex $\Delta^n = \{x \in \mathbb{R}^{n+1} : x_i \ge 0,\ \sum_i x_i = 1\}$ are colored with $n+1$ colors so that the $n+1$ corners receive $n+1$ distinct colors and every vertex on a face is colored with one of that face's own corner-colors, then the number $R$ of rainbow cells — cells whose $n+1$ vertices exhibit all $n+1$ colors between them — satisfies
+$$R \equiv D_O \pmod 2,$$
+where $D_O$ is the (inductively odd) count of correctly-colored facets on the single boundary face carrying the palette $\{1,\dots,n\}$; hence $R$ is odd, and in particular $R \ge 1$. That parity is the finite, hand-checkable stand-in for the homological fact $H_{n-1}(S^{n-1}) \cong \mathbb{Z} \ne 0 = H_{n-1}(D^n)$: an odd count cannot be refined down to zero, so the decreasing-coordinate coloring always yields a cell that shrinks, under finer and finer mesh, onto a genuine fixed point of $f$ on $\Delta^n$. The passage from $\Delta^n$ to an arbitrary nonempty compact convex $K$ of affine dimension $d$ is explicit, not just an existence claim: fixing $p$ in the relative interior of $K$ and setting $\rho(u) = \max\{t \ge 0 : p + tu \in K\}$ for each unit direction $u$ in the affine hull, the map
+$$ru \mapsto p + r\,\rho(u)\,u, \qquad r \in [0,1],$$
+is a homeomorphism of the closed $d$-ball onto $K$, and conjugating $f$ by it carries the simplex argument, and the fixed point it produces, onto $K$ itself. That theorem, together with Sperner's lemma and this explicit homeomorphism, is the complete deliverable: no further construction is needed to certify the equilibrium point on any nonempty compact convex domain.
