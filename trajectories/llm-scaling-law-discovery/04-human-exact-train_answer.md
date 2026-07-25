@@ -106,11 +106,11 @@ def _fit_vocab_human(X, y):
                         n_restarts=8, use_log=False)
 
 
-# -------- sld-lrbsz: Expert-B human law from the SLDBench literature --------
+# -------- sld-lrbsz: Expert-B human law from SLDBench paper --------
 # L(D, N, l, b) = A/D^alpha + B/N^beta + C + K_l*(l - l0)^2 + E*(log b + b0/b)
 # with l0 = F * N^gamma * D^zeta, b0 = G * D^eta.
-# Reference Expert-B law achieves R^2 = -0.0756.
-# Code parameter K_l is named D_lr in the reference implementation.
+# Reference: SLDBench Expert-B law (R^2 = -0.0756).
+# Code parameter K_l is named D_lr in the SLDBench reference implementation.
 
 def _lrbsz_human_predict(X, params):
     lr = np.clip(np.asarray(X[:, 0], dtype=float), 1e-12, None)
@@ -130,9 +130,9 @@ def _lrbsz_human_predict(X, params):
 def _fit_lrbsz_human(X, y):
     y = np.asarray(y, dtype=float)
 
-    # Reference coefficients for the Expert-B law (all_data):
+    # Reference coefficients for the SLDBench Expert-B law ("all_data"):
     #   [A, alpha, B, beta, C, D_lr, E, F, gamma, zeta, G, eta]
-    ref_params = np.array([
+    paper_params = np.array([
         262.1391, 0.2675, 7.0285, 0.0746, 0.0000136, 1278.595,
         0.0493, 0.3242, -1.0580, 0.6498, 0.0302, 0.3503,
     ], dtype=float)
@@ -163,7 +163,7 @@ def _fit_lrbsz_human(X, y):
             np.log(max(G, 1e-12)), eta,
         ], dtype=float)
 
-    init_ref = pack(ref_params)
+    init_paper = pack(paper_params)
 
     # Also include a data-driven init so we degrade gracefully if the training
     # split shifts the optimum.
@@ -178,13 +178,13 @@ def _fit_lrbsz_human(X, y):
     ], dtype=float)
 
     # Evaluate the reference coefficients directly (no fit) as an absolute
-    # fallback — they already achieve the reported R^2 = -0.0756.
-    best_params = ref_params
-    best_score = float(np.mean((_lrbsz_human_predict(X, ref_params) - y) ** 2))
+    # fallback — they already achieve R^2 = -0.0756.
+    best_params = paper_params
+    best_score = float(np.mean((_lrbsz_human_predict(X, paper_params) - y) ** 2))
     if not np.isfinite(best_score):
         best_score = float("inf")
 
-    for u0 in (init_ref, init_data):
+    for u0 in (init_paper, init_data):
         params = _fit_generic(X, y, u0, unpack, _lrbsz_human_predict,
                               n_restarts=3, use_log=False)
         pred = _lrbsz_human_predict(X, params)
