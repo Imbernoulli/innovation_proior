@@ -14,12 +14,6 @@ that are currently adjacent, the *order* of welds is a sequence of binary joins 
 different orders deposit different total heat. Output the **minimum total heat** over all valid weld
 orders.
 
-This is the line-merge / optimal-parenthesization family of interval dynamic programming: it has the
-same skeleton as ordering matrix-chain multiplications or building an optimal alphabetic tree, where
-a contiguous range is split at an internal boundary and the two halves are solved independently. The
-whole difficulty of getting it right lives at that boundary — which slabs a closed range actually
-contains, where the split index is allowed to sit, and which prefix index measures a range's width.
-
 ## Input / output contract
 
 - Input (stdin): the first token is `n` (`0 <= n <= 400`); then `n` integers `w[i]`
@@ -30,33 +24,12 @@ contains, where the split index is allowed to sit, and which prefix index measur
 
 Example: for `w = [3, 1, 4, 1]` the answer is `18`.
 
-## Background
-
-The cost of one weld is the combined width of the two pieces joined, and that combined width is just
-the sum of the original widths of every slab inside the merged span. So if you ever fully fuse the
-closed range of slabs `[i, j]`, the *last* weld in that range pays `w[i] + w[i+1] + ... + w[j]`
-regardless of how the two halves were formed, and the two halves are themselves fully-fused
-sub-ranges. That recursive structure is what makes interval DP apply.
-
-Two approaches are on the table before committing to one:
-
-- **Greedy by smallest piece.** Always weld the currently-cheapest adjacent pair first (a
-  Huffman-like instinct). It is fast and short. The open question is whether "join the smallest
-  neighbours first" is actually optimal once the *adjacency* restriction is imposed — Huffman is
-  free to combine any two items, but here only neighbours may fuse.
-- **Interval dynamic programming.** Define `dp[i][j]` as the minimum heat to fuse the closed range
-  `[i, j]` into one piece, split the range at an internal boundary `k`, and add the width of the
-  whole range for the final weld. This is `O(n^3)`. The open question is purely the *boundaries*: the
-  exact set of slabs `[i, j]` covers, the legal positions for the split `k`, and the prefix index
-  that yields the range's total width.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: tiny rows (`n = 0`, `n = 1`, `n = 2`) where the answer is `0`, `0`,
 and `w[0] + w[1]` respectively; small rows where every weld order can be enumerated by brute force;
-rows engineered so a smallest-first greedy is strictly suboptimal; and large rows up to `n = 400`
-with widths near `10^6`, where the total heat exceeds the 32-bit range and an `O(n^3)` algorithm must
-finish within the limit.
+and large rows up to `n = 400` with widths near `10^6`, testing both correctness and performance
+within the time limit.
 
 ## Code framework
 
