@@ -9,51 +9,43 @@ The reward itself is rule-based: an accuracy reward for a correct final answer a
 ```python
 import torch
 
-def group_advantages(rewards):
+def group_advantages(rewards):                       # rewards: list of G scalars
     r = torch.tensor(rewards, dtype=torch.float32)
     return (r - r.mean()) / (r.std(unbiased=False) + 1e-6)
 
 def grpo_loss(policy, ref_policy, q, outputs, old_logp, advantages, beta, eps):
     total = 0.0
     for o, lp_old, A in zip(outputs, old_logp, advantages):
-        lp_new = policy.token_logprobs(q, o).sum()
-        lp_old = lp_old.sum()
-        lp_ref = ref_policy.token_logprobs(q, o).sum()
-        ratio = torch.exp(lp_new - lp_old)
+        lp_new = policy.token_logprobs(q, o).sum()    # log π_θ(o|q)
+        lp_old = lp_old.sum()                         # log π_old(o|q)
+        lp_ref = ref_policy.token_logprobs(q, o).sum() # log π_ref(o|q)
+        ratio  = torch.exp(lp_new - lp_old)           # ρ_i for the whole output
 
-        unclipped = ratio * A
-        clipped = torch.clamp(ratio, 1 - eps, 1 + eps) * A
-        surrogate = torch.min(unclipped, clipped)
+        surrogate = torch.min(ratio * A,
+                              torch.clamp(ratio, 1 - eps, 1 + eps) * A)
+        t  = torch.exp(lp_ref - lp_new)               # t = π_ref/π_θ
+        kl = t - (lp_ref - lp_new) - 1.0              # t - log t - 1  (≥0, unbiased)
 
-        t = torch.exp(lp_ref - lp_new)
-        kl = t - (lp_ref - lp_new) - 1.0
-
-        total += surrogate - beta * kl
-    return -(total / len(outputs))
+        total += surrogate - beta * kl                # KL in the loss, not the reward
+    return -(total / len(outputs))                     # negate to minimize
 
 def rule_reward(q, o):
-    return accuracy_reward(q, o) + format_reward(o)
-
-def language_consistency(o):
-    return num_target_lang_words(o) / (num_words(o) + 1e-6)
+    return accuracy_reward(q, o) + format_reward(o)    # equal weight; +language_consistency(o) in stage 2
 
 def rl_step(policy, old_policy, ref_policy, questions, opt,
             G=16, temp=1.0, max_len=32768, beta=1e-3, eps=10):
     for q in questions:
         outs = old_policy.sample(q, n=G, temperature=temp, max_len=max_len)
-        rewards = [rule_reward(q, o) + language_consistency(o) for o in outs]
-        adv = group_advantages(rewards)
+        adv  = group_advantages([rule_reward(q, o) for o in outs])
         old_logp = [old_policy.token_logprobs(q, o) for o in outs]
         loss = grpo_loss(policy, ref_policy, q, outs, old_logp, adv, beta, eps)
-        loss.backward()
-        opt.step()
-        opt.zero_grad()
+        loss.backward(); opt.step(); opt.zero_grad()
 
 def build_cold_start_data(zero_model, prompts, n_per_prompt=16):
     samples = []
     for q in prompts:
-        samples += [(q, o) for o in zero_model.sample(
-            q, n=n_per_prompt, temperature=1.0, max_len=32768)]
+        samples += [(q, o) for o in zero_model.sample(q, n=n_per_prompt,
+                                                       temperature=1.0, max_len=32768)]
     kept = [o for q, o in samples
             if answer_correct(q, o) and readable(o) and not language_mixed(o)]
     refined = deepseek_v3_refine(human_style_convert(kept))
@@ -65,15 +57,14 @@ def general_reward(q, o):
 
 def pipeline(base, zero_model):
     cold_start_traces = build_cold_start_data(zero_model, reasoning_prompts)
-    policy = sft(base, cold_start_traces)
-    policy = grpo_train(policy, reasoning_prompts,
+    policy = sft(base, cold_start_traces)              # 1. conversational cold start
+    policy = grpo_train(policy, reasoning_prompts,     # 2. reasoning RL + lang consistency
                         reward=lambda q, o: rule_reward(q, o) + language_consistency(o))
-    data = rejection_sample(policy, prompts) + non_reasoning_data
-    policy = sft(policy, data)
-    policy = grpo_train(policy, mixed_prompts,
-                        reward=lambda q, o: (
-                            rule_reward(q, o) if verifiable(q) else general_reward(q, o)
-                        ) + language_consistency(o),
+    data   = rejection_sample(policy, prompts) + non_reasoning_data
+    policy = sft(policy, data)                          # 3. rejection-sampling SFT
+    policy = grpo_train(policy, mixed_prompts,          # 4. mixed-reward alignment RL
+                        reward=lambda q, o: (rule_reward(q, o) if verifiable(q)
+                                             else general_reward(q, o)) + language_consistency(o),
                         temperature=0.7, steps=1700, general_reward_steps=400)
     return policy
 ```
