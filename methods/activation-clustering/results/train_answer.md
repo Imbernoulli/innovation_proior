@@ -16,88 +16,61 @@ from sklearn.metrics import silhouette_score
 
 
 def reduce_dimensionality(x, nb_dims=10, reduce="FastICA"):
-    """Reduce per-class activations to a low-dimensional subspace."""
-    x = np.asarray(x)
     if x.shape[1] <= nb_dims:
         return x
     if reduce == "FastICA":
         return FastICA(n_components=nb_dims, max_iter=1000, tol=0.005).fit_transform(x)
     if reduce == "PCA":
         return PCA(n_components=nb_dims).fit_transform(x)
-    raise ValueError(f"Unsupported reduction: {reduce}")
+    raise ValueError(f"{reduce} dimensionality reduction method not supported")
 
 
-def mark_clusters(clusters, poison_clusters):
-    """Return 1 for clean rows and 0 for poison rows."""
+def assign_clean(clusters, poison_clusters):
+    poison_clusters = np.asarray(list(poison_clusters), dtype=int)
     clean = np.ones_like(clusters, dtype=int)
-    clean[np.isin(clusters, list(poison_clusters))] = 0
+    clean[np.isin(clusters, poison_clusters)] = 0
     return clean
 
 
 def analyze_smaller(clusters):
-    """Mark the smaller 2-means cluster as poison."""
     sizes = np.bincount(clusters)
-    poison = {int(np.argmin(sizes))}
-    return mark_clusters(clusters, poison)
+    return assign_clean(clusters, {int(np.argmin(sizes))})
 
 
-def analyze_relative_size(clusters, size_threshold=0.35):
-    """Mark clusters whose rounded fraction is strictly below the threshold."""
+def analyze_relative_size(clusters, size_threshold=0.35, r_size=2):
     sizes = np.bincount(clusters)
-    pct = np.round(sizes / float(sizes.sum()), 2)
-    poison = set(np.where(pct < round(size_threshold, 2))[0])
-    return mark_clusters(clusters, poison)
+    pct = np.round(sizes / float(sizes.sum()), r_size)
+    poison = set(np.where(pct < round(size_threshold, r_size))[0])
+    return assign_clean(clusters, poison)
 
 
 def analyze_silhouette(clusters, reduced, size_threshold=0.35, silhouette_threshold=0.1):
-    """Mark a small cluster as poison only if the 2-means fit is strong."""
     sizes = np.bincount(clusters)
     pct = np.round(sizes / float(sizes.sum()), 2)
     small = set(np.where(pct < round(size_threshold, 2))[0])
-    if small and silhouette_score(reduced, clusters) > silhouette_threshold:
-        return mark_clusters(clusters, small)
+    if small and round(silhouette_score(reduced, clusters), 4) > round(silhouette_threshold, 4):
+        return assign_clean(clusters, small)
     return np.ones_like(clusters, dtype=int)
 
 
-def activation_clustering(activations, labels, reduce="FastICA", analysis="smaller"):
-    """
-    Activation Clustering backdoor defense.
-
-    Parameters
-    ----------
-    activations : array-like, shape (n_samples, n_features)
-        Last hidden-layer activations flattened to vectors.
-    labels : array-like, shape (n_samples,)
-        Class labels used to segment activations (typically y_train or predicted labels).
-    reduce : {"FastICA", "PCA"}
-        Dimensionality reduction used before clustering.
-    analysis : {"smaller", "relative-size", "silhouette-scores"}
-        Rule for deciding which cluster is poison.
-
-    Returns
-    -------
-    report : dict
-        Per-class cluster sizes and poison counts.
-    is_clean : list[int]
-        1 = clean, 0 = poison, one entry per input row.
-    """
+def detect_from_activations(activations, labels, reduce="FastICA", analysis="smaller"):
     labels = np.asarray(labels)
     is_clean = np.ones(len(labels), dtype=int)
     report = {}
 
     for cls in np.unique(labels):
         idx = np.where(labels == cls)[0]
-        reduced = reduce_dimensionality(np.asarray(activations[idx]), reduce=reduce)
-        clusters = KMeans(n_clusters=2, n_init="auto", random_state=0).fit_predict(reduced)
+        x = reduce_dimensionality(np.asarray(activations[idx]), reduce=reduce)
+        clusters = KMeans(n_clusters=2).fit_predict(x)
 
         if analysis == "smaller":
             clean_bits = analyze_smaller(clusters)
         elif analysis == "relative-size":
             clean_bits = analyze_relative_size(clusters)
         elif analysis == "silhouette-scores":
-            clean_bits = analyze_silhouette(clusters, reduced)
+            clean_bits = analyze_silhouette(clusters, x)
         else:
-            raise ValueError(f"Unknown analysis: {analysis}")
+            raise ValueError("distance and ExRe need class-center/model-retraining state")
 
         is_clean[idx] = clean_bits
         report[f"Class_{int(cls)}"] = {
@@ -106,20 +79,4 @@ def activation_clustering(activations, labels, reduce="FastICA", analysis="small
         }
 
     return report, is_clean.tolist()
-
-
-class ActivationClusteringDefence:
-    """Poison-filtering interface wrapper around activation_clustering."""
-
-    def __init__(self, classifier, x_train, y_train):
-        self.classifier = classifier
-        self.x_train = np.asarray(x_train)
-        self.y_train = np.asarray(y_train)
-
-    def detect_poison(self, reduce="FastICA", analysis="smaller", **kwargs):
-        activations = self.classifier.get_activations(self.x_train, layer=-2)
-        report, is_clean = activation_clustering(
-            activations, self.y_train, reduce=reduce, analysis=analysis
-        )
-        return report, is_clean
 ```
