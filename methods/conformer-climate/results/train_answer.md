@@ -61,8 +61,8 @@ class _ConvModule(nn.Module):
 
     def forward(self, x):
         h = self.ln(x).transpose(1, 2)          # (B, d, L)
-        h = F.glu(self.pw1(h), dim=1)           # gate channels
-        h = self.dw(h)                          # local vertical window (k=7)
+        h = F.glu(self.pw1(h), dim=1)
+        h = self.dw(h)
         h = self.act(self.bn(h))
         h = self.drop(self.pw2(h))
         return h.transpose(1, 2)                # (B, L, d)
@@ -79,23 +79,15 @@ class _ConformerBlock(nn.Module):
         self.ln = nn.LayerNorm(d)
 
     def forward(self, x):
-        x = x + 0.5 * self.ff1(x)               # half-step FFN
-        x = x + self.mhsa(x)                     # global, content-based level coupling
-        x = x + self.conv(x)                     # local per-level detail on globalized features
-        x = x + 0.5 * self.ff2(x)               # half-step FFN
+        x = x + 0.5 * self.ff1(x)
+        x = x + self.mhsa(x)
+        x = x + self.conv(x)
+        x = x + 0.5 * self.ff2(x)
         return self.ln(x)
 
 
 class Custom(nn.Module):
-    """Conformer encoder over the 60 vertical levels for climate physics emulation.
-
-    Each of the 60 levels is a token: its 9 profile values concatenated with the
-    broadcast whole-column scalars, linearly embedded and given a learned per-level
-    (absolute height) positional embedding. A stack of conformer blocks couples
-    distant levels by attention and sharpens local vertical structure by depthwise
-    convolution, both at full resolution. Two structure-matched heads read off the
-    360 per-level tendencies and the 8 whole-column diagnostics.
-    """
+    """Conformer encoder over the 60 vertical levels for climate physics emulation."""
 
     N_LEVELS = 60
     N_PROFILE_IN = 9
@@ -110,9 +102,7 @@ class Custom(nn.Module):
 
         d_model, n_blocks, heads, kernel = 256, 4, 4, 7
 
-        # Per-level token: 9 profile values at the level + broadcast column scalars.
         self.embed = nn.Linear(self.N_PROFILE_IN + self.n_scalar_in, d_model)
-        # Learned ABSOLUTE per-level positional encoding (height has real meaning).
         self.pos = nn.Parameter(torch.zeros(1, self.N_LEVELS, d_model))
 
         self.blocks = nn.ModuleList(
@@ -120,9 +110,7 @@ class Custom(nn.Module):
         )
         self.out_norm = nn.LayerNorm(d_model)
 
-        # Per-level head -> 6 tendency channels per level (the 360 multi-level targets).
         self.ml_head = nn.Linear(d_model, self.N_PROFILE_OUT)
-        # Whole-column head: mean-pool over levels -> small MLP -> 8 scalar diagnostics.
         self.sl_head = nn.Sequential(
             nn.Linear(d_model, d_model // 2), nn.ReLU(),
             nn.Linear(d_model // 2, self.N_SCALAR_OUT),
