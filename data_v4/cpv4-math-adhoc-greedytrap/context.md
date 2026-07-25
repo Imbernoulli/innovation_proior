@@ -27,7 +27,7 @@ Examples:
 
 ## Background
 
-Three families of approach present themselves, and the constraints decide between them:
+Two families of approach present themselves, and the constraints decide between them:
 
 - **Greedy by largest square.** Repeatedly subtract the largest square `<= ` the remaining amount
   and count the steps. This is `O(sqrt(N))` and a four-line loop. The open question is whether
@@ -37,17 +37,11 @@ Three families of approach present themselves, and the constraints decide betwee
   `dp[v] = 1 + min over squares s<=v of dp[v - s]`. This is exact and easy to trust, but it is
   `O(N * sqrt(N))` time and `O(N)` memory. The open question is whether it fits when `N` can be as
   large as `10^9`.
-- **Number theory.** Lagrange's four-square theorem guarantees the answer is always `1, 2, 3,` or
-  `4`. If that is true, the entire problem collapses to *deciding which of the four* — a constant
-  number of cheap tests — and `N`'s size stops mattering. The open question is the exact decision
-  rule for `3` versus `4`.
 
 ## Evaluation settings
 
-Judged on hidden tests covering: perfect squares (answer `1`), sums of two squares (answer `2`),
-numbers of the special form `4^k * (8m + 7)` (answer `4`), generic numbers (answer `3`), the
-smallest inputs (`N = 1, 2, 3`), and large `N` near `10^9` where any `O(N)` method would time out
-or exhaust memory and where 32-bit intermediate squares would overflow.
+Judged on hidden tests covering a range of representative inputs, the smallest inputs
+(`N = 1, 2, 3`), and large `N` near `10^9`.
 
 ## Code framework
 
