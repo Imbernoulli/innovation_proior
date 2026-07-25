@@ -4,64 +4,8 @@ The key insight is that the primes do not need to be dense in the integers; they
 
 The method is the Green–Tao theorem on arithmetic progressions in the primes. It proceeds in two linked steps. First, it establishes a relative Szemerédi theorem: whenever 0 <= f <= nu on a cyclic group, the average of f over k-term arithmetic progressions is bounded below by a positive constant depending only on k and the relative density of f, provided nu is k-pseudorandom. The proof uses the machinery of Gowers uniformity. The function f is decomposed into a bounded structured component and a Gowers-uniform error. A generalized von Neumann theorem shows that any progression average containing the uniform error is negligible, even when the functions are only majorized by nu rather than bounded by 1. The structured part is genuinely bounded after passing to a suitable sigma-algebra built from dual functions, and dense Szemerédi applies to it. The iteration that builds the sigma-algebra terminates because each step increases the L^2 energy of the conditional expectation of f by a definite increment.
 
-Second, the method constructs a pseudorandom majorant for the primes. The local congruence bias is removed by the W-trick: fix a slowly growing product W of all primes below w(N), and restrict attention to primes of the form Wn + 1. This normalization makes the reduced residue classes modulo small primes equally likely. The majorant itself is built from the Goldston–Yıldırım truncated divisor sum Lambda_R(n) = sum_{d|n, d <= R} mu(d) log(R/d). Squaring this divisor sum gives a nonnegative sieve weight supported on almost-primes. On a safe interval, nu(n) is defined as a normalized constant multiple of Lambda_R(Wn + 1)^2 / log R, and it is set to 1 outside that interval. Goldston–Yıldırım estimates imply that nu has mean 1 + o(1), satisfies the linear forms condition and the correlation condition required for k-pseudorandomness, and majorizes a fixed constant multiple of the modified von Mangoldt prime weight. Applying the relative theorem to that modified prime weight yields a positive count of nondegenerate k-term progressions in the W-tricked primes, and the map n -> Wn + 1 turns them into genuine arithmetic progressions of primes.
+Second, the method constructs a pseudorandom majorant for the primes. The local congruence bias is removed by the W-trick: fix $W = \prod_{p \le w(N)} p$ for a slowly growing $w(N)$, and restrict attention to primes of the form $Wn+1$, which makes every reduced residue class modulo each small prime equally likely. The majorant itself is built from the Goldston–Yıldırım truncated divisor sum $\Lambda_R(n) = \sum_{d \mid n,\, d \le R} \mu(d)\log(R/d)$, with truncation radius $R = N^{k^{-1}2^{-k-4}}$. Squaring this divisor sum gives a nonnegative sieve weight supported on almost-primes. On the safe interval $[\epsilon_k N,\, 2\epsilon_k N]$, with $\epsilon_k = 1/(2^k(k+4)!)$ chosen small enough to rule out cyclic wraparound, I set
+$$\nu(n) = \frac{\phi(W)}{W}\cdot\frac{\Lambda_R(Wn+1)^2}{\log R},$$
+and $\nu(n) = 1$ outside that interval. Whenever $Wn+1$ is prime and exceeds $R$, the divisor sum collapses to its $d=1$ term, so this square weight dominates the modified von Mangoldt prime weight $\tilde\Lambda(n)$ up to a constant. Goldston–Yıldırım estimates then show that $\nu$ has mean $1+o(1)$ and satisfies the linear forms condition and the correlation condition required for $k$-pseudorandomness. Applying the relative theorem to $\tilde\Lambda$ yields a positive count of nondegenerate $k$-term progressions among the $W$-tricked primes on that interval, and the affine map $n \mapsto Wn+1$ carries each one to a genuine $k$-term arithmetic progression of primes.
 
-```python
-import sympy as sp
-from sympy import symbols, log, product, primerange, mobius, sqrt
-
-
-def green_tao_progressions(k=3, N=2000, w=5):
-    """
-    Demonstrate the two Green–Tao ingredients on a small scale:
-    1. W-trick normalization of the primes.
-    2. A truncated Goldston–Yildirim divisor-sum majorant.
-    """
-    # Small-prime product for the W-trick.
-    W = product(p for p in primerange(2, w + 1))
-    # Primes up to N that are congruent to 1 modulo W.
-    tricked = [p for p in primerange(2, N + 1) if p % W == 1]
-    # Map each W-tricked prime p to n with p = W*n + 1.
-    n_values = [(p - 1) // W for p in tricked]
-
-    # Truncated divisor-sum majorant Lambda_R^2 / log R.
-    n_sym = symbols('n', integer=True, positive=True)
-    R = int(N ** (1.0 / (k * 2 ** k)))  # tiny truncation radius for illustration
-
-    def divisor_sum_majorant(x):
-        x = int(x)
-        if x == 0:
-            return 0.0
-        s = 0.0
-        for d in range(1, min(R, x) + 1):
-            if x % d == 0:
-                s += mobius(d) * log(R / d)
-        return max(s, 0.0) ** 2 / log(R)
-
-    # Evaluate the majorant on the W-tricked index set.
-    majorant = {n: divisor_sum_majorant(W * n + 1) for n in n_values}
-    mean_nu = sum(majorant.values()) / max(len(n_values), 1)
-
-    # Search for k-term arithmetic progressions among the W-tricked primes.
-    n_set = set(n_values)
-    progressions = []
-    n_sorted = sorted(n_values)
-    for i, a in enumerate(n_sorted):
-        for j in range(i + 1, len(n_sorted)):
-            b = n_sorted[j]
-            d = b - a
-            if all(a + t * d in n_set for t in range(k)):
-                progressions.append(tuple(a + t * d for t in range(k)))
-
-    return {
-        "W": W,
-        "tricked_primes": tricked[:10],
-        "majorant_mean": float(mean_nu),
-        "progressions": progressions[:5],
-    }
-
-
-if __name__ == "__main__":
-    result = green_tao_progressions(k=3, N=5000, w=5)
-    print(result)
-```
+Both halves together give the theorem: for every integer $k \ge 3$, the primes contain infinitely many arithmetic progressions of length $k$, and more strongly, every subset of the primes of positive relative upper density inside the primes — not the primes alone — contains infinitely many $k$-term arithmetic progressions. The primes are too sparse to invoke dense Szemerédi directly, but they have positive density relative to the pseudorandom almost-prime measure $\nu$ built from the Goldston–Yıldırım majorant, and that relative density is all the transference argument needed.
