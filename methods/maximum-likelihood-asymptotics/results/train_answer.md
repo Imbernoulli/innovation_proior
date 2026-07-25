@@ -16,46 +16,10 @@ The efficiency claim follows from the same local Gaussian-shift viewpoint, but o
 
 I keep the caveats inside the result rather than appended after it, because each one marks a place where a movement fails. If the optimizer is not localized, the quadratic neighborhood is irrelevant. If the score has no Gaussian limit, the linear term changes. If I(theta_0) is singular or nearly flat, curvature can no longer convert score noise into a stable displacement. Single observations can manufacture infinite or dominating peaks in mixture, shifted-support, lognormal, gamma, or singular-density models. Boundary problems such as uniform-endpoint estimation have nonnormal rates and different constants. Incidental parameters, as in the Neyman-Scott construction, can drive the estimator to the wrong value. Bounded likelihood ratios do not by themselves prevent false-peak failure. Ordinary Wald quadratics can be parametrization-dependent or nonuniform near boundaries, so the safer local object is the likelihood-ratio or Hellinger or Gaussian-shift geometry.
 
-The distinctive insight is therefore not that argmax implies normality. It is that a localized likelihood with nonsingular information curvature becomes a Gaussian quadratic, and that geometry, global separation to reach the truth followed by a curvature-controlled Gaussian linear-plus-quadratic locally, is what controls the estimator's uncertainty. The final deliverable is the theorem: in a regular correctly specified dominated parametric model with true interior parameter theta_0, and with hat h_n = sqrt(n)(hat theta_n - theta_0) assumed O_p(1) and I(theta_0) nonsingular, if the uniform local expansion ell_n(theta_0 + h / sqrt(n)) - ell_n(theta_0) = h^T Delta_n - (1/2) h^T I(theta_0) h + o_p(1) holds with Delta_n converging to N(0, I(theta_0)), then any local approximate maximizer satisfies hat h_n = I(theta_0)^{-1} Delta_n + o_p(1) and therefore sqrt(n)(hat theta_n - theta_0) converges in distribution to N(0, I(theta_0)^{-1}).
+The distinctive insight is therefore not that argmax implies normality. It is that a localized likelihood with nonsingular information curvature becomes a Gaussian quadratic, and that geometry, global separation to reach the truth followed by a curvature-controlled Gaussian linear-plus-quadratic locally, is what controls the estimator's uncertainty.
 
-Because this is a theorem rather than a production algorithm, the accompanying code is a small runnable verification rather than a reference implementation. The script below simulates a simple Gaussian model with known variance, computes the maximum likelihood estimator of the mean, checks empirically that sqrt(n)(mu_hat - mu_0) has variance close to the inverse Fisher information, and compares the empirical distribution to the predicted asymptotic normal. This confirms the local-quadratic geometry in a concrete numerical example.
-
-```python
-import numpy as np
-from scipy import stats
-
-np.random.seed(0)
-mu0 = 2.5          # true mean
-sigma2 = 1.5       # known variance
-n = 400            # sample size
-B = 20000          # number of simulation repetitions
-info_per_obs = 1.0 / sigma2
-asymptotic_variance = sigma2
-
-scaled_errors = np.empty(B)
-for b in range(B):
-    sample = np.random.normal(loc=mu0, scale=np.sqrt(sigma2), size=n)
-    mu_hat = np.mean(sample)
-    scaled_errors[b] = np.sqrt(n) * (mu_hat - mu0)
-
-empirical_variance = np.var(scaled_errors, ddof=1)
-print(f"Sample size n = {n}")
-print(f"Inverse Fisher information (theoretical variance) = {asymptotic_variance:.6f}")
-print(f"Empirical variance of sqrt(n) * (mu_hat - mu0) = {empirical_variance:.6f}")
-
-ks_stat, p_value = stats.kstest(scaled_errors, "norm", args=(0.0, np.sqrt(asymptotic_variance)))
-print(f"KS statistic vs N(0, {asymptotic_variance:.4f}) = {ks_stat:.4f}, p-value = {p_value:.4f}")
-
-sample = np.random.normal(loc=mu0, scale=np.sqrt(sigma2), size=n)
-ll0 = -0.5 * np.sum((sample - mu0) ** 2) / sigma2
-score = np.sum(sample - mu0) / sigma2
-observed_info = n / sigma2
-
-hs = np.linspace(-3.0, 3.0, 7)
-print("\nh   loglik(theta0 + h/sqrt(n))   quadratic approx")
-for h in hs:
-    mu = mu0 + h / np.sqrt(n)
-    ll = -0.5 * np.sum((sample - mu) ** 2) / sigma2
-    approx = ll0 + h * score / np.sqrt(n) - 0.5 * h * h * observed_info / n
-    print(f"{h:+.2f}   {ll:+.6f}                {approx:+.6f}")
-```
+This is the regular local-quadratic theorem, and it is the deliverable, stated in full: let $X_1,\dots,X_n$ be drawn from a regular, correctly specified, dominated parametric model with true interior parameter $\theta_0$, log-likelihood $\ell_n(\theta)=\sum_{i=1}^n \log p_\theta(X_i)$, and nonsingular Fisher information $I(\theta_0)$. Suppose $\hat h_n=\sqrt n(\hat\theta_n-\theta_0)$ is $O_p(1)$, and suppose that for every compact set $K$ the local expansion holds uniformly in $h\in K$:
+$$\ell_n\!\big(\theta_0+h/\sqrt n\big)-\ell_n(\theta_0)\;=\;h^\top \Delta_n-\tfrac12 h^\top I(\theta_0) h+o_p(1),\qquad \Delta_n:=n^{-1/2}\dot\ell_n(\theta_0)\ \xrightarrow{d}\ N\big(0,I(\theta_0)\big).$$
+Then any local approximate maximizer $\hat\theta_n$ satisfies
+$$\hat h_n \;=\; I(\theta_0)^{-1}\Delta_n+o_p(1),\qquad\text{hence}\qquad \sqrt n\big(\hat\theta_n-\theta_0\big)\ \xrightarrow{d}\ N\big(0,\,I(\theta_0)^{-1}\big),$$
+and, under the same regularity, this limit attains the inverse-information efficiency bound inherited from the local Gaussian-shift experiment. The theorem is exactly as conditional as its hypotheses: it says nothing about an unlocalized global maximizer, it needs $I(\theta_0)$ nonsingular and the score's Gaussian limit to hold, and it is silent on boundary parameters, incidental-parameter constructions, and singular models, precisely the places the global step or the local quadratic can fail first.
