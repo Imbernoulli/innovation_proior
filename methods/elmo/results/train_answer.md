@@ -33,7 +33,8 @@ class Highway(nn.Module):
 
 
 class CharacterCNNEncoder(nn.Module):
-    """Context-independent token vector from characters; works for any string."""
+    """x_k^LM: context-independent token vector from characters (works for any
+    string, captures morphology)."""
     def __init__(self, n_chars=262, char_dim=16,
                  filters=((1, 32), (2, 32), (3, 64), (4, 128),
                           (5, 256), (6, 512), (7, 1024)),
@@ -46,13 +47,13 @@ class CharacterCNNEncoder(nn.Module):
         self.highways = Highway(total, n_highway, activation=F.relu)
         self.proj = nn.Linear(total, proj_dim)
 
-    def forward(self, char_ids):
+    def forward(self, char_ids):                       # (B, T, max_chars)
         B, T, C = char_ids.shape
         mask = (char_ids.gt(0).long().sum(dim=-1) > 0).long()
-        x = self.char_emb(char_ids.view(B * T, C)).transpose(1, 2)
+        x = self.char_emb(char_ids.view(B * T, C)).transpose(1, 2)   # (B*T, char_dim, C)
         convs = []
         for conv in self.convs:
-            c, _ = conv(x).max(dim=-1)
+            c, _ = conv(x).max(dim=-1)                  # conv + max-pool over chars
             convs.append(F.relu(c))
         tok = self.proj(self.highways(torch.cat(convs, dim=-1)))
         tok = tok.view(B, T, -1) * mask.unsqueeze(-1).float()
@@ -60,7 +61,7 @@ class CharacterCNNEncoder(nn.Module):
 
 
 class StackedProjectedLSTM(nn.Module):
-    """Projected LSTM stack that returns every layer output for mixing."""
+    """Projected LSTM stack returning every layer output."""
     def __init__(self, input_dim, cell_dim=4096, proj_dim=512, n_layers=2, residual=True):
         super().__init__()
         self.layers = nn.ModuleList()
@@ -91,7 +92,8 @@ class StackedProjectedLSTM(nn.Module):
 
 
 class BidirectionalLanguageModel(nn.Module):
-    """Forward + backward LM with shared char encoder and softmax; returns all layers."""
+    """Forward + backward LM; char-CNN (Theta_x) and softmax (Theta_s) shared
+    across directions, separate LSTM stacks. Returns all L+1 layers = R_k."""
     def __init__(self, n_layers=2, proj_dim=512, cell_dim=4096, vocab_size=793471):
         super().__init__()
         self.char_encoder = CharacterCNNEncoder(proj_dim=proj_dim)
@@ -137,6 +139,8 @@ class LayerCombination(nn.Module):
         super().__init__()
         if initial_scalar_parameters is None:
             initial_scalar_parameters = [0.0] * mixture_size
+        if len(initial_scalar_parameters) != mixture_size:
+            raise ValueError("initial scalar parameter count must match mixture_size")
         self.scalar_parameters = nn.ParameterList([
             nn.Parameter(torch.tensor([value], dtype=torch.float), requires_grad=trainable)
             for value in initial_scalar_parameters
@@ -145,9 +149,13 @@ class LayerCombination(nn.Module):
         self.do_layer_norm = do_layer_norm
 
     def forward(self, layers, mask=None):
+        if len(layers) != len(self.scalar_parameters):
+            raise ValueError("wrong number of layer tensors")
         s = F.softmax(torch.cat([p for p in self.scalar_parameters]), dim=0)
         s = torch.split(s, split_size_or_sections=1)
         if self.do_layer_norm:
+            if mask is None:
+                raise ValueError("mask is required when do_layer_norm=True")
             layers = [self._layer_norm(h, mask) for h in layers]
         return self.gamma * sum(s_j * h for s_j, h in zip(s, layers))
 
@@ -161,7 +169,7 @@ class LayerCombination(nn.Module):
 
 
 class ContextualFeatureExtractor(nn.Module):
-    """Frozen biLM plus one learned layer combination per injection site."""
+    """Frozen biLM + one learned layer combination per output location."""
     def __init__(self, bilm, num_output_representations=1,
                  do_layer_norm=False, dropout=0.5, freeze_bilm=True):
         super().__init__()
@@ -196,7 +204,6 @@ class ContextualFeatureExtractor(nn.Module):
 
 def add_feature_to_task_model(task_token_repr, contextual_input,
                               task_context_repr=None, contextual_output=None):
-    """Concatenate ELMo at the task input and optionally at the task output."""
     task_input = torch.cat([task_token_repr, contextual_input], dim=-1)
     if task_context_repr is None or contextual_output is None:
         return task_input
