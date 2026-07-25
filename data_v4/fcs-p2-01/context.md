@@ -34,17 +34,15 @@ Two families of approach are on the table before committing to one.
   `O(S log n)` with a sorted scan) and a few lines of code. The open question is whether always
   grabbing the largest fitting coin actually yields the minimum count for an *arbitrary* set of
   denominations.
-- **Dynamic programming over sums.** For every value `s` from `1` to `S`, compute the minimum coins
-  to make `s` by relaxing each denomination `c` against `s - c`. This is `O(S * n)`; the open
-  questions are the exact recurrence, the unreachable/`-1` handling, and whether `O(S * n)` is fast
-  enough at the stated limits.
+- **Dynamic programming over sums.** Build up, for each value from `1` to `S`, the minimum number of
+  coins needed to reach it from smaller values already computed. The open questions are the exact
+  recurrence, the unreachable/`-1` handling, and whether this is fast enough at the stated limits.
 
 ## Evaluation settings
 
-Judged on hidden tests covering: the canonical greedy-killer denomination sets (e.g. `{1, 3, 4}`),
-sets without a `1` coin (so many targets are unreachable), `S = 0` (answer `0`), denominations larger
-than `S`, duplicate denominations, single-denomination sets, fully unreachable targets (answer `-1`),
-and large instances with `S = 10^6` and `n = 100` to confirm the chosen method runs in time.
+Judged on hidden tests covering: a range of denomination sets, sets without a `1` coin, `S = 0`,
+denominations larger than `S`, duplicate denominations, single-denomination sets, fully unreachable
+targets, and large instances with `S = 10^6` and `n = 100` to confirm the chosen method runs in time.
 
 ## Code framework
 
