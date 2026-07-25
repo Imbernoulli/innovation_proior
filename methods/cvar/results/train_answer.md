@@ -12,25 +12,24 @@ import numpy as np
 
 
 class CVaREfficientPortfolio:
-    """Mean-CVaR portfolio optimization via the auxiliary-variable LP.
+    """Mean-CVaR optimization via the auxiliary-variable LP.
 
         min_{w, zeta, u}  zeta + (1 / (N (1 - alpha))) * sum_k u_k
-        s.t.  u_k >= L_k(w) - zeta,  u_k >= 0,  w in X,
-        where L_k(w) = -R_k . w.
+        s.t.  u_k >= L_k(w) - zeta,  u_k >= 0,  w in X,     L_k(w) = -R_k . w.
 
-    The optimal value is alpha-CVaR; zeta is an alpha-quantile threshold.
+    Optimal value = alpha-CVaR; zeta is an alpha-quantile threshold.
     Data are returns (gains); loss is the negative of the return.
     """
 
     def __init__(self, expected_returns, returns, alpha=0.95, weight_bounds=(0, 1)):
-        self.returns = np.asarray(returns)          # (N scenarios, n assets)
+        self.returns = np.asarray(returns)            # (N scenarios, n assets)
         self.expected_returns = np.asarray(expected_returns)
         self.N, self.n = self.returns.shape
-        self.alpha = alpha                          # confidence level, e.g. 0.95
+        self.alpha = alpha                            # confidence level (e.g. 0.95)
         self.lower, self.upper = weight_bounds
-        self.w = cp.Variable(self.n)                # portfolio weights
-        self.zeta = cp.Variable()                   # alpha-quantile threshold
-        self.u = cp.Variable(self.N)                # loss-exceedance epigraph vars
+        self.w = cp.Variable(self.n)                  # portfolio weights
+        self.zeta = cp.Variable()                     # alpha-quantile threshold
+        self.u = cp.Variable(self.N)                  # loss-exceedance epigraph vars
 
     def _feasible_region(self, market_neutral=False):
         cons = [self.w >= self.lower, self.w <= self.upper]
@@ -38,6 +37,7 @@ class CVaREfficientPortfolio:
         return cons
 
     def _cvar_expr(self):
+        # F_alpha = zeta + (1 / (N (1 - alpha))) * sum_k u_k
         return self.zeta + 1.0 / (self.N * (1 - self.alpha)) * cp.sum(self.u)
 
     def _cvar_constraints(self):
@@ -47,12 +47,14 @@ class CVaREfficientPortfolio:
                 self.returns @ self.w + self.zeta + self.u >= 0]
 
     def min_cvar(self, market_neutral=False):
+        """Minimise portfolio CVaR."""
         objective = self._cvar_expr()
         constraints = self._feasible_region(market_neutral) + self._cvar_constraints()
         cp.Problem(cp.Minimize(objective), constraints).solve()
-        return self.w.value                          # self.zeta.value is an alpha-quantile
+        return self.w.value                            # self.zeta.value is an alpha-quantile
 
     def efficient_return(self, target_return, market_neutral=False):
+        """Minimise CVaR subject to a floor on expected return."""
         objective = self._cvar_expr()
         constraints = self._feasible_region(market_neutral) + self._cvar_constraints()
         constraints.append(self.expected_returns @ self.w >= target_return)
@@ -60,6 +62,7 @@ class CVaREfficientPortfolio:
         return self.w.value
 
     def efficient_risk(self, target_cvar, market_neutral=False):
+        """Maximise expected return subject to a CVaR ceiling (frontier sweep)."""
         objective = self.expected_returns @ self.w
         constraints = self._feasible_region(market_neutral) + self._cvar_constraints()
         constraints.append(self._cvar_expr() <= target_cvar)
