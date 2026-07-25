@@ -22,47 +22,10 @@ $$
 
 Because d < 100, we have 400 - 2d > 200, and with \epsilon > 1/400 this yields y^2 > d^2 + 1/2. Thus in every 200-round block the squared distance increases by more than 1/2. Repeating blocks while d < 100, the squared distance exceeds 100^2 after at most 2 * 100^2 = 20000 blocks, using at most 200 * 20000 = 4 * 10^6 rounds, far fewer than 10^9. Once d > 100, the rabbit simply moves one unit directly away from the hunter each round; the distance rises by one before the hunter moves, and the hunter's one-unit response cannot pull it below its previous value. Therefore no hunter strategy can guarantee distance below 100 after 10^9 rounds.
 
-The following Python script verifies the key inequality for representative distances and simulates the repeated block argument, confirming that the rabbit escapes past 100 well before a billion rounds.
+That inequality packages into a single reusable strategy, the deliverable of the whole analysis: the symmetric ambiguity block, repeated. Whenever the current distance satisfies d < 100, the rabbit runs one block of exactly 200 rounds exactly as constructed above — placing Y_1, Y_2 one unit off the current hunter-rabbit line r and 200 units past R, reporting only points of r throughout the block so the hunter cannot distinguish the two futures, and committing at the block's end to whichever of Y_1, Y_2 lands farther from the hunter's forced endpoint H'. Every block is governed by one identity,
 
-```python
-import math
+$$
+y^2 = d^2 + \epsilon(400 - 2d), \qquad \epsilon = 200 - \sqrt{200^2-1} = \frac{1}{200+\sqrt{200^2-1}}, \qquad \frac{1}{400} < \epsilon < \frac{1}{200},
+$$
 
-BLOCK = 200                      # rounds per symmetric ambiguity block
-TARGET = 100                     # hunter's desired distance bound
-EPS = BLOCK - math.sqrt(BLOCK**2 - 1)  # = 1 / (BLOCK + sqrt(BLOCK^2 - 1))
-
-def lower_squared_after_block(d2):
-    """Lower bound on the rabbit's squared distance after one block."""
-    d = math.sqrt(d2)
-    if d < EPS:
-        # Hunter can reach Z, but even then squared distance is 1 > d^2 + 1/2.
-        return 1.0
-    # Best hunter point is H', giving y^2 = d^2 + eps*(400 - 2d).
-    return d2 + EPS * (2 * BLOCK - 2 * d)
-
-def rounds_to_escape(target=TARGET):
-    """Simulate repeated blocks until the distance exceeds target."""
-    d2 = 0.0
-    rounds = 0
-    while d2 < target * target:
-        d2 = lower_squared_after_block(d2)
-        rounds += BLOCK
-    return rounds, math.sqrt(d2)
-
-def squared_gain(d):
-    """Additive gain in squared distance from a single block."""
-    d2 = d * d
-    return lower_squared_after_block(d2) - d2
-
-if __name__ == "__main__":
-    print(f"epsilon = {EPS:.8f}")
-    print(f"1/400 = {1/400:.8f}, 1/200 = {1/200:.8f}")
-    for d in [0.0, 0.1, 1.0, 10.0, 50.0, 99.9]:
-        gain = squared_gain(d)
-        print(f"d = {d:5.1f}: squared-distance gain = {gain:.6f}, "
-              f"gain > 1/2? {gain > 0.5}")
-    rounds, final_d = rounds_to_escape()
-    print(f"\nRounds to exceed distance {TARGET}: {rounds}")
-    print(f"Final distance after escape: {final_d:.3f}")
-    print(f"Escapes within 10^9 rounds? {rounds < 1_000_000_000}")
-```
+which guarantees d^2 grows by more than 1/2 every 200 rounds while d < 100. Iterating the block at most 20000 times, i.e. for at most 4 * 10^6 rounds, drives d^2 past 100^2; from that moment the rabbit switches to stepping directly away from the hunter every round, which keeps the distance above 100 for good. Because each block adds a fixed amount to d^2 rather than to d itself, the distance the rabbit can force after n rounds grows like sqrt(n) in the round count, an unbounded rate that clears the target of 100 using barely 4 * 10^6 of the 10^9 rounds on offer. That is the theorem: for every hunter strategy, the symmetric ambiguity block strategy produces a legal rabbit trajectory and a legal sequence of tracking reports under which the distance exceeds 100 well before round 10^9, so no hunter strategy can guarantee the bound the problem asks for.
