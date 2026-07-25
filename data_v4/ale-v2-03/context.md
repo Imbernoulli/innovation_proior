@@ -53,27 +53,14 @@ Several approaches sit on the table before committing:
   optimal.
 - **Permutation-encoded metaheuristics** (GA / SA on operation-priority lists). General but they spend
   most evaluations far from the critical path and waste the structure of the problem.
-- **Critical-path local search.** The makespan is a longest path; only operations *on* a critical path
-  can be reordered to shorten it. Swapping two adjacent operations that are *not* on a critical path
-  cannot reduce the makespan. So the search should propose moves only along critical paths — this is
-  the lever that makes local search both fast and effective for the job shop.
-
-The decisive structure is the **N5 critical-block neighbourhood** of Nowicki & Smutnicki. A critical
-path, cut into maximal runs of operations that share a machine ("blocks"), can only be shortened by
-reordering operations *within* a block, and (a theorem of the disjunctive graph) it suffices to consider
-swapping the **first two** or the **last two** operations of each block. These swaps are provably
-**makespan-non-increasing-or-neutral candidates that never create a cycle**, so feasibility is automatic.
-Combined with **tabu search** (forbid immediately reversing a just-reversed arc, with an aspiration
-override when a move beats the incumbent) and **incremental longest-path re-evaluation that only touches
-the critical structure**, this is the established strong-yet-simple metaheuristic for `J||C_max`.
+- **Critical-path local search.** Rather than searching the full space of machine orderings, reorder
+  operations relative to the graph's longest path and re-evaluate incrementally as moves are made.
 
 ## Evaluation settings
 
 - **Instances.** A generator (`verify/gen.py`, parametrized by an integer `seed`) deterministically
   picks `n ∈ [15, 30]` and `m ∈ [10, 20]`, gives every job a uniformly random machine permutation, and
-  draws each processing time uniformly in `[1, 99]` (the standard Taillard band). This size band is where
-  list scheduling leaves substantial slack for critical-block search to recover while the longest-path
-  makespan stays cheap to recompute.
+  draws each processing time uniformly in `[1, 99]` (the standard Taillard band).
 - **Scoring rule (deterministic, `verify/score.py`).** Read the instance and the submitted machine
   orders.
   - **Feasibility floor:** if the output is not exactly `m` permutations of `{0,…,n-1}`, **or** the
@@ -91,10 +78,9 @@ the critical structure**, this is the established strong-yet-simple metaheuristi
 
     A higher score is better. The list-scheduling reference scores exactly `1 000 000`; a shorter
     makespan scores strictly more; a longer one scores less but stays positive.
-- **Reported metric.** The mean score over a fixed seed set. A genuine critical-block tabu solver should
-  land well above `1 000 000` (≈ 1.2–1.6× the list-scheduling reference on these instances); the trivial
-  *identity-order* output (every machine runs jobs `0,1,…,n-1`) is feasible but poor and scores only
-  ~150 000 — the floor to beat.
+- **Reported metric.** The mean score over a fixed seed set. A strong solver should land well above
+  `1 000 000` on these instances; the trivial *identity-order* output (every machine runs jobs
+  `0,1,…,n-1`) is feasible but poor and scores only ~150 000 — the floor to beat.
 
 ## Code framework
 
@@ -120,10 +106,9 @@ int main() {
     vector<vector<int>> order(m);   // order[k] = job order on machine k
 
     // TODO heuristic: build the disjunctive graph, compute the makespan as the
-    // longest source->sink path, find a critical path, decompose it into machine
-    // BLOCKS, and run tabu search over the N5 neighbourhood (swap the first-two /
-    // last-two operations of each critical block), recomputing heads/tails to
-    // evaluate each move and keeping the best acyclic schedule under a ~2s budget.
+    // longest source->sink path, and search for machine orderings that reduce it,
+    // recomputing the makespan to evaluate each candidate move and keeping the
+    // best acyclic schedule found under a ~2s budget.
 
     string out;
     for (int k = 0; k < m; k++) {
