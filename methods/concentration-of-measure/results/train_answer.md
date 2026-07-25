@@ -12,55 +12,6 @@ McDiarmid's inequality applies this machinery to a general function f. Suppose f
 
 with a factor of 2 for the two-sided version. This is distribution-free beyond independence and the sensitivities c_i; it needs no variance, no boundedness of the individual X_i beyond what controls f, and it recovers Hoeffding's inequality for sums as the special case f = sum_i X_i with c_i = b_i - a_i. That is the concentration-of-measure phenomenon made explicit: a function of many independent variables that is insensitive to any single coordinate is sharply concentrated around its mean.
 
-```python
-import numpy as np
-from typing import Callable
-
-def hoeffding_lemma_mgf_bound(h: float, a: float, b: float) -> float:
-    """Upper bound on E[exp(h X)] for centered X in [a, b]."""
-    return np.exp(h**2 * (b - a)**2 / 8.0)
-
-def hoeffding_bound(t: float, ranges: list[tuple[float, float]]) -> float:
-    """Pr{sum_i (X_i - E X_i) >= t} <= exp(-2 t^2 / sum_i (b_i - a_i)^2)."""
-    if t <= 0:
-        return 1.0
-    total_range_sq = sum((b - a) ** 2 for a, b in ranges)
-    return np.exp(-2.0 * t**2 / total_range_sq)
-
-def mcdiarmid_bound(t: float, sensitivities: list[float]) -> float:
-    """Pr{f(X) - E f >= t} <= exp(-2 t^2 / sum_i c_i^2)
-    for f with bounded differences c_i."""
-    if t <= 0:
-        return 1.0
-    total_sq = sum(c**2 for c in sensitivities)
-    return np.exp(-2.0 * t**2 / total_sq)
-
-def empirical_mean_sensitivity(n: int) -> list[float]:
-    """For f(x) = (1/n) sum_i x_i with x_i in [0,1], changing one coordinate
-    changes f by at most 1/n."""
-    return [1.0 / n] * n
-
-# Example: average of n independent [0,1] variables.
-n = 100
-t = 0.1
-sens = empirical_mean_sensitivity(n)
-print("McDiarmid / Hoeffding tail bound:", mcdiarmid_bound(t, sens))
-# Direct Hoeffding formulation for the sum deviation n*t:
-ranges = [(0.0, 1.0)] * n
-print("Hoeffding tail bound (equivalent):", hoeffding_bound(n * t, ranges))
-
-# Example: a general bounded-differences function.
-def f(x: np.ndarray) -> float:
-    """A toy function with bounded differences 1/n in each coordinate."""
-    return float(np.mean(x) + 0.05 * np.sin(2 * np.pi * np.mean(x)))
-
-# Estimate E[f] by Monte Carlo and compare with the bound.
-np.random.seed(0)
-samples = 100_000
-estimates = np.array([f(np.random.rand(n)) for _ in range(samples)])
-mean_f = estimates.mean()
-deviations = estimates - mean_f
-empirical_tail = np.mean(deviations >= t)
-print("Empirical P(f - Ef >= t):", empirical_tail)
-print("McDiarmid bound:", mcdiarmid_bound(t, [1.06 / n] * n))
-```
+The finished result, stated in full, is this. Let $X_1,\dots,X_n$ be independent random variables taking values in arbitrary sets, and let $f$ satisfy the bounded-differences condition: there are constants $c_1,\dots,c_n$ such that for every $i$ and every choice of the other coordinates, replacing the $i$-th argument of $f$ by any other admissible value changes the output of $f$ by at most $c_i$. Then for every $t>0$,
+$$\Pr\{f(X_1,\dots,X_n)-\mathbb E f(X_1,\dots,X_n)\ge t\}\;\le\;\exp\!\left(-\frac{2t^2}{\sum_{i=1}^n c_i^2}\right),$$
+and the two-sided statement $\Pr\{|f(X_1,\dots,X_n)-\mathbb E f(X_1,\dots,X_n)|\ge t\}\le 2\exp\!\left(-2t^2/\sum_{i=1}^n c_i^2\right)$ follows by applying the one-sided bound to $f$ and to $-f$ (which has the same sensitivities $c_i$) and taking a union bound. No moment or boundedness condition on the $X_i$ themselves is required — only control of how far a single coordinate can move $f$ enters the bound, exactly the sensitivities produced by the Doob-martingale construction above. Setting $f=\sum_i X_i$ with $X_i\in[a_i,b_i]$ makes $c_i=b_i-a_i$ and collapses this exponent back to Hoeffding's inequality, confirming that the sum is the special case in which the Doob martingale's increments are literally the centered variables $X_i-\mathbb E X_i$ themselves.
