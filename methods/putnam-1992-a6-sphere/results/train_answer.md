@@ -16,38 +16,8 @@ This argument generalizes cleanly. In the plane, with three points on a circle, 
 
 Degenerate configurations, such as four coplanar points or O lying exactly on a face of the tetrahedron, are measure-zero events and do not affect the probability. The sign criterion also fails only when some ci = 0, which corresponds to such degeneracies, so the argument is complete almost surely.
 
-I will now verify the result numerically with a small Python simulation. The script samples many independent sets of four uniform points on the unit sphere, checks whether the origin lies inside each tetrahedron by solving for positive barycentric weights, and reports the empirical frequency.
+The complete statement of the result is the containment criterion together with the count it forces. For four vectors $v_1, v_2, v_3, v_4 \in \mathbb{R}^3$ in general position (affinely independent, any three linearly independent), write their unique-up-to-scale linear dependence as $c_1 v_1 + c_2 v_2 + c_3 v_3 + c_4 v_4 = 0$ with every $c_i \neq 0$: the origin lies strictly inside their convex hull if and only if all four coefficients $c_i$ share the same sign. Reparametrizing three of the four uniform sphere points as diameters plus independent fair coins turns the geometric question into exactly this sign count: with the diameters and the free point $P_4$ fixed, the coefficient $c_1$ is pinned, and each of the remaining three coins $\varepsilon_i$ is forced to exactly one value, $\varepsilon_i = \operatorname{sign}(c_1)/\operatorname{sign}(c_i)$, by the requirement that $\varepsilon_i c_i$ match the sign of $c_1$. So exactly one of the eight coin patterns $(\varepsilon_2, \varepsilon_3, \varepsilon_4) \in \{\pm 1\}^3$ produces a tetrahedron containing $O$ — for every configuration of diameters and free point, not merely on average. Since the eight patterns are equally likely, the conditional probability is the constant $1/8$, and therefore
 
-```python
-import numpy as np
+$$P\big(O \in \operatorname{conv}(P_1, P_2, P_3, P_4)\big) = \frac{1}{8}.$$
 
-def origin_in_tet(p1, p2, p3, p4):
-    # Check whether the origin lies strictly inside the tetrahedron
-    # with vertices p1, p2, p3, p4 by solving for strictly positive
-    # barycentric weights that sum to 1.
-    M = np.column_stack([p1, p2, p3, p4])
-    A = np.vstack([np.ones(4), M])
-    b = np.array([1.0, 0.0, 0.0, 0.0])
-    try:
-        w = np.linalg.solve(A, b)
-    except np.linalg.LinAlgError:
-        return False
-    return np.all(w > 0)
-
-def sample_sphere():
-    v = np.random.normal(size=3)
-    return v / np.linalg.norm(v)
-
-np.random.seed(0)
-n = 200_000
-count = 0
-for _ in range(n):
-    pts = [sample_sphere() for _ in range(4)]
-    if origin_in_tet(*pts):
-        count += 1
-
-print(f"Empirical probability: {count / n:.6f}")
-print(f"Expected probability:  {1/8:.6f}")
-```
-
-The antipodal coin-flip method thus gives the exact answer 1/8 with almost no calculation, and the numerical simulation confirms it.
+The same antipodal-coin count gives $2^{-d}$ for $d+1$ independent uniform points on $S^{d-1}$ in general — $1/4$ for the circle, $1/8$ for the sphere — and the sign criterion is the reusable tool underneath both: it recasts "is the origin inside the hull of $n+1$ points in $\mathbb{R}^n$" as a single sign check on the coefficients of their linear dependence, with no barycentric normalization and no integral ever required.
