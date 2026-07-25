@@ -18,7 +18,7 @@ import collections
 
 
 class PretrainingModel(object):
-    """Transformer pre-training using replaced-token detection (ELECTRA)."""
+    """Transformer pre-training using replaced-token detection."""
 
     def __init__(self, config, features, is_training):
         self._config = config
@@ -27,12 +27,13 @@ class PretrainingModel(object):
                           if config.embedding_size is None
                           else config.embedding_size)
 
-        # Prepare masked inputs; the helper records which positions are masked.
+        # Dynamic masking records original ids; the helper masks 85% of the
+        # selected positions and leaves the remaining selected positions unchanged.
         unmasked_inputs = pretrain_data.features_to_inputs(features)
         masked_inputs = pretrain_helpers.mask(
             config, unmasked_inputs, config.mask_prob)
 
-        # Smaller generator with tied embeddings.
+        # Default ELECTRA path: a smaller, untied generator with tied embeddings.
         generator_config = get_generator_config(config, self._bert_config)
         generator = build_transformer(
             config, masked_inputs, is_training, generator_config,
@@ -42,10 +43,8 @@ class PretrainingModel(object):
             scope="generator")
         mlm_output = self._get_masked_lm_output(masked_inputs, generator)
 
-        # Sample replacements and build the corrupted sequence.
         fake_data = self._get_fake_data(masked_inputs, mlm_output.logits)
 
-        # Combined loss: weighted generator MLM + weighted discriminator RTD.
         self.total_loss = config.gen_weight * mlm_output.loss
         discriminator = build_transformer(
             config, fake_data.inputs, is_training, self._bert_config,
@@ -73,7 +72,7 @@ class PretrainingModel(object):
         sampled_ids = tf.argmax(sampled_tokens, -1, output_type=tf.int32)
         updated_ids, masked = pretrain_helpers.scatter_update(
             inputs.input_ids, sampled_ids, inputs.masked_lm_positions)
-        # Outcome-keyed label: correct resamples count as real.
+        # Outcome-keyed label: a correct resample is real, not fake.
         labels = masked * (1 - tf.cast(
             tf.equal(updated_ids, inputs.input_ids), tf.int32))
         FakedData = collections.namedtuple(
@@ -91,7 +90,7 @@ class PretrainingModel(object):
             kernel_initializer=modeling.create_initializer(
                 self._bert_config.initializer_range))
         logits = tf.squeeze(tf.layers.dense(hidden, units=1), -1)
-        labelsf = tf.cast(labels, tf.float32)      # 1 = replaced, 0 = original
+        labelsf = tf.cast(labels, tf.float32)      # 1 = replaced/fake, 0 = original
         weights = tf.cast(inputs.input_mask, tf.float32)
         losses = tf.nn.sigmoid_cross_entropy_with_logits(
             logits=logits, labels=labelsf) * weights
@@ -101,7 +100,7 @@ class PretrainingModel(object):
 
 
 def sample_from_softmax(logits, disallow=None):
-    """Exact categorical sample via the Gumbel-max trick."""
+    """Exact categorical sample from softmax(logits) via the Gumbel-max trick."""
     if disallow is not None:
         logits -= 1000.0 * disallow
     u = tf.random.uniform(modeling.get_shape_list(logits), minval=0, maxval=1)
@@ -112,7 +111,7 @@ def sample_from_softmax(logits, disallow=None):
 
 
 def get_generator_config(config, bert_config):
-    """Make the generator smaller than the discriminator."""
+    """Scale generator depth and width relative to the discriminator."""
     gen = modeling.BertConfig.from_dict(bert_config.to_dict())
     gen.hidden_size = int(round(bert_config.hidden_size
                                 * config.generator_hidden_size))
