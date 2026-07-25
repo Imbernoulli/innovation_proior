@@ -118,7 +118,7 @@ class OffPolicyAlgorithm:
         self.device = device
         self.max_action = max_action
         self.gamma = args.gamma
-        self.policy_frequency = 1  # CrossQ: update actor every step
+        self.policy_frequency = 1  # CrossQ default: update actor every step
         self.total_it = 0
 
         self.actor = Actor(obs_dim, action_dim, max_action).to(device)
