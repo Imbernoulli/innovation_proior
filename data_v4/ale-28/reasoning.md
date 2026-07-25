@@ -103,9 +103,9 @@ on the instances: a pure coverage greedy lands at `C = 3` on several seeds, payi
 that the grid baseline does not. Coverage greedy can *out-cover* the baseline and still barely beat it,
 or even lose, once the penalty is subtracted.
 
-The non-obvious composition the problem points at is to **keep the submodular coverage placement and
-then repair connectivity**, rather than trying to bake connectivity into the greedy (which would break
-submodularity and the CELF speed-up). The repair is **Steiner-style**: a Steiner tree connects a set of
+The composition I land on is to **keep the submodular coverage placement and then repair connectivity**,
+rather than trying to bake connectivity into the greedy (which would break submodularity and the CELF
+speed-up). The repair is **Steiner-style**: a Steiner tree connects a set of
 terminals by adding intermediate nodes along connecting paths; here my "terminals" are the coverage
 clusters, and I connect two clusters by inserting a short chain of **bridge sensors** along the line
 between them, each hop within `2r` so consecutive bridge sensors (and the cluster endpoints) are linked.
@@ -190,8 +190,8 @@ compare against the scorer's own grid baseline and against the empty placement.
   (no connectivity care) and compared objectives. On the spread-out seeds the coverage greedy lands at
   `C = 3` (paying `2 * lam`), while my solver drives it to `C = 1` and ends with a strictly larger
   objective on every seed tested — the repair recovers a penalty the coverage greedy throws away, and
-  the SA recovers the rest. So the win is exactly the composition the problem is about: submodular
-  coverage to find the demand, Steiner repair to pay off the connectivity penalty.
+  the SA recovers the rest. So the win is exactly this composition: submodular coverage to find the
+  demand, Steiner repair to pay off the connectivity penalty.
 - Timing: 1.85 s wall, ~4 MB RAM on the largest instances — inside the 2 s / 256 MB budget.
 
 ## Why this is the right method, in one paragraph
