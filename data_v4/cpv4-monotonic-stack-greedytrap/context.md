@@ -12,10 +12,6 @@ Among all the ways to choose which `k` towers to demolish, output the surviving 
 is the empty string). Lexicographic order is the natural one on digit characters: a smaller digit in
 an earlier surviving position dominates everything to its right.
 
-This is a positional-selection problem: the value of a removal depends not on the digit alone but on
-*where* it sits, which is exactly the setting where a value-only greedy is treacherous and a
-left-to-right monotonic structure is the right tool.
-
 ## Input / output contract
 
 - Input (stdin): the first line has two integers `n` and `k` (`1 <= n <= 2*10^5`, `0 <= k <= n`).
@@ -30,24 +26,14 @@ Example: for `n = 7`, `k = 3`, `s = "1432219"` the answer is `"1219"`.
 ## Background
 
 The constraint "keep the surviving digits in their original order" makes this a subsequence-selection
-problem under lexicographic comparison. Two families of approach are on the table before committing:
-
-- **Value greedy.** Demolish the `k` tallest towers (largest digits), breaking ties by some rule.
-  It is `O(n log n)` and easy to write; the open question is whether removing the largest *values*
-  is the same as removing the most *harmful* ones, given that an early digit weighs more than a late
-  one.
-- **Monotonic stack.** Scan left to right building the result on a stack, and whenever a surviving
-  tower is taller than the tower currently arriving — and demolitions remain — pop it. This is
-  `O(n)`; the open questions are the exact pop condition (strict vs non-strict), and what to do with
-  leftover demolitions when the skyline never gives a reason to pop.
+problem under lexicographic comparison.
 
 ## Evaluation settings
 
-Judged on hidden tests covering: already non-decreasing skylines (where popping never triggers and
-the tail must absorb the removals), strictly decreasing skylines (where the front is demolished),
+Judged on hidden tests covering: already non-decreasing skylines, strictly decreasing skylines,
 heavy ties (many equal digits, e.g. `"00000"`), `k = 0` (output `s` unchanged), `k = n` (output the
-empty line), small alphabets that stress tie handling, and large `n = 2*10^5` so an `O(n^2)` scan or
-an `O(n log n)` sort-and-mark with the wrong tie rule is exposed.
+empty line), small alphabets that stress tie handling, and large `n = 2*10^5` to rule out
+inefficient solutions.
 
 ## Code framework
 
