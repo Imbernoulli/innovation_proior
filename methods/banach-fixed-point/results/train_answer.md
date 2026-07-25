@@ -6,57 +6,14 @@ The error estimates are as useful as the existence statement. The a priori bound
 
 The theorem also explains exactly where the hypotheses bite. Completeness is needed only once, to turn the Cauchy orbit into a limit; without it, the iterates can march toward a missing boundary point. The strict inequality q < 1 is needed for the geometric summation and for the uniqueness argument. When q = 1 the proof collapses: non-expansive maps can have no fixed points, many fixed points, or fixed points that iteration never reaches. The setting is naturally metric rather than linear, since the argument uses only distances, the triangle inequality, and Cauchy limits. This is why the same theorem applies equally well to solutions of integral equations in function spaces and to simple scalar equations on the real line.
 
-```python
-def banach_fixed_point(T, x0, q, tol=1e-10, max_iter=10000):
-    """
-    Approximate the unique fixed point of a contraction T.
+The result, stated in full, is this. Let $(X,d)$ be a nonempty complete metric space, and let $T:X\to X$ satisfy the contraction condition
 
-    Parameters
-    ----------
-    T : callable
-        A contraction mapping.  Should satisfy d(T(x), T(y)) <= q * d(x, y).
-    x0 : object supporting subtraction and a norm
-        Initial guess.
-    q : float
-        Contraction constant with 0 <= q < 1.
-    tol : float
-        Desired accuracy (uses the a posteriori error estimate).
-    max_iter : int
-        Safety bound on the number of iterations.
+$$d(Tx,Ty) \le q\, d(x,y) \qquad \text{for all } x,y \in X, \text{ where } 0 \le q < 1.$$
 
-    Returns
-    -------
-    x : object
-        Approximate fixed point.
-    info : dict
-        Contains the number of iterations, the final jump, and the
-        estimated error bound q * jump / (1 - q).
-    """
-    if not 0 <= q < 1:
-        raise ValueError("Contraction constant q must satisfy 0 <= q < 1")
+Then $T$ has exactly one fixed point $x^{*}\in X$, and for every starting point $x_0 \in X$ the Picard iterates $x_{n+1}=T(x_n)$ converge to $x^{*}$. The convergence comes with a computable geometric error certificate: for every $n$,
 
-    x = x0
-    for n in range(max_iter):
-        x_next = T(x)
-        jump = abs(x_next - x)
-        error_bound = q * jump / (1 - q) if q > 0 else 0.0
-        if error_bound < tol:
-            return x_next, {
-                "iterations": n + 1,
-                "jump": jump,
-                "error_bound": error_bound,
-            }
-        x = x_next
+$$d(x^{*},x_n) \le \frac{q^{n}}{1-q}\, d(x_1,x_0) \qquad \text{(a priori bound)},$$
 
-    raise RuntimeError(f"Failed to converge within {max_iter} iterations")
+$$d(x^{*},x_{n+1}) \le \frac{q}{1-q}\, d(x_{n+1},x_n) \qquad \text{(a posteriori bound)}.$$
 
-
-# Example: solve x = cos(x) on [0, 1].  The derivative of cos has modulus
-# at most sin(1) < 1 on this interval, so cos is a contraction there.
-import math
-q = math.sin(1.0)
-x_star, info = banach_fixed_point(math.cos, x0=0.5, q=q, tol=1e-12)
-print(f"fixed point: {x_star:.12f}")
-print(f"cos(fixed point): {math.cos(x_star):.12f}")
-print(f"iterations: {info['iterations']}, error bound: {info['error_bound']:.2e}")
-```
+That is the whole deliverable: a single, checkable inequality on pairs of points, combined with completeness of the ambient space, yields existence, uniqueness, convergence of the iteration from any starting point, and an explicit rate at which that convergence happens — with $q$ acting as the one number that governs how fast.
