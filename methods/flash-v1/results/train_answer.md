@@ -29,8 +29,8 @@ def _attn_fwd(
     BLOCK_DMODEL: tl.constexpr,
     IS_CAUSAL: tl.constexpr,
 ):
-    start_m = tl.program_id(0)
-    off_hz = tl.program_id(1)
+    start_m = tl.program_id(0)          # this program owns BLOCK_M query rows
+    off_hz = tl.program_id(1)           # for one (batch, head)
 
     q_offset = off_hz * stride_qh
     k_offset = off_hz * stride_kh
@@ -42,36 +42,39 @@ def _attn_fwd(
     offs_n = tl.arange(0, BLOCK_N)
     offs_d = tl.arange(0, BLOCK_DMODEL)
 
+    # load the query block once; keep it on chip for the whole loop
     q_ptrs = Q + q_offset + offs_m[:, None] * stride_qm + offs_d[None, :] * stride_qk
     q = tl.load(q_ptrs, mask=offs_m[:, None] < seqlen, other=0.0)
-    qk_scale = sm_scale * 1.44269504  # log2(e)
+    qk_scale = sm_scale * 1.44269504                         # log2(e), for exp2 softmax
 
-    m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
-    l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
-    acc = tl.zeros([BLOCK_M, BLOCK_DMODEL], dtype=tl.float32)
+    # running online-softmax state (fp32)
+    m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")   # running max
+    l_i = tl.zeros([BLOCK_M], dtype=tl.float32)                  # running normalizer
+    acc = tl.zeros([BLOCK_M, BLOCK_DMODEL], dtype=tl.float32)    # running UNnormalized output
 
     hi = tl.minimum((start_m + 1) * BLOCK_M, seqlen) if IS_CAUSAL else seqlen
     for start_n in range(0, hi, BLOCK_N):
         start_n = tl.multiple_of(start_n, BLOCK_N)
+        # S_ij = Q_i K_j^T * scale * log2(e), on chip (never written to HBM)
         k_ptrs = K + k_offset + (start_n + offs_n[:, None]) * stride_kn + offs_d[None, :] * stride_kk
         k = tl.load(k_ptrs, mask=(start_n + offs_n[:, None]) < seqlen, other=0.0)
         qk = tl.dot(q, tl.trans(k)) * qk_scale
         qk = tl.where((start_n + offs_n)[None, :] < seqlen, qk, float("-inf"))
-        if IS_CAUSAL:
+        if IS_CAUSAL:                                            # boundary-block mask only
             qk = tl.where(offs_m[:, None] >= (start_n + offs_n[None, :]), qk, float("-inf"))
 
         m_ij = tl.max(qk, axis=1)
         m_new = tl.maximum(m_i, m_ij)
-        alpha = tl.math.exp2(m_i - m_new)
-        p = tl.math.exp2(qk - m_new[:, None])
-        l_i = l_i * alpha + tl.sum(p, axis=1)
-        acc = acc * alpha[:, None]
+        alpha = tl.math.exp2(m_i - m_new)                       # 2^{m_old - m_new}
+        p = tl.math.exp2(qk - m_new[:, None])                   # 2^{S - m_new}
+        l_i = l_i * alpha + tl.sum(p, axis=1)                    # rescale + add block normalizer
+        acc = acc * alpha[:, None]                               # rescale running output
         v_ptrs = V + v_offset + (start_n + offs_n[:, None]) * stride_vn + offs_d[None, :] * stride_vk
         v = tl.load(v_ptrs, mask=(start_n + offs_n[:, None]) < seqlen, other=0.0)
-        acc += tl.dot(p.to(tl.float16), v)
+        acc += tl.dot(p.to(tl.float16), v)                       # acc += P~ V_j
         m_i = m_new
 
-    acc = acc / l_i[:, None]
+    acc = acc / l_i[:, None]                                     # single normalization at the end
     lse_ptrs = Lse + lse_offset + offs_m
     tl.store(lse_ptrs, m_i + tl.math.log2(l_i), mask=offs_m < seqlen)
     o_ptrs = Out + o_offset + offs_m[:, None] * stride_om + offs_d[None, :] * stride_ok
@@ -79,14 +82,15 @@ def _attn_fwd(
 
 
 def attention_forward(q, k, v, causal=True, sm_scale=None):
+    """Fused exact attention forward. q,k,v: (batch, nheads, seqlen, headdim), FP16, contiguous."""
     batch, nheads, seqlen, headdim = q.shape
     q, k, v = q.contiguous(), k.contiguous(), v.contiguous()
     if sm_scale is None:
         sm_scale = 1.0 / math.sqrt(headdim)
     o = torch.empty_like(q)
     lse = torch.empty((batch * nheads, seqlen), device=q.device, dtype=torch.float32)
-    BLOCK_M, BLOCK_N = 64, 64
-    grid = (triton.cdiv(seqlen, BLOCK_M), batch * nheads)
+    BLOCK_M, BLOCK_N = 64, 64                                    # tiles sized to fit SRAM
+    grid = (triton.cdiv(seqlen, BLOCK_M), batch * nheads)        # one program per query block
     _attn_fwd[grid](
         q, k, v, o, lse, sm_scale,
         q.stride(1), q.stride(2), q.stride(3),
