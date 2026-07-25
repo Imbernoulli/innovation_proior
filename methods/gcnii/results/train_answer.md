@@ -16,7 +16,7 @@ from torch.nn.parameter import Parameter
 
 
 class GraphConvolution(nn.Module):
-    """One GCNII layer: sparse renormalized propagation, initial residual, identity mapping."""
+    """One sparse-adjacency layer with theta = log(lambda / layer + 1)."""
 
     def __init__(self, channels):
         super().__init__()
@@ -29,20 +29,16 @@ class GraphConvolution(nn.Module):
 
     def forward(self, x, adj, h0, lamda, alpha, layer):
         theta = math.log(lamda / layer + 1.0)
-        hi = torch.spmm(adj, x)                            # P̃ H^(ℓ)
-        support = (1 - alpha) * hi + alpha * h0            # initial residual
+        hi = torch.spmm(adj, x)
+        support = (1 - alpha) * hi + alpha * h0
         return theta * torch.mm(support, self.weight) + (1 - theta) * support
 
 
 class GCNII(nn.Module):
-    """Input FC -> L identity-mapped initial-residual graph convs -> output FC."""
-
     def __init__(self, in_channels, hidden_channels, out_channels,
                  num_layers, dropout, alpha=0.1, lamda=0.5):
         super().__init__()
-        self.convs = nn.ModuleList(
-            GraphConvolution(hidden_channels) for _ in range(num_layers)
-        )
+        self.convs = nn.ModuleList(GraphConvolution(hidden_channels) for _ in range(num_layers))
         self.fcs = nn.ModuleList([
             nn.Linear(in_channels, hidden_channels),
             nn.Linear(hidden_channels, out_channels),
@@ -56,7 +52,7 @@ class GCNII(nn.Module):
 
     def forward(self, x, adj):
         x = F.dropout(x, self.dropout, training=self.training)
-        layer_inner = self.act_fn(self.fcs[0](x))          # H^(0)
+        layer_inner = self.act_fn(self.fcs[0](x))
         h0 = layer_inner
         for i, conv in enumerate(self.convs):
             layer_inner = F.dropout(layer_inner, self.dropout, training=self.training)
