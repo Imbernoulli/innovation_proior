@@ -10,8 +10,8 @@ from torch.optim.optimizer import Optimizer
 
 
 class NAdam(Optimizer):
-    """Adam with Nesterov-accelerated momentum, with optional AdamW-style
-    decoupled weight decay. The second-moment adaptive rescaling is unchanged."""
+    """Adam with Nesterov-accelerated momentum (the look-ahead absorbed into the
+    update), with optional decoupled (AdamW-style) weight decay."""
 
     def __init__(self, params, lr=2e-3, betas=(0.9, 0.999), eps=1e-8,
                  weight_decay=0.0, momentum_decay=4e-3, decoupled_weight_decay=False):
@@ -41,7 +41,7 @@ class NAdam(Optimizer):
                 t = int(state["step"].item())
                 m, n = state["exp_avg"], state["exp_avg_sq"]
 
-                mu_t = beta1 * (1.0 - 0.5 * (0.96 ** (t * psi)))
+                mu_t  = beta1 * (1.0 - 0.5 * (0.96 ** (t * psi)))
                 mu_t1 = beta1 * (1.0 - 0.5 * (0.96 ** ((t + 1) * psi)))
                 state["mu_product"].mul_(mu_t)
                 mu_product = float(state["mu_product"].item())
