@@ -29,31 +29,33 @@ class CrossAttentionLayer(nn.Module):
         self.num_heads = num_heads
         self.head_dim = channels // num_heads
         self.norm = nn.GroupNorm(32, channels)
-        self.q_proj = nn.Linear(channels, channels)
-        self.k_proj = nn.Linear(context_dim, channels)
-        self.v_proj = nn.Linear(context_dim, channels)
-        self.out_proj = zero_module(nn.Linear(channels, channels))
+        self.q_proj = nn.Linear(channels, channels)        # query from image features
+        self.k_proj = nn.Linear(context_dim, channels)     # key   from condition
+        self.v_proj = nn.Linear(context_dim, channels)     # value from condition
+        self.out_proj = zero_module(nn.Linear(channels, channels))  # identity at init
 
     def forward(self, x, context):
         B, C, H, W = x.shape
-        h = self.norm(x).view(B, C, -1).transpose(1, 2)
-        ctx = context.unsqueeze(1) if context.dim() == 2 else context
+        h = self.norm(x).view(B, C, -1).transpose(1, 2)    # [B, H*W, C] query tokens
+        ctx = context.unsqueeze(1) if context.dim() == 2 else context  # [B, M, context_dim]
         q = self.q_proj(h).view(B, -1, self.num_heads, self.head_dim).transpose(1, 2)
         k = self.k_proj(ctx).view(B, -1, self.num_heads, self.head_dim).transpose(1, 2)
         v = self.v_proj(ctx).view(B, -1, self.num_heads, self.head_dim).transpose(1, 2)
         attn = torch.matmul(q, k.transpose(-1, -2)) / math.sqrt(self.head_dim)
-        attn = F.softmax(attn, dim=-1)
-        out = torch.matmul(attn, v)
-        out = out.transpose(1, 2).reshape(B, H * W, C)
-        out = self.out_proj(out)
-        return x + out.transpose(1, 2).view(B, C, H, W)
+        attn = F.softmax(attn, dim=-1)                      # over the M condition tokens
+        out = torch.matmul(attn, v)                         # [B, heads, H*W, head_dim]
+        out = out.transpose(1, 2).reshape(B, H * W, C)      # merge heads
+        out = self.out_proj(out)                            # zero at init
+        return x + out.transpose(1, 2).view(B, C, H, W)     # residual
 
 
 def prepare_conditioning(time_emb, class_emb):
+    # time embedding stays a pure noise-level signal; class info flows through cross-attention
     return time_emb
 
 
 class ClassConditioner(nn.Module):
+    """Cross-attention to the class embedding, applied after each UNet block."""
     def __init__(self, channels, cond_dim):
         super().__init__()
         self.cross_attn = CrossAttentionLayer(channels, cond_dim, num_heads=4)
