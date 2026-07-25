@@ -13,25 +13,30 @@ from scipy.stats import skew as skew_sp
 
 def column_ecdf(matrix):
     """Per-column ECDF: for value z in column j, return (#{X_ij <= z}) / n.
-    Ties take the largest rank, so F_hat_left(z) = P(X <= z) exactly;
-    values lie in {1/n, ..., 1}, never 0."""
+    Ties take the largest rank, so F̂_left(z) = P(X <= z) exactly; values in {1/n,...,1}."""
     assert matrix.ndim == 2, "ECDF expects a 2D (n_samples x n_features) matrix"
     n = matrix.shape[0]
+    # probability for sorted rank r (1-indexed) is r/n, per column
     probabilities = np.linspace(np.ones(matrix.shape[1]) / n, np.ones(matrix.shape[1]), n)
     sort_idx = np.argsort(matrix, axis=0)
-    matrix = np.take_along_axis(matrix, sort_idx, axis=0)
+    matrix = np.take_along_axis(matrix, sort_idx, axis=0)          # sort each column ascending
+    # equal values all take the largest-rank probability (so it is P(X <= z))
     for cx in range(probabilities.shape[1]):
         for rx in range(probabilities.shape[0] - 2, -1, -1):
             if matrix[rx, cx] == matrix[rx + 1, cx]:
                 probabilities[rx, cx] = probabilities[rx + 1, cx]
-    reordered = np.ones_like(probabilities)
+    reordered = np.ones_like(probabilities)                        # undo the sort
     np.put_along_axis(reordered, sort_idx, probabilities, axis=0)
     return reordered
 
 
+def skew(X, axis=0):
+    return np.nan_to_num(skew_sp(X, axis=axis))
+
+
 class ECOD:
     """Empirical-CDF-based outlier detection. Parameter-free; fit/decision_function API.
-    Higher decision_function output means more anomalous."""
+    Outlier scores are comparative (not probabilities); higher = more anomalous."""
 
     def fit(self, X):
         X = np.asarray(X, dtype=float)
@@ -45,13 +50,17 @@ class ECOD:
             original_size = X.shape[0]
             X = np.concatenate((self.X_train, X), axis=0)
 
-        U_left = -1.0 * np.log(column_ecdf(X))
-        U_right = -1.0 * np.log(column_ecdf(-X))
+        # per-dimension negative-log tail probabilities (n x d)
+        U_l = -1.0 * np.log(column_ecdf(X))      # −log F̂_left  (left-tail rarity per dim)
+        U_r = -1.0 * np.log(column_ecdf(-X))     # −log F̂_right (right-tail rarity per dim)
 
-        s = np.sign(np.nan_to_num(skew_sp(X, axis=0)))
-        U_skew = U_left * -1.0 * np.sign(s - 1) + U_right * np.sign(s + 1)
+        # skewness sign per dim: −1 long left tail, +1 long right tail
+        s = np.sign(skew(X, axis=0))
+        # skewness-corrected pick (branch-free): s=−1 -> U_l ; s=+1 -> U_r ; s=0 -> U_l + U_r
+        U_skew = U_l * -1.0 * np.sign(s - 1) + U_r * np.sign(s + 1)
 
-        O = np.maximum(np.maximum(U_left, U_right), U_skew).sum(axis=1)
+        # PyOD aggregation: per-dimension max of the three tail views, then sum over dimensions.
+        O = np.maximum(np.maximum(U_l, U_r), U_skew).sum(axis=1)
         if hasattr(self, "X_train"):
             O = O[-original_size:]
         return O.ravel()
