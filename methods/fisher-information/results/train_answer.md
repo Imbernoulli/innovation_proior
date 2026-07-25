@@ -8,48 +8,20 @@ For independent and identically distributed observations, the log-likelihood is 
 
 The same object explains the Cramer-Rao lower bound. If T(X) is an unbiased estimator of psi(theta), then differentiating its expectation shows that Cov_theta(T, S_theta) = psi'(theta). By Cauchy-Schwarz, any estimator with a fixed inner product against a vector of squared length I(theta) must satisfy Var_theta(T) >= psi'(theta)^2 / I(theta). For estimating theta itself this becomes Var_theta(T) >= 1 / I(theta). Efficient estimators are those whose error is aligned with the score direction, so they attain the bound. In this way Fisher information converts the vague notion of "information about a parameter" into a precise local geometry of probability models and the unavoidable variance scale for regular estimation.
 
-```python
-import numpy as np
-from scipy.stats import norm
+Collected into one statement, this is the finished result. For a regular scalar parametric family $p_\theta(x)$, define the score $S_\theta(x) = \partial_\theta \log p_\theta(x)$. The Fisher information in a single observation is
 
-def fisher_information_gaussian_mu(sigma=1.0):
-    """
-    Fisher information for the mean parameter of a univariate Gaussian
-    with known standard deviation sigma.
-    I(mu) = 1 / sigma^2.
-    """
-    return 1.0 / (sigma ** 2)
+$$I(\theta) \;=\; \mathbb{E}_\theta\!\left[S_\theta(X)^2\right] \;=\; -\,\mathbb{E}_\theta\!\left[\partial_\theta^2 \log p_\theta(X)\right],$$
 
-def fisher_information_gaussian_sigma(mu=0.0):
-    """
-    Fisher information for the standard deviation parameter of a univariate
-    Gaussian with known mean mu.
-    I(sigma) = 2 / sigma^2.
-    """
-    return 2.0 / (1.0 ** 2)  # evaluated at sigma=1 for illustration
+the second equality holding under the regularity conditions that let differentiation pass under the integral sign. For $n$ independent, identically distributed observations the information adds,
 
-def empirical_fisher_information(samples, theta, h=1e-5):
-    """
-    Numerically approximate the scalar Fisher information at theta by
-    finite differences of the log-likelihood for a parametric density.
-    Assumes the model is a N(theta, 1) distribution.
-    """
-    def log_lik(theta):
-        return np.sum(norm.logpdf(samples, loc=theta, scale=1.0))
+$$I_n(\theta) \;=\; n\,I_1(\theta).$$
 
-    I = -(log_lik(theta + h) - 2 * log_lik(theta) + log_lik(theta - h)) / (h ** 2)
-    return I / len(samples)
+For a vector parameter $\theta = (\theta_1,\dots,\theta_d)$ with score components $S_i(x) = \partial_{\theta_i}\log p_\theta(x)$, the information becomes the positive semidefinite matrix
 
-if __name__ == "__main__":
-    true_mu = 2.0
-    sigma = 1.0
-    n = 10000
-    samples = np.random.normal(loc=true_mu, scale=sigma, size=n)
+$$I_{ij}(\theta) \;=\; \mathbb{E}_\theta\!\left[S_i(X)\,S_j(X)\right] \;=\; -\,\mathbb{E}_\theta\!\left[\partial_{\theta_i}\partial_{\theta_j}\log p_\theta(X)\right],$$
 
-    analytic = fisher_information_gaussian_mu(sigma)
-    empirical = empirical_fisher_information(samples, true_mu)
+which, when nonsingular, defines the Fisher-Rao metric $ds^2 = d\theta^{\top} I(\theta)\, d\theta$ on the statistical manifold. Its inverse governs every regular unbiased estimator: for any statistic $T(X)$ with $\mathbb{E}_\theta[T] = \psi(\theta)$,
 
-    print(f"Analytic I(mu):    {analytic:.6f}")
-    print(f"Empirical I(mu):   {empirical:.6f}")
-    print(f"Cramer-Rao bound for mu (n={n}): {1.0 / (n * analytic):.6e}")
-```
+$$\mathrm{Var}_\theta(T) \;\ge\; \frac{\psi'(\theta)^2}{I(\theta)},$$
+
+and in particular $\mathrm{Var}_\theta(T) \ge 1/I(\theta)$ for an unbiased estimator of $\theta$ itself, with equality exactly when $T$'s deviation from $\theta$ is proportional to the score $S_\theta(X)$ (in the vector case, when the covariance of $T$ meets $I(\theta)^{-1}$ along the directions the score constrains). This is the answer to the reduction problem I opened with: $I(\theta)$ is the intrinsic, additive, reparameterization-covariant measure of how much a sample tells us about $\theta$, and $1/I(\theta)$ is the unavoidable local variance floor for any regular estimator that tries to recover it.

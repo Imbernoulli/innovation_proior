@@ -6,66 +6,8 @@ To handle perpendicularity and circles, I need a metric inside the barycentric f
 
 Now I can solve the problem mechanically. Let A = (1, 0, 0), B = (0, 1, 0), C = (0, 0, 1). Then M = (0, 1/2, 1/2), N = (1/2, 0, 1/2), P = (1/2, 1/2, 0). The median ray AM consists of points with y = z, so I write D = (1 - 2t, t, t). Since D lies on the perpendicular bisector of AB, the segment DP must be perpendicular to AB. Applying EFFT to DP = (2t - 1/2, 1/2 - t, -t) and AB = (-1, 1, 0) yields t = c² / (3c² + b² - a²). Similarly E = (1 - 2k, k, k) with k = b² / (3b² + c² - a²). The lines BD and CE intersect at F. Because BD passes through B, the ratio z/x is constant along it; because CE passes through C, y/x is constant. Using the values of j and k and writing S = b² + c² - a², one finds F = (p, q, r) with q/p = b²/S and r/p = c²/S. Finally, a homothety centered at A with ratio 2 sends N to C and P to B, so it sends the circle through A, N, P to the circumcircle. Thus A, N, F, P are concyclic if and only if F' = 2F - A lies on the circumcircle a²yz + b²zx + c²xy = 0. Substituting the coordinates of F' gives 4a²b²c² - 2a²b²c² - 2a²b²c² = 0, an identity, so the concyclicity holds for every valid triangle.
 
-```python
-import sympy as sp
-
-# Barycentric coordinates for a triangle with side lengths a, b, c.
-# Vertices: A=(1,0,0), B=(0,1,0), C=(0,0,1).
-
-# Symbolic side lengths (squared sides to keep everything polynomial)
-a2, b2, c2 = sp.symbols('a2 b2 c2', positive=True, real=True)
-S = b2 + c2 - a2  # shorthand from the proof
-
-# Vertices
-A = sp.Matrix([1, 0, 0])
-B = sp.Matrix([0, 1, 0])
-C = sp.Matrix([0, 0, 1])
-
-# Midpoints
-M = (B + C) / 2
-N = (A + C) / 2
-P = (A + B) / 2
-
-# EFFT perpendicularity test for displacements u, v.
-def efft(u, v, a2, b2, c2):
-    return a2 * (u[1] * v[2] + u[2] * v[1]) + \
-           b2 * (u[2] * v[0] + u[0] * v[2]) + \
-           c2 * (u[0] * v[1] + u[1] * v[0])
-
-# Find D on AM: D = (1 - 2t, t, t), with DP perpendicular to AB.
-t = sp.symbols('t', real=True)
-D = sp.Matrix([1 - 2*t, t, t])
-eq_D = efft(P - D, B - A, a2, b2, c2)
-t_val = sp.solve(eq_D, t)[0]
-D = sp.simplify(D.subs(t, t_val))
-
-# Find E on AM: E = (1 - 2k, k, k), with EN perpendicular to AC.
-k = sp.symbols('k', real=True)
-E = sp.Matrix([1 - 2*k, k, k])
-eq_E = efft(N - E, C - A, a2, b2, c2)
-k_val = sp.solve(eq_E, k)[0]
-E = sp.simplify(E.subs(k, k_val))
-
-# Intersect BD and CE. Since BD passes through B, z/x is constant.
-# Since CE passes through C, y/x is constant.
-p = sp.symbols('p', real=True)
-ratio_r = D[2] / D[0]   # z/x along BD
-ratio_q = E[1] / E[0]   # y/x along CE
-q_expr = sp.simplify(ratio_q * p)
-r_expr = sp.simplify(ratio_r * p)
-# normalization p + q + r = 1
-p_val = sp.solve(p + q_expr + r_expr - 1, p)[0]
-F = sp.Matrix([
-    sp.simplify(p_val),
-    sp.simplify(q_expr.subs(p, p_val)),
-    sp.simplify(r_expr.subs(p, p_val))
-])
-
-# Homothety centered at A with ratio 2: F' = 2F - A.
-Fp = 2 * F - A
-
-# Circumcircle equation: a^2*y*z + b^2*z*x + c^2*x*y = 0
-circ = a2 * Fp[1] * Fp[2] + b2 * Fp[2] * Fp[0] + c2 * Fp[0] * Fp[1]
-print("Circumcircle value at F':", sp.simplify(circ))
-# Expected output: 0
-```
+That is the specific claim; the method behind it is the toolkit that made the claim mechanical, and it is worth stating in the form that carries over to any triangle problem built from midpoints, perpendiculars, and circles. Represent every point as $P=(x,y,z)$ in the frame $A=(1,0,0)$, $B=(0,1,0)$, $C=(0,0,1)$, with $x+y+z=1$ and $x=[PBC]/[ABC]$ (cyclically for $y,z$), and every displacement $\vec{PQ}$ as a coordinate triple summing to $0$. Writing $a=BC$, $b=CA$, $c=AB$, two displacements $(x_1,y_1,z_1)$ and $(x_2,y_2,z_2)$ are perpendicular exactly when
+$$a^2(y_1z_2+y_2z_1)+b^2(z_1x_2+z_2x_1)+c^2(x_1y_2+x_2y_1)=0,$$
+a displacement's squared length is
+$$|PQ|^2=-a^2yz-b^2zx-c^2xy,$$
+and a normalized point lies on the circumcircle exactly when $a^2yz+b^2zx+c^2xy=0$, with a general circle picking up the linear correction $-a^2yz-b^2zx-c^2xy+(ux+vy+wz)(x+y+z)=0$. Every one of these three formulas is stated purely in the side lengths $a,b,c$: the circumradius $R$ that seeds the derivation — moving the origin to the circumcenter so that $A\cdot A=R^2$ and $A\cdot B=R^2-c^2/2$ (cyclically) — cancels identically the moment two displacement vectors are dotted together, because their coordinate sums are each $0$, so the entire $R^2(\sum x_1)(\sum x_2)$ contribution vanishes. That cancellation is why the frame is self-contained: once the triangle is its own coordinate system, no external radius, axis, or conjugate ever has to survive into a final formula.
