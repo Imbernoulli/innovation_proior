@@ -31,29 +31,12 @@ silently produce a colliding schedule once `n` grows.
 
 Example: for `n = 6` the answer is `0 1 3 7 12 20`.
 
-## Background
-
-Two construction strategies are on the table before committing to one:
-
-- **A closed-form formula.** Pick a slick algebraic family — squares `x[k] = k^2`, or an
-  Erdos-Turan-style `2 p k + (k^2 mod p)` set — that is *provably* Sidon for the full family. The
-  appeal is `O(n)` construction with no search. The open question is whether the chosen formula is
-  actually collision-free for every `n` in range, and whether it is the *lexicographically smallest*
-  valid set (a formula set is almost never lex-minimal).
-
-- **Greedy by smallest extension.** Start from `x[0] = 0` and repeatedly append the smallest integer
-  greater than the current maximum that keeps every pairwise sum distinct. The hope is that this
-  greedy prefix is exactly the lexicographically smallest Sidon set. The open questions are (1)
-  proving greedy = lex-min by an exchange argument, and (2) checking the *new* sums correctly and
-  globally at each step rather than against only a local window of recent elements.
-
 ## Evaluation settings
 
-Judged on hidden tests covering: the smallest sizes (`n = 1, 2, 3`), the sample (`n = 6`), sizes in
-the regime where a naive formula or a local greedy first breaks (`n` around `6` to `30`), and the
-largest size `n = 1000`, where the construction must be both valid over all `~500000` pairwise sums
-and fast enough under the time limit. A schedule that is valid for tiny `n` but colliding (or not
-lexicographically minimal) at larger `n` scores zero.
+Judged on hidden tests covering: the smallest sizes (`n = 1, 2, 3`), the sample (`n = 6`), a range of
+small-to-medium sizes, and the largest size `n = 1000`, where the construction must be both valid
+over all `~500000` pairwise sums and fast enough under the time limit. A schedule that is valid for
+tiny `n` but colliding (or not lexicographically minimal) at larger `n` scores zero.
 
 ## Code framework
 
