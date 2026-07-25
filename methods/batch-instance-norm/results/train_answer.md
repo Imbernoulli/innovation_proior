@@ -19,24 +19,22 @@ class _BatchInstanceNorm(_BatchNorm):
     def __init__(self, num_features, eps=1e-5, momentum=0.1, affine=True):
         super(_BatchInstanceNorm, self).__init__(num_features, eps, momentum, affine)
         self.gate = Parameter(torch.Tensor(num_features))
-        self.gate.data.fill_(1)
+        self.gate.data.fill_(1)                 # init pure BN
         setattr(self.gate, 'bin_gate', True)
 
     def forward(self, input):
         self._check_input_dim(input)
+        # BN branch carries affine weight (gamma * gate) and bias beta
         bn_w = self.weight * self.gate if self.affine else self.gate
-        out_bn = F.batch_norm(input, self.running_mean, self.running_var,
-                              bn_w, self.bias, self.training,
-                              self.momentum, self.eps)
-
+        out_bn = F.batch_norm(input, self.running_mean, self.running_var, bn_w, self.bias,
+                              self.training, self.momentum, self.eps)
+        # IN branch via [1, b*c, H, W] reshape; affine weight (gamma * (1 - gate)), no bias
         b, c = input.size(0), input.size(1)
         in_w = self.weight * (1 - self.gate) if self.affine else (1 - self.gate)
         input = input.view(1, b * c, *input.size()[2:])
-        out_in = F.batch_norm(input, None, None, None, None,
-                              True, self.momentum, self.eps)
+        out_in = F.batch_norm(input, None, None, None, None, True, self.momentum, self.eps)
         out_in = out_in.view(b, c, *input.size()[2:])
         out_in.mul_(in_w[None, :, None, None])
-
         return out_bn + out_in
 
 
@@ -56,19 +54,24 @@ class BatchInstanceNorm3d(_BatchInstanceNorm):
     def _check_input_dim(self, input):
         if input.dim() != 5:
             raise ValueError('expected 5D input (got {}D input)'.format(input.dim()))
+```
 
+The gate then gets its own optimizer treatment: a separate parameter group at ten times the base learning rate with weight decay switched off, and a clamp back into [0, 1] after every optimizer step, right inside the ordinary training loop.
 
+```python
 import torch.optim as optim
 
 
-def set_optimizer(model, base_lr, momentum=0.9, weight_decay=1e-4, bin_lr_mult=10.0):
+def set_optimizer(model, args):
     params = [{'params': [p for p in model.parameters()
                           if not getattr(p, 'bin_gate', False)]},
               {'params': [p for p in model.parameters()
                           if getattr(p, 'bin_gate', False)],
-               'lr': base_lr * bin_lr_mult, 'weight_decay': 0}]
-    return optim.SGD(params, lr=base_lr, momentum=momentum,
-                     weight_decay=weight_decay)
+               'lr': args.lr * args.bin_lr, 'weight_decay': 0}]
+    return optim.SGD(params,
+                     lr=args.lr,
+                     momentum=args.momentum,
+                     weight_decay=args.weight_decay)
 
 
 def train(trainloader, model, criterion, optimizer):
