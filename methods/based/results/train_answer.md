@@ -4,86 +4,66 @@ The method I propose is BASED. It keeps the factored structure of linear attenti
 
 BASED pairs this global spiky linear attention with two cheap local mechanisms. Global linear attention is powerful for long-range lookup but blunt at fine local token-to-token comparisons, so the mixer also uses exact softmax attention over small sliding windows (tuned for tensor-core occupancy, around 64 to 128 tokens) and short causal depthwise convolutions (filter width 3) to supply precise local shifts. The small window has a cache capped at its width, and the convolution carries almost no state, so neither reintroduces a growing cache. During training, the quadratic masked-matmul view is used: the T × T score matrix is materialized from phi(Q) phi(K)^T, a causal mask is applied, and the same recurrent denominator phi(q_i)^T z_i normalizes each row. This is term-for-term identical to the recurrent generation view, but it maps efficiently to batched matrix multiplication on a GPU. The result is a single architecture whose feature dimension and window size slide it along the recall-memory frontier, from cheap and forgetful all the way toward recall-perfect behavior.
 
+What follows is that global Taylor linear-attention core — the feature map, the query/key/value projections, and the quadratic masked-matmul view with its recurrent denominator; the short convolution and the windowed attention are separate local mixers wrapped around this core and are left out of the snippet for compactness. The projections also support grouped key/value heads (`num_key_value_heads`), repeating each key/value head across its query group before the same kernel is applied, so the same core scales down to fewer KV projections without changing the feature map or the recurrence.
+
 ```python
 import math
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
+from einops import rearrange
 
 
 class TaylorExp(nn.Module):
-    """Second-order Taylor feature map realizing 1 + (q^T k)/sqrt(d) + (q^T k)^2/(2d)."""
-
     def __init__(self, input_dim: int):
         super().__init__()
-        self.r2 = math.sqrt(2.0)
+        self.r2 = math.sqrt(2)
         self.rd = math.sqrt(input_dim)          # sqrt(d~)
         self.rrd = math.sqrt(self.rd)           # d~^(1/4)
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:  # [B, H, T, d~]
+    def forward(self, x):                        # [B, H, T, d~]
         x2 = (x.unsqueeze(-1) * x.unsqueeze(-2)).flatten(start_dim=-2) / self.r2
-        ones = torch.ones_like(x[..., :1])
+        ones = torch.ones(x[..., :1].shape, device=x.device, dtype=x.dtype)
         return torch.cat([ones, x / self.rrd, x2 / self.rd], dim=-1)
 
 
-class BASED(nn.Module):
-    """Taylor-2 linear attention + short causal convolution.
+def repeat_kv(x, n_rep: int):
+    if n_rep == 1:
+        return x
+    b, h, t, d = x.shape
+    return x[:, :, None, :, :].expand(b, h, n_rep, t, d).reshape(b, h * n_rep, t, d)
 
-    The quadratic training view materialises the T x T causal kernel matrix
-    phi(Q) phi(K)^T and normalises by the recurrent denominator phi(q_i)^T z_i.
-    At generation time the equivalent recurrent view carries only S_i and z_i.
-    """
 
-    def __init__(
-        self,
-        d_model: int,
-        seq_len: int,
-        feature_dim: int = 16,
-        num_heads: int = 4,
-        conv_kernel: int = 3,
-        eps: float = 1e-12,
-    ):
+class BasedLinearAttention(nn.Module):
+    def __init__(self, d_model: int, feature_dim: int = 16, num_heads: int = 12,
+                 num_key_value_heads: int | None = None, eps: float = 1e-12):
         super().__init__()
         self.d_model = d_model
         self.feature_dim = feature_dim
         self.num_heads = num_heads
-        self.head_dim = d_model // num_heads
+        self.num_key_value_heads = num_key_value_heads or num_heads
+        self.num_key_value_groups = self.num_heads // self.num_key_value_heads
+        self.head_dim = d_model // self.num_key_value_heads
+        self.feature_map = TaylorExp(feature_dim)
+        self.proj_q = nn.Linear(d_model, feature_dim * num_heads, bias=False)
+        self.proj_k = nn.Linear(d_model, feature_dim * self.num_key_value_heads, bias=False)
+        self.proj_v = nn.Linear(d_model, self.num_key_value_heads * self.head_dim, bias=False)
+        self.proj_o = nn.Linear(num_heads * self.head_dim, d_model, bias=False)
         self.eps = eps
 
-        self.feature_map = TaylorExp(feature_dim)
-        self.q_proj = nn.Linear(d_model, feature_dim * num_heads, bias=False)
-        self.k_proj = nn.Linear(d_model, feature_dim * num_heads, bias=False)
-        self.v_proj = nn.Linear(d_model, d_model, bias=False)
-        self.o_proj = nn.Linear(d_model, d_model, bias=False)
+    def forward(self, hidden_states):             # [B, T, d_model]
+        b, t, _ = hidden_states.size()
+        q = self.proj_q(hidden_states).view(b, t, self.num_heads, self.feature_dim).transpose(1, 2)
+        k = self.proj_k(hidden_states).view(b, t, self.num_key_value_heads, self.feature_dim).transpose(1, 2)
+        v = self.proj_v(hidden_states).view(b, t, self.num_key_value_heads, self.head_dim).transpose(1, 2)
+        k = repeat_kv(k, self.num_key_value_groups)
+        v = repeat_kv(v, self.num_key_value_groups)
 
-        self.local_conv = nn.Conv1d(
-            d_model, d_model, kernel_size=conv_kernel, groups=d_model, bias=True
-        )
-        self.conv_pad = conv_kernel - 1
-
-    def _short_conv(self, x: torch.Tensor) -> torch.Tensor:
-        h = F.pad(x.transpose(1, 2), (self.conv_pad, 0))
-        return self.local_conv(h).transpose(1, 2)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        B, T, _ = x.shape
-        local = self._short_conv(x)
-        h = x + local
-
-        q = self.q_proj(h).view(B, T, self.num_heads, self.feature_dim).transpose(1, 2)
-        k = self.k_proj(h).view(B, T, self.num_heads, self.feature_dim).transpose(1, 2)
-        v = self.v_proj(h).view(B, T, self.num_heads, self.head_dim).transpose(1, 2)
-
-        q, k = self.feature_map(q), self.feature_map(k)      # [B, H, T, 1 + d~ + d~^2]
-
-        causal = torch.tril(torch.ones(T, T, device=x.device, dtype=x.dtype))
-        A_qk = torch.einsum("bhqd,bhkd->bhqk", q, k) * causal
-        out = torch.einsum("bhqk,bhkd->bhqd", A_qk, v)
-
-        # Recurrent denominator: phi(q_i)^T sum_{j<=i} phi(k_j)
-        z = torch.einsum("bhqd,bhqd->bhq", q, k.cumsum(dim=2)).clamp_min(self.eps)
-        y = out / z.unsqueeze(-1)
-
-        y = y.transpose(1, 2).contiguous().view(B, T, self.d_model)
-        return self.o_proj(y) + local
+        q, k = self.feature_map(q), self.feature_map(k)
+        causal = torch.tril(torch.ones((t, t), device=q.device, dtype=q.dtype))
+        A_qk = torch.einsum("bhnd,bhmd->bhnm", q, k) * causal
+        out = torch.einsum("bhnm,bhme->bhne", A_qk.to(hidden_states.dtype), v.to(hidden_states.dtype))
+        z = 1 / (torch.einsum("bhld,bhld->bhl", q, k.cumsum(2)) + self.eps)
+        y = out * z[..., None]
+        y = rearrange(y, "b h l d -> b l (h d)")
+        return self.proj_o(y.to(hidden_states.dtype))
 ```
