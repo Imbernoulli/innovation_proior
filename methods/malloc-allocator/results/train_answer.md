@@ -14,167 +14,170 @@ When a free block is chosen for allocation, the allocator splits it only if the 
 
 The resulting allocator is the segregated-fit dynamic memory allocator with boundary-tag coalescing: header and footer tags give constant-time two-sided merging, explicit free lists remove allocated blocks from the search path, and geometric size classes give best-fit-like placement without scanning the entire heap. Immediate coalescing on free keeps external fragmentation in check, while lazy heap growth preserves the high-water mark until existing free space is genuinely exhausted.
 
-```python
-"""
-Small Python simulation of the segregated-fit allocator core.
-It verifies placement, splitting, coalescing, and non-overlap on a synthetic trace.
-"""
+```c
+#include <string.h>
+#include "mm.h"
+#include "memlib.h"
 
-from __future__ import annotations
+/* ---- constants and packed-word / boundary-tag macros ---- */
+#define WSIZE      4                 /* header/footer word (bytes) */
+#define DSIZE      8                 /* double word; alignment */
+#define CHUNKSIZE  (1<<12)           /* default heap growth (bytes) */
+#define NCLASSES   16                /* number of segregated size classes */
+#define MINBLK     (2*WSIZE + 2*sizeof(void *)) /* hdr + ftr + next + prev */
+#define MAX(x,y)   ((x) > (y) ? (x) : (y))
+#define ALIGN(size) (((size) + (DSIZE-1)) & ~0x7)
 
-NCLASSES = 16
-WSIZE = 4
-DSIZE = 8
-CHUNKSIZE = 1 << 12
-OVERHEAD = 2 * WSIZE
-MINBLK = OVERHEAD + 2 * 16  # header+footer + two pointer slots (16 bytes each on 64-bit)
+#define PACK(size, alloc)  ((size) | (alloc))         /* alloc bit in low 3 (8-aligned) bits */
+#define GET(p)             (*(unsigned int *)(p))
+#define PUT(p, val)        (*(unsigned int *)(p) = (val))
+#define GET_SIZE(p)        (GET(p) & ~0x7)
+#define GET_ALLOC(p)       (GET(p) & 0x1)
 
+#define HDRP(bp)      ((char *)(bp) - WSIZE)
+#define FTRP(bp)      ((char *)(bp) + GET_SIZE(HDRP(bp)) - DSIZE)    /* boundary tag */
+#define NEXT_BLKP(bp) ((char *)(bp) + GET_SIZE((char *)(bp) - WSIZE))
+#define PREV_BLKP(bp) ((char *)(bp) - GET_SIZE((char *)(bp) - DSIZE))/* via prev footer */
 
-def align(size: int) -> int:
-    return (size + (DSIZE - 1)) & ~(DSIZE - 1)
+/* free-block payload holds the explicit-list links */
+#define NEXT_FREE(bp) (*(char **)(bp))
+#define PREV_FREE(bp) (*(char **)((char *)(bp) + sizeof(char *)))
 
+static char *heap_listp;             /* just past the prologue */
+static char *free_lists[NCLASSES];   /* LIFO list head per size class */
 
-def class_of(size: int) -> int:
-    c, limit = 0, MINBLK
-    while size > limit and c < NCLASSES - 1:
-        limit <<= 1
-        c += 1
-    return c
+static int class_of(size_t size) {
+    int c = 0;
+    size_t limit = MINBLK;
+    while (size > limit && c < NCLASSES-1) { limit <<= 1; c++; }
+    return c;
+}
 
+static void insert_free(char *bp) {
+    int c = class_of(GET_SIZE(HDRP(bp)));
+    NEXT_FREE(bp) = free_lists[c];
+    PREV_FREE(bp) = NULL;
+    if (free_lists[c]) PREV_FREE(free_lists[c]) = bp;
+    free_lists[c] = bp;
+}
+static void remove_free(char *bp) {
+    int c = class_of(GET_SIZE(HDRP(bp)));
+    if (PREV_FREE(bp)) NEXT_FREE(PREV_FREE(bp)) = NEXT_FREE(bp);
+    else               free_lists[c] = NEXT_FREE(bp);
+    if (NEXT_FREE(bp)) PREV_FREE(NEXT_FREE(bp)) = PREV_FREE(bp);
+}
 
-class Block:
-    def __init__(self, start: int, size: int, allocated: bool = True):
-        self.start = start
-        self.size = size
-        self.allocated = allocated
+static void *coalesce(char *bp) {
+    char *prev = PREV_BLKP(bp);
+    char *next = NEXT_BLKP(bp);
+    size_t prev_alloc = GET_ALLOC(FTRP(prev));
+    size_t next_alloc = GET_ALLOC(HDRP(next));
+    size_t size = GET_SIZE(HDRP(bp));
 
-    def __repr__(self):
-        return f"Block({self.start}, {self.size}, {'alloc' if self.allocated else 'free'})"
+    if (prev_alloc && next_alloc) {                 /* case 1 */
+        insert_free(bp);
+    } else if (prev_alloc && !next_alloc) {         /* case 2: next free */
+        remove_free(next);
+        size += GET_SIZE(HDRP(next));
+        PUT(HDRP(bp), PACK(size, 0));
+        PUT(FTRP(bp), PACK(size, 0));
+        insert_free(bp);
+    } else if (!prev_alloc && next_alloc) {         /* case 3: prev free */
+        remove_free(prev);
+        size += GET_SIZE(HDRP(prev));
+        PUT(FTRP(bp), PACK(size, 0));
+        PUT(HDRP(prev), PACK(size, 0));
+        bp = prev;
+        insert_free(bp);
+    } else {                                        /* case 4: both free */
+        remove_free(prev);
+        remove_free(next);
+        size += GET_SIZE(HDRP(prev)) + GET_SIZE(HDRP(next));
+        PUT(HDRP(prev), PACK(size, 0));
+        PUT(FTRP(next), PACK(size, 0));
+        bp = prev;
+        insert_free(bp);
+    }
+    return bp;
+}
 
+static void *extend_heap(size_t words) {
+    char *bp;
+    size_t size = (words % 2) ? (words+1)*WSIZE : words*WSIZE;
+    if ((bp = mem_sbrk(size)) == (void *)-1) return NULL;
+    PUT(HDRP(bp), PACK(size, 0));            /* new free block where epilogue was */
+    PUT(FTRP(bp), PACK(size, 0));
+    PUT(HDRP(NEXT_BLKP(bp)), PACK(0, 1));    /* fresh epilogue header */
+    return coalesce(bp);
+}
 
-class SegregatedAllocator:
-    def __init__(self):
-        self.heap_start = 0
-        self.heap_end = 0
-        self.blocks: list[Block] = []
-        self.free_lists: list[list[Block]] = [[] for _ in range(NCLASSES)]
+int mm_init(void) {
+    for (int c = 0; c < NCLASSES; c++) free_lists[c] = NULL;
+    if ((heap_listp = mem_sbrk(4*WSIZE)) == (void *)-1) return -1;
+    PUT(heap_listp, 0);                          /* alignment padding */
+    PUT(heap_listp + 1*WSIZE, PACK(DSIZE, 1));   /* prologue header */
+    PUT(heap_listp + 2*WSIZE, PACK(DSIZE, 1));   /* prologue footer */
+    PUT(heap_listp + 3*WSIZE, PACK(0, 1));       /* epilogue header */
+    heap_listp += 2*WSIZE;
+    if (extend_heap(CHUNKSIZE/WSIZE) == NULL) return -1;
+    return 0;
+}
 
-    def _insert_free(self, block: Block):
-        c = class_of(block.size)
-        block.allocated = False
-        self.free_lists[c].insert(0, block)
+static void *find_fit(size_t asize) {           /* segregated first-fit ~ best-fit */
+    for (int c = class_of(asize); c < NCLASSES; c++)
+        for (char *bp = free_lists[c]; bp; bp = NEXT_FREE(bp))
+            if (asize <= GET_SIZE(HDRP(bp)))
+                return bp;
+    return NULL;
+}
 
-    def _remove_free(self, block: Block):
-        c = class_of(block.size)
-        self.free_lists[c].remove(block)
+static void place(char *bp, size_t asize) {
+    size_t csize = GET_SIZE(HDRP(bp));
+    remove_free(bp);
+    if (csize - asize >= MINBLK) {              /* split */
+        PUT(HDRP(bp), PACK(asize, 1));
+        PUT(FTRP(bp), PACK(asize, 1));
+        char *rem = NEXT_BLKP(bp);
+        PUT(HDRP(rem), PACK(csize - asize, 0));
+        PUT(FTRP(rem), PACK(csize - asize, 0));
+        insert_free(rem);
+    } else {                                    /* keep whole */
+        PUT(HDRP(bp), PACK(csize, 1));
+        PUT(FTRP(bp), PACK(csize, 1));
+    }
+}
 
-    def _find_fit(self, asize: int) -> Block | None:
-        for c in range(class_of(asize), NCLASSES):
-            for block in self.free_lists[c]:
-                if block.size >= asize:
-                    return block
-        return None
+void *mm_malloc(size_t size) {
+    if (heap_listp == 0 && mm_init() == -1) return NULL;
+    if (size == 0) return NULL;
+    size_t asize = MAX(MINBLK, ALIGN(size + 2*WSIZE));
+    char *bp;
+    if ((bp = find_fit(asize))) { place(bp, asize); return bp; }
+    size_t ext = MAX(asize, CHUNKSIZE);
+    if ((bp = extend_heap(ext / WSIZE)) == NULL) return NULL;
+    place(bp, asize);
+    return bp;
+}
 
-    def _extend_heap(self, asize: int) -> Block:
-        ext = max(asize, CHUNKSIZE)
-        block = Block(self.heap_end, ext, False)
-        self.blocks.append(block)
-        self.heap_end += ext
-        return self._coalesce(block)
+void mm_free(void *bp) {
+    if (bp == 0) return;
+    size_t size = GET_SIZE(HDRP(bp));
+    PUT(HDRP(bp), PACK(size, 0));
+    PUT(FTRP(bp), PACK(size, 0));
+    coalesce(bp);
+}
 
-    def _place(self, block: Block, asize: int):
-        self._remove_free(block)
-        remainder = block.size - asize
-        if remainder >= MINBLK:
-            block.allocated = True
-            block.size = asize
-            rem = Block(block.start + asize, remainder, False)
-            self.blocks.append(rem)
-            self.blocks.sort(key=lambda b: b.start)
-            self._coalesce(rem)
-        else:
-            block.allocated = True
-
-    def malloc(self, size: int) -> Block:
-        if size <= 0:
-            raise ValueError("size must be positive")
-        asize = max(MINBLK, align(size + OVERHEAD))
-        block = self._find_fit(asize)
-        if block is None:
-            block = self._extend_heap(asize)
-        self._place(block, asize)
-        return block
-
-    def free(self, block: Block):
-        if not block.allocated:
-            raise ValueError("double free")
-        self._coalesce(block)
-
-    def _coalesce(self, block: Block):
-        i = self.blocks.index(block)
-        merged = block
-
-        # Merge with left neighbor if it is free.
-        if i > 0 and not self.blocks[i - 1].allocated:
-            left = self.blocks[i - 1]
-            self._remove_free(left)
-            left.size += block.size
-            self.blocks.pop(i)
-            merged = left
-            i = self.blocks.index(merged)
-
-        # Merge with right neighbor if it is free.
-        if i + 1 < len(self.blocks) and not self.blocks[i + 1].allocated:
-            right = self.blocks[i + 1]
-            self._remove_free(right)
-            merged.size += right.size
-            self.blocks.pop(i + 1)
-
-        self._insert_free(merged)
-        return merged
-
-    def check_invariants(self):
-        # Blocks must partition [heap_start, heap_end] exactly.
-        assert self.blocks, "heap must contain at least one block"
-        assert self.blocks[0].start == self.heap_start
-        for a, b in zip(self.blocks, self.blocks[1:]):
-            assert a.start + a.size == b.start, "blocks must be contiguous"
-        assert self.blocks[-1].start + self.blocks[-1].size == self.heap_end
-        # No two adjacent free blocks (they would have been coalesced).
-        for a, b in zip(self.blocks, self.blocks[1:]):
-            assert a.allocated or b.allocated, "adjacent free blocks must be coalesced"
-        # Free lists must contain exactly the free blocks.
-        free_from_lists = sum(len(lst) for lst in self.free_lists)
-        free_from_blocks = sum(1 for b in self.blocks if not b.allocated)
-        assert free_from_lists == free_from_blocks, "free-list accounting mismatch"
-
-    def utilization(self) -> float:
-        live = sum(b.size - OVERHEAD for b in self.blocks if b.allocated)
-        return live / self.heap_end if self.heap_end else 0.0
-
-
-if __name__ == "__main__":
-    a = SegregatedAllocator()
-    # Synthetic trace: create holes, then reuse them, then grow.
-    b1 = a.malloc(64)
-    b2 = a.malloc(128)
-    b3 = a.malloc(256)
-    a.check_invariants()
-    a.free(b2)
-    a.check_invariants()
-    # This request should fit into the coalesced hole left by b2.
-    b4 = a.malloc(100)
-    a.check_invariants()
-    b5 = a.malloc(8192)
-    a.check_invariants()
-    a.free(b1)
-    a.free(b3)
-    a.free(b4)
-    a.free(b5)
-    a.check_invariants()
-    print(f"heap high-water mark: {a.heap_end} bytes")
-    print(f"final utilization: {a.utilization():.2%}")
-    print("all invariants passed")
+void *mm_realloc(void *ptr, size_t size) {
+    if (ptr == NULL) return mm_malloc(size);
+    if (size == 0) { mm_free(ptr); return NULL; }
+    void *newptr = mm_malloc(size);
+    if (!newptr) return NULL;
+    size_t old_payload = GET_SIZE(HDRP(ptr)) - 2*WSIZE;
+    size_t copy_size = size < old_payload ? size : old_payload;
+    memcpy(newptr, ptr, copy_size);
+    mm_free(ptr);
+    return newptr;
+}
 ```
 
-In summary, the segregated-fit dynamic memory allocator with boundary-tag coalescing resolves the tension between speed and space by keeping allocated bits and sizes in packed boundary tags, linking only free blocks in per-size-class lists, and choosing blocks through a class-bucketed first-fit search that approximates best-fit. It extends the heap only when existing free space cannot satisfy a request, splits blocks only when the leftover is reusable, and merges adjacent free neighbors immediately on every free. The Python simulation above exercises these mechanisms on a small trace and checks that the heap remains contiguous, coalesced, and internally consistent throughout.
+In summary, the segregated-fit dynamic memory allocator with boundary-tag coalescing resolves the tension between speed and space by keeping allocated bits and sizes in packed boundary tags, linking only free blocks in per-size-class lists, and choosing blocks through a class-bucketed first-fit search that approximates best-fit. It extends the heap only when existing free space cannot satisfy a request, splits blocks only when the leftover is reusable, and merges adjacent free neighbors immediately on every free. The code above realizes exactly this design over a `mem_sbrk`-backed heap shim: `mm_init` lays down the alignment pad, the allocated prologue and epilogue sentinels, and empty per-class list heads; `mm_malloc` computes the aligned request size and routes it through `find_fit` and `place`, extending the heap only on a miss; and `mm_free` clears the boundary tags and hands the block to `coalesce`, which runs the four-case merge and reinserts the result into its size class.
