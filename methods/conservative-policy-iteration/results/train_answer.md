@@ -15,15 +15,8 @@ class RestartMDP:
     """Simulator with restart access: next state can be drawn from mu."""
     def __init__(self, mu, gamma, n_actions, R):
         self.mu, self.gamma, self.n_actions, self.R = mu, gamma, n_actions, R
-
-    def restart(self):
-        # draw s ~ mu
-        raise NotImplementedError
-
-    def step(self, s, a):
-        # -> (s_next, reward in [0, R])
-        raise NotImplementedError
-
+    def restart(self): ...      # draw s ~ mu
+    def step(self, s, a): ...   # -> (s_next, reward in [0, R])
 
 def sample_future_state(mdp, policy):
     # s ~ d_{policy, mu}: roll out from mu, stop each step w.p. (1 - gamma).
@@ -32,7 +25,6 @@ def sample_future_state(mdp, policy):
         s, _ = mdp.step(s, policy.sample(s))
     return s
 
-
 def estimate_Q(mdp, policy, s, a):
     # Unbiased normalized Q_policy(s,a): reward observed at a geometric time.
     s, r = mdp.step(s, a)
@@ -40,38 +32,29 @@ def estimate_Q(mdp, policy, s, a):
         s, r = mdp.step(s, policy.sample(s))
     return r
 
-
 def policy_advantage(mdp, policy, candidate, k):
-    # A_{policy, mu}(candidate) = E_{s~d}[ sum_a (cand(a|s)-pol(a|s)) Q(s,a) ],
+    # A_{policy,mu}(candidate) = E_{s~d}[ sum_a (cand-pol)(a|s) Q(s,a) ],
     # estimated via uniform action sampling + importance weight n_a.
     est = []
     for _ in range(k):
         s = sample_future_state(mdp, policy)
         a = np.random.randint(mdp.n_actions)
         Qsa = estimate_Q(mdp, policy, s, a)
-        est.append(
-            mdp.n_actions * Qsa * (candidate.prob(s, a) - policy.prob(s, a))
-        )
+        est.append(mdp.n_actions * Qsa * (candidate.prob(s, a) - policy.prob(s, a)))
     return float(np.mean(est))
 
-
 def fit_candidate(mdp, policy):
-    # Policy chooser: fit advantages with average L1 error set by the tolerance,
-    # and return a policy that on average picks high-advantage actions under d.
-    raise NotImplementedError  # regression -> candidate pi'
-
+    # policy chooser: fit advantages (average L1 error set by the tolerance) and return
+    # a policy that on average chooses high-advantage actions under d_{policy,mu}.
+    ...                                                  # regression -> candidate pi'
 
 class MixturePolicy:
     # pi_new(a|s) = (1 - alpha) pi(a|s) + alpha pi'(a|s)
-    def __init__(self, base, cand, alpha):
-        self.base, self.cand, self.alpha = base, cand, alpha
-
+    def __init__(self, base, cand, alpha): self.base, self.cand, self.alpha = base, cand, alpha
     def prob(self, s, a):
         return (1 - self.alpha) * self.base.prob(s, a) + self.alpha * self.cand.prob(s, a)
-
     def sample(self, s):
         return self.cand.sample(s) if np.random.rand() < self.alpha else self.base.sample(s)
-
 
 def conservative_policy_iteration(mdp, policy, eps, k):
     while True:
@@ -81,5 +64,5 @@ def conservative_policy_iteration(mdp, policy, eps, k):
             return policy
         alpha = (1 - mdp.gamma) * A / (4 * mdp.R)        # alpha* from the bound
         policy = MixturePolicy(policy, candidate, alpha) # conservative mixture update
-        # guaranteed: eta_mu rises by >= A^2 / (8 * R) this step
+        # guaranteed: eta_mu rises by >= A^2 / (8 R) this step
 ```
