@@ -67,7 +67,7 @@ Now I deliberately break it to confirm I understand the failure mode: had I writ
 
 - *No bridges at all* (a single triangle, or any 2-edge-connected graph): `isBridge` all zero, `bridgeCount = 0`, I short-circuit to `0`. Without that guard the empty `deg` map would yield `L = 0` and `(0+1)/2 = 0` anyway, but the explicit guard documents intent and avoids treating a bridgeless graph as a degenerate one-leaf tree.
 - *Single vertex, no edges* (`1 0`): no edges, no bridges, output `0`. The DFS runs one trivial frame and stops.
-- *Single bridge* (`2 1 / 1 2`): one bridge, two leaves, `(2+1)/2 = 1`. Correct — add `1–2`'s parallel to cover it... actually we cannot add a parallel here? We can: the problem allows adding an edge between a pair that already shares one, and that second `1-2` edge makes it 2-edge-connected. Answer `1`.
+- *Single bridge* (`2 1 / 1 2`): one bridge, two leaves, `(2+1)/2 = 1`. The fix is a second `1–2` edge, parallel to the first — the problem statement explicitly permits adding an edge between a pair that already shares one, so this is legal, and it makes the pair 2-edge-connected. Answer `1`.
 - *Long path, depth `2*10^5`*: the **iterative** DFS handles it; a recursive Tarjan would overflow the stack and crash. I verified an explicit `n = 2*10^5` path runs in well under the limit and returns `1` (add `1–n`). This is the case that justifies the whole iterative rewrite.
 - *Star with `n-1` leaves*: `n-1` bridges, `n-1` leaves, answer `ceil((n-1)/2)`. For `n = 2*10^5` that is `100000`; verified.
 - *Self-loops*: dropped on input; never affect anything.
