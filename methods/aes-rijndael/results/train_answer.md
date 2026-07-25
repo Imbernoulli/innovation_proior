@@ -13,9 +13,7 @@ The key is mixed in only by XOR, which is what makes the active-S-box bound inde
 AES is normally used as a block permutation, and for arbitrary-length data I wrap it in counter mode. A unique 128-bit nonce is combined with a per-block counter, each counter value is encrypted with the forward cipher to produce a keystream block, and the plaintext is XORed with the keystream. Decryption regenerates the same keystream and XORs again. Counter mode uses only encryption, is fully parallel, supports random access, and is safe as long as no (key, counter) pair is ever reused.
 
 ```python
-# AES (Rijndael) -- 128-bit block, 128/192/256-bit keys
-# GF(2^8) modulus: m(x) = x^8 + x^4 + x^3 + x + 1
-
+# GF(2^8), modulus m(x) = x^8 + x^4 + x^3 + x + 1 (low byte 0x1B)
 xtime = lambda a: (((a << 1) ^ 0x1B) & 0xFF) if (a & 0x80) else (a << 1)
 
 s_box = (
@@ -39,10 +37,6 @@ s_box = (
 inv_s_box = tuple(s_box.index(i) for i in range(256))
 r_con = (0x00,0x01,0x02,0x04,0x08,0x10,0x20,0x40,0x80,0x1B,0x36)
 
-def bytes2matrix(t): return [list(t[i:i+4]) for i in range(0, len(t), 4)]
-def matrix2bytes(m): return bytes(sum(m, []))
-def xor_bytes(a, b): return bytes(i ^ j for i, j in zip(a, b))
-
 def sub_bytes(s):
     for i in range(4):
         for j in range(4):
@@ -63,7 +57,7 @@ def inv_shift_rows(s):
     s[0][2], s[1][2], s[2][2], s[3][2] = s[2][2], s[3][2], s[0][2], s[1][2]
     s[0][3], s[1][3], s[2][3], s[3][3] = s[1][3], s[2][3], s[3][3], s[0][3]
 
-def mix_single_column(a):       # MDS matrix [02 03 01 01], branch number 5
+def mix_single_column(a):                 # the MDS matrix [02 03 01 01], branch number 5
     t = a[0] ^ a[1] ^ a[2] ^ a[3]
     u = a[0]
     a[0] ^= t ^ xtime(a[0] ^ a[1])
@@ -75,7 +69,7 @@ def mix_columns(s):
     for i in range(4):
         mix_single_column(s[i])
 
-def inv_mix_columns(s):         # inverse matrix [0e 0b 0d 09]
+def inv_mix_columns(s):                   # inverse matrix [0e 0b 0d 09]
     for i in range(4):
         u = xtime(xtime(s[i][0] ^ s[i][2]))
         v = xtime(xtime(s[i][1] ^ s[i][3]))
@@ -87,9 +81,23 @@ def add_round_key(s, k):
         for j in range(4):
             s[i][j] ^= k[i][j]
 
+def bytes2matrix(t): return [list(t[i:i+4]) for i in range(0, len(t), 4)]
+def matrix2bytes(m): return bytes(sum(m, []))
+def xor_bytes(a, b): return bytes(i ^ j for i, j in zip(a, b))
+
+def inc_bytes(a):
+    out = list(a)
+    for i in reversed(range(len(out))):
+        if out[i] == 0xFF: out[i] = 0
+        else: out[i] += 1; break
+    return bytes(out)
+
+def split_blocks(m, n=16):
+    return [m[i:i+16] for i in range(0, len(m), n)]
+
+
 class AES:
     rounds_by_key_size = {16: 10, 24: 12, 32: 14}
-
     def __init__(self, master_key):
         assert len(master_key) in AES.rounds_by_key_size
         self.n_rounds = AES.rounds_by_key_size[len(master_key)]
@@ -102,12 +110,12 @@ class AES:
         while len(cols) < (self.n_rounds + 1) * 4:
             word = list(cols[-1])
             if len(cols) % nk == 0:
-                word.append(word.pop(0))              # RotWord
-                word = [s_box[b] for b in word]       # SubWord
-                word[0] ^= r_con[i]                   # round constant
+                word.append(word.pop(0))                 # RotWord
+                word = [s_box[b] for b in word]          # SubWord
+                word[0] ^= r_con[i]                      # round constant
                 i += 1
             elif len(master_key) == 32 and len(cols) % nk == 4:
-                word = [s_box[b] for b in word]       # extra SubWord for AES-256
+                word = [s_box[b] for b in word]          # extra SubWord (AES-256)
             word = xor_bytes(word, cols[-nk])
             cols.append(word)
         return [cols[4*i:4*(i+1)] for i in range(len(cols) // 4)]
@@ -132,25 +140,23 @@ class AES:
         return matrix2bytes(s)
 
     def encrypt_ctr(self, plaintext, iv):
+        # keystream_i = encrypt_block(counter_i); c_i = p_i XOR keystream_i
         assert len(iv) == 16
         out, nonce = [], iv
-        for blk in [plaintext[i:i+16] for i in range(0, len(plaintext), 16)]:
+        for blk in split_blocks(plaintext):
             out.append(xor_bytes(blk, self.encrypt_block(nonce)))
-            nonce = xor_bytes(nonce, b'\x00' * 15 + b'\x01')  # 128-bit counter increment
+            nonce = inc_bytes(nonce)
         return b''.join(out)
 
-    decrypt_ctr = encrypt_ctr
+    decrypt_ctr = encrypt_ctr   # CTR is symmetric: regenerate keystream and XOR again
 
 
-# Sanity checks against known AES test vectors
 assert AES(bytes.fromhex("000102030405060708090a0b0c0d0e0f")).encrypt_block(
     bytes.fromhex("00112233445566778899aabbccddeeff")
 ) == bytes.fromhex("69c4e0d86a7b0430d8cdb78070b4c55a")
-
 assert AES(bytes.fromhex("000102030405060708090a0b0c0d0e0f1011121314151617")).encrypt_block(
     bytes.fromhex("00112233445566778899aabbccddeeff")
 ) == bytes.fromhex("dda97ca4864cdfe06eaf70a0ec0d7191")
-
 assert AES(bytes.fromhex("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")).encrypt_block(
     bytes.fromhex("00112233445566778899aabbccddeeff")
 ) == bytes.fromhex("8ea2b7ca516745bfeafc49904b496089")
