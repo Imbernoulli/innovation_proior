@@ -45,11 +45,9 @@ committing to one:
   or always burst the largest remaining balloon first (or last). Each is `O(n^2)` or `O(n log n)` and
   a few lines; the open question is whether any such fixed local rule is actually optimal, given that
   the constraint coupling neighbours is global.
-- **Interval dynamic programming.** Add the two virtual `1` balloons at the ends, then build up
-  answers for sub-rows by ranges. The trick is to reason about which balloon in a range is burst
-  **last**, because that balloon's two neighbours are then exactly the fixed endpoints of the range.
-  This is `O(n^3)`; the open question is the exact state, the transition, and whether `n^3` at
-  `n = 500` is fast enough.
+- **Interval dynamic programming.** Build up answers for sub-rows by ranges, rather than committing
+  to a single global popping order up front. This is `O(n^3)` in the most direct formulation; the
+  open question is the exact state, the transition, and whether `n^3` at `n = 500` is fast enough.
 
 ## Evaluation settings
 
