@@ -15,50 +15,44 @@ def degree_counts(n):
     # coeffs[k] = [x^k] (1+x+x^2)^n = # reduced F_3-monomials of degree exactly k
     poly = [1]
     for _ in range(n):
-        new = [0] * (len(poly) + 2)
+        new = [0]*(len(poly)+2)
         for i, c in enumerate(poly):
-            new[i] += c
-            new[i + 1] += c
-            new[i + 2] += c
+            new[i] += c; new[i+1] += c; new[i+2] += c
         poly = new
     return poly
 
 def m_d(n, d):
     c = degree_counts(n)
     d = int(math.floor(d))
-    return sum(c[k] for k in range(min(d, len(c) - 1) + 1))
+    return sum(c[k] for k in range(min(d, len(c)-1)+1))
 
 def is_cap(points):
-    S = set(points)
-    pts = list(points)
+    S = set(points); pts = list(points)
     for i in range(len(pts)):
-        for j in range(i + 1, len(pts)):
+        for j in range(i+1, len(pts)):
             x, y = pts[i], pts[j]
-            z = tuple((-(a + b)) % 3 for a, b in zip(x, y))
+            z = tuple((-(a+b)) % 3 for a, b in zip(x, y))
             if z != x and z != y and z in S:
                 return False
     return True
 
 def product_lower_bound(cap_size, k):
-    # a cap of size M in dimension k gives per-dimension lower bound M^(1/k)
-    return cap_size ** (1.0 / k)
+    return cap_size ** (1.0/k)        # cap of size M in dim k -> base M^(1/k)
 
 def upper_bound(n):
-    # the certificate: |A| <= 3 * m_{2n/3}
-    return 3 * m_d(n, 2 * n / 3)
+    return 3 * m_d(n, 2*n/3)          # |A| <= 3 * m_{2n/3}
 
 def upper_bound_constant():
-    # c = 3 e^{-I(2/3)}; optimum at u = e^theta = (sqrt(33)-1)/8
-    u = (math.sqrt(33) - 1) / 8
-    cramer = (1 + u + u ** 2) * u ** (-2 / 3)
-    closed = ((5589 + 891 * math.sqrt(33)) / 512) ** (1 / 3)
+    u = (math.sqrt(33) - 1) / 8       # e^theta at the optimum
+    cramer = (1 + u + u**2) * u**(-2/3) # = 3 * exp(-I(2/3))
+    closed = ((5589 + 891*math.sqrt(33)) / 512) ** (1/3)
     assert abs(cramer - closed) < 1e-12
     return cramer
 
 if __name__ == "__main__":
     for n in [9, 18, 30, 60, 120]:
         b = upper_bound(n)
-        print(n, b, "base", round(b ** (1 / n), 6))
-    print("c =", upper_bound_constant())
+        print(n, b, "base", round(b**(1/n), 6))
+    print("c =", upper_bound_constant())   # 2.755104613...
     print(round(product_lower_bound(20, 4), 4), round(product_lower_bound(112, 6), 4))
 ```

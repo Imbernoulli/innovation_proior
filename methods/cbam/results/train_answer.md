@@ -15,14 +15,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
 class Flatten(nn.Module):
     def forward(self, x):
         return x.view(x.size(0), -1)
 
-
 class ChannelGate(nn.Module):
-    """Shared bottleneck MLP over avg and max spatial-pooled descriptors."""
     def __init__(self, gate_channels, reduction_ratio=16, pool_types=['avg', 'max']):
         super().__init__()
         self.mlp = nn.Sequential(
@@ -45,17 +42,11 @@ class ChannelGate(nn.Module):
         scale = torch.sigmoid(channel_att_sum).unsqueeze(2).unsqueeze(3).expand_as(x)
         return x * scale
 
-
 class ChannelPool(nn.Module):
     def forward(self, x):
-        return torch.cat(
-            (torch.max(x, 1)[0].unsqueeze(1), torch.mean(x, 1).unsqueeze(1)),
-            dim=1,
-        )
-
+        return torch.cat((torch.max(x, 1)[0].unsqueeze(1), torch.mean(x, 1).unsqueeze(1)), dim=1)
 
 class SpatialGate(nn.Module):
-    """7x7 conv over avg/max channel-pooled maps."""
     def __init__(self):
         super().__init__()
         kernel_size = 7
@@ -70,19 +61,17 @@ class SpatialGate(nn.Module):
         scale = torch.sigmoid(self.spatial(x_compress))
         return x * scale
 
-
 class CBAM(nn.Module):
-    """Channel attention, then spatial attention."""
     def __init__(self, gate_channels, reduction_ratio=16, pool_types=['avg', 'max'], no_spatial=False):
         super().__init__()
-        self.channel_gate = ChannelGate(gate_channels, reduction_ratio, pool_types)
+        self.ChannelGate = ChannelGate(gate_channels, reduction_ratio, pool_types)
         self.no_spatial = no_spatial
         if not no_spatial:
-            self.spatial_gate = SpatialGate()
+            self.SpatialGate = SpatialGate()
 
     def forward(self, x):
-        x_out = self.channel_gate(x)
+        x_out = self.ChannelGate(x)
         if not self.no_spatial:
-            x_out = self.spatial_gate(x_out)
+            x_out = self.SpatialGate(x_out)
         return x_out
 ```
