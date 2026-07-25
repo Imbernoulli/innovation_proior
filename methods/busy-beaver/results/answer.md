@@ -1,7 +1,7 @@
-Busy Beaver 的独特洞察，是用“最小机器大小下的最大停机行为”定义一个具体增长率。给定 `n` 个状态的图灵机，只看那些最终会停机的机器，然后取最大输出 `Sigma(n)` 或最长运行步数 `S(n)`。这个定义很朴素，却把不可判定性压缩成了一条函数曲线。
+The insight behind Busy Beaver is to define a concrete growth rate out of "the largest halting behaviour available at a given machine size." Fix `n` states, look only at the Turing machines that do eventually halt, and take either the largest output `Sigma(n)` or the longest running time `S(n)`. The definition is plain, and yet it compresses undecidability into a single curve.
 
-关键不在于它“很大”，而在于它以有限描述长度为尺度，问有限程序在停机前最多能做多少事。每个 `S(n)` 都是一个确定的自然数；但如果我们能计算所有 `S(n)`，就能把任何 `n` 状态机器运行 `S(n)` 步，进而判断它是否会停机。这会解决停机问题，所以 `S(n)` 不可计算。
+What matters is not that the function is large, but that it measures, against finite description length, how much a finite program can do before it stops. Every `S(n)` is a definite natural number; but if all of them were computable, I could run any `n`-state machine for `S(n)` steps and decide on the spot whether it halts. That would settle the halting problem, so `S(n)` is not computable.
 
-这就是从“停机问题不可判定”到“可计算性边界有数值轮廓”的思维跃迁。停机问题给出的是否定命题：不存在通用判定算法。Busy Beaver 给出的则是可比较的边界形状：在每个机器规模上，都存在一个最长的有限停机运行；我们可以知道一些小规模精确值，发现更大的下界，也能看见哪些地方必须遭遇不可判定性。
+This is the step from "the halting problem is undecidable" to "the boundary of computability has a numerical profile." The halting problem gives a negative statement: no universal deciding algorithm exists. Busy Beaver gives a comparable shape for the boundary instead: at every machine size there is a longest finite halting run; small values can be pinned down exactly, larger ones admit better and better lower bounds, and one can see precisely where undecidability has to be met.
 
-因此，Busy Beaver 把“不可计算”从抽象禁令变成了极端函数。它不是说边界之外一片空白，而是说边界本身可以被命名、排序、逼近和比较，只是不能被一个算法完整画出。
+Busy Beaver therefore turns "not computable" from an abstract prohibition into an extremal function. It does not say that nothing lies past the boundary — it says the boundary itself can be named, ordered, approximated and compared, only never drawn in full by any algorithm.
