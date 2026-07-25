@@ -31,26 +31,19 @@ the answer is `8`.
 ## Background
 
 The firing times of machine `i` are exactly the multiples of `p[i]`. The union of these
-arithmetic progressions, de-duplicated, is the object we index into. Two families of approach are on
-the table before committing to one:
+arithmetic progressions, de-duplicated, is the object we index into.
 
-- **Direct k-way merge.** Keep the next pending firing time of each machine in a heap, pop the
-  smallest, skip duplicates, and stop at the `K`-th distinct value. This is `O(K log n)` and easy to
-  trust, but with `K` up to `10^9` it is far too slow for the real bounds — it is, however, an ideal
-  *reference* to check a faster method against on small inputs.
-- **Binary search on the answer.** Define `C(x) =` number of distinct firing times in `[1, x]`. The
-  function `C` is non-decreasing in `x`, so the smallest `x` with `C(x) >= K` is exactly the `K`-th
-  distinct firing time. Each evaluation of `C(x)` is the crux: it must count each shared instant once,
-  which calls for inclusion-exclusion over the periods (subtract pairwise coincidences, add back the
-  triple coincidence). The open question is the exact sign pattern, the `lcm` overflow, and the
-  binary-search boundary.
+One naive reference method: keep the next pending firing time of each machine in a heap, pop the
+smallest, skip duplicates, and stop at the `K`-th distinct value. This is `O(K log n)` and easy to
+trust, but with `K` up to `10^9` it is far too slow for the real bounds — it is, however, an ideal
+*reference* to check a faster method against on small inputs.
 
 ## Evaluation settings
 
 Judged on hidden tests covering: a single machine; two and three machines; periods that are pairwise
 coprime, that share factors, and that are equal or divide one another (heavy coincidence); `K = 1`;
-`K` near `10^9` with periods near `10^9` (so the answer approaches `10^18` and `lcm`s overflow 64-bit
-unless guarded); and degenerate periods such as `p[i] = 1` (every integer is a firing time).
+`K` near `10^9` with periods near `10^9`; and degenerate periods such as `p[i] = 1` (every integer is
+a firing time).
 
 ## Code framework
 
@@ -69,8 +62,7 @@ int main() {
     ll K;
     cin >> K;
 
-    // TODO: find the K-th smallest distinct multiple-of-some-p[i] via binary search on the
-    // answer, counting distinct firing times <= x with inclusion-exclusion over the periods.
+    // TODO: find the K-th smallest distinct multiple-of-some-p[i].
     ll answer = 0;
 
     cout << answer << "\n";
