@@ -10,12 +10,10 @@ In risk mode, given a target selective risk r* and confidence level δ, the sort
 
 The quality of the score itself is measured by the AUROC of κ as a predictor of correctness, the probability that a correct input receives a higher score than an incorrect one. The risk-coverage curve traces the same ranking quality against coverage. Together they confirm that thresholding the maximum softmax is a simple, computationally cheap way to add a dependable reject option to an already-deployed classifier.
 
-```python
-import math
-import random
-import numpy as np
-import scipy.stats
+Coverage mode reduces to a small policy object that fits a single threshold on the calibration scores and applies it downstream:
 
+```python
+import numpy as np
 
 TARGET_COVERAGE_DEFAULT = 0.8
 
@@ -36,14 +34,14 @@ class SelectivePolicy:
             groups: np.ndarray, X: np.ndarray | None = None) -> "SelectivePolicy":
         scores = self.acceptance_score(probs, groups, X)
         quantile = float(np.clip(1.0 - self.target_coverage, 0.0, 1.0))
-        self.threshold_ = float(np.quantile(scores, quantile))
+        self.threshold_ = float(np.quantile(scores, quantile))   # (1 - coverage) quantile
         self.group_thresholds_ = {}
         self.meta_model_ = None
         return self
 
     def acceptance_score(self, probs: np.ndarray, groups: np.ndarray,
                          X: np.ndarray | None = None) -> np.ndarray:
-        return np.max(probs, axis=1)
+        return np.max(probs, axis=1)              # kappa(x) = max_j softmax(x)_j
 
     def predict_accept(self, probs: np.ndarray, groups: np.ndarray,
                        X: np.ndarray | None = None) -> np.ndarray:
@@ -51,21 +49,28 @@ class SelectivePolicy:
 
     def calibration_summary(self) -> dict[str, float]:
         return {"threshold": float(self.threshold_)}
+```
+
+Risk mode replaces the flat quantile with the certified binary-search routine, running the Clopper-Pearson inversion at each candidate cut and returning the threshold together with its bound:
+
+```python
+import math
+import random
+import numpy as np
+import scipy.stats
 
 
-class RiskControl:
-    """Risk-mode threshold via Clopper-Pearson bound with a union correction."""
-
-    def calculate_bound(self, delta: float, m: int, erm: float) -> float:
+class risk_control:
+    def calculate_bound(self, delta, m, erm):
         # Invert Binom.cdf(int(m * erm), m, b) = delta.
         precision = 1e-7
 
-        def func(b: float) -> float:
-            return -delta + scipy.stats.binom.cdf(int(m * erm), m, b)
+        def func(b):
+            return (-1 * delta) + scipy.stats.binom.cdf(int(m * erm), m, b)
 
         a = erm
         c = 1.0
-        b = (a + c) / 2.0
+        b = (a + c) / 2
         funcval = func(b)
         while abs(funcval) > precision:
             if a == 1.0 and c == 1.0:
@@ -75,20 +80,19 @@ class RiskControl:
                 a = b
             else:
                 c = b
-            b = (a + c) / 2.0
+            b = (a + c) / 2
             funcval = func(b)
         return b
 
-    def bound(self, rstar: float, delta: float, kappa: np.ndarray,
-              residuals: np.ndarray, split: bool = True):
-        # residuals: 0 is correct, 1 is an error.
+    def bound(self, rstar, delta, kappa, residuals, split=True):
+        # residuals: 0 is correct prediction, 1 is an error.
         valsize = 0.5
-        probs = np.asarray(kappa)
-        FY = np.asarray(residuals)
+        probs = kappa
+        FY = residuals
 
         if split:
-            rng = np.random.default_rng(0)
-            idx = rng.permutation(len(FY))
+            idx = list(range(len(FY)))
+            random.shuffle(idx)
             slice_ = round(len(FY) * (1 - valsize))
             FY_val = FY[idx[slice_:]]
             probs_val = probs[idx[slice_:]]
@@ -96,26 +100,27 @@ class RiskControl:
             probs = probs[idx[:slice_]]
 
         m = len(FY)
-        probs_idx_sorted = np.argsort(probs)
+        probs_idx_sorted = np.argsort(probs)       # ascending confidence
         a = 0
         b = m - 1
         k = math.ceil(math.log2(m))
-        deltahat = delta / k
+        deltahat = delta / k                       # union bound over k distinct cuts
 
         for _ in range(k + 1):
             mid = math.ceil((a + b) / 2)
-            accepted = probs_idx_sorted[mid:]
+            accepted = probs_idx_sorted[mid:]      # accept the most-confident suffix
             mi = len(FY[accepted])
-            if mi == 0:
-                a = mid
-                continue
             theta = probs[probs_idx_sorted[mid]]
-            risk = float(np.mean(FY[accepted]))
+            risk = sum(FY[accepted]) / mi
+            if split:
+                testrisk = sum(FY_val[probs_val >= theta]) / len(FY_val[probs_val >= theta])
+                testcov = len(FY_val[probs_val >= theta]) / len(FY_val)
             bound = self.calculate_bound(deltahat, mi, risk)
+            coverage = mi / m
             if bound > rstar:
-                a = mid
+                a = mid                            # too risky -> raise the cut
             else:
-                b = mid
+                b = mid                            # safe -> lower the cut
 
-        return theta, bound
+        return [theta, bound]
 ```
