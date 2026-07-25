@@ -17,10 +17,14 @@ from dataclasses import dataclass
 import torch
 from torch import nn
 from torch.nn import functional as F
+from transformers.models.llama.modeling_llama import repeat_kv
+
+from kvpress.presses.scorer_press import ScorerPress
+from kvpress.utils import get_prerope_query_states
 
 
 @dataclass
-class ExpectedAttentionPress:
+class ExpectedAttentionPress(ScorerPress):
     """Score KV pairs by expected residual-stream contribution."""
 
     compression_ratio: float = 0.0
@@ -30,110 +34,68 @@ class ExpectedAttentionPress:
     use_vnorm: bool = True
     epsilon: float = 0.0
 
-    def _avg_rope(self, module: nn.Module, mu: torch.Tensor,
-                  cov: torch.Tensor | None, q_len: int):
-        """Average RoPE rotations over the future window and apply to query stats."""
-        device = mu.device
-        head_dim = int(module.head_dim)
-        pos = torch.arange(
-            q_len, q_len + self.n_future_positions, device=device
-        ).unsqueeze(0)
+    def apply_avg_rope(self, module: nn.Module, mu: torch.Tensor, cov: torch.Tensor, q_len: int):
+        # R-bar = (1/T) sum_{j=1..T} R_{t+j}; push query mean/cov through it.
+        pos = torch.arange(q_len, q_len + self.n_future_positions, device=mu.device).unsqueeze(0)
+        head_dim = module.head_dim
         cos, sin = module.rotary_emb(mu, pos)
         cos, sin = cos[0], sin[0]
-
-        eye = torch.eye(head_dim, device=device, dtype=cos.dtype)
-        perm = torch.zeros((head_dim, head_dim), device=device, dtype=cos.dtype)
+        Id = torch.eye(head_dim, device=cos.device, dtype=cos.dtype)
+        P = torch.zeros((head_dim, head_dim), device=cos.device, dtype=cos.dtype)
         half = head_dim // 2
-        perm[half:, :half] = torch.eye(half, device=device, dtype=cos.dtype)
-        perm[:half, half:] = -torch.eye(half, device=device, dtype=cos.dtype)
-
-        R = (cos.unsqueeze(1) * eye + sin.unsqueeze(1) * perm).mean(dim=0)
+        eye_half = torch.eye(half, device=cos.device, dtype=cos.dtype)
+        P[half:, :half] = eye_half                         # first half moves to second half
+        P[:half, half:] = -eye_half                        # second half moves to first with sign flip
+        R = cos.unsqueeze(1) * Id + sin.unsqueeze(1) * P   # per-future-position rotation
+        R = R.mean(dim=0).to(mu.device)                    # averaged -> a contraction
         mu = torch.matmul(mu, R.T)
         if cov is not None:
             cov = torch.matmul(R, torch.matmul(cov, R.T))
         return mu, cov
 
-    def _query_stats(self, module: nn.Module, hidden_states: torch.Tensor):
-        """Mean and covariance of pre-RoPE queries, excluding sink tokens."""
-        bsz, q_len, _ = hidden_states.shape
-        h = hidden_states[:, self.n_sink:]
-
-        num_heads = int(module.config.num_attention_heads)
-        head_dim = int(module.head_dim)
-
-        if hasattr(module, "q_proj"):
-            q = module.q_proj(h)
-        elif hasattr(module, "qkv_proj"):
-            qkv = module.qkv_proj(h)
-            q = qkv[..., : num_heads * head_dim]
-        else:
-            raise NotImplementedError("No query projection found on module.")
-
-        q = q.view(bsz, -1, num_heads, head_dim).transpose(1, 2)
-        if hasattr(module, "q_norm"):
-            q = module.q_norm(q)
-
-        mu = q.mean(dim=2, keepdim=True)
+    def get_query_statistics(self, module: nn.Module, hidden_states: torch.Tensor):
+        q_len = hidden_states.shape[1]
+        h = hidden_states[:, self.n_sink:]                 # drop sink outliers from stats
+        query_states = get_prerope_query_states(module, h)
+        mu = query_states.mean(dim=2, keepdim=True)
         cov = None
         if self.use_covariance:
-            centered = q - mu
-            cov = torch.einsum("bnsi,bnsj->bnij", centered, centered) / max(
-                h.shape[1], 1
-            )
+            centered = query_states - mu
+            cov = torch.einsum("bnsi,bnsj->bnij", centered, centered) / h.shape[1]
         mu = mu.squeeze(2)
-        return self._avg_rope(module, mu, cov, q_len)
+        return self.apply_avg_rope(module, mu, cov, q_len)
 
-    def score(self, module: nn.Module, hidden_states: torch.Tensor,
-              keys: torch.Tensor, values: torch.Tensor,
-              attentions: torch.Tensor | None = None,
-              kwargs: dict | None = None) -> torch.Tensor:
-        assert keys.size(2) > self.n_sink
+    def score(
+        self,
+        module: nn.Module,
+        hidden_states: torch.Tensor,
+        keys: torch.Tensor,
+        values: torch.Tensor,
+        attentions: torch.Tensor,
+        kwargs,
+    ) -> torch.Tensor:
+        assert keys.size(2) > self.n_sink, f"Input should contain more tokens than n_sink={self.n_sink}"
+        keys = keys[:, :, self.n_sink:]
+        values = values[:, :, self.n_sink:]
 
-        keys_body = keys[:, :, self.n_sink:]
-        values_body = values[:, :, self.n_sink:]
+        mean_query, cov_query = self.get_query_statistics(module, hidden_states)
 
-        mean_query, cov_query = self._query_stats(module, hidden_states)
+        bsz, num_key_value_heads, q_len, d = keys.shape
+        num_key_value_groups = module.config.num_attention_heads // num_key_value_heads
+        keys = repeat_kv(keys, num_key_value_groups).transpose(2, 3)
 
-        bsz, num_kv_heads, kv_len, head_dim = keys_body.shape
-        num_groups = int(module.config.num_attention_heads) // num_kv_heads
-
-        # Repeat KV heads to match query heads, then average back after scoring.
-        repeated_keys = keys_body[:, :, None, :, :].expand(
-            bsz, num_kv_heads, num_groups, kv_len, head_dim
-        ).reshape(bsz, num_kv_heads * num_groups, kv_len, head_dim)
-        repeated_keys = repeated_keys.transpose(2, 3)
-
-        # log E[exp(q^T k / sqrt(d))]
-        log_scores = torch.matmul(
-            mean_query.unsqueeze(2), repeated_keys
-        ).squeeze(2) / math.sqrt(head_dim)
+        # log E[exp(q^T k / sqrt(d))] = mu^T k / sqrt(d) + k^T Sigma k / (2d)
+        log_scores = torch.matmul(mean_query.unsqueeze(2), keys).squeeze(2) / math.sqrt(d)
         if self.use_covariance:
-            log_scores += torch.einsum(
-                "bhin,bhij,bhjn->bhn", repeated_keys, cov_query, repeated_keys
-            ) / head_dim / 2.0
+            log_scores += torch.einsum("bhin,bhij,bhjn->bhn", keys, cov_query, keys) / d / 2
+        scores = F.softmax(log_scores, dim=-1)             # softmax over keys
 
-        scores = F.softmax(log_scores, dim=-1)
-        scores = scores.view(bsz, num_kv_heads, num_groups, kv_len).mean(dim=2)
+        scores = scores.view(bsz, num_key_value_heads, num_key_value_groups, q_len)
+        scores = scores.mean(dim=2)                        # average query heads sharing a KV head
 
         if self.use_vnorm:
-            scores = (scores + self.epsilon) * values_body.norm(dim=-1)
+            scores = (scores + self.epsilon) * values.norm(dim=-1)
 
-        # Force-keep the sink tokens.
-        return F.pad(scores, (self.n_sink, 0), value=scores.max().item() + 1.0)
-
-    @torch.no_grad()
-    def compress(self, module: nn.Module, hidden_states: torch.Tensor,
-                 keys: torch.Tensor, values: torch.Tensor,
-                 attentions: torch.Tensor | None = None,
-                 kwargs: dict | None = None):
-        if self.compression_ratio == 0:
-            return keys, values
-        scores = self.score(module, hidden_states, keys, values, attentions, kwargs)
-        kv_len = keys.shape[2]
-        n_kept = int(kv_len * (1 - self.compression_ratio))
-        idx = scores.topk(n_kept, dim=-1).indices
-        idx = idx.unsqueeze(-1).expand(-1, -1, -1, keys.shape[-1])
-        keys = keys.gather(2, idx).contiguous()
-        values = values.gather(2, idx).contiguous()
-        return keys, values
+        # Re-attach sinks with top score so the scorer path keeps them.
+        return F.pad(scores, (self.n_sink, 0), value=scores.max().item() + 1)
 ```
