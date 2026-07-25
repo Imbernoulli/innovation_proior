@@ -28,7 +28,7 @@ class AdaBoost:
     def fit(self, X, y):
         rng = np.random.default_rng(self.random_state)
         n = len(y)
-        w = np.ones(n, dtype=float) / n
+        w = np.ones(n, dtype=float) / n                    # D_1: uniform
         if self.task_type == "classification":
             self.classes_ = np.unique(y)
             n_classes = len(self.classes_)
@@ -48,16 +48,16 @@ class AdaBoost:
 
             if self.task_type == "classification":
                 incorrect = (pred != y)
-                err = float(np.average(incorrect, weights=p))
-                if err <= 0:
+                eps = float(np.average(incorrect, weights=p))
+                if eps <= 0:
                     self.learners_.append(learner)
                     self.estimator_weights_.append(1.0)
                     self.estimator_errors_.append(0.0)
                     break
-                if err >= 1.0 - 1.0 / n_classes:
+                if eps >= 1.0 - 1.0 / n_classes:
                     break
                 learner_weight = self.learning_rate * (
-                    np.log((1.0 - err) / err) + np.log(n_classes - 1.0)
+                    np.log((1.0 - eps) / eps) + np.log(n_classes - 1.0)
                 )
                 if t != self.n_rounds - 1:
                     w = np.exp(np.log(w) + learner_weight * incorrect * (w > 0))
@@ -66,28 +66,28 @@ class AdaBoost:
                 loss_vec = np.abs(pred[mask] - y[mask])
                 loss_max = loss_vec.max()
                 if loss_max != 0:
-                    loss_vec = loss_vec / loss_max
+                    loss_vec = loss_vec / loss_max         # linear loss in [0,1]
                 if self.loss == "square":
                     loss_vec = loss_vec ** 2
                 elif self.loss == "exponential":
                     loss_vec = 1.0 - np.exp(-loss_vec)
-                err = float(np.dot(p[mask], loss_vec))
-                if err <= 0:
+                eps = float(np.dot(p[mask], loss_vec))
+                if eps <= 0:
                     self.learners_.append(learner)
                     self.estimator_weights_.append(1.0)
                     self.estimator_errors_.append(0.0)
                     break
-                if err >= 0.5:
+                if eps >= 0.5:
                     break
-                beta = err / (1.0 - err)
+                beta = eps / (1.0 - eps)
                 learner_weight = self.learning_rate * np.log(1.0 / beta)
                 if t != self.n_rounds - 1:
                     w[mask] *= np.power(beta, (1.0 - loss_vec) * self.learning_rate)
 
-            w = w / w.sum()
+            w = w / w.sum()                               # renormalize
             self.learners_.append(learner)
             self.estimator_weights_.append(float(learner_weight))
-            self.estimator_errors_.append(float(err))
+            self.estimator_errors_.append(float(eps))
         return self
 
     def predict(self, X):
@@ -100,12 +100,12 @@ class AdaBoost:
                     votes[:, j] += weight * (pred == cls)
             return self.classes_[np.argmax(votes, axis=1)]
 
-        preds = np.array([learner.predict(X) for learner in self.learners_]).T
+        preds = np.array([lr.predict(X) for lr in self.learners_]).T   # (n, T)
         out = np.empty(preds.shape[0])
-        for i in range(preds.shape[0]):
-            order = np.argsort(preds[i])
+        for k in range(preds.shape[0]):
+            order = np.argsort(preds[k])
             cdf = np.cumsum(weights[order])
             j = np.searchsorted(cdf, 0.5 * cdf[-1])
-            out[i] = preds[i, order[min(j, len(order) - 1)]]
+            out[k] = preds[k][order[min(j, len(order) - 1)]]
         return out
 ```
