@@ -23,13 +23,13 @@ from verl.trainer.ppo.core_algos import register_adv_est
 def compute_custom_advantage(
     token_level_rewards: torch.Tensor,   # (bs, response_length); outcome scalar at last valid token
     response_mask: torch.Tensor,         # (bs, response_length); 1 = valid response token
-    index: np.ndarray = None,            # (bs,) group/prompt id; same id = same question
+    index: np.ndarray = None,            # (bs,) group id; same id == same question
     epsilon: float = 1e-6,
     config: Optional[AlgoConfig] = None,
     **kwargs,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """Dr. GRPO: mean-only group-relative advantages for outcome rewards."""
-    scores = token_level_rewards.sum(dim=-1)  # (bs,) per-sequence return R_i
+    """Mean-only group-relative advantages for outcome rewards."""
+    scores = token_level_rewards.sum(dim=-1)                  # (bs,) per-sequence return R_i
 
     id2score = defaultdict(list)
     id2mean = {}
@@ -40,22 +40,25 @@ def compute_custom_advantage(
             id2score[index[i]].append(scores[i])
         for idx in id2score:
             if len(id2score[idx]) == 1:
-                id2mean[idx] = torch.tensor(0.0)  # single sample: no group baseline
+                id2mean[idx] = torch.tensor(0.0)              # single sample: no group baseline
             elif len(id2score[idx]) > 1:
-                id2mean[idx] = torch.mean(torch.stack(id2score[idx]))  # cheap baseline
+                scores_tensor = torch.stack(id2score[idx])
+                id2mean[idx] = torch.mean(scores_tensor)      # B = mean(R)
             else:
                 raise ValueError(f"no score in prompt index: {idx}")
         for i in range(bsz):
-            # R_i - mean(R); no division by std
-            scores[i] = scores[i] - id2mean[index[i]]
-        scores = scores.unsqueeze(-1) * response_mask  # broadcast over tokens, mask pad
+            scores[i] = scores[i] - id2mean[index[i]]         # Ã_i = R_i - mean(R); NO / std
+        scores = scores.unsqueeze(-1) * response_mask         # broadcast over tokens, mask
 
-    return scores, scores  # advantage == return for outcome reward
+    return scores, scores                                     # advantage == return (outcome reward)
+```
 
+The matching change to the loss aggregation lives in the actor loss, not the estimator: divide each response's token-summed loss by a fixed constant, the generation budget, instead of by that response's own length.
 
+```python
 def masked_loss_aggregate(per_token_loss, response_mask, max_tokens):
-    # Dr. GRPO: constant divisor preserves the PPO token-sum objective.
-    # GRPO's typical masked_mean(..., dim=-1) divides by each response's own
-    # length and introduces the length bias we are removing.
+    # GRPO / typical PPO impl: divide each response by its own length -> length bias
+    #   return (per_token_loss * response_mask).sum(-1) / response_mask.sum(-1)
+    # Dr. GRPO: divide by a constant (generation budget) -> no per-response length factor
     return (per_token_loss * response_mask).sum(-1) / max_tokens
 ```
