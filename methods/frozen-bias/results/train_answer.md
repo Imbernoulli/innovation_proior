@@ -4,39 +4,34 @@ The right structural move is to separate the part of the network that searches i
 
 The practical benchmark implementation keeps only the essential move from that theory, because the scaffold exposes a standard wide MLP rather than the exact tied-direction model. We initialize the first-layer rows on the unit sphere so that the optimizer controls direction only; we sample the hidden biases uniformly in [-1, 1] and freeze them; and we train the remaining parameters, the first-layer directions and the readout, with ordinary SGD on mean-squared error. Freezing the biases removes the entanglement between the direction search and the link fit at the level of the actual network: each row's contribution to the loss enters only through its overlap with theta*, the gradient on every row is colinear with theta*, and the landscape acquires the same scalar structure that makes the theoretical analysis go through. The readout is initialized small and uniformly so that early training focuses on moving the directions rather than fitting a premature one-dimensional approximation. No post-hoc ridge refit is used in this scaffold version; the same SGD loop that learns the directions also fits the readout weights against the frozen-bias features.
 
-This method is called the frozen-bias shallow network. It is the implementable, wide-MLP form of the tied-direction construction analyzed by Bietti, Mairal, and Bach for single-index recovery. The canonical name reflects the single decisive change relative to a standard shallow net: the hidden-neuron biases are sampled once and never trained. That freeze is what turns the network into a random-feature model along the discovered direction while leaving the directions themselves free to learn the hidden subspace. The result is a practitioner-style shallow network that still inherits the theoretical separation between high-dimensional feature learning and one-dimensional nonparametric regression.
+This method is called the frozen-bias shallow network. It is the implementable, wide-MLP form of the tied-direction construction analyzed by Bietti, Bruna, Sanford, and Song for single-index recovery. The canonical name reflects the single decisive change relative to a standard shallow net: the hidden-neuron biases are sampled once and never trained. That freeze is what turns the network into a random-feature model along the discovered direction while leaving the directions themselves free to learn the hidden subspace. The result is a practitioner-style shallow network that still inherits the theoretical separation between high-dimensional feature learning and one-dimensional nonparametric regression.
 
 ```python
-import math
-import torch
-import torch.nn as nn
-
-
 class Strategy:
-    """Frozen-bias shallow network for single-index recovery."""
+    """Frozen-bias shallow network for single-index recovery (Thm 1)."""
 
-    def __init__(self, config):
+    def __init__(self, config: TaskConfig) -> None:
         self.config = config
 
-    def init_two_layer(self, net, config):
-        # Random first-layer rows on the unit sphere so the optimizer
-        # controls only direction, not scale.
+    def init_two_layer(self, net: TwoLayerMLP, config: TaskConfig) -> None:
+        # Random first-layer weights on the unit sphere; biases sampled
+        # uniformly in [-1, 1] and frozen (see Bietti et al. 2022, eqn. 3).
         with torch.no_grad():
             W = torch.randn_like(net.fc1.weight)
             W = W / W.norm(dim=1, keepdim=True).clamp_min(1e-12)
             net.fc1.weight.copy_(W)
-            # Sample the hidden biases once and freeze them. They form a
-            # one-dimensional random-feature dictionary for the unknown link.
             net.fc1.bias.uniform_(-1.0, 1.0)
         net.fc1.bias.requires_grad_(False)
 
-        # Small, uniform readout initialization.
         bound = 1.0 / math.sqrt(config.width)
         nn.init.uniform_(net.fc2.weight, -bound, bound)
         nn.init.zeros_(net.fc2.bias)
 
-    def make_optimizer(self, net, config):
-        # Train everything except the frozen biases.
+    def make_optimizer(
+        self,
+        net: TwoLayerMLP,
+        config: TaskConfig,
+    ) -> torch.optim.Optimizer:
         params = [p for p in net.parameters() if p.requires_grad]
         return torch.optim.SGD(
             params,
@@ -45,20 +40,33 @@ class Strategy:
             weight_decay=config.weight_decay,
         )
 
-    def training_step(self, net, optimizer, x, y, step, config):
+    def training_step(
+        self,
+        net: TwoLayerMLP,
+        optimizer: torch.optim.Optimizer,
+        x: torch.Tensor,
+        y: torch.Tensor,
+        step: int,
+        config: TaskConfig,
+    ) -> StepMetrics:
         net.train()
         optimizer.zero_grad(set_to_none=True)
         preds = net(x)
         loss = torch.mean((preds - y) ** 2)
         loss.backward()
         optimizer.step()
-        return {"loss": float(loss.item())}
+        return StepMetrics(loss=float(loss.item()), extra={})
 
-    def finalize(self, net, x_train, y_train, config):
-        # No post-hoc refit needed in this scaffold version.
+    def finalize(
+        self,
+        net: TwoLayerMLP,
+        x_train: torch.Tensor,
+        y_train: torch.Tensor,
+        config: TaskConfig,
+    ) -> None:
         return
 
 
-def build_strategy(config):
+def build_strategy(config: TaskConfig) -> Strategy:
     return Strategy(config)
 ```
