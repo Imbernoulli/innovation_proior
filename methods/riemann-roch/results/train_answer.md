@@ -22,47 +22,12 @@ The theorem extends naturally to higher-rank vector bundles via the Hirzebruch�
 
 To make the identity concrete, I will verify it on a family of hyperelliptic curves. Consider a curve given by y squared equals f(x), where f is a polynomial of odd degree 2g plus one and the characteristic is not two. Such a curve has genus g, and there is a single point at infinity. The function x has pole order two at infinity, while y has pole order 2g plus one. A basis for the space L(n times infinity) is therefore easy to write down explicitly: it consists of the monomials x to the i for 2i at most n, together with the products x to the j times y for 2j plus 2g plus one at most n. By enumerating this basis and comparing with the Riemann–Roch prediction, the equality can be checked for many values of n and g without any advanced machinery.
 
-```python
-def l_infinity(n, g):
-    """Dimension of L(n * infinity) on the hyperelliptic curve
-    y^2 = f(x) with deg(f) = 2*g + 1 (odd), char != 2.
-    The unique point at infinity is one place; x has pole order 2
-    and y has pole order 2*g + 1 there.
-    """
-    if n < 0:
-        return 0
-    # basis {x^i : 2*i <= n}
-    from_x = n // 2 + 1
-    # basis {x^j * y : 2*j + (2*g + 1) <= n}
-    rem = n - (2 * g + 1)
-    from_xy = rem // 2 + 1 if rem >= 0 else 0
-    return from_x + from_xy
+Counting the two families of monomials in closed form makes the check completely explicit, with no need to run anything. Writing $\ell(n)$ for the dimension of $L(n\cdot\infty)$, the $x$-power part contributes $\lfloor n/2\rfloor + 1$ functions once $n\ge 0$, and the $y$-multiples contribute $\lfloor (n-2g-1)/2\rfloor + 1$ once $n\ge 2g+1$ and nothing otherwise, so
+$$\ell(n) \;=\; \Big\lfloor \tfrac n2 \Big\rfloor + 1 \;+\; \max\!\Big(0,\ \Big\lfloor \tfrac{n-2g-1}{2}\Big\rfloor + 1\Big).$$
+Because the canonical divisor on this model is $K_X \sim (2g-2)\cdot\infty$, the correction term $\ell(K_X - n\cdot\infty)$ is just this same formula evaluated at $2g-2-n$, and stepping through $n$ by hand for any $g$ confirms that $\ell(n) - \ell(2g-2-n)$ is always $n+1-g$: the correction vanishes exactly once $n\ge 2g-1$, so the naive local count becomes exact, while for smaller $n$ it supplies precisely the extra dimension the dual vanishing space predicts. The same closed form exposes the classical Weierstrass gap sequence at this single point at infinity: $\ell(n)$ increases by one every time $n$ crosses an even integer and stays flat across each of $n = 1, 3, 5, \dots, 2g-1$, so those $g$ odd values are exactly the gaps in the achievable pole orders — the signature of a hyperelliptic ramification point.
 
-
-def verify_riemann_roch(g, n_max=12):
-    """Check l(n*infty) - l(K - n*infty) = n + 1 - g,
-    where K ~ (2*g - 2) * infty on this hyperelliptic model.
-    """
-    K_degree = 2 * g - 2
-    print(f"Hyperelliptic curve genus g = {g}, canonical degree = {K_degree}")
-    for n in range(-2, n_max + 1):
-        lD = l_infinity(n, g)
-        # K - n*infty has degree K_degree - n.
-        if K_degree - n < 0:
-            lKminusD = 0
-        else:
-            lKminusD = l_infinity(K_degree - n, g)
-        lhs = lD - lKminusD
-        rhs = n + 1 - g
-        status = "OK" if lhs == rhs else "FAIL"
-        print(f"  n={n:3d}: l(D)={lD}, l(K-D)={lKminusD}, "
-              f"l(D)-l(K-D)={lhs:3d}, deg(D)+1-g={rhs:3d} [{status}]")
-
-
-if __name__ == "__main__":
-    for genus in (1, 2, 3):
-        verify_riemann_roch(genus)
-        print()
-```
-
-This small program computes the dimensions directly from the explicit basis and confirms that the Riemann–Roch identity holds for every n in the tested range. It also illustrates the two regimes: for large n the correction term vanishes and the dimension grows linearly with slope one, while for small n the correction term adjusts the count to keep the Euler characteristic exact. In summary, the Riemann–Roch theorem is the statement that local pole freedom, genus-imposed global constraints, and the dual obstruction space fit together in the single identity l(D) minus l(K minus D) equals deg(D) plus one minus g.
+Put together, this is the theorem, stated in full. Let $X$ be a nonsingular projective curve of genus $g$ over an algebraically closed field, let $D=\sum n_iP_i$ be a divisor on $X$, and set
+$$L(D) \;=\; \{\, f \in k(X)^\times : \operatorname{div}(f) + D \ge 0 \,\} \cup \{0\}, \qquad \ell(D) \;=\; \dim L(D).$$
+Let $K_X$ be a canonical divisor — the divisor of zeros and poles of any nonzero meromorphic differential on $X$, so $\deg K_X = 2g-2$. Then for every divisor $D$ on $X$,
+$$\ell(D) \;-\; \ell(K_X - D) \;=\; \deg D + 1 - g.$$
+The left side is the honest, computable count: the dimension I actually want, minus the dual correction. The right side is the naive local budget of pole freedom, corrected by the genus. Whenever $\deg D > 2g-2$, the divisor $K_X - D$ has negative degree, so $\ell(K_X - D) = 0$ and the identity collapses to the clean formula $\ell(D) = \deg D + 1 - g$. Whenever $\deg D \le 2g-2$, the term $\ell(K_X-D)$ is exactly the dimension of the dual space of differentials vanishing at the points of $D$ — Roch's correction $q$ made precise — and it accounts for every extra function the naive count misses. This single identity is the complete resolution of the counting problem I started with: local pole freedom, genus-imposed global period constraints, and the dual obstruction space, folded into one equality that holds on every nonsingular projective curve.
