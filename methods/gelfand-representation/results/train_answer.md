@@ -8,58 +8,16 @@ The Gelfand transform sends each a in A to the continuous function hat a on Delt
 
 For a unital commutative C*-algebra the situation is stronger. Every element is normal, and the C*-identity forces ||a|| = r(a), so the Gelfand transform becomes an isometry. The involution is also respected: characters send self-adjoint elements to real numbers, and decomposing a general element into real and imaginary self-adjoint parts shows that hat(a*) is the complex conjugate of hat a. The image of A is therefore a closed self-adjoint subalgebra of C(Delta(A)) that contains the constants and separates points, and the Stone-Weierstrass theorem then implies that the image is all of C(Delta(A)). Thus the Gelfand transform is an isometric *-isomorphism, proving that every unital commutative C*-algebra is exactly the algebra of continuous functions on its compact character space.
 
-```python
-import numpy as np
-from itertools import product
+Put precisely, let $A$ be a complex unital commutative Banach algebra and let
 
-# A small finite-dimensional illustration of the Gelfand transform.
-# Represent the algebra A = C^N with pointwise multiplication.
-# Characters are just the coordinate evaluations, and the Gelfand
-# space can be identified with {0, ..., N-1}.
+$$\Delta(A) = \{\varphi : A \to \mathbb{C} \mid \varphi \text{ is a nonzero algebra homomorphism, } \varphi(1)=1\}$$
 
-def make_function_algebra(n):
-    """Return a basis and multiplication table for C^n."""
-    basis = [np.eye(n, dtype=complex)[i] for i in range(n)]
-    return basis
+be its character space, topologized with the weak-\* topology inherited from $A^*$; because every character satisfies $\|\varphi\|=1$, $\Delta(A)$ is a weak-\*-compact Hausdorff subset of the unit ball of $A^*$, and the maximal ideals of $A$ are exactly the kernels $\ker\varphi$. The Gelfand transform sends $a\in A$ to $\hat a \in C(\Delta(A))$, $\hat a(\varphi)=\varphi(a)$, and $a\mapsto\hat a$ is a unital algebra homomorphism because each $\varphi$ is linear and multiplicative. It satisfies
 
-def multiply(a, b):
-    """Pointwise product in C^n."""
-    return a * b
+$$\sigma(a) = \hat a(\Delta(A)), \qquad \|\hat a\|_\infty = r(a) = \lim_{n\to\infty}\|a^n\|^{1/n},$$
 
-def characters(n):
-    """Coordinate-evaluation characters of C^n."""
-    def phi(i, a):
-        return a[i]
-    return [lambda a, i=i: phi(i, a) for i in range(n)]
+and its kernel is exactly the Jacobson radical of $A$, the intersection of all maximal ideals — so the transform is injective on semisimple algebras, though even then it need not preserve the original norm. When $A$ is further a unital commutative $C^*$-algebra, every element is normal, so $\|a\|=r(a)=\|\hat a\|_\infty$ and the transform is isometric; decomposing $a = \tfrac12(a+a^*) + \tfrac{1}{2i}(a-a^*)$ into self-adjoint real and imaginary parts gives $\widehat{a^*}=\overline{\hat a}$, so the range is a closed, self-adjoint, unit-containing, point-separating subalgebra of $C(\Delta(A))$, and the Stone-Weierstrass theorem forces it to be all of $C(\Delta(A))$. The theorem, in full, is that the Gelfand transform
 
-def gelfand_transform(a, chars):
-    """Return the vector of values (hat a)(phi) for each character."""
-    return np.array([phi(a) for phi in chars], dtype=complex)
+$$A \;\xrightarrow{\ \cong\ }\; C(\Delta(A)), \qquad a \mapsto \hat a$$
 
-def spectrum(a):
-    """Spectrum of a in C^n is just its set of coordinates."""
-    return set(np.round(a[np.abs(a) > 1e-10], decimals=8))
-
-def spectral_radius(a):
-    return np.max(np.abs(a))
-
-# Example: A = C^4 with a randomly chosen element.
-n = 4
-chars = characters(n)
-a = np.array([1.0 + 2.0j, 3.0 - 1.0j, 0.0, -0.5j], dtype=complex)
-
-hat_a = gelfand_transform(a, chars)
-print("a:", a)
-print("Gelfand transform values:", hat_a)
-print("range of hat_a:", spectrum(hat_a))
-print("spectrum of a:", spectrum(a))
-print("||hat_a||_infty:", np.max(np.abs(hat_a)))
-print("r(a):", spectral_radius(a))
-
-# Verify multiplicativity for a product.
-b = np.array([2.0, 0.0, 1.0j, -1.0j], dtype=complex)
-ab = multiply(a, b)
-hat_ab = gelfand_transform(ab, chars)
-hat_a_hat_b = gelfand_transform(a, chars) * gelfand_transform(b, chars)
-print("hat(ab) == hat(a) * hat(b):", np.allclose(hat_ab, hat_a_hat_b))
-```
+is an isometric $*$-isomorphism for every unital commutative $C^*$-algebra $A$: the character space $\Delta(A)$, built purely from the multiplicative linear functionals on $A$, is exactly the point space the algebra was secretly a function algebra over, and the transform exhibits that identification completely — algebraically, topologically, and isometrically.
