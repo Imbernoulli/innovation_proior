@@ -12,10 +12,7 @@ assignment.
 You decide which jobs go on which press. Choose the assignment that **minimizes the closing time**
 (the makespan), and output that minimum.
 
-This is the identical-machines makespan-minimization problem, `P || C_max`. It is the canonical place
-where a beginner reaches for a load-balancing greedy, and the canonical place that greedy quietly
-returns a wrong number. The right tool is to binary-search the closing time and test feasibility, but
-the feasibility test is itself the subtle part.
+This is the identical-machines makespan-minimization problem, `P || C_max`.
 
 ## Input / output contract
 
@@ -28,30 +25,10 @@ the feasibility test is itself the subtle part.
 Example: for `m = 3` presses and jobs `t = [5, 5, 4, 4, 3, 3, 3]` the answer is `9` — put `{5,4}`,
 `{5,4}`, `{3,3,3}` on the three presses, giving loads `9, 9, 9`.
 
-## Background
-
-The closing time is bounded below by two easy quantities — the largest single job `max t[i]` (some
-press must run it) and the ceiling of the average load `ceil(sum t[i] / m)` (the total work cannot
-shrink) — and bounded above by `sum t[i]` (one press does everything). The answer lives in
-`[max t[i], sum t[i]]`. Two routes are on the table before committing:
-
-- **A load-balancing greedy (LPT).** Sort jobs from longest to shortest and drop each onto the press
-  that is currently least loaded. This is `O(n log n)`, famously a good *approximation* (within 4/3 of
-  optimal), and very tempting to ship as "the answer." The open question is whether it is ever *exactly*
-  optimal — and whether the test data can tell.
-- **Binary search on the closing time.** The predicate "can all jobs finish by time `T`?" is monotone
-  in `T`: if everything fits under `T`, it certainly fits under any `T' > T`. So binary-search the
-  smallest feasible `T`. The open question is how to *decide feasibility* — partitioning jobs into at
-  most `m` groups each summing to at most `T` is itself a bin-packing decision, and a sloppy feasibility
-  check is its own trap.
-
 ## Evaluation settings
 
-Judged on hidden tests covering: `n = 0` (answer `0`); `n = 1`; `m = 1` (answer is the total);
-`m >= n` (each job can have its own press, answer is `max t[i]`); clustered job sizes engineered so the
-LPT greedy is strictly suboptimal; the average-bound trap (`ceil(sum/m)` not achievable because one job
-dominates); and full-size `n = 14` with `t[i]` near `10^9` (so loads and the search range exceed 32
-bits).
+Judged on hidden tests covering: `n = 0`; `n = 1`; `m = 1`; `m >= n`; a range of clustered job-size
+patterns across varying press counts; and full-size `n = 14` with `t[i]` near `10^9`.
 
 ## Code framework
 
