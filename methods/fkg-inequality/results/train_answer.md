@@ -8,116 +8,12 @@ The proof proceeds by induction on the length of the lattice. The base case of a
 
 The FKG condition is not only sufficient but also cleanly unifies the motivating examples. In independent bond percolation the edge measure is a product, so it satisfies the lattice condition with equality and increasing connection events are positively correlated. In the random-cluster model the factor κ^{c(R)} is supermodular in the number of components for κ ≥ 1, so the same conclusion holds, and at κ = 2 the Ising correlations reappear as special cases. Thus a single theorem with two hypotheses, a distributive lattice and a log-supermodular measure, explains why good events help each other across statistical mechanics.
 
-```python
-"""
-FKG inequality: numerical illustration on a finite distributive lattice.
+The finished result is this theorem. Let $\Gamma$ be a finite distributive lattice under meet $\wedge$ and join $\vee$, and let $\mu$ be a strictly positive measure on $\Gamma$ satisfying the FKG lattice condition
 
-Theorem: on a finite distributive lattice Γ, if μ > 0 satisfies
-    μ(x ∧ y) * μ(x ∨ y) >= μ(x) * μ(y)   for all x, y,
-then for any two increasing functions f, g:
-    <fg> >= <f><g>,   where <f> = Σ_x μ(x) f(x) / Σ_x μ(x).
-"""
+$$\mu(x \wedge y)\,\mu(x \vee y) \;\ge\; \mu(x)\,\mu(y) \qquad \text{for all } x, y \in \Gamma. \tag{A}$$
 
-from itertools import combinations
-import math
+Writing $\langle f \rangle = Z^{-1}\sum_{x \in \Gamma} \mu(x) f(x)$ with $Z = \sum_{x \in \Gamma} \mu(x)$, any two functions $f, g : \Gamma \to \mathbb{R}$ that are both increasing, or both decreasing, with respect to the lattice order satisfy
 
+$$\langle fg \rangle - \langle f \rangle \langle g \rangle \;\ge\; 0.$$
 
-def boolean_lattice(n):
-    """Return the Boolean lattice P({0, ..., n-1}) as frozensets."""
-    return [frozenset(s) for r in range(n + 1)
-            for s in combinations(range(n), r)]
-
-
-def meet(x, y):
-    return x & y
-
-
-def join(x, y):
-    return x | y
-
-
-def is_increasing(f, lattice):
-    """Check f(x) <= f(y) whenever x ⊆ y."""
-    for i, x in enumerate(lattice):
-        for y in lattice[i + 1:]:
-            if x <= y and f[x] > f[y]:
-                return False
-    return True
-
-
-def check_fkg_condition(mu, lattice, eps=1e-12):
-    """Verify μ(x∧y) μ(x∨y) >= μ(x) μ(y) up to tolerance."""
-    for x in lattice:
-        for y in lattice:
-            lhs = mu[x] * mu[y]
-            rhs = mu[meet(x, y)] * mu[join(x, y)]
-            if rhs < lhs - eps:
-                return False, (x, y, lhs, rhs)
-    return True, None
-
-
-def covariance(mu, f, g, lattice):
-    Z = sum(mu[x] for x in lattice)
-    mean_f = sum(mu[x] * f[x] for x in lattice) / Z
-    mean_g = sum(mu[x] * g[x] for x in lattice) / Z
-    mean_fg = sum(mu[x] * f[x] * g[x] for x in lattice) / Z
-    return mean_fg - mean_f * mean_g
-
-
-def make_log_supermodular_measure(n):
-    """
-    Build a strictly positive log-supermodular measure on P({0,...,n-1}).
-    λ(R) = Σ_{r∈R} (r+1) + 0.5 |R|^2 is supermodular because the second
-    difference for adding two distinct elements is 2 * 0.5 = 1 >= 0.
-    """
-    lattice = boolean_lattice(n)
-    mu = {}
-    for R in lattice:
-        linear = sum(r + 1 for r in R)
-        quad = 0.5 * len(R) ** 2
-        mu[R] = math.exp(linear + quad)
-    return lattice, mu
-
-
-def make_counterexample():
-    """
-    A positive measure on the 2-element Boolean lattice that violates the
-    FKG condition and makes two increasing functions anti-correlated.
-    """
-    empty, a, b, ab = frozenset(), frozenset([0]), frozenset([1]), frozenset([0, 1])
-    lattice = [empty, a, b, ab]
-    mu = {empty: 1.0, a: 10.0, b: 10.0, ab: 1.0}
-    f = {empty: 0, a: 1, b: 0, ab: 1}  # indicator of containing element 0
-    g = {empty: 0, a: 0, b: 1, ab: 1}  # indicator of containing element 1
-    return lattice, mu, f, g
-
-
-if __name__ == "__main__":
-    # --- FKG-satisfying example on the Boolean lattice of size 3 ---
-    n = 3
-    lattice, mu = make_log_supermodular_measure(n)
-
-    ok, counter = check_fkg_condition(mu, lattice)
-    print("FKG condition satisfied:", ok)
-    if not ok:
-        print("Counterexample:", counter)
-
-    # Two increasing functions: lattice size and sum of contained elements.
-    f = {R: float(len(R)) for R in lattice}
-    g = {R: float(sum(R) if R else 0) for R in lattice}
-    print("f increasing:", is_increasing(f, lattice))
-    print("g increasing:", is_increasing(g, lattice))
-
-    cov = covariance(mu, f, g, lattice)
-    print(f"Covariance <fg> - <f><g> = {cov:.6f}")
-    assert cov >= -1e-9, "FKG inequality violated!"
-
-    # --- Counterexample: when the FKG condition fails, so can the conclusion ---
-    lattice_bad, mu_bad, f_bad, g_bad = make_counterexample()
-    ok_bad, _ = check_fkg_condition(mu_bad, lattice_bad)
-    cov_bad = covariance(mu_bad, f_bad, g_bad, lattice_bad)
-    print("\nCounterexample FKG condition satisfied:", ok_bad)
-    print(f"Counterexample covariance = {cov_bad:.6f}")
-    assert not ok_bad, "Counterexample should violate the FKG condition"
-    assert cov_bad < -1e-3, "Counterexample should show negative covariance"
-```
+Equivalently, with $\lambda = \log \mu$, condition (A) is the supermodularity $\lambda(x \wedge y) + \lambda(x \vee y) \ge \lambda(x) + \lambda(y)$, and the conclusion is that $\mu$ is positively associated. Since every product measure $\mu(x) = \prod_i \mu_i(x_i)$ satisfies (A) with equality, the theorem specializes immediately to Harris's inequality — for increasing events $A, B$ of independent coordinates, $P(A \cap B) \ge P(A)\,P(B)$, and more generally $P(A_1 \cap \cdots \cap A_k) \ge \prod_i P(A_i)$ for increasing $A_1, \dots, A_k$ — and, through the supermodularity of the component count $\kappa^{c(R)}$ for $\kappa \ge 1$, to the Griffiths-type inequalities of the Ising model at $\kappa = 2$. Both hypotheses are load-bearing: on the two-element Boolean lattice $\{\varnothing, \{a\}, \{b\}, \{a,b\}\}$ with $\mu(\varnothing) = \mu(\{a,b\}) = 1$ and $\mu(\{a\}) = \mu(\{b\}) = 10$, condition (A) fails at $x = \{a\}, y = \{b\}$ since $\mu(\varnothing)\mu(\{a,b\}) = 1 < 100 = \mu(\{a\})\mu(\{b\})$, and the increasing indicators $f = \mathbf{1}_{a \in x}$, $g = \mathbf{1}_{b \in x}$ turn anti-correlated, $\langle fg \rangle - \langle f \rangle \langle g \rangle \approx -0.205$: drop the lattice condition and the correlation can invert.
