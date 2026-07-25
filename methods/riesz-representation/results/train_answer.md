@@ -14,63 +14,12 @@ Uniqueness is a consequence of the same continuous approximation of indicators. 
 
 The theorem is foundational because it identifies the dual object corresponding to a positive functional. In finite dimensions, every linear functional is a dot product with a fixed vector. In this infinite-dimensional setting, the analog of that vector is a regular Borel measure, and the analog of the dot product is integration. The result explains why measure theory is the natural language for positive linear functionals on spaces of continuous functions and why regularity is not an optional technical condition but a consequence of the fact that the functional is only defined on continuous tests.
 
-The following Python script illustrates the theorem in the concrete case where X is the unit interval [0, 1]. I take I to be Riemann integration, which is a positive linear functional on continuous functions. The script constructs the representing measure by evaluating I on continuous bump functions supported inside open sets, compares the resulting masses against the lengths of those open sets, and checks the norm identity I(1) equals the total measure of the interval.
+Written out in the exact form I would hand to a colleague, the deliverable is the theorem itself, and it deserves to be stated with all of its hypotheses and conclusions in one place rather than scattered across the derivation. Let $X$ be a compact Hausdorff space, and let $C(X,\mathbb{R})$ be the real Banach space of continuous real-valued functions on $X$ equipped with the supremum norm $\|\cdot\|_\infty$. Suppose $I : C(X,\mathbb{R}) \to \mathbb{R}$ is a positive linear functional, meaning $f \ge 0$ on $X$ implies $I(f) \ge 0$. Then there exists a unique finite regular Borel measure $\mu$ on $X$ such that
 
-```python
-import numpy as np
-from scipy.integrate import quad
+$$I(f) = \int_X f \, d\mu \qquad \text{for every } f \in C(X,\mathbb{R}),$$
 
-def bump(t, a, b, c, d):
-    """Continuous piecewise-linear bump: 0 outside [a,d], 1 on [b,c], linear ramps."""
-    t = np.asarray(t, dtype=float)
-    scalar = t.ndim == 0
-    t = np.atleast_1d(t)
-    result = np.zeros_like(t, dtype=float)
-    left_ramp = (t > a) & (t < b)
-    right_ramp = (t > c) & (t < d)
-    flat = (t >= b) & (t <= c)
-    if b != a:
-        result[left_ramp] = (t[left_ramp] - a) / (b - a)
-    if d != c:
-        result[right_ramp] = (d - t[right_ramp]) / (d - c)
-    result[flat] = 1.0
-    return result.item() if scalar else result
+and moreover
 
-def I(func):
-    """Positive linear functional: Riemann/Lebesgue integral over [0,1]."""
-    val, _ = quad(func, 0, 1, limit=100)
-    return val
+$$\|I\| = I(1) = \mu(X).$$
 
-# The interval X = [0,1] is compact Hausdorff.
-# Choose an open set U = (0.2, 0.7).
-a, d = 0.2, 0.7
-# Approximate 1_U from inside by a sequence of bumps whose support is contained in U.
-widths = [0.15, 0.10, 0.05, 0.02, 0.005]
-estimates = []
-for w in widths:
-    b = a + w
-    c = d - w
-    if b >= c:
-        continue
-    f = lambda t, b=b, c=c: bump(t, a, b, c, d)
-    estimates.append(I(f))
-
-print("Estimated mu(U) from inner bumps:", estimates)
-print("Limit should be length of U:", d - a)
-
-# Verify the norm identity ||I|| = I(1) = mu(X).
-one_func = lambda t: np.ones_like(t)
-total_mass = I(one_func)
-print("I(1) =", total_mass)
-print("mu(X) = length of [0,1] =", 1.0)
-
-# Verify representation on a generic continuous function.
-g = lambda t: np.sin(2 * np.pi * t) + 2.0  # nonnegative on [0,1]
-functional_value = I(g)
-measure_value, _ = quad(g, 0, 1, limit=100)
-print("I(g) =", functional_value)
-print("integral g dmu =", measure_value)
-print("Difference:", abs(functional_value - measure_value))
-```
-
-In summary, the positive Riesz representation theorem under the canonical name Riesz representation tells us that every positive continuous linear functional on C(X, R) for a compact Hausdorff space X is exactly integration against a unique finite regular Borel measure, with total mass equal to the norm of the functional.
+Conversely, every finite regular Borel measure $\mu$ on $X$ defines a positive continuous linear functional on $C(X,\mathbb{R})$ by $f \mapsto \int_X f \, d\mu$, so $I \mapsto \mu$ is a bijection between positive linear functionals on $C(X,\mathbb{R})$ and finite regular Borel measures on $X$, under which the operator norm of the functional is recovered exactly as the total mass of its measure. Regularity here is not an extra hypothesis tacked onto the measure: it is precisely the statement that $\mu$ is determined from outside by open sets, $\mu(E) = \inf\{\mu(U) : E \subset U,\ U \text{ open}\}$, and from inside by compact sets, $\mu(U) = \sup\{\mu(K) : K \subset U,\ K \text{ compact}\}$, which is exactly how the construction from continuous test functions builds it. That correspondence is the whole content of the positive Riesz representation theorem: every positive continuous linear functional on continuous functions over a compact Hausdorff space is integration against a unique regular Borel measure, and the norm of the functional is precisely the total mass it assigns to the space.
