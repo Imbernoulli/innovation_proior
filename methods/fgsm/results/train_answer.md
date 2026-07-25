@@ -13,7 +13,6 @@ The method is fast enough to make adversarial training practical. Instead of pre
 ```python
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 
 def run_attack(
@@ -24,19 +23,20 @@ def run_attack(
     device: torch.device,
     n_classes: int,
 ) -> torch.Tensor:
-    _ = (device, n_classes)
+    _ = n_classes
     model.eval()
-    x = images.detach().clone().requires_grad_(True)
-    y = labels.detach().clone()
+    x = images.detach().clone().to(device).requires_grad_(True)
+    y = labels.detach().clone().to(device)
     logits = model(x)
-    loss = F.cross_entropy(logits, y)
-    grad = torch.autograd.grad(loss, x, retain_graph=False, create_graph=False)[0]
+    loss_fn = nn.CrossEntropyLoss()
+    loss = loss_fn(logits, y)                    # J(theta, x, y)
+    grad = torch.autograd.grad(
+        loss, x, retain_graph=False, create_graph=False
+    )[0]                                         # g = dJ/dx
 
     with torch.no_grad():
-        # eta = eps * sign(g): the L-inf-ball maximizer of the linearized loss increase
-        x_adv = x + eps * grad.sign()
-        delta = torch.clamp(x_adv - images, min=-eps, max=eps)
-        x_adv = torch.clamp(images + delta, min=0.0, max=1.0)
+        x_adv = x + eps * grad.sign()            # eta = eps * sign(g): L-inf-ball maximizer
+        x_adv = torch.clamp(x_adv, min=0, max=1)
 
     return x_adv.detach()
 ```
