@@ -10,9 +10,8 @@ At network scale, a flat softmax over the full vertex vocabulary is infeasible, 
 import random
 from gensim.models import Word2Vec
 
-
 def random_walk(G, start, length):
-    """Uniform truncated random walk."""
+    """Uniform truncated random walk: each step jumps to a random neighbor."""
     path = [start]
     while len(path) < length:
         nbrs = G.neighbors(path[-1])
@@ -21,29 +20,19 @@ def random_walk(G, start, length):
         path.append(random.choice(nbrs))
     return path
 
-
 def build_corpus(G, num_walks, walk_length):
-    """Generate gamma passes of short random walks, one per vertex per pass."""
-    walks = []
-    nodes = list(G.nodes())
+    """gamma passes; shuffle vertices each pass; one walk per vertex."""
+    walks, nodes = [], list(G.nodes())
     for _ in range(num_walks):
         random.shuffle(nodes)
         for v in nodes:
             walks.append([str(n) for n in random_walk(G, v, walk_length)])
     return walks
 
-
 def deepwalk(G, dim=128, num_walks=80, walk_length=40, window=10, workers=1):
-    """DeepWalk: random-walk corpus -> Skip-gram with hierarchical softmax."""
+    """Walks -> Skip-gram (sg=1) with hierarchical softmax (hs=1). Returns Phi."""
     walks = build_corpus(G, num_walks, walk_length)
-    model = Word2Vec(
-        walks,
-        vector_size=dim,
-        window=window,
-        sg=1,
-        hs=1,
-        min_count=0,
-        workers=workers,
-    )
+    model = Word2Vec(walks, vector_size=dim, window=window,
+                     sg=1, hs=1, min_count=0, workers=workers)
     return model.wv
 ```
