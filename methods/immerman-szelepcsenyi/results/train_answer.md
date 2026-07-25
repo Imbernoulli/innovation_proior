@@ -18,67 +18,14 @@ It is worth contrasting this with Savitch's theorem. Savitch's midpoint recursio
 
 The name inductive counting captures exactly what happens: we count reachable objects layer by layer, and the count at each layer becomes the proof tool for the next. Forced enumeration is an equally descriptive synonym, because the count forces any claimed complete list to contain every reachable object. Either name points to the same elegant mechanism.
 
-To make the construction concrete, here is a small Python simulation that computes the reachability counts R_i for an arbitrary directed graph and then performs the forced-enumeration nonmembership check for a target vertex. It is not a logspace implementation, since Python stores the whole graph, but it faithfully mirrors the certificate logic that a logspace nondeterministic machine would verify.
+What this method actually delivers is not a program to run but the certificate scheme itself, and it is worth stating that scheme in the exact form I would hand to a colleague. Fix a directed graph $G$ with $n$ vertices and source $s$, let $R_i = \{v : v \text{ is reachable from } s \text{ by a path of length at most } i\}$, and let $r_i = |R_i|$, so $R_0 = \{s\}$ and $r_0 = 1$.
 
-```python
-from collections import deque
+Lemma 1 is the nonmembership certificate: given $r_i$, a nondeterministic logspace verifier decides $v \notin R_i$ by scanning candidate vertex names in a fixed order, where for each name an accepting branch may present a path from $s$ of length at most $i$ to certify that name as reachable, rejecting outright on any repeated or out-of-order name, and the branch accepts only once its running count of certified distinct reachable names equals exactly $r_i$ and $v$ was never among the certified names. If $v \in R_i$, every branch that reaches count $r_i$ using only genuine, distinct path certificates must have certified $v$ along the way, so it rejects; if $v \notin R_i$, some branch certifies precisely the $r_i$ genuine members of $R_i$, omits $v$, and accepts. The exact count is what turns "this branch failed to find $v$" into "no branch could have included $v$."
 
-def compute_reachability_counts(adj, s):
-    n = len(adj)
-    R = [{s}]
-    for i in range(1, n):
-        prev = R[-1]
-        nxt = set(prev)
-        for u in prev:
-            for v in adj[u]:
-                nxt.add(v)
-        if nxt == prev:
-            break
-        R.append(nxt)
-    counts = [len(r) for r in R]
-    return R, counts
+Lemma 2 computes the next count from the current one: scanning every candidate $v$ in turn, a branch certifies $v \in R_{i+1}$ by a path to $v$ itself or a path to some predecessor $u \in R_i$ together with the edge $u \to v$, and certifies $v \notin R_{i+1}$ by running the Lemma 1 check against every vertex of $R_i$, showing that none of them is $v$ and none has an edge into $v$. A counter incremented once for every $v$ certified positive reaches exactly $r_{i+1}$ once all $n$ candidates have been scanned, and nothing beyond the current vertex, one predecessor, one path, the old count, and the new count ever needs to sit on the work tape.
 
-def verify_nonmembership(adj, s, target, R_layers, known_counts):
-    """
-    Simulate the forced-enumeration certificate that 'target' is not reachable.
-    Returns True if a valid certificate exists, which matches the true answer.
-    """
-    final_layer = R_layers[-1]
-    if target in final_layer:
-        return False
-    for layer, r_i in zip(R_layers, known_counts):
-        if len(layer) != r_i:
-            return False
-    return True
+Starting from $r_0 = 1$ and applying Lemma 2 a total of $n - 1$ times produces $r_{n-1}$, the exact size of the full reachable set. One last application of Lemma 1, to the actual target $t$ at layer $n-1$, decides the original question: the machine accepts if and only if $t \notin R_{n-1}$, which holds if and only if there is no path from $s$ to $t$. Because directed reachability is $\mathrm{NL}$-complete, this puts non-reachability itself in $\mathrm{NL}$, so $\mathrm{NL} = \mathrm{coNL}$. Lifting the same two lemmas from graph vertices to the configurations of an arbitrary space-$s(n)$ nondeterministic machine — each configuration occupying $O(s(n))$ bits, so a counter ranging over all of them still fits in $O(s(n))$ space, and the induction run until the count of reachable configurations stops changing — gives the theorem in full:
 
-def verify_membership_via_count(adj, s, v, R_prev, r_prev):
-    """
-    Given the previous layer and its exact count, decide whether v is in the
-    next layer using a forced-enumeration certificate for the negative case.
-    """
-    if v in R_prev:
-        return True
-    for u in R_prev:
-        if v in adj[u]:
-            return True
-    return False
+$$\mathrm{NSPACE}(s(n)) = \mathrm{co\text{-}NSPACE}(s(n)) \quad \text{for every } s(n) \ge \log n.$$
 
-if __name__ == "__main__":
-    adj = {
-        0: [1, 2],
-        1: [3],
-        2: [3],
-        3: [4],
-        4: []
-    }
-    s, t = 0, 4
-    R_layers, counts = compute_reachability_counts(adj, s)
-    print("Layer counts:", counts)
-    reachable = t in R_layers[-1]
-    print("Target reachable?", reachable)
-    cert = verify_nonmembership(adj, s, t, R_layers, counts)
-    print("Nonmembership certificate valid?", cert)
-    print("Certificate agrees with truth:", cert == (not reachable))
-```
-
-This code computes the true reachable layers and then checks that the forced-enumeration certificate is valid exactly for nonmembership. In a real logspace nondeterministic algorithm, the machine would not compute the layers; it would nondeterministically guess the enumerations and verify them against the known counts. The Python version simply separates the certificate verification logic from the counting logic so that the method becomes tangible.
+That equality, together with the two counting lemmas that prove it, is the deliverable: not a script to execute, but a certificate scheme — a fixed vertex ordering, a running counter, and one path witness at a time — that a nondeterministic machine of the same space bound can carry out completely to decide its own complement.
