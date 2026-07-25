@@ -46,7 +46,7 @@ class GSTNode:
         self.remove = []
         while True:
             best = None
-            for remove in list(parents):
+            for remove in [parent for parent in parents]:
                 parents.remove(remove)
                 score = self.tree.score.score_nocache(self.tree.vertex, parents)
                 parents.append(remove)
@@ -80,13 +80,22 @@ class GST:
         self.score = score
         self.root = GSTNode(self)
         self.forbidden = [vertex]
+        self.required = []
 
     def trace(self, prefix, parents=None):
         if parents is None:
             parents = []
-        available = [i for i in range(self.score.data.shape[1])
-                     if i not in self.forbidden]
+        available = [i for i in range(self.score.data.shape[1]) if i not in self.forbidden]
         return self.root.trace(prefix, available, parents)
+
+    def reset(self):
+        self.root = GSTNode(self)
+
+
+def reversed_enumerate(seq, j):
+    for w in reversed(seq):
+        yield j, w
+        j -= 1
 
 
 def better_mutation(v, order, gsts):
@@ -95,26 +104,25 @@ def better_mutation(v, order, gsts):
     scores = np.zeros(p + 1)
 
     prefix = []
-    score = 0.0
+    score = 0
     for j, w in enumerate(order):
         scores[j] = gsts[v].trace(prefix) + score
         if v != w:
             score += gsts[w].trace(prefix)
             prefix.append(w)
+
     scores[p] = gsts[v].trace(prefix) + score
     best = p
 
     prefix.append(v)
-    score = 0.0
-    j = p - 1
-    for w in reversed(order):
+    score = 0
+    for j, w in reversed_enumerate(order, p - 1):
         if v != w:
             prefix.remove(w)
             score += gsts[w].trace(prefix)
         scores[j] += score
         if scores[j] > scores[best]:
             best = j
-        j -= 1
 
     if scores[i] + 1e-6 > scores[best]:
         return False
@@ -154,9 +162,4 @@ def boss_discrete(X: np.ndarray, node_names: Optional[List[str]] = None) -> Gene
         for x in parents[y]:
             G.add_directed_edge(nodes[x], nodes[y])
     return dag2cpdag(G)
-
-
-def run_causal_discovery(X: np.ndarray) -> GeneralGraph:
-    """Discrete observational data -> estimated CPDAG."""
-    return boss_discrete(X)
 ```
