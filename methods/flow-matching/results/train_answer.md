@@ -11,7 +11,7 @@ import torch
 
 
 def pad_t_like_x(t, x):
-    """Reshape a batch of scalar times so it broadcasts over x."""
+    """Reshape time vector t (bs,) to broadcast over x (bs, *dim)."""
     if isinstance(t, (float, int)):
         return t
     return t.reshape(-1, *([1] * (x.dim() - 1)))
@@ -23,7 +23,6 @@ def sample_prior_like(x):
 
 @torch.no_grad()
 def odeint(field, x0, t0, t1, steps=100):
-    """Simple Euler integrator; straight OT paths tolerate very few steps."""
     x = x0
     dt = (t1 - t0) / steps
     n = x0.shape[0]
@@ -34,12 +33,12 @@ def odeint(field, x0, t0, t1, steps=100):
 
 
 class TrainingPairBuilder:
-    """OT Gaussian conditional path for Conditional Flow Matching.
+    """OT Gaussian conditional path for vector-field regression.
 
     p_t(x|x1) = N(t*x1, (1 - (1 - sigma_min) t)^2 I)
     psi_t(x0) = (1 - (1 - sigma_min) t) x0 + t x1
     u_t(x_t|x1) = (x1 - (1 - sigma_min) x_t) / (1 - (1 - sigma_min) t)
-                = x1 - (1 - sigma_min) x0       (constant in t along the path)
+                = x1 - (1 - sigma_min) x0           (constant in t along the straight path)
     """
 
     def __init__(self, sigma_min: float = 1e-4):
@@ -59,6 +58,8 @@ class TrainingPairBuilder:
         return mu_t + sigma_t * x0
 
     def compute_conditional_flow(self, x0, x1, t, xt):
+        # Closed-form conditional vector field at x_t = psi_t(x0).
+        # For xt from sample_xt this is x1 - (1 - sigma_min) x0, constant along the line.
         del x0
         t = pad_t_like_x(t, x1)
         return (x1 - (1 - self.sigma_min) * xt) / (1 - (1 - self.sigma_min) * t)
