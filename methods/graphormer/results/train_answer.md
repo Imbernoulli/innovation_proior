@@ -23,6 +23,7 @@ import torch.nn.functional as F
 from graphormer.data import algos
 
 
+# ---- Per-graph preprocessing: structural quantities (Floyd-Warshall) ----
 def convert_to_single_emb(x, offset=512):
     feature_num = x.size(1) if len(x.size()) > 1 else 1
     feature_offset = 1 + torch.arange(
@@ -41,15 +42,16 @@ def preprocess_item(item):
         edge_attr = edge_attr[:, None]
     attn_edge_type = torch.zeros([N, N, edge_attr.size(-1)], dtype=torch.long)
     attn_edge_type[edge_index[0], edge_index[1]] = convert_to_single_emb(edge_attr) + 1
-    spd, path = algos.floyd_warshall(adj.numpy())
+    # all-pairs shortest path distance (phi) and edges along each path
+    spd, path = algos.floyd_warshall(adj.numpy())       # SPD matrix, predecessor table
     edge_input = algos.gen_edge_input(spd.max(), path, attn_edge_type.numpy())
     item.x = x
-    item.spatial_pos = torch.from_numpy(spd).long()
+    item.spatial_pos = torch.from_numpy(spd).long()     # phi(i, j)
     item.attn_edge_type = attn_edge_type
     item.edge_input = torch.from_numpy(edge_input).long()
     item.in_degree = adj.long().sum(dim=1).view(-1)
-    item.out_degree = item.in_degree
-    item.attn_bias = torch.zeros([N + 1, N + 1], dtype=torch.float)
+    item.out_degree = item.in_degree                    # undirected
+    item.attn_bias = torch.zeros([N + 1, N + 1], dtype=torch.float)  # + VNode row/col
     return item
 
 
@@ -79,6 +81,15 @@ def pad_attn_bias_unsqueeze(x, padlen):
         new_x = x.new_zeros([padlen, padlen], dtype=x.dtype).fill_(float("-inf"))
         new_x[:xlen, :xlen] = x
         new_x[xlen:, :xlen] = 0
+        x = new_x
+    return x.unsqueeze(0)
+
+
+def pad_edge_type_unsqueeze(x, padlen):
+    xlen = x.size(0)
+    if xlen < padlen:
+        new_x = x.new_zeros([padlen, padlen, x.size(-1)], dtype=x.dtype)
+        new_x[:xlen, :xlen, :] = x
         x = new_x
     return x.unsqueeze(0)
 
@@ -113,81 +124,110 @@ def collator(items, max_node=512, multi_hop_max_dist=20, spatial_pos_max=20):
     ]
     (idxs, attn_biases, attn_edge_types, spatial_poses,
      in_degrees, out_degrees, xs, edge_inputs, ys) = zip(*items)
+
     for idx, _ in enumerate(attn_biases):
         attn_biases[idx][1:, 1:][spatial_poses[idx] >= spatial_pos_max] = float("-inf")
+
     max_node_num = max(i.size(0) for i in xs)
     max_dist = max(i.size(-2) for i in edge_inputs)
     return {
         "idx": torch.LongTensor(idxs),
-        "attn_bias": torch.cat([pad_attn_bias_unsqueeze(i, max_node_num + 1) for i in attn_biases]),
-        "attn_edge_type": torch.cat([pad_3d_unsqueeze(i, max_node_num, max_node_num, i.size(-2)) for i in attn_edge_types]),
-        "spatial_pos": torch.cat([pad_spatial_pos_unsqueeze(i, max_node_num) for i in spatial_poses]),
+        "attn_bias": torch.cat([
+            pad_attn_bias_unsqueeze(i, max_node_num + 1) for i in attn_biases
+        ]),
+        "attn_edge_type": torch.cat([
+            pad_edge_type_unsqueeze(i, max_node_num) for i in attn_edge_types
+        ]),
+        "spatial_pos": torch.cat([
+            pad_spatial_pos_unsqueeze(i, max_node_num) for i in spatial_poses
+        ]),
         "in_degree": torch.cat([pad_1d_unsqueeze(i, max_node_num) for i in in_degrees]),
         "out_degree": torch.cat([pad_1d_unsqueeze(i, max_node_num) for i in out_degrees]),
         "x": torch.cat([pad_2d_unsqueeze(i, max_node_num) for i in xs]),
-        "edge_input": torch.cat([pad_3d_unsqueeze(i, max_node_num, max_node_num, max_dist) for i in edge_inputs]),
+        "edge_input": torch.cat([
+            pad_3d_unsqueeze(i, max_node_num, max_node_num, max_dist)
+            for i in edge_inputs
+        ]),
         "y": torch.cat(ys),
     }
 
 
+# ---- Centrality encoding + node features + [VNode] ----
 class GraphNodeFeature(nn.Module):
     def __init__(self, num_atoms, num_in_degree, num_out_degree, hidden_dim):
         super().__init__()
         self.atom_encoder = nn.Embedding(num_atoms + 1, hidden_dim, padding_idx=0)
         self.in_degree_encoder = nn.Embedding(num_in_degree, hidden_dim, padding_idx=0)
         self.out_degree_encoder = nn.Embedding(num_out_degree, hidden_dim, padding_idx=0)
-        self.graph_token = nn.Embedding(1, hidden_dim)
+        self.graph_token = nn.Embedding(1, hidden_dim)          # [VNode]
 
     def forward(self, batched_data):
         x = batched_data["x"]
         in_degree, out_degree = batched_data["in_degree"], batched_data["out_degree"]
         n_graph = x.size(0)
-        node_feature = self.atom_encoder(x).sum(dim=-2)
-        node_feature = (node_feature
-                        + self.in_degree_encoder(in_degree)
-                        + self.out_degree_encoder(out_degree))
+        node_feature = self.atom_encoder(x).sum(dim=-2)         # raw node features
+        node_feature = (node_feature                           # h_i^(0) = x_i
+                        + self.in_degree_encoder(in_degree)    #   + z^-_{deg^-}
+                        + self.out_degree_encoder(out_degree)) #   + z^+_{deg^+}
         graph_token = self.graph_token.weight.unsqueeze(0).repeat(n_graph, 1, 1)
-        return torch.cat([graph_token, node_feature], dim=1)
+        return torch.cat([graph_token, node_feature], dim=1)   # prepend [VNode]
 
 
+# ---- Spatial + edge encoding -> additive attention bias ----
 class GraphAttnBias(nn.Module):
-    def __init__(self, num_heads, num_edges, num_spatial, num_edge_dis, multi_hop_max_dist=20):
+    def __init__(self, num_heads, num_edges, num_spatial, num_edge_dis,
+                 multi_hop_max_dist=20):
         super().__init__()
         self.num_heads = num_heads
         self.multi_hop_max_dist = multi_hop_max_dist
         self.spatial_pos_encoder = nn.Embedding(num_spatial, num_heads, padding_idx=0)
         self.edge_encoder = nn.Embedding(num_edges + 1, num_heads, padding_idx=0)
+        self.edge_type = "multi_hop"
         self.edge_dis_encoder = nn.Embedding(num_edge_dis * num_heads * num_heads, 1)
         self.graph_token_virtual_distance = nn.Embedding(1, num_heads)
 
     def forward(self, batched_data):
-        attn_bias = batched_data["attn_bias"]
-        spatial_pos = batched_data["spatial_pos"]
+        attn_bias, spatial_pos = batched_data["attn_bias"], batched_data["spatial_pos"]
         edge_input = batched_data["edge_input"]
+        attn_edge_type = batched_data["attn_edge_type"]
         x = batched_data["x"]
         n_graph, n_node = x.size()[:2]
         gb = attn_bias.clone().unsqueeze(1).repeat(1, self.num_heads, 1, 1)
 
+        # spatial encoding: A_ij += b_{phi(i,j)}
         spatial_bias = self.spatial_pos_encoder(spatial_pos).permute(0, 3, 1, 2)
         gb[:, :, 1:, 1:] = gb[:, :, 1:, 1:] + spatial_bias
 
+        # reset VNode connections to a distinct learnable scalar
         t = self.graph_token_virtual_distance.weight.view(1, self.num_heads, 1)
         gb[:, :, 1:, 0] = gb[:, :, 1:, 0] + t
         gb[:, :, 0, :] = gb[:, :, 0, :] + t
 
-        sp = spatial_pos.clone()
-        sp[sp == 0] = 1
-        sp = torch.where(sp > 1, sp - 1, sp).clamp(0, self.multi_hop_max_dist)
-        edge_input = edge_input[:, :, :, :self.multi_hop_max_dist, :]
-        edge_input = self.edge_encoder(edge_input).mean(-2)
-        max_dist = edge_input.size(-2)
-        eib = edge_input.permute(3, 0, 1, 2, 4).reshape(max_dist, -1, self.num_heads)
-        eib = torch.bmm(
-            eib,
-            self.edge_dis_encoder.weight.reshape(-1, self.num_heads, self.num_heads)[:max_dist],
-        )
-        edge_input = eib.reshape(max_dist, n_graph, n_node, n_node, self.num_heads).permute(1, 2, 3, 0, 4)
-        edge_input = (edge_input.sum(-2) / sp.float().unsqueeze(-1)).permute(0, 3, 1, 2)
+        # edge encoding: average of (edge feature . learnable weight) along SP_ij
+        if self.edge_type == "multi_hop":
+            sp = spatial_pos.clone()
+            sp[sp == 0] = 1
+            sp = torch.where(sp > 1, sp - 1, sp).clamp(0, self.multi_hop_max_dist)
+            edge_input = edge_input[:, :, :, : self.multi_hop_max_dist, :]
+            edge_input = self.edge_encoder(edge_input).mean(-2)    # embed each edge
+            max_dist = edge_input.size(-2)
+            eib = edge_input.permute(3, 0, 1, 2, 4).reshape(
+                max_dist, -1, self.num_heads
+            )
+            eib = torch.bmm(
+                eib,
+                self.edge_dis_encoder.weight.reshape(
+                    -1, self.num_heads, self.num_heads
+                )[:max_dist],
+            )
+            edge_input = eib.reshape(
+                max_dist, n_graph, n_node, n_node, self.num_heads
+            ).permute(1, 2, 3, 0, 4)
+            edge_input = (
+                edge_input.sum(-2) / sp.float().unsqueeze(-1)
+            ).permute(0, 3, 1, 2)
+        else:
+            edge_input = self.edge_encoder(attn_edge_type).mean(-2).permute(0, 3, 1, 2)
         gb[:, :, 1:, 1:] = gb[:, :, 1:, 1:] + edge_input
         return gb + attn_bias.unsqueeze(1)
 
@@ -212,29 +252,45 @@ class MultiheadAttention(nn.Module):
         v = self.v_proj(x)
 
         def shape(t):
-            return t.contiguous().view(length, batch * self.num_heads, self.head_dim).transpose(0, 1)
+            return (
+                t.contiguous()
+                .view(length, batch * self.num_heads, self.head_dim)
+                .transpose(0, 1)
+            )
 
         q, k, v = shape(q), shape(k), shape(v)
         attn_weights = torch.bmm(q, k.transpose(1, 2))
         if attn_bias is not None:
-            attn_weights = attn_weights + attn_bias.reshape(batch * self.num_heads, length, length)
+            attn_weights = attn_weights + attn_bias.reshape(
+                batch * self.num_heads, length, length
+            )
         if key_padding_mask is not None:
             attn_weights = attn_weights.view(batch, self.num_heads, length, length)
-            attn_weights = attn_weights.masked_fill(key_padding_mask[:, None, None, :], float("-inf"))
+            attn_weights = attn_weights.masked_fill(
+                key_padding_mask[:, None, None, :], float("-inf")
+            )
             attn_weights = attn_weights.view(batch * self.num_heads, length, length)
-        attn_probs = F.dropout(torch.softmax(attn_weights, dim=-1), p=self.dropout, training=self.training)
+        attn_probs = F.dropout(
+            torch.softmax(attn_weights, dim=-1),
+            p=self.dropout,
+            training=self.training,
+        )
         attn = torch.bmm(attn_probs, v)
-        attn = attn.transpose(0, 1).contiguous().view(length, batch, d)
+        attn = (
+            attn.transpose(0, 1)
+            .contiguous()
+            .view(length, batch, d)
+        )
         return self.out_proj(attn), attn_probs
 
 
+# ---- Pre-LN Transformer block; structure enters as one bias on the scores ----
 class GraphormerLayer(nn.Module):
     def __init__(self, d, ffn_dim, num_heads, dropout=0.1):
         super().__init__()
         self.self_attn = MultiheadAttention(d, num_heads, dropout=dropout)
         self.attn_ln = nn.LayerNorm(d)
-        self.fc1 = nn.Linear(d, ffn_dim)
-        self.fc2 = nn.Linear(ffn_dim, d)
+        self.fc1, self.fc2 = nn.Linear(d, ffn_dim), nn.Linear(ffn_dim, d)
         self.ffn_ln = nn.LayerNorm(d)
         self.act = nn.GELU()
         self.dropout = nn.Dropout(dropout)
@@ -252,18 +308,23 @@ class Graphormer(nn.Module):
                  num_spatial, num_edge_dis, d=768, ffn_dim=768, num_heads=32,
                  n_layers=12, out_dim=1):
         super().__init__()
-        self.node_feature = GraphNodeFeature(num_atoms, num_in_degree, num_out_degree, d)
+        self.node_feature = GraphNodeFeature(num_atoms, num_in_degree,
+                                             num_out_degree, d)
         self.attn_bias = GraphAttnBias(num_heads, num_edges, num_spatial, num_edge_dis)
-        self.layers = nn.ModuleList([GraphormerLayer(d, ffn_dim, num_heads) for _ in range(n_layers)])
+        self.layers = nn.ModuleList(
+            [GraphormerLayer(d, ffn_dim, num_heads) for _ in range(n_layers)])
         self.out = nn.Linear(d, out_dim)
 
     def forward(self, batched_data):
         padding_mask = batched_data["x"][:, :, 0].eq(0)
-        padding_mask = torch.cat([padding_mask.new_zeros(padding_mask.size(0), 1), padding_mask], dim=1)
-        x = self.node_feature(batched_data)
-        bias = self.attn_bias(batched_data)
-        x = x.transpose(0, 1)
+        padding_mask = torch.cat(
+            [padding_mask.new_zeros(padding_mask.size(0), 1), padding_mask],
+            dim=1,
+        )
+        x = self.node_feature(batched_data)        # features + centrality + [VNode]
+        bias = self.attn_bias(batched_data)        # b_phi + c_ij + VNode reset
+        x = x.transpose(0, 1)                       # [N+1, B, d]
         for layer in self.layers:
             x = layer(x, bias, padding_mask=padding_mask)
-        return self.out(x[0])
+        return self.out(x[0])                       # [VNode] is the graph readout
 ```
