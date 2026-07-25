@@ -9,37 +9,30 @@ This entropy is defined for any state distribution, equilibrium or not, so it so
 ```python
 from math import factorial, log
 
-# Multiplicity W: number of labeled-molecule arrangements for an occupation tuple.
-def arrangements(occ):
-    n = sum(occ)
-    p = factorial(n)
+def arrangements(occ):                 # W = n! / prod(w_i!)
+    n, p = sum(occ), factorial(sum(occ))
     for w in occ:
         p //= factorial(w)
     return p
 
-# Boltzmann entropy S = k * log(W). The log is forced because W multiplies while S adds.
-def entropy(occ, k=1.0):
+def entropy(occ, k=1.0):               # S = k log W ; additive because W multiplies
     return k * log(arrangements(occ))
 
-# Enumerate all macrostates (occupation tuples) with fixed molecule count and energy.
-def macrostates(n, units, max_level):
-    def rec(level, left_mol, left_energy):
+def macrostates(n, units, max_level):  # occupation tuples: sum=n, sum(i*w_i)=units
+    def rec(level, m, e):
         if level == 0:
-            if left_energy == 0:
-                yield (left_mol,)
+            if e == 0: yield (m,)
             return
-        for w in range(left_mol + 1):
-            if w * level <= left_energy:
-                for tail in rec(level - 1, left_mol - w, left_energy - w * level):
+        for w in range(m + 1):
+            if w * level <= e:
+                for tail in rec(level - 1, m - w, e - w * level):
                     yield tail + (w,)
     yield from rec(max_level, n, units)
 
-# The equilibrium macrostate is the one with the largest multiplicity.
 def most_probable(n, units, max_level):
     return max(macrostates(n, units, max_level), key=arrangements)
 
-# Large-n prediction: geometric/Boltzmann ladder w_i \propto x^i.
-def equilibrium_occupations(n, units, max_level):
+def equilibrium_occupations(n, units, max_level):   # large-n: w_i ∝ x^i, x = mean/(mean+1)
     mean = units / n
     x = mean / (mean + 1.0)
     raw = [x**i for i in range(max_level + 1)]
@@ -48,9 +41,7 @@ def equilibrium_occupations(n, units, max_level):
 
 if __name__ == "__main__":
     eq = most_probable(7, 7, 7)
-    print("equilibrium macrostate:", eq)
-    print("multiplicity W =", arrangements(eq))
-    print("entropy S =", round(entropy(eq), 4))
-    print("lopsided W =", arrangements((6, 0, 0, 0, 0, 0, 0, 1)))
-    print("Boltzmann ladder:", [round(w, 3) for w in equilibrium_occupations(7, 7, 7)])
+    print(eq, "W =", arrangements(eq), "S =", round(entropy(eq), 4))   # (3,2,1,1,0,0,0,0) W=420
+    print("lopsided W =", arrangements((6,0,0,0,0,0,0,1)))             # 7
+    print([round(w, 3) for w in equilibrium_occupations(7, 7, 7)])     # Boltzmann ladder
 ```
