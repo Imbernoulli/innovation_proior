@@ -19,8 +19,7 @@ predecessors. Report `dp[n]`, the minimum finalized cost at the terminal station
 
 This is the canonical setting for a transition of the form `dp[i] = min_j (dp[j] + b[j]·a[i])`: it
 shows up inside cost-of-cutting, cost-of-building, and acquisition DPs, where the per-transition cost
-is a product of a "left" quantity and a "right" quantity. Getting the one-dimensional version exactly
-right — including negative factors and the interleaving of updates with queries — is what matters.
+is a product of a "left" quantity and a "right" quantity.
 
 ## Input / output contract
 
@@ -33,9 +32,6 @@ right — including negative factors and the interleaving of updates with querie
   - When `n = 0` there are no further numbers; the answer is `dp[0] = 0`.
 - Output (stdout): a single line with `dp[n]`.
 - Time limit: 1 second. Memory: 256 MB.
-
-The maximum magnitude of `dp[n]` is about `2*10^5 * 10^6 * 10^6 = 2*10^17`, which exceeds 32-bit
-range, so a 64-bit integer type is mandatory.
 
 Example. For
 
@@ -51,28 +47,12 @@ the answer is `10`. Working it out: `dp[1] = 0 + (0 + 5*3) = 15`; `dp[2] = 1 + m
 7+3*2) = 2 + 8 = 10`. Note the chosen predecessor changes from one `i` to the next (`dp[3]` uses `j=1`,
 `dp[4]` uses `j=2`): no single predecessor is best for every receive point.
 
-## Background
-
-The transition `dp[i] = c[i] + min_{j<i} (dp[j] + b[j]·a[i])` is a constrained selection over earlier
-states. Two routes are on the table before committing.
-
-- **Quadratic DP.** For every `i`, scan all `j < i` and take the minimum. This is `O(n^2)`, trivial to
-  write, and obviously correct; at `n = 2*10^5` it performs `~2*10^10` operations and cannot finish in
-  a second. It is the right *oracle* but the wrong *submission*.
-- **Lower-envelope evaluation.** Each predecessor `j` defines a line `y = b[j]·X + dp[j]` in a variable
-  `X`. Evaluating `dp[j] + b[j]·a[i]` is evaluating that line at `X = a[i]`. So
-  `min_{j<i}(dp[j] + b[j]·a[i])` is the minimum of a set of lines at one query point — the *lower
-  envelope* of the lines at `X = a[i]`. The open question is which envelope structure to use, given
-  that lines are *added* (one per `j`) interleaved with *queries* (one per `i`), and the slopes `b[j]`
-  and query points `a[i]` are not guaranteed monotone (values may be negative).
-
 ## Evaluation settings
 
 Judged on hidden tests covering: all-positive arrays; arrays with negative `a`, `b`, and `c`; heavy
 ties in `a[]` (so the distinct query coordinates collapse); `n = 0` and `n = 1`; configurations where
-the optimal predecessor is far from `i-1`; and large `n = 2*10^5` with values near `10^6`, where the
-running cost reaches `~2*10^17` (so a 32-bit accumulator is a silent wrong answer) and an `O(n^2)`
-solution times out.
+the optimal predecessor is far from `i-1`; and large `n = 2*10^5` with values near `10^6`, where an
+`O(n^2)` solution times out.
 
 ## Code framework
 
