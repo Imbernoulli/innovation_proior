@@ -52,35 +52,8 @@ A quick check for small primes confirms the formula. For p = 3, the set is {1, 2
 
 The method therefore reduces a delicate congruence-counting problem to a clean generating-function evaluation followed by a roots-of-unity average. The key structural fact that makes the computation tractable is that the ground set {1, ..., 2p} consists of exactly two full copies of the residue classes modulo p.
 
-The following Python script verifies the formula by brute force for the first several odd primes and also demonstrates the roots-of-unity coefficient extraction numerically for p = 5.
+The final artifact of this analysis is the closed-form count itself, valid for every odd prime $p$:
 
-```python
-from itertools import combinations
-from math import comb
-import cmath
+$$N \;=\; \frac{1}{p}\left[\binom{2p}{p} + 2(p-1)\right] \;=\; \frac{\binom{2p}{p}-2}{p} + 2.$$
 
-def brute_count(p):
-    """Count p-subsets of {1,...,2p} whose sum is divisible by p."""
-    return sum(1 for A in combinations(range(1, 2*p+1), p) if sum(A) % p == 0)
-
-def formula_count(p):
-    return (comb(2*p, p) - 2) // p + 2
-
-primes = [3, 5, 7, 11]
-for p in primes:
-    b = brute_count(p)
-    f = formula_count(p)
-    print(f"p={p}: brute={b}, formula={f}, ok={b==f}")
-
-p = 5
-omega = cmath.exp(2j * cmath.pi / p)
-total = 0.0
-for j in range(p):
-    coeffs = [1.0]
-    for k in range(1, 2*p + 1):
-        factor = [1.0, omega**(j*k)]
-        coeffs = [sum(coeffs[i] * factor[kk-i] if 0 <= i < len(coeffs) and 0 <= kk-i < 2 else 0
-                       for i in range(kk+1)) for kk in range(len(coeffs)+1)]
-    total += coeffs[p]
-print(f"p=5 root-of-unity average check: {(total/p).real:.6f}")
-```
+Here $\binom{2p}{p}$ is the raw count of $p$-element subsets with no congruence condition at all, contributed by the trivial root $j=0$; the constant $2$ attached to each of the $p-1$ nontrivial roots is the coefficient $[x^p](1+x^p)^2$, and it is exactly what forces the formula to be an integer, since $\binom{2p}{p}\equiv 2 \pmod p$ by the factor-by-factor congruence $(p+i)/i \equiv 1 \pmod p$ for $1 \le i \le p-1$. I read the two-part structure of the answer directly off the derivation: the bulk term $\binom{2p}{p}/p$ is the generic density of one residue class among all $p$-subsets, and the additive $+2$ is the exact correction contributed by the two boundary blocks $\{1,\dots,p\}$ and $\{p+1,\dots,2p\}$ — whose sums are each forced to be divisible by $p$ — a correction the root-of-unity average reproduces algebraically rather than by separately carving those two subsets out of the count.
