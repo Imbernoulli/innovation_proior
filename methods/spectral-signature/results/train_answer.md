@@ -22,45 +22,69 @@ The main limitation of Spectral Signatures is that it looks for a single dominan
 import numpy as np
 
 
-def spectral_signature_scores(features, labels):
-    """Return a per-sample suspicion score using class-conditional Spectral Signatures."""
-    features = np.asarray(features, dtype=np.float64)
-    labels = np.asarray(labels)
-    scores = np.zeros(len(features), dtype=np.float64)
+class BackdoorDefense:
+    """Class-conditional Spectral Signatures scorer."""
 
-    for cls in np.unique(labels):
-        mask = labels == cls
-        Xc = features[mask]
-        mu = Xc.mean(axis=0)
-        centered = Xc - mu
-        if centered.shape[0] < 2:
-            direction = np.zeros(features.shape[1], dtype=np.float64)
-        else:
-            _, _, vh = np.linalg.svd(centered, full_matrices=False)
-            direction = vh[0]
-        proj = centered @ direction
-        scores[mask] = proj * proj
-    return scores
+    def __init__(self):
+        self.centers_ = {}
+        self.directions_ = {}
+        self.labels_ = None
 
+    def fit(self, features, labels, poison_fraction=None, **kwargs):
+        features = np.asarray(features, dtype=np.float64)
+        labels = np.asarray(labels)
+        if features.ndim != 2:
+            raise ValueError("features must have shape (n_samples, n_features)")
+        if len(labels) != len(features):
+            raise ValueError("labels and features must have the same length")
 
-if __name__ == "__main__":
-    rng = np.random.default_rng(0)
-    n_clean, n_poison = 400, 40
-    dim = 10
+        self.labels_ = labels.copy()
+        self.centers_.clear()
+        self.directions_.clear()
 
-    clean = rng.multivariate_normal(mean=np.zeros(dim), cov=np.eye(dim), size=n_clean)
-    poison = rng.multivariate_normal(mean=np.zeros(dim), cov=0.5 * np.eye(dim), size=n_poison)
-    poison[:, 0] += 6.0
+        for label in np.unique(labels):
+            mask = labels == label
+            class_features = features[mask]
+            mu = class_features.mean(axis=0)
+            centered = class_features - mu
 
-    X = np.vstack([clean, poison])
-    labels = np.zeros(len(X), dtype=int)
+            if len(class_features) < 2 or not np.any(centered):
+                direction = np.zeros(features.shape[1], dtype=np.float64)
+            else:
+                _, _, vh = np.linalg.svd(centered, full_matrices=False)
+                direction = vh[0]
 
-    scores = spectral_signature_scores(X, labels)
-    budget = int(np.ceil(1.5 * n_poison))
-    threshold = np.sort(scores)[-budget]
-    flagged = scores >= threshold
-    true_poison = np.arange(len(X)) >= n_clean
+            self.centers_[label] = mu
+            self.directions_[label] = direction
+        return self
 
-    print("poison recall:", flagged[true_poison].mean())
-    print("clean removal rate:", flagged[~true_poison].mean())
+    def score_samples(self, features, logits=None):
+        features = np.asarray(features, dtype=np.float64)
+        if self.labels_ is None:
+            raise ValueError("fit must be called before score_samples")
+        if len(features) != len(self.labels_):
+            raise ValueError("score_samples expects the same training rows used in fit")
+
+        scores = np.zeros(len(features), dtype=np.float64)
+        for label, direction in self.directions_.items():
+            mask = self.labels_ == label
+            centered = features[mask] - self.centers_[label]
+            projection = centered @ direction
+            scores[mask] = projection * projection
+        return scores
+
+    def filter_indices(self, features, poison_fraction):
+        """Return indices kept after per-class 1.5x over-removal."""
+        scores = self.score_samples(features)
+        remove = []
+        for label in np.unique(self.labels_):
+            idx = np.flatnonzero(self.labels_ == label)
+            k = int(np.ceil(1.5 * poison_fraction * len(idx)))
+            if k <= 0:
+                continue
+            k = min(k, len(idx))
+            remove.extend(idx[np.argsort(scores[idx])[-k:]])
+        remove = np.asarray(remove, dtype=int)
+        keep = np.setdiff1d(np.arange(len(scores)), remove, assume_unique=False)
+        return keep
 ```
