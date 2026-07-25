@@ -26,6 +26,7 @@ def reparametrize(mu, logvar):
     eps = torch.randn_like(std)
     return mu + std * eps
 
+
 class BetaVAE(nn.Module):
     def __init__(self, z_dim=10, nc=3):
         super().__init__()
@@ -54,24 +55,27 @@ class BetaVAE(nn.Module):
         z = reparametrize(mu, logvar)
         return self.decoder(z), mu, logvar
 
+
 def reconstruction_loss(x, x_recon, distribution="bernoulli"):
     B = x.size(0)
     if distribution == "bernoulli":
         return F.binary_cross_entropy_with_logits(x_recon, x, reduction="sum") / B
     return F.mse_loss(x_recon, x, reduction="sum") / B
 
+
 def kl_divergence(mu, logvar):
+    # closed-form KL( N(mu, sigma^2) || N(0, I) ), summed over latents, averaged over batch
     klds = -0.5 * (1 + logvar - mu.pow(2) - logvar.exp())
     return klds.sum(1).mean(0)
 
-beta = 4.0
+
+# training
+beta = 4.0  # beta = 1 recovers the standard VAE; beta > 1 induces disentanglement
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
 for x in loader:
     x_recon, mu, logvar = model(x)
     recon = reconstruction_loss(x, x_recon, distribution="bernoulli")
     total_kld = kl_divergence(mu, logvar)
     loss = recon + beta * total_kld
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
+    optimizer.zero_grad(); loss.backward(); optimizer.step()
 ```
