@@ -10,7 +10,6 @@ What makes ETKDG different is the short post-embedding minimization that injects
 from rdkit import Chem
 from rdkit.Chem import AllChem
 
-
 def make_embedding_parameters(seed=0xF00D):
     params = AllChem.ETKDG()
     params.randomSeed = seed
@@ -18,29 +17,22 @@ def make_embedding_parameters(seed=0xF00D):
     params.randNegEig = True
     params.numZeroFail = 1
     params.optimizerForceTol = 1e-3
-    # Enable experimental torsion preferences and basic planarity/linearity rules.
-    params.useExpTorsionAnglePrefs = True
-    params.useBasicKnowledge = True
+    add_geometric_knowledge(params)
     return params
 
+def add_geometric_knowledge(params):
+    params.useExpTorsionAnglePrefs = True
+    params.useBasicKnowledge = True
 
-def embed_ensemble_from_graph(smiles, n_confs=50, seed=0xF00D,
-                              do_forcefield_cleanup=False):
+def embed_ensemble_from_graph(smiles, n_confs=50, seed=0xF00D, do_forcefield_cleanup=False):
     mol = Chem.AddHs(Chem.MolFromSmiles(smiles))
     params = make_embedding_parameters(seed)
-    cids = list(AllChem.EmbedMultipleConfs(mol, numConfs=n_confs,
-                                           params=params))
+    cids = list(AllChem.EmbedMultipleConfs(mol, numConfs=n_confs, params=params))
     if do_forcefield_cleanup:
         AllChem.MMFFOptimizeMoleculeConfs(mol)
     return mol, cids
 
-
-# Example: generate 50 conformers for a flexible drug-like molecule.
-mol, conf_ids = embed_ensemble_from_graph(
-    "CN1CCC(O)(CC1)c1ccccc1Cl",
-    n_confs=50
-)
-print(f"Generated {len(conf_ids)} conformers.")
+mol, conf_ids = embed_ensemble_from_graph("CN1CCC(O)(CC1)c1ccccc1Cl", n_confs=50)
 ```
 
-Under the hood, the ETKDG parameter object tells the embedder to build the bounds matrix, triangle-smooth it, sample and embed one distance matrix per seed, clean up distance and chirality violations, and finally minimize the experimental-torsion and basic-knowledge terms. The result is a fast, graph-to-ensemble generator that respects real molecular geometry without sacrificing conformational diversity.
+Under the hood, `make_embedding_parameters` builds the ETKDG parameter object and `add_geometric_knowledge` is where the experimental-torsion and basic-knowledge terms get switched on before any embedding happens; `embed_ensemble_from_graph` then adds hydrogens and calls `EmbedMultipleConfs`, which for each of the 50 seeds builds the bounds matrix, triangle-smooths it, samples and embeds one distance matrix, cleans up distance and chirality violations, and finally minimizes the experimental-torsion and basic-knowledge terms. The result is a fast, graph-to-ensemble generator that respects real molecular geometry without sacrificing conformational diversity.
