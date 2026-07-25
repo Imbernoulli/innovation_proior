@@ -15,7 +15,7 @@ subset is allowed, the answer is always at least `0`.
 This is *weighted* interval scheduling. Its unweighted cousin — "select as many pairwise
 non-overlapping intervals as possible" — has a famous one-line greedy answer (repeatedly take the
 interval that finishes earliest). The weighted version asks for the most *valuable* compatible set,
-not the most *numerous* one, and that change is exactly what makes the easy greedy unsafe.
+not the most *numerous* one.
 
 ## Input / output contract
 
@@ -39,30 +39,11 @@ Example: for the four intervals
 the answer is `11`: take `[0, 5)` and `[5, 9)` (they touch at `5`, so they are compatible) for
 `5 + 6 = 11`. No compatible pair beats this.
 
-## Background
-
-The constraint "pairwise non-overlapping" makes this a constrained selection problem over weights.
-Two families of approach are on the table before committing to one:
-
-- **Earliest-finish-time greedy.** Sort by end coordinate and sweep left to right, taking an
-  interval whenever it does not overlap the last one taken. This is the textbook *optimal* rule for
-  the **unweighted** activity-selection problem and is `O(n log n)` and short to write. The open
-  question is whether maximizing the *count* of compatible intervals has anything to do with
-  maximizing their total *weight*.
-- **Sort-by-end dynamic programming with predecessor search.** Sort by end coordinate; for each
-  interval `i`, either skip it or take it and jump back to the best solution using only intervals
-  that finish at or before `s_i`. Locating that predecessor is a monotone search over the sorted
-  ends, so the whole thing is `O(n log n)`. The open questions are the exact recurrence, the
-  half-open compatibility test (`<=` vs `<`), and the data types.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: the empty instance (`n = 0`); a single interval; intervals that
-touch at endpoints (must be allowed together); heavily overlapping clusters; nested intervals; cases
-that are specifically constructed to fool earliest-finish-time greedy (a cheap early-finishing
-interval that blocks a far more valuable later one); duplicate intervals; and large `n = 2*10^5`
-with coordinates and weights near their maxima, so the running total can reach `2*10^5 * 10^9 =
-2*10^14` and must not overflow 32-bit arithmetic.
+touch at endpoints (must be allowed together); heavily overlapping clusters; nested intervals;
+duplicate intervals; and large `n = 2*10^5` with coordinates and weights near their maxima.
 
 ## Code framework
 
