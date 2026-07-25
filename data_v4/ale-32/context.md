@@ -61,10 +61,9 @@ Two reference points frame the design.
   Lloyd's iteration into a **min-cost flow / transportation** problem: one unit of supply per point,
   capacity `cap` per centroid, edge cost = squared distance point→centroid. Solving that exactly
   gives the cheapest cap-respecting assignment to the *current* centroids, which the centroid update
-  then refines. Alternating these two is the established strong method for capacitated k-means. The
-  open design choices are how the flow is solved (and warm-started) and how to account for the fact
-  that the true objective measures against *recomputed* centroids, not the fixed centroids the flow
-  optimized against.
+  then refines. The open design choices are how the flow is solved (and warm-started) and how to
+  account for the fact that the true objective measures against *recomputed* centroids, not the fixed
+  centroids the flow optimized against.
 
 ## Evaluation settings
 
@@ -93,7 +92,7 @@ and an infeasible one scores `0`.
 blobs whose number is near `k` but deliberately not equal and whose populations are uneven — so some
 regions of the plane would overflow their natural cluster and must spill into a neighbour. That is
 exactly the regime where a naive nearest-centroid assignment is infeasible and a greedy cap-repair is
-visibly suboptimal, and where the transportation reformulation pays off.
+visibly suboptimal.
 
 ## Code framework
 

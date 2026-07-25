@@ -40,30 +40,6 @@ printed order; the final canvas is compared to the target.
 Constraints (instances): `20 <= N <= 40`; `3 <= C <= 6`; `N <= T <= 3N`. Time
 limit: about 2 seconds. Memory: 256 MB.
 
-## Background
-
-Two ideas frame the approach before committing to one.
-
-- **Greedy layered construction.** Fill the whole canvas with the most frequent
-  target colour (one stroke), then lay down a few large solid blocks for the
-  dominant colour inside coarse tiles. This is fast and always feasible, but it
-  is one-shot: once a block is placed it is never reconsidered, so a poorly
-  sized or poorly coloured early block strands cells that later strokes must
-  waste budget repainting.
-
-- **Local search over the stroke sequence.** Keep a fixed sequence of strokes
-  and repeatedly perturb one — move an edge, translate the rectangle, recolour
-  it — accepting some score-reducing moves so the search can vacate a wasteful
-  stroke and re-cover the region better. This can climb out of the dead ends the
-  greedy walk falls into, but only if each perturbation is *cheap*: a single
-  stroke sits in a stack of overlapping strokes, and naively re-deriving the
-  visible colour of every cell after an edit is `O(N*N)` (or `O(T*N*N)` if you
-  replay the whole stack), which is far too slow for the millions of moves a
-  metaheuristic needs.
-
-The open question is how to make the per-move score update cost proportional to
-the size of the stroke being edited, not to the whole grid.
-
 ## Evaluation settings
 
 **Score.** The local scorer (`verify/score.py`) reads the instance and the
@@ -78,8 +54,8 @@ is infeasible for ANY reason: it is malformed, truncated, or unparseable;
 stroke's colour is outside `0..C-1`. An empty stroke list (`Q = 0`) is feasible
 and scores the number of target cells that are already colour `0` — a
 non-trivial but beatable floor. The reference baseline the match ratio is
-reported against is the greedy layered construction above (a single full-canvas
-fill with the most common colour).
+reported against is a single full-canvas fill with the most common target
+colour.
 
 **Instances.** `verify/gen.py SEED` draws `N`, `C`, `T`, paints `6..18`
 overlapping random coloured rectangles onto an all-`0` grid, then flips `5%..10%`
