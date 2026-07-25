@@ -15,12 +15,6 @@ A line-up is a subset of the offered bands such that
 Choose a line-up (the empty line-up is allowed) that **maximizes total profit**. Output that maximum.
 Because booking nothing earns `0`, the answer is always at least `0`.
 
-This is a packing problem over a tiny strip, so the occupied-slot set is a natural bitmask and the whole
-thing is a bitmask DP. The delicate part is the **boundary arithmetic**: a band occupies the half-open
-range `[s, s+d)`, it fits exactly when `s + d <= m`, and its lowest occupied slot is `s`. Every one of
-those is one `+/-1` away from a wrong-but-plausible variant, and the constraints are chosen so that those
-off-by-one variants actually change the answer.
-
 ## Input / output contract
 
 - Input (stdin): the first line has two integers `m` and `n` (`1 <= m <= 16`, `0 <= n <= 2*10^5`).
@@ -34,27 +28,11 @@ Example: `m = 4`, bands `(s,d,p) = (0,2,5), (2,2,8), (3,2,100)`. The third band 
 but slot `4` does not exist (`3 + 2 = 5 > 4`), so it is unbookable despite its huge profit. The best
 line-up is the first two bands, slots `{0,1}` and `{2,3}`, for `5 + 8 = 13`.
 
-## Background
-
-The occupied slots form a subset of `{0, ..., m-1}`, so a `2^m` bitmask DP is the structural fit. Two
-families of approach are worth weighing before committing:
-
-- **Greedy by profit.** Sort bands by profit and book each one if its slots are still free. This is
-  `O(n log n)` and trivial, but slot packing is a global constraint: a single fat high-profit band can
-  block two thin bands that together beat it, so greedy is suspect and must be stress-tested before trust.
-- **Bitmask DP over occupied slots.** Let a mask encode which slots are already used. Process slots in
-  increasing order: from a mask, look at its lowest free slot and either leave it empty or start a band
-  whose first slot is exactly that slot. This is `O(2^m * (m + n))`-ish and is the route this problem is
-  built around. The open questions are purely the boundary ones: which slots a band's mask should contain,
-  what "fits" means, and which slot a band may be *started* on.
-
 ## Evaluation settings
 
-Judged on hidden tests covering: bands that exactly reach the last slot (`s + d = m`, must be allowed);
-bands that overrun by one (`s + d = m + 1`, must be rejected) including ones with enormous profit so an
-off-by-one fit test is caught; a single slot (`m = 1`); no bands (`n = 0`, answer `0`); many tiny bands
-that tile the strip exactly; one fat band versus several thin ones (greedy trap); and large inputs at
-`m = 16` with `n` up to `2*10^5` and `p_i` near `10^9`, so the profit sum exceeds 32 bits.
+Judged on hidden tests covering a range of slot configurations and band placements near the strip's
+boundaries, small cases (`m = 1`, `n = 0`), and large inputs at `m = 16` with `n` up to `2*10^5` and
+`p_i` near `10^9`.
 
 ## Code framework
 
