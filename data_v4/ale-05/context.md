@@ -32,22 +32,6 @@ switched on; nothing else is editable.
     **pairwise distinct**. These are the switched-on tower sites.
 - **Time limit:** 2 seconds wall-clock. **Memory:** 256 MB.
 
-## Background
-
-Two reference approaches frame the problem before committing to one:
-
-- **Lloyd-style alternation (k-means flavour).** Assign each household to its nearest current
-  medoid, then move each medoid to the best site within its cluster, and repeat. It is fast and
-  monotone but converges to weak local optima and, because medoids are constrained to household
-  sites, the in-cluster re-centring step is itself a small p-median that costs `O(cluster²)`.
-- **PAM swap local search (k-medoid).** Partitioning Around Medoids repeatedly evaluates swapping
-  one active medoid out for one inactive site in, and applies the best improving swap. PAM finds
-  markedly better optima than Lloyd but, written naively, each swap evaluation re-assigns all `N`
-  households against all `K` medoids — `O(N·K)` per candidate and `O(N·K·(N−K))` per full pass —
-  which is too slow at these sizes within 2 seconds.
-
-The open question is how to keep PAM's solution quality while paying far less per swap.
-
 ## Evaluation settings
 
 - **Scoring (what the judge reports; higher is better).** Let the solution be feasible iff
@@ -95,9 +79,7 @@ int main() {
     for (int i = 0; i < K && i < N; i++) chosen[i] = i;  // first K sites
 
     // TODO: heuristic. Improve `chosen` to minimize
-    //   sum over households of distance to nearest chosen site,
-    // e.g. k-means++ seeding + PAM swap local search with first/second-nearest
-    // caching so each candidate swap costs O(N) instead of O(N*K).
+    //   sum over households of distance to nearest chosen site.
 
     cout << K << "\n";
     for (int c = 0; c < K; c++) cout << (chosen[c] + 1) << "\n";  // 1-based
