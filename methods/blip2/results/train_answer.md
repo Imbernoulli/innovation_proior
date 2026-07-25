@@ -15,93 +15,111 @@ import torch.nn.functional as F
 
 
 class QFormer(nn.Module):
-    """Lightweight querying transformer bridging a frozen image encoder and a frozen LLM."""
+    """Lightweight querying transformer bridging a frozen image encoder and a frozen LLM.
+
+    `self.bert` is a BERT-base-initialized transformer whose self-attention layers are
+    SHARED between the learned queries and text tokens; cross-attention to the frozen
+    image features is inserted every other block (randomly initialized). It accepts:
+      - query_embeds:          the learned query vectors (image transformer input)
+      - input_ids / attention_mask: text tokens (text transformer)
+      - encoder_hidden_states: frozen image features -> keys/values of cross-attention
+    """
 
     def __init__(self, bert, num_query=32, d=768, proj_dim=256, llm_dim=2048,
                  dec_token_id=None, pad_id=0):
         super().__init__()
         self.bert = bert
+        # the bottleneck: a fixed set of learnable query vectors (these ARE parameters)
         self.query_tokens = nn.Parameter(torch.zeros(1, num_query, d))
         nn.init.normal_(self.query_tokens, std=0.02)
         self.num_query = num_query
         self.dec_token_id = dec_token_id
         self.pad_id = pad_id
 
-        self.temp = nn.Parameter(0.07 * torch.ones([]))
-        self.vision_proj = nn.Linear(d, proj_dim)
-        self.text_proj = nn.Linear(d, proj_dim)
-        self.itm_head = nn.Linear(d, 2)
-        self.llm_proj = nn.Linear(d, llm_dim)
+        self.temp = nn.Parameter(0.07 * torch.ones([]))      # contrastive temperature
+        self.vision_proj = nn.Linear(d, proj_dim)            # ITC similarity space (image)
+        self.text_proj = nn.Linear(d, proj_dim)              # ITC similarity space (text)
+        self.itm_head = nn.Linear(d, 2)                      # matched/unmatched per query
+        self.llm_proj = nn.Linear(d, llm_dim)                # stage-2 soft visual prompt
 
 
-def stage1_losses(qf, image_feats, text):
-    """image_feats: [B, num_patches, d_v] from the frozen image encoder."""
+def stage1_losses(qf: QFormer, image_feats, text):
+    """image_feats: [B, num_patches, d_v] from the FROZEN encoder (no grad).
+       text: tokenized batch with .input_ids [B, L] and .attention_mask [B, L]."""
     B = image_feats.size(0)
-    queries = qf.query_tokens.expand(B, -1, -1)
+    queries = qf.query_tokens.expand(B, -1, -1)              # [B, 32, 768]
     query_atts = torch.ones(queries.shape[:-1], dtype=torch.long, device=queries.device)
 
-    # Image-Text Contrastive: unimodal mask, max over queries.
+    # ---- ITC: queries cross-attend image ONLY (unimodal mask: no text leak) ----
     q_out = qf.bert(query_embeds=queries, encoder_hidden_states=image_feats,
-                    use_cross_attention=True)
-    img_feat = F.normalize(qf.vision_proj(q_out), dim=-1)
+                    use_cross_attention=True)               # [B, 32, 768]
+    img_feat = F.normalize(qf.vision_proj(q_out), dim=-1)   # [B, 32, proj]
     t_out = qf.bert(input_ids=text.input_ids, attention_mask=text.attention_mask)
-    txt_feat = F.normalize(qf.text_proj(t_out[:, 0, :]), dim=-1)
-    sim = torch.einsum("iqd,jd->ijq", img_feat, txt_feat)
-    sim_i2t = sim.max(-1)[0] / qf.temp
-    sim_t2i = sim.permute(1, 0, 2).max(-1)[0] / qf.temp
+    txt_feat = F.normalize(qf.text_proj(t_out[:, 0, :]), dim=-1)   # [B, proj] ([CLS])
+    # all-pairs similarity of EACH image query to EACH text, then MAX over queries
+    sim = torch.einsum("iqd,jd->ijq", img_feat, txt_feat)    # [image B, text B, 32]
+    sim_i2t = sim.max(-1)[0] / qf.temp                       # [B, B]
+    sim_t2i = sim.permute(1, 0, 2).max(-1)[0] / qf.temp      # [B, B]
     labels = torch.arange(B, device=queries.device)
     loss_itc = (F.cross_entropy(sim_i2t, labels) +
                 F.cross_entropy(sim_t2i, labels)) / 2
 
-    # Image-grounded Text Generation: causal on text, info routed through queries.
+    # ---- ITG: multimodal CAUSAL mask; text must read the image THROUGH the queries ----
     dec_ids = text.input_ids.clone()
-    dec_ids[:, 0] = qf.dec_token_id
+    dec_ids[:, 0] = qf.dec_token_id                          # [DEC] signals decoding
     lm_labels = dec_ids.masked_fill(dec_ids == qf.pad_id, -100)
+    # queries attend each other (not text); each text token attends all queries + its past
     attn = torch.cat([query_atts, text.attention_mask], dim=1)
     loss_itg = qf.bert(query_embeds=queries, input_ids=dec_ids, attention_mask=attn,
                        encoder_hidden_states=image_feats,
                        labels=lm_labels, causal_text=True).loss
 
-    # Image-Text Matching: bidirectional mask, hard negatives, averaged per-query logits.
+    # ---- ITM: bidirectional mask, hard negatives, per-query 2-class head, averaged ----
     img_pairs, txt_pairs, match_labels = mine_hard_negatives(
         sim_i2t.detach(), sim_t2i.detach(), image_feats, text)
-    num_pairs = img_pairs.size(0)
+    num_pairs = img_pairs.size(0)                            # positives + mined hard negatives
     pair_queries = qf.query_tokens.expand(num_pairs, -1, -1)
     pair_query_atts = torch.ones(pair_queries.shape[:-1], dtype=torch.long,
                                  device=pair_queries.device)
     pair_atts = torch.cat([pair_query_atts, txt_pairs.attention_mask], dim=1)
-    fused = qf.bert(query_embeds=pair_queries, input_ids=txt_pairs.input_ids,
-                    attention_mask=pair_atts, encoder_hidden_states=img_pairs)
-    logits = qf.itm_head(fused[:, :qf.num_query, :]).mean(dim=1)
+    fused = qf.bert(query_embeds=pair_queries,
+                    input_ids=txt_pairs.input_ids, attention_mask=pair_atts,
+                    encoder_hidden_states=img_pairs)          # bidirectional fusion
+    # take the query slice of the fused output, score each query, average the logits
+    logits = qf.itm_head(fused[:, :qf.num_query, :]).mean(dim=1)   # [N, 2]
     loss_itm = F.cross_entropy(logits, match_labels)
 
     return loss_itc + loss_itg + loss_itm
 
 
-def encode_visual_prompt(qf, frozen_image_encoder, image):
+def encode_visual_prompt(qf: QFormer, frozen_image_encoder, image):
     with torch.no_grad():
-        image_feats = frozen_image_encoder(image)
+        image_feats = frozen_image_encoder(image)           # freeze only the image encoder
     queries = qf.query_tokens.expand(image_feats.size(0), -1, -1)
     return qf.bert(query_embeds=queries, encoder_hidden_states=image_feats,
-                   use_cross_attention=True)
+                   use_cross_attention=True)                 # [B, 32, 768]
 
 
-def stage2_loss(qf, frozen_image_encoder, frozen_llm, image, text,
+def stage2_loss(qf: QFormer, frozen_image_encoder, frozen_llm, image, text,
                 encoder_decoder=False):
     q_out = encode_visual_prompt(qf, frozen_image_encoder, image)
-    visual_prompt = qf.llm_proj(q_out)
+    visual_prompt = qf.llm_proj(q_out)                       # [B, 32, llm_dim]
 
     if not encoder_decoder:
+        # decoder-only LLM (OPT): prepend visual prompt, language-modeling loss
         text_embeds = frozen_llm.get_input_embeddings()(text.input_ids)
         inputs = torch.cat([visual_prompt, text_embeds], dim=1)
         prompt_atts = torch.ones(visual_prompt.shape[:-1], dtype=torch.long,
                                  device=visual_prompt.device)
         attn = torch.cat([prompt_atts, text.attention_mask], dim=1)
+        # mask out the visual-prompt positions in the LM targets
         prompt_labels = torch.full(visual_prompt.shape[:-1], -100,
                                    dtype=torch.long, device=inputs.device)
         labels = torch.cat([prompt_labels, text.labels], dim=1)
+        # no torch.no_grad() around the frozen LLM call: gradients must flow to inputs
         return frozen_llm(inputs_embeds=inputs, attention_mask=attn, labels=labels).loss
     else:
+        # encoder-decoder LLM (FlanT5): prefix-LM. prefix -> encoder, suffix -> decoder
         prefix_embeds = frozen_llm.get_input_embeddings()(text.prefix_ids)
         enc_inputs = torch.cat([visual_prompt, prefix_embeds], dim=1)
         prompt_atts = torch.ones(visual_prompt.shape[:-1], dtype=torch.long,
