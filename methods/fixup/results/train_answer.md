@@ -15,7 +15,7 @@ def conv3x3(in_planes, out_planes, stride=1):
                      padding=1, bias=False)
 
 
-class FixupBasicBlock(nn.Module):
+class FixupBasicBlock(nn.Module):          # m = 2
     expansion = 1
 
     def __init__(self, inplanes, planes, stride=1, downsample=None):
@@ -26,7 +26,7 @@ class FixupBasicBlock(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         self.bias2a = nn.Parameter(torch.zeros(1))
         self.conv2 = conv3x3(planes, planes)
-        self.scale = nn.Parameter(torch.ones(1))
+        self.scale = nn.Parameter(torch.ones(1))     # branch multiplier (init 1)
         self.bias2b = nn.Parameter(torch.zeros(1))
         self.downsample = downsample
 
@@ -47,7 +47,7 @@ class FixupBasicBlock(nn.Module):
 class FixupResNet(nn.Module):
     def __init__(self, block, layers, num_classes=10):
         super().__init__()
-        self.num_layers = sum(layers)
+        self.num_layers = sum(layers)                # L = number of residual branches
         self.inplanes = 16
         self.conv1 = conv3x3(3, 16)
         self.bias1 = nn.Parameter(torch.zeros(1))
@@ -61,19 +61,23 @@ class FixupResNet(nn.Module):
 
         for m in self.modules():
             if isinstance(m, FixupBasicBlock):
-                fan_out = m.conv1.weight.shape[0] * np.prod(m.conv1.weight.shape[2:])
+                # Rule 2: He init on conv1, scaled by L^{-1/(2m-2)} == L^{-0.5} for m=2
                 nn.init.normal_(
                     m.conv1.weight, mean=0,
-                    std=np.sqrt(2.0 / fan_out) * self.num_layers ** (-0.5))
+                    std=np.sqrt(2 / (m.conv1.weight.shape[0] *
+                                     np.prod(m.conv1.weight.shape[2:])))
+                        * self.num_layers ** (-0.5))
+                # Rule 1: zero the last conv of the branch
                 nn.init.constant_(m.conv2.weight, 0)
             elif isinstance(m, nn.Linear):
+                # Rule 1: zero the classification layer
                 nn.init.constant_(m.weight, 0)
                 nn.init.constant_(m.bias, 0)
 
     def _make_layer(self, block, planes, blocks, stride=1):
         downsample = None
         if stride != 1:
-            downsample = nn.AvgPool2d(1, stride=stride)
+            downsample = nn.AvgPool2d(1, stride=stride)   # parameter-free shortcut
         seq = [block(self.inplanes, planes, stride, downsample)]
         self.inplanes = planes
         for _ in range(1, blocks):
