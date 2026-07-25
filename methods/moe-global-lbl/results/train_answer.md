@@ -41,26 +41,17 @@ def layer_f_P(probs, topi, N):
     P = probs.mean(0)
     return f, P
 
-
 def balance_loss_global(probs_list, topi_list, N, alpha=1e-2):
-    """Global-batch LBL (Demons in the Detail / Qwen3): same alpha * N * sum_i f_i P_i
-    as Switch, but f is computed over the GLOBAL batch, so individual micro-batches
-    keep their specialization while usage evens out across the corpus."""
+    """Global-batch LBL: alpha * N * sum_i f_i P_i, f computed over the GLOBAL batch."""
     total = 0.0
     for probs, topi in zip(probs_list, topi_list):
         f, P = layer_f_P(probs, topi, N)          # f over the full (global) batch
         total = total + N * (f.detach() * P).sum()
     return alpha * total / len(probs_list)
 
-
-def update_loss_free_bias(bias, probs, topi, N, u=1e-3):
-    """DeepSeek auxiliary-loss-free bias (no gradient): used ONLY to bias the top-K
-    selection scores (not the gate weights). Cool overloaded, warm underloaded."""
-    with torch.no_grad():
-        f, _ = layer_f_P(probs, topi, N)
-        c = f * N                       # load relative to uniform (1.0 = fair share)
-        bias += u * torch.sign(c.mean() - c)
-    return bias
-    # biased top-K: torch.topk(router_logits + bias, K)
+# Optional DeepSeek auxiliary-loss-free bias (selection-only, no aux gradient):
+#   biased top-k uses (router_logits + b);  after each step, per layer:
+#   f, _ = layer_f_P(probs, topi, N);  c = f * N;  cbar = c.mean()
+#   b += u * torch.sign(cbar - c)         # u = 1e-3
 
 ```
