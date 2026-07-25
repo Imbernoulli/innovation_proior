@@ -9,18 +9,10 @@ A fixed per-channel β can only choose one nonlinear degree for the whole channe
 ```python
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 
 class AconC(nn.Module):
-    """ACON-C: smooth maximum of two learnable linear pieces p1*x and p2*x.
-
-    f(x) = (p1 - p2) * x * sigmoid(beta * (p1 - p2) * x) + p2 * x
-
-    p1, p2, beta are per-channel learnable parameters. Initialized at p1=1,
-    p2=0, beta=1 so the module starts as SiLU x*sigmoid(x), then learns
-    per-channel gradient bounds and nonlinear degree.
-    """
+    """ACON-C: (p1-p2)*x*sigmoid(beta*(p1-p2)*x) + p2*x, per-channel p1,p2,beta."""
 
     def __init__(self, width):
         super().__init__()
@@ -34,27 +26,20 @@ class AconC(nn.Module):
 
 
 class MetaAconC(nn.Module):
-    """meta-ACON-C: beta is generated from the input for per-sample control.
-
-    beta_c = sigmoid(BN(FC2(BN(FC1(GAP(x))))))   # SE-style bottleneck, r=16
-    f(x)   = (p1 - p2) * x * sigmoid(beta * (p1 - p2) * x) + p2 * x
-
-    p1 and p2 are learnable per-channel bounds; beta adapts per sample and
-    per channel at negligible extra parameter cost.
-    """
+    """meta-ACON-C: beta generated from GAP(x) by a BN bottleneck."""
 
     def __init__(self, width, r=16):
         super().__init__()
         inner = max(r, width // r)
-        self.fc1 = nn.Conv2d(width, inner, kernel_size=1, bias=True)
+        self.fc1 = nn.Conv2d(width, inner, kernel_size=1, stride=1, bias=True)
         self.bn1 = nn.BatchNorm2d(inner)
-        self.fc2 = nn.Conv2d(inner, width, kernel_size=1, bias=True)
+        self.fc2 = nn.Conv2d(inner, width, kernel_size=1, stride=1, bias=True)
         self.bn2 = nn.BatchNorm2d(width)
         self.p1 = nn.Parameter(torch.ones(1, width, 1, 1))
         self.p2 = nn.Parameter(torch.zeros(1, width, 1, 1))
 
     def forward(self, x):
-        ctx = x.mean(dim=(2, 3), keepdim=True)
+        ctx = x.mean(dim=2, keepdim=True).mean(dim=3, keepdim=True)
         beta = torch.sigmoid(self.bn2(self.fc2(self.bn1(self.fc1(ctx)))))
         diff = (self.p1 - self.p2) * x
         return diff * torch.sigmoid(beta * diff) + self.p2 * x
