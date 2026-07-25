@@ -9,27 +9,19 @@ One practical concern is premature collapse. A Gaussian variance that shrinks to
 ```python
 import numpy as np
 
-
 def shortest_path(x):
-    """Tiny bridge network with 5 edges; S is the length of the shortest A->B route."""
-    return min(
-        x[0] + x[3],
-        x[1] + x[4],
-        x[0] + x[2] + x[4],
-        x[1] + x[2] + x[3],
-    )
-
+    # Tiny bridge network, 5 edges: 0,1 upper; 2 cross; 3,4 lower. S = min route.
+    return min(x[0] + x[3], x[1] + x[4], x[0] + x[2] + x[4], x[1] + x[2] + x[3])
 
 def exponential_log_likelihood_ratio(X, u, v):
-    """log f(X; u) - log f(X; v) for independent exponential means u and v."""
+    # log f(X; u) - log f(X; v) for independent exponentials with mean vectors u and v.
     X = np.asarray(X, float)
     u = np.asarray(u, float)
     v = np.asarray(v, float)
     return np.sum((1.0 / v - 1.0 / u) * X - np.log(u / v), axis=1)
 
-
 def choose_level(scores, target, rho):
-    """Set working level to the (1-rho)-quantile, capped at the target."""
+    # Algorithmic (1-rho) order statistic, capped at the prescribed rare-event level.
     scores = np.asarray(scores, float)
     idx = int(np.ceil((1.0 - rho) * len(scores))) - 1
     idx = int(np.clip(idx, 0, len(scores) - 1))
@@ -38,9 +30,8 @@ def choose_level(scores, target, rho):
         return target, True
     return level, False
 
-
 def refit_exponential_means(X, scores, level, u, v):
-    """Weighted MLE: v_j = sum elite W X_j / sum elite W."""
+    # Weighted MLE: v_j = sum I{S>=level} W X_j / sum I{S>=level} W.
     elite = scores >= level
     weights = elite * np.exp(exponential_log_likelihood_ratio(X, u, v))
     total = weights.sum()
@@ -48,9 +39,7 @@ def refit_exponential_means(X, scores, level, u, v):
         return np.asarray(v, float).copy()
     return (weights[:, None] * X).sum(axis=0) / total
 
-
 def adaptive_rare_event(u, gamma, rho=0.1, N=2000, N_final=100_000, rng=None):
-    """Estimate P_u(S(X) >= gamma) for the bridge network."""
     rng = np.random.default_rng(0) if rng is None else rng
     u = np.asarray(u, float)
     v = u.copy()
@@ -66,17 +55,13 @@ def adaptive_rare_event(u, gamma, rho=0.1, N=2000, N_final=100_000, rng=None):
     ell = np.mean((scores >= gamma) * np.exp(exponential_log_likelihood_ratio(X, u, v)))
     return ell, v
 
-
 def refit_gaussian(X, scores, rho):
-    """Fit a diagonal Gaussian to the elite samples."""
     level, _ = choose_level(scores, target=None, rho=rho)
     elite = X[scores >= level]
     return elite.mean(axis=0), elite.std(axis=0)
 
-
 def adaptive_optimize(objective, mu, sigma, rho=0.1, N=100, alpha=0.7,
                       n_iter=100, tol=1e-8, rng=None):
-    """Maximize a continuous objective via the cross-entropy method."""
     rng = np.random.default_rng(0) if rng is None else rng
     mu, sigma = np.asarray(mu, float), np.asarray(sigma, float)
     best_score = -np.inf
@@ -91,13 +76,9 @@ def adaptive_optimize(objective, mu, sigma, rho=0.1, N=100, alpha=0.7,
             break
     return mu, best_score
 
-
 if __name__ == "__main__":
     rng = np.random.default_rng(0)
-
-    ell, v = adaptive_rare_event(
-        u=[0.25, 0.4, 0.1, 0.3, 0.2], gamma=2.0, rng=rng
-    )
+    ell, v = adaptive_rare_event(u=[0.25, 0.4, 0.1, 0.3, 0.2], gamma=2.0, rng=rng)
     print(f"P(S >= 2) ~ {ell:.3e}   learned tilt v = {np.round(v, 3)}")
 
     f = lambda x: np.exp(-(x[0] - 2.0) ** 2) + 0.8 * np.exp(-(x[0] + 2.0) ** 2)
