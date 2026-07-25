@@ -11,48 +11,40 @@ The equation also retains both signs of the energy, E = plus or minus sqrt(p^2 c
 ```python
 import numpy as np
 
-# Pauli matrices: sigma_r^2 = I and sigma_r sigma_s + sigma_s sigma_r = 0 for r != s.
 I2 = np.eye(2, dtype=complex)
-sigma = [
-    np.array([[0, 1], [1, 0]], dtype=complex),
-    np.array([[0, -1j], [1j, 0]], dtype=complex),
-    np.array([[1, 0], [0, -1]], dtype=complex),
-]
-Z = np.zeros((2, 2), dtype=complex)
+sigma = [np.array([[0,1],[1,0]], dtype=complex),
+         np.array([[0,-1j],[1j,0]], dtype=complex),
+         np.array([[1,0],[0,-1]], dtype=complex)]
+Z = np.zeros((2,2), dtype=complex)
 
-# Two commuting copies of the Pauli algebra in 4x4 block form.
 rho1 = np.block([[Z, I2], [I2, Z]])
-rho2 = np.block([[Z, -1j * I2], [1j * I2, Z]])
+rho2 = np.block([[Z, -1j*I2], [1j*I2, Z]])
 rho3 = np.block([[I2, Z], [Z, -I2]])
 sigma4 = [np.block([[s, Z], [Z, s]]) for s in sigma]
 
-# Dirac-Pauli alpha_i and beta matrices.
-alpha = [rho1 @ s for s in sigma4]
-beta = rho3
-
-# Standard Minkowski gamma matrices: gamma^0 = beta, gamma^i = beta alpha_i.
-gamma0 = beta
-gammai = [beta @ a for a in alpha]
-G = [gamma0] + gammai
-
-I4 = np.eye(4, dtype=complex)
+alpha = [rho1 @ s for s in sigma4]                   # alpha_i = rho_1 sigma_i
+beta  = rho3                                         # alpha_4 = beta = rho_3
+gamma_e = [rho2 @ s for s in sigma4] + [rho3]        # gamma_i, gamma_4 with delta algebra
+gamma = [beta] + [beta @ a for a in alpha]           # gamma^0, gamma^i with Minkowski algebra
 g = np.diag([1, -1, -1, -1]).astype(complex)
+I4 = np.eye(4, dtype=complex)
+ac = lambda A, B: A @ B + B @ A
 
-def anticommutator(A, B):
-    return A @ B + B @ A
-
-# Verify the Dirac/Clifford algebra {gamma^mu, gamma^nu} = 2 g^{mu nu} I.
-for mu in range(4):
-    for nu in range(4):
-        assert np.allclose(anticommutator(G[mu], G[nu]), 2 * g[mu, nu] * I4)
-
-# Verify the Hamiltonian algebra as well.
+# {alpha_i, alpha_j} = 2 delta_ij,  {alpha_i, beta} = 0,  beta^2 = I
 for i in range(3):
-    assert np.allclose(alpha[i] @ alpha[i], I4)
-    assert np.allclose(anticommutator(alpha[i], beta), Z)
+    assert np.allclose(ac(alpha[i], beta), 0)
     for j in range(3):
-        assert np.allclose(anticommutator(alpha[i], alpha[j]), 2 * (i == j) * I4)
+        assert np.allclose(ac(alpha[i], alpha[j]), 2*(i == j)*I4)
 assert np.allclose(beta @ beta, I4)
 
-print("Dirac-Clifford algebra verified.")
+# {gamma_mu, gamma_nu} = 2 delta_mu_nu in the four-index notation
+for mu in range(4):
+    for nu in range(4):
+        assert np.allclose(ac(gamma_e[mu], gamma_e[nu]), 2*(mu == nu)*I4)
+
+# {gamma^mu, gamma^nu} = 2 g^{mu nu} in the standard Minkowski notation
+for mu in range(4):
+    for nu in range(4):
+        assert np.allclose(ac(gamma[mu], gamma[nu]), 2*g[mu, nu]*I4)
+print("Dirac/Clifford algebra verified")
 ```
