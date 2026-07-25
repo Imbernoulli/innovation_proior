@@ -70,9 +70,10 @@ $\rho\,(A_i x_i)^\top(A_j x_j)$, so $L_\rho$ is not separable in $x$.
 work: solving monotone-operator problems by *splitting*. Many convex problems reduce to finding a
 zero of a sum of two maximal monotone operators $S+T$ (for a closed proper convex $h$, the
 subdifferential $\partial h$ is maximal monotone, and a zero of $\partial h$ is a minimizer of $h$).
-Douglas and Rachford (1956), originally for discretized heat equations, and then Lions and Mercier
-(1979) for general monotone operators, gave a splitting iteration that alternates the *resolvents*
-$(I+\lambda S)^{-1}$, $(I+\lambda T)^{-1}$ of the two operators rather than handling $S+T$ at once.
+Douglas and Rachford (1956), originally for discretized heat equations, gave a splitting iteration
+that alternates the *resolvents* $(I+\lambda S)^{-1}$, $(I+\lambda T)^{-1}$ of the two operators
+rather than handling $S+T$ at once — nothing in the iteration is specific to the heat-equation
+setting, so the same alternation should work for any pair of maximal monotone operators.
 The resolvent of a subdifferential is exactly Moreau's **proximal operator**
 $\operatorname{prox}_{h,\rho}(v)=\arg\min_x h(x)+(\rho/2)\|x-v\|_2^2$, which generalizes Euclidean
 projection (for the indicator of a convex set it *is* the projection). Rockafellar's proximal point
@@ -97,9 +98,9 @@ the augmented-Lagrangian one.
   convexity/finiteness; using $\rho$ as the dual step keeps every iterate dual feasible.
 
 - **Douglas–Rachford / proximal-point splitting.** Find a zero of $S+T$ (maximal monotone) by
-  alternating resolvents $(I+\lambda S)^{-1},(I+\lambda T)^{-1}$ (Lions–Mercier 1979; Rockafellar's
-  proximal point algorithm 1976). Core idea: never touch $S+T$ jointly — split into per-operator prox
-  steps.
+  alternating resolvents $(I+\lambda S)^{-1},(I+\lambda T)^{-1}$ (Douglas–Rachford 1956, extended to
+  general maximal monotone operators; Rockafellar's proximal point algorithm 1976). Core idea: never
+  touch $S+T$ jointly — split into per-operator prox steps.
 
 ## Evaluation settings
 

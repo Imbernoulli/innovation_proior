@@ -20,7 +20,7 @@ The question is how to make a gradient-free stochastic search progress on these 
 
 **Mutative strategy-parameter control.** One way to adapt the distribution (Schwefel 1981) is *mutative*: also mutate the strategy parameters (the step-sizes, the orientation), generate the offspring with the mutated parameters, and let selection on the object variables implicitly pick good strategy parameters. The selection of a strategy-parameter setting is indirect — a setting is favored because the individual it produced was selected. The mutation strength that makes a significant selection difference between competing settings and the mutation strength that yields an optimal change rate are generally different, with the optimal-change-rate strength usually the smaller, and the gap growing with dimension and with the number of strategy parameters being adapted. Tuning the change rate down is done by enlarging the parent number μ and using recombination, so a mutative scheme uses a population that scales with the number of strategy parameters.
 
-**Estimating a covariance from a selected sample.** After selecting the best μ points, one can estimate a covariance from them and sample from it next time. The EMNA / cross-entropy estimation-of-distribution algorithms of Larrañaga et al. (2001, 2002) do this: each generation they fit a Gaussian to the μ best points around *their own* sample mean, measuring the spread *within* the selected cloud. The reference point about which the spread is measured determines what the estimate captures.
+**Estimating a covariance from a selected sample.** After selecting the best μ points, one can estimate a covariance from them and sample from it next time. The EMNA / cross-entropy estimation-of-distribution algorithms of Larrañaga et al. (2001) do this: each generation they fit a Gaussian to the μ best points around *their own* sample mean, measuring the spread *within* the selected cloud. The reference point about which the spread is measured determines what the estimate captures.
 
 ## Baselines
 
@@ -30,7 +30,7 @@ The question is how to make a gradient-free stochastic search progress on these 
 
 **Mutative self-adaptation of the full normal distribution (Schwefel 1981).** Mutate all O(n²) strategy parameters and let selection sort them out, in principle reaching arbitrarily oriented ellipsoids.
 
-**EMNA-global / continuous cross-entropy EDA (Larrañaga et al. 2001, 2002).** Each generation, fit a Gaussian to the μ best points using their own sample mean and covariance, then resample.
+**EMNA-global / continuous cross-entropy EDA (Larrañaga et al. 2001).** Each generation, fit a Gaussian to the μ best points using their own sample mean and covariance, then resample.
 
 ## Evaluation settings
 
