@@ -13,9 +13,7 @@ be left off the bill. You may even book nobody at all. Choose a *partial* bookin
 artists, each assigned to a distinct stage) that **maximizes the total net reward**. Output that
 maximum.
 
-This is maximum-weight *partial* bipartite matching with arbitrary-sign weights. The partial-and-
-signed twist is the whole point: when every reward is a loss the right answer is to book nobody and
-keep `0`, and an unused stage must cost the roster nothing rather than be forced to swallow a loss.
+This is maximum-weight *partial* bipartite matching with arbitrary-sign weights.
 
 ## Input / output contract
 
@@ -28,28 +26,12 @@ keep `0`, and an unused stage must cost the roster nothing rather than be forced
 Example: for `n = 3` with rows `7 1 3 / 2 8 4 / 5 6 9`, the answer is `24` (artist 0 -> stage 0,
 artist 1 -> stage 1, artist 2 -> stage 2: `7 + 8 + 9`).
 
-## Background
-
-`n` is small (`<= 18`), so an exponential-in-`n` method indexed by a subset of artists is affordable;
-`2^18 = 262144` states. Two framings compete before committing to one:
-
-- **Treat it as a full assignment.** The textbook bitmask-assignment DP books *every* stage with
-  exactly one artist (a permutation) and reads `dp[full]`. It is clean, but it answers a different
-  question: it cannot leave a stage empty or an artist on the bench, so on loss-heavy inputs it is
-  forced to absorb negative rewards that the partial problem would simply skip.
-- **Sweep stages, subset over artists.** Process stages `0..n-1` one at a time. Keep `dp[mask]` = the
-  best reward after deciding the first few stages, where `mask` is the set of artists already booked.
-  Each stage is either left empty (reward `+0`) or given one still-free artist. This naturally allows
-  partial bookings; the open questions are the exact transition and, above all, the base case and the
-  final aggregation that make the all-loss and empty inputs return `0`.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: all-positive reward matrices; matrices mixing negatives and zeros;
-**all-negative** matrices (answer must be `0` — book nobody); the empty festival (`n = 0`); a single
-artist and stage with a negative reward (answer `0`); matrices where leaving a particular stage dark
-beats every way of filling it; and large `n = 18` with rewards near `10^9` so a full booking sum can
-exceed the 32-bit range.
+**all-negative** matrices; the empty festival (`n = 0`); a single artist and stage with a negative
+reward; matrices where leaving a particular stage dark beats every way of filling it; and large
+`n = 18` with rewards near `10^9`.
 
 ## Code framework
 
