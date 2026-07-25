@@ -11,21 +11,19 @@ import torch
 
 
 class RobustLoss:
-    """Generalized Cross Entropy (L_q) loss for classification under label noise.
+    """Generalized cross entropy (L_q) loss for label noise.
 
-    L_q(f(x), e_y) = (1 - f_y^q) / q, averaged over the minibatch. f_y is the
-    softmax probability assigned to the given (possibly corrupted) label. q in
-    (0, 1] interpolates categorical cross entropy (q -> 0) and MAE/unhinged loss
-    (q = 1). The per-sample gradient is f_y^q times the CCE gradient, which
-    down-weights low-confidence (likely-noisy) samples while preserving enough
-    pull on hard examples to train deep networks.
+    L_q(f(x), e_y) = (1 - f_y^q) / q, averaged over the minibatch. f_y is the softmax
+    probability of the given (possibly corrupted) label. q in (0,1] interpolates CCE
+    (q -> 0) and MAE (q = 1): the per-sample gradient is f_y^q times CCE's, down-weighting
+    low-confidence (likely-noisy) samples while keeping enough pull on hard samples to train.
     """
 
     def __init__(self):
-        self.q = 0.7  # robustness <-> learnability tradeoff; tune by validation accuracy
+        self.q = 0.7  # robustness <-> learnability tradeoff
 
     def compute_loss(self, logits, labels, epoch):
-        probs = torch.softmax(logits, dim=1)                  # f(x): class probabilities
+        probs = torch.softmax(logits, dim=1)                  # f(x)
         p = probs.gather(1, labels[:, None]).clamp_min(1e-8)  # f_y, floored for stability
         return ((1.0 - p.pow(self.q)) / self.q).mean()        # (1 - f_y^q)/q, mean over batch
 ```
