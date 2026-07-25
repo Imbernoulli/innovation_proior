@@ -13,9 +13,7 @@ Choose a subset `S` of the assays with total reagent cost `sum_{i in S} c[i] <= 
 allowed, so the answer is always at least `0`.
 
 This is the 0/1 knapsack problem in disguise: indivisible items (assays), a single capacity (the
-reagent budget `B`), an additive objective (data points). The interesting part is that a very natural
-"run the most efficient assays first" rule looks optimal and is not, so the contract has to be solved
-by something that actually reasons about how the budget is partitioned.
+reagent budget `B`), an additive objective (data points).
 
 ## Input / output contract
 
@@ -31,27 +29,13 @@ Example: with `B = 10` and assays `(c,r) = (6,8), (5,6), (5,6)`, the answer is `
 cost-5 assays. (Grabbing the cost-6 assay first, which is the most "data per microgram", strands 4
 micrograms and yields only `8`.)
 
-## Background
-
-Two families of approach are on the table before committing to one:
-
-- **Greedy by efficiency.** Sort the assays by yield-per-microgram `r[i]/c[i]` (or simply by raw
-  yield `r[i]`) descending and run them in that order while the remaining budget allows. This is
-  `O(n log n)` and a handful of lines. The open question is whether front-loading the most efficient
-  assays is actually optimal when items are indivisible and the budget can be left partly unspent.
-- **Knapsack dynamic programming over the budget.** Build a table indexed by the amount of reagent
-  used, computing for every budget level the best yield achievable, and read off the answer at level
-  `B`. This is `O(n * B)`; the open questions are the exact recurrence, the iteration direction that
-  keeps each item used at most once, and the data type for the yield.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: instances engineered so that efficiency-greedy and raw-yield-greedy
 both miss the optimum (the fractional intuition fails on indivisible items); `n = 0` and `B = 0`;
 assays whose cost exceeds `B` (never runnable); assays with `r[i] = 0`; exact-fit instances where the
 optimal subset uses the budget to the last microgram; and large instances with `n = 2000`,
-`B = 2*10^5`, and yields near `10^9`, so the total yield can reach `~2*10^12` (beyond 32-bit) and the
-table has `~4*10^8` update steps.
+`B = 2*10^5`, and yields near `10^9`.
 
 ## Code framework
 
