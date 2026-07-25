@@ -6,53 +6,45 @@ The method is AdaGrad, the adaptive subgradient method. It maintains one scalar 
 
 The same idea extends to a full-matrix preconditioner based on the matrix square root of the outer-product matrix of gradients, which is the optimal trace-budget preconditioner and can capture correlations between coordinates. But maintaining, square-rooting, and inverting a d-by-d matrix is infeasible when the dimension is in the millions, so the diagonal form is the one that ships. The diagonal version preserves the main benefit: it adapts to sparse, heavy-tailed feature geometry while remaining linear in both time and memory. It also recovers standard methods at the extremes: an isotropic time-scaled metric gives ordinary projected gradient descent with its 1/sqrt(t) schedule, and the dual-averaging form replaces the single global sqrt(t) rate with per-coordinate rates while keeping the sparse soft-thresholding structure intact.
 
-For an unconstrained problem with no composite regularizer, the implementation is a single accumulator, a square root, and a coordinate-wise divide. Here is a compact AdaGrad optimizer that fits into the standard online subgradient harness:
+For an unconstrained problem with no composite regularizer (X = R^d, phi = 0), the implementation is a single accumulator, a square root, and a coordinate-wise divide, filling the hyperparameters/state/step slots of the online-subgradient harness for the two parameter blocks u and v:
 
 ```python
 import torch
 
 
-class AdaGrad:
-    """Diagonal AdaGrad.
-
-    Maintains a per-coordinate sum of squared gradients and applies
-    x <- x - lr * g / (sqrt(sum_of_squares) + eps).
-    """
-
-    def __init__(self, params, lr=1e-2, eps=1e-10,
-                 initial_accumulator_value=0.0):
-        self.params = list(params)
-        self.lr = lr
-        self.eps = eps
-        self.state = {
-            id(p): {
-                "step": 0,
-                "sum": torch.full_like(p, initial_accumulator_value),
-            }
-            for p in self.params
-        }
-
-    @torch.no_grad()
-    def step(self):
-        for p in self.params:
-            if p.grad is None:
-                continue
-            g = p.grad
-            st = self.state[id(p)]
-            st["step"] += 1
-            st["sum"].addcmul_(g, g, value=1.0)
-            std = st["sum"].sqrt().add_(self.eps)
-            p.addcdiv_(g, std, value=-self.lr)
+def get_hyperparameters(dim, sparsity, delta):
+    # lr is a single global trust knob; the per-coordinate scaling lives in the
+    # accumulated-norm denominator. eps floors the denominator (sqrt(0)=0).
+    return {"lr": 0.01, "eps": 1e-6}
 
 
-# Example online loop using the optimizer above:
-def run_online(model, loss_fn, data_stream, learner):
-    for inputs, targets in data_stream:
-        model.zero_grad()
-        outputs = model(inputs)
-        loss = loss_fn(outputs, targets)
-        loss.backward()
-        learner.step()
+def init_state(u, v, hyperparameters):
+    # Per-coordinate sum-of-squared-gradients accumulator == diag(G_t).
+    # Its square root is the optimal-in-hindsight diagonal denominator.
+    d = u.shape[0]
+    return {
+        "t": 0,
+        "state_sum_u": torch.zeros(d, dtype=torch.float64),
+        "state_sum_v": torch.zeros(d, dtype=torch.float64),
+    }
+
+
+def step(u, v, grad_u, grad_v, state, hyperparameters):
+    lr = float(hyperparameters["lr"])
+    eps = float(hyperparameters["eps"])
+    # state_sum_{t,i} = sum_{tau<=t} g_{tau,i}^2 = ||g_{1:t,i}||_2^2
+    state_sum_u = state["state_sum_u"] + grad_u * grad_u
+    state_sum_v = state["state_sum_v"] + grad_v * grad_v
+    # x_{t+1,i} = x_{t,i} - lr * g_{t,i} / ( sqrt(sum_{tau<=t} g_{tau,i}^2) + eps )
+    std_u = torch.sqrt(state_sum_u) + eps
+    std_v = torch.sqrt(state_sum_v) + eps
+    u_new = u - lr * grad_u / std_u
+    v_new = v - lr * grad_v / std_v
+    return u_new, v_new, {
+        "t": state["t"] + 1,
+        "state_sum_u": state_sum_u,
+        "state_sum_v": state_sum_v,
+    }
 ```
 
-The small additive constant eps is only there to avoid division by zero before a coordinate has accumulated any gradient mass; active coordinates quickly dominate it. The global learning rate remains a single scalar because the per-coordinate adaptation already lives in the accumulated denominator. On sparse heavy-tailed data, this turns a dimension-dependent sqrt(d T) regret into a bound closer to (log d) sqrt(T), while retaining the simplicity and cost of vanilla subgradient descent.
+The small additive constant eps is only there to avoid division by zero before a coordinate has accumulated any gradient mass; active coordinates quickly dominate it. The global learning rate lr remains a single scalar because the per-coordinate adaptation already lives in the accumulated denominators state_sum_u and state_sum_v. On sparse heavy-tailed data, this turns a dimension-dependent sqrt(d T) regret into a bound closer to (log d) sqrt(T), while retaining the simplicity and cost of vanilla subgradient descent.
