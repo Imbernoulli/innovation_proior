@@ -13,13 +13,13 @@ import torch.nn.functional as F
 
 
 class Custom(nn.Module):
-    """1D CNN with residual blocks for atmospheric column emulation.
+    """1D CNN with residual blocks over the vertical atmospheric profile.
 
-    The 60 ordered vertical levels are the convolution axis and the multi-level
-    physical variables are channels. Whole-column scalars are projected onto the
-    axis as one learned channel. Residual conv blocks detect local vertical
-    features with shared kernels; a 1x1 conv head reads per-level tendencies and
-    a pooled MLP head reads whole-column scalars.
+    The 60 ordered vertical levels are the convolution axis; the multi-level
+    variables are channels over that axis. Single-level scalars are projected onto
+    the axis as one learned 60-level channel. Residual conv blocks detect local vertical features
+    (each kernel shared across all heights); a 1x1 conv head reads off the per-level
+    tendencies and a pooled MLP head reads off the whole-column scalars.
     """
 
     def __init__(self, input_dim, output_dim):
@@ -27,20 +27,25 @@ class Custom(nn.Module):
         self.input_dim = input_dim
         self.output_dim = output_dim
 
+        # Input layout: 9 multi-level vars x 60 levels = 540, then the
+        # remaining scalar column variables.
         self.n_ml_in = 9
         self.n_levels = 60
         self.n_sl_in = input_dim - self.n_ml_in * self.n_levels
 
+        # Learned map of the whole-column scalars onto the vertical axis.
         self.scalar_proj = nn.Linear(self.n_sl_in, self.n_levels)
 
-        in_channels = self.n_ml_in + 1
+        in_channels = self.n_ml_in + 1          # multi-level vars + projected scalars
         hidden_channels = 128
         n_blocks = 8
 
-        self.input_conv = nn.Conv1d(
-            in_channels, hidden_channels, kernel_size=3, padding=1
-        )
+        # Input convolution: kernel 3 = a level and its two neighbors; pad keeps 60.
+        self.input_conv = nn.Conv1d(in_channels, hidden_channels, kernel_size=3, padding=1)
 
+        # Residual blocks: each learns F(h); h <- h + F(h) keeps the deep stack
+        # optimizable. BatchNorm + ReLU keep activations in range and gradients
+        # healthy; dropout regularizes.
         self.blocks = nn.ModuleList()
         for _ in range(n_blocks):
             self.blocks.append(nn.Sequential(
@@ -51,11 +56,11 @@ class Custom(nn.Module):
                 nn.Conv1d(hidden_channels, hidden_channels, kernel_size=3, padding=1),
             ))
 
+        # Per-level head: 1x1 conv -> 6 tendency channels at each of the 60 levels.
         self.n_ml_out = 6
-        self.ml_head = nn.Conv1d(
-            hidden_channels, self.n_ml_out, kernel_size=1
-        )
+        self.ml_head = nn.Conv1d(hidden_channels, self.n_ml_out, kernel_size=1)
 
+        # Whole-column head: pool the vertical axis, then an MLP -> 8 scalars.
         self.sl_head = nn.Sequential(
             nn.AdaptiveAvgPool1d(1),
             nn.Flatten(),
@@ -66,18 +71,16 @@ class Custom(nn.Module):
 
     def forward(self, x):
         B = x.shape[0]
-        ml_in = x[:, :self.n_ml_in * self.n_levels].view(
-            B, self.n_ml_in, self.n_levels
-        )
+        ml_in = x[:, :self.n_ml_in * self.n_levels].view(B, self.n_ml_in, self.n_levels)
         sl_in = x[:, self.n_ml_in * self.n_levels:]
-        sl_expanded = self.scalar_proj(sl_in).unsqueeze(1)
-        h = torch.cat([ml_in, sl_expanded], dim=1)
+        sl_expanded = self.scalar_proj(sl_in).unsqueeze(1)   # (B, 1, 60) scalar-derived channel
+        h = torch.cat([ml_in, sl_expanded], dim=1)           # (B, n_ml_in+1, 60)
 
         h = F.relu(self.input_conv(h))
         for block in self.blocks:
-            h = h + block(h)
+            h = h + block(h)                                 # residual: h <- h + F(h)
 
-        ml_out = self.ml_head(h).reshape(B, -1)
-        sl_out = self.sl_head(h)
-        return torch.cat([ml_out, sl_out], dim=-1)
+        ml_out = self.ml_head(h).reshape(B, -1)              # (B, 360)
+        sl_out = self.sl_head(h)                             # (B, 8)
+        return torch.cat([ml_out, sl_out], dim=-1)           # (B, 368)
 ```
