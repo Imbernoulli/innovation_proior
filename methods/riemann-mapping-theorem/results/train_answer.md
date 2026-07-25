@@ -16,72 +16,16 @@ There is also a beautiful harmonic-function interpretation. If f(a) = 0, then lo
 
 The canonical name for this result is the Riemann Mapping Theorem. It is foundational in complex analysis, geometric function theory, and any area where conformal coordinates are used to simplify partial differential equations or mesh generation.
 
-To make the theorem concrete, the following Python script constructs the explicit Riemann map for the simplest possible simply connected domain that is not already the disk: the upper half-plane H = {z : Im(z) > 0}, with basepoint a = i. The normalized map is F(z) = i (z - i)/(z + i). It maps H onto D, sends i to 0, and has positive derivative at i. The script verifies these normalizations, checks that sampled points of H land inside D, and visualizes how a rectangular grid in H is carried to curved arcs in D.
+The theorem itself is the deliverable, and it is worth compressing the whole argument back into the single statement a reader would carry away: for every domain $\Omega \subsetneq \mathbb{C}$ that is open, connected, and simply connected, and for every basepoint $a \in \Omega$, there exists a unique biholomorphic map
 
-```python
-import numpy as np
-import matplotlib.pyplot as plt
+$$f : \Omega \to \mathbb{D} = \{w \in \mathbb{C} : |w| < 1\}$$
 
-def riemann_map_upper_halfplane_to_disk(z):
-    """Normalized Riemann map from H (Im z > 0) onto D with F(i)=0, F'(i)>0."""
-    return 1j * (z - 1j) / (z + 1j)
+normalized by
 
-def derivative_riemann_map(z):
-    return 1j * ((1)*(z + 1j) - (z - 1j)*(1)) / (z + 1j)**2
+$$f(a) = 0, \qquad f'(a) > 0.$$
 
-# Verify normalizations at basepoint a = i.
-a = 1j
-F_a = riemann_map_upper_halfplane_to_disk(a)
-Fp_a = derivative_riemann_map(a)
-print(f"F(i)   = {F_a.real:.6f} + {F_a.imag:.6f}i  (should be 0)")
-print(f"F'(i)  = {Fp_a.real:.6f} + {Fp_a.imag:.6f}i  (should be positive real)")
+Existence is exactly the extremal map built above: among all injective holomorphic $g : \Omega \to \mathbb{D}$ with $g(a) = 0$ and $g'(a) > 0$, $f$ is the one maximizing $g'(a)$, and the omitted-value argument shows this extremal map cannot miss any point of $\mathbb{D}$ — a missed point $c$ would, via the square root of $B_c \circ f$ followed by a second normalization, produce a competitor whose derivative at $a$ equals
 
-# Sample random points in the upper half-plane and check they map inside the disk.
-np.random.seed(0)
-x = np.random.uniform(-5, 5, 2000)
-y = np.random.exponential(1.0, 2000) + 0.01
-z_samples = x + 1j * y
-w_samples = riemann_map_upper_halfplane_to_disk(z_samples)
-max_modulus = np.max(np.abs(w_samples))
-print(f"Max |F(z)| over random H points = {max_modulus:.6f}  (should be < 1)")
+$$f'(a)\left(\frac{\sqrt{|c|} + 1/\sqrt{|c|}}{2}\right) > f'(a),$$
 
-# Visualize a grid in H and its image in D.
-fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-
-x_grid = np.linspace(-4, 4, 17)
-y_grid = np.linspace(0.1, 4, 13)
-ax_h, ax_d = axes
-for x0 in x_grid:
-    z_line = x0 + 1j * y_grid
-    w_line = riemann_map_upper_halfplane_to_disk(z_line)
-    ax_h.plot(z_line.real, z_line.imag, 'b-', lw=0.7)
-    ax_d.plot(w_line.real, w_line.imag, 'b-', lw=0.7)
-for y0 in y_grid:
-    z_line = x_grid + 1j * y0
-    w_line = riemann_map_upper_halfplane_to_disk(z_line)
-    ax_h.plot(z_line.real, z_line.imag, 'r-', lw=0.7)
-    ax_d.plot(w_line.real, w_line.imag, 'r-', lw=0.7)
-
-theta = np.linspace(0, 2*np.pi, 400)
-ax_d.plot(np.cos(theta), np.sin(theta), 'k--', lw=1)
-
-ax_h.set_xlim(-4.5, 4.5)
-ax_h.set_ylim(0, 4.5)
-ax_h.set_aspect('equal')
-ax_h.set_title('Grid in upper half-plane H')
-ax_h.set_xlabel('Re z')
-ax_h.set_ylabel('Im z')
-
-ax_d.set_xlim(-1.05, 1.05)
-ax_d.set_ylim(-1.05, 1.05)
-ax_d.set_aspect('equal')
-ax_d.set_title('Image under normalized Riemann map F')
-ax_d.set_xlabel('Re w')
-ax_d.set_ylabel('Im w')
-
-plt.tight_layout()
-plt.savefig('riemann_map_illustration.png', dpi=150)
-plt.show()
-```
-
-Running the script confirms that the explicit map satisfies the three defining properties of the Riemann Mapping Theorem: it is holomorphic and bijective between H and D, it sends the chosen basepoint i to 0, and its derivative at i is the positive real number 1/2. The visualization shows how the right angles of the rectangular grid in H are preserved in the infinitesimal sense, while the global shape is bent so that the whole half-plane fits exactly inside the unit disk. This example is special because an elementary formula exists, but the Riemann Mapping Theorem guarantees the same kind of coordinate for every proper simply connected planar domain, even when no closed-form expression is available.
+contradicting extremality. Uniqueness is forced because any two normalized maps $f, F$ satisfy $F \circ f^{-1} \in \mathrm{Aut}(\mathbb{D})$ fixing $0$, hence by Schwarz's lemma equal to a rotation $w \mapsto e^{i\theta}w$, and the shared condition $f'(a), F'(a) > 0$ pins $\theta = 0$. So the full statement is: simple connectivity supplies the logarithms and square roots that make the construction possible at all; Montel's and Hurwitz's theorems supply an extremal map inside the normalized family; the omitted-value estimate supplies surjectivity onto the whole disk; Schwarz's lemma supplies uniqueness. Nowhere does the statement reference the boundary of $\Omega$ or any coordinates beyond the basepoint and tangent direction — the entire shape of the domain, however wild its boundary, is absorbed into that one canonical map, which is the precise sense in which every proper simply connected planar domain is, to a holomorphic function, indistinguishable from the disk.
