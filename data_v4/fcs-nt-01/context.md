@@ -34,26 +34,12 @@ Example: for the three congruences `x ≡ 2 (mod 6)`, `x ≡ 2 (mod 4)`, `x ≡ 
 `14` (since `14 mod 6 = 2`, `14 mod 4 = 2`, `14 mod 10 = 4`, and no smaller non-negative integer
 works).
 
-## Background
-
-Two routes are on the table before committing to one:
-
-- **Plain CRT with modular inverses.** Compute `M = ∏ m_i`, and for each congruence use the inverse of
-  `M/m_i` modulo `m_i`. This is the classic formula, but it is *only valid when the moduli are pairwise
-  coprime* — the inverse `(M/m_i)^{-1} mod m_i` does not exist when `gcd(M/m_i, m_i) > 1`. The open
-  question is what to do when the moduli share factors, and how to detect contradictions.
-- **Iterative pairwise merge.** Fold the congruences one at a time, maintaining a single running
-  congruence `x ≡ r (mod m)` that is equivalent to all congruences seen so far, and merging in the
-  next `(r_i, m_i)` with the extended Euclidean algorithm. The open questions are the exact
-  feasibility test, the combined modulus, and keeping the intermediate arithmetic from overflowing.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: single congruence; the trivial modulus `m = 1`; coprime systems
 (classical CRT); **non-coprime but consistent** systems; **non-coprime contradictory** systems
 (answer `-1`); duplicate moduli with equal vs conflicting remainders; many small moduli with a bounded
-lcm; and a handful of congruences with moduli near `10^9` so the merged modulus approaches `10^18`
-(forcing overflow-safe multiplication). `k` ranges up to `10^5`.
+lcm; and a handful of congruences with moduli near `10^9`. `k` ranges up to `10^5`.
 
 ## Code framework
 
