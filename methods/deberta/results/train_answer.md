@@ -9,34 +9,21 @@ Relative position alone cannot resolve every ambiguity. Consider two masked word
 For fine-tuning, virtual adversarial training perturbs word embeddings toward an adversarial direction and penalizes output-distribution change. Because embedding norms vary widely across words and grow with model size, a fixed perturbation magnitude has inconsistent effect. DeBERTa normalizes the embeddings to unit scale before applying the perturbation, making the adversarial radius invariant to embedding scale and model size.
 
 ```python
-import math
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
+import math, torch, torch.nn as nn
 
 def relative_position(N, k, device):
     idx = torch.arange(N, device=device)
-    rel = idx[:, None] - idx[None, :]  # entry (i, j) is i - j
-    return torch.where(
-        rel <= -k,
-        torch.zeros_like(rel),
-        torch.where(
-            rel >= k,
-            torch.full_like(rel, 2 * k - 1),
-            rel + k,
-        ),
-    )
-
+    rel = idx[:, None] - idx[None, :]
+    return torch.where(rel <= -k, torch.zeros_like(rel),
+           torch.where(rel >=  k, torch.full_like(rel, 2 * k - 1), rel + k))
 
 class DisentangledAttention(nn.Module):
     def __init__(self, d, k=512, pos_terms=2):
         super().__init__()
-        self.d = d
-        self.k = k
+        self.d, self.k = d, k
         self.Wqc, self.Wkc, self.Wvc = (nn.Linear(d, d, bias=False) for _ in range(3))
         self.Wqr, self.Wkr = (nn.Linear(d, d, bias=False) for _ in range(2))
-        self.scale_factor = 1 + pos_terms  # c2c + c2p + p2c
+        self.scale_factor = 1 + pos_terms
 
     def forward(self, H, P, attn_mask):
         N = H.size(0)
@@ -45,33 +32,26 @@ class DisentangledAttention(nn.Module):
         delta = relative_position(N, self.k, H.device)
         scale = 1.0 / math.sqrt(self.d * self.scale_factor)
 
-        # (a) content-to-content
         A = Qc @ Kc.t()
-
-        # (b) content-to-position: gather by delta(i, j)
         c2p = Qc @ Kr.t()
-        A = A + torch.gather(c2p, dim=-1, index=delta)
-
-        # (c) position-to-content: gather by delta(j, i), then transpose
+        A = A + torch.gather(c2p, -1, delta)
         p2c = Kc @ Qr.t()
-        A = A + torch.gather(p2c, dim=-1, index=delta).t()
-
+        A = A + torch.gather(p2c, -1, delta).t()
         A = A * scale
+
         A = A.masked_fill(attn_mask == 0, float("-inf"))
         return torch.softmax(A, dim=-1) @ Vc
 
-
 def enhanced_mask_decode(encoder_out, abs_pos_emb, target_ids,
                          decoder_layer, vocab_proj, n_steps=2):
-    K = V = encoder_out
+    K = V = encoder_out                                       # static encoder memory
     mask_positions = (target_ids > 0).nonzero(as_tuple=True)[0]
-    Q = encoder_out[mask_positions] + abs_pos_emb[mask_positions]
+    Q = encoder_out[mask_positions] + abs_pos_emb[mask_positions]  # add absolute position to content
     for _ in range(n_steps):
         Q = decoder_layer(Q, K, V, query_positions=mask_positions)
     return vocab_proj(Q)
 
-
-def scale_invariant_finetune_step(model, batch, eps, task_loss, kl_div):
+def sift_finetune_step(model, batch, eps, task_loss, kl_div):
     emb = model.embed(batch.input_ids)
     emb_n = emb / (emb.norm(dim=-1, keepdim=True) + 1e-6)
     logits_clean = model.from_embeddings(emb_n, batch)
