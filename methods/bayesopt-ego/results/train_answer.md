@@ -52,13 +52,13 @@ class CorrelatedSurrogate:
 
 def expected_improvement(X, surrogate, f_min, xi=0.0):
     mu, std = surrogate.predict(X, return_std=True)
-    mu = np.atleast_1d(mu)
-    std = np.atleast_1d(std)
+    mu = np.atleast_1d(mu); std = np.atleast_1d(std)
     ei = np.zeros_like(mu)
-    mask = std > 1e-12
-    improve = f_min - xi - mu[mask]
-    z = improve / std[mask]
+    mask = std > 1e-12                               # EI = 0 where s = 0
+    improve = f_min - xi - mu[mask]                  # f_min - mu when xi=0
+    z = improve / std[mask]                          # z = improve / s
     ei[mask] = improve * norm.cdf(z) + std[mask] * norm.pdf(z)
+    #          \_ exploitation                       \_ exploration
     return ei
 
 
@@ -81,18 +81,17 @@ def efficient_global_optimization(objective, bounds, n_init=10, max_evals=40,
                                   ei_tol_frac=0.01, xi=0.0, seed=0):
     rng = np.random.default_rng(seed)
     X = latin_hypercube(n_init, bounds, rng)
-    y = np.array([objective(x) for x in X])
+    y = np.array([objective(x) for x in X])          # the only expensive calls
     surrogate = CorrelatedSurrogate()
     for _ in range(max_evals - n_init):
         surrogate.fit(X, y)
         f_min = y.min()
         acq_fn = lambda Xcand: expected_improvement(Xcand, surrogate, f_min, xi)
         x_next, ei = maximize_acquisition(acq_fn, bounds, rng)
-        if ei < ei_tol_frac * max(abs(f_min), 1e-12):
+        if ei < ei_tol_frac * max(abs(f_min), 1e-12):   # EI-based stopping rule
             break
-        y_next = objective(x_next)
-        X = np.vstack([X, x_next])
-        y = np.append(y, y_next)
+        y_next = objective(x_next)                   # one expensive call
+        X = np.vstack([X, x_next]); y = np.append(y, y_next)
     i = y.argmin()
     return X[i], y[i]
 ```
