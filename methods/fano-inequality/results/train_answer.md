@@ -18,45 +18,31 @@ Fano's inequality is the standard engine behind two major kinds of converses. In
 import numpy as np
 
 def entropy(p, base=2):
-    p = np.asarray(p, dtype=float)
-    p = p[p > 0]
-    return float(-(p * (np.log(p) / np.log(base))).sum())
+    p = np.asarray(p, float); p = p[p > 0]
+    return float(-(p * (np.log(p)/np.log(base))).sum())
 
-def conditional_entropy(joint, base=2):
-    # joint[x, y] = p(x, y); returns H(X | Y)
-    joint = np.asarray(joint, dtype=float)
-    py = joint.sum(axis=0)
-    h = 0.0
+def conditional_entropy(joint, base=2):     # H(X|Y), joint[x,y]=p(x,y)
+    joint = np.asarray(joint, float); py = joint.sum(0); h = 0.0
     for j, pyj in enumerate(py):
-        if pyj > 0:
-            h += pyj * entropy(joint[:, j] / pyj, base)
-    return float(h)
+        if pyj > 0: h += pyj * entropy(joint[:, j]/pyj, base)
+    return h
 
-def map_rule(joint):
-    # best (MAP) estimator: for each y, pick the x with largest p(x, y)
-    return np.argmax(np.asarray(joint, dtype=float), axis=0)
+def map_rule(joint):                        # best (MAP) estimator x*(y)
+    return np.argmax(np.asarray(joint, float), axis=0)
 
-def prob_error(joint, g):
-    # P_e of estimator g(Y)
-    joint = np.asarray(joint, dtype=float)
+def prob_error(joint, g):                   # P_e of estimator g(Y)
+    joint = np.asarray(joint, float)
     return float(sum(joint[:, j].sum() - joint[g[j], j] for j in range(joint.shape[1])))
 
-def fano_floor(joint, base=2):
-    # weak operational form: P_e >= (H(X|Y) - 1) / log|X|
-    joint = np.asarray(joint, dtype=float)
-    m = joint.shape[0]
-    if m < 2:
+def fano_floor(joint, base=2):              # (H(X|Y) - 1)/log|X|
+    X = np.asarray(joint, float).shape[0]
+    if X < 2:
         return 0.0
-    h_xy = conditional_entropy(joint, base)
-    weak = (h_xy - 1.0) / (np.log(m) / np.log(base))
+    weak = (conditional_entropy(joint, base) - 1.0) / (np.log(X)/np.log(base))
     return max(0.0, weak)
 
-# Example: the MAP estimator is the best possible, yet it still obeys Fano's floor.
 J = np.array([[0.30, 0.05, 0.05],
               [0.05, 0.20, 0.05],
               [0.05, 0.05, 0.20]])
-map_g = map_rule(J)
-print("P_e (MAP):", prob_error(J, map_g))
-print("Fano floor:", fano_floor(J))
-assert prob_error(J, map_g) >= fano_floor(J) - 1e-12
+assert prob_error(J, map_rule(J)) >= fano_floor(J) - 1e-12   # even the best estimator obeys the floor
 ```
