@@ -11,9 +11,7 @@ For causal attention, FlashAttention-2 applies the same case analysis to minimiz
 ```python
 import torch
 
-
 def flash_attention2_forward(Q, K, V, B_r, B_c, *, causal=False, softmax_scale=1.0):
-    """Exact O = softmax(softmax_scale * Q K^T) V, tiled with O(N) extra memory."""
     N, d = Q.shape
     O = torch.empty_like(Q)
     L = torch.empty(N, dtype=torch.float32, device=Q.device)
@@ -32,15 +30,12 @@ def flash_attention2_forward(Q, K, V, B_r, B_c, *, causal=False, softmax_scale=1
             c0, c1 = j * B_c, min((j + 1) * B_c, N)
             if causal and c0 >= r1:
                 continue
-
             k = K[c0:c1]
             v = V[c0:c1]
             S = (q @ k.T).float() * softmax_scale
-
             if causal and c1 > r0:
                 cols = torch.arange(c0, c1, device=Q.device)
                 S = S.masked_fill(cols[None, :] > rows[:, None], -float("inf"))
-
             m_new = torch.maximum(m, S.max(dim=1).values)
             P_tilde = torch.exp(S - m_new[:, None])
             alpha = torch.exp(m - m_new)
@@ -50,12 +45,9 @@ def flash_attention2_forward(Q, K, V, B_r, B_c, *, causal=False, softmax_scale=1
 
         O[r0:r1] = (acc / ell[:, None]).to(O.dtype)
         L[r0:r1] = m + torch.log(ell)
-
     return O, L
 
-
 def flash_attention2_backward(Q, K, V, O, dO, L, B_r, B_c, *, causal=False, softmax_scale=1.0):
-    """Backward pass recomputing tiled probabilities from L."""
     N, d = Q.shape
     dQ = torch.zeros_like(Q)
     dK = torch.zeros_like(K)
@@ -71,29 +63,23 @@ def flash_attention2_backward(Q, K, V, O, dO, L, B_r, B_c, *, causal=False, soft
         v = V[c0:c1]
         dK_j = torch.zeros_like(k, dtype=torch.float32)
         dV_j = torch.zeros_like(v, dtype=torch.float32)
-
         for i in range(T_r):
             r0, r1 = i * B_r, min((i + 1) * B_r, N)
             if causal and c0 >= r1:
                 continue
-
             q = Q[r0:r1]
             rows = torch.arange(r0, r1, device=Q.device)
             S = (q @ k.T).float() * softmax_scale
             if causal and c1 > r0:
                 S = S.masked_fill(cols[None, :] > rows[:, None], -float("inf"))
-
             P = torch.exp(S - L[r0:r1, None])
             dO_i = dO[r0:r1].float()
             dV_j += P.T @ dO_i
             dP = dO_i @ v.float().T
             dS = P * (dP - D[r0:r1, None])
-
             dQ[r0:r1] += (dS @ k.float() * softmax_scale).to(dQ.dtype)
             dK_j += dS.T @ q.float() * softmax_scale
-
         dK[c0:c1] = dK_j.to(dK.dtype)
         dV[c0:c1] = dV_j.to(dV.dtype)
-
     return dQ, dK, dV
 ```
