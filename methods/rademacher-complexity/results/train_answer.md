@@ -44,30 +44,16 @@ $$
 
 Finally, the penalty never loses the old theory. Restricting a binary class to the sample yields a finite set of sign patterns; the signed supremum becomes the maximum inner product between a random sign vector and that finite set; a finite-class maximal inequality bounds it by a square root of the logarithm of the number of realized dichotomies; and Sauer-style growth recovers the usual VC rate up to logarithmic factors for a class of VC dimension \(d\), while being free to be smaller on an easier sample. The distinctive claim of the method is therefore not merely that a generalization bound exists, but that learnability is measured by how well a class can fit random labels on the observed points.
 
-The following Python snippet illustrates the definition for a simple one-dimensional threshold class. It fixes a sample, draws many random sign vectors, computes for each draw the largest absolute signed correlation over all thresholds, and averages the results to estimate the empirical Rademacher complexity. It then combines that estimate with an empirical risk and a confidence term to show the resulting binary classification risk bound.
+The finished result is not a script but a theorem pair, and it is the deliverable: the definition already given,
 
-```python
-import numpy as np
+$$
+\widehat R_n(\mathcal F)=E_\sigma\left[\sup_{f\in\mathcal F}\left|\frac{2}{n}\sum_{i=1}^n\sigma_i f(X_i)\right|\;\middle|\;X_1,\ldots,X_n\right],\qquad R_n(\mathcal F)=E\,\widehat R_n(\mathcal F),
+$$
 
-np.random.seed(0)
-n = 100
-X = np.random.randn(n)
-#: One-dimensional threshold class: f_a(x) = sign(x - a)
-thresholds = np.linspace(-3.0, 3.0, 1001)
-F = np.sign(X[:, None] - thresholds[None, :])   # shape (n, num_thresholds)
+together with the guarantee that, for a bounded loss \(L\) dominated by a cost \(\phi\) and the centered composed class \(\widetilde\phi\circ\mathcal F\), with probability at least \(1-\delta\) every \(f\in\mathcal F\) satisfies
 
-num_draws = 5000
-sigma = np.random.choice([-1, 1], size=(n, num_draws))
-signed_sums = (2.0 / n) * (sigma.T @ F)          # shape (num_draws, num_thresholds)
-per_draw_sup = np.abs(signed_sums).max(axis=1)
-R_hat = per_draw_sup.mean()
+$$
+E\,L(Y,f(X))\le\widehat E_n\,\phi(Y,f(X))+R_n(\widetilde\phi\circ\mathcal F)+\sqrt{\frac{8\ln(2/\delta)}{n}},
+$$
 
-emp_risk = 0.10
-delta = 0.05
-risk_bound = emp_risk + R_hat / 2 + np.sqrt(np.log(1.0 / delta) / (2 * n))
-
-print(f"Empirical Rademacher complexity estimate: {R_hat:.4f}")
-print(f"Binary classification risk bound:         {risk_bound:.4f}")
-```
-
-The canonical method name is Rademacher complexity. Its core artifact is a data-dependent generalization penalty: a function class is complex exactly to the extent that it can fit independent random signs on the actual sample. There is no separate canonical software implementation, because the penalty is estimated by repeated sign draws and optimization of the signed correlation over the class, but the definition, the symmetrization argument, the concentration step, and the composition rules together form the complete method.
+which specializes to \(\widehat P_n(Y\ne f(X))+R_n(\mathcal F)/2+\sqrt{\ln(1/\delta)/(2n)}\) for classification and to \(\widehat E_n\,\phi(Yf(X))+2L\,R_n(\mathcal F)+\sqrt{\ln(2/\delta)/(2n)}\) for margin losses, and is made computable by the composition calculus proved alongside it: monotonicity and homogeneity in the class, invariance under convex hull, subadditivity over sums, the contraction \(R_n(\phi\circ\mathcal F)\le2L\,R_n(\mathcal F)\) for Lipschitz \(\phi\), and the kernel bound \(\widehat R_n(\mathcal F)\le\frac{2B}{n}\bigl(\sum_i k(X_i,X_i)\bigr)^{1/2}\). The canonical method name is Rademacher complexity. There is no separate canonical software implementation to hand over, because the penalty is evaluated on any concrete class not by a fixed subroutine but by drawing signs and solving the correlation supremum \(\sup_{f\in\mathcal F}\bigl|\frac2n\sum_i\sigma_if(X_i)\bigr|\) directly on that class; the definition, the symmetrization argument, the concentration step, and the composition rules above are, together, the complete method.
