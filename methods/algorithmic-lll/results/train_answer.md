@@ -12,6 +12,7 @@ For k-SAT the specialization is immediate. Each bad event is a clause being fals
 import random
 
 def is_clause_violated(clause, assignment):
+    # clause: list of (var, sign) literals; satisfied iff some literal is true
     for var, sign in clause:
         if assignment[var] == sign:
             return False
@@ -21,6 +22,7 @@ def violated_clauses(clauses, assignment):
     return [i for i, c in enumerate(clauses) if is_clause_violated(c, assignment)]
 
 def random_assignment(n_vars, rng):
+    # one fair coin per variable: a uniform point of the probability space
     return [rng.random() < 0.5 for _ in range(n_vars)]
 
 def search_good_assignment(clauses, n_vars, rng=None, max_resamples=None):
@@ -29,8 +31,9 @@ def search_good_assignment(clauses, n_vars, rng=None, max_resamples=None):
     resamples = 0
     bad = violated_clauses(clauses, assignment)
     while bad:
-        i = bad[0]
+        i = bad[0]  # any violated clause; the bound is selection-independent
         for var, _sign in clauses[i]:
+            # resample exactly vbl(A), leaving every other variable untouched
             assignment[var] = rng.random() < 0.5
         resamples += 1
         if max_resamples is not None and resamples > max_resamples:
