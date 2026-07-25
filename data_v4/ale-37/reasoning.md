@@ -279,7 +279,7 @@ static inline long long update_delta(const vector<int> &p, long long prev,
 
 int main() {
     double t0 = now_sec();
-    const double TIME_LIMIT = 1.7;  // wall-clock budget (s); see context.md
+    const double TIME_LIMIT = 1.7;  // wall-clock budget (s), just under the stated limit
 
     if (scanf("%d", &n) != 1) return 0;
     if (n <= 0) { printf("\n"); return 0; }

@@ -157,7 +157,7 @@ adversarial probes against `score.py` directly: (a) the correct merge of `abab` 
 `0`; (c) a stray symbol `X` not in the alphabet → `0`; (d) an empty line or a missing
 file → `0`. All four behaved exactly as the contract says, and the trivial
 concatenation `ababbaba` scored exactly `1000000`, confirming the baseline reference.
-That gave me confidence the floor is implemented the way `context.md` states it.
+That gave me confidence the floor is implemented the way the problem statement specifies.
 
 Then I ran the full 20-seed sweep. Every seed was feasible, and the solver's mean
 score was about `2,443,306` against the baseline's `1,000,000` — that is, the
