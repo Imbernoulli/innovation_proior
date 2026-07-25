@@ -48,26 +48,12 @@ def compute_gradients(loss, parameters):
 
     return {p: p.adjoint for p in parameters}
 
-def scalar_loss(parameters, example):
-    x, target = example
-    # Tiny two-layer network built from elementary Value operations.
-    w1, b1, w2, b2 = parameters
-    h = tanh(add(mul(w1, x), b1))
-    out = add(mul(w2, h), b2)
-    diff = add(out, mul(Value(-1.0), target))
-    return mul(diff, diff)  # squared error
-
 def train(parameters, data, learning_rate):
     for example in data:
         loss = scalar_loss(parameters, example)
         grads = compute_gradients(loss, parameters)
         for p in parameters:
             p.data -= learning_rate * grads[p]
-
-# Example usage:
-# params = [Value(0.1), Value(0.0), Value(0.1), Value(0.0)]
-# data = [(Value(2.0), Value(4.0)), (Value(3.0), Value(6.0))]
-# train(params, data, learning_rate=0.01)
 ```
 
 The key distinction of backpropagation is that it turns derivative computation into a local message-passing procedure over the executed computation graph rather than into a global symbolic formula or a sequence of numerical perturbations. It exploits the asymmetry that the loss is a single scalar: one reverse sweep gives the full gradient for all parameters, at the cost of storing the forward intermediate values that the backward pass needs. That organization is what makes gradient-based learning practical for deep and recurrent networks.
