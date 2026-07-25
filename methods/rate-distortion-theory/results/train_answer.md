@@ -12,59 +12,22 @@ The function R(D) has a clean shape. As the distortion budget grows, the feasibl
 
 The operational meaning is given by the rate–distortion theorem. The converse shows no code can beat R(D). For any code of block length n with 2^{nR} codewords and average distortion D, the chain nR >= H(X_hat^n) >= I(X^n; X_hat^n) = sum_i I(X_i; X_hat_i) >= sum_i R(D_i) >= n R(D) forces R >= R(D). The achievability shows R(D) can be approached. Draw 2^{nR} reconstruction words independently from the output marginal induced by the minimizing test channel; for any R > R(D), a typical source block is distortion-covered with probability tending to one, so some codebook attains distortion close to D. Channel coding is sphere packing; rate–distortion coding is sphere covering.
 
-The canonical closed-form examples confirm the theory. For a Gaussian source X ~ N(0, sigma^2) with squared error, R(D) = 1/2 log_2(sigma^2 / D) for 0 < D < sigma^2, R(0) = +infinity, and R(D) = 0 for D >= sigma^2. Equivalently D(R) = sigma^2 2^{-2R}, so each additional bit reduces squared error by a factor of four, about 6.02 dB per bit. For a binary source X ~ Bernoulli(p), p <= 1/2, with Hamming distortion, R(D) = H(p) - H(D) for 0 <= D <= p and zero thereafter; for p = 1/2 this curve is exactly the capacity of a binary symmetric channel with crossover D.
+The canonical closed-form examples confirm the theory. For a Gaussian source X ~ N(0, sigma^2) with squared error, R(D) = 1/2 log_2(sigma^2 / D) for 0 < D < sigma^2, R(0) = +infinity, and R(D) = 0 for D >= sigma^2. Equivalently D(R) = sigma^2 2^{-2R}, so each additional bit reduces squared error by a factor of four, about 6.02 dB per bit. One-bit scalar quantization of this same Gaussian source achieves only about 0.363 sigma^2, worse than the D = sigma^2/4 that R(D) permits at one bit per symbol; closing that gap needs coding over long blocks rather than quantizing symbol by symbol. For a binary source X ~ Bernoulli(p), p <= 1/2, with Hamming distortion, R(D) = H(p) - H(D) for 0 <= D <= p and zero thereafter; for p = 1/2 this curve is exactly the capacity of a binary symmetric channel with crossover D.
 
 For parallel independent Gaussian components, the optimal allocation of a total distortion budget is reverse water-filling: every active component receives the same distortion level theta, and components whose variance lies below theta are discarded. This follows by minimizing the sum of component rate–distortion functions subject to the total distortion constraint.
 
 Overall, rate–distortion theory replaces the single entropy number with a full curve that trades rate against distortion, supplies matching converse and achievability proofs, and yields concrete computations for the most important source–distortion pairs.
 
-```python
-import math
+The concrete deliverable is these two rate–distortion functions in closed form, stated exactly as they were derived: for the Gaussian source under squared error,
 
-
-def H2(p):
-    """Binary entropy in bits."""
-    if p <= 0.0 or p >= 1.0:
-        return 0.0
-    return -(p * math.log2(p) + (1 - p) * math.log2(1 - p))
-
-
-def binary_rate_distortion(D, p=0.3):
-    """Bernoulli(p) source with Hamming distortion."""
-    D_max = min(p, 1 - p)
-    if D >= D_max:
-        return 0.0
-    return H2(p) - H2(D)
-
-
-def gaussian_rate_distortion(D, sigma2=1.0):
-    """Gaussian source with squared-error distortion."""
-    if D >= sigma2:
-        return 0.0
-    if D <= 0.0:
-        return math.inf
-    return 0.5 * math.log2(sigma2 / D)
-
-
-if __name__ == "__main__":
-    p = 0.3
-    print(f"Binary source Bernoulli({p}), entropy H(p) = {H2(p):.4f} bits")
-    for D in (0.05, 0.10, 0.15):
-        R = binary_rate_distortion(D, p)
-        print(f"  D = {D:.2f}: R(D) = {R:.4f}")
-
-    print()
-    print("Gaussian source N(0,1) with squared error")
-    for D in (0.05, 0.10, 0.25):
-        R = gaussian_rate_distortion(D)
-        print(f"  D = {D:.2f}: R(D) = {R:.4f}")
-
-    # One-bit scalar quantizer distortion for N(0,1) is (pi-2)/pi.
-    scalar_one_bit = (math.pi - 2) / math.pi
-    theoretical_one_bit = gaussian_rate_distortion(0.25)
-    print()
-    print(f"1-bit scalar quantizer distortion: {scalar_one_bit:.4f}")
-    print(f"Theoretical distortion at R=1 bit: {0.25:.4f}")
-    print(f"Theoretical R at scalar distortion: "
-          f"{gaussian_rate_distortion(scalar_one_bit):.4f}")
 ```
+R(D) = ½ log₂(σ²/D),  0 < D < σ²;    R(0)=+∞;    R(D) = 0,  D ≥ σ².
+```
+
+and for the Bernoulli(p) source under Hamming distortion,
+
+```
+R(D) = H(p) − H(D),  0 ≤ D ≤ min(p,1−p);    R(D) = 0,  D ≥ min(p,1−p),
+```
+
+plug in the source variance or crossover probability together with the target distortion D and read off the minimum achievable rate; everything else in the theory exists to certify that no code can do better and that codes approaching this rate exist.

@@ -10,46 +10,14 @@ The same lens exposes what breaks in a nonrandomized study. There the observed c
 
 Writing only `y_j(E)` and `y_j(C)` also assumes a stable treatment description: `E` and `C` are well-defined conditions rather than bundles of hidden versions, and a unit's outcome under its treatment does not depend on which treatments other units receive. If there is interference across units or hidden treatment-version variation, the two-value table is too small, and the outcome must be indexed by the full assignment and version structure before the causal contrast is defined on that expanded table. With stability in hand, the discipline is to keep three jobs separate and in order: estimand, then assignment mechanism, then estimator. A difference in means, a blocked difference, a matched comparison, a regression coefficient, or a weight is causal only after the estimand has been defined and the assignment mechanism has justified which missing treatment-specific means are recoverable.
 
-The code below implements a small finite-population simulation of the core randomization identity. It fixes potential outcomes for each trial, repeatedly draws balanced treatment allocations, computes the observed treated-minus-control difference, and checks that the average of those observed differences converges to the true finite-study average treatment effect.
+There is no script to hand over here, because what the analysis has produced is not a computation but a protocol, and that protocol is precise enough to stand on its own as the deliverable. Fix a trial — a unit, a treatment-initiation time, and an outcome-measurement time — and attach to it the two treatment-specific outcomes $y_j(E)$ and $y_j(C)$. The unit-level causal effect is $\tau_j = y_j(E) - y_j(C)$, and for $M$ trials the finite-study estimand is
 
-```python
-import itertools
-import numpy as np
+$$T_M = \frac{1}{M}\sum_{j=1}^{M}\big[y_j(E) - y_j(C)\big],$$
 
+with superpopulation analogue $\tau = \mathbb{E}[y(E) - y(C)]$. For $2N$ trials with treatment set $S_E$ and control set $S_C$ of size $N$ each, the observed difference is $y_d = \frac{1}{N}\sum_{j \in S_E} y_j(E) - \frac{1}{N}\sum_{j \in S_C} y_j(C)$, and under balanced random assignment it satisfies the identity that licenses the whole framework:
 
-def simulate_rubin_causal_model(n_per_group=5, seed=0):
-    rng = np.random.default_rng(seed)
-    m = 2 * n_per_group
-    # Fix potential outcomes for every trial
-    y_E = rng.normal(5.0, 1.0, size=m)
-    y_C = rng.normal(4.0, 1.0, size=m)
-    true_ate = float(np.mean(y_E - y_C))
+$$\mathbb{E}_R[y_d] = \frac{1}{2N}\sum_{j=1}^{2N}\big[y_j(E) - y_j(C)\big] = T_{2N},$$
 
-    # Enumerate all balanced allocations if feasible, else Monte Carlo
-    indices = np.arange(m)
-    if m <= 12:
-        allocations = list(itertools.combinations(indices, n_per_group))
-    else:
-        allocations = [
-            tuple(rng.choice(indices, n_per_group, replace=False))
-            for _ in range(5000)
-        ]
+because every trial spends exactly half the balanced allocations in $S_E$, where it contributes $y_j(E)/(2N)$, and half in $S_C$, where it contributes $-y_j(C)/(2N)$. Absent that randomized mechanism, the observed contrast is instead $\mathbb{E}[y(E) \mid W=1] - \mathbb{E}[y(C) \mid W=0]$, which recovers the wanted $\mathbb{E}[y(E) - y(C)]$ only if the assignment mechanism has been separately argued to be as-if-random, typically by showing the important prior variables have been controlled by design, matching, or a prespecified adjustment.
 
-    observed_diffs = []
-    for treated in allocations:
-        treated = set(treated)
-        control = [j for j in indices if j not in treated]
-        yd = float(np.mean(y_E[list(treated)]) - np.mean(y_C[control]))
-        observed_diffs.append(yd)
-
-    mean_observed = float(np.mean(observed_diffs))
-    return true_ate, mean_observed, len(observed_diffs)
-
-
-true_ate, mean_observed, n_allocations = simulate_rubin_causal_model()
-print(f"True finite-study ATE: {true_ate:.6f}")
-print(f"Mean observed diff over randomization set: {mean_observed:.6f}")
-print(f"Number of allocations: {n_allocations}")
-```
-
-Running this script shows that the average of the observed treated-minus-control differences across the randomization set equals, up to Monte Carlo or enumeration error, the finite-population average of `y_j(E) - y_j(C)`. The exercise makes the normalization concrete: each trial contributes its contrast weighted by `1/(2N)` once the averaging over allocations is performed, which is why the simple difference in group means is unbiased under balanced randomization even though the realized difference is not identical to the estimand.
+The protocol that follows from this is the actual artifact. State the unit, the two treatment conditions, and the timing before anything else. Define the treatment-specific outcomes and, from them, the estimand — $T_M$ or $\tau$. State the assignment mechanism explicitly and as a substantive claim: balanced randomization, randomization within matched blocks, or a nonrandomized design defended by controlling the important prior variables. Use that stated mechanism, and only that mechanism, to determine which of the missing treatment-specific means the identity above licenses as recoverable from what was observed. Only then choose an estimator — a difference in means, a blocked difference, a matched comparison, a regression coefficient, or a weighting rule — because no estimator is entitled to carry causal meaning until the estimand and the assignment argument that licenses it have already been fixed.
