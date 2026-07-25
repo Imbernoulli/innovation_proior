@@ -38,37 +38,12 @@ X = φ R ≈ 1.618 R.
 
 This result has several quick consistency checks. With R = 1, the self-consistency equation becomes X^2 = X + 1, which is precisely the defining identity of the golden ratio, φ^2 = φ + 1. Substituting X = φ back into the original equation with R = 1 gives φ = 1 + φ/(1 + φ). Since 1 + φ = φ^2, the fraction simplifies to φ/φ^2 = 1/φ = φ - 1, so the right-hand side is 1 + (φ - 1) = φ, confirming the equation holds. Another check comes from the finite-truncation reduction map g(Y) = R + R Y/(R + Y). For any nonnegative termination, one application lands the value in the interval [R, 2R), and on that interval the derivative satisfies |g'(Y)| = R^2/(R + Y)^2 ≤ 1/4. Therefore the map is a contraction, and every finite truncation converges to the same fixed point regardless of its termination. That fixed point is exactly the X we found, so the semi-infinite limit is well defined and equal to φ R.
 
-The Python code below verifies the result numerically. It defines the finite-ladder reduction map, iterates it from a few different terminations, and compares the limit with the closed-form golden-ratio expression.
+The whole argument compresses to a single closed statement of the result, which is the actual deliverable of this method: for a semi-infinite ladder built from a repeating series-then-shunt cell of identical resistors $R$, the input resistance $X$ is the unique positive root of the self-similarity equation
 
-```python
-import math
+$$X = R + \frac{R\,X}{R+X},$$
 
-def reduce_ladder(Y, R=1.0):
-    """One-cell reduction: series R in front of parallel(R, Y)."""
-    return R + (R * Y) / (R + Y)
+equivalently the positive root of the quadratic $X^2 - R\,X - R^2 = 0$, namely
 
-def finite_ladder_input(n, termination, R=1.0):
-    """Fold in n cells from the right with the given termination."""
-    Y = termination
-    for _ in range(n):
-        Y = reduce_ladder(Y, R)
-    return Y
+$$\boxed{X = \frac{1+\sqrt5}{2}\,R = \varphi\,R \approx 1.618\,R,}$$
 
-R = 1.0
-phi = (1.0 + math.sqrt(5.0)) / 2.0
-closed_form = phi * R
-
-print(f"Closed-form input resistance: {closed_form:.12f} * R")
-print("Finite-ladder convergence from several terminations:")
-for termination in [0.0, 1.0, 100.0]:
-    approx = finite_ladder_input(30, termination, R)
-    print(f"  termination={termination:>6}: X_30 = {approx:.12f}, error = {abs(approx - closed_form):.2e}")
-
-# Direct self-consistency check.
-X = closed_form
-self_consistent = R + (R * X) / (R + X)
-print(f"Self-consistency X = R + R*X/(R+X): {self_consistent:.12f}")
-assert math.isclose(self_consistent, closed_form, rel_tol=1e-12)
-```
-
-In summary, the Kalda infinite ladder technique replaces the awkward limit of finite ladders with a single self-similarity argument. The infinite ladder equals one cell followed by a copy of itself, so its input resistance satisfies a quadratic equation whose physically admissible root is the golden ratio times the unit resistance. The finite-truncation map converges to that same value from every nonnegative termination, confirming that the semi-infinite answer is both unique and robust.
+where $\varphi = (1+\sqrt5)/2$ is the golden ratio. This is the complete answer: no truncation, no numerical iteration, and no arbitrary termination enter the final statement, because the derivation never used one — it used only the fact that the ladder, having no end, is identical to itself after one cell. The negative root $R(1-\sqrt5)/2$ is excluded on physical grounds alone, since a passive network of positive resistors cannot present a negative driving-point resistance. And the fixed-truncation map $g(Y) = R + RY/(R+Y)$ that any brute finite-ladder calculation would iterate is a contraction on the physically relevant range, with $|g'(Y)| \le 1/4$ there, so every such calculation converges to this same $\varphi R$ regardless of how the ladder is terminated — the self-similarity argument does not just guess the limit of the finite-truncation approach, it reproduces it exactly and explains why the termination is forgotten.
