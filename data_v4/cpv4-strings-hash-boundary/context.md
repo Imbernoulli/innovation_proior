@@ -1,4 +1,4 @@
-# Smallest period of a queried substring (hash the inclusive window)
+# Smallest period of a queried substring
 
 ## Research question
 
@@ -19,8 +19,7 @@ period always exists. For example the smallest period of `abcabcab` is `3`, of `
 `aab` is `3` (no shorter `p` works).
 
 This is the kind of substring-comparison query that string-search, periodicity, and compression code
-is built on, and it lives or dies on getting the **inclusive/exclusive boundaries** of the hash
-exactly right.
+is built on.
 
 ## Input / output contract
 
@@ -34,32 +33,11 @@ exactly right.
 Example: for `s = abcabcab` and the four queries `(1,8), (1,6), (2,5), (4,4)` the answers are
 `3, 3, 3, 1`.
 
-## Background
-
-The substrings are given as **inclusive** 1-indexed ranges, but a polynomial prefix-hash table is
-naturally **exclusive** on its upper index (`H[i]` covers the first `i` characters). Bridging those
-two conventions is where off-by-one errors breed: converting `(l, r)` to internal 0-indexed bounds,
-extracting the hash of an inclusive window, and — the sharp part — forming the two equal-length
-windows whose equality decides whether `p` is a period.
-
-Two approaches are on the table before committing:
-
-- **Direct character comparison.** For each query, test `p = 1, 2, ...` and for each `p` compare the
-  prefix and suffix character by character, stopping at the first valid `p`. Correct and obvious, but
-  a single period test is `O(len)`, so a query is `O(len^2)` and the whole thing is far too slow at
-  the stated limits — useful only as a reference oracle.
-- **Polynomial hashing with prefix tables.** Precompute prefix hashes so the hash of any inclusive
-  window `s[a..b]` is `O(1)`, then each period test `p` becomes one `O(1)` hash equality, and a query
-  scans `p = 1, 2, ...` until the first hit. The open questions are the exact extraction formula and,
-  above all, the **boundaries** of the two windows being compared.
-
 ## Evaluation settings
 
-Judged on hidden tests covering: single-character strings and `len = 1` queries (answer `1`); highly
-periodic strings like `(ab)^k` and `a^k` (small periods, deep prefix/suffix overlaps); aperiodic
-strings where the answer is `len`; queries whose left end is not `1` (so the index conversion
-matters); and full-size `|s| = q = 5000` with full-length queries (so an `O(len^2)` per query
-solution times out and a wrong boundary on the window flips an answer).
+Judged on hidden tests covering: single-character strings and `len = 1` queries; highly
+periodic strings like `(ab)^k` and `a^k`; aperiodic strings; queries whose left end is not `1`;
+and full-size `|s| = q = 5000` with full-length queries.
 
 ## Code framework
 
@@ -78,8 +56,7 @@ int main() {
     int q;
     if (!(cin >> q)) return 0;
 
-    // TODO: build prefix hashes; for each query (l, r) find the smallest period p of s[l..r]
-    //       by testing, for p = 1, 2, ..., whether the length-(len-p) prefix and suffix are equal.
+    // TODO: for each query (l, r), find the smallest period p (1 <= p <= len) of s[l..r].
 
     return 0;
 }
