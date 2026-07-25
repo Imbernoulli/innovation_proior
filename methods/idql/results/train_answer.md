@@ -33,7 +33,7 @@ class ResidualBlock(nn.Module):
 
 
 class IDQLMlp(BaseNNDiffusion):
-    """Epsilon-prediction score network for the behavior model mu_phi(a|s)."""
+    """Epsilon-prediction score network for mu_phi(a|s): high capacity + LayerNorm."""
     def __init__(self, obs_dim, act_dim, emb_dim=64, hidden_dim=256, n_blocks=3, dropout=0.1,
                  timestep_emb_type="positional", timestep_emb_params: Optional[dict] = None):
         super().__init__(emb_dim, timestep_emb_type, timestep_emb_params)
@@ -47,7 +47,7 @@ class IDQLMlp(BaseNNDiffusion):
     def forward(self, x, noise, condition):
         if condition is None:
             condition = torch.zeros(x.shape[0], self.obs_dim, device=x.device)
-        t = self.time_mlp(self.map_noise(noise))
+        t = self.time_mlp(self.map_noise(noise))      # positional timestep embedding
         x = torch.cat([x, t, condition], -1)
         return self.affine_out(self.ln_resnet(self.affine_in(x)))
 
@@ -83,6 +83,9 @@ class V(nn.Module):
 
 
 def train(actor, dataloader, obs_dim, act_dim, args):
+    # actor: a CleanDiffuser DiscreteDiffusionSDE wrapping IDQLMlp.
+    #        .update(act, obs) takes one mean-squared epsilon-prediction BC step.
+    #        .sample(...) returns (actions, log).
     q_net  = TwinQ(obs_dim, act_dim, args.critic_hidden_dim).to(args.device)
     q_targ = deepcopy(q_net).requires_grad_(False).eval()
     v_net  = V(obs_dim, args.critic_hidden_dim).to(args.device)
@@ -94,13 +97,11 @@ def train(actor, dataloader, obs_dim, act_dim, args):
 
     n_step = 0
     for batch in dataloader:
-        obs = batch["obs"]["state"].to(args.device)
-        next_obs = batch["next_obs"]["state"].to(args.device)
-        act = batch["act"].to(args.device)
-        rew = batch["rew"].to(args.device)
-        tml = batch["tml"].to(args.device)
+        obs, next_obs = batch["obs"]["state"].to(args.device), batch["next_obs"]["state"].to(args.device)
+        act, rew, tml = (batch["act"].to(args.device), batch["rew"].to(args.device),
+                         batch["tml"].to(args.device))
 
-        if n_step % 2 == 0:
+        if n_step % 2 == 0:                                    # in-sample IQL critic
             q = q_targ(obs, act)
             v = v_net(obs)
             u = q - v
@@ -117,7 +118,7 @@ def train(actor, dataloader, obs_dim, act_dim, args):
             for p, pt in zip(q_net.parameters(), q_targ.parameters()):
                 pt.data.copy_(0.995 * p.data + 0.005 * pt.data)
 
-        actor.update(act, obs)  # weight-free diffusion behavior cloning
+        actor.update(act, obs)                                 # weight-free diffusion BC
         actor_lr_scheduler.step()
         n_step += 1
         if n_step >= args.gradient_steps:
@@ -137,9 +138,10 @@ def select_action(actor, q_targ, v_net, obs, obs_dim, act_dim, args):
     q = q_targ(obs_rep, act)
     v = v_net(obs_rep)
     adv = (q - v).view(-1, args.num_candidates, 1)
-    w = torch.softmax(adv * args.weight_temperature, dim=1)
+    w = torch.softmax(adv * args.weight_temperature, dim=1)    # practical advantage reweight
     act = act.view(-1, args.num_candidates, act_dim)
     p = (w / w.sum(1, keepdim=True)).squeeze(-1)
     idx = torch.multinomial(p, 1).squeeze(-1)
     return act[torch.arange(act.shape[0]), idx].cpu().numpy()
+    # greedy variant: idx = q.view(-1, args.num_candidates).argmax(1)
 ```
