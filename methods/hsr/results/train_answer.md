@@ -13,6 +13,7 @@ import torch.nn.functional as F
 
 
 class MLP(nn.Module):
+    """Linear -> LayerNorm -> Dropout -> ReLU blocks, then a linear output."""
     def __init__(self, in_dim, out_dim, hidden_dim=512, layers=1, dropout=0.0):
         super().__init__()
         self.blocks = nn.ModuleList()
@@ -32,7 +33,7 @@ class MLP(nn.Module):
 
 
 class HeteroskedasticRegression(nn.Module):
-    """Two MLPs: one predicts the per-dimension mean, the other the log-precision."""
+    """Two MLPs: per-dimension mean mu(x) and log-precision ln(1/sigma^2)."""
 
     def __init__(self, input_dim, output_dim, hidden_dim=512, layers=1, dropout=0.0):
         super().__init__()
@@ -43,26 +44,31 @@ class HeteroskedasticRegression(nn.Module):
         return self.mean(x), self.logprec(x)
 
     def predict_mean(self, x):
+        # point inference: the value NMSE/R2/RMSE metrics score
         mu, _ = self(x)
         return mu
 
-    def predict_distribution(self, x):
+    def predict(self, x):
+        # mean and predictive std, for error bars / calibration
         mu, logprec = self(x)
-        std = torch.exp(-0.5 * logprec)
+        std = torch.exp(-0.5 * logprec)                              # sigma = exp(logprec)^(-1/2)
         return mu, std
 
 
 def gaussian_nll(mu, logprec, target):
-    # Twice the per-element negative log-likelihood, dropping the constant ln(2pi):
-    # (target - mu)^2 / sigma^2 + ln(sigma^2) = (target - mu)^2 * exp(logprec) - logprec
-    return (torch.exp(logprec) * (target - mu) ** 2 - logprec).mean()
+    # twice the per-element NLL, with ln 2pi dropped:
+    #   (d - mu)^2 / sigma^2 + ln sigma^2  =  (d - mu)^2 * exp(logprec) - logprec
+    prec = torch.exp(logprec)                                        # tau = 1/sigma^2
+    return (prec * (target - mu) ** 2 - logprec).mean()
 
 
 def training_loss(model, x, y, epoch, total_epochs):
     mu, logprec = model(x)
     if epoch < total_epochs / 3:
-        # Warm up the mean with plain squared error before the precision can reweight learning.
+        # Phase-I warmup: mean only, plain squared error -- the 1/sigma^2
+        # weighting must not reshape learning while mu is still bad.
         return ((y - mu) ** 2).mean()
+    # scaled heteroskedastic objective: mean and precision co-adapt
     loss = gaussian_nll(mu, logprec, y)
-    return torch.clamp(loss, min=-1e5, max=1e5)
+    return torch.clamp(loss, min=-1e5, max=1e5)                      # coarse runaway guard
 ```
