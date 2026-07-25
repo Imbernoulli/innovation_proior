@@ -20,8 +20,8 @@ def get_schedule(betas):
         "betas": betas,
         "alphas_cumprod": alphas_cumprod,
         "alphas_cumprod_prev": alphas_cumprod_prev,
-        "sqrt_alpha": alphas_cumprod.sqrt(),
-        "sqrt_one_minus_alpha": (1.0 - alphas_cumprod).sqrt(),
+        "sqrt_alpha": alphas_cumprod.sqrt(),                    # sqrt(alpha_bar_t)
+        "sqrt_one_minus_alpha": (1.0 - alphas_cumprod).sqrt(),  # sqrt(1 - alpha_bar_t)
         "posterior_variance": posterior_variance,
         "posterior_mean_coef1": betas * alphas_cumprod_prev.sqrt() / (1.0 - alphas_cumprod),
         "posterior_mean_coef2": (1.0 - alphas_cumprod_prev) * alphas.sqrt() / (1.0 - alphas_cumprod),
@@ -35,41 +35,44 @@ def q_sample(x_0, noise, t, schedule):
     return sa * x_0 + soma * noise
 
 
+# --- the epsilon parameterization: a matched (target, inverse) pair ---
+
 def compute_training_target(x_0, noise, timesteps, schedule):
-    # Epsilon prediction: model learns to predict the added noise.
+    # Epsilon prediction: the model learns to predict the added noise.
     # Target is N(0, I) at every timestep -> well-conditioned, unweighted MSE.
     return noise
 
 
 def predict_x0(model_output, x_t, timesteps, schedule):
-    # Recover x_0 from the predicted noise:
-    # x_t = sqrt(abar) x_0 + sqrt(1-abar) eps  =>  x_0 = (x_t - sqrt(1-abar) eps) / sqrt(abar)
+    # Recover x_0 from the predicted noise by inverting the corruption equation:
+    #   x_t = sqrt(abar) x_0 + sqrt(1-abar) eps  =>  x_0 = (x_t - sqrt(1-abar) eps) / sqrt(abar)
     sqrt_alpha = schedule["sqrt_alpha"][timesteps].view(-1, 1, 1, 1)
     sqrt_one_minus_alpha = schedule["sqrt_one_minus_alpha"][timesteps].view(-1, 1, 1, 1)
     return (x_t - sqrt_one_minus_alpha * model_output) / sqrt_alpha.clamp(min=1e-8)
 
 
 def q_posterior_mean(x_start, x_t, t, schedule):
-    """Mean of q(x_{t-1} | x_t, x_0)."""
+    """Mean of q(x_{t-1} | x_t, x_0), matching the canonical sampler structure."""
     coef1 = schedule["posterior_mean_coef1"][t].view(-1, 1, 1, 1)
     coef2 = schedule["posterior_mean_coef2"][t].view(-1, 1, 1, 1)
     return coef1 * x_start + coef2 * x_t
 
 
+# --- training: L_simple = E || eps - eps_theta(x_t, t) ||^2 ---
+
 def train_step(model, x_0, schedule, T):
-    """Training: L_simple = E || eps - eps_theta(x_t, t) ||^2."""
     B = x_0.shape[0]
-    t = torch.randint(0, T, (B,), device=x_0.device)
-    noise = torch.randn_like(x_0)
-    x_t = q_sample(x_0, noise, t, schedule)
-    target = compute_training_target(x_0, noise, t, schedule)
-    pred = model(x_t, t)
-    return ((pred - target) ** 2).mean()
+    t = torch.randint(0, T, (B,), device=x_0.device)            # t ~ Uniform{0,...,T-1}
+    noise = torch.randn_like(x_0)                               # eps ~ N(0, I)
+    x_t = q_sample(x_0, noise, t, schedule)                     # corrupt to level t
+    target = compute_training_target(x_0, noise, t, schedule)   # = eps
+    pred = model(x_t, t)                                        # time-conditioned U-Net
+    return ((pred - target) ** 2).mean()                       # unweighted MSE
 
 
 @torch.no_grad()
 def p_sample_step(model, x_t, t, schedule, sigma_t, add_noise=True):
-    """One reverse step x_t -> x_{t-1}."""
+    """One reverse step x_t -> x_{t-1}, via epsilon -> x_0 -> posterior mean."""
     eps_theta = model(x_t, t)
     x0_hat = predict_x0(eps_theta, x_t, t, schedule).clamp(-1.0, 1.0)
     mean = q_posterior_mean(x0_hat, x_t, t, schedule)
