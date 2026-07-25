@@ -10,39 +10,19 @@ A full-matrix variant replaces the diagonal accumulator with the matrix square r
 import numpy as np
 
 class AdaGrad:
-    """Diagonal AdaGrad: per-coordinate adaptive subgradient method.
-
-    Maintains the running sum of squared gradients per coordinate and
-    updates each coordinate by eta / sqrt(accumulated squared gradient).
-    """
+    """Per-coordinate adaptive subgradient method:
+    step = eta / sqrt(accumulated sum of squared gradients)."""
 
     def __init__(self, d, eta=1.0, eps=1e-10):
-        self.eta = eta
-        self.eps = eps
-        self.state_sum = np.zeros(d)  # accumulator of squared gradients
+        self.eta = eta            # set from the diameter; not coupled to gradient scale
+        self.eps = eps            # denominator floor before a coordinate fires
+        self.state_sum = np.zeros(d)
 
     def step(self, x, g):
         self.state_sum += g * g
         return x - self.eta * g / (np.sqrt(self.state_sum) + self.eps)
 
-
-def project(x, lower=-1.0, upper=1.0):
-    """Project x onto an L-infinity box [lower, upper]^d."""
-    return np.clip(x, lower, upper)
-
-
-def online_learn(stream, d, eta=1.0):
-    """Run diagonal AdaGrad on a stream of loss objects exposing .subgradient(x).
-
-    stream: iterable of loss objects with method subgradient(x) -> np.ndarray
-    d: dimension of the weight vector
-    eta: global step size, set from the diameter of the feasible set
-    """
-    x = np.zeros(d)
-    opt = AdaGrad(d, eta=eta)
-    for loss in stream:
-        g = loss.subgradient(x)
-        x = opt.step(x, g)
-        x = project(x)
-    return x
+# Sparse / dense gradient streams both work; for sparse g only the touched
+# coordinates' accumulators and weights are updated, keeping per-step cost
+# proportional to the support of g_t.
 ```
