@@ -18,8 +18,8 @@ from causallearn.utils.GESUtils import (
     insert_changed_score_fast, delete_changed_score_fast,
     insert, delete, score_g,
 )
-from causallearn.utils.PDAG2DAG import pdag2dag
-from causallearn.utils.DAG2CPDAG import dag2cpdag
+from causallearn.utils.PDAG2DAG import pdag2dag        # Dor-Tarsi consistent extension (PDAG -> DAG)
+from causallearn.utils.DAG2CPDAG import dag2cpdag      # compelled/reversible labeling (DAG -> CPDAG)
 from causallearn.score.LocalScoreFunctionClass import LocalScoreClass
 from causallearn.score.LocalScoreFunction import local_score_BDeu
 
@@ -30,15 +30,17 @@ def run_causal_discovery(X: np.ndarray) -> GeneralGraph:
     N = X.shape[1]
     maxP = N
 
+    # decomposable, score-equivalent BDeu family score s(X_i, Pa_i)
     score_func = LocalScoreClass(data=X, local_score_fun=local_score_BDeu, parameters=None)
     parameters = None
 
     nodes = [GraphNode("X%d" % (i + 1)) for i in range(N)]
-    G = GeneralGraph(nodes)
+    G = GeneralGraph(nodes)                       # empty graph (all independencies)
     score = score_g(X, G, score_func, parameters)
-    G = dag2cpdag(pdag2dag(G))
-    cache = {}
+    G = dag2cpdag(pdag2dag(G))                     # completed PDAG of the current class
+    cache = {}                                     # (node, sorted parents) -> family score
 
+    # ---------------- Phase 1: forward, Insert(i, j, T) ----------------
     while True:
         best_gain, best = -np.inf, None
         nbrs, adj, pa, semi = precompute_graph_info(G, N)
@@ -49,17 +51,17 @@ def run_causal_discovery(X: np.ndarray) -> GeneralGraph:
                     and G.graph[j, i] == 0
                     and i != j
                     and len(pa[j]) <= maxP
-                ):
-                    NA = nbrs[j] & adj[i]
-                    subsets = Combinatorial(sorted(nbrs[j] - adj[i]))
-                    flag = np.zeros(len(subsets))
+                ):                                       # i, j non-adjacent
+                    NA = nbrs[j] & adj[i]                  # NA_{Y,X}
+                    subsets = Combinatorial(sorted(nbrs[j] - adj[i]))      # tails not adjacent to i
+                    flag = np.zeros(len(subsets))          # prune supersets of a non-clique
                     for k in range(len(subsets)):
                         if flag[k] >= 2:
                             continue
                         T = set(subsets[k])
-                        if check_clique_fast(G, NA | T):
+                        if check_clique_fast(G, NA | T):                   # cond 1: NA ∪ T clique
                             if flag[k] == 0:
-                                valid_path = insert_vc2_fast(j, i, NA | T, semi)
+                                valid_path = insert_vc2_fast(j, i, NA | T, semi)  # cond 2: semi-path
                             else:
                                 valid_path = 1
                             if valid_path:
@@ -72,35 +74,38 @@ def run_causal_discovery(X: np.ndarray) -> GeneralGraph:
                             flag[np.where(find_subset_include(subsets[k], subsets) == 1)] = 2
         if best is None or best_gain <= 0:
             break
-        G = insert(G, best[0], best[1], best[2])
-        G = dag2cpdag(pdag2dag(G))
+        G = insert(G, best[0], best[1], best[2])           # add i->j, orient each T as T->j
+        G = dag2cpdag(pdag2dag(G))                          # reconvert (only on a move)
         score += best_gain
 
+    # ---------------- Phase 2: backward, Delete(i, j, H) ----------------
     while True:
         best_gain, best = -np.inf, None
         nbrs, adj, pa, semi = precompute_graph_info(G, N)
         for i in range(N):
             for j in range(N):
-                if (j in nbrs[i]) or (i in pa[j]):
-                    NA = nbrs[j] & adj[i]
-                    subsets = Combinatorial(sorted(NA))
-                    ok = np.ones(len(subsets))
+                if (j in nbrs[i]) or (i in pa[j]):         # i - j  or  i -> j
+                    NA = nbrs[j] & adj[i]                   # NA_{Y,X}
+                    subsets = Combinatorial(sorted(NA))     # heads H ⊆ NA
+                    ok = np.ones(len(subsets))              # prune supersets of a clique-pass
                     for k in range(len(subsets)):
                         H = set(subsets[k])
                         if ok[k] == 1:
-                            if check_clique_fast(G, NA - H):
+                            if check_clique_fast(G, NA - H):              # validity: NA \ H clique
                                 ok[np.where(find_subset_include(subsets[k], subsets) == 1)] = 2
                             else:
                                 continue
+                        # The helper forms P_old=(NA\H)∪Pa∪{i}, then subtracts i:
+                        # s(j, P_old\{i}) - s(j, P_old).
                         gain, desc, cache = delete_changed_score_fast(
                             X, i, j, subsets[k], NA, pa[j], cache, score_func, parameters)
                         if gain > best_gain:
                             best_gain, best = gain, desc
         if best is None or best_gain <= 0:
             break
-        G = delete(G, best[0], best[1], best[2])
+        G = delete(G, best[0], best[1], best[2])            # drop i-j, orient each H as a new head
         G = dag2cpdag(pdag2dag(G))
         score += best_gain
 
-    return G
+    return G                                                # completed PDAG = estimated CPDAG
 ```
