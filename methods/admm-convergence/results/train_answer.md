@@ -9,61 +9,28 @@ A practical stopping rule checks the two residuals against mixed absolute-relati
 ```python
 import numpy as np
 
-
 def admm(prox_f, prox_g, A, B, c, rho,
          x0, z0, y0, eps_abs=1e-6, eps_rel=1e-4, max_iter=10000):
     """
-    minimize f(x) + g(z) subject to A x + B z = c.
-    prox_f(z, y): argmin_x f(x) + (rho/2)*||A x + B z - c + y/rho||^2
-    prox_g(x, y): argmin_z g(z) + (rho/2)*||A x + B z - c + y/rho||^2
+    minimize f(x) + g(z)  s.t.  A x + B z = c,   for any rho > 0.
+    prox_f(z, y): argmin_x  f(x) + (rho/2)|| A x + B z - c + y/rho ||^2
+    prox_g(x, y): argmin_z  g(z) + (rho/2)|| A x + B z - c + y/rho ||^2
+    Freezing one block makes the penalty's cross term constant, so each solve is single-block.
     """
-    x = np.array(x0, dtype=float)
-    z = np.array(z0, dtype=float)
-    y = np.array(y0, dtype=float)
+    x, z, y = np.array(x0, float), np.array(z0, float), np.array(y0, float)
     p, n = c.size, x.size
-    for _ in range(max_iter):
-        z_prev = z.copy()
-        x = prox_f(z, y)
-        z = prox_g(x, y)
-        r = A @ x + B @ z - c
-        y = y + rho * r
-        s = rho * (A.T @ (B @ (z - z_prev)))
-        eps_pri = np.sqrt(p) * eps_abs + eps_rel * max(
-            np.linalg.norm(A @ x), np.linalg.norm(B @ z), np.linalg.norm(c))
+    for k in range(max_iter):
+        z_prev = z
+        x = prox_f(z, y)                      # x-minimization (block 1)
+        z = prox_g(x, y)                      # z-minimization (block 2)
+        r = A @ x + B @ z - c                 # primal residual
+        y = y + rho * r                       # dual ascent, step = rho
+        s = rho * (A.T @ (B @ (z - z_prev)))  # dual residual rho A^T B (z^{k+1}-z^k)
+        eps_pri  = np.sqrt(p) * eps_abs + eps_rel * max(np.linalg.norm(A @ x),
+                                                        np.linalg.norm(B @ z),
+                                                        np.linalg.norm(c))
         eps_dual = np.sqrt(n) * eps_abs + eps_rel * np.linalg.norm(A.T @ y)
         if np.linalg.norm(r) <= eps_pri and np.linalg.norm(s) <= eps_dual:
             break
     return x, z, y
-
-
-# Example: Lasso  min 0.5*||C x - b||^2 + lam*||x||_1  via  x - z = 0.
-if __name__ == "__main__":
-    np.random.seed(0)
-    n, d = 50, 20
-    C = np.random.randn(n, d)
-    x_true = np.random.randn(d)
-    x_true[np.abs(x_true) < 0.8] = 0.0
-    b = C @ x_true + 0.1 * np.random.randn(n)
-    lam = 0.5
-
-    rho = 1.0
-    L = np.linalg.cholesky(C.T @ C + rho * np.eye(d))
-
-    def prox_f(z, y):
-        q = C.T @ b + rho * z - y
-        return np.linalg.solve(L.T, np.linalg.solve(L, q))
-
-    def soft_threshold(v, kappa):
-        return np.sign(v) * np.maximum(np.abs(v) - kappa, 0.0)
-
-    def prox_g(x, y):
-        return soft_threshold(x + y / rho, lam / rho)
-
-    A = np.eye(d)
-    B = -np.eye(d)
-    c = np.zeros(d)
-    x, z, y = admm(prox_f, prox_g, A, B, c, rho,
-                   np.zeros(d), np.zeros(d), np.zeros(d))
-    obj = 0.5 * np.linalg.norm(C @ z - b)**2 + lam * np.linalg.norm(z, 1)
-    print("objective:", obj)
 ```
