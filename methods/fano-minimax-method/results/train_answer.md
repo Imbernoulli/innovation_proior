@@ -10,94 +10,47 @@ A refined form, sometimes called the Duchi-Wainwright corollary, avoids exact in
 
 The method has limitations. It often gives constant-probability or weak-converse lower bounds, and the quality of the bound depends on a careful choice of packing and on a sharp information bound. In adaptive or sequential settings, controlling the mutual information can become more involved. Nevertheless, when the parameter space contains many separated alternatives whose induced data laws remain statistically close, the Fano minimax method is the standard way to prove that the obstacle is not a missing algorithm but the information content of the sample.
 
-```python
-import numpy as np
-from scipy.spatial.distance import cdist
+Collecting the packing construction, the rounding reduction, and Fano's inequality into one statement gives the object I actually certify. For a model family $\mathcal P$, parameter map $\theta(P)$, semimetric $\rho$, and nondecreasing loss transform $\Phi$, the minimax risk
 
+$$
+M_n(\theta(\mathcal P),\Phi\circ\rho)
+=
+\inf_{\hat\theta}\sup_{P\in\mathcal P}
+\mathbb E_P[\Phi(\rho(\hat\theta(X_1^n),\theta(P)))]
+$$
 
-def fano_minimax_bound(packings, samples, epsilon, phi=lambda x: x, radius=0.0, index_metric=None):
-    """
-    Compute the Fano minimax lower bound from a finite hard set.
+satisfies, for any hard set $\theta_1,\ldots,\theta_M$ that is a $2\epsilon$-packing of the parameter space under $\rho$, with $V$ uniform on $\{1,\ldots,M\}$ and $X_1^n\sim P_{\theta_V}$,
 
-    Parameters
-    ----------
-    packings : array-like, shape (M, d)
-        Hard-set parameters theta_1, ..., theta_M. Must be a 2*epsilon-packing
-        under the estimation metric when radius == 0.
-    samples : list of array-like, length M
-        samples[i] contains observations drawn from P_{theta_i}.
-    epsilon : float
-        Separation scale used in the bound.
-    phi : callable
-        Nondecreasing loss transform.
-    radius : float
-        Approximate recovery radius for the Duchi-Wainwright form.
-    index_metric : callable or None
-        Metric on indices for the Duchi-Wainwright form. If None, uses
-        indicator of inequality and assumes radius == 0.
+$$
+M_n(\theta(\mathcal P),\Phi\circ\rho)
+\ge
+\Phi(\epsilon)
+\left(
+1-\frac{I(V;X_1^n)+\log 2}{\log M}
+\right).
+$$
 
-    Returns
-    -------
-    float
-        Lower bound on the minimax risk.
-    """
-    packings = np.asarray(packings, dtype=float)
-    M = packings.shape[0]
+The distance-based, Duchi-Wainwright form of the same certificate drops exact index recovery in favor of recovery to within radius $t$ under an index metric $\rho_{\mathcal V}$ on a finite index set $\mathcal V$. Writing $N_t^{\max}=\max_{v\in\mathcal V}\mathrm{card}\{w\in\mathcal V:\rho_{\mathcal V}(v,w)\le t\}$ for the largest such neighborhood and $\delta(t)$ for the parameter separation guaranteed whenever $\rho_{\mathcal V}(v,w)>t$,
 
-    # Estimate each P_v by its empirical distribution over the provided samples.
-    # Mutual information I(V; X) is bounded by the average KL to a reference Q.
-    # Here we use the uniform mixture as Q and approximate KL with a histogram.
-    def empirical_histogram(x, bins):
-        probs, _ = np.histogram(x, bins=bins, density=False)
-        probs = (probs + 1e-12) / (probs.sum() + 1e-12 * len(probs))
-        return probs
+$$
+M_n(\theta(\mathcal P),\Phi\circ\rho)
+\ge
+\Phi(\delta(t)/2)
+\left(
+1-\frac{I(X_1^n;V)+\log 2}{\log(|\mathcal V|/N_t^{\max})}
+\right),
+$$
 
-    all_data = np.concatenate(samples)
-    bins = np.histogram_bin_edges(all_data, bins="auto")
-    histograms = [empirical_histogram(np.asarray(s), bins) for s in samples]
-    Q = np.mean(histograms, axis=0)
+which reduces to the classical packing bound at $t=0$. Either form is closed by one further step: bounding the mutual information itself, most commonly through the average KL divergence to a reference law $Q$,
 
-    # KL divergence D(P_v || Q) averaged over v.
-    def kl(p, q):
-        return np.sum(p * np.log(p / q))
+$$
+I(V;X)\le \frac{1}{M}\sum_{v=1}^M D(P_v\|Q),
+$$
 
-    avg_kl = np.mean([kl(h, Q) for h in histograms])
-    mutual_info_bound = avg_kl
+or through the pairwise average
 
-    if radius == 0.0:
-        # Classical Fano packing bound.
-        log_card = np.log(M)
-        fano_prob = max(0.0, 1.0 - (mutual_info_bound + np.log(2)) / log_card)
-        return phi(epsilon) * fano_prob
+$$
+I(V;X)\le \frac{1}{M^2}\sum_{v,w}D(P_v\|P_w).
+$$
 
-    # Duchi-Wainwright approximate recovery form.
-    if index_metric is None:
-        # Default: indices are distinct iff different, so distance is 0/1.
-        index_metric = lambda i, j: 0.0 if i == j else 1.0
-
-    # Largest number of index points within radius t of any index.
-    dist_mat = np.array([[index_metric(i, j) for j in range(M)] for i in range(M)])
-    N_t_max = max(np.sum(row <= radius) for row in dist_mat)
-
-    if M <= N_t_max:
-        return 0.0
-
-    delta_t = epsilon  # caller should supply the separation for indices > radius apart.
-    log_card = np.log(M / N_t_max)
-    fano_prob = max(0.0, 1.0 - (mutual_info_bound + np.log(2)) / log_card)
-    return phi(delta_t / 2) * fano_prob
-
-
-# Example: Gaussian location model.
-if __name__ == "__main__":
-    np.random.seed(0)
-    n = 100
-    sigma = 1.0
-    # Construct a 2*epsilon-packing in R^1 by placing points 2*epsilon apart.
-    eps = 0.5
-    M = 4
-    centers = np.arange(M) * 2 * eps
-    samples = [np.random.normal(loc=c, scale=sigma, size=n) for c in centers]
-    bound = fano_minimax_bound(centers, samples, epsilon=eps)
-    print("Fano minimax lower bound:", bound)
-```
+This is the complete certificate: a packing, a randomized index, a rounding test, Fano's inequality, and an information bound, combined into a single inequality that no estimator — however it is built — can beat.
