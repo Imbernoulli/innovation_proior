@@ -28,28 +28,11 @@ global optimum.
 
 Example: for `f = [2, 3, 4]` (keys 1, 2, 3) the answer is `15`.
 
-## Background
-
-The keys are fixed in sorted order, so a tree is fully determined by, recursively, **which key is the
-root of each contiguous range of keys**: picking key `r` as the root of the range `[i..j]` forces keys
-`i..r-1` into the left subtree and keys `r+1..j` into the right subtree (this is exactly the BST
-ordering constraint). Two families of approach are on the table before committing to one:
-
-- **Greedy "most frequent at root".** For each range, make the highest-frequency key the root, then
-  recurse on the two halves. It is `O(n log n)`-ish and immediate to write; the open question is
-  whether putting the most-searched key closest to the root is actually optimal once the search-order
-  constraint forces the rest of the keys into fixed left/right halves.
-- **Interval dynamic programming.** Let `dp[i][j]` be the minimum cost of an optimal BST on keys
-  `i..j`. Try every key as the root of the range and combine the optimal sub-results. This is
-  `O(n^3)` with the straightforward root scan; the open question is the exact recurrence — in
-  particular how the cost of sinking both subtrees one level deeper is accounted for.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: tiny `n` (including `n = 0` and `n = 1`); all-equal frequencies;
 strictly increasing and strictly decreasing frequencies; instances with a single huge frequency placed
-at an end or in the middle (which most tempt the greedy root choice); all-zero frequencies; and large
-`n = 500` with values near `10^9` (so the accumulated cost can exceed a 32-bit integer).
+at an end or in the middle; all-zero frequencies; and large `n = 500` with values near `10^9`.
 
 ## Code framework
 
