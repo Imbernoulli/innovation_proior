@@ -31,7 +31,7 @@ def gumbel_softmax(logits, tau=1.0):
 class Physics_Attention_Irregular_Mesh_Eidetic(nn.Module):
     """Eidetic Physics-Attention: single-stream slicing with a per-point adaptive temperature
     and a Gumbel-softmax assignment, so slices are sharply distinguishable physical states.
-    Cost O(N*M*C + M^2*C). all_reduce / checkpointing from the multi-GPU reference are dropped."""
+    Cost O(N*M*C + M^2*C). all_reduce / checkpointing from the multi-GPU setting are dropped."""
 
     def __init__(self, dim, heads=8, dim_head=64, dropout=0., slice_num=64):
         super().__init__()
