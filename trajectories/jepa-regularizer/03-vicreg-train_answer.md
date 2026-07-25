@@ -53,7 +53,7 @@ class CustomRegularizer(nn.Module):
 
 # CONFIG_OVERRIDES: override training hyperparameters for your method.
 # Allowed keys: proj_output_dim, proj_hidden_dim.
-# Paper README "Impact of the projector" table ranks VICReg's best
+# The "impact of the projector" comparison ranks VICReg's best
 # projector as 2048->1024 (90.12% on CIFAR-10 ResNet-18, 300 epochs).
 CONFIG_OVERRIDES = {"proj_output_dim": 1024}
 ```
