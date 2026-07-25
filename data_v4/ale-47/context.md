@@ -39,47 +39,6 @@ index lies in `[0, n)` and the `k` indices are **distinct**, and (c) the total s
 `≤ W`. The empty subset is feasible (objective `0`). Anything else — a parse error, a repeated index,
 an out-of-range index, trailing junk, or total weight exceeding `W` — is **infeasible**.
 
-## Background
-
-Stripped to its structure, this is the **Quadratic Knapsack Problem**: maximize a quadratic
-pseudo-Boolean objective `Σ v_i x_i + Σ b_{ij} x_i x_j` over binary `x` under one linear weight
-constraint. Several reference points sit on the table before committing to a method:
-
-- **Synergy-blind ratio greedy (the baseline / reference).** Ignore the pairwise term entirely; sort
-  items by `v_i / w_i` descending and add each that still fits. This is the classic linear-knapsack
-  greedy. It is always feasible and is the scorer's reference point `G` — but on instances where the
-  bonuses dominate the linear values it leaves most of the reward on the table, because two items that
-  are individually mediocre but jointly very valuable are exactly what a synergy-blind rule never
-  keeps together.
-- **LP / linearization relaxation.** QKP is classically attacked by linearizing the products `x_i x_j`
-  and solving (or rounding) an LP relaxation. The rounded LP solution is a respectable construction
-  start, but the relaxation is large (`O(p)` extra variables) and the rounding alone is not
-  competitive without local search on top.
-- **Density-greedy construction that *counts* synergy.** A much stronger start is a greedy that, at
-  each step, adds the feasible item maximizing `(v_i + g_i) / w_i`, where `g_i` is the synergy item
-  `i` would form **with the already-selected set**. This folds the quadratic term into the marginal
-  density and already beats the synergy-blind greedy.
-- **Flip-based local search / metaheuristics (the established strong family).** The state of the art
-  for QKP is local search over **add / drop / swap** flips, wrapped in a metaheuristic (simulated
-  annealing or tabu search) with a **fill-up-and-exchange** intensification pass. The decisive
-  engineering lever is *incremental evaluation of the quadratic term*.
-
-The decisive lever — the **innovation** — is **`O(degree)` incremental delta evaluation via incident
-synergy lists**. Maintain, for every item `i`, the quantity `g_i = Σ_{j selected, {i,j} a synergy
-pair} b_{ij}` — the synergy `i` currently forms with the selected set. Then the exact change in the
-objective from flipping `i` is a single `O(1)` read:
-
-```
-add i  :  Δ = + (v_i + g_i)
-drop i :  Δ = − (v_i + g_i)
-```
-
-After committing a flip, `g` changes **only at `i`'s synergy neighbours**, so the update is
-`O(deg_synergy(i))` along `i`'s incident-synergy list — never an `O(n²)` or `O(p)` re-evaluation of
-the whole quadratic objective. That single trick is what makes tens of millions of flip evaluations
-affordable inside a two-second budget, turning a naive `O(n²)`-per-move local search into a
-near-linear-per-move one and letting simulated annealing actually explore the landscape.
-
 ## Evaluation settings
 
 - **Instances.** A generator (`verify/gen.py`, parametrized by an integer `seed`) deterministically
@@ -87,9 +46,7 @@ near-linear-per-move one and letting simulated annealing actually explore the la
   (so the quadratic term dominates the decision), and sets `W` to a tight fraction (`≈ 0.18–0.32`) of
   the total weight. Crucially the synergy graph has **community structure**: items are partitioned
   into a few latent clusters, and synergy pairs are drawn far more often *within* a cluster (with
-  large bonuses) than *across* clusters (with small bonuses). Clustered synergy is exactly where a
-  synergy-aware search beats the synergy-blind ratio greedy — packing a coherent cluster harvests a
-  dense block of bonuses the greedy never assembles.
+  large bonuses) than *across* clusters (with small bonuses).
 - **Scoring rule (deterministic, `verify/score.py`).** Read the instance and the submitted subset `S`.
   - **Feasibility floor:** if the output does not parse as `k` indices, repeats an index, names an
     out-of-range index, has trailing tokens, or the total selected weight exceeds `W`, the score is
@@ -108,9 +65,8 @@ near-linear-per-move one and letting simulated annealing actually explore the la
     A higher score is better. The ratio-greedy reference scores exactly `1 000 000`; a synergy-aware
     subset that harvests more bonus scores strictly more; a weaker feasible subset scores less but
     stays positive.
-- **Reported metric.** The mean score over a fixed seed set. A real QKP local search exploiting the
-  community structure lands well above `1 000 000` (typically `≈ 1.4–1.6×`) on these instances; the
-  empty subset scores `0` and is the floor to beat.
+- **Reported metric.** The mean score over a fixed seed set. The empty subset scores `0` and is the
+  floor to beat.
 
 ## Code framework
 
@@ -138,12 +94,9 @@ int main() {
     // (k = 0) is always feasible. Start there so we always have something legal
     // to print, then improve.
 
-    // TODO heuristic: maintain g[i] = synergy item i forms with the CURRENT
-    // selected set, so flipping i has objective delta (v_i + g[i]) read in O(1)
-    // and updates g only along adj[i] in O(deg(i)). Construct with a
-    // synergy-aware density greedy (best (v_i+g_i)/w_i), then run simulated
-    // annealing over add/drop/swap flips, then a fill-up-and-exchange post-pass,
-    // always retaining the best feasible subset, under a ~2s budget.
+    // TODO heuristic: build a feasible subset (total weight <= W), then improve
+    // it to push obj(S) as high as possible within the ~2s budget, always
+    // retaining the best feasible subset found so far.
 
     vector<int> chosen;          // indices of the selected items
     // ... fill `chosen` with a feasible subset (total weight <= W) ...
