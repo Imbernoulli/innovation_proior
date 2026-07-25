@@ -36,30 +36,6 @@ right on the interface is the whole game.
   `N*N` binary tokens is accepted; the natural `N`-rows-of-`N` form is expected.)
 - **Time limit:** about 2 seconds wall-clock per instance. Memory: 256 MB.
 
-## Background
-
-The energy is a pairwise binary Markov-random-field: an Ising-style smoothness term plus a
-per-cell unary field. Because the pairwise term penalises only *disagreement* between
-neighbours, the energy is submodular, and several method families are on the table before
-committing:
-
-- **Honour-every-target (the trivial baseline).** Output each cell's pin if pinned, else its
-  target `t`. Always feasible, but pays full interface cost along every ragged target blob
-  boundary — it ignores smoothness entirely.
-- **Continuous relaxation + rounding.** Relax the bits to `u in [0,1]`, replace the energy by
-  its quadratic surrogate, and coordinate-minimise it. The closed-form coordinate update is a
-  **heat-diffusion sweep** (Gauss–Seidel) with a source term; iterating to the smooth steady
-  state and thresholding at `0.5` yields a binary coloring that already balances smoothness
-  and field. The open question is how many sweeps and how to round.
-- **Local search (ICM / annealing) with an incremental delta.** Flip one free tile at a time;
-  the change in energy depends only on that tile's field term and its `<= 4` neighbours, so
-  each candidate flip is evaluated in `O(1)`. Iterated Conditional Modes greedily flips while
-  it helps; a simulated-annealing pass that also accepts small uphill flips escapes the local
-  minima ICM gets stuck in. The open question is the move set and acceptance schedule.
-
-The strongest practical recipe combines them: relax + round for a strong warm start, then
-boundary local search to polish the interface.
-
 ## Evaluation settings
 
 A solution is **feasible** iff (1) it parses as exactly `N*N` binary tokens and (2) every
@@ -111,8 +87,8 @@ int main() {
     // Feasible start: honour pins, else take the target.
     for (int i = 0; i < M; i++) x[i] = (P[i] != -1) ? (char)P[i] : (char)T[i];
 
-    // TODO heuristic: relax to [0,1] + heat-diffusion sweeps, threshold/round,
-    //                 then O(1)-delta boundary local search (ICM + annealing).
+    // TODO heuristic: improve on this baseline to lower the total energy while
+    //                 keeping every intermediate/final coloring feasible.
 
     // Output N rows of N bits (pins already honoured).
     for (int r = 0; r < N; r++) {
