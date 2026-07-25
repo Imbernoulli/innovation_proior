@@ -14,7 +14,7 @@ Machine translation is handled by reframing foreign-to-English translation as de
 import math
 import torch, torch.nn as nn, torch.nn.functional as F
 
-# ---- noising functions: encoder and decoder are decoupled, so corruption is arbitrary ----
+# ---- noising functions (encoder/decoder decoupled => arbitrary corruption) ----
 def token_masking(tokens, mask_id, p=0.15):
     out = tokens.clone()
     sel = torch.rand_like(tokens, dtype=torch.float) < p
@@ -38,6 +38,8 @@ def _poisson_span_lengths(mask_budget, lam, device):
     return lengths
 
 def text_infilling(tokens, mask_id, lam=3.0, frac=0.30):
+    # Fairseq semantics: mask_length="span-poisson", poisson_lambda=3,
+    # replace_length=1. Positive spans become one mask; zero spans insert a mask.
     n = len(tokens)
     budget = int(math.ceil(frac * n))
     lengths = _poisson_span_lengths(budget, lam, tokens.device)
@@ -72,12 +74,12 @@ def sentence_permutation(sentences):
     return [sentences[k] for k in torch.randperm(len(sentences))]
 
 def document_rotation(tokens):
-    if len(tokens) <= 2:
+    if len(tokens) <= 2:       # keep <s> and </s> fixed when present
         return tokens
     k = int(torch.randint(1, len(tokens) - 1, (1,), device=tokens.device))
     return torch.cat([tokens[:1], tokens[k:-1], tokens[1:k], tokens[-1:]])
 
-# ---- pretraining: encoder sees corruption, decoder reconstructs the original ----
+# ---- pretraining: reconstruct the ORIGINAL document ----
 def pretraining_loss(model, document, mask_id, pad_id):
     noised = flatten(sentence_permutation(split_sentences(document)))
     noised = text_infilling(noised, mask_id)
@@ -88,28 +90,26 @@ def pretraining_loss(model, document, mask_id, pad_id):
         ignore_index=pad_id,
     )
 
-# ---- classification readout: class token at the end of the causal decoder ----
+# ---- classification readout at the END of the (causal) decoder ----
 class ClassificationHead(nn.Module):
     def __init__(self, d_model, inner, n_classes, dropout=0.0):
         super().__init__()
         self.dropout = nn.Dropout(dropout)
         self.dense = nn.Linear(d_model, inner)
         self.out_proj = nn.Linear(inner, n_classes)
-
     def forward(self, dec_out, src_tokens, eos_id):
         eos_mask = src_tokens.eq(eos_id)
         sent = dec_out[eos_mask, :].view(dec_out.size(0), -1, dec_out.size(-1))[:, -1, :]
         x = torch.tanh(self.dense(self.dropout(sent)))
         return self.out_proj(self.dropout(x))
 
-# ---- machine translation: replace only the source-side encoder ----
+# ---- MT: swap source embedding for a new foreign encoder ----
 class MTSourceEncoder(nn.Module):
     def __init__(self, src_vocab, d_model):
         super().__init__()
         self.embed = nn.Embedding(src_vocab, d_model)
         self.layers = nn.TransformerEncoder(
             nn.TransformerEncoderLayer(d_model, nhead=16, batch_first=True), 6)
-
     def forward(self, src):
         return self.layers(self.embed(src))
 ```
