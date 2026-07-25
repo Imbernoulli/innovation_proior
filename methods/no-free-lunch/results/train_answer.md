@@ -22,67 +22,10 @@ The learning version of the theorem is the same idea applied to off-training-set
 
 The practical consequence is that there is no universally best optimizer or learner. Every algorithm's edge on some problems is offset on others, and the only source of real performance is the alignment between the algorithm's built-in assumptions and the structure of the problems it will actually face. Inductive bias is not a flaw and not an optional feature; it is the entire source of generalization. The No Free Lunch theorem prices Hume's assumption about induction at exactly everything: without it, no algorithm can help, and with it, all help comes from it.
 
-The small Python script below makes the theorem concrete for a tiny search space. It enumerates every function from three points to two cost values, runs three different deterministic algorithms for two steps, and prints the average best-so-far cost and the number of functions that produce a fixed cost sequence. Both quantities are identical across the algorithms, illustrating the counting identity.
+Here, stated with every hypothesis in view and nothing left to the surrounding argument, is the result I am leaving on the table. Let \(\mathcal{X}\) be a finite search space, \(\mathcal{Y}\) a finite set of cost values, and \(\mathcal{F} = \mathcal{Y}^{\mathcal{X}}\) the space of all cost functions on \(\mathcal{X}\). Let an algorithm \(a\) be any map from a sample \(d_m = \{(d_m^x(i), d_m^y(i))\}_{i=1}^m\) of \(m\) distinct visited points and their observed costs to a new, previously unvisited point, and let \(d_m^y\) denote the sequence of \(m\) observed costs produced by running \(a\) on some \(f \in \mathcal{F}\). Then, for every fixed cost sequence \(d_m^y\) and every \(m \le |\mathcal{X}|\),
 
-```python
-import itertools
+\[
+\sum_{f \in \mathcal{F}} P(d_m^y \mid f, m, a) \ \text{is independent of } a.
+\]
 
-
-def all_functions(X, Y):
-    """Return every function X -> Y as a dict."""
-    return [dict(zip(X, vals)) for vals in itertools.product(Y, repeat=len(X))]
-
-
-def run(algorithm, f, m):
-    """Run a deterministic algorithm for m distinct evaluations."""
-    sample = []
-    for _ in range(m):
-        x = algorithm(sample)
-        sample.append((x, f[x]))
-    return [y for _, y in sample]
-
-
-def avg_best_so_far(algorithm, X, Y, m):
-    funcs = all_functions(X, Y)
-    total = 0
-    for f in funcs:
-        total += min(run(algorithm, f, m))
-    return total / len(funcs)
-
-
-def count_sequence(algorithm, X, Y, target_seq):
-    funcs = all_functions(X, Y)
-    count = 0
-    for f in funcs:
-        if tuple(run(algorithm, f, len(target_seq))) == tuple(target_seq):
-            count += 1
-    return count
-
-
-if __name__ == "__main__":
-    X = [0, 1, 2]
-    Y = [0, 1]
-    m = 2
-
-    def fixed_order(sample):
-        visited = {x for x, _ in sample}
-        return next(x for x in X if x not in visited)
-
-    def reverse_order(sample):
-        visited = {x for x, _ in sample}
-        return next(x for x in reversed(X) if x not in visited)
-
-    def shifted_order(sample):
-        visited = {x for x, _ in sample}
-        if not visited:
-            return X[1]
-        return next(x for x in X if x not in visited)
-
-    for name, algo in [("fixed", fixed_order),
-                       ("reverse", reverse_order),
-                       ("shifted", shifted_order)]:
-        avg = avg_best_so_far(algo, X, Y, m)
-        cnt = count_sequence(algo, X, Y, (1, 0))
-        print(f"{name:8s}: avg best-so-far = {avg:.4f}, "
-              f"functions producing (1,0) = {cnt}")
-```
+Because that sum does not depend on \(a\), neither does the uniform average of any performance functional: for every \(\Phi\), \(\frac{1}{|\mathcal{F}|}\sum_{f \in \mathcal{F}} P(\Phi(d_m^y) \mid f, m, a)\) takes the same value for every algorithm \(a\). Transported to supervised learning — \(f\) a target concept, \(a\) a learning rule producing a hypothesis \(h\), cost measured by off-training-set loss on inputs \(q \notin d_X\) — the identical argument gives \(P(c \mid d)\) the same for every learning algorithm under a uniform prior and homogeneous loss. Both instances rest on one bijection: relabeling a problem's values on the points \(a\) has not yet visited permutes \(\mathcal{F}\) onto itself, so summed over all problems the cost handed back at the next, unseen point is a flat draw over \(\mathcal{Y}\) regardless of where the algorithm chose to look. That bijection is the entire theorem, and it is the whole of what can be said with no assumption about which problems are likely: nothing. Whatever edge an algorithm is to have must be purchased from a non-uniform prior \(P(f)\) that the algorithm's own tilt happens to align with — the theorem itself hands out none of that for free.
