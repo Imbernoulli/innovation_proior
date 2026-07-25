@@ -13,51 +13,20 @@ class Layer:
     def __init__(self, forward: Callable, params, cost_fn: Callable = None):
         self.f, self.w, self.cost = forward, params, cost_fn
 
-def autodiff_backward(forward_fn):
-    """Build a backward function for a forward computation."""
-    ...
-
 class LayerSequenceTrainer:
-    """GPipe: pipeline parallelism with micro-batching and re-materialization.
-    Gradients over all micro-batches are accumulated before one synchronous update."""
     def __init__(self, layers: List[Layer], devices: List[object], M: int):
         self.layers = layers
         self.devices = devices
         self.K = len(devices)
         self.M = M
-        self.cells = self.build_layer_groups()
+        self.cells = self.build_layer_groups()   # minimize per-cell cost variance
         self.F = [self._compose([l.f for l in cell]) for cell in self.cells]
         self.B = [autodiff_backward(F_k) for F_k in self.F]
 
-    def build_layer_groups(self):
-        # Group consecutive layers into K cells minimizing variance of per-cell cost.
-        ...
-
-    def _compose(self, fns):
-        def composed(x):
-            for f in fns:
-                x = f(x)
-            return x
-        return composed
-
-    def _on_device(self, k, fn, *args):
-        # Run fn on device k; in a real system this wraps device placement.
-        return fn(*args)
-
-    def _split(self, batch, M):
-        # Split mini-batch into M equal micro-batches.
-        ...
-
-    def _zero_like_params(self):
-        ...
-
-    def _accumulate(self, grads, g):
-        # Add micro-batch gradient g into accumulated grads.
-        ...
-
-    def _rematerialize(self, k, boundary_activation):
-        # Recompute cell k's internal activations from cached boundary activation.
-        return self.F[k](boundary_activation)
+    def build_layer_groups(self): ...
+    def _compose(self, fns): ...
+    def _on_device(self, k, fn, *args): ...
+    def _rematerialize(self, k, boundary_activation): ...
 
     def run_forward(self, mini_batch):
         micro_batches = self._split(mini_batch, self.M)
@@ -68,7 +37,7 @@ class LayerSequenceTrainer:
             for k in range(self.K):
                 m = t - k
                 if 0 <= m < self.M:
-                    boundary[k][m] = x[k][m]
+                    boundary[k][m] = x[k][m]          # cache boundary activation feeding cell k
                     x[k + 1][m] = self._on_device(k, self.F[k], x[k][m])
         self._last_boundary = boundary
         return x[self.K]
@@ -83,13 +52,12 @@ class LayerSequenceTrainer:
                 if 0 <= m < self.M:
                     acts = self._rematerialize(k, self._last_boundary[k][m])
                     d[k][m], g = self.B[k](d[k + 1][m], acts)
-                    grads = self._accumulate(grads, g)
+                    grads = self._accumulate(grads, g)      # sum over micro-batches
         return grads
 
-    def train_step(self, mini_batch, optimizer, compute_loss, compute_loss_grad):
+    def train_step(self, mini_batch, optimizer):
         out = self.run_forward(mini_batch)
-        loss = compute_loss(out)
-        grads = self.run_backward(compute_loss_grad(loss))
-        optimizer.apply(grads)
-        return loss
+        loss = self._loss(out)
+        grads = self.run_backward(self._loss_grad(loss))
+        optimizer.apply(grads)            # one synchronous update per mini-batch
 ```
