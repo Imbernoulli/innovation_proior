@@ -22,33 +22,29 @@ One decision the bandit abstraction did not force but the sequence setting does:
 import torch
 
 
-def preference_objective(policy_chosen_lp, policy_rejected_lp,
-                         ref_chosen_lp, ref_rejected_lp,
-                         chosen_len, rejected_len, beta):
-    """IPO loss for one batch of preference pairs.
+def ipo_loss(policy_chosen_lp, policy_rejected_lp,
+             ref_chosen_lp, ref_rejected_lp,
+             chosen_len, rejected_len, beta=0.1):
+    """IPO loss for a batch of preference pairs.
 
-    Args are sequence-level summed log-probs of policy and reference on the
-    chosen / rejected completions, the two completion lengths, and beta (= the
-    KL-regularization coefficient tau; the regression target is 1/(2*beta)).
+    Sequence-summed log-probs of policy/reference on chosen/rejected, the two
+    completion lengths, and beta (= KL coefficient tau; target = 1/(2*beta)).
     """
     chosen_len = chosen_len.clamp_min(1).to(policy_chosen_lp.dtype)
     rejected_len = rejected_len.clamp_min(1).to(policy_rejected_lp.dtype)
 
-    # per-token average log-probs: keeps h_pi on a per-token scale so the single
-    # fixed target is comparable across completions of different lengths.
-    pol_chosen   = policy_chosen_lp   / chosen_len
-    pol_rejected = policy_rejected_lp / rejected_len
-    ref_chosen   = ref_chosen_lp      / chosen_len
-    ref_rejected = ref_rejected_lp    / rejected_len
+    # per-token average log-probs (length normalization)
+    pol_c = policy_chosen_lp   / chosen_len
+    pol_r = policy_rejected_lp / rejected_len
+    ref_c = ref_chosen_lp      / chosen_len
+    ref_r = ref_rejected_lp    / rejected_len
 
-    # reference-corrected log-ratio gap  h_pi(y_w, y_l) =
-    #   [log pi(y_w) - log pi_ref(y_w)] - [log pi(y_l) - log pi_ref(y_l)]
-    chosen_logratio   = pol_chosen   - ref_chosen
-    rejected_logratio = pol_rejected - ref_rejected
+    # h_pi = [log pi(y_w) - log pi_ref(y_w)] - [log pi(y_l) - log pi_ref(y_l)]
+    chosen_logratio   = pol_c - ref_c
+    rejected_logratio = pol_r - ref_r
     h_pi = chosen_logratio - rejected_logratio
 
-    # regress the gap onto the single fixed target 1/(2*beta) = tau^{-1}/2;
-    # bounded target keeps KL alive even for deterministic preferences.
+    # regress the gap onto the single fixed target 1/(2*beta) = tau^{-1}/2
     losses = (h_pi - 1.0 / (2.0 * beta)) ** 2
     return losses.mean()
 ```
