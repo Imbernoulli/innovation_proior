@@ -14,7 +14,7 @@ This is the rare compressor that is aggressive, convergent, *and* fast on real c
 
 ```python
 class Compressor:
-    """PowerSGD: warm-started rank-r low-rank gradient compression with error feedback.
+    """Warm-started rank-r low-rank gradient compression with error feedback.
 
     Reshape each matrix-shaped gradient to M (m x n); add the error-feedback
     residual; do ONE power-iteration step from the previous step's Q (warm start):
