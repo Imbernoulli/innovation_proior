@@ -12,9 +12,7 @@ maximize `a[l] + a[l+1] + ... + a[r]` subject to that sum being `<= B`. Output t
 block total.
 
 This is the "longest/heaviest window under a sum cap" shape that appears inside rate-limiting,
-streaming-quota, and resource-budget problems. Because every release is positive, the window sum is
-monotone in the window's width, which is exactly the structure a two-pointer sweep exploits — but the
-totals involved are large enough that the choice of integer type is part of the problem.
+streaming-quota, and resource-budget problems.
 
 ## Input / output contract
 
@@ -30,26 +28,17 @@ without exceeding it.
 
 ## Background
 
-The constraint "contiguous and capped" makes this a windowed-selection problem. Two routes are on the
-table before committing to one:
-
-- **Every-window scan.** Try all `O(n^2)` start/end pairs, accumulate each window's sum, keep the
-  largest one that fits under `B`. Obviously correct, trivial to write, but quadratic — fine as a
-  reference oracle, hopeless at `n = 2*10^5`.
-- **Two-pointer sliding window.** Because all `a[i] >= 1`, widening a window can only raise its sum
-  and narrowing it can only lower it. So maintain a running window `[left..right]`: extend `right` by
-  one each step, and whenever the running sum exceeds `B`, advance `left` until it fits again. The
-  window for each `right` is then the widest (hence, with positive values, the heaviest) admissible
-  block ending at `right`. This is `O(n)`; the open questions are why a left pointer that never moves
-  backward suffices, and what integer type the running sum and the answer require.
+The constraint "contiguous and capped" makes this a windowed-selection problem. A full `O(n^2)` scan
+of every start/end pair — accumulate each window's sum, keep the largest one that fits under `B` — is
+obviously correct and trivial to write, but quadratic, which is hopeless at `n = 2*10^5` under a
+one-second limit.
 
 ## Evaluation settings
 
 Judged on hidden tests covering: all-equal releases, releases with a single dominant spike, `B`
 smaller than every individual release (answer `0`, the empty block), `B` at least the total of all
 releases (answer = whole-array sum), the empty schedule (`n = 0`), a single hour (`n = 1`), and large
-`n = 2*10^5` with releases near `10^9` and `B` near `2*10^14` — so both the running window sum and the
-final answer exceed the 32-bit integer range and a careless `int` silently wraps to a wrong answer.
+`n = 2*10^5` with releases near `10^9` and `B` near `2*10^14`.
 
 ## Code framework
 
