@@ -39,7 +39,7 @@ class QuadraticMLP(nn.Module):
         self.p = p
         self.fc1 = nn.Linear(2 * p, hidden_width, bias=False)
         self.fc2 = nn.Linear(hidden_width, p, bias=False)
-        # mean-field init keeping pre-activations O(1) for the quadratic activation
+        # mean-field init keeping post-square pre-activations O(1)
         import math
         scale1 = (0.25 ** 0.5) / ((2 * hidden_width) ** (1 / 3))
         scale2 = (0.25 ** 0.5) / ((2 * hidden_width) ** (1 / 3))

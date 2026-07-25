@@ -17,7 +17,7 @@ Read what $Q$ does. After whitening the clean directions have variance near $1$,
 Grounding it in the scaffold: same `BackdoorDefense` contract, same per-training-label routing as the spectral rung — the target label is not exposed, so the pipeline runs on every class, grouped by cached training labels rather than predicted class, for the same reason as before (a hard poisoned point's prediction can disagree with its label). Per class I center, then for each candidate $k$ project onto the top-$k$ subspace, robustly estimate the clean mean and covariance by iterative Mahalanobis trimming, whiten by the robust $\Sigma^{-1/2}$, record the post-whitening top eigenvalue, keep the best $k$, and compute the QUE score for it. The numerical guards fall out of the construction: clip the matrix-exponential exponent at $50$ so it cannot overflow, add a $10^{-6}$ ridge so the robust covariance is invertible, skip classes with fewer than 4 points, and fall back to the squared whitened norm if the trace degenerates. `fit` does the per-class work and caches the scores; `score_samples` reads them out; the harness's fixed $1.5\,\varepsilon$ removal does the rest.
 
 ```python
-# EDITABLE region of custom_backdoor_defense.py — finale: SPECTRE (Hayase et al., ICML 2021)
+# EDITABLE region of custom_backdoor_defense.py — finale: SPECTRE
 import numpy as np
 import torch
 
