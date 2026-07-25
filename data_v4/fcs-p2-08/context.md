@@ -35,29 +35,14 @@ Example: for the graph below with `V = 9`
 8 9
 ```
 
-the answer is `4`: the path `1 -> 6 -> 7 -> 8 -> 9` uses `4` edges. (Vertex `2` has the highest
-out-degree, but `1 -> 2 -> {3,4,5}` dead-ends after only `2` edges.)
-
-## Background
-
-The phrase "longest path" is NP-hard for general graphs, but on a **DAG** it is polynomial, and two
-families of approach are on the table before committing to one:
-
-- **Greedy descent.** Start at each source and, at every step, walk to the out-neighbour that "looks
-  most promising" — for instance the neighbour with the largest out-degree (the most options ahead).
-  This is `O(V + E)` and a few lines. The open question is whether a local choice can be trusted to
-  produce a globally longest path under the forward-reachability structure.
-- **Topological-order dynamic programming.** Process vertices in topological order and carry, for each
-  vertex `v`, the longest path (in edges) that ends at `v`. This is `O(V + E)`; the open question is
-  the exact recurrence, the base case for sources, and what the global answer reads off.
+the answer is `4`: the path `1 -> 6 -> 7 -> 8 -> 9` uses `4` edges.
 
 ## Evaluation settings
 
 Judged on hidden tests covering: graphs with no edges (`E = 0`, answer `0`); a single long chain;
-"wide hub then long tail" graphs where a high-out-degree neighbour leads to a short dead-end while a
-low-out-degree neighbour starts a long chain; multi-source / multi-sink layered DAGs; graphs with
-parallel edges; and large instances with `V = 2*10^5`, `E = 4*10^5` where an `O(V*E)` method would be
-too slow.
+graphs with a mix of high- and low-out-degree vertices; multi-source / multi-sink layered DAGs;
+graphs with parallel edges; and large instances with `V = 2*10^5`, `E = 4*10^5` where an `O(V*E)`
+method would be too slow.
 
 ## Code framework
 
