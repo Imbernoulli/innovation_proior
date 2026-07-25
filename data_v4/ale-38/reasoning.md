@@ -135,9 +135,10 @@ placement.
 I wrote the continuous relaxation, the structured snap, and the polish, split the
 ~2s budget (roughly 55% to the continuous restarts, the rest to snap + polish),
 and compiled. First end-to-end run on seed 1 — it produced a placement and the
-scorer accepted it. Good. But two things bit me along the way that are worth
-recording, because they are exactly the feasibility/score traps the problem
-rewards getting right.
+scorer accepted it. Good. But one real bug bit me along the way, and one design
+assumption needed an actual check before I trusted it — both worth recording,
+because they are exactly the feasibility/score traps the problem rewards getting
+right.
 
 **Bug 1 — empty Voronoi cells crashing the Lloyd step.** My first centroid step
 divided each facility's accumulated `(sum_x, sum_y)` by its demand count. On a
@@ -151,16 +152,21 @@ dividing by zero. That both avoids the `NaN` and does something useful (an idle
 facility is moved to where there is demand to serve). After this, the continuous
 energies were finite and the snapped outputs were always in range.
 
-**Bug 2 — the snap quietly making things worse than I assumed.** I initially
-trusted plain rounding (`llround`) and skipped straight to the polish. On a few
-seeds the rounded configuration scored only ~1.3x the grid, weaker than I
-expected from how good the continuous `E` looked. The gap was the snap: rounding
-each facility independently broke the careful spacing the repulsion had built, so
-the dispersion term dropped and `E` jumped on discretization. Adding the
-**structured 4-corner coordinate-descent snap** between the continuous phase and
-the polish recovered most of that loss — it lets a facility take the corner that
-keeps it apart from its neighbour even if that corner is not the nearest one. The
-ratios climbed back up to the ~1.7x–2.6x range.
+**Check 2 — does the structured snap actually earn its keep?** The 4-corner
+coordinate-descent sweep is extra machinery, so before trusting it I wanted a
+number, not just the argument that rounding is "blind." I took the same
+continuous outputs and scored them two ways: snapped with plain nearest-corner
+rounding (`llround`, no coordinate-descent sweep) versus snapped with the full
+structured search. Plain rounding landed at only ~1.3x the grid on a few seeds —
+well below what the continuous `E` suggested the configuration was worth. The gap
+matched the mechanism I expected: rounding each facility independently breaks the
+careful spacing the repulsion had built, so the dispersion term drops and `E`
+jumps on discretization. Running the same continuous outputs through the
+**structured 4-corner coordinate-descent snap** recovered most of that loss — it
+lets a facility take the corner that keeps it apart from its neighbour even if
+that corner is not the nearest one — and pushed the ratios back up to the
+~1.7x–2.6x range. So the coordinate-descent sweep isn't optional polish; it's
+what makes the discretization step safe.
 
 **Self-verification on the seed set.** I generated seeds 1..20, ran the solver,
 scored each, and scored the trivial uniform-grid baseline alongside:
