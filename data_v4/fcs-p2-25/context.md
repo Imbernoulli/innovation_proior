@@ -11,12 +11,6 @@ The cost of a path is the sum of the values of the cells it visits (one cell per
 through an `n x n` grid visits exactly `n` cells). Output the **minimum** possible cost over all
 falling paths.
 
-This is a clean shortest-path-in-a-DAG / layered-DP question. The trap is that the "obvious"
-greedy — start at the cheapest top cell and always step to the cheapest of the three reachable
-cells below — is **not** optimal, because a cheap step now can fence you into an expensive region
-later. The constraints are set so that a simple, provable `O(n^2)` dynamic program comfortably
-fits in the time limit.
-
 ## Input / output contract
 
 - Input (stdin): the first token is `n` (`0 <= n <= 1000`). Then follow `n*n` integers, the grid
@@ -36,27 +30,12 @@ Example: for the grid
 
 the answer is `13` (path `1 -> 4 -> 8`, columns `1 -> 2 -> 1`).
 
-## Background
-
-The move set "down to one of the three cells below" makes each cell's optimal continuation depend
-only on what lies below it, and each cell's optimal *prefix* depend only on the row above. Two
-families of approach are on the table before committing:
-
-- **Greedy descent.** Pick the minimum cell in the top row as a start, then at each row step to the
-  minimum of the (at most) three reachable cells. It is `O(n^2)` to scan and trivial to write; the
-  open question is whether locally choosing the cheapest next cell is globally optimal under the
-  three-way move constraint.
-- **Layered dynamic programming.** Process the grid row by row, maintaining for each column the best
-  (minimum) cost of any falling path that ends at that cell. Each cell's value is computed from the
-  best of the (at most) three cells above it. This is `O(n^2)` time; the open question is the exact
-  recurrence and the boundary handling at the left/right edges.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: all-positive grids; grids with negatives and zeros; the empty grid
-(`n = 0`); a single cell (`n = 1`, including a single negative); grids engineered so that greedy
-descent is strictly worse than optimal; uniform grids; and large `n = 1000` with values near
-`10^9` (so a path sum of magnitude up to `n * 10^9 = 10^12` exceeds 32-bit range).
+(`n = 0`); a single cell (`n = 1`, including a single negative); adversarial grids designed to
+penalize short-sighted step-by-step choices; uniform grids; and large `n = 1000` with values near
+`10^9`.
 
 ## Code framework
 

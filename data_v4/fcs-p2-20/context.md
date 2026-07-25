@@ -13,9 +13,7 @@ match), output `-1`.
 
 This is the linear "list coloring with per-cell weights" problem. The same shape
 shows up inside sequence labeling, segment/state-assignment DPs, and any
-left-to-right scheduling where consecutive picks must differ, so getting the
-one-dimensional version exactly right — including the single-color and
-empty-row corners and the 64-bit cost accumulation — matters.
+left-to-right scheduling where consecutive picks must differ.
 
 ## Input / output contract
 
@@ -42,31 +40,15 @@ adjacent houses differ, and `2 + 5 + 3 = 10` is minimal).
 ## Background
 
 The adjacency rule couples consecutive houses, so each house's cheapest color
-cannot be chosen in isolation. Two families of approach are on the table before
-committing to one:
-
-- **Greedy.** Walk the row left to right (or pick the globally cheapest cells
-  first) and take the cheapest color that does not clash with an already-fixed
-  neighbour. This is near-trivial to write and `O(nk)` or `O(nk log(nk))`; the
-  open question is whether locally cheapest choices can be forced into a globally
-  expensive coloring.
-- **Layered dynamic programming.** For each house keep, per color, the best total
-  cost of a valid coloring of the prefix that ends with the house painted that
-  color. The transition for house `i`, color `c` adds `cost[i][c]` to the
-  cheapest entry of the previous house among colors `!= c`. The open questions are
-  the exact recurrence, how to compute "cheapest previous entry of a different
-  color" without an `O(k)` inner scan per color (which would be `O(nk^2)`), and
-  the first-house / single-color corners.
+cannot be chosen in isolation.
 
 ## Evaluation settings
 
 Judged on hidden tests covering: tiny rows (`n <= 8`, small `k`) checked against
-exhaustive enumeration; adversarial "one cheap color everywhere" rows that defeat
-greedy; `k = 1` with `n >= 2` (impossible, `-1`) and `k = 1` with `n <= 1`
-(trivial); the empty row (`n = 0`, answer `0`); `k = 2`; uniform-cost rows; and
-large rows `n = 10^5`, `k = 100` with costs near `10^9` (so the total can reach
-about `10^{14}`, exceeding 32-bit range, and an `O(nk^2)` method would be too
-slow).
+exhaustive enumeration; adversarial rows constructed to defeat naive greedy
+heuristics; `k = 1` with `n >= 2` and `k = 1` with `n <= 1`; the empty row
+(`n = 0`); `k = 2`; uniform-cost rows; and large rows `n = 10^5`, `k = 100` with
+costs near `10^9`.
 
 ## Code framework
 
