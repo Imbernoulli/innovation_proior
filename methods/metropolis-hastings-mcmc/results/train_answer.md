@@ -27,7 +27,7 @@ def mh_step(x, log_f, proposal, rng):
     """One Metropolis-Hastings transition.
 
     proposal(x, rng) returns (y, log_q_xy, log_q_yx).
-    log_f is the unnormalized log target; additive constants cancel.
+    log_f is unnormalized; additive constants cancel.
     """
     y, log_q_xy, log_q_yx = proposal(x, rng)
     log_R = (log_f(y) - log_f(x)) + (log_q_yx - log_q_xy)
@@ -43,22 +43,4 @@ def run_chain(x0, log_f, proposal, n_steps, burn_in, rng):
         if t >= burn_in:
             kept.append(np.array(x, copy=True))
     return kept
-
-def symmetric_gaussian_proposal(scale):
-    def propose(x, rng):
-        y = x + rng.normal(scale=scale, size=np.shape(x))
-        return y, 0.0, 0.0
-    return propose
-
-if __name__ == "__main__":
-    rng = np.random.default_rng(0)
-    # Target: standard normal, up to a constant.
-    log_f = lambda x: -0.5 * float(x) ** 2
-    proposal = symmetric_gaussian_proposal(scale=1.0)
-    samples = run_chain(x0=0.0, log_f=log_f, proposal=proposal,
-                        n_steps=200_000, burn_in=10_000, rng=rng)
-    estimate = np.mean(samples)
-    second_moment = np.mean([s ** 2 for s in samples])
-    print(f"mean estimate: {estimate:.4f}")
-    print(f"second moment estimate: {second_moment:.4f}")
 ```
