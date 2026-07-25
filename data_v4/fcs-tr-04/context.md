@@ -14,8 +14,7 @@ the unique path connecting them.
 
 This is the all-nodes version of a classic single-source quantity. The single-source value `S(v)` for
 one fixed `v` is a one-pass BFS/DFS; the question that makes this interesting is producing the value
-for *all* `n` roots fast enough that the per-node work amortizes to a constant, which is the kind of
-"reroot the tree and reuse the parent's answer" pattern that recurs across tree-DP problems.
+for *all* `n` roots fast enough at the stated scale.
 
 ## Input / output contract
 
@@ -29,26 +28,11 @@ for *all* `n` roots fast enough that the per-node work amortizes to a constant, 
 Example: for the path `1 - 2 - 3 - 4` (edges `1 2`, `2 3`, `3 4`) the answer is
 `S(1)=6, S(2)=4, S(3)=4, S(4)=6`.
 
-## Background
-
-The single-source quantity is easy: one traversal from a fixed root gives every node's depth, and the
-sum of depths is `S(root)`. The whole difficulty is the *all-roots* requirement, and two families of
-approach are on the table before committing to one:
-
-- **BFS/DFS from each node.** Run a traversal rooted at each of the `n` nodes and sum the depths each
-  time. Each traversal is `O(n)`, so the total is `O(n^2)`. Simple and obviously correct; the open
-  question is whether `O(n^2)` is fast enough at the stated scale.
-- **Rerooting (two-pass tree DP).** Compute the answer for one fixed root from subtree sizes, then
-  derive every other node's answer from its parent's answer by a single transfer step as the root
-  "moves" along an edge. This is `O(n)`; the open question is the exact transfer formula and the
-  bookkeeping (subtree sizes, traversal order) that makes it correct.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: tiny trees (`n = 1`, `n = 2`), long paths (which maximize depth and
-push any recursive traversal toward stack overflow, and make `S` of the endpoints as large as
-`n(n-1)/2 ~ 2*10^10`, exceeding 32-bit range), stars (one center, `n-1` leaves), balanced and random
-trees, and the largest case `n = 2*10^5`. Edges are given in arbitrary order and orientation.
+push any recursive traversal toward stack overflow), stars (one center, `n-1` leaves), balanced and
+random trees, and the largest case `n = 2*10^5`. Edges are given in arbitrary order and orientation.
 
 ## Code framework
 
