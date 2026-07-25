@@ -28,8 +28,8 @@ Note that `g` may be `>= K`; then the usable amount `U = K - g` is non-positive 
 treated as `0` (no item fits, answer `0`). An item with `s[i] > U` simply cannot be stored.
 
 Example: `n = 4`, `K = 10`, `g = 3` (so `U = 7`), items `(s,v) = (3,8), (4,9), (5,10), (2,5)`.
-The answer is `15`. Wait — check it: items `0` and `1` occupy `3 + 4 = 7 <= 7` for value
-`8 + 9 = 17`, which beats any single item and beats `(5,10)+(2,5)=15`. The answer is `17`.
+The answer is `17`: items `0` and `1` occupy `3 + 4 = 7 <= 7` for value `8 + 9 = 17`, which beats
+any single item and also beats the other space-`7` combination `(5,10)+(2,5)=15`.
 
 ## Background
 
