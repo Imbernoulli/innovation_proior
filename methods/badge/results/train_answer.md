@@ -15,19 +15,46 @@ import numpy as np
 from scipy import stats
 
 
-class BadgeSampling(Strategy):
-    """BADGE: Batch Active learning by Diverse Gradient Embeddings.
-    Selects a batch that is both uncertain and diverse by k-means++ seeding
-    in last-layer gradient-embedding space."""
+def distance(X1, X2, mu):
+    Y1, Y2 = mu
+    X1_vec, X1_norm_square = X1
+    X2_vec, X2_norm_square = X2
+    Y1_vec, Y1_norm_square = Y1
+    Y2_vec, Y2_norm_square = Y2
+    dist = (
+        X1_norm_square * X2_norm_square
+        + Y1_norm_square * Y2_norm_square
+        - 2 * (X1_vec @ Y1_vec) * (X2_vec @ Y2_vec)
+    )
+    # Numerical errors may cause the distance squared to be negative.
+    assert np.min(dist) / np.max(dist) > -1e-4
+    return np.sqrt(np.clip(dist, a_min=0, a_max=None))
 
+
+def init_centers(X1, X2, chosen, chosen_list, mu, D2):
+    if len(chosen) == 0:
+        ind = np.argmax(X1[1] * X2[1])
+        mu = [((X1[0][ind], X1[1][ind]), (X2[0][ind], X2[1][ind]))]
+        D2 = distance(X1, X2, mu[0]).ravel().astype(float)
+        D2[ind] = 0
+    else:
+        newD = distance(X1, X2, mu[-1]).ravel().astype(float)
+        D2 = np.minimum(D2, newD)
+        D2[chosen_list] = 0
+        Ddist = (D2 ** 2) / sum(D2 ** 2)
+        customDist = stats.rv_discrete(name="custm", values=(np.arange(len(Ddist)), Ddist))
+        ind = customDist.rvs(size=1)[0]
+        while ind in chosen:
+            ind = customDist.rvs(size=1)[0]
+        mu.append(((X1[0][ind], X1[1][ind]), (X2[0][ind], X2[1][ind])))
+    chosen.add(ind)
+    chosen_list.append(ind)
+    return chosen, chosen_list, mu, D2
+
+
+class BadgeSampling(Strategy):
     def __init__(self, X, Y, idxs_lb, net, handler, args):
         super(BadgeSampling, self).__init__(X, Y, idxs_lb, net, handler, args)
-
-    def _distance(self, R, Z, center):
-        (r, r_n2), (z, z_n2) = R, Z
-        (r0, r0_n2), (z0, z0_n2) = center
-        dist = r_n2 * z_n2 + r0_n2 * z0_n2 - 2.0 * (r @ r0) * (z @ z0)
-        return np.sqrt(np.clip(dist, a_min=0.0, a_max=None))
 
     def query(self, n):
         idxs_unlabeled = np.arange(self.n_pool)[~self.idxs_lb]
@@ -38,46 +65,26 @@ class BadgeSampling(Strategy):
         )
         embs = embs.numpy()
         probs = probs.numpy()
-        m = len(idxs_unlabeled)
 
-        z_n2 = np.sum(embs ** 2, axis=-1)
-        yhat = np.argmax(probs, axis=-1)
-        r = -1.0 * probs
-        r[np.arange(m), yhat] += 1.0
-        r_n2 = np.sum(r ** 2, axis=-1)
-
-        R = (r, r_n2)
-        Z = (embs, z_n2)
-
-        chosen = set()
-        chosen_list = []
+        m = (~self.idxs_lb).sum()
         mu = None
         D2 = None
+        chosen = set()
+        chosen_list = []
+        emb_norms_square = np.sum(embs ** 2, axis=-1)
+        max_inds = np.argmax(probs, axis=-1)
 
+        probs = -1 * probs
+        probs[np.arange(m), max_inds] += 1
+        prob_norms_square = np.sum(probs ** 2, axis=-1)
         for _ in range(n):
-            if len(chosen) == 0:
-                ind = int(np.argmax(r_n2 * z_n2))
-                mu = [((r[ind], r_n2[ind]), (embs[ind], z_n2[ind]))]
-                D2 = self._distance(R, Z, mu[0]).ravel().astype(float)
-                D2[ind] = 0.0
-            else:
-                newD = self._distance(R, Z, mu[-1]).ravel().astype(float)
-                D2 = np.minimum(D2, newD)
-                D2[list(chosen)] = 0.0
-                weights = D2 ** 2
-                total = weights.sum()
-                if total == 0.0:
-                    remaining = list(set(range(m)) - chosen)
-                    ind = int(np.random.choice(remaining))
-                else:
-                    dist = weights / total
-                    sampler = stats.rv_discrete(name="custm", values=(np.arange(m), dist))
-                    ind = int(sampler.rvs(size=1)[0])
-                    while ind in chosen:
-                        ind = int(sampler.rvs(size=1)[0])
-                mu.append(((r[ind], r_n2[ind]), (embs[ind], z_n2[ind])))
-            chosen.add(ind)
-            chosen_list.append(ind)
-
+            chosen, chosen_list, mu, D2 = init_centers(
+                (probs, prob_norms_square),
+                (embs, emb_norms_square),
+                chosen,
+                chosen_list,
+                mu,
+                D2,
+            )
         return idxs_unlabeled[chosen_list]
 ```
