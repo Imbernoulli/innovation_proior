@@ -20,50 +20,8 @@ For the upper bound, I use a container strategy. Embed [N] into Z/pZ for a prime
 
 A structural theorem for large almost-sum-free sets then says that every such container is essentially either a short interval or almost entirely odd. Pairing arguments discard the mixed cases: if an odd container contains an even element, or an interval container contains a small element, then many disjoint forbidden pairs arise and the number of choices becomes o(2^{N/2}). Consequently, almost all sum-free sets are either all odd or contained in {ceil((N+1)/3), ..., N}. Cameron-Erdos counted the latter family, yielding that |SF(N)| is asymptotic to c(N) 2^{N/2}.
 
-The code below illustrates the basic mechanism on concrete small examples. It generates random integer sets, computes a random dilation into the middle-third arc, verifies sum-freeness, compares the obtained size against the theoretical lower bounds, and exhaustively enumerates sum-free subsets of [N] for small N to confirm the growth rate.
-
-```python
-import random
-from itertools import combinations
-
-
-def is_sum_free(S):
-    s = set(S)
-    for x in s:
-        for y in s:
-            if x + y in s:
-                return False
-    return True
-
-
-def random_dilation_sum_free(A, trials=10000):
-    best = set()
-    for _ in range(trials):
-        theta = random.random()
-        B = {a for a in A if (1 / 3) <= (theta * a) % 1 < (2 / 3)}
-        if len(B) > len(best):
-            best = B
-    return best
-
-
-def count_sum_free(N):
-    return sum(
-        1
-        for r in range(N + 1)
-        for S in combinations(range(1, N + 1), r)
-        if is_sum_free(S)
-    )
-
-
-for n in (5, 8, 12):
-    A = list(range(1, n + 1))
-    B = random_dilation_sum_free(A)
-    lower_bound = (n + 3) // 3
-    print(
-        f"n={n}, dilation size={len(B)}, sum-free={is_sum_free(B)}, "
-        f"bound={lower_bound}"
-    )
-
-for N in range(1, 11):
-    print(f"N={N}, |SF(N)|={count_sum_free(N)}")
-```
+Put together, the two problems close with the following statements, and these are the deliverable. For the extremal question: for every set $A$ of $n$ nonzero integers, either $A=\{1,2\}$ or
+$$s(A)\ \ge\ \frac{n+2}{3},$$
+where $s(A)$ is the size of the largest sum-free subset of $A$; this sharpens the trivial averaging bound $n/3$ first by the strict integrality gain to $(n+1)/3$, then by the Fourier/Littlewood correction and the mod-3 descent (splitting $A$ into the part coprime to $3$ and the part divisible by $3$, and inducting on the latter) down to finitely many verified base cases, giving the full $(n+2)/3$ surplus for coprime $A$ outside the single exception $\{1,2\}$, for which $s(A)=1$. For the enumerative question: writing $\mathrm{SF}(N)$ for the family of sum-free subsets of $[N]=\{1,\dots,N\}$,
+$$|\mathrm{SF}(N)|\ \sim\ c(N)\,2^{N/2}\qquad\text{as }N\to\infty,$$
+with $c(N)$ depending only on the parity of $N$. This constant is pinned down because the container method shows that, outside a family of size $o(2^{N/2})$, every sum-free subset of $[N]$ is either entirely odd or contained in the interval $\{\lceil (N+1)/3\rceil,\dots,N\}$ — exactly the two families whose count Cameron and Erdos already had in hand.
