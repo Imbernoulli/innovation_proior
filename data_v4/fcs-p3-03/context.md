@@ -76,22 +76,6 @@ Output:
 
 (The empty climb is the one way to ascend `0` steps.)
 
-## Background
-
-The count satisfies a linear recurrence whose order is the largest allowed step. Two families of
-approach are on the table before committing to one:
-
-- **Tabulate / hardcode small cases.** For famous step sets the counts are tidy: `S = {1, 2}` gives
-  the Fibonacci numbers, `S = {1, 2, 3}` gives the tribonacci numbers, `S = {2, 3}` gives a
-  Padovan-like sequence. The first several values of any fixed `S` form a short, clean table. The
-  open question is whether reading the answer out of such a table can possibly survive inputs where
-  `N` reaches `10^9`.
-- **Linear recurrence advanced by fast exponentiation.** The recurrence
-  `f(n) = sum_{s in S} f(n - s)` is a constant-coefficient linear recurrence of order `m = max(S)`.
-  Its state can be advanced `N` places at once with matrix exponentiation (or Kitamasa) in
-  `O(m^3 log N)` time. The open question is the exact transition matrix, the base values, and the
-  boundary handling for `N < m` and `N = 0`.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: tiny `N` (`0, 1`) with assorted step sets; `N` just below, equal to,
@@ -99,8 +83,7 @@ and just above `m = max(S)` (the recurrence boundary); step sets that miss `1` (
 unreachable and the answer is `0`); single-step sets (only multiples of one value are reachable);
 input lists with duplicate step sizes; the maximum recurrence order `m = 100` with `N = 10^9`; and a
 spread of prime moduli including small primes (where many counts collapse to `0`), `998244353`,
-`10^9 + 7`, and primes near `2*10^9` (so a product of two residues exceeds 64 bits unless reduced
-with care).
+`10^9 + 7`, and primes near `2*10^9`.
 
 ## Code framework
 
