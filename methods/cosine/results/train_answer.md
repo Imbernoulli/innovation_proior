@@ -8,20 +8,35 @@ Between restarts, the rate follows the half-cosine curve. Let s equal T_cur divi
 
 The full schedule grows the length of each run by a factor T_mult at every restart, so early cycles are short and produce a first usable solution quickly while later cycles are longer and refine more. Setting T_mult to 1 and running one cycle over the whole budget with eta_min equal to 0 and eta_max equal to base_lr collapses the schedule to eta_t = base_lr times (1/2)(1 + cos(pi times epoch divided by total_epochs)). This single smooth cosine decay needs only base_lr and total_epochs, with no milestones and no drop factor to tune, and is the closed-form equivalent of PyTorch's CosineAnnealingLR with eta_min set to 0. Because a restart temporarily raises the rate and can worsen the loss, the recommended checkpoint is the iterate at the end of the most recently completed cycle, where the rate has decayed to its minimum. This selection needs no validation set. When warm restarts are used, the sequence of trough iterates also provides several diverse candidate models from one training run.
 
+The single-cycle case is the one that fills the schedule slot in my actual training loop, and it is only a few lines:
+
 ```python
 import math
 
 
-def get_lr(epoch, total_epochs, base_lr, config=None):
-    """Single-cycle cosine annealing from base_lr to 0."""
+def get_lr(epoch, total_epochs, base_lr, config):
+    """Cosine annealing of the learning rate over the whole run.
+
+    A single half-cosine from base_lr (epoch 0) to 0 (final epoch): starts flat and
+    high (broad, exploratory steps), accelerates through the middle, and eases gently
+    to ~0 at the end (fine convergence).
+
+        eta = base_lr * 0.5 * (1 + cos(pi * epoch / total_epochs))
+    """
     return base_lr * 0.5 * (1.0 + math.cos(math.pi * epoch / total_epochs))
+```
+
+The general scheduler carries the same half-cosine formula across restarts, keeping T_cur and T_i as explicit state so that a run can resume from an arbitrary epoch and land in the right cycle:
+
+```python
+import math
 
 
 class CosineAnnealingWarmRestarts:
-    """Cosine annealing with warm restarts.
+    """Within run i, anneal each group's base lr to eta_min along a half-cosine;
+    after the run length T_i is reached, wrap T_cur and grow T_i by T_mult.
 
-    Within run i, anneal each parameter group's base lr to eta_min along a
-    half-cosine; after T_i epochs, wrap to the next run and grow T_i by T_mult.
+        eta_t = eta_min + 0.5 * (eta_max - eta_min) * (1 + cos(pi * T_cur / T_i))
     """
 
     def __init__(self, optimizer, T_0, T_mult=1, eta_min=0.0, last_epoch=-1):
@@ -29,6 +44,8 @@ class CosineAnnealingWarmRestarts:
             raise ValueError("T_0 must be a positive integer")
         if T_mult < 1 or not isinstance(T_mult, int):
             raise ValueError("T_mult must be an integer >= 1")
+        if not isinstance(eta_min, (float, int)):
+            raise ValueError("eta_min must be a number")
 
         self.optimizer = optimizer
         self.base_lrs = [group["lr"] for group in optimizer.param_groups]
@@ -49,6 +66,7 @@ class CosineAnnealingWarmRestarts:
         ]
 
     def step(self, epoch=None):
+        # epoch may be fractional, e.g. epoch + batch_index / batches_per_epoch.
         if epoch is None and self.last_epoch < 0:
             epoch = 0
 
