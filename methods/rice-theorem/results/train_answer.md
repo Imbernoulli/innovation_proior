@@ -10,81 +10,26 @@
 
 在自动程序分析和程序验证的实践中，Rice 定理告诉我不能指望存在一个既完备又总是停机的通用语义判定器。实际工具必须在精确性和可计算性之间取舍：对特定程序子集做精确分析、给出保守近似、在不确定时回答“未知”，或者通过抽象解释把无限语义空间压缩成有限抽象域。这些做法都是在 Rice 定理划定的边界内部工作。
 
-下面我用一段 Python 代码来示意 Rice 定理证明中的归约构造。代码中实现了 bottom、g 以及根据停机实例构造的程序 Q，并用超时来模拟“不停机”。它演示了：如果存在一个语义性质判定器，它将被迫区分 g 和 bottom，从而等价于判断底层模拟是否停机。真实的不可判定性来自任意程序在无限时间上的行为，这段可运行代码只是帮助理解归约结构。
+把上面这套论证收紧成一条精确的定理，连同证明里真正承担工作的归约步骤一起交代清楚，才是这个结果该落地的地方——这里要证明的是任意程序在无穷时间尺度上的真实语义行为，任何一段有限时间内运行的脚本都只能演示归约的骨架，代替不了证明本身。
 
-```python
-import time
-import signal
+Rice 定理可以写成：设 $\varphi_e$ 表示程序编号 $e$ 计算出的部分函数，$P$ 是部分可计算函数集合上的一个性质，满足非平凡性——存在部分可计算函数 $g$ 使得 $P(g)$ 成立，也存在部分可计算函数 $\bot$（可以取处处未定义的函数）使得 $P(\bot)$ 不成立，且 $P$ 只依赖于 $\varphi_e$ 本身而不依赖于计算它的程序 $e$ 具体写法。那么不存在算法 $D$ 满足：对任意 $e$，$D(e)$ 总是停机，并且
 
-class Timeout(Exception):
-    pass
+$$
+D(e) = 1 \iff P(\varphi_e).
+$$
 
-def timeout_handler(signum, frame):
-    raise Timeout()
+证明所依赖的归约可以完整写成一个构造性的协议，而不只是停留在"塞进一个新程序"这种描述层面。取上面那对满足 $P(g) \ne P(\bot)$ 的函数 $g,\bot$。给定任意停机实例 $(M,x)$，构造程序 $Q$：
 
-def run_with_timeout(func, arg, timeout_sec=0.05):
-    signal.signal(signal.SIGALRM, timeout_handler)
-    signal.setitimer(signal.ITIMER_REAL, timeout_sec)
-    try:
-        result = func(arg)
-        signal.setitimer(signal.ITIMER_REAL, 0)
-        return result
-    except Timeout:
-        signal.setitimer(signal.ITIMER_REAL, 0)
-        raise
+$$
+Q(y) = \begin{cases} g(y), & \text{若模拟 } M(x) \text{ 停机} \\ \text{（永不返回）}, & \text{若模拟 } M(x) \text{ 不停机} \end{cases}
+$$
 
-def bottom(y):
-    """处处不定义的部分函数：永远循环。"""
-    while True:
-        time.sleep(0.001)
+也就是说，$Q$ 在输入 $y$ 上先模拟 $M(x)$，模拟一旦停机就转而计算并返回 $g(y)$，否则 $Q$ 永远停留在模拟阶段。这样 $Q$ 计算的部分函数只有两种可能：$M(x)$ 停机时 $\varphi_Q = g$，不停机时 $\varphi_Q = \bot$。把假设存在的判定器 $D$ 接到这个构造上，就得到
 
-def g(y):
-    """一个具体的可计算函数，比如恒返回 0。"""
-    return 0
+$$
+D(\ulcorner Q \urcorner) = P(g) \iff M(x)\!\downarrow .
+$$
 
-def P_holds_for(func, test_inputs, timeout_sec=0.05):
-    """
-    演示性质的判定器：假设 P 是'在测试输入上恒返回 0'。
-    对 bottom 永远等不到结果；对 g 会快速确认。
-    """
-    for y in test_inputs:
-        try:
-            result = run_with_timeout(func, y, timeout_sec)
-        except Timeout:
-            return False
-        if result != 0:
-            return False
-    return True
+这是因为 $D$ 总能正确判定 $P$，所以 $D(\ulcorner Q\urcorner)=1$ 当且仅当 $\varphi_Q$ 具有性质 $P$；当 $M(x)$ 停机时这等价于 $P(g)$ 是否成立，不停机时这等价于 $P(\bot)$ 是否成立，而 $P(g) \ne P(\bot)$ 使这两种情形被 $D$ 的输出完全区分开来。于是只要判断 $D(\ulcorner Q\urcorner)$ 是否等于 $P(g)$，就得到了一个总停机、总正确的停机问题判定器，这与停机问题不可判定矛盾，因此 $D$ 不存在，Rice 定理成立。
 
-def make_Q(M, x, g_func):
-    """
-    构造 Rice 定理证明中的程序 Q：
-    先模拟 M(x)；若停机则计算 g(y)，否则对所有 y 不返回。
-    """
-    def Q(y):
-        M(x)
-        return g_func(y)
-    return Q
-
-def M_halts(x):
-    """一个会停机的程序示例。"""
-    return 42
-
-def M_loops(x):
-    """一个不停机的程序示例。"""
-    while True:
-        time.sleep(0.001)
-
-test_inputs = [0, 1, 2]
-
-print("P(bottom) ?", P_holds_for(bottom, test_inputs))
-print("P(g)    ?", P_holds_for(g, test_inputs))
-
-Q_halts = make_Q(M_halts, None, g)
-print("P(Q when M halts) ?", P_holds_for(Q_halts, test_inputs))
-
-Q_loops = make_Q(M_loops, None, g)
-print("P(Q when M loops) ?", P_holds_for(Q_loops, test_inputs))
-```
-
-从这段代码可以看到，如果我真的拥有能在有限时间内对所有程序判定性质 P 的算法，那么通过把任意停机实例嵌入 Q 的语义，我就能用判定 P 的结果来回答 M(x) 是否停机。这正是 Rice 定理所揭示的矛盾。因此，Rice 定理不仅是一条关于程序语义判定的不可判定性结果，更是一条关于可计算性边界的元定理：任何试图完全理解程序真实行为的通用算法，都会撞上停机问题这道墙。在实践中，这意味着我必须把程序分析的目标从“通用且完备”转向“在明确限制下的有用近似”。
+这条定理和这套归约协议，才是这个结果真正的产出：协议本身完全不依赖 $P$ 的具体内容，只用到 $P(g) \ne P(\bot)$ 这一个非平凡性条件，这正是它能够一次性覆盖所有非平凡 extensional property、把原本要逐个性质分别证明的一整族不可判定性结果统一成同一个归约模板的原因。
