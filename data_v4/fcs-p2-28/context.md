@@ -26,19 +26,6 @@ palindromic *substring* exists.
 
 Example: for `s = bbbab` the answer is `4` (the subsequence `bbbb`).
 
-## Background
-
-The constraint that the palindrome is a *subsequence* rather than a *substring* changes the problem
-completely, and two families of approach are on the table before committing to one:
-
-- **Expand around centers.** The classic linear-ish technique for longest palindromic *substring*:
-  for each of the `2n-1` possible centers, expand outward while the two sides match, and keep the
-  longest run. It is short and fast (`O(n^2)`), and the open question is whether it can be made to
-  find the longest *subsequence* rather than only contiguous substrings.
-- **Interval dynamic programming.** Define a value for each interval `s[i..j]` — the length of its
-  best palindromic subsequence — and combine intervals by their endpoints. This is `O(n^2)` time;
-  the open question is the exact recurrence at the endpoints and how to keep memory within bounds.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: the empty string (`|s| = 0`), a single character, two characters
