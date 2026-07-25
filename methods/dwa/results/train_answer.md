@@ -20,23 +20,23 @@ class RobotType(Enum):
 
 class Config:
     def __init__(self):
-        self.max_speed = 1.0
-        self.min_speed = -0.5
-        self.max_yaw_rate = 40.0 * math.pi / 180.0
-        self.max_accel = 0.2
-        self.max_delta_yaw_rate = 40.0 * math.pi / 180.0
+        self.max_speed = 1.0                              # [m/s]
+        self.min_speed = -0.5                             # [m/s]
+        self.max_yaw_rate = 40.0 * math.pi / 180.0        # [rad/s]
+        self.max_accel = 0.2                              # [m/s^2]   width of V_d
+        self.max_delta_yaw_rate = 40.0 * math.pi / 180.0  # [rad/s^2]
         self.v_resolution = 0.01
         self.yaw_rate_resolution = 0.1 * math.pi / 180.0
-        self.dt = 0.1
-        self.predict_time = 3.0
-        self.to_goal_cost_gain = 0.15
-        self.speed_cost_gain = 1.0
-        self.obstacle_cost_gain = 1.0
+        self.dt = 0.1                                     # control / prediction tick
+        self.predict_time = 3.0                           # arc rollout horizon
+        self.to_goal_cost_gain = 0.15                     # alpha (heading)
+        self.speed_cost_gain = 1.0                        # gamma (velocity)
+        self.obstacle_cost_gain = 1.0                     # beta  (clearance)
         self.robot_stuck_flag_cons = 0.001
         self.robot_type = RobotType.circle
-        self.robot_radius = 1.0
-        self.robot_width = 0.5
-        self.robot_length = 1.2
+        self.robot_radius = 1.0                           # [m] circle footprint
+        self.robot_width = 0.5                            # [m] rectangle footprint
+        self.robot_length = 1.2                           # [m]
         self.ob = np.array([[-1, -1],
                             [0, 2],
                             [4.0, 2.0],
@@ -55,6 +55,7 @@ class Config:
 
 
 def motion(x, u, dt):
+    # synchro-drive arc step
     x[2] += u[1] * dt
     x[0] += u[0] * math.cos(x[2]) * dt
     x[1] += u[0] * math.sin(x[2]) * dt
@@ -64,6 +65,7 @@ def motion(x, u, dt):
 
 
 def calc_dynamic_window(x, config):
+    # V_s (hardware) ∩ V_d (reachable this tick under accel limits)
     Vs = [config.min_speed, config.max_speed,
           -config.max_yaw_rate, config.max_yaw_rate]
     Vd = [x[3] - config.max_accel * config.dt,
@@ -117,7 +119,7 @@ def calc_obstacle_cost(trajectory, ob, config):
     elif config.robot_type == RobotType.circle:
         if np.array(r <= config.robot_radius).any():
             return float("inf")
-    return 1.0 / np.min(r)
+    return 1.0 / np.min(r)             # closer obstacle -> higher cost
 
 
 def calc_control_and_trajectory(x, dw, config, goal, ob):
@@ -129,8 +131,8 @@ def calc_control_and_trajectory(x, dw, config, goal, ob):
         for w in np.arange(dw[2], dw[3], config.yaw_rate_resolution):
             traj = predict_trajectory(x_init, v, w, config)
             to_goal = config.to_goal_cost_gain * calc_to_goal_cost(traj, goal)
-            speed = config.speed_cost_gain * (config.max_speed - traj[-1, 3])
-            obst = config.obstacle_cost_gain * calc_obstacle_cost(traj, ob, config)
+            speed   = config.speed_cost_gain * (config.max_speed - traj[-1, 3])
+            obst    = config.obstacle_cost_gain * calc_obstacle_cost(traj, ob, config)
             cost = to_goal + speed + obst
             if cost <= min_cost:
                 min_cost = cost
@@ -138,7 +140,7 @@ def calc_control_and_trajectory(x, dw, config, goal, ob):
                 best_traj = traj
                 if abs(best_u[0]) < config.robot_stuck_flag_cons \
                         and abs(x[3]) < config.robot_stuck_flag_cons:
-                    best_u[1] = -config.max_delta_yaw_rate
+                    best_u[1] = -config.max_delta_yaw_rate   # anti-stall nudge
     return best_u, best_traj
 
 
@@ -148,11 +150,11 @@ def dwa_control(x, config, goal, ob):
 
 
 def main(gx=10.0, gy=10.0, robot_type=RobotType.circle):
-    x = np.array([0.0, 0.0, math.pi / 8.0, 0.0, 0.0])
+    x = np.array([0.0, 0.0, math.pi / 8.0, 0.0, 0.0])  # [x, y, yaw, v, omega]
     goal = np.array([gx, gy])
     config = Config()
     config.robot_type = robot_type
-    ob = config.ob
+    ob = config.ob  # local obstacle points from the proximity sensors
     while True:
         u, _ = dwa_control(x, config, goal, ob)
         x = motion(x, u, config.dt)
