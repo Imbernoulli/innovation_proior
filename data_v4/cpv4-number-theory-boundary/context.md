@@ -40,22 +40,17 @@ endpoints. Two families of approach are on the table before committing to one:
   trivial to write and obviously correct, but it is `O((R - L + 1))` per query. With `R - L` up to
   `10^18` this is hopeless for the real bounds; it survives only as a brute-force oracle on tiny
   inputs.
-- **Prefix-count via inclusion-exclusion (Mobius).** Define `C(N)` = the count of integers in
-  `[1, N]` that are coprime to `m`. Then the answer for a window is a *difference of prefix counts*,
-  and `C(N)` itself is an inclusion-exclusion over the **distinct prime factors** of `m`:
-  `C(N) = sum over squarefree divisors d of m of mu(d) * floor(N / d)`. Factor `m` once
-  (`m <= 10^12`, so trial division to `10^6` suffices); each prime set has at most ~11 distinct
-  primes, so there are at most `2^11` signed terms. The open questions are (1) the *exact* difference
-  of prefix counts that turns the half-open prefix into the closed window `[L, R]`, and (2) the
-  `N = 0` corner that the difference produces when `L = 1`.
+- **Prefix-count over the range.** Recasting a window count as a difference of two prefix counts —
+  the count of qualifying integers in `[1, N]` for two different `N` — is a standard move for
+  non-monotone predicates, and is the basis of several counting techniques built from the prime
+  factorization of `m` (as seen in Euler-totient summations and similar "count numbers with a
+  divisibility property in a range" tasks).
 
 ## Evaluation settings
 
-Judged on hidden tests covering: `m = 1` (everything is coprime, every window answer is `R - L + 1`);
-prime `m` and prime-power `m`; highly composite `m` (product of many small primes, the maximum number
-of inclusion-exclusion terms); single-point windows `L = R`; windows anchored at the left edge `L = 1`
-(which forces the `L - 1 = 0` prefix); the full magnitude `R = 10^18` (so prefix counts and the
-running accumulator must be 64-bit); and the maximum `q = 2*10^5` queries against a worst-case
+Judged on hidden tests covering: `m = 1`; prime `m` and prime-power `m`; highly composite `m`
+(product of many small primes); single-point windows `L = R`; windows anchored at the left edge
+`L = 1`; the full magnitude `R = 10^18`; and the maximum `q = 2*10^5` queries against a worst-case
 multi-prime `m`.
 
 ## Code framework
