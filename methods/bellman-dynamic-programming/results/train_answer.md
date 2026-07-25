@@ -4,154 +4,40 @@ The key insight is that the future can be summarized by a single number: the bes
 
 The method works by defining a value function and deriving a backward recursion or fixed-point equation from the principle of optimality. For a finite-horizon problem with immediate reward r and deterministic transition T, the value at time t is V_t(p) = max_k { r_t(p,k) + V_{t+1}(T_t(p,k)) }, with a terminal condition at the final stage. For stochastic transitions the continuation value becomes an expectation over the next-state distribution. For infinite-horizon discounted problems the value satisfies V = TV, where T applies one-step maximization plus discounted continuation. Because T is a contraction when rewards are bounded and the discount factor lies in [0,1), value iteration converges to the unique fixed point. Policy iteration alternates between evaluating a fixed policy and greedily improving it, also converging under the same conditions.
 
-```python
-import numpy as np
-from typing import Callable, Tuple
+The artifact I want to hand over is not a program but the value-equation apparatus itself, since nothing about this method is tied to a particular implementation: it is a way of converting any multistage decision problem into a one-step recursion. Write $p$ for the current state, $k$ for the current feasible decision, and $f_N(p)$ for the optimal return with $N$ stages still to go. When decision $k$ moves a deterministic state $p$ to $T_k(p)$, the principle of optimality gives the backward recursion
 
+$$
+f_N(p)=\max_k f_{N-1}\bigl(T_k(p)\bigr), \qquad N=2,3,\ldots,
+$$
 
-def deterministic_finite_horizon(
-    states: list,
-    actions: list,
-    terminal_value: Callable,
-    reward: Callable,
-    transition: Callable,
-    T: int,
-):
-    """Backward induction for a deterministic finite-horizon problem."""
-    V = {s: terminal_value(s) for s in states}
-    policy = {}
+seeded by the one-stage return $f_1$. When the transition is random instead, with decision $k$ sending $p$ to a next state drawn from $G_k(p,dz)$, the same argument gives
 
-    for t in range(T - 1, -1, -1):
-        V_prev = V.copy()
-        for s in states:
-            best_val = float("-inf")
-            best_a = None
-            for a in actions:
-                s_next = transition(t, s, a)
-                val = reward(t, s, a) + V_prev[s_next]
-                if val > best_val:
-                    best_val = val
-                    best_a = a
-            V[s] = best_val
-            policy[(t, s)] = best_a
-    return V, policy
+$$
+f_N(p)=\max_k\int f_{N-1}(z)\,G_k(p,dz), \qquad N=2,3,\ldots,
+$$
 
+which reduces to the deterministic recursion exactly when $G_k$ puts all its mass on $T_k(p)$. Folding in an explicit current reward $r_t(p,k)$ and transition kernel $P_t(dz\mid p,k)$ gives the additive form used in finite-horizon applications,
 
-def stochastic_finite_horizon(
-    states: list,
-    actions: list,
-    terminal_value: Callable,
-    reward: Callable,
-    transitions: Callable,  # returns list of (prob, next_state)
-    T: int,
-):
-    """Backward induction with stochastic transitions."""
-    V = {s: terminal_value(s) for s in states}
-    policy = {}
+$$
+V_t(p)=\max_k\left\{r_t(p,k)+\int V_{t+1}(z)\,P_t(dz\mid p,k)\right\},
+$$
 
-    for t in range(T - 1, -1, -1):
-        V_prev = V.copy()
-        for s in states:
-            best_val = float("-inf")
-            best_a = None
-            for a in actions:
-                exp_cont = sum(p * V_prev[z] for p, z in transitions(t, s, a))
-                val = reward(t, s, a) + exp_cont
-                if val > best_val:
-                    best_val = val
-                    best_a = a
-            V[s] = best_val
-            policy[(t, s)] = best_a
-    return V, policy
+together with a terminal condition fixing the value at the last stage. In the stationary, infinite-horizon case with discount factor $\alpha\in[0,1)$ this collapses to a single fixed-point equation for one value function,
 
+$$
+V(p)=\max_k\left\{r(p,k)+\alpha\int V(z)\,P(dz\mid p,k)\right\} =: (TV)(p).
+$$
 
-def value_iteration(
-    states: list,
-    actions: list,
-    reward: np.ndarray,  # shape (n_states, n_actions)
-    transition_probs: np.ndarray,  # shape (n_states, n_actions, n_states)
-    gamma: float,
-    theta: float = 1e-6,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """Discounted infinite-horizon value iteration."""
-    n_s, n_a = reward.shape
-    V = np.zeros(n_s)
+For bounded rewards and $0\le\alpha<1$, the Bellman operator $T$ satisfies
 
-    while True:
-        Q = reward + gamma * np.einsum("saz,z->sa", transition_probs, V)
-        V_new = Q.max(axis=1)
-        if np.max(np.abs(V_new - V)) < theta:
-            break
-        V = V_new
+$$
+\|TW-TV\|_\infty \le \alpha\,\|W-V\|_\infty
+$$
 
-    policy = Q.argmax(axis=1)
-    return V, policy
+for any two bounded value functions $W,V$, so $T$ is a contraction in the sup norm: it has a unique fixed point, value iteration (repeated application of $T$ from any starting guess) converges to it, and policy iteration reaches the same fixed point by alternating exact evaluation of the current policy with greedy improvement. Carrying the same construction to continuous deterministic control, where the state obeys $dx/dt=G(x,v)$ under control $v$ with running payoff $F(x,v)$ over $[0,T]$, the value function $f(c,T)$ for starting state $c$ satisfies, in the differentiable limit,
 
+$$
+f_T=\max_v\bigl\{F(c,v)+G(c,v)\,f_c\bigr\},
+$$
 
-def policy_iteration(
-    states: list,
-    actions: list,
-    reward: np.ndarray,
-    transition_probs: np.ndarray,
-    gamma: float,
-    theta: float = 1e-10,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """Discounted infinite-horizon policy iteration."""
-    n_s, n_a = reward.shape
-    policy = np.zeros(n_s, dtype=int)
-
-    while True:
-        # Policy evaluation: solve linear system for current policy.
-        P_pi = transition_probs[np.arange(n_s), policy, :]
-        r_pi = reward[np.arange(n_s), policy]
-        V = np.linalg.solve(np.eye(n_s) - gamma * P_pi, r_pi)
-
-        # Policy improvement.
-        Q = reward + gamma * np.einsum("saz,z->sa", transition_probs, V)
-        new_policy = Q.argmax(axis=1)
-        if np.array_equal(new_policy, policy):
-            break
-        policy = new_policy
-
-    return V, policy
-
-
-if __name__ == "__main__":
-    # Small inventory example: choose order quantity to maximize profit.
-    states = [0, 1, 2]
-    actions = [0, 1, 2]
-
-    def terminal_value(s):
-        return 0.0
-
-    def reward(t, s, a):
-        # revenue from sold units minus holding cost for leftover inventory
-        demand = 1
-        sold = min(s + a, demand)
-        leftover = max(s + a - demand, 0)
-        return 5.0 * sold - 1.0 * leftover - 0.5 * a
-
-    def transition(t, s, a):
-        demand = 1
-        next_stock = max(s + a - demand, 0)
-        return min(next_stock, 2)
-
-    V, pol = deterministic_finite_horizon(
-        states, actions, terminal_value, reward, transition, T=3
-    )
-    print("Values:", V)
-    print("Policy:", pol)
-
-    # Discounted MDP value iteration on a tiny random MDP.
-    n_s, n_a = 3, 2
-    np.random.seed(0)
-    r = np.random.randn(n_s, n_a)
-    P = np.random.dirichlet(np.ones(n_s), size=(n_s, n_a))
-    V, pi = value_iteration(states, actions, r, P, gamma=0.9)
-    print("Value iteration values:", V)
-    print("Value iteration policy:", pi)
-
-    V2, pi2 = policy_iteration(states, actions, r, P, gamma=0.9)
-    print("Policy iteration values:", V2)
-    print("Policy iteration policy:", pi2)
-```
+whose interior maximizers obey $F_v+G_v f_c=0$, with any boundary or inequality constraints on $v$ left inside the maximization rather than handled by a separate case. This is the complete result: a value function defined on states, the principle of optimality that turns a maximization over whole policies into the one-step recursion above, and the contraction argument that certifies convergence to it whenever the horizon is stationary and discounted.

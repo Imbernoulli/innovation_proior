@@ -16,66 +16,10 @@ The same integer appears at the boundary of a finite sample. Near an edge the co
 
 The canonical name for this mechanism is the integer quantum Hall effect, or equivalently the Chern-number quantization of Hall conductance. It unifies Landau quantization, disorder-induced localization, and chiral edge transport under a single topological statement: the measured Hall conductance is an integer topological invariant expressed in electrical units.
 
-A concrete lattice model makes the integer nature numerically verifiable. The following two-band Chern insulator on a square lattice has Hamiltonian `H(k) = sin(kx) sigma_x + sin(ky) sigma_y + (m + cos(kx) + cos(ky)) sigma_z`. By discretizing the Brillouin zone and summing the Berry curvature over plaquettes, the Chern number of the lower band converges to an integer. Running the script prints the computed Chern number for several values of the mass parameter and confirms that the result is quantized even with a modest grid.
+The complete statement is a theorem about the occupied-state bundle, not a numerical coincidence to be checked case by case. For a two-dimensional electron system in which the occupied states are separated from current-carrying states by an energy gap or a mobility gap, the Hall conductance is exactly
 
-```python
-import numpy as np
+$$\sigma_{xy} = \frac{e^2}{h}\,C, \qquad C = \sum_\alpha C_\alpha, \qquad C_\alpha = \frac{1}{2\pi}\int F_\alpha,$$
 
+where the sum runs over the occupied bands $\alpha$, $F_\alpha$ is the Berry curvature of band $\alpha$ over the appropriate two-dimensional parameter torus — the Brillouin zone for a clean band problem, boundary-twist fluxes for a disordered finite system — and $C$ is the total first Chern number of the occupied-state bundle, necessarily an integer. For $\nu$ filled Landau levels this reduces to $C = \nu$, recovering $\sigma_{xy} = \nu e^2/h$ as the special case it always was.
 
-def hamiltonian(kx, ky, m):
-    """Two-band Chern insulator on a square lattice."""
-    sx = np.array([[0, 1], [1, 0]], dtype=complex)
-    sy = np.array([[0, -1j], [1j, 0]], dtype=complex)
-    sz = np.array([[1, 0], [0, -1]], dtype=complex)
-    return (
-        np.sin(kx) * sx
-        + np.sin(ky) * sy
-        + (m + np.cos(kx) + np.cos(ky)) * sz
-    )
-
-
-def link(u, v):
-    """Gauge-invariant U(1) link between normalized eigenstates."""
-    z = np.vdot(u, v)
-    return z / abs(z)
-
-
-def compute_chern(m=1.0, n=80):
-    """Chern number of the lower band via the Fukui-Hatsugai method."""
-    chern = 0.0
-    ks = np.linspace(-np.pi, np.pi, n, endpoint=False)
-
-    def lower_band(kx, ky):
-        _, v = np.linalg.eigh(hamiltonian(kx, ky, m))
-        return v[:, 0]
-
-    for i in range(n):
-        for j in range(n):
-            kx00, ky00 = ks[i], ks[j]
-            kx10, ky10 = ks[(i + 1) % n], ks[j]
-            kx01, ky01 = ks[i], ks[(j + 1) % n]
-            kx11, ky11 = ks[(i + 1) % n], ks[(j + 1) % n]
-
-            u00 = lower_band(kx00, ky00)
-            u10 = lower_band(kx10, ky10)
-            u11 = lower_band(kx11, ky11)
-            u01 = lower_band(kx01, ky01)
-
-            U = (
-                link(u00, u10)
-                * link(u10, u11)
-                * link(u11, u01)
-                * link(u01, u00)
-            )
-            chern += np.angle(U)
-
-    return chern / (2.0 * np.pi)
-
-
-if __name__ == "__main__":
-    for m in [-1.0, 1.0, 2.5]:
-        c = compute_chern(m, n=80)
-        print(f"m = {m}: C = {c:.6f} (nearest integer = {round(c)})")
-```
-
-The output shows that the lower band carries Chern number `-1` for `m = -1`, `+1` for `m = 1`, and `0` for `m = 2.5`, exactly as the topological classification predicts. This numerical check captures the same discreteness that protects the integer quantum Hall plateau: the response coefficient is `e^2/h` times an integer that can change only through a gap-closing transition.
+That integer is the whole deliverable. Because $C$ cannot change under any continuous deformation of the Hamiltonian — disorder, interface roughness, a different semiconductor, a smooth sweep of field or density — the conductance stays locked to $\nu e^2/h$ until the gap or mobility gap protecting the occupied sector closes, which is precisely when a plateau transition is observed. Landau levels supply the invariant's value in the clean limit, disorder stretches each isolated integer filling into the observed plateau, and the same integer reappears as the net number of chiral edge channels carrying current at the sample boundary: the measured Hall conductance is the exact image, in units of $e^2/h$, of a topological invariant of the electron system's occupied quantum states.
