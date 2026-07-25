@@ -16,44 +16,42 @@ import torch.nn.functional as F
 
 class MultiScaleFeatureBuilder(nn.Module):
     """Top-down pathway with lateral connections over backbone stage maps.
-
-    in_channels_per_stage: channels of [C2, C3, C4, C5], high-res -> low-res.
-    Returns: list [P2, P3, P4, P5, (P6)] of feature maps with 256 channels.
-    """
+    in_channels_per_stage: channels of [C2, C3, C4, C5], high-res -> low-res."""
 
     def __init__(self, in_channels_per_stage, out_channels=256, add_extra_coarse_level=True):
         super().__init__()
         lateral_convs = []
         output_convs = []
         for in_ch in in_channels_per_stage:
-            lateral = nn.Conv2d(in_ch, out_channels, kernel_size=1)
-            output = nn.Conv2d(out_channels, out_channels, kernel_size=3, padding=1)
-            nn.init.xavier_uniform_(lateral.weight)
-            nn.init.zeros_(lateral.bias)
-            nn.init.xavier_uniform_(output.weight)
-            nn.init.zeros_(output.bias)
+            lateral = nn.Conv2d(in_ch, out_channels, kernel_size=1)        # match channels
+            output = nn.Conv2d(out_channels, out_channels, 3, padding=1)   # de-alias
+            nn.init.xavier_uniform_(lateral.weight); nn.init.zeros_(lateral.bias)
+            nn.init.xavier_uniform_(output.weight); nn.init.zeros_(output.bias)
             lateral_convs.append(lateral)
             output_convs.append(output)
-        # store in low-res -> high-res order for the top-down loop
+        # store in top-down (low-res -> high-res) order
         self.lateral_convs = nn.ModuleList(lateral_convs[::-1])
         self.output_convs = nn.ModuleList(output_convs[::-1])
         self.add_extra_coarse_level = add_extra_coarse_level
 
     def forward(self, bottom_up_maps):
         # bottom_up_maps: list [C2, C3, C4, C5], high-res -> low-res
-        prev = self.lateral_convs[0](bottom_up_maps[-1])   # 1x1 on C5
-        results = [self.output_convs[0](prev)]             # P5
+        prev = self.lateral_convs[0](bottom_up_maps[-1])     # 1x1 on C5: seed top-down stream
+        results = [self.output_convs[0](prev)]               # P5
         for idx in range(1, len(self.lateral_convs)):
-            c = bottom_up_maps[-idx - 1]                   # next finer bottom-up map
+            c = bottom_up_maps[-idx - 1]
             top_down = F.interpolate(prev, scale_factor=2.0, mode="nearest")
             lateral = self.lateral_convs[idx](c)
-            prev = lateral + top_down                       # merge semantics + localization
-            results.insert(0, self.output_convs[idx](prev)) # P_k
+            prev = lateral + top_down                         # merge by element-wise add
+            results.insert(0, self.output_convs[idx](prev))   # P_k
         if self.add_extra_coarse_level:
-            results.append(F.max_pool2d(results[-1], kernel_size=1, stride=2))  # P6
-        return results
+            results.append(F.max_pool2d(results[-1], kernel_size=1, stride=2))  # P6 from P5
+        return results   # [P2, P3, P4, P5, (P6)]
+```
 
+The RoI-to-level assignment I use for the region detector is a direct implementation of the rule above:
 
+```python
 def assign_roi_to_level(
     boxes,
     min_level=2,
@@ -63,7 +61,12 @@ def assign_roi_to_level(
     eps=1e-6,
     legacy_plus_one=True,
 ):
-    """Return the FPN level k for each RoI of size sqrt(w * h)."""
+    """Return the FPN level for each RoI.
+
+    `legacy_plus_one=True` matches original Detectron/Faster-R-CNN pixel-index
+    boxes, where width and height are computed as x2 - x1 + 1 and y2 - y1 + 1.
+    Set it to False only if the whole detector uses continuous boxes.
+    """
     if boxes.numel() == 0:
         return torch.empty((0,), dtype=torch.int64, device=boxes.device)
     offset = 1.0 if legacy_plus_one else 0.0
@@ -71,8 +74,8 @@ def assign_roi_to_level(
     h = boxes[:, 3] - boxes[:, 1] + offset
     if ((w <= 0) | (h <= 0)).any():
         raise ValueError("boxes must have positive width and height")
-    box_size = torch.sqrt(w * h)
-    level = torch.floor(canonical_level + torch.log2(box_size / canonical_box_size + eps))
+    box_sizes = torch.sqrt(w * h)
+    level = torch.floor(canonical_level + torch.log2(box_sizes / canonical_box_size + eps))
     level = torch.clamp(level, min=min_level, max=max_level)
     return level.to(torch.int64)
 ```
