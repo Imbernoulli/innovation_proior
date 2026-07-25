@@ -71,9 +71,11 @@ tau_hat_norm =  [ sum_i T_i·Y_i/ê(X_i) ] / [ sum_i T_i/ê(X_i) ]
 ```
 
 The normalized weights in each arm sum to exactly 1, so each arm is a genuine weighted average
-of observed outcomes, typically with lower variance. With a nonparametric `ê`, the normalized estimator
-attains the semiparametric efficiency bound (Hirano, Imbens & Ridder 2003) — weighting by the
-*estimated* propensity is more efficient than weighting by the true one.
+of observed outcomes, typically with lower variance. There is a sharper claim in the
+semiparametric-efficiency literature that, with a nonparametric `ê`, the normalized estimator
+attains the semiparametric efficiency bound — weighting by the *estimated* propensity is more
+efficient than weighting by the true one — though that asymptotic statement is not something the
+finite-sample experiments here can confirm on their own.
 
 ## CATE via the IPW pseudo-outcome
 
