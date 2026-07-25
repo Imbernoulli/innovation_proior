@@ -10,93 +10,10 @@ It remains to show that a minimal decisive coalition must contain exactly one vo
 
 The theorem shows that pairwise independence is too strong: it denies the rule the cross-alternative information needed to keep a social ordering coherent, while transitivity still demands coherence. The only consistent source of pairwise judgments that remains is a single fixed voter.
 
-```python
-from itertools import permutations, product, combinations
-
-ALTS = ('x', 'y', 'z')
-
-
-def prefers(ranking, a, b):
-    return ranking.index(a) < ranking.index(b)
-
-
-def dictatorial_factory(voter_idx):
-    def rule(profile):
-        return profile[voter_idx]
-    return rule
-
-
-def borda_rule(profile):
-    n = len(profile[0])
-    scores = {alt: 0 for alt in profile[0]}
-    for r in profile:
-        for pos, alt in enumerate(r):
-            scores[alt] += n - 1 - pos
-    return tuple(sorted(scores, key=lambda a: (-scores[a], a)))
-
-
-def check_pareto(rule, profiles):
-    for profile in profiles:
-        soc = rule(profile)
-        for a, b in permutations(profile[0], 2):
-            if all(prefers(r, a, b) for r in profile) and not prefers(soc, a, b):
-                return False
-    return True
-
-
-def check_iia(rule, profiles):
-    pairs = list(permutations(profiles[0][0], 2))
-    for a, b in pairs:
-        groups = {}
-        for profile in profiles:
-            key = tuple(prefers(r, a, b) for r in profile)
-            if key not in groups:
-                groups[key] = prefers(rule(profile), a, b)
-            elif prefers(rule(profile), a, b) != groups[key]:
-                return False
-    return True
-
-
-def find_dictator(rule, profiles, n_voters):
-    pairs = list(permutations(profiles[0][0], 2))
-    for i in range(n_voters):
-        ok = True
-        for profile in profiles:
-            soc = rule(profile)
-            for a, b in pairs:
-                if prefers(profile[i], a, b) and not prefers(soc, a, b):
-                    ok = False
-                    break
-            if not ok:
-                break
-        if ok:
-            return i
-    return None
-
-
-def arrow_check(rule, alternatives, n_voters):
-    profiles = list(product(permutations(alternatives), repeat=n_voters))
-    pareto_ok = check_pareto(rule, profiles)
-    iia_ok = check_iia(rule, profiles)
-    dictator = find_dictator(rule, profiles, n_voters)
-    print(f"Pareto: {pareto_ok}, IIA: {iia_ok}, dictator found: {dictator}")
-    return pareto_ok, iia_ok, dictator
-
-
-if __name__ == "__main__":
-    # Pairwise majority cycles on the Condorcet profile.
-    cycle = (('x', 'y', 'z'), ('y', 'z', 'x'), ('z', 'x', 'y'))
-    print("Condorcet cycle (majority pairwise outcomes):")
-    for a, b in [('x', 'y'), ('y', 'z'), ('z', 'x')]:
-        wins_a = sum(prefers(r, a, b) for r in cycle)
-        wins_b = len(cycle) - wins_a
-        print(f"  {a} vs {b}: {a} wins {wins_a}-{wins_b}")
-
-    # A dictatorial rule satisfies the axioms.
-    print("\nDictatorial rule (voter 0 decides):")
-    arrow_check(dictatorial_factory(0), ALTS, 2)
-
-    # Borda count violates independence of irrelevant alternatives.
-    print("\nBorda count:")
-    arrow_check(borda_rule, ALTS, 2)
-```
+Put precisely, the object is a function $F:\mathcal L(A)^n \to \mathcal L(A)$ on the strict linear orders $\mathcal L(A)$ over an alternative set $A$ with $|A|\ge 3$ and a finite voter set $N=\{1,\dots,n\}$, defined on every profile in $\mathcal L(A)^n$ (unrestricted domain). $F$ satisfies Pareto if
+$$\big(\forall i\in N:\ x\succ_i y\big)\ \Longrightarrow\ x\succ y,\qquad \succ = F(\succ_1,\dots,\succ_n),$$
+for every ordered pair $x,y\in A$. $F$ satisfies independence of irrelevant alternatives if, for any two profiles $(\succ_i)_{i\in N}$ and $(\succ_i')_{i\in N}$ with images $\succ = F(\succ_i)$ and $\succ' = F(\succ_i')$,
+$$\big(\forall i\in N:\ x\succ_i y \iff x\succ_i' y\big)\ \Longrightarrow\ \big(x\succ y \iff x\succ' y\big).$$
+Arrow's impossibility theorem is that any such $F$ satisfying unrestricted domain, Pareto, and independence of irrelevant alternatives, with $|A|\ge 3$, is dictatorial: there exists a fixed voter $i^*\in N$ such that
+$$\forall\,(\succ_1,\dots,\succ_n)\in\mathcal L(A)^n,\ \forall\, x,y\in A:\qquad x\succ_{i^*}y\ \Longrightarrow\ x\succ y.$$
+Voter $i^*$ is exactly the singleton that the decisive-coalition argument isolates as the unique minimal decisive set, and the pivotal argument shows that this same voter, not merely the pair on which the pivot was located, controls every ordered pair. No weakening survives once three or more alternatives are on the table: no split of control between two or more voters, no restriction of the domain, and no loosening of transitivity is compatible with unrestricted domain, Pareto, and independence of irrelevant alternatives at the same time.
