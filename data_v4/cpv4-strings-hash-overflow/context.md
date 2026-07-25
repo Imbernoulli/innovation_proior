@@ -17,12 +17,6 @@ where `c_w` is the number of windows whose content equals `w`. Intuitively, ever
 length `L` contributes one "echo" for each pair of places it occurs. Output `echo(s, L)`. If
 `L > n` there are no windows and the score is `0`.
 
-This is a fixed-length substring multiplicity problem. The interesting subtlety is not the idea but
-the magnitude: when the stream is highly repetitive, a single content can occur on the order of `n`
-times, so its pair count `C(c_w, 2)` is on the order of `n^2 / 2`, and the total can be far larger
-than a 32-bit integer can hold. Getting the data types right is as load-bearing as getting the
-algorithm right.
-
 ## Input / output contract
 
 - Input (stdin): the first line has two integers `n` and `L`
@@ -36,27 +30,12 @@ Example: for `n = 7`, `L = 2`, `s = "ababaab"` the windows are
 `ab, ba, ab, ba, aa, ab`, so `ab` occurs 3 times, `ba` twice, `aa` once, and the echo score is
 `C(3,2) + C(2,2) + C(1,2) = 3 + 1 + 0 = 4`.
 
-## Background
-
-Two families of approach are on the table before committing to one:
-
-- **Sort the raw substrings.** Materialize all `n - L + 1` windows as actual strings, sort them, and
-  count runs of equal strings. Trivially correct, but each comparison touches up to `L` characters,
-  so this is `O(n L log n)` and `O(n L)` memory — both blow up when `L` is large (e.g. `L = 10^5`,
-  `n = 2*10^5`). Good as a reference brute force, not as the shipped solution.
-- **Polynomial hashing.** Give each window an integer fingerprint computed in `O(1)` from prefix
-  hashes, then group windows by fingerprint. This is `O(n log n)` (or `O(n)` with a hash map) and
-  `O(n)` memory regardless of `L`. The open questions are the rolling-hash formula for an arbitrary
-  window `[l, l+L)`, how to make collisions negligible, and — the part that bites — what integer
-  width the running counts and the final sum need.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: random strings over small and large alphabets; highly repetitive
-strings (e.g. all identical characters, or a short period repeated) where one content occurs `~n`
-times; `L = 1`, `L = n`, and `L > n`; `n = 1`; and large `n = 2*10^5` with `L` chosen so a single
-content repeats enough that the echo score exceeds `2^31` (so a 32-bit accumulator silently
-overflows). Adversarial near-collision inputs are included to punish single-modulus hashing.
+strings (e.g. all identical characters, or a short period repeated); `L = 1`, `L = n`, and `L > n`;
+`n = 1`; and large `n = 2*10^5` with a range of `L` values. Adversarial inputs are included to stress
+correctness.
 
 ## Code framework
 
