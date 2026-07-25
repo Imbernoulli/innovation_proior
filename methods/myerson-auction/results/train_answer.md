@@ -18,92 +18,16 @@ If a distribution is irregular, meaning phi decreases somewhere, the pointwise v
 
 The least invasive fix is to replace R by its concave envelope. On intervals where the original revenue curve lies below a chord, the envelope has a constant slope. Translating back to value space, all types in such an interval receive the same ironed virtual value. Maximizing ironed virtual surplus can bunch those types together, treating them as tied for allocation purposes, with randomization or tie-breaking chosen so the allocation probability remains monotone across the interval. The seller gives up the attempt to distinguish types in regions where doing so would violate incentive compatibility, while keeping the best concave revenue frontier available under monotonicity. Payments are again recovered from the same envelope and payment identity.
 
-The Myerson optimal auction is therefore best understood as a three-step reduction. First, incentive compatibility and individual rationality reduce the design space to monotone allocation rules with lowest-type utility zero. Second, integration by parts turns expected revenue into expected virtual surplus. Third, regularity or ironing lets the seller maximize virtual surplus pointwise subject to feasibility. The theorem, the mechanism, and the payment rule all follow from this reduction.
+The Myerson optimal auction is therefore best understood as a three-step reduction. First, incentive compatibility and individual rationality reduce the design space to monotone allocation rules with lowest-type utility zero. Second, integration by parts turns expected revenue into expected virtual surplus. Third, regularity or ironing lets the seller maximize virtual surplus pointwise subject to feasibility. Stated as a single result: for independent single-parameter bidders with values $v_i \sim F_i$, density $f_i$, and virtual value
 
-```python
-import numpy as np
-from scipy import integrate
-from scipy.optimize import minimize_scalar
+$$\phi_i(v) = v - \frac{1 - F_i(v)}{f_i(v)},$$
 
-np.random.seed(0)
+every incentive-compatible, individually-rational mechanism has
 
-# Regular example: values Uniform[0,1]
-# virtual value phi(v) = v - (1 - v)/1 = 2v - 1
-# reserve r solves phi(r)=0 => r = 0.5
+$$\mathbb{E}[\text{revenue}] = \mathbb{E}\Big[\sum_i x_i(v)\,\phi_i(v_i)\Big] - \sum_i U_i(0),$$
 
-# Two asymmetric bidders:
-# bidder 1: Uniform[0,1]
-# bidder 2: Beta(2,1) with CDF F(v)=v**2 on [0,1]
-# density f(v)=2v, virtual phi2(v)=v - (1 - v**2)/(2v)
+so revenue is maximized by setting $U_i(0) = 0$ for every bidder and, at every reported profile $b$, choosing the feasible allocation that maximizes $\sum_i x_i(b)\phi_i(b_i)$. When every $\phi_i$ is nondecreasing this pointwise rule is itself monotone and therefore implementable: the mechanism asks each bidder to report $b_i$, allocates the item to $\arg\max_i \phi_i(b_i)$ whenever $\max_i \phi_i(b_i) \ge 0$, withholds it otherwise, and charges the winner the smallest report at which it would still have won — the critical value obtained by inverting the relevant threshold back through its own $\phi_i$. For bidders sharing one regular $F$, this is a second-price auction with reserve $r$ solving $\phi(r) = 0$, equivalently
 
-def phi1(v):
-    return 2 * v - 1.0
+$$r = \frac{1 - F(r)}{f(r)},$$
 
-def phi2(v):
-    return v - (1.0 - v**2) / (2.0 * v + 1e-12)
-
-def optimal_allocation(b1, b2):
-    p1 = phi1(b1)
-    p2 = phi2(b2)
-    if p1 < 0 and p2 < 0:
-        return None, 0.0
-    if p1 >= p2:
-        return 1, p1
-    else:
-        return 2, p2
-
-def payment_threshold(winner, other_report):
-    # Winner pays smallest report at which it would still win.
-    if winner == 1:
-        # bidder 1 wins if phi1(b1) >= max(0, phi2(other_report))
-        threshold = max(0.0, phi2(other_report))
-        # phi1 is linear: phi1(v) = 2v - 1
-        return (threshold + 1.0) / 2.0
-    else:
-        threshold = max(0.0, phi1(other_report))
-        # bidder 2 wins if phi2(b2) >= threshold
-        # solve v - (1 - v**2)/(2v) = threshold on (0,1]
-        def loss(v):
-            return (phi2(v) - threshold)**2
-        res = minimize_scalar(loss, bounds=(1e-6, 1.0), method='bounded')
-        return res.x
-
-# Simulate reports drawn from true value distributions
-def simulate(n=200000):
-    v1 = np.random.rand(n)
-    v2 = np.random.beta(2, 1, size=n)
-    revenue = 0.0
-    alloc_count = [0, 0]
-    for b1, b2 in zip(v1, v2):
-        winner, _ = optimal_allocation(b1, b2)
-        if winner is None:
-            continue
-        other = b2 if winner == 1 else b1
-        pay = payment_threshold(winner, other)
-        revenue += pay
-        alloc_count[winner - 1] += 1
-    return revenue / n, alloc_count
-
-rev, counts = simulate()
-print(f"Simulated expected revenue: {rev:.4f}")
-print(f"Allocations: bidder1={counts[0]}, bidder2={counts[1]}")
-
-# Check that truthful reporting is interim-IC for bidder 1 by estimating
-# expected utility of bidding z when value is v.
-def estimate_utility(v, z, n=50000):
-    # bidder 2 draws from Beta(2,1)
-    b2 = np.random.beta(2, 1, size=n)
-    # use bidder 1 report z, value v
-    winner, _ = optimal_allocation(z, b2)
-    utility = 0.0
-    for i in range(n):
-        if winner[i] == 1:
-            pay = payment_threshold(1, b2[i])
-            utility += v - pay
-    return utility / n
-
-v_test = 0.75
-truth_util = estimate_utility(v_test, v_test)
-shade_util = estimate_utility(v_test, 0.6)
-print(f"Bidder 1 value {v_test}: truthful utility={truth_util:.4f}, shade-to-0.6 utility={shade_util:.4f}")
-```
+with the winner paying $\max(r, \text{second-highest bid})$. When some $F_i$ is irregular — $\phi_i$ dips somewhere — the pointwise rule stops being monotone and cannot be implemented as written, so the same construction is run in quantile space instead: writing $q = 1 - F(v)$ and $v(q)$ for the inverse demand curve, the revenue curve $R(q) = q\,v(q)$ is replaced by its concave envelope $\bar R$, the ironed virtual value is the slope of $\bar R$ at $q$, and the mechanism allocates to maximize ironed virtual surplus, bunching together any types lying in an interval where $\bar R$ is flat — tied for allocation purposes, with tie-breaking chosen so the resulting allocation stays monotone across the interval — while payments are still recovered from the same identity, $P(v) = v\,q(v) - \int_0^v q(t)\,dt$. Nothing about a specific selling format is assumed anywhere in this statement; the virtual-value transform together with pointwise (or ironed) surplus maximization and the critical-value payment rule is the entire optimal mechanism, and every recognizable format — second price, reserve price, posted price — is only the shape this construction happens to take when the transform preserves the raw ranking of bids.
