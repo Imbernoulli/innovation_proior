@@ -10,58 +10,20 @@ The criterion generalizes cleanly to a horse-race with multiple outcomes. Let s 
 
 It is important to keep the Kelly criterion separate from expected-utility theory. Von Neumann and Morgenstern showed that a few axioms imply the existence of a utility function, and Bernoulli long ago proposed a logarithmic utility of wealth. The Kelly criterion happens to involve a logarithm, but its justification is not that the decision maker feels logarithmic satisfaction from wealth. The logarithm is there because wealth is multiplicative across rounds. If the stakes were fixed outside dollars that could not be reinvested, maximizing expected payoff would be the right thing to do. The Kelly criterion is therefore the right rule for a repeated reinvested setting, not for an isolated gamble.
 
-The following Python script illustrates the binary Kelly rule and checks some of the claims above. It defines the Kelly fraction, simulates a long sequence of reinvested wagers, compares the realized growth rate with the theoretical one, and also shows what happens under an all-in expected-value policy. The simulation is deliberately simple so the correspondence between the formula and the wealth trajectory is easy to verify.
+Stripped to its final form, the discovery is the closed-form allocation rule together with the identity that shows why it is optimal. In the general horse-race with outcomes $s$, received signal $r$, fair gross payoff odds $\alpha_s = 1/p(s)$, and post-signal allocation $a(s\mid r)$, the long-run growth rate is
 
-```python
-import random
-import math
+$$G = \sum_{r,s} p(s,r)\,\log\big(\alpha_s\, a(s\mid r)\big),$$
 
-def kelly_fraction(p, b):
-    """Return the no-short, no-forced-bet Kelly fraction for a binary wager."""
-    q = 1.0 - p
-    return max(0.0, (b * p - q) / b)
+and this is maximized by the posterior-matching allocation $a^*(s\mid r) = p(s\mid r)$, for which the achieved rate equals Shannon's mutual information between outcome and signal:
 
-def simulate_wealth(p, b, f, n_rounds, seed=0):
-    """Simulate reinvested wealth starting at 1 using fraction f each round."""
-    rng = random.Random(seed)
-    wealth = 1.0
-    for _ in range(n_rounds):
-        if rng.random() < p:
-            wealth *= 1.0 + b * f
-        else:
-            wealth *= 1.0 - f
-    return wealth
+$$G_{\max} = H(S) - H(S\mid R) = I(S;R).$$
 
-def theoretical_growth_rate(p, b, f):
-    """Expected log growth rate g(f) = p log(1+bf) + q log(1-f)."""
-    q = 1.0 - p
-    return p * math.log(1.0 + b * f) + q * math.log(1.0 - f)
+Specializing to the binary wager with win probability $p$, loss probability $q = 1-p$, and net odds $b{:}1$, the growth function is $g(f) = p\log(1+bf) + q\log(1-f)$. Setting $g'(f) = pb/(1+bf) - q/(1-f) = 0$ and solving $bp(1-f) = q(1+bf)$ gives the unique interior maximizer
 
-if __name__ == "__main__":
-    p = 0.55          # probability of winning
-    b = 1.0           # even-money net odds
-    n = 100_000       # number of rounds
+$$f^{*} = \frac{bp - q}{b} = p - \frac{q}{b}.$$
 
-    f_star = kelly_fraction(p, b)
-    print(f"Kelly fraction f* = {f_star:.6f}")
+Because $g$ is strictly concave whenever both outcomes can occur, this stationary point is the global maximum whenever it falls in $(0,1)$; when the edge $bp-q$ is non-positive the growth-maximizing action is to stake nothing, so with no shorting and no forced betting the rule is
 
-    final_wealth = simulate_wealth(p, b, f_star, n)
-    realized_rate = math.log(final_wealth) / n
-    predicted_rate = theoretical_growth_rate(p, b, f_star)
-    print(f"Realized log growth rate: {realized_rate:.6f}")
-    print(f"Theoretical log growth rate: {predicted_rate:.6f}")
+$$f^{*} = \max\!\left(0,\ \frac{bp - q}{b}\right).$$
 
-    # Compare with an all-in policy, which maximizes expected wealth but usually goes broke.
-    f_all_in = 1.0
-    final_all_in = simulate_wealth(p, b, f_all_in, n)
-    print(f"All-in final wealth: {final_all_in:.6e}")
-
-    # Verify that the Kelly fraction is the maximizer by scanning nearby fractions.
-    best_f, best_g = max(
-        ((f, theoretical_growth_rate(p, b, f)) for f in [i / 200.0 for i in range(101)]),
-        key=lambda x: x[1],
-    )
-    print(f"Best scanned fraction: {best_f:.4f} with growth rate {best_g:.6f}")
-```
-
-In summary, the Kelly criterion is the growth-optimal allocation rule for repeated reinvested decisions. It converts the problem of acting on partial information into the maximization of an expected logarithmic growth rate, derives the posterior-matching allocation in the multi-outcome fair-odds case, and gives the clean closed-form fraction p - q / b for binary wagers. It is not a risk-aversion axiom and it is not the same as maximizing expected wealth; it is the rule that makes the long-run wealth process grow as fast as the available information allows.
+At even-money odds, $b=1$, this collapses to $f^{*} = 2p-1$: a fifty-five percent edge licenses staking exactly ten percent of wealth, never more from chasing expected value, and never through shorting the losing side.
