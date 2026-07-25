@@ -9,55 +9,28 @@ On the anharmonic oscillator ẍ + ω₀²x + λx² = 0, the method produces rec
 ```python
 import numpy as np
 
+# (1) The kinematics: transition-indexed arrays multiply by chaining through the
+#     intermediate state -- forced by the Ritz combination principle. Equivalent to
+#     square-matrix multiplication; non-commutative.
 def array_product(X, Y, states):
-    """Chained product forced by the Ritz combination principle.
+    """C(i,k) = sum_m X(i,m) Y(m,k).  X[(i,j)] = amplitude on transition i -> j."""
+    return {(i, k): sum(X.get((i, m), 0) * Y.get((m, k), 0) for m in states)
+            for i in states for k in states}
 
-    C(i, k) = sum over intermediate m of X(i, m) * Y(m, k).
-    X[(i, j)] and Y[(i, j)] give the amplitude on the transition i -> j.
-    This is ordinary square-matrix multiplication and is non-commutative.
-    """
-    return {
-        (i, k): sum(X.get((i, m), 0) * Y.get((m, k), 0) for m in states)
-        for i in states for k in states
-    }
-
-
+# (2) The quantum condition (Thomas-Reiche-Kuhn sum rule), observable-only form.
 def quantum_condition_lhs(a, omega, n, alpha_max, m):
-    """Left-hand side of the observable quantum condition.
-
-    Returns 4*pi*m * sum_{alpha>=1} [
-        |a(n+alpha, n)|^2 * omega(n+alpha, n)
-      - |a(n, n-alpha)|^2 * omega(n, n-alpha)
-    ], which should equal Planck's constant h.
-    """
-    s = sum(
-        abs(a.get((n + al, n), 0)) ** 2 * omega.get((n + al, n), 0)
-        - abs(a.get((n, n - al), 0)) ** 2 * omega.get((n, n - al), 0)
-        for al in range(1, alpha_max + 1)
-    )
+    """= h.  a[(i,j)], omega[(i,j)] on transition i -> j."""
+    s = sum(abs(a.get((n + al, n), 0))**2 * omega.get((n + al, n), 0)
+            - abs(a.get((n, n - al), 0))**2 * omega.get((n, n - al), 0)
+            for al in range(1, alpha_max + 1))
     return 4 * np.pi * m * s
 
-
+# (3) The harmonic-oscillator solution the method lands on (lowest order):
+#       a^2(n, n-1) = n h / (pi m omega0)          (normal state: a(0,-1) = 0)
+#       W(n, n)     = (n + 1/2) h omega0 / (2 pi)   (zero-point energy from up+down legs)
 def harmonic_oscillator(n, h, m, omega0):
-    """Lowest-order harmonic-oscillator result from matrix mechanics.
-
-    With the normal-state condition a(0, -1) = 0, the method gives
-        |a(n, n-1)|^2 = n*h / (pi*m*omega0),
-        W(n, n)       = (n + 1/2) * h*omega0 / (2*pi).
-    """
-    a2_down = n * h / (np.pi * m * omega0)          # |a(n, n-1)|^2
-    a2_up = (n + 1) * h / (np.pi * m * omega0)      # |a(n+1, n)|^2
-    energy = 0.25 * m * omega0 ** 2 * (a2_down + a2_up)
+    a2_down = n * h / (np.pi * m * omega0)           # |a(n, n-1)|^2
+    a2_up = (n + 1) * h / (np.pi * m * omega0)       # |a(n+1, n)|^2
+    energy = 0.25 * m * omega0**2 * (a2_down + a2_up)
     return a2_down, energy
-
-
-# Example: ground state and first excited state of a harmonic oscillator.
-if __name__ == "__main__":
-    h = 6.62607015e-34      # J*s
-    m = 9.10938356e-31      # kg (electron mass, for illustration)
-    omega0 = 2.0 * np.pi * 1e15  # rad/s
-
-    for n in (0, 1):
-        a2, W = harmonic_oscillator(n, h, m, omega0)
-        print(f"n={n}: |a(n,n-1)|^2={a2:.3e}, W={(W / h):.3e} Hz")
 ```
