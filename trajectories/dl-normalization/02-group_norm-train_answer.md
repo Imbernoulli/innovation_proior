@@ -20,8 +20,6 @@ class CustomNorm(nn.Module):
 
     Divides channels into groups and normalizes within each group independently.
     Works well with small batch sizes where BatchNorm statistics are noisy.
-
-    Reference: Wu & He, "Group Normalization" (ECCV 2018)
     """
 
     def __init__(self, num_features):
