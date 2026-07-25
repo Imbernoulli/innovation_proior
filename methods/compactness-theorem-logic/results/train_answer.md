@@ -10,73 +10,8 @@ The ultraproduct proof reaches the same goal by semantic means. Index the finite
 
 One of the most striking consequences is the existence of nonstandard models. Add a new constant c to first-order arithmetic and include the infinitely many sentences c > 0, c > 1, c > 2, and so on. Every finite subset is satisfiable in the standard natural numbers by interpreting c as a sufficiently large number. By compactness, the entire theory has a model, and in that model c exceeds every standard numeral. The model therefore cannot be the standard natural numbers, even though it satisfies the same first-order arithmetic axioms. This is the characteristic signature of compactness: infinite collections of finite-looking requirements can force structures that lie outside the intended picture.
 
-The following Python script is not a theorem prover; it is a small executable demonstration of the finitary bookkeeping that underlies compactness. It takes a simple first-order theory expressed as constraints on constants, checks that every finite subset is satisfiable by bounded search, and then constructs a global valuation using the finite-intersection pattern that an ultrafilter would formalize. The example theory says that a constant c must be larger than each standard numeral up to some bound, and the script verifies finite satisfiability before producing a model that treats c as nonstandard.
+What this analysis delivers is not a program but the theorem itself, and stating it with full precision is the artifact I want a reader to walk away holding. For an arbitrary first-order language $\mathcal{L}$ and an arbitrary set $T$ of $\mathcal{L}$-sentences,
 
-```python
-from itertools import combinations
-from typing import Set, Tuple, Dict
+$$T \text{ has a model} \iff \text{every finite subset } T_0 \subseteq T \text{ has a model.}$$
 
-def finite_subset_satisfiable(theory: Set[str], max_val: int = 100) -> bool:
-    """
-    Check whether every finite subset of a simple numeral theory is satisfiable.
-    Each sentence is of the form 'c > n' for a non-negative integer n.
-    A finite subset {c > n_1, ..., c > n_k} is satisfied by any value c > max(n_i).
-    """
-    if not theory:
-        return True
-    max_required = -1
-    for sentence in theory:
-        if not sentence.startswith("c > "):
-            raise ValueError(f"Unsupported sentence: {sentence}")
-        n = int(sentence.split(">")[1].strip())
-        max_required = max(max_required, n)
-    # Any value strictly larger than max_required works.
-    return max_required + 1 <= max_val
-
-def compactness_model(theory: Set[str]) -> Dict[str, int]:
-    """
-    Build a global model for a finitely satisfiable theory of 'c > n' sentences.
-    If the theory is infinite, choose c to exceed all required numerals.
-    """
-    if not finite_subset_satisfiable(theory):
-        raise ValueError("Theory is not finitely satisfiable")
-    required = []
-    for sentence in theory:
-        n = int(sentence.split(">")[1].strip())
-        required.append(n)
-    if required:
-        # A nonstandard-looking value: larger than every finite demand in the theory.
-        value = max(required) + 1
-    else:
-        value = 0
-    return {"c": value}
-
-def check_all_finite_subsets(theory: Set[str], bound: int) -> Tuple[bool, Set[str]]:
-    """
-    Verify that every finite subset of size at most `bound` is satisfiable.
-    Returns (True, empty_set) if all pass, otherwise (False, offending_subset).
-    """
-    sentences = list(theory)
-    for r in range(1, min(bound, len(sentences)) + 1):
-        for subset_indices in combinations(range(len(sentences)), r):
-            subset = {sentences[i] for i in subset_indices}
-            max_n = max(int(s.split(">")[1].strip()) for s in subset)
-            if max_n + 1 > 1000:  # arbitrary large ceiling for demonstration
-                return False, subset
-    return True, set()
-
-if __name__ == "__main__":
-    # Example theory: c exceeds every standard numeral.
-    # In a real first-order setting this is an infinite set of sentences.
-    example_theory = {f"c > {n}" for n in range(20)}
-
-    ok, offender = check_all_finite_subsets(example_theory, bound=5)
-    print("All checked finite subsets satisfiable:", ok)
-    if not ok:
-        print("Offending subset:", offender)
-
-    model = compactness_model(example_theory)
-    print("Compactness model:", model)
-    # In the model, c is max_required + 1, larger than every finite numeral
-    # appearing in the checked subsets; the infinite theory forces a nonstandard value.
-```
+The forward implication is immediate restriction of a model to a subset of the sentences it already satisfies. The reverse implication — the actual content of the theorem — is secured by either of the two independent constructions given above, and either one alone is a complete proof: the Henkin theory $H \supseteq T$, maximal consistent in a language expanded with witness constants, together with its term model $M_H$ built from closed terms modulo $H$-provable equality, satisfying $M_H \models \sigma \iff \sigma \in H$ for every sentence $\sigma$ by the truth lemma; or the ultraproduct $M = \prod_{\Delta \in I} M_\Delta / \mathcal{U}$, built from a model $M_\Delta$ of each finite $\Delta \subseteq T$ and an ultrafilter $\mathcal{U}$ on the finite subsets containing every $A_\sigma = \{\Delta \in I : \sigma \in \Delta\}$, satisfying $M \models \sigma$ for each $\sigma \in T$ by Łoś's theorem. That a purely syntactic route and a purely semantic route land on the identical fact is the real content of compactness: infinite first-order satisfiability carries no obstruction beyond what its finite fragments already exhibit, which is exactly why an infinite theory can force a nonstandard element while remaining, at every finite stage, indistinguishable from the standard picture.

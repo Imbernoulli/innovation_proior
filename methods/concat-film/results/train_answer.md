@@ -7,73 +7,17 @@ Why this works cleanly in the scaffold is worth spelling out. The residual block
 The broader picture is that Concat-FiLM sits between the cheaper but weaker post-block adaptive norm and the richer but heavier cross-attention operator. It is not content-dependent or spatially varying; like any FiLM variant, it applies the same per-channel modulation across all spatial positions. But because it rides the timestep's existing AdaGN, it reaches deeper into the network than a post-block conditioner and does so with no new layers. For a single scalar class label, that is usually the right trade-off.
 
 ```python
-import torch
 import torch.nn as nn
 
 
 def prepare_conditioning(time_emb, class_emb):
-    # Concat-FiLM: class rides the same path as the timestep.
-    # Both tensors have shape [B, time_embed_dim].
     return time_emb + class_emb
 
 
 class ClassConditioner(nn.Module):
-    # No-op: the class embedding is already injected via prepare_conditioning.
     def __init__(self, channels, cond_dim):
         super().__init__()
 
     def forward(self, h, class_emb):
         return h
-
-
-class ConcatFiLMDenoiser(nn.Module):
-    def __init__(self, unet, num_classes):
-        super().__init__()
-        self.unet = unet
-        self.time_embed_dim = unet.config.block_out_channels[0] * 4
-        self.class_embed = nn.Embedding(num_classes, self.time_embed_dim)
-
-        down_channels = [
-            unet.config.block_out_channels[i]
-            for i in range(len(unet.down_blocks))
-        ]
-        mid_channels = unet.config.block_out_channels[-1]
-        up_channels = list(reversed(unet.config.block_out_channels))
-
-        self.down_cond = nn.ModuleList(
-            [ClassConditioner(ch, self.time_embed_dim) for ch in down_channels]
-        )
-        self.mid_cond = ClassConditioner(mid_channels, self.time_embed_dim)
-        self.up_cond = nn.ModuleList(
-            [ClassConditioner(ch, self.time_embed_dim) for ch in up_channels]
-        )
-
-    def forward(self, sample, timestep, class_labels):
-        t_emb = self.unet.time_proj(timestep)
-        t_emb = t_emb.to(dtype=self.unet.dtype)
-        time_emb = self.unet.time_embedding(t_emb)
-        class_emb = self.class_embed(class_labels)
-        emb = prepare_conditioning(time_emb, class_emb)
-
-        sample = self.unet.conv_in(sample)
-        down_block_res_samples = (sample,)
-
-        for i, block in enumerate(self.unet.down_blocks):
-            sample, res_samples = block(hidden_states=sample, temb=emb)
-            sample = self.down_cond[i](sample, class_emb)
-            down_block_res_samples += res_samples[:-1] + (sample,)
-
-        if self.unet.mid_block is not None:
-            sample = self.unet.mid_block(sample, emb)
-        sample = self.mid_cond(sample, class_emb)
-
-        for i, block in enumerate(self.unet.up_blocks):
-            res_samples = down_block_res_samples[-len(block.resnets):]
-            down_block_res_samples = down_block_res_samples[:-len(block.resnets)]
-            sample = block(sample, res_samples, emb)
-            sample = self.up_cond[i](sample, class_emb)
-
-        sample = self.unet.conv_norm_out(sample)
-        sample = self.unet.conv_act(sample)
-        return self.unet.conv_out(sample)
 ```
