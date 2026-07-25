@@ -13,51 +13,46 @@ NOISE = -1
 
 
 class DBSCAN(BaseEstimator, ClusterMixin):
-    """Density-Based Spatial Clustering of Applications with Noise.
-
-    A cluster is a maximal set of density-connected points. Core points
-    have at least min_samples neighbors within eps; clusters are the
-    connected components of core points, with their non-core eps-neighbors
-    absorbed as border points. Everything else is labeled noise (-1).
-    """
+    """Density-based clustering. Core points (>= min_samples neighbors within eps)
+    form the dense backbone; clusters are connected components of core points with
+    their non-core eps-neighbors absorbed as border points; the rest is noise (-1)."""
 
     def __init__(self, eps=0.5, min_samples=5):
-        self.eps = eps
-        self.min_samples = min_samples
+        self.eps = eps                      # Eps: neighborhood radius / KDE bandwidth
+        self.min_samples = min_samples      # MinPts: core-point density threshold
 
     def fit(self, X):
         X = np.asarray(X, dtype=float)
         n = X.shape[0]
 
-        # One region query per point, using the spatial index.
-        # radius_neighbors includes the query point itself (dist(p,p)=0 <= eps),
-        # which is the count used by the core test.
+        # One region query per point, via the spatial index. radius_neighbors
+        # returns N_Eps(p) including p itself (dist(p,p)=0 <= eps) -- the count
+        # the core test uses.
         nn = NearestNeighbors(radius=self.eps, metric="euclidean").fit(X)
         neighborhoods = nn.radius_neighbors(X, return_distance=False)
         n_neighbors = np.array([len(nb) for nb in neighborhoods])
-        is_core = n_neighbors >= self.min_samples
+        is_core = n_neighbors >= self.min_samples          # |N_Eps(p)| >= MinPts
 
         labels = np.full(n, NOISE, dtype=np.intp)
         cluster_id = 0
-
         for i in range(n):
-            # Only unclassified core points can seed a new cluster.
+            # non-core points cannot seed a cluster (Lemma 2); skip assigned points
             if labels[i] != NOISE or not is_core[i]:
                 continue
-
             labels[i] = cluster_id
-            stack = [i]
+            stack = [i]                                     # ExpandCluster (stack-based)
             while stack:
                 p = stack.pop()
-                if not is_core[p]:
+                if not is_core[p]:                         # only core points propagate
                     continue
-                for q in neighborhoods[p]:
+                for q in neighborhoods[p]:                  # q directly density-reachable from p
                     if labels[q] == NOISE:
                         labels[q] = cluster_id
                         if is_core[q]:
-                            stack.append(q)
+                            stack.append(q)                 # only core points expand
             cluster_id += 1
 
+        # Points never reached from a core point stay at the noise label -1.
         self.labels_ = labels
         self.n_clusters_ = cluster_id
         self.core_sample_indices_ = np.where(is_core)[0]
@@ -68,6 +63,6 @@ class DBSCAN(BaseEstimator, ClusterMixin):
 
 
 def custom_distance(x, y):
-    # Euclidean distance; its eps-ball is the shape of the eps-neighborhood.
+    # Euclidean distance: its Eps-ball is the shape of the Eps-neighborhood N_Eps.
     return np.sqrt(np.sum((x - y) ** 2))
 ```
