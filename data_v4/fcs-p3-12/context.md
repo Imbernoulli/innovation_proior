@@ -49,34 +49,13 @@ adjacent ones: `000, 001, 010, 100, 101` — that is `5`. For `N = 3, k = 3` onl
 the single all-ones string `111` is forbidden, leaving `8 - 1 = 7`. For
 `N = 4, k = 4` only `1111` is forbidden, leaving `16 - 1 = 15`.
 
-## Background
-
-Two structural facts about good strings are worth having in view before
-committing to an algorithm.
-
-- **Small lengths look like powers of two.** If `N < k`, *no* string of length
-  `N` can contain a run of `k` ones (there is not enough room), so every one of
-  the `2^N` strings is good. The first length at which a string can be bad is
-  `N = k`, where exactly one string — the all-ones string — is forbidden, giving
-  `2^k - 1`. So the head of every sequence (for fixed `k`) is
-  `1, 2, 4, 8, ..., 2^{k-1}, 2^k - 1, ...`.
-- **A linear recurrence governs the tail.** Counting by the position of the
-  first `0` (or by the length of the trailing run of ones) yields, for each fixed
-  `k`, a linear recurrence relating consecutive counts. The order of that
-  recurrence is `k`, and its coefficients do not depend on `N`. This is the lever
-  that lets `N` be astronomically large.
-
-The arithmetic is done modulo `p`, and `p` may be composite, so any method that
-relies on modular inverses (division) must be avoided or handled with care.
-
 ## Evaluation settings
 
-Judged on hidden tests covering: tiny lengths in the "looks like `2^N`" regime;
-the boundary `N = k` and `N = k+1`; `k = 1` (only the all-zeros string is good,
-so the answer is always `1`); `k = 2` (the Fibonacci regime); the full range up
-to `N = 10^18` with `k` up to `50`; prime moduli such as `10^9 + 7` and
-`998244353`; and composite moduli. Many queries are batched in a single input,
-so the per-query cost must be small (polynomial in `k`, logarithmic in `N`).
+Judged on hidden tests covering: tiny lengths; the boundary `N = k` and
+`N = k+1`; `k = 1`; `k = 2`; the full range up to `N = 10^18` with `k` up to
+`50`; prime moduli such as `10^9 + 7` and `998244353`; and composite moduli.
+Many queries are batched in a single input, so the per-query cost must be
+small.
 
 ## Code framework
 
