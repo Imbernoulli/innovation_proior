@@ -18,9 +18,7 @@ value. Concretely: how far, at most, does the reservoir fall from any prior high
 later point in the season?
 
 This is the "maximum drawdown" computation that appears in finance (peak-to-trough loss of an
-equity curve), hydrology, and resource-buffer monitoring. The one-dimensional version is a textbook
-prefix-sum sweep, but the negative/zero values and — critically — whether the *initial* level `0`
-counts as a peak make the base case and the sign of the comparison easy to get wrong.
+equity curve), hydrology, and resource-buffer monitoring.
 
 ## Input / output contract
 
@@ -35,26 +33,20 @@ at `-3` (after day 4), so the worst decline is `3 - (-3) = 6`.
 
 ## Background
 
-The drop `P[i] - P[j]` for a fixed later index `j` is maximized by choosing the **highest** level
-`P[i]` among all indices `i <= j`. So a single left-to-right sweep that carries the running maximum
-of the levels seen so far suffices. Two families of approach are on the table before committing:
+Two families of approach are on the table before committing:
 
 - **All-pairs scan.** For every pair `i <= j` compute `P[i] - P[j]` and keep the maximum. This is
   `O(n^2)`, obviously correct, and trivial to write — but quadratic blows the time limit at
   `n = 2*10^5`. Useful only as a reference oracle on tiny inputs.
-- **Prefix sum with a running peak.** Sweep once, maintaining `peak = max level seen so far`
-  (including the start level `0`) and the current level `prefix`. At each step the best decline
-  ending here is `peak - prefix`. This is `O(n)`, `O(1)` memory; the open questions are the exact
-  base case (does the start level `0` participate as a peak?) and the comparison's sign/order.
+- **Prefix-sum sweep.** Process the days in order while tracking some running quantity derived from
+  the levels seen so far. This can be `O(n)`, `O(1)` memory if done right, but getting the exact
+  base case and the comparison's sign/order right is easy to get wrong.
 
 ## Evaluation settings
 
-Judged on hidden tests covering: all-increasing sequences (answer `0`), sequences mixing negatives
-and zeros, the empty sequence (`n = 0`, answer `0`), a single day (`n = 1`, including a single
-negative day, whose answer is *not* `0` because the start level `0` is the peak), all-negative
-sequences (the level only ever falls, so the decline is the total fall from the start), and large
-`n = 2*10^5` with `|d[i]|` near `10^9` so a level — and hence a decline — can reach about `2*10^14`,
-far beyond 32-bit range.
+Judged on hidden tests covering: all-increasing sequences, sequences mixing negatives and zeros,
+the empty sequence (`n = 0`), a single day (`n = 1`, including a single negative day), all-negative
+sequences, and large `n = 2*10^5` with `|d[i]|` near `10^9`.
 
 ## Code framework
 
