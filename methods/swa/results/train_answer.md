@@ -14,11 +14,16 @@ The implementation is lightweight. It requires one extra copy of the model weigh
 
 ```python
 import torch
-import torch.nn as nn
+
+def _set_lr(optimizer, lr):
+    for group in optimizer.param_groups:
+        group["lr"] = lr
 
 def swa_lr(step, cycle_len, high_lr, low_lr=None):
     if low_lr is None:
         return high_lr
+    if cycle_len <= 0:
+        raise ValueError("cycle_len must be positive")
     t = ((step - 1) % cycle_len + 1) / cycle_len
     return (1.0 - t) * high_lr + t * low_lr
 
@@ -36,8 +41,7 @@ def train_swa_tail(model, loader, loss_fn, optimizer, tail_epochs,
             if device is not None:
                 x, y = x.to(device), y.to(device)
             step += 1
-            for group in optimizer.param_groups:
-                group["lr"] = swa_lr(step, cycle_len or 1, high_lr, low_lr)
+            _set_lr(optimizer, swa_lr(step, cycle_len or 1, high_lr, low_lr))
             optimizer.zero_grad()
             loss_fn(model(x), y).backward()
             optimizer.step()
@@ -53,32 +57,4 @@ def train_swa_tail(model, loader, loss_fn, optimizer, tail_epochs,
 
     torch.optim.swa_utils.update_bn(loader, swa_model, device=device)
     return swa_model
-
-
-# Small self-contained illustration on a noisy quadratic bowl.
-torch.manual_seed(0)
-w_true = torch.tensor([2.0, -1.0])
-w = torch.zeros(2, requires_grad=True)
-optimizer = torch.optim.SGD([w], lr=0.1)
-swa = None
-n_averaged = 0
-
-for epoch in range(30):
-    for _ in range(50):
-        optimizer.zero_grad()
-        noise = torch.randn(2) * 0.3
-        loss = ((w - w_true + noise) ** 2).mean()
-        loss.backward()
-        optimizer.step()
-    if epoch >= 15:
-        with torch.no_grad():
-            if swa is None:
-                swa = w.detach().clone()
-            else:
-                swa += (w.detach() - swa) / (n_averaged + 1)
-            n_averaged += 1
-
-print("last iterate:", w.detach().tolist())
-print("SWA average: ", swa.tolist())
-print("true value:  ", w_true.tolist())
 ```
