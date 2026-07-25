@@ -16,68 +16,61 @@ from torch_geometric.nn.conv.gcn_conv import gcn_norm
 
 
 class GPR_prop(MessagePassing):
-    """Generalized PageRank propagation.
-
-    Z = sum_{k=0}^{K} gamma_k * A_hat^k @ x,
-    where A_hat is the GCN-normalized adjacency with self-loops and
-    gamma_k are free, signed, learnable hop weights.
-    """
+    """Generalized PageRank propagation: learnable monomial-basis polynomial
+    filter  Z = sum_{k=0}^{K} gamma_k * Â^k x,  with free (possibly negative)
+    gamma_k so the response spans low-pass (homophily) to high-pass (heterophily)."""
 
     def __init__(self, K, alpha=0.1, Gamma=None, **kwargs):
         super(GPR_prop, self).__init__(aggr="add", **kwargs)
         self.K = K
-        self.alpha = alpha  # kept for compatibility with training args
+        self.alpha = alpha                            # kept for compatibility with common training args
         self.Gamma = Gamma
         if Gamma is None:
             temp = torch.ones(K + 1, dtype=torch.float) / (K + 1)
         else:
             temp = torch.as_tensor(Gamma, dtype=torch.float)
-        self.temp = Parameter(temp)  # GPR weights gamma_0 .. gamma_K
+        self.temp = Parameter(temp)                   # GPR weights gamma_0..gamma_K
 
     def reset_parameters(self):
+        # uniform 1/(K+1): equal-hop low-pass start; weights remain unconstrained
         if self.Gamma is None:
             nn.init.constant_(self.temp, 1.0 / (self.K + 1))
         else:
             gamma = torch.as_tensor(
-                self.Gamma, dtype=self.temp.dtype, device=self.temp.device
-            )
+                self.Gamma, dtype=self.temp.dtype, device=self.temp.device)
             self.temp.data.copy_(gamma)
 
     def forward(self, x, edge_index, edge_weight=None):
-        edge_index, norm = gcn_norm(
-            edge_index, edge_weight, num_nodes=x.size(0), dtype=x.dtype
-        )
-        hidden = x * self.temp[0]  # gamma_0 * A_hat^0 @ x
+        edge_index, norm = gcn_norm(                  # Â = D̃^{-1/2} Ã D̃^{-1/2}
+            edge_index, edge_weight, num_nodes=x.size(0), dtype=x.dtype)
+        hidden = x * self.temp[0]                      # gamma_0 * Â^0 x
         for k in range(self.K):
-            x = self.propagate(edge_index, x=x, norm=norm)  # x <- A_hat @ x
-            hidden = hidden + self.temp[k + 1] * x          # gamma_{k+1} * A_hat^{k+1} @ x
+            x = self.propagate(edge_index, x=x, norm=norm)   # x <- Â x
+            hidden = hidden + self.temp[k + 1] * x           # + gamma_{k+1} Â^{k+1} x
         return hidden
 
     def message(self, x_j, norm):
-        return norm.view(-1, 1) * x_j
+        return norm.view(-1, 1) * x_j                  # sparse mat-vec (Â @ x)
 
 
-class GPRGNN(nn.Module):
-    """GPR-GNN: MLP feature transform, then learnable GPR propagation."""
+class GPRGNN(torch.nn.Module):
+    """GPR-GNN: MLP feature transform f_theta, then learnable GPR propagation."""
 
-    def __init__(self, num_features, num_classes, hidden=64, K=10,
-                 alpha=0.1, dropout=0.5, dprate=0.0):
+    def __init__(self, dataset, args):
         super(GPRGNN, self).__init__()
-        self.lin1 = Linear(num_features, hidden)
-        self.lin2 = Linear(hidden, num_classes)
-        self.prop1 = GPR_prop(K, alpha)
-        self.dropout = dropout
-        self.dprate = dprate
+        self.lin1 = Linear(dataset.num_features, args.hidden)
+        self.lin2 = Linear(args.hidden, dataset.num_classes)
+        self.prop1 = GPR_prop(args.K, args.alpha, getattr(args, "Gamma", None))
+        self.dprate = args.dprate
+        self.dropout = args.dropout
 
     def reset_parameters(self):
-        self.lin1.reset_parameters()
-        self.lin2.reset_parameters()
         self.prop1.reset_parameters()
 
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
         x = F.dropout(x, p=self.dropout, training=self.training)
-        x = F.relu(self.lin1(x))  # H^(0) = f_theta(X)
+        x = F.relu(self.lin1(x))                       # H^(0) = f_theta(X)
         x = F.dropout(x, p=self.dropout, training=self.training)
         x = self.lin2(x)
         if self.dprate == 0.0:
@@ -88,11 +81,10 @@ class GPRGNN(nn.Module):
         return F.log_softmax(x, dim=1)
 
 
-def build_optimizer(model, lr=0.05, weight_decay=5e-4):
-    """Use weight decay on the MLP but not on the propagation coefficients."""
+def build_optimizer(model, args):
     return torch.optim.Adam([
-        {"params": model.lin1.parameters(), "lr": lr, "weight_decay": weight_decay},
-        {"params": model.lin2.parameters(), "lr": lr, "weight_decay": weight_decay},
-        {"params": model.prop1.parameters(), "lr": lr, "weight_decay": 0.0},
-    ])
+        {"params": model.lin1.parameters(), "weight_decay": args.weight_decay, "lr": args.lr},
+        {"params": model.lin2.parameters(), "weight_decay": args.weight_decay, "lr": args.lr},
+        {"params": model.prop1.parameters(), "weight_decay": 0.0, "lr": args.lr},
+    ], lr=args.lr)
 ```
