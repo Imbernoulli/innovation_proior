@@ -63,22 +63,6 @@ The tree is `1 -> {2,3}`, `2 -> 4`, `3 -> 5`, `4 -> 6` (depths: node 1 at 0, nod
 (`6 0` is node 6 itself; `6 1=4`, `6 2=2`, `6 3=1`; `6 4=0` because node 6 has only 3 ancestors;
 `5 1=3`, `5 2=1`; `4 2=1`; `3 1=1`.)
 
-## Background
-
-Two standard ideas are on the table before committing to one:
-
-- **Binary lifting (jump pointers).** Precompute, for each node, its ancestors at distances
-  `1, 2, 4, ..., 2^L`. A query decomposes `k` into its set bits and follows `O(log k)` pointers. This
-  is `O(n log n)` preprocessing and `O(log n)` per query — simple and robust, but the per-query log
-  factor is exactly what we are trying to remove at `q = 5*10^5`.
-- **Long-path / ladder decomposition.** Greedily cut the tree into vertical paths and store each as
-  an array, so that climbing *within one array* is an O(1) index subtraction. The open question is
-  that a single query may need to cross many such paths, so the decomposition alone does not by
-  itself give O(1) — something must guarantee the query lands inside one array.
-
-The intended SOTA is to **combine** these two complementary structures so that the query touches each
-exactly once and finishes in O(1), with O(n log n) build.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: trees of many shapes (random, caterpillar/path of depth up to `n`,
