@@ -17,19 +17,21 @@ def _is_power_of_two(j):
 
 def encode(data_bits, detect_double=False):
     m = len(data_bits)
+
+    # smallest r whose r-bit syndrome names all n positions plus "no error"
     r = 0
     while (1 << r) < m + r + 1:
         r += 1
     n = m + r
 
-    code = [0] * (n + 1)  # 1-indexed positions
+    code = [0] * (n + 1)            # 1-indexed; powers of two = check positions
     di = 0
     for j in range(1, n + 1):
         if not _is_power_of_two(j):
             code[j] = data_bits[di]
             di += 1
 
-    for i in range(r):
+    for i in range(r):             # set each check bit independently
         cpos = 1 << i
         parity = 0
         for j in range(1, n + 1):
@@ -39,7 +41,7 @@ def encode(data_bits, detect_double=False):
 
     codeword = code[1:]
 
-    if detect_double:
+    if detect_double:              # overall parity -> min distance 4
         overall = 0
         for b in codeword:
             overall ^= b
@@ -62,7 +64,7 @@ def decode(codeword, detect_double=False):
     while (1 << r) < n + 1:
         r += 1
 
-    syndrome = 0
+    syndrome = 0                   # = binary position of a single error
     for i in range(r):
         parity = 0
         for j in range(1, n + 1):
