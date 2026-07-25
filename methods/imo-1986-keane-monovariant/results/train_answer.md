@@ -32,66 +32,12 @@ When the process stops, no legal operation remains, which means no vertex can be
 
 The key insight is that the operation, although destructive to individual coordinates, becomes a clean transposition when viewed through partial sums. The monovariant M captures all those partial sums at once, and the positive invariant total sum s is exactly what forces M to drop. The method is a classic example of a monovariant argument: find a quantity that is integer-valued, bounded below, and strictly decreasing under the allowed moves.
 
-```python
-from itertools import combinations
-
-def pentagon_arc_sums(state):
-    """Return all proper consecutive-arc sums of a 5-tuple."""
-    n = len(state)
-    arcs = []
-    for start in range(n):
-        total = 0
-        for length in range(1, n):
-            total += state[(start + length - 1) % n]
-            arcs.append(total)
-    return arcs
-
-def monovariant(state):
-    return sum(abs(v) for v in pentagon_arc_sums(state))
-
-def legal_moves(state):
-    """Yield (index, new_state) for every legal move."""
-    n = len(state)
-    for i in range(n):
-        y = state[i]
-        if y < 0:
-            a = state[(i - 1) % n]
-            c = state[(i + 1) % n]
-            new_state = list(state)
-            new_state[(i - 1) % n] = a + y
-            new_state[i] = -y
-            new_state[(i + 1) % n] = c + y
-            yield i, tuple(new_state)
-
-def simulate(state, max_steps=1000):
-    s = sum(state)
-    assert s > 0, "total sum must be positive"
-    M = monovariant(state)
-    history = [state]
-    for step in range(max_steps):
-        moves = list(legal_moves(history[-1]))
-        if not moves:
-            return history, M, step
-        idx, new_state = moves[0]
-        new_M = monovariant(new_state)
-        drop = M - new_M
-        expected_drop = 2 * min(s, abs(history[-1][idx]))
-        assert drop == expected_drop, f"monovariant drop mismatch: {drop} vs {expected_drop}"
-        M = new_M
-        history.append(new_state)
-    raise RuntimeError("did not terminate within step limit")
-
-if __name__ == "__main__":
-    examples = [
-        (-5, -5, 1, 5, 5),
-        (-4, 1, 5, 5, -5),
-        (3, -1, -1, -1, 1),
-        (10, -2, -3, -4, 1),
-    ]
-    for init in examples:
-        history, final_M, steps = simulate(init)
-        final = history[-1]
-        print(f"init={init}, sum={sum(init)}, steps={steps}, final={final}, M_final={final_M}")
-        assert all(v >= 0 for v in final), "final state should be nonnegative"
-    print("All examples terminated successfully.")
-```
+Written out in full, the deliverable is this pair: the monovariant itself and its exact decrease law. For entries $x_1,\dots,x_5$ in cyclic order, indices read modulo $5$, define
+$$
+M=\sum_{j=1}^{5}\sum_{L=1}^{4}\left|x_j+x_{j+1}+\cdots+x_{j+L-1}\right|,
+$$
+the sum of the absolute values of all twenty proper consecutive-arc sums. If the operation is applied at a negative vertex $b$, and $s=\sum_i x_i>0$ denotes the (invariant) total, then
+$$
+\Delta M = -2\min(s,|b|)\ \le\ -2 .
+$$
+Because $M$ is a nonnegative integer that drops by at least $2$ on every legal move, it can absorb only finitely many operations — at most $\lfloor M_0/2\rfloor$ of them, where $M_0$ is the monovariant of the starting configuration — before no negative vertex remains. That is the whole proof: the pentagon process on five integers with positive total sum always terminates, and it does so in a configuration where every entry is nonnegative, precisely because $M$ has nowhere left to fall.
