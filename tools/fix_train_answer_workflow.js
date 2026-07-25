@@ -19,7 +19,7 @@ const SCHEMA = {
   required: ['slug', 'cls', 'action', 'gate_pass', 'execution_ran', 'execution_summary', 'bugs_found', 'committed', 'commit_hash', 'notes'],
   properties: {
     slug: { type: 'string' },
-    cls: { type: 'string', enum: ['A', 'B', 'C', 'D'] },
+    cls: { type: 'string', enum: ['A', 'B', 'C', 'D', 'T'] },
     gate_pass: { type: 'boolean', description: 'true iff `python3 tools/ta_gate_check.py <slug>` printed PASS on the FINAL committed file' },
     action: { type: 'string', enum: ['kept-verified', 'repaired-verified', 'code-removed-artifact-ending', 'replaced-verbatim', 'distillation-verified', 'backfilled', 'claims-reconciled', 'skipped'] },
     execution_ran: { type: 'boolean', description: 'true if you actually executed code this run' },
@@ -103,6 +103,30 @@ CODE RULE (this is the entire reason this track exists — do not repeat the old
 Self-check against the skill's checklist (continuous prose, no headers, LaTeX math, in-frame, no meta-commentary), run the gate check, git-status check, commit. Return the structured result with cls="C", action="backfilled" (or "skipped" with notes if the source files are too degenerate to support an honest write-up).`
 }
 
+function promptT(u) {
+  // trajectory rung: files are trajectories/<task>/<NN-name>-{answer,train_answer}.md
+  const dir = `${REPO}/trajectories/${u.task}`
+  const ta = `${dir}/${u.rung}`
+  const ans = ta.replace('-train_answer.md', '-answer.md')
+  return `Fix ONE trajectory rung whose train_answer code DIVERGED from the rung's answer (class T). Task ${u.task}, rung file ${u.rung}.
+
+Working dir: ${REPO}.
+
+START by reading ${ta} and ${ans} IN FULL, plus the rung's reasoning and its feedback file (same NN- prefix in ${dir}) as far as you need.
+
+THE DEFECT: on a ladder, the rung's ANSWER is the artifact that was actually run and scored — the feedback file reports its measured numbers. The rung's train_answer.md is the write-up presented as the model's output for that rung, and its code must be the SAME code, copied verbatim. This one silently re-implemented or edited it, so the write-up ships code that was never the thing measured (the audit found rungs where the edited copy even carried out-of-frame citations inside docstrings).
+
+YOUR JOB:
+1. Replace the diverging code fence(s) in ${ta} with the corresponding fence(s) from ${ans}, byte-for-byte. A contiguous excerpt of a canonical block is still verbatim; splicing separate regions into one fence is not (quote them as separate fences instead).
+2. Reconcile the surrounding prose: function/class names, hyperparameters, printed numbers, structure — every reference must match the code now present. Keep the prose's explanatory substance and any alternatives/limitations discussion; you are re-aiming references, not shortening.
+3. Any measured number the write-up states must match the rung's feedback file. Never invent numbers.
+4. ONLY ${ta} may be modified. The answer, reasoning, feedback and agentic.txt files are FROZEN (agentic.txt is a transcript of the real run — it is not supposed to track the write-up).
+5. Verify with \`cd ${REPO} && python3 tools/ta_gate_check.py --path ${dir}\` is NOT applicable here; instead confirm by diffing that every large fence in ${ta} appears verbatim in ${ans} (e.g. a short python check), and report that as gate_pass.
+6. COMMIT only that file: \`git -C ${REPO} add -- trajectories/${u.task}/${u.rung}\` then \`git -C ${REPO} commit -q -m "fix train_answer:${u.task}/${u.rung} — restore verbatim rung code" -m "<one-line evidence>"\`. Retry up to 5 times on .git/index.lock.
+
+Return the structured result with cls="T", slug="${u.task}/${u.rung}", action="replaced-verbatim" (or "skipped" with a precise diagnosis if the answer file has no usable canonical block). List real semantic defects of the old rewrite in bugs_found.`
+}
+
 const D_UNITS = [
   {
     slug: 'negative-weight-sssp', cls: 'D',
@@ -144,6 +168,7 @@ YOUR JOB: locate every occurrence of the wrong comment across 04-cam-answer.md, 
 async function runUnit(u) {
   let p, model = 'sonnet', effort = 'xhigh'
   if (u.cls === 'A') p = promptA(u)
+  else if (u.cls === 'T') { p = promptT(u); effort = 'high' }
   else if (u.cls === 'B') { p = promptB(u); effort = 'high' }
   else if (u.cls === 'C') { p = promptC(u); model = 'opus' }   // writing a whole write-up from scratch
   else { p = u.prompt(); model = undefined; effort = 'xhigh' }
