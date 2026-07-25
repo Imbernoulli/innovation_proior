@@ -59,7 +59,7 @@ def run_evolution(
     np.random.seed(seed)
 
     # --- Hyperparameters ---
-    # The canonical choice is N_init = 18·D, but on small fixed budgets (as in
+    # The canonical recommendation is N_init = 18·D, but on small fixed budgets (as in
     # our 400 pop × 1000 gen setting) that value starves the search of
     # generations: on Rastrigin-100D, N_init=1800 with matched total-eval
     # budget degraded from 128 → 313. Use pop_size as given and the
