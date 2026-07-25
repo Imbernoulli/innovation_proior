@@ -24,28 +24,11 @@ Example: for `a = [1, 100, 2, 3, 4, 5, 6]` the answer is `101` — the chain `1,
 `101`, and it beats the longer chain `1, 2, 3, 4, 5, 6` (sum `21`). The longest increasing
 subsequence is *not* the maximum-sum one.
 
-## Background
-
-The constraint "strictly increasing values, original order preserved" makes this a constrained
-selection problem. Two families of approach are on the table before committing to one:
-
-- **Greedy chain-building.** Walk through the array and keep extending a current increasing chain by
-  any element larger than the last one taken (or some local "take it if it grows the chain" rule).
-  Greedy is `O(n)` or `O(n log n)` and short to write; the open question is whether a local
-  take-or-skip decision can be optimal when the *sum* — not the length — is the objective, and when
-  values may be negative.
-- **Quadratic dynamic programming.** For each position `i`, compute the best sum of a strictly
-  increasing subsequence that *ends exactly at* `i`, by looking back at every earlier position whose
-  value is smaller. This is `O(n^2)`; the open question is the exact recurrence and the base value
-  for "start a fresh chain at `i`".
-
 ## Evaluation settings
 
 Judged on hidden tests covering: all-positive arrays, arrays mixing negatives and zeros, the empty
-array (`n = 0`), single element (`n = 1`), all-negative arrays (answer should be `0`), all-equal
-arrays (no two elements are strictly increasing, so the answer is the single largest value or `0`),
-strictly decreasing arrays (answer is the single largest value or `0`), and large `n = 5000` with
-values near `10^9` (so a running sum can exceed a 32-bit integer).
+array (`n = 0`), single element (`n = 1`), all-negative arrays, all-equal arrays, strictly decreasing
+arrays, and large `n = 5000` with values near `10^9`.
 
 ## Code framework
 

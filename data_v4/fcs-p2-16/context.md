@@ -31,8 +31,7 @@ Example:
 5 10
 ```
 
-The answer is `20`: take items 2 and 3 (total weight `10 <= 10`, value `10 + 10 = 20`). Note that
-item 1 has the best value-per-weight ratio (`13/6 ≈ 2.17`), yet including it is suboptimal here.
+The answer is `20`: take items 2 and 3 (total weight `10 <= 10`, value `10 + 10 = 20`).
 
 ## Background
 
@@ -49,16 +48,13 @@ exactly what makes the regime interesting:
   is why it is tempting. The open question is whether it is correct for the **0/1** knapsack, where
   items cannot be split.
 
-What the constraints *do* leave open is that `n <= 40` is small enough to attack with subset
-enumeration, provided one does not naively try all `2^40 ≈ 10^12` subsets.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: tiny capacities where almost nothing fits; capacities that exactly
 match a weight threshold; capacity `0`; capacities larger than the total weight (so the answer is the
 sum of all values); single items; all-items-too-heavy; values correlated and anti-correlated with
 weights (to defeat ratio heuristics); and full-size instances with `n = 40` and weights/values near
-`10^9` so that total values reach `~4*10^10` and require 64-bit arithmetic.
+`10^9`.
 
 ## Code framework
 
