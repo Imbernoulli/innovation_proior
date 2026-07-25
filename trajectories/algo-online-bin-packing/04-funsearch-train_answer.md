@@ -16,7 +16,8 @@ I am scrupulous about what reproducing this shows on my streams, because the ref
 import numpy as np
 
 def priority(item, bins):
-    """FunSearch-discovered online bin-packing heuristic (Weibull dataset).
+    """FunSearch-discovered online bin-packing heuristic (Weibull dataset), verbatim from
+    google-deepmind/funsearch, bin_packing/bin_packing.ipynb.
 
     bins: remaining capacities of bins that can fit `item` (bins - item >= 0).
     Returns a priority per bin; the item is placed in the argmax bin.
