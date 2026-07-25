@@ -24,31 +24,32 @@ def flash_attention_forward(Q, K, V, block_n=128, scale=None, causal=False):
     device = Q.device
 
     O = torch.zeros_like(Q)
-    m = torch.full((N,), float("-inf"), device=device, dtype=Q.dtype)
-    lse = torch.full((N,), float("-inf"), device=device, dtype=Q.dtype)
-    acc = torch.zeros_like(Q)
+    m = torch.full((N,), float("-inf"), device=device, dtype=Q.dtype)      # running row max
+    lse = torch.full((N,), float("-inf"), device=device, dtype=Q.dtype)    # running log-sum-exp
+    acc = torch.zeros_like(Q)                # output accumulator (un-normalized)
 
-    for j0 in range(0, N, block_n):
-        Kj = K[j0:j0 + block_n]
+    for j0 in range(0, N, block_n):          # outer loop: K, V blocks (loaded once)
+        Kj = K[j0:j0 + block_n]              # (B_c, d)
         Vj = V[j0:j0 + block_n]
-        S = (Q @ Kj.T) * scale
-        if causal:
+        S = (Q @ Kj.T) * scale              # (N, B_c) score block, "on chip"
+        if causal:                          # mask: set disallowed entries to -inf
             idx_q = torch.arange(N, device=device)[:, None]
             idx_k = (j0 + torch.arange(Kj.shape[0], device=device))[None, :]
             S = S.masked_fill(idx_k > idx_q, float("-inf"))
 
-        m_blk = S.max(dim=1).values
-        m_new = torch.maximum(m, m_blk)
-        P = torch.exp(S - m_new[:, None])
-        l_blk = P.sum(dim=1)
+        m_blk = S.max(dim=1).values          # block row max
+        m_new = torch.maximum(m, m_blk)      # updated running max
+        P = torch.exp(S - m_new[:, None])    # exp(S - m_new), on chip
+        l_blk = P.sum(dim=1)                 # this block's denominator piece
 
-        acc = acc * torch.exp(m - m_new)[:, None]
-        acc = acc + P @ Vj
+        acc = acc * torch.exp(m - m_new)[:, None]   # rescale old accumulator to new max
+        acc = acc + P @ Vj                          # add this block's P V contribution
 
+        # fold block into running log-sum-exp:  L_new = e^{lse-m_new} + l_blk
         lse = m_new + torch.log(torch.exp(lse - m_new) + l_blk)
         m = m_new
 
-    O = acc * torch.exp(m - lse)[:, None]
+    O = acc * torch.exp(m - lse)[:, None]    # single final normalization by 1 / L_i
     return O, lse
 
 
@@ -61,7 +62,7 @@ def flash_attention_backward(Q, K, V, O, dO, lse, block_n=128, scale=None, causa
     dQ = torch.zeros_like(Q)
     dK = torch.zeros_like(K)
     dV = torch.zeros_like(V)
-    D = (O * dO).sum(dim=1)
+    D = (O * dO).sum(dim=1)                   # D_i = rowsum(O_i .* dO_i) = do_i . o_i
 
     for j0 in range(0, N, block_n):
         Kj = K[j0:j0 + block_n]
@@ -72,12 +73,12 @@ def flash_attention_backward(Q, K, V, O, dO, lse, block_n=128, scale=None, causa
             idx_k = (j0 + torch.arange(Kj.shape[0], device=device))[None, :]
             S = S.masked_fill(idx_k > idx_q, float("-inf"))
 
-        P = torch.exp(S - lse[:, None])
-        dV[j0:j0 + Vj.shape[0]] += P.T @ dO
-        dP = dO @ Vj.T
-        dS = P * (dP - D[:, None]) * scale
-        dQ += dS @ Kj
-        dK[j0:j0 + Kj.shape[0]] += dS.T @ Q
+        P = torch.exp(S - lse[:, None])      # recomputed P block, no N x N stored
+        dV[j0:j0 + Vj.shape[0]] += P.T @ dO  # dV += P^T dO
+        dP = dO @ Vj.T                       # dP_ij = dO V^T
+        dS = P * (dP - D[:, None]) * scale   # dS_ij = P_ij (dP_ij - D_i), with scale
+        dQ += dS @ Kj                        # dQ_i += dS_ij K_j
+        dK[j0:j0 + Kj.shape[0]] += dS.T @ Q  # dK_j += dS_ij^T Q_i
 
     return dQ, dK, dV
 ```
