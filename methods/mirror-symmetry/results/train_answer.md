@@ -8,50 +8,16 @@
 
 quintic threefold 是这一策略最具代表性的历史信号。Candelas、de la Ossa、Green 和 Parkes 的镜像计算给出了任意次数有理曲线计数的强预测，而当时传统代数几何方法只能处理少数低次情形。后来这些预测推动了格罗莫夫–威滕理论、镜像定理以及同调镜像对称等严格数学框架的发展。这说明镜像对称不是一个一次性技巧，而是一种新的数学策略：把难算的几何对象转译到一个对偶空间，让可计算结构自然显现。
 
-为了把这一思想落实到一个可运行的验证中，我用 quintic threefold 的基本周期级数来展示 B-模型的核心计算。代码首先计算基本周期 Φ_0(z) = Σ (5n)!/(n!)^5 z^n 的级数系数，然后验证它满足镜像对称给出的皮卡–富克斯微分方程；最后给出几个小参数下的镜像映射样本，说明复结构参数 z 如何被转换为 A-模型一侧的凯勒参数 q。
+把这套方法论收紧到 quintic threefold 上，可以给出一个完全显式、不依赖任何一次性示范程序就能逐阶验证的最终形式。取镜像 quintic 的复结构参数 $z$，在大复结构极限 $z=0$ 附近展开，基本周期是超几何型级数
+$$\Phi_0(z) = \sum_{n=0}^{\infty} \frac{(5n)!}{(n!)^5}\, z^n .$$
+它满足的皮卡–富克斯方程由四阶算子
+$$L = \theta^4 - 5z(5\theta+1)(5\theta+2)(5\theta+3)(5\theta+4), \qquad \theta = z\frac{d}{dz}$$
+给出：$\Phi_0$ 的系数 $a_n=(5n)!/(n!)^5$ 逐阶满足 $n^4 a_n = 5(5n-4)(5n-3)(5n-2)(5n-1)\,a_{n-1}$，这正是 $L\Phi_0=0$ 的显式表达，也是它在 $z=0$ 处唯一正则、取值为 $1$ 的解。
 
-```python
-import numpy as np
+$L$ 在 $z=0$（一个 maximally unipotent monodromy 点）还有三个对数增长的解，其中最先出现的是
+$$\Phi_1(z) = \Phi_0(z)\log z + 5\sum_{n=1}^{\infty} \frac{(5n)!}{(n!)^5}\,H_n\, z^n, \qquad H_n=\sum_{r=n+1}^{5n}\frac{1}{r},$$
+另外两个分别以 $(\log z)^2$ 和 $(\log z)^3$ 增长。镜像映射正是由正则周期与这个对数周期的比给出：
+$$q(z) = z\,\exp\!\Big(\frac{\Phi_1(z)}{\Phi_0(z)} - \log z\Big) = z + 770\,z^2 + 1014275\,z^3 + \cdots,$$
+它把复结构坐标 $z$ 翻译成 A-模型一侧的复化凯勒坐标 $q$：$z\to 0$（大复结构极限）与 $q\to 0$（大体积极限）是同一个尖点在两侧几何中的两种描述——领头项就是 $q=z$，此后每一阶都被 quintic 自身的量子修正放大，而不是像朴素直觉设想的那样，把 $z$ 单向压缩成一个更小的 $q$。
 
-def quintic_periods(z, N=120):
-    """
-    用相邻项的比值递推计算 quintic 的基本周期 Phi_0(z)
-    和对数周期 Phi_1(z)，避免大系数溢出。
-    """
-    phi0 = 1.0
-    term = 1.0
-    phi1_log = 0.0
-    for n in range(1, N):
-        ratio = (5.0*n*(5*n-1)*(5*n-2)*(5*n-3)*(5*n-4)) / (n**5) * z
-        term *= ratio
-        phi0 += term
-        H_n = sum(1.0 / j for j in range(n + 1, 5*n + 1))
-        phi1_log += 5.0 * term * H_n
-    phi1 = phi0 * np.log(z) + phi1_log
-    return phi0, phi1
-
-def picard_fuchs_ratio_check(N=200):
-    """
-    验证 quintic Picard-Fuchs 算子给出的递推关系。
-    对 n>=1，两种等价表达给出相同的 a_n / a_{n-1}：
-      (i)  5 (5n-4)(5n-3)(5n-2)(5n-1) / n^4
-      (ii) (5n)(5n-1)(5n-2)(5n-3)(5n-4) / n^5
-    """
-    max_rel_err = 0.0
-    for n in range(1, N):
-        ratio_from_pf = 5.0 * (5*n-4)*(5*n-3)*(5*n-2)*(5*n-1) / (n**4)
-        ratio_from_closed = (5.0*n*(5*n-1)*(5*n-2)*(5*n-3)*(5*n-4)) / (n**5)
-        rel_err = abs(ratio_from_pf - ratio_from_closed) / ratio_from_closed
-        max_rel_err = max(max_rel_err, rel_err)
-    return max_rel_err
-
-print("Picard-Fuchs 递推相对残差:", picard_fuchs_ratio_check(200))
-
-print("\n镜像映射样本 z -> q:")
-for z in [1e-5, 5e-5, 1e-4, 2e-4]:
-    phi0, phi1 = quintic_periods(z)
-    q = np.exp(phi1 / phi0)
-    print(f"  z={z:.1e}  ->  q={q:.6e}")
-```
-
-运行这段代码会看到皮卡–富克斯残差几乎为零，这是周期积分确实满足该微分方程的级数验证；同时镜像映射把小的复结构参数 z 转换成更小的凯勒参数 q，正是 A-模型生成函数展开所需要的变量。我由此把镜像对称的方法论核心概括为：利用对偶性重新选择问题所在的几何空间，把难算的量子枚举数据转化为可操作的霍奇理论与微分方程计算，这正是它从弦论进入枚举代数几何核心工具箱的原因。
+育川耦合关于 $q$ 的展开系数正是格罗莫夫–威滕不变量的生成函数：Candelas、de la Ossa、Green 和 Parkes 正是从这一套周期—镜像映射机制里，把三次以上曲线的计数连同经典代数几何早已给出的 2875 条直线、609250 条二次曲线一并读了出来。我把镜像对称的方法论核心归结于此：基本周期 $\Phi_0$ 及它满足的皮卡–富克斯算子 $L$，加上由周期之比给出的镜像映射 $q(z)$，构成了把枚举几何计数完全转译为解析计算的最终形式——不是一段需要运行的示范代码，而是一组由对偶几何本身给出、可以逐阶展开到任意精度的封闭表达式，这正是镜像对称从弦论进入枚举代数几何核心工具箱时，留下来的那个可以直接使用的对象。
