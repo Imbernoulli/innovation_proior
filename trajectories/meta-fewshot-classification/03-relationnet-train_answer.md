@@ -14,7 +14,7 @@ The falsifiable expectations against the prototype numbers follow from the whole
 
 ```python
 class _RelationModule(nn.Module):
-    """CNN relation module from Sung et al. (2018)."""
+    """CNN relation module."""
 
     def __init__(self, feature_dimension: int, inner_channels: int = 8):
         super().__init__()
@@ -43,7 +43,7 @@ class _RelationModule(nn.Module):
 
 
 class CustomFewShotMethod(FewShotClassifier):
-    """Relation Networks (Sung et al., 2018).
+    """Relation Network.
 
     Extracts feature maps (not pooled vectors) from support and query images.
     Computes class prototypes as mean feature maps, concatenates each query-prototype
