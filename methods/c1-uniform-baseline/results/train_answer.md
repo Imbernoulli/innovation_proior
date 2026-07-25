@@ -11,7 +11,6 @@ import numpy as np
 from scipy.signal import fftconvolve
 
 def autoconv_c1_ratio(a):
-    """R = 2N * max(a*a) / (sum a)^2 for f = sum_n a_n 1_[n,n+1). Lower = tighter upper bound on C1."""
     a = np.clip(np.asarray(a, dtype=float), 0.0, 1000.0)
     N = len(a)
     b = fftconvolve(a, a)
