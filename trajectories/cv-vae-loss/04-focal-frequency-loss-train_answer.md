@@ -14,7 +14,7 @@ The crucial composition point is that FFL is a *complement*, not a replacement. 
 ```python
 # EDITABLE region of custom_train.py (lines 32-76) — finale: vqgan recipe + Focal Frequency Loss
 class FocalFrequencyLoss(nn.Module):
-    """Focal frequency loss (ICCV 2021): spectral distance gated by a detached
+    """Focal frequency loss: spectral distance gated by a detached
     hard-frequency spotlight. Complement to spatial losses."""
 
     def __init__(self, loss_weight=1.0, alpha=1.0, patch_factor=1,
