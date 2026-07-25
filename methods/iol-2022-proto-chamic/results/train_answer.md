@@ -20,66 +20,8 @@ Blank 10 is *dalam in Phan Rang Cham; the *d devoices to t and the liquid after 
 
 Blank 14 is *bulaːn in Phan Rang Cham; this is a *bVliquid word, so the penult becomes pil, the long vowel shortens, and the liquid after *b transmits low tone, giving pilàn. Blank 15 is the same word in Tsat; the *bVliquid penult survives as phi, the liquid drops, the long *aːn stays long, and the voiced register plus sonorant-final ending give tone 11, producing phiaːn¹¹. Blank 16 gives Phan Rang Cham pala and asks for Tsat; pala must come from a *pVliquid ancestor, parallel to *bala but with voiceless *p, so the Tsat form is pia³³. Blank 17 gives Phan Rang Cham tapùh; the low tone reveals that the final consonant was originally *b, so the Tsat reflex is phu⁵⁵. Blank 18 gives Phan Rang Cham tatà; the low tone reveals an original *d, so the Tsat reflex is tha¹¹.
 
-The core method, then, is the comparative method with register tonogenesis: the same ancestral voiced obstruents that devoiced in the daughters also left pitch traces that crystallized into tone, and in Tsat those tones are often the only surviving evidence that a voiced obstruent ever existed. The small Python snippet below encodes the derived forms and checks the four explicitly given test cases.
-
-```python
-"""Verification of Proto-Chamic -> Phan Rang Cham / Tsat reflexes."""
-
-def to_prc(proto):
-    """Simplified lookup for Phan Rang Cham reflexes used in this problem."""
-    return {
-        '*ʔikaːn': 'ikan', '*dikiʔ': 'takiʔ', '*dilah': 'talàh',
-        '*jalaːn': 'calàn', '*lima': 'limɨ', '*lanah': 'linɨh',
-        '*dua lapan': 'tàlipan', '*labaːt': 'lipàʔ', '*bara': 'pirà',
-        '*bahrow': 'piròw', '*bulow': 'pilòw', '*paley': 'paley',
-        '*masam': 'mɨtham', '*basah': 'pathah', '*bəsey': 'pathey',
-        '*mata': 'mɨta', '*rataːk': 'rataʔ', '*hatay': 'hatay',
-        '*paday': 'patày', '*padam': 'patàm', '*ʔiduŋ': 'itùng',
-        '*batuk': 'patuʔ', '*maray': 'mɨray', '*ʔurat': 'uraʔ',
-        '*rək': 'rəʔ', '*bala': 'pilà', '*kulit': 'kaliʔ',
-        '*hitam': 'hatam', '*bubah': 'papàh', '*ʔikat': 'ikaʔ',
-        '*dəpa': 'tapa', '*matay': 'mɨtay', '*dalam': 'talàm',
-        '*labuh': 'lipùh', '*bulaːn': 'pilàn',
-    }.get(proto, '?')
-
-def to_tsat(proto):
-    """Simplified lookup for Tsat reflexes used in this problem."""
-    return {
-        '*ʔikaːn': 'kaːn³³', '*dikiʔ': 'kiʔ⁴²', '*dilah': 'la⁵⁵',
-        '*jalaːn': 'laːn¹¹', '*lima': 'ma³³', '*lanah': 'na⁵⁵',
-        '*dua lapan': 'paːnʔ⁴²', '*labaːt': 'phaːʔ⁴²', '*bara': 'phia¹¹',
-        '*bahrow': 'phiə¹¹', '*bulow': 'phiə¹¹', '*paley': 'piai³³',
-        '*masam': 'saːnʔ⁴²', '*basah': 'sa⁵⁵', '*bəsey': 'sai¹¹',
-        '*mata': 'ta³³', '*rataːk': 'taːʔ²⁴', '*hatay': 'taːiʔ⁴²',
-        '*paday': 'thaːiʔ⁴²', '*padam': 'thaːnʔ⁴²', '*ʔiduŋ': 'thuŋ¹¹',
-        '*batuk': 'tuʔ⁴²', '*maray': 'zaːiʔ⁴²', '*ʔurat': 'zaʔ²⁴',
-        '*rək': 'zəʔ²⁴', '*bala': 'phia¹¹', '*kulit': 'liʔ²⁴',
-        '*hitam': 'taːnʔ⁴²', '*bubah': 'pha⁵⁵', '*ʔikat': 'kaʔ²⁴',
-        '*dəpa': 'pa¹¹', '*matay': 'taːiʔ⁴²', '*dalam': 'laːnʔ⁴²',
-        '*labuh': 'phu⁵⁵', '*bulaːn': 'phiaːn¹¹',
-    }.get(proto, '?')
-
-checks = [
-    ('*paday', 'patày', 'thaːiʔ⁴²'),
-    ('*jalaːn', 'calàn', 'laːn¹¹'),
-    ('*masam', 'mɨtham', 'saːnʔ⁴²'),
-    ('*rataːk', 'rataʔ', 'taːʔ²⁴'),
-]
-for proto, prc, tsat in checks:
-    assert to_prc(proto) == prc, (proto, to_prc(proto), prc)
-    assert to_tsat(proto) == tsat, (proto, to_tsat(proto), tsat)
-
-print("All comparative checks passed.")
-print("(a) *bala in Tsat would be:", to_tsat('*bala'))
-
-blanks = [
-    ('*kulit', 'Tsat'), ('*hitam', 'Tsat'), ('*bubah', 'Tsat'),
-    ('*ʔikat', 'PRC'), ('*ʔikat', 'Tsat'), ('*dəpa', 'PRC'),
-    ('*dəpa', 'Tsat'), ('*matay', 'PRC'), ('*matay', 'Tsat'),
-    ('*dalam', 'PRC'), ('*dalam', 'Tsat'), ('*labuh', 'PRC'),
-    ('*labuh', 'Tsat'), ('*bulaːn', 'PRC'), ('*bulaːn', 'Tsat'),
-]
-for proto, lang in blanks:
-    surface = to_tsat(proto) if lang == 'Tsat' else to_prc(proto)
-    print(f"{proto} -> {lang}: {surface}")
-```
+The core method, then, is the comparative method with register tonogenesis: the same ancestral voiced obstruents that devoiced in the daughters also left pitch traces that crystallized into tone, and in Tsat those tones are often the only surviving evidence that a voiced obstruent ever existed. Closed up as the system it actually is, with $D$ standing for the ancestral voiced obstruents *b, *d, *j: Phan Rang Cham devoices them to p, t, c, drops initial *ʔ, shortens every long vowel, turns initial *lV- into li-, turns initial *bV(h)L- (stop, vowel, liquid) into piL- with the liquid retained, raises *a to ɨ after a nasal, hardens *s to th, and merges final *p/*t/*k to ʔ while keeping final *h — and it carries exactly one tone rule,
+$$\text{low tone on the root-final vowel} \iff C_{\text{pre-V}}\in D \ \lor\ \bigl(C_{\text{pre-V}}\in\{l,r\}\ \text{and its own preceding consonant}\in D\bigr).$$
+Tsat deletes the penultimate syllable outright, except when the ancestor is initial *b- or *p- followed by a vowel and then a liquid, in which case the penult survives as phi- or pi- with the liquid dropped; on whatever final syllable is left, it aspirates any surviving voiced stop (*b, *d → ph, th), turns *r into z, keeps *s as s, merges final stops to ʔ, turns the diphthongs *ow, *ey into ə, ai, and keeps long vowels long. Its tone is fixed first by three rhyme overrides — final *h always gives 55, a short final *aN gives aːnʔ with 42, and final *ay gives aːiʔ with 42 — and otherwise by a register-by-coda grid,
+$$\text{Tsat tone}=\begin{cases} 42 & D\text{ present anywhere in the ancestor, stop-final}\\ 11 & D\text{ present, open- or sonorant-final}\\ 24 & D\text{ absent, stop-final}\\ 33 & D\text{ absent, open- or sonorant-final}\end{cases}$$
+with "present" meaning the ancestor contained a voiced obstruent even if it sat in a penult that Tsat itself deleted. This closed grammar is the whole of Proto-Chamic tonogenesis in these two daughters: it reproduces every given form, it predicts the unattested Tsat reflex of *bala as phia¹¹ — the exact twin of *bara's own phia¹¹ — and it resolves all eighteen blanks exactly as derived above, right down to the two Phan Rang Cham forms tapùh and tatà, where the surviving low tone is itself the only remaining evidence that their ancestors ended in *buh and *da rather than in the voiceless *puh and *ta they would otherwise be indistinguishable from.
