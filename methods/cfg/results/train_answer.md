@@ -12,52 +12,47 @@ Because the learned epsilon predictions come from unconstrained neural networks,
 import torch
 
 
-class ClassifierFreeGuidedSampler:
-    """One network is trained to predict noise both conditionally and
-    unconditionally (via null-token dropout). At sampling time the per-step
-    epsilon is a linear mix of the two predictions."""
+@torch.no_grad()
+def cfg_sample(unet, scheduler, uc, c, shape, device,
+               guidance_scale=7.5, skip=1):
+    """Classifier-free guided DDIM sampling. uc, c are the unconditional (null) and
+    conditional embeddings. guidance_scale s = 1 + w; s = 1 is no guidance."""
+    z = torch.randn(shape, device=device)                  # z_1 ~ N(0, I)
+    x0 = None
+    for t in scheduler.timesteps:
+        at = scheduler.alphas_cumprod[t]
+        at_prev = scheduler.alphas_cumprod[t - skip] if t - skip >= 0 \
+            else scheduler.final_alpha_cumprod
 
-    def __init__(self, eps_theta, schedule, null_token):
-        self.eps_theta = eps_theta      # network: (z, lambda, c) -> predicted noise
-        self.schedule = schedule        # provides alpha(lambda), sigma(lambda)
-        self.null = null_token          # unconditional conditioning identifier
-
-    def null_for(self, z):
-        return self.null.expand(z.shape[0], *self.null.shape[1:])
-
-    def guided_eps(self, z, lam, c, guidance_scale):
-        # Batched forward pass: [unconditional, conditional].
+        # one batched pass: stack [uncond, cond]; split into the two predictions
         z_in = torch.cat([z, z], dim=0)
-        c_in = torch.cat([self.null_for(z), c], dim=0)
-        eps_uc, eps_c = self.eps_theta(z_in, lam, c_in).chunk(2)
-        # guidance_scale s = 1 + w; s = 1 is no guidance.
-        return eps_uc + guidance_scale * (eps_c - eps_uc)
+        emb = torch.cat([uc, c], dim=0)
+        noise_uc, noise_c = unet(z_in, t, encoder_hidden_states=emb).sample.chunk(2)
 
-    @torch.no_grad()
-    def sample(self, c, lambdas, guidance_scale=7.5):
-        z = torch.randn(self.shape, device=self.device)
-        for i in range(len(lambdas)):
-            lam = lambdas[i]
-            eps_tilde = self.guided_eps(z, lam, c, guidance_scale)
-            a, s = self.schedule.alpha(lam), self.schedule.sigma(lam)
-            x0 = (z - s * eps_tilde) / a                 # Tweedie denoised estimate
-            if i < len(lambdas) - 1:
-                lam_next = lambdas[i + 1]
-                a_n, s_n = self.schedule.alpha(lam_next), self.schedule.sigma(lam_next)
-                eps_back = (z - a * x0) / s
-                z = a_n * x0 + s_n * eps_back            # renoise toward next latent
-        return x0
+        # classifier-free guidance: eps_uc + s * (eps_c - eps_uc)
+        noise_pred = noise_uc + guidance_scale * (noise_c - noise_uc)
 
+        # Tweedie: denoised estimate from the guided epsilon
+        x0 = (z - (1 - at).sqrt() * noise_pred) / at.sqrt()
 
+        # DDIM renoise toward the next latent using the guided epsilon
+        z = at_prev.sqrt() * x0 + (1 - at_prev).sqrt() * noise_pred
+    return x0
+```
+
+Training is the mirror image, adding the one-line conditioning dropout to the ordinary denoising step:
+
+```python
 def cfg_train_step(eps_theta, x, c, schedule, opt, null_token, p_uncond=0.1):
-    # Joint conditional/unconditional training: randomly drop the condition.
-    mask = torch.rand(x.shape[0], device=x.device) < p_uncond
-    c = torch.where(mask[:, None], null_token.expand_as(c), c)
-    lam = schedule.sample_log_snr(x.shape[0], device=x.device)
+    """Joint conditional/unconditional training: drop the condition to the null token
+    with probability p_uncond, otherwise the standard denoising MSE step."""
+    mask = (torch.rand(x.shape[0], device=x.device) < p_uncond)
+    c = torch.where(mask[:, None], null_token.expand_as(c), c)   # conditioning dropout
+    lam = schedule.sample_log_snr(x.shape[0], device=x.device)   # lambda ~ p(lambda)
     eps = torch.randn_like(x)
-    z = schedule.alpha(lam) * x + schedule.sigma(lam) * eps
+    z = schedule.alpha(lam) * x + schedule.sigma(lam) * eps      # corrupt to log-SNR lambda
     pred = eps_theta(z, lam, c)
-    loss = ((pred - eps) ** 2).mean()                    # denoising score matching
+    loss = ((pred - eps) ** 2).mean()                           # denoising score matching
     opt.zero_grad(); loss.backward(); opt.step()
     return loss
 ```
