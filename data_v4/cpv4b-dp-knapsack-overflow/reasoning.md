@@ -63,9 +63,10 @@ max(8, dp[1]+6) = max(8,6) = 8`; `dp[5] = max(7, dp[0]+6) = max(7,6) = 7`. Final
 subsets it found: `(3,4)+(4,5)` reaching `dp[7]` early, and the `(2,3)+(5,6)` line also summing to
 `9`. The recurrence and the downward iteration are correct.
 
-**First implementation — with the overflow trap deliberately set, to show why it bites.** My first
-instinct, having just done the trace with small brightness values, is to size the table as `int`
-because "knapsack dp is just an int array," and I write:
+**Why `int` fails — checking the tempting shortcut concretely.** The bound above already settled that
+the table must be `long long`, but that conclusion deserves more than an assertion: the reflex
+"knapsack dp is just an int array" is common enough that it is worth tracing exactly how it fails, so
+the failure mode is concrete rather than folklore. Here is that `int` version:
 
 ```
 vector<int> dp(C + 1, 0);
@@ -84,7 +85,7 @@ On the second tiny generator cases it also passes. That is exactly the danger: t
 on everything small. I have to *trace a large case* to expose it, so I construct the smallest input
 that should already exceed `INT_MAX`.
 
-**The bug — caught by tracing a large case.** Take `5` modules, each `w = 1`, each `b = 10^9`, and
+**The failure, confirmed by tracing a large case.** Take `5` modules, each `w = 1`, each `b = 10^9`, and
 `C = 5`. Every module fits and all five together weigh `5 <= 5`, so the true answer is
 `5 * 10^9 = 5 * 10^9 = 5000000000`, which is well past `INT_MAX = 2147483647`. Now I trace the `int`
 DP. Start `dp = [0,0,0,0,0,0]` (indices `0..5`). Fold module 0 `(1, 10^9)`, `c` from `5` down to `1`:
@@ -114,15 +115,16 @@ I reproduced. The cause is unambiguous: a partial sum exceeded the 32-bit range,
 negative, and the `max` then discarded the (corrupted) larger value — so the corruption is not even a
 "wrapped large number" in the output, it is a frozen *under*-count, which is even more deceptive.
 
-**The fix.** Make the table and all arithmetic 64-bit. `dp` becomes `vector<long long>`, and the
-candidate `dp[c - w[i]] + b[i]` is then computed in `long long`. To be safe against any sign or width
-surprise I also keep `w` and `b` as `long long` (they are read as `long long` already), so
-`c - w[i]` and the addition never silently narrow. Re-running the same `5 x (1, 10^9)`, `C = 5` trace
-in `long long`: every step is identical until `dp[5] = max(2e9, 2e9 + 1e9)`, which now evaluates to
-`3e9` honestly (no wrap, `3 * 10^9 << 9.2 * 10^18`), so `dp[5] = 3e9`; folding module 3 pushes it to
-`4e9`, module 4 to `5e9`. Final `dp[5] = 5000000000`. Correct. I actually ran both versions: the
-`int` build prints `2000000000`, the `long long` build prints `5000000000`. The fix is exactly the
-type, nothing else in the recurrence changes.
+**Applying the `long long` table.** With the failure mode now concrete, I build the table the way the
+bound at the top required: `dp` becomes `vector<long long>`, and the candidate `dp[c - w[i]] + b[i]`
+is computed in `long long`. To be safe against any sign or width surprise I also keep `w` and `b` as
+`long long` (they are read as `long long` already), so `c - w[i]` and the addition never silently
+narrow. Re-running the same `5 x (1, 10^9)`, `C = 5` trace in `long long`: every step is identical
+until `dp[5] = max(2e9, 2e9 + 1e9)`, which now evaluates to `3e9` honestly (no wrap, `3 * 10^9 <<
+9.2 * 10^18`), so `dp[5] = 3e9`; folding module 3 pushes it to `4e9`, module 4 to `5e9`. Final
+`dp[5] = 5000000000`. Correct. I ran both versions side by side: the `int` build prints `2000000000`,
+the `long long` build prints `5000000000` — the type is exactly what separates the two, nothing else
+in the recurrence changes.
 
 **Second debug episode — the iteration direction.** While I have the code open I want to make sure I
 did not accidentally write the unbounded-knapsack loop, because that is the other classic transcription
@@ -169,8 +171,8 @@ build wrongly prints `2000000000`). A full-size instance (`n = 2000`, `C = 4000`
 
 **Final solution.** The algorithm is textbook 0/1 knapsack by capacity with downward iteration; the
 only thing that makes this problem more than a template is that the answer overflows 32 bits, which I
-established by a bound, exposed by tracing a deliberately-`int` build on a large case (it freezes at
-`2 * 10^9` because a wrapped-negative candidate loses the `max`), and fixed by making the table and
+established by a bound, confirmed by tracing what an `int` build does on a large case (it freezes at
+`2 * 10^9` because a wrapped-negative candidate loses the `max`), and satisfied by making the table and
 arithmetic `long long`. This is what I ship:
 
 ```cpp
@@ -206,11 +208,11 @@ int main() {
 ```
 
 **Causal recap.** A capacity bound showed the answer can reach `2 * 10^12`, about `931x` past
-`INT_MAX`, so the table must be 64-bit; an `int` first cut passed every small sample because the bug
-is invisible until a partial sum crosses `2.147 * 10^9`, so I traced the smallest overflowing case
-(`5` unit-weight modules worth `10^9`, `C = 5`) and watched `dp[5]`'s candidate `3 * 10^9` wrap to
-`-1294967296`, lose the `max`, and freeze the output at `2 * 10^9` instead of `5 * 10^9`; switching
-the table and arithmetic to `long long` fixes it exactly. A second trace confirmed the downward
+`INT_MAX`, so the table must be 64-bit; tracing what the tempting `int` version does on a large case
+confirms it — the failure is invisible until a partial sum crosses `2.147 * 10^9`, so I traced the
+smallest overflowing case (`5` unit-weight modules worth `10^9`, `C = 5`) and watched the candidate
+`3 * 10^9` wrap to `-1294967296`, lose the `max`, and freeze the output at `2 * 10^9` instead of
+`5 * 10^9`; building the table and arithmetic in `long long` from the start avoids it exactly. A second trace confirmed the downward
 capacity loop is the 0/1 recurrence (upward would let one module refit and return `6` instead of `3`
 on `(2,3)`, `C = 4`), and `750` brute-force comparisons plus the `C = 0`, too-heavy, and
 single-module corners close it out.
