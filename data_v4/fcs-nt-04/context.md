@@ -45,29 +45,13 @@ produces
 
 (`12 = 2^2 * 3`; `1` has no factors; `1000000007` is prime; `10^18 = 2^18 * 5^18`.)
 
-## Background
-
-Two routes are on the table before committing to one:
-
-- **Trial division.** Test divisibility by every integer (or every prime) up to `sqrt(n)`,
-  peeling factors as they are found. It is obviously correct and trivial to write; the open
-  question is whether it is fast enough when `n` is close to `10^18` and the smallest prime
-  factor is itself close to `10^9`.
-- **Randomized factorization.** Use a probabilistic primality test to decide when a part is
-  already prime, and a randomized factor-splitting routine (the rho method) to break a
-  composite into two smaller pieces, recursing. This avoids ever scanning up to `sqrt(n)`;
-  the open questions are which primality witnesses make the test exact at this scale, how to
-  multiply two near-`10^18` numbers modulo a third without overflow, and how to keep the
-  splitting routine from thrashing on adversarial inputs (perfect powers, twin large primes).
-
 ## Evaluation settings
 
 Judged on hidden tests covering: `n = 1`; small `n`; large primes near `10^18`; semiprimes
-`p*q` with `p, q` both near `10^9` (the worst case for any factoring method here); high
-prime powers such as `2^59`, `3^37`, `5^18`; products of many small and medium primes; and a
-full batch of `q = 500` maximal hard semiprimes to stress the time limit. Every factor in the
-output must be genuinely prime, listed once, in increasing order, with the correct exponent,
-and the product of `pi^ei` must equal `n`.
+`p*q` with `p, q` both near `10^9`; high prime powers such as `2^59`, `3^37`, `5^18`; products
+of many small and medium primes; and a full batch of `q = 500` such semiprimes to stress the
+time limit. Every factor in the output must be genuinely prime, listed once, in increasing
+order, with the correct exponent, and the product of `pi^ei` must equal `n`.
 
 ## Code framework
 
