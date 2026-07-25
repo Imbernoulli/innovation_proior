@@ -47,22 +47,10 @@ Three reference approaches frame the problem before committing to one:
 - **ADD / DROP / SWAP local search (the standard UFLP metaheuristic).** Start
   from some open set and repeatedly apply the best of: *add* a closed facility,
   *drop* an open one, or *swap* (drop one, add another). Each move's gain is the
-  change in `open-cost + service-cost`. Written naively, evaluating a *drop*
-  re-assigns every affected customer against all remaining open facilities —
-  `O(C·|S|)` per candidate drop, `O(C·|S|·F)` per pass — which is too slow to
-  sweep all candidates many times within 2 seconds at these sizes.
+  change in `open-cost + service-cost`.
 - **LP relaxation, then round.** UFLP has a strong linear-programming relaxation
   (and an equivalent Lagrangian relaxation of the assignment constraints) whose
-  fractional open-indicators round to a much better starting set than either
-  trivial extreme. The open question is how to get a principled initial set
-  *and* keep each local-search move cheap.
-
-The lever that resolves both halves is caching, for every client, its
-**first- and second-nearest open facility**: with the second-nearest distance
-`d2[c]` stored, a *drop* of facility `i` is evaluated in `O(C)` (each customer
-served by `i` simply falls back to its cached `d2`), and an *add* is `O(C)`
-(each customer keeps its better of `d1` and the new distance). That turns the
-naive `O(C·|S|)` drop into `O(C)` and makes thousands of moves per second feasible.
+  fractional open-indicators can round to a starting set for local search.
 
 ## Evaluation settings
 
