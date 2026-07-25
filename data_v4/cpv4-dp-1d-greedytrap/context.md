@@ -9,12 +9,6 @@ she can hop forward onto the **next** platform (`i -> i+1`) or **skip exactly on
 platform `i` she pays its toll `t[i] >= 0`. She always pays `t[0]` (her start) and `t[n-1]` (her
 finish). Output the **minimum total toll** of a legal crossing.
 
-This is a one-dimensional shortest-route DP. The constraint that only `+1` and `+2` hops are allowed
-makes the set of reachable next platforms tiny, which is exactly the situation where a *local* greedy
-("always hop to the cheaper of the two platforms in front of me") looks plausible — and is wrong.
-Getting the one-dimensional version exactly right, including the `n = 0`, `n = 1`, `n = 2` corners and
-the 64-bit toll accumulation, is the point.
-
 ## Input / output contract
 
 - Input (stdin): the first token is `n` (`0 <= n <= 2*10^5`); then `n` integers `t[i]`
@@ -26,27 +20,11 @@ the 64-bit toll accumulation, is the point.
 Example: for `t = [3, 1, 1, 9, 1, 9, 1]` the answer is `6` (route `0 -> 2 -> 4 -> 6`, paying
 `3 + 1 + 1 + 1`).
 
-## Background
-
-Because only `+1` and `+2` hops exist, from platform `i` the walker faces at most two choices, and the
-toll she pays next is one of `t[i+1]`, `t[i+2]`. Two families of approach are on the table before
-committing to one:
-
-- **Local greedy.** Repeatedly hop to whichever of the two reachable platforms (`i+1`, `i+2`) carries
-  the smaller toll, breaking ties however. It is `O(n)` and three lines. The open question is whether
-  picking the cheaper *immediate* platform is globally optimal, given that a hop changes which
-  platforms are reachable afterwards.
-- **Linear dynamic programming.** Define `dp[i]` = the minimum total toll of a legal route that lands
-  on platform `i`. A route reaching `i` arrives from `i-1` (a `+1` hop) or `i-2` (a `+2` hop), so
-  `dp[i] = t[i] + min(dp[i-1], dp[i-2])`. This is `O(n)`, `O(1)` memory. The open question is the
-  exact base cases (`dp[0]`, `dp[1]`) and the corner sizes.
-
 ## Evaluation settings
 
-Judged on hidden tests covering: tiny arrays (`n = 0, 1, 2`), arrays engineered so the local greedy is
-strictly suboptimal (alternating cheap/expensive tolls), arrays with many tolls equal to `0`,
-all-equal tolls, and large `n = 2*10^5` with tolls near `10^9` (so the accumulated toll can exceed a
-32-bit integer — it can reach about `2*10^14`).
+Judged on hidden tests covering: tiny arrays (`n = 0, 1, 2`), arrays with alternating cheap/expensive
+tolls, arrays with many tolls equal to `0`, all-equal tolls, and large `n = 2*10^5` with tolls near
+`10^9`.
 
 ## Code framework
 
