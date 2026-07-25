@@ -20,12 +20,12 @@ from numpy.linalg import cholesky, norm
 
 
 def shrinkage(a, kappa):
-    # prox of kappa * ||.||_1 : soft-threshold
+    # prox of kappa*||.||_1 : soft-threshold = (a-kappa)_+ - (-a-kappa)_+
     return np.maximum(0.0, a - kappa) - np.maximum(0.0, -a - kappa)
 
 
 def factor(C, rho):
-    # Cache a Cholesky for the x-update; use the matrix-inversion-lemma form when short & fat.
+    # cache a Cholesky for the x-update; use the matrix-inversion-lemma form if short & fat
     q, d = C.shape
     if q >= d:
         L = cholesky(C.T @ C + rho * np.eye(d))
@@ -34,18 +34,20 @@ def factor(C, rho):
     return L, L.T.conj()
 
 
+def objective(C, b, lam, x, z):
+    return 0.5 * np.sum((C @ x - b) ** 2) + lam * norm(z, 1)
+
+
 def lasso(C, b, lam, rho=1.0, alpha=1.0, n_iter=1000, abstol=1e-4, reltol=1e-2):
-    # Solve min 1/2 ||C x - b||^2 + lam ||x||_1 via ADMM with the split x - z = 0.
+    # min 1/2||C x - b||^2 + lam||x||_1  via the split x - z = 0
     q, d = C.shape
     Ctb = C.T @ b
     L, U = factor(C, rho)
-    x = np.zeros(d)
-    z = np.zeros(d)
-    u = np.zeros(d)  # scaled dual u = y / rho
+    x = np.zeros(d); z = np.zeros(d); u = np.zeros(d)   # u = scaled dual y/rho
+    history = {"objval": [], "r_norm": [], "s_norm": [], "eps_pri": [], "eps_dual": []}
 
     for k in range(n_iter):
-        # x-update: ridge regression via cached factors.
-        rhs = Ctb + rho * (z - u)
+        rhs = Ctb + rho * (z - u)                       # x-update: ridge regression
         if q >= d:
             x = np.linalg.solve(U, np.linalg.solve(L, rhs))
         else:
@@ -53,65 +55,62 @@ def lasso(C, b, lam, rho=1.0, alpha=1.0, n_iter=1000, abstol=1e-4, reltol=1e-2):
             x = rhs / rho - (C.T @ tmp) / (rho ** 2)
 
         z_old = z
-        x_hat = alpha * x + (1.0 - alpha) * z_old  # over-relaxation, alpha in [1, 2)
-        z = shrinkage(x_hat + u, lam / rho)        # z-update: prox of l1 norm
-        u = u + (x_hat - z)                        # scaled dual: running residual sum
+        x_hat = alpha * x + (1.0 - alpha) * z_old       # over-relaxation, alpha in [1, 2)
+        z = shrinkage(x_hat + u, lam / rho)             # z-update: soft-threshold
+        u = u + (x_hat - z)                             # scaled dual: running residual sum
 
-        r_norm = norm(x - z)                       # primal residual
-        s_norm = norm(-rho * (z - z_old))          # dual residual (A^T B = -I here)
+        r_norm = norm(x - z)                            # primal residual r = x - z
+        s_norm = norm(-rho * (z - z_old))               # dual residual s = -rho(z - z_old)
         eps_pri = np.sqrt(d) * abstol + reltol * max(norm(x), norm(-z))
         eps_dual = np.sqrt(d) * abstol + reltol * norm(rho * u)
+        history["objval"].append(objective(C, b, lam, x, z))
+        history["r_norm"].append(r_norm)
+        history["s_norm"].append(s_norm)
+        history["eps_pri"].append(eps_pri)
+        history["eps_dual"].append(eps_dual)
         if r_norm < eps_pri and s_norm < eps_dual:
             break
+    return z, history
 
-    return z
 
-
-def solve_split_problem(x_update, z_update, A, B, c, n, m, p,
-                        rho=1.0, n_iter=1000, abstol=1e-4, reltol=1e-2):
-    # Generic scaled-form ADMM for min f(x) + g(z) s.t. A x + B z = c.
-    # x_update(z, u, rho) returns argmin_x f(x) + (rho/2)||A x + B z - c + u||^2.
-    # z_update(x, u, rho) returns argmin_z g(z) + (rho/2)||A x + B z - c + u||^2.
-    x = np.zeros(n)
-    z = np.zeros(m)
-    u = np.zeros(p)
+def solve_split_problem(x_update, z_update, A, B, c, n, m, p, rho=1.0,
+                        n_iter=1000, abstol=1e-4, reltol=1e-2):
+    # Generic scaled-form ADMM for min f(x)+g(z) s.t. A x + B z = c.
+    # x_update(z, u, rho) = argmin_x f(x) + (rho/2)||A x + B z - c + u||^2
+    # z_update(x, u, rho) = argmin_z g(z) + (rho/2)||A x + B z - c + u||^2
+    x = np.zeros(n); z = np.zeros(m); u = np.zeros(p)   # u = scaled dual
 
     for k in range(n_iter):
         z_old = z
         x = x_update(z, u, rho)
         z = z_update(x, u, rho)
-        r = A @ x + B @ z - c               # primal residual
-        u = u + r                           # scaled dual update
-        s = rho * (A.T @ (B @ (z - z_old))) # dual residual
+        r = A @ x + B @ z - c                           # primal residual
+        u = u + r                                       # scaled dual update
+        s = rho * (A.T @ (B @ (z - z_old)))             # dual residual rho A'B (z - z_old)
 
         eps_pri = np.sqrt(p) * abstol + reltol * max(norm(A @ x), norm(B @ z), norm(c))
         eps_dual = np.sqrt(n) * abstol + reltol * norm(rho * (A.T @ u))
         if norm(r) < eps_pri and norm(s) < eps_dual:
             break
-
     return x, z
 
 
 def consensus(prox_fi, N, d, rho=1.0, n_iter=1000, abstol=1e-4, reltol=1e-2):
-    # Solve min sum_i f_i(x) by global consensus: private copies x_i agree with global z.
-    # prox_fi[i](v, rho) returns argmin_xi f_i(xi) + (rho/2)||xi - v||^2.
-    X = np.zeros((N, d))
-    z = np.zeros(d)
-    U = np.zeros((N, d))
+    # min sum_i f_i(x) ; prox_fi[i](v, rho) = argmin_xi f_i(xi) + (rho/2)||xi - v||^2
+    X = np.zeros((N, d)); z = np.zeros(d); Ud = np.zeros((N, d))
 
     for k in range(n_iter):
         z_old = z
-        for i in range(N):                    # x-updates run independently / in parallel
-            X[i] = prox_fi[i](z - U[i], rho)
-        z = (X + U).mean(axis=0)              # z-update: gather and average
-        U = U + X - z                         # local scaled dual updates
+        for i in range(N):                              # parallel local fits
+            X[i] = prox_fi[i](z - Ud[i], rho)
+        z = (X + Ud).mean(axis=0)                        # gather / average
+        Ud = Ud + X - z                                 # local price updates
 
         r_norm = np.sqrt(((X - z) ** 2).sum())
         s_norm = np.sqrt(N) * rho * norm(z - z_old)
         eps_pri = np.sqrt(N * d) * abstol + reltol * max(norm(X), np.sqrt(N) * norm(z))
-        eps_dual = np.sqrt(N * d) * abstol + reltol * norm(rho * U)
+        eps_dual = np.sqrt(N * d) * abstol + reltol * norm(rho * Ud)
         if r_norm < eps_pri and s_norm < eps_dual:
             break
-
     return z, X
 ```
