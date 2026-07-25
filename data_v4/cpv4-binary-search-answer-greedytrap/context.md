@@ -28,28 +28,11 @@ contiguity, the lower bound, and the feasibility test exactly right is what matt
 Example: for `n = 7`, `k = 3`, `a = [2, 3, 5, 8, 1, 1, 4]` the answer is `10`
 (cut into `[2,3,5] | [8] | [1,1,4]`, block sums `10, 8, 6`).
 
-## Background
-
-Two families of approach are on the table before committing to one:
-
-- **Balance-by-average greedy.** The total water is `S = sum(a)`; with `k` robots the "fair share"
-  is `S/k`. Walk left to right and cut each block as soon as its running sum reaches about `S/k` (or
-  place the `k-1` cut points at the prefix sums closest to `S/k, 2S/k, ...`). This is `O(n)` and
-  trivial to write. The open question is whether matching the average actually minimizes the
-  *maximum* block — averages and maxima are not the same objective, and the blocks are forced to be
-  contiguous.
-- **Binary search on the answer.** Guess a candidate finish time `T`; ask "can the row be cut into at
-  most `k` contiguous blocks each with sum `<= T`?" That feasibility question has an easy greedy
-  answer (extend the current block while it fits, otherwise start a new one) and is **monotone** in
-  `T`, so the smallest feasible `T` can be found by bisection. The open questions are the search
-  bounds (what is the smallest conceivable `T`?) and getting the feasibility count exact.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: all-equal beds, beds with zeros, a single bed far larger than the
 average (so a block must hold it), `k = 1` (one block = the whole sum), `k >= n` (every bed alone, so
-the answer is the largest bed), `n = 0` (answer `0`), and large `n = 2*10^5` with values near `10^9`
-(so the total can reach `2*10^14` and overflow a 32-bit integer).
+the answer is the largest bed), `n = 0` (answer `0`), and large `n = 2*10^5` with values near `10^9`.
 
 ## Code framework
 

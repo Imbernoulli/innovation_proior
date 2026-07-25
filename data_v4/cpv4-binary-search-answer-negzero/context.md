@@ -13,11 +13,6 @@ Output the **largest guaranteed floor** achievable: the maximum, over every cont
 length at least `k`, of the minimum reading in that block. If no block of length `>= k` exists
 (i.e. `n < k`), the chain cannot lock at all — output the literal string `INFEASIBLE`.
 
-This is a "maximize the minimum" optimization, the classic shape that invites a **binary search on the
-answer**. The point of interest is that the readings can be negative or zero and the whole array can
-be all-negative or empty, so the search bounds and the infeasible/base-case handling have to be right
-or the sign handling silently breaks.
-
 ## Input / output contract
 
 - Input (stdin): the first line has two integers `n` and `k`
@@ -30,33 +25,11 @@ or the sign handling silently breaks.
 Example: for `n = 7`, `k = 3`, `a = [2, -1, 3, 3, 5, -4, 3]` the answer is `3`: the block at indices
 `2..4` is `[3, 3, 5]` with minimum `3`, and no block of length `>= 3` has a larger minimum.
 
-## Background
-
-"Choose a window of length at least `k` and maximize its minimum" is monotone in a way that screams
-binary search:
-
-- **Binary search on the answer.** Guess a candidate floor `x`. Ask the yes/no question: *is there a
-  run of at least `k` consecutive positions whose readings are all `>= x`?* If raising `x` ever turns
-  a `yes` into a `no`, it can never turn back to `yes` (a higher bar can only make runs shorter), so
-  the predicate is monotone non-increasing in `x` and the largest feasible `x` is exactly the answer.
-  The feasibility check is a single linear scan counting the current run length. The whole thing is
-  `O(n log(range))`.
-- **Sliding-window minimum (alternative).** A monotonic deque can compute, in `O(n)`, the minimum of
-  every window and take the max over windows of length `>= k` (it suffices to consider windows of
-  length exactly `k`, since shrinking a longer window to length `k` cannot decrease its minimum). This
-  is the `O(n)` route; it is more code and easier to get the deque bookkeeping wrong.
-
-Both must agree on the corners that the negative/zero values create: the answer can itself be
-negative or zero, the search must not assume a non-negative lower bound, and `n < k` is genuinely
-infeasible rather than "answer 0".
-
 ## Evaluation settings
 
 Judged on hidden tests covering: all-positive arrays; arrays mixing negatives, zeros, and positives;
-the empty array (`n = 0`, always `INFEASIBLE` since `k >= 1`); `k = 1` (answer is just the global
-maximum); `k = n` (answer is the global minimum of the whole array); all-negative arrays (answer is a
-negative number, **not** `0`); all-zero arrays (answer `0`); `n < k` (`INFEASIBLE`); and large
-`n = 2*10^5` with `|a[i]|` near `10^9`.
+the empty array (`n = 0`); `k = 1`; `k = n`; all-negative arrays; all-zero arrays; `n < k`
+(`INFEASIBLE`); and large `n = 2*10^5` with `|a[i]|` near `10^9`.
 
 ## Code framework
 
@@ -73,8 +46,7 @@ int main() {
     for (auto &x : a) cin >> x;
 
     // TODO: if no block of length >= k exists, print INFEASIBLE.
-    // Otherwise binary-search the largest floor x such that some run of >= k
-    // consecutive readings are all >= x, and print it.
+    // Otherwise compute the largest guaranteed floor and print it.
 
     return 0;
 }
