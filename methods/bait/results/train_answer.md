@@ -8,11 +8,11 @@ To make this tractable at neural scale, BAIT restricts everything to the network
 import gc
 import numpy as np
 import torch
-import torch.nn.functional as F
+from torch.nn import functional as F
 
 
 def get_exp_grad_embedding(model, loader, n_pool, n_labels, emb_dim, probs=None):
-    """Build per-point Fisher factors V_x^T of shape [n_pool, n_labels, emb_dim*n_labels]."""
+    """Return X with shape [n_pool, n_labels, emb_dim * n_labels] = V_x.T."""
     model.eval()
     embedding = np.zeros([n_pool, n_labels, emb_dim * n_labels])
     with torch.no_grad():
@@ -37,14 +37,13 @@ def get_exp_grad_embedding(model, loader, n_pool, n_labels, emb_dim, probs=None)
 
 
 def select(X, K, fisher, iterates, lamb=1, nLabeled=0):
-    """Greedy forward/backward selection on Fisher factors X [n_candidates, rank, dim]."""
+    """X stores V_x.T with shape [n_candidates, rank, dim]."""
     indsAll = []
     dim = X.shape[-1]
     rank = X.shape[-2]
 
     currentInv = torch.inverse(
-        lamb * torch.eye(dim).cuda()
-        + iterates.cuda() * nLabeled / (nLabeled + K)
+        lamb * torch.eye(dim).cuda() + iterates.cuda() * nLabeled / (nLabeled + K)
     )
     X = X * np.sqrt(K / (nLabeled + K))
     fisher = fisher.cuda()
@@ -57,13 +56,13 @@ def select(X, K, fisher, iterates, lamb=1, nLabeled=0):
         ).detach()
         bad = torch.where(torch.isinf(innerInv))
         innerInv[bad] = torch.sign(innerInv[bad]) * np.finfo("float32").max
-
         traceEst = torch.diagonal(
             xt_ @ currentInv @ fisher @ currentInv @ xt_.transpose(1, 2) @ innerInv,
-            dim1=-2, dim2=-1,
+            dim1=-2,
+            dim2=-1,
         ).sum(-1)
-        traceEst = traceEst.detach().cpu().numpy()
 
+        traceEst = traceEst.detach().cpu().numpy()
         for j in np.argsort(traceEst)[::-1]:
             if j not in indsAll:
                 ind = j
@@ -75,8 +74,7 @@ def select(X, K, fisher, iterates, lamb=1, nLabeled=0):
             torch.eye(rank).cuda() + xt_ @ currentInv @ xt_.transpose(1, 2)
         ).detach()
         currentInv = (
-            currentInv
-            - currentInv @ xt_.transpose(1, 2) @ innerInv @ xt_ @ currentInv
+            currentInv - currentInv @ xt_.transpose(1, 2) @ innerInv @ xt_ @ currentInv
         ).detach()[0]
 
     for _ in range(len(indsAll) - K):
@@ -86,7 +84,8 @@ def select(X, K, fisher, iterates, lamb=1, nLabeled=0):
         ).detach()
         traceEst = torch.diagonal(
             xt_ @ currentInv @ fisher @ currentInv @ xt_.transpose(1, 2) @ innerInv,
-            dim1=-2, dim2=-1,
+            dim1=-2,
+            dim2=-1,
         ).sum(-1)
         delInd = torch.argmin(-1 * traceEst).item()
 
@@ -95,8 +94,7 @@ def select(X, K, fisher, iterates, lamb=1, nLabeled=0):
             -1 * torch.eye(rank).cuda() + xt_ @ currentInv @ xt_.transpose(1, 2)
         ).detach()
         currentInv = (
-            currentInv
-            - currentInv @ xt_.transpose(1, 2) @ innerInv @ xt_ @ currentInv
+            currentInv - currentInv @ xt_.transpose(1, 2) @ innerInv @ xt_ @ currentInv
         ).detach()[0]
         del indsAll[delInd]
 
@@ -107,7 +105,6 @@ def select(X, K, fisher, iterates, lamb=1, nLabeled=0):
 
 
 def query_bait(strategy, n):
-    """Acquisition rule plugging into the active-learning harness."""
     idxs_unlabeled = np.arange(strategy.n_pool)[~strategy.idxs_lb]
     xt = strategy.get_exp_grad_embedding(strategy.X, strategy.Y)
 
@@ -115,9 +112,7 @@ def query_bait(strategy, n):
     fisher = torch.zeros(xt.shape[-1], xt.shape[-1])
     for i in range(int(np.ceil(len(strategy.X) / batchSize))):
         xt_ = xt[i * batchSize:(i + 1) * batchSize].cuda()
-        fisher += torch.sum(
-            torch.matmul(xt_.transpose(1, 2), xt_) / len(xt), 0
-        ).detach().cpu()
+        fisher += torch.sum(torch.matmul(xt_.transpose(1, 2), xt_) / len(xt), 0).detach().cpu()
         del xt_
         torch.cuda.empty_cache()
         gc.collect()
@@ -126,9 +121,7 @@ def query_bait(strategy, n):
     xt2 = xt[strategy.idxs_lb]
     for i in range(int(np.ceil(len(xt2) / batchSize))):
         xt_ = xt2[i * batchSize:(i + 1) * batchSize].cuda()
-        init += torch.sum(
-            torch.matmul(xt_.transpose(1, 2), xt_) / len(xt2), 0
-        ).detach().cpu()
+        init += torch.sum(torch.matmul(xt_.transpose(1, 2), xt_) / len(xt2), 0).detach().cpu()
         del xt_
         torch.cuda.empty_cache()
         gc.collect()
