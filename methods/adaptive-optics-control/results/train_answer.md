@@ -13,7 +13,7 @@ import numpy as np
 
 
 class Reconstructor:
-    """Poke-calibrated slope-to-command reconstructor for adaptive optics."""
+    """Poke-calibrated slope-to-command reconstructor."""
 
     def __init__(self):
         self.interaction_matrix = None
@@ -21,9 +21,9 @@ class Reconstructor:
         self.actuator_values = None
 
     def build_interaction_matrix(self, dm, wfs, poke=1.0, imat_noise=False):
-        """Poke each actuator and store signed actuator-by-slope responses."""
+        """Poke each actuator, store signed actuator-by-slope responses."""
         n_act = dm.n_act
-        n_slope = wfs.n_measurements
+        n_slope = wfs.n_measurements             # 2 (sx, sy) per sub-aperture
         interaction = np.zeros((n_act, n_slope))
         for j in range(n_act):
             cmd = np.zeros(n_act)
@@ -39,16 +39,14 @@ class Reconstructor:
         return interaction
 
     def build_command_matrix(self, conditioning=1e-3, alpha=None):
-        """Regularised SVD pseudo-inverse; Tikhonov when alpha is given."""
+        """SVD pseudo-inverse; Tikhonov when alpha is supplied."""
         if alpha is None:
             self.control_matrix = np.linalg.pinv(
                 self.interaction_matrix, rcond=conditioning
             )
         else:
-            U, sig, Vt = np.linalg.svd(
-                self.interaction_matrix, full_matrices=False
-            )
-            filt = sig / (sig ** 2 + alpha)
+            U, sig, Vt = np.linalg.svd(self.interaction_matrix, full_matrices=False)
+            filt = sig / (sig**2 + alpha)
             self.control_matrix = (Vt.T * filt) @ U.T
         return self.control_matrix
 
@@ -65,11 +63,16 @@ class Reconstructor:
 
 
 def close_loop(reconstructor, dm, wfs, atmos, gain=0.4, leak=0.0, n_iter=1000):
-    """Leaky integrator closed loop: c_{k+1} = (1-leak) c_k + gain * R s_k."""
+    """Integrator: c_{k+1} = (1 - leak) c_k + gain * R @ s_k.
+
+    Sensor sees the residual after correction; the loop nulls it. gain < ~0.5
+    keeps the ~2-frame-delay loop damped. Optional leak drains modes the sensor
+    cannot reliably report and pins the integrator pole at z = 1 - leak.
+    """
     commands = np.zeros(dm.n_act)
     slopes = np.zeros(wfs.n_measurements)
     for _ in range(n_iter):
-        phase = atmos.step()
+        phase = atmos.step()                     # turbulence evolves
         delta = reconstructor.reconstruct(slopes)
         commands = reconstructor.apply_gain(delta, gain=gain, leak=leak)
         correction = dm.shape(commands)
@@ -80,5 +83,5 @@ def close_loop(reconstructor, dm, wfs, atmos, gain=0.4, leak=0.0, n_iter=1000):
 reconstructor = Reconstructor()
 reconstructor.build_interaction_matrix(dm, wfs)
 reconstructor.build_command_matrix(conditioning=1e-3)
-final_commands = close_loop(reconstructor, dm, wfs, atmos, gain=0.4, leak=0.01)
+final_commands = close_loop(reconstructor, dm, wfs, atmos, gain=0.4)
 ```
