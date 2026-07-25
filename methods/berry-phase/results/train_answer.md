@@ -29,29 +29,30 @@ sx = np.array([[0, 1], [1, 0]], dtype=complex)
 sy = np.array([[0, -1j], [1j, 0]], dtype=complex)
 sz = np.array([[1, 0], [0, -1]], dtype=complex)
 
-def H(B):
-    return 0.5 * (B[0] * sx + B[1] * sy + B[2] * sz)
+def H(B):                                   # H = (1/2) sigma . B
+    return 0.5 * (B[0]*sx + B[1]*sy + B[2]*sz)
 
-def upper_eigvec(B):
+def upper_eigvec(B):                        # n = +1/2 state, E = |B|/2
     w, V = np.linalg.eigh(H(B))
     return V[:, 1]
 
-def loop_cone(theta, N=400):
-    phi = np.linspace(0, 2 * np.pi, N, endpoint=False)
-    return [np.array([np.sin(theta) * np.cos(p),
-                      np.sin(theta) * np.sin(p),
+def loop_cone(theta, N=400):                # circle at polar angle theta
+    phi = np.linspace(0, 2*np.pi, N, endpoint=False)
+    return [np.array([np.sin(theta)*np.cos(p),
+                      np.sin(theta)*np.sin(p),
                       np.cos(theta)]) for p in phi]
 
-def berry_phase(loop):
-    states = [upper_eigvec(B) for B in loop]
+def berry_phase(loop):                      # gauge-invariant discrete holonomy:
+    states = [upper_eigvec(B) for B in loop] # gamma = -arg( prod_k <n_k|n_{k+1}> )
     prod = 1.0 + 0j
     M = len(states)
     for k in range(M):
-        prod *= np.vdot(states[k], states[(k + 1) % M])
+        prod *= np.vdot(states[k], states[(k + 1) % M])   # close the loop with %M
     return -np.angle(prod)
 
 theta = np.pi / 3
-Omega = 2 * np.pi * (1 - np.cos(theta))
+Omega = 2 * np.pi * (1 - np.cos(theta))     # solid angle of the cap
+# n = +1/2  =>  gamma = -n * Omega = -Omega/2  (agreement is mod 2*pi)
 print(berry_phase(loop_cone(theta)), -0.5 * Omega)
 ```
 
