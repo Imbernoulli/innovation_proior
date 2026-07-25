@@ -12,7 +12,6 @@ The bar, stated so I can be proven wrong: the floor was 79%, the best single com
 
 ```python
 # Rainbow: distributional + dueling-over-logits + double + noisy + prioritized + n-step, one agent.
-# Code home: vwxyzjn/cleanrl + Kaixhin/Rainbow; excerpted from methods/rainbow/results/answer.md.
 import math
 import torch
 import torch.nn as nn

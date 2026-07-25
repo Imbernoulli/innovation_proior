@@ -30,7 +30,6 @@ the floor into the low 200s — the best value-based learner on the suite.
 
 ```python
 # Rainbow: distributional + dueling-over-logits + double + noisy + prioritized + n-step, one agent.
-# Code home: vwxyzjn/cleanrl + Kaixhin/Rainbow; excerpted from methods/rainbow/results/answer.md.
 import math
 import torch
 import torch.nn as nn

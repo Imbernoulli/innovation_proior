@@ -31,7 +31,6 @@ hand-set.
 
 ```python
 # C51: categorical N-atom softmax head; Bellman shift+scale, project to grid, cross-entropy loss.
-# Code home: vwxyzjn/cleanrl (cleanrl/c51_atari.py); excerpted from methods/c51/results/answer.md.
 import torch
 import torch.nn as nn
 

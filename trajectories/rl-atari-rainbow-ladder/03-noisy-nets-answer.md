@@ -27,7 +27,6 @@ Since the median is a robustness statistic, expect it to clear 117% only slightl
 
 ```python
 # Noisy Nets: factorized NoisyLinear heads replace epsilon-greedy. Greedy acting under the sampled net.
-# Code home: vwxyzjn/cleanrl; excerpted from methods/noisy-nets/results/answer.md.
 import math
 import torch
 import torch.nn as nn

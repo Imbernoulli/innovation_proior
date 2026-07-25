@@ -27,7 +27,6 @@ broad lift (clearing 140%), larger where the action set is larger. What stays op
 
 ```python
 # Dueling head: value + advantage streams, mean-subtraction aggregator, 1/sqrt(2) trunk-grad rescale.
-# Code home: vwxyzjn/cleanrl; excerpted from methods/dueling-dqn/results/answer.md.
 import math
 import torch
 import torch.nn as nn

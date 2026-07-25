@@ -10,7 +10,6 @@ I am clear-eyed that this is a floor, not a good agent. It is the smallest recip
 
 ```python
 # DQN agent: Nature-DQN encoder + experience replay + periodically-synced target network.
-# Code home: vwxyzjn/cleanrl (cleanrl/dqn_atari.py); excerpted from methods/dqn/results/answer.md.
 import random
 import numpy as np
 import torch

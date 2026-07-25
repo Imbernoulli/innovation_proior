@@ -39,7 +39,7 @@ point is the bare deep Q-learning loop — replay + a frozen target copy + a sca
 by the clipped TD error.
 
 ```python
-# Bare DQN scaffold. Code home: vwxyzjn/cleanrl (cleanrl/dqn_atari.py).
+# Bare DQN scaffold.
 import torch
 import torch.nn as nn
 import torch.nn.functional as F

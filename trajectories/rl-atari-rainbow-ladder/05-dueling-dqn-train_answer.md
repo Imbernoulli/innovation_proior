@@ -14,7 +14,6 @@ The bar: this should help on the broad middle of the suite for a general reason,
 
 ```python
 # Dueling head: value + advantage streams, mean-subtraction aggregator, 1/sqrt(2) trunk-grad rescale.
-# Code home: vwxyzjn/cleanrl; excerpted from methods/dueling-dqn/results/answer.md.
 import math
 import torch
 import torch.nn as nn

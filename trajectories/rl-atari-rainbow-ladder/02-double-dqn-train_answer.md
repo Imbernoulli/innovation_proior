@@ -12,7 +12,6 @@ I should be honest about how much it buys. $\theta$ and $\theta^-$ are not indep
 
 ```python
 # Double DQN target: online net selects, target net evaluates. The ONLY change from DQN is the argmax net.
-# Code home: vwxyzjn/cleanrl (cleanrl/ddqn_atari.py); excerpted from methods/double-dqn/results/answer.md.
 import torch
 
 

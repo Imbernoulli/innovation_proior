@@ -12,7 +12,6 @@ I am sober about what this rung will and will not move, because it sets the bar.
 
 ```python
 # Noisy Nets: factorized NoisyLinear heads replace epsilon-greedy. Greedy acting under the sampled net.
-# Code home: vwxyzjn/cleanrl; excerpted from methods/noisy-nets/results/answer.md.
 import math
 import torch
 import torch.nn as nn

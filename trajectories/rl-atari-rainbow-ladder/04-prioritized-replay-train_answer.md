@@ -10,7 +10,6 @@ The bar: unlike noisy nets, this touches the data efficiency of *every* game, si
 
 ```python
 # Prioritized replay: sum-tree/min-tree buffer + IS-weighted Double-DQN update + priority write-back.
-# Code home: vwxyzjn/cleanrl + dopamine; excerpted from methods/prioritized-replay/results/answer.md.
 import operator, random
 import numpy as np
 import torch

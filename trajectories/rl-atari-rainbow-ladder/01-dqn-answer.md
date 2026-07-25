@@ -25,7 +25,6 @@ exploration, uniform replay, a single-stream head, and a scalar value object. Th
 
 ```python
 # DQN agent: Nature-DQN encoder + experience replay + periodically-synced target network.
-# Code home: vwxyzjn/cleanrl (cleanrl/dqn_atari.py); excerpted from methods/dqn/results/answer.md.
 import random
 import numpy as np
 import torch
