@@ -24,7 +24,7 @@ Every subset of the whole set splits uniquely into an `A`-part and a `B`-part, s
 
 **Complexity.** Building/sorting `B` is `O(2^{lb} * (lb + log))`; the `A`-loop is `O(2^{la} * (la + log))`. For `n = 40` this is a few times `10^7` operations — about `0.2` s and `~36` MB in practice, independent of `C` beyond comparisons.
 
-**Verification.** Differential-tested against an independent `2^n` brute oracle: a rotating edge bank plus `600` random instances across capacity regimes, plus an `n = 22` boundary check — zero mismatches. An early version over-counted on a tight-capacity case (a stale heavier-`B` value leaking through the query); anchoring the empty subset at index `0` and seeding the prefix-max with `LLONG_MIN` fixed it.
+**Verification.** Differential-tested against an independent `2^n` brute oracle: a rotating edge bank plus `600` random instances across capacity regimes, plus an `n = 22` boundary check — zero mismatches. The two invariants the binary search leans on were checked rather than assumed: the empty subset sits at index `0` because every real weight is positive (so `rem >= 0` always finds `pos >= 0`), and the prefix-max sentinel `LLONG_MIN` can never masquerade as a real value. Both held on every instance.
 
 **Code.**
 
