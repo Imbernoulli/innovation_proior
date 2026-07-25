@@ -12,75 +12,70 @@ Reflow means recoupling on the flow's own output and fitting a fresh flow on the
 
 The method also reveals why diffusion probability-flow ODEs look the way they do. They are a special case of the same regression objective, but with a non-straight interpolation X_t = alpha_t X_1 + beta_t noise whose schedules come from an Ornstein-Uhlenbeck process. Rectified Flow removes that inherited curvature by choosing the constant-speed line alpha_t = t, beta_t = 1-t. Once the flow is nearly straight, it can be distilled into a literal one-step map T_hat(x_0) = x_0 + v_theta(x_0,0), trained at t close to zero. This final distillation differs from reflow: reflow builds a new, straighter coupling, while distillation approximates the current coupling as fast as possible.
 
-The canonical name is Rectified Flow. It applies unchanged to generation, when pi_0 is Gaussian noise and pi_1 is data, and to unpaired image-to-image translation, when pi_0 and pi_1 are two domains. The only ingredients are a time-conditioned velocity network, the straight-line regression objective, an ODE solver at inference, and optionally reflow and distillation. I have included below a compact, self-contained Python illustration that demonstrates the core idea on a low-dimensional example: source samples from a Gaussian are pushed toward target samples from a mixture of Gaussians by a small neural velocity field trained with the rectified-flow loss, and the learned flow is integrated with a few Euler steps.
+The canonical name is Rectified Flow. It applies unchanged to generation, when pi_0 is Gaussian noise and pi_1 is data, and to unpaired image-to-image translation, when pi_0 and pi_1 are two domains, and the velocity network itself needs nothing method-specific: a standard time-conditioned U-Net (DDPM++/NCSN++), trained with Adam and an exponential moving average of the weights, the same backbone diffusion models already use. The training step is exactly the regression objective derived above: draw a pair, draw t, form the linear interpolant, and regress the network onto the constant target x1 - x0.
 
 ```python
 import torch
-import torch.nn as nn
-import numpy as np
-
-class VelocityField(nn.Module):
-    def __init__(self, dim=2, hidden=64):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(dim + 1, hidden),
-            nn.SiLU(),
-            nn.Linear(hidden, hidden),
-            nn.SiLU(),
-            nn.Linear(hidden, dim),
-        )
-
-    def forward(self, x, t):
-        t = t.view(-1, 1)
-        return self.net(torch.cat([x, t], dim=1))
-
-def sample_pi0(n, dim=2):
-    return torch.randn(n, dim)
-
-def sample_pi1(n, dim=2):
-    mix = torch.randint(0, 3, (n,))
-    centers = torch.tensor([[-1.5, -1.5], [1.5, 0.0], [0.0, 1.5]], dtype=torch.float32)
-    out = centers[mix] + 0.25 * torch.randn(n, dim)
-    return out
 
 def rectified_flow_loss(model, x0, x1, eps=1e-3):
+    """One step of the rectified-flow regression.
+    x0 ~ pi_0 (e.g. Gaussian noise), x1 ~ pi_1 (data); for reflow, (x0,x1) are
+    (z0, ODE(z0)) pairs produced by the previous flow."""
     b = x1.shape[0]
-    t = torch.rand(b, device=x1.device) * (1.0 - eps) + eps
-    t_ = t.view(-1, 1)
-    xt = t_ * x1 + (1.0 - t_) * x0
-    target = x1 - x0
-    v = model(xt, t)
-    return ((v - target) ** 2).mean()
+    t = torch.rand(b, device=x1.device) * (1.0 - eps) + eps      # t ~ Unif(0,1)
+    t_ = t.view(-1, *([1] * (x1.dim() - 1)))                      # broadcast over data dims
+    x_t   = t_ * x1 + (1.0 - t_) * x0                            # linear interpolation X_t
+    target = x1 - x0                                            # constant line velocity
+    v = model(x_t, t * 999)                                     # velocity field v_theta(x_t, t)
+    return ((v - target) ** 2).mean()                          # || (X1-X0) - v(X_t,t) ||^2
+```
 
+Sampling is the black-box integrator run on the learned field: a fixed-step Euler solver, exact in one step if the flow is already straight and a good approximation with a handful of steps otherwise, and an adaptive RK45 solver for an accurate reference or for generating clean reflow targets.
+
+```python
 @torch.no_grad()
-def euler_sample(model, z0, n_steps=10):
-    x = z0.clone()
-    dt = 1.0 / n_steps
-    for i in range(n_steps):
-        t = torch.full((x.shape[0],), (i + 0.5) * dt, device=x.device)
-        x = x + model(x, t) * dt
+def euler_sample(model, z0, N=1, eps=1e-3):
+    """Integrate dZ_t = v_theta(Z_t, t) dt from Z_0 ~ pi_0 to Z_1."""
+    x, dt = z0.clone(), 1.0 / N
+    for i in range(N):
+        t = torch.ones(z0.shape[0], device=z0.device) * (i / N * (1.0 - eps) + eps)
+        x = x + model(x, t * 999) * dt
     return x
 
-def train():
-    dim = 2
-    model = VelocityField(dim=dim)
-    opt = torch.optim.Adam(model.parameters(), lr=1e-3)
-    for step in range(5000):
-        x1 = sample_pi1(256, dim)
-        x0 = sample_pi0(256, dim)
-        loss = rectified_flow_loss(model, x0, x1)
-        opt.zero_grad()
-        loss.backward()
-        opt.step()
-        if step % 1000 == 0:
-            print(f"step {step:5d}  loss {loss.item():.4f}")
-    return model
+@torch.no_grad()
+def rk45_sample(model, z0, eps=1e-3):
+    """Adaptive black-box ODE solve, for an accurate reference / reflow targets."""
+    import numpy as np
+    from scipy import integrate
+    shape = z0.shape
+    def ode_func(t, x_flat):
+        x = torch.tensor(x_flat, device=z0.device, dtype=torch.float32).reshape(shape)
+        vt = torch.ones(shape[0], device=z0.device) * t
+        return model(x, vt * 999).reshape(-1).cpu().numpy()
+    sol = integrate.solve_ivp(ode_func, (eps, 1.0), z0.reshape(-1).cpu().numpy(),
+                              rtol=1e-5, atol=1e-5, method='RK45')
+    return torch.tensor(sol.y[:, -1], dtype=torch.float32).reshape(shape).to(z0.device)
+```
 
-if __name__ == "__main__":
-    torch.manual_seed(0)
-    model = train()
-    z0 = sample_pi0(500)
-    z1_est = euler_sample(model, z0, n_steps=5)
-    print("source mean:", z0.mean(dim=0).tolist())
-    print("pushed mean:", z1_est.mean(dim=0).tolist())
+Reflow is the outer loop the straightening argument licenses: run the accurate solver from a fresh batch of pi_0 draws to get each one's deterministic image, recouple on those pairs in place of the original (x0, x1), and refit. Because rectification is marginal-preserving and lowers the transport cost, the best of these rounds gets straighter at an O(1/K) rate, though in practice estimation error from refitting on finite samples, not the theorem, limits how many rounds are worth running.
+
+```python
+def reflow(model_ctor, train_one_flow, pi0_sampler, pi1_data, K=1, n_pairs=4_000_000):
+    """K rounds of recoupling; each round retrains a fresh flow on (z0, ODE(z0)) pairs."""
+    model = train_one_flow(rectified_flow_loss, pi0_sampler, pi1_data)   # 1-rectified flow
+    for k in range(K):
+        z0 = pi0_sampler(n_pairs)
+        z1 = rk45_sample(model, z0)                                      # deterministic pairing
+        model = train_one_flow(rectified_flow_loss, given_pairs=(z0, z1))  # refit on coupling
+    return model
+```
+
+And once a flow is nearly straight, it collapses to a literal one-step map by distilling only the t=0 slice of the same objective, T_hat(z0) = z0 + v(z0, 0); on images a perceptual loss such as LPIPS tends to do better than raw L2 on this near-deterministic map.
+
+```python
+def distill_one_step_loss(model, z0, z1):
+    """One-step map T_hat(z0) = z0 + v(z0, 0); implemented at a small endpoint eps."""
+    t = torch.full((z0.shape[0],), 1e-3, device=z0.device)
+    v = model(z0, t * 999)
+    return ((v - (z1 - z0)) ** 2).mean()        # or LPIPS(z0 + v, z1)
 ```
