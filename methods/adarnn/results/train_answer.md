@@ -4,170 +4,148 @@ The right move is to split the stream into distinct temporal periods, treat the 
 
 The trickiest part is learning alpha. A separate neural network for alpha fails early because the hidden states are meaningless before the GRU has trained, and it is expensive when the number of period pairs grows. Instead I pre-train the GRU on prediction loss alone for a warm-up phase so the states become informative. Then I switch to a boosting update: initialize alpha uniformly, and after each epoch increase the weight on any state whose cross-period distance grew relative to the previous epoch, using a multiplier 1 plus a sigmoid of the distance increase. This keeps the multiplier in (1, 2), so weights only ratchet up on the worst-aligned states and a noisy epoch cannot blow them up; I then L1-normalize so lambda alone controls the matching strength. At inference time all of this machinery drops away — I just run the GRU and the prediction head, one forward pass.
 
+The artifact I actually ship is a qlib-compatible model wrapper, `ADARNN`, that owns this two-phase loop and turns it into the `fit`/`predict` interface qlib expects: while `epoch < pre_epoch` it calls `forward_pre_train` to get the gate-weighted matching loss and seed the initial alpha, and once past the warm-up it calls `forward_Boosting` to get per-state distances that `update_weight_Boosting` folds into the next epoch's alpha, all under the same gradient-clipped Adam/SGD step. For the finance deployment the expensive diversity-maximizing TDC search is replaced by its cheap default — an even split of trading days into `n_splits` periods — since the periods here are already well-separated calendar chunks and the boosting/warm-up machinery is where the real gain comes from; the training loop, the loss, and the alpha update run exactly as derived above:
+
 ```python
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+class ADARNN(Model):
+    """qlib Model wrapper around the AdaRNN network."""
 
-
-def cosine_distance(source, target):
-    source = source.mean(dim=0)
-    target = target.mean(dim=0)
-    return 1.0 - F.cosine_similarity(source, target, dim=0).mean()
-
-
-class MMDLoss(nn.Module):
-    def __init__(self, kernel_type="linear"):
-        super().__init__()
-        self.kernel_type = kernel_type
-
-    def forward(self, source, target):
-        if self.kernel_type == "linear":
-            delta = source.mean(0) - target.mean(0)
-            return delta.dot(delta)
-        # rbf fallback: squared MMD with a single Gaussian kernel
-        total = torch.cat([source, target], dim=0)
-        n = total.size(0)
-        dist = torch.cdist(total, total, p=2).pow(2)
-        bandwidth = dist.sum().item() / (n * n - n) + 1e-5
-        kernel = torch.exp(-dist / bandwidth)
-        b = source.size(0)
-        return kernel[:b, :b].mean() + kernel[b:, b:].mean() - 2 * kernel[:b, b:].mean()
-
-
-class TransferLoss:
-    def __init__(self, loss_type="cosine"):
-        self.loss_type = loss_type
-        self.mmd = MMDLoss()
-
-    def compute(self, X, Y):
-        if self.loss_type == "cosine":
-            return cosine_distance(X, Y)
-        if self.loss_type in ("mmd", "mmd_lin"):
-            return self.mmd(X, Y)
-        raise ValueError(f"unknown loss_type {self.loss_type}")
-
-
-class AdaRNN(nn.Module):
-    def __init__(self, n_input, n_hiddens=(64, 64), n_output=1, len_seq=9,
-                 trans_loss="cosine", dropout=0.0):
-        super().__init__()
-        self.n_hiddens = n_hiddens
-        self.num_layers = len(n_hiddens)
+    def __init__(self, d_feat=6, hidden_size=64, num_layers=2, dropout=0.0,
+                 n_epochs=200, pre_epoch=40, dw=0.5, loss_type="cosine",
+                 len_seq=60, len_win=0, lr=0.001, metric="mse",
+                 batch_size=2000, early_stop=20, loss="mse", optimizer="adam",
+                 n_splits=2, GPU=0, seed=None, **_):
+        self.d_feat = d_feat
+        self.hidden_size = hidden_size
+        self.num_layers = num_layers
+        self.dropout = dropout
+        self.n_epochs = n_epochs
+        self.pre_epoch = pre_epoch
+        self.dw = dw                         # lambda: matching trade-off
+        self.loss_type = loss_type           # distribution distance d
         self.len_seq = len_seq
-        self.trans_loss = trans_loss
+        self.len_win = len_win
+        self.lr = lr
+        self.metric = metric
+        self.batch_size = batch_size
+        self.early_stop = early_stop
+        self.optimizer = optimizer.lower()
+        self.loss = loss
+        self.n_splits = n_splits
+        self.device = torch.device("cuda:%d" % GPU if torch.cuda.is_available() and GPU >= 0 else "cpu")
 
-        in_size = n_input
-        cells = []
-        for h in n_hiddens:
-            cells.append(nn.GRU(in_size, h, num_layers=1,
-                                batch_first=True, dropout=dropout))
-            in_size = h
-        self.cells = nn.ModuleList(cells)
-        self.head = nn.Linear(n_hiddens[-1], n_output)
+        if seed is not None:
+            np.random.seed(seed)
+            torch.manual_seed(seed)
 
-        # per-layer gate for the warmup phase
-        self.gates = nn.ModuleList([
-            nn.Linear(len_seq * h * 2, len_seq) for h in n_hiddens])
-        self.bns = nn.ModuleList([nn.BatchNorm1d(len_seq) for _ in n_hiddens])
-        self.softmax = nn.Softmax(dim=0)
+        n_hiddens = [hidden_size for _ in range(num_layers)]
+        self.model = AdaRNN(use_bottleneck=False, bottleneck_width=64, n_input=d_feat,
+                            n_hiddens=n_hiddens, n_output=1, dropout=dropout,
+                            model_type="AdaRNN", len_seq=len_seq, trans_loss=loss_type)
+        if self.optimizer == "adam":
+            self.train_optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
+        elif self.optimizer == "gd":
+            self.train_optimizer = optim.SGD(self.model.parameters(), lr=self.lr)
+        else:
+            raise NotImplementedError("optimizer {} is not supported!".format(optimizer))
 
-    def gru_features(self, x, predict=False):
-        out = x
-        states = []
-        weights = [] if not predict else None
-        for i, cell in enumerate(self.cells):
-            out, _ = cell(out.float())
-            states.append(out)
-            if not predict:
-                s = out[: out.size(0) // 2]
-                t = out[out.size(0) // 2:]
-                cat = torch.cat([s, t], dim=2).view(s.size(0), -1)
-                w = torch.sigmoid(self.bns[i](self.gates[i](cat)))
-                weights.append(self.softmax(w.mean(dim=0)))
-        return out, states, weights
+        self.fitted = False
+        self.model.to(self.device)
 
-    def forward_pre_train(self, x, len_win=0):
-        out, states, weights = self.gru_features(x)
-        pred = self.head(out[:, -1, :]).squeeze()
-        src, tar = [], []
-        for s in states:
-            src.append(s[: s.size(0) // 2])
-            tar.append(s[s.size(0) // 2:])
-        loss_transfer = 0.0
-        for i, (s, t) in enumerate(zip(src, tar)):
-            crit = TransferLoss(self.trans_loss)
-            for j in range(self.len_seq):
-                start = max(j - len_win, 0)
-                end = min(j + len_win, self.len_seq - 1)
-                for k in range(start, end + 1):
-                    loss_transfer = loss_transfer + weights[i][j] * crit.compute(
-                        s[:, j, :], t[:, k, :])
-        return pred, loss_transfer, weights
+    def train_AdaRNN(self, train_loader_list, epoch, dist_old=None, weight_mat=None):
+        self.model.train()
+        criterion = nn.MSELoss()
+        dist_mat = torch.zeros(self.num_layers, self.len_seq).to(self.device)
+        out_weight_list = None
+        for data_all in zip(*train_loader_list):                 # one minibatch per period
+            self.train_optimizer.zero_grad()
+            list_feat, list_label = [], []
+            for data in data_all:
+                feature, label_reg = data[0].to(self.device).float(), data[1].to(self.device).float()
+                list_feat.append(feature); list_label.append(label_reg)
+            index = get_index(len(data_all) - 1)                 # unordered period pairs
+            if any(list_feat[s1].shape[0] != list_feat[s2].shape[0] for s1, s2 in index):
+                continue
+            total_loss = torch.zeros(1).to(self.device)
+            for s1, s2 in index:
+                feature_s, feature_t = list_feat[s1], list_feat[s2]
+                label_s, label_t = list_label[s1], list_label[s2]
+                feature_all = torch.cat((feature_s, feature_t), 0)
+                if epoch < self.pre_epoch:                      # warmup path: gate-weighted matching
+                    pred_all, loss_transfer, out_weight_list = self.model.forward_pre_train(
+                        feature_all, len_win=self.len_win)
+                else:                                           # boosting-weighted matching
+                    pred_all, loss_transfer, dist, weight_mat = self.model.forward_Boosting(
+                        feature_all, weight_mat)
+                    dist_mat = dist_mat + dist
+                pred_s = pred_all[0: feature_s.size(0)]
+                pred_t = pred_all[feature_s.size(0):]
+                loss_s, loss_t = criterion(pred_s, label_s), criterion(pred_t, label_t)
+                total_loss = total_loss + loss_s + loss_t + self.dw * loss_transfer
+            self.train_optimizer.zero_grad()
+            total_loss.backward()
+            torch.nn.utils.clip_grad_value_(self.model.parameters(), 3.0)
+            self.train_optimizer.step()
+        if epoch >= self.pre_epoch:
+            if epoch > self.pre_epoch:                          # boosting update of alpha
+                weight_mat = self.model.update_weight_Boosting(weight_mat, dist_old, dist_mat)
+            return weight_mat, dist_mat
+        weight_mat = self.transform_type(out_weight_list)       # seed weights from gate
+        return weight_mat, None
 
-    def forward_boosting(self, x, weight_mat=None):
-        out, states, _ = self.gru_features(x, predict=False)
-        pred = self.head(out[:, -1, :]).squeeze()
-        src, tar = [], []
-        for s in states:
-            src.append(s[: s.size(0) // 2])
-            tar.append(s[s.size(0) // 2:])
-        if weight_mat is None:
-            weight_mat = torch.ones(self.num_layers, self.len_seq) / self.len_seq
-        dist_mat = torch.zeros(self.num_layers, self.len_seq)
-        loss_transfer = 0.0
-        for i, (s, t) in enumerate(zip(src, tar)):
-            crit = TransferLoss(self.trans_loss)
-            for j in range(self.len_seq):
-                d = crit.compute(s[:, j, :], t[:, j, :])
-                loss_transfer = loss_transfer + weight_mat[i, j] * d
-                dist_mat[i, j] = d
-        return pred, loss_transfer, dist_mat, weight_mat
+    def fit(self, dataset: DatasetH, evals_result=dict(), save_path=None):
+        df_train, df_valid = dataset.prepare(["train", "valid"], col_set=["feature", "label"],
+                                             data_key=DataHandlerLP.DK_L)
+        days = df_train.index.get_level_values(level=0).unique()
+        train_splits = np.array_split(days, self.n_splits)        # TDC: even split into K periods
+        train_splits = [df_train[s[0]: s[-1]] for s in train_splits]
+        train_loader_list = [get_stock_loader(df, self.batch_size) for df in train_splits]
 
-    def update_weights(self, weight_mat, dist_old, dist_new):
-        eps = 1e-5
-        with torch.no_grad():
-            grew = dist_new > dist_old + eps
-            weight_mat[grew] *= 1.0 + torch.sigmoid(dist_new[grew] - dist_old[grew])
-            weight_mat = weight_mat / weight_mat.norm(p=1, dim=1, keepdim=True)
-        return weight_mat
-
-    def predict(self, x):
-        out, _, _ = self.gru_features(x, predict=True)
-        return self.head(out[:, -1, :]).squeeze(-1)
-
-
-def train_adarnn(model, period_loaders, n_epochs=200, pre_epoch=40,
-                 dw=0.5, lr=1e-3, len_win=0):
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    criterion = nn.MSELoss()
-    weight_mat, dist_old = None, None
-
-    for epoch in range(n_epochs):
-        model.train()
-        dist_mat = torch.zeros(model.num_layers, model.len_seq)
-        for batches in zip(*period_loaders):
-            optimizer.zero_grad()
-            feats = [b[0] for b in batches]
-            labels = [b[1] for b in batches]
-            # simple two-period pairing; extend to all pairs for K > 2
-            x = torch.cat([feats[0], feats[1]], dim=0)
-            y_s, y_t = labels[0], labels[1]
-
-            if epoch < pre_epoch:
-                pred, loss_trans, _ = model.forward_pre_train(x, len_win=len_win)
+        save_path = get_or_create_path(save_path)
+        self.fitted = True
+        stop_steps = 0
+        best_score = -np.inf
+        weight_mat, dist_mat = None, None
+        for step in range(self.n_epochs):
+            weight_mat, dist_mat = self.train_AdaRNN(train_loader_list, step, dist_mat, weight_mat)
+            train_metrics = self.test_epoch(df_train)
+            valid_metrics = self.test_epoch(df_valid)
+            valid_score = valid_metrics[self.metric]
+            if valid_score > best_score:
+                best_score, stop_steps, best_epoch = valid_score, 0, step
+                best_param = copy.deepcopy(self.model.state_dict())
             else:
-                pred, loss_trans, dist, weight_mat = model.forward_boosting(x, weight_mat)
-                dist_mat = dist_mat + dist
+                stop_steps += 1
+                if stop_steps >= self.early_stop:
+                    break
+        self.model.load_state_dict(best_param)
+        torch.save(best_param, save_path)
+        return best_score
 
-            pred_s = pred[: feats[0].size(0)]
-            pred_t = pred[feats[0].size(0):]
-            loss = criterion(pred_s, y_s) + criterion(pred_t, y_t) + dw * loss_trans
-            loss.backward()
-            torch.nn.utils.clip_grad_value_(model.parameters(), 3.0)
-            optimizer.step()
+    def predict(self, dataset: DatasetH, segment="test"):
+        if not self.fitted:
+            raise ValueError("model is not fitted yet!")
+        x_test = dataset.prepare(segment, col_set="feature", data_key=DataHandlerLP.DK_I)
+        return self.infer(x_test)
 
-        if epoch >= pre_epoch and epoch > pre_epoch and dist_old is not None:
-            weight_mat = model.update_weights(weight_mat, dist_old, dist_mat)
-        dist_old = dist_mat.detach().clone()
+    def infer(self, x_test):
+        index = x_test.index
+        self.model.eval()
+        x_values = x_test.values
+        sample_num = x_values.shape[0]
+        x_values = x_values.reshape(sample_num, self.d_feat, -1).transpose(0, 2, 1)
+        preds = []
+        for begin in range(sample_num)[:: self.batch_size]:
+            end = min(begin + self.batch_size, sample_num)
+            x_batch = torch.from_numpy(x_values[begin:end]).float().to(self.device)
+            with torch.no_grad():
+                preds.append(self.model.predict(x_batch).detach().cpu().numpy())
+        return pd.Series(np.concatenate(preds), index=index)
+
+    def transform_type(self, init_weight):                        # gate weights -> [num_layers, len_seq] matrix
+        weight = torch.ones(self.num_layers, self.len_seq).to(self.device)
+        for i in range(self.num_layers):
+            for j in range(self.len_seq):
+                weight[i, j] = init_weight[i][j].item()
+        return weight
 ```
