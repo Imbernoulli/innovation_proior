@@ -12,8 +12,10 @@ The remaining design choice is what to store. When the memory is reasonably larg
 import collections
 
 import numpy as np
+import robomimic.utils.tensor_utils as TensorUtils
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from torch.utils.data import ConcatDataset, RandomSampler
 
 from libero.lifelong.algos.base import Sequential
@@ -22,14 +24,20 @@ from libero.lifelong.utils import *
 
 
 def cycle(dl):
+    # replay must outlive the (different-length) current-task loader
     while True:
         for data in dl:
             yield data
 
 
 def merge_datas(x, y):
+    # BC data is a nested dict of obs modalities; concatenate matching tensors along batch dim
     if isinstance(x, (dict, collections.OrderedDict)):
-        new_x = dict() if isinstance(x, dict) else collections.OrderedDict()
+        if isinstance(x, dict):
+            new_x = dict()
+        else:
+            new_x = collections.OrderedDict()
+
         for k in x.keys():
             new_x[k] = merge_datas(x[k], y[k])
         return new_x
@@ -37,20 +45,21 @@ def merge_datas(x, y):
         return torch.cat([x, y], 0)
 
 
-class Custom(Sequential):
-    """ER (Experience Replay): train on current batch stacked with a replay batch."""
+class ER(Sequential):
+    """Experience replay: train on the current minibatch stacked with a random memory minibatch."""
 
     def __init__(self, n_tasks, cfg, **policy_kwargs):
         super().__init__(n_tasks=n_tasks, cfg=cfg, **policy_kwargs)
-        self.n_memories = 1000
+        # Finished-task datasets are truncated into replay buffers when replay is used.
         self.datasets = []
+        self.descriptions = []
         self.buffer = None
 
     def start_task(self, task):
         super().start_task(task)
         if self.current_task > 0:
             buffers = [
-                TruncatedSequenceDataset(dataset, self.n_memories)
+                TruncatedSequenceDataset(dataset, self.cfg.lifelong.n_memories)
                 for dataset in self.datasets
             ]
             buf = ConcatDataset(buffers)
@@ -60,9 +69,12 @@ class Custom(Sequential):
                     batch_size=self.cfg.train.batch_size,
                     num_workers=self.cfg.train.num_workers,
                     sampler=RandomSampler(buf),
-                    persistent_workers=(self.cfg.train.num_workers > 0),
+                    persistent_workers=True,
                 )
             )
+
+    def end_task(self, dataset, task_id, benchmark):
+        self.datasets.append(dataset)
 
     def observe(self, data):
         if self.buffer is not None:
@@ -75,12 +87,9 @@ class Custom(Sequential):
         loss = self.policy.compute_loss(data)
         (self.loss_scale * loss).backward()
         if self.cfg.train.grad_clip is not None:
-            nn.utils.clip_grad_norm_(
+            grad_norm = nn.utils.clip_grad_norm_(
                 self.policy.parameters(), self.cfg.train.grad_clip
             )
         self.optimizer.step()
         return loss.item()
-
-    def end_task(self, dataset, task_id, benchmark, env=None):
-        self.datasets.append(dataset)
 ```
