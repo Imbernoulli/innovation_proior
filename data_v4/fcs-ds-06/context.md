@@ -65,14 +65,11 @@ Second, and decisively, the **forced-online** encoding means a query's rectangle
 answer, so there is no legal order in which to process events other than the given one. We are forced to
 keep a structure that supports, interleaved and online, both a point weight-update and a rectangle-sum.
 
-The coordinate *locations* never change, though — every `(x_i, y_i)` that will ever be touched is known
-from the start. That is the structural fact the intended solution exploits.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: all-positive weights; mixed and negative weights (sums that cancel to
 zero or go negative); duplicate coordinates (several points sharing an `(x, y)`); points and queries
-with coordinates near `+-10^9`; weight sums exceeding the 32-bit range (so accumulators must be 64-bit);
+with coordinates near `+-10^9`; weight sums exceeding the 32-bit range;
 empty decoded rectangles; queries that touch every point (full-plane sums) at `n = q = 10^5`; and runs
 that are update-heavy versus query-heavy. Correctness is exact (the judge compares the full output
 stream byte-for-byte after the contract's line format).
