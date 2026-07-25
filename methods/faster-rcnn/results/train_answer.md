@@ -10,124 +10,121 @@ Finally, the RPN and detector must share a single backbone. This is done by alte
 
 ```python
 import numpy as np
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
 
-FEAT_STRIDE = 16
+# ---- anchors: k=9 reference boxes for one feature-map cell ----------------
+def generate_anchors(base_size=16, ratios=[0.5, 1, 2], scales=2 ** np.arange(3, 6)):
+    base_anchor = np.array([1, 1, base_size, base_size]) - 1
+    ratio_anchors = _ratio_enum(base_anchor, ratios)
+    return np.vstack([_scale_enum(ratio_anchors[i, :], scales)
+                      for i in range(ratio_anchors.shape[0])])
 
-def generate_anchors(base_size=16, ratios=(0.5, 1.0, 2.0),
-                     scales=(128, 256, 512)):
-    """Return k=9 reference boxes for one feature-map cell."""
-    base = np.array([1, 1, base_size, base_size]) - 1
-    w, h = base[2] - base[0] + 1, base[3] - base[1] + 1
+def _whctrs(a):
+    w = a[2] - a[0] + 1; h = a[3] - a[1] + 1
+    return w, h, a[0] + 0.5 * (w - 1), a[1] + 0.5 * (h - 1)
+
+def _mkanchors(ws, hs, xc, yc):
+    ws, hs = ws[:, None], hs[:, None]
+    return np.hstack((xc - 0.5 * (ws - 1), yc - 0.5 * (hs - 1),
+                      xc + 0.5 * (ws - 1), yc + 0.5 * (hs - 1)))
+
+def _ratio_enum(anchor, ratios):       # vary aspect ratio, keep area ~constant
+    w, h, xc, yc = _whctrs(anchor)
     size = w * h
-    ws = np.round(np.sqrt(size / np.array(ratios)))
-    hs = np.round(ws * np.array(ratios))
-    ratio_anchors = np.stack([
-        np.array([0, 0, ws[i] - 1, hs[i] - 1]) for i in range(len(ratios))
-    ])
-    anchors = []
-    for a in ratio_anchors:
-        aw, ah = a[2] - a[0] + 1, a[3] - a[1] + 1
-        for s in scales:
-            sw, sh = aw * (s / base_size), ah * (s / base_size)
-            anchors.append([-0.5 * (sw - 1), -0.5 * (sh - 1),
-                            0.5 * (sw - 1), 0.5 * (sh - 1)])
-    return np.array(anchors, dtype=np.float32)
+    ws = np.round(np.sqrt(size / ratios)); hs = np.round(ws * ratios)
+    return _mkanchors(ws, hs, xc, yc)
 
-def bbox_transform(anchors, gt):
-    """R-CNN parameterization: scale-invariant deltas from anchors to gt."""
-    aw = anchors[:, 2] - anchors[:, 0] + 1
-    ah = anchors[:, 3] - anchors[:, 1] + 1
-    acx = anchors[:, 0] + 0.5 * aw
-    acy = anchors[:, 1] + 0.5 * ah
-    gw = gt[:, 2] - gt[:, 0] + 1
-    gh = gt[:, 3] - gt[:, 1] + 1
-    gcx = gt[:, 0] + 0.5 * gw
-    gcy = gt[:, 1] + 0.5 * gh
-    dx = (gcx - acx) / aw
-    dy = (gcy - acy) / ah
-    dw = np.log(gw / aw)
-    dh = np.log(gh / ah)
-    return np.stack([dx, dy, dw, dh], axis=1)
+def _scale_enum(anchor, scales):       # vary scale -> 128/256/512 family
+    w, h, xc, yc = _whctrs(anchor)
+    return _mkanchors(w * scales, h * scales, xc, yc)
 
-def bbox_transform_inv(anchors, deltas):
-    """Apply predicted deltas to anchors to recover box coordinates."""
-    aw = anchors[:, 2] - anchors[:, 0] + 1
-    ah = anchors[:, 3] - anchors[:, 1] + 1
-    acx = anchors[:, 0] + 0.5 * aw
-    acy = anchors[:, 1] + 0.5 * ah
-    px = deltas[:, 0] * aw + acx
-    py = deltas[:, 1] * ah + acy
-    pw = np.exp(deltas[:, 2]) * aw
-    ph = np.exp(deltas[:, 3]) * ah
-    return np.stack([
-        px - 0.5 * pw, py - 0.5 * ph,
-        px + 0.5 * pw, py + 0.5 * ph
-    ], axis=1)
+# ---- box parameterization (R-CNN) ----------------------------------------
+def bbox_transform(ex, gt):
+    ew = ex[:, 2]-ex[:, 0]+1.0; eh = ex[:, 3]-ex[:, 1]+1.0
+    ecx = ex[:, 0]+0.5*ew; ecy = ex[:, 1]+0.5*eh
+    gw = gt[:, 2]-gt[:, 0]+1.0; gh = gt[:, 3]-gt[:, 1]+1.0
+    gcx = gt[:, 0]+0.5*gw; gcy = gt[:, 1]+0.5*gh
+    return np.vstack(((gcx-ecx)/ew, (gcy-ecy)/eh,
+                      np.log(gw/ew), np.log(gh/eh))).T
+
+def bbox_transform_inv(boxes, deltas):
+    if boxes.shape[0] == 0:
+        return np.zeros((0, deltas.shape[1]), dtype=deltas.dtype)
+    w = boxes[:, 2]-boxes[:, 0]+1.0; h = boxes[:, 3]-boxes[:, 1]+1.0
+    cx = boxes[:, 0]+0.5*w; cy = boxes[:, 1]+0.5*h
+    dx, dy, dw, dh = deltas[:, 0::4], deltas[:, 1::4], deltas[:, 2::4], deltas[:, 3::4]
+    px = dx*w[:, None]+cx[:, None]; py = dy*h[:, None]+cy[:, None]
+    pw = np.exp(dw)*w[:, None]; ph = np.exp(dh)*h[:, None]
+    out = np.zeros_like(deltas)
+    out[:, 0::4] = px-0.5*pw; out[:, 1::4] = py-0.5*ph
+    out[:, 2::4] = px+0.5*pw; out[:, 3::4] = py+0.5*ph
+    return out
 
 def clip_boxes(boxes, im_shape):
-    boxes[:, [0, 2]] = np.clip(boxes[:, [0, 2]], 0, im_shape[1] - 1)
-    boxes[:, [1, 3]] = np.clip(boxes[:, [1, 3]], 0, im_shape[0] - 1)
+    boxes[:, 0::4] = np.clip(boxes[:, 0::4], 0, im_shape[1]-1)
+    boxes[:, 1::4] = np.clip(boxes[:, 1::4], 0, im_shape[0]-1)
+    boxes[:, 2::4] = np.clip(boxes[:, 2::4], 0, im_shape[1]-1)
+    boxes[:, 3::4] = np.clip(boxes[:, 3::4], 0, im_shape[0]-1)
     return boxes
 
-class RegionProposalNetwork(nn.Module):
-    """Faster R-CNN RPN head: shared conv -> 3x3 -> cls + reg 1x1 heads."""
-    def __init__(self, in_channels=512, feat_stride=16,
-                 ratios=(0.5, 1.0, 2.0), scales=(128, 256, 512)):
-        super().__init__()
-        self.feat_stride = feat_stride
-        self.anchors = generate_anchors(feat_stride, ratios, scales)
-        self.num_anchors = self.anchors.shape[0]
-        self.conv = nn.Conv2d(in_channels, in_channels, 3, padding=1)
-        self.cls_logits = nn.Conv2d(in_channels, 2 * self.num_anchors, 1)
-        self.bbox_pred = nn.Conv2d(in_channels, 4 * self.num_anchors, 1)
-        for layer in (self.conv, self.cls_logits, self.bbox_pred):
-            nn.init.normal_(layer.weight, std=0.01)
-            nn.init.constant_(layer.bias, 0)
+# ---- training-time anchor target assignment ------------------------------
+# Assumed primitives from the detector stack: bbox_overlaps(boxes, query_boxes), nms(dets, thresh).
+def anchor_targets(anchors, gt_boxes, im_info, feat_h, feat_w, feat_stride=16,
+                   pos_thr=0.7, neg_thr=0.3, batch=256, fg_frac=0.5):
+    sx = np.arange(feat_w)*feat_stride; sy = np.arange(feat_h)*feat_stride
+    sx, sy = np.meshgrid(sx, sy)
+    shifts = np.vstack((sx.ravel(), sy.ravel(), sx.ravel(), sy.ravel())).T
+    A, K = anchors.shape[0], shifts.shape[0]
+    all_anchors = (anchors.reshape(1, A, 4) +
+                   shifts.reshape(1, K, 4).transpose(1, 0, 2)).reshape(K*A, 4)
+    inside = np.where((all_anchors[:, 0] >= 0) & (all_anchors[:, 1] >= 0) &
+                      (all_anchors[:, 2] < im_info[1]) &
+                      (all_anchors[:, 3] < im_info[0]))[0]   # drop cross-boundary
+    anc = all_anchors[inside]
+    labels = np.full((len(inside),), -1, np.float32)
+    ov = bbox_overlaps(anc, gt_boxes)
+    argmax = ov.argmax(1); max_ov = ov[np.arange(len(inside)), argmax]
+    gt_argmax = np.where(ov == ov.max(0))[0]
+    labels[max_ov < neg_thr] = 0
+    labels[gt_argmax] = 1
+    labels[max_ov >= pos_thr] = 1
+    num_fg = int(fg_frac*batch); fg = np.where(labels == 1)[0]
+    if len(fg) > num_fg:
+        labels[np.random.choice(fg, len(fg)-num_fg, replace=False)] = -1
+    num_bg = batch - np.sum(labels == 1); bg = np.where(labels == 0)[0]
+    if len(bg) > num_bg:
+        labels[np.random.choice(bg, len(bg)-num_bg, replace=False)] = -1
+    targets = bbox_transform(anc, gt_boxes[argmax, :4])
+    inside_w = np.zeros((len(inside), 4), np.float32)
+    inside_w[labels == 1, :] = 1.0          # gate reg loss to positives
+    return labels, targets, inside_w, inside
 
-    def forward(self, features, im_info):
-        """
-        features: (B, C, H, W) shared conv feature map.
-        im_info: (height, width, scale) of the input image.
-        Returns proposals, scores during inference; raw logits during training.
-        """
-        x = F.relu(self.conv(features))
-        cls_score = self.cls_logits(x)
-        bbox_deltas = self.bbox_pred(x)
-        if not self.training:
-            return self.generate_proposals(cls_score, bbox_deltas, im_info)
-        return cls_score, bbox_deltas
+# ---- test-time proposal generation ---------------------------------------
+def generate_proposals(scores, deltas, anchors, im_info, feat_h, feat_w,
+                       feat_stride=16, pre_nms=6000, post_nms=300,
+                       nms_thr=0.7, min_size=16):
+    sx = np.arange(feat_w)*feat_stride; sy = np.arange(feat_h)*feat_stride
+    sx, sy = np.meshgrid(sx, sy)
+    shifts = np.vstack((sx.ravel(), sy.ravel(), sx.ravel(), sy.ravel())).T
+    A, K = anchors.shape[0], shifts.shape[0]
+    anc = (anchors.reshape(1, A, 4) +
+           shifts.reshape(1, K, 4).transpose(1, 0, 2)).reshape(K*A, 4)
+    if scores.shape[1] == 2 * A:          # canonical bg/fg softmax layout
+        scores = scores[:, A:, :, :]
+    deltas = deltas.transpose(0, 2, 3, 1).reshape(-1, 4)
+    scores = scores.transpose(0, 2, 3, 1).reshape(-1, 1)
+    proposals = clip_boxes(bbox_transform_inv(anc, deltas), im_info[:2])
+    keep = _filter_boxes(proposals, min_size*im_info[2])
+    proposals, scores = proposals[keep], scores[keep]
+    order = scores.ravel().argsort()[::-1]
+    if pre_nms > 0:
+        order = order[:pre_nms]
+    proposals, scores = proposals[order], scores[order]
+    keep = nms(np.hstack((proposals, scores)), nms_thr)
+    if post_nms > 0:
+        keep = keep[:post_nms]
+    return proposals[keep], scores[keep]
 
-    def generate_proposals(self, cls_score, bbox_deltas, im_info,
-                           pre_nms=6000, post_nms=300, nms_thr=0.7,
-                           min_size=16):
-        B, _, H, W = cls_score.shape
-        A = self.num_anchors
-        # Tile anchors over the HxW grid.
-        shifts_x = np.arange(W) * self.feat_stride
-        shifts_y = np.arange(H) * self.feat_stride
-        sx, sy = np.meshgrid(shifts_x, shifts_y)
-        shifts = np.stack([sx.ravel(), sy.ravel(), sx.ravel(), sy.ravel()], axis=1)
-        all_anchors = (self.anchors[None, :, :] +
-                       shifts[:, None, :]).reshape(-1, 4)
-        # Foreground probability from the two-class softmax.
-        scores = F.softmax(cls_score.view(B, A, 2, H, W), dim=2)[:, :, 1, :, :]
-        scores = scores.permute(0, 2, 3, 1).reshape(-1).detach().cpu().numpy()
-        deltas = bbox_deltas.permute(0, 2, 3, 1).reshape(-1, 4).detach().cpu().numpy()
-        proposals = bbox_transform_inv(all_anchors, deltas)
-        proposals = clip_boxes(proposals, im_info[:2])
-        keep = ((proposals[:, 2] - proposals[:, 0] + 1 >= min_size * im_info[2]) &
-                (proposals[:, 3] - proposals[:, 1] + 1 >= min_size * im_info[2]))
-        proposals, scores = proposals[keep], scores[keep]
-        order = scores.argsort()[::-1]
-        if pre_nms > 0:
-            order = order[:pre_nms]
-        proposals, scores = proposals[order], scores[order]
-        # Non-maximum suppression (assumes nms(dets, thresh) is available).
-        keep = nms(np.hstack([proposals, scores[:, None]]), nms_thr)
-        if post_nms > 0:
-            keep = keep[:post_nms]
-        return proposals[keep], scores[keep]
+def _filter_boxes(boxes, min_size):
+    ws = boxes[:, 2]-boxes[:, 0]+1; hs = boxes[:, 3]-boxes[:, 1]+1
+    return np.where((ws >= min_size) & (hs >= min_size))[0]
 ```
