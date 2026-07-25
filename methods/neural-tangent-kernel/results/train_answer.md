@@ -12,68 +12,28 @@ For squared loss this collapse gives an explicit linear dynamics. On a finite da
 
 The positive-definiteness result supplies the final bridge. If the limiting tangent kernel is strictly positive definite on the data, kernel gradient descent on a convex functional cannot stall away from the global minimum. For non-polynomial activations, the Hermite coefficients are rich enough that the limiting kernel is strictly positive definite on distinct inputs. Therefore the theory gives not only a descriptive infinite-width limit but also a convergence guarantee for the actual gradient-descent trajectory.
 
-The canonical reference implementation is the Neural Tangents library with parameterization='ntk'. Its stax.Dense layer applies fan-in 1/sqrt(width) scaling, initializes weights as standard Gaussians, and updates the stored kernels by nngp <- W_std^2 nngp + b_std^2 after the affine step and ntk <- nngp + W_std^2 ntk. This matches the recursion above. The empirical API computes the finite-width Jacobian outer product, which is the direct finite analog of the tangent kernel and can be compared against the analytic infinite-width prediction as width grows.
+The object that must actually be computed is the closed-form recursion for the covariance and its derivative, propagated layer by layer until it produces the tangent kernel:
 
-The script below verifies the two-layer scalar recursion empirically. It builds a finite two-layer ReLU network in NTK scaling, computes the exact parameter-space tangent kernel for a batch of inputs, and compares it with the Monte-Carlo infinite-width prediction obtained from the Sigma and dotSigma formulas. As width grows, the two estimates agree, illustrating how the aggregate Jacobian Gram matrix stabilizes while individual parameters barely move.
+```text
+Sigma^(1)(x,x') = (1/n_0) x^T x' + beta^2
+Sigma^(l+1)(x,x') =
+  E_{f ~ GP(0,Sigma^(l))}[sigma(f(x)) sigma(f(x'))] + beta^2
+dotSigma^(l+1)(x,x') =
+  E_{f ~ GP(0,Sigma^(l))}[sigma'(f(x)) sigma'(f(x'))]
 
-```python
-import numpy as np
-
-np.random.seed(0)
-
-d, m, n = 10, 4000, 4          # input dim, hidden width, number of inputs
-beta = 0.2                     # bias scale
-
-# Inputs normalized so that E[||x||^2] / d = 1
-X = np.random.randn(n, d)
-X = X / np.linalg.norm(X, axis=1, keepdims=True) * np.sqrt(d)
-Z = np.random.randn(n, d)
-Z = Z / np.linalg.norm(Z, axis=1, keepdims=True) * np.sqrt(d)
-
-# NTK-parameterized two-layer ReLU network:
-# h(x) = relu(W x / sqrt(d) + beta b0)
-# f(x) = a^T h(x) / sqrt(m) + beta b1
-W = np.random.randn(m, d)
-b0 = np.random.randn(m)
-a = np.random.randn(m)
-b1 = np.random.randn()
-
-Hx = np.maximum(0.0, X @ W.T / np.sqrt(d) + beta * b0)  # (n, m)
-Hz = np.maximum(0.0, Z @ W.T / np.sqrt(d) + beta * b0)
-
-# Empirical tangent kernel = sum_p df(x) df(z) over all parameters.
-Sigma1 = X @ Z.T / d + beta ** 2                         # (n, n)
-
-# Contribution from output weights a and output bias b1
-K_a = Hx @ Hz.T / m
-K_bias = beta ** 2
-
-# Contribution from hidden weights W and hidden bias b0
-Gx = (Hx > 0).astype(float).T                            # (m, n), relu' indicator
-Gz = (Hz > 0).astype(float).T
-scaled_Gx = a[:, None] * Gx                              # (m, n)
-scaled_Gz = a[:, None] * Gz
-S = scaled_Gx.T @ scaled_Gz / m                          # (n, n), converges to dotSigma2
-K_W_b0 = Sigma1 * S
-
-Theta_emp = K_a + K_W_b0 + K_bias
-
-# Infinite-width analytic prediction for ReLU.
-c11 = (np.linalg.norm(X, axis=1) ** 2 / d + beta ** 2)[:, None]   # (n, 1)
-c22 = (np.linalg.norm(Z, axis=1) ** 2 / d + beta ** 2)[None, :]   # (1, n)
-rho = Sigma1 / np.sqrt(c11 * c22)
-rho = np.clip(rho, -1.0, 1.0)
-theta = np.arccos(rho)
-
-dotSigma2 = (np.pi - theta) / (2.0 * np.pi)
-Sigma2 = np.sqrt(c11 * c22) / (2.0 * np.pi) * (
-    np.sin(theta) + (np.pi - theta) * np.cos(theta)
-) + beta ** 2
-
-Theta_ntk = Sigma2 + Sigma1 * dotSigma2
-
-print("Empirical finite-width NTK:\n", Theta_emp)
-print("Analytic infinite-width NTK:\n", Theta_ntk)
-rel = np.linalg.norm(Theta_emp - Theta_ntk) / np.linalg.norm(Theta_ntk)
-print(f"Relative Frobenius error: {rel:.4f}")
+Theta_infty^(1)(x,x') = Sigma^(1)(x,x')
+Theta_infty^(l+1)(x,x') =
+  Theta_infty^(l)(x,x') dotSigma^(l+1)(x,x') + Sigma^(l+1)(x,x').
 ```
+
+This is the same pair of companion recursions described above, made explicit layer by layer: propagate Sigma forward as an ordinary Gaussian-process covariance, propagate dotSigma forward as its derivative analogue, and combine the two into Theta_infty at each depth. The boundary condition Sigma^(1) is fixed only by the input Gram matrix and the bias scale, and every later layer is generated purely from the two preceding covariances — no reference to the actual random weights survives past this recursion, which is exactly the deterministic infinite-width limit that the training-time theorem shows is preserved at initialization.
+
+The canonical reference implementation is the Neural Tangents library with parameterization='ntk', and it realizes this same recursion as a running update rather than a closed form. Its stax.Dense layer applies fan-in 1/sqrt(width) scaling, initializes weights as standard Gaussians, and after each dense affine step updates two stored matrices:
+
+```text
+nngp <- W_std^2 nngp + b_std^2   if a bias is present
+nngp <- W_std^2 nngp             otherwise
+ntk  <- nngp + W_std^2 ntk
+```
+
+nngp is the running Sigma, ntk is the running Theta, and this update is the layerwise recursion above written for one layer at a time. Its parameterization='standard' branch uses a different finite-width scaling and is not this object. The empirical API computes the finite-network NTK directly as the Jacobian outer product J(X1) J(X2)^T, which is the exact finite analog of the tangent kernel and converges to the closed-form Theta_infty above as the hidden widths grow, before training even begins — the same limit that the training-time theorem shows the actual gradient-descent trajectory continues to respect once training starts moving the parameters.
