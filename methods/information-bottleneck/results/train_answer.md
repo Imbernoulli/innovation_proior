@@ -31,81 +31,12 @@ The Information Bottleneck method has close ties to earlier work on distribution
 
 The method also makes a conceptual distinction that matters for representation learning. A predictor that minimizes prediction error can succeed while its internal summary still encodes many idiosyncratic details of X. A dimensionality-reduction method that only asks for small codes can keep the wrong details. The Information Bottleneck asks instead about information: how much about X survives, and how much about Y survives. The answer is a stochastic representation that is, in the limit of high beta, an approximate minimal sufficient statistic for Y given X. It is not trying to reconstruct X; it is trying to carry the part of X that is relevant for Y.
 
-Because the objective is purely information-theoretic, it applies before any commitment to architecture, geometry, or feature distance. The only input required is the joint distribution p(x, y). This generality is also the source of the main practical limitation: exact computation requires knowledge of p(x, y), and for continuous or high-dimensional variables one must introduce approximations such as variational bounds or neural encoders. The finite-alphabet algorithm below therefore serves as the cleanest illustration of the principle, and it is fully runnable on small discrete joint tables.
+Because the objective is purely information-theoretic, it applies before any commitment to architecture, geometry, or feature distance. The only input required is the joint distribution p(x, y). This generality is also the source of the main practical limitation: exact computation requires knowledge of p(x, y), and for continuous or high-dimensional variables one must introduce approximations such as variational bounds or neural encoders. In the finite-alphabet case, though, none of that approximation machinery is needed, and the method reduces to a complete, self-contained protocol that I can state in full as the deliverable.
 
-```python
-import numpy as np
+The protocol takes a finite joint table $p(x,y)$, a chosen code cardinality $|T|$, and a tradeoff parameter $\beta \ge 0$, and returns a stationary encoder by iterating the following fixed-point map. Start from any row-stochastic $p(t\mid x)$, and repeat the two half-steps
 
+$$p(t) = \sum_x p(x)\, p(t\mid x), \qquad\qquad p(y\mid t) = \frac{1}{p(t)}\sum_x p(y\mid x)\, p(t\mid x)\, p(x),$$
 
-def kl_row_to_centers(p_y_given_x_row, p_y_given_t):
-    """D_KL[p(y|x) || p(y|t)] for a single x and each t."""
-    p = p_y_given_x_row
-    mask = p > 0
-    out = np.full(p_y_given_t.shape[0], np.inf)
-    for t in range(p_y_given_t.shape[0]):
-        q = p_y_given_t[t]
-        if np.all(q[mask] > 0):
-            out[t] = np.sum(p[mask] * (np.log(p[mask]) - np.log(q[mask])))
-    return out
+$$p(t\mid x) = \frac{p(t)}{Z(x,\beta)}\exp\!\Big(-\beta\, D_{KL}\big[p(y\mid x)\,\big\|\,p(y\mid t)\big]\Big), \qquad Z(x,\beta) = \sum_t p(t)\exp\!\Big(-\beta\, D_{KL}\big[p(y\mid x)\,\big\|\,p(y\mid t)\big]\Big),$$
 
-
-def information_bottleneck_demo(p_xy, n_codes, beta, max_iter=1000, tol=1e-10, seed=0):
-    """Finite-alphabet Information Bottleneck fixed-point iteration."""
-    p_xy = np.asarray(p_xy, dtype=float)
-    p_xy /= p_xy.sum()
-    p_x = p_xy.sum(axis=1)
-    p_y = p_xy.sum(axis=0)
-    p_y_given_x = p_xy / p_x[:, None]
-
-    rng = np.random.default_rng(seed)
-    n_x = p_x.shape[0]
-    p_t_given_x = rng.random((n_x, n_codes)) + 1e-3
-    p_t_given_x /= p_t_given_x.sum(axis=1, keepdims=True)
-
-    for iteration in range(max_iter):
-        p_t = p_x @ p_t_given_x
-        weights = p_x[:, None] * p_t_given_x
-        p_y_given_t = weights.T @ p_y_given_x / p_t[:, None]
-
-        # Update p(t|x) using the exponential KL rule in log space.
-        new = np.empty_like(p_t_given_x)
-        for x in range(n_x):
-            d = kl_row_to_centers(p_y_given_x[x], p_y_given_t)
-            logit = np.log(p_t) - beta * d
-            finite = np.isfinite(logit)
-            shifted = logit[finite] - logit[finite].max()
-            probs = np.zeros_like(logit)
-            probs[finite] = np.exp(shifted)
-            probs /= probs.sum()
-            new[x] = probs
-
-        delta = np.max(np.abs(new - p_t_given_x))
-        p_t_given_x = new
-        if delta <= tol:
-            break
-
-    p_t = p_x @ p_t_given_x
-    weights = p_x[:, None] * p_t_given_x
-    p_y_given_t = weights.T @ p_y_given_x / p_t[:, None]
-
-    i_xt = np.sum(weights * (np.log(p_t_given_x) - np.log(p_t[None, :])))
-    p_ty = p_t[:, None] * p_y_given_t
-    i_ty = np.sum(p_ty * (np.log(p_y_given_t) - np.log(p_y[None, :])))
-    return float(i_xt), float(i_ty), iteration
-
-
-# Demonstration: X has 6 values, Y has 3 values, and two groups of X values
-# predict Y in the same way. IB should merge those groups as beta grows.
-p_xy = np.array([
-    [0.15, 0.02, 0.00],   # x0 predicts y0 strongly
-    [0.14, 0.03, 0.01],   # x1 predicts y0 strongly (similar to x0)
-    [0.02, 0.15, 0.00],   # x2 predicts y1 strongly
-    [0.03, 0.14, 0.01],   # x3 predicts y1 strongly (similar to x2)
-    [0.00, 0.02, 0.15],   # x4 predicts y2 strongly
-    [0.01, 0.03, 0.14],   # x5 predicts y2 strongly (similar to x4)
-])
-
-for beta in [0.0, 1.0, 5.0, 20.0, 100.0]:
-    i_xt, i_ty, it = information_bottleneck_demo(p_xy, n_codes=3, beta=beta)
-    print(f"beta={beta:6.1f}  I(X;T)={i_xt:.4f}  I(T;Y)={i_ty:.4f}  iters={it}")
-```
+until the maximum entry-wise change in $p(t\mid x)$ falls below a chosen tolerance. Because each half-step is convex in the block it updates, the free energy $F = I(X;T) + \beta\, \mathbb{E}_{p(x,t)}D_{KL}[p(y\mid x)\|p(y\mid t)]$ decreases monotonically along this iteration and the map is guaranteed to reach a stationary point, though not necessarily the same one from every initialization. Reading $I(X;T)$ and $I(T;Y)$ off the converged $p(t\mid x)$, $p(t)$, and $p(y\mid t)$ gives one point on the Information Bottleneck curve; sweeping $\beta$ upward from $0$ traces the whole curve, from the trivial single-codeword solution at $\beta = 0$ to, as $\beta \to \infty$, codes that approximate a minimal sufficient statistic for $Y$ given $X$. That curve — the full compression/relevance frontier obtained by running this fixed point at every $\beta$, not any single value of it — is what the Information Bottleneck method delivers.
