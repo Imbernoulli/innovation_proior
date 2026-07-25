@@ -12,9 +12,9 @@ Formally: maximize `p[c_1] + p[c_2] + ... + p[c_m]` over all compositions `c_1 +
 with each `c_j >= 1`. There is always at least one way to cut (the whole rod), so the answer is well
 defined for every `n >= 1`; for `n = 0` the rod is empty and the revenue is `0`.
 
-This is the classic rod-cutting problem. The temptation is to pick pieces "greedily" by their
-price-per-unit-length; whether that greedy choice is actually optimal under the global
-length-must-sum-to-`n` constraint is exactly the question to settle before committing to an algorithm.
+The temptation is to pick pieces "greedily" by their price-per-unit-length; whether that greedy
+choice is actually optimal under the global length-must-sum-to-`n` constraint is exactly the question
+to settle before committing to an algorithm.
 
 ## Input / output contract
 
@@ -29,24 +29,13 @@ earning `5 + 5`).
 ## Background
 
 The cut points are a global choice: the lengths of all pieces must sum to exactly `n`, so a decision
-about one piece changes what lengths remain available for the rest. Two families of approach are on
-the table before committing to one:
-
-- **Greedy by price-per-length.** Repeatedly cut off a piece of the length `k` whose ratio `p[k] / k`
-  is largest among lengths that still fit in the remaining rod, then recurse on what is left. This is
-  cheap and intuitive — "always take the most valuable material per unit" — and the open question is
-  whether a locally best ratio can be safely committed to under the global summation constraint.
-- **Dynamic programming over rod length.** Let `dp[L]` be the best revenue obtainable from a rod of
-  length `L`. Build `dp[0], dp[1], ..., dp[n]` in order; the open question is the exact recurrence
-  relating `dp[L]` to the prices and to shorter subproblems.
+about one piece changes what lengths remain available for the rest.
 
 ## Evaluation settings
 
-Judged on hidden tests covering: `n = 0` (empty rod), `n = 1`, monotonically increasing price lists
-(which tempt "never cut"), monotonically decreasing price lists (which tempt "cut into all length-1
-pieces"), price lists with zeros and isolated spikes, lists engineered so the best price-per-length
-piece is a trap, and large `n = 5000` with prices near `10^9` (so the total revenue exceeds the
-32-bit integer range).
+Judged on hidden tests covering: `n = 0` (empty rod), `n = 1`, monotonically increasing price lists,
+monotonically decreasing price lists, price lists with zeros and isolated spikes, adversarial price
+lists, and large `n = 5000` with prices near `10^9`.
 
 ## Code framework
 
