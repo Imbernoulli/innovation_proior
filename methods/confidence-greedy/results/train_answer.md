@@ -12,7 +12,7 @@ import torch.nn.functional as F
 
 
 def get_num_transfer_tokens(mask_index, steps):
-    """Linear noise schedule -> equal expected number of tokens unmasked per step."""
+    """Linear noise schedule -> equal number of tokens unmasked per step."""
     mask_num = mask_index.sum(dim=1, keepdim=True)
     base = mask_num // steps
     remainder = mask_num % steps
@@ -24,7 +24,8 @@ def get_num_transfer_tokens(mask_index, steps):
 
 
 def add_gumbel_noise(logits, temperature):
-    """Gumbel-max sampling; temperature == 0 reduces to plain argmax."""
+    """Gumbel-max categorical sampling; temperature == 0 reduces to argmax (greedy).
+    float64 because low-precision Gumbel degrades generation quality."""
     if temperature == 0:
         return logits
     logits = logits.to(torch.float64)
@@ -50,12 +51,12 @@ class DemaskDecoder:
         x[:, :input_ids.shape[1]] = input_ids.clone()
 
         assert gen_length % block_length == 0
-        num_blocks = gen_length // block_length  # == 1 -> fully parallel
+        num_blocks = gen_length // block_length          # == 1 -> fully parallel
         assert steps % num_blocks == 0
         steps_per_block = steps // num_blocks
 
         used = 0
-        for b in range(num_blocks):  # blocks left-to-right
+        for b in range(num_blocks):                      # blocks left-to-right
             bs = input_ids.shape[1] + b * block_length
             be = bs + block_length
             num_xfer = get_num_transfer_tokens((x[:, bs:be] == mid), steps_per_block)
@@ -63,16 +64,16 @@ class DemaskDecoder:
                 mask_idx = (x == mid)
                 block_m = torch.zeros_like(mask_idx)
                 block_m[:, bs:be] = True
-                mask_idx = mask_idx & block_m  # masks in the current block only
+                mask_idx = mask_idx & block_m            # masks in the current block only
                 if not mask_idx.any():
                     break
 
-                logits = model(x).logits  # one forward pass: all positions
+                logits = model(x).logits                 # one forward pass: all positions
                 logits_noised = add_gumbel_noise(logits, self.temperature)
-                x0 = torch.argmax(logits_noised, dim=-1)  # greedy or sampled token
+                x0 = torch.argmax(logits_noised, dim=-1) # greedy (or temperature-sampled) token
 
-                p = F.softmax(logits, dim=-1)
-                conf = torch.gather(p, -1, x0.unsqueeze(-1)).squeeze(-1)  # prob of selected token
+                p = F.softmax(logits, dim=-1)                               # canonical confidence path
+                conf = torch.gather(p, -1, x0.unsqueeze(-1)).squeeze(-1)     # prob of selected token
                 if self.suppress_eos and self.eos_id is not None:
                     conf = torch.where(x0 == self.eos_id,
                                        torch.full_like(conf, -float("inf")), conf)
@@ -80,10 +81,10 @@ class DemaskDecoder:
                 xfer = torch.zeros_like(x0, dtype=torch.bool)
                 for j in range(conf.shape[0]):
                     c = conf[j].clone()
-                    c[~mask_idx[j]] = -float("inf")  # frozen / out-of-block: never selected
-                    _, topk = torch.topk(c, int(num_xfer[j, step].item()))  # most-confident k
+                    c[~mask_idx[j]] = -float("inf")      # frozen / out-of-block: never selected
+                    _, topk = torch.topk(c, int(num_xfer[j, step].item()))   # most-confident k
                     xfer[j, topk] = True
-                x = torch.where(xfer, x0, x)  # commit; carry-over keeps the rest masked
+                x = torch.where(xfer, x0, x)             # commit; carry-over keeps the rest masked
                 used += 1
         return x, used
 ```
