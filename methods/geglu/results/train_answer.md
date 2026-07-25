@@ -15,26 +15,19 @@ import torch.nn.functional as F
 
 
 class MLP(nn.Module):
-    """GeGLU feed-forward sublayer.
-
-    hidden = GELU(x @ W) * (x @ V)
-    output = hidden @ W2
-
-    The hidden width is (8/3) * d_model so that the three matrices cost the
-    same parameters and FLOPs as a baseline two-matrix FFN at 4x expansion.
-    """
+    """GeGLU feed-forward sublayer: ( GELU(xW) ⊗ (xV) ) W2, at 8/3 hidden width
+    so 3 matrices match the budget of the baseline 2-matrix FFN at 4x expansion."""
 
     def __init__(self, config):
         super().__init__()
-        hidden_dim = int(8 / 3 * config.n_embd)
-        hidden_dim = ((hidden_dim + 63) // 64) * 64  # round up for matmul tiles
-        self.w1 = nn.Linear(config.n_embd, hidden_dim, bias=False)      # gate
-        self.w3 = nn.Linear(config.n_embd, hidden_dim, bias=False)      # value
-        self.c_proj = nn.Linear(hidden_dim, config.n_embd, bias=False)  # down-projection
+        hidden_dim = int(8 / 3 * config.n_embd)            # (2/3) * 4d
+        hidden_dim = ((hidden_dim + 63) // 64) * 64        # round up to a multiple of 64
+        self.w1 = nn.Linear(config.n_embd, hidden_dim, bias=False)      # gate proj W
+        self.w3 = nn.Linear(config.n_embd, hidden_dim, bias=False)      # value proj V
+        self.c_proj = nn.Linear(hidden_dim, config.n_embd, bias=False)  # down proj W2
         self.dropout = nn.Dropout(config.dropout)
 
-    def forward(self, x):                              # x: (B, T, n_embd)
-        gate = F.gelu(self.w1(x))
-        value = self.w3(x)
-        return self.dropout(self.c_proj(gate * value))
+    def forward(self, x):                                   # (B, T, n_embd) -> (B, T, n_embd)
+        # GeGLU: GELU(xW) * (xV), then project back
+        return self.dropout(self.c_proj(F.gelu(self.w1(x)) * self.w3(x)))
 ```
