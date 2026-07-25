@@ -17,38 +17,27 @@ import torch.nn.functional as F
 
 
 def weight_quant(weight):
-    """Binarize latent weight with sign and absmean scale, using STE.
-
-    Returns (binary_weight, beta) where binary_weight is in {-1, +1}
-    during the forward pass and beta = mean(|W|).
-    """
-    beta = weight.abs().mean()
-    center = weight.mean()
-    w_bin = torch.where(weight > center,
-                        torch.ones_like(weight),
-                        -torch.ones_like(weight))
-    w_ste = weight + (w_bin - weight).detach()
+    """1-bit weight: sign(W - mean(W)) with absmean scale beta = mean(|W|).
+    Returns (binary_weight, beta) with STE to `weight`."""
+    beta = weight.abs().mean()                           # beta = (1/n)||W||_1
+    e = weight.mean()                                    # per-tensor mean for centering
+    w_bin = torch.where(weight > e, torch.ones_like(weight), -torch.ones_like(weight))
+    w_ste = weight + (w_bin - weight).detach()           # forward +-1, backward identity
     return w_ste, beta
 
 
 def activation_quant(x):
-    """8-bit symmetric absmax quantization with STE.
-
-    Returns (quantized_x, gamma / Qb) so the matmul can be rescaled.
-    """
-    Qb = 128.0
+    """8-bit absmax activation quantization. Returns (int8-valued_x, gamma/Qb); STE to `x`."""
+    Qb = 128.0                                           # 2^(8-1)
     gamma = x.abs().amax(dim=-1, keepdim=True).clamp(min=1e-5)
-    x_int = (x * (Qb / gamma)).round().clamp(-Qb, Qb - 1)
-    x_ste = x + (x_int - x).detach()
+    x_int = (x * (Qb / gamma)).round().clamp(-Qb, Qb - 1)  # signed int8 range [-128, 127]
+    x_ste = x + (x_int - x).detach()                     # forward int8-valued, backward identity
     return x_ste, gamma / Qb
 
 
 class BitLinear(nn.Module):
-    """Drop-in BitLinear layer: 1-bit weights, 8-bit activations.
-
-    self.weight is the high-precision latent weight updated by the optimizer.
-    It is binarized on the fly every forward pass and is not stored at inference.
-    """
+    """1-bit-weight, 8-bit-activation drop-in for nn.Linear. self.weight is the latent
+    high-precision weight the optimizer updates; it is binarized every forward pass."""
 
     def __init__(self, in_features, out_features, bias=True):
         super().__init__()
@@ -56,13 +45,13 @@ class BitLinear(nn.Module):
         self.out_features = out_features
         self.weight = nn.Parameter(torch.empty(out_features, in_features))
         self.bias = nn.Parameter(torch.zeros(out_features)) if bias else None
-        self.norm = nn.LayerNorm(in_features, elementwise_affine=False)
+        self.norm = nn.LayerNorm(in_features, elementwise_affine=False)   # SubLN before quant
         nn.init.normal_(self.weight, mean=0.0, std=0.02)
 
     def forward(self, x):
-        x = self.norm(x)
-        x_int, x_scale = activation_quant(x)
-        w_bin, w_scale = weight_quant(self.weight)
+        x = self.norm(x)                                 # normalize -> Var(y) ~ 1
+        x_int, x_scale = activation_quant(x)             # int8-valued activations
+        w_bin, w_scale = weight_quant(self.weight)       # 1-bit sign weights
         out = F.linear(x_int, w_bin) * (w_scale * x_scale)
         if self.bias is not None:
             out = out + self.bias
