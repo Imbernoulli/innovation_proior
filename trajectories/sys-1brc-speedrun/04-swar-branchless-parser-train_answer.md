@@ -46,7 +46,7 @@ private boolean readNext() {
 private static final long DOT_BITS = 0x10101000;
 private static final long MAGIC_MULTIPLIER = (100 * 0x1000000 + 10 * 0x10000 + 1);
 
-// branchless SWAR parse -> temperature*10
+// branchless SWAR parse (idea: merykitty) -> temperature*10
 private int readTemperature() {
     final long numberBytes = UNSAFE.getLong(ptr);
     final long invNumberBytes = ~numberBytes;
