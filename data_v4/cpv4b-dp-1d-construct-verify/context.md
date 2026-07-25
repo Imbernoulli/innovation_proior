@@ -36,33 +36,15 @@ rests cannot all be split by a single hit into runs of length `<= 2` (one hit ma
 holding `2 + 2 = 4 < 5` rests), so beat 0 must be a rest. The earliest legal hit lands at beat 1, and
 the rest of the loop is forced.
 
-## Background
-
-Two facts have to be settled before a single character is written:
-
-- **When does a legal loop exist at all?** With `h` hits there are `h + 1` gaps (before the first
-  hit, between consecutive hits, after the last hit) into which the `n - h` rests must fall, each gap
-  holding at most `K - 1` rests. So legality is a counting condition on `n`, `K`, `h`. It is very easy
-  to get the `+1` wrong — to count the gaps *between* hits and forget the leading and trailing ones —
-  and a feasibility test that is off by one passes every small case where the difference does not
-  matter and then misfires on large inputs.
-- **How to build the earliest-hit loop when it exists.** Greedily preferring `H` at each beat is
-  correct *only if* placing that hit still leaves the remainder completable; a hit spent too early can
-  leave too few hits to break up the trailing rests. The decision at each beat is therefore a
-  suffix-feasibility query, and that query multiplies counts that reach `~10^14` — so the arithmetic
-  must be 64-bit. A version that does the multiply in 32-bit reproduces the right answer on every
-  small test and then silently overflows on the large ones.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: the trivial `n = 1`; `K = 1` (no rest is ever allowed, so the only
-legal loop is all hits and any `h < n` is infeasible); `h = 0` and `h = n`; cases right on the
-feasibility boundary `n - h = (h + 1)(K - 1)`; cases one beyond it (answer `-1`); and large
-`n` up to `10^7` with `K` and `h` chosen so the gap-capacity product `(h + 1)(K - 1)` exceeds the
-32-bit range. For each feasible case the checker confirms the output has length `n`, uses exactly `h`
-hits, contains no run of `K` rests, and is the lexicographic minimum; for each infeasible case it
-confirms the output is exactly `-1`. Emitting up to `10^7` characters within the limit requires a
-single buffered write.
+legal loop is all hits and any `h < n` is infeasible); `h = 0` and `h = n`; cases right at the edge of
+feasibility as well as cases just one step beyond it (answer `-1`); and large `n` up to `10^7` with
+`K` and `h` chosen to stress the arithmetic at scale. For each feasible case the checker confirms the
+output has length `n`, uses exactly `h` hits, contains no run of `K` rests, and is the lexicographic
+minimum; for each infeasible case it confirms the output is exactly `-1`. Emitting up to `10^7`
+characters within the limit requires a single buffered write.
 
 ## Code framework
 
