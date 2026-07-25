@@ -14,62 +14,12 @@ The proof then defines a residual `r(t) = w(t) - what log t - wtilde`, where the
 
 A practical consequence is that validation loss can behave in a way that looks like overfitting but is not. If the limiting training separator misclassifies a validation point, the growing norm makes that point's logistic loss grow like `log t`, even while margins and classification error can improve. So the right observables for this asymptotic story are classification error and margin behavior, not loss alone. Training loss can be nearly zero long before the classifier direction is close to its limiting large-margin separator.
 
-The code below illustrates the phenomenon on a small two-dimensional separable dataset. It constructs a hard-margin SVM reference direction with a simple quadratic-program solver, then runs fixed-step gradient descent on an exponential loss and compares the normalized iterate to the SVM direction. The numerical direction error should shrink slowly as training continues, while the training loss decays much faster.
+There is no script to run here, because the object being discovered is not an algorithm but an asymptotic identity that plain gradient descent already satisfies without being told to. The deliverable is that identity, stated precisely enough to use as a theorem. Let $x_1,\dots,x_N \in \mathbb{R}^d$ be linearly separable after folding labels into the examples, so some $w_*$ has $w_*^\top x_n > 0$ for every $n$, and let $L(w) = \sum_n \ell(w^\top x_n)$ for a loss $\ell$ that is positive, differentiable, strictly decreasing to zero, $\beta$-smooth, with $\limsup_{u \to -\infty} \ell'(u) < 0$, and whose negative derivative $-\ell'(u)$ carries a tight exponential tail. Run fixed-step gradient descent $w(t+1) = w(t) - \eta \nabla L(w(t))$ with $\eta < 2\beta^{-1}\sigma_{\max}(X)^{-2}$. Then
 
-```python
-import numpy as np
-from scipy.optimize import minimize
+$$w(t) = \hat w \log t + \rho(t), \qquad \hat w = \arg\min_{w} \|w\|^2 \ \ \text{subject to} \ \ w^\top x_n \ge 1 \ \ \text{for all } n,$$
 
-# Generate a small separable 2D dataset
-np.random.seed(0)
-N = 40
-d = 2
-X_pos = np.random.randn(N // 2, d) + np.array([1.5, 1.5])
-X_neg = np.random.randn(N // 2, d) + np.array([-1.5, -1.5])
-X = np.vstack([X_pos, X_neg])
-y = np.hstack([np.ones(N // 2), -np.ones(N // 2)])
-X = X * y[:, None]  # fold labels into examples
+where $\hat w$ is the hard-margin $L_2$ SVM solution: for almost every dataset the residual $\rho(t)$ stays bounded, and for every separable dataset it grows at most like a smaller iterated logarithm, $\rho(t) = O(\log\log t)$ relative to the leading term. Consequently the normalized iterate converges to the max-margin direction,
 
-# Hard-margin L2 SVM: minimize ||w||^2 subject to w^T x_n >= 1
-w0 = np.zeros(d)
+$$\frac{w(t)}{\|w(t)\|} \longrightarrow \frac{\hat w}{\|\hat w\|}, \qquad \left\| \frac{w(t)}{\|w(t)\|} - \frac{\hat w}{\|\hat w\|} \right\| = O\!\left(\frac{1}{\log t}\right) \text{ a.e.}, \quad O\!\left(\frac{\log\log t}{\log t}\right) \text{ always},$$
 
-def objective(w):
-    return np.dot(w, w)
-
-def jac(w):
-    return 2 * w
-
-cons = [{'type': 'ineq', 'fun': lambda w, xn=xn: np.dot(w, xn) - 1.0}
-        for xn in X]
-res = minimize(objective, w0, jac=jac, method='SLSQP', constraints=cons,
-               options={'ftol': 1e-12, 'maxiter': 1000})
-w_svm = res.x
-w_svm_dir = w_svm / np.linalg.norm(w_svm)
-
-# Fixed-step gradient descent on exponential loss
-w = np.zeros(d, dtype=float)
-eta = 0.05
-T = 200000
-direction_errors = []
-losses = []
-for t in range(1, T + 1):
-    margins = X @ w
-    grad = -np.sum(np.exp(-margins)[:, None] * X, axis=0)
-    w -= eta * grad
-    if t % 5000 == 0 or t == 1:
-        w_dir = w / (np.linalg.norm(w) + 1e-12)
-        err = np.linalg.norm(w_dir - w_svm_dir)
-        loss = np.sum(np.exp(-margins))
-        direction_errors.append((t, err))
-        losses.append((t, loss))
-
-print("SVM direction:", w_svm_dir)
-print("Final GD direction:", w / (np.linalg.norm(w) + 1e-12))
-print("Final direction error:", direction_errors[-1][1])
-print("Final exponential loss:", losses[-1][1])
-
-# A simple assertion for a sanity check
-assert direction_errors[-1][1] < 0.1, "GD direction should approach SVM direction"
-```
-
-In summary, the result establishes that unregularized fixed-step gradient descent on separable linear classification implicitly solves the hard-margin L2 SVM problem. The divergence of the weights is structured: the leading term grows as `what log t`, where `what` is the maximum-margin separator, and the residual stays bounded or grows only in smaller iterated-log terms. The reason is the concentration of the late gradient on support vectors combined with the Euclidean geometry of gradient descent. The insight is not just that optimization affects generalization, but that the asymptotic gradient has an invariant support-vector geometry that exposes the optimizer's hidden regularizer.
+with the normalized margin gap $1/\|\hat w\| - \min_n x_n^\top w(t)/\|w(t)\|$ itself $O(1/\log t)$ even though the training loss decays as $L(w(t)) = O(1/t)$. That gap between a loss that vanishes polynomially fast and a direction that only creeps toward its limit logarithmically is the whole phenomenon compressed into one statement: the leading term $\hat w \log t$ is forced by the exponential-tail concentration of the gradient onto the support vectors, the residual stays tame because the support-vector part of its dynamics is provably non-expansive, and the two facts together pin the normalized weight vector, at a rate an order of magnitude slower than the loss itself, onto the unique hard-margin $L_2$ maximum-margin separator. Unregularized gradient descent on separable classification data was never merely driving the loss down; this is the closed form of the regularizer it was carrying the whole time.
