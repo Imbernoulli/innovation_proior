@@ -1,6 +1,6 @@
 I propose that the canonical name for this result be the Downward Löwenheim-Skolem theorem, or, when one wants to emphasize the operative construction, the Skolem-hull method. The theorem answers a basic question about how much first-order logic can see of an infinite structure. If I am given a first-order language, an infinite structure in that language, and a small set of elements I want to keep, I can carve out a substructure that contains those elements, satisfies exactly the same first-order sentences with parameters from the substructure, and is no larger than the language and the starting set force it to be.
 
-The precise statement is this. Let L be a first-order language and let M be an L-structure. Let A be any subset of the domain of M. Then there is an elementary substructure N of M such that A is contained in N and the cardinality of N is at most max(|A|, |L|, aleph_0). When the language is countable and A is countable, this bound is just aleph_0, so every infinite structure in a countable language has a countable elementary substructure containing any prescribed countable set. That is the result I will explain and then illustrate with a concrete simulation.
+The precise statement is this. Let L be a first-order language and let M be an L-structure. Let A be any subset of the domain of M. Then there is an elementary substructure N of M such that A is contained in N and the cardinality of N is at most max(|A|, |L|, aleph_0). When the language is countable and A is countable, this bound is just aleph_0, so every infinite structure in a countable language has a countable elementary substructure containing any prescribed countable set. That is the result I will explain and then state in full as the theorem it is.
 
 The first thing to notice is that the naive attempt almost works but fails at exactly the right place. If I take a subset A and close it under all the function symbols of the language, I get a genuine substructure. The interpretations of the function symbols stay inside the smaller set, constants are included, and relations are just restricted from M. Atomic formulas therefore have the same truth values in the smaller set as in M, because they only ask about the values of functions and relations on tuples from the smaller set. The trouble is existential formulas. It can happen that M satisfies exists y phi(y, a) for some tuple a from the smaller set, but every witness b in M lies outside the smaller set. Then the smaller structure says the existential statement is false while M says it is true, so the substructure is not elementary.
 
@@ -16,78 +16,12 @@ The most famous consequence is the countable-model phenomenon, sometimes called 
 
 The same idea explains why first-order logic cannot pin down intended infinite sizes. I can write sentences saying there are at least 1, at least 2, at least 3, and so on, and together they force infinitude. But no first-order sentence in the ordinary language can say "the domain has exactly this uncountable cardinality." The Skolem-hull construction shows that any infinite model can be thinned down to a model whose size is bounded by the language and a chosen parameter set, while all first-order statements remain unchanged.
 
-The following Python script makes the construction concrete on a finite toy structure. It defines a small first-order language with a unary relation, a binary relation, and a unary function; it builds a random structure; it chooses least-witness Skolem functions for a finite set of formulas; it closes a starting set under those functions and the original function; and it checks the Tarski-Vaught condition explicitly. The finite example is not the theorem itself, but it shows exactly the same closure mechanism that the proof uses in the general infinite setting.
+Packaging the construction as a single, checkable statement is the deliverable: the argument above is not a proof sketch but an explicit recipe for building $N$, and writing that recipe out in full, with the witness functions and the cardinality bound made explicit, closes the circle from motivation to theorem.
 
-```python
-import itertools
-import random
-
-# A finite toy structure for the Skolem-hull construction.
-# Language: unary relation P, binary relation R, unary function f.
-M = list(range(12))
-random.seed(0)
-P = {x for x in M if random.random() < 0.4}
-R = {(x, y) for x in M for y in M if random.random() < 0.15}
-f = {x: (x + 3) % len(M) for x in M}
-
-# Formulas are represented as Python functions phi(witness, params) -> bool.
-# We consider a small set of formulas that generate interesting witnesses.
-def phi1(y, xs):
-    # P(y)
-    return y in P
-
-def phi2(y, xs):
-    # R(xs[0], y)
-    return len(xs) >= 1 and (xs[0], y) in R
-
-def phi3(y, xs):
-    # R(y, xs[0])
-    return len(xs) >= 1 and (y, xs[0]) in R
-
-def phi4(y, xs):
-    # f(y) == xs[0]
-    return len(xs) >= 1 and f[y] == xs[0]
-
-formulas = [phi1, phi2, phi3, phi4]
-
-def witness(phi, params):
-    """Least-witness Skolem function for a formula on this finite M."""
-    for b in M:
-        if phi(b, params):
-            return b
-    return M[0]  # arbitrary when no witness exists
-
-# Build the Skolem hull starting from A = {0}.
-A = {0}
-current = set(A)
-# Include constants if any; here none, so A_0 = A.
-while True:
-    nxt = set(current)
-    # Close under the unary function f.
-    for a in current:
-        nxt.add(f[a])
-    # Close under witness functions for all formulas and finite tuples.
-    for phi in formulas:
-        for arity in range(3):  # allow parameter tuples of length 0, 1, 2
-            for tup in itertools.product(current, repeat=arity):
-                nxt.add(witness(phi, tup))
-    if nxt == current:
-        break
-    current = nxt
-
-N = current
-print("Domain M size:", len(M))
-print("Skolem hull N size:", len(N))
-print("N contains starting set:", A <= N)
-
-# Verify the Tarski-Vaught condition for the same finite set of formulas.
-ok = True
-for phi in formulas:
-    for arity in range(3):
-        for tup in itertools.product(N, repeat=arity):
-            if any(phi(b, tup) for b in M):
-                if not any(phi(b, tup) for b in N):
-                    print("Tarski-Vaught failed for", phi.__name__, "with", tup)
-                    ok = False
-print("Tarski-Vaught check passed:", ok)
-```
+Let $L$ be a first-order language, let $M$ be an $L$-structure, and let $A \subseteq M$. Set $\kappa = \max(|A|, |L|, \aleph_0)$. For every formula $\varphi(y, x_1, \dots, x_n)$ of $L$, fix a witness function $F_\varphi : M^n \to M$ such that whenever $M \models \exists y\, \varphi(y, a_1, \dots, a_n)$, also $M \models \varphi(F_\varphi(a_1,\dots,a_n), a_1, \dots, a_n)$. Define $A_0 = A \cup \{c^M : c \text{ a constant symbol of } L\}$, and for each $i < \omega$ let
+$$A_{i+1} = A_i \,\cup\, \{f^M(a_1,\dots,a_n) : f \text{ an } n\text{-ary function symbol of } L,\ a_1,\dots,a_n \in A_i\} \,\cup\, \{F_\varphi(a_1,\dots,a_n) : \varphi(y,x_1,\dots,x_n) \text{ a formula of } L,\ a_1,\dots,a_n \in A_i\}.$$
+Let
+$$N = \bigcup_{i<\omega} A_i.$$
+Then $N$ is the domain of an elementary substructure $N \preceq M$. It is closed under every function symbol of $L$ because any finite tuple from $N$ occurs together in some $A_i$, so the function's value on that tuple lands in $A_{i+1} \subseteq N$; constants are already in $A_0$. It satisfies the Tarski-Vaught test for the same reason: given $a_1,\dots,a_n \in N$ with $M \models \exists y\, \varphi(y,a_1,\dots,a_n)$, the tuple lies in some $A_i$, so $F_\varphi(a_1,\dots,a_n) \in A_{i+1} \subseteq N$ already witnesses the existential inside $M$. The cardinality bound follows because $L$ has at most $\kappa$ formulas and a set of size at most $\kappa$ has at most $\kappa$ finite tuples, so each $A_i$ has size at most $\kappa$ and the countable union $N$ has size at most $\kappa$ as well. Putting the three facts together gives the theorem in full:
+$$A \subseteq N \preceq M \quad\text{and}\quad |N| \le \max(|A|, |L|, \aleph_0).$$
+In particular, when $L$ is countable and $A$ is countable, $\kappa = \aleph_0$, so every infinite $L$-structure has a countable elementary substructure containing any prescribed countable subset — the Skolem hull is the construction, and this bound is the theorem.
