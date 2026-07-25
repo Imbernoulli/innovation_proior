@@ -14,55 +14,12 @@ KKT also carries an economic reading. Each multiplier λ_j is a shadow price: it
 
 The practical value of KKT is that it turns active-set guessing into algebra. Instead of enumerating which constraints might be active and solving reduced problems, one writes a single system that encodes the active-set decision through multipliers and complementarity. Interior-point methods and sequential quadratic programming methods both target KKT residuals in different ways. Interior-point methods replace the complementarity condition λ_j g_j(x*) = 0 with a smooth barrier perturbation, while SQP methods linearize the KKT system and solve a sequence of quadratic programs.
 
-Because KKT is largely a conceptual certificate, I will verify the mechanics on a small concrete example. Consider minimizing f(x, y) = (x - 2)^2 + (y - 1)^2 subject to x + y ≤ 1. The unconstrained minimum is at (2, 1), which violates the constraint. The constrained minimum should lie on the boundary x + y = 1. At that point the objective gradient is (2(x - 2), 2(y - 1)) and the constraint gradient is (1, 1). Stationarity says (2(x - 2), 2(y - 1)) + λ(1, 1) = 0 for some λ ≥ 0. Solving gives x = 2 - λ/2 and y = 1 - λ/2, and enforcing x + y = 1 yields λ = 2, x = 1, and y = 0. The KKT point is therefore (1, 0) with multiplier λ = 2.
+Because KKT is largely a conceptual certificate, I will verify the mechanics on a small concrete example. Consider minimizing f(x, y) = (x - 2)^2 + (y - 1)^2 subject to x + y ≤ 1. The unconstrained minimum is at (2, 1), which violates the constraint. The constrained minimum should lie on the boundary x + y = 1. At that point the objective gradient is (2(x - 2), 2(y - 1)) and the constraint gradient is (1, 1). Stationarity says (2(x - 2), 2(y - 1)) + λ(1, 1) = 0 for some λ ≥ 0. Solving gives x = 2 - λ/2 and y = 1 - λ/2, and enforcing x + y = 1 yields λ = 2, x = 1, and y = 0. The KKT point is therefore (1, 0) with multiplier λ = 2, and every one of the four conditions is satisfied at that point exactly: the stationarity residual (2(1) - 4 + 2, 2(0) - 2 + 2) is (0, 0), the constraint is tight so primal feasibility holds with equality, the multiplier is nonnegative, and the product λ(x + y - 1) is 2 · 0 = 0.
 
-```python
-import numpy as np
+This worked instance is the mechanics; the theorem is the general statement it instantiates, and it is the actual object this analysis produces. For the problem of minimizing a smooth $f(x)$ subject to $h_i(x) = 0$ for $i = 1, \dots, m$ and $g_j(x) \le 0$ for $j = 1, \dots, p$, under a constraint qualification such as linear independence of the active constraint gradients, the Mangasarian–Fromovitz condition, or Slater's condition for convex programs, any local minimizer $x^\star$ admits multipliers $\nu_i \in \mathbb{R}$ and $\lambda_j \ge 0$ such that
 
-def f(z):
-    x, y = z
-    return (x - 2.0) ** 2 + (y - 1.0) ** 2
+$$
+\nabla f(x^\star) + \sum_{i=1}^m \nu_i \nabla h_i(x^\star) + \sum_{j=1}^p \lambda_j \nabla g_j(x^\star) = 0,
+$$
 
-def grad_f(z):
-    x, y = z
-    return np.array([2.0 * (x - 2.0), 2.0 * (y - 1.0)])
-
-def g(z):
-    return z[0] + z[1] - 1.0
-
-def grad_g(z):
-    return np.array([1.0, 1.0])
-
-z_star = np.array([1.0, 0.0])
-lam = 2.0
-
-stationarity_residual = grad_f(z_star) + lam * grad_g(z_star)
-primal_feasibility = g(z_star)
-dual_feasibility = lam
-complementary_slackness = lam * g(z_star)
-
-print("KKT point:", z_star)
-print("Objective value:", f(z_star))
-print("Stationarity residual:", stationarity_residual)
-print("Primal feasibility g(z*) =", primal_feasibility)
-print("Dual feasibility lambda =", dual_feasibility)
-print("Complementary slackness lambda * g(z*) =", complementary_slackness)
-
-xs = np.linspace(-1.0, 2.0, 400)
-ys = np.linspace(-1.0, 2.0, 400)
-best_value = np.inf
-best_point = None
-for x in xs:
-    y_max = 1.0 - x
-    feasible_ys = ys[ys <= y_max + 1e-9]
-    if feasible_ys.size == 0:
-        continue
-    values = (x - 2.0) ** 2 + (feasible_ys - 1.0) ** 2
-    idx = np.argmin(values)
-    if values[idx] < best_value:
-        best_value = values[idx]
-        best_point = np.array([x, feasible_ys[idx]])
-
-print("Brute-force constrained minimum:", best_point)
-print("Brute-force minimum value:", best_value)
-```
+together with primal feasibility $h_i(x^\star) = 0$ and $g_j(x^\star) \le 0$, dual feasibility $\lambda_j \ge 0$, and complementary slackness $\lambda_j g_j(x^\star) = 0$ for every $j$. These four conditions — stationarity, primal feasibility, dual feasibility, complementary slackness — are the complete first-order certificate: checking them at a candidate point is exactly the arithmetic the worked example just carried out. When $f$ and every $g_j$ are convex, the $h_i$ are affine, and a constraint qualification such as Slater's condition holds, the same four conditions are not merely necessary but sufficient, so any point satisfying them is a global minimizer of the original problem; the multipliers $\lambda_j$ are then dual variables, and complementary slackness is precisely the condition that ties the primal optimum to the dual optimum. In the nonconvex case the four conditions remain necessary at any regular local minimizer but are no longer automatically sufficient, so a point satisfying them must still be checked against second-order conditions or global structure before it can be declared optimal.

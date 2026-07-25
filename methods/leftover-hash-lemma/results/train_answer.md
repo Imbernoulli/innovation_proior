@@ -12,77 +12,12 @@ The importance of the lemma is that it separates the source quality from the ext
 
 There is a precise price for the simplicity of the lemma. The output length is k minus about 2 log(1/epsilon) bits, so if we want the extracted value to be extremely close to uniform, we must give up more bits. This loss is not an artifact of the proof technique for this particular statement; it reflects the conversion from L2 closeness to L1 closeness. The lemma is also not seed-optimal among all possible extractors, since other constructions can achieve smaller seed lengths or somewhat better entropy loss at the cost of more complicated analysis. Its main advantage is the elementary, robust nature of the guarantee: a pairwise collision condition on the hash family is enough to extract almost all of the usable min-entropy.
 
-The code below gives a small, self-contained Python illustration of the lemma. It constructs a 2-universal family of linear hash functions over GF(2), fixes a source with a known min-entropy, computes the exact statistical distance between (H, H(X)) and (H, U_m), and checks that the distance is bounded by epsilon. Because the example is small enough to enumerate explicitly, it can be run as a brute-force verification rather than a heuristic simulation.
+The deliverable of this analysis is not a demonstration but the theorem itself, stated with every hypothesis and constant pinned down so it can be invoked as a black box rather than re-derived on each occasion.
 
-```python
-import itertools
-import math
-
-def int_to_bits(x, n):
-    return [(x >> i) & 1 for i in range(n)]
-
-def bits_to_int(bits):
-    return sum(b << i for i, b in enumerate(bits))
-
-def mat_vec_mul_mod2(A, v):
-    m = len(A)
-    return [sum(A[i][j] * v[j] for j in range(len(v))) % 2 for i in range(m)]
-
-def all_matrices(n, m):
-    """Enumerate all m-by-n binary matrices (all linear maps GF(2)^n -> GF(2)^m)."""
-    for cols_tuple in itertools.product(range(1 << m), repeat=n):
-        A = [[0] * n for _ in range(m)]
-        for j, col in enumerate(cols_tuple):
-            for i in range(m):
-                A[i][j] = (col >> i) & 1
-        yield A
-
-def hash_family(n, m):
-    """Returns a list of (seed_index, matrix). This family is 2-universal."""
-    return list(enumerate(all_matrices(n, m)))
-
-def source_distribution(n, k):
-    """Uniform over 2^k distinct n-bit strings; min-entropy exactly k."""
-    support = list(range(1 << k))
-    p = 1.0 / len(support)
-    dist = {}
-    for x in support:
-        dist[x] = p
-    return dist
-
-def statistical_distance(P, Q):
-    keys = set(P) | set(Q)
-    return 0.5 * sum(abs(P.get(k, 0.0) - Q.get(k, 0.0)) for k in keys)
-
-def verify_leftover_hash_lemma(n, k, m):
-    assert m <= k, "Output length cannot exceed min-entropy in this toy example."
-    epsilon = 2 ** ((m - k) / 2.0)  # from m = k - 2 log(1/epsilon)
-    family = hash_family(n, m)
-    D = len(family)
-    src = source_distribution(n, k)
-
-    # Joint distribution of (H, H(X))
-    joint_real = {}
-    for seed, A in family:
-        for x, prob in src.items():
-            hx = bits_to_int(mat_vec_mul_mod2(A, int_to_bits(x, n)))
-            joint_real[(seed, hx)] = joint_real.get((seed, hx), 0.0) + prob / D
-
-    # Joint distribution of (H, U_m)
-    joint_ideal = {}
-    for seed, _ in family:
-        for y in range(1 << m):
-            joint_ideal[(seed, y)] = 1.0 / (D * (1 << m))
-
-    delta = statistical_distance(joint_real, joint_ideal)
-    return delta, epsilon
-
-if __name__ == "__main__":
-    for n, k, m in [(6, 4, 3), (6, 4, 2), (5, 3, 1)]:
-        delta, eps = verify_leftover_hash_lemma(n, k, m)
-        print(f"n={n}, k={k}, m={m}: delta={delta:.6f}, epsilon={eps:.6f}, ok={delta <= eps}")
-```
-
-In the script, the family of all linear maps is 2-universal because distinct nonzero inputs are mapped to independent uniform values when the matrix is chosen uniformly. The source is uniform over 2^k values, which gives it min-entropy exactly k. The test then compares the real joint distribution of seed and hashed output against the ideal distribution in which the output is uniform independent of the seed. For each chosen parameter triple, the measured statistical distance satisfies the bound predicted by the Leftover Hash Lemma. This direct enumeration confirms that the pairwise collision control guaranteed by 2-universality propagates into a global statistical-distance guarantee, exactly as the lemma predicts.
-
-To summarize, the Leftover Hash Lemma is the statement that universal hashing converts min-entropy into near-uniform randomness in a strong sense: the extractor Ext(x, h) = h(x) produces an output that remains close to uniform even when the hash function h is publicly known. It requires only a lower bound on the source min-entropy and a 2-universal hash family, and it pays an entropy loss of about 2 log(1/epsilon) bits to achieve statistical distance epsilon. The result is a cornerstone of randomness extraction and privacy amplification, and the small brute-force program above shows concretely how the bound behaves for fully enumerated tiny instances.
+Let $X$ be a random variable on a finite domain with min-entropy at least $k$, meaning $\Pr[X = x] \le 2^{-k}$ for every $x$ in the domain. Let $\mathcal{H}$ be a $2$-universal family of functions from that domain into $\{0,1\}^m$: for a uniformly chosen $H \sim \mathcal{H}$ and any distinct $x \ne x'$,
+$$\Pr_H\big[H(x) = H(x')\big] \le 2^{-m}.$$
+Let $U_m$ be uniform on $\{0,1\}^m$ and independent of $H$, fix $0 < \epsilon \le 1$, and let all logarithms be base $2$. Then, provided
+$$m \le k - 2\log(1/\epsilon),$$
+the extractor $\mathrm{Ext}(x, h) = h(x)$ satisfies
+$$\Delta\big((H, H(X)),\ (H, U_m)\big) \le \epsilon,$$
+where $\Delta$ denotes statistical distance. This is the Leftover Hash Lemma in the exact form it gets used: a certified min-entropy floor $k$ on the source, any $2$-universal family evaluated at an output length that respects the loss $2\log(1/\epsilon)$, and a seed $H$ that may be published in full without disturbing the closeness to uniform. Random linear maps over $\mathrm{GF}(2)$ instantiate $\mathcal{H}$ concretely and evaluate in linear time, which is what turns the guarantee into an operational protocol: fix $k$ from the source's known worst-case guessing probability, draw and publish $H$ from such a family, and output $H(X)$ as a key that is within $\epsilon$ of uniform to any party who saw the public seed.
