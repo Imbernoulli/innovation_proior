@@ -10,8 +10,7 @@ exists and `NO` otherwise.
 
 This is the decision form of the equal-sum (balanced) partition problem. It is the building block
 behind load-balancing two machines, fair two-way splits, and many "can these items be divided
-evenly" subproblems, so the exact YES/NO boundary — including the parity corner and the cases where a
-naive balancing heuristic disagrees with the truth — has to be right.
+evenly" subproblems, so the exact YES/NO boundary has to be right.
 
 ## Input / output contract
 
@@ -33,28 +32,12 @@ YES
 
 (The split `{10, 15}` and `{4, 9, 12}` both sum to `25`.)
 
-## Background
-
-Because the two subsets must have equal sums, the total `S = sum(a)` must be even and each subset
-must sum to exactly `S / 2`. So the question reduces to: **is there a sub-multiset whose elements sum
-to `S / 2`?** (Its complement then automatically sums to `S / 2` as well.) Two families of approach
-are on the table before committing to one:
-
-- **Greedy balancing.** Sort the values descending and drop each one into whichever of the two bins
-  is currently lighter (a longest-processing-time-style rule), then check whether the two bins ended
-  up equal. This is `O(n log n)` and a few lines; the open question is whether this local "keep the
-  bins balanced" rule actually certifies the existence of an exact equal split.
-- **Boolean subset-sum DP.** Maintain, over the target range `[0, S/2]`, which sums are reachable by
-  some sub-multiset, adding the elements one at a time. This is `O(n * S)`; the open question is the
-  exact transition and the per-element update order (so each value is used at most once).
-
 ## Evaluation settings
 
 Judged on hidden tests covering: odd-total inputs (immediate `NO`), single elements (`NO`), two equal
 or unequal values, all-equal multisets with even and odd counts, value extremes (mixes of `1` and
-`1000`), planted-YES instances where an exact equal split exists, instances where the greedy
-balancing rule disagrees with the true answer, and the size extreme `n = 200` with values up to
-`1000` (so the half-target can reach `100000`).
+`1000`), planted-YES instances where an exact equal split exists, and the size extreme `n = 200` with
+values up to `1000` (so the half-target can reach `100000`).
 
 ## Code framework
 
