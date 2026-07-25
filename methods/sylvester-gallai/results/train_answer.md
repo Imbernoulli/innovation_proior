@@ -1,4 +1,4 @@
-I will present the Sylvester–Gallai theorem and its standard extremal proof, then give a short Python script that lets you sample non-collinear point sets and verify that the construction used in the proof actually produces an ordinary line.
+I will present the Sylvester–Gallai theorem and its standard extremal proof, then pin down exactly what the proof hands you: not just an existence claim, but a specific, explicitly named ordinary line.
 
 The Sylvester–Gallai theorem says that whenever you take a finite set of points in the ordinary Euclidean plane, and the points are not all on one common line, then there must be at least one line that passes through exactly two of the points. Such a line is called an ordinary line. The theorem is purely geometric, but the standard proof is a lovely example of an extremal argument: instead of trying to count incidences globally, you locate a specific point-to-line pair that minimizes a certain distance, and then you show that the line in that pair cannot contain a third point.
 
@@ -18,82 +18,10 @@ The proof is usually attributed to the combined work of James Joseph Sylvester, 
 
 The intuition behind the proof is that a rich line, one with three or more points, contains the very tool needed to defeat its own richness. The extra point lets you swing a new connecting line and find a point-to-line distance that is strictly smaller than the supposed minimum. Richness is self-undermining in this sense: if a line is crowded with points, one of those points can be used to build a configuration that is even more extreme. The key geometric facts are the order of points along a line and the behavior of perpendicular distances in right triangles.
 
-To make this concrete, here is a small Python script that samples random non-collinear point sets and explicitly runs the extremal construction. For each set it finds the minimizing pair (P, ℓ), checks whether ℓ is ordinary, and verifies that if ℓ were rich it could produce a closer pair. The script is numerical and uses floating-point arithmetic, so it is an illustration rather than a formal proof, but it confirms the theorem on random examples.
+Written as the result this argument actually establishes: for every finite set $S \subset \mathbb{R}^2$ whose points do not all lie on one line, there exists a line $\ell$ with $|\ell \cap S| = 2$ — an ordinary line. The proof does not just assert that such a line exists; it names one. Let
+$$
+h \;=\; \min\Big\{\, d(P,\ell) \;:\; P \in S,\ \ell \text{ a connecting line of } S,\ P \notin \ell \,\Big\},
+$$
+a minimum attained because $S$ is finite and non-collinear, so the set of admissible pairs $(P,\ell)$ is finite and nonempty. For any pair $(P,\ell)$ achieving $h$, the foot-of-perpendicular and similar-triangle argument above shows that a third point on $\ell$ would produce a pair $(B,m)$ with $d(B,m) < h$, contradicting minimality; so $\ell$ itself has exactly two points of $S$.
 
-```python
-import random
-import math
-from itertools import combinations
-
-def distance_point_line(P, A, B):
-    """Perpendicular distance from point P to line through A and B."""
-    px, py = P
-    ax, ay = A
-    bx, by = B
-    num = abs((by - ay) * px - (bx - ax) * py + bx * ay - by * ax)
-    den = math.hypot(bx - ax, by - ay)
-    return num / den
-
-def foot_of_perpendicular(P, A, B):
-    """Foot of perpendicular from P onto line AB."""
-    px, py = P
-    ax, ay = A
-    bx, by = B
-    abx, aby = bx - ax, by - ay
-    t = ((px - ax) * abx + (py - ay) * aby) / (abx * abx + aby * aby)
-    return (ax + t * abx, ay + t * aby)
-
-def is_collinear(points):
-    if len(points) <= 2:
-        return True
-    A, B = points[0], points[1]
-    for C in points[2:]:
-        if abs((B[0] - A[0]) * (C[1] - A[1]) - (B[1] - A[1]) * (C[0] - A[0])) > 1e-9:
-            return False
-    return True
-
-def find_ordinary_line(points):
-    """Find an ordinary line via the Sylvester-Gallai extremal construction."""
-    n = len(points)
-    best = None
-    best_pair = None
-    for A, B in combinations(range(n), 2):
-        for P_idx in range(n):
-            if P_idx in (A, B):
-                continue
-            d = distance_point_line(points[P_idx], points[A], points[B])
-            if best is None or d < best - 1e-9:
-                best = d
-                best_pair = (P_idx, A, B)
-    P_idx, A, B = best_pair
-    return best, P_idx, A, B
-
-def count_points_on_line(points, A, B):
-    count = 0
-    ax, ay = A
-    bx, by = B
-    for (px, py) in points:
-        if abs((bx - ax) * (py - ay) - (by - ay) * (px - ax)) < 1e-9:
-            count += 1
-    return count
-
-def demo_one():
-    # Generate a random non-collinear point set.
-    while True:
-        pts = [(random.uniform(-10, 10), random.uniform(-10, 10)) for _ in range(6)]
-        if not is_collinear(pts):
-            return pts
-
-def run_trials(num_trials=100):
-    for trial in range(num_trials):
-        pts = demo_one()
-        d_min, P_idx, A_idx, B_idx = find_ordinary_line(pts)
-        line_points = count_points_on_line(pts, pts[A_idx], pts[B_idx])
-        assert line_points == 2, f"Trial {trial}: expected ordinary line, got {line_points} points"
-    print(f"All {num_trials} random trials produced an ordinary line via the extremal pair.")
-
-if __name__ == "__main__":
-    run_trials(100)
-```
-
-In summary, the Sylvester–Gallai theorem is a foundational result in incidence geometry: every finite non-collinear point set in the Euclidean plane has an ordinary line. The standard proof chooses a point-line pair minimizing perpendicular distance and uses similar triangles to show that the minimizing line must contain exactly two points. The theorem is usually called the Sylvester–Gallai theorem, and the script above illustrates the extremal construction on random examples.
+In summary, the Sylvester–Gallai theorem — every finite non-collinear point set in the Euclidean plane admits an ordinary line — is proved by exhibiting this minimal-distance pair: the connecting line sitting closest, in perpendicular distance, to some point of $S$ lying off it can carry at most two points of the set, since a third would let me swing a nearer connecting line through the construction above and beat the minimum. That pair $(P,\ell)$ is not just a device inside the proof but the theorem's own certificate — the concrete ordinary line the statement demands.
