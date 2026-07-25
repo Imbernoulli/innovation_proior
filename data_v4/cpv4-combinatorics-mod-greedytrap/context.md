@@ -12,9 +12,7 @@ candidate A. Formally, if we read the order left to right and let `lead = (#A re
 
 For each of `q` independent scenarios you are given `a`, `b`, `m` and must output the number of safe
 orders **modulo a prime `p`**. The interesting cases are `m` small relative to `b`, where the
-constraint genuinely bites: most interleavings let B surge ahead early and are unsafe, and a tempting
-"place each B-ballot in its earliest legal slot and multiply the free slots" greedy gets the count
-wrong.
+constraint genuinely bites: most interleavings let B surge ahead early and are unsafe.
 
 ## Input / output contract
 
@@ -32,27 +30,19 @@ qualify (this is the Catalan-style ballot count).
 ## Background
 
 The reveal order is a `+1 / -1` lattice path: an A-ballot is a `+1` step, a B-ballot is a `-1` step,
-and "B never leads by more than `m`" is exactly "the path never drops below height `-m`". Two families
-of approach are on the table before committing:
-
-- **Local-multiply greedy.** Insert the B-ballots one at a time, each into the earliest position the
-  margin still allows, and multiply the number of legal slots available to each. It is `O(b)` per
-  query and feels like the staircase product that solves the *one-sided threshold* matching count. The
-  open question is whether the per-B slot counts are really independent, or whether an early placement
-  silently removes a slot a later B was counting on.
-- **Reflection (the Andre / cycle-lemma identity).** Count *all* `C(a + b, a)` interleavings and
-  subtract the unsafe ones via a single reflection across the forbidden barrier, which collapses the
-  unsafe count to one binomial coefficient. This is `O(1)` per query after an `O(a + b)` precompute of
-  factorials modulo `p`. The open question is the exact reflected index and the feasibility guard.
+and "B never leads by more than `m`" is exactly "the path never drops below height `-m`". Counting
+lattice paths confined by a barrier is a classical combinatorics setting, and there is more than one
+natural way to approach it; whichever approach is used, a per-scenario answer is needed, so with up to
+`q = 2*10^5` scenarios and `a + b` up to `2*10^6`, the per-query cost matters.
 
 ## Evaluation settings
 
 Judged on hidden tests covering: `m` large enough to make the constraint vacuous (answer is the full
 `C(a + b, a)`), tight `m = 0` ballot counts, infeasible scenarios with `a - b < -m` (answer `0`), the
-empty scenario `a = b = 0` (one empty order, answer `1`), `b = 0` (one order, answer `1`), the
-reflected index landing exactly on a boundary `b - m - 1 in {-1, 0, a+b, a+b+1}`, and large batches
-`q = 2*10^5` with `a + b` up to `2*10^6` so that the factorial table and 64-bit modular products are
-both exercised.
+empty scenario `a = b = 0` (one empty order, answer `1`), `b = 0` (one order, answer `1`), assorted
+boundary combinations of `a`, `b`, `m` near the feasibility threshold, and large batches `q = 2*10^5`
+with `a + b` up to `2*10^6` so that the factorial table and 64-bit modular products are both
+exercised.
 
 ## Code framework
 
@@ -91,8 +81,7 @@ int main() {
         maxn = max(maxn, qs[i].a + qs[i].b);
     }
 
-    // TODO: precompute factorials mod p up to maxn, then answer each query by counting
-    // all interleavings and subtracting the unsafe ones (reflection), guarding feasibility.
+    // TODO: answer each query with the count of safe orders modulo p.
 
     for (int i = 0; i < q; i++) {
         ll answer = 0;

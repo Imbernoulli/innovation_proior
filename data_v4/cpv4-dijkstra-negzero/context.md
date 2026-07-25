@@ -32,31 +32,6 @@ Example: see the worked sample in the reasoning. A reachable station whose best 
 out at margin `-2` prints `-2`; a station with **no** route prints `UNREACHABLE` — these are different
 outcomes and must not collapse to the same value.
 
-## Background
-
-The objective is *max over paths of (min edge weight)*. Two facts shape the approach:
-
-- **Simple paths suffice.** Appending a cycle to a route only adds links, and adding links can only
-  lower (never raise) the running minimum. So an optimal route can always be taken simple, and the
-  answer is well defined even though the graph may contain cycles of negative margin.
-- **The relaxation is monotone in the metric, regardless of edge sign.** If the best bottleneck to
-  `u` is `best[u]`, then routing one more link `u -> v` of margin `w` yields the candidate
-  `min(best[u], w)`. Because `min` is monotone and the value of a route never *increases* as it is
-  extended, the greedy "finalize the currently-widest unfinished node" argument of Dijkstra carries
-  over verbatim from `+` to `min` and from `min`-of-distances to `max`-of-bottlenecks. The sign of
-  `w` is irrelevant to this argument — what matters is monotonicity, not non-negativity. That is the
-  crucial difference from ordinary shortest paths, where negative edges break Dijkstra.
-
-Two families of approach are on the table before committing:
-
-- **Max-min Dijkstra (max-heap).** Maintain `best[v]` = widest known bottleneck to `v`, start the
-  source at `+infinity`, and repeatedly extract the unfinished node of largest `best`, relaxing its
-  out-links with `min`. `O((n + m) log n)`. The open questions are the *base case* (what is the
-  source's bottleneck, and what value marks "not reached yet") and the *output mapping* of the three
-  outcomes — these are precisely where negative/zero margins bite.
-- **Iterated relaxation (Bellman-Ford style).** Relax all edges `n - 1` times with the `min`/`max`
-  rule. `O(n m)`, simpler to argue but far too slow at `m = 5*10^5`.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: all-positive margins; graphs mixing negatives, zeros, and
@@ -87,10 +62,10 @@ int main() {
         adj[u].push_back({v, w});
     }
 
-    // TODO: max-min Dijkstra. best[v] = max over routes s->v of the minimum margin.
-    //       Decide the source base case and the sentinel for "not reached", then
-    //       print INF for the source, UNREACHABLE for nodes with no route, the
-    //       integer bottleneck otherwise.
+    // TODO: compute, for every v, the maximum over all routes s->v of the minimum
+    //       margin along the route. Decide the source base case and the sentinel
+    //       for "not reached", then print INF for the source, UNREACHABLE for
+    //       nodes with no route, the integer bottleneck otherwise.
 
     return 0;
 }
