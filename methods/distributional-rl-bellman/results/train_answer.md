@@ -11,62 +11,22 @@ To make this learnable, the return law at each (x,a) is represented as a categor
 ```python
 import numpy as np
 
-
-def project_distribution(rewards, terminals, next_probs, gamma,
-                         v_min, v_max, n_atoms):
-    """
-    Project the distributional Bellman target onto a fixed atom grid.
-
-    Args:
-        rewards: array of shape (batch,) containing sampled rewards.
-        terminals: array of shape (batch,) with 1.0 for terminal states, else 0.0.
-        next_probs: array of shape (batch, n_atoms) with next-action probabilities.
-        gamma: discount factor.
-        v_min, v_max: support limits.
-        n_atoms: number of categorical atoms.
-
-    Returns:
-        target_probs: array of shape (batch, n_atoms).
-    """
+def project_distribution(rewards, terminals, next_probs, gamma, v_min, v_max, n_atoms):
     z = np.linspace(v_min, v_max, n_atoms)
     dz = (v_max - v_min) / (n_atoms - 1)
-    batch_size = len(rewards)
-    target_probs = np.zeros((batch_size, n_atoms))
+    out = np.zeros((len(rewards), n_atoms))
 
-    for b in range(batch_size):
-        r = rewards[b]
-        g = gamma * (1.0 - float(terminals[b]))
-        for j in range(n_atoms):
-            # Transform atom and clip to support.
+    for b, (r, terminal) in enumerate(zip(rewards, terminals)):
+        g = gamma * (1.0 - float(terminal))
+        for j, prob in enumerate(next_probs[b]):
             tz = min(v_max, max(v_min, r + g * z[j]))
             bj = (tz - v_min) / dz
-            lo = int(np.floor(bj))
-            hi = int(np.ceil(bj))
-            prob = next_probs[b, j]
+            lo, hi = int(np.floor(bj)), int(np.ceil(bj))
             if lo == hi:
-                target_probs[b, lo] += prob
+                out[b, lo] += prob
             else:
-                target_probs[b, lo] += prob * (hi - bj)
-                target_probs[b, hi] += prob * (bj - lo)
+                out[b, lo] += prob * (hi - bj)
+                out[b, hi] += prob * (bj - lo)
 
-    return target_probs
-
-
-def categorical_dqn_loss(logits, target_probs):
-    """
-    Cross-entropy loss between predicted logits and a projected target distribution.
-
-    Args:
-        logits: array of shape (batch, n_atoms) raw network outputs per action.
-        target_probs: array of shape (batch, n_atoms) from project_distribution.
-
-    Returns:
-        Scalar loss.
-    """
-    # Stable softmax.
-    logits_max = np.max(logits, axis=-1, keepdims=True)
-    exps = np.exp(logits - logits_max)
-    probs = exps / np.sum(exps, axis=-1, keepdims=True)
-    # KL(target || pred) up to a constant; minimize cross-entropy.
-    return -np.sum(target_probs * np.log(probs + 1e-8)) / logits.shape[0]
+    return out
 ```
