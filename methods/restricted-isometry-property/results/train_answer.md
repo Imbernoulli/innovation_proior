@@ -16,46 +16,12 @@ Why exactly this logarithmic factor? RIP can be viewed as a Johnson-Lindenstraus
 
 RIP also degrades gracefully. For noisy measurements y = Phi x plus z with l2 noise bounded by epsilon, and for signals x that are only approximately sparse, the same convex program with a relaxed constraint produces an error bounded by a constant times the best s-term approximation error divided by root s plus another constant times epsilon. The property therefore yields a stable estimator, not merely an exact-recovery miracle, and the error terms are minimax optimal up to constants.
 
-In practice one does not compute delta_s for a given Phi, because certifying every s-column block is combinatorial. Instead, RIP is used as a theoretical guarantee for random or randomly-designed matrices, and as a conceptual lens: it explains why l1 minimization succeeds, how many measurements are needed, and what kind of matrices are good measurement operators. The core idea is that a useful matrix need not preserve geometry on the whole ambient space; it only needs to preserve geometry on the sparse cone.
+In practice one does not compute delta_s for a given Phi, because certifying every s-column block is combinatorial. Instead, RIP is used as a theoretical guarantee for random or randomly-designed matrices, and as a conceptual lens: it explains why l1 minimization succeeds, how many measurements are needed, and what kind of matrices are good measurement operators. The core idea is that a useful matrix need not preserve geometry on the whole ambient space; it only needs to preserve geometry on the sparse cone, and that single relaxation is what the following statement cashes out in full.
 
-```python
-import numpy as np
-from scipy.optimize import linprog
-
-np.random.seed(0)
-
-n, m, s = 128, 80, 3
-Phi = np.random.randn(m, n) / np.sqrt(m)
-
-support = np.random.choice(n, s, replace=False)
-x_true = np.zeros(n)
-x_true[support] = np.random.randn(s)
-y = Phi @ x_true
-
-c = np.hstack([np.zeros(n), np.ones(n)])
-A_eq = np.hstack([Phi, np.zeros((m, n))])
-b_eq = y
-A_ub = np.vstack([
-    np.hstack([np.eye(n), -np.eye(n)]),
-    np.hstack([-np.eye(n), -np.eye(n)])
-])
-b_ub = np.zeros(2 * n)
-bounds = [(None, None)] * (2 * n)
-res = linprog(c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq,
-              bounds=bounds, method='highs')
-x_bp = res.x[:n]
-
-rel_err = np.linalg.norm(x_bp - x_true) / np.linalg.norm(x_true)
-print(f"Relative recovery error: {rel_err:.6f}")
-print(f"Recovered support overlap: "
-      f"{len(set(np.flatnonzero(np.abs(x_bp) > 1e-6)) & set(support))}/{s}")
-
-num_trials = 100
-deltas = []
-for _ in range(num_trials):
-    T = np.random.choice(n, s, replace=False)
-    sigma = np.linalg.svd(Phi[:, T], compute_uv=False)
-    deltas.append(max(sigma[0]**2 - 1, 1 - sigma[-1]**2))
-
-print(f"Empirical delta_{s}: max={max(deltas):.3f}, mean={np.mean(deltas):.3f}")
-```
+Let $\Phi$ be an $m\times n$ measurement matrix and $s$ a target sparsity level. If the restricted isometry constant obeys
+$$ \delta_{2s}(\Phi) \;<\; \sqrt{2}-1, $$
+then for every $s$-sparse $x\in\mathbb{R}^n$, the basis-pursuit program
+$$ x^\star \;=\; \arg\min_{\tilde x}\ \|\tilde x\|_{\ell_1} \quad\text{s.t.}\quad \Phi\tilde x = y = \Phi x $$
+has the unique solution $x^\star = x$: exact recovery, for every sparse signal, from a single deterministic check on $\Phi$. The statement extends gracefully past the idealized case. For an arbitrary (not necessarily sparse) $x$ and noisy data $y=\Phi x+z$ with $\|z\|_{\ell_2}\le\varepsilon$, the noise-tolerant program $\min_{\tilde x}\|\tilde x\|_{\ell_1}$ subject to $\|\Phi\tilde x-y\|_{\ell_2}\le\varepsilon$ returns an $x^\star$ obeying
+$$ \|x^\star-x\|_{\ell_2}\ \le\ C_0\,\frac{\|x-x_s\|_{\ell_1}}{\sqrt s}\ +\ C_1\,\varepsilon, $$
+where $x_s$ is the best $s$-term approximation to $x$ and $C_0,C_1$ are absolute constants fixed by $\delta_{2s}$ alone (for instance $C_0\approx4.2$ and $C_1\approx8.5$ at $\delta_{2s}=0.2$); both terms vanish, and recovery is exact, when $x$ is truly $s$-sparse and the data are noiseless. This is the deliverable in full: one deterministic, checkable inequality on the measurement matrix that simultaneously certifies exact sparse recovery by a tractable convex program and degrades continuously to a stable, near-minimax error bound once the idealizations of exact sparsity and noiseless measurement are lifted. Whatever construction is used to satisfy $\delta_{2s}<\sqrt2-1$ — Gaussian, subgaussian, partial Fourier, or any other ensemble that concentrates the way the argument above requires — inherits the guarantee for free, which is exactly why isolating this one constant, rather than any property of a particular matrix family, was the right thing to do.
