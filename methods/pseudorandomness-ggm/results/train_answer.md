@@ -12,32 +12,10 @@ Security is again proved by hybrids, this time over the levels of the tree. In t
 
 The same hybrid idea also shows that a pseudorandom function family cannot be polynomially inferred. An inferrer adaptively queries the function and then, at a fresh point, tries to recognize the real function value among random alternatives. If some test distinguished the family from a random function, one would choose a random query at which to turn the test into an exam, feed the test either the real value or a random value, and use its final output to decide. The telescoping advantage again gives a non-negligible inference edge, which is impossible for a random function. So non-inferability, indistinguishability from a random function, and failure of every efficient statistical test are all equivalent for function families.
 
-The concrete code below is not a provably secure instantiation, because a true hard-core predicate would need a carefully chosen one-way permutation, but it gives a runnable simulation of the same architecture. It uses SHA-256 as a heuristic length-doubling generator and builds the GGM tree. It shows that many evaluations look balanced and that any single leaf can be computed on demand without expanding the whole tree.
+The construction bottles all of this into a single object, and that object — not a simulation of it — is the deliverable. Fix a length-doubling generator $G:\{0,1\}^k\to\{0,1\}^{2k}$ built the Blum–Micali–Yao way from a one-way permutation $f$ and its hard-core predicate $B$: $G(x)=f(x)\cdot B(x)$, iterated by walking the orbit $s_0=x,\ s_i=f(s_{i-1})$ and reading off $b_i=B(s_{i-1})$, so that any polynomial number of pseudorandom bits comes out the far end. Split $G$'s output into its left and right $k$-bit halves $G_0,G_1$. Put the key $K$ at the root of a binary tree of depth $k$; give the node labeled $v$ two children, labeled $G_0(v)$ and $G_1(v)$; for an input $x=x_1x_2\cdots x_k$ define
 
-```python
-import hashlib, secrets, statistics
+$$F_K(x) \;=\; G_{x_k}\big(G_{x_{k-1}}(\cdots G_{x_1}(K)\cdots)\big),$$
 
-def prg_double(seed: bytes, k: int) -> bytes:
-    """Length-doubling generator: k bytes -> 2k bytes using SHA-256."""
-    left = hashlib.sha256(seed + b'\x00').digest()[:k]
-    right = hashlib.sha256(seed + b'\x01').digest()[:k]
-    return left + right
+the label of the leaf reached by walking $x$'s bits down from the root. This family $\{F_K\}_{K\in\{0,1\}^k}$ is the GGM pseudorandom function: choosing a member costs $k$ random bits, evaluating it at any single input costs exactly $k$ applications of $G$, and — by the hybrid over tree levels, instantiated lazily so that a bounded query set only ever materializes polynomially many nodes — it is indistinguishable from a uniformly random function $R:\{0,1\}^k\to\{0,1\}^k$ under adaptive oracle access: for every efficient $A$ making at most $P(k)$ queries, $\big|\Pr[A^{F_K}=1]-\Pr[A^{R}=1]\big|\le\mathrm{negl}(k)$. The same hybrid, lifted to a chosen-exam experiment, shows the equivalent and sharper fact that $\{F_K\}$ cannot be polynomially inferred: no efficient adversary that adaptively queries $F_K$ and then names a fresh point can recognize the true value there among random alternatives with non-negligible advantage. Non-inferability, indistinguishability from a random function, and passing every efficient statistical test for functions coincide exactly — Yao's next-bit equivalence carried up one level, from strings to functions.
 
-def ggm_prf(key: bytes, x: bytes, k: int) -> bytes:
-    """GGM pseudorandom function: key and x are k-byte strings."""
-    label = key[:k]
-    for byte in x:
-        for shift in range(7, -1, -1):
-            out = prg_double(label, k)
-            label = out[:k] if ((byte >> shift) & 1) == 0 else out[k:]
-    return label
-
-k = 16
-key = secrets.token_bytes(k)
-samples = 200
-outputs = [ggm_prf(key, secrets.token_bytes(k), k) for _ in range(samples)]
-all_bits = ''.join(format(int.from_bytes(o, 'big'), '0128b') for o in outputs)
-print('samples:', samples)
-print('mean bit:', statistics.mean(map(int, all_bits)))
-print('first output hex:', outputs[0].hex())
-```
+The chain therefore closes end to end. A one-way permutation with a hard-core bit yields a pseudorandom generator; reading that generator's length-doubling as branching rather than as extra bits turns it into a pseudorandom function family exponentially large in its domain, indexed by one short key, and evaluable on demand in $k$ generator calls. Under nothing more than the existence of a one-way function, the comfortable fiction every cryptographic proof reaches for — "let $f$ be a function chosen uniformly at random from all maps $\{0,1\}^k\to\{0,1\}^k$" — becomes an actual, efficiently computable object that no bounded adversary can tell from the real thing.
