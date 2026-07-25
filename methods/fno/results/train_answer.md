@@ -13,25 +13,26 @@ import torch.nn.functional as F
 
 
 class SpectralConv2d(nn.Module):
-    """Fourier layer: rfft -> keep low modes -> complex channel-mix -> irfft."""
+    """Fourier layer: rfft -> keep low modes -> per-mode complex matmul by R -> irfft."""
     def __init__(self, in_channels, out_channels, modes1, modes2):
         super().__init__()
         self.in_channels = in_channels
         self.out_channels = out_channels
-        self.modes1 = modes1
-        self.modes2 = modes2
+        self.modes1 = modes1            # retained modes on axis 1 (both corners)
+        self.modes2 = modes2            # retained modes on axis 2 (rfft half)
         self.scale = 1 / (in_channels * out_channels)
-        self.weights1 = nn.Parameter(
+        self.weights1 = nn.Parameter(   # low-positive corner of axis 1
             self.scale * torch.rand(in_channels, out_channels, modes1, modes2, dtype=torch.cfloat))
-        self.weights2 = nn.Parameter(
+        self.weights2 = nn.Parameter(   # high (negative) corner of axis 1
             self.scale * torch.rand(in_channels, out_channels, modes1, modes2, dtype=torch.cfloat))
 
     def compl_mul2d(self, inp, weights):
+        # (batch,in,x,y),(in,out,x,y) -> (batch,out,x,y)
         return torch.einsum("bixy,ioxy->boxy", inp, weights)
 
     def forward(self, x):
         b = x.shape[0]
-        x_ft = torch.fft.rfft2(x)
+        x_ft = torch.fft.rfft2(x)                          # F(v): (b, c, s1, s2//2+1)
         out_ft = torch.zeros(b, self.out_channels, x.size(-2), x.size(-1) // 2 + 1,
                              device=x.device, dtype=torch.cfloat)
         out_ft[:, :, :self.modes1, :self.modes2] = self.compl_mul2d(
@@ -47,17 +48,17 @@ class FNO2d(nn.Module):
         self.modes1 = modes1
         self.modes2 = modes2
         self.width = width
-        self.padding = padding
-        self.fc0 = nn.Linear(in_channels + 2, width)
+        self.padding = padding                 # pad for non-periodic domains
+        self.fc0 = nn.Linear(in_channels + 2, width)  # lift P: values plus (x, y)
         self.conv0 = SpectralConv2d(width, width, modes1, modes2)
         self.conv1 = SpectralConv2d(width, width, modes1, modes2)
         self.conv2 = SpectralConv2d(width, width, modes1, modes2)
         self.conv3 = SpectralConv2d(width, width, modes1, modes2)
-        self.w0 = nn.Conv2d(width, width, 1)
+        self.w0 = nn.Conv2d(width, width, 1)   # pointwise-in-space linear W
         self.w1 = nn.Conv2d(width, width, 1)
         self.w2 = nn.Conv2d(width, width, 1)
         self.w3 = nn.Conv2d(width, width, 1)
-        self.fc1 = nn.Linear(width, 128)
+        self.fc1 = nn.Linear(width, 128)       # projection Q
         self.fc2 = nn.Linear(128, out_channels)
 
     def forward(self, x):
@@ -68,9 +69,9 @@ class FNO2d(nn.Module):
             x = F.pad(x, [0, self.padding, 0, self.padding])
         for conv, w in [(self.conv0, self.w0), (self.conv1, self.w1),
                         (self.conv2, self.w2), (self.conv3, self.w3)]:
-            x = conv(x) + w(x)
+            x = conv(x) + w(x)                 # global Fourier branch + local pointwise branch
             if conv is not self.conv3:
-                x = F.gelu(x)
+                x = F.gelu(x)                  # nonlinearity in physical space
         if self.padding:
             x = x[..., :-self.padding, :-self.padding]
         x = x.permute(0, 2, 3, 1)
