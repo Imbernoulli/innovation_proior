@@ -12,8 +12,7 @@ Choose a subset of bursts whose delivered channels together cover **all** `m` ch
 the total energy spent. If no subset covers every channel, report that the task is impossible.
 
 This is exactly weighted set cover over a small universe. It is the kernel that appears inside
-coverage planning, test-suite minimization, and feature-flag rollout problems, so getting the exact
-optimum — not a near-optimum — right on a small universe is what matters here.
+coverage planning, test-suite minimization, and feature-flag rollout problems.
 
 ## Input / output contract
 
@@ -37,27 +36,11 @@ Example. With `m = 4` and three bursts —
 
 the answer is `8`: fire burst 2 (channels {0,1}, cost 4) and burst 3 (channels {2,3}, cost 4).
 
-## Background
-
-The constraint is that the **union** of the chosen bursts' masks must equal the full channel set,
-and we minimize a sum of costs. Two families of approach are on the table before committing:
-
-- **Greedy by efficiency.** Repeatedly fire the burst with the best ratio of cost to *newly*
-  covered channels, until everything is covered. It is fast and intuitive — the classic set-cover
-  heuristic — and the open question is whether always grabbing the locally most efficient burst is
-  actually optimal.
-- **Bitmask dynamic programming.** Because `m <= 18`, a set of delivered channels is one of only
-  `2^m <= 262144` subsets, which fits in an `int`. Treat each subset as a DP state and relax forward
-  through bursts. This is `O(2^m * k)`; the open questions are the exact transition and the order in
-  which states must be processed.
-
 ## Evaluation settings
 
-Judged on hidden tests covering: instances where the efficiency greedy is strictly suboptimal;
-impossible instances (some channel covered by no burst); `m = 0` and `k = 0` corners; bursts that
-deliver zero channels or overlap heavily; large instances at `m = 18`, `k = 200` with single-channel
-bursts that make almost the entire `2^m` state space reachable; and costs near `10^6` summed over
-many bursts (so totals exceed a 32-bit range).
+Judged on hidden tests covering: impossible instances (some channel covered by no burst); `m = 0`
+and `k = 0` corners; bursts that deliver zero channels or overlap heavily; large instances at
+`m = 18`, `k = 200` with single-channel bursts; and costs near `10^6` summed over many bursts.
 
 ## Code framework
 
