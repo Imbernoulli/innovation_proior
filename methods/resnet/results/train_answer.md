@@ -45,7 +45,7 @@ class BasicBlock(nn.Module):
         out = self.bn2(self.conv2(out))
         if self.downsample is not None:
             identity = self.downsample(x)
-        out += identity
+        out += identity                 # y = F(x) + x
         return self.relu(out)
 
 
@@ -54,11 +54,11 @@ class Bottleneck(nn.Module):
 
     def __init__(self, inplanes, planes, stride=1, downsample=None):
         super().__init__()
-        self.conv1 = conv1x1(inplanes, planes, stride)
+        self.conv1 = conv1x1(inplanes, planes, stride)            # reduce; stride at the block entrance
         self.bn1 = nn.BatchNorm2d(planes)
-        self.conv2 = conv3x3(planes, planes)
+        self.conv2 = conv3x3(planes, planes)                      # spatial at reduced width
         self.bn2 = nn.BatchNorm2d(planes)
-        self.conv3 = conv1x1(planes, planes * self.expansion)
+        self.conv3 = conv1x1(planes, planes * self.expansion)     # restore
         self.bn3 = nn.BatchNorm2d(planes * self.expansion)
         self.relu = nn.ReLU(inplace=True)
         self.downsample = downsample
@@ -71,7 +71,7 @@ class Bottleneck(nn.Module):
         out = self.bn3(self.conv3(out))
         if self.downsample is not None:
             identity = self.downsample(x)
-        out += identity
+        out += identity                 # F(x) + x
         return self.relu(out)
 
 
@@ -112,31 +112,15 @@ class ResNet(nn.Module):
 
     def forward(self, x):
         x = self.maxpool(self.relu(self.bn1(self.conv1(x))))
-        x = self.layer1(x)
-        x = self.layer2(x)
-        x = self.layer3(x)
-        x = self.layer4(x)
+        x = self.layer1(x); x = self.layer2(x); x = self.layer3(x); x = self.layer4(x)
         x = self.avgpool(x)
         x = torch.flatten(x, 1)
         return self.fc(x)
 
 
-def resnet18():
-    return ResNet(BasicBlock, [2, 2, 2, 2])
-
-
-def resnet34():
-    return ResNet(BasicBlock, [3, 4, 6, 3])
-
-
-def resnet50():
-    return ResNet(Bottleneck, [3, 4, 6, 3])
-
-
-def resnet101():
-    return ResNet(Bottleneck, [3, 4, 23, 3])
-
-
-def resnet152():
-    return ResNet(Bottleneck, [3, 8, 36, 3])
+def resnet18():  return ResNet(BasicBlock, [2, 2, 2, 2])
+def resnet34():  return ResNet(BasicBlock, [3, 4, 6, 3])
+def resnet50():  return ResNet(Bottleneck, [3, 4, 6, 3])
+def resnet101(): return ResNet(Bottleneck, [3, 4, 23, 3])
+def resnet152(): return ResNet(Bottleneck, [3, 8, 36, 3])
 ```
