@@ -41,28 +41,18 @@ night and score only 50.
 
 ## Background
 
-The single non-overlap constraint makes this a constrained selection problem. Two families of
-approach are on the table before committing to one:
-
-- **Greedy.** Two natural greedies suggest themselves. *Value-greedy:* repeatedly take the
-  highest-value observation that still fits, blocking everything it overlaps. *Earliest-finishing:*
-  scan observations by finishing time and take each one whose start is at or after the last taken
-  finish — this is the classic rule that maximizes the *number* of selected intervals. Both are
-  `O(n log n)` and a few lines. The open question is whether either is actually optimal once the
-  intervals carry weights.
-- **Interval dynamic programming.** Sort the observations by finishing time; for each one, the only
-  thing the future cares about is which earlier observations are compatible (finish at or before
-  this one starts). Carry, over the sorted prefix, the best total value achievable. This is
-  `O(n log n)` (a binary search per observation). The open question is the exact recurrence and the
-  precise "last compatible observation" lookup, especially under the half-open touching convention.
+The single non-overlap constraint makes this a constrained selection problem, part of the broader
+family of interval-scheduling problems that also includes job admission and resource allocation.
+A range of algorithmic tools — greedy heuristics and dynamic programming among them — have been
+used on variants of this family, with correctness and efficiency depending sensitively on the
+details, including the half-open touching convention.
 
 ## Evaluation settings
 
 Judged on hidden tests covering: the empty instance (`n = 0`), a single observation, observations
 that merely touch at endpoints (must be allowed together), fully nested observations (all mutually
-overlapping, so at most one is chosen), many identical intervals, zero-value observations, instances
-specifically built so that both greedies are suboptimal, and large `n = 2*10^5` with values near
-`10^9` (so the total can reach `~2*10^14` and overflow a 32-bit integer).
+overlapping, so at most one is chosen), many identical intervals, zero-value observations, adversarial
+instances, and large `n = 2*10^5` with values near `10^9`.
 
 ## Code framework
 
