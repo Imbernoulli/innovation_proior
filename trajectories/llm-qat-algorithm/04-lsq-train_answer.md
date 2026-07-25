@@ -33,7 +33,7 @@ def _qrange(num_bits):
 
 
 class _LSQQuant(torch.autograd.Function):
-    """LSQ quantize-dequantize with the step-size gradient derived above."""
+    """LSQ quantize-dequantize with the learned step-size gradient."""
 
     @staticmethod
     def forward(ctx, w, scale, qmin, qmax, g_scale):
@@ -54,7 +54,7 @@ class _LSQQuant(torch.autograd.Function):
         # Gradient w.r.t. w: pass-through inside the clip range.
         in_range = (w_div > qmin) & (w_div < qmax)
         grad_w = torch.where(in_range, grad_out, torch.zeros_like(grad_out))
-        # Gradient w.r.t. s: the LSQ step-size gradient.
+        # Gradient w.r.t. s: the learned step-size gradient.
         below = (w_div <= qmin).float() * float(qmin)
         above = (w_div >= qmax).float() * float(qmax)
         inside = in_range.float() * (torch.round(w_div) - w_div)
