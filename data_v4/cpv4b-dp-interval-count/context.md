@@ -12,12 +12,6 @@ Count how many distinct labels of length `n` the printer can produce, i.e. the n
 length `n` over `k` colors in which **every maximal monochromatic run has length between `A` and `B`
 inclusive**. Because the count is astronomical, report it modulo a given integer `M`.
 
-The subtlety the problem is built around: a label is its final string of colors, *not* the sequence of
-stripes that made it. A run of, say, four identical cells is one stripe, never "two stripes of two of
-the same color." A counting method that lets two adjacent stripes share a color will count that single
-label more than once. Getting the dedup, the run-length window, and the modular reduction all exactly
-right is the whole game.
-
 ## Input / output contract
 
 - Input (stdin): five integers on one line (whitespace-separated):
@@ -33,30 +27,12 @@ stripe forced to length exactly 2, a length-4 label is two stripes of two cells 
 differ: the first stripe has 3 color choices, the second has 2, giving `3 * 2 = 6`. The six labels are
 `0011, 0022, 1100, 1122, 2200, 2211`.
 
-## Background
-
-Two ways of organizing the count are on the table before committing to one:
-
-- **Inclusion–exclusion / direct enumeration.** Enumerate stripe layouts: choose how the row splits
-  into consecutive blocks with each block length in `[A, B]`, then assign colors. This is the natural
-  first instinct, but the color assignment step is exactly where double counting hides: a label whose
-  true run is long can be cut into several shorter same-color blocks, and each such cut is a different
-  *layout* but the *same label*. The open question is how to assign colors so each label is counted
-  once.
-- **Run-ending interval DP.** Process cells left to right and define a quantity per prefix keyed on
-  "a maximal run ends exactly here." The last run is a contiguous interval whose length lives in the
-  window `[A, B]`, and the cell just before it (if any) must hold a *different* color. This is `O(n)`
-  with prefix sums over a sliding window; the open questions are the exact window bounds, the
-  first-run boundary, and where the `(k-1)` versus `k` factor goes.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: tiny `n` (including `n = 0` and `n = 1`); the single-color case
-`k = 1` (a label exists only if the lone run of length `n` fits the window); narrow windows
-(`A = B`, so only one stripe length is legal); wide windows (`A = 1`, `B >= n`, so every string is
-valid and the answer is `k^n mod M`); small moduli including `M = 1` (answer always `0`) and
-composite `M`; large `k` near `10^9` (so `(k-1) * partial` must not overflow 64-bit); and large
-`n = 2*10^6` for time and memory.
+`k = 1`; narrow windows (`A = B`, so only one stripe length is legal); wide windows (`A = 1`,
+`B >= n`, so every string is valid); small moduli including `M = 1` and composite `M`; large `k`
+near `10^9`; and large `n = 2*10^6` for time and memory.
 
 ## Code framework
 
