@@ -10,79 +10,12 @@ The proof proceeds by writing the indicator vectors of S and T as the sum of the
 
 The practical meaning is that a small second eigenvalue gives a reusable certificate of pseudorandomness. Instead of proving uniformity from scratch in each application, one checks the spectral gap once and then invokes the lemma to obtain uniform edge counts for free. This makes explicitly constructed sparse expanders usable as drop-in replacements for random graphs in contexts such as derandomization, sampling, network design, and complexity theory. The lemma is not a claim that expanders share every property of random graphs; it only certifies a specific but broadly useful form of edge-distribution uniformity, and it assumes regularity in its simplest form. Variants for irregular, weighted, or bipartite graphs require normalized Laplacians or adjusted definitions, but the core spectral-to-combinatorial translation remains the same.
 
-```python
-import numpy as np
-from scipy.sparse.linalg import eigsh
+Writing it out with the bookkeeping made precise, since the definition of $e(S,T)$ is where a careless statement goes wrong: $e(S,T)$ counts ordered pairs $(u,v)$ with $u \in S$, $v \in T$, and $uv \in E(G)$, so an edge with both endpoints in $S \cap T$ is counted twice. With that convention fixed, let $G$ be a $d$-regular graph on $n$ vertices with adjacency matrix $A$, and set
 
-def expander_mixing_lemma(adjacency_matrix, subsets_s, subsets_t):
-    """
-    Verify the Expander Mixing Lemma for a d-regular graph.
+$$\lambda = \max\{\,|\mu| : \mu \text{ is an eigenvalue of } A,\ \mu \neq d\,\},$$
 
-    Parameters
-    ----------
-    adjacency_matrix : np.ndarray, shape (n, n)
-        Symmetric 0/1 adjacency matrix of a d-regular graph.
-    subsets_s, subsets_t : list of iterables
-        Lists of vertex subsets (each subset is an iterable of vertex indices).
+the largest absolute value among the non-trivial eigenvalues. Then for every pair of subsets $S, T \subseteq V(G)$,
 
-    Returns
-    -------
-    max_ratio : float
-        Maximum observed value of |e(S,T) - d|S||T|/n| / sqrt(|S||T|).
-    nontrivial_spectral_bound : float
-        Largest absolute value of a non-trivial eigenvalue.
-    """
-    A = np.asarray(adjacency_matrix, dtype=float)
-    n = A.shape[0]
-    degrees = A.sum(axis=1)
-    d = float(degrees[0])
-    if not np.allclose(degrees, d):
-        raise ValueError("Graph must be d-regular.")
+$$\left| e(S,T) - \frac{d\,|S|\,|T|}{n} \right| \;\le\; \lambda\sqrt{|S|\,|T|}.$$
 
-    # Compute eigenvalues and remove the trivial eigenvalue d.
-    # The remaining eigenvalues are the non-trivial ones; lambda is their largest magnitude.
-    k = max(1, min(n - 1, 12))
-    eigenvalues = eigsh(A, k=k, which='LM', return_eigenvectors=False)
-    nontrivial = eigenvalues[~np.isclose(eigenvalues, d, atol=1e-8)]
-    lambda_bound = float(np.max(np.abs(nontrivial))) if len(nontrivial) > 0 else 0.0
-
-    max_ratio = 0.0
-    for S in subsets_s:
-        for T in subsets_t:
-            indicator_s = np.zeros(n)
-            indicator_s[list(S)] = 1.0
-            indicator_t = np.zeros(n)
-            indicator_t[list(T)] = 1.0
-            # Count ordered edges from S to T.
-            e_st = float(indicator_s @ A @ indicator_t)
-            expected = d * len(S) * len(T) / n
-            deviation = abs(e_st - expected)
-            denom = np.sqrt(len(S) * len(T))
-            if denom > 0:
-                ratio = deviation / denom
-                if ratio > max_ratio:
-                    max_ratio = ratio
-
-    return max_ratio, float(lambda_bound)
-
-
-# Example: a 3-regular Ramanujan-like graph on 8 vertices (cube graph).
-if __name__ == "__main__":
-    cube = np.zeros((8, 8), dtype=int)
-    for i in range(8):
-        cube[i, i ^ 1] = 1
-        cube[i, i ^ 2] = 1
-        cube[i, i ^ 4] = 1
-    cube = np.maximum(cube, cube.T)  # symmetrize if needed
-
-    subsets = [
-        {0, 1, 2, 3},
-        {0, 1},
-        {4, 5, 6, 7},
-        {0, 7},
-    ]
-    ratio, lam = expander_mixing_lemma(cube, subsets, subsets)
-    print(f"Max observed |deviation|/sqrt(|S||T|): {ratio:.4f}")
-    print(f"Nontrivial eigenvalue bound lambda:    {lam:.4f}")
-    print(f"Lemma guarantees ratio <= lambda:      {ratio <= lam + 1e-9}")
-```
+That single inequality, with $\lambda$ read off once from the spectrum of $A$, is the result: it replaces an exponential family of combinatorial uniformity checks — one per pair $(S,T)$ — with a single linear-algebra fact about the graph's eigenvalues, and it is exactly this fact that lets an explicit, deterministic construction stand in for a random graph wherever only edge-distribution uniformity is needed.
