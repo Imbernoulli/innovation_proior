@@ -10,16 +10,16 @@ import torch
 class AdamW:
     """Adam with decoupled weight decay.
 
-    The decay is applied as a direct (1 - lr * wd) multiply on the
-    parameters, outside the Adam moment update. The gradient feeding the
-    moments is the raw loss gradient (no wd * param added to it).
+    The decay is a direct (1 - lr*wd) multiply on the parameters, separate from
+    the gradient-based Adam step -- the gradient feeding the moments is the raw
+    loss gradient (no wd*param added to it).
     """
 
     def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8,
                  weight_decay=1e-2, schedule=None):
         self.params = list(params)
         self.lr, self.betas, self.eps, self.wd = lr, betas, eps, weight_decay
-        self.schedule = schedule or (lambda step: 1.0)
+        self.schedule = schedule or (lambda step: 1.0)   # eta_t hook
         self.state = {id(p): dict(step=0,
                                   m=torch.zeros_like(p),
                                   v=torch.zeros_like(p))
@@ -36,10 +36,10 @@ class AdamW:
             st["step"] += 1
             eta = self.schedule(st["step"])
 
-            # Decoupled weight decay: direct shrink, not routed through grad.
+            # decoupled weight decay: applied to the weights, not the gradient
             p.mul_(1 - eta * self.lr * self.wd)
 
-            # Standard Adam moment accumulation on the raw gradient.
+            # Adam moments on the raw gradient
             st["m"].mul_(b1).add_(g, alpha=1 - b1)
             st["v"].mul_(b2).addcmul_(g, g, value=1 - b2)
 
@@ -59,27 +59,24 @@ class AdamW:
 class SGDW:
     """SGD with momentum and decoupled weight decay."""
 
-    def __init__(self, params, lr, momentum=0.9, weight_decay=1e-4,
-                 schedule=None):
+    def __init__(self, params, lr, momentum=0.9, weight_decay=1e-4, schedule=None):
         self.params = list(params)
         self.lr, self.momentum, self.wd = lr, momentum, weight_decay
         self.schedule = schedule or (lambda step: 1.0)
-        self.state = {id(p): dict(step=0, m=torch.zeros_like(p))
-                      for p in self.params}
+        self.state = {id(p): dict(step=0, m=torch.zeros_like(p)) for p in self.params}
 
     @torch.no_grad()
     def step(self):
         for p in self.params:
             if p.grad is None:
                 continue
-            g = p.grad
+            g = p.grad                              # raw gradient; wd kept out of the buffer
             st = self.state[id(p)]
             st["step"] += 1
             eta = self.schedule(st["step"])
-
-            p.mul_(1 - eta * self.lr * self.wd)
+            p.mul_(1 - eta * self.lr * self.wd)     # direct shrink of the old weights
             st["m"].mul_(self.momentum).add_(g, alpha=eta * self.lr)
-            p.add_(st["m"], alpha=-1)
+            p.add_(st["m"], alpha=-1)               # momentum/gradient step
 
     @torch.no_grad()
     def zero_grad(self):
@@ -89,21 +86,16 @@ class SGDW:
 
 
 def normalized_weight_decay(lambda_norm, batch_size, dataset_size, epochs):
-    """Per-step decay that keeps cumulative shrinkage budget-invariant.
-
-    lambda = lambda_norm * sqrt(b / (B * T)).
-    """
+    """Algebraic per-step lambda = lambda_norm * sqrt(b / (B*T))."""
     return lambda_norm * math.sqrt(batch_size / (dataset_size * epochs))
 
 
 def pytorch_weight_decay(lambda_norm, batch_size, dataset_size, epochs, lr):
-    """PyTorch AdamW expects weight_decay = lambda / lr."""
-    return normalized_weight_decay(lambda_norm, batch_size,
-                                   dataset_size, epochs) / lr
+    """Coefficient to pass as PyTorch AdamW weight_decay for the normalized lambda."""
+    return normalized_weight_decay(lambda_norm, batch_size, dataset_size, epochs) / lr
 
 
 def cosine_eta(T_cur, T_i, eta_min=0.0, eta_max=1.0):
-    """SGDR/AdamWR schedule multiplier; restart by resetting T_cur to 0."""
-    return (eta_min + 0.5 * (eta_max - eta_min) *
-            (1 + math.cos(math.pi * T_cur / T_i)))
+    """AdamWR/SGDR multiplier; a warm restart resets T_cur->0 and T_i->T_i*T_mult."""
+    return eta_min + 0.5 * (eta_max - eta_min) * (1 + math.cos(math.pi * T_cur / T_i))
 ```
