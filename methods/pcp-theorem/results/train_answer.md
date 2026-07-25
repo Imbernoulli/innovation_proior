@@ -8,58 +8,8 @@ The approximation connection is immediate once the verifier is in hand. Suppose 
 
 A concrete way to see why local checks catch global falsehood is linearity testing, a basic ingredient of many PCP proofs. Imagine the proof is advertised as a table of values of a linear function over the Boolean hypercube. A verifier that samples two random points and checks the additivity identity T(x) + T(y) = T(x + y) modulo two will always accept an honest linear table. If the table is far from every linear function, the test rejects with constant probability, even though the verifier never inspects the entire table. This is the local-testability phenomenon in miniature: a small random sample already carries enough algebraic signal to detect global inconsistency.
 
-```python
-import random
-import itertools
-
-
-def linear_table(k, a):
-    """Return the honest table for f(x) = a . x (mod 2)."""
-    table = {}
-    for x in itertools.product((0, 1), repeat=k):
-        table[x] = sum(ai * xi for ai, xi in zip(a, x)) % 2
-    return table
-
-
-def random_table(k):
-    """Return a uniformly random Boolean table on the k-cube."""
-    return {x: random.randint(0, 1) for x in itertools.product((0, 1), repeat=k)}
-
-
-def linearity_test(table, trials=5000):
-    """Estimate the rejection probability of the linearity test."""
-    keys = list(table)
-    failures = 0
-    for _ in range(trials):
-        x = random.choice(keys)
-        y = random.choice(keys)
-        z = tuple((xi + yi) % 2 for xi, yi in zip(x, y))
-        if (table[x] + table[y]) % 2 != table[z]:
-            failures += 1
-    return failures / trials
-
-
-def distance_to_linear(table, k):
-    """Fractional distance from the table to the closest linear function."""
-    best_agreement = 0
-    points = list(table)
-    for a in itertools.product((0, 1), repeat=k):
-        agree = sum(
-            table[x] == (sum(ai * xi for ai, xi in zip(a, x)) % 2) for x in points
-        )
-        best_agreement = max(best_agreement, agree)
-    return 1 - best_agreement / len(points)
-
-
-k = 4
-random.seed(0)
-a = tuple(random.randint(0, 1) for _ in range(k))
-honest = linear_table(k, a)
-print("Honest linear table rejection:", linearity_test(honest))
-
-tbl = random_table(k)
-print("Random table distance to linear:", distance_to_linear(tbl, k))
-print("Random table rejection:", linearity_test(tbl))
-```
-
 The broader significance is that proof verification and hardness of approximation become the same subject. Before the PCP theorem, proving that an optimization problem cannot be approximated within some factor required problem-specific gadget constructions with no systematic source of gaps. The theorem supplies a universal source of gaps: any NP statement can be encoded so that a false statement is locally wrong almost everywhere, and that local wrongness translates directly into a fraction of unsatisfied clauses, constraints, or absent clique vertices. The construction merges ideas from interactive proofs, algebraic coding theory, and self-testing into a single object, a proof string that is simultaneously a certificate of membership and a generator of approximation hardness. This makes the PCP theorem not just a result about proof systems, but a foundational bridge between logic, computation, and optimization.
+
+The result I land on is this theorem in its complete, checkable form. $NP = PCP(O(\log n), O(1))$: for inputs of length $n$, every language in NP has a randomized verifier that tosses $O(\log n)$ random bits, reads $O(1)$ symbols of a proof of length polynomial in $n$, accepts every honest proof of a true statement with probability $1$, and accepts any proof of a false statement with probability at most $1/2$. Writing $r = O(\log n)$ for the random strings and $q = O(1)$ for the queried proof locations, this verifier is literally a constraint system: one constraint per random string, over the $q$ proof variables it reads, satisfied exactly by the local views the verifier accepts. So the theorem is equivalent to the statement that it is NP-hard to distinguish $\mathrm{UNSAT}(C) = 0$ from $\mathrm{UNSAT}(C) \ge 1/2$. Pushing the same verifier through a CNF encoding pins down the exact constant that MAX-3SAT inherits: the accepting predicate on the $q$ queried bits is a CNF of at most $2^q$ clauses each of width at most $q$, and converting each clause to 3-CNF with private auxiliary variables gives at most $q \cdot 2^q$ clauses per random string. On a false instance, every assignment leaves at least an
+$$\epsilon = \frac{1}{q \cdot 2^{q+1}}$$
+fraction of these clauses unsatisfied, so this fixed constant $\epsilon$ separates satisfiable 3-CNF formulas with $m$ clauses from formulas in which no assignment satisfies more than $(1-\epsilon)m$ of them. That is the finished object: one randomized, logarithmic-randomness, constant-query proof format that certifies NP membership and, purely through its own soundness gap, manufactures the universal hardness-of-approximation constant for MAX-3SAT.
