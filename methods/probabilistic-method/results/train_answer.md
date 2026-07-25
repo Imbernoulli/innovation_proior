@@ -12,77 +12,8 @@ Erdős's Ramsey lower-bound argument is the canonical illustration. In a random 
 
 The deeper lesson is that typical can be stronger than explicit. A random sample often satisfies a large collection of competing requirements because each obstruction is too rare, too weakly dependent, or too cheap to repair. The Probabilistic Method therefore turns probabilistic estimates into deterministic existence theorems. Later algorithmic work may try to recover the hidden object, but the original breakthrough was to show that one can first prove the object is there without knowing how to name it.
 
-I propose the canonical name "Probabilistic Method" for this technique, also commonly referred to as the Erdős probabilistic method in recognition of its originator. The following Python script gives a concrete computational illustration of the expectation argument for small Ramsey-type bounds. It enumerates or samples graphs, estimates the expected number of homogeneous k-sets, and searches for a graph that contains no k-clique and no k-independent set, showing that the probabilistic prediction matches a brute-force reality for modest parameters.
-
-```python
-import math
-import random
-from itertools import combinations
-
-
-def count_homogeneous_k_sets(graph, k):
-    """Count k-cliques and k-independent sets in an unweighted graph."""
-    n = len(graph)
-    cliques = 0
-    independent = 0
-    for vertices in combinations(range(n), k):
-        edges_all = all(graph[u][v] for u, v in combinations(vertices, 2))
-        edges_none = all(not graph[u][v] for u, v in combinations(vertices, 2))
-        if edges_all:
-            cliques += 1
-        if edges_none:
-            independent += 1
-    return cliques + independent
-
-
-def expected_homogeneous_k_sets(n, k):
-    """Expected number of homogeneous k-sets in G(n, 1/2)."""
-    return 2 * math.comb(n, k) * (2 ** (-math.comb(k, 2)))
-
-
-def random_graph(n, p=0.5, seed=None):
-    rng = random.Random(seed)
-    graph = [[False] * n for _ in range(n)]
-    for i in range(n):
-        for j in range(i + 1, n):
-            if rng.random() < p:
-                graph[i][j] = graph[j][i] = True
-    return graph
-
-
-def find_ramsey_example(n, k, max_trials=20000, seed=0):
-    """Search for a graph on n vertices with no k-clique and no k-independent set."""
-    rng = random.Random(seed)
-    for trial in range(max_trials):
-        graph = random_graph(n, p=0.5, seed=rng.randint(0, 1 << 30))
-        if count_homogeneous_k_sets(graph, k) == 0:
-            return graph, trial + 1
-    return None, max_trials
-
-
-if __name__ == "__main__":
-    n, k = 8, 4
-    expectation = expected_homogeneous_k_sets(n, k)
-    print(f"Expected homogeneous {k}-sets in G({n}, 1/2): {expectation:.4f}")
-    print(f"Threshold prediction: existence when expectation < 1 -> k > ~{2 * math.log2(n):.2f}")
-
-    graph, trials = find_ramsey_example(n, k, max_trials=20000, seed=42)
-    if graph is not None:
-        print(f"Found a graph with no {k}-clique and no {k}-independent set after {trials} trials.")
-    else:
-        print(f"No such graph found in {trials} random trials; this is consistent with rare events.")
-
-    # Small brute-force check for n=5, k=3 to verify the method concretely.
-    n_small, k_small = 5, 3
-    found_small = False
-    for seed in range(1000):
-        g = random_graph(n_small, p=0.5, seed=seed)
-        if count_homogeneous_k_sets(g, k_small) == 0:
-            found_small = True
-            print(f"Brute-force-like sample: n={n_small}, k={k_small}, found at seed={seed}")
-            break
-    if not found_small:
-        print(f"No triangle-free and co-triangle-free graph on {n_small} vertices in 1000 random samples.")
-```
+I propose the canonical name "Probabilistic Method" for this technique, also commonly referred to as the Erdős probabilistic method in recognition of its originator, and its deliverable here is not a program but a precise existence theorem stated in the language of expectation. Fix $n$ and let $G(n,\tfrac12)$ be the random graph on $n$ labeled vertices in which each of the $\binom{n}{2}$ possible edges is present independently with probability $\tfrac12$. Call a set of $k$ vertices homogeneous if it induces either a clique or an independent set; a fixed $k$-set is a clique with probability $2^{-\binom{k}{2}}$ and an independent set with the same probability, so if $X$ denotes the number of homogeneous $k$-sets in $G(n,\tfrac12)$, linearity of expectation gives
+$$\mathbb{E}[X] = 2\binom{n}{k}2^{-\binom{k}{2}}.$$
+Because $X$ is a nonnegative integer-valued random variable, $\mathbb{E}[X] < 1$ forces some outcome of $G(n,\tfrac12)$ to satisfy $X = 0$: if every outcome had $X \ge 1$ the expectation could not fall below $1$. Since $\binom{n}{k}2^{-\binom{k}{2}}$ falls below the needed threshold once $k$ is a little larger than $2\log_2 n$, this establishes, for every such $k$, the existence of an $n$-vertex graph with neither a $k$-clique nor a $k$-independent set — equivalently, that the Ramsey number $R(k,k)$ exceeds $n$. This is the theorem the method actually hands over in this case: a fully deterministic combinatorial object, specified only by the inequality that certifies it, existing without ever being written down.
 
 I close by emphasizing that the Probabilistic Method is not a claim that randomness itself is the answer. The final theorem is about a deterministic object. Randomness is only the language used to certify that the object exists. By computing expectations, controlling local dependencies, or making small alterations, one can prove the existence of objects whose structure is too diffuse or patternless to find directly. This is why the method remains one of the most influential ideas in modern combinatorics and theoretical computer science.
