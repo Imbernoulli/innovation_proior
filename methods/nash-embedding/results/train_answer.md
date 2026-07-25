@@ -14,38 +14,14 @@ The breakthrough is not merely that every Riemannian manifold fits inside Euclid
 
 The influence of the method extends well beyond embedding theory.  The Nash-Moser iteration is now a standard tool for nonlinear PDEs with derivative loss, appearing in KAM theory, micro local analysis, and geometric PDE.  The Nash twist inspired the theory of convex integration and has been used to construct surprising solutions to equations in fluid dynamics and geometry.  In machine learning, the same heuristic of using high-frequency perturbations to satisfy constraints while staying close in a coarse norm appears in various regularization and generative modeling contexts.  Thus Nash embedding is both a classical theorem and a template for turning underdetermined nonlinear problems into convergent approximation schemes.
 
-The following Python script illustrates the C^1 Nash twist in the simplest possible setting, a one-dimensional curve in high-dimensional Euclidean space.  The target is a prescribed speed squared along the curve.  Starting from a short straight embedding whose speed is too small, the script adds many independent high-frequency sinusoidal corrugations in orthogonal normal directions.  Each corrugation contributes a small prescribed amount to the speed squared, and their combined quadratic contributions approximate the target metric.  Using many normal directions is the key feature that lets the oscillations cancel in the average while their squared derivatives add up correctly.
+Stated precisely, the result is the pair of theorems that the two constructions above prove. Let $(M^m,g)$ be a smooth Riemannian manifold and let $f_0 : M \to \mathbb{R}^N$ be a short embedding, meaning the residual $g - f_0^*e$ is a positive definite metric, for a Euclidean dimension $N$ large enough that the metric's $m(m+1)/2$ independent components are outnumbered by the embedding's coordinate functions. The Nash-Kuiper $C^1$ theorem asserts that for every $\varepsilon>0$ there is a $C^1$ isometric embedding $f:M\to\mathbb{R}^N$, i.e. $f^*e=g$, with $\|f-f_0\|_{C^0}<\varepsilon$. It is produced as the limit $f=\lim_k f_k$ of the twist iteration
 
-```python
-import numpy as np
+$$f_{k+1}=f_k+w_k,$$
 
-def nash_twist_curve(target_speed_sq, t, n_dirs=200, base_freq=16, seed=0):
-    rng = np.random.default_rng(seed)
-    scale = 0.9  # short initial speed, so scale**2 < min(target_speed_sq)
-    y = np.zeros((n_dirs, len(t)))
-    dy = np.zeros((n_dirs, len(t)))
-    for i in range(n_dirs):
-        freq = base_freq + i
-        # Each normal direction carries an equal share of the metric defect.
-        share = (target_speed_sq - scale ** 2) / n_dirs
-        amplitude = np.sqrt(2.0 * share) / (2.0 * np.pi * freq)
-        phase = rng.uniform(0.0, 2.0 * np.pi)
-        y[i] = amplitude * np.sin(2.0 * np.pi * freq * t + phase)
-        dy[i] = amplitude * (2.0 * np.pi * freq) * np.cos(2.0 * np.pi * freq * t + phase)
-    speed_sq = scale ** 2 + np.sum(dy ** 2, axis=0)
-    return scale * t, y, speed_sq
+where each corrugation $w_k$ is a sum of rapidly oscillating perturbations in the normal directions, with frequency $\nu_k\to\infty$ and amplitude of order $1/\nu_k$, chosen so that its quadratic contribution to the induced metric absorbs a prescribed share of the residual defect $g-f_k^*e$ while $\|w_k\|_{C^0}\to0$; the defect is driven to zero in the limit even though the maps themselves stay $C^0$-close to $f_0$.
 
-if __name__ == "__main__":
-    t = np.linspace(0.0, 1.0, 20001)
-    # A varying target speed squared that stays above the initial short speed squared.
-    target = 1.5 + 0.5 * np.sin(2.0 * np.pi * t) ** 2
-    x, y, speed_sq = nash_twist_curve(target, t)
-    print(f"Initial speed^2: {0.9 ** 2:.4f}")
-    print(f"Mean target speed^2: {np.mean(target):.4f}")
-    print(f"Mean final speed^2: {np.mean(speed_sq):.4f}")
-    print(f"Max |defect|: {np.max(np.abs(target - speed_sq)):.4f}")
-    print(f"Mean |defect|: {np.mean(np.abs(target - speed_sq)):.4f}")
-    print(f"Max |y| over all normal directions: {np.max(np.abs(y)):.6f}")
-```
+The smooth theorem strengthens the conclusion to $f\in C^\infty$, or even real-analytic, at the cost of a different iteration. Writing $P(f)=f^*e$ for the induced-metric operator, each step solves the linearized equation $DP_{f_k}(u_k)=g-f_k^*e$ for a correction $u_k$ and then smooths it before adding it back,
 
-This script is only a cartoon of Nash's full construction.  A real Nash embedding must handle an arbitrary Riemannian metric on a manifold of any dimension, ensure that the map remains an embedding rather than merely an immersion, and control the limit in C^1 or smooth topology.  Nevertheless, the code captures the central mechanism: high-frequency normal corrugations add derivative energy to the metric while keeping the map itself nearly fixed.  That mechanism is the heart of Nash embedding and the reason the theorem opened a new chapter in nonlinear PDE and differential geometry.
+$$f_{k+1}=f_k+S_{\theta_k}u_k,$$
+
+with smoothing scale $\theta_k\to\infty$ chosen to grow slowly enough that the quadratic contraction of the underlying Newton scheme dominates the error the smoothing itself introduces. Together the two theorems say that every smooth Riemannian manifold, of any dimension and without curvature restriction, embeds isometrically into some Euclidean space, and that the embedding can always be built as the limit of one of these two convergent procedures rather than written down in closed form: the twist iteration when only $C^1$ regularity is asked for, the smoothed Newton iteration when full smoothness is required. That pair of iterations, not a formula for the embedded shape, is what Nash embedding actually delivers.
