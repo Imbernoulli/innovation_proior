@@ -38,53 +38,14 @@ When the symmetry group is infinite-dimensional and depends on arbitrary functio
 
 These are off-shell identities; they hold whether or not the equations of motion are satisfied. They are not independent conservation laws, because the apparent divergence relations for finite subgroups of the infinite group become linear combinations of these identities. In a generally-covariant theory such as general relativity, the energy law is therefore improper: its current is built from the field equations and identically divergenceless pieces, so the statement Div B = 0 carries no on-shell content beyond general covariance itself. This is exactly the characteristic feature that Hilbert asserted and that Noether's second theorem explains.
 
-The following Python script is a small numerical illustration rather than a formal proof. It checks the conserved quantities in two simple systems. The first is a harmonic oscillator, whose Lagrangian L = ½ m q̇² − ½ k q² has no explicit time dependence, so Noether's theorem predicts conservation of energy. The second is a free particle, whose Lagrangian is invariant under spatial translations, so momentum is conserved. A crude discrete field update is also included to show how a lattice version of translation invariance leaves a discrete momentum approximately unchanged.
+This is the theorem in its final form, and it deserves to be stated once with full precision rather than left folded into the derivation above. For a finite continuous group 𝔊_ρ of ρ parameters ε₁,…,ε_ρ leaving I = ∫ f(x, u, ∂u/∂x, …) dx invariant, ρ linearly independent combinations of the Lagrangian expressions are divergences,
 
-```python
-import numpy as np
+$$\sum_i \psi_i\,\bar\delta u_i^{(\lambda)} = \operatorname{Div} B^{(\lambda)}, \qquad \lambda = 1,\dots,\rho,$$
 
-def energy(q, qdot, m=1.0, k=1.0):
-    return 0.5 * m * qdot**2 + 0.5 * k * q**2
+and imposing the field equations ψᵢ = 0 turns each relation into a conservation law $\operatorname{Div} B^{(\lambda)} = 0$ — in one independent variable, ρ first integrals $B^{(\lambda)} = \text{const}$. The converse holds as well: any ρ divergence relations of this form force invariance of the action under a ρ-parameter group, so continuous symmetry and conservation law determine each other, not merely one from the other.
 
-def simulate_harmonic(q0, p0, m=1.0, k=1.0, dt=0.01, steps=2000):
-    q = np.empty(steps)
-    p = np.empty(steps)
-    q[0], p[0] = q0, p0
-    for i in range(1, steps):
-        p[i] = p[i-1] - k * q[i-1] * dt
-        q[i] = q[i-1] + p[i] / m * dt
-    return q, p
+When the group is infinite-dimensional instead — depending on ρ arbitrary functions $p^\lambda(x)$ and their derivatives up to order σ, so that $\bar\delta u_i = \sum_{\lambda,\,|\alpha|\le\sigma} a_i^{\lambda,\alpha}\,\partial_\alpha p^\lambda$ — the same master identity, integrated by parts against the derivatives of $p^\lambda$ rather than against constants, yields ρ identities that hold among the Lagrangian expressions themselves, off-shell:
 
-q, p = simulate_harmonic(1.0, 0.0)
-E = energy(q, p)
-print("Max |E - E0| (harmonic oscillator):", np.max(np.abs(E - E[0])))
+$$\sum_{i,\,|\alpha|\le\sigma} (-1)^{|\alpha|}\,\partial_\alpha\!\left(a_i^{\lambda,\alpha}\,\psi_i\right) = 0.$$
 
-def simulate_free(q0, p0, m=1.0, dt=0.01, steps=2000):
-    q = np.empty(steps)
-    p = np.empty(steps)
-    q[0], p[0] = q0, p0
-    for i in range(1, steps):
-        p[i] = p[i-1]
-        q[i] = q[i-1] + p[i] / m * dt
-    return q, p
-
-q_free, p_free = simulate_free(0.0, 2.0)
-print("Momentum drift (free particle):", np.max(np.abs(p_free - p_free[0])))
-
-N = 50
-dx = 0.1
-dt = 0.05
-steps = 400
-phi = np.sin(2 * np.pi * np.arange(N) * dx / N) + 0.1 * np.random.randn(N)
-phi_prev = phi.copy()
-for _ in range(steps):
-    lap = np.roll(phi, 1) - 2 * phi + np.roll(phi, -1)
-    phi_next = 2 * phi - phi_prev + (dt / dx)**2 * lap
-    phi_prev, phi = phi, phi_next
-pi = (phi - phi_prev) / dt
-spatial_grad = (np.roll(phi, 1) - np.roll(phi, -1)) / (2 * dx)
-P = np.sum(pi * spatial_grad) * dx
-print("Discrete field momentum:", P)
-```
-
-In summary, Noether's theorem states that continuous symmetries of the action yield conservation laws. For a finite-dimensional symmetry group, the boundary term of the action's variation becomes a genuine conserved current, and the familiar conservation laws of energy, momentum, and angular momentum are recovered from translations and rotations. For an infinite-dimensional group depending on arbitrary functions, the same machinery produces identities among the field equations, and the associated conservation laws become improper. This distinction is what makes the energy law of general relativity qualitatively different from the energy law of ordinary mechanics.
+These identities are true whether or not the equations of motion hold, and the converse holds for them too. They are not extra conservation laws: any divergence relation one extracts by restricting to a finite subgroup of the infinite group is already a linear combination of these identities, so it carries no content beyond them. That is the resolution of Hilbert's puzzle — a generally-covariant action, invariant under the infinite group of all coordinate transformations, can never yield a proper energy current beyond what general covariance already supplies for free, and this is not a defect to be patched but the theorem's own characteristic feature, exactly as Hilbert suspected and asked to have proved.
