@@ -12,12 +12,13 @@ import torch
 
 
 class Adam:
-    """Adam optimizer with bias-corrected first- and second-moment estimates."""
+    """Adam optimizer. Maintains per-parameter EMAs of the gradient (exp_avg = m)
+    and squared gradient (exp_avg_sq = v), with bias correction."""
 
     def __init__(self, params, lr=1e-3, betas=(0.9, 0.999), eps=1e-8, weight_decay=0):
-        if lr < 0.0:
+        if not 0.0 <= lr:
             raise ValueError(f"Invalid learning rate: {lr}")
-        if not (0.0 <= betas[0] < 1.0 and 0.0 <= betas[1] < 1.0):
+        if not 0.0 <= betas[0] < 1.0 or not 0.0 <= betas[1] < 1.0:
             raise ValueError(f"Invalid beta parameters: {betas}")
         self.params = list(params)
         self.lr, self.betas, self.eps, self.weight_decay = lr, betas, eps, weight_decay
@@ -35,28 +36,34 @@ class Adam:
                 continue
             grad = p.grad
             if grad.is_sparse:
-                raise RuntimeError("Adam does not support sparse gradients")
+                raise RuntimeError('Adam does not support sparse gradients')
             state = self.state[id(p)]
 
+            # State init: m_0 = v_0 = 0, t = 0
             if len(state) == 0:
-                state["step"] = 0
-                state["exp_avg"] = torch.zeros_like(p)
-                state["exp_avg_sq"] = torch.zeros_like(p)
+                state['step'] = 0
+                state['exp_avg'] = torch.zeros_like(p)       # m
+                state['exp_avg_sq'] = torch.zeros_like(p)    # v
 
-            exp_avg, exp_avg_sq = state["exp_avg"], state["exp_avg_sq"]
-            state["step"] += 1
-            t = state["step"]
+            exp_avg, exp_avg_sq = state['exp_avg'], state['exp_avg_sq']
+            state['step'] += 1
+            t = state['step']
 
             if self.weight_decay != 0:
                 grad = grad.add(p, alpha=self.weight_decay)
 
+            # m_t = beta1 * m_{t-1} + (1 - beta1) * g_t
             exp_avg.mul_(beta1).add_(grad, alpha=1 - beta1)
+            # v_t = beta2 * v_{t-1} + (1 - beta2) * g_t^2
             exp_avg_sq.mul_(beta2).addcmul_(grad, grad, value=1 - beta2)
 
-            denom = exp_avg_sq.sqrt().add_(self.eps)
-            bias_correction1 = 1 - beta1 ** t
-            bias_correction2 = 1 - beta2 ** t
+            denom = exp_avg_sq.sqrt().add_(self.eps)         # sqrt(v_t) + eps
+
+            bias_correction1 = 1 - beta1 ** t                # (1 - beta1^t)
+            bias_correction2 = 1 - beta2 ** t                # (1 - beta2^t)
+            # Folded bias correction; exact for eps=0, with eps kept as a fixed floor.
             step_size = self.lr * math.sqrt(bias_correction2) / bias_correction1
 
+            # theta_t = theta_{t-1} - alpha_t * m_t / (sqrt(v_t) + eps)
             p.addcdiv_(exp_avg, denom, value=-step_size)
 ```
