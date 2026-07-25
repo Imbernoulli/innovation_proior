@@ -12,93 +12,12 @@ For smooth real manifolds the statement becomes concrete through differential fo
 
 The reason the result feels like self-duality is that the manifold is not being compared with an external dual object. Its own fundamental class provides the bridge between k-dimensional tests and (n-k)-dimensional objects. This is why I refer to the theorem as Poincaré duality.
 
-The code below gives a small computational verification of the most visible corollary for two closed oriented surfaces: a tetrahedron triangulating the 2-sphere and the seven-vertex minimal triangulation of the 2-torus. It builds the simplicial boundary operators, computes their ranks over the rationals, and checks that the Betti numbers satisfy the symmetry predicted by Poincaré duality.
+What makes $D_M$ an isomorphism, and not just a well-defined map, is a local-to-global argument built directly out of the cap product's chain-level definition. The boundary identity $\partial(c \cap \varphi) = \pm\big(\partial c \cap \varphi - c \cap \delta\varphi\big)$ for a chain $c$ and cochain $\varphi$ is what lets cap product descend from chains to the pairing $H_p(M;R) \times H^q(M;R) \to H_{p-q}(M;R)$ used above: a cycle capped with a cocycle is again a cycle, and shifting either input by a boundary or coboundary shifts the result only by a boundary. On a single coordinate ball the claim is forced rather than proved: there is exactly one nonzero local top class and cohomology concentrated in degree zero, so $D_M$ is visibly an isomorphism there. The remaining work is gluing. For a finite good cover, the ordinary and relative Mayer-Vietoris sequences compare a piece, another piece, their intersection, and their union; naturality of cap product makes $D_M$ commute with the connecting maps of these sequences up to the standard signs, and the five lemma then propagates the local isomorphism across each union in the cover until it reaches all of $M$. No extra input is needed beyond the local statement and exactness — the global isomorphism is local certainty transported along the Mayer-Vietoris ladder.
 
-```python
-from fractions import Fraction
-
-def rank_over_q(matrix):
-    # Gaussian elimination over the rationals.
-    if not matrix:
-        return 0
-    A = [row[:] for row in matrix]
-    rows, cols = len(A), len(A[0])
-    rank = 0
-    r = 0
-    for c in range(cols):
-        pivot = None
-        for i in range(r, rows):
-            if A[i][c] != 0:
-                pivot = i
-                break
-        if pivot is None:
-            continue
-        A[r], A[pivot] = A[pivot], A[r]
-        inv = Fraction(1, A[r][c])
-        for j in range(c, cols):
-            A[r][j] *= inv
-        for i in range(rows):
-            if i != r and A[i][c] != 0:
-                factor = A[i][c]
-                for j in range(c, cols):
-                    A[i][j] -= factor * A[r][j]
-        rank += 1
-        r += 1
-        if r == rows:
-            break
-    return rank
-
-def betti_numbers(vertices, edges, triangles):
-    V, E, T = len(vertices), len(edges), len(triangles)
-    edge_index = {e: i for i, e in enumerate(edges)}
-
-    # d1: C1 -> C0, boundary of an oriented edge [i, j] is j - i.
-    d1 = [[0] * E for _ in range(V)]
-    for idx, (i, j) in enumerate(edges):
-        d1[i][idx] = -1
-        d1[j][idx] = 1
-
-    # d2: C2 -> C1, boundary of an oriented triangle (a, b, c).
-    d2 = [[0] * T for _ in range(E)]
-    for t_idx, (a, b, c) in enumerate(triangles):
-        terms = [(+1, b, c), (-1, a, c), (+1, a, b)]
-        for sign, x, y in terms:
-            if x > y:
-                x, y = y, x
-                sign = -sign
-            d2[edge_index[(x, y)]][t_idx] += sign
-
-    r1 = rank_over_q(d1)
-    r2 = rank_over_q(d2)
-    b0 = V - r1
-    b1 = E - r1 - r2
-    b2 = T - r2
-    return [b0, b1, b2]
-
-"""2-sphere as the boundary of a tetrahedron."""
-sphere_vertices = list(range(4))
-sphere_edges = [(0,1),(0,2),(0,3),(1,2),(1,3),(2,3)]
-sphere_triangles = [(1,2,3),(0,2,3),(0,1,3),(0,1,2)]
-
-"""7-vertex minimal triangulation of the 2-torus."""
-torus_vertices = list(range(7))
-torus_edges = [(i, j) for i in range(7) for j in range(i+1, 7)]
-torus_triangles = []
-for i in range(7):
-    torus_triangles.append((i, (i+1) % 7, (i+3) % 7))
-    torus_triangles.append((i, (i+2) % 7, (i+3) % 7))
-
-b_sphere = betti_numbers(sphere_vertices, sphere_edges, sphere_triangles)
-b_torus = betti_numbers(torus_vertices, torus_edges, torus_triangles)
-
-print("Sphere Betti numbers:", b_sphere)
-print("Torus Betti numbers:", b_torus)
-
-assert b_sphere == [1, 0, 1], "S^2 should have Betti numbers [1,0,1]"
-assert b_torus == [1, 2, 1], "T^2 should have Betti numbers [1,2,1]"
-for b in [b_sphere, b_torus]:
-    assert b[0] == b[2], "Poincare duality predicts b0 = b2 for a closed oriented surface"
-print("Poincare duality Betti symmetry verified.")
-```
-
-Running the script confirms that the sphere has Betti numbers [1, 0, 1] and the torus has [1, 2, 1], and in both cases the degree-reversing symmetry b_k = b_{2-k} holds. This is the simplest numerical shadow of the isomorphism D_M.
+This is the complete artifact. For a closed $R$-orientable $n$-manifold $M$ with fundamental class $[M] \in H_n(M;R)$, the map
+$$D_M : H^k(M;R) \to H_{n-k}(M;R), \qquad D_M(\alpha) = [M] \cap \alpha$$
+is an isomorphism for every $k$. Over a field $F$ this is equivalent to the nonsingular pairing
+$$H^k(M;F) \times H^{n-k}(M;F) \to F, \qquad (\alpha,\beta) \mapsto \langle \alpha \cup \beta,\, [M]\rangle,$$
+and on a closed oriented smooth manifold it specializes to the perfect de Rham pairing
+$$H^k_{dR}(M) \times H^{n-k}_{dR}(M) \to \mathbb{R}, \qquad ([\omega],[\eta]) \mapsto \int_M \omega \wedge \eta.$$
+Every hypothesis in this statement is load-bearing: orientation is what produces $[M]$ in the first place, closedness is what keeps $[M]$ in ordinary top homology rather than forcing it into a relative group against a boundary, and compactness without boundary is what lets Stokes' theorem annihilate the exact forms so that the de Rham pairing depends only on cohomology classes and not on the representing forms.

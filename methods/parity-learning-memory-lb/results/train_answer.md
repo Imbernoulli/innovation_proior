@@ -10,138 +10,39 @@ The second part is the hard one, the part the prior framework could not get past
 
 What makes it all close is the choice of constants so the two halves cancel. With $B$ of length $m = 2^{\alpha n}$, width $d = 2^{cn^2}$, output dimension $\le k' = \tfrac{3n}{5}$, I set the carving parameter $r = (\tfrac12 + 2\alpha)n$ and the threshold $k = \tfrac{4n}{5}$, so $n-k = \tfrac n5$ and $n-2k = -\tfrac{3n}{5}$. Then $\epsilon = 4\cdot 2^{-\alpha n}$ and the slack $2^{-(k-k')} = 2^{-n/5}$, so $P$ reaches a dimension-$<k$ vertex with probability $\ge \beta - 5\cdot 2^{-\alpha n}$. Multiplying the grouping vertex count $4n\cdot 2^{\sum(r-i/2)}\cdot dm$ by the affine reach bound $m^{n-k}\cdot 2^{\sum(n-2k-i)}$ and simplifying — the cancellation $\tfrac12 - \tfrac35 = -\tfrac1{10}$ in the linear terms and $-\tfrac i2 - i = -\tfrac32 i$ in the quadratic terms — collapses the whole reach probability to $4nm \cdot 2^{n^2(c + \frac35\alpha - \frac1{20} + \frac{3}{20n})}$. So whenever $c + \tfrac35\alpha - \tfrac1{20} < 0$, that is $\alpha < \tfrac53(\tfrac1{20} - c)$, this is $2^{-\Omega(n^2)}$, which forces $\beta \le O(2^{-\alpha n})$. The two corners I started from are exactly the two things this forbids improving: Gaussian elimination pays the quadratic memory, candidate enumeration pays the exponential samples, and nothing lives below quadratic memory and below exponential samples. It also gives a clean cryptographic reading — encrypting a bit as $M \oplus (a\cdot x)$ for fresh public uniform $a$ is a bounded-storage scheme secure against a memory-$\tfrac{n^2}{25}$ adversary watching exponentially many uses, and unlike the older bounded-storage template its encryption time is not forced to be linear in the adversary's memory.
 
-Here is the final result, with the full proof.
+Here is the final result, stated precisely, with the proof. For $w\in A(n)$ let $U_w$ denote the uniform distribution on $w$ (so $U_n := U_{\{0,1\}^n}$), let $|P-Q|_1$ denote total $\ell_1$ distance between distributions $P,Q$, and for $P:\{0,1\}^n\to\mathbb R$ let $\widehat P(a) := \mathbb E_x[P(x)(-1)^{a\cdot x}]$ be its Fourier transform. Call a branching program $\epsilon$-accurate at layer $t$ if, for the reached vertex $V_t$ and $y_t\sim U_{w(V_t)}$, $|P_{V_t,x}-P_{V_t,y_t}|_1\le\epsilon$ — the true target $x$ and a uniform draw from the vertex's own label are, at that layer, statistically close.
 
-```
-Definitions. For a, x ∈ {0,1}^n, a·x = Σ_i a_i x_i mod 2. A(n) = affine subspaces of {0,1}^n;
-U_w = uniform distribution on w ∈ A(n); U_n = U_{{0,1}^n}. |P−Q|_1 = total ℓ1 distance.
-For P:{0,1}^n→ℝ, P̂(a) = E_x[P(x)(−1)^{a·x}].
+**Theorem (formal).** For any $c<\tfrac1{20}$ there is $\alpha>0$ such that: let $x\sim U_n$, $m\le2^{\alpha n}$, and let $B$ be a branching program of length $m$ and width $\le2^{cn^2}$ for parity learning whose output is always an affine subspace of dimension $\le\tfrac{3n}5$. Then
+$$
+\Pr[\,x\in B\text{'s output}\,] \;\le\; O(2^{-\alpha n}).
+$$
 
-Branching program for parity learning. A layered directed multigraph with m+1 layers of width
-≤ d; one start vertex; each non-leaf vertex has one out-edge per (a,b)∈{0,1}^n×{0,1}; each leaf
-labeled by an affine subspace w(v)∈A(n) (output guess "x∈w(v)"). A stream traces a
-computation-path start → leaf. Width ↔ memory log2 d; length ↔ samples m.
+**Corollary (headline).** For any $c<\tfrac1{20}$ there is $\alpha>0$ such that any parity-learning algorithm using $\le cn^2$ memory bits and $\le2^{\alpha n}$ samples outputs $\tilde x$ with $\Pr[\tilde x=x]\le O(2^{-\alpha n})$: learning parity with fewer than $\sim n^2/25$ memory bits requires an exponential number of samples.
 
-Affine branching program. Every vertex v carries w(v)∈A(n), with: (start) w(start)={0,1}^n;
-(soundness) for edge e=(u,v) labeled (a,b), w(e):= w(u)∩{x':a·x'=b} ⊆ w(v). Soundness ⇒
-x∈w(v) along the honest path always; success prob = 1.
+The proof runs in four steps, the first being the Fourier/extractor core on distributions over affine subspaces. Let $W\in A(n)$ be a random affine subspace; $\mathbb E_W[U_W]$ is a mixture of uniform-on-subspace distributions, and the following three lemmas say it stays close to uniform unless some linear test gets pinned.
 
-ε-accurate. For the layer-t reached vertex V_t and y_t∼U_{w(V_t)}: |P_{V_t,x} − P_{V_t,y_t}|_1 ≤ ε.
+**Lemma 1 (mixing).** Let $r\ge n/2$. If for all $a\ne\vec0$, $b\in\{0,1\}$, $\Pr_W[\forall x\in W: a\cdot x=b]\le2^{-r}$, then $|\mathbb E_W[U_W]-U_n|_1<2^{-(r-n/2)}$. *Proof.* For affine $w$, $\widehat{U_w}(a)=2^{-n}$ if $a\cdot x\equiv0$ on $w$, $-2^{-n}$ if $\equiv1$, else $0$. Hence $\widehat{\mathbb E_W[U_W]}(a)=2^{-n}\big(\Pr_W[a\cdot x\equiv0\text{ on }W]-\Pr_W[a\cdot x\equiv1\text{ on }W]\big)$, with the $a=\vec0$ coefficient $=2^{-n}=\widehat{U_n}(\vec0)$. For $a\ne\vec0$, $\widehat{U_n}(a)=0$ and $|\widehat{\mathbb E_W[U_W]}(a)|\le2^{-n}\cdot2^{-r}$, so $\sum_{a\ne\vec0}\big(\widehat{\mathbb E_W[U_W]}(a)-\widehat{U_n}(a)\big)^2<2^n(2^{-n}2^{-r})^2=2^{-n-2r}$. By Cauchy–Schwarz and Parseval, $(\mathbb E_x|P-U_n|)^2\le\mathbb E_x(P-U_n)^2=\sum_a(\widehat P-\widehat{U_n})^2<2^{-n-2r}$ (with $P=\mathbb E_W[U_W]$), so $|P-U_n|_1=2^n\mathbb E_x|P-U_n|<2^n\cdot2^{-(n+2r)/2}=2^{-(r-n/2)}$. $\square$
 
-────────────────────────────────────────────────────────────────────────────
-THEOREM (formal). For any c < 1/20 there is α>0 such that: let x∼U_n, m ≤ 2^{αn}, and let B
-be a branching program of length m and width ≤ 2^{cn^2} for parity learning whose output is
-always an affine subspace of dimension ≤ 3n/5. Then
+**Lemma 2 (capture).** Let $r\ge n/2$. There exists $s\in A(n)$ with (1) $\Pr_W[W\subseteq s]\ge2^{-\sum_{i=0}^{n-\dim s-1}(r-i/2)}$ and (2) $|\mathbb E_{W\mid W\subseteq s}[U_W]-U_s|_1<2^{-(r-n/2)}$. *Proof.* Induction on $n$. Base $n=0$: $s=\{\vec0\}$. Step: if Lemma 1's hypothesis holds, take $s=\{0,1\}^n$. Otherwise $\exists a\ne\vec0,b$ with $\Pr_W[\forall x\in W:a\cdot x=b]>2^{-r}$; set $u=\{x:a\cdot x=b\}$ ($\dim u=n-1$), so $\Pr_W[W\subseteq u]>2^{-r}$. Apply the hypothesis to $W'=W\mid(W\subseteq u)$ over $u\cong\{0,1\}^{n-1}$ with parameters $(n-1,r-\tfrac12)$, getting $s\subseteq u$. Then (1) $\Pr_W[W\subseteq s]=\Pr_W[W\subseteq u]\,\Pr_{W'}[W'\subseteq s]>2^{-r}\cdot2^{-\sum_{i=0}^{n-1-\dim s-1}(r-1/2-i/2)}=2^{-\sum_{i=0}^{n-\dim s-1}(r-i/2)}$, and (2) is inherited since $\mathbb E_{W\mid W\subseteq s}[U_W]=\mathbb E_{W'\mid W'\subseteq s}[U_{W'}]$. $\square$
 
-        Pr[ x ∈ B's output ] ≤ O(2^{−αn}).
+**Lemma 3 (grouping — the only export).** Let $r\ge n/2$. There is a partial map $\sigma:A(n)\to A(n)$ with (1) $\Pr_W[W\notin\mathrm{dom}\,\sigma]\le2^{-2n}$; (2) $w\subseteq\sigma(w)$; (3) for all $s\in\mathrm{image}\,\sigma$, $|\mathbb E_{W\mid\sigma(W)=s}[U_W]-U_s|_1<2^{-(r-n/2)}$; (4) for every $k$, $\#\{s\in\mathrm{image}\,\sigma:\dim s\ge k\}\le4n\cdot2^{\sum_{i=0}^{n-k-1}(r-i/2)}$. *Proof.* Repeatedly apply Lemma 2: $W_0=W\to s_0$, set $\sigma(w)=s_0$ for $w\subseteq s_0$; $W_1=W\mid(W\not\subseteq s_0)\to s_1$; and so on, stopping once $\Pr_W[W\notin\mathrm{dom}\,\sigma]\le2^{-2n}$. The $s_i$ are distinct, giving (1) by the stopping rule and (2)–(3) from Lemma 2. For (4): each carve producing $\dim s_i\ge k$ captures at least a $2^{-\sum_{i=0}^{n-k-1}(r-i/2)}$ fraction of the remaining mass — more dimension means fewer sum terms means a larger fraction — so after at most $4n\cdot2^{\sum_{i=0}^{n-k-1}(r-i/2)}$ such carves the residual mass is already below $2^{-2n}$. $\square$
 
-COROLLARY (headline). For any c < 1/20 there is α>0 such that any parity-learning algorithm
-using ≤ cn^2 memory bits and ≤ 2^{αn} samples outputs x̃ with Pr[x̃ = x] ≤ O(2^{−αn}).
-Equivalently, learning parity with fewer than ~ n^2/25 memory bits requires an exponential
-number of samples.
+That closes the Fourier core; next is the affine lower bound, the dimension-of-intersection argument sketched above, stated in full.
 
-────────────────────────────────────────────────────────────────────────────
-PROOF.
+**Lemma 4.** Let $k<n$, let $P$ be a length-$m$ affine program with $\dim w(u)\ge k$ for every vertex $u$, and let $v$ be a vertex with $\dim w(v)=k$. Then $\Pr[\text{path reaches }v]\le m^{\,n-k}\cdot2^{\sum_{j=0}^{n-k-1}(n-2k-j)}$. *Proof.* Let $s=\{a:\exists b,\forall x'\in w(v),a\cdot x'=b\}$, the space orthogonal to $w(v)$ ($\dim s=n-k$), and let $S_i$ be the space orthogonal to $w(V_i)$ along the path; soundness gives $S_i\subseteq\mathrm{span}(S_{i-1}\cup\{a_i\})$. Set $Z_i=\dim(S_i\cap s)$: then $Z_0=0$, $Z_i\le Z_{i-1}+1$, and reaching $v$ needs some $Z_i=n-k$. A rise $Z_i>Z_{i-1}$ requires some $a\in S_{i-1}$ with $a\oplus a_i\in s$; for fixed $a$ this has probability $2^{\dim s-n}=2^{-k}$ since $a_i$ is fresh and uniform, and the distinct choices of $a$ form cosets of $S_{i-1}\cap s$, numbering $2^{\dim S_{i-1}-Z_{i-1}}\le2^{n-k-Z_{i-1}}$; so, conditioned on $x,a_1,\dots,a_{i-1}$ (which fixes $Z_{i-1}$), $\Pr[\text{rise at }i]\le2^{n-k-Z_{i-1}}\cdot2^{-k}=2^{n-2k-Z_{i-1}}$. For a fixed tuple of rise-steps $i_1<\dots<i_{n-k}$ this telescopes to $\Pr\le\prod_{j=1}^{n-k}2^{n-2k-(j-1)}=2^{\sum_{j=0}^{n-k-1}(n-2k-j)}$, and a union bound over the fewer than $m^{n-k}$ such tuples gives the claim. $\square$
 
-Step 1 — distributions over affine subspaces (the Fourier / extractor core).
-Let W∈A(n) be a random affine subspace; E_W[U_W] is a mixture of uniform-on-subspace
-distributions.
+The third step reduces a general program to an accurate affine one.
 
-Lemma 1 (mixing). Let r ≥ n/2. If for all a≠0, b∈{0,1}, Pr_W[∀x∈W: a·x=b] ≤ 2^{−r}, then
-|E_W[U_W] − U_n|_1 < 2^{−(r−n/2)}.
-  Proof. For affine w, Û_w(a)= 2^{−n} if a·x≡0 on w, −2^{−n} if ≡1, else 0. Hence
-  Ê_W[U_W](a)= 2^{−n}(Pr_W[a·x≡0 on W] − Pr_W[a·x≡1 on W]), with the a=0 coefficient
-  = 2^{−n} = Û_n(0). For a≠0, Û_n(a)=0 and |Ê_W[U_W](a)| ≤ 2^{−n}·2^{−r}, so
-  Σ_{a≠0}(Ê_W[U_W](a) − Û_n(a))^2 < 2^n(2^{−n}2^{−r})^2 = 2^{−n−2r}. By Cauchy–Schwarz and
-  Parseval, (E_x|P−U_n|)^2 ≤ E_x(P−U_n)^2 = Σ_a(P̂−Û_n)^2 < 2^{−n−2r} (with P=E_W[U_W]). Thus
-  |P−U_n|_1 = 2^n E_x|P−U_n| < 2^n·2^{−(n+2r)/2} = 2^{−(r−n/2)}. □
+**Lemma 5.** Let $k'<n$, and let $B$ be a length-$m$, width-$d$ parity-learning program with all leaves in the last layer, output dimension $\le k'$, and success $\beta$. For $n/2\le r\le n$ set $\epsilon=4m\cdot2^{-(r-n/2)}$. Then there is an $\epsilon$-accurate length-$m$ affine program $P$ with (1) for every $k$, the number of dimension-$k$ vertices is at most $4n\cdot2^{\sum_{i=0}^{n-k-1}(r-i/2)}\cdot dm$, and (2) for $k'<k<n$, $\Pr[\dim(\text{output})<k]\ge\beta-\epsilon-2^{-(k-k')}$. *Proof sketch.* Build $P$ layer by layer under the inductive hypothesis that some $U_j$ over layer $j$, with $y_j\sim U_{w(U_j)}$, satisfies $|P_{V_j,x}-P_{U_j,y_j}|_1\le\epsilon_j/2$, $\epsilon_j=4j\cdot2^{-(r-n/2)}$ — the surrogate form that keeps the error additive across the $m=2^{\Theta(n)}$ layers instead of multiplicative. Base $j=0$: label the start $\{0,1\}^n$, $U_0=V_0$, distance $0$. Step: from $U_{j-1},y_{j-1}$, draw $a\sim U$, set $b=a\cdot y_{j-1}$, follow the edge to $V$; let $W=w(U_{j-1})\cap\{a\cdot x'=b\}$. For each $B$-vertex $v$, apply Lemma 3 to $W_v=W\mid(V=v)$ to get a grouping map $\sigma_v$, split $v$ into one copy $(v,s)$ per $s\in\mathrm{image}\,\sigma_v$ (labeled $s$, or $\{0,1\}^n$ for the leftover), and route each incoming edge $e=(u,v)$ to $(v,\sigma_v(w(e)))$ — soundness holds since $w(e)\subseteq\sigma_v(w(e))$. Set $U_j=(V,\sigma_V(W))$. With $y_j'\sim U_W$, the grouping accuracy (Lemma 3(3), plus the $2^{-2n}$ leftover) gives $|P_{U_j,y_j'}-P_{U_j,y_j}|_1\le2\cdot2^{-(r-n/2)}$, and the shared resampling map $T$ — draw $a$, set $b=a\cdot z$, follow the edge — sends $(V_{j-1},x)\mapsto(V_j,x)$ and $(U_{j-1},y_{j-1})\mapsto(U_j,y_j')$ and cannot increase $\ell_1$ distance, so it transports the inductive hypothesis to $|P_{V_j,x}-P_{U_j,y_j'}|_1\le2(j-1)\cdot2^{-(r-n/2)}$; the triangle inequality closes the induction at $\epsilon_j/2$. Property (1) is Lemma 3(4) multiplied by $dm$, one copy per $B$-vertex per layer. Property (2): with $V_m=(V,S)$, $\Pr[x\in w(V)]=\beta$ and $\epsilon$-accuracy give $\Pr[y_m\in w(V)]\ge\beta-\epsilon$; since $\dim w(V)\le k'$, whenever $\dim w(V_m)\ge k$ we have $\Pr[y_m\in w(V)\mid\cdot]\le2^{k'-k}$, so $\beta-\epsilon\le\Pr[\dim w(V_m)<k]+2^{k'-k}$. $\square$
 
-Lemma 2 (capture). Let r ≥ n/2. There exists s∈A(n) with (1) Pr_W[W⊆s] ≥
-2^{−Σ_{i=0}^{n−dim s−1}(r−i/2)} and (2) |E_{W|W⊆s}[U_W] − U_s|_1 < 2^{−(r−n/2)}.
-  Proof. Induction on n. Base n=0: s={0}. Step: if Lemma 1's hypothesis holds, take s={0,1}^n.
-  Else ∃a≠0,b with Pr_W[∀x∈W:a·x=b] > 2^{−r}; set u={x:a·x=b} (dim u=n−1), so Pr_W[W⊆u] >
-  2^{−r}. Apply the hypothesis to W'= W|(W⊆u) over u≅{0,1}^{n−1} with (n−1, r−1/2), getting
-  s⊆u. (1): Pr_W[W⊆s] = Pr_W[W⊆u] Pr_{W'}[W'⊆s] > 2^{−r}·2^{−Σ_{i=0}^{n−1−dim s−1}(r−1/2−i/2)}
-  = 2^{−Σ_{i=0}^{n−dim s−1}(r−i/2)}. (2): E_{W|W⊆s}[U_W] = E_{W'|W'⊆s}[U_{W'}], inherited. □
+Assembling the constants closes the argument. Let $B$ have length $m=2^{\alpha n}$, width $d=2^{cn^2}$, output dimension $\le k'=\tfrac{3n}5$, and success $\beta$. Set $r=(\tfrac12+2\alpha)n$ and the threshold $k=\tfrac{4n}5$, so $n-k=\tfrac n5$ and $n-2k=-\tfrac{3n}5$. Then $\epsilon=4\cdot2^{-\alpha n}$ and $2^{-(k-k')}=2^{-n/5}$, so Lemma 5(2) gives $\Pr[\dim(\text{output})<k]\ge\beta-5\cdot2^{-\alpha n}$. Make every dimension-$k$ vertex a leaf, so every vertex has $\dim\ge k$; then Lemma 5(1) and Lemma 4 give
+$$
+\Pr[\text{reach a dim-}k\text{ vertex}] \;\le\; \Big(4n\cdot2^{\sum_{i=0}^{n-k-1}(r-i/2)}\cdot dm\Big)\Big(m^{\,n-k}\cdot2^{\sum_{i=0}^{n-k-1}(n-2k-i)}\Big).
+$$
+Substituting and combining — the linear terms cancel as $\tfrac12-\tfrac35=-\tfrac1{10}$, the quadratic terms as $-\tfrac i2-i=-\tfrac32 i$ — collapses this to
+$$
+4nm\cdot2^{cn^2}\cdot2^{(n-k)(3\alpha n-n/10)}\cdot2^{-\frac34(n-k)(n-k-1)} \;=\; 4nm\cdot2^{\,n^2\left(c+\frac35\alpha-\frac1{20}+\frac3{20n}\right)}.
+$$
+So whenever $\alpha<\tfrac53\left(\tfrac1{20}-c\right)$, this is $2^{-\Omega(n^2)}$, forcing $\beta-5\cdot2^{-\alpha n}\le2^{-\Omega(n^2)}$, i.e. $\beta\le O(2^{-\alpha n})$ — the theorem. The corollary is the special case $k'=0$, the learner outputting a single guess $\tilde x$ (a dimension-$0$ subspace); rounding the constant, any $c<\tfrac1{20}$ works, so $\sim n^2/25$ memory bits is a clean sufficient threshold below which exponentially many samples are needed.
 
-Lemma 3 (grouping — the only export). Let r ≥ n/2. There is a partial σ:A(n)→A(n) with
-(1) Pr_W[W∉dom σ] ≤ 2^{−2n}; (2) w⊆σ(w); (3) for all s∈image σ, |E_{W|σ(W)=s}[U_W] − U_s|_1 <
-2^{−(r−n/2)}; (4) for every k, #{s∈image σ: dim s ≥ k} ≤ 4n·2^{Σ_{i=0}^{n−k−1}(r−i/2)}.
-  Proof. Repeatedly apply Lemma 2: W_0=W→s_0, set σ(w)=s_0 for w⊆s_0; W_1=W|(W⊄s_0)→s_1; …;
-  stop when Pr_W[W∉dom σ] ≤ 2^{−2n}. The s_i are distinct. (1) by the stopping rule; (2),(3)
-  by Lemma 2. (4): each carve producing dim s_i ≥ k captures ≥ 2^{−Σ_{i=0}^{n−k−1}(r−i/2)} of
-  the remaining mass (more dimension ⇒ fewer sum terms ⇒ larger fraction), so after
-  ≤ 4n·2^{Σ_{i=0}^{n−k−1}(r−i/2)} such carves the residual is ≤ 2^{−2n}. □
-
-Step 2 — affine lower bound (dimension-of-intersection).
-
-Lemma 4. Let k<n, P a length-m affine program with dim w(u) ≥ k for all u, and v a vertex with
-dim w(v)=k. Then Pr[path reaches v] ≤ m^{n−k}·2^{Σ_{j=0}^{n−k−1}(n−2k−j)}.
-  Proof. Let s={a:∃b,∀x'∈w(v),a·x'=b} (orthogonal to w(v), dim s=n−k). Let S_i be orthogonal
-  to w(V_i); soundness gives S_i ⊆ span(S_{i−1}∪{a_i}). Set Z_i=dim(S_i∩s): Z_0=0, Z_i ≤
-  Z_{i−1}+1, and reaching v needs some Z_i=n−k. A rise (Z_i>Z_{i−1}) requires ∃a∈S_{i−1} with
-  a⊕a_i∈s; for fixed a, Pr[a⊕a_i∈s]=2^{dim s−n}=2^{−k}. Distinct possibilities form cosets of
-  S_{i−1}∩s, numbering 2^{dim S_{i−1}−Z_{i−1}} ≤ 2^{n−k−Z_{i−1}}, so conditioned on
-  x,a_1,…,a_{i−1} (fixing Z_{i−1}), Pr[rise at i] ≤ 2^{n−k−Z_{i−1}}·2^{−k}=2^{n−2k−Z_{i−1}}.
-  For a fixed tuple i_1<…<i_{n−k} of rise-steps, Pr ≤ ∏_{j=1}^{n−k}2^{n−2k−(j−1)} =
-  2^{Σ_{j=0}^{n−k−1}(n−2k−j)}. Union bound over < m^{n−k} tuples gives the claim. □
-
-Step 3 — reduction general → accurate affine.
-
-Lemma 5. Let k'<n. Let B be a length-m, width-d parity-learning program, all leaves in the
-last layer, output dimension ≤ k', success β. Let n/2 ≤ r ≤ n, ε=4m·2^{−(r−n/2)}. Then there
-is an ε-accurate length-m affine program P with: (1) for every k, # dimension-k vertices ≤
-4n·2^{Σ_{i=0}^{n−k−1}(r−i/2)}·dm; (2) for k'<k<n, Pr[dim(output)<k] ≥ β−ε−2^{−(k−k')}.
-  Proof sketch (full induction). Build P layer by layer with inductive hypothesis: ∃U_j over
-  layer j with y_j∼U_{w(U_j)} and |P_{V_j,x}−P_{U_j,y_j}|_1 ≤ ε_j/2, ε_j=4j·2^{−(r−n/2)} (the
-  surrogate form keeps errors additive across m=2^{Θ(n)} layers). Base j=0: label start
-  {0,1}^n, U_0=V_0, distance 0. Step: from U_{j−1}, y_{j−1}, draw a∼U, b=a·y_{j−1}, follow
-  edge to V; W=w(U_{j−1})∩{a·x'=b}. For each B-vertex v, apply Lemma 3 to W_v=W|(V=v) to get
-  σ_v; split v into copies (v,s), s∈image σ_v (label s, or {0,1}^n for the * leftover),
-  routing incoming edge e=(u,v) to (v,σ_v(w(e))) — soundness holds since w(e)⊆σ_v(w(e)). Set
-  U_j=(V,σ_V(W)). With y'_j∼U_W: (3a) |P_{U_j,y'_j}−P_{U_j,y_j}|_1 ≤ 2·2^{−(r−n/2)} by Lemma
-  3(3) plus the 2^{−2n} leftover; (3b) |P_{V_j,x}−P_{U_j,y'_j}|_1 ≤ 2(j−1)·2^{−(r−n/2)} by the
-  shared transformation T (draw a, b=a·z, follow edge) with T(V_{j−1},x)∼(V_j,x),
-  T(U_{j−1},y_{j−1})∼(U_j,y'_j) — T cannot increase ℓ1 — and the inductive hypothesis.
-  Triangle: |P_{V_j,x}−P_{U_j,y_j}|_1 ≤ 2j·2^{−(r−n/2)}=ε_j/2. Accuracy of P follows from the
-  hypothesis at each layer. Property (1) is Lemma 3(4) times dm. Property (2): with V_m=(V,S),
-  Pr[x∈w(V)]=β and ε-accuracy give Pr[y_m∈w(V)] ≥ β−ε; since dim w(V) ≤ k', if dim w(V_m) ≥ k
-  then Pr[y_m∈w(V)|·] ≤ 2^{k'−k}, so β−ε ≤ Pr[dim w(V_m)<k]+2^{k'−k}. □
-
-Step 4 — assemble the constants.
-
-Let B have length m=2^{αn}, width d=2^{cn^2}, output dimension ≤ k'=3n/5, success β. Set
-r=(1/2+2α)n, k=4n/5 (so n−k=n/5, n−2k=−3n/5). Then ε=4·2^{−αn} and 2^{−(k−k')}=2^{−n/5}, so
-by Lemma 5(2) Pr[dim(output)<k] ≥ β−5·2^{−αn}. Make all dimension-k vertices leaves; every
-vertex has dim ≥ k. By Lemma 5(1) and Lemma 4,
-
-  Pr[reach a dim-k vertex] ≤ (4n·2^{Σ_{i=0}^{n−k−1}(r−i/2)}·dm)·(m^{n−k}·2^{Σ_{i=0}^{n−k−1}(n−2k−i)}).
-
-Substituting and combining (the cancellation 1/2−3/5=−1/10 in the linear terms; −i/2−i=−3i/2
-in the quadratic terms):
-
-  = 4nm·2^{cn^2}·2^{(n−k)(3αn−n/10)}·2^{−(3/4)(n−k)(n−k−1)}
-  = 4nm·2^{ n^2 ( c + (3/5)α − 1/20 + 3/(20n) ) }.
-
-Hence if α < (5/3)(1/20 − c), this is 2^{−Ω(n^2)}, so β−5·2^{−αn} ≤ 2^{−Ω(n^2)}, i.e.
-β ≤ O(2^{−αn}). ∎
-
-The corollary is the special case k'=0 (the learner outputs a single guess x̃, a dimension-0
-subspace), and the constant is rounded: any c<1/20 works, so ~ n^2/25 memory bits is a clean
-sufficient threshold below which exponentially many samples are needed.
-
-────────────────────────────────────────────────────────────────────────────
-Remarks.
-
-• Why the conjectured constant n^2/4 is too strong. A Gaussian-elimination variant keeps, at
-  step k, a k×n matrix whose first k columns form the identity, costing n^2/4 + O(n) memory;
-  restricting to samples supported on the first 3n/4 coordinates lets one solve a size-3n/4
-  problem with 2^{n/4} samples and (9/64)n^2 + o(n^2) ≈ 0.14 n^2 memory, beating n^2/4. So the
-  right statement is the qualitative trade with a smaller constant, here c < 1/20.
-
-• Cryptographic corollary. Sharing x∈{0,1}^n, encrypt a bit M as M⊕(a·x) for fresh public
-  uniform a (cost n/bit). An adversary with < n^2/25 memory watching up to 2^{Ω(n)} uses cannot
-  recover x beyond exponentially small probability; since a·x is a strong extractor, it cannot
-  predict the next pad bit beyond exponentially small advantage. This is a bounded-storage
-  scheme whose encryption time is not forced to be linear in the adversary's memory.
-```
+The true threshold is smaller than the naive guess of $n^2/4$: a Gaussian-elimination variant that keeps, at step $k$, a $k\times n$ matrix whose first $k$ columns are forced to the identity costs $\tfrac{n^2}4+O(n)$ memory, but restricting to samples supported on the first $\tfrac{3n}4$ coordinates solves a size-$\tfrac{3n}4$ subproblem with only $2^{n/4}$ samples and $\tfrac9{64}n^2+o(n^2)\approx0.14\,n^2$ memory — beating $n^2/4$ — so $c<\tfrac1{20}$, not $c<\tfrac14$, is the honest constant this argument can certify.
