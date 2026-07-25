@@ -13,6 +13,8 @@ import torch.nn.functional as F
 
 
 class ConvUnit(nn.Module):
+    """Conv -> ReLU. Every conv in the network (including the 1x1 reducers
+    and projections) is followed by a rectified linear activation."""
     def __init__(self, in_channels, out_channels, **kwargs):
         super().__init__()
         self.conv = nn.Conv2d(in_channels, out_channels, **kwargs)
@@ -22,19 +24,25 @@ class ConvUnit(nn.Module):
 
 
 class FeatureBlock(nn.Module):
-    """Inception module: four parallel branches concatenated on channels."""
+    """Four parallel dense branches covering several scales, concatenated on
+    the channel axis. The 1x1 convs in branches 2/3 and after the pool are the
+    dimension reducers that keep the cost bounded."""
     def __init__(self, in_channels, *widths):
         super().__init__()
         ch1, ch3red, ch3, ch5red, ch5, poolproj = widths
+        # branch 1: a single 1x1 conv (the tightest, most local clusters)
         self.branch1 = ConvUnit(in_channels, ch1, kernel_size=1)
+        # branch 2: 1x1 reduce -> 3x3 (cut channels before the bigger kernel)
         self.branch2 = nn.Sequential(
             ConvUnit(in_channels, ch3red, kernel_size=1),
             ConvUnit(ch3red, ch3, kernel_size=3, padding=1),
         )
+        # branch 3: 1x1 reduce -> 5x5 (the expensive kernel, run at low width)
         self.branch3 = nn.Sequential(
             ConvUnit(in_channels, ch5red, kernel_size=1),
             ConvUnit(ch5red, ch5, kernel_size=5, padding=2),
         )
+        # branch 4: 3x3 max-pool -> 1x1 project (cap the pool's channel count)
         self.branch4 = nn.Sequential(
             nn.MaxPool2d(kernel_size=3, stride=1, padding=1),
             ConvUnit(in_channels, poolproj, kernel_size=1),
@@ -48,7 +56,9 @@ class FeatureBlock(nn.Module):
 
 
 class SideHead(nn.Module):
-    """Training-time auxiliary classifier, discarded at inference."""
+    """Auxiliary classifier hung off an intermediate module during training.
+    Adds gradient signal deep in the net and acts as a regularizer; discarded
+    at inference."""
     def __init__(self, in_channels, num_classes):
         super().__init__()
         self.avgpool = nn.AvgPool2d(kernel_size=5, stride=3)
@@ -58,8 +68,8 @@ class SideHead(nn.Module):
         self.dropout = nn.Dropout(0.7)
 
     def forward(self, x):
-        x = self.avgpool(x)
-        x = self.conv(x)
+        x = self.avgpool(x)                    # avg pool 5x5/3 -> 4x4
+        x = self.conv(x)                       # 1x1 reduce to 128
         x = torch.flatten(x, 1)
         x = F.relu(self.fc1(x), inplace=True)
         x = self.dropout(x)
@@ -71,6 +81,7 @@ class Net(nn.Module):
         super().__init__()
         self.aux = aux
 
+        # Stem: plain convs + pooling + local response normalization.
         self.conv1 = ConvUnit(3, 64, kernel_size=7, stride=2, padding=3)
         self.pool1 = nn.MaxPool2d(3, stride=2, ceil_mode=True)
         self.lrn1 = nn.LocalResponseNorm(5, alpha=1e-4, beta=0.75, k=1.0)
@@ -95,9 +106,10 @@ class Net(nn.Module):
 
         self.side_heads = nn.ModuleDict()
         if aux:
-            self.side_heads["aux1"] = SideHead(512, num_classes)
-            self.side_heads["aux2"] = SideHead(528, num_classes)
+            self.side_heads["aux1"] = SideHead(512, num_classes)  # off 4a
+            self.side_heads["aux2"] = SideHead(528, num_classes)  # off 4d
 
+        # Head: global average pooling -> dropout -> single linear.
         self.final_pool = nn.AdaptiveAvgPool2d((1, 1))
         self.classifier = nn.Sequential(
             nn.Dropout(0.4),
@@ -122,12 +134,14 @@ class Net(nn.Module):
         x = self.body[10](x)
         x = torch.flatten(self.final_pool(x), 1)
         x = self.classifier(x)
+
         if self.aux and self.training:
             return x, aux2, aux1
         return x
 
 
 def compute_loss(outputs, target):
+    """L = L_main + 0.3 * (L_aux1 + L_aux2) during training."""
     aux_weight = 0.3
     if isinstance(outputs, tuple):
         main, aux2, aux1 = outputs
