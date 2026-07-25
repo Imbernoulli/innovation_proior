@@ -12,40 +12,21 @@ from torch import nn
 import torch.nn.functional as F
 
 
-def inverse_sigmoid(x, eps=1e-5):
-    x = x.clamp(min=eps, max=1 - eps)
-    return torch.log(x / (1 - x))
-
-
-def pos_embed_2d(h, w, c, device):
-    assert c % 4 == 0
-    dim = c // 2
-    y_embed = torch.arange(1, h + 1, dtype=torch.float32, device=device).unsqueeze(1).repeat(1, w)
-    x_embed = torch.arange(1, w + 1, dtype=torch.float32, device=device).unsqueeze(0).repeat(h, 1)
-    div = torch.exp(-torch.arange(0, dim, 2, dtype=torch.float32, device=device) * (torch.log(torch.tensor(10000.0)) / dim))
-    pe = torch.zeros(h, w, c, device=device)
-    pe[:, :, 0:dim:2] = torch.sin(y_embed[:, :, None] * div)
-    pe[:, :, 1:dim:2] = torch.cos(y_embed[:, :, None] * div)
-    pe[:, :, dim + 0::2] = torch.sin(x_embed[:, :, None] * div)
-    pe[:, :, dim + 1::2] = torch.cos(x_embed[:, :, None] * div)
-    return pe
-
-
-def ms_deform_attn_core(value, spatial_shapes, sampling_locations, attention_weights):
-    """Bilinear-sample LK points per query from L feature maps and weight-sum.
-    value: (N, sum(HW), M, D); sampling_locations: (N, Lq, M, L, K, 2) in [0,1];
-    attention_weights: (N, Lq, M, L, K)."""
+def ms_deform_attn_core(value, value_spatial_shapes, sampling_locations, attention_weights):
+    """value: (N, sum(HW), M, D); sampling_locations: (N, Lq, M, L, K, 2) in [0,1];
+    attention_weights: (N, Lq, M, L, K). Bilinear-sample LK points/query and weight-sum."""
     N, _, M, D = value.shape
     _, Lq, _, L, K, _ = sampling_locations.shape
-    value_list = value.split([H * W for H, W in spatial_shapes], dim=1)
-    sampling_grids = 2 * sampling_locations - 1  # [0,1] -> [-1,1]
-    sampled = []
-    for lid, (H, W) in enumerate(spatial_shapes):
+    value_list = value.split([H * W for H, W in value_spatial_shapes], dim=1)
+    sampling_grids = 2 * sampling_locations - 1                       # [0,1] -> [-1,1]
+    out_levels = []
+    for lid, (H, W) in enumerate(value_spatial_shapes):
         v_l = value_list[lid].flatten(2).transpose(1, 2).reshape(N * M, D, H, W)
-        grid_l = sampling_grids[:, :, :, lid].transpose(1, 2).flatten(0, 1)  # (N*M, Lq, K, 2)
-        sampled.append(F.grid_sample(v_l, grid_l, mode='bilinear', padding_mode='zeros', align_corners=False))
+        grid_l = sampling_grids[:, :, :, lid].transpose(1, 2).flatten(0, 1)
+        out_levels.append(F.grid_sample(v_l, grid_l, mode='bilinear',
+                                        padding_mode='zeros', align_corners=False))
     attn = attention_weights.transpose(1, 2).reshape(N * M, 1, Lq, L * K)
-    out = (torch.stack(sampled, dim=-2).flatten(-2) * attn).sum(-1)
+    out = (torch.stack(out_levels, dim=-2).flatten(-2) * attn).sum(-1)
     return out.view(N, M * D, Lq).transpose(1, 2)
 
 
@@ -61,146 +42,24 @@ class MSDeformAttn(nn.Module):
 
     def _reset_parameters(self):
         nn.init.constant_(self.sampling_offsets.weight, 0.)
-        thetas = torch.arange(self.M, dtype=torch.float32) * (2 * torch.pi / self.M)
+        thetas = torch.arange(self.M) * (2 * torch.pi / self.M)
         grid = torch.stack([thetas.cos(), thetas.sin()], -1)
-        grid = (grid / grid.abs().max(-1, keepdim=True)[0]).view(self.M, 1, 1, 2).repeat(1, self.L, self.K, 1)
+        grid = (grid / grid.abs().max(-1, keepdim=True)[0]).view(self.M, 1, 1, 2)
+        grid = grid.repeat(1, self.L, self.K, 1)
         for k in range(self.K):
             grid[:, :, k] *= (k + 1)
         self.sampling_offsets.bias = nn.Parameter(grid.view(-1))
         nn.init.constant_(self.attention_weights.weight, 0.)
-        nn.init.constant_(self.attention_weights.bias, 0.)
+        nn.init.constant_(self.attention_weights.bias, 0.)               # softmax -> 1/(LK)
 
-    def forward(self, query, reference_points, value, spatial_shapes):
+    def forward(self, query, reference_points, value, value_spatial_shapes):
         N, Lq, _ = query.shape
         value = self.value_proj(value).view(N, -1, self.M, self.d_model // self.M)
         offsets = self.sampling_offsets(query).view(N, Lq, self.M, self.L, self.K, 2)
         weights = self.attention_weights(query).view(N, Lq, self.M, self.L * self.K)
         weights = weights.softmax(-1).view(N, Lq, self.M, self.L, self.K)
-        norm = torch.stack([torch.tensor([W, H], dtype=offsets.dtype, device=offsets.device) for H, W in spatial_shapes])
+        norm = torch.stack([torch.tensor([W, H]) for H, W in value_spatial_shapes], 0)
         loc = reference_points[:, :, None, :, None, :] + offsets / norm[None, None, None, :, None, :]
-        out = ms_deform_attn_core(value, spatial_shapes, loc, weights)
+        out = ms_deform_attn_core(value, value_spatial_shapes, loc, weights)
         return self.output_proj(out)
-
-
-class EncoderLayer(nn.Module):
-    def __init__(self, d_model=256, n_levels=4, n_heads=8, n_points=4, dim_ffn=1024, dropout=0.1):
-        super().__init__()
-        self.self_attn = MSDeformAttn(d_model, n_levels, n_heads, n_points)
-        self.ffn = nn.Sequential(nn.Linear(d_model, dim_ffn), nn.ReLU(inplace=True),
-                                 nn.Dropout(dropout), nn.Linear(dim_ffn, d_model))
-        self.norm1 = nn.LayerNorm(d_model)
-        self.norm2 = nn.LayerNorm(d_model)
-        self.dropout1 = nn.Dropout(dropout)
-        self.dropout2 = nn.Dropout(dropout)
-
-    def forward(self, src, pos, reference_points, spatial_shapes):
-        q = src + pos
-        src2 = self.self_attn(q, reference_points, src, spatial_shapes)
-        src = src + self.dropout1(src2)
-        src = self.norm1(src)
-        src = src + self.dropout2(self.ffn(src))
-        return self.norm2(src)
-
-
-class DecoderLayer(nn.Module):
-    def __init__(self, d_model=256, n_levels=4, n_heads=8, n_points=4, dim_ffn=1024, dropout=0.1):
-        super().__init__()
-        self.self_attn = nn.MultiheadAttention(d_model, n_heads, dropout=dropout, batch_first=True)
-        self.cross_attn = MSDeformAttn(d_model, n_levels, n_heads, n_points)
-        self.ffn = nn.Sequential(nn.Linear(d_model, dim_ffn), nn.ReLU(inplace=True),
-                                 nn.Dropout(dropout), nn.Linear(dim_ffn, d_model))
-        self.norm1 = nn.LayerNorm(d_model)
-        self.norm2 = nn.LayerNorm(d_model)
-        self.norm3 = nn.LayerNorm(d_model)
-        self.dropout1 = nn.Dropout(dropout)
-        self.dropout2 = nn.Dropout(dropout)
-        self.dropout3 = nn.Dropout(dropout)
-
-    def forward(self, tgt, query_pos, reference_points, memory, spatial_shapes):
-        q = k = tgt + query_pos
-        tgt2, _ = self.self_attn(q, k, tgt)
-        tgt = tgt + self.dropout1(tgt2)
-        tgt = self.norm1(tgt)
-        q2 = tgt + query_pos
-        tgt2 = self.cross_attn(q2, reference_points, memory, spatial_shapes)
-        tgt = tgt + self.dropout2(tgt2)
-        tgt = self.norm2(tgt)
-        tgt = tgt + self.dropout3(self.ffn(tgt))
-        return self.norm3(tgt)
-
-
-class MLP(nn.Module):
-    def __init__(self, in_dim, hidden_dim, out_dim, num_layers):
-        super().__init__()
-        layers = []
-        for i in range(num_layers):
-            layers.append(nn.Linear(in_dim if i == 0 else hidden_dim, hidden_dim if i < num_layers - 1 else out_dim))
-        self.layers = nn.ModuleList(layers)
-
-    def forward(self, x):
-        for i, layer in enumerate(self.layers):
-            x = F.relu(layer(x)) if i < len(self.layers) - 1 else layer(x)
-        return x
-
-
-class DeformableDETR(nn.Module):
-    def __init__(self, backbone, num_classes, num_queries=300, d_model=256, n_levels=4, n_heads=8, n_points=4):
-        super().__init__()
-        self.backbone = backbone
-        self.num_queries = num_queries
-        self.d_model = d_model
-        # Project C3, C4, C5 and build C6; simplified here as one conv per backbone output.
-        in_chs = backbone.out_channels if hasattr(backbone, 'out_channels') else [512, 1024, 2048]
-        self.input_proj = nn.ModuleList([nn.Conv2d(c, d_model, 1) for c in in_chs[:3]] +
-                                        [nn.Sequential(nn.Conv2d(in_chs[2], d_model, 3, stride=2, padding=1))])
-        self.level_embed = nn.Parameter(torch.randn(n_levels, d_model))
-        enc_layer = EncoderLayer(d_model, n_levels, n_heads, n_points)
-        self.encoder = nn.ModuleList([enc_layer for _ in range(6)])
-        dec_layer = DecoderLayer(d_model, n_levels, n_heads, n_points)
-        self.decoder = nn.ModuleList([dec_layer for _ in range(6)])
-        self.query_embed = nn.Embedding(num_queries, d_model * 2)
-        self.reference_point = nn.Linear(d_model, 2)
-        self.class_head = nn.Linear(d_model, num_classes)
-        self.box_head = MLP(d_model, d_model, 4, 3)
-
-    def forward(self, images):
-        feats = self.backbone(images)
-        if isinstance(feats, torch.Tensor):
-            feats = [feats]
-        srcs, shapes, pos = [], [], []
-        refs = []
-        for l, proj in enumerate(self.input_proj):
-            f = proj(feats[min(l, len(feats) - 1)] if l < 3 else feats[-1])
-            if l == 3:
-                f = self.input_proj[3](feats[-1])
-            B, _, H, W = f.shape
-            srcs.append(f.flatten(2).transpose(1, 2))
-            shapes.append((H, W))
-            pe = pos_embed_2d(H, W, self.d_model, f.device).unsqueeze(0) + self.level_embed[l]
-            pos.append(pe.flatten(2).transpose(1, 2))
-            yy, xx = torch.meshgrid(torch.linspace(0, 1, H, device=f.device),
-                                    torch.linspace(0, 1, W, device=f.device), indexing='ij')
-            ref = torch.stack([xx, yy], -1).flatten(0, 1).unsqueeze(0).expand(B, -1, -1)
-            refs.append(ref)
-        src = torch.cat(srcs, dim=1)
-        pos_enc = torch.cat(pos, dim=1)
-        reference_points = torch.cat(refs, dim=1)
-        memory = src
-        for layer in self.encoder:
-            memory = layer(memory, pos_enc, reference_points, shapes)
-
-        query_pos, tgt = self.query_embed.weight.split(self.d_model, dim=1)
-        query_pos = query_pos.unsqueeze(0).expand(images.size(0), -1, -1)
-        tgt = tgt.unsqueeze(0).expand(images.size(0), -1, -1)
-        reference = self.reference_point(query_pos).sigmoid()
-
-        for layer in self.decoder:
-            tgt = layer(tgt, query_pos, reference, memory, shapes)
-
-        logits = self.class_head(tgt)
-        box = self.box_head(tgt)
-        ref_logit = inverse_sigmoid(reference)
-        box[..., :2] += ref_logit
-        boxes = box.sigmoid()
-        return {'pred_logits': logits, 'pred_boxes': boxes}
 ```
