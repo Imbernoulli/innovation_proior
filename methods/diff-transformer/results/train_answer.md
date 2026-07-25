@@ -16,7 +16,7 @@ import torch.nn.functional as F
 
 
 def lambda_init_fn(depth):
-    # depth: 0-based layer index. Paper schedule (1-based l): 0.8 - 0.6*exp(-0.3*(l-1)).
+    # depth: 0-based layer index. Schedule (1-based l): 0.8 - 0.6*exp(-0.3*(l-1)).
     return 0.8 - 0.6 * math.exp(-0.3 * depth)
 
 
@@ -37,8 +37,7 @@ class MultiheadDiffAttn(nn.Module):
     def __init__(self, d_model, n_heads, depth):
         super().__init__()
         self.n_heads = n_heads
-        # Halve the head dim so the doubled q/k is parameter/FLOP matched to a vanilla head.
-        self.head_dim = d_model // n_heads // 2
+        self.head_dim = d_model // n_heads // 2          # halved so doubled q/k is budget-matched
         self.scaling = self.head_dim ** -0.5
 
         self.q_proj = nn.Linear(d_model, d_model, bias=False)
@@ -52,7 +51,6 @@ class MultiheadDiffAttn(nn.Module):
         self.lambda_q2 = nn.Parameter(torch.zeros(self.head_dim).normal_(mean=0, std=0.1))
         self.lambda_k2 = nn.Parameter(torch.zeros(self.head_dim).normal_(mean=0, std=0.1))
 
-        # Per-head normalization over the 2*head_dim head output.
         self.subln = RMSNorm(2 * self.head_dim, eps=1e-5, elementwise_affine=True)
 
     def forward(self, x, rope, attn_mask=None):
@@ -62,13 +60,13 @@ class MultiheadDiffAttn(nn.Module):
         k = self.k_proj(x).view(B, T, 2 * self.n_heads, self.head_dim)
         v = self.v_proj(x).view(B, T, self.n_heads, 2 * self.head_dim)
 
-        q, k = rope(q, k)                       # relative position on the doubled q/k sub-heads
-        q = q.transpose(1, 2)                   # (B, 2H, T, head_dim)
+        q, k = rope(q, k)
+        q = q.transpose(1, 2)                            # (B, 2H, T, head_dim)
         k = k.transpose(1, 2)
-        v = v.transpose(1, 2)                   # (B,  H, T, 2*head_dim)
+        v = v.transpose(1, 2)                            # (B,  H, T, 2*head_dim)
 
         q = q * self.scaling
-        att = torch.matmul(q, k.transpose(-1, -2))           # (B, 2H, T, T)
+        att = torch.matmul(q, k.transpose(-1, -2))       # (B, 2H, T, T)
         if attn_mask is None:
             attn_mask = torch.triu(
                 torch.full((T, T), float("-inf"), device=x.device, dtype=att.dtype), 1)
@@ -80,11 +78,11 @@ class MultiheadDiffAttn(nn.Module):
         lambda_full = lambda_1 - lambda_2 + self.lambda_init
 
         att = att.view(B, self.n_heads, 2, T, T)
-        att = att[:, :, 0] - lambda_full * att[:, :, 1]      # (B, H, T, T), signed
+        att = att[:, :, 0] - lambda_full * att[:, :, 1]  # (B, H, T, T), signed
 
-        o = torch.matmul(att, v)                             # (B, H, T, 2*head_dim)
-        o = self.subln(o)                                    # per-head normalization
-        o = o * (1.0 - self.lambda_init)                     # fixed gain compensation
+        o = torch.matmul(att, v)                         # (B, H, T, 2*head_dim)
+        o = self.subln(o)
+        o = o * (1.0 - self.lambda_init)                 # fixed gain compensation
         o = o.transpose(1, 2).reshape(B, T, self.n_heads * 2 * self.head_dim)
         return self.out_proj(o)
 ```
