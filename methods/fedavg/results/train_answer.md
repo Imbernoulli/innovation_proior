@@ -20,17 +20,17 @@ def _client_sgd(model, loader, loss_fn, local_epochs, local_lr, device):
     """ClientUpdate: E epochs of plain SGD on a client's local data."""
     opt = torch.optim.SGD(model.parameters(), lr=local_lr)
     total_loss, total_n = 0.0, 0
-    for _ in range(local_epochs):
-        for inputs, targets in loader:
+    for _ in range(local_epochs):                       # E local epochs
+        for inputs, targets in loader:                  # minibatches of size B
             inputs, targets = inputs.to(device), targets.to(device)
             opt.zero_grad()
             outputs = model(inputs)
-            if outputs.dim() == 3:
+            if outputs.dim() == 3:                      # seq models: flatten time
                 outputs = outputs.view(-1, outputs.size(-1))
                 targets = targets.view(-1)
             loss = loss_fn(outputs, targets)
             loss.backward()
-            opt.step()
+            opt.step()                                  # w <- w - eta * grad(loss; b)
             total_loss += loss.item() * inputs.size(0)
             total_n += inputs.size(0)
     return total_loss / max(total_n, 1)
@@ -41,13 +41,13 @@ class Strategy:
     re-anchored each round to the broadcast global model."""
 
     def __init__(self, global_model, args):
-        self.args = args
+        self.args = args                                # no state carried across rounds
 
     def client_local_train(self, global_state_dict, client_dataset, model_fn,
                            loss_fn, local_epochs, local_lr, local_batch_size,
                            device, client_idx):
         model = model_fn()
-        model.load_state_dict(global_state_dict)
+        model.load_state_dict(global_state_dict)        # start from shared w_t
         model.to(device)
         model.train()
         loader = DataLoader(client_dataset, batch_size=local_batch_size,
@@ -61,24 +61,26 @@ class Strategy:
         return local_state, len(client_dataset), avg_loss
 
     def aggregate(self, global_state_dict, client_updates, round_num):
+        # w_{t+1} = sum_{k in S_t} (n_k / m_t) * w^k,  m_t = sum_{k in S_t} n_k
         if not client_updates:
             return OrderedDict((k, v.detach().clone())
                                for k, v in global_state_dict.items())
-        total_samples = sum(n for _, n, _ in client_updates)
+        total_samples = sum(n for _, n, _ in client_updates)            # m_t
         if total_samples <= 0:
             raise ValueError("FedAvg aggregation requires positive sample counts")
         new_state = OrderedDict()
         for key, ref in global_state_dict.items():
-            if not ref.is_floating_point():
+            if not ref.is_floating_point():             # integer buffers: copy, don't average
                 new_state[key] = client_updates[0][0][key].detach().clone()
                 continue
             acc = torch.zeros_like(ref, device="cpu", dtype=torch.float32)
-            for st, n, _ in client_updates:
+            for st, n, _ in client_updates:             # n_k-weighted average
                 acc += st[key].detach().cpu().float() * (n / total_samples)
             new_state[key] = acc.to(ref.dtype)
         return new_state
 
     def select_clients(self, num_available, num_to_select, round_num):
+        # random set S_t of m = max(C*K, 1) clients
         return random.sample(range(num_available),
                              min(num_to_select, num_available))
 ```
