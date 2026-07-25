@@ -4,38 +4,10 @@ The method that captures this viewpoint is Fenchel duality. At its heart is the 
 
 For the composite objective f(x) + g(Ax), a single minorant is not enough because its linear part still depends on x. The key trick is to choose two conjugate bounds whose linear parts cancel. Use slope -A^T u for f and slope u for g, where u lives in the range space of A. The two Fenchel-Young inequalities are f(x) >= < -A^T u, x > - f^*(-A^T u) and g(Ax) >= <u, Ax> - g^*(u). When they are added, the terms -<A^T u, x> and <u, Ax> cancel exactly, leaving f(x) + g(Ax) >= -f^*(-A^T u) - g^*(u). The right-hand side is a constant that does not depend on x, so every u gives a certified global lower bound on the primal minimum. The Fenchel dual problem is therefore d^* = sup_u { -f^*(-A^T u) - g^*(u) }, and weak duality d^* <= p^* is automatic because each dual candidate is constructed from valid inequalities.
 
-The primal-dual gap has a clean interpretation. For any primal x and dual u, the gap p(x,u) - d(u) is exactly the sum of the two nonnegative Fenchel-Young slacks: f(x) + f^*(-A^T u) - < -A^T u, x > plus g(Ax) + g^*(u) - <u, Ax>. Zero gap means both inequalities are tight, which happens precisely when -A^T u is a subgradient of f at x and u is a subgradient of g at Ax. These conditions say that the chosen supporting hyperplanes actually touch the two convex pieces at compatible points. Under standard Fenchel-Rockafellar regularity, such as continuity of one term at a point where the other is finite or a relative-interior domain qualification, the best lower bound reaches the true minimum and strong duality holds. The entire method is therefore a reversal of perspective: instead of asking where the lowest point is, Fenchel duality asks what the highest globally valid floor beneath the objective can be.
+The primal-dual gap has a clean interpretation. For any primal x and dual u, the gap p(x,u) - d(u) is exactly the sum of the two nonnegative Fenchel-Young slacks: f(x) + f^*(-A^T u) - < -A^T u, x > plus g(Ax) + g^*(u) - <u, Ax>. Zero gap means both inequalities are tight, which happens precisely when -A^T u is a subgradient of f at x and u is a subgradient of g at Ax. These conditions say that the chosen supporting hyperplanes actually touch the two convex pieces at compatible points. Under standard Fenchel-Rockafellar regularity, such as continuity of one term at a point where the other is finite or a relative-interior domain qualification, the best lower bound reaches the true minimum and strong duality holds. The entire method is therefore a reversal of perspective: instead of asking where the lowest point is, Fenchel duality asks what the highest globally valid floor beneath the objective can be. Stated as a single result, this reversal is the Fenchel duality theorem for the composite problem $p^\star=\inf_x\{f(x)+g(Ax)\}$. Weak duality, $d^\star=\sup_u\{-f^*(-A^Tu)-g^*(u)\}\le p^\star$, holds unconditionally for any closed proper convex $f,g$ and linear map $A$, with no regularity hypothesis at all, because $d^\star$ is assembled purely from the pointwise inequalities $f(x)\ge \langle -A^Tu,x\rangle-f^*(-A^Tu)$ and $g(Ax)\ge \langle u,Ax\rangle-g^*(u)$, which hold for every $x$ no matter which $u$ is chosen. Strong duality, $d^\star=p^\star$ with the supremum defining $d^\star$ attained whenever this common value is finite, holds under a Fenchel-Rockafellar regularity condition: it suffices that the relative interiors of the relevant domains overlap once mapped through $A$, or more simply that one of $f,g$ is continuous at a point where the other is finite — a qualification whose role is to rule out exactly the pathology in which the supports of $f$ and $g$ never align through $A$. Under that qualification, a pair $(x^\star,u^\star)$ is jointly optimal for the primal and dual problems precisely when both Fenchel-Young slacks vanish,
 
-```python
-import numpy as np
+$$
+-A^Tu^\star\in\partial f(x^\star),\qquad u^\star\in\partial g(Ax^\star),
+$$
 
-# A simple finite-dimensional illustration of Fenchel duality.
-# Primal:  minimize  (1/2)||x||^2 + (1/2)||A @ x - b||^2
-# f(x) = (1/2)||x||^2,  g(z) = (1/2)||z - b||^2,  linear map A.
-# Conjugates: f*(y) = (1/2)||y||^2,  g*(u) = (1/2)||u||^2 + u^T b.
-# Dual:    maximize  -(1/2)||A^T u||^2 - (1/2)||u||^2 - b^T u.
-
-np.random.seed(0)
-n, m = 5, 4
-A = np.random.randn(m, n)
-b = np.random.randn(m)
-
-# Solve the dual: concave quadratic with gradient -(A A^T + I) u - b = 0.
-u_star = -np.linalg.solve(A @ A.T + np.eye(m), b)
-
-# Recover primal candidate from the optimality condition x = -A^T u.
-x_star = -A.T @ u_star
-
-# Primal and dual optimal values.
-primal_value = 0.5 * np.dot(x_star, x_star) + 0.5 * np.dot(A @ x_star - b, A @ x_star - b)
-dual_value = -0.5 * np.dot(A.T @ u_star, A.T @ u_star) - 0.5 * np.dot(u_star, u_star) - np.dot(b, u_star)
-
-# Verify the subgradient conditions.
-subgrad_f = x_star
-subgrad_g = A @ x_star - b
-print("primal value:", primal_value)
-print("dual value:  ", dual_value)
-print("duality gap: ", primal_value - dual_value)
-print("|| -A^T u - grad f(x) ||:", np.linalg.norm(-A.T @ u_star - subgrad_f))
-print("|| u - grad g(Ax) ||:     ", np.linalg.norm(u_star - subgrad_g))
-```
+which is the certificate the whole construction was built to produce: a slope $u^\star$ whose supporting affine minorants touch $f$ at $x^\star$ and $g$ at $Ax^\star$ exactly, so that the highest floor the conjugates can raise coincides with the lowest point of the objective itself.
