@@ -14,8 +14,7 @@ The cost of a route is `(sum of fares of the edges used) + S * (number of line c
 Output the minimum possible cost of any route from `1` to `n`, or `-1` if `n` is unreachable.
 
 This is a shortest-path problem, but the cost of extending a route depends on *which line you arrived
-on*, not just on where you are — so the right notion of "distance" is per `(station, arriving line)`,
-and that is exactly what makes the most obvious shortest-path formulation wrong.
+on*, not just on where you are.
 
 ## Input / output contract
 
@@ -33,31 +32,12 @@ Example: with `S = 3` and edges `1->2` (Red, 4), `2->5` (Red, 9), `1->3` (Blue, 
 `1 ->(Blue,2) 3 ->(Blue,2) 4 ->(Red,1) 5`, costing `2 + 2 + 1 + 3 = 8` (one Blue->Red change), which
 beats the all-Red route `1->2->5` at `4 + 9 = 13`.
 
-## Background
-
-Because every fare and surcharge is non-negative, this is a non-negative-weight shortest-path problem
-and Dijkstra is the natural tool. The only real modelling question is **what a graph node is**. Two
-formulations are on the table before committing:
-
-- **Plain Dijkstra on stations.** Keep one distance per station, `dist[v]` = cheapest known cost to
-  reach `v`, and relax edges charging `S` when the boarded line differs from the line by which `v`'s
-  current best was reached. This is the textbook shape and `O((n + m) log n)`. The open question is
-  whether "the cheapest way to *reach* a station" is a sufficient summary of the past — i.e. whether a
-  station alone is enough state.
-
-- **Dijkstra on an augmented state.** Treat the state as `(station, line you arrived on)`. The cost
-  to extend then depends only on the boarded line versus the stored arriving line, which is local to
-  the state. This is `O((n + m) log m)` because the number of reachable states is bounded by the
-  number of edges. The open question is the exact transition and the start sentinel for "no line yet".
-
 ## Evaluation settings
 
-Judged on hidden tests covering: tiny graphs where a pricier arrival on the "right" line beats a
-cheaper arrival on the "wrong" line (the case that breaks plain station-only Dijkstra); `S = 0`
-(surcharges vanish, the answer must equal an ordinary shortest path); disconnected targets (answer
-`-1`); self-loops and parallel edges on different lines between the same pair; single-line graphs
-(no transfer ever); and large `n, m = 2*10^5` with fares and `S` near `10^9` so the accumulated cost
-overflows 32 bits.
+Judged on hidden tests covering: tiny graphs with multiple lines connecting the same pair of stations
+at different fares; `S = 0`; disconnected targets (answer `-1`); self-loops and parallel edges on
+different lines between the same pair; single-line graphs (no transfer ever); and large
+`n, m = 2*10^5` with fares and `S` near `10^9`.
 
 ## Code framework
 
