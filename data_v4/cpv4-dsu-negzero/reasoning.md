@@ -27,11 +27,11 @@ But what guild actually has balance `14` now? **None.** The only multi-member gu
 
 Step order matters: I must erase using the *old* `bal[ru]`, `bal[rv]` and *old* `sz` values, before I mutate them in step 3. If I attach first and then try to erase the old balances, the values are gone. So I do all erases up front.
 
-One sharp point on the erase: `multi.erase(value)` erases **all** elements equal to `value`; that would be a bug if two live guilds share a balance and I only meant to remove one. I must use `multi.erase(multi.find(value))`, which removes a single occurrence. I will write it that way from the start and flag it in the trace.
+One sharp point on the erase: `multi.erase(value)` erases **all** elements equal to `value`; that would be a bug if two live guilds share a balance and I only meant to remove one. I must use `multi.erase(multi.find(value))`, which removes a single occurrence. I will write it that way from the start.
 
 **Designing the answer formula and the base case — where signs and emptiness bite.** A `2` query: if `multi` is empty (no two-member guild exists yet), the answer is `0`. Otherwise let `mx = *multi.rbegin()` (the largest live multi-member balance); answer `mx` if `mx > 0`, else `0`. The strictness matters: a guild totaling exactly `0` must report `0`, and `mx > 0` handles that. The empty-multiset case and the non-positive-max case both collapse to `0`, which is the "no treasury worth announcing" rule. This is the base case I have to get right, and it is exactly the corner the problem is built to test: all-negative worlds, the empty world, and the lone player.
 
-**First implementation.** Here is my first cut of the event loop (DSU helpers elided, same as final):
+**First implementation.** Here is the event loop (DSU helpers elided, same as final), with the erase-before-mutate logic from the derivation above written in from the start: erase the old balance of any root whose size was already `>= 2`, *then* attach and update sizes/balances, *then* insert the merged balance.
 
 ```
 multiset<long long> multi;
@@ -41,6 +41,8 @@ for (int e = 0; e < q; e++) {
         int u, v; cin >> u >> v;
         int ru = find(u), rv = find(v);
         if (ru == rv) continue;
+        if (sz[ru] >= 2) multi.erase(multi.find(bal[ru]));
+        if (sz[rv] >= 2) multi.erase(multi.find(bal[rv]));
         if (sz[ru] < sz[rv]) swap(ru, rv);   // make ru the survivor
         par[rv] = ru;
         sz[ru] += sz[rv];
@@ -54,33 +56,14 @@ for (int e = 0; e < q; e++) {
 }
 ```
 
-**A trace that exposes the first real bug.** I deliberately removed nothing from `multi` above — let me see what that costs. Take `g = [10, 4, -20]`, events `1 1 2`, `2`, `1 1 3`, `2` (my earlier counterexample).
+**Tracing this against the earlier counterexample.** Take `g = [10, 4, -20]`, events `1 1 2`, `2`, `1 1 3`, `2` (the case that broke the running max).
 
-- `1 1 2`: `ru=1, rv=2`. `bal[1] = 10+4 = 14`. `multi.insert(14)` -> `multi = {14}`.
+- `1 1 2`: `ru=1, rv=2`, both `sz=1`, no erase. `bal[1] = 10+4 = 14`. `multi.insert(14)` -> `multi = {14}`.
 - `2`: `max(0, 14) = 14`. Good.
-- `1 1 3`: `ru = find(1) = 1`, `rv = 3`. `sz[1]=2 >= sz[3]=1`, survivor `ru=1`. `bal[1] = 14 + (-20) = -6`. `multi.insert(-6)` -> `multi = {-6, 14}`. **I never removed the old `14` for guild {1,2}, even though that guild no longer exists separately.**
-- `2`: `*multi.rbegin() = 14`, answer `max(0, 14) = 14`.
+- `1 1 3`: `ru = find(1) = 1`, `sz[1] = 2 >= 2` -> erase one `14`, `multi = {}`. `rv = 3`, `sz=1`, no erase. Survivor `ru=1`. `bal[1] = 14 + (-20) = -6`. `multi.insert(-6)` -> `multi = {-6}`.
+- `2`: `*rbegin() = -6`, `max(0, -6) = 0`. **Correct** — matches the true answer, and matches the hand trace I ran before writing any code.
 
-The answer is `14`, but the true answer is `0` (only live multi-member guild is {1,2,3} at `-6`). **Bug confirmed: I forgot to erase the absorbed/old balances on union.** This is the same staleness that killed the running-max, now reappearing because my multiset accumulated dead entries. The fix is the erase-before-mutate logic I derived: before attaching, if `sz[ru] >= 2` erase `bal[ru]`, if `sz[rv] >= 2` erase `bal[rv]`. Let me patch:
-
-```
-int ru = find(u), rv = find(v);
-if (ru == rv) continue;
-if (sz[ru] >= 2) multi.erase(multi.find(bal[ru]));
-if (sz[rv] >= 2) multi.erase(multi.find(bal[rv]));
-if (sz[ru] < sz[rv]) swap(ru, rv);
-par[rv] = ru;
-sz[ru] += sz[rv];
-bal[ru] += bal[rv];
-multi.insert(bal[ru]);
-```
-
-Re-trace `g = [10, 4, -20]`:
-
-- `1 1 2`: `sz[1]=1`, `sz[2]=1`, neither `>= 2`, no erase. Merge -> `bal[1]=14`. Insert `14`. `multi={14}`.
-- `2`: `14`. Good.
-- `1 1 3`: `ru=1` with `sz[1]=2 >= 2` -> erase one `14`, `multi={}`. `rv=3`, `sz=1`, no erase. Merge -> `bal[1]=-6`. Insert `-6`. `multi={-6}`.
-- `2`: `*rbegin() = -6`, `max(0, -6) = 0`. **Correct.** The stale `14` is gone, exactly because I erased the guild that got absorbed. The first bug is fixed and it failed for the reason I fixed.
+**Why the two erase lines are load-bearing, not optional cleanup.** It is worth being precise about what they buy, because they are the one part of this loop that is easy to drop by accident: `multi.insert(bal[ru])` is the "obviously needed" line, while the two `erase` calls above it look like extra bookkeeping a rushed first draft could plausibly skip. Replaying the same four events with those two lines deleted shows exactly what that costs: `1 1 2` still inserts `14` into an empty multiset; then `1 1 3` inserts the new `-6` *without* first removing the stale `14`, leaving `multi = {-6, 14}`; the second query reads `*rbegin() = 14` and reports `14` again — the identical wrong answer the running-max gave, for the identical reason (a value from a guild that no longer exists on its own is still sitting in the tracker). So the erase step is not defensive padding; it is the entire mechanism by which the multiset stays exact where a running max does not, and it has to run before the merge overwrites `sz[ru]`/`bal[ru]`, using `multi.find` so only one copy of a shared value is removed.
 
 **A second trace targeting the base-case / sign corner.** The problem's named trap is negatives, zeros, and the all-negative / empty corner. Let me hit those directly. First the all-negative merged case: `g = [-1, -2, -3]`, events `1 1 2`, `2`.
 
@@ -122,7 +105,7 @@ Answers `14, 11, 0, 0` — matches the documented sample. The derivation is inte
 
 **A note on the multiset erase pitfall, re-confirmed.** I want to be sure `multi.erase(multi.find(bal[ru]))` removes exactly one element even when two live guilds share a balance. Construct it: `g = [3, 0, 3, 0]`, events `1 1 2` (-> guild {1,2} bal `3`), `1 3 4` (-> guild {3,4} bal `3`), now `multi = {3, 3}`. Then `1 1 3`: `ru = find(1)` has `bal 3`, sz2 -> `multi.find(3)` removes *one* `3`, `multi = {3}`; `rv = find(3)` has `bal 3`, sz2 -> removes the other `3`, `multi = {}`; merge -> `bal = 6`, insert -> `multi = {6}`. A query now gives `6`. If I had used `multi.erase(3)` (which erases *all* `3`s), the first erase would wipe both and the second `find` would point at a stale/`end` iterator — undefined behavior or a wrong count. The `find`-then-erase form is correct; I keep it.
 
-**Final solution.** I disproved the cheap running-max with a traced negative-balance counterexample, derived the exact multiset bookkeeping, caught my first transcription bug (forgetting to erase absorbed guilds) by tracing that same counterexample, and pinned the base-case/sign behavior (`max(0, mx)`, strict positivity, empty/all-negative/lone-player) with direct traces. This is what I ship — one self-contained `O((n + q) log n)` file:
+**Final solution.** I disproved the cheap running-max with a traced negative-balance counterexample, derived the exact multiset bookkeeping (erase the absorbed guilds' old balances before mutating, insert the merged one), confirmed it against that same counterexample and confirmed why the erase step specifically matters (dropping it reproduces the running-max's exact failure), and pinned the base-case/sign behavior (`max(0, mx)`, strict positivity, empty/all-negative/lone-player) with direct traces. This is what I ship — one self-contained `O((n + q) log n)` file:
 
 ```cpp
 #include <bits/stdc++.h>
@@ -188,4 +171,4 @@ int main() {
 }
 ```
 
-**Causal recap.** The cheap "single running maximum" looked right but a traced counterexample (`g = [10, 4, -20]`, merge {1,2} to balance `14`, then absorb the `-20` guild down to `-6`) showed that signed sums under union are not monotone, so a max-only tracker reports a treasury (`14`) that no live guild has — I moved to an exact multiset of current multi-member balances. My first multiset code reproduced the same staleness because I inserted the merged balance but never removed the absorbed guilds' old balances; the identical trace returning `14` instead of `0` pinpointed it, and erasing `bal[ru]`/`bal[rv]` (only when their old size was `>= 2`, and via `find`-then-`erase` to drop a single copy) before mutating fixes it. The base case is closed by answering `0` when the multiset is empty and clamping with `max(0, mx)` / strict `mx > 0`, which makes the empty world, the lone player, the all-negative merge, and the exactly-`0` guild all report `0`; and `long long` everywhere keeps the `~2*10^14` magnitudes and their signs intact.
+**Causal recap.** The cheap "single running maximum" looked right but a traced counterexample (`g = [10, 4, -20]`, merge {1,2} to balance `14`, then absorb the `-20` guild down to `-6`) showed that signed sums under union are not monotone, so a max-only tracker reports a treasury (`14`) that no live guild has — I moved to an exact multiset of current multi-member balances, erasing each root's old balance (when its size was already `>= 2`, via `find`-then-`erase` to drop a single copy) before the merge mutates it, and inserting the merged balance afterward. Tracing that logic on the same counterexample confirms it: the erase clears the stale `14` before the merge, and the query correctly reports `0`. Dropping just the two erase lines — the natural slip, since only the final insert looks obviously necessary — reproduces the exact same staleness that killed the running max, which the same trace catches immediately (the query reads `14` again instead of `0`). The base case is closed by answering `0` when the multiset is empty and clamping with `max(0, mx)` / strict `mx > 0`, which makes the empty world, the lone player, the all-negative merge, and the exactly-`0` guild all report `0`; and `long long` everywhere keeps the `~2*10^14` magnitudes and their signs intact.
