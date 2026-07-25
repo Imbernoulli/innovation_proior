@@ -33,17 +33,7 @@ Example: for the graph in the Background section the answer is `22`.
 ## Background
 
 Because you may stop whenever you like, the only real decision at each paper is *which* single
-out-neighbour (if any) to continue into. Two families of approach are on the table before committing
-to one:
-
-- **Greedy by next-prestige.** From the current paper, always step to the reachable neighbour with the
-  largest prestige `p[v]` (taking it only while it keeps the running score climbing); try every start
-  and keep the best walk. It is near-linear and a dozen lines. The open question is whether a locally
-  most-prestigious next hop is ever the wrong move under the global path constraint.
-- **DFS-based dynamic programming on the DAG.** Define `best[u]` = the maximum score of a path that
-  *starts* at `u`, and compute it by a depth-first traversal that solves successors before predecessors.
-  This is `O(n + m)`; the open question is the exact recurrence (how the "stop here" option and the
-  negative values enter it) and how to run the DFS without overflowing the call stack at `n = 2*10^5`.
+out-neighbour (if any) to continue into.
 
 Worked example (the documented sample). Six papers with prestige
 `p = [3, 8, 2, 9, 1, 7]` and citation links
@@ -53,10 +43,8 @@ Worked example (the documented sample). Six papers with prestige
 ## Evaluation settings
 
 Judged on hidden tests covering: all-positive prestige, prestige with negatives and zeros, a single
-paper (`n = 1`) with no links, isolated papers (`m = 0`), all-negative prestige (the answer is the
-single largest, possibly negative, value because at least one paper must be read), long induced chains
-of length `~2*10^5` (so a recursive DFS would overflow the stack and the running score can exceed a
-32-bit integer), and dense DAGs with up to `2*10^5` links.
+paper (`n = 1`) with no links, isolated papers (`m = 0`), all-negative prestige, long induced chains
+of length `~2*10^5`, and dense DAGs with up to `2*10^5` links.
 
 ## Code framework
 
