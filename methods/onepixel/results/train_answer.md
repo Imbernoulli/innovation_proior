@@ -14,78 +14,101 @@ In the trajectory ladder this method appears as the rung after Pixle and JSMA. P
 
 The attack is interesting beyond its success rate because a d-pixel perturbation moves the input along a d-dimensional axis-aligned slice of the input space, with arbitrary distance along each chosen axis. This is structurally different from a small step in all directions, and it reveals how close decision boundaries lie along sparse coordinate directions. When a vulnerable axis exists, a single pixel with an extreme color can cross the boundary.
 
-The following Python snippet gives a small, self-contained illustration of the encoding, the differential evolution loop, and the probability-based fitness. It uses a dummy linear-plus-softmax model so the code can be run without any external attack library.
+The following is the implementation I actually run, faithful to the torchattacks `OnePixel` attack rather than a toy stand-in. Images live in `[0, 1]` here, so the channel-value bounds are `(0, 1)` rather than byte-scale, and the bounds list is just `[(0, height), (0, width)] + [(0, 1)] * channel`, repeated once per pixel. Instead of the clean DE/rand/1 mutation I derived above, the code hands the objective to a scipy-derived `differential_evolution` routine whose default donor is `best1bin` with mutation dithering `(0.5, 1)`; setting `recombination=1` means every trial takes all of its coordinates from the donor, so there is still no parent/child coordinate mixing beyond the donor step itself, and `polish=False` means no local refinement runs afterward. In the targeted branch the original labels are first swapped for the chosen target labels before the loss and the success callback are built; in the non-targeted branch the true labels are used directly. The loss is one minus the target-class probability when targeted and the true-class probability otherwise, and the callback stops the search the moment the prediction has flipped the desired way. Decoding reshapes the flat delta into `pixels` groups of `(x, y, R, G, B)` and writes each group into a copy of the image, batching the forward passes through the model in chunks of `inf_batch`.
 
 ```python
 import numpy as np
+import torch
+import torch.nn.functional as F
+
+from torchattacks.attack import Attack
+from torchattacks.attacks._differential_evolution import differential_evolution
 
 
-def softmax(x):
-    e = np.exp(x - np.max(x, axis=1, keepdims=True))
-    return e / np.sum(e, axis=1, keepdims=True)
+class OnePixel(Attack):
+    def __init__(self, model, pixels=1, steps=10, popsize=10, inf_batch=128):
+        super().__init__("OnePixel", model)
+        self.pixels = pixels
+        self.steps = steps
+        self.popsize = popsize
+        self.inf_batch = inf_batch
+        self.supported_mode = ["default", "targeted"]
 
+    def forward(self, images, labels):
+        images = images.clone().detach().to(self.device)
+        labels = labels.clone().detach().to(self.device)
+        if self.targeted:
+            target_labels = self.get_target_label(images, labels)
 
-class DummyModel:
-    def __init__(self, height=32, width=32, n_classes=10, seed=0):
-        rng = np.random.default_rng(seed)
-        self.weights = rng.standard_normal((height, width, 3, n_classes)) * 0.05
-        self.bias = np.zeros(n_classes)
+        batch_size, channel, height, width = images.shape
+        bounds = ([(0, height), (0, width)] + [(0, 1)] * channel) * self.pixels
+        popmul = max(1, int(self.popsize / len(bounds)))
 
-    def __call__(self, img):
-        scores = np.tensordot(img, self.weights, axes=3) + self.bias
-        return softmax(scores.reshape(1, -1))
+        adv_images = []
+        for idx in range(batch_size):
+            image, label = images[idx:idx + 1], labels[idx:idx + 1]
 
+            if self.targeted:
+                target_label = target_labels[idx:idx + 1]
 
-def one_pixel_attack(image, true_label, model, pixels=1,
-                     popsize=200, steps=60, F=0.5, seed=0):
-    rng = np.random.default_rng(seed)
-    H, W, C = image.shape
-    dim = 5 * pixels
-    lower = np.tile(np.array([0.0, 0.0, 0.0, 0.0, 0.0]), pixels)
-    upper = np.tile(np.array([H, W, 1.0, 1.0, 1.0]), pixels)
+                def func(delta):
+                    return self._loss(image, target_label, delta)
 
-    def decode(vec):
-        adv = image.copy()
-        for i in range(pixels):
-            x, y, r, g, b = vec[5 * i:5 * i + 5]
-            xi = int(np.clip(x, 0, H - 1))
-            yi = int(np.clip(y, 0, W - 1))
-            adv[xi, yi] = np.clip([r, g, b], 0.0, 1.0)
-        return adv
+                def callback(delta, convergence):
+                    return self._attack_success(image, target_label, delta)
+            else:
+                def func(delta):
+                    return self._loss(image, label, delta)
 
-    def fitness(vec):
-        adv = decode(vec)
-        prob = model(adv)[0, true_label]
-        return -prob  # minimize true-class probability
+                def callback(delta, convergence):
+                    return self._attack_success(image, label, delta)
 
-    pop = rng.uniform(lower, upper, size=(popsize, dim))
-    fits = np.array([fitness(p) for p in pop])
+            best = differential_evolution(
+                func=func, bounds=bounds, callback=callback,
+                maxiter=self.steps, popsize=popmul,
+                init="random", recombination=1, atol=-1, polish=False,
+            ).x
+            best = np.split(best, len(best) / len(bounds))
+            adv_images.append(self._perturb(image, best))
+        return torch.cat(adv_images)
 
-    for _ in range(steps):
-        for i in range(popsize):
-            r1, r2, r3 = rng.choice(popsize, size=3, replace=False)
-            child = np.clip(pop[r1] + F * (pop[r2] - pop[r3]), lower, upper)
-            f_child = fitness(child)
-            if f_child < fits[i]:
-                pop[i] = child
-                fits[i] = f_child
-                if -f_child < 0.05:  # true-class probability below 5%
-                    return child
-    return pop[np.argmin(fits)]
+    def _loss(self, image, label, delta):
+        adv_images = self._perturb(image, delta)
+        prob = self._get_prob(adv_images)[:, label]
+        return 1 - prob if self.targeted else prob
 
+    def _attack_success(self, image, label, delta):
+        adv_image = self._perturb(image, delta)
+        prob = self._get_prob(adv_image)
+        pred = np.argmax(prob)
+        if self.targeted and (pred == label):
+            return True
+        if (not self.targeted) and (pred != label):
+            return True
+        return False
 
-# Demonstration: fool a dummy model by changing one pixel.
-rng = np.random.default_rng(7)
-img = rng.uniform(0, 1, (32, 32, 3))
-model = DummyModel(seed=42)
-true_label = 0
-best = one_pixel_attack(img, true_label, model, pixels=1,
-                        popsize=100, steps=40)
-adv = img.copy()
-x, y, r, g, b = best[:5]
-adv[int(np.clip(x, 0, 31)), int(np.clip(y, 0, 31))] = np.clip([r, g, b], 0, 1)
-print("clean true-class prob:", model(img)[0, true_label])
-print("adv  true-class prob:", model(adv)[0, true_label])
+    def _get_prob(self, images):
+        with torch.no_grad():
+            outs = []
+            for batch in torch.split(images, self.inf_batch):
+                outs.append(self.get_logits(batch))
+        prob = F.softmax(torch.cat(outs), dim=1)
+        return prob.detach().cpu().numpy()
+
+    def _perturb(self, image, delta):
+        delta = np.array(delta)
+        if len(delta.shape) < 2:
+            delta = np.array([delta])
+        adv_image = image.clone().detach().to(self.device)
+        adv_images = torch.cat([adv_image] * len(delta), dim=0)
+        for idx in range(len(delta)):
+            pixel_info = delta[idx].reshape(self.pixels, -1)
+            for pixel in pixel_info:
+                pos_x, pos_y = pixel[:2]
+                channel_v = pixel[2:]
+                for channel, v in enumerate(channel_v):
+                    adv_images[idx, channel, int(pos_x), int(pos_y)] = v
+        return adv_images
 ```
 
 I call the result the one-pixel attack. It is a black-box, gradient-free, L0-bounded adversarial method that turns the sparse support constraint into a continuous differential-evolution search by encoding each modified pixel as a location-color five-tuple. The encoding enforces the pixel budget structurally, the optimizer preserves diversity to escape local optima, and the fitness is the raw model probability being driven toward the attack goal.
