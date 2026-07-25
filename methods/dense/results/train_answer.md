@@ -4,46 +4,46 @@ The natural candidate is attention, which already lets a decoder read any source
 
 The method is scaled dot-product attention. It keeps the single-GEMM efficiency of multiplicative attention and removes the width-dependent instability by dividing the scores by sqrt(d_k). The read is Attention(Q, K, V) = softmax(QK^T / sqrt(d_k)) V. Each position emits a query, a key, and a value. The score between a query and a key is their dot product, scaled so the logit standard deviation is 1 regardless of width. Softmax turns each query's score row into a normalized, nonnegative, differentiable weighting, and the output is the weighted blend of values. For autoregressive decoding, the future is masked out by adding negative infinity to illegal entries before the softmax, so they receive zero weight and the legal entries renormalize automatically. With no mask, every position attends to every position, giving the dense, fully-connected read with O(1) sequential depth and O(1) maximum path length.
 
-The implementation below shows the canonical explicit form and a thin module wrapping PyTorch's fused scaled_dot_product_attention, which computes exactly the same operation. Both forms use the derived scale 1/sqrt(d_k) and support an optional additive mask or causal flag.
+The implementation below shows the canonical explicit form, `attention`, and `DenseAttention`, a thin module wrapping PyTorch's fused scaled_dot_product_attention kernel, which computes exactly the same operation. Both forms use the derived scale 1/sqrt(d_k) and support an optional additive mask or causal flag; the explicit form also returns the attention weights themselves alongside the blended output, and the fused module additionally exposes an enable_gqa flag for grouped-query attention.
 
 ```python
 import math
 import torch
+
+
+def attention(query, key, value, mask=None, dropout=None):
+    """Scaled dot-product attention: softmax(Q Kᵀ / √d_k + mask) V."""
+    d_k = query.size(-1)
+    scores = torch.matmul(query, key.transpose(-2, -1)) / math.sqrt(d_k)   # Q Kᵀ / √d_k
+    if mask is not None:
+        scores = scores.masked_fill(mask == 0, float("-inf"))              # illegal pairs → weight 0
+    p_attn = scores.softmax(dim=-1)                                        # rows sum to 1 over legal keys
+    if dropout is not None:
+        p_attn = dropout(p_attn)
+    return torch.matmul(p_attn, value), p_attn                            # blend values
+```
+
+```python
+import math
 import torch.nn as nn
 import torch.nn.functional as F
 
 
-def scaled_dot_product_attention(q, k, v, mask=None, dropout=None):
-    """Reference scaled dot-product attention: softmax(Q K^T / sqrt(d_k) + mask) V."""
-    d_k = q.size(-1)
-    scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(d_k)
-    if mask is not None:
-        scores = scores.masked_fill(mask == 0, float("-inf"))
-    p = torch.softmax(scores, dim=-1)
-    if dropout is not None:
-        p = dropout(p)
-    return torch.matmul(p, v)
-
-
-class ScaledDotProductAttention(nn.Module):
-    """Dense scaled dot-product attention.
-
-    Computes softmax(Q K^T / sqrt(d_k) + mask) V as one fused primitive.
-    """
+class DenseAttention(nn.Module):
+    """Full (dense) scaled dot-product attention. Every legal (query, key) pair attends."""
 
     def __init__(self, dropout_p=0.0):
         super().__init__()
         self.dropout_p = dropout_p
 
-    def forward(self, q, k, v, attn_mask=None, is_causal=False, scale=None):
-        d_k = q.size(-1)
-        scale = scale if scale is not None else 1.0 / math.sqrt(d_k)
+    def forward(self, q, k, v, attn_mask=None, is_causal=False, scale=None, enable_gqa=False):
+        # q, k, v: (B, H, N, D). scale defaults to 1/√D — the derived 1/√d_k.
+        D = q.size(-1)
+        scale = scale if scale is not None else 1.0 / math.sqrt(D)
         dropout_p = self.dropout_p if self.training else 0.0
-        return F.scaled_dot_product_attention(
-            q, k, v,
-            attn_mask=attn_mask,
-            dropout_p=dropout_p,
-            is_causal=is_causal,
-            scale=scale,
+        out = F.scaled_dot_product_attention(
+            q, k, v, attn_mask=attn_mask, dropout_p=dropout_p,
+            is_causal=is_causal, scale=scale, enable_gqa=enable_gqa,
         )
+        return out
 ```
