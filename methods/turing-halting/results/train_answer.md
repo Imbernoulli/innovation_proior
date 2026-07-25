@@ -16,35 +16,8 @@ The two directions of the equivalence are an induction and a soundness argument.
 
 This is a different kind of result from Gödel's incompleteness theorems. Gödel showed that inside a fixed formal system there are sentences that are neither provable nor refutable. What Turing proved is that there is no general method at all for deciding, of an arbitrary formula, whether it is provable. The diagonal argument is the engine: not the unflipped digit equation 1 minus phi_n(n), but the self-application that turns a verdict of "runs forever" into an actual stall.
 
-```python
-# A tiny runnable illustration of the self-referential diagonal at the heart
-# of Turing's halting undecidability.  A perfect halting decider D cannot exist,
-# because we can always build a program H that does the opposite of what D
-# predicts H will do.
+Nothing in this chain is chosen for convenience: the abstract machine is forced by asking what a human computer could actually carry out by rote, encoding a machine's table as a single integer is just writing a finite string in digits, and the diagonal is aimed not at the computable sequences themselves but at the hypothetical decider for circle-free-ness, so the contradiction is forced by self-application rather than by a merely flipped digit. That is the result, stated as the three theorems it actually is. First, no machine, given a candidate description number, decides whether it is the description number of a circle-free machine: a supposed total decider $D$, fused with the universal machine $U$ into a circle-free machine $H$ that computes the unflipped diagonal figure, must at its own description number $K$ either have $D$ misclassify a circle-free machine as circular, or be forced to compute its own next figure before emitting it and stall — both impossible, so $D$ cannot exist. Second, no machine decides, of an arbitrary $M$, whether it ever prints the symbol $0$: an ever-prints-0 decider would let me build, for each $M$, the machines $M_k$ that follow $M$ but mark off its first $k$ zeros, and an auxiliary machine that tests each $M_k$ in turn and reports when one never prints 0 again — which decides whether $M$ prints 0 infinitely often, and symmetrically whether it prints 1 infinitely often, and a machine is circle-free exactly when it does one or the other, so this would decide circle-free, contradicting the first theorem. Third, and this is what closes the loop back to Hilbert: each instruction $q_iS_j \to \text{print } S_k, \text{move}, q_l$ of a machine $M$ compiles into a first-order sentence that carries one complete configuration to the next — with predicates $R_{S_l}(x,y)$ for "square $y$ bears symbol $S_l$ in configuration $x$," $K_{q_m}(x)$ for "configuration $x$ is in state $q_m$," and a successor relation $F$ doubling for successive instants and neighboring squares — and a frame conjunct asserting every other square unchanged. Conjoining all these instruction sentences with the axioms for the blank initial tape gives $A_M(u)$, and the formula
 
-def make_H(D):
-    """Build the diagonal program from a hypothetical halting decider D."""
-    def H(P):
-        # Ask D whether P halts when given itself as input.
-        if D(P, P):
-            # D predicts P(P) halts, so H deliberately loops.
-            return "LOOPS_FOREVER"
-        else:
-            # D predicts P(P) loops, so H halts immediately.
-            return "HALTS"
-    return H
+$$\mathrm{Un}(M) \;:=\; (\exists u)\,A_M(u) \;\to\; (\exists s)(\exists t)\big[N(s)\ \&\ N(t)\ \&\ R_{S_1}(s,t)\big]$$
 
-# Suppose, for contradiction, that a perfect decider D exists.
-def D_placeholder(program, input_):
-    # A placeholder that merely returns a boolean verdict.
-    return True
-
-H = make_H(D_placeholder)
-verdict = D_placeholder(H, H)  # D's prediction for H(H)
-actual = H(H)                   # what H actually does
-
-print(f"D predicts H(H) halts: {verdict}")
-print(f"H(H) actually does:    {actual}")
-print("If D says True, H loops; if D says False, H halts.")
-print("Either way D is wrong, so no perfect decider D can exist.")
-```
+is provable in the functional calculus $K$ if and only if $M$ ever prints $0$: provable in one direction by an induction that derives each successive complete configuration from the last via the matching instruction sentence, until the configuration containing the printed $0$ is reached; provable in the other direction by soundness, since a provable formula must be true under the intended interpretation, in which the antecedent already holds because $M$ really does start blank and really does follow its own table. A decider for provability in $K$, applied to the formulas $\mathrm{Un}(M)$, would then decide whether an arbitrary $M$ ever prints $0$ — which the second theorem forbids. So no machine decides provability in $K$, and Hilbert's Entscheidungsproblem — a definite general method deciding, for every formula of first-order logic, whether it is provable — has no solution. That is the finished result: effective computation identified with the abstract machine, machines encoded as integers and run by a single universal machine, diagonalized against the circle-free decider, and reduced through "ever prints 0" to provability itself. The machine $H$ and the decider $D$ it refutes are objects inside this proof, not a program meant to be executed.
