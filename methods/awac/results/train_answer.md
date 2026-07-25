@@ -23,9 +23,7 @@ def mlp(sizes, act=nn.ReLU):
 
 class Critic(nn.Module):
     def __init__(self, obs_dim, act_dim, hidden=(256, 256, 256, 256)):
-        super().__init__()
-        self.net = mlp([obs_dim + act_dim, *hidden, 1])
-
+        super().__init__(); self.net = mlp([obs_dim + act_dim, *hidden, 1])
     def forward(self, s, a):
         return self.net(torch.cat([s, a], -1)).squeeze(-1)
 
@@ -35,7 +33,6 @@ class TwinCritic(nn.Module):
         super().__init__()
         self.q1 = Critic(obs_dim, act_dim, hidden)
         self.q2 = Critic(obs_dim, act_dim, hidden)
-
     def forward(self, s, a):
         return self.q1(s, a), self.q2(s, a)
 
@@ -46,32 +43,26 @@ class GaussianPolicy(nn.Module):
         self.trunk = mlp([obs_dim, *hidden])
         self.mu = nn.Linear(hidden[-1], act_dim)
         self.log_std = nn.Linear(hidden[-1], act_dim)
-
     def dist(self, s):
         h = self.trunk(s)
         return Normal(torch.tanh(self.mu(h)), self.log_std(h).clamp(-6, 0).exp())
-
     def log_prob(self, s, a):
         return self.dist(s).log_prob(a).sum(-1)
-
     def sample_and_log_prob(self, s):
         dist = self.dist(s)
         a = dist.rsample()
         return a, dist.log_prob(a).sum(-1)
-
     def sample(self, s):
         return self.sample_and_log_prob(s)[0]
 
 
 def critic_td_loss(batch, critic, target_critic, policy, discount, alpha=0.0):
-    s, a, r, s2, done = (
-        batch["obs"], batch["act"], batch["rew"],
-        batch["obs2"], batch["done"]
-    )
+    s, a, r, s2, done = (batch["obs"], batch["act"], batch["rew"],
+                         batch["obs2"], batch["done"])
     with torch.no_grad():
-        a2, logp2 = policy.sample_and_log_prob(s2)
+        a2, logp2 = policy.sample_and_log_prob(s2)           # next action from current policy
         tq1, tq2 = target_critic(s2, a2)
-        target_v = torch.min(tq1, tq2) - alpha * logp2
+        target_v = torch.min(tq1, tq2) - alpha * logp2       # AWAC configs set alpha=0
         y = r + discount * (1.0 - done) * target_v
     q1, q2 = critic(s, a)
     return F.mse_loss(q1, y) + F.mse_loss(q2, y)
@@ -80,11 +71,11 @@ def critic_td_loss(batch, critic, target_critic, policy, discount, alpha=0.0):
 def actor_awac_loss(batch, critic, policy, lam):
     s, a = batch["obs"], batch["act"]
     with torch.no_grad():
-        q = torch.min(*critic(s, a))
-        v = torch.min(*critic(s, policy.sample(s)))
-        adv = q - v
+        q = torch.min(*critic(s, a))                        # Q(s, a_data)
+        v = torch.min(*critic(s, policy.sample(s)))         # V(s) = Q(s, a~pi)
+        adv = q - v                                         # advantage
         weight = torch.softmax(adv / lam, dim=0) * adv.numel()
-    logp = policy.log_prob(s, a)
+    logp = policy.log_prob(s, a)                            # MLE on buffer actions -> implicit constraint
     return -(weight * logp).mean()
 
 
@@ -94,18 +85,12 @@ def polyak(critic, target_critic, tau):
 
 
 def update(batch, critic, target_critic, policy, opts, hp):
-    q_loss = critic_td_loss(
-        batch, critic, target_critic, policy,
-        hp["discount"], hp.get("alpha", 0.0)
-    )
-    opts["q"].zero_grad()
-    q_loss.backward()
-    opts["q"].step()
+    q_loss = critic_td_loss(batch, critic, target_critic, policy,
+                            hp["discount"], hp.get("alpha", 0.0))
+    opts["q"].zero_grad(); q_loss.backward(); opts["q"].step()
 
     pi_loss = actor_awac_loss(batch, critic, policy, hp["lam"])
-    opts["pi"].zero_grad()
-    pi_loss.backward()
-    opts["pi"].step()
+    opts["pi"].zero_grad(); pi_loss.backward(); opts["pi"].step()
 
     polyak(critic, target_critic, hp["tau"])
 
@@ -114,19 +99,19 @@ def train_awac(env, buffer, critic, policy, hp,
                pretrain_steps=25000, online_steps=int(1e6)):
     target_critic = copy.deepcopy(critic)
     opts = {
-        "q": torch.optim.Adam(critic.parameters(), lr=3e-4),
+        "q":  torch.optim.Adam(critic.parameters(), lr=3e-4),
         "pi": torch.optim.Adam(policy.parameters(), lr=3e-4, weight_decay=1e-4),
     }
-    for _ in range(pretrain_steps):
-        update(buffer.sample(hp["batch_size"]), critic,
-               target_critic, policy, opts, hp)
-
+    for _ in range(pretrain_steps):                         # offline: buffer holds the dataset
+        update(buffer.sample(hp["batch_size"]), critic, target_critic, policy, opts, hp)
     o = env.reset()
-    for _ in range(online_steps):
+    for _ in range(online_steps):                           # online: identical update
         a = policy.sample(torch.as_tensor(o, dtype=torch.float32)).detach().numpy()
         o2, r, done, _ = env.step(a)
         buffer.add(o, a, r, o2, done)
         o = env.reset() if done else o2
-        update(buffer.sample(hp["batch_size"]), critic,
-               target_critic, policy, opts, hp)
+        update(buffer.sample(hp["batch_size"]), critic, target_critic, policy, opts, hp)
+
+# hp = dict(discount=0.99, tau=5e-3, alpha=0.0, batch_size=1024, lam=0.3)  # manipulation
+# hp = dict(discount=0.99, tau=5e-3, alpha=0.0, batch_size=1024, lam=1.0)  # MuJoCo locomotion
 ```
