@@ -34,25 +34,16 @@ line. Two families of approach are on the table before committing to one:
 
 - **Greedy exchange (leftmost-uncovered).** Sort the pulses. Repeatedly take the earliest pulse not
   yet recorded, place a snapshot whose window *starts* at that pulse's time, and mark every pulse the
-  window reaches; repeat. The exchange argument is that pushing each window as far right as possible
-  while still catching the leftmost orphan can only help later pulses, so this is optimal. Cost is
-  `O(n log n)`. The open questions are (a) proving the local choice is globally optimal and (b) the
-  exact reach test — because the window is half-open, "does this window still cover pulse `j`?" is a
-  *strict* comparison `t[j] < s + L`, and using `<=` instead silently merges a pulse that should have
-  started a new snapshot.
+  window reaches; repeat.
 - **Set-cover / breadth-first search.** Treat each candidate window as a set of pulses it records and
   search for the fewest sets that cover everything. Exhaustive over integer window starts, this is
-  exponential and only usable as an independent oracle on tiny inputs — but it bakes in no greedy
-  assumption, so it is the right tool for cross-checking the boundary logic.
+  exponential and only usable as an independent oracle on tiny inputs.
 
 ## Evaluation settings
 
-Judged on hidden tests covering: `n = 0` (empty, answer `0`); `n = 1`; many identical times (answer
-`1`); pulses spaced *exactly* `L` apart (the half-open edge case — each needs its own snapshot);
-pulses spaced `L - 1` apart (a single window catches two); `L = 1` with distinct integer times (every
-distinct time needs its own snapshot); and large instances with `n = 2*10^5`, `t[i]` near `10^9`, and
-`L` near `10^9`, so that the window's right edge `s + L` reaches `~2*10^9` and overflows 32-bit
-arithmetic.
+Judged on hidden tests covering: `n = 0`; `n = 1`; many identical times; pulses spaced exactly `L`
+apart; pulses spaced `L - 1` apart; `L = 1` with distinct integer times; and large instances with
+`n = 2*10^5`, `t[i]` near `10^9`, and `L` near `10^9`.
 
 ## Code framework
 
@@ -74,8 +65,8 @@ int main() {
 
     sort(t.begin(), t.end());
 
-    // TODO: sweep the sorted pulses, opening a new half-open window [s, s+L)
-    //       at each leftmost uncovered pulse, and count the windows.
+    // TODO: compute the minimum number of half-open windows [s, s+L) needed
+    //       so that every pulse in t is covered by at least one window.
     long long snapshots = 0;
 
     cout << snapshots << "\n";
