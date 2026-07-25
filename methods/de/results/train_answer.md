@@ -37,15 +37,18 @@ def make_generation(population: list, toolbox, dim: int, lo: float, hi: float) -
     next_population = list(population)
 
     for i, target in enumerate(population):
+        # Three other members, mutually distinct and different from target i.
         candidates = list(range(len(population)))
         candidates.remove(i)
         r1, r2, r3 = random.sample(candidates, 3)
         x_r1, x_r2, x_r3 = population[r1], population[r2], population[r3]
 
+        # DE/rand/1 mutation: v = x_r1 + F * (x_r2 - x_r3).
         mutant = creator.Individual(
             [x_r1[j] + F * (x_r2[j] - x_r3[j]) for j in range(dim)]
         )
 
+        # Binomial crossover, with one forced coordinate from the mutant.
         j_rand = random.randrange(dim)
         trial = creator.Individual(
             [mutant[j] if (random.random() < CR or j == j_rand) else target[j]
@@ -54,6 +57,7 @@ def make_generation(population: list, toolbox, dim: int, lo: float, hi: float) -
         clip_individual(trial, lo, hi)
         trial.fitness.values = toolbox.evaluate(trial)
 
+        # Greedy one-to-one selection: trial replaces target iff its cost is no worse.
         if trial.fitness.values[0] <= target.fitness.values[0]:
             next_population[i] = trial
 
@@ -63,23 +67,25 @@ def make_generation(population: list, toolbox, dim: int, lo: float, hi: float) -
 def run_evolution(evaluate_func: Callable, dim: int, lo: float, hi: float,
                   pop_size: int, n_generations: int,
                   cx_prob: float, mut_prob: float, seed: int) -> Tuple[list, list]:
-    """Differential Evolution: DE/rand/1/bin."""
+    """Differential Evolution: DE/rand/1/bin. F = 0.5, CR = 0.9."""
     random.seed(seed)
-    _ = (cx_prob, mut_prob)
+    _ = (cx_prob, mut_prob)  # retained for harness compatibility; F and CR are fixed above
 
     toolbox = base.Toolbox()
     toolbox.register("individual", make_individual, toolbox, dim, lo, hi)
     toolbox.register("population", tools.initRepeat, list, toolbox.individual)
     toolbox.register("evaluate", evaluate_func)
 
-    pop = toolbox.population(n=pop_size)
-    for ind in pop:
-        ind.fitness.values = toolbox.evaluate(ind)
+    pop = toolbox.population(n=pop_size)            # init uniformly over the box
+    fitnesses = list(map(toolbox.evaluate, pop))
+    for ind, fit in zip(pop, fitnesses):
+        ind.fitness.values = fit
 
     fitness_history = []
 
     for gen in range(n_generations):
         pop = make_generation(pop, toolbox, dim, lo, hi)
+
         best_fit = min(ind.fitness.values[0] for ind in pop)
         fitness_history.append(best_fit)
 
