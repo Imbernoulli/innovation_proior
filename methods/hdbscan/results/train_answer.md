@@ -16,12 +16,16 @@ from scipy.spatial.distance import pdist, squareform
 
 class HDBSCAN(BaseEstimator, ClusterMixin):
     """Hierarchical density-based clustering with excess-of-mass extraction.
-    Noise points get label -1."""
+    Noise points get label -1. min_samples is m_pts (counts the point itself,
+    the sklearn convention); scikit-learn-contrib excludes it, so use one less
+    there to reproduce the same core distances."""
 
     def __init__(self, min_cluster_size=5, min_samples=None):
         self.min_cluster_size = min_cluster_size
-        self.min_samples = min_samples            # defaults to min_cluster_size
+        self.min_samples = min_samples            # m_pts; defaults to min_cluster_size
         self.labels_ = None
+
+    # -- pipeline -----------------------------------------------------------
 
     def fit(self, X, y=None):
         X = np.asarray(X, dtype=np.float64)
@@ -31,7 +35,7 @@ class HDBSCAN(BaseEstimator, ClusterMixin):
         mcs = max(self.min_cluster_size, 2)
 
         D = squareform(pdist(X))
-        core = np.partition(D, m_pts, axis=1)[:, m_pts]
+        core = np.partition(D, m_pts, axis=1)[:, m_pts]      # m_pts-th NN distance (incl self)
         MR = np.maximum(np.maximum(D, core[None, :]), core[:, None])
 
         mst = self._prim_mst(MR)
@@ -48,6 +52,8 @@ class HDBSCAN(BaseEstimator, ClusterMixin):
         if self.labels_ is None:
             self.fit(X)
         return self.labels_
+
+    # -- MST + single-linkage ----------------------------------------------
 
     def _prim_mst(self, MR):
         n = MR.shape[0]
@@ -92,16 +98,18 @@ class HDBSCAN(BaseEstimator, ClusterMixin):
             nxt += 1
         return out
 
+    # -- condense with minimum cluster size --------------------------------
+
     def _condense(self, hierarchy, n, mcs):
         children = {n + i: (int(hierarchy[i, 0]), int(hierarchy[i, 1]), hierarchy[i, 2])
                     for i in range(n - 1)}
 
-        node_size = np.ones(2 * n - 1, dtype=np.intp)
+        node_size = np.ones(2 * n - 1, dtype=np.intp)        # subtree sizes bottom-up
         for i in range(n - 1):
             l, r, _ = children[n + i]
             node_size[n + i] = node_size[l] + node_size[r]
 
-        def leaves(node):
+        def leaves(node):                                    # iterative (deep trees safe)
             if node < n:
                 return [node]
             out, stack = [], [node]
@@ -124,41 +132,44 @@ class HDBSCAN(BaseEstimator, ClusterMixin):
             if node in ignore or node < n:
                 continue
             l, r, dist = children[node]
-            lam = (1.0 / dist) if dist > 0 else np.inf
+            lam = (1.0 / dist) if dist > 0 else np.inf       # density level
             lc, rc = int(node_size[l]), int(node_size[r])
-            if lc >= mcs and rc >= mcs:
+            if lc >= mcs and rc >= mcs:                      # true split
                 for ch, csz in ((l, lc), (r, rc)):
                     relabel[ch] = nxt
                     rows.append((relabel[node], nxt, lam, csz))
                     nxt += 1
                     stack.append(ch)
-            elif lc < mcs and rc < mcs:
+            elif lc < mcs and rc < mcs:                      # cluster dies
                 for side in (l, r):
                     for p in leaves(side):
                         rows.append((relabel[node], p, lam, 1))
                     ignore.add(side)
-            else:
+            else:                                            # cluster shrinks
                 big, small = (l, r) if lc >= rc else (r, l)
                 relabel[big] = relabel[node]
                 stack.append(big)
                 for p in leaves(small):
                     rows.append((relabel[node], p, lam, 1))
                 ignore.add(small)
-
         return np.array(rows, dtype=[("parent", np.intp), ("child", np.intp),
                                      ("lambda", np.float64), ("size", np.intp)])
+
+    # -- relative excess of mass (stability) -------------------------------
 
     def _stability(self, tree):
         cluster_ids = set(tree["parent"].tolist())
         births = {}
         for child, lam in zip(tree["child"], tree["lambda"]):
-            if child in cluster_ids:
+            if child in cluster_ids:                         # child is itself a cluster
                 births[child] = min(births.get(child, np.inf), lam)
         stab = {}
         for parent, lam, sz in zip(tree["parent"], tree["lambda"], tree["size"]):
-            b = births.get(parent, 0.0)
+            b = births.get(parent, 0.0)                      # root birth = 0
             stab[parent] = stab.get(parent, 0.0) + (lam - b) * sz
         return stab
+
+    # -- excess-of-mass extraction -----------------------------------------
 
     def _extract_eom(self, tree, stability, n):
         cluster_ids = sorted(stability.keys())
@@ -174,10 +185,10 @@ class HDBSCAN(BaseEstimator, ClusterMixin):
             if node == root:
                 continue
             sub = sum(prop[c] for c in children[node])
-            if sub > stability[node]:
+            if sub > stability[node]:                        # children strictly better
                 selected[node] = False
                 prop[node] = sub
-            else:
+            else:                                            # node wins (ties -> parent)
                 stk = list(children[node])
                 while stk:
                     d = stk.pop()
@@ -189,7 +200,7 @@ class HDBSCAN(BaseEstimator, ClusterMixin):
         chosen_set = set(chosen)
 
         parent_of = {child: parent for parent, child in zip(tree["parent"], tree["child"])}
-        labels = np.full(n, -1, dtype=np.intp)
+        labels = np.full(n, -1, dtype=np.intp)               # -1 = noise
         for parent, child in zip(tree["parent"], tree["child"]):
             if child >= n:
                 continue
