@@ -14,19 +14,13 @@ For an eps-prediction sampler with the CFG++ renoise step, the optimized scale i
 import torch
 
 
-def optimized_scale(positive_flat, negative_flat, eps=1e-8):
-    dot_product = torch.sum(positive_flat * negative_flat, dim=1, keepdim=True)
-    squared_norm = torch.sum(negative_flat ** 2, dim=1, keepdim=True) + eps
-    return dot_product / squared_norm
-
-
 @torch.no_grad()
 def sample_ddim_cfg_zero_star(pipeline, prompt, cfg_guidance=0.6, K=2):
     uc, c = pipeline.get_text_embed(null_prompt=prompt[0], prompt=prompt[1])
     zt = pipeline.initialize_latent()
 
     for step, t in enumerate(pipeline.scheduler.timesteps):
-        if step < K:
+        if step < K:                                          # zero-init prefix
             continue
 
         at = pipeline.alpha(t)
@@ -34,6 +28,7 @@ def sample_ddim_cfg_zero_star(pipeline, prompt, cfg_guidance=0.6, K=2):
 
         noise_uc, noise_c = pipeline.predict_noise(zt, t, uc, c)
 
+        # optimized scale: s* = <noise_c, noise_uc> / ||noise_uc||^2  (per sample)
         bsz = noise_c.shape[0]
         c_flat = noise_c.reshape(bsz, -1)
         uc_flat = noise_uc.reshape(bsz, -1)
@@ -41,10 +36,11 @@ def sample_ddim_cfg_zero_star(pipeline, prompt, cfg_guidance=0.6, K=2):
         sq_norm = (uc_flat ** 2).sum(dim=1, keepdim=True) + 1e-8
         alpha = (dot / sq_norm).reshape(bsz, *([1] * (noise_c.dim() - 1))).to(noise_c.dtype)
 
+        # mix on the rescaled unconditional baseline
         noise_pred = noise_uc * alpha + cfg_guidance * (noise_c - noise_uc * alpha)
 
-        z0t = (zt - (1 - at).sqrt() * noise_pred) / at.sqrt()
-        zt = at_prev.sqrt() * z0t + (1 - at_prev).sqrt() * noise_uc
+        z0t = (zt - (1 - at).sqrt() * noise_pred) / at.sqrt()         # Tweedie denoise (mixed)
+        zt = at_prev.sqrt() * z0t + (1 - at_prev).sqrt() * noise_uc   # CFG++ renoise (uncond)
 
-    return pipeline.decode(z0t)
+    return pipeline.decode(z0t)  # return the clean Tweedie estimate, not the renoised latent
 ```
