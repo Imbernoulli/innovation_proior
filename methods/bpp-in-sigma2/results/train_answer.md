@@ -4,62 +4,8 @@ The method is the Sipser–Gács–Lautemann translation argument, which proves 
 
 The argument works as follows. First amplify the BPP machine M so that on m = poly(|x|) random bits its error is at most 1/(3m). The factor 3 is chosen so that the union bound over all 2^m challenge points beats the small miss probability, while the factor m leaves room for the no-instance union bound. If x is a yes-instance, the complement of A_x has density at most 1/(3m). Fix any challenge point z. A single random shift y misses z, meaning z is not in A_x + y, exactly when z XOR y lands in the complement of A_x, which happens with probability at most 1/(3m). With m independent random shifts, the probability that all of them miss this fixed z is at most (1/(3m))^m. Union bounding over all 2^m possible challenge points z, the total failure probability is at most 2^m · (1/(3m))^m = (2/(3m))^m, which is below 1 for large m. Therefore some concrete list of m shifts covers every point z. If x is a no-instance, A_x has size at most 2^m/(3m), so any m shifted copies together cover at most m · 2^m/(3m) = 2^m/3 points, leaving some z uncovered. The universal quantifier picks that z, and every local check M(x, z XOR y_i) rejects. Since BPP is closed under complement, the same argument applied to the complement language gives BPP ⊆ Π₂^P as well.
 
-```python
-from itertools import product
+What this leaves is the theorem in its final form. Fix a BPP language $L$ and an amplified deterministic predicate $M(x,r)$, where $r$ ranges over $m = \mathrm{poly}(|x|)$ random bits and the two-sided error is at most $\frac{1}{3m}$: $\Pr_r[M(x,r)=1] \ge 1-\frac{1}{3m}$ if $x \in L$, and $\Pr_r[M(x,r)=1] \le \frac{1}{3m}$ if $x \notin L$. Writing $A_x = \{r \in \{0,1\}^m : M(x,r)=1\}$ for the accepting subset of the Boolean cube under bitwise XOR, the statement is
 
+$$x \in L \iff \exists\, y_1,\dots,y_m \in \{0,1\}^m \ \ \forall\, z \in \{0,1\}^m \ \ \bigvee_{i=1}^{m} M\bigl(x,\, z \oplus y_i\bigr) = 1,$$
 
-def xor_strings(a, b):
-    """Bitwise XOR of two equal-length binary strings."""
-    return ''.join('1' if x != y else '0' for x, y in zip(a, b))
-
-
-def bpp_sigma2_predicate(x, shifts, z, M):
-    """
-    Deterministic predicate for the Sigma_2^P sentence
-      exists y_1,...,y_m in {0,1}^m
-      forall z in {0,1}^m
-      OR_{i=1}^m M(x, z XOR y_i) = 1.
-
-    Parameters
-    ----------
-    x : input string
-    shifts : list of m binary strings of length m (the existential witness)
-    z : binary string of length m (the universal challenge)
-    M : deterministic predicate M(x, r) -> bool implementing the amplified
-        BPP machine with error <= 1/(3*m).
-    """
-    m = len(z)
-    assert len(shifts) == m
-    for y in shifts:
-        assert len(y) == m
-        if M(x, xor_strings(z, y)):
-            return True
-    return False
-
-
-def amplified_M_example(x, r):
-    """Stub for a BPP machine after amplification."""
-    # In a real use case this predicate is deterministic polynomial time.
-    # The placeholder below is only to make the code runnable.
-    return sum(int(bit) for bit in r) >= len(r) // 2
-
-
-def find_covering_shifts(x, m, M):
-    """
-    Brute-force demonstration that a covering certificate exists for very
-    small m. The theorem guarantees existence; this search is exponential
-    and is not part of the polynomial-time verifier.
-    """
-    all_strings = [''.join(bits) for bits in product('01', repeat=m)]
-    for shifts in product(all_strings, repeat=m):
-        if all(bpp_sigma2_predicate(x, shifts, z, M) for z in all_strings):
-            return shifts
-    return None
-
-
-# Example for m = 2 (toy size; the theorem applies for polynomial m).
-x = "example_input"
-m = 2
-shifts = find_covering_shifts(x, m, amplified_M_example)
-print("Covering shifts:", shifts)
-```
+and this is precisely a $\Sigma_2^P$ sentence: the witness is the shift list $(y_1,\dots,y_m)$, of total length $m^2$, and the verifier's job for each challenge $z$ is a single deterministic polynomial-time pass — evaluate $M$ on the $m$ shifted strings $z \oplus y_i$ and OR the results. Because BPP is closed under complement — replacing $M$ by its negation preserves both amplification bounds — the identical sentence applied to $\overline L$ places $L$ in $\Pi_2^P$ too, giving $\mathrm{BPP} \subseteq \Sigma_2^P \cap \Pi_2^P$. The whole certificate costs nothing beyond what the geometry demanded: $m^2$ bits to name the shifts, and $m$ evaluations of the original machine to check them.
