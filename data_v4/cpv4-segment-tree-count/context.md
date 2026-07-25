@@ -14,13 +14,6 @@ Buildings are also renovated over time, so heights change. You must support, in 
 - a **point update** that sets one building's height, and
 - a **survey query** that reports how many buildings are visible in a window.
 
-This is the kind of "count a structural feature on a subarray under updates" task that segment trees
-are built for. The interesting part is that visibility is not a sum: a building's contribution depends
-on the running maximum of everything to its left *within the queried window*, so the count cannot be
-read off a single node — it has to be assembled across the canonical segments of the query in
-left-to-right order, carrying that running maximum across segment boundaries without losing or
-double-counting it.
-
 ## Input / output contract
 
 - Input (stdin):
@@ -36,30 +29,12 @@ double-counting it.
 Example: with `h = [3, 1, 4, 1, 5, 9]`, the window `[0, 5]` has visible buildings `3, 4, 5, 9`
 (answer `4`), and the window `[1, 3] = [1, 4, 1]` has visible buildings `1, 4` (answer `2`).
 
-## Background
-
-Two families of approach are worth weighing before committing.
-
-- **Recount from scratch per query.** For a window `[l, r]`, scan left to right keeping a running
-  maximum and count strict increases. This is `O(r - l + 1)` per query and trivially correct, but a
-  single query can span the whole array, so `q` such queries are `O(n*q) = 4*10^{10}` in the worst
-  case — far too slow. It is the right *oracle*, not the right *solution*.
-- **Segment tree on maxima.** Keep a max segment tree over `h`. A point update is the standard
-  `O(log n)`. For a query, the count of strict prefix maxima of a node's segment, *given a threshold
-  `bound` coming from everything already seen to the left*, can be computed in `O(log n)` by
-  descending the node and pruning any subtree whose maximum does not exceed `bound`. Assembling the
-  whole window walks its `O(log n)` canonical segments left to right, raising `bound` by each
-  segment's maximum before moving on. This is `O(log^2 n)` per query — the open questions are the
-  exact "count above a bound" recursion and, crucially, how `bound` is threaded across segment
-  boundaries so nothing is missed or counted twice.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: single-element arrays and `l == r` windows; arrays with many equal
-heights (so the strict-`>` vs non-strict distinction bites); strictly increasing windows (every
-building visible) and strictly decreasing windows (only the first visible); queries that split across
-several canonical segments where a tall left segment must suppress buildings deep inside a later
-segment; updates interleaved with queries; and large `n = q = 2*10^5` with heights up to `10^9`.
+heights; strictly increasing windows (every building visible) and strictly decreasing windows (only
+the first visible); queries that split across several canonical segments; updates interleaved with
+queries; and large `n = q = 2*10^5` with heights up to `10^9`.
 
 ## Code framework
 
@@ -100,9 +75,8 @@ int main() {
 
     string out;
     for (int i = 0; i < q; i++) {
-        // TODO: handle update `1 p x`, and survey `2 l r` = number of strict
-        // prefix maxima of h[l..r], assembled across canonical segments with a
-        // running `bound` carried left to right.
+        // TODO: handle update `1 p x`, and survey `2 l r` = number of visible
+        // buildings (strict prefix maxima) in h[l..r].
     }
     cout << out;
     return 0;
