@@ -11,59 +11,49 @@ import torch
 import torch.nn as nn
 
 class InvariantDeepSet(nn.Module):
-    """f(X) = rho(sum_x phi(x)): invariant by construction."""
-    def __init__(self, in_dim, phi_dim=64, hidden=128, out_dim=1, pool='sum'):
+    """f(X) = rho( sum_x phi(x) ) — the sum-decomposition structure theorem."""
+    def __init__(self, in_dim, phi_dim=30, hidden=100, out_dim=1):
         super().__init__()
+        # phi: shared per-element embedding (applied to every element identically)
         self.phi = nn.Sequential(
             nn.Linear(in_dim, hidden),
-            nn.ReLU(),
+            nn.Tanh(),
             nn.Linear(hidden, phi_dim),
-            nn.ReLU(),
         )
-        self.rho = nn.Sequential(
-            nn.Linear(phi_dim, hidden),
-            nn.ReLU(),
-            nn.Linear(hidden, out_dim),
-        )
-        self.pool = pool
+        # rho: readout on the pooled code
+        self.rho = nn.Linear(phi_dim, out_dim)
 
     def forward(self, x, mask=None):
         # x: (batch, M, in_dim)
-        h = self.phi(x)                       # (batch, M, phi_dim)
-        if mask is not None:
+        h = self.phi(x)                       # (batch, M, phi_dim) — phi(x_m)
+        if mask is not None:                  # mask out padding for variable M
             h = h * mask.unsqueeze(-1)
-        if self.pool == 'sum':
-            s = h.sum(dim=1)
-        elif self.pool == 'mean':
-            if mask is not None:
-                counts = mask.sum(dim=1, keepdim=True).clamp(min=1)
-                s = h.sum(dim=1) / counts
-            else:
-                s = h.mean(dim=1)
-        else:
-            s, _ = h.max(dim=1)
-        return self.rho(s)
+        s = h.sum(dim=1)                      # sum_x phi(x)  — order-independent pool
+        return self.rho(s)                    # rho(.)
+```
 
+The equivariant half stacks the unique tied layer and closes with a pool so the same stack, given a final reduction, collapses back into an invariant model:
 
+```python
 class PermEquivariant(nn.Module):
-    """The only permutation-equivariant linear layer: self term minus broadcast pool."""
+    """Theta = lambda*I + gamma*11^T  =>  f(X) = sigma( Gamma X - Lambda pool(X) ).
+    Two-parameter tied form is the *only* permutation-equivariant linear layer."""
     def __init__(self, in_dim, out_dim, pool='max'):
         super().__init__()
-        self.Gamma = nn.Linear(in_dim, out_dim)
-        self.Lambda = nn.Linear(in_dim, out_dim, bias=False)
+        self.Gamma = nn.Linear(in_dim, out_dim)              # element-wise term
+        self.Lambda = nn.Linear(in_dim, out_dim, bias=False) # pooled term
         self.pool = pool
 
     def forward(self, x):
         # x: (batch, M, in_dim)
         if self.pool == 'max':
-            p, _ = x.max(dim=1, keepdim=True)
+            xm, _ = x.max(dim=1, keepdim=True)   # commutative pool over the set
         else:
-            p = x.mean(dim=1, keepdim=True)
-        return self.Gamma(x) - self.Lambda(p)
+            xm = x.mean(dim=1, keepdim=True)
+        return self.Gamma(x) - self.Lambda(xm)   # broadcast: equivariant by construction
 
 
 class EquivariantDeepSet(nn.Module):
-    """Stacked equivariant layers with a final pool for set-level classification."""
     def __init__(self, in_dim, d=256, num_classes=40, pool='max'):
         super().__init__()
         self.phi = nn.Sequential(
@@ -72,15 +62,12 @@ class EquivariantDeepSet(nn.Module):
             PermEquivariant(d, d, pool),       nn.ELU(inplace=True),
         )
         self.rho = nn.Sequential(
-            nn.Dropout(0.5),
-            nn.Linear(d, d),
-            nn.ELU(inplace=True),
-            nn.Dropout(0.5),
-            nn.Linear(d, num_classes),
+            nn.Dropout(0.5), nn.Linear(d, d), nn.ELU(inplace=True),
+            nn.Dropout(0.5), nn.Linear(d, num_classes),
         )
 
     def forward(self, x):
-        h = self.phi(x)
-        s, _ = h.max(dim=1)
+        h = self.phi(x)            # stacked equivariant layers stay equivariant
+        s, _ = h.max(dim=1)        # final commutative pool => invariant
         return self.rho(s)
 ```
