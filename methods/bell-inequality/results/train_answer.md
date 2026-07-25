@@ -2,61 +2,12 @@ The EPR argument asks whether quantum mechanics can be completed with hidden var
 
 The answer is Bell's inequality, in its experimentally robust CHSH form. It replaces philosophical debate with a bound that every local hidden-variable theory must satisfy and that quantum mechanics violates. A local theory is modeled in full generality by a shared hidden variable λ drawn from some distribution ρ(λ), and two outcome functions A(a, λ) and B(b, λ) with |A|, |B| ≤ 1, where A depends only on the local setting a and λ, and B depends only on the distant setting b and λ. The crucial locality assumption is the factorization: conditioned on λ, the two outcomes are statistically independent of the distant setting. From this alone one can derive a universal constraint on the correlations E(a, b) = ∫ dλ ρ(λ) A(a, λ) B(b, λ). With two settings per side, a, a′ on one analyzer and b, b′ on the other, define S = E(a, b) − E(a, b′) + E(a′, b) + E(a′, b′). For every local theory, pointwise inspection of the integrand shows |S| ≤ 2. Quantum mechanics predicts E(a, b) = −cos θ for the spin singlet, and with settings spaced 45° apart the same combination gives |S| = 2√2 ≈ 2.828, cleanly above the local ceiling.
 
-The code below computes the quantum CHSH value for the singlet and contrasts it with a simple local hidden-variable model. The quantum part uses the cosine correlation and the canonical angle choices a = 0°, a′ = 90°, b = 45°, b′ = 135°. The local model assigns each particle an independent random hidden axis and deterministically flips its sign according to whether the axis aligns with the local field; averaging many pairs gives a local correlation whose CHSH combination never exceeds 2.
+The deliverable is the inequality itself, stated with its hypotheses made explicit rather than left implicit in the derivation. A local hidden-variable theory is, in full generality, a shared variable $\lambda$ with density $\rho(\lambda)$ together with outcome functions $A(\mathbf{a},\lambda)$ and $B(\mathbf{b},\lambda)$ satisfying $|A|,|B|\le 1$, with $A$ blind to the distant setting $\mathbf{b}$ and $B$ blind to $\mathbf{a}$. For any such theory, and any two settings $\mathbf{a},\mathbf{a}'$ on one side and $\mathbf{b},\mathbf{b}'$ on the other, the correlations $E(\mathbf{a},\mathbf{b}) = \int d\lambda\,\rho(\lambda)\,A(\mathbf{a},\lambda)B(\mathbf{b},\lambda)$ obey
 
-```python
-import numpy as np
+$$ |S| \;=\; \bigl|E(\mathbf{a},\mathbf{b}) - E(\mathbf{a},\mathbf{b}') + E(\mathbf{a}',\mathbf{b}) + E(\mathbf{a}',\mathbf{b}')\bigr| \;\le\; 2. $$
 
-# Quantum-mechanical CHSH value for the spin singlet.
-def quantum_chsh():
-    # Settings in degrees: a=0, a'=90, b=45, b'=135
-    angles = {
-        ("a", "b"): 45.0,
-        ("a", "b'"): 135.0,
-        ("a'", "b"): 45.0,
-        ("a'", "b'"): 45.0,
-    }
-    signs = {"a-b": +1, "a-b'": -1, "a'-b": +1, "a'-b'": +1}
-    S = 0.0
-    for key, theta in angles.items():
-        term_key = "-".join(key)
-        E = -np.cos(np.radians(theta))
-        S += signs[term_key] * E
-    return S
+Nothing beyond locality and boundedness goes into this: for each fixed $\lambda$ one of $B(\mathbf{b},\lambda)\pm B(\mathbf{b}',\lambda)$ vanishes and the other has magnitude at most $2$, so the integrand is bounded by $2$ pointwise and no choice of $\rho$ or of the outcome functions can push $S$ past that ceiling. Quantum mechanics breaks it: for the singlet, $E(\mathbf{a},\mathbf{b}) = -\cos\theta$ with $\theta$ the angle between the analyzer settings, and at the canonical coplanar configuration $\mathbf{a}=0°$, $\mathbf{a}'=90°$, $\mathbf{b}=45°$, $\mathbf{b}'=135°$ — each adjacent pair $45°$ apart —
 
-# Simple local hidden-variable model.
-# Each particle carries a random unit axis; the response is sign(cos(angle to field)).
-def local_model_chsh(n_samples=1_000_000):
-    # Random hidden axes uniformly on the sphere, in the measurement plane.
-    phi = np.random.uniform(0, 2 * np.pi, size=n_samples)
-    # Particle 1 axis and opposite axis for particle 2.
-    axis1 = np.stack([np.cos(phi), np.sin(phi)], axis=1)
-    axis2 = -axis1
+$$ S \;=\; \Bigl(-\tfrac{1}{\sqrt2}\Bigr) - \Bigl(\tfrac{1}{\sqrt2}\Bigr) + \Bigl(-\tfrac{1}{\sqrt2}\Bigr) + \Bigl(-\tfrac{1}{\sqrt2}\Bigr) \;=\; -2\sqrt2, \qquad |S| = 2\sqrt2 \approx 2.828 > 2. $$
 
-    def response(axis, setting_deg):
-        s = np.radians(setting_deg)
-        field = np.array([np.cos(s), np.sin(s)])
-        return np.sign(axis @ field)
-
-    def E(a_deg, b_deg):
-        A = response(axis1, a_deg)
-        B = response(axis2, b_deg)
-        return np.mean(A * B)
-
-    E_ab = E(0, 45)
-    E_abp = E(0, 135)
-    E_apb = E(90, 45)
-    E_apbp = E(90, 135)
-    S_local = E_ab - E_abp + E_apb + E_apbp
-    return S_local, (E_ab, E_abp, E_apb, E_apbp)
-
-S_qm = quantum_chsh()
-S_local, Es = local_model_chsh()
-
-print(f"Quantum CHSH |S|  = {abs(S_qm):.4f}  (local bound = 2)")
-print(f"Local model S     = {S_local:.4f}")
-print("Local model correlations:", {k: f"{v:.4f}" for k, v in zip(
-    ["E(a,b)", "E(a,b')", "E(a',b)", "E(a',b')"], Es)})
-```
-
-This is Bell's inequality: a quantitative, experimentally testable boundary between local hidden-variable theories and quantum mechanics. If an experiment measures the four correlations and finds |S| > 2, no local hidden-variable explanation can account for the data. The singlet state predicts the maximal quantum value 2√2, so the EPR question is no longer philosophical; it is settled by counting coincidences at the right analyzer angles.
+This is Bell's inequality in the form an experiment can actually use: a quantitative, testable boundary between every local hidden-variable theory and quantum mechanics, resting on nothing more than the locality factorization $P(A,B\mid\mathbf{a},\mathbf{b},\lambda) = P(A\mid\mathbf{a},\lambda)\,P(B\mid\mathbf{b},\lambda)$ and bounded outcomes — no spin, no particles, no idealized perfect correlation required. If an experiment measures the four correlations at these relative angles and finds $|S|>2$, no local hidden-variable explanation can account for the data; the singlet state predicts the maximal value $2\sqrt2$, so the EPR question is no longer philosophical — it is settled by setting two analyzers at the right angles and counting coincidences.
