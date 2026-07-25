@@ -55,14 +55,7 @@ def assign_codewords(probs):
         walk(heap[0][2], '')
     return codes
 
-def average_length(probs, lengths):
-    return sum(probs[s] * lengths[s] for s in probs)
-
-# Example: five symbols with probabilities .25, .25, .2, .15, .15
 p = {'1': .25, '2': .25, '3': .2, '4': .15, '5': .15}
 lengths = huffman_code_lengths(p)
-codes = assign_codewords(p)
-avg = average_length(p, lengths)
-print({s: (codes[s], lengths[s]) for s in p})
-print("Average length:", avg)
+avg = sum(p[s] * lengths[s] for s in p)  # 2.3
 ```
