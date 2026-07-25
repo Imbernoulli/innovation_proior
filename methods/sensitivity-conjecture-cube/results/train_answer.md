@@ -16,96 +16,10 @@ What makes the argument close is the off-by-one at the interlacing index, and it
 
 Backing out through the bridge with $h(n)=\sqrt n$ turns $\Gamma(H)\ge\sqrt n$ into $s(f)\ge\sqrt{\deg(f)}$, i.e. $\deg(f)\le s(f)^2$, tight for the AND-of-ORs function on $m^2$ variables ($\deg=m^2$, $s=m$). Composing with the known quadratic tie $bs(f)\le\deg(f)^2$ gives $bs(f)\le\deg(f)^2\le(s(f)^2)^2=s(f)^4$, so the Sensitivity Conjecture holds with $C=4$ and sensitivity finally joins the polynomial cluster.
 
-The complete result, exactly as the chain produces it:
-
-```
-Main Theorem. For every integer n >= 1, every (2^{n-1}+1)-vertex induced subgraph H
-of Q^n has
-        Delta(H) >= sqrt(n).
-This is tight when n is a perfect square (the Chung–Füredi–Graham–Seymour construction
-gives a (2^{n-1}+1)-vertex induced subgraph of maximum degree ceil(sqrt(n))).
-
-Corollaries. Via the Gotsman–Linial equivalence and the known bs(f) <= deg(f)^2:
-        s(f) >= sqrt(deg(f))   (equivalently deg(f) <= s(f)^2),   and   bs(f) <= s(f)^4.
-The first is tight for the AND-of-ORs function AND_{i=1}^m OR_{j=1}^m x_{ij} on m^2
-variables (deg = m^2, s = m). The Sensitivity Conjecture holds with C = 4.
-
-
-Lemma 1 (eigenvalue lower bound on the maximum degree).
-Let H be an m-vertex graph and A a symmetric matrix with entries in {-1,0,1}, rows and
-columns indexed by V(H), with A_{uv} = 0 whenever u,v are non-adjacent in H. Then
-Delta(H) >= lambda_1 := lambda_1(A).
-
-Proof. Let v be an eigenvector for lambda_1, so A v = lambda_1 v, and let i be a
-coordinate with |v_i| maximal. Then
-        |lambda_1| |v_i| = | sum_j A_{ij} v_j | = | sum_{j ~ i} A_{ij} v_j |
-                         <= sum_{j ~ i} |A_{ij}| |v_i| <= Delta(H) |v_i|,
-using A_{ij} = 0 for j not ~ i, |v_j| <= |v_i|, and |A_{ij}| <= 1. Dividing by
-|v_i| > 0 gives |lambda_1| <= Delta(H).  QED
-
-
-Lemma 2 (a signed matrix of the cube with A_n^2 = n I).
-Define symmetric matrices recursively by
-        A_1 = [ 0 1 ; 1 0 ],     A_n = [ A_{n-1}  I ; I  -A_{n-1} ].
-Then A_n is 2^n x 2^n, A_n^2 = n I, and its eigenvalues are sqrt(n) and -sqrt(n), each
-with multiplicity 2^{n-1}.
-
-Proof. Induct on n. For n = 1, A_1^2 = I. If A_{n-1}^2 = (n-1) I, then
-        A_n^2 = [ A_{n-1}^2 + I,  A_{n-1} - A_{n-1} ; A_{n-1} - A_{n-1},  I + A_{n-1}^2 ]
-              = [ A_{n-1}^2 + I,  0 ; 0,  A_{n-1}^2 + I ] = n I.
-Hence every eigenvalue satisfies lambda^2 = n, so lambda = +- sqrt(n). Since Tr(A_n) = 0,
-the eigenvalues sum to zero, so +sqrt(n) and -sqrt(n) occur with equal multiplicity
-2^{n-1}.  QED
-
-Why this is a signing of Q^n. The nonzero entries of A_n are exactly the edges of Q^n:
-the two A_{n-1} blocks sit on the two (n-1)-subcubes (x_n = 0 and x_n = 1), and the two I
-blocks are the perfect matching joining them. Replacing every -1 by +1 recovers the
-ordinary 0/1 adjacency matrix of Q^n. (Geometrically, (A_n^2)_{ii} = n counts the n closed
-length-2 walks at i, each contributing (+-1)^2 = 1; for i != j at distance 2, (A_n^2)_{ij}
-is the sum of the two signed length-2 paths around their common 4-cycle, which cancel
-because the recursion puts an odd number of -1 edges on every 4-cycle.)
-
-
-Lemma 3 (Cauchy's interlace theorem).
-Let A be symmetric n x n with eigenvalues lambda_1 >= ... >= lambda_n, and let B be an
-m x m principal submatrix with eigenvalues mu_1 >= ... >= mu_m. Then for all 1 <= i <= m,
-        lambda_i >= mu_i >= lambda_{i+n-m}.
-
-Proof. It suffices to remove one row/column at a time and iterate. Permuting rows and
-columns, write A = [ B  c ; c^T  d ] with B obtained by deleting the last row and column.
-By linearity of the determinant in the last column,
-        det[ B - xI,  c ; c^T,  d - x + alpha ]
-          = det[ B - xI,  c ; c^T,  d - x ] + det[ B - xI,  c ; 0,  alpha ]
-          = det(A - xI) + alpha det(B - xI).
-The left-hand side is (up to sign) the characteristic polynomial of a symmetric matrix
-for every real alpha, hence has all real roots; so det(A - xI) and det(B - xI) interlace,
-giving the inequalities for the single-deletion step. Stacking n - m such steps yields the
-general statement.  QED
-
-
-Proof of the Main Theorem. Let H be a (2^{n-1}+1)-vertex induced subgraph of Q^n and let
-A_H be the principal submatrix of A_n on V(H). By Lemma 2, A_H is symmetric, {-1,0,1}-valued,
-and vanishes on non-edges of H, so Lemma 1 gives
-        Delta(H) >= lambda_1(A_H).
-By Lemma 2 the eigenvalues of A_n are sqrt(n) (2^{n-1} times) then -sqrt(n) (2^{n-1} times).
-Applying Lemma 3 with n -> 2^n, m = 2^{n-1}+1, i = 1:
-        lambda_1(A_H) >= lambda_{1 + 2^n - (2^{n-1}+1)}(A_n) = lambda_{2^{n-1}}(A_n) = sqrt(n).
-Combining, Delta(H) >= sqrt(n). Tightness when n is a perfect square follows from the CFGS
-construction.  QED
-
-Strengthening (eigenvalue form). The proof in fact yields lambda_1(H) >= lambda_1(A_H)
->= sqrt(n), where lambda_1(H) is the largest eigenvalue of the ordinary 0/1 adjacency
-matrix of H (since the all-positive adjacency entrywise dominates |A_H|, its Perron
-eigenvalue is at least lambda_1(A_H)). As Delta(H) >= lambda_1(H) always, this is stronger,
-and lambda_1(H) >= sqrt(n) is best possible for every n: taking all 2^{n-1} even vertices
-plus one odd vertex induces a star K_{1,n} together with isolated vertices, with
-lambda_1(K_{1,n}) = sqrt(n).
-
-Deriving the corollaries. One of H, Q^n - H has >= 2^{n-1}+1 vertices and Delta is
-monotone, so Gamma(H) = max{Delta(H), Delta(Q^n - H)} >= sqrt(n) for every induced
-subgraph with |V(H)| != 2^{n-1}. The Gotsman–Linial equivalence with h(n) = sqrt(n)
-converts this into s(f) >= sqrt(deg(f)), i.e. deg(f) <= s(f)^2. With the known
-bs(f) <= deg(f)^2,
-        bs(f) <= deg(f)^2 <= (s(f)^2)^2 = s(f)^4,
-proving the Sensitivity Conjecture with C = 4.  QED
-```
+The complete result, stated precisely, is this. For every integer $n\ge 1$, every $(2^{n-1}+1)$-vertex induced subgraph $H$ of $Q^n$ satisfies
+$$\Delta(H)\ \ge\ \sqrt n,$$
+and this is tight whenever $n$ is a perfect square, matching the Chung–Füredi–Graham–Seymour construction of a $(2^{n-1}+1)$-vertex induced subgraph of maximum degree $\lceil\sqrt n\rceil$. The argument in fact delivers the stronger eigenvalue statement $\lambda_1(H)\ge\sqrt n$ for the ordinary $0/1$ adjacency matrix of $H$ — since the all-positive adjacency entrywise dominates $|A_H|$, its Perron eigenvalue can only be larger — and this strengthened form is sharp for every $n$, not only perfect squares, via the star $K_{1,n}$ obtained by taking all $2^{n-1}$ even vertices of $Q^n$ together with one odd vertex. Passed back through the Gotsman–Linial equivalence with $h(n)=\sqrt n$, one of $H$ and $Q^n-H$ always has at least $2^{n-1}+1$ vertices, so $\Gamma(H)\ge\sqrt n$ for every induced subgraph with $|V(H)|\ne 2^{n-1}$; this converts into, for every Boolean function $f$,
+$$s(f)\ \ge\ \sqrt{\deg(f)},\qquad\text{equivalently}\qquad \deg(f)\ \le\ s(f)^2,$$
+tight for the AND-of-ORs function $\bigwedge_{i=1}^m\bigvee_{j=1}^m x_{ij}$ on $m^2$ variables, where $\deg=m^2$ and $s=m$. Composed with the known quadratic tie $bs(f)\le\deg(f)^2$, this closes the Sensitivity Conjecture:
+$$bs(f)\ \le\ \deg(f)^2\ \le\ \bigl(s(f)^2\bigr)^2\ =\ s(f)^4,$$
+so $C=4$ works, and sensitivity finally takes its place alongside block sensitivity, certificate complexity, decision-tree depth, and query complexity in the single polynomially-equivalent family it had been excluded from for three decades.
