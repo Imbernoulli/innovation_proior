@@ -18,104 +18,75 @@ In practice I implement this by constructing a surrogate scalar whose gradient i
 
 The architecture itself remains the same as in a VAE. The encoder is a feed-forward network with two tanh hidden layers that outputs the mean and log-standard-deviation of a diagonal Gaussian; exponentiating the log-standard-deviation keeps the standard deviation positive. The decoder is another two tanh hidden layers followed by a sigmoid that gives the Bernoulli probability for each binary pixel. Reparameterized sampling is h = mu + sigma * epsilon with epsilon ~ N(0, I). The only change is in the objective function.
 
-The code below is a small, self-contained illustration of the IWAE bound. It builds a tiny generative model and recognition network, draws latent samples, and shows that the k-sample IWAE bound is at least as large as the single-sample VAE bound for the same parameters. It also demonstrates the self-normalized gradient estimator and the stable logmeanexp evaluation. This is not a full training run on binarized MNIST or Omniglot, but it verifies the core quantitative claims: the bound ladder is monotonic in k, and the gradient estimator reduces to the VAE estimator when k equals 1.
+The code below is the one-stochastic-layer model itself, with Bernoulli observations. A GaussianBlock is the reusable amortized-inference primitive I already had for the plain VAE: two tanh layers mapping an input to the mean and (exponentiated) log-standard-deviation of a diagonal Gaussian. The IWAE model wraps one such block as the encoder and mirrors it with a two-tanh-layer decoder ending in a sigmoid for the Bernoulli mean. encode reparameterizes the sample as h = mu + sigma * eps; log_weights carries a leading sample axis of size k so that the k independent draws for a replicated batch are scored in parallel, and returns log p(h) + log p(x|h) - log q(h|x) for each draw, using -0.5*eps^2 - log(sigma) for the Gaussian log-density since (h-mu)/sigma = eps. objective is the training surrogate: it puts the log-weights in the log domain for stability, forms the self-normalized weights w_tilde as a stable softmax of the log-weights, detaches them so autodiff does not differentiate through the normalization, and returns the sum of w_tilde times log w_i, whose gradient with respect to theta is exactly the derived estimator sum_i w_tilde_i grad_theta log w_i. log_likelihood_estimate instead reports the numerical value of the bound itself, the stable logmeanexp of the log-weights, which is what I evaluate with a large k such as 5000 for a held-out log-likelihood estimate. train_step replicates each training example k times along the sample axis and takes one Adam step on the negative surrogate.
 
 ```python
 import numpy as np
 import torch
 import torch.nn as nn
 
-LOG2PI = float(np.log(2.0 * np.pi))
+LOG2PI = float(np.log(2 * np.pi))
 
 
-def gaussian_log_density(z, mu, sigma):
-    return torch.sum(
-        -0.5 * ((z - mu) / sigma) ** 2
-        - torch.log(sigma)
-        - 0.5 * LOG2PI,
-        dim=-1,
-    )
-
-
-class TinyModel(nn.Module):
-    """Small one-layer VAE/IWAE for binary observations."""
-
-    def __init__(self, dim_obs, dim_latent):
+class GaussianBlock(nn.Module):
+    """Two tanh layers -> (mu, sigma) of a diagonal Gaussian; exp keeps sigma > 0."""
+    def __init__(self, in_dim, hidden_dim, out_dim):
         super().__init__()
-        self.encoder = nn.Sequential(
-            nn.Linear(dim_obs, 32),
-            nn.Tanh(),
-            nn.Linear(32, dim_latent * 2),
-        )
+        self.body = nn.Sequential(
+            nn.Linear(in_dim, hidden_dim), nn.Tanh(),
+            nn.Linear(hidden_dim, hidden_dim), nn.Tanh())
+        self.fc_mu = nn.Linear(hidden_dim, out_dim)
+        self.fc_logsigma = nn.Linear(hidden_dim, out_dim)
+
+    def forward(self, x):
+        h = self.body(x)
+        return self.fc_mu(h), torch.exp(self.fc_logsigma(h))
+
+
+class IWAE(nn.Module):
+    def __init__(self, dim_latent, dim_obs):
+        super().__init__()
+        self.encoder = GaussianBlock(dim_obs, 200, dim_latent)
         self.decoder = nn.Sequential(
-            nn.Linear(dim_latent, 32),
-            nn.Tanh(),
-            nn.Linear(32, dim_obs),
-            nn.Sigmoid(),
-        )
+            nn.Linear(dim_latent, 200), nn.Tanh(),
+            nn.Linear(200, 200), nn.Tanh(),
+            nn.Linear(200, dim_obs), nn.Sigmoid())
 
     def encode(self, x):
-        out = self.encoder(x)
-        mu, log_sigma = torch.chunk(out, 2, dim=-1)
-        sigma = torch.exp(log_sigma)
+        mu, sigma = self.encoder(x)
         eps = torch.randn_like(sigma)
-        z = mu + sigma * eps
-        return z, mu, sigma, eps
+        return mu + sigma * eps, mu, sigma, eps     # h = mu + sigma * eps
 
     def log_weights(self, x):
-        z, mu, sigma, eps = self.encode(x)
-        log_q = gaussian_log_density(z, mu, sigma)
-        log_prior = torch.sum(-0.5 * z ** 2 - 0.5 * LOG2PI, dim=-1)
-        p_x_given_z = self.decoder(z)
-        p_x_given_z = torch.clamp(p_x_given_z, 1e-6, 1 - 1e-6)
-        log_lik = torch.sum(
-            x * torch.log(p_x_given_z)
-            + (1.0 - x) * torch.log(1.0 - p_x_given_z),
-            dim=-1,
-        )
-        return log_prior + log_lik - log_q
+        # x: (k, batch, dim_obs)
+        h, mu, sigma, eps = self.encode(x)
+        log_q = torch.sum(-0.5 * eps ** 2 - torch.log(sigma) - 0.5 * LOG2PI, -1)   # log q(h|x)
+        log_prior = torch.sum(-0.5 * h ** 2 - 0.5 * LOG2PI, -1)                    # log p(h)
+        p = self.decoder(h)
+        log_lik = torch.sum(x * torch.log(p) + (1 - x) * torch.log(1 - p), -1)     # log p(x|h)
+        return log_prior + log_lik - log_q                                         # log w_i, (k, batch)
 
-    def iwae_bound(self, x, k):
-        x_rep = x.unsqueeze(0).expand(k, *x.shape)
-        log_w = self.log_weights(x_rep)
-        m = torch.max(log_w, dim=0, keepdim=True)[0]
-        return torch.mean(m + torch.log(torch.mean(torch.exp(log_w - m), dim=0)))
+    def objective(self, x):
+        # Training surrogate, not the numerical value of L_k.
+        log_w = self.log_weights(x)
+        log_w_stable = log_w - torch.max(log_w, 0, keepdim=True)[0]
+        w = torch.exp(log_w_stable)
+        w_tilde = (w / torch.sum(w, 0, keepdim=True)).detach()    # self-normalized, stop-gradient
+        return torch.mean(torch.sum(w_tilde * log_w, 0))          # grad == grad L_k
 
-    def vae_bound(self, x):
-        return self.iwae_bound(x, k=1)
-
-    def training_surrogate(self, x, k):
-        x_rep = x.unsqueeze(0).expand(k, *x.shape)
-        log_w = self.log_weights(x_rep)
-        max_log_w = torch.max(log_w, dim=0, keepdim=True)[0]
-        w = torch.exp(log_w - max_log_w)
-        w_tilde = (w / torch.sum(w, dim=0, keepdim=True)).detach()
-        return torch.mean(torch.sum(w_tilde * log_w, dim=0))
+    def log_likelihood_estimate(self, x):
+        log_w = self.log_weights(x)
+        m = torch.max(log_w, 0, keepdim=True)[0]
+        return torch.mean(m.squeeze(0) + torch.log(torch.mean(torch.exp(log_w - m), 0)))  # logmeanexp
 
 
-if __name__ == "__main__":
-    torch.manual_seed(0)
-    dim_obs = 8
-    dim_latent = 4
-    batch_size = 16
-    model = TinyModel(dim_obs, dim_latent)
-    x = (torch.rand(batch_size, dim_obs) > 0.5).float()
-
-    vae = model.vae_bound(x).item()
-    iwae_5 = model.iwae_bound(x, k=5).item()
-    iwae_50 = model.iwae_bound(x, k=50).item()
-
-    print(f"VAE bound (k=1):  {vae:.4f}")
-    print(f"IWAE bound k=5:   {iwae_5:.4f}")
-    print(f"IWAE bound k=50:  {iwae_50:.4f}")
-    assert iwae_5 >= vae - 1e-4, "IWAE bound should be at least the VAE bound"
-    assert iwae_50 >= iwae_5 - 1e-4, "IWAE bound should be non-decreasing in k"
-
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-    loss = -model.training_surrogate(x, k=5)
+def train_step(model, x, optimizer, k):
+    x = x.unsqueeze(0).expand(k, *x.shape)         # k samples per example
+    optimizer.zero_grad()
+    loss = -model.objective(x)
     loss.backward()
     optimizer.step()
-    print(f"Training surrogate loss: {loss.item():.4f}")
+    return loss.item()
 ```
 
 In summary, IWAE keeps the VAE architecture and the reparameterization trick, but replaces the single-sample evidence lower bound with a k-sample importance-weighted lower bound. The new bound is always a valid lower bound on log p(x), is never looser than the VAE bound, and converges to the true log-likelihood as k grows. The gradient is a self-normalized importance-weighted average of per-sample VAE gradients, implemented through a detached-weight surrogate. By letting good posterior samples dominate the update instead of punishing every poor sample, IWAE relieves the pressure that drives ordinary VAEs to waste latent capacity, leading to tighter bounds and richer representations without changing the model family.
