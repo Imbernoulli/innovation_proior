@@ -12,12 +12,6 @@ Count **how many distinct valid wall designs exist** for a strip of length `n`. 
 quickly, so report it **modulo `p`**. The empty strip (`n = 0`) has exactly one design — the design
 that places no bricks.
 
-This is a one-dimensional counting DP: a tiling-by-1-and-2 recurrence (the Fibonacci skeleton)
-married to a per-tile color factor. The whole difficulty is fusing the two without **double-counting**
-the colorings and without an **off-by-one** at the very first brick, where the "differ from the
-previous brick" rule has no previous brick to differ from — exactly where a naive implementation
-goes subtly wrong.
-
 ## Input / output contract
 
 - Input (stdin): three whitespace-separated integers `n`, `K`, `p`
@@ -30,31 +24,10 @@ Example: for `n = 3`, `K = 3`, `p = 1000000007` the answer is `24`. (The three b
 are `1+1+1`, `1+2`, and `2+1`; coloring them under the adjacency rule gives `3*2*2 = 12`, `3*2 = 6`,
 and `3*2 = 6`, for `12 + 6 + 6 = 24`.)
 
-## Background
-
-The set of ways to cut a length-`n` strip into bricks of length `1` and `2` — ignoring color — is the
-classic Fibonacci count: a strip of length `i` ends in either a length-`1` brick (preceded by a
-length-`i-1` strip) or a length-`2` brick (preceded by a length-`i-2` strip). Color multiplies a
-factor onto every brick, but the adjacency rule couples each brick to its predecessor, so the factor
-is not uniform: the very first brick on the strip may be any of `K` colors, while every later brick
-may be any color **except** the one immediately to its left, i.e. `K - 1` choices. Two routes are on
-the table before committing to one:
-
-- **Enumerate layouts, then color each.** List every length-`1`/`2` composition of `n` (there are a
-  Fibonacci number of them), and for a layout with `t` bricks multiply `K * (K-1)^{t-1}`. This is
-  obviously correct but the number of layouts is exponential in `n`, so it only works for tiny `n`.
-- **Linear counting DP.** Carry one running count `g[i]` = number of valid colored designs of a
-  length-`i` strip, and extend by one brick at a time, attaching the right color factor as the new
-  brick is laid. This is `O(n)`; the open question is the exact recurrence and, above all, getting
-  the first-brick `K` versus later-brick `K-1` factor attached to the correct predecessor.
-
 ## Evaluation settings
 
-Judged on hidden tests covering: `n = 0` (answer `1`), `n = 1` (answer `K mod p`), `K = 1` (only the
-all-length-`>=2`... actually only `n in {0,1}` admit a design, every longer strip forces two touching
-same-colored bricks somewhere, so the count collapses to `0` for `n >= 2`), `K = 2`, composite and
-prime moduli (including `p = 1` where every answer is `0`), and large `n = 2*10^5` with `K` near
-`10^9` (so intermediate products `~10^18` must be reduced before they overflow 64-bit arithmetic).
+Judged on hidden tests covering: `n = 0`, `n = 1`, `K = 1`, `K = 2`, composite and prime moduli
+(including `p = 1`), and large `n = 2*10^5` with `K` near `10^9`.
 
 ## Code framework
 

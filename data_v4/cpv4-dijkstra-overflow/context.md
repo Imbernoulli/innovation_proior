@@ -10,10 +10,6 @@ cheaply as possible. Output the minimum total toll of any directed route from `1
 no such route exists.
 
 This is single-source single-target shortest path on a directed graph with non-negative edge weights.
-What makes it more than a textbook drill is the money scale: individual tolls are already near `10^9`,
-and a cheapest route can legitimately chain many of them, so the **answer itself routinely exceeds the
-range of a 32-bit signed integer**. Getting the distances into the right integer type — and proving the
-unreachable and trivial corners — is the whole game.
 
 ## Input / output contract
 
@@ -40,34 +36,14 @@ Example: for the network
 ```
 
 the answer is `2400000000` — the route `1 -> 2 -> 3 -> 5` costs `800000000 * 3`, which beats the
-detour `1 -> 2 -> 4 -> 5` (`= 2600000000`) and `1 -> 2 -> 3 -> 4 -> 5` (`= 2550000000`). Note the
-optimum `2400000000` is already larger than the maximum 32-bit signed integer `2147483647`.
-
-## Background
-
-With non-negative weights, the canonical tool is **Dijkstra's algorithm**: keep a tentative distance
-`dist[v]` for every vertex, repeatedly extract the unsettled vertex of smallest tentative distance,
-and relax its outgoing edges. With a binary heap this runs in `O((n + m) log n)`, comfortably inside
-the limits for `n <= 2*10^5`, `m <= 5*10^5`. Two design questions are open before committing:
-
-- **What integer type holds a distance?** A route can use up to `n - 1` roads, each costing up to
-  `10^9`, so a distance can reach roughly `2*10^14`. That overflows a 32-bit `int` (cap ~`2.1*10^9`);
-  the heap keys, the `dist[]` array, and every relaxation `dist[u] + w` must be 64-bit.
-- **How is "unreachable" represented and tested?** A sentinel `INF` must be large enough never to be
-  beaten by a real distance, yet `dist[u] + w` must never be evaluated for a vertex still at `INF`
-  (Dijkstra only relaxes from popped, finite-distance vertices, so this is automatic — but it must be
-  argued, not assumed).
-
-A greedy "always take the cheapest outgoing road" walk is *not* on the table: it can wander into a
-dead end or loop and gives no optimality guarantee. Dijkstra's settled-vertex invariant is what makes
-the answer provably minimal.
+detour `1 -> 2 -> 4 -> 5` (`= 2600000000`) and `1 -> 2 -> 3 -> 4 -> 5` (`= 2550000000`).
 
 ## Evaluation settings
 
 Judged on hidden tests covering: tiny graphs solved by hand; `n = 1` (answer `0`); disconnected
 graphs where depot `n` is unreachable (answer `-1`); zero-weight roads; self-loops and parallel
-roads; long heavy chains where the optimum exceeds `2^31 - 1` (so a 32-bit accumulator silently
-wraps to a negative answer); and large `n = 2*10^5`, `m = 5*10^5` instances for time.
+roads; long heavy chains stressing the numeric range of the answer; and large `n = 2*10^5`,
+`m = 5*10^5` instances for time.
 
 ## Code framework
 
@@ -91,7 +67,7 @@ int main() {
         adj[u].push_back({v, w});
     }
 
-    // TODO: run Dijkstra from depot 1; print dist[n] (or -1 if unreachable).
+    // TODO: compute the minimum-toll distance from depot 1; print dist[n] (or -1 if unreachable).
     long long answer = -1;
 
     cout << answer << "\n";
