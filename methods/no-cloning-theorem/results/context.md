@@ -1,49 +1,49 @@
 ## Research question
 
-经典信息的一个默认直觉是：如果我拥有一段信息，就可以把它复制到空白载体上。比特串、文件、数学描述都可以在不改变原件的情况下重复写入另一个介质。问题是：这个直觉能否原封不动搬到量子态上？
+A default intuition about classical information is: if I possess a piece of information, I can copy it onto a blank carrier. Bit strings, files, mathematical descriptions can all be rewritten onto another medium without altering the original. The question is: does this intuition carry over unchanged to quantum states?
 
-问题不是能否复制某些已知态。正交基态可以通过受控操作复制，例如把计算基态 `|0>` 和 `|1>` 复制到一个空白比特上。真正的问题是是否存在一个通用物理过程，对任意未知纯态 `|psi>` 和固定空白态 `|b>` 都实现
+The question is not whether some known states can be copied. Orthogonal basis states can be copied via controlled operations, e.g. copying the computational basis states `|0>` and `|1>` onto a blank bit. The real question is whether there exists a universal physical process that, for any unknown pure state `|psi>` and a fixed blank state `|b>`, realizes
 
 `|psi>|b> -> |psi>|psi>`.
 
 ## Background
 
-封闭量子系统的可逆演化由幺正变换描述。幺正变换是线性的，并保持态向量之间的内积。线性意味着如果一个过程分别作用在 `|0>` 和 `|1>` 上，那么它作用在叠加态 `a|0>+b|1>` 上的结果必须是对应输出的同样线性组合。
+The reversible evolution of a closed quantum system is described by a unitary transformation. A unitary transformation is linear and preserves the inner product between state vectors. Linearity means that if a process acts on `|0>` and `|1>` separately, then its action on a superposition `a|0>+b|1>` must be the same linear combination of the corresponding outputs.
 
-复制映射看起来也很自然：给定一个空白寄存器，把输入态写到空白寄存器中，同时保留原输入。若只考虑一组互相正交的候选态，这可以做到，因为正交态可以被完美区分，并可用条件操作转写。
+A copying map also looks natural at first: given a blank register, write the input state into the blank register while preserving the original input. If we only consider a set of mutually orthogonal candidate states, this can be done, because orthogonal states can be perfectly distinguished and can be rewritten using conditional operations.
 
-任意未知量子态则不同。非正交态不能被完美区分；复制任意态要求一个线性、内积保持的物理演化实现映射 `|psi> -> |psi>|psi>`，这会把态之间的内积从 `<psi|phi>` 变成 `<psi|phi>^2`。
+An arbitrary unknown quantum state is different. Non-orthogonal states cannot be perfectly distinguished; copying an arbitrary state requires a linear, inner-product-preserving physical evolution realizing the map `|psi> -> |psi>|psi>`, which would take the inner product between states from `<psi|phi>` to `<psi|phi>^2`.
 
 ## Baselines
 
-- **经典复制器。** 对经典比特串，复制是允许的，因为状态集合可视为彼此可区分的离散标签。这个模型默认信息可以从载体中读出并重写到另一个载体上。
+- **Classical copier.** For classical bit strings, copying is allowed, because the set of states can be regarded as discrete, mutually distinguishable labels. This model assumes by default that information can be read out of a carrier and rewritten onto another carrier.
 
-- **正交态复制器。** 对已知正交集合，可以构造复制操作，例如 `|0>|0> -> |0>|0>` 与 `|1>|0> -> |1>|1>`。这个操作对该正交集合成立。
+- **Orthogonal-state copier.** For a known orthogonal set, one can construct a copying operation, e.g. `|0>|0> -> |0>|0>` and `|1>|0> -> |1>|1>`. This operation holds for that orthogonal set.
 
-- **测量后重制。** 先测量未知态再按结果制备副本，是一种可能的策略。测量可以给出经典结果，并据此重新制备态。
+- **Measure-then-reprepare.** Measuring the unknown state first and then preparing a copy according to the outcome is one possible strategy. Measurement can yield a classical result, from which the state can be reprepared.
 
-- **状态估计。** 多个同分布样本可以让人估计制备过程，并由此重制态的近似副本。
+- **State estimation.** Multiple identically distributed samples can let one estimate the preparation process and use that to reproduce an approximate copy of the state.
 
-- **非线性复制假想。** 若允许任意非线性映射，形式上可以写出 `|psi> -> |psi>|psi>`。
+- **Hypothetical nonlinear copier.** If arbitrary nonlinear maps were allowed, one could formally write `|psi> -> |psi>|psi>`.
 
 ## Evaluation settings
 
-核心判据应覆盖任意未知纯态，而不是某个固定正交基。最小证明只需两个非正交态 `|psi>` 与 `|phi>`：如果同一个幺正复制器能同时复制它们，内积保持会给出
+The core criterion should cover any unknown pure state, not just some fixed orthogonal basis. The minimal proof only needs two non-orthogonal states `|psi>` and `|phi>`: if the same unitary copier could copy both simultaneously, inner-product preservation gives
 
 `<psi|phi> = <psi|phi>^2`.
 
-这只允许 `<psi|phi>` 为 `0` 或 `1`。因此两个不同且非正交的态已经足以排除通用复制器。
+This only allows `<psi|phi>` to be `0` or `1`. So two distinct, non-orthogonal states already suffice to rule out a universal copier.
 
-另一个等价压力测试是叠加态。若复制器能复制 `|0>` 和 `|1>`，线性要求它对 `a|0>+b|1>` 输出 `a|00>+b|11>`；但真正的两份副本应是
+Another equivalent stress test is superposition. If a copier can copy `|0>` and `|1>`, linearity requires that it output `a|00>+b|11>` on `a|0>+b|1>`; but genuine two copies should be
 
 `(a|0>+b|1>)(a|0>+b|1>) = a^2|00>+ab|01>+ab|10>+b^2|11>`.
 
-两者一般不同。这直接展示了复制任意态与叠加原理之间的关系。
+These generally differ. This directly exhibits the relationship between copying arbitrary states and the superposition principle.
 
 ## Proof target
 
-最终论证应陈述：不存在一个固定的线性量子演化，能够把任意未知纯态和固定空白态映射为两份同样的纯态。若允许复制一组候选态，那么这些候选态必须彼此正交或完全相同；任意非正交不同态不能同时被完美复制。
+The final argument should state: there is no fixed linear quantum evolution that can map any unknown pure state, together with a fixed blank state, into two identical copies of that pure state. If copying a set of candidate states is allowed, these candidate states must be pairwise orthogonal or identical; any two distinct, non-orthogonal states cannot be simultaneously perfectly copied.
 
-证明应同时展示两条直觉。第一，内积保持说明复制会把态间重叠平方化，从而破坏几何结构。第二，叠加原理说明"复制基向量"并不自动意味着"复制所有叠加态"，因为复制映射本质上不是线性的。
+The proof should exhibit two intuitions together. First, inner-product preservation shows that copying would square the overlap between states, thereby breaking the geometric structure. Second, the superposition principle shows that "copying the basis vectors" does not automatically mean "copying every superposition of them," because a copying map is inherently not linear.
 
-报告重点是说明量子演化的结构约束如何限制对未知量子态的操作——未知量子信息不是可任意读写的标签，而是受线性、内积与可区分性共同约束的物理态。
+The point of the report is to show how the structural constraints of quantum evolution limit what operations can be performed on unknown quantum states — unknown quantum information is not a label that can be freely read and rewritten, but a physical state jointly constrained by linearity, inner products, and distinguishability.

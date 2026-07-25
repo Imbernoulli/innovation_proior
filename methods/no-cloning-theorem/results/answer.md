@@ -1,55 +1,55 @@
 # No-Cloning Theorem
 
-不存在一个固定的量子演化，能对任意未知纯态 `|psi>` 和固定空白态 `|b>` 实现
+There is no fixed quantum evolution that can realize, for any unknown pure state `|psi>` and fixed blank state `|b>`,
 
 `|psi>|b> -> |psi>|psi>`.
 
-更精确地说，若一个幺正操作 `U` 能同时复制两个候选态 `|psi>` 与 `|phi>`：
+More precisely, if a unitary operation `U` can simultaneously copy two candidate states `|psi>` and `|phi>`:
 
 `U|psi>|b> = |psi>|psi>`
 
 `U|phi>|b> = |phi>|phi>`,
 
-则这两个态必须正交或相同。
+then these two states must be orthogonal or identical.
 
 ## Proof by inner products
 
-幺正演化保持内积。输入态之间的内积是
+Unitary evolution preserves inner products. The inner product between the input states is
 
 `(<psi| tensor <b|)(|phi> tensor |b>) = <psi|phi>`.
 
-若复制成功，输出态之间的内积应为
+If copying succeeds, the inner product between the output states should be
 
 `(<psi| tensor <psi|)(|phi> tensor |phi>) = <psi|phi>^2`.
 
-因此必须满足
+Therefore we must have
 
 `<psi|phi> = <psi|phi>^2`.
 
-这个方程只允许 `<psi|phi> = 0` 或 `<psi|phi> = 1`。前者表示候选态正交，后者表示两个态相同。任意两个不同且非正交的态都有 `0 < |<psi|phi>| < 1`，不可能被同一个完美复制器同时复制。因此 universal copier 不存在。
+This equation only allows `<psi|phi> = 0` or `<psi|phi> = 1`. The former means the candidate states are orthogonal, the latter means the two states are identical. Any two distinct, non-orthogonal states have `0 < |<psi|phi>| < 1`, and cannot be simultaneously copied by the same perfect copier. Therefore a universal copier does not exist.
 
 ## Proof by linearity
 
-假设一个复制器能复制计算基态：
+Suppose a copier can copy the computational basis states:
 
 `|0>|b> -> |0>|0>`
 
 `|1>|b> -> |1>|1>`.
 
-由于量子演化是线性的，它作用在叠加态 `a|0>+b|1>` 上必须给出
+Since quantum evolution is linear, its action on the superposition `a|0>+b|1>` must give
 
 `a|0>|0> + b|1>|1>`.
 
-但真正复制这个叠加态需要输出
+But genuinely copying this superposition requires the output
 
 `(a|0>+b|1>) tensor (a|0>+b|1>)`
 
 `= a^2|0>|0> + ab|0>|1> + ab|1>|0> + b^2|1>|1>`.
 
-两者一般不相等。复制映射把态向量映到自身的张量平方，对振幅是非线性的；合法量子演化却必须线性。
+These are generally not equal. The copying map takes a state vector to the tensor square of itself, which is nonlinear in the amplitudes; but a legitimate quantum evolution must be linear.
 
 ## Interpretation
 
-No-cloning theorem 的独特洞察是：不能复制任意未知量子态不是技术限制，而是量子态空间结构的限制。内积保持说明复制会把态间重叠从 `<psi|phi>` 变成 `<psi|phi>^2`；叠加原理说明能复制一组正交基态，并不意味着能复制它们的任意叠加态。
+The distinctive insight of the No-Cloning Theorem is: the inability to copy an arbitrary unknown quantum state is not a technological limitation, but a limitation of the structure of the space of quantum states itself. Inner-product preservation shows that copying would take the overlap between states from `<psi|phi>` to `<psi|phi>^2`; the superposition principle shows that being able to copy a set of orthogonal basis states does not mean being able to copy arbitrary superpositions of them.
 
-这标志着从经典信息直觉到量子信息直觉的根本转向。经典信息可以被看作可区分标签，因此复制是默认操作。量子信息则由非正交态、叠加和线性演化共同约束；未知态不是可任意读取和重写的标签。只有正交、可区分的状态集合能像经典信息那样被复制，整个量子态空间不能被通用广播或备份。
+This marks a fundamental shift from classical-information intuition to quantum-information intuition. Classical information can be regarded as distinguishable labels, so copying is the default operation. Quantum information, by contrast, is jointly constrained by non-orthogonal states, superposition, and linear evolution; an unknown state is not a label that can be freely read out and rewritten. Only sets of orthogonal, distinguishable states can be copied the way classical information is; the entire space of quantum states cannot be universally broadcast or backed up.
