@@ -36,75 +36,10 @@ $$\Delta v_{\max}=\frac{GM}{2L}\left(\sqrt{e_1^2+e_2^2}+2\right).$$
 
 The term $\sqrt{e_1^2+e_2^2}$ is the scaled separation of the two hodograph centers, while the $2$ comes from adding the two equal radii. Even for circular orbits with $e_1=e_2=0$ the maximal relative speed is $GM/L$, twice the circular orbital speed, obtained when the two velocity vectors point opposite each other.
 
-The following Python script illustrates the construction numerically. It parametrizes each Kepler orbit by true anomaly, computes the velocity from the vis-viva relation and the local tangent direction, confirms that the points lie on the predicted hodograph circle, and compares a dense scan over the two anomalies with the analytic formula.
+That closed form is the deliverable: for two satellites orbiting Earth (mass $M$, gravitational constant $G$) in the same sense, on ellipses of eccentricities $e_1,e_2$ and areal rates $L_1,L_2$ whose major axes are separated by angle $\alpha$,
 
-```python
-import numpy as np
+$$\boxed{|\Delta\vec v|_{\max}=\frac{GM}{2L_1L_2}\left[\sqrt{e_1^2L_2^2+e_2^2L_1^2-2\,e_1e_2L_1L_2\cos\alpha}+L_1+L_2\right]},$$
 
-def hodograph_speed_max(GM, e1, e2, L1, L2, alpha):
-    """Analytic maximal relative speed for the two-satellite problem."""
-    centers = np.sqrt(e1**2 * L2**2 + e2**2 * L1**2
-                      - 2 * e1 * e2 * L1 * L2 * np.cos(alpha))
-    radii = L1 + L2
-    return (GM / (2 * L1 * L2)) * (centers + radii)
+attained (in the closure of the motion, guaranteed by the irrational period ratio) when the two velocity-hodograph points sit diametrically opposite one another along the line joining the two circle centers; if the satellites counter-rotate, one hodograph is mirrored and the sign in front of $\cos\alpha$ flips. For the requested special case $L_1=L_2=L$, $\alpha=90^\circ$, where the two hodograph circles have equal radius and perpendicular center offsets, this reduces to
 
-def velocity(true_anomaly, GM, L, e, major_axis_angle=0.0):
-    """Velocity of a satellite on a Kepler ellipse with given areal rate L."""
-    theta = true_anomaly
-    # Specific angular momentum h = 2L, and h^2 = GM * p, so p = 4 L^2 / GM.
-    p = 4.0 * L**2 / GM
-    r = p / (1.0 + e * np.cos(theta))
-    # vis-viva speed
-    a = p / (1.0 - e**2)
-    v = np.sqrt(GM * (2.0 / r - 1.0 / a))
-    # local direction: tangent to ellipse in orbital plane
-    # radial/transverse decomposition using h = 2L
-    vr = (GM / (2.0 * L)) * e * np.sin(theta)
-    vt = (GM / (2.0 * L)) * (1.0 + e * np.cos(theta))
-    # rotate by major-axis orientation
-    phi = theta + major_axis_angle
-    # radial and transverse unit vectors in the fixed lab frame
-    rhat = np.array([np.cos(phi), np.sin(phi)])
-    phihat = np.array([-np.sin(phi), np.cos(phi)])
-    return vr * rhat + vt * phihat
-
-if __name__ == "__main__":
-    GM = 1.0
-    e1, e2 = 0.5, 0.3
-    L1, L2 = 1.2, 0.9
-    alpha = np.deg2rad(60.0)
-
-    thetas = np.linspace(0, 2 * np.pi, 2000)
-    v1 = np.array([velocity(t, GM, L1, e1, 0.0) for t in thetas])
-    v2 = np.array([velocity(t, GM, L2, e2, alpha) for t in thetas])
-
-    # Check that each hodograph is a circle with the predicted center and radius.
-    rho1, rho2 = GM / (2 * L1), GM / (2 * L2)
-    chi1 = np.array([0.0, e1])
-    chi2 = e2 * np.array([-np.sin(alpha), np.cos(alpha)])
-    C1 = (GM / (2 * L1)) * chi1
-    C2 = (GM / (2 * L2)) * chi2
-    print("radius 1 error:", np.max(np.abs(np.linalg.norm(v1 - C1, axis=1) - rho1)))
-    print("radius 2 error:", np.max(np.abs(np.linalg.norm(v2 - C2, axis=1) - rho2)))
-
-    # Dense scan over independent anomalies.
-    dv = v2[:, None, :] - v1[None, :, :]
-    max_numerical = np.max(np.linalg.norm(dv, axis=2))
-    max_analytic = hodograph_speed_max(GM, e1, e2, L1, L2, alpha)
-    print("max numerical:", max_numerical)
-    print("max analytic: ", max_analytic)
-    print("relative error:", abs(max_numerical - max_analytic) / max_analytic)
-
-    # Special case L1=L2=L, alpha=90 degrees.
-    L = 1.0
-    a90 = np.deg2rad(90.0)
-    v1s = np.array([velocity(t, GM, L, e1, 0.0) for t in thetas])
-    v2s = np.array([velocity(t, GM, L, e2, a90) for t in thetas])
-    dvs = v2s[:, None, :] - v1s[None, :, :]
-    max_numerical_90 = np.max(np.linalg.norm(dvs, axis=2))
-    max_analytic_90 = (GM / (2 * L)) * (np.sqrt(e1**2 + e2**2) + 2.0)
-    print("special case relative error:",
-          abs(max_numerical_90 - max_analytic_90) / max_analytic_90)
-```
-
-So the answer is the boxed formula above, with the simplified expression $\Delta v_{\max}=\tfrac{GM}{2L}\big(\sqrt{e_1^2+e_2^2}+2\big)$ when the areal rates are equal and the major axes are perpendicular.
+$$\boxed{\Delta v_{\max}=\frac{GM}{2L}\left(\sqrt{e_1^2+e_2^2}+2\right)}.$$

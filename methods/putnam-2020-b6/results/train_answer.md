@@ -16,61 +16,12 @@ Next consider $q_{2t+1}\le m\le q_{2t+2}$ and write $m=q_{2t+1}+r$. The odd recu
 
 Because the even Pell numbers grow without bound, every positive integer $n$ lies below some $q_{2t}$, and the induction guarantees $f(n)\ge0$. That is exactly the desired inequality $\sum_{k=1}^n(-1)^{\lfloor k(\sqrt2-1)\rfloor}\ge0$.
 
-The method is conceptually clean: the sign pattern is a Beatty sequence of runs whose lengths are always $2$ or $3$, and the Pell denominators capture the self-similarity of that pattern. The two recursions, one lifting by one on odd scales and one reflecting on even scales, are enough to bound the partial sums inductively. The following Python script checks the original inequality, the Pell recursions, the even Pell peaks, and the induction bound numerically.
-
-```python
-import math
-
-
-def verify_putnam_2020_b6(N=20000):
-    alpha = math.sqrt(2) - 1.0
-
-    # Partial sums f(n) for n = 0, 1, ..., N.
-    f = [0] * (N + 1)
-    for k in range(1, N + 1):
-        sign = -1 if int(math.floor(k * alpha)) % 2 else 1
-        f[k] = f[k - 1] + sign
-
-    # Direct nonnegativity check.
-    assert min(f[1:]) >= 0, "partial sum became negative"
-
-    # Pell denominators q_j up to exceeding N.
-    q = [0, 1]
-    while q[-1] <= N:
-        q.append(2 * q[-1] + q[-2])
-
-    # Verify even Pell peaks f(q_{2t}) == 2t.
-    for t in range(1, len(q) // 2):
-        if q[2 * t] > N:
-            break
-        assert f[q[2 * t]] == 2 * t, f"peak mismatch at t={t}"
-
-    # Verify the self-similar recursions on their intervals.
-    for j in range(1, len(q) - 1):
-        qj = q[j]
-        qj1 = q[j + 1]
-        if qj > N:
-            break
-        upper = min(qj + qj1, N + 1)  # n must satisfy q_j <= n < q_j + q_{j+1}
-        for n in range(qj, upper):
-            r = n - qj
-            if j % 2 == 1:
-                expected = f[r] + 1
-            else:
-                expected = f[qj] - f[r]
-            assert f[n] == expected, f"recursion failed at j={j}, n={n}"
-
-    # Verify the induction bound 0 <= f(m) <= 2t for all m <= q_{2t}.
-    for t in range(1, (len(q) - 1) // 2):
-        q2t = q[2 * t]
-        if q2t > N:
-            break
-        assert all(0 <= f[m] <= 2 * t for m in range(q2t + 1)), \
-            f"induction bound failed at t={t}"
-
-    print(f"All checks passed up to n={N}.")
-
-
-if __name__ == "__main__":
-    verify_putnam_2020_b6()
-```
+The method is conceptually clean: the sign pattern is a Beatty sequence of runs whose lengths are always $2$ or $3$, and the Pell denominators capture the self-similarity of that pattern. The two recursions, one lifting by one on odd scales and one reflecting on even scales, are enough to bound the partial sums inductively, and together they deliver the closed-form bound that is the actual output of the method: for every $t\ge1$,
+$$
+0\le f(m)\le 2t\qquad(0\le m\le q_{2t}),
+$$
+where $f(m)=\sum_{k=1}^m(-1)^{\lfloor k(\sqrt2-1)\rfloor}$ and $q_0=0$, $q_1=1$, $q_j=2q_{j-1}+q_{j-2}$ for $j\ge2$ are the Pell denominators. Because the even-indexed Pell numbers $q_{2t}$ grow without bound, every positive integer $n$ falls below some $q_{2t}$, and the lower half of the bound at that $t$ gives exactly the inequality I set out to prove:
+$$
+\sum_{k=1}^{n}(-1)^{\lfloor k(\sqrt2-1)\rfloor}\ge0\qquad\text{for every positive integer }n.
+$$
+That is the theorem, and the two self-similarity recursions are not mere bookkeeping around it: they are an explicit procedure for evaluating $f(n)$ at any scale, folding it down through the Pell hierarchy one reflection or lift at a time until it lands on a value already pinned between $0$ and $2t$.
