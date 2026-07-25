@@ -13,20 +13,19 @@ The implementation should preserve exactly this coupling with no extra machinery
 ```python
 import numpy as np
 import torch
-import torch.nn as nn
 
 
 def mixup_data(x, y, alpha=1.0):
     """Return mixed inputs, paired targets, and the scalar interpolation weight."""
     if alpha > 0:
-        lam = float(np.random.beta(alpha, alpha))
+        lam = np.random.beta(alpha, alpha)
     else:
         lam = 1.0
 
     batch_size = x.size(0)
     index = torch.randperm(batch_size, device=x.device)
 
-    mixed_x = lam * x + (1.0 - lam) * x[index]
+    mixed_x = lam * x + (1.0 - lam) * x[index, :]
     y_a, y_b = y, y[index]
     return mixed_x, y_a, y_b, lam
 
@@ -34,27 +33,4 @@ def mixup_data(x, y, alpha=1.0):
 def mixup_criterion(criterion, pred, y_a, y_b, lam):
     """Cross-entropy against the two-point soft target."""
     return lam * criterion(pred, y_a) + (1.0 - lam) * criterion(pred, y_b)
-
-
-# Small runnable demonstration and sanity check.
-torch.manual_seed(0)
-np.random.seed(0)
-
-x = torch.randn(8, 4)
-y = torch.randint(0, 3, (8,))
-model = nn.Linear(4, 3)
-optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
-criterion = nn.CrossEntropyLoss()
-
-for step in range(20):
-    model.train()
-    mixed_x, y_a, y_b, lam = mixup_data(x, y, alpha=1.0)
-    pred = model(mixed_x)
-    loss = mixup_criterion(criterion, pred, y_a, y_b, lam)
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
-
-print("Final loss:", loss.item())
-print("Lambda used in last step:", lam)
 ```
