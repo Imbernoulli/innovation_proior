@@ -12,53 +12,22 @@ The second moment method also applies beautifully outside graph theory. For a ra
 
 There is one further refinement worth keeping in mind. If Var[X] is only comparable to E[X]² rather than asymptotically smaller, Chebyshev no longer drives Pr[X = 0] to zero. Nevertheless, the Paley–Zygmund inequality, which lower-bounds the chance that a nonnegative variable exceeds a constant fraction of its mean using only the first two moments, gives Pr[X > 0] ≥ E[X]² / E[X²] = 1 / (1 + Var[X]/E[X]²). When Var[X] = O(E[X]²), this supplies a constant lower bound on the probability of existence, which is often enough to bootstrap a sharper argument. Thus the second moment method has two regimes: small variance relative to the mean squared forces high-probability existence and concentration, while merely comparable variance still forces existence with bounded-away-from-zero probability.
 
-The following Python script verifies the threshold phenomenon for 4-cliques in G(n,p). It samples Erdős–Rényi graphs at several values of p relative to the threshold n^{−2/3}, counts 4-cliques in each sample, and compares the empirical frequency of seeing at least one 4-clique and the empirical mean count against the theoretical expectation C(n,4)p^6.
+Consolidated into a single statement, the deliverable is this. Let $X = \sum_{i=1}^m \mathbf{1}_{A_i}$ be a nonnegative integer count built from indicator events $A_1,\dots,A_m$, write $i \sim j$ for dependent pairs, and set $\Delta = \sum_{i \sim j} \Pr[A_i \wedge A_j]$; when the events are symmetric, fix any $i$ and let $\Delta^{*} = \sum_{j \sim i} \Pr[A_j \mid A_i]$, so that $\Delta = \Delta^{*} \cdot E[X]$. Then
 
-```python
-import itertools
-import random
-import math
+$$
+\Pr[X = 0] \;\le\; \frac{\operatorname{Var}[X]}{E[X]^2} \;\le\; \frac{E[X] + \Delta}{E[X]^2} \;=\; \frac{1}{E[X]} + \frac{\Delta^{*}}{E[X]},
+$$
 
-def count_4_cliques(n, p):
-    # Build G(n,p) as an adjacency bitset for fast edge queries.
-    adj = [0] * n
-    for i in range(n):
-        for j in range(i + 1, n):
-            if random.random() < p:
-                adj[i] |= 1 << j
-                adj[j] |= 1 << i
-    count = 0
-    for quad in itertools.combinations(range(n), 4):
-        a, b, c, d = quad
-        mask_a = (1 << b) | (1 << c) | (1 << d)
-        if (adj[a] & mask_a) != mask_a:
-            continue
-        mask_b = (1 << c) | (1 << d)
-        if (adj[b] & mask_b) != mask_b:
-            continue
-        if (adj[c] & (1 << d)) != (1 << d):
-            continue
-        count += 1
-    return count
+so that $E[X] \to \infty$ together with $\Delta^{*} = o(E[X])$ forces $X > 0$ and, more strongly, $X \sim E[X]$ almost always; and even when that cancellation fails, the same two moments still supply a floor on existence through Paley–Zygmund,
 
-def simulate(n, c, trials=25):
-    p = c * (n ** (-2.0 / 3.0))
-    expected = math.comb(n, 4) * (p ** 6)
-    total = 0
-    positive = 0
-    for _ in range(trials):
-        x = count_4_cliques(n, p)
-        total += x
-        positive += (x > 0)
-    print(f"n={n}, c={c:.2f}, p={p:.4f}")
-    print(f"  theoretical E[X] = {expected:.3f}")
-    print(f"  empirical  E[X]  = {total / trials:.3f}")
-    print(f"  Pr[X > 0] ≈ {positive / trials:.3f}")
-    print()
+$$
+\Pr[X > 0] \;\ge\; \frac{E[X]^2}{E[X^2]} \;=\; \frac{1}{1 + \operatorname{Var}[X]/E[X]^2},
+$$
 
-random.seed(0)
-for c in [0.3, 0.7, 1.0, 1.5, 2.5]:
-    simulate(n=60, c=c, trials=25)
-```
+a constant lower bound whenever $\operatorname{Var}[X] = O(E[X]^2)$. Specialized to a balanced subgraph $H$ on $v$ vertices, $e$ edges, and $a$ automorphisms, counted as $X$ copies in $G(n,p)$, the criterion resolves completely into
 
-In summary, the second moment method upgrades the first moment by adding variance control. For a count X, once we verify that E[X] grows and that dependencies are weak enough that Var[X] = o(E[X]²), we conclude not only that at least one copy exists almost surely, but that the number of copies is concentrated around its mean. This is the standard tool for establishing appearance thresholds in random graphs and for proving concentration of additive arithmetic functions, and the Paley–Zygmund refinement extends its reach to cases where the variance is only comparable to the mean squared.
+$$
+p = n^{-v/e} \ \text{is the threshold for the appearance of } H, \qquad X \sim \frac{n^{v} p^{e}}{a} \ \text{almost always above it,}
+$$
+
+with the first moment alone killing $H$ below threshold and the second moment, through $\Delta^{*} = o(E[X])$, switching it on above and pinning the count to its mean. That is the second moment method in full: the mean sets the candidate scale, the ratio of variance to mean-squared certifies whether the candidate is real, and the same computation that proves existence proves concentration around it.
