@@ -13,9 +13,7 @@ import torch.nn.functional as F
 from torch.nn.utils import weight_norm, spectral_norm
 
 LRELU_SLOPE = 0.1
-
-def get_padding(k, d=1):
-    return int((k * d - d) / 2)
+def get_padding(k, d=1): return int((k * d - d) / 2)
 
 class ResBlock1(nn.Module):
     def __init__(self, ch, k=3, dilation=(1, 3, 5)):
@@ -26,7 +24,6 @@ class ResBlock1(nn.Module):
         self.convs2 = nn.ModuleList([
             weight_norm(nn.Conv1d(ch, ch, k, 1, dilation=1, padding=get_padding(k, 1)))
             for _ in dilation])
-
     def forward(self, x):
         for c1, c2 in zip(self.convs1, self.convs2):
             xt = c2(F.leaky_relu(c1(F.leaky_relu(x, LRELU_SLOPE)), LRELU_SLOPE))
@@ -40,22 +37,21 @@ class Generator(nn.Module):
         ic = h['upsample_initial_channel']
         self.conv_pre = weight_norm(nn.Conv1d(80, ic, 7, 1, padding=3))
         self.ups = nn.ModuleList([
-            weight_norm(nn.ConvTranspose1d(ic // 2**i, ic // 2**(i + 1), k, u, padding=(k - u) // 2))
+            weight_norm(nn.ConvTranspose1d(ic // 2**i, ic // 2**(i+1), k, u, padding=(k-u)//2))
             for i, (u, k) in enumerate(zip(h['upsample_rates'], h['upsample_kernel_sizes']))])
         self.resblocks = nn.ModuleList()
         for i in range(len(self.ups)):
-            ch = ic // 2**(i + 1)
+            ch = ic // 2**(i+1)
             for k, d in zip(h['resblock_kernel_sizes'], h['resblock_dilation_sizes']):
                 self.resblocks.append(ResBlock1(ch, k, d))
         self.conv_post = weight_norm(nn.Conv1d(ch, 1, 7, 1, padding=3))
-
     def forward(self, x):
         x = self.conv_pre(x)
         for i in range(len(self.ups)):
             x = self.ups[i](F.leaky_relu(x, LRELU_SLOPE))
             xs = None
             for j in range(self.num_kernels):
-                b = self.resblocks[i * self.num_kernels + j](x)
+                b = self.resblocks[i*self.num_kernels + j](x)
                 xs = b if xs is None else xs + b
             x = xs / self.num_kernels
         return torch.tanh(self.conv_post(F.leaky_relu(x)))
@@ -72,32 +68,25 @@ class DiscriminatorP(nn.Module):
             nf(nn.Conv2d(512, 1024, (5, 1), (3, 1), padding=(2, 0))),
             nf(nn.Conv2d(1024, 1024, (5, 1), 1, padding=(2, 0)))])
         self.conv_post = nf(nn.Conv2d(1024, 1, (3, 1), 1, padding=(1, 0)))
-
     def forward(self, x):
-        fmap = []
-        b, c, t = x.shape
+        fmap = []; b, c, t = x.shape
         if t % self.period:
-            x = F.pad(x, (0, self.period - t % self.period), "reflect")
-            t = x.shape[-1]
+            x = F.pad(x, (0, self.period - t % self.period), "reflect"); t = x.shape[-1]
         x = x.view(b, c, t // self.period, self.period)
         for l in self.convs:
-            x = F.leaky_relu(l(x), LRELU_SLOPE)
-            fmap.append(x)
-        x = self.conv_post(x)
-        fmap.append(x)
+            x = F.leaky_relu(l(x), LRELU_SLOPE); fmap.append(x)
+        x = self.conv_post(x); fmap.append(x)
         return torch.flatten(x, 1, -1), fmap
 
 class MultiPeriodDiscriminator(nn.Module):
     def __init__(self):
         super().__init__()
         self.discriminators = nn.ModuleList([DiscriminatorP(p) for p in (2, 3, 5, 7, 11)])
-
     def forward(self, y, y_hat):
         drs, dgs, frs, fgs = [], [], [], []
         for d in self.discriminators:
-            dr, fr = d(y)
-            dg, fg = d(y_hat)
-            drs.append(dr); dgs.append(dg); frs.append(fr); fgs.append(fg)
+            dr, fr = d(y); dg, fg = d(y_hat)
+            drs += [dr]; dgs += [dg]; frs += [fr]; fgs += [fg]
         return drs, dgs, frs, fgs
 
 class DiscriminatorS(nn.Module):
@@ -113,14 +102,11 @@ class DiscriminatorS(nn.Module):
             nf(nn.Conv1d(1024, 1024, 41, 1, groups=16, padding=20)),
             nf(nn.Conv1d(1024, 1024, 5, 1, padding=2))])
         self.conv_post = nf(nn.Conv1d(1024, 1, 3, 1, padding=1))
-
     def forward(self, x):
         fmap = []
         for l in self.convs:
-            x = F.leaky_relu(l(x), LRELU_SLOPE)
-            fmap.append(x)
-        x = self.conv_post(x)
-        fmap.append(x)
+            x = F.leaky_relu(l(x), LRELU_SLOPE); fmap.append(x)
+        x = self.conv_post(x); fmap.append(x)
         return torch.flatten(x, 1, -1), fmap
 
 class MultiScaleDiscriminator(nn.Module):
@@ -128,18 +114,14 @@ class MultiScaleDiscriminator(nn.Module):
         super().__init__()
         self.discriminators = nn.ModuleList([
             DiscriminatorS(use_spectral_norm=True), DiscriminatorS(), DiscriminatorS()])
-        self.meanpools = nn.ModuleList([
-            nn.AvgPool1d(4, 2, padding=2), nn.AvgPool1d(4, 2, padding=2)])
-
+        self.meanpools = nn.ModuleList([nn.AvgPool1d(4, 2, padding=2), nn.AvgPool1d(4, 2, padding=2)])
     def forward(self, y, y_hat):
         drs, dgs, frs, fgs = [], [], [], []
         for i, d in enumerate(self.discriminators):
             if i:
-                y = self.meanpools[i - 1](y)
-                y_hat = self.meanpools[i - 1](y_hat)
-            dr, fr = d(y)
-            dg, fg = d(y_hat)
-            drs.append(dr); dgs.append(dg); frs.append(fr); fgs.append(fg)
+                y = self.meanpools[i-1](y); y_hat = self.meanpools[i-1](y_hat)
+            dr, fr = d(y); dg, fg = d(y_hat)
+            drs += [dr]; dgs += [dg]; frs += [fr]; fgs += [fg]
         return drs, dgs, frs, fgs
 
 def feature_loss(fmap_r, fmap_g):
@@ -161,7 +143,7 @@ def generator_loss(gen):
 def mel_l1(mel_real, mel_fake):
     return torch.mean(torch.abs(mel_real - mel_fake))
 
-# Generator update:
+# feature_loss returns the lambda_fm-weighted term; the generator update sums:
 # generator_loss(mpd) + generator_loss(msd)
 # + feature_loss(mpd) + feature_loss(msd)
 # + 45 * mel_l1(mel_real, mel_fake)
