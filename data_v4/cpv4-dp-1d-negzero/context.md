@@ -14,11 +14,10 @@ The net profit of running block `[l, r]` is `a[l] + a[l+1] + ... + a[r] - c`. Yo
 Choose the option that **maximizes profit** and output that maximum. Because the "do nothing"
 option is always available, the answer is never below `0`.
 
-This is the "fixed-charge single window" variant of maximum subarray: the chosen run must be a
-**non-empty** contiguous block (you cannot pay the fee for zero days), but the overall plan is
-allowed to be empty. Getting the boundary between "best non-empty run minus the fee" and "do
-nothing" exactly right — especially when every day is negative, when `c` swamps any gain, and when
-`n = 0` — is the whole point.
+The chosen run must be a **non-empty** contiguous block (you cannot pay the fee for zero days), but
+the overall plan is allowed to be empty. Getting the boundary between "best non-empty run minus the
+fee" and "do nothing" exactly right — especially when every day is negative, when `c` swamps any
+gain, and when `n = 0` — is the whole point.
 
 ## Input / output contract
 
@@ -32,26 +31,11 @@ Example: for `n = 7`, `c = 3`, `a = [4, -2, 5, -9, 3, 3, -1]` the answer is `4`:
 `[0, 2]` whose day-sum is `4 - 2 + 5 = 7`, pay the startup fee `3`, for net `7 - 3 = 4`. No other
 block, after subtracting `3`, beats this, and it beats doing nothing (`0`).
 
-## Background
-
-The constraint is that the run is a single **contiguous** non-empty window, and the fee is paid
-exactly once. Two families of approach are on the table before committing to one:
-
-- **Enumerate all windows.** For every pair `(l, r)` compute the block sum and subtract `c`, taking
-  the best (and comparing to `0`). This is `O(n^2)` and obviously correct, but far too slow at
-  `n = 2*10^5`; it is useful only as a reference oracle on tiny inputs.
-- **Linear dynamic programming (Kadane with a fee).** Scan left to right maintaining the best sum
-  of a non-empty block **ending at the current day**; the running best over all days, minus the fee,
-  competes against `0`. This is `O(n)`; the open questions are the exact recurrence, the base case
-  that forbids an empty block, and exactly where the fee and the `0` enter.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: all-positive arrays, mixtures of negatives and zeros, the empty
-array (`n = 0`), a single element (`n = 1`), **all-negative** arrays (answer should be `0`), a fee
-`c` large enough to make every block unprofitable (answer `0`), `c = 0` (pure maximum subarray
-against the empty option), and large `n = 2*10^5` with values near `10^9` (so a block sum can reach
-`~2*10^14`, exceeding 32-bit range).
+array (`n = 0`), a single element (`n = 1`), **all-negative** arrays, a fee `c` large enough to make
+every block unprofitable, `c = 0`, and large `n = 2*10^5` with values near `10^9`.
 
 ## Code framework
 
