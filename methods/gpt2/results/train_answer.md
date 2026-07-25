@@ -12,20 +12,13 @@ The model is a decoder-only Transformer with causal masked self-attention. The r
 
 Evaluation is done by conditioning on natural text. For language-modeling benchmarks the model simply computes the likelihood of the benchmark text. For cloze or multiple-choice tasks it scores candidate continuations. For generation tasks it decodes from a prompt such as a question followed by an answer marker. Because the tokenizer is reversible, no dataset-specific preprocessing is needed. N-gram overlap checks are used to monitor memorization and interpret the metrics honestly.
 
+The tokenizer is a direct instantiation of the byte-to-unicode map together with the category-splitting regex used to segment text before merging:
+
 ```python
-import re
-import json
-import math
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-
-
 def bytes_to_unicode():
-    """Reversible byte -> unicode mapping; base alphabet stays at 256 symbols."""
     bs = list(range(ord("!"), ord("~") + 1))
-    bs += list(range(ord("\u00a1"), ord("\u00ac") + 1))
-    bs += list(range(ord("\u00ae"), ord("\u00ff") + 1))
+    bs += list(range(ord("¡"), ord("¬") + 1))
+    bs += list(range(ord("®"), ord("ÿ") + 1))
     cs = bs[:]
     n = 0
     for b in range(2 ** 8):
@@ -33,159 +26,68 @@ def bytes_to_unicode():
             bs.append(b)
             cs.append(2 ** 8 + n)
             n += 1
-    return dict(zip(bs, [chr(c) for c in cs]))
+    cs = [chr(n) for n in cs]
+    return dict(zip(bs, cs))
 
+pat = re.compile(
+    r"""'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+)
+```
 
-class ByteBPETokenizer:
-    def __init__(self, merges, special=None):
-        self.byte_encoder = bytes_to_unicode()
-        self.byte_decoder = {v: k for k, v in self.byte_encoder.items()}
-        self.pat = re.compile(
-            r"""'s|'t|'re|'ve|'m|'ll|'d| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
-        )
-        self.bpe_ranks = {tuple(pair.split()): i for i, pair in enumerate(merges)}
-        self.cache = {}
+The residual stack itself is the block and model functions, built with the same norm, attn, and mlp helpers used throughout the stack: each block normalizes before attention and before the MLP, adds both branches back onto the residual stream, and the final call to norm together with the tied wte matmul turns the last hidden state into logits over the vocabulary:
 
-    def _get_pairs(self, word):
-        pairs = set()
-        prev_char = word[0]
-        for char in word[1:]:
-            pairs.add((prev_char, char))
-            prev_char = char
-        return pairs
+```python
+def attention_mask(nd, ns, *, dtype):
+    i = tf.range(nd)[:, None]
+    j = tf.range(ns)
+    m = i >= j - ns + nd
+    return tf.cast(m, dtype)
 
-    def _bpe(self, token):
-        if token in self.cache:
-            return self.cache[token]
-        word = tuple(token)
-        pairs = self._get_pairs(word)
-        if not pairs:
-            return token
-        while True:
-            bigram = min(pairs, key=lambda pair: self.bpe_ranks.get(pair, float("inf")))
-            if bigram not in self.bpe_ranks:
-                break
-            first, second = bigram
-            new_word = []
-            i = 0
-            while i < len(word):
-                try:
-                    j = word.index(first, i)
-                except ValueError:
-                    new_word.extend(word[i:])
-                    break
-                new_word.extend(word[i:j])
-                i = j
-                if word[i] == first and i < len(word) - 1 and word[i + 1] == second:
-                    new_word.append(first + second)
-                    i += 2
-                else:
-                    new_word.append(word[i])
-                    i += 1
-            word = tuple(new_word)
-            if len(word) == 1:
-                break
-            pairs = self._get_pairs(word)
-        self.cache[token] = word
-        return word
+def mask_attn_weights(w):
+    _, _, nd, ns = shape_list(w)
+    b = attention_mask(nd, ns, dtype=w.dtype)
+    b = tf.reshape(b, [1, 1, nd, ns])
+    return w * b - tf.cast(1e10, w.dtype) * (1 - b)
 
-    def encode(self, text):
-        bpe_idx = []
-        for token in self.pat.findall(text):
-            token_bytes = token.encode("utf-8")
-            token = "".join(self.byte_encoder[b] for b in token_bytes)
-            bpe_idx.extend(self._bpe(token))
-        return bpe_idx
+def multihead_attn(q, k, v):
+    w = tf.matmul(q, k, transpose_b=True)
+    w = w * tf.rsqrt(tf.cast(v.shape[-1].value, w.dtype))
+    w = mask_attn_weights(w)
+    w = softmax(w)
+    return tf.matmul(w, v)
 
-    def decode(self, bpe_idx):
-        text = "".join(bpe_idx)
-        return bytearray(self.byte_decoder[c] for c in text).decode("utf-8", errors="replace")
+def block(x, scope, *, past, hparams):
+    with tf.variable_scope(scope):
+        nx = x.shape[-1].value
+        a, present = attn(norm(x, "ln_1"), "attn", nx, past=past, hparams=hparams)
+        x = x + a
+        m = mlp(norm(x, "ln_2"), "mlp", nx * 4, hparams=hparams)
+        x = x + m
+        return x, present
 
+def model(hparams, X, past=None, scope="model", reuse=False):
+    with tf.variable_scope(scope, reuse=reuse):
+        results = {}
+        batch, sequence = shape_list(X)
+        wpe = tf.get_variable(
+            "wpe", [hparams.n_ctx, hparams.n_embd],
+            initializer=tf.random_normal_initializer(stddev=0.01))
+        wte = tf.get_variable(
+            "wte", [hparams.n_vocab, hparams.n_embd],
+            initializer=tf.random_normal_initializer(stddev=0.02))
+        past_length = 0 if past is None else tf.shape(past)[-2]
+        h = tf.gather(wte, X) + tf.gather(wpe, positions_for(X, past_length))
 
-class CausalSelfAttention(nn.Module):
-    def __init__(self, n_embd, n_head, n_ctx):
-        super().__init__()
-        assert n_embd % n_head == 0
-        self.n_head = n_head
-        self.c_attn = nn.Linear(n_embd, 3 * n_embd)
-        self.c_proj = nn.Linear(n_embd, n_embd)
-        self.register_buffer(
-            "mask", torch.tril(torch.ones(n_ctx, n_ctx)).view(1, 1, n_ctx, n_ctx)
-        )
+        presents = []
+        pasts = tf.unstack(past, axis=1) if past is not None else [None] * hparams.n_layer
+        for layer, past in enumerate(pasts):
+            h, present = block(h, "h%d" % layer, past=past, hparams=hparams)
+            presents.append(present)
 
-    def forward(self, x):
-        B, T, C = x.size()
-        q, k, v = self.c_attn(x).split(C, dim=2)
-        q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
-        k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
-        v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)
-        att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
-        att = att.masked_fill(self.mask[:, :, :T, :T] == 0, float("-inf"))
-        att = F.softmax(att, dim=-1)
-        y = att @ v
-        y = y.transpose(1, 2).contiguous().view(B, T, C)
-        return self.c_proj(y)
-
-
-class MLP(nn.Module):
-    def __init__(self, n_embd):
-        super().__init__()
-        self.c_fc = nn.Linear(n_embd, 4 * n_embd)
-        self.c_proj = nn.Linear(4 * n_embd, n_embd)
-
-    def forward(self, x):
-        return self.c_proj(F.gelu(self.c_fc(x)))
-
-
-class Block(nn.Module):
-    def __init__(self, n_embd, n_head, n_ctx):
-        super().__init__()
-        self.ln_1 = nn.LayerNorm(n_embd)
-        self.attn = CausalSelfAttention(n_embd, n_head, n_ctx)
-        self.ln_2 = nn.LayerNorm(n_embd)
-        self.mlp = MLP(n_embd)
-        nn.init.normal_(self.attn.c_proj.weight, std=0.02)
-        nn.init.normal_(self.mlp.c_proj.weight, std=0.02)
-
-    def forward(self, x):
-        x = x + self.attn(self.ln_1(x))
-        x = x + self.mlp(self.ln_2(x))
-        return x
-
-
-class GPT2(nn.Module):
-    def __init__(self, n_vocab, n_ctx, n_embd, n_head, n_layer):
-        super().__init__()
-        self.n_vocab = n_vocab
-        self.n_ctx = n_ctx
-        self.wte = nn.Embedding(n_vocab, n_embd)
-        self.wpe = nn.Embedding(n_ctx, n_embd)
-        self.blocks = nn.ModuleList([Block(n_embd, n_head, n_ctx) for _ in range(n_layer)])
-        self.ln_f = nn.LayerNorm(n_embd)
-        # Scale residual projections by 1/sqrt(N) where N is the number of residual layers.
-        scale = 1.0 / math.sqrt(2 * n_layer)
-        for block in self.blocks:
-            nn.init.normal_(block.attn.c_proj.weight, std=0.02 * scale)
-            nn.init.normal_(block.mlp.c_proj.weight, std=0.02 * scale)
-
-    def forward(self, idx):
-        b, t = idx.size()
-        pos = torch.arange(0, t, dtype=torch.long, device=idx.device).unsqueeze(0)
-        x = self.wte(idx) + self.wpe(pos)
-        for block in self.blocks:
-            x = block(x)
-        x = self.ln_f(x)
-        logits = F.linear(x, self.wte.weight)
-        return logits
-
-
-if __name__ == "__main__":
-    # Example: instantiate the 117M-parameter configuration.
-    hparams = dict(n_vocab=50257, n_ctx=1024, n_embd=768, n_head=12, n_layer=12)
-    model = GPT2(**hparams)
-    print("parameters:", sum(p.numel() for p in model.parameters()) / 1e6, "M")
-    # Dummy forward pass.
-    x = torch.randint(0, hparams["n_vocab"], (2, 64))
-    logits = model(x)
-    print("logits shape:", logits.shape)
+        results["present"] = tf.stack(presents, axis=1)
+        h = norm(h, "ln_f")
+        h_flat = tf.reshape(h, [batch * sequence, hparams.n_embd])
+        logits = tf.matmul(h_flat, wte, transpose_b=True)
+        results["logits"] = tf.reshape(logits, [batch, sequence, hparams.n_vocab])
+        return results
 ```
