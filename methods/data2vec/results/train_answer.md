@@ -18,41 +18,41 @@ class Data2Vec(nn.Module):
     def __init__(self, feature_encoder, encoder, dim, K, beta=2.0,
                  ema_decay=0.999, ema_end=0.9999, ema_anneal_steps=30000):
         super().__init__()
-        self.feature_encoder = feature_encoder
-        self.encoder = encoder
+        self.feature_encoder = feature_encoder   # modality-specific (patches / conv / embed)
+        self.encoder = encoder                   # standard Transformer; returns per-block feats
         self.mask_emb = nn.Parameter(torch.zeros(dim))
         self.final_proj = nn.Linear(dim, dim)
         self.K, self.beta = K, beta
-        self.ema = None
-        self.ema_decay = ema_decay
-        self.ema_end = ema_end
-        self.ema_anneal_steps = ema_anneal_steps
+        self.ema = None                          # EMA copy of self.encoder, built lazily
+        self.ema_decay, self.ema_end, self.ema_anneal_steps = ema_decay, ema_end, ema_anneal_steps
 
-    def set_num_updates(self, step):
-        if step >= self.ema_anneal_steps:
-            decay = self.ema_end
-        else:
-            decay = self.ema_decay + (self.ema_end - self.ema_decay) * step / self.ema_anneal_steps
+    def set_num_updates(self, step):             # anneal tau: fast early, slow late
+        decay = self.ema_end if step >= self.ema_anneal_steps else \
+            self.ema_decay + (self.ema_end - self.ema_decay) / self.ema_anneal_steps * step
         self.ema.set_decay(decay)
-        self.ema.step(self.encoder)
+        self.ema.step(self.encoder)              # Delta <- tau*Delta + (1-tau)*theta
 
     def forward(self, source, mask):
-        feats = self.feature_encoder(source)
+        feats = self.feature_encoder(source)                 # [B, T, D]
 
+        # student: MASKED input
         x = feats.clone()
         x[mask] = self.mask_emb
         x, _ = self.encoder(x, return_layer_results=False)
 
+        # teacher (EMA): UNMASKED full input -> contextualized target
         with torch.no_grad():
             self.ema.model.eval()
             _, layer_results = self.ema.model(feats, return_layer_results=True)
             blocks = [F.layer_norm(b.float(), b.shape[-1:]) for b in layer_results[-self.K:]]
-            y = sum(blocks) / len(blocks)
-            y = F.layer_norm(y.float(), y.shape[-1:])
-            y = y[mask]
+            y = sum(blocks) / len(blocks)                    # y_t = (1/K) sum LN(FFN_t^l)
+            y = F.layer_norm(y.float(), y.shape[-1:])        # normalize the average (anti-collapse)
+            y = y[mask]                                      # targets at masked positions only
 
+        # student prediction at masked positions
         x = self.final_proj(x[mask])
 
+        # Smooth L1 regression, summed over feature dim, scaled by 1/sqrt(d)
         d = x.size(-1)
         if self.beta == 0:
             loss = F.mse_loss(x.float(), y.float(), reduction="none").sum(-1)
