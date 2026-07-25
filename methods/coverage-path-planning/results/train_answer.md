@@ -20,13 +20,13 @@ def slice_connectivity(slice_column):
     connectivity, parts = 0, []
     last, start = 0, None
     for i, v in enumerate(slice_column):
-        if last == 0 and v == 1:
+        if last == 0 and v == 1:        # entering a free run
             start = i
-        elif last == 1 and v == 0:
+        elif last == 1 and v == 0:      # leaving a free run -> one interval closed
             connectivity += 1
             parts.append((start, i))
         last = v
-    if last == 1:
+    if last == 1:                       # run reaches the bottom edge
         connectivity += 1
         parts.append((start, len(slice_column)))
     return connectivity, parts
@@ -48,9 +48,9 @@ def decompose(grid_map):
     connectivity changes (IN/OUT critical points); MIDDLE events just extend the
     live cell. Returns (seg_map labelled per free pixel, cells, adjacency)."""
     H, W = grid_map.shape
-    seg_map = np.zeros_like(grid_map)
-    adjacency = {}
-    cells = []
+    seg_map = np.zeros_like(grid_map)        # cell id per free pixel (0 = obstacle)
+    adjacency = {}                           # cell id -> set of adjacent cell ids
+    cells = []                               # cell id -> {id, start, end, bounds}
     next_id = 1
     last_conn, last_parts, last_ids = 0, [], []
 
@@ -58,13 +58,14 @@ def decompose(grid_map):
         conn, parts = slice_connectivity(grid_map[:, x])
 
         if last_conn == 0 and conn > 0:
+            # slice just entered free space: open one cell per interval
             ids = []
             for _ in parts:
                 cells.append({"id": next_id, "start": x, "end": x, "bounds": []})
                 adjacency.setdefault(next_id, set())
-                ids.append(next_id)
-                next_id += 1
+                ids.append(next_id); next_id += 1
         elif conn == 0:
+            # slice left the free space: everything open just closed
             last_conn, last_parts, last_ids = conn, parts, []
             continue
         else:
@@ -72,32 +73,30 @@ def decompose(grid_map):
             ids = [0] * len(parts)
             for l in range(A.shape[0]):
                 s = A[l].sum()
-                if s == 1:
+                if s == 1:                       # cell continues
                     ids[int(np.argmax(A[l]))] = last_ids[l]
-                elif s > 1:
+                elif s > 1:                       # IN event: free space split
                     for r in np.flatnonzero(A[l]):
                         cells.append({"id": next_id, "start": x, "end": x, "bounds": []})
                         adjacency.setdefault(next_id, set())
-                        adjacency[last_ids[l]].add(next_id)
+                        adjacency[last_ids[l]].add(next_id)   # closing cell shares a boundary
                         adjacency[next_id].add(last_ids[l])
-                        ids[r] = next_id
-                        next_id += 1
+                        ids[r] = next_id; next_id += 1
             for r in range(A.shape[1]):
                 s = A[:, r].sum()
-                if s > 1:
+                if s > 1:                         # OUT event: cells merged
                     cells.append({"id": next_id, "start": x, "end": x, "bounds": []})
                     adjacency.setdefault(next_id, set())
                     for l in np.flatnonzero(A[:, r]):
                         adjacency[last_ids[l]].add(next_id)
                         adjacency[next_id].add(last_ids[l])
-                    ids[r] = next_id
-                    next_id += 1
-                elif s == 0:
+                    ids[r] = next_id; next_id += 1
+                elif s == 0:                      # fresh free space: open a cell
                     cells.append({"id": next_id, "start": x, "end": x, "bounds": []})
                     adjacency.setdefault(next_id, set())
-                    ids[r] = next_id
-                    next_id += 1
+                    ids[r] = next_id; next_id += 1
 
+        # label this column and grow each live cell's extent + boundary
         for cid, (a, b) in zip(ids, parts):
             seg_map[a:b, x] = cid
             cells[cid - 1]["end"] = x
@@ -119,7 +118,6 @@ def order_cells(adjacency, start):
             if nb not in seen:
                 dfs(nb)
                 walk.append(node)
-
     dfs(start)
     return walk
 
@@ -133,7 +131,7 @@ def sweep_cell(cell, side_step):
     for x, (top, bottom) in zip(cols[::side_step], cell["bounds"][::side_step]):
         ys = list(range(top, bottom, side_step))
         path += [(x, y) for y in (ys if going_down else reversed(ys))]
-        going_down = not going_down
+        going_down = not going_down          # the turn at the end of each pass
     return path
 
 
@@ -145,7 +143,7 @@ def plan_coverage(grid_map, side_step=1):
     covered, path = set(), []
     for cid in walk:
         if cid in covered:
-            continue
+            continue                          # the walk records transit; don't re-cover
         path += sweep_cell(by_id[cid], side_step)
         covered.add(cid)
     return path, seg_map, walk
