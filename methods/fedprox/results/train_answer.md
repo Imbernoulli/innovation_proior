@@ -13,79 +13,88 @@ FedProx also handles variable device effort without dropping stragglers. A retur
 The convergence story is as follows. Under L-smooth F_k, a negative-curvature bound L_, mu > L_, and a bounded dissimilarity E_k ||grad F_k(w)||^2 <= B^2 ||grad f(w)||^2 measuring statistical heterogeneity, one round of FedProx decreases the global objective in expectation by rho ||grad f(w^t)||^2 for an explicit rho that depends on mu, L, L_, B, gamma, and the number of sampled devices K per round. Two qualitative constraints appear: gamma B < 1, meaning very sloppy local solves are only safe when the network is relatively homogeneous, and B / sqrt(K) < 1, meaning higher heterogeneity requires more devices per round. Telescoping the per-round decrease gives convergence to an epsilon-approximate stationary point in O(Delta / (rho epsilon)) rounds, where Delta = f(w^0) - f^*. In the convex case with exact solves, choosing mu proportional to L B^2 recovers the SGD complexity up to constants, showing that FedProx matches distributed SGD asymptotically while being much more robust to heterogeneous clients.
 
 ```python
-import random
-from collections import OrderedDict
+import numpy as np
+import tensorflow as tf
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import control_flow_ops, math_ops, state_ops
+from tensorflow.python.training import optimizer
+from .fedbase import BaseFedarated
 
-import torch
-from torch.utils.data import DataLoader
 
+class PerturbedGradientDescent(optimizer.Optimizer):
+    def __init__(self, learning_rate=0.001, mu=0.01, use_locking=False, name="PGD"):
+        super(PerturbedGradientDescent, self).__init__(use_locking, name)
+        self._lr = learning_rate
+        self._mu = mu
+        self._lr_t = None
+        self._mu_t = None
 
-class Strategy:
-    """FedProx: local SGD with a proximal term anchored at the broadcast model."""
+    def _prepare(self):
+        self._lr_t = ops.convert_to_tensor(self._lr, name="learning_rate")
+        self._mu_t = ops.convert_to_tensor(self._mu, name="prox_mu")
 
-    def __init__(self, global_model, args):
-        self.args = args
-        self.mu = getattr(args, "mu", 0.01)  # typical range 0.001--0.1
+    def _create_slots(self, var_list):
+        for v in var_list:
+            self._zeros_slot(v, "vstar", self._name)
 
-    def client_local_train(self, global_state_dict, client_dataset, model_fn,
-                           loss_fn, local_epochs, local_lr, local_batch_size,
-                           device, client_idx):
-        model = model_fn()
-        model.load_state_dict(global_state_dict)
-        model.to(device)
-        model.train()
-
-        # Freeze a copy of the broadcast parameters for the prox term.
-        global_params = [
-            p.detach().clone() for p in model.parameters() if p.requires_grad
-        ]
-        mu_half = 0.5 * self.mu
-
-        def prox_loss(m):
-            prox = 0.0
-            for w, w0 in zip(
-                [p for p in m.parameters() if p.requires_grad],
-                global_params,
-            ):
-                prox = prox + (w - w0).pow(2).sum()
-            return mu_half * prox
-
-        loader = DataLoader(
-            client_dataset,
-            batch_size=local_batch_size,
-            shuffle=True,
-            drop_last=False,
-            num_workers=0,
+    def _apply_dense(self, grad, var):
+        lr_t = math_ops.cast(self._lr_t, var.dtype.base_dtype)
+        mu_t = math_ops.cast(self._mu_t, var.dtype.base_dtype)
+        vstar = self.get_slot(var, "vstar")
+        var_update = state_ops.assign_sub(
+            var, lr_t * (grad + mu_t * (var - vstar))
         )
+        return control_flow_ops.group(var_update)
 
-        optimizer = torch.optim.SGD(model.parameters(), lr=local_lr)
-        for _ in range(local_epochs):
-            for x, y in loader:
-                x, y = x.to(device), y.to(device)
-                optimizer.zero_grad()
-                loss = loss_fn(model(x), y) + prox_loss(model)
-                loss.backward()
-                optimizer.step()
+    def set_params(self, global_params, client):
+        with client.graph.as_default():
+            for variable, value in zip(tf.trainable_variables(), global_params):
+                self.get_slot(variable, "vstar").load(value, client.sess)
 
-        return model.cpu().state_dict(), len(client_dataset), loss.item()
 
-    def aggregate(self, global_state_dict, client_updates, round_num):
-        total_samples = sum(max(upd[1], 1) for upd in client_updates)
-        new_state = OrderedDict()
-        for key, ref in global_state_dict.items():
-            if not ref.is_floating_point():
-                new_state[key] = client_updates[0][0][key].detach().clone()
-                continue
-            acc = torch.zeros_like(ref, device="cpu", dtype=torch.float32)
-            for state_dict, n, _ in client_updates:
-                acc += state_dict[key].detach().cpu().float() * (
-                    max(n, 1) / total_samples
+class Server(BaseFedarated):
+    def __init__(self, params, learner, dataset):
+        self.inner_opt = PerturbedGradientDescent(
+            params["learning_rate"], params["mu"]
+        )
+        super(Server, self).__init__(params, learner, dataset)
+
+    def train_round(self, round_num):
+        _, selected_clients = self.select_clients(
+            round_num, num_clients=self.clients_per_round
+        )
+        np.random.seed(round_num)
+        active_clients = np.random.choice(
+            selected_clients,
+            round(self.clients_per_round * (1 - self.drop_percent)),
+            replace=False,
+        )
+        self.inner_opt.set_params(self.latest_model, self.client_model)
+
+        client_solutions = []
+        for client in selected_clients.tolist():
+            client.set_params(self.latest_model)
+            if client in active_clients:
+                solution, stats = client.solve_inner(
+                    num_epochs=self.num_epochs, batch_size=self.batch_size
                 )
-            new_state[key] = acc.to(ref.dtype)
-        return new_state
+            else:
+                partial_epochs = np.random.randint(low=1, high=self.num_epochs)
+                solution, stats = client.solve_inner(
+                    num_epochs=partial_epochs, batch_size=self.batch_size
+                )
+            client_solutions.append(solution)
+            self.metrics.update(rnd=round_num, cid=client.id, stats=stats)
 
-    def select_clients(self, num_available, num_to_select, round_num):
-        return random.sample(
-            range(num_available), min(num_to_select, num_available)
-        )
+        self.latest_model = self.aggregate(client_solutions)
+        self.client_model.set_params(self.latest_model)
+
+    def aggregate(self, weighted_solutions):
+        total_weight = 0.0
+        base = [0] * len(weighted_solutions[0][1])
+        for weight, solution in weighted_solutions:
+            total_weight += weight
+            for i, value in enumerate(solution):
+                base[i] += weight * value.astype(np.float64)
+        return [value / total_weight for value in base]
 ```
