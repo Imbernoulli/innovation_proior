@@ -8,77 +8,10 @@ For concreteness, consider the set of all infinite sequences over two symbols, w
 
 The same move lifts cleanly to a fully general theorem about set size. For any set X, let P(X) be its power set, the set of all subsets of X. The map sending each element x to the singleton {x} injects X into P(X), so X is no larger than its power set. To show it is strictly smaller, take any function f from X to P(X); for each x, f(x) is a subset of X. Form the anti-diagonal subset T = { x ∈ X : x ∉ f(x) }. For any fixed x, if x is in T then the definition of T says x is not in f(x), so T and f(x) disagree at x; if x is not in T then x must be in f(x), so they again disagree at x. Thus T cannot equal f(x) for any x, which means f is not surjective. No bijection from X to P(X) exists, and therefore |X| < |P(X)|. This applies to every set, so there is no largest cardinality.
 
-```python
-from typing import List, Callable, Set, TypeVar
-
-# --- Concrete diagonal argument on binary sequences ---
-
-def flip(symbol: str) -> str:
-    """Return the other symbol in the two-symbol alphabet {m, w}."""
-    return "w" if symbol == "m" else "m"
-
-def diagonal_counterexample(claimed_list: List[List[str]]) -> List[str]:
-    """
-    Given a finite or infinite list of infinite two-symbol sequences,
-    return a new sequence that differs from the n-th listed sequence
-    at position n.
-    """
-    result: List[str] = []
-    for index, row in enumerate(claimed_list):
-        # Ensure every row is long enough to read its diagonal entry.
-        while len(row) <= index:
-            row.append("m")  # pad with a default symbol if needed
-        result.append(flip(row[index]))
-    return result
-
-def is_missing(witness: List[str], claimed_list: List[List[str]]) -> bool:
-    """
-    Verify that the diagonal witness differs from every row of the
-    claimed list at the corresponding diagonal position.
-    """
-    for i, row in enumerate(claimed_list):
-        if i >= len(witness):
-            break
-        if len(row) <= i:
-            return True
-        if witness[i] == row[i]:
-            return False
-    return True
-
-# Runnable finite demo: a claimed "list" of binary sequences.
-claimed_finite = [
-    ["m", "m", "m"],
-    ["w", "w", "w"],
-    ["m", "w", "m"],
-]
-
-witness = diagonal_counterexample(claimed_finite)
-print("Witness:", witness)
-print("Differs from every row:", is_missing(witness, claimed_finite))
-
-# --- General power-set argument ---
-
-T = TypeVar('T')
-
-def power_set_counterexample(
-    X: Set[T],
-    f: Callable[[T], Set[T]]
-) -> Set[T]:
-    """
-    Given any function f : X -> P(X), return the anti-diagonal subset
-    T = { x in X : x not in f(x) }, which is missed by f.
-    """
-    return {x for x in X if x not in f(x)}
-
-def is_missed(T: Set[T], X: Set[T], f: Callable[[T], Set[T]]) -> bool:
-    """Verify that T is not equal to f(x) for any x in X."""
-    return all(T != f(x) for x in X)
-
-# Example: let X = {1, 2, 3} and define an arbitrary f : X -> P(X).
-X = {1, 2, 3}
-f = lambda x: {1} if x == 1 else ({1, 2} if x == 2 else set())
-
-T = power_set_counterexample(X, f)
-print("Anti-diagonal subset T:", T)
-print("T is missed by f:", is_missed(T, X, f))
-```
+Written as the theorem itself, this is the deliverable: for every set $X$, with $\mathcal{P}(X)$ its power set,
+$$|X| < |\mathcal{P}(X)|.$$
+The weak inequality $|X| \le |\mathcal{P}(X)|$ comes from the singleton embedding $x \mapsto \{x\}$; strictness is the diagonal flip compressed to a single object. Given any $f : X \to \mathcal{P}(X)$, define
+$$T = \{\, x \in X : x \notin f(x) \,\}.$$
+For every $x \in X$: $x \in T \iff x \notin f(x)$, so $T$ and $f(x)$ disagree precisely at $x$, hence $T \neq f(x)$. Since this holds for every $x$, $T$ lies outside the image of $f$, so $f$ is not surjective and no bijection $X \to \mathcal{P}(X)$ can exist — the strict inequality follows. Because $X$ here is an arbitrary set, no set has the largest cardinality: applying the theorem to $\mathbb{N}$, then to $\mathcal{P}(\mathbb{N})$, then to $\mathcal{P}(\mathcal{P}(\mathbb{N}))$, and so on without stopping, produces a strictly increasing hierarchy of infinities that never terminates,
+$$|\mathbb{N}| < |\mathcal{P}(\mathbb{N})| = |\mathbb{R}| < |\mathcal{P}(\mathbb{R})| < \cdots,$$
+with the uncountability of the continuum established above as its very first step, and no last step after it.
