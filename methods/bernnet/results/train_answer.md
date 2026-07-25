@@ -8,48 +8,41 @@ The method is BernNet. It lifts the scalar Bernstein filter to the operator leve
 
 The ReLU enforces θ_k ≥ 0, which is the only hard validity constraint needed; the upper-bound side of the [0, 1] range is a scale condition handled by normalization or by simply interpreting the coefficients as relative filter strengths. The coefficients are initialized to all ones, which makes the initial filter the identity (all-pass) and therefore unbiased toward any particular frequency band. During training, gradient descent can move the mass toward low, high, or middle frequencies depending on the data. This keeps the same MLP-then-propagate pipeline used by GCN, APPNP, and GPR-GNN: a two-layer MLP transforms the node features, dropout is applied, and then BernNet propagates the transformed logits.
 
-The trade-off is computational. ChebNet and GPR-GNN need O(K) sparse propagations, but the Bernstein construction needs to multiply both (2I - L)^{K-k} and L^k into each term, giving O(K^2) sparse propagations in total. The implementation caches the chain (2I - L)^i x for i = 0..K and reuses it, but each remaining term still needs up to K additional applications of L. That cost buys a direct, cheap, and interpretable non-negativity constraint that no monomial or Chebyshev parameterization offers. The canonical name of the method is BernNet.
+The trade-off is computational. ChebNet and GPR-GNN need O(K) sparse propagations, but the Bernstein construction needs to multiply both (2I - L)^{K-k} and L^k into each term, giving O(K^2) sparse propagations in total. The implementation caches the chain (2I - L)^i x for i = 0..K and reuses it, but each remaining term still needs up to K additional applications of L. That cost buys a direct, cheap, and interpretable non-negativity constraint that no monomial or Chebyshev parameterization offers. The canonical name of the method is BernNet. Here is the propagation layer that implements the cached construction:
 
 ```python
 import torch
 import torch.nn.functional as F
-from torch.nn import Linear, Parameter
+from torch.nn import Parameter
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.utils import get_laplacian, add_self_loops
 from scipy.special import comb
 
 
 class Bern_prop(MessagePassing):
-    """Bernstein-basis propagation layer.
+    """z = sum_k ReLU(temp)_k * C(K,k)/2^K * (2I - L)^{K-k} L^k x."""
 
-    z = sum_k ReLU(theta_k) * C(K,k) / 2^K * (2I - L)^{K-k} * L^k * x
-    where L = I - D^{-1/2} A D^{-1/2} is the symmetric normalized Laplacian.
-    """
-
-    def __init__(self, K, **kwargs):
+    def __init__(self, K, bias=True, **kwargs):
         super().__init__(aggr="add", **kwargs)
         self.K = K
-        self.temp = Parameter(torch.Tensor(K + 1))
+        self.temp = Parameter(torch.Tensor(self.K + 1))
         self.reset_parameters()
 
     def reset_parameters(self):
-        self.temp.data.fill_(1.0)  # all-pass (identity) start
+        self.temp.data.fill_(1.0)                      # all-pass start
 
     def forward(self, x, edge_index, edge_weight=None):
-        TEMP = F.relu(self.temp)  # enforce non-negative Bernstein coefficients
+        TEMP = F.relu(self.temp)                        # theta_k >= 0
 
-        # symmetric normalized Laplacian L
+        # L = I - D^{-1/2} A D^{-1/2}
         edge_index1, norm1 = get_laplacian(
             edge_index, edge_weight, normalization="sym",
-            dtype=x.dtype, num_nodes=x.size(self.node_dim)
-        )
-        # 2I - L (negate off-diagonal L weights, self-loop value 2)
+            dtype=x.dtype, num_nodes=x.size(self.node_dim))
+        # 2I - L
         edge_index2, norm2 = add_self_loops(
-            edge_index1, -norm1, fill_value=2.0,
-            num_nodes=x.size(self.node_dim)
-        )
+            edge_index1, -norm1, fill_value=2.0, num_nodes=x.size(self.node_dim))
 
-        # tmp[i] = (2I - L)^i x for i = 0..K
+        # tmp[i] = (2I - L)^i x ,  i = 0..K
         tmp = [x]
         for i in range(self.K):
             x = self.propagate(edge_index2, x=x, norm=norm2, size=None)
@@ -58,11 +51,11 @@ class Bern_prop(MessagePassing):
         # k = 0 term
         out = (comb(self.K, 0) / (2 ** self.K)) * TEMP[0] * tmp[self.K]
 
-        # k = i+1 terms: apply L^{i+1} to tmp[K-i-1]
+        # k = i+1 terms:  L^{i+1} (2I - L)^{K-i-1} x
         for i in range(self.K):
             x = tmp[self.K - i - 1]
             x = self.propagate(edge_index1, x=x, norm=norm1, size=None)
-            for _ in range(i):
+            for j in range(i):
                 x = self.propagate(edge_index1, x=x, norm=norm1, size=None)
             out = out + (comb(self.K, i + 1) / (2 ** self.K)) * TEMP[i + 1] * x
 
@@ -70,23 +63,27 @@ class Bern_prop(MessagePassing):
 
     def message(self, x_j, norm):
         return norm.view(-1, 1) * x_j
+```
+
+This layer drops into the same MLP-then-propagate pipeline used by GCN, APPNP, and GPR-GNN: a two-layer MLP transforms the node features, dropout is applied, and then BernNet propagates the transformed logits, with its own dropout rate `dprate` on the propagation input so the handful of filter coefficients is not over-regularized by the dense-layer dropout.
+
+```python
+import torch
+import torch.nn.functional as F
+from torch.nn import Linear
 
 
 class BernNet(torch.nn.Module):
-    """MLP feature transform followed by Bernstein polynomial propagation."""
-
     def __init__(self, num_features, num_classes, hidden=64, K=10,
-                 dropout=0.5, dprate=0.5):
+                 alpha=0.1, dropout=0.5, dprate=0.5):
         super().__init__()
         self.lin1 = Linear(num_features, hidden)
         self.lin2 = Linear(hidden, num_classes)
         self.prop1 = Bern_prop(K)
-        self.dropout = dropout
         self.dprate = dprate
+        self.dropout = dropout
 
     def reset_parameters(self):
-        self.lin1.reset_parameters()
-        self.lin2.reset_parameters()
         self.prop1.reset_parameters()
 
     def forward(self, data):
