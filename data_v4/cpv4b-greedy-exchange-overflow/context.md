@@ -10,9 +10,7 @@ slots numbered `1, 2, 3, ...`. You are pitched `n` acts. Act `i` will pay the fe
 (staging nothing in some slots is fine, and turning an act away is fine).
 
 Choose which acts to stage and in which slots so that the **total fee collected is maximized**, and
-output that maximum total fee. This is the classic "job sequencing with deadlines" selection problem
-dressed as a festival; the point of interest is that the greedy that solves it has to be justified by
-an exchange argument, and that the total fee is large enough to break a careless accumulator.
+output that maximum total fee.
 
 ## Input / output contract
 
@@ -25,31 +23,11 @@ Example: for the five acts `(p, d) = (100, 2), (60, 1), (70, 2), (40, 1), (90, 3
 `260` — stage the `100` act in slot 2, the `90` act in slot 3, and the `70` act in slot 1; the `60`
 and `40` acts have deadline 1 but slot 1 is taken, so they are turned away.
 
-## Background
-
-The selection is constrained two ways at once: a slot holds one act, and an act can only go in slots
-up to its deadline. Two routes are on the table before committing to one:
-
-- **Greedy by fee, latest-slot assignment.** Sort the acts by fee descending; walk down the list and
-  put each act in the *latest still-free slot that is `<= d[i]`*, skipping the act if no such slot
-  exists. This is `O(n log n)` plus the cost of finding latest free slots. The open question is
-  whether grabbing the biggest fees first and pushing each act as late as legally possible is
-  actually optimal — that needs an exchange argument, not a hunch.
-
-- **Bipartite matching / DP.** Model acts-versus-slots as a weighted bipartite graph and solve a
-  maximum-weight matching, or run a DP over slots. Correct but far heavier than necessary if the
-  greedy can be proven.
-
-Deadlines can be as large as `10^9`, so the slots cannot be materialized one-per-deadline; only the
-deadlines that actually occur matter, and "latest free slot `<= d`" has to be answered without an
-array indexed by raw deadline value.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: all acts fitting (large distinct deadlines), heavy collisions
 (many acts sharing one small deadline), `p[i] = 0` acts, the empty instance (`n = 0`), a single act,
-deadlines far larger than `n`, and large `n = 2*10^5` with fees near `10^9` so the collected total
-reaches about `2*10^14` and overflows a 32-bit integer.
+deadlines far larger than `n`, and large `n = 2*10^5` with fees near `10^9`.
 
 ## Code framework
 
