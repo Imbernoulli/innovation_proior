@@ -20,10 +20,14 @@ from sklearn.ensemble import GradientBoostingRegressor, GradientBoostingClassifi
 
 
 class CATEEstimator:
-    """DR-Learner: cross-fitted doubly-robust pseudo-outcome regressed on X.
+    """Cross-fitted AIPW pseudo-outcome regressed on X.
 
-    Stage 1 fits the propensity and the two arm-specific outcome models out-of-fold.
-    Stage 2 forms the augmented-IPW pseudo-outcome and regresses it on X.
+    Stage 1 cross-fits nuisance models:
+        mu0(x) = E[Y|X, T=0], mu1(x) = E[Y|X, T=1]   (outcome models)
+        e(x)   = P(T=1|X)                            (propensity)
+    Stage 2 forms the doubly-robust pseudo-outcome and regresses it on X:
+        phi = mu1 - mu0 + T(Y - mu1)/e - (1-T)(Y - mu0)/(1-e)
+    Consistent if either the outcome models or the propensity model is correct.
     """
 
     def __init__(self):
@@ -50,27 +54,27 @@ class CATEEstimator:
     def fit(self, X, T, Y):
         n = len(Y)
 
-        # Cross-fit nuisances: train out-of-fold, predict in-fold.
+        # --- Stage 1: cross-fit nuisances (train out-of-fold, predict in-fold) ---
         kf = KFold(n_splits=5, shuffle=True, random_state=self._seed)
         mu0_hat = np.zeros(n)
         mu1_hat = np.zeros(n)
         e_hat = np.zeros(n)
 
         for train_idx, val_idx in kf.split(X):
-            mask0_train = T[train_idx] == 0
-            mask1_train = T[train_idx] == 1
+            mask0 = T[train_idx] == 0
+            mask1 = T[train_idx] == 1
 
             m0 = self._make_model_y()
             m1 = self._make_model_y()
 
-            if mask0_train.sum() > 5:
-                m0.fit(X[train_idx[mask0_train]], Y[train_idx[mask0_train]])
+            if mask0.sum() > 5:
+                m0.fit(X[train_idx[mask0]], Y[train_idx[mask0]])
                 mu0_hat[val_idx] = m0.predict(X[val_idx])
             else:
                 mu0_hat[val_idx] = Y[T == 0].mean() if (T == 0).sum() > 0 else Y.mean()
 
-            if mask1_train.sum() > 5:
-                m1.fit(X[train_idx[mask1_train]], Y[train_idx[mask1_train]])
+            if mask1.sum() > 5:
+                m1.fit(X[train_idx[mask1]], Y[train_idx[mask1]])
                 mu1_hat[val_idx] = m1.predict(X[val_idx])
             else:
                 mu1_hat[val_idx] = Y[T == 1].mean() if (T == 1).sum() > 0 else Y.mean()
@@ -79,21 +83,20 @@ class CATEEstimator:
             mt.fit(X[train_idx], T[train_idx])
             e_hat[val_idx] = mt.predict_proba(X[val_idx])[:, 1]
 
-        # Enforce overlap so inverse weights stay bounded.
+        # enforce overlap so the inverse weights stay bounded
         e_hat = np.clip(e_hat, 0.05, 0.95)
 
-        # Doubly-robust pseudo-outcome.
+        # --- Stage 2: doubly-robust pseudo-outcome, then regress on X ---
         pseudo = (
             mu1_hat - mu0_hat
             + T * (Y - mu1_hat) / e_hat
             - (1 - T) * (Y - mu0_hat) / (1 - e_hat)
         )
 
-        # Winsorize extreme pseudo-outcomes.
+        # winsorize extreme pseudo-outcomes
         q = np.percentile(np.abs(pseudo), 97)
         pseudo = np.clip(pseudo, -q, q)
 
-        # Stage 2: regress X -> pseudo-outcome to recover tau(x).
         self._cate_model = self._make_cate_model()
         self._cate_model.fit(X, pseudo)
         return self
