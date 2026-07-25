@@ -15,8 +15,7 @@ element of value `v` appearing `f` times contributes a frequency, and the count 
 modulo the prime `998244353`.
 
 This is the "count combinations by sum" subproblem that appears inside counting-DP, generating-function,
-and additive-combinatorics tasks. The one-variable, three-slot version with `V` and `q` both large is
-exactly where the naive "double loop over value pairs" stops being fast enough.
+and additive-combinatorics tasks.
 
 ## Input / output contract
 
@@ -50,31 +49,11 @@ sum `0` has `1` way `(0,0,0)`; sum `1` has `6`; sum `2` has `12`; sum `3` has `8
 
 (Check `s = 3`: every slot must be a `1`, and there are `2` array elements equal to `1`, so `2^3 = 8`.)
 
-## Background
-
-Let `f` be the **frequency polynomial** of the array: `f(x) = Σ_v f[v] · x^v`, where `f[v]` counts how
-many array elements equal `v`. Then `f(x)^2` is the polynomial whose `x^s` coefficient is the number of
-ordered *pairs* summing to `s`, and `f(x)^3` has `x^s` coefficient equal to the number of ordered
-*triples* summing to `s`. So `T(s) = [x^s] f(x)^3`, and the whole problem reduces to computing the cube
-of a polynomial of degree up to `V` (giving a polynomial of degree up to `3V`), then reading off the
-requested coefficients.
-
-Two families of approach are on the table before committing:
-
-- **Schoolbook (naive) convolution.** Compute `f^2` by a double loop over value pairs `(u, w)`, then
-  multiply by `f` again. Each multiplication of polynomials of size up to `V+1` costs `O(V^2)`. Simple
-  and obviously correct; the open question is whether `O(V^2)` survives `V = 2*10^5`.
-- **Fast convolution via a transform.** A polynomial product is a convolution, and convolution becomes
-  pointwise multiplication under a suitable transform. The open question is which transform keeps the
-  answer *exact* modulo `998244353` and runs in `O(D log D)` for `D ~ 3V`.
-
 ## Evaluation settings
 
-Judged on hidden tests covering: `n = 0` (empty array — every count is `0`); `V = 0` (all values equal
-`0`, so the only nonzero count is at `s = 0` and equals `n^3 mod p`); single-element arrays; arrays that
-stack many copies of one value (frequencies far exceeding `1`, so the `mod` actually bites); queries at
-the boundaries `s = 0` and `s = 3V`; and large instances with `n = V = q = 2*10^5` so an `O(V^2)`
-solution times out while an `O(V log V)` one does not.
+Judged on hidden tests covering: `n = 0` (empty array); `V = 0` (all values equal `0`); single-element
+arrays; arrays that stack many copies of one value; queries at the boundaries `s = 0` and `s = 3V`; and
+large instances with `n = V = q = 2*10^5`.
 
 ## Code framework
 
@@ -99,14 +78,14 @@ int main() {
         f[x] = (f[x] + 1) % MOD;
     }
 
-    // TODO: form the cube of the frequency polynomial f modulo MOD,
-    // TODO: so that coefficient [x^s] equals the number of ordered triples summing to s.
+    // TODO: compute, for every possible sum s in [0, 3V], the number of ordered
+    // TODO: triples (i, j, k) with a[i] + a[j] + a[k] = s, modulo MOD.
 
     int q; cin >> q;
     for (int j = 0; j < q; j++) {
         long long s; cin >> s;
         long long ans = 0;
-        // TODO: ans = coefficient at x^s of f^3 (0 if out of range)
+        // TODO: ans = number of ordered triples summing to s (0 if out of range)
         cout << ans << "\n";
     }
     return 0;
