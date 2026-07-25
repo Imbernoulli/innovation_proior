@@ -14,8 +14,8 @@ import torch.nn as nn
 
 
 class moving_avg(nn.Module):
-    """Length-preserving moving average along the time axis."""
-    def __init__(self, kernel_size, stride=1):
+    """Moving average block to highlight the trend of time series."""
+    def __init__(self, kernel_size, stride):
         super().__init__()
         self.kernel_size = kernel_size
         self.avg = nn.AvgPool1d(kernel_size=kernel_size, stride=stride, padding=0)
@@ -24,33 +24,33 @@ class moving_avg(nn.Module):
         front = x[:, 0:1, :].repeat(1, (self.kernel_size - 1) // 2, 1)
         end = x[:, -1:, :].repeat(1, (self.kernel_size - 1) // 2, 1)
         x = torch.cat([front, x, end], dim=1)
-        x = self.avg(x.permute(0, 2, 1))       # pool along time
-        return x.permute(0, 2, 1)              # [B, L, C]
+        x = self.avg(x.permute(0, 2, 1))
+        return x.permute(0, 2, 1)               # [B, L, C]
 
 
 class series_decomp(nn.Module):
-    """Split a window into seasonal residual and trend."""
+    """Series decomposition block."""
     def __init__(self, kernel_size):
         super().__init__()
         self.moving_avg = moving_avg(kernel_size, stride=1)
 
-    def forward(self, x):                       # x: [B, L, C]
-        trend = self.moving_avg(x)
-        seasonal = x - trend
-        return seasonal, trend
+    def forward(self, x):
+        moving_mean = self.moving_avg(x)
+        res = x - moving_mean
+        return res, moving_mean                 # seasonal, trend
 
 
 class Model(nn.Module):
-    """DLinear (Decomposition-Linear) direct multi-step forecaster."""
+    """Decomposition-Linear."""
     def __init__(self, configs):
         super().__init__()
         self.seq_len = configs.seq_len
         self.pred_len = configs.pred_len
-        self.channels = configs.enc_in
 
         kernel_size = 25
         self.decompsition = series_decomp(kernel_size)
-        self.individual = getattr(configs, 'individual', False)
+        self.individual = configs.individual
+        self.channels = configs.enc_in
 
         if self.individual:
             self.Linear_Seasonal = nn.ModuleList()
@@ -64,23 +64,23 @@ class Model(nn.Module):
 
     def forward(self, x):                        # x: [B, L, C]
         seasonal_init, trend_init = self.decompsition(x)
-        seasonal_init = seasonal_init.permute(0, 2, 1)   # [B, C, L]
-        trend_init = trend_init.permute(0, 2, 1)         # [B, C, L]
+        seasonal_init = seasonal_init.permute(0, 2, 1)
+        trend_init = trend_init.permute(0, 2, 1)
 
         if self.individual:
             seasonal_output = torch.zeros(
                 [seasonal_init.size(0), seasonal_init.size(1), self.pred_len],
-                dtype=seasonal_init.dtype, device=seasonal_init.device)
+                dtype=seasonal_init.dtype).to(seasonal_init.device)
             trend_output = torch.zeros(
                 [trend_init.size(0), trend_init.size(1), self.pred_len],
-                dtype=trend_init.dtype, device=trend_init.device)
+                dtype=trend_init.dtype).to(trend_init.device)
             for i in range(self.channels):
                 seasonal_output[:, i, :] = self.Linear_Seasonal[i](seasonal_init[:, i, :])
                 trend_output[:, i, :] = self.Linear_Trend[i](trend_init[:, i, :])
         else:
-            seasonal_output = self.Linear_Seasonal(seasonal_init)   # [B, C, T]
-            trend_output = self.Linear_Trend(trend_init)            # [B, C, T]
+            seasonal_output = self.Linear_Seasonal(seasonal_init)
+            trend_output = self.Linear_Trend(trend_init)
 
-        x = seasonal_output + trend_output                          # recombine
-        return x.permute(0, 2, 1)                                    # [B, T, C]
+        x = seasonal_output + trend_output
+        return x.permute(0, 2, 1)               # [B, T, C]
 ```
