@@ -14,49 +14,6 @@ Returning to the sequence, for each $m$ the difference $F_{m+\ell} - F_m$ is div
 
 The same idea can be expressed for $|a| > 1$ by allowing complex angles: if $a > 1$, write $a = \cosh t$ and use $b = i t$, so every term is $\cosh(F_n t)$; if $a < -1$, write $a = -\cosh t$ and use $b = \pi + i t$, giving terms $(-1)^{F_n} \cosh(F_n t)$. In either case the magnitudes stay above $1$, consistent with the real induction and confirming that zeros only arise in the real-angle regime.
 
-The Python script below verifies the entire argument on a concrete example. It defines the recurrence, compares it with the cosine formula for $a = \sqrt{2}/2$ (where $x_3 = 0$), and confirms that the resulting sequence repeats with the period predicted by the Pisano period of $d = 4 F_3 = 8$.
+The finished statement is best left in this explicit form, with the period exhibited rather than merely asserted to exist.
 
-```python
-import math
-
-def recurrence_seq(a, n_terms):
-    x = [0.0] * n_terms
-    x[0] = 1.0
-    if n_terms > 1:
-        x[1] = a
-    if n_terms > 2:
-        x[2] = a
-    for n in range(2, n_terms - 1):
-        x[n + 1] = 2 * x[n] * x[n - 1] - x[n - 2]
-    return x
-
-def fibonacci(n_terms):
-    F = [0] * n_terms
-    if n_terms > 1:
-        F[1] = 1
-    if n_terms > 2:
-        F[2] = 1
-    for n in range(2, n_terms - 1):
-        F[n + 1] = F[n] + F[n - 1]
-    return F
-
-# Choose a value where a zero occurs: a = cos(pi/4), so x_3 = 0.
-a = math.sqrt(2) / 2
-b = math.acos(a)  # pi/4
-N = 30
-F = fibonacci(N)
-x_rec = recurrence_seq(a, N)
-x_cos = [math.cos(F[n] * b) for n in range(N)]
-
-print("Verify x_n = cos(F_n b) for n = 0..{}:".format(N - 1))
-print(all(abs(x_rec[n] - x_cos[n]) < 1e-9 for n in range(N)))
-
-# The zero at n=3 gives d = 4 * F_3 = 8; Pisano period modulo 8 is 12.
-d = 4 * F[3]
-period = 12
-print("d =", d, "period =", period)
-print("Check periodicity x[m+period] == x[m] for all m:",
-      all(abs(x_rec[m + period] - x_rec[m]) < 1e-9 for m in range(N - period)))
-```
-
-This completes the proof: whenever one term of the sequence vanishes, the Fibonacci–cosine substitution forces the defining angle to be a rational multiple of $2\pi$, and the modular periodicity of Fibonacci numbers makes the sequence repeat.
+For any real $a$: if $x_n = 0$ for some $n$, then $|a| \le 1$, so $a = \cos b$ for a real $b$, and the vanishing pins down $b = (c/d) \cdot 2\pi$ for the odd integer $c = k$ and $d = 4 F_n$ coming from $\cos(F_n b) = 0$. The sequence is then periodic with period $\ell$, the least positive integer with $(F_\ell, F_{\ell+1}) \equiv (F_0, F_1) = (0, 1) \pmod d$ — the Pisano period of $d$ — because the bijective step map on $(\mathbb{Z}/d\mathbb{Z})^2$ guarantees such an $\ell$ exists and forces $x_{m+\ell} = x_m$ for every $m \ge 0$. Taking $a = \cos(\pi/4) = \sqrt2/2$ as the smallest instance, $F_3 = 2$ already gives $x_3 = \cos(\pi/2) = 0$, so $d = 8$ and $\ell$ is the Pisano period of $8$, which is $12$; the same mechanism produces a period for every $a$ at which a zero occurs, always equal to the Pisano period of $d = 4 F_n$. This is the complete result: one vanishing term forces the defining angle to be a rational multiple of a full turn, and the finiteness of the Fibonacci recurrence modulo an integer converts that single algebraic fact into exact periodicity of the whole sequence, with an explicit period in hand rather than a bare existence claim.
