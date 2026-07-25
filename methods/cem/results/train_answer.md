@@ -32,15 +32,17 @@ class CEMPlanner(Planner):
              t0=False, plan_vis_path=None):
         T = min(self.plan_length, steps_left) if steps_left else self.plan_length
 
-        mean = torch.zeros(T, self.action_dim, device=self.device)
-        std = self.var_scale * torch.ones(T, self.action_dim, device=self.device)
+        mean = torch.zeros(T, self.action_dim, device=self.device)          # v_0: mu
+        std = self.var_scale * torch.ones(T, self.action_dim, device=self.device)  # v_0: sigma
         actions = torch.empty(T, self.num_samples, self.action_dim, device=self.device)
         losses, elite_means, elite_stds = [], [], []
 
         for _ in range(self.n_iters):
+            # draw X_1..X_N ~ N(mean, std^2)
             actions[:, :] = mean.unsqueeze(1) + std.unsqueeze(1) * torch.randn(
                 T, self.num_samples, self.action_dim, device=std.device)
 
+            # enforce feasible action set when the harness supplies a norm limit
             if self.max_norms is not None:
                 assert len(self.max_norms) == 1
                 max_norm, eps = self.max_norms[0], 1e-6
@@ -50,22 +52,25 @@ class CEMPlanner(Planner):
                 coeff = torch.min(torch.max(norms, min_norms), max_norms) / (norms + eps)
                 actions = actions * coeff
 
+            # query black-box cost (lower is better)
             cost = self.cost_function(
                 rearrange(actions, "t b a -> b a t"), obs_init
             ).unsqueeze(1)
             losses.append(cost.min().item())
 
+            # elites = lowest cost = largest S = -cost
             elite_idxs = torch.topk(-cost.squeeze(1), self.num_elites, dim=0).indices
             elite_loss = cost[elite_idxs]
             elite_actions = actions[:, elite_idxs]
             elite_means.append(elite_loss.mean().item())
             elite_stds.append(elite_loss.std().item())
 
+            # update center and stored spread over the elite dimension
             mean = elite_actions.mean(dim=1)
             std = elite_actions.std(dim=1)
 
         return PlanningResult(
-            actions=mean,
+            actions=mean,   # the Gaussian's center = point estimate of the optimum
             losses=torch.tensor(losses).detach().unsqueeze(-1),
             prev_elite_losses_mean=torch.tensor(elite_means).unsqueeze(-1),
             prev_elite_losses_std=torch.tensor(elite_stds).unsqueeze(-1),
