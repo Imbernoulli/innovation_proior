@@ -48,37 +48,12 @@ Example: for the map below (`s = 1`, `t = 6`)
 the answer is `3`: the minimum hop count is `3`, achieved by `1-2-4-6`, `1-3-4-6`, and `1-3-5-6`.
 The edges `2-3` and `4-5` join stations at the same distance from `s` and lie on no shortest route.
 
-## Background
-
-The shortest hop count from `s` is what plain breadth-first search computes: process stations in
-nondecreasing distance, and the first time you reach a station fixes its distance. The *counting*
-layer rides on top. Let `dist[v]` be the hop distance from `s` and `ways[v]` the number of minimum-hop
-itineraries from `s` to `v`. A hop `u -> v` extends a shortest route to `v` exactly when `u` sits one
-layer closer, i.e. `dist[u] + 1 == dist[v]`; then each such hop contributes `ways[u]` to `ways[v]`
-(and parallel hops each contribute, since they are distinct connections). So
-
-  `ways[v] = sum over hops (u,v) with dist[u] + 1 == dist[v] of ways[u]`,
-
-with `ways[s] = 1`. Two families of approach are on the table before committing:
-
-- **Re-derive contributors after a distance BFS.** First BFS for `dist[]`, then in a second pass, for
-  every hop `(u,v)`, if `dist[u] + 1 == dist[v]` add `ways[u]` into `ways[v]` (and symmetrically).
-  Correct only if the additions are applied in nondecreasing `dist` order, otherwise a `ways[u]` is
-  read before it is finalized. The open question is the ordering and how to avoid counting a
-  same-layer edge.
-- **Accumulate counts inside one BFS.** Run a single BFS; when a hop first discovers `v`, seed its
-  count from the discoverer; when a later hop points from the previous layer, add to it. Because BFS
-  dequeues by layer, a previous-layer contributor's count is finalized before it is read. The open
-  question is the precise predicate distinguishing "previous layer" (`dist[u]+1`) from "same layer"
-  (`dist[u]`) and "behind" (`dist[u] >= dist[v]`), and not adding back toward the source.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: `s == t` (answer `1`); `t` unreachable (answer `0`); a single
 station with no edges; chains with a unique route (answer `1`); diamond and layered graphs whose
-counts multiply (so the count overflows 64-bit and must be reduced mod `1e9+7` *during*
-accumulation); graphs with self-loops, parallel edges, and abundant same-distance edges that must
-contribute nothing to the count; and large sparse graphs at `n = 2*10^5`, `m = 4*10^5`.
+counts multiply; graphs with self-loops, parallel edges, and abundant same-distance edges; and
+large sparse graphs at `n = 2*10^5`, `m = 4*10^5`.
 
 ## Code framework
 
