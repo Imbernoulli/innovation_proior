@@ -13,16 +13,18 @@ from timm.models.vision_transformer import PatchEmbed, Attention, Mlp
 
 
 def modulate(x, shift, scale):
+    # x: (N, T, D); shift, scale: (N, D) -> broadcast over the token axis
     return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
 
 
 class TimestepEmbedder(nn.Module):
+    """Scalar diffusion timestep -> vector: sinusoidal frequency features + 2-layer MLP."""
     def __init__(self, hidden_size, frequency_embedding_size=256):
         super().__init__()
         self.mlp = nn.Sequential(
-            nn.Linear(frequency_embedding_size, hidden_size),
+            nn.Linear(frequency_embedding_size, hidden_size, bias=True),
             nn.SiLU(),
-            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, hidden_size, bias=True),
         )
         self.frequency_embedding_size = frequency_embedding_size
 
@@ -44,6 +46,7 @@ class TimestepEmbedder(nn.Module):
 
 
 class LabelEmbedder(nn.Module):
+    """Class label -> vector (learned table; one extra row = null label for classifier-free guidance)."""
     def __init__(self, num_classes, hidden_size, dropout_prob=0.1):
         super().__init__()
         use_cfg = dropout_prob > 0
@@ -51,17 +54,21 @@ class LabelEmbedder(nn.Module):
         self.num_classes = num_classes
         self.dropout_prob = dropout_prob
 
-    def token_drop(self, labels):
-        drop_ids = torch.rand(labels.shape[0], device=labels.device) < self.dropout_prob
+    def token_drop(self, labels, force_drop_ids=None):
+        if force_drop_ids is None:
+            drop_ids = torch.rand(labels.shape[0], device=labels.device) < self.dropout_prob
+        else:
+            drop_ids = force_drop_ids == 1
         return torch.where(drop_ids, self.num_classes, labels)
 
-    def forward(self, labels, train):
-        if train and self.dropout_prob > 0:
-            labels = self.token_drop(labels)
+    def forward(self, labels, train, force_drop_ids=None):
+        if (train and self.dropout_prob > 0) or (force_drop_ids is not None):
+            labels = self.token_drop(labels, force_drop_ids)
         return self.embedding_table(labels)
 
 
 class DiTBlock(nn.Module):
+    """Pre-norm transformer block with adaLN-Zero conditioning."""
     def __init__(self, hidden_size, num_heads, mlp_ratio=4.0, **kw):
         super().__init__()
         self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
@@ -85,10 +92,11 @@ class DiTBlock(nn.Module):
 
 
 class FinalLayer(nn.Module):
+    """Conditioned decode head: shift/scale only (no residual to gate)."""
     def __init__(self, hidden_size, patch_size, out_channels):
         super().__init__()
         self.norm_final = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        self.linear = nn.Linear(hidden_size, patch_size * patch_size * out_channels)
+        self.linear = nn.Linear(hidden_size, patch_size * patch_size * out_channels, bias=True)
         self.adaLN_modulation = nn.Sequential(
             nn.SiLU(),
             nn.Linear(hidden_size, 2 * hidden_size, bias=True),
@@ -101,6 +109,7 @@ class FinalLayer(nn.Module):
 
 
 class DiT(nn.Module):
+    """Diffusion transformer with adaLN-Zero conditioning."""
     def __init__(self, input_size=32, patch_size=2, in_channels=4, hidden_size=1152,
                  depth=28, num_heads=16, mlp_ratio=4.0, class_dropout_prob=0.1,
                  num_classes=1000, learn_sigma=True):
@@ -129,10 +138,12 @@ class DiT(nn.Module):
                     nn.init.constant_(m.bias, 0)
         self.apply(_basic_init)
 
+        # fixed sin-cos positional embedding
         pos = get_2d_sincos_pos_embed(self.pos_embed.shape[-1],
                                       int(self.x_embedder.num_patches ** 0.5))
         self.pos_embed.data.copy_(torch.from_numpy(pos).float().unsqueeze(0))
 
+        # patch-embed like a Linear; small-std init for label/timestep embeddings
         w = self.x_embedder.proj.weight.data
         nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
         nn.init.constant_(self.x_embedder.proj.bias, 0)
@@ -140,9 +151,11 @@ class DiT(nn.Module):
         nn.init.normal_(self.t_embedder.mlp[0].weight, std=0.02)
         nn.init.normal_(self.t_embedder.mlp[2].weight, std=0.02)
 
+        # adaLN-Zero: zero the modulation projections -> every residual block starts as identity
         for block in self.blocks:
             nn.init.constant_(block.adaLN_modulation[-1].weight, 0)
             nn.init.constant_(block.adaLN_modulation[-1].bias, 0)
+        # final head starts by predicting zero
         nn.init.constant_(self.final_layer.adaLN_modulation[-1].weight, 0)
         nn.init.constant_(self.final_layer.adaLN_modulation[-1].bias, 0)
         nn.init.constant_(self.final_layer.linear.weight, 0)
@@ -158,12 +171,12 @@ class DiT(nn.Module):
         return x.reshape(x.shape[0], c, h * p, h * p)
 
     def forward(self, x, t, y):
-        x = self.x_embedder(x) + self.pos_embed
-        t = self.t_embedder(t)
-        y = self.y_embedder(y, self.training)
-        c = t + y
+        x = self.x_embedder(x) + self.pos_embed   # (N, T, D)
+        t = self.t_embedder(t)                    # (N, D)
+        y = self.y_embedder(y, self.training)     # (N, D)
+        c = t + y                                 # (N, D): sum the conditionings
         for block in self.blocks:
             x = block(x, c)
-        x = self.final_layer(x, c)
-        return self.unpatchify(x)
+        x = self.final_layer(x, c)                # (N, T, p*p*out_channels)
+        return self.unpatchify(x)                 # (N, out_channels, H, W)
 ```
