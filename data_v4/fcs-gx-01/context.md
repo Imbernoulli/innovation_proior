@@ -16,11 +16,6 @@ cost = sum_i  w[i] * C[i]
 Find the ordering that **minimizes** the total weighted completion time, and output that
 minimum cost.
 
-This is the single-machine `1 || sum w_j C_j` problem. It looks like a sorting problem,
-and it is — but the sort key is not `t[i]` and not `w[i]`; it is a *coupled* comparison
-between every pair of jobs. Getting that key exactly right (and exact, not floating point)
-is the whole problem.
-
 ## Input / output contract
 
 - Input (stdin): the first token is `n` (`0 <= n <= 2*10^5`). Then `n` lines (or, equivalently,
@@ -55,18 +50,14 @@ Two cheap-looking keys present themselves immediately, and both are wrong in gen
 
 The right ordering compares two jobs through *both* of their numbers at once. Establishing
 which pairwise comparison is correct — and proving it gives a globally optimal schedule, not
-just a locally good swap — is the content of the problem. The cost can be as large as about
-`2*10^18`, so the running totals must be 64-bit, and the pairwise comparison must be done
-with exact integer arithmetic rather than the ratio `t[i]/w[i]` as a float.
+just a locally good swap — is the content of the problem.
 
 ## Evaluation settings
 
-Judged on hidden tests covering: equal weights (so the key degenerates to sort-by-time),
-equal processing times, many jobs sharing the *same ratio* `t[i]/w[i]` (ties that the
-comparator must order consistently so the cost is well defined), strongly skewed inputs
-(one long-light job versus many short-heavy jobs), the empty instance (`n = 0`), a single
-job, and large `n = 2*10^5` with values near `10^4` (so the accumulated cost approaches the
-64-bit range and a 32-bit accumulator is a silent wrong answer).
+Judged on hidden tests covering: equal weights, equal processing times, many jobs that tie
+under a naive ordering key (the comparator must order such ties consistently so the cost is
+well defined), strongly skewed inputs (one long-light job versus many short-heavy jobs), the
+empty instance (`n = 0`), a single job, and large `n = 2*10^5` with values near `10^4`.
 
 ## Code framework
 
