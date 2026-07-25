@@ -14,34 +14,21 @@ The consequences match all five facts. The quasiparticle dispersion E_k = sqrt(e
 import numpy as np
 from scipy import integrate, optimize
 
-# Energies in units of the phonon (Debye) cutoff hbar*omega_D = 1.
-N0V = 0.3   # dimensionless coupling N(0)*V (weak coupling: < 1)
+# Energies in units of the phonon cutoff hbar*omega_D = 1.
+N0V = 0.3   # dimensionless coupling N(0)V
 
-# --- Cooper instability: two electrons added above a frozen Fermi sea ---
-# Eigenvalue condition: 1 = N0V * int_0^1 dxi / (2*xi - E_rel), with E_rel < 0.
+# Cooper instability: 1 = N0V * int_0^1 dxi/(2xi - E_rel), with E_rel < 0 for any N0V>0
 E_rel = optimize.brentq(
-    lambda E: N0V * integrate.quad(lambda xi: 1.0 / (2.0 * xi - E), 0.0, 1.0)[0] - 1.0,
-    -10.0, -1e-12)
-print("pair energy relative to 2E_F:", E_rel)
-print("  weak-coupling form -2*exp(-2/N0V):", -2.0 * np.exp(-2.0 / N0V))
+    lambda E: N0V*integrate.quad(lambda xi: 1/(2*xi-E), 0, 1)[0] - 1, -10, -1e-12)
+print(E_rel, -2*np.exp(-2/N0V))                     # pair energy relative to 2E_F vs weak-coupling form
 
-# --- BCS gap equation: self-consistent order parameter epsilon_0 ---
-# 1/(N0V) = int_0^1 dxi / sqrt(xi^2 + eps0^2) = arcsinh(1/eps0)
-# Closed form: eps0 = 1 / sinh(1/N0V)
+# Gap equation: 1/N0V = arcsinh(1/eps0) -> eps0 = 1/sinh(1/N0V)
 eps0 = optimize.brentq(
-    lambda D: integrate.quad(lambda xi: 1.0 / np.sqrt(xi**2 + D**2), 0.0, 1.0)[0] - 1.0 / N0V,
-    1e-12, 10.0)
-print("gap eps0:", eps0)
-print("  closed form 1/sinh(1/N0V):", 1.0 / np.sinh(1.0 / N0V))
-print("  weak-coupling form 2*exp(-1/N0V):", 2.0 * np.exp(-1.0 / N0V))
+    lambda D: integrate.quad(lambda xi: 1/np.sqrt(xi**2+D**2), 0, 1)[0] - 1/N0V, 1e-12, 10)
+print(eps0, 1/np.sinh(1/N0V), 2*np.exp(-1/N0V))     # gap vs closed form vs weak-coupling form
 
-# --- Finite-temperature gap equation and critical temperature ---
-# 1/(N0V) = int_0^1 dxi/sqrt(xi^2+D^2) * tanh(sqrt(xi^2+D^2)/(2*kT))
-# At Tc the gap goes to zero, giving 1/(N0V) = int_0^1 (dxi/xi) tanh(xi/(2*kTc))
+# T_c: 1/N0V = int_0^1 (dxi/xi) tanh(xi/2kTc)
 kTc = optimize.brentq(
-    lambda kT: integrate.quad(lambda xi: np.tanh(xi / (2.0 * kT)) / xi, 1e-9, 1.0)[0] - 1.0 / N0V,
-    1e-6, 1.0)
-print("kTc:", kTc)
-print("  weak-coupling 1.14*exp(-1/N0V):", 1.14 * np.exp(-1.0 / N0V))
-print("  gap-to-Tc ratio 2*eps0/kTc:", 2.0 * eps0 / kTc)
+    lambda kT: integrate.quad(lambda xi: np.tanh(xi/(2*kT))/xi, 1e-9, 1)[0] - 1/N0V, 1e-6, 1)
+print(kTc, 1.14*np.exp(-1/N0V), 2*eps0/kTc)         # kTc vs weak-coupling form; gap/Tc ~ 3.5
 ```
