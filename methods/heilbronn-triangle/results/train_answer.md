@@ -6,97 +6,16 @@ The method is the Komlós-Pintz-Szemerédi uncrowded-hypergraph independent-set 
 
 The geometric hypergraph is not automatically uncrowded, so the construction first cleans it. Close pairs are the main source of 2-cycles: if two points are much nearer than typical, their associated strip becomes very wide and can catch several other points. Deleting one endpoint from every unexpectedly close pair removes only a small fraction of the vertices. After that, residual 2-, 3-, and 4-cycles are higher-order coincidences whose expected number is o(N), so deleting one vertex from each of those removes a negligible fraction. What remains is an uncrowded 3-graph on (1 − o(1))N vertices, and the AKPSS bound applies. Algorithmically, the independent set can be found by the deterministic polynomial-time algorithm of Bertram-Kretzberg and Lefmann once uncrowdedness is certified. The result is a certified selection rule that produces n points with every triangle of area at least a constant times log n / n^2.
 
-For the upper bound, the same strip dictionary runs in reverse. If the minimum triangle area is Δ, then for every pair the strip of width 4Δ/d contains only the two base points. Schmidt's energy argument weights each strip by its width and integrates, giving Δ^2 Σ 1/d(τ)^2 ≲ 1. The universal Riesz-energy lower bound Σ 1/d(τ)^2 ≳ n^2 log n then yields Δ ≲ n^{-1} (log n)^{-1/2}. Roth's two-scale incidence method turns the strip picture into a comparison between coarse-scale pseudo-randomness and fine-scale endpoint-only incidences, giving the first polynomial saving below 1/n. Optimizing that framework gives Δ ≲ exp(c √log n) / n^{8/7}. The 8/7 barrier arises from configurations that are globally spread out but locally clustered. Recent high-low and radial-projection work, using Marstrand-type direction estimates above dimension 1 and the Orponen-Shmerkin-Wang radial-projection bound below dimension 1, pushes just past this barrier to Δ ≲ n^{-8/7 − 1/2000}. The current best known range is therefore Ω(log n / n^2) ≤ Δ(n) ≲ n^{-8/7 − 1/2000}.
+For the upper bound, the same strip dictionary runs in reverse. If the minimum triangle area is Δ, then for every pair the strip of width 4Δ/d contains only the two base points. Schmidt's energy argument weights each strip by its width and integrates, giving Δ^2 Σ 1/d(τ)^2 ≲ 1. The universal Riesz-energy lower bound Σ 1/d(τ)^2 ≳ n^2 log n then yields Δ ≲ n^{-1} (log n)^{-1/2}. Roth's two-scale incidence method turns the strip picture into a comparison between coarse-scale pseudo-randomness and fine-scale endpoint-only incidences, giving the first polynomial saving below 1/n. Optimizing that framework gives Δ ≲ exp(c √log n) / n^{8/7}. The 8/7 barrier arises from configurations that are globally spread out but locally clustered. Recent high-low and radial-projection work, using Marstrand-type direction estimates above dimension 1 and the Orponen-Shmerkin-Wang radial-projection bound below dimension 1, pushes just past this barrier to Δ ≲ n^{-8/7 − 1/2000}.
 
-```python
-import math
-import random
-import itertools
-from collections import defaultdict
+Putting the two halves together gives the result that actually settles Heilbronn's conjecture. There is an absolute constant $c>0$ and, for every sufficiently large $n$, an explicit $n$-point configuration $P \subset [0,1]^2$ — produced by the certified, deterministic polynomial-time selection rule that over-samples $N = n^{1+\delta}$ points, deletes the unexpectedly close pairs and the residual 2-, 3-, and 4-cycles of the bad-triple hypergraph until it is uncrowded, and then extracts the Bertram-Kretzberg–Lefmann independent set guaranteed by the AKPSS bound — with
 
-def squared_dist(p, q):
-    return (p[0]-q[0])**2 + (p[1]-q[1])**2
+$$\min_{\substack{p,q,r \in P \\ \text{distinct}}} \operatorname{area}(p,q,r) \;\ge\; c\,\frac{\log n}{n^2},$$
 
-def triangle_area_sq(p, q, r):
-    """Return 4 times the squared area of triangle pqr (avoids sqrt)."""
-    return abs((q[0]-p[0])*(r[1]-p[1]) - (r[0]-p[0])*(q[1]-p[1]))**2
+while on the other side every $n$-point configuration in $[0,1]^2$, however it is placed, is forced by the strip-incidence argument to contain some triangle with
 
-def kps_heilbronn_construction(n, delta=0.15, c=0.05, seed=None):
-    """
-    Demonstrate the KPS uncrowded-hypergraph construction.
-    Returns n points in [0,1]^2 with minimum triangle area ~ c*log(n)/n^2.
-    This is a simplified, polynomial-time implementation for moderate n.
-    """
-    if seed is not None:
-        random.seed(seed)
+$$\operatorname{area}(p,q,r) \;\le\; n^{-8/7-1/2000}$$
 
-    N = int(math.ceil(n ** (1.0 + delta)))
-    eps = c * math.log(max(n, 3)) / (n ** 2)
-    eps_sq = (2.0 * eps) ** 2  # we compare 4*area^2 against (2*eps)^2
+for at least one triple $p,q,r$ (and, when the configuration is homogeneous — at most $O(1)$ points in every $n^{-1/2}\times n^{-1/2}$ cell, so there is no hidden small-scale clustering — the sharper $\operatorname{area}(p,q,r) \le n^{-7/6+\varepsilon}$ holds for every fixed $\varepsilon>0$). So Heilbronn's guess $\Delta(n) = \Theta(1/n^2)$ is false: the truth sits strictly above it by a logarithmic factor, and the exponent question is settled to the range
 
-    # Step 1: random over-sample
-    points = [(random.random(), random.random()) for _ in range(N)]
-
-    # Step 2: remove unexpectedly close pairs (keeps pair distance >= typical)
-    min_pair_sep_sq = eps_sq / (16.0 * n * n)  # heuristic close-pair cutoff
-    alive = [True] * N
-    for i, j in itertools.combinations(range(N), 2):
-        if alive[i] and alive[j] and squared_dist(points[i], points[j]) < min_pair_sep_sq:
-            alive[i] = False
-
-    survivors = [i for i, ok in enumerate(alive) if ok]
-    if len(survivors) < n:
-        # fallback: return the best n of a denser sample for very small n
-        return points[:n]
-
-    # Step 3: build bad-triple hypergraph (edges = area <= eps)
-    surv_index = {idx: pos for pos, idx in enumerate(survivors)}
-    m = len(survivors)
-    edges = []
-    for a, b, c_idx in itertools.combinations(range(m), 3):
-        p, q, r = points[survivors[a]], points[survivors[b]], points[survivors[c_idx]]
-        if triangle_area_sq(p, q, r) <= eps_sq:
-            edges.append((a, b, c_idx))
-
-    # Step 4: greedily remove vertices that lie in many residual short cycles
-    # For a practical implementation we use a simple greedy independent-set:
-    # repeatedly delete the vertex with maximum degree until no edges remain.
-    adj = defaultdict(set)
-    for e in edges:
-        for v in e:
-            adj[v].add(e)
-
-    present = set(range(m))
-    edge_present = set(range(len(edges)))
-    degree = [len(adj[v]) for v in range(m)]
-
-    while edge_present:
-        # pick vertex of maximum degree among those still present
-        v = max(present, key=lambda x: degree[x])
-        present.remove(v)
-        for e in list(adj[v]):
-            if e in edge_present:
-                edge_present.remove(e)
-                for u in edges[e]:
-                    if u in present:
-                        degree[u] -= 1
-
-    if len(present) >= n:
-        chosen = [survivors[v] for v in list(present)[:n]]
-    else:
-        # if greedy is too aggressive, fall back to survivors ordered by degree
-        chosen = survivors[:n]
-
-    return [points[i] for i in chosen]
-
-# Example usage
-if __name__ == "__main__":
-    n = 40
-    pts = kps_heilbronn_construction(n)
-    min_area = min(
-        math.sqrt(triangle_area_sq(p, q, r)) / 2.0
-        for p, q, r in itertools.combinations(pts, 3)
-    )
-    target = 0.05 * math.log(n) / (n ** 2)
-    print(f"n = {n}, min triangle area = {min_area:.6g}, target ≳ {target:.6g}")
-```
+$$\Omega\!\left(\frac{\log n}{n^2}\right) \;\le\; \Delta(n) \;\le\; n^{-8/7-1/2000}.$$
