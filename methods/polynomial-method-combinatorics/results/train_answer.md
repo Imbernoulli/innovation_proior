@@ -8,110 +8,21 @@ The method succeeds precisely when the translation buys a bottleneck. For finite
 
 The boundaries of the method are equally important. If the natural encoding requires degree at or above the field size, univariate root counting collapses. If the field characteristic divides a coefficient that was supposed to be nonzero, the certificate disappears. If many formal polynomials induce the same function on a finite grid, the argument must be carried with reduced representatives or with the ideal of the grid. These are not minor side conditions; they are the places where the polynomial-world translation can fail.
 
-The following Python script illustrates the core vanishing claim of the finite-field Kakeya argument. It builds a small Kakeya set over a prime field, lists all monomials of total degree below the field size, and checks that the evaluation matrix on those monomials has full column rank over the same field. When the rank equals the number of monomials, the only polynomial of that degree vanishing on the Kakeya set is the zero polynomial, which is the obstruction Dvir used to bound the size of Kakeya sets from below.
+The deliverable of the method is not a subroutine to run but this fixed argument shape, which every instance of the three templates instantiates by filling in the specific obstruction — root count, coefficient nonvanishing, or rank bound — into the same five steps:
 
-```python
-import itertools
-import random
-
-
-def all_monomials(q, n):
-    """All exponent tuples in n variables with total degree < q."""
-    def rec(remaining, k):
-        if k == 1:
-            yield (remaining,)
-            return
-        for a in range(remaining + 1):
-            for tail in rec(remaining - a, k - 1):
-                yield (a,) + tail
-
-    result = []
-    for total in range(q):
-        result.extend(rec(total, n))
-    return result
-
-
-def normalize_direction(v, q):
-    for coord in v:
-        if coord % q != 0:
-            inv = pow(coord, -1, q)
-            return tuple((inv * x) % q for x in v)
-    return None
-
-
-def all_directions(q, n):
-    seen = set()
-    dirs = []
-    for v in itertools.product(range(q), repeat=n):
-        if all(x == 0 for x in v):
-            continue
-        nv = normalize_direction(v, q)
-        if nv not in seen:
-            seen.add(nv)
-            dirs.append(nv)
-    return dirs
-
-
-def eval_monomials(point, monomials, q):
-    vals = []
-    for e in monomials:
-        val = 1
-        for base, exp in zip(point, e):
-            val = (val * pow(base, exp, q)) % q
-        vals.append(val)
-    return vals
-
-
-def rank_mod_q(matrix, q):
-    A = [row[:] for row in matrix]
-    rows = len(A)
-    cols = len(A[0]) if rows else 0
-    rank = 0
-    for col in range(cols):
-        pivot = None
-        for r in range(rank, rows):
-            if A[r][col] % q != 0:
-                pivot = r
-                break
-        if pivot is None:
-            continue
-        A[rank], A[pivot] = A[pivot], A[rank]
-        inv = pow(A[rank][col], -1, q)
-        for c in range(col, cols):
-            A[rank][c] = (A[rank][c] * inv) % q
-        for r in range(rows):
-            if r != rank and A[r][col] % q != 0:
-                factor = A[r][col]
-                for c in range(col, cols):
-                    A[r][c] = (A[r][c] - factor * A[rank][c]) % q
-        rank += 1
-    return rank
-
-
-def random_kakeya_set(q, n):
-    random.seed(0)
-    dirs = all_directions(q, n)
-    K = set()
-    for v in dirs:
-        a = tuple(random.randrange(q) for _ in range(n))
-        for t in range(q):
-            point = tuple((a[i] + t * v[i]) % q for i in range(n))
-            K.add(point)
-    return list(K)
-
-
-def check_kakeya_rank(q, n):
-    K = random_kakeya_set(q, n)
-    mons = all_monomials(q, n)
-    M = [eval_monomials(p, mons, q) for p in K]
-    r = rank_mod_q(M, q)
-    full = len(mons)
-    print(f"q={q}, n={n}, |K|={len(K)}, monomials={full}, rank={r}, full_rank={r == full}")
-    return r == full
-
-
-for params in [(3, 2), (3, 3), (5, 2)]:
-    check_kakeya_rank(*params)
+```text
+1. Assume the bad combinatorial configuration exists.
+2. Choose a low-degree polynomial space tailored to the finite universe.
+3. Use interpolation, products of forbidden factors, or evaluation tensors to
+   encode the combinatorial constraints.
+4. Apply a polynomial obstruction: root count, coefficient nonvanishing,
+   dimension count, rank bound, or multiplicity bound.
+5. Derive an algebraic contradiction, so the bad configuration cannot exist.
 ```
 
-The output confirms that for these small parameters the evaluation matrix has full column rank, so no nonzero low-degree polynomial can vanish on the whole Kakeya set. Because the dimension of the polynomial space is exactly the number of monomials, a set smaller than that dimension would have allowed such a polynomial to exist by pure interpolation. Therefore a Kakeya set must be at least as large as the dimension of the degree-bounded polynomial space, which is the lower bound produced by the polynomial method. This is the kind of algebraic obstruction the method is designed to create.
+Step 2 and step 4 are where every application actually lives or dies, and both are governed by the same single comparison, which is the real content of the method reduced to its final form:
+
+```text
+enough monomials to encode the assumption
+but too few low-degree freedoms to satisfy its consequences
+```
