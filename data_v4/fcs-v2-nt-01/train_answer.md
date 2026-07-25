@@ -22,8 +22,11 @@ length `D` up to `2^{23}` — comfortably above the `2^{20}` needed here. Comput
 **Pitfalls to get right.**
 1. *Inverse-transform roots.* The forward layer uses the root `g^{(p-1)/len}`; the inverse layer must use
    its inverse, `g^{(p-1) - (p-1)/len}`, followed by scaling every coefficient by `D^{-1} = D^{p-2} mod p`.
-   Pasting the forward root into the inverse branch produces a transform that *passes tiny samples but
-   fails at scale* (short transforms mask the error) — the signature of this exact bug.
+   Pasting the forward root into the inverse branch turns the "inverse" into a second forward transform,
+   which does not undo anything: applying an order-`D` transform twice returns the input scaled by `D`
+   and index-reversed (`k ↔ D-k`), so the bug shows up immediately — even on the smallest real transform,
+   not just at scale — as a wrong, mass-losing output whose only correct entry is coefficient `0`, the one
+   index a mod-`D` negation fixes.
 2. *Overflow in butterflies.* A twiddle times a coefficient is up to `(p-1)^2 ≈ 10^{18}`; multiply through
    `__int128` before reducing. True triple counts reach `~8*10^{15}`, so the mod is load-bearing, and all
    accumulators are 64-bit.
