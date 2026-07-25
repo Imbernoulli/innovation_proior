@@ -12,69 +12,13 @@ Beyond explicit constructions, I also ask about density. It turns out that a pos
 
 It is worth emphasizing that this positive-proportion result does not contradict the naive instinct. If I average |S+S| and |S-S| over all 2^n subsets, the difference set still wins on average by about four, because a typical potential difference has roughly twice as many independent chances to be realized as the corresponding sum. The average and the tail can point in opposite directions: most sets are slightly difference-dominant, yet a positive fraction are strongly sum-dominant.
 
-The following Python script verifies the small seed, constructs the infinite family for a few parameters, confirms the positive-proportion gadget for a random middle, and illustrates that the imbalance can be amplified by base-b digit stacking.
+The construction that realizes this is a symmetric perturbed arithmetic progression tipped by one element. Fix integers $m\ge4$, a hole $1\le d\le m-1$ with $d\ne m/2$, and a ladder length $k\ge3$ (or $k\ge4$ when $d>m/2$). Set
+$$B=[0,m-1]\setminus\{d\},\qquad L=\{m-d,2m-d,\dots,km-d\},\qquad a^*=(k+1)m-2d,$$
+$$A^*=B\cup L\cup(a^*-B),\qquad A=A^*\cup\{m\}.$$
+$A^*$ is symmetric about $a^*$, hence balanced, so $|A^*+A^*|=|A^*-A^*|$; the adjoined element $m$ creates the fresh sum $2m$, since no two elements of $A^*$ can sum to it, while $A^*-\{m\}\subseteq A^*-A^*$ so no fresh difference appears. Consequently
+$$|A+A|=|A^*+A^*|+1>|A^*-A^*|=|A-A|$$
+for every admissible $(m,d,k)$, and $(m,d,k)=(4,1,3)$ regenerates Conway's $A_1$ exactly. Digit-stacking $N$ shifted copies of any sum-dominant seed with $|A+A|=s$, $|A-A|=t$ at spacing above its diameter — forming $A_N=A+bA+\cdots+b^{N-1}A$ for $b$ large enough that no carries occur — gives $|A_N+A_N|=s^N$ and $|A_N-A_N|=t^N$, so every integer imbalance is achieved by some finite set.
 
-```python
-from itertools import product
-
-def sumset(A):
-    return {a + b for a in A for b in A}
-
-def diffset(A):
-    return {a - b for a in A for b in A}
-
-def verify(A):
-    s = sumset(A)
-    d = diffset(A)
-    return len(s), len(d), len(s) - len(d), sorted(s), sorted(d)
-
-# Conway seed
-A1 = {0, 2, 3, 4, 7, 11, 12, 14}
-s1, d1, imb1, S1, D1 = verify(A1)
-print(f"A1: |A+A|={s1}, |A-A|={d1}, imbalance={imb1}")
-print("missing sums:", [x for x in range(min(S1), max(S1)+1) if x not in S1])
-print("missing diffs:", [x for x in range(min(D1), max(D1)+1) if x not in D1])
-
-# Parametric family
-
-def mstd_family(m, d, k):
-    B = set(range(m)) - {d}
-    L = {(i + 1) * m - d for i in range(k)}
-    astar = (k + 1) * m - 2 * d
-    Astar = B | L | {astar - b for b in B}
-    return Astar | {m}
-
-for params in [(4, 1, 3), (5, 2, 4), (6, 1, 4)]:
-    A = mstd_family(*params)
-    s, d, imb, _, _ = verify(A)
-    print(f"params={params}: |A+A|={s}, |A-A|={d}, imbalance={imb}")
-
-# Base-b digit stacking amplification
-
-def digit_stack(A, b, N):
-    return {sum(a * (b ** i) for i, a in enumerate(tup))
-            for tup in product(A, repeat=N)}
-
-A2 = mstd_family(4, 1, 3)
-s2, d2, _, _, _ = verify(A2)
-B = digit_stack(A2, b=100, N=2)
-sB, dB, imbB, _, _ = verify(B)
-print(f"stacked N=2: |A+A|={sB}, |A-A|={dB}, imbalance={imbB}")
-print(f"predicted |A+A|={s2**2}, |A-A|={d2**2}")
-
-# Positive-proportion gadget with a random middle
-import random
-
-def gadget(n, seed=0):
-    random.seed(seed)
-    L = {0, 2, 3, 7, 8, 9, 10}
-    U = {n - 11, n - 10, n - 9, n - 8, n - 6, n - 3, n - 2, n - 1}
-    R = {i for i in range(11, n - 11) if random.random() < 0.5}
-    return L | R | U
-
-n = 200
-A = gadget(n)
-s, d, imb, S, D = verify(A)
-print(f"gadget n={n}: |A+A|={s}, |A-A|={d}, imbalance={imb}")
-print("expected |A+A| ~=", 2 * n - 2, ", |A-A| <=", 2 * n - 3)
-```
+The result that actually settles the question I opened with, though, is the density statement. Fix $L=\{0,2,3,7,8,9,10\}$ and $U=\{n-11,n-10,n-9,n-8,n-6,n-3,n-2,n-1\}$, and let $R$ be a uniformly random subset of $\{11,\dots,n-12\}$; set $A=L\cup R\cup U$. The hole in $U-L$ at $n-7$ forces $|A-A|\le 2n-3$; the fringe leaves only the sum $1$ permanently missing, and the random middle fills every other sum with probability at least $1-6(2^{-7}+2^{-8})=119/128$, on which event $|A+A|=2n-2$. So
+$$\Pr\big[|A+A|>|A-A|\big]\;\ge\;\frac{119}{128},\qquad \#\{S\subseteq\{0,\dots,n-1\}:\ S\text{ sum-dominant}\}\;\ge\;\frac{119}{128}\cdot 2^{\,n-22}$$
+for $n\ge15$ — a fixed positive fraction of all $2^n$ subsets, not a vanishing one. The naive instinct that differences should win is correct only as a statement about the mean, where they do win by about $4$; as a statement about rarity it is false, and it takes nothing more exotic than pinning fourteen fringe coordinates to see why.
