@@ -50,34 +50,28 @@ D_op = 1.8        # optical dielectric constant
 E2   = 332.06     # e^2 in kcal*Angstrom/mol
 
 def lambda_o(dq, a1, a2, R):
-    """Outer-sphere reorganization energy: lambda = (dq)^2 (1/2a1 + 1/2a2 - 1/R)(1/Dop - 1/Ds).
-       This is the energy to wrench the slow solvent polarization from the reactant arrangement
-       to the product arrangement with no electron transfer -- the parabola offset."""
-    g = (1.0/(2*a1) + 1.0/(2*a2) - 1.0/R)          # geometric factor (Angstrom^-1)
-    return E2 * dq**2 * g * (1.0/D_op - 1.0/D_s)    # kcal/mol
+    """Outer-sphere reorganization energy (the parabola offset)."""
+    g = (1.0/(2*a1) + 1.0/(2*a2) - 1.0/R)
+    return E2 * dq**2 * g * (1.0/D_op - 1.0/D_s)
 
 def lambda_inner(force_const, dq_bond):
-    """Inner-shell reorganization: 1/2 sum_j k_j (dq_j)^2, k_j reduced force constants."""
+    """Inner-shell reorganization: 1/2 sum_j k_j (dq_j)^2."""
     return 0.5 * np.sum(np.asarray(force_const) * np.asarray(dq_bond)**2)
 
 def dF_star(lam, dG0, coulomb=0.0):
-    """Free energy of activation: Coulomb work + (lambda + dG0)^2 / (4 lambda).
-       m = -1/2 - dG0/(2 lambda) was the Lagrange multiplier; m^2 * lambda = (lambda+dG0)^2/4lambda."""
+    """Activation free energy: Coulomb work + (lambda + dG0)^2 / (4 lambda)."""
     return coulomb + (lam + dG0)**2 / (4.0 * lam)
 
 def rate(lam, dG0, Z=1e11, coulomb=0.0):
-    """Transition-state rate: k = Z exp(-dF*/kT)."""
     return Z * np.exp(-dF_star(lam, dG0, coulomb) / kT)
 
-# --- worked example: a self-exchange and the inverted region ---
-# Fe(2+)/Fe(3+)-like aqueous self-exchange: small ions, contact, unit charge transferred.
-a1 = a2 = 3.0          # saturated-sphere radius ~ crystallographic + one water (Angstrom)
-R   = a1 + a2          # closest approach
+# small aqueous self-exchange, unit charge transferred, ions at contact
+a1 = a2 = 3.0
+R   = a1 + a2
 lam = lambda_o(dq=1.0, a1=a1, a2=a2, R=R)
 print(f"lambda_o = {lam:.1f} kcal/mol;  self-exchange barrier lambda/4 = {lam/4:.1f} kcal/mol")
 
-# scan the driving force: normal region, activationless point, inverted region
 for dG0 in [0.0, -lam/2, -lam, -1.5*lam, -2.0*lam]:
     print(f"dG0 = {dG0:7.1f}  ->  dF* = {dF_star(lam, dG0):6.2f} kcal/mol")
-# barrier vanishes at dG0 = -lambda (activationless); rises again for dG0 < -lambda (inverted).
+# barrier vanishes at dG0 = -lambda (activationless); rises again for dG0 < -lambda (inverted region).
 ```
