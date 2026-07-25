@@ -12,61 +12,45 @@ One pass now gives predictions for K+1 future positions, and taking only the sin
 
 The last question is which candidate prefix to accept. Rejection sampling preserves the target's exact distribution, but its acceptance falls as temperature rises, so exact matching costs me speed for a guarantee I may not need. In practice I do not need to reproduce the original distribution exactly: higher temperature should mean the model accepts more varied continuations, not fewer. So instead of matching the distribution I accept candidates that are typical, not too improbable under the original model, using the original model's own probability as the gauge. I accept token x_{n+k} when p_original(x_{n+k} given the prefix) is greater than the minimum of epsilon and delta times exp(-H), where H is the entropy of the original model's distribution at that position. The hard floor epsilon accepts tokens above an absolute probability. The entropy-adaptive term delta exp(-H) drops the bar when the distribution is flat and raises it when the distribution is sharp. Taking the minimum lets the easier condition govern. To guarantee progress I greedily decode and unconditionally accept the first token each step, then apply typical acceptance to the rest, committing the longest accepted prefix across all branches. At temperature 0 this reduces to greedy decoding; as temperature rises, the greedy token always clears and a flatter distribution lowers the bar, so more tokens are accepted and acceptance length grows with temperature, the opposite of rejection sampling's degradation.
 
-That is the canonical Medusa method: residual SiLU heads added to an existing LLM with no draft model, trained cheaply on a frozen backbone or jointly with backbone protection, verified through tree attention, and accepted by a typical-sampling criterion. The following Python snippet shows the core building blocks, a small tree-attention mask generator, and a numeric sanity check that the typical acceptance rule accepts more tokens as entropy grows.
+That is the canonical Medusa method: residual SiLU heads added to an existing LLM with no draft model, trained cheaply on a frozen backbone or jointly with backbone protection, verified through tree attention, and accepted by a typical-sampling criterion. The following Python snippet shows the core building blocks: the residual head module with its zero/lm_head initialization, the per-head training loss with its 0.8^k down-weighting and optional backbone term, and the typical-acceptance criterion that turns the original model's own probabilities and entropy into a token-by-token accept/reject test.
 
 ```python
-import torch
-import torch.nn as nn
+import torch, torch.nn as nn
 
 class ResBlock(nn.Module):
-    """One Medusa head layer: SiLU MLP with a residual.
-    W1 is initialized to zero so the head starts as identity on h_t."""
     def __init__(self, hidden_size):
         super().__init__()
         self.linear = nn.Linear(hidden_size, hidden_size, bias=False)
-        nn.init.zeros_(self.linear.weight)
+        nn.init.zeros_(self.linear.weight)              # W1 = 0 -> head starts = backbone
         self.act = nn.SiLU()
-
     def forward(self, x):
         return x + self.act(self.linear(x))
 
-
 class MedusaHeads(nn.Module):
-    """K extra heads on the backbone's last hidden state.
-    Head k predicts token t+k+1. The final Linear (W2) is copied from lm_head."""
     def __init__(self, hidden_size, vocab_size, num_heads, num_layers=1, lm_head=None):
         super().__init__()
         self.heads = nn.ModuleList(
             nn.Sequential(*(ResBlock(hidden_size) for _ in range(num_layers)),
                           nn.Linear(hidden_size, vocab_size, bias=False))
-            for _ in range(num_heads)
-        )
+            for _ in range(num_heads))
         if lm_head is not None:
             for h in self.heads:
-                h[-1].weight.data.copy_(lm_head.weight.data)
-
+                h[-1].weight.data.copy_(lm_head.weight.data)   # W2 = lm_head
     def forward(self, hidden_states):
-        return [head(hidden_states) for head in self.heads]
-
+        return [head(hidden_states) for head in self.heads]    # K logit tensors
 
 def medusa_loss(base_logits, medusa_logits, targets, lambdas, lambda0=0.0):
-    """Medusa-1: weighted sum of per-head cross-entropies.
-    Medusa-2 adds the backbone LM loss when lambda0 > 0."""
     loss = 0.0
-    for k, logits in enumerate(medusa_logits, start=1):
+    for k, logits in enumerate(medusa_logits, start=1):        # lambda_k = 0.8**k
         loss = loss + lambdas[k - 1] * nn.functional.cross_entropy(
-            logits[:, :-(k + 1)].reshape(-1, logits.size(-1)),
-            targets[:, k + 1:].reshape(-1))
-    if lambda0 > 0:
+            logits[:, :-(k + 1)].reshape(-1, logits.size(-1)), targets[:, k + 1:].reshape(-1))
+    if lambda0 > 0:                                            # Medusa-2 adds backbone CE
         lm = nn.functional.cross_entropy(
-            base_logits[:, :-1].reshape(-1, base_logits.size(-1)),
-            targets[:, 1:].reshape(-1))
+            base_logits[:, :-1].reshape(-1, base_logits.size(-1)), targets[:, 1:].reshape(-1))
         loss = lm + lambda0 * loss
     return loss
 
-
 def typical_accept(greedy_token, medusa_suffix, base_probs_suffix, epsilon, delta):
-    """Accept the greedy token, then the longest typical Medusa suffix."""
     H = -(base_probs_suffix * base_probs_suffix.clamp_min(1e-9).log()).sum(-1)
     thresh = torch.minimum(torch.full_like(H, epsilon), delta * torch.exp(-H))
     p = base_probs_suffix.gather(-1, medusa_suffix.unsqueeze(-1)).squeeze(-1)
@@ -78,49 +62,4 @@ def typical_accept(greedy_token, medusa_suffix, base_probs_suffix, epsilon, delt
         else:
             break
     return torch.cat([greedy_token.view(1), medusa_suffix[:accepted_suffix]])
-
-
-def tree_attention_mask(parents):
-    """Build a causal tree mask: node j attends to node i only if i is an ancestor of j.
-    parents[k] is the index of the parent of node k; -1 means root."""
-    n = len(parents)
-    mask = torch.zeros(n, n, dtype=torch.bool)
-    for j in range(n):
-        cur = j
-        while cur != -1:
-            mask[j, cur] = True
-            cur = parents[cur]
-    return mask
-
-
-def demo():
-    torch.manual_seed(0)
-    hidden_size, vocab_size, num_heads = 64, 1000, 3
-    fake_hidden = torch.randn(2, 12, hidden_size)
-    fake_lm_head = nn.Linear(hidden_size, vocab_size, bias=False)
-
-    medusa = MedusaHeads(hidden_size, vocab_size, num_heads, lm_head=fake_lm_head)
-    logits = medusa(fake_hidden)
-    print("Head logit shapes:", [t.shape for t in logits])
-
-    # Simulate a tree with root plus two branches: root -> (a, b), a -> (c, d).
-    parents = [-1, 0, 0, 1, 1]
-    mask = tree_attention_mask(parents)
-    print("Tree mask:\n", mask.to(torch.int32))
-
-    # Typical acceptance: when the distribution is flat, even non-greedy
-    # suffix tokens are probable enough to pass the entropy-adaptive bar.
-    for scale in [10.0, 1.0, 0.1]:
-        logits = torch.randn(4, vocab_size) * scale
-        probs = torch.softmax(logits, dim=-1)
-        greedy = probs[0].argmax()
-        suffix = torch.cat([torch.tensor([greedy]),
-                            torch.randint(0, vocab_size, (3,))])
-        accepted = typical_accept(greedy, suffix[1:], probs[1:], epsilon=0.05, delta=0.5)
-        H = -(probs[1] * probs[1].clamp_min(1e-9).log()).sum()
-        print(f"scale={scale:.1f} entropy~{H:.2f}: accepted {accepted.numel()} token(s)")
-
-
-if __name__ == "__main__":
-    demo()
 ```

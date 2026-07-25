@@ -12,56 +12,12 @@ Putting the two parts together, the leading description length for an order-k mo
 
 This is not the same as simply adding a parameter-count penalty by hand. The k/2 log n term comes from the resolution at which the data allow parameters to be distinguished. It is also not identical to Akaike's information criterion, whose penalty is a constant per parameter and is derived from expected predictive bias under a true distribution. It is not a Bayesian model comparison either, because I am not integrating likelihood against a prior over models; I am counting the bits in a decodable message. And it is not the universal shortest-program idea of Kolmogorov or Solomonoff, because universal program-size complexity is not computable in the finite-sample form needed for ordinary statistical model selection. MDL keeps the compression intuition but restricts it to statistical model classes in a way that is computable and data-driven.
 
-I find the principle easiest to trust when I see it recover a known structure from synthetic data. The code below generates a short time series from a true second-order autoregression, fits autoregressive models of orders zero through six by least squares, and compares the MDL score to AIC and BIC. The MDL score is computed from the maximized Gaussian log likelihood plus the parameter cost. The demonstration shows that MDL typically selects the correct order, while the in-sample likelihood alone would always prefer the largest order.
+Written out in full, the object I actually compute is a single score attached to each candidate order $k$ in a nested statistical family. Let $\hat\theta_k$ be the maximum-likelihood fit of the order-$k$ model to $n$ observations. The leading two-part description length is
 
-```python
-import numpy as np
+$$L(\text{data}, k) \;=\; -\log P(\text{data}\mid\hat\theta_k) \;+\; \frac{k}{2}\log n \;+\; O(1),$$
 
-def fit_ar(data, k):
-    """Fit AR(k) by least squares and return sigma^2 and coefficient count."""
-    n = len(data)
-    if k == 0:
-        sigma2 = np.var(data, ddof=0)
-        return sigma2, 0
-    y = data[k:]
-    X = np.array([data[k - i - 1:n - i - 1] for i in range(k)]).T
-    coef, _, _, _ = np.linalg.lstsq(X, y, rcond=None)
-    resid = y - X @ coef
-    sigma2 = np.mean(resid ** 2)
-    return sigma2, k
+where the first term is the Shannon code length of the data under the fitted model, the second term is the cost of naming the $k$ real-valued parameters at the $1/\sqrt{n}$ precision their own likelihood curvature makes distinguishable, and the $O(1)$ collects the bounded prefix-code overhead together with constants that depend on parameter range and curvature but not on $n$ or $k$. On the familiar deviance scale, doubling and negating gives the equivalent form
 
-def gaussian_nll(data, k, sigma2):
-    """Negative log likelihood for AR(k) with Gaussian errors."""
-    n = len(data)
-    used = n - k
-    if sigma2 <= 0:
-        return np.inf
-    return 0.5 * used * (np.log(2 * np.pi) + np.log(sigma2) + 1)
+$$-2\log P(\text{data}\mid\hat\theta_k) \;+\; k\log n \;+\; O(1).$$
 
-np.random.seed(42)
-n = 200
-phi = np.array([0.6, -0.4])
-y = np.zeros(n)
-noise = np.random.randn(n)
-for t in range(2, n):
-    y[t] = phi[0] * y[t - 1] + phi[1] * y[t - 2] + noise[t]
-
-orders = range(7)
-results = []
-for k in orders:
-    sigma2, p = fit_ar(y, k)
-    nll = gaussian_nll(y, k, sigma2)
-    aic = 2 * nll + 2 * p
-    bic = 2 * nll + p * np.log(n - k)
-    mdl = nll + 0.5 * p * np.log(n)
-    results.append((k, nll, aic, bic, mdl))
-
-print("k   NLL      AIC      BIC      MDL")
-for k, nll, aic, bic, mdl in results:
-    print(f"{k}   {nll:7.2f}  {aic:7.2f}  {bic:7.2f}  {mdl:7.2f}")
-
-best_mdl = min(results, key=lambda x: x[4])
-print(f"\nMDL selects order {best_mdl[0]}")
-```
-
-In practice I apply MDL by enumerating the candidate structures, fitting each one by maximum likelihood, and ranking them with the two-part description length. The selected structure and its fitted coefficients together form the shortest complete explanation of the data. The method applies wherever I face nested model classes and need a principled stopping point between underfitting and overfitting, from time-series order selection through Markov order estimation to subset regression and beyond. The canonical name I use for this criterion is Rissanen's Minimum Description Length, and its operational form is the minimization of -log P(data | theta_hat_k) plus k/2 log n.
+I apply this by enumerating the candidate orders in the nested family, fitting each one by maximum likelihood, and selecting the $k$ and $\hat\theta_k$ that jointly minimize the score above; an extra parameter earns its place only when it shortens the data code by more than the $\frac{1}{2}\log n$ bits it costs to name. The selected order together with its fitted coefficients is the shortest complete decodable description of the data — the model does not need to be true, only to compress well. The criterion applies wherever I face nested model classes and need a principled stopping point between underfitting and overfitting: time-series order selection, Markov context length, subset regression, and any other family indexed by an integer complexity. The canonical name for this rule is Rissanen's Minimum Description Length criterion, and its complete operational statement is the minimization over $k$ of $-\log P(\text{data}\mid\hat\theta_k) + \frac{k}{2}\log n$.
