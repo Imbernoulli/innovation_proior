@@ -34,28 +34,13 @@ Example. For `n = 3`, `T = 3`, windows `[1,2], [1,1], [2,3]` the answer is `YES`
 `2 1 3` (request 0 -> slot 2, request 1 -> slot 1, request 2 -> slot 3). If instead the windows are
 `[1,1], [1,1], [2,3]`, the answer is `NO`: two requests can only use slot 1, so they collide.
 
-## Background
-
-The constraint "each slot serves at most one request, each request must fall inside its own window" is a
-bipartite-matching feasibility question. Two families of approach are on the table before committing:
-
-- **General bipartite matching.** Build the bipartite graph (request `i` adjacent to every slot in
-  `[l_i, r_i]`) and run a maximum-matching algorithm; the answer is `YES` iff the matching saturates all
-  `n` requests. This is the obviously-correct route, but the graph can have up to `n * T` edges, far too
-  many to materialise at the stated scale.
-- **Greedy assignment exploiting the interval structure.** Because each request's allowed slots form a
-  contiguous interval, the requests can be ordered and served one at a time by a simple rule, without ever
-  building the matching graph. The open questions are *which* order makes the greedy optimal, and how to
-  find "the earliest still-free slot at or after `l_i`" fast enough.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: feasible and infeasible instances; instances where the answer turns on a
-single overloaded window (Hall's condition tight by exactly one); `n = 0`; `n = 1`; `n > T` (always `NO`);
-all windows equal; point windows (`l_i = r_i`); nested and overlapping windows; and large
-`n = T = 2*10^5` for both the `YES` and `NO` cases. For `YES` instances the printed assignment is
-re-validated (distinct slots, each inside its window), so an off-by-one in the assignment is caught even
-when the verdict is right.
+single overloaded window; `n = 0`; `n = 1`; `n > T` (always `NO`); all windows equal; point windows
+(`l_i = r_i`); nested and overlapping windows; and large `n = T = 2*10^5` for both the `YES` and `NO`
+cases. For `YES` instances the printed assignment is re-validated (distinct slots, each inside its
+window), so an off-by-one in the assignment is caught even when the verdict is right.
 
 ## Code framework
 
