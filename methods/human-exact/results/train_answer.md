@@ -10,52 +10,49 @@ Fitting follows the same log-space machinery used for the single-epoch law. The 
 import numpy as np
 import torch
 
-# Single-epoch coefficients fit on the corpus (alpha tied to beta).
+# Single-epoch coefficients (fit once on the corpus, alpha tied to beta).
 A_LOG, B_LOG, E_LOG = 6.255414, 7.3049974, 0.6254804
 ALPHA = BETA = 0.3526596
-A, B, E = np.exp(A_LOG), np.exp(B_LOG), np.exp(E_LOG)  # ~521, ~1488, ~1.87
+A, B, E = np.exp(A_LOG), np.exp(B_LOG), np.exp(E_LOG)          # ~521, ~1488, ~1.87
 G = ((ALPHA * A) / (BETA * B)) ** (1.0 / (ALPHA + BETA))
 
-# Decay constants learned on repeated-data runs.
-R_D_STAR, R_N_STAR = 15.387756, 5.309743
+# Decay constants learned by fit_decay (grid of L-BFGS inits, outliers removed).
+R_D_STAR, R_N_STAR = 15.387756, 5.309743                       # R*_D > R*_N
 PARAMS = [A_LOG, B_LOG, E_LOG, ALPHA, BETA, R_D_STAR, R_N_STAR]
 
 
 def optimal_N(C):
-    return G * (C / 6.0) ** (BETA / (ALPHA + BETA))
+    return G * (C / 6.0) ** (BETA / (ALPHA + BETA))            # N_opt(C)
 
 
 def D_to_C(D):
-    return ((G * D) ** (1.0 / (ALPHA / (ALPHA + BETA)))) * 6.0
+    return ((G * D) ** (1.0 / (ALPHA / (ALPHA + BETA)))) * 6.0  # invert D_opt(C)
 
 
 def _fit_loss(inp, params):
+    # inp columns: [U_N, U_D, R_D, R_N, L]; params: a,b,e,alpha,beta,R*_D,R*_N
     a, b, e, alpha, beta, ep_star, n_star = params
     n_eff = inp[:, 0] + inp[:, 0] * n_star * (1 - torch.exp(-inp[:, 3] / n_star))
     d_eff = inp[:, 1] + inp[:, 1] * ep_star * (1 - torch.exp(-inp[:, 2] / ep_star))
-    pre = torch.stack([
-        a - alpha * torch.log(n_eff),
-        b - beta * torch.log(d_eff),
-        e.expand(inp.shape[0])
-    ])
-    pred = torch.logsumexp(pre, dim=0)
-    return torch.nn.functional.huber_loss(
-        pred, torch.log(inp[:, 4]), delta=1e-3, reduction="none"
-    ).sum()
+    pre = torch.stack([a - alpha * torch.log(n_eff),
+                       b - beta * torch.log(d_eff),
+                       e.expand(inp.shape[0])])
+    pred = torch.logsumexp(pre, dim=0)                          # log(A/N'^alpha + B/D'^beta + E)
+    return torch.nn.functional.huber_loss(pred, torch.log(inp[:, 4]),
+                                          delta=1e-3, reduction="none").sum()
 
 
 def _fit_decay_from(inp, init, steps=50):
     p = torch.nn.Parameter(torch.tensor(init, dtype=torch.float32))
-    lbfgs = torch.optim.LBFGS(
-        [p], lr=1e-1, history_size=10, max_iter=20, line_search_fn="strong_wolfe"
-    )
+    lbfgs = torch.optim.LBFGS([p], lr=1e-1, history_size=10, max_iter=20,
+                              line_search_fn="strong_wolfe")
 
     def closure():
         lbfgs.zero_grad()
-        loss = _fit_loss(inp, p)
-        loss.backward()
-        p.grad[:5] = 0  # freeze single-epoch coefficients
-        return loss
+        l = _fit_loss(inp, p)
+        l.backward()
+        p.grad[:5] = 0          # freeze single-epoch coefficients; learn only R*_D, R*_N
+        return l
 
     for _ in range(steps):
         lbfgs.step(closure)
@@ -78,8 +75,8 @@ def fit_decay(inp, steps=50):
 def scaling_law(N, D, U, params=PARAMS):
     a, b, e, alpha, beta, rd_star, rn_star = params
     A_, B_, E_ = np.exp(a), np.exp(b), np.exp(e)
-    R_D = np.maximum((D / U) - 1.0, 0.0)
-    U_N = np.minimum(N, optimal_N(D_to_C(U)))
+    R_D = np.maximum((D / U) - 1.0, 0.0)                        # epochs - 1
+    U_N = np.minimum(N, optimal_N(D_to_C(U)))                   # data-justified params
     R_N = np.maximum((N / U_N) - 1.0, 0.0)
     D_eff = U + U * rd_star * (1 - np.exp(-R_D / rd_star))
     N_eff = U_N + U_N * rn_star * (1 - np.exp(-R_N / rn_star))
