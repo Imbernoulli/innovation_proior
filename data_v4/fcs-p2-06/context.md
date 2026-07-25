@@ -11,11 +11,6 @@ is fixed, but the **number of scalar multiplications** depends on how you parent
 multiplications. Choose the parenthesization that **minimizes the total number of scalar
 multiplications**, and output that minimum.
 
-This is the matrix-chain ordering problem. It is a canonical setting where a locally attractive
-heuristic — "at each step, multiply the adjacent pair that is cheapest right now" — looks reasonable
-but is not optimal, because the dimension a product exposes to its neighbours changes the cost of
-every later multiplication.
-
 ## Input / output contract
 
 - Input (stdin): the first token is `n` (`0 <= n <= 300`), the number of matrices. Then `n+1`
@@ -47,10 +42,9 @@ of them is hopeless beyond tiny `n`. Two approaches are on the table before comm
 ## Evaluation settings
 
 Judged on hidden tests covering: the empty chain (`n = 0`) and single matrix (`n = 1`); two- and
-three-matrix chains where ordering does or does not matter; chains explicitly engineered to fool the
-"cheapest adjacent pair first" heuristic (alternating tiny and huge dimensions); and large chains
-with `n = 300` and dimensions near `1000`, where the total cost can reach roughly `3 * 10^11` and so
-exceeds the range of a 32-bit integer.
+three-matrix chains where ordering does or does not matter; chains with sharply varying adjacent
+dimensions (alternating tiny and huge values); and large chains with `n = 300` and dimensions near
+`1000`.
 
 ## Code framework
 
