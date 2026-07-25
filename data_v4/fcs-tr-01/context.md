@@ -1,4 +1,4 @@
-# Auxiliary (virtual) tree queries: isolating important cities
+# Kingdom queries: isolating important cities
 
 ## Research question
 
@@ -62,28 +62,6 @@ one deletion. Query `{4, 6, 7}`: capturing city `3` isolates `6` and `7` from ea
 in a different part of the tree — one deletion. Query `{1, 2}`: cities `1` and `2` are joined by a road and
 both important, so it is impossible — `-1`.
 
-## Background
-
-This is the classic "make every important vertex its own island" tree problem. Two facts shape any solution.
-
-First, a **structural** observation about *which* vertices can ever be worth deleting: an optimal solution only
-ever deletes a vertex that is either the lowest common ancestor (LCA) of two important vertices, or lies on a
-tree path between two important vertices. A vertex with no important vertex in two different subtrees below it
-is never useful to delete. So the only geometry that matters for a query is the set `S` together with the
-pairwise LCAs of `S`.
-
-Second, given a rooted tree, there is a clean **bottom-up DP** that computes the answer in one pass:
-
-- mark impossible if any important vertex has an important parent;
-- otherwise, for each vertex `v` in post-order, let `cnt[v]` be the number of important vertices still
-  "connected up" to `v` through its subtree. If `v` is important, every child branch that still carries a
-  connected important vertex must be severed (one deletion per such branch) and `cnt[v] = 1`. If `v` is not
-  important and `s = sum of children cnt` is `>= 2`, delete `v` itself (one deletion) and set `cnt[v] = 0`;
-  if `s == 1`, pass it up (`cnt[v] = 1`); if `s == 0`, `cnt[v] = 0`.
-
-Run on the **whole** tree this DP is `O(n)` per query, hence `O(q n)` overall — far too slow at `n, q ~ 2*10^5`.
-The open problem is to run the *same* DP but only over the part of the tree that matters for `S`.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: single-vertex queries (always `0`); queries with two adjacent important
@@ -112,7 +90,7 @@ int main() {
         adj[v].push_back(u);
     }
 
-    // TODO: root the tree; precompute LCA structure.
+    // TODO: any preprocessing on the tree.
 
     int q; cin >> q;
     while (q--) {
@@ -120,8 +98,7 @@ int main() {
         vector<int> S(k);
         for (auto &x : S) cin >> x;
 
-        // TODO: answer this query in O(|S| log n) — over S and its LCAs only,
-        //       not the whole tree.
+        // TODO: answer this query fast enough for the given limits.
         long long answer = 0;
         cout << answer << "\n";
     }
