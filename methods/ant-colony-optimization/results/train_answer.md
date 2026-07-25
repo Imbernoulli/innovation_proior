@@ -14,16 +14,16 @@ class Graph:
     def __init__(self, cost_matrix, rank):
         self.matrix = cost_matrix
         self.rank = rank
-        # small positive floor so visibility drives the first cycle
+        # shared trail; small positive floor so visibility drives the first cycle
         # and [tau]^alpha is never identically zero
         self.pheromone = [[1 / (rank * rank) for _ in range(rank)] for _ in range(rank)]
 
 
 class Colony:
     def __init__(self, ant_count, generations, alpha=1.0, beta=5.0, rho=0.5, q=100.0):
-        # alpha: weight on trail, beta: weight on visibility
-        # rho: fraction of trail that persists each cycle
-        # q: deposit scale Q
+        # alpha: weight on trail   beta: weight on visibility
+        # rho:   fraction of trail that PERSISTS each cycle (1-rho evaporates)
+        # q:     deposit scale Q
         self.ant_count = ant_count
         self.generations = generations
         self.alpha = alpha
@@ -32,7 +32,7 @@ class Colony:
         self.Q = q
 
     def _update_pheromone(self, graph, ants):
-        # evaporate, then fold in every ant's deposit
+        # evaporate, then fold in every ant's deposit: tau <- rho*tau + sum_k delta_k
         for i in range(graph.rank):
             for j in range(graph.rank):
                 graph.pheromone[i][j] *= self.rho
@@ -46,13 +46,13 @@ class Colony:
             ants = [_Ant(self, graph) for _ in range(self.ant_count)]
             for ant in ants:
                 for _ in range(graph.rank - 1):
-                    ant._select_next()
-                ant.total_cost += graph.matrix[ant.tabu[-1]][ant.tabu[0]]  # close tour
-                if ant.total_cost < best_cost:
+                    ant._select_next()                                       # build the tour
+                ant.total_cost += graph.matrix[ant.tabu[-1]][ant.tabu[0]]    # close the loop
+                if ant.total_cost < best_cost:                               # track best-so-far
                     best_cost = ant.total_cost
                     best_solution = list(ant.tabu)
-                ant._update_pheromone_delta()
-            self._update_pheromone(graph, ants)
+                ant._update_pheromone_delta()                                # quality-weighted deposit
+            self._update_pheromone(graph, ants)                             # evaporate + deposit, once per cycle
         return best_solution, best_cost
 
 
@@ -61,18 +61,18 @@ class _Ant:
         self.colony = colony
         self.graph = graph
         self.total_cost = 0.0
-        self.tabu = []                                    # cities visited
+        self.tabu = []                                    # cities visited (legal-tour constraint)
         self.pheromone_delta = []                         # this ant's write-back
         self.allowed = [i for i in range(graph.rank)]     # not-yet-visited cities
         self.eta = [[0 if i == j else 1 / graph.matrix[i][j]
-                     for j in range(graph.rank)] for i in range(graph.rank)]
-        start = random.randint(0, graph.rank - 1)
+                     for j in range(graph.rank)] for i in range(graph.rank)]  # visibility 1/d
+        start = random.randint(0, graph.rank - 1)         # different start per ant
         self.tabu.append(start)
         self.current = start
         self.allowed.remove(start)
 
     def _select_next(self):
-        # desirability = [tau]^alpha * [eta]^beta, normalized to a probability
+        # desirability of each allowed edge = [tau]^alpha * [eta]^beta, normalized to a probability
         denom = 0.0
         for j in self.allowed:
             denom += self.graph.pheromone[self.current][j] ** self.colony.alpha \
@@ -81,7 +81,7 @@ class _Ant:
         for j in self.allowed:
             probabilities[j] = self.graph.pheromone[self.current][j] ** self.colony.alpha \
                 * self.eta[self.current][j] ** self.colony.beta / denom
-        # roulette-wheel sample
+        # roulette-wheel sample over the allowed cities
         selected = self.allowed[-1]
         rand = random.random()
         for j, p in enumerate(probabilities):
@@ -95,7 +95,7 @@ class _Ant:
         self.current = selected
 
     def _update_pheromone_delta(self):
-        # deposit Q / L_k on each edge of the closed tour
+        # what this ant deposits on each edge of its completed closed tour
         self.pheromone_delta = [[0 for _ in range(self.graph.rank)] for _ in range(self.graph.rank)]
         for i, j in zip(self.tabu, self.tabu[1:] + self.tabu[:1]):
             self.pheromone_delta[i][j] = self.colony.Q / self.total_cost
