@@ -148,7 +148,7 @@ class ProteinEncoder(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def _build_multi_relational_edges(self, pos, node_feat, batch):
-        """Build edges with 7 relation types:
+        """Build edges with 7 relation types matching GearNet:
         0..4: sequential edges with offsets {-2,-1,0,1,2}
               (offset 0 corresponds to a self-loop relation in sequential space)
         5:    spatial proximity (within cutoff radius)
