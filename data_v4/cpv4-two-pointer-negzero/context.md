@@ -14,10 +14,6 @@ sum satisfies `a[i] + a[j] >= T`. Because values may be negative and zero, and b
 be tiny (`n = 0` or `n = 1`, where **no pair exists at all**) or entirely reverse-thrust (all-negative),
 the count can legitimately be `0`, and the answer can be as large as `n*(n-1)/2`.
 
-This is a two-pointer counting problem. After sorting, two converging pointers count all qualifying
-pairs in one linear sweep — but the negative/zero values, an out-of-range threshold, and the
-fewer-than-two-thrusters corner are exactly where a naive implementation goes wrong.
-
 ## Input / output contract
 
 - Input (stdin): the first token is `n` (`0 <= n <= 2*10^5`); the second token is `T`
@@ -32,19 +28,10 @@ Example: for `n = 6`, `T = 3`, `a = [4, -1, 0, 5, -3, 2]` the answer is `7`. Aft
 ## Background
 
 The constraint `a[i] + a[j] >= T` couples two indices, so a brute force is `O(n^2)`: enumerate every
-pair and test it. That is fine for tiny inputs but dies at `n = 2*10^5` (about `2*10^10` pairs). Two
-families of faster approach are on the table before committing to one:
-
-- **Sort + binary search.** Sort ascending; for each index `i`, the partners `j > i` that qualify are
-  those with `a[j] >= T - a[i]`, a contiguous suffix locatable by `lower_bound`. Summing the suffix
-  lengths gives the count in `O(n log n)`. The open question is the off-by-one in where the suffix
-  starts and whether the `j > i` (versus `j != i`) bookkeeping double-counts.
-- **Sort + two pointers.** Sort ascending and run two converging pointers `lo` and `hi`. Whenever
-  `a[lo] + a[hi] >= T`, every index in `[lo, hi-1]` paired with `hi` also qualifies (the array is
-  sorted), so they contribute `hi - lo` pairs at once; otherwise `a[lo]` is too small for the current
-  `hi` and `lo` advances. This is `O(n log n)` for the sort plus `O(n)` for the sweep. The open
-  questions are the exact count increment (`hi - lo` versus `hi - lo - 1`) and the base case when
-  `n < 2`.
+pair and test it. That is fine for tiny inputs but dies at `n = 2*10^5` (about `2*10^10` pairs).
+Faster counting approaches for this kind of pairwise-sum-threshold problem generally lean on sorting
+the array first, since a sorted order turns "does some element reach a target" into a question about
+contiguous position ranges rather than a value scan over the whole array.
 
 ## Evaluation settings
 
@@ -53,8 +40,7 @@ the empty array (`n = 0`) and single thruster (`n = 1`), both of which have **no
 `0`; all-negative arrays with a threshold no pair can reach (answer `0`) and with a very negative
 threshold every pair clears (answer `n*(n-1)/2`); all-zero arrays at `T = 0` (every pair qualifies);
 thresholds outside the reachable sum range on both ends; and large `n = 2*10^5` with `|a[i]|` near
-`10^9` and `|T|` near `2*10^9`, so individual pair sums and the running count both exceed the 32-bit
-range.
+`10^9` and `|T|` near `2*10^9`.
 
 ## Code framework
 
