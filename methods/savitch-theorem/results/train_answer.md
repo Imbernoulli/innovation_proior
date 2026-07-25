@@ -14,81 +14,20 @@ Savitch's theorem has two classic corollaries. First, because the square of a po
 
 The method name I propose is Savitch's theorem, or more descriptively the Savitch deterministic-space simulation of nondeterministic space. The theorem is not a practical algorithm, because the running time of the simulation is far too large. It is instead a structural result about the power of deterministic memory when it reuses the same cells across recursively defined subproblems. The proof technique of recursive middle-configuration reachability has become a standard tool in complexity theory.
 
-To make the construction concrete, I have written a small Python illustration that applies the same divide-and-conquer reachability idea to an explicit directed graph. The program builds a random graph, picks a source and a target, and decides reachability using the Savitch-style bounded reachability recurrence. The code keeps the structure of the proof: a recursive function with a level parameter, enumeration of candidate middle vertices, and reuse of the same call stack. Running it on a small example confirms that the recurrence is correct and that the program never needs to store more than the current endpoints, candidate middle, and recursion level at any one time.
+The deliverable of this analysis is not a program but the recurrence itself, stated precisely enough to serve as the proof's engine. Fix the nondeterministic machine $M$ on input $x$, let $G_{M,x}$ be its implicit configuration graph on $N = 2^{O(S(n))}$ vertices, each of size $O(S(n))$ bits, and write $u_0$ for the start configuration and $v_{\text{acc}}$ for an accepting one. Define $\mathrm{Reach}(u, v, i)$ to mean that $v$ is reachable from $u$ in at most $2^i$ steps of $G_{M,x}$. Then
 
-```python
-import random
+$$
+\mathrm{Reach}(u, v, i) =
+\begin{cases}
+(u = v) \ \lor\ (u \to v \text{ is a legal transition}), & i = 0, \\[4pt]
+\displaystyle\bigvee_{z} \Big[\mathrm{Reach}(u, z, i-1) \ \land\ \mathrm{Reach}(z, v, i-1)\Big], & i > 0,
+\end{cases}
+$$
 
-def build_random_graph(n, edge_prob=0.15):
-    """Build a random directed graph with n vertices as an adjacency set."""
-    graph = {i: set() for i in range(n)}
-    for u in range(n):
-        for v in range(n):
-            if u != v and random.random() < edge_prob:
-                graph[u].add(v)
-    return graph
+where the disjunction ranges over every configuration $z$, tried one at a time so that only one candidate's workspace is live at once, and each recursive call reuses rather than duplicates the space of the caller once it returns. $M$ accepts $x$ exactly when $\mathrm{Reach}(u_0, v_{\text{acc}}, \lceil \log N \rceil)$ holds, since deleting repeated configurations from any accepting walk shortens it below $N$ steps. Every recursion frame holds only $u$, $v$, the current candidate $z$, and the level counter, so it costs $O(S(n))$ bits; the recursion is $O(\log N) = O(S(n))$ frames deep; and because the two children of a frame are evaluated in sequence rather than held simultaneously, the total deterministic space is the product of depth and frame size,
 
-def one_step(graph, u, v):
-    """True if there is a directed edge from u to v."""
-    return v in graph[u]
+$$
+\mathrm{DSPACE\ used} = O(S(n)) \cdot O(S(n)) = O\big(S(n)^2\big).
+$$
 
-def savitch_reach(graph, u, v, level, memo=None):
-    """
-    Decide whether v is reachable from u in at most 2**level steps,
-    using the Savitch divide-and-conquer recurrence.
-    """
-    if memo is None:
-        memo = {}
-    key = (u, v, level)
-    if key in memo:
-        return memo[key]
-
-    n = len(graph)
-    if level == 0:
-        result = (u == v) or one_step(graph, u, v)
-        memo[key] = result
-        return result
-
-    # Enumerate candidate middle vertices one at a time.
-    for z in range(n):
-        if savitch_reach(graph, u, z, level - 1, memo):
-            if savitch_reach(graph, z, v, level - 1, memo):
-                memo[key] = True
-                return True
-    memo[key] = False
-    return False
-
-def reachable(graph, source, target):
-    """Top-level wrapper: decide reachability using at most n-1 steps."""
-    n = len(graph)
-    if n <= 1:
-        return source == target
-    # Enough levels so that 2**level >= n-1.
-    level = 0
-    while (1 << level) < n - 1:
-        level += 1
-    return savitch_reach(graph, source, target, level)
-
-if __name__ == "__main__":
-    random.seed(0)
-    n = 12
-    graph = build_random_graph(n, edge_prob=0.18)
-    source = 0
-    target = n - 1
-
-    # Compute the deterministic answer using BFS for comparison.
-    bfs_visited = {source}
-    frontier = [source]
-    while frontier:
-        u = frontier.pop(0)
-        for v in graph[u]:
-            if v not in bfs_visited:
-                bfs_visited.add(v)
-                frontier.append(v)
-    bfs_answer = target in bfs_visited
-
-    savitch_answer = reachable(graph, source, target)
-    print("BFS says reachable:", bfs_answer)
-    print("Savitch recurrence says reachable:", savitch_answer)
-    assert bfs_answer == savitch_answer, "Mismatch between BFS and Savitch simulation!"
-```
+This recurrence, together with the space accounting that closes it, is the complete artifact: it is what makes $\mathrm{NSPACE}(S(n)) \subseteq \mathrm{DSPACE}(S(n)^2)$ a constructive fact rather than an existence claim, and it is what I would hand a colleague who wanted to rebuild the simulator from scratch.
