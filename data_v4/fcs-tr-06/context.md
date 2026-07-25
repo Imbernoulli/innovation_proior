@@ -12,9 +12,7 @@ is one of the forest's roots, or `par[i] = p` with `1 <= p <= n`, meaning its pa
 is node `p`. The intended difficulty is that the *labels are meaningless* — two
 forests can be drawn completely differently (different ids, children listed in a
 different order) and still be the same shape. Reporting `YES`/`NO` correctly at
-`n` up to `2*10^5` is the path-case of the general graph-isomorphism question, but
-for rooted forests it admits an exact polynomial canonical form rather than any
-heuristic.
+`n` up to `2*10^5` is the path-case of the general graph-isomorphism question.
 
 This kind of structural-equality test shows up whenever you deduplicate parse
 trees, expression trees, or subtree shapes inside a larger tree algorithm, so
@@ -40,33 +38,12 @@ children `2, 3`; node `3` has child `4`). These are the same shape — a root wi
 two children, one of which has a single child — so the answer is `YES`, even
 though the deepest node hangs off a different sibling and carries a different id.
 
-## Background
-
-Two approaches are on the table before committing to one.
-
-- **Serialize and compare strings.** Write each tree as a nested string by walking
-  it (e.g. `(()(()))`) and test the two strings for equality. This is `O(n)` and
-  trivial, but it bakes in a *child ordering*: the same tree written with siblings
-  in a different order produces a different string. The open question is whether
-  any fixed traversal order can be made canonical.
-- **Canonical labeling (AHU).** Assign every node an integer label computed
-  bottom-up from the *multiset* of its children's labels, so that two nodes get
-  equal labels exactly when their subtrees are isomorphic. The open question is how
-  to make the per-node label depend on the children as an unordered collection, and
-  how to keep the whole thing `O(n log n)` rather than blowing up on string
-  concatenation.
-
-A rooted **forest** is reduced to a single rooted **tree** by attaching a virtual
-super-root (node `0`) whose children are exactly the forest roots; forest
-isomorphism then becomes ordinary rooted-tree isomorphism at node `0`.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: empty forests (`n = 0`); single nodes; forests of
-many singleton roots; deep chains (depth up to `2*10^5`, which stresses any
-recursive traversal); wide stars; pairs that are isomorphic only after a sibling
-reordering and a full relabeling; near-miss pairs that differ in one subtree; and
-large random forests at `n = 2*10^5`.
+many singleton roots; deep chains (depth up to `2*10^5`); wide stars; pairs that
+are isomorphic only after a sibling reordering and a full relabeling; near-miss
+pairs that differ in one subtree; and large random forests at `n = 2*10^5`.
 
 ## Code framework
 
