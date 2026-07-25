@@ -22,100 +22,85 @@ def sample_dbim_high_order(
     denoiser,
     diffusion,
     x,
-    ts,
+    ts,                       # decreasing schedule t_max -> 0
     mask=None,
-    order=2,
+    order=2,                  # 2 or 3
     lower_order_final=True,
     seed=None,
     **kwargs,
 ):
     if order not in [2, 3]:
         raise NotImplementedError("Only order 2 or 3 supported")
-
     x_T = x
     path, pred_x0, nfe = [], [], 0
     ones = x.new_ones([x.shape[0]])
     indices = tqdm(range(len(ts) - 1), disable=(dist.get_rank() != 0))
 
-    # Booting step: the bridge is pinned at T, so c_T = 0 and a deterministic
-    # first step is singular. Use the Markovian boundary rho = c at the first
-    # non-terminal node; the injected Gaussian is the diversity latent.
+    # Booting step: deterministic step 0 is singular (c_T = 0); the Markovian boundary
+    # rho_{N-1}=c_{t_{N-1}} cancels it and injects a Gaussian (the diversity latent).
     x0_hat = denoiser(x, diffusion.t_max * ones)
     generator = BatchedSeedGenerator(seed)
     noise = generator.randn_like(x0_hat)
     first_noise = noise
     if mask is not None:
         x0_hat = x0_hat * mask + x_T * (1 - mask)
-    x = diffusion.bridge_sample(x0_hat, x_T, ts[0] * ones, noise)
-    path.append(x.detach().cpu())
-    pred_x0.append(x0_hat.detach().cpu())
-    nfe += 1
+    x = diffusion.bridge_sample(x0_hat, x_T, ts[0] * ones, noise)   # a x_T + b x0 + c eps
+    path.append(x.detach().cpu()); pred_x0.append(x0_hat.detach().cpu()); nfe += 1
 
-    # Buffers for multistep derivative estimates.
+    # Multistep buffers: last (order-1) predictor outputs and their times.
     u = diffusion.t_max
     if u == 1.0:
-        u -= 5e-5
+        u -= 5e-5                              # avoid lambda(T) = -inf at the pinned end
     u = [u for _ in range(order - 1)]
     xu_hat = [x0_hat.detach().clone() for _ in range(order - 1)]
 
     for _, i in enumerate(indices):
-        s = ts[i]        # current node, larger time
-        t = ts[i + 1]    # target node, smaller time
+        s = ts[i]                              # current node (larger time)
+        t = ts[i + 1]                          # target node  (smaller time)
 
-        # First-order: first loop transition after boot, or final step.
+        # ---- First order: first loop transition after boot, or final step ----
         if (lower_order_final and i + 1 == len(ts) - 1) or (i == 0):
             a_s, b_s, c_s = [append_dims(v, x0_hat.ndim) for v in diffusion.noise_schedule.get_abc(s * ones)]
             a_t, b_t, c_t = [append_dims(v, x0_hat.ndim) for v in diffusion.noise_schedule.get_abc(t * ones)]
             tmp = c_t / c_s
-            x0_hat = denoiser(x, s * ones)
+            x0_hat = denoiser(x, s * ones); nfe += 1
             if mask is not None:
                 x0_hat = x0_hat * mask + x_T * (1 - mask)
-            nfe += 1
-            x = tmp * x + (b_t - tmp * b_s) * x0_hat + (a_t - tmp * a_s) * x_T
+            x = tmp * x + (b_t - tmp * b_s) * x0_hat + (a_t - tmp * a_s) * x_T   # DBIM (rho=0) Euler
 
-        # Second-order multistep.
+        # ---- Second order multistep ----
         elif order == 2 or i == 1:
             a_u, b_u, c_u = [append_dims(v, x0_hat.ndim) for v in diffusion.noise_schedule.get_abc(u[-1] * ones)]
             a_s, b_s, c_s = [append_dims(v, x0_hat.ndim) for v in diffusion.noise_schedule.get_abc(s * ones)]
             a_t, b_t, c_t = [append_dims(v, x0_hat.ndim) for v in diffusion.noise_schedule.get_abc(t * ones)]
-            lambda_u = torch.log(b_u / c_u)
-            lambda_s = torch.log(b_s / c_s)
-            lambda_t = torch.log(b_t / c_t)
-            x0_hat = denoiser(x, s * ones)
+            lambda_u, lambda_s, lambda_t = torch.log(b_u / c_u), torch.log(b_s / c_s), torch.log(b_t / c_t)
+            x0_hat = denoiser(x, s * ones); nfe += 1
             if mask is not None:
                 x0_hat = x0_hat * mask + x_T * (1 - mask)
-            nfe += 1
-            h = lambda_t - lambda_s
-            h2 = lambda_s - lambda_u
+            h = lambda_t - lambda_s            # step in lambda toward target, > 0
+            h2 = lambda_s - lambda_u           # spacing to previous node
             integral = torch.exp(lambda_t) * (
-                (1 - torch.exp(-h)) * x0_hat
-                + (torch.exp(-h) + h - 1) * (x0_hat - xu_hat[-1]) / h2
+                (1 - torch.exp(-h)) * x0_hat + (torch.exp(-h) + h - 1) * (x0_hat - xu_hat[-1]) / h2
             )
             x = x * (c_t / c_s) + x_T * (a_t - a_s * (c_t / c_s)) + c_t * integral
 
-        # Third-order multistep.
+        # ---- Third order multistep ----
         elif order == 3:
             a_u1, b_u1, c_u1 = [append_dims(v, x0_hat.ndim) for v in diffusion.noise_schedule.get_abc(u[-1] * ones)]
             a_u2, b_u2, c_u2 = [append_dims(v, x0_hat.ndim) for v in diffusion.noise_schedule.get_abc(u[-2] * ones)]
             a_s, b_s, c_s = [append_dims(v, x0_hat.ndim) for v in diffusion.noise_schedule.get_abc(s * ones)]
             a_t, b_t, c_t = [append_dims(v, x0_hat.ndim) for v in diffusion.noise_schedule.get_abc(t * ones)]
             lambda_u2, lambda_u1, lambda_s, lambda_t = (
-                torch.log(b_u2 / c_u2),
-                torch.log(b_u1 / c_u1),
-                torch.log(b_s / c_s),
-                torch.log(b_t / c_t),
+                torch.log(b_u2 / c_u2), torch.log(b_u1 / c_u1), torch.log(b_s / c_s), torch.log(b_t / c_t),
             )
-            x0_hat = denoiser(x, s * ones)
+            x0_hat = denoiser(x, s * ones); nfe += 1
             if mask is not None:
                 x0_hat = x0_hat * mask + x_T * (1 - mask)
-            nfe += 1
             h = lambda_t - lambda_s
-            h1 = lambda_s - lambda_u1
-            h2 = lambda_u1 - lambda_u2
-            D1 = (x0_hat - xu_hat[-1]) / h1
-            D2 = (xu_hat[-1] - xu_hat[-2]) / h2
-            dx0_hat = (D1 * (2 * h1 + h2) - D2 * h1) / (h1 + h2)
-            d2x0_hat = 2 * (D1 - D2) / (h1 + h2)
+            h1 = lambda_s - lambda_u1          # near spacing
+            h2 = lambda_u1 - lambda_u2         # far spacing
+            dx0_hat = ((x0_hat - xu_hat[-1]) * (2 * h1 + h2) / h1 - (xu_hat[-1] - xu_hat[-2]) * h1 / h2) / (h1 + h2)
+            d2x0_hat = 2 * ((x0_hat - xu_hat[-1]) / h1 - (xu_hat[-1] - xu_hat[-2]) / h2) / (h1 + h2)
             integral = torch.exp(lambda_t) * (
                 (1 - torch.exp(-h)) * x0_hat
                 + (torch.exp(-h) + h - 1) * dx0_hat
@@ -123,12 +108,9 @@ def sample_dbim_high_order(
             )
             x = x * (c_t / c_s) + x_T * (a_t - a_s * (c_t / c_s)) + c_t * integral
 
-        u.append(s)
-        u.pop(0)
-        xu_hat.append(x0_hat)
-        xu_hat.pop(0)
-        path.append(x.detach().cpu())
-        pred_x0.append(x0_hat.detach().cpu())
+        u.append(s); u.pop(0)                  # roll buffers forward
+        xu_hat.append(x0_hat); xu_hat.pop(0)
+        path.append(x.detach().cpu()); pred_x0.append(x0_hat.detach().cpu())
 
     return x, path, nfe, pred_x0, ts, first_noise
 ```
