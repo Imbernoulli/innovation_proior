@@ -14,164 +14,195 @@ This satisfies all the constraints: no retraining, no backpropagation, no second
 import torch
 import torch.nn as nn
 
-def quantize_tensor(x, scale, zero_point, qmin, qmax):
-    return torch.clamp(torch.round(x / scale) + zero_point, qmin, qmax)
+@torch.no_grad()
+def get_act_scale(x):
+    return x.abs().view(-1, x.shape[-1]).mean(0)
 
-def dequantize_tensor(x_int, scale, zero_point):
-    return (x_int - zero_point) * scale
 
-def find_scale_zero(weight, num_bits=4, group_size=-1, symmetric=True):
-    qmin = -(1 << (num_bits - 1))
-    qmax = (1 << (num_bits - 1)) - 1
-    if group_size > 0:
-        out_features, in_features = weight.shape
-        assert in_features % group_size == 0
-        w_groups = weight.reshape(out_features, -1, group_size)
-        if symmetric:
-            w_max = w_groups.abs().amax(dim=-1, keepdim=True).clamp(min=1e-12)
-            scale = w_max / qmax
-            zero_point = torch.zeros_like(scale)
-        else:
-            w_min = w_groups.amin(dim=1, keepdim=True)
-            w_max = w_groups.amax(dim=1, keepdim=True)
-            w_range = (w_max - w_min).clamp(min=1e-12)
-            scale = w_range / (qmax - qmin)
-            zero_point = torch.round(qmin - w_min / scale)
-        scale = scale.reshape(out_features, -1).repeat_interleave(group_size, dim=1)
-        zero_point = zero_point.reshape(out_features, -1).repeat_interleave(group_size, dim=1)
+def pseudo_quantize_tensor(w, n_bit=4, q_group_size=128, zero_point=True):
+    org_shape = w.shape
+    if q_group_size > 0:
+        assert org_shape[-1] % q_group_size == 0
+        w = w.reshape(-1, q_group_size)
+    assert w.dim() == 2
+
+    if zero_point:
+        max_val = w.amax(dim=1, keepdim=True)
+        min_val = w.amin(dim=1, keepdim=True)
+        max_int, min_int = 2**n_bit - 1, 0
+        scales = (max_val - min_val).clamp(min=1e-5) / max_int
+        zeros = (-torch.round(min_val / scales)).clamp_(min_int, max_int)
+        w = (torch.clamp(torch.round(w / scales) + zeros, min_int, max_int) - zeros) * scales
     else:
-        if symmetric:
-            w_max = weight.abs().amax(dim=1, keepdim=True).clamp(min=1e-12)
-            scale = w_max / qmax
-            zero_point = torch.zeros_like(scale)
-        else:
-            w_min = weight.amin(dim=1, keepdim=True)
-            w_max = weight.amax(dim=1, keepdim=True)
-            w_range = (w_max - w_min).clamp(min=1e-12)
-            scale = w_range / (qmax - qmin)
-            zero_point = torch.round(qmin - w_min / scale)
-    return scale, zero_point, qmin, qmax
+        max_val = w.abs().amax(dim=1, keepdim=True).clamp(min=1e-5)
+        max_int, min_int = 2 ** (n_bit - 1) - 1, -(2 ** (n_bit - 1))
+        scales = max_val / max_int
+        w = torch.clamp(torch.round(w / scales), min_int, max_int) * scales
+
+    return w.reshape(org_shape)
 
 
-class AWQLayerQuantizer:
-    """Activation-aware weight quantizer: per-channel scale search + per-group clip search."""
+@torch.no_grad()
+def search_module_scale(module_to_inspect, linears, x, module_kwargs=None,
+                        w_bit=4, q_group_size=128, n_grid=20):
+    module_kwargs = dict(module_kwargs or {})
+    module_kwargs.pop("use_cache", None)
+    q_config = {"zero_point": True, "q_group_size": q_group_size}
 
-    N_ALPHA = 20
-    N_CLIP_GRID = 20
-    CLIP_MAX_SHRINK = 0.5
-    N_SAMPLE_TOKEN = 256
+    x = x.to(next(module_to_inspect.parameters()).device)
+    org_out = module_to_inspect(x, **module_kwargs)
+    if isinstance(org_out, tuple):
+        org_out = org_out[0]
+    x_scale = get_act_scale(x)
+    org_state = {k: v.detach().cpu() for k, v in module_to_inspect.state_dict().items()}
 
-    def __init__(self, layer, num_bits=4, group_size=-1):
-        self.layer = layer
-        self.num_bits = num_bits
-        self.group_size = group_size
-        self.out_features, self.in_features = layer.weight.shape
-        self.dev = layer.weight.device
-        self.nsamples = 0
-        self.act_sum = torch.zeros(self.in_features, device=self.dev, dtype=torch.float32)
-        self._x_buf = []
-        self._x_buf_rows = 0
+    best_loss, best_scales = float("inf"), None
+    for grid in range(n_grid):
+        alpha = grid / n_grid
+        scales = x_scale.pow(alpha).clamp(min=1e-4).view(-1)
+        scales = scales / (scales.max() * scales.min()).sqrt()
 
-    def add_batch(self, inp):
-        if inp.dim() == 3:
-            inp = inp.reshape(-1, inp.shape[-1])
-        inp_f = inp.float()
-        n = inp_f.shape[0]
-        self.act_sum += inp_f.abs().sum(dim=0)
-        self.nsamples += n
-        cap = self.N_SAMPLE_TOKEN * 4
-        if self._x_buf_rows < cap:
-            take = min(n, cap - self._x_buf_rows)
-            stride = max(1, n // max(take, 1))
-            sampled = inp_f[::stride][:take].detach().to('cpu')
-            self._x_buf.append(sampled)
-            self._x_buf_rows += sampled.shape[0]
+        for fc in linears:
+            fc_scales = scales.view(1, -1).to(fc.weight.device)
+            fc.weight.mul_(fc_scales)
+            fc.weight.data = pseudo_quantize_tensor(fc.weight.data, n_bit=w_bit, **q_config) / fc_scales
 
-    def _get_x_samples(self):
-        if not self._x_buf:
-            return None
-        X = torch.cat(self._x_buf, dim=0)
-        if X.shape[0] > self.N_SAMPLE_TOKEN:
-            stride = X.shape[0] // self.N_SAMPLE_TOKEN
-            X = X[::stride][:self.N_SAMPLE_TOKEN]
-        return X.to(self.dev)
+        out = module_to_inspect(x, **module_kwargs)
+        if isinstance(out, tuple):
+            out = out[0]
+        loss = (org_out - out).float().pow(2).mean().item()
+        if loss < best_loss:
+            best_loss, best_scales = loss, scales
+        module_to_inspect.load_state_dict(org_state)
 
-    def quantize(self):
-        W = self.layer.weight.data.clone().float()
-        num_bits = self.num_bits
-        group_size = self.group_size
-        qmin = -(1 << (num_bits - 1))
-        qmax = (1 << (num_bits - 1)) - 1
+    return best_scales.detach().cpu()
 
-        x_max = (self.act_sum / max(self.nsamples, 1)).clamp(min=1e-5)
-        X = self._get_x_samples()
 
-        # Auto-scale search.
-        best_err = float('inf')
-        best_s = torch.ones(self.in_features, device=self.dev)
-        for i in range(self.N_ALPHA):
-            ratio = i / self.N_ALPHA
-            s = x_max.pow(ratio).clamp(min=1e-4)
-            s = s / (s.max() * s.min()).sqrt().clamp(min=1e-5)
-            W_scaled = W * s.unsqueeze(0)
-            scale_q, zp, _, _ = find_scale_zero(W_scaled, num_bits, group_size, symmetric=True)
-            W_q = quantize_tensor(W_scaled, scale_q, zp, qmin, qmax)
-            W_dq = dequantize_tensor(W_q, scale_q, zp)
-            W_final = W_dq / s.unsqueeze(0)
-            if X is not None:
-                delta = (W - W_final).to(X.dtype)
-                err = (X @ delta.T).pow(2).mean().item()
-            else:
-                err = (W - W_final).pow(2).mul(x_max.unsqueeze(0).pow(2)).sum().item()
-            if err < best_err:
-                best_err = err
-                best_s = s.clone()
+class ScaledActivation(nn.Module):
+    def __init__(self, act, scales):
+        super().__init__()
+        self.act = act
+        self.scales = nn.Parameter(scales.data)
 
-        W_scaled = W * best_s.unsqueeze(0)
+    def forward(self, x):
+        shape = [1] * (x.dim() - 1) + [-1]
+        return self.act(x) / self.scales.view(*shape).to(x.device)
 
-        # Auto-clip search.
-        if group_size > 0:
-            n_groups = self.in_features // group_size
-            gs = group_size
-        else:
-            n_groups = 1
-            gs = self.in_features
 
-        W_groups = W_scaled.reshape(self.out_features, n_groups, gs)
-        base_max = W_groups.abs().amax(dim=-1, keepdim=True).clamp(min=1e-5)
-        best_max = base_max.clone()
+@torch.no_grad()
+def scale_ln_fcs(ln, linears, scales):
+    if not isinstance(linears, list):
+        linears = [linears]
+    scales = scales.to(device=ln.weight.device, dtype=ln.weight.dtype)
+    ln.weight.div_(scales)
+    if getattr(ln, "bias", None) is not None:
+        ln.bias.div_(scales)
+    for fc in linears:
+        fc.weight.mul_(scales.view(1, -1).to(fc.weight.device))
 
-        if X is not None:
-            X_groups = X.reshape(X.shape[0], n_groups, gs)
-            n_clip_iters = max(1, int(self.CLIP_MAX_SHRINK * self.N_CLIP_GRID))
-            for i_b in range(0, self.out_features, 64):
-                W_b = W_groups[i_b:i_b + 64]
-                base_max_b = base_max[i_b:i_b + 64]
-                org_out = torch.einsum('rgc,tgc->rtg', W_b, X_groups.float())
-                min_errs = torch.full_like(base_max_b, float('inf'))
-                best_max_b = base_max_b.clone()
-                for i_s in range(n_clip_iters):
-                    cur_max = base_max_b * (1 - i_s / self.N_CLIP_GRID)
-                    cur_w = torch.clamp(W_b, -cur_max, cur_max)
-                    scale_b = (cur_max / qmax).clamp(min=1e-12)
-                    q_w = torch.clamp(torch.round(cur_w / scale_b), qmin, qmax) * scale_b
-                    cur_out = torch.einsum('rgc,tgc->rtg', q_w, X_groups.float())
-                    err_b = (cur_out - org_out).pow(2).mean(dim=1, keepdim=True).permute(0, 2, 1)
-                    mask = err_b < min_errs
-                    min_errs = torch.where(mask, err_b, min_errs)
-                    best_max_b = torch.where(mask, cur_max, best_max_b)
-                best_max[i_b:i_b + 64] = best_max_b
 
-        scale_g = (best_max / qmax).clamp(min=1e-12)
-        scale_q = scale_g.expand_as(W_groups).reshape(self.out_features, self.in_features)
-        zp = torch.zeros_like(scale_q)
-        W_clamped = torch.clamp(
-            W_scaled,
-            -best_max.expand_as(W_groups).reshape(self.out_features, self.in_features),
-            best_max.expand_as(W_groups).reshape(self.out_features, self.in_features),
+@torch.no_grad()
+def scale_fc_fc(prev_fc, fc, scales):
+    scales = scales.to(device=prev_fc.weight.device, dtype=prev_fc.weight.dtype)
+    prev_fc.weight[-scales.numel():].div_(scales.view(-1, 1))
+    if prev_fc.bias is not None:
+        prev_fc.bias.div_(scales)
+    fc.weight.mul_(scales.view(1, -1).to(fc.weight.device))
+
+
+@torch.no_grad()
+def scale_activation_fc(fc, scales):
+    fc.weight.mul_(scales.view(1, -1).to(device=fc.weight.device, dtype=fc.weight.dtype))
+
+
+@torch.no_grad()
+def apply_scale(prev_op, named_linears, scales, input_feat=None):
+    if not isinstance(named_linears, list):
+        named_linears = [named_linears]
+    names = [name for name, _ in named_linears]
+    linears = [fc for _, fc in named_linears]
+
+    replacement = None
+    if isinstance(prev_op, nn.Linear):
+        assert len(linears) == 1
+        scale_fc_fc(prev_op, linears[0], scales)
+    elif isinstance(prev_op, nn.LayerNorm) or prev_op.__class__.__name__.endswith("RMSNorm"):
+        scale_ln_fcs(prev_op, linears, scales)
+    elif isinstance(prev_op, (nn.GELU, nn.SiLU)):
+        replacement = ScaledActivation(prev_op, scales)
+        for fc in linears:
+            scale_activation_fc(fc, scales)
+    else:
+        raise NotImplementedError(type(prev_op))
+
+    if input_feat is not None:
+        for name in names:
+            input_feat[name].div_(scales.view(1, -1).to(input_feat[name].device))
+    return replacement
+
+
+@torch.no_grad()
+def auto_clip_layer(w, input_feat, n_bit, q_group_size=128,
+                    n_grid=20, max_shrink=0.5, n_sample_token=512):
+    org_shape = w.shape
+    group_size = q_group_size if q_group_size > 0 else w.shape[1]
+    q_config = {"zero_point": True, "q_group_size": q_group_size}
+
+    input_feat = input_feat.view(-1, input_feat.shape[-1])
+    input_feat = input_feat.reshape(1, input_feat.shape[0], -1, group_size)
+    step = max(1, input_feat.shape[1] // n_sample_token)
+    input_feat = input_feat[:, 0::step]
+    w = w.reshape(w.shape[0], 1, -1, group_size)
+
+    org_max_val = w.abs().amax(dim=-1, keepdim=True)
+    best_max_val = org_max_val.clone()
+    min_errs = torch.ones_like(org_max_val) * 1e9
+    org_out = (input_feat.to(w.device) * w).sum(dim=-1)
+
+    for i_s in range(int(max_shrink * n_grid)):
+        max_val = org_max_val * (1 - i_s / n_grid)
+        cur_w = torch.clamp(w, -max_val, max_val)
+        q_w = pseudo_quantize_tensor(cur_w, n_bit=n_bit, **q_config)
+        cur_out = (input_feat.to(w.device) * q_w).sum(dim=-1)
+        err = (cur_out - org_out).pow(2).mean(dim=1).view(min_errs.shape)
+        better = err < min_errs
+        min_errs[better] = err[better]
+        best_max_val[better] = max_val[better]
+
+    return best_max_val.squeeze(1).reshape(org_shape[0], -1, 1)
+
+
+def get_named_linears(module):
+    return {name: m for name, m in module.named_modules() if isinstance(m, nn.Linear)}
+
+
+@torch.no_grad()
+def quantize_block(block, scale_specs, input_feat, module_kwargs=None,
+                   w_bit=4, q_group_size=128):
+    for prev_op, set_prev_op, named_linears, inspect_module, input_name in scale_specs:
+        linears = [fc for _, fc in named_linears]
+        scales = search_module_scale(
+            inspect_module, linears, input_feat[input_name], module_kwargs, w_bit, q_group_size
         )
-        W_q = quantize_tensor(W_clamped, scale_q, zp, qmin, qmax)
-        W_dq = dequantize_tensor(W_q, scale_q, zp)
-        W_final = W_dq / best_s.unsqueeze(0)
-        return W_final.to(self.layer.weight.dtype)
+        replacement = apply_scale(prev_op, named_linears, scales, input_feat)
+        if replacement is not None:
+            set_prev_op(replacement)
+
+    for name, fc in get_named_linears(block).items():
+        if any(token in name for token in ["q_", "k_", "query", "key", "Wqkv"]):
+            continue
+        max_val = auto_clip_layer(fc.weight, input_feat[name], w_bit, q_group_size)
+        max_val = max_val.to(device=fc.weight.device, dtype=fc.weight.dtype)
+        org_shape = fc.weight.shape
+        fc.weight.data = fc.weight.data.reshape(*max_val.shape[:2], -1)
+        fc.weight.data = torch.clamp(fc.weight.data, -max_val, max_val)
+        fc.weight.data = fc.weight.data.reshape(org_shape)
+
+    for fc in get_named_linears(block).values():
+        fc.weight.data = pseudo_quantize_tensor(
+            fc.weight.data,
+            n_bit=w_bit,
+            q_group_size=q_group_size,
+            zero_point=True,
+        )
 ```
