@@ -9,59 +9,29 @@ The update also produces sparse or low-rank iterates naturally. Starting from an
 ```python
 import numpy as np
 
-def frank_wolfe(f_grad, lmo, x0, max_iter=1000, tol=1e-8):
-    """
-    Frank-Wolfe (conditional gradient) method.
-
-    Parameters
-    ----------
-    f_grad : callable
-        f_grad(x) returns (value, grad) of the convex objective at x.
-    lmo : callable
-        lmo(neg_grad, x) returns (direction, max_step_size) where
-        direction = s - x for some s in D minimizing <s, neg_grad>
-        and max_step_size is the largest gamma such that x + gamma*direction
-        remains feasible (typically 1.0 for bounded convex D).
-    x0 : array
-        Initial feasible point.
-    max_iter : int
-        Maximum number of iterations.
-    tol : float
-        Stop when the Frank-Wolfe gap falls below this threshold.
-
-    Returns
-    -------
-    x : array
-        Best feasible point found.
-    gap : float
-        Final Frank-Wolfe gap certificate.
-    """
+def frank_wolfe(f_grad, lmo, x0, max_iter, tol=1e-8):
     x = np.asarray(x0, dtype=float).copy()
     _, grad = f_grad(x)
-    gap = np.inf
+    certificate = np.inf
 
     for it in range(max_iter):
         direction, max_step_size = lmo(-grad, x)
-        gap = float(np.dot(direction, -grad))
-        if gap <= tol:
+        certificate = float(np.dot(direction, -grad))
+        if certificate <= tol:
             break
 
         step_size = min(2.0 / (it + 2.0), max_step_size)
         x = x + step_size * direction
         _, grad = f_grad(x)
 
-    return x, gap
-
+    return x, certificate
 
 def lmo_simplex(neg_grad, x):
-    """Linear minimization oracle for the probability simplex."""
     s = np.zeros_like(x, dtype=float)
     s[np.argmax(neg_grad)] = 1.0
     return s - x, 1.0
 
-
 def solve_simplex_least_squares(b, max_iter=1000, tol=1e-10):
-    """Solve min_{x in simplex} ||x - b||^2 with Frank-Wolfe."""
     b = np.asarray(b, dtype=float)
     if b.ndim != 1 or b.size == 0:
         raise ValueError("b must be a nonempty 1-D array")
