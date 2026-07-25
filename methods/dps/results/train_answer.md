@@ -13,14 +13,13 @@ import numpy as np
 
 
 class DPS(Algo):
-    """Diffusion Posterior Sampling.
-    Unconditional reverse diffusion plus soft likelihood guidance computed by
-    backpropagating a data-fidelity loss through the in-loop Tweedie estimate.
-    Works for any differentiable forward operator A."""
+    """Diffusion Posterior Sampling. Unconditional reverse step + soft likelihood
+    guidance via the gradient of the data-fidelity loss through the Tweedie
+    estimate. Requires a differentiable forward operator (handles nonlinear A)."""
 
     def __init__(self, net, forward_op, diffusion_scheduler_config, guidance_scale, sde=True):
         super().__init__(net, forward_op)
-        self.scale = guidance_scale
+        self.scale = guidance_scale                      # zeta': single step-size budget
         self.diffusion_scheduler_config = diffusion_scheduler_config
         self.scheduler = Scheduler(**diffusion_scheduler_config)
         self.sde = sde
@@ -29,60 +28,45 @@ class DPS(Algo):
         device = self.forward_op.device
         if num_samples > 1:
             observation = observation.repeat(num_samples, 1, 1, 1)
-
-        x_initial = torch.randn(
-            num_samples, self.net.img_channels,
-            self.net.img_resolution, self.net.img_resolution,
-            device=device
-        ) * self.scheduler.sigma_max
+        x_initial = torch.randn(num_samples, self.net.img_channels,
+                                self.net.img_resolution, self.net.img_resolution,
+                                device=device) * self.scheduler.sigma_max
         x_next = x_initial
         x_next.requires_grad = True
 
         pbar = tqdm(range(self.scheduler.num_steps))
         for i in pbar:
-            x_cur = x_next.detach().requires_grad_(True)
+            x_cur = x_next.detach().requires_grad_(True)     # graph for the VJP through x_0_hat
 
             sigma = self.scheduler.sigma_steps[i]
             factor = self.scheduler.factor_steps[i]
             scaling_factor = self.scheduler.scaling_factor[i]
 
             # Tweedie posterior mean x_0_hat = E[x_0 | x_t]
-            denoised = self.net(
-                x_cur / self.scheduler.scaling_steps[i],
-                torch.as_tensor(sigma).to(x_cur.device)
-            )
+            denoised = self.net(x_cur / self.scheduler.scaling_steps[i],
+                                torch.as_tensor(sigma).to(x_cur.device))
 
             # grad_{x_0_hat} ||A(x_0_hat) - y||^2 and loss = ||A(x_0_hat) - y||^2
-            gradient, loss_scale = self.forward_op.gradient(
-                denoised, observation, return_loss=True
-            )
+            gradient, loss_scale = self.forward_op.gradient(denoised, observation, return_loss=True)
 
-            # VJP: backprop through x_0_hat(x_cur) to get grad_{x_cur} ||y - A(x_0_hat)||^2
+            # VJP: backprop through x_0_hat(x_cur) -> grad_{x_cur} ||y - A(x_0_hat)||^2
             ll_grad = torch.autograd.grad(denoised, x_cur, gradient)[0]
-            # Residual normalization: 0.5/sqrt(loss) turns grad ||.||^2 into grad ||.||
-            ll_grad = ll_grad * 0.5 / torch.sqrt(loss_scale).clamp(min=1e-6)
+            # residual-normalize: 0.5/sqrt(loss) turns grad||.||^2 into grad||.||
+            ll_grad = ll_grad * 0.5 / torch.sqrt(loss_scale)
 
-            # Unconditional reverse step (EDM-scaled score; SDE or PF-ODE)
-            score = (
-                (denoised - x_cur / self.scheduler.scaling_steps[i])
-                / sigma ** 2 / self.scheduler.scaling_steps[i]
-            )
-            pbar.set_description(
-                f'Iteration {i + 1}/{self.scheduler.num_steps}. '
-                f'Data fitting loss: {torch.sqrt(loss_scale)}'
-            )
+            # unconditional reverse step (EDM-scaled score; SDE or PF-ODE)
+            score = ((denoised - x_cur / self.scheduler.scaling_steps[i])
+                     / sigma ** 2 / self.scheduler.scaling_steps[i])
+            pbar.set_description(f'Iteration {i + 1}/{self.scheduler.num_steps}. '
+                                 f'Data fitting loss: {torch.sqrt(loss_scale)}')
 
             if self.sde:
                 epsilon = torch.randn_like(x_cur)
-                x_next = (
-                    x_cur * scaling_factor + factor * score
-                    + np.sqrt(factor) * epsilon
-                )
+                x_next = x_cur * scaling_factor + factor * score + np.sqrt(factor) * epsilon
             else:
                 x_next = x_cur * scaling_factor + factor * score * 0.5
 
-            # Likelihood guidance: subtract zeta' * (residual-normalized fidelity gradient)
+            # likelihood guidance: subtract zeta' * (residual-normalized fidelity gradient)
             x_next = x_next - ll_grad * self.scale
-
         return x_next
 ```
