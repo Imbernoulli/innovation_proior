@@ -19,18 +19,18 @@ from .strategy import Strategy
 class BALDDropout(Strategy):
     def __init__(self, X, Y, idxs_lb, net, handler, args, n_drop=10):
         super(BALDDropout, self).__init__(X, Y, idxs_lb, net, handler, args)
-        self.n_drop = n_drop
+        self.n_drop = n_drop                       # T = number of posterior samples
 
     def query(self, n):
         idxs_unlabeled = np.arange(self.n_pool)[~self.idxs_lb]
+        # T dropout forward passes -> probs[t, i, c] ~ p(y=c | x_i, theta^t)
         probs = self.predict_prob_dropout_split(
-            self.X[idxs_unlabeled], self.Y.numpy()[idxs_unlabeled], self.n_drop
-        )
-        pb = probs.mean(0)
-        entropy1 = (-pb * torch.log(pb + 1e-10)).sum(1)
-        entropy2 = (-probs * torch.log(probs + 1e-10)).sum(2).mean(0)
-        U = entropy2 - entropy1
-        return idxs_unlabeled[U.sort()[1][:n]]
+            self.X[idxs_unlabeled], self.Y.numpy()[idxs_unlabeled], self.n_drop)
+        pb = probs.mean(0)                                       # p_bar = mean over T passes
+        entropy1 = (-pb * torch.log(pb)).sum(1)                  # H[p_bar]  (total)
+        entropy2 = (-probs * torch.log(probs)).sum(2).mean(0)    # mean per-pass H (aleatoric)
+        U = entropy2 - entropy1                                  # U = -(BALD mutual information)
+        return idxs_unlabeled[U.sort()[1][:n]]                   # n smallest U = n largest I
 ```
 
 This single rule turns the intractable parameter-space information-gain objective into a tractable output-space disagreement score. By keeping each posterior sample's confidence and subtracting the aleatoric component, BALD selects the points whose labels will actually resolve model uncertainty.
