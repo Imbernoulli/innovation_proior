@@ -20,23 +20,11 @@ right — including the negative-value and empty-subset corners — matters.
 
 Example: for `a = [5, 1, 1, 5, 1, 5]` the answer is `15` (take indices 0, 3, 5).
 
-## Background
-
-The constraint "no two chosen adjacent" makes this a constrained selection problem. Two families of
-approach are on the table before committing to one:
-
-- **Greedy by value.** Repeatedly take the largest remaining positive element and forbid its two
-  neighbours. Greedy is `O(n log n)` and trivial to write; the open question is whether always
-  grabbing the largest element is actually optimal under the adjacency constraint.
-- **Linear dynamic programming.** Scan left to right maintaining, for each prefix, the best sum that
-  ends with the last element *taken* versus *not taken*. This is `O(n)`; the open question is the
-  exact recurrence and how the transitions reference the previous state.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: all-positive arrays, arrays with negatives and zeros, the empty
 array (`n = 0`), single element (`n = 1`), all-negative arrays (answer should be `0`), and large
-`n = 2*10^5` with values near `10^9` (so the running sum can exceed a 32-bit integer).
+`n = 2*10^5` with values near `10^9`.
 
 ## Code framework
 
