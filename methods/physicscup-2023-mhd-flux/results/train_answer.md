@@ -12,44 +12,8 @@ This is the central result: the required force grows linearly with separation, e
 
 I can cross-check this with the MHD stress tensor. In ideal MHD the stress on the medium is T = (B B)/mu_0 - (B^2/(2 mu_0) + (P - P_infty)) I, where P is the fluid pressure. Enclosing one magnet in a box with a face on the symmetry plane between the two magnets, the leading contribution comes from the flux rope cutting that plane. Mechanical equilibrium of the fluid implies that the magnetic pressure and the excess fluid pressure cancel on the symmetry plane, so the pressure term drops out of the force integral and I am left with F = int_plane B^2/mu_0 dS. Using B ~ (mu_0 m / R^3)(L/R) and the plane cross-section S ~ R^3/L again gives F ~ mu_0 m^2 L / R^5, confirming the energy estimate by an independent route.
 
-The physical picture is therefore a stretched, frozen-in flux rope whose tension increases as it is pulled longer, and the canonical method name I would use is the ideal-MHD flux-freezing force estimate for separating coaxial dipoles. The scaling law itself is robust up to an order-one numerical prefactor, which the problem statement asks me only to estimate.
+The physical picture is therefore a stretched, frozen-in flux rope whose tension increases as it is pulled longer, and the canonical method name I would use is the ideal-MHD flux-freezing force estimate for separating coaxial dipoles. That picture is the deliverable, stated as a scaling law: for two coaxial dipoles of moment $m$ and sphere radius $R$, held at separation $L\gg R$ in an incompressible fluid of effectively infinite conductivity that has not expelled the pre-existing field, the force needed to hold them apart is
 
-```python
-import numpy as np
+$$F_{\rm hold}\;\sim\;\mu_0\,\frac{m^2 L}{R^5},$$
 
-# SI parameters for a representative small magnet setup
-mu0 = 4 * np.pi * 1e-7   # H/m
-R = 1e-2                 # magnet radius, m
-m = 0.1                  # magnetic dipole moment, A m^2
-
-# Initial near-zone magnetic energy scale for a dipole field
-# B ~ mu0 * m / R^3 over volume ~ R^3  =>  U0 ~ mu0 * m^2 / R^3
-U0 = mu0 * m**2 / R**3
-
-# Flux-freezing + incompressibility imply U(L) ~ U0 * (L/R)^2
-# and F_hold = dU/dL ~ mu0 * m^2 * L / R^5.
-Ls = np.linspace(10 * R, 100 * R, 200)
-U_L = U0 * (Ls / R)**2
-F_hold = 2 * U0 * Ls / R**2   # gradient of the scaling above
-
-# Idealized single flux-tube verification
-B0 = mu0 * m / R**3          # characteristic near-zone field
-A0 = R**2                    # initial tube cross-section
-V0 = R**3                    # fixed tube volume
-
-def flux_tube_state(L):
-    A = V0 / L               # incompressibility
-    B = B0 * A0 / A          # flux freezing
-    energy_density = B**2 / (2 * mu0)
-    energy = energy_density * V0
-    return A, B, energy
-
-A_ex, B_ex, U_ex = flux_tube_state(50 * R)
-
-print(f"U0 = {U0:.3e} J")
-print(f"At L = 50 R:")
-print(f"  A / A0 = {A_ex / A0:.4f}  (expected 1/50 = 0.02)")
-print(f"  B / B0 = {B_ex / B0:.1f}    (expected 50)")
-print(f"  U / U0 = {U_ex / U0:.1f}    (expected ~2500 up to O(1))")
-print(f"Holding force at L = 50 R: {2 * U0 * (50 * R) / R**2:.3e} N")
-```
+directed outward, exactly balancing an attractive magnetic pull of the same magnitude — one that *grows* linearly with $L$ rather than decaying like the vacuum dipole-dipole force $\mu_0 m^2/L^4$. This is the surprise the fluid buys: flux freezing plus incompressibility turn separation into confinement, amplifying the axial field between the spheres by a factor $L/R$ instead of diluting it, so the stored magnetic energy climbs as $U(L)\sim\mu_0 m^2 L^2/R^5$ and its gradient is the holding force above. The two independent derivations — differentiating that stored energy, and integrating the Maxwell stress across the symmetry plane, where the fluid's thermal pressure exactly cancels the magnetic pressure and drops out of the force integral — agree on this scaling, which is the check that matters since the problem asks only for the correct combination of physical parameters, not a numerical prefactor.
