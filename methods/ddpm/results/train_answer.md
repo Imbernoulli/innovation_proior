@@ -14,70 +14,213 @@ The network is a single shared U-Net that handles all timesteps. Integer t is en
 import copy
 import math
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+from torch import nn
 from torch.optim import Adam
 
+def _warmup_schedule(start, end, steps, frac):
+    betas = torch.full((steps,), end, dtype=torch.float64)
+    warmup = int(steps * frac)
+    betas[:warmup] = torch.linspace(start, end, warmup, dtype=torch.float64)
+    return betas
 
-def linear_beta_schedule(timesteps, start=1e-4, end=0.02):
-    return torch.linspace(start, end, timesteps)
-
+def get_step_variance_schedule(schedule, *, start, end, steps):
+    if schedule == "quad":
+        return torch.linspace(start ** 0.5, end ** 0.5, steps, dtype=torch.float64) ** 2
+    if schedule == "linear":
+        return torch.linspace(start, end, steps, dtype=torch.float64)
+    if schedule == "warmup10":
+        return _warmup_schedule(start, end, steps, 0.1)
+    if schedule == "warmup50":
+        return _warmup_schedule(start, end, steps, 0.5)
+    if schedule == "const":
+        return torch.full((steps,), end, dtype=torch.float64)
+    if schedule == "jsd":
+        return 1.0 / torch.linspace(steps, 1, steps, dtype=torch.float64)
+    raise NotImplementedError(schedule)
 
 def extract(a, t, x_shape):
     out = a.gather(0, t)
     return out.reshape(t.shape[0], *((1,) * (len(x_shape) - 1)))
 
+def mean_flat(x):
+    return x.mean(dim=tuple(range(1, x.ndim)))
 
-class Diffusion(nn.Module):
-    def __init__(self, model, image_size, channels, timesteps=1000):
+def normal_kl(mean1, logvar1, mean2, logvar2):
+    return 0.5 * (-1.0 + logvar2 - logvar1 +
+                  torch.exp(logvar1 - logvar2) +
+                  (mean1 - mean2).pow(2) * torch.exp(-logvar2))
+
+def approx_standard_normal_cdf(x):
+    return 0.5 * (1.0 + torch.tanh(math.sqrt(2.0 / math.pi) * (x + 0.044715 * x.pow(3))))
+
+def discretized_gaussian_log_likelihood(x, *, means, log_scales):
+    centered = x - means
+    inv_std = torch.exp(-log_scales)
+    plus_in = inv_std * (centered + 1.0 / 255.0)
+    min_in = inv_std * (centered - 1.0 / 255.0)
+    cdf_plus = approx_standard_normal_cdf(plus_in)
+    cdf_min = approx_standard_normal_cdf(min_in)
+    log_cdf_plus = torch.log(cdf_plus.clamp(min=1e-12))
+    log_one_minus_cdf_min = torch.log((1.0 - cdf_min).clamp(min=1e-12))
+    cdf_delta = cdf_plus - cdf_min
+    return torch.where(
+        x < -0.999,
+        log_cdf_plus,
+        torch.where(x > 0.999, log_one_minus_cdf_min, torch.log(cdf_delta.clamp(min=1e-12))),
+    )
+
+class ImageLatentGenerator(nn.Module):
+    def __init__(self, backbone, image_size, latent_steps=1000, schedule="linear",
+                 variance_start=1e-4, variance_end=0.02, prediction_type="eps",
+                 variance_type="fixedlarge", loss_type="mse"):
         super().__init__()
-        self.model = model
+        if prediction_type not in {"xprev", "xstart", "eps"}:
+            raise ValueError("prediction_type must be 'xprev', 'xstart', or 'eps'")
+        if variance_type not in {"learned", "fixedsmall", "fixedlarge"}:
+            raise ValueError("variance_type must be 'learned', 'fixedsmall', or 'fixedlarge'")
+        if loss_type not in {"kl", "mse"}:
+            raise ValueError("loss_type must be 'kl' or 'mse'")
+        self.backbone = backbone
         self.image_size = image_size
-        self.channels = channels
-        self.timesteps = timesteps
+        self.latent_steps = latent_steps
+        self.channels = backbone.channels
+        self.prediction_type = prediction_type
+        self.variance_type = variance_type
+        self.loss_type = loss_type
 
-        betas = linear_beta_schedule(timesteps).float()
-        alphas = 1.0 - betas
+        betas = get_step_variance_schedule(
+            schedule, start=variance_start, end=variance_end, steps=latent_steps).float()
+        if not ((betas > 0).all() and (betas <= 1).all()):
+            raise ValueError("all step variances must be in (0, 1]")
+        alphas = 1. - betas
         alphas_cumprod = torch.cumprod(alphas, dim=0)
-        alphas_cumprod_prev = F.pad(alphas_cumprod[:-1], (1, 0), value=1.0)
+        alphas_cumprod_prev = F.pad(alphas_cumprod[:-1], (1, 0), value=1.)
+        reg = lambda n, v: self.register_buffer(n, v.float())
 
-        self.register_buffer("betas", betas)
-        self.register_buffer("alphas", alphas)
-        self.register_buffer("alphas_cumprod", alphas_cumprod)
-        self.register_buffer("alphas_cumprod_prev", alphas_cumprod_prev)
-        self.register_buffer("sqrt_alphas_cumprod", torch.sqrt(alphas_cumprod))
-        self.register_buffer("sqrt_one_minus_alphas_cumprod", torch.sqrt(1.0 - alphas_cumprod))
-        self.register_buffer("sqrt_recip_alphas", torch.sqrt(1.0 / alphas))
-        self.register_buffer("posterior_variance", betas * (1.0 - alphas_cumprod_prev) / (1.0 - alphas_cumprod))
+        reg("betas", betas)
+        reg("alphas_cumprod", alphas_cumprod)
+        reg("alphas_cumprod_prev", alphas_cumprod_prev)
+        reg("sqrt_alphas_cumprod", torch.sqrt(alphas_cumprod))
+        reg("sqrt_one_minus_alphas_cumprod", torch.sqrt(1. - alphas_cumprod))
+        reg("log_one_minus_alphas_cumprod", torch.log(1. - alphas_cumprod))
+        reg("sqrt_recip_alphas_cumprod", torch.sqrt(1. / alphas_cumprod))
+        reg("sqrt_recipm1_alphas_cumprod", torch.sqrt(1. / alphas_cumprod - 1))
+
+        posterior_variance = betas * (1. - alphas_cumprod_prev) / (1. - alphas_cumprod)
+        posterior_log_variance_clipped = torch.log(torch.cat([posterior_variance[1:2],
+                                                              posterior_variance[1:]]))
+        fixedlarge_log_variance = torch.log(torch.cat([posterior_variance[1:2], betas[1:]]))
+        reg("posterior_variance", posterior_variance)
+        reg("posterior_log_variance_clipped", posterior_log_variance_clipped)
+        reg("fixedlarge_log_variance", fixedlarge_log_variance)
+        reg("posterior_mean_coef1", betas * torch.sqrt(alphas_cumprod_prev) / (1. - alphas_cumprod))
+        reg("posterior_mean_coef2", (1. - alphas_cumprod_prev) * torch.sqrt(alphas) / (1. - alphas_cumprod))
+
+    def q_mean_variance(self, x0, t):
+        mean = extract(self.sqrt_alphas_cumprod, t, x0.shape) * x0
+        variance = extract(1. - self.alphas_cumprod, t, x0.shape)
+        log_variance = extract(self.log_one_minus_alphas_cumprod, t, x0.shape)
+        return mean, variance, log_variance
 
     def q_sample(self, x0, t, noise):
         return (extract(self.sqrt_alphas_cumprod, t, x0.shape) * x0 +
                 extract(self.sqrt_one_minus_alphas_cumprod, t, x0.shape) * noise)
 
-    def p_sample(self, x_t, t_int):
-        t = torch.full((x_t.shape[0],), t_int, device=x_t.device, dtype=torch.long)
-        eps = self.model(x_t, t)
-        alpha_t = extract(self.alphas, t, x_t.shape)
-        beta_t = extract(self.betas, t, x_t.shape)
-        alpha_cumprod_t = extract(self.alphas_cumprod, t, x_t.shape)
-        mean = (x_t - beta_t / torch.sqrt(1.0 - alpha_cumprod_t) * eps) / torch.sqrt(alpha_t)
-        noise = torch.randn_like(x_t)
-        nonzero_mask = (t != 0).float().reshape(x_t.shape[0], *((1,) * (x_t.ndim - 1)))
-        return mean + nonzero_mask * torch.sqrt(extract(self.posterior_variance, t, x_t.shape)) * noise
+    def q_posterior_mean_variance(self, x0, x_t, t):
+        mean = (extract(self.posterior_mean_coef1, t, x_t.shape) * x0 +
+                extract(self.posterior_mean_coef2, t, x_t.shape) * x_t)
+        variance = extract(self.posterior_variance, t, x_t.shape)
+        log_variance = extract(self.posterior_log_variance_clipped, t, x_t.shape)
+        return mean, variance, log_variance
+
+    def predict_start_from_noise(self, x_t, t, noise):
+        return (extract(self.sqrt_recip_alphas_cumprod, t, x_t.shape) * x_t -
+                extract(self.sqrt_recipm1_alphas_cumprod, t, x_t.shape) * noise)
+
+    def predict_start_from_xprev(self, x_t, t, xprev):
+        return (extract(1. / self.posterior_mean_coef1, t, x_t.shape) * xprev -
+                extract(self.posterior_mean_coef2 / self.posterior_mean_coef1, t, x_t.shape) * x_t)
+
+    def p_mean_variance(self, x_t, t, clip_denoised=True, return_pred_xstart=False):
+        model_output = self.backbone(x_t, t)
+        if self.variance_type == "learned":
+            model_output, model_log_variance = model_output.chunk(2, dim=1)
+            model_variance = torch.exp(model_log_variance)
+        elif self.variance_type == "fixedsmall":
+            model_variance = extract(self.posterior_variance, t, x_t.shape).expand_as(x_t)
+            model_log_variance = extract(self.posterior_log_variance_clipped, t, x_t.shape).expand_as(x_t)
+        else:
+            model_variance = extract(self.betas, t, x_t.shape).expand_as(x_t)
+            model_log_variance = extract(self.fixedlarge_log_variance, t, x_t.shape).expand_as(x_t)
+
+        maybe_clip = (lambda y: y.clamp(-1., 1.)) if clip_denoised else (lambda y: y)
+        if self.prediction_type == "xprev":
+            pred_xstart = maybe_clip(self.predict_start_from_xprev(x_t, t, model_output))
+            model_mean = model_output
+        elif self.prediction_type == "xstart":
+            pred_xstart = maybe_clip(model_output)
+            model_mean, _, _ = self.q_posterior_mean_variance(pred_xstart, x_t, t)
+        else:
+            pred_xstart = maybe_clip(self.predict_start_from_noise(x_t, t, model_output))
+            model_mean, _, _ = self.q_posterior_mean_variance(pred_xstart, x_t, t)
+
+        if return_pred_xstart:
+            return model_mean, model_variance, model_log_variance, pred_xstart
+        return model_mean, model_variance, model_log_variance
 
     @torch.no_grad()
-    def sample(self, batch_size, device):
-        x = torch.randn(batch_size, self.channels, self.image_size, self.image_size, device=device)
-        for t_int in reversed(range(self.timesteps)):
-            x = self.p_sample(x, t_int)
-        return x
+    def p_sample(self, x_t, t_int, clip_denoised=True, return_pred_xstart=False):
+        t = torch.full((x_t.shape[0],), t_int, device=x_t.device, dtype=torch.long)
+        model_mean, _, model_log_variance, pred_xstart = self.p_mean_variance(
+            x_t, t, clip_denoised=clip_denoised, return_pred_xstart=True)
+        noise = torch.randn_like(x_t)
+        nonzero_mask = (t != 0).float().reshape(x_t.shape[0], *((1,) * (x_t.ndim - 1)))
+        sample = model_mean + nonzero_mask * torch.exp(0.5 * model_log_variance) * noise
+        return (sample, pred_xstart) if return_pred_xstart else sample
 
-    def loss(self, x0):
-        t = torch.randint(0, self.timesteps, (x0.shape[0],), device=x0.device)
-        noise = torch.randn_like(x0)
+    @torch.no_grad()
+    def sample(self, batch_size=16, device=None):
+        device = device or self.betas.device
+        img = torch.randn(batch_size, self.channels, self.image_size, self.image_size, device=device)
+        for t_int in reversed(range(self.latent_steps)):
+            img = self.p_sample(img, t_int)
+        return img
+
+    def vb_terms_bpd(self, x0, x_t, t, clip_denoised=True, return_pred_xstart=False):
+        true_mean, _, true_log_variance = self.q_posterior_mean_variance(x0, x_t, t)
+        model_mean, _, model_log_variance, pred_xstart = self.p_mean_variance(
+            x_t, t, clip_denoised=clip_denoised, return_pred_xstart=True)
+        kl = mean_flat(normal_kl(true_mean, true_log_variance, model_mean, model_log_variance)) / math.log(2.)
+        decoder_nll = -discretized_gaussian_log_likelihood(
+            x0, means=model_mean, log_scales=0.5 * model_log_variance)
+        decoder_nll = mean_flat(decoder_nll) / math.log(2.)
+        out = torch.where(t == 0, decoder_nll, kl)
+        return (out, pred_xstart) if return_pred_xstart else out
+
+    def training_losses(self, x0, t=None, noise=None):
+        if t is None:
+            t = torch.randint(0, self.latent_steps, (x0.shape[0],), device=x0.device).long()
+        if noise is None:
+            noise = torch.randn_like(x0)
         x_t = self.q_sample(x0, t, noise)
-        return F.mse_loss(self.model(x_t, t), noise)
+        if self.loss_type == "kl":
+            return self.vb_terms_bpd(x0, x_t, t, clip_denoised=False)
+        if self.variance_type == "learned":
+            raise ValueError("the simplified MSE loss uses a fixed variance branch")
+        target = {
+            "xprev": self.q_posterior_mean_variance(x0, x_t, t)[0],
+            "xstart": x0,
+            "eps": noise,
+        }[self.prediction_type]
+        model_output = self.backbone(x_t, t)
+        return mean_flat((target - model_output).pow(2))
 
+    def training_loss(self, x0, t=None, noise=None):
+        return self.training_losses(x0, t=t, noise=noise).mean()
+
+    def forward(self, x0):
+        return self.training_loss(x0)
 
 class TimeEmbedding(nn.Module):
     def __init__(self, dim):
@@ -86,95 +229,152 @@ class TimeEmbedding(nn.Module):
 
     def forward(self, t):
         half = self.dim // 2
-        freqs = torch.exp(torch.arange(half, device=t.device) * -(math.log(10000.0) / (half - 1)))
+        freqs = torch.exp(torch.arange(half, device=t.device) * -(math.log(10000) / (half - 1)))
         emb = t[:, None].float() * freqs[None, :]
         return torch.cat((emb.sin(), emb.cos()), dim=-1)
 
-
-def group_norm(channels):
-    groups = min(8, channels)
+def group_norm(channels, max_groups=8):
+    groups = min(max_groups, channels)
     while channels % groups:
         groups -= 1
     return nn.GroupNorm(groups, channels)
 
+def zero_module(module):
+    for p in module.parameters():
+        nn.init.zeros_(p)
+    return module
 
-class ResBlock(nn.Module):
-    def __init__(self, in_ch, out_ch, time_dim, dropout):
+class Downsample(nn.Module):
+    def __init__(self, channels):
         super().__init__()
-        self.norm1 = group_norm(in_ch)
-        self.conv1 = nn.Conv2d(in_ch, out_ch, 3, padding=1)
-        self.time_proj = nn.Linear(time_dim, out_ch)
-        self.norm2 = group_norm(out_ch)
+        self.conv = nn.Conv2d(channels, channels, 3, stride=2, padding=1)
+
+    def forward(self, x):
+        return self.conv(x)
+
+class Upsample(nn.Module):
+    def __init__(self, channels):
+        super().__init__()
+        self.conv = nn.Conv2d(channels, channels, 3, padding=1)
+
+    def forward(self, x):
+        return self.conv(F.interpolate(x, scale_factor=2, mode="nearest"))
+
+class ResnetBlock(nn.Module):
+    def __init__(self, dim_in, dim_out, time_dim, dropout):
+        super().__init__()
+        self.norm1 = group_norm(dim_in)
+        self.conv1 = nn.Conv2d(dim_in, dim_out, 3, padding=1)
+        self.time_proj = nn.Linear(time_dim, dim_out)
+        self.norm2 = group_norm(dim_out)
         self.dropout = nn.Dropout(dropout)
-        self.conv2 = nn.Conv2d(out_ch, out_ch, 3, padding=1)
-        self.res = nn.Conv2d(in_ch, out_ch, 1) if in_ch != out_ch else nn.Identity()
+        self.conv2 = zero_module(nn.Conv2d(dim_out, dim_out, 3, padding=1))
+        self.act = nn.SiLU()
+        self.res = nn.Conv2d(dim_in, dim_out, 1) if dim_in != dim_out else nn.Identity()
 
     def forward(self, x, t_emb):
-        h = self.conv1(F.silu(self.norm1(x)))
-        h = h + self.time_proj(F.silu(t_emb))[:, :, None, None]
-        h = self.conv2(self.dropout(F.silu(self.norm2(h))))
+        h = self.conv1(self.act(self.norm1(x)))
+        h = h + self.time_proj(self.act(t_emb))[:, :, None, None]
+        h = self.conv2(self.dropout(self.act(self.norm2(h))))
         return h + self.res(x)
 
+class AttentionBlock(nn.Module):
+    def __init__(self, channels):
+        super().__init__()
+        self.norm = group_norm(channels)
+        self.q = nn.Conv2d(channels, channels, 1)
+        self.k = nn.Conv2d(channels, channels, 1)
+        self.v = nn.Conv2d(channels, channels, 1)
+        self.proj = zero_module(nn.Conv2d(channels, channels, 1))
 
-class UNet(nn.Module):
-    def __init__(self, image_size=32, channels=3, base=128, mult=(1, 2, 4, 8), dropout=0.1):
+    def forward(self, x):
+        b, c, h, w = x.shape
+        h_norm = self.norm(x)
+        q = self.q(h_norm).reshape(b, c, h * w)
+        k = self.k(h_norm).reshape(b, c, h * w)
+        v = self.v(h_norm).reshape(b, c, h * w)
+        attn = torch.softmax(torch.einsum("bcn,bcm->bnm", q * (c ** -0.5), k), dim=-1)
+        out = torch.einsum("bnm,bcm->bcn", attn, v).reshape(b, c, h, w)
+        return x + self.proj(out)
+
+class ImageBackbone(nn.Module):
+    def __init__(self, image_size=32, channels=3, base_channels=128, out_channels=None,
+                 channel_mult=(1, 2, 4, 8), num_res_blocks=2,
+                 attn_resolutions=(16,), dropout=0.0):
         super().__init__()
         self.channels = channels
-        time_dim = base * 4
-        self.time_mlp = nn.Sequential(
-            TimeEmbedding(base),
-            nn.Linear(base, time_dim), nn.SiLU(),
-            nn.Linear(time_dim, time_dim))
-        self.init_conv = nn.Conv2d(channels, base, 3, padding=1)
+        self.out_channels = out_channels or channels
+        time_dim = base_channels * 4
+        self.init_conv = nn.Conv2d(channels, base_channels, 3, padding=1)
+        self.time_mlp = nn.Sequential(TimeEmbedding(base_channels),
+                                      nn.Linear(base_channels, time_dim), nn.SiLU(),
+                                      nn.Linear(time_dim, time_dim))
 
         self.downs = nn.ModuleList()
-        chs = [base]
-        cur = base
-        for i, m in enumerate(mult):
-            out = base * m
-            for _ in range(2):
-                self.downs.append(ResBlock(cur, out, time_dim, dropout))
-                cur = out
-                chs.append(cur)
-            if i != len(mult) - 1:
-                self.downs.append(nn.Conv2d(cur, cur, 3, stride=2, padding=1))
+        hs_channels = [base_channels]
+        current_channels = base_channels
+        current_res = image_size
+        for level, mult in enumerate(channel_mult):
+            out_ch = base_channels * mult
+            blocks = nn.ModuleList()
+            attns = nn.ModuleList()
+            for _ in range(num_res_blocks):
+                blocks.append(ResnetBlock(current_channels, out_ch, time_dim, dropout))
+                current_channels = out_ch
+                attns.append(AttentionBlock(current_channels)
+                             if current_res in attn_resolutions else nn.Identity())
+                hs_channels.append(current_channels)
+            down = Downsample(current_channels) if level != len(channel_mult) - 1 else nn.Identity()
+            if level != len(channel_mult) - 1:
+                hs_channels.append(current_channels)
+                current_res //= 2
+            self.downs.append(nn.ModuleList([blocks, attns, down]))
 
-        self.mid = ResBlock(cur, cur, time_dim, dropout)
+        self.mid1 = ResnetBlock(current_channels, current_channels, time_dim, dropout)
+        self.mid_attn = AttentionBlock(current_channels)
+        self.mid2 = ResnetBlock(current_channels, current_channels, time_dim, dropout)
 
         self.ups = nn.ModuleList()
-        for i, m in reversed(list(enumerate(mult))):
-            out = base * m
-            for _ in range(2):
-                self.ups.append(ResBlock(cur + chs.pop(), out, time_dim, dropout))
-                cur = out
-            if i != 0:
-                next_out = base * mult[i - 1]
-                self.ups.append(nn.Sequential(
-                    nn.Upsample(scale_factor=2, mode="nearest"),
-                    nn.Conv2d(cur, next_out, 3, padding=1)))
-                cur = next_out
+        for level, mult in reversed(list(enumerate(channel_mult))):
+            out_ch = base_channels * mult
+            blocks = nn.ModuleList()
+            attns = nn.ModuleList()
+            for _ in range(num_res_blocks + 1):
+                skip_ch = hs_channels.pop()
+                blocks.append(ResnetBlock(current_channels + skip_ch, out_ch, time_dim, dropout))
+                current_channels = out_ch
+                attns.append(AttentionBlock(current_channels)
+                             if current_res in attn_resolutions else nn.Identity())
+            up = Upsample(current_channels) if level != 0 else nn.Identity()
+            if level != 0:
+                current_res *= 2
+            self.ups.append(nn.ModuleList([blocks, attns, up]))
 
-        self.out = nn.Conv2d(cur, channels, 3, padding=1)
+        self.final_norm = group_norm(current_channels)
+        self.final_conv = zero_module(nn.Conv2d(current_channels, self.out_channels, 3, padding=1))
 
     def forward(self, x, t):
         t_emb = self.time_mlp(t)
         h = self.init_conv(x)
         skips = [h]
-        for layer in self.downs:
-            if isinstance(layer, ResBlock):
-                h = layer(h, t_emb)
+        for level, (blocks, attns, down) in enumerate(self.downs):
+            for block, attn in zip(blocks, attns):
+                h = attn(block(h, t_emb))
                 skips.append(h)
-            else:
-                h = layer(h)
-        h = self.mid(h, t_emb)
-        for layer in self.ups:
-            if isinstance(layer, ResBlock):
-                h = torch.cat((h, skips.pop()), dim=1)
-                h = layer(h, t_emb)
-            else:
-                h = layer(h)
-        return self.out(h)
+            if level != len(self.downs) - 1:
+                h = down(h)
+                skips.append(h)
 
+        h = self.mid1(h, t_emb)
+        h = self.mid_attn(h)
+        h = self.mid2(h, t_emb)
+
+        for level, (blocks, attns, up) in enumerate(self.ups):
+            for block, attn in zip(blocks, attns):
+                h = torch.cat((h, skips.pop()), dim=1)
+                h = attn(block(h, t_emb))
+            h = up(h)
+        return self.final_conv(F.silu(self.final_norm(h)))
 
 class ModelEMA:
     def __init__(self, model, decay=0.9999):
@@ -185,24 +385,33 @@ class ModelEMA:
 
     @torch.no_grad()
     def update(self, model):
+        online = model.state_dict()
         for name, value in self.ema_model.state_dict().items():
-            src = model.state_dict()[name].detach()
+            src = online[name].detach()
             if value.is_floating_point():
                 value.mul_(self.decay).add_(src, alpha=1.0 - self.decay)
             else:
                 value.copy_(src)
 
-
-if __name__ == "__main__":
-    unet = UNet(image_size=32, base=32, mult=(1, 2), dropout=0.0)
-    diffusion = Diffusion(unet, image_size=32, channels=3, timesteps=8)
-    opt = Adam(diffusion.parameters(), lr=2e-4)
-    ema = ModelEMA(diffusion)
-    x0 = torch.rand(2, 3, 32, 32) * 2.0 - 1.0
-    loss = diffusion.loss(x0)
+def training_step(diffusion, x0, opt, ema=None):
+    loss = diffusion.training_loss(x0)
+    opt.zero_grad(set_to_none=True)
     loss.backward()
     opt.step()
-    ema.update(diffusion)
-    samples = ema.ema_model.sample(batch_size=2, device=x0.device)
+    if ema is not None:
+        ema.update(diffusion)
+    return loss.detach()
+
+if __name__ == "__main__":
+    backbone = ImageBackbone(image_size=32, base_channels=16, channel_mult=(1, 2),
+                             num_res_blocks=1, attn_resolutions=(16,))
+    diffusion = ImageLatentGenerator(backbone, image_size=32, latent_steps=8,
+                                     prediction_type="eps", variance_type="fixedlarge",
+                                     loss_type="mse")
+    opt = Adam(diffusion.parameters(), lr=2e-4)
+    ema = ModelEMA(diffusion)
+    x0 = torch.rand(2, 3, 32, 32) * 2 - 1
+    loss = training_step(diffusion, x0, opt, ema)
+    samples = ema.ema_model.sample(batch_size=2)
     print(float(loss), samples.shape)
 ```
