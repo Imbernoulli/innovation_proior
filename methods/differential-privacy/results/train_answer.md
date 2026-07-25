@@ -6,35 +6,45 @@ The Laplace mechanism achieves this guarantee for queries that release real-valu
 
 Three properties make this definition practical. First, composition: running mechanisms with privacy losses epsilon_1, epsilon_2, and so on, on the same database yields a mechanism that is the sum of those losses differentially private, so epsilon behaves like a budget spent across queries. Second, post-processing immunity: any computation on the released output without further access to the database cannot increase privacy loss. Third, group privacy: if two databases differ in k rows, the guarantee degrades gracefully to k times epsilon. These properties mean a curator can answer a sequence of queries by allocating portions of the total budget and be confident that downstream analysts cannot worsen the privacy loss.
 
-Here is a concise implementation.
+Here is a concise implementation, including the histogram sensitivity constant alongside the mechanism itself.
 
 ```python
 import numpy as np
 
 def laplace_mechanism(database, f, delta_f, eps, rng):
-    """Release f(database) with epsilon-differential privacy."""
+    """ε-differentially private release of f(database).
+
+    Adds i.i.d. Lap(Δf/ε) noise per output coordinate. For all neighboring
+    x,y and all measurable events, the pointwise density ratio is bounded by
+    exp(Δf/scale) = exp(ε), so the mechanism is ε-DP."""
     if eps <= 0:
         raise ValueError("eps must be positive")
     if delta_f < 0:
         raise ValueError("delta_f must be nonnegative")
     true_value = np.atleast_1d(np.asarray(f(database), dtype=float))
-    scale = delta_f / eps
+    scale = delta_f / eps                                  # b = Δf / ε
     noise = rng.laplace(loc=0.0, scale=scale, size=true_value.shape)
     return true_value + noise
 
+def l1_sensitivity_histogram_replace_one():
+    """One individual moves at most two bins (−1, +1): Δf = 2, independent
+    of the number of bins."""
+    return 2.0
+
 def compose_budget(eps_list):
-    """Privacy losses add across independent mechanisms on the same database."""
+    """Composition: ε-losses add."""
     return float(np.sum(eps_list))
 
 def group_privacy(eps, k):
-    """An epsilon-DP mechanism is (k*epsilon)-DP for a group of k individuals."""
+    """An ε-DP mechanism is (kε)-DP for a group of size k."""
     return k * eps
 
 if __name__ == "__main__":
     rng = np.random.default_rng(0)
     database = np.array([1, 0, 1, 1, 0, 1, 0, 0, 1, 1])
-    count = lambda db: float(db.sum())
+    count = lambda db: float(db.sum())                     # Δf = 1
     eps = 0.1
     private_count = laplace_mechanism(database, count, delta_f=1.0, eps=eps, rng=rng)
-    # private_count is epsilon-DP; two such releases on the same database cost 2*epsilon total.
+    # private_count = true count + Lap(1/ε) = true count + Lap(10); releasing it is ε-DP.
+    # Two such releases on the same database cost ε + ε = 0.2 total.
 ```
