@@ -26,23 +26,14 @@ Example: for `n = 6`, `m = 5`, `t = 3`, and frequencies `a = [7, 1, 4, 6, 9, 2]`
 ## Background
 
 Testing the condition pair by pair is `O(n^2)`, which is `4*10^10` operations at the top of the
-range — far too slow. Two observations drive the fast approach, and one decision must be settled
-before any of it:
-
-- **The condition depends only on residues.** Whether `{i, j}` is resonant depends solely on
-  `a[i] mod m` and `a[j] mod m`. So if `cnt[r]` is the number of frequencies congruent to `r`
-  modulo `m`, every pair is determined by its residue pair `(r, s)`. There are at most `m` residues.
-- **Counts and the answer can be astronomically large.** A single residue bucket can hold up to
-  `n = 2*10^5` frequencies, and the number of resonant pairs can approach `C(n, 2) ~ 2*10^10`. Both
-  the per-bucket products and the running total exceed the `~2.1*10^9` range of a 32-bit integer, so
-  the data type that holds them is part of the problem, not an afterthought.
+range — far too slow.
 
 ## Evaluation settings
 
 Judged on hidden tests covering: `m = 1` (every pair resonant when `t = 0`), `t > 0` targets,
 buckets that pair with themselves (`2r == t (mod m)`), the empty bench (`n = 0`), a single oscillator
 (`n = 1`, no pairs), frequencies up to `10^9`, and large `n = 2*10^5` with a single dominant residue
-bucket so the answer is near `2*10^10` (forcing 64-bit accumulation).
+bucket.
 
 ## Code framework
 
