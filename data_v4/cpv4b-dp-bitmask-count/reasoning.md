@@ -40,8 +40,9 @@ is recovered as the unique team containing `low`. That bijection gives
   `f[mask] = sum over legal teams S with low ∈ S ⊆ mask of f[mask \ S]`,  with `f[0] = 1`.
 
 The "`low ∈ S`" restriction is the entire de-duplication. Drop it and I would let *any* legal team be
-"first", reintroducing the `k!` ordering — that is the bug I am pre-warned about, and I will go out of
-my way to trigger it later to be certain.
+"first", reintroducing the `k!` ordering. Before trusting that argument inside actual DP code, I want to
+see the failure concretely: does the *unrestricted* recurrence really produce the `k!`-inflated count I
+just derived, on a case small enough to hand-check end to end?
 
 **Numeric self-check of the recurrence on a known closed form.** A recurrence I can defend on paper can
 still be transcribed wrong, so I check it against a quantity I already know. Take no feuds and
@@ -61,8 +62,9 @@ Now `f[{2}] = f[{1}] = 1` (a singleton has one partition), and `f[{1,2}]`: ancho
 bitmask `feud[i]`. Then `S` has no internal feud iff for every `i ∈ S`, `feud[i] & S == 0`. That is an
 `O(2^n * n)` precompute, trivial at `n = 16` (about `10^6` operations).
 
-**First implementation and a trace.** Here is my first cut of the DP loop; I am deliberately suspicious
-of both the submask enumeration and the anchoring.
+**Checking the unrestricted recurrence against the anchored one.** Here is the *unrestricted* loop —
+summing over every legal team as a candidate "first" team, with no anchor condition — the version that
+looks equally natural to write and the one the bijection argument above says over-counts.
 
 ```
 vector<long long> f(1 << n, 0);
@@ -91,18 +93,20 @@ mask order.
 - `f[111]`: submasks `{0}`->`f[{1,2}]`, `{1}`->`f[{0,2}]`, `{2}`->`f[{0,1}]`, `{0,1}`->`f[{2}]`,
   `{0,2}`->`f[{1}]`, `{1,2}`->`f[{0}]`, `{0,1,2}`->`f[{}]`. That is `3 + 3 + 3 + 1 + 1 + 1 + 1 = 13`.
 
-So this code prints `13`, but the true answer is `B(3) = 5`.
+So the unrestricted code prints `13`, confirming the over-count I predicted; the anchored recurrence, not
+this one, is what I actually ship.
 
-**The bug.** Thirteen is not random — it is exactly the count of *ordered* set partitions of 3 elements:
-ordered partitions = `sum_k k! * S(3,k) = 1!*1 + 2!*3 + 3!*1 = 1 + 6 + 6 = 13`, where `S(3,k)` are
-Stirling numbers of the second kind. So my DP counted every partition once per ordering of its teams.
-The cause is precise: by enumerating **all** submasks `sub` as the "first" team, I let the partition
-`{ {0},{1},{2} }` be built as `{0}` then `{1}` then `{2}`, and *also* as `{1}` then `{0}` then `{2}`,
-and so on — `3! = 6` times for that one partition, `2` times for each two-block partition. I even saw
-the over-count concretely inside `f[011] = 3`: the partition `{ {0},{1} }` of the two-element set got
-counted twice (once anchored at `{0}` then `{1}`, once at `{1}` then `{0}`) on top of the single
-two-element team `{0,1}`, giving `3` where the unordered count is `2`. This is the double-count the
-problem is built around, and I reproduced it. The fix is the anchoring I proved earlier: only let `sub`
+**Reading off exactly where the over-count comes from.** Thirteen is not random — it is exactly the
+count of *ordered* set partitions of 3 elements: ordered partitions = `sum_k k! * S(3,k) = 1!*1 + 2!*3 +
+3!*1 = 1 + 6 + 6 = 13`, where `S(3,k)` are Stirling numbers of the second kind. So the unrestricted DP
+counts every partition once per ordering of its teams. The cause is precise: by enumerating **all**
+submasks `sub` as the "first" team, it lets the partition `{ {0},{1},{2} }` be built as `{0}` then `{1}`
+then `{2}`, and *also* as `{1}` then `{0}` then `{2}`, and so on — `3! = 6` times for that one partition,
+`2` times for each two-block partition. The over-count shows up concretely inside `f[011] = 3`: the
+partition `{ {0},{1} }` of the two-element set got counted twice (once anchored at `{0}` then `{1}`,
+once at `{1}` then `{0}`) on top of the single two-element team `{0,1}`, giving `3` where the unordered
+count is `2`. This is exactly the double-count the problem is built around, and now it is not just a
+proof on paper but a number I can point to. The fix is the anchoring I proved earlier: only let `sub`
 range over teams that contain the lowest set bit of `mask`.
 
 **Fix and re-verification.** I restrict the first team to contain the anchor `low = mask & (-mask)`. To
