@@ -15,9 +15,7 @@ the originals.
 The archivist repeats splices until a single reel remains. Different orders of adjacent splices give
 different total tape costs. Compute the **minimum total cost** to merge all `n` reels into one.
 
-This is the circular case of the "merge adjacent piles" interval-DP family. The single-reel and
-empty carousels are corner cases worth nailing down, and the circular wrap is what distinguishes
-this variant from the textbook line version.
+The single-reel and empty carousels are corner cases worth nailing down.
 
 ## Input / output contract
 
@@ -29,27 +27,11 @@ this variant from the textbook line version.
 
 Example: for `w = [4, 2, 6, 3, 5]` the answer is `46`.
 
-## Background
-
-The cost of any sequence of merges is a sum of "combined lengths", one per splice. Two families of
-approach suggest themselves before committing to one:
-
-- **Huffman-style greedy (optimal merge / min-cost merge tree).** The classic "merge the two
-  cheapest piles repeatedly" algorithm builds an optimal binary merge tree in `O(n log n)` with a
-  priority queue, and it is famous for being *exactly* optimal for the unconstrained merge problem.
-  The open question is whether it stays optimal when splices are restricted to neighbours on the
-  carousel.
-- **Interval dynamic programming.** Treat a maximal run of already-merged reels as a contiguous arc,
-  and let `dp[arc]` be the cheapest way to fuse that arc into one reel. The open question is the
-  exact recurrence, how the circular wrap is handled, and the resulting time complexity.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: `n = 0` and `n = 1` (cost `0`); `n = 2`; small carousels checked
-against brute force over all adjacent-merge orders (including the wrap pair); carousels engineered so
-that the two globally smallest reels are **not** adjacent (where a Huffman-style merge would cheat by
-joining non-neighbours); uniform reels; and large `n = 1000` with values near `10^6`, where the
-running total reaches roughly `n * log2(n) * 10^6 ~ 10^10`, beyond 32-bit range.
+against brute force over all adjacent-merge orders (including the wrap pair); a range of carousel
+configurations including skewed and uniform reel sizes; and large `n = 1000` with values near `10^6`.
 
 ## Code framework
 
