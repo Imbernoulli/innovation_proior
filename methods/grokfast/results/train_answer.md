@@ -9,6 +9,32 @@ import torch
 import torch.nn as nn
 
 
+def gradfilter_ma(
+    m: nn.Module,
+    grads: Optional[Dict[str, deque]] = None,
+    window_size: int = 100,
+    lamb: float = 5.0,
+    filter_type: Literal['mean', 'sum'] = 'mean',
+    warmup: bool = True,
+    trigger: bool = False, # For ablation study.
+) -> Dict[str, deque]:
+    if grads is None:
+        grads = {n: deque(maxlen=window_size)
+                 for n, p in m.named_parameters() if p.requires_grad and p.grad is not None}
+    for n, p in m.named_parameters():
+        if p.requires_grad and p.grad is not None:
+            grads[n].append(p.grad.data.detach())
+            if not warmup or len(grads[n]) == window_size and not trigger:
+                if filter_type == "mean":
+                    avg = sum(grads[n]) / len(grads[n])
+                elif filter_type == "sum":
+                    avg = sum(grads[n])
+                else:
+                    raise ValueError(f"Unrecognized filter_type {filter_type}")
+                p.grad.data = p.grad.data + avg * lamb       # g_hat = g + lambda * slow(g)
+    return grads
+
+
 def gradfilter_ema(
     m: nn.Module,
     grads: Optional[Dict[str, torch.Tensor]] = None,
@@ -16,52 +42,20 @@ def gradfilter_ema(
     lamb: float = 2.0,
 ) -> Dict[str, torch.Tensor]:
     if grads is None:
-        grads = {
-            n: p.grad.detach().clone()
-            for n, p in m.named_parameters()
-            if p.requires_grad and p.grad is not None
-        }
+        grads = {n: p.grad.data.detach()
+                 for n, p in m.named_parameters() if p.requires_grad and p.grad is not None}
     for n, p in m.named_parameters():
-        if not p.requires_grad or p.grad is None:
-            continue
-        grads[n].mul_(alpha).add_(p.grad.detach(), alpha=1.0 - alpha)
-        p.grad.add_(grads[n], alpha=lamb)
+        if p.requires_grad and p.grad is not None:
+            grads[n] = grads[n] * alpha + p.grad.data.detach() * (1 - alpha)   # mu <- a*mu+(1-a)*g
+            p.grad.data = p.grad.data + grads[n] * lamb                        # g_hat = g + lamb*mu
     return grads
 
 
-def gradfilter_ma(
-    m: nn.Module,
-    grads: Optional[Dict[str, deque]] = None,
-    window_size: int = 100,
-    lamb: float = 5.0,
-    filter_type: Literal["mean", "sum"] = "mean",
-) -> Dict[str, deque]:
-    if grads is None:
-        grads = {
-            n: deque(maxlen=window_size)
-            for n, p in m.named_parameters()
-            if p.requires_grad and p.grad is not None
-        }
-    for n, p in m.named_parameters():
-        if not p.requires_grad or p.grad is None:
-            continue
-        grads[n].append(p.grad.data.detach())
-        if filter_type == "mean":
-            avg = sum(grads[n]) / len(grads[n])
-        elif filter_type == "sum":
-            avg = sum(grads[n])
-        else:
-            raise ValueError(f"filter_type must be 'mean' or 'sum', got {filter_type}")
-        p.grad.data = p.grad.data + avg * lamb
-    return grads
-
-
-# Integration into a standard training loop:
+# Two-line integration into any training loop:
 grads = None
 for batch in dataloader:
     model.zero_grad()
-    logits = model(batch)
-    loss = criterion(logits, targets)
+    loss = criterion(model(batch))
     loss.backward()
     grads = gradfilter_ema(model, grads=grads, alpha=0.98, lamb=2.0)
     optimizer.step()
