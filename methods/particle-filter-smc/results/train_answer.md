@@ -36,62 +36,25 @@ What emerges is therefore a specific answer to the filtering recursion rather th
 ```python
 import numpy as np
 
-
-class SimpleRandomWalkModel:
-    def __init__(self, transition_std=0.5, likelihood_std=1.0, rng=None):
-        self.transition_std = transition_std
-        self.likelihood_std = likelihood_std
-        self.rng = rng or np.random.default_rng(0)
-
-    def sample_prior(self, n, rng):
-        return rng.normal(loc=0.0, scale=1.0, size=n)
-
-    def propagate(self, particles, rng):
-        return particles + rng.normal(scale=self.transition_std, size=particles.shape)
-
-    def log_likelihood(self, y, particles):
-        return -0.5 * ((y - particles) / self.likelihood_std) ** 2
-
-
 def effective_sample_size(weights):
     return 1.0 / np.sum(weights ** 2)
 
-
 def resample(particles, weights, rng):
-    idx = rng.choice(len(weights), size=len(weights), p=weights)
-    return particles[idx], np.ones_like(weights) / len(weights)
+    indices = rng.choice(len(weights), size=len(weights), p=weights)
+    return particles[indices], np.ones_like(weights) / len(weights)
 
-
-def particle_filter_step(particles, weights, y, model, rng):
+def particle_filter(particles, weights, observation, model, rng):
+    # Predict: push particles through the state dynamics.
     predicted = model.propagate(particles, rng)
-    log_w = model.log_likelihood(y, predicted)
+
+    # Update: weight by the observation likelihood.
+    log_w = model.log_likelihood(observation, predicted)
     weights = np.exp(log_w - np.max(log_w))
     weights /= weights.sum()
+
+    # Resample if the effective sample size falls below half the particle count.
     if effective_sample_size(weights) < 0.5 * len(weights):
         predicted, weights = resample(predicted, weights, rng)
+
     return predicted, weights
-
-
-if __name__ == "__main__":
-    rng = np.random.default_rng(42)
-    model = SimpleRandomWalkModel(rng=rng)
-    n = 1000
-    particles = model.sample_prior(n, rng)
-    weights = np.full(n, 1.0 / n)
-
-    true_states = [0.0]
-    observations = []
-    for _ in range(50):
-        true_states.append(true_states[-1] + rng.normal(scale=model.transition_std))
-        observations.append(true_states[-1] + rng.normal(scale=model.likelihood_std))
-
-    estimates = []
-    for k, y in enumerate(observations):
-        if k > 0:
-            particles = model.propagate(particles, rng)
-        particles, weights = particle_filter_step(particles, weights, y, model, rng)
-        estimates.append(np.average(particles, weights=weights))
-
-    rmse = np.sqrt(np.mean([(e - t) ** 2 for e, t in zip(estimates, true_states[1:])]))
-    print(f"RMSE over 50 steps: {rmse:.3f}")
 ```
