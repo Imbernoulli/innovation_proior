@@ -6,53 +6,8 @@ The sharper estimate is the Bregman–Minc inequality, proved here through Radha
 
 Choose a uniformly random permutation tau of the rows and average the chain-rule decomposition over tau. Now fix a row k and a fixed matching f. A neighbor column of row k is unavailable at k's turn exactly when the row that owns that column under f appears before k in tau. Therefore the number N_k of still-available neighbors of k depends only on the relative position of k among the r_k rows that own k's neighbors, including k itself. Because tau is uniform, k is equally likely to occupy any of the r_k relative positions. When k is in relative position m, exactly m minus one of its neighbors are gone, so N_k equals r_k minus m plus one. Thus, averaged over tau, N_k is uniform on the set {1, 2, ..., r_k}, independently of the particular matching f.
 
-Conditioned on the past revealed rows, f(k) can take at most N_k values, so its conditional entropy is at most log N_k. Averaging over the random order and the uniform matching gives, for each row k, an expected contribution of (1/r_k) times the sum from i=1 to r_k of log i, which is (1/r_k) log(r_k!). Summing these contributions over all rows bounds H(f) by the sum of (1/r_k) log(r_k!), and exponentiating base two converts the entropy bound into the desired bound on the number of matchings: per(A) is at most the product over i of (r_i!)^{1/r_i}. The bound is tight, achieved for example by a block-diagonal matrix consisting of disjoint copies of K_{d,d}.
+Conditioned on the past revealed rows, f(k) can take at most N_k values, so its conditional entropy is at most log N_k. Averaging over the random order and the uniform matching gives, for each row k, an expected contribution of (1/r_k) times the sum from i=1 to r_k of log i, which is (1/r_k) log(r_k!). Summing these contributions over all rows bounds H(f) by the sum of (1/r_k) log(r_k!), and exponentiating base two turns this entropy bound on the matching count into the bound on the permanent I was after.
 
-```python
-import math
-from itertools import permutations
-import numpy as np
-
-
-def bregman_minc_bound(A):
-    """Return the Bregman-Minc upper bound on the permanent of a 0/1 matrix."""
-    n = len(A)
-    bound = 1.0
-    for i in range(n):
-        r = sum(A[i])
-        if r == 0:
-            return 0.0
-        bound *= math.factorial(r) ** (1.0 / r)
-    return bound
-
-
-def permanent_brute_force(A):
-    """Exact permanent for small matrices by enumerating permutations."""
-    n = len(A)
-    total = 0
-    for sigma in permutations(range(n)):
-        prod = 1
-        for i in range(n):
-            prod *= A[i][sigma[i]]
-        total += prod
-    return total
-
-
-# Tight example: two disjoint copies of K_{3,3}
-A = np.zeros((6, 6), dtype=int)
-A[:3, :3] = 1
-A[3:, 3:] = 1
-
-print("Bregman-Minc bound:", bregman_minc_bound(A))
-print("Exact permanent:    ", permanent_brute_force(A))
-
-# A non-tight example with varying row sums
-B = np.array([
-    [1, 1, 0, 0],
-    [1, 1, 1, 0],
-    [0, 1, 1, 1],
-    [0, 0, 1, 1],
-], dtype=int)
-print("B bound:", bregman_minc_bound(B))
-print("B exact: ", permanent_brute_force(B))
-```
+For an $n\times n$ matrix $A=(a_{ij})$ with entries in $\{0,1\}$ and row sums $r_i=\sum_{j=1}^n a_{ij}$, the result is the Bregman–Minc inequality: if some $r_i=0$ then $\operatorname{per}(A)=0$ trivially, and otherwise, with every $r_i>0$,
+$$\operatorname{per}(A)=\sum_{\sigma\in S_n}\prod_{i=1}^n a_{i\sigma(i)}\;\le\;\prod_{i=1}^{n}(r_i!)^{1/r_i}.$$
+Equivalently, for the bipartite graph $G$ with a vertex for each row and each column and an edge $i\!-\!j$ exactly when $a_{ij}=1$ (so row $i$ has degree $r_i$), the number of perfect matchings of $G$ is at most $\prod_i (r_i!)^{1/r_i}$. The bound is tight, and the equality cases are exactly the block-diagonal unions of complete bipartite graphs: whenever $d$ divides $n$, taking $A$ to be $n/d$ disjoint copies of $K_{d,d}$ makes every row have degree $d$, gives exactly $(d!)^{n/d}$ perfect matchings, and makes the right-hand side $\prod_{k=1}^n (d!)^{1/d}=(d!)^{n/d}$ — the two sides coincide. Nothing in the proof can be tightened further to close that gap in general: the random-order averaging is exact and the chain rule is exact, so the only inequality actually used — bounding a conditional entropy by the log of the number of values still live — is met with equality precisely on these complete-block graphs, where every column still available to a row really is reachable by some completion of the matching, not merely uncommitted by coincidence.
