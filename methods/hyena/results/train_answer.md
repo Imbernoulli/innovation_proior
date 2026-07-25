@@ -25,11 +25,12 @@ def fftconv(u, k, D):
     k_f = torch.fft.rfft(k, n=fft_size) / fft_size
     u_f = torch.fft.rfft(u.to(dtype=k.dtype), n=fft_size)
     y = torch.fft.irfft(u_f * k_f, n=fft_size, norm="forward")[..., :seqlen]
-    return (y + u * D.unsqueeze(-1)).to(dtype=u.dtype)
+    return (y + u * D.unsqueeze(-1)).to(dtype=u.dtype)  # learned residual term
 
 
 class Sin(nn.Module):
-    # Periodic activation lets the filter MLP represent high-frequency content.
+    # High-frequency periodic activation: lets the filter FFN represent
+    # high-frequency content, countering the low-frequency bias of MLPs.
     def __init__(self, dim, w=10):
         super().__init__()
         self.freq = nn.Parameter(w * torch.ones(1, dim))
@@ -42,13 +43,13 @@ class PositionalEmbedding(nn.Module):
     # Truncated complex-exponential (Fourier-feature) encoding of position t.
     def __init__(self, emb_dim, seq_len):
         super().__init__()
-        t = torch.linspace(0, 1, seq_len)[None, :, None]
+        t = torch.linspace(0, 1, seq_len)[None, :, None]          # 1, L, 1
         bands = (emb_dim - 1) // 2
         t_rescaled = torch.linspace(0, seq_len - 1, seq_len)[None, :, None]
         w = 2 * math.pi * t_rescaled / seq_len
         f = torch.linspace(1e-4, bands - 1, bands)[None, None]
         z = torch.exp(-1j * f * w)
-        z = torch.cat([t, z.real, z.imag], dim=-1)
+        z = torch.cat([t, z.real, z.imag], dim=-1)                # 1, L, emb_dim
         self.register_buffer("z", z)
         self.register_buffer("t", t)
 
@@ -57,7 +58,8 @@ class PositionalEmbedding(nn.Module):
 
 
 class ExponentialModulation(nn.Module):
-    # Window(t) = exp(-t * delta) + shift, with delta varied across channels.
+    # Window(t) = exp(-t * delta) + shift, with delta varied across channels
+    # so filters have a spread of effective lengths at initialization.
     def __init__(self, d_model, fast_decay_pct=0.3, slow_decay_pct=1.5,
                  target=1e-2, shift=0.0):
         super().__init__()
@@ -74,12 +76,13 @@ class ExponentialModulation(nn.Module):
 
 class LongFilter(nn.Module):
     # Implicit long filter: h_t = Window(t) * FFN(PositionalEncoding(t)).
+    # Filter length is L but parameter count is independent of L.
     def __init__(self, d_model, emb_dim=3, order=64, seq_len=1024,
                  w=10, num_inner_mlps=2):
         super().__init__()
         assert emb_dim % 2 != 0 and emb_dim >= 3
         self.d_model = d_model
-        self.bias = nn.Parameter(torch.randn(d_model))
+        self.bias = nn.Parameter(torch.randn(d_model))            # learned residual term
         self.pos_emb = PositionalEmbedding(emb_dim, seq_len)
         act = Sin(dim=order, w=w)
         self.implicit_filter = nn.Sequential(nn.Linear(emb_dim, order), act)
@@ -91,15 +94,15 @@ class LongFilter(nn.Module):
 
     def filter(self, L):
         z, t = self.pos_emb(L)
-        h = self.implicit_filter(z)
-        h = self.modulation(t, h)
+        h = self.implicit_filter(z)        # FFN(PositionalEncoding(t))
+        h = self.modulation(t, h)          # * Window(t)
         return h
 
     def forward(self, x, L, k=None, bias=None):
         if k is None:
             k = self.filter(L)
         if k.dim() == 3:
-            k = rearrange(k, "1 l d -> d l")
+            k = rearrange(k, "1 l d -> d l")   # (d_model, L) filter
         bias = self.bias if bias is None else bias
         return fftconv(x, k, bias)
 
@@ -110,14 +113,18 @@ class SequenceMixer(nn.Module):
         super().__init__()
         assert order >= 2
         self.d_model, self.l_max, self.order = d_model, l_max, order
+        # N+1 projections (the x^n and v), produced jointly.
         self.in_proj = nn.Linear(d_model, (order + 1) * d_model)
         self.out_proj = nn.Linear(d_model, d_model)
         self.dropout = nn.Dropout(dropout)
+        # Short explicit depthwise conv: cheap local / shift mixing on projections.
         self.short_filter = nn.Conv1d(
             (order + 1) * d_model, (order + 1) * d_model,
             kernel_size=short_filter_order, groups=(order + 1) * d_model,
             padding=short_filter_order - 1,
         )
+        # One implicit long filter per long convolution (order - 1 of them; the
+        # first projection gates the final output without a preceding conv).
         self.filter_fn = LongFilter(
             d_model * (order - 1), order=filter_order, seq_len=l_max, **filter_args
         )
@@ -126,18 +133,19 @@ class SequenceMixer(nn.Module):
         L = u.size(-2)
         u = self.in_proj(u)
         u = rearrange(u, "b l d -> b d l")
-        uc = self.short_filter(u)[..., :L]
-        *x, v = uc.split(self.d_model, dim=1)
+        uc = self.short_filter(u)[..., :L]                 # local mix, then truncate pad
+        *x, v = uc.split(self.d_model, dim=1)              # x^1..x^N, v
 
-        k = self.filter_fn.filter(L)
+        k = self.filter_fn.filter(L)                       # (1, L, d_model*(order-1))
         k = rearrange(k, "1 l (o d) -> o d l", o=self.order - 1)
         bias = rearrange(self.filter_fn.bias, "(o d) -> o d", o=self.order - 1)
 
+        # Recurrence over the implicit long filters; x[0] is the remaining gate.
         for o, x_i in enumerate(reversed(x[1:])):
-            v = self.dropout(v * x_i)
-            v = self.filter_fn(v, L, k=k[o], bias=bias[o])
+            v = self.dropout(v * x_i)                      # data-controlled gate  D_x^n
+            v = self.filter_fn(v, L, k=k[o], bias=bias[o]) # long conv  S_h^n  (FFT)
 
-        y = rearrange(v * x[0], "b d l -> b l d")
+        y = rearrange(v * x[0], "b d l -> b l d")          # final gate
         return self.out_proj(y)
 
 
