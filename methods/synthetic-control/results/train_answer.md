@@ -20,53 +20,9 @@ In practice, the canonical implementation uses a `dataprep` step to build `X1`, 
 
 The synthetic control method is most appropriate when there is a single treated aggregate unit, a reasonably sized donor pool, a long pre-treatment period, and an intervention whose timing is well defined. It turns the counterfactual estimation problem into a transparent matching exercise in which the comparison object is a weighted average of real donors, selected to reproduce the treated unit before the event. The post-treatment gap is then interpreted as the effect of the intervention, conditional on the design being credible.
 
-```python
-import numpy as np
-from scipy.optimize import minimize
-
-np.random.seed(0)
-
-n_donors = 4
-n_pre = 20
-n_post = 10
-common = np.linspace(0, 5, n_pre + n_post)
-
-Y_donors = np.column_stack([
-    common + np.random.randn(n_pre + n_post) * 0.3 for _ in range(n_donors)
-])
-
-true_w = np.array([0.4, 0.3, 0.2, 0.1])
-Y1_N = Y_donors @ true_w + np.random.randn(n_pre + n_post) * 0.2
-
-Y1 = Y1_N.copy()
-Y1[n_pre:] += 1.5
-
-X1 = np.array([Y1[:n_pre].mean(),
-               np.polyfit(np.arange(n_pre), Y1[:n_pre], 1)[0]])
-X0 = np.vstack([
-    [Y_donors[:n_pre, j].mean(),
-     np.polyfit(np.arange(n_pre), Y_donors[:n_pre, j], 1)[0]]
-    for j in range(n_donors)
-])
-
-sd = np.std(np.vstack([X1, X0]), axis=0, ddof=1)
-X1s, X0s = X1 / sd, X0 / sd
-
-H = X0s @ X0s.T
-c = -X0s @ X1s
-
-def objective(w):
-    return 0.5 * w @ H @ w + c @ w
-
-constraints = {"type": "eq", "fun": lambda w: np.sum(w) - 1.0}
-bounds = [(0.0, 1.0)] * n_donors
-result = minimize(objective, x0=np.ones(n_donors) / n_donors,
-                  method="SLSQP", bounds=bounds, constraints=constraints,
-                  options={"ftol": 1e-12})
-w_hat = result.x
-
-gaps = Y1[n_pre:] - Y_donors[n_pre:] @ w_hat
-print("Estimated donor weights:", np.round(w_hat, 3))
-print("Mean post-treatment gap:", np.round(gaps.mean(), 3))
-print("True treatment effect: 1.5")
-```
+Collecting the pieces above into one statement: given a treated unit's pre-treatment predictor vector $X_1$ and pre-treatment outcome history $Z_1$, and the corresponding donor matrices $X_0$ and $Z_0$, the estimator is the nested pair of optimizations
+$$W^*(V) \in \arg\min_{W}\ (X_1 - X_0 W)'V(X_1 - X_0 W), \qquad w_j \ge 0,\ \sum_{j=2}^{J+1} w_j = 1,$$
+$$V^* \in \arg\min_{V}\ \frac{\big(Z_1 - Z_0 W^*(V)\big)'\big(Z_1 - Z_0 W^*(V)\big)}{\operatorname{nrow}(Z_0)},$$
+where the inner problem, with the constant term $X_1'VX_1$ dropped, is the quadratic program $\min_W \tfrac12 W'HW + c'W$ with $H = X_0'VX_0$ and $c = -X_1'VX_0$, solved subject to the same nonnegativity and adding-up constraints. With $W^* = W^*(V^*)$ fixed, the synthetic control and the estimated effect in every post-treatment period follow immediately:
+$$\hat Y_{1t}^N = \sum_{j=2}^{J+1} w_j^* Y_{jt}, \qquad \hat\alpha_{1t} = Y_{1t} - \hat Y_{1t}^N, \qquad t > T_0.$$
+This pair of equations, together with the reported donor weights $w_j^*$, the predictor weights $V^*$, the pre-treatment fit, and the placebo distribution of gaps under fictitious treatment dates, is the deliverable: not a single fitted coefficient but a named, auditable counterfactual path constructed entirely from real donor units, whose credibility can be checked before its post-treatment gap is ever interpreted as an effect.
