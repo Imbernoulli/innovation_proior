@@ -12,9 +12,7 @@ repeated substring, not three. If `k` is `0`, larger than `n`, or otherwise leav
 window, the answer is `0`.
 
 This is the counting core of de-duplication and plagiarism/near-duplicate detection: chop a text into
-fixed-length shingles and ask how many distinct shingles are shared. Getting the *count* exactly right
-— distinct strings, not occurrences, and the right number of windows — is where this kind of problem
-quietly goes wrong.
+fixed-length shingles and ask how many distinct shingles are shared.
 
 ## Input / output contract
 
@@ -29,28 +27,12 @@ Example: for `n = 8`, `k = 3`, `s = "ababbaba"` the answer is `2`. The length-3 
 `aba, bab, abb, bba, bab, aba` (at indices 0..5); `aba` repeats (indices 0 and 5) and `bab` repeats
 (indices 1 and 4), so two distinct substrings repeat.
 
-## Background
-
-The natural plan is to reduce each length-`k` window to a comparable key and then group equal keys.
-Two families of approach are on the table before committing to one:
-
-- **Sort the raw substrings.** Materialize all `n - k + 1` windows as strings, sort them, and walk
-  the sorted list counting groups of size `>= 2`. Correct and easy to reason about, but comparing
-  length-`k` strings makes it `O(n * k * log n)` in the worst case (e.g. `k ~ n/2`), which is far too
-  slow at `n = 2*10^5`.
-- **Polynomial rolling hash.** Give each window an integer fingerprint computed in `O(1)` per step
-  by rolling, so all `n - k + 1` fingerprints cost `O(n)`. Sort the fingerprints and count groups.
-  This is `O(n log n)`. The open questions are the exact roll (which power of the base leaves with
-  the departing character), how many windows there even are, and — the part that actually decides the
-  output — how a group of equal fingerprints maps to the *count* the problem asks for.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: strings with many repeats over a tiny alphabet (so most windows
 collide), strings with no repeats at all, `k = 1` (single-character windows), `k = n` (exactly one
-window, answer always `0`), `k = 0` and `k > n` (no windows, answer `0`), `n = 0`, and large
-`n = 2*10^5` with `k` ranging from small to `n/2` (so an `O(n*k)` comparison would time out and the
-fingerprint count must be exactly distinct-substrings, not occurrences).
+window), `k = 0` and `k > n` (no windows), `n = 0`, and large `n = 2*10^5` with `k` ranging from
+small to `n/2`.
 
 ## Code framework
 
