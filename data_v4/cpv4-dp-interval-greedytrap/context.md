@@ -24,10 +24,6 @@ under-filled ones). The **last** line is the bottom of the board and is charged 
 Because every bead satisfies `w[i] <= W`, putting each bead on its own line is always a legal layout, so a
 feasible answer always exists. If all beads fit on a single line the cost is `0`.
 
-This is the line-breaking / text-justification cost in disguise: it is the cleanest setting in which the
-"obvious" greedy (pack each line as full as you can, then start a new one) is provably suboptimal, while a
-left-to-right interval/partition DP over contiguous bead groups is exact.
-
 ## Input / output contract
 
 - Input (stdin): the first line holds two integers `n` and `W` (`1 <= n <= 5000`, `1 <= W <= 10^6`).
@@ -41,28 +37,11 @@ Example: for `n = 4`, `W = 6`, `w = [4, 1, 3, 3]` the answer is `5`. (Greedy fil
 instead puts `{0}` on line 1 paying `(6-4)^2 = 4`, `{1,2}` on line 2 paying `(6-5)^2 = 1`, and `{3}` on
 the free last line, for `4 + 1 = 5`.)
 
-## Background
-
-The constraint that lines hold **contiguous** prefixes of the remaining beads, never overflow `W`, and pay
-a **convex** (squared) slack penalty puts two very different strategies on the table:
-
-- **Greedy first-fit.** Walk the beads once; keep adding the next bead to the current line while it still
-  fits, and open a new line the instant it would overflow. This is `O(n)` and a dozen lines of code. The
-  open question is whether maximally filling each line — which is locally the lowest-slack move — actually
-  minimizes the *sum of squares* of slack across the whole board.
-- **Interval / partition dynamic programming.** Let `dp[i]` be the minimum penalty to lay out the first
-  `i` beads, where the layout's last line is the group `[j..i-1]`. Then `dp[i]` is the best over all legal
-  last-group start points `j`, combining `dp[j-1]` with the slack cost of the group `[j..i-1]`. This is
-  `O(n^2)` in the worst case (each line can scan back over the beads that still fit); the open question is
-  the exact recurrence, the width/feasibility test, and the special handling of the last line.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: everything fitting on one line (`answer 0`), a single bead (`n = 1`,
-`answer 0`), beads so wide each must occupy its own line, layouts where greedy first-fit is strictly worse
-than the optimum (the core trap), `W` near `10^6` with many small beads so the running penalty exceeds a
-32-bit integer, and the largest `n = 5000` so an `O(n^2)` partition scan and 64-bit accumulators are both
-exercised.
+`answer 0`), beads so wide each must occupy its own line, a variety of packings of the bead sequence into
+lines, `W` near `10^6` with many small beads, and the largest `n = 5000`.
 
 ## Code framework
 
