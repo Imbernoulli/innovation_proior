@@ -14,93 +14,18 @@ It is worth emphasizing what the theorem does not do. Karp-Lipton does not prove
 
 The deeper lesson is that nonuniform advice is not merely harmless preprocessing. When a higher-level computation is allowed to guess the advice existentially and then verify it universally, that advice can stand in for an entire family of witnesses that would otherwise require a stronger quantifier structure. Self-reducibility upgrades a decision circuit into a witness-producing circuit, and that upgrade is what lets the existential guess absorb the inner existential quantifier of a Pi_2 statement. The polynomial hierarchy, which is built on carefully separated alternations, therefore becomes fragile under the nonuniform assumption.
 
-In short, the Karp-Lipton theorem reframes the search for circuit lower bounds. Rather than asking directly whether SAT has small circuits, it shows that an affirmative answer would collapse a much larger complexity-theoretic edifice. That makes the hypothesis NP subseteq P/poly not just an upper-bound claim but a structural threat to the polynomial hierarchy, and the theorem remains a central pressure argument connecting nonuniform computation with uniform complexity classes.
+In short, the Karp-Lipton theorem reframes the search for circuit lower bounds. Rather than asking directly whether SAT has small circuits, it shows that an affirmative answer would collapse a much larger complexity-theoretic edifice. That makes the hypothesis NP subseteq P/poly not just an upper-bound claim but a structural threat to the polynomial hierarchy, and the theorem remains a central pressure argument connecting nonuniform computation with uniform complexity classes. Written out precisely, in the exact form the field carries it, the deliverable is this conditional collapse together with the guess-and-verify protocol that proves it.
 
-```python
-# A tiny simulation of the Karp-Lipton collapse idea on a finite toy universe.
-# SAT is solved by brute force (the toy "P/poly circuit oracle"),
-# then self-reducibility extracts a witness.  A Pi_2 statement is checked
-# both directly and via the Sigma_2 "guess a witness circuit" simulation.
+The hypothesis is $\mathrm{NP} \subseteq \mathrm{P/poly}$: there is a polynomial $p$ such that for every length $n$ some Boolean circuit $C_n$ of size at most $p(n)$ decides $\mathrm{SAT}$ correctly on every formula of length $n$, with no requirement that any machine can construct $C_n$ from $n$. The conclusion is the collapse
 
-from itertools import product, repeat
+$$\mathrm{NP} \subseteq \mathrm{P/poly} \;\Longrightarrow\; \mathrm{PH} = \Sigma_2^p.$$
 
-def decide_sat(formula, assignment):
-    """Evaluate a CNF formula under a partial assignment."""
-    for clause in formula:
-        satisfied = False
-        for lit in clause:
-            var, wanted = abs(lit), lit > 0
-            val = assignment.get(var)
-            if val is not None and val == wanted:
-                satisfied = True
-                break
-        if not satisfied:
-            return False
-    return True
+The proof is itself the protocol worth stating in full. Take any $\Pi_2^p$ language $L$, written as
 
-def find_assignment(formula, variables):
-    """Brute-force SAT witness search; simulates the small-circuit oracle."""
-    for bits in product([False, True], repeat=len(variables)):
-        assignment = {v: b for v, b in zip(variables, bits)}
-        if decide_sat(formula, assignment):
-            return assignment
-    return None
+$$z \in L \iff \forall x \, \exists y \, R(z, x, y),$$
 
-def self_reduce_witness(formula, variables):
-    """Recover a satisfying assignment by fixing variables one by one."""
-    assignment = {}
-    if find_assignment(formula, variables) is None:
-        return None
-    for v in variables:
-        assignment[v] = False
-        if find_assignment(formula, variables) is None:
-            assignment[v] = True
-    return assignment
+with $R$ computable in polynomial time and $|x|, |y|$ bounded by a polynomial in $|z|$. The inner existential condition "$\exists y\, R(z,x,y)$" is encoded as a SAT instance of length polynomial in $|z|$, so the assumed circuit $C_n$ decides it. Self-reducibility upgrades $C_n$ from a decision circuit into a witness-producing circuit $D$ of size still polynomial in $|z|$: fix the SAT instance's variables one at a time, query $C_n$ on each restriction, and keep the branch that remains satisfiable, so that after fixing all variables $D$ has recovered a $y$ satisfying $R(z,x,y)$ whenever one exists. A $\Sigma_2^p$ machine then simulates the $\Pi_2^p$ statement by existentially guessing this circuit $D$ and universally checking it against every $x$:
 
-# Example: a small 3-variable CNF whose satisfying assignments we will use as witnesses.
-variables = [1, 2, 3]
-formula = [(1, -2, 3), (-1, 2, 3)]
+$$z \in L \iff \exists D \, \forall x \, R\bigl(z, x, D(z,x)\bigr),$$
 
-# The "witness-producing circuit" for our toy SAT oracle.
-witness_cache = {}
-def witness_circuit(formula_key):
-    if formula_key not in witness_cache:
-        witness_cache[formula_key] = self_reduce_witness(formula, variables)
-    return witness_cache[formula_key]
-
-# A toy Pi_2 predicate: for every restriction x, there exists an assignment y
-# that agrees with x on the variables x fixes and satisfies the formula.
-fixed_bits = {1: False, 2: True}  # toy universal choice x
-
-def agrees(restriction, assignment):
-    return all(assignment.get(v) == r for v, r in restriction.items())
-
-def pi2_holds():
-    """Direct forall-exists check over all total assignments."""
-    for bits in product([False, True], repeat=len(variables)):
-        assignment = {v: b for v, b in zip(variables, bits)}
-        if not agrees(fixed_bits, assignment) and decide_sat(formula, assignment):
-            # The chosen x must be compatible; this toy example uses one x only.
-            pass
-    # Real check: is there a witness for the fixed universal restriction?
-    for bits in product([False, True], repeat=len(variables)):
-        assignment = {v: b for v, b in zip(variables, bits)}
-        if agrees(fixed_bits, assignment) and decide_sat(formula, assignment):
-            return True
-    return False
-
-def sigma2_simulation():
-    """Guess a function D mapping each restriction to a witness, then verify."""
-    universe = [{v: r} for v, r in fixed_bits.items()]
-    # For the toy example there is only one meaningful universal input.
-    for witness in product([False, True], repeat=len(variables)):
-        assignment = {v: b for v, b in zip(variables, witness)}
-        if agrees(fixed_bits, assignment) and decide_sat(formula, assignment):
-            return True, assignment
-    return False, None
-
-print("Direct Pi_2 check:", pi2_holds())
-ok, w = sigma2_simulation()
-print("Sigma_2 simulation found witness:", ok, w)
-print("Self-reduced witness:", witness_circuit("toy"))
-```
+where $D$ ranges over circuits of size polynomial in $|z|$. Soundness is exact in both directions: if the $\Pi_2^p$ statement holds, the true witness-producing circuit built from $C_n$ satisfies the right-hand side, so the $\Sigma_2^p$ machine accepts; if it fails, some $x$ admits no valid $y$, so no candidate $D$ — however guessed — can pass the universal check on that $x$, and the machine rejects. This containment of $\Pi_2^p$ inside $\Sigma_2^p$ is precisely what forces $\mathrm{PH} = \Sigma_2^p$, and it is the theorem's entire content: not an algorithm to run, but this exact conditional statement and the existential-guess/universal-verify argument that establishes it.
