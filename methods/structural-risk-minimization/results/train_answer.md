@@ -8,45 +8,20 @@ When the structure contains countably many classes, I must ensure that all bound
 
 The principle is not merely a penalty on parameter count. Capacity measures such as VC dimension reflect the class's ability to realize dichotomies, not the number of scalar parameters. A concrete illustration is the margin bound for hyperplane classifiers: if inputs lie in a ball of radius R and a hyperplane separates them with margin Delta, the VC dimension is bounded by min(R^2 / Delta^2, n) + 1. Maximizing the margin therefore reduces capacity. A hard-margin support vector machine in the separable case keeps empirical error zero while selecting the separator from the smallest-capacity margin class compatible with the data; soft-margin and kernel variants preserve the same tradeoff between empirical violations and capacity control.
 
-The canonical name of the method is Structural Risk Minimization, and its essential message is that model selection should be driven by a finite-sample guarantee rather than by training loss alone. The following Python script illustrates the idea on a one-dimensional regression problem: it fits polynomials of increasing degree, computes an empirical mean-squared-error plus a capacity penalty, and selects the degree with the smallest structural risk bound.
+The canonical name of the method is Structural Risk Minimization, and its essential message is that model selection should be driven by a finite-sample guarantee rather than by training loss alone. Stated in full, the procedure is this. Fix a nested structure of hypothesis spaces
 
-```python
-import numpy as np
+$$S_1 \subset S_2 \subset \cdots \subset S_n, \qquad h_1 < h_2 < \cdots < h_n,$$
 
-np.random.seed(0)
-n_samples = 80
-x = np.sort(np.random.uniform(-1, 1, n_samples))
-y_true = np.sin(np.pi * x)
-y = y_true + np.random.normal(scale=0.2, size=n_samples)
+where each $h_k$ is the capacity of $S_k$ — a VC dimension or a comparable uniform-convergence measure. Inside every level, solve ordinary empirical risk minimization,
 
+$$\alpha_k = \arg\min_{\alpha \in S_k} R_{\mathrm{emp}}(\alpha).$$
 
-def fit_poly(degree, x, y):
-    return np.polyfit(x, y, degree)
+Attach to each level the confidence term that the VC bound supplies; for binary classification this is
 
+$$\Omega_0(h, l, \eta) = \sqrt{\frac{h\big(\ln(2l/h) + 1\big) - \ln \eta}{l}},$$
 
-def empirical_mse(coef, x, y):
-    pred = np.polyval(coef, x)
-    return np.mean((y - pred) ** 2)
+so that with probability at least $1-\eta$ the true error of any predictor drawn from a class of VC dimension $h$ satisfies $P(w) < v(w) + \Omega_0(h, l, \eta)$. When the structure has countably many levels, assign prior weights $w(k)$ with $\sum_k w(k) \le 1$ and set $\eta_k = w(k)\eta$ for each level, so that a single union bound makes every level's guarantee hold simultaneously with overall probability at least $1-\eta$. Finally, select the level whose upper bound on true risk is smallest,
 
+$$k^* = \arg\min_k \Big[ R_{\mathrm{emp}}(\alpha_k) + \Omega(h_k, l, \eta_k) \Big], \qquad \text{return } \alpha_{k^*}.$$
 
-def srm_score(mse, degree, n, eta=0.05):
-    # Use degree + 1 as a simple capacity proxy and a small union-bound weight.
-    h = degree + 1
-    penalty = np.sqrt((h * (np.log(2 * n / h) + 1) - np.log(eta)) / n)
-    return mse + penalty
-
-
-best_degree = None
-best_score = float("inf")
-print("degree  train_mse  srm_score")
-for d in range(0, 12):
-    coef = fit_poly(d, x, y)
-    mse = empirical_mse(coef, x, y)
-    score = srm_score(mse, d, n_samples)
-    print(f"{d:3d}    {mse:.4f}     {score:.4f}")
-    if score < best_score:
-        best_score = score
-        best_degree = d
-
-print(f"\nSelected degree by structural risk minimization: {best_degree}")
-```
+The returned predictor $\alpha_{k^*}$ then carries the oracle-style guarantee that, at every level $k$ simultaneously, it is within $\Omega(h_k, l, \eta_k)$ of that level's own best candidate — the finite-sample statement that a rule minimizing training loss alone can never make, because that rule has no mechanism for charging a class for its capacity to fit the sample by chance.
