@@ -12,9 +12,10 @@ Usage:
   python3 tools/ta_gate_check.py --path <dir>              # any dir holding answer/train_answer
 Exit code 0 iff every checked unit PASSes.
 """
-import json, os, re, sys
+import glob, json, os, re, sys
 
 _FENCE_RE = re.compile(r'```[a-zA-Z0-9_+-]*\n(.*?)```', re.S)
+_CODE_EXT = ('py', 'cpp', 'cc', 'c', 'h', 'hpp', 'jl', 'rs', 'ipynb')
 
 
 def fences(text):
@@ -23,12 +24,23 @@ def fences(text):
     return _FENCE_RE.findall(text)
 
 
-def gate(ta_text, ans_text):
+def code_dir_blob(slug):
+    """Some methods keep the implementation as a real file under methods/<slug>/code/ and answer.md
+    only names it; a write-up quoting that file verbatim is canonical too (see build_sft.py)."""
+    parts = []
+    for p in sorted(glob.glob(f'methods/{slug}/code/**/*', recursive=True)):
+        if (os.path.isfile(p) and p.rsplit('.', 1)[-1] in _CODE_EXT
+                and os.path.getsize(p) < 2_000_000):
+            parts.append(open(p, encoding='utf-8', errors='ignore').read())
+    return re.sub(r'\s+', '', ''.join(parts))
+
+
+def gate(ta_text, ans_text, extra_hay=''):
     """(ok, reason) — mirrors build_sft._ta_code_ok."""
     for bad in ('~~~', '<pre>', '</code>'):
         if bad in ta_text:
             return False, f'non-backtick code carrier {bad!r} (fail-closed)'
-    hay = re.sub(r'\s+', '', ''.join(fences(ans_text)))
+    hay = re.sub(r'\s+', '', ''.join(fences(ans_text))) + extra_hay
     small = 0
     for i, b in enumerate(fences(ta_text)):
         nb = re.sub(r'\s+', '', b)
@@ -50,7 +62,12 @@ def check_dir(d, label=None):
         return False, f'{label}: MISSING train_answer.md (build falls back to answer.md)'
     if not os.path.isfile(ans_p):
         return True, f'{label}: PASS (no answer.md to compare against)'
-    ok, why = gate(open(ta_p, encoding='utf-8').read(), open(ans_p, encoding='utf-8').read())
+    ta, ans = open(ta_p, encoding='utf-8').read(), open(ans_p, encoding='utf-8').read()
+    ok, why = gate(ta, ans)
+    if not ok and d.startswith('methods/'):
+        ok2, why2 = gate(ta, ans, code_dir_blob(d.split('/')[1]))
+        if ok2:
+            return True, f'{label}: PASS — code is verbatim from this method\'s code/ directory'
     return ok, f'{label}: {"PASS" if ok else "FAIL"} — {why}'
 
 

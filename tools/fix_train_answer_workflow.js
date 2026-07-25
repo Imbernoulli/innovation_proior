@@ -1,9 +1,9 @@
 export const meta = {
   name: 'fix-train-answer',
   description: 'Fix the train_answer.md code-integrity defects: (A) invented never-executed code where answer.md has none — execute-verify-keep, repair, or replace with the proper final-artifact ending; (B) silent rewrites where canonical answer.md code exists — swap back verbatim + fix prose seams; (C) missing train_answer.md — backfill per discovery-writeup skill; (D) named claim-vs-deliverable breaks. Per-unit self-commit.',
-  whenToUse: 'The train_answer 编造代码 specialist track from the reasoning-bloat audit (rescanned 2026-07-23: 218 A + 330 B + 23 C + 3 D). NOTE 2026-07-23: class A is now handled at BUILD level instead — sft/build_sft.py bypasses to answer.md for slugs in sft/use_answer_for_theory.txt while their train_answer still carries a code fence (theory methods should deliver the theorem/formula, not invented code). Run agents only for B/C/D. Only train_answer.md is editable (D units excepted); context/reasoning/answer frozen.',
+  whenToUse: 'The train_answer 编造代码 repair track. 2026-07-23 the build-level gate (sft/build_sft.py + tools/ta_gate_check.py) stopped these files from being TRAINED by falling back to answer.md — a stopgap that left 589/1184 method rows landing as a structured doc (only 30% end on the deliverable, vs 94% for the prose channel) and left the fabricated code in the release artifact. 2026-07-25 rescan (tmp/ta_repair_units.json): 204 A + 337 B + 11 C, after 37 near-verbatim units were restored mechanically. Success is objective: the unit must PASS tools/ta_gate_check.py afterwards, which puts its write-up back in the trained answer channel. Only train_answer.md is editable (D units excepted); context/reasoning/answer frozen.',
   phases: [
-    { title: 'Fix', detail: 'one agent per unit: verify-by-execution / verbatim-swap / backfill, self-commit', model: 'sonnet' },
+    { title: 'Fix', detail: 'one agent per unit: verbatim-swap / code-removal + artifact ending / backfill, gate-check, self-commit', model: 'sonnet' },
   ],
 }
 
@@ -16,10 +16,11 @@ log(`fix-train-answer: ${units.length} units`)
 
 const SCHEMA = {
   type: 'object', additionalProperties: false,
-  required: ['slug', 'cls', 'action', 'execution_ran', 'execution_summary', 'bugs_found', 'committed', 'commit_hash', 'notes'],
+  required: ['slug', 'cls', 'action', 'gate_pass', 'execution_ran', 'execution_summary', 'bugs_found', 'committed', 'commit_hash', 'notes'],
   properties: {
     slug: { type: 'string' },
     cls: { type: 'string', enum: ['A', 'B', 'C', 'D'] },
+    gate_pass: { type: 'boolean', description: 'true iff `python3 tools/ta_gate_check.py <slug>` printed PASS on the FINAL committed file' },
     action: { type: 'string', enum: ['kept-verified', 'repaired-verified', 'code-removed-artifact-ending', 'replaced-verbatim', 'distillation-verified', 'backfilled', 'claims-reconciled', 'skipped'] },
     execution_ran: { type: 'boolean', description: 'true if you actually executed code this run' },
     execution_summary: { type: 'string', description: 'what you ran and what it showed, one or two lines; "n/a" if nothing needed running' },
@@ -32,9 +33,13 @@ const SCHEMA = {
 
 const COMMON = (slug, dir) => `Working dir: ${REPO}. Unit: ${slug}.
 
-READ IN FULL first: ${dir}/context.md, ${dir}/reasoning.md, ${dir}/answer.md (if present), ${dir}/train_answer.md (if present).
+START by running \`cd ${REPO} && python3 tools/ta_gate_check.py ${slug}\` — it names the exact fence that fails and why. Then READ ${dir}/train_answer.md and ${dir}/answer.md IN FULL (these two are the whole job). Read ${dir}/reasoning.md and ${dir}/context.md as far as you need to settle any claim you touch — always read them if you are removing code or rewriting an ending.
+
+WHY THIS MATTERS (do not skip): the answer channel of the SFT sample is train_answer.md, but ONLY if it passes the code-integrity gate; today this file fails it, so the build trains a structured answer.md document instead — losing the write-up's flowing-prose register and, in 70% of those rows, losing the "end on the deliverable" landing. Your fix is what puts this method's write-up back into training. So the unit is DONE only when \`python3 tools/ta_gate_check.py ${slug}\` prints PASS.
 
 GROUND RULES (all classes):
+- FINISH WITH THE GATE: run \`cd ${REPO} && python3 tools/ta_gate_check.py ${slug}\` on the final file and report gate_pass. Never satisfy it by gaming (splitting one block into sub-200-char fences, truncating code to a stub, switching to ~~~ or indented blocks): the only legitimate passes are "every code fence is byte-identical to an answer.md fence" or "the write-up has no large code fence at all".
+- PROVENANCE BEFORE VERDICT: before calling a block invented, grep \`methods/${slug}/code/\` and \`methods/${slug}/notes/\` — a few of these blocks were drafted there and are real work, which changes how you treat their content (it does not change the gate: only answer.md counts as canonical).
 - ONLY ${dir}/train_answer.md may be modified (class D units get their own explicit file list). context.md / reasoning.md / answer.md are FROZEN — verify with git status at the end that nothing else changed.
 - train_answer.md is a scientist's final write-up (see .claude/skills/discovery-writeup/SKILL.md — read it if you change more than the code block): continuous prose, no section headers, LaTeX math, English, in-frame (no "the paper"/"the authors"/citations), no meta-commentary, first-person confident voice, three movements (analysis → named method in mechanism detail → final code or final artifact).
 - PROTECT deliberately-added richness: prose that discusses alternatives, limitations, hedges, edge cases or fallback options is intentional training content — NEVER delete it just because it is "extra". Only touch text that is tied to the specific defect you are fixing (a false claim, a reference to code you changed/removed).
@@ -44,27 +49,26 @@ GROUND RULES (all classes):
 - COMMIT this unit only (never git add -A): \`git -C ${REPO} add -- <exact file(s) you changed>\` then \`git -C ${REPO} commit -q -m "fix train_answer:${slug} — <action>" -m "<one-line evidence: what was wrong, what you verified>"\`. If commit fails on .git/index.lock (parallel agents), wait 3s and retry, up to 5 times. Put the short hash in commit_hash. If you changed nothing, do not commit.`
 
 function promptA(u) {
+  u = { ...u, note: u.note || 'answer.md has no canonical code block; the write-up ends on a fabricated one' }
   const dir = `${REPO}/methods/${u.slug}/results`
   return `Fix ONE train_answer.md with INVENTED code (class A). ${u.note}.
 
 ${COMMON(u.slug, dir)}
 
-THE DEFECT: this method's answer.md delivers no runnable code (it is a theorem / analysis / protocol method${u.note.includes('pseudocode') ? ', its fences are pseudocode/math only' : ''}), yet train_answer.md ends with a Python block that was written from thin air at write-up time — it matches nothing in reasoning.md or answer.md, was never executed, and this class has a confirmed history of hard bugs (the audit's sample had wrong finite-difference directions). It is trained model output, so a buggy block trains fabrication.
+THE DEFECT: this method's answer.md delivers no runnable code (it is a theorem / analysis / protocol method${u.note.includes('THEOREM/TEXT') ? '; note the offending fence here is a theorem/text block rather than a program' : ''}), yet train_answer.md ends with a code block written from thin air at write-up time — it matches nothing in answer.md, was never executed, and this class has a confirmed history of hard bugs (wrong finite-difference directions, demos that "verify" identities that hold by construction). The deliverable of a theoretical discovery is the theorem/formula/protocol, not an illustrative script invented after the fact.
 
-YOUR JOB — verify-by-execution, keep what earns its place:
-1. RUN the block exactly as committed (copy to temp, timeout, capture output). Record what happened.
-2. JUDGE FAITHFULNESS, not just exit-code: does the code implement what the prose and the method's actual math say? Check the load-bearing semantics against answer.md/reasoning.md (signs, directions, normalizations, the inequality/quantity it claims to demonstrate). A demo can run cleanly and still compute the wrong thing.
-3. DECIDE:
-   - Runs clean AND faithful AND any specific numbers in prose match reality → keep it. action=kept-verified.
-   - Real but repairable defect (crash, wrong sign/direction, off-by-one, misleading output) → make the MINIMAL fix, re-run until it verifies, reconcile any prose numbers. action=repaired-verified. List every defect in bugs_found.
-   - Unsalvageable, wrong-headed, or not honestly verifiable (e.g. it purports to "check" something it cannot check) → DELETE the code block and rewrite the ENDING of the write-up into the precise final artifact this method actually has — the clean theorem statement, the final formula, the protocol — drawn strictly from answer.md (this is the discovery-writeup skill's sanctioned ending for non-computational discoveries). Smooth the lead-in sentence. action=code-removed-artifact-ending.
-   The bar for keeping: the demo must genuinely illustrate or check the method's real content. Do NOT delete a correct, working, on-topic demonstration merely to satisfy formality — added value that is verified stays.
-4. Self-check the final file against the GROUND RULES, git-status check, commit.
+YOUR JOB — remove the un-canonical code and land the write-up on its real artifact:
+1. Establish what this method's ACTUAL final artifact is, from answer.md: the clean theorem statement with its hypotheses, the final formula with its symbols defined, the protocol/algorithm as the field states it, the bound with its constants.
+2. DELETE the invented code block, and rewrite the ENDING so the write-up lands on that artifact — stated precisely and completely enough to stand as the deliverable (this is the discovery-writeup skill's sanctioned ending for non-computational discoveries). Use LaTeX for the math. Smooth the lead-in sentence so nothing dangles.
+3. Preserve everything else. The analysis, the mechanism explanation, the alternatives-considered and limitations prose are deliberate training content — you are replacing a fabricated ending with a real one, not shortening the file. If the deleted block carried a genuine idea the prose did not already state (e.g. "the estimator is computed by sorting then prefix-summing"), say it in prose instead of losing it.
+4. If — and only if — you conclude this is really a COMPUTATIONAL method whose implementation is load-bearing and answer.md merely failed to include it, do NOT invent a landing and do NOT keep the unverified block: return action="skipped" with a precise diagnosis (what answer.md delivers, what the block does, why you think it must stay) and leave the file untouched for human review. Executing the block is only worth your time in that dispute case.
+5. Self-check the final file against the GROUND RULES, run the gate check, git-status check, commit. action=code-removed-artifact-ending.
 
-Return the structured result with cls="A".`
+Return the structured result with cls="A". Put in bugs_found any real defect you noticed in the removed block (evidence for the audit record), empty if you did not inspect it that closely.`
 }
 
 function promptB(u) {
+  u = { ...u, note: u.note || 'the write-up re-implemented the method instead of copying answer.md' }
   const dir = `${REPO}/methods/${u.slug}/results`
   const extraOnly = u.note.includes('EXTRA invented block')
   return `Fix ONE train_answer.md whose code silently DIVERGED from the canonical answer.md code (class B). ${u.note}.
@@ -77,13 +81,14 @@ YOUR JOB:
 ${extraOnly ? `- The primary verbatim block stays untouched. Apply the class-A verify-by-execution procedure to the EXTRA block only: run it, judge faithfulness, keep-if-verified / minimally-repair / delete-and-reconcile-prose.` : `1. Identify the PRIMARY method implementation in answer.md — the block that defines the method itself. Skip pure driver/experiment scaffolding and output-log fences; if answer.md has one main implementation plus sibling variants, take the main one (variants only if the prose presents them as part of the method).
 2. REPLACE the train_answer implementation with that canonical code VERBATIM — byte-for-byte, no cleanup, no renaming, no trimming. After writing, diff the block against answer.md's block and confirm identical.
 3. FIX THE PROSE SEAMS: every reference in the surrounding prose to function/class names, signatures, hyperparameter values, printed outputs, or structure of the old rewrite must now match the canonical code. Keep the prose's explanatory substance — you are re-aiming its references, not shortening it.
-4. NARROW EXCEPTION (only if the unit note says answer is a LARGE scaffold): if the canonical code is a long multi-part experiment scaffold and the existing write-up block is a focused distillation of its core method, you MAY keep the distillation instead — but then you must (a) line-by-line reconcile it against the canonical code and remove every semantic divergence (defaults, update rules, normalizations), and (b) actually execute the distilled block cleanly. If either fails or you are unsure, swap verbatim. action=distillation-verified in that case, otherwise replaced-verbatim.`}
-5. Self-check the final file against the GROUND RULES (no dangling references to the old code), git-status check, commit.
+4. IF THE CANONICAL CODE IS A LARGE MULTI-PART SCAFFOLD: do not re-summarize it in your own code. Quote the core of it — a CONTIGUOUS excerpt of a canonical block is still verbatim and still passes the gate, and two separated regions may be quoted as two fences. Choose the region(s) that define the method; drop pure driver/plotting scaffolding. action=replaced-verbatim either way.`}
+5. Self-check the final file against the GROUND RULES (no dangling references to the old code), run the gate check, git-status check, commit.
 
 Return the structured result with cls="B". List in bugs_found any real semantic defects you noticed in the old rewritten code (evidence for the audit), empty if it was a faithful re-implementation.`
 }
 
 function promptC(u) {
+  u = { ...u, note: u.note || 'train_answer.md is MISSING; the build falls back to answer.md' }
   const dir = `${REPO}/methods/${u.slug}/results`
   return `BACKFILL one missing train_answer.md (class C). ${u.note}.
 
@@ -95,7 +100,7 @@ CODE RULE (this is the entire reason this track exists — do not repeat the old
 - If answer.md contains a runnable primary implementation → copy it VERBATIM, byte-for-byte, and diff to confirm.
 - If answer.md has NO runnable code (theorem/analysis/protocol method) → end with the precise final artifact (clean theorem statement, final formula, protocol) exactly as the field would present it. DO NOT write illustration code from memory. Never invent an implementation.
 
-Self-check against the skill's checklist (continuous prose, no headers, LaTeX math, in-frame, no meta-commentary), git-status check, commit. Return the structured result with cls="C", action="backfilled" (or "skipped" with notes if the source files are too degenerate to support an honest write-up).`
+Self-check against the skill's checklist (continuous prose, no headers, LaTeX math, in-frame, no meta-commentary), run the gate check, git-status check, commit. Return the structured result with cls="C", action="backfilled" (or "skipped" with notes if the source files are too degenerate to support an honest write-up).`
 }
 
 const D_UNITS = [
@@ -140,7 +145,7 @@ async function runUnit(u) {
   let p, model = 'sonnet', effort = 'xhigh'
   if (u.cls === 'A') p = promptA(u)
   else if (u.cls === 'B') { p = promptB(u); effort = 'high' }
-  else if (u.cls === 'C') p = promptC(u)
+  else if (u.cls === 'C') { p = promptC(u); model = 'opus' }   // writing a whole write-up from scratch
   else { p = u.prompt(); model = undefined; effort = 'xhigh' }
   const opts = { label: `${u.cls}:${u.slug}`, phase: 'Fix', effort, schema: SCHEMA, agentType: 'general-purpose' }
   if (model) opts.model = model
@@ -152,8 +157,11 @@ async function runUnit(u) {
 const all = A.includeD ? [...units, ...D_UNITS] : units
 const results = (await pipeline(all, u => runUnit(u))).filter(Boolean)
 const by = (a) => results.filter(r => r.action === a)
-log(`done: kept ${by('kept-verified').length}, repaired ${by('repaired-verified').length}, artifact-ending ${by('code-removed-artifact-ending').length}, swapped ${by('replaced-verbatim').length}, distilled ${by('distillation-verified').length}, backfilled ${by('backfilled').length}, reconciled ${by('claims-reconciled').length}, skipped ${by('skipped').length}, error ${by('error').length}`)
+const gated = results.filter(r => r.gate_pass).length
+log(`done: gate PASS ${gated}/${results.length} — artifact-ending ${by('code-removed-artifact-ending').length}, swapped ${by('replaced-verbatim').length}, backfilled ${by('backfilled').length}, kept ${by('kept-verified').length}, repaired ${by('repaired-verified').length}, reconciled ${by('claims-reconciled').length}, skipped ${by('skipped').length}, error ${by('error').length}`)
 return {
+  gate_pass: gated,
+  gate_fail: results.filter(r => !r.gate_pass).map(r => ({ slug: r.slug, cls: r.cls, action: r.action, notes: r.notes })),
   summary: Object.fromEntries(['kept-verified','repaired-verified','code-removed-artifact-ending','replaced-verbatim','distillation-verified','backfilled','claims-reconciled','skipped','error'].map(a => [a, by(a).length])),
   bugs: results.filter(r => (r.bugs_found || []).length).map(r => ({ slug: r.slug, bugs: r.bugs_found })),
   units: results.map(r => ({ slug: r.slug, cls: r.cls, action: r.action, hash: r.commit_hash, committed: r.committed })),

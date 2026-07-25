@@ -150,10 +150,10 @@ def _fences(text):
     if text.count('```') % 2:          # unclosed final fence: markdown closes it at EOF
         text = text + '\n```'
     return _FENCE_RE.findall(text)
-def _ta_code_ok(ta_text, ans_text):
+def _ta_code_ok(ta_text, ans_text, extra_hay=''):
     if '~~~' in ta_text or '<pre>' in ta_text or '</code>' in ta_text:
         return False                   # non-backtick code carriers the parser can't see: fail closed
-    hay = re.sub(r'\s+', '', ''.join(_fences(ans_text)))
+    hay = re.sub(r'\s+', '', ''.join(_fences(ans_text))) + extra_hay
     small_div = 0
     for b in _fences(ta_text):
         nb = re.sub(r'\s+', '', b)
@@ -163,6 +163,20 @@ def _ta_code_ok(ta_text, ans_text):
             return False
         small_div += len(nb)
     return small_div < 200             # many small divergent fences aggregate like one big one
+# Second canonical source: a handful of methods keep the implementation as a real file under
+# methods/<slug>/code/ and answer.md only NAMES it ("## Artifact: code/online_gradient_descent.py")
+# instead of inlining it. A write-up quoting that file verbatim satisfies the contract's purpose —
+# the code is a committed, retrieved-or-reviewed artifact, not something invented at write-up time —
+# so those files count as canonical too. Consulted only when the answer.md check already failed
+# (7 methods as of 2026-07-25); source files only, so nothing prose can leak into the haystack.
+_CODE_EXT = ('py', 'cpp', 'cc', 'c', 'h', 'hpp', 'jl', 'rs', 'ipynb')
+def _code_dir_blob(slug):
+    parts = []
+    for p in sorted(glob.glob(f'methods/{slug}/code/**/*', recursive=True)):
+        if (os.path.isfile(p) and p.rsplit('.', 1)[-1] in _CODE_EXT
+                and os.path.getsize(p) < 2_000_000):
+            parts.append(open(p, encoding='utf-8', errors='ignore').read())
+    return re.sub(r'\s+', '', ''.join(parts))
 # The bypass target is trained text: strip generation-pipeline audit sections that leaked into a
 # few answer.md files (a "## Verification" block citing repo paths / source LaTeX the sample never
 # contains). Only sections whose header names Verification/Grounding AND whose body cites such a
@@ -190,7 +204,8 @@ for m in methods:
         stats['method_answer_fallback'] = stats.get('method_answer_fallback', 0) + 1
     else:
         ans_text = read(f'{d}/train_answer.md')
-        if has_ans and not _ta_code_ok(ans_text, read(f'{d}/answer.md')):
+        if has_ans and not _ta_code_ok(ans_text, read(f'{d}/answer.md')) \
+                and not _ta_code_ok(ans_text, read(f'{d}/answer.md'), _code_dir_blob(slug)):
             ans_text = _scrub_answer(read(f'{d}/answer.md'))
             doc_landing = True
             stats['method_ta_bypass'] = stats.get('method_ta_bypass', 0) + 1
