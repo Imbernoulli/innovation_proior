@@ -4,262 +4,158 @@ I propose the Guaranteed-Service Model, abbreviated GSM. The idea is to have eve
 
 The total safety-stock holding cost is the sum over stages of h_j times the expected safety stock. Because D_j is increasing and concave and tau_j is affine in the service times, each per-stage cost is concave in (S_j, SI_j); minimizing a concave function over a closed bounded polyhedron pushes the optimum to an extreme point. That is the source of the all-or-nothing property seen in serial lines: each stage either holds enough stock to decouple completely from downstream or holds none and simply passes its inbound-plus-lead-time through as its outbound service time. On a general acyclic network with undirected cycles, a subnetwork can connect to the rest through several arcs at once, so a single service-time state would not suffice. The GSM therefore restricts the network to a spanning tree. On a tree, any connected subnetwork attaches to the remainder through exactly one arc, so the whole subnetwork can be summarized by a function of the single service time on that arc. A dynamic program with one state per stage becomes possible.
 
-The algorithm relabels the nodes so that every node k < N has exactly one higher-labeled neighbor p(k). This is always possible on a tree by repeatedly peeling leaves. For each k we build the subnetwork N_k consisting of k and all lower-labeled pieces already attached to it. If p(k) is downstream of k, we compute f_k(S), the minimum cost of N_k as a function of k's outbound service time S. If p(k) is upstream of k, we compute g_k(SI), the minimum cost of N_k as a function of k's inbound service time SI. The per-stage cost c_k(S, SI) is k's own safety-stock cost plus the best costs of already-processed suppliers evaluated at SI and already-processed customers evaluated at S. The functional equations are f_k(S) = min over SI of c_k(S, SI) and g_k(SI) = min over S of c_k(S, SI). After sweeping k = 1 through N, the optimal cost is the minimum of g_N(SI) over SI, and backtracking the stored argmins recovers every S_j, SI_j, tau_j, and safety stock. Each minimization is over a finite integer range, so the complexity is O(N M^2) with M bounded by the sum of lead times; this is polynomial and easily fast enough for tens of stages.
+The algorithm relabels the nodes so that every node k < N has exactly one higher-labeled neighbor p(k). This is always possible on a tree by repeatedly peeling leaves. For each k we build the subnetwork N_k consisting of k and all lower-labeled pieces already attached to it. If p(k) is downstream of k, we compute f_k(S), the minimum cost of N_k as a function of k's outbound service time S. If p(k) is upstream of k, we compute g_k(SI), the minimum cost of N_k as a function of k's inbound service time SI. The per-stage cost c_k(S, SI) is k's own safety-stock cost plus the best costs of already-processed suppliers evaluated at SI and already-processed customers evaluated at S. The functional equations are f_k(S) = min over SI of c_k(S, SI) and g_k(SI) = min over S of c_k(S, SI). After sweeping k = 1 through N, the optimal cost is the minimum of g_N(SI) over SI, and backtracking the stored argmins recovers every stage's committed outbound service time S_j. Each S_j together with the committed times of its suppliers pins SI_j, hence tau_j and the expected safety stock z sigma_j sqrt(tau_j). Each minimization is over a finite integer range, so the complexity is O(N M^2) with M bounded by the sum of lead times; this is polynomial and easily fast enough for tens of stages.
 
 ```python
 import math
-from collections import defaultdict
 
+def min_of_dict(values):
+    arg = min(values, key=values.get)
+    return values[arg], arg
 
-def guaranteed_service_placement(
-    nodes,
-    arcs,
-    lead_time,
-    holding_cost,
-    demand_mean,
-    demand_std,
-    z,
-    max_service_time=None,
-    phi=None,
-):
-    """
-    nodes: list of node identifiers
-    arcs: list of (i, j) directed arcs meaning i supplies j
-    lead_time: dict node -> deterministic production lead time T_j
-    holding_cost: dict node -> per-unit holding cost h_j
-    demand_mean: dict node -> end-item mean demand (nonzero only at sinks)
-    demand_std: dict node -> end-item standard deviation (nonzero only at sinks)
-    z: service coefficient for normal-style demand bound D(tau) = tau*mu + z*sigma*sqrt(tau)
-    max_service_time: dict node -> external outbound cap at demand nodes (default 0 at sinks)
-    phi: dict arc -> units of upstream item per downstream unit (default 1.0)
-    Returns: dict node -> outbound service time S_j, dict node -> safety stock, optimal cost.
-    """
-    if phi is None:
-        phi = {(i, j): 1.0 for (i, j) in arcs}
-    if max_service_time is None:
-        max_service_time = {j: (0 if not any(j == i for (i, _) in arcs) else float('inf'))
-                            for j in nodes}
+def optimize_committed_service_times(tree):
+    for n in tree.sink_nodes:
+        if n.demand_source.mean is None:
+            raise ValueError(f"Sink node {n.index} needs a demand mean.")
+        if n.demand_source.standard_deviation is None:
+            raise ValueError(f"Sink node {n.index} needs a demand standard deviation.")
 
-    succ = defaultdict(list)
-    pred = defaultdict(list)
-    for (i, j) in arcs:
-        succ[i].append(j)
-        pred[j].append(i)
+    tree = preprocess_tree(tree)
+    tree = relabel_nodes(tree)
+    opt_cst_relabeled, opt_cost = _cst_dp_tree(tree)
+    opt_cst = {k.original_label: opt_cst_relabeled[k.index] for k in tree.nodes}
+    return opt_cst, opt_cost
 
-    # Push end-item demand upstream so every stage sees its net mean and std.
-    net_mu = {j: 0.0 for j in nodes}
-    net_sigma = {j: 0.0 for j in nodes}
-    sinks = [j for j in nodes if j not in succ or not succ[j]]
-    for j in sinks:
-        net_mu[j] = demand_mean.get(j, 0.0)
-        net_sigma[j] = demand_std.get(j, 0.0)
+def _cst_dp_tree(tree):
+    theta_in = {k.index: {} for k in tree.nodes}
+    theta_out = {k.index: {} for k in tree.nodes}
+    best_cst_adjacent = {
+        k.index: {S: {} for S in range(k.max_replenishment_time + 1)}
+        for k in tree.nodes
+    }
+    min_k, max_k = min(tree.node_indices), max(tree.node_indices)
 
-    visited = set()
-    order = []
-
-    def post(v):
-        visited.add(v)
-        for u in pred[v]:
-            if u not in visited:
-                post(u)
-        order.append(v)
-
-    for s in sinks:
-        if s not in visited:
-            post(s)
-
-    for j in reversed(order):
-        for i in pred[j]:
-            net_mu[i] += phi[(i, j)] * net_mu[j]
-            net_sigma[i] = math.hypot(net_sigma[i], phi[(i, j)] * net_sigma[j])
-
-    # Maximum replenishment time M_j: longest path from j down to a sink.
-    M = {}
-    for j in reversed(order):
-        if not succ[j]:
-            M[j] = lead_time[j]
+    for k_index in range(min_k, max_k + 1):
+        k = tree.nodes_by_index[k_index]
+        M, T = k.max_replenishment_time, k.processing_time
+        if k_index < max_k and k.larger_adjacent_node_is_downstream:
+            for S in range(M + 1):
+                theta_out[k_index][S], best_cst_adjacent[k_index][S] = (
+                    _calculate_theta_out(tree, k_index, S, theta_in, theta_out)
+                )
+            for S in range(M + 1, tree.max_max_replenishment_time + 1):
+                theta_out[k_index][S] = theta_out[k_index][M]
+                best_cst_adjacent[k_index][S] = best_cst_adjacent[k_index][M]
         else:
-            M[j] = lead_time[j] + max(M[k] for k in succ[j])
+            for SI in range(M - T + 1):
+                theta_in[k_index][SI], best_cst_adjacent[k_index][SI] = (
+                    _calculate_theta_in(tree, k_index, SI, theta_in, theta_out)
+                )
+            for SI in range(M - T + 1, tree.max_max_replenishment_time + 1):
+                theta_in[k_index][SI] = theta_in[k_index][M - T]
+                best_cst_adjacent[k_index][SI] = best_cst_adjacent[k_index][M - T]
 
-    # Relabel nodes so each k < N has exactly one higher-labeled neighbor p(k).
-    adj = {j: set(pred[j]) | set(succ[j]) for j in nodes}
-    unlabeled = set(nodes)
-    label = {}
-    reverse = {}
-    current = 1
-    while unlabeled:
-        leaf = next(v for v in unlabeled if len(adj[v] & unlabeled) <= 1)
-        label[leaf] = current
-        reverse[current] = leaf
-        unlabeled.remove(leaf)
-        current += 1
+    final = tree.nodes_by_index[max_k]
+    best_theta_in, best_SI = min_of_dict({
+        SI: theta_in[max_k][SI]
+        for SI in range(final.max_replenishment_time - final.processing_time + 1)
+    })
+    opt_cst = _backtrack_cst(tree, best_cst_adjacent, best_SI)
+    return opt_cst, best_theta_in
 
-    N = len(nodes)
+def _calculate_theta_out(tree, k_index, S, theta_in, theta_out):
+    k = tree.nodes_by_index[k_index]
+    if S > k.external_outbound_cst:
+        return math.inf, {}
 
-    # For each label k, collect already-processed suppliers/customers and the one higher neighbor.
-    suppliers_done = {k: [] for k in range(1, N + 1)}
-    customers_done = {k: [] for k in range(1, N + 1)}
-    p = {}
-    downstream = {}
-    for k in range(1, N + 1):
-        j = reverse[k]
-        higher = []
-        for i in pred[j]:
-            li = label[i]
-            if li < k:
-                suppliers_done[k].append(li)
-            elif li > k:
-                higher.append(li)
-        for c in succ[j]:
-            lc = label[c]
-            if lc < k:
-                customers_done[k].append(lc)
-            elif lc > k:
-                higher.append(lc)
-        if k < N:
-            pk = max(higher)
-            p[k] = pk
-            downstream[k] = pk in [label[c] for c in succ[j]]
+    best, best_adjacent = math.inf, {}
+    local_S = min(S, k.external_outbound_cst)
+    lo = max(k.external_inbound_cst, local_S - k.processing_time)
+    hi = k.max_replenishment_time - k.processing_time
+    for SI in range(lo, hi + 1):
+        cost, _, best_upstream_S, best_downstream_SI = (
+            _calculate_c(tree, k_index, local_S, SI, theta_in, theta_out)
+        )
+        if cost < best:
+            best = cost
+            best_adjacent = {k_index: SI}
+            best_adjacent.update(best_upstream_S)
+            best_adjacent.update(best_downstream_SI)
+    return best, best_adjacent
 
-    # Bound helpers for service-time ranges.
-    def max_inbound(j):
-        if not pred[j]:
-            return 0
-        return max(M[i] for i in pred[j])
+def _calculate_theta_in(tree, k_index, SI, theta_in, theta_out):
+    k = tree.nodes_by_index[k_index]
+    best, best_adjacent = math.inf, {}
+    local_SI = max(SI, k.external_inbound_cst)
+    hi = min(local_SI + k.processing_time, k.external_outbound_cst)
+    for S in range(hi + 1):
+        cost, _, best_upstream_S, best_downstream_SI = (
+            _calculate_c(tree, k_index, S, local_SI, theta_in, theta_out)
+        )
+        if cost < best:
+            best = cost
+            best_adjacent = {k_index: S}
+            best_adjacent.update(best_upstream_S)
+            best_adjacent.update(best_downstream_SI)
+    return best, best_adjacent
 
-    def max_outbound(j):
-        return M[j]
-
-    def safety_stock_cost(j, tau):
-        tau = max(0, tau)
-        return holding_cost[j] * z * net_sigma[j] * math.sqrt(tau)
-
-    theta_out = {k: {} for k in range(1, N + 1)}
-    theta_in = {k: {} for k in range(1, N + 1)}
-    best_adj = {k: {} for k in range(1, N + 1)}
-
-    def get_theta_out(i, SI):
-        table = theta_out[i]
-        if not table:
-            return 0.0
-        key = min(SI, max(table.keys()))
-        return table.get(key, float('inf'))
-
-    def get_theta_in(c, S):
-        table = theta_in[c]
-        if not table:
-            return 0.0
-        key = min(S, max(table.keys()))
-        return table.get(key, float('inf'))
-
-    for k in range(1, N + 1):
-        j = reverse[k]
-        T = lead_time[j]
-        cap = int(max_service_time[j]) if max_service_time[j] != float('inf') else M[j]
-        if k < N:
-            pk = p[k]
-            if downstream[k]:
-                # f_k(S): minimize over inbound SI.
-                for S in range(min(M[j], cap) + 1):
-                    best_val = float('inf')
-                    best_SI = None
-                    lo = max(0, S - T)
-                    hi = max_inbound(j)
-                    for SI in range(lo, hi + 1):
-                        tau = SI + T - S
-                        val = safety_stock_cost(j, tau)
-                        for i in suppliers_done[k]:
-                            val += get_theta_out(i, SI)
-                        for c in customers_done[k]:
-                            val += get_theta_in(c, S)
-                        if val < best_val:
-                            best_val = val
-                            best_SI = SI
-                    theta_out[k][S] = best_val
-                    best_adj[k][S] = best_SI
-            else:
-                # g_k(SI): minimize over outbound S.
-                for SI in range(max_inbound(j) + 1):
-                    best_val = float('inf')
-                    best_S = None
-                    hi = min(SI + T, cap, M[j])
-                    for S in range(hi + 1):
-                        tau = SI + T - S
-                        val = safety_stock_cost(j, tau)
-                        for i in suppliers_done[k]:
-                            val += get_theta_out(i, SI)
-                        for c in customers_done[k]:
-                            val += get_theta_in(c, S)
-                        if val < best_val:
-                            best_val = val
-                            best_S = S
-                    theta_in[k][SI] = best_val
-                    best_adj[k][SI] = best_S
-        else:
-            # Root: g_N(SI).
-            for SI in range(max_inbound(j) + 1):
-                best_val = float('inf')
-                best_S = None
-                hi = min(SI + T, cap, M[j])
-                for S in range(hi + 1):
-                    tau = SI + T - S
-                    val = safety_stock_cost(j, tau)
-                    for i in suppliers_done[k]:
-                        val += get_theta_out(i, SI)
-                    for c in customers_done[k]:
-                        val += get_theta_in(c, S)
-                    if val < best_val:
-                        best_val = val
-                        best_S = S
-                theta_in[k][SI] = best_val
-                best_adj[k][SI] = best_S
-
-    # Backtrack from the root.
-    root = N
-    best_SI, best_cost = min(theta_in[root].items(), key=lambda x: x[1])
-    S_opt = {}
-    SI_opt = {}
-    SI_opt[root] = best_SI
-    S_opt[root] = best_adj[root][best_SI]
-
-    for k in range(N - 1, 0, -1):
-        pk = p[k]
-        if downstream[k]:
-            # k supplies p(k), so S_k equals parent's inbound SI.
-            S_opt[k] = SI_opt[pk]
-            SI_opt[k] = best_adj[k][S_opt[k]]
-        else:
-            # p(k) supplies k, so SI_k equals parent's outbound S.
-            SI_opt[k] = S_opt[pk]
-            S_opt[k] = best_adj[k][SI_opt[k]]
-
-    # Map labels back to original nodes and compute safety stocks.
-    S_node = {reverse[k]: S_opt[k] for k in range(1, N + 1)}
-    SI_node = {reverse[k]: SI_opt[k] for k in range(1, N + 1)}
-    safety = {}
-    for j in nodes:
-        tau = SI_node[j] + lead_time[j] - S_node[j]
-        safety[j] = z * net_sigma[j] * math.sqrt(max(0, tau))
-
-    return S_node, safety, best_cost
-
-
-if __name__ == "__main__":
-    # Simple three-stage serial line for validation.
-    nodes = [1, 2, 3]
-    arcs = [(1, 2), (2, 3)]
-    lead_time = {1: 4, 2: 4, 3: 4}
-    holding_cost = {1: 1.0, 2: 0.5, 3: 0.2}
-    demand_mean = {1: 0, 2: 0, 3: 10.0}
-    demand_std = {1: 0, 2: 0, 3: 3.0}
-    z = 2.0
-    max_service_time = {1: float('inf'), 2: float('inf'), 3: 0}
-
-    S, safety, cost = guaranteed_service_placement(
-        nodes, arcs, lead_time, holding_cost,
-        demand_mean, demand_std, z, max_service_time
+def _calculate_c(tree, k_index, S, SI, theta_in, theta_out):
+    k = tree.nodes_by_index[k_index]
+    tau = SI + k.processing_time - S
+    safety_stock = (
+        k.demand_bound_constant
+        * k.net_demand_standard_deviation
+        * math.sqrt(tau)
     )
-    print("Outbound service times:", S)
-    print("Safety stocks:", safety)
-    print("Optimal cost:", cost)
+    cost = k.holding_cost * safety_stock
+    best_upstream_S, best_downstream_SI = {}, {}
+
+    for i in k.predecessor_indices():
+        if i < k_index:
+            values = {S2: theta_out[i][S2] for S2 in range(SI + 1)}
+            add_cost, best_upstream_S[i] = min_of_dict(values)
+            cost += add_cost
+
+    for j in k.successor_indices():
+        if j < k_index:
+            values = {
+                SI2: theta_in[j][SI2]
+                for SI2 in range(S, tree.max_max_replenishment_time + 1)
+            }
+            add_cost, best_downstream_SI[j] = min_of_dict(values)
+            cost += add_cost
+
+    return cost, k.holding_cost * safety_stock, best_upstream_S, best_downstream_SI
+
+def _backtrack_cst(tree, best_cst_adjacent, best_SI):
+    min_k, max_k = min(tree.node_indices), max(tree.node_indices)
+    opt_cst, opt_in_cst = {}, {}
+
+    for k_index in range(max_k, min_k - 1, -1):
+        k = tree.nodes_by_index[k_index]
+        if k_index < max_k:
+            pk = k.larger_adjacent_node
+            pk_is_downstream = k.larger_adjacent_node_is_downstream
+            if pk < max_k:
+                ppk_is_downstream = tree.nodes_by_index[pk].larger_adjacent_node_is_downstream
+
+        if k_index == max_k:
+            opt_cst[k_index] = best_cst_adjacent[k_index][best_SI][k_index]
+            opt_in_cst[k_index] = best_SI
+        elif pk_is_downstream:
+            if pk != max_k and ppk_is_downstream:
+                opt_cst[k_index] = best_cst_adjacent[pk][opt_cst[pk]][k_index]
+            else:
+                opt_cst[k_index] = best_cst_adjacent[pk][opt_in_cst[pk]][k_index]
+            opt_in_cst[k_index] = best_cst_adjacent[k_index][opt_cst[k_index]][k_index]
+        else:
+            if pk != max_k and ppk_is_downstream:
+                opt_in_cst[k_index] = best_cst_adjacent[pk][opt_cst[pk]][k_index]
+            else:
+                opt_in_cst[k_index] = best_cst_adjacent[pk][opt_in_cst[pk]][k_index]
+            opt_cst[k_index] = best_cst_adjacent[k_index][opt_in_cst[k_index]][k_index]
+
+        opt_cst[k_index] = min(opt_cst[k_index], k.external_outbound_cst)
+
+    return opt_cst
 ```
