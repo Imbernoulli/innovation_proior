@@ -16,7 +16,7 @@ I also keep the deterministic graph auto-encoder in mind as a special case. If I
 
 Hyperparameter choices follow the reference and the trajectory experience. The hidden width is set generously, the latent width is smaller than the hidden width, and dropout is applied to the hidden layer but not to the final mu and logstd heads. A small KL coefficient is used when the surrounding training loop expects only a scalar score, so the KL gradient still reaches the encoder without overwhelming the reconstruction gradient. Training proceeds with Adam and early stopping on a validation set of held-out edges, exactly as in the standard link-prediction benchmark.
 
-The code below puts everything together in a self-contained PyTorch Geometric module. The LinkPredictor class implements the GCN encoder, the reparameterized sampling, the inner-product decoder, and the per-node KL loss. A short script at the bottom builds a synthetic graph, trains the model for a few iterations, and prints the training loss so the whole file is runnable.
+The code below puts everything together in a self-contained PyTorch Geometric module. The LinkPredictor class implements the GCN encoder, the reparameterized sampling, the inner-product decoder, and the per-node KL loss.
 
 ```python
 import torch
@@ -26,7 +26,7 @@ from torch_geometric.nn import GCNConv
 
 
 class LinkPredictor(nn.Module):
-    """Variational Graph Auto-Encoder (VGAE) for unsupervised link prediction."""
+    """Variational graph auto-encoder for link prediction."""
 
     def __init__(self, in_channels, hidden_channels=32, latent_channels=16, dropout=0.0):
         super().__init__()
@@ -44,8 +44,7 @@ class LinkPredictor(nn.Module):
         self.mu = self.conv_mu(h, edge_index)
         self.logstd = self.conv_logstd(h, edge_index)
         if self.training:
-            eps = torch.randn_like(self.logstd)
-            return self.mu + eps * torch.exp(self.logstd)
+            return self.mu + torch.randn_like(self.logstd) * torch.exp(self.logstd)
         return self.mu
 
     def decode(self, z_src, z_dst):
@@ -60,8 +59,11 @@ class LinkPredictor(nn.Module):
     def forward(self, x, edge_index, edge_label_index):
         z = self.encode(x, edge_index)
         return self.decode(z[edge_label_index[0]], z[edge_label_index[1]])
+```
 
+The sampled-edge training step combines the reconstruction loss over the labeled edges with the KL term normalized by the node count:
 
+```python
 def train_step(model, data, optimizer):
     model.train()
     optimizer.zero_grad()
@@ -71,42 +73,4 @@ def train_step(model, data, optimizer):
     loss.backward()
     optimizer.step()
     return float(loss)
-
-
-if __name__ == "__main__":
-    # Tiny synthetic graph: 30 nodes, 5-dimensional features, 60 undirected edges.
-    num_nodes = 30
-    in_channels = 5
-    x = torch.randn(num_nodes, in_channels)
-
-    torch.manual_seed(0)
-    src = torch.randint(0, num_nodes, (60,))
-    dst = torch.randint(0, num_nodes, (60,))
-    edge_index = torch.unique(torch.stack([torch.cat([src, dst]), torch.cat([dst, src])], dim=0), dim=1)
-
-    # Build a small training batch with positive edges and sampled negatives.
-    pos_edges = edge_index[:, :20]
-    neg_src = torch.randint(0, num_nodes, (20,))
-    neg_dst = torch.randint(0, num_nodes, (20,))
-    neg_edges = torch.stack([neg_src, neg_dst], dim=0)
-    edge_label_index = torch.cat([pos_edges, neg_edges], dim=1)
-    edge_label = torch.cat([torch.ones(pos_edges.size(1)), torch.zeros(neg_edges.size(1))])
-
-    class SimpleData:
-        pass
-
-    data = SimpleData()
-    data.x = x
-    data.edge_index = edge_index
-    data.edge_label_index = edge_label_index
-    data.edge_label = edge_label
-    data.num_nodes = num_nodes
-
-    model = LinkPredictor(in_channels, hidden_channels=16, latent_channels=8, dropout=0.5)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-
-    for epoch in range(50):
-        loss = train_step(model, data, optimizer)
-        if epoch % 10 == 0:
-            print(f"epoch {epoch:3d} | loss {loss:.4f}")
 ```
