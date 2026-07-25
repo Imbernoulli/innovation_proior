@@ -18,65 +18,22 @@ The planar nature of the order parameter is essential. If the spins had three co
 
 In short, the Kosterlitz-Thouless transition replaces Landau's order-parameter picture with a topological mechanism. Spin waves destroy ordinary long-range order, but vortices provide integer winding sectors whose unbinding drives a sharp change in response. The transition is controlled by the RG flow of a logarithmic Coulomb gas, predicts a universal stiffness jump, and produces an essential singularity in the correlation length above T_c.
 
-```python
-import numpy as np
-import matplotlib.pyplot as plt
+Collected into a single statement, the transition is characterized completely by the renormalization-group flow of the vortex Coulomb gas: with dimensionless stiffness $K = J/(k_BT)$ and vortex fugacity $y = e^{-E_c/k_BT}$,
 
-"""
-Kosterlitz-Thouless RG flow in the (K, y) plane.
-K is dimensionless stiffness and y is vortex fugacity.
-Flow equations: dK^{-1}/dl = 4*pi^3*y^2 and dy/dl = (2 - pi*K)*y.
-"""
+$$
+\frac{dK^{-1}}{d\ell} = 4\pi^3 y^2 + O(y^4), \qquad \frac{dy}{d\ell} = (2-\pi K)\,y + O(y^3).
+$$
 
-def rg_flow(state, ell):
-    K, y = state
-    y = max(y, 0.0)
-    if K <= 0.0:
-        return np.array([0.0, 0.0])
-    dK_inv_dl = 4.0 * np.pi**3 * y**2
-    dK_dl = -K**2 * dK_inv_dl
-    dy_dl = (2.0 - np.pi * K) * y
-    return np.array([dK_dl, dy_dl])
+The fixed line $y=0$ is stable for $\pi K>2$, giving a low-temperature phase with finite renormalized stiffness $K_R(T)$ and algebraic decay $\langle s(0)\cdot s(r)\rangle \sim r^{-\eta(T)}$, $\eta(T)=1/(2\pi K_R(T))$; for $\pi K<2$ the fugacity is relevant, vortex-antivortex pairs unbind, and the correlations become exponential. The transition is the separatrix flowing into the marginal endpoint $(K,y)=(2/\pi,0)$, so above $T_c$ the correlation length diverges as the essential singularity
 
-def rk4_step(state, dl):
-    k1 = rg_flow(state, 0.0)
-    k2 = rg_flow(state + 0.5*dl*k1, 0.0)
-    k3 = rg_flow(state + 0.5*dl*k2, 0.0)
-    k4 = rg_flow(state + dl*k3, 0.0)
-    return state + (dl/6.0)*(k1 + 2*k2 + 2*k3 + k4)
+$$
+\xi(T>T_c) \sim a\,\exp\!\left(\frac{b}{\sqrt{(T-T_c)/T_c}}\right),
+$$
 
-def integrate(K0, y0, l_max=10.0, n_steps=20000):
-    dl = l_max / n_steps
-    K = np.zeros(n_steps + 1)
-    y = np.zeros(n_steps + 1)
-    ell = np.zeros(n_steps + 1)
-    K[0], y[0] = K0, y0
-    state = np.array([K0, y0])
-    for i in range(n_steps):
-        state = rk4_step(state, dl)
-        K[i+1], y[i+1] = state
-        ell[i+1] = ell[i] + dl
-    return ell, K, y
+with critical exponent $\eta(T_c)=1/4$, and just below $T_c$ the renormalized stiffness satisfies the universal jump condition
 
-ell1, K1, y1 = integrate(K0=0.9, y0=0.05)
-ell2, K2, y2 = integrate(K0=0.5, y0=0.05)
-ell3, K3, y3 = integrate(K0=0.7, y0=0.02)
+$$
+K_R(T_c^-) = \frac{2}{\pi}, \qquad \text{i.e.} \qquad J_R(T_c^-) = \frac{2k_BT_c}{\pi},
+$$
 
-fig, ax = plt.subplots()
-ax.plot(ell1, K1, label="K low-T (K0=0.90)")
-ax.plot(ell1, y1, label="y low-T", linestyle="--")
-ax.plot(ell2, K2, label="K high-T (K0=0.50)")
-ax.plot(ell2, y2, label="y high-T", linestyle="--")
-ax.axhline(2.0/np.pi, color="gray", linestyle=":", label="K = 2/pi")
-ax.set_xlabel("RG scale l = ln(r/a)")
-ax.set_ylabel("K(l), y(l)")
-ax.set_ylim(-0.05, 1.0)
-ax.set_title("Kosterlitz-Thouless RG flow")
-ax.legend()
-plt.tight_layout()
-plt.savefig("kt_rg_flow.png", dpi=150)
-print("Saved kt_rg_flow.png")
-print("Critical K =", 2.0/np.pi)
-print("Final low-T  K, y:", K1[-1], y1[-1])
-print("Final high-T K, y:", K2[-1], y2[-1])
-```
+which for a neutral superfluid film is the Nelson-Kosterlitz condition $\rho_s^R(T_c^-)/T_c = 2m^2k_B/(\pi\hbar^2)$ on the areal superfluid density. That jump — not the onset of a nonzero order parameter — is the transition's sharp, universal, and directly measurable signature.
