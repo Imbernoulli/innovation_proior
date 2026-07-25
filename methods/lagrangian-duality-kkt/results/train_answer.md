@@ -16,63 +16,12 @@ For convex problems, the KKT conditions are not only necessary under strong dual
 
 There is also an elegant saddle-point interpretation. The primal problem is inf_x sup_{λ ≥ 0, ν} L(x, λ, ν), because for fixed x the supremum over the multipliers is f(x) when x is feasible and plus infinity otherwise. The dual problem is sup_{λ ≥ 0, ν} inf_x L(x, λ, ν). Weak duality is the general max-min inequality sup inf ≤ inf sup. Strong duality says these two values coincide and are attained at a saddle point (x*, λ*, ν*) satisfying L(x*, λ, ν) ≤ L(x*, λ*, ν*) ≤ L(x, λ*, ν*) for all x, λ ≥ 0, and ν. This generalizes the bilinear saddle point of linear programming duality.
 
-The following Python script illustrates the method on a small convex quadratic program with both inequality and equality constraints. It solves the KKT linear system directly and verifies that the resulting point is feasible, satisfies complementary slackness, and attains zero duality gap with the dual optimum. The example minimizes ½ x^T P x + q^T x subject to G x ≤ h and A x = b, with P positive definite, and solves the symmetric KKT system to recover both primal and dual variables.
+The cleanest place to watch all four conditions collapse into one computable object is the equality-only convex quadratic program: minimize $\frac{1}{2}x^\top P x + q^\top x$ subject to $Ax = b$, with $P \succeq 0$. The Lagrangian is $L(x,\nu) = \frac{1}{2}x^\top P x + q^\top x + \nu^\top(Ax - b)$, and since there are no inequality constraints there is no complementary-slackness branching to resolve: stationarity alone, $Px^\star + q + A^\top \nu^\star = 0$, together with primal feasibility $Ax^\star = b$, gives a single symmetric linear system for the primal and dual variables at once,
+$$\begin{bmatrix} P & A^\top \\ A & 0 \end{bmatrix}\begin{bmatrix} x^\star \\ \nu^\star \end{bmatrix} = \begin{bmatrix} -q \\ b \end{bmatrix}.$$
+Solving this one system hands back the optimal point and its own certificate of optimality in the same stroke, which is the whole promise of Lagrangian duality made concrete.
 
-```python
-import numpy as np
-
-# Primal: minimize 0.5 x^T P x + q^T x
-# subject to G x <= h and A x = b.
-P = np.array([[2.0, 0.5],
-              [0.5, 1.0]])
-q = np.array([-1.0, -2.0])
-G = np.array([[1.0, 2.0],
-              [-1.0, 0.0],
-              [0.0, -1.0]])
-h = np.array([3.0, 0.0, 0.0])
-A = np.array([[1.0, 1.0]])
-b = np.array([1.0])
-
-# Set up the KKT system for the active-set solution.
-# Here the inequality x_1 <= 0 (row 1 of G) is active at the optimum.
-G_active = G[[1], :]
-h_active = h[[1]]
-n = P.shape[0]
-m = G_active.shape[0]
-p = A.shape[0]
-
-# Symmetric KKT matrix:
-# [ P   G_a^T  A^T ] [ x    ]   [ -q ]
-# [ G_a  0     0   ] [ lambda ] = [ h_a]
-# [ A    0     0   ] [ nu     ]   [ b  ]
-KKT = np.block([
-    [P, G_active.T, A.T],
-    [G_active, np.zeros((m, m)), np.zeros((m, p))],
-    [A, np.zeros((p, m)), np.zeros((p, p))]
-])
-rhs = np.concatenate([-q, h_active, b])
-sol = np.linalg.solve(KKT, rhs)
-x_star = sol[:n]
-lambda_active = sol[n:n + m]
-nu_star = sol[n + m:]
-lambda_star = np.zeros(G.shape[0])
-lambda_star[1] = lambda_active[0]
-
-primal_obj = 0.5 * x_star @ P @ x_star + q @ x_star
-feas_ineq = G @ x_star - h
-feas_eq = A @ x_star - b
-# Dual value equals L(x*, lambda*, nu*) because x* minimizes the Lagrangian.
-dual_obj = primal_obj + lambda_star @ feas_ineq + nu_star @ feas_eq
-
-print("Primal variable x*:", x_star)
-print("Inequality multipliers lambda*:", lambda_star)
-print("Equality multiplier nu*:", nu_star)
-print("Primal objective:", primal_obj)
-print("Dual objective:", dual_obj)
-print("Inequality residuals Gx - h:", feas_ineq)
-print("Equality residual Ax - b:", feas_eq)
-print("Complementary slackness lambda_i * g_i:", lambda_star * feas_ineq)
-print("Stationarity residual:", P @ x_star + q + G.T @ lambda_star + A.T @ nu_star)
-```
+Complementary slackness earns its keep once inequalities are back in play, and the sharpest illustration is water-filling: minimize $-\sum_i \log(\alpha_i + x_i)$ subject to $x \succeq 0$ and $\mathbf{1}^\top x = 1$, with fixed $\alpha_i > 0$. Introduce $\lambda \succeq 0$ for the constraints $-x_i \le 0$ and a free $\nu$ for the equality. The KKT conditions read $x^\star \succeq 0$, $\mathbf{1}^\top x^\star = 1$, $\lambda^\star \succeq 0$, $\lambda^\star_i x^\star_i = 0$, and stationarity $-\frac{1}{\alpha_i + x^\star_i} - \lambda^\star_i + \nu^\star = 0$. Eliminating the slack multiplier $\lambda^\star_i = \nu^\star - \frac{1}{\alpha_i + x^\star_i} \ge 0$ from that last equation collapses the system to the closed form
+$$x_i^\star = \max\left\{0,\ \frac{1}{\nu^\star} - \alpha_i\right\},$$
+with the water level $\nu^\star$ pinned by the single scalar equation $\sum_i \max\{0,\ 1/\nu^\star - \alpha_i\} = 1$. This is literally water poured to a common level $1/\nu^\star$ over floor heights $\alpha_i$ until the unit volume is used up, and complementary slackness is exactly the mechanism that dries out — sets to zero — every channel whose floor already sits above the waterline. That a four-clause first-order condition on an abstract Lagrangian reduces, for this objective, to a one-line closed-form allocation rule is the payoff the whole framework was built to deliver.
 
 In summary, Lagrangian duality and the KKT conditions provide a unified framework for constrained optimization. The Lagrangian folds constraints into the objective with multipliers that encode the geometry of one-sided inequality walls and two-sided equality walls. Weak duality gives a universal lower bound through the concave dual function, while strong duality holds for convex problems under Slater's condition and makes the bound tight. When strong duality holds, the KKT conditions emerge as the first-order fingerprint of optimality, and for convex problems they become necessary and sufficient.
