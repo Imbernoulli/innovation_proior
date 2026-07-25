@@ -49,23 +49,6 @@ C[i][k] = max(C[i-1][k], C[i][k-1]) + p[pi[i]][k]
 Cmax    = C[n-1][m-1]
 ```
 
-Two reference approaches frame the problem before committing to one:
-
-- **Dispatch rules (SPT / LPT).** Order jobs by total processing time
-  (shortest-processing-time first, or longest first). This is `O(n log n)`,
-  trivially feasible, and the natural baseline — but it ignores the interaction
-  between machines and leaves large makespans on the table.
-- **NEH + insertion local search.** NEH (Nawaz–Enscore–Ham) is the strongest
-  *constructive* heuristic for this objective: sort jobs by descending total
-  time, then insert them one at a time into the best position of the partial
-  order. A naive NEH that re-simulates the whole partial schedule for each of the
-  `O(n)` candidate positions of each job costs `O(n^3 m)` overall, which is the
-  bottleneck the strong method removes.
-
-The open question is how to evaluate the *insertion* move — "where in the current
-order does this job go?" — cheaply enough to run many thousands of
-reconstructions inside two seconds.
-
 ## Evaluation settings
 
 - **Scoring (what the judge reports; higher is better).** A solution is feasible
@@ -116,11 +99,8 @@ int main() {
     vector<int> perm(n);
     iota(perm.begin(), perm.end(), 0);
 
-    // TODO: heuristic. Improve `perm` to minimise the flow-shop makespan,
-    // e.g. NEH construction with Taillard's accelerated insertion (head/tail
-    // completion-time arrays evaluate all n insertion positions in O(n*m)),
-    // then Iterated Greedy (destruct d jobs, greedily reinsert, accept by a
-    // constant-temperature rule) with an insertion-neighbourhood local search.
+    // TODO: heuristic. Improve `perm` to minimise the flow-shop makespan
+    // within the time budget.
 
     for (int i = 0; i < n; i++) cout << perm[i] << (i + 1 < n ? ' ' : '\n');
     return 0;
