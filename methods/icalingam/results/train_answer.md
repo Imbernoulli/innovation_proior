@@ -18,7 +18,7 @@ from sklearn.utils import check_array
 
 
 def run_causal_discovery(X: np.ndarray) -> np.ndarray:
-    """ICA-LiNGAM: recover a directed weighted DAG from observational data.
+    """ICA-based LiNGAM.
 
     Input:  X of shape (n_samples, n_variables)
     Output: adjacency matrix B of shape (n_variables, n_variables);
@@ -26,66 +26,72 @@ def run_causal_discovery(X: np.ndarray) -> np.ndarray:
     """
     X = check_array(X)
     seed = int(os.environ.get("SEED", "42"))
-    n_vars = X.shape[1]
 
-    # 1. Estimate the ICA separating matrix W_ica = P D (I - B).
+    # 1. x = A e is linear ICA; estimate W_ica = A^{-1} (rows scrambled in
+    #    order, scale, sign). W (correctly aligned/scaled) equals I - B.
     ica = FastICA(max_iter=1000, random_state=seed)
     ica.fit(X)
     W_ica = ica.components_
 
-    # 2. Resolve row permutation via linear assignment: prefer large diagonals.
-    _, col_index = linear_sum_assignment(1.0 / np.abs(W_ica))
+    # 2. Undo the row permutation: minimize sum_i 1/|W_ii| (large entries on
+    #    the diagonal) = linear assignment with cost C_ij = 1/|W_ica[i, j]|.
+    _, col_index = linear_sum_assignment(1 / np.abs(W_ica))
     PW_ica = np.zeros_like(W_ica)
     PW_ica[col_index] = W_ica
 
-    # 3. Resolve scaling/sign: unit diagonal => W ~ I - B, so B = I - W.
+    # 3. Fix scaling/sign: unit diagonal (SEM convention) => W ~ I - B, B = I - W.
     D = np.diag(PW_ica)[:, np.newaxis]
     W_estimate = PW_ica / D
-    B_estimate = np.eye(n_vars) - W_estimate
+    B_estimate = np.eye(len(W_estimate)) - W_estimate
 
-    # 4. Extract a causal order by peeling all-zero rows from a thresholded matrix.
+    # 4. Causal order making B strictly lower triangular.
     def _search_causal_order(matrix):
         causal_order = []
-        original_index = np.arange(matrix.shape[0])
-        while len(matrix) > 0:
-            zero_rows = np.where(np.sum(np.abs(matrix), axis=1) == 0)[0]
-            if len(zero_rows) == 0:
-                return None
-            target = zero_rows[0]
-            causal_order.append(original_index[target])
-            original_index = np.delete(original_index, target, axis=0)
-            mask = np.delete(np.arange(len(matrix)), target, axis=0)
+        row_num = matrix.shape[0]
+        original_index = np.arange(row_num)
+        while 0 < len(matrix):
+            row_index_list = np.where(np.sum(np.abs(matrix), axis=1) == 0)[0]
+            if len(row_index_list) == 0:
+                break
+            target_index = row_index_list[0]
+            causal_order.append(original_index[target_index])
+            original_index = np.delete(original_index, target_index, axis=0)
+            mask = np.delete(np.arange(len(matrix)), target_index, axis=0)
             matrix = matrix[mask][:, mask]
+        if len(causal_order) != row_num:
+            return None
         return causal_order
 
     def _estimate_causal_order(matrix):
         matrix = matrix.copy()
-        flat_order = np.argsort(np.abs(matrix), axis=None)
-        positions = np.vstack(np.unravel_index(flat_order, matrix.shape)).T
-        init_zeros = n_vars * (n_vars + 1) // 2
-        for i, j in positions[:init_zeros]:
-            matrix[i, j] = 0.0
-        for i, j in positions[init_zeros:]:
-            matrix[i, j] = 0.0
-            order = _search_causal_order(matrix)
-            if order is not None:
-                return order
-        return None
+        pos_list = np.argsort(np.abs(matrix), axis=None)
+        pos_list = np.vstack(np.unravel_index(pos_list, matrix.shape)).T
+        initial_zero_num = int(matrix.shape[0] * (matrix.shape[0] + 1) / 2)
+        for i, j in pos_list[:initial_zero_num]:
+            matrix[i, j] = 0
+        causal_order = None
+        for i, j in pos_list[initial_zero_num:]:
+            matrix[i, j] = 0
+            causal_order = _search_causal_order(matrix)
+            if causal_order is not None:
+                break
+        return causal_order
 
     causal_order = _estimate_causal_order(B_estimate)
 
-    # 5. Re-estimate sparse coefficients along the order with adaptive lasso.
-    def _adaptive_lasso(data, predictors, target, gamma=1.0):
-        lr = LinearRegression().fit(data[:, predictors], data[:, target])
+    # 5. Prune + re-estimate signed coefficients along the order (adaptive lasso).
+    def _predict_adaptive_lasso(data, predictors, target, gamma=1.0):
+        lr = LinearRegression()
+        lr.fit(data[:, predictors], data[:, target])
         weight = np.power(np.abs(lr.coef_), gamma)
         reg = LassoLarsIC(criterion="bic")
         reg.fit(data[:, predictors] * weight, data[:, target])
         return reg.coef_ * weight
 
-    B = np.zeros((n_vars, n_vars), dtype=float)
+    B = np.zeros([X.shape[1], X.shape[1]], dtype="float64")
     for i in range(1, len(causal_order)):
         target = causal_order[i]
         predictors = causal_order[:i]
-        B[target, predictors] = _adaptive_lasso(X, predictors, target)
+        B[target, predictors] = _predict_adaptive_lasso(X, predictors, target)
     return B
 ```
