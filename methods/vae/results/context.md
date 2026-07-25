@@ -47,7 +47,7 @@ EM maximizes `log p(x)` by alternating: the E-step sets `q(z) = p(z|x; θ_old)`,
 **Mean-field variational inference and Stochastic VI (Hoffman, Blei, Wang & Paisley 2013).**
 Replace the posterior with a factorized `q(z) = ∏_j q_j(z_j)` from a tractable family and maximize the ELBO. Coordinate-ascent (CAVI) updates each factor by `log q_j*(z_j) = E_{-j}[log p(x,z)] + const`, which needs the expectation `E_{-j}[log p(x,z)]` in closed form (conditionally-conjugate exponential-family models). Stochastic VI scales the *global* update with stochastic natural-gradient steps over minibatches.
 
-**Score-function / black-box variational gradients (Blei, Jordan & Paisley 2012; Ranganath, Gerrish & Blei 2014).**
+**Score-function / black-box variational gradients (Blei, Jordan & Paisley 2012).**
 Estimate the ELBO gradient directly with the score-function identity, dropping the conjugacy requirement. For `f_φ(z)=log p_θ(x,z)-log q_φ(z|x)`, the full derivative is `E_q[f_φ(z)∇_φ log q_φ(z|x)+∇_φ f_φ(z)]`; the explicit term is `-E_q[∇_φ log q_φ]=0`, so the Monte Carlo estimator is `(1/L) Σ_l f_φ(z^(l)) ∇_φ log q_φ(z^(l)|x)`, `z^(l) ~ q_φ`. This is unbiased, "black-box" (only evaluates the joint density and the approximate-posterior density), and works even for discrete `z`. It is typically paired with control variates, Rao-Blackwellization, and baselines.
 
 **Wake-sleep / the Helmholtz machine (Hinton, Dayan, Frey & Neal 1995).**
