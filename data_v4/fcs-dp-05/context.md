@@ -38,34 +38,13 @@ a contiguous segment; the segments containing vertex `1` are `[1..k]` for `k = 1
 and the segments containing the middle vertex `3` are `[i..j]` with `i in {1,2,3}`, `j in {3,4,5}`,
 giving `3 * 3 = 9`.
 
-## Background
-
-The count for a single vertex is a textbook rooted-tree DP. Root the tree at `r`; then a connected
-subset containing `r` is built by, at every vertex `v` already in the subset, independently choosing
-for each child `c` whether to *not* extend into `c`'s subtree, or to extend by including `c` and then
-recursing. That gives the multiplicative recurrence `down[v] = prod over children c of (1 + down[c])`,
-and the answer for root `r` is `down[r]`. Computing this for one fixed `r` is a single `O(n)`
-post-order pass.
-
-Two families of approach are on the table before committing to one:
-
-- **Recompute per root.** Loop over all `n` choices of `r`, and for each run the `O(n)` rooted DP from
-  scratch. It is `O(n^2)`, dead simple, and obviously correct; the open question is whether it can
-  possibly fit inside the time limit at `n = 2*10^5`.
-- **Reroot in two passes.** Compute the DP once for a fixed root, then in a second pass *transport*
-  the root from a vertex to each of its neighbours using only local information, so every vertex's
-  answer is produced in `O(1)` amortised. It is `O(n)`; the open question is the exact rule for
-  combining a vertex's "downward" subtrees with the single "upward" direction without recomputation,
-  and how to do that combination safely under the modulus.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: `n = 1` (answer `1`); `n = 2`; long paths (where contiguous-segment
-counts are easy to verify by hand); stars (a centre with many leaves); deep skewed/caterpillar trees
-(to stress an iterative, non-recursive traversal); broad random trees; and maximal `n = 2*10^5` with
-arbitrary shape, where the counts wrap around the modulus many times. Edges may be listed in any
-order and either orientation; the vertex `1` is not assumed to be a leaf, the centre, or special in
-any way.
+counts are easy to verify by hand); stars (a centre with many leaves); deep skewed/caterpillar trees;
+broad random trees; and maximal `n = 2*10^5` with arbitrary shape, where the counts wrap around the
+modulus many times. Edges may be listed in any order and either orientation; the vertex `1` is not
+assumed to be a leaf, the centre, or special in any way.
 
 ## Code framework
 
