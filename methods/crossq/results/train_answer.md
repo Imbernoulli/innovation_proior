@@ -11,6 +11,8 @@ Everything else stays from SAC. The actor remains a stochastic tanh-Gaussian pol
 One subtlety is why naive BatchNorm fails in RL and why the joint pass fixes it. With separate passes, BatchNorm normalizes the current batch by its own moments and the next batch by its own moments. The critic then becomes two different functions — same weights, different normalization — and the Bellman equation relates outputs of two non-identical functions. Running statistics also lurch because they are updated separately by each pass. The joint pass forces one shared normalization, so the critic is one consistent function across both inputs and the running statistics follow one stable population. During the actor update, the critic is put in eval mode and evaluated only on the current-state batch, so it uses running statistics rather than recomputing batch statistics on a single distribution. In short, CrossQ answers the target-network question by attacking the distribution mismatch the target network was hiding, giving a target-free algorithm at UTD = 1 with only a few lines added to SAC.
 
 ```python
+import copy
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -19,6 +21,8 @@ LOG_STD_MIN, LOG_STD_MAX = -5, 2
 
 
 class BatchRenorm1d(nn.Module):
+    # Batch Renormalization (Ioffe 2017): batch-norm with clipped corrections
+    # (r, d) that tie batch stats to running stats; robust to non-stationary RL data.
     def __init__(self, num_features, momentum=0.01, eps=1e-3, rmax=3.0, dmax=5.0):
         super().__init__()
         self.momentum, self.eps, self.rmax, self.dmax = momentum, eps, rmax, dmax
@@ -44,12 +48,11 @@ class BatchRenorm1d(nn.Module):
 
 
 class Critic(nn.Module):
+    # wide BatchRenorm Q-network; no target copy exists for this net
     def __init__(self, obs_dim, act_dim, hidden=2048):
         super().__init__()
-        self.l1 = nn.Linear(obs_dim + act_dim, hidden)
-        self.bn1 = BatchRenorm1d(hidden)
-        self.l2 = nn.Linear(hidden, hidden)
-        self.bn2 = BatchRenorm1d(hidden)
+        self.l1 = nn.Linear(obs_dim + act_dim, hidden); self.bn1 = BatchRenorm1d(hidden)
+        self.l2 = nn.Linear(hidden, hidden); self.bn2 = BatchRenorm1d(hidden)
         self.l3 = nn.Linear(hidden, 1)
 
     def forward(self, s, a):
@@ -60,17 +63,17 @@ class Critic(nn.Module):
 
 
 class Actor(nn.Module):
+    # SAC stochastic tanh-Gaussian actor, unchanged
     def __init__(self, obs_dim, act_dim, max_action, hidden=256):
         super().__init__()
-        self.max_action = max_action
         self.l1 = nn.Linear(obs_dim, hidden)
         self.l2 = nn.Linear(hidden, hidden)
         self.mu = nn.Linear(hidden, act_dim)
         self.log_std = nn.Linear(hidden, act_dim)
+        self.max_action = max_action
 
     def forward(self, s):
-        x = F.relu(self.l1(s))
-        x = F.relu(self.l2(x))
+        x = F.relu(self.l1(s)); x = F.relu(self.l2(x))
         log_std = torch.tanh(self.log_std(x))
         log_std = LOG_STD_MIN + 0.5 * (LOG_STD_MAX - LOG_STD_MIN) * (log_std + 1)
         return self.mu(x), log_std
@@ -92,7 +95,7 @@ class CrossQ:
         self.max_action, self.total_it = max_action, 0
         self.actor = Actor(obs_dim, act_dim, max_action).to(device)
         self.qf1 = Critic(obs_dim, act_dim).to(device)
-        self.qf2 = Critic(obs_dim, act_dim).to(device)
+        self.qf2 = Critic(obs_dim, act_dim).to(device)  # twin critics, NO targets
         self.a_opt = torch.optim.Adam(self.actor.parameters(), lr=lr)
         self.q_opt = torch.optim.Adam(
             list(self.qf1.parameters()) + list(self.qf2.parameters()), lr=lr)
@@ -102,8 +105,9 @@ class CrossQ:
         self.al_opt = torch.optim.Adam([self.log_alpha], lr=lr)
 
     def _joint(self, qf, s, a, s2, a2):
+        # current and next forwarded TOGETHER so BatchRenorm shares one distribution
         q = qf(torch.cat([s, s2], 0), torch.cat([a, a2], 0))
-        return q[: s.shape[0]], q[s.shape[0] :]
+        return q[: s.shape[0]], q[s.shape[0]:]
 
     def update(self, batch):
         self.total_it += 1
