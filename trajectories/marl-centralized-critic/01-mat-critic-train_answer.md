@@ -28,7 +28,7 @@ import torch.nn.functional as F
 class CustomCritic(nn.Module):
     """MAT-style attention critic — self-attention over per-agent tokens.
 
-    Adapted from Wen et al. 2022 MAT, critic-only form.
+    The critic-only form of the multi-agent Transformer (MAT).
     Each agent's token encodes its local observation together with the
     global state; a single TransformerEncoder layer mixes information
     across agents via self-attention, then a per-token linear head
