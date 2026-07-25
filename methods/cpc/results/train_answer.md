@@ -19,7 +19,7 @@ class SequenceRepresentation(nn.Module):
         self.seq_len = seq_len
         self.timestep = timestep
 
-        # g_enc: strided conv stack on raw waveform -> z_t, total downsample 160
+        # g_enc: strided conv stack on the raw 16kHz waveform -> z_t (downsample 160)
         self.encoder = nn.Sequential(
             nn.Conv1d(1, 512, kernel_size=10, stride=5, padding=3, bias=False),
             nn.BatchNorm1d(512), nn.ReLU(inplace=True),
@@ -32,15 +32,12 @@ class SequenceRepresentation(nn.Module):
             nn.Conv1d(512, 512, kernel_size=4, stride=2, padding=1, bias=False),
             nn.BatchNorm1d(512), nn.ReLU(inplace=True),
         )
-
         # g_ar: autoregressive summary of z_{<=t} -> context c_t
         self.gru = nn.GRU(512, 256, num_layers=1, bidirectional=False, batch_first=True)
-
-        # one predictor W_k per lookahead step: c_t (256) -> predicted z (512)
+        # one linear predictor W_k per step: c_t (256) -> predicted latent (512)
         self.Wk = nn.ModuleList([nn.Linear(256, 512) for _ in range(timestep)])
         self.softmax = nn.Softmax(dim=0)
         self.lsoftmax = nn.LogSoftmax(dim=0)
-
         self._init_recurrent_weights()
         self.apply(self._weights_init)
 
@@ -69,17 +66,16 @@ class SequenceRepresentation(nn.Module):
 
     def forward(self, x, hidden):
         batch = x.size(0)
-        encoded_steps = self.seq_len // 160
-        t = torch.randint(encoded_steps - self.timestep, size=(1,), device=x.device).item()
+        t = torch.randint(self.seq_len // 160 - self.timestep, size=(1,), device=x.device).item()
 
-        z = self.encoder(x).transpose(1, 2)  # (B, L, 512)
+        z = self.encoder(x).transpose(1, 2)            # (B, L, 512)
 
         # true future latents z_{t+1..t+K}
         encode_samples = x.new_empty((self.timestep, batch, 512))
         for k in np.arange(1, self.timestep + 1):
             encode_samples[k - 1] = z[:, t + k, :].view(batch, 512)
 
-        # context from prefix z_{<=t}
+        # context from the prefix
         output, hidden = self.gru(z[:, :t + 1, :], hidden)
         c_t = output[:, t, :].view(batch, 256)
 
@@ -91,29 +87,27 @@ class SequenceRepresentation(nn.Module):
         nce = 0.0
         correct = None
         for k in np.arange(self.timestep):
-            # log-bilinear scores: (B, B), diagonal = positives, off-diagonal = negatives
-            total = torch.mm(encode_samples[k], pred[k].t())
+            total = torch.mm(encode_samples[k], pred[k].t())   # (B, B) logits
+            # diagonal = positive, off-diagonal = in-batch negatives (marginal)
             correct = torch.sum(
                 torch.eq(torch.argmax(self.softmax(total), dim=0),
                          torch.arange(0, batch, device=x.device))
             )
             nce += torch.sum(torch.diag(self.lsoftmax(total)))
-
-        nce = -nce / (batch * self.timestep)  # InfoNCE
-        accuracy = correct.float() / batch
+        nce = -nce / (batch * self.timestep)           # InfoNCE; certifies <= log(batch) nats
+        accuracy = correct.float() / batch             # farthest-step diagnostic
         return accuracy, nce, hidden
 
     def extract(self, x, hidden):
         z = self.encoder(x).transpose(1, 2)
         output, hidden = self.gru(z, hidden)
-        return output, hidden
+        return output, hidden                          # frozen representation c_t
 
 
 class LinearProbe(nn.Module):
     def __init__(self, num_classes, dim=256):
         super().__init__()
         self.fc = nn.Linear(dim, num_classes)
-
     def forward(self, x):
         return F.log_softmax(self.fc(x), dim=-1)
 
