@@ -18,149 +18,137 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch_scatter import scatter_add
-from torch_cluster import radius_graph, knn_graph
 
 
-class RelationalGraphConv(nn.Module):
-    def __init__(self, input_dim, output_dim, num_relation, batch_norm=True):
+class GeometricRelationalGraphConv(nn.Module):
+    def __init__(self, input_dim, output_dim, num_relation, edge_input_dim=None,
+                 batch_norm=True, activation="relu"):
         super().__init__()
+        self.input_dim = input_dim
+        self.output_dim = output_dim
         self.num_relation = num_relation
         self.linear = nn.Linear(num_relation * input_dim, output_dim)
-        self.bn = nn.BatchNorm1d(output_dim) if batch_norm else None
+        self.edge_linear = nn.Linear(edge_input_dim, input_dim) if edge_input_dim else None
+        self.batch_norm = nn.BatchNorm1d(output_dim) if batch_norm else None
+        self.activation = getattr(F, activation) if isinstance(activation, str) else activation
 
-    def forward(self, x, edge_index, edge_type, num_nodes, edge_input=None):
-        src, dst = edge_index
-        msg = x[src]
+    def message(self, graph, input, edge_input=None):
+        node_in = graph.edge_list[:, 0]
+        message = input[node_in]
+        if self.edge_linear is not None:
+            message = message + self.edge_linear(graph.edge_feature.float())
         if edge_input is not None:
-            msg = msg + edge_input
-        bucket = dst * self.num_relation + edge_type
-        update = scatter_add(msg, bucket, dim=0,
-                             dim_size=num_nodes * self.num_relation)
-        update = update.view(num_nodes, self.num_relation * x.size(-1))
+            assert edge_input.shape == message.shape
+            message = message + edge_input
+        return message
+
+    def aggregate(self, graph, message):
+        assert graph.num_relation == self.num_relation
+        dst = graph.edge_list[:, 1]
+        relation = graph.edge_list[:, 2]
+        bucket = dst * self.num_relation + relation
+        weight = graph.edge_weight.unsqueeze(-1)
+        update = scatter_add(message * weight, bucket, dim=0,
+                             dim_size=graph.num_node * self.num_relation)
+        return update.view(graph.num_node, self.num_relation * self.input_dim)
+
+    def combine(self, update):
         update = self.linear(update)
-        if self.bn is not None:
-            update = self.bn(update)
-        return F.relu(update)
+        if self.batch_norm is not None:
+            update = self.batch_norm(update)
+        if self.activation is not None:
+            update = self.activation(update)
+        return update
+
+    def forward(self, graph, input, edge_input=None):
+        message = self.message(graph, input, edge_input)
+        update = self.aggregate(graph, message)
+        return self.combine(update)
+
+
+class SpatialLineGraph(nn.Module):
+    def __init__(self, num_angle_bin=8):
+        super().__init__()
+        self.num_angle_bin = num_angle_bin
+
+    def forward(self, graph):
+        line_graph = graph.line_graph()
+        node_in, node_out = graph.edge_list[:, :2].t()
+        prev_edge, next_edge = line_graph.edge_list.t()
+
+        # line_graph enumerates consecutive directed edges src -> mid -> dst.
+        src = node_in[prev_edge]
+        mid = node_out[prev_edge]
+        dst = node_out[next_edge]
+
+        v1 = graph.node_position[src] - graph.node_position[mid]
+        v2 = graph.node_position[dst] - graph.node_position[mid]
+        angle = torch.atan2(torch.cross(v1, v2).norm(dim=-1), (v1 * v2).sum(dim=-1))
+        relation = (angle / math.pi * self.num_angle_bin).long()
+        relation = relation.clamp(max=self.num_angle_bin - 1)
+        edge_list = torch.cat([line_graph.edge_list, relation.unsqueeze(-1)], dim=-1)
+        return type(line_graph)(edge_list, num_nodes=line_graph.num_nodes,
+                                offsets=line_graph._offsets, num_edges=line_graph.num_edges,
+                                num_relation=self.num_angle_bin, meta_dict=line_graph.meta_dict,
+                                **line_graph.data_dict)
+
+
+class SumReadout(nn.Module):
+    def forward(self, graph, node_feature):
+        return scatter_add(node_feature, graph.node2graph, dim=0, dim_size=graph.batch_size)
 
 
 class GearNet(nn.Module):
-    def __init__(self, input_dim=21, hidden_dim=512, num_layers=6,
-                 num_relation=7, num_angle_bin=8, dropout=0.0):
+    def __init__(self, input_dim=21, hidden_dims=(512, 512, 512, 512, 512, 512),
+                 num_relation=7, edge_input_dim=59, batch_norm=True, concat_hidden=True,
+                 short_cut=True, readout="sum", dropout=0, num_angle_bin=8):
         super().__init__()
         self.num_relation = num_relation
+        self.concat_hidden = concat_hidden
+        self.short_cut = short_cut
         self.num_angle_bin = num_angle_bin
-        self.dims = [input_dim] + [hidden_dim] * num_layers
-        self.edge_dims = [input_dim] + self.dims[:-1]
+        self.dims = [input_dim] + list(hidden_dims)
+        self.edge_dims = [edge_input_dim] + self.dims[:-1]
 
         self.layers = nn.ModuleList([
-            RelationalGraphConv(self.dims[i], self.dims[i + 1], num_relation)
-            for i in range(num_layers)
-        ])
-        self.edge_layers = nn.ModuleList([
-            RelationalGraphConv(self.edge_dims[i], self.edge_dims[i + 1],
-                                num_angle_bin)
-            for i in range(num_layers)
+            GeometricRelationalGraphConv(self.dims[i], self.dims[i + 1], num_relation,
+                                         None, batch_norm, "relu")
+            for i in range(len(self.dims) - 1)
         ])
         self.dropout = nn.Dropout(dropout)
 
-    def build_edges(self, pos, batch, seq_offsets=(-2, -1, 0, 1, 2),
-                    radius=10.0, k=10, min_seq_dist=5):
-        device = pos.device
-        srcs, dsts, types = [], [], []
-        num_graphs = int(batch.max().item()) + 1
+        if num_angle_bin:
+            self.spatial_line_graph = SpatialLineGraph(num_angle_bin)
+            self.edge_layers = nn.ModuleList([
+                GeometricRelationalGraphConv(self.edge_dims[i], self.edge_dims[i + 1],
+                                             num_angle_bin, None, batch_norm, "relu")
+                for i in range(len(self.edge_dims) - 1)
+            ])
 
-        for g in range(num_graphs):
-            mask = (batch == g).nonzero(as_tuple=True)[0]
-            n = mask.numel()
-            for r, off in enumerate(seq_offsets):
-                if off == 0:
-                    s, d = mask, mask
-                elif off > 0:
-                    if n <= off:
-                        continue
-                    s, d = mask[:-off], mask[off:]
-                else:
-                    if n <= -off:
-                        continue
-                    s, d = mask[-off:], mask[:off]
-                srcs.append(s)
-                dsts.append(d)
-                types.append(torch.full_like(s, r))
+        if readout != "sum":
+            raise ValueError("This configuration uses sum readout")
+        self.readout = SumReadout()
 
-        rad = radius_graph(pos, r=radius, batch=batch, loop=False,
-                           max_num_neighbors=512)
-        s, d = rad
-        keep = torch.abs(s.float() - d.float()) >= min_seq_dist
-        srcs.append(s[keep])
-        dsts.append(d[keep])
-        types.append(torch.full_like(s[keep], len(seq_offsets)))
-
-        knn = knn_graph(pos, k=k, batch=batch, loop=False)
-        s, d = knn
-        keep = torch.abs(s.float() - d.float()) >= min_seq_dist
-        srcs.append(s[keep])
-        dsts.append(d[keep])
-        types.append(torch.full_like(s[keep], len(seq_offsets) + 1))
-
-        edge_index = torch.stack([torch.cat(srcs), torch.cat(dsts)], dim=0)
-        edge_type = torch.cat(types)
-        return edge_index, edge_type
-
-    def build_line_graph(self, edge_index, pos):
-        src, dst = edge_index
-        E = edge_index.size(1)
-        device = pos.device
-        num_nodes = int(dst.max().item()) + 1
-
-        order = torch.argsort(dst)
-        in_deg = torch.bincount(dst, minlength=num_nodes)
-        in_ptr = torch.cat([torch.zeros(1, dtype=torch.long, device=device),
-                            in_deg.cumsum(0)])
-
-        deg_e2 = in_deg[src]
-        e2_idx = torch.arange(E, device=device).repeat_interleave(deg_e2)
-        offsets = torch.cat([torch.zeros(1, dtype=torch.long, device=device),
-                             deg_e2.cumsum(0)[:-1]])
-        local = (torch.arange(deg_e2.sum(), device=device) -
-                 offsets.repeat_interleave(deg_e2))
-        e1_idx = order[in_ptr[src[e2_idx]] + local]
-
-        mask = src[e1_idx] != dst[e2_idx]
-        e1_idx, e2_idx = e1_idx[mask], e2_idx[mask]
-
-        i, j, k = src[e1_idx], dst[e1_idx], dst[e2_idx]
-        v1 = pos[i] - pos[j]
-        v2 = pos[k] - pos[j]
-        angle = torch.atan2(torch.cross(v1, v2, dim=-1).norm(dim=-1),
-                            (v1 * v2).sum(dim=-1))
-        rel = (angle / math.pi * self.num_angle_bin).long().clamp(
-            max=self.num_angle_bin - 1)
-
-        return torch.stack([e1_idx, e2_idx], dim=0), rel
-
-    def forward(self, graph, node_feature):
-        pos, batch = graph.pos, graph.batch
-        num_nodes = node_feature.size(0)
-        edge_index, edge_type = self.build_edges(pos, batch)
-        line_edge_index, line_edge_type = self.build_line_graph(edge_index, pos)
-
+    def forward(self, graph, input):
         hiddens = []
-        h = node_feature
-        edge_h = node_feature[edge_index[0]]
+        layer_input = input
+        if self.num_angle_bin:
+            line_graph = self.spatial_line_graph(graph)
+            edge_hidden = line_graph.node_feature.float()
+        else:
+            edge_hidden = None
 
-        for layer, edge_layer in zip(self.layers, self.edge_layers):
-            edge_h = edge_layer(edge_h, line_edge_index, line_edge_type,
-                                edge_h.size(0))
-            hidden = layer(h, edge_index, edge_type, num_nodes,
-                           edge_input=edge_h)
+        for i, layer in enumerate(self.layers):
+            if self.num_angle_bin:
+                edge_hidden = self.edge_layers[i](line_graph, edge_hidden)
+            hidden = layer(graph, layer_input, edge_hidden)
             hidden = self.dropout(hidden)
-            if hidden.shape == h.shape:
-                hidden = hidden + h
+            if self.short_cut and hidden.shape == layer_input.shape:
+                hidden = hidden + layer_input
             hiddens.append(hidden)
-            h = hidden
+            layer_input = hidden
 
-        node_feature_out = torch.cat(hiddens, dim=-1)
-        graph_feature = scatter_add(node_feature_out, batch, dim=0)
-        return {"node_feature": node_feature_out,
-                "graph_feature": graph_feature}
+        node_feature = torch.cat(hiddens, dim=-1) if self.concat_hidden else hiddens[-1]
+        graph_feature = self.readout(graph, node_feature)
+        return {"graph_feature": graph_feature, "node_feature": node_feature}
 ```
