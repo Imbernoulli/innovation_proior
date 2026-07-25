@@ -10,10 +10,7 @@ a **balanced pair** when the sum of their two anomalies lands inside an inclusiv
 balanced pair and counted once.
 
 Given the `n` anomalies and the band endpoints `lo` and `hi`, **count how many balanced pairs
-exist**. Because the anomalies span negatives, zeros, and positives, and because the band itself may
-be degenerate (a single value, or even empty when `lo > hi`), the sign and base-case handling is the
-whole difficulty: a naive count that forgets the empty-band or all-negative corner reports a wrong —
-sometimes negative — number.
+exist**.
 
 ## Input / output contract
 
@@ -31,17 +28,9 @@ The qualifying pairs (by value) are `(-5,2)=-3`, `(-5,7)=2`, `(2,-1)=1`, `(2,0)=
 ## Background
 
 The brute force enumerates all `O(n^2)` pairs; at `n = 2*10^5` that is `~2*10^10` operations and far
-too slow. Two faster families are on the table before committing:
-
-- **Sort plus binary search.** Sort the anomalies; for each `a[i]`, the partners `a[j]` that land in
-  the band form a contiguous slice `[lo - a[i], hi - a[i]]` of the sorted array, locatable with two
-  `lower_bound`/`upper_bound` calls. This is `O(n log n)`; the open question is how to exclude the
-  self-pair `j = i` and avoid double counting unordered pairs.
-- **Sort plus two pointers.** Reduce "count pairs in a band" to two "count pairs with sum `<= K`"
-  queries via `countLE(hi) - countLE(lo - 1)`, and answer each `countLE` with a single linear
-  two-pointer sweep over the sorted array. This is `O(n log n)` to sort then `O(n)` per sweep; the
-  open question is the exact pointer movement and — critically — when the subtraction `countLE(hi) -
-  countLE(lo - 1)` is even valid, since with `lo > hi` it can go negative.
+too slow. Standard techniques for counting pairs by sum over a sorted array include per-element
+binary search and two-pointer sweeps; either family can, in principle, be brought down to
+`O(n log n)`.
 
 ## Evaluation settings
 
@@ -49,8 +38,7 @@ Judged on hidden tests covering: all-positive anomalies, mixtures with negatives
 empty log (`n = 0`), a single day (`n = 1`, which has no pairs), all-negative anomalies, an empty
 band (`lo > hi`), a degenerate one-value band (`lo == hi`, e.g. counting pairs summing to exactly
 zero), heavy duplicates (so the same value repeats and pairs of equal values must be counted), and
-large `n = 2*10^5` with `|a[i]|` near `10^9` so both the pair sums (up to `2*10^9`) and the answer
-(up to `~2*10^10`) overflow 32-bit integers.
+large `n = 2*10^5` with `|a[i]|` near `10^9`.
 
 ## Code framework
 
