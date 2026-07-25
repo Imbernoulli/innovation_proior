@@ -93,5 +93,3 @@ if __name__ == "__main__":
     best_cost, best_pos = optimize(sphere, n_particles=30, dimensions=10,
                                    bounds=bounds, options=options, iters=1000)
 ```
-
-The structure mirrors the canonical numpy PSO (a `Swarm` state object; `compute_pbest` / `compute_gbest` / `compute_velocity` / `compute_position` operators; a star topology for the global best; an `optimize` loop), differing only in keeping the example self-contained.
