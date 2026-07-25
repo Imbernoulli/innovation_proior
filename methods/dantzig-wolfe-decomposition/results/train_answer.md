@@ -10,37 +10,29 @@ The master LP may still have an enormous number of columns, so Dantzig-Wolfe sol
 import numpy as np
 from scipy.optimize import linprog
 
-# Toy demonstration of Dantzig-Wolfe with two single-variable blocks.
-# Original LP: min 2*x0 + 1*x1  s.t.  x0 + x1 = 1,  0 <= xk <= 1.
-c = [2.0, 1.0]
-A_link = [1.0, 1.0]
-b_link = 1.0
+# Toy LP: min 2*x1 + x2  s.t.  x1 + x2 = 1,  0 <= xk <= 1.
+c, A, b = [2.0, 1.0], [1.0, 1.0], 1.0
 bounds = [(0.0, 1.0), (0.0, 1.0)]
 
-# Each column is (cost, linking_value).  Block membership is stored separately.
-columns = [(0.0, 0.0),   # x0 = 0
-           (c[0], A_link[0]),  # x0 = 1
-           (0.0, 0.0)]   # x1 = 0
+# (cost, linking_value) columns; start with block 0 x=0/1 and block 1 x=0.
+columns = [(0.0, 0.0), (c[0], A[0]), (0.0, 0.0)]
 block = [0, 0, 1]
 
-for it in range(20):
+for it in range(10):
     costs = [col[0] for col in columns]
     A_eq = [[col[1] for col in columns]]
     for k in range(2):
-        A_eq.append([1.0 if block[j] == k else 0.0
-                     for j in range(len(columns))])
-    res = linprog(costs, A_eq=A_eq, b_eq=[b_link, 1.0, 1.0],
+        A_eq.append([1.0 if block[j] == k else 0.0 for j in range(len(columns))])
+    res = linprog(costs, A_eq=A_eq, b_eq=[b, 1.0, 1.0],
                   bounds=(0, None), method="highs")
-    pi = res.eqlin.marginals[0]
-    mu = res.eqlin.marginals[1:]
+    pi, mu = res.eqlin.marginals[0], res.eqlin.marginals[1:]
 
     added = False
     for k in range(2):
-        coeff = c[k] - A_link[k] * pi
-        # Optimal extreme point for a single bounded variable.
+        coeff = c[k] - A[k] * pi
         x = bounds[k][0] if coeff >= 0 else bounds[k][1]
         if coeff * x - mu[k] < -1e-8:
-            columns.append((c[k] * x, A_link[k] * x))
+            columns.append((c[k] * x, A[k] * x))
             block.append(k)
             added = True
     if not added:
