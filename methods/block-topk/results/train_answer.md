@@ -13,13 +13,7 @@ import torch.nn as nn
 
 
 class SparseAttention(nn.Module):
-    """Content-adaptive block-sparse top-K attention for a frozen causal LLM.
-
-    For each query block, score all causal key blocks by mean-pooled-query dot
-    mean-pooled-key, keep K total blocks by taking K-1 top off-diagonal blocks
-    plus the always-kept diagonal block, and run masked-softmax attention over
-    the kept (q, k) pairs.
-    """
+    """Mean-pooled block scoring with K-1 off-diagonal blocks plus diagonal."""
 
     BLOCK = 64
 
@@ -36,7 +30,7 @@ class SparseAttention(nn.Module):
         Bk = self.BLOCK
         scale = scale if scale is not None else 1.0 / math.sqrt(D)
 
-        # Pad sequence to a multiple of BLOCK so block-pooling is exact.
+        # Pad to a multiple of BLOCK so block-pooling is exact.
         Npad = ((N + Bk - 1) // Bk) * Bk
         if Npad != N:
             pad = Npad - N
@@ -50,7 +44,7 @@ class SparseAttention(nn.Module):
         q_blocks = qp.view(B, H, n_blocks, Bk, D).mean(dim=3)
         k_blocks = kp.view(B, H, n_blocks, Bk, D).mean(dim=3)
 
-        # Cheap block-pair importance proxy (fp32 for stable masking/softmax).
+        # Block-pair importance (fp32 for stable masking/softmax).
         scores = torch.einsum('bhmd,bhnd->bhmn',
                               q_blocks.float(), k_blocks.float()) * scale
 
@@ -59,24 +53,23 @@ class SparseAttention(nn.Module):
             causal_blk = idx[:, None] >= idx[None, :]
             scores = scores.masked_fill(~causal_blk, float('-inf'))
 
-        # Remove diagonal from ranking; it is force-included below.
+        # Force-include diagonal: drop it from the ranking, append it after.
         diag_mask = torch.zeros(n_blocks, n_blocks, dtype=torch.bool, device=q.device)
         diag_mask.fill_diagonal_(True)
         scores_nodiag = scores.masked_fill(diag_mask, float('-inf'))
 
-        # Derive per-query-block keep count K from the density budget.
-        # Kept causal block-pairs = K(2n-K+1)/2; denom = n(n+1)/2.
+        # Per-query-block keep count K from the density budget (smaller root).
         n_b = n_blocks
         if is_causal:
             disc = max(0.0, (2 * n_b + 1) ** 2
-                       - 4 * self.density_budget * n_b * (n_b + 1))
+                      - 4 * self.density_budget * n_b * (n_b + 1))
             K_top = max(1, int(((2 * n_b + 1) - math.sqrt(disc)) / 2))
         else:
             K_top = max(1, int(round(self.density_budget * n_b)))
         kk = max(0, min(K_top - 1, n_b - 1))
 
         if kk > 0:
-            topk_idx = scores_nodiag.topk(kk, dim=-1).indices
+            topk_idx = scores_nodiag.topk(kk, dim=-1).indices       # (B,H,n_b,kk)
         else:
             topk_idx = torch.empty(B, H, n_blocks, 0,
                                    dtype=torch.long, device=q.device)
@@ -89,7 +82,7 @@ class SparseAttention(nn.Module):
         if is_causal:
             block_keep = block_keep & causal_blk
 
-        # Expand block decision to a token-level keep mask and trim padding.
+        # Expand to token-level keep mask, trim padding.
         tok_blk = torch.arange(Npad, device=q.device) // Bk
         token_keep = block_keep[:, :, tok_blk, :][:, :, :, tok_blk]
         token_keep = token_keep[:, :, :N, :N]
@@ -97,11 +90,11 @@ class SparseAttention(nn.Module):
             tidx = torch.arange(N, device=q.device)
             token_keep = token_keep & (tidx[:, None] >= tidx[None, :])
 
-        # Report density measured from the realized mask.
+        # Density measured from the realized mask (harness contract).
         denom = (N * (N + 1) / 2.0) if is_causal else float(N * N)
         self.last_density = float(token_keep[0, 0].sum().item()) / max(denom, 1.0)
 
-        # Masked-softmax attention over the kept (q, k) pairs.
+        # Masked-softmax attention over kept (q, k) pairs.
         attn = torch.matmul(q.float(), k.float().transpose(-2, -1)) * scale
         attn = attn.masked_fill(~token_keep, float('-inf'))
         attn = torch.softmax(attn, dim=-1)
