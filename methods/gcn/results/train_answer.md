@@ -11,85 +11,126 @@ Training is full-batch over the whole graph, but the cross-entropy loss is avera
 ```python
 import numpy as np
 import scipy.sparse as sp
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+import tensorflow as tf
 
-def normalize_adj(adj):
-    """Build A_hat = D_tilde^{-1/2} (A + I) D_tilde^{-1/2}."""
-    adj = sp.coo_matrix(adj + sp.eye(adj.shape[0]))
-    rowsum = np.array(adj.sum(1)).flatten()
-    d_inv_sqrt = np.power(rowsum, -0.5)
-    d_inv_sqrt[np.isinf(d_inv_sqrt)] = 0.0
-    d_mat = sp.diags(d_inv_sqrt)
-    return d_mat.dot(adj).dot(d_mat).tocoo()
-
-def sparse_to_torch(adj):
-    """Convert a scipy COO matrix to a torch sparse tensor."""
-    indices = torch.from_numpy(np.vstack((adj.row, adj.col)).astype(np.int64))
-    values = torch.from_numpy(adj.data.astype(np.float32))
-    shape = torch.Size(adj.shape)
-    return torch.sparse_coo_tensor(indices, values, shape)
+def sparse_to_tuple(sparse_mx):
+    """Convert a scipy sparse matrix, or a list of them, to TensorFlow sparse tuples."""
+    def to_tuple(mx):
+        if not sp.isspmatrix_coo(mx):
+            mx = mx.tocoo()
+        coords = np.vstack((mx.row, mx.col)).transpose()
+        return coords, mx.data, mx.shape
+    return [to_tuple(mx) for mx in sparse_mx] if isinstance(sparse_mx, list) else to_tuple(sparse_mx)
 
 def preprocess_features(features):
-    """Row-normalize feature matrix."""
-    rowsum = np.array(features.sum(1)).flatten()
-    r_inv = np.power(rowsum, -1.0)
-    r_inv[np.isinf(r_inv)] = 0.0
-    return sp.diags(r_inv).dot(features)
+    """Row-normalize feature matrix and convert to tuple representation."""
+    rowsum = np.array(features.sum(1))
+    r_inv = np.power(rowsum, -1).flatten()
+    r_inv[np.isinf(r_inv)] = 0.
+    return sparse_to_tuple(sp.diags(r_inv).dot(features))
 
-class GCNLayer(nn.Module):
-    def __init__(self, in_channels, out_channels, bias=True):
-        super().__init__()
-        self.weight = nn.Parameter(torch.empty(in_channels, out_channels))
-        if bias:
-            self.bias = nn.Parameter(torch.empty(out_channels))
-        else:
-            self.register_parameter('bias', None)
-        nn.init.xavier_uniform_(self.weight)
-        if self.bias is not None:
-            nn.init.zeros_(self.bias)
+def normalize_adj(adj):
+    """Symmetric normalization D^{-1/2} A D^{-1/2}."""
+    adj = sp.coo_matrix(adj)
+    rowsum = np.array(adj.sum(1))
+    d_inv_sqrt = np.power(rowsum, -0.5).flatten()
+    d_inv_sqrt[np.isinf(d_inv_sqrt)] = 0.
+    d_mat_inv_sqrt = sp.diags(d_inv_sqrt)
+    return adj.dot(d_mat_inv_sqrt).transpose().dot(d_mat_inv_sqrt).tocoo()
 
-    def forward(self, x, adj):
-        x = torch.mm(x, self.weight)
-        x = torch.sparse.mm(adj, x)
-        if self.bias is not None:
-            x = x + self.bias
-        return x
+def preprocess_adj(adj):
+    """Ahat = D~^{-1/2} (A + I) D~^{-1/2}."""
+    return sparse_to_tuple(normalize_adj(adj + sp.eye(adj.shape[0])))
 
-class GCN(nn.Module):
-    def __init__(self, in_channels, hidden_channels, num_classes, dropout=0.5):
-        super().__init__()
-        self.conv1 = GCNLayer(in_channels, hidden_channels)
-        self.conv2 = GCNLayer(hidden_channels, num_classes)
-        self.dropout = dropout
+def glorot(shape, name=None):
+    """Glorot & Bengio uniform initialization."""
+    init_range = np.sqrt(6.0 / (shape[0] + shape[1]))
+    initial = tf.random_uniform(shape, minval=-init_range, maxval=init_range,
+                                dtype=tf.float32)
+    return tf.Variable(initial, name=name)
 
-    def forward(self, x, adj):
-        x = F.relu(self.conv1(x, adj))
-        x = F.dropout(x, p=self.dropout, training=self.training)
-        x = self.conv2(x, adj)
-        return x
+def sparse_dropout(x, keep_prob, noise_shape):
+    """Dropout for TensorFlow SparseTensor inputs."""
+    random_tensor = keep_prob + tf.random_uniform(noise_shape)
+    dropout_mask = tf.cast(tf.floor(random_tensor), dtype=tf.bool)
+    dropped = tf.sparse_retain(x, dropout_mask)
+    return dropped * (1. / keep_prob)
 
-# Example usage with precomputed graph support
-adj = sp.load_npz('adj.npz')              # N x N sparse adjacency
-features = sp.load_npz('features.npz')    # N x C sparse features
-labels = np.load('labels.npy')            # N (integer class indices)
-train_mask = np.load('train_mask.npy')    # boolean length N
+def dot(x, y, sparse=False):
+    """tf.matmul that dispatches to the sparse kernel."""
+    return tf.sparse_tensor_dense_matmul(x, y) if sparse else tf.matmul(x, y)
 
-adj_hat = sparse_to_torch(normalize_adj(adj))
-x = torch.from_numpy(preprocess_features(features).todense().astype(np.float32))
-y = torch.from_numpy(labels.astype(np.int64))
-train_mask = torch.from_numpy(train_mask)
+class GraphLayer:
+    """One layer: act(sum_s support_s @ (dropout(x) @ W_s))."""
+    def __init__(self, input_dim, output_dim, support, act=tf.nn.relu,
+                 dropout=0., sparse_inputs=False, num_features_nonzero=None):
+        self.support = support
+        self.act, self.dropout = act, dropout
+        self.sparse_inputs = sparse_inputs
+        self.num_features_nonzero = num_features_nonzero
+        self.weights = [glorot([input_dim, output_dim], name='weights_%d' % i)
+                        for i in range(len(support))]
 
-model = GCN(in_channels=x.shape[1], hidden_channels=16, num_classes=int(y.max()) + 1)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
+    def __call__(self, x):
+        x = (sparse_dropout(x, 1 - self.dropout, self.num_features_nonzero) if self.sparse_inputs
+             else tf.nn.dropout(x, 1 - self.dropout))
+        out = []
+        for s, W in zip(self.support, self.weights):
+            xw = dot(x, W, sparse=self.sparse_inputs)   # X W
+            out.append(dot(s, xw, sparse=True))         # Â (X W)
+        return self.act(tf.add_n(out))
 
-model.train()
-for epoch in range(200):
-    optimizer.zero_grad()
-    logits = model(x, adj_hat)
-    loss = F.cross_entropy(logits[train_mask], y[train_mask])
-    l2_reg = 5e-4 * torch.sum(model.conv1.weight ** 2)
-    (loss + l2_reg).backward()
-    optimizer.step()
+class GraphModel:
+    def __init__(self, placeholders, input_dim, hidden, num_classes):
+        support = placeholders['support']
+        dropout = placeholders['dropout']
+        self.layers = [
+            GraphLayer(input_dim, hidden, support, act=tf.nn.relu, dropout=dropout,
+                       sparse_inputs=True,
+                       num_features_nonzero=placeholders['num_features_nonzero']),
+            GraphLayer(hidden, num_classes, support, act=lambda z: z, dropout=dropout),
+        ]
+        h = self.layers[0](placeholders['features'])    # ReLU(Â X W0)
+        self.outputs = self.layers[1](h)                # Â h W1, logits
+
+def masked_softmax_cross_entropy(logits, labels, mask):
+    """Softmax cross-entropy averaged over labeled nodes only."""
+    loss = tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=labels)
+    mask = tf.cast(mask, tf.float32)
+    mask /= tf.reduce_mean(mask)
+    return tf.reduce_mean(loss * mask)
+
+features = preprocess_features(features)
+support = [preprocess_adj(adj)]
+num_supports = len(support)
+
+placeholders = {
+    'support': [tf.sparse_placeholder(tf.float32) for _ in range(num_supports)],
+    'features': tf.sparse_placeholder(tf.float32,
+                                      shape=tf.constant(features[2], dtype=tf.int64)),
+    'labels': tf.placeholder(tf.float32, shape=(None, y_train.shape[1])),
+    'labels_mask': tf.placeholder(tf.int32),
+    'dropout': tf.placeholder_with_default(0., shape=()),
+    'num_features_nonzero': tf.placeholder(tf.int32),
+}
+
+model = GraphModel(placeholders, input_dim=features[2][1],
+                   hidden=16, num_classes=y_train.shape[1])
+optimizer = tf.train.AdamOptimizer(learning_rate=0.01)   # full-batch, lr 0.01
+loss = masked_softmax_cross_entropy(model.outputs,
+                                    placeholders['labels'],
+                                    placeholders['labels_mask'])
+loss += 5e-4 * tf.add_n([tf.nn.l2_loss(W) for W in model.layers[0].weights])
+train_op = optimizer.minimize(loss)
+
+feed_dict = {
+    placeholders['features']: features,
+    placeholders['labels']: y_train,
+    placeholders['labels_mask']: train_mask,
+    placeholders['num_features_nonzero']: features[1].shape,
+    placeholders['dropout']: 0.5,
+}
+feed_dict.update({placeholders['support'][i]: support[i] for i in range(len(support))})
+_, train_loss = sess.run([train_op, loss], feed_dict=feed_dict)
+# Repeat the full-batch step for up to 200 epochs and early-stop on validation loss.
 ```
