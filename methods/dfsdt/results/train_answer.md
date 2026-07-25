@@ -10,70 +10,66 @@ The backtrack distance is the only real control knob, encoded as an integer retu
 
 ```python
 class DFSDT:
-    """Depth-First Search-based Decision Tree for LLM tool-use planning.
-    Pre-order DFS over a tree of partial action sequences. One LLM call per
-    node; no child ranking. A temporary diversity prompt is used on
-    re-expansion and then invalidated so it does not persist in history.
-    """
+    """Depth-First Search-based Decision Tree: pre-order DFS over a tree of partial
+    action sequences. One LLM call per node, no child ranking. Diversity nudge on
+    re-expansion; backtrack distance encoded as the recursion's return value."""
 
     def search(self, root_node):
         self._dfs(root_node)
 
     def _dfs(self, now_node):
-        """Recursive DFS. Returns how many more levels the caller should back up."""
+        """Recursive DFS. Returns how many more levels the caller should keep backing up."""
+        # 1 = local sibling retry (ordinary failed call);
+        # 2 = escape the local subtree (give-up or completed answer);
+        # toward infinity -> full restart (flat resample). 2 is the middle dial.
         final_answer_back_length = 2
         prune_back_length = 2
 
-        now_node.expand_num = self.now_expand_num
+        now_node.expand_num = self.now_expand_num          # monotone visit counter
         self.now_expand_num += 1
 
-        # Raw tree-node depth: Thought -> Action -> Action Input is one logical round.
+        # get_depth() is raw tree-node depth: Thought, Action, Action Input consume
+        # three levels for one logical tool-use round.
         if (now_node.get_depth() >= self.single_chain_max_step
                 or now_node.pruned or now_node.is_terminal):
-            if now_node.is_terminal:
+            if now_node.is_terminal:                       # a real final answer
                 self.status = 1
-                self.terminal_node.append(now_node)
-                return final_answer_back_length
+                self.terminal_node.append(now_node)        # record this solution path
+                return final_answer_back_length            # keep looking elsewhere: back up 2
             now_node.pruned = True
-            if now_node.observation_code == 4:  # "Finish by Giving Up"
+            if now_node.observation_code == 4:             # status 4 == "Finish by Giving Up"
                 self.give_up_node.append(now_node)
-                return prune_back_length
-            return 1  # ordinary failed call: try a sibling here
+                return prune_back_length                    # escape this dead subtree: back up 2
+            return 1                                        # ordinary failed call: local retry
 
+        # --- expand: up to tree_beam_size children, one at a time, depth-first ---
         for _ in range(self.tree_beam_size):
             added_diversity = False
             if len(now_node.children) > 0:
+                # We backed up here; temporarily show previous child actions so the
+                # next generated child is different from them.
                 now_node.messages.append(self._diversity_message(now_node))
                 added_diversity = True
 
+            # One canonical step: content -> Thought; function_call -> Action and
+            # Action Input; status 4 marks give-up/pruned, status 1 rewrites a
+            # hallucinated API name to a sentinel, status 3 marks terminal and
+            # make_finish(final_answer_back_length).
             leaf = self._step(now_node)
 
-            if self.query_count >= self.max_query_count:
-                return 100000
+            if self.query_count >= self.max_query_count:   # checked after the LLM parse
+                return 100000                              # abort: unwind every frame and exit
 
             if added_diversity:
-                now_node.messages[-1]["valid"] = False
+                now_node.messages[-1]["valid"] = False     # drop from persistent history
 
-            result = self._dfs(leaf)
+            result = self._dfs(leaf)                       # recurse immediately (pre-order, no ranking)
 
             if len(self.terminal_node) >= self.answer_count:
-                return 10000
-            elif result > 1:
-                return result - 1
-            # result == 1 -> next iteration tries the next sibling locally
+                return 10000                               # enough valid paths: unwind and stop
+            elif result > 1:                               # a descendant wants to keep backing up
+                return result - 1                          # propagate the retraction up one level
+            # result == 1 -> local sibling retry == this loop's next iteration; fall through
 
-        return 1
-
-    def _diversity_message(self, node):
-        """Temporary prompt pushing the model away from already-tried children."""
-        tried = []
-        for child in node.children:
-            action = getattr(child, "action", None) or str(child)
-            tried.append(action)
-        text = (
-            "You have already tried the following actions at this state and they failed:\n"
-            + "\n".join(f"- {a}" for a in tried)
-            + "\nGenerate a DIFFERENT next action that avoids the mistakes above."
-        )
-        return {"role": "user", "content": text, "valid": True}
+        return 1                                            # no more children here: let parent retry
 ```

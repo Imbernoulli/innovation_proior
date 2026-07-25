@@ -15,7 +15,7 @@ def random_int(low, high):
     return low + secrets.randbelow(high - low + 1)
 
 def modexp(base, exp, mod):
-    # Repeated-squaring exponentiation: O(log exp) multiplications mod `mod`.
+    # repeated-squaring exponentiation: O(log exp) multiplications mod `mod`
     result = 1
     base %= mod
     while exp > 0:
@@ -36,9 +36,9 @@ def generate_keypair(params):
     return X, Y
 
 def derive_shared_secret(my_secret_X, their_public_Y, params):
-    # (alpha^X_other)^X_mine = alpha^(X_mine * X_other) mod q -- same for both parties.
+    # (alpha^X_other)^X_mine = alpha^(X_mine * X_other) mod q  -- same for both parties
     return modexp(their_public_Y, my_secret_X, params.q)
 
-# Eavesdropper has q, alpha, Y_i, Y_j but not X_i or X_j; reaching alpha^(X_i X_j)
+# Eavesdropper has q, alpha, Y_i, Y_j but not X_i, X_j; reaching alpha^(X_i X_j)
 # requires (as far as known) first taking a discrete logarithm.
 ```
