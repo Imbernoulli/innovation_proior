@@ -27,30 +27,12 @@ what matters.
 
 Example: for the L-shaped hexagon `(0,0), (4,0), (4,2), (2,2), (2,4), (0,4)` the answer is `5`.
 
-## Background
-
-Two families of approach are on the table before committing to one:
-
-- **Scan the bounding box.** Enumerate every lattice point in the polygon's bounding rectangle and test
-  each for strict containment with a point-in-polygon routine. This is exact and trivially correct, but
-  the bounding box has up to `(2*10^9)^2 = 4*10^18` cells, so it is hopelessly slow at the stated
-  limits — it only survives on tiny coordinates.
-- **A closed-form lattice identity.** Relate the count of interior lattice points to the polygon's area
-  and to the number of lattice points lying on its boundary, both of which can be computed exactly in
-  `O(n)` from the vertices alone. The open question is the exact identity and how to compute each piece
-  with integer arithmetic that does not overflow.
-
-The two quantities the closed form needs are: the polygon **area**, computable exactly as a (possibly
-half-integer) value via the shoelace formula on the integer vertices; and the number of lattice points
-**on the boundary**, where a single edge from `(x_i, y_i)` to `(x_j, y_j)` carries exactly
-`gcd(|x_j - x_i|, |y_j - y_i|)` lattice points if you count one endpoint per edge.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: convex and concave (non-convex) polygons; polygons given clockwise and
 counter-clockwise; triangles and many-vertex polygons; polygons with collinear vertices along an edge;
 thin slivers with zero interior points; polygons placed at large negative and positive coordinates near
-`10^9` (so the shoelace accumulator exceeds a 64-bit range); and `n` up to `10^5`.
+`10^9`; and `n` up to `10^5`.
 
 ## Code framework
 
