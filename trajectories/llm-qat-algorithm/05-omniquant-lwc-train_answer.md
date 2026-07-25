@@ -13,7 +13,7 @@ One thing demands care, because it is where the original form of this clip and t
 I land it in the edit surface following the same wiring LSQ forced, because the harness's fixed post-training RTN would clobber a learned grid just as it would have clobbered LSQ's scales. So `quantize_dequantize_weight` is again a deliberate no-op `weight.clone()`, and the real quantization lives in the wrapper's `forward`, branching on `self.training`: during training the differentiable LWC fake-quant with the sigmoid-gated factors; at eval a genuine no-grad $\mathrm{round}(\mathrm{clip}(w/s))\cdot s$ on the *learned* clipped grid, recomputing the per-group extremes and scale from the final weights and factors, so evaluation sees the LWC grid and not the max-abs grid. The factors `up_factor` and `low_factor` are registered as `nn.Parameter`s of shape $(\text{out\_features}, n_\text{groups}, 1)$ initialized to 4.0, so the harness's optimizer-over-all-`requires_grad`-params trains them alongside the weights with no extra plumbing. One detail I must get right so the clip is faithful: I compute raw $x_{\max}$/$x_{\min}$ as the per-group *signed* max and min (not max-abs), gate each by its own sigmoid factor, and *then* take $\max(|x_{\max}|, |x_{\min}|)$ for the symmetric scale — keeping both factors and the signed-extreme computation rather than collapsing to a single max-abs factor, which would be a different and less faithful method. Activations stay full precision, the LM head is restored to plain Linear, and the same 500-step schedule is held constant, so the only change from LSQ is the coordinate the grid is learned in.
 
 ```python
-# EDITABLE region of custom_qat.py (lines 33-176) — finale: OmniQuant LWC (learnable weight clipping)
+# EDITABLE region of custom_qat.py (lines 33-176) — finale: learnable weight clipping (LWC)
 
 CONFIG_OVERRIDES = {
     "learning_rate": 2e-5,
@@ -26,7 +26,7 @@ CONFIG_OVERRIDES = {
 }
 
 _LWC_INIT = 4.0       # init_value for the learnable clip factors; sigmoid(4) ~ 0.982
-_CLIPMIN = 1e-5       # floor on the learned scale (OmniQuant CLIPMIN)
+_CLIPMIN = 1e-5       # floor on the learned scale
 
 
 def _qrange(num_bits):
