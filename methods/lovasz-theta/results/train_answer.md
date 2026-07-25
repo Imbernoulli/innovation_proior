@@ -8,100 +8,18 @@ For the five-cycle `C5`, the geometry is tight. I place five equal umbrella ribs
 
 The same value admits an equivalent semidefinite program that is often easier to compute and reason about. In the primal form, `theta(G)` is the maximum of `<J, X>` subject to `Tr(X) = 1`, `X_ij = 0` on every edge of `G`, and `X` being positive semidefinite. A stable set gives a feasible rank-one matrix, which explains why the optimum upper bounds `alpha(G)`. The dual side supplies the product equality through the tensor structure. In the complementary coloring convention the theta function sits in the sandwich `omega(H) <= theta(complement(H)) <= chi(H)`, linking independence, coloring, and the same convex relaxation.
 
-Because the theta function is computable in polynomial time through semidefinite programming, it gives a tractable upper bound on an otherwise intractable asymptotic quantity. It also illustrates a broader pattern I find valuable: when a combinatorial limit is hard because of products, I look for a convex or geometric invariant that is multiplicative under those products. The Lovasz theta function is the archetypal such invariant for graph Shannon capacity.
+Because the theta function is computable in polynomial time through semidefinite programming, it gives a tractable upper bound on an otherwise intractable asymptotic quantity. It also illustrates a broader pattern I find valuable: when a combinatorial limit is hard because of products, I look for a convex or geometric invariant that is multiplicative under those products. The Lovasz theta function is the archetypal such invariant for graph Shannon capacity, and the result is worth stating in its complete closed form as the object I am actually delivering.
 
-```python
-import itertools
-import numpy as np
-
-
-def lovasz_theta_c5_umbrella():
-    """Construct the umbrella representation that gives theta(C5) <= sqrt(5)."""
-    n = 5
-    # Handle projection chosen so that non-adjacent ribs can be orthogonal.
-    c = 5.0 ** (-0.25)
-    s = np.sqrt(1.0 - c * c)
-    angles = 2.0 * np.pi * np.arange(n) / n
-    vectors = np.column_stack([
-        s * np.cos(angles),
-        s * np.sin(angles),
-        np.full(n, c)
-    ])
-    handle = np.array([0.0, 0.0, 1.0])
-
-    # Verify unit lengths.
-    assert np.allclose(np.linalg.norm(vectors, axis=1), 1.0)
-
-    # Verify orthogonality for every non-adjacent pair.
-    for i in range(n):
-        j = (i + 2) % n
-        assert np.isclose(np.dot(vectors[i], vectors[j]), 0.0)
-
-    # The Lovasz theta upper bound from this representation.
-    worst_proj_sq = max(np.dot(v, handle) ** 2 for v in vectors)
-    theta_bound = 1.0 / worst_proj_sq
-    return theta_bound
-
-
-def c5_strong_power_adjacency(k):
-    """Adjacency matrix of the kth strong power of C5."""
-    n = 5 ** k
-    tuples = np.array([[(i // 5 ** m) % 5 for m in range(k)] for i in range(n)])
-
-    # Coordinate pairs that are equal or adjacent in C5.
-    ok = np.zeros((5, 5), dtype=bool)
-    for a in range(5):
-        for b in range(5):
-            if a == b or (a - b) % 5 in (1, 4):
-                ok[a, b] = True
-
-    adj = np.zeros((n, n), dtype=bool)
-    for i in range(n):
-        for j in range(i + 1, n):
-            if np.all(ok[tuples[i], tuples[j]]):
-                adj[i, j] = adj[j, i] = True
-    return adj
-
-
-def max_independent_set(adj):
-    """Return size and one maximum independent set (exact for small graphs)."""
-    n = adj.shape[0]
-    # Start from a greedy lower bound.
-    best = []
-    remaining = set(range(n))
-    while remaining:
-        v = remaining.pop()
-        best.append(v)
-        remaining -= {u for u in range(n) if adj[v, u]}
-
-    # Exhaustively search for anything larger.
-    for size in range(len(best) + 1, n + 1):
-        found = False
-        for subset in itertools.combinations(range(n), size):
-            if all(not adj[i, j] for i, j in itertools.combinations(subset, 2)):
-                best = list(subset)
-                found = True
-                break
-        if not found:
-            break
-    return len(best), best
-
-
-if __name__ == "__main__":
-    print("=== Lovasz theta of C5 from the umbrella representation ===")
-    theta_bound = lovasz_theta_c5_umbrella()
-    print(f"theta(C5) <= {theta_bound}")
-    print(f"sqrt(5)   = {np.sqrt(5.0)}")
-    print()
-
-    print("=== Brute-force independence numbers ===")
-    for k in (1, 2):
-        adj = c5_strong_power_adjacency(k)
-        alpha, code = max_independent_set(adj)
-        print(f"alpha(C5^{k}) = {alpha}")
-        if k == 2:
-            print(f"Example maximum independent set: {code}")
-            print(f"Capacity lower bound: alpha(C5^2)^(1/2) = {alpha ** 0.5}")
-```
-
-The script constructs the umbrella representation, checks the orthogonality conditions, and brute-forces the independence numbers of `C5` and `C5^2` to confirm that the geometric bound matches the combinatorial capacity. Running it reproduces the `sqrt(5)` value that makes the pentagon the classic demonstration of the method.
+For a graph $G$, define
+$$\theta(G) \;=\; \min_{U,\,c}\ \max_{v \in V(G)}\ \frac{1}{(c^\top u_v)^2},$$
+where the minimum is taken over unit vectors $\{u_v\}_{v \in V(G)}$ with $u_v^\top u_w = 0$ whenever $v$ and $w$ are non-adjacent in $G$, and over unit handle vectors $c$. Equivalently, in semidefinite form,
+$$\theta(G) \;=\; \max_{X \succeq 0}\ \langle J, X \rangle \quad \text{subject to} \quad \operatorname{Tr}(X) = 1,\ \ X_{ij} = 0 \ \text{for every edge } ij \in G,$$
+with $J$ the all-ones matrix. Every stable set gives a feasible rank-one $X$, so $\alpha(G) \le \theta(G)$; the tensor construction survives on the dual side of the program as well as the primal, so the product relation is an exact equality,
+$$\theta(G \boxtimes H) \;=\; \theta(G)\,\theta(H),$$
+and combining the two gives $\alpha(G^k) \le \theta(G)^k$ for every $k$, hence
+$$\Theta(G) \;\le\; \theta(G).$$
+For the pentagon this bound is tight: the umbrella representation with handle projection $5^{-1/4}$ gives $\theta(C_5) = \sqrt5$, matching the two-use code's lower bound, so
+$$\Theta(C_5) \;=\; \theta(C_5) \;=\; \sqrt5.$$
+In the complementary coloring convention the same quantity sandwiches independence and coloring,
+$$\omega(H) \;\le\; \theta(\overline{H}) \;\le\; \chi(H).$$
+That is the complete deliverable: a single number, computable in polynomial time by semidefinite programming, that upper-bounds the Shannon capacity of any confusability graph, is exactly multiplicative under the strong product that capacity itself is built from, and simultaneously interpolates between a graph's clique number and its chromatic number.
