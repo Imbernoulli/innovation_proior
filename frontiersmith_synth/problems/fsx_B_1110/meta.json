@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1110",
+  "tier": "B",
+  "format": "E",
+  "family": "queue-law-loadscope",
+  "eval_form": "quality-metric",
+  "theme": "predicting harbor congestion from calm-season logs",
+  "title": "Storm-Season Harbour Congestion — recovering the hidden berth-priority law",
+  "objective": "min",
+  "strategies": [
+    "trivial: predict each class's calm-season mean wait (constant per class) -> reproduces the checker baseline ~0.1",
+    "greedy: per-class cubic polynomial in rho fit by least squares (the obvious smooth-regression recipe); near-excellent in-sample on calm rows, but a polynomial stays finite at the capacity pole and cannot see the priority structure -> collapses on storm rows",
+    "strong: commit to the priority-queue functional form W_c = a0*rho/((1-P_c)(1-X_c)); recover the hidden berth-priority permutation by searching for the ordering under which w_c*(1-P_c)(1-X_c)/rho is constant across classes and rows (the low-load residual signature), then fit the shared numerator constant a0",
+    "headroom above strong: also recover the numerator's mix-concentration term (1 + a1*h) and per-class service factor (1 + a2*r_c) from the same residual structure — the storm season's shifted, sparser mixes make the a1 term pay — and use noise-robust estimation to push the held-out error toward the noise floor"
+  ]
+}

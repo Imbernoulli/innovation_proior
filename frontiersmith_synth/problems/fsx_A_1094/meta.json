@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1094",
+  "tier": "A",
+  "format": "C",
+  "family": "potential-function-token-game",
+  "eval_form": "quality-metric",
+  "theme": "Push a chip game to its provable ceiling",
+  "title": "Ember Kilns: Push the Firing Line to Its Ceiling",
+  "objective": "max",
+  "strategies": [
+    "do nothing (empty move sequence; reproduces the checker baseline)",
+    "myopic hill-climb: repeatedly play the single legal move with the largest immediate yield gain until no improving move exists",
+    "reachable-class search: the moves conserve ember count and total cell-sum (a potential that partitions arrangements into reachable classes); BFS the reachable class, evaluate collected yield over the whole class, and route to its best member through loss/plateau moves",
+    "invariant-targeted planning: use the conserved potential (M, cell-sum, spread parity) to bound which high-yield cells are reachable, then plan a move sequence toward the best reachable class instead of chasing bait yields"
+  ]
+}

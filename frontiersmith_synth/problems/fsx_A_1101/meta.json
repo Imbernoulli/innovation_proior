@@ -1,0 +1,15 @@
+{
+  "id": "fsx_A_1101",
+  "tier": "A",
+  "format": "C",
+  "family": "depot-charge-parking-order",
+  "eval_form": "quality-metric",
+  "theme": "electric buses charging overnight in blocking rows",
+  "title": "Night Depot LIFO",
+  "objective": "min",
+  "strategies": [
+    "balanced arrival-order parking + earliest-possible charging (checker baseline)",
+    "departure-bucket rows + per-bus cheapest-hours EDF charging (recipe; manufactures blocking pairs when arrivals anti-correlate with departures)",
+    "layout-as-data-structure: depth-capped patience sorting fills each row in departure-nondecreasing order so FIFO exit physics reproduces the departure permutation with zero shunts, jointly with cheapest-feasible-hour deadline charging"
+  ]
+}

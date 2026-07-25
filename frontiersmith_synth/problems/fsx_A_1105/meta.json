@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1105",
+  "tier": "A",
+  "format": "C",
+  "family": "grammar-rule-overlap-compressor",
+  "eval_form": "quality-metric",
+  "theme": "Compress a string by committing replacement rules",
+  "title": "Deadhand Grammar: Compress a String by Committing Replacement Rules",
+  "objective": "min",
+  "strategies": [
+    "trivial: emit zero rules; grammar = raw axiom, size n (baseline 0.1)",
+    "greedy (RePair-style): repeatedly commit to the most frequent adjacent token pair while direct savings stay positive, no lookahead, pairs only",
+    "strong: candidate patterns of ALL lengths 2..min(L,8) scored by direct savings PLUS the best savings any other top candidate retains after the replacement is applied (1-step lookahead over overlap-destruction); commits whole-period rules and dodges decoy pairs",
+    "lookahead/dynamic-programming hybrids, exchange arguments over rule order, and residual-potential scoring remain open above the reference"
+  ]
+}

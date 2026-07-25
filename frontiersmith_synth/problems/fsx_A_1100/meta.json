@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1100",
+  "tier": "A",
+  "format": "E",
+  "family": "conserved-quantity-across-rigs",
+  "eval_form": "quality-metric",
+  "theme": "what stays constant when the collision rigs differ",
+  "title": "Collision-Rig Consortium — recovering the shared conserved quantity",
+  "objective": "min",
+  "strategies": [
+    "trivial: predict post = pre (nothing happens) -> reproduces the checker baseline ~0.1",
+    "greedy: pooled black-box ridge regression of each post velocity on polynomial features (momenta m1*v1, m2*v2, damping interactions); interpolates inside the training mass range [1,8] but the true mass scaling m^alpha with alpha != 1 and the exp damping law extrapolate catastrophically to held-out masses 10-30, worst on hard ids where alpha is far from 1 and damping leaves the training band",
+    "strong: search INVARIANT space before predicting -- grid-search the shared exponent alpha that makes m1^a*v1 + m2^a*v2 constant across every rig's collisions; then per-rig restitution from the relative velocity, and a weighted log-linear fit ln e = ln e0 - beta*gamma across the 5 rigs (multi-experiment consistency); emit the closed-form two-body map with m^alpha and e0*exp(-beta*g), which survives the new mass regime",
+    "headroom above strong: the true restitution also decays with impact speed exp(-eta*|v2-v1|); a solver that models the |w| dependence (or jointly refines all four constants on train prediction error) pushes held-out MSE toward the sensor-noise floor"
+  ]
+}

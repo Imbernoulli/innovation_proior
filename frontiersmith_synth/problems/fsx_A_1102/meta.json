@@ -1,0 +1,15 @@
+{
+  "id": "fsx_A_1102",
+  "tier": "A",
+  "format": "C",
+  "family": "autoconsumption-haul-loop",
+  "eval_form": "quality-metric",
+  "theme": "remote refinery whose trucks burn what they haul",
+  "title": "Ashline Refinery Bootstrap",
+  "objective": "max",
+  "strategies": [
+    "do-little nearest-mine half-payload shuttle (checker baseline)",
+    "per-trip ore-per-fuel greedy, full payload, full throttle, never upgrade",
+    "two-phase growth/harvest planner: marginal-value capacity reinvestment, concave-curve throttling, profitable-haul gating, phase boundary located by deterministic simulation search"
+  ]
+}
