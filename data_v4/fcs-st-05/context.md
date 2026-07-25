@@ -33,34 +33,14 @@ Example: for `s = "abracadabra"` (length 11) the answer is `10`. The rotation
 starting at index 10 is `"aabracadabr"`, which is lexicographically smaller than
 every other rotation (no other rotation begins with `"aa"`).
 
-## Background
-
-The constraint is purely lexicographic but defined over a *cyclic* object, so the
-naive plan is to materialize candidates and compare. Two families of approach are
-on the table before committing to one:
-
-- **Compare all rotations.** Generate each of the `n` rotations and keep the
-  lexicographically smallest, breaking ties by index. Each rotation is length `n`
-  and a comparison can scan all `n` characters, so this is `O(n^2)` time (and
-  `O(n)` or more for the candidate strings). It is trivially, obviously correct;
-  the open question is whether the quadratic cost is affordable at the stated `n`.
-- **Linear single-pass scan.** Walk a failure-function / KMP-style automaton over
-  the conceptual doubled string `s + s`, maintaining a single candidate start
-  index and, on a mismatch, sliding that candidate forward past an entire matched
-  block at once instead of one position at a time. This is `O(n)` time and `O(n)`
-  space; the open questions are the exact update rule for the candidate start and
-  for the failure array, and the tie-breaking behaviour.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: single-character strings; all-equal strings
-(`"aaaa..."`, every rotation identical — the answer must be the tie-break index
-`0`); period-2 and other highly periodic strings (`"abab..."`, repeated blocks);
-strings with long internal runs that force large block-skips (`"aaaa...ab"`,
-`"b aaaa..."`); near-Lyndon and near-palindromic inputs; random strings over
-small and large alphabets; and large `n = 10^6` adversarial inputs (all-equal,
-period-2, single-mismatch) where an `O(n^2)` method times out but an `O(n)` one
-finishes in well under the limit.
+(`"aaaa..."`, every rotation identical); period-2 and other highly periodic
+strings (`"abab..."`, repeated blocks); strings with long internal runs
+(`"aaaa...ab"`, `"b aaaa..."`); near-Lyndon and near-palindromic inputs; random
+strings over small and large alphabets; and large `n = 10^6` stress inputs
+(all-equal, period-2, single-mismatch character).
 
 ## Code framework
 
