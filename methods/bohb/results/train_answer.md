@@ -17,18 +17,12 @@ import statsmodels.api as sm
 
 
 class BOHBConfigGenerator:
-    """Model-based configuration generator for BOHB.
+    """Fits, per budget, good/bad multivariate KDEs on the best/worst split of the
+    observed configurations, and proposes argmin g(x)/l(x) (= EI maximizer).
+    Replaces the random configuration sampling inside Hyperband."""
 
-    Replaces Hyperband's random configuration sampling with a TPE-style
-    density-ratio model. For each budget, fit a "good" KDE on the best
-    observed configurations and a "bad" KDE on the rest, then propose the
-    configuration maximizing l(x)/g(x), which is the expected-improvement
-    maximizer.
-    """
-
-    def __init__(self, space, top_n_percent=15, num_samples=64,
-                 random_fraction=1/3, bandwidth_factor=3, min_bandwidth=1e-3,
-                 min_points_in_model=None, seed=42):
+    def __init__(self, space, top_n_percent=15, num_samples=64, random_fraction=1/3,
+                 bandwidth_factor=3, min_bandwidth=1e-3, min_points_in_model=None, seed=42):
         self.space = space
         self.rng = np.random.RandomState(seed)
         self.top_n_percent = top_n_percent
@@ -38,60 +32,45 @@ class BOHBConfigGenerator:
         self.min_bandwidth = min_bandwidth
         d = space.dim
         self.min_points = (d + 1) if min_points_in_model is None else max(min_points_in_model, d + 1)
-        self.kde_vartypes = "".join(
-            'u' if p.type == 'categorical' else 'c' for p in space.params
-        )
-        self.vartypes = np.array([
-            len(p.choices) if p.type == 'categorical' else 0
-            for p in space.params
-        ], dtype=int)
-        self.configs = {}      # budget -> list of encoded config vectors
-        self.losses = {}       # budget -> list of losses (lower is better)
-        self.kde_models = {}   # budget -> {'good': KDE, 'bad': KDE}
+        self.kde_vartypes = "".join('u' if p.type == 'categorical' else 'c' for p in space.params)
+        self.vartypes = np.array([len(p.choices) if p.type == 'categorical' else 0
+                                  for p in space.params], dtype=int)
+        self.configs = {}        # budget -> list of encoded config vectors
+        self.losses = {}         # budget -> list of losses (lower is better)
+        self.kde_models = {}     # budget -> {'good': KDE, 'bad': KDE}
 
     def new_result(self, config, loss, budget):
-        # Crashed or non-finite runs count as bad configurations.
-        loss = loss if np.isfinite(loss) else np.inf
+        loss = loss if np.isfinite(loss) else np.inf         # crashed / non-finite -> bad
         self.configs.setdefault(budget, []).append(self.space.to_array(config))
         self.losses.setdefault(budget, []).append(loss)
 
-        # If a larger budget already has a model, do not refit a smaller one.
-        if self.kde_models and max(self.kde_models) > budget:
+        if self.kde_models and max(self.kde_models) > budget:  # a larger budget already modeled
             return
         if len(self.configs[budget]) <= self.min_points - 1:
             return
 
-        X = np.array(self.configs[budget])
-        y = np.array(self.losses[budget])
+        X = np.array(self.configs[budget]); y = np.array(self.losses[budget])
         n_good = max(self.min_points, (self.top_n_percent * X.shape[0]) // 100)
         n_bad = max(self.min_points, ((100 - self.top_n_percent) * X.shape[0]) // 100)
         order = np.argsort(y)
-        good = X[order[:n_good]]
-        bad = X[order[n_good:n_good + n_bad]]
+        good = X[order[:n_good]]; bad = X[order[n_good:n_good + n_bad]]
         if good.shape[0] <= good.shape[1] or bad.shape[0] <= bad.shape[1]:
             return
-
-        good_kde = sm.nonparametric.KDEMultivariate(
-            good, var_type=self.kde_vartypes, bw='normal_reference'
-        )
-        bad_kde = sm.nonparametric.KDEMultivariate(
-            bad, var_type=self.kde_vartypes, bw='normal_reference'
-        )
+        good_kde = sm.nonparametric.KDEMultivariate(good, var_type=self.kde_vartypes, bw='normal_reference')
+        bad_kde = sm.nonparametric.KDEMultivariate(bad, var_type=self.kde_vartypes, bw='normal_reference')
         good_kde.bw = np.clip(good_kde.bw, self.min_bandwidth, None)
         bad_kde.bw = np.clip(bad_kde.bw, self.min_bandwidth, None)
         self.kde_models[budget] = {'good': good_kde, 'bad': bad_kde}
 
-    def get_config(self):
-        # Random fraction, or fallback when no model exists yet.
+    def get_config(self, budget=None):
+        # rho fraction random, and random until a model exists
         if not self.kde_models or self.rng.rand() < self.random_fraction:
             return self.space.sample_uniform(self.rng)
 
-        budget = max(self.kde_models)
-        kde_good = self.kde_models[budget]['good']
-        kde_bad = self.kde_models[budget]['bad']
-        l = kde_good.pdf
-        g = kde_bad.pdf
-        ratio = lambda x: max(1e-32, g(x)) / max(l(x), 1e-32)
+        b = max(self.kde_models)                              # largest budget with a model
+        kde_good = self.kde_models[b]['good']; kde_bad = self.kde_models[b]['bad']
+        l = kde_good.pdf; g = kde_bad.pdf
+        ratio = lambda x: max(1e-32, g(x)) / max(l(x), 1e-32)  # EI is monotone decr. in g/l
 
         best_val, best_vec = np.inf, None
         for _ in range(self.num_samples):
@@ -99,13 +78,11 @@ class BOHBConfigGenerator:
             vec = []
             for value, bw, vt in zip(datum, kde_good.bw, self.vartypes):
                 bw = max(bw, self.min_bandwidth)
-                if vt == 0:  # continuous: jitter around good datum with widened kernel
+                if vt == 0:                                    # continuous: widened jitter
                     bw = self.bw_factor * bw
                     a, b_ = (0 - value) / bw, (1 - value) / bw
-                    vec.append(sps.truncnorm.rvs(
-                        a, b_, loc=value, scale=bw, random_state=self.rng
-                    ))
-                else:  # categorical: keep or randomly flip
+                    vec.append(sps.truncnorm.rvs(a, b_, loc=value, scale=bw, random_state=self.rng))
+                else:                                          # categorical: keep, or flip
                     if self.rng.rand() < (1 - bw):
                         vec.append(int(value))
                     else:
@@ -113,24 +90,26 @@ class BOHBConfigGenerator:
             val = ratio(vec)
             if val < best_val:
                 best_val, best_vec = val, vec
-
         if best_vec is None:
             return self.space.sample_uniform(self.rng)
         return self.space.from_array(best_vec)
+```
+
+The bracket schedule itself is untouched code, kept exactly as Hyperband specifies it, since the whole point is to leave it alone and only swap what sits inside it:
+
+```python
+import numpy as np
 
 
 def hyperband_brackets(min_budget, max_budget, eta=3):
-    """Hyperband's geometric ladder of successive-halving brackets.
-
-    Each bracket consumes roughly the same total resource and starts
-    configurations at a different initial budget.
-    """
+    """Geometric ladder of successive-halving brackets; each bracket costs ~ the same
+    total resource. Bracket s starts n0 configs at budget max_budget*eta^{-s}."""
     max_sh_iter = int(np.log(max_budget / min_budget) / np.log(eta)) + 1
     budgets = max_budget * eta ** (-np.arange(max_sh_iter - 1, -1, -1))
     brackets = []
     for s in range(max_sh_iter - 1, -1, -1):
-        n0 = int(np.floor(max_sh_iter / (s + 1)) * eta ** s)
-        ns = [max(int(n0 * eta ** (-i)), 1) for i in range(s + 1)]
+        n0 = int(np.floor(max_sh_iter / (s + 1)) * eta ** s)          # integer approximation
+        ns = [max(int(n0 * eta ** (-i)), 1) for i in range(s + 1)]    # configs surviving each rung
         brackets.append({'budgets': budgets[-(s + 1):], 'num_configs': ns})
     return brackets
 ```
