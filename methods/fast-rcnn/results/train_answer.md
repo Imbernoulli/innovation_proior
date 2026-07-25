@@ -19,7 +19,7 @@ import torch.nn.functional as F
 
 
 class RegionPooling(nn.Module):
-    """Single-level RoI max-pool: any region -> fixed HxW x C; grad flows into conv trunk."""
+    """Single-level RoI max-pool: any region -> fixed HxW x C; grad flows into the conv trunk."""
     def __init__(self, output_h=7, output_w=7, spatial_scale=1/16.):
         super().__init__()
         self.oh, self.ow, self.scale = output_h, output_w, spatial_scale

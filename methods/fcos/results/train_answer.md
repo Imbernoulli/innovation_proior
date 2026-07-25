@@ -34,7 +34,7 @@ class FCOSHead(nn.Module):
         self.centerness = nn.Conv2d(in_channels, 1, 3, padding=1)
         self.scales = nn.ModuleList([Scale(1.0) for _ in range(num_levels)])
 
-    def forward(self, features):
+    def forward(self, features):           # features: P3..P7
         logits, bbox_reg, ctrness = [], [], []
         for level, x in enumerate(features):
             cls_feat = self.cls_tower(x)
@@ -50,18 +50,17 @@ def compute_locations(h, w, stride, device):
     ys, xs = torch.meshgrid(shifts_y, shifts_x, indexing="ij")
     return torch.stack((xs.reshape(-1), ys.reshape(-1)), dim=1)
 
-def centerness_target(reg_targets):
+def centerness_target(reg_targets):        # (...,4) = l*,t*,r*,b*
     l, t, r, b = reg_targets.unbind(-1)
-    lr = torch.stack([l, r], -1)
-    tb = torch.stack([t, b], -1)
-    return torch.sqrt(
-        (lr.min(-1).values / lr.max(-1).values.clamp(min=1e-6)) *
-        (tb.min(-1).values / tb.max(-1).values.clamp(min=1e-6))
-    )
+    lr = torch.stack([l, r], -1); tb = torch.stack([t, b], -1)
+    return torch.sqrt((lr.min(-1).values / lr.max(-1).values.clamp(min=1e-6)) *
+                      (tb.min(-1).values / tb.max(-1).values.clamp(min=1e-6)))
 
 SIZE_RANGES = [(0, 64), (64, 128), (128, 256), (256, 512), (512, float("inf"))]
 
 def assign_targets(locations_per_level, gt_boxes, gt_labels):
+    """FCOS assignment: inside a box, within this level's regression range,
+    and minimal-area ground truth if more than one valid box remains."""
     cls_targets, reg_targets = [], []
     if gt_boxes.numel() == 0:
         for locs in locations_per_level:
@@ -118,6 +117,7 @@ def iou_loss(pred, target, eps=1e-6):
     return -torch.log((inter / union.clamp(min=eps)).clamp(min=eps))
 
 def fcos_loss(logits, bbox_reg, ctrness, cls_targets, reg_targets):
+    """Inputs are flattened over P3..P7 and image locations."""
     pos = cls_targets > 0
     N_pos = pos.sum().clamp(min=1).float()
     cls_loss = sigmoid_focal_loss(logits, cls_targets, gamma=2.0, alpha=0.25).sum() / N_pos
@@ -132,6 +132,7 @@ def fcos_loss(logits, bbox_reg, ctrness, cls_targets, reg_targets):
     return cls_loss + reg_loss + ctr_loss
 
 def decode(logits, bbox_reg, ctrness, locations, score_thresh=0.05, nms_thresh=0.6):
+    """Invert l,t,r,b around each location; rank by class probability times centerness."""
     ctr = ctrness.sigmoid()
     if ctr.dim() == 1:
         ctr = ctr[:, None]

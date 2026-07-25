@@ -50,6 +50,7 @@ class FlowModule(nn.Module):
 
 
 class ActNorm(nn.Module):
+    """Per-channel affine, data-dependent init, then batch-independent."""
     def __init__(self, channels):
         super().__init__()
         self.logs = nn.Parameter(torch.zeros(1, channels, 1, 1))
@@ -76,6 +77,7 @@ class ActNorm(nn.Module):
 
 
 class InvConv1x1(nn.Module):
+    """Learned invertible channel mixing; LU-parameterized log|det W| = sum(log|s|)."""
     def __init__(self, channels):
         super().__init__()
         w0 = torch.linalg.qr(torch.randn(channels, channels))[0]
@@ -126,8 +128,7 @@ class CouplingNN(nn.Module):
         self.c3 = OutputConv2d(width, out_ch)
 
     def forward(self, x):
-        x = F.relu(self.c1(x))
-        x = F.relu(self.c2(x))
+        x = F.relu(self.c1(x)); x = F.relu(self.c2(x))
         return self.c3(x)
 
 

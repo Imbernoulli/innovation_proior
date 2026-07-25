@@ -26,7 +26,7 @@ def discount(value, rate, tau):
     return value * np.exp(-rate * tau)
 
 def call_value(x, c, tau, r, sigma, alpha=None, discount_rate=None):
-    """European call. alpha and discount_rate are deliberately unused:
+    """European call. Alpha and discount_rate are deliberately unused:
     the riskless hedge removes the stock drift and forces discounting at r."""
     if tau <= 0:
         return call_payoff(x, c)

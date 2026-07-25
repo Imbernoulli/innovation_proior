@@ -18,9 +18,18 @@ class Example(Protocol):
     question: str
     gold: str
 
+def format_standard_exemplar(question: str, answer: str,
+                             answer_prefix: str = "The answer is") -> str:
+    return f"Q: {question}\nA: {answer_prefix} {answer}.\n\n"
+
 def format_cot_exemplar(question: str, chain_of_thought: str, answer: str,
                         answer_prefix: str = "The answer is") -> str:
     return f"Q: {question}\nA: {chain_of_thought} {answer_prefix} {answer}.\n\n"
+
+def build_standard_prompt(exemplars: Iterable[Tuple[str, str]], test_question: str,
+                          answer_prefix: str = "The answer is") -> str:
+    body = "".join(format_standard_exemplar(q, a, answer_prefix) for q, a in exemplars)
+    return body + f"Q: {test_question}\nA:"
 
 def build_cot_prompt(exemplars: Iterable[Exemplar], test_question: str,
                      answer_prefix: str = "The answer is") -> str:
@@ -85,4 +94,13 @@ MATH_WORD_PROBLEM_EXEMPLARS: List[Exemplar] = [
      "So she has 23 - 15 dollars left. 23 - 15 is 8.",
      "8"),
 ]
+
+def format_equation_only(question: str, equation: str, answer: str) -> str:
+    return f"Q: {question}\nA: {equation} The answer is {answer}.\n\n"
+
+def format_dots_only(question: str, equation: str, answer: str) -> str:
+    return f"Q: {question}\nA: {'.' * len(equation)} The answer is {answer}.\n\n"
+
+def format_cot_after_answer(question: str, chain_of_thought: str, answer: str) -> str:
+    return f"Q: {question}\nA: The answer is {answer}. {chain_of_thought}\n\n"
 ```

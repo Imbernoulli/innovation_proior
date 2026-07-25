@@ -36,7 +36,6 @@ def compute_normalization_fixed_point(activations, t, num_iters=5):
 
 
 def tempered_softmax(activations, t, num_iters=5):
-    """Tempered softmax p_i = exp_t(a_i - lambda_t(a))."""
     if t == 1.0:
         return F.softmax(activations, dim=-1)
     norm = compute_normalization_fixed_point(activations, t, num_iters)
@@ -75,8 +74,6 @@ def bi_tempered_logistic_loss(logits, targets, t1=0.8, t2=1.2, num_iters=5):
     """Sparse robust loss. t1 = t2 = 1 recovers ordinary cross-entropy."""
     if t1 == 1.0 and t2 == 1.0:
         return F.cross_entropy(logits, targets)
-    losses = _BiTemperedLogisticLoss.apply(
-        logits, targets, float(t1), float(t2), int(num_iters)
-    )
+    losses = _BiTemperedLogisticLoss.apply(logits, targets, float(t1), float(t2), int(num_iters))
     return losses.mean()
 ```

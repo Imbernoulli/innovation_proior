@@ -87,6 +87,7 @@ class RainbowNet(nn.Module):
         self.fc_z_a = NoisyLinear(512, n_actions * n_atoms)
 
     def forward(self, x, log=False):
+        # Match the reference layout: replay provides float frames already scaled to [0, 1].
         phi = self.torso(x).view(-1, 3136)
         v = self.fc_z_v(F.relu(self.fc_h_v(phi))).view(-1, 1, self.n_atoms)
         a = self.fc_z_a(F.relu(self.fc_h_a(phi))).view(-1, self.n_actions, self.n_atoms)
@@ -105,6 +106,7 @@ def act(net, x):
 
 
 def learn(online, target, obs, actions, n_returns, next_obs, nonterminal, gamma, weights):
+    # The reference training loop samples online noise before acting/updating.
     batch = actions.numel()
     arange = torch.arange(batch, device=actions.device)
     z = online.z

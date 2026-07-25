@@ -16,6 +16,7 @@ class HISTModel(nn.Module):
         super().__init__()
         self.d_feat = d_feat
         self.hidden_size = hidden_size
+
         if base_model == "GRU":
             self.rnn = nn.GRU(d_feat, hidden_size, num_layers, batch_first=True, dropout=dropout)
         elif base_model == "LSTM":
@@ -30,8 +31,10 @@ class HISTModel(nn.Module):
         self.fc_es_back = nn.Linear(hidden_size, hidden_size)
         self.fc_is_back = nn.Linear(hidden_size, hidden_size)
         self.fc_indi = nn.Linear(hidden_size, hidden_size)
-        for layer in [self.fc_es, self.fc_is, self.fc_es_fore, self.fc_is_fore,
-                      self.fc_es_back, self.fc_is_back, self.fc_indi]:
+        for layer in [
+            self.fc_es, self.fc_is, self.fc_es_fore, self.fc_is_fore,
+            self.fc_es_back, self.fc_is_back, self.fc_indi,
+        ]:
             nn.init.xavier_uniform_(layer.weight)
 
         self.leaky_relu = nn.LeakyReLU()
@@ -52,13 +55,14 @@ class HISTModel(nn.Module):
         x_hidden, _ = self.rnn(x_hidden)
         x_hidden = x_hidden[:, -1, :]
 
-        # Predefined concept module
         stock_to_concept = concept_matrix
         stock_to_concept_sum = torch.sum(stock_to_concept, 0).reshape(1, -1).repeat(
-            stock_to_concept.shape[0], 1)
+            stock_to_concept.shape[0], 1
+        )
         stock_to_concept_sum = stock_to_concept_sum.mul(concept_matrix)
         stock_to_concept_sum = stock_to_concept_sum + torch.ones(
-            stock_to_concept.shape[0], stock_to_concept.shape[1], device=device)
+            stock_to_concept.shape[0], stock_to_concept.shape[1], device=device
+        )
         stock_to_concept = stock_to_concept / stock_to_concept_sum
         hidden = torch.t(stock_to_concept).mm(x_hidden)
         hidden = hidden[hidden.sum(1) != 0]
@@ -69,13 +73,11 @@ class HISTModel(nn.Module):
         e_shared_back = self.fc_es_back(e_shared_info)
         output_es = self.leaky_relu(self.fc_es_fore(e_shared_info))
 
-        # Hidden concept module on the residual
         i_shared_info = x_hidden - e_shared_back
         i_stock_to_concept = self.cal_cos_similarity(i_shared_info, i_shared_info)
         dim = i_stock_to_concept.shape[0]
         diag = i_stock_to_concept.diagonal(0)
-        i_stock_to_concept = i_stock_to_concept * (
-            torch.ones(dim, dim, device=device) - torch.eye(dim, device=device))
+        i_stock_to_concept = i_stock_to_concept * (torch.ones(dim, dim, device=device) - torch.eye(dim, device=device))
         row = torch.arange(dim, device=device).long()
         column = i_stock_to_concept.max(1)[1].long()
         value = i_stock_to_concept.max(1)[0]
@@ -83,7 +85,8 @@ class HISTModel(nn.Module):
         i_stock_to_concept[i_stock_to_concept != 10] = 0
         i_stock_to_concept[row, column] = value
         i_stock_to_concept = i_stock_to_concept + torch.diag_embed(
-            (i_stock_to_concept.sum(0) != 0).float() * diag)
+            (i_stock_to_concept.sum(0) != 0).float() * diag
+        )
         hidden = torch.t(i_shared_info).mm(i_stock_to_concept).t()
         hidden = hidden[hidden.sum(1) != 0]
 
@@ -93,7 +96,6 @@ class HISTModel(nn.Module):
         i_shared_back = self.fc_is_back(i_shared_info)
         output_is = self.leaky_relu(self.fc_is_fore(i_shared_info))
 
-        # Individual information module
         individual_info = x_hidden - e_shared_back - i_shared_back
         output_indi = self.leaky_relu(self.fc_indi(individual_info))
 

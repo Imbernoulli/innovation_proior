@@ -58,33 +58,27 @@ def scale_gradient(x, scale):
 
 
 def scale_to_01(s):
-    smin = s.min(1, keepdim=True)[0]
-    smax = s.max(1, keepdim=True)[0]
+    smin = s.min(1, keepdim=True)[0]; smax = s.max(1, keepdim=True)[0]
     return (s - smin) / (smax - smin).clamp_min(1e-5)
 
 
 class MuZeroNet(torch.nn.Module):
     """h: representation, g: dynamics, f: prediction (fully-connected variant)."""
-
     def __init__(self, obs_dim, n_actions, enc=64, support=300):
         super().__init__()
         self.n_actions, self.support = n_actions, support
         full = 2 * support + 1
-        self.h = torch.nn.Sequential(
-            torch.nn.Linear(obs_dim, enc), torch.nn.ELU(), torch.nn.Linear(enc, enc)
-        )
-        self.g_state = torch.nn.Sequential(
-            torch.nn.Linear(enc + n_actions, enc), torch.nn.ELU(), torch.nn.Linear(enc, enc)
-        )
+        self.h = torch.nn.Sequential(torch.nn.Linear(obs_dim, enc), torch.nn.ELU(),
+                                     torch.nn.Linear(enc, enc))
+        self.g_state = torch.nn.Sequential(torch.nn.Linear(enc + n_actions, enc), torch.nn.ELU(),
+                                           torch.nn.Linear(enc, enc))
         self.g_reward = torch.nn.Linear(enc, full)
         self.f_policy = torch.nn.Linear(enc, n_actions)
         self.f_value = torch.nn.Linear(enc, full)
 
     def initial_inference(self, observation):
         s = scale_to_01(self.h(observation))
-        reward = scalar_to_support(
-            torch.zeros(len(observation), 1).to(s.device), self.support
-        ).squeeze(1)
+        reward = scalar_to_support(torch.zeros(len(observation), 1).to(s.device), self.support).squeeze(1)
         return self.f_value(s), reward, self.f_policy(s), s
 
     def recurrent_inference(self, s, action):
@@ -95,14 +89,9 @@ class MuZeroNet(torch.nn.Module):
 
 
 class MinMaxStats:
-    def __init__(self):
-        self.lo, self.hi = float("inf"), -float("inf")
-
-    def update(self, v):
-        self.lo, self.hi = min(self.lo, v), max(self.hi, v)
-
-    def normalize(self, v):
-        return (v - self.lo) / (self.hi - self.lo) if self.hi > self.lo else v
+    def __init__(self): self.lo, self.hi = float("inf"), -float("inf")
+    def update(self, v): self.lo, self.hi = min(self.lo, v), max(self.hi, v)
+    def normalize(self, v): return (v - self.lo) / (self.hi - self.lo) if self.hi > self.lo else v
 
 
 class Node:
@@ -110,18 +99,12 @@ class Node:
         self.N, self.value_sum, self.prior = 0, 0.0, prior
         self.to_play = to_play
         self.reward, self.state, self.children = 0.0, None, {}
-
-    def expanded(self):
-        return len(self.children) > 0
-
-    def value(self):
-        return 0 if self.N == 0 else self.value_sum / self.N
-
+    def expanded(self): return len(self.children) > 0
+    def value(self): return 0 if self.N == 0 else self.value_sum / self.N
     def expand(self, reward, state, policy_logits, actions, to_play=0):
         self.to_play, self.reward, self.state = to_play, reward, state
         ps = torch.softmax(torch.tensor([policy_logits[0][a] for a in actions]), 0).tolist()
-        for a, p in zip(actions, ps):
-            self.children[a] = Node(p, to_play)
+        for a, p in zip(actions, ps): self.children[a] = Node(p, to_play)
 
 
 def ucb(parent, child, mm, c1=1.25, c2=19652, discount=0.997):
@@ -150,15 +133,8 @@ def run_mcts(model, observation, legal_actions, num_simulations=50, discount=0.9
             action, node = max(node.children.items(), key=lambda kv: ucb(path[-1], kv[1], mm))
             path.append(node)
         parent = path[-2]
-        value, reward, policy_logits, state = model.recurrent_inference(
-            parent.state, torch.tensor([[action]])
-        )
-        node.expand(
-            support_to_scalar(reward, model.support).item(),
-            state,
-            policy_logits,
-            list(range(model.n_actions)),
-        )
+        value, reward, policy_logits, state = model.recurrent_inference(parent.state, torch.tensor([[action]]))
+        node.expand(support_to_scalar(reward, model.support).item(), state, policy_logits, list(range(model.n_actions)))
         backpropagate(path, support_to_scalar(value, model.support).item(), 0, discount, mm)
     visits = numpy.array([c.N for c in root.children.values()], dtype="float32")
     pi = dict(zip(root.children.keys(), visits / visits.sum()))
@@ -168,6 +144,8 @@ def run_mcts(model, observation, legal_actions, num_simulations=50, discount=0.9
 def compute_target_value(root_values, rewards, index, td_steps=10, discount=0.997):
     b = index + td_steps
     value = root_values[b] * discount ** td_steps if b < len(root_values) else 0.0
+    # Indexing: rewards[i] is the reward
+    # following the action stored at history index i.
     for i, r in enumerate(rewards[index:b]):
         value += r * discount ** i
     return value
@@ -192,14 +170,10 @@ def update_weights(model, optimizer, batch, K):
         state = scale_gradient(state, 0.5)
     loss = 0
     for k, (gradient_scale, value, reward, policy) in enumerate(preds):
-        lv, lr, lp = loss_function(
-            value, reward, policy, target_v[:, k], target_r[:, k], target_pi[:, k]
-        )
-        step_loss = lv + lp + (lr if k > 0 else 0)
+        lv, lr, lp = loss_function(value, reward, policy, target_v[:, k], target_r[:, k], target_pi[:, k])
+        step_loss = lv + lp + (lr if k > 0 else 0)          # no root reward loss
         loss = loss + scale_gradient(step_loss, gradient_scale)
     loss = loss.mean()
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
+    optimizer.zero_grad(); loss.backward(); optimizer.step()
     return loss.item()
 ```

@@ -28,11 +28,11 @@ class E_GCL(nn.Module):
         self.epsilon = 1e-8
         edge_coords_nf = 1                     # the invariant scalar: ||x_i - x_j||^2
 
-        # phi_e: invariant edge message
+        # phi_e
         self.edge_mlp = nn.Sequential(
             nn.Linear(input_edge + edge_coords_nf + edges_in_d, hidden_nf), act_fn,
             nn.Linear(hidden_nf, hidden_nf), act_fn)
-        # phi_h: invariant node update (residual applied in node_model)
+        # phi_h (with residual applied in node_model)
         self.node_mlp = nn.Sequential(
             nn.Linear(hidden_nf + input_nf, hidden_nf), act_fn,
             nn.Linear(hidden_nf, output_nf))

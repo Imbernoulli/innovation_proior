@@ -11,6 +11,7 @@ from devito import Eq, Function, Inc, Operator, TimeFunction, solve
 from devito.tools import memoized_meth
 
 def laplacian(field, model, kernel):
+    """Spatial operator H(u); OT4 adds the double-laplacian correction."""
     if kernel not in ("OT2", "OT4"):
         raise ValueError("Unrecognized kernel")
     s = model.grid.time_dim.spacing
@@ -18,6 +19,7 @@ def laplacian(field, model, kernel):
     return field.laplace + s**2 / 12.0 * biharmonic
 
 def iso_stencil(field, model, kernel, forward=True, q=0):
+    """model.m * u.dt2 - H(u) - q + damp*u.dt = 0, or its reverse-time adjoint."""
     unext = field.forward if forward else field.backward
     udt = field.dt if forward else field.dt.T
     eq_time = solve(model.m * field.dt2 - laplacian(field, model, kernel)
@@ -47,6 +49,7 @@ def GradientOperator(model, geometry, space_order=4, save=True, kernel="OT2", **
     rec = geometry.rec
     s = model.grid.stepping_dim.spacing
     eqn = iso_stencil(v, model, kernel, forward=False)
+
     if kernel == "OT2":
         gradient_update = Inc(grad, -u * v.dt2)
     elif kernel == "OT4":
@@ -54,19 +57,21 @@ def GradientOperator(model, geometry, space_order=4, save=True, kernel="OT2", **
                               - s**2 / 12.0 * u.biharmonic(m**(-2)) * v)
     else:
         raise ValueError("unknown acoustic kernel")
+
     receivers = rec.inject(field=v.backward, expr=rec * s**2 / m)
     return Operator(eqn + receivers + [gradient_update], subs=model.spacing_map,
                     name="Gradient", **kwargs)
 
 def BornOperator(model, geometry, space_order=4, kernel="OT2", **kwargs):
+    """Apply the residual Jacobian G to a model perturbation dm."""
     m = model.m
+    src = geometry.src
+    rec = geometry.rec
     u = TimeFunction(name="u", grid=model.grid, save=None,
                      time_order=2, space_order=space_order)
     U = TimeFunction(name="U", grid=model.grid, save=None,
                      time_order=2, space_order=space_order)
     dm = Function(name="dm", grid=model.grid, space_order=0)
-    src = geometry.src
-    rec = geometry.rec
     s = model.grid.stepping_dim.spacing
     eqn1 = iso_stencil(u, model, kernel, forward=True)
     eqn2 = iso_stencil(U, model, kernel, forward=True, q=-dm * u.dt2)
@@ -86,8 +91,7 @@ class AcousticWaveSolver:
 
     @property
     def dt(self):
-        return (self.model.dtype(1.73 * self.model.critical_dt)
-                if self.kernel == "OT4" else self.model.critical_dt)
+        return self.model.dtype(1.73 * self.model.critical_dt) if self.kernel == "OT4" else self.model.critical_dt
 
     @memoized_meth
     def op_fwd(self, save=None):
@@ -148,6 +152,10 @@ def fwi_objective_and_gradient(solver, observed_rec):
     return phi, grad, u
 
 def gauss_newton_matvec(solver, dm, u_bg=None):
+    # G^T G dm. The adjoint Jacobian (G^T) needs the FULL saved background
+    # wavefield for the -u*v.dt2 correlation, so build it once with save=True
+    # and cache it across CG iterations. The Born forward (G) propagates its
+    # own rolling background internally, so it does not take u_bg.
     if u_bg is None:
         u_bg = TimeFunction(name="u", grid=solver.model.grid,
                             save=solver.geometry.nt, time_order=2,

@@ -43,25 +43,30 @@ class SwitchTop1Router(nn.Module):
         self.router_dtype = router_dtype
         self.classifier = nn.Linear(d_model, num_experts, bias=False)
 
-    def forward(self, x):
+    def forward(self, x):  # x: [tokens, d_model]
         input_dtype = x.dtype
         router_x = x.to(self.router_dtype)
         if self.training and self.jitter > 0:
             router_x = router_x * torch.empty_like(router_x).uniform_(
                 1.0 - self.jitter, 1.0 + self.jitter
             )
+
         weight = self.classifier.weight.to(self.router_dtype)
         logits = F.linear(router_x, weight)
         probs = F.softmax(logits, dim=-1, dtype=self.router_dtype)
         gate, expert_index = probs.max(dim=-1)
+
         tokens = x.shape[0]
         capacity = int((tokens * self.capacity_factor) / self.num_experts)
         capacity = max(self.min_expert_capacity, capacity)
+
         expert_mask = F.one_hot(expert_index, self.num_experts).to(torch.int64)
+        # Mesh _switch_gating uses exclusive cumsum: positions are 0, 1, ..., C-1.
         position = (torch.cumsum(expert_mask, dim=0) - 1) * expert_mask
         position = position.sum(dim=-1)
         keep = position < capacity
         gate = gate * keep.to(gate.dtype)
+
         return gate.to(input_dtype), expert_index, keep, probs
 
 
@@ -84,16 +89,18 @@ class SwitchFFN(nn.Module):
             Expert(d_model, d_ff, expert_dropout) for _ in range(num_experts)
         )
 
-    def forward(self, x):
+    def forward(self, x):  # x: [batch, sequence, d_model]
         batch, seq, d_model = x.shape
         tokens = x.reshape(batch * seq, d_model)
         gate, expert_index, keep, router_probs = self.router(tokens)
+
         sparse_update = torch.zeros_like(tokens)
         for expert_id, expert in enumerate(self.experts):
             selected = keep & (expert_index == expert_id)
             if selected.any():
                 out = expert(tokens[selected])
                 sparse_update[selected] = out * gate[selected].unsqueeze(-1)
+
         aux = self.alpha * switch_load_balancing_loss(
             router_probs, expert_index, self.num_experts
         )

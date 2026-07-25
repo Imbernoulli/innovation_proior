@@ -37,7 +37,7 @@ class Lamb(Optimizer):
         if not 0.0 <= betas[0] < 1.0 or not 0.0 <= betas[1] < 1.0:
             raise ValueError(f"Invalid betas: {betas}")
         defaults = dict(lr=lr, betas=betas, eps=eps, weight_decay=weight_decay)
-        self.debias = debias            # TFA/paper correction; Google BERT code omits it
+        self.debias = debias            # TFA bias correction; Google BERT code omits it
         self.adam = adam                # trust_ratio := 1, for ablation
         super().__init__(params, defaults)
 

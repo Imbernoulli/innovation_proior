@@ -14,7 +14,6 @@ Each round therefore samples m contributors, runs local training, clips each del
 
 ```python
 import collections
-import math
 import tensorflow as tf
 
 
@@ -50,7 +49,7 @@ class QuantileEstimatorQuery:
 
     def __init__(self, initial_estimate, target_quantile, learning_rate,
                  below_estimate_stddev, expected_num_records,
-                 geometric_update=True):
+                 geometric_update=False):
         self.initial_estimate = float(initial_estimate)
         self.target_quantile = float(target_quantile)
         self.learning_rate = float(learning_rate)
@@ -138,4 +137,5 @@ class QuantileAdaptiveClipSumQuery:
         noised_average = tf.nest.map_structure(
             lambda x: x / self.expected_num_records, noised_sum)
         return noised_average, new_state
+
 ```

@@ -16,12 +16,8 @@ from src.utils import certainty_density, nucleus_select, top_up_mask_, is_adapte
 
 
 class d2Cache(dCache):
-    """Dual aDaptive Cache: a training-free approximate KV cache for dLLMs.
-    Only active query rows are recomputed; inactive rows reuse cached K/V."""
-
     def __init__(self, model_config, rollout_p=0.1, current_k=32, sigma=10.0, inflate_w=4):
         super().__init__(model_config)
-        self.model_config = model_config
         self.key_cache = []
         self.value_cache = []
         self._conf_cache = None
@@ -104,7 +100,6 @@ class d2Cache(dCache):
         return q_mask
 
     def accumulate_attn_rollout(self, attn_scores):
-        """One rollout step: W = normalize(E + I); C <- W @ C."""
         B, _, _, seq_len = attn_scores.shape
         device, dtype = attn_scores.device, attn_scores.dtype
         if self.active_q_mask is None:

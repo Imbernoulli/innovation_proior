@@ -256,6 +256,7 @@ def train(rank, args, shared_model, counter, lock, optimizer=None):
             value_loss = value_loss + 0.5 * advantage.pow(2)
 
             delta_t = rewards[i] + args.gamma * values[i + 1] - values[i]
+            # With lambda = 1, this is the same finite n-step advantage.
             gae = gae * args.gamma * args.gae_lambda + delta_t
 
             policy_loss = policy_loss \

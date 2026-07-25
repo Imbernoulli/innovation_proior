@@ -65,7 +65,7 @@ class GraphReadout(nn.Module):
         self.output_dim = hidden_dim * 2          # max||mean per block, summed across blocks
 
     def _readout(self, x, batch):
-        # Concatenate max||mean (the order I use; mean||max is equivalent up to layout).
+        # Working code uses max||mean; the equation writes mean||max.
         return torch.cat([global_max_pool(x, batch), global_mean_pool(x, batch)], dim=-1)
 
     def forward(self, x, edge_index, batch, layer_outputs):

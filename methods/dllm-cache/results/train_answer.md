@@ -13,6 +13,7 @@ The error stays controlled for two reasons. Without any refresh, the denoising m
 ```python
 import torch
 import torch.nn.functional as F
+from dllm_cache.cache import dLLMCache
 
 
 def refresh_index(v_new: torch.Tensor, v_cached: torch.Tensor, transfer_ratio: float):
@@ -24,10 +25,10 @@ def refresh_index(v_new: torch.Tensor, v_cached: torch.Tensor, transfer_ratio: f
 
 
 def dllm_cache_block_forward(self, x, attention_bias=None):
-    """One bidirectional Transformer block under dLLM-Cache.
-    `dLLMCache` exposes: layer_id, prompt_length, current_step,
+    """One bidirectional Transformer block under dLLM-Cache, monkey-patched onto the host
+    dLLM block. The singleton `dLLMCache` exposes: layer_id, prompt_length, current_step,
     prompt_interval_steps (K_p), gen_interval_steps (K_r), transfer_ratio (rho);
-    refresh_prompt()/refresh_gen(); set_cache/get_cache over
+    refresh_prompt()/refresh_gen() (true on the interval); set_cache/get_cache over
     cache_type in {'prompt','gen'} and feature_name in {'kv_cache','attn','mlp'}."""
     fc = dLLMCache()
     fc.update_step(self.layer_id)

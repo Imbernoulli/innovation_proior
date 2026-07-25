@@ -99,6 +99,7 @@ class MCTS:
                 score = self.Qsa[(state_key, action)] + self.args.cpuct * self.Ps[state_key][action] \
                     * math.sqrt(self.Ns[state_key]) / (1 + self.Nsa[(state_key, action)])
             else:
+                # Break the first all-zero tie by the prior, matching the PUCT intent.
                 score = self.args.cpuct * self.Ps[state_key][action] * math.sqrt(self.Ns[state_key] + EPS)
             if score > best_score:
                 best_score, best_action = score, action

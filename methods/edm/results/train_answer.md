@@ -16,7 +16,15 @@ import torch
 
 
 class EDMPrecond(torch.nn.Module):
-    def __init__(self, model, sigma_min=0, sigma_max=float("inf"), sigma_data=0.5, label_dim=0, use_fp16=False):
+    def __init__(
+        self,
+        model,
+        sigma_min=0,
+        sigma_max=float("inf"),
+        sigma_data=0.5,
+        label_dim=0,
+        use_fp16=False,
+    ):
         super().__init__()
         self.model = model
         self.sigma_min = sigma_min
@@ -65,14 +73,28 @@ class EDMLoss:
 
 
 @torch.no_grad()
-def edm_sampler(net, latents, class_labels=None, randn_like=torch.randn_like, num_steps=18,
-                sigma_min=0.002, sigma_max=80, rho=7, S_churn=0, S_min=0, S_max=float("inf"), S_noise=1):
+def edm_sampler(
+    net,
+    latents,
+    class_labels=None,
+    randn_like=torch.randn_like,
+    num_steps=18,
+    sigma_min=0.002,
+    sigma_max=80,
+    rho=7,
+    S_churn=0,
+    S_min=0,
+    S_max=float("inf"),
+    S_noise=1,
+):
     sigma_min = max(sigma_min, net.sigma_min)
     sigma_max = min(sigma_max, net.sigma_max)
 
     step_indices = torch.arange(num_steps, dtype=torch.float64, device=latents.device)
-    t_steps = (sigma_max ** (1 / rho) + step_indices / (num_steps - 1) *
-               (sigma_min ** (1 / rho) - sigma_max ** (1 / rho))) ** rho
+    t_steps = (
+        sigma_max ** (1 / rho)
+        + step_indices / (num_steps - 1) * (sigma_min ** (1 / rho) - sigma_max ** (1 / rho))
+    ) ** rho
     t_steps = torch.cat([net.round_sigma(t_steps), torch.zeros_like(t_steps[:1])])
 
     x_next = latents.to(torch.float64) * t_steps[0]

@@ -37,7 +37,7 @@ class DecisionTransformer(TrajectoryModel):
         self.hidden_size = hidden_size
 
         config = transformers.GPT2Config(
-            vocab_size=1,
+            vocab_size=1,  # unused because we pass embeddings directly
             n_embd=hidden_size,
             **kwargs,
         )
@@ -88,9 +88,9 @@ class DecisionTransformer(TrajectoryModel):
         x = transformer_outputs["last_hidden_state"]
         x = x.reshape(batch_size, seq_length, 3, self.hidden_size).permute(0, 2, 1, 3)
 
-        return_preds = self.predict_return(x[:, 2])
-        state_preds = self.predict_state(x[:, 2])
-        action_preds = self.predict_action(x[:, 1])
+        return_preds = self.predict_return(x[:, 2])  # next return after seeing state and action
+        state_preds = self.predict_state(x[:, 2])    # next state after seeing state and action
+        action_preds = self.predict_action(x[:, 1])  # action after seeing return and state
         return state_preds, action_preds, return_preds
 
     def get_action(self, states, actions, rewards, returns_to_go, timesteps, **kwargs):
@@ -107,8 +107,7 @@ class DecisionTransformer(TrajectoryModel):
 
             pad = self.max_length - states.shape[1]
             attention_mask = torch.cat(
-                [torch.zeros(pad, device=states.device),
-                 torch.ones(states.shape[1], device=states.device)]
+                [torch.zeros(pad, device=states.device), torch.ones(states.shape[1], device=states.device)]
             ).to(dtype=torch.long).reshape(1, -1)
             states = torch.cat(
                 [torch.zeros((1, pad, self.state_dim), device=states.device), states], dim=1

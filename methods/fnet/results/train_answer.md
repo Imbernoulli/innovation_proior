@@ -25,7 +25,12 @@ default_bias_init = nn.initializers.normal(stddev=2e-2)
 LAYER_NORM_EPSILON = 1e-12
 
 
-def two_dim_matmul(x, matrix_dim_one, matrix_dim_two, precision=lax.Precision.DEFAULT):
+def two_dim_matmul(
+    x,
+    matrix_dim_one,
+    matrix_dim_two,
+    precision=lax.Precision.DEFAULT,
+):
     # Equivalent to np.fft.fftn(x) when the matrices are scipy.linalg.dft(...)
     # with default, unnormalized scaling.
     return jnp.einsum(
@@ -95,7 +100,9 @@ class EncoderBlock(nn.Module):
         x = nn.LayerNorm(
             epsilon=LAYER_NORM_EPSILON, name="mixing_layer_norm"
         )(inputs + mixing_output)
-        feed_forward_output = self.feed_forward_sublayer(x, deterministic=deterministic)
+        feed_forward_output = self.feed_forward_sublayer(
+            x, deterministic=deterministic
+        )
         return nn.LayerNorm(
             epsilon=LAYER_NORM_EPSILON, name="output_layer_norm"
         )(x + feed_forward_output)

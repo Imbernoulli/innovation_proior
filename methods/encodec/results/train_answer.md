@@ -29,9 +29,9 @@ class VectorQuantization(nn.Module):
         self.register_buffer("cluster_size", torch.zeros(codebook_size))
         self.register_buffer("embed_avg", embed.clone())
 
-    def forward(self, x):
+    def forward(self, x):                                      # x: [B, D, T]
         b, d, t = x.shape
-        flat = x.transpose(1, 2).reshape(-1, d)
+        flat = x.transpose(1, 2).reshape(-1, d)                # [B*T, D]
         dist = (flat.pow(2).sum(1, keepdim=True)
                 - 2 * flat @ self.embed.t()
                 + self.embed.pow(2).sum(1))
@@ -55,8 +55,8 @@ class VectorQuantization(nn.Module):
                     self.embed_avg[dead] = samples
                     self.cluster_size[dead] = 1.0
 
-        commitment = F.mse_loss(q.detach(), x)
-        q = x + (q - x).detach()
+        commitment = F.mse_loss(q.detach(), x)                 # gradient only to encoder input
+        q = x + (q - x).detach()                               # straight-through estimator
         return q, idx.view(b, t), commitment
 
 class ResidualVectorQuantization(nn.Module):
@@ -69,11 +69,11 @@ class ResidualVectorQuantization(nn.Module):
         codes, commitment = [], x.new_zeros(())
         for layer in self.layers[:(n_q or len(self.layers))]:
             q, idx, loss = layer(residual)
-            residual = residual - q
-            out = out + q
+            residual = residual - q                            # next codebook sees the leftover
+            out = out + q                                      # decoder receives the sum
             codes.append(idx)
             commitment = commitment + loss
-        return out, torch.stack(codes, dim=1), commitment
+        return out, torch.stack(codes, dim=1), commitment       # codes: [B, N_q, T]
 
 class PaddedConv1d(nn.Module):
     def __init__(self, in_ch, out_ch, kernel_size, stride=1, causal=False):
@@ -173,5 +173,5 @@ class Balancer:
             grads[name] = g / (self.ema[name] + 1e-12)
         total_w = sum(self.weights[k] for k in losses)
         balanced = sum(self.R * self.weights[k] / total_w * grads[k] for k in losses)
-        x_hat.backward(balanced)
+        x_hat.backward(balanced)                              # commitment loss is backpropagated separately
 ```

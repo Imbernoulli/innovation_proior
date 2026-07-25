@@ -28,7 +28,7 @@ from prismatic.models.projectors import NoisyActionProjector
 
 
 CONFIG_OVERRIDES = {
-    "lr_warmup_steps": 800,
+    "lr_warmup_steps": 800,        # diffusion co-trains trunk + denoiser; needs more warmup
     "num_steps_before_decay": 6000,
 }
 

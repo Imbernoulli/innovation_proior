@@ -8,7 +8,7 @@ From the bootstrap replicates we get the standard error as their Bessel-correcte
 
 ```python
 import numpy as np
-from scipy.special import ndtr, ndtri
+from scipy.special import ndtr, ndtri   # standard normal cdf and its inverse
 
 
 def empirical_distribution(x):
@@ -88,8 +88,8 @@ def confidence_interval(resampled_statistics, confidence_level, levels=None):
     )
 
 
-def bootstrap(x, statistic, n_resamples=9999, confidence_level=0.95,
-              method="bca", rng=None):
+def resampling_accuracy(x, statistic, n_resamples=9999, confidence_level=0.95,
+                        method="bca", rng=None):
     rng = np.random.default_rng(rng)
     x = empirical_distribution(x)
     theta_star = sampling_distribution(x, statistic, n_resamples, rng)
@@ -111,6 +111,14 @@ def bootstrap(x, statistic, n_resamples=9999, confidence_level=0.95,
     }
 
 
+def bootstrap(x, statistic, n_resamples=9999, confidence_level=0.95,
+              method="bca", rng=None):
+    return resampling_accuracy(
+        x, statistic, n_resamples, confidence_level, method, rng
+    )
+
+
+# Example: standard error and 95% CI of the sample median — the case the jackknife botches.
 if __name__ == "__main__":
     rng = np.random.default_rng(0)
     data = rng.standard_normal(13)

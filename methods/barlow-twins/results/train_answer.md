@@ -76,16 +76,20 @@ def build_projector(projector):
 
 
 def off_diagonal(x):
+    # Flattened view of the off-diagonal elements of a square matrix.
     n, m = x.shape
     assert n == m
     return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
 
 
 def pairwise_feature_objective(z1, z2, normalizer, batch_size, weight):
+    # C is the D x D cross-correlation matrix, normalized along the batch dimension.
     c = normalizer(z1).T @ normalizer(z2)
     c.div_(batch_size)
     if torch.distributed.is_available() and torch.distributed.is_initialized():
         torch.distributed.all_reduce(c)
+
+    # Diagonal -> 1 for invariance; off-diagonal -> 0 for redundancy reduction.
     on_diag = torch.diagonal(c).add_(-1).pow_(2).sum()
     off_diag = off_diagonal(c).pow_(2).sum()
     return on_diag + weight * off_diag
@@ -101,6 +105,9 @@ class TwinEmbeddingModel(nn.Module):
         self.projector = build_projector(projector)
         output_dim = int(projector.split("-")[-1])
         self.feature_normalizer = nn.BatchNorm1d(output_dim, affine=False)
+
+        # In distributed training, convert the module with
+        # nn.SyncBatchNorm.convert_sync_batchnorm(model) before DDP wrapping.
 
     def forward(self, y1, y2):
         z1 = self.projector(self.backbone(y1))

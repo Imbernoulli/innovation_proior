@@ -38,6 +38,7 @@ class AttentionConfig:
 
 
 def repeat_key_value_heads(hidden_states, n_rep):
+    """Expand cached key/value heads from [b, G, s, k] to [b, H, s, k]."""
     batch, num_key_value_heads, seq_len, head_dim = hidden_states.shape
     if n_rep == 1:
         return hidden_states
@@ -121,6 +122,7 @@ class DecoderAttention(nn.Module):
 
 
 def convert_attention_checkpoint(pretrained_attention, config):
+    """Mean-pool each group's key/value projections into one shared head."""
     converted = DecoderAttention(
         config, layer_idx=getattr(pretrained_attention, "layer_idx", 0)
     )
@@ -157,6 +159,7 @@ def convert_attention_checkpoint(pretrained_attention, config):
 
 
 def continue_pretraining(model, pretrain_step_fn, original_steps, alpha=0.05):
+    """Adapt the converted checkpoint with a small continuation run."""
     for _ in range(int(alpha * original_steps)):
         pretrain_step_fn(model)
     return model

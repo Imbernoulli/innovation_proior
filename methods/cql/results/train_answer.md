@@ -25,7 +25,7 @@ class Scalar(nn.Module):
         return self.value
 
 class ContinuousCQL:
-    """SAC critic with the CQL(H) regularizer added to the critic loss."""
+    """SAC with the CQL(H) regularizer added to the critic loss."""
 
     def __init__(self, actor, critic_1, critic_2, target_critic_1, target_critic_2,
                  discount=0.99, cql_n_actions=10, cql_temp=1.0, cql_alpha=5.0,
@@ -80,7 +80,7 @@ class ContinuousCQL:
             min_q1 = alpha_prime * self.cql_alpha * (q1_diff - self.cql_target_action_gap)
             min_q2 = alpha_prime * self.cql_alpha * (q2_diff - self.cql_target_action_gap)
             self.alpha_prime_optimizer.zero_grad()
-            (-(min_q1 + min_q2) * 0.5).backward(retain_graph=True)
+            (-(min_q1 + min_q2) * 0.5).backward(retain_graph=True)  # dual ascent
             self.alpha_prime_optimizer.step()
         else:
             min_q1 = self.cql_alpha * q1_diff
@@ -88,6 +88,7 @@ class ContinuousCQL:
         return min_q1 + min_q2
 
     def _critic_loss(self, obs, actions, next_obs, rewards, dones, ent_alpha):
+        # --- standard twin-Q TD loss (Bellman fit) ---
         q1 = self.critic_1(obs, actions)
         q2 = self.critic_2(obs, actions)
         next_a, next_logp = self.actor(next_obs)
@@ -97,9 +98,10 @@ class ContinuousCQL:
             target_q = target_q - ent_alpha * next_logp
         td_target = rewards.squeeze(-1) + (1.0 - dones.squeeze(-1)) * self.discount * target_q.detach()
         td_loss = F.mse_loss(q1, td_target) + F.mse_loss(q2, td_target)
+
         return td_loss + self._critic_regularizer(obs, actions, next_obs, q1, q2)
 
-    def _actor_loss(self, obs, ent_alpha):
+    def _actor_loss(self, obs, ent_alpha):        # unchanged SAC; use a small policy learning rate
         a, logp = self.actor(obs)
         q = torch.min(self.critic_1(obs, a), self.critic_2(obs, a))
         return (ent_alpha * logp - q).mean()

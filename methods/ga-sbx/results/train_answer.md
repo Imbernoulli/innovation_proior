@@ -19,7 +19,7 @@ def custom_select(population: list, k: int, toolbox=None) -> list:
 
 
 def custom_crossover(ind1: list, ind2: list) -> Tuple[list, list]:
-    """Simulated Binary Crossover (SBX), distribution index eta_c = 20."""
+    """Simulated Binary Crossover, distribution index eta_c = 20."""
     eta = 20.0
     for i, (x1, x2) in enumerate(zip(ind1, ind2)):
         u = random.random()
@@ -28,9 +28,8 @@ def custom_crossover(ind1: list, ind2: list) -> Tuple[list, list]:
         else:                                     # expanding: beta = (1/(2(1-u)))^(1/(eta+1))
             beta = 1.0 / (2.0 * (1.0 - u))
         beta **= 1.0 / (eta + 1.0)
-        # Mean-preserving, beta-spread children.
-        ind1[i] = 0.5 * (((1 + beta) * x1) + ((1 - beta) * x2))
-        ind2[i] = 0.5 * (((1 - beta) * x1) + ((1 + beta) * x2))
+        ind1[i] = 0.5 * (((1 + beta) * x1) + ((1 - beta) * x2))   # mean-preserving,
+        ind2[i] = 0.5 * (((1 - beta) * x1) + ((1 + beta) * x2))   # spread = beta
     return ind1, ind2
 
 

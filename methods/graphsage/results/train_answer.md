@@ -34,8 +34,8 @@ class MeanAggregator(nn.Module):
     """Mean of a uniform fixed-size sample of neighbor representations."""
     def __init__(self, features, gcn=False):
         super().__init__()
-        self.features = features
-        self.gcn = gcn
+        self.features = features    # node ids -> previous-layer reprs
+        self.gcn = gcn              # fold self into the mean (inductive GCN) vs. keep separate
         self.out_dim = None
 
     def forward(self, nodes, to_neighs, num_sample=10):
@@ -52,7 +52,6 @@ class MeanAggregator(nn.Module):
         mask = mask / mask.sum(1, keepdim=True).clamp_min(1.0)
         embed = self.features(torch.as_tensor(uniq, dtype=torch.long))
         return mask.to(embed.device).mm(embed)
-
 
 class PoolAggregator(nn.Module):
     """Per-neighbor MLP then elementwise max: symmetric, trainable, high capacity."""
@@ -71,9 +70,8 @@ class PoolAggregator(nn.Module):
             out.append(F.relu(self.mlp(h)).max(0).values)
         return torch.stack(out, 0)
 
-
 class Encoder(nn.Module):
-    """One depth: aggregate neighbors, concat with self, shared W, ReLU, l2-norm."""
+    """One depth: aggregate neighbors, concat with self, shared W, ReLU, ell2-norm."""
     def __init__(self, features, feat_dim, embed_dim, adj_lists, aggregator,
                  num_sample=10, gcn=False):
         super().__init__()
@@ -97,9 +95,8 @@ class Encoder(nn.Module):
         h = F.relu(self.weight.to(combined.device).mm(combined.t()))
         return F.normalize(h, p=2, dim=0, eps=1e-12)
 
-
 def unsupervised_loss(z_u, z_v, z_neg, Q=None):
-    """SkipGram negative-sampling loss on generated embeddings."""
+    """z_u/z_v are [batch, dim]; z_neg is [batch, Q, dim] or shared [Q, dim]."""
     pos = F.logsigmoid((z_u * z_v).sum(1))
     if z_neg.dim() == 2:
         neg_scores = z_u.mm(z_neg.t())
@@ -108,7 +105,6 @@ def unsupervised_loss(z_u, z_v, z_neg, Q=None):
     q = neg_scores.size(1) if Q is None else Q
     neg = F.logsigmoid(-neg_scores).mean(1)
     return -(pos + q * neg).mean()
-
 
 class SupervisedGraphSAGE(nn.Module):
     def __init__(self, num_classes, enc):
@@ -123,7 +119,6 @@ class SupervisedGraphSAGE(nn.Module):
 
     def loss(self, nodes, labels):
         return F.cross_entropy(self.forward(nodes), labels.squeeze())
-
 
 def build(features, feat_dim, adj_lists, num_classes, gcn=False):
     agg1 = MeanAggregator(features, gcn=gcn)

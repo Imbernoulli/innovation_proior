@@ -15,90 +15,89 @@ import tensorflow as tf
 
 
 def gelu(x):
-    cdf = 0.5 * (1.0 + tf.tanh(
-        (tf.sqrt(2.0 / 3.141592653589793) * (x + 0.044715 * tf.pow(x, 3)))))
-    return x * cdf
+  cdf = 0.5 * (1.0 + tf.tanh(
+      (tf.sqrt(2.0 / 3.141592653589793) * (x + 0.044715 * tf.pow(x, 3)))))
+  return x * cdf
 
 
 def feedforward_adapter(input_tensor, hidden_size=64, init_scale=1e-3):
-    with tf.variable_scope("adapters"):
-        in_size = input_tensor.get_shape().as_list()[1]
-        w1 = tf.get_variable(
-            "weights1", [in_size, hidden_size],
-            initializer=tf.truncated_normal_initializer(stddev=init_scale),
-            collections=["adapters", tf.GraphKeys.GLOBAL_VARIABLES])
-        b1 = tf.get_variable(
-            "biases1", [1, hidden_size],
-            initializer=tf.zeros_initializer(),
-            collections=["adapters", tf.GraphKeys.GLOBAL_VARIABLES])
-        net = tf.tensordot(input_tensor, w1, [[1], [0]]) + b1
-        net = gelu(net)
+  """Bottleneck adapter with an internal residual skip."""
+  with tf.variable_scope("adapters"):
+    in_size = input_tensor.get_shape().as_list()[1]
+    w1 = tf.get_variable(
+        "weights1", [in_size, hidden_size],
+        initializer=tf.truncated_normal_initializer(stddev=init_scale),
+        collections=["adapters", tf.GraphKeys.GLOBAL_VARIABLES])
+    b1 = tf.get_variable(
+        "biases1", [1, hidden_size],
+        initializer=tf.zeros_initializer(),
+        collections=["adapters", tf.GraphKeys.GLOBAL_VARIABLES])
+    net = tf.tensordot(input_tensor, w1, [[1], [0]]) + b1
+    net = gelu(net)
 
-        w2 = tf.get_variable(
-            "weights2", [hidden_size, in_size],
-            initializer=tf.truncated_normal_initializer(stddev=init_scale),
-            collections=["adapters", tf.GraphKeys.GLOBAL_VARIABLES])
-        b2 = tf.get_variable(
-            "biases2", [1, in_size],
-            initializer=tf.zeros_initializer(),
-            collections=["adapters", tf.GraphKeys.GLOBAL_VARIABLES])
-        net = tf.tensordot(net, w2, [[1], [0]]) + b2
+    w2 = tf.get_variable(
+        "weights2", [hidden_size, in_size],
+        initializer=tf.truncated_normal_initializer(stddev=init_scale),
+        collections=["adapters", tf.GraphKeys.GLOBAL_VARIABLES])
+    b2 = tf.get_variable(
+        "biases2", [1, in_size],
+        initializer=tf.zeros_initializer(),
+        collections=["adapters", tf.GraphKeys.GLOBAL_VARIABLES])
+    net = tf.tensordot(net, w2, [[1], [0]]) + b2
 
-    return net + input_tensor
+  return net + input_tensor
 
 
-def transformer_layer(layer_input, attention_output, intermediate_output,
+def transformer_layer(layer_input, attention_heads, intermediate_output,
                       hidden_size, hidden_dropout_prob, initializer_range,
                       adapter_fn=feedforward_adapter):
-    with tf.variable_scope("attention/output"):
-        attention_output = tf.layers.dense(
-            attention_output, hidden_size,
-            kernel_initializer=tf.truncated_normal_initializer(stddev=initializer_range))
-        attention_output = dropout(attention_output, hidden_dropout_prob)
-        attention_output = adapter_fn(attention_output)
-        attention_output = layer_norm(attention_output + layer_input)
+  with tf.variable_scope("attention/output"):
+    attention_output = tf.layers.dense(
+        attention_heads, hidden_size,
+        kernel_initializer=tf.truncated_normal_initializer(stddev=initializer_range))
+    attention_output = dropout(attention_output, hidden_dropout_prob)
+    attention_output = adapter_fn(attention_output)
+    attention_output = layer_norm(attention_output + layer_input)
 
-    with tf.variable_scope("output"):
-        layer_output = tf.layers.dense(
-            intermediate_output, hidden_size,
-            kernel_initializer=tf.truncated_normal_initializer(stddev=initializer_range))
-        layer_output = dropout(layer_output, hidden_dropout_prob)
-        layer_output = adapter_fn(layer_output)
-        layer_output = layer_norm(layer_output + attention_output)
-        return layer_output
+  with tf.variable_scope("output"):
+    layer_output = tf.layers.dense(
+        intermediate_output, hidden_size,
+        kernel_initializer=tf.truncated_normal_initializer(stddev=initializer_range))
+    layer_output = dropout(layer_output, hidden_dropout_prob)
+    layer_output = adapter_fn(layer_output)
+    layer_output = layer_norm(layer_output + attention_output)
+    return layer_output
 
 
-def create_training_op(loss, init_lr, num_train_steps, num_warmup_steps):
-    global_step = tf.train.get_or_create_global_step()
-    learning_rate = tf.constant(value=init_lr, shape=[], dtype=tf.float32)
-    learning_rate = tf.train.polynomial_decay(
-        learning_rate, global_step, num_train_steps, end_learning_rate=0.0,
-        power=1.0, cycle=False)
-    if num_warmup_steps:
-        global_steps_int = tf.cast(global_step, tf.int32)
-        warmup_steps_int = tf.constant(num_warmup_steps, dtype=tf.int32)
-        warmup_progress = (
-            tf.cast(global_steps_int, tf.float32) /
-            tf.cast(warmup_steps_int, tf.float32))
-        warmup_lr = init_lr * warmup_progress
-        is_warmup = tf.cast(global_steps_int < warmup_steps_int, tf.float32)
-        learning_rate = (
-            (1.0 - is_warmup) * learning_rate + is_warmup * warmup_lr)
+def create_optimizer(loss, init_lr, num_train_steps, num_warmup_steps):
+  global_step = tf.train.get_or_create_global_step()
+  learning_rate = tf.constant(value=init_lr, shape=[], dtype=tf.float32)
+  learning_rate = tf.train.polynomial_decay(
+      learning_rate, global_step, num_train_steps, end_learning_rate=0.0,
+      power=1.0, cycle=False)
+  if num_warmup_steps:
+    global_steps_int = tf.cast(global_step, tf.int32)
+    warmup_steps_int = tf.constant(num_warmup_steps, dtype=tf.int32)
+    warmup_progress = (
+        tf.cast(global_steps_int, tf.float32) / tf.cast(warmup_steps_int, tf.float32))
+    warmup_lr = init_lr * warmup_progress
+    is_warmup = tf.cast(global_steps_int < warmup_steps_int, tf.float32)
+    learning_rate = (1.0 - is_warmup) * learning_rate + is_warmup * warmup_lr
 
-    train_vars = []
-    for collection in ["adapters", "layer_norm", "head"]:
-        train_vars += tf.get_collection(collection)
+  train_vars = []
+  for collection in ["adapters", "layer_norm", "head"]:
+    train_vars += tf.get_collection(collection)
 
-    optimizer = AdamWeightDecayOptimizer(
-        learning_rate=learning_rate,
-        weight_decay_rate=0.01,
-        adapter_weight_decay_rate=0.01,
-        beta_1=0.9,
-        beta_2=0.999,
-        epsilon=1e-6,
-        exclude_from_weight_decay=["LayerNorm", "layer_norm", "bias"])
-    grads = tf.gradients(loss, train_vars)
-    grads, _ = tf.clip_by_global_norm(grads, clip_norm=1.0)
-    train_op = optimizer.apply_gradients(zip(grads, train_vars), global_step=global_step)
-    return tf.group(train_op, [global_step.assign(global_step + 1)])
+  optimizer = AdamWeightDecayOptimizer(
+      learning_rate=learning_rate,
+      weight_decay_rate=0.01,
+      adapter_weight_decay_rate=0.01,
+      beta_1=0.9,
+      beta_2=0.999,
+      epsilon=1e-6,
+      exclude_from_weight_decay=["LayerNorm", "layer_norm", "bias"])
+  grads = tf.gradients(loss, train_vars)
+  grads, _ = tf.clip_by_global_norm(grads, clip_norm=1.0)
+  train_op = optimizer.apply_gradients(zip(grads, train_vars), global_step=global_step)
+  return tf.group(train_op, [global_step.assign(global_step + 1)])
 ```

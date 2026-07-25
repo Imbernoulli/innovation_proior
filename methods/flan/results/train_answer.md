@@ -26,6 +26,7 @@ CLUSTER_EXCLUSIONS = {
 }
 
 TEMPLATE_BANK = {
+    # Representative entries from the ten-template-per-dataset bank.
     "anli": [
         (
             '{premise}\n\nBased on the paragraph above can we conclude that "{hypothesis}"?\n\n{options}',

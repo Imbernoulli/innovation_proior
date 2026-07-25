@@ -13,11 +13,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-BN_MOMENTUM = 0.01
+BN_MOMENTUM = 0.01  # PyTorch convention matching TensorFlow momentum 0.99
 BN_EPS = 1e-3
 
 
 class Conv2dSamePadding(nn.Conv2d):
+    """TensorFlow-style SAME padding, including stride-2 odd-size cases."""
+
     def forward(self, x):
         ih, iw = x.shape[-2:]
         kh, kw = self.weight.shape[-2:]
@@ -39,12 +41,14 @@ class Conv2dSamePadding(nn.Conv2d):
 
 def conv_bn_act(in_ch, out_ch, kernel_size, stride=1, groups=1, act=True):
     layers = [
-        Conv2dSamePadding(in_ch, out_ch, kernel_size, stride=stride,
-                          groups=groups, bias=False),
+        Conv2dSamePadding(
+            in_ch, out_ch, kernel_size, stride=stride,
+            groups=groups, bias=False
+        ),
         nn.BatchNorm2d(out_ch, momentum=BN_MOMENTUM, eps=BN_EPS),
     ]
     if act:
-        layers.append(nn.SiLU())
+        layers.append(nn.SiLU())  # Swish-1: x * sigmoid(x)
     return nn.Sequential(*layers)
 
 
@@ -69,8 +73,9 @@ def drop_connect(x, drop_rate, training):
     if not training or drop_rate <= 0.0:
         return x
     keep = 1.0 - drop_rate
-    mask = keep + torch.rand([x.shape[0], 1, 1, 1],
-                             dtype=x.dtype, device=x.device)
+    mask = keep + torch.rand(
+        [x.shape[0], 1, 1, 1], dtype=x.dtype, device=x.device
+    )
     mask = torch.floor(mask)
     return x / keep * mask
 
@@ -109,6 +114,8 @@ class MBConv(nn.Module):
         return h
 
 
+# (expand, kernel, stride, input, output, repeats), matching the canonical block strings:
+# r1_k3_s11_e1_i32_o16_se0.25, ..., r1_k3_s11_e6_i192_o320_se0.25
 BASE_STAGES = [
     (1, 3, 1, 32, 16, 1),
     (6, 3, 2, 16, 24, 2),
@@ -179,7 +186,7 @@ def build(name="b0", num_classes=1000):
         width_coeff=width,
         depth_coeff=depth,
         dropout=dropout,
-        drop_connect_rate=0.2,
+        drop_connect_rate=0.2,  # official survival_prob = 0.8
         num_classes=num_classes,
     )
     return model, resolution

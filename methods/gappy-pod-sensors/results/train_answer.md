@@ -37,7 +37,7 @@ def reconstruct(Psi_r, sensors, y):
     return Psi_r @ a_hat
 
 
-# Usage:
+# usage
 # Psi_r = pod_basis(X_train, r)
 # gamma = select_sensors(Psi_r, p)
 # x_hat = reconstruct(Psi_r, gamma, x_test[gamma])

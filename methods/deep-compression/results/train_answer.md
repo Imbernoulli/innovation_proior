@@ -14,7 +14,6 @@ from sklearn.cluster import KMeans
 
 ZERO_SYMBOL = -1
 
-
 def prune_stage(net, data, thresholds, retrain_steps):
     net = train_to_convergence(net, data)
     masks = {}
@@ -28,7 +27,6 @@ def prune_stage(net, data, thresholds, retrain_steps):
             layer.W *= masks[name]
     return net, masks
 
-
 def quantize_layer(W, mask, k):
     live = W[mask].reshape(-1, 1)
     init = np.linspace(live.min(), live.max(), k).reshape(-1, 1)
@@ -38,11 +36,9 @@ def quantize_layer(W, mask, k):
     indices[mask] = km.labels_
     return codebook, indices
 
-
 def write_shared_weights(net, codebooks, indices, masks):
     for name, layer in net.layers.items():
         layer.W = codebooks[name][indices[name]] * masks[name]
-
 
 def finetune_centroids(net, data, codebooks, indices, masks, lr, steps):
     write_shared_weights(net, codebooks, indices, masks)
@@ -56,8 +52,9 @@ def finetune_centroids(net, data, codebooks, indices, masks, lr, steps):
         write_shared_weights(net, codebooks, indices, masks)
     return codebooks, indices
 
-
 def csr_symbol_streams(mask, centroid_ids, index_bits):
+    # Use the bounded relative-index convention: a d-bit field stores jumps up
+    # to 2**d, and filler zero symbols split longer jumps.
     max_stored_delta = 1 << index_bits
     weight_symbols, index_deltas, row_ptr = [], [], [0]
     filler_count = 0
@@ -81,7 +78,6 @@ def csr_symbol_streams(mask, centroid_ids, index_bits):
         filler_count,
     )
 
-
 def entropy_code(codebooks, indices, masks, index_bits):
     packed = {}
     for name in codebooks:
@@ -97,15 +93,14 @@ def entropy_code(codebooks, indices, masks, index_bits):
         }
     return packed
 
-
-def compress(net, data, thresholds, weight_bits, index_bits, retrain_steps, tune_steps, lr):
+def compress(net, data, thresholds, weight_bits, index_bits, retrain_steps, tune_steps):
     net, masks = prune_stage(net, data, thresholds, retrain_steps)
     codebooks, indices = {}, {}
     for name, layer in net.layers.items():
         k = 2 ** weight_bits[name]
         codebooks[name], indices[name] = quantize_layer(layer.W, masks[name], k)
     codebooks, indices = finetune_centroids(
-        net, data, codebooks, indices, masks, lr=lr, steps=tune_steps
+        net, data, codebooks, indices, masks, lr=LR, steps=tune_steps
     )
     return entropy_code(codebooks, indices, masks, index_bits)
 ```

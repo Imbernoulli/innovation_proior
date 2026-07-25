@@ -62,12 +62,13 @@ def slp(a, rounds, trust=1e-4, tr_cap=2.5e-4, grow=1.05, shrink=0.6, topK=0, see
         if Rn < bR - 1e-13:
             bR = Rn; best = an.copy(); a = an; tr = min(tr * grow, tr_cap)
         else:
-            a = np.clip(best * (1 + 0.01 * rng.standard_normal(n)), 0, None); a /= a.sum(); tr = trust
+            a = np.clip(best * (1 + 0.01 * rng.standard_normal(n)), 0, None); a /= a.sum()
+            tr = trust
     return best
 
 def construct(N: int = 600):
     a = _adam(np.ones(N), 12000, 0.006, 300.0, 2e5, seed=1, ke=3000, ks=0.02)
-    for _ in range(8):
+    for _ in range(8):                        # several SLP rounds-blocks with restart escapes
         a = slp(a, 60, topK=0, seed=3)
     return [float(x) for x in a]
 
