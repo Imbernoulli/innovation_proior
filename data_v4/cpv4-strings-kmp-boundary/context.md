@@ -15,8 +15,7 @@ Report two numbers:
 
 A prefix that is *not* the repetition of any strictly shorter block (for example a single character,
 or `abc`, or `aab`) is not tiled and contributes nothing. This is the periodicity question that sits
-under string-compression, run detection, and pattern-matching code, so the boundary between "a border
-that happens to exist" and "a period that actually tiles the whole length" has to be drawn exactly.
+under string-compression, run detection, and pattern-matching code.
 
 ## Input / output contract
 
@@ -34,20 +33,11 @@ aperiodic in the "two-or-more whole copies" sense.
 ## Background
 
 The naive test — for every length `L`, try every divisor `d` and compare `L/d` copies — is
-`O(n^2)` or worse and cannot survive `n = 10^6`. The structural fact that makes it linear is the
-**Knuth–Morris–Pratt failure function** `pi`. Define `pi[L]` as the length of the longest *proper*
-prefix of `s[0..L-1]` that is also a suffix of `s[0..L-1]` (a *border*). The classic periodicity
-lemma states that the **shortest period** of the length-`L` prefix is exactly `d = L - pi[L]`, and a
-period `d` tiles the prefix into whole copies precisely when `d` divides `L`.
-
-Two candidate framings are on the table before committing:
-
-- **Per-length divisor scan.** For each `L`, factor `L` and test each divisor as a candidate period.
-  Correct but `O(n * sigma(L))` aggregate; too slow at `10^6` and easy to get the comparison wrong.
-- **Single failure-function pass.** Build `pi` once in `O(n)`, then for each `L` test the single
-  candidate `d = L - pi[L]` against `d < L` and `L % d == 0`. `O(n)` overall; the open questions are
-  the exact indexing of `pi` (by prefix *length*, 1-based, vs. by 0-based position) and the exact
-  inclusive/exclusive boundary in the tiling test.
+`O(n^2)` or worse and cannot survive `n = 10^6`. Periodicity of a string's prefixes is closely tied
+to the structure of its *borders* (proper prefixes that are also suffixes), a notion that recurs
+throughout string-compression, run detection, and pattern-matching preprocessing; turning that
+connection into an exact, linear-time test for "does some `d < L` with `d | L` make `s[0..L-1]` a
+whole-number repetition" is the crux of this problem.
 
 ## Evaluation settings
 
@@ -55,8 +45,7 @@ Judged on hidden tests covering: a single character; aperiodic strings like `abc
 string `aaaa...`; clean repetitions like `(abc)^k` and `(ab)^k`; near-misses where one trailing
 character breaks divisibility (`aaab`, `abcabca`); strings whose borders exist but whose period does
 not divide the length (`abcab`, period 3, length 5); and a full `n = 10^6` worst case
-(`a^10^6` and `(ab)^500000`) where the count can reach `~10^6` and the tile-length sum exceeds the
-32-bit range, so the second accumulator must be 64-bit.
+(`a^10^6` and `(ab)^500000`).
 
 ## Code framework
 
