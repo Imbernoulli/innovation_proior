@@ -16,10 +16,7 @@ Teams are **unlabeled**: a partition is a *set of teams*, so `{ {0,1}, {2,3} }` 
 Count the number of valid partitions, modulo `998244353`. (If no valid partition exists, the answer is
 `0`. The empty guild `n = 0` has exactly one partition — the empty one.)
 
-This is a counting/constructive variant of subset DP. The whole difficulty is *counting each partition
-exactly once*: the obvious "pick a first team, recurse on the rest" recurrence counts **ordered**
-sequences of teams and over-counts every partition by the number of orderings of its teams. Getting
-the de-duplication right — and the modular arithmetic — is the point.
+This is a counting/constructive variant of subset DP.
 
 ## Input / output contract
 
@@ -36,28 +33,15 @@ Example: `n = 4`, `L = 1`, `R = 2`, feuds `{0,1}` and `{2,3}`. The answer is `7`
 ## Background
 
 The constraint that teams are *unlabeled* turns this into a partition-counting problem rather than an
-assignment problem. Two framings are on the table before committing:
-
-- **Inclusion over an ordered DP.** Define `g[mask]` = number of ways to write the set `mask` as an
-  *ordered* list of legal teams, via `g[mask] = sum over legal teams S ⊆ mask of g[mask\S]`. This is
-  easy to write, but it counts a partition into `k` teams `k!` times, and dividing by `k!` afterwards
-  is awkward because different partitions have different `k`. The open question is whether there is a
-  recurrence that counts unordered partitions *directly*.
-- **Anchored subset DP.** Define `f[mask]` = number of *unordered* legal partitions of `mask`. To
-  avoid order, force a canonical choice: the team containing the **lowest-indexed** element of `mask`
-  is decided first. Summing only over teams `S` that contain that anchor element makes each partition
-  appear exactly once. The open questions are the exact anchor bookkeeping and the legality precompute.
+assignment problem.
 
 A team `S` is *legal* iff `L <= popcount(S) <= R` and `S` contains no feuding pair; legality of all
 `2^n` subsets can be precomputed once.
 
 ## Evaluation settings
 
-Judged on hidden tests covering: `n = 0` (answer `1`); `n = 1`; dense feud graphs (forcing all
-singletons, so the answer is `0` or `1` depending on `L`); no feuds with `L = 1, R = n` (the answer is
-the Bell number `B(n)` mod `p`); tight size windows that make the partition infeasible (answer `0`);
-size windows like `L = R = 2` on odd `n` (infeasible); and full `n = 16` worst cases that exercise the
-`3^n` subset enumeration and the modular reduction.
+Judged on hidden tests covering: `n = 0`; `n = 1`; dense feud graphs; feud-free instances; tight or
+infeasible size windows; and full `n = 16` worst cases.
 
 ## Code framework
 
