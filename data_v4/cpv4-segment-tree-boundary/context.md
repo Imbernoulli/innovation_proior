@@ -13,12 +13,6 @@ and online:
 
 A single position is a valid block of length `1`, so every query answer is at least `1`.
 
-This is the canonical "structural segment tree" task: each node summarizes a contiguous block, and a
-parent is reconstructed from its two children by gluing across the seam between them. The whole
-difficulty is the seam — both inside the tree (when merging children) and at the query window edges
-(`l` and `r`), where a run that continues *outside* the window must be clipped. It is exactly the
-setting where inclusive/exclusive boundary errors hide.
-
 ## Input / output contract
 
 - Input (stdin): the first line has two integers `n` and `q`
@@ -58,30 +52,17 @@ count. Query `[3,5]` is `2 4 5`, giving `3`.
 ## Background
 
 The brute force — for each query, scan `l..r` resetting a counter on every non-ascent — is `O(n)`
-per query and `O(nq)` overall, far too slow at `2*10^5` of each. The standard accelerator is a
-segment tree where each node, covering a block of positions, stores enough to answer "longest
-increasing run inside this block" and to be merged with a neighbouring block in `O(1)`:
-
-- `best` — the longest increasing run fully inside the block;
-- `pre` — the longest increasing run starting at the block's left end;
-- `suf` — the longest increasing run ending at the block's right end;
-- the boundary values `lval`, `rval` and the block length `len`.
-
-Two adjacent blocks `L` then `R` merge by deciding whether a run may cross the seam. The seam is a
-valid step of an increasing run **iff `L.rval < R.lval`** (a *strict* ascent). If and only if it is,
-`L.suf + R.pre` is a candidate for the merged `best`, and the prefix/suffix can grow across the seam
-when a child is entirely one run. Point updates rebuild one leaf-to-root path in `O(log n)`; queries
-combine `O(log n)` canonical blocks. The open questions are the exact merge formula and — the part
-that bites — how the query restricts the combination to exactly `[l, r]` without letting a run leak
-past `l` or `r`.
+per query and `O(nq)` overall, far too slow at `2*10^5` of each. Both operation types are interleaved
+online, so whatever structure answers a query must also absorb a point update quickly; a family of
+techniques exists for maintaining decomposable range statistics under point updates, but this
+problem's queries are restricted to `[l, r]` windows, not the whole array, which is where most of the
+difficulty lives.
 
 ## Evaluation settings
 
-Judged on hidden tests covering: strictly increasing arrays (one run spanning everything, so window
-clipping at `l`/`r` is the whole game), strictly decreasing and all-equal arrays (answer `1`
-everywhere — equal neighbours are *not* an ascent), single-element windows `l == r`, alternating
-up/down patterns, heavy update streams that flip a single boundary repeatedly, large random values
-near `±10^9`, and maximal `n, q = 2*10^5` for time.
+Judged on hidden tests covering: strictly increasing arrays, strictly decreasing and all-equal
+arrays, single-element windows `l == r`, alternating up/down patterns, heavy update streams that flip
+a single boundary repeatedly, large random values near `±10^9`, and maximal `n, q = 2*10^5` for time.
 
 ## Code framework
 
@@ -107,8 +88,9 @@ Node merge(const Node &L, const Node &R) {
     res.len  = L.len + R.len;
     res.lval = L.lval;
     res.rval = R.rval;
-    // TODO: combine the two children, gluing a run across the seam exactly when
-    //       the seam is a STRICT ascent, and update pre / suf / best accordingly.
+    // TODO: combine the two children into the concatenated block, updating
+    //       pre / suf / best so that a run only glues across the seam when it
+    //       is legal for it to do so.
     return res;
 }
 
