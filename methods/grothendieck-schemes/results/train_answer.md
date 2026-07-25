@@ -8,84 +8,8 @@ This definition makes several features part of ordinary geometry rather than aft
 
 Because every prime ideal is a point, each irreducible subvariety acquires a generic point, and specialization of points mirrors inclusion of subvarieties. Gluing the sheaves of rings along with the topological spaces keeps the function rings intrinsic and makes morphisms automatic. The result is a single category that includes classical varieties over algebraically closed fields, arithmetic objects over the integers, infinitesimal neighborhoods, and families of all these things without any separate machinery.
 
-```python
-from dataclasses import dataclass
-from typing import Set, List, Tuple, Dict
-import math
-
-@dataclass(frozen=True)
-class AffineScheme:
-    n: int
-
-    def elements(self) -> List[int]:
-        return list(range(self.n))
-
-    def ideals(self) -> List[Set[int]]:
-        divisors = {d for d in range(1, self.n + 1) if self.n % d == 0}
-        ideals = []
-        for d in divisors:
-            ideal = {x % self.n for x in range(0, self.n, d)}
-            ideals.append(frozenset(ideal))
-        return [set(i) for i in dict.fromkeys(ideals)]
-
-    def is_prime(self, I: Set[int]) -> bool:
-        proper = I != set(self.elements())
-        if 1 in I or not proper:
-            return False
-        for a in self.elements():
-            for b in self.elements():
-                if (a * b) % self.n in I:
-                    if a not in I and b not in I:
-                        return False
-        return True
-
-    def prime_spectrum(self) -> List[Set[int]]:
-        return [I for I in self.ideals() if self.is_prime(I)]
-
-    def vanishing_set(self, J: Set[int]) -> List[Set[int]]:
-        return [p for p in self.prime_spectrum() if J <= p]
-
-    def basic_open(self, f: int) -> List[Set[int]]:
-        f = f % self.n
-        return [p for p in self.prime_spectrum() if f not in p]
-
-    def structure_sheaf_on_open(self, U: List[Set[int]]) -> str:
-        primes = self.prime_spectrum()
-        if set(map(frozenset, U)) == set(map(frozenset, primes)):
-            return f"Z/{self.n}Z on the whole spectrum"
-        if not U:
-            return "zero ring"
-        generators = []
-        for p in primes:
-            if p not in U:
-                for f in self.elements():
-                    if f not in p and all(f in q for q in primes if q not in U):
-                        generators.append(f)
-                        break
-        return f"localization of Z/{self.n}Z at elements {sorted(set(generators))}"
-
-    def stalk_at(self, p: Set[int]) -> str:
-        return f"localization of Z/{self.n}Z at the complement of prime ideal {sorted(p)}"
-
-
-def demo(n: int = 12):
-    X = AffineScheme(n)
-    print(f"Spec Z/{n}Z prime ideals:")
-    for p in X.prime_spectrum():
-        print(sorted(p))
-    print("\nZariski closed sets V(I) for each ideal I:")
-    for I in X.ideals():
-        V = X.vanishing_set(I)
-        print(f"I={sorted(I)} -> V(I) has {len(V)} prime(s)")
-    f = 2
-    print(f"\nBasic open D({f}):")
-    for p in X.basic_open(f):
-        print(sorted(p))
-    print("\nStalk at the prime (2):")
-    prime_2 = next(p for p in X.prime_spectrum() if 2 in p and 3 not in p)
-    print(X.stalk_at(prime_2))
-
-
-if __name__ == "__main__":
-    demo()
-```
+The deliverable is this definition, stated in full, since the discovery is the object itself and not a computation on it. For a commutative ring $A$, $\mathrm{Spec}\,A$ is the locally ringed space whose points are the prime ideals $\mathfrak{p} \subset A$; its closed sets are $V(I) = \{\mathfrak{p} : I \subseteq \mathfrak{p}\}$ for ideals $I \subseteq A$, and its basic opens $D(f) = \{\mathfrak{p} : f \notin \mathfrak{p}\}$ for $f \in A$ form a basis for the Zariski topology. The structure sheaf $\mathcal{O}_{\mathrm{Spec}\,A}$ is fixed on this basis by
+$$\mathcal{O}_{\mathrm{Spec}\,A}(D(f)) = A_f,$$
+the localization of $A$ at the multiplicative set $\{1, f, f^2, \dots\}$, with stalk $\mathcal{O}_{\mathrm{Spec}\,A,\,\mathfrak{p}} = A_{\mathfrak{p}}$ at each point and maximal ideal $\mathfrak{p}A_{\mathfrak{p}}$ recording exactly the functions vanishing at $\mathfrak{p}$. A scheme is a locally ringed space $(X, \mathcal{O}_X)$ admitting an open cover by pieces each isomorphic, as a locally ringed space, to some $(\mathrm{Spec}\,A_i, \mathcal{O}_{\mathrm{Spec}\,A_i})$, glued along isomorphisms of locally ringed spaces on the overlaps. A ring homomorphism $\varphi : A \to B$ induces the morphism
+$$\mathrm{Spec}\,\varphi : \mathrm{Spec}\,B \to \mathrm{Spec}\,A, \qquad \mathfrak{q} \mapsto \varphi^{-1}(\mathfrak{q}),$$
+running in the opposite direction and compatible with the structure sheaves, so that geometry is recovered from algebra contravariantly. This single definition specializes to a classical variety when $A$ is a finitely generated reduced algebra over an algebraically closed field, exhibits $\mathrm{Spec}\,k[\epsilon]/(\epsilon^2)$ as an honest infinitesimal thickening of the point $\mathrm{Spec}\,k$, and turns $\mathrm{Spec}\,\mathbb{Z}$ — generic point $(0)$ specializing to every closed point $(p)$ — into the single base over which characteristic-zero and characteristic-$p$ behavior sit as fibers of one and the same morphism.
