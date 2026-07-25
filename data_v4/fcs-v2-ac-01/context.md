@@ -43,31 +43,13 @@ has answer `6`: take the white edge `1-2` (weight 1) and the two black edges `2-
 `3-4` (weight 3); that spanning tree uses exactly one white edge and totals `6`, and no exactly-one-
 white spanning tree is cheaper.
 
-## Background
-
-The constraint "exactly `k` of one colour" is what makes this more than a plain MST. Two families of
-approach are on the table before committing.
-
-- **Per-count dynamic programming.** Track, while building the tree, how many white edges have been
-  used, computing `dp[count]` = best weight achievable with that white count. A spanning-tree DP that
-  carries the white count along is the obvious "make the constraint a state" move. The open question is
-  whether such a DP can be both correct and fast enough at `n, m` up to a few hundred thousand.
-- **Penalty / Lagrangian relaxation.** Add a per-white-edge penalty `lambda` to the objective, build an
-  ordinary (unconstrained) MST under the penalized weights, and tune `lambda` so that the resulting
-  tree happens to use exactly `k` white edges. The open questions are *why* a single scalar `lambda`
-  suffices, *which* `lambda` to pick, and how to recover the true weight from the penalized one.
-
-The function `f(k)` = (min weight of a spanning tree with exactly `k` white edges) is defined on a
-contiguous interval `[minWhite, maxWhite]` of achievable white counts; outside it the answer is `-1`.
-Whether `f` has structure that a penalty method can exploit is the crux of the problem.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: feasible `k` in the interior of the white-count window; the boundary
 counts `k = minWhite` and `k = maxWhite`; infeasible `k` (too few or too many white edges achievable,
 and `k > n - 1`); disconnected graphs (`-1`); all-white and all-black graphs; `n = 1` (the empty tree,
 answer `0` only for `k = 0`); parallel edges; and large connected graphs with `n = 2*10^5`,
-`m = 4*10^5`, weights near `10^9` so the total weight exceeds a 32-bit integer.
+`m = 4*10^5`, weights near `10^9`.
 
 ## Code framework
 
