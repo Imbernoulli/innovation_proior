@@ -12,66 +12,78 @@ A practical design loop also needs to keep the shape smooth. If I descend using 
 
 The design cycle is therefore: solve the flow, solve the adjoint, assemble the gradient, smooth it, take a line-search step, and repeat. Each cycle costs about two flow solves regardless of how many design variables are used. That is the breakthrough of the method: high-dimensional shape optimization becomes affordable because the gradient is obtained by a single reverse-mode solve rather than by N forward perturbations.
 
-```python
-import numpy as np
+I land all of this on a quasi-1D Euler nozzle, where the state per cell is the usual conserved triple and the shape is the duct area, so I can check every number against a known answer: I pose an inverse-design cost, one half the sum over cells of the squared mismatch between the local pressure ratio and a target distribution, and construct the target from a nozzle area I already know, so the true optimum is recoverable and the gradient has a ground truth to be checked against. `gradient_adjoint` assembles exactly the pieces the derivation calls for: it chains the shape parameterization through `evaldAreadDes` to get the area sensitivity to the design variables, evaluates the direct cost sensitivity `dCostdW`/`dCostdArea`, forms the residual sensitivity to area and hence to the design variables, builds the flow Jacobian `dRdW` from an ADOL-C trace of the residual, and then does the one extra solve — a sparse LU factorization of the *transpose* of that Jacobian against the right-hand side `dCostdW` — to get the costate ψ. The gradient against every design variable then falls out of a single cheap matrix–vector assembly, `dCostdDes − ψᵀ dRdDes`. `implicitSmoothing` is the discretized Sobolev preconditioner: it builds the tridiagonal matrix for `1 − ε∂²` and solves it against the raw gradient, which is what keeps the shape smooth across design cycles instead of roughening it. `optimizer` is the design loop itself: solve the flow, get the adjoint gradient, take a steepest-descent step under Armijo backtracking line search, re-solve, and repeat until the gradient norm falls below tolerance.
 
-# Toy verification of the adjoint gradient for a constrained state problem.
-# State w solves R(w, alpha) = A @ w + B @ alpha + c = 0.
-# Cost is I(w, alpha) = 0.5 * ||w - w_target||^2 + 0.5 * lam * ||alpha||^2.
-# We compare the adjoint gradient against central finite differences.
+```cpp
+// Adjoint gradient: G = ∂I/∂α − ψᵀ ∂R/∂α,  with  (∂R/∂w)ᵀ ψ = ∂I/∂w
+VectorXd gradient_adjoint(
+    const int cost_function,
+    const std::vector<double>& x, const std::vector<double>& dx,
+    const std::vector<double>& area,
+    const Flow_options& flo_opts, const Flow_data<double>& flow_data,
+    const Optimization_options<double>& opt_opts, const Design<double>& design)
+{
+    const int n_resi = flo_opts.n_elem * 3;
+    const int n_face = flo_opts.n_elem + 1;
 
-np.random.seed(0)
-n_state = 30
-n_design = 20
-lam = 0.05
+    // shape parameterization: ∂(area)/∂(design vars)
+    MatrixXd dAreadDes = evaldAreadDes(x, dx, design);
 
-A = np.eye(n_state) + 0.1 * np.random.randn(n_state, n_state)
-B = np.random.randn(n_state, n_design)
-c = np.random.randn(n_state)
-w_target = np.random.randn(n_state)
-alpha = np.random.randn(n_design)
+    // ∂I/∂w and direct ∂I/∂α  (cost = ½ Σ (p/p_t − p_d)² dx ; dCostdArea = 0 for inverse design)
+    VectorXd dCostdW    = evaldCostdW(opt_opts, flo_opts, flow_data.W, dx);
+    VectorXd dCostdArea = evaldCostdArea(flo_opts.n_elem);
+    VectorXd dCostdDes  = dCostdArea.transpose() * dAreadDes;
 
+    // ∂R/∂α  =  ∂R/∂(area) · ∂(area)/∂α
+    MatrixXd dRdArea = evaldRdArea(flo_opts, flow_data);
+    MatrixXd dRdDes  = dRdArea * dAreadDes;
 
-def solve_state(alpha):
-    rhs = -B @ alpha - c
-    return np.linalg.solve(A, rhs)
+    // ∂R/∂w : flow Jacobian from the ADOL-C residual trace
+    SparseMatrix<double> dRdW = eval_dRdW_dRdX_adolc(flo_opts, area, flow_data);
 
+    // one extra solve: adjoint equation, transpose of the flow Jacobian (N-independent)
+    SparseLU<SparseMatrix<double>, COLAMDOrdering<int>> solver;
+    solver.compute(dRdW.transpose());
+    VectorXd psi = solver.solve(dCostdW);
 
-def cost(w, alpha):
-    return 0.5 * np.sum((w - w_target) ** 2) + 0.5 * lam * np.sum(alpha ** 2)
+    // gradient w.r.t. all design variables in one cheap assembly
+    VectorXd dIdDes = dCostdDes.transpose() - psi.transpose() * dRdDes;
+    return dIdDes;
+}
 
+// Sobolev / implicit smoothing of the gradient: M ḡ = g, the discrete form of ḡ − ε ḡ″ = g
+VectorXd implicitSmoothing(VectorXd g, double epsilon) {
+    int n = g.size();
+    MatrixXd M = MatrixXd::Zero(n, n);
+    for (int i = 0; i < n; i++)             M(i, i)   = 1.0 + 2.0 * epsilon;
+    for (int i = 0; i < n - 1; i++) { M(i+1, i) = -epsilon; M(i, i+1) = -epsilon; }
+    return M.llt().solve(g);
+}
 
-def adjoint_gradient(alpha):
-    w = solve_state(alpha)
-    # Adjoint: (dR/dw)^T psi = dI/dw
-    dI_dw = w - w_target
-    psi = np.linalg.solve(A.T, dI_dw)
-    # G = dI/dalpha - psi^T (dR/dalpha)
-    dI_dalpha = lam * alpha
-    dR_dalpha = B
-    return dI_dalpha - dR_dalpha.T @ psi
+// Design loop: flow solve → adjoint gradient → descent step with Armijo backtracking
+void optimizer(/* constants, x, dx, flo_opts, opt_opts, initial_design */) {
+    Design<double> current_design = initial_design;
+    std::vector<double> area = evalS<double>(current_design, x, dx);
+    VectorXd searchD(opt_opts.n_design_variables);
+    int it_design = 0;
 
+    Flow_data<double> flow;
+    quasiOneD(x, area, flo_opts, &flow);
+    double cost = evalFitness(dx, flo_opts, flow.W, opt_opts);
 
-def finite_difference_gradient(alpha, h=1e-5):
-    g = np.zeros_like(alpha)
-    for i in range(len(alpha)):
-        alpha_plus = alpha.copy()
-        alpha_minus = alpha.copy()
-        alpha_plus[i] += h
-        alpha_minus[i] -= h
-        w_plus = solve_state(alpha_plus)
-        w_minus = solve_state(alpha_minus)
-        g[i] = (cost(w_plus, alpha_plus) - cost(w_minus, alpha_minus)) / (2 * h)
-    return g
+    VectorXd g = getGradient(opt_opts.gradient_type, opt_opts.cost_function,
+                             x, dx, area, flo_opts, flow, opt_opts, current_design);
 
-
-grad_adj = adjoint_gradient(alpha)
-grad_fd = finite_difference_gradient(alpha)
-rel_error = np.linalg.norm(grad_adj - grad_fd) / (np.linalg.norm(grad_fd) + 1e-12)
-print("Relative adjoint-vs-finite-difference error:", rel_error)
-
-# Demonstrate that the adjoint gradient cost is independent of the design dimension:
-# the expensive solve is just one n_state-by-n_state linear system, one time.
-print("Adjoint solve dimension:", n_state, "x", n_state)
-print("Number of design variables:", n_design)
+    while (g.norm() > opt_opts.opt_tol && it_design < opt_opts.opt_maxit) {
+        it_design++;
+        VectorXd pk = -50 * g;              // steepest descent branch in the local optimizer
+        cost = linesearch_backtrack_unconstrained(   // Armijo: new_cost <= cost + alpha*c1*g.dot(pk)
+            1.0, x, dx, pk, g, cost, flo_opts, opt_opts, &searchD, &flow, &current_design);
+        area = evalS(current_design, x, dx);
+        g    = getGradient(opt_opts.gradient_type, opt_opts.cost_function,
+                           x, dx, area, flo_opts, flow, opt_opts, current_design);
+    }
+}
 ```
+
+The local implementation also includes `test_grad`, which compares `getGradient(1)` against forward direct differentiation, `getGradient(2)`, and central finite differences, `getGradient(-3)`. The forward path computes `dCostdDes + dCostdW·dWdDes` with `dWdDes = solve(−dRdW, dRdDes)`, so the minus sign in the adjoint assembly is checked against the same residual linearization.
