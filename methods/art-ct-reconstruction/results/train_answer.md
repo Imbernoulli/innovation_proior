@@ -12,12 +12,14 @@ from scipy.sparse import csr_matrix
 
 
 def build_system_matrix(n, angles, n_rays=None, det_spacing=1.0):
-    """Parallel-beam forward model: A[i, j] = intersection length of ray i
-    with pixel j.  ray_view[i] identifies the projection angle ray i belongs to."""
+    """Parallel-beam forward model: A[i, j] = intersection length of ray i with
+    pixel j; ray_view[i] = which projection ray i belongs to. Each ray is traced
+    by oversampling points along it and accumulating the step length ds into the
+    pixel each sample lands in."""
     if n_rays is None:
         n_rays = n
     rows, cols, vals = [], [], []
-    s = (np.arange(n_rays) - (n_rays - 1) / 2.0) * det_spacing
+    s = (np.arange(n_rays) - (n_rays - 1) / 2.0) * det_spacing      # ray offsets
     half = n / 2.0
     n_samp = 4 * n
     t = (np.arange(n_samp) - (n_samp - 1) / 2.0) * (np.sqrt(2.0) * n / n_samp)
@@ -27,7 +29,7 @@ def build_system_matrix(n, angles, n_rays=None, det_spacing=1.0):
         c, sn = np.cos(theta), np.sin(theta)
         for off in s:
             x = off * (-sn) + t * c
-            y = off * c + t * sn
+            y = off * (c) + t * sn
             px = np.floor(x + half).astype(int)
             py = np.floor(y + half).astype(int)
             inside = (px >= 0) & (px < n) & (py >= 0) & (py < n)
@@ -36,7 +38,7 @@ def build_system_matrix(n, angles, n_rays=None, det_spacing=1.0):
                 uniq, cnt = np.unique(flat, return_counts=True)
                 rows += [i] * uniq.size
                 cols += uniq.tolist()
-                vals += (cnt * ds).tolist()
+                vals += (cnt * ds).tolist()                          # length per pixel
             i += 1
     A = csr_matrix((vals, (rows, cols)), shape=(len(angles) * n_rays, n * n))
     ray_view = np.repeat(np.arange(len(angles)), n_rays)
@@ -54,40 +56,43 @@ def apply_constraints(x, nonneg=True):
 
 
 def art(A, b, n_sweeps=10, lam=1.0, x0=None, nonneg=True, order=None):
-    """Cyclic Kaczmarz / ART."""
+    """Cyclic Kaczmarz / ART: project the estimate onto each ray's hyperplane.
+        x <- x + lam * (b_i - a_i.x) / ||a_i||^2 * a_i"""
     m, ncol = A.shape
     x = np.zeros(ncol) if x0 is None else x0.astype(float).copy()
     A = A.tocsr()
-    row_norm2 = np.asarray(A.multiply(A).sum(axis=1)).ravel()
+    row_norm2 = np.asarray(A.multiply(A).sum(axis=1)).ravel()        # ||a_i||^2
     idx = np.arange(m) if order is None else np.asarray(order)
     for _ in range(n_sweeps):
         for i in idx:
             if row_norm2[i] == 0.0:
                 continue
             ai = A.getrow(i)
-            resid = b[i] - ai.dot(x)[0]
+            resid = b[i] - ai.dot(x)[0]                              # b_i - a_i.x
             x = x + lam * (resid / row_norm2[i]) * ai.toarray().ravel()
-            apply_constraints(x, nonneg=nonneg)
+            apply_constraints(x, nonneg=nonneg)                      # projection onto x>=0
     return x
 
 
 def sart(A, b, ray_view, n_iters=5, lam=1.0, x0=None, nonneg=True):
-    """Simultaneous Algebraic Reconstruction Technique, per-view update."""
+    """SART: per-view simultaneous update with row-sum and column-sum weighting.
+        x_j <- x_j + lam * [sum_{i in V} a_ij (b_i - a_i.x)/(sum_k a_ik)]
+                          / (sum_{i in V} a_ij)"""
     m, ncol = A.shape
     x = np.zeros(ncol) if x0 is None else x0.astype(float).copy()
     A = A.tocsr()
-    row_sum = np.asarray(A.sum(axis=1)).ravel()
+    row_sum = np.asarray(A.sum(axis=1)).ravel()                     # L_i = sum_k a_ik
     row_sum = np.where(row_sum == 0.0, 1.0, row_sum)
     for _ in range(n_iters):
         for v in np.unique(ray_view):
             sel = np.where(ray_view == v)[0]
             Av = A[sel]
-            resid = b[sel] - Av.dot(x)
-            weighted = resid / row_sum[sel]
-            num = Av.T.dot(weighted)
-            col = np.asarray(Av.sum(axis=0)).ravel()
+            resid = b[sel] - Av.dot(x)                              # b_i - a_i.x
+            weighted = resid / row_sum[sel]                         # / ray length L_i
+            num = Av.T.dot(weighted)                                # back-project sum_i a_ij(.)
+            col = np.asarray(Av.sum(axis=0)).ravel()                # sum_i a_ij over view
             col = np.where(col == 0.0, 1.0, col)
-            x = x + lam * num / col
+            x = x + lam * num / col                                 # / per-pixel coverage
             apply_constraints(x, nonneg=nonneg)
     return x
 
@@ -107,15 +112,15 @@ if __name__ == "__main__":
     yy, xx = np.mgrid[0:n, 0:n]
     cx = cy = (n - 1) / 2.0
     r = np.sqrt((xx - cx) ** 2 + (yy - cy) ** 2)
-    img = np.where(r < n * 0.42, 0.3, 0.0)
+    img = np.where(r < n * 0.42, 0.3, 0.0)                          # small phantom
     img += np.where((xx - n*0.40)**2 + (yy - n*0.55)**2 < (n*0.12)**2, 0.6, 0.0)
     img += np.where((xx - n*0.62)**2 + (yy - n*0.42)**2 < (n*0.08)**2, 0.5, 0.0)
 
     angles = np.linspace(0, np.pi, 30, endpoint=False)
     A, ray_view = build_system_matrix(n, angles, n_rays=n)
-    b = forward_project(A, img.ravel())
+    b = forward_project(A, img.ravel())                             # simulated ray-sums
 
-    nv = len(angles)
+    nv = len(angles)                                               # wide-angle ray order
     perm = np.argsort([(k * (nv // 2 + 1)) % nv for k in range(nv)])
     order = np.concatenate([np.where(ray_view == v)[0] for v in perm])
 
