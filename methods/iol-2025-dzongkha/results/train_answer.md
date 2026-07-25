@@ -14,38 +14,8 @@ With the rules fixed, the ten equalities collapse. Equality (1) is cusum + ke p�
 
 Finally, part (c) asks for 75 and 570 in both systems. Seventy-five in System A is three-quarters of the way into the fourth twenty, so ke ko-da ʑi = 20·4 − 5 = 75. In System B it is seven tens plus five, dønŋa. Five hundred seventy in System A is one four-hundred plus a half-climbed ninth twenty, ɲiɕu ci da ke pɟe-da gu = 400 + (20·9 − 10) = 570. In System B it is five hundreds plus seven tens, ŋapɟa dyncu.
 
-The following Python script encodes the dictionaries I derived and checks every equality and every conversion, so the solution is not just stated but verified.
-
-```python
-# Verify the Dzongkha numeral-system decoding
-
-def ke(x, frac=0):
-    # System A twenties block; frac=10 means pɟe (half), frac=5 means ko (three-quarters)
-    return 20 * x - frac
-
-def nishu(x, frac=0):
-    # System A four-hundreds block; frac=200 means pɟe, frac=300 means ko
-    return 400 * x - frac
-
-checks = [
-    (13 + ke(4, 10), 83, "(1)"),
-    (nishu(2), 20 * 40, "(2)"),
-    (400 + 20 * 3 + 9, 50 * 9 + 19, "(3)"),
-    (nishu(2, 200) + ke(6, 10), 500 + 210, "(4)"),
-    (2 * 0.75 + 0.5, 2, "(5)"),
-    (nishu(3, 100) * 0.5 + ke(3, 10), 600, "(6)"),
-    (400 + 20 * 16 + 16, 84 * 4 + 400, "(7)"),
-    (2 * (400 + 20 * 10 + 9), 60 * 20 + 18, "(8)"),
-    (62 + 24, 86, "(9)"),
-    (885 + 115, 700 + 300, "(10)"),
-]
-for lhs, rhs, tag in checks:
-    assert lhs == rhs, f"{tag} failed: {lhs} != {rhs}"
-    print(f"{tag}: {lhs} = {rhs}")
-
-# Target conversions
-print("75 A: ke ko-da ʑi =", ke(4, 5))
-print("75 B: dønŋa = 70 + 5 =", 75)
-print("570 A: ɲiɕu ci da ke pɟe-da gu =", 400 + ke(9, 10))
-print("570 B: ŋapɟa dyncu = 500 + 70 =", 570)
-```
+The whole decipherment collapses into one generative system, and writing that system down in closed form — not a verification script — is the actual deliverable. Units one through nine are shared between the two systems: ci, ɲi, sum, ʑi, ŋa, ɖu, dyn, ge, gu; teens are a ten-front plus the unit, with cutãm standing alone for ten. System A is big-endian base twenty: twenties are marked by ke and four-hundreds ($20^2$) by ɲiɕu, joined by da, with a bare place dropping its da-tail,
+$$\text{ke } X \text{ da } Y = 20X + Y, \qquad \text{ɲiɕu } X \text{ da ke } \beta \text{ da } \alpha = 400X + 20\beta + \alpha.$$
+Two fractional words, pɟe (one-half) and ko (three-quarters), do not multiply a digit — they overcount the place currently being climbed, naming the place in progress rather than the place completed,
+$$\text{ke pɟe-da } X = 20X - 10, \quad \text{ke ko-da } X = 20X - 5, \quad \text{ɲiɕu pɟe-da } X = 400X - 200, \quad \text{ɲiɕu ko-da } X = 400X - 100.$$
+System B is base ten, and every digit carries three stem-shapes keyed to its syntactic role: a bare unit shape; a tens-stem used with the suffix -cu for a round ten (sumcu = 30 through gepcu = 80, with ɲiɕu itself the sole -ɕu exception standing for 20); and a distinct tens-stem used directly before a following unit with no -cu at all (tsa-, so-, ʑe-, ŋa-, døn-, ɟa- for the 20s through 80s, e.g. tsaɲi = 22, dønɖu = 76, ɟagu = 89). Hundreds are the digit-stem plus -ɟa (sumɟa = 300 through dynɟa = 700), and cutãm reappears unchanged as the bare ten inside a hundred (ɲiɟa cutãm = 210). This closes the grammar: every one of the ten equalities, the three blanks (X = 60 = ɖukcu, Y = 62 = ke sum da ɲi, Z = 885 = ɲiɕu ɲi da ke ʑi da ŋa), and both target conversions fall out of these rules alone, and the single syllable ɲiɕu carrying two different magnitudes — 20 under System B's suffix logic, 400 under System A's place logic — is exactly the deliberate ambiguity the whole puzzle is built to force apart.
