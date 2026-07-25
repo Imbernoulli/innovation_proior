@@ -13,17 +13,15 @@ The backtracking logic uses an integer return value that tells the caller how ma
 On easy instructions this collapses to the greedy chain: the first generated child at each node is good, so it is followed all the way to the answer with no extra ranking cost. On hard instructions it pays the ranking premium only when the first child fails, exploring alternatives depth-first while preserving the good prefix. Here is a concise implementation:
 
 ```python
-def search(self, root_node):
-    """DFS with LLM ranking: expand best child first, backtrack on failure."""
-    return self.DFS(root_node, single_chain_max_step=self.single_chain_max_step,
-                    tree_beam_size=self.tree_beam_size,
-                    max_query_count=self.max_query_count,
-                    answer=self.answer_count, with_filter=True)
+def search(self, root_node, single_chain_max_step, tree_beam_size,
+           max_query_count, answer=1):
+    return self.DFS(root_node, single_chain_max_step, tree_beam_size,
+                    max_query_count, answer, with_filter=True)
 
 
 def DFS(self, now_node, single_chain_max_step, tree_beam_size,
         max_query_count, answer, with_filter=True):
-    """Return how many levels the caller should keep climbing."""
+    """Return the number of levels still to climb."""
     final_answer_back_length = 2
     prune_back_length = 2
 
@@ -57,7 +55,9 @@ def DFS(self, now_node, single_chain_max_step, tree_beam_size,
 
         self.llm.change_messages(temp_now_node.messages)
         new_message, error_code, total_tokens = self.llm.parse(
-            self.io_func.functions, process_id=self.process_id)
+            self.io_func.functions,
+            process_id=self.process_id,
+        )
         self.query_count += 1
         self.total_tokens += total_tokens
 
@@ -68,9 +68,12 @@ def DFS(self, now_node, single_chain_max_step, tree_beam_size,
             temp_now_node.messages[-1]["valid"] = False
 
         temp_now_node = self._expand_once(
-            temp_now_node, new_message, error_code,
+            temp_now_node,
+            new_message,
+            error_code,
             final_answer_back_length,
         )
+
         next_tree_split_nodes.append(temp_now_node)
 
     if len(next_tree_split_nodes) > 1:
@@ -81,7 +84,8 @@ def DFS(self, now_node, single_chain_max_step, tree_beam_size,
             "rank_func": rank2_subfix,
         }
         scores, rank_query_count, rank_tokens = sum_based_rankn(
-            self.llm, LLM_rank_args=rank_args,
+            self.llm,
+            LLM_rank_args=rank_args,
             candidates=next_tree_split_nodes,
         )
         self.query_count += rank_query_count
@@ -97,7 +101,7 @@ def DFS(self, now_node, single_chain_max_step, tree_beam_size,
 
     for child in next_tree_split_nodes:
         result = self.DFS(child, single_chain_max_step, tree_beam_size,
-                          max_query_count, answer, with_filter)
+                          max_query_count, answer, with_filter=True)
         if len(self.terminal_node) >= answer:
             return 10000
         if result > 1:
