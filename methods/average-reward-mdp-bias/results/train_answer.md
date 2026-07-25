@@ -12,50 +12,45 @@ Computationally, policy iteration alternates between solving the Poisson equatio
 import numpy as np
 
 class MDP:
-    """Finite MDP. P[a] is an (n,n) row-stochastic transition matrix; R[a] is length-n reward."""
+    """Finite MDP. P[a]: (n,n) row-stochastic; R[a]: length-n reward."""
     def __init__(self, P, R):
-        self.P = P
-        self.R = R
-        self.n = P[0].shape[0]
-        self.m = len(P)
+        self.P, self.R = P, R
+        self.n, self.m = P[0].shape[0], len(P)
 
 def evaluate_policy(mdp, pi, ref=0):
-    """Solve the average-reward Poisson equation g + h = r_pi + P_pi h, with h(ref)=0."""
+    """Gain g and bias h from the average-reward Poisson equation, h(ref)=0."""
     n = mdp.n
     Ppi = np.stack([mdp.P[pi[s]][s] for s in range(n)])
     rpi = np.array([mdp.R[pi[s]][s] for s in range(n)])
-    A = np.zeros((n + 1, n + 1))
-    b = np.zeros(n + 1)
-    A[:n, :n] = np.eye(n) - Ppi
-    A[:n, n] = 1.0
-    b[:n] = rpi
-    A[n, ref] = 1.0
+    A = np.zeros((n + 1, n + 1)); b = np.zeros(n + 1)
+    A[:n, :n] = np.eye(n) - Ppi    # (I - Ppi) h
+    A[:n, n]  = 1.0                # + g
+    b[:n]     = rpi
+    A[n, ref] = 1.0                # h(ref) = 0
     x = np.linalg.solve(A, b)
-    return x[n], x[:n]  # gain, bias
+    return x[n], x[:n]             # g, h
 
 def policy_iteration(mdp):
-    """Howard-style average-reward policy iteration."""
     pi = np.zeros(mdp.n, dtype=int)
     while True:
         g, h = evaluate_policy(mdp, pi)
         Q = np.stack([mdp.R[a] + mdp.P[a] @ h for a in range(mdp.m)], axis=0)
         pi_new = Q.argmax(axis=0)
         if np.array_equal(pi_new, pi):
-            return g, h, pi
+            return g, h, pi        # g + h = max_a [ r + P h ]
         pi = pi_new
 
 def relative_value_iteration(mdp, ref=0, eps=1e-9, tau=0.5):
-    """Relative value iteration with aperiodicity transform and span seminorm stopping."""
     P = [(1 - tau) * np.eye(mdp.n) + tau * mdp.P[a] for a in range(mdp.m)]
     R = [tau * mdp.R[a] for a in range(mdp.m)]
     V = np.zeros(mdp.n)
     while True:
         Q = np.stack([R[a] + P[a] @ V for a in range(mdp.m)], axis=0)
         raw = Q.max(axis=0)
-        drift = raw - V
-        V_next = raw - raw[ref]
-        if drift.max() - drift.min() < eps:
-            g = 0.5 * (drift.max() + drift.min()) / tau
-            return g, V_next, Q.argmax(axis=0)
+        drift = raw - V                                    # tends to tau*g times 1
+        V_next = raw - raw[ref]                            # kill the gain drift
+        if drift.max() - drift.min() < eps:                # span seminorm stop
+            g = 0.5 * (drift.max() + drift.min()) / tau    # undo g~ = tau*g
+            return g, V_next, Q.argmax(axis=0)             # gain, bias, greedy policy
         V = V_next
 ```
