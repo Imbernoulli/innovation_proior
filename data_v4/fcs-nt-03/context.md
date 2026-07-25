@@ -1,4 +1,4 @@
-# Divisor summatory function via the Dirichlet hyperbola method
+# Divisor summatory function
 
 ## Research question
 
@@ -14,10 +14,6 @@ Equivalently, `D(n) = sum_{i=1}^{n} floor(n / i)`, because a fixed `i` divides e
 rather than by the dividend `k` gives the same total. The task is to output `D(n)` for a single
 `n` that can be as large as `10^12`, well past the range where an explicit `O(n)` loop over
 `i = 1..n` finishes in time.
-
-This is the canonical setting for the **Dirichlet hyperbola method**: counting lattice points
-`(a, b)` with `a * b <= n` by exploiting the symmetry of the region `a * b <= n` about the line
-`a = b`.
 
 ## Input / output contract
 
@@ -40,18 +36,12 @@ Two representations of the same quantity are on the table before committing to a
   `O(1)` memory — much better, but still linear in `n`, so still far too slow at `10^12` (a
   trillion iterations).
 
-The open question is whether the `sum floor(n/i)` form hides enough structure to be evaluated in
-sublinear time. The relevant structural fact is geometric: `D(n)` counts the lattice points
-`(a, b)` with `a >= 1`, `b >= 1`, and `a * b <= n` (each `k <= n` contributes one point per
-divisor pair). That region sits under a hyperbola and is symmetric across `a = b`.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: the convention region `n = 0` (answer `0`); the smallest
-nontrivial values `n = 1, 2, 3`; perfect squares `n = s*s` (where the symmetry correction term is
-sharpest); values straddling a perfect square (`s*s - 1`, `s*s`, `s*s + 1`); a spread of
-mid-sized `n`; and the maximum `n = 10^12`, where any `O(n)` approach times out and where the
-returned value (`~2.8 * 10^13`) must not overflow 32-bit arithmetic.
+nontrivial values `n = 1, 2, 3`; perfect squares `n = s*s`; values straddling a perfect square
+(`s*s - 1`, `s*s`, `s*s + 1`); a spread of mid-sized `n`; and the maximum `n = 10^12`, where any
+`O(n)` approach times out.
 
 ## Code framework
 
