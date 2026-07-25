@@ -20,13 +20,16 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
+# ---- Positional encoding (Sec. positional encoding) ----
 class Embedder:
-    def __init__(self, num_freqs, input_dims=3, include_input=True):
+    def __init__(self, num_freqs, input_dims=3, include_input=True, log_sampling=True):
         self.embed_fns, self.out_dim = [], 0
         if include_input:
-            self.embed_fns.append(lambda x: x)
-            self.out_dim += input_dims
-        freqs = 2.0 ** torch.linspace(0.0, num_freqs - 1, num_freqs)
+            self.embed_fns.append(lambda x: x); self.out_dim += input_dims
+        if log_sampling:
+            freqs = 2. ** torch.linspace(0., num_freqs - 1, num_freqs)
+        else:
+            freqs = torch.linspace(2. ** 0., 2. ** (num_freqs - 1), num_freqs)
         for f in freqs:
             for p in (torch.sin, torch.cos):
                 self.embed_fns.append(lambda x, p=p, f=f: p(x * f * torch.pi))
@@ -41,6 +44,7 @@ def get_embedder(multires):
     return (lambda x: e(x)), e.out_dim
 
 
+# ---- Model: sigma(x), rgb(x, d) ----
 class NeRF(nn.Module):
     def __init__(self, D=8, W=256, input_ch=63, input_ch_views=27, skips=(4,)):
         super().__init__()
@@ -55,47 +59,49 @@ class NeRF(nn.Module):
         self.rgb_linear = nn.Linear(W // 2, 3)
 
     def forward(self, x):
-        input_pts, input_views = torch.split(
-            x, [self.pts_linears[0].in_features,
-                self.views_linears[0].in_features - self.feature_linear.out_features], -1)
+        input_pts, input_views = torch.split(x, [self.pts_linears[0].in_features,
+                                                  self.views_linears[0].in_features
+                                                  - self.feature_linear.out_features], -1)
         h = input_pts
         for i, l in enumerate(self.pts_linears):
             h = F.relu(l(h))
             if i in self.skips:
                 h = torch.cat([input_pts, h], -1)
-        alpha = self.alpha_linear(h)
+        alpha = self.alpha_linear(h)                  # density: position only
         feature = self.feature_linear(h)
-        h = torch.cat([feature, input_views], -1)
+        h = torch.cat([feature, input_views], -1)     # bring in viewing direction
         for l in self.views_linears:
             h = F.relu(l(h))
         rgb = self.rgb_linear(h)
-        return torch.cat([rgb, alpha], -1)
+        return torch.cat([rgb, alpha], -1)            # [..., 4], raw
 
 
-def raw2outputs(raw, z_vals, rays_d, raw_noise_std=0.0, white_bkgd=False):
-    dists = z_vals[..., 1:] - z_vals[..., :-1]
+# ---- Volume rendering quadrature: integral -> alpha compositing ----
+def raw2outputs(raw, z_vals, rays_d, raw_noise_std=0., white_bkgd=False):
+    dists = z_vals[..., 1:] - z_vals[..., :-1]                          # delta_i
     dists = torch.cat([dists, torch.full_like(dists[..., :1], 1e10)], -1)
-    dists = dists * torch.norm(rays_d[..., None, :], dim=-1)
+    dists = dists * torch.norm(rays_d[..., None, :], dim=-1)            # true world length
     rgb = torch.sigmoid(raw[..., :3])
-    noise = torch.randn_like(raw[..., 3]) * raw_noise_std if raw_noise_std > 0 else 0.0
-    alpha = 1.0 - torch.exp(-F.relu(raw[..., 3] + noise) * dists)
+    noise = torch.randn_like(raw[..., 3]) * raw_noise_std if raw_noise_std > 0 else 0.
+    alpha = 1. - torch.exp(-F.relu(raw[..., 3] + noise) * dists)        # 1 - exp(-sigma*delta)
     T = torch.cumprod(torch.cat([torch.ones_like(alpha[..., :1]),
-                                 1.0 - alpha + 1e-10], -1), -1)[..., :-1]
-    weights = alpha * T
-    rgb_map = torch.sum(weights[..., None] * rgb, -2)
+                                 1. - alpha + 1e-10], -1), -1)[..., :-1]  # T_i = prod_{j<i}(1-a_j)
+    weights = alpha * T                                                 # w_i = T_i * alpha_i
+    rgb_map = torch.sum(weights[..., None] * rgb, -2)                   # sum_i w_i c_i
     acc_map = torch.sum(weights, -1)
     if white_bkgd:
-        rgb_map = rgb_map + (1.0 - acc_map[..., None])
+        rgb_map = rgb_map + (1. - acc_map[..., None])
     return rgb_map, weights
 
 
+# ---- Hierarchical sampling: inverse-transform sampling of the weight PDF ----
 def sample_pdf(bins, weights, N_samples, det=False):
     weights = weights + 1e-5
     pdf = weights / torch.sum(weights, -1, keepdim=True)
     cdf = torch.cumsum(pdf, -1)
     cdf = torch.cat([torch.zeros_like(cdf[..., :1]), cdf], -1)
     if det:
-        u = torch.linspace(0.0, 1.0, N_samples).expand(*cdf.shape[:-1], N_samples)
+        u = torch.linspace(0., 1., N_samples).expand(*cdf.shape[:-1], N_samples)
     else:
         u = torch.rand(*cdf.shape[:-1], N_samples)
     u = u.contiguous()
@@ -112,11 +118,10 @@ def sample_pdf(bins, weights, N_samples, det=False):
     return bins_g[..., 0] + t * (bins_g[..., 1] - bins_g[..., 0])
 
 
-def render_rays(rays_o, rays_d, viewdirs, near, far,
-                embed_fn, embeddirs_fn,
-                network_coarse, network_fine,
-                N_samples=64, N_importance=128,
-                perturb=True, raw_noise_std=0.0, white_bkgd=False):
+# ---- Per-ray render: stratified coarse pass + weight-guided fine pass ----
+def render_rays(rays_o, rays_d, viewdirs, near, far, embed_fn, embeddirs_fn,
+                network_coarse, network_fine, N_samples=64, N_importance=128,
+                perturb=True, raw_noise_std=0., white_bkgd=False):
     def query(net, pts):
         x = embed_fn(pts.reshape(-1, 3))
         d = embeddirs_fn(viewdirs[:, None].expand(pts.shape).reshape(-1, 3))
@@ -124,10 +129,10 @@ def render_rays(rays_o, rays_d, viewdirs, near, far,
         return out.reshape(*pts.shape[:-1], out.shape[-1])
 
     N_rays = rays_o.shape[0]
-    t_vals = torch.linspace(0.0, 1.0, N_samples)
-    z_vals = (near * (1.0 - t_vals) + far * t_vals).expand(N_rays, N_samples)
+    t_vals = torch.linspace(0., 1., N_samples)
+    z_vals = (near * (1. - t_vals) + far * t_vals).expand(N_rays, N_samples)
     if perturb:
-        mids = 0.5 * (z_vals[..., 1:] + z_vals[..., :-1])
+        mids = .5 * (z_vals[..., 1:] + z_vals[..., :-1])
         upper = torch.cat([mids, z_vals[..., -1:]], -1)
         lower = torch.cat([z_vals[..., :1], mids], -1)
         z_vals = lower + (upper - lower) * torch.rand_like(z_vals)
@@ -135,7 +140,7 @@ def render_rays(rays_o, rays_d, viewdirs, near, far,
     raw = query(network_coarse, pts)
     rgb_c, weights = raw2outputs(raw, z_vals, rays_d, raw_noise_std, white_bkgd)
 
-    z_mid = 0.5 * (z_vals[..., 1:] + z_vals[..., :-1])
+    z_mid = .5 * (z_vals[..., 1:] + z_vals[..., :-1])
     z_samp = sample_pdf(z_mid, weights[..., 1:-1], N_importance, det=not perturb).detach()
     z_vals, _ = torch.sort(torch.cat([z_vals, z_samp], -1), -1)
     pts = rays_o[..., None, :] + rays_d[..., None, :] * z_vals[..., :, None]
@@ -144,37 +149,36 @@ def render_rays(rays_o, rays_d, viewdirs, near, far,
     return rgb_c, rgb_f
 
 
+# ---- Training step: MSE on both coarse and fine ----
 def train_step(rays_o, rays_d, viewdirs, near, far, target,
                embed_fn, embeddirs_fn, net_c, net_f, optimizer, **kw):
     rgb_c, rgb_f = render_rays(rays_o, rays_d, viewdirs, near, far,
                                embed_fn, embeddirs_fn, net_c, net_f, **kw)
     loss = F.mse_loss(rgb_c, target) + F.mse_loss(rgb_f, target)
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
+    optimizer.zero_grad(); loss.backward(); optimizer.step()
     return loss
 
 
+# ---- NDC remap for unbounded forward-facing scenes ----
+def ndc_rays(H, W, focal, near, rays_o, rays_d):
+    t = -(near + rays_o[..., 2]) / rays_d[..., 2]          # shift to near plane
+    rays_o = rays_o + t[..., None] * rays_d
+    o0 = -1. / (W / (2. * focal)) * rays_o[..., 0] / rays_o[..., 2]
+    o1 = -1. / (H / (2. * focal)) * rays_o[..., 1] / rays_o[..., 2]
+    o2 = 1. + 2. * near / rays_o[..., 2]
+    d0 = -1. / (W / (2. * focal)) * (rays_d[..., 0] / rays_d[..., 2] - rays_o[..., 0] / rays_o[..., 2])
+    d1 = -1. / (H / (2. * focal)) * (rays_d[..., 1] / rays_d[..., 2] - rays_o[..., 1] / rays_o[..., 2])
+    d2 = -2. * near / rays_o[..., 2]
+    return torch.stack([o0, o1, o2], -1), torch.stack([d0, d1, d2], -1)
+
+
+# ---- Wiring ----
 def build():
-    embed_fn, in_ch = get_embedder(10)
-    embeddirs_fn, in_ch_views = get_embedder(4)
+    embed_fn, in_ch = get_embedder(10)        # gamma(x), L = 10
+    embeddirs_fn, in_ch_views = get_embedder(4)  # gamma(d), L = 4
     net_c = NeRF(input_ch=in_ch, input_ch_views=in_ch_views)
     net_f = NeRF(input_ch=in_ch, input_ch_views=in_ch_views)
     params = list(net_c.parameters()) + list(net_f.parameters())
     optimizer = torch.optim.Adam(params, lr=5e-4, betas=(0.9, 0.999), eps=1e-7)
     return embed_fn, embeddirs_fn, net_c, net_f, optimizer
-
-
-# Minimal sanity check: build and forward a small batch.
-if __name__ == "__main__":
-    embed_fn, embeddirs_fn, net_c, net_f, opt = build()
-    rays_o = torch.randn(32, 3)
-    rays_d = torch.randn(32, 3)
-    rays_d = rays_d / rays_d.norm(dim=-1, keepdim=True)
-    viewdirs = rays_d.clone()
-    target = torch.rand(32, 3)
-    loss = train_step(rays_o, rays_d, viewdirs, 2.0, 6.0, target,
-                      embed_fn, embeddirs_fn, net_c, net_f, opt,
-                      N_samples=32, N_importance=32)
-    print("loss", loss.item())
 ```
