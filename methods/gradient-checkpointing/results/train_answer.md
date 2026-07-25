@@ -27,12 +27,12 @@ class CheckpointedDeepNet(nn.Module):
         super().__init__()
         self.layers = nn.ModuleList(layers)
         n = len(self.layers)
-        # Balance O(n/k) recomputation memory against O(k) checkpoint memory.
         self.segments = 0 if n == 0 else max(1, min(n, ceil(sqrt(n))))
 
     def forward(self, x):
         if len(self.layers) == 0:
             return x
+
         return cp.checkpoint_sequential(
             list(self.layers),
             self.segments,
