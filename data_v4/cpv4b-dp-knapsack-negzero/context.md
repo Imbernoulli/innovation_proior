@@ -11,11 +11,9 @@ combined weight of the chosen parcels must **not exceed** the payload cap `C`. A
 exactly `K` parcels within the cap, you want to **maximize the total net profit**. If there is **no**
 way to load exactly `K` parcels within the cap, the run is cancelled.
 
-This is a two-dimensional (cardinality x weight) 0/1 knapsack. The fixed-count requirement is what
-makes it interesting: because you are *forced* to take exactly `K` parcels, the optimum can
-legitimately be a **negative** number, and "the optimum is negative" must stay strictly distinct from
-"no valid load exists." That distinction is exactly where a careless base case (initialising the
-whole table to `0`, or confusing "profit 0" with "unreachable") silently produces a wrong answer.
+The fixed-count requirement is what makes it interesting: because you are *forced* to take exactly
+`K` parcels, the optimum can legitimately be a **negative** number, and "the optimum is negative" must
+stay strictly distinct from "no valid load exists."
 
 ## Input / output contract
 
@@ -32,30 +30,13 @@ answer is `5`: you must pick exactly two parcels of combined weight at most `7`.
 (2,0)}` has weight `5 <= 7` and profit `5 + 0 = 5`, which beats `{(3,5),(4,-2)}` (weight `7`, profit
 `3`) and `{(3,5),(5,4)}` (weight `8`, over the cap). So `5`.
 
-## Background
-
-Two families of approach are on the table before committing to one.
-
-- **Subset enumeration / meet-in-the-middle.** Enumerate every size-`K` subset (or split the parcels
-  in half and merge by weight). Exhaustive enumeration is `O(C(n,K))` and obviously correct, but only
-  tractable for tiny `n`; meet-in-the-middle reaches `n` near 40 but is fiddly to merge under the
-  *maximize-profit-at-exactly-K-parcels-and-weight-at-most-C* objective. Neither scales to `n = 200`.
-- **Two-dimensional capacity DP (count x weight).** Build a table indexed by `(k, c)` = number of
-  parcels chosen so far and their exact total weight, storing the best profit reachable, and relax it
-  parcel by parcel in the 0/1 manner. This is `O(n * K * C)` time and `O(K * C)` memory. The open
-  questions are the exact base case (which `(k, c)` are reachable before any parcel is placed), the
-  transition order that keeps each parcel usable at most once, and how to encode "this `(k, c)` is
-  unreachable" so it never masquerades as a real profit of `0`.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: loads with a mix of positive, zero, and negative profits; cases
-where every feasible size-`K` load gives a **negative** optimum (must print the negative number, not
-`INFEASIBLE`); the empty-load corner `K = 0` (answer `0`, even when every parcel has a negative
-profit); `n = 0`; all-negative profit arrays; counts `K` that **exceed `n`** or that cannot be met
-within the cap (answer `INFEASIBLE`); many zero-weight parcels (so several can be loaded without
-spending any capacity); parcels heavier than `C` (never choosable); and large `n = 200`, `K = 200`,
-`C = 1000` with `|v[i]|` near `10^9` (so the accumulated profit can exceed the 32-bit range).
+where every feasible size-`K` load gives a **negative** optimum; the empty-load corner `K = 0`;
+`n = 0`; all-negative profit arrays; counts `K` that **exceed `n`** or that cannot be met within the
+cap; many zero-weight parcels; parcels heavier than `C`; and large `n = 200`, `K = 200`, `C = 1000`
+with `|v[i]|` near `10^9`.
 
 ## Code framework
 
