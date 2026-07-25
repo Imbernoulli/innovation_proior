@@ -46,24 +46,6 @@ Output:
 The first few derangement counts are `D(0..7) = 1, 0, 1, 2, 9, 44, 265, 1854`. (Modulo `10^9 + 7`
 none of these small values change.)
 
-## Background
-
-Two facts about derangements are worth having on the table before committing to an algorithm.
-
-- **The small values form a short, very tidy-looking sequence.** `1, 0, 1, 2, 9, 44, 265, 1854,
-  14833, 133496, ...`. For tiny `n` these are the kind of constants one is tempted to drop straight
-  into a lookup table. The sample only exercises `n <= 7`.
-
-- **There is a clean linear recurrence.** Counting derangements by where element `n` goes yields
-  `D(n) = (n - 1) * (D(n - 1) + D(n - 2))` for `n >= 2`, with `D(0) = 1`, `D(1) = 0`. There is also
-  the inclusion-exclusion closed form `D(n) = n! * sum_{k=0}^{n} (-1)^k / k!`, but evaluating that
-  modulo a prime requires modular inverses of factorials, whereas the recurrence needs only
-  additions and multiplications.
-
-The tension the problem sets up is precisely between these two facts: the small cases look
-hardcodable, but the query values range all the way to `n = 10^7`, far past any prefix one could
-store.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: the tiny regime (`n <= 7`, matching the sample); moderate `n` in
