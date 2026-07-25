@@ -10,79 +10,78 @@ For the one-pixel refinement case, I resample the entering color until it differ
 
 The query efficiency of this scheme can be understood through a binary-linear coupon-collector analysis. Consider a binary input x in {0,1}^d and a linear model with gradient w_x. Folding in the label and current value gives an effective weight vector w_hat_x = y * w_x ⊙ (1 - 2x). The optimal white-box k-sparse attack picks the k smallest entries of w_hat_x. In the black-box setting I cannot read w_hat_x directly; coordinate-wise estimation costs O(d) queries, which is impractical for d around 150000. I therefore relax exact recovery to finding k coordinates among the m smallest for some m > k. Modeling single-pixel swaps as a Markov chain on the number of good coordinates currently in the support gives an expected hitting time E[t_k] < (d - k) k (ln k + 2) / (m - k). When m - k grows with d, this bound is sublinear in the input dimension and beats the O(d) cost of black-box gradient estimation. The relaxation from exact top-k to k among the m smallest is what converts a prohibitive identification problem into a k log k-style hitting time. Real networks are piecewise-linear, so the same broad-then-fine behavior remains effective when larger swaps are used early and single-pixel swaps dominate late.
 
-The following Python script is a complete runnable illustration of the Sparse-RS L0 attack. It includes a small synthetic model, generates images that are initially correctly classified, runs the attack, and verifies that the final perturbation respects the L0 budget and flips the predicted class.
+The function below, `run_attack`, is the complete implementation. It takes the model, a batch of images, their labels, the pixel budget, and the device; it also accepts a class-count argument, kept only for interface parity with the other attack branches and unused here. It runs exactly the loop just described — initialize the support and corner colors, then propose, query, and accept — for up to 10000 queries, restricting every query to the images that are not yet fooled, and returns the best adversarial batch it found.
 
 ```python
-import torch
-import torch.nn as nn
+def run_attack(model, images, labels, pixels, device, n_classes):
+    """L0 random-search attack faithful to the canonical rs_attacks.py L0 branch."""
+    import torch
+    import torch.nn.functional as F
 
-
-class LinearModel(nn.Module):
-    """A small linear classifier used only to demonstrate the attack."""
-
-    def __init__(self, n_classes=10):
-        super().__init__()
-        self.n_classes = n_classes
-        self.fc = nn.Linear(3 * 32 * 32, n_classes, bias=True)
-
-    def forward(self, x):
-        return self.fc(x.view(x.size(0), -1))
-
-
-def sparse_rs_l0_attack(model, images, labels, pixels, n_queries=10000, p_init=0.8):
-    """Sparse-RS L0 black-box attack (Croce et al., AAAI 2022)."""
+    _ = (n_classes,)
     model.eval()
+    n_queries = 10000
+    p_init = 0.8
     eps = int(pixels)
-    x = images.detach().clone()
-    y = labels.detach().clone()
-    B, C, H, W = x.shape
-    n_pixels = H * W
-    device = x.device
+
+    x = images.detach().clone().to(device)
+    y = labels.detach().clone().to(device)
+    batch, channels, height, width = x.shape
+    n_pixels = height * width
 
     def margin_and_loss(xb, yb):
         with torch.no_grad():
             logits = model(xb)
-        u = torch.arange(xb.shape[0], device=device)
-        y_corr = logits[u, yb].clone()
-        logits[u, yb] = -float("inf")
+        xent = F.cross_entropy(logits, yb, reduction="none")
+        rows = torch.arange(xb.shape[0], device=xb.device)
+        y_corr = logits[rows, yb].clone()
+        logits[rows, yb] = -float("inf")
         y_others = logits.max(dim=-1)[0]
         margin = y_corr - y_others
-        return margin, margin
+        loss = margin
+        _ = xent
+        return margin, loss
+
+    def random_choice(shape):
+        return torch.sign(2 * torch.rand(shape, device=device, dtype=x.dtype) - 1.0)
 
     def p_selection(it):
         it = int(it / n_queries * 10000)
         if 0 < it <= 50:
-            return p_init / 2
+            p = p_init / 2
         elif 50 < it <= 200:
-            return p_init / 4
+            p = p_init / 4
         elif 200 < it <= 500:
-            return p_init / 5
+            p = p_init / 5
         elif 500 < it <= 1000:
-            return p_init / 6
+            p = p_init / 6
         elif 1000 < it <= 2000:
-            return p_init / 8
+            p = p_init / 8
         elif 2000 < it <= 4000:
-            return p_init / 10
+            p = p_init / 10
         elif 4000 < it <= 6000:
-            return p_init / 12
+            p = p_init / 12
         elif 6000 < it <= 8000:
-            return p_init / 15
+            p = p_init / 15
         elif 8000 < it:
-            return p_init / 20
-        return p_init
-
-    def rand_colors(shape):
-        return torch.randint(0, 2, shape, device=device, dtype=x.dtype)
+            p = p_init / 20
+        else:
+            p = p_init
+        return p
 
     x_best = x.clone()
-    b_all = torch.zeros(B, eps, dtype=torch.long, device=device)
-    be_all = torch.zeros(B, n_pixels - eps, dtype=torch.long, device=device)
-    for i in range(B):
-        perm = torch.randperm(n_pixels, device=device)
-        ind_p, ind_np = perm[:eps], perm[eps:]
-        x_best[i, :, ind_p // W, ind_p % W] = rand_colors((C, eps)).clamp(0.0, 1.0)
-        b_all[i] = ind_p
-        be_all[i] = ind_np
+    b_all = torch.zeros(batch, eps, dtype=torch.long, device=device)
+    be_all = torch.zeros(batch, n_pixels - eps, dtype=torch.long, device=device)
+
+    for img in range(batch):
+        ind_all = torch.randperm(n_pixels, device=device)
+        ind_p = ind_all[:eps]
+        ind_np = ind_all[eps:]
+        x_best[img, :, ind_p // width, ind_p % width] = random_choice(
+            (channels, eps)
+        ).clamp(0.0, 1.0)
+        b_all[img] = ind_p.clone()
+        be_all[img] = ind_np.clone()
 
     margin_min, loss_min = margin_and_loss(x_best, y)
 
@@ -103,65 +102,47 @@ def sparse_rs_l0_attack(model, images, labels, pixels, n_queries=10000, p_init=0
         ind_p = torch.randperm(eps, device=device)[:eps_it]
         ind_np = torch.randperm(n_pixels - eps, device=device)[:eps_it]
 
-        for i in range(x_new.shape[0]):
-            p_set = b_curr[i, ind_p]
-            np_set = be_curr[i, ind_np]
-            x_new[i, :, p_set // W, p_set % W] = x_curr[i, :, p_set // W, p_set % W]
+        for img in range(x_new.shape[0]):
+            p_set = b_curr[img, ind_p]
+            np_set = be_curr[img, ind_np]
+            x_new[img, :, p_set // width, p_set % width] = x_curr[
+                img, :, p_set // width, p_set % width
+            ].clone()
+
             if eps_it > 1:
-                x_new[i, :, np_set // W, np_set % W] = rand_colors((C, eps_it)).clamp(0.0, 1.0)
+                x_new[img, :, np_set // width, np_set % width] = random_choice(
+                    (channels, eps_it)
+                ).clamp(0.0, 1.0)
             else:
-                old = x_new[i, :, np_set // W, np_set % W].clone()
-                new = old.clone()
-                while (new == old).all():
-                    new = rand_colors((C, 1)).clamp(0.0, 1.0)
-                x_new[i, :, np_set // W, np_set % W] = new
+                old_clr = x_new[img, :, np_set // width, np_set % width].clone()
+                new_clr = old_clr.clone()
+                while (new_clr == old_clr).all().item():
+                    new_clr = random_choice((channels, 1)).clone().clamp(0.0, 1.0)
+                x_new[img, :, np_set // width, np_set % width] = new_clr.clone()
 
         margin, loss = margin_and_loss(x_new, y_curr)
-        idx_improved = loss < loss_min_curr
-        idx_miscl = margin < -1e-6
-        idx_keep = idx_improved | idx_miscl
 
-        if idx_improved.any():
-            loss_min[idx_to_fool[idx_improved]] = loss[idx_improved]
-        if idx_keep.any():
-            margin_min[idx_to_fool[idx_keep]] = margin[idx_keep]
-            x_best[idx_to_fool[idx_keep]] = x_new[idx_keep]
+        idx_improved = loss < loss_min_curr
+        idx_to_update = idx_improved.nonzero().squeeze(-1)
+        if idx_to_update.numel() > 0:
+            loss_min[idx_to_fool[idx_to_update]] = loss[idx_to_update]
+
+        idx_miscl = margin < -1e-6
+        keep = idx_improved | idx_miscl
+        idx_keep = keep.nonzero().squeeze(-1)
+
+        if idx_keep.numel() > 0:
+            margin_min[idx_to_fool[idx_keep]] = margin[idx_keep].clone()
+            x_best[idx_to_fool[idx_keep]] = x_new[idx_keep].clone()
+
             t = b_curr[idx_keep].clone()
             te = be_curr[idx_keep].clone()
-            t[:, ind_p] = be_curr[idx_keep][:, ind_np]
-            te[:, ind_np] = b_curr[idx_keep][:, ind_p]
-            b_all[idx_to_fool[idx_keep]] = t
-            be_all[idx_to_fool[idx_keep]] = te
+            t[:, ind_p] = be_curr[idx_keep][:, ind_np].clone()
+            te[:, ind_np] = b_curr[idx_keep][:, ind_p].clone()
+            b_all[idx_to_fool[idx_keep]] = t.clone()
+            be_all[idx_to_fool[idx_keep]] = te.clone()
 
     return x_best.detach()
-
-
-if __name__ == "__main__":
-    torch.manual_seed(7)
-    device = torch.device("cpu")
-    n_classes = 10
-    model = LinearModel(n_classes=n_classes).to(device).eval()
-
-    # Generate images and assign each one a label that the model already predicts.
-    B = 4
-    images = torch.rand(B, 3, 32, 32, device=device)
-    with torch.no_grad():
-        init_logits = model(images)
-    labels = init_logits.argmax(dim=1)
-    print("initial predictions:", labels.tolist())
-    print("true labels:       ", labels.tolist())
-
-    adversarial = sparse_rs_l0_attack(model, images, labels, pixels=24, n_queries=5000)
-
-    with torch.no_grad():
-        final_preds = model(adversarial).argmax(dim=1)
-    print("final predictions: ", final_preds.tolist())
-
-    changed = (adversarial != images).any(dim=1).float()
-    l0_per_image = changed.view(changed.size(0), -1).sum(dim=1)
-    print("L0 changed pixels per image:", l0_per_image.int().tolist())
-    print("budget respected:", (l0_per_image <= 24).all().item())
-    print("success rate:", (final_preds != labels).float().mean().item())
 ```
 
 This implementation keeps the entire L0 constraint in spatial-pixel space, uses binary corner colors to maximize the effect of each perturbed pixel, follows the decaying swap schedule from the Sparse-RS reference code, spends queries only on examples that are not yet misclassified, and preserves the accept rule that locks in any candidate whose margin is already negative. Every candidate is feasible by construction, so the method scales from small CIFAR-10 images up to high-resolution ImageNet inputs without ever leaving the L0 budget.

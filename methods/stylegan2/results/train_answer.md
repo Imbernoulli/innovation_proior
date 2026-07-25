@@ -21,71 +21,137 @@ The remaining architectural change is to abandon progressive growing, which is t
 Putting these pieces together gives the StyleGAN2 generator: weight demodulation removes the blob while keeping style control; path-length regularization smooths the latent-to-image map and improves perceived quality and invertibility; lazy regularization keeps the computation affordable; and the skip generator with residual discriminator removes phase artifacts without progressive growing. The result is a method that fixes both artifact families and retains the signature capability of controlling images by feeding different styles to different layers.
 
 ```python
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import numpy as np
+import tensorflow as tf
+from dnnlib.tflib.ops.upfirdn_2d import upsample_2d, upsample_conv_2d, conv_downsample_2d
+from dnnlib.tflib.ops.fused_bias_act import fused_bias_act
 
-# A tiny, self-contained illustration of the two core StyleGAN2 ideas:
-# (1) weight demodulation, and (2) path-length regularization via VJPs.
+def get_weight(shape, gain=1, use_wscale=True, lrmul=1, weight_var='weight'):
+    fan_in = np.prod(shape[:-1]); he_std = gain / np.sqrt(fan_in)
+    init_std, runtime_coef = (1.0/lrmul, he_std*lrmul) if use_wscale else (he_std/lrmul, lrmul)
+    w = tf.get_variable(weight_var, shape=shape,
+                        initializer=tf.initializers.random_normal(0, init_std))
+    return w * runtime_coef
 
-class TinyDemodulatedConv(nn.Module):
-    def __init__(self, in_ch, out_ch, kernel=3):
-        super().__init__()
-        # Shared convolution weight w[i, o, k, k]; PyTorch uses (out, in, k, k).
-        self.weight = nn.Parameter(torch.randn(out_ch, in_ch, kernel, kernel))
-        # Affine style transform: latent -> per-input-map scale.
-        self.style = nn.Linear(16, in_ch)
+def dense_layer(x, fmaps, weight_var='weight', **kw):
+    if len(x.shape) > 2:
+        x = tf.reshape(x, [-1, np.prod([d.value for d in x.shape[1:]])])
+    return tf.matmul(x, tf.cast(get_weight([x.shape[1].value, fmaps], weight_var=weight_var, **kw), x.dtype))
 
-    def forward(self, x, latent):
-        # x: (B, in_ch, H, W); latent: (B, 16)
-        B = x.shape[0]
-        # Style scale s_i for each input map; init around 1 by adding 1.
-        s = self.style(latent) + 1.0                 # (B, in_ch)
-        # Modulate: w'_ijk = s_i * w_ijk
-        w = self.weight.unsqueeze(0)                 # (1, out, in, k, k)
-        s = s.reshape(B, 1, -1, 1, 1)                # (B, 1, in, 1, 1)
-        w_prime = w * s                              # (B, out, in, k, k)
-        # Demodulate: divide each output map by predicted std under unit-variance input.
-        sigma = torch.sqrt(torch.sum(w_prime ** 2, dim=[2, 3, 4], keepdim=True) + 1e-8)
-        w_dmod = w_prime / sigma                     # (B, out, in, k, k)
-        # Run as grouped convolution: one group per sample.
-        x_ = x.reshape(1, B * x.shape[1], x.shape[2], x.shape[3])
-        w_ = w_dmod.reshape(B * w_dmod.shape[1], w_dmod.shape[2],
-                            w_dmod.shape[3], w_dmod.shape[4])
-        out = F.conv2d(x_, w_, padding='same', groups=B)
-        return out.reshape(B, -1, out.shape[2], out.shape[3])
+def apply_bias_act(x, act='linear', gain=None, lrmul=1, bias_var='bias'):
+    b = tf.get_variable(bias_var, shape=[x.shape[1]], initializer=tf.initializers.zeros()) * lrmul
+    return fused_bias_act(x, b=tf.cast(b, x.dtype), act=act, gain=gain)
 
-class TinyGenerator(nn.Module):
-    def __init__(self, latent=16, hidden=32):
-        super().__init__()
-        self.fc1 = nn.Linear(latent, hidden * 4 * 4)
-        self.conv1 = TinyDemodulatedConv(hidden, hidden, kernel=3)
-        self.conv2 = TinyDemodulatedConv(hidden, 3, kernel=3)
+def conv2d_layer(x, fmaps, kernel, up=False, down=False, resample_kernel=None, **kw):
+    w = get_weight([kernel, kernel, x.shape[1].value, fmaps], **kw)
+    if up:   return upsample_conv_2d(x, tf.cast(w, x.dtype), data_format='NCHW', k=resample_kernel)
+    if down: return conv_downsample_2d(x, tf.cast(w, x.dtype), data_format='NCHW', k=resample_kernel)
+    return tf.nn.conv2d(x, tf.cast(w, x.dtype), data_format='NCHW', strides=[1,1,1,1], padding='SAME')
 
-    def forward(self, z):
-        x = F.relu(self.fc1(z)).view(z.shape[0], -1, 4, 4)
-        x = F.relu(self.conv1(x, z))
-        x = self.conv2(x, z)
-        return x
+# ---- Weight demodulation: the entire style block as one convolution -------------------
+def modulated_conv2d_layer(x, w_latent, fmaps, kernel, up=False, demodulate=True,
+                           resample_kernel=None, fused_modconv=True):
+    w  = get_weight([kernel, kernel, x.shape[1].value, fmaps])
+    ww = w[np.newaxis]                                                  # [B,k,k,I,O]
+    s  = dense_layer(w_latent, fmaps=x.shape[1].value, weight_var='mod_weight')
+    s  = apply_bias_act(s, bias_var='mod_bias') + 1                     # [B,I], affine bias init 1
+    ww *= tf.cast(s[:, np.newaxis, np.newaxis, :, np.newaxis], w.dtype) # w'_ijk = s_i w_ijk
+    if demodulate:
+        d = tf.rsqrt(tf.reduce_sum(tf.square(ww), axis=[1,2,3]) + 1e-8) # [B,O] = 1/sigma_j
+        ww *= d[:, np.newaxis, np.newaxis, np.newaxis, :]              # w''_ijk = w'_ijk / sigma_j
+    if fused_modconv:                                                  # per-sample weights via groups
+        x = tf.reshape(x, [1, -1, x.shape[2], x.shape[3]])
+        w = tf.reshape(tf.transpose(ww, [1,2,3,0,4]),
+                       [ww.shape[1], ww.shape[2], ww.shape[3], -1])
+    else:
+        x *= tf.cast(s[:, :, np.newaxis, np.newaxis], x.dtype)
+    if up: x = upsample_conv_2d(x, tf.cast(w, x.dtype), data_format='NCHW', k=resample_kernel)
+    else:  x = tf.nn.conv2d(x, tf.cast(w, x.dtype), data_format='NCHW', strides=[1,1,1,1], padding='SAME')
+    if fused_modconv:   x = tf.reshape(x, [-1, fmaps, x.shape[2], x.shape[3]])
+    elif demodulate:    x *= tf.cast(d[:, :, np.newaxis, np.newaxis], x.dtype)
+    return x
 
-# 1. Demonstrate weight demodulation on a single forward pass.
-g = TinyGenerator()
-z = torch.randn(2, 16, requires_grad=True)
-img = g(z)
-print("Generated shape:", img.shape)
+# ---- Skip generator (no progressive growing) ------------------------------------------
+def G_synthesis(dlatents_in, resolution=1024, num_channels=3, resample_kernel=[1,3,3,1]):
+    res_log2 = int(np.log2(resolution))
+    nf = lambda stage: int(np.clip(16<<10 >> stage, 1, 512))
+    def layer(x, idx, fmaps, kernel, up=False):
+        x = modulated_conv2d_layer(x, dlatents_in[:, idx], fmaps, kernel, up=up,
+                                   resample_kernel=resample_kernel)
+        noise = tf.random_normal([tf.shape(x)[0], 1, x.shape[2], x.shape[3]], dtype=x.dtype)
+        x += noise * tf.get_variable('noise_strength', shape=[], initializer=tf.initializers.zeros())
+        return apply_bias_act(x, act='lrelu')
+    def torgb(x, y, res):
+        t = apply_bias_act(modulated_conv2d_layer(x, dlatents_in[:, res*2-3],
+                           fmaps=num_channels, kernel=1, demodulate=False))
+        return t if y is None else y + t
+    def block(x, res):
+        x = layer(x, res*2-5, nf(res-1), 3, up=True)
+        return layer(x, res*2-4, nf(res-1), 3)
+    x = tf.tile(tf.cast(tf.get_variable('const', shape=[1, nf(1), 4, 4],
+                initializer=tf.initializers.random_normal()), dlatents_in.dtype),
+                [tf.shape(dlatents_in)[0], 1, 1, 1])
+    x = layer(x, 0, nf(1), 3)
+    y = torgb(x, None, 2)
+    for res in range(3, res_log2 + 1):
+        x = block(x, res)
+        y = upsample_2d(y, k=resample_kernel)
+        y = torgb(x, y, res)
+    return tf.identity(y, name='images_out')
 
-# 2. Demonstrate path-length regularization: J^T y via one backward pass.
-y = torch.randn_like(img) / np.sqrt(np.prod(img.shape[2:]))
-dot = torch.sum(img * y)
-grad_z = torch.autograd.grad(dot, z, create_graph=True)[0]
-length = torch.sqrt(torch.mean(torch.sum(grad_z ** 2, dim=1)))
-# Dynamic target a as an EMA of observed lengths; here we just print the current value.
-print("Path-length estimate:", length.item())
+# ---- Residual discriminator -----------------------------------------------------------
+def D_net(images_in, resolution=1024, num_channels=3, resample_kernel=[1,3,3,1],
+          mbstd_group_size=4):
+    res_log2 = int(np.log2(resolution))
+    nf = lambda stage: int(np.clip(16<<10 >> stage, 1, 512))
+    def block(x, res):
+        t = x
+        x = apply_bias_act(conv2d_layer(x, fmaps=nf(res-1), kernel=3), act='lrelu')
+        x = apply_bias_act(conv2d_layer(x, fmaps=nf(res-2), kernel=3, down=True,
+                           resample_kernel=resample_kernel), act='lrelu')
+        t = conv2d_layer(t, fmaps=nf(res-2), kernel=1, down=True, resample_kernel=resample_kernel)
+        return (x + t) * (1 / np.sqrt(2))                      # cancel variance doubling
+    x = apply_bias_act(conv2d_layer(images_in, fmaps=nf(res_log2-1), kernel=1), act='lrelu')
+    for res in range(res_log2, 2, -1):
+        x = block(x, res)
+    x = minibatch_stddev_layer(x, mbstd_group_size)
+    x = apply_bias_act(conv2d_layer(x, fmaps=nf(1), kernel=3), act='lrelu')
+    x = apply_bias_act(dense_layer(x, fmaps=nf(0)), act='lrelu')
+    return tf.identity(apply_bias_act(dense_layer(x, fmaps=1)), name='scores_out')
 
-# 3. A tiny loss that nudges the mapping toward constant path length.
-target = 0.5
-pl_loss = (length - target) ** 2
-pl_loss.backward()
-print("Path-length regularizer:", pl_loss.item())
+# ---- G loss + path-length regularizer -------------------------------------------------
+def G_logistic_ns_pathreg(G, D, training_set, minibatch_size,
+                          pl_minibatch_shrink=2, pl_decay=0.01, pl_weight=2.0):
+    latents = tf.random_normal([minibatch_size] + G.input_shapes[0][1:])
+    labels  = training_set.get_random_labels_tf(minibatch_size)
+    fake, dlat = G.get_output_for(latents, labels, is_training=True, return_dlatents=True)
+    loss = tf.nn.softplus(-D.get_output_for(fake, labels, is_training=True))
+
+    pl_n = minibatch_size // pl_minibatch_shrink
+    fake, dlat = G.get_output_for(tf.random_normal([pl_n] + G.input_shapes[0][1:]),
+                                  training_set.get_random_labels_tf(pl_n),
+                                  is_training=True, return_dlatents=True)
+    y = tf.random_normal(tf.shape(fake)) / np.sqrt(np.prod(G.output_shape[2:]))     # /sqrt(#pixels)
+    pl_grads = tf.gradients(tf.reduce_sum(fake * y), [dlat])[0]                     # J^T y
+    pl_lengths = tf.sqrt(tf.reduce_mean(tf.reduce_sum(tf.square(pl_grads), axis=2), axis=1))
+    pl_mean_var = tf.Variable(0.0, trainable=False, name='pl_mean')                # target a (EMA)
+    pl_mean = pl_mean_var + pl_decay * (tf.reduce_mean(pl_lengths) - pl_mean_var)
+    with tf.control_dependencies([tf.assign(pl_mean_var, pl_mean)]):
+        reg = tf.square(pl_lengths - pl_mean) * pl_weight                          # (||J^T y|| - a)^2
+    return loss, reg
+
+# ---- R1 for the discriminator ---------------------------------------------------------
+def D_logistic_r1(G, D, training_set, minibatch_size, reals, labels, gamma=10.0):
+    fake = G.get_output_for(tf.random_normal([minibatch_size] + G.input_shapes[0][1:]),
+                            labels, is_training=True)
+    rs = D.get_output_for(reals, labels, is_training=True)
+    fs = D.get_output_for(fake,  labels, is_training=True)
+    loss = tf.nn.softplus(fs) + tf.nn.softplus(-rs)
+    real_grads = tf.gradients(tf.reduce_sum(rs), [reals])[0]
+    reg = tf.reduce_sum(tf.square(real_grads), axis=[1,2,3]) * (gamma * 0.5)
+    return loss, reg
+
+# Lazy regularization (training loop): step `reg` every k iters in a separate pass
+# sharing Adam state; with c = k/(k+1): lr *= c, beta1 **= c, beta2 **= c, reg *= k.
+# k = 8 (G, path length), k = 16 (D, R1).
 ```
