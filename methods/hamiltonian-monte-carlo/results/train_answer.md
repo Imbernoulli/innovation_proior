@@ -8,54 +8,36 @@ One transition works as follows. First, draw fresh momentum p from Normal(0,M); 
 
 The main tuning knobs are the step size epsilon, the number of leapfrog steps L, and the mass matrix M. The step size must be small enough that leapfrog remains stable in the tightest direction; for a one-dimensional quadratic with curvature one over sigma squared, stability requires epsilon over sigma to be below two. The trajectory length epsilon times L should be long enough that momentum carries the state across the broad directions of the typical region, but not so long that trajectories double back on themselves. The mass matrix acts as a preconditioner: choosing M close to the target covariance makes the energy levels more regular and exploration more isotropic. Randomizing epsilon or L from iteration to iteration helps avoid periodic behavior.
 
-```python
-import numpy as np
+```r
+HMC = function (U, grad_U, epsilon, L, current_q)
+{
+  q = current_q
+  p = rnorm(length(q), 0, 1)
+  current_p = p
 
-def leapfrog(q, p, grad_U, epsilon, L, M_inv):
-    q = q.copy()
-    p = p.copy()
-    p -= 0.5 * epsilon * grad_U(q)
-    for i in range(L):
-        q += epsilon * (M_inv @ p)
-        if i != L - 1:
-            p -= epsilon * grad_U(q)
-    p -= 0.5 * epsilon * grad_U(q)
-    return q, -p
+  p = p - epsilon * grad_U(q) / 2
 
-def hmc_step(U, grad_U, current_q, epsilon=0.1, L=20, M_inv=None):
-    d = len(current_q)
-    if M_inv is None:
-        M_inv = np.eye(d)
-    p0 = np.random.multivariate_normal(np.zeros(d), np.linalg.inv(M_inv))
-    proposed_q, proposed_p = leapfrog(current_q, p0, grad_U, epsilon, L, M_inv)
-    current_U = U(current_q)
-    proposed_U = U(proposed_q)
-    current_K = 0.5 * (p0 @ (M_inv @ p0))
-    proposed_K = 0.5 * (proposed_p @ (M_inv @ proposed_p))
-    log_alpha = (current_U - proposed_U) + (current_K - proposed_K)
-    if np.log(np.random.rand()) < log_alpha:
-        return proposed_q
-    return current_q
+  for (i in 1:L)
+  {
+    q = q + epsilon * p
+    if (i != L) p = p - epsilon * grad_U(q)
+  }
 
-def sample_hmc(U, grad_U, q0, n_iter=1000, epsilon=0.1, L=20, M_inv=None):
-    chain = np.zeros((n_iter + 1, len(q0)))
-    chain[0] = q0
-    for i in range(n_iter):
-        chain[i + 1] = hmc_step(U, grad_U, chain[i], epsilon, L, M_inv)
-    return chain
+  p = p - epsilon * grad_U(q) / 2
+  p = -p
 
-# Example: sampling from a 2-D Gaussian with covariance diag(1, 9).
-Sigma = np.diag([1.0, 9.0])
-Sigma_inv = np.linalg.inv(Sigma)
+  current_U = U(current_q)
+  current_K = sum(current_p^2) / 2
+  proposed_U = U(q)
+  proposed_K = sum(p^2) / 2
 
-def U(q):
-    return 0.5 * (q - 0.0) @ Sigma_inv @ (q - 0.0)
-
-def grad_U(q):
-    return Sigma_inv @ q
-
-samples = sample_hmc(U, grad_U, q0=np.array([0.0, 0.0]), n_iter=2000,
-                     epsilon=0.25, L=25, M_inv=np.linalg.inv(Sigma))
-print(samples.mean(axis=0))
-print(np.cov(samples.T))
+  if (runif(1) < exp(current_U - proposed_U + current_K - proposed_K))
+  {
+    return(q)
+  }
+  else
+  {
+    return(current_q)
+  }
+}
 ```
