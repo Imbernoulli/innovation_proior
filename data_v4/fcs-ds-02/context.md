@@ -44,28 +44,13 @@ Expected output:
 Query `1 7 4`: the whole array sorts to `[1,2,3,4,5,6,7]`, 4th is `4`.
 Query `3 7 1`: the slice `[2,6,3,7,4]` sorts to `[2,3,4,6,7]`, 1st is `2`.)
 
-## Background
-
-Two families of approach are on the table before committing to one:
-
-- **Re-sort the slice per query.** For each `(l, r, k)`, copy `a[l-1 .. r-1]`, sort it, return the
-  `(k-1)`-th element. Trivially correct and `O((r-l) log(r-l))` per query, but with `r-l` and `q` both
-  near `2*10^5` the worst case is on the order of `q * n log n ~ 2*10^5 * 2*10^5 * 18`, which is
-  astronomically over budget. The open question is how to avoid touching `r-l` elements per query.
-
-- **A static order-statistic structure indexed by value.** If we could, for any prefix length `t`,
-  ask "how many of the first `t` elements have value-rank `<= x`?" in `O(log n)`, then the count of
-  small values inside a window `[l, r]` would be a difference of two prefix counts, and a binary
-  search over the value axis would isolate the `k`-th smallest. The open question is how to store one
-  cumulative value-histogram **per prefix** without paying `O(n)` memory for each of the `n` prefixes.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: arrays with many duplicate values (including all-equal arrays),
 arrays mixing large-magnitude positives and negatives near `±10^9`, single-element arrays (`n = 1`),
 queries with `k = 1` and `k = r - l + 1` (the minimum and maximum of the slice), single-position
 queries (`l = r`), and large `n = q = 2*10^5` to stress both preprocessing and per-query time.
-Values can be negative and need coordinate compression; the answer is always an actual array value.
+The answer is always an actual array value, not an index or rank.
 
 ## Code framework
 
