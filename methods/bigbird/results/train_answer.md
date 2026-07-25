@@ -33,6 +33,14 @@ class BigBirdBlockSparseAttention(nn.Module):
         b, n, _ = x.size()
         return x.view(b, n, self.num_heads, self.head_size).permute(0, 2, 1, 3)
 
+    @staticmethod
+    def _matmul(a, b):
+        return torch.matmul(a, b)
+
+    @staticmethod
+    def _matmul_t(a, b):
+        return torch.matmul(a, b.transpose(-1, -2))
+
     def _rand_blocks(self, num_blocks):
         rng = np.random.RandomState(self.seed)
         r = self.num_random_blocks
@@ -58,8 +66,8 @@ class BigBirdBlockSparseAttention(nn.Module):
         return torch.gather(src, 3, idx).reshape(b, h, nb - 2, r * B, d)
 
     def _attend(self, q, k, v, scale):
-        scores = torch.matmul(q, k.transpose(-1, -2)) * scale
-        return torch.matmul(torch.softmax(scores, dim=-1), v)
+        scores = self._matmul_t(q, k) * scale
+        return self._matmul(torch.softmax(scores, dim=-1), v)
 
     def forward(self, hidden_states):
         b, n, _ = hidden_states.size()
@@ -80,19 +88,24 @@ class BigBirdBlockSparseAttention(nn.Module):
         rand_k = self._gather_random(k_blk, plan)
         rand_v = self._gather_random(v_blk, plan)
 
+        # First and last query blocks are global rows: they attend to all keys.
         first = self._attend(q_blk[:, :, 0], k, v, scale).unsqueeze(2)
         last = self._attend(q_blk[:, :, -1], k, v, scale).unsqueeze(2)
 
+        # Second block: first global, local blocks 1 and 2, last global, random.
         second_k = torch.cat(
             [k_blk[:, :, 0], k_blk[:, :, 1], k_blk[:, :, 2],
-             k_blk[:, :, -1], rand_k[:, :, 0]], dim=2,
+             k_blk[:, :, -1], rand_k[:, :, 0]],
+            dim=2,
         )
         second_v = torch.cat(
             [v_blk[:, :, 0], v_blk[:, :, 1], v_blk[:, :, 2],
-             v_blk[:, :, -1], rand_v[:, :, 0]], dim=2,
+             v_blk[:, :, -1], rand_v[:, :, 0]],
+            dim=2,
         )
         second = self._attend(q_blk[:, :, 1], second_k, second_v, scale).unsqueeze(2)
 
+        # True middle blocks: first global, three-block window, random, last global.
         mid_q = q_blk[:, :, 2:-2]
         band_k = torch.cat([k_blk[:, :, 1:-3], k_blk[:, :, 2:-2], k_blk[:, :, 3:-1]], dim=3)
         band_v = torch.cat([v_blk[:, :, 1:-3], v_blk[:, :, 2:-2], v_blk[:, :, 3:-1]], dim=3)
@@ -104,13 +117,16 @@ class BigBirdBlockSparseAttention(nn.Module):
         mid_v = torch.cat([first_g_v, band_v, rand_v[:, :, 1:-1], last_g_v], dim=3)
         middle = self._attend(mid_q, mid_k, mid_v, scale)
 
+        # Second-last block mirrors the second block near the right boundary.
         second_last_k = torch.cat(
             [k_blk[:, :, 0], k_blk[:, :, -3], k_blk[:, :, -2],
-             k_blk[:, :, -1], rand_k[:, :, -1]], dim=2,
+             k_blk[:, :, -1], rand_k[:, :, -1]],
+            dim=2,
         )
         second_last_v = torch.cat(
             [v_blk[:, :, 0], v_blk[:, :, -3], v_blk[:, :, -2],
-             v_blk[:, :, -1], rand_v[:, :, -1]], dim=2,
+             v_blk[:, :, -1], rand_v[:, :, -1]],
+            dim=2,
         )
         second_last = self._attend(
             q_blk[:, :, -2], second_last_k, second_last_v, scale
