@@ -10,102 +10,45 @@ Efficiency comes from precomputing the transition distributions and using alias 
 
 For downstream tasks, the hyperparameters p and q are typically tuned by grid search over values like 0.25, 0.5, 1, 2, 4 using a small amount of labeled data. Common defaults are d equal to 128, r equal to 10 walks per node, l equal to 80, and context size k equal to 10. Because the three phases, preprocessing the transition probabilities, simulating the walks, and running Skip-gram stochastic gradient descent, are independent, they can each be parallelized.
 
-The following Python script illustrates the complete pipeline on a tiny graph. It defines an alias sampler, implements the biased second-order walk, simulates walks, and learns embeddings with a simplified Skip-gram-style objective.
+The following implementation is the one I actually use. It takes a weighted networkx graph G, precomputes the alias tables for the first step of a walk (edge weight only, since there is no previous node yet) and for every directed edge (the biased second-order table keyed by the (t, v) pair that was just traversed), simulates r walks of length l from every node by drawing from the appropriate table at each step with the O(1) alias-method sampler, and then hands the resulting corpus of walks straight to gensim's Word2Vec running in skip-gram mode (`sg=1`) with negative sampling to produce the node embeddings. A final helper turns a pair of node vectors into a single edge feature for link prediction using the average, Hadamard, or weighted-L1/L2 operator.
 
 ```python
 import numpy as np
-import random
-
-# Tiny graph: two cliques connected by a bridge node.
-graph = {
-    0: [1, 2, 3, 7],
-    1: [0, 2, 3],
-    2: [0, 1, 3],
-    3: [0, 1, 2, 4],
-    4: [3, 5, 6, 7],
-    5: [4, 6, 7],
-    6: [4, 5, 7],
-    7: [0, 4, 5, 6]
-}
-
-
-def alias_setup(probs):
-    K = len(probs)
-    q = np.zeros(K)
-    J = np.zeros(K, dtype=int)
-    smaller, larger = [], []
-    for kk, prob in enumerate(probs):
-        q[kk] = K * prob
-        if q[kk] < 1.0:
-            smaller.append(kk)
-        else:
-            larger.append(kk)
-    while smaller and larger:
-        small = smaller.pop()
-        large = larger.pop()
-        J[small] = large
-        q[large] = q[large] + q[small] - 1.0
-        if q[large] < 1.0:
-            smaller.append(large)
-        else:
-            larger.append(large)
-    return J, q
-
-
-def alias_draw(J, q):
-    K = len(J)
-    kk = int(np.random.randint(K))
-    if np.random.rand() < q[kk]:
-        return kk
-    return J[kk]
-
-
-def sigmoid(z):
-    # Numerically stable sigmoid.
-    out = np.empty_like(z, dtype=float)
-    pos = z >= 0
-    neg = ~pos
-    out[pos] = 1.0 / (1.0 + np.exp(-z[pos]))
-    exp_z = np.exp(z[neg])
-    out[neg] = exp_z / (1.0 + exp_z)
-    return out
-
+from gensim.models import Word2Vec
 
 class Node2Vec:
-    def __init__(self, graph, p, q):
-        self.graph = graph
-        self.p = p
-        self.q = q
-        self.alias_nodes = {}
-        self.alias_edges = {}
+    def __init__(self, G, p, q):
+        self.G, self.p, self.q = G, p, q
 
-    def get_alias_edge(self, t, v):
-        nbrs = self.graph[v]
+    def get_alias_edge(self, t, v):                 # arriving at v from t
         probs = []
-        for x in nbrs:
-            if x == t:
-                probs.append(1.0 / self.p)
-            elif x in self.graph.get(t, []):
-                probs.append(1.0)
-            else:
-                probs.append(1.0 / self.q)
+        for x in sorted(self.G.neighbors(v)):
+            w = self.G[v][x]['weight']
+            if x == t:                              # d_tx = 0  -> return
+                probs.append(w / self.p)
+            elif self.G.has_edge(x, t):             # d_tx = 1  -> common neighbor of t
+                probs.append(w)
+            else:                                   # d_tx = 2  -> outward
+                probs.append(w / self.q)
         Z = sum(probs)
         return alias_setup([pr / Z for pr in probs])
 
     def preprocess_transition_probs(self):
-        for u in self.graph:
-            nbrs = self.graph[u]
-            probs = [1.0 / len(nbrs)] * len(nbrs)
-            self.alias_nodes[u] = alias_setup(probs)
-        for t in self.graph:
-            for v in self.graph[t]:
-                self.alias_edges[(t, v)] = self.get_alias_edge(t, v)
+        self.alias_nodes = {}                       # first step: edge weight only
+        for u in self.G.nodes():
+            probs = [self.G[u][x]['weight'] for x in sorted(self.G.neighbors(u))]
+            Z = sum(probs)
+            self.alias_nodes[u] = alias_setup([pr / Z for pr in probs])
+        self.alias_edges = {}                       # 2nd-order, keyed by (t, v)
+        for (a, b) in self.G.edges():
+            self.alias_edges[(a, b)] = self.get_alias_edge(a, b)
+            self.alias_edges[(b, a)] = self.get_alias_edge(b, a)
 
-    def node2vec_walk(self, length, start):
-        walk = [start]
-        while len(walk) < length:
+    def node2vec_walk(self, l, u):
+        walk = [u]
+        while len(walk) < l:
             cur = walk[-1]
-            nbrs = self.graph[cur]
+            nbrs = sorted(self.G.neighbors(cur))
             if not nbrs:
                 break
             if len(walk) == 1:
@@ -115,50 +58,26 @@ class Node2Vec:
             walk.append(nbrs[alias_draw(J, q)])
         return walk
 
-    def simulate_walks(self, num_walks, walk_length):
-        walks = []
-        nodes = list(self.graph.keys())
-        for _ in range(num_walks):
-            random.shuffle(nodes)
-            for node in nodes:
-                walks.append(self.node2vec_walk(walk_length, node))
+    def simulate_walks(self, r, l):
+        walks, nodes = [], list(self.G.nodes())
+        for _ in range(r):
+            np.random.shuffle(nodes)
+            for u in nodes:
+                walks.append(self.node2vec_walk(l, u))
         return walks
 
-
-def train_node2vec(graph, p=1.0, q=1.0, dim=16, num_walks=20,
-                   walk_length=10, window=2, lr=0.01, epochs=100):
-    n2v = Node2Vec(graph, p, q)
+def learn_features(G, d=128, r=10, l=80, k=10, p=1.0, q=1.0):
+    n2v = Node2Vec(G, p, q)
     n2v.preprocess_transition_probs()
-    walks = n2v.simulate_walks(num_walks, walk_length)
-    nodes = list(graph.keys())
-    n_nodes = len(nodes)
-    node_to_id = {n: i for i, n in enumerate(nodes)}
-    W = np.random.randn(n_nodes, dim) * 0.01
-    C = np.random.randn(n_nodes, dim) * 0.01
+    walks = [[str(n) for n in w] for w in n2v.simulate_walks(r, l)]
+    model = Word2Vec(walks, vector_size=d, window=k, sg=1, negative=5, min_count=0, epochs=1)
+    return model.wv
 
-    for _ in range(epochs):
-        np.random.shuffle(walks)
-        for walk in walks:
-            for i, u in enumerate(walk):
-                uid = node_to_id[u]
-                lo = max(0, i - window)
-                hi = min(len(walk), i + window + 1)
-                for j in range(lo, hi):
-                    if i == j:
-                        continue
-                    vid = node_to_id[walk[j]]
-                    pos_score = sigmoid(np.dot(W[uid], C[vid]))
-                    neg = np.random.randint(0, n_nodes)
-                    neg_score = sigmoid(np.dot(W[uid], C[neg]))
-                    W[uid] += lr * ((1.0 - pos_score) * C[vid] - neg_score * C[neg])
-                    C[vid] += lr * (1.0 - pos_score) * W[uid]
-                    C[neg] -= lr * neg_score * W[uid]
-    return W, node_to_id
-
-
-W, mapping = train_node2vec(graph, p=1.0, q=0.5, dim=16)
-for node in sorted(graph):
-    print(node, W[mapping[node]][:4])
+def edge_feature(fu, fv, op='hadamard'):
+    if op == 'average':  return (fu + fv) / 2
+    if op == 'hadamard': return fu * fv
+    if op == 'l1':       return np.abs(fu - fv)
+    if op == 'l2':       return (fu - fv) ** 2
 ```
 
-This script is intentionally small so that every step of the method is visible: the alias sampler, the second-order transition bias, the walk simulation, and the negative-sampling update. On the two-clique graph, setting q below 1 will tend to push the walk across the bridge and reveal the community structure, while raising q above 1 will keep the walk local and emphasize structural roles. In practice one would use a much larger graph, more walks, and a production Skip-gram implementation, but the mechanics remain identical.
+The `alias_setup`/`alias_draw` pair is the standard O(1)-per-draw alias-method sampler that the preprocessing step feeds: `preprocess_transition_probs` builds one table per node for the very first step of any walk, where there is no previous node to bias against, and one table per directed edge for every subsequent step, where the bias `alpha_pq` kicks in. `node2vec_walk` then does nothing more than look up the correct table, given whether it is at the first step or has a predecessor, and draw the next node in constant time. Running this on a real graph, lowering q below 1 pushes the walks outward across bridges between communities and yields embeddings that reflect homophily, while raising q above 1 keeps the walks local and yields embeddings that reflect structural role instead — exactly the two regimes the bias was built to interpolate between.
