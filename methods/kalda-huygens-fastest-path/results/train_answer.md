@@ -12,42 +12,6 @@ The law is purely local: it relates only the speeds and the angles at the crossi
 
 To apply this to the lifeguard, I place the foot of A at the origin and the shoreline along the x-axis, so A = (0, 30) and B = (100, -40). If the entry point is P = (x, 0), then sin(theta1) = x / sqrt(x^2 + 30^2) and sin(theta2) = (100-x) / sqrt((100-x)^2 + 40^2). Snell's law sin(theta1)/sin(theta2) = v1/v2 = 5/2 becomes x / sqrt(x^2 + 900) = (5/2) * (100-x) / sqrt((100-x)^2 + 1600). The left side increases with x and the right side decreases, so the solution is unique. Numerically, x is approximately 83.74 m. At this point, sin(theta1) is about 0.9414 and sin(theta2) is about 0.3766, and their ratio is 2.5, confirming the refraction law. The corresponding angles are theta1 ≈ 70.3 degrees and theta2 ≈ 22.1 degrees. The least total time is T_min = sqrt(83.74^2 + 30^2)/5 + sqrt(16.26^2 + 40^2)/2 ≈ 17.79 + 21.59 ≈ 39.4 seconds. For comparison, the straight-line dash from A to B crosses the shoreline at about x = 42.9 m and takes roughly 45.3 seconds, so the refracted path saves nearly six seconds by trading a longer run on fast sand for a shorter swim in slow water.
 
-The following Python script verifies the computation numerically: it solves the one-dimensional stationarity equation for the crossing point, checks the resulting Snell ratio, and reports the minimum time alongside the straight-line time for comparison.
-
-```python
-import numpy as np
-from scipy.optimize import brentq
-
-v1 = 5.0          # speed on sand (m/s)
-v2 = 2.0          # speed in water (m/s)
-yA = 30.0         # perpendicular distance of A from shoreline (m)
-yB = 40.0         # perpendicular distance of B from shoreline (m)
-L = 100.0         # along-shore separation of the feet of A and B (m)
-
-A = np.array([0.0, yA])
-B = np.array([L, -yB])
-
-def total_time(x):
-    P = np.array([x, 0.0])
-    return np.linalg.norm(P - A) / v1 + np.linalg.norm(B - P) / v2
-
-def derivative_time(x):
-    return x / (v1 * np.sqrt(x**2 + yA**2)) - (L - x) / (v2 * np.sqrt((L - x)**2 + yB**2))
-
-x_opt = brentq(derivative_time, 0.0, L)
-t_min = total_time(x_opt)
-
-x_straight = L * yA / (yA + yB)  # straight-line crossing point
-t_straight = total_time(x_straight)
-
-s1 = x_opt / np.sqrt(x_opt**2 + yA**2)
-s2 = (L - x_opt) / np.sqrt((L - x_opt)**2 + yB**2)
-
-print(f"Optimal shoreline entry point: x = {x_opt:.4f} m")
-print(f"Angles: theta1 = {np.degrees(np.arcsin(s1)):.2f} deg, theta2 = {np.degrees(np.arcsin(s2)):.2f} deg")
-print(f"Snell ratio sin(theta1)/sin(theta2) = {s1/s2:.4f} (target {v1/v2:.4f})")
-print(f"Minimum travel time: {t_min:.4f} s")
-print(f"Straight-line travel time: {t_straight:.4f} s")
-```
-
-In summary, Huygens' wavefront construction turns a boundary-crossing optimization into a continuity statement about how a wavefront's footprint slides along the interface. The resulting Snell relation determines the optimal entry point, and for the given numbers the lifeguard should enter the water about 83.7 m down the shore from A's foot, reaching the swimmer in roughly 39.4 seconds.
+What this problem actually delivers, once the wavefront argument has done its work, is not a numerical routine but a local matching law together with the recipe for applying it to any instance of a two-speed boundary crossing. Drop the perpendiculars of length $y_A$, $y_B$ from the two endpoints to the boundary, separated by $L$ along the boundary, and let $x$ be the horizontal offset of a trial crossing point; then $\sin\theta_1=x/\sqrt{x^2+y_A^2}$ and $\sin\theta_2=(L-x)/\sqrt{(L-x)^2+y_B^2}$, and the least-time crossing is the unique $x$ solving
+$$\boxed{\dfrac{\sin\theta_1}{v_1}=\dfrac{\sin\theta_2}{v_2}}$$
+rather than the root of $T'(x)=0$ found by calculus, since the left side of $\sin\theta_1/\sin\theta_2=v_1/v_2$ increases in $x$ while the right side decreases, guaranteeing a unique solution. What makes this local condition trustworthy as the actual minimum, rather than merely a stationary point, is exactly the wavefront picture: the trace speed $u$ at which the wavefront's footprint slides along the boundary is a single geometric quantity, so it must agree whether computed from the sand side or the water side, and that single equality *is* the refraction law — the global positions of $A$ and $B$ only ever enter through which crossing point can realize the two angles. For the lifeguard, this protocol delivers the entry point $x\approx83.74\ \mathrm{m}$, with the path bent toward the normal in water, $\theta_1\approx70.3^\circ$ on the sand side and $\theta_2\approx22.1^\circ$ on the water side, and the minimum time $T_{\min}\approx39.4\ \mathrm{s}$.
