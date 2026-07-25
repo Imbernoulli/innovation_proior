@@ -12,44 +12,16 @@ The same logic applies to the electric Aharonov-Bohm effect. Two wave packets pa
 
 The Aharonov-Bohm effect shows that quantum mechanics needs more than local field strengths in the accessible region: a flat connection on a multiply connected space can have nontrivial holonomy, and that holonomy is measurable through interference. The vector potential is not itself a directly measurable local quantity; rather, its gauge-equivalence class around noncontractible loops carries physical information.
 
-```python
-import numpy as np
+The deliverable is not a simulation but the closed-form holonomy law itself, stated as a protocol precise enough to run in a lab. Prepare a coherent charged-particle beam and split it into two arms; route the arms on opposite sides of a narrow, shielded flux tube so that the wavefunction has negligible support wherever $\mathbf{B} \neq 0$; recombine the arms and record the interference pattern while the enclosed flux $\Phi$ is varied and ordinary field leakage onto the paths is kept negligible. The predicted fringe shift is exactly the loop holonomy derived above,
 
-def magnetic_aharonov_bohm_phase(flux, charge=-1.0, hbar=1.0, c=1.0):
-    """
-    Magnetic Aharonov-Bohm phase for a charge q enclosing flux Phi.
-    Gaussian units: phase = q * Phi / (hbar * c)
-    SI units: set c=1 and use phase = q * Phi / hbar.
-    """
-    return charge * flux / (hbar * c)
+$$\Delta\theta_{\text{mag}} = \frac{q}{\hbar c}\oint \mathbf{A}\cdot d\mathbf{r} = \frac{q\Phi}{\hbar c} \pmod{2\pi} \qquad \big(\text{SI: } \Delta\theta_{\text{mag}} = q\Phi/\hbar\big),$$
 
-def electric_aharonov_bohm_phase(phi1, t, phi2=None, charge=-1.0, hbar=1.0):
-    """
-    Electric Aharonov-Bohm phase difference between two potential histories.
-    phi1, phi2: arrays of scalar potential vs time on the two branches.
-    Returns -(q/hbar) * (integral of phi1 dt - integral of phi2 dt).
-    """
-    dt = t[1] - t[0]
-    theta1 = np.trapezoid(phi1, t)
-    if phi2 is None:
-        phi2 = np.zeros_like(t)
-    theta2 = np.trapezoid(phi2, t)
-    return -(charge / hbar) * (theta1 - theta2)
+with the fringe pattern periodic in the flux quantum
 
-def flux_quantum(charge, hbar=1.0, c=1.0):
-    """Flux quantum h*c/|q| (Gaussian) or h/|q| (SI with c=1)."""
-    return 2 * np.pi * hbar * c / abs(charge)
+$$\Phi_0 = \frac{2\pi\hbar c}{|q|} = \frac{hc}{|q|} \qquad \big(\text{SI: } \Phi_0 = h/|q|\big).$$
 
-# Example: electron (q=-e) around a solenoid with Phi = 0.3 flux quanta
-e_charge = -1.0
-flux = 0.3 * flux_quantum(e_charge)
-phase = magnetic_aharonov_bohm_phase(flux, charge=e_charge)
-print("Magnetic Aharonov-Bohm phase:", phase)
+The electric twin of the same protocol replaces the flux tube with two conducting tubes whose potentials $\phi_1(t)$, $\phi_2(t)$ are raised and lowered only while each packet sits fully shielded inside, giving
 
-# Example: electric effect with a potential pulse on branch 1 only
-t = np.linspace(0, 10, 1000)
-phi1 = np.where((t > 3) & (t < 7), 1.0, 0.0)
-phi2 = np.zeros_like(t)
-e_phase = electric_aharonov_bohm_phase(phi1, t, phi2, charge=e_charge)
-print("Electric Aharonov-Bohm phase difference:", e_phase)
-```
+$$\Delta\theta_{\text{elec}} = -\frac{q}{\hbar}\left[\int \phi_1(t)\,dt - \int \phi_2(t)\,dt\right].$$
+
+Both formulas are the same statement in different clothing: the physical content of an electromagnetic potential in a field-free, multiply connected region is entirely captured by this closed-loop phase, and it is this quantity — not the value of $\mathbf{A}$ or $\phi$ at any point the particle actually visits — that the interferometer reads out.
