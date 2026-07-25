@@ -35,28 +35,11 @@ the answer is `4`. (Mask `62 = 111110b` covers skills `1..5`; mask `7 = 000111b`
 `0,1,2`; mask `56 = 111000b` covers skills `3,4,5`. Hiring the last two for `2 + 2 = 4` covers all
 six skills `0..5`.)
 
-## Background
-
-The union-coverage requirement makes this a global combinatorial optimization, not a per-contractor
-decision. Two families of approach are on the table before committing to one:
-
-- **Greedy by cost-efficiency.** Repeatedly hire the contractor with the best ratio of fee to number
-  of *newly* covered skills, updating the covered set, until everything is covered. It is fast and a
-  few lines; the open question is whether the locally cheapest-per-new-skill pick is globally
-  optimal under the union constraint.
-- **Bitmask dynamic programming over coverage states.** Treat the set of already-covered skills as a
-  state in `{0, 1}^m` and compute, for every coverage state, the minimum fee to reach it. This is
-  `O(2^m * k)`; the open questions are the exact transition, the processing order, and how to report
-  impossibility.
-
 ## Evaluation settings
 
-Judged on hidden tests covering: instances where the cost-efficiency greedy diverges from the
-optimum, impossible instances (some skill appears in no contractor's mask, answer `-1`), single-skill
-universes (`m = 1`), heavily overlapping masks where buying small pieces beats one big bundle,
-duplicate masks at different fees, and large instances (`m = 18`, `k = 100`) where the `2^m` state
-space must be handled within the time limit and total fees can exceed a 32-bit accumulator only mildly
-(use a wide integer to be safe).
+Judged on hidden tests covering: impossible instances (some skill appears in no contractor's mask,
+answer `-1`), single-skill universes (`m = 1`), duplicate masks at different fees, and large instances
+(`m = 18`, `k = 100`) within the time limit.
 
 ## Code framework
 
