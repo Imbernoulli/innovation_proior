@@ -18,6 +18,7 @@ def hash32(value):
     return int.from_bytes(sha1(data).digest()[:4], byteorder="big")
 
 def rho(w, max_width):
+    # finite-suffix rank: 1 + leading-zero run; all-zero suffix maps to max_width + 1
     if not (0 <= w < (1 << max_width)):
         raise ValueError("w does not fit in max_width bits")
     return max_width - w.bit_length() + 1
@@ -26,10 +27,11 @@ def alpha(m):
     if m == 16:  return 0.673
     if m == 32:  return 0.697
     if m == 64:  return 0.709
-    return 0.7213 / (1.0 + 1.079 / m)
+    return 0.7213 / (1.0 + 1.079 / m)          # m >= 128
 
 class HyperLogLog:
     def __init__(self, p=11):
+        # m = 2**p registers; standard error is about 1.04 / sqrt(m)
         if not (4 <= p <= 16):
             raise ValueError("32-bit hash range requires 4 <= p <= 16")
         self.p = p
@@ -41,34 +43,49 @@ class HyperLogLog:
         x = hash32(value)
         j = self._bucket_index(x)
         w = self._remaining_bits(x)
-        self.M[j] = max(self.M[j], rho(w, HASH_BITS - self.p))
+        obs = self._observable(w)
+        self.M[j] = self._combine_into_bucket(self.M[j], obs)
 
     def merge(self, other):
         if self.p != other.p:
             raise ValueError("precisions must match")
-        self.M = [max(a, b) for a, b in zip(self.M, other.M)]
+        self.M = [
+            self._combine_buckets(a, b)
+            for a, b in zip(self.M, other.M)
+        ]
 
     def _bucket_index(self, x):
-        return x >> (HASH_BITS - self.p)
+        suffix_width = HASH_BITS - self.p
+        return x >> suffix_width                    # first p bits -> bucket
 
     def _remaining_bits(self, x):
-        return x & ((1 << (HASH_BITS - self.p)) - 1)
+        suffix_width = HASH_BITS - self.p
+        return x & ((1 << suffix_width) - 1)        # remaining bits -> observable
+
+    def _observable(self, w):
+        return rho(w, HASH_BITS - self.p)
+
+    def _combine_into_bucket(self, current, obs):
+        return max(current, obs)                    # keep the max rho per bucket
+
+    def _combine_buckets(self, left, right):
+        return max(left, right)
 
     def estimate(self):
         m = self.m
-        Z = 1.0 / sum(2.0 ** -mj for mj in self.M)
+        Z = 1.0 / sum(2.0 ** -mj for mj in self.M)   # harmonic mean via indicator
         E = self.alpha * m * m * Z
 
-        if E <= 2.5 * m:
+        if E <= 2.5 * m:                              # small-range correction
             V = self.M.count(0)
             if V != 0:
-                return m * math.log(m / V)
+                return m * math.log(m / V)            # linear counting
             return E
-        if E <= HASH_RANGE / 30.0:
+        if E <= HASH_RANGE / 30.0:                    # middle band
             return E
         if E >= HASH_RANGE:
-            return float("inf")
-        return -HASH_RANGE * math.log1p(-E / HASH_RANGE)
+            return float("inf")                       # saturated 32-bit hash range
+        return -HASH_RANGE * math.log1p(-E / HASH_RANGE)  # large-range correction
 
     def count(self):
         return self.estimate()
