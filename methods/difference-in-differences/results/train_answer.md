@@ -8,46 +8,12 @@ In regression form the same contrast is obtained from a saturated two-period mod
 
 Identification relies on the parallel-trends assumption: the treated group's untreated trend must equal the comparison group's untreated trend over the window. The groups are allowed to differ in levels, but they must not be on diverging paths that coincide with treatment timing. The design is threatened by anticipation, spillovers, composition changes, or a treated-group-specific shock that the comparison group does not experience. Event-study plots and alternative comparison groups can help assess the credibility of the trend assumption, but they cannot directly observe the missing counterfactual.
 
-```python
-import numpy as np
-import pandas as pd
-import statsmodels.formula.api as smf
+The finished result is the exact decomposition that makes precise what the double difference recovers and under what condition. Writing $Y_{it}(0)$ and $Y_{it}(1)$ for unit $i$'s untreated and treated potential outcomes at time $t$, and $G_i\in\{0,1\}$ for the treated indicator, the sample contrast is
 
-# Simulated panel: 200 units, 2 periods, treatment after period 0
-np.random.seed(0)
-n = 200
-df = pd.DataFrame({
-    "unit": np.repeat(np.arange(n), 2),
-    "post": np.tile([0, 1], n),
-    "treated": np.repeat(np.random.binomial(1, 0.5, n), 2),
-})
+$$\hat\tau_{DID} \;=\; \big[E(Y_{i1}\mid G_i=1)-E(Y_{i0}\mid G_i=1)\big] \;-\; \big[E(Y_{i1}\mid G_i=0)-E(Y_{i0}\mid G_i=0)\big] \;=\; \underbrace{E\big[Y_{i1}(1)-Y_{i1}(0)\mid G_i=1\big]}_{\text{effect on the treated}} \;+\; \underbrace{\Big\{E\big[Y_{i1}(0)-Y_{i0}(0)\mid G_i=1\big]-E\big[Y_{i1}(0)-Y_{i0}(0)\mid G_i=0\big]\Big\}}_{\text{untreated-trend gap}}.$$
 
-# Parallel untreated trend plus a treatment effect of +2
-df["y"] = (
-    1.0
-    + 3.0 * df["treated"]
-    + 0.5 * df["post"]
-    + 2.0 * df["treated"] * df["post"]
-    + np.random.normal(0, 0.5, len(df))
-)
+The first term is exactly the average treatment effect on the treated. $\hat\tau_{DID}$ equals that term, and only that term, precisely when the second term vanishes — the parallel-trends condition
 
-# Saturated two-way fixed-effects regression
-sat = smf.ols("y ~ treated + post + treated:post", data=df).fit()
-print("Saturated regression:")
-print(sat.summary().tables[1])
+$$E\big[Y_{i1}(0)-Y_{i0}(0)\mid G_i=1\big] \;=\; E\big[Y_{i1}(0)-Y_{i0}(0)\mid G_i=0\big],$$
 
-# Equivalent first-difference regression
-diff = df.pivot(index="unit", columns="post", values="y").reset_index()
-diff.columns = ["unit", "y_pre", "y_post"]
-meta = df.loc[df["post"] == 0, ["unit", "treated"]].reset_index(drop=True)
-diff = diff.merge(meta, on="unit")
-diff["delta_y"] = diff["y_post"] - diff["y_pre"]
-fd = smf.ols("delta_y ~ treated", data=diff).fit()
-print("\nFirst-difference regression:")
-print(fd.summary().tables[1])
-
-# Manual four-cell estimate
-means = df.groupby(["treated", "post"])["y"].mean()
-did_manual = (means[1, 1] - means[1, 0]) - (means[0, 1] - means[0, 0])
-print(f"\nManual DID estimate: {did_manual:.3f}")
-```
+i.e., the treated group's untreated path would have moved exactly as the comparison group's observed path moved. Under this condition the interaction coefficient $\tau$ in the saturated regression $Y_{it}=\alpha+\gamma G_i+\lambda\,\text{Post}_t+\tau\,(G_i\cdot\text{Post}_t)+\varepsilon_{it}$, the slope $c$ in the first-difference regression $\Delta Y_i = a+c\,\text{Treated}_i+e_i$, and the four-cell contrast above are three routes to the same number, and that number is the average treatment effect on the treated. When treatment intensity varies across treated units, replacing the binary indicator by an exposure measure — with untreated units coded at zero exposure — leaves this identity unchanged: the comparison group still supplies the counterfactual trend, and the treated group's departure from that trend, scaled by exposure, is still the effect.
