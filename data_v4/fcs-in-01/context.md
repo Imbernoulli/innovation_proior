@@ -69,27 +69,6 @@ the singleton (`3` so far); the right half `[4,5]` costs `1`; and the final merg
 halves of sizes `3` and `2` costs `3` more, for `3 + 1 + 3 = 7`. The budget here is
 `5 * ceil(log2 5) = 5 * 3 = 15`, so `7 <= 15` is within budget.
 
-## Background
-
-The constraint "recover the order using only sign comparisons, counted against a budget" is exactly the
-setting of **comparison-based sorting**, viewed through its query complexity. Two framings are on the
-table before committing to one:
-
-- **All-pairs ranking.** For each box, compare it against every other box; the number of boxes it beats
-  is its rank, and the ranks give the order. This is dead simple and obviously correct, and it is the
-  thing the phrase "find each box's place by comparing it to the others" suggests. Its cost is
-  `n(n-1)/2` comparisons — `Theta(n^2)` — which is the quantity to beat.
-- **A comparison schedule that reuses information.** Each comparison's answer constrains many future
-  ranks at once, so a schedule that never re-compares an already-determined relationship can recover the
-  full order far more cheaply. The open question is *how cheaply*, and which standard schedule realizes
-  it within `n * ceil(log2 n)`.
-
-The decision-tree lower bound says any comparison sort needs at least `ceil(log2(n!)) ~ n log2 n - 1.44 n`
-comparisons in the worst case, so `n log2 n` is essentially the floor; the budget `n * ceil(log2 n)` is
-that floor rounded up to a clean target. The difficulty of the problem is recognizing that the
-quadratic all-pairs method is not forced — that an `O(n log n)`-comparison schedule both exists and is a
-standard sorting algorithm — and then pinning the exact comparison count so the budget can be checked.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: the empty sequence (`n = 0`) and a single box (`n = 1`, zero
