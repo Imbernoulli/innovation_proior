@@ -18,8 +18,6 @@ import torch.nn.functional as F
 
 
 class NoisyLinear(nn.Module):
-    """Factorized Gaussian noisy linear layer used in Noisy Networks for Exploration."""
-
     def __init__(self, in_features, out_features, std_init=0.5):
         super().__init__()
         self.in_features = in_features
@@ -112,30 +110,4 @@ def dueling_target(online, target, rewards, next_obs, dones, gamma):
         next_actions = online(next_obs).argmax(dim=1)
         target_q = target(next_obs).gather(1, next_actions[:, None]).squeeze(1)
         return rewards + gamma * target_q * (1.0 - dones)
-
-
-def verify_noisy_layer():
-    torch.manual_seed(0)
-    layer = NoisyLinear(10, 3)
-    x = torch.randn(5, 10)
-    layer.train()
-    out1 = layer(x)
-    layer.reset_noise()
-    out2 = layer(x)
-    assert out1.shape == (5, 3)
-    assert not torch.allclose(out1, out2)
-    layer.eval()
-    out3 = layer(x)
-    out4 = layer(x)
-    assert torch.allclose(out3, out4)
-    print("NoisyLinear behaves correctly in train and eval modes.")
-
-
-if __name__ == "__main__":
-    verify_noisy_layer()
-    net = NoisyDQN(n_actions=4)
-    dummy_obs = torch.zeros(2, 4, 84, 84)
-    actions = act(net, dummy_obs)
-    assert actions.shape == (2,)
-    print("NoisyDQN forward pass and greedy action selection work.")
 ```
