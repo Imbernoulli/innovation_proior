@@ -57,28 +57,13 @@ Output:
 Explanation. With seeds `1, 1, 1`: `f(3)=1+1+1=3`, `f(4)=3+1+1=5`, `f(5)=5+3+1=9`,
 `f(6)=9+5+3=17`. For the last query, seeds `0, 1, 1` give `f(3)=1+1+0=2`, and `2 mod 7 = 2`.
 
-## Background
-
-There are two visible families of approach.
-
-- **Iterate the recurrence.** Carry the last three values and step forward `f(k) = f(k-1)+f(k-2)+f(k-3) mod p`
-  until reaching index `n`. This is `O(n)` per query and exact. It is trivially correct but only
-  finishes when `n` is small; at `n = 10^18` it cannot complete.
-- **Exponentiate the transition.** A fixed-order linear recurrence advances by a constant linear map,
-  so `t` steps are one matrix raised to the `t`-th power. With a `3x3` companion-style matrix and
-  fast exponentiation, the cost is `O(3^3 * log n)` per query, which stays tiny even at `n = 10^18`.
-  The open questions are the exact transition matrix, the orientation of the state vector, the base
-  cases for `n < 3`, and the arithmetic needed so that `p` near `4*10^18` does not overflow during
-  the modular multiplications.
-
 ## Evaluation settings
 
-Judged on hidden tests covering: tiny indices `n in {0,1,2}` (pure base cases, no stepping); small
-indices a brute term-by-term loop can also reach (used to differentially pin correctness); large
-indices up to `n = 10^18` with both small moduli (`p = 10^9+7`, `998244353`) and large moduli near
-`4*10^18` (so a 64-bit product overflows and a wider intermediate is required); seeds given larger
-than `p` (must be reduced first); `p = 1`-adjacent small moduli where every residue collapses; and
-many queries (`T` up to `10^5`) to exercise the per-query `log n` budget under the time limit.
+Judged on hidden tests covering: tiny indices `n in {0,1,2}`; small indices a brute term-by-term
+loop can also reach (used to cross-check correctness); large indices up to `n = 10^18` with both
+small moduli (`p = 10^9+7`, `998244353`) and large moduli near `4*10^18`; seeds given larger than
+`p`; small moduli including `p = 1`; and many queries (`T` up to `10^5`) to test performance under
+the time limit.
 
 ## Code framework
 
@@ -100,8 +85,6 @@ int main() {
 
         // TODO: compute f(n) mod p for the recurrence
         //   f(k) = f(k-1) + f(k-2) + f(k-3), seeds f(0)=f0, f(1)=f1, f(2)=f2.
-        // n can be up to 1e18, so term-by-term iteration is not viable; p can be
-        // near 4e18, so a 64-bit product of two residues overflows.
         unsigned long long answer = 0;
 
         cout << answer << "\n";

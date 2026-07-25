@@ -16,8 +16,8 @@ indices in `B`. Output the **maximum** achievable score over all valid choices o
 subsequences. Because at least one pair must be chosen, the answer can be negative.
 
 This is the core "align two sequences for maximum reward" subproblem that appears inside sequence
-comparison, bilingual alignment, and trading/path DP problems. Getting it exactly right hinges on
-the negative-value corners and on the fact that you must pair the chosen elements **in order**.
+comparison and bilingual alignment tasks. Getting it exactly right hinges on the negative-value
+corners and on the fact that you must pair the chosen elements **in order**.
 
 ## Input / output contract
 
@@ -30,27 +30,11 @@ the negative-value corners and on the fact that you must pair the chosen element
 Example: for `A = [2, 1, -2]`, `B = [3, 0, -1]` the answer is `8`: pair `A[0]*B[0] = 6` with
 `A[2]*B[2] = (-2)*(-1) = 2`, total `8`. This beats the single best product `A[0]*B[0] = 6`.
 
-## Background
-
-Two families of approach are on the table before committing to one:
-
-- **Greedy by best product.** Since a length-1 choice is always legal, one tempting shortcut is to
-  return the single largest entrywise product `max_{i,j} A[i]*B[j]`, or to sort both arrays and pair
-  the largest magnitudes together. These are `O(nm)` or `O(n log n + m log m)` and trivial to write;
-  the open question is whether a single dominant product (or a sign-aware sorted pairing) is actually
-  optimal once longer alignments and the in-order constraint are taken into account.
-- **Alignment dynamic programming.** Scan both prefixes and maintain, for each pair of prefix lengths
-  `(i, j)`, the best dot product of a non-empty aligned pairing using `A[0..i-1]` and `B[0..j-1]`.
-  This is `O(nm)`; the open question is the exact recurrence, how the "must be non-empty" requirement
-  is enforced, and how negatives are handled without a phantom empty pairing leaking in.
-
 ## Evaluation settings
 
-Judged on hidden tests covering: all-positive arrays, all-negative arrays (where two negatives
-multiply to a large positive), mixed signs with zeros, the single-element corners (`n = 1` and/or
-`m = 1`), cases where a length-`k` alignment with `k >= 2` strictly beats any single product, cases
-where order-preservation forbids the magnitude-optimal pairing, and the largest sizes `n = m = 500`
-with `|values| = 1000` (so the dot product can reach `5*10^8`).
+Judged on hidden tests covering: all-positive arrays, all-negative arrays, mixed signs with zeros,
+the single-element corners (`n = 1` and/or `m = 1`), a range of `k` from small to large, and the
+largest sizes `n = m = 500` with `|values| = 1000` (so the dot product can reach `5*10^8`).
 
 ## Code framework
 
