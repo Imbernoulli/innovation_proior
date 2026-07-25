@@ -16,50 +16,12 @@ The regularity assumptions matter concretely. The proof requires that the suppor
 
 The Cramer-Rao bound therefore serves as a benchmark for estimator design. If an estimator achieves the bound, it is efficient in the strong sense of retaining all the Fisher information in the data. If it falls short, the gap measures information lost by the estimator, not by the model. It also explains why maximum likelihood estimators are often asymptotically optimal: under regularity, they concentrate at a rate governed by the inverse Fisher information, matching the bound in the large-sample limit.
 
-```python
-import numpy as np
-from scipy.stats import norm
+Written out precisely, this is the statement I would present as the finished result. Let $p_\theta(x)$ be a regular one-parameter family, with score $S_\theta(X) = \partial_\theta \log p_\theta(X)$ and Fisher information $I(\theta) = \mathbb{E}_\theta[S_\theta(X)^2]$, and assume $0 < I(\theta) < \infty$ together with the regularity conditions above: common support across $\theta$, and differentiation exchangeable with integration. If $T(X)$ is any statistic with $\mathbb{E}_\theta[T] = \psi(\theta)$, then
 
-def fisher_information_normal_mean(sigma=1.0):
-    """One-observation Fisher information for the mean of a N(theta, sigma^2) model."""
-    return 1.0 / (sigma ** 2)
+$$\mathrm{Var}_\theta(T) \;\ge\; \frac{\psi'(\theta)^2}{I(\theta)}.$$
 
-def cramer_rao_bound_scalar(psi_prime, fisher_information):
-    """Scalar Cramer-Rao lower bound: Var(T) >= psi'(theta)^2 / I(theta)."""
-    return (psi_prime ** 2) / fisher_information
+For an unbiased estimator of $\theta$ itself this is $\mathrm{Var}_\theta(T) \ge 1/I(\theta)$, and for $n$ i.i.d. observations with per-observation information $I_1(\theta)$ it becomes $\mathrm{Var}_\theta(T) \ge 1/(n I_1(\theta))$. Equality holds precisely when the centered estimator is the score direction rescaled, $T - \mathbb{E}_\theta[T] = \big(\psi'(\theta)/I(\theta)\big)\,S_\theta$ — for an unbiased estimator of $\theta$, $T - \theta = S_\theta / I(\theta)$ — which happens in simple models like the normal mean with known variance but fails whenever the estimator carries components orthogonal to the score. For a vector parameter $\theta$, with score vector $S_\theta$, information matrix $I(\theta) = \mathbb{E}_\theta[S_\theta S_\theta^\top]$, and mean Jacobian $J(\theta) = \partial\,\mathbb{E}_\theta[T]/\partial\theta^\top$, the same projection argument gives the matrix bound
 
-def sample_mean_estimator(samples, sigma=1.0):
-    """Sample mean estimator for N(theta, sigma^2). It is unbiased and efficient."""
-    n = len(samples)
-    theta_hat = np.mean(samples)
-    variance = sigma ** 2 / n
-    return theta_hat, variance
+$$\mathrm{Cov}_\theta(T) \;\succeq\; J(\theta)\,I(\theta)^{-1}\,J(\theta)^\top$$
 
-# Demonstration: estimate the mean of a normal distribution with known variance.
-np.random.seed(0)
-true_theta = 2.0
-sigma = 1.5
-n = 10000
-samples = np.random.normal(loc=true_theta, scale=sigma, size=n)
-
-theta_hat, empirical_variance = sample_mean_estimator(samples, sigma)
-i1 = fisher_information_normal_mean(sigma)
-crb = 1.0 / (n * i1)
-
-print(f"Estimated theta: {theta_hat:.4f}")
-print(f"Empirical variance: {empirical_variance:.6f}")
-print(f"Cramer-Rao bound:   {crb:.6f}")
-print(f"Ratio (empirical / bound): {empirical_variance / crb:.4f}")
-
-# Multiparameter demonstration: bivariate normal with unknown mean and known covariance.
-def cramer_rao_bound_multi(jacobian, fisher_matrix):
-    """Matrix Cramer-Rao lower bound: Cov(T) >= J I^{-1} J^T."""
-    return jacobian @ np.linalg.inv(fisher_matrix) @ jacobian.T
-
-Sigma = np.array([[sigma ** 2, 0.0], [0.0, sigma ** 2]])
-I_multi = n * np.linalg.inv(Sigma)
-J = np.eye(2)
-CRB_multi = cramer_rao_bound_multi(J, I_multi)
-print("Multiparameter Cramer-Rao bound covariance:")
-print(CRB_multi)
-```
+in positive-semidefinite order whenever $I(\theta)$ is nonsingular, with equality under $T - \mathbb{E}_\theta[T] = J(\theta)\,I(\theta)^{-1}S_\theta$. This inequality, scalar or matrix, is the Cramer-Rao bound: the finite-sample variance floor imposed on any regular estimator by its required mean response, with the shortfall from equality measuring exactly the Fisher information the estimator leaves unused.
