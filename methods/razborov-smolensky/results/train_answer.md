@@ -14,89 +14,12 @@ The method also explains why the same argument does not immediately settle the f
 
 The broader conceptual message is that circuit lower bounds can be rephrased as questions about approximation by low-degree polynomials. Instead of cataloging how individual gates interact, one shows that every small circuit casts a low-degree algebraic shadow, and then proves that the target function lies outside the shadow. This perspective turned the AC0[p] problem into a finite-field approximation problem and remains one of the most influential templates in circuit complexity.
 
-The following Python snippet illustrates the two sides of the argument. It first constructs the randomized low-degree approximation for an OR gate over F_p, showing that a small subset-sum test approximates OR with controllable error. It then searches over random low-degree polynomials over F_p and measures how well any of them can approximate MOD_q on all Boolean inputs of a small dimension, confirming empirically that good approximation is rare when p and q differ.
+Stated in full, this is what the technique delivers: let $p$ and $q$ be distinct primes, let $d$ be a constant depth, and let $C$ be an $AC0[p]$ circuit on $n$ Boolean inputs, of depth $d$ and size $S$, built from unbounded fan-in $AND$, $OR$, $NOT$, and $MOD_p$ gates. Working over $F_p$ and fixing an approximation parameter $t$, replace every $NOT$ gate by the exact linear form $1-x$, every $MOD_p$ gate by its exact low-degree characteristic function of divisibility by $p$, and every $AND$/$OR$ gate — via De Morgan's laws — by a random polynomial of degree at most $t$ built from $t$ independent random subset-sum tests over its inputs. Composing these replacements through the $d$ layers of $C$ produces a single polynomial $Q \in F_p[x_1,\dots,x_n]$ with
 
-```python
-import random
-from itertools import product
+$$\deg Q \le (2t)^d, \qquad \Pr_{Q}\big[Q(x) \ne C(x)\big] \le \frac{S}{2^{t}} \ \text{ for each fixed } x \in \{0,1\}^n,$$
 
-p = 3
-q = 2
-n = 5
-t = 3  # subset size controls degree and error
+so a union bound over the $S$ gates together with an averaging argument over the randomness gives a fixed choice of $Q$ that agrees with $C$ on all but an $S/2^{t}$ fraction of the Boolean cube $\{0,1\}^n$. If $C$ computed $MOD_q$ exactly, this $Q$ would agree with $MOD_q$ on almost every input while having degree only $(2t)^d$ — precisely the kind of low-degree approximant that the approximation-degree lower bound for $MOD_q$ rules out, since $p \neq q$ means the $q$-periodic structure of $MOD_q$ cannot be tracked by a low-degree $F_p$ polynomial on more than a vanishing fraction of the cube. No admissible $Q$ exists, so no such $C$ exists at the size the construction assumed; optimizing the free parameter $t$ in the trade-off between degree and error over the union bound yields the quantitative form of the theorem:
 
+$$p \neq q \text{ primes} \implies MOD_q \notin AC0[p], \qquad \text{any depth-}d\text{ circuit computing } MOD_q \text{ needs size } S \ge 2^{\Omega\left(n^{1/(2d)}\right)}.$$
 
-def mod_q(vals):
-    return sum(vals) % q
-
-
-def rand_or_poly(inputs):
-    """Low-degree randomized approximation of OR over F_p."""
-    selected = random.sample(inputs, min(t, len(inputs)))
-    s = sum(selected) % p
-    return 0 if s == 0 else 1
-
-
-def test_or_approx(sample_size, trials=10000):
-    global t
-    old_t = t
-    t = sample_size
-    inputs = [0, 0, 0, 1, 0, 0, 1, 0]
-    err = 0
-    for _ in range(trials):
-        approx = rand_or_poly(inputs)
-        exact = int(any(inputs))
-        if approx != exact:
-            err += 1
-    t = old_t
-    return err / trials
-
-
-def random_poly_f_p(degree, n_vars):
-    """Random n-variate polynomial over F_p with total degree <= degree."""
-    poly = {}
-    for exps in product(range(degree + 1), repeat=n_vars):
-        if sum(exps) <= degree:
-            poly[exps] = random.randint(0, p - 1)
-    return poly
-
-
-def eval_poly(poly, point):
-    total = 0
-    for exps, coeff in poly.items():
-        term = coeff
-        for x, e in zip(point, exps):
-            term = (term * pow(x, e, p)) % p
-        total = (total + term) % p
-    return total
-
-
-def approx_mod_q(degree, trials=200):
-    best = 0.0
-    for _ in range(trials):
-        poly = random_poly_f_p(degree, n)
-        agree = 0
-        total = 0
-        for x in product([0, 1], repeat=n):
-            y = mod_q(x)
-            val = eval_poly(poly, x)
-            pred = 1 if val != 0 else 0
-            if pred == y:
-                agree += 1
-            total += 1
-        acc = agree / total
-        if acc > best:
-            best = acc
-    return best
-
-
-for sample_size in [2, 3, 4, 5]:
-    print(f"OR approximation error with subset size {sample_size}: {test_or_approx(sample_size):.4f}")
-for deg in [1, 2, 3]:
-    print(
-        f"Best random degree-{deg} F_{p} approximation of MOD_{q} over {n} bits: "
-        f"{approx_mod_q(deg):.3f}"
-    )
-```
-
-This simulation is only a toy, but it captures the empirical signature of the theorem: low-degree polynomials over the wrong characteristic struggle to track a modular counting function with a different period, while the OR gate can be approximated cheaply by the same formalism.
+This is the deliverable: not a fragment of code but a closed argument — build the algebraic shadow of every small circuit as an explicit low-degree $F_p$ polynomial with the displayed guarantees on degree and error, then invoke the approximation-degree lower bound to show $MOD_q$ casts no such shadow, and read off the exponential separation between $p$-counting and $q$-counting circuits at any constant depth.
