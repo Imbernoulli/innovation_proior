@@ -8,12 +8,7 @@ dictionary words, where **each word may be reused any number of times** and word
 back-to-back with no gaps and no overlaps. The empty string is considered segmentable (it is
 the empty concatenation). Output `YES` if such a segmentation exists, otherwise `NO`.
 
-This is the classic *word break* decision problem. It looks like a string-matching exercise,
-but the difficulty is entirely in the **choice of where the boundaries go**: a locally
-attractive match early in the string can leave an unmatchable suffix, even though a different
-early choice would have succeeded. The question that has to be settled before writing any code
-is whether a single left-to-right pass that always commits to one match (the longest available,
-or the shortest available) is correct, or whether every boundary has to be kept open.
+This is the classic *word break* decision problem.
 
 ## Input / output contract
 
@@ -32,32 +27,13 @@ or the shortest available) is correct, or whether every boundary has to be kept 
 Example: with dictionary `{le, leet, code, etcode, leetcode}` and `s = "leetcode"`, the answer
 is `YES` (for instance `leet | code`, or `le | etcode`, or the single word `leetcode`).
 
-## Background
-
-The phrase "split `s` into dictionary words" invites a greedy reading of the form: walk through
-`s` from the left, at each position take *some* dictionary word that matches there, advance past
-it, and repeat. Two natural greedy rules are on the table:
-
-- **Greedy longest-match.** At each position commit to the longest dictionary word that matches.
-  `O(|s| * maxLen)` and a few lines; the open question is whether committing to the longest match
-  can ever strand a suffix that a shorter early match would have left segmentable.
-- **Greedy shortest-match.** Symmetric rule, commit to the shortest match. Same shape, same open
-  question.
-
-The alternative is to keep every boundary open and decide reachability with dynamic programming:
-
-- **Prefix-reachability DP.** For each prefix length `i`, record whether `s[0..i-1]` is
-  segmentable, building `dp[i]` from earlier `dp[j]` plus a dictionary lookup of the last word
-  `s[j..i-1]`. `O(|s| * maxLen)` time with hashed lookups; the open question is the exact
-  recurrence, the base case, and the bound on the inner loop.
-
 ## Evaluation settings
 
-Judged on hidden tests covering: strings built to fool greedy longest-match (a long early word
-blocks a needed later boundary) and greedy shortest-match; all-`a` strings against dictionaries
-of `a`-runs (dense reachability, the worst case for the inner loop); strings with one unmatchable
-letter (forces `NO`); the empty string and the empty dictionary; single exact-match cases; and
-large inputs with `|s| = 5000` and total dictionary length near `2*10^5`.
+Judged on hidden tests covering: a range of adversarially constructed dictionary/string pairs;
+strings built from a small alphabet where many partial matches are possible; strings containing
+letters that cannot be covered by any dictionary word; the empty string and the empty dictionary;
+single exact-match cases; and large inputs with `|s| = 5000` and total dictionary length near
+`2*10^5`.
 
 ## Code framework
 
