@@ -21,74 +21,24 @@ k_B T_c ≈ 1.14 ℏω exp(−1/(N(0)V)),
 
 Because the lowest quasiparticle energy is Δ, there is a minimum energy cost to create an excitation, which explains the observed gap in single-particle and pair-breaking probes. Finally, the paired state is rigid against long-wavelength electromagnetic perturbations: the paramagnetic current no longer cancels the diamagnetic term, giving the London rigidity at short distances and the nonlocal Pippard response at finite coherence lengths. This closes the loop from a weak microscopic attraction to the macroscopic electrodynamics of superconductivity.
 
-```python
-import numpy as np
+Collected into one statement, this is the deliverable: for a constant attractive matrix element $V$ acting within a shell $|\varepsilon_k| < \hbar\omega$ around the Fermi surface, with $N(0)$ the single-spin density of states at the Fermi level, the paired ground state
 
-# Compatibility shim for different NumPy versions.
-_trapz = getattr(np, 'trapezoid', getattr(np, 'trapz', None))
+$$|\Psi\rangle = \prod_k \left(u_k + v_k\, c^\dagger_{k\uparrow} c^\dagger_{-k\downarrow}\right)|0\rangle, \qquad u_k^2 + v_k^2 = 1,$$
 
-def bcs_integral(delta, T, omega, n=50000):
-    """Evaluate the BCS gap-equation integral for a given Delta and T."""
-    eps = np.linspace(1e-12 * omega, omega, n)
-    if delta <= 0:
-        # Delta -> 0 limit: integral of tanh(eps / 2T) / eps.
-        if T == 0.0:
-            return float('inf')
-        return _trapz(np.tanh(eps / (2.0 * T)) / eps, eps)
-    denom = np.sqrt(eps**2 + delta**2)
-    if T == 0.0:
-        # At T = 0 the integral reduces to asinh(omega / Delta).
-        return _trapz(1.0 / denom, eps)
-    return _trapz(np.tanh(denom / (2.0 * T)) / denom, eps)
+minimizes the reduced Hamiltonian
 
-def solve_gap(T, omega, N0V, n=50000, tol=1e-9):
-    """Solve the BCS gap equation for Delta(T) by bisection."""
-    target = 1.0 / N0V
-    delta0 = omega / np.sinh(target)  # exact zero-temperature gap
-    if T == 0.0:
-        return delta0
-    # At T > T_c the only solution is Delta = 0.
-    f_lo = bcs_integral(0.0, T, omega, n) - target
-    if f_lo <= 0.0:
-        return 0.0
-    # I(Delta) decreases with Delta, so f(0) > 0 and f(delta0) < 0.
-    lo, hi = 0.0, delta0
-    f_hi = bcs_integral(hi, T, omega, n) - target
-    for _ in range(100):
-        mid = 0.5 * (lo + hi)
-        f_mid = bcs_integral(mid, T, omega, n) - target
-        if abs(f_mid) < tol or (hi - lo) < tol * omega:
-            return mid
-        if f_mid * f_lo > 0.0:
-            lo, f_lo = mid, f_mid
-        else:
-            hi, f_hi = mid, f_mid
-    return 0.5 * (lo + hi)
+$$H_{\mathrm{red}} = \sum_{k,\sigma} \varepsilon_k\, c^\dagger_{k\sigma} c_{k\sigma} \;-\; \sum_{k,k'} V_{kk'}\, c^\dagger_{k\uparrow} c^\dagger_{-k\downarrow}\, c_{-k'\downarrow} c_{k'\uparrow}$$
 
-def find_tc(omega, N0V, n=50000):
-    """Find the critical temperature by setting Delta -> 0."""
-    target = 1.0 / N0V
-    lo, hi = 1e-6 * omega, omega
-    for _ in range(60):
-        mid = 0.5 * (lo + hi)
-        eps = np.linspace(1e-12 * omega, omega, n)
-        I = _trapz(np.tanh(eps / (2.0 * mid)) / eps, eps)
-        if I > target:
-            lo = mid
-        else:
-            hi = mid
-    return 0.5 * (lo + hi)
+when the occupation amplitudes and quasiparticle energies satisfy
 
-if __name__ == "__main__":
-    omega = 1.0          # phonon cutoff in energy units
-    N0V = 0.3            # dimensionless coupling
+$$u_k^2 = \frac{1}{2}\left(1 + \frac{\varepsilon_k}{E_k}\right), \qquad v_k^2 = \frac{1}{2}\left(1 - \frac{\varepsilon_k}{E_k}\right), \qquad E_k = \sqrt{\varepsilon_k^2 + \Delta^2},$$
 
-    Tc = find_tc(omega, N0V)
-    print(f"BCS T_c / (hbar omega) = {Tc:.4f}")
-    print(f"Weak-coupling analytic  = {1.14 * np.exp(-1.0 / N0V):.4f}")
+with the gap $\Delta$ fixed self-consistently by
 
-    for frac in [0.0, 0.3, 0.5, 0.9]:
-        T = frac * Tc
-        delta = solve_gap(T, omega, N0V)
-        print(f"T/T_c = {frac:.1f}, Delta/(k_B T_c) = {delta / Tc:.4f}")
-```
+$$1 = N(0)\,V \int_0^{\hbar\omega} \frac{\tanh\!\left(\sqrt{\varepsilon^2+\Delta^2}\,/\,2k_BT\right)}{\sqrt{\varepsilon^2+\Delta^2}}\, d\varepsilon.$$
+
+In the weak-coupling limit this reduces to two parameter-free numbers that make the theory falsifiable:
+
+$$k_BT_c \approx 1.14\, \hbar\omega\, e^{-1/N(0)V}, \qquad \frac{2\Delta(0)}{k_BT_c} \approx 3.50.$$
+
+This self-consistent gap equation, together with the universal ratio it forces regardless of the coupling strength, is the theory's final content: a microscopic pairing instability that produces a temperature-dependent excitation gap and reduces, in the appropriate limits, to the observed thermodynamics and electrodynamics of the superconducting state.
