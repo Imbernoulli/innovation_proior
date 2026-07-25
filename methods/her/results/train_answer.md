@@ -14,65 +14,47 @@ The off-policy learner underneath is a goal-conditioned DDPG. The actor maps a c
 import numpy as np
 
 def make_sample_her_transitions(replay_strategy, replay_k, reward_fun):
-    """Build a transition sampler for Hindsight Experience Replay.
-
-    replay_strategy: 'future' enables HER relabeling, 'none' disables it.
-    replay_k: ratio of relabeled transitions to original-goal transitions.
-    reward_fun(ag_2, g, info) -> sparse binary reward for the chosen goal.
+    """HER transition sampler.
+    replay_strategy: 'future' (HER) or 'none' (plain off-policy replay).
+    replay_k: ratio of HER (relabeled) to regular replays.
+    reward_fun(ag_2, g, info) -> binary reward against the (possibly new) goal.
     """
     if replay_strategy == 'future':
-        future_p = 1.0 - (1.0 / (1.0 + replay_k))
+        future_p = 1 - (1. / (1 + replay_k))   # relabeled:real = k:1
     else:
-        future_p = 0.0
+        future_p = 0
 
     def _sample_her_transitions(episode_batch, batch_size_in_transitions):
-        # episode_batch keys:
-        #   'o'  : observations, shape (num_episodes, T+1, obs_dim)
-        #   'ag' : achieved goals, shape (num_episodes, T+1, goal_dim)
-        #   'g'  : desired goals,  shape (num_episodes, T,   goal_dim)
-        #   'u'  : actions,        shape (num_episodes, T,   action_dim)
+        # u/g have T action steps; o/ag have T+1 states, so future_t may hit T.
+        # 'ag' is the achieved-goal sequence m(s_t).
         T = episode_batch['u'].shape[1]
         rollout_batch_size = episode_batch['u'].shape[0]
         batch_size = batch_size_in_transitions
 
-        # Sample one (episode, timestep) pair per transition in the minibatch.
-        episode_idxs = np.random.randint(0, rollout_batch_size, size=batch_size)
-        t_samples = np.random.randint(0, T, size=batch_size)
-        transitions = {
-            key: episode_batch[key][episode_idxs, t_samples].copy()
-            for key in episode_batch.keys()
-        }
+        # sample a random (episode, timestep) per transition
+        episode_idxs = np.random.randint(0, rollout_batch_size, batch_size)
+        t_samples = np.random.randint(T, size=batch_size)
+        transitions = {key: episode_batch[key][episode_idxs, t_samples].copy()
+                       for key in episode_batch.keys()}
 
-        # Decide which transitions get a hindsight goal.
-        her_indexes = np.where(np.random.uniform(size=batch_size) < future_p)[0]
-
-        # For those, pick a future timestep strictly after t in the same episode.
-        future_offset = (
-            np.random.uniform(size=batch_size) * (T - t_samples)
-        ).astype(int)
+        # pick the transitions that get a hindsight (future) goal
+        her_indexes = np.where(np.random.uniform(size=batch_size) < future_p)
+        future_offset = (np.random.uniform(size=batch_size) * (T - t_samples)).astype(int)
         future_t = (t_samples + 1 + future_offset)[her_indexes]
 
-        # Relabel: replace the desired goal with the achieved goal at future_t.
+        # relabel: goal <- achieved goal at a future step of the same episode
         future_ag = episode_batch['ag'][episode_idxs[her_indexes], future_t]
         transitions['g'][her_indexes] = future_ag
 
-        # Recompute the reward against the possibly relabeled goal.
-        info = {
-            k.replace('info_', ''): v
-            for k, v in transitions.items()
-            if k.startswith('info_')
-        }
-        transitions['r'] = reward_fun(
-            ag_2=transitions['ag_2'],
-            g=transitions['g'],
-            info=info,
-        )
+        # recompute reward against the (possibly substituted) goal
+        info = {k.replace('info_', ''): v for k, v in transitions.items()
+                if k.startswith('info_')}
+        transitions['r'] = reward_fun(ag_2=transitions['ag_2'],
+                                      g=transitions['g'], info=info)
 
-        # Flatten the leading batch dimension for training.
-        transitions = {
-            k: v.reshape(batch_size, *v.shape[1:])
-            for k, v in transitions.items()
-        }
+        transitions = {k: transitions[k].reshape(batch_size, *transitions[k].shape[1:])
+                       for k in transitions.keys()}
+        assert transitions['u'].shape[0] == batch_size_in_transitions
         return transitions
 
     return _sample_her_transitions
