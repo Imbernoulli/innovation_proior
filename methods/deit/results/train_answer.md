@@ -12,63 +12,42 @@ from torch import nn
 import torch.nn.functional as F
 
 
-class TransformerBlock(nn.Module):
-    """Pre-norm residual block: MSA + GeLU FFN."""
-    def __init__(self, dim, heads, mlp_ratio=4.0, drop_path=0.0):
-        super().__init__()
-        self.norm1 = nn.LayerNorm(dim)
-        self.attn = nn.MultiheadAttention(dim, heads, batch_first=True)
-        self.norm2 = nn.LayerNorm(dim)
-        self.mlp = nn.Sequential(
-            nn.Linear(dim, int(dim * mlp_ratio)),
-            nn.GELU(),
-            nn.Linear(int(dim * mlp_ratio), dim),
-        )
-        self.drop_path = drop_path
-
-    def forward(self, x):
-        attn_out, _ = self.attn(self.norm1(x), self.norm1(x), self.norm1(x))
-        x = x + attn_out
-        x = x + self.mlp(self.norm2(x))
-        return x
-
-
-class DeiT(nn.Module):
-    """Data-efficient image Transformer with class and distillation tokens."""
+class DistilledTransformer(nn.Module):
     def __init__(self, img=224, patch=16, in_ch=3, dim=768, depth=12, heads=12,
                  num_classes=1000, drop_path=0.1):
         super().__init__()
         self.patch_embed = nn.Conv2d(in_ch, dim, kernel_size=patch, stride=patch)
         n_patches = (img // patch) ** 2
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, dim))
-        self.dist_token = nn.Parameter(torch.zeros(1, 1, dim))
-        self.pos_embed = nn.Parameter(torch.zeros(1, n_patches + 2, dim))
-        dpr = [x.item() for x in torch.linspace(0, drop_path, depth)]
-        self.blocks = nn.Sequential(*[
-            TransformerBlock(dim, heads, drop_path=dpr[i]) for i in range(depth)
-        ])
+        self.cls_token  = nn.Parameter(torch.zeros(1, 1, dim))
+        self.dist_token = nn.Parameter(torch.zeros(1, 1, dim))            # new token
+        self.pos_embed  = nn.Parameter(torch.zeros(1, n_patches + 2, dim))
+        dpr = torch.linspace(0, drop_path, depth)
+        self.blocks = nn.Sequential(*[TransformerBlock(dim, heads, drop_path=float(dpr[i]))
+                                      for i in range(depth)])
         self.norm = nn.LayerNorm(dim)
-        self.head = nn.Linear(dim, num_classes)
-        self.head_dist = nn.Linear(dim, num_classes)
+        self.head      = nn.Linear(dim, num_classes)                     # true-label head
+        self.head_dist = nn.Linear(dim, num_classes)                     # teacher-label head
         for p in (self.cls_token, self.dist_token, self.pos_embed):
             nn.init.trunc_normal_(p, std=0.02)
 
-    def forward(self, x):
+    def forward_features(self, x):
         x = self.patch_embed(x).flatten(2).transpose(1, 2)
-        cls = self.cls_token.expand(x.size(0), -1, -1)
+        cls  = self.cls_token.expand(x.size(0), -1, -1)
         dist = self.dist_token.expand(x.size(0), -1, -1)
         x = torch.cat([cls, dist, x], dim=1) + self.pos_embed
         x = self.norm(self.blocks(x))
-        out_cls = self.head(x[:, 0])
-        out_dist = self.head_dist(x[:, 1])
+        return x[:, 0], x[:, 1]
+
+    def forward(self, x):
+        x_cls, x_dist = self.forward_features(x)
+        y, y_dist = self.head(x_cls), self.head_dist(x_dist)
         if self.training:
-            return out_cls, out_dist
-        return (out_cls.softmax(-1) + out_dist.softmax(-1)) / 2
+            return y, y_dist
+        return (y.softmax(-1) + y_dist.softmax(-1)) / 2                   # late fusion
 
 
 class HardDistillationLoss(nn.Module):
-    """Hard-label distillation: 0.5 CE(true) + 0.5 CE(teacher argmax)."""
-    def __init__(self, teacher):
+    def __init__(self, teacher):                                         # convnet teacher
         super().__init__()
         self.teacher = teacher.eval()
 
@@ -76,19 +55,31 @@ class HardDistillationLoss(nn.Module):
         out_cls, out_dist = outputs
         with torch.no_grad():
             teacher_labels = self.teacher(inputs).argmax(dim=1)
-        loss_cls = F.cross_entropy(out_cls, labels)
-        loss_dist = F.cross_entropy(out_dist, teacher_labels)
-        return 0.5 * loss_cls + 0.5 * loss_dist
+        return 0.5 * F.cross_entropy(out_cls, labels) \
+             + 0.5 * F.cross_entropy(out_dist, teacher_labels)
+
+
+class SoftDistillationLoss(nn.Module):
+    def __init__(self, teacher, tau=3.0, lam=0.1):
+        super().__init__()
+        self.teacher, self.tau, self.lam = teacher.eval(), tau, lam
+
+    def forward(self, inputs, outputs, labels):
+        out_cls, out_dist = outputs
+        with torch.no_grad():
+            t = self.teacher(inputs)
+        T = self.tau
+        kd = F.kl_div(F.log_softmax(out_dist / T, 1), F.log_softmax(t / T, 1),
+                      reduction='sum', log_target=True) * (T * T) / out_dist.numel()
+        return (1 - self.lam) * F.cross_entropy(out_cls, labels) + self.lam * kd
 
 
 def resize_pos_embed(pos_embed, old_grid, new_grid):
-    """Bicubic resize of patch positional embeddings for higher-res fine-tuning."""
-    cls_dist = pos_embed[:, :2]
-    patch_pe = pos_embed[:, 2:]
-    d = patch_pe.size(-1)
-    patch_pe = patch_pe.reshape(1, old_grid, old_grid, d).permute(0, 3, 1, 2)
+    cls_dist, patch_pe = pos_embed[:, :2], pos_embed[:, 2:]
+    D = patch_pe.size(-1)
+    patch_pe = patch_pe.reshape(1, old_grid, old_grid, D).permute(0, 3, 1, 2)
     patch_pe = F.interpolate(patch_pe, size=(new_grid, new_grid),
-                             mode='bicubic', align_corners=False)
-    patch_pe = patch_pe.permute(0, 2, 3, 1).reshape(1, new_grid * new_grid, d)
+                             mode='bicubic', align_corners=False)        # norm-preserving
+    patch_pe = patch_pe.permute(0, 2, 3, 1).reshape(1, new_grid * new_grid, D)
     return torch.cat([cls_dist, patch_pe], dim=1)
 ```
