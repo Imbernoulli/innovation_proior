@@ -21,8 +21,6 @@ from torch.optim import Optimizer
 
 
 class Adafactor(Optimizer):
-    """Adaptive optimizer with sublinear extra memory for matrices."""
-
     def __init__(self, params, lr=None, eps=(1e-30, 1e-3), clip_threshold=1.0,
                  decay_rate=-0.8, beta1=None, scale_parameter=True,
                  relative_step=True, warmup_init=False):
@@ -43,16 +41,17 @@ class Adafactor(Optimizer):
     @staticmethod
     def _get_lr(group, state):
         rel = group["lr"]
-        if group["relative_step"]:
+        if group["relative_step"]:                      # rho_t = min(1e-2, 1/sqrt(t))
             min_step = 1e-6 * state["step"] if group["warmup_init"] else 1e-2
             rel = min(min_step, 1.0 / math.sqrt(state["step"]))
         scale = 1.0
-        if group["scale_parameter"]:
+        if group["scale_parameter"]:                    # relative step
             scale = max(group["eps"][1], state["RMS"])
         return scale * rel
 
     @staticmethod
     def _approx_sq_grad(row_mean, col_mean):
+        # 1/sqrt(V_hat) = rsqrt(r_i / mean(r)) * rsqrt(c_j)  (rank-1 outer product)
         r = (row_mean / row_mean.mean(dim=-1, keepdim=True)).rsqrt_().unsqueeze(-1)
         c = col_mean.unsqueeze(-2).rsqrt()
         return torch.mul(r, c)
@@ -77,7 +76,7 @@ class Adafactor(Optimizer):
                     state["step"] = 0
                     if use_first_moment:
                         state["exp_avg"] = torch.zeros_like(grad)
-                    if factored:
+                    if factored:                        # O(n)+O(m) buffers
                         state["row"] = torch.zeros(grad.shape[:-1]).to(grad)
                         state["col"] = torch.zeros(grad.shape[:-2] + grad.shape[-1:]).to(grad)
                     else:
@@ -100,15 +99,15 @@ class Adafactor(Optimizer):
                 state["RMS"] = self._rms(p_data_fp32)
                 lr = self._get_lr(group, state)
 
-                beta2t = 1.0 - state["step"] ** group["decay_rate"]
-                sq = grad ** 2 + group["eps"][0]
+                beta2t = 1.0 - state["step"] ** group["decay_rate"]   # 1 - t^{-0.8}
+                sq = grad ** 2 + group["eps"][0]                       # g^2 + eps1
 
                 if factored:
                     row, col = state["row"], state["col"]
                     row.mul_(beta2t).add_(sq.mean(dim=-1), alpha=1.0 - beta2t)
                     col.mul_(beta2t).add_(sq.mean(dim=-2), alpha=1.0 - beta2t)
                     update = self._approx_sq_grad(row, col)
-                    update.mul_(grad)
+                    update.mul_(grad)                                  # U = G / sqrt(V_hat)
                 else:
                     v = state["v"]
                     v.mul_(beta2t).add_(sq, alpha=1.0 - beta2t)
