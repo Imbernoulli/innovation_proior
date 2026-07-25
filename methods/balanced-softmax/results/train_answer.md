@@ -17,33 +17,27 @@ from torch.nn.modules.loss import _Loss
 
 
 def balanced_softmax_loss(labels, logits, sample_per_class, reduction='mean'):
-    """Balanced Softmax cross-entropy.
-
-    Trains logits to model the balanced-test posterior while training on the
-    imbalanced split, by shifting each logit by +log(n_j) before standard
-    cross-entropy. Derived from phi_hat_j = n_j e^{eta_j} / sum_i n_i e^{eta_i}.
-    """
-    spc = sample_per_class.type_as(logits)
-    spc = spc.unsqueeze(0).expand(logits.shape[0], -1)  # [batch, k]
+    """Balanced Softmax cross-entropy: shift each logit by + log(n_class), then
+    standard cross-entropy. Trains logits to model the balanced-test posterior."""
+    spc = sample_per_class.type_as(logits)               # n_j per class
+    spc = spc.unsqueeze(0).expand(logits.shape[0], -1)   # [batch, k]
     logits = logits + spc.log()                          # eta_j + log n_j
     loss = F.cross_entropy(input=logits, target=labels, reduction=reduction)
     return loss
 
 
 class BalancedSoftmax(_Loss):
-    """Loss module holding per-class training counts n_1..n_k."""
+    """Loss module holding the per-class training counts n_1..n_k."""
 
     def __init__(self, sample_per_class):
         super().__init__()
         self.sample_per_class = torch.as_tensor(sample_per_class)
 
     def forward(self, logits, labels, reduction='mean'):
-        return balanced_softmax_loss(
-            labels, logits, self.sample_per_class, reduction
-        )
+        return balanced_softmax_loss(labels, logits, self.sample_per_class, reduction)
 
 
-# Test time: NO shift. The bare logits already model the balanced posterior.
+# Test time: NO shift — eta already models the balanced posterior.
 @torch.no_grad()
 def predict(model, x):
     return model(x).argmax(dim=-1)
