@@ -25,9 +25,10 @@ class Encoder(nn.Module):
         self.init_state = nn.Linear(hidden_dim, hidden_dim)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, src):
+    def forward(self, src):                               # src: [src_len, batch]
         embedded = self.dropout(self.embedding(src))
-        outputs, hidden = self.rnn(embedded)
+        outputs, hidden = self.rnn(embedded)             # outputs = annotations h_j
+        # s_0 = tanh(W_s backward_h_1); hidden[-1] is backward state at source position 1
         hidden = torch.tanh(self.init_state(hidden[-1]))
         return outputs, hidden
 
@@ -35,17 +36,17 @@ class Encoder(nn.Module):
 class AdditiveAlignment(nn.Module):
     def __init__(self, hidden_dim, attn_dim):
         super().__init__()
-        self.query = nn.Linear(hidden_dim, attn_dim, bias=False)
-        self.key = nn.Linear(hidden_dim * 2, attn_dim, bias=False)
-        self.energy = nn.Linear(attn_dim, 1, bias=False)
+        self.query = nn.Linear(hidden_dim, attn_dim, bias=False)       # W_a
+        self.key = nn.Linear(hidden_dim * 2, attn_dim, bias=False)     # U_a
+        self.energy = nn.Linear(attn_dim, 1, bias=False)               # v_a
 
     def precompute(self, encoder_outputs):
-        return self.key(encoder_outputs)
+        return self.key(encoder_outputs)                 # U_a h_j: [src_len, batch, attn]
 
-    def forward(self, hidden, projected_annotations):
-        query = self.query(hidden).unsqueeze(0)
+    def forward(self, hidden, projected_annotations):    # hidden: [batch, n]
+        query = self.query(hidden).unsqueeze(0)           # [1, batch, attn]
         e = self.energy(torch.tanh(query + projected_annotations)).squeeze(2)
-        return torch.softmax(e.transpose(0, 1), dim=1)
+        return torch.softmax(e.transpose(0, 1), dim=1)    # alpha_ij: [batch, src_len]
 
 
 class DecoderGRUCell(nn.Module):
@@ -86,13 +87,13 @@ class Decoder(nn.Module):
         self.fc_out = nn.Linear(maxout_dim, output_dim, bias=False)
         self.dropout = nn.Dropout(dropout)
 
-    def forward(self, input, hidden, encoder_outputs, projected_annotations):
-        embedded = self.dropout(self.embedding(input))
-        alpha = self.alignment(hidden, projected_annotations)
-        annotations = encoder_outputs.permute(1, 0, 2)
-        context = torch.bmm(alpha.unsqueeze(1), annotations).squeeze(1)
+    def forward(self, input, hidden, encoder_outputs, projected_annotations):   # input: [batch]
+        embedded = self.dropout(self.embedding(input))                          # E y_{i-1}
+        alpha = self.alignment(hidden, projected_annotations)                   # [batch, src_len]
+        annotations = encoder_outputs.permute(1, 0, 2)                          # [batch, src_len, 2*n]
+        context = torch.bmm(alpha.unsqueeze(1), annotations).squeeze(1)          # c_i
         prev_hidden = hidden
-        hidden = self.rnn_cell(embedded, prev_hidden, context)
+        hidden = self.rnn_cell(embedded, prev_hidden, context)                  # s_i
         readout = self.readout(torch.cat((prev_hidden, embedded, context), dim=1))
         maxout = readout.view(readout.shape[0], self.maxout_dim, 2).max(dim=2).values
         prediction = self.fc_out(maxout)
@@ -102,9 +103,7 @@ class Decoder(nn.Module):
 class Seq2Seq(nn.Module):
     def __init__(self, encoder, decoder, device):
         super().__init__()
-        self.encoder = encoder
-        self.decoder = decoder
-        self.device = device
+        self.encoder, self.decoder, self.device = encoder, decoder, device
 
     def forward(self, src, trg, teacher_forcing_ratio):
         trg_len, batch = trg.shape
@@ -120,18 +119,16 @@ class Seq2Seq(nn.Module):
         return outputs
 
 
-# Training skeleton:
+# --- training skeleton ---
 # alignment = AdditiveAlignment(hidden_dim, attn_dim)
-# model = Seq2Seq(
-#     Encoder(input_dim, emb_dim, hidden_dim, dropout),
-#     Decoder(output_dim, emb_dim, hidden_dim, maxout_dim, dropout, alignment),
-#     device
-# ).to(device)
+# model = Seq2Seq(Encoder(input_dim, emb_dim, hidden_dim, dropout),
+#                 Decoder(output_dim, emb_dim, hidden_dim, maxout_dim, dropout, alignment),
+#                 device).to(device)
 # optimizer = optim.Adadelta(model.parameters())
 # criterion = nn.CrossEntropyLoss(ignore_index=pad_index)
-# for src, trg in loader:
+# for batch in loader:
 #     optimizer.zero_grad()
-#     output = model(src, trg, teacher_forcing_ratio=0.5)
+#     output = model(src, trg, teacher_forcing_ratio=0.5)   # [trg_len, batch, vocab]
 #     loss = criterion(output[1:].reshape(-1, output.shape[-1]), trg[1:].reshape(-1))
 #     loss.backward()
 #     torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
