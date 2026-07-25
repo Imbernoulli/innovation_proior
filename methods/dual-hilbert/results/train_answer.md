@@ -5,7 +5,6 @@ The method is Hilbert Goal Representation. It learns a single shared encoder phi
 Several choices in the design flow directly from this parameterization. First, using a single shared encoder for states and goals is natural because the value expression is symmetric in its two arguments. Second, V(s, s) = 0 and V <= 0 are guaranteed by construction, facts that an unconstrained value network would otherwise have to discover. Third, the embedding space is deliberately a Hilbert space rather than an arbitrary metric space because the l2 norm is induced by an inner product. That inner product gives the space an algebra of directions, so phi(g) - phi(s) is itself an actionable control signal and the optimality argument can run through Cauchy-Schwarz. The representation is learned offline with action-free expectile regression in the style of IQL and HIQL. Offline, the Bellman max over next states is unsafe because it would query out-of-distribution transitions; instead an upper expectile over the dataset's own next states approximates the in-sample max. A twin-head target network and a shared target advantage are used for stability, and the square root is floored to avoid gradient explosion when phi(s) is close to phi(g). Because optimal temporal distance is a quasimetric, because not every finite metric embeds isometrically into l2, and because a discount is used for numerical stability, the learned phi is best described as the best discounted symmetric Hilbert approximation of the reachability structure, which is sufficient for the downstream agent.
 
 ```python
-import jax
 import jax.numpy as jnp
 import flax.linen as nn
 from typing import Callable, Sequence
@@ -30,18 +29,45 @@ class LayerNormMLP(nn.Module):
         return x
 
 
+class LayerNormRepresentation(nn.Module):
+    hidden_dims: tuple = (256, 256)
+    activate_final: bool = True
+    ensemble: bool = True
+
+    @nn.compact
+    def __call__(self, observations):
+        module = LayerNormMLP
+        if self.ensemble:
+            module = ensemblize(module, 2)
+        return module(self.hidden_dims, activate_final=self.activate_final)(observations)
+
+
+class Representation(nn.Module):
+    hidden_dims: tuple = (256, 256)
+    activate_final: bool = True
+    ensemble: bool = True
+
+    @nn.compact
+    def __call__(self, observations):
+        module = MLP
+        if self.ensemble:
+            module = ensemblize(module, 2)
+        return module(self.hidden_dims, activate_final=self.activate_final,
+                      activations=nn.gelu)(observations)
+
+
 class GoalConditionedPhiValue(nn.Module):
     hidden_dims: tuple = (256, 256)
-    skill_dim: int = 32
+    readout_size: tuple = (256,)
+    skill_dim: int = 2
     use_layer_norm: bool = True
     ensemble: bool = True
     encoder: nn.Module = None
 
     def setup(self):
-        repr_class = LayerNormMLP if self.use_layer_norm else MLP
-        if self.ensemble:
-            repr_class = ensemblize(repr_class, 2)
-        phi = repr_class((*self.hidden_dims, self.skill_dim), activate_final=False)
+        repr_class = LayerNormRepresentation if self.use_layer_norm else Representation
+        phi = repr_class((*self.hidden_dims, self.skill_dim),
+                         activate_final=False, ensemble=self.ensemble)
         if self.encoder is not None:
             phi = nn.Sequential([self.encoder(), phi])
         self.phi = phi
@@ -91,6 +117,9 @@ def compute_value_loss(agent, batch, network_params):
         'v min': v.min(),
         'v mean': v.mean(),
         'abs adv mean': jnp.abs(adv).mean(),
+        'adv mean': adv.mean(),
+        'adv max': adv.max(),
+        'adv min': adv.min(),
         'accept prob': (adv >= 0).mean(),
     }
 ```
