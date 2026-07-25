@@ -8,67 +8,10 @@ Concretely, the generator can be instantiated using discrete exponentiation modu
 
 The reduction works as follows. Given a challenge group element y whose predicate we want to learn, compute the forward prefix B(f(y)), B(f^2(y)), ..., feed it to the stream predictor, and return the predictor’s answer as the guess for B(y). If the predictor has non-negligible advantage, we obtain a non-negligible advantage on the hard predicate, which can be amplified into a discrete-log algorithm. Therefore, under the discrete-log hardness assumption, the Blum-Micali generator is next-bit unpredictable.
 
-```python
-import secrets
-from typing import List
-
-def is_prime(n: int) -> bool:
-    if n < 2:
-        return False
-    if n % 2 == 0:
-        return n == 2
-    r, d = 0, n - 1
-    while d % 2 == 0:
-        r += 1
-        d //= 2
-    for _ in range(64):
-        a = secrets.randbelow(n - 2) + 2
-        x = pow(a, d, n)
-        if x == 1 or x == n - 1:
-            continue
-        for _ in range(r - 1):
-            x = pow(x, 2, n)
-            if x == n - 1:
-                break
-        else:
-            return False
-    return True
-
-def find_generator(p: int) -> int:
-    # Assumes p is a safe prime of the form p = 2*q + 1.
-    q = (p - 1) // 2
-    for g in range(2, p):
-        if pow(g, q, p) != 1 and pow(g, 2, p) != 1:
-            return g
-    raise ValueError("no generator found")
-
-def generate_safe_prime(bits: int) -> int:
-    while True:
-        q = secrets.randbits(bits - 1) | (1 << (bits - 2)) | 1
-        p = 2 * q + 1
-        if is_prime(q) and is_prime(p):
-            return p
-
-def blum_micali_prg(p: int, g: int, seed: int, length: int) -> List[int]:
-    if not (1 <= seed < p):
-        raise ValueError("seed must lie in [1, p-1]")
-    state = seed
-    bits = []
-    for _ in range(length):
-        # Output the principal-square-root predicate for the current state.
-        # Since state = g**exponent mod p, exponent is tracked implicitly.
-        # Here we compute the bit directly from the current exponent for clarity.
-        bits.append(1 if state <= (p - 1) // 2 else 0)
-        state = pow(g, state, p)
-    return bits
-
-if __name__ == "__main__":
-    p = generate_safe_prime(128)
-    g = find_generator(p)
-    seed = secrets.randbelow(p - 1) + 1
-    out = blum_micali_prg(p, g, seed, length=128)
-    print("p =", p)
-    print("g =", g)
-    print("seed =", seed)
-    print("bits =", "".join(map(str, out)))
-```
+The finished construction is this. Fix an odd prime $p$ such that $p-1$ carries a large prime factor — this rules out the smooth-order regime where Pohlig–Hellman would compute discrete logs efficiently and quietly break the predicate — and fix a generator $g$ of $\mathbb{Z}_p^*$. The state-advance permutation is
+$$f_{p,g}(x) = g^{x} \bmod p,$$
+and the hard-core predicate is the principal-square-root test: writing $x = g^{z} \bmod p$ for the unique $z \in \{1,\dots,p-1\}$,
+$$B_{p,g}(x) = \begin{cases} 1, & 1 \le z \le \dfrac{p-1}{2} \\[4pt] 0, & \dfrac{p+1}{2} \le z \le p-1. \end{cases}$$
+Since $p$ is odd, $z = p/2$ is never an integer, so this comparison always resolves and every state yields a definite bit. The generator computes the bit without ever facing the hard problem, because $f_{p,g}$ has the self-referential property that the discrete log of $f_{p,g}(x_{j-1})$ is exactly $x_{j-1}$ itself: so $B_{p,g}(x_j) = h(x_{j-1})$ reduces to the one comparison $x_{j-1} \le (p-1)/2$, no exponentiation-inversion required. The full protocol is: draw a seed $x_0$ uniformly from $\{1,\dots,p-1\}$, and for $m$ steps set
+$$b_j = \big[\,x_{j-1} \le (p-1)/2\,\big], \qquad x_j = g^{x_{j-1}} \bmod p \qquad (j = 1,\dots,m),$$
+and output $b_1 b_2 \cdots b_m$ — the forward-loop reading of the same construction, since each $b_j$ is exactly $B_{p,g}(x_j)$ read one step ahead of when it would otherwise require inverting $f_{p,g}$. Under the assumption that discrete log resists attack in $\mathbb{Z}_p^*$ at the chosen size, no efficient adversary seeing $b_1,\dots,b_{j-1}$ can predict $b_j$ with advantage non-negligibly above $1/2$: a predictor with advantage $\epsilon$ yields, through the forward-simulated prefix from a challenge state $y$, a circuit for $B_{p,g}(y)$ with the same advantage, and re-randomizing $y$ by multiplication with known powers of $g$ turns repeated calls to that circuit into a discrete-log algorithm. That pairing — the permutation $f_{p,g}$, the predicate $B_{p,g}$, and the bit-recurrence above — is the Blum-Micali generator, secure precisely to the extent that discrete log resists attack at the chosen prime.
