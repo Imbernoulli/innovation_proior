@@ -14,46 +14,12 @@ The threshold parameter theta is essential, not merely a cosmetic bias term. Wit
 
 The broader lesson is that shallow networks are universal approximators because their affine copies of a fixed activation can separate finite signed measures, and the activation frontier says the thresholded span fails exactly when the activation is polynomial almost everywhere. The theorem explains why a single hidden layer is, in principle, enough for continuous function approximation, but it should not be read as a justification for ignoring depth, regularization, or architecture search in practice. Depth can offer more efficient representations, better conditioning, and richer feature hierarchies, while the universal approximation theorem only guarantees that some sufficiently wide shallow network exists.
 
-To make these ideas concrete, I will run a small numerical illustration. The code below samples a continuous target function on the unit square, fits a one-hidden-layer network with a sigmoidal activation using ordinary least squares on the output weights, and compares the approximation error to the theorem's prediction. This is not a proof; it is merely an empirical demonstration that a small number of randomly oriented ridge functions can approximate a simple continuous target.
-
-```python
-import numpy as np
-
-np.random.seed(0)
-
-# Target function on [0,1]^2: f(x,y) = sin(2*pi*x) * cos(2*pi*y)
-def f(x):
-    return np.sin(2 * np.pi * x[:, 0]) * np.cos(2 * np.pi * x[:, 1])
-
-# Build a grid of training points
-n_grid = 20
-x1 = np.linspace(0, 1, n_grid)
-x2 = np.linspace(0, 1, n_grid)
-X1, X2 = np.meshgrid(x1, x2)
-X = np.column_stack([X1.ravel(), X2.ravel()])
-y = f(X)
-
-# Number of hidden units (random ridge functions with sigmoid activation)
-n_hidden = 200
-W = np.random.randn(n_hidden, 2)
-theta = np.random.uniform(-3, 3, size=n_hidden)
-
-# Hidden feature matrix: each column is sigma(w_j . x + theta_j)
-def sigmoid(t):
-    return 1.0 / (1.0 + np.exp(-t))
-
-H = sigmoid(X @ W.T + theta)
-
-# Fit output weights by least squares (ridge-free for this toy example)
-alpha = np.linalg.lstsq(H, y, rcond=None)[0]
-
-# Predict and compute uniform error on the grid
-y_pred = H @ alpha
-max_error = np.max(np.abs(y - y_pred))
-rmse = np.sqrt(np.mean((y - y_pred) ** 2))
-
-print(f"Hidden units: {n_hidden}")
-print(f"Grid points: {len(y)}")
-print(f"RMSE: {rmse:.4f}")
-print(f"Max uniform error: {max_error:.4f}")
-```
+The result I have in hand, stated in the precise form I would present it as the final theorem, is this. Fix a continuous sigmoidal activation $\sigma:\mathbb{R}\to\mathbb{R}$, meaning $\sigma$ has distinct finite limits $a_-$ at $-\infty$ and $a_+$ at $+\infty$. On the cube $I_n = [0,1]^n$, with $C(I_n)$ carrying the supremum norm, the finite sums
+$$
+G(x) = \sum_{j=1}^N \alpha_j\,\sigma(w_j \cdot x + \theta_j), \qquad \alpha_j,\theta_j \in \mathbb{R},\ w_j \in \mathbb{R}^n,
+$$
+are dense in $C(I_n)$: for every $f \in C(I_n)$ and every $\epsilon > 0$ there is a finite $N$ and a choice of $(\alpha_j, w_j, \theta_j)_{j=1}^N$ such that
+$$
+\sup_{x \in I_n} \big| f(x) - G(x) \big| < \epsilon .
+$$
+That is the existence statement, with no bound on $N$ in terms of $f$ or $\epsilon$ and no algorithm for finding the parameters — exactly the guarantee the discriminatory-measure argument above supplies. It sharpens to the equivalence I derived from the activation frontier: for a locally bounded, piecewise continuous $\sigma$ whose set of discontinuities has closure of Lebesgue measure zero, the thresholded span $\operatorname{span}\{\sigma(w\cdot x+\theta) : w\in\mathbb{R}^n,\ \theta\in\mathbb{R}\}$ is dense in $C(K)$, for every compact $K\subset\mathbb{R}^n$, if and only if $\sigma$ is not almost-everywhere equal to an algebraic polynomial. This equivalence is the true boundary of the phenomenon: it certifies every non-polynomial activation used in practice — sigmoids, bounded or unbounded, smooth or not — and it excludes, with a matching necessity proof, exactly the one family for which no finite hidden layer of any width can be dense: the polynomials.
