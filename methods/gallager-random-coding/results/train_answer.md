@@ -10,34 +10,42 @@ At low rates the averaged bound is slightly loose because rare codebooks where t
 import numpy as np
 
 def E0(rho, p, P):
-    """Gallager single-letter function.
-    P[j, k] = Pr(output b_j | input a_k); p[k] input probability."""
-    inner = (p[None, :] * P ** (1.0 / (1.0 + rho))).sum(axis=1)
-    return -np.log((inner ** (1.0 + rho)).sum())
+    # E0(rho,p) = -ln sum_j ( sum_k p_k P_jk^{1/(1+rho)} )^{1+rho}
+    inner = (p[None, :] * P ** (1.0 / (1.0 + rho))).sum(axis=1)   # sum over inputs k
+    return -np.log((inner ** (1.0 + rho)).sum())                 # sum over outputs j
 
 def E_r(R, P, p_grid, rho_grid):
-    """Random-coding exponent E_r(R) = max_{rho in [0,1], p} [E0(rho,p) - rho*R]."""
+    # E_r(R) = max_{rho in [0,1], p} [ E0(rho,p) - rho*R ]
     return max(E0(rho, p, P) - rho * R
-               for p in p_grid for rho in rho_grid)
+               for p in p_grid for rho in rho_grid)              # rho_grid subset of [0,1]
 
 def E_x(rho, p, P):
-    """Expurgated single-letter function, valid for rho >= 1."""
-    pair = np.sqrt(P[:, :, None] * P[:, None, :]).sum(axis=0)
+    # Expurgated single-letter function, rho >= 1.
+    pair = np.sqrt(P[:, :, None] * P[:, None, :]).sum(axis=0)     # pair[k, i]
     return -rho * np.log((p[:, None] * p[None, :] * pair ** (1.0 / rho)).sum())
 
 def E_ex(R, P, p_grid, rho_grid):
-    """Expurgated exponent for low rates."""
+    # Expurgated exponent: max over rho >= 1 of E_x(rho,p) - rho*R.
     return max(E_x(rho, p, P) - rho * R
                for p in p_grid for rho in rho_grid)
 
+def E_L(R, P, p_grid, rho_grid):
+    # Fano/sphere-packing exponent: same E0, rho over positive values.
+    return max(E0(rho, p, P) - rho * R
+               for p in p_grid for rho in rho_grid)
+
 def error_probability_bound(N, R, P, p_grid, rho_grid):
-    """There exists a length-N rate-R code with ML error <= exp(-N E_r(R))."""
     return np.exp(-N * E_r(R, P, p_grid, rho_grid))
 
 def mutual_information(p, P):
-    """I(p) = E0'(0), the slope that keeps E_r(R) positive for R < C."""
+    # I(p) = E0'(0): the slope at rho=0 that keeps E_r(R)>0 for R<C
     q = P @ p
     return sum(p[k] * P[j, k] * np.log(P[j, k] / q[j])
                for k in range(len(p)) for j in range(P.shape[0])
                if p[k] > 0 and P[j, k] > 0)
+
+# Binary symmetric channel, crossover q: closed form via p=(1/2,1/2).
+def E0_bsc(rho, q):
+    return rho * np.log(2) - (1 + rho) * np.log(
+        q ** (1 / (1 + rho)) + (1 - q) ** (1 / (1 + rho)))
 ```
