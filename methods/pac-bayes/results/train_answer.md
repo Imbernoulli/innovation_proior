@@ -26,79 +26,14 @@ So the method is both a certificate and an algorithm. The Gibbs posterior tilts 
 
 I should be clear about what the bound does not claim. It certifies the stochastic predictor that draws h from Q and then applies it, not necessarily the deterministic majority vote obtained by averaging the predictions of h under Q. Relating the vote to the Gibbs risk requires additional arguments, such as the PAC-Bayes-kl inversion or margin bounds. It also does not assert that the prior P is correct or that nature sampled from it; P is merely a reference measure that the analyst fixes before data. And it does not make the bound automatically non-vacuous: if Q is far from P or the empirical loss is high, the certificate can be weak. Its value is that it exposes exactly the quantity that must be controlled, KL(Q||P), and turns it into a knob that the learner can optimize.
 
-The canonical name I would use is therefore PAC-Bayes bounds, with the understanding that the bound has two common instantiations: McAllester's square-root PAC-Bayes bound and the Seeger-Maurer PAC-Bayes-kl bound. Together they form the standard distribution-free generalization certificate for randomized or averaged predictors.
+The canonical name I would use is therefore PAC-Bayes bounds, and the finished result is a single theorem presented in two calibrations, together with the training rule it licenses. Fix any prior $P$ over predictors, chosen independently of the sample, and let $S$ be an IID sample of size $m$ with loss bounded in $[0,1]$. Then, with probability at least $1-\delta$ over the draw of $S$, the following holds simultaneously for every posterior $Q$ — no restriction to a fixed, countable, or pre-listed family of posteriors:
 
-```python
-import numpy as np
-from scipy.optimize import minimize_scalar
-from scipy.special import rel_entr
+$$L(Q) \;\le\; \hat L(Q,S) \;+\; \sqrt{\frac{\mathrm{KL}(Q\|P) + \ln(1/\delta) + \ln m + 2}{2m-1}} \qquad \text{(McAllester's square-root bound),}$$
 
-np.random.seed(0)
+$$\mathrm{kl}\big(\hat L(Q,S),\,L(Q)\big) \;\le\; \frac{\mathrm{KL}(Q\|P) + \ln\!\big(2\sqrt{m}/\delta\big)}{m} \qquad \text{(Seeger-Maurer kl-form),}$$
 
-# Simulate a finite hypothesis class and an IID sample.
-n_h = 200          # number of predictors
-m = 500            # sample size
-prior = np.ones(n_h) / n_h  # uniform prior
+where $\hat L(Q,S) = \mathbb{E}_{h\sim Q}\,\hat L(h,S)$ and $L(Q) = \mathbb{E}_{h\sim Q}\,L(h)$ are the posterior empirical and true losses, $\mathrm{KL}(Q\|P) = \mathbb{E}_{h\sim Q}\ln\frac{dQ}{dP}(h)$ is the relative entropy of the posterior from the fixed prior, and $\mathrm{kl}(p,q) = p\ln\frac{p}{q} + (1-p)\ln\frac{1-p}{1-q}$ is the Bernoulli relative entropy. Since $\mathrm{kl}(p,q) \ge 2(p-q)^2$, the second form implies and sharpens the first whenever the empirical loss is small, which is exactly the regime where a generic Hoeffding-style tail is wasteful. Both statements price the posterior in the same currency, $\mathrm{KL}(Q\|P)$ nats, and both are simultaneous over $Q$, so the same theorem is also a training criterion. Minimizing the right-hand side of the square-root bound over $Q$ at a fixed inverse temperature $\beta$ is a constrained optimization whose stationary point is exactly the Gibbs posterior
 
-# True losses chosen adversarially / arbitrarily for each predictor.
-true_loss = np.random.beta(2, 5, size=n_h)
-true_loss = np.clip(true_loss, 0.05, 0.95)
+$$dQ_\beta(h) \;=\; Z_\beta^{-1}\exp\!\big(-\beta\,\hat L(h,S)\big)\,dP(h),$$
 
-# Generate training losses: Bernoulli( true_loss[h] ) for each sample.
-S = (np.random.rand(m, n_h) < true_loss[None, :]).astype(float)
-emp_loss = S.mean(axis=0)
-
-# Compute the Gibbs posterior for a range of inverse temperatures.
-def gibbs_q(beta, emp, prior):
-    log_w = -beta * emp + np.log(prior)
-    log_w -= log_w.max()
-    w = np.exp(log_w)
-    return w / w.sum()
-
-def kl_divergence(q, p):
-    return np.sum(rel_entr(q, p))
-
-# Choose beta by minimizing the square-root PAC-Bayes bound.
-delta = 0.05
-
-def mcallester_bound(beta):
-    q = gibbs_q(beta, emp_loss, prior)
-    Lhat = float(q @ emp_loss)
-    Ltrue = float(q @ true_loss)
-    # We report the bound and also compute the actual Gibbs risk for comparison.
-    kl_qp = kl_divergence(q, prior)
-    penalty = np.sqrt((kl_qp + np.log(1/delta) + np.log(m) + 2) / (2*m - 1))
-    return Lhat + penalty, Ltrue
-
-betas = np.linspace(0.01, 20.0, 200)
-obj_vals = np.array([mcallester_bound(b)[0] for b in betas])
-best_beta = betas[np.argmin(obj_vals)]
-best_bound, best_true = mcallester_bound(best_beta)
-best_q = gibbs_q(best_beta, emp_loss, prior)
-
-print(f"Sample size m = {m}, hypotheses = {n_h}, delta = {delta}")
-print(f"Optimal inverse temperature beta = {best_beta:.3f}")
-print(f"Posterior empirical loss  = {best_q @ emp_loss:.4f}")
-print(f"Posterior true loss       = {best_true:.4f}")
-print(f"KL(Q||P)                 = {kl_divergence(best_q, prior):.4f}")
-print(f"McAllester bound value    = {best_bound:.4f}")
-print(f"Bound is valid?           {best_true <= best_bound}")
-
-# Also illustrate the PAC-Bayes-kl form by inverting kl(empirical, true).
-def kl_inv(p, rhs):
-    """Invert kl(p, q) <= rhs for q >= p, yielding a valid upper bound on q."""
-    if rhs <= 0:
-        return p
-    def objective(q):
-        if q <= p or q >= 1:
-            return 1e6
-        return (np.sum(rel_entr([p, 1-p], [q, 1-q])) - rhs)**2
-    res = minimize_scalar(objective, bounds=(p, 1-1e-9), method='bounded')
-    return res.x
-
-Lhat_gibbs = float(best_q @ emp_loss)
-rhs_kl = (kl_divergence(best_q, prior) + np.log(2*np.sqrt(m)/delta)) / m
-kl_bound = kl_inv(Lhat_gibbs, rhs_kl)
-print(f"PAC-Bayes-kl upper bound  = {kl_bound:.4f}")
-print(f"kl-form is valid?         {best_true <= kl_bound}")
-```
+with $Z_\beta$ the normalizing constant, so the certificate and the objective are the same object viewed from two sides: the theorem tells you what any posterior costs, and the Gibbs family tells you which posterior spends that cost most efficiently against the training loss at a given temperature. Together the two bounds and the Gibbs family are the deliverable: a distribution-free certificate for a learned distribution over predictors, priced entirely by its relative entropy to a prior fixed before the data was seen.
