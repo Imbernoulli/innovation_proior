@@ -1,29 +1,29 @@
 ## Research question
 
-问题不是某一个具体程序性质是否可判定，而是：当一个性质真正谈的是程序计算出来的语义时，它什么时候可能有通用判定器？
+The question is not whether some particular concrete program property is decidable, but rather: when a property is truly about the semantics a program computes, when can it possibly have a general decision procedure?
 
-停机问题已经说明，“给定程序和输入，程序是否会停机”没有总是正确且总会停止的算法。由此自然要问：对程序所计算的部分函数、识别的语言、或输入输出行为而言，哪些判断可以用算法对任意程序完成？
+The halting problem has already shown that there is no algorithm that is always correct and always halts for "given a program and an input, does the program halt". This naturally raises the question: for the partial function a program computes, the language it recognizes, or its input-output behavior, which judgments can be carried out by an algorithm for arbitrary programs?
 
-这里的关键词是 extensional。这样的性质只依赖程序实现的函数或语言，而不依赖源代码长什么样、用了多少步、变量名是什么、是否包含某个语法片段。问题被放在“程序是什么”而不是“程序怎么写”的层面上：一个语义层面的非平凡判断，与停机问题之间是什么关系？
+The key word here is extensional. Such a property depends only on the function or language the program implements, not on what the source code looks like, how many steps it takes, what the variable names are, or whether it contains some particular syntactic fragment. The question is placed at the level of "what the program is" rather than "how the program is written": what is the relationship between a nontrivial semantic-level judgment and the halting problem?
 
 ## Background
 
-程序可以看成部分可计算函数：对某些输入返回输出，对另一些输入可能永远不返回。许多自然问题都属于这种语义性质：程序是否在所有输入上停机，是否接受某个字符串，是否计算常数函数，是否永远不会输出某个值，是否识别空语言，是否识别有限语言。
+A program can be viewed as a partial computable function: for some inputs it returns an output, for others it may never return. Many natural questions are semantic properties of this kind: whether a program halts on all inputs, whether it accepts some string, whether it computes a constant function, whether it never outputs some particular value, whether it recognizes the empty language, whether it recognizes a finite language.
 
-“非平凡”表示该性质既不是所有程序语义都满足，也不是没有任何程序语义满足。若性质对所有部分函数都为真，或对所有部分函数都为假，判定器可以直接输出固定答案。
+"Nontrivial" means the property is neither satisfied by all program semantics nor satisfied by none. If the property is true for all partial functions, or false for all partial functions, a decider can simply output a fixed answer.
 
-一个判定问题的常见表述是：设 `P` 是部分可计算函数集合上的一个性质，考虑集合 `{e | phi_e has P}` 是否可判定。这个问题只取决于程序的输入输出语义，且有的程序满足、有的程序不满足。
+A common formulation of a decision problem is: let `P` be a property on the set of partial computable functions, and consider whether the set `{e | phi_e has P}` is decidable. This question depends only on the input-output semantics of the program, and some programs satisfy it while others do not.
 
 ## Baselines
 
-逐个性质证明不可判定是最直接的做法。例如可以单独证明“是否接受空串”不可判定，再证明“是否识别空语言”不可判定，再证明“是否计算全函数”不可判定。每个性质都用一套针对它的构造来处理。
+Proving undecidability property by property is the most direct approach. For example one could separately prove "whether it accepts the empty string" is undecidable, then prove "whether it recognizes the empty language" is undecidable, then prove "whether it computes a total function" is undecidable. Each property is handled with its own tailored construction.
 
-停机问题归约给出一个常用模板。若某个语义性质有判定器，就把任意停机实例编码进一个新程序：当原程序停机时，新程序表现为一种已知语义；当原程序不停机时，新程序表现为另一种已知语义。判定该性质就会判定原停机实例。
+Reduction from the halting problem gives a common template. If some semantic property has a decider, encode an arbitrary halting instance into a new program: when the original program halts, the new program exhibits one known semantics; when the original program does not halt, the new program exhibits another known semantics. Deciding that property would then decide the original halting instance.
 
 ## Evaluation setting
 
-对象是程序编号、Turing 机编号、或任何等价计算模型中的可执行描述。判定器必须对每个输入程序都停机，并输出该程序计算出的部分函数是否具有性质 `P`。
+The objects are program indices, Turing machine indices, or executable descriptions in any equivalent model of computation. The decider must halt on every input program and output whether the partial function the program computes has property `P`.
 
-正例和反例必须按语义区分。如果两个程序计算同一个部分函数，那么 extensional property 必须给它们相同答案。纯语法性质和有固定时间上界的运行过程性质属于另一类：例如“程序文本是否包含某条指令”可判定，“是否在 100 步内停机”也可判定，因为这些不是所计算部分函数本身的性质。
+Positive and negative examples must be distinguished by semantics. If two programs compute the same partial function, an extensional property must give them the same answer. Purely syntactic properties and properties of execution with a fixed time bound belong to a different category: for example "whether the program text contains a certain instruction" is decidable, and "whether it halts within 100 steps" is also decidable, because these are not properties of the partial function computed itself.
 
-评估的核心不是复杂度上界，而是可判定性边界。对任何声称能做通用语义判断的算法，要检验它与停机问题之间的归约关系：如果它能判定一个非平凡语义性质，是否也就能解决停机问题。
+The core of the evaluation is not a complexity upper bound but the boundary of decidability. For any algorithm that claims to make a general semantic judgment, one should examine its reduction relationship with the halting problem: if it can decide a nontrivial semantic property, can it also solve the halting problem.

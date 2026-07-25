@@ -1,17 +1,17 @@
-我先把问题从“某个程序文本有什么特征”移开。Rice 定理谈的不是语法、运行步数上界或编译器能直接检查的结构，而是程序实际计算出的部分函数。两个源代码完全不同的程序只要在每个输入上的返回/不返回行为相同，它们对 extensional property 来说就是同一个对象。
+I first move the question away from "what features does a particular piece of program text have." Rice's theorem is not about syntax, execution-step bounds, or structure a compiler can check directly, but about the partial function the program actually computes. Two programs with completely different source code that have the same return/non-return behavior on every input are the same object as far as an extensional property is concerned.
 
-停机问题已经提供了不可判定性的核心燃料：不存在算法能对任意 `(M, x)` 判断 `M` 在 `x` 上是否停机。若我要证明某个语义性质不可判定，最自然的策略是把停机实例塞进一个新程序的行为里。问题是 Rice 定理要一次处理所有非平凡语义性质，所以构造不能依赖这个性质的细节，比如不能专门利用“是否接受 0”或“是否为空语言”的结构。
+The halting problem already supplies the core fuel for undecidability: there is no algorithm that can decide, for arbitrary `(M, x)`, whether `M` halts on `x`. If I want to prove some semantic property is undecidable, the most natural strategy is to stuff a halting instance into the behavior of a new program. The problem is that Rice's theorem needs to handle all nontrivial semantic properties at once, so the construction cannot depend on the details of the property — for instance it cannot specifically exploit the structure of "does it accept 0" or "is it the empty language".
 
-非平凡性正好给出需要的最小材料。性质 `P` 既不是恒真也不是恒假，所以存在至少一种部分可计算函数满足 `P`，也存在至少一种不满足 `P`。再看处处不定义函数 `bottom`：它要么满足 `P`，要么不满足 `P`。因为 `P` 非平凡，总能选到一个可计算函数 `g`，使得 `g` 对 `P` 的真假与 `bottom` 相反。
+Nontriviality itself gives exactly the minimal material needed. The property `P` is neither always true nor always false, so there exists at least one partial computable function satisfying `P`, and at least one not satisfying `P`. Now consider the everywhere-undefined function `bottom`: it either satisfies `P` or does not. Because `P` is nontrivial, we can always choose a computable function `g` such that `g`'s truth value under `P` is the opposite of `bottom`'s.
 
-现在给定任意停机实例 `(M, x)`，构造一个程序 `Q`。`Q` 在输入 `y` 上先模拟 `M(x)`。如果这个模拟停机，`Q` 就运行计算 `g(y)` 的程序并返回它的结果；如果这个模拟永远不停，`Q` 也永远不会到达运行 `g` 的阶段，于是对所有 `y` 都不定义。
+Now, given an arbitrary halting instance `(M, x)`, construct a program `Q`. On input `y`, `Q` first simulates `M(x)`. If this simulation halts, `Q` then runs the program that computes `g(y)` and returns its result; if the simulation never halts, `Q` never reaches the stage of running `g`, and so is undefined for all `y`.
 
-这使 `Q` 的语义只有两种可能。若 `M(x)` 停机，则 `Q` 计算的部分函数就是 `g`。若 `M(x)` 不停机，则 `Q` 计算的部分函数就是 `bottom`。而 `g` 与 `bottom` 被选成在性质 `P` 上真假相反。
+This makes `Q`'s semantics have only two possibilities. If `M(x)` halts, then the partial function `Q` computes is exactly `g`. If `M(x)` does not halt, then the partial function `Q` computes is exactly `bottom`. And `g` and `bottom` were chosen to have opposite truth values under property `P`.
 
-假设存在一个总是停机且正确的判定器 `D`，能判断任意程序的语义是否具有 `P`。我们就可以在输入 `(M, x)` 时构造 `Q`，运行 `D(Q)`，再根据 `g` 和 `bottom` 的相反真假解释答案，从而判断 `M(x)` 是否停机。这与停机问题不可判定矛盾。
+Suppose there is a decider `D` that always halts and correctly determines whether any program's semantics has `P`. Then on input `(M, x)` we can construct `Q`, run `D(Q)`, and interpret the answer according to the opposite truth values of `g` and `bottom`, thereby determining whether `M(x)` halts. This contradicts the undecidability of the halting problem.
 
-这说明不可判定性不来自某个性质的偶然复杂，而来自语义判断本身的表达能力。只要性质能区分两种程序行为，程序就能把“某个模拟是否停机”隐藏成“我最终表现得像哪一种行为”。判定器若能看穿这种语义差异，就等于能看穿停机。
+This shows that the undecidability does not come from some accidental complexity of a particular property, but from the expressive power of semantic judgment itself. As long as a property can distinguish two program behaviors, a program can hide "whether some simulation halts" as "which of the two behaviors I end up exhibiting". If a decider can see through this semantic difference, that is equivalent to being able to see through halting.
 
-这也是 Rice 定理的核心洞察：它把一大批程序分析问题从逐案处理变成一个统一归约模式。过去可能要分别证明“是否计算恒零函数”“是否接受某个输入”“是否识别有限语言”不可判定；Rice 定理告诉我们，只要这些问题是非平凡的 extensional property，它们已经统一落在停机问题的阴影里。
+This is also the core insight of Rice's theorem: it turns a large batch of program-analysis problems from case-by-case treatment into a single unified reduction pattern. In the past one might have had to separately prove that "does it compute the constantly-zero function", "does it accept a certain input", "does it recognize a finite language" are each undecidable; Rice's theorem tells us that as long as these questions are nontrivial extensional properties, they already fall uniformly under the shadow of the halting problem.
 
-边界同样重要。Rice 定理并不说所有关于程序的问题都不可判定。语法性质可判定，固定步数内的执行性质可判定，一些保守近似分析也可能有用。它说的是：若目标是一个完全正确、对所有程序停机、并且判断真实输入输出语义的非平凡算法，那么这个目标越过了可计算性的边界。
+The boundary matters equally. Rice's theorem does not say that all questions about programs are undecidable. Syntactic properties are decidable, properties of execution within a fixed number of steps are decidable, and some conservative approximate analyses can also be useful. What it says is: if the goal is a completely correct algorithm that always halts on every program and judges the true input-output semantics, then this goal crosses the boundary of computability.

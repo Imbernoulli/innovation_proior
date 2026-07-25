@@ -2,21 +2,21 @@
 
 ## Problem
 
-给定一个程序，能否有通用算法判断它计算出的语义是否具有某个性质？Rice 定理的回答是：只要性质是非平凡的 extensional property，就不能。
+Given a program, is there a general algorithm that can determine whether the semantics it computes has some property? Rice's theorem answers: as long as the property is a nontrivial extensional property, no such algorithm exists.
 
-这里 extensional 表示性质只依赖程序计算的部分函数或识别的语言，而不依赖程序文本、变量名、实现技巧或有限步数内的执行轨迹。非平凡表示有些程序语义满足该性质，有些不满足。
+Here extensional means the property depends only on the partial function the program computes or the language it recognizes, not on the program text, variable names, implementation tricks, or the execution trace over a finite number of steps. Nontrivial means some program semantics satisfy the property and some do not.
 
 ## Theorem
 
-设 `P` 是部分可计算函数上的非平凡性质。不存在总是停机且总是正确的算法，能对任意程序编号 `e` 判断 `phi_e` 是否具有性质 `P`。
+Let `P` be a nontrivial property on partial computable functions. There is no algorithm that always halts and is always correct, that can determine for an arbitrary program index `e` whether `phi_e` has property `P`.
 
-因此，关于程序语义的自然问题一旦既非恒真也非恒假，通常就不可判定：是否接受某个输入、是否识别空语言、是否计算全函数、是否计算常数函数、是否永远不输出某个值，等等。
+Therefore, natural questions about program semantics, once they are neither always true nor always false, are generally undecidable: whether it accepts some input, whether it recognizes the empty language, whether it computes a total function, whether it computes a constant function, whether it never outputs some value, and so on.
 
 ## Proof Sketch
 
-取处处不定义函数 `bottom`。因为 `P` 非平凡，可以选到一个部分可计算函数 `g`，使得 `g` 与 `bottom` 在性质 `P` 上真假相反。
+Take the everywhere-undefined function `bottom`. Because `P` is nontrivial, one can choose a partial computable function `g` such that `g` and `bottom` have opposite truth values under property `P`.
 
-给定任意停机实例 `(M, x)`，构造程序 `Q`：
+Given an arbitrary halting instance `(M, x)`, construct program `Q`:
 
 ```text
 Q(y):
@@ -25,16 +25,16 @@ Q(y):
         run G(y), where G computes g
 ```
 
-若 `M(x)` 停机，`Q` 的语义就是 `g`。若 `M(x)` 不停机，`Q` 在所有输入上都不返回，语义就是 `bottom`。所以任何能判定 `Q` 是否具有性质 `P` 的算法，都能判定 `M(x)` 是否停机，矛盾。
+If `M(x)` halts, `Q`'s semantics is `g`. If `M(x)` does not halt, `Q` never returns on any input, and its semantics is `bottom`. So any algorithm that could decide whether `Q` has property `P` could decide whether `M(x)` halts — a contradiction.
 
 ## Key Insight
 
-Rice 定理的独特洞察是把程序语义性质的判定统一归约到停机问题和不可判定性，而不是逐个性质重新分析。它说明不可判定性不是“停机”这个词的特殊性，而是所有非平凡语义判断共同携带的结构。
+The distinctive insight of Rice's theorem is that it unifies the decision of program-semantic properties into a reduction to the halting problem and undecidability, rather than re-analyzing each property case by case. It shows that undecidability is not a peculiarity of the notion of "halting", but a structure that every nontrivial semantic judgment carries in common.
 
-“任何非平凡 extensional property 都不可判定”揭示了计算语义的边界：程序的真实输入输出行为可以编码任意停机实例，因而不存在一个完备、总停机、对所有程序正确的语义判定器。自动程序分析只能在这条边界内工作：做语法检查、有限执行检查、受限语言分析，或给出不完备但有用的近似。
+"Every nontrivial extensional property is undecidable" reveals the boundary of computational semantics: a program's true input-output behavior can encode an arbitrary halting instance, and so there is no complete, always-halting, semantic decider that is correct for all programs. Automated program analysis can only work within this boundary: doing syntactic checks, bounded-execution checks, restricted-language analysis, or giving incomplete but useful approximations.
 
 ## Boundary
 
-Rice 定理不禁止所有程序分析。它不覆盖“源代码是否包含某个 token”“是否在 100 步内停机”这类语法或有界执行性质，也不否认特定程序、特定语言子集、或保守静态分析可以被有效处理。
+Rice's theorem does not forbid all program analysis. It does not cover syntactic or bounded-execution properties such as "does the source code contain a certain token" or "does it halt within 100 steps", nor does it deny that specific programs, specific sublanguages, or conservative static analyses can be handled effectively.
 
-它划出的边界更精确：一旦问题要求对所有程序判定真实语义，而且该语义性质确实区分不同部分函数，判定器就会强到足以解决停机问题。因此，通用语义判定不可计算。
+The boundary it draws is more precise: as soon as a problem requires deciding the true semantics for all programs, and that semantic property really does distinguish different partial functions, the decider would be powerful enough to solve the halting problem. Hence general semantic decision is uncomputable.
