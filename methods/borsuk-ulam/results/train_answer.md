@@ -8,82 +8,10 @@ Second, one assumes the theorem is false and derives a contradiction. If g separ
 
 The theorem is sharp in the target dimension. Mapping S^n into R^{n+1} by the inclusion x |-> x separates every antipodal pair, so the obstruction is exactly the one-dimensional drop from the ambient space to the sphere's own dimension. The key insight is not a clever fixed-point trick but the choice of an invariant, degree modulo 2, that can hear the antipodal symmetry.
 
-```python
-import numpy as np
-from scipy.optimize import minimize_scalar, minimize
-
-# Verify Borsuk-Ulam numerically for low dimensions.
-
-def random_map_s1(t):
-    """A continuous map S^1 -> R as a trigonometric polynomial."""
-    return (0.7 * np.sin(t) + 0.3 * np.cos(2 * t) +
-            0.2 * np.sin(3 * t) + 0.4)
-
-def find_coincidence_s1(g, n_samples=10_000):
-    """Find t where g(t) - g(t + pi) ~ 0 using bisection on sign changes."""
-    ts = np.linspace(0, 2 * np.pi, n_samples, endpoint=False)
-    diffs = g(ts) - g((ts + np.pi) % (2 * np.pi))
-    # Look for a sign change over consecutive samples.
-    for i in range(len(ts) - 1):
-        if diffs[i] == 0:
-            return ts[i]
-        if diffs[i] * diffs[i + 1] < 0:
-            a, b = ts[i], ts[i + 1]
-            fa, fb = diffs[i], diffs[i + 1]
-            for _ in range(50):  # bisection
-                m = 0.5 * (a + b)
-                fm = g(m) - g((m + np.pi) % (2 * np.pi))
-                if fa * fm <= 0:
-                    b, fb = m, fm
-                else:
-                    a, fa = m, fm
-            return 0.5 * (a + b)
-    return None
-
-def random_map_s2(x):
-    """A continuous map S^2 -> R^2 using spherical harmonics."""
-    # x is a unit vector in R^3.
-    y1 = (x[0] * x[1] + 0.5 * x[2]**2 +
-          0.3 * x[0] + 0.2 * x[1])
-    y2 = (x[1] * x[2] - 0.4 * x[0] * x[2] +
-          0.6 * x[2] - 0.1 * x[0])
-    return np.array([y1, y2])
-
-def find_coincidence_s2(g, trials=20):
-    """Minimize |g(x) - g(-x)|^2 over S^2."""
-    def from_spherical(theta_phi):
-        t, p = theta_phi
-        return np.array([np.sin(t) * np.cos(p),
-                         np.sin(t) * np.sin(p),
-                         np.cos(t)])
-    def obj(theta_phi):
-        x = from_spherical(theta_phi)
-        d = g(x) - g(-x)
-        return float(d @ d)
-
-    best_val, best_x = np.inf, None
-    rng = np.random.default_rng(0)
-    for _ in range(trials):
-        init = rng.uniform([0, 0], [np.pi, 2 * np.pi])
-        res = minimize(obj, init, method="Powell",
-                       options={"maxiter": 1000})
-        if res.fun < best_val:
-            best_val = res.fun
-            best_x = from_spherical(res.x)
-    return best_x, best_val
-
-if __name__ == "__main__":
-    # n = 1
-    t0 = find_coincidence_s1(random_map_s1)
-    print("S^1 coincidence point t:", t0)
-    if t0 is not None:
-        print("  g(t) =", random_map_s1(t0),
-              "g(-t) =", random_map_s1((t0 + np.pi) % (2 * np.pi)))
-
-    # n = 2
-    x0, err = find_coincidence_s2(random_map_s2)
-    print("\nS^2 coincidence point x:", x0)
-    print("  residual |g(x)-g(-x)|^2:", err)
-    print("  g(x)  =", random_map_s2(x0))
-    print("  g(-x) =", random_map_s2(-x0))
-```
+That is the theorem, and it is worth stating in the precise form that stands as the result on its own. For every continuous map $g : S^n \to \mathbb{R}^n$ there exists a point $x \in S^n$ with
+$$g(x) = g(-x),$$
+equivalently: there is no continuous map $F : S^n \to S^{n-1}$ satisfying $F(-x) = -F(x)$ for every $x$. The mechanism reduces to exactly two facts about degree, and stating them is stating the proof completely. First, for every $m \ge 1$, if $u : S^m \to S^m$ is continuous and odd, meaning $u(-x) = -u(x)$ for all $x$, then
+$$\deg(u) \equiv 1 \pmod 2,$$
+which follows from the transfer exact sequence of the double cover $S^m \to \mathbb{R}P^m$ with $\mathbb{Z}/2$ coefficients: naturality carries the isomorphism on $H_0$ up through the vanishing intermediate groups to force $u_*$ to be an isomorphism on $H_m(S^m;\mathbb{Z}/2)$, and on that top group $u_*$ is multiplication by $\deg(u)$ mod $2$. Second, if $u$ is the restriction to an equator $E \cong S^{n-1}$ of a map defined on all of $S^n$, so that $u$ extends over the closed hemisphere $D^n$ with boundary $E$, then the induced map on $H_{n-1}$ factors through $H_{n-1}(D^n) = 0$, forcing
+$$\deg(u) = 0.$$
+Assuming $g$ never identifies an antipodal pair produces exactly such a $u$: the equatorial restriction of $F(x) = \big(g(x)-g(-x)\big)/\lVert g(x)-g(-x)\rVert$, which is odd because $F$ is odd, and which extends over the hemisphere because $F$ is defined on all of $S^n$. That $u$ is forced to have odd degree by the first fact and degree zero by the second, and no integer is both, so the assumption fails and $g(x) = g(-x)$ for some $x$. The bound is exact: the inclusion $S^n \hookrightarrow \mathbb{R}^{n+1}$, $x \mapsto x$, already separates every antipodal pair, so it is precisely the further one-dimensional drop, from $\mathbb{R}^{n+1}$ down to $\mathbb{R}^n$, that makes the collision unavoidable.
