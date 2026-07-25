@@ -14,67 +14,10 @@ Thompson Sampling also adapts to non-stationary environments where arm qualities
 
 The regret of Thompson Sampling for Bernoulli bandits scales as O(log T / Delta_a) for suboptimal arms, matching the Lai-Robbins lower bound order up to constants. Empirically it often outperforms deterministic index policies at finite horizons because its randomization avoids the front-loaded exploration that fixed confidence bonuses impose. The method is also conceptually compact: it needs only a posterior update and a sampling step, with no horizon tuning or problem-specific constants beyond the prior.
 
-The following Python script illustrates the method on a small Bernoulli bandit. I simulate three arms with true success probabilities 0.8, 0.5, and 0.2. I compare Thompson Sampling against a purely random policy and a greedy policy that always plays the arm with the highest empirical success rate. Over repeated short runs Thompson Sampling typically accumulates more reward than random and avoids the early lock-in mistakes that can trap the greedy rule. The code is self-contained and prints the average reward per step for each method.
+The two-arm case is where the closed form promised above can be written out completely rather than left as "a ratio of binomial sums," and doing so is what turns the method from a description into a fully specified computation. Let $n_i = r_i + s_i$ for $i=1,2$. The exact posterior probability that arm 2's success rate exceeds arm 1's, under the uniform priors above, is
 
-```python
-import numpy as np
+$$\Pr(p_2 > p_1 \mid r_1, s_1, r_2, s_2) \;=\; \frac{\displaystyle\sum_{a=0}^{r_2} \binom{r_1+r_2-a}{r_1}\binom{s_1+s_2+1+a}{s_1}}{\displaystyle\binom{n_1+n_2+2}{n_1+1}},$$
 
-np.random.seed(0)
-
-def thompson_trial(true_probs, n_steps):
-    K = len(true_probs)
-    successes = np.ones(K)
-    failures = np.ones(K)
-    total_reward = 0.0
-    for _ in range(n_steps):
-        samples = np.random.beta(successes, failures)
-        arm = int(np.argmax(samples))
-        reward = 1 if np.random.rand() < true_probs[arm] else 0
-        if reward:
-            successes[arm] += 1
-        else:
-            failures[arm] += 1
-        total_reward += reward
-    return total_reward / n_steps
-
-def random_trial(true_probs, n_steps):
-    K = len(true_probs)
-    total_reward = 0.0
-    for _ in range(n_steps):
-        arm = np.random.randint(K)
-        reward = 1 if np.random.rand() < true_probs[arm] else 0
-        total_reward += reward
-    return total_reward / n_steps
-
-def greedy_trial(true_probs, n_steps):
-    K = len(true_probs)
-    successes = np.zeros(K)
-    failures = np.zeros(K)
-    total_reward = 0.0
-    for t in range(n_steps):
-        if t < K:
-            arm = t
-        else:
-            arm = int(np.argmax(successes / (successes + failures)))
-        reward = 1 if np.random.rand() < true_probs[arm] else 0
-        successes[arm] += reward
-        failures[arm] += 1 - reward
-        total_reward += reward
-    return total_reward / n_steps
-
-true_probs = np.array([0.8, 0.5, 0.2])
-n_steps = 500
-n_trials = 200
-
-methods = {
-    "Thompson Sampling": thompson_trial,
-    "Random": random_trial,
-    "Greedy": greedy_trial,
-}
-
-for name, fn in methods.items():
-    avg = np.mean([fn(true_probs, n_steps) for _ in range(n_trials)])
-    print(f"{name}: average reward per step = {avg:.4f}")
-```
+and $\Pr(p_1 > p_2) = 1 - \Pr(p_2 > p_1)$, since the two posteriors are continuous and a tie has probability zero. This finite sum is the complete two-arm method, stated with nothing left implicit: maintain $(r_1,s_1,r_2,s_2)$, update the chosen arm's count after every observation, evaluate this ratio, and assign the next individual to arm 1 with exactly that probability. Drawing one posterior sample per arm and playing the argmax, described earlier, is only a computationally convenient way to realize this same allocation probability without evaluating the sum by hand, and it is the form that carries over unchanged to any number of arms, where no sum this clean is available. Either presentation delivers the same object: a posterior-matching probability computed from nothing but the observed counts, with no free parameter, no confidence radius, and no annealing schedule left to tune.
 
 I call this method Thompson Sampling because it samples from the posterior to decide which action to try. The name captures the essential operation: drawing a plausible parameter from each action's posterior and selecting the action whose draw is best. Whether implemented with Beta posteriors for binary rewards, Gaussian posteriors for contextual linear models, or discounted posteriors for changing environments, the governing law remains the same. Posterior uncertainty about which action is optimal becomes the randomization law for the next action. This makes exploration targeted, automatic, and self-extinguishing as evidence accumulates.
