@@ -9,40 +9,35 @@ BERT also adds a second pre-training task called next sentence prediction. Many 
 The architecture itself is a standard Transformer encoder with no causal mask. It uses multi-head self-attention with 1/sqrt(d_k) scaling, feed-forward layers with inner dimension four times the hidden size, residual connections, layer normalization, and GELU activations. The masked language model head applies a small transform of dense layer, GELU, and layer normalization before projecting back to the vocabulary. The output projection shares its weights with the input token embedding matrix, saving parameters and regularizing the model. Pre-training optimizes the sum of the masked language model loss and the next sentence prediction loss using Adam with warmup and linear decay. Fine-tuning is straightforward: initialize the pre-trained encoder, attach a small task-specific head, and update all parameters end-to-end.
 
 ```python
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+import torch, torch.nn as nn, torch.nn.functional as F
 
 VOCAB, MAXLEN, H, L, A = 30000, 512, 768, 12, 12
 FFN = 4 * H
 
 class EncoderLayer(nn.Module):
+    """Standard Transformer encoder block — bidirectional (no causal mask)."""
     def __init__(self):
         super().__init__()
         self.attn = nn.MultiheadAttention(H, A, dropout=0.1, batch_first=True)
-        self.ln1 = nn.LayerNorm(H)
-        self.ln2 = nn.LayerNorm(H)
+        self.ln1, self.ln2 = nn.LayerNorm(H), nn.LayerNorm(H)
         self.ff = nn.Sequential(nn.Linear(H, FFN), nn.GELU(), nn.Linear(FFN, H))
         self.drop = nn.Dropout(0.1)
-
     def forward(self, x, key_padding_mask):
-        a, _ = self.attn(x, x, x, key_padding_mask=key_padding_mask)
+        a, _ = self.attn(x, x, x, key_padding_mask=key_padding_mask)  # both directions
         x = self.ln1(x + self.drop(a))
         return self.ln2(x + self.drop(self.ff(x)))
 
 class InputEmbedding(nn.Module):
+    """token + segment(A/B) + learned position, summed, LayerNorm + dropout."""
     def __init__(self):
         super().__init__()
         self.tok = nn.Embedding(VOCAB, H, padding_idx=0)
         self.seg = nn.Embedding(2, H)
         self.pos = nn.Embedding(MAXLEN, H)
-        self.ln = nn.LayerNorm(H)
-        self.drop = nn.Dropout(0.1)
-
+        self.ln, self.drop = nn.LayerNorm(H), nn.Dropout(0.1)
     def forward(self, ids, seg_ids):
         pos = torch.arange(ids.size(1), device=ids.device).unsqueeze(0)
-        e = self.tok(ids) + self.seg(seg_ids) + self.pos(pos)
-        return self.drop(self.ln(e))
+        return self.drop(self.ln(self.tok(ids) + self.seg(seg_ids) + self.pos(pos)))
 
 class Encoder(nn.Module):
     def __init__(self):
@@ -50,32 +45,28 @@ class Encoder(nn.Module):
         self.embed = InputEmbedding()
         self.layers = nn.ModuleList(EncoderLayer() for _ in range(L))
         self.pooler = nn.Linear(H, H)
-
     def forward(self, ids, seg_ids, pad_mask):
         x = self.embed(ids, seg_ids)
         for layer in self.layers:
             x = layer(x, key_padding_mask=pad_mask)
-        pooled = torch.tanh(self.pooler(x[:, 0]))
+        pooled = torch.tanh(self.pooler(x[:, 0]))     # [CLS] aggregate representation
         return x, pooled
 
 class MaskedLMHead(nn.Module):
+    """transform (dense+GELU+LN) then project through tied input embeddings."""
     def __init__(self, tok_embed):
         super().__init__()
         self.transform = nn.Linear(H, H)
-        self.act = nn.GELU()
-        self.ln = nn.LayerNorm(H)
+        self.act, self.ln = nn.GELU(), nn.LayerNorm(H)
         self.decoder = nn.Linear(H, VOCAB, bias=True)
-        self.decoder.weight = tok_embed.weight
-
+        self.decoder.weight = tok_embed.weight        # weight tying
     def forward(self, seq):
-        h = self.ln(self.act(self.transform(seq)))
-        return self.decoder(h)
+        return self.decoder(self.ln(self.act(self.transform(seq))))
 
 class NextSentenceHead(nn.Module):
     def __init__(self):
         super().__init__()
-        self.cls = nn.Linear(H, 2)
-
+        self.cls = nn.Linear(H, 2)                     # 0 = IsNext, 1 = NotNext
     def forward(self, pooled):
         return self.cls(pooled)
 
@@ -85,36 +76,35 @@ class Bert(nn.Module):
         self.encoder = Encoder()
         self.mlm = MaskedLMHead(self.encoder.embed.tok)
         self.nsp = NextSentenceHead()
-
     def forward(self, ids, seg_ids, pad_mask):
         seq, pooled = self.encoder(ids, seg_ids, pad_mask)
         return self.mlm(seq), self.nsp(pooled)
 
 def pretrain_loss(model, ids, seg_ids, pad_mask, mlm_labels, nsp_labels):
     mlm_logits, nsp_logits = model(ids, seg_ids, pad_mask)
-    mlm = F.cross_entropy(mlm_logits.reshape(-1, VOCAB), mlm_labels.reshape(-1), ignore_index=-100)
+    mlm = F.cross_entropy(mlm_logits.reshape(-1, VOCAB), mlm_labels.reshape(-1),
+                          ignore_index=-100)          # only the 15% selected positions
     nsp = F.cross_entropy(nsp_logits, nsp_labels.reshape(-1))
-    return mlm + nsp
+    return mlm + nsp                                   # joint objective
 
+# --- data: 15% selected MLM targets with 80/10/10, plus the 50/50 next-sentence draw ---
 MASK_ID, MASK_PROB, CLS, SEP = 103, 0.15, 101, 102
-
 def make_example(span_a, span_b_true, random_span, vocab_size):
     if torch.rand(1).item() < 0.5:
         span_b, nsp = span_b_true, 0
     else:
         span_b, nsp = random_span, 1
     ids = [CLS] + span_a + [SEP] + span_b + [SEP]
-    seg = [0] * (len(span_a) + 2) + [1] * (len(span_b) + 1)
-    labels = [-100] * len(ids)
+    seg = [0]*(len(span_a)+2) + [1]*(len(span_b)+1)
+    labels = [-100]*len(ids)
     candidates = [i for i, tok in enumerate(ids) if tok not in (CLS, SEP)]
     num_to_predict = min(len(candidates), max(1, int(round(len(ids) * MASK_PROB))))
     for j in torch.randperm(len(candidates)).tolist()[:num_to_predict]:
         i = candidates[j]
         labels[i] = ids[i]
         r = torch.rand(1).item()
-        if r < 0.8:
-            ids[i] = MASK_ID
-        elif r < 0.9:
-            ids[i] = torch.randint(0, vocab_size, (1,)).item()
+        if   r < 0.8: ids[i] = MASK_ID
+        elif r < 0.9: ids[i] = torch.randint(0, vocab_size, (1,)).item()
+        # else 10%: keep the original token, still predicted
     return ids, seg, labels, nsp
 ```
