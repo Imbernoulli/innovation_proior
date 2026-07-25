@@ -10,7 +10,7 @@ Truncating the horizon is not free. A finite horizon, re-solved repeatedly, is n
 
 In practice I also penalize input increments Delta u_k = u_k - u_{k-1} with a weight Q_Du. This damps aggressiveness, improves robustness to model error, conditions the QP numerically, and lets slew-rate limits enter as linear constraints. The last applied input u_{-1} is carried as an extra parameter, exactly like the current state. Input limits stay hard because they are physical, while state or output limits can be softened with signed slack variables and a large penalty so a disturbance cannot kill the controller at the worst moment. Consecutive QPs differ only in the right-hand side through the new x(t) and u_{-1}, so the same solver setup is reused with a warm start.
 
-The code block below implements the sparse OSQP formulation for a constrained point-mass plant. It builds the decision vector (x_0, ..., x_N, u_0, ..., u_{N-1}), writes the dynamics as equality constraints, the state and input boxes as bound constraints, the slew-rate limits as difference constraints, and applies only the first input of the solution before re-solving from the new measured state. The terminal cost is set to the discrete LQR value matrix, making the finite-horizon objective stand in for the infinite-horizon one.
+The code below implements the sparse OSQP formulation. It builds the decision vector (x_0, ..., x_N, u_0, ..., u_{N-1}), writes the dynamics as equality constraints, the state and input boxes as bound constraints, and the slew-rate limits as difference constraints on that same vector. `step` solves and applies only the first input; `update` moves the new measured state and last-applied input into the right-hand side and re-solves warm-started. This is the no-slack core: input limits stay hard, and state limits can be softened separately with the signed slack block described above when a disturbance risks infeasibility. `lqr_terminal` supplies the discrete LQR value matrix so the terminal cost can stand in for the infinite-horizon tail.
 
 ```python
 import numpy as np
@@ -21,17 +21,18 @@ import osqp
 
 class MPCController:
     """Linear constrained receding-horizon controller (sparse OSQP form).
-
-    Plant: x_{k+1} = Ad x_k + Bd u_k.
-    Each step: solve the finite-horizon QP from the measured state,
-    apply only the first input, re-measure, re-solve.
+    OSQP solves 1/2 z'Pz + q'z; constants are omitted, so P=Q and q=-Q xref
+    encode the half-scaled tracking objective. Each step: solve the
+    finite-horizon QP from the measured state, apply only the first input,
+    re-measure, re-solve.
+    QxN can be set to the LQR terminal cost; optional xfmin/xfmax tighten
+    x_N to a terminal box.
     """
     def __init__(self, Ad, Bd, Np=20, x0=None, xref=None, uref=None, uminus1=None,
                  Qx=None, QxN=None, Qu=None, QDu=None,
-                 xmin=None, xmax=None, umin=None, umax=None,
-                 Dumin=None, Dumax=None, xfmin=None, xfmax=None):
-        self.Ad = sparse.csc_matrix(Ad)
-        self.Bd = sparse.csc_matrix(Bd)
+                 xmin=None, xmax=None, umin=None, umax=None, Dumin=None, Dumax=None,
+                 xfmin=None, xfmax=None):
+        self.Ad, self.Bd = sparse.csc_matrix(Ad), sparse.csc_matrix(Bd)
         self.nx, self.nu = self.Bd.shape
         self.Np = Np
         self.x0 = np.asarray(x0 if x0 is not None else np.zeros(self.nx)).reshape(-1)
@@ -42,12 +43,12 @@ class MPCController:
         self.QxN = sparse.csc_matrix(QxN if QxN is not None else self.Qx)
         self.Qu = sparse.csc_matrix(Qu if Qu is not None else np.zeros((self.nu, self.nu)))
         self.QDu = sparse.csc_matrix(QDu if QDu is not None else np.zeros((self.nu, self.nu)))
-        self.xmin = np.asarray(xmin if xmin is not None else -np.inf * np.ones(self.nx)).reshape(-1)
-        self.xmax = np.asarray(xmax if xmax is not None else np.inf * np.ones(self.nx)).reshape(-1)
-        self.umin = np.asarray(umin if umin is not None else -np.inf * np.ones(self.nu)).reshape(-1)
-        self.umax = np.asarray(umax if umax is not None else np.inf * np.ones(self.nu)).reshape(-1)
-        self.Dumin = np.asarray(Dumin if Dumin is not None else -np.inf * np.ones(self.nu)).reshape(-1)
-        self.Dumax = np.asarray(Dumax if Dumax is not None else np.inf * np.ones(self.nu)).reshape(-1)
+        self.xmin = np.asarray(xmin if xmin is not None else -np.inf*np.ones(self.nx)).reshape(-1)
+        self.xmax = np.asarray(xmax if xmax is not None else  np.inf*np.ones(self.nx)).reshape(-1)
+        self.umin = np.asarray(umin if umin is not None else -np.inf*np.ones(self.nu)).reshape(-1)
+        self.umax = np.asarray(umax if umax is not None else  np.inf*np.ones(self.nu)).reshape(-1)
+        self.Dumin = np.asarray(Dumin if Dumin is not None else -np.inf*np.ones(self.nu)).reshape(-1)
+        self.Dumax = np.asarray(Dumax if Dumax is not None else  np.inf*np.ones(self.nu)).reshape(-1)
         self.xfmin = np.asarray(xfmin if xfmin is not None else self.xmin).reshape(-1)
         self.xfmax = np.asarray(xfmax if xfmax is not None else self.xmax).reshape(-1)
         self.prob = osqp.OSQP()
@@ -59,47 +60,40 @@ class MPCController:
     def _build(self):
         Np, nx, nu = self.Np, self.nx, self.nu
         Ad, Bd = self.Ad, self.Bd
-        # Hessian over (x_0..x_N, u_0..u_{N-1}).
+        # Cost Hessian over (x_0..x_N, u_0..u_{N-1}).
         P_x = sparse.block_diag(
             [sparse.kron(sparse.eye(Np, format='csc'), self.Qx), self.QxN],
             format='csc')
         D = sparse.eye(Np, format='csc') - sparse.eye(Np, k=-1, format='csc')
-        P_u = (sparse.kron(sparse.eye(Np, format='csc'), self.Qu)
-               + sparse.kron((D.T @ D).tocsc(), self.QDu))
+        P_u = sparse.kron(sparse.eye(Np, format='csc'), self.Qu) \
+            + sparse.kron((D.T @ D).tocsc(), self.QDu)
         P = sparse.block_diag([P_x, P_u], format='csc')
         q_x = np.hstack([np.tile(-self._mv(self.Qx, self.xref), Np),
                          -self._mv(self.QxN, self.xref)])
         q_u = np.tile(-self._mv(self.Qu, self.uref), Np)
         q_u[:nu] += -self._mv(self.QDu, self.uminus1)
         q = np.hstack([q_x, q_u])
-        # Dynamics equality and initial condition.
-        Ax = (sparse.kron(sparse.eye(Np + 1), -sparse.eye(nx))
-              + sparse.kron(sparse.eye(Np + 1, k=-1), Ad))
+        # Dynamics equality Ad x_k + Bd u_k - x_{k+1} = 0 and x_0 = x(t).
+        Ax = sparse.kron(sparse.eye(Np+1), -sparse.eye(nx)) \
+             + sparse.kron(sparse.eye(Np+1, k=-1), Ad)
         Bu = sparse.kron(sparse.vstack([sparse.csc_matrix((1, Np)), sparse.eye(Np)]), Bd)
-        Aeq = sparse.hstack([Ax, Bu])
-        leq = np.hstack([-self.x0, np.zeros(Np * nx)])
-        ueq = leq
-        # Box constraints on states and inputs; terminal box on x_N.
-        Aineq = sparse.eye((Np + 1) * nx + Np * nu)
-        xmin_stack = np.tile(self.xmin, Np + 1)
-        xmin_stack[-nx:] = self.xfmin
-        xmax_stack = np.tile(self.xmax, Np + 1)
-        xmax_stack[-nx:] = self.xfmax
+        Aeq = sparse.hstack([Ax, Bu]); leq = np.hstack([-self.x0, np.zeros(Np*nx)]); ueq = leq
+        # Box constraints on every x_k and u_k; optional terminal box on x_N.
+        Aineq = sparse.eye((Np+1)*nx + Np*nu)
+        xmin_stack = np.tile(self.xmin, Np+1); xmin_stack[-nx:] = self.xfmin
+        xmax_stack = np.tile(self.xmax, Np+1); xmax_stack[-nx:] = self.xfmax
         lineq = np.hstack([xmin_stack, np.tile(self.umin, Np)])
         uineq = np.hstack([xmax_stack, np.tile(self.umax, Np)])
-        # Slew-rate constraints.
+        # Slew-rate constraints Dumin <= u_k - u_{k-1} <= Dumax.
         Adu = sparse.hstack([
-            sparse.csc_matrix((Np * nu, (Np + 1) * nx)),
+            sparse.csc_matrix((Np*nu, (Np+1)*nx)),
             sparse.kron(D, sparse.eye(nu, format='csc'))])
-        ldu = np.tile(self.Dumin, Np)
-        udu = np.tile(self.Dumax, Np)
-        ldu[:nu] += self.uminus1
-        udu[:nu] += self.uminus1
-        self.P, self.q = P, q
-        self.A = sparse.vstack([Aeq, Aineq, Adu]).tocsc()
-        self.l = np.hstack([leq, lineq, ldu])
-        self.u = np.hstack([ueq, uineq, udu])
-        self._rate0 = (Np + 1) * nx + (Np + 1) * nx + Np * nu
+        ldu = np.tile(self.Dumin, Np); ldu[:nu] += self.uminus1
+        udu = np.tile(self.Dumax, Np); udu[:nu] += self.uminus1
+        A = sparse.vstack([Aeq, Aineq, Adu]).tocsc()
+        l = np.hstack([leq, lineq, ldu]); u = np.hstack([ueq, uineq, udu])
+        self.P, self.q, self.A, self.l, self.u = P, q, A, l, u
+        self._rate0 = (Np+1)*nx + (Np+1)*nx + Np*nu   # index of first rate-bound row
 
     def setup(self):
         self._build()
@@ -109,9 +103,9 @@ class MPCController:
     def step(self):
         res = self.prob.solve()
         if res.info.status != 'solved':
-            raise ValueError('QP not solved: ' + res.info.status)
-        base = (self.Np + 1) * self.nx
-        u0 = res.x[base:base + self.nu].copy()
+            raise ValueError('QP infeasible / not solved: ' + res.info.status)
+        base = (self.Np+1)*self.nx
+        u0 = res.x[base:base+self.nu].copy()   # apply only the first input
         self.uminus1 = u0
         return u0
 
@@ -119,58 +113,53 @@ class MPCController:
         self.x0 = np.asarray(x_meas).reshape(-1)
         if u_prev is not None:
             self.uminus1 = np.asarray(u_prev).reshape(-1)
-        self.l[:self.nx] = -self.x0
-        self.u[:self.nx] = -self.x0
+        self.l[:self.nx] = -self.x0; self.u[:self.nx] = -self.x0     # new x_0 = x(t)
         r = self._rate0
-        self.l[r:r + self.nu] = self.Dumin + self.uminus1
-        self.u[r:r + self.nu] = self.Dumax + self.uminus1
-        base = (self.Np + 1) * self.nx
-        self.q[base:base + self.nu] = (-self._mv(self.Qu, self.uref)
-                                        - self._mv(self.QDu, self.uminus1))
+        self.l[r:r+self.nu] = self.Dumin + self.uminus1             # u_0 - u_{-1} bound
+        self.u[r:r+self.nu] = self.Dumax + self.uminus1
+        base = (self.Np+1)*self.nx
+        self.q[base:base+self.nu] = -self._mv(self.Qu, self.uref) - self._mv(self.QDu, self.uminus1)
         self.prob.update(l=self.l, u=self.u, q=self.q)
 
 
 def lqr_terminal(Ad, Bd, Q, R):
-    """Return the discrete LQR value matrix S and gain K."""
+    """Terminal cost option: discrete-LQR value matrix S (and gain K). Splicing
+    x_N'S x_N onto the horizon makes the finite-horizon cost stand in for the
+    infinite-horizon cost, so the receding-horizon loop is stabilizing."""
     S = scipy.linalg.solve_discrete_are(Ad, Bd, Q, R)
     K = np.linalg.solve(R + Bd.T @ S @ Bd, Bd.T @ S @ Ad)
     return K, S
 
 
 def closed_loop(Ad, Bd, ctrl, x0, nsim):
-    """Receding-horizon simulation: solve, apply first input, step, repeat."""
-    x = x0.copy()
-    xs, us = [], []
+    """Receding horizon: solve, apply first input, step plant, re-measure, repeat."""
+    x = x0.copy(); xs, us = [], []
     for _ in range(nsim):
         u = ctrl.step()
         x = Ad @ x + Bd @ u
         ctrl.update(x)
-        xs.append(x.copy())
-        us.append(u.copy())
+        xs.append(x.copy()); us.append(u.copy())
     return np.array(xs), np.array(us)
+```
 
+Instantiated on a point mass with bounded force, a position cap, and a slew-rate limit, the terminal cost set to the discrete LQR value matrix and the loop run from the initial state, the pattern reads:
 
-# Demonstration: point mass with bounded force, position cap, and slew-rate limit.
-if __name__ == '__main__':
-    Ts, M, b = 0.2, 2.0, 0.3
-    Ad = np.array([[1.0, Ts], [0.0, 1.0 - b / M * Ts]])
-    Bd = np.array([[0.0], [Ts / M]])
-    Qx = sparse.diags([0.5, 0.1])
-    Qu = 2.0 * sparse.eye(1)
-    QDu = 10.0 * sparse.eye(1)
-    K, S = lqr_terminal(Ad, Bd, np.array([[0.5, 0.0], [0.0, 0.1]]),
-                        np.array([[2.0]]))
-    QxN = sparse.csc_matrix(S)
-    ctrl = MPCController(
-        Ad, Bd, Np=20, x0=np.array([0.1, 0.2]),
-        xref=np.array([7.0, 0.0]), uref=np.array([0.0]), uminus1=np.array([0.0]),
-        Qx=Qx, QxN=QxN, Qu=Qu, QDu=QDu,
-        xmin=np.array([-10.0, -10.0]), xmax=np.array([7.0, 10.0]),
-        umin=np.array([-1.2]), umax=np.array([1.2]),
-        Dumin=np.array([-0.2]), Dumax=np.array([0.2]))
-    ctrl.setup()
-    xs, us = closed_loop(Ad, Bd, ctrl, np.array([0.1, 0.2]), 100)
-    print('final state:', xs[-1])
-    print('max position:', xs[:, 0].max())
-    print('max |input|:', np.abs(us).max())
+```python
+Ts, M, b = 0.2, 2.0, 0.3
+Ad = np.array([[1.0, Ts], [0, 1.0 - b/M*Ts]])
+Bd = np.array([[0.0], [Ts/M]])
+Qx = sparse.diags([0.5, 0.1]); Qu = 2.0*sparse.eye(1); QDu = 10.0*sparse.eye(1)
+
+K, S = lqr_terminal(Ad, Bd, np.array([[0.5, 0], [0, 0.1]]), np.array([[2.0]]))
+QxN = sparse.csc_matrix(S)                 # terminal cost = LQR value matrix
+
+ctrl = MPCController(
+    Ad, Bd, Np=20, x0=np.array([0.1, 0.2]),
+    xref=np.array([7.0, 0.0]), uref=np.array([0.0]), uminus1=np.array([0.0]),
+    Qx=Qx, QxN=QxN, Qu=Qu, QDu=QDu,
+    xmin=np.array([-10, -10.0]), xmax=np.array([7.0, 10.0]),   # position capped at 7
+    umin=np.array([-1.2]), umax=np.array([1.2]),               # bounded force
+    Dumin=np.array([-0.2]), Dumax=np.array([0.2]))             # slew-rate limit
+ctrl.setup()
+xs, us = closed_loop(Ad, Bd, ctrl, np.array([0.1, 0.2]), 100)
 ```
