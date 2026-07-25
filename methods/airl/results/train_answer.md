@@ -12,7 +12,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 
-def mlp(in_dim, hidden_sizes=(256, 256), out_dim=1):
+def mlp(in_dim, hidden_sizes=(32, 32), out_dim=1):
     layers = []
     last = in_dim
     for width in hidden_sizes:
@@ -25,64 +25,70 @@ def mlp(in_dim, hidden_sizes=(256, 256), out_dim=1):
 class RewardNetwork(nn.Module):
     """Shaped score f(s,a,s',done) = g(s) + gamma*(1-done)*h(s') - h(s)."""
 
-    def __init__(self, obs_dim, action_dim, gamma=0.99):
+    def __init__(self, obs_dim, action_dim, gamma=0.99, use_action=False):
         super().__init__()
         self.gamma = gamma
-        # g: state-only reward (the transferable part)
-        self.base = mlp(obs_dim, hidden_sizes=(256, 256))
-        # h: potential function absorbing the value-function shaping
-        self.potential = mlp(obs_dim, hidden_sizes=(256, 256))
+        self.use_action = use_action
+        base_in = obs_dim + action_dim if use_action else obs_dim
+        self.base = mlp(base_in, hidden_sizes=(32,))          # g, state-only by default
+        self.potential = mlp(obs_dim, hidden_sizes=(32, 32))  # h
 
-    def _base_reward(self, state):
-        return self.base(state).squeeze(-1)
+    def _base_reward(self, state, action):
+        if self.use_action:
+            x = torch.cat([state, action], dim=-1)
+        else:
+            x = state
+        return self.base(x).squeeze(-1)
 
     def _potential(self, state):
         return self.potential(state).squeeze(-1)
 
     def forward(self, state, action, next_state, done):
-        base_reward = self._base_reward(state)
+        base_reward = self._base_reward(state, action)
         old_shaping = self._potential(state)
         new_shaping = self._potential(next_state)
         new_shaping = (1.0 - done.float()) * new_shaping
         return base_reward + self.gamma * new_shaping - old_shaping
 
-    def unshaped(self, state):
-        return self._base_reward(state)
+    def unshaped(self, state, action):
+        return self._base_reward(state, action)
 
 
 class IRLAlgorithm:
-    """AIRL discriminator and reward provider."""
+    """Adversarial reward learner with AIRL's structured discriminator."""
 
     def __init__(self, reward_net, optimizer):
         self.reward_net = reward_net
         self.optimizer = optimizer
 
-    def logits_expert_is_high(self, state, action, next_state, done,
-                              log_policy_act_prob):
+    def logits_expert_is_high(
+        self,
+        state,
+        action,
+        next_state,
+        done,
+        log_policy_act_prob,
+    ):
         if log_policy_act_prob is None:
-            raise TypeError("AIRL requires log pi(a|s)")
+            raise TypeError("AIRL requires log pi(a|s) for the discriminator logit")
         f = self.reward_net(state, action, next_state, done)
         return f - log_policy_act_prob
 
-    def policy_reward(self, state, action, next_state, done,
-                      log_policy_act_prob):
+    def policy_reward(self, state, action, next_state, done, log_policy_act_prob):
         f = self.reward_net(state, action, next_state, done)
         return f - log_policy_act_prob
 
     def update(self, expert_batch, policy_batch):
         state = torch.cat([expert_batch["obs"], policy_batch["obs"]])
         action = torch.cat([expert_batch["acts"], policy_batch["acts"]])
-        next_state = torch.cat([expert_batch["next_obs"],
-                                policy_batch["next_obs"]])
-        done = torch.cat([expert_batch["dones"],
-                          policy_batch["dones"]]).float()
+        next_state = torch.cat([expert_batch["next_obs"], policy_batch["next_obs"]])
+        done = torch.cat([expert_batch["dones"], policy_batch["dones"]]).float()
         logp = torch.cat([
             expert_batch["log_policy_act_prob"],
             policy_batch["log_policy_act_prob"],
         ])
 
-        logits = self.logits_expert_is_high(state, action, next_state,
-                                            done, logp)
+        logits = self.logits_expert_is_high(state, action, next_state, done, logp)
         labels = torch.cat([
             torch.ones(len(expert_batch["obs"]), device=logits.device),
             torch.zeros(len(policy_batch["obs"]), device=logits.device),
@@ -92,7 +98,8 @@ class IRLAlgorithm:
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
-
-        acc = ((logits > 0) == labels.bool()).float().mean().detach()
-        return {"disc_loss": loss.detach(), "disc_acc": acc}
+        return {
+            "disc_loss": loss.detach(),
+            "disc_acc": ((logits > 0) == labels.bool()).float().mean().detach(),
+        }
 ```
