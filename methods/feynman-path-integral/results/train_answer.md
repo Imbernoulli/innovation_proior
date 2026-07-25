@@ -8,59 +8,12 @@ In practice the integral is defined by time slicing. Divide the interval [t_a, t
 
 A few subtleties are worth keeping in mind. The dominant paths are continuous but nowhere differentiable: the typical step size is of order (ℏε/m)^{1/2}, so the effective velocity diverges as ε → 0. For a scalar potential V(x) this jaggedness only affects higher-order terms, but for velocity-linear terms such as a magnetic coupling (e/c) A(x)·ẋ the slice action must be evaluated at the midpoint, S = ε L((x_{i+1}−x_i)/ε, (x_{i+1}+x_i)/2), because endpoint and midpoint differ at order ε and would otherwise shift the Hamiltonian by a term proportional to ℏ∇·A. Because the Lagrangian couples only neighboring instants, the full multi-integral factorizes at any chosen time into a past part and a future part; the past part is exactly the wave function ψ(x, t), which therefore carries all information needed for future predictions and obeys Schrödinger's equation as shown above.
 
-```python
-import numpy as np
+The finished object is the propagator itself, in the closed form the sum over histories converges to:
 
-def evolve_path_integral(psi0, xs, t_final, N, m, hbar, V):
-    """
-    Evolve a 1-D wavefunction psi0(x, 0) -> psi(x, t_final) by applying the
-    short-time Feynman kernel N times.  Each step uses the Trotterized kernel
-    K(x', x) ~ (1/A) exp[ i m (x'-x)^2 / (2 hbar eps) ] exp[ -i eps V(x)/hbar ],
-    implemented stably in momentum space via FFT.
-    """
-    eps = t_final / N
-    dx = xs[1] - xs[0]
-    p = np.fft.fftfreq(len(xs), d=dx) * 2 * np.pi * hbar
+$$K(x_b,t_b;x_a,t_a)=\int \exp\!\left[\frac{i}{\hbar}S[x(t)]\right]\mathcal{D}x(t)=\lim_{N\to\infty}\frac{1}{A^N}\int\cdots\int \exp\!\left[\frac{i}{\hbar}\sum_{i=0}^{N-1}S(x_{i+1},x_i)\right]dx_1\cdots dx_{N-1},$$
 
-    # Diagonal phase factors: half potential, kinetic, half potential
-    V_phase = np.exp(-0.5j * eps * V(xs) / hbar)
-    T_phase = np.exp(-1j * eps * p**2 / (2 * m * hbar))
+with $\varepsilon=(t_b-t_a)/N$, $A=(2\pi i\hbar\varepsilon/m)^{1/2}$ — so each slice carries $(m/2\pi i\hbar\varepsilon)^{1/2}$, and an extra factor of $A^{-1}$ per dimension in $k$ dimensions — and the short-time action $S(x_{i+1},x_i)=\varepsilon\left[\frac{m}{2}\left(\frac{x_{i+1}-x_i}{\varepsilon}\right)^2-V(x_{i+1})\right]$ on each slice. Nothing in $A$ is chosen by hand: it is forced by requiring the one-slice kernel reduce to the identity as $\varepsilon\to0$, and once that value is locked in, expanding the one-slice update to first order in $\varepsilon$ hands back
 
-    psi = psi0.copy()
-    for _ in range(N):
-        psi = V_phase * psi
-        psi = np.fft.ifft(T_phase * np.fft.fft(psi))
-        psi = V_phase * psi
-    return psi
+$$i\hbar\,\frac{\partial \psi}{\partial t}=-\frac{\hbar^2}{2m}\frac{\partial^2\psi}{\partial x^2}+V(x)\,\psi$$
 
-def gaussian_packet(x, x0, p0, sigma):
-    norm = (2 * np.pi * sigma**2) ** (-0.25)
-    return norm * np.exp(-(x - x0)**2 / (4 * sigma**2)) * np.exp(1j * p0 * x / hbar)
-
-def free_exact(x, t, x0, p0, sigma, m, hbar):
-    """Exact freely spreading Gaussian wave packet."""
-    alpha = 1 + 1j * hbar * t / (2 * m * sigma**2)
-    norm = (2 * np.pi * sigma**2) ** (-0.25) * alpha ** (-0.5)
-    return norm * np.exp(-(x - x0 - p0 * t / m)**2 / (4 * sigma**2 * alpha)) \
-                 * np.exp(1j * p0 * (x - x0 - p0 * t / (2 * m)) / hbar)
-
-if __name__ == "__main__":
-    m, hbar = 1.0, 1.0
-    xs = np.linspace(-15, 15, 1024)
-    x0, p0, sigma = 0.0, 2.0, 0.5
-    t_final = 1.0
-
-    psi0 = gaussian_packet(xs, x0, p0, sigma)
-    psi_num = evolve_path_integral(psi0, xs, t_final, N=200, m=m, hbar=hbar,
-                                   V=lambda x: 0.0 * x)
-    psi_ex = free_exact(xs, t_final, x0, p0, sigma, m, hbar)
-
-    err = np.trapezoid(np.abs(psi_num - psi_ex)**2, xs)
-    print(f"Free-particle L2 error: {err:.2e}")
-    print(f"Numerical center: {np.trapezoid(xs * np.abs(psi_num)**2, xs):.3f}")
-
-    # Harmonic oscillator: V(x) = 0.5 x^2
-    psi_ho = evolve_path_integral(psi0, xs, t_final, N=200, m=m, hbar=hbar,
-                                  V=lambda x: 0.5 * x**2)
-    print(f"HO final probability at x=0: {np.abs(psi_ho[len(xs)//2])**2:.4f}")
-```
+exactly — not approximately, and not merely "corresponding to" it the way Dirac's infinitesimal remark did. That closes all three gaps I started with: the proportionality constant is fixed, the finite-time kernel is assembled from the infinitesimal one, and Schrödinger's equation is derived rather than assumed. The result is a third, self-contained formulation of quantum mechanics, built entirely from the action and equivalent to the Hamiltonian theory wherever the Hamiltonian theory applies, but stateable even when no Hamiltonian exists — and it is this object, the path integral $\int e^{iS[x(t)]/\hbar}\,\mathcal{D}x(t)$ together with the normalization above, that I hand forward as the finished result.
