@@ -16,43 +16,30 @@ its attractor is collapse: a few experts soak up the traffic while the rest rece
 gradient, never specialize, and become dead weight. So the method here is deliberately to do nothing
 — the load-balancing loss is a literal zero — and to measure what falls out.
 
-I measure two things on held-out data. The first is the cross-entropy itself, read also as
-perplexity. The second is the load imbalance, which I define as the L1 deviation of the token
-allocation from uniform: take the fraction of routed assignments each expert receives, and sum half
-the absolute gaps between those fractions and the uniform share. That number is zero for a perfectly
-balanced router and climbs toward its ceiling as routing concentrates. I combine the two into the
-single fitness used to score every later method — the negative of cross-entropy plus imbalance — so
-that fixes are judged on the joint point and not on imbalance alone, because crushing the imbalance
-by wrecking the router would be a hollow win. What this control establishes is the honest floor: a
-tolerable cross-entropy sitting on a clearly skewed allocation, which is exactly the signature that
-says the cure must come from outside the cross-entropy, from a term added by hand that looks at the
-routing distribution and pushes it toward uniform.
+I measure two things on held-out data. The first is the cross-entropy itself, $L_{CE}$, read also as
+perplexity $\exp(L_{CE})$. The second is the load imbalance: let $f_i$ be the fraction of all routed
+(token, slot) assignments that land on expert $i$ — a hard count taken over the top-$K$ choices
+actually made — and define
+$$L_{\mathrm{imb}} = \frac{1}{2}\sum_{i=1}^{N} \left| f_i - \frac{1}{N} \right|,$$
+the L1 deviation of the allocation from uniform. This is zero for a perfectly balanced router and
+climbs toward $1-1/N$ as routing concentrates onto fewer experts. I combine the two into the single
+fitness used to score every later method,
+$$r = -\left(L_{CE} + L_{\mathrm{imb}}\right),$$
+so that fixes are judged on the joint point and not on imbalance alone, because crushing the
+imbalance by wrecking the router would be a hollow win. What this control establishes is the honest
+floor: a tolerable cross-entropy sitting on a clearly skewed allocation, which is exactly the
+signature that says the cure must come from outside the cross-entropy, from a term added by hand
+that looks at the routing distribution and pushes it toward uniform.
 
-```python
-import torch
-
-def balance_loss(probs_list, topi_list, N):
-    """Control: no load-balancing loss. The router, trained only by the LM
-    cross-entropy, is free to collapse onto a few experts.
-
-    probs_list[l]: [tokens, N]  router softmax mass P (differentiable)
-    topi_list[l]:  [tokens, K]  chosen expert ids per token (hard counts -> f)
-    """
-    return torch.tensor(0.0)
-
-
-# --- the two router statistics every balancing loss is built from ---
-def layer_f_P(probs, topi, N):
-    """f_i = fraction of (token, slot) assignments to expert i (hard, non-diff);
-       P_i = mean router probability mass on expert i (differentiable)."""
-    counts = torch.bincount(topi.reshape(-1), minlength=N).float()
-    f = counts / counts.sum()
-    P = probs.mean(0)
-    return f, P
-
-
-def load_imbalance(f):
-    """L_imb = 0.5 * sum_i |f_i - 1/N|  (L1 deviation from uniform; 0 = balanced)."""
-    N = f.numel()
-    return 0.5 * (f - 1.0 / N).abs().sum()
-```
+The method itself, then, is the deliberate absence of that term: the editable balancing slot — the
+function later rungs will fill with an auxiliary loss built from the router's probabilities and its
+hard top-$K$ choices — is fixed here to the constant map returning the scalar $0$, irrespective of
+what those probabilities or choices are. The contract this control must satisfy is exactly as strict
+as any later balancing loss: the map has to stay differentiable in the router's parameters —
+trivially true, since a constant has zero gradient everywhere — and it must not drop a single token
+or alter the architecture, so that every later rung's improvement over $r$ is attributable to the
+loss term alone and not to a change in routing capacity. With $N=8$ experts, top-$K=2$ routing, two
+MoE layers of width $d=64$, and $L_{CE}$, $L_{\mathrm{imb}}$ read off the same 20 held-out batches
+used by every later rung, this control's protocol is the ruler against which every subsequent
+balancing loss is measured: because it does nothing, whatever imbalance and fitness it produces are
+intrinsic to unregularized MoE routing, not an artifact of a weak penalty.
