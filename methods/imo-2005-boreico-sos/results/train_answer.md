@@ -56,33 +56,16 @@ This completes the proof. Equality holds precisely when each of the nonnegative 
 
 The name Boreico's sign-isolating SOS method captures the essence of what happened: the potentially negative terms are not ignored but isolated, routed through an intermediate fraction with the same numerator, and the resulting algebraic difference collapses to a sum of squares. The constraint xyz ≥ 1 is used surgically, only in the final drop from 1/x to yz, and the entire proof is driven by the common denominator x² + y² + z² that lets three cyclic lower bounds add up to the canonical sum-of-squares certificate.
 
-To make the argument concrete, here is a small Python script that verifies the per-term inequality and the final sum inequality on a random sample of triples satisfying xyz ≥ 1.
+Stated in full, the deliverable of this method is the certificate itself: for all real $x, y, z > 0$ with $xyz \ge 1$,
 
-```python
-import random
-import math
+$$\sum_{\mathrm{cyc}} \frac{x^5 - x^2}{x^5 + y^2 + z^2} \;\ge\; 0,$$
 
-def per_term(x, y, z):
-    return (x**5 - x**2) / (x**5 + y**2 + z**2)
+with equality exactly at $x = y = z = 1$, proved by the chain
 
-def target(x, y, z):
-    return (x**2 - y*z) / (x**2 + y**2 + z**2)
+$$\sum_{\mathrm{cyc}} \frac{x^5-x^2}{x^5+y^2+z^2} \;\ge\; \sum_{\mathrm{cyc}} \frac{x^2-yz}{x^2+y^2+z^2} \;=\; \frac{\tfrac12\big[(x-y)^2+(y-z)^2+(z-x)^2\big]}{x^2+y^2+z^2} \;\ge\; 0,$$
 
-def verify_triple(x, y, z, tol=1e-9):
-    lhs = per_term(x, y, z) + per_term(y, z, x) + per_term(z, x, y)
-    rhs = 0.5 * ((x - y)**2 + (y - z)**2 + (z - x)**2) / (x**2 + y**2 + z**2)
-    pt = per_term(x, y, z) - target(x, y, z)
-    return lhs, rhs, pt
+where the first inequality sums three cyclic copies of the per-term lemma
 
-random.seed(0)
-for _ in range(5000):
-    x = 10 ** random.uniform(-2, 2)
-    y = 10 ** random.uniform(-2, 2)
-    min_z = 1.0 / (x * y)
-    z = min_z * 10 ** random.uniform(0, 2)
-    lhs, rhs, pt = verify_triple(x, y, z)
-    assert lhs + 1e-9 >= rhs >= -1e-9, (x, y, z, lhs, rhs)
-    assert pt + 1e-9 >= 0, (x, y, z, pt)
+$$\frac{x^5-x^2}{x^5+y^2+z^2} \;\ge\; \frac{x^2-yz}{x^2+y^2+z^2},$$
 
-print("All 5000 random triples with xyz >= 1 satisfy the SOS bound.")
-```
+itself established by routing through the intermediate denominator $x^3(x^2+y^2+z^2)$ — an unconditional algebraic step that collapses to the perfect square $x^2(x^3-1)^2(y^2+z^2)$, followed by the single, surgical use of $xyz \ge 1$ through $\tfrac1x \le yz$ — and the middle equality is the sum-of-squares identity $x^2+y^2+z^2-(xy+yz+zx) = \tfrac12\big[(x-y)^2+(y-z)^2+(z-x)^2\big]$. That chain, with its three ingredients — the common denominator forced by symmetry, the numerator $x^2-yz$ chosen to land on the canonical square, and the one exact spot where the hypothesis is spent — is the complete certificate for the inequality.
