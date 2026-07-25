@@ -234,6 +234,12 @@ for _vf in ('data_v4/_verified.txt', 'data_v4/_cpv4b_verified.txt'):
 # Codex-reviewed at generation time (tools/gen_problems_workflow.js, gen_ale_workflow.js).
 for _g in glob.glob('data_v4/fcs-*/') + glob.glob('data_v4/ale-*/'):
     _v4_verified.add(_g.rstrip('/').split('/')[-1])
+# Textbook-exercise units dropped by the 2026-07-25 quality sweep (see data_v4/_excluded.txt).
+_v4_excluded = set()
+if os.path.isfile('data_v4/_excluded.txt'):
+    _v4_excluded = {l.split('#')[0].strip() for l in open('data_v4/_excluded.txt')
+                    if l.strip() and not l.lstrip().startswith('#')}
+    _v4_verified -= _v4_excluded
 v4_n = 0
 for slug in sorted(_v4_verified):
     d = f'data_v4/{slug}'

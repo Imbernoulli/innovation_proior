@@ -14,9 +14,8 @@ A period always exists, because `p = n` imposes no constraint at all (the condit
 empty set of indices), so the answer is a well-defined integer in `[1, n]`.
 
 This is the periodicity question for strings with don't-care characters. The one-dimensional version
-shows up inside pattern matching, compression and tandem-repeat detection, and getting it exactly
-right — especially the way wildcards interact across a whole residue class rather than between
-neighbours — is the crux.
+shows up inside pattern matching, compression and tandem-repeat detection, and getting the wildcard
+interactions exactly right is the crux.
 
 ## Input / output contract
 
@@ -35,29 +34,12 @@ Example 2: for `s = abab` the answer is `2` (repeat the block `ab`).
 
 Example 3: for `s = aabaab` the answer is `3` (repeat the block `aab`).
 
-## Background
-
-The condition "`p` is a period" partitions the indices into residue classes modulo `p`: class
-`r` is `{r, r+p, r+2p, ...}`. Within one class every position must end up with the same letter in
-`t`, so a replacement exists **iff every residue class contains at most one distinct concrete
-letter** (wildcards are free and take whatever letter the class settles on).
-
-Two routes are on the table before committing to one:
-
-- **Pairwise compatibility scan.** Treat the wildcard `?` as matching anything, and for each
-  candidate `p` check that `s[i]` and `s[i+p]` are "compatible" (equal, or at least one is `?`) for
-  every `i`. This is the textbook border/period test transported to wildcards; the open question is
-  whether neighbour-compatibility along a class actually implies the class is monochromatic.
-- **Per-class consistency scan.** For each candidate `p`, walk every residue class and check that
-  all of its concrete letters coincide. This is obviously correct; the open question is its cost,
-  since done naively it is `O(n)` per `p` and `O(n^2)` over all `p`, far too slow at `n = 2*10^5`.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: all-wildcard strings (`?...?`, answer `1`), wildcard-free strings,
 strings whose only valid period is `n`, single characters (`n = 1`), tiny alphabets where many
-near-periods compete, and adversarial wildcard placements that make pairwise-compatibility disagree
-with the true (transitive) period. Large `n = 2*10^5` instances test the asymptotics.
+near-periods compete, and adversarial wildcard placements chosen to stress period detection. Large
+`n = 2*10^5` instances test the asymptotics.
 
 ## Code framework
 

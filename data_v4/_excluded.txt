@@ -1,0 +1,12 @@
+# v4 units excluded from the SFT build: the problem itself is a textbook exercise, so the sample
+# teaches transcription rather than reasoning. Judged unit-by-unit by the 2026-07-25 quality sweep
+# (tools/data_quality_fix_workflow.js, class TRIV) with quoted evidence; the files stay on disk for
+# the dataset-release inventory. One slug per line.
+cpv4-prefix-sum-negzero          # running-max sweep ("best time to buy and sell stock"), one edge case
+cpv4-prefix-sum-overflow         # same sweep plus the standard n*|d| > int32 bounds check
+cpv4b-prefix-sum-boundary        # fixed-window prefix sum; the whole content is the window off-by-one
+cpv4-dp-knapsack-greedytrap      # plain 0/1 knapsack with a reskin; context admits it outright
+cpv4b-dp-knapsack-overflow       # 0/1 knapsack + "values are 1e9, use long long"
+cpv4b-dp-knapsack-wrongbaseline  # 0/1 knapsack again, same recurrence and loop direction
+fcs-p2-01                        # coin change / unbounded knapsack, minimum coins
+fcs-p2-09                        # longest common subsequence at n,m <= 3000

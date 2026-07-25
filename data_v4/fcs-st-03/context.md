@@ -34,33 +34,13 @@ per pattern.
 Example: for the dictionary `{ab: 5, bc: 3, ab: 2}` and text `ababcab`, `ab` occurs 3 times
 (positions 0, 2, 5) and `bc` occurs once (position 3), so the score is `(5+2)*3 + 3*1 = 24`.
 
-## Background
-
-The objective decomposes per pattern, so two approaches are immediately on the table:
-
-- **Per-pattern matching.** For each dictionary entry, find all its occurrences in `T` (with KMP, or
-  even `string::find`) and add `w[i] * count`. Each scan is `O(|T| + |p_i|)`, so the total is
-  `O(m*|T| + sum|p_i|)`. With `m` up to `10^5` and `|T|` up to `10^6`, the `m*|T|` term is the
-  problem — it can be `10^11`, far beyond a one-second budget. The open question is whether the text
-  can be processed **once** while simultaneously accounting for every pattern.
-
-- **A multi-pattern automaton.** Build a single finite automaton from the whole dictionary, drive the
-  text through it character by character, and read off all pattern occurrence counts from the run.
-  This is the Aho-Corasick family. The open questions are how to recover *each pattern's* occurrence
-  count from a single pass, and how to make the automaton's transition function total so the scan is
-  genuinely `O(|T|)`.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: empty text and `m = 0`; patterns with no occurrence; a pattern equal
 to the whole text; patterns longer than the text; duplicate patterns with differing (and cancelling)
 weights; deeply nested patterns (`a`, `aa`, `aaa`, ... ) on a single-character text where overlapping
 counts are large; zero and negative weights (so the total may be negative); and large instances with
-`sum |p_i| + |T|` near `10^6` and weights near `10^9`. In the duplicate-heavy extreme — say `10^5`
-copies of the single-character pattern `a` each weighted `10^9`, scored against a text of `~10^6`
-copies of `a` — the total reaches `~10^20`, which overflows signed 64-bit; the intended solution must
-accumulate in a 128-bit integer (and print it manually). A `long long` accumulator is a silent wrong
-answer on such tests.
+`sum |p_i| + |T|` near `10^6` and weights near `10^9`.
 
 ## Code framework
 

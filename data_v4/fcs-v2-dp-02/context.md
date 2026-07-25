@@ -9,9 +9,6 @@ query masks. For each query mask `m` you must report how many of the `n` items a
 The mathematical object underneath is the **subset lattice** on `B` bits ordered by inclusion. The
 multiset of items induces a counting function `cnt[t]` = number of items equal to mask `t`; the query
 asks for the **up-set sum** of `cnt` at `m`, i.e. the sum of `cnt[t]` over all `t` with `t ⊇ m`.
-This "for every mask, aggregate over all its supersets" pattern is the superset-direction zeta
-transform, and it recurs all over subset-sum DP, inclusion–exclusion, and counting problems on
-masks.
 
 ## Input / output contract
 
@@ -43,28 +40,12 @@ the output is:
 1
 ```
 
-## Background
-
-Two families of approach are on the table before committing to one.
-
-- **Per-query scan.** For each query `m`, walk all `n` items and test `x & m == m`. This is
-  `O(n)` per query, `O(n q)` overall. It is obviously correct and trivial to write; the open
-  question is whether `10^6 * 10^6` work can possibly fit the time limit (it cannot).
-
-- **Aggregate once over the lattice.** Build `cnt[t]` for every mask `t`, then for each mask `m`
-  compute the sum of `cnt[t]` over its supersets `t`, storing the answer in an array indexed by
-  mask so each query is an `O(1)` lookup. The open question is how to do the aggregation: the direct
-  "for each mask, enumerate its supersets" double loop is `O(3^B)` (each of the `2^B` masks has, on
-  average, sums over supersets totaling `3^B` mask–superset pairs), which at `B = 20` is about
-  `3.5 * 10^9` — too slow — and the exact recurrence that beats it is the thing to discover.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: `B = 0` (only the empty mask exists); `n = 0` (no items, every
 answer `0`); queries equal to the empty mask `0` (answer is always `n`); queries equal to the full
 mask `2^B - 1` (answer is the count of items equal to the full mask); heavy duplicate item masks;
-and large instances `B = 20`, `n = q = 10^6` with masks drawn across the whole cube, so the
-aggregation must run in near-linear time in `2^B` and the per-query cost must be `O(1)`.
+and large instances `B = 20`, `n = q = 10^6` with masks drawn across the whole cube.
 
 ## Code framework
 
