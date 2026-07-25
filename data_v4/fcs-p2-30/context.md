@@ -31,32 +31,12 @@ the point.
 Example: for `p = 1000000007` and `s = "226"` the answer is `3`. The three decodings are
 `2 2 6 -> "BBF"`, `2 26 -> "BZ"`, and `22 6 -> "VF"`.
 
-## Background
-
-The constraint is local in an unusual way: whether a two-digit group is legal depends on a sliding
-window of width two, and a single `0` can kill an entire prefix. Two routes are on the table before
-committing to one.
-
-- **Closed form via the Fibonacci/matrix angle.** When every adjacent pair of digits happens to form
-  a valid two-digit code and no digit is `0`, each position independently offers "cut here or extend"
-  and the count of splittings of a length-`m` block is the Fibonacci number `F(m+1)`. That invites a
-  shortcut: detect maximal "fully flexible" blocks, look up or matrix-exponentiate a Fibonacci value
-  per block modulo `p`, and multiply the blocks together. It is `O(log n)` per block and feels clever.
-  The open question is whether real strings actually decompose into such clean independent blocks, or
-  whether the `10..26` ceiling and the `0` rules couple positions in ways this factorization misses.
-
-- **Linear segmentation DP.** Define `dp[i]` as the number of valid decodings of the prefix of length
-  `i`, and extend by either a one-digit or a two-digit final group. This is `O(n)` with `O(1)` memory.
-  The open question is only the exact recurrence and the base case, especially how zeros and the
-  prefix boundary are handled.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: strings with no valid decoding (`0`, `06`, `100`, a stray `0`);
-the two-digit boundary exactly at `26` and just past it (`27`, `30`); runs of `1`s and `2`s where the
-count grows like Fibonacci; strings dense in `0` so the `10`/`20`-only rule dominates; small moduli
-(`p = 2, 3, 5`) where many counts collapse to the same residue; and the maximum length `|s| = 10^5`
-with `p` near `2^31` so the running count must be reduced every step.
+the two-digit boundary exactly at `26` and just past it (`27`, `30`); long runs of `1`s and `2`s;
+strings dense in `0` so the `10`/`20`-only rule dominates; small moduli (`p = 2, 3, 5`); and the
+maximum length `|s| = 10^5` with `p` near `2^31`.
 
 ## Code framework
 
