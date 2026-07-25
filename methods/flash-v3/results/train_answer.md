@@ -14,7 +14,7 @@ import torch
 import triton
 import triton.language as tl
 
-LOG2E = 1.44269504  # log2(e): e^x = 2^(x*log2 e), so exp2 replaces exp.
+LOG2E = 1.44269504  # log2(e): e^x = 2^(x*log2 e), so the loop uses hardware exp2.
 
 
 @triton.autotune(
@@ -45,7 +45,6 @@ def _attn_fwd_kernel(
 ):
     start_m = tl.program_id(0)
     off_hz = tl.program_id(1)
-
     q_offset = off_hz * stride_qh
     k_offset = off_hz * stride_kh
     v_offset = off_hz * stride_vh
@@ -55,14 +54,17 @@ def _attn_fwd_kernel(
     offs_n = tl.arange(0, BLOCK_N)
     offs_d = tl.arange(0, BLOCK_DMODEL)
 
+    # qk_scale (below) folds the softmax scale with log2(e) so the loop's exp2
+    # computes e^(sm_scale * score) using the hardware base-2 intrinsic.
     q_ptrs = Q + q_offset + offs_m[:, None] * stride_qm + offs_d[None, :] * stride_qk
     q = tl.load(q_ptrs, mask=offs_m[:, None] < seqlen, other=0.0)
 
     m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
     l_i = tl.zeros([BLOCK_M], dtype=tl.float32) + 1.0
-    acc = tl.zeros([BLOCK_M, BLOCK_DMODEL], dtype=tl.float32)
+    acc = tl.zeros([BLOCK_M, BLOCK_DMODEL], dtype=tl.float32)  # un-normalized output
     qk_scale = sm_scale * LOG2E
 
+    # Two-pass causal: no-mask blocks below the diagonal; future blocks skipped.
     if IS_CAUSAL:
         non_causal_end = (start_m * BLOCK_M // BLOCK_N) * BLOCK_N
     else:
@@ -72,16 +74,16 @@ def _attn_fwd_kernel(
         start_n = tl.multiple_of(start_n, BLOCK_N)
         k_ptrs = K + k_offset + (start_n + offs_n[:, None]) * stride_kn + offs_d[None, :] * stride_kk
         k = tl.load(k_ptrs, mask=(start_n + offs_n[:, None]) < seqlen, other=0.0)
-        qk = tl.dot(q, tl.trans(k))
+        qk = tl.dot(q, tl.trans(k))                # GEMM-0
         m_new = tl.maximum(m_i, tl.max(qk, axis=1) * qk_scale)
         qk = qk * qk_scale - m_new[:, None]
-        alpha = tl.math.exp2(m_i - m_new)
+        alpha = tl.math.exp2(m_i - m_new)          # rescale factor (hardware exp2)
         p = tl.math.exp2(qk)
         l_i = l_i * alpha + tl.sum(p, axis=1)
         acc = acc * alpha[:, None]
         v_ptrs = V + v_offset + (start_n + offs_n[:, None]) * stride_vn + offs_d[None, :] * stride_vk
         v = tl.load(v_ptrs, mask=(start_n + offs_n[:, None]) < seqlen, other=0.0)
-        acc = tl.dot(p.to(v.dtype), v, acc)
+        acc = tl.dot(p.to(v.dtype), v, acc)        # GEMM-1, no per-block 1/l
         m_i = m_new
 
     if IS_CAUSAL:
@@ -104,10 +106,11 @@ def _attn_fwd_kernel(
             acc = tl.dot(p.to(v.dtype), v, acc)
             m_i = m_new
 
+    # Store the base-2 logsumexp for exact on-chip probability reconstruction.
     l_ptrs = L + off_hz * seqlen + offs_m
     tl.store(l_ptrs, m_i + tl.math.log2(l_i), mask=offs_m < seqlen)
 
-    acc = acc / l_i[:, None]
+    acc = acc / l_i[:, None]                        # single deferred division
     o_ptrs = Out + o_offset + offs_m[:, None] * stride_om + offs_d[None, :] * stride_ok
     tl.store(o_ptrs, acc.to(Out.dtype.element_ty), mask=offs_m[:, None] < seqlen)
 
