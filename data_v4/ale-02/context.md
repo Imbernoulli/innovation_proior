@@ -45,27 +45,6 @@ Constraints (instances): `12 <= H, W <= 30`; `4 <= K <= 8`; each `A_k` in
 own, so the floor — not the inventory — is the binding constraint). Time limit:
 about 2 seconds. Memory: 256 MB.
 
-## Background
-
-Two ideas frame the approach before committing to one.
-
-- **First-fit greedy.** Sort shapes largest-area-first; for each shape and each
-  rotation, sweep all anchor positions and drop a copy wherever it currently fits.
-  This is fast and always feasible, but it is a one-shot construction: once a cell
-  is taken it is never reconsidered, so a few early, poorly-aligned big parts can
-  strand pockets of empty cells that nothing left in the catalogue can fill.
-
-- **Local search over the placement multiset.** Keep a set of current placements
-  and repeatedly perturb it — add a part, remove a part, or swap one for another —
-  accepting some coverage-reducing moves so the search can vacate a wasteful part
-  and re-tile the freed region. This can climb out of the dead ends greedy walks
-  into, but only if the per-move cost is tiny, because thousands of moves per
-  millisecond are needed for it to pay off.
-
-The open question is how to make each perturbation — in particular the collision
-test against everything already on the floor — cheap enough that a metaheuristic
-is worthwhile.
-
 ## Evaluation settings
 
 **Score.** The local scorer (`verify/score.py`) reads the instance and the
@@ -78,8 +57,10 @@ infeasible for any reason: it is malformed or truncated; a placement names a
 non-existent shape or a rotation outside `0..3`; a placement pokes outside the
 `H x W` floor; two placed cells coincide (overlap); or more than `cnt_k` copies of
 some shape `k` are used. An empty solution (`P = 0`) is feasible but covers `0`
-cells, so it ties the infeasible floor. The reference baseline the coverage ratio
-is reported against is the first-fit greedy above.
+cells, so it ties the infeasible floor. The coverage ratio reported alongside your
+score is against a first-fit greedy baseline: shapes sorted largest-area-first,
+each shape's rotations swept over every anchor position in order, placing a copy
+wherever it currently fits (respecting `cnt_k`).
 
 **Instances.** `verify/gen.py SEED` draws `H, W`, a library of `K` random
 connected polyominoes (grown by random accretion, areas `1..6`), and a generous
