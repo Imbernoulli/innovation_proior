@@ -9,19 +9,15 @@ Why this decoupling is legitimate is the central insight of the problem. In a ge
 Several special cases confirm the structure. For a deteriorating arm whose index never rises, the best stopping time is one step, so the index reduces to the immediate expected reward and one-step lookahead is optimal; this recovers classical priority rules such as the c-mu rule in scheduling. For an improving arm, the optimal stopping rule never cuts the run early. For the Bayesian Bernoulli bandit with Beta posterior exponents (a,b), the index exceeds the immediate posterior mean because continuing preserves the option value of learning; it can be computed by truncating the horizon and sweeping backward over the single arm's two-parameter state. For the Normal-mean bandit with posterior normal distribution, adding a constant shifts the index and multiplying rewards scales it, giving a shift-scale law that reduces tabulation to a single one-variable function. In every case the joint state space is avoided.
 
 ```python
-def gittins_index_by_calibration(states, transition, reward, beta, lo, hi, tol=1e-9):
-    """Compute the Gittins index for every state of ONE Markov reward process.
-
-    The index is calibrated against a standard arm that pays a constant lam
-    forever. For each candidate lam, value iteration is performed over the
-    process's own states using the one-dimensional Bellman equation
-        V(s) = max(lam/(1-beta), reward(s) + beta * E[V(next_state)]).
-    The index of state x is the largest lam for which playing on is still at
-    least as good as retiring to the standard arm.
-    """
+def gittins_index_by_calibration(states, transition, reward, beta,
+                                 lo, hi, tol=1e-9):
+    """Index of every state of ONE Markov reward process, by calibrating against a
+    constant-charge yardstick. The pair's Bellman max is solved over the process's
+    OWN states (1-D, no product). The index of state x is the largest lambda for
+    which it is still optimal to keep playing rather than retire to lambda/(1-beta)."""
     def plays_on(x0, lam):
-        retire = lam / (1 - beta)
         V = {s: reward(s) / (1 - beta) for s in states}
+        retire = lam / (1 - beta)
         while True:
             newV, delta = {}, 0.0
             for s in states:
@@ -39,7 +35,7 @@ def gittins_index_by_calibration(states, transition, reward, beta, lo, hi, tol=1
     index = {}
     for x0 in states:
         a, b = lo, hi
-        while b - a > tol:
+        while b - a > tol:                 # largest lambda with plays_on => index(x0)
             m = 0.5 * (a + b)
             if plays_on(x0, m):
                 a = m
@@ -50,7 +46,7 @@ def gittins_index_by_calibration(states, transition, reward, beta, lo, hi, tol=1
 
 
 def greatest_index_policy(processes, states, indices):
-    """Advance the process whose current state has the largest Gittins index."""
+    """Advance the process whose current state has the largest index."""
     return max(range(len(processes)), key=lambda j: indices[j][states[j]])
 ```
 
