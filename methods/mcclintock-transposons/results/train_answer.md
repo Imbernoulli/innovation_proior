@@ -18,66 +18,6 @@ The origin of the burst traces back to the breakage-fusion-bridge cycle. The cyc
 
 The resulting picture is that the genome is not a static string of beads at fixed addresses. It carries autonomous and non-autonomous mobile elements. Ac is autonomous: it can activate itself and Ds. Ds is non-autonomous: it can break, transpose, and inhibit neighboring genes, but only when Ac is present. Insertion of such an element beside a gene can switch the gene off; removal can restore it intact. The clonal sectors, the developmental clock read from sector size, the reciprocal twins from unequal mitotic partition, and the wandering map positions of the controllers all follow from this mobile-element mechanism. Genome shock, particularly the wrenching of heterochromatin by the breakage-fusion-bridge cycle, mobilizes these elements and explains why the burst appeared in the specific experimental material.
 
-To make the timing and sector-size relationship concrete, I will run a small Python simulation of Ac-dose-dependent transposition events during kernel development. The simulation follows a single founding cell through a fixed number of divisions. At each division, every extant cell may undergo a Ds event with a probability that rises with the cell's age but is delayed by higher Ac dose. An event founds a clonal sector whose size equals the number of descendants that cell would leave if it continued dividing until the final stage. Higher Ac dose should shift events toward later divisions and therefore produce smaller sectors.
+What I am proposing, then, is the Ac/Ds system of transposable controlling elements: Ds is a non-autonomous element that can break the chromosome at its own site, transpose to a new address, and insert beside a gene to inhibit it reversibly, all without altering the gene itself; Ac is an autonomous, independently segregating activator required in trans for every Ds event, and its dose sets the developmental timing of those events and, through the sector-size clock, their visible size. Stated in the most exact and complete form the discovery admits — as the mechanism itself, not as a numerical illustration of it — the system reads as follows.
 
-```python
-import random
-
-
-def simulate_sectors(ac_dose, n_divisions=10, base_rate=0.3):
-    """
-    Simulate Ds excision/breakage events during kernel development.
-    Higher Ac dose shifts the per-cell event probability curve to later ages.
-    Returns a list of (division_when_event_occurred, sector_size).
-    """
-    sectors = []
-    # Each live cell stores the division at which it was born.
-    cells = [0]
-    # Later Ac doses raise the age threshold at which events become likely.
-    threshold = 2 + 2 * (ac_dose - 1)
-
-    for division in range(n_divisions):
-        next_cells = []
-        for birth_div in cells:
-            age = division - birth_div
-            # Logistic-like rise: probability is low until age exceeds threshold.
-            rate = base_rate / (1 + 2.0 ** (threshold - age))
-            rate = min(rate, 0.95)
-            if random.random() < rate:
-                # Event creates a sector; descendants continue developing,
-                # but the visible sector size is fixed by the event time.
-                sector_size = 2 ** (n_divisions - division - 1)
-                sectors.append((division, sector_size))
-            next_cells.append(birth_div)
-            next_cells.append(birth_div)
-        cells = next_cells
-
-    return sectors
-
-
-def report(dose, runs=200):
-    mean_divisions = []
-    mean_sizes = []
-    for _ in range(runs):
-        events = simulate_sectors(ac_dose=dose)
-        if events:
-            mean_divisions.append(sum(d for d, _ in events) / len(events))
-            mean_sizes.append(sum(s for _, s in events) / len(events))
-    return (
-        sum(mean_divisions) / len(mean_divisions) if mean_divisions else 0.0,
-        sum(mean_sizes) / len(mean_sizes) if mean_sizes else 0.0,
-    )
-
-
-if __name__ == "__main__":
-    random.seed(42)
-    for dose in [1, 2, 3]:
-        mean_div, mean_size = report(dose)
-        print(
-            f"Ac dose = {dose}: "
-            f"mean event division = {mean_div:.2f}, "
-            f"mean sector size = {mean_size:.1f}"
-        )
-```
-
-In summary, I propose that the canonical method for explaining the observed burst of mutable loci in these maize stocks is the Ac/Ds system of transposable controlling elements. Ds is a non-autonomous element that can break chromosomes, transpose, and insert beside genes to inhibit them reversibly. Ac is an autonomous, mobile activator required in trans for Ds action, and its dosage controls the developmental timing of events. The visible variegation patterns are the clonal readout of these insertion, excision, and breakage events, and the whole system can be mobilized by genome shock acting on heterochromatin.
+Let $L$ be a locus carrying gene $G$, and let $E_G(t)\in\{\text{on},\text{off}\}$ be the expression state of $G$ at developmental time $t$ in a given cell lineage. Two mobile chromatin elements, $Ds$ and $Ac$, govern $E_G$ by four coupled properties. First, if $Ds$ occupies a site adjacent to $L$, then $E_G \equiv \text{off}$ in every descendant of the cell in which the insertion occurred, independent of the underlying sequence of $G$; when $Ds$ is later excised from that site, $E_G$ reverts to $\text{on}$ and $G$ is thereafter transmitted and expressed exactly as it was before insertion — insertion and excision constitute the entire "mutation," and $G$ itself is never altered. Second, independent of any adjacent gene, $Ds$ can act at its own site to fuse sister chromatids there, producing a dicentric chromatid and the loss of the acentric fragment distal to $Ds$: the same element that silences a neighboring gene also breaks the chromosome that carries it. Third, $Ds$ can transpose — its site of insertion, and hence the site of breakage and the identity of whatever gene it controls, relocates heritably to a new chromosomal address from one generation to the next. Fourth, none of the first three properties is expressed unless a second, separable element $Ac$ is present elsewhere in the genome and acts in trans; $Ac$ is itself autonomously mobile, transposing and segregating independently of $Ds$, and its dose $n_{Ac}$ sets the onset time $t_{\text{onset}}(n_{Ac})$ of $Ds$-dependent events, monotonically increasing in $n_{Ac}$ — more $Ac$ gives later onset and smaller descendant sectors, less $Ac$ gives earlier onset and larger sectors, because a sector is exactly the clonal descendant set of the single cell in which an insertion, excision, or breakage occurred, and its size is read directly off $t_{\text{onset}}$. A reciprocal twin sector marks one mitosis at which the two daughter cells received opposite outcomes of the same $Ds$/$Ac$ event. This is what a mutable locus actually is: not an unstable gene but $G$ held under the reversible, moveable, breakage-capable control of $Ds$, itself obligately dependent on the dose and timing set by the autonomous $Ac$ — and it is sufficient, without invoking a single point mutation at any of the forty loci, to generate the sharp clonal sectoring, the sector-size developmental clock, the reciprocal twins, and the wandering map position of the controlling factor, with genome shock from the breakage-fusion-bridge cycle acting on heterochromatin as the origin that mobilized $Ds$ and $Ac$ into activity in this material.
