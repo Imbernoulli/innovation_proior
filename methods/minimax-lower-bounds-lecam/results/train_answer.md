@@ -12,41 +12,10 @@ This two-point approach is most powerful when the hardest part of the model clas
 
 The method also has natural limitations. When the true difficulty of the problem is many-way ambiguity, for instance because the minimax risk is driven by a combinatorial number of alternatives or by high-dimensional structure, a two-point argument may be loose. In those settings, packing methods such as Fano's inequality or Assouad's lemma can capture the dimension dependence more sharply. Nevertheless, Le Cam's two-point bound remains the cleanest way to isolate the basic information bottleneck, and it often gives the correct rate up to constants in problems such as normal mean estimation, nonparametric density estimation, functional estimation, and privacy-constrained inference.
 
-To make the discussion concrete, consider the classical normal mean problem. Suppose under P0 the observations are independent N(0, 1) and under P1 they are independent N(delta, 1), with delta chosen proportional to 1 over the square root of n. Then the sample mean has variance 1/n, so the natural estimation rate is 1/n in squared error. Choosing delta = c / sqrt(n) for a small constant c makes the parameter separation 2s = c / sqrt(n), hence s = c / (2 sqrt(n)). The n-sample total variation between the two product normals is 2 Phi(c / 2) - 1, where Phi is the standard normal cumulative distribution function. For c = 1 this is about 0.38, so 1 - TV is about 0.62. The Le Cam bound then says the minimax squared error is at least a constant divided by n, which matches the rate achieved by the sample mean up to a constant factor. The following small Python script computes these quantities explicitly and verifies the numerical relationship between the testing error and the resulting risk lower bound.
+To make the discussion concrete, consider the classical normal mean problem. Suppose under P0 the observations are independent N(0, 1) and under P1 they are independent N(delta, 1), with delta chosen proportional to 1 over the square root of n. Then the sample mean has variance 1/n, so the natural estimation rate is 1/n in squared error. Choosing delta = c / sqrt(n) for a small constant c makes the parameter separation 2s = c / sqrt(n), hence s = c / (2 sqrt(n)). The n-sample total variation between the two product normals is 2 Phi(c / 2) - 1, where Phi is the standard normal cumulative distribution function. For c = 1 this is about 0.38, so 1 - TV is about 0.62. The Le Cam bound then says the minimax squared error is at least a constant divided by n, which matches the rate achieved by the sample mean up to a constant factor.
 
-```python
-import math
-import json
-
-def phi_cdf(x):
-    return 0.5 * (1.0 + math.erf(x / math.sqrt(2.0)))
-
-def lecam_normal_mean(n=100, sigma=1.0, c=1.0):
-    delta = c / math.sqrt(n)
-    theta0, theta1 = 0.0, delta
-    s = delta / 2.0
-    # Exact total variation between the n-sample product normals
-    tv = 2.0 * phi_cdf(delta * math.sqrt(n) / (2.0 * sigma)) - 1.0
-    lecam_bound = (s * s / 2.0) * (1.0 - tv)
-    # Equal-prior Bayes error of the optimal test based on the sample mean
-    err0 = 1.0 - phi_cdf((delta / 2.0) * math.sqrt(n) / sigma)
-    err1 = phi_cdf(((delta / 2.0) - delta) * math.sqrt(n) / sigma)
-    bayes_error = 0.5 * (err0 + err1)
-    test_based_lb = s * s * bayes_error
-    return {
-        "n": n,
-        "sigma": sigma,
-        "c": c,
-        "separation_2s": delta,
-        "radius_s": s,
-        "TV": tv,
-        "LeCam_squared_error_bound": lecam_bound,
-        "bayes_test_error": bayes_error,
-        "test_based_risk_lb": test_based_lb,
-    }
-
-if __name__ == "__main__":
-    print(json.dumps(lecam_normal_mean(), indent=2))
-```
-
-In summary, Le Cam's two-point method reduces the search for a minimax lower bound to the construction of two distributions that are well separated in the parameter space yet statistically close in the observation space. By linking estimator accuracy to binary testing accuracy and invoking the exact optimal testing error between two laws, the method produces a universal lower bound that holds for every measurable estimator. It is the simplest certificate of statistical impossibility and remains a standard tool for proving that certain estimation rates cannot be improved.
+The argument compresses to a single certificate, and it is worth stating in its final, load-bearing form. Fix any two admissible distributions $P_0, P_1 \in \mathcal{P}$ whose targets are separated by at least twice the radius one wants to rule out,
+$$\rho(\theta(P_0), \theta(P_1)) \ge 2s,$$
+and let $\mathrm{TV}(P_0^n, P_1^n)$ denote the total variation distance between their $n$-sample laws. Then for any loss exponent $p$,
+$$\inf_{\hat\theta} \; \sup_{P \in \mathcal{P}} \; \mathbb{E}_P\!\left[\rho(\hat\theta, \theta(P))^p\right] \;\ge\; \frac{s^p}{2}\Big[1 - \mathrm{TV}(P_0^n, P_1^n)\Big],$$
+where the infimum ranges over every measurable estimator $\hat\theta$ built from the $n$ observations. Every symbol on the right is already pinned down by the construction: $s$ is the accuracy radius certified by the parameter separation, $\mathcal{P}$ is the model class, $\theta(\cdot)$ is the functional under estimation, and $1 - \mathrm{TV}(P_0^n, P_1^n)$ is the exact optimal testing error between the two worlds, controlled in practice by bounding $\mathrm{TV}$ directly, or by passing through Pinsker's inequality from $\mathrm{KL}(P_0^n \Vert P_1^n)$, or through the tensorized Hellinger affinity. This is the complete deliverable: name two admissible worlds, certify their separation in $\rho$, bound their indistinguishability in total variation, and the inequality above is discharged simultaneously for every estimator that could ever be proposed. It is the simplest certificate of statistical impossibility, and it is exactly this two-point form, rather than any specific test statistic, that generalizes to the normal-mean, nonparametric, and privacy-constrained settings where the rate is known to be tight.
