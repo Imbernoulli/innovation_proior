@@ -26,8 +26,9 @@ def _safe_divide(numerator, denominator):
 
 
 class GradientBoostingMachine:
-    """Gradient boosting: fit trees to negative gradients, set leaves by the
-    loss-specific update, and shrink each step by the learning rate.
+    """Gradient boosting: fit trees to negative gradients (pseudo-residuals),
+    set each leaf by the loss-specific update (exact for squared error, Newton for deviance), shrink by lr.
+        F(x) = init + lr * sum_m (leaf values of tree m)
     task="regression" uses squared error; task="classification" uses binomial deviance.
     """
 
@@ -40,47 +41,50 @@ class GradientBoostingMachine:
         self.init_ = 0.0
 
     def _init_prediction(self, y):
+        # F_0 = argmin_rho sum_i L(y_i, rho).
         if self.task == "regression":
-            return float(np.mean(y))
-        p = float(np.clip(np.mean(y), 1e-6, 1 - 1e-6))
-        return float(np.log(p / (1.0 - p)))
+            return float(np.mean(y))                 # mean for squared error
+        p = float(np.clip(np.mean(y), 1e-6, 1 - 1e-6))   # y in {0,1}
+        return float(np.log(p / (1.0 - p)))          # logit init (p = sigmoid(F_0))
 
     def _pseudo_residuals(self, y, F):
+        # y~_i = -dL/dF at F_{m-1}.
         if self.task == "regression":
-            return y - F
-        return y - _sigmoid(F)
+            return y - F                             # squared error: negative gradient = residual
+        return y - _sigmoid(F)                        # deviance: y - p on the probability scale
 
     def _leaf_value(self, resid_leaf, y_leaf):
+        # gamma_jm = argmin_gamma sum_{leaf} L(y, F + gamma).
         if self.task == "regression":
-            return float(np.mean(resid_leaf))
-        p = y_leaf - resid_leaf
-        num = float(np.sum(resid_leaf))
-        den = float(np.sum(p * (1.0 - p)))
-        return _safe_divide(num, den)
+            return float(np.mean(resid_leaf))        # squared error: mean residual (= LS leaf value)
+        p = y_leaf - resid_leaf                                          # p = sigmoid(F) = y - neg_grad
+        num = float(np.sum(resid_leaf))                                  # summed negative gradient
+        den = float(np.sum(p * (1.0 - p)))                              # summed curvature p(1-p)
+        return _safe_divide(num, den)                # single Newton step with safe zero update
 
     def fit(self, X, y):
         y = np.asarray(y, dtype=float)
         self.init_ = self._init_prediction(y)
         F = np.full(len(y), self.init_)
         for _ in range(self.n_rounds):
-            resid = self._pseudo_residuals(y, F)
+            resid = self._pseudo_residuals(y, F)                 # negative gradient at current F
             tree = DecisionTreeRegressor(max_depth=self.max_depth, criterion="friedman_mse")
-            tree.fit(X, resid)
+            tree.fit(X, resid)                                   # least-squares fit -> finds regions
             leaves = tree.apply(X)
             update = np.zeros(len(y))
             for leaf in np.unique(leaves):
                 idx = np.where(leaves == leaf)[0]
-                gamma = self._leaf_value(resid[idx], y[idx])
-                tree.tree_.value[leaf, 0, 0] = gamma
+                gamma = self._leaf_value(resid[idx], y[idx])     # per-leaf exact / Newton update
+                tree.tree_.value[leaf, 0, 0] = gamma             # overwrite LS value with loss-specific update
                 update[idx] = gamma
-            F += self.learning_rate * update
+            F += self.learning_rate * update                     # shrunk stagewise update
             self.trees.append(tree)
         return self
 
     def decision_function(self, X):
         F = np.full(X.shape[0], self.init_)
         for tree in self.trees:
-            F += self.learning_rate * tree.predict(X)
+            F += self.learning_rate * tree.predict(X)            # leaf values already set to gamma
         return F
 
     def predict(self, X):
