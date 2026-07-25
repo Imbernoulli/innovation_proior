@@ -12,64 +12,6 @@ One direction is not enough when the space is large. The proof therefore collect
 
 When p is a seminorm and the original bound is |f(x)| <= p(x), the same theorem applied to -x gives -F(x) = F(-x) <= p(-x) = p(x), so |F(x)| <= p(x). In a normed space this means a bounded linear functional on a subspace extends to the whole space with exactly the same operator norm. The theorem also has a geometric face: it produces separating hyperplanes. If M is a closed subspace and z is a point outside it, define f(m+tz) = t dist(z,M) on M+Rz. This is bounded by the norm, and its Hahn-Banach extension is a continuous linear functional that vanishes on M and takes the value dist(z,M) at z, whose kernel is a closed hyperplane separating z from M.
 
-```python
-import numpy as np
-
-def one_step_extension(values, basis, p, z, samples=21):
-    """Choose c = F(z) so that F(x+tz) <= p(x+tz) holds on a sampled grid."""
-    if len(basis) == 0:
-        return 0.5 * (-p(-z) + p(z))
-    grid = np.linspace(-2, 2, samples)
-    mesh = np.array(np.meshgrid(*[grid] * len(basis), indexing='ij'))
-    coeffs = mesh.T.reshape(-1, len(basis))
-    lowers, uppers = [], []
-    key = lambda v: tuple(np.round(v, 12))
-    for a in coeffs:
-        x = sum(c * b for c, b in zip(a, basis))
-        fx = sum(c * values[key(b)] for c, b in zip(a, basis))
-        lowers.append(fx - p(x - z))
-        uppers.append(p(x + z) - fx)
-    lower, upper = max(lowers), min(uppers)
-    if lower > upper + 1e-6:
-        raise ValueError("domination interval empty")
-    return 0.5 * (lower + upper)
-
-def hahn_banach(M_basis, full_basis, f_on_M, p):
-    """Extend a linear functional from span(M_basis) to span(full_basis)."""
-    M_basis = [np.array(v, dtype=float) for v in M_basis]
-    full_basis = [np.array(v, dtype=float) for v in full_basis]
-    key = lambda v: tuple(np.round(v, 12))
-
-    current = list(M_basis)
-    values = {key(v): float(f_on_M(v)) for v in M_basis}
-
-    missing = [v for v in full_basis
-               if not any(np.allclose(v, m) for m in M_basis)]
-    current.extend(missing)
-
-    for i in range(len(M_basis), len(current)):
-        z = current[i]
-        c = one_step_extension(values, current[:i], p, z)
-        values[key(z)] = c
-
-    def F(v):
-        v = np.array(v, dtype=float)
-        coeffs = np.linalg.lstsq(np.column_stack(current), v, rcond=None)[0]
-        return sum(c * values[key(b)] for c, b in zip(coeffs, current))
-
-    return F
-
-# Example: extend f(x,0) = 0.5 x on the x-axis to R^2, dominated by the l1 norm.
-p = lambda v: np.sum(np.abs(v))
-M_basis = [(1.0, 0.0)]
-full_basis = [(1.0, 0.0), (0.0, 1.0)]
-f_on_M = lambda v: 0.5 * v[0]
-
-F = hahn_banach(M_basis, full_basis, f_on_M, p)
-
-np.random.seed(0)
-for _ in range(100):
-    v = np.random.randn(2)
-    assert F(v) <= p(v) + 1e-6, "domination violated"
-print("Hahn-Banach extension verified on random samples.")
-```
+Collected into one statement, this is the theorem: let $E$ be a real vector space, let $p:E\to\mathbb{R}$ be sublinear, meaning $p(x+y)\le p(x)+p(y)$ and $p(\alpha x)=\alpha p(x)$ for every $\alpha\ge 0$, let $M\subset E$ be a linear subspace, and let $f:M\to\mathbb{R}$ be linear with $f(x)\le p(x)$ for every $x\in M$. Then there exists a linear functional $F:E\to\mathbb{R}$ with $F|_M=f$ such that
+$$F(x)\le p(x)\quad\text{for every }x\in E.$$
+If in addition $p$ is a seminorm and the hypothesis on $M$ is the two-sided bound $|f(x)|\le p(x)$, applying the theorem to $f$ and to $-f$ gives $|F(x)|\le p(x)$ for every $x\in E$. Two corollaries follow directly. First, the norm-preserving extension: if $E$ is a normed space, $M\subset E$ a subspace, and $f:M\to\mathbb{R}$ continuous with $C=\|f\|$, then $|f(x)|\le C\|x\|$ on $M$, so the seminorm form with $p(x)=C\|x\|$ produces $F:E\to\mathbb{R}$ extending $f$ with $|F(x)|\le C\|x\|$ everywhere, hence $\|F\|=\|f\|$ exactly. Second, the separating functional: if $M\subset E$ is closed and $z\notin M$, put $d=\operatorname{dist}(z,M)>0$ and define $f(m+tz)=td$ on $M+\mathbb{R}z$, which satisfies $|f(m+tz)|\le\|m+tz\|$; extending $f$ gives $F:E\to\mathbb{R}$ with $\|F\|\le 1$, $F|_M=0$, and $F(z)=d$, so $F/d$ is a continuous linear functional equal to $0$ on $M$ and $1$ at $z$, and its kernel is the closed hyperplane separating $z$ from $M$. This is the finished result: not an algorithm to execute, but a guarantee, holding in every real vector space regardless of dimension, completeness, or separability, that a linear estimate controlled on a subspace by a sublinear function can always be carried to the whole space without ever loosening that control.
