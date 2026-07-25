@@ -16,10 +16,6 @@ import torch.nn as nn
 
 
 class FocalFrequencyLoss(nn.Module):
-    """Focal frequency loss: a spectral-distance loss whose frequency components
-    are gated by how mismatched they currently are. Use as a complement to a
-    spatial reconstruction loss: total = spatial + loss_weight * FFL."""
-
     def __init__(self, loss_weight=1.0, alpha=1.0, patch_factor=1,
                  ave_spectrum=False, log_matrix=False, batch_matrix=False):
         super().__init__()
@@ -35,10 +31,10 @@ class FocalFrequencyLoss(nn.Module):
         _, _, h, w = x.shape
         assert h % pf == 0 and w % pf == 0, "patch_factor must divide H and W"
         ph, pw = h // pf, w // pf
-        patches = [x[:, :, i * ph:(i + 1) * ph, j * pw:(j + 1) * pw]
+        patches = [x[:, :, i*ph:(i+1)*ph, j*pw:(j+1)*pw]
                    for i in range(pf) for j in range(pf)]
         y = torch.stack(patches, 1)
-        freq = torch.fft.fft2(y, norm='ortho')
+        freq = torch.fft.fft2(y, norm='ortho')                # orthonormal 2D FFT
         return torch.stack([freq.real, freq.imag], -1)
 
     def loss_formulation(self, recon_freq, real_freq, matrix=None):
@@ -46,7 +42,7 @@ class FocalFrequencyLoss(nn.Module):
             weight_matrix = matrix.detach()
         else:
             tmp = (recon_freq - real_freq) ** 2
-            tmp = torch.sqrt(tmp[..., 0] + tmp[..., 1]) ** self.alpha
+            tmp = torch.sqrt(tmp[..., 0] + tmp[..., 1]) ** self.alpha   # |F_r - F_f|^alpha
             if self.log_matrix:
                 tmp = torch.log(tmp + 1.0)
             if self.batch_matrix:
@@ -54,11 +50,10 @@ class FocalFrequencyLoss(nn.Module):
             else:
                 tmp = tmp / tmp.max(-1).values.max(-1).values[:, :, :, None, None]
             tmp[torch.isnan(tmp)] = 0.0
-            tmp = torch.clamp(tmp, min=0.0, max=1.0)
-            weight_matrix = tmp.clone().detach()
+            weight_matrix = torch.clamp(tmp, min=0.0, max=1.0).clone().detach()  # spotlight, detached
 
         tmp = (recon_freq - real_freq) ** 2
-        freq_distance = tmp[..., 0] + tmp[..., 1]
+        freq_distance = tmp[..., 0] + tmp[..., 1]             # |F_r - F_f|^2
         return torch.mean(weight_matrix * freq_distance)
 
     def forward(self, pred, target, matrix=None):
