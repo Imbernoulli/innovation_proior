@@ -10,56 +10,12 @@ Now consider a thin band around a critical value c where there is exactly one no
 
 This gives a complete reconstruction recipe. Start below the minimum value of f. As a increases, each time a passes a critical value the sublevel set changes by attaching a handle whose dimension equals the index of the corresponding critical point. Between critical values the sublevel set does not change. If M is compact and all critical values are distinct, then proceeding through the critical values in order yields a handle decomposition of M. After collapsing handles along their descending or ascending factors, one obtains a CW complex with one cell of dimension lambda for every critical point of index lambda. The same description covers minima, saddles, and maxima without changing the language: index 0 creates a new component, index 1 creates a tunnel or merges components, and index n caps off the manifold.
 
-The method I have described is Morse theory. It converts the smooth structure of a manifold into a combinatorial skeleton by filtering through a generic smooth function. The two pillars are normalized gradient flow for regular bands and the Morse lemma for nondegenerate critical points. Together they show that the only topological events in the filtration are handle attachments, and the dimensions of those handles are read directly from the Hessian indices.
+The method I have described is Morse theory, and the argument above is exactly the proof of the theorem that states it. Let $M$ be a smooth $n$-manifold, $f:M\to\mathbb{R}$ smooth, and $M^a=\{x\in M: f(x)\le a\}$. Suppose $f^{-1}([a,b])$ is compact. If $f$ has no critical points in $f^{-1}([a,b])$, then $M^a$ and $M^b$ are diffeomorphic and $M^a$ is a deformation retract of $M^b$. If instead $f^{-1}([c-\epsilon,c+\epsilon])$ contains exactly one critical point $p$, with $f(p)=c$, and $p$ is nondegenerate of index $\lambda$, then $M^{c+\epsilon}$ is obtained from $M^{c-\epsilon}$ by attaching a $\lambda$-handle
 
-```python
-import numpy as np
+$$D^\lambda \times D^{n-\lambda}$$
 
-# Morse theory illustration on the 2-torus.
-# We use f(x,y) = cos(2*pi*x) + cos(2*pi*y) on the unit square with periodic
-# boundary conditions. Its critical points are found analytically, classified
-# by the Hessian index, and the alternating sum of critical counts is compared
-# to the Euler characteristic of the torus, which is 0.
+along its attaching region $S^{\lambda-1}\times D^{n-\lambda}$, up to the standard smoothing of corners; in particular $M^{c+\epsilon}$ has the homotopy type of $M^{c-\epsilon}$ with one $\lambda$-cell attached. Consequently, if $M$ is compact and $f$ has distinct critical values $c_1<c_2<\dots<c_k$ with nondegenerate indices $\lambda_1,\dots,\lambda_k$, then crossing them in increasing order gives a handle decomposition of $M$ with exactly one $\lambda_i$-handle per critical point, and collapsing each handle along its $D^{n-\lambda_i}$ factor produces a CW complex, homotopy equivalent to $M$, with one cell of dimension $\lambda_i$ for every critical point of that index. Because the Euler characteristic of a CW complex is the alternating sum of its cell counts, this pins down $\chi(M)$ directly from the index census: if $m_\lambda$ is the number of critical points of index $\lambda$, then
 
-def f(x, y):
-    return np.cos(2 * np.pi * x) + np.cos(2 * np.pi * y)
+$$\chi(M) = \sum_{\lambda=0}^{n} (-1)^\lambda m_\lambda,$$
 
-def grad_f(x, y):
-    return np.array([
-        -2 * np.pi * np.sin(2 * np.pi * x),
-        -2 * np.pi * np.sin(2 * np.pi * y)
-    ])
-
-def hess_f(x, y):
-    c = (2 * np.pi) ** 2
-    return np.array([
-        [-c * np.cos(2 * np.pi * x), 0.0],
-        [0.0, -c * np.cos(2 * np.pi * y)]
-    ])
-
-# Critical points of f in [0,1)^2 come from sin(2*pi*x)=0 and sin(2*pi*y)=0.
-critical_points = [
-    (0.0, 0.0),
-    (0.0, 0.5),
-    (0.5, 0.0),
-    (0.5, 0.5)
-]
-
-# Classify each critical point by the number of negative Hessian eigenvalues.
-index_counts = [0, 0, 0]
-print("Critical point (x, y) -> Morse index")
-for x, y in critical_points:
-    H = hess_f(x, y)
-    eigvals = np.linalg.eigvalsh(H)
-    index = int(np.sum(eigvals < 0))
-    index_counts[index] += 1
-    print(f"  ({x:.1f}, {y:.1f}) -> eigenvalues {eigvals} -> index {index}")
-
-# Euler characteristic from Morse counts: sum (-1)^index * count.
-euler = sum((-1)**k * index_counts[k] for k in range(3))
-print("Morse index counts (index 0 / 1 / 2):", index_counts)
-print("Computed Euler characteristic:", euler)
-print("Expected Euler characteristic of the 2-torus: 0")
-assert euler == 0, "Morse counts should give Euler characteristic 0 for the torus."
-print("Morse-theory check passed.")
-```
+and this total is the same for every generic function on $M$, since it equals the fixed homotopy invariant $\chi(M)$. That invariance is the real content of the theorem: a smooth manifold, probed by a single generic real-valued function, hands back its combinatorial skeleton — a CW complex with one cell per critical point, of dimension equal to the Hessian index at that point — with no separate topological argument needed at any stage beyond tracking the signs of the Hessian.
