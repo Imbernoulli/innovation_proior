@@ -13,50 +13,50 @@ class CMAES:
         self.xmean = np.asarray(x0, dtype=float)
         self.sigma = float(sigma0)
         n = self.N = len(self.xmean)
-        default_lam = 4 + int(3 * np.log(n))
         self.max_evals = (int(max_evals) if max_evals is not None
-                          else int(100 * default_lam
-                                   + 150 * (n + 3) ** 2 * np.sqrt(default_lam)))
+                          else int(100 * (4 + int(3 * np.log(n)))
+                                   + 150 * (n + 3)**2 * np.sqrt(4 + int(3 * np.log(n)))))
         self.target = target
 
-        # strategy parameters
-        self.lam = default_lam
-        self.mu = self.lam // 2
+        # --- strategy parameters (tuned defaults; all are ~1/timescale) ---
+        self.lam = 4 + int(3 * np.log(n))            # population size
+        self.mu = self.lam // 2                       # number of parents
 
         weights = np.zeros(self.lam)
         weights[:self.mu] = np.log(self.lam / 2 + 0.5) - np.log(np.arange(1, self.mu + 1))
-        weights[:self.mu] /= np.sum(weights[:self.mu])
+        weights[:self.mu] /= np.sum(weights[:self.mu])      # positive weights sum to 1
         self.weights = weights
-        self.mueff = 1.0 / np.sum(weights[:self.mu] ** 2)
+        self.mueff = 1.0 / np.sum(weights[:self.mu]**2)     # effective sample size
 
-        self.cs = (self.mueff + 2) / (n + self.mueff + 5)
-        self.cc = (4 + self.mueff / n) / (n + 4 + 2 * self.mueff / n)
-        self.c1 = 2 / ((n + 1.3) ** 2 + self.mueff)
+        self.cs = (self.mueff + 2) / (n + self.mueff + 5)             # sigma path
+        self.cc = (4 + self.mueff / n) / (n + 4 + 2 * self.mueff / n)  # C path
+        self.c1 = 2 / ((n + 1.3)**2 + self.mueff)                     # rank-one rate
         self.cmu = min(1 - self.c1,
                        2 * (self.mueff - 2 + 1 / self.mueff)
-                       / ((n + 2) ** 2 + self.mueff))
-        self.damps = 2 * self.mueff / self.lam + 0.3 + self.cs
+                         / ((n + 2)**2 + self.mueff))                  # rank-mu rate
+        self.damps = 2 * self.mueff / self.lam + 0.3 + self.cs        # sigma damping
 
-        # dynamic state
-        self.pc = np.zeros(n)
-        self.ps = np.zeros(n)
-        self.C = np.eye(n)
+        # --- dynamic state ---
+        self.pc = np.zeros(n)        # evolution path for C  (carries the sign)
+        self.ps = np.zeros(n)        # conjugate (whitened) path for sigma
+        self.C = np.eye(n)           # covariance: learned metric ~ inverse Hessian
         self.counteval = 0
         self.fitvals = np.array([])
         self.best_x = self.xmean.copy()
         self.best_f = np.inf
 
     def ask(self):
+        # eigendecomposition C = B D^2 B^T; sample x = m + sigma * B D z, z~N(0,I)
         D2, self.B = np.linalg.eigh(self.C)
         self.D = np.sqrt(D2)
-        self.invsqrtC = (self.B * (1.0 / self.D)) @ self.B.T
+        self.invsqrtC = (self.B * (1 / self.D)) @ self.B.T   # C^{-1/2} = B D^-1 B^T
         Z = np.random.randn(self.lam, self.N)
-        Y = Z @ (self.B * self.D).T
-        return self.xmean + self.sigma * Y
+        Y = Z @ (self.B * self.D).T               # Y[k] ~ N(0, C)
+        return self.xmean + self.sigma * Y        # X[k] ~ N(m, sigma^2 C)
 
     def tell(self, X, fitnesses):
         self.counteval += len(fitnesses)
-        order = np.argsort(fitnesses)
+        order = np.argsort(fitnesses)              # rank by f -> rank invariance
         X = np.asarray(X, dtype=float)[order]
         self.fitvals = np.asarray(fitnesses, dtype=float)[order]
         if self.fitvals[0] < self.best_f:
@@ -64,27 +64,34 @@ class CMAES:
             self.best_x = X[0].copy()
         xold = self.xmean.copy()
 
+        # move the mean: weighted average of the best mu steps
         self.xmean = self.weights[:self.mu] @ X[:self.mu]
         ymean = (self.xmean - xold) / self.sigma
-        Y = (X - xold) / self.sigma
+        Y = (X - xold) / self.sigma                # selected steps around the old mean
 
+        # conjugate path for sigma: whiten the mean step with C^{-1/2}
         self.ps = ((1 - self.cs) * self.ps
                    + np.sqrt(self.cs * (2 - self.cs) * self.mueff)
-                   * (self.invsqrtC @ ymean))
+                     * (self.invsqrtC @ ymean))
+
+        # stall the C-path when ps is abnormally long (sigma far too small)
         ps2 = float(self.ps @ self.ps)
         hsig = ((ps2 / self.N)
-                / (1 - (1 - self.cs) ** (2 * self.counteval / self.lam))
+                / (1 - (1 - self.cs)**(2 * self.counteval / self.lam))
                 < 2 + 4 / (self.N + 1))
 
+        # evolution path for C: cumulate signed mean steps
         self.pc = ((1 - self.cc) * self.pc
                    + hsig * np.sqrt(self.cc * (2 - self.cc) * self.mueff) * ymean)
 
-        c1a = self.c1 * (1 - (1 - float(hsig) ** 2) * self.cc * (2 - self.cc))
+        # covariance update = rank-one (path) + rank-mu (selected steps)
+        c1a = self.c1 * (1 - (1 - float(hsig)**2) * self.cc * (2 - self.cc))
         rank_mu = (Y * self.weights[:, None]).T @ Y
         self.C = ((1 - c1a - self.cmu * np.sum(self.weights)) * self.C
-                  + self.c1 * np.outer(self.pc, self.pc)
-                  + self.cmu * rank_mu)
+                  + self.c1 * np.outer(self.pc, self.pc)   # rank-one
+                  + self.cmu * rank_mu)                    # rank-mu
 
+        # step-size: squared path length is compared to E||N(0,I)||^2 = N
         exponent = min(1.0, (self.cs / self.damps) * (ps2 / self.N - 1) / 2)
         self.sigma *= np.exp(exponent)
 
