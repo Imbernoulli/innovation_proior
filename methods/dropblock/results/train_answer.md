@@ -10,16 +10,15 @@ In practice DropBlock is applied in the deeper, lower-resolution residual groups
 import torch
 import torch.nn.functional as F
 from torch import nn
-import numpy as np
 
 
 class DropBlock2D(nn.Module):
-    """Randomly zero contiguous block_size x block_size squares of a conv activation tensor.
+    """Randomly zeroes 2D spatial blocks of a conv activation tensor (N, C, H, W).
     Identity at inference; rescales by the realized survival fraction."""
 
     def __init__(self, drop_prob, block_size):
         super().__init__()
-        self.drop_prob = drop_prob      # 1 - keep_prob (target), scheduled externally
+        self.drop_prob = drop_prob          # 1 - keep_prob (target), scheduled externally
         self.block_size = block_size
 
     def forward(self, x):
@@ -29,50 +28,51 @@ class DropBlock2D(nn.Module):
 
         gamma = self._compute_gamma(x)
 
-        # Sample seed mask (block centers), one spatial mask per example in this variant.
+        # sample seed mask (block centers), shared across channels in this implementation
         mask = (torch.rand(x.shape[0], *x.shape[2:]) < gamma).float().to(x.device)
 
-        # Expand seeds into blocks and invert to obtain a keep-mask.
+        # expand seeds into blocks, invert to a keep-mask
         block_mask = self._compute_block_mask(mask)
 
-        # Apply keep-mask, broadcasting over channels.
+        # apply keep-mask, broadcasting over channels
         out = x * block_mask[:, None, :, :]
 
-        # Rescale by the realized survival fraction.
+        # rescale by realized survival fraction, not the nominal drop rate
         out = out * block_mask.numel() / block_mask.sum()
         return out
 
     def _compute_block_mask(self, mask):
-        # Max-pool dilates each seed into a block_size x block_size dropped region.
-        block_mask = F.max_pool2d(
-            mask[:, None, :, :],
-            kernel_size=(self.block_size, self.block_size),
-            stride=(1, 1),
-            padding=self.block_size // 2,
-        )
-        if self.block_size % 2 == 0:
-            # Symmetric padding overshoots by one for even block sizes.
+        block_mask = F.max_pool2d(mask[:, None, :, :],
+                                  kernel_size=(self.block_size, self.block_size),
+                                  stride=(1, 1),
+                                  padding=self.block_size // 2)
+        if self.block_size % 2 == 0:        # symmetric pad overshoots by one for even sizes
             block_mask = block_mask[:, :, :-1, :-1]
         return 1 - block_mask.squeeze(1)
 
     def _compute_gamma(self, x):
-        # One seed deletes block_size^2 units; the exact form also multiplies by
-        # feat_size^2 / (feat_size - block_size + 1)^2 for the valid interior.
-        # That ratio tends to 1 for large maps and is omitted in this compact form.
+        # seeds per position; one seed deletes block_size^2 units.
+        # Exact form also multiplies by feat^2/(feat - block_size + 1)^2 (valid interior);
+        # that ratio -> 1 for large maps and is dropped in this simplified form.
         return self.drop_prob / (self.block_size ** 2)
+```
+
+The drop probability ramp is a thin wrapper module that owns the step counter and just forwards through the layer above:
+
+```python
+import numpy as np
+from torch import nn
 
 
 class LinearScheduler(nn.Module):
-    """Linearly ramp drop_prob from start_value to stop_value over nr_steps,
-    advancing once per training step."""
+    """Linearly increase drop_prob from start_value to stop_value over nr_steps,
+    stepped once per training step (start at 0 = no dropping early)."""
 
     def __init__(self, dropblock, start_value, stop_value, nr_steps):
         super().__init__()
         self.dropblock = dropblock
         self.i = 0
-        self.drop_values = np.linspace(
-            start=start_value, stop=stop_value, num=int(nr_steps)
-        )
+        self.drop_values = np.linspace(start=start_value, stop=stop_value, num=int(nr_steps))
 
     def forward(self, x):
         return self.dropblock(x)
