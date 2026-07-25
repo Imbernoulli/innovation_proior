@@ -11,35 +11,35 @@ HiPPO-LegS inherits strong guarantees from this construction. The unrolled sensi
 ```python
 import numpy as np
 from scipy import linalg as la, special as ss
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+import torch, torch.nn as nn, torch.nn.functional as F
 
 
 def transition(measure, N):
-    """Return continuous (A, B) matrices for dc/dt = A c + B f."""
-    if measure == 'legs':
-        q = np.arange(N, dtype=np.float64)
-        col, row = np.meshgrid(q, q)
-        r = 2 * q + 1
-        # M has 2k+1 below diagonal, k+1 on diagonal, 0 above.
-        M = -(np.where(row >= col, r, 0) - np.diag(q))
-        T = np.sqrt(np.diag(2 * q + 1))
-        A = T @ M @ np.linalg.inv(T)
-        B = np.diag(T)[:, None].copy()
-    elif measure == 'legt':
+    """(A, B) for the continuous update dc/dt = A c + B f (A in machine form,
+    negative diagonal; the text's A has positive diagonal, i.e. this A negated)."""
+    if measure == 'legt':                       # translated Legendre (sliding window) = LMU
         Q = np.arange(N, dtype=np.float64)
         R = (2 * Q + 1) ** .5
         j, i = np.meshgrid(Q, Q)
         A = R[:, None] * np.where(i < j, (-1.) ** (i - j), 1) * R[None, :]
         B = R[:, None]
         A = -A
+    elif measure == 'legs':                     # scaled Legendre (whole history [0, t])
+        q = np.arange(N, dtype=np.float64)
+        col, row = np.meshgrid(q, q)
+        r = 2 * q + 1
+        M = -(np.where(row >= col, r, 0) - np.diag(q))
+        T = np.sqrt(np.diag(2 * q + 1))
+        A = T @ M @ np.linalg.inv(T)            # sqrt(2n+1)sqrt(2k+1) (n>k); n+1 (n=k); 0 (n<k)
+        B = np.diag(T)[:, None].copy()          # (2n+1)^{1/2}
     return A, B
+```
 
+The `transition` function hands back the continuous pair; a growing family of matrices discretizes it at every step index t and rolls the recurrence forward, accumulating the coefficient trajectory and exposing a reconstruction that maps coefficients back through the Legendre basis:
 
+```python
 class HiPPO_LegS(nn.Module):
-    """Scale-invariant memory: optimal Legendre projection over [0, t]."""
-
+    """Scale-invariant memory: optimal Legendre projection over all of [0, t]."""
     def __init__(self, N, max_length=1024, discretization='bilinear'):
         super().__init__()
         self.N = N
@@ -47,32 +47,29 @@ class HiPPO_LegS(nn.Module):
         B = B.squeeze(-1)
         A_stacked = np.empty((max_length, N, N), dtype=A.dtype)
         B_stacked = np.empty((max_length, N), dtype=B.dtype)
-        for t in range(1, max_length + 1):
+        for t in range(1, max_length + 1):       # discretize the 1/t-scaled ODE; Delta t cancels
             At, Bt = A / t, B / t
             if discretization == 'forward':
                 A_stacked[t - 1] = np.eye(N) + At
                 B_stacked[t - 1] = Bt
             elif discretization == 'bilinear':
-                A_stacked[t - 1] = la.solve_triangular(
-                    np.eye(N) - At / 2, np.eye(N) + At / 2, lower=True)
-                B_stacked[t - 1] = la.solve_triangular(
-                    np.eye(N) - At / 2, Bt, lower=True)
-            else:  # zero-order hold
+                A_stacked[t - 1] = la.solve_triangular(np.eye(N) - At / 2, np.eye(N) + At / 2, lower=True)
+                B_stacked[t - 1] = la.solve_triangular(np.eye(N) - At / 2, Bt, lower=True)
+            else:                                # zero-order hold
                 A_stacked[t - 1] = la.expm(A * (np.log(t + 1) - np.log(t)))
-                B_stacked[t - 1] = la.solve_triangular(
-                    A, A_stacked[t - 1] @ B - B, lower=True)
+                B_stacked[t - 1] = la.solve_triangular(A, A_stacked[t - 1] @ B - B, lower=True)
         self.register_buffer('A_stacked', torch.Tensor(A_stacked))
         self.register_buffer('B_stacked', torch.Tensor(B_stacked))
         vals = np.linspace(0.0, 1.0, max_length)
         self.eval_matrix = torch.Tensor(
             (B[:, None] * ss.eval_legendre(np.arange(N)[:, None], 2 * vals - 1)).T)
 
-    def forward(self, inputs):
+    def forward(self, inputs):                  # (L, ...) -> (L, ..., N)
         L = inputs.shape[0]
         u = (inputs.unsqueeze(-1).transpose(0, -2) * self.B_stacked[:L]).transpose(0, -2)
         c = torch.zeros(u.shape[1:])
         cs = []
-        for k in range(L):
+        for k in range(L):                       # c_k = A_k c_{k-1} + B_k f_k
             c = F.linear(c, self.A_stacked[k]) + u[k]
             cs.append(c)
         return torch.stack(cs, dim=0)
