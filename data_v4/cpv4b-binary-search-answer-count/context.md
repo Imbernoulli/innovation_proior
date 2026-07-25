@@ -24,35 +24,14 @@ the problem is in counting *distinct* lit minutes correctly.
 - Output (stdout): a single line with the time of the `k`-th lit minute.
 - Time limit: 1 second. Memory: 256 MB.
 
-The answer fits in a signed 64-bit integer: the `k`-th lit minute is at most `k * min(p_i) <=
-10^12 * 10^6 = 10^18`, which is within the `~9.2*10^18` range of `long long`.
-
 Example: for `m = 2`, `k = 10`, periods `p = [2, 3]`, the lit minutes in order are
 `2, 3, 4, 6, 8, 9, 10, 12, 14, 15, ...`, so the 10th lit minute is at time `15`.
-
-## Background
-
-The answer is monotone in a way that invites **binary search on the answer**: define
-`f(x) =` the number of lit minutes in the range `[1, x]`. As `x` grows, `f(x)` is non-decreasing, and
-the `k`-th lit minute is the smallest `x` with `f(x) >= k`. So if we can evaluate `f(x)` quickly, we
-binary-search `x` over `[1, 2*10^18]`.
-
-Evaluating `f(x)` is a counting problem: *how many integers in `[1, x]` are divisible by at least one
-of `p_1, ..., p_m`?* Two ideas are on the table before committing:
-
-- **Sum of individual counts.** Add up `floor(x / p_i)` over all `i`. This is `O(m)` per query and
-  trivial to write. The open question is whether it counts each lit minute exactly once.
-- **Inclusion–exclusion over subsets.** For every non-empty subset `S` of the periods, a minute is
-  divisible by *all* of `S` exactly when it is a multiple of `lcm(S)`; alternating-sign over subset
-  sizes counts the union without double counting. This is `O(2^m)` per query (here `2^10 = 1024`),
-  using least common multiples. The open questions are the sign convention and overflow of the LCM.
 
 ## Evaluation settings
 
 Judged on hidden tests covering: a single lantern (`m = 1`); periods that are pairwise coprime (no
 overlap); periods with heavy overlap and divisibility chains (e.g. `2, 4, 8`); duplicate periods
-(e.g. `6, 6`); the boundary where the answer approaches `10^18`; and `m = 10` with large `k` so the
-`O(2^m * log(answer))` work and the LCM overflow guard both get exercised.
+(e.g. `6, 6`); the boundary where the answer approaches `10^18`; and `m = 10` with large `k`.
 
 ## Code framework
 
