@@ -13,20 +13,21 @@ from causallearn.graph.GraphNode import GraphNode
 from causallearn.score.LocalScoreFunction import (
     local_score_BDeu, local_score_BIC_from_cov,
 )
-from causallearn.search.PermutationBased.gst import GST
+from causallearn.search.PermutationBased.gst import GST            # cached grow-shrink tree
 from causallearn.score.LocalScoreFunctionClass import LocalScoreClass
 from causallearn.utils.DAG2CPDAG import dag2cpdag
 
 
 class Order:
+    """Working permutation + each vertex's parents, local score, running edge count."""
     def __init__(self, p, score):
         self.order = list(range(p))
         self.parents, self.local_scores, self.edges = {}, {}, 0
-        random.shuffle(self.order)
+        random.shuffle(self.order)                              # random initial permutation
         for i in range(p):
             y = self.order[i]
             self.parents[y] = []
-            self.local_scores[y] = -score.score(y, [])
+            self.local_scores[y] = -score.score(y, [])          # causal-learn negates this setup score
 
     def get(self, i): return self.order[i]
     def set(self, i, y): self.order[i] = y
@@ -43,47 +44,46 @@ class Order:
     def len(self): return len(self.order)
 
 
-def grasp(X: np.ndarray, score_func: str = "local_score_BIC_from_cov",
-          depth: Optional[int] = 3, parameters: Optional[Dict[str, Any]] = None,
-          verbose: bool = True, node_names: Optional[List[str]] = None) -> GeneralGraph:
+def grasp(X: np.ndarray, score_func: str = "local_score_BIC_from_cov", depth: Optional[int] = 3,
+          parameters: Optional[Dict[str, Any]] = None, verbose: bool = True,
+          node_names: Optional[List[str]] = None) -> GeneralGraph:
     X = X.copy()
     n, p = X.shape
     if n < p:
         warnings.warn("The number of features is much larger than the sample size!")
 
-    if score_func == "local_score_BDeu":
+    if score_func == "local_score_BDeu":                        # defaults: sample_prior=1, structure_prior=1
         score = LocalScoreClass(data=X, local_score_fun=local_score_BDeu, parameters=None)
-    elif score_func == "local_score_BIC_from_cov":
+    elif score_func == "local_score_BIC_from_cov":               # SEM-BIC fallback (Gaussian)
         score = LocalScoreClass(data=X, local_score_fun=local_score_BIC_from_cov,
                                 parameters=parameters or {"lambda_value": 2})
     else:
         raise Exception("Unknown function!")
 
-    gsts = [GST(i, score) for i in range(p)]
+    gsts = [GST(i, score) for i in range(p)]                     # one grow-shrink tree / vertex
     node_names = node_names or [("X%d" % (i + 1)) for i in range(p)]
     nodes = [GraphNode(name) for name in node_names]
     G = GeneralGraph(nodes)
 
     runtime = time.perf_counter()
     order = Order(p, score)
-    for i in range(p):
+    for i in range(p):                                           # score vs. preceding vertices
         y = order.get(i)
         y_parents = order.get_parents(y)
         candidates = [order.get(j) for j in range(0, i)]
         order.set_local_score(y, gsts[y].trace(candidates, y_parents))
         order.bump_edges(len(y_parents))
 
-    while dfs(depth - 1, set(), [], order, gsts):
+    while dfs(depth - 1, set(), [], order, gsts):               # tuck DFS until no improvement
         if verbose:
-            sys.stdout.write("\rGRaSP edge count: %i    " % order.get_edges())
-            sys.stdout.flush()
+            sys.stdout.write("\rGRaSP edge count: %i    " % order.get_edges()); sys.stdout.flush()
     if verbose:
         sys.stdout.write("\nGRaSP completed in: %.2fs \n" % (time.perf_counter() - runtime))
 
-    for y in range(p):
+    for y in range(p):                                          # read the DAG off the order
         for x in order.get_parents(y):
             G.add_directed_edge(nodes[x], nodes[y])
-    return dag2cpdag(G)
+    return dag2cpdag(G)                                         # convert to the CPDAG
 
 
 def dfs(depth: int, flipped: set, history: List[set], order, gsts):
@@ -94,10 +94,11 @@ def dfs(depth: int, flipped: set, history: List[set], order, gsts):
         y_parents = order.get_parents(y); random.shuffle(y_parents)
         for x in y_parents:
             covered = set([x] + order.get_parents(x)) == set(y_parents)
+            # causal-learn exposes the top tier here: root ANY parent edge; deeper covered only
             if len(history) > 0 and not covered:
                 continue
             j = order.index(x)
-            for k in range(j, i + 1):
+            for k in range(j, i + 1):                            # snapshot the affected block
                 z = order.get(k)
                 cache[0][k] = z; cache[1][k] = order.get_parents(z)[:]
                 cache[2][k] = order.get_local_score(z)
@@ -106,9 +107,9 @@ def dfs(depth: int, flipped: set, history: List[set], order, gsts):
             tuck(i, j, order)
             edge_bump, score_bump = update(i, j, order, gsts)
 
-            if score_bump > 1e-6:
+            if score_bump > 1e-6:                                # strict improvement
                 order.bump_edges(edge_bump); return True
-            if score_bump > -1e-6:
+            if score_bump > -1e-6:                               # score-neutral (within-MEC)
                 flipped = flipped ^ set(
                     [tuple(sorted([x, z])) for z in order.get_parents(x)
                      if order.index(z) < i])
@@ -117,7 +118,7 @@ def dfs(depth: int, flipped: set, history: List[set], order, gsts):
                     if depth > 0 and dfs(depth - 1, flipped, history, order, gsts):
                         return True
                     del history[-1]
-            for k in range(j, i + 1):
+            for k in range(j, i + 1):                            # undo
                 z = cache[0][k]; order.set(k, z)
                 order.set_parents(z, cache[1][k]); order.set_local_score(z, cache[2][k])
             order.set_edges(cache[3])
@@ -126,18 +127,18 @@ def dfs(depth: int, flipped: set, history: List[set], order, gsts):
 
 def update(i: int, j: int, order, gsts):
     edge_bump = old_score = new_score = 0
-    for k in range(j, i + 1):
+    for k in range(j, i + 1):                                    # only the affected block
         z = order.get(k); z_parents = order.get_parents(z)
         edge_bump -= len(z_parents); old_score += order.get_local_score(z)
         z_parents.clear()
         candidates = [order.get(l) for l in range(0, k)]
-        s = gsts[z].trace(candidates, z_parents)
+        s = gsts[z].trace(candidates, z_parents)                # cached grow-shrink
         order.set_local_score(z, s)
         edge_bump += len(z_parents); new_score += s
     return edge_bump, new_score - old_score
 
 
-def tuck(i: int, j: int, order):
+def tuck(i: int, j: int, order):                                # pi = <d1, gamma, k, j, gamma^c, d3>
     ancestors = []
     get_ancestors(order.get(i), ancestors, order)
     shift = 0
