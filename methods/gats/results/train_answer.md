@@ -1,275 +1,74 @@
-The first thing to fix is the row-independence assumption. A gradient-boosted floor like LightGBM scores every (stock, day) pair on its own engineered alphas, so two stocks that move together on the same day are treated as unrelated points. That is fine for a baseline, but it wastes the single strongest source of structure in financial cross-sections: on any given day the returns of hundreds of stocks are correlated through shared risk, sectors, and sentiment. When the model cannot see the day's other stocks, its top-fifty ranking is noisy and its information ratio stays weak, even turning negative on a narrow universe such as csi100. The question is therefore not whether to add cross-sectional information, but how to let each stock look at the rest of the day's stocks without imposing a static, hand-curated graph that may be incomplete or wrong.
+A convolution earns its keep on a grid because the grid gives every pixel the same fixed local geometry — "the pixel above," "the pixel to the upper-left" — so one small set of weights can be slid across every position and reused everywhere. Graphs have no such geometry: a node in a citation network, a protein-interaction graph, a mesh, has some number of neighbors that varies from node to node, and there is no canonical ordering among them. Any layer I want has to accept a variable-sized, unordered neighborhood and still share its parameters the way a CNN filter does. The classical answer is spectral: diagonalize the normalized Laplacian $L = I - D^{-1/2} A D^{-1/2} = U \Lambda U^T$ and filter in that eigenbasis, $g_\theta \star x = U g_\theta(\Lambda) U^T x$. But the filter is then a function of one particular graph's eigenvectors — it is not even defined on a different graph, so this route buys nothing inductive, and the naive form costs an $O(N^3)$ eigendecomposition and an $O(N^2)$ forward pass. Chebyshev truncation ($g_\theta(\Lambda) \approx \sum_k \theta_k T_k(\tilde\Lambda)$) fixes the cost and locality by working with powers of $L$ directly, and Kipf and Welling push this to first order to get GCN, $H^{(l+1)} = \sigma(\tilde D^{-1/2}\tilde A \tilde D^{-1/2} H^{(l)} W^{(l)})$ with self-loops $\tilde A = A+I$. That layer is cheap and strong, but look at exactly what weight it gives neighbor $j$ of node $i$: $1/\sqrt{\tilde d_i \tilde d_j}$, a number fixed by the two degrees alone, identical for every model ever trained on that graph. It cannot say "trust this neighbor more than that one." The spatial alternatives that try to avoid the eigenbasis all buy their locality with a different tax: a separate weight matrix per node degree, or fixed-size ordered neighborhood patches imposed on a set that has no order, or pseudo-coordinates that are themselves structural functions of degree. GraphSAGE gets closer by learning aggregator functions of features rather than a per-node embedding table, which does make it inductive — but its neighborhoods are a fixed-size uniform *sample*, never the whole neighborhood, its mean/GCN-style aggregators still pool neighbors equally, and its LSTM aggregator has to paper over feeding an unordered set through a sequence model by shuffling the order every time. None of these methods gives a node a learned, feature-dependent weight on each of its neighbors while staying inductive and using the whole neighborhood.
 
-The right tool is attention, because attention is designed for exactly this situation: a variable-sized, unordered set of items that must be combined with learned, data-dependent weights. Earlier graph methods either require an eigendecomposition of a fixed graph, use degree-fixed coefficients such as GCN's 1/sqrt(d_i d_j), or presuppose a known concept graph. We want none of that. We want each stock to attend directly to every other stock in the same day's cross-section, with the relevance learned from their current hidden representations. A daily stock universe is at most a few hundred names, so a dense all-pairs attention matrix is cheap, and dropping the mask lets the model discover relationships that a static concept graph would miss. The method is Graph Attention Networks, implemented in this setting as the qlib GATs benchmark.
+I propose Graph Attention Networks (GAT): let each node be a query that attends over its own neighborhood, so the weight on each neighbor is learned from the current features rather than fixed by degree. Concretely, every node's features $h_i \in \mathbb{R}^F$ first go through a shared linear transform $W \in \mathbb{R}^{F'\times F}$, exactly as a CNN filter is shared across positions — this is what makes the layer inductive, since $W$ and everything built from it is a function of features, not a table indexed by node identity. The importance of neighbor $j$ to node $i$ is then scored by a single-layer additive network rather than a dot product: $e_{ij} = \mathrm{LeakyReLU}\big(a^T [Wh_i \,\|\, Wh_j]\big)$, with a trainable vector $a \in \mathbb{R}^{2F'}$ and slope $0.2$ on the LeakyReLU. The additive form matters and is not an arbitrary choice: after the shared $W$, a plain dot product $(Wh_i)\cdot(Wh_j)$ is a fixed, symmetric bilinear form with no further trainable capacity, whereas splitting $a = [a_l; a_r]$ gives $e_{ij} = a_l^T(Wh_i) + a_r^T(Wh_j)$, which is generally different from $e_{ji} = a_l^T(Wh_j) + a_r^T(Wh_i)$ — the scorer can decide $j$ matters to $i$ more than $i$ matters to $j$, something a symmetric dot product can never express. LeakyReLU rather than plain ReLU keeps a gradient flowing on the negative branch, which matters because a low pre-softmax score is the model's way of saying "this neighbor is unimportant," and it needs to be able to learn to push a coefficient further down rather than have that branch go dead. Structure enters only as a mask: I compute $e_{ij}$ only for $j \in N_i$ (the first-order neighbors, with a self-loop so a node also attends to itself), then normalize with a softmax restricted to that neighborhood,
+$$\alpha_{ij} = \frac{\exp(e_{ij})}{\sum_{k\in N_i}\exp(e_{ik})},$$
+so a degree-7 node and a degree-200 node both produce a convex combination over their own neighbors — the coefficients are comparable regardless of degree, which a scheme like GCN's degree-normalized weight has to bake in by construction rather than learn. The output is the attention-weighted sum of the transformed neighbor features passed through a nonlinearity,
+$$h'_i = \sigma\Big(\sum_{j\in N_i}\alpha_{ij} Wh_j\Big).$$
+Because $a^T[Wh_i\|Wh_j]$ is linear in the concatenation, it factors as $a_l^T(Wh_i) + a_r^T(Wh_j)$: I compute one source score per node and one target score per node, each an $O(|V|F')$ pass, and broadcast-add them rather than ever materializing an $N\times N$ concatenation, so the whole layer costs $O(|V|FF' + |E|F')$ per head — on par with GCN, with no eigendecomposition, no matrix inversion, and no imposed ordering. This construction contains GCN-style averaging as a degenerate case: if the scorer is held constant, $a(x,y)=1$, the masked softmax over a neighborhood of size $|N_i|$ collapses to $\alpha_{ij} = 1/|N_i|$ for every neighbor, i.e. uniform averaging over the self-loop-augmented neighborhood — not numerically identical to GCN's $1/\sqrt{\tilde d_i \tilde d_j}$, since that normalization is symmetric across an edge while row-wise averaging is not, but structurally the same family, with GCN sitting at the corner where the scorer is forbidden from depending on features. Turning the scorer on is exactly the added capacity. Self-attention is a noisy, high-variance estimator on its own, so I follow the multi-head recipe: $K$ independent heads, each with its own $W^k, a^k$, and in hidden layers their outputs are concatenated, $h'_i = \|_{k=1}^K \sigma(\sum_{j\in N_i}\alpha_{ij}^k W^k h_j)$, giving $K\!\cdot\!F'$ features and keeping each head's distinct notion of relevance as a separate channel rather than collapsing it. Concatenating cannot be right on the final, class-scoring layer, though — $K$ independent $C$-dimensional logit vectors concatenated into $KC$ numbers have no sensible meaning — so there I average the heads and delay the final nonlinearity until after the average, $h'_i = \sigma\big(\frac{1}{K}\sum_{k=1}^K\sum_{j\in N_i}\alpha_{ij}^k W^k h_j\big)$, which keeps the output $C$-dimensional and ensembles the heads in logit space. With only twenty labeled nodes per class in the transductive citation setting, this model would overfit immediately without help, so beyond ordinary input dropout I apply dropout directly to the normalized attention coefficients $\alpha_{ij}$: dropping a fraction of them after the softmax exposes each node to a stochastically sampled neighborhood at every step, a regularizer that falls directly out of having attention weights to perturb in the first place. I use ELU (not ReLU) as the hidden nonlinearity, since the attention-weighted sums can go negative and ELU keeps a smooth, nonzero response there, and I initialize $W$ and $a$ with Glorot/Xavier scaling so early-training scores are not saturated. Stacking $L$ layers reaches the $L$-hop neighborhood, exactly as in GCN, and deeper stacks can take residual connections the way image networks do; and because the dense $e_{ij}$ scoring only actually needs to touch existing edges, a large single graph can instead scatter the $|E|$ edge scores into a per-node sparse softmax and a sparse matrix multiply for the weighted sum, bringing storage down to $O(|V|+|E|)$ while computing the identical layer.
 
-GATs begins by encoding each stock's raw Alpha360 features through an LSTM. The flattened input is reshaped from (N, F*T) to (N, T, F), run through a two-layer LSTM with hidden size 64, and the last time-step hidden state h_i is taken as the stock's temporal summary. This encoder is warm-started from a pretrained LSTM checkpoint so that gradient does not have to rediscover temporal structure from scratch and can instead spend its capacity on the new cross-stock attention layer. The LSTM output is then projected through a linear transformation and an additive attention scorer is applied across all pairs of stocks in the batch. For each pair (i, j) the raw attention score is e_ij = LeakyReLU(a^T [t(h_i) || t(h_j)]), where t is the learned projection, a is a trainable vector, and the concatenation makes the score asymmetric so that stock j can matter more to stock i than the reverse. The scores are normalized with a softmax across the whole day's cross-section, producing attention weights alpha_ij that sum to one per stock. The output for stock i is the attention-weighted sum of all stocks' projected features, added back as a residual to stock i's own hidden state, passed through another linear layer and LeakyReLU, then mapped to a single return forecast.
-
-The design choices all serve the same purpose. All-to-all attention with no graph mask removes any structural assumption; the model learns which stocks to borrow from rather than being told by a concept matrix. The additive scorer, instead of a dot product, gives the comparison its own capacity and breaks symmetry. LeakyReLU keeps gradient flowing even for low scores, so the model can learn to down-weight irrelevant peers rather than zeroing them and losing the gradient. Softmax over the full day normalizes per stock, making the coefficients comparable whether the universe has 100 or 300 names. The residual add is crucial: without it the attention output would replace each stock's own signal and early, noisy attention could erase the temporal forecast; with it the cross-section acts as a correction. A single attention head is used here rather than the multi-head variant common in citation-network GAT, because at this scale a single head with heavy dropout is more stable and the pretrained encoder already provides a strong starting point.
-
-Training follows the qlib Alpha360 protocol. The model is trained per-day across the training segment, with each day's stocks forming one attention graph. MSE loss is used against the rank-normalized return label, optimized with Adam at learning rate 1e-4, gradient-value clipping at 3.0, and dropout 0.7 applied to the LSTM and the attention inputs. Early stopping monitors validation loss with patience 20, and the best checkpoint is restored. Because the LSTM is pretrained on csi300, the model starts with a sensible temporal representation and refines it for the cross-stock objective.
+Here is the layer and the network built from it, exactly as I use them: a single dense attention head, and the stack that concatenates $K$ heads in the hidden layer and averages heads on the prediction layer.
 
 ```python
-import copy
-import os
-import numpy as np
-import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
-from qlib.model.base import Model
-from qlib.data.dataset import DatasetH
-from qlib.data.dataset.handler import DataHandlerLP
 
 
-class LSTMModel(nn.Module):
-    """LSTM backbone for warm-starting the temporal encoder."""
+class GraphAttentionLayer(nn.Module):
+    """One graph attention head: h (N x F_in) -> h' (N x F_out), each neighbor
+    weighted by a learned, feature-dependent attention coefficient."""
 
-    def __init__(self, d_feat=6, hidden_size=64, num_layers=2, dropout=0.0):
+    def __init__(self, in_features, out_features, dropout, alpha=0.2, concat=True):
         super().__init__()
-        self.rnn = nn.LSTM(
-            input_size=d_feat,
-            hidden_size=hidden_size,
-            num_layers=num_layers,
-            batch_first=True,
-            dropout=dropout,
-        )
-        self.fc_out = nn.Linear(hidden_size, 1)
-        self.d_feat = d_feat
+        self.dropout = dropout
+        self.out_features = out_features
+        self.concat = concat                                   # hidden layer (ELU) vs last (raw)
 
-    def forward(self, x):
-        x = x.reshape(len(x), self.d_feat, -1)
-        x = x.permute(0, 2, 1)
-        out, _ = self.rnn(x)
-        return self.fc_out(out[:, -1, :]).squeeze()
+        self.W = nn.Parameter(torch.empty(in_features, out_features))   # shared transform
+        nn.init.xavier_uniform_(self.W, gain=1.414)
+        self.a = nn.Parameter(torch.empty(2 * out_features, 1))         # attention vector
+        nn.init.xavier_uniform_(self.a, gain=1.414)
+
+        self.leakyrelu = nn.LeakyReLU(alpha)                   # negative slope 0.2
+
+    def forward(self, h, adj):
+        Wh = h @ self.W                                        # Wh_i: (N, F_out)
+
+        # e_ij = LeakyReLU(a^T[Wh_i || Wh_j]) = LeakyReLU(a_l^T Wh_i + a_r^T Wh_j)
+        Wh_src = Wh @ self.a[: self.out_features, :]           # (N, 1)
+        Wh_tgt = Wh @ self.a[self.out_features :, :]           # (N, 1)
+        e = self.leakyrelu(Wh_src + Wh_tgt.T)                  # (N, N) pairwise scores
+
+        e = e.masked_fill(adj <= 0, float("-inf"))            # mask non-neighbors
+        alpha = F.softmax(e, dim=1)                            # alpha_ij = softmax over N_i
+        alpha = F.dropout(alpha, self.dropout, training=self.training)  # stochastic neighborhood
+
+        h_prime = alpha @ Wh                                   # h'_i = sum_j alpha_ij Wh_j
+        return F.elu(h_prime) if self.concat else h_prime
 
 
-class GATModel(nn.Module):
-    """Graph Attention Network for daily stock cross-sections."""
-
-    def __init__(self, d_feat=6, hidden_size=64, num_layers=2, dropout=0.0, base_model="LSTM"):
+class GAT(nn.Module):
+    def __init__(self, nfeat, nhid, nclass, dropout, nheads, out_heads=1, alpha=0.2):
         super().__init__()
-        if base_model == "GRU":
-            self.rnn = nn.GRU(
-                input_size=d_feat,
-                hidden_size=hidden_size,
-                num_layers=num_layers,
-                batch_first=True,
-                dropout=dropout,
-            )
-        elif base_model == "LSTM":
-            self.rnn = nn.LSTM(
-                input_size=d_feat,
-                hidden_size=hidden_size,
-                num_layers=num_layers,
-                batch_first=True,
-                dropout=dropout,
-            )
-        else:
-            raise ValueError("unknown base model name `%s`" % base_model)
-
-        self.hidden_size = hidden_size
-        self.d_feat = d_feat
-        self.transformation = nn.Linear(self.hidden_size, self.hidden_size)
-        self.a = nn.Parameter(torch.randn(self.hidden_size * 2, 1))
-        self.a.requires_grad = True
-        self.fc = nn.Linear(self.hidden_size, self.hidden_size)
-        self.fc_out = nn.Linear(hidden_size, 1)
-        self.leaky_relu = nn.LeakyReLU()
-        self.softmax = nn.Softmax(dim=1)
-
-    def cal_attention(self, x, y):
-        x = self.transformation(x)
-        y = self.transformation(y)
-        sample_num = x.shape[0]
-        dim = x.shape[1]
-        e_x = x.expand(sample_num, sample_num, dim)
-        e_y = torch.transpose(e_x, 0, 1)
-        attention_in = torch.cat((e_x, e_y), 2).view(-1, dim * 2)
-        self.a_t = torch.t(self.a)
-        attention_out = self.a_t.mm(torch.t(attention_in)).view(sample_num, sample_num)
-        attention_out = self.leaky_relu(attention_out)
-        att_weight = self.softmax(attention_out)
-        return att_weight
-
-    def forward(self, x):
-        x = x.reshape(len(x), self.d_feat, -1)
-        x = x.permute(0, 2, 1)
-        out, _ = self.rnn(x)
-        hidden = out[:, -1, :]
-        att_weight = self.cal_attention(hidden, hidden)
-        hidden = att_weight.mm(hidden) + hidden
-        hidden = self.fc(hidden)
-        hidden = self.leaky_relu(hidden)
-        return self.fc_out(hidden).squeeze()
-
-
-class CustomModel(Model):
-    """GATs model faithful to qlib's official pytorch_gats.py benchmark."""
-
-    def __init__(self):
-        super().__init__()
-        self.d_feat = 6
-        self.hidden_size = 64
-        self.num_layers = 2
-        self.dropout = 0.7
-        self.n_epochs = 200
-        self.lr = 1e-4
-        self.metric = "loss"
-        self.early_stop = 20
-        self.loss = "mse"
-        self.base_model = "LSTM"
-        self.model_path = "examples/benchmarks/LSTM/model_lstm_csi300.pkl"
-        self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-
-        self.GAT_model = GATModel(
-            d_feat=self.d_feat,
-            hidden_size=self.hidden_size,
-            num_layers=self.num_layers,
-            dropout=self.dropout,
-            base_model=self.base_model,
+        self.dropout = dropout
+        # hidden layer: K heads, outputs CONCATENATED -> nhid*nheads features
+        self.heads = nn.ModuleList(
+            GraphAttentionLayer(nfeat, nhid, dropout=dropout, alpha=alpha, concat=True)
+            for _ in range(nheads)
         )
-        self.train_optimizer = optim.Adam(self.GAT_model.parameters(), lr=self.lr)
-        self.fitted = False
-        self.GAT_model.to(self.device)
-
-    @property
-    def use_gpu(self):
-        return self.device != torch.device("cpu")
-
-    def mse(self, pred, label):
-        mask = ~torch.isnan(label)
-        return torch.mean((pred[mask] - label[mask]) ** 2)
-
-    def loss_fn(self, pred, label):
-        if self.loss == "mse":
-            return self.mse(pred, label)
-        raise ValueError("unknown loss `%s`" % self.loss)
-
-    def metric_fn(self, pred, label):
-        if self.metric in ("", "loss"):
-            return -self.loss_fn(pred, label)
-        raise ValueError("unknown metric `%s`" % self.metric)
-
-    def get_daily_inter(self, df, shuffle=False):
-        daily_count = df.groupby(level=0, group_keys=False).size().values
-        daily_index = np.roll(np.cumsum(daily_count), 1)
-        daily_index[0] = 0
-        if shuffle:
-            daily_shuffle = list(zip(daily_index, daily_count))
-            np.random.shuffle(daily_shuffle)
-            daily_index, daily_count = zip(*daily_shuffle)
-        return daily_index, daily_count
-
-    def train_epoch(self, x_train, y_train):
-        x_train_values = x_train.values
-        y_train_values = np.squeeze(y_train.values)
-        self.GAT_model.train()
-        daily_index, daily_count = self.get_daily_inter(x_train, shuffle=True)
-        for idx, count in zip(daily_index, daily_count):
-            batch = slice(idx, idx + count)
-            feature = torch.from_numpy(x_train_values[batch]).float().to(self.device)
-            label = torch.from_numpy(y_train_values[batch]).float().to(self.device)
-            pred = self.GAT_model(feature)
-            loss = self.loss_fn(pred, label)
-            self.train_optimizer.zero_grad()
-            loss.backward()
-            torch.nn.utils.clip_grad_value_(self.GAT_model.parameters(), 3.0)
-            self.train_optimizer.step()
-
-    def test_epoch(self, data_x, data_y):
-        x_values = data_x.values
-        y_values = np.squeeze(data_y.values)
-        self.GAT_model.eval()
-        scores, losses = [], []
-        daily_index, daily_count = self.get_daily_inter(data_x, shuffle=False)
-        for idx, count in zip(daily_index, daily_count):
-            batch = slice(idx, idx + count)
-            feature = torch.from_numpy(x_values[batch]).float().to(self.device)
-            label = torch.from_numpy(y_values[batch]).float().to(self.device)
-            with torch.no_grad():
-                pred = self.GAT_model(feature)
-                loss = self.loss_fn(pred, label)
-                losses.append(loss.item())
-                scores.append(self.metric_fn(pred, label).item())
-        return np.mean(losses), np.mean(scores)
-
-    def fit(self, dataset: DatasetH):
-        df_train, df_valid = dataset.prepare(
-            ["train", "valid"],
-            col_set=["feature", "label"],
-            data_key=DataHandlerLP.DK_L,
+        # output layer: heads produce class-score logits, then get AVERAGED
+        self.out_heads = nn.ModuleList(
+            GraphAttentionLayer(nhid * nheads, nclass, dropout=dropout,
+                                alpha=alpha, concat=False)
+            for _ in range(out_heads)
         )
-        if df_train.empty or df_valid.empty:
-            raise ValueError("Empty data from dataset, please check your dataset config.")
 
-        x_train, y_train = df_train["feature"], df_train["label"]
-        x_valid, y_valid = df_valid["feature"], df_valid["label"]
-
-        stop_steps = 0
-        best_score = -np.inf
-        best_epoch = 0
-        best_param = None
-
-        if self.base_model == "LSTM":
-            pretrained_model = LSTMModel(
-                d_feat=self.d_feat, hidden_size=self.hidden_size, num_layers=self.num_layers
-            )
-        elif self.base_model == "GRU":
-            pretrained_model = LSTMModel(
-                d_feat=self.d_feat, hidden_size=self.hidden_size, num_layers=self.num_layers
-            )
-        else:
-            raise ValueError("unknown base model name `%s`" % self.base_model)
-
-        if self.model_path:
-            pretrained_model.load_state_dict(
-                torch.load(self.model_path, map_location=self.device)
-            )
-
-        model_dict = self.GAT_model.state_dict()
-        pretrained_dict = {
-            k: v for k, v in pretrained_model.state_dict().items() if k in model_dict
-        }
-        model_dict.update(pretrained_dict)
-        self.GAT_model.load_state_dict(model_dict)
-
-        self.fitted = True
-        for step in range(self.n_epochs):
-            self.train_epoch(x_train, y_train)
-            _, train_score = self.test_epoch(x_train, y_train)
-            _, val_score = self.test_epoch(x_valid, y_valid)
-            print("Epoch%d: train %.6f, valid %.6f" % (step, train_score, val_score))
-            if val_score > best_score:
-                best_score = val_score
-                stop_steps = 0
-                best_epoch = step
-                best_param = copy.deepcopy(self.GAT_model.state_dict())
-            else:
-                stop_steps += 1
-                if stop_steps >= self.early_stop:
-                    print("early stop")
-                    break
-
-        print("best score: %.6lf @ %d" % (best_score, best_epoch))
-        self.GAT_model.load_state_dict(best_param)
-        if self.use_gpu:
-            torch.cuda.empty_cache()
-
-    def predict(self, dataset: DatasetH, segment="test"):
-        if not self.fitted:
-            raise ValueError("model is not fitted yet!")
-        x_test = dataset.prepare(segment, col_set="feature", data_key=DataHandlerLP.DK_I)
-        index = x_test.index
-        self.GAT_model.eval()
-        x_values = x_test.values
-        preds = []
-        daily_index, daily_count = self.get_daily_inter(x_test, shuffle=False)
-        for idx, count in zip(daily_index, daily_count):
-            batch = slice(idx, idx + count)
-            x_batch = torch.from_numpy(x_values[batch]).float().to(self.device)
-            with torch.no_grad():
-                pred = self.GAT_model(x_batch).detach().cpu().numpy()
-            preds.append(pred)
-        return pd.Series(np.concatenate(preds), index=index)
+    def forward(self, x, adj):
+        x = F.dropout(x, self.dropout, training=self.training)
+        x = torch.cat([head(x, adj) for head in self.heads], dim=1)
+        x = F.dropout(x, self.dropout, training=self.training)
+        logits = torch.stack([head(x, adj) for head in self.out_heads], dim=0).mean(dim=0)
+        return F.log_softmax(logits, dim=1)
 ```
+
+For the transductive citation networks I use a two-layer model, eight heads of eight features each in the hidden layer (concatenated to 64), and a single output head over the class logits with softmax; dropout $p=0.6$ on both the inputs and the attention coefficients, $L_2$ weight decay, Adam, and early stopping on a validation metric. On the inductive PPI graphs, where the test graphs are never seen during training, the same layer applies unchanged because nothing in it references a fixed node identity or a fixed graph's eigenbasis — only the mask changes from graph to graph.
