@@ -21,32 +21,14 @@ all-negative and empty corners — is the whole problem.
 - Output (stdout): a single line with the maximum achievable product.
 - Time limit: 1 second. Memory: 256 MB.
 
-The value range `|a[i]| <= 2` with `n <= 62` bounds every subarray product by `2^62 < 2^63`, so the
-answer always fits in a signed 64-bit integer; you never need bignum, but you do need `long long`.
-
 Example: for `a = [2, -2, -2, 0, 2]` the answer is `8`, from the window `a[0..2] = 2 * (-2) * (-2)`.
-
-## Background
-
-The constraint "contiguous, and multiply" turns this into a running-state problem. Two families of
-approach are on the table before committing to one:
-
-- **Track only the running maximum product.** Carry the best product of a subarray ending at the
-  current index; extend it by `a[i]` or restart at `a[i]`, mirroring Kadane's sum algorithm. The
-  open question is whether a *single* running maximum suffices when a negative `a[i]` can turn a tiny
-  (very negative) product into a huge positive one.
-- **Track the running maximum and minimum together.** Carry both the largest and smallest product of
-  a subarray ending at the current index, because multiplying by a negative swaps their roles. The
-  open question is the exact transition and — sharper here — the base case: what the "answer so far"
-  starts at, and whether the empty-subarray floor of `1` is applied correctly so that all-negative
-  and empty inputs return `1` rather than a negative or a zero.
 
 ## Evaluation settings
 
 Judged on hidden tests covering: all-positive arrays, arrays mixing negatives and zeros, the empty
 array (`n = 0`), a single element (`n = 1`, including a lone negative and a lone zero), all-negative
 arrays of both even and odd length, runs split by interior zeros, and the size extreme `n = 62` with
-values `+/-2` (so the product reaches `2^62` and must not overflow a 64-bit accumulator).
+values `+/-2`.
 
 ## Code framework
 
