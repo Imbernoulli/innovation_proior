@@ -58,44 +58,7 @@ Since $\gamma^2=\gamma+1$, the squared speed is
 \[
 \beta^2=1-\frac{1}{\gamma^2}=\frac{\gamma^2-1}{\gamma^2}=\frac{1}{\gamma}=\gamma-1=\frac{\sqrt5-1}{2}.
 \]
-Restoring $c$, the speed is
+Notably, the proper acceleration $g$ and the interval length $\tau$ never enter this result; they only fix how much rapidity a single burn supplies, and that per-burn rapidity is exactly what got eliminated when I passed to the invariant scalar $U_E\cdot U_k$. It is solely the requirement that the fourth-frame invariant return to the same Lorentz factor as the first frame that pins the speed down uniquely. Restoring $c$, the speed is
 \[
 v=c\sqrt{\frac{\sqrt5-1}{2}}\approx 0.78615\,c.
 \]
-Notably, the result is independent of the proper acceleration $g$ and the interval length $\tau$; those quantities only determine how hard the engines must work to reach the required one-burn Lorentz factor. The condition that the fourth-frame invariant returns to the same Lorentz factor as the first frame fixes the speed uniquely.
-
-The following small Python script verifies the algebra numerically. It forms the one-step boost-rotation matrix from the golden-ratio Lorentz factor, applies it four times to the Earth four-velocity, and checks that the resulting time component equals $\gamma$ to within floating-point tolerance.
-
-```python
-import numpy as np
-
-# The nontrivial Lorentz factor is the golden ratio.
-gamma = 0.5 * (1.0 + np.sqrt(5.0))
-beta = np.sqrt(1.0 - 1.0 / gamma**2)
-
-# One-step passive boost B along the local x-axis, followed by axis relabeling R.
-B = np.array([
-    [gamma, -gamma * beta, 0.0],
-    [-gamma * beta, gamma, 0.0],
-    [0.0, 0.0, 1.0]
-])
-R = np.array([
-    [1.0, 0.0, 0.0],
-    [0.0, 0.0, 1.0],
-    [0.0, -1.0, 0.0]
-])
-Lambda = R @ B
-
-# Earth's four-velocity in the initial ship rest frame.
-X = np.array([1.0, 0.0, 0.0])
-for _ in range(4):
-    X = Lambda @ X
-
-# The time component is the invariant Lorentz factor between Earth and the ship.
-assert np.isclose(X[0], gamma), "Invariant did not return to gamma."
-
-v_over_c = beta
-print(f"v/c = {v_over_c:.6f}")
-print(f"v   = {v_over_c:.6f} c")
-print(f"gamma check: X_4^0 = {X[0]:.6f}, gamma = {gamma:.6f}")
-```
