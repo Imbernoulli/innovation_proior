@@ -74,13 +74,4 @@ class MobileNetV1(nn.Module):
         x = self.dropout(x)
         x = self.logits(x)
         return torch.flatten(x, 1)
-
-
-if __name__ == "__main__":
-    model = MobileNetV1(num_classes=1000, width_mult=1.0)
-    x = torch.randn(2, 3, 224, 224)
-    y = model(x)
-    print("output shape:", y.shape)
-    params = sum(p.numel() for p in model.parameters())
-    print("parameters:", params)
 ```
