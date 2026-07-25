@@ -10,48 +10,44 @@ The full standard ensemble runs four attacks sequentially on the shrinking set o
 
 ```python
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 
 
 def dlr_loss(z, y):
-    """Difference-of-Logits-Ratio loss (untargeted)."""
+    # -(z_y - max_{i!=y} z_i) / (z_pi1 - z_pi3); shift- and scale-invariant
     z_sorted, _ = z.sort(dim=1)
-    u = torch.arange(z.shape[0], device=z.device)
+    u = torch.arange(z.shape[0])
     top_is_y = (z_sorted[:, -1] == z[u, y]).float()
     runner_up = z_sorted[:, -2] * top_is_y + z_sorted[:, -1] * (1.0 - top_is_y)
     return -(z[u, y] - runner_up) / (z_sorted[:, -1] - z_sorted[:, -3] + 1e-12)
 
 
 def dlr_loss_targeted(z, y, y_target):
-    """Targeted Difference-of-Logits-Ratio loss."""
+    # -(z_y - z_t) / (z_pi1 - (z_pi3 + z_pi4)/2)
+    u = torch.arange(z.shape[0])
     z_sorted, _ = z.sort(dim=1)
-    u = torch.arange(z.shape[0], device=z.device)
     return -(z[u, y] - z[u, y_target]) / (
         z_sorted[:, -1] - 0.5 * (z_sorted[:, -3] + z_sorted[:, -4]) + 1e-12)
 
 
 class APGD:
-    """Auto-PGD: budget-aware, step-size-free projected gradient ascent."""
+    """Auto-PGD: budget-aware, step-size-free PGD. Free parameter: n_iter."""
 
     def __init__(self, model, eps, norm="Linf", n_iter=100, loss="ce",
                  rho=0.75, n_target_classes=9, device="cuda"):
-        self.model = model
-        self.eps = eps
-        self.norm = norm
-        self.n_iter = n_iter
-        self.loss = loss
-        self.thr_decr = rho
-        self.n_target_classes = n_target_classes
-        self.device = device
-        self.n_iter_2 = max(int(0.22 * n_iter), 1)
-        self.n_iter_min = max(int(0.06 * n_iter), 1)
-        self.size_decr = max(int(0.03 * n_iter), 1)
+        self.model, self.eps, self.norm = model, eps, norm
+        self.n_iter, self.loss, self.thr_decr = n_iter, loss, rho
+        self.n_target_classes, self.device = n_target_classes, device
+        self.n_iter_2 = max(int(0.22 * n_iter), 1)    # first window length
+        self.n_iter_min = max(int(0.06 * n_iter), 1)  # window floor
+        self.size_decr = max(int(0.03 * n_iter), 1)   # window shrink per checkpoint
 
     def _grad_dir(self, g):
         if self.norm == "Linf":
             return torch.sign(g)
-        norm = (g ** 2).flatten(1).sum(-1).sqrt()
-        return g / (norm.view(-1, *([1] * (g.dim() - 1))) + 1e-12)
+        t = (g ** 2).flatten(1).sum(-1).sqrt()
+        return g / (t.view(-1, *([1] * (g.dim() - 1))) + 1e-12)
 
     def _project(self, x_adv, x):
         if self.norm == "Linf":
@@ -71,6 +67,7 @@ class APGD:
         return dlr_loss_targeted(z, y, y_target)
 
     def _check_oscillation(self, loss_steps, j, k):
+        # Condition 1: halve when successes <= rho*k
         t = torch.zeros(loss_steps.shape[1], device=self.device)
         for c in range(k):
             t += (loss_steps[j - c] > loss_steps[j - c - 1]).float()
@@ -97,17 +94,16 @@ class APGD:
         grad_best = grad.clone()
         acc = z.detach().max(1)[1] == y
 
-        step_size = 2.0 * self.eps * torch.ones(
+        step_size = 2.0 * self.eps * torch.ones(           # eta^0 = 2*eps
             [x.shape[0], *([1] * (x.dim() - 1))], device=self.device)
         x_adv = x_adv.detach()
         x_adv_old = x_adv.clone()
         k, counter = self.n_iter_2, 0
-        loss_best_last = loss_best.clone()
-        reduced_last = torch.ones_like(loss_best)
+        loss_best_last, reduced_last = loss_best.clone(), torch.ones_like(loss_best)
 
         for i in range(self.n_iter):
             with torch.no_grad():
-                grad2 = x_adv - x_adv_old
+                grad2 = x_adv - x_adv_old               # previous step
                 x_adv_old = x_adv.clone()
                 a = 0.75 if i > 0 else 1.0
                 z_step = self._project(x_adv + step_size * self._grad_dir(grad), x)
@@ -135,14 +131,14 @@ class APGD:
 
                 counter += 1
                 if counter == k:
-                    osc = self._check_oscillation(loss_steps, i, k)
+                    osc = self._check_oscillation(loss_steps, i, k)             # Cond 1
                     no_impr = (1.0 - reduced_last) * (loss_best_last >= loss_best).float()
-                    halve = torch.max(osc, no_impr)
+                    halve = torch.max(osc, no_impr)                            # Cond 2
                     reduced_last = halve.clone()
                     loss_best_last = loss_best.clone()
                     sel = halve > 0
                     step_size[sel] /= 2.0
-                    x_adv[sel] = x_best[sel].clone()
+                    x_adv[sel] = x_best[sel].clone()       # restart from best point
                     grad[sel] = grad_best[sel].clone()
                     k = max(k - self.size_decr, self.n_iter_min)
                     counter = 0
@@ -161,8 +157,7 @@ class APGD:
             if idx.numel() == 0:
                 break
             xt, yt = x[idx], y[idx]
-            order = self.model(xt).sort(dim=1)[1]
-            y_target = order[:, -target_class]
+            y_target = self.model(xt).sort(dim=1)[1][:, -target_class]
             adv_curr, acc_curr = self._single_run(xt, yt, y_target)
             broken = (acc_curr == 0).nonzero().squeeze(1)
             acc[idx[broken]] = False
@@ -172,7 +167,8 @@ class APGD:
 
 def auto_attack(model, images, labels, eps, device, n_classes,
                 norm="Linf", FAB=None, Square=None):
-    """Standard AutoAttack: worst case over APGD-CE, APGD-t, FAB-t, and Square."""
+    """AutoAttack (standard): worst case over apgd-ce, apgd-t, fab-t, square,
+    applied sequentially to the shrinking set of still-robust points."""
     model.eval()
     x, y = images.to(device), labels.to(device)
     robust = (model(x).max(1)[1] == y)
