@@ -11,13 +11,11 @@ Two failure modes therefore belong to the method, not outside it. Exclusion is a
 ```python
 import numpy as np
 
-
 def add_constant(x):
     x = np.asarray(x, dtype=float)
     if x.ndim == 1:
         x = x[:, None]
     return np.column_stack([np.ones(x.shape[0]), x])
-
 
 def residualize(v, controls=None):
     v = np.asarray(v, dtype=float)
@@ -30,7 +28,6 @@ def residualize(v, controls=None):
         out = v - c @ np.linalg.lstsq(c, v, rcond=None)[0]
     return out.squeeze()
 
-
 def wald_iv(y, treatment, instrument, controls=None):
     y_r = residualize(y, controls)
     d_r = residualize(treatment, controls)
@@ -39,7 +36,6 @@ def wald_iv(y, treatment, instrument, controls=None):
     if np.isclose(first_stage, 0.0):
         raise ValueError("The instrument has no usable first stage.")
     return float((z_r @ y_r) / first_stage)
-
 
 def two_stage_least_squares(y, endogenous, instruments, controls=None):
     y = np.asarray(y, dtype=float)
@@ -58,25 +54,4 @@ def two_stage_least_squares(y, endogenous, instruments, controls=None):
     pz_x = z @ (ztz_inv @ (z.T @ x))
     beta = np.linalg.pinv(pz_x.T @ x) @ (pz_x.T @ y)
     return beta
-
-
-if __name__ == "__main__":
-    np.random.seed(0)
-    n = 5000
-    alpha, tau = 1.0, 2.0
-    gamma, delta = 0.7, 0.7
-    z = np.random.binomial(1, 0.5, size=n)
-    u = np.random.normal(0, 1, size=n)
-    d = delta * z + gamma * u + np.random.normal(0, 0.5, size=n)
-    y = alpha + tau * d + u + np.random.normal(0, 0.5, size=n)
-
-    X = add_constant(d)
-    beta_ols = np.linalg.lstsq(X, y, rcond=None)[0][1]
-    tau_iv = wald_iv(y, d, z)
-    beta_2sls = two_stage_least_squares(y, d, z)
-
-    print(f"True tau: {tau:.3f}")
-    print(f"OLS slope: {beta_ols:.3f}")
-    print(f"Wald IV:   {tau_iv:.3f}")
-    print(f"2SLS tau:  {beta_2sls[-1]:.3f}")
 ```
