@@ -4,57 +4,16 @@ The right fix is the Hodge theorem, also called the Hodge decomposition theorem.
 
 Expanding Delta in this identity yields the orthogonal Hodge decomposition Omega^k(M) = Harm^k(M) ⊕ im d ⊕ im d*. The three summands are mutually orthogonal: a harmonic form is killed by d and d*, exact and co-exact forms are orthogonal because d^2 = 0, and the projection H picks out the harmonic part of any form. For a closed form omega, the co-exact summand must vanish, leaving omega = h + d a with h harmonic. Thus every de Rham class has a harmonic representative. Uniqueness follows because an exact harmonic form h = d a has norm squared ||h||^2 = <h, d a> = <d* h, a> = 0, so h = 0. The map Harm^k(M) -> H^k_dR(M) sending h to its class is therefore an isomorphism. Moreover, the orthogonal decomposition gives ||h + d a||^2 = ||h||^2 + ||d a||^2, so the harmonic representative is the unique minimizer of L2 energy in its class.
 
-The following code illustrates the same algebraic structure on a finite triangulated circle. The coboundary operator d0 plays the role of the exterior derivative on 0-forms, its transpose plays the role of d*, and the nullspace of the discrete Laplacian gives the harmonic forms. A random closed 1-cochain is projected onto its harmonic representative; the residual is exact, confirming the decomposition.
+This is the deliverable, and it is worth stating exactly as the field states it, because every symbol in it is one of the objects just assembled. On the smooth compact oriented Riemannian manifold $M$ without boundary, fix a degree $k$, let $d$ be the exterior derivative on $\Omega^k(M)$, let $d^*$ be its $L^2$ formal adjoint, and set
 
-```python
-import numpy as np
+$$\Delta = d d^* + d^* d, \qquad \mathrm{Harm}^k(M) = \{\alpha \in \Omega^k(M) : \Delta \alpha = 0\}.$$
 
-def circle_complex(n=6):
-    """Return oriented edges (i, i+1 mod n) of a triangulated circle."""
-    verts = np.arange(n)
-    return np.column_stack((verts, np.roll(verts, -1)))
+Then $\Omega^k(M)$ splits as the orthogonal Hodge decomposition
 
-def coboundary_0(edges, n):
-    """d0 maps vertex values to edge differences."""
-    E = edges.shape[0]
-    d0 = np.zeros((E, n))
-    for k, (i, j) in enumerate(edges):
-        d0[k, i] = -1.0
-        d0[k, j] = 1.0
-    return d0
+$$\Omega^k(M) = \mathrm{Harm}^k(M) \oplus \operatorname{im} d \oplus \operatorname{im} d^*,$$
 
-def harmonic_basis(L, tol=1e-10):
-    """Orthonormal basis for ker(L) via SVD."""
-    _, s, vh = np.linalg.svd(L)
-    rank = np.sum(s > tol)
-    return vh[rank:, :].T  # columns form an orthonormal basis
+a form is harmonic exactly when it is closed and co-closed, $\Delta \alpha = 0 \iff d\alpha = 0 \text{ and } d^*\alpha = 0$, and the natural map
 
-# Build the circle and the 0 -> 1 coboundary operator
-n = 6
-edges = circle_complex(n)
-d0 = coboundary_0(edges, n)
-d0star = d0.T
+$$\mathrm{Harm}^k(M) \longrightarrow H^k_{dR}(M), \qquad \alpha \mapsto [\alpha]$$
 
-# Laplacians: L0 on 0-cochains, L1 on 1-cochains (d1 is zero in 1D)
-L0 = d0star @ d0
-L1 = d0 @ d0star
-
-H0 = harmonic_basis(L0)  # should be constants, dimension 1
-H1 = harmonic_basis(L1)  # should be constant edge values, dimension 1
-
-# Project a random closed 1-cochain onto its harmonic representative
-rng = np.random.default_rng(0)
-c = rng.normal(size=edges.shape[0])
-h = H1 @ (H1.T @ c)
-residual = c - h
-
-# Verify that the residual is exact: it is the gradient of a vertex function
-x, *_ = np.linalg.lstsq(d0, residual, rcond=None)
-print("b0:", H0.shape[1], "b1:", H1.shape[1])
-print("Harmonic representative:", h)
-print("Residual is exact?", np.allclose(d0 @ x, residual))
-print("Norm minimization:", np.linalg.norm(c)**2,
-      np.linalg.norm(h)**2 + np.linalg.norm(residual)**2)
-```
-
-This discrete example captures the theorem's core mechanism: once a metric provides an inner product, the Laplacian detects closed and co-closed forms, elliptic compactness makes the harmonic projection well defined, and the orthogonal decomposition guarantees exactly one energy-minimizing representative per cohomology class.
+is a linear isomorphism. Equivalently, every real de Rham cohomology class on $M$ contains exactly one harmonic form, and that harmonic form is the unique representative of least $L^2$ energy in its class: for any other representative $h + da$ in the same class, $\|h + da\|^2 = \|h\|^2 + \|da\|^2$, so the energy is minimized precisely when $da = 0$. This is what the theorem delivers — the purely topological invariant $H^k_{dR}(M)$ is identified with the finite-dimensional analytic space $\mathrm{Harm}^k(M)$, the kernel of a second-order elliptic self-adjoint operator built from nothing but the metric, with ellipticity and the compactness of $M$ being exactly what makes that kernel finite-dimensional and the projection onto it well posed.
