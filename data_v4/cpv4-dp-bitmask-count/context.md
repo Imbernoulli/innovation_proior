@@ -12,10 +12,7 @@ block is one of the approved candidate squads.
 Two rosters are considered the same if they use the same **set** of squads — the order in which you
 list the squads does not matter. Count the number of distinct valid rosters, modulo `1_000_000_007`.
 
-This is a set-partition counting problem driven by an allowed-blocks list. The counting is the whole
-difficulty: the natural recurrence is easy to write so that the *same* partition is tallied several
-times (once per order of its blocks), or so that a duplicated / empty candidate squad inflates the
-count. Getting the de-duplication and the canonical block order exactly right is the point.
+This is a set-partition counting problem driven by an allowed-blocks list.
 
 ## Input / output contract
 
@@ -30,34 +27,13 @@ Example: with `n = 4` and candidate masks `{3, 12, 15, 5, 10, 3, 0}` (i.e. `{0,1
 `{0,1,2,3}`, `{0,2}`, `{1,3}`, a duplicate `{0,1}`, and an empty squad), the answer is `3`: the rosters
 are `{0,1,2,3}`, `{0,1}+{2,3}`, and `{0,2}+{1,3}`.
 
-## Background
-
-The quantity asked for is the number of partitions of `{0..n-1}` all of whose blocks lie in a given
-allowed family. When *every* non-empty subset is allowed, this count is the Bell number `B(n)`, which
-already shows the combinatorial explosion: `B(18) = 682076806159`-ish before reduction. Two ideas are
-on the table before committing:
-
-- **Subset-sum / "iterate over the next block" DP over bitmasks.** Define `dp[mask]` = number of valid
-  partitions of the employee set `mask`. To fill it, pick which candidate squad covers some particular
-  still-uncovered employee, remove that squad, and recurse on the remainder. This is `O(3^n)` if we
-  enumerate submasks. The open question is precisely *which* employee to branch on so that each
-  unordered partition is produced exactly once — choose wrong and every partition is counted `k!`
-  times (once per ordering of its `k` blocks).
-
-- **Inclusion–exclusion over uncovered employees.** Count ordered sequences of disjoint allowed
-  squads and then divide out orderings. This needs modular inverses of factorials and is fiddly to set
-  up correctly; the division-by-order step is exactly where a subtle counting error hides.
-
-The first route is cleaner to make provably correct, *if* the canonical-order trick is applied
-faithfully.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: `n = 0` (the empty staff has exactly one roster — use no squads);
 `m = 0` and rosters that are impossible (answer `0`); inputs with duplicated candidate masks and
 empty (`0`) masks that must be ignored without inflating the count; the all-subsets-allowed case where
 the answer must equal `B(n) mod p`; cases needing the modulus (counts far exceeding 64-bit); and the
-largest `n = 18` with up to `2*10^5` candidate masks, stressing the `O(3^n)` DP within the time limit.
+largest `n = 18` with up to `2*10^5` candidate masks, stressing time-limit performance.
 
 ## Code framework
 
