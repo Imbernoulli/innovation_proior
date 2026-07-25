@@ -12,9 +12,7 @@ so its length is between `1` and `n`. Choose the run that **maximizes the total 
 output that maximum.
 
 Concretely: among all circular contiguous segments of length `1..n`, report the largest possible
-sum. This is the *maximum circular subarray sum* with the standard "non-empty segment" rule, and the
-wrap-around possibility is exactly what makes the usual textbook one-pass routine subtly wrong on one
-family of inputs.
+sum. This is the *maximum circular subarray sum* with the standard "non-empty segment" rule.
 
 ## Input / output contract
 
@@ -34,18 +32,15 @@ Kadane's scan. The circular twist invites a well-known "standard" reduction:
 - **Textbook wrap formula.** Run Kadane to get the best *non-wrapping* run `best`. A *wrapping* run is
   the whole belt minus some contiguous *non-wrapping* gap, so its best value is `total - worst`,
   where `total` is the sum of all slots and `worst` is the minimum non-empty subarray sum. The
-  advertised answer is `max(best, total - worst)`. It is `O(n)`, two Kadane passes, and looks
-  airtight — the open question is whether `total - worst` is always a *legal* run for this exact
-  "non-empty segment" contract.
+  advertised answer is `max(best, total - worst)`. It is `O(n)`, two Kadane passes.
 - **Brute search.** Try every start `s` and every length `1..n`, summing around the circle. This is
   `O(n^2)`, obviously correct, and only usable to check small cases.
 
 ## Evaluation settings
 
 Judged on hidden tests covering: all-positive belts (answer is the whole loop), mixed belts where the
-best run wraps the seam, **all-negative belts** (where the textbook wrap formula misfires), single
-slot (`n = 1`), belts with zeros, and large `n = 2*10^5` with values near `10^9` (so `total` can
-reach `2*10^14` and must not overflow a 32-bit integer).
+best run wraps the seam, **all-negative belts**, single slot (`n = 1`), belts with zeros, and large
+`n = 2*10^5` with values near `10^9`.
 
 ## Code framework
 
