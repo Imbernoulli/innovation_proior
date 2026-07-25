@@ -1,6 +1,6 @@
 ## Research question
 
-大规模线性规划常常不是“变量很多”这么简单，而是变量分成若干自然块，每个块内部有一套复杂但局部的可行性约束，块之间只通过少量资源、需求或平衡约束耦合。典型形式是
+Large-scale linear programs are often not simply a matter of "many variables" — the variables split into several natural blocks, each block carrying its own complex but local feasibility constraints, with the blocks coupled together through only a small number of resource, demand, or balance constraints. The typical form is
 
 `min sum_k c_k^T x_k`
 
@@ -8,43 +8,43 @@ subject to
 
 `sum_k A_k x_k = b`, and `x_k in X_k`.
 
-这里 `X_k = {x_k: B_k x_k <= d_k, x_k >= 0}` 是第 `k` 个子系统自己的可行域，`sum_k A_k x_k = b` 是全局耦合约束。把所有 `x_k` 放进一个 LP 可以写出正确模型，求解器会同时面对所有块的内部结构、所有变量和所有耦合关系。研究问题是：对这种 block-angular 结构的 LP，能否让全局协调与每个块的内部可行性在算法上分开处理？
+Here `X_k = {x_k: B_k x_k <= d_k, x_k >= 0}` is the feasible region belonging to subsystem `k` alone, and `sum_k A_k x_k = b` is the global coupling constraint. Putting all the `x_k` into one LP gives a correct model, but the solver then has to face the internal structure of every block, all the variables, and all the coupling relations simultaneously. The research question is: for an LP with this block-angular structure, can global coordination be handled algorithmically separately from each block's own internal feasibility?
 
 ## Background
 
-线性规划的标准求解工具是 simplex 和 interior-point 方法，二者都直接在原始坐标 `x` 上工作，并附带 LP 对偶理论：每个等式约束对应一个对偶价格（shadow price），最优时原始与对偶解满足互补松弛，对偶解构成最优性证书。
+The standard solving tools for linear programming are the simplex method and interior-point methods, both of which work directly on the original coordinates `x`, together with LP duality theory: each equality constraint corresponds to a dual price (shadow price), and at optimality the primal and dual solutions satisfy complementary slackness, with the dual solution constituting a certificate of optimality.
 
-一个相关的经典几何事实是凸多面体的极点表示：如果 `X_k` 是非空有界多面体，则每个 `x_k in X_k` 都能写成其极点 `p_kr` 的凸组合：
+A related classical geometric fact is the extreme-point representation of a convex polyhedron: if `X_k` is a nonempty bounded polyhedron, then every `x_k in X_k` can be written as a convex combination of its extreme points `p_kr`:
 
 `x_k = sum_r lambda_kr p_kr`, `sum_r lambda_kr = 1`, `lambda_kr >= 0`.
 
-在一个块内，对线性目标做最优化时，最优值必在某个极点取得，因此在固定的线性目标下，对子多面体 `X_k` 的优化本身就是一个小型 LP，可由 simplex 直接求解。多面体 `X_k` 的极点数目一般可随维数指数增长。
+Within a single block, when optimizing a linear objective, the optimum must be attained at some extreme point, so under a fixed linear objective, optimizing over the sub-polyhedron `X_k` is itself a small LP that simplex can solve directly. The number of extreme points of a polyhedron `X_k` can in general grow exponentially with dimension.
 
 ## Baselines
 
-直接求解原始 LP：把所有原始变量和约束一次性交给 simplex 或 interior-point solver。模型直观，求解器同时处理局部块结构和全局耦合结构。
+Solving the original LP directly: hand all the original variables and constraints at once to a simplex or interior-point solver. The model is straightforward, but the solver has to handle the local block structure and the global coupling structure at the same time.
 
-显式枚举法：先枚举每个 `X_k` 的所有极点，用极点权重重写问题再求解。该写法与原 LP 等价，依赖能把极点集合完整列出。
+Explicit enumeration: first enumerate all the extreme points of each `X_k`, rewrite the problem in terms of extreme-point weights, and solve that. This formulation is equivalent to the original LP, but it depends on being able to list the full set of extreme points.
 
-分块启发式：独立求各块局部最优，再用某种修补步骤满足全局耦合约束。计算便宜，按局部目标各自求解后再协调。
+Block-wise heuristic: solve each block's local optimum independently, then use some patching step to satisfy the global coupling constraints. This is cheap computationally — each block is solved for its own local objective, and coordination happens afterward.
 
-Benders decomposition 是相邻的分解思维：它通常固定一部分变量，在子问题中生成 cuts 回到 master，属于 row generation，动态加入的是约束。
+Benders decomposition is a neighboring decomposition idea: it typically fixes part of the variables, generates cuts in the subproblem that feed back to the master, and belongs to row generation — what gets added dynamically are constraints.
 
 ## Evaluation settings
 
-适合分解的实例应有 block-angular structure：多个相对独立的子块 `X_k`，再由少量 linking constraints 连接。常见例子包括 cutting stock、vehicle routing set partitioning、crew scheduling、多商品流路径模型、生产计划和大型资源分配模型。
+Instances suited to this decomposition should have block-angular structure: several relatively independent sub-blocks `X_k` connected by a small number of linking constraints. Common examples include cutting stock, vehicle routing set-partitioning formulations, crew scheduling, multi-commodity flow path models, production planning, and large resource-allocation models.
 
-关键评价指标包括：求解过程中处理了多少结构性方案、子层优化是否比直接扫描原始变量便宜、对偶界收敛多快、得到的 LP bound 是否强。若原问题含整数变量，通常还要评估搜索树节点数、整数 gap 和子层难度。
+Key evaluation metrics include: how many structural plans are handled during solving, whether the subproblem optimization is cheaper than scanning the original variables directly, how quickly the dual bound converges, and whether the resulting LP bound is strong. If the original problem contains integer variables, one usually also needs to evaluate the number of search-tree nodes, the integrality gap, and the difficulty of the subproblems.
 
-一个小型演示可以设置两个子问题块，每个块有自己的局部多面体 `X_1, X_2`，并用一条共享资源约束 `A_1 x_1 + A_2 x_2 = b` 耦合。块内目标为线性时，对每个 `X_k` 的优化是
+A small demonstration can set up two subproblem blocks, each with its own local polyhedron `X_1, X_2`, coupled by a single shared resource constraint `A_1 x_1 + A_2 x_2 = b`. When the block-level objective is linear, the optimization over each `X_k` is
 
 `min_{x in X_k} (c_k - A_k^T pi)^T x`,
 
-其中 `pi` 是耦合约束的对偶价格。
+where `pi` is the dual price of the coupling constraint.
 
 ## Code framework
 
-现有可用部件有三类。第一，LP 求解器：输入约束与目标，输出 primal 解和对偶价格 `pi`。第二，块内线性优化 oracle：给定每个块的线性目标 `c_k - A_k^T pi`，在 `X_k` 上求最优化，返回极点解。第三，一个把全局 LP 与块内优化串起来的外层循环骨架。
+There are three kinds of components available. First, an LP solver: it takes constraints and an objective as input and outputs the primal solution and dual prices `pi`. Second, a within-block linear optimization oracle: given each block's linear objective `c_k - A_k^T pi`, it optimizes over `X_k` and returns an extreme-point solution. Third, an outer-loop skeleton that ties the global LP together with the within-block optimization.
 
 ```python
 def solve_lp(columns, b):
@@ -69,4 +69,4 @@ def coordinate(blocks, b, initial, eps=1e-8):
         state.extend(u for u in updates if accept(u))
 ```
 
-本报告聚焦最常见、也最容易说明核心结构的有界子问题 `X_k` 情形。
+This report focuses on the most common case, and the one that most clearly illustrates the core structure — the case where the subproblem `X_k` is bounded.
