@@ -33,29 +33,20 @@ opening for measuring the counts over the global batch instead.
 import torch
 
 def layer_f_P(probs, topi, N):
-    """f_i = fraction of (token, slot) assignments to expert i (hard, non-diff);
-       P_i = mean router probability mass on expert i (differentiable)."""
     counts = torch.bincount(topi.reshape(-1), minlength=N).float()
-    f = counts / counts.sum()
-    P = probs.mean(0)
+    f = counts / counts.sum()          # hard counts (non-differentiable)
+    P = probs.mean(0)                  # mean router prob mass (differentiable)
     return f, P
 
-
 def balance_loss_switch(probs_list, topi_list, N, alpha=1e-2):
-    """Switch / GShard auxiliary load-balancing loss:
-           L_aux = alpha * N * sum_i f_i * P_i
-    f_i (detached count) weights the differentiable P_i so the gradient pushes
-    probability mass off the over-used experts. The N makes the balanced optimum
-    scale-free. f is computed over the MICRO-BATCH."""
+    """Switch/GShard aux loss: alpha * N * sum_i f_i P_i, f over the micro-batch."""
     total = 0.0
     for probs, topi in zip(probs_list, topi_list):
         f, P = layer_f_P(probs, topi, N)
-        total = total + N * (f.detach() * P).sum()   # gradient enters via P only
+        total = total + N * (f.detach() * P).sum()   # gradient enters via P
     return alpha * total / len(probs_list)
 
-
-# At training time the micro-batch locality is realized by splitting the batch
-# into a few micro-splits, evaluating the loss on each, and averaging:
-#   lb = sum(balance_loss_switch(split_probs, split_topi, N) for split) / n_splits
+# At training time f is computed per micro-batch: split the batch into 4 micro-splits,
+# evaluate balance_loss_switch on each, and average — the micro-batch locality penalty.
 
 ```
