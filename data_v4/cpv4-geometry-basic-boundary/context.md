@@ -32,30 +32,13 @@ covers the 9 points of the 3x3 block `x in {0,1,2}, y in {0,1,2}`; the second co
 of the 4x3 block `x in {1,2,3,4}, y in {1,2,3}`; they share the 4 points `x in {1,2}, y in {1,2}`,
 so the union has `9 + 12 - 4 = 17` distinct lattice points.
 
-## Background
-
-The coordinate range is up to `10^9`, so a literal grid of booleans is out of the question (it would
-be `~10^{18}` cells). The answer itself, however, is just a count, and two standard families of
-approach are on the table before committing to one:
-
-- **Direct grid marking.** Allocate a 2D boolean grid (or a hash set) and, for each rectangle, set
-  every lattice point it covers. The union count is the number of set cells. This is `O(sum of
-  areas)` and is only viable when coordinates are tiny; it is the obvious *reference* implementation
-  but cannot survive `10^9` coordinates.
-- **Sweep with coordinate compression.** Sort the distinct vertical boundaries, sweep the plane in
-  vertical slabs, and within each slab compute the total length of the union of the active
-  horizontal intervals. Multiply the slab's width by that union length and sum over slabs. This is
-  `O(n^2 log n)` in the simple version and handles the full coordinate range. The open question is
-  the exact inclusive-vs-exclusive bookkeeping that converts continuous lengths into integer
-  point-counts.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: a single rectangle (including a single point `a=c, b=d` and a thin
 horizontal/vertical line); the empty input `n = 0` (answer `0`); rectangles given with corners in
 reversed order; rectangles that overlap heavily, that touch along a shared edge, and that touch only
 at a single corner (the shared edge/corner points must be counted exactly once); and large cases
-where the running count exceeds the 32-bit range (so the accumulator must be 64-bit).
+with many rectangles spanning the full coordinate range.
 
 ## Code framework
 
