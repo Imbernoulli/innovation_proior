@@ -32,7 +32,7 @@ class MultiHeadedAttention(nn.Module):
         assert d_model % h == 0
         self.d_k = d_model // h
         self.h = h
-        self.linears = clones(nn.Linear(d_model, d_model), 4)  # W^Q, W^K, W^V, W^O
+        self.linears = clones(nn.Linear(d_model, d_model), 4)   # W^Q, W^K, W^V, W^O
         self.attn = None
         self.dropout = nn.Dropout(p=dropout)
     def forward(self, query, key, value, mask=None):
@@ -81,7 +81,7 @@ class LayerNorm(nn.Module):
         return self.a_2 * (x - mean) / (std + self.eps) + self.b_2
 
 class SublayerConnection(nn.Module):
-    "Norm-first residual connection."
+    "Norm-first residual connection, as in the canonical code for simplicity."
     def __init__(self, size, dropout):
         super().__init__()
         self.norm = LayerNorm(size)
@@ -163,6 +163,7 @@ class Embeddings(nn.Module):
         return self.lut(x) * math.sqrt(self.d_model)
 
 class Generator(nn.Module):
+    "Define standard linear + log-softmax generation step."
     def __init__(self, d_model, vocab):
         super().__init__()
         self.proj = nn.Linear(d_model, vocab)
@@ -198,9 +199,13 @@ def make_model(src_vocab, tgt_vocab, N=6, d_model=512, d_ff=2048, h=8, dropout=0
     )
     for p in model.parameters():
         if p.dim() > 1:
-            nn.init.xavier_uniform_(p)
+            nn.init.xavier_uniform_(p)   # Glorot init
     return model
+```
 
+The training loop wires the model to this schedule and loss:
+
+```python
 def rate(step, model_size, factor, warmup):
     "Warm up linearly, then decay ~ 1/sqrt(step)."
     if step == 0:
