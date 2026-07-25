@@ -25,18 +25,19 @@ def sample_dbim(denoiser, diffusion, x, ts, eta=1.0, mask=None, seed=None, **kwa
     indices = tqdm(range(len(ts) - 1), disable=(dist.get_rank() != 0))
 
     nfe = 0
+    # first step: predict x_0 at the endpoint, seed the first interior bridge state with booting noise
     x0_hat = denoiser(x, diffusion.t_max * ones)
     generator = BatchedSeedGenerator(seed)
     noise = generator.randn_like(x0_hat)
-    first_noise = noise
+    first_noise = noise                                   # booting noise = latent variable
     if mask is not None:
         x0_hat = x0_hat * mask + x_T * (1 - mask)
-    x = diffusion.bridge_sample(x0_hat, x_T, ts[0] * ones, noise)
+    x = diffusion.bridge_sample(x0_hat, x_T, ts[0] * ones, noise)   # a_t x_T + b_t x0_hat + c_t noise
     path.append(x.detach().cpu()); pred_x0.append(x0_hat.detach().cpu()); nfe += 1
 
     for _, i in enumerate(indices):
-        s = ts[i]
-        t = ts[i + 1]
+        s = ts[i]            # current (larger) time  = t_{n+1}
+        t = ts[i + 1]        # next (smaller) time     = t_n
 
         x0_hat = denoiser(x, s * ones)
         if mask is not None:
@@ -47,13 +48,16 @@ def sample_dbim(denoiser, diffusion, x, ts, eta=1.0, mask=None, seed=None, **kwa
         _, _, rho_s, _ = [append_dims(v, x0_hat.ndim) for v in diffusion.noise_schedule.get_alpha_rho(s * ones)]
         alpha_t, _, rho_t, _ = [append_dims(v, x0_hat.ndim) for v in diffusion.noise_schedule.get_alpha_rho(t * ones)]
 
+        # per-step injected std rho_n = eta * sigma_{t_n} * sqrt(1 - SNR_{t_{n+1}}/SNR_{t_n})
         omega_st = eta * (alpha_t * rho_t) * (1 - rho_t**2 / rho_s**2).sqrt()
-        tmp_var = (c_t**2 - omega_st**2).sqrt() / c_s
+
+        tmp_var = (c_t**2 - omega_st**2).sqrt() / c_s     # recycled-direction coeff sqrt(c_t^2 - rho_n^2)/c_s
         coeff_xs = tmp_var
         coeff_x0_hat = b_t - tmp_var * b_s
         coeff_xT = a_t - tmp_var * a_s
 
         noise = generator.randn_like(x0_hat)
+        # drop fresh noise on the final step (endpoint sharpness)
         x = (coeff_x0_hat * x0_hat + coeff_xT * x_T + coeff_xs * x
              + (1 if i != len(ts) - 2 else 0) * omega_st * noise)
 
