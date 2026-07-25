@@ -18,12 +18,6 @@ This rule uses the fewest possible markers. You must report two numbers for the 
 2. `M` = the number of corridors (out of the original `n`) that end up containing **two or more** of
    the placed markers — call these the *double-stamped* corridors.
 
-The story is a thin wrapper over a classic greedy-exchange task (minimum points to stab a family of
-intervals), but the second output is the point of the exercise: counting how many intervals are
-covered *multiple* times by the final marker set is exactly where a double-count or off-by-one creeps
-in, because the markers and the corridors are two different sorted lists and the overlap windows are
-easy to mis-index.
-
 ## Input / output contract
 
 - Input (stdin): the first token is `n` (`1 <= n <= 2*10^5`). Then follow `n` lines (or just
@@ -38,31 +32,17 @@ so `M = 2`; the program prints `4 2`.
 
 ## Background
 
-Two ingredients sit underneath this problem.
-
-- **The greedy stab itself.** "Minimum number of points so that every interval is hit" is a textbook
-  greedy-exchange result: process intervals by increasing right endpoint and, whenever the current
-  interval is unhit, drop a point on its right endpoint. The exchange argument is that the
-  right-endpoint choice dominates any other point that would hit the same interval, so no optimal
-  solution is ever hurt by it. The open question when *coding* it is the predicate "is the current
-  interval already hit?" — it must be phrased against the **last placed marker only**, and getting the
-  strict-vs-nonstrict comparison wrong silently over- or under-places markers.
-
-- **The multiplicity count.** Once the marker set is fixed (a sorted list of integers), each corridor
-  `[l_i, r_i]` contains some number of markers; we need how many corridors contain at least two. The
-  natural tool is two binary searches per corridor into the sorted marker list — `upper_bound(r)` and
-  `lower_bound(l)` — and the difference is the count of markers inside. The open question is the exact
-  bound combination and the threshold, since one wrong endpoint convention double-counts a marker that
-  sits exactly on a corridor boundary.
+"Minimum number of points so that every interval is hit" is a classic family of interval-scheduling
+problems, and stabbing (as opposed to selection or scheduling) is one member of that family. The
+curator's exact procedure is fully specified above; this problem also asks for a second, derived
+quantity (the double-stamped count) once that procedure has been run.
 
 ## Evaluation settings
 
 Judged on hidden tests covering: a single corridor (`n = 1`); many identical corridors; single-point
 corridors (`l_i == r_i`); deeply nested corridors where one giant corridor swallows every marker;
-chains of disjoint corridors where every `M` should be `0`; markers and boundaries that coincide
-exactly (to expose endpoint-convention bugs); negative coordinates; and large `n = 2*10^5` with
-coordinates near `±10^9` (so any product or running index must not overflow and the two binary
-searches must keep the whole thing well under the time limit).
+chains of disjoint corridors; markers and boundaries that coincide exactly; negative coordinates; and
+large `n = 2*10^5` with coordinates near `±10^9`.
 
 ## Code framework
 
