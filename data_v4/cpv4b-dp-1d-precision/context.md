@@ -51,29 +51,11 @@ the four plans are `0->1->2->3` (effort `12`, distance `4`, pace `3`), `0->1->3`
 `6`, pace `3/2`), and `0->2->3` (effort `6`, distance `4`, pace `3/2`). The minimum pace is `3/2`, so
 the answer is `3 2`.
 
-## Background
-
-Minimizing a ratio `E(plan)/D(plan)` of two sums is **fractional (linear-fractional) optimization**. The
-key obstacle is that a ratio is not additive: you cannot run an ordinary shortest-path DP directly on
-`e/g` per hop, because the best ratio over a path is *not* the combination of the best ratios of its
-parts. Two routes are on the table before committing to one:
-
-- **Greedy / per-hop ratio.** At each stone, take whichever hop (short or long) has the smaller `e/g`.
-  This is `O(n)` and trivial, but a locally cheap ratio can force an expensive continuation, so the open
-  question is whether it is ever optimal.
-- **Parametric (Dinkelbach) search with an inner DP.** For a trial value `λ`, ask whether some plan has
-  `E - λ·D < 0`; this is a plain additive shortest path with hop weight `e - λ·g`, which *is* a clean
-  `dp-1d` because hops only go forward by `1` or `2`. Sweeping `λ` to the point where the cheapest plan
-  has `E - λ·D = 0` pins the optimum exactly. The open questions are the recurrence, how to keep `λ`
-  rational so the answer is exact, and — because the distances accumulate over the whole course — how
-  large the integers in the weight `e·Q - g·P` can get.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: tiny courses (`n = 2`, a single forced hop; `n = 3`), courses where the
 all-short-hop plan is far from optimal, courses with many near-equal hop ratios that force exact
-comparison, and large courses `n = 2*10^5` with efforts and distances near `10^9` (so the accumulated
-totals reach `~2*10^14` and the products inside the comparison overflow 64-bit arithmetic).
+comparison, and large courses `n = 2*10^5` with efforts and distances near `10^9`.
 
 ## Code framework
 
