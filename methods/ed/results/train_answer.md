@@ -6,26 +6,26 @@ VED adds a variational latent on top of the same backbone. Instead of a single d
 
 ```python
 import numpy as np
-import tensorflow as tf
-from tensorflow.keras import backend as K
 from tensorflow.keras.layers import Input, Dense, Lambda
 from tensorflow.keras.models import Model
 from tensorflow.keras.losses import mse
 from tensorflow.keras.callbacks import LearningRateScheduler, Callback
+from tensorflow.keras import backend as K
+import tensorflow as tf
 
-original_dim_input = 64        # X: q(p), T(p) profiles + PS, SOLIN, SHFLX, LHFLX
-original_dim_output = 65 + 64  # O = [Y tendencies ; X reconstruction]
-intermediate_dim = 463
-latent_dim = 5
+original_dim_input  = 64           # large-scale state X
+original_dim_output = 65 + 64      # O = [Y ; X-reconstruction] = 129
+intermediate_dim = 463            # first/last hidden width; the funnel halves from here
+latent_dim = 5                    # bottleneck
 epochs = 40
 
 
 def encoder_backbone(inputs):
     h = Dense(intermediate_dim, activation='relu')(inputs)
     h = Dense(intermediate_dim, activation='relu')(h)
-    h = Dense(int(np.round(intermediate_dim / 2)), activation='relu')(h)   # 232
-    h = Dense(int(np.round(intermediate_dim / 4)), activation='relu')(h)   # 116
-    h = Dense(int(np.round(intermediate_dim / 8)), activation='relu')(h)   # 58
+    h = Dense(int(np.round(intermediate_dim / 2)),  activation='relu')(h)  # 232
+    h = Dense(int(np.round(intermediate_dim / 4)),  activation='relu')(h)  # 116
+    h = Dense(int(np.round(intermediate_dim / 8)),  activation='relu')(h)  # 58
     h = Dense(int(np.round(intermediate_dim / 16)), activation='relu')(h)  # 29
     return h
 
@@ -33,16 +33,16 @@ def encoder_backbone(inputs):
 def build_decoder():
     dz = Input(shape=(latent_dim,), name='decoder_input')
     y = Dense(int(np.round(intermediate_dim / 16)), activation='relu')(dz)  # 29
-    y = Dense(int(np.round(intermediate_dim / 8)), activation='relu')(y)    # 58
-    y = Dense(int(np.round(intermediate_dim / 4)), activation='relu')(y)    # 116
-    y = Dense(int(np.round(intermediate_dim / 2)), activation='relu')(y)    # 232
+    y = Dense(int(np.round(intermediate_dim / 8)),  activation='relu')(y)   # 58
+    y = Dense(int(np.round(intermediate_dim / 4)),  activation='relu')(y)   # 116
+    y = Dense(int(np.round(intermediate_dim / 2)),  activation='relu')(y)   # 232
     y = Dense(intermediate_dim, activation='relu')(y)
     y = Dense(intermediate_dim, activation='relu')(y)
-    out = Dense(original_dim_output, activation='elu')(y)
+    out = Dense(original_dim_output, activation='elu')(y)   # signed real outputs -> ELU
     return Model(dz, out, name='decoder')
 
 
-def schedule(epoch):
+def schedule(epoch):                                       # lr /5 every 7 epochs
     if epoch < 7:
         return 0.00074594
     if epoch < 14:
@@ -56,39 +56,41 @@ def schedule(epoch):
     return 0.00074594 / 3125
 
 
-# Deterministic Encoder-Decoder (ED)
+# ============================ ED (deterministic) ============================
 inputs = Input(shape=(original_dim_input,), name='encoder_input')
 h = encoder_backbone(inputs)
-encoder_out = Dense(latent_dim, name='encoder_output')(h)
+encoder_out = Dense(latent_dim, name='encoder_output')(h)  # linear projection to 5
 encoder = Model(inputs, encoder_out, name='encoder')
 decoder = build_decoder()
-ED = Model(inputs, decoder(encoder(inputs)), name='ED')
-ED.compile(tf.keras.optimizers.Adam(lr=1e-4), loss=mse, metrics=['mse'])
+ED = Model(inputs, decoder(encoder(inputs)))
+ED.compile(tf.keras.optimizers.Adam(lr=1e-4), loss=mse, metrics=['mse'])   # reconstruction only
+ED.fit(train_gen, validation_data=(val_gen, None), epochs=epochs, shuffle=False,
+       callbacks=[LearningRateScheduler(schedule)])
 
-# Variational Encoder-Decoder (VED)
-def sampling(args):
+# ============================ VED (variational) ============================
+def sampling(args):                                        # z = mu + exp(0.5*log_var) * eps
     z_mean, z_log_var = args
-    eps = K.random_normal(shape=(K.shape(z_mean)[0], K.int_shape(z_mean)[1]))
+    eps = K.random_normal(shape=(K.shape(z_mean)[0], K.int_shape(z_mean)[1]))  # eps ~ N(0, I)
     return z_mean + K.exp(0.5 * z_log_var) * eps
 
 inputs = Input(shape=(original_dim_input,), name='encoder_input')
 h = encoder_backbone(inputs)
-z_mean = Dense(latent_dim, name='z_mean')(h)
-z_log_var = Dense(latent_dim, name='z_log_var')(h)
+z_mean    = Dense(latent_dim, name='z_mean')(h)            # linear head: posterior mean
+z_log_var = Dense(latent_dim, name='z_log_var')(h)         # linear head: posterior log-variance
 z = Lambda(sampling, name='z')([z_mean, z_log_var])
 encoder = Model(inputs, [z_mean, z_log_var, z], name='encoder')
 decoder = build_decoder()
 emul_outputs = decoder(encoder(inputs)[2])
 
+# closed-form Gaussian KL:  KL = -0.5 * sum(1 + log_var - mu^2 - exp(log_var))
 kl_loss = -0.5 * K.sum(1 + z_log_var - K.square(z_mean) - K.exp(z_log_var), axis=-1)
-weight = K.variable(0.0)
+weight = K.variable(0.0)                                   # KL annealing coefficient lambda
 
-VED = Model(inputs, emul_outputs, name='VED')
-VED.add_loss(K.mean(kl_loss * weight))
+VED = Model(inputs, emul_outputs)
+VED.add_loss(K.mean(kl_loss * weight))                     # total = mse reconstruction + lambda*KL
 VED.add_metric(kl_loss, name='kl_loss', aggregation='mean')
 
-klstart, kl_annealtime = 2, 5
-
+klstart, kl_annealtime = 2, 5                              # lambda: 0 until epoch 2, then +1/5 to 1
 class AnnealingCallback(Callback):
     def __init__(self, weight):
         self.weight = weight
@@ -98,11 +100,8 @@ class AnnealingCallback(Callback):
             new_weight = min(K.get_value(self.weight) + 1.0 / kl_annealtime, 1.0)
             K.set_value(self.weight, new_weight)
 
-VED.compile(tf.keras.optimizers.Adam(lr=1e-4), loss=mse, metrics=['mse'])
-
-# Example fit calls (train_gen and val_gen must be provided by the data pipeline):
-# ED.fit(train_gen, validation_data=(val_gen, None), epochs=epochs, shuffle=False,
-#        callbacks=[LearningRateScheduler(schedule)])
-# VED.fit(train_gen, validation_data=(val_gen, None), epochs=epochs, shuffle=False,
-#         callbacks=[LearningRateScheduler(schedule), AnnealingCallback(weight)])
+encoder.load_weights('./saved_models/VAE_climate_encoding/encoder_JAS.h5')
+VED.compile(tf.keras.optimizers.Adam(lr=1e-4), loss=mse, metrics=['mse'])  # mse = reconstruction
+VED.fit(train_gen, validation_data=(val_gen, None), epochs=epochs, shuffle=False,
+        callbacks=[LearningRateScheduler(schedule), AnnealingCallback(weight)])
 ```
