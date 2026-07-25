@@ -10,63 +10,22 @@ There are important caveats, and they matter for both theory and practice. First
 
 Practical compressors like gzip give upper bounds on K(x) for the kinds of regularities they know how to exploit, but failure to compress with any one compressor does not prove algorithmic randomness. The ideal K(x) quantifies over all effective descriptions, not only over the compression tools available today. This makes Kolmogorov complexity especially valuable as a conceptual foundation. It gives a precise meaning to individual randomness and a rigorous bridge between pattern, compression, and computation.
 
-Because exact Kolmogorov complexity is uncomputable, the best way to build intuition is to work with a bounded version. The script below fixes a tiny programming language with literal bits and a repeat command, then enumerates every program up to a small maximum length and records the shortest one that produces each target string. This gives a computable upper bound on K(x) and shows why repetitive strings have shorter descriptions than irregular ones. The second part of the script uses gzip on longer strings to show how practical compression gives a looser but useful upper bound in the same spirit.
+Because exact Kolmogorov complexity is uncomputable, the deliverable is not a subroutine but three linked theorems that together pin down the definition completely: what it is, why it does not depend on an arbitrary choice of machine, and why it can never be computed outright.
 
-```python
-import zlib
+Fix a universal machine $U$. The definition is
 
-OPS = [("0", 1), ("1", 1)] + [(f"r{d}", 2) for d in "23456789"]
+$$K(x) = \min\{\,|p| : U(p) = x\,\},$$
 
-def eval_tiny(prog, cap):
-    out = ""
-    i = 0
-    while i < len(prog):
-        c = prog[i]
-        if c in "01":
-            out += c
-            i += 1
-        elif c == "r":
-            if i + 1 >= len(prog) or not out:
-                return None
-            d = prog[i + 1]
-            if not d.isdigit():
-                return None
-            out *= int(d)
-            if len(out) > cap:
-                return None
-            i += 2
-    return out
+the length of the shortest program that makes $U$ output $x$ and halt.
 
-def gen_exact(n):
-    if n == 0:
-        yield ""
-        return
-    for op, cl in OPS:
-        if cl <= n:
-            for rest in gen_exact(n - cl):
-                yield op + rest
+The invariance theorem removes the apparent arbitrariness of $U$. For any two universal machines $U$ and $U'$ there is a constant $c_{U,U'}$, independent of $x$, such that
 
-def bounded_k(target, max_len=8):
-    for n in range(1, max_len + 1):
-        for prog in gen_exact(n):
-            if eval_tiny(prog, len(target)) == target:
-                return n, prog
-    return None, None
+$$|K_U(x) - K_{U'}(x)| \le c_{U,U'}$$
 
-print("Bounded Kolmogorov-complexity upper bounds:")
-for s in ["01010101", "00000000", "11001100", "10110010"]:
-    k, prog = bounded_k(s)
-    print(f"  {s!r}: length={len(s)}, bounded_K={k}, prog={prog!r}")
+for every string $x$. The reason is simulation: $U$ can run any program written for $U'$ by first executing a fixed interpreter for $U'$, so the shortest $U$-program for $x$ is at most the shortest $U'$-program for $x$ plus the length of that interpreter, and symmetrically in the other direction. The constant is the one-time cost of universality; it does not grow with $x$, so for strings long enough to swamp it, $K(x)$ is written without a machine subscript at all.
 
-print("\nPractical gzip upper bounds for longer strings:")
-regular = "01" * 40
-random_looking = (
-    "1011010111001001010110101101100110100101110010010101"
-    "101001011010101100110100101001011011001001"
-)
-for name, s in [("regular", regular), ("random-looking", random_looking)]:
-    gz = len(zlib.compress(s.encode()))
-    print(f"  {name}: raw={len(s)}, gzip={gz}")
-```
+The incompressibility theorem gives the counting argument its exact form. For every length $n$ and every $c > 0$, there are fewer than $2^{\,n-c+1}$ programs of length at most $n - c$, hence fewer than $2^{\,n-c+1}$ strings of length $n$ can satisfy $K(x) \le n - c$; equivalently, at least a $1 - 2^{-c+1}$ fraction of all length-$n$ strings satisfy $K(x) > n - c$. A string of length $n$ is called algorithmically random when $K(x) \ge n - O(1)$, and this theorem is what makes such strings the rule rather than the exception: incompressibility is the generic case, not a curiosity.
 
-The bounded search shows the principle concretely. A repetitive string like 01010101 gets a short program because the repeat command can exploit its structure, while an irregular string has no shorter description within the search horizon. The gzip comparison extends the same idea to longer strings: practical compressors expose simple regularities and leave irregular strings nearly unchanged. Neither procedure computes the true Kolmogorov complexity, but both illustrate its meaning. Randomness is the absence of shorter effective descriptions, and Kolmogorov complexity gives us a way to measure that absence even when the exact shortest program cannot be found.
+The uncomputability theorem is the price of the definition's power, and it is the Berry paradox made rigorous rather than paradoxical. Suppose some algorithm $A$ computed $K$ exactly. Then a short fixed program could enumerate strings in order and, using $A$, print the first string certified to have complexity above some large threshold $N$ — ten billion bits, say. But that whole procedure, the enumerator plus the call to $A$ plus the encoding of $N$, is itself a program of fixed length depending only on $A$ and on how $N$ is written down, hence far shorter than $N$ once $N$ is large enough — contradicting the very certificate $A$ just issued for the string it prints. No such $A$ exists: $K$ is uncomputable. Where "the shortest description in English" collapses into paradox, because natural-language description is not a well-defined object to quantify over, restricting descriptions to programs on a fixed machine makes the quantifier legitimate, and the same argument that broke as a paradox becomes a clean proof.
+
+These three facts are the whole of what the method delivers: a machine-relative but asymptotically absolute measure of individual information content, a proof that the overwhelming majority of strings of every length carry that information irreducibly, and a proof that no algorithm can ever certify it — so every practical estimate of $K(x)$, whether from a compressor or from an exhaustive search over short programs, is forever a witness to an upper bound and never to the true value.
