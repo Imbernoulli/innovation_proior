@@ -18,10 +18,6 @@ a **position-weighted** total of the ownership counts (the index `i` is 0-based)
 subarray has exactly one owner, `sum_i c[i] = n(n+1)/2` always holds — a useful invariant to check
 against.
 
-This is the counting flavour of the classic "contribution of each element as a minimum" technique:
-the difficulty is not the `O(n)` monotonic-stack skeleton but getting the **tie-break between equal
-elements exactly right** so that no subarray is double-counted and none is dropped.
-
 ## Input / output contract
 
 - Input (stdin): the first token is `n` (`0 <= n <= 2*10^5`); then `n` integers `a[i]`
@@ -37,9 +33,7 @@ Example: for `a = [2, 1, 2, 1, 3]` the ownership counts are `c = [1, 8, 1, 4, 1]
 
 For a single fixed index `i`, the set of subarrays for which `a[i]` is *a* minimum is a rectangle:
 it is determined by how far left and how far right you can extend before hitting a strictly smaller
-value. The standard `O(n)` tool is a **monotonic stack** that finds, for each `i`, the nearest
-smaller element on each side. The count of such subarrays is `(i - L) * (R - i)` where `L` is the
-left barrier index and `R` the right barrier index.
+value.
 
 The subtlety lives entirely in **equal elements**. When several positions share the minimum value,
 the rectangles of those positions overlap, and a naive "use `<` on both sides" or "use `<=` on both
@@ -49,17 +43,13 @@ break, the correct asymmetric convention is the question to resolve before writi
 - **Brute force.** For every left endpoint `l`, sweep `r` to the right, track the running minimum
   and its (leftmost) owner index, and increment that owner. `O(n^2)`; obviously correct, but far too
   slow at `n = 2*10^5`.
-- **Monotonic stack.** Compute the two barriers per index in two linear passes and accumulate
-  `(i - L) * (R - i)` weighted by `i`. `O(n)`; the open question is the precise `<` vs `<=`
-  asymmetry that matches the leftmost tie-break.
 
 ## Evaluation settings
 
 Judged on hidden tests covering: `n = 0` and `n = 1`; arrays of all-equal values (maximum tie
 density, where the tie-break convention is fully exercised); strictly increasing and strictly
 decreasing arrays; many small distinct values with heavy repetition; and large `n = 2*10^5` with
-values up to `10^9` (so the intermediate `i * c[i]` must be reduced under the modulus and the count
-`(i - L)*(R - i)` must be formed in 64-bit before taking the modulus).
+values up to `10^9`.
 
 ## Code framework
 
