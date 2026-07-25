@@ -17,7 +17,7 @@ import numpy as np
 
 
 class DINOHead(nn.Module):
-    """Backbone -> 3-layer MLP (GELU) -> l2-normalized bottleneck -> weight-normed K-dim layer."""
+    """Backbone -> 3-layer MLP (GELU) -> l2-normalize bottleneck -> weight-normed K-dim layer."""
     def __init__(self, in_dim, out_dim, use_bn=False, norm_last_layer=True,
                  nlayers=3, hidden_dim=2048, bottleneck_dim=256):
         super().__init__()
@@ -37,6 +37,7 @@ class DINOHead(nn.Module):
             layers.append(nn.Linear(hidden_dim, bottleneck_dim))
             self.mlp = nn.Sequential(*layers)
         self.apply(self._init_weights)
+        # weight-normalized last layer; gain initialized to 1 and optionally frozen
         self.last_layer = nn.utils.weight_norm(nn.Linear(bottleneck_dim, out_dim, bias=False))
         self.last_layer.weight_g.data.fill_(1)
         if norm_last_layer:
@@ -50,7 +51,7 @@ class DINOHead(nn.Module):
 
     def forward(self, x):
         x = self.mlp(x)
-        x = F.normalize(x, dim=-1, p=2)
+        x = F.normalize(x, dim=-1, p=2)   # l2 bottleneck: stabilizes deep heads
         return self.last_layer(x)
 
 
@@ -70,7 +71,7 @@ class MultiCropWrapper(nn.Module):
         start_idx, output = 0, torch.empty(0, device=x[0].device)
         for end_idx in idx_crops:
             out = self.backbone(torch.cat(x[start_idx:end_idx]))
-            if isinstance(out, tuple):
+            if isinstance(out, tuple):     # XCiT returns a tuple in the official wrapper
                 out = out[0]
             output = torch.cat((output, out))
             start_idx = end_idx
@@ -86,22 +87,26 @@ class DINOLoss(nn.Module):
         self.center_momentum = center_momentum
         self.ncrops = ncrops
         self.register_buffer("center", torch.zeros(1, out_dim))
+        # warm up the teacher temperature: a too-high temp collapses training early
         self.teacher_temp_schedule = np.concatenate((
             np.linspace(warmup_teacher_temp, teacher_temp, warmup_teacher_temp_epochs),
             np.ones(nepochs - warmup_teacher_temp_epochs) * teacher_temp,
         ))
 
     def forward(self, student_output, teacher_output, epoch):
+        # student: divide by temperature, split per crop (all crops)
         student_out = (student_output / self.student_temp).chunk(self.ncrops)
+
+        # teacher: center then sharpen, softmax, stop-gradient; only the 2 global crops
         temp = self.teacher_temp_schedule[epoch]
         teacher_out = F.softmax((teacher_output - self.center) / temp, dim=-1)
         teacher_out = teacher_out.detach().chunk(2)
 
         total_loss, n_terms = 0, 0
-        for iq, q in enumerate(teacher_out):
-            for v in range(len(student_out)):
+        for iq, q in enumerate(teacher_out):          # over teacher global views
+            for v in range(len(student_out)):         # over all student views
                 if v == iq:
-                    continue
+                    continue                          # skip same-view pairs
                 loss = torch.sum(-q * F.log_softmax(student_out[v], dim=-1), dim=-1)
                 total_loss += loss.mean()
                 n_terms += 1
@@ -118,7 +123,7 @@ class DINOLoss(nn.Module):
         else:
             batch_center = batch_center / len(teacher_output)
         self.center = self.center * self.center_momentum \
-            + batch_center * (1 - self.center_momentum)
+            + batch_center * (1 - self.center_momentum)           # EMA of raw teacher logits
 
 
 def train_one_epoch(student, teacher, dino_loss, data_loader, optimizer,
@@ -131,18 +136,19 @@ def train_one_epoch(student, teacher, dino_loss, data_loader, optimizer,
                 g["weight_decay"] = wd_schedule[it_global]
 
         images = [im.cuda(non_blocking=True) for im in images]
-        teacher_output = teacher(images[:2])
-        student_output = student(images)
+        teacher_output = teacher(images[:2])   # only the 2 global views
+        student_output = student(images)        # all crops
         loss = dino_loss(student_output, teacher_output, epoch)
 
         optimizer.zero_grad()
         loss.backward()
         clip_gradients(student, clip=3.0)
-        cancel_last_layer_grads(epoch, student, freeze_last_layer=1)
+        cancel_last_layer_grads(epoch, student, freeze_last_layer=1)  # freeze head 1st epoch
         optimizer.step()
 
+        # EMA teacher update (momentum encoder); no backprop through teacher
         with torch.no_grad():
-            m = momentum_schedule[it_global]
+            m = momentum_schedule[it_global]    # cosine 0.996 -> 1
             for ps, pt in zip(student.parameters(), teacher.parameters()):
                 pt.data.mul_(m).add_((1 - m) * ps.detach().data)
 
