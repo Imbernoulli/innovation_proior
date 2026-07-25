@@ -1,4 +1,4 @@
-The canonical name for this method is laser population inversion. It is the core physical mechanism that turns an ordinary excited medium into a coherent optical oscillator, and it must be understood as a balance among several distinct processes rather than as a declaration that "atoms are excited and therefore emit light." I will describe the mechanism from the microscopic interaction upward, explain why thermal equilibrium cannot lase, derive the inversion condition, connect it to cavity feedback and threshold, and then verify the entire picture with a compact numerical simulation.
+The canonical name for this method is laser population inversion. It is the core physical mechanism that turns an ordinary excited medium into a coherent optical oscillator, and it must be understood as a balance among several distinct processes rather than as a declaration that "atoms are excited and therefore emit light." I will describe the mechanism from the microscopic interaction upward, explain why thermal equilibrium cannot lase, derive the inversion condition, connect it to cavity feedback and threshold, and then close with the round-trip threshold condition and the causal chain that together state exactly when the device turns on.
 
 I start with the simplest light-matter bookkeeping: a two-level atomic transition with lower state 1 and upper state 2, separated by energy h nu. Einstein's radiation theory identifies three independent processes. First, an atom in the upper state can decay spontaneously with rate A21, emitting a photon in a random direction and phase; this is the glow of a lamp, not a laser. Second, radiation already present at frequency nu can drive an atom from the lower state upward; this stimulated absorption removes one photon from the mode and has rate N1 B12 rho(nu), where rho(nu) is the radiation energy density and B12 is the absorption coefficient. Third, the same radiation can drive an upper atom downward; this stimulated emission adds one photon to the same mode with rate N2 B21 rho(nu). The last two processes are the crucial pair because both scale with the field already present, so they alone can amplify or attenuate a coherent wave.
 
@@ -14,75 +14,24 @@ It is worth emphasizing why this is not merely a recombination story. Recombinat
 
 The observable signatures of this mechanism are exactly those seen in real lasers: narrowband output near the atomic transition frequency, strong directionality along the cavity axis, a clear threshold in pump power below which the output is weak and broad and above which it becomes bright and sharply peaked, and a spatial mode determined by the resonator geometry. All of these follow from the interplay between population inversion and cavity feedback.
 
-The following Python script implements a minimal numerical illustration. It defines a two-level rate-equation model with a pump term, stimulated emission and absorption proportional to the cavity photon number, and spontaneous emission. It then evolves the photon number and the inversion through many round trips inside a two-mirror cavity. By toggling the pump strength, one can see the qualitative difference between below-threshold behavior, where the field decays, and above-threshold behavior, where the field grows and saturates. The script also explicitly checks the threshold gain condition and prints whether the chosen parameters place the system above or below threshold.
+The whole causal picture compresses into the round-trip threshold condition itself and the chain of necessary steps it closes. I state both exactly, with no numerical illustration standing between the derivation and the result, because the mechanism is complete as an analytic statement: a sign condition on the stimulated rates, a round-trip balance on the cavity, and nothing else is needed to say when the device turns on.
 
-```python
-import numpy as np
-
-# Two-level laser rate-equation illustration with cavity feedback.
-# Parameters are chosen for qualitative clarity, not for a specific real laser.
-A21 = 1.0          # spontaneous decay rate (upper -> lower)
-B12 = 0.02         # stimulated absorption coefficient
-B21 = 0.02         # stimulated emission coefficient (nondegenerate transition)
-N_total = 1000.0   # total number of active atoms
-c = 1.0            # speed of light in the medium (set to 1 for simplicity)
-L = 1.0            # active medium length
-R1 = 0.95          # mirror 1 intensity reflectivity
-R2 = 0.95          # mirror 2 intensity reflectivity
-alpha_loss = 0.05  # distributed loss coefficient per unit length
-gamma_pump = 0.0   # pump rate (will be varied)
-
-# Threshold gain coefficient from round-trip balance.
-g_th = alpha_loss + (1.0 / (2.0 * L)) * np.log(1.0 / (R1 * R2))
-print(f"Threshold gain coefficient g_th = {g_th:.4f}")
-
-def simulate(gamma_pump, n_photons_init=1.0, n_upper_init=10.0, n_round_trips=500, dt=0.01):
-    """Evolve photon number and upper population through round trips."""
-    n_photons = n_photons_init
-    n_upper = n_upper_init
-    n_lower = N_total - n_upper
-    history = [n_photons]
-
-    for _ in range(n_round_trips):
-        # Continuous-time rate steps over one round-trip time 2L/c.
-        steps = int((2.0 * L / c) / dt)
-        for _ in range(steps):
-            rho = n_photons  # energy density proxy proportional to photon number
-            stim_emission = B21 * n_upper * rho
-            stim_absorption = B12 * n_lower * rho
-            spontaneous = A21 * n_upper
-
-            dn_upper = (-stim_emission + stim_absorption - spontaneous
-                        + gamma_pump * n_lower)
-            # Photons gained by stimulated emission; spontaneous photons seed weakly.
-            dn_photons = stim_emission - stim_absorption + 0.05 * spontaneous
-
-            n_upper += dn_upper * dt
-            n_photons += dn_photons * dt
-            n_photons = max(n_photons, 0.0)
-            n_upper = max(n_upper, 0.0)
-            n_upper = min(n_upper, N_total)
-            n_lower = N_total - n_upper
-
-        # Apply cavity round-trip loss and mirror feedback.
-        n_photons *= R1 * R2 * np.exp(-2.0 * alpha_loss * L)
-        history.append(n_photons)
-
-    return np.array(history)
-
-# Below threshold: weak pump, field decays.
-print("\n--- Below threshold ---")
-hist_low = simulate(gamma_pump=0.5)
-print(f"Initial photons: {hist_low[0]:.2e}, final photons: {hist_low[-1]:.2e}")
-
-# Above threshold: strong pump creates inversion and sustained oscillation.
-print("\n--- Above threshold ---")
-hist_high = simulate(gamma_pump=8.0)
-print(f"Initial photons: {hist_high[0]:.2e}, final photons: {hist_high[-1]:.2e}")
-
-print("\nInterpretation: a weak pump leaves absorption dominant, so the seed field dies.")
-print("A strong pump creates population inversion; stimulated emission exceeds absorption,")
-print("and cavity feedback returns the growing mode through the gain medium each round trip.")
+```text
+R1 R2 exp(2 (g_th - alpha_loss) L) = 1
+g_th = alpha_loss + (1 / (2 L)) ln(1 / (R1 R2)).
 ```
+
+That is the final artifact: the pump maintains inversion until the gain coefficient reaches `g_th`, and the whole mechanism is this chain, each link necessary and none sufficient on its own,
+
+```text
+external pump
+  -> nonthermal upper-state population
+  -> stimulated emission exceeds stimulated absorption
+  -> optical resonator feeds the same mode back through the gain medium
+  -> round-trip gain reaches threshold
+  -> coherent self-sustained optical amplification
+```
+
+and it is this chain, not a recombination-driven glow, that produces narrowband, directional, threshold-bearing coherent light.
 
 In summary, laser population inversion is the mechanism by which a pumped active medium is placed in a nonthermal state where stimulated emission outcompetes stimulated absorption at a selected transition, and an optical resonator feeds that coherent field back through the medium until the round-trip gain matches the round-trip loss. The threshold condition connects the microscopic inversion to the macroscopic cavity parameters, and the resulting output is coherent, directional, and spectrally narrow rather than an ordinary recombination glow.
