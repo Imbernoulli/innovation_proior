@@ -27,7 +27,7 @@ class Layer:
     """Fully-connected layer with per-unit dropout and a max-norm weight constraint."""
     def __init__(self, n_in, n_out, drop_rate=0.5, max_sq_norm=15.0, last=False):
         self.W = np.random.randn(n_in, n_out) * 0.01
-        self.b = np.zeros(n_out) + (0.0 if last else 1.0)
+        self.b = np.zeros(n_out) + (0.0 if last else 1.0)  # positive bias keeps ReLU units alive
         self.drop_rate = 0.0 if last else drop_rate
         self.keep_prob = 1.0 - self.drop_rate
         self.max_sq_norm = max_sq_norm
@@ -43,16 +43,16 @@ class Layer:
             return a
         if train:
             self.mask = (np.random.rand(*a.shape) > self.drop_rate).astype(a.dtype)
-            a = a * self.mask
+            a = a * self.mask                  # thinned subnetwork
         else:
-            a = a * self.keep_prob
+            a = a * self.keep_prob             # mean network scale
         return a
 
     def backward(self, grad_a):
         if not self.last:
             if self.mask is not None:
-                grad_a = grad_a * self.mask
-            grad_a = grad_a * (self.z > 0)
+                grad_a = grad_a * self.mask    # same mask as the forward pass
+            grad_a = grad_a * (self.z > 0)     # ReLU gate
         self.gW = self.x.T @ grad_a
         self.gb = grad_a.sum(axis=0)
         return grad_a @ self.W.T
@@ -64,7 +64,7 @@ class Layer:
         scale = np.ones_like(sq)
         too_large = sq > self.max_sq_norm
         scale[too_large] = np.sqrt(self.max_sq_norm / sq[too_large])
-        self.W *= scale
+        self.W *= scale                        # project hidden-unit incoming weights
 
 
 class Net:
@@ -98,7 +98,7 @@ class Net:
 
 
 def lr_schedule(ep, eps0=10.0, f=0.998):
-    return eps0 * (f ** ep)
+    return eps0 * (f ** ep)                          # large initial rate, geometric decay
 
 def momentum_schedule(ep, p_i=0.5, p_f=0.99, T=500):
     return (ep / T) * p_f + (1 - ep / T) * p_i if ep < T else p_f
@@ -109,7 +109,7 @@ def train(net, X, Y, epochs=3000, batch=100):
     vb = [np.zeros_like(L.b) for L in net.layers]
     for ep in range(epochs):
         mom = momentum_schedule(ep)
-        lr = lr_schedule(ep) * (1 - mom)
+        lr  = lr_schedule(ep) * (1 - mom)
         for i in range(0, len(X), batch):
             xb, yb = X[i:i+batch], Y[i:i+batch]
             probs = net.forward(xb, train=True)
@@ -117,7 +117,6 @@ def train(net, X, Y, epochs=3000, batch=100):
             for k, L in enumerate(net.layers):
                 vW[k] = mom * vW[k] - lr * L.gW
                 vb[k] = mom * vb[k] - lr * L.gb
-                L.W += vW[k]
-                L.b += vb[k]
+                L.W += vW[k]; L.b += vb[k]
                 L.after_update()
 ```
