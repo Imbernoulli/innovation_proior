@@ -18,7 +18,7 @@ In this edit surface a few places need care, and the harness pins conventions I 
 
 ```python
 class AdversarialTrainer:
-    """MART (Wang et al., 2020)."""
+    """MART: misclassification-aware adversarial training."""
 
     def __init__(self, model, eps, alpha, attack_steps, num_classes, **kwargs):
         self.model = model
@@ -29,7 +29,7 @@ class AdversarialTrainer:
         self.beta = 6.0  # MART regularization weight
 
     def train_step(self, images, labels, optimizer):
-        # Inner max: strong CE-PGD seeded with a small random nudge (official mart.py).
+        # Inner max: strong CE-PGD seeded with a small random nudge.
         self.model.eval()
         adv_images = images.detach() + 0.001 * torch.randn_like(images)
         adv_images = torch.clamp(adv_images, 0.0, 1.0)
