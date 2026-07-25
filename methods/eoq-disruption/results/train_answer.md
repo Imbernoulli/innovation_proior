@@ -10,15 +10,19 @@ For a closed form, EOQD drops the exponential term, which is small whenever the 
 import math
 
 def cycle_buffer_constant(lam, psi):
-    """A0 = lambda / (psi (lambda+psi)): disruption buffer in expected cycle time."""
+    """A0 = lambda / (psi (lambda+psi)): expected wait-weighting the disruption
+    adds to the cycle. Zero when lambda=0 (no disruptions)."""
     return lam / (psi * (lam + psi))
 
 def expected_cycle_length(Q, D, lam, psi):
+    """E[T] = Q/D + A0 (1 - e^{-(lambda+psi) Q/D}). Depletion time plus the
+    expected extra wait when the supplier is down at reorder."""
     A0 = cycle_buffer_constant(lam, psi)
     return Q / D + A0 * (1.0 - math.exp(-(lam + psi) * Q / D))
 
 def cost_rate(Q, D, F, a, h, pi, lam, psi):
-    """Exact long-run average cost per unit time via renewal-reward."""
+    """Exact long-run average cost per unit time via renewal-reward:
+    pi*D + (F + a Q + h Q^2/2D - pi Q) / E[T]. Quasiconvex in Q."""
     ET = expected_cycle_length(Q, D, lam, psi)
     return pi * D + (F + a * Q + h * Q * Q / (2.0 * D) - pi * Q) / ET
 
@@ -41,7 +45,10 @@ def optimize_exact(D, F, a, h, pi, lam, psi, lo=1e-9, hi=None, tol=1e-9):
     return Q, cost_rate(Q, D, F, a, h, pi, lam, psi)
 
 def approximate_order_quantity(D, F, a, h, pi, lam, psi):
-    """Closed-form EOQD approximation; reduces to sqrt(2FD/h) when lambda=0."""
+    """Tight closed form. Drop e^{-(lambda+psi)Q/D}: E[T] ~ Q/D + A0,
+    so the first-order condition is the quadratic
+        (h/2D) Q^2 + (h A0) Q + ((a - pi) A0 D - F) = 0.
+    Positive root; reduces to sqrt(2FD/h) when lambda=0."""
     A0 = cycle_buffer_constant(lam, psi)
     qa = h / (2.0 * D)
     qb = h * A0
@@ -50,7 +57,7 @@ def approximate_order_quantity(D, F, a, h, pi, lam, psi):
     return (-qb + math.sqrt(disc)) / (2.0 * qa)
 
 def classical_eoq(D, F, h):
-    """Harris EOQ."""
+    """Harris EOQ: sqrt(2 F D / h)."""
     return math.sqrt(2.0 * F * D / h)
 ```
 
