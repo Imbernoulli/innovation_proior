@@ -59,9 +59,12 @@ allowed set.) So `dp[15] = dp[15^3] + dp[15^5] + dp[15^15] = dp[12] + dp[10] + d
 Thus `dp[15] = 1 + 1 + 1 = 3`. That matches the stated sample answer `3`, and the three rosters are
 exactly `{0,1,2,3}`, `{2,3}+{0,1}`, `{1,3}+{0,2}`. The derivation checks out on paper.
 
-**First implementation — and immediately a trace, because counting code lies.** Here is my first cut of
-the core. I was sloppy on purpose-of-record about which submasks to allow, writing the recurrence to
-sum over *every* allowed squad that is a submask, forgetting the "must contain `low`" guard:
+**First implementation — and immediately a trace, because counting code lies.** The recurrence above has
+one condition doing all the work: `sub` must contain `low`. That single-line guard is exactly the kind
+of detail that's easy to lose when a derivation on paper turns into a loop over submasks — "sum over
+allowed submasks" is what the code reads like without it, and it would still compile and run. I don't
+trust that the guard survived the transcription until I've traced a case built to expose its absence,
+so here is the recurrence with the guard left out, the version I'd end up with if I weren't careful:
 
 ```
 // BUGGY v1
@@ -88,8 +91,8 @@ the partition `{0}+{1}` being tallied *twice*: once as "first peel `{1}` (the `s
 partition the rest `{0}`" and once as "first peel `{0}` (the `sub=1` branch), then partition `{1}`".
 Same unordered roster `{0}+{1}`, counted under both orders. This is exactly the `k!`-overcount the
 canonical rule is meant to kill. The defect is precise: by allowing *any* submask `sub` to be the
-"next block", I let the block order float freely. The fix is the guard I derived and then forgot —
-the next block must contain `mask`'s lowest set bit, so the block covering the lowest uncovered
+"next block", I let the block order float freely. The fix is exactly the guard the derivation calls
+for — the next block must contain `mask`'s lowest set bit, so the block covering the lowest uncovered
 employee is pinned down first and the order is forced. Adding `if (!(sub & low)) continue;` with
 `low = mask & (-mask)`:
 
