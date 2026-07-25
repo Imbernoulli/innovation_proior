@@ -11,12 +11,14 @@ import numpy as np
 
 
 def weighted_least_squares(A, y, w):
+    # Variable update: argmin_x sum_i w_i (A_i x - y_i)^2, closed form.
     W = np.sqrt(w)[:, None]
     Aw, yw = A * W, y * np.sqrt(w)
     return np.linalg.solve(Aw.T @ Aw, Aw.T @ yw)
 
 
 def robust_weight_update(r2, mu, barc2):
+    """Closed-form TLS weight update for squared residuals."""
     th_out = (mu + 1.0) / mu * barc2
     th_in = mu / (mu + 1.0) * barc2
     w = np.empty_like(r2, dtype=float)
@@ -38,6 +40,7 @@ def are_binary_weights(w, threshold=1e-12):
 
 
 def continuation_robust_fit(A, y, barc2, factor=1.4, max_iter=1000, cost_threshold=0.0):
+    """GNC-TLS port of the weighted-solver implementation."""
     w = np.ones(A.shape[0])
     x = weighted_least_squares(A, y, w)
     r2 = (A @ x - y) ** 2
