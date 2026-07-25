@@ -15,61 +15,63 @@ def batchnorm_forward(x, gamma, beta, bn_param):
     momentum = bn_param.get('momentum', 0.9)
     N, D = x.shape
     running_mean = bn_param.get('running_mean', np.zeros(D, dtype=x.dtype))
-    running_var = bn_param.get('running_var', np.zeros(D, dtype=x.dtype))
+    running_var  = bn_param.get('running_var',  np.zeros(D, dtype=x.dtype))
 
     if mode == 'train':
-        mu = 1.0 / N * np.sum(x, axis=0)
-        xmu = x - mu
-        carre = xmu ** 2
-        var = 1.0 / N * np.sum(carre, axis=0)
+        mu      = 1.0 / N * np.sum(x, axis=0)
+        xmu     = x - mu
+        carre   = xmu ** 2
+        var     = 1.0 / N * np.sum(carre, axis=0)   # biased batch variance
         sqrtvar = np.sqrt(var + eps)
-        invvar = 1.0 / sqrtvar
-        va2 = xmu * invvar
-        va3 = gamma * va2
-        out = va3 + beta
+        invvar  = 1.0 / sqrtvar
+        va2     = xmu * invvar                 # x_hat
+        va3     = gamma * va2
+        out     = va3 + beta                   # y = gamma*x_hat + beta
         running_mean = momentum * running_mean + (1.0 - momentum) * mu
-        running_var = momentum * running_var + (1.0 - momentum) * var
+        running_var  = momentum * running_var  + (1.0 - momentum) * var
         cache = (mu, xmu, carre, var, sqrtvar, invvar, va2, va3,
                  gamma, beta, x, bn_param)
     elif mode == 'test':
         xhat = (x - running_mean) / np.sqrt(running_var + eps)
-        out = gamma * xhat + beta
+        out  = gamma * xhat + beta
         cache = (running_mean, running_var, gamma, beta, bn_param)
     else:
         raise ValueError('Invalid forward batchnorm mode "%s"' % mode)
 
     bn_param['running_mean'] = running_mean
-    bn_param['running_var'] = running_var
+    bn_param['running_var']  = running_var
     return out, cache
 
 
 def batchnorm_backward(dout, cache):
+    """Staged backward, mirroring the per-path chain rule."""
     mu, xmu, carre, var, sqrtvar, invvar, va2, va3, gamma, beta, x, bn_param = cache
     eps = bn_param.get('eps', 1e-5)
     N, D = dout.shape
 
-    dbeta = np.sum(dout, axis=0)
-    dva2 = gamma * dout
+    dbeta  = np.sum(dout, axis=0)
+    dva2   = gamma * dout
     dgamma = np.sum(va2 * dout, axis=0)
 
-    dxmu = invvar * dva2
+    dxmu    = invvar * dva2
     dinvvar = np.sum(xmu * dva2, axis=0)
     dsqrtvar = -1.0 / (sqrtvar ** 2) * dinvvar
-    dvar = 0.5 * (var + eps) ** (-0.5) * dsqrtvar
-    dcarre = 1.0 / N * np.ones(carre.shape) * dvar
-    dxmu += 2 * xmu * dcarre
+    dvar    = 0.5 * (var + eps) ** (-0.5) * dsqrtvar
+    dcarre  = 1.0 / N * np.ones(carre.shape) * dvar
+    dxmu   += 2 * xmu * dcarre
 
-    dx = dxmu
-    dmu = -np.sum(dxmu, axis=0)
-    dx += 1.0 / N * np.ones(dout.shape) * dmu
+    dx   = dxmu
+    dmu  = -np.sum(dxmu, axis=0)
+    dx  += 1.0 / N * np.ones(dout.shape) * dmu
     return dx, dgamma, dbeta
 
 
 def batchnorm_backward_alt(dout, cache):
+    """Algebraically collapsed backward (single-line dx)."""
     mu, xmu, carre, var, sqrtvar, invvar, va2, va3, gamma, beta, x, bn_param = cache
     eps = bn_param.get('eps', 1e-5)
     N, D = dout.shape
-    dbeta = np.sum(dout, axis=0)
+    dbeta  = np.sum(dout, axis=0)
     dgamma = np.sum((x - mu) * (var + eps) ** (-0.5) * dout, axis=0)
     dx = (1.0 / N) * gamma * (var + eps) ** (-0.5) * (
             N * dout
@@ -79,28 +81,29 @@ def batchnorm_backward_alt(dout, cache):
 
 
 def spatial_batchnorm_forward(x, gamma, beta, bn_param):
+    """Convolutional BN: pool statistics per channel over batch + space."""
     N, C, H, W = x.shape
     mode = bn_param['mode']
     eps = bn_param.get('eps', 1e-5)
     momentum = bn_param.get('momentum', 0.9)
     running_mean = bn_param.get('running_mean', np.zeros(C, dtype=x.dtype))
-    running_var = bn_param.get('running_var', np.zeros(C, dtype=x.dtype))
+    running_var  = bn_param.get('running_var',  np.zeros(C, dtype=x.dtype))
 
     if mode == 'train':
-        mu = (1.0 / (N * H * W) * np.sum(x, axis=(0, 2, 3))).reshape(1, C, 1, 1)
-        var = (1.0 / (N * H * W) * np.sum((x - mu) ** 2, axis=(0, 2, 3))).reshape(1, C, 1, 1)
+        mu  = (1.0 / (N*H*W) * np.sum(x, axis=(0, 2, 3))).reshape(1, C, 1, 1)
+        var = (1.0 / (N*H*W) * np.sum((x - mu) ** 2, axis=(0, 2, 3))).reshape(1, C, 1, 1)
         xhat = (x - mu) / np.sqrt(var + eps)
-        out = gamma.reshape(1, C, 1, 1) * xhat + beta.reshape(1, C, 1, 1)
+        out  = gamma.reshape(1, C, 1, 1) * xhat + beta.reshape(1, C, 1, 1)
         running_mean = momentum * running_mean + (1.0 - momentum) * np.squeeze(mu)
-        running_var = momentum * running_var + (1.0 - momentum) * np.squeeze(var)
+        running_var  = momentum * running_var  + (1.0 - momentum) * np.squeeze(var)
         bn_param['running_mean'] = running_mean
-        bn_param['running_var'] = running_var
+        bn_param['running_var']  = running_var
         cache = (mu, var, x, xhat, gamma, beta, bn_param)
     elif mode == 'test':
-        mu = running_mean.reshape(1, C, 1, 1)
+        mu  = running_mean.reshape(1, C, 1, 1)
         var = running_var.reshape(1, C, 1, 1)
         xhat = (x - mu) / np.sqrt(var + eps)
-        out = gamma.reshape(1, C, 1, 1) * xhat + beta.reshape(1, C, 1, 1)
+        out  = gamma.reshape(1, C, 1, 1) * xhat + beta.reshape(1, C, 1, 1)
         cache = (mu, var, x, xhat, gamma, beta, bn_param)
     else:
         raise ValueError('Invalid forward batchnorm mode "%s"' % mode)
@@ -113,7 +116,7 @@ def spatial_batchnorm_backward(dout, cache):
     eps = bn_param.get('eps', 1e-5)
     gamma = gamma.reshape(1, C, 1, 1)
 
-    dbeta = np.sum(dout, axis=(0, 2, 3))
+    dbeta  = np.sum(dout, axis=(0, 2, 3))
     dgamma = np.sum(dout * xhat, axis=(0, 2, 3))
 
     Nt = N * H * W
