@@ -12,132 +12,20 @@ The proof is a compression argument. Build the canonical decision tree of $F|_\r
 
 With the lemma in hand, the lower bound assembles cleanly. Start with a depth-$k$ circuit of size $S$ computing parity. A preliminary restriction at $p_0=1/100$ chops every bottom gate to fan-in at most $w=20\log S$: a gate with larger fan-in survives unforced with probability at most $((1+p_0)/2)^L\le 0.505^w\ll 1/S$, so a union bound kills all initially wide gates. Then repeat $k-2$ times: apply a fresh restriction with star-fraction $\sigma=1/(20w)$ and switching target $s=w$. Each bottom width-$w$ block fails to collapse to a depth-$w$ decision tree with probability $(10\,\sigma w)^w=(1/2)^{20\log S}=S^{-20}$, so a union bound over the at most $S$ blocks switches all of them simultaneously. Each switched block becomes a width-$w$ CNF, the adjacent $\vee$-levels merge, and depth drops by one while bottom fan-in stays bounded by $w$. After $k-2$ rounds the circuit is depth $2$ on roughly $m=n/(400\log S)^{k-2}$ live variables and still computes $\pm\mathrm{PARITY}_m$. Lupanov’s base case forces bottom fan-in at least $m$ and size at least $2^{m-1}$ for any depth-$2$ parity circuit, so $20\log S=w\ge m$. Hence $(400\log S)^{k-1}\gtrsim n$, giving $\log S\ge\Omega(n^{1/(k-1)})$ and $S\ge 2^{\Omega(n^{1/(k-1)})}$. For polynomial size, where $\log S=O(\log n)$, this forces $k\ge\Omega(\log n/\log\log n)$, which tends to infinity; therefore no constant depth with polynomial size can compute parity, and $\mathrm{PARITY}\notin AC^0$. This is tight up to constants in the exponent, matching the known depth-$k$ construction of size roughly $n\,2^{n^{1/(k-1)}}$.
 
-The following Python script illustrates the two phenomena on small instances: it verifies that parity remains parity under any restriction, and it empirically checks that random restrictions collapse small-width DNFs with failure probability consistent with the switching bound.
-
-```python
-import itertools
-import random
-
-
-def random_restriction(n, p):
-    rho = []
-    for _ in range(n):
-        u = random.random()
-        if u < p:
-            rho.append('*')
-        elif u < (1 + p) / 2:
-            rho.append(0)
-        else:
-            rho.append(1)
-    return rho
-
-
-def random_dnf_table(n, w, num_terms):
-    table = 0
-    for assignment in range(1 << n):
-        value = 0
-        for _ in range(num_terms):
-            term_value = 1
-            vars = random.sample(range(n), w)
-            for v in vars:
-                lit = random.choice([0, 1])
-                if ((assignment >> v) & 1) != lit:
-                    term_value = 0
-                    break
-            if term_value:
-                value = 1
-                break
-        if value:
-            table |= (1 << assignment)
-    return table
-
-
-def apply_restriction(table, n, rho):
-    free = [i for i, v in enumerate(rho) if v == '*']
-    m = len(free)
-    new_table = 0
-    for x in range(1 << m):
-        assignment = 0
-        for j, var in enumerate(free):
-            if (x >> j) & 1:
-                assignment |= (1 << var)
-        for i, v in enumerate(rho):
-            if v != '*':
-                assignment |= (v << i)
-        if (table >> assignment) & 1:
-            new_table |= (1 << x)
-    return new_table, m
-
-
-def parity_table(n):
-    table = 0
-    for a in range(1 << n):
-        if bin(a).count('1') % 2 == 1:
-            table |= (1 << a)
-    return table
-
-
-def dt_depth(table, n, memo=None):
-    if memo is None:
-        memo = {}
-    if n == 0:
-        return 0
-    const = (table == 0) or (table == (1 << (1 << n)) - 1)
-    if const:
-        return 0
-    key = (table, n)
-    if key in memo:
-        return memo[key]
-    best = n
-    for i in range(n):
-        t0, t1 = 0, 0
-        for a in range(1 << n):
-            bit = (table >> a) & 1
-            low = a & ((1 << i) - 1)
-            high = a >> (i + 1)
-            b = low | (high << i)
-            if (a >> i) & 1:
-                t1 |= (bit << b)
-            else:
-                t0 |= (bit << b)
-        d = 1 + max(dt_depth(t0, n - 1, memo), dt_depth(t1, n - 1, memo))
-        if d < best:
-            best = d
-    memo[key] = best
-    return best
-
-
-def empirical_switch_failure(n, w, p, d, trials, num_terms):
-    fail = 0
-    for _ in range(trials):
-        table = random_dnf_table(n, w, num_terms)
-        rho = random_restriction(n, p)
-        restricted, m = apply_restriction(table, n, rho)
-        if m == 0:
-            continue
-        if dt_depth(restricted, m) > d:
-            fail += 1
-    return fail / trials
-
-
-if __name__ == "__main__":
-    random.seed(0)
-    n = 6
-    parity = parity_table(n)
-    for _ in range(200):
-        rho = random_restriction(n, 0.5)
-        restricted, m = apply_restriction(parity, n, rho)
-        if m == 0:
-            continue
-        expected = parity_table(m)
-        same = restricted == expected
-        neg = restricted == ((1 << (1 << m)) - 1) ^ expected
-        assert same or neg
-    print("Parity restriction invariance verified for small instances.")
-
-    n, w, p, d, num_terms = 10, 3, 0.03, 2, 8
-    trials = 1000
-    emp = empirical_switch_failure(n, w, p, d, trials, num_terms)
-    bound = (10 * p * w) ** d
-    print(f"n={n}, w={w}, p={p}, d={d}: empirical failure={emp:.4f}, bound={bound:.4f}")
-```
+There is no algorithm to hand over here — the deliverable is the bound itself, and it is worth isolating in the clean form a peer would want to cite. Writing $S(n,k)$ for the minimum size of a depth-$k$ unbounded-fan-in $\{\wedge,\vee,\neg\}$ circuit computing $\mathrm{PARITY}_n$, the argument above gives
+$$
+S(n,k)\ \ge\ 2^{\Omega\left(n^{1/(k-1)}\right)},
+$$
+with an implicit constant that depends only on the absolute constants fixed inside the switching lemma, not on $k$ itself. Equivalently, since polynomial size means $\log S=O(\log n)$, any polynomial-size circuit for parity is forced to depth
+$$
+k\ \ge\ \frac{\log n}{c+\log\log n}
+$$
+for some absolute constant $c$; because this quantity diverges as $n\to\infty$, no constant depth suffices at polynomial size, so $\mathrm{PARITY}\notin AC^0$. This is tight up to the constant hidden in the exponent, matching the known depth-$k$ circuits for parity of size roughly $n\,2^{n^{1/(k-1)}}$. The single reusable tool underneath both statements deserves to be isolated too, since it is what actually does the work in every one of the $k-2$ rounds: for a width-$w$ DNF $F$ on $n$ variables and a uniformly random restriction $\rho$ with exactly $\sigma n$ stars, $\sigma\le 1/5$,
+$$
+\Pr_\rho\big[\,\mathrm{DTdepth}(F|_\rho)>d\,\big]\ \le\ (10\,\sigma w)^{d}\qquad\text{for all }0\le d\le \sigma n,
+$$
+and, in the sharper independent-$R_p$ minterm form that the induction actually proves, an AND of ORs of fan-in at most $t$ hit by $\rho\in R_p$ fails to switch to an OR of ANDs of width less than $s$ with probability at most $\alpha^s$, where $\alpha$ is the unique positive root of
+$$
+\Big(1+\tfrac{4p}{(1+p)\alpha}\Big)^{t}=\Big(1+\tfrac{2p}{(1+p)\alpha}\Big)^{t}+1,\qquad \alpha=\frac{2}{\ln\phi}\,pt+O(p^2t)<5pt,\ \ \phi=\frac{1+\sqrt5}{2}.
+$$
+It is this inequality — width in the exponent rather than size, no dependence at all on how large $F$ is, and an exact rather than an approximate switch — that makes the whole argument close: run it for $k-2$ rounds against a poly-size, depth-$k$ circuit, and what survives is a depth-$2$ circuit for $\pm\mathrm{PARITY}$ on too many variables to fit inside Lupanov's $2^{m-1}$ wall.
