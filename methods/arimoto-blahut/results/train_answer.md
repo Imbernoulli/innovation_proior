@@ -20,38 +20,39 @@ def _kl_rows_to_vec(Q, q):
     ratio[nz] = np.log(Q[nz] / q[np.where(nz)[1]])
     return (Q * ratio).sum(axis=1)
 
-def arimoto_blahut_capacity(Q, max_iter=1000, tol=1e-9):
+def blahut_arimoto_capacity(Q, max_iter=1000, tol=1e-9):
     """Capacity (bits) and capacity-achieving input of a DMC. Q[i,j] = P(y=j|x=i)."""
     N = Q.shape[0]
-    p = np.full(N, 1.0 / N)
+    p = np.full(N, 1.0 / N)                  # uniform, full-support start
     I_lower = 0.0
     for _ in range(max_iter):
-        q = p @ Q
-        d = _kl_rows_to_vec(Q, q)
-        I_lower = float((p * d).sum())
-        C_upper = float(d.max())
-        if C_upper - I_lower < tol:
+        q = p @ Q                            # induced output q = pQ
+        d = _kl_rows_to_vec(Q, q)            # D(Q_i || q) per input letter
+        I_lower = float((p * d).sum())       # mutual information I(p,Q), in nats
+        C_upper = float(d.max())             # certified upper bound on C
+        if C_upper - I_lower < tol:          # sandwich gap < tol  =>  C pinned
             break
-        p = p * np.exp(d)
-        p /= p.sum()
+        p = p * np.exp(d)                    # multiplicative reweight ...
+        p /= p.sum()                         # ... renormalized over the simplex
     return I_lower / np.log(2), p
 
-def arimoto_blahut_rate_distortion(p_x, dist, s, max_iter=1000, tol=1e-9):
-    """One R(D) point. p_x: source pmf; dist[x,xhat]=d(x,xhat); s>0 slope."""
+def blahut_arimoto_rate_distortion(p_x, dist, s, max_iter=1000, tol=1e-9):
+    """One R(D) point. p_x: source pmf; dist[x,xhat]=d(x,xhat); s>0 slope.
+    Returns (rate in bits, average distortion)."""
     Lhat = dist.shape[1]
-    p_x = p_x / p_x.sum()
-    W = np.exp(-s * dist)
+    p_x = p_x / p_x.sum()                       # normalize source weights
+    W = np.exp(-s * dist)                     # closeness reweighting exp(-s d)
     p_cond = np.tile(p_x, (Lhat, 1)).T
     p_cond /= p_cond.sum(axis=1, keepdims=True)
     D_prev = np.inf
     R = D = 0.0
     for _ in range(max_iter):
-        r = p_x @ p_cond
-        p_cond = r * W
+        r = p_x @ p_cond                      # marginal r = sum_x p(x) p(xhat|x)
+        p_cond = r * W                        # p(xhat|x) ~ r(xhat) exp(-s d)
         p_cond /= p_cond.sum(axis=1, keepdims=True)
         ratio = np.log(p_cond / r[None, :])
-        R = float((p_x[:, None] * p_cond * ratio).sum())
-        D = float((p_x[:, None] * p_cond * dist).sum())
+        R = float((p_x[:, None] * p_cond * ratio).sum())   # rate (nats)
+        D = float((p_x[:, None] * p_cond * dist).sum())    # average distortion
         if abs(D - D_prev) < tol:
             break
         D_prev = D
