@@ -75,8 +75,7 @@ Two families of approach are on the table before committing to one:
 
 Judged on hidden tests covering: all-positive rows, rows with negatives and zeros, the empty row
 (`n = 0`), a single stone (`n = 1`, possibly negative), alternating large/small values designed to
-mislead "take the larger end," and large `n = 2000` with values near `±10^9` (so totals can exceed
-the 32-bit range — totals can reach `~2*10^12` in magnitude).
+mislead "take the larger end," and large `n = 2000` with values near `±10^9`.
 
 ## Code framework
 
