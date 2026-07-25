@@ -9,7 +9,6 @@ After training, imputation is performed by running the generator on the noisy pa
 ```python
 import numpy as np
 import tensorflow.compat.v1 as tf
-
 tf.disable_v2_behavior()
 
 
@@ -19,86 +18,73 @@ def _xavier(shape):
 
 def gain(data_x, batch_size=128, hint_rate=0.9, alpha=100.0, iterations=10000):
     """Impute NaNs in data_x with GAIN. Returns a finite same-shape array."""
-    data_m = 1.0 - np.isnan(data_x).astype(np.float32)  # 1 = observed, 0 = missing
+    data_m = 1.0 - np.isnan(data_x).astype(np.float32)        # 1 = observed, 0 = missing
     no, dim = data_x.shape
     h_dim = dim
 
-    # min-max normalize columns to [0, 1] to match sigmoid output
+    # min-max normalize columns to [0,1] (matches sigmoid output)
     mn = np.nanmin(data_x, axis=0)
     rng = np.nanmax(data_x, axis=0) - mn + 1e-6
     norm_x = np.nan_to_num((data_x - mn) / rng, nan=0.0)
 
-    X = tf.placeholder(tf.float32, [None, dim])  # data (holes filled with noise)
-    M = tf.placeholder(tf.float32, [None, dim])  # mask
-    H = tf.placeholder(tf.float32, [None, dim])  # hint
+    X = tf.placeholder(tf.float32, [None, dim])   # data (holes filled with noise)
+    M = tf.placeholder(tf.float32, [None, dim])   # mask
+    H = tf.placeholder(tf.float32, [None, dim])   # hint
 
-    # Discriminator: completed vector concatenated with hint
-    D_W1 = tf.Variable(_xavier([dim * 2, h_dim]))
-    D_b1 = tf.Variable(tf.zeros([h_dim]))
-    D_W2 = tf.Variable(_xavier([h_dim, h_dim]))
-    D_b2 = tf.Variable(tf.zeros([h_dim]))
-    D_W3 = tf.Variable(_xavier([h_dim, dim]))
-    D_b3 = tf.Variable(tf.zeros([dim]))
+    # Discriminator vars: input = completed vector + hint (2d wide)
+    D_W1 = tf.Variable(_xavier([dim * 2, h_dim])); D_b1 = tf.Variable(tf.zeros([h_dim]))
+    D_W2 = tf.Variable(_xavier([h_dim, h_dim]));   D_b2 = tf.Variable(tf.zeros([h_dim]))
+    D_W3 = tf.Variable(_xavier([h_dim, dim]));     D_b3 = tf.Variable(tf.zeros([dim]))
     theta_D = [D_W1, D_W2, D_W3, D_b1, D_b2, D_b3]
 
-    # Generator: noise-filled partial vector concatenated with mask
-    G_W1 = tf.Variable(_xavier([dim * 2, h_dim]))
-    G_b1 = tf.Variable(tf.zeros([h_dim]))
-    G_W2 = tf.Variable(_xavier([h_dim, h_dim]))
-    G_b2 = tf.Variable(tf.zeros([h_dim]))
-    G_W3 = tf.Variable(_xavier([h_dim, dim]))
-    G_b3 = tf.Variable(tf.zeros([dim]))
+    # Generator vars: input = noise-filled partial vector + mask (2d wide)
+    G_W1 = tf.Variable(_xavier([dim * 2, h_dim])); G_b1 = tf.Variable(tf.zeros([h_dim]))
+    G_W2 = tf.Variable(_xavier([h_dim, h_dim]));   G_b2 = tf.Variable(tf.zeros([h_dim]))
+    G_W3 = tf.Variable(_xavier([h_dim, dim]));     G_b3 = tf.Variable(tf.zeros([dim]))
     theta_G = [G_W1, G_W2, G_W3, G_b1, G_b2, G_b3]
 
     def generator(x, m):
         inp = tf.concat([x, m], axis=1)
         h1 = tf.nn.relu(tf.matmul(inp, G_W1) + G_b1)
         h2 = tf.nn.relu(tf.matmul(h1, G_W2) + G_b2)
-        return tf.nn.sigmoid(tf.matmul(h2, G_W3) + G_b3)
+        return tf.nn.sigmoid(tf.matmul(h2, G_W3) + G_b3)      # value per coordinate, in [0,1]
 
     def discriminator(x, h):
         inp = tf.concat([x, h], axis=1)
         h1 = tf.nn.relu(tf.matmul(inp, D_W1) + D_b1)
         h2 = tf.nn.relu(tf.matmul(h1, D_W2) + D_b2)
-        return tf.nn.sigmoid(tf.matmul(h2, D_W3) + D_b3)
+        return tf.nn.sigmoid(tf.matmul(h2, D_W3) + D_b3)      # per-coordinate P(observed)
 
-    G_sample = generator(X, M)
-    Hat_X = X * M + G_sample * (1 - M)  # keep observed, fill holes
+    G_sample = generator(X, M)                  # X_bar (every coordinate)
+    Hat_X = X * M + G_sample * (1 - M)          # X_hat: keep observed, impute holes
     D_prob = discriminator(Hat_X, H)
 
-    # Discriminator loss: predict the mask componentwise
-    D_loss = -tf.reduce_mean(
-        M * tf.log(D_prob + 1e-8) + (1 - M) * tf.log(1.0 - D_prob + 1e-8)
-    )
-    # Generator adversarial loss: non-saturating on imputed slots
-    G_loss_adv = -tf.reduce_mean((1 - M) * tf.log(D_prob + 1e-8))
-    # Reconstruction loss on observed slots
-    MSE = tf.reduce_mean((M * X - M * G_sample) ** 2) / tf.reduce_mean(M)
+    D_loss = -tf.reduce_mean(M * tf.log(D_prob + 1e-8)
+                             + (1 - M) * tf.log(1.0 - D_prob + 1e-8))   # predict the mask
+    G_loss_adv = -tf.reduce_mean((1 - M) * tf.log(D_prob + 1e-8))       # non-saturating
+    MSE = tf.reduce_mean((M * X - M * G_sample) ** 2) / tf.reduce_mean(M)  # reconstruct observed
     G_loss = G_loss_adv + alpha * MSE
 
     D_solver = tf.train.AdamOptimizer().minimize(D_loss, var_list=theta_D)
     G_solver = tf.train.AdamOptimizer().minimize(G_loss, var_list=theta_G)
 
-    sess = tf.Session()
-    sess.run(tf.global_variables_initializer())
-
+    sess = tf.Session(); sess.run(tf.global_variables_initializer())
     for _ in range(iterations):
         idx = np.random.permutation(no)[:batch_size]
         X_mb, M_mb = norm_x[idx], data_m[idx]
-        Z_mb = np.random.uniform(0.0, 0.01, [batch_size, dim])
+        Z_mb = np.random.uniform(0.0, 0.01, [batch_size, dim])          # small noise in holes
         B_mb = (np.random.uniform(0.0, 1.0, [batch_size, dim]) < hint_rate).astype(np.float32)
-        H_mb = M_mb * B_mb
+        H_mb = M_mb * B_mb                                              # hint: reveal w.p. hint_rate
         X_mb = M_mb * X_mb + (1 - M_mb) * Z_mb
-        sess.run(D_solver, {X: X_mb, M: M_mb, H: H_mb})
-        sess.run(G_solver, {X: X_mb, M: M_mb, H: H_mb})
+        sess.run(D_solver, {X: X_mb, M: M_mb, H: H_mb})                 # (1) D step
+        sess.run(G_solver, {X: X_mb, M: M_mb, H: H_mb})                 # (2) G step
 
-    # Impute the full dataset
     Z = np.random.uniform(0.0, 0.01, [no, dim])
     X_full = data_m * norm_x + (1 - data_m) * Z
     imputed = sess.run(G_sample, {X: X_full, M: data_m})
-    imputed = data_m * norm_x + (1 - data_m) * imputed
-    imputed = imputed * rng + mn
-    for i in range(dim):
+    imputed = data_m * norm_x + (1 - data_m) * imputed                 # only fill holes
+    imputed = imputed * rng + mn                                       # denormalize
+    for i in range(dim):                                               # round near-categorical cols
         col = data_x[~np.isnan(data_x[:, i]), i]
         if len(np.unique(col)) < 20:
             imputed[:, i] = np.round(imputed[:, i])
