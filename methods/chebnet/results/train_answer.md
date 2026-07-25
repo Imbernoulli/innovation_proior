@@ -7,104 +7,108 @@ The method is ChebNet. It parametrizes the filter as a truncated Chebyshev expan
 ```python
 import numpy as np
 import scipy.sparse
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
+import tensorflow as tf
 
+# ---- graph.py ------------------------------------------------------------
 
-def normalized_laplacian(W):
-    """W: scipy.sparse weighted adjacency (symmetric). Returns L = I - D^{-1/2} W D^{-1/2}."""
-    d = np.array(W.sum(axis=1)).squeeze()
-    d_inv_sqrt = 1.0 / np.sqrt(d + 1e-12)
-    D_inv_sqrt = scipy.sparse.diags(d_inv_sqrt)
-    I = scipy.sparse.eye(W.shape[0], dtype=W.dtype)
-    return I - D_inv_sqrt @ W @ D_inv_sqrt
+def laplacian(W, normalized=True):
+    """Graph Laplacian. Normalized: L = I - D^{-1/2} W D^{-1/2} (symmetric, PSD)."""
+    d = W.sum(axis=0)
+    if not normalized:
+        D = scipy.sparse.diags(d.A.squeeze(), 0)
+        return D - W
+    d = 1 / np.sqrt(d + np.spacing(np.array(0, W.dtype)))
+    D = scipy.sparse.diags(d.A.squeeze(), 0)
+    I = scipy.sparse.identity(d.size, dtype=W.dtype)
+    return I - D * W * D
 
+def rescale_L(L, lmax=2):
+    """L_tilde = (2/lmax) L - I, mapping the spectrum into [-1, 1]."""
+    M, M = L.shape
+    I = scipy.sparse.identity(M, format='csr', dtype=L.dtype)
+    L = L * (2 / lmax)
+    L = L - I
+    return L
 
-def rescale_laplacian(L, lmax=2.0):
-    """Map spectrum of L into [-1, 1]: L_tilde = (2 / lmax) * L - I."""
-    return L * (2.0 / lmax) - scipy.sparse.eye(L.shape[0], dtype=L.dtype)
+def chebyshev(L, X, K):
+    """Stack T_k(L_tilde) X, k = 0..K-1, by the three-term recurrence. O(K|E|N)."""
+    M, N = X.shape
+    Xt = np.empty((K, M, N), L.dtype)
+    Xt[0, ...] = X                                    # T_0 X = X
+    if K > 1:
+        Xt[1, ...] = L.dot(X)                         # T_1 X = L_tilde X
+    for k in range(2, K):
+        Xt[k, ...] = 2 * L.dot(Xt[k-1, ...]) - Xt[k-2, ...]
+    return Xt
 
+# ---- models.py : the Chebyshev graph convolutional layer -----------------
 
-class ChebConv(nn.Module):
-    """One ChebNet layer: Fin -> Fout feature maps on a fixed graph."""
+class GraphConvNet:
 
-    def __init__(self, in_features, out_features, K):
-        super().__init__()
-        self.in_features = in_features
-        self.out_features = out_features
-        self.K = K
-        self.theta = nn.Parameter(torch.empty(K * in_features, out_features))
-        self.bias = nn.Parameter(torch.zeros(out_features))
-        nn.init.xavier_uniform_(self.theta)
+    def chebyshev5(self, x, L, Fout, K):
+        """Localized spectral filter, Fin -> Fout. x: N x M x Fin."""
+        N, M, Fin = x.get_shape()
+        N, M, Fin = int(N), int(M), int(Fin)
+        # Rescale the Laplacian and store it as a sparse tensor.
+        L = scipy.sparse.csr_matrix(L)
+        L = rescale_L(L, lmax=2)                       # L_tilde = L - I
+        L = L.tocoo()
+        indices = np.column_stack((L.row, L.col))
+        L = tf.SparseTensor(indices, L.data, L.shape)
+        L = tf.sparse_reorder(L)
+        # Chebyshev basis via the recurrence, directly on the sparse Laplacian.
+        x0 = tf.reshape(tf.transpose(x, perm=[1, 2, 0]), [M, Fin * N])   # M x Fin*N
+        x = tf.expand_dims(x0, 0)                                        # 1 x M x Fin*N
+        def concat(x, x_):
+            return tf.concat([x, tf.expand_dims(x_, 0)], axis=0)
+        if K > 1:
+            x1 = tf.sparse_tensor_dense_matmul(L, x0)                   # x_bar_1
+            x = concat(x, x1)
+        for k in range(2, K):
+            x2 = 2 * tf.sparse_tensor_dense_matmul(L, x1) - x0          # x_bar_k
+            x = concat(x, x2)
+            x0, x1 = x1, x2
+        x = tf.reshape(x, [K, M, Fin, N])
+        x = tf.transpose(x, perm=[3, 1, 2, 0])                          # N x M x Fin x K
+        x = tf.reshape(x, [N * M, Fin * K])
+        # Learned Chebyshev coefficients (theta), shared across vertices.
+        W = self._weight_variable([Fin * K, Fout], regularization=False)
+        x = tf.matmul(x, W)                                             # N*M x Fout
+        return tf.reshape(x, [N, M, Fout])
 
-    def forward(self, x, L_tilde):
-        """
-        x:         (N, M, Fin)  batch of N signals on M vertices with Fin features
-        L_tilde:   scipy.sparse CSR matrix, rescaled Laplacian
-        returns:   (N, M, Fout)
-        """
-        N, M, Fin = x.shape
-        device = x.device
+    def b1relu(self, x):
+        """One bias per feature map, then ReLU."""
+        N, M, F = x.get_shape()
+        b = self._bias_variable([1, 1, int(F)], regularization=False)
+        return tf.nn.relu(x + b)
 
-        # Build Chebyshev basis [xbar_0, ..., xbar_{K-1}] by sparse recurrence.
-        # x is (N, M, Fin); transpose to (Fin, M, N) and treat as M x (Fin*N).
-        x0 = x.permute(2, 1, 0).reshape(Fin * M, N)  # (Fin*M, N)
+    def mpool1(self, x, p):
+        """1D max-pool of size p on the binary-tree-reordered graph signal."""
+        if p > 1:
+            x = tf.expand_dims(x, 3)                                    # N x M x F x 1
+            x = tf.nn.max_pool(x, ksize=[1, p, 1, 1],
+                               strides=[1, p, 1, 1], padding='SAME')
+            return tf.squeeze(x, [3])                                   # N x M/p x F
+        return x
 
-        # Convert sparse L_tilde to torch.sparse.
-        L_tilde = L_tilde.tocoo()
-        indices = torch.from_numpy(np.stack([L_tilde.row, L_tilde.col], axis=0)).long()
-        values = torch.from_numpy(L_tilde.data).to(device)
-        L_torch = torch.sparse_coo_tensor(indices, values, L_tilde.shape, device=device)
+    def fc(self, x, Mout, relu=True):
+        N, Min = x.get_shape()
+        W = self._weight_variable([int(Min), Mout], regularization=True)
+        b = self._bias_variable([Mout], regularization=True)
+        x = tf.matmul(x, W) + b
+        return tf.nn.relu(x) if relu else x
 
-        basis = [x0]
-        if self.K > 1:
-            x1 = torch.sparse.mm(L_torch, x0)
-            basis.append(x1)
-        for k in range(2, self.K):
-            x2 = 2.0 * torch.sparse.mm(L_torch, basis[k - 1]) - basis[k - 2]
-            basis.append(x2)
-
-        # Stack: K x (Fin*M) x N -> (N, M, Fin*K)
-        stack = torch.stack(basis, dim=0)                 # (K, Fin*M, N)
-        stack = stack.permute(2, 1, 0)                    # (N, Fin*M, K)
-        stack = stack.reshape(N, M, Fin, self.K)
-        stack = stack.reshape(N * M, Fin * self.K)
-
-        y = stack @ self.theta                            # (N*M, Fout)
-        y = y.reshape(N, M, self.out_features)
-        return y + self.bias
-
-
-class ChebNet(nn.Module):
-    """Small ChebNet classifier for a fixed graph."""
-
-    def __init__(self, L, K, F, p, n_classes, input_features=1):
-        """
-        L: list of scipy.sparse CSR Laplacians, one per scale.
-        K: list of polynomial orders per conv layer.
-        F: list of output feature maps per conv layer.
-        p: list of pooling sizes per conv layer (powers of two).
-        """
-        super().__init__()
-        self.L = [rescale_laplacian(laplacian(l), lmax=2.0) for l in L]
-        self.convs = nn.ModuleList()
-        self.pools = p
-        fin = input_features
-        for fout, k in zip(F, K):
-            self.convs.append(ChebConv(fin, fout, k))
-            fin = fout
-        self.fc = nn.Linear(fin, n_classes)
-
-    def forward(self, x):
-        for conv, L_tilde, p in zip(self.convs, self.L, self.pools):
-            x = F.relu(conv(x, L_tilde))
-            if p > 1:
-                # 1D max-pool along the vertex dimension after graph reordering.
-                x = x.permute(0, 2, 1)            # (N, F, M)
-                x = F.max_pool1d(x, kernel_size=p, stride=p)
-                x = x.permute(0, 2, 1)            # (N, M', F)
-        # Global mean pooling over vertices, then classify.
-        x = x.mean(dim=1)
-        return self.fc(x)
+    def _inference(self, x, dropout):
+        x = tf.expand_dims(x, 2)                                        # N x M x F=1
+        for i in range(len(self.p)):                                   # conv blocks
+            with tf.variable_scope('conv{}'.format(i + 1)):
+                x = self.chebyshev5(x, self.L[i], self.F[i], self.K[i])
+                x = self.b1relu(x)
+                x = self.mpool1(x, self.p[i])
+        N, M, F = x.get_shape()
+        x = tf.reshape(x, [int(N), int(M * F)])                        # flatten
+        for M in self.M[:-1]:                                          # FC hidden
+            x = self.fc(x, M)
+            x = tf.nn.dropout(x, dropout)
+        return self.fc(x, self.M[-1], relu=False)                      # logits -> softmax
 ```
