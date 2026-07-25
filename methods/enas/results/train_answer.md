@@ -14,97 +14,49 @@ import tensorflow.compat.v1 as tf
 REWARD_CONSTANT = 80.0
 
 
-def activation(fn_id, h):
-    """Activation menu indexed by fn_id: tanh, relu, identity, sigmoid."""
-    return tf.stack([
-        tf.tanh(h),
-        tf.nn.relu(h),
-        tf.identity(h),
-        tf.sigmoid(h)
-    ])[fn_id]
-
-
-class SharedRecurrentCell(object):
-    """Recurrent cell whose weights are shared across sampled DAG topologies."""
-
-    def __init__(self, hidden_size, num_nodes, num_functions, scope="child"):
-        self.hidden_size = hidden_size
-        self.num_nodes = num_nodes
-        self.num_functions = num_functions
-        with tf.variable_scope(scope):
-            self.w_input = tf.get_variable(
-                "w_input", [2 * hidden_size, 2 * hidden_size])
-            self.w_skip = []
-            for node in range(1, num_nodes):
-                with tf.variable_scope("node_%d" % node):
-                    self.w_skip.append(tf.get_variable(
-                        "w",
-                        [num_functions, node, hidden_size, 2 * hidden_size]))
-
-    def __call__(self, x_t, prev_state, sample_arc):
-        h_and_gate = tf.matmul(tf.concat([x_t, prev_state], axis=1),
-                               self.w_input)
-        h, gate = tf.split(h_and_gate, 2, axis=1)
-        first_fn = sample_arc[0]
-        state = prev_state + tf.sigmoid(gate) * (
-            activation(first_fn, h) - prev_state)
-        nodes = [state]
-        used = []
-        offset = 1
-
-        for node in range(1, self.num_nodes):
-            prev_id = sample_arc[offset]
-            fn_id = sample_arc[offset + 1]
-            used.append(tf.one_hot(prev_id, depth=self.num_nodes,
-                                   dtype=tf.int32))
-            prev = tf.stack(nodes, axis=0)[prev_id]
-            w = self.w_skip[node - 1][fn_id, prev_id]
-            h_and_gate = tf.matmul(prev, w)
-            h, gate = tf.split(h_and_gate, 2, axis=1)
-            state = prev + tf.sigmoid(gate) * (
-                activation(fn_id, h) - prev)
-            nodes.append(state)
-            offset += 2
-
-        used = tf.reduce_sum(tf.stack(used), axis=0)
-        loose = tf.boolean_mask(tf.stack(nodes), tf.equal(used, 0))
-        return tf.reduce_mean(loose, axis=0)
-
-
 def build_controller_loss(sample_log_probs, sample_entropy, valid_loss,
-                          baseline, entropy_weight=1e-4,
-                          baseline_decay=0.99):
-    """REINFORCE loss for the LSTM controller using a moving-average baseline."""
-    valid_ppl = tf.exp(tf.stop_gradient(valid_loss))
-    reward = REWARD_CONSTANT / valid_ppl
-    reward += entropy_weight * tf.stop_gradient(sample_entropy)
+                          baseline, entropy_weight, baseline_decay):
+  valid_ppl = tf.exp(tf.stop_gradient(valid_loss))
+  reward = REWARD_CONSTANT / valid_ppl
+  reward += entropy_weight * tf.stop_gradient(sample_entropy)
 
-    baseline_update = tf.assign_sub(
-        baseline, (1.0 - baseline_decay) * (baseline - reward))
-    with tf.control_dependencies([baseline_update]):
-        reward = tf.identity(reward)
+  baseline_update = tf.assign_sub(
+      baseline, (1.0 - baseline_decay) * (baseline - reward))
+  with tf.control_dependencies([baseline_update]):
+    reward = tf.identity(reward)
 
-    advantage = reward - baseline
-    # sample_log_probs stores cross-entropy terms: -log pi(arc; theta)
-    return tf.reduce_sum(sample_log_probs) * advantage, reward
+  # sample_log_probs stores cross-entropy terms, i.e. -log pi(arc; theta).
+  return tf.reduce_sum(sample_log_probs) * (reward - baseline)
 
 
-def build_shared_weight_train_op(child_loss, child_variables, global_step,
-                                 learning_rate):
-    optimizer = tf.train.GradientDescentOptimizer(learning_rate)
-    grads = tf.gradients(child_loss, child_variables)
-    grads, _ = tf.clip_by_global_norm(grads, 0.25)
-    return optimizer.apply_gradients(zip(grads, child_variables),
-                                     global_step=global_step)
+def shared_recurrent_step(x_t, prev_state, sample_arc, w_input, w_skip):
+  h_gate = tf.matmul(tf.concat([x_t, prev_state], axis=1), w_input)
+  h, gate = tf.split(h_gate, 2, axis=1)
+  funcs = tf.stack([tf.tanh(h), tf.nn.relu(h), tf.identity(h), tf.sigmoid(h)])
+  state = prev_state + tf.sigmoid(gate) * (funcs[sample_arc[0]] - prev_state)
+  nodes, used, offset = [state], [], 1
+
+  for node_id, node_weights in enumerate(w_skip, start=1):
+    prev_id = sample_arc[offset]
+    func_id = sample_arc[offset + 1]
+    prev = tf.stack(nodes, axis=0)[prev_id]
+    w = node_weights[func_id, prev_id]      # shared edge/operation weights
+    h_gate = tf.matmul(prev, w)
+    h, gate = tf.split(h_gate, 2, axis=1)
+    funcs = tf.stack([tf.tanh(h), tf.nn.relu(h), tf.identity(h), tf.sigmoid(h)])
+    candidate = funcs[func_id]
+    state = prev + tf.sigmoid(gate) * (candidate - prev)
+    nodes.append(state)
+    used.append(tf.one_hot(prev_id, depth=len(w_skip) + 1, dtype=tf.int32))
+    offset += 2
+
+  unused = tf.equal(tf.reduce_sum(tf.stack(used), axis=0), 0)
+  return tf.reduce_mean(tf.boolean_mask(tf.stack(nodes), unused), axis=0)
 
 
-def train_search(sess, child_train_op, controller_train_fn, num_epochs):
-    """Alternate training the shared weights and the controller."""
-    for _ in range(num_epochs):
-        # Train omega: one sampled subgraph per minibatch.
-        for _ in training_minibatches():
-            sess.run(child_train_op)
-        # Train theta: validation rewards via REINFORCE.
-        controller_train_fn(sess)
-    return best_arc_by_shared_validation_reward(sess)
+def train_search(sess, child_train_op, controller_train_fn, epochs):
+  for _ in range(epochs):
+    for _ in training_minibatches():
+      sess.run(child_train_op)       # updates omega through one sampled subgraph
+    controller_train_fn(sess)        # updates theta from validation rewards
 ```
