@@ -14,45 +14,12 @@ The idea is to split the integrand so that the singular part carries the value f
 
 Contour independence follows immediately. If two contours both enclose a once and can be deformed into each other without crossing a, then f(z)/(z-a) is holomorphic on the region between them. Cauchy's theorem says the integrals over the two contours agree, so a large boundary contour may be shrunk to a tiny circle around a without changing the answer. For derivatives, the value formula writes f(a) as an integral whose dependence on a is explicit. Differentiating under the integral sign is justified because z stays on gamma while a stays inside at positive distance from gamma, so the denominator never vanishes on the contour. The first derivative comes from differentiating (z-a)^(-1) to obtain (z-a)^(-2), and repeating the argument by induction gives the formula for every higher derivative. Thus complex differentiability once at a implies differentiability of all orders.
 
-The numerical verification below implements the Cauchy integral formula for a holomorphic function on a circular contour. It parametrizes the contour, computes the contour integral with the trapezoidal rule, and compares the recovered values and derivatives against the exact analytic expressions.
+The final artifact is this reconstruction principle, stated with its hypotheses made explicit. Let $\Omega \subset \mathbb{C}$ be a domain, let $\gamma$ be a positively oriented, piecewise $C^1$ simple closed contour whose interior and image both lie in $\Omega$, and let $f$ be holomorphic on $\Omega$. Then for every point $a$ inside $\gamma$,
 
-```python
-import math
-import numpy as np
+$$f(a) = \frac{1}{2\pi i}\int_\gamma \frac{f(z)}{z-a}\,dz,$$
 
-def cauchy_integral(f, center, radius, n=10_000):
-    """Evaluate f at the center of a positively oriented circle via Cauchy."""
-    t = np.linspace(0, 2 * np.pi, n, endpoint=False)
-    dz = 1j * radius * np.exp(1j * t) * (2 * np.pi / n)
-    z = center + radius * np.exp(1j * t)
-    return np.sum(f(z) / (z - center) * dz) / (2j * np.pi)
+and $f$ has derivatives of every order at $a$, given for every integer $n \ge 0$ by
 
-def cauchy_derivative(f, n, center, radius, n_pts=10_000):
-    """Recover the n-th derivative f^(n)(center) from a circular contour."""
-    t = np.linspace(0, 2 * np.pi, n_pts, endpoint=False)
-    dz = 1j * radius * np.exp(1j * t) * (2 * np.pi / n_pts)
-    z = center + radius * np.exp(1j * t)
-    return math.factorial(n) * np.sum(f(z) / (z - center)**(n + 1) * dz) / (2j * np.pi)
+$$f^{(n)}(a) = \frac{n!}{2\pi i}\int_\gamma \frac{f(z)}{(z-a)^{n+1}}\,dz.$$
 
-# Example: f(z) = exp(z) at a = 0.5 + 0.3i using a surrounding circle.
-a = 0.5 + 0.3j
-R = 1.0
-f = lambda z: np.exp(z)
-
-recovered_value = cauchy_integral(f, a, R)
-exact_value = np.exp(a)
-print(f"f(a) recovered: {recovered_value:.12f}")
-print(f"f(a) exact:     {exact_value:.12f}")
-
-for n in range(1, 4):
-    rec = cauchy_derivative(f, n, a, R)
-    ext = np.exp(a)
-    print(f"f^({n})(a) recovered: {rec:.12f}, exact: {ext:.12f}")
-
-# Example: f(z) = z^3 + 2z + 1 at a = 1.0.
-a2 = 1.0 + 0.0j
-R2 = 0.5
-f2 = lambda z: z**3 + 2*z + 1
-rec2 = cauchy_integral(f2, a2, R2)
-print(f"\nPolynomial f(a) recovered: {rec2:.12f}, exact: {a2**3 + 2*a2 + 1:.12f}")
-```
+Equivalently: the boundary values of a holomorphic function on any contour enclosing $a$ determine the value and every derivative at $a$, through the same singular kernel $1/(z-a)$ raised to successive powers. This is the deliverable in full, not merely an existence claim — the constant $1/(2\pi i)$, the factorial $n!$, and the contour $\gamma$ are exactly the objects the removable-singularity argument produces, and none of them is a free parameter left to fit. A single complex derivative at $a$ is therefore not a local fact at all; it is the first instance of a family of boundary moments of $f$ against $1/(z-a)^{n+1}$, and the whole family is fixed the moment $f$ is known to be holomorphic on a neighborhood of $\overline{\mathrm{int}(\gamma)}$.
