@@ -6,13 +6,6 @@ You are given an array of `n` integers `a[0..n-1]` (values may be negative). Con
 contiguous subarray `a[l..r]` with `0 <= l <= r < n` — there are `n*(n+1)/2` of them. For each such
 subarray take its **minimum** element. Output the **sum of those minimums over all subarrays**.
 
-This is a textbook "contribution counting with a monotonic stack" problem. The naive definition is
-quadratic in the number of subarrays, but each element's *total* contribution is the value times the
-number of subarrays in which it is the minimum, and that count is exactly what a monotonic stack
-computes in one left-to-right and one right-to-left pass. Getting the tie-breaking right (so each
-subarray's minimum is attributed to exactly one position) and getting the arithmetic to not overflow
-are the two things that separate a correct submission from a wrong one.
-
 ## Input / output contract
 
 - Input (stdin): the first token is `n` (`0 <= n <= 3*10^4`); then `n` integers `a[i]`
@@ -27,26 +20,18 @@ Example: for `a = [3, 1, 2, 4]` the answer is `17`. The ten subarrays and their 
 
 ## Background
 
-There are two families of approach on the table before committing.
+The obvious approach enumerates every subarray directly.
 
 - **Enumerate every subarray.** Two nested loops fix `l` and extend `r`, carrying a running minimum,
   accumulating each subarray's minimum. This is `O(n^2)` and obviously correct, but `n` up to
   `3*10^4` means up to `4.5*10^8` subarrays — too slow for a 1 second limit. Useful only as an
   oracle to check a faster method against.
-- **Per-element contribution via a monotonic stack.** Instead of grouping by subarray, group by
-  *which element supplies the minimum*. Element `a[i]` is the minimum of exactly `L*R` subarrays,
-  where `L` is the number of positions you can extend the left endpoint to before hitting a smaller
-  element and `R` the same to the right. Both `L` and `R` for all `i` come from a single monotonic
-  stack pass each, giving `O(n)` total. The open questions are (1) the exact strict-vs-nonstrict
-  rule that makes equal values not double-count, and (2) the data type, since `L*R` alone can reach
-  `~2*10^8` and `a[i]*L*R` summed over `i` can reach `~4.5*10^17`.
 
 ## Evaluation settings
 
 Judged on hidden tests covering: strictly increasing and strictly decreasing arrays, arrays with
 many equal values (the tie-breaking corner), arrays with negatives and zeros, `n = 0`, `n = 1`,
-all-negative arrays (answer is negative), and large `n = 3*10^4` with values near `10^9` (so the
-accumulated sum far exceeds a 32-bit integer).
+all-negative arrays (answer is negative), and large `n = 3*10^4` with values near `10^9`.
 
 ## Code framework
 
