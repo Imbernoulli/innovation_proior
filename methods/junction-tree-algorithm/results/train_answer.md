@@ -14,62 +14,16 @@ The reason exactness holds is the combination of chordality and running intersec
 
 The computational cost of the junction tree algorithm is dominated by the size of the largest clique. For discrete variables with tabular potentials, both storage and arithmetic are exponential in the number of variables in the largest clique, or equivalently in the induced width plus one. Finding an optimal triangulation, one that minimizes the size of the largest clique, is NP-hard in general, but many heuristics work well in practice. For MAP inference, the same algorithm applies with sums replaced by maxes, producing max-marginals that reveal the most probable joint assignment.
 
-I now give a compact, runnable Python illustration of the core operations on a tiny chordal graph. The script moralizes a simple directed model, forms maximal cliques by hand, builds a junction tree, assigns factors, and runs HUGIN-style separator updates to calibrate the tree. The numbers are small enough that a brute-force joint table can be computed independently and compared against the clique marginals.
+What this derivation delivers is not an illustrative script but the calibrated separator-update rule itself, stated precisely enough to serve as the working protocol on any model once it has been moralized, triangulated, and organized into its junction tree. For every tree edge between adjacent cliques $C_i$ and $C_j$ with separator $S_{ij} = C_i \cap C_j$, let $\beta_i$ denote the belief currently held at $C_i$ and let $\mu_{ij}$ denote the belief currently cached at the separator. The outgoing message from $C_i$ to $C_j$ is
 
-```python
-import itertools
-import numpy as np
+$$\sigma_{i \to j}(S_{ij}) = \sum_{C_i \setminus S_{ij}} \beta_i(C_i),$$
 
-# Tiny Bayesian network: A -> B, A -> C, B -> D, C -> D
-# Variables are binary. Factors: P(A), P(B|A), P(C|A), P(D|B,C)
-A = np.array([0.6, 0.4])  # shape (a,)
-B_A = np.array([[0.7, 0.3],   # A=0
-                [0.2, 0.8]])  # A=1   shape (a,b)
-C_A = np.array([[0.9, 0.1],
-                [0.4, 0.6]])  # shape (a,c)
-D_BC = np.array([[[0.8, 0.2],   # B=0,C=0
-                  [0.6, 0.4]],  # B=0,C=1
-                 [[0.4, 0.6],   # B=1,C=0
-                  [0.1, 0.9]]]) # B=1,C=1  shape (b,c,d)
+and the receiving clique absorbs it by
 
-# Brute-force joint distribution over A,B,C,D
-joint = A[:, None, None, None] * B_A[:, :, None, None] * C_A[:, None, :, None] * D_BC[None, :, :, :]
-print("Joint shape:", joint.shape, "sum =", joint.sum())
+$$\beta_j \leftarrow \beta_j \cdot \frac{\sigma_{i \to j}}{\mu_{ij}} \ \text{ if } \mu_{ij} \text{ is already stored,} \qquad \beta_j \leftarrow \beta_j \cdot \sigma_{i \to j} \ \text{ otherwise,}$$
 
-# Moral graph cliques for this model: ABC and BCD
-# Junction tree: ABC -- BC -- BCD
-# Assign factors: P(A)*P(B|A)*P(C|A) to ABC; P(D|B,C) to BCD
+after which the separator is refreshed, $\mu_{ij} \leftarrow \sigma_{i \to j}$. This is the HUGIN cached-separator form of Lauritzen and Spiegelhalter's local computation: caching the division at the separator, rather than repeating it at both endpoints of the edge the way the original two-pass architecture does, is exactly what later implementations such as pgmpy's belief-propagation calibration carry forward unchanged. Running this update along any collect pass toward an arbitrary root clique and then a distribute pass back out to the leaves reaches a fixed point at which every tree edge satisfies
 
-# Build initial clique potentials by summing over variables not in the clique
-# (in a real implementation factor assignment avoids this).
-phi_ABC = np.einsum('a,ab,ac->abc', A, B_A, C_A)          # shape (a,b,c)
-phi_BCD = D_BC.copy()                                      # shape (b,c,d)
+$$\sum_{C_i \setminus S_{ij}} \beta_i \;=\; \sum_{C_j \setminus S_{ij}} \beta_j \;=\; \mu_{ij} \qquad \text{for all adjacent } i, j.$$
 
-# HUGIN-style calibration
-# Message ABC -> BCD over separator BC
-sep_BC = phi_ABC.sum(axis=0)           # marginal of ABC over BC
-phi_BCD = phi_BCD * sep_BC[:, :, None]
-mu_BC = sep_BC
-
-# Message BCD -> ABC over separator BC
-sep_BC_back = phi_BCD.sum(axis=-1)     # marginal of BCD over BC
-phi_ABC = phi_ABC * (sep_BC_back / mu_BC)
-
-# Normalize clique potentials
-phi_ABC /= phi_ABC.sum()
-phi_BCD /= phi_BCD.sum()
-
-# Compare clique marginals to brute-force marginals
-marg_ABC = joint.sum(axis=-1)
-marg_BCD = joint.sum(axis=0)
-print("ABC clique matches brute force:", np.allclose(phi_ABC, marg_ABC / marg_ABC.sum()))
-print("BCD clique matches brute force:", np.allclose(phi_BCD, marg_BCD / marg_BCD.sum()))
-
-# Variable marginals from calibrated cliques
-print("P(A):", phi_ABC.sum(axis=(1, 2)))
-print("P(D):", phi_BCD.sum(axis=(0, 1)))
-print("Brute P(A):", joint.sum(axis=(1, 2, 3)))
-print("Brute P(D):", joint.sum(axis=(0, 1, 2)))
-```
-
-This code demonstrates that the calibrated clique potentials agree with the exact joint marginals. In practice, the junction tree algorithm scales to much larger models as long as an appropriate triangulation keeps the maximal cliques small. It remains the foundational exact inference algorithm for probabilistic graphical models, underlying later variational and sampling methods that relax exactness for computational convenience.
+That fixed point is the calibration condition, and it certifies something stronger than local consistency: because chordality gives every factor created by exact elimination a clique to live in, and running intersection forces any variable shared by two cliques to be shared by every clique on the path between them, satisfying this condition everywhere means every clique belief is already the exact marginal of the one joint distribution the original factors define. For MAP inference the identical rule holds with every $\sum$ replaced by $\max$, and the resulting max-calibration certifies max-marginals whose per-clique maximizing assignments can be read off directly as the globally most probable joint configuration. The entire computation, collect and distribute together, costs no more than forming and marginalizing each clique potential once per tree edge, so the price of exactness is paid entirely by the size of the largest clique the triangulation produces: work and storage scale as the variable state space raised to the induced width plus one. That quantity — not the number of variables, not the number of edges in the original model — is the only thing standing between this algorithm and tractable exact inference on an arbitrary graphical model.
