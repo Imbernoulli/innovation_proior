@@ -6,54 +6,84 @@ I propose Hybrid Post-Training, or HPT. HPT routes each prompt independently bet
 
 The reason to use plain SFT rather than off-policy RL for the stuck prompts is that the teacher trace was produced by an unknown behavior policy. Off-policy RL would need to set the reference policy to 1, which turns importance sampling into rejection sampling and injects a heavy bias unless the offline data uniformly covers the trajectory space, which it does not. Plain SFT avoids that ill-posed ratio entirely. Keeping the GRPO advantage normalized over on-policy samples only prevents the injected demonstration from contaminating the RL measurement. The result is the minimal demonstration intervention: the teacher is used exactly where the on-policy signal dies, and exploration is preserved everywhere else.
 
+Concretely, the switch is a batch edit inside the actor rather than a separate code path. A controller looks at how many of the on-policy rollouts for a prompt solved it and returns how many rollouts to drop and how many demonstration rows to splice in: when the solve count is at or below the gate it removes the eight-response on-policy group and adds one demonstration row; otherwise it leaves the on-policy batch untouched. The advantage computation only ever aggregates over rollouts flagged as on-policy, so a spliced-in demonstration row never enters the group mean or standard deviation that GRPO standardizes against. The actor's loss then reads a prefix mask to tell which rows are demonstrations: those get the plain token negative log-likelihood, the remaining on-policy rows get the clipped GRPO surrogate, and the two are combined as `pg_loss = sft_loss * sft_loss_coef + pg_loss`, guarded so a batch with no demonstration rows just falls back to the RL loss untouched.
+
 ```python
+from collections import defaultdict
 import torch
-import torch.nn.functional as F
+import verl.utils.torch_functional as verl_F
+from verl.trainer.ppo import core_algos
 
 
-def masked_mean(x, mask):
-    return (x * mask).sum() / mask.sum().clamp_min(1.0)
+def select_on_off_ada_balance(config, on_solve_num):
+    """Return (on_remove_num, on_add_num, off_add_num), as in the mix_src trainer."""
+    if config.trainer.unify_strategy == "switch":
+        on_add_num = 0
+        if on_solve_num <= config.trainer.switch_gate:
+            return 8, on_add_num, 1          # remove on-policy group, add SFT target sample
+        if on_solve_num <= config.trainer.switch_gate_off:
+            return 8, on_add_num, -1         # optional off-policy-RL arm in the shared path
+        return 0, on_add_num, 0              # keep on-policy GRPO samples
+
+    if config.trainer.unify_strategy == "soft":
+        return 0, 0, 1
+
+    raise NotImplementedError
 
 
-def grpo_group_advantage(rewards, eps=1e-6):
-    mean = rewards.mean()
-    std = rewards.std()
-    if std == 0:
-        std = 1.0
-    return (rewards - mean) / (std + eps)
+def compute_grpo_outcome_advantage_split(token_level_rewards, eos_mask, index,
+                                         on_policy_mask, epsilon=1e-6, use_std=True):
+    """Compute group-normalized advantages using only non-prefix (on-policy) samples."""
+    response_length = token_level_rewards.shape[-1]
+    non_zero_mask = (token_level_rewards != 0)
+    scores = (token_level_rewards * non_zero_mask).sum(dim=-1)
+    id2score, id2mean, id2std = defaultdict(list), {}, {}
 
-
-def policy_loss(log_prob, old_log_prob, advantages, eos_mask, clip=0.2):
-    ratio = torch.exp(log_prob - old_log_prob)
-    unclipped = ratio * advantages
-    clipped = torch.clamp(ratio, 1 - clip, 1 + clip) * advantages
-    return -masked_mean(torch.min(unclipped, clipped), eos_mask)
-
-
-def sft_loss(log_prob, eos_mask):
-    return -masked_mean(log_prob, eos_mask)
-
-
-def hpt_step(model, old_model, prompt, demo, optimizer, n_rollouts=8, gate=0.0):
-    # On-policy rollouts: returns log-probabilities and padding masks.
-    roll_logp, roll_mask = sample_rollouts(model, prompt, n_rollouts)
     with torch.no_grad():
-        rewards = verify(roll_logp)               # binary scores, shape (n_rollouts,)
-        pass_rate = rewards.float().mean().item()
+        for i in range(scores.shape[0]):
+            if on_policy_mask[i].item() is True:
+                id2score[index[i]].append(scores[i])
+        for uid, values in id2score.items():
+            if len(values) == 1:
+                id2mean[uid] = torch.tensor(0.0)
+                id2std[uid] = torch.tensor(1.0)
+            else:
+                id2mean[uid] = torch.mean(torch.tensor(values))
+                id2std[uid] = torch.std(torch.tensor([values]))
+                if id2std[uid].item() == 0:
+                    id2std[uid] = torch.tensor(1.0)
+        for i in range(scores.shape[0]):
+            centered = scores[i] - id2mean[index[i]]
+            scores[i] = centered / (id2std[index[i]] + epsilon) if use_std else centered
 
-    if pass_rate > gate:
-        # RL branch: GRPO with group-normalized advantage over on-policy samples only.
-        old_logp, _ = sample_rollouts(old_model, prompt, n_rollouts)
-        advantages = grpo_group_advantage(rewards)
-        advantages = advantages.unsqueeze(-1).expand_as(roll_logp)
-        loss = policy_loss(roll_logp, old_logp, advantages, roll_mask)
-    else:
-        # SFT branch: plain negative log-likelihood on the demonstration.
-        demo_logp, demo_mask = demo_log_probs(model, prompt, demo)
-        loss = sft_loss(demo_logp, demo_mask)
+    advantages = scores.unsqueeze(-1).tile([1, response_length]) * eos_mask
+    return advantages, advantages
 
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
-    return loss.item()
+
+def compute_sft_pure_loss(log_prob, eos_mask):
+    return verl_F.masked_mean(-log_prob, eos_mask)
+
+
+def actor_mixed_loss(log_prob, old_log_prob, advantages, response_mask, prefix_mask, config):
+    off_policy_mask = prefix_mask.any(-1)
+    sft_loss = compute_sft_pure_loss(
+        log_prob=log_prob[off_policy_mask],
+        eos_mask=response_mask[off_policy_mask],
+    )
+
+    on_policy_mask = ~off_policy_mask
+    pg_loss, pg_clipfrac, ppo_kl = core_algos.compute_policy_loss(
+        old_log_prob=old_log_prob[on_policy_mask],
+        log_prob=log_prob[on_policy_mask],
+        advantages=advantages[on_policy_mask],
+        eos_mask=response_mask[on_policy_mask],
+        cliprange=config.clip_ratio,
+        loss_remove_token_mean=config.loss_remove_token_mean,
+        loss_remove_clip=config.loss_remove_clip,
+    )
+
+    if not torch.isnan(sft_loss):
+        pg_loss = sft_loss * config.sft_loss_coef + pg_loss
+
+    return pg_loss, pg_clipfrac, ppo_kl
 ```
