@@ -23,7 +23,7 @@ class CausalSelfAttention(nn.Module):
         super().__init__()
         assert d_model % n_head == 0
         self.c_attn = nn.Linear(d_model, 3 * d_model)
-        self.c_proj = nn.Linear(d_model, d_model)
+        self.c_proj = nn.Linear(d_model, d_model)          # residual-stream write-back
         self.n_head = n_head
         self.register_buffer("mask",
             torch.tril(torch.ones(n_ctx, n_ctx)).view(1, 1, n_ctx, n_ctx))
@@ -35,7 +35,7 @@ class CausalSelfAttention(nn.Module):
         q = q.view(B, T, h, C // h).transpose(1, 2)
         k = k.view(B, T, h, C // h).transpose(1, 2)
         v = v.view(B, T, h, C // h).transpose(1, 2)
-        att = (q @ k.transpose(-2, -1)) / math.sqrt(k.size(-1))
+        att = (q @ k.transpose(-2, -1)) / math.sqrt(k.size(-1))   # scale by 1/sqrt(d_head)
         att = att.masked_fill(self.mask[:, :, :T, :T] == 0, float('-inf'))
         att = F.softmax(att, dim=-1)
         y = (att @ v).transpose(1, 2).contiguous().view(B, T, C)
@@ -50,7 +50,7 @@ class Block(nn.Module):
         self.ln_2 = nn.LayerNorm(d_model)
         self.mlp = nn.ModuleDict(dict(
             c_fc=nn.Linear(d_model, 4 * d_model),
-            c_proj=nn.Linear(4 * d_model, d_model),
+            c_proj=nn.Linear(4 * d_model, d_model),        # residual-stream write-back
         ))
 
     def forward(self, x):
@@ -63,14 +63,14 @@ class SequenceModel(nn.Module):
     def __init__(self, vocab_size, n_ctx, n_layer, d_model, n_head):
         super().__init__()
         self.n_ctx = n_ctx
-        self.wte = nn.Embedding(vocab_size, d_model)
-        self.wpe = nn.Embedding(n_ctx, d_model)
+        self.wte = nn.Embedding(vocab_size, d_model)       # byte-level BPE tokens
+        self.wpe = nn.Embedding(n_ctx, d_model)            # learned positions
         self.h = nn.ModuleList([Block(d_model, n_head, n_ctx) for _ in range(n_layer)])
         self.ln_f = nn.LayerNorm(d_model)
         self.lm_head = nn.Linear(d_model, vocab_size, bias=False)
-        self.lm_head.weight = self.wte.weight
+        self.lm_head.weight = self.wte.weight              # tied token/output embeddings
         self.apply(self._init)
-        for name, p in self.named_parameters():
+        for name, p in self.named_parameters():            # scaled residual init
             if name.endswith("c_proj.weight"):
                 nn.init.normal_(p, mean=0.0, std=0.02 / math.sqrt(2 * n_layer))
 
@@ -114,6 +114,7 @@ class SequenceModel(nn.Module):
         return idx
 
 def configure_optimizer(model, lr, weight_decay=0.1, betas=(0.9, 0.95)):
+    # decay matrix weights only; not biases / LayerNorm / embeddings
     decay, no_decay = [], []
     for name, p in model.named_parameters():
         if name.endswith("weight") and not any(k in name for k in ("wte", "wpe", "ln")):
@@ -124,9 +125,11 @@ def configure_optimizer(model, lr, weight_decay=0.1, betas=(0.9, 0.95)):
               {"params": no_decay, "weight_decay": 0.0}]
     return torch.optim.AdamW(groups, lr=lr, betas=betas, eps=1e-8)
 
+# ---- in-context learning harness: fixed-model prompt + scorer ----
+
 def build_prompt(tokenizer, instruction, demonstrations, query_context):
     parts = ([instruction] if instruction else [])
-    parts += [ctx + " " + completion for ctx, completion in demonstrations]
+    parts += [ctx + " " + completion for ctx, completion in demonstrations]  # K-shot
     parts.append(query_context)
     return tokenizer.encode("\n".join(parts))
 
@@ -150,13 +153,14 @@ def score_choice(model, tokenizer, prompt_ids, completion, answer_context=None):
     comp = tokenizer.encode(completion)
     cond = _completion_logprob(model, prompt_ids, comp)
     if answer_context is None:
-        return cond
-    base = tokenizer.encode(answer_context)
+        return cond                                   # per-token conditional log-likelihood
+    base = tokenizer.encode(answer_context)           # generic lead-in, e.g. "Answer:"
     uncond = _completion_logprob(model, base, comp)
-    return cond - uncond
+    return cond - uncond                              # divide out generic completion likelihood
 
 @torch.no_grad()
 def beam_search(model, idx, max_new_tokens, beam_width=4, length_penalty=0.6, eos_token_id=None):
+    # batch size 1; rank partial continuations by sum log-prob / length**length_penalty
     assert idx.size(0) == 1
     beams = [(idx, torch.tensor(0.0, device=idx.device), False)]
     prompt_len = idx.size(1)
@@ -175,10 +179,12 @@ def beam_search(model, idx, max_new_tokens, beam_width=4, length_penalty=0.6, eo
                 nxt = tok.view(1, 1)
                 ended = eos_token_id is not None and int(tok.item()) == eos_token_id
                 candidates.append((torch.cat([tokens, nxt], dim=1), score + val, ended))
+
         def normalized(item):
             tokens, score, _ = item
             gen_len = max(1, tokens.size(1) - prompt_len)
             return (score / (gen_len ** length_penalty)).item()
+
         beams = sorted(candidates, key=normalized, reverse=True)[:beam_width]
         if all(done for _, _, done in beams):
             break
