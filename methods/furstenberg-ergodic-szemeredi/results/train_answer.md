@@ -6,62 +6,8 @@ Once the problem is translated, the proof proceeds by a structure-versus-randomn
 
 For k ≥ 4 a single Kronecker split is no longer enough, because compact behavior can be hidden in fibres over a nontrivial base factor. The right generalization is a tower of compact, or isometric, extensions: starting from the trivial system, repeatedly adjoin generalized eigenfunctions, which act as finite-rank unitary matrix-valued cocycles in the fibres. This produces the maximal distal factor. Over that factor the original system is relatively weak mixing, so it contributes no further obstruction. A delicate but decisive fact is that for a k-fold progression the diagonal average is already controlled by the order-(k-2) distal factor. That finite-order distal factor is itself shown to be SZ by induction on the tower, using the fact that a strict group extension of an SZ system is SZ; the proof averages over the diagonal subgroup of the fibre group and uses a uniform-continuity argument to push domination from Haar-averaged measures back to the true diagonal measure. Combining these pieces gives a positive lower bound on the k-fold recurrence average for every measure-preserving system, and the correspondence principle converts it back into arbitrarily long arithmetic progressions in A.
 
-The code below illustrates the correspondence principle and the two primitive regimes on simple finite simulations. It estimates the cylinder frequency that represents density, searches for a finite arithmetic progression, checks the positive average for a Kronecker rotation, and confirms the product limit for an independent Bernoulli shift.
+What this argument actually delivers, once the regimes are assembled, is a single quantitative statement, and it is worth landing on that statement precisely rather than on any illustration of it. For every measure-preserving system $(X,\mathcal{B},\mu,T)$, every $B$ with $\mu(B) > 0$, and every $k \ge 1$,
+$$\liminf_{N-M\to\infty}\ \frac{1}{N-M}\sum_{n=M+1}^{N}\mu\bigl(B\cap T^{-n}B\cap T^{-2n}B\cap\cdots\cap T^{-(k-1)n}B\bigr) \;>\; 0,$$
+so in particular there is some $n>0$ with $\mu(B\cap T^{-n}B\cap\cdots\cap T^{-(k-1)n}B)>0$. The bound holds because of exactly the reduction just traced: the generic limit of the diagonal measure under $T\times T^2\times\cdots\times T^k$ is defined over the order-$(k-2)$ distal factor $Z_{k-2}(X)$ — the Kronecker factor itself when $k=3$ — so the $k$-fold average on $X$ collapses to the same average computed on that finite structured factor. That factor is SZ by induction on distal order: a strict group extension of an SZ system is SZ, via the diagonal-subgroup domination argument that pushes positivity from Haar-averaged neighborhoods of the identity down to the identity itself. Ergodic decomposition then lifts the bound from ergodic systems to every measure-preserving system.
 
-```python
-import random
-import math
-
-# --- Correspondence principle on a finite cyclic model ---
-def empirical_cylinder_frequency(A, M, N):
-    """Fraction of shifts n in [0,N) whose base point lies in A (mod M)."""
-    return sum(1 for n in range(N) if (n % M) in A) / N
-
-def finite_ap_search(A, k, bound):
-    """Brute-force search for a k-term AP a, a+n, ..., a+(k-1)n in A."""
-    s = set(A)
-    for a in s:
-        for n in range(1, bound):
-            if all(a + j * n in s for j in range(k)):
-                return (a, n)
-    return None
-
-M = 200
-A = {i for i in range(M) if (i % 10) in {0, 1, 2}}  # density 0.3
-print("Density:", len(A) / M)
-print("Empirical cylinder frequency:", empirical_cylinder_frequency(A, M, 10000))
-print("3-AP found:", finite_ap_search(A, 3, M))
-
-# --- Kronecker (compact rotation) regime for 3-AP ---
-def circle_ap_average(alpha, indicator, steps=3000, samples=100):
-    """Estimate Cesaro average of indicator(x) indicator(x+n alpha) indicator(x+2n alpha)."""
-    total = 0.0
-    for n in range(1, steps + 1):
-        hits = 0
-        for _ in range(samples):
-            x = random.random()
-            if (indicator(x) and
-                indicator((x + n * alpha) % 1.0) and
-                indicator((x + 2 * n * alpha) % 1.0)):
-                hits += 1
-        total += hits / samples
-    return total / steps
-
-alpha = (math.sqrt(5) - 1) / 2  # irrational rotation
-indicator_B = lambda x: 0.25 <= x < 0.75
-print("Kronecker 3-AP average:", circle_ap_average(alpha, indicator_B))
-
-# --- Weak-mixing (Bernoulli shift) regime ---
-def bernoulli_ap_average(p, k=3, steps=2000, width=2000):
-    """Independent bits: average over n of Prob(all k positions are 1)."""
-    seq = [random.random() < p for _ in range(width + steps * k)]
-    total = 0.0
-    for n in range(1, steps + 1):
-        hits = sum(1 for a in range(width)
-                   if all(seq[a + j * n] for j in range(k)))
-        total += hits / width
-    return total / steps
-
-print("Bernoulli 3-AP average (should be near p^3 = 0.064):",
-      bernoulli_ap_average(0.4, 3))
-```
+The correspondence principle turns this ergodic statement back into the number-theoretic one. Given $A \subseteq \mathbb{Z}$ with $\bar d(A) > 0$, form the orbit-closure system $(X,\mu,T)$ and the clopen cylinder $E$ as above, with $\mu(E) = \bar d(A) > 0$. Multiple recurrence supplies $n \neq 0$ with $\mu(E \cap T^{-n}E \cap \cdots \cap T^{-(k-1)n}E) > 0$, hence non-empty; that set is a finite intersection of clopen cylinders, so some genuine orbit point $T^m a$ lies inside it, and unwinding the cylinder condition $x(0)=1 \Leftrightarrow$ membership in $A$ gives $m, m+n, \dots, m+(k-1)n \in A$. That is a non-degenerate $k$-term arithmetic progression in $A$, for every $k$: Szemerédi's theorem, with the mechanism finally visible. Density became the measure of a set; a progression became the non-emptiness of an intersection of shifted copies of that set; and the positivity of that intersection survives every stage of the structure-versus-randomness decomposition, from Poincaré's pigeonhole at $k=2$, through the single Kronecker split that reproves Roth's theorem at $k=3$, up to the finite distal tower and its group-extension induction at every larger $k$.
