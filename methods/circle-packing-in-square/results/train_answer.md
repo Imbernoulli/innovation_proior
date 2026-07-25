@@ -13,9 +13,11 @@ import numpy as np
 from scipy.optimize import minimize, least_squares
 from scipy.special import logsumexp
 
+# x_i = sin(x_tilde_i), y_i = sin(y_tilde_i): the box constraint |x|,|y| <= 1 is automatic,
+# so the search over u = [x_tilde; y_tilde] in R^{2n} is unconstrained.
 def to_box(u, n):
     ut = u.reshape(2, n)
-    return np.sin(ut[0]), np.sin(ut[1])
+    return np.sin(ut[0]), np.sin(ut[1])              # coords in [-1, 1] (a side-2 box)
 
 def points_to_u(points):
     points = np.clip(points, -1.0, 1.0)
@@ -24,7 +26,7 @@ def points_to_u(points):
 def pairwise_sq_dists(x, y):
     dx = x[:, None] - x[None, :]
     dy = y[:, None] - y[None, :]
-    return dx * dx + dy * dy
+    return dx*dx + dy*dy
 
 def min_pair_distance_from_points(points):
     if len(points) < 2:
@@ -42,6 +44,8 @@ def radius_from_unit_distance(d_unit):
         return 0.5
     return d_unit / (2.0 * (1.0 + d_unit))
 
+# Minimize log(E), E = sum_{i<j} (lambda / d_ij^2)^m. log is monotone, so the
+# minimizers are unchanged, and logsumexp avoids overflow at large m.
 def objective(u, n, sharpness, scale):
     x, y = to_box(u, n)
     d2 = pairwise_sq_dists(x, y)
@@ -51,12 +55,13 @@ def objective(u, n, sharpness, scale):
     log_terms = sharpness * (log_scale - np.log(np.maximum(d2[iu], tiny)))
     return logsumexp(log_terms)
 
+# d log(E)/dx_i = sum_{j!=i} (-m w_ij / d_ij^2) * 2(x_i - x_j),
+# w_ij = T_ij / sum_{a<b} T_ab. Chain through the sine map.
 def objective_grad(u, n, sharpness, scale):
     ut = u.reshape(2, n)
     x, y = np.sin(ut[0]), np.sin(ut[1])
-    dx = x[:, None] - x[None, :]
-    dy = y[:, None] - y[None, :]
-    d2 = dx * dx + dy * dy
+    dx = x[:, None] - x[None, :]; dy = y[:, None] - y[None, :]
+    d2 = dx*dx + dy*dy
     np.fill_diagonal(d2, np.inf)
     tiny = np.finfo(float).tiny
     iu = np.triu_indices(n, 1)
@@ -64,10 +69,10 @@ def objective_grad(u, n, sharpness, scale):
     log_scale = np.log(max(scale, tiny))
     log_terms = sharpness * (log_scale - np.log(safe_pair_d2))
     log_z = logsumexp(log_terms)
-    weights = np.exp(log_terms - log_z)
+    weights = np.exp(log_terms - log_z)             # one normalized weight per unordered pair
     coef = -sharpness * weights / safe_pair_d2
-    fx = coef * 2 * dx[iu]
-    fy = coef * 2 * dy[iu]
+    fx = coef * 2*dx[iu]
+    fy = coef * 2*dy[iu]
     gx = np.zeros(n)
     gy = np.zeros(n)
     np.add.at(gx, iu[0], fx)
@@ -77,6 +82,7 @@ def objective_grad(u, n, sharpness, scale):
     return np.concatenate([gx * np.cos(ut[0]), gy * np.cos(ut[1])])
 
 def maybe_release_wall_points(u, n, wall_tol=1e-6, inward_step=1e-3, keep_tol=1e-10):
+    """Move a non-rigid wall point slightly inward if that does not reduce the current gap."""
     x, y = to_box(u, n)
     points = np.column_stack([x, y])
     current = min_pair_distance_from_points(points)
@@ -123,7 +129,7 @@ def polish_contacts(points, distance_tol=1e-7, wall_tol=1e-7):
 
     def residual(z):
         x, y, d = z[:n], z[n:2*n], z[-1]
-        out = [((x[i] - x[j])**2 + (y[i] - y[j])**2 - d*d) for i, j in pairs]
+        out = [((x[i]-x[j])**2 + (y[i]-y[j])**2 - d*d) for i, j in pairs]
         for i, axis, value in walls:
             out.append((x if axis == 0 else y)[i] - value)
         return np.asarray(out)
@@ -131,7 +137,7 @@ def polish_contacts(points, distance_tol=1e-7, wall_tol=1e-7):
     if len(pairs) + len(walls) == 0:
         return points, d0
     lo = np.r_[-np.ones(2*n), 0.0]
-    hi = np.r_[np.ones(2*n), np.inf]
+    hi = np.r_[ np.ones(2*n), np.inf]
     res = least_squares(residual, z0, bounds=(lo, hi),
                         xtol=1e-12, ftol=1e-12, gtol=1e-12, max_nfev=2000)
     z = res.x
@@ -139,9 +145,14 @@ def polish_contacts(points, distance_tol=1e-7, wall_tol=1e-7):
     polished = np.column_stack([z[:n], z[n:2*n]])
     actual_d = min_pair_distance_from_points(polished)
     residual_norm = np.linalg.norm(residual(z), ord=2)
-    residual_tol = max(1e-8, 1e-6 * d0 * d0)
-    distance_tol = max(1e-7, 1e-6 * max(1.0, d0))
-    if (not res.success) or (not np.isfinite(actual_d)) or (not np.isfinite(solved_d)) or residual_norm > residual_tol:
+    residual_tol = max(1e-8, 1e-6*d0*d0)
+    distance_tol = max(1e-7, 1e-6*max(1.0, d0))
+    if (
+        (not res.success)
+        or (not np.isfinite(actual_d))
+        or (not np.isfinite(solved_d))
+        or residual_norm > residual_tol
+    ):
         return points, d0
     if actual_d < d0 * (1.0 - 1e-8):
         return points, d0
@@ -152,28 +163,34 @@ def polish_contacts(points, distance_tol=1e-7, wall_tol=1e-7):
 def optimize_one_start(u, n, schedule=None):
     if schedule is None:
         schedule = (10, 20, 40, 80, 160, 320, 640, 1280)
-    for sharpness in schedule:
+    for sharpness in schedule:                         # homotopy: soft energy -> sharp max-min
         d = min_pair_distance(u, n)
-        scale = d * d if d > 0 else 1.0
+        scale = d*d if d > 0 else 1.0                 # lambda = d_min^2, fixed in this stage
         res = minimize(objective, u, args=(n, sharpness, scale), jac=objective_grad,
                        method='CG', options={'maxiter': 500, 'gtol': 1e-10})
         u = res.x
         u, released = maybe_release_wall_points(u, n)
         if released:
             d = min_pair_distance(u, n)
-            scale = d * d if d > 0 else 1.0
+            scale = d*d if d > 0 else 1.0
             res = minimize(objective, u, args=(n, sharpness, scale), jac=objective_grad,
                            method='CG', options={'maxiter': 500, 'gtol': 1e-10})
             u = res.x
     return u
 
 def solve(n, restarts=50, rng=None, schedule=None):
+    """Return (d_unit, points_unit, raw_variables).
+
+    d_unit is the minimum pairwise distance after mapping the side-2 optimizer
+    box to the unit square. Convert it to circle radius with
+    radius_from_unit_distance(d_unit).
+    """
     if n == 1:
         return np.inf, np.array([[0.5, 0.5]]), np.zeros(2)
     rng = rng or np.random.default_rng(0)
     best_u, best_d_side2 = None, -1.0
-    for _ in range(restarts):
-        u = rng.uniform(-np.pi / 2, np.pi / 2, 2 * n)
+    for _ in range(restarts):                         # cover the basins
+        u = rng.uniform(-np.pi/2, np.pi/2, 2*n)
         u = optimize_one_start(u, n, schedule)
         d_side2 = min_pair_distance(u, n)
         if d_side2 > best_d_side2:
