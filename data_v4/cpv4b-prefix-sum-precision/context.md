@@ -12,12 +12,6 @@ Among all contiguous windows `[i, j)` with length `j - i >= L`, report the maxim
 must be printed as an **exact reduced fraction** `p/q` (with `q > 0`) — not a rounded decimal. Two
 windows tie only when their fractions are equal; otherwise the larger fraction wins unambiguously.
 
-This is the maximum-average-subarray-of-bounded-length problem. It looks like a prefix-sum exercise,
-and it is — but the moment you compare two averages you are comparing two ratios of large integers,
-and the safe way to do that is to cross-multiply rather than divide. With the sums and lengths in play
-here, those cross-products overflow 64-bit arithmetic, so getting the *arithmetic* right is the whole
-game.
-
 ## Input / output contract
 
 - Input (stdin): the first line has two integers `n` and `L` (`1 <= L <= n <= 2*10^5`). The second
@@ -38,14 +32,9 @@ approach are on the table before committing:
 
 - **Binary search on the answer (float).** Guess an average `x`; a window of length `>= L` beats `x`
   iff `sum(a[i..j-1] - x) >= 0`, which is a prefix-sum-with-`min` scan. This is `O(n log(range/eps))`.
-  The open question is whether *floating-point* `x` can ever distinguish the true optimum from a
-  fraction that is astronomically close to it — with denominators up to `2*10^5`, two distinct
-  averages can differ by less than `1/(2*10^5)^2`, far below `double` precision near `10^9`.
 - **Exact geometry on prefix points.** Treat each prefix as a point `P_k = (k, S[k])`. The average of
   window `[i, j)` is exactly the *slope* of the segment `P_i -> P_j`. Maximizing slope to a fixed
-  right endpoint over a moving set of left endpoints is a convex-hull-tangent problem, solvable in
-  `O(n)` with **only integer comparisons** — provided every comparison is done by cross-multiplying,
-  never dividing. The open question is the exact width those products need.
+  right endpoint over a moving set of left endpoints is a classic geometric optimization problem.
 
 ## Evaluation settings
 
@@ -53,8 +42,7 @@ Judged on hidden tests covering: tiny `n`, `L = 1`, `L = n` (only the whole arra
 all-negative arrays (the answer is then a negative fraction — there is no empty window because a
 window must have length `>= L >= 1`), arrays whose optimum is a long window rather than a single big
 day, near-tie inputs where two windows' averages differ by a hair, and large `n = 2*10^5` with values
-near `+-10^9` (so prefix sums reach `~2*10^14` and slope cross-products reach `~4*10^19`, past the
-signed 64-bit ceiling of `~9.2*10^18`).
+near `+-10^9`.
 
 ## Code framework
 
