@@ -12,67 +12,20 @@ To obtain a (lambda, delta)-relative-error estimate, average Theta(lambda^{-2}) 
 
 The signs can be generated from a small seed using finite-field polynomial constructions or BCH orthogonal-array constructions; full independence over all n items is unnecessary. The key insight is to stop storing frequencies and instead store a random projection that can be maintained in one pass. Squaring the projection makes equal values reinforce on the diagonal while unrelated values cancel in expectation.
 
-```python
-import math
-import random
-import statistics
+The finished estimator is exactly this. Fix a family of sign functions $\epsilon : [n] \to \{-1, +1\}$ that is four-wise independent, drawn from an $O(\log n)$-bit seed via a degree-three polynomial over a finite field (or an equivalent BCH/orthogonal-array construction). Maintain a single running scalar $Z$, initialized to zero; on each stream item $a_j$ update
 
+$$Z \leftarrow Z + \epsilon(a_j),$$
 
-class AMSF2Sketch:
-    """One-pass (lambda, delta)-relative-error estimator for F_2.
+and at the end of the pass output $X = Z^2$. Because $\epsilon_i^2 = 1$ and the cross terms cancel under pairwise independence, $\mathbb{E}[X] = F_2$, and the four-wise independence of the sign family gives
 
-    Uses a degree-3 polynomial over a prime field to produce four-wise
-    independent signs; each sketch maintains the scalar Z = sum_i eps_i m_i.
-    """
+$$\operatorname{Var}(X) = 2\left(F_2^2 - F_4\right) \le 2F_2^2.$$
 
-    def __init__(self, n, lambda_param=0.1, delta=0.05):
-        # A Mersenne prime larger than any realistic universe size.
-        self.p = (1 << 61) - 1
-        self.group_size = max(1, int(math.ceil(4.0 / (lambda_param ** 2))))
-        self.num_groups = max(1, int(math.ceil(math.log(1.0 / delta))))
-        self.total = self.group_size * self.num_groups
-        # Each sketch gets four random field coefficients.
-        self.coeffs = [
-            tuple(random.randrange(self.p) for _ in range(4))
-            for _ in range(self.total)
-        ]
-        self.Z = [0] * self.total
+A single copy of $X$ only has constant relative variance, so it is not yet a $(\lambda,\delta)$-guarantee. To get one, run $s_1 = \Theta(\lambda^{-2})$ independent copies of the sketch in parallel, each with its own independently drawn sign family and its own running $Z_{r,c}$, and average the $s_1$ resulting values of $X$; Chebyshev's inequality then bounds that average's failure probability by a constant. Repeat this whole averaging block $s_2 = \Theta(\log(1/\delta))$ times independently and output the median of the $s_2$ averages; a Chernoff bound over the $s_2$ blocks drives the failure probability down to $\delta$. The complete estimator is
 
-    def _sign(self, x, coeff):
-        a, b, c, d = coeff
-        x_mod = x % self.p
-        x2 = (x_mod * x_mod) % self.p
-        x3 = (x2 * x_mod) % self.p
-        v = (a * x3 + b * x2 + c * x_mod + d) % self.p
-        return 1 if v < self.p // 2 else -1
+$$Y = \operatorname*{median}_{1 \le r \le s_2} \left( \frac{1}{s_1} \sum_{c=1}^{s_1} Z_{r,c}^2 \right), \qquad \Pr\big[\,|Y - F_2| > \lambda F_2\,\big] \le \delta,$$
 
-    def update(self, item):
-        for i, coeff in enumerate(self.coeffs):
-            self.Z[i] += self._sign(item, coeff)
+maintained with total space
 
-    def estimate(self):
-        group_avgs = []
-        for g in range(self.num_groups):
-            start = g * self.group_size
-            total = 0.0
-            for i in range(start, start + self.group_size):
-                total += self.Z[i] * self.Z[i]
-            group_avgs.append(total / self.group_size)
-        return statistics.median(group_avgs)
+$$O\!\left(\lambda^{-2} \log(1/\delta)\,(\log n + \log m)\right)$$
 
-
-def estimate_f2(stream, n, lambda_param=0.1, delta=0.05):
-    sketch = AMSF2Sketch(n, lambda_param=lambda_param, delta=delta)
-    for item in stream:
-        sketch.update(item)
-    return sketch.estimate()
-
-
-if __name__ == "__main__":
-    # Small example: value 1 appears 10 times, value 2 appears 3 times.
-    stream = [1] * 10 + [2] * 3
-    n = 10
-    true_f2 = 10 ** 2 + 3 ** 2
-    approx = estimate_f2(stream, n, lambda_param=0.2, delta=0.05)
-    print(f"true F_2 = {true_f2}, estimate = {approx:.2f}")
-```
+bits: one scalar $Z_{r,c}$ per one of the $s_1 s_2$ parallel sketches, each scalar itself only $O(\log m)$ bits since it is a running sum bounded by the stream length, plus the $O(\log n)$-bit seed that generates each sketch's four-wise-independent signs. That is the whole discovery — replace the histogram with $s_1 s_2 = O(\lambda^{-2}\log(1/\delta))$ parallel copies of a single signed linear projection, square each one, and let median-of-means turn a constant-relative-variance building block into a genuine relative-error guarantee, at a total cost of $O(\log n + \log m)$ per copy instead of the $\Theta(n \log m)$ bits the histogram demanded.
