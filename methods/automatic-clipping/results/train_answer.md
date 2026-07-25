@@ -13,12 +13,11 @@ import torch
 
 
 class DPMechanism:
-    """Automatic clipping (AUTO-S): per-sample normalization g_i / (||g_i|| + gamma).
-
-    Replaces Abadi's per-sample clip min(R/||g_i||, 1). The clipping threshold R
-    is gauge under normalization, so it is pinned to 1 and needs no tuning. The
-    sensitivity is bounded by 1, so the privacy accountant is unchanged.
-    """
+    """Automatic clipping (AUTO-S): per-sample normalization g_i/(||g_i|| + gamma),
+    in place of Abadi's clip min(R/||g_i||, 1). No threshold R to tune (R is gauge,
+    fixed at 1). Sensitivity bounded by 1, so the privacy accountant is unchanged.
+    gamma = 0 recovers AUTO-V (pure normalization, can stall in a lazy region);
+    gamma > 0 (AUTO-S) preserves magnitude order and converges at O(T^{-1/4})."""
 
     def __init__(self, max_grad_norm, noise_multiplier, n_params,
                  dataset_size, batch_size, epochs, target_epsilon, target_delta):
@@ -29,39 +28,34 @@ class DPMechanism:
         self.epochs = epochs
         self.target_epsilon = target_epsilon
         self.target_delta = target_delta
-        # R is redundant under normalization; pin it to 1.
-        self.max_grad_norm = 1.0
-        # Stability constant for AUTO-S. gamma = 0 gives AUTO-V (pure
-        # normalization), which can stall in a lazy region.
-        self.numerical_stability_constant = 1e-2
+        self.max_grad_norm = 1.0                  # R is redundant under normalization -> pin to 1
+        self.numerical_stability_constant = 1e-2  # gamma for AUTO-S; 0 gives AUTO-V
 
     def clip_and_noise(self, per_sample_grads, step, epoch):
         batch_size = per_sample_grads[0].shape[0]
 
-        # Flat per-sample L2 norm across all parameters; sensitivity is of the
-        # whole per-sample gradient vector.
+        # per-sample L2 norm over all parameters jointly (sensitivity is of the
+        # whole per-sample gradient vector)
         flat = torch.cat([g.reshape(batch_size, -1) for g in per_sample_grads], dim=1)
-        norm_sample = flat.norm(2, dim=1)  # [B] = ||g_i||
+        norm_sample = flat.norm(2, dim=1)                    # [B] = ||g_i||
 
-        # AUTO-S scale: C_i = R / (||g_i|| + gamma), with R = 1.
-        # ||C_i g_i|| = ||g_i|| / (||g_i|| + gamma) < 1, so sensitivity <= 1.
+        # AUTO-S clip factor C_i = R / (||g_i|| + gamma), R = 1
+        # ||C_i g_i|| = ||g_i|| / (||g_i|| + gamma) < 1  ->  sensitivity <= 1
         C = self.max_grad_norm / (norm_sample + self.numerical_stability_constant)
 
         noised_grads = []
         for g in per_sample_grads:
             shape = [batch_size] + [1] * (g.dim() - 1)
-            normalized = g * C.reshape(shape)   # C_i * g_i
-            summed = normalized.sum(dim=0)      # sum_i C_i g_i
+            normalized = g * C.reshape(shape)                # C_i * g_i
+            summed = normalized.sum(dim=0)                    # sum_i C_i g_i
 
-            # Gaussian noise at sensitivity R = 1; std = sigma * R.
-            # The noise-to-sensitivity ratio is sigma, identical to Abadi's clip,
-            # so the privacy accountant and (eps, delta) guarantee are unchanged.
+            # Gaussian noise at sensitivity R = 1: std = sigma * R; ratio = sigma,
+            # identical to Abadi's clip, so the accountant / (eps, delta) is unchanged
             noise = torch.randn_like(summed) * (self.noise_multiplier * self.max_grad_norm)
-            noised_grads.append(summed + noise)
+            noised_grads.append(summed + noise)              # any optimizer steps on this
 
         return noised_grads
 
     def get_effective_sigma(self, step, epoch):
-        # sigma is constant and was fixed up front by the accountant.
         return self.noise_multiplier
 ```
