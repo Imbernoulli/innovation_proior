@@ -9,10 +9,14 @@ The inference loop is a single greedy chain with no tree search and no backtrack
 ```python
 def llm(prompt, stop=None):
     """Greedy completion from a frozen large language model, temperature 0,
-    halting when any string in `stop` is produced."""
+    halting when any string in `stop` is produced. (e.g. text-davinci-002, PaLM-540B.)"""
     ...
 
 
+# Names the task and the augmented action space (Search / Lookup / Finish for the
+# Wikipedia QA environment). FEWSHOT_EXEMPLARS are human trajectories interleaving
+# Thought / Action / Observation -- dense for reasoning tasks, sparse (model-decided)
+# for long-horizon decision tasks.
 INSTRUCTION = (
     "Solve a question answering task with interleaving Thought, Action, Observation "
     "steps. Thought can reason about the current situation, and Action can be three "
@@ -24,12 +28,12 @@ INSTRUCTION = (
     "(3) Finish[answer] -- returns the answer and finishes the task.\n"
     "Here are some examples.\n"
 )
-FEWSHOT_EXEMPLARS = "..."   # human-written interleaved Thought/Action/Observation trajectories
+FEWSHOT_EXEMPLARS = "..."   # a few human-written interleaved trajectories for this task
 
 
 def greedy_chain(env, max_steps=7, idx=None):
-    """ReAct single greedy chain: alternate model-generated Thought+Action with
-    real environment Observations, one trajectory, no backtracking."""
+    """Single greedy chain alternating model-generated Thought+Action with
+    real environment Observations -- one trajectory, no backtracking."""
     question = env.reset(idx=idx)
     prompt = INSTRUCTION + FEWSHOT_EXEMPLARS + question + "\n"
     n_calls, n_badcalls = 0, 0
@@ -38,12 +42,13 @@ def greedy_chain(env, max_steps=7, idx=None):
 
     for i in range(1, max_steps + 1):
         n_calls += 1
-        # Generate this step's Thought and Action; stop before the Observation slot
-        # so the model can never fabricate an observation.
+        # One call -> this step's Thought AND Action; stop BEFORE the observation slot
+        # so the model cannot invent an observation -- the environment provides it.
         thought_action = llm(prompt + f"Thought {i}:", stop=[f"\nObservation {i}:"])
         try:
             thought, action = thought_action.strip().split(f"\nAction {i}: ")
         except ValueError:
+            # No clean Action emitted: keep the thought, ask narrowly for the action.
             n_badcalls += 1
             n_calls += 1
             thought = thought_action.strip().split("\n")[0]
@@ -51,12 +56,12 @@ def greedy_chain(env, max_steps=7, idx=None):
                 prompt + f"Thought {i}: {thought}\nAction {i}:", stop=["\n"]
             ).strip()
 
-        # Only the action touches the environment; the thought is an inert
-        # language action that updates the context.
+        # Only the action touches the environment; the thought was an inert language
+        # action that merely updated the context.
         obs, reward, done, info = env.step(action[0].lower() + action[1:])
         obs = obs.replace("\\n", "")
 
-        # Fold Thought, Action, and the real Observation back into the context.
+        # Fold Thought, Action and the REAL Observation back in for the next step.
         prompt += (
             f"Thought {i}: {thought}\n"
             f"Action {i}: {action}\n"
@@ -65,7 +70,7 @@ def greedy_chain(env, max_steps=7, idx=None):
         if done:                       # model emitted Finish[...]
             break
 
-    if not done:                       # hit the step cap without finishing
+    if not done:                       # hit the cap without finishing -> close the episode
         obs, reward, done, info = env.step("finish[]")
 
     info.update({"n_calls": n_calls, "n_badcalls": n_badcalls, "traj": prompt})
