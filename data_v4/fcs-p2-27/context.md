@@ -26,23 +26,16 @@ Example: for `n = 3`, `T = 3`, `a = [1, 2, 3]`, the answer is `2` (the subsets `
 ## Background
 
 "Count subsets with a given sum" looks like it should reduce to something cheaper than touching every
-sum value. Two ideas present themselves before committing:
-
-- **A greedy / sorting heuristic.** Sort the values and try to assemble `T` by selecting items in
-  some order, counting "ways" as you go. Greedy is `O(n log n)` and tempting, but counting is not an
-  optimization — there is no single best object to be greedy toward, and the number of ways is a
-  global quantity over all combinations. The open question is whether any local rule can recover it.
-- **An exact-target counting DP.** Process items one at a time, maintaining for every reachable sum
-  `s in [0, T]` the number of subsets achieving it. This is `O(n*T)`; the open questions are the
-  recurrence, the iteration order that keeps each item used at most once, and how zeros behave.
+sum value. The most tempting shortcut is a greedy / sorting heuristic: sort the values and try to
+assemble `T` by selecting items in some order, counting "ways" as you go. Greedy is `O(n log n)` and
+tempting, but counting is not an optimization — there is no single best object to be greedy toward,
+and the number of ways is a global quantity over all combinations.
 
 ## Evaluation settings
 
 Judged on hidden tests covering: distinct positive values; many repeated values (so distinct
-positions yield distinct subsets); arrays containing zeros (each zero independently doubles the count
-for a fixed sum); `T = 0` (answer is `2^(number of zeros)`); unreachable `T` larger than the total
-(answer `0`); `n = 0`; and large `n = 200`, `T = 100000` with counts far exceeding the modulus, so
-the modular arithmetic and the choice of a 64-bit accumulator are exercised.
+positions yield distinct subsets); arrays containing zeros; `T = 0`; unreachable `T` larger than the
+total; `n = 0`; and large `n = 200`, `T = 100000`, where counts can far exceed the modulus.
 
 ## Code framework
 
