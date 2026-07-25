@@ -41,7 +41,7 @@ The field state and the load-bearing pieces a solution rests on:
 
 - **Sampling configs from that generative prior is already a usable algorithm** — it is random
   search, which had recently been shown to beat grid search for one-layer neural-network
-  classifiers (Bergstra & Bengio 2012), because grid search wastes trials on coordinates the loss
+  classifiers (Bergstra & Bengio 2011), because grid search wastes trials on coordinates the loss
   is insensitive to while random search spreads its trials across all coordinates. Random search
   is the baseline any history-using method must beat.
 
@@ -76,7 +76,7 @@ The prior methods a new optimizer would be measured against or built upon:
 - **Grid search and manual / grid-assisted search.** Enumerate a grid of configurations (or have a
   human steer a grid-assisted search), train and evaluate each.
 
-- **Random search** (Bergstra & Bengio 2012). Draw configurations from the generative prior over
+- **Random search** (Bergstra & Bengio 2011). Draw configurations from the generative prior over
   the space and evaluate them. It beats grid search because it never wastes resolution on
   irrelevant coordinates, and it matches careful manual tuning of neural nets within a few dozen
   trials.
