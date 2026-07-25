@@ -36,10 +36,9 @@ class Lambda_var(torch.nn.Module):
 
 
 class BoundOptimizer:
-    """PAC-Bayes-lambda bound. Convex in the posterior for fixed lambda and
-    convex in lambda for fixed posterior, so it is minimized by alternating
-    descent over the posterior and over lambda. The lambda parameter is
-    sigmoid-scaled into [1/sqrt(n), 1], matching the PBB flamb implementation."""
+    """PAC-Bayes-lambda bound. Convex in the posterior for fixed lambda and in
+    lambda for fixed posterior; minimized by alternating descent. The lambda
+    parameter is sigmoid-scaled into [1/sqrt(n), 1], matching PBB flamb."""
 
     def __init__(self, learning_rate=0.001, momentum=0.95, prior_sigma=0.03,
                  pmin=1e-4, initial_lamb=6.0):
@@ -73,7 +72,7 @@ class BoundOptimizer:
         return loss_ce, error
 
     def compute_bound(self, empirical_risk, kl, n, delta):
-        # PAC-Bayes-lambda: L_hat/(1 - lam/2) + (KL + ln(2 sqrt(n)/delta)) / (n lam (1 - lam/2))
+        # L_hat/(1 - lam/2) + (KL + ln(2 sqrt(n)/delta)) / (n lam (1 - lam/2))
         lam = self.lambda_var.lamb_scaled
         kl_term = (kl + math.log(2.0 * math.sqrt(n) / delta)) / (
             n * lam * (1.0 - lam / 2.0))
@@ -110,8 +109,6 @@ class BoundOptimizer:
 
     def compute_risk_certificate(self, model, bound_loader, device, delta=0.025,
                                  delta_test=0.01, mc_samples=1000):
-        # Certify with PAC-Bayes-kl inversion (tightest) on the learned rho,
-        # not the relaxed lambda bound used for training.
         self._ensure_state(model, len(bound_loader.dataset), device)
         model.eval()
         n_bound = len(bound_loader.dataset)
