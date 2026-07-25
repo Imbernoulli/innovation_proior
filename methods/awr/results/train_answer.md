@@ -13,6 +13,9 @@ from torch.distributions.normal import Normal
 
 
 class Agent(nn.Module):
+    """On-policy actor-critic backbone: Gaussian policy (mean MLP + learned log-std)
+    and a separate value MLP. AWR reuses this and changes only the loss."""
+
     def __init__(self, obs_dim, action_dim):
         super().__init__()
         h = 64
@@ -42,23 +45,32 @@ class Agent(nn.Module):
 
 def compute_losses(agent, mb_obs, mb_actions, mb_logprobs, mb_advantages,
                    mb_returns, mb_values, args):
+    """AWR loss for the CleanRL-style slot: weighted policy MLE + MSE value loss."""
     _awr_beta = 0.05
     _awr_max_weight = 20.0
 
+    # log pi(a|s) of the OBSERVED actions, plus V(s); entropy for monitoring.
     _, newlogprob, entropy, newvalue = agent.get_action_and_value(mb_obs, mb_actions)
+
+    # Diagnostics only.
     logratio = newlogprob - mb_logprobs
     ratio = logratio.exp()
-
     with torch.no_grad():
         approx_kl = ((ratio - 1) - logratio).mean()
         clipfrac = ((ratio - 1.0).abs() > args.clip_coef).float().mean().item()
 
+    # Gibbs weight from the KL-constrained improvement problem. mb_advantages has
+    # already been normalized by the surrounding minibatch loop; the mean-one
+    # rescale keeps this CleanRL loss slot on a stable gradient scale.
     with torch.no_grad():
         weights = torch.exp(mb_advantages / _awr_beta)
         weights = torch.clamp(weights, max=_awr_max_weight)
         weights = weights / (weights.sum() + 1e-8) * weights.numel()
 
+    # Policy loss = -E[ log pi(a|s) * weight ]  (weighted maximum likelihood)
     pg_loss = -(newlogprob * weights).mean()
+
+    # Value loss = 0.5 * E[ (V(s) - return)^2 ]  (single mean value fn by MSE regression)
     newvalue = newvalue.view(-1)
     v_loss = 0.5 * ((newvalue - mb_returns) ** 2).mean()
 
