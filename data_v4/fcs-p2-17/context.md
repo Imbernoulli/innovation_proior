@@ -30,33 +30,12 @@ large and is therefore requested modulo a prime.
 Example: for denominations `{1, 2, 5}`, `S = 5`, and `p = 10^9 + 7`, the answer is `4`. The four
 multisets are `5`, `2 + 2 + 1`, `2 + 1 + 1 + 1`, and `1 + 1 + 1 + 1 + 1`.
 
-## Background
-
-Several routes are on the table before committing to one.
-
-- **Generating-function / inclusion-exclusion closed form.** The count is the coefficient of `x^S` in
-  the product of `1 / (1 - x^{c})` over the distinct denominations. One could try to evaluate this
-  with an explicit inclusion-exclusion over subsets of denominations, or a clever convolution scheme.
-  This is mathematically elegant; the open question is whether such a formula can be implemented
-  **correctly within the budget**, especially with arbitrary (non-coprime) denominations, or whether
-  it is a source of subtle errors.
-- **Order-sensitive ("compositions") DP.** Scan target values `s` from `1` to `S` and, for each `s`,
-  add the contributions of every denomination `c <= s` from `s - c`. This is `O(S * n)` and very short.
-  The open question is whether it counts *multisets* (unordered) or *sequences* (ordered) — i.e.
-  whether it matches the "order does not matter" requirement, or silently overcounts.
-- **Order-independent counting DP.** Process the denominations one at a time in the **outer** loop, and
-  for each denomination relax all target sums in the **inner** loop. This is also `O(S * n)`. The open
-  questions are why the loop order makes it count unordered multisets exactly once, the empty-multiset
-  base case, and whether `O(S * n)` is fast enough at the stated limits.
-
 ## Evaluation settings
 
-Judged on hidden tests covering: small dense coin sets where the count is large (so an order-vs-no-order
-mistake is glaring), sets with and without a `1` coin, unreachable targets (count `0`), `S = 0` (count
-`1`, the empty multiset), denominations larger than `S`, duplicate denominations in the input (which
-must collapse to a single coin type), very small moduli such as `p = 2` and `p = 3` (so an off-by-one in
-the base case surfaces), large primes near `10^9 + 7`, and large instances with `S = 2*10^5` and
-`n = 200` to confirm the chosen method runs in time.
+Judged on hidden tests covering: small dense coin sets where the count is large, sets with and without
+a `1` coin, unreachable targets, `S = 0`, denominations larger than `S`, duplicate denominations in the
+input, very small moduli such as `p = 2` and `p = 3`, large primes near `10^9 + 7`, and large instances
+with `S = 2*10^5` and `n = 200`.
 
 ## Code framework
 
