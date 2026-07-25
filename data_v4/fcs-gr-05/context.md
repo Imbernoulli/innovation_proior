@@ -11,8 +11,8 @@ i.e. it becomes **2-edge-connected**: it stays connected after the removal of an
 edges may join any pair of distinct vertices, including a pair that already shares an edge. Output the
 minimum number of edges that must be added.
 
-This is the bridge-connectivity augmentation problem (the 2-edge-connected case of Eswaran–Tarjan).
-It is the canonical question behind making a backbone resilient to any single cable cut.
+This is the bridge-connectivity augmentation problem. It is the canonical question behind making
+a backbone resilient to any single cable cut.
 
 ## Input / output contract
 
@@ -36,8 +36,7 @@ Example: for the graph below (a triangle `1-2-3` with a pendant path branching a
 4 6
 ```
 
-the answer is `2`. Edges `3-4`, `4-5`, `4-6` are bridges; contracting the 2-edge-connected pieces
-leaves a tree whose leaves are `{1,2,3}`, `5`, `6` — three leaves — and `ceil(3/2) = 2`.
+the answer is `2`. Edges `3-4`, `4-5`, `4-6` are bridges.
 
 ## Background
 
@@ -49,18 +48,13 @@ Two families of approach are on the table before committing to one:
   is astronomically large, so this is only viable for tiny `n`.
 - **Structural / combinatorial.** Bridges partition the graph into maximal **2-edge-connected
   components** (no internal bridge). Contracting each such component to a single node turns the graph
-  into a tree — the *bridge tree* — whose edges are exactly the bridges. The open questions are how to
-  find the bridges at scale and what closed-form count of new edges the tree shape forces.
-
-The scale (`n, m <= 2*10^5`) rules out any superlinear search; the intended solution is a single
-linear pass to find bridges plus a closed-form count over the bridge tree.
+  into a tree — the *bridge tree* — whose edges are exactly the bridges.
 
 ## Evaluation settings
 
 Judged on hidden tests covering: already-2-edge-connected graphs (answer `0`); a single bridge
-(answer `1`); long paths (deep DFS, many bridges, answer `1`); star-shaped bridge trees with many
-leaves (answer `ceil(L/2)` up to `10^5`); graphs full of parallel edges and self-loops (which must be
-recognized as *not* bridges); a single isolated vertex (`n=1`, answer `0`); and maximum-size graphs
+(answer `1`); long paths (deep DFS); star-shaped bridge trees with many leaves; graphs full of
+parallel edges and self-loops; a single isolated vertex (`n=1`, answer `0`); and maximum-size graphs
 at `n = m = 2*10^5` for both time and recursion depth.
 
 ## Code framework
@@ -82,13 +76,12 @@ int main() {
     for (int e = 0; e < m; e++) {
         int u, v;
         cin >> u >> v;
-        if (u == v) continue;            // self-loop: never a bridge
+        if (u == v) continue;            // self-loop: skip
         adj[u].push_back({v, e});
         adj[v].push_back({u, e});
     }
 
-    // TODO: find the bridges, contract 2-edge-connected components into the
-    // bridge tree, and output the minimum number of edges to make it bridgeless.
+    // TODO: compute the minimum number of edges to add so the graph has no bridge.
     long long answer = 0;
 
     cout << answer << "\n";
