@@ -21,26 +21,11 @@ multiset of characters," and it is exactly where the cheap-looking heuristics br
 Example: for `s = abcbdab` and `t = bdcaba` the answer is `4` (for instance the subsequence `bdab`,
 or `bcba`).
 
-## Background
-
-Two families of approach are on the table before committing to one:
-
-- **Greedy "match-as-you-scan".** Walk a pointer along `t`; for each character of `s`, if it equals
-  the character under the `t`-pointer (or the next equal character ahead in `t`), count a match and
-  advance. It is `O(n + m)` and a handful of lines. The open question is whether committing to the
-  first available match is ever globally suboptimal under the order-preserving rule.
-- **Two-dimensional dynamic programming.** Define `dp[i][j]` as the LCS length of the first `i`
-  characters of `s` and the first `j` characters of `t`, and fill it with a short recurrence. This is
-  `O(n*m)`; the open questions are the exact recurrence and whether `3000 * 3000` work fits the time
-  and memory budget.
-
 ## Evaluation settings
 
-Judged on hidden tests covering: identical strings (answer `= |s|`), disjoint alphabets (answer `0`),
-strings that are reorderings of each other (where greedy is most tempting and most wrong), strings
-that share a long hidden subsequence buried in noise, length-1 strings, and worst-case sizes
-`|s| = |t| = 3000` over both large and tiny alphabets (the tiny alphabet maximizes the number of
-crossing candidate matches).
+Judged on hidden tests covering: identical strings, disjoint alphabets, strings that are reorderings
+of each other, strings that share a long hidden subsequence buried in noise, length-1 strings, and
+worst-case sizes `|s| = |t| = 3000` over both large and tiny alphabets.
 
 ## Code framework
 
