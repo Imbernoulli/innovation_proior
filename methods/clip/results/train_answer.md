@@ -22,6 +22,8 @@ class DualEncoderModel(nn.Module):
         self.text_encoder = text_encoder            # Transformer -> [n, d_text]
         self.image_proj = nn.Linear(d_image, d_embed, bias=False)   # W_i
         self.text_proj = nn.Linear(d_text, d_embed, bias=False)     # W_t
+        # learned inverse temperature, stored in log space so exp() is always positive,
+        # initialized to the equivalent of temperature 0.07
         self.logit_scale = nn.Parameter(torch.ones([]) * np.log(1 / 0.07))
 
     def encode_image(self, image):
@@ -37,9 +39,11 @@ class DualEncoderModel(nn.Module):
 
 
 def training_objective(image_features, text_features, model):
+    # scaled pairwise cosine similarities; diagonal entries are the true pairs
     logit_scale = model.logit_scale.exp().clamp(max=100.0)
     logits_per_image = logit_scale * (image_features @ text_features.t())  # [n, n]
     logits_per_text = logits_per_image.t()
+    # the matched (image, text) pair for example i is on the diagonal -> label i
     n = logits_per_image.shape[0]
     labels = torch.arange(n, device=logits_per_image.device)
     loss_i = F.cross_entropy(logits_per_image, labels)   # each image picks its text
@@ -64,8 +68,8 @@ def _format_prompt(template, description):
 
 
 @torch.no_grad()
-def build_classifier_from_descriptions(model, class_descriptions, tokenize,
-                                       templates=("a photo of a {label}.",)):
+def build_classifier_from_descriptions(model, class_descriptions, tokenize, templates=("a photo of a {label}.",)):
+    """Generate a linear classifier from class names via the text encoder."""
     weights = []
     device = next(model.parameters()).device
     for description in class_descriptions:
