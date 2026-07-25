@@ -12,91 +12,14 @@ The proof search is then a saturation loop. A prover repeatedly selects clauses,
 
 Robinson resolution had a broad influence on artificial intelligence and automated reasoning. It converted the diffuse activity of logical deduction into a concrete symbolic engine. Instead of encoding many domain-specific rules of inference, a system could normalize its knowledge into clauses and rely on one general inference loop. Modus ponens, case analysis, syllogistic chaining, and quantifier instantiation all become special cases of resolution after clause conversion. The practical engineering problem shifted toward search control: which clauses to keep, which pairs to resolve next, how to index terms, and how to limit combinatorial growth. Later refinements such as paramodulation and superposition extended the same framework to handle equality efficiently.
 
-A small Python illustration captures the central operations. It defines unification for simple first-order terms and performs a single resolution proof of the classic syllogism: Socrates is a man, all men are mortal, therefore Socrates is mortal. The code converts the problem into clauses, resolves the clause for Socrates being a man with the clause for all men being mortal, and then resolves the result with the negated goal to obtain the empty clause.
+The classic syllogism makes the central operations concrete. Socrates is a man becomes the unit clause $\mathrm{Man}(\mathrm{socrates})$; all men are mortal becomes $\neg\mathrm{Man}(x) \lor \mathrm{Mortal}(x)$; the goal Socrates is mortal is negated to $\neg\mathrm{Mortal}(\mathrm{socrates})$. Resolving the first two clauses matches $\mathrm{Man}(\mathrm{socrates})$ against $\mathrm{Man}(x)$ with the most general unifier $\theta_1=\{x \mapsto \mathrm{socrates}\}$, discharges both complementary literals, and leaves the resolvent $\mathrm{Mortal}(\mathrm{socrates})$. Resolving that resolvent against the negated goal needs no further substitution, since the two literals are already identical, and it discharges both, leaving the empty clause. The empty clause is the contradiction: the three clauses cannot be jointly satisfied, so the negated goal is false and the original claim holds.
 
-```python
-def unify(x, y, theta=None):
-    if theta is None:
-        theta = {}
-    # Variables are strings whose first character is uppercase.
-    if isinstance(x, str) and x[0].isupper():
-        return unify_var(x, y, theta)
-    if isinstance(y, str) and y[0].isupper():
-        return unify_var(y, x, theta)
-    if isinstance(x, tuple) and isinstance(y, tuple):
-        if x[0] != y[0] or len(x) != len(y):
-            return None
-        for xi, yi in zip(x[1:], y[1:]):
-            theta = unify(xi, yi, theta)
-            if theta is None:
-                return None
-        return theta
-    return theta if x == y else None
+That derivation is a single instance of the whole method, which is completely stated by one representational step and one inference rule. Clausification puts every formula into the shape
 
-def unify_var(var, term, theta):
-    if var in theta:
-        return unify(theta[var], term, theta)
-    if var == term:
-        return theta
-    if occurs(var, term, theta):
-        return None
-    theta[var] = term
-    return theta
+$$\varphi \;\longrightarrow\; \bigwedge_i \bigvee_j \ell_{ij},$$
 
-def occurs(var, term, theta):
-    if var == term:
-        return True
-    if isinstance(term, str) and term[0].isupper() and term in theta:
-        return occurs(var, theta[term], theta)
-    if isinstance(term, tuple):
-        return any(occurs(var, arg, theta) for arg in term[1:])
-    return False
+a conjunction of clauses each a disjunction of literals $\ell_{ij}$, with implications rewritten, negations pushed inward, variables standardized apart, existential quantifiers replaced by Skolem functions, and universal quantification left implicit. The resolution rule is then
 
-def apply(term, theta):
-    if isinstance(term, str) and term[0].isupper():
-        return apply(theta.get(term, term), theta) if term in theta else term
-    if isinstance(term, tuple):
-        return (term[0],) + tuple(apply(arg, theta) for arg in term[1:])
-    return term
+$$\frac{C \lor L \qquad D \lor \neg L' \qquad \theta = \mathrm{mgu}(L, L')}{(C \lor D)\theta},$$
 
-def resolve(clause1, clause2):
-    """Resolve two clauses represented as sets of signed literals.
-    Positive literal: ('+', predicate_term)
-    Negative literal: ('-', predicate_term)
-    """
-    for s1, p1 in clause1:
-        for s2, p2 in clause2:
-            if s1 == s2:
-                continue
-            theta = unify(p1, p2)
-            if theta is None:
-                continue
-            resolvent = set()
-            for s, p in clause1:
-                if (s, p) != (s1, p1):
-                    resolvent.add((s, apply(p, theta)))
-            for s, p in clause2:
-                if (s, p) != (s2, p2):
-                    resolvent.add((s, apply(p, theta)))
-            return resolvent, theta
-    return None, None
-
-# Syllogism: Man(socrates); if Man(x) then Mortal(x); prove Mortal(socrates).
-Man = lambda t: ('Man', t)
-Mortal = lambda t: ('Mortal', t)
-Socrates = 'socrates'
-X = 'X'
-
-clause1 = {('+', Man(Socrates))}
-clause2 = {('-', Man(X)), ('+', Mortal(X))}
-goal_neg = {('-', Mortal(Socrates))}
-
-r1, theta1 = resolve(clause1, clause2)
-print('Resolvent 1:', r1, 'substitution:', theta1)
-
-r2, theta2 = resolve(r1, goal_neg)
-print('Resolvent 2:', r2, 'substitution:', theta2)
-assert r2 == set(), 'Expected empty clause: refutation is complete'
-```
-
-The derivation starts from the clause Man(socrates) and the implication clause not Man(X) or Mortal(X). Resolving these clauses unifies X with socrates and yields Mortal(socrates). Resolving that resolvent with the negated goal not Mortal(socrates) then yields the empty clause, completing the refutation. This is exactly the chain Robinson resolution performs at machine scale, using only clause form, unification, and resolution.
+read: given a clause containing literal $L$ and a clause containing the complementary literal $\neg L'$, and given $\theta$, the most general unifier of $L$ and $L'$, derive the disjunction of everything else in either clause, under $\theta$. Factoring supplements this by collapsing unifiable literals within a single clause. The full procedure for proving a goal $G$ from axioms $A$ is to clausify $A \cup \{\neg G\}$, repeatedly apply resolution (and factoring) to saturate the clause set, and declare $G$ proved the moment the empty clause is derived. What licenses treating this as a calculus rather than a heuristic is the refutation-completeness theorem: if $A \cup \{\neg G\}$ is unsatisfiable, some fair resolution derivation, using only most general unifiers at each step, produces the empty clause in finitely many steps. Nothing more needs to be built into the prover; every classical inference pattern first-order logic supports is already reachable through clause form plus this one rule.
