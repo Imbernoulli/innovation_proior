@@ -31,41 +31,12 @@ only structure of the recurrence.
 Worked example. The Fibonacci recurrence has `k = 2`, `c = [1, 1]` (so `a[n] = a[n-1] + a[n-2]`)
 and seeds `a = [0, 1]`. For `N = 10` the answer is `55`. For `N = 0` it is `0`; for `N = 1` it is `1`.
 
-## Background
-
-For tiny `k` the textbook tool is **matrix exponentiation**: stack the last `k` terms into a state
-vector and advance one step by multiplying with the `k x k` companion matrix of the recurrence;
-`a[N]` then falls out of `M^N` applied to the seed state, computed by fast exponentiation in
-`O(k^3 log N)` field operations. That cubic factor in `k` is fine for `k <= 100` or so, but with
-`k = 2*10^4` it is `(2*10^4)^3 = 8*10^{13}` per matrix multiply — completely out of reach.
-
-There is a second, equivalent way to phrase "advance the recurrence" that does not build a matrix at
-all. Associate with the recurrence its **characteristic polynomial**
-
-```
-g(x) = x^k - c[0]*x^{k-1} - c[1]*x^{k-2} - ... - c[k-1].
-```
-
-The state-advance map is multiplication by `x` in the quotient ring `Z_p[x] / (g(x))`. So computing
-the `N`-step advance is computing `x^N` inside that ring — i.e. the polynomial `f(x) = x^N mod g(x)`,
-which has degree `< k`. Once we have `f(x) = sum_{i=0}^{k-1} f[i]*x^i`, linearity gives
-
-```
-a[N] = sum_{i=0}^{k-1} f[i] * a[i]   (mod p),
-```
-
-a single dot product of the reduced polynomial with the seed vector. This reduces the whole task to
-"raise `x` to the `N`-th power modulo a degree-`k` polynomial," which is the object the rest of the
-work has to make fast.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: `k = 1` (geometric sequences); `N < k` (the answer is a raw seed);
-`N` exactly at the boundaries `k-1`, `k`; recurrences with zero / sparse coefficients (so the
-characteristic polynomial has many zero terms); coefficients and seeds spanning the full range
-`[0, p)`; and the stress corner `k = 2*10^4`, `N = 10^18` with random full-range data, where only an
-`O(k log k log N)` method finishes inside the time limit. All arithmetic is modulo
-`p = 998244353`, an NTT-friendly prime.
+`N` exactly at the boundaries `k-1`, `k`; recurrences with zero / sparse coefficients; coefficients
+and seeds spanning the full range `[0, p)`; and the stress corner `k = 2*10^4`, `N = 10^18` with
+random full-range data. All arithmetic is modulo `p = 998244353`.
 
 ## Code framework
 

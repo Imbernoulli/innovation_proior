@@ -6,11 +6,10 @@ You are given a rooted tree on `n` nodes (the root is node `1`). Each node `i` c
 `c[i]`. For **every** node `v`, report the number of **distinct** colors that appear among the nodes
 of `v`'s subtree (the subtree includes `v` itself).
 
-This is the canonical "subtree statistic" query: a value defined on every rooted subtree that is
-*not* a simple additive aggregate (you cannot just add children's answers, because the same color may
-recur across children and must be counted once). It is the kind of subproblem that appears inside
-offline tree queries, auto-complete / trie analytics, and competitive-programming "for each subtree
-report ..." tasks, so computing all `n` answers within the time limit — not just one — is the point.
+This is the canonical "subtree statistic" query: a value defined on every rooted subtree. It is the
+kind of subproblem that appears inside offline tree queries, auto-complete / trie analytics, and
+competitive-programming "for each subtree report ..." tasks, so computing all `n` answers within the
+time limit — not just one — is the point.
 
 ## Input / output contract
 
@@ -28,25 +27,11 @@ Subtree of `4` is `{4}` -> color `{3}` -> `1`. Subtree of `5` -> `{2}` -> `1`. S
 `{2}` -> `1`. Subtree of `3` is `{3,4,5}` -> colors `{1,3,2}` -> `3`. Subtree of `1` is all nodes ->
 colors `{1,2,3}` -> `3`. Output: `3 / 1 / 3 / 1 / 1` (one per line).
 
-## Background
-
-The answer for `v` is `|{ c[w] : w in subtree(v) }|`. Two routes are on the table before committing:
-
-- **Recompute per subtree.** For each `v`, walk its subtree and drop colors into a hash set, then read
-  off the set size. Correct and trivial, but a node near the root is walked once for itself and once
-  inside every ancestor's walk, so on a path of `n` nodes this is `Theta(n^2)` total work — hopeless
-  at `n = 2*10^5`.
-- **Merge children's structures bottom-up.** Keep a per-node container of the colors in its subtree and
-  combine children into the parent. The open question is *how* to combine without paying for the heavy
-  child every time: a generic "merge the two sets" is `O(n log^2 n)`; the order in which children are
-  folded in is what decides whether the total is near-linear or quadratic.
-
 ## Evaluation settings
 
-Judged on hidden tests covering: a single node (`n = 1`); all nodes the same color (every answer `1`);
-all colors distinct (a leaf answers `1`, the root answers `n`); deep paths (`n = 2*10^5`, which stress
-recursion depth); wide stars; random trees; and large/arbitrary color values up to `10^9` (so colors
-must be coordinate-compressed, not used as array indices directly).
+Judged on hidden tests covering: a single node (`n = 1`); all nodes the same color; all colors
+distinct; deep paths (`n = 2*10^5`); wide stars; random trees; and large/arbitrary color values up
+to `10^9`.
 
 ## Code framework
 
