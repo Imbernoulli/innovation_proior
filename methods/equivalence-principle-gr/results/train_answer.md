@@ -7,43 +7,27 @@ From this single assumption, three consequences follow before any field equation
 These results change the conceptual picture of gravity. A gravitational field is no longer primarily a force pulling bodies; it is a feature of space and time that governs the rates of clocks, the speed of light, and hence the trajectories of both matter and light. The equivalence principle is the bridge that lets special relativity, which by itself cannot speak about gravity, generate definite predictions about gravitational effects on energy, time, and light.
 
 ```python
-G   = 6.674e-11      # gravitational constant, N m^2 / kg^2
-c   = 2.998e8        # speed of light, m/s
+G   = 6.674e-11      # N m^2 / kg^2
+c   = 2.998e8        # m/s
 M_sun = 1.989e30     # kg
-R_sun = 6.957e8      # m   (impact parameter for a grazing ray)
+R_sun = 6.957e8      # m  (impact parameter of a grazing ray)
 ARCSEC_PER_RAD = 206265.0
-SOLAR_PHI_DEPTH_OVER_C2 = 2.0e-6  # rounded G M_sun / (R_sun c^2)
+SOLAR_PHI_DEPTH_OVER_C2 = 2.0e-6  # rounded G M_sun / (R_sun c^2) for the solar estimate
 
 def gravitational_potential(r, M):
-    """Newtonian potential Phi(r) = -G M / r."""
-    return -G * M / r
+    return -G * M / r                          # Phi = -G M / r
 
 def fractional_frequency_shift(Phi):
-    """
-    Signed fractional frequency shift from nu = nu0 (1 + Phi/c^2).
-    A clock at potential Phi ticks at rate factor (1 + Phi/c^2).
-    """
-    return Phi / c**2
+    return Phi / c**2                           # signed (nu - nu0) / nu0 = Phi / c^2
 
 def light_deflection(M, impact_parameter):
-    """
-    Bending angle for a ray grazing mass M at impact parameter b,
-    derived from c = c0 (1 + Phi/c^2) and Huygens' wavelet construction:
-    alpha = (1/c^2) * integral(dPhi/dn) ds = 2 G M / (c^2 b).
-    """
-    b = impact_parameter
-    return 2.0 * G * M / (c**2 * b)
+    b = impact_parameter                        # integral b/(x^2+b^2)^(3/2) dx = 2/b
+    return 2.0 * G * M / (c**2 * b)             # alpha = 2 G M / (c^2 b)
 
-# Solar surface gravitational potential
 Phi_sun = -SOLAR_PHI_DEPTH_OVER_C2 * c**2
-
-# Redshift of solar spectral lines relative to Earth
 solar_redshift = -fractional_frequency_shift(Phi_sun)
-print("solar line redshift  Delta_nu/nu =", solar_redshift)  # ~2e-6
-
-# Grazing-ray light deflection at the Sun
-alpha_rad = light_deflection(M_sun, R_sun)
-alpha_arcsec = alpha_rad * ARCSEC_PER_RAD
-print("light deflection (rad)    =", alpha_rad)      # ~4e-6
-print("light deflection (arcsec) =", alpha_arcsec)   # ~0.83
+print("solar redshift Delta_nu/nu =", solar_redshift)              # ~2e-6
+alpha = 2.0 * SOLAR_PHI_DEPTH_OVER_C2                              # = 2 G M_sun / (c^2 R_sun)
+print("deflection (rad)    =", alpha)                              # ~4e-6
+print("deflection (arcsec) =", alpha * ARCSEC_PER_RAD)             # ~0.83
 ```
