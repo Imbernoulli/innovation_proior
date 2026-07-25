@@ -22,30 +22,13 @@ import torch.nn.functional as F
 
 
 def compute_regularization(model, inputs, outputs, targets, config):
-    """Confidence penalty: penalize low-entropy (over-confident) softmax outputs.
+    """Confidence penalty: L += - beta * H(p), penalizing low-entropy
+    (over-confident) softmax outputs.  outputs: [B, num_classes] logits."""
+    beta = float(config.get("beta", 0.1))        # single knob, swept on validation data
 
-    Adds -beta * H(p) to the cross-entropy loss, so minimizing the loss
-    maximizes the entropy of the model's predictions.
+    log_p = F.log_softmax(outputs, dim=-1)       # stable: one pass, no log(softmax)
+    p = log_p.exp()                              # probabilities
 
-    Args:
-        model:   the nn.Module (unused by this output-distribution penalty).
-        inputs:  input batch, shape [B, C, H, W].
-        outputs: model logits, shape [B, num_classes].
-        targets: ground-truth integer labels, shape [B].
-        config:  dict with at least key "beta" (regularization strength).
-
-    Returns:
-        A scalar differentiable tensor added to the cross-entropy loss.
-    """
-    beta = float(config.get("beta", 0.1))
-
-    # Stable log-probabilities in one pass.
-    log_p = F.log_softmax(outputs, dim=-1)
-    p = log_p.exp()
-
-    # Entropy averaged over the batch: H(p) = - sum_i p_i log p_i.
-    entropy = -(p * log_p).sum(dim=-1).mean()
-
-    # Negative entropy => penalize confidence.
-    return -beta * entropy
+    entropy = -(p * log_p).sum(dim=-1).mean()    # H(p) = - sum_i p_i log p_i, batch mean
+    return -beta * entropy                        # negative entropy => penalize confidence
 ```
