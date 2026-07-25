@@ -16,79 +16,8 @@ To force a rainbow triangle in any dissection, I build a finite graph from all t
 
 But the boundary count is forced to be odd. The bottom edge y = 0 has v(y) = infinity, so it carries no C-points, only A and B, starting at A at (0,0) and ending at B at (1,0); hence it has an odd number of A/B switches. The left edge x = 0 carries no B-point, and the right and top edges carry no A-point because v(1) = 0, so they contribute none. Thus the whole boundary has an odd number of A/B basic segments. This contradiction proves that some original triangle is rainbow.
 
-That rainbow triangle has area T with v(T) <= -1. If the dissection had n equal-area triangles with n odd, every piece would have area 1/n with v(1/n) = 0. The same real number cannot have valuation both <= -1 and 0. Therefore n cannot be odd, and the square has no equidissection of odd cardinality. The canonical name of the method is Monsky's theorem.
+That rainbow triangle has area T with v(T) <= -1. If the dissection had n equal-area triangles with n odd, every piece would have area 1/n with v(1/n) = 0. The same real number cannot have valuation both <= -1 and 0. Therefore n cannot be odd, and the square has no equidissection of odd cardinality. This is Monsky's theorem, and the argument delivers it in exactly this sharp form:
 
-The following Python snippet illustrates the pieces of the argument on exact rational coordinates. It defines the 2-adic valuation, applies the A/B/C colouring, checks that random rational rainbow triangles have area valuation at most -1, and shows simple even equidissections of the square.
+$$\textbf{Theorem (Monsky).}\quad \text{If a square } S \text{ in the plane is dissected into } n \text{ triangles, all of the same area, then } n \text{ is even.}$$
 
-```python
-from fractions import Fraction
-import random
-
-def v2_frac(frac):
-    """Additive 2-adic valuation of a Fraction; v(0) = infinity."""
-    if frac == 0:
-        return float('inf')
-    n, d = abs(frac.numerator), frac.denominator
-    k = 0
-    while n % 2 == 0:
-        n //= 2
-        k += 1
-    while d % 2 == 0:
-        d //= 2
-        k -= 1
-    return k
-
-def color_point(p):
-    x, y = p
-    vx = v2_frac(x)
-    vy = v2_frac(y)
-    if vx > 0 and vy > 0:
-        return 'A'
-    if vx <= 0 and vx <= vy:
-        return 'B'
-    return 'C'
-
-def area_triangle(tri):
-    (x1, y1), (x2, y2), (x3, y3) = tri
-    return abs(Fraction(1, 2) * (x1*(y2-y3) + x2*(y3-y1) + x3*(y1-y2)))
-
-# Corners of the unit square
-corners = [(Fraction(0), Fraction(0)),
-           (Fraction(1), Fraction(0)),
-           (Fraction(0), Fraction(1)),
-           (Fraction(1), Fraction(1))]
-print("Corner colours:")
-for p in corners:
-    print(p, "->", color_point(p))
-
-# Random rational rainbow triangles satisfy v(area) <= -1
-random.seed(1)
-print("\nRainbow triangle area valuations:")
-found = 0
-attempts = 0
-while found < 10 and attempts < 1000:
-    attempts += 1
-    pts = []
-    for _ in range(3):
-        x = Fraction(random.randint(-5, 5), random.randint(1, 7))
-        y = Fraction(random.randint(-5, 5), random.randint(1, 7))
-        pts.append((x, y))
-    cols = [color_point(p) for p in pts]
-    if set(cols) == {'A', 'B', 'C'}:
-        a = area_triangle(pts)
-        if a == 0:
-            continue
-        found += 1
-        print(pts, "colours", cols, "area", a, "v2(area)", v2_frac(a))
-
-# Even equidissections are easy to construct
-print("\nEven dissections are possible:")
-half = area_triangle([corners[0], corners[1], corners[3]])
-print("one half-triangle area =", half, "v2 =", v2_frac(half))
-center = (Fraction(1, 2), Fraction(1, 2))
-four = [[corners[0], corners[1], center],
-        [corners[1], corners[3], center],
-        [corners[3], corners[2], center],
-        [corners[2], corners[0], center]]
-print("four centre triangles have areas:", [area_triangle(t) for t in four])
-```
+The hypotheses are exactly what the colouring argument uses and nothing more. The pieces are ordinary triangles with pairwise disjoint interiors whose union is $S$; they need not meet edge-to-edge, so T-junctions, overlapping partial sides, and irrational vertex coordinates are all allowed; the sole constraint is that every piece has the same Euclidean area $1/n$. Nothing is assumed about the vertices being rational, about the pieces being congruent or similar, or about the dissection being combinatorially "nice." The only structure the proof extracts from all of this is the parity of $n$: every dissection satisfying these hypotheses contains a rainbow triangle by the Sperner parity count on the boundary's $A/B$ basic segments, and every rainbow triangle has $v(\text{area}) \le -1$ by the area lemma, a valuation that a piece of area $1/n$ with $n$ odd can never have, since then $v(1/n) = 0$. So the conclusion is not that most equidissections happen to use an even number of pieces, but that an odd equidissection of a square is strictly impossible, for every square and every arrangement of triangles meeting only the equal-area constraint.
