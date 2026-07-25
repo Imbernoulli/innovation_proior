@@ -10,10 +10,6 @@ them: if `d = |p[i] - p[j]|`, the circular distance is `min(d, L - d)`.
 Count the number of **unordered pairs** of runners whose circular distance is at most `D`. Output that
 count.
 
-This is a sorting-and-sweep counting problem. The twist is the wrap-around: two runners are "close"
-either by the short way *or* by going around the back of the track, and the back-of-the-track case is
-exactly where a counting sweep tends to double-count or miss the regime where *every* pair qualifies.
-
 ## Input / output contract
 
 - Input (stdin): the first line has three integers `n`, `L`, `D`
@@ -28,34 +24,10 @@ Example: for `n = 4`, `L = 10`, `D = 2`, positions `p = [0, 1, 5, 9]`, the answe
 `{0,1}` (distance 1), `{0,9}` (distance `min(9,1)=1`, around the back), and `{1,9}` (distance
 `min(8,2)=2`, around the back). The other three pairs sit at distance 4 or 5.
 
-## Background
-
-After sorting the positions, "close pairs" are usually counted with a two-pointer sweep: for each right
-endpoint, advance a left pointer to the first position still within the window, and add the window
-width. The circular metric forces two refinements before that template is correct:
-
-- **The metric splits into two linear conditions.** With both positions in `[0, L)`, the raw gap is
-  `d = |p[i]-p[j]| in [0, L-1]`. Circular distance `<= D` means `d <= D` (close the short way) **or**
-  `L - d <= D`, i.e. `d >= L - D` (close the long way). So a pair qualifies iff `d <= D` or
-  `d >= L - D`.
-- **The two conditions can overlap.** When `2*D >= L` the threshold `L - D` drops at or below `D`, so
-  the two intervals of qualifying gaps meet or overlap and *every* pair qualifies. Counting "short" and
-  "long" pairs separately and adding them would then double-count.
-
-Two families of approach are on the table:
-
-- **Direct min-distance sweep.** Compute `min(d, L-d)` per pair and count — but a single window over the
-  sorted array only captures the short side; the wrap-around pairs need separate handling, and it is
-  easy to conflate the two.
-- **Split-by-regime sweep.** Handle `2*D >= L` as "all pairs" up front; otherwise the short and long
-  conditions are disjoint, so run two independent two-pointer sweeps and add. The open question is the
-  exact pointer comparisons (`<=` vs `<`, `>=` vs `>`) and the per-endpoint increment.
-
 ## Evaluation settings
 
-Judged on hidden tests covering: `D = 0` (only coincident pairs count), `2*D >= L` (every pair counts,
-including `D = L`), heavy duplicate positions, `n = 0` and `n = 1` (answer `0`), all runners at the same
-spot, and large `n = 2*10^5` with `L` near `10^9` so the pair count exceeds a 32-bit integer.
+Judged on hidden tests covering: `D = 0`, `2*D >= L` (including `D = L`), heavy duplicate positions,
+`n = 0` and `n = 1`, all runners at the same spot, and large `n = 2*10^5` with `L` near `10^9`.
 
 ## Code framework
 
