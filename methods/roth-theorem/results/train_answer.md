@@ -40,75 +40,20 @@ This is the density increment: a long arithmetic progression on which `A` is den
 
 Now I restart the argument. An affine map sends `P_j` to a shorter interval and preserves three-term progressions exactly: three points in arithmetic progression go to three points in arithmetic progression, and a nonzero common difference stays nonzero. So a progression-free `A` would produce a progression-free subset of a smaller interval with higher density. The standard endgame is an infimum argument. Let `delta_*` be the infimum of densities for which every sufficiently large subset of `[N]` must contain a three-term progression. If `delta_* > 0`, choose arbitrarily large progression-free sets with density just below `delta_*`. The density-increment argument moves one of them to an arbitrarily long subprogression with density above `delta_*`, provided the starting density is close enough that the `c delta^2` gain beats the gap. But densities above `delta_*` are already in the forced-progression range, so the subprogression contains a progression, and the original set contains one too. This contradiction forces `delta_* = 0`, which is exactly Roth's theorem.
 
-The code below does not prove Roth's theorem for all `N`, but it verifies the finitary phenomenon for small intervals. It first computes, by exact backtracking, the largest size `r_3(N)` of a three-term-arithmetic-progression-free subset of `[N]` for `N` up to 20, and it prints the ratio `r_3(N)/N`. Then it samples random dense subsets of larger intervals and compares the observed number of three-term progressions with the random prediction `delta^3` times the number of pairs `(a, r)`. You can run it as a standalone Python script.
+Put together, this is the finished result, stated with its hypotheses and with the mechanism that proves it made explicit. Roth's theorem on three-term arithmetic progressions says that for every $\delta > 0$ there is a threshold $N_0(\delta)$ such that every $A \subseteq \{1, 2, \dots, N\}$ with $N \ge N_0(\delta)$ and $|A| \ge \delta N$ contains a nontrivial three-term arithmetic progression $a,\ a+r,\ a+2r$ with $r > 0$; equivalently, if $r_3(N)$ denotes the size of the largest subset of $[N]$ containing no such progression, then
 
-```python
-import random
+$$r_3(N) = o(N).$$
 
+The certificate that proves it is exactly the density-increment step derived above. A hypothetical progression-free set $A \subseteq [N]$ of density $\delta' \ge \delta$ is forced, by the Fourier identity
 
-def max_ap_free_size(n):
-    """Exact backtracking size of the largest 3-AP-free subset of {1,...,n}."""
-    best = 0
-    nums = list(range(1, n + 1))
+$$\Lambda(f,g,h) = \sum_{\alpha} \hat f(\alpha)\,\hat g(-2\alpha)\,\hat h(\alpha),$$
 
-    def backtrack(start, current):
-        nonlocal best
-        # Prune if even adding all remaining elements cannot beat best.
-        if len(current) + (n - start) <= best:
-            return
-        if start == n:
-            best = max(best, len(current))
-            return
+into a linear bias on its balanced part $f = 1_A - \delta' 1_{[N]}$,
 
-        x = nums[start]
-        # Try including x, provided it creates no three-term progression.
-        ok = True
-        for d in range(1, (x - 1) // 2 + 1):
-            if x - d in current and x - 2 * d in current:
-                ok = False
-                break
-        if ok:
-            current.append(x)
-            backtrack(start + 1, current)
-            current.pop()
+$$\sup_{\xi} \big|\hat f(\xi)\big| \ge c\,\delta^2,$$
 
-        # Exclude x.
-        backtrack(start + 1, current)
+and that bias is upgraded, via the partition of $[N]$ into long arithmetic progressions on which the biased frequency is nearly constant, into an honest denser subprogression $P$ with
 
-    backtrack(0, [])
-    return best
+$$\frac{|A \cap P|}{|P|} \ge \delta' + c''\,\delta^2$$
 
-
-print("Exact progression-free sizes for small N:")
-print("N  r_3(N)  ratio")
-for N in range(1, 21):
-    r = max_ap_free_size(N)
-    print(f"{N:2d}   {r:2d}     {r / N:.3f}")
-
-
-def count_3ap_random(N, delta, trials=1000):
-    """Average number of 3-APs in random subsets of [N] of density delta."""
-    total = 0
-    num_pairs = sum((N - a) // 2 for a in range(1, N + 1))
-    for _ in range(trials):
-        A = {i for i in range(1, N + 1) if random.random() < delta}
-        cnt = 0
-        for a in range(1, N + 1):
-            max_r = (N - a) // 2
-            for r in range(1, max_r + 1):
-                if a in A and (a + r) in A and (a + 2 * r) in A:
-                    cnt += 1
-        total += cnt
-    # Each admissible pair (a, r) forms a 3-AP with probability delta^3.
-    predicted = delta ** 3 * num_pairs
-    return total / trials, predicted
-
-
-random.seed(0)
-print("\nRandom-model prediction versus observation:")
-for N, delta in [(100, 0.1), (200, 0.1), (200, 0.2)]:
-    observed, predicted = count_3ap_random(N, delta)
-    print(f"N={N}, delta={delta}: observed {observed:.1f}, predicted {predicted:.1f}")
-```
-
-When I run this script, the small-N table shows that the maximum progression-free size grows, but the ratio `r_3(N)/N` is already trending downward, consistent with the `o(N)` bound predicted by Roth's theorem. The random-model section confirms that a typical density-`delta` set has roughly `delta^3` times the available pairs as three-term progressions, which is the main term that the density-increment argument protects. The proof's real strength is that it shows no fixed positive density can systematically suppress this count forever.
+for an absolute constant $c'' > 0$. Because rescaling $P$ back to a full interval preserves three-term arithmetic progressions exactly, this increment can be reapplied to any progression-free set sitting at density just below the critical threshold $\delta_*$, driving it strictly above $\delta_*$ and so, by the definition of $\delta_*$, into a regime that already forces a progression — which is a contradiction unless $\delta_* = 0$. That is Roth's theorem: no fixed positive density can avoid nontrivial three-term arithmetic progressions in all sufficiently large intervals.
