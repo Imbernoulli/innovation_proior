@@ -6,34 +6,10 @@ The method is Anderson localization. It studies the random tight-binding Hamilto
 
 When the criterion holds, the local resolvent has isolated poles on the real axis, the exact eigenfunctions have localized envelopes with a finite localization length xi, and a local initial excitation does not diffuse away. The localized state is not a classical particle trapped in a single well; it is a coherent superposition built from many off-resonant virtual hops, with rare resonant clusters carrying most of the weight. Lowering the disorder, increasing the connectivity, or moving to an energy with more favorable denominators can make the path series diverge, signaling extended states and a mobility edge between localized and extended spectral regions. The decisive point is to evaluate the probability distribution of locator terms for a typical sample, not the ensemble average, because averages are dominated by the rare resonances that do not describe the behavior of a specific localized packet.
 
-The practical implementation below builds a one-dimensional Anderson chain, diagonalizes it, and checks whether eigenstates are localized by computing the inverse participation ratio. In the localized phase, almost every eigenstate concentrates on a few sites and the IPR averaged over the spectrum is large and independent of system size. In an extended phase, the IPR scales inversely with system size.
+The finished result is a precise convergence criterion on the local resolvent. Write the random tight-binding Hamiltonian in the site basis,
+$$H = \sum_j E_j |j\rangle\langle j| + \sum_{j\neq k} V_{jk}\,|j\rangle\langle k|,$$
+with independent onsite energies $E_j$ of width $W$ and hopping $V_{jk}$ that is short-ranged or decays fast enough with distance. Expand the local resolvent $G_{00}(z) = \langle 0|(z-H)^{-1}|0\rangle$ around the localized basis rather than around plane waves; the expansion is a locator series over self-avoiding paths that start and end at site $0$,
+$$G_{00}(z) = \frac{1}{z - E_0 - \Sigma_0(z)}, \qquad \Sigma_0(z) = \sum_k \frac{|V_{0k}|^2}{z-E_k} + \sum_{k,l} \frac{V_{0k}V_{kl}V_{l0}}{(z-E_k)(z-E_l)} + \dots .$$
+For an effective connectivity $K$ and hopping scale $V$, whether this series converges is a path-counting condition of the form $F(K, W/V) < 1$, obtained by balancing the $K^L$ growth in the number of length-$L$ paths against the typical — not mean — size of a resonant denominator; representative estimates for the critical disorder come from solving $eK\ln(W/2V) = W/2V$, or the sharper $2K\ln(W/2V)/(1-4V^2/W^2) = W/2V$. The constants in these balance equations are model-dependent approximations, but what they encode is not: path proliferation must be beaten by the probability cost of near-resonant energy denominators.
 
-```python
-import numpy as np
-
-def anderson_hamiltonian(n, w, t=1.0, seed=None):
-    rng = np.random.default_rng(seed)
-    disorder = rng.uniform(-w/2, w/2, size=n)
-    h = np.diag(disorder)
-    for i in range(n - 1):
-        h[i, i + 1] = t
-        h[i + 1, i] = t
-    return h
-
-def ipr(state):
-    p = np.abs(state)**2
-    return np.sum(p**2)
-
-def localization_diagnostic(n, w, t=1.0, seed=None):
-    h = anderson_hamiltonian(n, w, t, seed)
-    energies, vectors = np.linalg.eigh(h)
-    iprs = np.array([ipr(vectors[:, i]) for i in range(n)])
-    return energies, iprs
-
-if __name__ == "__main__":
-    n = 400
-    t = 1.0
-    for w in [0.5, 4.0, 10.0]:
-        energies, iprs = localization_diagnostic(n, w, t, seed=0)
-        print(f"W={w:.1f}, mean IPR={np.mean(iprs):.4f}, median IPR={np.median(iprs):.4f}")
-```
+When $F(K,W/V) < 1$, the locator series converges with probability one as $z$ approaches the real axis: $G_{00}$ keeps isolated poles with finite residues rather than developing a continuous imaginary part, every exact eigenfunction in that part of the spectrum is spatially localized with some finite length $\xi$, and an excitation prepared on a single site never relaxes into a diffusive spread — it only dresses itself with off-resonant virtual tails, which is exactly the frozen spin packet this account started from. When $F(K,W/V)$ crosses one, long virtual paths can no longer be dismissed, the locator expansion around localized sites breaks down, and extended states appear; a single sample can then have a localized region and an extended region of its spectrum separated by a mobility edge. The flow with system size is the same statement in scaling language: the dimensionless conductance obeys $\beta(g) = d\ln g/d\ln L$, with $\beta(g) < 0$ and $g(L)\sim e^{-L/\xi}$ in the localized regime and $\beta(g)\sim d-2$ for an ordinary ohmic conductor at large $g$; a three-dimensional mobility edge sits at the unstable fixed point separating the two flows. That is the whole result: a random quantum lattice localizes not because disorder scatters like an ordinary impurity added to a metal, but because, sample by sample, the statistics of its resonance denominators can stop the resonant paths from percolating through Hilbert space.
