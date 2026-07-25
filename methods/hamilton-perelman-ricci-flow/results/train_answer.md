@@ -8,42 +8,14 @@ Once the singular regions are known to be standard, delta-cutoff surgery becomes
 
 The topological consequences follow from the controlled evolution. Components with positive scalar curvature become extinct in finite time. If the prime decomposition has no aspherical factors, the flow with surgery becomes extinct entirely, and in the simply connected case the manifold is the 3-sphere. If the flow persists, the long-time geometry has a thick-thin decomposition: thick regions, after scaling by t^{-1}, converge to finite-volume hyperbolic pieces, while sufficiently collapsed thin regions with local lower curvature bounds are graph manifolds. Together these alternatives give the full geometrization decomposition, recovering spherical space forms, S^2 × S^1 factors, hyperbolic pieces, and graph-manifold pieces separated by the sphere and torus decompositions.
 
-```python
-import numpy as np
+The whole program condenses to a single controlled pipeline that starts from an arbitrary metric and ends at the geometric decomposition:
 
-def round_sphere_ricci_flow(r0, t):
-    """
-    Exact Ricci-flow radius of a round 3-sphere.
-    For g(t) = r(t)^2 g_{S^3}, Ric = (2/r^2) g, so dr/dt = -1/r
-    and r(t)^2 = r0^2 - 2t. The flow becomes extinct at t = r0^2 / 2.
-    """
-    return np.sqrt(np.maximum(r0**2 - 2.0 * t, 0.0))
-
-def sphere_geometry(r):
-    """Scalar curvature R = 6/r^2 and volume V = 2π^2 r^3 of a round 3-sphere."""
-    R = 6.0 / r**2
-    V = 2.0 * np.pi**2 * r**3
-    return R, V
-
-def w_entropy_round_sphere(r, tau):
-    """
-    Perelman's W-entropy for the round 3-sphere with the constant weight f
-    normalized so that (4πτ)^{-3/2} e^{-f} V = 1. The round sphere is a
-    gradient shrinking soliton, so this W is constant in τ along the flow.
-    """
-    n = 3
-    R, V = sphere_geometry(r)
-    f = np.log(V / (4.0 * np.pi * tau)**(n / 2.0))  # |grad f| = 0
-    return tau * R + f - n
-
-r0 = 2.0
-T = r0**2 / 2.0  # extinction time
-print(f"Extinction time T = {T:.4f}")
-
-for t in np.linspace(0.0, 0.95 * T, 10):
-    r = round_sphere_ricci_flow(r0, t)
-    tau = T - t
-    R, V = sphere_geometry(r)
-    W = w_entropy_round_sphere(r, tau)
-    print(f"t={t:.4f}, r={r:.4f}, R={R:.4f}, V={V:.4f}, W={W:.6f}")
+```text
+arbitrary smooth metric
+  -> Ricci flow
+  -> entropy/reduced-volume noncollapsing
+  -> ancient kappa-solution blow-up models
+  -> canonical neck/cap neighborhoods
+  -> delta-cutoff surgery
+  -> extinction or thick-thin geometric decomposition
 ```
