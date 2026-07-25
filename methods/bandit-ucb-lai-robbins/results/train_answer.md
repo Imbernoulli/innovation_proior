@@ -11,27 +11,12 @@ This construction directly reflects the Lai-Robbins lower bound. That bound says
 ```python
 import numpy as np
 
-class BanditEnv:
-    def __init__(self, means, rng):
-        self.means = np.asarray(means, float)
-        self.rng = rng
-        self.mu_star = self.means.max()
-
-    def pull(self, i):
-        return float(self.rng.random() < self.means[i])
-
-class ArmStats:
-    def __init__(self, K):
-        self.counts = np.zeros(K, int)
-        self.means = np.zeros(K, float)
-
-    def update(self, i, reward):
-        self.counts[i] += 1
-        n = self.counts[i]
-        self.means[i] += (reward - self.means[i]) / n
-
 def select_ucb1(stats, t):
-    """Auer-Cesa-Bianchi-Fischer UCB1 selector."""
+    """Auer-Cesa-Bianchi-Fischer UCB1 selector.
+
+    `t` is the 1-based current round, and `stats` contains observations
+    from the previous `t-1` rounds.
+    """
     unplayed = np.flatnonzero(stats.counts == 0)
     if unplayed.size:
         return int(unplayed[0])
@@ -39,7 +24,7 @@ def select_ucb1(stats, t):
     return int(np.argmax(index))
 
 def select_asymptotic_ucb(stats, t):
-    """Refined 1-subgaussian UCB with f(t) = 1 + t log^2 t."""
+    """Later 1-subgaussian asymptotic UCB with f(t)=1+t log^2(t)."""
     unplayed = np.flatnonzero(stats.counts == 0)
     if unplayed.size:
         return int(unplayed[0])
@@ -47,24 +32,4 @@ def select_asymptotic_ucb(stats, t):
     f_t = 1.0 + t * log_t * log_t
     index = stats.means + np.sqrt(2.0 * np.log(f_t) / stats.counts)
     return int(np.argmax(index))
-
-# Example run with UCB1 on a small Bernoulli bandit.
-if __name__ == "__main__":
-    rng = np.random.default_rng(0)
-    means = [0.2, 0.5, 0.75]
-    env = BanditEnv(means, rng)
-    stats = ArmStats(len(means))
-    n_rounds = 10000
-    rewards = []
-
-    for t in range(1, n_rounds + 1):
-        arm = select_ucb1(stats, t)
-        reward = env.pull(arm)
-        stats.update(arm, reward)
-        rewards.append(reward)
-
-    cumulative_regret = n_rounds * env.mu_star - sum(rewards)
-    print(f"empirical regret after {n_rounds} rounds: {cumulative_regret:.2f}")
-    print("pull counts:", stats.counts)
-    print("estimated means:", stats.means)
 ```
