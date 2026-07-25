@@ -10,7 +10,7 @@ A natural impulse is to add capacity: why stop at one vector? GAN inversion has 
 
 Compared with human-written captions, the single pseudo-word is also preferable for control. A long object description competes for the text encoder's attention with the rest of the prompt, so requested edits like "on the moon" can get crowded out. One token for identity leaves the remaining tokens free to steer composition, style, and background. The main limitation to keep in mind is that reconstruction is measured semantically, not pixel-exactly; CLIP similarity is forgiving about exact shape, so precise geometry preservation remains an open direction. Heavier techniques such as pivotal tuning or DDIM inversion at high guidance scales can improve shape but sacrifice the editability or prompt alignment that makes the lightweight method useful, so they are best treated as orthogonal extensions rather than replacements.
 
-Here is a compact, runnable illustration of the core idea. The snippet replaces a placeholder embedding inside a dummy embedding table and optimizes it with a synthetic denoising reconstruction loss, leaving all other parameters frozen.
+Here is the implementation exactly as it runs inside the latent diffusion model. An `EmbeddingManager` wraps the frozen text encoder: it looks up the single BERT token id for the placeholder string and for the initializer word, clones the initializer's embedding into the learnable parameter `v_star`, and on every forward pass swaps `v_star` into the embedded sequence wherever the placeholder token appears, leaving every other embedding row untouched. The training script freezes the autoencoder, the diffusion denoiser, and the text encoder outright, builds the manager with placeholder `"*"` and initializer `"sculpture"`, and optimizes only `v_star` with AdamW at learning rate 0.04. Each step samples a batch from the handful of concept images, encodes them into the frozen latent space, adds noise at a random timestep, sends a template prompt containing the placeholder through the frozen text encoder — with the manager's swap applied — into the frozen denoiser, and backpropagates the ordinary noise-prediction MSE loss into `v_star` alone.
 
 ```python
 import random
@@ -18,62 +18,75 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-torch.manual_seed(0)
 
-vocab_size, emb_dim = 1000, 64
-embedding_table = nn.Embedding(vocab_size, emb_dim)
-for p in embedding_table.parameters():
-    p.requires_grad = False
+def single_bert_token(tokenizer, text):
+    ids = tokenizer(text)
+    assert torch.count_nonzero(ids) == 3  # [CLS], token, [SEP]
+    return ids[0, 1]
 
-placeholder_id = 42
-coarse_id = 7
-with torch.no_grad():
-    v_star = nn.Parameter(embedding_table.weight[coarse_id].clone())
 
-def encode_prompt(prompt_ids):
-    emb = embedding_table(prompt_ids)
-    positions = (prompt_ids == placeholder_id).nonzero(as_tuple=True)
-    emb[positions] = v_star
-    return emb
-
-class TinyDenoiser(nn.Module):
-    def __init__(self):
+class EmbeddingManager(nn.Module):
+    def __init__(self, text_encoder, placeholder="*", initializer="sculpture"):
         super().__init__()
-        self.net = nn.Sequential(nn.Linear(emb_dim + 4, 32), nn.ReLU(), nn.Linear(32, 4))
-        for p in self.parameters():
-            p.requires_grad = False
+        self.placeholder = placeholder
+        self.placeholder_id = single_bert_token(text_encoder.tknz_fn, placeholder)
+        init_id = single_bert_token(text_encoder.tknz_fn, initializer)
 
-    def forward(self, x):
-        return self.net(x)
+        with torch.no_grad():
+            init = text_encoder.transformer.token_emb(init_id.cpu())
+        self.v_star = nn.Parameter(init.unsqueeze(0))  # one learned 1280-d LDM word vector
 
-denoiser = TinyDenoiser()  # frozen: maps noised latent + text embedding to predicted noise
-optimizer = torch.optim.AdamW([v_star], lr=0.05)
+    def embedding_parameters(self):
+        return [self.v_star]
 
-templates = ["a photo of {}", "a rendering of {}", "a close-up of {}"]
-concept_latents = torch.randn(4, 4)
+    def forward(self, tokenized_text, embedded_text):
+        positions = torch.where(tokenized_text == self.placeholder_id.to(tokenized_text.device))
+        embedded_text[positions] = self.v_star.to(embedded_text.device)
+        return embedded_text
 
-for step in range(300):
-    latents = concept_latents[torch.randint(0, 4, (4,))]
-    noise = torch.randn_like(latents)
-    t = torch.rand(latents.size(0), 1)
-    noised = latents + 0.5 * t * noise
 
-    prompts = [random.choice(templates).format("*") for _ in range(4)]
-    # Replace characters with synthetic token ids for the demo.
-    prompt_ids = torch.full((4, 5), placeholder_id, dtype=torch.long)
-    prompt_ids[:, 0] = 1
-    prompt_ids[:, -1] = 2
+model = load_pretrained_ldm_1p4b()
+model.first_stage_model.requires_grad_(False)  # autoencoder E, D
+model.model.requires_grad_(False)              # diffusion denoiser epsilon_theta
+model.cond_stage_model.requires_grad_(False)   # text encoder c_theta
 
-    text_emb = encode_prompt(prompt_ids).mean(dim=1)
-    pred = denoiser(torch.cat([noised, text_emb], dim=1))
-    loss = F.mse_loss(pred, noise)
+embedding_manager = EmbeddingManager(model.cond_stage_model,
+                                     placeholder="*",
+                                     initializer="sculpture")
 
+# Paper setup: base LR 0.005, scaled by number of GPUs and batch size.
+optimizer = torch.optim.AdamW(embedding_manager.embedding_parameters(), lr=0.04)
+
+templates = [
+    "a photo of a {}",
+    "a rendering of a {}",
+    "a cropped photo of the {}",
+    "a photo of my {}",
+    "a close-up photo of a {}",
+    "a bright photo of the {}",
+]
+
+for step in range(5000):
+    images = sample_concept_batch()  # 3-5 image set, repeatedly sampled
+    prompts = [random.choice(templates).format("*") for _ in range(images.shape[0])]
+
+    with torch.no_grad():
+        posterior = model.encode_first_stage(images)
+        z = model.get_first_stage_encoding(posterior)
+
+    noise = torch.randn_like(z)
+    t = torch.randint(0, model.num_timesteps, (z.shape[0],), device=z.device)
+    z_t = model.q_sample(x_start=z, t=t, noise=noise)
+
+    # The frozen encoder performs its normal token lookup, then the manager swaps
+    # the placeholder's embedding with v_star before the transformer layers run.
+    c = model.cond_stage_model.encode(prompts, embedding_manager=embedding_manager)
+    noise_pred = model.apply_model(z_t, t, c)
+
+    loss = F.mse_loss(noise_pred.float(), noise.float())
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
-
-print("placeholder embedding norm:", v_star.norm().item())
-print("distance from coarse init:", (v_star - embedding_table.weight[coarse_id]).norm().item())
 ```
 
-In practice, the placeholder embedding is plugged into the real text encoder's lookup stage, the denoiser is a full pretrained U-Net, and the latents come from a frozen variational autoencoder. But the logic is identical: one learnable vector, one unchanged reconstruction loss, and everything else frozen. That is textual inversion in its canonical form.
+The same `EmbeddingManager` is what supports the capacity variants I dismissed above — passing more vectors per token, staggering their introduction after 2000 and 4000 steps, adding an embedding regularizer toward the coarse descriptor, or adding per-image tokens are all changes to how the manager is constructed and to the training prompts, not changes to the frozen backbone. None of them is the default. The default, and the one that matters, is exactly what the loop above runs: one learned vector, the unchanged epsilon-prediction reconstruction loss, and the autoencoder, denoiser, and text encoder all frozen. That is textual inversion in its canonical form.
