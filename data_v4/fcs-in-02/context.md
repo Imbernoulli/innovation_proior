@@ -10,9 +10,7 @@ adversary plays. Output `q1(N)`: the **minimum number of questions** that always
 suffices.
 
 This is the one-lie case of the Rényi–Ulam searching game (equivalently, optimal
-binary error-correcting coding with noiseless feedback). The point of interest is
-that a single lie destroys the usual binary-search reasoning, so the right count
-is not `log2 N` and not the obvious "ask everything twice" doubling either.
+binary error-correcting coding with noiseless feedback).
 
 ## Input / output contract
 
@@ -24,28 +22,10 @@ is not `log2 N` and not the obvious "ask everything twice" doubling either.
 Example: for `N = 3` the answer is `5`, and for `N = 1` the answer is `0`
 (the value is already known, so no question is needed).
 
-## Background
-
-Two families of reasoning are on the table before committing to one.
-
-- **Counting / information bound.** With `q` questions and at most one lie, each
-  candidate value `x` is consistent with `q + 1` possible answer transcripts (the
-  truthful one, plus the `q` transcripts with exactly one answer flipped). For the
-  `N` candidates to occupy disjoint regions of the `2^q` transcripts we need
-  `N * (q + 1) <= 2^q`. The smallest such `q` is the **volume (sphere-packing)
-  bound**. The open question is whether this lower bound is actually *achievable*.
-
-- **Adaptive state tracking.** Maintain, for the current knowledge, how many
-  candidates are still "fully consistent" (no lie charged against them yet) versus
-  "one lie already charged." Each question is chosen to keep both possible
-  answers survivable. The open question is the exact recurrence and the closed
-  form it produces.
-
 ## Evaluation settings
 
-Judged on hidden tests covering: tiny ranges `N = 1, 2, 3` (where the parity
-correction first appears), boundary ranges around powers of two, odd vs. even `N`
-of every size, the maximum `N = 10^9`, and large batches `T = 10^5` to exercise
+Judged on hidden tests covering: tiny ranges `N = 1, 2, 3`, boundary ranges around
+powers of two, the maximum `N = 10^9`, and large batches `T = 10^5` to exercise
 throughput. The reference value `q1(10^6) = 25` is a known checkpoint.
 
 ## Code framework
