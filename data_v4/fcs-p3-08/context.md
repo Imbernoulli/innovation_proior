@@ -21,8 +21,7 @@ You must answer several independent targets in one run.
     (`0 <= a, b <= 10^6`), one target corner per line.
 - Output (stdout): `q` lines. The `i`-th line is the number of monotone lattice paths from `(0, 0)`
   to the `i`-th target `(a, b)`, taken modulo `p = 1 000 000 007`.
-- It is guaranteed that the sum of coordinates of any single query satisfies `a + b <= 2*10^6`. (This
-  follows from `a, b <= 10^6`; the bound is stated so the intended precomputation size is explicit.)
+- It is guaranteed that the sum of coordinates of any single query satisfies `a + b <= 2*10^6`.
 - Time limit: 2 seconds. Memory limit: 256 MB.
 
 ### Example
@@ -61,26 +60,15 @@ C(a + b, a) = (a + b)! / (a! * b!).
 ```
 
 So the entire problem reduces to evaluating one binomial coefficient per query, modulo a prime.
-
-Two families of approach are on the table before committing to one:
-
-- **Additive Pascal table.** Use `C(n, k) = C(n-1, k-1) + C(n-1, k)` to fill a triangle of values mod
-  `p`. No division is ever needed. The open question is the size: the table is `O(N^2)` in time and
-  space where `N = a + b`, which is fine for tiny grids but impossible once `N` is large.
-- **Multiplicative formula with modular inverse.** Precompute factorials `fact[i]` and their modular
-  inverses `invfact[i]` along a single array up to `N = max(a + b)`, then read off
-  `fact[a+b] * invfact[a] * invfact[b] mod p` per query. This is `O(N)` precomputation and `O(1)` per
-  query. The open question is getting the modular-inverse machinery (Fermat's little theorem, the
-  backward inverse-factorial recurrence) exactly right, and choosing 64-bit / 128-bit arithmetic so
-  the modular multiplications never overflow.
+Computing binomial coefficients modulo a prime is a classical topic with more than one standard
+technique in the literature; picking and correctly implementing one for the constraints below is
+part of the task.
 
 ## Evaluation settings
 
 Judged on hidden tests covering: the corner targets `(0, 0)`, `(0, k)`, `(k, 0)` (all of which have
-exactly one path); small square and rectangular grids; many queries (`q` near `2*10^5`); and — the
-decisive ones — **large targets with `a` and `b` near `10^6`**, so `a + b` reaches `2*10^6`. A
-solution that only handles small grids (for instance by storing a precomputed Pascal table for
-`n` up to some modest bound) will fail the large hidden tests outright.
+exactly one path); small square and rectangular grids; many queries (`q` near `2*10^5`); and large
+targets with `a` and `b` near `10^6`, so `a + b` reaches `2*10^6`.
 
 ## Code framework
 

@@ -18,11 +18,6 @@ S(N) = ( f(0) + f(1) + ... + f(N-1) )  mod  p,
 the sum of the **first `N` terms** of the sequence, reduced modulo `p`. The catch is the scale of
 `N`: it can be as large as `10^18`, so the terms cannot be enumerated one by one.
 
-This is the prefix-sum companion of the classic "n-th Fibonacci number mod p" exercise. The plain
-n-th-term question is solved by `2x2` matrix exponentiation; here the extra requirement is to carry
-the running sum *alongside* the recurrence so the whole answer still comes out in `O(log N)` per
-query.
-
 ## Input / output contract
 
 - Input (stdin): the first token is `q` (`1 <= q <= 10^5`), the number of independent queries.
@@ -58,30 +53,11 @@ first ten terms is `143`. The second has `d = 0` and `c = 1`, so `f(i) = f(i-1)`
 `2,3,3,3,3,3,3,...`; the first seven terms sum to `2 + 3*6 = 20`, and `20 mod 11 = 9`. The third has
 `N = 1`, so the answer is just `f(0) = a = 5`.
 
-## Background
-
-Two shapes of solution are on the table before committing to one:
-
-- **Term-by-term accumulation.** Generate `f(2), f(3), ...` up to index `N-1`, adding each into a
-  running sum mod `p`. This is the obvious reading of the statement and is trivially correct, but it
-  is `O(N)` per query, which is hopeless once `N` reaches `10^18`.
-- **Matrix exponentiation carrying the prefix sum.** Encode the pair `(f(i), f(i-1))` together with
-  the running prefix sum in one state vector, and advance the state by a fixed linear map raised to a
-  power via fast exponentiation. The open question is the exact augmented state and the exact
-  transition matrix — in particular how to make a single matrix power produce the *sum* and not just
-  the *term*.
-
-A tempting third path is to special-case small `N`: the first few prefix sums have tidy closed forms
-for nice parameter choices, and the worked sample only exercises small `N`. Whether such a table can
-stand in for the general algorithm is exactly what the constraints (`N` up to `10^18`) put to the
-test.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: tiny `N` (`0, 1, 2`), the `p = 1` degenerate case, negative
 `a/b/c/d`, the `c = d = 0` and `d = 0` degeneracies, ordinary Fibonacci, and — decisively — many
-queries with `N` near `10^18` under both prime and composite moduli up to `2*10^9` (so the running
-products need a 128-bit intermediate and the per-query cost must be `O(log N)`).
+queries with `N` near `10^18` under both prime and composite moduli up to `2*10^9`.
 
 ## Code framework
 

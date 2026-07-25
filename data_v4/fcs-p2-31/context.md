@@ -55,9 +55,8 @@ Two ways to attack this are on the table before committing to one:
 ## Evaluation settings
 
 Judged on hidden tests covering: empty pattern and/or empty string; patterns that are only `*`s;
-patterns that mix literals, `?`, and `*`; the classic adversarial shapes such as `*a*a*...*` against
-long runs of `a`, and `*a*...*b` against a string that contains no `b` (forces a deep rewind to a
-final `NO`); and full-size `|p| = |s| = 2000`.
+patterns that mix literals, `?`, and `*`; adversarial pattern/string combinations meant to stress
+both correctness and running time; and full-size `|p| = |s| = 2000`.
 
 ## Code framework
 
