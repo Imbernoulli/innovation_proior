@@ -14,45 +14,39 @@ from tqdm import tqdm
 
 
 class BaseDDIMCFGpp(StableDiffusion):
-    """DDIM sampler with CFG++ for SD v1.5.
-
-    Uses the same two network evaluations per step as standard CFG:
-    - denoise with the interpolated noise eps_cfgpp
-    - renoise with the unconditional noise eps_null
-    """
+    """DDIM sampler with CFG++ for SD v1.5: interpolating guidance on the denoise,
+    unconditional noise on the renoise. Same two NFE/step as CFG."""
 
     @torch.autocast(device_type='cuda', dtype=torch.float16)
     def sample(self, cfg_guidance=0.6, prompt=["", ""], callback_fn=None, **kwargs):
         uc, c = self.get_text_embed(null_prompt=prompt[0], prompt=prompt[1])
 
-        zt = self.initialize_latent()          # x_T ~ N(0, I)
+        zt = self.initialize_latent()                    # x_T ~ N(0, I)
         zt = zt.requires_grad_()
 
-        for step, t in enumerate(tqdm(self.scheduler.timesteps, desc="SD")):
-            at = self.alpha(t)                 # bar_alpha_t
-            at_prev = self.alpha(t - self.skip) # bar_alpha_{t-1}
+        pbar = tqdm(self.scheduler.timesteps, desc="SD")
+        for step, t in enumerate(pbar):
+            at = self.alpha(t)                           # bar_alpha_t
+            at_prev = self.alpha(t - self.skip)          # bar_alpha_{t-1}
 
             with torch.no_grad():
-                noise_uc, noise_c = self.predict_noise(zt, t, uc, c)
-                # interpolated guidance noise: eps_null + lambda (eps_c - eps_null)
+                noise_uc, noise_c = self.predict_noise(zt, t, uc, c)        # eps_null, eps_c
+                # mixed noise: eps_null + lambda (eps_c - eps_null)
                 noise_pred = noise_uc + cfg_guidance * (noise_c - noise_uc)
 
-            # denoise using the interpolated noise
+            # denoise: Tweedie with the mixed noise
             z0t = (zt - (1 - at).sqrt() * noise_pred) / at.sqrt()
 
-            # renoise using the unconditional noise (the CFG++ change)
+            # renoise with the unconditional noise eps_null
             zt = at_prev.sqrt() * z0t + (1 - at_prev).sqrt() * noise_uc
 
             if callback_fn is not None:
-                callback_kwargs = {
-                    'z0t': z0t.detach(),
-                    'zt': zt.detach(),
-                    'decode': self.decode,
-                }
+                callback_kwargs = {'z0t': z0t.detach(), 'zt': zt.detach(), 'decode': self.decode}
                 callback_kwargs = callback_fn(step, t, callback_kwargs)
                 z0t = callback_kwargs["z0t"]
                 zt = callback_kwargs["zt"]
 
+        # last step: return the clean denoised estimate, no renoise
         img = self.decode(z0t)
         img = (img / 2 + 0.5).clamp(0, 1)
         return img.detach().cpu()
