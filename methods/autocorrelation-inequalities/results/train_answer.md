@@ -36,19 +36,22 @@ Putting the pieces together, the algorithm chooses δ and a λ-grid, builds the 
 import numpy as np
 import scipy.integrate as si
 
-def indicator_weight(t):
+def indicator_weight(t):       # average autocorrelation: w = chi_[-1/2, 1/2]
     return 1.0 if abs(t) <= 0.5 else 0.0
 
-def gaussian_weight(t):
+def gaussian_weight(t):        # Gaussian mean: w = exp(-pi t^2)
     return np.exp(-np.pi * t * t)
 
 def prepare_weight_grid(w, delta, max_offset):
+    # tw(s) = d^-2 int_{s-d}^{s+d} w(t)(d-|t-s|) dt.
     tw = {}
     for k in range(-max_offset, max_offset + 1):
         s = k * delta
         val, _ = si.quad(
             lambda t: w(t) * (delta - abs(t - s)),
-            s - delta, s + delta, limit=120,
+            s - delta,
+            s + delta,
+            limit=120,
         )
         tw[k] = val / delta**2
     return tw
@@ -57,61 +60,59 @@ def build_operator(weight_data, n_cells):
     K = np.empty((n_cells, n_cells))
     for i in range(n_cells):
         for j in range(n_cells):
-            K[i, j] = weight_data[i - j]
+            K[i, j] = weight_data[i - j]         # symmetric Toeplitz K_w
     return K
 
-def prepare_search_form(lam, n_cells, delta):
-    a = n_cells * delta / 2.0
-    b = (-2 * np.sqrt(lam) + np.sqrt(4 * lam + 8 * a / lam)) / (4 * a)
+def prepare_search_form(search_value, n_cells, delta):
+    lam = search_value
+    a = n_cells * delta / 2.0                    # half support; <1,1> = 2a
+    b = (-2*np.sqrt(lam) + np.sqrt(4*lam + 8*a/lam)) / (4*a)   # 2 sqrt(lam) b + 2a b^2 = 1/lam
     one = np.ones(n_cells)
-    A = np.sqrt(lam) * np.eye(n_cells) + b * delta * np.outer(one, one)
+    A    = np.sqrt(lam) * np.eye(n_cells) + b * delta * np.outer(one, one)
     return A, np.linalg.inv(A)
 
 def leading_symmetric_eigenpair(M, options):
     iters = options.get("iters", 2000)
     tol = options.get("tol", 1e-13)
-    v = np.random.default_rng(0).standard_normal(M.shape[0])
-    v /= np.linalg.norm(v)
+    v = np.random.default_rng(0).standard_normal(M.shape[0]); v /= np.linalg.norm(v)
     mu = 0.0
     for _ in range(iters):
-        w_ = M @ v
-        nw = np.linalg.norm(w_)
-        if nw == 0:
-            break
+        w_ = M @ v; nw = np.linalg.norm(w_)
+        if nw == 0: break
         v_new = w_ / nw
         mu_new = v_new @ (M @ v_new)
-        if abs(mu_new - mu) < tol:
-            v, mu = v_new, mu_new
-            break
+        if abs(mu_new - mu) < tol: v, mu = v_new, mu_new; break
         v, mu = v_new, mu_new
     return mu, v
 
-def solve_finite_problem(K_full, lam, delta, n_full, options):
+def solve_finite_problem(K_full, search_value, delta, n_full, options):
+    lam = search_value
+    # f >= 0 handled exactly: extremizer is one contiguous bump (discrete Riesz);
+    # sweep support length, keep largest admissible (nonnegative) eigenvector.
     best_val, best_f = 0.0, None
     for L in range(1, n_full + 1):
         lo = (n_full - L) // 2
-        K = K_full[lo:lo + L, lo:lo + L]
+        K = K_full[lo:lo+L, lo:lo+L]
         A, Ainv = prepare_search_form(lam, L, delta)
         M = 2.0 * (Ainv @ (delta * K) @ Ainv)
         mu, g = leading_symmetric_eigenpair(M, options)
         f = Ainv @ g
-        if f.min() < 0:
-            f = -f
+        if f.min() < 0: f = -f                   # eigenvector sign is free
         if f.min() >= -1e-9 and mu > best_val:
             best_val, best_f = mu, np.maximum(f, 0.0)
     return best_val, best_f
 
-def evaluate_test_function(f, K_full, lo, delta):
-    n = len(f)
-    K = K_full[lo:lo + n, lo:lo + n]
+def evaluate_test_function(f, K_full, lo, delta): # honest lower bound on C_opt
+    n = len(f); K = K_full[lo:lo+n, lo:lo+n]
     num = delta**2 * (f @ (K @ f))
-    l1 = delta * f.sum()
-    l2 = np.sqrt(delta * (f * f).sum())
+    l1  = delta * f.sum()
+    l2  = np.sqrt(delta * (f * f).sum())
     return num / (l1 * l2)
 
-def make_upper_certificate(c_ld, lam, delta):
+def make_upper_certificate(c_ld, search_value, delta):
+    lam = search_value
     err = 16 * delta**2 / (np.pi**2 * lam**2)
-    return 0.5 * (c_ld + np.sqrt(c_ld * c_ld + 4 * err))
+    return 0.5 * (c_ld + np.sqrt(c_ld*c_ld + 4*err))
 
 def estimate_constant(w, delta, support_radius, search_grid, options):
     n_full = int(round(2 * support_radius / delta))
@@ -120,8 +121,7 @@ def estimate_constant(w, delta, support_radius, search_grid, options):
     upper, lower = 0.0, 0.0
     for lam in search_grid:
         c_ld, f = solve_finite_problem(K_full, lam, delta, n_full, options)
-        if f is None:
-            continue
+        if f is None: continue
         upper = max(upper, make_upper_certificate(c_ld, lam, delta))
         lo = (n_full - len(f)) // 2
         lower = max(lower, evaluate_test_function(f, K_full, lo, delta))
@@ -130,11 +130,11 @@ def estimate_constant(w, delta, support_radius, search_grid, options):
     return lower, max(upper + grid_err, tail_upper)
 
 if __name__ == "__main__":
-    search_grid = np.arange(0.35, 2.81, 0.001)
+    search_grid = np.arange(0.35, 2.81, 0.001)  # tails use c_lambda <= min(2*lambda, 2/lambda)
     options = {}
-    for name, w in [("indicator", indicator_weight),
-                    ("gaussian", gaussian_weight)]:
+    for name, w in [("indicator", indicator_weight), ("gaussian", gaussian_weight)]:
         lo, hi = estimate_constant(w, delta=1.45e-3, support_radius=4.0,
-                                   search_grid=search_grid, options=options)
+                                   search_grid=search_grid,
+                                   options=options)
         print(name, "C_opt in", (round(lo, 6), round(hi, 6)))
 ```
