@@ -24,20 +24,6 @@ short-string and already-a-palindrome corners — matters.
 Example: for `s = "race"` the answer is `3` (for instance insert to form `"ecarace"`); for
 `s = "abcba"` the answer is `0` (already a palindrome).
 
-## Background
-
-The "make it a palindrome with the fewest edits, only insertions allowed" phrasing invites a quick
-local heuristic. Two families of approach are on the table before committing to one:
-
-- **Greedy two-pointer matching.** Put a pointer at each end. If the two characters match, step both
-  inward. If they differ, "fix" one side — e.g. insert a copy of one end's character at the other
-  end (count one insertion) and move the corresponding pointer. Repeat until the pointers cross. It
-  is `O(n)` and a handful of lines; the open question is whether the local "which side do I fix?"
-  decision is ever forced to guess wrong.
-- **Interval dynamic programming.** Define the minimum insertions to palindromize each substring and
-  build up from short substrings to the whole string. With `|s| <= 2000` this is `O(n^2)` time and
-  fits comfortably; the open question is the exact recurrence and the base cases.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: already-palindromes (answer `0`), single characters, length-2

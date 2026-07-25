@@ -10,10 +10,8 @@ A "square submatrix" is a contiguous block of `k` consecutive rows and `k` conse
 `k >= 1`; it is valid only if every one of its `k*k` cells equals `1`. We want the maximum `k*k` over all
 valid squares.
 
-This is the canonical "maximal square" problem. It looks deceptively close to "largest all-ones
-rectangle," and a natural instinct is to chase the biggest dense region greedily — which is exactly the
-trap. The grid can be as large as `1500 x 1500`, so any method that is worse than near-linear in the
-number of cells, or that depends on a heuristic that can be wrong, is out.
+The grid can be as large as `1500 x 1500`, so the algorithm needs to run in close to linear time in the
+number of cells.
 
 ## Input / output contract
 
@@ -46,19 +44,16 @@ Two families of approach are on the table before committing to one:
   all-ones-rectangle machinery is well known and fast, and intuitively the biggest square should live
   inside the biggest dense block. The open question is whether "biggest rectangle" or any local
   density signal actually pins down the biggest *square*, or whether it can systematically mislead.
-- **Dynamic programming on bottom-right corners.** Define `dp[i][j]` as the side length of the largest
-  all-ones square whose bottom-right corner is cell `(i, j)`, and build it up by a single left-to-right,
-  top-to-bottom scan. This is `O(H*W)` time. The open questions are the exact recurrence that ties a
-  cell to its three already-computed neighbours, and whether the rolling-row implementation references
-  the previous row correctly.
+- **Dynamic programming.** Some formulation of dynamic programming, tracking a local notion of square
+  size as the grid is scanned, may also apply. What exactly to track at each cell, what recurrence (if
+  any) relates it to nearby cells, and whether it is enough to pin down the true largest square, are all
+  open.
 
 ## Evaluation settings
 
-Judged on hidden tests covering: all-zeros grids (answer `0`), all-ones grids (answer `H*W` when square,
-or `min(H,W)^2`), single-row and single-column grids (a square can only be `1 x 1`), grids whose largest
-all-ones *rectangle* is much bigger than its largest all-ones *square* (to catch rectangle-vs-square
-confusion), squares planted inside random noise, and full-size `1500 x 1500` random grids (to catch
-methods that are too slow or that overflow when the answer is large).
+Judged on hidden tests covering: all-zeros grids, all-ones grids, single-row and single-column grids,
+grids where the largest all-ones rectangle differs structurally from the largest all-ones square,
+squares planted inside random noise, and full-size `1500 x 1500` random grids.
 
 ## Code framework
 
