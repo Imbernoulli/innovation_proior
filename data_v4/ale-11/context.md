@@ -126,9 +126,7 @@ int main() {
     vector<pair<int,int>> out;            // (vehicle, request)
 
     // TODO: heuristic. Fill `out` with (vehicle, request) assignments that the
-    // judge can replay feasibly, maximizing the count -- e.g. an event-driven
-    // rolling-horizon Hungarian assignment of free vehicles to a small window of
-    // the most-urgent reachable pending requests, carrying vehicle state over.
+    // judge can replay feasibly, maximizing the count.
 
     cout << out.size() << "\n";
     for (auto& pr : out) cout << pr.first << " " << pr.second << "\n";

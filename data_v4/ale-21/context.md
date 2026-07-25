@@ -31,24 +31,6 @@ NP-hard, has no known closed-form optimum, and is judged by a continuous score.
   Any requested rectangle not listed is left unplaced. The order of the lines is free.
 - Time limit: 2 seconds. Memory: 256 MB.
 
-## Background
-
-Two families of approach are on the table before committing to one.
-
-- **Shelf / next-fit construction.** Sort or stream rectangles into horizontal "shelves" (bands): fill
-  a shelf left to right, open a new shelf above when the next rectangle does not fit, open a new sheet
-  when no shelf fits. Shelf layouts are trivially guillotine-legal (cut between bands, then between
-  rectangles in a band). It is `O(n)` and easy, but it leaves the vertical slack inside each shelf
-  unused, so it opens far more sheets than necessary — sheets are the dominant cost.
-- **Free-rectangle (guillotine k-d tree) construction with search.** Represent each sheet as a pool of
-  free rectangles. Placing a rectangle consumes a free rectangle and **guillotine-splits** the
-  leftover L-shape into two free rectangles. Because every step is "drop into a free rectangle + one
-  guillotine cut", feasibility is automatic. The open question is the *insertion order and rotation*,
-  which a metaheuristic can search by replaying the construction.
-
-The non-obvious lever is to **bake feasibility into the construction** so the search never has to
-repair an illegal layout — then optimize purely over the insertion sequence.
-
 ## Evaluation settings
 
 A deterministic local scorer (`verify/score.py`) reads the instance and a candidate solution and prints
@@ -91,8 +73,6 @@ int main() {
     // TODO: place rectangles onto W x H sheets so that every per-sheet layout is
     // guillotine-legal and overlap-free, minimizing
     //   cost = (#sheets) * W * H - placed_area + 3 * unplaced_area.
-    // Idea: each sheet is a pool of free rectangles; placement = best-fit free
-    // rectangle + one guillotine split; search over the insertion order.
 
     // Print a feasible solution: m, then "idx sheet x y rot" per placed rect.
     printf("0\n");

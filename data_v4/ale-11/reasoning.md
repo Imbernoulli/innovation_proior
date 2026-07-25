@@ -75,8 +75,8 @@ snapshot — the vehicles free *right now* and the requests pending *right now* 
 solve that one static assignment optimally with Hungarian, commit it, advance
 the clock, and carry every vehicle's updated state into the next epoch. The
 horizon relaxation turns one intractable global problem into a sequence of small
-optimal matchings. This is exactly the candidate's named lever: *rolling-horizon
-Hungarian on a small window + greedy carry-over.*
+optimal matchings — call it *rolling-horizon Hungarian on a small window +
+greedy carry-over.*
 
 ## Step 3 — what does "Hungarian" optimize, and how do I make it maximize count?
 

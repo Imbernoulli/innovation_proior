@@ -73,8 +73,8 @@ Here is the lever. Instead of placing rectangles freely and checking guillotine-
 *construct* the layout by a process whose every step is a guillotine cut, so the result is guillotine-
 legal by construction and I never check feasibility at all.
 
-Represent each sheet as a **pool of free rectangles** (this is the guillotine "k-d tree of free space"
-the problem's innovation field names). A sheet starts as one free rectangle `0,0,W,H`. To place a
+Represent each sheet as a **pool of free rectangles** — a guillotine "k-d tree of free space". A sheet
+starts as one free rectangle `0,0,W,H`. To place a
 requested rectangle of size `w x h`:
 
 - pick a free rectangle `f` that it fits in (`f.w >= w`, `f.h >= h`);
@@ -88,7 +88,7 @@ requested rectangle of size `w x h`:
 Because the entire layout is built as "drop into a free rectangle, then one guillotine cut", *the whole
 sheet decomposes into a binary tree of guillotine cuts by construction*. No overlap is possible (each
 placed rectangle consumes disjoint free space), and the layout is trivially guillotine-separable. I get
-feasibility for free, exactly the trick the problem is pointing at.
+feasibility for free — exactly the property I was missing in the place-then-check approach.
 
 Now the only thing left to decide is the **insertion order** (and each rectangle's rotation). That is a
 clean combinatorial search space: a permutation of `0..n-1` plus `n` rotation bits. A full construction
