@@ -12,61 +12,12 @@ Uniqueness follows from the same compact-covering estimates. If mu and nu are tw
 
 One subtlety remains. A left-invariant measure need not be right invariant. For any group element a, the right translate E maps to mu(Ea) is again a left-invariant regular Borel measure, so by uniqueness it equals Delta(a)^{-1} mu(E) for some positive scalar. The map Delta from G to the positive reals is the modular function, a continuous group homomorphism. When Delta is identically one, the group is called unimodular, and the same Haar measure is both left and right invariant. Compact groups, discrete groups, and abelian groups are all unimodular, but the general theorem only guarantees left invariance.
 
-The code below implements a finite-approximation illustration on a concrete compact group, the special orthogonal group SO(2), which is unimodular. It constructs an invariant probability measure by averaging a test function over a dense set of group elements sampled uniformly in the angle parameter. For a compact group, Haar measure can be normalized to total mass one, and the uniform angle average converges to the Haar expectation.
+This entire chain amounts to a single clean theorem, and it is worth stating in the compact form the field keeps it in. Let $G$ be a locally compact Hausdorff topological group. There exists a nonzero regular Borel measure $\mu$ on $G$, finite on every compact set and strictly positive on every nonempty open set, such that
 
-```python
-import numpy as np
+$$\mu(xE) = \mu(E)$$
 
+for every $x \in G$ and every Borel set $E \subseteq G$; and if $\nu$ is any other nonzero regular left-invariant Borel measure on $G$, then $\nu = c\,\mu$ for some constant $c > 0$, the constant being fixed the moment a unit is chosen — the mass of a single test function $f_0$, or, when $G$ is compact, the normalization $\mu(G) = 1$, which is exactly what lets a compact group's Haar measure double as a probability measure. The one qualification that cannot be dropped is that $\mu$ is only guaranteed left-invariant: right translation by a fixed $a \in G$ produces another left-invariant measure, which uniqueness forces back to a scalar multiple of $\mu$ itself,
 
-def so2_matrix(theta):
-    """Return the 2x2 rotation matrix for angle theta."""
-    c, s = np.cos(theta), np.sin(theta)
-    return np.array([[c, -s], [s, c]])
+$$\mu(Ea) = \Delta(a)^{-1}\mu(E),$$
 
-
-def haar_sample_so2(n):
-    """Sample n Haar-random elements of SO(2): angles uniform on [0, 2*pi)."""
-    angles = np.random.uniform(0, 2 * np.pi, size=n)
-    return np.stack([so2_matrix(a) for a in angles])
-
-
-def haar_expectation_so2(f, n=100_000):
-    """
-    Approximate the Haar expectation of a function f: SO(2) -> R.
-    On SO(2), normalized Haar measure is dtheta / (2*pi).
-    """
-    angles = np.random.uniform(0, 2 * np.pi, size=n)
-    samples = np.array([f(so2_matrix(a)) for a in angles])
-    return np.mean(samples)
-
-
-def left_translate(f, g):
-    """Return the left translate L_g f defined by (L_g f)(x) = f(g^{-1} x)."""
-    g_inv = g.T  # inverse of an SO(2) rotation is its transpose
-    def translated(x):
-        return f(g_inv @ x)
-    return translated
-
-
-def demo_invariance():
-    """Verify numerically that Haar expectation is invariant under left translation."""
-    # A simple test function: top-left matrix entry
-    def f(g):
-        return float(g[0, 0])
-
-    g0 = so2_matrix(1.3)  # arbitrary group element
-    f_translated = left_translate(f, g0)
-
-    np.random.seed(0)
-    mean_f = haar_expectation_so2(f, n=200_000)
-    mean_translated = haar_expectation_so2(f_translated, n=200_000)
-
-    print(f"E[f]            = {mean_f:.6f}")
-    print(f"E[L_g0 f]       = {mean_translated:.6f}")
-    print(f"Expected value  = 0 (integral of cosine over full period)")
-    print(f"Difference      = {abs(mean_f - mean_translated):.2e}")
-
-
-if __name__ == "__main__":
-    demo_invariance()
-```
+with $\Delta : G \to (0,\infty)$ the continuous homomorphism called the modular function, equal to $1$ identically exactly on the unimodular groups — compact, discrete, and abelian among them. Existence of $\mu$, its uniqueness up to a positive scalar, and the modular function measuring any residual asymmetry between left and right translation: that is the Haar measure, delivered in full.
