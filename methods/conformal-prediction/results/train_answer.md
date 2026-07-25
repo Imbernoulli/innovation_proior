@@ -8,116 +8,16 @@ In practice the full form can be expensive, because testing many candidate label
 
 The proof is a permutation-rank argument. The true future score is exchangeable with the calibration scores, so it can land in an extreme rank only as often as symmetry permits. The score affects efficiency, not validity: a good score yields small, informative sets, while a poor score yields large or unhelpful sets under the same coverage guarantee. The guarantee is marginal over the exchangeable draw, not conditional on a fixed input, and it does not by itself ensure calibration within subgroups.
 
-```python
-import numpy as np
-from typing import Callable
+What the method actually delivers, then, is not a fitted model but the protocol itself, and it is worth stating once, precisely, in the form I use it. Fix any permutation-symmetric nonconformity measure $A(B,z)$, larger for a worse fit of $z$ to the bag $B$. For labeled examples $z_1,\dots,z_{n-1}$, a new object $x_n$, and a candidate label $y$, form the completed bag with $z_n=(x_n,y)$, compute $\alpha_i = A(B_n \setminus \{z_i\}, z_i)$ for every $i=1,\dots,n$, and define the candidate-label p-value
+$$p_y=\frac{\#\{i\in\{1,\dots,n\}:\alpha_i\ge\alpha_n\}}{n}.$$
+At significance level $\varepsilon$ the full conformal predictor outputs
+$$\Gamma^{\varepsilon}(z_1,\dots,z_{n-1},x_n)=\{\,y: p_y>\varepsilon\,\},$$
+and exchangeability of the completed examples gives $P\{Y_n\notin\Gamma^{\varepsilon}\}\le\varepsilon$, for any choice of $A$ whatsoever.
 
-def split_conformal(
-    score_fn: Callable[[np.ndarray, np.ndarray], np.ndarray],
-    X_cal: np.ndarray,
-    Y_cal: np.ndarray,
-    alpha: float = 0.1,
-    randomized: bool = False,
-    allow_empty: bool = False,
-):
-    """
-    Fit a split-conformal predictor.
-
-    score_fn(x, y) -> nonconformity scores, lower is more conforming.
-    X_cal, Y_cal: calibration data.
-    alpha: miscoverage level (target error rate).
-    randomized: if True, randomize at the threshold for exact size control.
-    allow_empty: if False, force a prediction by setting the threshold to max.
-    """
-    n = len(Y_cal)
-    cal_scores = score_fn(X_cal, Y_cal)
-    k = int(np.ceil((n + 1) * (1 - alpha)))
-
-    sorted_scores = np.sort(cal_scores)
-    if k <= n:
-        qhat = sorted_scores[k - 1]
-    else:
-        qhat = np.inf
-
-    if not allow_empty and qhat == np.inf:
-        qhat = np.max(cal_scores)
-
-    predictor = {
-        "score_fn": score_fn,
-        "qhat": qhat,
-        "randomized": randomized,
-        "eta": None,
-    }
-
-    if randomized:
-        if k <= n:
-            count_at_threshold = np.sum(cal_scores == qhat)
-            eta = (
-                (n + 1) * alpha - n + np.sum(cal_scores < qhat)
-            ) / count_at_threshold
-            eta = np.clip(eta, 0.0, 1.0)
-        else:
-            eta = 0.0
-        predictor["eta"] = eta
-
-    return predictor
-
-
-def predict_set(
-    predictor: dict,
-    X: np.ndarray,
-    candidate_labels: np.ndarray,
-):
-    """
-    Return the conformal prediction set for each input in X.
-
-    candidate_labels: array of shape (num_candidates,) with all possible labels.
-    Returns a list of arrays, one prediction set per input.
-    """
-    score_fn = predictor["score_fn"]
-    qhat = predictor["qhat"]
-    randomized = predictor["randomized"]
-    eta = predictor["eta"]
-
-    sets = []
-    for x in X:
-        x_batch = np.tile(x, (len(candidate_labels), 1))
-        scores = score_fn(x_batch, candidate_labels)
-        included = scores <= qhat
-        if randomized and eta is not None and np.any(scores == qhat):
-            tie_mask = scores == qhat
-            tie_idx = np.where(tie_mask)[0]
-            np.random.shuffle(tie_idx)
-            keep = int(np.floor(eta * len(tie_idx)))
-            included[tie_idx[keep:]] = False
-        sets.append(candidate_labels[included])
-    return sets
-
-
-# Example: conformalized nearest-neighbor classification.
-if __name__ == "__main__":
-    from sklearn.datasets import make_classification
-    from sklearn.model_selection import train_test_split
-    from sklearn.neighbors import NearestNeighbors
-
-    X, y = make_classification(n_samples=500, n_features=10, n_classes=3, n_informative=8)
-    X_train, X_rest, y_train, y_rest = train_test_split(X, y, test_size=0.4)
-    X_cal, X_test, y_cal, y_test = train_test_split(X_rest, y_rest, test_size=0.5)
-
-    nn = NearestNeighbors(n_neighbors=5).fit(X_train)
-    labels = np.unique(y)
-
-    def nn_score(x_batch, y_batch):
-        # One minus average label agreement with 5 nearest training neighbors.
-        dists, idx = nn.kneighbors(x_batch)
-        neighbor_labels = y_train[idx]
-        scores = 1.0 - np.mean(neighbor_labels == y_batch[:, None], axis=1)
-        return scores
-
-    predictor = split_conformal(nn_score, X_cal, y_cal, alpha=0.1)
-    pred_sets = predict_set(predictor, X_test, labels)
-    coverage = np.mean([y_test[i] in pred_sets[i] for i in range(len(y_test))])
-    avg_size = np.mean([len(s) for s in pred_sets])
-    print(f"Empirical coverage: {coverage:.3f}")
-    print(f"Average set size: {avg_size:.3f}")
-```
+The version I deploy in practice is the split form of the same guarantee. Choose or train a score function $s(x,y)$ without touching the calibration labels, then compute calibration scores $S_1,\dots,S_n$ on held-out data. For a target miscoverage $\alpha\in[0,1)$, set
+$$k=\lceil (n+1)(1-\alpha)\rceil,\qquad \hat q = \text{the } k\text{-th smallest element of } \{S_1,\dots,S_n,+\infty\},$$
+so $\hat q = S_{(k)}$ when $k\le n$ and $\hat q=+\infty$ when $k=n+1$. For a new input $x$, the prediction set is
+$$C(x)=\{\,y: s(x,y)\le\hat q\,\}.$$
+Under exchangeability of the calibration examples and the future example, once $s$ is fixed,
+$$P\{Y_{\text{new}}\in C(X_{\text{new}})\}\ge 1-\alpha,$$
+and this holds for whatever score $s$ is on hand — a bad score only inflates $|C(x)|$, it cannot break the bound. That is the whole deliverable: a threshold rule sitting on top of an arbitrary score, with the coverage guarantee coming entirely from the exchangeable rank argument and none of it from the score being a correct probability.
