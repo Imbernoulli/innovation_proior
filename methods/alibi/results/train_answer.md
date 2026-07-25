@@ -14,25 +14,26 @@ import torch.nn.functional as F
 
 
 def get_slopes(n_heads):
+    # Power-of-two case: m_h = 2^{-8h/n}, geometric and dense near 0. Fixed, not learned.
     def slopes_power_of_2(n):
-        start = 2 ** (-(2 ** -(math.log2(n) - 3)))  # = 2^{-8/n}
+        start = 2 ** (-(2 ** -(math.log2(n) - 3)))     # = 2^{-8/n}
         ratio = start
-        return [start * ratio ** i for i in range(n)]
+        return [start * ratio ** i for i in range(n)]  # = 2^{-8(i+1)/n}
 
     if math.log2(n_heads).is_integer():
         return slopes_power_of_2(n_heads)
-    closest = 2 ** math.floor(math.log2(n_heads))
+    closest = 2 ** math.floor(math.log2(n_heads))       # non-power-of-2 fallback
     return (slopes_power_of_2(closest)
             + get_slopes(2 * closest)[0::2][: n_heads - closest])
 
 
 def build_attn_mask(seq_len, n_heads, device=None):
-    slopes = torch.tensor(get_slopes(n_heads), device=device)
-    # m_h * [0, 1, ..., L-1]; row constants cancel in softmax.
+    slopes = torch.tensor(get_slopes(n_heads), device=device)               # (n_heads,)
+    # Per-head pattern m_h * [0,1,...,L-1]; rows identical after softmax row shifts cancel.
     bias = slopes[:, None, None] * torch.arange(seq_len, device=device)[None, None, :]
-    bias = bias.expand(n_heads, seq_len, seq_len)
+    bias = bias.expand(n_heads, seq_len, seq_len)                           # (n_heads, L, L)
     causal = torch.triu(torch.full((seq_len, seq_len), float("-inf"), device=device), 1)
-    return causal[None] + bias
+    return causal[None] + bias                                             # (n_heads, L, L)
 
 
 class CausalSelfAttention(nn.Module):
@@ -49,7 +50,8 @@ class CausalSelfAttention(nn.Module):
         q = q.view(B, T, self.n_heads, self.d_head).transpose(1, 2)
         k = k.view(B, T, self.n_heads, self.d_head).transpose(1, 2)
         v = v.view(B, T, self.n_heads, self.d_head).transpose(1, 2)
-        scores = (q @ k.transpose(-2, -1)) / math.sqrt(self.d_head)
+
+        scores = (q @ k.transpose(-2, -1)) / math.sqrt(self.d_head)        # bias NOT scaled
         scores = scores + attn_mask.to(device=scores.device, dtype=scores.dtype)
         attn = F.softmax(scores, dim=-1)
         out = (attn @ v).transpose(1, 2).reshape(B, T, -1)
@@ -81,7 +83,7 @@ class LMModel(nn.Module):
 
     def forward(self, tokens):
         B, T = tokens.shape
-        x = self.tok(tokens)  # no position embedding added
+        x = self.tok(tokens)  # no added position embedding
         mask = build_attn_mask(T, self.layers[0].attn.n_heads, device=x.device)
         for layer in self.layers:
             x = layer(x, mask)
