@@ -51,10 +51,12 @@ class CountMinSketch:
             self.hash_params = [(int(a), int(b)) for a, b in hash_params]
 
     def _hash(self, row: int, item: int) -> int:
+        """Carter-Wegman-style affine hash, then reduce to the table width."""
         a, b = self.hash_params[row]
         return ((a * (int(item) % self.prime) + b) % self.prime) % self.width
 
     def copy_empty(self) -> "CountMinSketch":
+        """Create an empty sketch with identical dimensions and hash functions."""
         return CountMinSketch(
             epsilon=self.epsilon,
             delta=self.delta,
@@ -74,14 +76,17 @@ class CountMinSketch:
             raise ValueError("sketches must use the same width, depth, and hashes")
 
     def update(self, item: int, count: int = 1) -> None:
+        """Apply a stream update. When current counts are non-negative, total_mass is ||a||_1."""
         self.total_mass += count
         for row in range(self.depth):
             self.counts[row][self._hash(row, item)] += count
 
     def estimate(self, item: int) -> int:
+        """Return the minimum row reading for item."""
         return min(self.counts[row][self._hash(row, item)] for row in range(self.depth))
 
     def merge(self, other: "CountMinSketch") -> "CountMinSketch":
+        """Return the sketch of the summed streams."""
         self._require_compatible(other)
         merged = self.copy_empty()
         merged.total_mass = self.total_mass + other.total_mass
@@ -99,6 +104,7 @@ class CountMinSketch:
                 self.counts[row][col] += other.counts[row][col]
 
     def inner_product(self, other: "CountMinSketch") -> int:
+        """Estimate a . b from compatible sketches of non-negative vectors."""
         self._require_compatible(other)
         row_dots = []
         for row in range(self.depth):
@@ -108,6 +114,12 @@ class CountMinSketch:
             )
             row_dots.append(dot)
         return min(row_dots)
+
+    def __repr__(self) -> str:
+        return (
+            f"CountMinSketch(width={self.width}, depth={self.depth}, "
+            f"epsilon={self.epsilon}, delta={self.delta})"
+        )
 
 
 def demo() -> None:
@@ -122,9 +134,10 @@ def demo() -> None:
     errors = {item: cms.estimate(item) - count for item, count in true_counts.items()}
     max_error = max(errors.values())
     bound = cms.epsilon * cms.total_mass
+    observed_point_ok = max_error <= bound
 
     assert min(errors.values()) >= 0
-    assert max_error <= bound
+    assert observed_point_ok
 
     shard = cms.copy_empty()
     shard_truth = collections.Counter()
@@ -138,8 +151,10 @@ def demo() -> None:
     merged_errors = {
         item: merged.estimate(item) - count for item, count in merged_truth.items()
     }
+    observed_merge_ok = max(merged_errors.values()) <= merged.epsilon * merged.total_mass
+
     assert min(merged_errors.values()) >= 0
-    assert max(merged_errors.values()) <= merged.epsilon * merged.total_mass
+    assert observed_merge_ok
 
     twin = cms.copy_empty()
     for item, count in true_counts.items():
@@ -147,14 +162,21 @@ def demo() -> None:
 
     true_inner = sum(count * count for count in true_counts.values())
     inner_est = cms.inner_product(twin)
-    assert inner_est >= true_inner
-    assert inner_est - true_inner <= cms.epsilon * cms.total_mass * twin.total_mass
+    observed_inner_ok = (
+        inner_est - true_inner <= cms.epsilon * cms.total_mass * twin.total_mass
+    )
 
-    print(f"CountMinSketch(width={cms.width}, depth={cms.depth})")
+    assert inner_est >= true_inner
+    assert observed_inner_ok
+
+    print(cms)
     print(f"total mass: {cms.total_mass}")
     print(f"point-query bound: {bound:.2f}")
     print(f"max observed point overestimate: {max_error}")
     print(f"inner product overestimate: {inner_est - true_inner}")
+    print(f"observed point upper-bound event: {observed_point_ok}")
+    print(f"observed merge upper-bound event: {observed_merge_ok}")
+    print(f"observed inner-product upper-bound event: {observed_inner_ok}")
     print("deterministic one-sided checks passed")
 
 
