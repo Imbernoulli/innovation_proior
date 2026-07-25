@@ -15,57 +15,51 @@ class BertEncoder(nn.Module):
     def __init__(self, pretrained="bert-base-uncased"):
         super().__init__()
         self.bert = BertModel.from_pretrained(pretrained)
-
     def forward(self, input_ids, attn_mask):
         out = self.bert(input_ids=input_ids, attention_mask=attn_mask)
-        return out.last_hidden_state[:, 0, :]  # [CLS] -> (B, 768)
+        return out.last_hidden_state[:, 0, :]            # [CLS] -> (B, 768)
 
 def dot_product_scores(q_vecs, p_vecs):
     return torch.matmul(q_vecs, p_vecs.transpose(0, 1))  # Q P^T
 
 def biencoder_nll(q_vecs, pos_vecs, hard_vecs=None):
-    # positives in columns 0..B-1; BM25 hard negatives append after them
+    # positives occupy columns 0..B-1; one BM25 hard negative per question appends after them
     p_vecs = pos_vecs if hard_vecs is None else torch.cat([pos_vecs, hard_vecs], dim=0)
     target = torch.arange(q_vecs.size(0), device=q_vecs.device)
-    scores = dot_product_scores(q_vecs, p_vecs)  # (B, B + #hard)
-    log_p = F.log_softmax(scores, dim=1)
-    return F.nll_loss(log_p, target)  # diagonal positives
+    scores = dot_product_scores(q_vecs, p_vecs)          # (B, B + #hard)
+    log_p  = F.log_softmax(scores, dim=1)
+    return F.nll_loss(log_p, target)                     # diagonal positive columns
 
-def train_step(encoder_q, encoder_p, q_ids, q_mask, pos_ids, pos_mask,
-               hard_ids, hard_mask, opt):
+def train_step(encoder_q, encoder_p, q_ids, q_mask, pos_ids, pos_mask, hard_ids, hard_mask, opt):
     q = encoder_q(q_ids, q_mask)
     pos = encoder_p(pos_ids, pos_mask)
-    hard = encoder_p(hard_ids, hard_mask)
+    hard = encoder_p(hard_ids, hard_mask)                # BM25 negative passage for each question
     loss = biencoder_nll(q, pos, hard)
     opt.zero_grad()
     loss.backward()
     opt.step()
     return loss.item()
 
+# --- offline index + online MIPS ---
 class PassageIndex:
     def __init__(self, dim):
         self.index = faiss.IndexHNSWFlat(dim, 512, faiss.METRIC_INNER_PRODUCT)
         self.index.hnsw.efConstruction = 200
         self.index.hnsw.efSearch = 128
+    def add(self, vecs):     self.index.add(vecs)        # all 21M, encoded offline
+    def search(self, q, k):  return self.index.search(q, k)
 
-    def add(self, vecs):
-        self.index.add(vecs)  # all passages encoded offline
-
-    def search(self, q, k):
-        return self.index.search(q, k)  # top-k MIPS
-
+# --- extractive reader ---
 class Reader(nn.Module):
     def __init__(self, pretrained="bert-base-uncased"):
         super().__init__()
         self.bert = BertModel.from_pretrained(pretrained)
         h = self.bert.config.hidden_size
-        self.qa_outputs = nn.Linear(h, 2)     # start/end logits
-        self.qa_classifier = nn.Linear(h, 1)  # passage selection
-
-    def forward(self, pair_ids, pair_mask):
-        # each row: [CLS] question [SEP] passage [SEP]
+        self.qa_outputs    = nn.Linear(h, 2)             # start/end
+        self.qa_classifier = nn.Linear(h, 1)             # passage selection
+    def forward(self, pair_ids, pair_mask):              # rows are [CLS] question [SEP] passage [SEP]
         seq = self.bert(input_ids=pair_ids, attention_mask=pair_mask).last_hidden_state
         start, end = self.qa_outputs(seq).split(1, dim=-1)
-        select = self.qa_classifier(seq[:, 0, :])
+        select     = self.qa_classifier(seq[:, 0, :])
         return start.squeeze(-1), end.squeeze(-1), select.squeeze(-1)
 ```

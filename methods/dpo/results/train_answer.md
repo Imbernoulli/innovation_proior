@@ -12,55 +12,50 @@ import torch.nn.functional as F
 
 
 def get_batch_logps(logits, labels, average_log_prob=False):
-    """Sum (or average) per-token log-probs over completion tokens.
+    """Per-sequence log-prob: sum of log p(token) over completion tokens.
 
     logits: (B, T, V) language-model logits.
     labels: (B, T) target token ids, with -100 on prompt / padding positions.
     """
     assert logits.shape[:-1] == labels.shape
-    labels = labels[:, 1:].clone()
+    labels = labels[:, 1:].clone()      # token t is predicted from positions < t
     logits = logits[:, :-1, :]
-    loss_mask = labels != -100
-    labels[labels == -100] = 0
+    loss_mask = (labels != -100)        # score only completion tokens
+    labels[labels == -100] = 0          # gather needs valid indices
     per_token_logps = torch.gather(
-        logits.log_softmax(-1), dim=2, index=labels.unsqueeze(2)
-    ).squeeze(2)
-    summed = (per_token_logps * loss_mask).sum(-1)
+        logits.log_softmax(-1), dim=2, index=labels.unsqueeze(2)).squeeze(2)
     if average_log_prob:
-        return summed / loss_mask.sum(-1)
-    return summed
+        return (per_token_logps * loss_mask).sum(-1) / loss_mask.sum(-1)
+    return (per_token_logps * loss_mask).sum(-1)   # (B,) — sum, per the BT derivation
 
 
-def dpo_loss(
-    policy_chosen_logps,
-    policy_rejected_logps,
-    reference_chosen_logps,
-    reference_rejected_logps,
-    beta,
-    label_smoothing=0.0,
-    reference_free=False,
-):
-    pi_logratios = policy_chosen_logps - policy_rejected_logps
+def dpo_loss(policy_chosen_logps, policy_rejected_logps,
+             reference_chosen_logps, reference_rejected_logps,
+             beta, label_smoothing=0.0, reference_free=False):
+    """DPO loss for a batch of preference pairs.
+
+    *_logps: sequence log-probs, shape (B,). beta: KL strength.
+    """
+    pi_logratios  = policy_chosen_logps   - policy_rejected_logps
     ref_logratios = reference_chosen_logps - reference_rejected_logps
-    if reference_free:
+    if reference_free:                  # drop the reference anchor (ablation)
         ref_logratios = torch.zeros_like(pi_logratios)
-    logits = pi_logratios - ref_logratios
+    logits = pi_logratios - ref_logratios          # β log Z cancels here
 
-    losses = (
-        -F.logsigmoid(beta * logits) * (1 - label_smoothing)
-        - F.logsigmoid(-beta * logits) * label_smoothing
-    )
+    # binary cross-entropy that y_w outscores y_l (label_smoothing optional)
+    losses = (-F.logsigmoid(beta * logits) * (1 - label_smoothing)
+              - F.logsigmoid(-beta * logits) * label_smoothing)
 
-    chosen_rewards = beta * (policy_chosen_logps - reference_chosen_logps).detach()
+    # implicit rewards r̂ = β log(π_θ/π_ref); detached, for logging the margin
+    chosen_rewards   = beta * (policy_chosen_logps   - reference_chosen_logps).detach()
     rejected_rewards = beta * (policy_rejected_logps - reference_rejected_logps).detach()
     return losses, chosen_rewards, rejected_rewards
 
 
 def concatenated_forward(model, batch):
-    """One forward pass over chosen+rejected concatenated inputs."""
-    all_logits = model(
-        batch["concat_input_ids"], attention_mask=batch["concat_attention_mask"]
-    ).logits
+    """One forward pass over chosen+rejected concatenated, returns (chosen, rejected) logps."""
+    all_logits = model(batch["concat_input_ids"],
+                       attention_mask=batch["concat_attention_mask"]).logits
     all_logps = get_batch_logps(all_logits, batch["concat_labels"])
     n_chosen = batch["chosen_input_ids"].shape[0]
     return all_logps[:n_chosen], all_logps[n_chosen:]
@@ -68,21 +63,13 @@ def concatenated_forward(model, batch):
 
 def train_step(policy_model, reference_model, batch, beta, optimizer):
     policy_chosen_logps, policy_rejected_logps = concatenated_forward(policy_model, batch)
-    with torch.no_grad():
+    with torch.no_grad():               # reference frozen — no gradient, no RL
         ref_chosen_logps, ref_rejected_logps = concatenated_forward(reference_model, batch)
-
     losses, chosen_rewards, rejected_rewards = dpo_loss(
-        policy_chosen_logps,
-        policy_rejected_logps,
-        ref_chosen_logps,
-        ref_rejected_logps,
-        beta,
-    )
+        policy_chosen_logps, policy_rejected_logps,
+        ref_chosen_logps, ref_rejected_logps, beta)
     loss = losses.mean()
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
-
-    accuracy = (chosen_rewards > rejected_rewards).float().mean()
+    optimizer.zero_grad(); loss.backward(); optimizer.step()
+    accuracy = (chosen_rewards > rejected_rewards).float().mean()   # implicit-reward acc
     return loss.item(), accuracy.item()
 ```
