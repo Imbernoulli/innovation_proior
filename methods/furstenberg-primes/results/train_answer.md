@@ -14,46 +14,6 @@ Assume, for contradiction, that there are only finitely many primes. Then the ri
 
 The argument is entirely structural: it never constructs a special integer. The infinitude of primes appears as the exact reason why the union of the pZ's cannot be closed.
 
-```python
-from math import gcd
-from functools import reduce
+Collected into one statement, the deliverable is the topology together with the argument it carries. Equip $\mathbb{Z}$ with the *evenly spaced integer topology*: take as a basis the two-sided arithmetic progressions $S(a,b) = \{\,an+b : n \in \mathbb{Z}\,\}$, defined for every nonzero integer $a$ and every integer $b$, and declare a set open exactly when it is a union of such progressions. This is a genuine basis, since the progressions cover $\mathbb{Z}$ (every $x$ lies in $S(1,x)$) and, whenever $x \in S(a_1,b_1)\cap S(a_2,b_2)$, the progression $S(\operatorname{lcm}(|a_1|,|a_2|),\,x)$ sits inside that intersection. Two facts about this topology carry the whole proof. First, every nonempty open set is infinite, because it contains at least one basic progression and each progression is itself infinite; consequently no nonempty finite set is open, and in particular $\{-1,1\}$ is not open. Second, every basic progression $S(a,b)$ is clopen: its complement is the union of the other $a-1$ residue classes modulo $a$, which is a union of basic progressions and so open, which makes $S(a,b)$ closed as well as open; taking $a=p$ and $b=0$ shows each $p\mathbb{Z}$ is closed. Since the non-units of $\mathbb{Z}$ satisfy $\mathbb{Z}\setminus\{-1,1\} = \bigcup_{p \text{ prime}} p\mathbb{Z}$, finitely many primes would make the right-hand side a finite union of closed sets, hence closed, forcing its complement $\{-1,1\}$ to be open — impossible for a nonempty finite set. That contradiction is the entire proof, and it yields
 
-def S(a, b, bound):
-    """Return the intersection of the progression aZ + b with [-bound, bound]."""
-    if a == 0:
-        raise ValueError("a must be nonzero")
-    return {x for x in range(-bound, bound + 1) if (x - b) % a == 0}
-
-def verify_clopen(a, b, bound):
-    """Check that the complement of S(a,b) is the union of the other residue classes mod |a|."""
-    a = abs(a)
-    full = set(range(-bound, bound + 1))
-    prog = S(a, b, bound)
-    complement = full - prog
-    other_classes = [S(a, b + j, bound) for j in range(1, a)]
-    expected = set().union(*other_classes)
-    return complement == expected
-
-def verify_basis_intersection(a1, b1, a2, b2, bound):
-    """Check the basis condition using lcm(|a1|, |a2|)."""
-    from math import lcm
-    inter = S(a1, b1, bound) & S(a2, b2, bound)
-    if not inter:
-        return True
-    x = next(iter(inter))
-    L = lcm(abs(a1), abs(a2))
-    return S(L, x, bound).issubset(inter)
-
-def furstenberg_contradiction(primes, bound=500):
-    """Assuming `primes` is the full finite list, find a number > 1 coprime to all of them."""
-    M = reduce(int.__mul__, primes, 1)
-    # The progression S(M, 1) would have to be contained in {-1, 1} if the finite
-    # union of pZ were closed, because its complement would be open. But this
-    # progression is infinite and contains 1 + M, which is > 1 and coprime to M.
-    return [x for x in sorted(S(M, 1, bound)) if x > 1 and all(x % p != 0 for p in primes)]
-
-# Quick demonstrations
-print("S(5,2) is clopen in a bounded window:", verify_clopen(5, 2, 100))
-print("Basis intersection holds for S(6,0) and S(9,3):", verify_basis_intersection(6, 0, 9, 3, 100))
-print("Counterexamples if [2,3,5,7,11] were all primes:", furstenberg_contradiction([2, 3, 5, 7, 11]))
-```
+$$\boxed{\text{there are infinitely many primes.}}$$
