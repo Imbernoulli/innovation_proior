@@ -13,21 +13,20 @@ import torch.nn.functional as F
 
 
 def gumbel_softmax(logits, tau=1.0, hard=False, dim=-1):
-    """Differentiable approximate categorical sample via the Gumbel-Softmax trick.
+    """Differentiable (approximate) categorical sample.
 
-    logits[..., k]: unnormalized log-probabilities.
-    Returns a sample on the probability simplex; if hard=True, returns a one-hot
-    tensor whose gradient is that of the soft sample (straight-through).
+    logits[..., k]: unnormalized log-probabilities (log pi up to a constant).
+    Returns a sample on the simplex; if hard=True, a one-hot vector with the
+    soft sample's gradient (straight-through).
     """
-    # g_i ~ Gumbel(0,1), sampled as -log(-log u) = -log(e) with e ~ Exp(1).
+    # g_i ~ Gumbel(0,1): -log(-log u) == -log(e), e ~ Exp(1).
     g = -torch.empty_like(logits).exponential_().log()
-    scores = (logits + g) / tau
-    y_soft = scores.softmax(dim)
+    scores = (logits + g) / tau                 # (log pi_i + g_i) / tau
+    y_soft = scores.softmax(dim)                # relaxed sample on Δ^{k-1}
 
     if hard:
         index = y_soft.max(dim, keepdim=True)[1]
         y_hard = torch.zeros_like(logits).scatter_(dim, index, 1.0)
-        # Value is y_hard; gradient flows through y_soft.
         return y_hard - y_soft.detach() + y_soft
     return y_soft
 
@@ -55,22 +54,22 @@ def elbo(x, x_logits, logits):
     q = F.softmax(logits, dim=-1)
     log_q = F.log_softmax(logits, dim=-1)
     k = logits.size(-1)
-    kl = (q * (log_q + math.log(k))).sum(-1).sum(-1)
+    kl = (q * (log_q + math.log(k))).sum(-1).sum(-1)  # KL(q || uniform)
     return (recon + kl).mean()
 
 
 def train(model, optimizer, loader, n_steps, r=1e-4, tau_min=0.5):
     step = 0
     for x in loader:
-        tau = max(tau_min, math.exp(-r * step))
+        tau = max(tau_min, math.exp(-r * step))  # anneal temperature
         optimizer.zero_grad()
         x_logits, logits = model(x, tau=tau)
         loss = elbo(x, x_logits, logits)
-        loss.backward()
+        loss.backward()      # gradient flows through gumbel_softmax into the encoder
         optimizer.step()
         step += 1
         if step >= n_steps:
             break
 ```
 
-This gives a complete, drop-in replacement for a non-differentiable categorical sample inside an ordinary autograd training loop.
+This gives a complete, drop-in replacement for a non-differentiable categorical sample inside an ordinary autograd training loop: the gradient flows from the loss, through the decoder, through the differentiable `gumbel_softmax` sample, into the encoder logits, with no stochastic node blocking it, and `hard=True` switches to a true one-hot forward pass whenever the downstream consumer needs a genuine discrete code.
