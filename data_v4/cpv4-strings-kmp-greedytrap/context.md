@@ -15,9 +15,7 @@ concatenated in order, equal `t`. Among all valid ways to do this, **minimize th
 Output the minimum number of blocks, or `-1` if no valid tiling exists.
 
 This is the kind of subproblem that hides inside text compression, run-length / dictionary coders, and
-protocol framing, where a chunk must be one of a fixed family of prefixes. Getting it right means
-resisting the obvious "grab the longest matching prefix and move on" reflex, which is both suboptimal
-and capable of walking into a dead end.
+protocol framing, where a chunk must be one of a fixed family of prefixes.
 
 ## Input / output contract
 
@@ -32,29 +30,12 @@ Example: for `s = "babba"` and `t = "babbabb"` the answer is `2`: split `t` as `
 prefixes of `babba`. (Pressing the whole logo `babba` first leaves `bb`, which then needs two more
 single-`b` presses — that is `3` blocks, worse.)
 
-## Background
-
-A block is legal at position `i` of `t` exactly when some prefix of `s` matches `t` starting at `i`.
-Two families of approach present themselves before committing:
-
-- **Greedy by longest match.** At the current position, press the longest prefix of `s` that matches
-  the banner here, advance past it, and repeat. It is `O(|t|)` after preprocessing and trivial to
-  write; the open question is whether grabbing the longest legal block now is ever globally wrong.
-- **Reachability dynamic programming.** For each banner position `i`, determine the set of legal block
-  lengths, then compute the minimum number of blocks to reach the end. The open question is how to get
-  the legal-length sets and the minimization both correct and fast enough at `|t| = 2*10^5`.
-
-The legal-length structure is special: if a prefix of `s` of length `L` matches at `i`, then every
-shorter prefix also matches at `i` (a prefix of a matching prefix). So the legal lengths at `i` form a
-full interval `1..reach[i]`, where `reach[i]` is the longest prefix of `s` matching `t` at `i`. The
-`reach` array is exactly what string matching (KMP / Z-function) computes.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: banners that are exact concatenations of logo prefixes (feasible,
 varying block counts), banners that cannot be tiled at all (`-1`), highly self-overlapping logos such
-as `aa..a` and `abab..` (where longest-match greedy is most tempting and most wrong), single-character
-logos and banners, and large `|s|, |t| = 2*10^5` cases that demand a linear algorithm.
+as `aa..a` and `abab..`, single-character logos and banners, and large `|s|, |t| = 2*10^5` cases that
+demand a linear algorithm.
 
 ## Code framework
 
