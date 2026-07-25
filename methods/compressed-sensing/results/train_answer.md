@@ -12,51 +12,108 @@ FISTA accelerates ISTA to the optimal O(1/k^2) rate without increasing the per-i
 import numpy as np
 
 
+def smooth_value(A, y, x):
+    r = A @ x - y
+    return 0.5 * float(np.real(np.vdot(r, r)))
+
+
 def grad_smooth(A, y, x):
-    """Gradient of 1/2 ||A x - y||_2^2."""
+    """Gradient of 1/2||Ax-y||^2: one application of A then one of the adjoint."""
     return A.conj().T @ (A @ x - y)
 
 
-def soft_threshold(v, tau):
-    """Proximal operator of tau * ||.||_1."""
+def soft_threshold(v, thresh):
+    """Prox of lam*||.||_1 at step t, with thresh = t*lam."""
     mag = np.abs(v)
     if np.iscomplexobj(v):
-        return np.maximum(mag - tau, 0.0) * np.exp(1j * np.angle(v))
-    return np.sign(v) * np.maximum(mag - tau, 0.0)
+        return np.maximum(mag - thresh, 0.0) * np.exp(1j * np.angle(v))
+    return np.sign(v) * np.maximum(mag - thresh, 0.0)
 
 
-def power_iter_lipschitz(A, n_iter=50, seed=0):
-    """Estimate L = lambda_max(A^T A) = ||A||^2 by power iteration."""
+def lipschitz_constant(A, n_iter=100, seed=0):
+    """L = ||A||^2 = lambda_max(A.conj().T @ A), so the largest fixed step is 1/L."""
     rng = np.random.default_rng(seed)
-    v = rng.standard_normal(A.shape[1])
-    v = v / np.linalg.norm(v)
+    x = rng.standard_normal(A.shape[1])
+    norm = np.linalg.norm(x)
+    if norm == 0.0:
+        raise ValueError("power iteration initialized at zero")
+    x = x / norm
     for _ in range(n_iter):
-        v = A.conj().T @ (A @ v)
-        n = np.linalg.norm(v)
-        if n == 0.0:
+        x = A.conj().T @ (A @ x)
+        norm = np.linalg.norm(x)
+        if norm == 0.0:
             return 0.0
-        v = v / n
-    return float(np.real(np.vdot(v, A.conj().T @ (A @ v))))
+        x = x / norm
+    return float(np.real(np.vdot(x, A.conj().T @ (A @ x))))
 
 
-def fista(A, y, lam, n_iter=500, L=None, x0=None):
-    """Fast Iterative Shrinkage-Thresholding Algorithm for l1-regularized least squares."""
-    if L is None:
-        L = power_iter_lipschitz(A)
-    if L <= 0.0:
-        raise ValueError("L must be positive")
-    t = 1.0 / L
+def _backtracking(point, step, A, y, lam, beta=0.5, n_back=100):
+    grad = grad_smooth(A, y, point)
+    f_point = smooth_value(A, y, point)
+    for _ in range(n_back):
+        cand = soft_threshold(point - step * grad, step * lam)
+        d = cand - point
+        q = f_point + np.real(np.vdot(grad, d)) + (0.5 / step) * np.real(np.vdot(d, d))
+        if smooth_value(A, y, cand) <= q:
+            break
+        step *= beta
+    return cand, step
+
+
+def proximal_gradient_l1(A, y, lam, x0=None, step=None, n_iter=500,
+                         backtracking=False, beta=0.5, n_back=100,
+                         acceleration=None):
+    """Proximal gradient for 1/2||Ax-y||^2 + lam*||x||_1.
+
+    The loop follows the standard solver layout:
+    x <- prox_g(z - step*grad_smooth(z)), then z <- x + omega*(x - x_old).
+    """
     if x0 is None:
-        x0 = np.zeros(A.shape[1], dtype=A.dtype if np.iscomplexobj(A) else float)
+        x0 = np.zeros(A.shape[1])
+    if step is None:
+        backtracking = True
+        step = 1.0
+    if acceleration not in (None, "fista", "vandenberghe"):
+        raise ValueError("acceleration must be None, 'fista', or 'vandenberghe'")
+
     x = x0.copy()
     z = x.copy()
     tk = 1.0
-    for _ in range(n_iter):
+    for i in range(n_iter):
         x_old = x.copy()
-        x = soft_threshold(z - t * grad_smooth(A, y, z), t * lam)
-        tk_old = tk
-        tk = 0.5 * (1.0 + np.sqrt(1.0 + 4.0 * tk * tk))
-        omega = (tk_old - 1.0) / tk
+        if backtracking:
+            x, step = _backtracking(z, step, A, y, lam, beta=beta, n_back=n_back)
+        else:
+            x = soft_threshold(z - step * grad_smooth(A, y, z), step * lam)
+
+        if acceleration == "fista":
+            tk_old = tk
+            tk = (1.0 + np.sqrt(1.0 + 4.0 * tk * tk)) / 2.0
+            omega = (tk_old - 1.0) / tk
+        elif acceleration == "vandenberghe":
+            omega = i / (i + 3.0)
+        else:
+            omega = 0.0
         z = x + omega * (x - x_old)
     return x
+
+
+def ista(A, y, lam, n_iter=500, L=None):
+    """Iterative shrinkage-thresholding for 1/2||Ax-y||^2 + lam*||x||_1."""
+    if L is None:
+        L = lipschitz_constant(A)
+    if L <= 0.0:
+        raise ValueError("L must be positive")
+    step = 1.0 / L
+    return proximal_gradient_l1(A, y, lam, step=step, n_iter=n_iter)
+
+
+def fista(A, y, lam, n_iter=500, L=None):
+    """Accelerated proximal gradient for 1/2||Ax-y||^2 + lam*||x||_1."""
+    if L is None:
+        L = lipschitz_constant(A)
+    if L <= 0.0:
+        raise ValueError("L must be positive")
+    step = 1.0 / L
+    return proximal_gradient_l1(A, y, lam, step=step, n_iter=n_iter, acceleration="fista")
 ```
