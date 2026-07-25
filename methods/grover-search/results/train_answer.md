@@ -8,23 +8,27 @@ Iterating this pair r times rotates the state by 2rθ, so the amplitude on the m
 import numpy as np
 
 def grover_search(N, marked, iterations=None):
-    """Find `marked` among N items with O(sqrt N) oracle queries."""
+    """Find `marked` among N items with O(sqrt N) oracle queries.
+
+    Returns the measurement distribution and the iteration count used.
+    """
     theta = np.arcsin(1.0 / np.sqrt(N))
     n_iter = iterations if iterations is not None else int(np.floor(np.pi / (4.0 * theta)))
 
-    # Uniform superposition: amplitude 1/sqrt(N) on every basis state.
+    # |s> = H^{⊗ n} |0...0>: uniform amplitude 1/sqrt(N).
     state = np.full(N, 1.0 / np.sqrt(N))
 
     for _ in range(n_iter):
-        # Oracle: phase-flip the marked amplitude (selective pi rotation).
+        # Oracle U_w = I - 2|w><w|: phase-flip the marked amplitude (sign), magnitudes unchanged.
         state[marked] *= -1.0
 
-        # Diffusion: inversion about the mean, D = 2|s><s| - I.
+        # Diffusion D = 2|s><s| - I: inversion about the mean.
         mean = state.mean()
         state = 2.0 * mean - state
 
-    # After r iterations the marked amplitude is sin((2r+1)*theta).
-    # Stop near (2r+1)*theta = pi/2 to maximize success probability.
-    probs = np.abs(state) ** 2
+    # Each iteration = rotation by 2*theta, sin(theta) = 1/sqrt(N), in span{|w>, |s'>}.
+    # Marked amplitude after r iters is sin((2r+1)theta); stop near (2r+1)theta = pi/2.
+    probs = np.abs(state) ** 2          # measurement: outcome i with prob |amplitude_i|^2
     return probs, n_iter
+
 ```
