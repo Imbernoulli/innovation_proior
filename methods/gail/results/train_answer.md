@@ -17,52 +17,53 @@ class LearningSignal(nn.Module):
         self.net = nn.Sequential(
             nn.Linear(obs_dim + act_dim, hidden), nn.Tanh(),
             nn.Linear(hidden, hidden), nn.Tanh(),
-            nn.Linear(hidden, 1))  # logit / score
+            nn.Linear(hidden, 1))                       # logit / "score"
 
     def score(self, obs, act):
         return self.net(torch.cat([obs, act], dim=1)).squeeze(1)
 
     def reward(self, obs, act, favor_zero_expert=False):
+        # The derivation's D is policy-probability. Here sigmoid(score) is
+        # expert-probability, so direct reward is -log D = softplus(score).
         with torch.no_grad():
             s = self.score(obs, act)
-            if favor_zero_expert:
-                return F.logsigmoid(s)  # alternate shaping capped at 0
-            return F.softplus(s)        # -log(1 - sigmoid(s))
+            if favor_zero_expert:                       # alternate shaping: <= 0
+                return F.logsigmoid(s)
+            return F.softplus(s)                        # -log(1 - sigmoid(s))
 
     def fit(self, opt, pi_obs, pi_act, ex_obs, ex_act, steps=1, ent_reg=1e-3):
-        obs = torch.cat([pi_obs, ex_obs])
-        act = torch.cat([pi_act, ex_act])
-        B = len(pi_obs)
-        Ball = len(obs)
-        labels = torch.zeros(Ball, device=obs.device)
-        labels[B:] = 1.0
-        weights = torch.empty(Ball, device=obs.device)
-        weights[:B] = 1.0 / B
-        weights[B:] = 1.0 / (Ball - B)
+        obs = torch.cat([pi_obs, ex_obs]); act = torch.cat([pi_act, ex_act])
+        B, Ball = len(pi_obs), len(pi_obs) + len(ex_obs)
+        labels = torch.zeros(Ball, device=obs.device); labels[B:] = 1.0
+        weights = torch.empty(Ball, device=obs.device)  # evenly weight both halves
+        weights[:B] = 1.0 / B; weights[B:] = 1.0 / (Ball - B)
         for _ in range(steps):
             s = self.score(obs, act)
             bce = F.binary_cross_entropy_with_logits(s, labels, reduction='none')
-            ent = F.softplus(-s) + (1.0 - torch.sigmoid(s)) * s
+            ent = F.softplus(-s) + (1.0 - torch.sigmoid(s)) * s  # logit-Bernoulli entropy
             loss = ((bce - ent_reg * ent) * weights).sum()
-            opt.zero_grad()
-            loss.backward()
-            opt.step()
+            opt.zero_grad(); loss.backward(); opt.step()
         return loss.item()
 
 def imitation_loop(env, expert_obs, expert_act, policy, value_fn,
-                   obs_dim, act_dim, iters=500, gamma=0.995,
-                   gae_lam=0.97, lam_ent=0.0, max_kl=0.01):
+                   obs_dim, act_dim, iters=500, gamma=0.995, gae_lam=0.97,
+                   lam_ent=0.0, max_kl=0.01):
     signal = LearningSignal(obs_dim, act_dim)
     signal_opt = torch.optim.Adam(signal.parameters(), lr=1e-2)
     for _ in range(iters):
+        # 1. roll out current policy
         obs, act, ep_lens = sample_trajectories(env, policy)
+        # 2. imitation reward from the discriminator (the adaptive cost)
         rew = signal.reward(obs, act)
-        if lam_ent:
+        if lam_ent:                                     # causal-entropy bonus
             rew = rew + lam_ent * (-policy.log_prob(obs, act).detach())
+        # 3. variance-reduced advantages, then one KL-constrained policy step
         adv = gae(rew, value_fn(obs).detach(), ep_lens, gamma, gae_lam)
         trpo_step(policy, obs, act, adv, max_kl=max_kl)
+        # 4. discriminator step: subsample expert to match policy batch size
         idx = np.random.choice(len(expert_obs), size=len(obs))
         signal.fit(signal_opt, obs, act, expert_obs[idx], expert_act[idx])
+        # 5. fit the value function to returns under the refit signal
         rew_for_value = signal.reward(obs, act)
         if lam_ent:
             rew_for_value = rew_for_value + lam_ent * (-policy.log_prob(obs, act).detach())
