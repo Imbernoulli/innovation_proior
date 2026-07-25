@@ -20,32 +20,32 @@ from math import log, ceil
 def successive_halving(space, n, r, s, eta, rng,
                        sample_configuration,
                        run_then_return_val_loss, top_k):
-    """One bracket: start with n configs at minimum resource r, and over s+1 rounds
-    keep the top 1/eta while multiplying the resource by eta each round."""
-    T = [sample_configuration(space, rng) for _ in range(n)]
+    """One bracket: n configs start at minimum resource r; over s+1 rounds keep the
+    top 1/eta while multiplying resource by eta, so the survivor reaches r*eta^s."""
+    T = [sample_configuration(space, rng) for _ in range(n)]  # n i.i.d. configurations
     seen = []
-    for i in range(s + 1):
-        n_i = int(n * eta ** (-i))
-        r_i = r * eta ** i
-        losses = [run_then_return_val_loss(t, r_i) for t in T]
+    for i in range(s + 1):                                 # rounds 0..s
+        n_i = int(n * eta ** (-i))                         # configs alive: floor(n eta^-i)
+        r_i = r * eta ** i                                 # resource each gets: r eta^i
+        losses = [run_then_return_val_loss(t, r_i) for t in T]   # the expensive op
         seen.extend(zip(T, losses, [r_i] * len(T)))
-        T = top_k(T, losses, int(n_i / eta))
+        T = top_k(T, losses, int(n_i / eta))               # promote best floor(n_i/eta)
     return seen
 
 
 def hyperband(space, R, eta, rng,
               sample_configuration,
               run_then_return_val_loss, top_k):
-    """Hedge Successive Halving over bracket sizes from maximal early stopping
-    to plain random search. Each bracket uses roughly B resource."""
-    s_max = int(log(R) / log(eta))
-    B = (s_max + 1) * R
+    """Hedge SH over a geometric grid of bracket sizes, from maximal early stopping
+    (s=s_max) to plain random search (s=0). Each bracket uses ~B; n is never chosen."""
+    s_max = int(log(R) / log(eta))                         # #brackets - 1
+    B = (s_max + 1) * R                                    # budget per bracket
     seen = []
-    for s in reversed(range(s_max + 1)):
-        n = int(ceil((B / R) * eta ** s / (s + 1)))
-        r = R * eta ** (-s)
+    for s in reversed(range(s_max + 1)):                   # s = s_max ... 0
+        n = int(ceil((B / R) * eta ** s / (s + 1)))        # ceil((B/R) eta^s/(s+1))
+        r = R * eta ** (-s)                                # min resource: r*eta^s = R
         seen.extend(successive_halving(space, n, r, s, eta, rng,
                                        sample_configuration,
                                        run_then_return_val_loss, top_k))
-    return min(seen, key=lambda cfg_loss_r: cfg_loss_r[1])[0]
+    return min(seen, key=lambda clr: clr[1])[0]            # best config by loss
 ```
