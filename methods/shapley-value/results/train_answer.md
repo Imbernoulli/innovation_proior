@@ -16,58 +16,12 @@ I can verify directly that this rule satisfies the four axioms. Efficiency follo
 
 What makes the Shapley value especially compelling is uniqueness. To see why no other rule can satisfy the axioms, I decompose an arbitrary game into unanimity games. For each nonempty coalition T, define u_T by u_T(S) = 1 if T ⊆ S and u_T(S) = 0 otherwise. In u_T, every player outside T is a dummy with zero contribution, while the players inside T are perfectly symmetric. Efficiency forces the players in T to split the unit worth, and symmetry forces them to split it equally. Therefore any admissible rule must give φ_i(u_T) = 1/|T| if i ∈ T and φ_i(u_T) = 0 otherwise. Every cooperative game v has a unique expansion v = Σ_{T≠∅} a_T u_T, where the coefficients a_T are given by Möbius inversion on the subset lattice: a_T = Σ_{R ⊆ T} (−1)^{|T|−|R|} v(R). By additivity, any admissible rule is forced to be φ_i(v) = Σ_{T ∋ i} a_T / |T|. This expression is unique, and it coincides with the permutation-average formula because both assign the same values on each unanimity game.
 
-The Shapley value thus has two complementary interpretations. Conceptually, it is the unique payoff rule compatible with efficiency, symmetry, dummy players, and additivity. Probabilistically, it is the expected marginal contribution of each player when the grand coalition forms in a uniformly random order. Both interpretations lead to the same formula, and together they explain why this method is the standard solution for fair credit allocation in cooperative game theory.
+The Shapley value thus has two complementary interpretations. Conceptually, it is the unique payoff rule compatible with efficiency, symmetry, dummy players, and additivity. Probabilistically, it is the expected marginal contribution of each player when the grand coalition forms in a uniformly random order. Both interpretations lead to the same formula, and together they explain why this method is the standard solution for fair credit allocation in cooperative game theory. Stated as a single theorem, the deliverable is this.
 
-```python
-from itertools import combinations, permutations
+Let $N$ be a finite set of $n$ players and let $v : 2^N \to \mathbb{R}$ be a characteristic function with $v(\emptyset) = 0$. There is a unique payoff rule $\varphi(v) \in \mathbb{R}^N$ satisfying efficiency, $\sum_{i \in N} \varphi_i(v) = v(N)$; symmetry, $\varphi_i(v) = \varphi_j(v)$ whenever $i$ and $j$ have identical marginal effects on every coalition; the dummy axiom, $\varphi_i(v) = c$ whenever $v(S \cup \{i\}) = v(S) + c$ for every $S \subseteq N \setminus \{i\}$; and additivity, $\varphi(v + w) = \varphi(v) + \varphi(w)$. That unique rule is
 
-def shapley_value(players, v):
-    """Compute the Shapley value for a cooperative game.
+$$
+\varphi_i(v) \;=\; \frac{1}{n!} \sum_{\pi} \Big[ v\big(P_i(\pi) \cup \{i\}\big) - v\big(P_i(\pi)\big) \Big] \;=\; \sum_{S \subseteq N \setminus \{i\}} \frac{|S|!\,(n-|S|-1)!}{n!} \Big[ v(S \cup \{i\}) - v(S) \Big],
+$$
 
-    players: tuple of distinct player labels
-    v: dict mapping frozenset coalition -> real value, with v[frozenset()] == 0
-    """
-    n = len(players)
-    phi = {i: 0.0 for i in players}
-    fact = [1]
-    for k in range(1, n + 1):
-        fact.append(fact[-1] * k)
-    for i in players:
-        others = [p for p in players if p != i]
-        total = 0.0
-        for r in range(n):
-            for S in combinations(others, r):
-                S = frozenset(S)
-                weight = fact[r] * fact[n - r - 1] / fact[n]
-                total += weight * (v[S | {i}] - v[S])
-        phi[i] = total
-    return phi
-
-if __name__ == "__main__":
-    # Example: a 3-player game with complementarity and a dummy player.
-    players = ("A", "B", "C")
-    v = {
-        frozenset(): 0.0,
-        frozenset({"A"}): 0.0,
-        frozenset({"B"}): 0.0,
-        frozenset({"C"}): 0.0,
-        frozenset({"A", "B"}): 6.0,
-        frozenset({"A", "C"}): 0.0,
-        frozenset({"B", "C"}): 0.0,
-        frozenset({"A", "B", "C"}): 6.0,
-    }
-    phi = shapley_value(players, v)
-    print("Shapley values:", phi)
-    print("Efficiency check (sum):", sum(phi.values()), "==", v[frozenset(players)])
-    print("Dummy C check:", phi["C"], "== 0")
-
-    # Verify symmetry: A and B should share the 6.0 equally.
-    print("Symmetry check A == B:", phi["A"], phi["B"])
-
-    # Additivity check: write v as sum of two games.
-    w = {S: 0.5 * val for S, val in v.items()}
-    u = {S: 0.5 * val for S, val in v.items()}
-    phi_w = shapley_value(players, w)
-    phi_u = shapley_value(players, u)
-    print("Additivity check:", all(abs(phi[p] - (phi_w[p] + phi_u[p])) < 1e-9 for p in players))
-```
+where $\pi$ ranges over all $n!$ permutations of $N$ and $P_i(\pi)$ is the set of players preceding $i$ in $\pi$: the expected marginal contribution of player $i$ over a uniformly random arrival order. Uniqueness follows because every game decomposes uniquely as $v = \sum_{T \neq \emptyset} a_T u_T$ over the unanimity games $u_T(S) = \mathbb{1}[T \subseteq S]$, with Möbius coefficients $a_T = \sum_{R \subseteq T} (-1)^{|T|-|R|} v(R)$; the four axioms force $\varphi_i(u_T) = 1/|T|$ for $i \in T$ and $0$ otherwise on each unanimity game, hence by additivity $\varphi_i(v) = \sum_{T \ni i} a_T / |T|$ on every game — and this coincides with the permutation average above, since in $u_T$ a member of $T$ has marginal contribution one exactly when it arrives last among the members of $T$, an event of probability $1/|T|$. No other payoff rule can satisfy all four axioms at once: the Shapley value is simultaneously the unique fair-division solution and the exact expectation of marginal contribution under a uniformly random arrival order.
