@@ -45,7 +45,7 @@ class VarianceReductionOptimizer:
         self.batch_size = batch_size
         self.device = device
         self.params = list(model.parameters())
-        # Momentum coefficient (a = 1 - 1/sqrt(T))
+        # Momentum coefficient (STORM paper recommends a = 1 - 1/sqrt(T))
         n_steps_per_epoch = max(1, n_train // batch_size)
         self.momentum = 1.0 - 1.0 / math.sqrt(n_steps_per_epoch)
         # Running gradient estimator
