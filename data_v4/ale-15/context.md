@@ -41,26 +41,6 @@ decision variables are the `N` corner positions; the sizes and the container are
     rectangle `i`, in the **same order** as the input.
 - **Time limit:** 2 seconds wall-clock. **Memory:** 256 MB.
 
-## Background
-
-Two reference approaches frame the problem before committing to one:
-
-- **Blind simulated annealing.** Hold a layout; repeatedly pick a random rectangle, propose
-  a uniformly random new legal position, and accept by the Metropolis rule under a cooling
-  schedule. This is the textbook layout heuristic, but two things make the naive version
-  weak. First, a uniformly random target position is almost never an improving move once
-  the layout is half-decent, so the search wastes most of its steps. Second, evaluating a
-  move's effect on the overlap term naively re-checks the moved rectangle against all `N−1`
-  others — `O(N)` per step — and at `N ≈ 200` with the millions of steps annealing needs,
-  that `O(N)` factor is the bottleneck.
-- **Force / spring relaxation.** Treat overlaps as repulsive forces and compactness as an
-  attractive spring, and integrate the system like a physics simulation. This proposes
-  *good* moves but, as a pure gradient descent, settles into the nearest local minimum and
-  cannot tunnel out of a tangled configuration.
-
-The open question is how to combine the *directed* moves of force relaxation with the
-*escape* ability of annealing, while paying far less than `O(N)` per move.
-
 ## Evaluation settings
 
 - **Scoring (what the judge reports; higher is better).** Let the solution be feasible iff
@@ -112,8 +92,7 @@ int main() {
     // TODO: heuristic. Minimise
     //   OVERLAP_W * (total pairwise overlap area)
     //   + DISPERSION_W * (sum of squared centre-to-mean-centre distances),
-    // e.g. simulated annealing with FORCE-DIRECTED move proposals and a
-    // SPATIAL HASH grid so each move's overlap delta is O(neighbours), not O(N).
+    // within the time budget above.
 
     string out;
     for (int i = 0; i < N; i++) out += to_string(X[i]) + " " + to_string(Y[i]) + "\n";

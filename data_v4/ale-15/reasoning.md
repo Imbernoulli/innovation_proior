@@ -79,8 +79,8 @@ need rectangle `i`'s overlap before and after. But computed naively that is stil
 inside a 2-second budget, that `O(N)` factor is the whole bottleneck: it caps me at maybe a few
 hundred thousand steps, far too few to anneal `200` continuous variables.
 
-The candidate's named innovation addresses *both* at once: **force-directed move proposals** for the
-first problem, and a **spatial hash grid** for the second.
+I need two levers that address *both* at once: **force-directed move proposals** for the first
+problem, and a **spatial hash grid** for the second.
 
 ## The first lever: force-directed proposals
 
