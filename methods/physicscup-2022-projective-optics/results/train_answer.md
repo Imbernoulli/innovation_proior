@@ -14,54 +14,8 @@ The problem asks for a ruler-and-compass construction, not just a numerical answ
 
 For the given figure the image points are approximately A' = (1.166, 1.180), B' = (4.824, 2.236), and C' = (6.310, 2.666). Imposing the cross-ratio condition along the line through these three points yields D' around (7.115, 2.898). The distances along the image line decrease from A' to B' to C' to D', which is exactly the visual signature of a perspective range compressing toward its vanishing point.
 
-The python snippet below verifies both parts of the reasoning numerically. It first solves the one-dimensional cross-ratio equation directly to obtain D', and then it reproduces the ruler-and-compass construction with an arbitrary auxiliary point X, an equally spaced range A'X = XY = YZ, and the intersection construction described above. Both routes land on the same point up to floating-point tolerance.
-
-```python
-import numpy as np
-
-# Given image points (from the problem statement)
-A = np.array([1.166, 1.180])
-B = np.array([4.824, 2.236])
-C = np.array([6.310, 2.666])
-R = 4.0 / 3.0  # cross-ratio of four equally spaced points
-
-# --- Direct cross-ratio solution along the image line ---
-# Parameterize L' by A + t*u, where u is the unit direction from A to B.
-u = B - A
-u = u / np.linalg.norm(u)
-tA = 0.0
-tB = np.dot(B - A, u)
-tC = np.dot(C - A, u)
-# Solve (tC/(tC-tB)) * ((tD-tB)/tD) = R for tD.
-tD = (-tC * tB) / (R * (tC - tB) - tC)
-D_direct = A + tD * u
-
-# --- Numerical verification of the geometric construction ---
-# Pick an auxiliary point X off the image line.
-X = A + np.array([1.0, -2.0])
-# Step off equal segments: Y = A + 2*(X-A), Z = A + 3*(X-A)
-Y = A + 2.0 * (X - A)
-Z = A + 3.0 * (X - A)
-
-# Intersect lines B-X and C-Y to find the perspectivity center P.
-def line_intersection(p1, d1, p2, d2):
-    # Solve p1 + s*d1 = p2 + t*d2
-    M = np.column_stack([d1, -d2])
-    st = np.linalg.lstsq(M, p2 - p1, rcond=None)[0]
-    return p1 + st[0] * d1
-
-P = line_intersection(B, X - B, C, Y - C)
-# Intersect line P-Z with the image line A-B to obtain the constructed D'.
-D_constructed = line_intersection(P, Z - P, A, B - A)
-
-print("Direct cross-ratio D' :", np.round(D_direct, 3))
-print("Constructed D'        :", np.round(D_constructed, 3))
-print("Difference            :", np.linalg.norm(D_direct - D_constructed))
-
-# Sanity check: the four image points really have cross-ratio 4/3.
-def cross_ratio(a, b, c, d):
-    return ((c - a) / (c - b)) * ((d - b) / (d - a))
-
-cr = cross_ratio(tA, tB, tC, tD)
-print("Image cross-ratio     :", round(cr, 6))
-```
+The deliverable is this pinning statement together with the construction it licenses: $D'$ is the unique point on $L'$ satisfying
+$$(A',B';C',D')=\frac{4}{3},$$
+and it is produced with straightedge alone by picking any point $X$ off $L'$, marking $Y,Z$ on ray $A'X$ so that $A'X=XY=YZ$, forming $P=(\text{line }B'X)\cap(\text{line }C'Y)$, and reading off $D'=(\text{line }PZ)\cap L'$ — no property of the lens ever enters this construction, so every lens consistent with $A',B',C'$ produces the same $D'$. Applied to the coordinates read off this figure, imposing the invariant along $L'$ pins down
+$$\boxed{D' = (7.115,\ 2.898)},$$
+with the successive gaps $A'B' > B'C' > C'D'$ shrinking toward the vanishing point, exactly the signature of a perspective range compressing along its image line.
