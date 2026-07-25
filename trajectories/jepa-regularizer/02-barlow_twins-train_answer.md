@@ -9,20 +9,21 @@ $$L = \sum_i (1 - C_{ii})^2 + \lambda \sum_{i\neq j} C_{ij}^2.$$
 
 This excludes collapse by construction, and the standardization is the load-bearing piece. If the encoder emits a constant $z_{b,i}=c_i$, then standardizing feature $i$ maps every value to $(c_i-c_i)/\mathrm{std}=0$ — a zero-variance feature whose self-correlation $C_{ii}$ can never reach 1, because a correlation needs non-zero variance in both arguments even to be defined as 1. So the diagonal target alone already forbids the constant: "be perfectly correlated with yourself across the batch" is impossible for a feature that does not vary. That is exactly the counter-pressure the naive floor lacked. The subtler cheap escape — find one invariant direction and copy it into all $D$ features — is killed by the off-diagonal term, since the copies are the same signal, so $|C_{ij}|=1$ off-diagonal and the redundancy term slams them. The only zero-loss target is $C=I$: $D$ features each invariant *and* mutually decorrelated. Delete the off-diagonal term and the copy-one-direction escape returns; delete the on-diagonal term and nothing ties the views together — both halves are necessary, the decorrelation doing the job that negatives or stop-gradients did elsewhere, but inside the objective.
 
-What this harness actually runs is the practical CIFAR port, and three implementation choices matter for the numbers. First, rather than dividing by per-feature std by hand I run each view through a non-affine `BatchNorm1d` — which *is* the center-and-divide-by-batch-std — so the cross-correlation is just `bn(z1).T @ bn(z2) / B`; because the loss module is constructed with no arguments and only sees $D$ at the first forward, I make it `nn.LazyBatchNorm1d(affine=False)` so it registers in `__init__` (riding along with `.to(device)`/dtype) but materializes $D$ on the first call. Second, the loss uses the on- and off-diagonal terms as *sums*, with $\lambda = 0.0051$ — small because there are $\sim D^2$ off-diagonal entries against $D$ diagonal ones, and an unweighted sum would let the off-diagonal block drown the diagonal alignment. Third, the one easy to miss: the raw summed loss with a 2048-wide projector is on the order of $10^3$–$10^4$, and LARS rescales each layer's step by $\lVert p\rVert/(\lVert g\rVert+\dots)$, so an enormous gradient norm starves that adaptive rescaling and the diagonal never climbs to 1 (a backbone can stay stuck near 10%). The CIFAR recipe's fix is a fixed multiplier `scale_loss = 0.1` on the whole loss, taming the gradient norm so LARS can move the diagonal. This is the solo-learn CIFAR recipe — default $2048\to2048$ projector, batch 256, the three CIFAR backbones — not the ImageNet recipe (8192 projector, smaller `scale_loss`, batch 2048, 1000 epochs), which at this budget would leave the diagonal stuck, so I keep `CONFIG_OVERRIDES = {}`.
+What this harness actually runs is the practical CIFAR port, and three implementation choices matter for the numbers. First, rather than dividing by per-feature std by hand I run each view through a non-affine `BatchNorm1d` — which *is* the center-and-divide-by-batch-std — so the cross-correlation is just `bn(z1).T @ bn(z2) / B`; because the loss module is constructed with no arguments and only sees $D$ at the first forward, I make it `nn.LazyBatchNorm1d(affine=False)` so it registers in `__init__` (riding along with `.to(device)`/dtype) but materializes $D$ on the first call. Second, the loss uses the on- and off-diagonal terms as *sums*, with $\lambda = 0.0051$ — small because there are $\sim D^2$ off-diagonal entries against $D$ diagonal ones, and an unweighted sum would let the off-diagonal block drown the diagonal alignment. Third, the one easy to miss: the raw summed loss with a 2048-wide projector is on the order of $10^3$–$10^4$, and LARS rescales each layer's step by $\lVert p\rVert/(\lVert g\rVert+\dots)$, so an enormous gradient norm starves that adaptive rescaling and the diagonal never climbs to 1 (a backbone can stay stuck near 10%). The CIFAR recipe's fix is a fixed multiplier `scale_loss = 0.1` on the whole loss, taming the gradient norm so LARS can move the diagonal. This is the CIFAR-scale recipe — default $2048\to2048$ projector, batch 256, the three CIFAR backbones — not the ImageNet-scale recipe (8192 projector, smaller `scale_loss`, batch 2048, 1000 epochs), which at this budget would leave the diagonal stuck, so I keep `CONFIG_OVERRIDES = {}`.
 
 The delta from the naive floor is concrete: where naive returned `F.mse_loss(z1, z2)` and let the encoder relax to a point, I now standardize each view across the batch, form the $D\times D$ cross-correlation, and push it toward the identity — diagonal to 1 for invariance, off-diagonal to 0 for decorrelation, scaled by 0.1 so LARS can drive it. The two-digit band should vanish into the high-80s on every backbone, and the cross-backbone order should *invert* relative to naive: under collapse ResNet-50 led only on a chance cushion, but with a working objective the larger backbones should genuinely separate classes better. A straggler stuck near 10% would be the LARS-starvation tell. And if Barlow lands solidly but a touch below where an explicit *per-branch* variance floor would — its diagonal-to-1 condition couples the two branches and standardizes the embeddings, which may shape a geometry that transfers a hair worse on the smallest backbone — that gap is the thread the next rung pulls.
 
 ```python
 class CustomRegularizer(nn.Module):
-    """Barlow Twins (Zbontar et al. ICML 2021).
+    """Barlow Twins redundancy-reduction regularizer.
 
-    NB on scale_loss: the ImageNet 8192-projector recipe includes a
-    `--scale-loss 0.024` multiplier. Without it the raw loss is on the
+    NB on scale_loss: the canonical 8192-projector recipe includes
+    a `--scale-loss 0.024` multiplier. Without it the raw loss is on the
     order of 1e3-1e4, and LARS' adaptive rescaling
     (lars_lr = p_norm / (g_norm + ...)) starves the optimizer so the
-    diagonal of the cross-correlation matrix never approaches 1. Here I
-    use the CIFAR recipe (scale_loss=0.1) with the 2048 projector.
+    diagonal of the cross-correlation matrix never approaches 1.
+    The 8192 projector uses scale_loss=0.024; our CIFAR setup below uses
+    scale_loss=0.1.
     """
 
     def __init__(self, lambd=0.0051, scale_loss=0.1):
@@ -36,7 +37,6 @@ class CustomRegularizer(nn.Module):
 
     @staticmethod
     def _off_diagonal(x):
-        # Return a flattened view of the off-diagonal elements.
         n, m = x.shape
         assert n == m
         return x.flatten()[:-1].view(n - 1, n + 1)[:, 1:].flatten()
@@ -61,13 +61,12 @@ class CustomRegularizer(nn.Module):
 
 # CONFIG_OVERRIDES: override training hyperparameters for your method.
 # Allowed keys: proj_output_dim, proj_hidden_dim.
-# Use the solo-learn CIFAR-10 Barlow Twins recipe (proj=2048,
-# scale_loss=0.1) instead of the ImageNet recipe
-# (proj=8192, scale_loss=0.024, batch=2048, epochs=1000). Our setup
-# matches solo-learn's: CIFAR-10, batch=256, ResNet-{18,34,50}, LARS
-# with eta=0.02 and clip_lr=True. The 8192 recipe needs
-# epochs=1000 + batch=2048 to converge — at our 100-epoch budget it
-# leaves the diagonal stuck (see logs from v3: rn34 only reaches 10%).
-# https://github.com/vturrisi/solo-learn/blob/main/scripts/pretrain/cifar/barlow.yaml
+# Use the CIFAR-10 Barlow Twins recipe (proj=2048,
+# scale_loss=0.1) instead of the ImageNet-scale recipe
+# (proj=8192, scale_loss=0.024, batch=2048, epochs=1000). Our setup is
+# CIFAR-10, batch=256, ResNet-{18,34,50}, LARS with eta=0.02 and
+# clip_lr=True. The 8192 recipe needs epochs=1000 + batch=2048 to
+# converge — at our 100-epoch budget it leaves the diagonal stuck
+# (see logs from v3: rn34 only reaches 10%).
 CONFIG_OVERRIDES = {}
 ```
