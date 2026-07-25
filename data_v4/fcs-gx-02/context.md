@@ -35,22 +35,6 @@ Example: for `s = "1432219"` and `k = 3`, the answer is `"1219"`. Deleting the `
 and one `2` leaves the length-4 subsequence `1219`, and no other length-4 subsequence of `1432219`
 is smaller.
 
-## Background
-
-The result must be a length-`(|s|-k)` subsequence of `s`, chosen to be lexicographically smallest.
-Two ways to think about it are on the table before committing to one:
-
-- **Greedy by deleted character.** Phrase the task as "perform `k` deletions"; at each step delete
-  the character that seems most harmful — e.g. the largest character, or the leftmost character that
-  is larger than its right neighbour. The hope is that a simple local rule, repeated `k` times,
-  lands on the global optimum. The open question is whether any such per-deletion rule, done
-  independently, is actually optimal — and whether it can be made fast enough for `|s| = 10^6`.
-- **Position-by-position construction with a stack.** Build the answer left to right, maintaining
-  the characters chosen so far on a stack, and decide at each incoming character whether earlier
-  chosen characters should be undone (deleted) because the new, smaller character can take an earlier
-  slot. The open questions are the exact pop condition, how the deletion budget gates it, and what to
-  do with any leftover budget at the end.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: `k = 0` (no deletion, output `= s`); `k >= |s|` (delete everything,
