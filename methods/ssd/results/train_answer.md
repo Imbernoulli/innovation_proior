@@ -18,103 +18,192 @@ Data augmentation is important because there is no region crop at inference time
 
 At inference I decode the predicted offsets back to absolute box coordinates, discard class scores below 0.01, run greedy per-class non-maximum suppression with an overlap threshold of 0.45, and keep the top 200 detections per image. The entire pipeline is therefore one forward pass followed by a light post-processing step, with no region proposals and no per-region feature extraction.
 
-The canonical name of the method is Single Shot MultiBox Detector, abbreviated SSD. The following script illustrates the default-box tiling, the best-plus-threshold matching rule, the center-log-size encoding, and the confidence-aware hard-negative mining that make the method work.
+The canonical name of the method is Single Shot MultiBox Detector, abbreviated SSD. The following implementation gives the L2-normalized source and the multi-scale detection head, the default-box tiling, the best-plus-threshold matching rule, the center-log-size encoding and decoding, and the confidence-aware hard-negative mining inside the multibox loss that make the method work.
 
 ```python
-import torch
-import torch.nn.functional as F
-from itertools import product
 from math import sqrt
+from itertools import product
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
 
 
-def make_ssd300_default_boxes():
+class L2Norm(nn.Module):
+    def __init__(self, n_channels, scale=20):
+        super().__init__()
+        self.weight = nn.Parameter(torch.full((n_channels,), float(scale)))
+        self.eps = 1e-10
+
+    def forward(self, x):
+        norm = x.pow(2).sum(dim=1, keepdim=True).sqrt().clamp_min(self.eps)
+        return self.weight.view(1, -1, 1, 1) * x / norm
+
+
+class SSDHead(nn.Module):
+    def __init__(self, source_channels=(512, 1024, 512, 256, 256, 256),
+                 boxes_per_location=(4, 6, 6, 6, 4, 4), num_classes=21):
+        super().__init__()
+        self.num_classes = num_classes
+        self.loc = nn.ModuleList([
+            nn.Conv2d(ch, k * 4, kernel_size=3, padding=1)
+            for ch, k in zip(source_channels, boxes_per_location)
+        ])
+        self.conf = nn.ModuleList([
+            nn.Conv2d(ch, k * num_classes, kernel_size=3, padding=1)
+            for ch, k in zip(source_channels, boxes_per_location)
+        ])
+
+    def forward(self, sources):
+        loc, conf = [], []
+        for x, loc_conv, conf_conv in zip(sources, self.loc, self.conf):
+            loc.append(loc_conv(x).permute(0, 2, 3, 1).contiguous())
+            conf.append(conf_conv(x).permute(0, 2, 3, 1).contiguous())
+        loc = torch.cat([x.view(x.size(0), -1) for x in loc], dim=1)
+        conf = torch.cat([x.view(x.size(0), -1) for x in conf], dim=1)
+        return loc.view(loc.size(0), -1, 4), conf.view(conf.size(0), -1, self.num_classes)
+
+
+class SSD300DefaultBoxes:
     image_size = 300
     feature_maps = (38, 19, 10, 5, 3, 1)
     steps = (8, 16, 32, 64, 100, 300)
     min_sizes = (30, 60, 111, 162, 213, 264)
     max_sizes = (60, 111, 162, 213, 264, 315)
     aspect_ratios = ((2,), (2, 3), (2, 3), (2, 3), (2,), (2,))
-    boxes = []
-    for k, f in enumerate(feature_maps):
-        step = steps[k]
-        sk = min_sizes[k] / image_size
-        sk_next = max_sizes[k] / image_size
-        for i, j in product(range(f), repeat=2):
-            cx = (j + 0.5) * step / image_size
-            cy = (i + 0.5) * step / image_size
-            boxes.append((cx, cy, sk, sk))
-            s_prime = sqrt(sk * sk_next)
-            boxes.append((cx, cy, s_prime, s_prime))
-            for ar in aspect_ratios[k]:
-                ar = float(ar)
-                boxes.append((cx, cy, sk * sqrt(ar), sk / sqrt(ar)))
-                boxes.append((cx, cy, sk / sqrt(ar), sk * sqrt(ar)))
-    return torch.tensor(boxes, dtype=torch.float32)
+    variances = (0.1, 0.1, 0.2, 0.2)
+    clip = False
+
+    def __call__(self, device=None):
+        boxes = []
+        for k, f in enumerate(self.feature_maps):
+            step = self.steps[k]
+            sk = self.min_sizes[k] / self.image_size
+            sk_next = self.max_sizes[k] / self.image_size
+            for i, j in product(range(f), repeat=2):
+                cx = (j + 0.5) * step / self.image_size
+                cy = (i + 0.5) * step / self.image_size
+                boxes.append((cx, cy, sk, sk))
+                s_prime = sqrt(sk * sk_next)
+                boxes.append((cx, cy, s_prime, s_prime))
+                for ar in self.aspect_ratios[k]:
+                    ar = float(ar)
+                    boxes.append((cx, cy, sk * sqrt(ar), sk / sqrt(ar)))
+                    boxes.append((cx, cy, sk / sqrt(ar), sk * sqrt(ar)))
+        priors = torch.tensor(boxes, dtype=torch.float32, device=device)
+        if self.clip:
+            priors = center_size(point_form(priors).clamp_(0, 1))
+        return priors
 
 
-def point_form(b):
-    return torch.cat((b[:, :2] - b[:, 2:] / 2, b[:, :2] + b[:, 2:] / 2), dim=1)
+def point_form(boxes):
+    return torch.cat((boxes[:, :2] - boxes[:, 2:] / 2,
+                      boxes[:, :2] + boxes[:, 2:] / 2), dim=1)
 
 
-def jaccard(a, b):
-    a, b = point_form(a), point_form(b)
-    inter_min = torch.max(a[:, None, :2], b[None, :, :2])
-    inter_max = torch.min(a[:, None, 2:], b[None, :, 2:])
-    inter_wh = (inter_max - inter_min).clamp_min(0)
-    inter = inter_wh[..., 0] * inter_wh[..., 1]
-    area_a = (a[:, 2] - a[:, 0]) * (a[:, 3] - a[:, 1])
-    area_b = (b[:, 2] - b[:, 0]) * (b[:, 3] - b[:, 1])
-    return inter / (area_a[:, None] + area_b[None, :] - inter).clamp_min(1e-12)
+def center_size(boxes):
+    return torch.cat(((boxes[:, 2:] + boxes[:, :2]) / 2,
+                      boxes[:, 2:] - boxes[:, :2]), dim=1)
+
+
+def jaccard(box_a, box_b):
+    a, b = box_a.size(0), box_b.size(0)
+    max_xy = torch.min(box_a[:, 2:].unsqueeze(1).expand(a, b, 2),
+                       box_b[:, 2:].unsqueeze(0).expand(a, b, 2))
+    min_xy = torch.max(box_a[:, :2].unsqueeze(1).expand(a, b, 2),
+                       box_b[:, :2].unsqueeze(0).expand(a, b, 2))
+    inter_wh = (max_xy - min_xy).clamp_min(0)
+    inter = inter_wh[:, :, 0] * inter_wh[:, :, 1]
+    area_a = ((box_a[:, 2] - box_a[:, 0]) *
+              (box_a[:, 3] - box_a[:, 1])).unsqueeze(1)
+    area_b = ((box_b[:, 2] - box_b[:, 0]) *
+              (box_b[:, 3] - box_b[:, 1])).unsqueeze(0)
+    return inter / (area_a + area_b - inter).clamp_min(1e-12)
 
 
 def encode(matched, priors, variances=(0.1, 0.1, 0.2, 0.2)):
-    v = priors.new_tensor(variances)
-    centers = ((matched[:, :2] + matched[:, 2:]) / 2 - priors[:, :2]) / (v[:2] * priors[:, 2:])
-    sizes = torch.log(((matched[:, 2:] - matched[:, :2]) / priors[:, 2:]).clamp_min(1e-12)) / v[2:]
-    return torch.cat((centers, sizes), dim=1)
+    variances = priors.new_tensor(variances)
+    g_cxcy = (matched[:, :2] + matched[:, 2:]) / 2 - priors[:, :2]
+    g_cxcy = g_cxcy / (variances[:2] * priors[:, 2:])
+    g_wh = (matched[:, 2:] - matched[:, :2]) / priors[:, 2:]
+    g_wh = torch.log(g_wh.clamp_min(1e-12)) / variances[2:]
+    return torch.cat([g_cxcy, g_wh], dim=1)
 
 
-def match(threshold, truths, labels, priors):
+def decode(loc, priors, variances=(0.1, 0.1, 0.2, 0.2)):
+    variances = priors.new_tensor(variances)
+    boxes = torch.cat((
+        priors[:, :2] + loc[:, :2] * variances[:2] * priors[:, 2:],
+        priors[:, 2:] * torch.exp(loc[:, 2:] * variances[2:])
+    ), dim=1)
+    return point_form(boxes)
+
+
+def match(threshold, truths, priors, labels, loc_t, conf_t, idx,
+          variances=(0.1, 0.1, 0.2, 0.2)):
     if truths.numel() == 0:
-        return torch.zeros(len(priors), 4), torch.zeros(len(priors), dtype=torch.long)
-    overlaps = jaccard(truths, priors)
+        loc_t[idx].zero_()
+        conf_t[idx].zero_()
+        return
+    overlaps = jaccard(truths, point_form(priors))
     best_prior_overlap, best_prior_idx = overlaps.max(dim=1)
     best_truth_overlap, best_truth_idx = overlaps.max(dim=0)
-    best_truth_overlap.index_fill_(0, best_prior_idx, 2.0)
+    best_truth_overlap.index_fill_(0, best_prior_idx, 2)
     for j in range(best_prior_idx.size(0)):
         best_truth_idx[best_prior_idx[j]] = j
     matches = truths[best_truth_idx]
     conf = labels[best_truth_idx].long() + 1
     conf[best_truth_overlap < threshold] = 0
-    return encode(matches, priors), conf
+    loc_t[idx] = encode(matches, priors, variances)
+    conf_t[idx] = conf
 
 
-def hard_negative_mining(conf_data, conf_targets, neg_pos_ratio=3):
-    loss = F.cross_entropy(conf_data.view(-1, conf_data.size(-1)), conf_targets.view(-1), reduction='none')
-    loss = loss.view(conf_data.size(0), -1)
-    pos_mask = conf_targets > 0
-    loss[pos_mask] = 0
-    _, loss_idx = loss.sort(dim=1, descending=True)
-    _, idx_rank = loss_idx.sort(dim=1)
-    num_pos = pos_mask.long().sum(dim=1, keepdim=True)
-    num_neg = torch.clamp(neg_pos_ratio * num_pos, max=pos_mask.size(1) - 1)
-    return idx_rank < num_neg
+class MultiBoxLoss(nn.Module):
+    def __init__(self, num_classes=21, threshold=0.5, neg_pos_ratio=3,
+                 variances=(0.1, 0.1, 0.2, 0.2)):
+        super().__init__()
+        self.num_classes = num_classes
+        self.threshold = threshold
+        self.neg_pos_ratio = neg_pos_ratio
+        self.variances = variances
 
+    def forward(self, predictions, targets):
+        loc_data, conf_data, priors = predictions
+        num, num_priors = loc_data.size(0), priors.size(0)
+        loc_t = loc_data.new_zeros(num, num_priors, 4)
+        conf_t = torch.zeros(num, num_priors, dtype=torch.long, device=loc_data.device)
 
-if __name__ == "__main__":
-    priors = make_ssd300_default_boxes()
-    print("Number of default boxes:", len(priors))
+        for idx in range(num):
+            target = targets[idx].to(loc_data.device)
+            truths = target[:, :4]
+            labels = target[:, 4]
+            match(self.threshold, truths, priors, labels, loc_t, conf_t, idx,
+                  self.variances)
 
-    truths = torch.tensor([[0.25, 0.25, 0.55, 0.55], [0.70, 0.70, 0.95, 0.95]])
-    labels = torch.tensor([14, 7])
-    loc_t, conf_t = match(0.5, truths, labels, priors)
-    positives = (conf_t > 0).sum().item()
-    print("Positive matches:", positives)
+        pos = conf_t > 0
+        num_pos = pos.long().sum(dim=1, keepdim=True)
+        total_pos = num_pos.sum()
+        if total_pos.item() == 0:
+            zero = loc_data.sum() * 0
+            return zero, zero
 
-    conf_data = torch.randn(1, len(priors), 21)
-    neg_mask = hard_negative_mining(conf_data, conf_t.unsqueeze(0))
-    print("Hard negatives kept:", neg_mask.sum().item())
+        pos_idx = pos.unsqueeze(2).expand_as(loc_data)
+        loss_l = F.smooth_l1_loss(loc_data[pos_idx].view(-1, 4),
+                                  loc_t[pos_idx].view(-1, 4),
+                                  reduction="sum")
 
-    selected = (conf_t.unsqueeze(0) > 0) | neg_mask
-    print("Total training samples:", selected.sum().item())
+        loss_c = F.cross_entropy(conf_data.view(-1, self.num_classes),
+                                 conf_t.view(-1), reduction="none")
+        loss_c = loss_c.view(num, -1)
+        loss_c[pos] = 0
+
+        _, loss_idx = loss_c.sort(dim=1, descending=True)
+        _, idx_rank = loss_idx.sort(dim=1)
+        num_neg = torch.clamp(self.neg_pos_ratio * num_pos, max=pos.size(1) - 1)
+        neg = idx_rank < num_neg.expand_as(idx_rank)
+
+        keep = pos | neg
+        loss_c = F.cross_entropy(conf_data[keep], conf_t[keep], reduction="sum")
+        normalizer = total_pos.float()
+        return loss_l / normalizer, loss_c / normalizer
 ```
