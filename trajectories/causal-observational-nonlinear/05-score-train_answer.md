@@ -23,9 +23,9 @@ def run_causal_discovery(X: np.ndarray) -> np.ndarray:
     Output: adjacency matrix B of shape (n_variables, n_variables)
             B[i, j] != 0  means j -> i  (follows causal-learn convention)
 
-    SCORE (Rolland et al., ICML 2022): recover the topological order by
-    score-matching leaf detection -- a variable is a leaf iff the variance of
-    the j-th diagonal Hessian entry of log p is zero -- then prune edges.
+    SCORE: recover the topological order by score-matching leaf detection --
+    a variable is a leaf iff the variance of the j-th diagonal Hessian entry
+    of log p is zero -- then prune edges.
     """
     import os
     import numpy as np
@@ -37,12 +37,12 @@ def run_causal_discovery(X: np.ndarray) -> np.ndarray:
     eta_G = 0.001
     eta_H = 0.001
 
-    # Use the data directly, as in the reference SCORE implementation.
+    # Use the data directly.
     Xc = np.asarray(X, dtype=float)
 
     def stein_hess_diag(data):
         # Estimate the diagonal of the Hessian of log p_X at the sample points
-        # via first- and second-order Stein identities (Rolland et al., 2022).
+        # via first- and second-order Stein identities.
         m, p = data.shape
         X_diff = data[:, None, :] - data[None, :, :]          # (m, m, p)
         sqdist = np.sum(X_diff ** 2, axis=2)                   # (m, m)
