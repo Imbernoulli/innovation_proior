@@ -40,7 +40,7 @@ def train_fitnet(student, teacher, loader, guided_idx, hint_idx, k_size,
                  T=3.0, lambda_start=4.0, lambda_end=1.0,
                  stage1_epochs=500, stage2_epochs=500, lr=0.005):
     teacher.eval()
-    # Stage 1: pretrain W_Guided and W_r against the fixed teacher hint.
+    # Pretrain W_Guided and W_r against the fixed teacher hint.
     reg = ConvRegressor(student.channels[guided_idx], teacher.channels[hint_idx], k_size)
     lower = student.params_up_to(guided_idx)
     opt1 = torch.optim.RMSprop(list(lower) + list(reg.parameters()), lr=lr)
@@ -51,7 +51,7 @@ def train_fitnet(student, teacher, loader, guided_idx, hint_idx, k_size,
             guided = student.features_up_to(x, guided_idx)
             opt1.zero_grad(); hint_loss(hint, guided, reg).backward(); opt1.step()
 
-    # Stage 2: discard regressor; distill the whole student on teacher outputs.
+    # Discard the regressor; KD trains the whole student on teacher outputs.
     opt2 = torch.optim.RMSprop(student.parameters(), lr=lr)
     total_steps = stage2_epochs * len(loader)
     step = 0
