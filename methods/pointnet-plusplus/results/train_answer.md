@@ -19,101 +19,89 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+def farthest_point_sample(xyz, npoint): ...        # (B,N,3) -> (B,npoint) indices
+def ball_query(radius, nsample, xyz, new_xyz): ... # fixed radius, cap nsample, repeat if underfull
+def index_points(points, idx): ...
+def three_nn_sqdist(query, ref, k=3): ...           # -> squared distances, indices
 
-def farthest_point_sample(xyz, npoint):
-    """Minimal FPS: greedily pick the point farthest from already chosen ones."""
-    B, N, C = xyz.shape
-    centroids = torch.zeros(B, npoint, dtype=torch.long, device=xyz.device)
-    distance = torch.ones(B, N, device=xyz.device) * 1e10
-    batch_indices = torch.arange(B, dtype=torch.long, device=xyz.device)
-    farthest = torch.randint(0, N, (B,), dtype=torch.long, device=xyz.device)
-    for i in range(npoint):
-        centroids[:, i] = farthest
-        centroid = xyz[batch_indices, farthest, :].view(B, 1, 3)
-        dist = torch.sum((xyz - centroid) ** 2, -1)
-        mask = dist < distance
-        distance[mask] = dist[mask]
-        farthest = torch.max(distance, -1)[1]
-    return centroids
-
-
-def ball_query(radius, nsample, xyz, new_xyz):
-    """For each centroid return indices of up to nsample points within radius."""
-    B, N, _ = xyz.shape
-    _, S, _ = new_xyz.shape
-    sqrdists = torch.cdist(new_xyz, xyz) ** 2
-    idx = torch.topk(sqrdists, nsample, largest=False, sorted=False)[1]
-    # In a full implementation one would mask out-of-radius points; here we keep
-    # the nearest nsample for illustration and rely on small radii.
-    return idx
-
-
-def index_points(points, idx):
-    """Gather points by index."""
-    raw_size = idx.size()
-    idx = idx.reshape(raw_size[0], -1)
-    res = torch.gather(points, 1, idx[..., None].expand(-1, -1, points.size(-1)))
-    return res.reshape(*raw_size, -1)
-
+def sample_and_group(npoint, radius, nsample, xyz, feats):
+    new_xyz = index_points(xyz, farthest_point_sample(xyz, npoint))
+    idx = ball_query(radius, nsample, xyz, new_xyz)
+    grouped_xyz = index_points(xyz, idx) - new_xyz.unsqueeze(2)        # local frame
+    grouped = (torch.cat([grouped_xyz, index_points(feats, idx)], -1)
+               if feats is not None else grouped_xyz)
+    return new_xyz, grouped
 
 class SetAbstraction(nn.Module):
-    """One hierarchy level: sample, group by ball query, encode centroid-relative region."""
     def __init__(self, npoint, radius, nsample, in_ch, mlp, group_all=False):
         super().__init__()
-        self.npoint = npoint
-        self.radius = radius
-        self.nsample = nsample
-        self.group_all = group_all
+        self.npoint, self.radius, self.nsample, self.group_all = npoint, radius, nsample, group_all
         layers, c = [], in_ch + 3
         for out in mlp:
-            layers += [nn.Conv2d(c, out, 1), nn.BatchNorm2d(out), nn.ReLU()]
-            c = out
+            layers += [nn.Conv2d(c, out, 1), nn.BatchNorm2d(out), nn.ReLU()]; c = out
         self.mlp = nn.Sequential(*layers)
-
     def forward(self, xyz, feats):
         if self.group_all:
-            new_xyz = xyz.mean(1, keepdim=True) * 0
-            grouped = torch.cat([xyz, feats], -1).unsqueeze(1) if feats is not None else xyz.unsqueeze(1)
+            new_xyz = xyz[:, :1] * 0
+            grouped = (torch.cat([xyz, feats], -1) if feats is not None else xyz).unsqueeze(1)
         else:
-            fps_idx = farthest_point_sample(xyz, self.npoint)
-            new_xyz = index_points(xyz, fps_idx)
-            idx = ball_query(self.radius, self.nsample, xyz, new_xyz)
-            grouped_xyz = index_points(xyz, idx) - new_xyz.unsqueeze(2)
-            if feats is not None:
-                grouped_feats = index_points(feats, idx)
-                grouped = torch.cat([grouped_xyz, grouped_feats], -1)
-            else:
-                grouped = grouped_xyz
-        g = grouped.permute(0, 3, 1, 2)
-        g = self.mlp(g)
-        new_feats = g.max(dim=3)[0].transpose(1, 2)
-        return new_xyz, new_feats
+            new_xyz, grouped = sample_and_group(self.npoint, self.radius, self.nsample, xyz, feats)
+        g = self.mlp(grouped.permute(0, 3, 1, 2))
+        return new_xyz, g.max(dim=3)[0].transpose(1, 2)               # max over region
 
+class SetAbstractionMSG(nn.Module):
+    def __init__(self, npoint, radii, nsamples, in_ch, mlps):
+        super().__init__()
+        self.npoint, self.radii, self.nsamples = npoint, radii, nsamples
+        self.branches = nn.ModuleList()
+        for mlp in mlps:
+            layers, c = [], in_ch + 3
+            for out in mlp:
+                layers += [nn.Conv2d(c, out, 1), nn.BatchNorm2d(out), nn.ReLU()]; c = out
+            self.branches.append(nn.Sequential(*layers))
+    def forward(self, xyz, feats):
+        new_xyz = index_points(xyz, farthest_point_sample(xyz, self.npoint))
+        outs = []
+        for radius, nsample, branch in zip(self.radii, self.nsamples, self.branches):
+            idx = ball_query(radius, nsample, xyz, new_xyz)
+            grouped_xyz = index_points(xyz, idx) - new_xyz.unsqueeze(2)
+            grouped = (torch.cat([grouped_xyz, index_points(feats, idx)], -1)
+                       if feats is not None else grouped_xyz)
+            outs.append(branch(grouped.permute(0, 3, 1, 2)).max(dim=3)[0])
+        return new_xyz, torch.cat(outs, dim=1).transpose(1, 2)
+
+class FeaturePropagation(nn.Module):
+    def __init__(self, in_ch, mlp):
+        super().__init__()
+        layers, c = [], in_ch
+        for out in mlp:
+            layers += [nn.Conv1d(c, out, 1), nn.BatchNorm1d(out), nn.ReLU()]; c = out
+        self.mlp = nn.Sequential(*layers)
+    def forward(self, xyz_fine, xyz_coarse, feats_fine, feats_coarse):
+        if xyz_coarse.size(1) == 1:
+            interp = feats_coarse.expand(-1, xyz_fine.size(1), -1)
+        else:
+            sqdist, idx = three_nn_sqdist(xyz_fine, xyz_coarse, k=min(3, xyz_coarse.size(1)))
+            inv = 1.0 / sqdist.clamp_min(1e-10)                 # p=2 because sqdist=d^2
+            w = inv / inv.sum(-1, keepdim=True)
+            interp = (index_points(feats_coarse, idx) * w.unsqueeze(-1)).sum(2)
+        if feats_fine is not None:
+            interp = torch.cat([interp, feats_fine], dim=-1)         # skip link
+        return self.mlp(interp.transpose(1, 2)).transpose(1, 2)      # unit PointNet
 
 class PointNet2Cls(nn.Module):
-    """Small runnable PointNet++ classification illustration."""
     def __init__(self, num_classes=40):
         super().__init__()
-        self.sa1 = SetAbstraction(512, 0.2, 32, 0, [64, 64, 128])
+        self.sa1 = SetAbstraction(512, 0.2, 32, 0,   [64, 64, 128])
         self.sa2 = SetAbstraction(128, 0.4, 64, 128, [128, 128, 256])
         self.sa3 = SetAbstraction(None, None, None, 256, [256, 512, 1024], group_all=True)
         self.fc = nn.Sequential(
             nn.Linear(1024, 512), nn.BatchNorm1d(512), nn.ReLU(), nn.Dropout(0.5),
-            nn.Linear(512, 256), nn.BatchNorm1d(256), nn.ReLU(), nn.Dropout(0.5),
-            nn.Linear(256, num_classes),
-        )
-
-    def forward(self, xyz):
+            nn.Linear(512, 256),  nn.BatchNorm1d(256), nn.ReLU(), nn.Dropout(0.5),
+            nn.Linear(256, num_classes))
+    def forward(self, xyz):                          # xyz: (B,N,3)
         l1_xyz, l1 = self.sa1(xyz, None)
         l2_xyz, l2 = self.sa2(l1_xyz, l1)
-        _, l3 = self.sa3(l2_xyz, l2)
+        _,      l3 = self.sa3(l2_xyz, l2)
         return self.fc(l3.squeeze(1))
-
-
-if __name__ == "__main__":
-    torch.manual_seed(0)
-    x = torch.randn(4, 1024, 3)
-    model = PointNet2Cls(num_classes=40)
-    logits = model(x)
-    print("Input shape:", x.shape, "Output logits shape:", logits.shape)
 ```
