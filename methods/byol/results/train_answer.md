@@ -27,7 +27,6 @@ class TrainState(NamedTuple):
 
 class Encoder(hk.Module):
     """Encoder slot. Full ImageNet runs use a ResNet-50 torso here."""
-
     def __init__(self, name=None):
         super().__init__(name=name)
 
@@ -42,34 +41,32 @@ class Encoder(hk.Module):
         return jnp.mean(x, axis=(1, 2))
 
 
+def network(inputs, is_training):
+    """Encoder f -> projector g -> predictor q. The target reuses the same
+    definition; its 'prediction' output is simply not used."""
+    embedding = Encoder(name='encoder')(inputs, is_training)     # representation y (kept for downstream)
+    projection = MLP(name='projector')(embedding, is_training)   # z = g(y)
+    prediction = MLP(name='predictor')(projection, is_training)  # q(z); used only on the online branch
+    return {'projection': projection, 'prediction': prediction}
+
+
 class MLP(hk.Module):
     """Linear(4096) -> BatchNorm -> ReLU -> Linear(256). Output is NOT batch-normed."""
-
     def __init__(self, name):
         super().__init__(name=name)
 
     def __call__(self, x, is_training):
         x = hk.Linear(4096)(x)
-        x = hk.BatchNorm(create_scale=True, create_offset=True, decay_rate=0.9)(
-            x, is_training)
+        x = hk.BatchNorm(create_scale=True, create_offset=True, decay_rate=0.9)(x, is_training)
         x = jax.nn.relu(x)
         return hk.Linear(256, with_bias=False)(x)
-
-
-def network(inputs, is_training):
-    """Encoder -> projector -> predictor. The target reuses the same definition;
-    its 'prediction' output is simply not used."""
-    embedding = Encoder(name='encoder')(inputs, is_training)
-    projection = MLP(name='projector')(embedding, is_training)
-    prediction = MLP(name='predictor')(projection, is_training)
-    return {'projection': projection, 'prediction': prediction}
 
 
 net = hk.without_apply_rng(hk.transform_with_state(network))
 
 
 def regression_loss(x, y, eps=1e-12):
-    """l2-normalized squared error == 2 - 2 * cosine."""
+    """l2-normalized squared error == 2 - 2*cosine."""
     x = x / jnp.maximum(jnp.linalg.norm(x, axis=-1, keepdims=True), eps)
     y = y / jnp.maximum(jnp.linalg.norm(y, axis=-1, keepdims=True), eps)
     return 2 - 2 * jnp.sum(x * y, axis=-1)
@@ -81,16 +78,12 @@ def apply_two_views(params, state, view_1, view_2):
     return out_1, out_2, state
 
 
-def loss_fn(online_params, target_params, online_state, target_state,
-            view_1, view_2):
-    o1, o2, new_online_state = apply_two_views(
-        online_params, online_state, view_1, view_2)
-    t1, t2, new_target_state = apply_two_views(
-        target_params, target_state, view_1, view_2)
-    loss = regression_loss(
-        o1['prediction'], jax.lax.stop_gradient(t2['projection']))
-    loss += regression_loss(
-        o2['prediction'], jax.lax.stop_gradient(t1['projection']))
+def loss_fn(online_params, target_params, online_state, target_state, view_1, view_2):
+    o1, o2, new_online_state = apply_two_views(online_params, online_state, view_1, view_2)
+    t1, t2, new_target_state = apply_two_views(target_params, target_state, view_1, view_2)
+    # Gradient flows into the online network only; stop_gradient marks the target as fixed here.
+    loss = regression_loss(o1['prediction'], jax.lax.stop_gradient(t2['projection']))
+    loss += regression_loss(o2['prediction'], jax.lax.stop_gradient(t1['projection']))  # symmetrized
     return jnp.mean(loss), (new_online_state, new_target_state)
 
 
@@ -98,27 +91,25 @@ def target_ema(step, base_ema, total_steps):
     return 1 - (1 - base_ema) * (jnp.cos(jnp.pi * step / total_steps) + 1) / 2
 
 
-def update_fn(state, step, view_1, view_2, optimizer, total_steps,
-              base_ema=0.996):
+def update_fn(state, step, view_1, view_2, optimizer, total_steps, base_ema=0.996):
     grad_fn = jax.value_and_grad(loss_fn, argnums=0, has_aux=True)
     (loss, (online_state, target_state)), grads = grad_fn(
         state.online_params, state.target_params,
         state.online_state, state.target_state, view_1, view_2)
-    updates, opt_state = optimizer.update(
-        grads, state.opt_state, state.online_params)
+    updates, opt_state = optimizer.update(grads, state.opt_state, state.online_params)
     online_params = optax.apply_updates(state.online_params, updates)
 
     tau = target_ema(step, base_ema, total_steps)
     target_params = jax.tree_util.tree_map(
-        lambda t, o: tau * t + (1 - tau) * o,
+        lambda t, o: tau * t + (1 - tau) * o,  # xi <- tau*xi + (1-tau)*theta
         state.target_params, online_params)
-
-    return TrainState(
+    new_state = TrainState(
         online_params=online_params,
         target_params=target_params,
         online_state=online_state,
         target_state=target_state,
-        opt_state=opt_state), loss
+        opt_state=opt_state)
+    return new_state, loss
 
 
 def init(rng, dummy_input, optimizer):
@@ -133,8 +124,7 @@ def init(rng, dummy_input, optimizer):
 
 
 def keep_encoder(tree):
-    return {name: value for name, value in tree.items()
-            if name.startswith('encoder')}
+    return {name: value for name, value in tree.items() if name.startswith('encoder')}
 
 
 def main(dataset, optimizer, total_steps, augment_fn):
@@ -146,10 +136,9 @@ def main(dataset, optimizer, total_steps, augment_fn):
     for step in range(total_steps):
         images = next(dataset)
         rng, r1, r2 = jax.random.split(rng, 3)
-        view_1 = augment_fn(images, r1, view_id=1)
+        view_1 = augment_fn(images, r1, view_id=1)   # asymmetric view distributions T, T'
         view_2 = augment_fn(images, r2, view_id=2)
-        state, _ = update_fn(
-            state, step, view_1, view_2, optimizer, total_steps)
+        state, _ = update_fn(state, step, view_1, view_2, optimizer, total_steps)
 
     return keep_encoder(state.online_params), keep_encoder(state.online_state)
 ```
