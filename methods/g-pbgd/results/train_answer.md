@@ -4,48 +4,59 @@ The method I propose is G-PBGD, gradient-norm penalty-based bilevel gradient des
 
 Why is this principled? The lower-level constraint y in S(x) is the same as requiring the squared distance d^2_{S(x)}(y) to be zero. A penalty p is called a rho-squared-distance bound if p is nonnegative, dominates d^2 up to a constant rho, and vanishes exactly on S(x). Under such a bound, minimizing f + gamma p approximates the bilevel problem: a residual p <= epsilon yields an objective gap at most O(sqrt(epsilon)). For global solutions the residual is O(1/gamma); for local solutions it improves to O(1/gamma^2) provided p is well behaved toward S(x). For the gradient-norm penalty, the Polyak-Lojasiewicz inequality provides the squared-distance bound without strong convexity; specifically, under a (1/sqrt(mu))-PL condition on g(x, .), p = ||grad_y g||^2 is a mu-SDB. The needed penalty constant is finite and tight: gamma = Theta(delta^{-1/2}) suffices to reach lower-level accuracy delta, as witnessed by the simple instance min y subject to y in argmin y^2, whose penalized solution is y = -1/(2 gamma). Thus G-PBGD is a first-order, single-loop, memory-cheap method for non-strongly-convex bilevel problems, with the caveat that the local guarantee requires the lower Hessian to stay nonsingular away from solutions. At points where grad_yy g degenerates while grad_y g is nonzero, the gradient-norm penalty can stall; the value-gap sibling is the more robust fallback, but G-PBGD is the simplest computational variant.
 
+Filling the joint-update slot of the bilevel harness with the data hyper-cleaning instance — upper variable $x$ are cleaner logits with weights $\sigma(x) \in (0,1)$, and $y$ is the classifier:
+
 ```python
 import torch
 import torch.nn.functional as F
 
 
 def loss_F(tensors):
-    """Squared L2 norm summed over a list of tensors."""
+    """Squared L2 norm summed over a list of parameters / gradients."""
     return sum(torch.linalg.norm(w) ** 2 for w in tensors)
 
 
 def g_pbgd_step(x, net, x_opt, y_opt, tr, val, gam, reg):
-    """One joint G-PBGD update on (x = cleaner logits, y = network parameters)."""
+    """One joint G-PBGD update of (x = data-cleaner logits, y = net parameters)."""
     x_opt.zero_grad()
     y_opt.zero_grad()
 
-    # Upper objective: clean validation loss.
+    # upper objective f: clean validation loss
     fy = F.cross_entropy(net(val.data), val.clean_target)
 
-    # Lower objective: importance-weighted corrupted training loss, plus optional ridge.
+    # lower objective g: sigmoid-weighted (corrupted) training loss (+ optional ridge)
     ce_tr = F.cross_entropy(net(tr.data), tr.dirty_target, reduction="none")
     gxy = (torch.sigmoid(x) * ce_tr).mean() + reg * loss_F(net.parameters())
 
-    # Lower-level gradient with retained graph so a second backward gives the HVP.
+    # lower-level gradient with graph retained -> a 2nd backward yields the HVP
     dgdy = torch.autograd.grad(gxy, net.parameters(), create_graph=True)
 
-    # Once gamma exceeds 1, rescale the whole step by 1/gamma so the penalty term
-    # contributes an O(1) update rather than an O(gamma) one.
+    # penalty p = ||grad_y g||^2; the 1/2 makes d(gam/2 * p) = gam * Hessian-vector.
+    # once gamma > 1, rescale the whole joint step by 1/gamma so the penalty term
+    # (gam * grad p) contributes an O(1) step rather than an O(gamma) one.
     lr_decay = min(1.0 / (gam + 1e-8), 1.0)
     loss = lr_decay * (fy + gam / 2.0 * loss_F(dgdy))
 
-    loss.backward()
-    x_opt.step()
+    loss.backward()        # grads on x (via sigmoid(x)->g->dgdy) and on net params y
+    x_opt.step()           # joint GD step on (x, y) with separate block step sizes
     y_opt.step()
 
 
 def train(x, net, hparams, tr, val):
     y_opt = torch.optim.SGD(net.parameters(), lr=hparams["lry"])
     x_opt = torch.optim.SGD([x], lr=hparams["lrx"])
-    gam = hparams["gamma_init"]
+    gam = hparams["gamma_init"]                                   # start at 0: pure f descent
     step_gam = (hparams["gamma_max"] - hparams["gamma_init"]) / hparams["gamma_argmax_step"]
-    for _ in range(hparams["outer_itr"]):
+    for k in range(hparams["outer_itr"]):
         g_pbgd_step(x, net, x_opt, y_opt, tr, val, gam, hparams["reg"])
-        gam = min(hparams["gamma_max"], gam + step_gam)
+        gam = min(hparams["gamma_max"], gam + step_gam)           # finite cap
     return x, net
+
+
+# canonical hyper-cleaning knobs (linear classifier):
+HYPERCLEAN_LINEAR = dict(lrx=0.3, lry=0.5, gamma_init=0.0, gamma_max=37.0,
+                         gamma_argmax_step=5_000, outer_itr=40_000, reg=0.0)
+# 2-layer MLP (784 -> 300 -> 10, sigmoid hidden):
+HYPERCLEAN_MLP = dict(lrx=0.5, lry=0.5, gamma_init=0.0, gamma_max=37.0,
+                      gamma_argmax_step=30_000, outer_itr=50_000, reg=0.0)
 ```
