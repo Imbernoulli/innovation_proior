@@ -12,41 +12,8 @@ Now let $e_1<e_2$ be the two elements stranded in $C_6$. Their difference $e_2-e
 
 Thus the assumed avoidance is impossible, and at least one country must contain members $x$, $y$, $z$ with $x+y=z$. The equal-summand instance automatically covers the "twice a member" wording in the original statement. The proof I have given is the Iterated Difference-Set Pigeonhole: a sequence of nested pigeonhole steps on difference sets, held together by a telescoping base-cancellation invariant.
 
-```python
-import random
-
-
-def find_internal_sum(countries):
-    """Return (country_index, x, y, z) with x+y=z in that country, or None."""
-    for c, members in enumerate(countries):
-        s = set(members)
-        for x in members:
-            for y in members:
-                if x <= y and x + y in s:
-                    return c, x, y, x + y
-    return None
-
-
-def random_partition(n=1978, k=6):
-    assignment = [random.randrange(k) for _ in range(n)]
-    return [[i + 1 for i in range(n) if assignment[i] == c] for c in range(k)]
-
-
-def check_descent_bounds():
-    assert 6 * 329 < 1978
-    assert 5 * 65 < 329
-    assert 4 * 16 < 65
-    assert 3 * 5 < 16
-    assert 2 * 2 < 5
-    return [330, 329, 66, 65, 17, 16, 6, 5, 3, 2]
-
-
-if __name__ == "__main__":
-    chain = check_descent_bounds()
-    print("Descent chain:", chain)
-    for trial in range(200):
-        parts = random_partition()
-        result = find_internal_sum(parts)
-        assert result is not None, "counterexample partition found"
-    print("All tested partitions contain an internal x+y=z relation.")
-```
+Stated in full, the theorem this establishes is: if the integers $1,2,\ldots,1978$ are partitioned among six countries, then some country contains members numbered $x,y,z$, with $x$ and $y$ allowed to coincide, such that $x+y=z$; equivalently, some country contains two of its own members $u<v$ whose positive difference $v-u$ is also a member of that country, and $u=v-u$ recovers the doubling case $v=2u$. The certificate is the descent chain built from the difference sets, on the sizes
+$$330\to329\to66\to65\to17\to16\to6\to5\to3\to2,$$
+each transition forced by a strict pigeonhole inequality just below the previous count,
+$$6\cdot329<1978,\quad 5\cdot65<329,\quad 4\cdot16<65,\quad 3\cdot5<16,\quad 2\cdot2<5,$$
+with every new list of differences anchored to a single common base so that the same number is simultaneously a difference of two members of the current country and, by telescoping cancellation, a difference of two members of every country touched earlier in the chain. That anchoring is what closes the argument: the final pair, stranded in the sixth and last country after five such descents, yields a difference that must land in one of the six countries, and by the telescoping property it closes a within-country sum in whichever country receives it. No partition of $1,\ldots,1978$ into six countries can avoid producing this relation.
