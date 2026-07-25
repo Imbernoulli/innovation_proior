@@ -20,194 +20,166 @@ import torch.optim as optim
 
 
 class FOCALAgent(nn.Module):
-    """Deterministic mean-aggregating encoder with z-conditioned SAC heads."""
+    """Canonical shape: PEARLAgent with IB disabled, tanh encoder, mean z."""
 
-    def __init__(self, obs_dim, action_dim, latent_dim=5, net_size=300,
-                 reward_dim=1, use_next_obs_in_context=False, **kwargs):
+    def __init__(self, latent_dim, context_encoder, policy, **kwargs):
         super().__init__()
         self.latent_dim = latent_dim
-        self.use_next_obs_in_context = use_next_obs_in_context
-
-        context_input_dim = obs_dim + action_dim + reward_dim
-        if use_next_obs_in_context:
-            context_input_dim += obs_dim
-
-        # Deterministic tanh-bounded encoder; output_dim == latent_dim
-        self.context_encoder = build_mlp(
-            context_input_dim, latent_dim,
-            hidden_dim=200, n_layers=3,
-        )
-
-        self.policy = build_policy(obs_dim, action_dim, latent_dim, net_size)
-        self.qf1 = build_qf(obs_dim, action_dim, latent_dim, net_size)
-        self.qf2 = build_qf(obs_dim, action_dim, latent_dim, net_size)
-        self.vf = build_vf(obs_dim, latent_dim, net_size)
-        self.target_vf = copy.deepcopy(self.vf)
-
+        self.context_encoder = context_encoder
+        self.policy = policy
+        self.use_ib = kwargs.get('use_information_bottleneck', False)
+        self.recurrent = kwargs.get('recurrent', False)
         self.register_buffer('z', torch.zeros(1, latent_dim))
-        self._context = None
+        self.register_buffer('z_means', torch.zeros(1, latent_dim))
+        self.register_buffer('z_vars', torch.zeros(1, latent_dim))
 
-    def update_context(self, transition_tuple):
-        o, a, r, no, d, info = transition_tuple
-        o = torch.as_tensor(o)[None, None, ...]
-        a = torch.as_tensor(a)[None, None, ...]
-        r = torch.as_tensor([[r]], dtype=torch.float32)[None, ...]
-        no = torch.as_tensor(no)[None, None, ...]
-        if self.use_next_obs_in_context:
-            data = torch.cat([o, a, r, no], dim=2)
-        else:
-            data = torch.cat([o, a, r], dim=2)
-        self._context = data if self._context is None else torch.cat([self._context, data], dim=1)
+    def clear_z(self, num_tasks=1):
+        self.z_means = self.z.new_zeros(num_tasks, self.latent_dim)
+        self.z_vars = self.z.new_zeros(num_tasks, self.latent_dim)
+        self.z = self.z_means
 
-    def infer_posterior(self, context):
-        embeddings = self.context_encoder(context)
-        embeddings = embeddings.view(context.size(0), -1, self.latent_dim)
-        self.z = torch.mean(embeddings, dim=1)
+    def detach_z(self):
+        self.z = self.z.detach()
+        if self.recurrent:
+            self.context_encoder.hidden = self.context_encoder.hidden.detach()
 
-    def adapt(self):
-        if self._context is not None:
-            self.infer_posterior(self._context)
+    def infer_posterior(self, context, task_indices=None):
+        params = self.context_encoder(context)
+        params = params.view(context.size(0), -1, self.context_encoder.output_size)
+        if self.use_ib:
+            raise NotImplementedError("FOCAL disables the PEARL information bottleneck.")
+        self.z_means = torch.mean(params, dim=1)
+        self.z_vars = torch.std(params, dim=1)
+        self.z = self.z_means
 
-    def get_action(self, obs, deterministic=False):
-        obs_t = torch.as_tensor(obs)[None]
-        in_ = torch.cat([obs_t, self.z], dim=1)
-        return self.policy.get_action(in_, deterministic=deterministic)
-
-    def forward(self, obs, context):
-        self.infer_posterior(context)
+    def forward(self, obs, context, task_indices=None):
+        self.infer_posterior(context, task_indices=task_indices)
         t, b, _ = obs.size()
         obs_flat = obs.view(t * b, -1)
         task_z = torch.cat([z.repeat(b, 1) for z in self.z], dim=0)
         in_ = torch.cat([obs_flat, task_z], dim=1)
-        policy_outputs = self.policy(in_, reparameterize=True, return_log_prob=True)
-        return policy_outputs, task_z
+        policy_outputs = self.policy(t, b, in_, reparameterize=True, return_log_prob=True)
+        task_z_vars = torch.cat([z.repeat(b, 1) for z in self.z_vars], dim=0)
+        return policy_outputs, task_z, task_z_vars
 
 
-def focal_z_loss(task_z, task_indices, epsilon=1e-3):
-    """Inverse-square distance metric loss on mean task embeddings."""
+def repo_z_loss(task_z, indices, b, epsilon=1e-3):
+    """Exact repository z_loss: RMSE attraction plus inverse-square repulsion."""
     pos_loss, neg_loss = 0.0, 0.0
     pos_cnt, neg_cnt = 0, 0
-    for i in range(len(task_indices)):
-        zi = task_z[i]
-        for j in range(i + 1, len(task_indices)):
-            zj = task_z[j]
-            d_sq = torch.mean((zi - zj) ** 2)
-            if task_indices[i] == task_indices[j]:
+    for i in range(len(indices)):
+        zi = task_z[i * b]
+        for j in range(i + 1, len(indices)):
+            zj = task_z[j * b]
+            d_sq = torch.mean((zi - zj) ** 2)                  # mean squared diff / dim
+            if indices[i] == indices[j]:                       # same task -> attract
                 pos_loss += torch.sqrt(d_sq + epsilon)
                 pos_cnt += 1
-            else:
+            else:                                              # different task -> repel
                 neg_loss += 1.0 / (d_sq + epsilon * 100)
                 neg_cnt += 1
     return pos_loss / (pos_cnt + epsilon) + neg_loss / (neg_cnt + epsilon)
 
 
 class FOCALAlgorithm:
-    """FOCAL training: encoder trained only by DML; SAC+BRAC on detached z."""
+    """Decoupled training: encoder by z_loss only; SAC + BRAC on detached z."""
 
     def __init__(self, agent, env, train_tasks, replay_buffer, enc_replay_buffer,
                  qf1, qf2, vf, c_network, divergence, config):
         self.agent = agent
         self.qf1, self.qf2, self.vf = qf1, qf2, vf
-        self.target_vf = copy.deepcopy(vf)
+        self.target_vf = vf.copy()
         self.train_tasks = train_tasks
-        self.replay_buffer = replay_buffer
-        self.enc_replay_buffer = enc_replay_buffer
+        self.replay_buffer, self.enc_replay_buffer = replay_buffer, enc_replay_buffer
         self.c = c_network
         self.divergence = divergence
-
         self.batch_size = config.get('batch_size', 256)
         self.discount = config.get('discount', 0.99)
         self.reward_scale = config.get('reward_scale', 5.0)
         self.soft_target_tau = config.get('soft_target_tau', 0.005)
-        self.z_loss_weight = config.get('z_loss_weight', 10.0)
-        self.use_value_penalty = config.get('use_value_penalty', False)
-        self.max_entropy = config.get('max_entropy', True)
-
-        self._alpha = torch.tensor(config.get('alpha_init', 500.0), requires_grad=True)
+        self.z_loss_weight = config.get('z_loss_weight', 10.0)      # whole z_loss multiplier
+        self._alpha_var = torch.tensor(config.get('alpha_init', 500.0), requires_grad=True)
         self.alpha_max = config.get('alpha_max', 2000.0)
         self.alpha_lr = config.get('alpha_lr', 1.0)
         self.target_divergence = config.get('target_divergence', 0.05)
-
+        self.use_brac = config.get('use_brac', True)
+        self.use_value_penalty = config.get('use_value_penalty', False)
+        self.max_entropy = config.get('max_entropy', True)
+        self.allow_backward_z = config.get('allow_backward_z', False)
         lr = 3e-4
         self.context_optimizer = optim.Adam(agent.context_encoder.parameters(), lr=lr)
-        self.policy_optimizer = optim.Adam(agent.policy.parameters(), lr=lr)
-        self.qf1_optimizer = optim.Adam(qf1.parameters(), lr=lr)
-        self.qf2_optimizer = optim.Adam(qf2.parameters(), lr=lr)
-        self.vf_optimizer = optim.Adam(vf.parameters(), lr=lr)
-        self.c_optimizer = optim.Adam(c_network.parameters(), lr=1e-4)
+        self.policy_optimizer  = optim.Adam(agent.policy.parameters(),          lr=lr)
+        self.qf1_optimizer     = optim.Adam(qf1.parameters(),                   lr=lr)
+        self.qf2_optimizer     = optim.Adam(qf2.parameters(),                   lr=lr)
+        self.vf_optimizer      = optim.Adam(vf.parameters(),                    lr=lr)
+        self.c_optimizer       = optim.Adam(self.c.parameters(),                lr=1e-4)
+
+    @property
+    def get_alpha(self):
+        return torch.clamp(self._alpha_var, 0.0, self.alpha_max)
 
     def _take_step(self, indices, context):
         num_tasks = len(indices)
         obs, actions, rewards, next_obs, terms = sample_sac_batch(
             self.replay_buffer, indices, self.batch_size)
 
-        policy_outputs, task_z = self.agent(obs, context)
+        # encode context -> per-task z (encoder gradients live here)
+        policy_outputs, task_z, task_z_vars = self.agent(obs, context, task_indices=indices)
         new_actions, policy_mean, policy_log_std, log_pi = policy_outputs[:4]
 
         t, b, _ = obs.size()
-        obs_f = obs.view(t * b, -1)
-        act_f = actions.view(t * b, -1)
-        next_f = next_obs.view(t * b, -1)
+        obs_f, act_f, next_f = (x.view(t * b, -1) for x in (obs, actions, next_obs))
 
-        # Dual-form KL discriminator update
+        # --- BRAC dual-form KL: train discriminator c, estimate divergence ---
         div_estimate = self.divergence.dual_estimate(obs_f, new_actions, act_f, task_z)
         c_loss = self.divergence.dual_critic_loss(obs_f, new_actions, act_f, task_z)
-        self.c_optimizer.zero_grad()
-        c_loss.backward(retain_graph=True)
-        self.c_optimizer.step()
+        self.c_optimizer.zero_grad(); c_loss.backward(retain_graph=True); self.c_optimizer.step()
 
-        # Encoder update: distance metric loss only
+        # --- encoder update: z_loss ONLY ---
         self.context_optimizer.zero_grad()
-        z_loss = self.z_loss_weight * focal_z_loss(task_z, indices)
+        z_loss = self.z_loss_weight * repo_z_loss(task_z, indices, b)
         z_loss.backward(retain_graph=True)
         self.context_optimizer.step()
 
-        # Critic update on detached z with optional value penalty
-        z_for_q = task_z.detach()
-        q1 = self.qf1(obs_f, act_f, z_for_q)
-        q2 = self.qf2(obs_f, act_f, z_for_q)
-        v_pred = self.vf(obs_f, z_for_q)
+        # --- critic update; canonical FlattenMlp call is net(t, b, *inputs) ---
+        z_for_q = task_z if self.allow_backward_z else task_z.detach()
+        q1 = self.qf1(t, b, obs_f, act_f, z_for_q)
+        q2 = self.qf2(t, b, obs_f, act_f, z_for_q)
+        v_pred = self.vf(t, b, obs_f, z_for_q)
         with torch.no_grad():
-            target_v = self.target_vf(next_f, task_z)
-            alpha = torch.clamp(self._alpha, 0.0, self.alpha_max)
-            if self.use_value_penalty:
-                target_v = target_v - alpha * div_estimate
+            target_v = self.target_vf(t, b, next_f, task_z)
+            if self.use_brac and self.use_value_penalty:
+                target_v = target_v - self.get_alpha * div_estimate
         rewards_f = rewards.view(self.batch_size * num_tasks, -1) * self.reward_scale
         terms_f = terms.view(self.batch_size * num_tasks, -1)
-        q_target = rewards_f + (1.0 - terms_f) * self.discount * target_v
+        q_target = rewards_f + (1. - terms_f) * self.discount * target_v
         qf_loss = torch.mean((q1 - q_target) ** 2) + torch.mean((q2 - q_target) ** 2)
-        self.qf1_optimizer.zero_grad()
-        self.qf2_optimizer.zero_grad()
-        qf_loss.backward()
-        self.qf1_optimizer.step()
-        self.qf2_optimizer.step()
+        self.qf1_optimizer.zero_grad(); self.qf2_optimizer.zero_grad()
+        qf_loss.backward(); self.qf1_optimizer.step(); self.qf2_optimizer.step()
 
-        # Value update
-        min_q = torch.min(
-            self.qf1(obs_f, new_actions, z_for_q),
-            self.qf2(obs_f, new_actions, z_for_q),
-        )
+        # --- value function update (max-entropy target, kept even offline) ---
+        min_q = torch.min(self.qf1(t, b, obs_f, new_actions, task_z.detach()),
+                          self.qf2(t, b, obs_f, new_actions, task_z.detach()))
         v_target = min_q - log_pi if self.max_entropy else min_q
         vf_loss = F.mse_loss(v_pred, v_target.detach())
-        self.vf_optimizer.zero_grad()
-        vf_loss.backward()
-        self.vf_optimizer.step()
+        self.vf_optimizer.zero_grad(); vf_loss.backward(); self.vf_optimizer.step()
         soft_update(self.vf, self.target_vf, self.soft_target_tau)
 
-        # Policy update with behavior regularization
-        if self.max_entropy:
-            policy_loss = (log_pi - min_q + alpha.detach() * div_estimate).mean()
+        # --- policy update on detached z, with behavior policy regularization ---
+        if self.use_brac:
+            if self.max_entropy:
+                policy_loss = (log_pi - min_q + self.get_alpha.detach() * div_estimate).mean()
+            else:
+                policy_loss = (-min_q + self.get_alpha.detach() * div_estimate).mean()
         else:
-            policy_loss = (-min_q + alpha.detach() * div_estimate).mean()
-        policy_loss = policy_loss + 1e-3 * (policy_mean ** 2).mean() + 1e-3 * (policy_log_std ** 2).mean()
-        self.policy_optimizer.zero_grad()
-        policy_loss.backward()
-        self.policy_optimizer.step()
+            policy_loss = (log_pi - min_q).mean() if self.max_entropy else -min_q.mean()
+        policy_loss = policy_loss + 1e-3 * (policy_mean ** 2).mean() \
+                                  + 1e-3 * (policy_log_std ** 2).mean()
+        self.policy_optimizer.zero_grad(); policy_loss.backward(); self.policy_optimizer.step()
 
-        # Adaptive alpha
-        alpha_loss = -(self._alpha * (div_estimate - self.target_divergence).detach()).mean()
+        alpha_loss = -(self._alpha_var * (div_estimate - self.target_divergence).detach()).mean()
         alpha_loss.backward()
         with torch.no_grad():
-            self._alpha -= self.alpha_lr * self._alpha.grad
-            self._alpha.grad.zero_()
+            self._alpha_var -= self.alpha_lr * self._alpha_var.grad
+            self._alpha_var.grad.zero_()
 ```

@@ -6,40 +6,16 @@ The new method is the polynomial method for finite-field Kakeya. It works with a
 
 A stronger form of the argument uses multiplicity. Requiring a polynomial to vanish to multiplicity m at each point of K imposes C(m+n−1, n) linear conditions per point, while the space of polynomials of degree at most d has dimension C(d+n, n). Interpolation succeeds when C(m+n−1, n) |K| < C(d+n, n). Choosing d = ℓq − 1 and m = 2ℓ − ℓ/q for a large multiple ℓ of q, and propagating the multiplicity along Kakeya lines via Hasse derivatives, forces the top homogeneous part to vanish to multiplicity ℓ at every point of F_q^n. The multiplicity version of Schwartz-Zippel then rules this out because ℓ q^n > d q^{n−1}. In the limit this yields |K| ≥ (q/(2 − 1/q))^n ≥ q^n/2^n, which matches the natural scale of known product constructions.
 
-```python
-from math import comb
+That chain is the finished result, and it deserves to be stated as a single theorem rather than left inside the derivation. For every finite field $\mathbb{F}_q$ and every dimension $n \geq 1$, if $K \subseteq \mathbb{F}_q^n$ contains, for every nonzero direction $x \in \mathbb{F}_q^n$, a full affine line $\{y + ax : a \in \mathbb{F}_q\}$ for some offset $y \in \mathbb{F}_q^n$, then
 
-def factorial(n):
-    res = 1
-    for i in range(2, n + 1):
-        res *= i
-    return res
+$$
+|K| \;\geq\; \binom{q+n-1}{n} \;=\; \frac{(q+n-1)(q+n-2)\cdots q}{n!} \;\approx\; \frac{q^n}{n!},
+$$
 
-def kakeya_polynomial_bound(q, n, delta=1.0, gamma=1.0):
-    """
-    Lower bound on the size of a (delta, gamma)-Kakeya set K ⊆ F_q^n.
-    Returns the homogeneous bound and the full degree-(q-1) polynomial-method bound.
-    """
-    d = int(q * min(delta, gamma)) - 2
-    dim_hom = comb(d + n - 1, n - 1) if d >= 0 else 0
-    dim_full = comb(n + q - 1, n)
-    return {
-        "homogeneous_bound": dim_hom,       # ≈ q^{n-1}/(n-1)! for full Kakeya
-        "degree_q_minus_1_bound": dim_full, # ≈ q^n / n!
-        "asymptotic_qn_scale": (q ** n) / factorial(n)
-    }
+with equality in the exponent of $q$ and a constant $c_n = 1/n!$ that depends only on the dimension, exactly the scale the problem asks for. Propagating vanishing to multiplicity $m = 2\ell - \ell/q$ against a working degree $d = \ell q - 1$, and letting the multiple $\ell$ of $q$ go to infinity, sharpens the constant to
 
-def multiplicity_bound(q, n):
-    """
-    Sharper multiplicity-based lower bound |K| ≥ (q/(2 - 1/q))^n.
-    """
-    return (q / (2.0 - 1.0 / q)) ** n
+$$
+|K| \;\geq\; \left(\frac{q}{2 - 1/q}\right)^{n} \;\geq\; \frac{q^n}{2^n},
+$$
 
-# Example
-if __name__ == "__main__":
-    q, n = 5, 3
-    b = kakeya_polynomial_bound(q, n)
-    print(f"q={q}, n={n}: |K| ≥ {b['degree_q_minus_1_bound']} "
-          f"(≈ {b['asymptotic_qn_scale']:.3f} q^n)")
-    print(f"Multiplicity sharpening: |K| ≥ {multiplicity_bound(q, n):.3f}")
-```
+matching the natural scale of the quadratic product constructions. Both statements are proved by the same two moves — count the dimension of a polynomial space against the size of $K$ to force a nonzero vanishing polynomial, then read off the direction dependence through the top homogeneous part's restriction to each Kakeya line — with no incidence geometry and no sum-product estimate anywhere in the argument.
