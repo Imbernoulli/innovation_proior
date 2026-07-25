@@ -16,83 +16,14 @@ The examples line up cleanly. Rays on the real line induce only l + 1 distinct l
 
 For a fixed distribution P, a necessary and sufficient condition can be stated in terms of entropy. Let H^S(l) = E log_2 Delta^S(X_l) be the expected log of the number of induced labelings when the sample is drawn from P. Subadditivity implies that H^S(l)/l has a limit, and uniform convergence in probability over S holds exactly when this limit is zero. Thus the distribution-free VC condition is the worst-case version of a more general principle: learnability is governed by the rate at which the class can produce distinct finite labelings.
 
-The code below illustrates these ideas. It shatters points with affine halfspaces in the plane, computes the VC dimension of intervals on the line by exhaustive enumeration, and verifies the Sauer-Shelah growth bound for small parameters.
+All of this can now be collected into the single statement that is the actual deliverable of this analysis, and it is a theorem rather than a program: computing or bounding the VC dimension for a specific class is in practice done analytically, by geometric arguments such as Radon's lemma for halfspaces or sign-pattern counts for polynomial threshold functions, not by exhaustive search, because the claim is about every finite sample, not about one that can be enumerated.
 
-```python
-import itertools
-import math
-from itertools import combinations
-
-
-def affine_halfspace_labelings(points):
-    """All labelings of points in R^2 induced by affine halfspaces w*x + b >= 0."""
-    labelings = set()
-    for signs in itertools.product([0, 1], repeat=len(points)):
-        found = False
-        for w1 in range(-3, 4):
-            for w2 in range(-3, 4):
-                for b in range(-3, 4):
-                    if all((w1 * p[0] + w2 * p[1] + b >= 0) == s for p, s in zip(points, signs)):
-                        found = True
-                        break
-                if found:
-                    break
-            if found:
-                break
-        if found:
-            labelings.add(signs)
-    return labelings
-
-
-def vc_dimension_affine_halfspaces_2d(max_size=4):
-    """Compute the largest shattered set size for affine halfspaces in R^2."""
-    grid = [(x, y) for x in range(3) for y in range(3)]
-    for d in range(1, max_size + 1):
-        shattered = False
-        for pts in combinations(grid, d):
-            if len(affine_halfspace_labelings(pts)) == 2 ** d:
-                shattered = True
-                break
-        if not shattered:
-            return d - 1
-    return max_size
-
-
-def interval_labelings(points):
-    """All labelings of sorted points on the line induced by a single interval."""
-    pts = sorted(points)
-    labelings = set()
-    labelings.add(tuple(0 for _ in pts))
-    n = len(pts)
-    for i in range(n):
-        for j in range(i, n):
-            vec = tuple(1 if i <= k <= j else 0 for k in range(n))
-            labelings.add(vec)
-    return labelings
-
-
-def sauer_shelah_bound(l, d):
-    """Sauer-Shelah upper bound sum_{k=0}^d C(l, k)."""
-    return sum(math.comb(l, k) for k in range(d + 1))
-
-
-if __name__ == "__main__":
-    vc_2d = vc_dimension_affine_halfspaces_2d()
-    print(f"Estimated VC dimension of affine halfspaces in R^2: {vc_2d}")
-    assert vc_2d == 3, "Expected VC dimension 3 for affine halfspaces in R^2"
-
-    for size in [1, 2, 3]:
-        pts = list(range(size))
-        cnt = len(interval_labelings(pts))
-        print(f"Intervals on {size} points induce {cnt} labelings")
-    assert len(interval_labelings([0, 1])) == 4
-    assert len(interval_labelings([0, 1, 2])) == 7  # cannot realize 101
-
-    l, d = 5, 2
-    actual = len(interval_labelings(list(range(l))))
-    bound = sauer_shelah_bound(l, d)
-    print(f"Interval labelings for l={l}: {actual}, Sauer-Shelah bound d={d}: {bound}")
-    assert actual <= bound
-```
-
-I have focused on the conceptual structure rather than on algorithmic implementation because VC dimension is a statistical-complexity characterization. The Python snippet is deliberately simple: it enumerates labelings for small finite point sets and confirms the combinatorial predictions. In practice, computing or bounding the VC dimension for rich classes is often done analytically, using geometric arguments such as Radon's lemma for halfspaces or sign-pattern bounds for polynomial threshold functions. The importance of the theory is that it replaces vague appeals to parameter count with a precise, distribution-free measure of capacity, and it tells us exactly when empirical risk minimization over a class will generalize.
+The theorem states it exactly: let $S$ be a class of measurable events on $X$, let $d = \mathrm{VC}(S)$ be the largest cardinality of a finite set shattered by $S$ (with $d = \infty$ if arbitrarily large finite sets are shattered), and set $n = d+1$. If $d < \infty$, then for every $\epsilon > 0$, every $\eta \in (0,1)$, and every distribution $P$ on $X$,
+$$
+P\!\left(\pi_l > \epsilon\right) \;\le\; 4\, m^S(2l)\, \exp\!\left(-\frac{\epsilon^2 l}{8}\right), \qquad l \ge \frac{2}{\epsilon^2},
+$$
+where $\pi_l = \sup_{A \in S} |\nu_A - P(A)|$ and the growth function obeys $m^S(l) \le \sum_{k=0}^{d} \binom{l}{k} \le (e l / d)^d$ for $l \ge d \ge 1$, with $m^S(l) = 1$ identically when $d = 0$. Consequently a sample of size
+$$
+l \;\ge\; \frac{16}{\epsilon^2}\left( n \log\frac{16n}{\epsilon^2} - \log\frac{\eta}{4} \right)
+$$
+guarantees $\pi_l \le \epsilon$ with probability at least $1-\eta$, simultaneously for every event the fitting procedure might choose and uniformly over every underlying $P$ — no assumption on the distribution enters anywhere in the bound. Conversely, if $d = \infty$, then $m^S(l) = 2^l$ for every $l$, the right-hand side never vanishes, and, as the all-subsets-of-an-interval example shows, uniform convergence can genuinely fail: no sample size repairs it. This dichotomy is exact, and it is what makes VC dimension the deliverable rather than a heuristic proxy: it turns the qualitative question of whether empirical risk minimization over $S$ generalizes into the purely combinatorial question of whether $S$ shatters arbitrarily large finite sets, and when the answer is no, the finite VC dimension $d$ itself supplies the rate at which the sample size must grow. It replaces vague appeals to parameter count with a precise, distribution-free measure of capacity, applicable equally to rays, halfspaces, and polynomial threshold families, and it tells us exactly when — and how fast — empirical frequencies over a class can be trusted.
