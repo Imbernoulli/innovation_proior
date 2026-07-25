@@ -18,11 +18,15 @@ class GeM(nn.Module):
 
     def __init__(self, p=3.0, eps=1e-6):
         super().__init__()
-        self.p = nn.Parameter(torch.ones(1) * p)
-        self.eps = eps
+        self.p = nn.Parameter(torch.ones(1) * p)   # shared selectivity dial, init 3.0
+        self.eps = eps                             # positivity floor
 
     def forward(self, x):                          # x: [B, C, H, W], x >= 0 after ReLU
         p = self.p.clamp(min=1.0)                  # stay in the avg..max regime
         x = x.clamp(min=self.eps)                  # strictly positive base
+        # x^p, average over the whole H x W grid (= (1/N) sum), then ^(1/p)
         return F.avg_pool2d(x.pow(p), (x.size(-2), x.size(-1))).pow(1.0 / p).view(x.size(0), -1)
+
+    def __repr__(self):
+        return f"{type(self).__name__}(p={self.p.data.tolist()[0]:.4f}, eps={self.eps})"
 ```
