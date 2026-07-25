@@ -79,7 +79,7 @@ def denoise(X, knn=12, t=7, n_pca=50, decay=2.0, diff_decay=0.9,
             log_smooth_t=4, log_smooth_weight=0.6,
             final_smooth_t=3, final_smooth_weight=0.30,
             impute_steps=2, max_alpha=0.7, seed=0):
-    """TTT-Discover endpoint: multi-VST ensemble + low-rank SVD + log-space diffusion."""
+    """Test-time endpoint: multi-VST ensemble + low-rank SVD + log-space diffusion."""
     X = X.astype(np.float64)
     n_cells, n_genes = X.shape
     libsize_raw = X.sum(axis=1); libsize_raw[libsize_raw == 0] = 1.0
