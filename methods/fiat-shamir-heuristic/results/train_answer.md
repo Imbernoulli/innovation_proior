@@ -6,60 +6,12 @@ The method is the Fiat-Shamir heuristic. Given a public-coin three-message proof
 
 In the original Fiat-Shamir scheme based on modular square roots, the public identity values are derived as u_j from the identity string and index, and the card stores secrets s_j satisfying s_j^2 * u_j = 1 modulo the public composite n. The signer samples r_i, computes commitments z_i = r_i^2 mod n, derives the challenge matrix from the first k*t bits of a public function applied to the message and the commitments, and then computes responses y_i = r_i * product of s_j over the selected entries. A verifier reconstructs the commitments from the responses and challenge matrix and checks that the same public function reproduces the challenge matrix. The security intuition is unchanged from the interactive protocol: because the commitment is fixed before the challenge is known, being able to answer two different challenges for the same commitment would reveal the hidden square roots.
 
-```python
-import hashlib
-import os
-import secrets
+Stated as the field would present it, the general transform is: for a public-coin three-message proof with transcript $(a, c, z)$ and verifier predicate $V(x, a, c, z)$,
 
-def hash_challenge(domain: bytes, statement: bytes, commitment: bytes, message: bytes = b"") -> int:
-    """Deterministically derive a challenge from public inputs."""
-    h = hashlib.sha256(domain + statement + commitment + message)
-    return int.from_bytes(h.digest(), "big")
+$$c = H(\text{domain}, x, a), \qquad \text{proof} = (a, z), \qquad \text{accept iff } V(x, a, c, z) = 1.$$
 
-# --- Example with a small proof-of-knowledge of discrete logarithm ---
-# Public parameters: prime p, generator g, public key y = g^x mod p.
-# Prover knows x.
+When the same transcript is repurposed as a signature over a message under an identification protocol's public key, the message joins the challenge's inputs:
 
-p = 0xFFFFFFFFFFFFFFFFC90FDAA22168C234C4C6628B80DC1CD129024E088A67CC74020BBEA63B139B22514A08798E3404DDEF9519B3CD3A431B302B0A6DF25F14374FE1356D6D51C245E485B576625E7EC6F44C42E9A637ED6B0BFF5CB6F406B7EDEE386BFB5A899FA5AE9F24117C4B1FE649286651ECE45B3DC2007CB8A163BF0598DA48361C55D39A69163FA8FD24CF5F83655D23DCA3AD961C62F356208552BB9ED529077096966D670C354E4ABC9804F1746C08CA18217C32905E462E36CE3BE39E772C180E86039B2783A2EC07A28FB5C55DF06F4C52C9DE2BCBF6955817183995497CEA956AE515D2261898FA051015728E5A8AACAA68FFFFFFFFFFFFFFFF
-q = (p - 1) // 2
-g = 2
+$$c = H(\text{domain}, \text{public\_key}, \text{message}, a), \qquad \text{signature} = (a, z), \qquad \text{accept iff } V(\text{public\_key}, a, c, z) = 1.$$
 
-# Prover's secret x and public key y.
-x = secrets.randbelow(q)
-y = pow(g, x, p)
-
-def prove(message: bytes) -> tuple[int, int, int]:
-    # Commitment.
-    r = secrets.randbelow(q)
-    a = pow(g, r, p)
-
-    # Challenge derived from public inputs and message.
-    domain = b"fiat-shamir-dlog-example"
-    commitment_bytes = a.to_bytes((a.bit_length() + 7) // 8, "big")
-    statement_bytes = y.to_bytes((y.bit_length() + 7) // 8, "big")
-    c = hash_challenge(domain, statement_bytes, commitment_bytes, message) % q
-
-    # Response: z = r + c*x mod q.
-    z = (r + c * x) % q
-    return a, c, z
-
-def verify(message: bytes, a: int, c: int, z: int) -> bool:
-    # Recompute challenge from public information and commitment.
-    domain = b"fiat-shamir-dlog-example"
-    commitment_bytes = a.to_bytes((a.bit_length() + 7) // 8, "big")
-    statement_bytes = y.to_bytes((y.bit_length() + 7) // 8, "big")
-    c_expected = hash_challenge(domain, statement_bytes, commitment_bytes, message) % q
-    if c != c_expected:
-        return False
-
-    # Check g^z == a * y^c (mod p).
-    left = pow(g, z, p)
-    right = (a * pow(y, c, p)) % p
-    return left == right
-
-# Demo.
-msg = b"hello, world"
-a, c, z = prove(msg)
-print("Verification:", verify(msg, a, c, z))
-print("Bad message rejected:", verify(b"other message", a, c, z))
-```
+Instantiated on the modular square-root scheme this reads: the signer commits with $z_i = r_i^2 \bmod n$ for $i = 1, \dots, t$, forms the challenge matrix $e_{ij}$ from the first $kt$ bits of $f(m, z_1, \dots, z_t)$, and answers with $y_i = r_i \prod_{j:\,e_{ij}=1} s_j \bmod n$; a verifier recomputes $z_i = y_i^2 \prod_{j:\,e_{ij}=1} u_j \bmod n$ from the response and the supplied challenge matrix and accepts only if $f(m, z_1, \dots, z_t)$ reproduces that exact matrix. That is the whole method: not a hash appended after the fact to a finished transcript, but a hash occupying the verifier's challenge slot itself, fed exactly the values already fixed at the moment that slot is filled — the commitment, the public statement, and, for signatures, the message — so that no prover can pick a convenient challenge and only afterward manufacture a commitment to match it.
