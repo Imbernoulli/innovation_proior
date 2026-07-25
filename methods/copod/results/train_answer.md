@@ -14,22 +14,23 @@ from scipy.stats import skew as skew_sp
 
 
 def skew(X, axis=0):
+    # per-feature skewness; nan_to_num guards constant (zero-variance) columns
     return np.nan_to_num(skew_sp(X, axis=axis))
 
 
 def column_ecdf(matrix):
     """Per-column empirical CDF F_hat(x) = #{X_i <= x} / n, support {1/n, ..., 1}.
-    Equal values take the largest (rightmost) probability."""
-    assert matrix.ndim == 2
+    Equal values take the largest (rightmost) probability, matching the <= count."""
+    assert matrix.ndim == 2, 'matrix must be 2D for the ECDF computation.'
     n, d = matrix.shape
-    probabilities = np.linspace(np.ones(d) / n, np.ones(d), n)
+    probabilities = np.linspace(np.ones(d) / n, np.ones(d), n)  # 1/n .. 1 per column
     sort_idx = np.argsort(matrix, axis=0)
     sorted_mat = np.take_along_axis(matrix, sort_idx, axis=0)
-    for c in range(d):
+    for c in range(d):                          # propagate higher prob across ties
         for r in range(n - 2, -1, -1):
             if sorted_mat[r, c] == sorted_mat[r + 1, c]:
                 probabilities[r, c] = probabilities[r + 1, c]
-    reordered = np.empty_like(probabilities)
+    reordered = np.empty_like(probabilities)    # undo the sort
     np.put_along_axis(reordered, sort_idx, probabilities, axis=0)
     return reordered
 
@@ -39,7 +40,7 @@ class COPOD:
     of negative-log empirical-copula tail probabilities."""
 
     def __init__(self, contamination=0.1):
-        self.contamination = contamination
+        self.contamination = contamination      # label threshold only; not in the score
 
     def fit(self, X):
         X = np.asarray(X, dtype=float)
@@ -51,21 +52,26 @@ class COPOD:
 
     def decision_function(self, X):
         X = np.asarray(X, dtype=float)
+        # score new rows against the established training distribution
         if hasattr(self, 'X_train'):
             original_size = X.shape[0]
             X = np.concatenate((self.X_train, X), axis=0)
 
-        U_l = -1 * np.log(column_ecdf(X))    # -log P(X_j <= x)
-        U_r = -1 * np.log(column_ecdf(-X))   # -log P(X_j >= x)
+        # per-feature negative-log tail contributions
+        self.U_l = -1 * np.log(column_ecdf(X))    # left tail  -log P(X_j <= x)
+        self.U_r = -1 * np.log(column_ecdf(-X))   # right tail -log P(X_j >= x), via -X
 
+        # skewness-selected tail (branch-free):
+        #   sign<0 -> U_l ; sign>0 -> U_r ; sign==0 -> U_l + U_r
         skewness = np.sign(skew(X, axis=0))
-        U_skew = U_l * -1 * np.sign(skewness - 1) \
-            + U_r * np.sign(skewness + 1)
+        self.U_skew = self.U_l * -1 * np.sign(skewness - 1) \
+            + self.U_r * np.sign(skewness + 1)
 
-        O = np.maximum(U_skew, np.add(U_l, U_r) / 2)
+        # per feature: max(skew-targeted tail, two-tail average), then sum over features
+        self.O = np.maximum(self.U_skew, np.add(self.U_l, self.U_r) / 2)
         if hasattr(self, 'X_train'):
-            scores = O.sum(axis=1)[-original_size:]
+            scores = self.O.sum(axis=1)[-original_size:]
         else:
-            scores = O.sum(axis=1)
+            scores = self.O.sum(axis=1)
         return scores.ravel()
 ```
