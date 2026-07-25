@@ -14,9 +14,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.utils import negative_sampling
 
+EPS = 1e-15
+
 
 def normalized_adjacency(A):
-    """D̃^{-1/2} Ã D̃^{-1/2} with Ã = A + I (renormalization trick)."""
+    """D̃^{-1/2} Ã D̃^{-1/2} with Ã = A + I  (renormalization)."""
     A = A + torch.eye(A.size(0), device=A.device)
     d_inv_sqrt = A.sum(1).pow(-0.5)
     d_inv_sqrt[torch.isinf(d_inv_sqrt)] = 0.0
@@ -27,20 +29,20 @@ class GraphConv(nn.Module):
     def __init__(self, in_dim, out_dim):
         super().__init__()
         self.W = nn.Linear(in_dim, out_dim, bias=False)
-        nn.init.xavier_uniform_(self.W.weight)
+        nn.init.xavier_uniform_(self.W.weight)       # Glorot, matching the canonical code
 
     def forward(self, H, A_norm):
         return A_norm @ self.W(H)
 
 
 def inner_product(z, pair_index, sigmoid=False):
-    """Decoder logit z_i^T z_j (Â = σ(Z Z^T))."""
+    """Decoder logit z_i^T z_j  (Â = σ(Z Z^T))."""
     s = (z[pair_index[0]] * z[pair_index[1]]).sum(dim=-1)
     return torch.sigmoid(s) if sigmoid else s
 
 
 class GAE(nn.Module):
-    """Graph Auto-Encoder: GCN encoder + inner-product decoder."""
+    """GCN encoder + inner-product decoder; reconstructs the adjacency."""
 
     def __init__(self, in_dim, hidden_dim=32, emb_dim=16):
         super().__init__()
@@ -49,15 +51,14 @@ class GAE(nn.Module):
 
     def encode(self, X, A_norm):
         H = F.relu(self.gc1(X, A_norm))
-        return self.gc2(H, A_norm)
+        return self.gc2(H, A_norm)                 # Z = GCN(X, A), linear 2nd layer
 
     def recon_loss(self, z, pos_edge_index, neg_edge_index=None):
-        if neg_edge_index is None:
+        if neg_edge_index is None:                 # subsample non-edges
             neg_edge_index = negative_sampling(pos_edge_index, z.size(0))
-        eps = 1e-15
         pos = inner_product(z, pos_edge_index, sigmoid=True)
         neg = inner_product(z, neg_edge_index, sigmoid=True)
-        return -(torch.log(pos + eps).mean() + torch.log(1 - neg + eps).mean())
+        return -(torch.log(pos + EPS).mean() + torch.log(1 - neg + EPS).mean())
 
     @torch.no_grad()
     def test(self, z, pos_edge_index, neg_edge_index):
@@ -74,33 +75,33 @@ class VGAE(GAE):
 
     def __init__(self, in_dim, hidden_dim=32, emb_dim=16):
         super().__init__(in_dim, hidden_dim, emb_dim)
-        self.gc1 = GraphConv(in_dim, hidden_dim)
-        self.gc_mu = GraphConv(hidden_dim, emb_dim)
-        self.gc_logstd = GraphConv(hidden_dim, emb_dim)
+        self.gc1 = GraphConv(in_dim, hidden_dim)            # shared first layer W_0
+        self.gc_mu = GraphConv(hidden_dim, emb_dim)         # mean head
+        self.gc_logstd = GraphConv(hidden_dim, emb_dim)     # log-std head
 
     def encode(self, X, A_norm):
         H = F.relu(self.gc1(X, A_norm))
         self.mu = self.gc_mu(H, A_norm)
         self.logstd = self.gc_logstd(H, A_norm).clamp(max=10.0)
-        if self.training:
+        if self.training:                                   # z = μ + σ ⊙ ε
             return self.mu + torch.randn_like(self.logstd) * torch.exp(self.logstd)
         return self.mu
 
     def kl_loss(self):
         return -0.5 * torch.mean(torch.sum(
-            1 + 2 * self.logstd - self.mu ** 2 - torch.exp(2 * self.logstd), dim=1))
+            1 + 2 * self.logstd - self.mu**2 - torch.exp(2 * self.logstd), dim=1))
 
 
 def train(model, X, A_norm, pos_edge_index, num_nodes,
           n_iters=200, lr=0.01, variational=False):
-    optimizer = torch.optim.Adam(model.parameters(), lr=lr)
+    optimizer = torch.optim.Adam(model.parameters(), lr=lr)   # full-batch GD
     for _ in range(n_iters):
         model.train()
         optimizer.zero_grad()
         z = model.encode(X, A_norm)
         loss = model.recon_loss(z, pos_edge_index)
         if variational:
-            loss = loss + (1.0 / num_nodes) * model.kl_loss()
+            loss = loss + (1.0 / num_nodes) * model.kl_loss()  # negative ELBO scaling
         loss.backward()
         optimizer.step()
 ```
