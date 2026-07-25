@@ -8,73 +8,24 @@ The proof works by comparing the true characteristic factor E exp(itX_{n,j}) wit
 
 This framework also explains the classical iid case and Lyapunov's condition as easy corollaries. If X_j are iid with finite variance, scaling by sqrt(n) makes every tail variance vanish, so Lindeberg's condition holds automatically. If a higher moment sum_j E|X_{n,j}|^{2+delta} tends to zero, Markov's inequality forces the Lindeberg tail sum to zero as well, showing that Lyapunov's condition is sufficient but not necessary. The essence of the theorem is therefore not a particular moment of order above two, but the disappearance of visible individual contributions under normalization.
 
-```python
-import numpy as np
+Stated precisely, this is the deliverable. Let $X_{n,1},\dots,X_{n,k_n}$ be, for each $n$, a row of independent random variables with $E[X_{n,j}]=0$, variances $\sigma_{n,j}^2$, and
 
+$$\sum_{j=1}^{k_n}\sigma_{n,j}^2 \longrightarrow 1.$$
 
-def empirical_lindeberg_tail(data, epsilons=None):
-    """
-    Empirical Lindeberg tail sum for a normalized triangular-array row.
+Assume the Lindeberg condition: for every $\varepsilon>0$,
 
-    data : list of 1-D arrays, one per centered summand X_{n,j}
-    epsilons : thresholds at which to evaluate the tail variance sum
+$$\sum_{j=1}^{k_n} E\!\left[X_{n,j}^2\,\mathbf{1}\{|X_{n,j}|>\varepsilon\}\right] \longrightarrow 0.$$
 
-    Returns a dict mapping epsilon to sum_j E[X_{n,j}^2 1{|X_{n,j}| > epsilon}]
-    after scaling so that the total variance is 1.
-    """
-    variances = np.array([np.var(s, ddof=1) for s in data])
-    total_var = variances.sum()
-    if total_var == 0:
-        raise ValueError("Total variance is zero")
+Then
 
-    if epsilons is None:
-        epsilons = np.linspace(0.05, 1.0, 10)
+$$\sum_{j=1}^{k_n} X_{n,j} \;\Longrightarrow\; N(0,1).$$
 
-    results = {}
-    for eps in epsilons:
-        tail_sum = 0.0
-        for s in data:
-            x = (s - s.mean()) / np.sqrt(total_var)  # scale to total variance 1
-            tail_sum += np.mean(x ** 2 * (np.abs(x) > eps))
-        results[eps] = tail_sum
-    return results
+The proof is exactly the comparison carried out above: writing $\varphi_{n,j}(t)=E\big[e^{itX_{n,j}}\big]$ for each factor's characteristic function, the Taylor-versus-tail split shows that for every fixed $t$,
 
+$$\sum_{j} \left|\varphi_{n,j}(t) - \left(1-\frac{t^2\sigma_{n,j}^2}{2}\right)\right| \longrightarrow 0,$$
 
-def empirical_characteristic_function(samples, t_values):
-    """
-    Compute the empirical characteristic function of a normalized sum.
+so the true characteristic function of the row sum, $\prod_j \varphi_{n,j}(t)$, has the same limit as $\prod_j\left(1-\frac{t^2\sigma_{n,j}^2}{2}\right)$. Because $\sum_j\sigma_{n,j}^2\to1$ and the Lindeberg condition forces $\max_j\sigma_{n,j}^2\to0$, the logarithm of that proxy product tends to $-t^2/2$, so the characteristic function of the sum converges pointwise to $e^{-t^2/2}$, and Lévy's continuity theorem turns this into convergence in distribution to $N(0,1)$. The classical iid theorem drops out as the row $X_{n,j}=X_j/\sqrt{n}$ for iid, mean-zero, unit-variance $X_j$: $\sigma_{n,j}^2=1/n$ sums to exactly $1$, and dominated convergence sends the Lindeberg tail sum to $0$ for every fixed $\varepsilon$, so a finite second moment alone already supplies the condition. Lyapunov's criterion is the convenient sufficient special case, since for $\delta>0$,
 
-    samples : 2-D array of shape (n_summands, n_observations), already centered
-    t_values : points at which to evaluate the characteristic function
-    """
-    # Normalize so the total variance is 1
-    variances = np.var(samples, axis=1, ddof=1)
-    total_var = variances.sum()
-    scaled = samples / np.sqrt(total_var)
+$$\sum_{j} E\!\left[X_{n,j}^2\,\mathbf{1}\{|X_{n,j}|>\varepsilon\}\right] \le \varepsilon^{-\delta}\sum_j E\big|X_{n,j}\big|^{2+\delta},$$
 
-    # Form n_observations independent row sums
-    row_sums = scaled.sum(axis=0)
-    char_fn = np.array([np.mean(np.exp(1j * t * row_sums)) for t in t_values])
-    return char_fn
-
-
-if __name__ == "__main__":
-    rng = np.random.default_rng(0)
-    n = 1000  # number of summands
-    m = 5000  # observations per summand
-
-    # Independent but non-identically distributed summands with small total variance
-    scales = rng.uniform(0.5, 1.5, size=n)
-    samples = np.array([rng.normal(0, scale, size=m) for scale in scales])
-
-    lindeberg = empirical_lindeberg_tail(samples, epsilons=[0.1, 0.2, 0.5, 1.0])
-    print("Empirical Lindeberg tail sums (should be small):")
-    for eps, val in lindeberg.items():
-        print(f"  epsilon={eps:.2f}, tail_sum={val:.6f}")
-
-    t_values = np.linspace(-3, 3, 61)
-    empirical = empirical_characteristic_function(samples, t_values)
-    target = np.exp(-t_values ** 2 / 2)
-    max_error = np.max(np.abs(empirical - target))
-    print(f"\nMax |empirical char fn - exp(-t^2/2)|: {max_error:.4f}")
-```
+so $\sum_j E|X_{n,j}|^{2+\delta}\to0$ forces the Lindeberg sum to $0$ as well. This is the criterion in its full and final form: it is the vanishing of visible tail variance at the normalizing scale, not any particular higher moment, that separates the rows that converge to the Gaussian law from the rows that do not.
