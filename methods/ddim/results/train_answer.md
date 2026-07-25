@@ -12,7 +12,7 @@ The deterministic eta=0 case is particularly valuable. It makes x_T a true laten
 import torch
 
 def alpha_at(alphas, t):
-    # cumulative coefficient with alpha_0 := 1 (t = -1 maps to alpha_0)
+    # cumulative coefficient with alpha_0 := 1 (the t = -1 sentinel maps to alpha_0)
     a = torch.cat([alphas.new_ones(1), alphas], dim=0)
     return a.index_select(0, t + 1).view(-1, 1, 1, 1)
 
@@ -30,24 +30,24 @@ def training_loss(model, x0, alphas):
 def sample(model, alphas, x, seq, eta=0.0):
     """
     model(x_t, t) -> predicted noise eps.
-    alphas: cumulative signal coefficients alpha_1..alpha_T.
-    x: initial latent at the largest selected noise level; usually x_T ~ N(0, I).
+    alphas: cumulative signal coefficients alpha_1..alpha_T (decreasing in (0, 1]).
+    x:   initial latent at the largest selected noise level; usually x_T ~ N(0, I).
     seq: increasing zero-based indices into alphas; len(seq) = S sampling steps.
-    eta: 0 -> deterministic DDIM; 1 -> stochastic ancestral endpoint.
+    eta: 0 -> deterministic implicit sampler; 1 -> DDPM-style stochastic endpoint.
     """
     n = x.size(0)
     seq_next = [-1] + list(seq[:-1])
     xs = [x]
     x0_preds = []
-    for i, j in zip(reversed(seq), reversed(seq_next)):
+    for i, j in zip(reversed(seq), reversed(seq_next)):          # walk tau backwards
         t = torch.ones(n, device=x.device) * i
         t_next = torch.ones(n, device=x.device) * j
-        a = alpha_at(alphas, t.long())
-        a_next = alpha_at(alphas, t_next.long())
+        a = alpha_at(alphas, t.long())                           # alpha_{tau_i}
+        a_next = alpha_at(alphas, t_next.long())                  # alpha_{tau_{i-1}}
 
         xt = xs[-1].to(x.device)
-        eps = model(xt, t)
-        x0 = (xt - eps * (1 - a).sqrt()) / a.sqrt()
+        eps = model(xt, t)                                       # predicted noise
+        x0 = (xt - eps * (1 - a).sqrt()) / a.sqrt()              # predicted x_0 = f_theta
         x0_preds.append(x0)
 
         c1 = eta * (((1 - a / a_next) * (1 - a_next) / (1 - a)).sqrt())
