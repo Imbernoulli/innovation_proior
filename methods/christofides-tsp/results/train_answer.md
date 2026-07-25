@@ -18,7 +18,7 @@ from networkx.utils import not_implemented_for
 def christofides(G, weight="weight", tree=None):
     """3/2-approximation for metric TSP on a complete graph with the triangle inequality."""
 
-    # Strip self-loops and require a complete graph.
+    # Strip self-loops; require a complete graph.
     loop_nodes = nx.nodes_with_selfloops(G)
     try:
         node = next(loop_nodes)
@@ -36,22 +36,24 @@ def christofides(G, weight="weight", tree=None):
     if tree is None:
         tree = nx.minimum_spanning_tree(G, weight=weight)
 
-    # 2. Restrict to the odd-degree vertices of the tree (|O| is even by the handshake lemma).
+    # 2. Restrict to the odd-degree vertices of the tree (|O| even by the handshake lemma).
     L = G.copy()
     L.remove_nodes_from([v for v, degree in tree.degree if not (degree % 2)])
 
-    # 3. Minimum-weight maximum-cardinality matching on O. On a complete even-sized set this is perfect.
+    # 3. Minimum-weight maximum-cardinality matching on O. min_weight_matching sets
+    #    new_weight = (max_edge_weight + 1) - original_weight and calls max_weight_matching
+    #    with maxcardinality=True; on complete even O this is perfect.
     MG = nx.MultiGraph()
     MG.add_edges_from(tree.edges)
     edges = nx.min_weight_matching(L, weight=weight)
-    MG.add_edges_from(edges)          # tree + matching => every vertex has even degree
+    MG.add_edges_from(edges)             # tree + matching => every vertex even degree
 
-    # 4-6. Eulerian circuit, then shortcut to a Hamiltonian tour.
+    # 4-6. Eulerian circuit of the even-degree multigraph, then shortcut to a Hamiltonian tour.
     return _shortcutting(nx.eulerian_circuit(MG))
 
 
 def _shortcutting(circuit):
-    """Walk the Eulerian circuit and skip already-visited cities."""
+    """Walk the Eulerian circuit; skip already-seen cities, going to the next new one."""
     nodes = []
     for u, v in circuit:
         if v in nodes:
@@ -59,6 +61,6 @@ def _shortcutting(circuit):
         if not nodes:
             nodes.append(u)
         nodes.append(v)
-    nodes.append(nodes[0])            # close the tour
+    nodes.append(nodes[0])
     return nodes
 ```
