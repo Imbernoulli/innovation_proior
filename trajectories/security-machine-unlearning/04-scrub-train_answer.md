@@ -19,7 +19,7 @@ class UnlearningMethod:
     """SCRUB: min-max KL distillation vs a frozen original model."""
 
     def __init__(self):
-        # Defaults from the VGG setting.
+        # Standard VGG defaults.
         self.msteps = 2        # number of max-step epochs (rewind)
         self.kd_T = 4.0        # KD temperature
         self.alpha = 0.01      # weight on KL(student || teacher) in min step
