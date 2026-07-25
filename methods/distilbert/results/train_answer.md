@@ -15,7 +15,7 @@ class Distiller:
         self.teacher, self.student = teacher, student
         self.T = temperature
         self.alpha_ce, self.alpha_mlm, self.alpha_cos = alpha_ce, alpha_mlm, alpha_cos
-        self.ce_loss_fct = nn.KLDivLoss(reduction="batchmean")
+        self.ce_loss_fct  = nn.KLDivLoss(reduction="batchmean")
         self.mlm_loss_fct = nn.CrossEntropyLoss(ignore_index=-100)
         self.cos_loss_fct = nn.CosineEmbeddingLoss(reduction="mean")
 
@@ -24,40 +24,33 @@ class Distiller:
         with torch.no_grad():
             t_logits, t_hidden = self.teacher(input_ids, attention_mask)
 
-        # Distillation loss over valid tokens, softened and T^2-rescaled.
-        mask = attention_mask.bool().unsqueeze(-1).expand_as(s_logits)
+        # distillation loss over valid tokens, temperature-softened, T^2-rescaled
+        mask  = attention_mask.bool().unsqueeze(-1).expand_as(s_logits)
         s_sel = s_logits.masked_select(mask).view(-1, s_logits.size(-1))
         t_sel = t_logits.masked_select(mask).view(-1, t_logits.size(-1))
-        loss_ce = self.ce_loss_fct(
-            F.log_softmax(s_sel / self.T, dim=-1),
-            F.softmax(t_sel / self.T, dim=-1)
-        ) * (self.T ** 2)
+        loss_ce = self.ce_loss_fct(F.log_softmax(s_sel / self.T, dim=-1),
+                                   F.softmax(t_sel / self.T, dim=-1)) * (self.T ** 2)
 
-        # Hard masked-LM cross-entropy.
-        loss_mlm = self.mlm_loss_fct(
-            s_logits.view(-1, s_logits.size(-1)),
-            lm_labels.view(-1)
-        )
+        # hard-label masked-LM cross-entropy
+        loss_mlm = self.mlm_loss_fct(s_logits.view(-1, s_logits.size(-1)),
+                                     lm_labels.view(-1))
 
-        # Cosine alignment of final hidden states.
+        # cosine alignment of final hidden states
         sel = attention_mask.unsqueeze(-1).expand_as(s_hidden).bool()
-        d = s_hidden.size(-1)
+        d   = s_hidden.size(-1)
         s_h = s_hidden.masked_select(sel).view(-1, d)
         t_h = t_hidden.masked_select(sel).view(-1, d)
         loss_cos = self.cos_loss_fct(s_h, t_h, s_h.new_ones(s_h.size(0)))
 
-        return (self.alpha_ce * loss_ce +
-                self.alpha_mlm * loss_mlm +
-                self.alpha_cos * loss_cos)
+        return self.alpha_ce * loss_ce + self.alpha_mlm * loss_mlm + self.alpha_cos * loss_cos
 
 
 def build_student_from_teacher(teacher_cfg, teacher_state, Encoder,
                                layer_map=(0, 2, 4, 7, 9, 11)):
-    cfg = dict(teacher_cfg)
-    cfg["n_layers"] = len(layer_map)
+    cfg = dict(teacher_cfg); cfg["n_layers"] = len(layer_map)
     cfg["use_token_type_embeddings"] = False
     cfg["use_pooler"] = False
-    student = Encoder(cfg)
+    student = Encoder(cfg)                       # no token-type embeddings, no pooler
     s_state = student.state_dict()
     layer_to_student = {t: i for i, t in enumerate(layer_map)}
     for name, p in teacher_state.items():
@@ -66,7 +59,7 @@ def build_student_from_teacher(teacher_cfg, teacher_state, Encoder,
         m = re.search(r"layer\.(\d+)\.", name)
         if m:
             t = int(m.group(1))
-            if t not in layer_to_student:
+            if t not in layer_to_student:         # take one layer out of two
                 continue
             s_name = name.replace(f"layer.{t}.", f"layer.{layer_to_student[t]}.")
         else:
@@ -77,28 +70,15 @@ def build_student_from_teacher(teacher_cfg, teacher_state, Encoder,
     return student
 
 
-def dynamic_mask(input_ids, mask_prob=0.15):
-    # Returns corrupted input_ids and labels with unmasked positions set to -100.
-    labels = input_ids.clone()
-    mask = torch.rand(input_ids.shape, device=input_ids.device) < mask_prob
-    mask &= input_ids != 0
-    labels[~mask] = -100
-    masked = input_ids.clone()
-    masked[mask] = 103  # [MASK] token id in BERT vocabulary
-    return masked, labels
-
-
-def train(distiller, corpus, steps, grad_accum):
+def train(distiller, corpus, steps, grad_accum=...):
     distiller.teacher.eval()
-    opt = torch.optim.AdamW(distiller.student.parameters(), lr=5e-4, eps=1e-6)
+    opt = torch.optim.AdamW(distiller.student.parameters(), lr=5e-4, eps=1e-6,
+                            weight_decay=0.0)
     for step, batch in enumerate(corpus):
-        if step >= steps:
-            break
-        ids, labels = dynamic_mask(batch.input_ids, mask_prob=0.15)
+        ids, labels = dynamic_mask(batch.input_ids, mask_prob=0.15)   # fresh mask, no NSP
         loss = distiller.loss(ids, batch.attention_mask, labels)
         (loss / grad_accum).backward()
         if (step + 1) % grad_accum == 0:
             nn.utils.clip_grad_norm_(distiller.student.parameters(), 5.0)
-            opt.step()
-            opt.zero_grad()
+            opt.step(); opt.zero_grad()
 ```
