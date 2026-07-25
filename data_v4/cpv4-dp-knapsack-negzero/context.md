@@ -11,8 +11,7 @@ blocks has total weight exactly `C`, the target is unreachable and you must repo
 
 This is the exact-capacity (subset-sum-constrained) 0/1 knapsack. Unlike the textbook "weight at
 most `C`" version, the *exact* constraint plus *signed* scores means the answer can legitimately be a
-negative number, and it must be kept strictly distinct from the "no valid load exists" outcome —
-which is precisely where a careless base case turns into a wrong answer.
+negative number, and it must be kept strictly distinct from the "no valid load exists" outcome.
 
 ## Input / output contract
 
@@ -28,21 +27,6 @@ Example: for `C = 7` and blocks `(w,v) = (3,5), (4,-2), (2,0), (5,4)` the answer
 hitting weight `7` are `{3,4}` (score `5 + (-2) = 3`) and `{2,5}` (score `0 + 4 = 4`), and the best
 is `4`.
 
-## Background
-
-Two families of approach are on the table before committing.
-
-- **Meet-in-the-middle / brute enumeration.** Enumerate subsets (or split the items in half and merge
-  by weight). Exhaustive enumeration is `O(2^n)` and obviously correct but only works for tiny `n`;
-  meet-in-the-middle reaches `n` around 40 but is fiddly to merge under the *maximize-score-at-an-
-  exact-weight* objective. Neither scales to `n = 2000`.
-- **Capacity-indexed dynamic programming.** Build a table indexed by achievable total weight
-  `0..C`, storing the best trim score reachable at each weight, and relax it block by block in the
-  0/1 manner. This is `O(n*C)` time and `O(C)` memory. The open questions are the exact base case
-  (which weights are "reachable" before any block is placed), the transition order that keeps each
-  block usable at most once, and how to encode "weight not reachable" so it never masquerades as a
-  real score of `0`.
-
 ## Evaluation settings
 
 Judged on hidden tests covering: subsets that hit `C` with a mix of positive, zero, and negative
@@ -50,7 +34,7 @@ scores; cases where the only ways to reach `C` give a **negative** optimum (must
 number, not `IMPOSSIBLE`); the empty-load corner `C = 0` (answer `0`, even when every block has a
 negative score); `n = 0`; all-negative score arrays; targets `C` that **no** subset can reach
 (answer `IMPOSSIBLE`); blocks with weight far larger than `C`; and large `n = 2000`, `C = 5*10^4`
-with `|v[i]|` near `10^9` (so the accumulated score can exceed the 32-bit range).
+with `|v[i]|` near `10^9`.
 
 ## Code framework
 
