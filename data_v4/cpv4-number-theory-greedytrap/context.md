@@ -13,8 +13,7 @@ so that the deposited energies sum to **exactly** `n`. Because `1 = 1^k` is alwa
 pulse for every `k`, every target is reachable, so an answer always exists.
 
 This is the "minimum number of perfect `k`-th powers summing to `n`" problem — a sums-of-powers
-question in additive number theory (the `k = 2` case is the classical "sum of fewest squares"). The
-point of interest is that the most natural one-line strategy for it is subtly and provably wrong.
+question in additive number theory (the `k = 2` case is the classical "sum of fewest squares").
 
 ## Input / output contract
 
@@ -26,29 +25,12 @@ point of interest is that the most natural one-line strategy for it is subtly an
 
 Example: for `k = 2`, `n = 12` the answer is `3` (use `4 + 4 + 4`).
 
-## Background
-
-The constraint "each summand is a perfect `k`-th power" makes this a constrained representation
-problem, and two families of approach are on the table before committing to one:
-
-- **Greedy by largest power.** Repeatedly subtract the largest admissible power that does not exceed
-  the remaining target, counting one pulse each time, until the remainder hits `0`. It is
-  `O(answer)` and three lines to write; the open question is whether always grabbing the largest
-  fitting power is actually optimal, given that an overshoot in "coverage" early can force many tiny
-  `1`s later.
-- **Shortest-representation dynamic programming.** Treat the values `0..n` as states and define
-  `dp[v]` = the fewest powers summing to `v`; then `dp[v] = 1 + min over admissible powers p <= v of
-  dp[v - p]`. This is `O(n * P)` where `P` is the count of admissible powers up to `n`; the open
-  questions are the exact recurrence, the base case, and the data types used to enumerate the powers
-  without overflow.
-
 ## Evaluation settings
 
-Judged on hidden tests covering: `k = 2` targets where greedy famously fails (`12`, `18`, `32`,
-`128`); other orders `k = 3, 4, 5`; the corners `n = 0` and `n = 1`; targets that are themselves
-exact `k`-th powers (answer `1`); targets near the upper bound `n = 10^6` for each `k` (so the DP
-table and the power-enumeration loop are both stressed); and a target like `n` with no small
-representation that forces a long chain of `1`s for large `k`.
+Judged on hidden tests covering: small `k = 2` targets such as `12`, `18`, `32`, `128`; other orders
+`k = 3, 4, 5`; the corners `n = 0` and `n = 1`; targets that are themselves exact `k`-th powers;
+targets near the upper bound `n = 10^6` for each `k`; and a target like `n` with no small
+representation that forces a long chain of small powers for large `k`.
 
 ## Code framework
 
