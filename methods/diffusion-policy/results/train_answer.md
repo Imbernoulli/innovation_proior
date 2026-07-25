@@ -13,46 +13,43 @@ import torch.nn as nn
 
 
 def cosine_alpha_sigma(t, s=0.008):
-    # Variance-preserving square-cosine schedule used in iDDPM.
-    # alpha_k = sqrt(alpha_bar_k), sigma_k = sqrt(1 - alpha_bar_k).
+    # Variance-preserving (alpha, sigma) form of the iDDPM square-cosine schedule:
+    # alpha_k = sqrt(abar_k), sigma_k = sqrt(1 - abar_k); x_k = alpha_k*x0 + sigma_k*eps.
     alpha = (np.pi / 2.0 * (t.clip(0., 0.9946) + s) / (1 + s)).cos() / np.cos(np.pi / 2.0 * s / (1 + s))
     sigma = (1.0 - alpha ** 2).sqrt()
     return alpha, sigma
 
 
-def positional_embed(k, dim):
+def positional_embed(k, dim):                       # sinusoidal embedding of the step index k
     half = dim // 2
     freqs = torch.exp(-np.log(10000) * torch.arange(half, device=k.device) / (half - 1))
     args = k[:, None].float() * freqs[None]
     return torch.cat([args.sin(), args.cos()], dim=-1)
 
 
-class NoisePredMLP(nn.Module):
+class NoisePredMLP(nn.Module):                       # eps_theta(O, A^k, k)
     def __init__(self, obs_dim, act_dim, emb_dim=64):
         super().__init__()
         self.emb_dim = emb_dim
         self.time_mlp = nn.Sequential(
-            nn.Linear(emb_dim, emb_dim * 2), nn.Mish(), nn.Linear(emb_dim * 2, emb_dim)
-        )
+            nn.Linear(emb_dim, emb_dim * 2), nn.Mish(), nn.Linear(emb_dim * 2, emb_dim))
         self.mid = nn.Sequential(
             nn.Linear(obs_dim + act_dim + emb_dim, 256), nn.Mish(),
             nn.Linear(256, 256), nn.Mish(),
-            nn.Linear(256, 256), nn.Mish(),
-        )
+            nn.Linear(256, 256), nn.Mish())
         self.head = nn.Linear(256, act_dim)
 
-    def forward(self, x, k, obs):
+    def forward(self, x, k, obs):                    # x:(b,act_dim) k:(b,) obs:(b,obs_dim)
         t = self.time_mlp(positional_embed(k, self.emb_dim))
         return self.head(self.mid(torch.cat([x, t, obs], dim=-1)))
 
 
 class DiffusionPolicy:
-    """Conditional noise-prediction diffusion for behavior cloning."""
-    def __init__(self, obs_dim, act_dim, diffusion_steps=1000, lr=3e-4,
-                 ema_rate=0.995, device="cpu"):
-        self.K = diffusion_steps
-        self.device = device
-        self.act_low, self.act_high = -1.0, 1.0
+    """Diffusion behavior cloning: conditional noise-prediction diffusion on the action.
+    No critic, no Q, single-action sampling at inference."""
+    def __init__(self, obs_dim, act_dim, diffusion_steps=1000, lr=3e-4, ema_rate=0.995, device="cpu"):
+        self.K, self.device = diffusion_steps, device
+        self.act_low, self.act_high = -1.0, 1.0          # actions normalized to [-1, 1]
         self.net = NoisePredMLP(obs_dim, act_dim).to(device)
         self.net_ema = NoisePredMLP(obs_dim, act_dim).to(device)
         self.net_ema.load_state_dict(self.net.state_dict())
@@ -63,13 +60,13 @@ class DiffusionPolicy:
         t_grid = torch.linspace(1e-3, 1.0, self.K, device=device)
         self.alpha, self.sigma = cosine_alpha_sigma(t_grid)
 
-    def add_noise(self, x0):
+    def add_noise(self, x0):                              # forward: x_k = alpha_k x0 + sigma_k eps
         k = torch.randint(self.K, (x0.shape[0],), device=self.device)
         eps = torch.randn_like(x0)
         a, s = self.alpha[k][:, None], self.sigma[k][:, None]
         return a * x0 + s * eps, k, eps
 
-    def loss(self, act, obs):
+    def loss(self, act, obs):                             # L_simple = || eps_theta - eps ||^2
         xt, k, eps = self.add_noise(act)
         return ((self.net(xt, k, obs) - eps) ** 2).mean()
 
@@ -79,7 +76,7 @@ class DiffusionPolicy:
             pe.mul_(self.ema_rate).add_(p, alpha=1 - self.ema_rate)
 
     @torch.no_grad()
-    def _clip_eps(self, eps, xt, a, s):
+    def _clip_eps(self, eps, xt, a, s):                  # keep implied x0=(xt-s*eps)/a inside [-1,1]
         lo = (xt - a * self.act_high) / s
         hi = (xt - a * self.act_low) / s
         return eps.clip(lo, hi)
@@ -92,36 +89,33 @@ class DiffusionPolicy:
         sched = torch.linspace(0, self.K - 1, steps + 1, device=self.device).long()
         a, s = self.alpha[sched], self.sigma[sched]
         stds = torch.zeros(steps + 1, device=self.device)
-        stds[1:] = s[:-1] / s[1:] * (1 - (a[1:] / a[:-1]) ** 2).sqrt()
-        xt = torch.randn(n_samples, act_dim, device=self.device) * temperature
+        stds[1:] = s[:-1] / s[1:] * (1 - (a[1:] / a[:-1]) ** 2).sqrt()   # ancestral per-step std
+        xt = torch.randn(n_samples, act_dim, device=self.device) * temperature      # A^K ~ N(0, I)
         for i in reversed(range(1, steps + 1)):
             k = torch.full((n_samples,), int(sched[i]), dtype=torch.long, device=self.device)
             eps = self._clip_eps(net(xt, k, obs), xt, a[i], s[i])
+            # x_{k-1} = (a[i-1]/a[i])(xt - s[i]*eps) + sqrt(s[i-1]^2 - stds[i]^2)*eps  (+ noise if i>1)
             xt = (a[i - 1] / a[i]) * (xt - s[i] * eps) + (s[i - 1] ** 2 - stds[i] ** 2 + 1e-8).sqrt() * eps
             if i > 1:
                 xt = xt + stds[i] * torch.randn_like(xt)
         return xt.clip(self.act_low, self.act_high)
 
 
-from torch.optim.lr_scheduler import CosineAnnealingLR
-
-
+# Training / inference loops (the harness the policy plugs into)
 def train(policy, dataloader, gradient_steps, device, ema_update_interval=1):
+    from torch.optim.lr_scheduler import CosineAnnealingLR
     sched = CosineAnnealingLR(policy.opt, T_max=gradient_steps)
     for step, batch in zip(range(gradient_steps), dataloader):
         obs = batch["obs"]["state"].to(device)
-        act = batch["act"].to(device)
-        loss = policy.loss(act, obs)
-        policy.opt.zero_grad()
-        loss.backward()
-        policy.opt.step()
-        sched.step()
+        act = batch["act"].to(device)                       # demonstrated action in [-1, 1]
+        loss = policy.loss(act, obs)                         # noise-prediction MSE (BC only)
+        policy.opt.zero_grad(); loss.backward(); policy.opt.step(); sched.step()
         if step % ema_update_interval == 0 and step >= 1000:
             policy.ema_update()
 
 
 @torch.no_grad()
-def act_for(policy, obs_np, normalizer, num_envs, device):
+def act_for(policy, obs_np, normalizer, num_envs, device):  # one action per env, no reranking
     obs = torch.tensor(normalizer.normalize(obs_np), device=device, dtype=torch.float32)
     return policy.sample(obs, n_samples=num_envs, use_ema=True).cpu().numpy()
 ```
