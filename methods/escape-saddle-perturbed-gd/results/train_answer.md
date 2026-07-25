@@ -12,36 +12,35 @@ With the thresholds set as eta = c/ell, r = sqrt(c) epsilon / (chi^2 ell), g_thr
 import numpy as np
 
 def perturbed_gradient_descent(grad, f, x0, ell, rho, eps, c, delta, Delta_f):
-    """Perturbed Gradient Descent.
-
-    Returns an eps-second-order stationary point with high probability:
-    ||grad f(x)|| <= eps and lambda_min(Hess f(x)) >= -sqrt(rho * eps).
-    Iteration complexity: O(ell * (f0 - f*) / eps^2 * log^4(d ell Delta_f / (eps^2 delta))).
-    """
+    """Returns an eps-second-order stationary point of f w.h.p."""
     x = np.array(x0, dtype=float)
     d = x.size
-    chi = 3.0 * max(np.log(d * ell * Delta_f / (c * eps**2 * delta)), 4.0)
-    eta = c / ell
-    r = (np.sqrt(c) / chi**2) * eps / ell
+    chi   = 3.0 * max(np.log(d * ell * Delta_f / (c * eps**2 * delta)), 4.0)
+    eta   = c / ell
+    r     = (np.sqrt(c) / chi**2) * eps / ell
     g_thr = (np.sqrt(c) / chi**2) * eps
     f_thr = (c / chi**3) * np.sqrt(eps**3 / rho)
     t_thr = int(np.ceil((chi / c**2) * ell / np.sqrt(rho * eps)))
 
     t_noise = -t_thr - 1
-    x_tilde, f_tilde = None, None
-    t = 0
+    x_tilde, f_tilde, t = None, None, 0
     while True:
         g = grad(x)
-        # Small gradient and no recent perturbation -> add one isotropic kick.
         if np.linalg.norm(g) <= g_thr and t - t_noise > t_thr:
             x_tilde, f_tilde, t_noise = x.copy(), f(x), t
-            y = np.random.randn(d)
-            u = np.random.rand() ** (1.0 / d)
-            x = x + r * u * y / np.linalg.norm(y)
-        # After t_thr steps, check whether a saddle was escaped.
+            y = np.random.randn(d); u = np.random.rand() ** (1.0 / d)
+            x = x + r * u * y / np.linalg.norm(y)          # uniform on B_0(r)
         if x_tilde is not None and t - t_noise == t_thr:
-            if f(x) - f_tilde > -f_thr:
+            if f(x) - f_tilde > -f_thr:                    # no certified drop -> eps-SOSP
                 return x_tilde
         x = x - eta * grad(x)
         t += 1
+
+
+def pgd_local(grad, f, x0, ell, rho, eps_tilde, c, delta, Delta_f, beta, num_local):
+    """Perturbed phase, then plain GD with step 1/beta for linear local convergence."""
+    x = perturbed_gradient_descent(grad, f, x0, ell, rho, eps_tilde, c, delta, Delta_f)
+    for _ in range(num_local):
+        x = x - (1.0 / beta) * grad(x)
+    return x
 ```
