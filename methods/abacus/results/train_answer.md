@@ -11,47 +11,60 @@ The largest sampled shift bounds the extrapolation reach: rows up to roughly the
 ```python
 import random
 import torch
-import torch.nn as nn
 
 
-class Abacus(nn.Module):
-    """Abacus Embeddings: learned positional embeddings indexed by a digit's
-    offset from the start of its own number. Operands are assumed reversed
-    (least-significant digit first) so that offset equals significance."""
+class Abacus(torch.nn.Module):
+    """Abacus Embeddings: learned positional embeddings indexed by a digit's offset
+    from the start of its own number, reused for every number. Integers must be
+    written reversed (least-significant digit first) for offsets to equal significance.
+    """
 
     def __init__(self, digit_tokens, embedding_dim, max_seq_length=1024, max_k=99):
+        """
+        digit_tokens (list): token ids of the ten digits '0'..'9'.
+        embedding_dim (int): embedding dimension.
+        max_seq_length (int): number of trainable positional rows (must exceed
+            longest test offset + max_k); row 0 is reserved for non-digit tokens.
+        max_k (int): the training shift is drawn from U{0..max_k};
+            standalone max_k=99 gives paper starts 1..100.
+        """
         super().__init__()
-        # Row 0 is reserved for non-digit tokens; rows 1..max_seq_length-1
-        # hold the within-number offsets.
-        self.embedding = nn.Embedding(max_seq_length, embedding_dim)
+        self.embedding = torch.nn.Embedding(max_seq_length, embedding_dim)
         self.register_buffer("digits", torch.tensor(digit_tokens), persistent=False)
         self.max_k = max_k
 
     def helper(self, mask, device):
-        # mask[b, t] == 1 means token t is a digit. Convert each maximal run
-        # of consecutive digits into 1, 2, 3, ... and leave everything else 0.
+        """Convert a binary digit-mask into per-number 1-based offsets (0 elsewhere)."""
         mask_shape = mask.shape
+        # detect run starts: mask is 1 here but was 0 at the previous position
         shifted_mask = torch.cat(
             [torch.zeros((mask_shape[0], 1), device=device, dtype=mask.dtype),
              mask[:, :-1]], dim=1)
         starts = (shifted_mask != mask) & mask
 
+        # segment id increments at each new run, constant within a run
         segment_ids = torch.cumsum(starts, dim=1)
-        index = torch.arange(mask.size(1), device=device).unsqueeze(0).expand_as(mask)
+        index = torch.arange(mask.size(1)).repeat(mask.size(0), 1).to(device)
 
-        reset_index = torch.zeros_like(mask, dtype=torch.long)
-        reset_index = reset_index.scatter_add(1, segment_ids, index * starts.long())
+        # reset_index[segment] = absolute index where that run started.
+        # (a one-token all-digit tensor would need one extra bin)
+        reset_index = torch.zeros_like(mask).long()
+        second_term = index * starts.long()
+        reset_index = reset_index.scatter_add(1, segment_ids, second_term)
 
+        # offset within the run = index - run-start index + 1, then zero non-digits
         positions = index - reset_index.gather(1, segment_ids) + 1
-        return positions * mask
+        result = positions * mask
+        return result
 
     def forward(self, input_ids):
         mask = torch.isin(input_ids, self.digits)
         output = self.helper(mask, input_ids.device)
 
+        k = 0
         if self.training:
-            shift = random.randint(0, self.max_k)
-            output[output > 0] += shift
+            k = random.randint(0, self.max_k)   # one shared shift for the whole batch
+            output[output > 0] += k             # shift digit offsets only (>= 1)
 
-        return self.embedding(output)
+        return self.embedding(output)           # add onto the token embeddings
 ```
