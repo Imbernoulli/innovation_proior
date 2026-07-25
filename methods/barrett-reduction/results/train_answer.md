@@ -22,9 +22,9 @@ class BarrettReducer:
 
     def reduce(self, x: int) -> int:
         mod: int = self.modulus
-        assert 0 <= x < mod ** 2
-        t: int = x - ((x * self.factor) >> self.shift) * mod
-        return t if t < mod else t - mod
+        assert 0 <= x < mod**2
+        t: int = (x - ((x * self.factor) >> self.shift) * mod)
+        return t if (t < mod) else (t - mod)
 
 
 def fastexp(A: int, E: int, M: int) -> int:
