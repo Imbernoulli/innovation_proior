@@ -6,86 +6,59 @@ The method is GPTQ. It takes the Optimal Brain Surgeon update and restructures i
 
 GPTQ is also grid-agnostic, so it composes cleanly with per-group scaling. When grouping is enabled, each group's scale is recomputed from the already-compensated weights at the moment that group is reached. This means the second-order error compensation and the finer granularity of grouping reinforce each other, which is what makes the extreme 2-bit and even ternary regimes usable. The final algorithm is one-shot, gradient-free, and requires only the input second moment accumulated from a small calibration set.
 
+Concretely, each linear layer is wrapped by an accumulator object that keeps the running Hessian self.H, the layer's own weight self.W, and a hand to a separate quantizer object that already knows the target bit-width and grid: add_batch folds each calibration mini-batch's activations into a running, reweighted average of H so that batches seen at different times are combined correctly, and compress runs the block-wise OBS sweep just described — damping and Cholesky-factoring H once, then walking column blocks, quantizing each column through the quantizer, propagating its scaled error onto the rest of the block explicitly and onto the remaining blocks via one batched matrix multiply — before writing the quantized weights back into the layer:
+
 ```python
 import torch
 
-class LayerQuantizer:
-    BLOCK_SIZE = 128
-    PERCDAMP = 0.01
+def add_batch(self, inp, out=None):
+    if inp.dim() == 2:
+        inp = inp.unsqueeze(0)
+    batch = inp.shape[0]
+    inp = inp.reshape(-1, inp.shape[-1]).t().float()       # d_col x tokens
+    self.H *= self.nsamples / (self.nsamples + batch)
+    self.nsamples += batch
+    inp *= (2.0 / self.nsamples) ** 0.5                    # scaled Hessian average
+    self.H += inp.matmul(inp.t())
 
-    def __init__(self, layer, num_bits=4, group_size=-1):
-        self.layer = layer
-        self.num_bits = num_bits
-        self.group_size = group_size
-        self.out_features, self.in_features = layer.weight.shape
-        self.dev = layer.weight.device
-        self.nsamples = 0
-        self.H = torch.zeros((self.in_features, self.in_features),
-                             device=self.dev, dtype=torch.float32)
+def compress(self, quantizer, blocksize=128, percdamp=0.01, groupsize=-1):
+    W = self.W.clone()
+    H = self.H.clone()
+    if not quantizer.ready():
+        quantizer.find_params(W, weight=True)
 
-    def add_batch(self, inp):
-        if inp.dim() == 3:
-            inp = inp.reshape(-1, inp.shape[-1])
-        n = inp.shape[0]
-        inp = inp.float()
-        self.H += inp.T @ inp
-        self.nsamples += n
+    dead = torch.diag(H) == 0
+    H[dead, dead] = 1; W[:, dead] = 0
 
-    def quantize(self):
-        W = self.layer.weight.data.clone().float()
-        H = self.H.clone()
-        if self.nsamples > 0:
-            H /= self.nsamples
+    damp = percdamp * torch.mean(torch.diag(H))
+    diag = torch.arange(self.d_col, device=H.device)
+    H[diag, diag] += damp
 
-        num_bits = self.num_bits
-        group_size = self.group_size
-        qmin = -(1 << (num_bits - 1))
-        qmax = (1 << (num_bits - 1)) - 1
+    H = torch.linalg.cholesky(H)
+    H = torch.cholesky_inverse(H)
+    U = torch.linalg.cholesky(H, upper=True)               # scaled inverse row-tails
 
-        # Dampen and invert H once.
-        dead = torch.diag(H) == 0
-        H[dead, dead] = 1
-        W[:, dead] = 0
-        damp = self.PERCDAMP * torch.mean(torch.diag(H))
-        H += damp * torch.eye(self.in_features, device=self.dev)
+    Q = torch.zeros_like(W)
+    Losses = torch.zeros_like(W)
+    for i1 in range(0, self.d_col, blocksize):
+        i2 = min(i1 + blocksize, self.d_col)
+        W1, U1 = W[:, i1:i2].clone(), U[i1:i2, i1:i2]
+        Q1, Err1 = torch.zeros_like(W1), torch.zeros_like(W1)
+        Losses1 = torch.zeros_like(W1)
+        for i in range(i2 - i1):
+            w = W1[:, i]; d = U1[i, i]
+            if groupsize != -1 and (i1 + i) % groupsize == 0:
+                quantizer.find_params(W[:, (i1 + i):(i1 + i + groupsize)], weight=True)
+            q = quantizer.quantize(w.unsqueeze(1)).flatten()
+            Q1[:, i] = q
+            Losses1[:, i] = (w - q) ** 2 / d ** 2
+            err = (w - q) / d
+            W1[:, i:] -= err.unsqueeze(1) * U1[i, i:].unsqueeze(0)
+            Err1[:, i] = err
+        Q[:, i1:i2] = Q1
+        Losses[:, i1:i2] = Losses1 / 2
+        W[:, i2:] -= Err1.matmul(U[i1:i2, i2:])            # block GEMM update
 
-        L = torch.linalg.cholesky(H)
-        Hinv = torch.cholesky_inverse(L)
-        U = torch.linalg.cholesky(Hinv, upper=True)
-
-        Q = torch.zeros_like(W)
-        Err = torch.zeros_like(W)
-
-        for col_start in range(0, self.in_features, self.BLOCK_SIZE):
-            col_end = min(col_start + self.BLOCK_SIZE, self.in_features)
-            W_block = W[:, col_start:col_end].clone()
-            U_block = U[col_start:col_end, col_start:col_end]
-
-            for j in range(col_end - col_start):
-                col = col_start + j
-                w = W_block[:, j]
-                d = U_block[j, j]
-
-                if group_size > 0 and col % group_size == 0:
-                    g_end = min(col + group_size, self.in_features)
-                    W_group = W[:, col:g_end]
-                    g_max = W_group.abs().amax(dim=1, keepdim=True).clamp(min=1e-12)
-                    group_scale = (g_max / qmax).squeeze(1)
-
-                scale = group_scale if group_size > 0 else w.abs().max().clamp(min=1e-12) / qmax
-                q = torch.clamp(torch.round(w / scale), qmin, qmax) * scale
-                Q[:, col] = q
-
-                err = (w - q) / d
-                Err[:, col] = err
-                W_block[:, j:] -= err.unsqueeze(1) * U_block[j, j:].unsqueeze(0)
-
-            if col_end < self.in_features:
-                W[:, col_end:] -= Err[:, col_start:col_end] @ U[col_start:col_end, col_end:]
-
-        return Q.to(self.layer.weight.dtype)
-
-    def free(self):
-        del self.H
-        self.H = None
+    self.layer.weight.data = Q.reshape(self.layer.weight.shape).to(self.layer.weight.dtype)
+    return torch.sum(Losses)
 ```
