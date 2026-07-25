@@ -48,66 +48,6 @@ with log ξ(0) = −log 2. The sum runs over the nontrivial zeros in symmetric o
 
 The Riemann Hypothesis is the statement that every nontrivial zero has real part exactly ½, or equivalently that all roots of Ξ(t) = ξ(½ + it) are real. It remains unproven, but its meaning is now sharp: it says the prime-counting oscillations are as small as the explicit formula permits, with each wave decaying like √x up to logarithmic factors.
 
-To make the continuation concrete, the following Python script evaluates the symmetric integral representation of Π(s/2 − 1) π^{−s/2} ζ(s) on a short segment of the critical line and checks the functional equation ξ(s) = ξ(1−s) numerically. It also plots the modulus of ζ on the critical line to show the first few nontrivial zeros as dips.
-
-```python
-import numpy as np
-import mpmath as mp
-import matplotlib.pyplot as plt
-
-mp.mp.dps = 30  # high precision for complex zeta
-
-
-def xi(s):
-    """Riemann's entire xi(s) = 0.5*s*(s-1)*pi**(-s/2)*Gamma(s/2)*zeta(s)."""
-    return mp.mpf('0.5') * s * (s - 1) * mp.pi**(-s/2) * mp.gamma(s/2) * mp.zeta(s)
-
-
-def theta_psi(x):
-    """Jacobi theta tail psi(x) = sum_{n>=1} exp(-pi n^2 x)."""
-    return mp.nsum(lambda n: mp.e**(-mp.pi * n**2 * x), [1, mp.inf])
-
-
-def zeta_from_symmetric(s, x_max=25):
-    """Compute zeta(s) from Riemann's symmetric integral representation.
-
-    Pi(s/2 - 1) * pi**(-s/2) * zeta(s)
-        = 1/(s(s-1)) + integral_1^inf psi(x)(x^{s/2-1}+x^{(1-s)/2-1}) dx.
-    """
-    def integrand(x):
-        p = theta_psi(x)
-        return p * (x**(s/2 - 1) + x**((1 - s)/2 - 1))
-
-    val = mp.quad(integrand, [1, x_max])
-    sym = 1/(s*(s-1)) + val
-    return sym / (mp.gamma(s/2) * mp.pi**(-s/2))
-
-
-# Check the functional equation xi(s) == xi(1-s) at sample points.
-test_points = [2 + 3j, -1 + 4j, 0.25 + 7j, 0.5 + 14j, -3 - 2j]
-max_rel = 0.0
-for s in test_points:
-    lhs, rhs = xi(s), xi(1 - s)
-    rel = abs(lhs - rhs) / max(abs(lhs), abs(rhs), mp.mpf('1e-30'))
-    max_rel = max(max_rel, rel)
-    print(f"s={s}: |xi(s)-xi(1-s)|/|xi(s)| = {float(rel):.2e}")
-print(f"\nmax functional-equation relative error: {float(max_rel):.2e}")
-
-# Compare the symmetric-integral value with mpmath's analytic continuation.
-s_test = mp.mpc('0.5', '14.0')
-print("\nAt s =", s_test)
-print("mpmath zeta:       ", mp.zeta(s_test))
-print("symmetric formula: ", zeta_from_symmetric(s_test))
-
-# Plot |zeta(1/2 + i t)| to visualize the first few nontrivial zeros as dips.
-t = np.linspace(0.1, 50, 2000)
-z = np.array([abs(mp.zeta(mp.mpc('0.5'), mp.mpc(ti))) for ti in t])
-plt.figure(figsize=(10, 4))
-plt.plot(t, z)
-plt.xlabel("t")
-plt.ylabel("|zeta(1/2 + i t)|")
-plt.title("Modulus of Riemann zeta on the critical line")
-plt.grid(True)
-plt.tight_layout()
-plt.show()
-```
+That last claim is not a hand-wave; it is exactly what the explicit formula delivers once it is inverted. Möbius-inverting $F(x)=\sum_{n\ge1}\tfrac1n\,\pi(x^{1/n})$ turns the formula for $F$ into the formula for $\pi$ itself:
+$$\pi(x)=\sum_{n=1}^{\infty}\frac{\mu(n)}{n}\,F(x^{1/n})=F(x)-\tfrac12F(x^{1/2})-\tfrac13F(x^{1/3})-\tfrac15F(x^{1/5})+\tfrac16F(x^{1/6})+\cdots,$$
+with $\mu$ the Möbius function and $F$ given exactly by the explicit formula derived above. This is the law the tables of Gauss and Legendre could only approximate: not a curve fitted to data but an identity, exact for every $x$, in which $\mathrm{Li}(x)$ supplies the smooth trend and the entire oscillating remainder is accounted for term by term by the nontrivial zeros of $\zeta$ — the object this continuation was built to reach in the first place.
