@@ -21,12 +21,9 @@ from sklearn.model_selection import KFold
 
 
 class CausalForest:
-    """Estimate tau(x) = E[Y(1) - Y(0) | X = x] from observational (X, W, Y).
-
-    Uses double-machine-learning residualization (local centering) followed by a
-    generalized random forest targeted at treatment-effect heterogeneity. Falls
-    back to the R-loss weighted-regression formulation when econml is absent.
-    """
+    """CATE tau(x) under unconfoundedness via DML residualization (local centering /
+    orthogonalization) + a generalized-random-forest causal forest on residuals;
+    R-loss weighted-regression fallback when an econml forest engine is absent."""
 
     def __init__(self, n_folds=3, seed=42):
         self.n_folds, self.seed, self.use_forest = n_folds, seed, True
@@ -35,20 +32,14 @@ class CausalForest:
             self._cf = CausalForestDML(
                 model_y=GradientBoostingRegressor(
                     n_estimators=100, max_depth=3, learning_rate=0.1,
-                    min_samples_leaf=20, random_state=seed),
+                    min_samples_leaf=20, random_state=seed),       # m_hat = E[Y|X]
                 model_t=GradientBoostingClassifier(
                     n_estimators=100, max_depth=3, learning_rate=0.1,
-                    min_samples_leaf=20, random_state=seed + 1),
-                discrete_treatment=True,
-                n_estimators=500,
-                min_samples_leaf=5,
-                max_depth=None,
-                max_samples=0.45,
-                honest=True,
-                inference=True,
-                subforest_size=4,
-                random_state=seed + 2,
-                cv=n_folds)
+                    min_samples_leaf=20, random_state=seed + 1),   # e_hat = E[W|X]
+                discrete_treatment=True,                           # binary W
+                n_estimators=500, min_samples_leaf=5, max_depth=None,
+                max_samples=.45, honest=True, inference=True,
+                subforest_size=4, random_state=seed + 2, cv=3)
         except ImportError:
             self.use_forest = False
             self._model_y = GradientBoostingRegressor(
@@ -63,11 +54,9 @@ class CausalForest:
 
     def fit(self, X, W, Y):
         if self.use_forest:
-            # econml handles cross-fitted residualization and the causal forest.
-            self._cf.fit(Y, W, X=X)
+            self._cf.fit(Y, W, X=X)               # residualize + grow causal forest
             return self
-
-        # Manual DML: out-of-fold residuals make the moment Neyman-orthogonal.
+        # manual DML: out-of-fold residuals -> honest, Neyman-orthogonal
         kf = KFold(n_splits=self.n_folds, shuffle=True, random_state=self.seed)
         Y_res = np.zeros_like(Y, dtype=float)
         W_res = np.zeros_like(W, dtype=float)
@@ -76,8 +65,7 @@ class CausalForest:
             mw = clone(self._model_w).fit(X[tr], W[tr])
             Y_res[va] = Y[va] - my.predict(X[va])
             W_res[va] = W[va] - mw.predict_proba(X[va])[:, 1]
-
-        # R-loss: [(Ytilde) - (Wtilde) tau]^2 = (Wtilde)^2 [Ytilde/Wtilde - tau]^2.
+        # R-loss -> weighted regression: pseudo = Ytilde/Wtilde, weight = Wtilde^2
         eps = 0.01
         safe_W = np.where(np.abs(W_res) > eps, W_res,
                           eps * np.where(W_res >= 0, 1.0, -1.0))
@@ -89,7 +77,5 @@ class CausalForest:
         return self
 
     def predict(self, X):
-        if self.use_forest:
-            return self._cf.effect(X).flatten()
-        return self._cate.predict(X)
+        return self._cf.effect(X).flatten() if self.use_forest else self._cate.predict(X)
 ```
