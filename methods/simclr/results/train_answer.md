@@ -14,57 +14,57 @@ The negatives come from the minibatch itself. At a batch size of several thousan
 
 The full recipe is therefore: draw two augmented views of every image in a batch, encode both through the same ResNet, map the representations through a nonlinear projection head, compute NT-Xent on the projected features, and update the encoder and projection head with LARS. After training, discard the projection head and use the pre-head representation for downstream linear evaluation, semi-supervised fine-tuning, or transfer learning. The method is SimCLR.
 
+The loss is implemented as a single softmax cross-entropy rather than an explicit sum of log-ratios. `hidden` holds the 2N projected features for one training step, the first N rows being view a and the last N being view b of the same N source images; after the optional L2-normalization I split it into `hidden1` and `hidden2`. Four blocks of pairwise cosine similarities at temperature-scaled magnitude are then formed: `logits_aa` and `logits_bb` compare each half against itself, and `logits_ab` / `logits_ba` compare the two halves against each other, so the positive for anchor k in `logits_ab` sits at column k. Self-similarity inside the aa/bb blocks is masked out with the constant `LARGE_NUM` so an anchor can never match itself, and `tpu_cross_replica_concat` gathers every replica's embeddings across devices before the similarities are formed, so a given anchor's negative set is the whole distributed batch rather than just its local shard — the labels and masks are widened accordingly when a `tpu_context` is present. The two symmetric cross-entropy terms, `loss_a` against `[logits_ab, logits_aa]` and `loss_b` against `[logits_ba, logits_bb]`, are added to give the direction-symmetric NT-Xent loss:
+
 ```python
-import numpy as np
+from absl import flags
+import tensorflow.compat.v1 as tf
+from tensorflow.compiler.tf2xla.python import xla
 
-# A small, self-contained illustration of SimCLR's NT-Xent loss.
-# It uses random unit-normalized vectors to stand in for the projected
-# features z = g(h) that SimCLR computes on two augmented views.
+FLAGS = flags.FLAGS
+LARGE_NUM = 1e9
 
-def nt_xent_loss(z, temperature=0.5):
-    """
-    z: array of shape (2*N, d). Rows 0..N-1 are view a,
-       rows N..2N-1 are view b for the same N source samples.
-    Returns the scalar NT-Xent loss and the anchor-positive logits.
-    """
-    z = z / (np.linalg.norm(z, axis=1, keepdims=True) + 1e-9)  # L2-normalize
-    n = z.shape[0] // 2
-    sim = z @ z.T / temperature                                 # cosine / tau
-    # Mask self-similarities by subtracting a large value on the diagonal.
-    np.fill_diagonal(sim, -1e9)
+def tpu_cross_replica_concat(tensor, tpu_context=None):
+    if tpu_context is None or tpu_context.num_replicas <= 1:
+        return tensor
+    num_replicas = tpu_context.num_replicas
+    with tf.name_scope('tpu_cross_replica_concat'):
+        ext_tensor = tf.scatter_nd(
+            indices=[[xla.replica_id()]],
+            updates=[tensor],
+            shape=[num_replicas] + tensor.shape.as_list())
+        ext_tensor = tf.tpu.cross_replica_sum(ext_tensor)
+        return tf.reshape(ext_tensor, [-1] + ext_tensor.shape.as_list()[2:])
 
-    # Positive indices: view a's positive is the matching view b and vice versa.
-    pos_a = np.arange(n, 2 * n)
-    pos_b = np.arange(0, n)
+def add_contrastive_loss(hidden, hidden_norm=True, temperature=1.0,
+                         tpu_context=None, weights=1.0):
+    # hidden: (2N, dim) — first N are view a, last N are view b
+    if hidden_norm:
+        hidden = tf.math.l2_normalize(hidden, -1)        # cosine similarity; clean temperature
+    hidden1, hidden2 = tf.split(hidden, 2, 0)
+    batch_size = tf.shape(hidden1)[0]
 
-    # Softmax over all 2N-1 candidates for each anchor.
-    exp_sim = np.exp(sim - np.max(sim, axis=1, keepdims=True))
-    exp_sum = exp_sim.sum(axis=1)
-    loss = 0.0
-    for anchor, pos in enumerate(pos_a):
-        loss += -np.log(exp_sim[anchor, pos] / exp_sum[anchor])
-    for anchor, pos in enumerate(pos_b):
-        loss += -np.log(exp_sim[n + anchor, pos] / exp_sum[n + anchor])
-    return loss / (2 * n)
+    if tpu_context is not None:                            # gather negatives across replicas
+        hidden1_large = tpu_cross_replica_concat(hidden1, tpu_context)
+        hidden2_large = tpu_cross_replica_concat(hidden2, tpu_context)
+        enlarged = tf.shape(hidden1_large)[0]
+        replica_id = tf.cast(tf.cast(xla.replica_id(), tf.uint32), tf.int32)
+        labels_idx = tf.range(batch_size) + replica_id * batch_size
+        labels = tf.one_hot(labels_idx, enlarged * 2)
+        masks  = tf.one_hot(labels_idx, enlarged)
+    else:
+        hidden1_large, hidden2_large = hidden1, hidden2
+        labels = tf.one_hot(tf.range(batch_size), batch_size * 2)
+        masks  = tf.one_hot(tf.range(batch_size), batch_size)
 
-# Synthetic demo: 8 source samples, 16 views total, 128-dimensional features.
-np.random.seed(0)
-N, d = 8, 128
-h = np.random.randn(2 * N, d)
-loss = nt_xent_loss(h, temperature=0.5)
-print(f"NT-Xent loss on random features: {loss:.4f}")
+    logits_aa = tf.matmul(hidden1, hidden1_large, transpose_b=True) / temperature
+    logits_aa = logits_aa - masks * LARGE_NUM             # mask self-similarity (k=i)
+    logits_bb = tf.matmul(hidden2, hidden2_large, transpose_b=True) / temperature
+    logits_bb = logits_bb - masks * LARGE_NUM
+    logits_ab = tf.matmul(hidden1, hidden2_large, transpose_b=True) / temperature  # positives here
+    logits_ba = tf.matmul(hidden2, hidden1_large, transpose_b=True) / temperature
 
-# Sanity check: if all positives were perfectly aligned and negatives were
-# orthogonal, the loss for each anchor would approach -log(1/(2*N-1)).
-print(f"Ideal lower bound for N={N}: {-np.log(1.0 / (2 * N - 1)):.4f}")
-
-# Contrast with perfectly aligned positives (same vector for each pair)
-# and random negatives. The loss should drop toward the lower bound.
-perfect = np.zeros((2 * N, d))
-for i in range(N):
-    v = np.random.randn(d)
-    v = v / np.linalg.norm(v)
-    perfect[i] = v
-    perfect[N + i] = v
-print(f"NT-Xent loss with aligned positives: {nt_xent_loss(perfect):.4f}")
+    loss_a = tf.losses.softmax_cross_entropy(labels, tf.concat([logits_ab, logits_aa], 1), weights=weights)
+    loss_b = tf.losses.softmax_cross_entropy(labels, tf.concat([logits_ba, logits_bb], 1), weights=weights)
+    return loss_a + loss_b, logits_ab, labels
 ```
