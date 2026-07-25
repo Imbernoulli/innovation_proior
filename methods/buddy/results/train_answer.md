@@ -10,75 +10,82 @@ The predictor is then a simple MLP. For a pair (u, v) it takes the Hadamard prod
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch_geometric.utils import degree
 
+# Canonical BUDDY: precompute sketches + propagated features, then MLP on edge features.
 
 class ElphHashes:
     """Per-node MinHash + HyperLogLog sketches, propagated by min/max for k hops."""
-
     def __init__(self, num_perm=128, hll_p=8, max_hops=3):
-        self.num_perm = num_perm
-        self.hll_p = hll_p
+        self.num_perm = num_perm          # MinHash permutations
+        self.hll_p = hll_p                # HyperLogLog precision (2**p registers)
         self.max_hops = max_hops
 
     def initialise_minhash(self, n):
+        # random permutation hashes of singleton {node}
         a = torch.randint(1, (1 << 31) - 1, (self.num_perm,))
         b = torch.randint(0, (1 << 31) - 1, (self.num_perm,))
         ids = torch.arange(n).unsqueeze(1)
-        return ((a * ids + b) % ((1 << 31) - 1)).float()
+        return ((a * ids + b) % ((1 << 31) - 1)).float()      # [n, num_perm]
 
     def initialise_hll(self, n):
         m = 1 << self.hll_p
         reg = torch.zeros(n, m)
+        # singleton register update from a hash of the node id (rho leading zeros)
         h = (torch.arange(n) * 2654435761) % (1 << 31)
         idx = (h % m).long()
-        rho = (32 - self.hll_p) - torch.floor(
-            torch.log2((h >> self.hll_p).float() + 1)
-        )
-        reg[torch.arange(n), idx] = torch.maximum(
-            reg[torch.arange(n), idx], rho
-        )
+        rho = (32 - self.hll_p) - torch.floor(torch.log2((h >> self.hll_p).float() + 1))
+        reg[torch.arange(n), idx] = torch.maximum(reg[torch.arange(n), idx], rho)
         return reg
 
     def propagate(self, sketch, edge_index, op):
+        # one hop of elementwise min (MinHash) or max (HLL) over neighbours
         src, dst = edge_index
         out = sketch.clone()
-        if op == "min":
-            out.index_reduce_(0, dst, sketch[src], "amin", include_self=True)
+        if op == 'min':
+            out.index_reduce_(0, dst, sketch[src], 'amin', include_self=True)
         else:
-            out.index_reduce_(0, dst, sketch[src], "amax", include_self=True)
+            out.index_reduce_(0, dst, sketch[src], 'amax', include_self=True)
         return out
 
     def build(self, edge_index, n):
         m = [self.initialise_minhash(n)]
         h = [self.initialise_hll(n)]
         for _ in range(self.max_hops):
-            m.append(self.propagate(m[-1], edge_index, "min"))
-            h.append(self.propagate(h[-1], edge_index, "max"))
-        return m, h
+            m.append(self.propagate(m[-1], edge_index, 'min'))
+            h.append(self.propagate(h[-1], edge_index, 'max'))
+        return m, h                                            # sketches per hop
 
     def jaccard(self, m_u, m_v):
-        return (m_u == m_v).float().mean(dim=-1)
+        return (m_u == m_v).float().mean(dim=-1)               # Hamming sim ~ Jaccard
 
     def cardinality(self, h):
         m = h.size(-1)
         z = (2.0 ** (-h)).sum(dim=-1)
         alpha = 0.7213 / (1 + 1.079 / m)
-        return alpha * m * m / z
+        return alpha * m * m / z                               # HLL estimate
 
     def intersection(self, m_u, h_u, m_v, h_v):
         union = self.cardinality(torch.maximum(h_u, h_v))
-        return self.jaccard(m_u, m_v) * union
+        return self.jaccard(m_u, m_v) * union                  # |S∩T| = J*|S∪T|
 
-    def structural_features(self, pairs, m, h):
-        u, v = pairs
+    def structural_features(self, edge_index_pairs, m, h):
+        """Distance-label counts A[d_u,d_v] and boundary B[d] for each pair.
+
+        Schematic: the canonical impl carves k(k+2) features — the strict
+        two-sided inclusion-exclusion A[d_u,d_v] = C[d_u,d_v] - C[d_u-1,d_v]
+        - C[d_u,d_v-1] + C[d_u-1,d_v-1] plus two-sided boundary counts
+        B[0,d] and B[d,0]. The loop below is the readable shell-subtraction
+        sketch of that arithmetic, not the exact two-sided form."""
+        u, v = edge_index_pairs
         k = self.max_hops
+        feats = []
+        # A[d_u,d_v] = |N_{d_u}(u) ∩ N_{d_v}(v)| minus nearer-shell counts (incl-excl)
         inter = {}
         for du in range(1, k + 1):
             for dv in range(1, k + 1):
-                inter[(du, dv)] = self.intersection(
-                    m[du][u], h[du][u], m[dv][v], h[dv][v]
-                )
-        feats = []
+                inter[(du, dv)] = self.intersection(m[du][u], h[du][u],
+                                                    m[dv][v], h[dv][v])
         for du in range(1, k + 1):
             for dv in range(1, k + 1):
                 a = inter[(du, dv)]
@@ -87,30 +94,30 @@ class ElphHashes:
                         if (i, j) != (du, dv):
                             a = a - inter[(i, j)]
                 feats.append(a.clamp(min=0))
+        # boundary counts B[d] = |N_d(u)| - within-window mass (one-sided)
         for d in range(1, k + 1):
             card_u = self.cardinality(h[d][u])
             feats.append((card_u - sum(feats)).clamp(min=0))
-        return torch.stack(feats, dim=-1)
+        return torch.stack(feats, dim=-1)                      # [E, k(k+2)]
 
 
 class BUDDY(nn.Module):
     """MLP on Hadamard node features + precomputed structural counts."""
-
     def __init__(self, in_channels, hidden=256, max_hops=3, num_struct=None):
         super().__init__()
         num_struct = num_struct or max_hops * (max_hops + 2)
         self.feat_lin = nn.Linear(in_channels * (max_hops + 1), hidden)
         self.struct_lin = nn.Linear(num_struct, hidden)
         self.readout = nn.Sequential(
-            nn.Linear(hidden * 2, hidden),
-            nn.ReLU(),
+            nn.Linear(hidden * 2, hidden), nn.ReLU(),
             nn.Linear(hidden, 1),
         )
 
     def forward(self, z_u, z_v, struct_counts):
+        # z_u, z_v: multi-scale propagated node features [E, in*(k+1)]
         zu = self.feat_lin(z_u)
         zv = self.feat_lin(z_v)
-        had = zu * zv
+        had = zu * zv                                          # edge (Hadamard) pooling
         s = F.relu(self.struct_lin(struct_counts))
         return self.readout(torch.cat([had, s], dim=-1)).squeeze(-1)
 ```
