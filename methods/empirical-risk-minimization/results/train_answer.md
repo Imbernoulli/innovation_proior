@@ -6,59 +6,12 @@ The method is called Empirical Risk Minimization. Given a sample, a loss functio
 
 The practical prescription is therefore to fix the hypothesis class before looking at the data, minimize the empirical risk within that class, and rely on a capacity control such as VC dimension, Rademacher complexity, or a growth function to ensure that the class-wide risk gap is small. If the class is too small, the best rule inside it may still be inaccurate; if the class is too large, the uniform gap can be large and low empirical risk may mean memorization. The art is to choose a class whose capacity matches the available data.
 
-```python
-import numpy as np
-from sklearn.datasets import make_classification
-from sklearn.model_selection import train_test_split
-
-
-def empirical_risk_minimizer(X_train, y_train, X_test, y_test, learning_rate=0.1, steps=1000):
-    """Minimal linear ERM for binary classification with a VC-style generalization bound."""
-    n, d = X_train.shape
-    # Add bias term.
-    X = np.concatenate([X_train, np.ones((n, 1))], axis=1)
-    X_te = np.concatenate([X_test, np.ones((X_test.shape[0], 1))], axis=1)
-    w = np.zeros(d + 1)
-
-    # Minimize empirical logistic risk with gradient descent.
-    for _ in range(steps):
-        z = y_train * (X @ w)
-        p = 1.0 / (1.0 + np.exp(np.clip(z, -500, 500)))
-        grad = -(1.0 / n) * (X.T @ (y_train * p))
-        w -= learning_rate * grad
-
-    # Empirical risk (logistic loss).
-    def logistic_loss(Xb, yb, w):
-        z = yb * (Xb @ w)
-        return np.mean(np.log(1 + np.exp(-np.clip(z, -500, 500))))
-
-    emp_risk = logistic_loss(X, y_train, w)
-    test_risk = logistic_loss(X_te, y_test, w)
-
-    # Linear classifiers in R^d have VC dimension d + 1.
-    h = d + 1
-    delta = 0.05
-    c0 = np.sqrt((h * (np.log(2 * n / h) + 1) - np.log(delta)) / n)
-    bound = emp_risk + c0
-
-    return {
-        "weights": w,
-        "empirical_risk": emp_risk,
-        "test_risk": test_risk,
-        "uniform_bound": bound,
-        "vc_dimension": h,
-    }
-
-
-if __name__ == "__main__":
-    X, y = make_classification(n_samples=500, n_features=10, n_informative=8,
-                               n_redundant=2, n_classes=2, random_state=0)
-    y = 2 * y - 1  # map to {-1, +1}
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, random_state=0)
-
-    result = empirical_risk_minimizer(X_train, y_train, X_test, y_test)
-    print(f"Empirical risk: {result['empirical_risk']:.4f}")
-    print(f"Test risk:      {result['test_risk']:.4f}")
-    print(f"VC dimension:   {result['vc_dimension']}")
-    print(f"Uniform bound:  {result['uniform_bound']:.4f}")
-```
+Stated in full, the method is this pairing of a rule and a certificate. Given data $S = ((x_1,y_1),\dots,(x_n,y_n))$ drawn i.i.d. from an unknown distribution, a loss $L$, and a fixed hypothesis class $F$, define the true and empirical risks
+$$R(f) = \mathbb{E}[L(f(X),Y)], \qquad R_{\mathrm{emp}}(f) = \frac{1}{n}\sum_{i=1}^n L(f(x_i),y_i),$$
+and take the empirical risk minimizer $\hat f \in \arg\min_{f\in F} R_{\mathrm{emp}}(f)$. This choice is a sound learning rule exactly when $F$ satisfies uniform convergence,
+$$\Pr\Big(\sup_{f\in F}\,|R(f)-R_{\mathrm{emp}}(f)| > \epsilon\Big)\ \xrightarrow[n\to\infty]{}\ 0 \quad\text{for every } \epsilon>0,$$
+in which case, writing $f_F$ for the best hypothesis in $F$ under true risk, the excess risk of $\hat f$ obeys
+$$R(\hat f) - R(f_F) \le 2\sup_{f\in F}|R(f)-R_{\mathrm{emp}}(f)|.$$
+For binary classification with $F$ of finite VC dimension $h \ge 1$, this uniform gap has a distribution-free, finite-sample bound: for any confidence parameter $\delta\in(0,1)$, with probability at least $1-\delta$, every $f\in F$ simultaneously satisfies
+$$R(f) \le R_{\mathrm{emp}}(f) + c_0(n,h,\delta), \qquad c_0(n,h,\delta) = \sqrt{\frac{h\big(\log(2n/h)+1\big) - \log\delta}{n}}.$$
+Because this bound holds uniformly over $F$, it covers $\hat f$ even though $\hat f$ is selected after the sample is seen — the certificate is exactly what licenses the search that ordinary concentration alone does not. The method, in full, is: minimize $R_{\mathrm{emp}}$ inside a class $F$ chosen so that $h$ is small relative to $n$, and report the resulting bound $R_{\mathrm{emp}}(\hat f) + c_0(n,h,\delta)$ as the certified upper bound on $\hat f$'s true risk.
