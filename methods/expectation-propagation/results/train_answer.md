@@ -8,80 +8,19 @@ The fixed point has a clear meaning: for every site `i`, deleting it, inserting 
 
 The approximate evidence is the normalizing constant of `p0(x) ∏_i t_i(x)` after accounting for the site log-scales. In the common Gaussian case this combines the sum of site natural-parameter terms with prior and posterior determinants. EP extends assumed-density filtering by making the one-pass projection reversible, and it extends loopy belief propagation by compressing messages into exponential-family forms that can handle continuous nonconjugate models.
 
-```python
-import numpy as np
-from scipy.stats import norm
+The method is therefore completely specified by its fixed-point equations, and that is the object I hand over. Given the target $p(x\mid D) \propto p_0(x)\prod_i f_i(x)$ and a chosen tractable exponential family $\mathcal{Q}$, EP maintains $q(x) \propto p_0(x)\prod_i t_i(x)$ and, for each site $i$, cycles through
 
+$$
+q_{-i}(x) \propto \frac{q(x)}{t_i(x)}, \qquad
+\hat p_i(x) \propto f_i(x)\, q_{-i}(x), \qquad
+q_i^{\text{new}} = \arg\min_{q\in\mathcal{Q}} \mathrm{KL}\!\left(\hat p_i \,\Vert\, q\right), \qquad
+t_i^{\text{new}}(x) \propto \frac{q_i^{\text{new}}(x)}{q_{-i}(x)},
+$$
 
-def ep_probit_1d(y, prior_var=1.0, max_iter=100, tol=1e-6, damping=0.5):
-    """
-    Gaussian Expectation Propagation for a 1D probit model:
-        p(x) ∝ N(x; 0, prior_var) * ∏_i Φ(y_i * x)
-    Each site t_i(x) is represented by natural parameters
-    (lambda_i, beta_i) so that t_i(x) ∝ exp(beta_i * x - 0.5 * lambda_i * x**2).
-    """
-    y = np.asarray(y, dtype=float)
-    n = y.size
+where the projection step reduces, for exponential-family $\mathcal{Q}$ with sufficient statistics $\phi$, to the moment-matching condition $\mathbb{E}_{q_i^{\text{new}}}[\phi(x)] = \mathbb{E}_{\hat p_i}[\phi(x)]$, and the site replacement becomes plain subtraction in natural parameters, $\eta_i^{\text{new}} = \eta(q_i^{\text{new}}) - \eta(q_{-i})$, optionally damped by $\eta_i \leftarrow (1-\rho)\,\eta_i + \rho\,\eta_i^{\text{new}}$ to stabilize the sweep. Convergence is reached exactly when this equation holds at every site simultaneously — deleting site $i$, reinserting the true factor $f_i$, and projecting again reproduces the moments already carried by the current $q$,
 
-    site_lambda = np.zeros(n)
-    site_beta = np.zeros(n)
+$$
+\mathbb{E}_{q}[\phi(x)] = \mathbb{E}_{\hat p_i}[\phi(x)] \quad \text{for all } i,
+$$
 
-    post_lambda = 1.0 / prior_var
-    post_beta = 0.0
-
-    for _ in range(max_iter):
-        post_beta_old = post_beta
-
-        for i in range(n):
-            # 1. Cavity deletion: remove site i from the posterior.
-            cav_lambda = post_lambda - site_lambda[i]
-            cav_beta = post_beta - site_beta[i]
-            if cav_lambda <= 0.0:
-                continue
-            cav_var = 1.0 / cav_lambda
-            cav_mean = cav_beta * cav_var
-
-            # 2. Exact local insertion with probit likelihood f_i(x) = Φ(y_i * x).
-            s = np.sqrt(1.0 + cav_var)
-            alpha = y[i] * cav_mean / s
-            z = norm.cdf(alpha)
-            if z < 1e-12:
-                continue
-            ratio = norm.pdf(alpha) / z
-
-            # 3. Moment projection: match mean and variance of the tilted distribution.
-            tilted_mean = cav_mean + y[i] * cav_var * ratio / s
-            tilted_var = cav_var - (cav_var**2 * ratio / s**2) * (alpha + ratio)
-            if tilted_var <= 0.0:
-                continue
-
-            new_post_lambda = 1.0 / tilted_var
-            new_post_beta = tilted_mean / tilted_var
-
-            # 4. Site replacement in natural parameters.
-            new_site_lambda = new_post_lambda - cav_lambda
-            new_site_beta = new_post_beta - cav_beta
-
-            site_lambda[i] = (1.0 - damping) * site_lambda[i] + damping * new_site_lambda
-            site_beta[i] = (1.0 - damping) * site_beta[i] + damping * new_site_beta
-
-            # Recompute global posterior natural parameters.
-            post_lambda = 1.0 / prior_var + site_lambda.sum()
-            post_beta = site_beta.sum()
-
-        if abs(post_beta - post_beta_old) < tol:
-            break
-
-    post_var = 1.0 / post_lambda
-    post_mean = post_beta * post_var
-    return post_mean, post_var
-
-
-# Example: 1D probit classification with 50 binary labels.
-np.random.seed(0)
-n = 50
-x_true = 0.7
-y = np.where(np.random.randn(n) + x_true > 0, 1, -1)
-mean, var = ep_probit_1d(y)
-print(f"EP posterior mean: {mean:.3f}, std: {np.sqrt(var):.3f}")
-```
+so that no further local repair changes anything. That is the deliverable: not a single global projection but this delete–insert–project–replace cycle, applied site by site until the consistency equations above hold everywhere at once, with the approximate log-evidence read off, in the Gaussian case, from the sum of the site natural-parameter contributions together with the prior and posterior log-determinants.
