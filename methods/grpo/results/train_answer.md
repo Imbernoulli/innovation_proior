@@ -25,13 +25,14 @@ def masked_token_mean(values: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
 
 
 def compute_grpo_outcome_advantage(
-    token_level_rewards: torch.Tensor,
-    response_mask: torch.Tensor,
-    index: np.ndarray,
+    token_level_rewards: torch.Tensor,   # (bs, response_len); nonzero only at the last token
+    response_mask: torch.Tensor,         # (bs, response_len); 1 on response tokens
+    index: np.ndarray,                   # (bs,); prompt-group id for each row
     epsilon: float = 1e-6,
     norm_adv_by_std_in_grpo: bool = True,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    scores = token_level_rewards.sum(dim=-1)
+    """Group-relative advantage: group mean as baseline, group std z-score, broadcast to tokens."""
+    scores = token_level_rewards.sum(dim=-1)         # r_i, one scalar per response
 
     id2score = defaultdict(list)
     id2mean, id2std = {}, {}
@@ -45,16 +46,16 @@ def compute_grpo_outcome_advantage(
                 id2std[idx] = torch.tensor(1.0, device=scores.device, dtype=scores.dtype)
             else:
                 g = torch.stack(id2score[idx])
-                id2mean[idx] = torch.mean(g)
+                id2mean[idx] = torch.mean(g)         # baseline = group mean reward
                 id2std[idx] = torch.std(g)
         for i in range(bsz):
             if norm_adv_by_std_in_grpo:
                 scores[i] = (scores[i] - id2mean[index[i]]) / (id2std[index[i]] + epsilon)
             else:
-                scores[i] = scores[i] - id2mean[index[i]]
-        scores = scores.unsqueeze(-1) * response_mask
+                scores[i] = scores[i] - id2mean[index[i]]   # centered-only variant
+        scores = scores.unsqueeze(-1) * response_mask       # broadcast to every token
 
-    return scores, scores
+    return scores, scores                            # (advantages, returns)
 
 
 def kl_penalty_forward(
@@ -62,6 +63,7 @@ def kl_penalty_forward(
     ref_log_prob: torch.Tensor,
     kl_penalty: str = "k3",
 ) -> torch.Tensor:
+    """KL primitive; for k3 the unclamped form is (u - 1) - log u, u = pi_ref/pi_theta."""
     if kl_penalty in ("kl", "k1"):
         return log_prob - ref_log_prob
     if kl_penalty in ("mse", "k2"):
@@ -69,36 +71,36 @@ def kl_penalty_forward(
     if kl_penalty not in ("low_var_kl", "k3"):
         raise NotImplementedError(f"unsupported KL penalty: {kl_penalty}")
 
-    kl = ref_log_prob - log_prob
+    kl = ref_log_prob - log_prob                     # log u
     kl = torch.clamp(kl, min=-20.0, max=20.0)
-    u = torch.exp(kl)
-    kld = u - kl - 1.0
+    u = torch.exp(kl)                                # pi_ref / pi_theta
+    kld = u - kl - 1.0                                # (u - 1) - log u  >= 0
     return torch.clamp(kld, min=-10.0, max=10.0)
 
 
 def compute_policy_loss_vanilla(
-    old_log_prob: torch.Tensor,
-    log_prob: torch.Tensor,
-    advantages: torch.Tensor,
+    old_log_prob: torch.Tensor,     # under pi_theta_old (the sampler)
+    log_prob: torch.Tensor,         # under current pi_theta
+    advantages: torch.Tensor,       # from compute_grpo_outcome_advantage
     response_mask: torch.Tensor,
-    clip_ratio: float = 0.2,
+    clip_ratio: float = 0.2,        # PPO clip eps
     clip_ratio_low: float | None = None,
     clip_ratio_high: float | None = None,
-    clip_ratio_c: float = 3.0,
+    clip_ratio_c: float = 3.0,      # dual-clip cap for negative-advantage tokens
 ) -> torch.Tensor:
+    """PPO-style clipped actor loss after the group-relative advantages are computed."""
     negative_approx_kl = torch.clamp(log_prob - old_log_prob, min=-20.0, max=20.0)
-    ratio = torch.exp(negative_approx_kl)
+    ratio = torch.exp(negative_approx_kl)            # rho_t = pi_theta / pi_theta_old
 
     if clip_ratio_low is None:
         clip_ratio_low = clip_ratio
     if clip_ratio_high is None:
         clip_ratio_high = clip_ratio
-
     pg_losses1 = -advantages * ratio
     pg_losses2 = -advantages * torch.clamp(ratio, 1 - clip_ratio_low, 1 + clip_ratio_high)
-    clip_pg_losses1 = torch.maximum(pg_losses1, pg_losses2)
+    clip_pg_losses1 = torch.maximum(pg_losses1, pg_losses2)      # = -min(rho*A, clip(rho)*A)
 
-    pg_losses3 = -advantages * clip_ratio_c
+    pg_losses3 = -advantages * clip_ratio_c          # dual-clip cap (advantages < 0)
     clip_pg_losses2 = torch.min(pg_losses3, clip_pg_losses1)
     pg_losses = torch.where(advantages < 0, clip_pg_losses2, clip_pg_losses1)
 
@@ -111,13 +113,15 @@ def grpo_actor_loss(
     advantages: torch.Tensor,
     response_mask: torch.Tensor,
     ref_log_prob: torch.Tensor | None = None,
-    kl_coef: float = 0.04,
+    kl_coef: float = 0.04,          # beta
     kl_penalty: str = "k3",
 ) -> torch.Tensor:
+    """Clipped surrogate with the reference-policy penalty kept outside the reward."""
     pg_loss = compute_policy_loss_vanilla(old_log_prob, log_prob, advantages, response_mask)
     if ref_log_prob is not None and kl_coef != 0.0:
         kld = kl_penalty_forward(log_prob, ref_log_prob, kl_penalty=kl_penalty)
         kl_loss = masked_token_mean(kld, response_mask)
-        pg_loss = pg_loss + kl_coef * kl_loss
+        pg_loss = pg_loss + kl_coef * kl_loss        # KL as its own loss term
+
     return pg_loss
 ```
