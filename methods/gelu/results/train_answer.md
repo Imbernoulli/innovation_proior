@@ -14,10 +14,7 @@ import torch.nn as nn
 
 
 class GELU(nn.Module):
-    """Gaussian Error Linear Unit: x * Phi(x), Phi the standard-normal CDF.
-
-    The deterministic expectation of multiplying x by a Bernoulli(Phi(x)) mask.
-    """
+    """Gaussian Error Linear Unit: x * Phi(x)."""
 
     def __init__(self, approximate: str = "none"):
         super().__init__()
@@ -25,14 +22,11 @@ class GELU(nn.Module):
 
     def forward(self, x):
         if self.approximate == "none":
-            # Exact: x * 0.5 * (1 + erf(x / sqrt(2)))
             return x * 0.5 * (1.0 + torch.erf(x / (2.0 ** 0.5)))
-        elif self.approximate == "tanh":
-            # 0.5 x (1 + tanh[sqrt(2/pi) (x + 0.044715 x^3)])
+        if self.approximate == "tanh":
             c = (2.0 / torch.pi) ** 0.5
             return 0.5 * x * (1.0 + torch.tanh(c * (x + 0.044715 * x ** 3)))
-        elif self.approximate == "sigmoid":
-            # x * sigmoid(1.702 x): logistic gate rescaled to track Phi
+        if self.approximate == "sigmoid":
             return x * torch.sigmoid(1.702 * x)
         raise ValueError(self.approximate)
 ```
