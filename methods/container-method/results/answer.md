@@ -2,40 +2,40 @@
 
 ## Problem
 
-许多组合对象由“不能包含某些局部模式”定义。把基本元素作为超图顶点，把每个禁止模式作为超边后，合法对象就是独立集。困难在于独立集族通常是指数大的：你想数 triangle-free 图、无等差数列集合、sum-free 集合，或者排除稀疏随机环境中的坏反例，但不能逐个枚举所有合法集合。
+Many combinatorial objects are defined by "must not contain certain local patterns." Once the basic elements are taken as hypergraph vertices and each forbidden pattern as a hyperedge, legal objects become independent sets. The difficulty is that the family of independent sets is typically exponentially large: you want to count triangle-free graphs, progression-free sets, sum-free sets, or rule out bad counterexamples in a sparse random environment, but you cannot enumerate all legal sets one by one.
 
 ## Core insight
 
-Hypergraph container method 的独特洞察是：不要枚举所有独立集，改为用少量结构化容器覆盖所有独立集。
+The distinctive insight of the hypergraph container method is: don't enumerate all independent sets — instead cover all independent sets with a small number of structured containers.
 
-更具体地说，对每个独立集 `I`，方法抽取一个很小的指纹 `T subset I`，再由这个指纹确定一个容器 `C(T)`，满足
+More specifically, for each independent set `I`, the method extracts a small fingerprint `T subset I`, and this fingerprint then determines a container `C(T)` satisfying
 
 `I subset C(T)`.
 
-容器不是精确对象。它可以包含很多非独立集，也可以容纳许多不同的独立集。但容器族必须很小，每个容器又必须有结构限制：例如更小、含很少超边、或接近某个极值结构。
+A container is not an exact object. It can contain many non-independent sets, and it can also house many different independent sets. But the family of containers must be small, and each container must in turn be structurally constrained — for instance, smaller, containing few hyperedges, or close to some extremal structure.
 
-这把问题从“记录一个独立集的所有选择”变成“记录足以定位外壳的少量信息”。指数多的对象被压缩成可数的近似结构族。
+This turns the problem from "recording every choice within one independent set" into "recording just enough information to locate an envelope." Exponentially many objects get compressed into a countable family of approximate structures.
 
 ## The shift
 
-传统思路像是在枚举坏集合：哪些集合避开所有禁止模式？哪些集合会成为随机模型里的例外？这种做法要面对整个独立集族，规模通常太大，union bound 或粗糙计数都会爆掉。
+The traditional approach is essentially enumerating bad sets: which sets avoid all forbidden patterns? Which sets become exceptions in the random model? This approach has to face the entire family of independent sets, whose size is typically too large — union bounds or crude counting blow up.
 
-Container method 改成控制所有坏集合的外壳。一个坏集合不需要被单独命名；只要证明它必定落在某个容器中，就可以把后续工作转移到容器族上。然后：
+The container method instead controls the envelope of all bad sets. A bad set doesn't need to be individually named; as long as you can show it must fall inside some container, you can move the subsequent work onto the family of containers. Then:
 
-- 计数问题变成估计 `sum_{C} 2^|C|`；
-- 典型结构问题变成研究大多数容器长什么样；
-- 稀疏随机问题变成对容器做概率估计，而不是对所有独立集做概率估计。
+- the counting problem becomes estimating `sum_{C} 2^|C|`;
+- the typical-structure problem becomes studying what most containers look like;
+- the sparse random problem becomes doing probability estimates on containers rather than on all independent sets.
 
-这就是根本转变：从逐个处理指数多的精确对象，变成控制少量粗粒度但结构化的外壳。
+This is the fundamental shift: from handling exponentially many exact objects one at a time, to controlling a small number of coarse-grained but structured envelopes.
 
 ## Mechanism
 
-容器通常通过一个确定性扫描或剪枝过程产生。给定独立集 `I`，算法只在关键时刻从 `I` 中取出少量顶点作为指纹，同时利用超图的度数和共度数条件删除大量不再可能自由选择的顶点。最后剩下的可选区域加上指纹形成容器。
+Containers are usually produced by a deterministic scan or pruning process. Given an independent set `I`, the algorithm only pulls a small number of vertices out of `I` as a fingerprint at critical moments, while simultaneously using the hypergraph's degree and codegree conditions to delete a large number of vertices that can no longer be freely chosen. What remains as the candidate region, together with the fingerprint, forms the container.
 
-局部均匀性条件很重要。最大度和共度数受控，意味着禁止模式没有过度集中在少数小集合上；每个指纹选择都能带来可预测的全局收缩。由此可以同时保证两件事：指纹少，所以容器少；容器被削弱，所以每个容器可控。
+The local-uniformity condition matters here. Controlled maximum degree and codegree mean the forbidden patterns are not overly concentrated on a small number of small sets; each fingerprint choice then produces a predictable global contraction. This lets you guarantee two things at once: few fingerprints, hence few containers; and each container is weakened, hence each container is controllable.
 
 ## Why it matters
 
-Container method 的力量来自允许近似。它不试图精确描述每个 independent set，而是证明所有 independent sets 都被少量外壳覆盖。后续只需在外壳层面使用极值、稳定性或概率工具。
+The power of the container method comes from allowing approximation. It doesn't try to precisely describe every independent set; instead it shows that all independent sets are covered by a small number of envelopes. Afterward, one only needs extremal, stability, or probabilistic tools at the level of the envelopes.
 
-因此它统一解释了很多原本分散的问题：`H`-free 图的数量、triangle-free 图的典型结构、sum-free 集合、无等差数列集合、Ramsey 性质和稀疏随机转移。共同模式都是：把局部禁忌编码成超边，把合法对象视为独立集，再用容器把不可枚举的族压缩成可控的结构族。
+This is why it gives a unified explanation for many originally disparate problems: the count of `H`-free graphs, the typical structure of triangle-free graphs, sum-free sets, progression-free sets, Ramsey properties, and sparse random transference. The common pattern is always: encode local forbidden patterns as hyperedges, treat legal objects as independent sets, and then use containers to compress an unenumerable family into a controllable structured family.

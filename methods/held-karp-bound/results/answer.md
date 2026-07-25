@@ -117,8 +117,8 @@ static double compute_one_tree(const vector<vector<double>>& cost,
     return one_tree_cost;
 }
 
-// Volgenant-Jonker vanishing step schedule reaching 0 at iteration M
-// (EJOR 9:83-89, 1982). step1 is seeded from the first / best 1-tree cost.
+// Volgenant-Jonker vanishing step schedule reaching 0 at iteration M.
+// step1 is seeded from the first / best 1-tree cost.
 struct VolgenantJonker {
     int n, M, m = 0;
     double step1 = 0.0;

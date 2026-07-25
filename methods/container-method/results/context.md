@@ -1,37 +1,37 @@
 ## Research question
 
-许多组合数学问题都可以改写成同一个形式：给定一个有限超图 `H=(V,E)`，理解它的独立集族 `I(H)`。这里一个独立集是不包含任何超边的顶点子集。三角形-free 图、`H`-free 图、无三项等差数列集合、sum-free 集合、某些 Ramsey 性质中的反例，都可以通过选择合适的顶点集 `V` 和超边族 `E` 写成这种独立集问题。
+Many combinatorics problems can be rewritten into the same form: given a finite hypergraph `H=(V,E)`, understand its family of independent sets `I(H)`. Here an independent set is a subset of vertices that contains no hyperedge. Triangle-free graphs, `H`-free graphs, sets with no three-term arithmetic progression, sum-free sets, and counterexamples to certain Ramsey properties can all be written as this kind of independent-set problem by choosing an appropriate vertex set `V` and hyperedge family `E`.
 
-一个顶点集有 `2^|V|` 个子集，独立集族通常是指数大的。即使最大独立集的大小已经由极值定理控制，人们往往还想知道独立集的总数、它们的典型形状、以及稀疏随机环境中是否存在大型的坏独立集。在合适的度数和共度数条件下，研究的问题是：如何不逐个枚举所有独立集，却仍然同时控制它们的数量、结构和分布。
+A vertex set has `2^|V|` subsets, and the family of independent sets is typically exponentially large. Even once the size of the maximum independent set is already controlled by an extremal theorem, one often still wants to know the total count of independent sets, their typical shape, and whether large "bad" independent sets exist in a sparse random environment. Under suitable degree and codegree conditions, the question being studied is: how to simultaneously control the number, structure, and distribution of independent sets without enumerating them one by one.
 
 ## Background
 
-把 forbidden-free 对象编码为独立集后，一个“坏对象”通常就是一个避开所有禁止模式的集合。比如把 `K_n` 的边作为顶点，把每个三角形的三条边作为一个 3-uniform 超边，那么三角形-free 图正是这个辅助超图的独立集。类似地，把整数作为顶点，把等差数列作为超边，就得到无等差数列集合的独立集表达。
+Once forbidden-free objects are encoded as independent sets, a "bad object" is typically just a set that avoids all forbidden patterns. For instance, take the edges of `K_n` as vertices, and take the three edges of each triangle as a 3-uniform hyperedge; then triangle-free graphs are exactly the independent sets of this auxiliary hypergraph. Similarly, taking the integers as vertices and arithmetic progressions as hyperedges gives the independent-set formulation of progression-free sets.
 
-极值定理告诉我们独立集最大能多大。例如 `K_n` 上的 triangle-free 图最大独立集对应 Turán 型的边数上界。但从最大大小到所有独立集的总数、它们的典型结构、以及在随机稀疏环境中的分布，是不同层次的信息，需要不同的工具来获得。
+Extremal theorems tell us how large an independent set can be at most. For example, the maximum independent set of triangle-free graphs on `K_n` corresponds to the Turán-type upper bound on the number of edges. But going from the maximum size to the total count of all independent sets, their typical structure, and their distribution in a sparse random environment is a different tier of information, requiring different tools to obtain.
 
-研究通常关注几类问题：精确计数（forbidden-free 对象的数量级），典型结构（绝大多数对象长什么样），以及稀疏随机转移（在随机子结构里极值定理是否仍然成立）。这些问题都建立在同一个独立集表述之上，区别在于对独立集族需要提取的信息不同。
+Research typically focuses on a few classes of problems: exact counting (the order of magnitude of forbidden-free objects), typical structure (what most objects look like), and sparse random transference (whether the extremal theorem still holds inside a random substructure). All of these problems are built on the same independent-set formulation; they differ only in what information needs to be extracted from the family of independent sets.
 
 ## Baselines
 
-最朴素的路线是枚举所有 forbidden-free 对象，或对所有候选坏集合做 union bound。每个坏集合单独贡献一个概率或一个计数项，再把它们加起来。
+The most naive route is to enumerate all forbidden-free objects, or to run a union bound over all candidate bad sets. Each bad set contributes its own probability or count term individually, and these are then summed.
 
-第二条路线是只用极值定理。它给出最大独立集的大小上界，比如“没有某种配置的集合不能太大”。由此可以用所有大小不超过 `alpha(H)` 的子集的数目作为独立集总数的上界。
+The second route is to use only the extremal theorem. It gives an upper bound on the size of the maximum independent set — for instance, "a set avoiding some configuration cannot be too large." From this one can bound the total number of independent sets by the number of all subsets of size at most `alpha(H)`.
 
-第三条路线是依赖正则性引理、计数引理或稀疏随机转移工具。Szemerédi 正则性引理把稠密图分解成少数近似随机的块，配合计数引理估计禁止模式的出现频率；相应的稀疏版本和转移定理则把极值结论搬到随机环境。这些工具针对具体问题搭建，处理稠密或特定结构的情形。
+The third route relies on the regularity lemma, counting lemmas, or sparse random transference tools. Szemerédi's regularity lemma decomposes a dense graph into a small number of approximately random blocks, and together with a counting lemma it estimates the frequency of occurrence of forbidden patterns; the corresponding sparse versions and transference theorems then carry the extremal conclusion over to the random setting. These tools are built for specific problems and handle the dense or specifically-structured cases.
 
 ## Evaluation settings
 
-判断一个论证是否成功，要看它能否在目标尺度上控制独立集族。对于计数问题，目标通常是把独立集数压到与极值结构数目相匹配的量级，并证明这是 sharp 或接近 sharp。对于典型结构问题，目标是证明大多数对象落在接近极值结构的范围内。
+Whether an argument succeeds is judged by whether it controls the family of independent sets at the target scale. For counting problems, the goal is usually to compress the count of independent sets down to the same order of magnitude as the number of extremal structures, and to show that this is sharp or nearly sharp. For typical-structure problems, the goal is to show that most objects fall within a range close to the extremal structure.
 
-在 sparse random 问题中，评价标准略有不同：要证明随机子集很可能不包含某类大型坏独立集，从而极值定理在随机环境中仍然成立。
+In sparse random problems, the evaluation criterion is somewhat different: one needs to show that a random subset is very likely to contain no large bad independent set of a given type, so that the extremal theorem continues to hold in the random environment.
 
-常见应用包括 `H`-free 图的枚举、triangle-free 图的典型结构、Ramsey 性质、sum-free 集合、无等差数列集合，以及稀疏随机版本的 extremal theorem。不同应用的外部输入不同，但都共享同一个独立集表述：把局部禁忌编码成超边，把合法对象视为独立集。
+Common applications include enumeration of `H`-free graphs, the typical structure of triangle-free graphs, Ramsey properties, sum-free sets, progression-free sets, and sparse random versions of extremal theorems. Different applications have different external inputs, but they all share the same independent-set formulation: encode local forbidden patterns as hyperedges, and treat legal objects as independent sets.
 
 ## Code framework
 
-这个方法更像一个证明框架而不是程序库，但它有清晰的算法骨架。输入是一个 uniform hypergraph，以及控制局部密度的参数：平均度、最大度、共度数、uniformity、以及一个阈值尺度。这些参数刻画了禁止模式在顶点集上分布得有多均匀。
+This method is more like a proof framework than a program library, but it has a clear algorithmic skeleton. The input is a uniform hypergraph together with parameters controlling local density: average degree, maximum degree, codegree, uniformity, and a threshold scale. These parameters characterize how evenly the forbidden patterns are distributed over the vertex set.
 
-度数和共度数条件是关键的输入量。最大度受控意味着没有单个顶点参与过多禁止模式；共度数受控意味着没有一对（或一小组）顶点被过多超边同时覆盖。在这些条件下，超图的局部结构足够均匀，可以对独立集族做整体的统计处理，而不是逐个分析。
+Degree and codegree conditions are the key input quantities. A controlled maximum degree means no single vertex participates in too many forbidden patterns; a controlled codegree means no pair (or small group) of vertices is covered by too many hyperedges at once. Under these conditions, the hypergraph's local structure is uniform enough that one can treat the family of independent sets with a global statistical argument, rather than analyzing them one at a time.
 
-输出的工作对象是从超图本身计算出的统计量与子结构（度序列、共度数分布、可删除的高影响顶点等），后续的计数、结构或概率论证都建立在这些量之上。
+The working objects produced are statistics and substructures computed from the hypergraph itself (degree sequence, codegree distribution, deletable high-influence vertices, etc.); the subsequent counting, structural, or probabilistic arguments are all built on top of these quantities.
