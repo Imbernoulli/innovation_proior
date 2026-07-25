@@ -8,160 +8,90 @@ The world model is an RSSM that keeps both a deterministic recurrent state and a
 
 Behavior learning starts from posterior states sampled from replayed real sequences. These roots are grounded in actual observations, so the imagined rollout begins on the data manifold. From each root the model rolls forward under the current actor for a fixed imagination horizon. No image decoding is needed. At each imagined step an action is sampled from a tanh-transformed Gaussian policy, the next latent state is sampled from the learned prior, and reward and value are predicted from the feature. The target for the value network is a finite-horizon lambda return, computed backward as G_t = r_t + pcont_t * ((1 - lambda) * v(s_{t+1}) + lambda * G_{t+1}), with the final bootstrap replacing G_{t+H} by the predicted value. Lambda smoothly trades one-step bootstrap bias against rollout variance and model error. The value network regresses to these stopped targets, and the actor maximizes the same lambda returns through the differentiable rollout. The world model parameters are fixed during the actor and value updates, which keeps the latent state space anchored to observation prediction rather than letting behavior gradients reshape it arbitrarily.
 
+Here is the recurrent state-space model itself, the backward lambda-return recursion, and the imagination-and-behavior-learning step, following the TF2 mechanics that matter for faithfulness:
+
 ```python
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.distributions as td
+class RSSM(tools.Module):
+  def get_feat(self, state):
+    return tf.concat([state['stoch'], state['deter']], -1)
 
-class RSSM(nn.Module):
-    def __init__(self, stoch=30, deter=200, hidden=200, action_dim=6):
-        super().__init__()
-        self.stoch, self.deter, self.hidden = stoch, deter, hidden
-        self.gru = nn.GRUCell(hidden, deter)
-        self.img1 = nn.Linear(stoch + action_dim, hidden)
-        self.img2 = nn.Linear(deter, hidden)
-        self.img3 = nn.Linear(hidden, 2 * stoch)
-        self.obs1 = nn.Linear(deter + hidden, hidden)  # embed size == hidden
-        self.obs2 = nn.Linear(hidden, 2 * stoch)
+  def get_dist(self, state):
+    return tfd.MultivariateNormalDiag(state['mean'], state['std'])
 
-    def get_feat(self, state):
-        return torch.cat([state['stoch'], state['deter']], -1)
+  def img_step(self, prev_state, prev_action):
+    x = tf.concat([prev_state['stoch'], prev_action], -1)
+    x = self.get('img1', tfkl.Dense, self._hidden_size, self._activation)(x)
+    x, deter = self._cell(x, [prev_state['deter']])
+    deter = deter[0]
+    x = self.get('img2', tfkl.Dense, self._hidden_size, self._activation)(x)
+    x = self.get('img3', tfkl.Dense, 2 * self._stoch_size, None)(x)
+    mean, std = tf.split(x, 2, -1)
+    std = tf.nn.softplus(std) + 0.1
+    stoch = self.get_dist({'mean': mean, 'std': std}).sample()
+    return {'mean': mean, 'std': std, 'stoch': stoch, 'deter': deter}
 
-    def img_step(self, prev_state, action):
-        x = F.elu(self.img1(torch.cat([prev_state['stoch'], action], -1)))
-        deter = self.gru(x, prev_state['deter'])
-        x = F.elu(self.img2(deter))
-        mean, std_logit = self.img3(x).chunk(2, -1)
-        std = F.softplus(std_logit) + 0.1
-        eps = torch.randn_like(mean)
-        stoch = mean + std * eps
-        return {'mean': mean, 'std': std, 'stoch': stoch, 'deter': deter}
+  def obs_step(self, prev_state, prev_action, embed):
+    prior = self.img_step(prev_state, prev_action)
+    x = tf.concat([prior['deter'], embed], -1)
+    x = self.get('obs1', tfkl.Dense, self._hidden_size, self._activation)(x)
+    x = self.get('obs2', tfkl.Dense, 2 * self._stoch_size, None)(x)
+    mean, std = tf.split(x, 2, -1)
+    std = tf.nn.softplus(std) + 0.1
+    stoch = self.get_dist({'mean': mean, 'std': std}).sample()
+    post = {'mean': mean, 'std': std, 'stoch': stoch, 'deter': prior['deter']}
+    return post, prior
+```
 
-    def obs_step(self, prev_state, action, embed):
-        prior = self.img_step(prev_state, action)
-        x = F.elu(self.obs1(torch.cat([prior['deter'], embed], -1)))
-        mean, std_logit = self.obs2(x).chunk(2, -1)
-        std = F.softplus(std_logit) + 0.1
-        eps = torch.randn_like(mean)
-        stoch = mean + std * eps
-        post = {'mean': mean, 'std': std, 'stoch': stoch, 'deter': prior['deter']}
-        return post, prior
+```python
+def lambda_return(reward, value, pcont, bootstrap, lambda_, axis):
+  assert reward.shape.ndims == value.shape.ndims, (reward.shape, value.shape)
+  if isinstance(pcont, (int, float)):
+    pcont = pcont * tf.ones_like(reward)
+  dims = list(range(reward.shape.ndims))
+  dims = [axis] + dims[1:axis] + [0] + dims[axis + 1:]
+  if axis != 0:
+    reward = tf.transpose(reward, dims)
+    value = tf.transpose(value, dims)
+    pcont = tf.transpose(pcont, dims)
+  if bootstrap is None:
+    bootstrap = tf.zeros_like(value[-1])
+  next_values = tf.concat([value[1:], bootstrap[None]], 0)
+  inputs = reward + pcont * next_values * (1 - lambda_)
+  returns = tools.static_scan(
+      lambda agg, cur: cur[0] + cur[1] * lambda_ * agg,
+      (inputs, pcont), bootstrap, reverse=True)
+  if axis != 0:
+    returns = tf.transpose(returns, dims)
+  return returns
+```
 
+```python
+def _imagine_ahead(self, post):
+  if self._c.pcont:
+    post = {k: v[:, :-1] for k, v in post.items()}
+  flatten = lambda x: tf.reshape(x, [-1] + list(x.shape[2:]))
+  start = {k: flatten(v) for k, v in post.items()}
+  policy = lambda state: self._actor(
+      tf.stop_gradient(self._dynamics.get_feat(state))).sample()
+  states = tools.static_scan(
+      lambda prev, _: self._dynamics.img_step(prev, policy(prev)),
+      tf.range(self._c.horizon), start)
+  return self._dynamics.get_feat(states)
 
-class DenseDecoder(nn.Module):
-    def __init__(self, in_dim, out_shape, dist='normal'):
-        super().__init__()
-        self.out_shape = out_shape
-        self.dist = dist
-        self.net = nn.Sequential(
-            nn.Linear(in_dim, 300), nn.ELU(),
-            nn.Linear(300, 300), nn.ELU(),
-            nn.Linear(300, 300), nn.ELU(),
-            nn.Linear(300, int(out_shape)))
-
-    def forward(self, feat):
-        x = self.net(feat)
-        if self.dist == 'normal':
-            return td.Normal(x, 1.0)
-        if self.dist == 'binary':
-            return td.Bernoulli(logits=x)
-        return td.Normal(x, 1.0)
-
-
-class Actor(nn.Module):
-    def __init__(self, in_dim, action_dim):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(in_dim, 300), nn.ELU(),
-            nn.Linear(300, 300), nn.ELU(),
-            nn.Linear(300, 300), nn.ELU())
-        self.mean = nn.Linear(300, action_dim)
-        self.std = nn.Linear(300, action_dim)
-
-    def forward(self, feat):
-        x = self.net(feat)
-        mean = self.mean(x)
-        std = F.softplus(self.std(x)) + 0.1
-        return td.TransformedDistribution(
-            td.Normal(mean, std), td.TanhTransform(cache_size=1))
-
-
-def lambda_return(reward, value, pcont, bootstrap, lambda_=0.95):
-    # reward, value, pcont: [horizon-1, ...]; bootstrap: [...]
-    next_values = torch.cat([value[1:], bootstrap[None]], 0)
-    inputs = reward + pcont * next_values * (1 - lambda_)
-    returns = bootstrap
-    out = []
-    for t in range(len(reward) - 1, -1, -1):
-        returns = inputs[t] + pcont[t] * lambda_ * returns
-        out.append(returns)
-    return torch.stack(list(reversed(out)))
-
-
-def train_step(batch, encoder, rssm, decoder, reward_model, value_model, actor,
-               model_opt, actor_opt, value_opt, horizon=15, gamma=0.99,
-               lambda_=0.95, beta=1.0, free_nats=3.0):
-    obs, action, reward = batch['image'], batch['action'], batch['reward']
-    B, L, C, H, W = obs.shape
-    embed = encoder(obs.reshape(B * L, C, H, W)).reshape(B, L, -1)
-
-    # Initialize state
-    state = {k: v[:, 0] for k, v in {
-        'stoch': torch.zeros(B, rssm.stoch, device=obs.device),
-        'deter': torch.zeros(B, rssm.deter, device=obs.device)
-    }.items()}
-    posts, priors = [], []
-    for t in range(L):
-        state, prior = rssm.obs_step(state, action[:, t], embed[:, t])
-        posts.append(state)
-        priors.append(prior)
-    posts = {k: torch.stack([p[k] for p in posts], 1) for k in posts[0]}
-    priors = {k: torch.stack([p[k] for p in priors], 1) for k in priors[0]}
-    feat = rssm.get_feat(posts)
-
-    # World-model loss
-    recon = decoder(feat).log_prob(obs.reshape(B * L, C, H, W)).reshape(B, L)
-    reward_pred = reward_model(feat).log_prob(reward)
-    post_dist = td.Normal(posts['mean'], posts['std'])
-    prior_dist = td.Normal(priors['mean'], priors['std'])
-    kl = torch.distributions.kl_divergence(post_dist, prior_dist).sum(-1)
-    kl = torch.maximum(kl, torch.tensor(free_nats, device=kl.device))
-    model_loss = -(recon + reward_pred).mean() + beta * kl.mean()
-    model_opt.zero_grad()
-    model_loss.backward()
-    nn.utils.clip_grad_norm_(model_opt.param_groups[0]['params'], 100.0)
-    model_opt.step()
-
-    # Behavior learning from imagined rollouts rooted at posterior states
-    start = {k: v.reshape(-1, v.shape[-1]) for k, v in posts.items()}
-    start = {k: v.detach() for k, v in start.items()}
-    states = [start]
-    for _ in range(horizon):
-        feat_t = rssm.get_feat(states[-1])
-        a = actor(feat_t).rsample()
-        states.append(rssm.img_step(states[-1], a))
-    imag_feat = torch.stack([rssm.get_feat(s) for s in states[1:]], 0)
-    reward_pred = reward_model(imag_feat).mean
-    value_pred = value_model(imag_feat).mean
-    pcont = gamma * torch.ones_like(reward_pred)
-
-    returns = lambda_return(reward_pred[:-1], value_pred[:-1], pcont[:-1],
-                            value_pred[-1].detach(), lambda_)
-    discount = torch.cumprod(torch.cat([
-        torch.ones_like(pcont[:1]), pcont[:-2]], 0), 0).detach()
-
-    actor_loss = -(discount * returns).mean()
-    actor_opt.zero_grad()
-    actor_loss.backward()
-    nn.utils.clip_grad_norm_(actor_opt.param_groups[0]['params'], 100.0)
-    actor_opt.step()
-
-    value_loss = F.mse_loss(value_pred[:-1], returns.detach())
-    value_opt.zero_grad()
-    value_loss.backward()
-    nn.utils.clip_grad_norm_(value_opt.param_groups[0]['params'], 100.0)
-    value_opt.step()
-
-    return model_loss.item(), actor_loss.item(), value_loss.item()
+def _train_behavior(self, post):
+  imag_feat = self._imagine_ahead(post)
+  reward = self._reward(imag_feat).mode()
+  pcont = self._pcont(imag_feat).mean() if self._c.pcont else (
+      self._c.discount * tf.ones_like(reward))
+  value = self._value(imag_feat).mode()
+  returns = tools.lambda_return(
+      reward[:-1], value[:-1], pcont[:-1],
+      bootstrap=value[-1], lambda_=self._c.disclam, axis=0)
+  discount = tf.stop_gradient(tf.math.cumprod(tf.concat(
+      [tf.ones_like(pcont[:1]), pcont[:-2]], 0), 0))
+  actor_loss = -tf.reduce_mean(discount * returns)
+  value_pred = self._value(imag_feat)[:-1]
+  value_loss = -tf.reduce_mean(
+      discount * value_pred.log_prob(tf.stop_gradient(returns)))
+  return actor_loss, value_loss
 ```
