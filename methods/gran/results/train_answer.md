@@ -18,28 +18,23 @@ import numpy as np
 
 
 class GNN(nn.Module):
-    """Attentive GRU message passing on an augmented graph for one generation step."""
+    """Attentive GRU message passing on the augmented graph (one generation step).
+       m_ij = f(h_i - h_j); a_ij = sigmoid(g([h_i,x_i] - [h_j,x_j]));
+       the implementation carries x_i/x_j as an edge feature;
+       h_i <- GRU(h_i, sum_j a_ij m_ij). No state carried across steps."""
 
     def __init__(self, msg_dim, node_dim, edge_feat_dim,
                  num_prop=1, num_layer=7, att_hidden_dim=128):
         super().__init__()
-        self.num_prop = num_prop
-        self.num_layer = num_layer
-        self.edge_feat_dim = edge_feat_dim
+        self.num_prop, self.num_layer, self.edge_feat_dim = num_prop, num_layer, edge_feat_dim
         self.update_func = nn.ModuleList([
             nn.GRUCell(msg_dim, node_dim) for _ in range(num_layer)])
         self.msg_func = nn.ModuleList([
-            nn.Sequential(
-                nn.Linear(node_dim + edge_feat_dim, msg_dim),
-                nn.ReLU(),
-                nn.Linear(msg_dim, msg_dim))
-            for _ in range(num_layer)])
+            nn.Sequential(nn.Linear(node_dim + edge_feat_dim, msg_dim),
+                          nn.ReLU(), nn.Linear(msg_dim, msg_dim)) for _ in range(num_layer)])
         self.att_head = nn.ModuleList([
-            nn.Sequential(
-                nn.Linear(node_dim + edge_feat_dim, att_hidden_dim),
-                nn.ReLU(),
-                nn.Linear(att_hidden_dim, msg_dim),
-                nn.Sigmoid())
+            nn.Sequential(nn.Linear(node_dim + edge_feat_dim, att_hidden_dim),
+                          nn.ReLU(), nn.Linear(att_hidden_dim, msg_dim), nn.Sigmoid())
             for _ in range(num_layer)])
 
     def _prop(self, state, edge, edge_feat, layer):
@@ -60,12 +55,9 @@ class GNN(nn.Module):
         return state
 
 
-class GRAN(nn.Module):
-    """Graph Recurrent Attention Network.
-
-    Block-wise autoregressive graph generator with a GNN-attention per-step
-    conditional and a mixture-of-Bernoulli output over the block's edges.
-    """
+class GRANMixtureBernoulli(nn.Module):
+    """Block-wise auto-regressive graph generator with GNN-attention per-step
+       conditional and a mixture-of-Bernoulli output over the block's edges."""
 
     def __init__(self, max_nodes, hidden_dim=128, embedding_dim=128,
                  num_GNN_layers=7, num_GNN_prop=1, num_mix_component=20,
@@ -75,20 +67,14 @@ class GRAN(nn.Module):
         self.max_nodes = max_nodes
         self.hidden_dim = hidden_dim
         self.embedding_dim = embedding_dim
-        self.block_size = block_size
-        self.sample_stride = sample_stride
-        self.num_mix = num_mix_component
+        self.block_size = block_size            # B
+        self.sample_stride = sample_stride      # S (<= B)
+        self.num_mix = num_mix_component        # K
         self.num_canonical_order = num_canonical_order
         self.att_edge_dim = att_edge_dim
-
-        self.decoder_input = nn.Linear(max_nodes, embedding_dim)
-        self.decoder = GNN(
-            msg_dim=hidden_dim,
-            node_dim=hidden_dim,
-            edge_feat_dim=2 * att_edge_dim,
-            num_prop=num_GNN_prop,
-            num_layer=num_GNN_layers)
-
+        self.decoder_input = nn.Linear(max_nodes, embedding_dim)   # h^0 = W L_b + b
+        self.decoder = GNN(hidden_dim, hidden_dim, 2 * att_edge_dim,
+                           num_prop=num_GNN_prop, num_layer=num_GNN_layers)
         self.output_theta = nn.Sequential(
             nn.Linear(hidden_dim, hidden_dim), nn.ReLU(inplace=True),
             nn.Linear(hidden_dim, hidden_dim), nn.ReLU(inplace=True),
@@ -97,39 +83,33 @@ class GRAN(nn.Module):
             nn.Linear(hidden_dim, hidden_dim), nn.ReLU(inplace=True),
             nn.Linear(hidden_dim, hidden_dim), nn.ReLU(inplace=True),
             nn.Linear(hidden_dim, num_mix_component))
-
         pos_weight = torch.ones([1]) * edge_weight
-        self.adj_loss_func = nn.BCEWithLogitsLoss(
-            pos_weight=pos_weight, reduction='none')
+        self.adj_loss_func = nn.BCEWithLogitsLoss(pos_weight=pos_weight, reduction='none')
         self.num_nodes_pmf = None
 
     def _augmented_graph(self, A_prefix, jj, K, device):
-        """Existing subgraph plus K new nodes with fully-connected candidate edges."""
-        adj = F.pad(
-            A_prefix[:jj, :jj], (0, K, 0, K), 'constant', value=1.0)
+        adj = F.pad(A_prefix[:jj, :jj], (0, K, 0, K), 'constant', value=1.0)  # candidates = 1
         adj = torch.tril(adj, diagonal=-1)
         adj = adj + adj.transpose(0, 1)
         edges = adj.to_sparse().coalesce().indices().t()
-        att_idx = torch.cat([
-            torch.zeros(jj).long(),
-            torch.arange(1, K + 1)]).to(device).view(-1, 1)
+        att_idx = torch.cat([torch.zeros(jj).long(),
+                             torch.arange(1, K + 1)]).to(device).view(-1, 1)
         ef = torch.zeros(edges.shape[0], 2 * self.att_edge_dim, device=device)
         ef = ef.scatter(1, att_idx[edges[:, 0]], 1.0)
         ef = ef.scatter(1, att_idx[edges[:, 1]] + self.att_edge_dim, 1.0)
         return edges, ef
 
-    def _step_logits(self, node_state, edges, edge_feat, idx_row, idx_col):
-        h = self.decoder(node_state, edges, edge_feat)
+    def _step_logits(self, node_state, edges, ef, idx_row, idx_col):
+        h = self.decoder(node_state, edges, ef)
         diff = h[idx_row, :] - h[idx_col, :]
         return self.output_theta(diff), self.output_alpha(diff)
 
     def _mixture_bernoulli_logp(self, label, log_theta, log_alpha):
-        bce = torch.stack([
-            self.adj_loss_func(log_theta[:, k], label)
-            for k in range(log_theta.shape[1])], dim=1)
-        comp_logp = -bce.sum(dim=0)
+        bce = torch.stack([self.adj_loss_func(log_theta[:, k], label)
+                           for k in range(log_theta.shape[1])], dim=1)
+        comp_logp = -bce.sum(dim=0)                                # sum_e log p_k(edge_e)
         log_alpha = F.log_softmax(log_alpha.mean(dim=0), dim=-1)
-        return torch.logsumexp(comp_logp + log_alpha, dim=0)
+        return torch.logsumexp(comp_logp + log_alpha, dim=0)       # log sum_k alpha_k prod_e p_k(label_e)
 
     def _fit_num_nodes_pmf(self, node_counts, N):
         pmf = torch.zeros(N + 1, device=node_counts.device)
@@ -138,7 +118,6 @@ class GRAN(nn.Module):
         self.num_nodes_pmf = pmf / pmf.sum().clamp_min(1.0)
 
     def training_loss(self, adj, node_counts):
-        """Negative log-likelihood over canonical orderings."""
         self.train()
         device = adj.device
         B, C, N, _ = adj.shape
@@ -152,32 +131,25 @@ class GRAN(nn.Module):
             order_logps = []
             for c in range(C):
                 step_logps = []
-                for jj in range(0, n - K + 1):
+                for jj in range(0, n - K + 1):                    # stride-1 teacher forcing
                     edges, ef = self._augmented_graph(L[b, c], jj, K, device)
-                    node_state = torch.zeros(
-                        jj + K, self.embedding_dim, device=device)
+                    node_state = torch.zeros(jj + K, self.embedding_dim, device=device)
                     if jj > 0:
-                        node_state[:jj] = self.decoder_input(
-                            L[b, c, :jj, :N])
-                    ir, ic = np.meshgrid(
-                        np.arange(jj, jj + K), np.arange(jj + K))
+                        node_state[:jj] = self.decoder_input(L[b, c, :jj, :N])
+                    ir, ic = np.meshgrid(np.arange(jj, jj + K), np.arange(jj + K))
                     idx_row = torch.from_numpy(ir.reshape(-1)).long().to(device)
                     idx_col = torch.from_numpy(ic.reshape(-1)).long().to(device)
                     label = adj[b, c, idx_row, idx_col]
-                    lt, la = self._step_logits(
-                        node_state, edges, ef, idx_row, idx_col)
-                    step_logps.append(
-                        self._mixture_bernoulli_logp(label, lt, la))
+                    lt, la = self._step_logits(node_state, edges, ef, idx_row, idx_col)
+                    step_logps.append(self._mixture_bernoulli_logp(label, lt, la))
                 if step_logps:
                     order_logps.append(torch.stack(step_logps).sum())
             if order_logps:
-                graph_logps.append(
-                    torch.logsumexp(torch.stack(order_logps), dim=0))
+                graph_logps.append(torch.logsumexp(torch.stack(order_logps), dim=0))
         return -torch.stack(graph_logps).mean()
 
     @torch.no_grad()
     def sample(self, n_samples, device):
-        """Autoregressive row-block sampling."""
         self.eval()
         K, S, N = self.block_size, self.sample_stride, self.max_nodes
         A = torch.zeros(n_samples, N, N, device=device)
@@ -187,8 +159,7 @@ class GRAN(nn.Module):
             A = torch.tril(A, diagonal=-1)
             for b in range(n_samples):
                 edges, ef = self._augmented_graph(A[b], ii, K, device)
-                node_state = torch.zeros(
-                    ii + K, self.embedding_dim, device=device)
+                node_state = torch.zeros(ii + K, self.embedding_dim, device=device)
                 if ii > 0:
                     node_state[:ii] = self.decoder_input(A[b, :ii, :N])
                 ir, ic = np.meshgrid(np.arange(ii, jj), np.arange(jj))
@@ -198,18 +169,72 @@ class GRAN(nn.Module):
                 idx_row, idx_col = idx_row[keep], idx_col[keep]
                 if idx_row.numel() == 0:
                     continue
-                lt, la = self._step_logits(
-                    node_state, edges, ef, idx_row, idx_col)
-                k = torch.multinomial(
-                    F.softmax(la.mean(dim=0), -1), 1).item()
+                lt, la = self._step_logits(node_state, edges, ef, idx_row, idx_col)
+                k = torch.multinomial(F.softmax(la.mean(dim=0), -1), 1).item()
                 A[b, idx_row, idx_col] = torch.bernoulli(torch.sigmoid(lt[:, k]))
         A = torch.tril(A, diagonal=-1)
-        A = A + A.transpose(1, 2)
+        A = A + A.transpose(1, 2)                                  # A = L + L^T
         if self.num_nodes_pmf is not None:
-            node_counts = torch.multinomial(
-                self.num_nodes_pmf, n_samples, replacement=True)
+            node_counts = torch.multinomial(self.num_nodes_pmf, n_samples, replacement=True)
             node_counts = node_counts.clamp(min=2).to(device)
         else:
             node_counts = (A.sum(dim=-1) > 0).long().sum(dim=-1).clamp(min=2)
         return A, node_counts
+
+
+def mixture_bernoulli_loss(label, log_theta, log_alpha, adj_loss_func,
+                           subgraph_idx, subgraph_idx_base, num_canonical_order,
+                           sum_order_log_prob=False, return_neg_log_prob=False,
+                           reduction="mean"):
+    """Batched canonical loss: edge slots -> subgraphs -> canonical orderings -> graphs."""
+    num_subgraph = int(subgraph_idx_base[-1].item())
+    batch_size = subgraph_idx_base.shape[0] - 1
+    num_order = num_canonical_order
+    num_mix = log_theta.shape[1]
+
+    edge_bce = torch.stack(
+        [adj_loss_func(log_theta[:, k], label) for k in range(num_mix)], dim=1)
+
+    edge_count = torch.zeros(num_subgraph, device=label.device)
+    edge_count = edge_count.scatter_add(
+        0, subgraph_idx, torch.ones_like(subgraph_idx).float())
+
+    subgraph_bce = torch.zeros(num_subgraph, num_mix, device=label.device)
+    subgraph_bce = subgraph_bce.scatter_add(
+        0, subgraph_idx.unsqueeze(1).expand(-1, num_mix), edge_bce)
+
+    subgraph_alpha = torch.zeros(num_subgraph, num_mix, device=label.device)
+    subgraph_alpha = subgraph_alpha.scatter_add(
+        0, subgraph_idx.unsqueeze(1).expand(-1, num_mix), log_alpha)
+    subgraph_alpha = F.log_softmax(subgraph_alpha / edge_count.view(-1, 1), dim=-1)
+
+    subgraph_logp = torch.logsumexp(-subgraph_bce + subgraph_alpha, dim=1)
+
+    order_logp = torch.zeros(batch_size * num_order, device=label.device)
+    order_count = torch.zeros(batch_size * num_order, device=label.device)
+    subgraphs_per_graph = ((subgraph_idx_base[1:] - subgraph_idx_base[:-1]) // num_order).to(label.device)
+    order_idx = torch.repeat_interleave(
+        torch.arange(batch_size * num_order, device=label.device),
+        torch.repeat_interleave(subgraphs_per_graph, num_order))
+    order_logp = order_logp.scatter_add(0, order_idx, subgraph_logp)
+    order_count = order_count.scatter_add(0, order_idx, edge_count)
+
+    order_logp = order_logp.reshape(batch_size, num_order)
+    normalized_order_logp = (order_logp.reshape(-1) / order_count).reshape(batch_size, num_order)
+    if sum_order_log_prob:
+        graph_logp = torch.sum(order_logp, dim=1)
+        graph_loss_logp = torch.sum(normalized_order_logp, dim=1)
+    else:
+        graph_logp = torch.logsumexp(order_logp, dim=1)
+        graph_loss_logp = torch.logsumexp(normalized_order_logp, dim=1)
+
+    neg_log_prob = -2 * graph_logp
+    loss = -graph_loss_logp
+    if reduction == "mean":
+        loss, neg_log_prob = loss.mean(), neg_log_prob.mean()
+    elif reduction == "sum":
+        loss, neg_log_prob = loss.sum(), neg_log_prob.sum()
+    else:
+        assert reduction == "none"
+    return (loss, neg_log_prob) if return_neg_log_prob else loss
 ```
