@@ -13,7 +13,6 @@ Resolution is handled in two stages. The base model works at 64x64 for semantics
 ```python
 import torch as th
 
-
 def build_text_kwargs(model, prompt, batch_size, text_ctx, device, include_null=False):
     tokens = model.tokenizer.encode(prompt)
     tokens, mask = model.tokenizer.padded_tokens_and_mask(tokens, text_ctx)
@@ -27,7 +26,8 @@ def build_text_kwargs(model, prompt, batch_size, text_ctx, device, include_null=
     null_tokens, null_mask = model.tokenizer.padded_tokens_and_mask([], text_ctx)
     return dict(
         tokens=th.tensor(
-            [tokens] * batch_size + [null_tokens] * batch_size, device=device
+            [tokens] * batch_size + [null_tokens] * batch_size,
+            device=device,
         ),
         mask=th.tensor(
             [mask] * batch_size + [null_mask] * batch_size,
@@ -36,69 +36,55 @@ def build_text_kwargs(model, prompt, batch_size, text_ctx, device, include_null=
         ),
     )
 
+def model_fn(x_t, ts, **kwargs):
+    half = x_t[: len(x_t) // 2]
+    combined = th.cat([half, half], dim=0)
+    model_out = model(combined, ts, **kwargs)
+    eps, rest = model_out[:, :3], model_out[:, 3:]
+    cond_eps, uncond_eps = th.split(eps, len(eps) // 2, dim=0)
+    half_eps = uncond_eps + guidance_scale * (cond_eps - uncond_eps)
+    eps = th.cat([half_eps, half_eps], dim=0)
+    return th.cat([eps, rest], dim=1)
 
-def make_model_fn(model, guidance_scale):
-    def model_fn(x_t, ts, **kwargs):
-        half = x_t[: len(x_t) // 2]
-        combined = th.cat([half, half], dim=0)
-        model_out = model(combined, ts, **kwargs)
-        eps, rest = model_out[:, :3], model_out[:, 3:]
-        cond_eps, uncond_eps = th.split(eps, len(eps) // 2, dim=0)
-        half_eps = uncond_eps + guidance_scale * (cond_eps - uncond_eps)
-        eps = th.cat([half_eps, half_eps], dim=0)
-        return th.cat([eps, rest], dim=1)
+full_batch_size = batch_size * 2
+model_kwargs = build_text_kwargs(
+    model, prompt, batch_size, options["text_ctx"], device, include_null=True
+)
 
-    return model_fn
+model.del_cache()
+samples = diffusion.p_sample_loop(
+    model_fn,
+    (full_batch_size, 3, options["image_size"], options["image_size"]),
+    device=device,
+    clip_denoised=True,
+    progress=True,
+    model_kwargs=model_kwargs,
+    cond_fn=None,
+)[:batch_size]
+model.del_cache()
 
+with th.no_grad():
+    z_t = clip_model.text_embeddings([prompt] * batch_size)
 
-def sample_text_to_image(model, diffusion, prompt, batch_size, text_ctx,
-                         image_size, guidance_scale, device):
-    full_batch_size = batch_size * 2
-    model_kwargs = build_text_kwargs(
-        model, prompt, batch_size, text_ctx, device, include_null=True
-    )
-    model_fn = make_model_fn(model, guidance_scale)
+def cond_fn(x, t, grad_scale=clip_guidance_scale, **kwargs):
+    with th.enable_grad():
+        x_var = x.detach().requires_grad_(True)
+        z_i = clip_model.image_embeddings(x_var, t)
+        loss = th.exp(clip_model.logit_scale) * (z_t * z_i).sum()
+        grad = th.autograd.grad(loss, x_var)[0].detach()
+    return grad * grad_scale
 
-    model.del_cache()
-    samples = diffusion.p_sample_loop(
-        model_fn,
-        (full_batch_size, 3, image_size, image_size),
-        device=device,
-        clip_denoised=True,
-        progress=True,
-        model_kwargs=model_kwargs,
-        cond_fn=None,
-    )[:batch_size]
-    model.del_cache()
-    return samples
-
-
-def sample_clip_guided(model, diffusion, clip_model, prompt, batch_size,
-                       text_ctx, image_size, clip_guidance_scale, device):
-    with th.no_grad():
-        z_t = clip_model.text_embeddings([prompt] * batch_size)
-
-    def cond_fn(x, t, grad_scale=clip_guidance_scale, **kwargs):
-        with th.enable_grad():
-            x_var = x.detach().requires_grad_(True)
-            z_i = clip_model.image_embeddings(x_var, t)
-            loss = th.exp(clip_model.logit_scale) * (z_t * z_i).sum()
-            grad = th.autograd.grad(loss, x_var)[0].detach()
-        return grad * grad_scale
-
-    model_kwargs = build_text_kwargs(
-        model, prompt, batch_size, text_ctx, device, include_null=False
-    )
-    return diffusion.p_sample_loop(
-        model,
-        (batch_size, 3, image_size, image_size),
-        device=device,
-        clip_denoised=True,
-        progress=True,
-        model_kwargs=model_kwargs,
-        cond_fn=cond_fn,
-    )
-
+clip_guided = diffusion.p_sample_loop(
+    model,
+    (batch_size, 3, options["image_size"], options["image_size"]),
+    device=device,
+    clip_denoised=True,
+    progress=True,
+    model_kwargs=build_text_kwargs(
+        model, prompt, batch_size, options["text_ctx"], device
+    ),
+    cond_fn=cond_fn,
+)
 
 def build_upsample_kwargs(model_up, prompt, low_res, batch_size, text_ctx, device):
     tokens = model_up.tokenizer.encode(prompt)
@@ -109,60 +95,45 @@ def build_upsample_kwargs(model_up, prompt, low_res, batch_size, text_ctx, devic
         mask=th.tensor([mask] * batch_size, dtype=th.bool, device=device),
     )
 
+upsample_kwargs = build_upsample_kwargs(
+    model_up, prompt, samples, batch_size, options_up["text_ctx"], device
+)
+up_shape = (batch_size, 3, options_up["image_size"], options_up["image_size"])
 
-def upsample_image(model_up, diffusion_up, prompt, low_res, batch_size,
-                   text_ctx, image_size, upsample_temp, device):
-    upsample_kwargs = build_upsample_kwargs(
-        model_up, prompt, low_res, batch_size, text_ctx, device
-    )
-    up_shape = (batch_size, 3, image_size, image_size)
+model_up.del_cache()
+up_samples = diffusion_up.ddim_sample_loop(
+    model_up,
+    up_shape,
+    noise=th.randn(up_shape, device=device) * upsample_temp,
+    device=device,
+    clip_denoised=True,
+    progress=True,
+    model_kwargs=upsample_kwargs,
+    cond_fn=None,
+)[:batch_size]
+model_up.del_cache()
 
-    model_up.del_cache()
-    up_samples = diffusion_up.ddim_sample_loop(
-        model_up,
-        up_shape,
-        noise=th.randn(up_shape, device=device) * upsample_temp,
-        device=device,
-        clip_denoised=True,
-        progress=True,
-        model_kwargs=upsample_kwargs,
-        cond_fn=None,
-    )[:batch_size]
-    model_up.del_cache()
-    return up_samples
+model_kwargs.update(
+    inpaint_image=(source_image_64 * source_mask_64)
+    .repeat(full_batch_size, 1, 1, 1)
+    .to(device),
+    inpaint_mask=source_mask_64.repeat(full_batch_size, 1, 1, 1).to(device),
+)
 
-
-def sample_inpaint(model, diffusion, prompt, source_image, source_mask,
-                   batch_size, text_ctx, image_size, guidance_scale, device):
-    full_batch_size = batch_size * 2
-    model_kwargs = build_text_kwargs(
-        model, prompt, batch_size, text_ctx, device, include_null=True
-    )
-    model_kwargs.update(
-        inpaint_image=(source_image * source_mask)
-        .repeat(full_batch_size, 1, 1, 1)
-        .to(device),
-        inpaint_mask=source_mask.repeat(full_batch_size, 1, 1, 1).to(device),
+def denoised_fn(x_start):
+    return (
+        x_start * (1 - model_kwargs["inpaint_mask"])
+        + model_kwargs["inpaint_image"] * model_kwargs["inpaint_mask"]
     )
 
-    def denoised_fn(x_start):
-        return (
-            x_start * (1 - model_kwargs["inpaint_mask"])
-            + model_kwargs["inpaint_image"] * model_kwargs["inpaint_mask"]
-        )
-
-    model_fn = make_model_fn(model, guidance_scale)
-    model.del_cache()
-    edited = diffusion.p_sample_loop(
-        model_fn,
-        (full_batch_size, 3, image_size, image_size),
-        device=device,
-        clip_denoised=True,
-        progress=True,
-        model_kwargs=model_kwargs,
-        cond_fn=None,
-        denoised_fn=denoised_fn,
-    )[:batch_size]
-    model.del_cache()
-    return edited
+edited = diffusion.p_sample_loop(
+    model_fn,
+    (full_batch_size, 3, options["image_size"], options["image_size"]),
+    device=device,
+    clip_denoised=True,
+    progress=True,
+    model_kwargs=model_kwargs,
+    cond_fn=None,
+    denoised_fn=denoised_fn,
+)[:batch_size]
 ```
