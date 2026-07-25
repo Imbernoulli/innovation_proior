@@ -35,24 +35,14 @@ Example: for the four beacons `(2,0), (0,2), (-2,0), (0,-2)` the answer is `4` (
 
 The signed sweep `x_i*y_j - x_j*y_i` is the standard orientation primitive of computational
 geometry: its sign tells you whether a triple turns left, straight, or right, and its magnitude is
-twice the triangle area. Two angles of attack are on the table before committing:
-
-- **Sort by polar angle, then pair extremes.** Intuitively the largest counter-clockwise sweep
-  should pair the "most clockwise" direction with the "most counter-clockwise" direction. Sorting by
-  `atan2(y, x)` is `O(n log n)`; the open question is whether the angular extremes actually maximize
-  `x_i*y_j - x_j*y_i` subject to `i < j`, and whether floating-point angle comparisons stay exact.
-- **Direct enumeration.** With `n <= 2000` there are at most about `2*10^6` ordered pairs, so simply
-  evaluating `sweep(i, j)` for every `i < j` and taking the maximum is `O(n^2)` and uses only
-  integer arithmetic. The open question is purely transcription: the initial value of the running
-  maximum, the loop bounds, and the data type.
+twice the triangle area.
 
 ## Evaluation settings
 
 Judged on hidden tests covering: pairs whose maximum sweep is strictly positive; configurations
 where every ordered pair is clockwise so the maximum sweep is negative; collinear / zero-coordinate
 beacons producing zero sweeps; `n = 0` and `n = 1` (must print `NONE`); duplicated points; and
-near-maximum coordinates (`|x|, |y| ~ 10^6`) so a single product `x_i*y_j` reaches `10^12` and a
-32-bit accumulator silently overflows.
+near-maximum coordinates (`|x|, |y| ~ 10^6`).
 
 ## Code framework
 
