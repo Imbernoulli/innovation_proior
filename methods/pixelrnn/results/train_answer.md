@@ -30,7 +30,7 @@ The concrete architecture is as follows. The first layer is a 7×7 masked convol
 
 Training maximizes the exact log-likelihood. Because all true pixels are known, every conditional is computed in parallel in one forward pass, and the loss is simply the 256-way cross-entropy between the predicted distribution and the true discrete pixel value. Generation is sequential: starting from a blank canvas, I draw each pixel in raster order and feed the sampled value back into the model before moving to the next position.
 
-Below is a compact, runnable PyTorch illustration of the masked convolution that enforces causality, together with a tiny PixelCNN and a small demonstration that a single input pixel only influences output positions that come after it in raster order.
+Below is the complete implementation: the masked convolution that enforces causality, a PixelCNN built by stacking it, the Row LSTM module that reuses the same masked convolution for its input-to-state gates, the training loop that turns the exact likelihood into a 256-way cross-entropy computed in parallel over every pixel, and the sequential sampling routine that feeds each generated pixel back into the network.
 
 ```python
 import torch
@@ -44,54 +44,60 @@ class MaskedConv2d(nn.Conv2d):
         self.register_buffer('mask', self.weight.data.clone())
         _, _, kH, kW = self.weight.size()
         self.mask.fill_(1)
-        # center row: zero center pixel for mask A, keep it for mask B; zero everything to the right
-        self.mask[:, :, kH // 2, kW // 2 + (mask_type == 'B'):] = 0
-        # rows below the center are future pixels
-        self.mask[:, :, kH // 2 + 1:] = 0
-
+        self.mask[:, :, kH // 2, kW // 2 + (mask_type == 'B'):] = 0   # center row: self (A) / future
+        self.mask[:, :, kH // 2 + 1:] = 0                            # rows below center: future
     def forward(self, x):
         self.weight.data *= self.mask
         return super().forward(x)
 
 
-class TinyPixelCNN(nn.Module):
-    def __init__(self, in_ch=1, hidden=16, out_ch=256):
+# PixelCNN: stack of masked convs, resolution preserved, 256-way head
+fm = 128
+pixelcnn = nn.Sequential(
+    MaskedConv2d('A', 1, fm, 7, 1, 3, bias=False), nn.BatchNorm2d(fm), nn.ReLU(True),
+    *[m for _ in range(7) for m in (
+        MaskedConv2d('B', fm, fm, 7, 1, 3, bias=False), nn.BatchNorm2d(fm), nn.ReLU(True))],
+    nn.Conv2d(fm, 256, 1))
+
+
+class RowLSTM(nn.Module):
+    def __init__(self, h, k=3):
         super().__init__()
-        self.net = nn.Sequential(
-            MaskedConv2d('A', in_ch, hidden, 7, padding=3, bias=False),
-            nn.ReLU(inplace=True),
-            MaskedConv2d('B', hidden, hidden, 3, padding=1, bias=False),
-            nn.ReLU(inplace=True),
-            MaskedConv2d('B', hidden, hidden, 3, padding=1, bias=False),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(hidden, out_ch, 1, bias=False)
-        )
+        self.input_to_state = MaskedConv2d('B', h, 4 * h, (k, 1), 1, (k // 2, 0))
+        self.state_to_state = nn.Conv1d(h, 4 * h, k, padding=k // 2)
+        self.h = h
+    def forward(self, x):                      # x: [B, h, H, W]
+        gates_is = self.input_to_state(x)
+        B, _, H, W = x.shape
+        h_prev = x.new_zeros(B, self.h, W); c_prev = x.new_zeros(B, self.h, W)
+        outs = []
+        for i in range(H):
+            g = gates_is[:, :, i] + self.state_to_state(h_prev)
+            o, f, ii, gg = g.chunk(4, dim=1)
+            c_prev = torch.sigmoid(f) * c_prev + torch.sigmoid(ii) * torch.tanh(gg)
+            h_prev = torch.sigmoid(o) * torch.tanh(c_prev)
+            outs.append(h_prev)
+        return torch.stack(outs, dim=2)        # [B, h, H, W]
 
-    def forward(self, x):
-        return self.net(x)
+
+# training: exact likelihood as 256-way cross-entropy, conditionals in parallel
+optimizer = torch.optim.Adam(pixelcnn.parameters())
+for img in loader:                             # img in [0,1], shape [B,1,H,W]
+    target = (img[:, 0] * 255).long()          # discrete target in {0..255}
+    logits = pixelcnn(img)                     # [B, 256, H, W]
+    loss = F.cross_entropy(logits, target)
+    optimizer.zero_grad(); loss.backward(); optimizer.step()
 
 
-if __name__ == "__main__":
-    torch.manual_seed(0)
-    model = TinyPixelCNN()
-    model.eval()
-
-    H, W = 8, 8
-    x = torch.zeros(1, 1, H, W)
-    x[0, 0, 3, 3] = 1.0  # single non-zero pixel at position (3, 3)
-
-    with torch.no_grad():
-        out = model(x)
-
-    affected = []
-    for pos in range(H * W):
-        i, j = pos // W, pos % W
-        if out[0, :, i, j].abs().max().item() > 1e-6:
-            affected.append((pos, i, j))
-
-    print("First affected output position:", affected[0])
-    print("All affected positions after (3, 3) (index 27):",
-          all(pos > 27 for pos, _, _ in affected))
+# generation: sequential, feed each sampled pixel back in
+@torch.no_grad()
+def sample(net, n, H, W):
+    x = torch.zeros(n, 1, H, W)
+    for r in range(H):
+        for c in range(W):
+            probs = F.softmax(net(x)[:, :, r, c], dim=1)
+            x[:, 0, r, c] = torch.multinomial(probs, 1).float() / 255.
+    return x
 ```
 
-The output of this script lists the first affected output position as (3, 4), which is the next pixel in raster order, and confirms that no output position before (3, 3) is influenced by that input pixel. This is the causal wiring that lets PixelRNN and PixelCNN turn an intractable high-dimensional density into a sequence of tractable, exactly evaluable conditionals.
+The `MaskedConv2d` is exactly the masked-convolution idea argued above, encoded as a buffer multiplied into the weights before every forward pass, so mask type A blocks the center pixel (used only on the raw input) and mask type B keeps it (safe everywhere after that first layer). Stacking eight of these with resolution preserved throughout, no pooling, and a final `1×1` convolution to 256 logits per pixel gives the PixelCNN. The `RowLSTM` module makes the input-to-state contribution for all four gates in one masked convolution over the whole map, then walks down the rows applying the state-to-state convolution and the ordinary LSTM update, exactly the recurrence written out earlier. Training is a single forward pass per image: the true pixel values become the classification target and the loss is the 256-way cross-entropy summed over every position at once, since every conditional is legally computable in parallel when the ground truth is known. Sampling cannot enjoy that parallelism — it walks the image in raster order, row by row and column by column, drawing each pixel from its 256-way softmax and writing the drawn value back into the input tensor before the network is asked to predict the next position. This loop is the same causal wiring in the other direction: the network never gets to see a pixel before it has been generated, so the samples it produces are draws from the exact model it was trained to maximize the likelihood of.

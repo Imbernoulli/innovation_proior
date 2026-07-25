@@ -18,92 +18,20 @@ Monotone DNF shows that the progress engine can also build a recognizer upward r
 
 The boundary of the model is just as informative as the positive results. Unrestricted DNF over partial vectors is not known to be efficiently learnable in this sense, because testing whether a partial vector forces a DNF formula includes the tautology problem. That separation is what makes PAC learning a complexity-theoretic boundary rather than a vague claim that examples help. Some Boolean classes admit polynomial sample and time bounds, while others inherit computational obstacles that prevent a generic efficient learner.
 
-The broader lesson is that learning becomes a theorem about progress through random examples. High error is not merely a failure to generalize; it is probability mass that makes the next example useful. By counting possible repairs and bounding the trials needed to see enough of them, PAC learning turns induction into a quantitative, computational statement. The code below simulates the deletion algorithm for general conjunctions: it samples positives from a hidden target conjunction, deletes every literal falsified by those positives, and checks that the final hypothesis is approximately correct under the same distribution.
+The broader lesson is that learning becomes a theorem about progress through random examples. High error is not merely a failure to generalize; it is probability mass that makes the next example useful. By counting possible repairs and bounding the trials needed to see enough of them, PAC learning turns induction into a quantitative, computational statement. What this packages into, concretely, is a single class-indexed protocol together with its sample-complexity certificate.
 
-```python
-import random
-import math
+For fixed clause width $k$ over $t$ Boolean variables, initialize the hypothesis $g$ as the conjunction of every clause with at most $k$ literals, so that
 
+$$
+|g| \;<\; (2t)^{k+1}.
+$$
 
-def learn_conjunction(n, examples):
-    """Delete literals falsified by any positive example."""
-    # Literals 0..n-1 are x_0..x_{n-1}; n..2n-1 are not x_i.
-    alive = set(range(2 * n))
-    for assignment in examples:
-        falsified = [idx for idx in alive if assignment[idx % n] != (idx < n)]
-        alive.difference_update(falsified)
+On each random positive example $x \sim D$, delete from $g$ every clause that $x$ falsifies — a safe deletion, since no clause of the target is ever falsified by a true positive of the target — and repeat. Conjunctions are the case $k=1$, where the removable objects are literals rather than clauses and $|g| < 2t$. Because $g$ can lose at most $S = (2t)^{k+1}$ clauses in total, the progress bound
 
-    def hypothesis(assignment):
-        for idx in alive:
-            if assignment[idx % n] != (idx < n):
-                return False
-        return True
+$$
+L(h,S) \;\le\; 2h\,(S + \ln h)
+$$
 
-    return hypothesis
+gives the number of examples after which, with probability at least $1 - 1/h$, either every unsafe clause has already been deleted or the remaining rejected-positive mass under $D$ is below $1/h$. Choosing $h$ appropriately in terms of $\epsilon$ and $\delta$ — Valiant's original notation folds the two tolerances into this one parameter — turns the bound into an $(\epsilon,\delta)$-PAC learner for $k$-CNF that runs in time polynomial in $t$, $1/\epsilon$, and $1/\delta$.
 
-
-def random_target(n):
-    """Generate a satisfiable conjunction of literals."""
-    target = set(range(2 * n))
-    for i in range(n):
-        r = random.random()
-        if r < 0.3:
-            # variable absent from target
-            target.discard(i)
-            target.discard(n + i)
-        elif r < 0.65:
-            target.discard(n + i)  # keep x_i
-        else:
-            target.discard(i)      # keep not x_i
-    if not target:
-        target.add(random.randrange(2 * n))
-
-    def target_func(assignment):
-        for idx in target:
-            if assignment[idx % n] != (idx < n):
-                return False
-        return True
-
-    return target_func, target
-
-
-def sample_positives(target, n, m):
-    """Rejection-sample m positive examples uniformly."""
-    out = []
-    while len(out) < m:
-        a = [random.randint(0, 1) for _ in range(n)]
-        if target(a):
-            out.append(a)
-    return out
-
-
-def empirical_error(target, hypothesis, n, trials=20000):
-    """Estimate Pr[h rejects | target accepts] under uniform distribution."""
-    positives = errors = 0
-    for _ in range(trials):
-        a = [random.randint(0, 1) for _ in range(n)]
-        if not target(a):
-            continue
-        positives += 1
-        if not hypothesis(a):
-            errors += 1
-    return errors / positives if positives else 0.0
-
-
-def one_trial(n, epsilon, delta):
-    target, _ = random_target(n)
-    # Finite-class PAC bound: m >= (1/epsilon)(ln|H| + ln(1/delta)).
-    m = math.ceil((1.0 / epsilon) * (math.log(3 ** n) + math.log(1.0 / delta)))
-    examples = sample_positives(target, n, m)
-    hypothesis = learn_conjunction(n, examples)
-    return empirical_error(target, hypothesis, n)
-
-
-if __name__ == "__main__":
-    n, epsilon, delta = 8, 0.05, 0.05
-    errors = [one_trial(n, epsilon, delta) for _ in range(100)]
-    mean_err = sum(errors) / len(errors)
-    print(f"n={n}, epsilon={epsilon}, delta={delta}")
-    print(f"sample size m={math.ceil((1/epsilon)*(math.log(3**n)+math.log(1/delta)))}")
-    print(f"empirical error mean={mean_err:.4f}, max={max(errors):.4f}")
-```
+The same engine runs in reverse for monotone DNF of degree $d$: start from $g = \mathrm{false}$, and whenever a positive example escapes $g$, use the membership oracle to strip its inessential coordinates down to a prime implicant and add that monomial to $g$. Since a monotone target has at most $d$ prime implicants, $L(h,d)$ examples and at most $dt$ oracle calls suffice. This pair — delete-until-safe for bounded-width conjunctive structure, build-until-complete for monotone disjunctive structure, both driven by the same $L(h,S) \le 2h(S+\ln h)$ certificate — is the deliverable: a general recipe for turning a polynomial bound on the number of possible safe repairs into a polynomial bound on the number of random examples a distribution-free, feasible learner needs.
