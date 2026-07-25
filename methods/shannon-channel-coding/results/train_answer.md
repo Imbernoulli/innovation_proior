@@ -14,60 +14,16 @@ A particularly important special case is the additive white Gaussian noise chann
 
 The theorem is an existence result, not a recipe. It tells us that good long codes exist, but it does not tell us how to find them or how to decode them efficiently. Decoding by exhaustive search over an exponentially large codebook is computationally infeasible. Modern coding theory, from Hamming and Reed-Solomon codes to turbo codes, low-density parity-check codes, and polar codes, can be seen as the ongoing project of finding codes that approach capacity while admitting efficient encoding and decoding algorithms.
 
-```python
-import numpy as np
+I would emphasize the conceptual status of the result before stating it in final form. Shannon's channel coding theorem identifies capacity as the fundamental figure of merit for a noisy channel, separating what is information-theoretically possible from what is practically convenient: below capacity, the world of long random-like codes contains reliable communication schemes even though we may not know how to implement them efficiently, and above capacity the data-processing inequality and the memoryless structure of the channel make reliable communication impossible. This is the foundation of modern information theory, and it deserves to be recorded precisely. For a discrete memoryless channel with transition law $W(y\mid x)$, define the mutual information induced by an input distribution $p(x)$ as
 
-def mutual_information_bsc(p0, eps):
-    """I(X;Y) for a binary symmetric channel with P(X=0)=p0."""
-    W = np.array([[1 - eps, eps], [eps, 1 - eps]])  # W[y, x]
-    px = np.array([p0, 1 - p0])
-    py = W @ px
-    mi = 0.0
-    for x in range(2):
-        for y in range(2):
-            if W[y, x] > 0:
-                mi += px[x] * W[y, x] * np.log2(W[y, x] / py[y])
-    return mi
+$$I(X;Y) = H(X) - H(X\mid Y) = H(Y) - H(Y\mid X),$$
 
-eps = 0.1
-ps = np.linspace(0.001, 0.999, 999)
-mis = [mutual_information_bsc(p0, eps) for p0 in ps]
-capacity = max(mis)
-best_p = ps[mis.index(capacity)]
-print(f"Capacity C ≈ {capacity:.4f} bits/channel use")
-print(f"Capacity-achieving input: P(X=0) ≈ {best_p:.4f}")
+and define the channel capacity as
 
-def simulate_random_code(n, R, eps, num_trials=200):
-    """Estimate block-error rate of a random code with ML decoding."""
-    M = max(2, int(round(2 ** (n * R))))
-    px0 = 0.5
-    errors = 0
-    for _ in range(num_trials):
-        codebook = (np.random.rand(M, n) > px0).astype(int)
-        message = np.random.randint(M)
-        sent = codebook[message]
-        received = (sent + (np.random.rand(n) < eps).astype(int)) % 2
-        # Minimum Hamming-distance (ML for BSC) decoder.
-        distances = np.sum((codebook - received) % 2, axis=1)
-        decoded = np.argmin(distances)
-        if decoded != message:
-            errors += 1
-    return errors / num_trials
+$$C = \max_{p(x)} I(X;Y).$$
 
-np.random.seed(0)
+The theorem states that every rate $R < C$ is reliably achievable: for all sufficiently large block length $n$ there exists a code of length $n$ with $M = \lceil 2^{nR}\rceil$ codewords, built from the random-coding and joint-typicality argument above and refined by expurgation, whose maximal decoding error probability can be made smaller than any $\epsilon > 0$. Conversely, no rate $R > C$ is reliably achievable: every sequence of length-$n$, rate-$R$ codes with $R > C$ has a decoding error probability bounded away from zero, because $nR \le I(M;Y^n) + o(n) \le nC + o(n)$ forces $R \le C$ in the limit. For the band-limited additive white Gaussian noise channel of bandwidth $W$, signal power $P$, and noise power $N$, this same maximization evaluates in closed form to
 
-# Rate safely below capacity: error probability should be small.
-n = 15
-R_below = 0.30
-err_below = simulate_random_code(n, R_below, eps)
-print(f"Below capacity: R={R_below:.2f}, n={n}, block-error rate ≈ {err_below:.3f}")
+$$C = W\log_2\!\left(1 + \frac{P}{N}\right) \text{ bits per second.}$$
 
-# Rate above capacity: error probability should be large.
-R_above = 0.60
-err_above = simulate_random_code(n, R_above, eps)
-print(f"Above capacity: R={R_above:.2f}, n={n}, block-error rate ≈ {err_above:.3f}")
-
-print(f"Capacity threshold: C ≈ {capacity:.4f}")
-```
-
-I would conclude by emphasizing the conceptual status of the theorem. Shannon's channel coding theorem identifies capacity as the fundamental figure of merit for a noisy channel. It separates what is information-theoretically possible from what is practically convenient. Below capacity, the world of long random-like codes contains reliable communication schemes even though we may not know how to implement them efficiently. Above capacity, the data-processing inequality and the memoryless structure of the channel make reliable communication impossible. This is the foundation of modern information theory, and it is why the canonical method is called Shannon's channel coding theorem.
+Capacity, not any particular codeword construction, is the discovery: it is the sharp number below which reliable communication is always possible and above which it is never possible, and this threshold — together with the achievability and converse arguments that pin it down — is the finished result.
