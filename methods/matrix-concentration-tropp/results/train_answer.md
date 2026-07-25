@@ -38,68 +38,20 @@ where sigma^2 = ||sum_k E X_k^2||. For positive semidefinite summands bounded in
 
 The method's canonical name is matrix concentration inequalities via Lieb cumulants, or Tropp-style matrix concentration. It is the natural noncommutative analogue of the scalar Laplace-transform method: the trace exponential provides the scalar functional, Lieb's concavity theorem provides additivity of cumulants, and the variance matrices are summed before any spectral norm is applied.
 
-```python
-import numpy as np
+The final form of the result is the master tail bound together with its most useful corollaries. For independent self-adjoint matrices $X_1,\dots,X_n$ with each conditional mgf bounded by $\mathbb{E}\exp(\theta X_k) \preceq \exp(g(\theta) A_k)$, the master inequality is
 
-def operator_norm(A):
-    return np.linalg.norm(A, ord=2)
+$$\mathbb{P}\{\lambda_{\max}(Y) \ge t\} \le \inf_{\theta>0} \exp(-\theta t)\,\operatorname{tr}\exp\Big(\sum_k \log \mathbb{E}\exp(\theta X_k)\Big) \le d \inf_{\theta>0} \exp\big(-\theta t + g(\theta)\,\lambda_{\max}(\textstyle\sum_k A_k)\big).$$
 
-def matrix_berstein_bound(d, sigma2, R, t):
-    """Tropp matrix Bernstein upper tail, scalarized worst-case form."""
-    return d * np.exp(-(t**2 / 2.0) / (sigma2 + R * t / 3.0))
+For a Gaussian or Rademacher series $\sum_k \xi_k A_k$ with fixed self-adjoint $A_k$, the subgaussian estimate $g(\theta) = \theta^2/2$, $A_k \to A_k^2$ turns this into
 
-np.random.seed(0)
+$$\mathbb{P}\{\lambda_{\max}(\textstyle\sum_k \xi_k A_k) \ge t\} \le d\exp\!\left(-\frac{t^2}{2\,\|\sum_k A_k^2\|}\right),$$
 
-# Example: sum of n independent random rank-1 perturbations.
-# Each summand is X_k = xi_k * A_k where xi_k is Rademacher +/-1
-# and A_k = u_k u_k^T for a fixed unit vector u_k.
-n = 80
-d = 5
+and for a rectangular series $\sum_k \xi_k B_k$ the self-adjoint dilation converts this into
 
-# Build deterministic rank-1 matrices A_k = u_k u_k^T with unit vectors u_k.
-U = np.random.randn(d, n)
-U /= np.linalg.norm(U, axis=0, keepdims=True)
-A = [np.outer(U[:, k], U[:, k]) for k in range(n)]
+$$\mathbb{P}\{\|\textstyle\sum_k \xi_k B_k\| \ge t\} \le (d_1+d_2)\exp\!\left(-\frac{t^2}{2\sigma^2}\right), \qquad \sigma^2 = \max\Big\{\big\|\textstyle\sum_k B_k B_k^*\big\|,\ \big\|\textstyle\sum_k B_k^* B_k\big\|\Big\}.$$
 
-# Variance matrix: sum_k A_k^2 = sum_k (u_k u_k^T)^2 = sum_k u_k u_k^T = U U^T.
-Var = sum(Ak @ Ak for Ak in A)
-sigma2 = operator_norm(Var)
-R = 1.0  # each rank-1 matrix has spectral norm 1
+For centered summands with $\mathbb{E}X_k = 0$ and $\lambda_{\max}(X_k) \le R$ almost surely, the exponential-remainder estimate on $[-R,R]$ gives the matrix Bernstein bound
 
-# Monte Carlo: sample Rademacher signs and estimate the tail.
-n_trials = 100_000
-t = 12.0
-exceed = 0
-samples = []
-for _ in range(n_trials):
-    xi = np.random.choice([-1.0, 1.0], size=n)
-    Y = sum(xi[k] * A[k] for k in range(n))
-    lam_max = np.linalg.eigvalsh(Y)[-1]
-    samples.append(lam_max)
-    if lam_max >= t:
-        exceed += 1
+$$\mathbb{P}\{\lambda_{\max}(\textstyle\sum_k X_k) \ge t\} \le d\exp\!\left(-\frac{t^2/2}{\sigma^2 + Rt/3}\right), \qquad \sigma^2 = \Big\|\sum_k \mathbb{E}X_k^2\Big\|,$$
 
-empirical_tail = exceed / n_trials
-bound_tail = matrix_berstein_bound(d, sigma2, R, t)
-
-print(f"dimension d = {d}, n = {n}")
-print(f"empirical mean of lambda_max(Y) = {np.mean(samples):.4f}")
-print(f"empirical std of lambda_max(Y)  = {np.std(samples):.4f}")
-print(f"variance parameter sigma^2 = ||sum_k A_k^2|| = {sigma2:.4f}")
-print(f"threshold t = {t}")
-print(f"empirical P(lambda_max(Y) >= t) = {empirical_tail:.6f}")
-print(f"matrix Bernstein bound          = {bound_tail:.6e}")
-
-# Sanity check: Gaussian/Rademacher series variance matches direct formula.
-# For this construction sum_k A_k^2 = U U^T, whose eigenvalues are the same
-# as the Gram matrix U^T U. Verify numerically.
-gram = U.T @ U
-print(f"eigenvalues of U U^T (top 5) = {np.linalg.eigvalsh(Var)[-5:][::-1]}")
-print(f"eigenvalues of U^T U (top 5) = {np.linalg.eigvalsh(gram)[-5:][::-1]}")
-
-# Demonstrate the improved scale: compare lambda_max(sum_k A_k^2) vs
-# sum_k lambda_max(A_k^2). For rank-1 matrices A_k^2 = A_k, so the latter is n.
-print(f"lambda_max(sum_k A_k^2) = {sigma2:.4f}")
-print(f"sum_k lambda_max(A_k^2) = {sum(operator_norm(Ak @ Ak) for Ak in A):.4f}")
-print("The summed variance scale is much smaller than the peeled maximum scale.")
-```
+and for positive semidefinite summands bounded in $[0,R]$, the same calculus with a chord bound on $\exp(\theta x)$ produces the matrix Chernoff upper and lower tails in terms of the eigenvalues of $\sum_k \mathbb{E}X_k$. In every one of these corollaries the dimension $d$ (or $d_1+d_2$) is the only trace of ambient dimension, and it enters as a polynomial prefactor rather than inside the exponent — the entire content of the Lieb-cumulant argument is that the exponent depends on the matrices only through $\lambda_{\max}$ of their summed variance, never through a sum of per-summand eigenvalues.
