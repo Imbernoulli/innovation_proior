@@ -16,9 +16,9 @@ from torch.nn import Sequential as Seq, Linear, ReLU, LayerNorm
 
 _INF = 1 + 1e10
 
+# ----- utilities -----
 def scatter_sum(src, index, dim, dim_size):
-    shape = list(src.shape)
-    shape[dim] = dim_size
+    shape = list(src.shape); shape[dim] = dim_size
     out = src.new_zeros(shape)
     return out.index_add_(dim, index, src)
 
@@ -31,14 +31,29 @@ class MLP(nn.Module):
         super().__init__()
         mods, d = [], in_dim
         for _ in range(hidden_layers):
-            mods += [Linear(d, latent_dim), ReLU()]
-            d = latent_dim
+            mods += [Linear(d, latent_dim), ReLU()]; d = latent_dim
         mods += [Linear(d, out_dim)]
         if layer_norm:
             mods += [LayerNorm(out_dim, elementwise_affine=False)]
         self.seq = Seq(*mods)
     def forward(self, x):
         return self.seq(x)
+
+# ----- bi-stride pooling / multi-level preprocessing -----
+def bstride_selection(graph, pos, num_nodes):
+    """BFS-frontier-parity pooling -> 2-CC; rebuild coarse edges with (A+I)^2."""
+    adj = graph.get_sparse_adj_mat(); adj.setdiag(1)      # self-looped material adjacency
+    seeds = nearest_center_seed(pos, graph.clusters)      # one seed per connected component
+    kept = set()
+    for seed, c in zip(seeds, graph.clusters):
+        dist = graph.bfs_dist(seed)
+        even = {i for i, d in enumerate(dist) if d != _INF and d % 2 == 0}
+        odd  = {i for i, d in enumerate(dist) if d != _INF and d % 2 == 1}
+        kept |= even if (len(even) <= len(odd) or not odd) else odd   # smaller set -> balanced
+    kept = sorted(kept)
+    adj = adj.tocsr().astype(float)
+    adj = adj @ adj; adj.setdiag(0)                       # direct and two-hop edges, no self-loops
+    return kept, pool_edge(adj, num_nodes, kept)          # restrict to [kept, kept] and reindex
 
 def nearest_center_seed(pos, clusters):
     seeds = []
@@ -47,47 +62,32 @@ def nearest_center_seed(pos, clusters):
         seeds.append(c[int(np.argmin(np.linalg.norm(pos[c] - center, axis=-1)))])
     return seeds
 
-def bstride_selection(graph, pos, num_nodes):
-    """BFS-parity pooling -> 2-CC; rebuild coarse edges with (A+I)^2."""
-    adj = graph.get_sparse_adj_mat()
-    adj.setdiag(1)
-    seeds = nearest_center_seed(pos, graph.clusters)
-    kept = set()
-    for seed in seeds:
-        dist = graph.bfs_dist(seed)
-        even = {i for i, d in enumerate(dist) if d != _INF and d % 2 == 0}
-        odd = {i for i, d in enumerate(dist) if d != _INF and d % 2 == 1}
-        kept |= even if (len(even) <= len(odd) or not odd) else odd
-    kept = sorted(kept)
-    adj = adj.tocsr().astype(float)
-    adj = adj @ adj
-    adj.setdiag(0)
-    return kept, pool_edge(adj, num_nodes, kept)
-
+# ----- one message-passing round -----
 class GMP(nn.Module):
     def __init__(self, latent_dim, hidden_layer, pos_dim):
         super().__init__()
-        self.mlp_edge = MLP(2 * latent_dim + pos_dim + 1, latent_dim, latent_dim, hidden_layer)
-        self.mlp_node = MLP(2 * latent_dim, latent_dim, latent_dim, hidden_layer)
+        self.mlp_edge = MLP(2*latent_dim + pos_dim + 1, latent_dim, latent_dim, hidden_layer)
+        self.mlp_node = MLP(2*latent_dim, latent_dim, latent_dim, hidden_layer)
     def forward(self, x, g, pos):
         i, j = g[0], g[1]
-        offset = pos[i] - pos[j]
-        fiber = torch.cat([offset, offset.norm(dim=-1, keepdim=True)], dim=-1)
-        e = self.mlp_edge(torch.cat([fiber, x[i], x[j]], dim=-1))
+        offset = pos[i] - pos[j]                                    # relative geometry only
+        fiber  = torch.cat([offset, offset.norm(dim=-1, keepdim=True)], dim=-1)
+        e = self.mlp_edge(torch.cat([fiber, x[i], x[j]], dim=-1))   # e_ij = f(dx, v_i, v_j)
         aggr = scatter_sum(e, j, dim=-2, dim_size=x.shape[-2])
-        return x + self.mlp_node(torch.cat([x, aggr], dim=-1))
+        return x + self.mlp_node(torch.cat([x, aggr], dim=-1))      # residual node update
 
+# ----- weighted, non-parametric transition -----
 class WeightedEdgeConv(nn.Module):
     @torch.no_grad()
     def cal_ew(self, w, g):
         i, j = g[0], g[1]
-        normed_w = w.squeeze(-1) / degree(i, w.shape[0])
-        w_to_send = normed_w[i]
+        normed_w = w.squeeze(-1) / degree(i, w.shape[0])                # row-normalized sender weights
+        w_to_send = normed_w[i]                                          # w_hat_ij
         aggr_w = scatter_sum(w_to_send, j, dim=-1, dim_size=normed_w.size(0)) + 1e-12
-        return w_to_send / aggr_w[j], aggr_w
+        return w_to_send / aggr_w[j], aggr_w                            # C_ij, aggregated weight
     def forward(self, x, g, ew, aggregating=True):
         i, j = g[0], g[1]
-        src = x[i] if aggregating else x[j]
+        src = x[i] if aggregating else x[j]                            # down vs up (C vs C^T)
         msg = src * ew.unsqueeze(-1)
         tgt = j if aggregating else i
         return scatter_sum(msg, tgt, dim=-2, dim_size=x.shape[-2])
@@ -98,42 +98,44 @@ class Unpool(nn.Module):
         new_h[idx] = h
         return new_h
 
+# ----- hierarchical processor (the U-Net) -----
 class BSGMP(nn.Module):
     def __init__(self, depth, latent_dim, hidden_layer, pos_dim):
         super().__init__()
         self.depth = depth
         self.down_gmps = nn.ModuleList(GMP(latent_dim, hidden_layer, pos_dim) for _ in range(depth))
-        self.up_gmps = nn.ModuleList(GMP(latent_dim, hidden_layer, pos_dim) for _ in range(depth))
-        self.unpools = nn.ModuleList(Unpool() for _ in range(depth))
+        self.up_gmps   = nn.ModuleList(GMP(latent_dim, hidden_layer, pos_dim) for _ in range(depth))
+        self.unpools   = nn.ModuleList(Unpool() for _ in range(depth))
         self.bottom_gmp = GMP(latent_dim, hidden_layer, pos_dim)
-        self.edge_conv = WeightedEdgeConv()
+        self.edge_conv  = WeightedEdgeConv()
     def forward(self, h, m_ids, m_gs, pos):
         down_outs, down_ps, cts = [], [], []
         w = pos.new_ones((pos.shape[-2], 1))
         for i in range(self.depth):
             h = self.down_gmps[i](h, m_gs[i], pos)
-            down_outs.append(h)
-            down_ps.append(pos)
+            down_outs.append(h); down_ps.append(pos)
             ew, w = self.edge_conv.cal_ew(w, m_gs[i])
-            h = self.edge_conv(h, m_gs[i], ew)
+            h   = self.edge_conv(h,   m_gs[i], ew)
             pos = self.edge_conv(pos, m_gs[i], ew)
             cts.append(ew)
-            h, pos, w = h[m_ids[i]], pos[m_ids[i]], w[m_ids[i]]
+            h, pos, w = h[m_ids[i]], pos[m_ids[i]], w[m_ids[i]]        # pool survivors
         h = self.bottom_gmp(h, m_gs[self.depth], pos)
         for i in range(self.depth):
             d = self.depth - i - 1
             h = self.unpools[i](h, down_outs[d].shape[-2], m_ids[d])
-            h = self.edge_conv(h, m_gs[d], cts[d], aggregating=False)
+            h = self.edge_conv(h, m_gs[d], cts[d], aggregating=False)  # weighted return (C^T)
             h = self.up_gmps[i](h, m_gs[d], down_ps[d])
-            h = h + down_outs[d]
+            h = h + down_outs[d]                                        # skip
         return h
 
+# ----- full simulator -----
 class BSMS_Simulator(nn.Module):
     def __init__(self, cfg):
         super().__init__()
-        self.encode = MLP(cfg.out_dim + 1, cfg.latent_dim, cfg.latent_dim, cfg.hidden_layer, True)
+        # encoder sees nodal fields + node type (cfg.out_dim + 1); mesh_pos is split off for the MP blocks
+        self.encode  = MLP(cfg.out_dim + 1, cfg.latent_dim, cfg.latent_dim, cfg.hidden_layer, True)
         self.process = BSGMP(cfg.unet_depth, cfg.latent_dim, cfg.hidden_layer, cfg.pos_dim)
-        self.decode = MLP(cfg.latent_dim, cfg.latent_dim, cfg.out_dim, cfg.hidden_layer, False)
+        self.decode  = MLP(cfg.latent_dim, cfg.latent_dim, cfg.out_dim,  cfg.hidden_layer, False)
     def forward(self, node_feat, m_ids, m_gs, pos):
         x = self.encode(node_feat)
         x = self.process(x, m_ids, m_gs, pos)
