@@ -11,11 +11,9 @@ from scipy.special import logsumexp, huber
 
 
 def log_loss_pred(theta, logN, logD):
-    """Stable log of E + A/N**alpha + B/D**beta."""
+    # log L_hat = LSE(a - alpha*logN, b - beta*logD, e) = log(E + A/N^alpha + B/D^beta)
     a, b, e, alpha, beta = theta
-    terms = np.stack(
-        [a - alpha * logN, b - beta * logD, np.full_like(logN, e)], axis=0
-    )
+    terms = np.stack([a - alpha * logN, b - beta * logD, np.full_like(logN, e)], axis=0)
     return logsumexp(terms, axis=0)
 
 
@@ -25,7 +23,6 @@ def parametric_loss(N, D, params):
 
 
 def fit_parametric(runs, delta=1e-3):
-    """Fit L_hat(N,D) = E + A/N^alpha + B/D^beta robustly in log space."""
     runs = np.asarray(runs, dtype=float)
     N, D, L = runs[:, 0], runs[:, 1], runs[:, 2]
     logN, logD, logL = np.log(N), np.log(D), np.log(L)
@@ -35,16 +32,13 @@ def fit_parametric(runs, delta=1e-3):
         return np.sum(huber(delta, r))
 
     best = None
-    for alpha0 in [0.0, 0.5, 1.0, 1.5, 2.0]:
-        for beta0 in [0.0, 0.5, 1.0, 1.5, 2.0]:
-            for e0 in [-1.0, -0.5, 0.0, 0.5, 1.0]:
-                for a0 in [0.0, 5.0, 10.0, 15.0, 20.0, 25.0]:
-                    for b0 in [0.0, 5.0, 10.0, 15.0, 20.0, 25.0]:
-                        res = minimize(
-                            objective,
-                            [a0, b0, e0, alpha0, beta0],
-                            method="L-BFGS-B",
-                        )
+    for alpha0 in [0., 0.5, 1.0, 1.5, 2.0]:
+        for beta0 in [0., 0.5, 1.0, 1.5, 2.0]:
+            for e0 in [-1., -0.5, 0., 0.5, 1.]:
+                for a0 in [0., 5., 10., 15., 20., 25.]:
+                    for b0 in [0., 5., 10., 15., 20., 25.]:
+                        res = minimize(objective, [a0, b0, e0, alpha0, beta0],
+                                       method="L-BFGS-B")
                         if best is None or res.fun < best.fun:
                             best = res
     a, b, e, alpha, beta = best.x
@@ -52,18 +46,17 @@ def fit_parametric(runs, delta=1e-3):
 
 
 def optimal_allocation(C, params):
-    """Closed-form optimum of the fitted parametric loss under 6*N*D = C."""
     A, B, E, alpha, beta = params
     G = (alpha * A / (beta * B)) ** (1.0 / (alpha + beta))
     a = beta / (alpha + beta)
     b = alpha / (alpha + beta)
     N_opt = G * (C / 6.0) ** a
-    D_opt = (C / 6.0) ** b / G
+    D_opt = (C / 6.0) ** b / G          # == (C/6) / N_opt  ->  6*N_opt*D_opt == C
     return N_opt, D_opt
 
 
 def envelope_optimum(C, run_curves):
-    """Read the lowest loss across interpolated training curves at compute C."""
+    # run_curves: iterable of {"N": scalar, "flops": array, "loss": smoothed array}
     best = None
     logC = np.log(C)
     for curve in run_curves:
@@ -81,16 +74,14 @@ def envelope_optimum(C, run_curves):
 
 
 def isoflop_optimum(runs_at_fixed_C):
-    """Vertex of the parabolic loss valley in log N at one FLOP budget."""
-    runs = np.asarray(runs_at_fixed_C, dtype=float)
-    logN = np.log(runs[:, 0])
-    loss = runs[:, 2]
+    runs_at_fixed_C = np.asarray(runs_at_fixed_C, dtype=float)
+    logN = np.log(runs_at_fixed_C[:, 0])
+    loss = runs_at_fixed_C[:, 2]
     c2, c1, c0 = np.polyfit(logN, loss, 2)
     return np.exp(-c1 / (2 * c2))
 
 
 def fit_power_law(Cs, values):
-    """Fit value = coeff * C**exponent in log-log space."""
     slope, intercept = np.polyfit(np.log(Cs), np.log(values), 1)
-    return np.exp(intercept), slope
+    return np.exp(intercept), slope     # (coeff, exponent)
 ```
