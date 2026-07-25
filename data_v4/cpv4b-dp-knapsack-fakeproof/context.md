@@ -15,8 +15,7 @@ and report that count modulo `1_000_000_007`. Two subsets are distinct if they d
 shard, even if they have identical masses and phases — shards are physical objects, not values.
 
 This is a two-constraint counting knapsack: an exact-weight count (the mass dimension) coupled to a
-modular count (the phase dimension). The danger is that the two dimensions *look* separable or *look*
-uniformly distributed, and a tempting closed form for the phase dimension is easy to assert and wrong.
+modular count (the phase dimension).
 
 ## Input / output contract
 
@@ -54,8 +53,7 @@ committing:
 
 ## Evaluation settings
 
-Judged on hidden tests covering: `n = 0` (only the empty subset; resonant iff `W = 0` and `q = 0`);
-`M = 1` (the phase constraint is vacuous, `q` is always `0`); shards with equal masses; shards with
+Judged on hidden tests covering: `n = 0`; `M = 1`; shards with equal masses; shards with
 equal phases; shards whose mass exceeds `W` (they can never be welded in); phases far larger than `M`
 (must be reduced mod `M`); targets `q` for which the count is `0`; and full-size cases
 `n = 200, W = 2000, M = 200` to pin down both the time budget and the modular arithmetic.
