@@ -14,70 +14,36 @@ Convergence follows from two assumptions: the working set S is compact, and the 
 import numpy as np
 from scipy.optimize import linprog
 
-
 def kelley_cutting_plane(f, subgrad, x_lo, x_hi, eps=1e-6, max_iter=500):
-    """Minimize a convex (possibly nonsmooth) function f over a box.
+    """Minimize convex (possibly nonsmooth) f over the box [x_lo, x_hi].
 
-    f(x)       -> scalar value of the convex objective
-    subgrad(x) -> a subgradient of f at x
+    f(x)       -> scalar objective value
+    subgrad(x) -> a subgradient g in d f(x)  (slope of a supporting hyperplane)
 
-    Uses the epigraph variable t; decision vector is [x; t].
-    Master LP:  min t  s.t.  f(x_i) + g_i^T (x - x_i) <= t  for all queries i,
-                and x_lo <= x <= x_hi.
+    Decision vector [x ; t] (epigraph). Master LP:
+        min t  s.t.  f(x_i) + g_i^T (x - x_i) <= t  for all queries i,  x in box.
+    Optimal t is a lower bound on f*; min f(x_i) is an upper bound.
     """
     n = len(x_lo)
-    c = np.concatenate([np.zeros(n), [1.0]])          # minimize t
-    bounds = list(zip(x_lo, x_hi)) + [(None, None)]   # x in box, t free
-
     A_ub, b_ub = [], []
+    c = np.concatenate([np.zeros(n), [1.0]])           # minimize t
+    bounds = list(zip(x_lo, x_hi)) + [(None, None)]    # x in box, t free
     best_x, best_ub = None, np.inf
-    x = 0.5 * (np.asarray(x_lo, dtype=float) + np.asarray(x_hi, dtype=float))
+    x = 0.5 * (np.asarray(x_lo) + np.asarray(x_hi))     # start at box center
 
     for _ in range(max_iter):
-        fx = f(x)
-        g = np.asarray(subgrad(x), dtype=float)
-
+        fx, g = f(x), np.asarray(subgrad(x))            # oracle: value + cut
         if fx < best_ub:
             best_x, best_ub = x.copy(), fx
-
-        # Add cut: f(x_i) + g^T (x - x_i) <= t  ->  [g, -1] @ [x; t] <= g^T x_i - f(x_i)
+        # cut: f(x_i) + g^T (x - x_i) <= t  ->  [g, -1].[x;t] <= g^T x_i - f(x_i)
         A_ub.append(np.concatenate([g, [-1.0]]))
         b_ub.append(g @ x - fx)
-
         res = linprog(c, A_ub=np.array(A_ub), b_ub=np.array(b_ub),
                       bounds=bounds, method="highs")
         if not res.success:
             raise RuntimeError(res.message)
-
-        x, lb = res.x[:n], res.x[n]  # next query and lower bound
-        if best_ub - lb <= eps:
+        x, lb = res.x[:n], res.x[n]                     # next query + lower bound
+        if best_ub - lb <= eps:                         # certified gap
             return best_x, best_ub, lb
-
     return best_x, best_ub, lb
-
-
-# Example: minimize max_i |a_i^T x - b_i| (Chebyshev / minimax fitting)
-if __name__ == "__main__":
-    rng = np.random.default_rng(0)
-    m, n = 20, 3
-    A = rng.normal(size=(m, n))
-    b = rng.normal(size=m)
-    x_true = np.linalg.lstsq(A, b, rcond=None)[0]
-
-    def f(x):
-        return np.max(np.abs(A @ x - b))
-
-    def subgrad(x):
-        r = A @ x - b
-        i = np.argmax(np.abs(r))
-        return A[i] * np.sign(r[i])
-
-    x_lo = x_true - 5.0
-    x_hi = x_true + 5.0
-
-    x_opt, ub, lb = kelley_cutting_plane(f, subgrad, x_lo, x_hi)
-    print("x_opt:", x_opt)
-    print("upper bound:", ub)
-    print("lower bound:", lb)
-    print("certified gap:", ub - lb)
 ```
