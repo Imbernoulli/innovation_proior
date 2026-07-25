@@ -14,46 +14,12 @@ Once the ensemble viewpoint is in place, refinements appear naturally. The same 
 
 In practice, when I apply this method, I follow the same three steps. First, I choose a natural random object that is easy to sample and analyze. Second, I express each forbidden configuration as a bad event and bound its probability. Third, I show that the sum of these probabilities is less than one, or I use expectation and alteration if the random object is only nearly good. The method is especially powerful when explicit constructions are elusive but the global collection of objects is large enough that bad cases cannot dominate.
 
-The following Python script illustrates the core calculation for small parameters. It computes the union-bound probability that a random red/blue edge coloring of K_n contains a monochromatic K_k, and it compares the bound against the simple threshold n equals 2^(k/2). Because exhaustive search over all 2^binom(n,2) colorings is impossible even for modest n, the script also performs a Monte Carlo simulation: it samples many random colorings, counts how many contain a monochromatic K_k, and compares the empirical frequency with the theoretical union bound. The simulation confirms that when the union bound is below one, most sampled colorings are good, which is the computational face of the probabilistic existence claim.
+The canonical name for this approach is Erdős's probabilistic method, or simply the probabilistic method. It reframes existence theorems as probability statements, replacing the burden of construction with the lighter burden of counting or expectation. The whole argument compresses into a single certificate that needs no witness beyond itself: for every integer $k \ge 3$ and every $n$, if a uniformly random red/blue coloring of the edges of $K_n$ satisfies
 
-```python
-import math
-import random
-from itertools import combinations
+$$\binom{n}{k}\,2^{\,1-\binom{k}{2}} < 1,$$
 
-def union_bound_monochrome(n, k):
-    """Union-bound probability that some k-set is monochromatic in a random red/blue K_n."""
-    return math.comb(n, k) * 2 ** (1 - math.comb(k, 2))
+then the probability that some $k$-vertex subset is monochromatic is strictly less than $1$, so a coloring with no monochromatic $K_k$ exists and $R(k,k) > n$. Taking $n = \lfloor 2^{k/2} \rfloor$ satisfies this hypothesis for every $k \ge 3$, since the condition reduces to $2 < k!\,2^{-k/2}$, which gives the 1947 bound
 
-def has_monochrome_k(coloring, k):
-    """Check whether an edge coloring of K_n contains a monochromatic K_k.
-    coloring is a dict mapping frozenset({i,j}) to 0 (red) or 1 (blue)."""
-    vertices = list({v for e in coloring for v in e})
-    for subset in combinations(vertices, k):
-        reds = sum(coloring[frozenset({i, j})] for i, j in combinations(subset, 2))
-        total = math.comb(k, 2)
-        if reds == 0 or reds == total:
-            return True
-    return False
+$$R(k,k) > 2^{k/2}.$$
 
-def sample_and_estimate(n, k, trials=2000):
-    vertices = list(range(n))
-    edges = [frozenset(e) for e in combinations(vertices, 2)]
-    bad = 0
-    for _ in range(trials):
-        coloring = {e: random.randint(0, 1) for e in edges}
-        if has_monochrome_k(coloring, k):
-            bad += 1
-    return bad / trials
-
-if __name__ == "__main__":
-    k = 4
-    n_threshold = int(2 ** (k / 2))
-    print(f"k = {k}, simple 2^(k/2) threshold: n <= {n_threshold}")
-    for n in range(k, n_threshold + 2):
-        ub = union_bound_monochrome(n, k)
-        emp = sample_and_estimate(n, k, trials=5000)
-        print(f"n={n}: union bound={ub:.4f}, empirical bad fraction={emp:.4f}")
-```
-
-The canonical name for this approach is Erdős's probabilistic method, or simply the probabilistic method. It reframes existence theorems as probability statements, replacing the burden of construction with the lighter burden of counting or expectation. The 1947 Ramsey lower bound remains its most celebrated early success: a graph with no large clique and no large independent set exists, not because anyone drew it, but because random graphs cannot all be bad.
+Optimizing the same union bound over $n$ instead of fixing $n = 2^{k/2}$ sharpens this to $R(k,k) > \left(\tfrac{1}{e\sqrt{2}} + o(1)\right) k\,2^{k/2}$, and replacing the union bound by expectation-and-alteration — deleting one vertex from each of the $E[X] = \binom{n}{k}2^{1-\binom{k}{2}}$ expected bad $k$-sets in a random coloring, so that at most $E[X]$ vertices are lost and no monochromatic $K_k$ survives among the rest — pushes it to $R(k,k) > \left(\tfrac{1}{e} + o(1)\right) k\,2^{k/2}$. This is the deliverable: a graph with no large clique and no large independent set exists, certified without ever being drawn, because random graphs cannot all be bad.
