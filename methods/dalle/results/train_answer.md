@@ -27,6 +27,7 @@ class EncoderBlock(nn.Module):
     def forward(self, x):
         return self.id_path(x) + self.post_gain * self.res_path(x)
 
+
 class Encoder(nn.Module):
     def __init__(self, n_hid=256, n_blk=2, in_ch=3, vocab_size=8192):
         super().__init__()
@@ -40,25 +41,8 @@ class Encoder(nn.Module):
             blk(4*n_hid, 8*n_hid), *[blk(8*n_hid, 8*n_hid) for _ in range(n_blk-1)],
             nn.ReLU(), nn.Conv2d(8*n_hid, vocab_size, 1))
     def forward(self, x):
-        return self.blocks(x)  # [B, K, 32, 32]
+        return self.blocks(x)            # [B, 8192, 32, 32]
 
-class Decoder(nn.Module):
-    def __init__(self, n_hid=256, n_blk=2, out_ch=6, vocab_size=8192):
-        super().__init__()
-        n_layers = 4 * n_blk
-        blk = lambda i, o: EncoderBlock(i, o, n_layers)
-        self.blocks = nn.Sequential(
-            nn.Conv2d(vocab_size, 8*n_hid, 1),
-            *[blk(8*n_hid, 8*n_hid) for _ in range(n_blk)],
-            nn.Upsample(scale_factor=2, mode="nearest"),
-            blk(8*n_hid, 4*n_hid), *[blk(4*n_hid, 4*n_hid) for _ in range(n_blk-1)],
-            nn.Upsample(scale_factor=2, mode="nearest"),
-            blk(4*n_hid, 2*n_hid), *[blk(2*n_hid, 2*n_hid) for _ in range(n_blk-1)],
-            nn.Upsample(scale_factor=2, mode="nearest"),
-            blk(2*n_hid, n_hid), *[blk(n_hid, n_hid) for _ in range(n_blk-1)],
-            nn.ReLU(), nn.Conv2d(n_hid, out_ch, 7, padding=3))
-    def forward(self, z):
-        return self.blocks(z)  # [B, 6, 256, 256]
 
 def gumbel_softmax_codes(logits, codebook, tau):
     g = -torch.log(-torch.log(torch.rand_like(logits) + 1e-9) + 1e-9)
@@ -66,58 +50,51 @@ def gumbel_softmax_codes(logits, codebook, tau):
     z = torch.einsum("bkhw,kd->bdhw", soft, codebook)
     return soft, z
 
+
 def logit_laplace_nll(x, mu, ln_b):
     b = ln_b.exp()
     return (torch.log(2 * b * x * (1 - x)) + (torch.logit(x) - mu).abs() / b).mean()
+
 
 def kl_uniform(soft):
     q = soft.mean(dim=(0, 2, 3))
     K = soft.shape[1]
     return (q * (q.add(1e-9).log() + torch.log(torch.tensor(float(K))))).sum()
 
-def phi(img, eps=0.1):
+
+def phi(img, eps=0.1):                   # map [0,1] pixels into (eps, 1-eps)
     return (1 - 2 * eps) * img + eps
 
-def anneal(step, start, end, steps):
-    t = min(step / steps, 1.0)
-    return start + (end - start) * (1 - torch.cos(torch.tensor(t * 3.14159265))) / 2
 
-# Stage 1: train the dVAE on images alone (relaxed ELBO)
-encoder = Encoder()
-decoder = Decoder()
-codebook = nn.Parameter(torch.randn(8192, 256) * 0.02)
-opt = torch.optim.AdamW(list(encoder.parameters()) + list(decoder.parameters()) + [codebook],
+# Stage 1: train dVAE on images alone (relaxed ELBO)
+opt = torch.optim.AdamW(list(encoder.parameters()) + list(decoder.parameters()),
                         lr=1e-4, betas=(0.9, 0.999), eps=1e-8, weight_decay=1e-4)
 for step, img in enumerate(loader):
     x = phi(img)
     logits = encoder(x)
-    tau = anneal(step, 1.0, 1.0 / 16, 150_000)
+    tau  = anneal(step, 1.0, 1/16, 150_000)
     beta = anneal(step, 0.0, 6.6, 5_000)
     soft, z = gumbel_softmax_codes(logits, codebook, tau)
-    mu, ln_b = decoder(z).chunk(2, dim=1)
+    mu, ln_b = decoder(z).chunk(2, dim=1)         # 6 maps: 3 mu, 3 ln b
     loss = logit_laplace_nll(x, mu, ln_b) + beta * kl_uniform(soft)
-    opt.zero_grad()
-    loss.backward()
-    opt.step()
+    opt.zero_grad(); loss.backward(); opt.step()
 
-# Stage 2: fit the transformer prior over concatenated text+image tokens
+
+# Stage 2: fit transformer prior over concatenated text+image tokens
 @torch.no_grad()
 def image_tokens(encoder, img):
-    return encoder(phi(img)).argmax(dim=1).flatten(1)  # [B, 1024]
+    return encoder(phi(img)).argmax(dim=1).flatten(1)     # [B, 1024], argmax (no gumbel)
 
-transformer = TokenTransformer()  # decoder-only sparse transformer over shared text+image vocab
 opt = torch.optim.AdamW(transformer.parameters(), lr=4.5e-4, betas=(0.9, 0.96),
                         eps=1e-8, weight_decay=4.5e-2)
-for text_tok, img in loader:  # text_tok: [B, 256]
-    img_tok = image_tokens(encoder, img)  # [B, 1024]
-    stream = torch.cat([text_tok, img_tok + 16384], dim=1)  # image ids offset past text vocab
+for text_tok, img in loader:                              # text_tok: [B, 256]
+    img_tok = image_tokens(encoder, img)                  # [B, 1024]
+    stream = torch.cat([text_tok, img_tok + text_vocab], dim=1)
     logits = transformer(stream[:, :-1])
     tgt = stream[:, 1:]
     n_text = 256 - 1
     ce = F.cross_entropy(logits.transpose(1, 2), tgt, reduction="none")
-    loss = (1 / 8) * ce[:, :n_text].mean() + (7 / 8) * ce[:, n_text:].mean()
+    loss = (1/8) * ce[:, :n_text].mean() + (7/8) * ce[:, n_text:].mean()
     torch.nn.utils.clip_grad_norm_(transformer.parameters(), 4.0)
-    opt.zero_grad()
-    loss.backward()
-    opt.step()
+    opt.zero_grad(); loss.backward(); opt.step()
 ```
