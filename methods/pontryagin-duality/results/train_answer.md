@@ -12,49 +12,12 @@ The Fourier transform then appears in its proper structural role. For a Haar-int
 
 The insight I want to emphasize is that the integral formula is the analytic shadow of a deeper duality. The source of Fourier analysis is the statement that a locally compact abelian group can be reconstructed from its continuous unitary characters. This is Pontryagin duality.
 
-The following Python script illustrates the theorem for finite cyclic groups. For Z_n, the characters are χ_k(j) = exp(2π i k j / n), indexed by k ∈ Z_n. The dual group is isomorphic to Z_n, and the double-dual evaluation map sends an element j ∈ Z_n to the function k ↦ χ_k(j), which is exactly the character χ_j of the dual. The script builds the character table, verifies orthogonality, and checks that the double-dual identification holds.
-
-```python
-import numpy as np
-
-
-def character_table(n):
-    """Return the n x n character table of Z_n.
-    Entry [k, j] is chi_k(j) = exp(2*pi*i*k*j/n)."""
-    j = np.arange(n)
-    k = np.arange(n).reshape(-1, 1)
-    return np.exp(2j * np.pi * k * j / n)
-
-
-def main():
-    n = 8
-    chi = character_table(n)
-
-    # Orthogonality of distinct characters: rows have zero inner product.
-    for k1 in range(n):
-        for k2 in range(n):
-            inner = np.vdot(chi[k1], chi[k2]) / n
-            expected = 1.0 if k1 == k2 else 0.0
-            assert np.isclose(inner, expected), f"orthogonality failed at {k1},{k2}"
-
-    # Pontryagin double dual: evaluation at j reproduces character chi_j on the dual.
-    for j in range(n):
-        double_dual_row = chi[:, j]          # k -> chi_k(j)
-        expected_row = chi[j % n, :]         # chi_j on the dual group
-        assert np.allclose(double_dual_row, expected_row), f"double dual failed at {j}"
-
-    # Fourier inversion on a sample function f: Z_n -> C.
-    rng = np.random.default_rng(0)
-    f = rng.normal(size=n) + 1j * rng.normal(size=n)
-    f_hat = chi @ f / n                     # Fourier coefficients
-    f_recovered = np.conj(chi).T @ f_hat    # inverse transform
-    assert np.allclose(f, f_recovered)
-
-    print(f"Pontryagin duality verified for Z_{n}.")
-    print("Character table (phases in multiples of pi):")
-    print(np.round(np.angle(chi) / np.pi, 2))
-
-
-if __name__ == "__main__":
-    main()
-```
+The finished result is worth recording in the precise form the argument earns, since that form is the actual deliverable. For a locally compact abelian group $G$, the Pontryagin dual is
+$$\widehat{G} \;=\; \mathrm{Hom}_{\mathrm{cont}}(G,\,\mathbb{T}), \qquad \mathbb{T} = \{z \in \mathbb{C} : |z| = 1\},$$
+made into an abelian group by pointwise multiplication of characters and given the compact-open topology, i.e. uniform convergence on compact subsets of $G$. The evaluation map
+$$e_G : G \to \widehat{\widehat{G}}, \qquad e_G(x)(\chi) = \chi(x) \quad \text{for } \chi \in \widehat{G},$$
+is a continuous homomorphism, and the theorem is that $e_G$ is an isomorphism of topological groups:
+$$G \;\cong\; \widehat{\widehat{G}} \qquad \text{naturally, for every locally compact abelian group } G.$$
+Two corollaries pin the theorem down at the level a reader can check directly: if $G$ is compact then $\widehat{G}$ is discrete, and if $G$ is discrete then $\widehat{G}$ is compact. Under this theorem the Fourier transform of a Haar-integrable $f$ on $G$,
+$$\widehat{f}(\chi) \;=\; \int_G f(x)\,\overline{\chi(x)}\;dx, \qquad \chi \in \widehat{G},$$
+is exactly integration against the points of $\widehat{G}$, and the classical transforms are the same map $e_G$ specialized to three named groups: $\widehat{\mathbb{T}} \cong \mathbb{Z}$ gives Fourier series, $\widehat{\mathbb{Z}} \cong \mathbb{T}$ gives the discrete-time transform, and $\widehat{\mathbb{R}} \cong \mathbb{R}$, under the pairing $\xi \mapsto (x \mapsto e^{2\pi i x \xi})$, gives the ordinary Fourier transform on the real line. This is the complete statement: a locally compact abelian group is recovered, as a topological group, from its own continuous circle-valued characters, and Fourier analysis on any such group is analysis carried out across that dual pair.
