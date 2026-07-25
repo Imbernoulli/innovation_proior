@@ -4,65 +4,12 @@ The right object is the Laughlin wavefunction. Introduced by Robert Laughlin for
 
 The Laughlin state also accounts for fractional charge. Threading one flux quantum adiabatically through the fluid pulls charge e/m through a large loop, because the ground state density is one electron per m flux quanta. When the Hamiltonian returns to itself, a localized quasihole remains. In wavefunction form, a quasihole at position eta is Psi_h(eta; z_1,...,z_N) = prod_j (z_j - eta) Psi_m(z_1,...,z_N). The extra zero repels electron density from eta, and the plasma analogy shows the defect is screened by a missing charge of magnitude e/m. The corresponding quasielectron carries charge -e/m. Exchanging two quasiholes gives a Berry phase theta = pi/m, so these excitations are anyons rather than ordinary bosons or fermions. Thus the Laughlin wavefunction is not a Slater determinant of independent particles; it is an incompressible quantum liquid whose collective correlations generate fractional filling, fractional charge, and fractional statistics.
 
-```python
-import numpy as np
+The complete result, stated precisely, is this. For $N$ electrons confined to the lowest Landau level, with complex planar coordinates $z_j = x_j + i y_j$ and magnetic length $\ell = \sqrt{\hbar/(eB)}$, and for any odd integer $m$, the ground state at filling factor $\nu = 1/m$ is
 
-def laughlin_wavefunction(z, m=3, ell=1.0):
-    """
-    Evaluate the Laughlin wavefunction Psi_m(z_1,...,z_N).
+$$\Psi_m(z_1,\ldots,z_N) = \prod_{i<j} (z_i - z_j)^m \, \exp\!\left(-\sum_j \frac{|z_j|^2}{4\ell^2}\right).$$
 
-    Parameters
-    ----------
-    z : np.ndarray, shape (N,)
-        Complex electron coordinates z_j = x_j + i y_j.
-    m : int
-        Odd integer power of the Vandermonde factor. m=3 gives nu=1/3.
-    ell : float
-        Magnetic length.
+Oddness of $m$ enforces the required electron antisymmetry; the analytic prefactor in front of the Gaussian keeps the whole state inside the lowest Landau level; and the order-$m$ zero at every pairwise coincidence is what does the physical work, suppressing Coulomb-costly close approaches far more strongly than the single Pauli zero of a filled level. The polynomial's degree fixes $N_\phi \simeq m(N-1)$ flux quanta for $N$ electrons, so $\nu = N/N_\phi \to 1/m$ in the thermodynamic limit, and the plasma mapping of $|\Psi_m|^2$ shows the state screens to a uniform liquid at that density rather than freezing into a Wigner crystal. The elementary charged excitation is the quasihole obtained by inserting one further zero at a point $\eta$,
 
-    Returns
-    -------
-    complex
-        The scalar value of the wavefunction.
-    """
-    z = np.asarray(z, dtype=complex)
-    N = z.size
-    vandermonde = np.prod([
-        (z[i] - z[j]) ** m
-        for i in range(N) for j in range(i + 1, N)
-    ], dtype=complex)
-    gaussian = np.exp(-np.sum(np.abs(z) ** 2) / (4.0 * ell ** 2))
-    return vandermonde * gaussian
+$$\Psi_h(\eta; z_1,\ldots,z_N) = \prod_j (z_j - \eta) \, \Psi_m(z_1,\ldots,z_N),$$
 
-def quasihole_wavefunction(z, eta, m=3, ell=1.0):
-    """Laughlin wavefunction with a quasihole at complex position eta."""
-    z = np.asarray(z, dtype=complex)
-    return np.prod(z - eta) * laughlin_wavefunction(z, m=m, ell=ell)
-
-def filling_factor(z, m=3):
-    """Estimate nu = N / N_phi from the largest angular-momentum power."""
-    N = len(z)
-    N_phi = m * (N - 1)
-    return N / N_phi
-
-if __name__ == "__main__":
-    # Example: a few electrons at arbitrary positions (illustrative only)
-    z = np.array([1.0 + 0.5j, -0.3 + 1.2j, 0.2 - 0.8j, -1.1 - 0.2j])
-    psi = laughlin_wavefunction(z, m=3, ell=1.0)
-    print("Laughlin amplitude squared:", np.abs(psi) ** 2)
-
-    # Antisymmetry test: swap two electrons changes sign for odd m.
-    z_swapped = z.copy()
-    z_swapped[0], z_swapped[1] = z_swapped[1], z_swapped[0]
-    psi_swapped = laughlin_wavefunction(z_swapped, m=3, ell=1.0)
-    print("Antisymmetry ratio:", psi_swapped / psi)
-
-    # Quasihole with charge e/m.
-    eta = 0.0 + 0.0j
-    psi_h = quasihole_wavefunction(z, eta, m=3, ell=1.0)
-    print("Quasihole amplitude squared:", np.abs(psi_h) ** 2)
-
-    # Estimated filling factor for a larger droplet.
-    z_large = np.random.randn(20) + 1j * np.random.randn(20)
-    print("Estimated filling factor:", filling_factor(z_large, m=3))
-```
+which the flux-insertion argument and the plasma screening both assign a charge $+e/m$, with the conjugate quasielectron carrying $-e/m$, and whose braiding statistics is fixed by the same construction to the exchange phase $\theta = \pi/m$. For $m=3$ this is the observed $\nu = 1/3$ plateau: an incompressible correlated liquid, neither a filled band nor a static crystal, with fractionally charged, fractionally statistical excitations built directly into its wavefunction.
