@@ -33,25 +33,6 @@ def normalization(channels, groups=32):
     return nn.GroupNorm(min(groups, channels), channels)
 
 
-def timestep_embedding(t, dim, max_period=10000):
-    half = dim // 2
-    freqs = torch.exp(-math.log(max_period) * torch.arange(half, device=t.device) / half)
-    args = t[:, None].float() * freqs[None, :]
-    return torch.cat([torch.cos(args), torch.sin(args)], dim=-1)
-
-
-class TimestepBlock(nn.Module):
-    def forward(self, x, emb):
-        raise NotImplementedError
-
-
-class TimestepEmbedSequential(nn.Sequential):
-    def forward(self, x, emb):
-        for layer in self:
-            x = layer(x, emb) if isinstance(layer, TimestepBlock) else layer(x)
-        return x
-
-
 class Upsample(nn.Module):
     def __init__(self, channels, use_conv, out_channels=None):
         super().__init__()
@@ -62,6 +43,7 @@ class Upsample(nn.Module):
             self.conv = conv3(channels, self.out_channels)
 
     def forward(self, x):
+        assert x.shape[1] == self.channels
         x = F.interpolate(x, scale_factor=2, mode="nearest")
         return self.conv(x) if self.use_conv else x
 
@@ -71,13 +53,15 @@ class Downsample(nn.Module):
         super().__init__()
         self.channels = channels
         self.out_channels = out_channels or channels
+        self.use_conv = use_conv
         self.op = conv3(channels, self.out_channels, stride=2) if use_conv else nn.AvgPool2d(2, 2)
 
     def forward(self, x):
+        assert x.shape[1] == self.channels
         return self.op(x)
 
 
-class ResBlock(TimestepBlock):
+class ResBlock(nn.Module):
     def __init__(self, channels, emb_channels, dropout, out_channels=None,
                  use_conv=False, use_scale_shift_norm=True, up=False, down=False):
         super().__init__()
@@ -172,75 +156,4 @@ class AttentionBlock(nn.Module):
         out = self.attention(self.qkv(self.norm(x_in)))
         out = self.proj_out(out)
         return (x_in + out).reshape(b, c, h, w)
-
-
-class Denoiser(nn.Module):
-    def __init__(self, in_channels=3, out_channels=3, base_channels=128,
-                 channel_mult=(1, 1, 2, 3, 4), num_res_blocks=2,
-                 attention_resolutions=(32, 16, 8), num_head_channels=64,
-                 dropout=0.0, image_size=128):
-        super().__init__()
-        emb_ch = base_channels * 4
-        self.time_embed = nn.Sequential(
-            nn.Linear(base_channels, emb_ch), nn.SiLU(), nn.Linear(emb_ch, emb_ch)
-        )
-        self.base_channels = base_channels
-        attention_ds = {image_size // r for r in attention_resolutions}
-
-        ch = int(channel_mult[0] * base_channels)
-        self.input_blocks = nn.ModuleList([TimestepEmbedSequential(conv3(in_channels, ch))])
-        input_block_chans = [ch]
-        ds = 1
-        for level, mult in enumerate(channel_mult):
-            out_ch = base_channels * mult
-            for _ in range(num_res_blocks):
-                blocks = [ResBlock(ch, emb_ch, dropout, out_ch, use_scale_shift_norm=True)]
-                ch = out_ch
-                if ds in attention_ds:
-                    blocks.append(AttentionBlock(ch, num_head_channels))
-                self.input_blocks.append(TimestepEmbedSequential(*blocks))
-                input_block_chans.append(ch)
-            if level != len(channel_mult) - 1:
-                self.input_blocks.append(TimestepEmbedSequential(
-                    ResBlock(ch, emb_ch, dropout, ch, use_scale_shift_norm=True, down=True)
-                ))
-                input_block_chans.append(ch)
-                ds *= 2
-
-        self.middle_block = TimestepEmbedSequential(
-            ResBlock(ch, emb_ch, dropout, ch, use_scale_shift_norm=True),
-            AttentionBlock(ch, num_head_channels),
-            ResBlock(ch, emb_ch, dropout, ch, use_scale_shift_norm=True),
-        )
-
-        self.output_blocks = nn.ModuleList()
-        for level, mult in list(enumerate(channel_mult))[::-1]:
-            out_ch = base_channels * mult
-            for i in range(num_res_blocks + 1):
-                ich = input_block_chans.pop()
-                blocks = [ResBlock(ch + ich, emb_ch, dropout, out_ch, use_scale_shift_norm=True)]
-                ch = out_ch
-                if ds in attention_ds:
-                    blocks.append(AttentionBlock(ch, num_head_channels))
-                if level != 0 and i == num_res_blocks:
-                    blocks.append(ResBlock(ch, emb_ch, dropout, ch, use_scale_shift_norm=True, up=True))
-                    ds //= 2
-                self.output_blocks.append(TimestepEmbedSequential(*blocks))
-
-        self.out = nn.Sequential(
-            normalization(ch), nn.SiLU(), zero_module(conv3(ch, out_channels))
-        )
-
-    def forward(self, x, timestep):
-        emb = self.time_embed(timestep_embedding(timestep, self.base_channels))
-        hs = []
-        h = x
-        for module in self.input_blocks:
-            h = module(h, emb)
-            hs.append(h)
-        h = self.middle_block(h, emb)
-        for module in self.output_blocks:
-            h = torch.cat([h, hs.pop()], dim=1)
-            h = module(h, emb)
-        return self.out(h)
 ```
