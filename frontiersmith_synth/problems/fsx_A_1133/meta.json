@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1133",
+  "tier": "A",
+  "format": "B",
+  "family": "ornament-restorer-policy",
+  "eval_form": "quality-metric",
+  "theme": "restoring damaged symmetric ornaments",
+  "title": "Occam's Ornament: Restoring a Damaged Symmetric Tile",
+  "objective": "max",
+  "strategies": [
+    "trivial: no symmetry reasoning at all -- copy known cells, fill every erased cell with the single global mode color",
+    "greedy: naive mirror-copying -- test a fixed priority list of single axes (horizontal/vertical/diagonal/anti-diagonal mirror, half-turn) against currently-visible pairs, accept the first one that looks 'good enough', copy across only that one axis, and mode-fill anything its partner doesn't resolve",
+    "strong: search the full lattice of candidate groups (10 point-symmetry subgroups of the square's dihedral group, crossed with periodic-translation lattices), keep the LARGEST group that is perfectly consistent with every visible same-orbit pair (Occam in the subgroup lattice), orbit-close every determinable cell, and fill any fully-erased orbit by proportional draw from the ornament's own surviving color statistics instead of a fixed default",
+    "invalid: emits an out-of-palette color index, rejected by the evaluator's validation"
+  ]
+}

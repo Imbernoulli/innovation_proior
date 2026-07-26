@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1139",
+  "tier": "A",
+  "format": "D",
+  "family": "good-thomas-ntt-scheduler",
+  "eval_form": "flops",
+  "theme": "route a signal exchange with the fewest paid multiplications",
+  "title": "Coprime-Stage Signal Router",
+  "objective": "min",
+  "strategies": [
+    "naive full n x n NTT matrix (trivial)",
+    "recursive mixed-radix Cooley-Tukey with explicit inter-stage twiddles (greedy)",
+    "Good-Thomas CRT re-indexing (twiddle-free) + Rader prime-leaf reindexing with a one-level CRT convolution split (strong)",
+    "deeper recursive convolution splitting / smaller prime-leaf multiplicative-complexity schemes (open ceiling, uncovered)"
+  ]
+}

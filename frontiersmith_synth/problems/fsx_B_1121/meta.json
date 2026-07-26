@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1121",
+  "tier": "B",
+  "format": "C",
+  "family": "road-coloring-synchronize",
+  "eval_form": "quality-metric",
+  "theme": "Color graph edges to make it synchronizable",
+  "title": "Aligned Road Coloring for Fast Synchronization",
+  "objective": "min",
+  "strategies": [
+    "trivial: identity slot->symbol labeling, no graph reasoning",
+    "greedy: spanning in-tree toward a fixed default root (vertex 0) via reverse-BFS",
+    "strong: search all self-loop-bearing candidate roots, keep the shallowest spanning in-tree",
+    "invalid: non-permutation labeling (infeasible)"
+  ]
+}

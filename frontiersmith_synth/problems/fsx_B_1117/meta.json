@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1117",
+  "tier": "B",
+  "format": "E",
+  "family": "saturating-kinetics-inference",
+  "eval_form": "quality-metric",
+  "theme": "Infer a reaction rate law from partial data",
+  "title": "Catalytic Assay — recovering a saturating rate law from dilute-regime data",
+  "objective": "min",
+  "strategies": [
+    "constant prediction (mean of the training rates) -> reproduces the checker's own baseline, ~0.1",
+    "greedy: first-order kinetics -- least-squares fit rate ~= a + b*S + c*C + d*S*C on the dilute training rows. Near-perfect on train (the true law is locally linear there), but the fit's implicit slope keeps growing with S forever; it overshoots catastrophically once S extrapolates past the training envelope into the regime where the true reaction saturates -- worst on the trap ids where the held-out gap is deepest",
+    "strong: the insight is that dividing by the catalyst level C collapses every regime onto ONE curve (rate/C is independent of C under the true law) -- pool that specific rate across ALL catalyst regimes, then profile-search the single saturation constant Km (with Vmax solved in closed form for each candidate Km) to fit the pooled curve. This exploits BOTH multi-regime consistency and the saturating functional form, and the recovered Vmax*C*S/(Km+S) generalises correctly into deep extrapolation and to catalyst levels never shown in training",
+    "headroom above strong: a nonlinear (non-grid) joint fit of Vmax and Km with proper heteroscedastic weighting, or pooling additional structure across near-degenerate regimes, can push held-out error closer to the assay's irreducible measurement-noise floor"
+  ]
+}

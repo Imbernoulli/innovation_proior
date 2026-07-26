@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1157",
+  "tier": "A",
+  "format": "C",
+  "family": "workshop-capacity-mix-hedge",
+  "eval_form": "quality-metric",
+  "theme": "buy machines once, job mixes keep changing",
+  "title": "One Purchase, Nine Mixes: Hedging a Workshop's Machine Portfolio",
+  "objective": "min",
+  "strategies": [
+    "trivial: spend the whole budget on whichever single machine type is cheapest, ignoring every scenario",
+    "greedy: pool all scenarios into one average per-kind work total, then waterfill the budget across the matching SPECIALISTS ONLY (never the generalist, always a worse bang-per-buck for any single kind in isolation) proportional to that average demand -- ignores that scenarios don't overlap and that the frozen scheduler dumps any contention overflow straight onto a badly-mismatched specialist since there is no generalist fallback",
+    "strong: search directly on the true multi-scenario quantile-regret objective (marginal-gain construction + local swaps against the actual frozen-scheduler simulation), which discovers a mix of a couple of specialists plus 'wasteful' generalist units that the scheduler can always fall back on",
+    "invalid: submit a portfolio that wildly exceeds the budget"
+  ]
+}

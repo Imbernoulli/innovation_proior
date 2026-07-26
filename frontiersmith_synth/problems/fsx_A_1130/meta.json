@@ -1,0 +1,15 @@
+{
+  "id": "fsx_A_1130",
+  "tier": "A",
+  "format": "C",
+  "family": "thermal-crowding-gliders",
+  "eval_form": "quality-metric",
+  "theme": "glider fleet milking drifting thermals that crowds kill",
+  "title": "Thermal Timetable: Milking Drifting Lift Without Crowding",
+  "objective": "max",
+  "strategies": [
+    "straight-line baseline: every glider dashes for the beacon nearest its own launch point, thermals ignored entirely",
+    "obvious greedy: every glider independently chases the single richest thermal (highest lift constant), circles it, then homes on the best-looking beacon; no coordination, so it crowds the rich thermal in the trap cases",
+    "flow-over-time insight: rank (thermal, arrival time-bucket) slots by MARGINAL lift given who has already reserved that slot, so the fleet time-shares rich thermals and disperses onto weak-but-uncrowded thermals, and gliders claim distinct beacons instead of piling onto the same one"
+  ]
+}

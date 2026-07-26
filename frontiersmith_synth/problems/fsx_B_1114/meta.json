@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1114",
+  "tier": "B",
+  "format": "B",
+  "family": "scan-resistant-policy-forge",
+  "eval_form": "quality-metric",
+  "theme": "doorman of a club raided by tour buses",
+  "title": "The Doorman's List: Staying Scan-Resistant Through the Tour-Bus Raids",
+  "objective": "max",
+  "strategies": [
+    "trivial: memorize the first faces you ever see, fill the list once, then freeze it forever (never re-learn, never forget) -- reproduces the calibrated 0.1 baseline",
+    "greedy: plain global least-recently-used eviction, admitting everyone -- the obvious first move; a single disclosed tour-bus round evicts the whole memorized list since one-shot faces are always most-recent, and it cannot tell a regular who is due back next rotation from one who is gone for good",
+    "strong: read the disclosed scan_period/scan_span/scan_phase and inversion_period/n_eras directly -- never spend a slot on a bus round's one-shot faces (scan-resistance), and tag every admitted face with the crowd-rotation era it was first met in (ghost-history bookkeeping threaded through the per-round opaque state, since each round is a fresh isolated process) so eviction always drains this round's own crowd before ever touching a crowd that is due back next rotation",
+    "headroom above strong: model each era's residual Zipf mass to size a soft per-era reserve instead of a hard same-era-first rule, and use the ghost list of recently evicted faces to detect when reserve sizing is mispredicted and correct it before the next rotation"
+  ]
+}

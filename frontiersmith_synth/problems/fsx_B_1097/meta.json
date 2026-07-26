@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_1097",
+  "tier": "B",
+  "format": "C",
+  "family": "antichain-subsequence",
+  "eval_form": "quality-metric",
+  "theme": "Largest set with no string a subsequence of another",
+  "title": "Marker-Ledger Layering: Weighted Subsequence Antichains",
+  "objective": "max",
+  "strategies": [
+    "baseline: the full length-1 layer only (all `a` single-character strings)",
+    "single-length commit: find the one length whose weight*min(cap,a**length,T) is highest and fill only that length up to its cap -- a valid antichain, but wastes any alphabet/budget left over once that length's cap is hit",
+    "alphabet-partition layering (Dilworth-style): dedicate disjoint digit subsets to several different lengths at once (same-length strings are automatically incomparable, and cross-length strings built from disjoint alphabets can never be scattered subsequences of one another either), then knapsack-DP over (digits spent, budget spent) to pick which lengths to activate and how many digits to give each"
+  ]
+}

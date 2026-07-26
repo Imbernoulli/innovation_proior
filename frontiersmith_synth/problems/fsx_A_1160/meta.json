@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_1160",
+  "tier": "A",
+  "format": "B",
+  "family": "ice-road-cargo-window",
+  "eval_form": "quality-metric",
+  "theme": "winter freight across a freezing lake",
+  "title": "Winter Freight: The Season's Spacetime Budget",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:continuous-physical"],
+  "strategies": [
+    "do-nothing baseline: rest every day, deliver 0 cargo (reproduces the evaluator's 0.1 anchor)",
+    "honest single-corridor pacer: always cross the shortest corridor (0), correctly self-simulating its own fatigue state each day and always loading exactly that day's true safe capacity -- but never rotating, so the corridor's own fatigue clock never falls far behind its thickness clock and it stays pinned near a low ceiling for the whole season while the far, thicker corridors sit unused",
+    "margin + round-robin scheduler: simulate all four corridors' fatigue exactly, load a safety margin below each day's true safe capacity instead of the exact edge, and pick each day's corridor by (safety-margined capacity + a small idle bonus favoring corridors not used recently) -- deliberately resting corridors so their fatigue clock decays while others carry load, and naturally shifting heavy loads onto whichever corridor the temperature trend has made thickest that week",
+    "exchange-argument / lookahead planner: since the whole season and every formula are known in advance, search over which corridor to rest vs load on each day (e.g. backtracking or a value-based rollout) to approximate the schedule that best balances immediate cargo against the future capacity a corridor's decayed fatigue and continued thickening would unlock"
+  ]
+}

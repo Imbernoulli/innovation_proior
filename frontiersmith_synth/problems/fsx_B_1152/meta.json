@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_1152",
+  "tier": "B",
+  "format": "C",
+  "family": "aquifer-well-interference-drawdown",
+  "eval_form": "quality-metric",
+  "theme": "keeping the crypt of kings dry",
+  "title": "The Crypt of Kings: Interception Wells",
+  "objective": "minimize",
+  "strategies": [
+    "per-cell isolated well: drop one well on every wet foundation cell, sized as if it were the only well pumping (ignores superposition, pays the fixed drilling cost once per cell)",
+    "per-patch greedy: iteratively pump whichever wet foundation cell currently has the largest shortfall, reusing an existing well when the shortfall belongs to an already-drilled cell (benefits from superposition only *within* a contiguous wet patch)",
+    "interception-cut search: compare per-cell, per-patch, and a single shared well searched over the cells lying on the graph-distance path between the recharge boundary and the wet patches, keeping whichever partition of the budget is cheapest (exploits superposition *across* patches and the fixed per-well drilling cost)"
+  ]
+}

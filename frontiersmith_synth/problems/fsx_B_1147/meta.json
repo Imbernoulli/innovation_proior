@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_1147",
+  "tier": "B",
+  "format": "C",
+  "family": "irrigation-split-weather-book",
+  "eval_form": "quality-metric",
+  "theme": "water rations set before the weather book opens",
+  "title": "Water Rations Set Before the Weather Book Opens",
+  "objective": "max",
+  "strategies": [
+    "uniform-split baseline: spread the season budget evenly over every (field, week) slot, ignoring rainfall and thresholds entirely",
+    "average-weather deficit fill: plan a single irrigation schedule against the CROSS-SCENARIO AVERAGE rainfall trajectory only (deficit[f][t] = max(0, cons[f]-avg_rain[t])), then rescale to caps and reinforce the same already-flagged weeks with any leftover -- the trap, since the dominant thirstiest-crop field's drought-window dry weeks are masked by every other scenario running wetter in those same weeks, so the average model sees zero deficit and allocates nothing right when that scenario needs it most",
+    "feasibility-first, then optimize: repeatedly resimulate every (field, scenario) soil-moisture trajectory under the CURRENT schedule, find the earliest still-violated week across all scenarios (fixing it early carries forward and clears later violations too), patch it by adding water exactly there, and once every scenario's trajectory clears every field's threshold, spend any leftover budget round-robin weighted by yield rate"
+  ]
+}

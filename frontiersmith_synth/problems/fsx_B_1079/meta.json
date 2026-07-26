@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1079",
+  "tier": "B",
+  "format": "C",
+  "family": "roof-watershed-droplet-router",
+  "eval_form": "quality-metric",
+  "theme": "temple roof that drinks the rain",
+  "title": "Temple Roof That Drinks the Rain: Ridgeline Drainage",
+  "objective": "max",
+  "strategies": [
+    "trivial: reprint the unedited roof (reproduces the checker's own drainage baseline)",
+    "greedy: for the biggest puddles first, carve a straight L-shaped channel of strictly decreasing heights all the way from the puddle to the nearest gutter, giving up if an obstacle blocks the line -- pays for every cell on the path even when most of it was already draining fine",
+    "strong: treat the droplet map as a watershed partition -- for every basin, find the cheapest single boundary cell whose height can be dropped (within the max-slope bound) below its basin neighbor, and spend the edit budget on the basins with the best droplets-rescued-per-budget ratio; the surface elsewhere is left untouched because it provably cannot change the score",
+    "invalid: flood every editable cell to a huge constant height, blowing the edit budget"
+  ]
+}

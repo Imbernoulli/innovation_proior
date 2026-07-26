@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1132",
+  "tier": "B",
+  "format": "C",
+  "family": "envelope-mix-inhibition-feeding",
+  "eval_form": "quality-metric",
+  "theme": "biogas digester fed from spoiling stockpiles",
+  "title": "Biogas Digester Fed from Spoiling Stockpiles",
+  "objective": "max",
+  "strategies": [
+    "trivial: feed each day's freshly-available stock in its own arrival ratio, scaled to capacity",
+    "greedy: each day, search the mix maximizing TODAY's achievable quality*volume (synergy- and inhibition-aware), oblivious to the adaptation state / switching cost",
+    "strong: full-horizon search over a single committed target trajectory (evaluated by replaying the whole schedule), plus a proactive salvage bump for batches about to expire",
+    "invalid: negative feed amounts (infeasible)"
+  ]
+}

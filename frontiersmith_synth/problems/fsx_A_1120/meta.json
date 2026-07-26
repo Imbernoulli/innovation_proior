@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_1120",
+  "tier": "A",
+  "format": "B",
+  "family": "wreath-macro-sorting-policy",
+  "eval_form": "quality-metric",
+  "theme": "librarian sorts carousels that only rotate in linked groups",
+  "title": "Reading-Hall Carousel Reshelving",
+  "objective": "minimize",
+  "source_frameworks": ["wave2b-lens:algebra-and-residues"],
+  "strategies": [
+    "identity replay baseline: assume each physical carousel already holds its own book range and just spin its shelf forward hoping to match (evaluator's internal weak reference; wastes a full revolution on every carousel that turns out to be the wrong one, then nudges the hall and retries)",
+    "structure-aware forward-only fix: read each book's stamped home carousel/shelf-slot off its id, align the hall to the home carousel of book 0, then spin every shelf home -- always spinning forward, never checking whether backward is shorter",
+    "Schreier-Sims stabilizer-chain solve: same id-based block discovery, but at every level (hall, then each shelf) pick whichever direction (forward/backward) is closer, so cost is the sum of per-level minimal distances -- additive per block level and never redone",
+    "held-out generalization on larger halls (more carousels and/or deeper shelves) to confirm the chain-based policy keeps its lead as N grows"
+  ]
+}

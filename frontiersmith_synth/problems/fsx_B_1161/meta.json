@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_1161",
+  "tier": "B",
+  "format": "C",
+  "family": "masked-rank-completion",
+  "eval_form": "quality-metric",
+  "theme": "reconstruct a torn tapestry woven from few thread patterns",
+  "title": "The Conservator's Loom: Rank-Faithful Tapestry Restoration",
+  "objective": "minimize",
+  "strategies": [
+    "zero-fill: leave every torn cell blank (0), feasible but ignores all structure",
+    "fixed-basis single-shot solve: express other rows as a combination of the first 3 matrix rows using whichever few columns they happen to share, no redundancy or corruption check",
+    "reference-row bilinear closure: detect the fully-intact rows, search candidate ranks by which one yields an invertible, high-consensus linear system, and fill torn cells with the consensus bilinear prediction (spike detection and completion as one computation)"
+  ]
+}

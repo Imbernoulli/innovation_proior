@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1131",
+  "tier": "A",
+  "format": "E",
+  "family": "drift-law-finger-index",
+  "eval_form": "quality-metric",
+  "theme": "fisherman following a school by reading currents",
+  "title": "The School and the Current — finger-index drift-law recovery",
+  "objective": "min",
+  "strategies": [
+    "trivial: freeze a constant guess at the last training fix (reproduces the checker's own frozen-finger baseline ~0.1)",
+    "greedy: ordinary least-squares straight line y=a+b*t over the raw training days, ignoring the seasonal eddy and the rip-current growth term entirely; tracks the recent average drift decently on the near days but the fixed slope under/overshoots as the cubic term takes over deeper into the graded window -> the finger falls badly behind on the harder, longer-horizon test cases",
+    "strong: two-stage decomposition -- grid-search the eddy period, fit (offset, linear drift, cubic growth, sin/cos eddy) jointly per candidate period via a 5x5 normal-equations solve in NORMALIZED time u=t/T_train, keep the period minimising training residual; the resulting smooth law both tracks the true position closely AND changes prediction gradually, so the hysteresis-band finger relocates close to the free budget instead of paying repeated $50 fees",
+    "headroom above strong: robustly down-weight training outliers, jointly refine period/phase via local search instead of a fixed grid, or model the small residual sensor-noise floor explicitly to shave the last bit of held-out distance error"
+  ]
+}

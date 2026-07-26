@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_1163",
+  "tier": "S",
+  "format": "C",
+  "family": "beacon-story-consistency-probes",
+  "eval_form": "quality-metric",
+  "theme": "telescope nights booked before knowing the sky's story",
+  "title": "Beacon Nights: Booking a Schedule That Splits the Worst Story",
+  "objective": "max",
+  "strategies": [
+    "trivial: reproduce the checker's own baseline -- book the first B nights in order, always using each night's first-listed (common) pointing",
+    "quality-greedy: sort ALL pointings by raw weight and take the highest-weight ones on distinct nights, ignoring which narrative pairs they split",
+    "worst-family marginal greedy: at each booking step, find the family with the lowest current pair-separation fraction and book whichever available pointing splits the most of THAT family's still-tied pairs, falling back to total-gain only when nothing helps the worst family",
+    "(headroom above strong): jointly optimize across steps instead of greedily -- e.g. exchange/local-search over the whole B-night schedule, or exact ILP for small K,M_f, since the greedy worst-family scan is not provably optimal itself"
+  ]
+}

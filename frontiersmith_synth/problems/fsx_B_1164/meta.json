@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1164",
+  "tier": "B",
+  "format": "C",
+  "family": "cleanroom-airlock-castes",
+  "eval_form": "quality-metric",
+  "theme": "service robots crossing cleanroom zones through airlocks",
+  "title": "Castes of the Cleanroom",
+  "objective": "min",
+  "strategies": [
+    "trivial: round-robin job assignment across robots ignoring grade entirely, firing an individual un-batched decon cycle the instant one is needed -- matches the checker's own internal naive baseline",
+    "greedy: process jobs in release order and hand each one to whichever robot is free SOONEST (textbook load balancing), still ignoring grade and still deconning individually on demand -- a stronger scheduler than trivial, but blind to the grade lattice so robots ping-pong across grades whenever the trap's interleaved-grade waves hit",
+    "strong: partition the fleet into per-grade castes sized by workload (largest-remainder apportionment) so most jobs are served by a robot that never needs to change grade at all (zero decon); jobs a caste cannot finish on time overflow to a small floater pool, which processes its queue in synchronized rounds so simultaneous grade-change needs are grouped into ONE shared, capacity-limited decon cycle instead of many individual ones -- an assignment insight, not a smarter router",
+    "headroom above strong: jointly optimize caste sizing against the realized (not just workload-proportional) lateness, let overflow routing pick WHICH floater/caste absorbs a job based on projected future decon-batch alignment, and allow occasional intentional early decon to pre-stage a floater for an upcoming wave"
+  ]
+}

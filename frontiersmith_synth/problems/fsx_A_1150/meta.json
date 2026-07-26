@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1150",
+  "tier": "A",
+  "format": "C",
+  "family": "exergy-ledger-plan-audit",
+  "eval_form": "quality-metric",
+  "theme": "hospital utility plant: steam, chill, and power",
+  "title": "Ward Block Utility Plant: The Cascade Dispatch Ledger",
+  "objective": "min",
+  "strategies": [
+    "dedicated + safety margin: boiler sized 15% over steam demand, electric chiller sized 15% over chill demand, grid covers the rest with the same margin (matches the checker's internal baseline, ~0.1)",
+    "exact dedicated sizing: boiler exactly meets steam, electric chiller exactly meets chill (best single-output COP), grid exactly covers the remaining power -- textbook per-commodity efficiency ranking, never routes steam through the turbine",
+    "joint cascade dispatch: a 1-D coarse-to-fine search per timestep over how much HP steam to route through the turbine, jointly pricing the electricity AND absorption-chill it yields against the convex grid fuel it displaces, so the schedule automatically falls back to dedicated sizing when the chill:power ratio makes cascading a bad trade",
+    "further headroom: temporal smoothing across timesteps (pre-charging LP-steam-fed absorption capacity or shifting boiler load) or an exact convex-program solve of the joint schedule instead of a per-step search"
+  ]
+}

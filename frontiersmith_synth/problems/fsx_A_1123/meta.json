@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_1123",
+  "tier": "A",
+  "format": "B",
+  "family": "grounded-laplacian-anchors",
+  "eval_form": "quality-metric",
+  "theme": "choosing which shepherds anchor a drifting flock",
+  "title": "Shepherds of the Drifting Flock",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:spectral-and-resonance"],
+  "strategies": [
+    "seeded-random anchor placement (topology-blind baseline, ratio ~0.1)",
+    "degree/centrality top-k: pin the highest-degree nodes -- wastes budget inside dense hubs/cliques, blind to far pendant structure",
+    "sequential marginal-gain (additive-gain) greedy: recompute lambda_min for every candidate addition, always take the single best next node -- the classical leader-selection recipe, provably stuck by non-submodularity on the planted twin-hub / dumbbell / chain instances",
+    "resistance-farthest-cover construction + local pairwise-swap refinement: initialize by repeatedly adding the node farthest, in effective-resistance distance, from the current anchor set (covers every pendant branch), then jointly refine via swaps that recompute the true lambda_min -- a qualitatively different, coordinated search over the covering structure",
+    "open: multi-restart / simulated-annealing joint search over anchor sets in resistance space, or exact combinatorial search on small instances"
+  ]
+}

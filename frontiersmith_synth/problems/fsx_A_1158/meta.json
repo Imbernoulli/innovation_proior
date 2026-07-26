@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1158",
+  "tier": "A",
+  "format": "C",
+  "family": "icebreaker-channel-lease",
+  "eval_form": "quality-metric",
+  "theme": "one icebreaker fleet threading cargo convoys through pack ice",
+  "title": "Pack-Ice Convoy Leases: Riding the Refreeze Window",
+  "objective": "min",
+  "strategies": [
+    "singleton baseline: escort every ship alone in its own convoy, round-robin across breakers in ship-index order (reproduces the checker's baseline)",
+    "destination-sorted capacity batching: sort ships by destination and pack consecutive groups of size c into escorted convoys, ignoring ship speed (mixes fast and slow ships, throttling every convoy to its slowest member and paying full breaker-return overhead per batch)",
+    "speed-bucketed escort-plus-lease: group ships into homogeneous-speed buckets, escort only up to c per bucket (the farthest-reaching member plus the highest weight*destination members) and let the rest of that bucket lease the escort's clear wake for free within the refreeze window",
+    "cross-speed lease timing: exploit the exact departure-offset window implied by the refreeze constant to also lease ships whose speed differs from the pilot convoy's, stretching one breaker pass across an even larger share of the fleet"
+  ]
+}

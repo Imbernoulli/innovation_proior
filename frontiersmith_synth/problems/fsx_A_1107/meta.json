@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1107",
+  "tier": "A",
+  "format": "D",
+  "family": "extreme-grid-stable-evaluator",
+  "eval_form": "flops",
+  "theme": "fewest operations, correct from 1e-30 to 1e30",
+  "title": "Uniform-Regime Arithmetic Circuit for a Hypot-Softplus Composite",
+  "objective": "minimize",
+  "strategies": [
+    "duplicated-and-padded safe closed form, no shared subexpressions (trivial)",
+    "direct textbook transcription of the formula -- cancels/overflows at grid extremes (greedy)",
+    "single branchless algebraic identity, uniformly stable AND sharing the sqrt register across terms (strong)",
+    "true minimal op-count circuit under the fixed cost table (open ceiling, uncovered)"
+  ]
+}

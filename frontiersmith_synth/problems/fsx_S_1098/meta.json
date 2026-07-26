@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_1098",
+  "tier": "S",
+  "format": "D",
+  "family": "cheap-spectral-projector",
+  "eval_form": "flops",
+  "theme": "building the cheapest sieve that separates low tones from high",
+  "title": "High-Tone Sieve: Cheapest Circuit for a Spectral Cutoff",
+  "objective": "minimize",
+  "strategies": [
+    "flat gap-oblivious Chebyshev filter at a fixed conservative degree (trivial)",
+    "flat Chebyshev filter tuned to the revealed gap, still a single non-composed polynomial (greedy)",
+    "composed matvec + few-term shifted-resolvent sum exploiting the gap (strong)",
+    "true minimal op-count circuit is unknown / open (uncovered ceiling)"
+  ]
+}

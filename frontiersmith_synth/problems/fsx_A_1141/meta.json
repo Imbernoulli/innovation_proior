@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1141",
+  "tier": "A",
+  "format": "E",
+  "family": "breakdown-switch-extrapolation",
+  "eval_form": "quality-metric",
+  "theme": "predict dielectric breakdown far outside tested range",
+  "title": "Dielectric Breakdown Crossover -- reading a weakest-link mechanism switch off the edges of a safe test window",
+  "objective": "min",
+  "strategies": [
+    "trivial: emit the flat geometric mean of the training breakdown-voltage values as a constant law -- reproduces the checker's own baseline, Ratio ~0.1",
+    "greedy: textbook multi-linear power-law fit V = A*d^p*T^q by ordinary least squares of log(V) against (log d, log T) over ALL training rows; inside the safe [40,90]x[280,340] window both hidden channels are comparable in size so this single power law tracks the sweep almost perfectly in-sample (and interpolates fine nearby), but a single power law has only one pair of exponents -- extrapolated to the four extreme corners of the (d,T) square it cannot bend onto either channel's own saturated asymptote, and on the two MIXED corners (thin+hot, thick+cold) where the winning channel flips depending on the instance, it has no way to even guess which channel wins",
+    "strong: treat the observed voltage as the (smoothed) LOWER ENVELOPE of two latent power-law surfaces -- reformulate as hinge/envelope regression: hard-EM alternates between (a) fitting a log-log linear power law to each of two point groups and (b) reassigning every point to whichever current surface predicts the smaller value (since the true observation is close to whichever channel is weaker there), from several random group-seedings, keeping the run with lowest total envelope residual; then grid-search a single softness constant k against the training data to blend the two recovered power laws smoothly at the (never-directly-observed) crossover -- this reconstructs both channels' own exponents well enough to saturate correctly on ALL four held-out corners, including the two whose winning channel is instance-dependent",
+    "headroom above strong: joint nonlinear refinement of all parameters (branch exponents, reference scales, and k) after the hard-EM initialization, robust/trimmed group fits against the noise floor, or multiple envelope-topology restarts (three-plus candidate groupings) to escape bad local assignments"
+  ]
+}

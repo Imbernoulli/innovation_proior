@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_1115",
+  "tier": "B",
+  "format": "C",
+  "family": "stratified-purge-batching",
+  "eval_form": "quality-metric",
+  "theme": "vaccine line: batch sizes through three stages",
+  "title": "Vaccine Line: Batch Sizes Through Three Stages",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:conversion-chain-systems"],
+  "strategies": [
+    "one-lot-per-pulse (JIT) baseline: every stage produces and consumes in the same hour as each demand pulse, zero decay but maximal setup scrap (reproduces the checker baseline B)",
+    "per-stage-isolated EOQ: independently pick the best batching frequency for each of the three stages assuming the other two stay JIT, then combine the three choices into one schedule",
+    "joint ratio search: search batching frequencies (k1,k2,k3) for all three stages TOGETHER against the true multi-buffer decay simulation, exploiting that decay compounds multiplicatively across a chain of buffers so the right combination is a matched ratio between adjacent stages, not any stage's quantity picked alone",
+    "demand-aware windowing that groups pulses by local density/spacing rather than fixed-size windows"
+  ]
+}

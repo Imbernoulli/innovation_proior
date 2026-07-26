@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_1138",
+  "tier": "S",
+  "format": "D",
+  "family": "fold-punch-orbit-compression",
+  "eval_form": "flops",
+  "theme": "Paper snowflake with a counted instruction tape",
+  "title": "Paper Snowflake: Minimal Fold/Punch Instruction Tape",
+  "objective": "minimize",
+  "strategies": [
+    "punch every hole individually, zero folds (trivial)",
+    "fold only while the WHOLE sheet is exactly bilaterally symmetric, then punch (greedy) -- a single defect anywhere blocks all folding",
+    "interleave FOLD_X/FOLD_Y one level at a time, correcting individual mismatched cells the instant they would otherwise be lost, and stop at the instruction-minimizing depth (strong)",
+    "true minimum-instruction fold/punch program (open ceiling, uncovered)"
+  ]
+}

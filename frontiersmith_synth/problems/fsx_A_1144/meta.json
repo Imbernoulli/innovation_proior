@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1144",
+  "tier": "A",
+  "format": "D",
+  "family": "shape-assembly-op-count",
+  "eval_form": "flops",
+  "theme": "build the sculpture in fewest moves",
+  "title": "Sculpture Assembly: Fewest Growth-Macro Moves",
+  "objective": "min",
+  "strategies": [
+    "trivial: one shared UNIT translated to every occupied voxel, combined by a balanced union tree (~2V ops) -- places every voxel independently",
+    "greedy: compress maximal contiguous runs along x per row, memoize+reuse identical run LENGTHS across rows via translate -- a single, local, non-recursive optimization that helps periodic/solid structure but barely helps a genuine multi-scale fractal",
+    "strong: canonicalize the voxel set as a B-ary tree bottom-up (a la BDD/SVDAG minimization), reusing any sub-cell whose occupancy pattern already occurred (up to translation or a single-axis reflection) anywhere else in the structure, searching a few candidate branching factors -- a shape addition-chain that turns O(V) into O(log V) when the target is recursively self-similar",
+    "invalid: reconstructs the target shifted by one unit along x (syntactically legal ops, wrong final shape) -- must score 0"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1129",
+  "tier": "B",
+  "format": "C",
+  "family": "slotting-vs-order-waves",
+  "eval_form": "quality-metric",
+  "theme": "warehouse shelves facing shifting shopping fashions",
+  "title": "Trend-Tail Slotting: p90 Order-Wave Picking Distance",
+  "objective": "min",
+  "strategies": [
+    "identity placement: SKU i in slot i (matches the checker's internal baseline)",
+    "classic ABC / global velocity slotting: rank SKUs by total pick frequency pooled over ALL scenarios and place fast movers closest to the depot, one SKU at a time, ignoring who they are co-purchased with",
+    "bootstrap + tail-pooled co-purchase affinity: use a rough velocity layout to identify the costliest scenarios, build a co-purchase affinity graph (edge weight = orders sharing both SKUs) using ONLY orders from those tail scenarios, and re-slot by global frequency plus a boost on each SKU's weighted degree in that tail-only graph, pulling tail-central SKUs toward the depot without displacing the genuinely high-velocity assortment",
+    "full simulated-annealing / local-search relocation directly on the p90 objective (swap two SKUs' slots, accept if the resulting p90 scenario cost improves)"
+  ]
+}

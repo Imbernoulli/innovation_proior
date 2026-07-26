@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_1145",
+  "tier": "B",
+  "format": "B",
+  "family": "adaptive-rewrite-strategist",
+  "eval_form": "quality-metric",
+  "theme": "one guide, three kinds of mountains",
+  "title": "One Guide, Three Kinds of Mountains",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:program-and-circuit-synthesis"],
+  "strategies": [
+    "trivial: submit an empty move sequence (do nothing) -- exactly the evaluator's own baseline construction -> exactly 0.1",
+    "greedy: repeatedly scan left-to-right and apply the FIRST matching merge rule in ruleset order until nothing changes; never use split rules -- the trap: fully solves monotone instances (unambiguous confluent self-collapse) but gets permanently stuck on canyon instances (a locked pocket's LOCK symbol matches no merge, only an unused split) and on braided instances (whenever two rules match the same pattern, 'first in the list' always takes the deliberately-planted dead-end branch instead of the bridge)",
+    "strong: cheaply CLASSIFY which of the three planted landscapes (monotone / canyon / braided) the instance is from static structural signals (are any splits present? does any adjacent pattern match two distinct merge rules?), then DISPATCH a tailored strategy -- actively use splits to fuse locked pockets into one collapsible run on canyon instances, and simulate both branches at every multi-rule fork to commit to the bridge on braided instances -- monotone instances get the same plain collapse as greedy since nothing else is needed there. Diagnosis-then-dispatch beats any single recombined recipe across the mixture.",
+    "invalid: claims a merge with rule index 99999, out of range for every instance's ruleset -> infeasible -> 0"
+  ]
+}

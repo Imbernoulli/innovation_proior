@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_1096",
+  "tier": "S",
+  "format": "D",
+  "family": "gauss-period-basis-sparsity",
+  "eval_form": "flops",
+  "theme": "choose coordinates so field arithmetic wires itself thin",
+  "title": "Gauss-Period Bases: Load-Balancing the Multiplication Tensor",
+  "objective": "min",
+  "strategies": [
+    "monomial (power) basis of the given defining polynomial (trivial)",
+    "Frobenius orbit of a small fixed family of low-weight generators, best-of (greedy)",
+    "detect the type-1/2 Gauss-period regime for (p,k); construct the near-optimal period basis analytically when it holds, else a wide permuted-period search (strong)",
+    "true minimal max-lane load when no type-1/2 condition holds (open ceiling, uncovered)"
+  ]
+}

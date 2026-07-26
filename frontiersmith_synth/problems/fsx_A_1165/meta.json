@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1165",
+  "tier": "A",
+  "format": "D",
+  "family": "chronicle-wal-group-commit",
+  "eval_form": "flops",
+  "theme": "royal chronicler batching decrees before sealing wax",
+  "title": "Royal Chronicle: Batching Decrees and Ordering the Wax Page for Fire-Drill Recovery",
+  "objective": "minimize",
+  "strategies": [
+    "seal every decree alone the instant it arrives, in id order (trivial baseline)",
+    "textbook deadline-driven group commit: batch pending decrees, flush the whole queue the moment the earliest deadline is reached, records in plain arrival order (greedy)",
+    "same batch schedule, but reorder each sealed page by descending fire-drill relevance (how many known crash points need each decree) so recovery resolves needed keys in a handful of probes instead of scanning the whole page (strong)",
+    "fully joint optimization of seal timing AND in-page order against the whole crash-point set at once (open ceiling, uncovered)"
+  ]
+}

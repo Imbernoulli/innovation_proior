@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_1118",
+  "tier": "A",
+  "format": "B",
+  "family": "resource-augmented-online-pack",
+  "eval_form": "quality-metric",
+  "theme": "Accept arrivals now, chase the hindsight packer",
+  "title": "The Unseen Tide: Cargo Admission Policy",
+  "objective": "maximize",
+  "source_frameworks": ["wave2b-lens:wildcard-hybrid"],
+  "strategies": [
+    "accept-everything baseline: admit every lot that still fits, no density filtering at all (reproduces the evaluator's weak reference)",
+    "static density cutoff: estimate one fixed value-density threshold from the preview manifest (its mean density) and hold it constant for the whole tide, ignoring remaining capacity and any drift once real lots arrive",
+    "dual-fitting shadow price: anchor the threshold to the preview's fractional-knapsack cutoff density (lambda*) instead of the mean, then make the bar climb as capacity is actually consumed, so a busier-than-expected tide is met with rising selectivity instead of early overcommitment",
+    "drift-corrected pacing: on top of the capacity ramp, cancel its on-pace component and add a directional nudge from the preview's own early-vs-late density trend plus a small reaction to the observed running-average density, so the policy neither overreacts to a normal pace nor misreads which direction value is moving"
+  ]
+}

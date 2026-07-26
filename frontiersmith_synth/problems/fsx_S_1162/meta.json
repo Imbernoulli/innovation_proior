@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_1162",
+  "tier": "S",
+  "format": "E",
+  "family": "annealing-path-hysteresis",
+  "eval_form": "quality-metric",
+  "theme": "glassblower's cooling schedules decide the final color",
+  "title": "The Glassblower's Hysteresis Loop",
+  "objective": "min",
+  "strategies": [
+    "constant prediction (mean of training measurements, ignores temperature) -> reproduces the checker baseline ~0.1",
+    "greedy: 1-D two-segment least-squares changepoint fit of final color on ENDPOINT temperature; fits monotone training data almost perfectly (path and endpoint are confounded there) but implicitly sets T_down==T_up (zero-width hysteresis / no branch memory) -> wrong on every held-out protocol that reheats into the bistable window without crossing the true upper spinodal",
+    "strong: same changepoint fit for the two branch curves and the lower spinodal, but explicitly POSITS a nonzero hysteresis loop (T_up = T_down_hat + a margin derived from the observed temperature span) so the grader's path rollout carries branch memory through reheats instead of re-deciding the branch from the endpoint alone",
+    "headroom above strong: the upper spinodal is never directly exercised by monotone-only training data, so a fixed-fraction margin heuristic is only approximately right; recovering T_up more precisely (e.g. from the training branch curves' extrapolated stability limits, or from any residual structure near the window) would close more of the remaining gap"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_1092",
+  "tier": "A",
+  "format": "C",
+  "family": "humpyard-lifo-resort",
+  "eval_form": "quality-metric",
+  "theme": "switch engines sorting freight cars into outbound trains",
+  "title": "Humpyard Radix Resort",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:fleet-choreography"],
+  "strategies": [
+    "single-bucket dig baseline: dump every car onto one classification track, then dig each needed car out one car at a time with a scratch-and-restore shuffle (reproduces the checker baseline, ~O(N^2) single-car moves)",
+    "textbook LSD radix passes: recognize the Y classification tracks as digit buckets on key = train_id*L + slot, run ceil(log_Y N) distribute/collect passes -- but every move is a single car on a single engine (pays full per-move overhead every time, switches mode ~2D times)",
+    "batched radix + engine choreography: same radix passes, but collect each bucket back as ONE cut (not N singleton pops) and assemble each finished train as ONE cut, while engine 1 is dedicated to every distribute-type move and engine 2 to every collect-type move so neither ever pays the mode-switch penalty",
+    "seeded local search over move batching / engine assignment on top of the radix skeleton"
+  ]
+}

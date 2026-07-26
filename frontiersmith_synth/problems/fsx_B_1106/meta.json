@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1106",
+  "tier": "B",
+  "format": "C",
+  "family": "dfa-transition-tour-cover",
+  "eval_form": "quality-metric",
+  "theme": "Shortest test suite covering every DFA transition",
+  "title": "Covering Every DFA Transition with the Fewest Symbols",
+  "objective": "min",
+  "strategies": [
+    "trivial: cover every transition with its own separate string (shortest path from s0 to the transition's source state, then the symbol) -- restarts from s0 every time; this IS the checker baseline",
+    "greedy: chain everything into ONE continuous string by BFS-walking, in fixed (state,symbol) table order, from the current position to the next uncovered transition's source state -- reuses the walk but is blind to graph structure, so an adversarial state-id relabelling forces long backward detours along the one-way backbone",
+    "strong: CHINESE-POSTMAN insight -- compute each state's transition in/out-degree imbalance, solve the min-cost assignment (shortest-path costs) matching surplus states to deficient states (also searching which state should be the walk's endpoint, i.e. an OPEN Eulerian trail not a closed circuit), duplicate exactly those shortest paths to rebalance the graph, then emit ONE Eulerian-trail string via Hierholzer's algorithm",
+    "headroom above strong: exact optimal min-cost flow / smarter choice of which states to leave imbalanced when duplicating paths that share sub-paths (our bitmask assignment is optimal for the stated formulation but a solver could explore alternate rebalancing decompositions)"
+  ]
+}

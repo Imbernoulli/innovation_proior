@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1119",
+  "tier": "A",
+  "format": "C",
+  "family": "solidification-front-microstructure",
+  "eval_form": "quality-metric",
+  "theme": "Sequence cooling so solid fronts lock a pattern",
+  "title": "One Coolant, Many Fronts",
+  "objective": "max",
+  "strategies": [
+    "do nothing: only the pre-placed seed grains ever solidify (checker's own internal baseline)",
+    "fair multi-source expansion: round-robin the single per-stage cooling action across every active grain boundary so every gap is split near its geometric midpoint (ignores the target's per-gap skew)",
+    "target-driven temporal commitment: read how many cells each grain is supposed to claim per gap and spend every stage on the side that still owes territory, fully finishing one side before touching the other",
+    "sequence gaps in an order that keeps every commitment within the stage budget"
+  ]
+}

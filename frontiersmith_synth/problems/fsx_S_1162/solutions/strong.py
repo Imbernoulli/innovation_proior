@@ -1,0 +1,109 @@
+# TIER: strong
+"""
+Same changepoint curve-fit as the greedy pointwise regressor (there is no
+better way to recover the two branch curves and the lower spinodal from
+monotone-cooling-only data -- path and endpoint ARE genuinely confounded
+there).  The insight is what comes AFTER the fit: the law maps whole
+protocol FUNCTIONS to outcomes, not endpoints, so a single threshold cannot
+be the right model of a first-order transition with metastable branches --
+it must POSIT a nonzero hysteresis loop.  The training data never exercises
+the reheating threshold, so its exact location is not identifiable; but its
+existence, and a physically reasonable order of magnitude for the loop
+width (a fraction of the observed temperature span), is.  We set
+T_up = T_down_hat + margin and, crucially, output the two branch curves and
+BOTH thresholds so the grader's rollout can carry branch memory through
+non-monotone protocols instead of re-deciding the branch from the endpoint
+alone.
+"""
+import sys
+
+
+def read_header_and_training():
+    data = sys.stdin.read().split()
+    T_MIN, T_MAX, N = float(data[0]), float(data[1]), int(data[2])
+    idx = 4
+    xs, ys = [], []
+    for _ in range(N):
+        K = int(data[idx])
+        idx += 1
+        proto = [float(data[idx + j]) for j in range(K)]
+        idx += K
+        m = float(data[idx])
+        idx += 1
+        xs.append(proto[-1])
+        ys.append(m)
+    return T_MIN, T_MAX, xs, ys
+
+
+def changepoint_fit(xs, ys):
+    n = len(xs)
+    order = sorted(range(n), key=lambda i: xs[i])
+    sx = [xs[i] for i in order]
+    sy = [ys[i] for i in order]
+
+    Px = [0.0] * (n + 1)
+    Py = [0.0] * (n + 1)
+    Pxx = [0.0] * (n + 1)
+    Pxy = [0.0] * (n + 1)
+    Pyy = [0.0] * (n + 1)
+    for i in range(n):
+        Px[i + 1] = Px[i] + sx[i]
+        Py[i + 1] = Py[i] + sy[i]
+        Pxx[i + 1] = Pxx[i] + sx[i] * sx[i]
+        Pxy[i + 1] = Pxy[i] + sx[i] * sy[i]
+        Pyy[i + 1] = Pyy[i] + sy[i] * sy[i]
+
+    def fit_sse(n_pts, Sx, Sy, Sxx, Sxy, Syy):
+        denom = n_pts * Sxx - Sx * Sx
+        if n_pts < 2 or abs(denom) < 1e-9:
+            return None
+        b = (n_pts * Sxy - Sx * Sy) / denom
+        a = (Sy - b * Sx) / n_pts
+        sse = Syy - a * Sy - b * Sxy
+        return a, b, max(0.0, sse)
+
+    min_side = max(5, n // 20)
+    best = None
+    for k in range(min_side, n - min_side + 1):
+        left = fit_sse(k, Px[k], Py[k], Pxx[k], Pxy[k], Pyy[k])
+        right = fit_sse(n - k, Px[n] - Px[k], Py[n] - Py[k],
+                         Pxx[n] - Pxx[k], Pxy[n] - Pxy[k], Pyy[n] - Pyy[k])
+        if left is None or right is None:
+            continue
+        total = left[2] + right[2]
+        if best is None or total < best[0]:
+            split_T = (sx[k - 1] + sx[k]) / 2.0
+            best = (total, split_T, left, right)
+    if best is None:
+        mean_y = sum(ys) / n
+        return mean_y, 0.0, mean_y, 0.0, sum(xs) / n
+    _, split_T, left, right = best
+    a_cold, b_cold, _ = left
+    a_hot, b_hot, _ = right
+    return a_hot, b_hot, a_cold, b_cold, split_T
+
+
+MARGIN_FRAC = 0.21
+
+
+def main():
+    T_MIN, T_MAX, xs, ys = read_header_and_training()
+    a_hot, b_hot, a_cold, b_cold, T_down_hat = changepoint_fit(xs, ys)
+    T_center = 600.0
+    A1, B1 = a_hot + b_hot * T_center, b_hot
+    A2, B2 = a_cold + b_cold * T_center, b_cold
+
+    # POSIT branch memory: the upper spinodal is never observed under
+    # monotone-only training, but a first-order transition with a lower
+    # spinodal almost certainly has a nonzero loop width, not zero.  Use the
+    # observed temperature span as the only available scale.
+    margin = MARGIN_FRAC * (T_MAX - T_MIN)
+    T_up_hat = T_down_hat + margin
+
+    print("%.6f %.6f" % (A1, B1))
+    print("%.6f %.6f" % (A2, B2))
+    print("%.6f %.6f" % (T_down_hat, T_up_hat))
+
+
+if __name__ == "__main__":
+    main()

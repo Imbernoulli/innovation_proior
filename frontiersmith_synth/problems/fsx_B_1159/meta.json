@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1159",
+  "tier": "B",
+  "format": "C",
+  "family": "ballast-buddy-freelist",
+  "eval_form": "quality-metric",
+  "theme": "harbor pilot assigning berths as ships come and go",
+  "title": "Harbor Pilot and the Warm Berth",
+  "objective": "min",
+  "strategies": [
+    "trivial: whenever several free berths of the right size exist, actively AVOID the one on a sector the crew's roster currently remembers, and ALWAYS rejoin a freed berth with its sibling right away -- deliberately locality-blind, matches the checker's own weak reference",
+    "greedy: textbook lowest-address/best-fit placement plus ALWAYS eager-coalescing on free -- correct and tidy, but blind to which sectors the crew's roster remembers, and reflexively destroys a berth about to be reused",
+    "strong: place new ships on a free berth whose SECTOR is currently warm in the crew's LRU roster (falling back to lowest-address only when nothing is warm); defer coalescing a freed berth whenever the exact same size will be requested again later in the trace, coalescing only once it provably will not -- both decisions exploit full visibility of the trace",
+    "headroom above strong: model TLB eviction pressure from the whole future trace jointly (not just 'needed again: yes/no') to also choose WHICH warm candidate to sacrifice for a large split, and hedge coalescing against interleaved ships of other sizes"
+  ]
+}

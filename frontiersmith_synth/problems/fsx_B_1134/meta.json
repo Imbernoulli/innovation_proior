@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1134",
+  "tier": "B",
+  "format": "C",
+  "family": "rigid-origami-folding",
+  "eval_form": "quality-metric",
+  "theme": "Set crease angles to fold a target 3D shape",
+  "title": "Fold-Chain Inverse Kinematics",
+  "objective": "min",
+  "strategies": [
+    "flat baseline: leave every crease angle at 0 (do not fold at all)",
+    "per-crease independent aiming: fit each crease's angle in isolation to point its own downstream corner at the nearest target, ignoring the other creases meeting at the same vertex",
+    "constraint-manifold search: parametrize each vertex flower by its single true kinematic degree of freedom, Newton-solve the other three crease angles so the loop-closure equation holds exactly for every candidate, then search the resulting 1-D feasible curve for the best target match",
+    "global joint optimization: coordinate-descend over all flowers' free parameters and bridge angles simultaneously instead of the front-to-back sequential pass"
+  ]
+}

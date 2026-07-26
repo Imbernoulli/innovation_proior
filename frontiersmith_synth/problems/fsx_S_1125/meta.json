@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_1125",
+  "tier": "S",
+  "format": "E",
+  "family": "allometric-growth-law-extrapolation",
+  "eval_form": "quality-metric",
+  "theme": "predict growth beyond what you measured",
+  "title": "Interior-Band Growth Chamber -- recovering an allometric saturation law to extrapolate past the measured regime",
+  "objective": "minimize",
+  "strategies": [
+    "constant baseline: predict the mean logged size (ignores t and p entirely) -> ~0.1",
+    "greedy black-box: least-squares polynomial surface S ~ [1,t,t^2,p,p^2,t*p,t^2*p,t*p^2,t^2*p^2] fit to the narrow interior-band logbook; interpolates that band well but its polynomial tail in p diverges sharply once p leaves [0.42,0.58], badly missing the extreme held-out regime",
+    "strong (mechanism recovery): for each logged p, recover the per-p saturating-exponential parameters (capacity K_p, rate r_p) via a 1-D search over r with the optimal K given in closed form by linear regression; then recover the two allometric scaling exponents by log-log linear regression of K_p against p and r_p against (1-p); emit the resulting compact closed-form law K0*p**alpha*(1-exp(-r0*(1-p)**beta*t)), which is regime-independent and extrapolates correctly",
+    "alternatives: joint nonlinear least squares over all four constants at once, or trading the complexity penalty against held-out error by simplifying the emitted expression"
+  ]
+}

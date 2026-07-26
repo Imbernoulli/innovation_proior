@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1112",
+  "tier": "B",
+  "format": "D",
+  "family": "opcount-batched-polynomial-eval",
+  "eval_form": "flops",
+  "theme": "cheapest arithmetic to serve three query batches",
+  "title": "Batched Calibration-Curve Evaluation: One Shared Circuit, Three Query Shapes",
+  "objective": "min",
+  "strategies": [
+    "naive per-point power ladder + dot product, no reuse across any query (trivial, = baseline)",
+    "Horner's rule per query point independently -- the obvious first attempt, still no reuse (greedy)",
+    "seed the sweep batch's first n+1 points then extend by a free finite-difference table walk, deduplicate the probe batch's repeated offsets, and only pay full Horner cost where structure genuinely does not exist -- the ad-hoc batch (strong)",
+    "shortest joint straight-line program across all three batches simultaneously (open ceiling, uncovered)"
+  ]
+}

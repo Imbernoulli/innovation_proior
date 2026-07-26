@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1156",
+  "tier": "A",
+  "format": "E",
+  "family": "tidal-clock-commensurability",
+  "eval_form": "quality-metric",
+  "theme": "harbor tide chart hides locked celestial gears",
+  "title": "Harbor Tide Chart — recovering a locked triplet of celestial gears",
+  "objective": "min",
+  "strategies": [
+    "trivial: predict a constant tide height (the arithmetic mean of the training column), ignoring time entirely -> reproduces the checker baseline ~0.1",
+    "greedy: generic 4-sinusoid spectral fitting -- successive single-frequency extraction (matching pursuit / CLEAN), each of the 4 frequencies estimated independently by its own local grid search. Fits the training log well, but the training window only spans PART of the locked super-period so the three locked gears sit closer together in frequency than the window can resolve; the 4-frequency fit is ill-posed among them and lands on an essentially arbitrary quadruple. Extrapolated to the held-out window, several super-periods later, that frequency error becomes a large uncorrelated phase error",
+    "strong: exploit rational-frequency locking. The harbor's historical charts admit only a short menu of small-integer gear-ratio triples; try each candidate triple and, for each one, fit a SINGLE shared base rate f0 jointly against all three harmonics (their fast harmonic pins f0 far more precisely than any lone frequency estimate). Pick the best-fitting triple, then fit the leftover free interloper frequency on the residual. Because the multipliers are forced to be exact integers, there is no per-component ratio error, so the locked components stay phase-coherent all the way to the held-out window where greedy has already dephased",
+    "headroom above strong: jointly re-optimize all ten parameters (f0, the three locked amplitude/phase pairs, and the free interloper's amplitude/phase/frequency) with a full nonlinear least-squares pass seeded at the strong solution, squeezing out the residual bias from the interloper's leakage into the locked fit and pushing held-out error further toward the sensor-noise floor"
+  ]
+}

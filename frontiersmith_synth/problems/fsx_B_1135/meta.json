@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1135",
+  "tier": "B",
+  "format": "C",
+  "family": "term-rewriting-normalizer",
+  "eval_form": "quality-metric",
+  "theme": "Reach normal form in fewest rewrites",
+  "title": "Confluent Collapse: Minimum-Step Term Rewriting",
+  "objective": "min",
+  "strategies": [
+    "leftmost-outermost: always contract the shallowest live redex (root-first); duplicates un-reduced drop-work every time a dup fires early, and the duplication compounds across nested dups",
+    "drop-first-then-outermost-dup: eagerly collapse every reachable drop before touching any dup, but still fire dups shallowest-first once drops are gone -- fixes the drop/dup ordering mistake but repeats the same mistake among nested dups",
+    "leftmost-innermost / shrink-before-duplicate: never fire a redex whose argument still contains a redex, so every dup only ever copies already-fully-reduced material -- exploits confluence's order-freedom to reach the true step-count minimum",
+    "invalid: declares victory after a few arbitrary steps without ever reaching a redex-free normal form"
+  ]
+}

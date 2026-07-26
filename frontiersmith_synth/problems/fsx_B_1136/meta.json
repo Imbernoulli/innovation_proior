@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1136",
+  "tier": "B",
+  "format": "C",
+  "family": "settling-cascade-fractionator",
+  "eval_form": "quality-metric",
+  "theme": "alchemist pans a river for seven powders",
+  "title": "River Alchemist: The Settling Cascade",
+  "objective": "max",
+  "strategies": [
+    "single mega-basin: one basin sized to isolate only the easiest (smallest-threshold) powder, ignore the rest (baseline)",
+    "per-class id-order sizing: build one basin per powder in input order, each sized only for its own threshold with a fixed depth, ignoring both cascade order and scour safety",
+    "threshold-sorted cut sequence: order basins by ascending settling threshold so each basin resolves exactly one class boundary, with depth chosen for scour safety at no extra volume cost",
+    "randomized local search over basin count/order/depth-length splits seeded from the instance"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1149",
+  "tier": "C",
+  "format": "C",
+  "family": "epoch-boundary-carver",
+  "eval_form": "quality-metric",
+  "theme": "quarry foreman cutting a cliff into liftable slabs",
+  "title": "Quarry Foreman: Carving a Cliff Face into Liftable Slabs",
+  "objective": "min",
+  "strategies": [
+    "single slab, no cuts (reproduces the checker baseline, ~0.1)",
+    "hardness-density greedy: solve the build-cost-only optimal segment count K* analytically (ignoring touch cost), then cut K*-1 equal-hardness-mass boundaries from the posted (decoy) rock-hardness profile -- handles the count/size trade-off sensibly but places cuts where hardness mass balances, not where inspection passes actually straddle, so touch cost stays high wherever the decoy profile decorrelates from the planted event clusters",
+    "changepoint DP over query endpoints: observe that touch cost decomposes into a per-cut penalty pen(b) = sum of weights of queries straddling b, independent of any other cut, so partitioning reduces to a 1-D segmentation DP over the candidate set {query endpoints} trading pen(b) against the convex BASE+size^1.5 build cost -- recovers both the widely-spaced coarse cuts and the nested fine cluster's extra local cuts that a single granularity could never match",
+    "headroom above strong: exact global DP over ALL integer positions (not just query endpoints) to also exploit build-cost-only splits with zero touch penalty, plus joint reasoning about which noise queries to sacrifice"
+  ]
+}

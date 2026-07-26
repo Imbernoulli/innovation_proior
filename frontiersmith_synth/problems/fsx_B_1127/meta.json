@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1127",
+  "tier": "B",
+  "format": "E",
+  "family": "powerlaw-memory-rheology",
+  "eval_form": "quality-metric",
+  "theme": "silly putty remembers every squeeze",
+  "title": "Silly Putty Remembers Every Squeeze",
+  "objective": "min",
+  "strategies": [
+    "single relaxation time (one exponential, least-squares amplitude) fit to the step response",
+    "generalised Maxwell / Prony series (sum of 3 exponentials) least-squares fit to the step response",
+    "power-law kernel fit by log-log linear regression, selected over the Prony fit via a frequency-independent phase-lag invariance test spanning beyond the observed window",
+    "any other closed-form family (rational, stretched exponential, etc.) discovered by reasoning about the superposition/convolution structure"
+  ]
+}

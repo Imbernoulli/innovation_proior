@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1154",
+  "tier": "A",
+  "format": "C",
+  "family": "spectrum-preserving-sparsifier-duel",
+  "eval_form": "quality-metric",
+  "theme": "shipping a pocket-size map that answers like the atlas",
+  "title": "Pocket Atlas: Spectrum-Preserving Sparsifier Duel",
+  "objective": "min",
+  "strategies": [
+    "naive heaviest-edge baseline: keep the s heaviest original edges unchanged (ignores the published test-vector family entirely)",
+    "textbook effective-resistance / leverage-score sampling: rank edges by w_e * R_e over the full pseudoinverse of L_G and keep the top-s (spectrally sound for all of R^n, but blind to which directions are actually probed)",
+    "leverage-score inversion restricted to the published K-vector family's own span, plus a bounded linear program that redistributes weight across the selected support to minimize the worst relative error over all K targets simultaneously",
+    "iterative local search / coordinate refinement over edge subsets seeded from the restricted-relevance ranking, trading off which cluster's targets get priority under the shared quota"
+  ]
+}

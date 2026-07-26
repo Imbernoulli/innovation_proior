@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_1124",
+  "tier": "A",
+  "format": "B",
+  "family": "quote-and-balk-counterdesk",
+  "eval_form": "quality-metric",
+  "theme": "repair shop front desk quoting turnaround times",
+  "title": "Counterdesk Commitments: Repair Shop Turnaround Quotes",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:mechanism-and-incentives"],
+  "strategies": [
+    "mean-field forecast baseline: track a single pooled backlog counter drained at rate C, quote exactly that forecast, admit iff forecast <= patience (reproduces the evaluator's weak reference)",
+    "per-bench list-scheduling forecast: simulate the C actual bench free-times online, quote the true earliest-available-bench delay -- more accurate than the pooled estimate, but still announces the forecast itself as the binding promise",
+    "commitment-priced quoting: once a job is worth admitting, always quote AT the patience ceiling (the loosest delay the customer will still accept) instead of your best-guess forecast, since any tighter promise only adds violation risk with no upside",
+    "value-first global admission with feasibility lookback: scan the whole arrival trace, offer jobs in descending value order, and admit a job only if doing so (at its patience-ceiling quote) does not blow any already-committed higher-value job's deadline under the true earliest-deadline-first dispatch -- pre-empts low-value burst jobs from ever consuming bench priority that higher-value jobs nearby will need"
+  ]
+}

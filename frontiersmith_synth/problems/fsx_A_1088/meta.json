@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1088",
+  "tier": "A",
+  "format": "D",
+  "family": "cheap-long-cycle-slp",
+  "eval_form": "flops",
+  "theme": "cheapest clockwork that visits every gear tooth",
+  "title": "Cheapest Clockwork: A Long Cycle That Still Remembers Its Anchors",
+  "objective": "minimize",
+  "strategies": [
+    "textbook Hull-Dobell full-cycle translation, patched via from-scratch Lagrange interpolation of the small CRT factor plus the un-simplified weighted-idempotent CRT recombination (trivial)",
+    "correct CRT split (identity on the small factor, primitive-root map with one fixed point on the large factor) glued together with the literal textbook weighted-idempotent sum, never algebraically simplified (greedy)",
+    "same CRT split, but folded: since both per-factor maps are affine, the whole reconstruction collapses to ONE global affine map -- 2 instructions regardless of |S| or n (strong)",
+    "sub-2-instruction constructions, or maps whose per-factor pieces are non-affine yet still cheap, remain open (uncovered ceiling)"
+  ]
+}

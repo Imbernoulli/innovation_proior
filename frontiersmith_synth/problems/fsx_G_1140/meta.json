@@ -1,0 +1,16 @@
+{
+  "id": "fsx_G_1140",
+  "tier": "G",
+  "format": "E",
+  "family": "tropical-weight-automaton",
+  "eval_form": "quality-metric",
+  "theme": "Recover a min-plus automaton that extrapolates",
+  "title": "Tropical Toll Roads -- recovering a min-plus automaton that extrapolates",
+  "objective": "max",
+  "strategies": [
+    "trivial: emit a 1-state automaton whose 'a' and 'b' self-loop weights both equal the single global rate sum(train cost)/sum(train length) (ignore which symbol, ignore route choice) -- reproduces the checker's own baseline, ~0.1",
+    "greedy: ordinary least squares on (count_a, count_b, 1) -> cost, emitted as a 1-state automaton with per-symbol self-loop weights alpha,beta and final weight gamma. A believable 'recipe' fit: it distinguishes a from b, fits the training notebook reasonably, but is still additive/order-blind -- it cannot see that whether a string ever benefits from switching lanes depends on WHERE the first toll-booth ('a') sits, not just how many there are. On far-extrapolated strings the true optimal route has switched lanes almost everywhere, and the blended additive rate misses it substantially",
+    "strong: recognize the two-regime shape directly from the data. Isolate the pure-'a' training strings, sorted by length, and find the length at which their cost-vs-length curve bends (a genuine changepoint / regime detector) to recover the slow rate p_a, the switch cost q, and the fast rate r_a from the two linear segments; recover p_b from pure-'b' strings (always slow, no ambiguity); recover r_b by a 1-D search that matches the general mixed training strings under the recovered automaton. Emit the resulting 2-state min-plus automaton -- it generalizes because it IS the mechanism, not a fit to it",
+    "headroom above strong: held-out sensor noise on the extrapolation grid keeps even an exactly-recovered automaton off the ceiling; a policy that also models the noise (e.g. robust/median segment fits, or joint MLE over all five weights instead of a two-stage estimate) can close more of the remaining gap"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_1143",
+  "tier": "A",
+  "format": "B",
+  "family": "pacing-duel-bidder",
+  "eval_form": "quality-metric",
+  "theme": "antique buyer at three hundred sequential lots",
+  "title": "Three Hundred Lots: The Ledbury Room",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:mechanism-and-incentives"],
+  "strategies": [
+    "do-nothing baseline: bid 0 on every lot, win nothing, spend nothing (reproduces the evaluator's 0.1 anchor)",
+    "honest opponent-aware pacer: fully simulate the three published opponent formulas each lot and bid just above the current top opponent bid whenever your own value exceeds it, but never bid on a lot you would not want to win",
+    "threshold-selective bluffing planner: run the same opponent simulation, but only spend your OWN budget to win a lot when its surplus clears a margin over the current top bid; on every other lot, bid exactly the current top opponent bid as a safe, zero-risk 'bluff ceiling' that forces whichever opponent wins to pay their own top bid in full, draining that opponent's budget for every later lot",
+    "full lookahead / dynamic-programming allocator: since the whole session is a known, deterministic function of your own bid sequence, simulate candidate win/bluff/skip choices lot-by-lot with backtracking or value-based rollouts to approximate the globally best split between which lots to win outright and which to sacrifice purely to drain a targeted opponent's future bidding power"
+  ]
+}

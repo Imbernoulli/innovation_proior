@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1153",
+  "tier": "A",
+  "format": "C",
+  "family": "quotient-balanced-partition",
+  "eval_form": "quality-metric",
+  "theme": "split an orchard so every inspector counts equal ripeness",
+  "title": "Orchard Ledger: Splitting Rows for Equal-Ripeness Inspectors",
+  "objective": "minimize",
+  "strategies": [
+    "trivial: reproduce the checker's own reference partition (consecutive-position blocks) -- ignores every test, scores the calibration floor",
+    "greedy: round-robin plots by natural tree position (no number theory) -- strong on row/window tests, mediocre-but-not-catastrophic on graft (log-index) tests",
+    "strong: hybrid coset-skeleton + interval-shim -- group trees by discrete-log index modulo a finer skeleton M = k * lcm(conflicting graft divisors), then merge D consecutive log-index residues per plot; this restores perfect graft balance on divisors that would break a plain 'index mod k' coset while keeping row balance via the discrete log's natural-position pseudorandomness",
+    "invalid: dump everything into one plot -- violates prescribed plot sizes, must score 0"
+  ]
+}

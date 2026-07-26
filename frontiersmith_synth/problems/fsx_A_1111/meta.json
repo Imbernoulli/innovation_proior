@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1111",
+  "tier": "A",
+  "format": "E",
+  "family": "layered-refraction-inference",
+  "eval_form": "quality-metric",
+  "theme": "spearfishing angles in a layered lagoon",
+  "title": "Spearfishing Angles in a Layered Lagoon — inferring a hidden refractive stack and its total-internal-reflection cutoff",
+  "objective": "min",
+  "strategies": [
+    "trivial: assume the lagoon is a single uniform medium at the entry index (n_1=n0, straight unrefracted ray) -> reproduces the checker's own baseline, ~0.1",
+    "greedy: fit ONE effective slab (whole depth D, single unknown index n_eff) to the near-normal training offsets/times by least squares; matches training almost perfectly (any smooth multi-layer stack looks like one effective medium to leading order at small angle) and extrapolates smoothly -- but n_eff lands near the thickness-weighted harmonic mean of the true indices, never at the true deep layer's own index, so it predicts either no critical angle or one in the wrong place, missing most held-out TIR points",
+    "strong: commit to the compositional Snell form with TWO layers (one shallow aggregate + one deep layer allowed to sit below n0) fit by nonlinear least squares with a fine deterministic sweep over the deep layer's index and pattern-search refinement of the rest; the cubic-order correction already present in the near-normal training data weakly but genuinely constrains the deep index, letting this model recover an approximately correct location for the TIR cutoff that the single-slab greedy model cannot see at all",
+    "headroom above strong: recover the true L=3 structure (not just a 2-layer collapse), model the noise more carefully (e.g. robust/weighted fit), or search the deep-layer sweep more finely / with better global optimisation to pin the critical angle tighter"
+  ]
+}

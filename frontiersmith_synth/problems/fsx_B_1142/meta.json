@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1142",
+  "tier": "B",
+  "format": "C",
+  "family": "heat-trace-equalizer",
+  "eval_form": "quality-metric",
+  "theme": "tuning a radiator network to a prescribed cooling curve",
+  "title": "Radiator Network: Multi-Scale Cooling-Curve Match",
+  "objective": "minimize",
+  "strategies": [
+    "half-cap baseline: set every edge weight to floor(cap/2), ignoring both the targets and the topology (reproduces the checker's own baseline, ~0.1)",
+    "single global scale: search one shared scale factor beta in [0,1] and set every edge weight to round(beta*cap), fitting the whole time grid at once with one shared knob -- the obvious first approach, but a single knob cannot move the short-time and long-time regimes independently",
+    "bridge/interior decoupling: find the graph's bridge edges (Tarjan bridge-finding on the topology alone), fit a single interior scale against the short-time (moment-dominated) targets, then exhaustively search the few bridge weights against the long-time (spectral-gap-dominated) targets, and refine -- exploits the planted structural split",
+    "further local refinement on top of the decoupled solution (per-edge nudges, alternating re-fits) squeezes out additional headroom"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1113",
+  "tier": "B",
+  "format": "C",
+  "family": "wakeclass-runway-batching",
+  "eval_form": "quality-metric",
+  "theme": "sequencing arrivals through wake-vortex separation rules",
+  "title": "Merge-Fix Wake Batching: Two Runways, One Choke Point",
+  "objective": "min",
+  "strategies": [
+    "round-robin FCFS: process aircraft strictly in ready-time order and alternate them onto the two runways blindly (1,2,1,2,...), never picking the better runway and never reordering by class (baseline)",
+    "list-scheduling FCFS: process aircraft in ready-time order, but at each step assign the runway that gives the earliest feasible landing (dynamically picks the better runway, still never reorders by class)",
+    "run-extension batching + local search: build a global crossing order with a nearest-neighbour dispatch rule over the class-transition matrix (a TSP-like view: the object that matters is the run-length composition per runway), corrected by a fuel-weighted staleness term so no class is starved; place the batched order onto both runways via list-scheduling, then refine with a bounded adjacent-swap / relocation local search evaluated against the real two-runway objective",
+    "exhaustive class-order search: try small permutations/splits of class batches (H/M/L) upfront and pick the one with lowest estimated transition cost before placing aircraft"
+  ]
+}

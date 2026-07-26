@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_1116",
+  "tier": "B",
+  "format": "B",
+  "family": "counterpoint-rule-garden",
+  "eval_form": "quality-metric",
+  "theme": "first-species counterpoint writing policy",
+  "title": "Rung-Ladder Counterpoint: One Policy, Ten Cantus Firmi, One Shared Style Bonus",
+  "objective": "max",
+  "source_frameworks": ["wave2b-lens:constrained-aesthetics"],
+  "strategies": [
+    "trivial: nearest-consonant-tone one-pass construction with no direction awareness, no diversity awareness, and no corpus awareness -- reproduces the calibrated baseline",
+    "greedy: the obvious next move once you notice the contrary-motion rule -- at every position always grab the nearest legal tone that moves opposite the cantus's current step, still a single left-to-right pass with no lookahead, no memory of which pitch already served as this line's climax, and no notion that this is one of ten pieces being judged together as a corpus",
+    "strong: pre-commit to a single (position, pitch) as the line's unique climax before filling anything else in -- choosing the position from the instance's OWN corpus-role bucket (instance_id mod climax_buckets, a seeded self-assignment that needs no communication between the isolated per-instance runs) -- then fill the rest with a backtracking search whose state tracks the running contrary-motion count so the global quota is met by real planning, not local luck",
+    "headroom above strong: replace the fixed climax-bucket self-assignment with a proper corpus-wide assignment problem (e.g. read climax_buckets/corpus_size and solve a bipartite matching over feasible-bucket-sets per instance instead of the simple modulo heuristic), and widen the interval-diversity search from a greedy tie-break into a proper joint optimization over motion-quota slack and interval-category balance"
+  ]
+}

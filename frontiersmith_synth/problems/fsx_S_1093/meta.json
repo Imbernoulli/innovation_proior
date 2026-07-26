@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_1093",
+  "tier": "S",
+  "format": "D",
+  "family": "offline-heap-comparison-plan",
+  "eval_form": "flops",
+  "theme": "tournament referee who has seen every match beforehand",
+  "title": "The Foresighted Referee",
+  "objective": "min",
+  "strategies": [
+    "trivial: blind re-searched binary-insertion certificate over the whole roster (checker's own baseline construction)",
+    "greedy: replay a textbook live binary min-heap (array-based, real sift-up/sift-down) and log every comparison it performs -- the obvious 'priority queue = heap' translation, oblivious to full-script foreknowledge",
+    "strong: exploit full foreknowledge -- for each new registrant, find its two immediate rating-neighbors among everyone registered so far (a free internal lookup) and file only the 1-2 comparisons that link it to them; transitivity (proven: any correct comparison-based sort's filed comparisons must transitively recover the whole order) certifies every future cut for free, with cuts costing zero additional comparisons",
+    "invalid: files the (checker-computed) correct cut identities but with zero comparisons -- correct answers with no certificate, must score 0"
+  ]
+}

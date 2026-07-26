@@ -1,0 +1,16 @@
+{
+  "id": "fsx_S_1146",
+  "tier": "S",
+  "format": "D",
+  "family": "law-compression-circuit",
+  "eval_form": "flops",
+  "theme": "engrave the law on the smallest gear set",
+  "title": "Engrave the Law on the Smallest Gear Set",
+  "objective": "min",
+  "strategies": [
+    "direct term-by-term textbook expansion, constants found by full search (trivial, ~13 ops)",
+    "hard-coded 'typical multiplier' recipe with a compact but unverified circuit (greedy, correct on 7/10, exact-fails on 3/10 trap instances)",
+    "verify the true multiplier against the whole table, then share the subexpression only when the algebra actually permits it (strong, 6-7 ops, correct on all 10)",
+    "true minimal instruction count for this circuit shape is unknown and left open above strong (uncovered ceiling)"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_1137",
+  "tier": "B",
+  "format": "B",
+  "family": "sequence-setup-noreturn-conveyor",
+  "eval_form": "quality-metric",
+  "theme": "Order jobs on a one-way multi-station line",
+  "title": "One-Way Conveyor: Warm-Up Windows vs. Tool Fatigue",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:temporal-commitment"],
+  "strategies": [
+    "trivial: keep the as-given arrival order untouched (the evaluator's own baseline construction) -> exactly 0.1",
+    "greedy: classic shortest-processing-time (SPT) sort by each job's own proc_time, ignoring the shared multi-station setup/warm-up and fatigue state entirely -- the trap: proc_time is not always a safe proxy for type, and even where it is, SPT's resulting long same-type runs can blow a station's fatigue limit it never modeled",
+    "strong: build several candidate sequences across a spread of block granularities C using two chunking schemes (round-robin across all types, and majority-first with single-job breather resets), self-score every candidate with the exact public multi-station cost model, keep the true best, then polish with adjacent-swap hill-climbing -- treats block granularity as the decision variable that jointly trades off cross-station warm-up transient against fatigue overrun, since one shared permutation commits every station's tooling state at once",
+    "invalid: repeats job 0 for every slot -- not a permutation -> infeasible -> 0"
+  ]
+}

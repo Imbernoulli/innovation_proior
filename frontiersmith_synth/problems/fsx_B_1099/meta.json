@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1099",
+  "tier": "B",
+  "format": "C",
+  "family": "multitropism-vine-maze",
+  "eval_form": "quality-metric",
+  "theme": "a vine climbing a wall toward the sun",
+  "title": "Vine on the Wall: Multi-Tropism Maze Climb",
+  "objective": "max",
+  "strategies": [
+    "pure negative-gravitropism: ignore light and touch entirely, always drift straight up with no branching -- cheap, always makes some progress, but blind to the maze",
+    "photo-dominant reflex: weight phototropism heavily, ignore touch, and spend the branch budget at the raw coordinates of the brightest sources -- wins on open, unobstructed rooms but jams against the first baffle whenever the nearest bright source is occluded, since with thigmo silenced the only fallback is gravity plus a fixed direction tie-break",
+    "integrated cue search + bottleneck branching: search a small fixed grid of (gravi,photo,thigmo) weight triples so thigmo can silently take over exactly where photo goes to zero (occluded), then locate the maze's structural bottlenecks (the sparse gaps inside mostly-solid wall rows) and spend the branch budget there via greedy forward selection with full re-simulation",
+    "exact-optimal joint search over weight-space x branch-subset-space x simulation outcome -- combinatorially intractable at scale, only useful to sanity-check tiny instances"
+  ]
+}

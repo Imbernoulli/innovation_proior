@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_1126",
+  "tier": "A",
+  "format": "B",
+  "family": "disguised-interval-allocation",
+  "eval_form": "quality-metric",
+  "theme": "hotel clerk who could seat everyone, if only she noticed",
+  "title": "The Clerk Who Redacted Her Own Calendar",
+  "objective": "min",
+  "source_frameworks": ["wave2b-lens:program-and-circuit-synthesis"],
+  "strategies": [
+    "weak roster-order first-fit: seat guests exactly in the (already scrambled) id order into the first compatible room, never reordering (reproduces the evaluator's weak reference)",
+    "value-descending first-fit: prioritise the highest-value guest each step, seat into the first compatible room -- beats roster order but reasons about value alone, so one long-staying high-value guest can block many smaller collectively-more-valuable guests for good",
+    "Maximum-Cardinality-Search chordality detection + maximum-weight clique-tree spanning forest: recover a linear (interval) calendar order for each roster component from the clash graph alone",
+    "min-cost-flow spill placement on the reconstructed calendar axis: R room-tracks threaded through time via successive shortest augmenting paths pick exactly the value-maximising subset of guests to seat, then a sweep in reconstructed order assigns real rooms (falling back to turning a guest away on the spot if the reconstruction was imperfect)"
+  ]
+}

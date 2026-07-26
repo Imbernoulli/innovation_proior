@@ -1,0 +1,15 @@
+{
+  "id": "fsx_S_1054",
+  "tier": "S",
+  "format": "C",
+  "family": "rebound-peak-tariff",
+  "eval_form": "quality-metric",
+  "theme": "island microgrid prices twenty-four hourly rates",
+  "title": "Island Microgrid: The Twenty-Four Hourly Rates",
+  "objective": "min",
+  "strategies": [
+    "ascending night-cheap ramp: a single monotone price curve (cheapest at hour 0, priciest at hour 23); every household in the homogeneous fleet ranks the 24 hours in the exact same calendar order, recreating full synchronized charging (the checker's own do-nothing reference)",
+    "textbook time-of-use block: a fixed cheap off-peak window and fixed expensive peak window, revenue-balanced; genuinely better than the do-nothing ramp, but the block is bold enough to override every household's own tie-break noise, so the whole fleet's charge session still piles into that one window and manufactures a new rebound peak there",
+    "near-flat epsilon-scale dithering: keep every hour's price within a small fraction of the households' own per-hour tie-break noise floor so no single price gap ever dominates a household's ranking (charge sessions stay scattered across all 24 hours by construction), while tilting fractionally against hours where the fleet's own background demand is already high"
+  ]
+}

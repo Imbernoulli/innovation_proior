@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1151",
+  "tier": "B",
+  "format": "E",
+  "family": "proportion-cascade-recurrence",
+  "eval_form": "quality-metric",
+  "theme": "hidden proportion law of nested frames",
+  "title": "Nested Frames — recovering the hidden proportion recurrence's spectrum",
+  "objective": "min",
+  "strategies": [
+    "constant training-mean tension (ignores everything) -> reproduces the checker baseline ~0.1",
+    "greedy: notice tension looks roughly exponential in depth; fit ONE aggregate rate T~c*r**d by binning training rows by depth and log-linear regression, pooling every design together. Solid on the training window (depth 3..6), but it fits a single population-wide rate/amplitude, throwing away that each design's OWN (p1,p2) fixes a distinct mixture of the recurrence's two eigen-modes -- so it is measurably biased on individual deep (depth 10..14) designs, worst when the hidden dominant root exceeds 1 (a regime the shallow window barely reveals)",
+    "strong: don't fit T vs (p1,p2,d) at all -- IDENTIFY the hidden dynamical system. Pool consecutive proportion TRIPLES across every training row (even shallow depth-3..6 rows give some) into one least-squares system for the recurrence coefficients alpha,beta,gamma; recover the characteristic roots lambda1,lambda2 (the spectrum) and the fixed point p*. The general solution p_k=p*+A*lambda1**k+B*lambda2**k (A,B linear in p1,p2 via Cramer's rule) gives a closed-form T(p1,p2,d) with the true lambda1**d/lambda2**d exponential envelope baked in -- correctly extrapolating to depth 10..14 designs the training window never showed, per-design amplitude included",
+    "headroom above strong: better-conditioned (robust/weighted) recovery of alpha,beta,gamma from the noisy triples, and modelling the residual estimation bias in lambda1,lambda2 as they compound through lambda1**(2d), would push held-out error further down toward the irreducible grading-noise floor"
+  ]
+}
