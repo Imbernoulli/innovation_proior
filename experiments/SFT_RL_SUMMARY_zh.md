@@ -35,6 +35,8 @@
 - **⭐ allver_a10（FCS 7.34）是唯一 > base 的 full-FT soup** —— 配方 B（把以前 deprecate 的旧 maintain 也加上）验证有效。
 - maintain 的 domain 筛选（coding-only / 去数学物理）对 FCS 影响不大（都 ~6.1 < allver）。
 
+**交叉验证（2026-07-25 巡检）**：用官方 leaderboard `avg_at_5` 口径（172 题全覆盖）重算，排名与 strict5 **完全一致**：allver_a10(6.765) > pure_a10(6.417) > coding_a10(6.102) > filt_a10(5.882) > clean_a10(5.323)。→ **"allver_a10 最优" 对评测口径稳健**。注意：单 shard 仅 86 题、mean@5 噪声大（coding_a10 两 shard 4.91 vs 7.30），**<0.5 分的差距在误差范围内**，absolute 值随口径变化（strict5 7.34 vs 官方 avg@5 6.765），结论只看相对排名。
+
 ### 1.3 数据 fix（去污染 verbatim-code gate）前后对比
 | 指标 | fix 前（clean_a10 / allver_a10） | fix 后（gated_allver） |
 |---|---|---|
