@@ -58,6 +58,12 @@
 
 → **RL 应走 research（稠密可学的 reward），不走 synth。** 新加了 wave-2b ~600 题（总 1102 题），正在用更大 batch（50×16，KL 0.01）在 base 和 LoRA-r32s01 上试 research/synth 对比。
 
+**新 run 健康验证（2026-07-26，step-1 rollout 实测 800 条）**：50×16 + KL 0.01 + 1102 题 + clip-higher + resp 40960 的配置下，**第一步就完全不塌**：
+- reward 信号稠密：mean 0.273 / max 1.0 / **67% 非零**（旧 collapse 只有 0.014）。
+- 长度不塌：median ~113k 字符，0% 短输出，无放弃迹象。
+- 重复循环 **0.12%**（旧 22%）。
+→ 机制上是旧 synth collapse 的反面。已据此发两个完整 20 步 run：base 臂（11618968）+ r32s01 臂（11623616，含 w2/w3 自动续跑）。代价：step 慢（~2.5h/step，35B×40k 长尾），20 步需跨 3 个 24h 窗口。
+
 ## 3. 当前最佳 setting（可直接复用）
 
 - **9B full-FT + soup**：`allver` 数据（clean_decontam_traj + wave2 + maintain_r3 + 旧 maintain），α=0.1 → **FCS 7.34**。
