@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1148",
+  "tier": "B",
+  "format": "C",
+  "family": "stage-blackout-scene-swap",
+  "eval_form": "quality-metric",
+  "theme": "stagehands re-setting a theater between scenes in the dark",
+  "title": "Wings as Registers: Blackout Scene-Swap Choreography",
+  "objective": "minimize",
+  "strategies": [
+    "clear-and-rebuild baseline: every blackout, evacuate the whole stage to the wings, then refill from scratch, parking leftovers and pushing them back (checker's own internal baseline)",
+    "per-window greedy: evacuate only cells that actually change, cell-index push order, wing chosen purely by free capacity (no precedence awareness, no lookahead)",
+    "prop-lifetime lookahead: push evacuees in descending order of when they are next needed on stage across the WHOLE remaining scene sequence (soonest-needed prop ends up on top), and choose wings to keep each push precedence-clean",
+    "invalid: claims to push a nonexistent prop id -- must score 0 under strict feasibility checking"
+  ]
+}

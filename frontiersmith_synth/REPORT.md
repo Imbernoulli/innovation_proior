@@ -5,7 +5,7 @@ models that *generalize* across the "LLM writes code to optimize a scored object
 re-implements the withheld parts of **FrontierSmith** (arXiv 2605.14445) and extends the idea across
 the whole evolutionary-search / scientific-discovery landscape.
 
-**Result: 1006 problems, all machine-verified, spanning 638 families and 1006 unique scaffolds.**
+**Result: 1165 problems, all machine-verified, spanning 801 families and 1165 unique scaffolds.**
 
 ---
 
@@ -45,26 +45,33 @@ a 10×-better solution caps at 1.0. Every problem ships a 4-rung **solution ladd
 
 ---
 
-## 3. The 1006-problem corpus
+## 3. The 1165-problem corpus
 
 | by format | count | | by tier (band) | count |
 |---|---|---|---|---|
-| A testlib combinatorial | 184 | | S graph/combinatorial core | 160 |
-| B evolve-a-heuristic | 126 | | A math-discovery / heuristic | 140 |
-| C constructive + verifier | 620 | | G breadth-fill and bulk domains/tasks | 588 |
-| D FLOPs / op-count kernel | 41 | | B engineering + science | 60 |
-| E symbolic / scientific-law | 35 | | C ML-method + exotic | 40 |
-| | | | N bespoke-novelty | 18 |
+| A testlib combinatorial | 334 | | A math-discovery / heuristic | 452 |
+| B evolve-a-heuristic | 248 | | S graph/combinatorial core | 276 |
+| C constructive + verifier | 359 | | B engineering + science | 267 |
+| D FLOPs / op-count kernel | 117 | | G breadth-fill and bulk domains/tasks | 91 |
+| E symbolic / scientific-law | 107 | | C ML-method + exotic | 53 |
+| | | | N bespoke-novelty | 26 |
 
-- **Scoring types:** quality-metric 923 · flops 48 · correctness 35.
+- **Scoring types:** quality-metric 1006 · flops 124 · correctness 35.
 - **Source tags represented:** the original cross-framework taxonomy, bespoke novelty additions,
-  breadth-fill supplements, and the new bulk Format-C constructive-selection tranche.
-- **638 distinct families and 1006 unique `(family, theme, variant)` scaffolds** — including hard-science
-  E-format domains, op-count D-format kernels, isolated B-format heuristic evaluators, and 500 new
-  budget/conflict/coverage/diversity constructive domains.
+  breadth-fill supplements, and the 20-lens wave-2b rebuild.
+- **801 distinct families and 1165 unique `(family, theme, variant)` scaffolds** — including hard-science
+  E-format domains, op-count D-format kernels, isolated B-format heuristic evaluators, and the 659
+  wave-2b problems spanning 20 independently-imagined design lenses.
 
-The distribution is deliberately expanded toward the generalization-relevant constructive tail: the
-latest bulk tranche adds 500 budget/conflict/coverage/diversity Format-C tasks across distinct domains.
+The distribution is deliberately expanded toward the generalization-relevant tail. The wave-2b rebuild
+(659 problems, `fsx_*_0507`–`fsx_*_1165`) replaced an earlier bulk tranche that had degenerated into a
+single re-skinned template, and added two acceptance gates the original pipeline lacked: an
+**innovation-headroom** requirement (`strong - greedy >= 0.06`, `strong <= 0.92`,
+`greedy - trivial >= 0.03`) so the insight beats the recipe rather than merely beating do-nothing, and
+an **anti-homogeneity scan** (digit-stripped skeleton hash + theme-masked statement hash). The corpus
+now scans **1165 dirs → 1165 unique skeletons / 1165 unique statement shapes** at `--max-clones 1`.
+Each wave-2b problem was additionally reviewed by an independent Codex (`gpt-5.6-terra`, xhigh) pass
+inside its authoring agent, with cited defects repaired before acceptance.
 
 ---
 
@@ -154,19 +161,19 @@ synth/
     validate_pyproblem.py              8-gate harness (program mode: B)
     isorun.py                          bwrap-sandboxed candidate runner
     testlib.h  _selftest{,_C,_B}
-  seeds/build_seed_list.py             taxonomy/supplements → seed_list.jsonl (`--current` = 1006 specs)
+  seeds/build_seed_list.py             taxonomy/supplements → seed_list.jsonl (`--current` = 1165 specs)
   reports/
     taxonomy_proposal.json             researched cross-framework taxonomy
     verify_all.sh  scan_defects.py  aggregate.py
     blind*_MAPPING_secret.json         blind-comparison results
   generate_problems.workflow.js        fan-out: 1 agent/problem, author → self-validate → repair
   research_frameworks.workflow.js      the 10-framework research + synthesis workflow
-  problems/<id>/                       the 1006 problems (testdata/ regenerates via the harness)
+  problems/<id>/                       the 1165 problems (testdata/ regenerates via the harness)
 ```
 
 ```bash
 cd synth
-python3 seeds/build_seed_list.py --current        # regenerate the current 1006-spec seed plan
+python3 seeds/build_seed_list.py --current        # regenerate the current 1165-spec seed plan
 bash   reports/verify_all.sh                      # ground-truth re-verify every problem (needs bwrap)
 python3 reports/aggregate.py                       # → summary.{json,md}
 # generation is driven by the Workflow tool over compact {id,format} routes.

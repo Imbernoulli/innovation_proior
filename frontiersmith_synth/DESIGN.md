@@ -65,11 +65,18 @@ parent. `G5c` enforces it (fails any evaluator that doesn't sandbox, or any envi
 
 The researched base taxonomy (`reports/taxonomy_proposal.json`) is importance-ranked and still
 regenerates a controlled **200-problem** batch by default. The checked-in corpus is the broader
-**1006-problem** plan assembled with `build_seed_list.py --current`: taxonomy batch 1 (200) +
-taxonomy batch 2 (200) + 16 bespoke-novelty problems + 84 breadth-fill problems that target thin
-scientific-law, op-count, ML-method, discrete-construction, and domain-specific task families + 6
-subagent-generated extensions + 500 bulk constructive-selection extensions. Every spec is a unique
-`(family x theme x variant)` or supplement scaffold.
+**1165-problem** plan assembled with `build_seed_list.py --current`, built in two waves:
+
+- **wave-1 (506, `fsx_*_0001`–`fsx_*_0506`)**: taxonomy batch 1 (200) + taxonomy batch 2 (200) +
+  16 bespoke-novelty problems + 84 breadth-fill problems that target thin scientific-law, op-count,
+  ML-method, discrete-construction, and domain-specific task families + 6 subagent extensions.
+- **wave-2b (659, `fsx_*_0507`–`fsx_*_1165`)**: a from-scratch rebuild of the original bulk tranche,
+  which had collapsed into a single re-skinned template (one skeleton across all 500). Seeds were
+  re-imagined across 20 distinct lenses (`seeds/bulk_seed_packs/`), each carrying an explicit
+  `mechanisms` / `innovation_hook` / `trap` triple, and each problem was authored by its own agent
+  under two extra acceptance gates (§4.1).
+
+Every spec is a unique `(family x theme x variant)` or supplement scaffold — 1165/1165 distinct.
 
 | Tier | 档 | Focus | Families | Count | Formats |
 |---|---|---|---|---|---|
@@ -78,18 +85,37 @@ subagent-generated extensions + 500 bulk constructive-selection extensions. Ever
 | **B** | 应用前沿 | engineering + scientific optimization | 8 | **30** | B, D, E |
 | **C** | 方法与异域前沿 | ML-method design + exotic construction | 6 | **20** | B, C |
 
-Current 1006-problem mix:
+Current 1165-problem mix:
 
 | Group | Count | Role |
 |---|---:|---|
-| S | 160 | graph/combinatorial core |
-| A | 140 | math-discovery / heuristic evolution |
-| B | 60 | engineering + scientific optimization |
-| C | 40 | ML-method design + exotic construction |
-| N | 18 | bespoke high-novelty, composite/mechanism-twist problems |
-| G | 588 | breadth-fill plus bulk constructive-selection domains |
+| A | 452 | math-discovery / heuristic evolution |
+| S | 276 | graph/combinatorial core |
+| B | 267 | engineering + scientific optimization |
+| G | 91 | breadth-fill plus bulk constructive-selection domains |
+| C | 53 | ML-method design + exotic construction |
+| N | 26 | bespoke high-novelty, composite/mechanism-twist problems |
 
-Format mix over the 1006: A=184, B=126, C=620, D=41, E=35.
+Format mix over the 1165: A=334, B=248, C=359, D=117, E=107. 801 distinct families.
+
+### 4.1 Wave-2b's two extra acceptance gates
+
+1. **Innovation headroom** (`AGENT_BRIEF_INNOVATION_ADDENDUM.md`). The original G7 only checked
+   `strong > trivial`, which a problem can satisfy while the textbook greedy recipe already captures
+   nearly all of the value — a useless RL signal if the goal is *innovation* rather than recall of a
+   known baseline. Wave-2b additionally requires `strong - greedy >= 0.06` (the insight visibly beats
+   the recipe), `strong <= 0.92` (headroom is left above the reference solution), and
+   `greedy - trivial >= 0.03` (the ladder is sane). The generator must plant trap cases where the
+   obvious greedy lands far from strong on >=3 of the 10 tests.
+2. **Anti-homogeneity** (`reports/scan_homogeneity.py`). A digit-stripped skeleton hash plus a
+   theme-masked statement hash catch re-skinned clones that per-problem validation is blind to — the
+   failure mode that killed the first wave-2 attempt. The current corpus scans **1165 dirs → 1165
+   unique skeletons / 1165 unique statement shapes** at `--max-clones 1`.
+
+Each wave-2b authoring agent additionally ran an independent **Codex (`gpt-5.6-terra`, xhigh) review**
+of its own finished problem — hunting scoring loopholes, nondeterminism, statement/code mismatches,
+trap cases that fail to punish greedy, and strong-solutions that are merely greedy-plus-tuning — and
+repaired every real defect before the problem was accepted.
 
 ## 5. Critical analysis — improvements over FrontierSmith (辩证)
 
@@ -111,7 +137,7 @@ Format mix over the 1006: A=184, B=126, C=620, D=41, E=35.
 
 ```bash
 cd frontiersmith_synth
-python3 seeds/build_seed_list.py --current            # -> seeds/seed_list.jsonl (current 1006)
+python3 seeds/build_seed_list.py --current            # -> seeds/seed_list.jsonl (current 1165)
 python3 harness/validate_problem.py   harness/_selftest      # A/C/D/E self-check
 python3 harness/validate_problem.py   harness/_selftest_C
 python3 harness/validate_pyproblem.py harness/_selftest_B    # B self-check

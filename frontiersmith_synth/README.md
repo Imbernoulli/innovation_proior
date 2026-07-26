@@ -7,8 +7,15 @@ FrontierSmith's withheld orchestrator + test/checker generators, broadened acros
 FrontierCS, ALE-Bench, MLS-Bench). **Deterministic scoring only** — no wall-time/GPU; kernels appear
 only as FLOPs/op-count. See `DESIGN.md` for the full method + critical analysis.
 
-Current corpus: **1006 generated problems**, **1006/1006 machine-verified PASS**, with unique IDs and a
+Current corpus: **1165 generated problems**, **1165/1165 machine-verified PASS**, with unique IDs and a
 one-to-one match between `seeds/seed_list.jsonl` and `problems/fsx_*`.
+
+The corpus is built in two waves: wave-1 (506 problems, `fsx_*_0001`–`fsx_*_0506`) and wave-2b
+(659 problems, `fsx_*_0507`–`fsx_*_1165`). Wave-2b additionally enforces an **innovation-headroom**
+acceptance (`strong - greedy >= 0.06`, `strong <= 0.92`, `greedy - trivial >= 0.03`) so the insight
+visibly beats the recipe, and an **anti-homogeneity gate** (`reports/scan_homogeneity.py`) — the
+current corpus is 1165 dirs / 1165 unique skeletons / 1165 unique statement shapes at
+`--max-clones 1`. See `AGENT_BRIEF_INNOVATION_ADDENDUM.md`.
 
 ## Layout
 ```
@@ -23,7 +30,7 @@ harness/
   _selftest, _selftest_C, _selftest_B   regression fixtures (one per harness path)
 seeds/
   build_seed_list.py           taxonomy/supplements → seed_list.jsonl (`--current` for corpus)
-  seed_list.jsonl              the 1006 problem specs (tier/format/family/theme/scale/variant)
+  seed_list.jsonl              the 1165 problem specs (tier/format/family/theme/scale/variant)
 reports/
   taxonomy_proposal.json       researched cross-framework taxonomy (5 formats, 4 tiers, 36 families)
   verify_all.sh                re-verify every problem with the correct harness (ground truth)
@@ -54,7 +61,7 @@ fails). The corpus survived three rounds of adversarial Codex review + independe
 
 ## Regenerate / extend
 ```bash
-python3 seeds/build_seed_list.py --current        # rebuild the current 1006-spec plan
+python3 seeds/build_seed_list.py --current        # rebuild the current 1165-spec plan
 bash   reports/verify_all.sh                      # ground-truth re-verify all problems
 python3 reports/aggregate.py                       # → reports/summary.{json,md}
 # batch generation is driven by the Workflow tool over compact {id,format} routes:
