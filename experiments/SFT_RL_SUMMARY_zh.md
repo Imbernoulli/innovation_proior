@@ -49,6 +49,24 @@
 - soup 的 research 普遍 ~10-11.5 << base 19.7（full-FT 在 research 上也亏）。
 - **最强单模型仍是 LoRA r32_s01：FCS 9.83**（远超所有 full-FT soup）。full-FT 路线的天花板明显低于 LoRA。
 
+### 1.5 gated_v2（输入侧泄漏清理）soup 扫描 —— 强烈 FCS↔ALE 此消彼长（2026-07-26）
+
+gated_v2 = 输入泄漏清理（218 题 statement 去掉解题剧透）+ gated 数据 + wave2 + allver maintain。soup α 扫描（官方 avg@5，172 题，每模型 2 shard 一致，可靠）：
+
+| 模型 | FCS | ALE |
+|---|---|---|
+| allver_a10（FCS 基准） | **6.765** | 366.2 |
+| gated_v2_a5 | 6.164 | 364.5 |
+| **gated_v2_a10** | 4.606 ⬇ | **413.0** ⬆（史上最高 ALE） |
+| gated_v2_a20 / a30 | ~5（部分） | 烹饪中 |
+| base | ~6.9 | 356.6 |
+
+**结论**：
+- **gated_v2 在 FCS 上没超过 allver_a10**（a10 反而把 FCS 打到 4.6，两个 shard 都低 = 真实非噪声）。→ **allver_a10 仍是 full-FT 的 FCS 最佳 recipe。**
+- **但 gated_v2_a10 造出了史上最高 ALE（413.0）**，远超 gated_allver_a10 的 377.4 和 base 356.6。→ **要 ALE 用 gated_v2_a10，要 FCS 用 allver_a10。**
+- 清晰的 α 趋势：gated_v2 剂量越大 → ALE 越高、FCS 越低（输入清理逼着真推理，利 ALE；但偏离 FCS 的答题风格，损 FCS）。
+- 注：单 alpha 噪声大（86 题半 shard 摆 ±1.3 FCS / ±40 ALE），但 a5/a10 两 shard 各自一致，趋势可信。
+
 ## 2. 35B RL：synth 毁模型，research 才对
 
 | | 结论 |
