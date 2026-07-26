@@ -51,21 +51,22 @@
 
 ### 1.5 gated_v2（输入侧泄漏清理）soup 扫描 —— 强烈 FCS↔ALE 此消彼长（2026-07-26）
 
-gated_v2 = 输入泄漏清理（218 题 statement 去掉解题剧透）+ gated 数据 + wave2 + allver maintain。soup α 扫描（官方 avg@5，172 题，每模型 2 shard 一致，可靠）：
+gated_v2 = 输入泄漏清理（218 题 statement 去掉解题剧透）+ gated 数据 + wave2 + allver maintain。soup α 扫描（官方 avg@5，172 题，每模型 2 shard）：
 
 | 模型 | FCS | ALE |
 |---|---|---|
 | allver_a10（FCS 基准） | **6.765** | 366.2 |
-| gated_v2_a5 | 6.164 | 364.5 |
-| **gated_v2_a10** | 4.606 ⬇ | **413.0** ⬆（史上最高 ALE） |
-| gated_v2_a20 / a30 | ~5（部分） | 烹饪中 |
+| gated_v2_a5 | **6.164** | 364.5 |
+| **gated_v2_a10** | 4.606 | **413.0**（史上最高 ALE） |
+| gated_v2_a20 | 5.553 | 385.3 |
+| gated_v2_a30 | 4.229 | 332.8 |
 | base | ~6.9 | 356.6 |
 
 **结论**：
-- **gated_v2 在 FCS 上没超过 allver_a10**（a10 反而把 FCS 打到 4.6，两个 shard 都低 = 真实非噪声）。→ **allver_a10 仍是 full-FT 的 FCS 最佳 recipe。**
-- **但 gated_v2_a10 造出了史上最高 ALE（413.0）**，远超 gated_allver_a10 的 377.4 和 base 356.6。→ **要 ALE 用 gated_v2_a10，要 FCS 用 allver_a10。**
-- 清晰的 α 趋势：gated_v2 剂量越大 → ALE 越高、FCS 越低（输入清理逼着真推理，利 ALE；但偏离 FCS 的答题风格，损 FCS）。
-- 注：单 alpha 噪声大（86 题半 shard 摆 ±1.3 FCS / ±40 ALE），但 a5/a10 两 shard 各自一致，趋势可信。
+- **gated_v2 在任何 α 都没超过 allver_a10 的 FCS**（gated_v2 最高只有 a5 的 6.164 < 6.765）。→ **allver_a10 仍是 full-FT 的 FCS 最佳 recipe。**
+- **gated_v2_a10 是史上最高 ALE（413.0）**，远超 gated_allver_a10 的 377.4 和 base 356.6。→ **要 ALE 用 gated_v2_a10，要 FCS 用 allver_a10。**
+- α 关系**非单调、噪声大**（a10 FCS 4.6 但 a20 5.6；a10 ALE 413 但 a20 385）：低 α（a5）FCS 最高、中 α（a10）ALE 峰值、a30 两头都差（ALE 332.8 已 < base）。单 alpha 半 shard 摆动 ±1.3 FCS / ±40 ALE，所以只信跨 α 的稳健方向，不信单点排序。
+- 总评：输入泄漏清理（gated_v2）把能力**从 FCS 推向 ALE**——逼模型真推理利 ALE，但偏离 FCS 答题风格损 FCS。它**不是** FCS 的改进，**是** ALE 的改进。
 
 ## 2. 35B RL：synth 毁模型，research 才对
 
