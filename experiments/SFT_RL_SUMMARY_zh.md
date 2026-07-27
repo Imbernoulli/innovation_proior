@@ -7,7 +7,7 @@
 ## 0. 一句话结论
 
 - **SFT 端**：直接 full-FT 会塌 FCS；**average(soup) 必须做**。α=0.1 附近的几个配方（`allver` / `pure` / `gated_v2_a5` / `coding`）FCS 都落在 6.1–6.8，**彼此在噪声内不可区分**（FCS 全量 172 题的 SE≈0.5）；能确定的只有「**低 α 好、α≥0.3 明显塌**」。ALE 的所有配方间比较**都在噪声内**，不要用来选 recipe。
-- ⚠️ 早期写的「allver_a10 FCS 7.34 是唯一超过 base」用的是 strict5 口径、且 **base 从没在同一条 official 管线上测过**；base 锚点正在补测（job 11634479/80），补完前该断言**不成立**。
+- ⛔ **早期写的「allver_a10 FCS 7.34 是唯一超过 base」已被证伪**：base 同口径补测 = **6.816**，最好的 soup allver_a10 = 6.765，**打平但没超过**，其余全部更低。9B full-FT+soup 的真实成绩是「不掉分」，不是「涨分」。见 §1.6.1。
 - **RL 端**：**synth RL 会毁模型**（过优化→coherence collapse，FCS/ALE/Research 全掉）；**research RL 是对的**（reward 有信号、不塌、research 18.4→19.57 回升到 base 水平）。
 
 ## 1. SFT + soup 矩阵（9B，全部从 Qwen3.5-9B-bf16，clean_full 超参）
@@ -90,9 +90,11 @@ gated_v2 = 输入泄漏清理（218 题 statement 去掉解题剧透）+ gated �
 
 | 模型 | FCS | ALE |
 |---|---|---|
-| maintr3_allver_a10 | **6.765** | 340.3 |
+| **base Qwen3.5-9B（同口径锚点，2026-07-27 补测）** | **6.816** | 347.0 |
+| maintr3_allver_a10 | 6.765 | 340.3 |
 | maintr3_pure_a10 | 6.417 | **429.1** |
 | maintr3_pure_a20 | 6.385 | 375.1 |
+| maintr3_pure_a5 | 6.208 | 339.0 |
 | gated_v2_allver_a5 | 6.164 | 364.5 |
 | maintr3_coding_a10 | 6.102 | 365.8 |
 | gated_allver_a5 | 6.055 | 367.9 |
@@ -115,11 +117,27 @@ gated_v2 = 输入泄漏清理（218 题 statement 去掉解题剧透）+ gated �
 1. §1.5 表里 allver_a10 的 ALE 写成 366.2 —— 那是 clean_a10 的数，**串行了**；实测 340.3（shard 301.3 / 379.2）。
 2. 「gated_v2_a10 = 史上最高 ALE 413.0」**是错的**：`pure_a10` 双 shard 429.1 更高。且两者差 16 分 << 噪声 40，本来也不该排序。
 3. §1.2 的交叉验证里 **clean_a10(5.323) 只有 1 个 shard**（86 题），被当成全量数并入排名。
-4. **base 9B 从来没在这条 official avg@5 管线上测过**（旧 base 数 7.05/356.6 是 strict5 + 另一次 eval）。所有「超过 base」的断言目前**没有同口径锚点**。已提 `base_q35_official`（11634479/11634480）补测。
+4. **base 9B 从来没在这条 official avg@5 管线上测过**（旧 base 数 7.05/356.6 是 strict5 + 另一次 eval）。所有「超过 base」的断言当时**没有同口径锚点**。
+
+### 1.6.1 ⛔ base 锚点补测结果（2026-07-27）：**没有任何 full-FT soup 超过 base**
+
+`base_q35_official`（11634479/80，同一条 2-shard official 管线）：**FCS 6.816 / ALE 347.0**（shard 5.45 & 8.19 / 314 & 380）。
+
+| | FCS | vs base |
+|---|---|---|
+| **base** | **6.816** | — |
+| 最好的 soup（allver_a10） | 6.765 | **−0.05（打平，在噪声内）** |
+| pure_a10 | 6.417 | −0.40 |
+| gated_v2_a5 | 6.164 | −0.65 |
+| 其余全部 | ≤6.10 | 更低 |
+
+→ **本文最初的核心结论「allver_a10 是唯一超过 base 的 full-FT soup」是错的。** 那句话是拿 strict5 口径的 soup（7.34）去比另一次 eval 的 base（7.05）得来的——两个数不同管线、不可比。同口径重测后：**9B full-FT + soup 这条路线，最好的结果只是「打平 base」，一个都没超过。**
+
+这不改变别的结论，但改变整条线的意义：full-FT 的价值不在 FCS 涨分（涨不了），而在于**注入创新倾向的同时不掉分**（α=0.1 做到了打平）。真正超过 base 的仍然只有 **LoRA r32_s01（FCS 9.83）**——注意那个数也是旧口径，同样需要同口径复测才能引用。
 
 **数据完整性**：每个 shard 的真实 error（非 null）2–6 / 457，~1%，低于 MAX_ERRORS=12 → 分数本身干净，问题全在**汇总与解读**，不在评测。少数 shard 题数不满 172（allver_a30 162、gated_v2_a20 169 / a30 170），已在表中按 num_problems 加权。
 
-**补齐中的 α 洞**（模型已存在，只缺 eval，已提交 pli）：`maintr3_allver_a20`（11634484/85）、`maintr3_pure_a5`（11634489/90）。仍缺 eval 的：clean_a5、filt_a20、nomath_a10/a20、longthink_a20、method_minthink_a10/20/30。
+**补齐的 α 洞**（2026-07-27 已完成）：`maintr3_allver_a20` = FCS 5.469 / ALE 308.0；`maintr3_pure_a5` = FCS 6.208 / ALE 339.0。两者都低于各自的 a10 → **α=0.1 在 allver 和 pure 两条线上都是最优点**，这是目前唯一跨配方稳健的 α 结论。仍缺 eval 的：clean_a5、filt_a20、nomath_a10/a20、longthink_a20、method_minthink_a10/20/30。
 
 ## 2. 35B RL：synth 毁模型，research 才对
 
