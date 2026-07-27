@@ -139,6 +139,42 @@ gated_v2 = 输入泄漏清理（218 题 statement 去掉解题剧透）+ gated �
 
 **补齐的 α 洞**（2026-07-27 已完成）：`maintr3_allver_a20` = FCS 5.469 / ALE 308.0；`maintr3_pure_a5` = FCS 6.208 / ALE 339.0。两者都低于各自的 a10 → **α=0.1 在 allver 和 pure 两条线上都是最优点**，这是目前唯一跨配方稳健的 α 结论。仍缺 eval 的：clean_a5、filt_a20、nomath_a10/a20、longthink_a20、method_minthink_a10/20/30。
 
+### 1.7 ⭐ 07-08 之后数据做了什么 + 控制变量对照实验（2026-07-27 发起）
+
+**问题**：FCS 最好的 `allver` 线用的是 **07-08 的数据**（`innovation_clean_decontam_traj`，2225 行，07-08 构建）。而 07-08 之后我们对数据做了 **1348 个 commit** 的精细优化。最新数据训出来的 `gated_v2_allver` 反而没更好（FCS 6.164 vs 6.765）。必须搞清楚是**数据改坏了**，还是**对比本身不干净**。
+
+**07-08 之后到底改了什么**（1348 个 commit，只统计 methods/ trajectories/ data_v4/）：
+
+| 类别 | commit 数 | 内容 |
+|---|---|---|
+| train_answer 修复 | ~558 | 恢复与 answer.md 逐字一致的代码；替换「自己编的」重实现 |
+| 输入侧泄漏清理 | ~186+ | statement 里的 Background/Evaluation-settings 不再交代解法 |
+| 去掉「表演式 bug 戏码」 | ~数百 | reasoning 里假装踩坑再修的戏剧化叙事被删（大量在「其他」里）|
+| 批量删模板开头 | 47 traces | 规则式，无 LLM |
+| 时代错置引用 / 中译英 / in-frame 违规 | ~34 | 前向引用的文献、中文残留、事后诸葛口吻 |
+
+改动集中在 **07-21（510 commit）和 07-25（772 commit）**。文件层面：`reasoning.md` 893 个、`train_answer.md` 615 个、`context.md` 239 个被改。单元数几乎没变（methods 1303→1304，data_v4 347→358）——**是内容重写，不是加数据**。
+
+同期 `sft/build_sft.py` 也改了 6 次（verbatim-code gate、`code/` 目录 canonical、输入泄漏清理配套）。
+
+**为什么原来的对比不干净**：`allver` 和 `gated_v2_allver` 之间同时变了 **3 件事**——
+1. 数据内容（同名题目里 **80%** 的正文被改过）；
+2. 集合本身（旧 traj 独有 74 条 / 新 gated_v2 独有 170 条）；
+3. **wave2 成分不同**（allver 用 `innovation_wave2_clean` 1352 行，gated_v2_allver 用 `innovation_wave2_r3` 758 行）。
+
+**对照实验设计（已发，2 臂）**：用 **HEAD 的 build_sft.py** 分别跑 **07-08 的数据树**（`git worktree` at `8ae41b601`，builder 和 decontam gate 都拷 HEAD 的进去）和 **当前数据树**，其余全部锁死：
+
+| 臂 | 数据内容 | builder | 其余 mix | job |
+|---|---|---|---|---|
+| `sft_q35_ctl_old` | **07-08** | HEAD | wave2_clean + maintain_r3 + maintain | 11658797 |
+| `sft_q35_ctl_new` | **当前** | HEAD | 同上（逐字相同）| 11658798 |
+
+两个 yaml **只差一行**（dataset 名）。构建结果：ctl_old 2702 行 / ctl_new 2590 行；`method_ta_bypass` 从 **590 → 7**（说明 558 个 train_answer 修复是真的生效了——旧数据里 590 个 method 的 train_answer 对不上 answer.md，被迫回退到 answer 通道）。
+
+跑完各做 α=0.1 soup + FCS/ALE 同口径评测，**ctl_new − ctl_old 就是 1348 个 commit 的净效果**，不再混别的变量。另外 `ctl_old` 与已训的 `allver`（旧 builder + traj 子集）之差，单独给出 **builder 改动**的效果。
+
+已知的一个预期风险：去掉「表演式 bug 戏码」删掉的是模型学到的**自检行为**。如果 FCS 奖励「写完检查一遍再交」的代码，这一项可能是负效果——ctl 对照能验证这个猜想。
+
 ## 2. 35B RL：synth 毁模型，research 才对
 
 | | 结论 |
