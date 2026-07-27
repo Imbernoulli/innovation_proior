@@ -21,7 +21,7 @@
 | maintr3_pure（只有maintain） | 1.28 | 塌 |
 | maintr3_filt（长度过滤） | 2.95 | 塌 |
 
-→ **任何 full-FT 都塌 FCS；maintain 救不了直接 SFT。**
+→ ~~任何 full-FT 都塌 FCS；maintain 救不了直接 SFT。~~ **⚠️ 这句话是错的，见 §1.8**：`wave2 ×8` 回放的裸 SFT（无 soup）FCS = **6.954**，追平 base。塌陷取决于**数据配比**，不是 full-FT 本身。上表这几个塌了，是因为它们的对口成分剂量太低。
 
 ### 1.2 soup(average) α-sweep（soup = α·SFT + (1−α)·base）→ 部分恢复
 | 模型 | α=0.1 | α=0.2 | α=0.3 |
@@ -174,6 +174,53 @@ gated_v2 = 输入泄漏清理（218 题 statement 去掉解题剧透）+ gated �
 跑完各做 α=0.1 soup + FCS/ALE 同口径评测，**ctl_new − ctl_old 就是 1348 个 commit 的净效果**，不再混别的变量。另外 `ctl_old` 与已训的 `allver`（旧 builder + traj 子集）之差，单独给出 **builder 改动**的效果。
 
 已知的一个预期风险：去掉「表演式 bug 戏码」删掉的是模型学到的**自检行为**。如果 FCS 奖励「写完检查一遍再交」的代码，这一项可能是负效果——ctl 对照能验证这个猜想。
+
+### 1.8 ⭐ maintain 数据：来历、版本、结果（2026-07-27 梳理）
+
+**来历**：不是我们造的数据。是从 HuggingFace 扒的 Qwen-distill 能力回放集，来源 `khazarai` / `WithinUsAI` / `armand pi (Claude-Code)` / `nvidia Open-SWE`，**903 条**。06-21 从 `innovation_distill` 改名 `innovation_maintain`，用途是**回放 base 的原有能力、抵消创新数据造成的塌陷**。
+
+⚠️ **07-06 被从 repo 里删了**（commit `a0827ea48`「Drop HF-scraped maintenance set」，理由是"training is innovation-only now"），连构建脚本 `sft/build_maintain.py` 一起删。→ **maintain 现在无法从 repo 重建**，只剩 `LF-innov/data/` 下已构建的 jsonl。要继续用就得守好这些文件。
+
+**版本谱系**：
+
+| 注册名 | 文件 | 行数 | 时间 | 说明 |
+|---|---|---|---|---|
+| `innovation_maintain`（"旧"） | maintain_sft_u.jsonl | 903 | 06-22 | 初版 |
+| `innovation_maintain_r3`（"新"） | maintain_r3.jsonl | 903 | 07-06 | fold-think 修复后重渲染 |
+| `innovation_maintain_r3_filt` | | 622 | 07-21 | 长度过滤（均长 108k→35k 字符）|
+| `innovation_maintain_r3_coding` | | 463 | 07-21 | 只留 coding；**think 中位数=0**（多数无思考）|
+| `innovation_maintain_r3_nomath` | | 782 | 07-21 | 去数学物理 |
+| `innovation_maintain_r3_longthink` | | 259 | 07-21 | 长思考；think 中位数 **8572** vs r3 的 273（过滤正确）|
+
+⚠️ **「新旧 maintain 全加」其实是同一批数据加了两遍。** 逐条比对：旧 900 个 unique prompt 与 r3 的 900 个**完全重合（重叠 900，各自独有 0）**，但**逐字相同的 0 条**——r3 只是修了 fold-think 的重渲染版。所以 `allver` = `maintain_r3` + `maintain` **= 同样 900 条 × 2 剂量**，而且其中一份是**我们特意修掉的那个旧渲染**。原文档说的「把以前 deprecate 的旧 maintain 也加上」不是"增加多样性"，是**加倍剂量（并混入一份已知有 bug 的渲染）**。
+
+**结果**（官方 avg@5，soup α=0.1；标 † 者仅单 shard）：
+
+| 模型 | maintain 成分 | FCS | ALE |
+|---|---|---|---|
+| base | — | **6.816** | 347.0 |
+| allver_a10 | r3 + 旧（2×903）| 6.765 | 340.3 |
+| **pure_a10** | **只有 r3，完全没有创新数据** | **6.417** | **429.1** |
+| coding_a10 | coding 463 | 6.102 | 365.8 |
+| filt_a10 | filt 622 | 5.882 | 298.8 |
+| nomath_a30 | nomath 782 | 5.567 | 371.5 |
+| clean_maintr3_a10† | r3 903（1×）| 5.323† | 358.0 |
+| longthink_a10† | longthink 259 | 3.644† | 314.5 |
+
+**读出来的三件事**：
+1. **maintain 剂量单调有效**：r3 单份（clean_maintr3 5.323†）< r3 双份（allver 6.765）。allver 之所以是 full-FT 里最好的，很可能就是**剂量**，不是配方巧思。
+2. **`pure`（只有 maintain、一条创新数据都没有）就能到 6.417**，逼近 allver 的 6.765 和 base 的 6.816。→ **掉分的是创新数据，保分的是 maintain**；创新数据在 FCS 上是净负担，maintain 是解药。
+3. **maintain 的领域筛选都不如不筛**（coding 6.102 / filt 5.882 / nomath 5.567 / longthink 3.644† 全部 < 双份 6.765）。尤其 `longthink` 最差——只留长思考样本反而最伤 FCS。
+
+**⚠️ 命名陷阱**：`c2_maint2x/4x/8x` 这三个模型**回放的是 wave2，不是 maintain**（配置里是 `innovation_wave2_clean_r2..r8`，全部指向同一个 wave2 文件）。它们的**原始 SFT（未 soup）**成绩：
+
+| | FCS（raw SFT，无 soup）| ALE |
+|---|---|---|
+| wave2 ×2 | 3.759 | 302.9 |
+| wave2 ×4 | 6.035 | 371.3 |
+| **wave2 ×8** | **6.954** | 384.6 |
+
+→ **这推翻了 §1.1 的「任何 full-FT 都塌 FCS」**：8× wave2 回放的**裸 SFT 就有 6.954，已经追平甚至略超 base(6.816)，完全没用 soup**。所以塌陷是**数据配比问题**，soup 只是补救手段之一，不是唯一解。**下一个该试的方向是 wave2 高倍回放 + maintain 双份，而不是继续在 soup 的 α 上抠。**
 
 ## 2. 35B RL：synth 毁模型，research 才对
 
