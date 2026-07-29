@@ -296,6 +296,39 @@ gated_v2 = 输入泄漏清理（218 题 statement 去掉解题剧透）+ gated �
 
 **运维记录**：research 评测 `--mem=160G` **不够**——`a70-s1` MaxRSS 恰好顶到 160.0G 被 OOM kill，已用 **240G** 重发（11724766，RESUME 保留已有样本）。
 
+### 1.11 ⛔ 题数不一致 = 快照偏差；修正后 §1.10 的结论要改（2026-07-29）
+
+**问题**：之前引用的 research 分，`num_problems` 在 **50–63** 之间浮动（研究集共 64 题）。用不同题目子集算出来的分**不可直接比较**。
+
+**根因**（读 `scripts/eval_frontiercs_via_vllm.py:132` 确认官方口径）：
+```python
+complete = [s for s in scores_dict.values() if all(x is not None for x in s)]
+avg_at_5 = sum(sum(s)/len(s) for s in complete) / len(complete)
+```
+→ **只统计 5 个样本全部打分成功的题**。shard 作业结束时写下 `summary_shard.json` 快照，此时部分样本还是 error；**后续 RESUME 波次补齐了这些样本，但快照没有重算**（负责重算的 agg 作业当时因配额/go-judge 问题全部失败）。所以那些 n=50–63 是**中途快照**，不是最终结果。
+
+**修正**：直接从补齐后的 `samples.jsonl` 按官方公式重算（按 `sample_idx` 取前 5 个、要求全部非 None），**10 个模型现在全部是完整 64 题**，可直接横向比较：
+
+| 模型 | research avg@5（**统一 64 题**）| 旧快照值 |
+|---|---|---|
+| **`soup_c2_maint8x_a70`** | **10.860** | 9.289 |
+| `soup_c2_maint8x_a30` | 9.919 | 8.975 |
+| `soup_ctl_old_a20` | 9.501 | 8.839 |
+| **`soup_ctl_new_a30`** | **9.457** | 8.611 |
+| `soup_c2_maint8x_a50` | 9.218 | 9.048 |
+| **`soup_ctl_new_a50`** | **9.160** | 8.124 |
+| `soup_ctl_old_a50` | 9.149 | 9.599 |
+| `c2_maint8x`（α=1.0）| 8.763 | 8.522 |
+| `soup_ctl_old_a30` | 8.747 | 8.880 |
+| `c2_maint4x` | 7.509 | 5.611 |
+
+**两条结论因此改变**：
+
+1. **⛔「新数据在 research 上略差」不成立，方向反了。** 统一题集后 `ctl_new` 在两个 α 上都**不低于** `ctl_old`：α=0.3 **9.457 vs 8.747**、α=0.5 **9.160 vs 9.149**。之前报的「old 高 0.27～1.48」是快照偏差造成的假象。→ **07-08 之后那 1348 个 commit 在 research 上没有害处，甚至略有帮助。**
+2. **剂量结论加强**：×4 = 7.509 vs ×8 各档 8.76–10.86，差距比之前更大更干净。§1.10 的核心结论（高剂量不牺牲创新、α 从 0.3 到 1.0 都不掉）**依然成立且更稳固**。
+
+**流程修复**：以后引用 research/FCS 分之前，必须确认 **(a)** `num_problems` 等于该基准的满题数，**(b)** 对应的 agg 作业成功跑过。否则要从 `samples.jsonl` 重算，不能直接读 `summary_shard.json`。
+
 ## 2. 35B RL：synth 毁模型，research 才对
 
 | | 结论 |
