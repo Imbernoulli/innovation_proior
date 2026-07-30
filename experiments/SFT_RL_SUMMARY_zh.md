@@ -390,7 +390,29 @@ bootstrap（4000 次，按题重采样）：
 - 重复循环 **0.12%**（旧 22%）。
 → 机制上是旧 synth collapse 的反面。已据此发两个完整 20 步 run：base 臂（11618968）+ r32s01 臂（11623616，含 w2/w3 自动续跑）。代价：step 慢（~2.5h/step，35B×40k 长尾），20 步需跨 3 个 24h 窗口。
 
-### 2.1 ⛔ base 上做 synth RL 是死路：reward 恒为 0，无梯度（2026-07-29）
+### 2.1 ⛔⛔ 全文撤回（2026-07-30）：base 全零的真因是**集群 userns 变更杀死了 reward 沙箱**，与 base 模型无关
+
+本节原结论「base 在 synth 上无信号、不能学」**是错的**。铁证（2026-07-30）：
+
+1. synth 打分沙箱 `harness/isorun.py` 用的是 **bwrap**，依赖非特权 user namespace —— 正是 07-28 被管理员全集群禁掉的东西。今天实测：`bwrap --ro-bind / / true` → `Creating new namespace failed: No space left on device`。
+2. **同一批参考解、同一个打分器**：07-27 得 **29.99 / 19.47 / 15.98**，07-30 得 **0.0 / 0.0 / 0.0**。
+3. `FAIL_SOFT=1` 把每次沙箱失败静默折成 0 分 —— 所以没有任何报错，9600 个零看起来像"模型不行"。
+4. 时间线吻合：r32s01 的 67% 非零全部测于 **07-28 之前**；base run 起于 **07-29**，reward 通路从第一步起就是死的。
+5. 提取侧同步排查过：base 84% 的输出在 `</think>` 后有合法 Python（r32s01 是 81%），**提取无差异**。
+
+→ **base 到底有没有信号，至今没有测过一次**（此前 base smoke 全部死于墙/断言，从未产出过有效打分的 rollout）。「base 能否提分」重新变成**开放问题**，等 userns 修复后重测。
+
+**处置（2026-07-30）**：
+- base run（11709536，已烧 ~25h×8 H200、9600 零分 rollout）**取消** —— advantage 恒 0，权重从未更新过，无损失也无产出。
+- RL launcher 加 **bwrap preflight**：synth 数据的 run 在起跑前实测 bwrap，坏则**秒级中止**，不再烧节点产零。research 数据豁免。
+- 三臂重排（均 SP=8 定稿配置）：`rl35b_r32s01_sp8b`(11800944) + `rl35b_base_sp8b`(11801011)（synth，带守卫等 userns 修复）+ **`rl35b_r32s01_research_sp8`(11801020)** —— research 的 reward 是纯 subprocess，**今天实测复打存档样本 18.00→18.0 分毫不差**，这是当前唯一能真正学习的 RL，也与 §2 旧结论一致（research 方向本来就更对）。
+- **userns 工单现在同时卡着：FCS/ALE 评测 + 全部 synth RL。** 它是整个项目唯一的全局阻塞点。
+
+---
+
+以下为 07-29 的原文（结论已被上方撤回，仅留作过程记录）：
+
+#### ~~base 上做 synth RL 是死路：reward 恒为 0，无梯度（2026-07-29）~~
 
 **先说好消息 —— 显存配置修复确认有效。** `rl35b_base_sp8`（11709536）在 ailab H200 上跑过了 **step 2**，那正是之前两次尝试 OOM 死掉的位置：
 
