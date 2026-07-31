@@ -449,6 +449,28 @@ bootstrap（4000 次，按题重采样）：
 
 → **对 RL 目标 (a)「base 得能提分」的直接回答：在 synth 数据 + 当前 reward 下，base 无法提分 —— 不是效果差，是根本没有学习信号。** 要让 base 参与 RL，必须先解决"base 在这批题上得分恒 0"这个前提（换更容易的题、改 reward 使部分得分可得、或先做 SFT 再 RL）。已验证有信号的起点只有 `r32s01`。
 
+### 2.2 ⭐⭐ research RL 首个正式读数（step 5）：**显著超过 base**（2026-07-31）
+
+新配置 research RL（`r32s01` 起点，50×16、KL 0.01、SP=8，两级内存修复后）跑到 step 5 导出评测。**统一 64 题共同子集 + 按题 bootstrap**（这次从 `samples.jsonl` 逐样本重算，规避快照偏差）：
+
+| 模型 | research avg@5（64 题）|
+|---|---|
+| r32s01 起点 | 17.672 |
+| base 35B | 18.969 |
+| **RL step-5** | **23.376** |
+
+| 对比 | 差 | 95% CI | 判定 |
+|---|---|---|---|
+| step5 − 起点 | **+5.70** | [+1.41, +10.28] | **显著** |
+| **step5 − base** | **+4.41** | **[+0.43, +8.47]** | **显著** |
+
+- **这是整个 campaign 第一个过显著性检验的"超过 base"**。目标 (b)（RL 后明显超过 base）在 research 轨上 **step 5 即达成**，且训练侧 reward 仍在爬升（step 1→7：0.104→0.161，非零率 22.6→34.0%），step 10/15/20 有望更高。
+- 训练曲线与评测一致：reward +55% ↔ research +32%，**没有出现旧 synth RL 那种 reward 升、评测降的过优化背离** —— KL 0.01 锚定在起作用。
+- 对照旧配置：旧 research-RL 6 步只到 21.5（快照口径），新配置 5 步 23.4（严格口径）。
+- 运维备注：35B 评测必须 ailab H200（单张 80G 卡放不下 66G 权重）；导出的 HF 目录要补 `preprocessor_config.json`/`video_preprocessor_config.json`（Qwen3.6 多模态，vLLM 缺之即挂）。RL 本体因宿主内存爬升每窗口只能跑 5–7 步，已改为 SAVE_FREQ=2 的断点续训链推进。
+
+**目标 (a)（base 能提分）**：synth reward 通路等 userns；base 在 synth 上有稠密信号（60–68% 非零，§2.1 审计），修复后即可开训。research 轨上也可以直接起一个 base 臂 —— 若需要更快回答 (a)，这是现成路径。
+
 ## 3. 当前最佳 setting（可直接复用）
 
 - **9B full-FT + soup**：`allver` 数据（clean_decontam_traj + wave2 + maintain_r3 + 旧 maintain），**α=0.1**（official avg@5 = 6.765；strict5 口径曾记 7.34）。注意 pure_a10 / gated_v2_a5 / coding_a10 与它**在噪声内并列**，选 allver 是因为它在两套口径下都排第一，不是因为差距显著。
