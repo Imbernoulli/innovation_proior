@@ -4,11 +4,11 @@ The annotated innovation data, in ShareGPT format:
 - `innovation_sft.jsonl` — our annotated innovation data (reasoning, with per-turn loss folding).
 - Plus the 2026-07 **wave-2** batches: `innovation_wave2_sft.jsonl` (verified rollout + Codex, 758)
   and `innovation_v4_sft.jsonl` (FrontierCS-style single-file C++, 346), concatenable into the run.
-- Plus the 2026-07 **wave-3** batch: `innovation_wave3_sft.jsonl` (179, **hard-only**) — every NEW
-  verified keeper since wave-2 that the 27B did **not** find easy (round-0 acc ≤ 0.5), one answer per
-  problem. Adds the FrontierCS capability gaps (heuristic **optimization**, post-cutoff **AtCoder
-  Heuristic**, CodeContests+ strong-test, and a deep re-roll of the 27B's hard failures).
-  Concatenable into the same run. See **§4**.
+- Plus the 2026-08 **wave-3** batch: `innovation_wave3_sft.jsonl` (**1,913**) — every NEW verified
+  keeper since wave-2 (one answer per query, **each labeled with its `pass_rate`**). Adds the
+  FrontierCS capability gaps (heuristic **optimization**, post-cutoff **AtCoder Heuristic**,
+  CodeContests+ strong-test, and a deep re-roll of the 27B's hard failures). Concatenable into the
+  same run. See **§4**.
 
 > **Dropped (2026-07):** the HF-scraped `maintain_sft.jsonl` capability-maintenance set is no longer
 > used — training is **innovation-only** now.
@@ -123,32 +123,49 @@ New verified data, all landing as **single-file C++ / stdin** (the FrontierCS sc
 
 Pipeline + provenance: [`../experiments/DATA_WAVE2_FCS_CPP_zh.md`](../experiments/DATA_WAVE2_FCS_CPP_zh.md).
 
-## 4. Wave-3 batch (2026-07) — capability-gap injection + deep re-roll
+## 4. Wave-3 batch (2026-08) — capability-gap injection + deep re-roll
 
-`innovation_wave3_sft.jsonl` (**179**, gzipped as `innovation_wave3_sft.jsonl.gz`) = every verified
+`innovation_wave3_sft.jsonl` (**1,913**, gzipped as `innovation_wave3_sft.jsonl.gz`) = every verified
 keeper produced **after** wave-2, with the wave-2 ids subtracted so there is **zero overlap**. Built
-with `python3 tools/assemble_wave3.py`, same **hard-only** bar as wave-2:
+with `python3 tools/assemble_wave3.py`. Policy (2026-08, updated from the earlier hard-only cut):
 
-- **round-0 acc ≤ 0.5** — keep a problem only if the 27B solved ≤ half of its first 4 samples
-  (`WAVE_ACC_MAX=0.5`, the default). Easy problems teach nothing; this drops the big `acc=0.75`
-  bulk and everything the 27B aced 4/4.
-- **one answer per problem** — the single shortest verified generation (`passes[0]`), deduped by id.
+- **ship EVERY query that has ≥1 verified-correct generation** — no accuracy cap. We no longer keep
+  only the hard (acc≤0.5) slice; instead every solvable query ships and carries its pass rate, so
+  downstream can filter however it likes. (`WAVE_ACC_MAX=0.5` still reproduces the old hard-only cut.)
+- **one answer per query** — the single shortest verified generation (`passes[0]`), deduped by id.
+- **each row is LABELED with `pass_rate`** — a top-level float = the **round-0 pass rate of the model
+  that produced the trace** (see the caveat below on what "round 0" means per source).
 
-Same ShareGPT + `<think>` format. Snapshot 2026-07-17 — the rollout is still running (ccplus + the
-math/ifollow re-roll), so this file gets refreshed as more hard keepers land.
+Same ShareGPT + `<think>` format, plus the new `pass_rate` field. Snapshot 2026-08-01 — the rollout
+is still running (ccplus + the math/ifollow re-roll), so this file gets refreshed as more land.
 
 | domain | examples | what it is |
 |---|---:|---|
-| optim | 87 | **NEW** — NP-Engine heuristic optimization (TSP/knapsack/set-cover/…): write one C++ that reads stdin, prints `Answer: …`; verified feasible **and** beats a per-instance baseline on K fresh instances |
-| code | 58 | HardTests CF/AtCoder + **CodeContests+ (`ccplus`)** strongest-test exact-judge |
-| math | 14 | deep re-roll of the 27B's hard failures |
-| ahc | 12 | **NEW** — post-cutoff **AtCoder Heuristic Contests** (AHC047–067 + awtf25/26); C++ scored by the OFFICIAL AtCoder Rust `vis` binary on every seed, must beat a greedy baseline |
-| ifollow | 8 | deep re-roll |
+| reasoning | 652 | base-trace growth + deep re-roll of the 27B's hard failures |
+| code | 543 | HardTests CF/AtCoder + **CodeContests+ (`ccplus`)** strongest-test exact-judge |
+| ifollow | 351 | base-trace growth + deep re-roll |
+| optim | 183 | **NEW** — NP-Engine heuristic optimization (TSP/knapsack/set-cover/…): write one C++ that reads stdin, prints `Answer: …`; verified feasible **and** beats a per-instance baseline on K fresh instances |
+| math | 168 | base-trace growth + deep re-roll |
+| ahc | 16 | **NEW** — post-cutoff **AtCoder Heuristic Contests** (AHC047–067 + awtf25/26); C++ scored by the OFFICIAL AtCoder Rust `vis` binary on every seed, must beat a greedy baseline |
 
-17 of the 179 are deep-re-roll keepers. Reasoning length: median **120k** chars, max **213k** — the
-hard-only cut keeps exactly the long, self-checking traces the FrontierCS regression forensics said
-were missing ("提案的嗓音在,写代码的手没了"). All land as the FrontierCS scoring target:
-**single-file C++ / stdin**.
+24 are deep-re-roll keepers. Reasoning length: median **34k** chars, max **213k** (the hard tail
+still holds the long self-checking traces; the median drops vs the hard-only cut because the easy
+queries are now included too). All land as the FrontierCS scoring target: **single-file C++ / stdin**.
+
+**Pass-rate label (`pass_rate`) — read this before filtering on it.** It is the generating model's
+round-0 pass rate for that query. Distribution across the 1,913:
+
+| pass_rate | 0.0 | 0.25 | 0.33 | 0.5 | 0.67 | 0.75 | 1.0 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| examples | 73 | 52 | 10 | 81 | 28 | 823 | 846 |
+
+216 (11%) are **hard** (pass_rate ≤ 0.5); 1,697 are easy (> 0.5). **Caveat on semantics** — round 0
+is **4 samples** for the 27B on-policy traces (1,871 rows) and the deep re-roll (24 rows), so their
+pass_rate ∈ {0, .25, .33, .5, .67, .75, 1.0}; but for the **18 teacher (DeepSeek) rows** round 0 is a
+single sample, so their `pass_rate = 1.0` means "the teacher solved the 27B's hard-failure on its
+first try" — **not** "easy for the 27B." So a `pass_rate = 1.0` teacher row is a hard problem, whereas
+a `pass_rate = 1.0` on-policy row is one the 27B aced 4/4. Filter with the source in mind
+(`_wave3_tags.jsonl` carries `source` + `reroll` + `pass_rate` per id).
 
 **Why these sources (grounded in the real eval, not a summary).** FrontierCS `algorithm` is 92%
 optimization / partial-score and 58% interactive; our whole rollout had been 100% exact-judge CF —
@@ -164,9 +181,11 @@ re-roll — its hard tail is genuinely beyond the 27B even at 256 samples, so th
 **teacher** (DeepSeek) pass rather than more self-sampling.
 
 **Known caveat (optim).** The optim baseline (nearest-neighbour, ratio 1.0) is **lenient** — 145/328
-problems were aced 4/4 and dropped as too-easy, and there were **0** hard-failures. The 183 kept have
-discriminative signal (the 27B fails them at least sometimes) but the difficulty ceiling is low;
-tightening the baseline (NN+2-opt, or ratio<1) would make this track pull harder.
+problems were aced 4/4 and dropped **at rollout time** (driver ran with `easy-threshold 0.5`, so those
+generations were never saved and can't be shipped regardless of this wave's policy), and there were
+**0** hard-failures. The 183 shipped have discriminative signal (the 27B fails them at least
+sometimes) but the difficulty ceiling is low; tightening the baseline (NN+2-opt, or ratio<1) would
+make this track pull harder.
 
 **Decontamination (lenient line — avoid only the actual *evaluation set*).** Contest-derived tracks
 are fine as training data; we only guard against the eval benchmarks themselves. `ahc` excludes

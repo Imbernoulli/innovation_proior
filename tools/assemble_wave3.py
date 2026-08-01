@@ -23,10 +23,11 @@ REPO = os.environ.get('INNOVATION_PRIOR_REPO') or os.path.dirname(os.path.dirnam
 os.chdir(REPO)
 HARDCP = 'data_v4/_hardcp'
 
-# Hard-only by default: keep a rollout keeper only if its round-0 pass rate (first_round_rate,
-# None==0) is <= 0.5 — same "keep only hard samples" bar as wave-2. Override via WAVE_ACC_MAX
-# (e.g. WAVE_ACC_MAX=1.0 to keep everything the 27B didn't ace 4/4).
-ACC_MAX = float(os.environ['WAVE_ACC_MAX']) if os.environ.get('WAVE_ACC_MAX') else 0.5
+# Policy (2026-08): ship EVERY query that has >=1 verified-correct generation — one answer per
+# query — and LABEL each with its round-0 pass rate (`pass_rate`). NO accuracy cap by default:
+# we no longer keep only the hard (acc<=0.5) slice; downstream can filter on the labeled pass_rate
+# instead. Set WAVE_ACC_MAX to re-impose a cap (e.g. WAVE_ACC_MAX=0.5 for the old hard-only cut).
+ACC_MAX = float(os.environ['WAVE_ACC_MAX']) if os.environ.get('WAVE_ACC_MAX') else None
 
 CODE_SYS = ("You are an expert competitive programmer. Solve the problem with a single, self-contained "
             "C++17 program that reads from standard input and writes to standard output. Before you commit, "
@@ -97,9 +98,9 @@ def rollout_examples(wl):
                     continue
                 if not r.get('passed') or not r.get('passes'):
                     continue
-                if not keep_all and (r.get('first_round_rate') or 0) >= 1.0:
-                    continue
-                if ACC_MAX is not None and (r.get('first_round_rate') or 0) > ACC_MAX:
+                # Keep every query with a verified-correct generation; optional cap only if set.
+                frr = r.get('first_round_rate')
+                if ACC_MAX is not None and (frr or 0) > ACC_MAX:
                     continue
                 p = wl.get(r['id'])
                 if not p:
@@ -109,14 +110,18 @@ def rollout_examples(wl):
                 reasoning, answer = pas.get('reasoning') or '', pas.get('answer') or ''
                 if not stmt or not answer.strip():
                     continue
+                # round-0 pass rate for THIS query (npass/valid over the first round's samples);
+                # always a float for a passed record -> uniform schema (no loss:null-style landmine).
+                pass_rate = round(frr, 3) if isinstance(frr, (int, float)) else 0.0
                 conv = [{'from': 'human', 'value': stmt.strip()},
                         {'from': 'gpt', 'value': think(reasoning, answer)}]
-                e = {'conversations': conv}
+                e = {'conversations': conv, 'pass_rate': pass_rate}
                 if DOMAIN_SYS.get(dom):
                     e['system'] = DOMAIN_SYS[dom]
                 e.update({'_id': r['id'], '_domain': dom, '_source': r.get('source', ''),
                           '_reasoning_chars': len(reasoning),
-                          '_reroll': src.endswith('.reroll.jsonl')})
+                          '_reroll': src.endswith('.reroll.jsonl'),
+                          '_pass_rate': pass_rate})
                 ex.append(e)
     return ex
 
@@ -144,16 +149,22 @@ def main():
     with open('sft/_wave3_tags.jsonl', 'w', encoding='utf-8') as f:
         for e in uniq:
             f.write(json.dumps({'id': e['_id'], 'domain': e['_domain'], 'source': e['_source'],
-                                'reasoning_chars': e['_reasoning_chars'], 'reroll': e['_reroll']},
+                                'reasoning_chars': e['_reasoning_chars'], 'reroll': e['_reroll'],
+                                'pass_rate': e['_pass_rate']},
                                ensure_ascii=False) + '\n')
     by_dom = Counter(e['_domain'] for e in uniq)
     reroll_n = sum(1 for e in uniq if e['_reroll'])
     chars = [e['_reasoning_chars'] for e in uniq] or [0]
+    pr_bucket = Counter(e['_pass_rate'] for e in uniq)
+    hard = sum(1 for e in uniq if e['_pass_rate'] <= 0.5)
     print(f'wrote {out}: {len(uniq)} examples ({dropped_ship} skipped as already in wave-2)')
     for dom, n in sorted(by_dom.items()):
         print(f'  {dom:20} {n}')
     print(f'  of which deep-reroll keepers: {reroll_n}')
     print(f'  reasoning chars: median {int(statistics.median(chars))}, max {max(chars)}')
+    print(f'  pass_rate distribution (round-0 acc): ' +
+          ', '.join(f'{k}:{pr_bucket[k]}' for k in sorted(pr_bucket)))
+    print(f'  hard (pass_rate<=0.5): {hard} / {len(uniq)}')
 
 
 if __name__ == '__main__':
