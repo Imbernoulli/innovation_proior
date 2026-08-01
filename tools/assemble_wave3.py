@@ -42,11 +42,19 @@ DOMAIN_SYS = {'code': CODE_SYS, 'math': MATH_SYS, 'reasoning': None, 'ifollow': 
 # (base trace, keep_all?) per domain. keep_all=True => keep every solve (teacher / reroll / hardest).
 DOMAINS = ['code', 'math', 'reasoning', 'ifollow', 'optim', 'ahc']
 def sources_for(dom):
+    # Order matters: de-dup keeps the FIRST passing record per (id, domain), so the modern
+    # escalation traces win; the archived phases (.oldlogic stop-at-first-pass, .hardv2/.mixed/
+    # .hardrun old math runs, .measure) only fill queries nothing else solved.
     return [(f'{HARDCP}/traces/{dom}.jsonl', False),
             (f'{HARDCP}/traces/{dom}.ccplus.jsonl', False),   # code: dedicated CodeContests+ pass (on-policy)
             (f'{HARDCP}/traces/{dom}.deepseek.jsonl', True),
             (f'{HARDCP}/traces/{dom}.poe.jsonl', True),
-            (f'{HARDCP}/traces/{dom}.reroll.jsonl', True)]
+            (f'{HARDCP}/traces/{dom}.reroll.jsonl', True),
+            (f'{HARDCP}/traces/{dom}.hardv2.jsonl', True),
+            (f'{HARDCP}/traces/{dom}.mixed.jsonl', True),
+            (f'{HARDCP}/traces/{dom}.hardrun.jsonl', True),
+            (f'{HARDCP}/traces/{dom}.oldlogic.jsonl', True),
+            (f'{HARDCP}/traces/{dom}.measure.jsonl', True)]
 
 _NEUT = {'<think>': '⟨think⟩', '</think>': '⟨/think⟩'}
 def neutralize(s):
@@ -60,15 +68,17 @@ def statement(p):
 
 
 def load_worklists():
+    # Glob EVERY worklist/failed file per domain (worklist.jsonl, worklist_rstar.jsonl,
+    # worklist_hardtests.jsonl, failed_*.jsonl, ...) — archived traces reference ids from
+    # retired worklists (e.g. code.oldlogic's rstar_*), which the fixed three-name list missed.
     wl = {}
     for dom in DOMAINS:
-        for suf in ('worklist.jsonl', 'failed_worklist.jsonl', 'failed_hard.jsonl'):
-            path = f'{HARDCP}/{dom}/{suf}'
-            if os.path.exists(path):
-                for l in open(path):
-                    if l.strip():
-                        d = json.loads(l)
-                        wl.setdefault(d['id'], d)
+        for path in sorted(glob.glob(f'{HARDCP}/{dom}/worklist*.jsonl') +
+                           glob.glob(f'{HARDCP}/{dom}/failed*.jsonl')):
+            for l in open(path):
+                if l.strip():
+                    d = json.loads(l)
+                    wl.setdefault(d['id'], d)
     return wl
 
 
@@ -110,9 +120,11 @@ def rollout_examples(wl):
                 reasoning, answer = pas.get('reasoning') or '', pas.get('answer') or ''
                 if not stmt or not answer.strip():
                     continue
-                # round-0 pass rate for THIS query (npass/valid over the first round's samples);
-                # always a float for a passed record -> uniform schema (no loss:null-style landmine).
-                pass_rate = round(frr, 3) if isinstance(frr, (int, float)) else 0.0
+                # round-0 pass rate for THIS query (npass/valid over the first round's samples).
+                # Always a float -> uniform schema (no loss:null-style landmine). -1.0 = UNKNOWN:
+                # the archived stop-at-first-pass phase (.oldlogic etc.) recorded no round-0 batch,
+                # so no rate exists; do NOT fake 0.0 ("hardest") for those.
+                pass_rate = round(frr, 3) if isinstance(frr, (int, float)) else -1.0
                 conv = [{'from': 'human', 'value': stmt.strip()},
                         {'from': 'gpt', 'value': think(reasoning, answer)}]
                 e = {'conversations': conv, 'pass_rate': pass_rate}
@@ -156,7 +168,7 @@ def main():
     reroll_n = sum(1 for e in uniq if e['_reroll'])
     chars = [e['_reasoning_chars'] for e in uniq] or [0]
     pr_bucket = Counter(e['_pass_rate'] for e in uniq)
-    hard = sum(1 for e in uniq if e['_pass_rate'] <= 0.5)
+    hard = sum(1 for e in uniq if 0 <= e['_pass_rate'] <= 0.5)   # -1.0 = unknown, not "hard"
     print(f'wrote {out}: {len(uniq)} examples ({dropped_ship} skipped as already in wave-2)')
     for dom, n in sorted(by_dom.items()):
         print(f'  {dom:20} {n}')
