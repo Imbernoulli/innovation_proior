@@ -166,12 +166,24 @@ round-0 pass rate for that query. Distribution across the 2,097:
 
 224 (11%) are **hard** (0 ≤ pass_rate ≤ 0.5); 1,775 are easy (> 0.5); **98 are `-1.0` = UNKNOWN** —
 the archived stop-at-first-pass phase recorded no round-0 batch, so no rate exists (we refuse to fake
-a 0.0 for them). **Caveat on semantics** — round 0 is **4 samples** for the 27B on-policy traces and
+a 0.0 for them).
+
+**`pass_rate = 0.0` does NOT mean "never solves it" — and every row also carries `samples_used`.**
+pass_rate is measured over round 0 only (4 samples), so its resolution is quarters: values strictly
+between 0 and 0.25 are impossible by construction. A `0.0` row means the model went **0/4 in round 0
+and only cracked the problem during escalation** (8 → 16 → … → 256). To recover the fine-grained
+rate, use the `samples_used` field (total budget consumed when it cracked): the true rate of a 0.0
+row is **~1/samples_used**. Distribution of the 73 zero rows: 42 cracked within 8 samples (~1/8),
+17 within 16, 4 within 32, 6 within 64, 1 within 128, 3 within 256 (~1/256 — the rarest solves in
+the set). For non-zero rows samples_used is just the deciding-round budget (4 for most).
+
+**Caveat on semantics** — round 0 is **4 samples** for the 27B on-policy traces and
 the deep re-roll (24 rows), so their pass_rate ∈ {0, .25, .33, .5, .67, .75, 1.0}; but for the
 **teacher (DeepSeek) rows** round 0 is a single sample, so their `pass_rate = 1.0` means "the teacher
 solved the 27B's hard-failure on its first try" — **not** "easy for the 27B." So a `pass_rate = 1.0`
 teacher row is a hard problem, whereas a `pass_rate = 1.0` on-policy row is one the 27B aced 4/4.
-Filter with the source in mind (`_wave3_tags.jsonl` carries `source` + `reroll` + `pass_rate` per id).
+Filter with the source in mind (`_wave3_tags.jsonl` carries `source` + `reroll` + `pass_rate` +
+`samples_used` per id).
 
 **Why these sources (grounded in the real eval, not a summary).** FrontierCS `algorithm` is 92%
 optimization / partial-score and 58% interactive; our whole rollout had been 100% exact-judge CF —

@@ -125,15 +125,20 @@ def rollout_examples(wl):
                 # the archived stop-at-first-pass phase (.oldlogic etc.) recorded no round-0 batch,
                 # so no rate exists; do NOT fake 0.0 ("hardest") for those.
                 pass_rate = round(frr, 3) if isinstance(frr, (int, float)) else -1.0
+                # samples_used = total sampling budget consumed when the query cracked. pass_rate's
+                # resolution is only quarters (round 0 = 4 samples), so pass_rate=0.0 alone can't
+                # distinguish "solved at sample 5" from "solved at sample 250" — samples_used can:
+                # for a 0.0 row the true rate is ~1/samples_used. 0 = unknown (shouldn't occur).
+                samples_used = r.get('samples_used') if isinstance(r.get('samples_used'), int) else 0
                 conv = [{'from': 'human', 'value': stmt.strip()},
                         {'from': 'gpt', 'value': think(reasoning, answer)}]
-                e = {'conversations': conv, 'pass_rate': pass_rate}
+                e = {'conversations': conv, 'pass_rate': pass_rate, 'samples_used': samples_used}
                 if DOMAIN_SYS.get(dom):
                     e['system'] = DOMAIN_SYS[dom]
                 e.update({'_id': r['id'], '_domain': dom, '_source': r.get('source', ''),
                           '_reasoning_chars': len(reasoning),
                           '_reroll': src.endswith('.reroll.jsonl'),
-                          '_pass_rate': pass_rate})
+                          '_pass_rate': pass_rate, '_samples_used': samples_used})
                 ex.append(e)
     return ex
 
@@ -162,7 +167,7 @@ def main():
         for e in uniq:
             f.write(json.dumps({'id': e['_id'], 'domain': e['_domain'], 'source': e['_source'],
                                 'reasoning_chars': e['_reasoning_chars'], 'reroll': e['_reroll'],
-                                'pass_rate': e['_pass_rate']},
+                                'pass_rate': e['_pass_rate'], 'samples_used': e['_samples_used']},
                                ensure_ascii=False) + '\n')
     by_dom = Counter(e['_domain'] for e in uniq)
     reroll_n = sum(1 for e in uniq if e['_reroll'])
@@ -177,6 +182,9 @@ def main():
     print(f'  pass_rate distribution (round-0 acc): ' +
           ', '.join(f'{k}:{pr_bucket[k]}' for k in sorted(pr_bucket)))
     print(f'  hard (pass_rate<=0.5): {hard} / {len(uniq)}')
+    zero_su = Counter(e['_samples_used'] for e in uniq if e['_pass_rate'] == 0.0)
+    print(f'  pass_rate==0.0 rows by samples_used (true rate ~1/samples_used): ' +
+          ', '.join(f'{k}:{zero_su[k]}' for k in sorted(zero_su)))
 
 
 if __name__ == '__main__':
