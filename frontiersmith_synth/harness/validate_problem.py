@@ -49,6 +49,22 @@ def _bwrap_netns_failed(stderr):
     return any(s in (stderr or "") for s in _BWRAP_NETNS_ERRORS)
 
 
+_ISORUN = None
+
+
+def _isorun():
+    """Load harness/isorun.py (cached): single source of truth for sandbox backend
+    resolution (bwrap preferred, apptainer setuid fallback where userns is disabled)."""
+    global _ISORUN
+    if _ISORUN is None:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("_vp_isorun", str(HARNESS_DIR / "isorun.py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        _ISORUN = mod
+    return _ISORUN
+
+
 def _solution_bwrap_cmd(cmd, exe, dst, unshare_net=True):
     inner = (cmd[:-1] + [f"/tmp/{'sol.py' if exe.endswith('.py') else 'sol'}"])
     if exe.endswith(".py"):
@@ -63,18 +79,39 @@ def _solution_bwrap_cmd(cmd, exe, dst, unshare_net=True):
     return bcmd + inner
 
 
+def _solution_apptainer_cmd(iso, exe, dst, mask, net_ns=True):
+    """apptainer variant of _solution_bwrap_cmd: same hiding contract (synth tree invisible,
+    own /proc, no net, ro-bound solution file), built by isorun's shared command builder."""
+    if exe.endswith(".py"):
+        inner = [sys.executable or "python3", "-I", "--", "/tmp/sol.py"]
+        binds = [(dst, "/tmp/sol.py")]
+    else:  # compiled exe: host glibc/loader come from the /usr,/lib64 system binds
+        inner = ["/tmp/sol"]
+        binds = [(dst, "/tmp/sol")]
+    return iso._apptainer_cmd(inner, binds=binds, mask_dir=mask, net_ns=net_ns)
+
+
 def sandbox_run_solution(cmd, inf, outf, timeout, cwd):
-    """Run an UNTRUSTED solution OS-sandboxed (bwrap): synth tree hidden (no reading gen/checker/
-    ground-truth source), parent /proc hidden, no net. Solution reads stdin -> writes stdout.
-    Falls back to a plain run if bwrap is unavailable. Returns (rc, timed_out)."""
+    """Run an UNTRUSTED solution OS-sandboxed (bwrap, or apptainer where userns is disabled):
+    synth tree hidden (no reading gen/checker/ground-truth source), parent /proc hidden, no net.
+    Solution reads stdin -> writes stdout. Falls back to a plain run if no backend. Returns
+    (rc, timed_out)."""
     exe = cmd[-1]                              # binary path or script path (last token)
+    backend = _isorun().resolve_backend()
     tmpd = tempfile.mkdtemp(prefix="solsb_")
     try:
         dst = os.path.join(tmpd, "sol")
         shutil.copyfile(exe, dst); os.chmod(dst, 0o755)
-        if _BWRAP:
+        mask = None
+        if backend == "bwrap":
             bcmd = _solution_bwrap_cmd(cmd, exe, dst)
             env = dict(_SB_ENV)
+        elif backend == "apptainer":
+            iso = _isorun()
+            mask = os.path.join(tmpd, "synthmask")   # empty dir bind-masked over SYNTH_ROOT
+            os.mkdir(mask)
+            bcmd = _solution_apptainer_cmd(iso, exe, dst, mask)
+            env = iso._apptainer_env()
         else:
             bcmd, env = cmd, None
         with open(inf, "rb") as fi, open(outf, "wb") as fo:
@@ -83,13 +120,17 @@ def sandbox_run_solution(cmd, inf, outf, timeout, cwd):
                                    timeout=timeout, env=env)
                 # Some managed HPC/container nodes allow bwrap mount/pid namespaces but reject
                 # creating a network namespace. Keep source-tree and /proc isolation instead of
-                # falling all the way back to an unsandboxed run.
-                if _BWRAP and r.returncode != 0 and _bwrap_netns_failed(r.stderr.decode("utf-8", "replace")):
+                # falling all the way back to an unsandboxed run. (Same net-ns safety net for
+                # apptainer; della allows `--network none` unprivileged.)
+                if (backend in ("bwrap", "apptainer") and r.returncode != 0
+                        and _bwrap_netns_failed(r.stderr.decode("utf-8", "replace"))):
                     fi.seek(0)
                     fo.seek(0)
                     fo.truncate()
-                    r = subprocess.run(_solution_bwrap_cmd(cmd, exe, dst, unshare_net=False),
-                                       stdin=fi, stdout=fo, stderr=subprocess.PIPE,
+                    retry = (_solution_bwrap_cmd(cmd, exe, dst, unshare_net=False)
+                             if backend == "bwrap"
+                             else _solution_apptainer_cmd(_isorun(), exe, dst, mask, net_ns=False))
+                    r = subprocess.run(retry, stdin=fi, stdout=fo, stderr=subprocess.PIPE,
                                        timeout=timeout, env=env)
                 return r.returncode, False
             except subprocess.TimeoutExpired:

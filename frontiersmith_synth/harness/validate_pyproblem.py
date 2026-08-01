@@ -194,7 +194,7 @@ def main():
                 adv_bad.append((k, round(r, 3)))
     ok("G5b_adversarial") if not adv_bad else fail("G5b_adversarial", f"bad candidates scored >0.02: {adv_bad}")
 
-    # ---- G5c ISOLATION: candidates must run OS-sandboxed (bwrap via isorun), unable to reach the
+    # ---- G5c ISOLATION: candidates must run OS-sandboxed (bwrap/apptainer via isorun), unable to reach the
     #      parent judge (/proc), the co-located ground-truth source (synth tree), or evaluator frames.
     # (1) evaluator must actually route candidates through isorun.run_candidate
     ev_src = evaluator.read_text()
@@ -239,7 +239,7 @@ def main():
             pp = Path(td) / "probe.py"; pp.write_text(probe)
             ans, st = _iso.run_candidate(str(pp), {"x": 1}, timeout=args.timeout)
         if not _iso.sandbox_available():
-            iso_ok, iso_msg = False, "bwrap not available -> candidates NOT OS-sandboxed"
+            iso_ok, iso_msg = False, "no sandbox backend (bwrap/apptainer both unavailable) -> candidates NOT OS-sandboxed"
         elif st != "OK" or not isinstance(ans, dict):
             iso_ok, iso_msg = False, f"isorun probe failed ({st})"
         elif ans.get("synth") == "READ":
