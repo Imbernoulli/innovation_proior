@@ -592,7 +592,7 @@ s10 = 364.8、s12 = 299.1 —— 过优化损伤同样迁移到分布外 benchma
 ## 3. 当前最佳 setting（可直接复用）
 
 - **9B full-FT + soup**：`allver` 数据（clean_decontam_traj + wave2 + maintain_r3 + 旧 maintain），**α=0.1**（official avg@5 = 6.765；strict5 口径曾记 7.34）。注意 pure_a10 / gated_v2_a5 / coding_a10 与它**在噪声内并列**，选 allver 是因为它在两套口径下都排第一，不是因为差距显著。
-- **9B 更强**：LoRA r32_s01 → **FCS 9.83**。
+- ~~**9B 更强**：LoRA r32_s01 → **FCS 9.83**~~ **勘误（08-01）：9.83 是 35B 的数**（`cc_eval_q36_lora_r32_s01`，n=172）。9B 的 LoRA 严格重算：clnom r32_s01 = **5.98**（< base 6.82）、s05 2.36、s10 0.53——9B 上 LoRA 未曾超过 base，scale 越大塌得越狠。35B 上 LoRA r32_s01（9.83 > base 8.95）才是"LoRA 最强"成立的地方。
 - **35B RL**：research 数据 + KL anchor 0.01 + clip-higher + cap 40960 + NCCL 超时 1800s。
 - 数据管线：build_sft.py verbatim-code gate（train_answer 必须与 answer.md 逐字一致，否则回退到已评审 answer）。
 
