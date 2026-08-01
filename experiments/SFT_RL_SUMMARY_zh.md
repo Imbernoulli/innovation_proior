@@ -516,6 +516,57 @@ bootstrap（4000 次，按题重采样）：
 - 例证解剖：`sincos` 两边**开头 12 行完全相同**（同一套 PySR 配方），base 288 行得 0.04、RL 112 行得 100 —— 差异在后半段的交付纪律；`qknorm` 两边 best 都是 100，差在 5 个样本的稳定性（mean 40 vs 72）。
 - ⚠️ caveat 重申：research 轨**训练题=评测题**（64 题无 held-out）；"更有意思的创新"（best@5 上移）在 step 5 还没出现，待 step 10/15/20 checkpoint 检验。
 
+#### 2.2.3 ⭐⭐ 倒 U 的机理诊断（内科+外科四路并行审计，2026-08-01）
+
+四路证据（训练日志逐步指标 / 13 步×800 条 rollout 落盘 / 五 checkpoint eval 逐题分解 / 覆盖盘点）拼出完整机理。**结论：不是梯度病理，是两阶段失败——先窄化过拟合，后策略退化（长度塌缩）。**
+
+**内科·训练指标**（13 步，无 NaN、grad_norm 稳定 0.17–0.33、clipfrac 单调降、KL 被 0.01 锚住从未失控）：
+
+| step | 训练reward | entropy | 截断率 | 平均resp tok |
+|---|---|---|---|---|
+| 1 | 0.104 | 0.537 | 3.8% | 9847 |
+| **5** | 0.164 | 0.496 | **0.25%（全程最低）** | 7838 |
+| **11** | **0.195（峰值）** | **0.703（峰值）** | 3.0% | 7379 |
+| 13 | 0.148 | **0.426（全程最低）** | **8.6%** | 6028 |
+
+- **阶段一（s5→s11）：训练 reward 还在涨、eval 已在跌 = 对 64 道训练题的窄化过拟合。** rollout 佐证：跨题 reward 方差 191→492（2.6×），增益集中到 symbolic_regression + cant_be_late 单机族，cant_be_late_multi/high-avail 变体在训练分布内已开始倒退。
+- **阶段二（s11→s13）：策略退化。** 熵从峰值 0.703 崩到 0.426；重复循环输出占比 3.5%→17%（s12）→26.6%（s13）；生成长度中位数砍半；截断率反弹 0.25%→8.6%（双峰：多数变短 + 一撮 40960 复读跑飞）；**连训练 reward 都掉头**（0.195→0.148）。s12–13 训练分下滑几乎全部由退化样本贡献（退化样本 85% 零分）。
+- **奖励侧噪声（可修）**：全程约 **7–10% rollout 被 infra 错误静默打成 0 分**（reward worker CUDA OOM、vdb_pareto 评测 90s 超时约 380 条、symbolic_regression 无结果约 450 条、qknorm rc=1 约 199 条）——数个题族被系统性冤枉罚零，加剧稀疏奖励噪声。
+- 断点续训链审计：**幸存权重谱系无重复更新**（每次重跑都从干净 checkpoint 起步、替换而非叠加丢失的步）；resume 后 epoch 计数偏移 1（无害）。
+
+**外科·eval 逐题**（s12≈start 只是表面巧合，实为两股相反力抵消）：
+
+| 题族 | n | start | base | s5 | s10 | s12 |
+|---|---|---|---|---|---|---|
+| symbolic_regression | 5 | 44.2 | 28.0 | 58.0 | 68.5 | **68.2（还在涨）** |
+| imagenet_pareto | 5 | 3.3 | 1.1 | 15.5 | 22.5 | **28.1（还在涨）** |
+| cant_be_late | 12 | 17.4 | 23.7 | 28.6 | 31.3 | 28.1 |
+| cant_be_late_multi | 8 | 39.2 | 52.6 | 49.2 | 31.8 | **24.3（崩）** |
+| vdb_pareto | 5 | 33.9 | 38.1 | 38.5 | 31.4 | **4.5（全灭）** |
+| GPU-kernel 12 族 | 16 | 0 | 0 | 0 | 0 | 0（评测环境缺 triton，**死分母**）|
+
+- **+4.41 的构成**：高度集中（top-4 题 = 65%、top-8 = 99% 净增益），来源 = SR/imagenet 的崩溃/超时避免（base 自己的代码误用 PySR API、训练太慢超时）+ qknorm/llm_router/cbl 的真实调参胜利。
+- **s12 回落的构成**：非均匀衰减——SR/imagenet 增益到 s12 还在复利，但长度塌缩（**47% 输出变成 <2k tok 骨架代码** + 8% 撞 32k cap 复读）把需要长而完整实现的 vdb_pareto、cant_be_late_multi 两族整体摧毁到 base 以下。s5 增益题 23 个中 s12 保住 12 个（71% 增益质量保留）。
+- s5 是五个 checkpoint 里**最健康的**：cap-hit 0.7%、stub 率最低、infra 错误少。
+- ⚠️ 口径脚注：+4.41 依赖「首次记录优先」去重（把 start/base 的首次 infra 超时按 0 记）；若「重试优先」去重则 s5−base = **+3.69**（仍为正但更弱）。RL checkpoint 无重试样本，不受此选择影响。
+- **下一次 run 的可行杠杆**（SR/imagenet 在 s10–12 仍有上行头寸，说明如果压住长度塌缩还有增益空间）：① 修 reward infra 冤枉零（PySR/triton 环境、vdb 超时放宽、reward worker OOM）；② 长度下限惩罚或 KL 加严在 s8+ 生效；③ 密集 checkpoint 照旧，止盈点按题族分解判断而非只看均值。
+
+### 2.3 ⭐ 四 benchmark 覆盖矩阵：base 与我们的模型在 RL 前后（2026-08-01 盘点）
+
+| 模型 | Research(64) | FCS-Algorithm(172) | ALE(10) | MLS(20) |
+|---|---|---|---|---|
+| **base**（Qwen3.6-35B-A3B）| 18.97 | **8.95**（07-11）| **448.7**（07-11）| 🚀 已提交 |
+| **start**（r32s01 = SFT/LoRA 合并）| 17.67 | **9.83**（07-10）| **447.4**（07-10）| 🚀 已提交 |
+| **RL-research s5 ⭐产出模型** | **23.38** | ⛔ userns 阻塞 | 🚀 已提交 | 🚀 已提交 |
+| RL-research s10 / s12 | 20.38 / 17.56 | ⛔ | 🚀 已提交 | — |
+| 旧 synth-RL s5/s10/s20（07 月，反面教材）| 17.0/19.2/19.7 | 8.18/7.20/**5.73** | 417/453/**325** | — |
+
+读法：
+- **SFT（base→start）**：FCS +0.9（8.95→9.83，172 题口径下接近噪声底 1.0）、Research −1.3、ALE 持平（10 题噪声底 40 内）——SFT 对 35B 是「FCS 略升、research 略降」的平换。
+- **RL（start→s5，research 轨）**：Research +5.7（17.67→23.38，且显著超 base +4.41）；FCS/ALE/MLS 当时未测——ALE、MLS 已于今日补发（作业 11876769–74），**FCS 被 userns 阻塞**（s5 是 07-28 之后才存在的 checkpoint，从未有机会跑 go-judge；工单仍待发送 cses@princeton.edu）。
+- **旧 synth-RL 的教训重申**：奖励错配的 RL 三个 benchmark 全线下跌（FCS 9.83→5.73、ALE 447→325），这就是 §2.1 撤回前误读的那条线；research 轨是唯一正收益方向。
+- base 的 synth 导出（rl35b_base_s{5,10,20}_hf）没有任何评测——该线已因 userns 中止，不补。
+
 ## 3. 当前最佳 setting（可直接复用）
 
 - **9B full-FT + soup**：`allver` 数据（clean_decontam_traj + wave2 + maintain_r3 + 旧 maintain），**α=0.1**（official avg@5 = 6.765；strict5 口径曾记 7.34）。注意 pure_a10 / gated_v2_a5 / coding_a10 与它**在噪声内并列**，选 allver 是因为它在两套口径下都排第一，不是因为差距显著。
@@ -528,3 +579,5 @@ bootstrap（4000 次，按题重采样）：
 - research-RL 跑满 20 步（base + LoRA 两臂，50×16，1102 题）→ 看 research 能否超过 base + FCS/ALE 有无附带收益。
 - 35B：用 allver/gated 的最佳 9B recipe 复刻到 35B SFT，再接 research-RL。
 - 修 symbolic_regression 的 PySR 环境（reward adapter 里 2 个题族 fail-soft 0）。
+- 修评测/奖励环境的系统性冤枉零：eval 侧 16/64 题（GPU-kernel 族）缺 triton 恒为 0（死分母）；reward 侧 vdb_pareto 90s 超时、reward worker CUDA OOM、qknorm rc=1（§2.2.3）。
+- ALE（s5/s10/s12）+ MLS（base/start/s5）补测已提交（11876769–74），落数后回填 §2.3 矩阵。
