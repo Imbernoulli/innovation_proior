@@ -601,6 +601,21 @@ s10 = 364.8、s12 = 299.1 —— 过优化损伤同样迁移到分布外 benchma
 - 已知语义差异（如实记录）：无文件系统隔离（跑的是我们自己模型生成的代码，信任级别同
   research 轨）；MLE 表现为 NZES/Signalled（与线上 go-judge 降级模式一致，非差异）。
 
+### 2.5 ⭐ 奖励/评测冤枉零全面修复 + surrogate 定案（2026-08-01，userns 按永不恢复处理）
+
+三个诊断 agent 逐类破案，全部有"0→满分"级验证证据，修复已提交（FrontierSmith `dc1a579`/`c460ae5`/`4a9d225`）：
+
+| 类别 | 根因（验证证据）| 修复 |
+|---|---|---|
+| vdb 等超时 551 条 | RL 发射器硬导出 90s，而**正确的** vdb 解实测要 90–115s（faiss 建 1M 索引）→ 反向奖励 | `FRONTIERCS_RESEARCH_CPU_TIMEOUT` 90→300s |
+| qknorm 217 条 rc=1 | RL 与独立评测用了不同 python：sft_lf 缺 flashinfer（overlay 下同一样本 0→**100**）| RL 发射器固定 `FRONTIERCS_RESEARCH_PYTHON`=overlay + Julia depot 变量 |
+| symbolic_regression 47 条真 infra | **自家 07-30 加的 24GiB RLIMIT_AS 勒死 Julia/PySR**（同一解 24G 下 0 分、64G 下 105s 拿 **100**）；其余 396 条是模型 API 误用的合法零 | RLIMIT_AS 24→64GiB（RL）/48GiB（eval）|
+| "缺 triton" 恒零（撤回旧说法）| 环境完好（triton 3.6.0）；`triton.extra` 等是**模型幻觉子模块** = 合法零，被过宽 infra 标记误报；真恒零仅 **6 题**（纯难度）| infra 标记收紧为全引号顶层模块名 |
+| synth 奖励 bwrap 沙箱 | userns 永死 | **Apptainer 后端 surrogate**（`ISORUN_BACKEND=auto`）：G5c 泄漏探针实过（/proc 仅 2 进程、源码树 BLOCKED）、11 门全过、3 参考解（含 C++ 路径）两轮复跑逐位一致、超时零孤儿、127ms/次开销；发射器预检改为 bwrap **或** apptainer |
+| 日志一字截断 | `(perr or ...)[0]` 对字符串取首字符（"rc=1: M"之谜）| 已修 |
+
+**重挂（按"先修好再挂"顺序执行）**：FCS×s5/s10/s12（认证 shim，11881860-71）+ **base 臂 research RL**（11882798+resume 链，50×16/KL 0.01/SAVE 2，目标 (a) base 能否提分——此前从未真正跑过，这次奖励是修好的：SR/vdb/qknorm 全部有真信号）。r32s01 的 s5=23.38 是在 7–10% 奖励损坏下取得的——修复后的复跑属于可选升级，待 base 臂读数后决策。
+
 ## 3. 当前最佳 setting（可直接复用）
 
 - **9B full-FT + soup**：`allver` 数据（clean_decontam_traj + wave2 + maintain_r3 + 旧 maintain），**α=0.1**（official avg@5 = 6.765；strict5 口径曾记 7.34）。注意 pure_a10 / gated_v2_a5 / coding_a10 与它**在噪声内并列**，选 allver 是因为它在两套口径下都排第一，不是因为差距显著。
