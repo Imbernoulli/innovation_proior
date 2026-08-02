@@ -744,3 +744,17 @@ methods+trajectory 出的数据（~2,225 条）；maintenance = 蒸馏数据（7
 - 修 symbolic_regression 的 PySR 环境（reward adapter 里 2 个题族 fail-soft 0）。
 - 修评测/奖励环境的系统性冤枉零：eval 侧 16/64 题（GPU-kernel 族）缺 triton 恒为 0（死分母）；reward 侧 vdb_pareto 90s 超时、reward worker CUDA OOM、qknorm rc=1（§2.2.3）。
 - ALE（s5/s10/s12）+ MLS（base/start/s5）补测已提交（11876769–74），落数后回填 §2.3 矩阵。
+
+### 2.8 用户重设的 9B 矩阵——首批 raw 读数（08-03 滚动更新）
+
+| 臂 | FCS(172) | Research(64) | ALE | MLS |
+|---|---|---|---|---|
+| innold_ft（老 innovation 裸训）| 0.20 | 5.03 | 286.5 | 0.0943 |
+| innnew_wd03_ft | 0.21 | 4.48 | 286.5 | 0.0905 |
+| innnew_lr1e5_ft | 0.17 | 4.11 | 286.5 | 0.0673 |
+| im_wd03_ft（+maintenance）| （评测中）| 5.23 | **372.3** | 0.0276 |
+
+- 裸创新 SFT 的 FCS 塌缩重现（≈0.2，与历史一致），与 vintage/wd/lr 无关；
+- **maintenance 的第一信号：im_wd03 的 ALE 372 vs 纯创新臂 286**；
+- ⚠️ 三个纯创新臂 ALE 逐位相同（286.5）= ALE 量化 attractor 现象（全部样本落进相同失败/默认档），非评测事故，已知格局；
+- 裁决主力（16 个 soup/scale 合并模型的 FCS+Research）已提交；innnew_ft 与 maintenance 三方案本体在训。
