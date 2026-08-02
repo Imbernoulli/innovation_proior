@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1181",
+  "tier": "B",
+  "format": "C",
+  "family": "battery-ecm-identify",
+  "eval_form": "quality-metric",
+  "theme": "Naming the internal circuit from a charge-discharge curve",
+  "title": "Naming the Circuit From a Charge-Discharge Curve",
+  "objective": "max",
+  "strategies": [
+    "trivial: fit ONE generic RC branch at a fixed, data-independent time constant (60s) plus hysteresis by ordinary least squares -- matches the checker's own naive reference construction",
+    "greedy: throw a fixed, generous, log-spaced grid of 4 RC time constants (10/40/160/640s) at the data regardless of what the drive cycle actually contains, and fit all of them by unregularized least squares to minimize training error -- on the trap cases two grid branches are only weakly/collinearly excited by the training cycle's single narrow long-pulse cluster, so the fit apportions their shared response arbitrarily and that split does not generalize to a held-out cycle with a different pulse-duration mix",
+    "strong: cluster the training current profile's own pulse-duration content (1-D gap-based clustering on log run-length) into well-separated groups with real support, place exactly ONE candidate RC branch per surviving cluster (so two timescales the cycle cannot excite differently collapse into a single branch instead of being force-split), then fit those against the training data -- model order and placement are chosen from the excitation actually present, not from how many branches are allowed",
+    "headroom above strong: a genuine nonlinear joint fit of continuous (R,C) pairs (not tied to run-length medians), a principled criterion for cluster support/merging thresholds, or explicitly modeling how hysteresis sign-runs interact with the RC state to reduce the residual noise floor further"
+  ]
+}

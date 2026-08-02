@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1214",
+  "tier": "C",
+  "format": "E",
+  "family": "gpu-batch-throughput-forecast",
+  "eval_form": "quality-metric",
+  "theme": "Throughput past the point memory runs out",
+  "title": "Batch Throughput Past the Knee",
+  "objective": "max",
+  "strategies": [
+    "trivial: constant = mean of the training throughputs -> reproduces the checker's own baseline, Ratio ~= 0.1",
+    "greedy: ordinary least-squares LINEAR fit throughput = a + b*batch on the training rows, extrapolated to the held-out batches; the visible batches sit well below the hidden knee so the fit looks excellent in-sample, but linear extrapolation keeps climbing past the true bandwidth ceiling and overshoots the held-out plateau by several times",
+    "strong: compute the roofline ceiling P = min(C/F, W/D) EXACTLY from the four given hardware/op constants (an arithmetic-intensity argument, not a fit), then estimate only the ramp's knee scale K by linearizing the saturating-ramp model (1/T = 1/P + (K/P)*(1/batch) is linear in 1/batch with a KNOWN intercept 1/P) and least-squares fitting the one remaining slope from the noisy training ramp; predicts P*x/(x+K_hat), correctly flattening past the knee",
+    "headroom above strong: the held-out throughputs carry their own irreducible measurement noise, so even the exact roofline-ceiling + correctly-shaped ramp cannot drive held-out error to zero -> strong is capped well under the ceiling"
+  ]
+}

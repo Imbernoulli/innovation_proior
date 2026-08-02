@@ -1,0 +1,18 @@
+{
+  "id": "fsx_C_1235",
+  "tier": "C",
+  "format": "C",
+  "family": "migration-dual-write",
+  "eval_form": "quality-metric",
+  "theme": "Moving to a new store without downtime",
+  "title": "The Watermark That Survives the Backfill Race",
+  "objective": "max",
+  "mechanisms": ["dual-write-consistency", "backfill-vs-live-race", "cutover-verification"],
+  "innovation_hook": "Backfilling old rows while live writes continue creates a race where a backfill overwrites a newer live write. The insight is a version/watermark discipline that makes backfill writes conditional.",
+  "strategies": [
+    "trivial: never cut over (every read stays on the untouched OLD store) and protect every backfill write with a version check anyway -- always feasible, zero throughput gain; this is the checker's own reference construction",
+    "greedy (trap): blindly overwrite the NEW store on every backfill tick (no version check -- the natural first pass of a copy script) and cut over as soon as the backfill phase looks finished (right after the last backfill tick); clean when nothing races it, but a stale backfill batch that physically lands after a fresher concurrent live write silently clobbers that key -- invariant violation -> score 0 on every concurrent-load case",
+    "strong (insight): protect every backfill write with a version/watermark check (only overwrite if the snapshot version is strictly newer than what NEW already holds), which makes clobbering structurally impossible regardless of execution order; then compute the earliest cutover that is still safe by tracking, per key, the tick from which its NEW-store value is provably synced (its last live write, or its first backfill touch if never live-written again) and only letting read-checks on not-yet-synced keys constrain the cutover -- moves reads to the new store far earlier than 'wait for the whole backfill phase'",
+    "further headroom: a plan that also reorders/batches independent backfill ticks to shrink the time each key spends unsynced, or protects only the backfill ticks that a version analysis proves are actually at risk (instead of blanket-protecting all of them), squeezes out further throughput above the reference heuristic"
+  ]
+}

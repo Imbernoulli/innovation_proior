@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_1294",
+  "tier": "C",
+  "format": "B",
+  "family": "forest-harvest-policy",
+  "eval_form": "quality-metric",
+  "theme": "Cutting trees that have to grow back",
+  "title": "Cutting Trees That Have to Grow Back: A Multi-Year Harvest Plan",
+  "objective": "optimize",
+  "source_frameworks": ["wave3-lens:policy-simulator"],
+  "strategies": [
+    "positional FIFO: each year cut the first `quota` harvestable cells found in row-major scan order, ignoring value and regrowth entirely (the evaluator's weak reference)",
+    "value-greedy / biggest-first: each year cut the `quota` highest-stage cells on the board; wins big in the opening years but, because the maturity threshold equals the value cap, every cut removes a seed source, and once a region's mature trees are gone nothing there ever regrows -- the plan's yield craters over the back half of the horizon",
+    "seed-network-preserving harvest: still cut biggest-first by value, but before cutting a mature (stage == S) cell, check whether any not-yet-mature cell within dispersal radius would drop below the seed-count threshold if this cell were removed (accounting for other cuts already committed this year); skip cuts that would break the local seed network and take the next-best cell instead, so a spatially spread set of mature trees survives indefinitely as a renewable seed source",
+    "full lookahead / rollout search: simulate several candidate multi-year plans forward (since growth+dispersal+harvest are all deterministic and known) and keep the best by total value; expensive but can match or beat the seed-network heuristic on small boards"
+  ]
+}

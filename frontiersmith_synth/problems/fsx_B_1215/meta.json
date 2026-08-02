@@ -1,0 +1,18 @@
+{
+  "id": "fsx_B_1215",
+  "tier": "B",
+  "format": "E",
+  "family": "volcanic-unrest-forecast",
+  "eval_form": "quality-metric",
+  "theme": "Ground swelling before an eruption that may not come",
+  "title": "Ground Swelling — recovering an eruption-probability law that survives a fiercer unrest bout",
+  "objective": "max",
+  "strategies": [
+    "trivial: predict the constant training eruption rate (ignoring all three logged signals) -> reproduces the checker baseline ~0.1",
+    "greedy: look only at past ERUPTIVE episodes, take the low percentile of deformation acceleration (ACC) and seismic rate (SEIS) seen before those eruptions as an 'alert threshold', and predict a high fixed probability whenever a new episode clears both thresholds -- this ignores the (far more numerous) failed intrusions entirely, so it never learns how often THEY also clear the same thresholds; the rule pattern-matches the training catalogue passably but systematically over-forecasts, and the miscalibration is exposed hardest once the held-out bout intensifies",
+    "strong: the insight -- compare ACC, INFL and SEIS's class-conditional distributions across BOTH eruptive AND failed episodes (not just the eruptive ones) to find which signal actually separates outcome once the failed-intrusion base rate is accounted for; INFL (chamber inflation, the actual magma volume) separates the classes far more cleanly than the confounded ACC/SEIS, so fit a single-variable logistic regression on INFL by full-data maximum likelihood, whose intercept naturally encodes the true (low) base rate -- this recovers a law that is regime-invariant and survives extrapolation into the more intense held-out bout",
+    "headroom above strong: robustify the feature-separation check (cross-validated rather than a single-split Cohen's d) and jointly model a secondary INFL x ACC interaction term to shave the residual calibration gap that remains from finite-sample noise in the training catalogue"
+  ],
+  "source_frameworks": ["wave3-lens:forecast-regime"],
+  "innovation_hook": "Accelerating deformation precedes eruption but ALSO precedes failed intrusions, which are more common. The insight is calibrating against the failed-intrusion base rate (using ALL episodes, not just the eruptive ones) rather than fitting a rule from the salient positive cases alone."
+}

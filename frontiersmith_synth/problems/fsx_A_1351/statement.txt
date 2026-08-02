@@ -1,0 +1,92 @@
+# The Reluctant Builders
+
+## Problem
+You and a rival alternately claim vertices of a small graph. Owning a vertex
+is not the danger — *completing* a forbidden pair is: the graph has "poison
+edges", and the instant a player owns **both** endpoints of some poison
+edge, that player has "built the thing" and immediately loses. You do not
+play interactively; instead you pre-commit a full move **policy**, and a
+judge plays it against a fixed, strong opponent (Rival) for you.
+
+A test file contains a batch of `K` independent, unrelated arenas (games).
+You submit one policy per arena. Vertices are numbered `1..n` locally within
+each arena (arenas do not share vertices).
+
+**Policy format (per arena).** You submit two arrays of length `n`:
+- `pair[1..n]` (each in `[0,n]`): a *reactive rule*. Whenever Rival's most
+  recent move was vertex `v`, if `pair[v] != 0` and `pair[v]` is still
+  unclaimed, you must claim `pair[v]` on your next turn.
+- `prio[1..n]`: a permutation of `1..n`, a *fallback priority order* used on
+  every turn where the reactive rule above does not apply (your very first
+  move if you move first, or whenever `pair[v]` is `0` or already claimed):
+  you claim the lowest-ranked (by `prio`) currently-unclaimed vertex.
+
+**Play.** Whoever moves first is given by the arena's `first` field
+(`0` = you move first, `1` = Rival moves first); players alternate turns
+until every vertex is claimed. On each of your turns the judge applies the
+rule above to pick your move. On each of Rival's turns, Rival plays this
+fixed algorithm: among currently unclaimed vertices, consider those that are
+*safe* for Rival (claiming them would not give Rival both endpoints of a
+poison edge); among safe vertices Rival claims the one incident to the most
+poison edges (ties broken by lowest index); if no vertex is safe, Rival is
+forced and claims the lowest-indexed unclaimed vertex.
+
+**Outcome of an arena.** If you ever end up owning both endpoints of a
+poison edge, you lose that arena (value 0). If Rival ever does, you win it
+(value 2). If every vertex gets claimed with neither happening, it is a
+draw (value 1).
+
+## Input
+```
+K
+n_1 m_1 first_1
+u v            (m_1 lines: a poison edge)
+n_2 m_2 first_2
+...            (K arenas total)
+```
+`1 <= K <= 20`, each arena has even `n >= 2`, `n/2 <= m <= n`, no duplicate
+or self-loop edges. `first in {0,1}`.
+
+## Output
+For each arena, in input order, two lines: the `n` values of `pair[1..n]`
+(space-separated), then the `n` values of `prio[1..n]` (a permutation of
+`1..n`, space-separated).
+
+## Feasibility
+Every `pair[i]` must be an integer in `[0,n]`. Every `prio` array must be a
+permutation of `1..n`. Output must contain exactly this data for every
+arena, in order, with nothing else trailing.
+
+## Objective
+Maximize the total outcome value, summed over all `K` arenas in a test
+file.
+
+## Scoring
+Let `F` be your total outcome value (summed over the file's arenas) and let
+`B` be the outcome value (same arenas, same simulation) of the do-nothing
+policy `pair[i]=0` for all `i`, `prio = (1,2,...,n)`. The ratio is
+`min(1000, 100*F/max(1,B)) / 1000`, reported as `Ratio: <float>`. An
+infeasible output scores 0.
+
+## Constraints
+Time limit: 3 seconds. Memory limit: 256 MB.
+
+## Example
+One arena (`K=1`), `n=4`, poison edges `(1,2)`, `(3,4)`, `(2,3)`, `first=0`
+(you move first).
+
+Baseline policy `pair=[0,0,0,0]`, `prio=[1,2,3,4]`: you claim `1` (fallback).
+Rival's unclaimed vertices `{2,3,4}` have poison-degrees `2,2,1`; tie between
+`2` and `3` breaks to the lower index, so Rival claims `2`. You (fallback,
+lowest unclaimed) claim `3` — safe (edge `(2,3)` needs `2` in your hands too,
+but Rival owns `2`). Rival is left with only `4`, safe, claims it. All four
+vertices claimed, nobody ever owned both ends of a poison edge: a draw,
+value `1`. This is the checker's baseline, so `B=1` and this policy's own
+ratio is `min(1000,100*1/1)/1000 = 0.1`.
+
+Now try `prio=[4,3,2,1]` (same `pair`): you claim `4` first, Rival again
+claims `2`. You fall back to `3` — but you already own `4`, and `(3,4)` is a
+poison edge, so this claim gives you *both* endpoints: you lose immediately,
+value `0`, ratio `0.000000`. The only difference is fallback order — which
+vertex to defer given what you already own is exactly the choice this
+problem is about.

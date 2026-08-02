@@ -1,0 +1,15 @@
+{
+  "id": "fsx_C_1328",
+  "tier": "C",
+  "format": "C",
+  "family": "protein-stability-mutate",
+  "eval_form": "quality-metric",
+  "theme": "Making an enzyme survive the heat",
+  "title": "Thermostable Enzyme Redesign: Epistasis-Screened Mutation Stacking",
+  "objective": "max",
+  "strategies": [
+    "install-nothing-extra baseline: pick the single best individually-feasible stabilizing mutation (reproduces the checker's own baseline B, ~0.1)",
+    "rank-and-stack greedy: sort candidate mutations by individual stability delta and add them while a naive additive activity budget holds -- ignores the epistasis table and active-site crowding entirely, so it both clashes on antagonistic top-ranked pairs and misses synergistic pairs ranked just outside the naive cut",
+    "epistasis- and crowding-aware exhaustive search: screens every candidate mutation SET against the sparse pairwise epistasis table (stability AND activity corrections) and explicitly bounds how many selected mutations fall inside the active-site neighbourhood -- finds antagonism-free, synergy-exploiting combinations the rank-and-stack recipe cannot see"
+  ]
+}

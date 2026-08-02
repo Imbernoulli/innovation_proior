@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_1346",
+  "tier": "A",
+  "format": "A",
+  "family": "cop-number-strategy",
+  "eval_form": "quality-metric",
+  "theme": "How many pursuers to catch one evader",
+  "title": "Corner Patrol: Dismantling a Graph to Trap an Evader",
+  "objective": "min",
+  "seed_problem": "cop-number-strategy spec fsx_A_1346 (graph-cop-win-structure, retract-decomposition, corner-elimination)",
+  "mutation": "composite: replace the decision goal (is the graph cop-win / what is its exact cop number) with an open-ended minimization goal (minimize total sum-of-squared guard-set size over a full elimination/dismantling certificate), and generalize the classical single-guard corner-domination rule to teams of guards of solver-chosen size, so the optimal team size at each vertex is itself part of the search space.",
+  "strategies": [
+    "trivial: fixed deepest-first BFS elimination order, guard every vertex with ALL of its currently-live neighbors (always valid, no attempt to exploit redundancy)",
+    "greedy: same fixed order, but first try the classical single-guard corner test (is there one live neighbor whose closed neighborhood covers v's?); fall back to the full-neighbor guard whenever no single dominator exists",
+    "strong: same fixed order, but at each vertex run a greedy set-cover search over its live neighbors to find a small guard set exploiting neighbors that are already shadowed by other neighbors (the retract/corner-decomposition insight), never worse than the full-neighbor fallback and often far smaller on planted redundant-neighborhood gadgets",
+    "invalid: reports a guard set that leaves an escape route uncovered (deliberately infeasible)"
+  ]
+}

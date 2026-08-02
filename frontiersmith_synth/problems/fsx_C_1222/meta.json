@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1222",
+  "tier": "C",
+  "format": "C",
+  "family": "consensus-log-reconcile",
+  "eval_form": "quality-metric",
+  "theme": "Merging divergent replicas without losing writes",
+  "title": "Reconciling Divergent Replica Logs Without Losing Writes",
+  "objective": "max",
+  "strategies": [
+    "last-writer-wins by minimum weight, always (reproduces the checker's own worst-case baseline, ~0.1)",
+    "last-writer-wins by wall-clock timestamp: the obvious recipe for a naive KV-store reconciler -- always converges (one value per key) but never distinguishes causally-superseded writes from genuinely concurrent ones, so on every concurrent-write key it either drops all-but-one write for free or, on the planted adversarial-timestamp keys, is forced onto the single WORST (lowest-importance) writer",
+    "causal-frontier detection + budgeted merge: compute each key's frontier from vector-clock dominance (the ops nobody else causally supersedes -- the only ones a correct replica may still disagree about), then for each multi-writer frontier decide merge-vs-best-single-pick via 0/1 knapsack over a shared reconciliation budget (mergeable keys reward proportional to concurrent writer count; unmergeable keys still benefit from picking the frontier's own best member instead of a wall-clock accident)",
+    "headroom above strong: exact global optimum would also model diminishing-marginal-budget effects across keys and value-aware (not just weight-aware) tie-breaking within ties"
+  ]
+}

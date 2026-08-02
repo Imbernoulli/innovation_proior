@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_1355",
+  "tier": "A",
+  "format": "A",
+  "family": "hat-guessing-strategy",
+  "eval_form": "quality-metric",
+  "theme": "Everyone guesses, one must be right",
+  "title": "Everyone Guesses, One Must Be Right",
+  "objective": "max",
+  "seed_problem": "hat-guessing configuration: solver outputs a deterministic strategy table, scored against all adversarial colour assignments",
+  "mutation": "composite: full guess-table output (a general covering code, not just a residue trick) coupled to per-player information weights and worst-case-over-all-assignments scoring, so the strategy designer must both (a) discover that only a pre-agreed covering code guarantees any worst-case correctness at all and (b) balance WHICH players anchor which residue class by their information weight -- turning a classic puzzle fact into a weighted load-balancing optimization under adversarial evaluation.",
+  "strategies": [
+    "trivial: index round-robin residue assignment, ignoring weights entirely (reproduces the checker baseline)",
+    "naive greedy: balance residues one player at a time in the given input order (no lookahead, no re-sorting) -- light groups get committed to filler weight before the big, informative players arrive",
+    "insight (strong): sort players by weight descending first, then greedily balance (classic LPT / exchange-argument load balancing), placing the most informative guessers while every residue group is still empty",
+    "a general solver can go further still: abandon the linear \"assumed total mod K\" family entirely and design a genuinely non-linear covering code tailored to the exact weight profile"
+  ]
+}

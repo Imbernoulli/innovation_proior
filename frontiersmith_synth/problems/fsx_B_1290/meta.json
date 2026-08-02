@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1290",
+  "tier": "B",
+  "format": "C",
+  "family": "payment-routing-cost",
+  "eval_form": "quality-metric",
+  "theme": "Choosing rails when each one sometimes fails",
+  "title": "Payment Rail Cascades: Cost Per Successful Charge",
+  "objective": "min",
+  "strategies": [
+    "trivial: route everyone to the single globally-cheapest-average-fee rail, one attempt, no cascade (checker baseline)",
+    "greedy: per ticket bucket, cascade through rails sorted by raw fee ascending -- minimizes cost PER ATTEMPT, ignores auth-rate-by-issuer entirely, so a cheap-but-narrow rail wastes an attempt (and its retry surcharge) before the cascade reaches a rail that actually authorizes for that segment",
+    "strong: per (issuer segment, ticket bucket) cell, exhaustively optimize the cascade (which rails, in what order, how many) to minimize cost PER SUCCESSFUL payment -- exploits that success probability for a fixed rail set is order-invariant, so ordering minimizes expected cost alone (an exchange argument), while subset choice trades attempt cost against the failure-penalty tail",
+    "headroom above strong: model correlated (non-independent) decline outcomes across rails sharing a card network, or a portfolio-level retry budget shared across segments instead of per-cell independence"
+  ]
+}

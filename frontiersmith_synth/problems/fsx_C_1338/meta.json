@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_1338",
+  "tier": "C",
+  "format": "C",
+  "family": "adhesive-interface-design",
+  "eval_form": "quality-metric",
+  "theme": "Gluing two things that expand differently",
+  "title": "Graded Bond-Line Design Under a Thermal-Cycling Edge Concentration",
+  "objective": "max",
+  "source_frameworks": ["wave3-lens:molecular-materials"],
+  "strategies": [
+    "trivial: uniform softest adhesive type on every segment -- the checker's own reference construction",
+    "greedy: uniform maximum-stiffness adhesive on every segment -- individually rational (in the sub-critical size regime this genuinely IS the best uniform choice, and it maximizes each segment's own strength cap too) but the trap: past a size threshold the same uniform stiffness dumps the thermal mismatch strain onto a handful of edge segments whose stress then exceeds their own strength cap, and cycling life collapses toward 0",
+    "strong: graded search -- for every candidate soft-edge ramp width and every candidate core stiffness level, evaluate the checker's own stress model directly and keep the best feasible design; softening only the edges (where the mismatch strain concentrates) while keeping the core near maximum stiffness caps the edge stress without giving up the core's static advantage",
+    "open ceiling (uncovered): per-segment (non-templated) optimization, asymmetric grading, and joint reasoning across multiple simultaneous cycling profiles -- strong only searches a symmetric two-level-ramp template family"
+  ]
+}

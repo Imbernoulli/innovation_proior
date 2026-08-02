@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_1296",
+  "tier": "C",
+  "format": "B",
+  "family": "text-adventure-explore",
+  "eval_form": "quality-metric",
+  "theme": "Mapping a world through a keyhole",
+  "title": "Mapping a World Through a Keyhole",
+  "objective": "max",
+  "source_frameworks": ["wave3-lens:policy-simulator"],
+  "strategies": [
+    "do-nothing / ultra-conservative: never leave the start room, bank neither the map bonus nor any reward (too timid to be useful)",
+    "blind exhaustive explorer: breadth-first the room graph and interact with every fixture the instant it is found, never reading a cue -- explores fastest on paper but detonates the first irreversible fixture it meets, which is usually seconds from the start",
+    "cue-grammar classification + safe-closure sweep: read each fixture's field-note cue against the two fixed adjective pools to tell reversible from irreversible before ever touching anything, and fully explore + collect every safe fixture (and its wards) first",
+    "ward allocation by exchange argument: once the true ward supply is known, sort the deferred irreversible fixtures by reward and spend wards on the highest-value ones first -- a provably optimal prefix pick, not just risk-avoidance"
+  ]
+}

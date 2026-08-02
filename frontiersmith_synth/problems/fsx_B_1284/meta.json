@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_1284",
+  "tier": "B",
+  "format": "C",
+  "family": "esg-screen-portfolio",
+  "eval_form": "quality-metric",
+  "theme": "Excluding the worst without wrecking the tracking",
+  "title": "ESG Screen: Excluding the Worst Without Wrecking the Tracking",
+  "objective": "min",
+  "source_frameworks": ["wave3-lens:risk-actuarial"],
+  "strategies": [
+    "equal-weight over eligible names (ignores weights and factors entirely)",
+    "proportional rescale of survivors' original benchmark weights (looks principled, but factor-blind: shifts sector/size exposure whenever the exclusion set is sector-concentrated)",
+    "sector-target water-fill: allocate weight to sectors to match the benchmark's sector exposure as closely as capacity allows (optimal for any PSD F once a sector's gap hits 0), then fill each sector pro-rata among its own eligible names -- substitutes within the factor, not across the whole universe",
+    "risk-priority rationing: when total substitution capacity cannot close every sector's gap, ration the shortfall across still-open sectors weighted by what THIS instance's factor covariance F actually charges for that sector's mismatch (F[k][k] plus its co-movement with the size factor), instead of spreading it blindly"
+  ]
+}

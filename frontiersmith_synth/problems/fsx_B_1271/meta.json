@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_1271",
+  "tier": "B",
+  "format": "C",
+  "family": "credit-limit-assign",
+  "eval_form": "quality-metric",
+  "theme": "Lending more to the people who will pay it back",
+  "title": "Credit Limit Assignment Under a Portfolio Loss Cap",
+  "objective": "max",
+  "strategies": [
+    "trivial baseline: give every applicant a fixed moderate tier while the loss cap allows (reproduces the checker baseline)",
+    "greedy: assign a limit tier proportional to baseline credit-score percentile, trimming the lowest-score applicants' tiers first if the loss cap is broken -- never consults the per-tier default/utilization response tables",
+    "strong: build each applicant's upper concave (loss, profit) envelope across tiers, then bisect a shadow price lambda so 'pick the tier maximizing profit - lambda*loss' per applicant spends the loss cap -- an exchange-argument / Lagrangian-relaxation solution to the underlying multiple-choice knapsack"
+  ]
+}

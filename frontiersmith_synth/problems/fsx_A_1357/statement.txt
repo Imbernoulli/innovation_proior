@@ -1,0 +1,109 @@
+# Tunnel Sweep: Clearing the Underlevel Network
+
+## Problem
+
+An intruder hides somewhere in an abandoned tunnel network with `N`
+junctions; junction `1` is the surface entrance. The network is a tree: each
+junction `i` (`2 <= i <= N`) has exactly one tunnel down to a lower-numbered
+parent `p_i`, so `1` is the root of the whole system.
+
+You command a sweep team clearing the network bottom-up. To clear the branch
+below junction `v`, the team enters `v`'s child branches **one at a time**,
+fully finishing each (recursively, by this same rule) before the next -- a
+monotone sweep that never backtracks. The instant a child branch `u` is
+clean, you must **post a permanent sentry at `u`**: without it the intruder
+could later slip back through `v` from an unswept branch and
+**recontaminate** the clean one. Posting that sentry costs `c_u` dedicated
+team members, who stay put guarding `u` until the *entire* subtree rooted at
+`v` finishes, at which point every sentry posted inside it rejoins the pool.
+
+Let `x_v` be the peak headcount your team ever needs, at once, while
+clearing the subtree rooted at `v`:
+- If `v` is a leaf, `x_v = 1` (one sweeper suffices to clear a single
+  junction).
+- Otherwise you choose an order `u_1, u_2, ..., u_k` of `v`'s children (this
+  order is your decision at `v`), and
+  `x_v = max` over `i = 1..k` of `( x_{u_i} + c_{u_1} + c_{u_2} + ... + c_{u_{i-1}} )`.
+  (Sweeping branch `u_i` needs `x_{u_i}` active sweepers *plus* whichever
+  sentries from already-finished earlier siblings are still posted.)
+
+Minimize `F = x_1`, the peak headcount needed for the whole network, by
+choosing a clearing order at every junction with 2 or more children
+(junctions with 0 or 1 children have no real choice to make).
+
+## Input
+
+```
+N
+p_2 c_2
+p_3 c_3
+...
+p_N c_N
+```
+Line `i` (for `i = 2..N`) gives junction `i`'s parent `p_i` and its sentry
+cost `c_i`.
+
+## Output
+
+For every junction `v` that has at least one child, print one line:
+```
+v k u_1 u_2 ... u_k
+```
+where `k` is `v`'s true number of children and `u_1, ..., u_k` is a
+permutation of `v`'s children giving your chosen clearing order (`u_1`
+first, `u_k` last). Print nothing for leaf junctions. Lines may appear in
+any order.
+
+## Feasibility
+
+Every junction with >=1 child must appear in **exactly one** output line.
+For that line, `k` must equal the junction's true number of children, and
+`u_1..u_k` must be exactly a permutation of that junction's true child set
+(no repeats, no ids that aren't actually its children). Any violation, or
+any leftover/missing junction, scores 0.
+
+## Scoring
+
+Let `B` be `F` evaluated using the **ascending-id order** at every junction
+(`u_1 < u_2 < ... < u_k`) -- clearing children in the order they happen to
+be numbered, no cleverness. Your score for a test case is
+```
+ratio = min(1000, 100 * B / max(1, F)) / 1000
+```
+so the ascending-id order scores `0.1`; a genuinely better order scores
+higher (capped at `1.0`, ten times better than the naive order). Per-test
+ratios are averaged over all tests.
+
+## Constraints
+
+* `2 <= N <= 3000`
+* `1 <= p_i < i` for every `i = 2..N`
+* `1 <= c_i <= 1000` for every `i = 2..N`
+* Time limit: 3 s. Memory limit: 512 MB.
+
+## Example
+
+`N=6`, tunnels: `2,3,4` are children of `1` (costs `20,1,1`); `5,6` are
+children of `4` (costs `1,1`).
+```
+6
+1 20
+1 1
+1 1
+4 1
+4 1
+```
+Leaves `2,3,5,6` have `x=1`. Junction `4` has children `{5,6}`
+(costs `1,1`, order irrelevant by symmetry): `x_4 = max(1+0, 1+1) = 2`.
+
+Junction `1` has children `{2,3,4}` with costs `c_2=20, c_3=1, c_4=1`.
+Ascending-id order `(2,3,4)`: `max(1, 1+20, 2+20+1) = 23 = B`.
+A better order `(3,4,2)`: `max(1, 2+1, 1+1+1) = 3 = F`
+(delay the expensive sentry at `2` until last, so its cost never burdens
+anyone). `ratio = min(1000, 100*23/3)/1000 = 0.766...`
+
+A valid output realizing this:
+```
+1 3 3 4 2
+4 2 5 6
+```

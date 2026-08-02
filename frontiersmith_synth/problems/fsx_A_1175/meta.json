@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1175",
+  "tier": "A",
+  "format": "C",
+  "family": "tomographic-sparse-view",
+  "eval_form": "quality-metric",
+  "theme": "Reconstructing a cross-section from too few angles",
+  "title": "Missing Wedge: Reconstructing a Cross-Section from Too Few Angles",
+  "objective": "max",
+  "strategies": [
+    "trivial: single flat fill at the palette value closest to the overall mean density implied by the sinogram (the checker's own baseline)",
+    "greedy: ramp-filtered backprojection over the given angles, then 1-D k-means quantization of the reconstructed intensities onto the palette -- the classic transform-inversion recipe; excellent when angles span the full range, but the missing wedge leaves whole directions unobserved so it smears/streaks and fails structurally",
+    "strong: reformulate as constrained optimization -- ART-style iterative projection updates to fit the visible sinogram, alternated with a local total-variation-style median smoothing step that exploits the known piecewise-constant/few-material structure to fill in what the missing wedge cannot see, then quantize",
+    "insight: the missing wedge makes the visible data consistent with many different objects; only the ones that are also piecewise-constant (few flat blocks) are plausible, so an explicit smoothness/flatness prior over the reconstruction resolves the ambiguity that filtered backprojection cannot"
+  ]
+}

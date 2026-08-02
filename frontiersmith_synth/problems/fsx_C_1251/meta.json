@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1251",
+  "tier": "C",
+  "format": "D",
+  "family": "instruction-set-select",
+  "eval_form": "flops",
+  "theme": "Which custom instructions are worth the silicon",
+  "title": "Which Custom Instructions Are Worth The Silicon",
+  "objective": "max",
+  "strategies": [
+    "id-order first-fit under both budgets, no ranking at all (trivial)",
+    "rank candidates by raw subgraph-match frequency, fill K/A greedily (greedy)",
+    "cost/benefit marginal-gain-per-area selection, simulating the fixed recompile pass to see through overlapping/redundant candidates (strong)",
+    "true joint optimum over (candidate subset, budget split) is a hard combinatorial search -- open ceiling, uncovered"
+  ]
+}

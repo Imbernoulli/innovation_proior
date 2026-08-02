@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1287",
+  "tier": "B",
+  "format": "C",
+  "family": "dynamic-hedge-rebalance",
+  "eval_form": "quality-metric",
+  "theme": "Hedging without trading yourself to death",
+  "title": "No-Trade Band: Rebalancing Without Bleeding Costs",
+  "objective": "minimize",
+  "strategies": [
+    "static baseline: buy the initial delta-neutral hedge once and never rebalance again",
+    "continuous rebalancing: match the target delta exactly at every timestep regardless of gamma or cost",
+    "adaptive no-trade band: only rebalance once the tracking error leaves a band that widens with cost/gamma and narrows with gamma; when breached, move only to the band edge, not fully to target",
+    "lookahead/offline impulse control: exploit full knowledge of the price path to time trades against known future reversals"
+  ]
+}

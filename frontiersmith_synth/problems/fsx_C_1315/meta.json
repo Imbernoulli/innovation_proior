@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_1315",
+  "tier": "C",
+  "format": "B",
+  "family": "evacuation-guidance-policy",
+  "eval_form": "quality-metric",
+  "theme": "Telling people where to go when they will not listen",
+  "title": "Telling People Where To Go When They Will Not Listen",
+  "objective": "maximize",
+  "source_frameworks": ["wave3-lens:policy-simulator"],
+  "strategies": [
+    "do-nothing-clever: broadcast every zone's own nearest exit forever (guided equals default, so partial compliance and credibility never enter the picture)",
+    "reactive full-compliance load balancing: every step, greedily assign each currently-departing cohort to whichever reachable exit looks least loaded right now, assuming the whole cohort will comply -- silently reroutes zones as the state drifts",
+    "forced/controllable decomposition: only the compliant fraction of a zone is actually steerable (the rest goes to its default exit regardless), so route that fraction into the exit with the most headroom left after the forced defaults, and commit to one fixed choice for the whole horizon so the directive never contradicts itself",
+    "seeded local refinement: start from the forced/controllable assignment and perturb individual zone->exit choices (respecting reachability) to squeeze out remaining crush losses on the tight-capacity instances"
+  ]
+}

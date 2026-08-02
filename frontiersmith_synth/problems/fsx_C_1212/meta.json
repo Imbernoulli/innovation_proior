@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1212",
+  "tier": "C",
+  "format": "E",
+  "family": "traffic-metastable-forecast",
+  "eval_form": "quality-metric",
+  "theme": "Free flow until one brake light",
+  "title": "Free Flow Until One Brake Light — forecasting the metastable/discharge branch split from sub-critical susceptibility",
+  "objective": "max",
+  "strategies": [
+    "trivial: predict the CONSTANT mean training flow, ignoring density and the perturbation P entirely -> reproduces the checker baseline ~0.1",
+    "greedy: textbook fundamental-diagram fit -- proportional flow model q~=k*rho by ordinary least squares, defensively CAPPED at the best flow ever observed in training (written as pure arithmetic via the min(x,c)=(x+c-sqrt((x-c)^2))/2 identity) -- a single-valued, monotone, saturating curve that visibly beats the do-nothing baseline (it captures the rising sub-critical trend and never explodes on extrapolation) but has no notion of a metastable branch that DECLINES past the critical density, no notion of a lower post-breakdown discharge branch, and ignores the perturbation covariate P entirely -- wherever the true capacity drop pulls held-out flow well below the plateau this cap assumes, the miss is large",
+    "strong: notices the perturbation-susceptibility term S0/(|rho-RC|+EPS0) is estimable from a LOCAL fit -- because for a fixed candidate critical density RC the model (QM/RC)*rho - S0*P/(|rho-RC|+EPS0) is LINEAR in (QM/RC, S0), a full nonlinear regression reduces to a 1-D search over candidate RC (variable projection / profile least squares), regularized by shrinking the noisy arg-min toward a mild structural prior since the profile-SSE surface is quite flat; reconstructs the critical density and capacity, then writes a single algebraic blend expression (no branching needed, since the held-out range is known to sit at/past RC) that interpolates between a persisting near-capacity branch and a lower discharge branch, using the SAME susceptibility law identified on the sub-critical rows",
+    "headroom above strong: the jam density RJ, the metastable decline rate MU and the capacity-drop fraction DELTA are never observable from sub-critical-only training rows -- `strong` guesses them at the family's typical midpoints rather than fitting them per road (they vary substantially per road), plus held-out measurement noise and the intrinsically flat profile-likelihood for RC on shorter/noisier training samples, keep even this insight-driven fit well under the score ceiling"
+  ]
+}

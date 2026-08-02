@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_1252",
+  "tier": "C",
+  "format": "D",
+  "family": "clock-tree-balance",
+  "eval_form": "flops",
+  "theme": "Making the clock arrive everywhere at once",
+  "title": "Variation-Aware Clock Tree: Buffer Insertion Under a Skew and Power Budget",
+  "objective": "min",
+  "source_frameworks": ["wave3-lens:hardware-codesign"],
+  "strategies": [
+    "trivial: type-0 (safe, low-variation) buffers only, fully closing every net's nominal-delay gap to the slowest net -- reproduces the checker's own reference construction; always feasible but power-wasteful",
+    "greedy: textbook zero-skew balancing -- fully close every net's nominal-delay gap to the slowest net using whichever buffer type needs the fewest extra insertions (the high-delay, high-variation 'turbo' type), regardless of the tight worst-case-skew budget",
+    "strong: exploit that the nominal-skew budget only requires PARTIAL closure -- raise each net only to the budget boundary (not to zero skew), using the low-variation 'safe' type, with a bounded fallback that keeps closing minimally with the same safe type if either budget is still missed",
+    "invalid: emits zero buffers on every net; since the nominal-skew budget is always strictly below the raw wire-delay spread, this is guaranteed infeasible"
+  ]
+}

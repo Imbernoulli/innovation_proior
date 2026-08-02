@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_1261",
+  "tier": "C",
+  "format": "D",
+  "family": "voltage-frequency-schedule",
+  "eval_form": "flops",
+  "theme": "Racing to idle, or crawling to the deadline",
+  "title": "DVFS Deadline Scheduling with Ramp-Sensitive Transitions",
+  "objective": "min",
+  "source_frameworks": ["wave3-lens:hardware-codesign"],
+  "strategies": [
+    "trivial: run the top DVFS level for the entire horizon, never idle -- reproduces the crudest always-feasible construction",
+    "greedy: race-to-idle -- top level whenever any job's window is open, idle the instant nothing is pending; pays full cubic power throughout every busy stretch and switches level exactly when work resumes, so ramp loss lands on the slot the deadline needed most",
+    "strong: tries a best-of several qualitatively different schedules per instance -- the cheapest feasible constant level for the whole horizon (exploiting power convexity), and pre-warmed / adaptive-rate schedules that shift each level switch one slot into the preceding idle gap (where the ramp loss is free) and track the actually-required rate instead of always maxing out",
+    "invalid: idles the entire horizon regardless of jobs -- misses every deadline, rejected before scoring"
+  ]
+}

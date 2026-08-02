@@ -1,0 +1,18 @@
+{
+  "id": "fsx_C_1221",
+  "tier": "C",
+  "format": "C",
+  "family": "retry-policy-under-partial-failure",
+  "eval_form": "quality-metric",
+  "theme": "Retrying without making the outage worse",
+  "title": "Shared Fate: Retry Budgeting Under a Correlated Outage",
+  "objective": "max",
+  "mechanisms": ["idempotency-classification", "backoff-schedule", "retry-storm-feedback"],
+  "innovation_hook": "Aggressive per-request exponential backoff maximizes any one request's own success chance but resynchronizes an entire correlated-outage cohort onto the same recovery tick, overwhelming the shared capacity and triggering a collapse feedback loop. The insight is budgeting/staggering retries against the shared capacity (a token-bucket-like global view) rather than optimizing each request in isolation.",
+  "strategies": [
+    "never retry (max_attempts=1 for everyone): reproduces the checker's own baseline, ~0.1",
+    "textbook per-request exponential backoff (same un-jittered 2,4,8,16 schedule for every request, ignores capacity and idempotency): recovers real value in calm instances but resynchronizes into a demand spike right when a correlated outage ends, triggering the shared-capacity collapse feedback and walking through the post-outage ambiguous-ack-loss window on non-idempotent endpoints -> avoidable duplicates",
+    "capacity-staggered, idempotency-aware scheduling: spread requests over ceil(N/C) lanes so no correlated-failure cohort resynchronizes past the shared capacity, and use the endpoint's own idempotency flag plus the GIVEN outage/ambiguous schedule to dodge known-bad retry ticks only where a duplicate would actually be harmful",
+    "further headroom: a fully self-consistent search (e.g. local search over per-request backoff vectors re-simulating the shared-capacity feedback) that jointly optimizes the whole cohort's schedule instead of a single closed-form staggering rule"
+  ]
+}

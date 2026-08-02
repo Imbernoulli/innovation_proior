@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1272",
+  "tier": "B",
+  "format": "C",
+  "family": "aml-alert-triage",
+  "eval_form": "quality-metric",
+  "theme": "Which alerts a small team should actually work",
+  "title": "Coverage-Constrained Alert Triage",
+  "objective": "maximize",
+  "strategies": [
+    "cheapest-first coverage fill: meet every typology floor with its cheapest alerts, then fill remaining budget by ascending alert id (the checker's own internal baseline)",
+    "global precision-density greedy: sort ALL alerts by score/cost and fill the budget, never checking per-typology floors (ignores the regulator-mandated typology whenever it scores low)",
+    "two-phase constrained allocation: satisfy every typology's mandatory floor first using its own best-scoring alerts, THEN spend remaining budget by global score/cost density across all typologies (the intended insight)",
+    "randomized repair: build a density-greedy plan then patch in cheapest alerts of any under-covered typology until floors are met"
+  ]
+}

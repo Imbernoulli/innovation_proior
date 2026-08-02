@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1202",
+  "tier": "C",
+  "format": "E",
+  "family": "learning-curve-forecast",
+  "eval_form": "quality-metric",
+  "theme": "How much data until the model is good enough",
+  "title": "How Much Data Until It's Good Enough? — Forecasting Past the Floor",
+  "objective": "max",
+  "strategies": [
+    "trivial: predict the constant mean of the observed training errors, ignoring the decaying trend -> reproduces the checker baseline ~0.1",
+    "greedy: fit a plain power law (no floor) via log-log OLS pooling every visible point; this is forced toward 0 as n grows, but true error never drops below the irreducible floor, and pooling blends the steep early-burst exponent with the true shallow one -> badly wrong at held-out scale",
+    "strong: posit floor + power-law, profile out the exponent via grid search with a closed-form linear regression for (floor, amplitude) at each candidate exponent, and search over largest-n suffixes of the training points to find the self-consistent subset (rejecting early-burst contamination) with the cleanest curvature fit -> extrapolates correctly",
+    "headroom above strong: sharper floor estimation under measurement noise (e.g. iteratively reweighted fits, better break-point localisation) to push held-out MSE further toward the noise floor"
+  ]
+}

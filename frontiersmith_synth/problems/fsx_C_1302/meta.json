@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1302",
+  "tier": "C",
+  "format": "B",
+  "family": "auction-bidding-policy",
+  "eval_form": "quality-metric",
+  "theme": "Bidding against bots that watch you back",
+  "title": "Bidding Against Bots That Watch You Back",
+  "objective": "max",
+  "strategies": [
+    "trivial: never bid (0 surplus, 0 budget spent, competitor never learns anything) -- the score floor",
+    "greedy: bid the public signal (your best point-estimate of value) truthfully every single round, the textbook 'truthful bidding is dominant in a second-price auction' instinct -- ignores that the budget is shared across the whole sequence and that the competitor ratchets up in response to sustained aggression, so it burns budget and inflates prices before the genuinely valuable rounds arrive",
+    "structure-aware budgeted knapsack: price every round at its worst-case fully-escalated competitor cost (computable from public data alone), rank rounds by surplus-per-dollar of that cost, greedily fund the highest-density rounds within budget, skip the rest entirely (bid 0), and shade funded bids to a small margin over the worst-case cost -- second-price billing means the margin never raises what is actually paid, only the win probability. This paces spending against the ARRIVAL distribution of value instead of the budget clock, and keeps the competitor calm on skipped rounds.",
+    "invalid: wrong-length answer with a negative bid to demonstrate the feasibility gate"
+  ]
+}

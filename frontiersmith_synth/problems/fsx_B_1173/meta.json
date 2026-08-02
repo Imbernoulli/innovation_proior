@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1173",
+  "tier": "B",
+  "format": "C",
+  "family": "emitter-geolocate-tdoa",
+  "eval_form": "quality-metric",
+  "theme": "Placing a transmitter from arrival-time differences",
+  "title": "Listening Line: TDOA Localization with a Degenerate Array",
+  "objective": "max",
+  "strategies": [
+    "trivial: ignore all TDOA data and report the receiver array's centroid for every held-out emitter -- matches the checker's own internal baseline exactly",
+    "greedy: estimate each receiver's clock bias by averaging over the calibration emitters (the obvious way to handle the nuisance), then for every held-out emitter plug the bias-corrected TDOA into the linear forward model and solve the 2x2 normal-equations least squares directly -- a single uniform recipe, blind to how conditioned the array's own geometry is",
+    "strong: same bias correction, but first eigendecompose the array's own geometry-only Gram matrix J^T J (no data needed) to read off its condition number; keep the ordinary least-squares value along the well-constrained eigen-direction, and on ill-conditioned (near-collinear) arrays substitute the calibration emitters' own centroid offset for the data-starved eigen-direction instead of trusting noise-amplified least squares -- truncated-SVD regularization in the array's natural eigenbasis, reducing to byte-identical greedy whenever the geometry is fine",
+    "headroom above strong: soft (not hard-threshold) shrinkage calibrated to the actual noise level rather than a fixed condition-number cutoff, a robust (not mean) calibration-centroid prior, and jointly re-estimating clock bias and position instead of a one-shot calibration pass"
+  ]
+}

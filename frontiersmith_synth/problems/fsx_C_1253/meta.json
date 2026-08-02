@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1253",
+  "tier": "C",
+  "format": "D",
+  "family": "memory-layout-tiling",
+  "eval_form": "flops",
+  "theme": "Arranging arrays so the cache cooperates",
+  "title": "Cache-Cooperative Tiling: Tile, Pad, Prefetch",
+  "objective": "minimize",
+  "strategies": [
+    "untiled canonical scan, zero padding (trivial)",
+    "capacity-optimal cube tile filling the cache, canonical order, zero padding (greedy)",
+    "capacity tile co-designed with set-spreading padding + prefetch-friendly reuse order (strong)",
+    "true jointly-optimal (tile, pad, order) search (open ceiling, uncovered)"
+  ]
+}

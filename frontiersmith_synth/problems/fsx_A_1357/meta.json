@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_1357",
+  "tier": "A",
+  "format": "A",
+  "family": "pursuit-on-tree-sweep",
+  "eval_form": "quality-metric",
+  "theme": "Clearing a network of an invisible intruder",
+  "seed_problem": "classic node-search-number / graph-searching game on trees: the minimum number of searchers needed to sweep a tree clean of an invisible, arbitrarily-fast intruder without recontamination is a structural quantity computable by a bottom-up tree DP, and is famously ORDER-INSENSITIVE beyond a tie-break at each branch point.",
+  "mutation": "composite: replace the classical unweighted node-search-number objective with a WEIGHTED sentry-cost model -- sealing a just-cleared branch to prevent recontamination now costs a per-node deployment price c_u that stays paid until the whole surrounding subtree finishes. This destroys the classical tie-break-only structure: minimizing peak concurrent headcount now requires jointly balancing each branch's own search-number requirement x_u against its sentry cost c_u via a scheduling-style exchange argument (order to minimize max_i(a_i + prefix-cost_i)), coupling the search-number DP to a genuine ordering trade-off at every branching junction, not just the root.",
+  "objective": "min",
+  "title": "Tunnel Sweep: Clearing the Underlevel Network",
+  "strategies": [
+    "trivial: ascending-id clearing order at every junction (reproduces the checker's own baseline construction B)",
+    "naive greedy: at every junction, clear children in DESCENDING order of their own search-requirement x_child only, completely ignoring sentry cost -- correctly captures the classical search-number half of the puzzle but is blind to cost, so it badly misorders junctions whose children have a cheap-looking (low-x) but expensive-to-seal branch, paying a much larger peak headcount than necessary",
+    "insight (strong): reformulate each junction's child-ordering decision as a pairwise-exchange scheduling problem -- minimize max_i(x_{u_i} + prefix sum of costs before u_i) is exactly 'minimize the maximum of (value_i + accumulated setup time)', solved by a pairwise comparator that weighs x_child AGAINST c_child jointly (place u before w iff max(x_u, x_w+c_u) <= max(x_w, x_u+c_w)), applied bottom-up at every branching junction via the recursive tree DP",
+    "a general solver could go further: treat sibling groups jointly rather than trusting one pairwise comparator (which is not provably globally optimal once >2 siblings interact through shared downstream structure), e.g. local search that re-permutes a hub's children directly against the true recursive objective, or branch-and-bound on the largest hubs"
+  ]
+}

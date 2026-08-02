@@ -1,0 +1,18 @@
+{
+  "id": "fsx_C_1236",
+  "tier": "C",
+  "format": "C",
+  "family": "circuit-breaker-tuning",
+  "eval_form": "quality-metric",
+  "theme": "Knowing when to stop calling a sick service",
+  "title": "Trip Fast, Recover Slow",
+  "objective": "max",
+  "mechanisms": ["failure-threshold", "half-open-probing", "flapping-suppression"],
+  "innovation_hook": "A tight symmetric threshold trips fast and flaps, alternating between open and closed and serving neither. The insight is asymmetric hysteresis: trip on a short window, recover on a long one, with probe rate tied to observed recovery time.",
+  "strategies": [
+    "trivial: a breaker configured to (in practice) never trip at all -- equivalent to always calling the dependency with no protection whatsoever; this is the checker's own reference construction",
+    "greedy (trap): the textbook single symmetric window/threshold breaker (e.g. 3-of-5 fails trips, 3-of-5 succeeds recovers) with one FIXED probe cadence -- clean on an unambiguous hard outage, but on a genuinely noisy ~50%-success gray-failure stretch a short recovery window is satisfied by chance almost as often as the trip window is, so it flaps open/half-open/closed repeatedly, re-paying the trip cost every cycle; it also probes at the same fixed rate whether the dependency historically recovers in 5 ticks or 50",
+    "strong (insight): asymmetric hysteresis -- keep the SHORT window for tripping (react fast to a real failure burst) but gate full recovery on an independently-sized, much LONGER window with a strict success count, which a brief lucky streak inside a bursty gray-failure stretch cannot sustain, so the breaker correctly stays open through it instead of flapping; additionally, each fresh outage's probe interval is derived from the signal-gap (time to first sign of life) of the most recently fully-closed outage, instead of one fixed probe cadence for every outage",
+    "further headroom: per-episode online estimation of the trip/recover window sizes and the probe-rate multiplier from the observed local failure-rate volatility (rather than fixed constants), or explicitly distinguishing a hard outage from a gray-failure stretch by its short-window fail-rate variance and switching hysteresis parameters accordingly, squeezes out further score above the fixed-asymmetric reference"
+  ]
+}

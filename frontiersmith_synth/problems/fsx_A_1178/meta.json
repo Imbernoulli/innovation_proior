@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1178",
+  "tier": "A",
+  "format": "C",
+  "family": "network-tomography-links",
+  "eval_form": "quality-metric",
+  "theme": "Per-link loss rates from end-to-end probes only",
+  "title": "Root-Anchored Loss Tomography",
+  "objective": "maximize",
+  "strategies": [
+    "dump-on-first-edge baseline: within every ambiguous probed run, charge the whole known sum to the root-side edge and zero the rest; untouched edges get a flat guess -- feasible but structurally blind",
+    "equal-split greedy: distribute each ambiguous run's known sum evenly across its edges (the textbook minimum-norm / least-squares answer); untouched edges still get a flat guess -- ignores how leaf-heavy each specific edge in the run actually is",
+    "leaf-count-weighted canonical split: split each ambiguous run's known sum proportional to leaf counts read directly from the given topology, and calibrate the per-leaf constant from the runs that ARE fully identified before extrapolating it to edges no probe ever touches -- exploits the identifiable subspace instead of guessing an arbitrary representative",
+    "exchange search over which additional nodes to (hypothetically) probe / weighted local refinement of the canonical split"
+  ]
+}

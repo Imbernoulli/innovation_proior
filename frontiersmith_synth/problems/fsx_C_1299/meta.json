@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_1299",
+  "tier": "C",
+  "format": "B",
+  "family": "spacecraft-station-keep",
+  "eval_form": "quality-metric",
+  "theme": "Fuel is the only thing you cannot make more of",
+  "title": "GEO Longitude Station-Keeping: Dead-Band on a Budget",
+  "objective": "max",
+  "source_frameworks": ["wave3-lens:policy-simulator"],
+  "strategies": [
+    "do-nothing: never correct (band thresholds set beyond the box, so the box-exit check fires first); the evaluator's own weak reference, reproduces score ~0.1",
+    "tight symmetric proportional control: correct every deviation back to the box center immediately, ignoring both burn-efficiency timing and the drift's sign; tightest position control but burns on almost every step at the unfavorable average efficiency and runs out of fuel early",
+    "asymmetric dead-band sized from the systematic drift rate and burn-window period, recentering far on the side AWAY from the drift direction after each burn, and waiting (up to a computed safe patience) for the efficient window before burning unless the 0.95*W safety margin forces an earlier reaction",
+    "same asymmetric-dead-band recipe as strong (no further refinement in this ladder; RL is expected to push past it, e.g. by also compressing the safety margin or adapting patience per remaining fuel)"
+  ]
+}

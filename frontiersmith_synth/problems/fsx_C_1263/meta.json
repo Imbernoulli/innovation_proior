@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1263",
+  "tier": "C",
+  "format": "D",
+  "family": "optical-link-budget",
+  "eval_form": "flops",
+  "theme": "Pushing light down fibre until it garbles",
+  "title": "Peak, Not Ceiling: Joint Power and Modulation Allocation on a Nonlinear Fibre Link",
+  "objective": "max",
+  "strategies": [
+    "silent/minimum-power lowest-tier assignment for every channel, ignoring the noise model entirely (trivial baseline)",
+    "always launch every channel at its declared power ceiling Pmax_c and pick whichever tier the resulting SNR happens to support (greedy, the obvious 'more power is more signal' recipe)",
+    "per channel, solve for the SNR-maximising launch power against the CURRENT cross-channel noise from every other channel (coordinate ascent toward the joint interior optimum), then shrink each channel down to the least power that still holds its achieved tier to limit collateral cross-channel noise (strong)",
+    "exact joint (power,tier) assignment maximising total throughput under the full coupled nonlinear model (open ceiling, uncovered -- globally optimal joint allocation is a hard non-convex combinatorial-continuous problem)"
+  ]
+}

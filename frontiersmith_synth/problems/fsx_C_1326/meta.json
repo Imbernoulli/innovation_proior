@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_1326",
+  "tier": "C",
+  "format": "C",
+  "family": "battery-electrolyte-formulate",
+  "eval_form": "quality-metric",
+  "theme": "A liquid that must do four things at once",
+  "title": "Solvent Blend and Sacrificial Additive Under a Window-Decomposition Cliff",
+  "objective": "max",
+  "source_frameworks": ["wave3-lens:molecular-materials"],
+  "strategies": [
+    "trivial: 100% of the single native-safest solvent (highest anodic threshold), zero additive -- the checker's own reference construction",
+    "greedy: pure conductivity/viscosity trade-off optimizer -- rank solvents by kappa/eta and use 100% of the single best one, never touching the additive library or modeling the electrochemical window at all (the trap: this solvent decomposes whenever its native threshold sits below the instance's target window)",
+    "strong: decoupling search -- for every candidate primary solvent, either use it bare (if natively safe) or dose the cheapest reachable additive subset just far enough to hit the required SEI coverage, rescuing a low-viscosity/high-conductivity solvent that would otherwise fail the window check instead of retreating to the safe-but-slow solvent",
+    "open ceiling (uncovered): joint multi-solvent blending, salt-concentration tuning, and globally optimal (non-greedy-ordered) additive-subset dosing under the ratio objective -- strong only searches single-primary-solvent blends"
+  ]
+}

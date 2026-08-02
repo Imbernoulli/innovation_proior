@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1193",
+  "tier": "B",
+  "format": "E",
+  "family": "hysteresis-loop-predict",
+  "eval_form": "quality-metric",
+  "theme": "A material that remembers which way you came",
+  "title": "Shape-Memory Strip — predicting a hysteresis loop across held-out paths",
+  "objective": "max",
+  "strategies": [
+    "trivial: predict the constant mean training force, ignoring x and b entirely -> reproduces the checker's own constant baseline (~0.1)",
+    "greedy: memoryless symbolic regression y=f(x) (least-squares cubic in x, ignoring the branch variable b) -- fits the visible single loop reasonably since it captures the centerline trend, but the SAME x is visited by both the loading and unloading branch at different y, so no function of x alone can separate them; the unrecoverable branch-mixing error dominates on more agitated held-out paths",
+    "strong: the insight -- recognise the output is path-dependent, not a function of x alone. Derive the branch sequence b from the training x's directions (the fixed, stated rule), fit BOTH the centerline g(x) and the branch-modulated gap c(x) via least squares on features [1,x,x^2,x^3,b,b*x^2], and emit a closed-form expression that references b explicitly -- generalises across held-out paths with new reversal points and a different sampling rate",
+    "headroom above strong: model the fully exact planted cubic/quadratic shape (not just a truncated low-order fit) and account for the wider/extrapolated elongation range on the harder test ids; sensor noise keeps even the exact law off the ceiling"
+  ]
+}

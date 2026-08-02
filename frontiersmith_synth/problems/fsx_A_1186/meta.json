@@ -1,0 +1,15 @@
+{
+  "id": "fsx_A_1186",
+  "tier": "A",
+  "format": "C",
+  "family": "matrix-completion-structured",
+  "eval_form": "quality-metric",
+  "theme": "Filling a table with only structural hints",
+  "title": "Ledger Recovery Under Blackout Blocks",
+  "objective": "max",
+  "strategies": [
+    "row-mean baseline: fill every missing cell with the mean of the observed entries in its own row (falls back to the global mean for a row with no observations)",
+    "pattern-blind low-rank completion: warm-start missing cells with the row mean, then repeatedly refit a fixed-rank SVD of the current filled matrix and overwrite the missing cells with its reconstruction (never touches the side-information graphs)",
+    "graph-identified two-way ANOVA: recover row-group and column-group identity from the connected components of the two similarity graphs, then block-coordinate-descend a block-effect + row-bias + column-bias additive fit on the observed entries and evaluate it everywhere, including inside a fully-blacked-out block"
+  ]
+}

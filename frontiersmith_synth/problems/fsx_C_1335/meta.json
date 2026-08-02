@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1335",
+  "tier": "C",
+  "format": "C",
+  "family": "nanoparticle-size-target",
+  "eval_form": "quality-metric",
+  "theme": "Growing particles that all come out the same size",
+  "title": "One Hot Pulse: Nanoparticles That All Come Out the Same Size",
+  "objective": "max",
+  "strategies": [
+    "trivial: reproduces the checker's own reference exactly -- slow CONTINUOUS nucleation at a constant mid-level heat with the precursor budget fed evenly across every step and the weakest surfactant, never reasoning about timing at all (score ~0.1 by construction)",
+    "greedy: crank the heat to the hottest available level for the whole run and feed the budget evenly, picking a plausible middle surfactant -- legitimately faster growth than trivial, but the low threshold at that level means every top-up re-triggers nucleation, so particles are born across many different steps; the resulting age-spread population is also the one most exposed to Ostwald-ripening redistribution whenever the pool dips low, which pulls the early (big) and late (small) cohorts further apart instead of leaving one narrow batch",
+    "strong: separate nucleation from growth IN TIME -- fire exactly one hot pulse sized to the hottest level's own kinetic capacity (so no leftover excess survives to re-trigger nucleation), drop to a colder 'hold' level whose threshold safely exceeds what's left, then search the small resulting decision space (hold level x stop-time x surfactant) using the true scoring simulation; a single-birth-time cohort is a fixed point of the ripening rule, so it is structurally immune to the broadening that punishes greedy",
+    "(headroom above strong): strong's search is restricted to ONE burst pulse and a single hold-then-cold-level shape; an even better schedule could use a SECOND, much smaller top-up pulse late in the run (sized to stay just under the hold level's own threshold) to rescue population that under-grew from throttling too early, buying a bit more count-weighted yield beyond what one static hold level can reach on the hardest trap instances"
+  ]
+}

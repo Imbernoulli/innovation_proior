@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1256",
+  "tier": "C",
+  "format": "D",
+  "family": "checkpoint-interval-choose",
+  "eval_form": "flops",
+  "theme": "How often to save when the machine may crash",
+  "title": "Bad Node, Good Node: History-Conditioned Checkpoint Intervals",
+  "objective": "min",
+  "strategies": [
+    "never checkpoint, always restart from scratch on failure (trivial baseline)",
+    "closed-form Young/Daly interval from the GLOBAL average failure rate, fixed for the whole run (greedy, the obvious textbook recipe)",
+    "walk the timeline segment by segment, sizing each interval from a LOCAL windowed failure-rate estimate so a bad node's burst gets short intervals and calm stretches get long ones (strong)",
+    "true offline-optimal checkpoint placement via full dynamic programming over the exact failure/restart interaction (open ceiling, uncovered -- the timing feedback loop between schedule and which failures get hit makes exact search expensive)"
+  ]
+}

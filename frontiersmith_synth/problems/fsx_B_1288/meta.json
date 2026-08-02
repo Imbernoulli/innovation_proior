@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1288",
+  "tier": "B",
+  "format": "C",
+  "family": "fraud-velocity-rules",
+  "eval_form": "quality-metric",
+  "theme": "Blocking the attack without blocking the customers",
+  "title": "Velocity Rules Against a Rational Attacker",
+  "objective": "maximize",
+  "strategies": [
+    "amount-only naive filter: block transactions above a fixed percentile of observed legitimate amounts, velocity rule left off",
+    "threshold-fit-to-last-attack: set the velocity cap just below the observed attack's transaction count and the amount cap just below its transaction size, ignoring the attacker's adaptation economics",
+    "cost-aware rule design: search combinations of (velocity cap, window, amount cap) so the attacker's cheapest available split/delay adaptation costs more than the value it recovers, while staying as loose as possible to hold down customer friction",
+    "closed-form margin design: derive the minimum window widening and split count the attacker would need against each candidate rule, and invert against the attacker's per-unit costs directly rather than grid search"
+  ]
+}

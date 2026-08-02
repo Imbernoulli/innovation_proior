@@ -1,0 +1,85 @@
+# Everyone Guesses, One Must Be Right
+
+## Problem
+
+`N` players stand where everyone can see everyone else: each player sees the
+hat colour of every *other* player, but never their own. Hats are coloured
+with one of `K` colours (`0..K-1`), chosen by an adversary **after** seeing
+your full strategy, and adversarially picked to hurt you as much as possible.
+Each player `i` also has an information weight `w_i`: if player `i` guesses
+their own colour correctly, you collect `w_i`.
+
+Before hats are assigned, the players agree offline on a full **strategy**: a
+function, for every player, from what they see to a guessed colour. Guessing
+by "what looks likely" (e.g. the colour you see most) can look great on
+average, but guarantees nothing: an adversary who knows your whole strategy
+can pick colours that make *every* player wrong simultaneously, no matter how
+each function was chosen — unless the guesses were pre-agreed to collectively
+form a **covering code**, so that for every possible colouring at least one
+guess lands. The classical trick: pick a target residue `r_i` per player and
+have player `i` guess "the colour that would make the total of all `N` hats
+equal `r_i` (mod `K`)". Whatever the true colouring, its total is congruent to
+exactly one residue `r*`, and *every* player assigned that residue is
+simultaneously correct. The adversary steers the total to whichever residue
+carries the least weight — so the worst case is decided entirely by how you
+balance weight across the `K` residue classes.
+
+You are not required to use this trick; any full guess table is feasible. But
+scoring rewards the worst case over **all** colourings, so only a genuine
+covering code (of any form) earns anything.
+
+## Input
+
+```
+N K
+w_1 w_2 ... w_N
+```
+
+## Output
+
+For each player `i = 1..N` (in order), print `K^(N-1)` integers in `[0,K-1]`:
+the guess for every combination of colours you could see. The `t`-th entry
+(0-indexed) corresponds to writing `t` in base `K` with `N-1` digits, MOST
+significant digit first, where digit `m` (0-indexed) is the colour of the
+`m`-th smallest-indexed *other* player (players `1..N` except `i`, increasing
+order).
+
+## Feasibility
+
+Every value must lie in `[0, K-1]`; each player's table must have exactly
+`K^(N-1)` entries; no trailing tokens. Any violation scores `0`.
+
+## Objective
+
+Let `F` be the **worst case**, over all `K^N` possible colour assignments, of
+the total weight of players who guess correctly. Maximize `F`.
+
+## Scoring
+
+Let `B` be the value of a fixed reference: assign player `i` to residue
+class `(i-1) mod K` (ignoring weights) and use the "assumed total" guess
+above; `B` is exactly the weight of the *lightest* residue class under that
+assignment. Your score for a test is
+```
+ratio = min(1000, 100 * F / max(1, B)) / 1000
+```
+so the index-round-robin reference scores `0.1`, and any real improvement
+scores higher, capped at `1.0` (ten times the reference).
+
+## Constraints
+
+* `3 <= N <= 9`, `2 <= K <= 4`, `N > K`.
+* `1 <= w_i <= 2*10^4`.
+* Time limit: 4 s. Memory limit: 512 MB.
+
+## Example
+
+`N=3, K=2`, weights `8 1 7`. The index-round-robin reference assigns players
+`1` and `3` to residue `0` (weight `8+7=15`) and player `2` alone to residue
+`1` (weight `1`) — `B = 1`, a badly unbalanced split purely by accident of
+index. A weight-aware strategy instead puts player `1` alone on one residue
+(weight `8`) and players `2,3` together on the other (weight `1+7=8`): both
+classes now hold exactly `8`, so `F = 8` no matter which colours are
+actually worn. Score `= min(1000, 100*8/1)/1000 = 1.0` (this tiny example
+already saturates the cap; the generated tests are calibrated so real
+headroom remains above the reference solutions).

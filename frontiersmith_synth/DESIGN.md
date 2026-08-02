@@ -65,7 +65,7 @@ parent. `G5c` enforces it (fails any evaluator that doesn't sandbox, or any envi
 
 The researched base taxonomy (`reports/taxonomy_proposal.json`) is importance-ranked and still
 regenerates a controlled **200-problem** batch by default. The checked-in corpus is the broader
-**1165-problem** plan assembled with `build_seed_list.py --current`, built in two waves:
+**1365-problem** plan assembled with `build_seed_list.py --current`, built in three waves:
 
 - **wave-1 (506, `fsx_*_0001`–`fsx_*_0506`)**: taxonomy batch 1 (200) + taxonomy batch 2 (200) +
   16 bespoke-novelty problems + 84 breadth-fill problems that target thin scientific-law, op-count,
@@ -75,8 +75,11 @@ regenerates a controlled **200-problem** batch by default. The checked-in corpus
   re-imagined across 20 distinct lenses (`seeds/bulk_seed_packs/`), each carrying an explicit
   `mechanisms` / `innovation_hook` / `trap` triple, and each problem was authored by its own agent
   under two extra acceptance gates (§4.1).
+- **wave-3 (200, `fsx_*_1166`–`fsx_*_1365`)**: a *domain*-coverage expansion rather than a depth
+  one, benchmarked against EdgeBench's six capability families (§4.2). Eight lenses x 25
+  (`seeds/build_wave3_edgebench.py`), each problem opening its own family.
 
-Every spec is a unique `(family x theme x variant)` or supplement scaffold — 1165/1165 distinct.
+Every spec is a unique `(family x theme x variant)` or supplement scaffold — 1365/1365 distinct.
 
 | Tier | 档 | Focus | Families | Count | Formats |
 |---|---|---|---|---|---|
@@ -85,18 +88,18 @@ Every spec is a unique `(family x theme x variant)` or supplement scaffold — 1
 | **B** | 应用前沿 | engineering + scientific optimization | 8 | **30** | B, D, E |
 | **C** | 方法与异域前沿 | ML-method design + exotic construction | 6 | **20** | B, C |
 
-Current 1165-problem mix:
+Current 1365-problem mix:
 
 | Group | Count | Role |
 |---|---:|---|
-| A | 452 | math-discovery / heuristic evolution |
+| A | 487 | math-discovery / heuristic evolution |
+| B | 322 | engineering + scientific optimization |
 | S | 276 | graph/combinatorial core |
-| B | 267 | engineering + scientific optimization |
+| C | 163 | ML-method design + exotic construction |
 | G | 91 | breadth-fill plus bulk constructive-selection domains |
-| C | 53 | ML-method design + exotic construction |
 | N | 26 | bespoke high-novelty, composite/mechanism-twist problems |
 
-Format mix over the 1165: A=334, B=248, C=359, D=117, E=107. 801 distinct families.
+Format mix over the 1365: A=348, B=273, C=461, D=147, E=136. 1001 distinct families.
 
 ### 4.1 Wave-2b's two extra acceptance gates
 
@@ -109,13 +112,49 @@ Format mix over the 1165: A=334, B=248, C=359, D=117, E=107. 801 distinct famili
    obvious greedy lands far from strong on >=3 of the 10 tests.
 2. **Anti-homogeneity** (`reports/scan_homogeneity.py`). A digit-stripped skeleton hash plus a
    theme-masked statement hash catch re-skinned clones that per-problem validation is blind to — the
-   failure mode that killed the first wave-2 attempt. The current corpus scans **1165 dirs → 1165
-   unique skeletons / 1165 unique statement shapes** at `--max-clones 1`.
+   failure mode that killed the first wave-2 attempt. The current corpus scans **1365 dirs → 1365
+   unique skeletons / 1365 unique statement shapes** at `--max-clones 1`.
 
 Each wave-2b authoring agent additionally ran an independent **Codex (`gpt-5.6-terra`, xhigh) review**
 of its own finished problem — hunting scoring loopholes, nondeterminism, statement/code mismatches,
 trap cases that fail to punish greedy, and strong-solutions that are merely greedy-plus-tuning — and
-repaired every real defect before the problem was accepted.
+repaired every real defect before the problem was accepted. Wave-3 inherits both gates and the review.
+
+### 4.2 Wave-3: closing the domain gap measured against EdgeBench
+
+Wave-2b fixed a *quality* failure (re-skinned clones). Wave-3 fixes a *coverage* failure that only
+became visible when the corpus was measured against an external yardstick:
+[EdgeBench](https://edge-bench.org/) (ByteDance Seed), 134 real-world ultra-long-horizon agent tasks
+grouped into six capability families. At 1165 problems our coverage was:
+
+| EdgeBench family | EdgeBench share | our corpus at 1165 |
+|---|---:|---|
+| Combinatorial Optimization | 14% | effectively all 1165 |
+| Scientific Problems & ML | 29% | E=107, nearly all symbolic regression |
+| Systems & Software Engineering | 27% | D=117, pure op-counting |
+| Professional Knowledge Work | 14% | abstract auction/budget mechanics only |
+| Formal Math & Theorem Proving | 10% | constructive extremal, no game theory |
+| Interactive Games & Simulators | 6% | ~21 problems |
+
+That is a corpus over-fitted to one capability family. The eight wave-3 lenses (25 each) target the
+gaps directly, while keeping the deterministic-scoring constraint intact (forward models and
+simulators are seeded and turn-capped; "hidden" data is regenerated by the checker from the public
+`testId`):
+
+1. **inverse-recovery** — seeded forward model, sparse noisy observations, recover the hidden source.
+   The recurring trap: best-data-fit ≠ best recovery, because the forward operator has a null space.
+2. **forecast-regime** — the held-out horizon crosses into a regime the visible window never showed
+   (an inverter clipping ceiling, an aging knee, a hysteresis branch, a bifurcation onset).
+3. **protocol-conformance** — state machines, codecs, and resolvers judged on hidden trace suites.
+4. **hardware-codesign** — exact cycle/area/energy cost models (pushes format D).
+5. **risk-actuarial** — tail-risk budgeting, fraud rings, adverse selection, compliance paths.
+6. **policy-simulator** — format-B policy programs run inside deterministic seeded simulators.
+7. **molecular-materials** — previously our thinnest domain (36 problems).
+8. **games-and-structures** — Sprague-Grundy, pairing strategies, certificates, misère play.
+
+Unlike wave-1 (which deliberately reuses a family across themes and variants — 36 families cover 400
+problems there), **every wave-3 problem opens its own family**, taking the corpus from 801 to 1001
+families. Format mix was skewed toward the two thinnest formats: D 117→147, E 107→136.
 
 ## 5. Critical analysis — improvements over FrontierSmith (辩证)
 
@@ -137,7 +176,7 @@ repaired every real defect before the problem was accepted.
 
 ```bash
 cd frontiersmith_synth
-python3 seeds/build_seed_list.py --current            # -> seeds/seed_list.jsonl (current 1165)
+python3 seeds/build_seed_list.py --current            # -> seeds/seed_list.jsonl (current 1365)
 python3 harness/validate_problem.py   harness/_selftest      # A/C/D/E self-check
 python3 harness/validate_problem.py   harness/_selftest_C
 python3 harness/validate_pyproblem.py harness/_selftest_B    # B self-check

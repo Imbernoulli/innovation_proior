@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_1228",
+  "tier": "C",
+  "format": "C",
+  "family": "transaction-isolation-choose",
+  "eval_form": "quality-metric",
+  "theme": "The weakest isolation that is still correct",
+  "title": "The Weakest Isolation That Is Still Correct",
+  "objective": "max",
+  "mechanisms": ["anomaly-classification", "dependency-cycle-detection", "throughput-vs-safety"],
+  "strategies": [
+    "trivial: run every transaction at SERIALIZABLE (the checker's own reference construction) -- always safe, leaves all throughput on the table",
+    "greedy (trap): classify each transaction only by ITS OWN conflict degree (how many other transactions it shares any key with) and pick a level off a fixed threshold table (0 conflicts -> READ COMMITTED, 1-2 -> SNAPSHOT, 3+ -> SERIALIZABLE); never checks whether its conflicts close a directed read-write cycle, so a ring of low-degree write-skew partners (each touching only its two cycle neighbours) is bucketed at SNAPSHOT across the board and the cycle survives -> invariant violation, score 0 on that case",
+    "strong (insight): build the static read-write dependency graph from the read/write sets alone, repeatedly find any surviving directed cycle and promote its cheapest member to SERIALIZABLE (a minimum-feedback-vertex-set heuristic) -- only true cycle participants ever pay the expensive tax; everyone else stays READ COMMITTED, with a second pass bumping only the write-write lost-update pairs to SNAPSHOT",
+    "further headroom: an exact minimum-weight feedback-vertex-set solver plus an exact minimum-weight vertex cover for the lost-update pairs (both NP-hard in general, tractable exactly at this problem's small N) squeezes out the last few percent the reference heuristic leaves on the table"
+  ]
+}

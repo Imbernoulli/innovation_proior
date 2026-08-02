@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1353",
+  "tier": "A",
+  "family": "chip-firing-stabilize",
+  "seed_problem": "abelian sandpile stabilization (chip-firing) with a designated sink",
+  "mutation": "goal: replace 'compute the unique stabilization' with a budget-constrained partial-stabilization OPTIMIZATION -- given a hard cap K on total individual pile-firings (far less than what full stabilization needs on the hard tests), choose per-pile firing counts (order-irrelevant by the abelian property) to minimize criticality-weighted leftover instability; simulation collapses to a resource-allocation search over the odometer.",
+  "objective": "min",
+  "theme": "Sand piles that must settle",
+  "title": "Sandpile Relief Under a Firing Budget",
+  "strategies": [
+    "trivial: spend zero firings (report f=0), scoring the checker's own do-nothing baseline",
+    "greedy: repeatedly fire whichever currently-unstable pile has the largest RAW chip count, one firing at a time, until the budget runs out -- the natural first instinct, blind to a pile's degree and to how cheap or valuable it is to actually finish",
+    "strong: compute each pile's true odometer (firings needed to fully stabilize) via fast batched simultaneous-sweep relaxation instead of one-at-a-time simulation, group piles into connected clusters, rank clusters by (criticality-weighted excess)/(odometer cost) and greedily fully fund the best-density clusters first, spending any leftover on the next-best partial pile",
+    "unexploited headroom: an exact 0/1 knapsack (or LP relaxation + rounding) over the (value,cost) cluster pairs, or partial credit on unfunded multi-pile clusters via a marginal-value priority queue re-evaluated after every firing, can beat the single-pass density-sorted greedy fund"
+  ]
+}

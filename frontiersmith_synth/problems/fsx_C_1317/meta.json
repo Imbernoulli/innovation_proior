@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1317",
+  "tier": "C",
+  "format": "C",
+  "family": "polymer-sequence-design",
+  "eval_form": "quality-metric",
+  "theme": "Ordering monomers so the chain folds right",
+  "title": "Copolymer Sequence Design for a Target Glass Transition",
+  "objective": "maximize",
+  "strategies": [
+    "diagonal-only composition matching + uncontrolled (random) sequence: solve the linear/Fox mixing rule on pure-component Tg values for a feasible composition, then react in a seeded-random order -- nails the ratio, blind to blockiness",
+    "block segregation: arrange monomers as contiguous runs, choosing the block order so that a costly interaction pair is never adjacent -- exploits the harmonic dyad model when a junction is plasticizing",
+    "maximal alternation via deficit/fair-scheduling interleave: spread monomer types as evenly as possible to maximize cross-type bonds -- exploits the model when a junction is reinforcing",
+    "joint composition + arrangement search: grid over feasible compositions (respecting per-type feedstock caps) crossed with both structural extremes (all block permutations and the alternating interleave), plus a local refinement pass, minimizing the actual bond-weighted Tg error"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1213",
+  "tier": "B",
+  "format": "E",
+  "family": "drug-dose-response-extrapolate",
+  "eval_form": "quality-metric",
+  "theme": "Efficacy at a dose no one has tried",
+  "title": "Efficacy at a Dose No One Has Tried",
+  "objective": "max",
+  "strategies": [
+    "trivial: recommend zero dose (flat EFFICACY=0, TOXICITY=0) -> reproduces the checker's do-nothing floor (~0.1)",
+    "greedy: fit a generic quadratic (least squares, no domain knowledge) to each observed curve and extrapolate across the full allowed dosing range; a quadratic has no efficacy ceiling and only crudely extrapolates an unknown accelerating toxicity curve, so on several test cases it recommends a dose at or near the ethical ceiling -- exactly where toxicity has overtaken a saturated efficacy and the true window has closed",
+    "strong: exploit the stated Hill/receptor-saturation FORM for efficacy (nonlinearly recover Emax, EC50, n -- EC50 is the saturation constant that determines where the extrapolated curves trade off) and fit toxicity as an accelerating power law; this correctly locates the closing of the therapeutic window far below the ethical ceiling",
+    "headroom above strong: better joint estimation of the Hill/toxicity parameters (e.g. shared-noise-aware nonlinear regression, bootstrap-robust EC50 recovery) to shave the residual gap to the true optimal dose left by measurement noise"
+  ]
+}

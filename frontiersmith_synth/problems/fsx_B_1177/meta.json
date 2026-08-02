@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1177",
+  "tier": "B",
+  "format": "E",
+  "family": "dispersion-curve-invert",
+  "eval_form": "quality-metric",
+  "theme": "Material stiffness from how fast each frequency travels",
+  "title": "Two-Mode Dispersion Inversion — recovering stiffness across a mode crossing",
+  "objective": "max",
+  "strategies": [
+    "constant velocity (ignores frequency) -> reproduces the checker's own baseline construction ~0.1",
+    "greedy: fit a single smooth power law v = c*f^p by log-log linear regression over ALL training rows, ignoring the given CA/CB/CD/CE branch constants entirely; this is near-perfect on the visible band (training always sits on one physical branch) but keeps extending the SAME shape forever, so it silently rides through the mode crossing instead of switching branches -> systematically wrong on held-out cases whose crossing lies inside or just past the training band",
+    "strong: recognise that CA, CB, CD, CE (given in the input) fix the exact shape of BOTH candidate branches vA=CA*sqrt(k*f) and vB=sqrt(k)*(CB-CD/(f+CE)), and that the observed velocity is always min(vA,vB); recover the single hidden stiffness k by minimising the TWO-BRANCH model's training residual directly (grid + ternary search, unimodal because both branches are monotone in k) instead of curve-fitting the visible shape alone; emit the literal min(...) expression so it evaluates correctly on either side of the true crossing",
+    "headroom above strong: model the residual sensor-noise floor structure (e.g. weight training points by local branch-membership confidence, or jointly refine k together with a small correction to which points are treated as branch-A vs branch-B near the crossing) to push held-out accuracy further toward the noise ceiling"
+  ]
+}

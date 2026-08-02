@@ -1,0 +1,86 @@
+# Bidders Who Agreed Beforehand
+
+## Problem
+A procurement office ran `T` independent local markets. In market `t` there are `n`
+bidders (ids `0..n-1`) and `m` sealed-bid auctions. Auction `a` has a public **job size**
+`s_a`; every bidder submits one integer bid in every auction of their market. An honest
+bidder prices from a single personal per-unit cost rate `k`: bid `= k * s_a + noise`,
+`0 <= noise < s_a`, so its bid level rises and falls with job size but always implies the
+*same* rate `floor(bid / s_a) = k` in every auction.
+
+In some markets, two or more bidders secretly agreed beforehand to rig the auctions by
+**rotation**: each auction the ring pre-selects one member as that round's winner, who
+bids honestly off its own rate; every other member submits a **cover bid** priced off the
+*current winner's* rate plus a small fixed markup, not its own cost. Since the winner
+rotates, a ring member's implied rate jumps between its own true rate (when it wins) and
+other members' rates plus markup (when it covers) -- never a level outlier, since the
+markup is small. Flagging the highest bids catches nothing: honest bidders can legitimately
+have high cost rates, and cover bids sit in the ordinary range.
+
+For each market, report which bidders you believe are ring members, grouping the ones you
+believe share the same ring.
+
+## Input
+```
+T
+for each market:
+  n m
+  s_1 s_2 ... s_m
+  bid_{0,1} bid_{0,2} ... bid_{0,m}
+  ...
+  bid_{n-1,1} ... bid_{n-1,m}
+```
+
+## Output
+For each of the `T` markets, in order:
+```
+g
+sz_1 idx_1 idx_2 ... idx_sz_1
+...
+sz_g idx_1 ... idx_sz_g
+```
+`g` (`0 <= g <= n`) claimed groups; group `i` lists `sz_i >= 1` distinct bidder indices
+(`0..n-1`) you claim ride together in one ring (a group of size 1 flags a suspected member
+without naming ring-mates). A bidder may appear in **at most one** group for that market.
+
+## Feasibility
+Every index must be in `0..n-1`; no repeats within a group; no bidder listed in two groups
+of the same market; `0 <= g <= n`. Any violation scores the whole submission 0.
+
+## Objective
+Define a bidder's *implied rate in auction a* as `floor(bid / s_a)`. A bidder is a **true
+ring member** (for scoring) iff its implied rates, over all `m` auctions of its market,
+take more than one distinct value. Pool, over all markets in the test:
+- `TP_m/FP_m/FN_m`: your **flagged** bidders (union of everyone in any of your groups)
+  vs. the true-ring-member set; `F1_mem` = their F1.
+- `TP_p/FP_p/FN_p`: over **unordered pairs** -- a pair is "true" iff both are true ring
+  members of the same market (every market plants at most one ring, so this is just all
+  pairs within that market's true set); "claimed" iff both sit in the same one of your
+  groups; `F1_pair` = their F1.
+
+Maximize `F = 0.5 * (F1_mem + F1_pair)`.
+
+## Scoring
+The grader's own reference `B` (per market: flag the `min(n,3)` highest total-bid bidders,
+ties broken toward the smaller index, as ONE group) is computed the same way;
+`ratio = min(1000, 100*F/max(B,1e-9)) / 1000`. The final score is the mean ratio over 10
+tests.
+
+## Constraints
+`1 <= T <= 30`, `4 <= n <= 16`, `6 <= m <= 14`, `1 <= s_a <= 400`, `0 < bid <= 100000`.
+Time limit: 3 s. Memory limit: 512 MB. Deterministic: identical output -> identical score.
+
+## Example
+One market, `n=5`, `m=4`, `s = [10,10,10,10]`. Ring `{0,1}` rotates winner `0,1,0,1`,
+markup `2`, true rates `k0=5, k1=8`; honest bidders `2,4` cheap (`k2=6, k4=4`), honest
+bidder `3` legitimately expensive (`k3=20`) -- noise `0` throughout:
+bids `0: 50 100 50 100`, `1: 70 80 70 80`, `2: 60 60 60 60`, `3: 200 200 200 200`,
+`4: 40 40 40 40`. Implied rates: bidder 0 `{5,10}`, bidder 1 `{7,8}` (both true ring
+members); bidders 2, 3, 4 each have one constant rate (honest, despite bidder 3's high
+level). True set `{0,1}`, true pair `{0,1}`.
+Reference `B`: totals are `3:800, 0:300, 1:300, 2:240, 4:160`; top 3 by total (ties ->
+smaller index) are `{3,0,1}`, grouped together. `F1_mem` for `B`: TP=2 (`0,1`), FP=1 (`3`)
+-> `0.8`. `F1_pair` for `B`: claimed pairs `{3,0},{3,1},{0,1}`, only `{0,1}` true -> TP=1,
+FP=2 -> `0.5`. `B = 0.5*(0.8+0.5) = 0.65`.
+Answering group `{0,1}` alone for this market: `F1_mem = 1.0`, `F1_pair = 1.0`, `F = 1.0`;
+`ratio = min(1000, 100*1.0/0.65)/1000 = 0.154`.

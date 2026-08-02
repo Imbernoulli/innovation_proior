@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_1188",
+  "tier": "A",
+  "format": "C",
+  "family": "kinetics-from-endpoint",
+  "eval_form": "quality-metric",
+  "theme": "Inferring the path from only the destination",
+  "title": "Kinetics From the Endpoint: A Perturbation Budget",
+  "objective": "max",
+  "source_frameworks": ["wave3-lens:inverse-recovery"],
+  "strategies": [
+    "empty budget: request zero perturbations and report nothing (reproduces the checker's own baseline; trivial)",
+    "highest-flux-first edge scan: sort ALL nodes by individual flux weight and probe the top Q, oblivious to which nodes are already unique (singleton clusters, zero benefit from probing) and which share a confounded product subset with several siblings (a lone probe there separates nothing) (greedy / obvious textbook recipe)",
+    "budget-aware cluster separation: partition nodes by their exact product subset (purely structural, no hidden data needed), skip already-unique singletons for free, and solve a small 0/1 knapsack over the remaining clusters (cost = clustersize-1, value = cluster flux) to choose WHICH clusters to fully separate under the budget -- exploiting that an oversized cluster costing more than the whole remaining budget is a trap, while several smaller clusters fit the same budget for strictly more resolved flux (strong; exploits the planted structure)",
+    "adaptive/multi-round query design informed by partial reconstruction residuals beyond a single structural knapsack pass (open ceiling, uncovered)"
+  ]
+}

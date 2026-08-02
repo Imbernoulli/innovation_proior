@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1243",
+  "tier": "C",
+  "format": "D",
+  "family": "quantum-circuit-route",
+  "eval_form": "flops",
+  "theme": "Making qubits that must talk be adjacent",
+  "title": "Place the Interaction Graph First: Qubit Routing on a Branchy Coupling Graph",
+  "objective": "minimize",
+  "strategies": [
+    "identity mapping, always detour every routed pair through a fixed anchor physical qubit, never checks for cancelling gates (trivial)",
+    "identity mapping, true shortest-SWAP-path per gate, no cancellation -- locally optimal every single step, never revisits the layout (greedy / the trap)",
+    "interaction-graph-weighted initial placement (seed the densest logical pair on a real coupling edge, then greedily place the rest by weighted distance to what's already placed) + shortest-path routing + exact gate-cancellation on planted repeat pairs (strong)",
+    "joint mapping+routing search / lookahead SWAP insertion that also reorders cancellation opportunities across non-adjacent windows (open ceiling, uncovered)"
+  ]
+}

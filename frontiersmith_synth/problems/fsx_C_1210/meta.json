@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1210",
+  "tier": "C",
+  "format": "E",
+  "family": "ab-test-novelty-decay",
+  "eval_form": "quality-metric",
+  "theme": "The lift that fades after two weeks",
+  "title": "Staggered Cohorts — separating the novelty spike from the persistent lift",
+  "objective": "max",
+  "strategies": [
+    "trivial: predict a constant equal to the mean lift over ALL visible rows, ignoring cohort identity, age, and calendar day entirely -> reproduces the checker's own baseline ~0.1",
+    "greedy: the obvious 'use the freshest data' fix -- pool only the most age-mature rows (the highest observed age per cohort, i.e. the tail of the two-week window) and average those, reasoning that older observations are closer to steady state. This still carries an un-removed fraction of the novelty spike (tau is often comparable to or larger than the visible window) AND is still contaminated by the common calendar wobble, so it systematically over-predicts the long-run lift, worse so as the novelty/persistent ratio and decay time grow with test id",
+    "strong: exploit staggered entry (cohort mixing). For every pair of cohorts observed on the SAME calendar day, the common calendar wobble and the persistent lift cancel EXACTLY in the difference of their lifts, leaving a signal that depends only on their (different) ages -- grid-search the decay time constant tau, fit the novelty amplitude A by 1-D least squares on these cross-cohort same-day differences, then recover the persistent lift P by removing the fitted decay component from every row and averaging (the near-zero-mean calendar wobble washes out over the many days observed). Emit P_hat + A_hat*exp(-age/tau_hat): correctly extrapolates to a held-out horizon far beyond the visible window, where naive tail-averaging is still measurably biased",
+    "headroom above strong: jointly fit day-level fixed effects instead of assuming the calendar wobble averages to zero, and/or a heavier-tailed noise model for the idiosyncratic measurement error, pushing the held-out fit closer to the noise floor"
+  ]
+}

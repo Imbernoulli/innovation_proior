@@ -1,0 +1,21 @@
+{
+  "id": "fsx_A_1359",
+  "tier": "A",
+  "format": "A",
+  "family": "scheduling-game-price",
+  "eval_form": "quality-metric",
+  "seed_id": "fsx_A_1359",
+  "theme": "When everyone schedules themselves",
+  "title": "When Everyone Schedules Themselves",
+  "objective": "min",
+  "mechanisms": ["nash-equilibrium-cost", "price-of-anarchy", "coordination-mechanism-design"],
+  "innovation_hook": "Assigning jobs to machines is not directly controllable -- jobs are selfish agents that migrate to wherever minimizes their OWN predicted completion time. The solver only controls each machine's local ordering rule (a coordination mechanism). The insight is to evaluate candidate rules by simulating the equilibrium they induce (mechanism design via search over rule-space, guided by equilibrium feedback) rather than committing to the textbook 'good' rule (shortest-processing-time-first), which never uses job weight and lets any individually-fast job assume it can always claim a good queue position on a popular machine -- causing bad self-reinforcing equilibria on instances with many near-tied jobs.",
+  "mutation": "composite: classic unrelated-machines scheduling is replaced by a coordination-mechanism-design game -- the solver's output is a per-machine local ordering rule (not an assignment), the assignment emerges from deterministic selfish best-response dynamics from three adversarial starts, and the objective is the worst resulting makespan (a computable proxy for worst-case Nash equilibrium cost / price of anarchy).",
+  "strategies": [
+    "textbook SPT: every machine orders by shortest-processing-time-first, ignoring job weight (the trap: this is a well-known 'good' coordination mechanism but is blind to weight and to cross-machine load, so it self-reinforces over-subscription on near-tied clusters)",
+    "arbitrary/index order on every machine (ignores both speed and weight; the checker's own do-nothing reference)",
+    "weight-priority order on every machine (ignores raw speed, orders purely by importance)",
+    "speed-rank-differentiated rule: below-median-load machines keep SPT, above-median machines add a weight tilt that discourages low-importance jobs from crowding them (or the inverse split)",
+    "meta-search: simulate the exact worst-case best-response process for several candidate rules and keep whichever rule induces the lowest worst-case makespan on THIS instance (mechanism design by simulated evaluation)"
+  ]
+}

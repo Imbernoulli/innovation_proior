@@ -1,0 +1,18 @@
+{
+  "id": "fsx_C_1312",
+  "tier": "C",
+  "format": "B",
+  "family": "exam-item-select-policy",
+  "eval_form": "quality-metric",
+  "theme": "Asking the question that tells you the most",
+  "title": "Asking the Question That Tells You the Most: Exposure-Aware Adaptive Item Selection",
+  "objective": "maximize",
+  "source_frameworks": ["wave3-lens:policy-simulator"],
+  "isolation": "candidate runs as an isolated stdin->stdout subprocess via isorun; the hidden true abilities, response draws, and evaluator state stay in the evaluator process",
+  "strategies": [
+    "always-max-information (info_weight=1, exposure_weight=0): the textbook adaptive-testing recipe; matches or beats every other policy on calm, wide-ability seasons but concentrates almost all administrations onto the same handful of locally-best items whenever true ability is concentrated (bimodal clusters, a very tight cap, or a narrow held-out distribution) -> those items blow through their exposure cap early, get 'compromised' (leaked, constant high pass-rate), and the EAP update -- unaware of the leak -- systematically MISREADS every later high-scoring compromised response as evidence of high ability, corrupting estimates for the back half of the season (validated: greedy loses 0.58-0.93 of full ratio-scale value relative to strong on the bimodal / tight-cap / narrow-held-out instances)",
+    "non-adaptive fixed order (info_weight=0, exposure_weight=0): administers items in a static round-robin, spreading exposure almost perfectly evenly but never targeting information to the running estimate -> low but steady accuracy everywhere; the evaluator's own r=0.1 anchor",
+    "exposure-vs-information trade-off with a cap-tightness-derived penalty weight, a convex (quadratic) exposure-shape, and a small (0.15) trust in the supplied population-agnostic demand forecast (mostly relying on live, this-season exposure counts once they exist): survives the bimodal / tight-cap / narrow-held-out traps by pre-emptively throttling popular items, without giving up calm-season accuracy",
+    "over-trusting the population-agnostic forecast (hint_trust close to 0.7+): looks like exposure control but is calibrated to a GENERIC N(0,1) ability population; on instances where true demand concentrates on items the forecast under-serves (bimodal, tight-cap, narrow-held-out) it under-penalizes the true hot items and collapses nearly as badly as pure greedy -- exposure control that trusts the wrong signal is barely better than no exposure control at all"
+  ]
+}

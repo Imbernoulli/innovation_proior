@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_1183",
+  "tier": "B",
+  "format": "C",
+  "family": "optics-wavefront-sensing",
+  "eval_form": "quality-metric",
+  "theme": "Fixing a blurry mirror from out-of-focus images",
+  "title": "Two-Shot Wavefront Sign Recovery",
+  "objective": "max",
+  "strategies": [
+    "trivial: output the flat wavefront (0,0,0,0) -- reproduces the checker's own no-aberration baseline construction",
+    "naive greedy: fit each defocus image INDEPENDENTLY, assuming the coherent response R(d)=g0*(t0+d)+g1*t1+g2*t2+g3*t3 is nonnegative (take +sqrt of the measured intensity), solve a per-image 4-unknown linear least squares, then average the two images' independent estimates -- this is the obvious first approach and it never combines the two images structurally, so whenever the true response is actually negative on most pixels it locks onto the wrong (sign-flipped) root on BOTH images and the average stays wrong",
+    "insight (strong): R(d) is LINEAR in d only through the g0*d term, so I1-I2 = R(d1)^2-R(d2)^2 factors as a difference of squares = g0*(d1-d2)*(R(d1)+R(d2)); dividing by the known g0*(d1-d2) recovers the SUM R(d1)+R(d2) with no sign ambiguity at all -- a purely linear quantity in all four coefficients, solved exactly by a 4x4 least squares -- the sign is never guessed, it falls straight out of the algebra of the two-image difference"
+  ]
+}

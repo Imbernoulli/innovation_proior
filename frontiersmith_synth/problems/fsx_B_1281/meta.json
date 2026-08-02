@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1281",
+  "tier": "B",
+  "format": "C",
+  "family": "carbon-offset-verify",
+  "eval_form": "quality-metric",
+  "theme": "Paying only for reductions that would not have happened",
+  "title": "Additionality Desk: Buying Real Tonnes Under a Budget",
+  "objective": "max",
+  "strategies": [
+    "naive baseline: skim only the first few listed projects (no quality signal used), first-fit under budget",
+    "price-per-claimed-tonne greedy: sort projects by $/tonne ascending, first-fit under budget (the cheap-offsets trap: buys mostly inflated-baseline, non-additional, low-permanence projects)",
+    "risk-adjusted knapsack: compute effective_tonnes per project from the additionality-counterfactual test, the reported-vs-reference baseline gap, and the permanence/reversal discount, then solve 0/1 knapsack on effective_tonnes under the dollar budget",
+    "invalid: spend past the budget / duplicate or out-of-range project indices"
+  ]
+}

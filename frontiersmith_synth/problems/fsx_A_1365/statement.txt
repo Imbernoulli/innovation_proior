@@ -1,0 +1,79 @@
+# Splinter Cairns: A Misère Duel
+
+## Problem
+A **cairn** is a pile of stones with a personal **fracture limit** `r`: from a cairn
+currently holding `n` stones, a legal move removes any `k` stones with `1 <= k <= min(r, n)`,
+leaving `n - k`. A **duel** is a list of `M` independent cairns played as one combined game
+(a *disjunctive sum*): on your turn you pick ONE cairn with at least one stone and make one
+legal move on it; the other cairns are untouched.
+
+This is **misère play**: the player who removes the *last* stone overall (the move that empties
+every cairn) **loses**. Equivalently, if it becomes your turn and every cairn is already empty,
+you have no move to make and you **win** — your opponent was the one who took the last stone.
+
+You are the first player in each of `T` independent duels read from one input file. For each
+duel, output the single move you would make. Every duel handed to you is guaranteed to have at
+least one winning first move (a move after which a perfect misère opponent, playing optimally
+from then on, is doomed) — the question is only whether you find one.
+
+**A well-known trap.** For *normal* play (last player to move *wins*), the Sprague-Grundy theorem
+says: compute each cairn's Grundy number in isolation, and the combined position is a first-player
+win iff the XOR of all Grundy numbers is nonzero — you win by moving to make the XOR zero. This
+theorem does **not** carry over to misère play: misère sums are **not** decided by XOR-ing
+per-cairn Grundy numbers. Cairns that look identical under normal-play Grundy theory can still
+behave differently once you account for the misère ending, and the equivalence classes that
+correctly predict who wins a misère sum are coarser than (and cut across) the raw Grundy classes.
+Figuring out which classes actually matter for misère outcomes — and when the ordinary
+Grundy-XOR classification is safe to reuse and when it silently gives the wrong move — is the
+whole problem.
+
+## Input
+```
+T
+<duel 1>
+...
+<duel T>
+```
+Each `<duel>` is:
+```
+M
+r_1 n_1
+r_2 n_2
+...
+r_M n_M
+```
+`2 <= M <= 6`, `2 <= r_i <= 5`, `0 <= n_i <= 5000`, `1 <= T <= 200`. At least one `n_i >= 1` in
+every duel.
+
+## Output
+For each duel, one line `i s`: you move cairn `i` (0-indexed, `0 <= i < M`) so that it now holds
+`s` stones. All other cairns keep their input values.
+
+## Feasibility
+`0 <= s < n_i` and `n_i - s <= r_i` (you removed between 1 and `r_i` stones from cairn `i`, which
+must have started with `n_i >= 1`). Any other output — bad indices, a move that doesn't reduce
+the cairn by a legal amount, wrong line count, non-finite tokens — scores 0 for the *entire*
+file.
+
+## Scoring
+Let `F` = the number of duels where your declared move wins (the resulting position, faced by a
+perfect misère opponent, is one where they are doomed no matter how they play). Let `B` = the
+number of duels the checker's own blind baseline would win — the baseline always removes exactly
+one stone from the lowest-indexed non-empty cairn, regardless of any theory. Let `T` be the
+number of duels in the file. Your file ratio is:
+```
+ratio = 0.1 + 0.75 * (F - B) / max(1, T - B)     if F >= B
+ratio = 0.1 * F / max(1, B)                      otherwise
+```
+So matching the blind baseline exactly scores `0.10`; winning every winnable duel caps at
+`0.85`; an infeasible file scores `0`. Your final score is the average ratio over 10 hidden
+files. Time limit: 3 s. Memory limit: 512 MB.
+
+## Example
+One duel, `M=2`: cairn 0 has `r=2, n=2`; cairn 1 has `r=3, n=1`.
+Cairn 0's Grundy number is `2 mod 3 = 2`; cairn 1's is `1 mod 4 = 1`. XOR `= 3 != 0`, so normal
+Sprague-Grundy theory says "move to make the XOR zero": take 1 stone from cairn 0
+(`2 -> 1`, Grundy `1`), giving Grundy numbers `[1, 1]`. **That move loses under misère play** —
+the opponent, facing two cairns of Grundy `1`, wins from there.
+The actual winning move is `0 0`: empty cairn 0 completely. The opponent then faces cairn 0
+empty and cairn 1 at `n=1`; whatever they do, you win. Output for this duel: `0 0`.

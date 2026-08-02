@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1255",
+  "tier": "C",
+  "format": "D",
+  "family": "analog-frontend-allocate",
+  "eval_form": "flops",
+  "theme": "Spending your bits where the signal is",
+  "title": "Spending Your Bits Where the Signal Is",
+  "objective": "max",
+  "strategies": [
+    "trivial: fixed reference choice B=6,K=2,G=0, rest of budget on rate -- exactly the checker's own baseline (reproduces B_ref, ~0.1)",
+    "greedy: maximize resolution B=16 first (more bits = better SNR intuition), small fixed filter order K=1, no gain G=0, whatever budget is left goes to rate -- never checks whether the resulting rate still gives the antialias cutoff fc=R/2 enough headroom over the target band",
+    "strong: recognizes R is fully determined by (B,K) once the shared budget is fixed, collapsing the allocation problem to a small joint search over B in [1,16], K in [0,8], G in [0,12] (144*13 combos), evaluated with exact rational SNR -- exploits where THIS instance's energy actually sits instead of maximizing one axis in isolation",
+    "headroom above strong: a continuous relaxation / Lagrangian allocation across (B,K,G) jointly with the spectrum's actual energy distribution, or per-instance adaptive filter-order selection instead of a fixed small integer grid"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1232",
+  "tier": "C",
+  "format": "C",
+  "family": "api-fuzz-schedule",
+  "eval_form": "quality-metric",
+  "theme": "Finding the bug behind three required calls",
+  "title": "Three Calls Deep: Scheduling a Dependency-Aware Fuzzer",
+  "objective": "max",
+  "strategies": [
+    "reproduce the checker's own dependency-oblivious baseline: touch only the zero-dependency types (create + one op each), never attempt anything gated behind the scaffold type (~0.1)",
+    "endpoint-uniform-ish sampling: hit every zero-dep type once, then try every OTHER type once too in raw label order (no dependency-graph reasoning about ordering), then spray uniformly-random opcodes at whatever got created -- reliably finds the depth-1 (any-opcode) shallow states but almost never lands all 3 exact opcodes a depth-3 deep type needs (a (1/C)^3 event per blind attempt), so it stalls far below strong on every test",
+    "build the resource-dependency graph from deps[]; recognize the single scaffold type gates both deep types and build it ONCE; then solve an exact multiple-choice knapsack (BFS shortest path per type gives per-type (cost,value) investment levels; convex per-chain rewards make full completions dominate partial spreading) over the remaining budget",
+    "headroom above strong: exact optimal ancestor SET COVER when shared ancestors are not a single clean chain (strong assumes -- correctly, for this generator -- that the union of ancestors is always worth building in full up front; a fully general solver would jointly optimize which ancestors to build against which value types to complete)"
+  ]
+}

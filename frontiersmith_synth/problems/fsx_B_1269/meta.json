@@ -1,0 +1,14 @@
+{
+  "id": "fsx_B_1269",
+  "tier": "B",
+  "format": "C",
+  "family": "cross-border-tax-route",
+  "eval_form": "quality-metric",
+  "theme": "Moving money through the legal maze",
+  "title": "Treaty-Shopping Router: Routes, Not Rates",
+  "objective": "max",
+  "strategies": [
+    "cheapest-per-hop shortest path (DAG shortest path / Dijkstra on withholding rates), never checking that substance and timing compliance are properties of the WHOLE route -- the trap",
+    "path enumeration with path-level feasibility filtering: search the small set of candidate routes through the layered treaty network, evaluate each route's aggregate substance-vs-benefit test (with instrument-mismatch halving) and its total holding-period window as a whole, and rank only the compliant routes by net-of-tax value"
+  ]
+}

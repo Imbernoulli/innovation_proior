@@ -1,0 +1,19 @@
+{
+  "id": "fsx_B_1168",
+  "tier": "B",
+  "format": "C",
+  "family": "sensor-fault-disentangle",
+  "eval_form": "quality-metric",
+  "theme": "Which gauge is lying, and by how much",
+  "title": "Which Gauge Is Lying, and By How Much",
+  "objective": "max",
+  "strategies": [
+    "declare-nothing baseline: leave every reading uncorrected (reproduces the checker's own reference, F1=0)",
+    "population-outlier greedy: ignore the redundancy graph entirely, flag whichever sensors have the single biggest spike versus the network-wide per-timestep median, and 'fix' them with a flat whole-record mean offset (no drift term) -- a real local event's brief spike frequently outranks a modest persistent fault, and any true drift fault is only ever half-corrected",
+    "graph-residual disentangling (strong): predict each sensor from the MEDIAN of its direct redundancy-graph neighbours (robust to one lying neighbour, unlike a mean), score persistence via a trimmed offset+drift linear fit against a zero-residual null (a real event's bump does not survive trimming as a clean line; a true fault does), and peel off the single most confident fault at a time -- subtracting its correction from the working copy before re-deriving neighbour predictions -- so one true fault cannot masquerade as false evidence against its own neighbours",
+    "iterative graph decontamination + robust regression variants: alternative trims/thresholds or weighted-neighbour predictors built on the same peel-one-at-a-time, graph-consistency insight"
+  ],
+  "source_frameworks": ["wave3-lens:inverse-recovery"],
+  "mechanisms": ["redundant-sensor-network", "drift-vs-offset-signature", "consistency-graph-residual"],
+  "innovation_hook": "A biased sensor and a genuine local anomaly look identical at that one sensor; disentangling them requires reading the residual pattern across the redundancy graph -- a fault is inconsistent with its neighbours, a real event is consistent with them."
+}

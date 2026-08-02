@@ -1,0 +1,101 @@
+# Pairing Guard on a Contested Board
+
+## Problem
+
+A board has `n` cells and `m` **winning lines**, each a subset of `2` to `6`
+cells; line `i` carries a positive weight `w_i`. Two sides alternately claim
+unclaimed cells until every cell is gone: the **Aggressor** moves first, and
+you, the **Guard**, respond immediately after each Aggressor move. A line is
+**LOST** if the Aggressor ends up owning *every* one of its cells; otherwise it
+is **SAFE**. You want to maximize the total weight of SAFE lines.
+
+You do not play reactively move-by-move. Before play starts you commit to a
+**pairing**: a set of disjoint cell-couples `(u, v)`. Your entire strategy for
+the whole game is then fixed: whenever the Aggressor claims a cell that is one
+end of one of your couples and the partner is still free, you immediately claim
+that partner; otherwise (the claimed cell is unpaired, or its partner is
+already gone) you claim the lowest-indexed still-free cell. You cannot deviate
+once play starts. Consequently, any line that contains *both* cells of one of
+your couples can never be lost: the instant the Aggressor takes one end, you
+take the other, so the Aggressor can never own the whole line — the pairing is
+a certificate, not a hope.
+
+Each cell `i` has a zone `z_i`. Committing couple `(u, v)` costs
+`1 + |z_u - z_v|` units of a preparation budget `K`; the total cost of all
+couples you commit to may not exceed `K`.
+
+The Aggressor's exact claim-attempt order is fixed and given to you: a
+precomputed permutation of the cells. On its turn the Aggressor claims the
+first still-free cell in that list (skipping ones already gone).
+
+## Input
+
+```
+n m K
+z_0 z_1 ... z_{n-1}
+```
+then `m` lines, one winning line each:
+```
+s w c_1 c_2 ... c_s
+```
+(`s` cells, weight `w`, 0-indexed, distinct), then one more line:
+```
+p_0 p_1 ... p_{n-1}
+```
+a permutation of `0..n-1` — the Aggressor's fixed claim order.
+
+## Output
+
+```
+p
+a_1 b_1
+...
+a_p b_p
+```
+`p` is the number of couples you commit to (`0 <= p <= n/2`); each following
+line is one couple `(a, b)`.
+
+## Feasibility
+
+`0 <= p <= n/2`; every `a, b` lie in `[0, n)` with `a != b`; every cell appears
+in at most one couple over the whole output; the total cost
+`sum (1 + |z_a - z_b|) <= K`; the output has exactly `p + 1` lines and nothing
+trailing. Any violation scores `0`.
+
+## Objective
+
+Maximize `F` = the total weight of lines that end the (fully deterministic)
+game SAFE.
+
+## Scoring
+
+Let `B` be `F` achieved by committing to the **empty pairing** (pure,
+uninformed reactive defense) — the checker computes `B` itself. Your score for
+a test is
+```
+ratio = min(1000, 100 * F / max(1, B)) / 1000
+```
+so the empty pairing scores `0.1`, any real improvement scores higher, capped
+at `1.0` (ten times the baseline). Per-test ratios are averaged over 10 tests.
+
+## Constraints
+
+`2 <= n <= 400` (n even), `1 <= m <= 200`, `1 <= K <= 5000`, `0 <= z_i <= 9`,
+`1 <= w_i <= 400`. Time limit `3 s`. Memory limit `512 MB`.
+
+## Example
+
+`n=4, m=2, K=5`. Zones `0 0 0 3`. Lines: `3 200 2 3 0` (cells 2,3,0, weight
+200) and `2 150 2 3` (cells 2,3, weight 150). Aggressor order `2 3 0 1`.
+
+Committing `{(2, 0)}` (cost `1`) looks cheap and locally sound — it is the
+cheapest couple inside the first line — but it uses up cell 2, so the second
+line (which needs *both* 2 and 3) can never be paired: the Aggressor claims 2
+then 3, you get 0 then (by fallback) 1, and line `2 3` is lost. `F = 200`,
+matching `B = 200`, ratio `0.100`.
+
+Committing `{(2, 3)}` instead (cost `4 <= K`) certifies *both* lines at once:
+the Aggressor claims 2, you immediately take 3; the Aggressor claims 0, you
+take 1 by fallback. Both lines contain your cell 3, so both are SAFE.
+`F = 350`, ratio `0.175` — despite spending more budget on a "less locally
+efficient" couple.

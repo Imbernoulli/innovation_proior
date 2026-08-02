@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1196",
+  "tier": "C",
+  "format": "E",
+  "family": "demand-cannibalize-forecast",
+  "eval_form": "quality-metric",
+  "theme": "Forecasting a product that eats its own sales",
+  "title": "The Ceiling You Can't See Yet — Forecasting Adoption Through a Competitor's Launch",
+  "objective": "max",
+  "strategies": [
+    "trivial: freeze adoption at the last training value forever -- reproduces the checker's own internal baseline, Ratio ~0.1",
+    "greedy: textbook log-linear regression of log(A) against t over the WHOLE training window, extrapolated as a pure exponential; inside the training window a short-run logistic is numerically indistinguishable from an exponential (the saturation term is a tiny fraction of the recursion there), so this fit looks excellent in-sample -- but it has no ceiling at all, ignores the announced launch step t_B and the analyst hints entirely, and on cases with fast growth / an early launch / high cannibalization it overshoots the true trajectory by many multiples",
+    "strong: recognizes the discrete-logistic (Verhulst) invariant -- per-capita growth (A(t+1)-A(t))/A(t) is LINEAR in A(t) with slope -k/M and intercept k -- and fits that linear relation by OLS over consecutive training pairs to recover (k, M0) directly, without ever needing A(t) to be large; blends the data-driven M0 estimate with the noisy market-size hint (Bayes-style shrinkage weighted by the regression's own R^2, since the invariant's signal is faint on slow-growth/late-launch cases); extrapolates the FIRST-regime logistic to the announced launch step t_B, applies the given severity hint to compute the POST-launch ceiling, and emits a two-piece closed-form logistic (ternary on t vs t_B) that carries the right ceiling -- not just the right early rate -- across the regime change",
+    "headroom above strong: adaptive/robust regression (trimmed OLS, weighting by local sample density) for (k, M0), joint refinement of the post-launch piece against any pre-launch held-out points once observed, or a smarter combination of the data-driven and hint-driven M0/severity estimates than fixed R^2 shrinkage"
+  ]
+}

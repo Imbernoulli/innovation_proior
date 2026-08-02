@@ -1,0 +1,18 @@
+{
+  "id": "fsx_C_1313",
+  "tier": "C",
+  "format": "B",
+  "family": "kiln-firing-policy",
+  "eval_form": "quality-metric",
+  "theme": "Heating pottery that cracks if you rush",
+  "title": "Kiln Firing Policy: Gate the Ramp by the Thickest Piece",
+  "objective": "max",
+  "source_frameworks": ["wave3-lens:policy-simulator"],
+  "isolation": "candidate runs as an isolated stdin->stdout subprocess via isorun; the evaluator's naive-baseline and near-optimal-ceiling references are computed only in the parent process",
+  "strategies": [
+    "flat non-adaptive rate (e.g. 65% of max_rate) for the whole firing: safe-ish but pays the slowdown everywhere, wasting fuel",
+    "constant max-rate the whole way (the obvious 'heat as fast as the burner allows' recipe): minimal fuel time, but cracks the thickest piece in mixed-thickness loads at the quartz/cristobalite inversion bands",
+    "regime-decomposed schedule: max rate outside the two phase-transition bands, and inside each band an exact-bisection safe rate driven ONLY by the load's thickest piece's analytic thermal-lag ODE, carrying its real cumulative stress across bands in order -- fast where it's free, gated only where and only because the thickest section demands it",
+    "the same regime decomposition solved with a tighter (near-optimal) safety margin, closer to the crack threshold, buying back more fuel"
+  ]
+}

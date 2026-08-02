@@ -5,7 +5,7 @@ models that *generalize* across the "LLM writes code to optimize a scored object
 re-implements the withheld parts of **FrontierSmith** (arXiv 2605.14445) and extends the idea across
 the whole evolutionary-search / scientific-discovery landscape.
 
-**Result: 1165 problems, all machine-verified, spanning 801 families and 1165 unique scaffolds.**
+**Result: 1365 problems, all machine-verified, spanning 1001 families and 1365 unique scaffolds.**
 
 ---
 
@@ -45,33 +45,46 @@ a 10×-better solution caps at 1.0. Every problem ships a 4-rung **solution ladd
 
 ---
 
-## 3. The 1165-problem corpus
+## 3. The 1365-problem corpus
 
 | by format | count | | by tier (band) | count |
 |---|---|---|---|---|
-| A testlib combinatorial | 334 | | A math-discovery / heuristic | 452 |
-| B evolve-a-heuristic | 248 | | S graph/combinatorial core | 276 |
-| C constructive + verifier | 359 | | B engineering + science | 267 |
-| D FLOPs / op-count kernel | 117 | | G breadth-fill and bulk domains/tasks | 91 |
-| E symbolic / scientific-law | 107 | | C ML-method + exotic | 53 |
+| A testlib combinatorial | 348 | | A math-discovery / heuristic | 487 |
+| B evolve-a-heuristic | 273 | | B engineering + science | 322 |
+| C constructive + verifier | 461 | | S graph/combinatorial core | 276 |
+| D FLOPs / op-count kernel | 147 | | C ML-method + exotic | 163 |
+| E symbolic / scientific-law | 136 | | G breadth-fill and bulk domains | 91 |
 | | | | N bespoke-novelty | 26 |
 
-- **Scoring types:** quality-metric 1006 · flops 124 · correctness 35.
-- **Source tags represented:** the original cross-framework taxonomy, bespoke novelty additions,
-  breadth-fill supplements, and the 20-lens wave-2b rebuild.
-- **801 distinct families and 1165 unique `(family, theme, variant)` scaffolds** — including hard-science
-  E-format domains, op-count D-format kernels, isolated B-format heuristic evaluators, and the 659
-  wave-2b problems spanning 20 independently-imagined design lenses.
+- **Scoring types:** quality-metric 1176 · flops 154 · correctness 35.
+- **1001 distinct families and 1365 unique `(family, theme, variant)` scaffolds** — including hard-science
+  E-format domains, op-count D-format kernels, isolated B-format heuristic evaluators, the 659
+  wave-2b problems spanning 20 independently-imagined design lenses, and the 200 wave-3 problems
+  each opening its own family.
 
-The distribution is deliberately expanded toward the generalization-relevant tail. The wave-2b rebuild
-(659 problems, `fsx_*_0507`–`fsx_*_1165`) replaced an earlier bulk tranche that had degenerated into a
-single re-skinned template, and added two acceptance gates the original pipeline lacked: an
-**innovation-headroom** requirement (`strong - greedy >= 0.06`, `strong <= 0.92`,
-`greedy - trivial >= 0.03`) so the insight beats the recipe rather than merely beating do-nothing, and
-an **anti-homogeneity scan** (digit-stripped skeleton hash + theme-masked statement hash). The corpus
-now scans **1165 dirs → 1165 unique skeletons / 1165 unique statement shapes** at `--max-clones 1`.
-Each wave-2b problem was additionally reviewed by an independent Codex (`gpt-5.6-terra`, xhigh) pass
-inside its authoring agent, with cited defects repaired before acceptance.
+The distribution is deliberately expanded toward the generalization-relevant tail, in two steps.
+
+**Wave-2b** (659 problems, `fsx_*_0507`–`fsx_*_1165`) replaced an earlier bulk tranche that had
+degenerated into a single re-skinned template, and added two acceptance gates the original pipeline
+lacked: an **innovation-headroom** requirement (`strong - greedy >= 0.06`, `strong <= 0.92`,
+`greedy - trivial >= 0.03`) so the insight beats the recipe rather than merely beating do-nothing,
+and an **anti-homogeneity scan** (digit-stripped skeleton hash + theme-masked statement hash).
+
+**Wave-3** (200 problems, `fsx_*_1166`–`fsx_*_1365`) fixed a *coverage* rather than a quality
+problem, measured against [EdgeBench](https://edge-bench.org/) (134 real-world long-horizon agent
+tasks, six capability families). At 1165 problems this corpus was almost entirely EdgeBench's
+"Combinatorial Optimization" family — which is only 14% of EdgeBench — while its two largest
+families, Scientific Problems & ML (29%) and Systems & Software Engineering (27%), were represented
+only as symbolic regression and raw op-counting respectively. The eight wave-3 lenses fill exactly
+those gaps: inverse recovery, regime-crossing forecasting, protocol/state-machine conformance,
+hardware co-design under exact cost models, professional risk/actuarial work, policy programs judged
+in seeded simulators, molecular/materials design, and combinatorial game theory. Format mix was
+skewed toward the two thinnest formats (D: 117→147, E: 107→136).
+
+The corpus now scans **1365 dirs → 1365 unique skeletons / 1365 unique statement shapes** at
+`--max-clones 1`. Each wave-2b and wave-3 problem was additionally reviewed by an independent Codex
+(`gpt-5.6-terra`, xhigh) pass inside its authoring agent, with cited defects repaired before
+acceptance.
 
 ---
 
@@ -161,19 +174,19 @@ synth/
     validate_pyproblem.py              8-gate harness (program mode: B)
     isorun.py                          bwrap-sandboxed candidate runner
     testlib.h  _selftest{,_C,_B}
-  seeds/build_seed_list.py             taxonomy/supplements → seed_list.jsonl (`--current` = 1165 specs)
+  seeds/build_seed_list.py             taxonomy/supplements → seed_list.jsonl (`--current` = 1365 specs)
   reports/
     taxonomy_proposal.json             researched cross-framework taxonomy
     verify_all.sh  scan_defects.py  aggregate.py
     blind*_MAPPING_secret.json         blind-comparison results
   generate_problems.workflow.js        fan-out: 1 agent/problem, author → self-validate → repair
   research_frameworks.workflow.js      the 10-framework research + synthesis workflow
-  problems/<id>/                       the 1165 problems (testdata/ regenerates via the harness)
+  problems/<id>/                       the 1365 problems (testdata/ regenerates via the harness)
 ```
 
 ```bash
 cd synth
-python3 seeds/build_seed_list.py --current        # regenerate the current 1165-spec seed plan
+python3 seeds/build_seed_list.py --current        # regenerate the current 1365-spec seed plan
 bash   reports/verify_all.sh                      # ground-truth re-verify every problem (needs bwrap)
 python3 reports/aggregate.py                       # → summary.{json,md}
 # generation is driven by the Workflow tool over compact {id,format} routes.

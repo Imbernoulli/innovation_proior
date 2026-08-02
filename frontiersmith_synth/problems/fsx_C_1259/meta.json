@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1259",
+  "tier": "C",
+  "format": "D",
+  "family": "near-memory-offload",
+  "eval_form": "flops",
+  "theme": "Deciding what to compute where",
+  "title": "Kernel Graph Placement: Host vs Near-Memory Offload",
+  "objective": "min",
+  "strategies": [
+    "all-host / do-nothing baseline (trivial)",
+    "fixed byte-cutoff offload: send anything data-heavy to near-memory, ignore flops and device rates (greedy)",
+    "partition by rate-derived arithmetic-intensity threshold plus bounded local search over the group assignment (strong)",
+    "exact joint optimum over assignment + true topological scheduling order (open ceiling, NP-hard, uncovered)"
+  ]
+}

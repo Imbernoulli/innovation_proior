@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1276",
+  "tier": "B",
+  "format": "C",
+  "family": "transfer-pricing-defend",
+  "eval_form": "quality-metric",
+  "theme": "Setting internal prices that survive an audit",
+  "title": "Comparable Set Defense: Pricing an Intercompany Margin for Audit",
+  "objective": "max",
+  "strategies": [
+    "closest-by-plain-distance baseline: MIN_COMPS candidates picked at a fixed stride through the listed order, no documentation, declared margin = plain average (checker's own internal baseline)",
+    "aggressive cherry-pick: screen candidates by loose overall (unweighted) similarity, then chase the highest reported margins, spend zero documentation budget, declare near the top of the hand-picked set's own range",
+    "robust hedge: select the broad set of candidates that are close on EVERY functional axis (not just on average), spend the documentation budget defending the weakest-fit members, declare a defensible position near the 65th-75th percentile of that broad, representative pool -- not the narrow cherry-picked one",
+    "invalid: emit a doc-depth or index out of range / budget-violating artifact"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_1172",
+  "tier": "B",
+  "format": "C",
+  "family": "seismic-layer-recover",
+  "eval_form": "quality-metric",
+  "theme": "Reading rock layers off a bounce-time table",
+  "title": "Reading Rock Layers off a Bounce-Time Table",
+  "objective": "max",
+  "strategies": [
+    "constant-velocity baseline: one velocity from the near-offset slope, depth split evenly (the checker's own trivial reference)",
+    "textbook slope-intercept refraction: detect the distinct slopes in the refraction curve and read them off as v_1..v_k in left-to-right order, padding/extrapolating if too few are found -- breaks when an interior low-velocity zone removes one branch, silently shifting every deeper layer's velocity label by one",
+    "reflection/refraction cross-check with model-selection over the hidden layer's position: use the reflection two-way times (which see every interface, hidden or not) to fix each layer's h/v ratio, use refraction slopes to fix every velocity except the invisible one, then search over which interface is missing and fit the one unknown velocity by minimizing residual against the given refraction curve"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_1300",
+  "tier": "C",
+  "format": "B",
+  "family": "epidemic-response-policy",
+  "eval_form": "quality-metric",
+  "theme": "Locking down without locking down",
+  "title": "Locking Down Without Locking Down",
+  "objective": "max",
+  "source_frameworks": ["wave3-lens:policy-simulator"],
+  "strategies": [
+    "trivial: constant 'always level 1' for the whole future window, ignoring both data series entirely -- a flat, unconditional light restriction",
+    "greedy (delayed-threshold): never drops below level 1; escalates to level 2/3 by thresholding a rolling average of the DELAYED `reported_cases` series (naive same-ratio extrapolation, no correction for the reporting/incubation dark window) and holds each level once triggered -- realistic, reactive, but is reading news that is already `d_rep` days stale, so on fast-growth seeds it escalates only after the true outbreak has grown several multiplicative factors beyond what the stale count shows",
+    "strong (insight): fits a growth rate off the much-less-delayed `leading_indicator` series and projects forward only the short `d_lead`-day dark window to estimate TRUE current severity (correcting exactly the bias greedy ignores), then picks a PULSED schedule (bursts of restriction separated by rest days, searched over a small deterministic candidate set) so compliance never fully collapses to the fatigue floor -- a genuine reformulation (early correct severity read + duty-cycled response), not greedy-plus-tuning",
+    "invalid: emits an out-of-range intervention level (7, outside the valid 0..3 menu) for every future day -- rejected by validation, scores 0"
+  ]
+}

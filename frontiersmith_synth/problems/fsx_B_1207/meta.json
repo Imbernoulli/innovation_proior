@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1207",
+  "tier": "B",
+  "format": "E",
+  "family": "antibiotic-resistance-forecast",
+  "eval_form": "quality-metric",
+  "theme": "How fast resistance spreads once you start dosing",
+  "title": "Resistance Sweep Forecast — the fitness cost hides in the flat line",
+  "objective": "max",
+  "strategies": [
+    "constant 0.5 (ignores the data entirely) -> reproduces the checker baseline ~0.1",
+    "greedy: average the visible pre-treatment readings and extrapolate that value FLAT -- an honest, noise-reduced read of the data, but blind to the mechanism; correct until the dosing plan starts, then wrong by up to the full sweep amplitude",
+    "strong: the pre-treatment level is a mutation/transfer-selection EQUILIBRIUM, not an arbitrary constant -- invert it (c = (mu+tau)/p0) to recover the hidden fitness cost, then plug that cost into the SAME replicator dynamics with the given dosing rate to get the closed-form post-treatment trajectory",
+    "headroom above strong: better denoising of the equilibrium estimate (e.g. down-weighting outlier readings, or a maximum-likelihood fit instead of the plain mean) tightens the recovered cost and pushes held-out error toward the measurement-noise floor"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1199",
+  "tier": "B",
+  "format": "E",
+  "family": "reservoir-inflow-forecast",
+  "eval_form": "quality-metric",
+  "theme": "River flow after the snow is gone",
+  "title": "River Flow After the Snow Is Gone — recovering a shared snowpack storage state",
+  "objective": "max",
+  "strategies": [
+    "trivial: predict the constant mean(train flow), ignoring precip/temp entirely -- reproduces the checker's own constant baseline exactly (~0.1)",
+    "greedy: the obvious recipe -- fit a memoryless regression of flow on today's precip/temp plus a short window of lagged precip (a stand-in for antecedent moisture) via least squares on the training rows; this explains most of the RAIN-season training variance (flow there really does react to recent rain), but it has no persisting state, so on the held-out winter-into-spring season it predicts near-baseflow whenever precip is low even while a large accumulated snowpack is still melting -- far from the true flow on the long dry melt stretches",
+    "strong: notice that the noisy snow_proxy column rises while temp is below some threshold and falls afterward at a rate that scales with temp above that threshold -- the signature of a persisting storage state no finite lag window can substitute for (the held-out accumulation phase runs far longer than any allowed delay). Jointly recover the freeze threshold and melt rate by, for each candidate threshold, fitting the melt rate by least squares against the proxy's falls, rolling a candidate bucket forward, and picking the (threshold, rate) pair whose reconstruction best fits the WHOLE noisy training proxy trace (not just a one-tick direction vote). Roll that recovered bucket forward on the training precip/temp to get each tick's actual realized melt (not the storage level), and fit baseflow / rain-quickflow / meltflow coefficients against it by least squares (antecedent moisture is approximated by a short flat lag window). Emit a stateful DSL program -- a STORE rule that accumulates precip-as-snow below the threshold and melts it above, plus an OUT expression that reads the realized melt straight off the register via the exact bucket identity melt=snow_in-(SW-SWk1) -- this generalises to the held-out season because the register, not a lag window, carries the state across the whole accumulation phase and correctly stops crediting melt once the register hits 0",
+    "headroom above strong: replace the flat lagged-rain window with a geometric-weighted kernel matched to the true antecedent-moisture decay rate, and jointly refine the threshold/melt-rate/decay/coupling parameters with a small local search around the closed-form estimate instead of a single one-shot fit, pushing held-out MSE further toward the sensor-noise floor"
+  ]
+}

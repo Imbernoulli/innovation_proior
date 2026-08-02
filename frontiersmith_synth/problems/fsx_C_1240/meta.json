@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_1240",
+  "tier": "C",
+  "format": "C",
+  "family": "shard-key-choose",
+  "eval_form": "quality-metric",
+  "theme": "Splitting data so no shard melts",
+  "title": "Shard Assignment Under Skew, Cross-Shard Cost, and Resharding Stability",
+  "objective": "min",
+  "source_frameworks": ["wave3-lens:protocol-conformance"],
+  "strategies": [
+    "trivial: round-robin key placement assign[i]=i%K (the checker's own uniform-distributing reference construction)",
+    "greedy: LPT balanced bin-packing -- sort keys by weight descending, drop each into the currently least-loaded shard; minimizes size skew but ignores the transaction graph and the previous assignment entirely",
+    "strong: exploit that cost decomposes additively per key (quadratic imbalance term + per-edge cross-shard term + per-key migration term) -- initialize from the previous epoch's assignment (or, cold-start, by contracting the heaviest transaction edges first) then run deterministic single-key best-improvement local search on the exact 3-term objective, co-locating keys that transact together and accepting size imbalance when it pays off",
+    "invalid: wrong token count and out-of-range shard indices -> rejected before scoring"
+  ]
+}

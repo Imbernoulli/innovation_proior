@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1195",
+  "tier": "B",
+  "format": "E",
+  "family": "structural-drift-forecast",
+  "eval_form": "quality-metric",
+  "theme": "Predicting where the bridge will settle",
+  "title": "Settling In: Forecasting a Bridge Deck's Irreversible Drift",
+  "objective": "max",
+  "strategies": [
+    "trivial: predict the constant mean(train displacement) -> reproduces the checker baseline ~0.1",
+    "greedy: estimate one average rate of change over the whole visible log by OLS slope of displacement vs elapsed time (ignores temperature entirely), then extrapolate that rate LINEARLY forward anchored at the most recently logged reading. On the 7 cases whose visible window happens to end at a seasonal temperature peak, that anchor reading is inflated by the full reversible thermal swing, and the naive method has no way to know that swing will reverse -- the offset rides unchanged across every held-out prediction several seasons later, producing large systematic overshoot",
+    "strong: recognise the visible signal is a SUM of an irreversible saturating-plus-drift settlement curve and a reversible term driven by the temperature reading itself; grid-search the settlement time constant by held-out-within-visible validation (not raw training fit, which is degenerate/collinear), fit a mildly ridge-regularised linear model on {1, 1-exp(-t/tau), t, T} pooling ALL visible data at the winning tau, and extrapolate ONLY the irreversible piece forward while reading the reversible piece off of whatever temperature the grader supplies at each held-out point",
+    "headroom above strong: model the temperature sensor's noise-vs-signal relationship explicitly (errors-in-variables regression) instead of ordinary least squares, and/or fit tau by full leave-one-block-out cross-validation across the visible span, to shave the remaining bias down toward the irreducible sensor-noise floor"
+  ]
+}

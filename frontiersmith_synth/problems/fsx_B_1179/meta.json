@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1179",
+  "tier": "B",
+  "format": "C",
+  "family": "pollution-attribution-wind",
+  "eval_form": "quality-metric",
+  "theme": "Assigning smog to factories under shifting wind",
+  "title": "Smog Ledger: Attributing Emissions Under a Shifting Wind Rose",
+  "objective": "max",
+  "strategies": [
+    "trivial: ignore wind and clusters entirely -- calibrate one scalar emission level from the day-averaged concentration and output it for every source (reproduces the checker's own uniform-guess baseline)",
+    "greedy (data-quality trap): for each day, split that day's reading among sources proportionally to their transport-kernel weight, then average those per-day estimates weighted by each day's raw concentration magnitude (trust the loudest days most); also indexes the background trend by row position instead of the explicit day_id field. Stagnant days are simultaneously the highest-magnitude AND the least direction-resolving, so this heuristic systematically pulls colocated-bearing cluster members toward each other's mean and misaligns the background phase",
+    "strong: weight each day by an information/dispersion statistic of its own normalized kernel row (how far that day's proportional-attribution shares deviate from uniform) instead of by magnitude, correctly indexes background by day_id, and solves a small ridge-regularized weighted least-squares system for the full rate vector -- letting the few sharp, direction-varying days (not the loud, uninformative ones) drive the fit that separates colocated sources",
+    "headroom above strong: joint estimation of an adaptive kernel-width correction alongside the rates, or iterative reweighting toward a D-optimal day subset, to push both the recovery and held-out terms further toward the sensor-noise floor"
+  ]
+}

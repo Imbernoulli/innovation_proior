@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_1234",
+  "tier": "C",
+  "format": "C",
+  "family": "scheduler-priority-inversion",
+  "eval_form": "quality-metric",
+  "theme": "When the important task waits for the trivial one",
+  "title": "Per-Lock Protocol Assignment Against Priority Inversion",
+  "objective": "min",
+  "mechanisms": ["lock-holder-priority", "inheritance-vs-ceiling", "deadline-miss-cost"],
+  "innovation_hook": "Strict priority scheduling is correct in isolation and causes unbounded inversion when a low-priority task holds a lock. The insight is choosing between inheritance and ceiling protocols per resource based on the contention pattern.",
+  "strategies": [
+    "no-protocol baseline: echo the checker's own construction (plain fixed-priority, no boosting on any lock) -> reproduces the baseline exactly, ~0.1",
+    "uniform priority-inheritance on every lock (the standard OS-course fix for priority inversion): fixes locks nobody proactively over-blocks but is unprotected during the early window before the real waiter arrives, so it loses badly on ceiling-favoring locks",
+    "exact per-lock search: simulate the same deterministic scheduler locally over every {none,inherit,ceiling}^L combination and keep the true minimum-cost assignment -- exploits the per-resource contention pattern directly instead of one global rule"
+  ]
+}

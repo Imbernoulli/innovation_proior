@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_1301",
+  "tier": "C",
+  "format": "B",
+  "family": "fleet-charging-policy",
+  "eval_form": "quality-metric",
+  "theme": "Electric vans that must finish the route",
+  "title": "Charge the Fleet, Not the Van: Slot Allocation for Electric Delivery Vans",
+  "objective": "maximize",
+  "source_frameworks": ["wave3-lens:policy-simulator"],
+  "strategies": [
+    "top off at every opportunity regardless of need: request a full charge at BOTH the early and late stop for every van, doubling charger visits and maximizing contention everywhere, even in low-traffic instances (trivial)",
+    "per-van threshold charging: each van independently charges to full ONLY at its late stop p2 (the amount is individually correct and sufficient), never considering any other van's plan -- optimal in isolation, but many vans' late stops share the same popular charger and their arrivals cluster, so the fleet queues for scarce plugs at peak and later deliveries slip past deadline (greedy / the trap)",
+    "fleet-level charging-slot allocation: start from the per-van plan, predict via a FIFO multi-server queue simulation which chargers will be oversubscribed and which vans will miss their deadline because of it, then move a subset of those vans to charge at their EARLY stop instead -- before they strictly need to -- spreading demand across two chargers and two points in time; iterate since relieving one charger can shift the bottleneck to the other (strong)",
+    "joint timing + amount optimization: also tune partial (non-full) charge amounts and how much slack to leave per van, and search charger-choice tie-breaks under multi-charger correlated demand instead of a fixed early/late binary split (open ceiling, uncovered)"
+  ]
+}

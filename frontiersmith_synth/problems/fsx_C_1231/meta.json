@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1231",
+  "tier": "C",
+  "format": "C",
+  "family": "log-schema-inference",
+  "eval_form": "quality-metric",
+  "theme": "Discovering the format of logs nobody documented",
+  "title": "Undocumented Logs: Template Extraction Under an Overgeneralization Penalty",
+  "objective": "max",
+  "strategies": [
+    "one private template per line, zero wildcards (reproduces the checker's own baseline B=N*W, ~0.1)",
+    "first-token bucketing: group lines by their first field (assumed a stable tag), wildcard any position that varies within the bucket -- fine whenever every hidden family has a distinct tag, but on planted collision cases two unrelated families share a tag, get merged into one bucket, and nearly every remaining position must be wildcarded to stay feasible -- one bloated near-universal template that matches everything and explains almost nothing",
+    "cost-driven recursive partitioning: use the checker's own W + n*v cost as the splitting criterion (one-level lookahead over every candidate position, recurse into the winning split) instead of trusting position 0 -- finds whichever position actually separates two colliding families, and stops splitting truly-variable domain positions because shattering them into near-singleton templates costs far more in fresh W headers than one wildcard does",
+    "headroom above strong: full multi-level lookahead / exact optimal partition search (strong uses greedy 1-level lookahead), plus explicit handling of noise lines that could be folded into a low-wildcard neighbor at marginal extra cost"
+  ]
+}

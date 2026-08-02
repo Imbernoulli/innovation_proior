@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1248",
+  "tier": "C",
+  "format": "D",
+  "family": "pipeline-depth-choose",
+  "eval_form": "flops",
+  "theme": "Deeper pipeline, faster clock, worse mistakes",
+  "title": "Stage Partition and Forwarding Budget: Minimal Total Execution Time",
+  "objective": "minimize",
+  "strategies": [
+    "no pipelining, S=1 (trivial, checker's own baseline)",
+    "maximize stage count (finest-grain split) + cheapest-cost-first forwarding purchase (greedy: chases peak clock frequency)",
+    "exhaustive joint search over stage partitions and an exact 0/1 forwarding knapsack per partition, minimizing CPI*cycle_time against the actual branch/hazard profile (strong)",
+    "true optimum over all partitions with a smarter-than-brute-force certificate (open ceiling, uncovered)"
+  ]
+}

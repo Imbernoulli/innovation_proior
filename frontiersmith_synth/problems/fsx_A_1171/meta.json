@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1171",
+  "tier": "A",
+  "format": "C",
+  "family": "circuit-fault-locate",
+  "eval_form": "quality-metric",
+  "theme": "Which resistor drifted, from terminal measurements only",
+  "title": "Hidden Chain: Minimum-Cardinality Drift From Terminal Readings",
+  "objective": "maximize",
+  "strategies": [
+    "trivial: assume nothing drifted (claim zero faulty components)",
+    "greedy: curve-fit the FIRST excitation pattern alone and report the first single component (or pair) whose value reproduces it -- a real single-pattern fit that ignores cross-pattern consistency",
+    "strong: search increasing claim cardinalities, requiring the fitted value(s) to jointly reproduce EVERY shown excitation pattern at once, exploiting a second pattern that isolates a specific interior segment to rule out spurious single-pattern explanations",
+    "invalid: claim an edge index outside the netlist range (infeasible artifact)"
+  ]
+}

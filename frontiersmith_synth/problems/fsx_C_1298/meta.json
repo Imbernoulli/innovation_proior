@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_1298",
+  "tier": "C",
+  "format": "B",
+  "family": "colony-forage-policy",
+  "eval_form": "quality-metric",
+  "theme": "Ants that must not all follow the same trail",
+  "title": "Ants That Must Not All Follow the Same Trail",
+  "objective": "max",
+  "source_frameworks": ["wave3-lens:policy-simulator"],
+  "strategies": [
+    "equal split baseline: divide the ant budget evenly across all sources every round and never adapt (reproduces the evaluator's weak reference, ~0.1)",
+    "static rate-weighted split: read each source's per-ant rate once, weight the split proportionally, then commit to it for the whole horizon -- beats equal split by using the one visible quality signal, but never notices depletion so it keeps over-feeding a source long after its one-time stock has dried up",
+    "phased exploit + pre-warm decomposition: track each source's headroom (stock above its sustaining regen); camp most ants on the current best-headroom source while a reserve fraction pre-builds pheromone trail on the next source in line, handing off the majority the moment headroom hits zero -- so the trail-ramp-up lag never causes a cold-start drought",
+    "deterministic local tuning: grid-search the ordering key, reserve fraction, and switch threshold of the phased policy by simulating each config exactly (the same dynamics the evaluator scores) and keep whichever config harvests the most on this instance"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1364",
+  "tier": "A",
+  "format": "C",
+  "family": "matroid-intersection-certify",
+  "eval_form": "quality-metric",
+  "theme": "Two structures that must agree",
+  "title": "Dual-Quota Batch: A Common Independent Set with a Maximality Certificate",
+  "objective": "maximize",
+  "strategies": [
+    "single-class trivial: fill Scheme A's classes to capacity in input order ignoring Scheme B, then repair by dropping whatever now breaks a Scheme-B quota",
+    "single-pass greedy: scan items in input order, add each item iff it keeps both quota systems feasible right now (no exchange, no certificate)",
+    "augmenting-path matroid intersection: repeatedly find an augmenting path in the exchange digraph and swap along it; when none exists, read the maximality certificate off the final reachable set",
+    "randomized multi-restart greedy over item orderings"
+  ]
+}

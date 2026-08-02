@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1185",
+  "tier": "B",
+  "format": "C",
+  "family": "structural-damage-modal",
+  "eval_form": "quality-metric",
+  "theme": "Locating a crack from how the bridge rings",
+  "title": "Locating a Crack From How the Bridge Rings",
+  "objective": "max",
+  "strategies": [
+    "trivial: ignore all data and location entirely -- guess the beam midpoint, estimate severity as the plain average |relative frequency drop| across the measured modes; this IS the checker's own internal baseline B",
+    "greedy: trust a SINGLE mode (the lowest-index measured mode m1) end to end -- peak-pick the largest observed shape distortion for m1 across the coarse gauge points to locate the crack, then invert m1's own frequency-shift equation at that location for severity; blind whenever the crack sits on m1's node line, since both of m1's channels (frequency shift and local shape distortion) vanish there simultaneously",
+    "strong: fuse EVERY measured mode's frequency shift jointly via a per-candidate-location least-squares fit for severity (a mode near its own node automatically gets near-zero weight in the fit, no special-casing needed -- this IS the 'combine blind spots that don't overlap' insight), then break residual-tie ambiguity between competing candidate locations using the complementary coarse mode-SHAPE channel (frequency-shift-vs-shape fusion)",
+    "headroom above strong: a smarter continuous (non-grid) joint optimizer over (x,s) with a principled noise model / weighted-least-squares across modes and gauges, or exploiting higher-order structure in how the shape-distortion bump width interacts with gauge spacing -- our uniform grid + independent shape-cost tie-break is not the information-theoretically optimal fusion"
+  ]
+}

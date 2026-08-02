@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1205",
+  "tier": "B",
+  "format": "E",
+  "family": "crop-yield-stress-forecast",
+  "eval_form": "quality-metric",
+  "theme": "Harvest after a heat wave at the wrong moment",
+  "title": "Crop Yield Stress Forecast -- the heat wave that lands on flowering",
+  "objective": "max",
+  "strategies": [
+    "trivial: least-squares fit of yield on total season GDD (G) alone -> reproduces the checker's own baseline, ~0.1",
+    "greedy: ordinary least squares fit y = a0 + a1*G + a2*H on the historical log; captures a real but diluted linear correlation between incidental flowering-window heat and yield, but the fitted model is LINEAR in H while the true agronomic penalty is QUADRATIC and stage-restricted, so it badly under-predicts damage when the held-out heat wave is deliberately timed to land squarely on that season's flowering window",
+    "strong: BETA (the flowering heat-sensitivity coefficient) cannot be learned from the calm historical log -- H is almost always tiny there, so BETA*H**2 is swamped by measurement noise -- but it does not need to be learned; it is handed directly as a growth-chamber survey constant. Undo the known penalty on training targets, fit the honest G-only relationship on the corrected targets, then re-apply BETA*H**2 when predicting",
+    "headroom above strong: model the season-to-season measurement-noise-limited fit more precisely (e.g. robust/regularized re-estimation of Y0 and the GDD slope) to push held-out MSE further toward the noise floor"
+  ]
+}

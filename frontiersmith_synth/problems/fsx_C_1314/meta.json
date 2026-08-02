@@ -1,0 +1,18 @@
+{
+  "id": "fsx_C_1314",
+  "tier": "C",
+  "format": "B",
+  "family": "music-ensemble-cue-policy",
+  "eval_form": "quality-metric",
+  "theme": "Keeping an ensemble together over a rubato passage",
+  "title": "Ensemble Cue Policy Through a Rubato",
+  "objective": "maximize",
+  "source_frameworks": ["wave3-lens:policy-simulator"],
+  "isolation": "candidate runs as an isolated stdin->stdout subprocess via isorun; the hidden true phrase-tempo curve stays in the evaluator process",
+  "strategies": [
+    "flat / never move: constant cue = 1.0 (reproduces the evaluator baseline -> ~0.1 everywhere)",
+    "uniform mean-of-all-players reactive tracking with simple smoothing (no role weighting, no latency anticipation): stable on the metronomic warm-ups, damped and late on rubato swells",
+    "role-weighted phrase estimate (trust the score's designated phrase-carrier channel instead of averaging in every player) + forward anticipation by the ensemble's mean reaction latency: tracks the swell and arrives on time across the whole family",
+    "per-beat latency-aware anticipation (shift by the CURRENT phrase-carrier's own latency rather than the ensemble mean) and role-weighted tightness shaping for the players who most need to land together at each moment"
+  ]
+}

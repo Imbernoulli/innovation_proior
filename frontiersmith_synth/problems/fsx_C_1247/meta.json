@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1247",
+  "tier": "C",
+  "format": "D",
+  "family": "dram-refresh-schedule",
+  "eval_form": "flops",
+  "theme": "Refreshing memory without stalling the reads",
+  "title": "Weak Rows, Strong Rows: Retention-Binned DRAM Refresh Scheduling",
+  "objective": "min",
+  "strategies": [
+    "round-robin refresh every row every slot, period = bank row count, ignoring retention and access trace entirely (trivial baseline)",
+    "uniform worst-case refresh: use each bank's single weakest row's retention for every row in that bank, earliest-slot round-robin, ignoring the access trace (greedy, the obvious 'safe' recipe)",
+    "per-row retention binning: refresh each row at its own true cadence (weak often, strong rarely, some strong rows never within the horizon) and hand cold-load residues to the most frequent rows first (strong)",
+    "joint cross-row phase optimisation / exact minimum-stall assignment under the capacity and deadline constraints (open ceiling, uncovered -- the joint assignment is a hard combinatorial problem)"
+  ]
+}

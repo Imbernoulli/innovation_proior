@@ -1,0 +1,15 @@
+{
+  "id": "fsx_A_1362",
+  "tier": "A",
+  "format": "C",
+  "family": "fair-division-envy-free",
+  "eval_form": "quality-metric",
+  "theme": "Cutting a cake nobody envies",
+  "title": "Cutting a Cake Nobody Envies",
+  "objective": "max",
+  "strategies": [
+    "trivial: give every agent an identical 1/n fraction of every item (always envy-free, checker's own baseline)",
+    "greedy welfare-max: assign each item wholly to whichever agent values it most, ignoring fairness entirely (achieves the unconstrained welfare ceiling but is envy-free only by accident)",
+    "strong certified search: formulate envy-freeness as a linear system of pairwise value inequalities and directly solve the linear program 'maximize welfare subject to all envy constraints + feasibility', exploiting fractional divisibility to split contested items instead of awarding them whole"
+  ]
+}

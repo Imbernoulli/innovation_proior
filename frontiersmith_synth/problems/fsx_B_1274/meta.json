@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1274",
+  "tier": "B",
+  "format": "C",
+  "family": "warranty-reserve-set",
+  "eval_form": "quality-metric",
+  "theme": "Money set aside for failures not yet seen",
+  "title": "Warranty Reserves From a Mix-Shifting Claims Triangle",
+  "objective": "max",
+  "strategies": [
+    "naive as-reported: assume every cohort's already-reported claims are the whole story, reserve nothing further",
+    "textbook chain-ladder: pool ALL cohorts into one aggregate age-to-age development-factor curve (blind to product mix) and apply it to each cohort's own latest reported value",
+    "cohort/development separation: read per-type ultimate value rates directly off the fully-developed cohorts via a mix-weighted regression, then project every cohort (however immature) through its own known mix",
+    "own-cohort partial-development shrinkage blended with the mix-regression prior (headroom above the reference strong solution)"
+  ]
+}

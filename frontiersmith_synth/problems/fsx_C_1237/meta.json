@@ -1,0 +1,18 @@
+{
+  "id": "fsx_C_1237",
+  "tier": "C",
+  "format": "C",
+  "family": "query-plan-choose",
+  "eval_form": "quality-metric",
+  "theme": "Picking a join order with unreliable statistics",
+  "title": "Chain-Join Plans Under Uncertain Cardinality Estimates",
+  "objective": "minimize",
+  "mechanisms": ["cardinality-estimation-error", "plan-robustness", "adaptive-reoptimization"],
+  "innovation_hook": "Choosing the cheapest plan under estimated cardinalities is optimal when estimates are right and catastrophic when they are wrong, and the score uses TRUE cardinalities; the strong strategy selects a robust plan whose worst case across the estimate's uncertainty range is bounded, and further hedges by using a reoptimization checkpoint to pick a different continuation per observed bucket.",
+  "strategies": [
+    "trivial: canonical always-extend-right order, same continuation for every bucket (reproduces the checker's own baseline construction)",
+    "greedy: full enumeration of join orders using the point-estimate selectivities only, no uncertainty hedge, same continuation for every bucket -- optimal when estimates are right, catastrophic on the planted 100x-mis-estimated edges",
+    "strong: minimax-robust prefix selection (worst case over the certified uncertainty box) plus a genuine per-bucket contingency continuation chosen at the reoptimization checkpoint",
+    "invalid: plan requests moves past the end of the chain -> rejected infeasible"
+  ]
+}

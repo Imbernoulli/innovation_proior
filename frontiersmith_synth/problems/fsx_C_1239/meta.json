@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1239",
+  "tier": "C",
+  "format": "C",
+  "family": "checksum-placement-design",
+  "eval_form": "quality-metric",
+  "theme": "Where to put the error checks",
+  "title": "Where to Put the Error Checks: Checksum Placement Against a Bursty Channel",
+  "objective": "max",
+  "strategies": [
+    "single global parity bit (route every message bit to checksum group 0, groups 1..K-1 unused) -- reproduces the checker's own baseline B exactly, ~0.1",
+    "uniform block partition: cut the message into K equal contiguous blocks, one checksum per block -- optimal-looking and correct against scattered independent bit errors (any isolated flip lands in one block, always flips its parity), but a burst that fits inside one block only changes that block's flip-count, and an EVEN-length burst leaves every checksum's parity unchanged -- silently undetected no matter how many blocks you have",
+    "cyclic interleaving: route position i to checksum group (i mod K) instead of slicing the message into runs -- a length-L burst now lands ceil(L/K) bits in some groups and floor(L/K) in the rest, two consecutive integers that can never both be even, so the burst is smeared across every checksum simultaneously and is missed only on the narrow coincidence the channel plants (L an exact multiple of K with an even quotient); costs nothing on independent-error cases since isolated flips are routing-agnostic",
+    "headroom above strong: adapt the routing to the ACTUAL published length table per instance (e.g. a coprime-to-K interleave stride tuned per test, or a non-uniform group-size allocation that spends extra capacity on the length values the table weights most heavily) instead of the fixed stride-1 cyclic scheme"
+  ]
+}

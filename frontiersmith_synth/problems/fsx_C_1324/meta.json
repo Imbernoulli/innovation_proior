@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_1324",
+  "tier": "C",
+  "format": "C",
+  "family": "membrane-selectivity-design",
+  "eval_form": "quality-metric",
+  "theme": "Letting one molecule through and not its twin",
+  "title": "Letting One Molecule Through and Not Its Twin: Membrane Selectivity Design",
+  "objective": "max",
+  "source_frameworks": ["wave3-lens:molecular-materials"],
+  "strategies": [
+    "echo the wide-open, chemistry-free membrane -- reproduces the checker's own baseline construction (Ratio ~0.1)",
+    "pure size-sieving: binary-search the smallest single pore radius that still clears the throughput requirement, alpha always 0 -- works reasonably when target and twin differ noticeably in size, but on near-identical-twin cases collapses to the baseline because no radius separates them and no alpha=0 design can even reach the required throughput there",
+    "joint pore-distribution + chemistry optimization: blend a highly-selective small radius with a wide-open radius to trade permeability against selectivity, AND dial up the functionalization loading alpha to exploit the target/twin affinity gap (the solubility channel) -- an orthogonal trade-off curve that stays effective even when the size channel is blind",
+    "gradient-free joint search over (alpha, pore-blend) with finer resolution, or exact per-alpha optimization of the two-point blend weight"
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "id": "fsx_C_1307",
+  "tier": "C",
+  "format": "B",
+  "family": "predator-prey-manage",
+  "eval_form": "quality-metric",
+  "theme": "Culling one species to save another",
+  "title": "Cull Schedule for a Delay-Coupled Vegetation-Prey-Predator Cascade",
+  "objective": "max",
+  "source_frameworks": [
+    "wave3-lens:policy-simulator"
+  ],
+  "mechanisms": [
+    "trophic-cascade",
+    "time-delayed-response",
+    "population-floor-constraint"
+  ],
+  "innovation_hook": "Culling predators immediately boosts prey and triggers a prey overshoot that crashes the vegetation and then the prey. The insight is that the system's delay structure means intervention magnitude must be small and sustained rather than large and corrective.",
+  "strategies": [
+    "trivial: never cull (cull=0 every step) -- predators stay overabundant, prey stays chronically suppressed near a low but non-crashing equilibrium",
+    "greedy (the trap): a reactive proportional controller -- cull hard whenever simulated prey is below a target level, ease off once it recovers. Because predator numbers respond to culling immediately while prey's OWN growth/mortality depends on vegetation from tauV steps earlier, the sudden relief triggers a fast prey boom that overgrazes vegetation now; the crash in vegetation only reaches prey's growth/mortality term tauV steps later, by which time it is too late to react -- prey (and often the predator, gutted by the initial over-cull) crash through the population floor and go permanently extinct on the longer-delay instances",
+    "strong (the insight): read the instance's own delay length (tauV) and predator/prey rate constants, and commit to a SMALL, CONSTANT, SUSTAINED cull rate for the entire horizon -- calibrated to shrink as the delay grows, deliberately never triggering the reactive overshoot-then-starvation cascade. No feedback on the realized trajectory is needed or used.",
+    "headroom above strong: search directly (e.g. local perturbation of the whole cull sequence, tolerant of the instance's specific near-floor resonances) for the single best constant-or-slowly-varying schedule per instance, squeezing out the higher-scoring plateaus this problem's floor-triggered cliffs occasionally hide just past the calibrated-strong constant"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1176",
+  "tier": "B",
+  "format": "C",
+  "family": "load-disaggregate-meter",
+  "eval_form": "quality-metric",
+  "theme": "Which appliances made this whole-house power trace",
+  "title": "Whole-House Meter: Disaggregating Appliances by Edge Signature",
+  "objective": "max",
+  "strategies": [
+    "trivial: reproduce the checker's own naive reference -- every appliance cycles at its own MINIMUM legal dwell (min-off then min-on, repeating), completely ignoring the observed aggregate trace -> ~0.1",
+    "greedy: per-timestep instantaneous subset-sum -- at each t, greedily assign the observed aggregate value to appliances sorted by descending power (a 'subtract the levels' recipe), then run a simple debounce repair to make the guess dwell-legal. Never looks at WHICH timestep changed or a candidate's elapsed dwell, so it is fooled whenever two appliances share a power level but differ in legal dwell timing, or when several appliances are concurrently ON and their sum coincides with a different subset",
+    "strong: track each appliance's own (hypothesized state, elapsed-in-state) and explain the aggregate's STEP CHANGES (edges) one at a time -- a nonzero edge must equal exactly one appliance's own ON/OFF power delta, filtered to appliances that are currently dwell-ELIGIBLE to transition (elapsed already >= their own min dwell), breaking residual ties toward whichever candidate is closer to being FORCED (elapsed nearer its own max dwell). This is the edge-signature + per-appliance-legality insight the family is built around; it is then pushed through the same legality repair as a safety net",
+    "invalid: claims every appliance is ON for the entire trace, which exceeds every archetype's max-on dwell bound -> illegal -> 0"
+  ]
+}

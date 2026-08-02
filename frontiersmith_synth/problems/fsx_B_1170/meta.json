@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_1170",
+  "tier": "B",
+  "format": "C",
+  "family": "thermal-source-backtrack",
+  "eval_form": "quality-metric",
+  "theme": "Finding the hot spot from thermocouples at the edge",
+  "title": "Edge Thermocouples: Backtracking the Hot Spot",
+  "objective": "min",
+  "strategies": [
+    "fixed reference guess: all K sources at cell (1,1), onset 0, ignoring the boundary trace entirely",
+    "naive backward integration: literally reverse the diffusion stencil from the observed final boundary state, forcing the known trace at every backward step, with a mild ad hoc smoothing stabilizer; the reversal amplifies the highest spatial frequency by (1+4r) per step so it is only mildly wrong on low-r/short-T cases and diverges into noise on the higher-r/longer-T cases -- the trap",
+    "forward matched-pursuit search: precompute one stable forward simulation per candidate interior source position (impulse at onset 0), reuse it for every onset time via a time-shift (linearity of the equation), and greedily pick the (position, onset) that most reduces the residual sum of squared boundary-trace error, subtracting and repeating for all K sources -- never touches the unstable backward recursion"
+  ]
+}

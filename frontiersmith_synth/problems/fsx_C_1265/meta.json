@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1265",
+  "tier": "C",
+  "format": "D",
+  "family": "tsv-thermal-placement",
+  "eval_form": "flops",
+  "theme": "Stacking chips without cooking the middle one",
+  "title": "Stacking Chips Without Cooking the Middle One: TSV Thermal Via Placement",
+  "objective": "min",
+  "strategies": [
+    "no vias anywhere, spend zero of the area budget (trivial baseline)",
+    "rank columns by the TOPMOST die's own power reading divided by area cost, fill the budget greedily by that value-density (greedy, the obvious per-die + fractional-knapsack recipe)",
+    "compute the depth-weighted stacked hotspot profile W[c] = sum_m m*p[m][c] across the whole stack, via the highest-W columns first while affordable (strong, exploits vertical-heat-path + hotspot-coupling and the min-max shape of the objective)",
+    "true joint optimum over (partition-free) via sets under adversarial, non-monotone cost structure (open ceiling, uncovered)"
+  ]
+}

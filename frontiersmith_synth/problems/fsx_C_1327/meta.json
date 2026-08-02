@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1327",
+  "tier": "C",
+  "format": "C",
+  "family": "thin-film-stack-design",
+  "eval_form": "quality-metric",
+  "theme": "Layers of glass that cancel the reflection",
+  "title": "Coating the Lens: Worst-Case Anti-Reflection Stack Design",
+  "objective": "max",
+  "strategies": [
+    "single-layer baseline: index closest to sqrt(n0*n_sub), nominal normal-incidence quarter-wave thickness (reproduces the checker baseline B, ~0.1)",
+    "nominal-only greedy: search material sequences and thicknesses to minimize reflectance AT theta0=0 with NO thickness error -- finds a razor-sharp nominal null that a real coating run and any off-axis ray immediately destroy",
+    "worst-case-robust strong: phase-matches each candidate stack to the CENTER of the angle range (not normal incidence) and selects/refines using the checker's own exact worst-case objective (all 3^L tolerance combos x the full angle grid) -- trades a shallower nominal minimum for a broad plateau that survives both angle sweep and deposition drift",
+    "invalid: material index out of [1,K] -> rejected"
+  ]
+}

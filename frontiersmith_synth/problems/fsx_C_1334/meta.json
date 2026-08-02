@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1334",
+  "tier": "C",
+  "format": "D",
+  "family": "reaction-network-prune",
+  "eval_form": "flops",
+  "theme": "Which reactions actually matter",
+  "title": "Pruning a Kinetic Reaction Network Under an Accuracy Bound",
+  "objective": "min",
+  "strategies": [
+    "keep every reaction (trivial baseline)",
+    "rank by rate constant, only ever consider the slower half prunable, validate against a single reference condition (rate-magnitude trap)",
+    "one-shot per-reaction sensitivity analysis (simulated removal impact) across ALL held-out conditions, commit removals in ascending impact order under the true accuracy-preservation bound",
+    "iterative multi-round sensitivity refinement with early stopping heuristics"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_1306",
+  "tier": "C",
+  "format": "B",
+  "family": "reservoir-release-policy",
+  "eval_form": "quality-metric",
+  "theme": "Water you release now is water you lack later",
+  "title": "Water You Release Now Is Water You Lack Later: Reservoir Release Policy Against Degrading Forecast Skill",
+  "objective": "max",
+  "source_frameworks": ["wave3-lens:policy-simulator"],
+  "strategies": [
+    "release exactly today's demand every day: no storage management, no forecast use, no flood awareness (reproduces the evaluator's weak baseline reference, ~0.1)",
+    "fixed high rule-curve target: keep storage near a constant high fraction of capacity for supply security, reacting only to today's forecast at face value with no lookahead and no regard for how trustworthy that forecast is at this lead time",
+    "skill-tracking buffer sizing: size the target storage level day by day from the forecast-skill-weighted unseen risk plus the skill-discounted visible signal, taking (via a backward-reachability scan over a lookahead window) the tightest storage level that still allows draining to every upcoming risk day's required headroom within the release-rate cap -- holds real buffer when skill decays fast, sits close to full when skill stays good far enough out to react in time",
+    "stronger variants: model predictive control / rolling re-optimization of the release trajectory against the forecast-skill-weighted risk surface, or a stochastic-dynamic-programming relaxation over plausible inflow realizations weighted by skill"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1293",
+  "tier": "C",
+  "format": "B",
+  "family": "tactical-squad-policy",
+  "eval_form": "quality-metric",
+  "theme": "Units that win by not fighting fair",
+  "title": "The Hill Isn't Worth Less Than the Kill",
+  "objective": "max",
+  "strategies": [
+    "trivial: never move, never attack -- reproduces the evaluator's own calibrated 0.1 baseline exactly",
+    "greedy: the obvious first pass -- every turn, whichever enemy currently has the globally lowest HP, beeline to a reachable tile adjacent to it and attack, with zero regard for the tile stood on; maximizes immediate kills but abandons the two disclosed objective (hill) tiles the instant any enemy is reachable and never returns for them",
+    "strong: value every reachable tile by the defense bonus it grants you and denies the enemy for the turns that follow (terrain_defense*2, +5 on an objective tile) and only let an attack outrank good ground when it is pooled (per-turn focus-fire bookkeeping across already-processed squadmates) to finish a kill outright this turn; otherwise hold the best reachable tile and let the fixed, fully-disclosed enemy AI walk into an unfavorable fight",
+    "headroom above strong: model the enemy AI's own deterministic pathing/target-selection rule one turn ahead to pre-position a kill zone (a hill tile from which two units simultaneously finish two different incoming enemies before they can attack), instead of only reacting to who is already reachable this turn"
+  ]
+}

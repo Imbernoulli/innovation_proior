@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1224",
+  "tier": "C",
+  "format": "D",
+  "family": "serializer-schema-evolve",
+  "eval_form": "flops",
+  "theme": "Reading tomorrow's data with today's code",
+  "title": "Wire-Tag Reservation Across Schema Versions",
+  "objective": "max",
+  "strategies": [
+    "declaration-order tag assignment, ignoring frequency entirely (trivial)",
+    "current-frequency-greedy: sort version-1 fields by their own frequency, bolt on later fields FCFS (greedy)",
+    "lifetime-weighted reservation: sort every field (including unborn ones) by frequency times versions-active before committing any tag (strong)",
+    "joint tag+encoding co-design under the full multi-version workload (open ceiling, uncovered)"
+  ]
+}

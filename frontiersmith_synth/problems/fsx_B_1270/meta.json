@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1270",
+  "tier": "B",
+  "format": "C",
+  "family": "reinsurance-layer-buy",
+  "eval_form": "quality-metric",
+  "theme": "Buying protection for the disasters you cannot absorb",
+  "title": "Layering Reinsurance Against a Ruinous Year",
+  "objective": "maximize",
+  "strategies": [
+    "trivial: spread the premium budget as an equal participation share across every catalog layer (the checker's own reference construction)",
+    "greedy: buy the cheapest rate-on-line layers first at full participation until the budget runs out, ignoring whether the purchased bands are contiguous from retention",
+    "strong: re-simulate the full scenario set (occurrence cap, aggregate reinstatement cap, ruin-on-breach) for every contiguous window of the tower the budget can fund, and keep whichever program actually survives and profits best -- exploiting contiguity of coverage rather than nominal recovery-per-premium",
+    "invalid: emits an out-of-range participation share (-1) for every layer (infeasible)"
+  ]
+}

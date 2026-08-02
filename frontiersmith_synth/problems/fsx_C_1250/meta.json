@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1250",
+  "tier": "C",
+  "format": "D",
+  "family": "approximate-multiplier-design",
+  "eval_form": "flops",
+  "theme": "Multiplying almost right to save power",
+  "title": "Multiplying Almost Right: Compensated Truncation for MAC Chains",
+  "objective": "min",
+  "strategies": [
+    "full-precision every multiplier (trivial, matches the checker's own baseline)",
+    "one globally uniform floor-truncation depth, no compensation (greedy)",
+    "per-chain depth search that trades a fixed compensation cost for a strictly deeper, unbiased truncation on long accumulation chains (strong)",
+    "true joint per-position (t_i,c_i) area minimization under the chain budgets (open ceiling, uncovered)"
+  ]
+}

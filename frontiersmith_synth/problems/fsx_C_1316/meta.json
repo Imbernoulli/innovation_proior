@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_1316",
+  "tier": "C",
+  "format": "C",
+  "family": "substituent-property-tune",
+  "eval_form": "quality-metric",
+  "theme": "Hanging groups off a ring to hit a target",
+  "title": "Ring Substitution Pattern Under a Steric-Clash Correction and a Synthesis-Step Budget",
+  "objective": "max",
+  "source_frameworks": ["wave3-lens:molecular-materials"],
+  "strategies": [
+    "trivial: leave every position unsubstituted (H everywhere) -- the checker's own reference construction",
+    "greedy: additive-model value-density knapsack -- rank substituents by (electronic + steric bonus)/synthesis-cost and pack the single best-density type into consecutive ring positions until the budget runs out, ignoring ring adjacency entirely",
+    "strong: exact cyclic dynamic program over (synthesis-steps used, previous position's substituent) that prices the ring-adjacency steric-clash correction exactly at every edge, so bulky substituents are spaced apart (or swapped for a milder alternative) whenever packing them adjacent would flip their combined contribution negative",
+    "invalid: out-of-range substituent ids at every position -> rejected before scoring"
+  ]
+}

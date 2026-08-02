@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1254",
+  "tier": "C",
+  "format": "D",
+  "family": "power-gating-partition",
+  "eval_form": "flops",
+  "theme": "Turning off the parts nobody is using",
+  "title": "Turning Off the Parts Nobody Is Using: Power-Gating Partition",
+  "objective": "min",
+  "strategies": [
+    "hold everything on forever, never gate anything (trivial baseline)",
+    "gate as fine-grained as possible (one domain per block, round-robin pack when the domain cap binds) and gate every idle run regardless of length (greedy, the obvious 'turn it off whenever idle' recipe)",
+    "compute the size-scaled idle-run breakeven threshold from L, W and each candidate domain's size, then run true agglomerative clustering (re-pricing every merge's exact net energy delta after each step) to decide which blocks may share a domain, taking free merges and paying for forced ones cheapest-first until the domain cap is met (strong)",
+    "exact joint optimum over all partitions and thresholds (open ceiling, uncovered -- partitioning into <=D domains to minimize coverage loss is a hard combinatorial clustering problem)"
+  ]
+}

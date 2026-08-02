@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_1218",
+  "tier": "C",
+  "format": "C",
+  "family": "wire-protocol-transcode",
+  "eval_form": "quality-metric",
+  "theme": "Speaking an old protocol over a new engine",
+  "title": "Handshake Shim: Emulating Unmappable Wire Messages Under Observable-State Fidelity",
+  "objective": "maximize",
+  "source_frameworks": ["wave3-lens:protocol-conformance"],
+  "strategies": [
+    "do-nothing shim: emit zero NEW messages for every OLD type (reproduces the checker's own baseline -> ~0.1)",
+    "safe 1:1 shim: substitute a single NEW message only where an exact match exists, refuse (no-op) on unmappable OLD types -- correct until the first unmappable type in a session, then the shim's own carried-forward state diverges and every later checkpoint in that session is wrong too",
+    "compositional shim: search sequences of up to 2 NEW messages via matrix composition (exploiting that internal scratch resets to 0 per call, so the observable-projected composition is an exact affine map of the observable input for every session) -- recovers an exact emulation for every OLD type, so state never cascades wrong",
+    "any table that mixes exact single/double matches with a small complexity budget, trading off unnecessary extra emitted messages against fidelity"
+  ]
+}

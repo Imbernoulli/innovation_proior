@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1246",
+  "tier": "C",
+  "format": "D",
+  "family": "ann-index-build",
+  "eval_form": "flops",
+  "theme": "Fast nearest neighbours without checking everything",
+  "title": "Don't Just Connect the Closest: An Entry Set and a Degree-Budgeted Graph for Greedy Search",
+  "objective": "min",
+  "strategies": [
+    "index-order graph + first-R indices as entries (no geometry at all -- baseline)",
+    "pure kNN graph (each node -> its M nearest neighbours) + first-R indices as entries -- the obvious recipe, all edges and all entries local",
+    "diversified pruning: reserve some of each node's degree budget for far, non-dominated 'bridge' edges, and choose entries by global farthest-point sampling for cluster coverage",
+    "alternative untested family: random-restart local search over entry sets with a fixed kNN graph"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1325",
+  "tier": "C",
+  "format": "D",
+  "family": "retrosynthesis-route-cost",
+  "eval_form": "flops",
+  "theme": "Working backwards from the molecule you want",
+  "title": "Delivered-Cost Retrosynthesis: Convergent Routes Beat Short Ones",
+  "objective": "min",
+  "strategies": [
+    "always take the smallest-id producing reaction (naive baseline, no search)",
+    "minimize total reaction-step count, tie-broken by additive cost ignoring yield (greedy shortest route)",
+    "bottom-up exact minimum delivered-cost-per-unit DP with yield-weighted recursion (strong: rewards convergent branching and correctly-placed protecting groups)",
+    "true joint optimization over batching/sharing raw-material purchases across siblings (open, unreached ceiling)"
+  ]
+}

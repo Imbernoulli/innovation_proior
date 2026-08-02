@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1273",
+  "tier": "B",
+  "format": "C",
+  "family": "pension-glidepath-design",
+  "eval_form": "quality-metric",
+  "theme": "Getting less risky at exactly the wrong speed",
+  "title": "State-Dependent Glidepath: De-Risking on Funded Ratio and Horizon Together",
+  "objective": "max",
+  "strategies": [
+    "trivial: fully-immunized policy (0% risky every year, every bucket) -- the checker's own baseline",
+    "greedy: linear age-based glidepath, ignoring funded ratio entirely (industry default)",
+    "strong: coordinate-descent local search over the (year, funded-ratio-bucket) policy grid, discovering a state-dependent glidepath that de-risks on being overfunded and stays risky while underfunded with horizon left",
+    "invalid: out-of-range / non-finite policy grid"
+  ]
+}

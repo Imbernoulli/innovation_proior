@@ -1,0 +1,18 @@
+{
+  "id": "fsx_C_1238",
+  "tier": "C",
+  "format": "C",
+  "family": "feature-flag-dependency",
+  "eval_form": "quality-metric",
+  "theme": "Turning on features that depend on each other",
+  "title": "Rollout Order Under Flag Dependencies",
+  "objective": "max",
+  "mechanisms": ["flag-interaction-graph", "invalid-combination-exclusion", "rollout-value-ordering"],
+  "innovation_hook": "Enabling flags in value order hits invalid combinations that must be rolled back, wasting rollout windows. The insight is treating it as ordering under a constraint graph so every prefix is a valid configuration.",
+  "strategies": [
+    "trivial: enable only flags with zero REQUIRES and zero CONFLICTS, in index order (reproduces the checker baseline B -> ~0.1)",
+    "greedy: each window chase the highest-value ready flag; if it conflicts with an active flag, roll back the cheapest active blocker to make room -- optimal on independent-flag warm-ups, but thrashes (evict/re-enable churn) on tightly coupled conflict clusters, burning windows and permanently forfeiting rolled-back flags",
+    "strong: search subsets of flags that are REQUIRES-closed and CONFLICTS-independent (every prefix of any enabling order is automatically valid), then order the chosen subset by ready-highest-value-first so no rollback is ever needed",
+    "invalid: repeatedly re-touches the same flag -> rejected"
+  ]
+}

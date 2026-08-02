@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1340",
+  "tier": "C",
+  "format": "C",
+  "family": "glass-anneal-schedule",
+  "eval_form": "quality-metric",
+  "theme": "Cooling glass so it does not remember the stress",
+  "title": "The Narrow Band: Localized Slow-Cooling for Glass Annealing",
+  "objective": "minimize",
+  "strategies": [
+    "trivial: reproduce the checker's own extra-cautious reference exactly -- a single constant cooling rate for the whole schedule, bisected against a DELIBERATELY STRICTER tolerance budget (tol/div) than actually required (F==B, scores ~0.1)",
+    "greedy: the obvious 'uniformly slow cooling is safe' approach -- bisect for the single fastest constant rate that meets the REAL tolerance everywhere. Smarter than trivial (no wasted safety margin) but still pays the worst-case rate (set by the narrow relaxation-time-critical band) for the entire schedule, including wide stretches where cooling could safely run at rate_max",
+    "strong: exploit that tau(T)=tau0*exp(k/T) varies exponentially with temperature, so the binding constraint is localized to a narrow band -- search over all contiguous band placements/widths, hold rate_max outside the band and a bisected-minimal slow rate inside it, respect the cooling-rate-gradient cap via a slew-rate limiter; keep the fastest schedule found",
+    "invalid: uniform ~1e-6 s durations everywhere -> implied cooling rate far exceeds rate_max (and jumps far past rate_grad_max from rest) -> rejected"
+  ]
+}

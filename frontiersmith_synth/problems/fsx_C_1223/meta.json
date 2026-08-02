@@ -1,0 +1,18 @@
+{
+  "id": "fsx_C_1223",
+  "tier": "C",
+  "format": "C",
+  "family": "parser-error-recovery",
+  "eval_form": "quality-metric",
+  "theme": "Reading the rest of the file after a syntax error",
+  "title": "Cascading Recovery: Context-Aware Panic-Mode Synchronization",
+  "objective": "max",
+  "mechanisms": ["panic-mode-sync-set", "cascading-error-suppression", "recovery-quality-metric"],
+  "innovation_hook": "Skipping to the next semicolon recovers fast but produces phantom cascades or suppressed errors; the insight is choosing synchronization tokens by which enclosing construct (statement / paren-group / for-header) is still open on the parse stack, not a single fixed token set.",
+  "strategies": [
+    "empty-everywhere: give up after the first error in each program (reproduces the checker baseline B -> ~0.1)",
+    "fixed always-resync-to-`;`: fast and fine for isolated statement-level errors, but inside a paren group or for-header it either swallows a sibling opening bracket (later phantom mismatch) or swallows a second nearby error (suppression)",
+    "context-aware table (statement:`; }`, paren:`, )`, for-header:`; )`): each construct's own terminator is found first, so it neither over-skips nor cascades",
+    "invalid: out-of-range codes -> rejected"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_1321",
+  "tier": "C",
+  "format": "C",
+  "family": "catalyst-site-place",
+  "eval_form": "quality-metric",
+  "theme": "Where to put the active sites on a surface",
+  "title": "Placing Active Sites Along a Diffusion-Fed Strip",
+  "objective": "max",
+  "source_frameworks": ["wave3-lens:molecular-materials"],
+  "strategies": [
+    "trivial: pack all B sites into one contiguous block centered in the strip -- the checker's own reference construction",
+    "greedy: split the budget between the two boundary reservoirs and pack each half as a contiguous block touching its reservoir ('put sites where the reactant enters') -- ignores both the crowding penalty between adjacent sites and the diffusion-limited starvation of any dense cluster's interior",
+    "strong: estimate the diffusion length from D and v_max, then search a handful of evenly-spaced lattice placements at strides/offsets scaled around that length (plus a plain uniform partition), scoring each with an internal copy of the exact reaction-diffusion-poisoning protocol and keeping the best -- exploits the insight that spacing sites near the diffusion length trades nominal site count for much higher per-site turnover",
+    "invalid: every position activated (L ones, count = L > B for all instances) -> budget exceeded, rejected before scoring"
+  ]
+}

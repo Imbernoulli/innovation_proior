@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1201",
+  "tier": "B",
+  "format": "E",
+  "family": "thermal-runaway-onset",
+  "eval_form": "quality-metric",
+  "theme": "The temperature curve that suddenly turns up",
+  "title": "Thermal Runaway Onset — self-heating vs a capped cooling capacity",
+  "objective": "max",
+  "strategies": [
+    "constant predictor (median of train T, ignores Ta entirely) -> reproduces the checker baseline ~0.1",
+    "greedy: fit a smooth quadratic T~c0+c1*Ta+c2*Ta^2 to the sub-critical training rows by least squares and never switch branches (THRESH set to a huge sentinel); this tracks the visible near-critical curvature reasonably but keeps extrapolating the same smooth shape past the last training row -> badly misses the super-critical jump to Tfail, and drifts on the steepest near-critical points too",
+    "strong: exploit that b and h are GIVEN -- recover the self-heating prefactor A row-wise from the exact steady-state identity A=h*(T_i-Ta_i)*exp(-b*T_i), take a robust (median) estimate, then locate the true threshold analytically as the ambient where generation first reaches the given cooling ceiling Hmax (comparing generation vs removal capacity, not extrapolating temperature); emit THRESH at that ambient and ABOVE as the given Tfail constant, with BELOW a light local quadratic fit for the pre-threshold branch",
+    "headroom above strong: robustly down-weight noisy training rows when estimating A (e.g. trimmed mean instead of a single median), and fit a rational/exponential BELOW branch that tracks the pre-threshold curvature more tightly than a quadratic, pushing held-out error further toward the noise floor"
+  ]
+}

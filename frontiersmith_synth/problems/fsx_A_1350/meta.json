@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1350",
+  "tier": "A",
+  "format": "C",
+  "family": "vibrating-graph-spectrum",
+  "eval_form": "quality-metric",
+  "theme": "Tuning a network so it rings at the right pitch",
+  "title": "Spectral Tuning: Placing a Network's Ringing Frequencies",
+  "objective": "max",
+  "strategies": [
+    "uniform stiffness: midpoint of every edge's weight range, ignore the target spectrum",
+    "per-eigenvalue independent hill climbing: repeatedly find the single worst eigenvalue and nudge the edge most sensitive to it alone",
+    "coupled Gauss-Newton on the exact eigenvalue-perturbation Jacobian: solve a damped joint least-squares system across all target eigenvalues at once, exploiting rank-1 interlacing to move weights in the order-respecting direction",
+    "global trace-matching plus local reshaping: fix sum(lambda_i)=2*sum(w_e) exactly first, then redistribute weight among edges"
+  ]
+}

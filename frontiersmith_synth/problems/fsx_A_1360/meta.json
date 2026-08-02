@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1360",
+  "tier": "A",
+  "format": "C",
+  "family": "ramsey-coloring-construct",
+  "eval_form": "quality-metric",
+  "theme": "Coloring to avoid every monochromatic clique",
+  "title": "Dual-Channel Relay Mesh: Suppressing Monochromatic Cliques",
+  "objective": "max",
+  "strategies": [
+    "block baseline: partition nodes into groups of size (k-1) so no group alone can hold a k-clique, color within-group 0 and between-group by group-index parity (reproduces the checker baseline, not clique-count-aware)",
+    "random + bounded local repair: seed a uniform-random channel assignment, then spend a FIXED edge-flip budget greedily removing monochromatic k-cliques (the obvious recipe; plateaus on larger n since the budget does not scale with the edge count)",
+    "quadratic-residue (Paley) construction + the SAME bounded repair budget: color edge (i,j) by whether (i-j) is a quadratic residue mod the smallest prime p=1(mod 4) with p>=n -- an explicit, verifiable algebraic construction (the same family behind the extremal (4,4;17) Ramsey graph) that starts far closer to clique-free, so the identical repair budget goes much further",
+    "(headroom above strong) smarter algebraic constructions -- e.g. combining residues mod two primes via CRT, or a computer-search-refined difference set -- could push the violation count down further still"
+  ]
+}

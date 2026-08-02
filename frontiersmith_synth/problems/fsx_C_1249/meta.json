@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1249",
+  "tier": "C",
+  "format": "D",
+  "family": "noc-topology-design",
+  "eval_form": "flops",
+  "theme": "Wiring the on-chip network",
+  "title": "On-Chip Network Wiring: Traffic-Shaped Express Links Under a Link Budget",
+  "objective": "min",
+  "strategies": [
+    "minimal ring topology only (trivial)",
+    "physical-distance-sorted local mesh, budget-filled, traffic-blind (greedy)",
+    "cheap ring backbone plus ROI-greedy express links chosen from the measured traffic matrix, re-optimized against live congestion (strong)",
+    "joint topology+routing co-optimization under the exact objective (open ceiling, uncovered)"
+  ]
+}

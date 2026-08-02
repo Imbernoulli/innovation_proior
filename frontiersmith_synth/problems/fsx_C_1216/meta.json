@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1216",
+  "tier": "C",
+  "format": "C",
+  "family": "handshake-state-minimize",
+  "eval_form": "quality-metric",
+  "theme": "A handshake that must refuse every forbidden order",
+  "title": "A Handshake That Must Refuse Every Forbidden Order",
+  "objective": "max",
+  "strategies": [
+    "trivial: submit the raw trie-over-legal-traces plus one explicit reject sink, unmerged -- reproduces the checker's own baseline construction exactly (score ~0.1 every case)",
+    "greedy: run the textbook minimal-acyclic-DFA (dictionary/DAWG) merge over the trie using ONLY the legal-trace continuations on record, then patch every state's still-missing symbol transitions by routing them back to the START state (cheap, no extra sink state needed) -- performs the same legitimate suffix-sharing compaction as strong on ordinary cases, but a forbidden trace that splices in one never-seen symbol then resumes with any legal trace walks back through the start state and gets wrongly accepted: it merges on acceptance behaviour only",
+    "strong: build the trie plus an explicit, non-accepting, self-looping sink for every off-legal-prefix symbol (a total, always-safe automaton for the legal language), THEN run proper Moore/Hopcroft partition refinement over the FULL alphabet -- two states merge only if every one of their m outgoing edges (including forced sink edges) lands in matching classes, so rejection behaviour is preserved by construction while genuinely-equivalent states (e.g. two different handshake variants that permit exactly the same completions) still collapse into one",
+    "(headroom above strong): strong computes the exact Myhill-Nerode minimum for the FULL language L (correct on every string in Sigma*, a stronger guarantee than the checker demands); the checker only ever exercises the finitely many traces in L union F, so a solver that treats every OTHER string as a true don't-care -- merging states whose behaviour differs only on strings neither tested set ever visits, and reusing existing accepting/non-accepting states for undefined symbols instead of a dedicated sink wherever doing so is provably still safe on L union F -- can legally push below strong's state count on this specific instance"
+  ]
+}

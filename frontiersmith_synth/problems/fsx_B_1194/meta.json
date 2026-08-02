@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1194",
+  "tier": "B",
+  "format": "E",
+  "family": "wake-shedding-forecast",
+  "eval_form": "quality-metric",
+  "theme": "When does the smooth flow start to shed vortices",
+  "title": "Wake Onset Forecast — from a subcritical decay signature to the post-onset amplitude",
+  "objective": "min",
+  "strategies": [
+    "trivial: predict a constant amplitude (0), i.e. 'flow never sheds' -- reproduces the checker's own baseline exactly ~0.1; fitting the training AMPLITUDE column directly collapses to the same constant since every training row is subcritical noise around zero",
+    "greedy: exploit the decay-rate column with an honest OLS fit (decay_rate ~ alpha + beta*R) to recover the linear approach to onset, then report the extrapolated growth rate g(R)=relu(-alpha-beta*R) ITSELF as the predicted amplitude for R past onset. This correctly finds the onset location but ignores the given Landau constant L and the cubic saturation it encodes -- so it badly under-predicts near onset (amplitude ~ sqrt(g) there, not ~ g) and drifts at large R",
+    "strong: same OLS extraction of the growth-rate line, but apply the stated Landau equilibrium relation A(R)=sqrt(relu(g(R))/L) using the given L -- exploiting the amplitude-growth-rate mechanism instead of reporting the growth rate as if it were the amplitude. Tracks the true post-onset branch far better, including the near-onset region where the sqrt shape matters most",
+    "headroom above strong: robustify the linear fit against the noisiest cases (e.g. weighted / outlier-trimmed regression instead of plain OLS) to shrink Rc/a estimation error, which is what keeps even a correct-shape strong solution off the ceiling on the far-supercritical band"
+  ]
+}

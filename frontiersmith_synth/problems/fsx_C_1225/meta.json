@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1225",
+  "tier": "C",
+  "format": "C",
+  "family": "rate-limiter-fairness",
+  "eval_form": "quality-metric",
+  "theme": "Throttling abusers without punishing everyone",
+  "title": "Hierarchical Rate Limiting Under a Cardinality-Explosion Attack",
+  "objective": "max",
+  "strategies": [
+    "single shared bucket (H=0,G=1, fixed small cap/rate): reproduces the checker's own baseline, ~0.1",
+    "exact per-key limiting: give every distinct key its own bucket sized by volume alone (no memory awareness, no label awareness) -- optimal on tiny warm-up traces, blows the memory budget (Ratio 0) on cardinality-explosion attack traces, and even when feasible still grants abusive heavy hitters generous buckets just because they are loud",
+    "net-contribution hierarchy: rank keys by |good-abusive| (not raw volume), isolate only the O(1) keys whose net contribution is large in either direction (near-zero bucket for abusive heavy hitters, generous dedicated bucket for good heavy hitters), and pool everyone else -- including the entire cardinality-explosion tail -- into many small hash-routed shared buckets sized to the aggregate leftover legitimate rate",
+    "invalid: declares H+G far above the memory budget M -> rejected (0.0)"
+  ]
+}

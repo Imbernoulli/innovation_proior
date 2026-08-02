@@ -1,0 +1,86 @@
+# Bidders Who Want Bundles or Nothing
+
+## Problem
+
+You run a winner-determination engine for a combinatorial auction. There are `M`
+items, each with a supply limit (how many copies exist). There are `N` bids; bid `i`
+requests a **bundle** of `k_i` distinct items and offers a price `p_i` for that exact
+bundle, **all or nothing** — you cannot award a bidder half their bundle. You may
+accept any subset of bids such that, for every item, the number of accepted bids
+requesting it does not exceed its supply.
+
+Some bidders' bundles are worth far more together than the sum of what the pieces
+would fetch sold individually — a bundle bid can request an item that is *also*
+wanted, alone, by a smaller bidder. Accepting the individually-attractive small bids
+first can permanently block a bundle that was worth much more as a whole. Some
+groups of bids also form tightly overlapping rings around a small set of scarce
+items (every bid in the ring wants two of the ring's items); such rings are exactly
+the classic case where the linear relaxation of winner-determination is *fractional*
+(it can "half-accept" every bid in the ring) while the integral truth is much
+smaller and requires deciding the ring as a unit, not bid-by-bid. Bids never share
+items across unrelated bidder groups only by coincidence of the input's construction
+— but you are not told which items belong to which structure; you must find it.
+
+Maximize total price collected from accepted bids.
+
+## Input
+
+```
+M N
+c_1 c_2 ... c_M
+```
+`c_j` = supply of item `j` (1-indexed). Then `N` lines, bid `i` (1-indexed, in the
+order given):
+```
+k p item_1 item_2 ... item_k
+```
+`k` = bundle size, `p` = price, `item_1..item_k` distinct items in `[1,M]`.
+
+## Output
+
+```
+c
+id_1 id_2 ... id_c
+```
+`c` = number of accepted bids, followed by their distinct 1-indexed ids (any order).
+If `c = 0`, print `0` and an empty second line.
+
+## Feasibility
+
+Every `id` must be a distinct bid index in `[1,N]`. For every item `j`, the number
+of accepted bids whose bundle contains `j` must not exceed `c_j`. Any violation, or
+trailing tokens after the id list, scores `0`.
+
+## Objective
+
+Maximize `F` = sum of `p_i` over accepted bids `i`.
+
+## Scoring
+
+The checker computes an internal baseline `B` by scanning the bids **in the order
+given in the input** and greedily accepting each bid that still fits (no sorting,
+no lookahead) — the "take whatever arrives, if it still fits" reference. Your score
+for a test case is
+```
+ratio = min(1000, 100 * F / max(1, B)) / 1000
+```
+so matching the order-of-arrival baseline scores `0.1`, and real improvement scores
+higher, capped at `1.0` (ten times the baseline). Per-test ratios are averaged.
+
+## Constraints
+
+* `1 <= M <= 300`, `1 <= N <= 400`.
+* `1 <= k_i <= 7`, `1 <= p_i <= 2000`.
+* `1 <= c_j <= 6`.
+* Time limit: 3 s. Memory limit: 512 MB.
+
+## Example
+
+Items 1..3, each supply 1. Three bids: bid 1 wants `{1,2,3}` for `70`; bid 2 wants
+just `{1}` for `30`; bids 3,4 want `{2}` and `{3}` for `22` each. Taken in input
+order, the baseline accepts bid 1 (`{1,2,3}`, uses all supply) and nothing else:
+`B = 70`. A bidder who instead grabs the individually-cheap-looking bids 2,3,4
+(`30+22+22=74`) actually does *better* here — but flip the prices (bid 1 = `120`,
+bids 2..4 = `30` each) and taking the small bids first (`90` total) permanently
+blocks the `120` bundle: only recognizing which bids share scarce items with a much
+larger bundle, and reserving those items for it, wins the maximum.

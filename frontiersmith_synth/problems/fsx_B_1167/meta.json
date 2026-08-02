@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_1167",
+  "tier": "B",
+  "format": "C",
+  "family": "gravity-density-inversion",
+  "eval_form": "quality-metric",
+  "theme": "Reading buried density from gravity readings on the surface",
+  "title": "Depth-Blind No More: Recovering a Buried Density Layer From Surface Gravity",
+  "objective": "max",
+  "strategies": [
+    "do-nothing / explain-the-peak baseline: find the single given station with the largest reading and place ONE cell of density at the shallowest layer directly under it, magnitude chosen to reproduce that one reading -- the checker's own internal reference construction, so this always scores exactly 0.1",
+    "depth-blind per-station greedy: invert every given station INDEPENDENTLY assuming the source is at the shallowest layer (z=1) with no lateral coupling between columns -- rho[1][c] = reading(c) / K(0,1); the point-mass kernel decays roughly as 1/depth^2 so the shallowest layer is always the 'cheapest' explanation of any near-field reading, and this recipe explains the numbers reasonably well locally, but every activated cell sits at z=1 -- so on the six of ten cases where the true body is actually deep (z_true>=4) its recovered region has ZERO overlap with the truth, no matter how well the numbers fit",
+    "layer-continuity hypothesis search with depth-weighted regularization: search over candidate (depth layer z, contiguous column span [c_lo,c_hi]) pairs -- exploiting the prior that a real buried layer is one contiguous span at one depth, not scattered free cells -- solve the single remaining magnitude parameter by least squares against the given readings for each candidate (the kernel's LATERAL shape, not just its on-axis amplitude, differs meaningfully with depth, so a multi-station residual can discriminate depth even though a single amplitude reading cannot), then rank candidates by residual inflated by a factor (1 + LAMBDA/depth(z)^2) that penalizes shallow explanations, breaking near-ties toward NOT defaulting to the cheap shallow guess -- exactly the regularization that removes greedy's shallow-plastering bias"
+  ]
+}

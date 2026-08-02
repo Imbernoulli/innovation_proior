@@ -1,0 +1,23 @@
+{
+  "id": "fsx_A_1343",
+  "tier": "A",
+  "format": "A",
+  "family": "nim-variant-invariant",
+  "eval_form": "quality-metric",
+  "theme": "Finding the rule that says who wins",
+  "title": "Certifying the Losing Positions",
+  "objective": "max",
+  "seed_problem": "N-pile disjunctive-sum subtraction game with a per-pile finite move menu S_i; characterize which positions are losses for the player to move (P-positions), at pile sizes far beyond what direct game-tree/DP search can reach.",
+  "mutation": "composite: replace 'decide P-position for one given position' with 'submit a compact periodic invariant certificate (period + table) per pile, scored on both (a) how well its XOR-zero rule classifies a large held-out set of query positions -- including astronomically large pile sizes no brute-force DP can touch -- and (b) whether the table is itself a self-consistent Grundy invariant under the pile's own move menu (cyclic mex-closure check), so a table that merely happens to fit visible data without actually respecting the game's move structure is caught and penalized independently of accuracy.",
+  "mechanisms": [
+    "invariant-discovery",
+    "losing-position-characterization",
+    "move-closure-verification"
+  ],
+  "strategies": [
+    "trivial: claim every pile always contributes invariant value 0 (period 1) -- predicts every position is a loss for the mover; this is also the checker's own baseline construction -> ratio ~0.1",
+    "greedy (obvious recipe): honestly DP the real recurrence up to a = max(S_i) for each pile (so that window is exactly correct), then -- recalling the classic 'remove 1..C' Bounded-Nim fact that period = C+1 -- submit that window untested as the period and tile it forever; correct on small held-out queries, silently wrong on huge ones because a general/sparse move menu is almost never actually periodic with period max(S_i)+1",
+    "insight (strong): DP each pile's Grundy sequence out to a long prefix, then search for and VERIFY a period against a large held-back suffix window before trusting it (certify, don't just fit); the discovered (period, canonical block) is a genuine Sprague-Grundy invariant, so it both classifies held-out positions of any size correctly and passes the cyclic move-closure recurrence by construction -- exploiting exactly the family's hook: brute force works on small boards but cannot certify at scale, only a verified invariant does",
+    "invalid: declares a certificate table value (999999) far outside the allowed [0,63] range -> checker rejects -> ratio 0"
+  ]
+}

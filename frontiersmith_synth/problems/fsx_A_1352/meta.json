@@ -1,0 +1,17 @@
+{
+  "id": "fsx_A_1352",
+  "tier": "A",
+  "format": "C",
+  "family": "sperner-coloring-find",
+  "eval_form": "quality-metric",
+  "theme": "Finding the small colorful triangle",
+  "title": "Finding the Small Colorful Triangle: Door-to-Door Sperner Search",
+  "objective": "max",
+  "source_frameworks": ["wave3-lens:games-and-structures"],
+  "strategies": [
+    "corner-guess certificate: hand in the mandatory door-to-door certificate but never verify it against the real target -- fails feasibility",
+    "exhaustive full-grid scan: query every vertex of the grid to be sure, then still build the mandatory certificate -- reproduces the checker's own worst-case baseline",
+    "row-major scan-then-certify: scan triangles in a fixed order until one is panchromatic, then bolt on the required certificate -- pays for the whole wasted scan",
+    "door-to-door path-following: exploit the boundary condition to locate the unique 0-1 entry door, then follow doors (parity argument) straight to the panchromatic triangle with no wasted queries"
+  ]
+}

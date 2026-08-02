@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1330",
+  "tier": "C",
+  "format": "E",
+  "family": "corrosion-rate-extrapolate",
+  "eval_form": "quality-metric",
+  "theme": "How long the pipe lasts in a chemistry never tested",
+  "title": "Passive-Film Breakdown — extrapolating corrosion rate past the chloride threshold",
+  "objective": "max",
+  "strategies": [
+    "trivial: constant predictor = geometric mean of the training rate -> reproduces the checker's own baseline, Ratio ~ 0.1",
+    "greedy: log-linear (Arrhenius/power-law) least-squares regression on Cl, T, pH, tex, and the margin column D treated as just another linear feature; fits the visible passive-regime data almost perfectly but D carries zero information there (rate never depends on it while the film holds), so the learned D-coefficient is ~0 and the model stays smooth -> under-predicts by orders of magnitude on the >=3/10 held-out cases that cross into the active regime",
+    "strong: fits the same smooth passive-regime trend from the data, but ALSO reads the mechanism note and multiplies in an exponential breakdown term keyed on max(0,-D) -- exploiting the repassivation-margin column as a precursor signal for the regime change rather than as just another regression input -- closing most of the orders-of-magnitude gap on the held-out aggressive environments",
+    "headroom above strong: the true jump-rate and curvature exponent are drawn per-instance and never revealed by the training coupons (D only encodes the margin, not the exact blow-up shape), so a solver that infers the curvature from cross-instance structure or bounds it adaptively can still push held-out error further down"
+  ]
+}

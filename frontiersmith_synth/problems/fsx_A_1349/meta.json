@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1349",
+  "tier": "A",
+  "format": "C",
+  "family": "turing-machine-shortest",
+  "eval_form": "quality-metric",
+  "theme": "The smallest machine that does the job",
+  "title": "The Smallest Machine That Does The Job",
+  "objective": "min",
+  "strategies": [
+    "correct-but-padded residue automaton: recover the true residue law from the samples, then represent each residue as a (residue, redundant counter) pair without checking whether the counter is ever needed",
+    "bounded recent-context window: assume behaviour depends only on the last few bits read (a fixed 16-state sliding window), fit each window's decision by majority vote from the samples",
+    "candidate-modulus search + behaviour-equivalence minimization: find the smallest modulus fully consistent with every sample, then Moore-refine the resulting automaton to merge residues that are truly behaviourally indistinguishable",
+    "non-halting decoy: a single self-looping state that never reaches ACCEPT/REJECT"
+  ]
+}

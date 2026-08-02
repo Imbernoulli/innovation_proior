@@ -1,0 +1,19 @@
+{
+  "id": "fsx_A_1361",
+  "tier": "A",
+  "format": "A",
+  "family": "auction-collusion-detect",
+  "eval_form": "quality-metric",
+  "seed_problem": "A set of auctions with bids, participant identities, and cost covariates; solver flags cartel sets; checker scores detection F1 against hidden collusion; flagging high bids fails on plausible-range cartels.",
+  "objective": "max",
+  "theme": "Bidders who agreed beforehand",
+  "title": "Bidders Who Agreed Beforehand",
+  "mutation": "composite: goal becomes a graded, F1-based bidder-flagging-and-grouping quality metric (not a decision problem); the intended solution must recover a per-bidder COST-CONSISTENCY statistic (implied rate = bid / job-size, must stay constant across auctions for an honest bidder) rather than an outlierness threshold, because ROTATING cover bids keep every bid in the plausible range while breaking single-rate consistency.",
+  "innovation_hook": "Flagging unusually high bids catches nothing because cartel cover bids are priced off the CURRENT rotating winner's rate plus a small markup, so they never look like outliers; the insight is that this rotation makes a ring member's IMPLIED PER-UNIT RATE (bid / job size) inconsistent across auctions even though the bid LEVEL stays plausible -- a designed cost-consistency screening statistic exposes this where raw-bid thresholding cannot.",
+  "strategies": [
+    "trivial: flag only the single highest total-bid bidder per market as an ungrouped singleton (the grader's own baseline construction) -> ratio ~0.1",
+    "greedy (trap): sort bidders by average bid and flag the top ~35% as ONE group, i.e. 'unusually high bidders are the cartel' -- this is defeated by (a) legitimately expensive honest bidders who out-bid ring members in level, and (b) ring cover bids that are deliberately NOT outliers",
+    "strong: for each bidder compute the set of implied rates floor(bid_a / s_a) over all its auctions; a bidder whose implied-rate set has more than one distinct value is flagged (this exactly identifies a rotating ring member, since an honest bidder's implied rate is provably constant while a cover-bidding ring member's is not); group every flagged bidder of a market into one claimed ring (at most one ring exists per market)",
+    "further headroom: the baseline is deliberately calibrated low (a raw-bid-level reference), so even the exact cost-consistency detector leaves visible ratio headroom below the 1.0 cap; a still-stronger policy could additionally cross-check WHICH other bidder's rate a cover bid tracks each round to disambiguate markets seeded with two overlapping decoy patterns"
+  ]
+}

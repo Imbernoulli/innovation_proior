@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1241",
+  "tier": "C",
+  "format": "D",
+  "family": "vliw-bundle-pack",
+  "eval_form": "flops",
+  "theme": "Filling every slot in a very wide instruction",
+  "title": "Bundle Packing Against the Register File",
+  "objective": "minimize",
+  "strategies": [
+    "one-op-per-cycle DAG-order construction, no bundle packing (trivial)",
+    "max-fill list scheduling: pack every bundle slot with any ready op (greedy)",
+    "register-pressure-aware list scheduling: admit new producers only within a live-value budget narrower than the register file, leaving slots deliberately empty (strong)",
+    "jointly optimal schedule+register-allocation search (NP-hard in general, open ceiling)"
+  ]
+}

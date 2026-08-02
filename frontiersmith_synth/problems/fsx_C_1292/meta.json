@@ -1,0 +1,18 @@
+{
+  "id": "fsx_C_1292",
+  "tier": "C",
+  "format": "B",
+  "family": "dungeon-descent-policy",
+  "eval_form": "quality-metric",
+  "theme": "Dive deeper or grind safer",
+  "title": "Dungeon Descent: Consumables Buy Depth",
+  "objective": "max",
+  "source_frameworks": ["wave3-lens:policy-simulator"],
+  "isolation": "candidate runs as an isolated stdin->stdout subprocess via isorun; the reward horizon used only for score-cap normalization stays in the evaluator process, never sent to the candidate",
+  "strategies": [
+    "reckless-descend (evaluator's own baseline): always descend, never grind/heal/ward -> dies early on most instances -> banked 0 -> normalizes to exactly 0.1",
+    "fixed HP-threshold reactive policy: grinds when HP% is low, wards only when its OWN current HP fraction looks risky -- ignorant of the actual upcoming hazard magnitude, so it strides into an unseen lethal spike at high HP and dies, forfeiting all banked reward, on 8/10 instances",
+    "inventory-conditioned depth policy (strong): scans the hazard curve, reserves wards specifically for hits that exceed max HP (unhealable by any amount of potions/grinding), heals proactively before healable-but-big hits, and stops/banks once its resources can no longer clear what's ahead -- survives all 10 instances and reaches far greater depth",
+    "richer planners that also weigh turn-budget efficiency, reorder which unhealable hits to tank vs. skip when wards are scarcer than spikes, or grind further ahead of a drought to bank even deeper safely"
+  ]
+}

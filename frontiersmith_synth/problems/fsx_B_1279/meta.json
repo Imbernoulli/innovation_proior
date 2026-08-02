@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1279",
+  "tier": "B",
+  "format": "C",
+  "family": "liquidity-ladder-build",
+  "eval_form": "quality-metric",
+  "theme": "Cash available exactly when it is needed",
+  "title": "Liquidity Ladder: Smoothing the Rollover Cliff",
+  "objective": "min",
+  "strategies": [
+    "dump-overnight baseline: borrow the entire funding need at the first maturity (always prefunding-safe, catastrophic single-date rollover exposure)",
+    "exact cashflow matching: place each maturity exactly where the legacy liability schedule falls due (zero prefunding slack, but reproduces the legacy schedule's own clustering)",
+    "uniform spread: split the funding need evenly across all maturities regardless of the legacy timing profile",
+    "worst-case hedge / smoothing: cap every date's maturing face value at its own haircut-adjusted safe capacity, forward-shifting only the excess into earlier dates with spare capacity, cheapest yield first"
+  ]
+}

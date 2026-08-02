@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1180",
+  "tier": "A",
+  "format": "C",
+  "family": "crystal-structure-from-peaks",
+  "eval_form": "quality-metric",
+  "theme": "Lattice parameters from diffraction peak positions",
+  "title": "Silent Reflections: Indexing a Powder Pattern from Its Absences",
+  "objective": "maximize",
+  "strategies": [
+    "cubic-axial single-peak baseline: derive a single cell edge from the first peak assuming (1,0,0), reuse it for all three axes (a=b=c), and index every later peak against a fixed non-adaptive canonical index sequence with no search or re-fitting",
+    "primitive exhaustive-cell search: try every integer (a,b,c) in the disclosed [4,13] range assuming NO centering restriction, score each by how many given peaks it explains to near machine precision (tie-break: residual, then fewest candidate reflections), and forward-predict the full pattern under that same no-restriction assumption",
+    "systematic-absence hypothesis selection: repeat the exhaustive integer-cell search separately under each of the P/I/F reflection conditions, then pick the most restrictive centering whose fit leaves NO unexplained presence and NO unexplained absence among the given peaks, and forward-predict under that centering",
+    "unconstrained per-peak index guessing with an internally inconsistent centering declaration, ignoring both Bragg's law and the absence pattern"
+  ]
+}

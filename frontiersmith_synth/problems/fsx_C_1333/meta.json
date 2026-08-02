@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1333",
+  "tier": "C",
+  "format": "C",
+  "family": "concrete-mix-design",
+  "eval_form": "quality-metric",
+  "theme": "Strong, workable, and not cracking in a year",
+  "title": "Not Just Less Water: Concrete Mix Design Under a Shrinkage Budget",
+  "objective": "max",
+  "strategies": [
+    "reference baseline: default aggregate, no admixture, minimum cement, water exactly meeting that aggregate's demand (reproduces the checker's own construction -> ~0.1)",
+    "greedy textbook recipe: default aggregate, no admixture, water fixed at that aggregate's demand, cement pushed to the budget ceiling for maximum strength -- ignores that more cement and a thirsty aggregate both raise shrinkage-cracking risk, so it blows the risk budget outright on several instances",
+    "joint search over aggregate grading and admixture dosage: for each (blend, dosage) pair take the water demand it implies, then push cement to the largest value that still respects the shrinkage-cracking budget and the aggregate-volume floor -- decouples the workability requirement from raw water content instead of trading water against strength",
+    "a fuller solver could also exploit non-uniform coefficient tables per instance or interpolate between grid points for a slightly tighter optimum -- the grid search here already captures the qualitative decoupling insight"
+  ]
+}

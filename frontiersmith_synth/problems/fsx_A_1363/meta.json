@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_1363",
+  "tier": "A",
+  "format": "A",
+  "family": "combinatorial-auction-wdp",
+  "eval_form": "quality-metric",
+  "theme": "Bidders who want bundles or nothing",
+  "title": "Bidders Who Want Bundles or Nothing",
+  "objective": "max",
+  "seed_problem": "combinatorial-auction winner determination: bundle bids over items with a supply limit, maximize accepted revenue subject to per-item capacity",
+  "mutation": "composite: layers a genuine bundle-vs-parts complementarity trap (a large bundle bid competing against a spoiler singleton plus fillers on its own items), a weighted-matching trap (a 3-edge path whose priciest middle edge blocks two disjoint cheaper edges worth more together), and uniform-weight odd conflict rings (the classical set-packing LP integrality-gap witness, LP=1.5x integral optimum) into one winner-determination instance, all interleaved with a general overlapping-bundle background under multi-unit item supply; the item-sharing graph decomposes into disjoint small gadget components plus one loose background component, which is exactly what a decompose-then-branch-where-tight solver can exploit and a flat density-greedy cannot see.",
+  "strategies": [
+    "trivial: order-of-arrival greedy (accept each bid, in input order, iff it still fits) -- reproduces the checker's own baseline B exactly",
+    "naive greedy: sort all bids by price-per-item density and accept greedily -- systematically prefers the hub-spoiler over the bundle it blocks and the path's priciest middle edge over the two cheaper ends it blocks, in every gadget",
+    "insight (strong): union-find the item-sharing graph into connected components; the gadgets are always small isolated components (by construction) -- brute-force each exactly (this is where a fractional relaxation would be loose and would need branching), and handle the one large loose background component with density-greedy plus a bounded local-exchange improvement pass",
+    "invalid: accepts every bid regardless of shared-item capacity, guaranteed to oversubscribe every gadget's scarce items -- scores 0"
+  ]
+}

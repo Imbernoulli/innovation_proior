@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1310",
+  "tier": "C",
+  "format": "B",
+  "family": "satellite-tasking-policy",
+  "eval_form": "quality-metric",
+  "theme": "Pointing a telescope that cannot be everywhere",
+  "title": "Pointing a Telescope That Cannot Be Everywhere",
+  "objective": "max",
+  "source_frameworks": ["wave3-lens:policy-simulator"],
+  "strategies": [
+    "value-first single-pass: sort targets by raw value descending and visit them in that order in pass 1 only, ignoring slew cost, cloud forecast, and pass 2 entirely (the trap this problem is built to punish)",
+    "input-order tiny plan: image only the first few targets as listed, no sorting or reasoning at all (weaker recipe baseline)",
+    "value-density routing with cloud-risk deferral: triage targets into pass-1/pass-2 pools using the forecast-vs-decay tradeoff, then greedily extend each pass's route by expected-value-per-slew-second so a cluster of cheap reliable targets beats a single expensive gamble"
+  ]
+}

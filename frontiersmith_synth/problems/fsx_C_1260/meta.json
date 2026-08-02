@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1260",
+  "tier": "C",
+  "format": "D",
+  "family": "error-correcting-layout",
+  "eval_form": "flops",
+  "theme": "Protecting memory from cosmic rays cheaply",
+  "title": "Cosmic-Ray Layout: Interleave Cheap Codes Around Physical Bursts",
+  "objective": "optimize",
+  "strategies": [
+    "whole-row / largest-sub-N-block naive coverage (trivial, checker's own baseline)",
+    "contiguous ('logical order') blocking, searched over word length for cheapest sufficient code (greedy)",
+    "physical interleaving: spread the codeword mod the interleave distance so a burst is pigeonholed across many codewords, searched jointly with contiguous over both layout and word length (strong)",
+    "heterogeneous / non-uniform per-region mixes of layout and code choice (open ceiling, uncovered)"
+  ]
+}

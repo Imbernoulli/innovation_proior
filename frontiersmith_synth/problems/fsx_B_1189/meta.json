@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_1189",
+  "tier": "B",
+  "format": "C",
+  "family": "acoustic-room-geometry",
+  "eval_form": "quality-metric",
+  "theme": "Reconstructing a room from its echoes",
+  "title": "Echo Room: Wall Reconstruction from Unlabeled First-Order Echoes",
+  "objective": "max",
+  "strategies": [
+    "data-blind generic room: place W walls at a fixed generic radius from the source, evenly spread in angle, ignoring every echo reading",
+    "two-microphone multilateration: sort each of the first two microphones' readings and pair them by rank, circle-intersect with a fixed handedness convention, never cross-checking any other microphone",
+    "cross-microphone consistency filter: enumerate image-point candidates from every microphone pair and every reading pair, keep only candidates that are also consistent with EVERY other microphone's reading list, and reconstruct the W walls whose image points survive that global consistency filter"
+  ]
+}

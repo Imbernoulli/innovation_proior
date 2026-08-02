@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1190",
+  "tier": "A",
+  "format": "C",
+  "family": "spectral-unmix-endmember",
+  "eval_form": "quality-metric",
+  "theme": "Which pure materials make this mixed pixel",
+  "title": "No Pure Pixels: Inflating to the Enclosing Material Simplex",
+  "objective": "maximize",
+  "strategies": [
+    "degenerate baseline: declare every endmember equal to the mean pixel spectrum and give every pixel uniform abundance 1/K",
+    "vertex-selection greedy (N-FINDR / pixel-purity style): PCA-project the pixels, greedily pick the K observed pixels spanning maximum simplex volume, declare THOSE PIXELS THEMSELVES the endmembers, fit abundances by nonnegative least squares -- systematically undershoots when no pixel is pure",
+    "minimum-enclosing-simplex via facet extrapolation: fit a total-least-squares line through the boundary-hugging points along each simplex EDGE (two-material mixtures, still densely sampled even with no pure pixel), then intersect consecutive edge-lines -- recovers vertices OUTSIDE the observed data cloud",
+    "brute-force grid/random search over candidate endmember spectra scored by reconstruction error alone, ignoring the simplex-containment structure entirely"
+  ]
+}

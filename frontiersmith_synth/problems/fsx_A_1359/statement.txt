@@ -1,0 +1,88 @@
+# When Everyone Schedules Themselves
+
+## Problem
+There are `n` jobs and `m` machines. Job `j` takes `p[j][i]` time units if it runs on
+machine `i`, and has an importance weight `w[j]`. You are **not** allowed to assign jobs to
+machines directly. Instead, for each machine `i` you design a **local scheduling rule**: a
+priority key
+```
+key_i(j) = A_i * p[j][i] + B_i * w[j]
+```
+where you choose the integers `A_i, B_i`. Whatever jobs end up on machine `i`, that machine
+processes them one after another in **ascending** order of `key_i` (ties broken by smaller
+job index first) -- non-preemptively, no idle gaps.
+
+Jobs are **selfish agents**, not something you control. Given your rules, jobs repeatedly
+migrate to whichever machine currently minimizes their **own** predicted completion time
+(the sum of processing times of every job that would be scheduled at-or-before them there),
+until nobody can improve by switching (a pure Nash equilibrium of the induced game). Because
+different starting configurations can lead to different equilibria, your rules are judged by
+the **worst** equilibrium reachable from three fixed adversarial starting configurations.
+
+## Input
+```
+n m
+p[1][1] p[1][2] ... p[1][m] w[1]
+...
+p[n][1] p[n][2] ... p[n][m] w[n]
+```
+
+## Output
+Print exactly `m` lines, line `i` containing two integers `A_i B_i` (the rule for machine `i`).
+
+## Feasibility
+`-1000 <= A_i, B_i <= 1000`. Any such choice is feasible (there is no other constraint) --
+the resulting equilibrium is always well defined by the process below.
+
+## The equilibrium process (exactly what is simulated)
+For a job `j` currently considered to sit on machine `i` together with occupant set `S`
+(job `j` included), its predicted completion time is the sum of `p[j'][i]` over every
+`j' in S` with `(key_i(j'), j') <= (key_i(j), j)` in lexicographic order.
+
+Starting from a configuration, run repeated **passes** over jobs `1..n` in index order: each
+job moves to whichever machine (current one included) minimizes its predicted completion
+time *as if it joined that machine's current occupants*, moving immediately if some other
+machine gives a **strictly** lower value. Stop a run when a full pass causes no move, or after
+60 passes. Run this from three starts: (1) every job starts on the machine with the largest
+total processing time, (2) every job starts on the machine with the smallest total, (3) job
+`j` starts on machine `j mod m`. Your **objective `F`** is the largest of the three runs'
+makespans (`max` over machines `i` of the total `p[j][i]` of jobs finally on `i`).
+
+## Objective (minimize)
+Minimize `F`, the worst-case equilibrium makespan induced by your rules.
+
+## Scoring
+The checker independently computes `B`, the same worst-case-equilibrium makespan obtained
+from a fixed reference rule (every machine orders longest-processing-time-first, ignoring
+weight). Your ratio is
+```
+ratio = B / (B + 9 * F)
+```
+Matching the reference exactly scores 0.1; the score rises smoothly (no hard ceiling) as your
+`F` drops below `B`. Ratios are averaged over 10 hidden cases.
+
+## Constraints
+`2 <= n <= 60`, `2 <= m <= 10`, `1 <= p[j][i] <= 500`, `1 <= w[j] <= 100`.
+Time limit: 3 s. Memory limit: 256 MB.
+
+## Example
+```
+5 2
+34 45 62
+25 17 15
+38 15 56
+45 5 82
+5 35 49
+```
+The reference rule (A=(-1,-1), B=(0,0), longest-first on both machines) reaches loads
+`(50, 77)` from one start and `(83, 97)` from the other two; the worst makespan is `B = 97`.
+
+The "obvious" rule A=(1,1), B=(0,0) (shortest-processing-time-first, a well-known good
+coordination mechanism in the literature) converges from every start to jobs {1,2,5} on
+machine 1 and {3,4} on machine 2 (1-indexed by input row): loads `(64, 20)`, `F = 64`, ratio
+`97/(97+9*64) = 0.144`. But job 2 (`p=[25,17]`) is genuinely faster on machine 2; SPT still
+lets it cling to machine 1 since its own time looks small there. The rule A=(0,0), B=(-1,-1)
+(order purely by importance, ignoring speed) converges from every start to {1,5} on machine 1
+and {2,3,4} on machine 2: loads `(39, 37)`, `F = 39`, ratio `97/(97+9*39) = 0.217` -- it no
+longer lets job 2's locally-good time keep it glued to the popular machine. Neither rule is
+"right" in general; the best one genuinely depends on the instance.

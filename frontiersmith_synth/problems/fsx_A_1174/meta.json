@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_1174",
+  "tier": "A",
+  "format": "C",
+  "family": "reaction-rate-recover",
+  "eval_form": "quality-metric",
+  "theme": "Rate constants from concentration snapshots",
+  "title": "Determined Combinations: Rate Constants From Equilibrated Snapshots",
+  "objective": "max",
+  "mechanisms": ["mass-action-forward", "stiff-timescale-separation", "conservation-constraint"],
+  "innovation_hook": "Fast reversible pairs equilibrate before the first snapshot, so kf and kr are individually invisible in the data and any (kf,kr) with the right sum fits; only the equilibrium ratio kf/kr (fixed by the conserved total mass and the observed split) is a determined combination. The strong solution reports that determined ratio at a safely-fast scale instead of curve-fitting both rates to flat data.",
+  "strategies": [
+    "trivial: report the same flat generic rate constant for every edge, ignoring all snapshot data",
+    "greedy: two-point log-slope finite-difference rate estimate on the source species of every edge, treating each edge as an isolated decay -- correct for slow chain edges, but collapses fast reversible pairs to near-zero rates since their snapshots are already flat at equilibrium",
+    "strong: least-squares log-linear regression (all snapshots) for slow chain edges; for fast reversible pairs, read off the determined kf/kr ratio from the equilibrium concentration split and assign a safely-large, T1-calibrated absolute scale instead of fitting it",
+    "invalid: emit non-finite rates for every edge"
+  ]
+}

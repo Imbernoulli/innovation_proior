@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1219",
+  "tier": "C",
+  "format": "D",
+  "family": "congestion-controller-design",
+  "eval_form": "flops",
+  "theme": "Sharing a link without anyone shouting",
+  "title": "Yield Before You're Told: A Window-Update Program for a Shared Link",
+  "objective": "min",
+  "strategies": [
+    "never-adapt constant window (baseline)",
+    "classic AIMD-on-loss additive-increase/multiplicative-decrease, ignores the delay signal entirely",
+    "delay-threshold preemptive yield (hold growth once observed backlog crosses a fraction of the buffer), loss kept only as a backstop cut",
+    "alternative untested family: explicit per-flow fair-share estimation from repeated probing"
+  ]
+}

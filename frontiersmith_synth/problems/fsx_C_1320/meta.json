@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1320",
+  "tier": "C",
+  "format": "E",
+  "family": "band-gap-extrapolate",
+  "eval_form": "quality-metric",
+  "theme": "Predicting a property for a compound nobody made",
+  "title": "Band Gap of a Compound Nobody Made — extrapolating past the visible chemistry",
+  "objective": "max",
+  "strategies": [
+    "trivial: OLS straight line y=a+b*x on training rows, ignoring dopant descriptors -> reproduces the checker's own baseline, ~0.1",
+    "greedy: textbook Vegard's-law + bowing-parameter curve y=a+b*x+c*x^2 fit to the training rows; an accurate INTERPOLATOR across the visible composition range (the bowing curvature is real and chemistry-independent) but has zero mechanism for a dopant whose electronegativity/radius mismatch lies outside the training family -> fails hard on held-out chemistry",
+    "strong: notice the memoryless curve's residuals correlate with the dopant's electronegativity mismatch NONLINEARLY (small mismatch barely matters, large mismatch dominates -- a different regime) and with its radius mismatch; fit a physically-grounded model with x, x^2, x*dEN^2, x*dR terms in standardized+ridge-regularized space (so the low-variance chemistry channels don't blow up) and emit the resulting closed-form expression -- it extrapolates to dopants far outside the visible chemistry, where greedy has no mechanism at all",
+    "headroom above strong: better-conditioned per-channel estimation (e.g. robust/EIV fitting that down-weights outlier dopants) and modeling the residual heteroscedasticity to push held-out RMSE further toward the sensor-noise floor without re-introducing high-variance overfit"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1245",
+  "tier": "C",
+  "format": "D",
+  "family": "integer-codec-design",
+  "eval_form": "flops",
+  "theme": "Encoding numbers that are mostly small",
+  "title": "Predictable Codec: Bit-Width Blocks Under a Branch Tax",
+  "objective": "min",
+  "strategies": [
+    "trivial: one block, the checker's own minimal-width whole-stream construction (reproduces baseline B, ~0.1)",
+    "greedy: fixed-size sqrt(N) chunks, per-chunk minimal width -- the textbook bit-packing recipe; ignores the misprediction tax entirely, so it thrashes between widths on regime-changing streams",
+    "strong: quantize the width alphabet to a small palette fit to the data's own bit-length distribution (1-D k-means over k=1..5 candidates), then greedily extend maximal same-width runs and DP-chain them -- trades a few wasted bits per block for a branch-free (or nearly transition-free) decode",
+    "headroom above strong: a true exact DP over all block boundaries and all 0..30 widths jointly (not just k-means-derived palettes), or adapting the palette locally instead of globally"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_1297",
+  "tier": "C",
+  "format": "B",
+  "family": "grid-robot-program",
+  "eval_form": "quality-metric",
+  "theme": "Programming a robot with almost no memory",
+  "title": "Almost-No-Memory Relay Courier",
+  "objective": "max",
+  "source_frameworks": ["wave3-lens:policy-simulator"],
+  "strategies": [
+    "do-nothing / null controller: submit an empty rule table so every observation defaults to WAIT (reproduces the evaluator's floor baseline)",
+    "hardcode the visible grid: BFS the one fully-shown training grid on raw coordinates and encode its exact move sequence as a one-shot state chain (state i -> move i regardless of what generalizes); replays that grid almost perfectly and stalls at WAIT on every other grid",
+    "decode the given color code into a compact 2-mode reactive table: mode 0 reads phase0_code, stepping on the relay beacon switches to mode 1 which reads phase1_code -- identical performance on visible and held-out grids alike",
+    "the same reactive table plus deliberate slack/backtrack-margin tuning or redundant-but-harmless rule padding to explore the size-penalty trade-off without changing the core reactive insight"
+  ]
+}

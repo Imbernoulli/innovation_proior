@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1244",
+  "tier": "C",
+  "format": "D",
+  "family": "fpga-place-route",
+  "eval_form": "flops",
+  "theme": "Fitting a design onto a chip with fixed wires",
+  "title": "Row Placement Under Channel Congestion and Timing Slack",
+  "objective": "min",
+  "strategies": [
+    "identity placement replayed verbatim (trivial)",
+    "pure wirelength-minimizing net clustering, ignores capacity/slack (greedy)",
+    "critical-net-protected congestion-gradient spreading local search (strong)",
+    "true joint placement optimum under congestion+timing is NP-hard / open (uncovered)"
+  ]
+}

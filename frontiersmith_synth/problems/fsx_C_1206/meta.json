@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1206",
+  "tier": "C",
+  "format": "E",
+  "family": "cache-miss-scale-forecast",
+  "eval_form": "quality-metric",
+  "theme": "Miss rate when the working set outgrows the cache",
+  "title": "Calling the Capacity Cliff from a Reuse-Distance Sample",
+  "objective": "max",
+  "strategies": [
+    "trivial: emit the constant training-mean miss rate (every training row is deep in the sub-cliff regime, so this constant is near 0) -> reproduces the checker's own baseline ~0.1",
+    "greedy: ordinary least squares of missrate ~ a + b*log(N) on the visible training log alone, extrapolated arbitrarily far. Every training row sits far below the effective capacity, where the true miss rate is a tiny power-law tail dominated by finite-sample noise, so the log looks flat regardless of the true steepness -- the fitted line keeps predicting near-zero long past where the true curve has already risen to nearly 1",
+    "strong: recover the reuse-distance distribution's steepness s from the histogram alone via an order-statistic log-logistic regression (logit(empirical CDF) is linear in log(x) with slope s, a scale-free fit independent of any measured working-set size), combine it with the PUBLIC effective-capacity law K=C*A/(A+1), and emit the closed form N^s/(N^s+K^s) -- correctly placing both the location and the shape of the cliff that the small-N log alone could never reveal",
+    "headroom above strong: refine s with a robust (e.g. trimmed / weighted) fit to reduce histogram sampling variance, or blend a second-order correction to the log-logistic tail, pushing held-out error toward the finite-sample noise floor"
+  ]
+}

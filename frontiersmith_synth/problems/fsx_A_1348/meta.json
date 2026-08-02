@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_1348",
+  "tier": "A",
+  "format": "A",
+  "family": "tree-block-partition",
+  "eval_form": "quality-metric",
+  "theme": "Cutting a tree into equal pieces",
+  "title": "Splitting the Grove: k-Way Orchard Partition",
+  "objective": "min",
+  "seed_problem": "tree-block-partition (fsx_A_1348 seed spec)",
+  "mutation": "composite: goal generalized from a 2-way balanced-separator cut to a k-way\n  partition, AND output constraint tightened with a second cutting primitive (vertex/hub\n  clearing that bundles all incident path cuts for one price but discards the plot's\n  yield) coupled non-linearly into the objective via a quadratic balance penalty.",
+  "strategies": [
+    "trivial: cut the first K-1 paths by input index, never clear a plot (the checker's own baseline construction)",
+    "greedy: recursive weighted-centroid edge splitting -- repeatedly cut the edge that most evenly bisects the currently-largest block by yield, K-1 rounds, no vertex clears ever",
+    "strong: detect cheap hub plots (clearing cost undercuts the sum of their incident path costs), greedily accept non-adjacent hubs while component count stays <= K, then run an exact bounded subtree-size knapsack DP (jointly, not sequentially) over each residual fragment to allocate the remaining cuts against a combined cost+quadratic-balance objective, with a small cross-fragment knapsack to split the cut budget",
+    "invalid: intentionally reports a wrong final block count (or reuses a cleared plot's path) so feasibility must reject it"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1203",
+  "tier": "B",
+  "format": "E",
+  "family": "tide-plus-surge-forecast",
+  "eval_form": "quality-metric",
+  "theme": "Ordinary tides plus the storm that is coming",
+  "title": "Tide Plus Surge -- forecasting the storm the calm log cannot show you",
+  "objective": "max",
+  "strategies": [
+    "trivial: predict T only (ignore surge entirely) -> reproduces the checker's own baseline, ~0.1",
+    "greedy: ordinary least squares fit y = a + b*T + c*S on the calm training rows; near-perfect on calm data (kappa*T*S is swamped by noise there, so nothing in the training residuals ever motivates it) but the plain additive sum over-predicts whenever the held-out storm surge coincides with a high tide",
+    "strong: kappa cannot be learned from the calm log, but it does not need to be -- it is handed to you directly as a bathymetry survey constant; emit T + S - kappa*T*S using the given kappa rather than discarding it as a column with no training-time leverage",
+    "headroom above strong: model the residual sensor-noise-limited fit more precisely (e.g. blend a small correction for the calm surge driver's own harmonic shape) to push held-out MSE further toward the noise floor"
+  ]
+}

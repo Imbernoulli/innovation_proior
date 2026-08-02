@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1211",
+  "tier": "B",
+  "format": "E",
+  "family": "ice-sheet-calving-forecast",
+  "eval_form": "quality-metric",
+  "theme": "When the shelf lets go",
+  "title": "Ice-Shelf Calving Forecast — the Ratio That Trips the Trigger",
+  "objective": "max",
+  "strategies": [
+    "trivial: predict a constant calving time (geometric mean of the training T column), ignoring every input -> reproduces the checker's constant baseline ~0.1",
+    "greedy: the obvious physical recipe -- assume the rift keeps growing at its OBSERVED phase-1 rate forever and invert the single-phase relation T=(kappa*H0-D0)/(c0+kappa*gamma) per training row to estimate kappa, then average. Training segments barely touch phase 2 so this looks accurate in-sample, but on held-out segments (which spend nearly their whole life in the accelerated phase-2 regime) it never accounts for the buttressing-loss speed-up and predicts calving far too late",
+    "strong: the insight -- the trigger is the RATIO D(t)/H(t) crossing phi, not the raw rate, so buttressing loss is a genuine regime switch, not a covariate to add to a rate fit. Compute the phase-1->phase-2 switch time t1 from phi algebraically, then invert the FULL two-phase relation (using the known structural gain BETA) per training row to estimate kappa without bias, and emit the exact piecewise-closed-form expression. This generalizes correctly to held-out segments dominated by phase 2",
+    "headroom above strong: robust (median/trimmed) multi-row kappa estimation and joint refinement against the noisy training residuals would push held-out error further toward the observation-noise floor"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1198",
+  "tier": "C",
+  "format": "E",
+  "family": "queue-saturation-forecast",
+  "eval_form": "quality-metric",
+  "theme": "Wait times as the system approaches capacity",
+  "title": "Queue Saturation Forecast — inferring the capacity asymptote from mild sub-saturation curvature",
+  "objective": "max",
+  "strategies": [
+    "trivial: single-parameter proportional fit W~=k*L through the origin on the training rows, ignoring burstiness entirely -> reproduces the checker baseline ~0.1",
+    "greedy: textbook two-parameter linear regression W~=(a+b*B^2)*L fit on the training rows; captures the burstiness interaction well (visibly beats trivial) but still assumes wait scales linearly in load forever -- it has no pole, so it systematically underestimates the held-out (higher-load) region and the gap grows with how close held-out load gets to true capacity",
+    "strong: notices that the ratio alpha/C is estimable from a LOCAL fit -- because for fixed capacity C the model (alpha+beta*B^2)*L/(C-L) is LINEAR in (alpha,beta), a full nonlinear 3-parameter regression reduces to a 1-D search over candidate C (variable projection / profile least squares): for each candidate C, solve the 2-param linear least squares in closed form and keep the C that minimizes residual SSE on the mildly-curved training data; reconstructs the rational wait-time law and extrapolates it correctly toward capacity",
+    "headroom above strong: the true burstiness exponent p (~2 +/- 0.3, drifting per system) is never recovered by `strong`, which hard-codes B**2 (the textbook Kingman assumption); a policy that also profiles over p, plus training-noise floor, keeps even a very good capacity-search fit well under the score ceiling"
+  ]
+}

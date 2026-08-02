@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_1365",
+  "tier": "A",
+  "format": "A",
+  "family": "misere-play-analysis",
+  "eval_form": "quality-metric",
+  "seed_problem": "disjunctive sums of bounded-subtraction (Nim-like) heap games",
+  "mutation": "goal: transfer normal-play Sprague-Grundy analysis to MISERE play, where the last player to move loses. Compose misere-quotient + genus-theory-breakdown + position-equivalence-classes: each cairn's normal-play Grundy number gives a fine equivalence class, but misere outcomes of a SUM of cairns are governed by a strictly coarser equivalence (Grundy>=2 collapses to one 'wild' class handled by XOR; Grundy in {0,1} needs a separate odd/even-parity rule) that does NOT decompose the same way normal-play XOR does. Objective graded over many independent held-out duels per file (win-rate against a blind baseline), not a single decision.",
+  "objective": "max",
+  "theme": "The game where losing is winning",
+  "title": "Splinter Cairns: A Misère Duel",
+  "strategies": [
+    "trivial: always take exactly 1 stone from the lowest-indexed non-empty cairn, ignoring all game theory",
+    "greedy: compute each cairn's normal-play Grundy number (n mod (r+1)) and apply the textbook Sprague-Grundy winning move (drive the XOR of Grundy numbers to zero) -- correct for normal play, silently wrong for misere play whenever the position is at or near the all-Grundy-<=1 endgame",
+    "strong: apply Conway's tame-game misere theorem -- treat Grundy values >=2 as one coarse 'wild' equivalence class (use XOR there) but switch to the odd/even parity-of-ones rule once every cairn's Grundy number is 0 or 1 -- and 1-ply search legal moves against this coarser misere-correct classifier instead of the normal-play XOR target",
+    "unexploited headroom: this problem's tame ruleset admits an exactly-optimal closed-form policy (implemented by strong); headroom above strong on THIS problem is limited to occasional edge-case robustness, but the same coarsening idea (find the correct, coarser equivalence for a modified terminal/scoring rule) generalizes to non-tame or partizan variants where no simple closed form is known and heavier misere-quotient computation would be needed"
+  ]
+}

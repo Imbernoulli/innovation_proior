@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1356",
+  "tier": "A",
+  "format": "C",
+  "family": "zero-sum-matrix-solve",
+  "eval_form": "quality-metric",
+  "theme": "A strategy that cannot be exploited",
+  "title": "Unexploitable Play Against a Logged Opponent",
+  "objective": "max",
+  "strategies": [
+    "trivial: pure best row assuming the opponent plays uniformly at random over columns (ignores the log entirely)",
+    "greedy: soft best-response to the opponent's historical column-play log (weights rows by expected payoff against the log)",
+    "strong: solve the maximin LP directly (sum_i p_i A_ij >= t for all j, maximize t) to identify the true equilibrium support, ignoring the log",
+    "invalid: emit m numbers that do not form a probability distribution"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "fsx_C_1319",
+  "tier": "C",
+  "format": "C",
+  "family": "self-assembly-schedule",
+  "eval_form": "quality-metric",
+  "theme": "Building a structure by letting it build itself",
+  "title": "Self-Assembly Scheduling: Outrunning the Kinetic Trap",
+  "objective": "max",
+  "mechanisms": ["bond-formation-order", "kinetic-trap-avoidance", "yield-vs-time"],
+  "innovation_hook": "Forming the strongest bonds first maximizes early yield and locks the system in a kinetic trap that cannot rearrange into the target; the insight is to deliberately schedule weak, reversible bonds first so errors can anneal out, holding the strong (decoy) bonds back until the target has already frozen into place.",
+  "strategies": [
+    "trivial: reproduce the checker's own reference construction -- enable every bond simultaneously at one fixed late step, regardless of type or strength (-> ~0.1)",
+    "greedy: enable bonds strictly in decreasing strength order (strongest/decoys first) -- looks like it maximizes early yield, but permanently freezes decoys onto monomers the target needs before the (weaker) target bonds ever get a turn",
+    "strong: enable every target bond at step 1 and hold every decoy back to the very last step, so target bonds anneal into the correct configuration while decoys arrive too late to ever bind",
+    "invalid: truncated / out-of-range schedule -> rejected (0)"
+  ]
+}

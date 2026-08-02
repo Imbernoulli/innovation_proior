@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_1354",
+  "tier": "A",
+  "format": "C",
+  "family": "cutting-sequence-code",
+  "eval_form": "quality-metric",
+  "theme": "Encoding a line by the squares it crosses",
+  "title": "The Line's Diary: Compressing a Grid-Crossing Sequence",
+  "objective": "max",
+  "source_frameworks": ["wave3-lens:games-and-structures"],
+  "innovation_hook": "The crossing sequence of a line (0,0)-(P,Q) over the integer grid is a Sturmian word whose structure is exactly the continued-fraction expansion of P/Q: each partial quotient consumes one level of an H<->V substitution recursion, costing O(1) grammar rules per quotient. Storing the sequence literally, or even run-length-encoding it, is linear (or worse) in length; peeling continued-fraction quotients one at a time gives a description of size O(log(P+Q)) regardless of length.",
+  "strategies": [
+    "trivial: per-symbol chain grammar (rule_i = ref(rule_{i-1})*1 + S[i]*1) -- ties the checker's own naive baseline exactly, ~0.10",
+    "greedy (trap): plain run-length encoding chained into one grammar -- wins big when one continued-fraction term dominates (a long straight run), but on inputs whose leading quotient is small (2 or 3), let alone consecutive-Fibonacci pairs whose continued fraction is all ones, almost every run has length 1-2 and this buys almost nothing over the naive baseline",
+    "strong: recursive H/V-substitution grammar keyed to the continued-fraction expansion of P/Q (one 'block' + one 'combine' rule per partial quotient, O(log(P+Q)) rules total regardless of sequence length), falling back to run-length encoding when it happens to be cheaper on tiny inputs",
+    "invalid: a single rule expanding to length 1, which can never match the true sequence length -> Ratio 0.0"
+  ]
+}

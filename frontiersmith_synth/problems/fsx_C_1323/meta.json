@@ -1,0 +1,15 @@
+{
+  "id": "fsx_C_1323",
+  "tier": "C",
+  "format": "C",
+  "family": "drug-scaffold-hop",
+  "eval_form": "quality-metric",
+  "theme": "Same effect, different molecule",
+  "title": "Scaffold Hop: Same Effect, Different Molecule",
+  "objective": "max",
+  "strategies": [
+    "checker-baseline pad: echo the known active and append a little cheap filler (reproduces the checker baseline, ~0.1)",
+    "similarity-maximizing repair: never touch any position that carries a pharmacophoric feature (\"don't risk activity\"), only cost-optimize the filler positions -- novelty caps at 1-K/L because every feature-carrying position stays byte-identical to the known active",
+    "pharmacophore-preserving scaffold hop: realize an anchor only pins a feature's TYPE and CHAIN POSITION, never the fragment's identity; substitute an off-reference (cheaper, never-used-by-the-reference) fragment carrying the same type at the same canonical offset at EVERY position, including the feature ones -- novelty and cost-efficiency both saturate while activity stays fully preserved, decoupling the two objectives"
+  ]
+}

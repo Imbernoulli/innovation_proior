@@ -1,0 +1,15 @@
+{
+  "id": "fsx_C_1258",
+  "tier": "C",
+  "format": "D",
+  "family": "bloom-cascade-size",
+  "eval_form": "flops",
+  "theme": "Layers of filters that each catch a little more",
+  "title": "Same-Set Bloom Cascade: Bits Where the Traffic Actually Goes",
+  "objective": "min",
+  "strategies": [
+    "trivial: split the bit budget evenly across the 4 layers with a fixed k=1 hash function everywhere (reproduces the checker's own reference construction)",
+    "naive greedy: keep the equal-size split but pick each layer's hash count via the textbook optimal-FP-rate formula k=round((m_i/n)*ln2) clipped to [1,kmax]; this treats every query as equally likely and every layer's bits as equally valuable, ignoring both the per-layer lookup-cost gradient and the fact that a handful of known repeat-query keys dominate the real traffic",
+    "insight (strong): local-search / exchange over the concrete simulated cascade -- since the member set and all hash coefficients are given exactly, actually build each candidate layer's bit array and replay the visible weighted query sample through it; repeatedly move budget from whichever layer contributes the least reduction in realized weighted cost per bit to whichever contributes the most (a marginal-value argument), re-tuning k_i after every move -- this concentrates bits in whichever layer stops the heavy-weight repeat keys earliest and cheaply, something the closed-form formula (blind to per-key identity and to layer cost) cannot see"
+  ]
+}

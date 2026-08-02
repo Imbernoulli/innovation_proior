@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1331",
+  "tier": "C",
+  "format": "C",
+  "family": "photoresist-dose-pattern",
+  "eval_form": "quality-metric",
+  "theme": "Exposing a pattern smaller than the light",
+  "title": "Printing Smaller Than the Light: Mask Pre-Distortion",
+  "objective": "max",
+  "strategies": [
+    "identity: draw the mask exactly as the target pattern (the obvious approach)",
+    "uniform bias: dilate every target pixel by a fixed Chebyshev radius (textbook CD-bias correction, blind to local density)",
+    "single-dose model-based correction: locally search the mask against the known optical model but only for the nominal dose",
+    "process-window local search: locally search the mask against the known optical model jointly across all three doses, trading mean fidelity against worst-dose fidelity"
+  ]
+}

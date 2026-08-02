@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1208",
+  "tier": "C",
+  "format": "E",
+  "family": "recsys-popularity-forecast",
+  "eval_form": "quality-metric",
+  "theme": "Which item is genuinely rising vs just recommended",
+  "title": "Regressing Out the Recommender's Own Push",
+  "objective": "max",
+  "strategies": [
+    "trivial: emit the constant training-mean engagement -> reproduces the checker's own baseline ~0.1",
+    "greedy: ordinary least squares of engagement ~ a + b*t on the visible (t, e) log alone, extrapolated arbitrarily far. Across the logged window the recommender's exposure was itself reacting to the item's own recent engagement (a feedback loop), so exposure drifted upward together with t -- the fitted slope is an inseparable blend of genuine organic drift and the loop's self-reinforcing amplification, and extrapolating it keeps compounding long past the point where the held-out period's exposure is set by intervention instead of the recommender's adaptive policy",
+    "strong: fit a single multiple linear regression e ~ 1 + t + x on the logged (t, x, e) triples -- since within the logged window exposure carries variation not explained by t alone (feedback reacting to noisy engagement plus an exogenous shock), the t-coefficient and x-coefficient are separately identifiable, so this regresses the induced exposure contribution OUT of the trend and recovers the organic drift and the induced-exposure lift as two separate, individually correct numbers, which is exactly what generalizes once exposure is set by intervention",
+    "headroom above strong: robustify the fit against the finite-sample noise floor (e.g. iteratively reweighted / trimmed least squares, or a small ridge term to stabilize the (t,x) design when a particular instance's feedback loop leaves little independent variation in x), pushing held-out error toward the irreducible noise floor"
+  ]
+}

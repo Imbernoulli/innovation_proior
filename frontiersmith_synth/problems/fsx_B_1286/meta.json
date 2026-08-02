@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1286",
+  "tier": "B",
+  "format": "C",
+  "family": "supplier-esg-audit-route",
+  "eval_form": "quality-metric",
+  "theme": "Auditing a supply chain you can only partly see",
+  "title": "Deep-Tier Blind Spot: Map Before You Audit",
+  "objective": "max",
+  "strategies": [
+    "cheapest-visible-audit baseline: audit whichever tier-1 supplier is cheapest to audit, spend nothing else",
+    "myopic ratio greedy: repeatedly take the currently-visible map/audit action with the best immediate value/cost ratio, crediting mapping only for its own small self-mitigation (never for what it unlocks)",
+    "tier-1-only budget knapsack: optimize the audit selection among direct suppliers only, never map anything",
+    "tree-knapsack dynamic program: treat mapping as an investment that opens a children sub-knapsack, solve exactly bottom-up (map/audit/map+audit per node), reconstruct the action sequence top-down"
+  ]
+}

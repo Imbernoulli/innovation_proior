@@ -1,0 +1,17 @@
+{
+  "id": "fsx_B_1278",
+  "tier": "B",
+  "format": "C",
+  "family": "clinical-trial-adapt",
+  "eval_form": "quality-metric",
+  "theme": "Stopping early without fooling yourself",
+  "title": "Onset-Matched Alpha Spending",
+  "objective": "max",
+  "source_frameworks": ["wave3-lens:risk-actuarial"],
+  "strategies": [
+    "trivial: non-adaptive 2-look plan (5%/95% Bonferroni-safe alpha split, no futility, no onset-awareness) -- reproduces the checker's own baseline B -> ~0.1",
+    "greedy: textbook Pocock group-sequential plan -- K_max equally-spaced looks from patient 1, one calibrated flat threshold, no futility, onset_frac ignored; on delayed-onset instances its early looks carry no power so overall power falls below the required floor -> scores 0 there",
+    "strong: onset-matched design -- concentrate all looks in [onset_frac*N_max, N_max], an O'Brien-Fleming-cubic spending schedule calibrated on that window, plus a mild futility boundary that harvests extra savings on null cohorts for free; stays feasible and keeps saving cost even when greedy collapses",
+    "invalid: repeated testing at the unadjusted nominal threshold at every look -- best nominal power, but the true family-wise type-I error blows the cap on every instance -> 0"
+  ]
+}

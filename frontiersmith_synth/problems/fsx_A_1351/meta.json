@@ -1,0 +1,19 @@
+{
+  "id": "fsx_A_1351",
+  "tier": "A",
+  "format": "A",
+  "family": "achievement-game-avoid",
+  "eval_form": "quality-metric",
+  "seed_problem": "wave3-lens:games-and-structures -- a hypergraph and an avoidance objective; the solver outputs a move policy, the checker plays it against a strong opponent and scores survival/success.",
+  "mutation": "goal: replace 'decide/compute the winner of the avoidance game' with a graded quality metric -- the solver pre-commits an offline move policy (a reactive mirror rule plus a fallback priority order) for a batch of independent poison-edge claiming games, the checker plays each policy out move-by-move against a fixed strong deterministic Rival, and the score is the resulting total outcome value relative to a do-nothing (ascending-order, never-react) baseline the checker builds itself.",
+  "objective": "max",
+  "theme": "Playing to not build the thing",
+  "title": "The Reluctant Builders",
+  "innovation_hook": "Mirroring the opponent (strategy stealing) is the textbook trick for achievement games -- an extra claimed vertex never hurts you there. In this AVOIDANCE game an extra claimed vertex only ever adds risk, so blind mirroring (mirror via the first poison edge touching whatever the opponent just claimed) walks straight into poison edges that connect the mirror target to vertices the mirroring player already owns; the same greedy reflex of grabbing the most entangled (highest-degree) vertex for yourself is equally self-defeating, since owning it makes every one of its neighbours a one-sided liability for YOU specifically. The real insight is parity/resource control: build a safe independent set among ordinary vertices for yourself, and deliberately decline the most entangled (hub-like) vertices so the degree-seeking Rival absorbs that risk instead, so Rival is the one more often forced to run out of safe moves.",
+  "strategies": [
+    "trivial: never react (pair[]=0), claim vertices in plain ascending index order -- this is literally the checker's own internal baseline construction B, so it scores ratio ~0.1 by definition",
+    "greedy (trap): mirror the opponent -- respond to Rival's last claimed vertex v by claiming the other endpoint of the FIRST poison edge touching v, falling back to ascending order otherwise; correct instinct for achievement-game strategy stealing, but the generator plants a dense hub (one vertex wired to ~40% of the arena, claimed by You on turn 1) on trap files 5-10 that this blind, non-safety-checking mirror walks straight into",
+    "strong: never mirror (pair[]=0) and never claims a hub-like (poison-degree > 2) vertex early either; instead it splits vertices into ordinary (degree<=2) and hub-like, greedily builds an independent set among the ordinary ones (no two chosen vertices share a poison edge) and claims that first, leaving the hub-like vertices for last -- so the degree-seeking Rival AI voluntarily absorbs the hub and its one-sided risk instead of You",
+    "invalid: prints a pair[] value of n+50 for vertex 1 of every arena, outside the required [0,n] range -- infeasible, must score 0"
+  ]
+}

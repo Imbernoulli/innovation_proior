@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_1295",
+  "tier": "C",
+  "format": "B",
+  "family": "warehouse-robot-policy",
+  "eval_form": "quality-metric",
+  "theme": "Robots that must not deadlock",
+  "title": "Robots That Must Not Deadlock: Warehouse Fleet Reservation Discipline",
+  "objective": "max",
+  "source_frameworks": ["wave3-lens:policy-simulator"],
+  "strategies": [
+    "trivial: only robot 0 works, one order per trip, never charges, all other robots idle -> matches the evaluator's own weak reference exactly",
+    "greedy: every robot works, but round-robins orders one-at-a-time (no batching), never schedules a charging detour, and resolves priority by plain robot index -- the obvious 'independent shortest path per robot' recipe. Fine on the low-density instances (little aisle contention, battery never gets close to empty) but collapses on the high-density trap instances: single-order trips flood the shared single-lane corridor, queuing cascades eat the horizon, and batteries run dry with no charging stops budgeted, permanently stranding robots mid-shift",
+    "strong: a discrete-event dispatcher that batches up to K currently-released orders per round trip (nearest-shelf-first, sweeping outward once instead of round-tripping per order -- far fewer aisle-edge crossings), and proactively detours to recharge (to full) before a trip that would run the battery dry rather than after stranding -- a genuine reservation discipline that costs individual robots time (charging detours) to raise fleet throughput",
+    "invalid: priority list is not a permutation of 0..R-1 (duplicate index) -- rejected on every instance"
+  ]
+}

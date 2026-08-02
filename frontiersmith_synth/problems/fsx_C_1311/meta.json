@@ -1,0 +1,18 @@
+{
+  "id": "fsx_C_1311",
+  "tier": "C",
+  "format": "B",
+  "family": "microgrid-dispatch-policy",
+  "eval_form": "quality-metric",
+  "theme": "Islanded and running out of sun",
+  "title": "Islanded Microgrid: Pre-emptive Load-Shedding Reserve Policy",
+  "objective": "maximize",
+  "source_frameworks": ["wave3-lens:policy-simulator"],
+  "isolation": "candidate runs as an isolated stdin->stdout subprocess via isorun; the hidden actual PV trajectory and evaluator state stay in the evaluator process",
+  "strategies": [
+    "always-shed-non-critical (reserve = capacity forever): protects critical everywhere but forfeits nearly all important/low value on calm days -> the evaluator's own r=0.1 anchor",
+    "serve-everything (reserve = 0 forever, trust the forecast mean): near-optimal on calm instances but drains the battery to empty during a low-sun sequence and then BLACKS OUT CRITICAL LOAD itself -> collapses on 5 of the 10 instances",
+    "forecast-uncertainty-aware rolling reserve: a W-day lookahead pessimistic PV estimate (forecast minus a multiple of the stated per-day uncertainty) sizes a priority-ordered reserve (shed low before important, both before ever touching critical) that stays near zero when the forecast is trustworthy and ramps up several days BEFORE a signalled low-sun sequence hits -> keeps critical service at 100% on every instance while still harvesting nearly all calm-day value",
+    "constant (non-adaptive) reserve tuned per instance: beats serve-everything on the traps but must trade off calm-day value against trap-day survival with a single number, so it is dominated by the time-varying, uncertainty-aware reserve curve"
+  ]
+}

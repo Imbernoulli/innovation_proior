@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1169",
+  "tier": "B",
+  "format": "E",
+  "family": "impulse-response-deconvolve",
+  "eval_form": "quality-metric",
+  "theme": "Recovering the sharp event from a blurred trace",
+  "title": "Calibration Burst — recovering spikes past the noise floor of a triangular blur",
+  "objective": "max",
+  "strategies": [
+    "trivial: emit the constant 0 filter (never fires) -> reproduces the checker's all-zero baseline, Ratio ~0.1",
+    "greedy: read off the paired calibration burst, run an unregularised ordinary-least-squares fit using the FULL 11-tap window (radius 5) to invert the blur -- the textbook 'just solve for the inverse filter' move; on wide-kernel/ample-data cases it looks fine, but on narrow-kernel/short-burst cases the regression is badly over-parameterised and the fitted taps blow up, amplifying fresh noise on the held-out trace far worse than predicting nothing",
+    "strong: first ESTIMATE the kernel's usable support from the calibration cross-correlation between x_cal and y_cal (where the correlation-with-lag drops into the noise floor), then fit a RIDGE-regularised filter restricted to that estimated support with the ridge strength itself chosen by a train/validation split of the calibration burst -- stopping resolution at the estimated noise floor instead of maximising in-sample sharpness",
+    "headroom above strong: a smarter noise-floor estimator (matched-filter energy test instead of a fixed threshold) and per-tap shrinkage instead of a single ridge scalar would push held-out MSE further toward the irreducible sensor-noise floor"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "id": "fsx_A_1347",
+  "tier": "A",
+  "format": "C",
+  "family": "triangulation-coloring-cert",
+  "eval_form": "quality-metric",
+  "theme": "Coloring a surface mesh with a proof",
+  "title": "Wheel Mesh Coloring with Obstruction Certificates",
+  "objective": "max",
+  "strategies": [
+    "component-siloed baseline: color each disjoint patch with a fresh, never-reused block of colors, cost-blind, no certificates (reproduces the checker baseline)",
+    "textbook first-fit greedy in raw vertex order, cost-blind, never explains its color count",
+    "wheel-aware strong solution: detect each local hub+rim wheel from the raw graph, walk the rim to 2-color it (flip the odd-cycle seam vertex to a 4th color exactly when needed), reuse the globally cheapest 3/4-color palette across every wheel, and emit an obstruction certificate for every odd wheel found"
+  ]
+}

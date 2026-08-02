@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1337",
+  "tier": "C",
+  "format": "C",
+  "family": "heat-exchanger-network",
+  "eval_form": "quality-metric",
+  "theme": "Recovering heat between streams that must not mix",
+  "title": "Heat-Exchanger Network Synthesis Under a Pinch",
+  "objective": "min",
+  "strategies": [
+    "no-recovery baseline: every stream on utility, zero matches (reproduces the checker baseline, ~0.06)",
+    "hottest-hot x coldest-cold greedy: chases the biggest local temperature driving force first (cheapest area per unit duty it can find) -- but commits scarce stream capacity to whichever extreme partner is available first, stranding streams with few other feasible partners and forcing extra utility on both the hot and cold side at once",
+    "pinch-respecting design: locate the pinch via the shifted-temperature heat cascade (problem-table algorithm), split every stream's duty at the pinch, and match only WITHIN a region (never letting an above-pinch source serve a below-pinch sink or vice versa) -- this reaches the network's true minimum utility target",
+    "pinch design + area-vs-utility screening: on top of the region split, only take a candidate match whose area cost per unit duty (A/LMTD) is less than the utility cost it displaces (CH+CC per unit); otherwise leave that duty to utility on purpose"
+  ]
+}

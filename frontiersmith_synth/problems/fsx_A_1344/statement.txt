@@ -1,0 +1,80 @@
+# Title
+Sparse Gates: Sealing a Faster Runner's Only Exits
+
+## Problem
+A runner is trapped inside a walled arena and wants out. The arena is an
+`N x N` grid (rows/cols `0..N-1`). Every border cell is a solid wall (`#`)
+EXCEPT a handful of open **gates**: short contiguous runs of open border
+cells. The runner starts at an interior cell and, every turn, walks up to
+`S` cells (8-directional "king" moves, one step at a time, never stepping
+onto a wall or a blocked cell) toward the *nearest gate it can currently
+reach*, along a shortest path. If that gate is at most `S` steps away, the
+runner reaches it this turn and **escapes**. Otherwise it moves exactly `S`
+steps closer along that shortest path and the game continues. If, at the
+start of a turn, the runner can no longer reach *any* gate, it is
+permanently **contained** (blocked cells are never removed, so this state
+lasts forever).
+
+You play the containment side. Before the runner moves each turn, you may
+turn up to `K` currently-open, non-runner cells permanently into blocked
+cells (a wall you build), subject to a total budget of `B` blocked cells
+over the whole game. You must decide, turn by turn, which cells to spend
+your budget on. Reacting to the runner's current square is always one step
+behind a runner that is faster than your wall-building rate; the gates
+themselves, however, are fixed and known from turn 1.
+
+## Input
+```
+N T S K B
+rx ry
+<N grid rows, each a string of N characters, '.' or '#'>
+```
+`rx,ry` is the runner's starting cell (interior, `grid[rx][ry] = '.'`).
+Border cells are `#` except gate cells, which are `.`. `1 <= T <= 20`
+turns are played.
+
+## Output
+Exactly `T` lines, one per turn `t = 1..T`, each:
+```
+c r_1 c_1 r_2 c_2 ... r_c c_c
+```
+`0 <= c <= K`: the number of cells you block this turn, followed by their
+`c` coordinates. Each blocked cell must currently be open (`.`), not
+already blocked, and not equal to the runner's current cell. The sum of
+`c` over all `T` turns must not exceed `B`.
+
+## Feasibility
+Any violation above (out-of-range cell, blocking a wall/already-blocked
+cell/the runner's own cell, exceeding `K` in one turn, or exceeding the
+total budget `B`) makes the whole output infeasible, scoring 0.
+
+## Objective (maximize)
+Let `turns_contained` = the number of turns the runner survives without
+escaping, capped at `T` (a runner that never escapes, or that gets
+permanently contained, counts as `T`). Let `E0` = the number of gates
+reachable from the runner at turn 0 (before any blocking), and `Ef` = the
+number of gates still reachable from the runner's final tracked cell (0 if
+permanently contained). Your raw score is
+```
+raw = 0.6 * (turns_contained / T) + 0.4 * ((E0 - Ef) / E0)
+```
+The checker also builds its own reference containment (block only the
+single nearest gate, nothing else) to get a baseline `Base`, and reports
+```
+Ratio = min(1.0, 0.1 * raw_scaled / Base_scaled)
+```
+(both `raw` and the baseline are scaled internally; higher is better).
+
+## Constraints
+`8 <= N <= 40`, `1 <= T <= 20`, `1 <= S <= 4`, `1 <= K <= 5`,
+`K <= B <= 20`. Time limit: 3 seconds. Memory limit: 512 MB.
+
+## Example
+`N=8,T=4,S=1,K=1,B=2`, runner at `(4,4)`, a single 1-cell gate at `(0,4)`
+(top wall), all other border cells `#`, interior open. Distance from
+`(4,4)` to `(0,4)` is 4. If you block `(0,4)` on turn 1 (your one
+allowed cell), the runner is immediately contained forever:
+`turns_contained = 4 = T`, `E0 = 1`, `Ef = 0`, `raw = 0.6*1 + 0.4*1 = 1.0`
+(the maximum), which also equals the checker's own baseline exactly, so
+Ratio = 0.1 for this single-gate example (the interesting play only shows
+up with several gates and a speed advantage — see the harder tests).

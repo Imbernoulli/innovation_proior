@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1200",
+  "tier": "C",
+  "format": "E",
+  "family": "churn-hazard-forecast",
+  "eval_form": "quality-metric",
+  "theme": "When customers leave, not whether",
+  "title": "Churn Hazard Forecast — recovering a censored hazard shape across cohorts",
+  "objective": "max",
+  "strategies": [
+    "constant survival guess 0.5 for every horizon/cohort (ignores the data entirely) -> reproduces the checker's own baseline (~0.1)",
+    "greedy: the obvious recipe -- treat each customer's observed tenure as if it were their true exit time (censoring flag ignored), bucket by cohort covariate x, fit a per-bucket mean tenure linear in x, assume exponential (kappa=1) decay. Fits the visible window's raw statistics but is systematically biased short (censored long-tenure customers are averaged in as if they exited at T_obs) and assumes the wrong hazard shape whenever the true hazard is rising or falling -- both errors compound once extrapolated past the visible window",
+    "strong: the insight -- build the Nelson-Aalen cumulative-hazard estimate per cohort bucket (respecting the risk set, so censored customers correctly stay 'at risk' until they leave without being counted as an event), recover the Weibull shape/scale via a log(H) vs log(t) regression (linear iff the shape is estimable despite censoring), borrow the pooled fit for sparse buckets, then regress the recovered (kappa, log lambda) pairs against the cohort covariate to generalise across the full cohort range and extrapolate the SHAPE, not the mean, past the visible window",
+    "headroom above strong: sampling noise in the risk-set estimate and finite bucket sizes keep even the correct methodology short of a perfect fit -- richer covariate smoothing (kernel-weighted buckets, per-tick hazard smoothing) or a maximum-likelihood Weibull fit accounting for the exact censoring pattern would push held-out error further down"
+  ]
+}

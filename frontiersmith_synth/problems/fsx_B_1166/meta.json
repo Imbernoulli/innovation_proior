@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_1166",
+  "tier": "B",
+  "format": "C",
+  "family": "plume-source-inversion",
+  "eval_form": "quality-metric",
+  "theme": "Tracing a contaminant plume back to its buried source",
+  "title": "Well Field: Backtracking a Buried Contaminant Plume",
+  "objective": "max",
+  "strategies": [
+    "minimum-norm least squares on the visible wells (naive baseline, fits data exactly but smears mass across correlated cells)",
+    "least squares + clip-and-rescale (still no sparsity commitment, trap-vulnerable)",
+    "orthogonal matching pursuit exploiting the <=3-active-cell sparsity prior + non-negative least squares refit on the small support (recovers the true source, generalizes to held-out wells)"
+  ]
+}

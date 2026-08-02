@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1289",
+  "tier": "B",
+  "format": "C",
+  "family": "capex-stage-gate",
+  "eval_form": "quality-metric",
+  "theme": "Committing money before you know if it works",
+  "title": "Capex Stage-Gate: Sizing Commitments by What They Teach You",
+  "objective": "max",
+  "strategies": [
+    "full commitment: build every module in one giant stage, never checking in (destroys all option value but pays no repeated mobilization overhead)",
+    "equal-cost tranches: split the fixed build order into a fixed number of roughly equal-dollar stages and vote on signals seen so far -- naive staging that ignores WHICH modules are actually informative",
+    "information-per-dollar staging: isolate any module whose signal accuracy is far from a coin flip into its own thin, cheap probing stage, batch the rest, and choose continue/abandon by exact backward-induction on the true Bayesian posterior at every reachable signal history",
+    "exhaustive partition search (unused headroom): brute-force every possible stage boundary set (all 2^(M-1) partitions) with optimal decisions at each, which the reference strong solution deliberately does NOT do"
+  ]
+}

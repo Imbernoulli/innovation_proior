@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1220",
+  "tier": "C",
+  "format": "C",
+  "family": "type-checker-inference",
+  "eval_form": "quality-metric",
+  "theme": "Inferring types nobody wrote down",
+  "title": "The Principal Scheme",
+  "objective": "maximize",
+  "strategies": [
+    "eager/flat solve: unify the definition constraints and every use-site constraint together as one monomorphic system, in file order -- whatever ground type the first use pins a slot to sticks for every later use",
+    "solve-then-commit-to-first-use: solve the definition alone, then for each variable it leaves free, fix it to whatever ground type the first use site (in file order) happens to want",
+    "blind default: solve the definition alone, fix every variable it leaves free to a constant default type without consulting any use site",
+    "solve-then-generalize: solve the definition constraints alone, and report every variable they leave unresolved as a universally-quantified label instead of a ground type, deferring instantiation to each use's own generalization point"
+  ]
+}

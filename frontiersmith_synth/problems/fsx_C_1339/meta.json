@@ -1,0 +1,15 @@
+{
+  "id": "fsx_C_1339",
+  "tier": "C",
+  "format": "C",
+  "family": "fertilizer-blend-schedule",
+  "eval_form": "quality-metric",
+  "theme": "Feeding a plant what it needs when it needs it",
+  "title": "Split-Season Nutrient Scheduling",
+  "objective": "max",
+  "strategies": [
+    "front-load baseline: dump the entire season's N, K and Mg budget in a single day-1 application (reproduces the checker baseline)",
+    "textbook split-application recipe: spread each nutrient's budget into P EQUAL doses on P evenly spaced calendar days, applying all three nutrients together each visit (standard 'split into thirds' agronomic advice, blind to the demand curve's actual shape)",
+    "shared-pass-budget day selection with antagonism exclusion: allocate passes across nutrients by leaching urgency, forbid K and Mg from ever sharing a calendar day, let N ride for free on already-open days, then locally search amounts and day swaps against the true soil-plant simulator"
+  ]
+}

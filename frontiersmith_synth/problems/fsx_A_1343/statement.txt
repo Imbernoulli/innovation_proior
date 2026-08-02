@@ -1,0 +1,80 @@
+# Certifying the Losing Positions
+
+## Problem
+Two players alternate turns on `N` independent piles of stones (normal play: a
+player unable to move loses). Pile `i` has its own **move menu** `S_i`, a finite
+set of legal removal amounts: on your turn you pick one nonempty pile `i` and
+remove `s` stones for some `s` in `S_i` with `s <=` the pile's current size.
+
+A position (one size per pile) is a **loss for the player about to move**
+("P-position") exactly when the XOR of the piles' Sprague-Grundy values is 0,
+where pile `i`'s Grundy value at size `a` is `g_i(a) = mex{ g_i(a-s) : s in
+S_i, s <= a }` (mex = smallest non-negative integer not in the set), `g_i(0)=0`.
+Every such sequence is guaranteed to eventually repeat (finitely many possible
+"recent-history" states force a cycle), but the repeat length and where it
+starts depend on `S_i` in no simple closed form in general -- only for the
+classic textbook case `S_i = {1,...,C}` is the period exactly `C+1`.
+
+You are given the `N` move menus and a long list of **query positions** (pile
+sizes, possibly astronomically large -- far beyond what any direct game-tree
+or DP search could touch one query at a time). You must submit a compact
+**certificate** instead of per-query answers: for each pile `i`, a period `p_i`
+and a table `T_i[0..p_i-1]`. Your predicted invariant value for pile size `a`
+is `T_i[a mod p_i]`, and you predict a query position is a loss for the mover
+iff the XOR of your predicted per-pile values is 0.
+
+## Input
+```
+N
+K_1 S_1[1] ... S_1[K_1]
+...
+K_N S_N[1] ... S_N[K_N]
+NQ
+a_1 a_2 ... a_N        (query 1)
+...
+a_1 a_2 ... a_N        (query NQ)
+```
+
+## Output
+`N` lines; line `i` is `p_i T_i[0] T_i[1] ... T_i[p_i-1]`.
+
+## Feasibility
+`1 <= p_i <= 2000`; every `T_i[j]` is an integer in `[0,63]`.
+
+## Scoring
+Two terms, both against the SAME submitted tables:
+- **Accuracy**: over the `NQ` query positions, the fraction where your
+  predicted loss/win label matches the true one (computed exactly by the
+  judge). Getting small pile sizes right is easy; most of the queries use
+  pile sizes no brute-force search can reach, so accuracy there requires your
+  table to actually equal the true recurring pattern, not just fit a prefix.
+- **Closure**: for each pile `i` and each residue `r` in `0..p_i-1`, check
+  whether `T_i[r] == mex{ T_i[(r-s) mod p_i] : s in S_i }` (indices taken
+  mod `p_i`). This is the exact self-consistency a real Grundy invariant must
+  satisfy under pile `i`'s own move menu -- it is checked on your tables
+  alone, independent of the queries, and it catches a table that merely
+  resembles the truth without actually respecting how the game's moves work.
+  Report the fraction of residues (pooled over all piles) that pass.
+
+Raw score `F = round(10000*Accuracy + 4000*Closure)`. The judge also builds
+its own baseline `B`: the same formula for the "always predict a loss"
+certificate (`p_i=1, T_i=[0]` for every pile). Final score
+`ratio = min(1000, 100*F/max(1,B)) / 1000`.
+
+## Constraints
+- `2 <= N <= 10`, `3 <= K_i <= 6`, move-menu values are distinct integers in
+  `[1,20]`.
+- Pile sizes in queries: `0` to `4*10^15`. `1 <= NQ <= 3000`.
+- Time limit: 5 s. Memory limit: 512 MB. Each input file `<= 5` MB.
+
+## Example
+`N=2`. Pile 1: `S_1={1,2,3}` (so `g_1(a) = a mod 4`, e.g. `g_1(5)=1`). Pile 2:
+`S_2={1,2,4}` (its true sequence is `0,1,2,0,1,2,...`, i.e. `g_2(a)=a mod 3`,
+e.g. `g_2(7)=1`). Two queries: `(5,7)` has `g_1(5) XOR g_2(7) = 1 XOR 1 = 0`
+(a loss for the mover); `(1,0)` has `1 XOR 0 = 1` (a win for the mover).
+
+Submitting the true tables (`p_1=4, T_1=[0,1,2,3]` and `p_2=3, T_2=[0,1,2]`)
+predicts both labels correctly (Accuracy `1.0` on this pair) and satisfies
+the closure recurrence at every one of the `4+3=7` residues (Closure `1.0`).
+Real test files use far more query positions, but this illustrates the
+mechanics and confirms the checker's arithmetic.

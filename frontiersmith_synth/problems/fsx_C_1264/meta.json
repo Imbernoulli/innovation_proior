@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1264",
+  "tier": "C",
+  "format": "D",
+  "family": "compiler-inline-budget",
+  "eval_form": "flops",
+  "theme": "Which functions to paste in place",
+  "title": "Paste and Fold: Chain-Aware Inlining Under an Instruction-Cache Budget",
+  "objective": "min",
+  "strategies": [
+    "inline nothing, pay full call overhead and body cost everywhere (trivial baseline)",
+    "sort call sites by (frequency * call overhead) / inline size and greedily fill the icache budget, ignoring which call sites unlock constant-propagation bonuses downstream (greedy, the obvious recipe -- also the checker's own reference baseline)",
+    "recognize that a call site's true value is its OWN call-overhead saving PLUS every bonus its inlining unlocks further down its chain, so treat each unlock-chain as a bundle of dependent prefix choices and solve a grouped knapsack over those bundles under the icache cap, then probe a few bounded overshoots past the cap when the unlocked bonus outweighs the icache penalty (strong -- a reformulation from per-item value to post-optimization chain value)",
+    "true global optimum over which call sites to inline, jointly with how far over the icache cap to go, is a nonlinear coupled combinatorial search (the penalty multiplies the WHOLE dynamic cost, so overshoot decisions interact globally) -- open ceiling, uncovered"
+  ]
+}

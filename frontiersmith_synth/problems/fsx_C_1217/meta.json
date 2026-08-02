@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1217",
+  "tier": "C",
+  "format": "C",
+  "family": "regex-engine-repair",
+  "eval_form": "quality-metric",
+  "theme": "Patching a matcher that gets a few strings wrong",
+  "title": "One Edit to Rule Them All: Repairing a Broken Matcher",
+  "objective": "max",
+  "strategies": [
+    "trivial: submit zero edits -- reproduces the checker's own baseline (the damaged automaton's raw held-out accuracy)",
+    "greedy: for each visible failing example, run it and toggle the accept-flag of wherever that specific run ends up -- fixes the example shown but is a per-example special case that rarely transfers to held-out strings, and can introduce new mistakes",
+    "strong: brute-force search the automaton's small single-edit space (toggle one accept bit / add one epsilon edge / retarget one transition) for the ONE edit that makes ALL visible examples correct at once -- this recovers the shared structural defect instead of memorizing symptoms",
+    "(headroom above strong): a solver that also reasons about which of several equally-consistent single edits best matches the STRUCTURE of the given automaton (e.g. preferring edits at motif-boundary epsilon edges or star loop edges over incidental coincidences), or that falls back to a minimal 2-edit search when the single-edit space is genuinely ambiguous"
+  ]
+}

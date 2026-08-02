@@ -1,0 +1,81 @@
+# The Tangled Arcade
+
+## Problem
+You are handed a bundle of `M` independent arcade-machine positions. Each position is
+secretly a **disjunctive sum** of several small, independent sub-machines (components):
+each has its own directed "wiring" graph and one token on a current node. On a turn, a
+player picks ONE component and slides its token along one outgoing wire; a player unable
+to move any token anywhere loses. Nobody tells you which nodes belong to which component:
+an instance is printed as one interleaved node/edge list, node ids globally shuffled and
+edges in random order -- you must recover independence yourself (no edge ever connects two
+different true components).
+
+A component whose token sits inside a directed cycle (a strongly connected set of size
+>= 2, or a self-loop) is **JAMMED**: by house rule a jammed component always contributes
+Grundy value 0, whatever it looks like otherwise. A component whose token is not on any
+cycle behaves like an ordinary impartial game: its Grundy value is the mex (minimum
+excludant) of its reachable neighbors' Grundy values. A position's value is the XOR of its
+components' Grundy values (each token's own node value, computed this way).
+
+For each instance, decide: is there a single move (relocate one token along a real wire)
+that drives the position's XOR to 0 (a winning move)? If yes, name one; else say so.
+
+## Input
+```
+M
+n_1 c_1 e_1
+tok[1..c_1]
+u_1 v_1
+...
+u_{e_1} v_{e_1}
+... (repeated for instances 2..M)
+```
+For instance `i`: `n_i` nodes (ids `0..n_i-1`), `c_i` active tokens (current positions,
+listed on one line), `e_i` directed edges `u v` meaning a token on `u` may move to `v`.
+
+## Output
+Exactly `M` lines, one per instance, in order:
+```
+PASS
+```
+(claiming no move zeroes the XOR), or
+```
+MOVE u v
+```
+(claiming: moving the token currently on `u` along the real edge `u->v` zeroes the XOR).
+
+## Feasibility
+Each line must be exactly `PASS` or `MOVE u v`. For `MOVE u v`: `u` must be one of that
+instance's active token positions, and the edge `u->v` must actually exist in that
+instance's edge list. Any violation (bad keyword, out-of-range index, non-token `u`, or a
+nonexistent edge) scores the whole submission 0.
+
+## Objective
+Let a node's Grundy value be computed as above (jammed nodes forced to 0; otherwise mex
+over out-neighbors' values), and let `X` be the XOR of an instance's active tokens'
+Grundy values. Your claim on that instance is correct iff:
+`PASS` and no edge `u->v` from any token `u` has `X ^ grundy(u) ^ grundy(v) == 0`; or
+`MOVE u v` is a legal move with `X ^ grundy(u) ^ grundy(v) == 0`.
+Maximize `F` = the number of instances (out of `M`) on which your claim is correct.
+
+## Scoring
+The grader's own trivial reference always answers `PASS`; let `B` be the number of
+instances where that is correct (`B` is guaranteed positive). Your score on a test is
+`ratio = min(1000, 100*F/B) / 1000`. The final score is the mean ratio over 10 tests.
+
+## Constraints
+- `1 <= M <= 400`, `1 <= n_i <= 130`, `1 <= c_i <= n_i`, `0 <= e_i <= 500`.
+- Time limit: 5 s. Memory limit: 512 MB. Deterministic: identical output -> identical score.
+
+## Example
+A toy test with `M=3`:
+Inst. 1: `n=3 c=1 e=0`, token `[0]`, no edges -> no moves possible -> `PASS` correct (`X=0`).
+Inst. 2: `n=3 c=2 e=2`, tokens `[0,2]`, edges `0 1`, `2 2` (self-loop). `grundy(1)=mex{}=0`,
+`grundy(0)=mex{0}=1`, `grundy(2)=0` (jammed). `X=1^0=1`. Token 0's target
+`=X^grundy(0)=0`; its edge goes to node 1 (`grundy=0`) -- match, so `MOVE 0 1` is correct
+(after: `X'=0^0=0`).
+Inst. 3: `n=4 c=2 e=2`, tokens `[0,2]`, edges `0 1`, `2 3` -- two identical 2-node chains,
+both tokens `grundy=1`, `X=1^1=0`; either token's only edge leads to a `grundy=0` node,
+which can't re-zero `X` -- `PASS` correct.
+Answering `PASS, MOVE 0 1, PASS` gets `F=3`. The always-`PASS` baseline is correct on
+instances 1 and 3 only: `B=2`. `ratio = min(1000, 100*3/2)/1000 = 0.15`.

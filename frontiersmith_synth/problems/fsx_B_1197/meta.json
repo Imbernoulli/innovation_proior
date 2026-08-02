@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1197",
+  "tier": "B",
+  "format": "E",
+  "family": "gnss-multipath-forecast",
+  "eval_form": "quality-metric",
+  "theme": "Position error that depends on which satellites are up",
+  "title": "GNSS Multipath Repeat — finding the true satellite-repeat period before it drifts out of phase",
+  "objective": "max",
+  "strategies": [
+    "predict a constant 0 (ignores everything) -> reproduces the checker's own baseline ~0.1",
+    "greedy: the obvious recipe -- assume the repeat period is EXACTLY one solar day (86400s); fit an intercept + 1st/2nd/3rd-harmonic Fourier series at that fixed frequency by least squares on the training window. Because the true orbital-repeat period is only a few hundred seconds off, this looks almost perfect on the few visible training days, but the fixed-24h phase drifts steadily out of sync with the true near-day period, so it decoheres over the held-out horizon weeks later",
+    "strong: the insight -- do NOT assume the repeat period is exactly a day. Jointly fit (a) the KNOWN-exact-24h solar term and (b) a 1st/2nd/3rd-harmonic series at a CANDIDATE period P1, grid-searching P1 in a window around 86400s and picking, by training least-squares residual, the P1 that actually explains the data; accept the searched period only when an F-test-style check shows it explains meaningfully more training variance per extra parameter than the pure-24h fit (otherwise fall back to the safe 24h fit, avoiding chasing noise on the hardest/shortest instances). On instances where the gap is resolvable this locks the phase in and stays accurate over the held-out horizon; on instances where it is not, it safely matches greedy instead of overfitting",
+    "headroom above strong: refine the grid to sub-second period precision, use a principled information criterion instead of a fixed F threshold, or model the fractional/interpolated period more carefully to push held-out MSE further toward the sensor-noise floor (the 880/1000 cap keeps this from saturating)"
+  ]
+}

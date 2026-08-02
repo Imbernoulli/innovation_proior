@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_1309",
+  "tier": "C",
+  "format": "B",
+  "family": "hospital-bed-flow-policy",
+  "eval_form": "quality-metric",
+  "theme": "Admitting patients when discharge is the bottleneck",
+  "title": "Admitting Patients When Discharge Is The Bottleneck: A Specialty-Bed Reserve Policy",
+  "objective": "max",
+  "source_frameworks": ["wave3-lens:policy-simulator"],
+  "strategies": [
+    "never lend a bed across wards: reserve = capacity every day (reproduces the evaluator's weak baseline reference, ~0.1)",
+    "maximize same-day utilization: reserve = 0 every day, always admit an outlier the instant a bed is free -- no forecast use, no notion that a lending ward will need its beds back",
+    "turnover-net-demand reserve: shadow-simulate each ward's own home occupancy forward under the public forecast, estimate how much of that occupancy will discharge organically within a lookahead window, and reserve only the forecasted near-term demand NOT already covered by that organic turnover -- collapses to ~0 (full lending) when a ward is quiet, rises ahead of a ward's own demand ramp before it is caught full of slow-discharging outliers",
+    "stronger variants: rolling re-optimization of the reserve trajectory against a multi-ward flow relaxation, or a min-cost-flow / LP formulation over the whole horizon using the full forecast and the outlier discharge-rate penalty"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_1227",
+  "tier": "C",
+  "format": "C",
+  "family": "cache-coherence-protocol",
+  "eval_form": "quality-metric",
+  "theme": "Keeping cores from reading stale data",
+  "title": "Per-Line Adaptive Coherence: Invalidate vs. Update Under a Traffic/Latency Cost Model",
+  "objective": "min",
+  "source_frameworks": ["wave3-lens:protocol-conformance"],
+  "strategies": [
+    "trivial: invalidate-on-write for every line (the textbook MSI baseline)",
+    "greedy: measure the whole trace's aggregate read/write mix, simulate ALL-INVALIDATE vs ALL-UPDATE once, and apply whichever single global policy is cheaper to every line",
+    "strong: exploit that per-line interconnect cost is additive/independent across lines -- locally simulate INV, UPD, and a small grid of reactive ADAPT(window,threshold) policies for EACH line separately and keep the cheapest, so write-storm-shared lines get INV, read-heavy-shared lines get UPD, and lines whose access regime shifts mid-trace get an adaptive switch that neither global choice can express",
+    "invalid: illegal policy tokens / non-finite adaptive threshold -> rejected before scoring"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1242",
+  "tier": "C",
+  "format": "D",
+  "family": "systolic-array-map",
+  "eval_form": "flops",
+  "theme": "Laying a matrix computation onto a grid of cells",
+  "title": "Switching Looms: Dataflow Mapping for a Chained Matmul Sequence",
+  "objective": "min",
+  "strategies": [
+    "always weight-stationary (pin K,N; stream M) on every layer -- shape-blind baseline",
+    "maximize reuse for the single largest-volume layer's dataflow, then force that same code on every other layer regardless of its own shape",
+    "per-layer dynamic program over the 6 stationary/streaming codes with a switch-cost edge between consecutive layers -- exact shortest path over the state graph",
+    "alternative untested: re-optimize each layer's code independently for its own local minimum with no lookahead/lookback and no accounting for the switch cost this incurs"
+  ]
+}

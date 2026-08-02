@@ -1,0 +1,88 @@
+# Splitting the Grove: k-Way Orchard Partition
+
+## Problem
+An orchard is laid out as a tree of `N` plots (1-indexed), joined by `N-1` paths. Plot `i`
+holds `w_i` units of fruit yield. You must divide the orchard into exactly `K` disjoint
+blocks (connected regions of surviving plots), using two kinds of operations:
+
+- **Path cut.** Cut path `e` for cost `c_e`. This severs exactly the one connection it
+  represents.
+- **Clear a plot.** Uproot plot `v` entirely for cost `p_v`. Its yield `w_v` is lost, and
+  EVERY path touching `v` is severed at once, in one bundled operation — all of `v`'s
+  branches instantly become separate from each other and from `v`. This is a bargain at a
+  plot where many paths meet (a hub) whenever `p_v` undercuts the sum of the individual
+  path-cut costs around it — but clearing also throws away that plot's yield.
+
+After your chosen clears and cuts, the surviving plots (everything except cleared ones)
+split into connected blocks. You must end with EXACTLY `K` blocks.
+
+## Input
+```
+N K LAMBDA
+w_1 w_2 ... w_N
+p_1 p_2 ... p_N
+u_1 v_1 c_1
+...
+u_{N-1} v_{N-1} c_{N-1}
+```
+`u_i v_i c_i` describes path `i` (1-indexed), connecting plots `u_i` and `v_i` at cut
+cost `c_i`.
+
+## Output
+```
+x
+r_1 r_2 ... r_x
+y
+idx_1 idx_2 ... idx_y
+```
+`x` = number of cleared plots, then their `x` distinct ids `r_1..r_x`. `y` = number of cut
+paths, then their `y` distinct path indices `idx_1..idx_y`. A listed path must not touch a
+cleared plot (clearing already severs it; also listing it is a violation).
+
+## Feasibility
+- `r_1..r_x` are distinct integers in `[1,N]`.
+- `idx_1..idx_y` are distinct integers in `[1,N-1]`, and neither endpoint of path `idx_j`
+  may be a cleared plot.
+- After deleting the cleared plots and cutting the listed paths, the surviving plots must
+  form **exactly `K`** connected blocks (a block is a maximal connected surviving region).
+- Trailing tokens after `idx_y` are a violation. Any violated requirement scores 0.
+
+## Objective (minimize)
+Let block `i` (`i=1..K`) hold total surviving yield `s_i`. Let `S` = sum of `w_j` over
+**all** `N` plots (including cleared ones — clearing spends a plot's yield out of every
+block, but it still counts toward the fair share target `S/K`). Define:
+```
+P = sum_{i=1..K} (K*s_i - S)^2
+BALANCE_PENALTY = floor( LAMBDA * P / (K * S) )
+COST = (sum of p_v over cleared plots) + (sum of c_e over cut paths)
+F = COST + BALANCE_PENALTY
+```
+`BALANCE_PENALTY` is exactly 0 when every block holds precisely `S/K` yield, and grows
+quadratically as blocks drift from that target — one badly unbalanced block hurts more
+than the same total imbalance spread thin across several. `LAMBDA` (given per test) sets
+how much balance matters relative to raw cutting/clearing cost.
+
+## Scoring
+Let `B` be the objective `F` of the reference baseline: cut paths `1..K-1` (by index),
+clear nothing. Your ratio for a test is `B / (B + 9*F)`, so matching the baseline scores
+exactly `0.1` and the ratio climbs smoothly toward `1` as `F` shrinks well below `B` (never
+hard-capped). Ratios are averaged over 10 hidden tests. An infeasible output scores 0 on
+that test.
+
+## Constraints
+`2 <= K <= N <= 300`, `1 <= LAMBDA <= 5`, `1 <= w_i <= 6`, `1 <= p_i <= 150`,
+`1 <= c_i <= 40`. Time limit: 3 s. Memory limit: 512 MB.
+
+## Example
+`N=4 K=2 LAMBDA=2`, `w=[3,3,2,2]` (so `S=10`), `p=[50,5,50,50]`, paths
+`1: (1,2,c=4)`, `2: (1,3,c=6)`, `3: (1,4,c=6)` (plot 1 is a degree-3 hub).
+
+Output `x=0`, `y=1`, `idx=[1]` (cut path 1): survivors split into blocks `{1,3,4}`
+(`s=7`) and `{2}` (`s=3`). `P = (2*7-10)^2 + (2*3-10)^2 = 32`,
+`BALANCE_PENALTY = floor(2*32/(2*10)) = 3`, `COST = 4`, `F = 7`. This is exactly the
+baseline (cut paths `1..K-1` = cut path 1), so `B = 7` too and the ratio is `7/(7+63) = 0.1`.
+
+Clearing plot 1 instead (`x=1, r=[1]`, `y=0`) severs all 3 paths at once and produces 3
+blocks — infeasible here since `K=2`; clearing a hub only pays off when its bundled split
+lands on exactly `K` blocks (it does not here, but it typically does on the larger,
+higher-degree hidden tests).

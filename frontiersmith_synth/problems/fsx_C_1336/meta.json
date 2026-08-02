@@ -1,0 +1,18 @@
+{
+  "id": "fsx_C_1336",
+  "tier": "C",
+  "format": "C",
+  "family": "cocrystal-former-select",
+  "eval_form": "quality-metric",
+  "theme": "A partner molecule that fixes solubility",
+  "title": "Cocrystal Coformer Selection: Solubility Under a Stability Floor",
+  "objective": "max",
+  "strategies": [
+    "reference-only: always pick the given weak-bonding reference coformer (reproduces the checker baseline -> ~0.1)",
+    "bond-strength maximization: scan the regulatory-approved list and pick the coformer/ratio with the strongest hydrogen-bond synthon match that still clears the stability floor -- forms a very stable cocrystal, but the huge lattice-energy excess crushes solubility on the planted bond-monster cases",
+    "interior-optimum search: brute-force every regulatory-approved (coformer, ratio) pair, compute the exact solubility-improvement formula (polarity bonus minus lattice-energy-excess penalty) for each, and keep the true maximizer -- lands on a coformer that clears the stability floor with a small excess and high polarity",
+    "same idea generalized: any search that actually evaluates the given trade-off formula instead of proxy-maximizing bond strength converges to the interior optimum"
+  ],
+  "source_frameworks": ["wave3-lens:molecular-materials"],
+  "innovation_hook": "Selecting the coformer with the strongest hydrogen bond to the API maximizes cocrystal stability and often lowers solubility below the original, defeating the purpose. The insight is targeting an intermediate lattice energy: stable enough to form, weak enough to dissolve."
+}

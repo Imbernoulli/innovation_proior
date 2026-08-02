@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1257",
+  "tier": "C",
+  "format": "D",
+  "family": "sensor-sampling-schedule",
+  "eval_form": "flops",
+  "theme": "Reading sensors on a battery that must last a year",
+  "title": "Precursor or Perish: A Two-Rate Sampling Policy for a Year-Long Battery",
+  "objective": "max",
+  "strategies": [
+    "spend only about half the energy budget on one fixed, precursor-blind rate spread over the whole horizon (trivial baseline, matches the checker's own reference construction)",
+    "spend (almost) the entire energy budget on one fixed, precursor-blind rate spread over the whole horizon -- the obvious 'use the whole budget' recipe; near-optimal under scattered/uniform arrival but blind to bursts (greedy)",
+    "pigeonhole-guaranteed cheap precursor monitoring (period <= lead) reserving a worst-case-bounded escalation budget (Cmax clusters x W slots at full P1=1 rate), spending only the remainder on base coverage; falls back to the fixed-rate recipe when there is nothing to escalate on (strong)",
+    "jointly optimise (P0,Pc,P1,W) against the *actual* realized cluster count/placement per stream instead of a worst-case bound (open ceiling, uncovered -- true per-stream optimal escalation timing is a much harder online-decision problem)"
+  ]
+}

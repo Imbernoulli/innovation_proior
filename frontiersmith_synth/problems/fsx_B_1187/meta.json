@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_1187",
+  "tier": "B",
+  "format": "C",
+  "family": "radar-micro-doppler-id",
+  "eval_form": "quality-metric",
+  "theme": "Naming the moving thing from its vibration spectrum",
+  "title": "Aliased Rotor: Naming the Mover from Its Folded Micro-Doppler",
+  "objective": "max",
+  "strategies": [
+    "trivial baseline: the checker's own naive reference (candidate row 0, its own range midpoint) -- ignores all observations",
+    "greedy: trust the single most Doppler-sensitive aspect angle, assume the observed peak IS the true frequency (no PRF aliasing), match it to whichever candidate class's rate range it implies -- confidently wrong whenever that angle's true line actually exceeds PRF/2",
+    "strong: use aspect-angle diversity across the dwell -- for each candidate class and each small integer PRF-fold order, propose a rotation rate and score it against ALL given aspect angles jointly; only the class+rate that is forward-model-consistent everywhere survives"
+  ]
+}

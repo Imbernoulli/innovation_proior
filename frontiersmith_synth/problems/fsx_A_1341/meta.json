@@ -1,0 +1,19 @@
+{
+  "id": "fsx_A_1341",
+  "tier": "A",
+  "format": "A",
+  "family": "grundy-value-compute",
+  "eval_form": "quality-metric",
+  "seed_problem": "A position is a batch of independent game-position instances. Each instance is secretly a disjunctive sum of small independent components (each with a directed move graph and a current token) whose nodes are globally shuffled together into one interleaved graph, hiding the decomposition. Solve by finding a move that zeroes the XOR of per-component Grundy values, or correctly PASS.",
+  "mutation": "goal: replace 'compute the Grundy value / decide the winner' (a single exact-answer decision problem) with a graded multi-instance move-selection quality metric: score = fraction of many independent, deliberately-obscured sum-of-games instances on which the claimed action (a specific relocation move, or PASS) is provably correct, relative to an always-PASS baseline.",
+  "objective": "max",
+  "theme": "Winning a game made of many small games",
+  "title": "The Tangled Arcade",
+  "innovation_hook": "Evaluating the whole position by search is exponential (the joint state space is the product of every component's size); the insight is that the position decomposes into vertex-disjoint independent components whose Grundy values XOR, turning an exponential joint search into an O(V+E) linear scan -- but only after recognizing the decomposition, which the input deliberately obscures by globally shuffling node ids and edge order across all components.",
+  "strategies": [
+    "trivial: always claim PASS (the grader's own baseline construction) -> ratio ~0.1",
+    "greedy (trap): treat it as one ordinary combinatorial game and minimax the JOINT state space (tuple of all active tokens) with memoization under an expansion budget; a naive on-path-cycle shortcut (treat a revisited in-progress joint state as a loss) and a give-up-on-budget-exhaustion fallback to PASS make it match the truth on tiny instances but fail increasingly as the number of components (and hence the product-sized joint state space) grows",
+    "strong: Tarjan-SCC each instance graph, condense to a DAG, compute each node's Grundy value by mex DP in reverse-topological (Tarjan completion) order -- forcing any node in a nontrivial SCC or with a self-loop to Grundy 0 (the JAMMED/looping-component rule) -- then XOR the active tokens' Grundy values and search each token's own out-edges for one that zeroes the total; O(V+E) per instance regardless of component count",
+    "invalid: claims a MOVE from an out-of-range node index -> infeasible, scores 0"
+  ]
+}

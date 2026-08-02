@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1344",
+  "tier": "A",
+  "family": "angel-devil-containment",
+  "seed_problem": "angel-devil-containment / trapping a faster runner",
+  "mutation": "goal: replace 'block the cell the runner is heading toward' (reactive pursuit) with a maximize-containment objective over a scheduled, budget-limited blocking policy that must pre-seal fixed gates before a faster runner's known-in-advance arrival time; input: sparse named gates on an otherwise walled border force explicit escape-route counting instead of a uniform perimeter.",
+  "objective": "max",
+  "theme": "Trapping something that moves faster than you",
+  "title": "Sparse Gates: Sealing a Faster Runner's Only Exits",
+  "strategies": [
+    "trivial: do nothing (empty blocking policy every turn)",
+    "greedy: reactive chase -- every turn, spend the per-turn budget on cells immediately adjacent to the runner's CURRENT position, in the direction of whichever gate looks nearest right now",
+    "strong: predictive gate scheduler -- rank all gates by initial distance / build time, and dedicate budget turn by turn to fully sealing the most urgent still-open gate before the runner can arrive, exploiting that gate locations and arrival times are computable from turn 1",
+    "invalid: places a block on the runner's own starting cell -- must be rejected (score 0)"
+  ]
+}

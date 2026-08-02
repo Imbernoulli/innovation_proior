@@ -1,0 +1,15 @@
+{
+  "id": "fsx_C_1329",
+  "tier": "C",
+  "format": "C",
+  "family": "zeolite-template-choose",
+  "eval_form": "quality-metric",
+  "theme": "A mold that decides the pore shape",
+  "title": "A Mold That Decides the Pore Shape: Coupled Zeolite Template Selection",
+  "objective": "max",
+  "strategies": [
+    "baseline: always run the safe reference template (index 0) at its own sweet spot -- always feasible, reproduces the checker's internal baseline (~0.1)",
+    "fit-only greedy: rank all templates by geometric structure-directing complementarity (SDI) alone, pick the argmax, and run it at ITS OWN preferred (T,pH) without checking reachability -- often lands outside the framework's crystallization window (Ratio=0) or ignores a crushing removal cost",
+    "coupled co-optimization: for every template, clamp its sweet spot into the reachable intersection of the framework window and the template's own window (the Euclidean-nearest reachable point, an exact per-axis clip), score the ACHIEVED yield (fit x reachable proximity x removal discount) there, and pick the template maximizing that true achievable yield across the whole library -- this is the exact per-case optimum, so the checker's baseline is deliberately mediocre to leave score headroom rather than an algorithmic gap"
+  ]
+}

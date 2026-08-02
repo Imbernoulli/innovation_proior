@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1233",
+  "tier": "C",
+  "format": "D",
+  "family": "compression-format-design",
+  "eval_form": "flops",
+  "theme": "Designing the container, not just the coder",
+  "title": "Cut Here, Not There: A Chunking Program for an Editable Archive",
+  "objective": "min",
+  "strategies": [
+    "never cut: one giant block (reproduces the checker's own baseline B, ~0.1)",
+    "fixed-period counter chunking: cut every W=N/8 bytes, W chosen from N alone -- decent compression and small, cheap-to-seek blocks, but boundaries are a pure function of absolute position, so after the corpus is edited (one substring spliced in) every boundary downstream of the splice lands on a different relative offset and none of those blocks dedup against the base layout",
+    "content-defined chunking: cut on a residue of a 9-byte trailing window (current byte + an 8-byte shift register carried in memory) instead of position -- the same window recurs at every occurrence of a repeated stretch (this corpus is built from a small library of repeated unit patterns), so interior boundaries reproduce wherever that stretch appears, buying dedup-driven compression AND small, cheap-to-seek blocks AND fast resynchronization after the edit, all from one mechanism",
+    "headroom above strong: adapt the window length / modulus per-instance from the corpus's own measured repeat structure (autocorrelation of unit length) instead of a fixed 9-byte window and fixed M=61, and route dedup references through a real content hash to shrink the index further"
+  ]
+}

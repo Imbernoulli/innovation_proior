@@ -1,0 +1,15 @@
+{
+  "id": "fsx_A_1358",
+  "tier": "A",
+  "format": "C",
+  "family": "voting-manipulation-bound",
+  "eval_form": "quality-metric",
+  "theme": "How much lying changes the outcome",
+  "title": "Smallest Lying Coalition",
+  "objective": "max",
+  "strategies": [
+    "full-electorate baseline: every voter joins the coalition and bullet-votes the target (checker's own B)",
+    "single-pass recipe: bury the CURRENT sincere winner behind the target, add voters in input order until the rule flips -- ignores that a two-round rule's runner-up can change identity mid-manipulation",
+    "rule-aware constructive search: try every full ballot template (which rival(s) get buried in which slot) crossed with principled voter-selection orders, re-simulating the actual rule to certify the smallest coalition directly -- exploits which candidate should be kept alive as a beatable runoff opponent instead of just maximizing the target's own score"
+  ]
+}

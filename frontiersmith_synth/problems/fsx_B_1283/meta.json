@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_1283",
+  "tier": "B",
+  "format": "C",
+  "family": "staffing-service-level",
+  "eval_form": "quality-metric",
+  "theme": "Enough nurses for a night nobody can predict",
+  "title": "Ward Roster: Flexible Cover for a Predictable Surge",
+  "objective": "min",
+  "strategies": [
+    "do-nothing baseline: staff zero workers in every shift block, cover all demand via unlimited agency (checker's own trivial construction)",
+    "staff-to-the-mean silo: average low/high demand across the held-out days into one flat curve, size junior off mean-low and senior off mean-high independently per shift block -- nails typical/flat days but the mean dilutes a surge that hits only some days, and the silo sizing never lets idle senior capacity cover low-acuity overflow (the trap)",
+    "percentile-seeded exchange search: size the roster off a per-hour demand PERCENTILE (robust to a surge diluted by quieter days in a plain mean) instead of the mean, then run a steepest-improvement local search that explicitly evaluates junior<->senior CONVERSION moves against the exact allocation cost -- pricing flexibility (a senior slot covers high acuity AND falls back to low) directly instead of sizing each skill in its own silo"
+  ]
+}

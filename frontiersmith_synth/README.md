@@ -7,15 +7,25 @@ FrontierSmith's withheld orchestrator + test/checker generators, broadened acros
 FrontierCS, ALE-Bench, MLS-Bench). **Deterministic scoring only** — no wall-time/GPU; kernels appear
 only as FLOPs/op-count. See `DESIGN.md` for the full method + critical analysis.
 
-Current corpus: **1165 generated problems**, **1165/1165 machine-verified PASS**, with unique IDs and a
+Current corpus: **1365 generated problems**, **1365/1365 machine-verified PASS**, with unique IDs and a
 one-to-one match between `seeds/seed_list.jsonl` and `problems/fsx_*`.
 
-The corpus is built in two waves: wave-1 (506 problems, `fsx_*_0001`–`fsx_*_0506`) and wave-2b
-(659 problems, `fsx_*_0507`–`fsx_*_1165`). Wave-2b additionally enforces an **innovation-headroom**
+The corpus is built in three waves: wave-1 (506, `fsx_*_0001`–`fsx_*_0506`), wave-2b
+(659, `fsx_*_0507`–`fsx_*_1165`), and wave-3 (200, `fsx_*_1166`–`fsx_*_1365`).
+Wave-2b and wave-3 enforce an **innovation-headroom**
 acceptance (`strong - greedy >= 0.06`, `strong <= 0.92`, `greedy - trivial >= 0.03`) so the insight
 visibly beats the recipe, and an **anti-homogeneity gate** (`reports/scan_homogeneity.py`) — the
-current corpus is 1165 dirs / 1165 unique skeletons / 1165 unique statement shapes at
+current corpus is 1365 dirs / 1365 unique skeletons / 1365 unique statement shapes at
 `--max-clones 1`. See `AGENT_BRIEF_INNOVATION_ADDENDUM.md`.
+
+**Wave-3** widens *domain* coverage rather than depth, using
+[EdgeBench](https://edge-bench.org/) (134 real-world agent tasks) as the yardstick: at 1165
+problems the corpus was almost entirely EdgeBench's "Combinatorial Optimization" family, which is
+only 14% of EdgeBench. The 200 wave-3 problems add eight lenses that were missing —
+inverse recovery, regime-crossing forecasting, protocol/state-machine conformance, hardware
+co-design under exact cost models, professional risk/actuarial work, policy programs judged in
+seeded simulators, molecular/materials design, and combinatorial game theory. Every wave-3
+problem opens its own family (200 new families, no reuse). See `seeds/build_wave3_edgebench.py`.
 
 ## Layout
 ```
@@ -30,7 +40,7 @@ harness/
   _selftest, _selftest_C, _selftest_B   regression fixtures (one per harness path)
 seeds/
   build_seed_list.py           taxonomy/supplements → seed_list.jsonl (`--current` for corpus)
-  seed_list.jsonl              the 1165 problem specs (tier/format/family/theme/scale/variant)
+  seed_list.jsonl              the 1365 problem specs (tier/format/family/theme/scale/variant)
 reports/
   taxonomy_proposal.json       researched cross-framework taxonomy (5 formats, 4 tiers, 36 families)
   verify_all.sh                re-verify every problem with the correct harness (ground truth)
@@ -61,7 +71,7 @@ fails). The corpus survived three rounds of adversarial Codex review + independe
 
 ## Regenerate / extend
 ```bash
-python3 seeds/build_seed_list.py --current        # rebuild the current 1165-spec plan
+python3 seeds/build_seed_list.py --current        # rebuild the current 1365-spec plan
 bash   reports/verify_all.sh                      # ground-truth re-verify all problems
 python3 reports/aggregate.py                       # → reports/summary.{json,md}
 # batch generation is driven by the Workflow tool over compact {id,format} routes:

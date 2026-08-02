@@ -1,0 +1,18 @@
+{
+  "id": "fsx_C_1303",
+  "tier": "C",
+  "format": "B",
+  "family": "factory-line-balance-policy",
+  "eval_form": "quality-metric",
+  "theme": "Rebalancing a line while it is running",
+  "title": "Rebalancing a Line While It Is Running",
+  "objective": "maximize",
+  "source_frameworks": ["wave3-lens:policy-simulator"],
+  "isolation": "candidate runs as an isolated stdin->stdout subprocess via isorun; the evaluator's internal baseline/reference policies and simulation state stay in the evaluator process",
+  "strategies": [
+    "trivial: keep the given initial boost allocation forever (zero changeover) + uniform buffer split -> reproduces the evaluator's own baseline -> ~0.1 everywhere",
+    "greedy: every epoch, dump the whole boost pool onto whichever station has the highest base cycle time THIS epoch (textbook bottleneck-chasing), uniform buffers -> pays a changeover almost every epoch and can even move capacity to a low-effectiveness station; catastrophic on oscillating/drifting bottlenecks",
+    "strong: DP-segment the KNOWN full epoch schedule into a handful of static-allocation regimes that only switch when the future payoff beats the changeover cost (anticipates where the bottleneck is headed, not where it is now), then sizes the one-time buffer budget by the imbalance the chosen schedule will actually produce (concentrating buffer at the worst migration/changeover gaps) instead of splitting evenly; evaluated by re-simulating a small menu of (segmentation, buffer-plan) combinations",
+    "invalid: malformed answer (wrong row width, over-spent boost pool, too few buffers) -> rejected (0)"
+  ]
+}

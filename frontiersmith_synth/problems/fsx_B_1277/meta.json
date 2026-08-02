@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_1277",
+  "tier": "B",
+  "format": "C",
+  "family": "catastrophe-portfolio-steer",
+  "eval_form": "quality-metric",
+  "theme": "Writing hurricane policies that do not all fail together",
+  "title": "Storm-Correlated Underwriting",
+  "objective": "max",
+  "strategies": [
+    "price-adequacy-only greedy (ignores footprint correlation and accumulation limits)",
+    "safe capacity-respecting greedy (never breaches any storm limit, forgoes profitable overage)",
+    "iterative marginal-value / exchange greedy that recomputes each candidate's value against the current book (exploits the convex per-storm accumulation-limit cost and steers around crowded footprints)"
+  ]
+}

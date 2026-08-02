@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1280",
+  "tier": "B",
+  "format": "C",
+  "family": "royalty-audit-sample",
+  "eval_form": "quality-metric",
+  "theme": "Auditing a fraction and claiming the whole",
+  "title": "Royalty Audit: Defensible Recovery Under a Sampling Budget",
+  "objective": "maximize",
+  "strategies": [
+    "trivial: fully census the single stratum that is cheapest to audit completely, touch nothing else (~0.1, the checker's own weak baseline)",
+    "greedy: sort every transaction by reported value descending and audit the biggest tickets until the budget runs out -- maximizes dollars sitting in the sample but is a judgmental top-of-range pick that usually fails representativeness/precision, so most of it is only worth a heavily discounted consolation credit",
+    "strong: census the cheapest-to-fully-audit stratum for certain money, then use the input's prior error-rate coefficient of variation to size a systematic, value-spread sample in the remaining strata (relative-margin-of-error formula) so its mean value-percentile lands near the stratum center -- unlocking a full defensible extrapolation there instead of a discounted consolation credit",
+    "invalid: emits a duplicate transaction id -> infeasible (0)"
+  ]
+}

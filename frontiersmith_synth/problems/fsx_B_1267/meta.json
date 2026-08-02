@@ -1,0 +1,16 @@
+{
+    "id": "fsx_B_1267",
+    "tier": "B",
+    "format": "C",
+    "family": "claim-ring-audit",
+    "eval_form": "quality-metric",
+    "theme": "Finding the fraud that only looks normal one claim at a time",
+    "title": "Claim Ring Audit: Investigating Groups, Not Claims",
+    "objective": "max",
+    "strategies": [
+        "trivial: audit whichever claims fit the budget in the order they were listed, ignoring amount, plausibility, and party identity entirely",
+        "greedy: rank every claim by its own plausibility score and audit the least-plausible ones first until the budget runs out -- catches lone, clumsy fraud (genuinely low plausibility) but every planted collusion ring was built to sit in the SAME plausibility band as ordinary business, so this misses almost all ring value",
+        "strong: build the claimant/provider/adjuster bipartite incidence graph implied by the claims, count how often each unordered party PAIR recurs across different claims, and score every claim by its highest pair-recurrence count -- a genuine ring's tiny reserved party pool makes its pairs recur far more than chance, while ordinary and lone-sloppy claims draw from a wide pool and essentially never repeat a pair. Spend the budget on the highest-recurrence claims first, falling back to the plausibility outlier heuristic only for what budget remains",
+        "headroom above strong: jointly optimize the recurrence-cluster selection against the knapsack budget (rather than greedily filling by recurrence rank) and estimate each ring's total remaining value before committing budget to it, instead of scoring claims one at a time"
+    ]
+}

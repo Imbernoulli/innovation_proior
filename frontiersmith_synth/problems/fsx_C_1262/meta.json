@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1262",
+  "tier": "C",
+  "format": "D",
+  "family": "spiking-neuron-map",
+  "eval_form": "flops",
+  "theme": "Fitting a brain-like net onto limited cores",
+  "title": "Cores Are Cheap, Spikes Are Not: Cluster-Aware Neuron-to-Core Mapping",
+  "objective": "minimize",
+  "strategies": [
+    "round-robin spread every neuron across ALL available cores in id order, no packing, LPT-by-rate slot fill only for feasibility (trivial)",
+    "first-fit-decreasing bin-packing by neuron fanout to minimize the number of active cores, blind to which neurons talk to which (greedy / the trap)",
+    "capacity-capped heavy-edge agglomerative clustering (partition by connectivity, not by count) then pack whole clusters onto cores, accepting more idle capacity to keep intra-cluster traffic local (strong)",
+    "joint cluster-refinement + slot co-scheduling that also chases the free same-core-same-slot bonus for the heaviest remaining cross-core pairs (open ceiling, uncovered)"
+  ]
+}

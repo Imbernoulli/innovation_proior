@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_1305",
+  "tier": "C",
+  "format": "B",
+  "family": "market-maker-policy",
+  "eval_form": "quality-metric",
+  "theme": "Quoting both sides without getting run over",
+  "title": "Two-Sided Quotes on a Tape That Talks Back",
+  "objective": "maximize",
+  "source_frameworks": ["wave3-lens:policy-simulator"],
+  "strategies": [
+    "tight symmetric fixed spread, no skew: maximizes fill rate on noise flow but gets picked off whenever informed order flow is present (reproduces the evaluator's naive baseline)",
+    "inventory-only skew: mean-revert quotes toward flat position but ignore the order-flow-imbalance signal, so still walks into predictable adverse moves",
+    "order-flow-only skew: react to the imbalance signal but never manage inventory, so a lucky run can still blow through the position limit's risk cost",
+    "calibration-driven joint policy: regress the resolved calibration window's order-flow-imbalance feature against next-tick returns to size an order-flow skew coefficient, and size an inventory-mean-reversion coefficient off realized volatility, combining both to move out of the way of predictable moves before they happen"
+  ]
+}

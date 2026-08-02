@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1229",
+  "tier": "C",
+  "format": "C",
+  "family": "firmware-ota-rollout",
+  "eval_form": "quality-metric",
+  "theme": "Updating devices that might brick",
+  "title": "Canary Rollout Under Delayed Failure Signals",
+  "objective": "max",
+  "strategies": [
+    "single cautious one-shot cohort sized exactly at the risk-budget cap, never touching the rest of the horizon",
+    "exponential canary doubling: start small, double every stage while 'succeeding', paced against the previous stage's own size rather than the signal-latency window",
+    "latency-paced staging: per-step cohort size = W_v/(D_v*p_v), which keeps exactly the risk budget in flight at steady state and skips variants with negative expected value per device",
+    "mixed-integer / LP relaxation over the sliding-window admission constraints for a horizon-exact optimum"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1191",
+  "tier": "B",
+  "format": "E",
+  "family": "pv-clipping-forecast",
+  "eval_form": "quality-metric",
+  "theme": "Predicting solar output when the inverter saturates",
+  "title": "Winter Data, Summer Ceiling — forecasting a solar inverter's unseen clip",
+  "objective": "max",
+  "strategies": [
+    "trivial: reproduce the checker's own flat baseline 0.4*N -> ~0.1",
+    "greedy: ordinary-least-squares fit of P on G alone (P = a*G + c) over the winter training rows, unbounded, never applied against the nameplate N or any ceiling -> near-perfect on the visible winter branch (which never nears the clip) but the fitted slope, extrapolated into the fast summer regime, keeps climbing past the true inverter ceiling on every clipped row",
+    "strong: recognise the physical STRUCTURE of the problem (irradiance-to-power slope fit via the temperature-scaled feature G*(1-0.004*(T-25)), PLUS an inverter ceiling that must exist even though it is never hit in training) and emit min(cap_estimate, slope*G*(1-0.004*(T-25))) using a domain-typical clip fraction (~0.73*N, the midpoint of the stated plausible range) as the ceiling -- since the true fraction is never observable in winter, a principled prior beats pretending no ceiling exists",
+    "headroom above strong: no submitted expression can beat the sensor/microclimate noise floor plus the irreducible error from not knowing this SITE's exact clip fraction; a policy that finds site-specific signal to narrow that estimate (beyond the fixed prior fraction) could close more of the remaining gap"
+  ]
+}

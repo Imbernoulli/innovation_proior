@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_1230",
+  "tier": "C",
+  "format": "C",
+  "family": "dependency-resolution-solve",
+  "eval_form": "quality-metric",
+  "theme": "Picking versions that can all coexist",
+  "title": "Picking Versions That Can All Coexist",
+  "objective": "max",
+  "mechanisms": ["version-constraint-sat", "backtracking-order", "preference-vs-feasibility"],
+  "strategies": [
+    "trivial: install every package at version 1 (the checker's own reference construction) -- always feasible, leaves almost all preference on the table",
+    "greedy (trap): walk packages in declaration order, always try the newest untried version first, backtrack to the most recently decided package on a dead end, accept the first fully feasible assignment found; bounded by a fixed node-visit budget. On trap cases the true cause of infeasibility is an early package (A_0) whose newest version is globally incompatible with its diamond partner B_0, but the failure is only detected many packages later (at Z_0); chronological backtracking with no memory of *why* Z_0 failed re-permutes every later, entirely irrelevant B_i and A_i before it ever reconsiders A_0, blowing the node budget and falling back to the all-version-1 construction -- throwing away every gadget's preference gain, not just the broken one",
+    "strong (insight): build the undirected package-conflict graph directly from the requirement edges (union-find) and solve each connected component independently by exhaustive search over its own tiny version space -- recognizing which packages can possibly interact makes the re-exploration greedy suffers structurally impossible, and each component's optimum is found exactly and in isolation",
+    "further headroom: an exact minimum-conflict-clause / SAT-style solver with genuine non-chronological backtracking and learned nogoods would scale to instances where components are not this cleanly separable, closing the small remaining preference gap this reference's clean decomposition still leaves on components with several simultaneously-feasible version pairs"
+  ]
+}

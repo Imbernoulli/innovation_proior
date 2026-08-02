@@ -1,0 +1,16 @@
+{
+  "id": "fsx_A_1345",
+  "tier": "A",
+  "format": "C",
+  "family": "positional-game-threshold",
+  "eval_form": "quality-metric",
+  "theme": "When does the board become unwinnable",
+  "title": "Claim Lines: Bracket the Unwinnable Density",
+  "objective": "max",
+  "strategies": [
+    "do nothing but the absolute minimum: certify only the very first, smallest density level via the weight-floor rule, skip everything else (reproduces the checker's own baseline)",
+    "systematic-but-shallow: apply the weight-floor rule to every density level (finds the whole safe prefix), then for the levels where that fails, run a handful of seeded self-play simulations and, when they look Claimer-favorable, ship a strategy table built only from the few observed trajectories -- almost always missing most of the opponent's real branches, so it fails full adversarial replay and earns nothing there",
+    "structural insight: same systematic weight-floor sweep, PLUS detect any cell that is the shared endpoint of >=2 size-2 lines in a level's family (a double threat) and, when found, construct the branch-COMPLETE strategy table by explicit case analysis over every one of the opponent's legal replies -- a genuine forced-win certificate instead of a sampled guess",
+    "(headroom, not implemented by strong): resolve the still-open middle levels via a sharper weight assignment or a deeper multi-ply table; also chase a perfectly adjacent bracket for the tightness bonus"
+  ]
+}

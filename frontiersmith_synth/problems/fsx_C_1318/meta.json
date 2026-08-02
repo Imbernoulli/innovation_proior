@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1318",
+  "tier": "C",
+  "format": "C",
+  "family": "alloy-composition-search",
+  "eval_form": "quality-metric",
+  "theme": "Mixing metals for a property that peaks in the middle",
+  "title": "Alloy Composition Search — Solid-Solution Strengthening Along the Phase Boundary",
+  "objective": "max",
+  "strategies": [
+    "trivial: dissolve only the single least brittleness-prone element, filled just far enough to stay inside the first (safest) solute band -> reproduces the checker's own baseline (~0.1)",
+    "greedy: the obvious recipe -- incremental hill-climbing. Repeatedly add one unit of solute to whichever element currently gives the best strength-gain-per-brittleness-cost, but only if the step keeps the running composition within the CURRENT band's threshold; stop the instant every element would blow that band's budget. This is locally sound (never violates the constraint) but structurally blind: a band's threshold is checked only along the single monotone path grown from zero, so it can never discover that a narrow brittle band is followed by a much more generous one -- it freezes at the near edge of the first tight band and never crosses it, even by direct construction.",
+    "strong: the insight -- feasibility depends only on which band the FINAL total solute lands in, never on the path used to build it, so a band that would be breached partway through construction is not actually disqualifying. Run the same cost-ratio marginal-exchange construction as greedy (grant the next unit of solute to whichever element gives the best strength-gain per unit of brittleness cost), but never stop at a breach -- keep extending all the way to the total-solute cap, and remember the best FEASIBLE composition seen at any point along the way (checked against that point's own band threshold). This single monotone construction already contains the true optimum for every possible brittleness budget (a classical marginal/exchange-allocation result for concave separable rewards under one linear cost), so simply refusing to stop early at the first breach finds compositions in a generous band lying beyond a brittle one that greedy's stop-at-first-wall walk structurally cannot reach.",
+    "headroom above strong: the marginal-exchange construction is exactly optimal per feasible checkpoint, so remaining headroom is deliberately left by the score normalization (baseline is a single safe element, not the true optimum) rather than by an unclaimed algorithmic trick."
+  ]
+}

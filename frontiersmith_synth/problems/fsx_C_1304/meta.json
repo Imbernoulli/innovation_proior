@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_1304",
+  "tier": "C",
+  "format": "B",
+  "family": "irrigation-scheduling-policy",
+  "eval_form": "quality-metric",
+  "theme": "Watering a field that remembers last week",
+  "title": "Watering a Field That Remembers Last Week",
+  "objective": "maximize",
+  "source_frameworks": ["wave3-lens:policy-simulator"],
+  "strategies": [
+    "flat constant daily dose, ignores rain/tariff/stage/reservoir state entirely (trivial)",
+    "single-bucket fixed-moisture-target controller: top off to one flat target every day, blind to the surface/root split, the percolation lag, the crop stage, and the tariff schedule (greedy / the trap)",
+    "cheapest-repair scheduling over the fully simulated two-layer trajectory: replay the true water balance, find the first future stage-threshold violation, patch it by buying a chunk of water on the cheapest still-open day at-or-before that violation, and repeat -- this naturally pre-charges the root-zone reservoir ahead of slow percolation, skips purchases before forecasted rain because the simulated trajectory already shows no violation there, and shifts volume onto cheap tariff days ahead of a flowering-time price spike (strong)",
+    "joint optimal control (e.g. LP/DP over the full state space with exact percolation dynamics) that also reasons about waterlogging trade-offs near theta_max (open ceiling, uncovered)"
+  ]
+}

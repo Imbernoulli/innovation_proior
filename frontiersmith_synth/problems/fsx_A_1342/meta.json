@@ -1,0 +1,18 @@
+{
+  "id": "fsx_A_1342",
+  "tier": "A",
+  "format": "A",
+  "family": "maker-breaker-pairing",
+  "eval_form": "quality-metric",
+  "theme": "Blocking every line with half the moves",
+  "title": "Pairing Guard on a Contested Board",
+  "objective": "max",
+  "seed_problem": "Maker-Breaker pairing-strategy certificate games (wave3-lens:games-and-structures)",
+  "mutation": "composite: the Guard's reactive blocking policy is replaced by an explicit, budget-constrained PAIRING (involution) committed before play; the objective couples pairing-strategy-construction (which couples to commit to) with threat-counting (a fixed threat-ranked Aggressor plan the pairing must withstand) and a potential-function-bound flavor (a couple fully inside a line is a permanent certificate that line can never be lost, independent of play order) under a zone-distance pairing budget.",
+  "strategies": [
+    "trivial: commit to the empty pairing (pure reactive lowest-index defense); reproduces the checker's own baseline B",
+    "greedy: sort lines by weight descending, for each still-pairable line commit its cheapest-cost still-free internal couple if the budget allows; myopic per-line packing",
+    "strong: build every candidate couple's TOTAL cross-line coverage (sum of weights of all not-yet-covered lines that contain both its cells), repeatedly commit the highest-coverage affordable couple -- this recognizes and exploits shared hub couples that certify several winning lines at once",
+    "invalid: commits the same cell to two different pairs (infeasible, must score 0)"
+  ]
+}

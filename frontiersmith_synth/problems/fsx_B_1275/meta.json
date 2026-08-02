@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_1275",
+  "tier": "B",
+  "format": "C",
+  "family": "procurement-award-split",
+  "eval_form": "quality-metric",
+  "theme": "Splitting an order so no supplier can hold you up",
+  "title": "Second Source, First Timed",
+  "objective": "max",
+  "strategies": [
+    "three-way blind split: divide every period's order across suppliers 0/1/2 without qualifying 1 or 2, wasting two-thirds of every order and forfeiting most of the volume discount",
+    "cost-minimal single-sourcing: always award the whole order to the cheapest already-qualified supplier for the deepest discount tier, never qualify a second source, never look at the disruption calendar",
+    "insurance-timed diversification: keep single-sourcing the cheapest supplier by default, but evaluate every different-correlation-group candidate's net qualification payoff (recovered value on the periods that would otherwise be lost, minus the one-time qualification cost) and buy the option that pays for itself, qualified early enough to be ready before its own group's disruption window opens"
+  ]
+}

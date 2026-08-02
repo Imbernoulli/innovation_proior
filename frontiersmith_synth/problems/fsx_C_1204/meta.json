@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1204",
+  "tier": "C",
+  "format": "E",
+  "family": "supply-lead-time-forecast",
+  "eval_form": "quality-metric",
+  "theme": "Delivery delays that feed on themselves",
+  "title": "Delivery Delays That Feed On Themselves — recovering the congestion-feedback gain",
+  "objective": "max",
+  "strategies": [
+    "trivial: constant predictor = mean(L_train), ignores O entirely -> reproduces the checker baseline ~0.1",
+    "greedy: ordinary least-squares straight line L = a + b*O fit to the calm training window; fits the narrow training band almost perfectly but has no pole, so it systematically underpredicts once the held-out shock pushes utilization O/Cap well above anything trained on",
+    "strong: recognises the capacity-queue shape L = L0 + g*O/(Cap-O) and recovers the hidden gain g via the RECIPROCAL LINEARIZATION 1/(L-L0) = (Cap/g)*(1/O) - 1/g -- an exact straight line in (1/O, 1/(L-L0)) space even though L(O) itself barely curves over the narrow stable-regime O range, so ordinary linear regression in the transformed space pins g down from small stable fluctuations and extrapolates correctly through the shock",
+    "headroom above strong: jointly refit g together with a robust/weighted variant of the reciprocal regression (down-weighting the few training rows nearest the noise floor) to shave the residual gap to the noise-limited ceiling"
+  ]
+}

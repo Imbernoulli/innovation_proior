@@ -1,0 +1,15 @@
+{
+  "id": "fsx_A_1184",
+  "tier": "A",
+  "format": "C",
+  "family": "chromatogram-peak-unmix",
+  "eval_form": "quality-metric",
+  "theme": "Splitting overlapping peaks into real compounds",
+  "title": "Column Tailing: Untangling a Chromatogram into True Compounds",
+  "objective": "max",
+  "strategies": [
+    "blind uniform baseline: declare every reference slot present, area = total trace mass split evenly across all M slots",
+    "symmetric independent matched filter: per reference slot, window-sum the trace around its nominal retention time assuming a plain (tau=0) Gaussian shape, no cross-slot deconvolution",
+    "shared-tau joint EMG deconvolution: grid-search one column tailing constant tau shared by every basis function, jointly non-negative-least-squares fit all M exponentially-modified-Gaussian columns at once, and keep the tau that minimizes residual"
+  ]
+}

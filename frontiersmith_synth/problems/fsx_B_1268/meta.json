@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1268",
+  "tier": "B",
+  "format": "C",
+  "family": "actuarial-tier-pricing",
+  "eval_form": "quality-metric",
+  "theme": "Pricing so the good risks do not leave",
+  "title": "Renewal Repricing Against the Pool That Remains",
+  "objective": "maximize",
+  "strategies": [
+    "trivial: freeze every tier's price at last cycle's value (zero rate change)",
+    "greedy cost-plus: fit each tier's blended CURRENT-pool expected loss from the loss histograms, add a flat underwriting margin, clip to the rate-change-cap band -- prices the pool you have today and never asks who stays",
+    "strong post-selection search: for each tier, exactly simulate the elasticity-driven departure of every risk bucket at each candidate price inside the cap band, score the REALIZED profit of the surviving pool, and take the tier's true argmax -- tiers are independent under the cap so this per-tier reformulation is exact",
+    "invalid: quote a price far outside the rate-change-cap band"
+  ]
+}

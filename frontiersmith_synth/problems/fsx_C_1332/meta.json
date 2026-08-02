@@ -1,0 +1,16 @@
+{
+  "id": "fsx_C_1332",
+  "tier": "C",
+  "format": "C",
+  "family": "fragrance-blend-balance",
+  "eval_form": "quality-metric",
+  "theme": "A scent that changes over four hours",
+  "title": "The Four-Hour Trajectory: Volatility-Scheduled Fragrance Blending",
+  "objective": "max",
+  "strategies": [
+    "do-nothing baseline: only the first provided ingredient at its own IFRA cap, no search at all (reproduces the checker baseline B, ~0.1)",
+    "snapshot greedy: matching-pursuit blend that fits the target profile AT TIME ZERO ONLY, treating perceived intensity as equal to raw concentration (ignores evaporation AND masking) -- nails t=0 but the fast ingredient it leans on has evaporated by t=2h, and nothing was ever allocated to cover the heart/base target phases",
+    "trajectory+masking-aware strong: (1) matching pursuit against the FULL 5-checkpoint target, with each ingredient's feature vector broadcast through its OWN exp(-k_i*t) decay curve -- using volatility class as a release schedule; then (2) coordinate-descent local polish using the checker's exact nonlinear decay+masking simulation, correcting for e.g. a slow base note being perceptually masked while a loud top note is still present -- both stages respect the per-ingredient IFRA caps and the total-budget constraint",
+    "invalid: ingredient used above its own IFRA concentration cap -> rejected"
+  ]
+}

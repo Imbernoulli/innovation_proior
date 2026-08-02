@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_1308",
+  "tier": "C",
+  "format": "B",
+  "family": "content-moderation-policy",
+  "eval_form": "quality-metric",
+  "theme": "Reviewing what matters with too few reviewers",
+  "title": "Reviewing What Matters With Too Few Reviewers",
+  "objective": "max",
+  "source_frameworks": ["wave3-lens:policy-simulator"],
+  "strategies": [
+    "do nothing: send everything to the fixed auto-moderation rule (reproduces the evaluator's own do-nothing anchor)",
+    "score-ranked routing: review the model's most-confident predicted violations first, filling one reviewer to capacity before the next -- ignores severity, appeal cost, and ambiguity, and burns fresh reviewer capacity on cases the auto-rule was already likely to get right",
+    "expected-harm x uncertainty routing with reviewer rotation: estimate each item's expected cost reduction from review (using model_score as a violation-probability estimate, weighted by category severity/appeal cost and item ambiguity), skip items where review is expected to hurt, and round-robin the chosen items across reviewers sorted by accuracy so no reviewer absorbs a long fatiguing run",
+    "local refinement: start from a value-ranked assignment and swap/reorder within and across reviewer queues (seeded, deterministic) to further reduce realized expected cost"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "id": "fsx_C_1322",
+  "tier": "C",
+  "format": "C",
+  "family": "crystallization-cool-schedule",
+  "eval_form": "quality-metric",
+  "theme": "Growing one big crystal instead of many small ones",
+  "title": "Batch Cooling Crystallizer: Cool Schedule and Seed Choice Under a Steepening Solubility Curve",
+  "objective": "max",
+  "source_frameworks": ["wave3-lens:molecular-materials"],
+  "strategies": [
+    "trivial: dump straight to T_min on step 1 and hold it there (maximum instantaneous supersaturation) with the smallest seed option -- the checker's own reference construction; detonates the nucleation term and yields fine powder",
+    "greedy: constant-rate (linear) cooling from T_start to T_min, seeded with whichever option has the most total surface area -- a reasonable-sounding recipe that ignores the shape of the solubility curve and rushes through its steep bottom slice late, with little batch time left for the resulting nuclei to grow",
+    "strong: exploits the fact that the given solubility curve is steep near T_min and nearly flat near T_start -- reduces the intractable full-schedule search to a 2D grid over (seed option, a single cooling-rate-falls-over-time shape exponent p<1) simulated with the checker's own population-balance model, entering the steep region early while most of the batch time still remains for growth to consume the released solute",
+    "invalid: out-of-range seed index plus a schedule that heats above T_start before ever cooling -- rejected before scoring"
+  ]
+}

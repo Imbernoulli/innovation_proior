@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1192",
+  "tier": "B",
+  "format": "E",
+  "family": "battery-knee-forecast",
+  "eval_form": "quality-metric",
+  "theme": "Calling the sudden aging cliff before it happens",
+  "title": "Calling the Knee: Leading-Indicator Battery-Aging Forecast",
+  "objective": "max",
+  "strategies": [
+    "trivial: emit the constant train-mean of y (matches the grader's baseline predictor -> ~0.1)",
+    "greedy: full linear least squares y ~ a0 + a1*x0 + a2*x1 + a3*x2 + a4*x3 + a5*x4; fits the near-linear pre-knee log almost exactly but a straight line cannot represent a collapse, so it glides past the knee on every held-out cell that has aged past it",
+    "strong: fits the recoverable pre-knee linear trend from data, then uses the resistance-growth rate x2 as a leading indicator to estimate each cell's own knee-onset cycle and blends (via a tanh soft-gate, since only whitelisted operators are allowed) into a multiplicative post-knee collapse -- recovering the qualitative shape of the aging cliff even though its own timing was never observed in training",
+    "invalid: emit an expression referencing an undefined identifier -> infeasible (0)"
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "id": "fsx_B_1282",
+  "tier": "B",
+  "format": "C",
+  "family": "market-abuse-surveil",
+  "eval_form": "quality-metric",
+  "theme": "Spotting manipulation inside legitimate trading",
+  "title": "Alert Budget: Flagging Layering Behind a Market-Making Curtain",
+  "objective": "max",
+  "strategies": [
+    "raw cancel count: rank participant-windows by total CANCEL count (side- and timing-blind) and flag the top-K within budget -- exactly the checker's own naive baseline, and it floods on market makers who cancel just as much",
+    "cancel burst rate: rank by peak cancel density inside a short rolling local-time window ('rapid order-cancel sequences') -- catches tighter layering bursts a bit better than raw counting, but market-maker re-quote cycles are also bursty on both sides, so the budget still floods",
+    "side-asymmetry + causal follow-up: score each participant-window by how ONE-SIDED its cancel flow is AND whether a same-side aggressive trade lands shortly after most of that side's cancels fired -- the asymmetry-then-aggression signature genuine two-sided quoting never produces -- and spend the alert budget on the top-scoring windows"
+  ]
+}

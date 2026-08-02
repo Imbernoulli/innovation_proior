@@ -1,0 +1,18 @@
+{
+  "id": "fsx_C_1291",
+  "tier": "C",
+  "format": "B",
+  "family": "incremental-invest-policy",
+  "eval_form": "quality-metric",
+  "theme": "Reinvest or cash out, ten thousand times",
+  "title": "Reinvest or Cash Out, Ten Thousand Times",
+  "objective": "max",
+  "source_frameworks": ["wave3-lens:policy-simulator"],
+  "innovation_hook": "Always reinvesting compounds best in an infinite horizon and loses in a finite one, where the endgame must switch to harvesting. The switch point depends on remaining turns AND on the next unlock threshold, not on a fixed ratio.",
+  "strategies": [
+    "never-reinvest baseline: harvest every turn's output immediately, capital never grows, reproduces the evaluator's weak reference",
+    "best fixed reinvest fraction: grid-search a single constant reinvest ratio applied every turn, simulated on the visible instance and tuned per instance -- the natural first parameterization, but structurally cannot express a threshold-aware regime switch",
+    "best single switch point: search over every possible turn to flip from full-reinvest to full-harvest, using the exact thresholds/multipliers/turns-remaining to pick the switch that maximizes simulated final score -- front-loads compounding then converts before the endgame discount bites",
+    "multi-phase adaptive plan / local search around the single-switch solution: perturb reinvest/harvest phase boundaries (seeded, deterministic) to squeeze out remaining value near multiple thresholds"
+  ]
+}

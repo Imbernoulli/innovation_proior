@@ -1,0 +1,16 @@
+{
+  "id": "fsx_B_1209",
+  "tier": "B",
+  "format": "E",
+  "family": "permafrost-thaw-forecast",
+  "eval_form": "quality-metric",
+  "theme": "Ground that stays frozen until it doesn't",
+  "title": "Permafrost Thaw Forecast — tracking accumulated energy through a latent-heat plateau",
+  "objective": "max",
+  "strategies": [
+    "trivial: predict the constant 0.0 ground-index baseline, ignoring all data -> reproduces the checker's own baseline ~0.1",
+    "greedy: fit the observed (near-constant) training ground index and persist that value forever -- correct while the station stays frozen, but this 'temperature-based regression' has no way to see the hidden energy accumulator, so it predicts continued stability precisely on the cases where the graded window crosses into thaw and the index rises sharply",
+    "strong: notice the forcing series itself keeps a small persistent upward drift invisible in the (latent-heat-buffered) ground index; reconstruct the floored running energy accumulator from the forcing (ACC relu(Ak1+f)), compare it against a capacity estimated from the training accumulator's own peak, and shape the response via a saturating Stefan-sqrt curve once the estimated capacity is exceeded -- this catches the early-crossing trap cases that greedy misses entirely",
+    "headroom above strong: the insulation-feedback amplification and the saturating active-layer depth are never observable in the visible frozen span, so even a good accumulator-based forecast leaves real residual error -- a stronger policy would model the feedback's effect on crossing time, not just the post-crossing shape"
+  ]
+}
