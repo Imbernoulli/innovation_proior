@@ -770,3 +770,5 @@ methods+trajectory 出的数据（~2,225 条）；maintenance = 蒸馏数据（7
 
 - 形态：innold 与 innnew_wd03 的峰都在 **α=0.2**（FCS 6.2-6.5，逼近 base 6.82）；lr1e-5 臂峰前移到 α=0.1 且更陡（lr 大 → 模型走得远 → 吃不了高 α）。
 - 新旧 soup 级对比要等 innnew_ft（wd0.1 基线）的 soup 评完才是同超参配对；当前 innold_a20 的 Research 12.34 是全场最高。
+
+**（08-03 巡检+2）新齐全行**：soup_im_wd03_a10 FCS **6.03** / Res 9.52（上轮的部分值 11.08 如预期回归均值——部分值不引用的纪律再次自证）；lorA_innnew_lr5e5 s01/s02 Res 8.18/9.15；lorA_im_s01 Res **10.65**（LoRA+maintenance 组合的 Research 已超 base 锚点，FCS 在跑）。
