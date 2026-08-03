@@ -65,7 +65,7 @@ parent. `G5c` enforces it (fails any evaluator that doesn't sandbox, or any envi
 
 The researched base taxonomy (`reports/taxonomy_proposal.json`) is importance-ranked and still
 regenerates a controlled **200-problem** batch by default. The checked-in corpus is the broader
-**1365-problem** plan assembled with `build_seed_list.py --current`, built in three waves:
+**1300-problem** plan assembled with `build_seed_list.py --current`, built in three waves:
 
 - **wave-1 (506, `fsx_*_0001`–`fsx_*_0506`)**: taxonomy batch 1 (200) + taxonomy batch 2 (200) +
   16 bespoke-novelty problems + 84 breadth-fill problems that target thin scientific-law, op-count,
@@ -79,7 +79,10 @@ regenerates a controlled **200-problem** batch by default. The checked-in corpus
   one, benchmarked against EdgeBench's six capability families (§4.2). Eight lenses x 25
   (`seeds/build_wave3_edgebench.py`), each problem opening its own family.
 
-Every spec is a unique `(family x theme x variant)` or supplement scaffold — 1365/1365 distinct.
+Every spec is a unique `(family x theme x variant)` or supplement scaffold — 1300/1300 distinct.
+
+A later **de-clone pass** (§4.3) removed 65 wave-1 problems whose scoring logic duplicated a
+same-family sibling, taking the corpus from 1365 to 1300.
 
 | Tier | 档 | Focus | Families | Count | Formats |
 |---|---|---|---|---|---|
@@ -88,7 +91,7 @@ Every spec is a unique `(family x theme x variant)` or supplement scaffold — 1
 | **B** | 应用前沿 | engineering + scientific optimization | 8 | **30** | B, D, E |
 | **C** | 方法与异域前沿 | ML-method design + exotic construction | 6 | **20** | B, C |
 
-Current 1365-problem mix:
+Current 1300-problem mix:
 
 | Group | Count | Role |
 |---|---:|---|
@@ -99,7 +102,7 @@ Current 1365-problem mix:
 | G | 91 | breadth-fill plus bulk constructive-selection domains |
 | N | 26 | bespoke high-novelty, composite/mechanism-twist problems |
 
-Format mix over the 1365: A=348, B=273, C=461, D=147, E=136. 1001 distinct families.
+Format mix over the 1300: A=319, B=258, C=448, D=144, E=131. 1001 distinct families.
 
 ### 4.1 Wave-2b's two extra acceptance gates
 
@@ -112,8 +115,8 @@ Format mix over the 1365: A=348, B=273, C=461, D=147, E=136. 1001 distinct famil
    obvious greedy lands far from strong on >=3 of the 10 tests.
 2. **Anti-homogeneity** (`reports/scan_homogeneity.py`). A digit-stripped skeleton hash plus a
    theme-masked statement hash catch re-skinned clones that per-problem validation is blind to — the
-   failure mode that killed the first wave-2 attempt. The current corpus scans **1365 dirs → 1365
-   unique skeletons / 1365 unique statement shapes** at `--max-clones 1`.
+   failure mode that killed the first wave-2 attempt. The current corpus scans **1300 dirs → 1300
+   unique skeletons / 1300 unique statement shapes** at `--max-clones 1`.
 
 Each wave-2b authoring agent additionally ran an independent **Codex (`gpt-5.6-terra`, xhigh) review**
 of its own finished problem — hunting scoring loopholes, nondeterminism, statement/code mismatches,
@@ -156,6 +159,37 @@ Unlike wave-1 (which deliberately reuses a family across themes and variants —
 problems there), **every wave-3 problem opens its own family**, taking the corpus from 801 to 1001
 families. Format mix was skewed toward the two thinnest formats: D 117→147, E 107→136.
 
+### 4.3 The de-clone pass: what a "family" does and does not guarantee
+
+A `family` labels a problem's mechanism archetype. Wave-1 deliberately reuses each family across
+themes and variants — 36 families cover 400 of its 506 problems — on the assumption that a shared
+archetype still yields distinct problems. Auditing that assumption showed it does not hold without
+the mechanism/hook/trap fields.
+
+`scan_homogeneity.py` could not detect the failure: it hashes *exact* skeletons, so it catches
+template mass-production but is blind to "same logic, retuned constants, renamed variables."
+`reports/audit_family_reuse.py` compares the **scoring logic** instead — checker source with
+comments, string literals and numeric literals stripped, tokenized, token 5-gram Jaccard. Stripping
+numeric literals is deliberate: a re-skin that only retunes constants must still register.
+
+Result: **102 wave-1 problems in 37 clone clusters** at ≥0.60, 22 pairs at ≥0.85. The worst pair
+(`fsx_B_0155` / `fsx_B_0357`, 0.995) shared functional form, noise schedule, sample-size schedule,
+extrapolation bound and scoring formula, differing only in RNG seed constants and index permutation.
+
+The cause is structural, not incidental: wave-1 seeds have `mechanisms: None` and no
+`innovation_hook` or `trap`, so a family's fourteen agents received effectively identical briefs.
+Wave-2b and wave-3, which carry those fields, show none of it — wave-3 (one family per problem) has
+zero clone pairs.
+
+We kept each cluster's best-innovation-headroom member and quarantined the other 65 into
+`problems_wave1_clone_quarantine/` alongside their seed records and the cluster plan. The audit now
+flags 1 family rather than 23, worst pair 0.599. Replacement specs under full wave-3 discipline are
+prepared in `seeds/build_wave4_declone.py` but not yet authored.
+
+**Standing gate.** `audit_family_reuse.py` joins `scan_homogeneity.py` as a release check: exact
+skeleton hashing for template reuse, 5-gram checker similarity for logic reuse. Neither alone is
+sufficient.
+
 ## 5. Critical analysis — improvements over FrontierSmith (辩证)
 
 1. **LLM-only validation → execution grounding.** *(built)* 8 mechanical gates certify the checker
@@ -176,7 +210,7 @@ families. Format mix was skewed toward the two thinnest formats: D 117→147, E 
 
 ```bash
 cd frontiersmith_synth
-python3 seeds/build_seed_list.py --current            # -> seeds/seed_list.jsonl (current 1365)
+python3 seeds/build_seed_list.py --current            # -> seeds/seed_list.jsonl (current 1300)
 python3 harness/validate_problem.py   harness/_selftest      # A/C/D/E self-check
 python3 harness/validate_problem.py   harness/_selftest_C
 python3 harness/validate_pyproblem.py harness/_selftest_B    # B self-check

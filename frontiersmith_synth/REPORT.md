@@ -5,7 +5,7 @@ models that *generalize* across the "LLM writes code to optimize a scored object
 re-implements the withheld parts of **FrontierSmith** (arXiv 2605.14445) and extends the idea across
 the whole evolutionary-search / scientific-discovery landscape.
 
-**Result: 1365 problems, all machine-verified, spanning 1001 families and 1365 unique scaffolds.**
+**Result: 1300 problems, all machine-verified, spanning 1001 families and 1300 unique scaffolds.**
 
 ---
 
@@ -45,19 +45,19 @@ a 10×-better solution caps at 1.0. Every problem ships a 4-rung **solution ladd
 
 ---
 
-## 3. The 1365-problem corpus
+## 3. The 1300-problem corpus
 
 | by format | count | | by tier (band) | count |
 |---|---|---|---|---|
-| A testlib combinatorial | 348 | | A math-discovery / heuristic | 487 |
-| B evolve-a-heuristic | 273 | | B engineering + science | 322 |
-| C constructive + verifier | 461 | | S graph/combinatorial core | 276 |
-| D FLOPs / op-count kernel | 147 | | C ML-method + exotic | 163 |
-| E symbolic / scientific-law | 136 | | G breadth-fill and bulk domains | 91 |
+| A testlib combinatorial | 319 | | A math-discovery / heuristic | 469 |
+| B evolve-a-heuristic | 258 | | B engineering + science | 307 |
+| C constructive + verifier | 448 | | S graph/combinatorial core | 247 |
+| D FLOPs / op-count kernel | 144 | | C ML-method + exotic | 160 |
+| E symbolic / scientific-law | 131 | | G breadth-fill and bulk domains | 91 |
 | | | | N bespoke-novelty | 26 |
 
-- **Scoring types:** quality-metric 1176 · flops 154 · correctness 35.
-- **1001 distinct families and 1365 unique `(family, theme, variant)` scaffolds** — including hard-science
+- **Scoring types:** quality-metric 1114 · flops 151 · correctness 35.
+- **1001 distinct families and 1300 unique `(family, theme, variant)` scaffolds** — including hard-science
   E-format domains, op-count D-format kernels, isolated B-format heuristic evaluators, the 659
   wave-2b problems spanning 20 independently-imagined design lenses, and the 200 wave-3 problems
   each opening its own family.
@@ -81,10 +81,38 @@ hardware co-design under exact cost models, professional risk/actuarial work, po
 in seeded simulators, molecular/materials design, and combinatorial game theory. Format mix was
 skewed toward the two thinnest formats (D: 117→147, E: 107→136).
 
-The corpus now scans **1365 dirs → 1365 unique skeletons / 1365 unique statement shapes** at
+The corpus now scans **1300 dirs → 1300 unique skeletons / 1300 unique statement shapes** at
 `--max-clones 1`. Each wave-2b and wave-3 problem was additionally reviewed by an independent Codex
 (`gpt-5.6-terra`, xhigh) pass inside its authoring agent, with cited defects repaired before
 acceptance.
+
+### 3.1 The de-clone pass — and why the original gate missed it
+
+`scan_homogeneity.py` hashes *exact* skeletons, so it catches template mass-production (the wave-2
+failure: 500 problems, one skeleton) but is blind to "same logic, retuned constants, renamed
+variables." Asking what a *family* actually guarantees exposed that gap.
+
+`reports/audit_family_reuse.py` closes it: it compares the **scoring logic** of same-family problems
+— checker source with comments, string literals and numeric literals stripped, tokenized, token
+5-gram Jaccard. Stripping numeric literals is the point: a re-skin that only retunes constants still
+registers as a clone.
+
+The audit found **102 wave-1 problems in 37 clone clusters** at ≥0.60, 22 pairs at ≥0.85. The worst
+pair (`fsx_B_0155` "smart-city lighting power law" / `fsx_B_0357` "buried artifact-density law",
+0.995) shared the same hidden functional form, noise schedule, sample-size schedule, extrapolation
+bound and scoring formula — differing only in RNG seed constants and which `x` fed which term. Two
+skins, one problem.
+
+The root cause is visible in the seeds: **wave-1 specs carry no `mechanisms`, no `innovation_hook`,
+no `trap`**. Fourteen agents in one family received effectively identical briefs and converged.
+Wave-2b and wave-3 added exactly those fields, and neither shows the pattern (wave-3, one family per
+problem, has zero clone pairs).
+
+Remediation kept the best-innovation-headroom member of each cluster and moved the other 65 to
+`problems_wave1_clone_quarantine/` (with their seed records and the cluster plan). Post-removal the
+audit flags **1 family** instead of 23, and its worst pair sits at 0.599 — below the clone
+threshold. The 65 vacated slots are not yet refilled; `seeds/build_wave4_declone.py` holds the
+prepared replacement specs (one family each, full mechanism/hook/trap discipline) for when they are.
 
 ---
 
@@ -174,19 +202,19 @@ synth/
     validate_pyproblem.py              8-gate harness (program mode: B)
     isorun.py                          bwrap-sandboxed candidate runner
     testlib.h  _selftest{,_C,_B}
-  seeds/build_seed_list.py             taxonomy/supplements → seed_list.jsonl (`--current` = 1365 specs)
+  seeds/build_seed_list.py             taxonomy/supplements → seed_list.jsonl (`--current` = 1300 specs)
   reports/
     taxonomy_proposal.json             researched cross-framework taxonomy
     verify_all.sh  scan_defects.py  aggregate.py
     blind*_MAPPING_secret.json         blind-comparison results
   generate_problems.workflow.js        fan-out: 1 agent/problem, author → self-validate → repair
   research_frameworks.workflow.js      the 10-framework research + synthesis workflow
-  problems/<id>/                       the 1365 problems (testdata/ regenerates via the harness)
+  problems/<id>/                       the 1300 problems (testdata/ regenerates via the harness)
 ```
 
 ```bash
 cd synth
-python3 seeds/build_seed_list.py --current        # regenerate the current 1365-spec seed plan
+python3 seeds/build_seed_list.py --current        # regenerate the current 1300-spec seed plan
 bash   reports/verify_all.sh                      # ground-truth re-verify every problem (needs bwrap)
 python3 reports/aggregate.py                       # → summary.{json,md}
 # generation is driven by the Workflow tool over compact {id,format} routes.

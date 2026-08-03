@@ -1,26 +1,23 @@
 # Generation summary
 
-**1365/1365 PASS** (100%)
+**1300/1300 PASS** (100%)
 
 | tier | pass/total |
 |---|---|
-| A | 487/487 |
-| B | 322/322 |
-| C | 163/163 |
+| A | 469/469 |
+| B | 307/307 |
+| C | 160/160 |
 | G | 91/91 |
 | N | 26/26 |
-| S | 276/276 |
+| S | 247/247 |
 
 | id | tier | family | verdict | trivial | greedy | strong | gap | div |
 |---|---|---|---|---|---|---|---|---|
 | fsx_A_0081 | A | greedy-priority-construction | PASS | 0.1 | 0.374667 | 0.422167 | 0.322167 | 0.242992 |
 | fsx_A_0082 | A | online-heuristic-simulator | PASS | 0.1 | 0.447045 | 0.6375 | 0.5375 | 0.386632 |
-| fsx_A_0083 | A | geometric-packing | PASS | 0.1 | 0.343976 | 0.362326 | 0.262326 | 0.203616 |
 | fsx_A_0084 | A | extremal-point-config | PASS | 0.1 | 0.277778 | 0.294308 | 0.194308 | 0.138328 |
 | fsx_A_0085 | A | functional-inequality-constant | PASS | 0.1 | 0.2 | 0.257122 | 0.157122 | 0.10477 |
-| fsx_A_0086 | A | integer-matrix-construction | PASS | 0.1 | 0.164444 | 0.209757 | 0.109757 | 0.075952 |
 | fsx_A_0087 | A | additive-combinatorics-set | PASS | 0.1 | 0.336284 | 0.424632 | 0.324632 | 0.261921 |
-| fsx_A_0088 | A | tensor-decomposition-rank | PASS | 0.1 | 0.335417 | 0.44618 | 0.346181 | 0.235023 |
 | fsx_A_0089 | A | low-discrepancy-pointset | PASS | 0.1 | 0.213498 | 0.311049 | 0.211049 | 0.166415 |
 | fsx_A_0090 | A | heuristic-contest-offline | PASS | 0.1 | 0.443441 | 0.465901 | 0.365901 | 0.263392 |
 | fsx_A_0091 | A | greedy-priority-construction | PASS | 0.1 | 0.342265 | 0.388763 | 0.288763 | 0.201679 |
@@ -34,7 +31,6 @@
 | fsx_A_0099 | A | low-discrepancy-pointset | PASS | 0.1 | 0.197212 | 0.294087 | 0.194087 | 0.138717 |
 | fsx_A_0100 | A | heuristic-contest-offline | PASS | 0.1 | 0.466633 | 0.610137 | 0.510137 | 0.390716 |
 | fsx_A_0101 | A | greedy-priority-construction | PASS | 0.1 | 0.2 | 0.225156 | 0.125156 | 0.083594 |
-| fsx_A_0102 | A | online-heuristic-simulator | PASS | 0.1 | 0.551625 | 0.616917 | 0.516917 | 0.406958 |
 | fsx_A_0103 | A | geometric-packing | PASS | 0.1 | 0.168536 | 0.205359 | 0.105359 | 0.070487 |
 | fsx_A_0104 | A | extremal-point-config | PASS | 0.1 | 0.156278 | 0.260994 | 0.160994 | 0.122966 |
 | fsx_A_0105 | A | functional-inequality-constant | PASS | 0.1 | 0.2 | 0.230816 | 0.130816 | 0.087441 |
@@ -49,24 +45,18 @@
 | fsx_A_0114 | A | extremal-point-config | PASS | 0.1 | 0.286533 | 0.398472 | 0.298472 | 0.204122 |
 | fsx_A_0115 | A | functional-inequality-constant | PASS | 0.1 | 0.162544 | 0.32063 | 0.22063 | 0.155112 |
 | fsx_A_0116 | A | integer-matrix-construction | PASS | 0.1 | 0.28 | 0.415 | 0.315 | 0.285431 |
-| fsx_A_0117 | A | additive-combinatorics-set | PASS | 0.1 | 0.420067 | 0.430404 | 0.330404 | 0.248332 |
 | fsx_A_0118 | A | tensor-decomposition-rank | PASS | 0.1 | 0.343 | 0.456389 | 0.356389 | 0.242569 |
 | fsx_A_0119 | A | low-discrepancy-pointset | PASS | 0.1 | 0.378135 | 0.636583 | 0.536583 | 0.38927 |
 | fsx_A_0120 | A | heuristic-contest-offline | PASS | 0.1 | 0.393059 | 0.575259 | 0.475259 | 0.379743 |
 | fsx_A_0121 | A | greedy-priority-construction | PASS | 0.1 | 0.224062 | 0.26875 | 0.16875 | 0.117305 |
-| fsx_A_0122 | A | online-heuristic-simulator | PASS | 0.1 | 0.511786 | 0.612589 | 0.512589 | 0.396389 |
 | fsx_A_0123 | A | geometric-packing | PASS | 0.1 | 0.308933 | 0.36099 | 0.26099 | 0.186469 |
 | fsx_A_0124 | A | extremal-point-config | PASS | 0.1 | 0.435147 | 0.487155 | 0.387155 | 0.260847 |
-| fsx_A_0125 | A | functional-inequality-constant | PASS | 0.1 | 0.200874 | 0.227377 | 0.127377 | 0.084934 |
 | fsx_A_0126 | A | integer-matrix-construction | PASS | 0.1 | 0.151647 | 0.278691 | 0.17869 | 0.127783 |
-| fsx_A_0127 | A | additive-combinatorics-set | PASS | 0.1 | 0.584598 | 0.790986 | 0.690986 | 0.511458 |
-| fsx_A_0128 | A | tensor-decomposition-rank | PASS | 0.1 | 0.462234 | 0.603997 | 0.503997 | 0.358619 |
 | fsx_A_0129 | A | low-discrepancy-pointset | PASS | 0.1 | 0.338136 | 0.521711 | 0.421711 | 0.303961 |
 | fsx_A_0130 | A | heuristic-contest-offline | PASS | 0.1 | 0.617531 | 0.791742 | 0.691742 | 0.471807 |
 | fsx_A_0131 | A | greedy-priority-construction | PASS | 0.1 | 0.66127 | 0.715278 | 0.615278 | 0.470826 |
 | fsx_A_0132 | A | online-heuristic-simulator | PASS | 0.1 | 0.450378 | 0.512028 | 0.412028 | 0.334554 |
 | fsx_A_0133 | A | geometric-packing | PASS | 0.1 | 0.097529 | 0.188597 | 0.088597 | 0.071766 |
-| fsx_A_0134 | A | extremal-point-config | PASS | 0.1 | 0.25 | 0.508089 | 0.408089 | 0.272679 |
 | fsx_A_0135 | A | functional-inequality-constant | PASS | 0.1 | 0.248038 | 0.301136 | 0.201136 | 0.134589 |
 | fsx_A_0136 | A | integer-matrix-construction | PASS | 0.1 | 0.904658 | 0.950392 | 0.850392 | 0.575575 |
 | fsx_A_0137 | A | additive-combinatorics-set | PASS | 0.1 | 0.269424 | 0.352234 | 0.252234 | 0.180803 |
@@ -75,7 +65,6 @@
 | fsx_A_0140 | A | heuristic-contest-offline | PASS | 0.1 | 0.586844 | 0.59396 | 0.49396 | 0.334094 |
 | fsx_A_0141 | A | greedy-priority-construction | PASS | 0.1 | 0.207674 | 0.360457 | 0.260457 | 0.178422 |
 | fsx_A_0142 | A | online-heuristic-simulator | PASS | 0.1 | 0.45625 | 0.45625 | 0.35625 | 0.369966 |
-| fsx_A_0143 | A | geometric-packing | PASS | 0.1 | 0.299521 | 0.3191 | 0.2191 | 0.17023 |
 | fsx_A_0144 | A | extremal-point-config | PASS | 0.1 | 0.25 | 0.63158 | 0.53158 | 0.371563 |
 | fsx_A_0145 | A | functional-inequality-constant | PASS | 0.1 | 0.126017 | 0.157806 | 0.057806 | 0.038812 |
 | fsx_A_0146 | A | integer-matrix-construction | PASS | 0.1 | 0.673941 | 0.827351 | 0.727351 | 0.529271 |
@@ -85,7 +74,6 @@
 | fsx_A_0150 | A | heuristic-contest-offline | PASS | 0.1 | 0.867732 | 0.894514 | 0.794514 | 0.532945 |
 | fsx_A_0281 | A | greedy-priority-construction | PASS | 0.1 | 0.286927 | 0.592132 | 0.492132 | 0.352785 |
 | fsx_A_0282 | A | online-heuristic-simulator | PASS | 0.1 | 0.280457 | 0.333894 | 0.233894 | 0.263356 |
-| fsx_A_0283 | A | geometric-packing | PASS | 0.1 | 0.33621 | 0.376776 | 0.276776 | 0.194654 |
 | fsx_A_0284 | A | extremal-point-config | PASS | 0.1 | 0.181088 | 0.710091 | 0.610091 | 0.422452 |
 | fsx_A_0285 | A | functional-inequality-constant | PASS | 0.1 | 0.2 | 0.239129 | 0.139129 | 0.093208 |
 | fsx_A_0286 | A | integer-matrix-construction | PASS | 0.128426 | 0.148848 | 0.194693 | 0.066267 | 0.045887 |
@@ -96,8 +84,6 @@
 | fsx_A_0291 | A | greedy-priority-construction | PASS | 0.1 | 0.204703 | 0.230055 | 0.130055 | 0.087501 |
 | fsx_A_0292 | A | online-heuristic-simulator | PASS | 0.1 | 0.569605 | 0.643511 | 0.543511 | 0.42132 |
 | fsx_A_0293 | A | geometric-packing | PASS | 0.1 | 0.377643 | 0.395922 | 0.295922 | 0.216275 |
-| fsx_A_0294 | A | extremal-point-config | PASS | 0.1 | 0.277778 | 0.292387 | 0.192387 | 0.132856 |
-| fsx_A_0295 | A | functional-inequality-constant | PASS | 0.1 | 0.200339 | 0.229823 | 0.129823 | 0.086588 |
 | fsx_A_0296 | A | integer-matrix-construction | PASS | 0.1 | 0.339644 | 0.412974 | 0.312974 | 0.21511 |
 | fsx_A_0297 | A | additive-combinatorics-set | PASS | 0.1 | 0.177291 | 0.191127 | 0.091127 | 0.061549 |
 | fsx_A_0298 | A | tensor-decomposition-rank | PASS | 0.1 | 0.51 | 0.68 | 0.58 | 0.39527 |
@@ -109,7 +95,6 @@
 | fsx_A_0304 | A | extremal-point-config | PASS | 0.1 | 0.5 | 0.564102 | 0.464102 | 0.317415 |
 | fsx_A_0305 | A | functional-inequality-constant | PASS | 0.1 | 0.177532 | 0.224514 | 0.124514 | 0.083409 |
 | fsx_A_0306 | A | integer-matrix-construction | PASS | 0.1 | 0.183237 | 0.18978 | 0.08978 | 0.063672 |
-| fsx_A_0307 | A | additive-combinatorics-set | PASS | 0.1 | 0.165947 | 0.195839 | 0.095839 | 0.074378 |
 | fsx_A_0308 | A | tensor-decomposition-rank | PASS | 0.1 | 0.18109 | 0.432361 | 0.332361 | 0.233578 |
 | fsx_A_0309 | A | low-discrepancy-pointset | PASS | 0.1 | 0.185528 | 0.267107 | 0.167107 | 0.125342 |
 | fsx_A_0310 | A | heuristic-contest-offline | PASS | 0.1 | 0.671842 | 0.679509 | 0.579509 | 0.393412 |
@@ -130,7 +115,6 @@
 | fsx_A_0325 | A | functional-inequality-constant | PASS | 0.1 | 0.2 | 0.225491 | 0.125491 | 0.087344 |
 | fsx_A_0326 | A | integer-matrix-construction | PASS | 0.1 | 0.211479 | 0.423373 | 0.323373 | 0.231871 |
 | fsx_A_0327 | A | additive-combinatorics-set | PASS | 0.1 | 0.185198 | 0.193322 | 0.093322 | 0.062664 |
-| fsx_A_0328 | A | tensor-decomposition-rank | PASS | 0.1 | 0.138333 | 0.349904 | 0.249904 | 0.168569 |
 | fsx_A_0329 | A | low-discrepancy-pointset | PASS | 0.1 | 0.186626 | 0.228693 | 0.128693 | 0.105243 |
 | fsx_A_0330 | A | heuristic-contest-offline | PASS | 0.1 | 0.460435 | 0.522773 | 0.422773 | 0.2893 |
 | fsx_A_0331 | A | greedy-priority-construction | PASS | 0.1 | 0.236043 | 0.26016 | 0.16016 | 0.108135 |
@@ -146,9 +130,7 @@
 | fsx_A_0341 | A | greedy-priority-construction | PASS | 0.1 | 0.142518 | 0.262107 | 0.162107 | 0.111833 |
 | fsx_A_0342 | A | online-heuristic-simulator | PASS | 0.1 | 0.51 | 0.669167 | 0.569167 | 0.476149 |
 | fsx_A_0343 | A | geometric-packing | PASS | 0.1 | 0.40474 | 0.419663 | 0.319663 | 0.21877 |
-| fsx_A_0344 | A | extremal-point-config | PASS | 0.1 | 0.144244 | 0.623551 | 0.523551 | 0.356174 |
 | fsx_A_0345 | A | functional-inequality-constant | PASS | 0.1 | 0.378598 | 0.519818 | 0.419818 | 0.281114 |
-| fsx_A_0346 | A | integer-matrix-construction | PASS | 0.1 | 0.169035 | 0.214462 | 0.114462 | 0.077632 |
 | fsx_A_0347 | A | additive-combinatorics-set | PASS | 0.1 | 0.474235 | 0.528498 | 0.428498 | 0.314829 |
 | fsx_A_0348 | A | tensor-decomposition-rank | PASS | 0.1 | 0.153333 | 0.18 | 0.08 | 0.0666 |
 | fsx_A_0349 | A | low-discrepancy-pointset | PASS | 0.1 | 0.262182 | 0.528747 | 0.428747 | 0.308592 |
@@ -504,43 +486,32 @@
 | fsx_B_0152 | B | constrained-OR | PASS | 0.1 | 0.051983 | 0.220762 | 0.120762 | 0.139997 |
 | fsx_B_0153 | B | seeded-numerical-sim | PASS | 0.1 | 0.354884 | 0.485418 | 0.385418 | 0.273661 |
 | fsx_B_0154 | B | quantum-circuit-opcount | PASS | 0.1 | 0.115967 | 0.157422 | 0.057422 | 0.051365 |
-| fsx_B_0155 | B | symbolic-regression | PASS | 0.1 | 0.412549 | 0.500961 | 0.400961 | 0.288143 |
 | fsx_B_0156 | B | scientific-law-extrapolation | PASS | 0.099602 | 0.123092 | 0.343813 | 0.244211 | 0.187044 |
-| fsx_B_0157 | B | multiobjective-hypervolume | PASS | 0.1 | 0.352446 | 0.447244 | 0.347244 | 0.232564 |
 | fsx_B_0158 | B | offline-decision-policy | PASS | 0.1 | 0.257426 | 0.260641 | 0.160641 | 0.117335 |
-| fsx_B_0159 | B | feasibility-gated-structural | PASS | 0.1 | 0.176009 | 0.332358 | 0.232358 | 0.21629 |
 | fsx_B_0160 | B | constrained-OR | PASS | 0.1 | 0.077358 | 0.312182 | 0.212182 | 0.161934 |
 | fsx_B_0161 | B | seeded-numerical-sim | PASS | 0.1 | 0.434047 | 0.866225 | 0.766225 | 0.512974 |
 | fsx_B_0162 | B | quantum-circuit-opcount | PASS | 0.1 | 0.218117 | 0.464283 | 0.364283 | 0.246917 |
 | fsx_B_0163 | B | symbolic-regression | PASS | 0.099801 | 0.16852 | 0.566009 | 0.466207 | 0.318092 |
-| fsx_B_0164 | B | scientific-law-extrapolation | PASS | 0.1 | 0.182494 | 0.393177 | 0.293177 | 0.251526 |
 | fsx_B_0165 | B | multiobjective-hypervolume | PASS | 0.1 | 0.270562 | 0.396168 | 0.296168 | 0.2086 |
 | fsx_B_0166 | B | offline-decision-policy | PASS | 0.1 | 0.447474 | 0.671563 | 0.571563 | 0.429562 |
 | fsx_B_0167 | B | feasibility-gated-structural | PASS | 0.1 | 0.192446 | 0.493817 | 0.393817 | 0.362814 |
-| fsx_B_0168 | B | constrained-OR | PASS | 0.1 | 0.09068 | 0.212161 | 0.112161 | 0.128894 |
 | fsx_B_0169 | B | seeded-numerical-sim | PASS | 0.1 | 0.122755 | 0.337125 | 0.237125 | 0.166464 |
 | fsx_B_0170 | B | quantum-circuit-opcount | PASS | 0.1 | 0.201099 | 0.256654 | 0.156654 | 0.105425 |
 | fsx_B_0171 | B | symbolic-regression | PASS | 0.099825 | 0.302361 | 0.670424 | 0.570599 | 0.380748 |
-| fsx_B_0172 | B | scientific-law-extrapolation | PASS | 0.1 | 0.231861 | 0.727389 | 0.627389 | 0.419509 |
 | fsx_B_0173 | B | multiobjective-hypervolume | PASS | 0.1 | 0.390472 | 0.462305 | 0.362305 | 0.242181 |
 | fsx_B_0174 | B | offline-decision-policy | PASS | 0.1 | 0.263648 | 0.522855 | 0.422855 | 0.292673 |
 | fsx_B_0175 | B | feasibility-gated-structural | PASS | 0.1 | 0.0 | 0.48261 | 0.38261 | 0.32624 |
-| fsx_B_0176 | B | constrained-OR | PASS | 0.1 | 0.104134 | 0.256341 | 0.156341 | 0.160976 |
 | fsx_B_0177 | B | seeded-numerical-sim | PASS | 0.1 | 0.301623 | 0.373121 | 0.273121 | 0.205198 |
 | fsx_B_0178 | B | quantum-circuit-opcount | PASS | 0.1 | 0.238151 | 0.306354 | 0.206354 | 0.142596 |
 | fsx_B_0179 | B | symbolic-regression | PASS | 0.1 | 0.206473 | 0.445974 | 0.345974 | 0.236885 |
 | fsx_B_0180 | B | scientific-law-extrapolation | PASS | 0.1 | 0.14163 | 0.330266 | 0.230266 | 0.200653 |
-| fsx_B_0351 | B | multiobjective-hypervolume | PASS | 0.1 | 0.333327 | 0.407398 | 0.307398 | 0.215986 |
-| fsx_B_0352 | B | offline-decision-policy | PASS | 0.1 | 0.279649 | 0.282187 | 0.182187 | 0.122621 |
 | fsx_B_0353 | B | feasibility-gated-structural | PASS | 0.1 | 0.176477 | 0.297364 | 0.197364 | 0.139945 |
 | fsx_B_0354 | B | constrained-OR | PASS | 0.1 | 0.172352 | 0.20046 | 0.10046 | 0.068572 |
 | fsx_B_0355 | B | seeded-numerical-sim | PASS | 0.1 | 0.150198 | 0.184392 | 0.084392 | 0.063868 |
 | fsx_B_0356 | B | quantum-circuit-opcount | PASS | 0.1 | 0.237068 | 0.464449 | 0.364449 | 0.26251 |
-| fsx_B_0357 | B | symbolic-regression | PASS | 0.1 | 0.352841 | 0.45675 | 0.35675 | 0.244102 |
 | fsx_B_0358 | B | scientific-law-extrapolation | PASS | 0.1 | 0.075831 | 0.358898 | 0.258898 | 0.233049 |
 | fsx_B_0359 | B | multiobjective-hypervolume | PASS | 0.1 | 0.356589 | 0.393404 | 0.293404 | 0.209249 |
 | fsx_B_0360 | B | offline-decision-policy | PASS | 0.1 | 0.538161 | 0.679891 | 0.579891 | 0.392192 |
-| fsx_B_0361 | B | feasibility-gated-structural | PASS | 0.095238 | 0.22134 | 0.226537 | 0.131299 | 0.093169 |
 | fsx_B_0362 | B | constrained-OR | PASS | 0.1 | 0.174815 | 0.184939 | 0.084939 | 0.058118 |
 | fsx_B_0363 | B | seeded-numerical-sim | PASS | 0.1 | 0.217815 | 0.416871 | 0.316871 | 0.219534 |
 | fsx_B_0364 | B | quantum-circuit-opcount | PASS | 0.1 | 0.200855 | 0.250225 | 0.150225 | 0.103328 |
@@ -548,15 +519,11 @@
 | fsx_B_0366 | B | scientific-law-extrapolation | PASS | 0.1 | 0.10926 | 0.832454 | 0.732454 | 0.489338 |
 | fsx_B_0367 | B | multiobjective-hypervolume | PASS | 0.1 | 0.37019 | 0.619274 | 0.519274 | 0.349237 |
 | fsx_B_0368 | B | offline-decision-policy | PASS | 0.1 | 0.424142 | 0.439677 | 0.339677 | 0.234072 |
-| fsx_B_0369 | B | feasibility-gated-structural | PASS | 0.095238 | 0.193707 | 0.197543 | 0.102305 | 0.076374 |
 | fsx_B_0370 | B | constrained-OR | PASS | 0.1 | 0.118837 | 0.172915 | 0.072915 | 0.054678 |
 | fsx_B_0371 | B | seeded-numerical-sim | PASS | 0.1 | 0.294343 | 0.842347 | 0.742347 | 0.508877 |
 | fsx_B_0372 | B | quantum-circuit-opcount | PASS | 0.1 | 0.153229 | 0.226131 | 0.126131 | 0.091253 |
-| fsx_B_0373 | B | symbolic-regression | PASS | 0.1 | 0.400277 | 0.476784 | 0.376784 | 0.25785 |
 | fsx_B_0374 | B | scientific-law-extrapolation | PASS | 0.1 | 0.549572 | 0.582787 | 0.482787 | 0.329395 |
-| fsx_B_0375 | B | multiobjective-hypervolume | PASS | 0.1 | 0.363355 | 0.466341 | 0.366341 | 0.245448 |
 | fsx_B_0376 | B | offline-decision-policy | PASS | 0.1 | 0.344348 | 0.415345 | 0.315345 | 0.238853 |
-| fsx_B_0377 | B | feasibility-gated-structural | PASS | 0.1 | 0.195185 | 0.36822 | 0.26822 | 0.244002 |
 | fsx_B_0378 | B | constrained-OR | PASS | 0.1 | 0.177954 | 0.193068 | 0.093068 | 0.078129 |
 | fsx_B_0379 | B | seeded-numerical-sim | PASS | 0.1 | 0.353882 | 0.480764 | 0.380764 | 0.308376 |
 | fsx_B_0380 | B | quantum-circuit-opcount | PASS | 0.1 | 0.136459 | 0.188458 | 0.088458 | 0.077512 |
@@ -823,7 +790,6 @@
 | fsx_B_1289 | B | capex-stage-gate | PASS | 0.1 | 0.142717 | 0.627109 | 0.527109 | 0.405745 |
 | fsx_B_1290 | B | payment-routing-cost | PASS | 0.1 | 0.354311 | 0.453091 | 0.353091 | 0.279168 |
 | fsx_C_0181 | C | classical-ml-algorithm | PASS | 0.1 | 0.243166 | 0.444335 | 0.344335 | 0.461566 |
-| fsx_C_0182 | C | causal-discovery | PASS | 0.1 | 0.082843 | 0.307917 | 0.207917 | 0.178085 |
 | fsx_C_0183 | C | optimization-convergence-analysis | PASS | 0.1 | 0.439621 | 0.456569 | 0.356569 | 0.291829 |
 | fsx_C_0184 | C | synthetic-algorithmic-generalization | PASS | 0.1 | 0.5125 | 0.775572 | 0.675572 | 0.453392 |
 | fsx_C_0185 | C | modular-component-cross-setting | PASS | 0.1 | 0.439609 | 0.639098 | 0.539098 | 0.472725 |
@@ -844,7 +810,6 @@
 | fsx_C_0200 | C | causal-discovery | PASS | 0.1 | 0.05143 | 0.259812 | 0.159812 | 0.170788 |
 | fsx_C_0381 | C | optimization-convergence-analysis | PASS | 0.1 | 0.137919 | 0.286947 | 0.186947 | 0.145023 |
 | fsx_C_0382 | C | synthetic-algorithmic-generalization | PASS | 0.1 | 0.215348 | 0.399602 | 0.299602 | 0.203733 |
-| fsx_C_0383 | C | modular-component-cross-setting | PASS | 0.1 | 0.512136 | 0.563376 | 0.463376 | 0.417662 |
 | fsx_C_0384 | C | algebraic-exotic-construction | PASS | 0.1 | 0.200838 | 0.219057 | 0.119057 | 0.081019 |
 | fsx_C_0385 | C | classical-ml-algorithm | PASS | 0.1 | 0.721172 | 0.824831 | 0.724831 | 0.500905 |
 | fsx_C_0386 | C | causal-discovery | PASS | 0.1 | 0.138685 | 0.395417 | 0.295417 | 0.305028 |
@@ -856,7 +821,6 @@
 | fsx_C_0392 | C | causal-discovery | PASS | 0.1 | 0.090867 | 0.156903 | 0.056903 | 0.051074 |
 | fsx_C_0393 | C | optimization-convergence-analysis | PASS | 0.1 | 0.350279 | 0.637148 | 0.537148 | 0.372545 |
 | fsx_C_0394 | C | synthetic-algorithmic-generalization | PASS | 0.1 | 0.1434 | 0.29811 | 0.19811 | 0.14105 |
-| fsx_C_0395 | C | modular-component-cross-setting | PASS | 0.1 | 0.65203 | 0.74888 | 0.64888 | 0.459535 |
 | fsx_C_0396 | C | algebraic-exotic-construction | PASS | 0.1 | 0.55417 | 0.624783 | 0.524783 | 0.352511 |
 | fsx_C_0397 | C | classical-ml-algorithm | PASS | 0.105148 | 0.3884 | 0.492833 | 0.387685 | 0.45776 |
 | fsx_C_0398 | C | causal-discovery | PASS | 0.1 | 0.134408 | 0.408333 | 0.308333 | 0.244466 |
@@ -1102,35 +1066,23 @@
 | fsx_N_0908 | N | deterrence-coverage-review | PASS | 0.1 | 0.243515 | 0.373383 | 0.273383 | 0.204442 |
 | fsx_N_0932 | N | concession-timed-bargaining | PASS | 0.1 | 0.22974 | 0.752719 | 0.652719 | 0.508013 |
 | fsx_N_1122 | N | decaying-cascade-timing | PASS | 0.1 | 0.528302 | 0.69108 | 0.59108 | 0.397516 |
-| fsx_S_0001 | S | graph-interdiction | PASS | 0.1 | 0.158566 | 0.283668 | 0.183668 | 0.136144 |
 | fsx_S_0002 | S | covering-facility-location | PASS | 0.1 | 0.389501 | 0.426822 | 0.326822 | 0.227471 |
-| fsx_S_0003 | S | packing-knapsack | PASS | 0.1 | 0.5415 | 0.592167 | 0.492167 | 0.345729 |
 | fsx_S_0004 | S | routing-tour | PASS | 0.1 | 0.150366 | 0.318845 | 0.218845 | 0.169705 |
 | fsx_S_0005 | S | scheduling-jssp | PASS | 0.1 | 0.177491 | 0.451539 | 0.351539 | 0.250507 |
 | fsx_S_0006 | S | assignment-matching | PASS | 0.1 | 0.282639 | 0.283745 | 0.183745 | 0.135942 |
-| fsx_S_0007 | S | network-design | PASS | 0.1 | 0.746106 | 0.807043 | 0.707043 | 0.522108 |
 | fsx_S_0008 | S | partition-clustering | PASS | 0.1 | 0.151829 | 0.176043 | 0.076043 | 0.056924 |
-| fsx_S_0009 | S | coloring-labeling | PASS | 0.1 | 0.621271 | 0.730474 | 0.630474 | 0.500301 |
-| fsx_S_0010 | S | maxsat-csp | PASS | 0.1 | 0.191758 | 0.196801 | 0.096801 | 0.067722 |
-| fsx_S_0011 | S | independent-set-clique | PASS | 0.1 | 0.849387 | 0.866046 | 0.766046 | 0.550719 |
 | fsx_S_0012 | S | online-to-offline-replay | PASS | 0.1 | 0.12211 | 0.169238 | 0.069238 | 0.047222 |
 | fsx_S_0013 | S | graph-interdiction | PASS | 0.1 | 0.268245 | 0.787687 | 0.687687 | 0.506885 |
 | fsx_S_0014 | S | covering-facility-location | PASS | 0.1 | 0.466564 | 0.983603 | 0.883603 | 0.651946 |
-| fsx_S_0015 | S | packing-knapsack | PASS | 0.1 | 0.332188 | 0.348682 | 0.248682 | 0.167736 |
-| fsx_S_0016 | S | routing-tour | PASS | 0.1 | 0.156904 | 0.257703 | 0.157703 | 0.175059 |
 | fsx_S_0017 | S | scheduling-jssp | PASS | 0.1 | 0.139807 | 0.379661 | 0.27966 | 0.204103 |
 | fsx_S_0018 | S | assignment-matching | PASS | 0.1 | 0.183461 | 0.202074 | 0.102074 | 0.084979 |
-| fsx_S_0019 | S | network-design | PASS | 0.1 | 0.704206 | 0.771403 | 0.671403 | 0.508179 |
 | fsx_S_0020 | S | partition-clustering | PASS | 0.1 | 0.138451 | 0.17592 | 0.07592 | 0.052561 |
 | fsx_S_0021 | S | coloring-labeling | PASS | 0.1 | 0.593173 | 0.696259 | 0.596259 | 0.459026 |
 | fsx_S_0022 | S | maxsat-csp | PASS | 0.1 | 0.225813 | 0.262716 | 0.162716 | 0.109264 |
-| fsx_S_0023 | S | independent-set-clique | PASS | 0.1 | 0.912261 | 0.912341 | 0.812341 | 0.569315 |
 | fsx_S_0024 | S | online-to-offline-replay | PASS | 0.1 | 0.125678 | 0.180337 | 0.080337 | 0.05503 |
-| fsx_S_0025 | S | graph-interdiction | PASS | 0.1 | 0.128987 | 0.256081 | 0.156081 | 0.114359 |
 | fsx_S_0026 | S | covering-facility-location | PASS | 0.1 | 0.408423 | 0.599865 | 0.499865 | 0.363048 |
 | fsx_S_0027 | S | packing-knapsack | PASS | 0.1 | 0.280413 | 0.509296 | 0.409296 | 0.324458 |
 | fsx_S_0028 | S | routing-tour | PASS | 0.1 | 0.147314 | 0.21442 | 0.11442 | 0.084971 |
-| fsx_S_0029 | S | scheduling-jssp | PASS | 0.1 | 0.347998 | 0.52747 | 0.42747 | 0.323012 |
 | fsx_S_0030 | S | assignment-matching | PASS | 0.1 | 0.185255 | 0.254131 | 0.154131 | 0.107349 |
 | fsx_S_0031 | S | network-design | PASS | 0.1 | 0.154128 | 0.200028 | 0.100028 | 0.068395 |
 | fsx_S_0032 | S | partition-clustering | PASS | 0.1 | 0.13716 | 0.17595 | 0.07595 | 0.051041 |
@@ -1138,7 +1090,6 @@
 | fsx_S_0034 | S | maxsat-csp | PASS | 0.1 | 0.211505 | 0.251114 | 0.151114 | 0.103027 |
 | fsx_S_0035 | S | independent-set-clique | PASS | 0.1 | 0.287976 | 0.290111 | 0.190111 | 0.139222 |
 | fsx_S_0036 | S | online-to-offline-replay | PASS | 0.1 | 0.102243 | 0.195058 | 0.095058 | 0.074234 |
-| fsx_S_0037 | S | graph-interdiction | PASS | 0.1 | 0.210238 | 0.233997 | 0.133997 | 0.111652 |
 | fsx_S_0038 | S | covering-facility-location | PASS | 0.1 | 0.362196 | 0.51237 | 0.41237 | 0.279365 |
 | fsx_S_0039 | S | packing-knapsack | PASS | 0.1 | 0.33819 | 0.376124 | 0.276124 | 0.217659 |
 | fsx_S_0040 | S | routing-tour | PASS | 0.1 | 0.206315 | 0.688232 | 0.588232 | 0.416358 |
@@ -1150,16 +1101,13 @@
 | fsx_S_0046 | S | maxsat-csp | PASS | 0.1 | 0.215071 | 0.223977 | 0.123977 | 0.088023 |
 | fsx_S_0047 | S | independent-set-clique | PASS | 0.1 | 0.548673 | 0.622256 | 0.522256 | 0.377997 |
 | fsx_S_0048 | S | online-to-offline-replay | PASS | 0.1 | 0.907338 | 0.919477 | 0.819477 | 0.578251 |
-| fsx_S_0049 | S | graph-interdiction | PASS | 0.1 | 0.363265 | 0.403439 | 0.303439 | 0.212196 |
 | fsx_S_0050 | S | covering-facility-location | PASS | 0.1 | 0.277005 | 0.288596 | 0.188596 | 0.131835 |
 | fsx_S_0051 | S | packing-knapsack | PASS | 0.1 | 0.426016 | 0.429644 | 0.329644 | 0.230088 |
 | fsx_S_0052 | S | routing-tour | PASS | 0.1 | 0.308433 | 0.573879 | 0.473879 | 0.331539 |
 | fsx_S_0053 | S | scheduling-jssp | PASS | 0.1 | 0.586569 | 0.62149 | 0.52149 | 0.400672 |
 | fsx_S_0054 | S | assignment-matching | PASS | 0.1 | 0.108929 | 0.224531 | 0.124531 | 0.108855 |
-| fsx_S_0055 | S | network-design | PASS | 0.1 | 0.617252 | 0.717236 | 0.617236 | 0.467492 |
 | fsx_S_0056 | S | partition-clustering | PASS | 0.1 | 0.538465 | 0.6336 | 0.5336 | 0.358728 |
 | fsx_S_0057 | S | coloring-labeling | PASS | 0.1 | 0.853332 | 0.882426 | 0.782426 | 0.55224 |
-| fsx_S_0058 | S | maxsat-csp | PASS | 0.1 | 0.19421 | 0.204901 | 0.104901 | 0.071623 |
 | fsx_S_0059 | S | independent-set-clique | PASS | 0.1 | 0.471964 | 0.479955 | 0.379955 | 0.273296 |
 | fsx_S_0060 | S | online-to-offline-replay | PASS | 0.1 | 0.183934 | 0.224937 | 0.124937 | 0.112255 |
 | fsx_S_0061 | S | graph-interdiction | PASS | 0.1 | 0.139383 | 0.217073 | 0.117073 | 0.080181 |
@@ -1184,17 +1132,12 @@
 | fsx_S_0080 | S | partition-clustering | PASS | 0.1 | 0.135226 | 0.167476 | 0.067476 | 0.052237 |
 | fsx_S_0201 | S | coloring-labeling | PASS | 0.1 | 0.726893 | 0.826877 | 0.726877 | 0.524835 |
 | fsx_S_0202 | S | maxsat-csp | PASS | 0.1 | 0.250428 | 0.26598 | 0.16598 | 0.118172 |
-| fsx_S_0203 | S | independent-set-clique | PASS | 0.1 | 0.157627 | 0.159822 | 0.059822 | 0.050202 |
 | fsx_S_0204 | S | online-to-offline-replay | PASS | 0.1 | 0.159132 | 0.180548 | 0.080548 | 0.066031 |
-| fsx_S_0205 | S | graph-interdiction | PASS | 0.1 | 0.142318 | 0.328778 | 0.228778 | 0.221438 |
 | fsx_S_0206 | S | covering-facility-location | PASS | 0.1 | 0.39252 | 0.404863 | 0.304863 | 0.209152 |
 | fsx_S_0207 | S | packing-knapsack | PASS | 0.1 | 0.335185 | 0.481682 | 0.381682 | 0.26619 |
-| fsx_S_0208 | S | routing-tour | PASS | 0.1 | 0.177293 | 0.256026 | 0.156026 | 0.130834 |
-| fsx_S_0209 | S | scheduling-jssp | PASS | 0.1 | 0.386457 | 0.439997 | 0.339997 | 0.257586 |
 | fsx_S_0210 | S | assignment-matching | PASS | 0.1 | 0.36688 | 0.406375 | 0.306375 | 0.211187 |
 | fsx_S_0211 | S | network-design | PASS | 0.1 | 0.564266 | 0.665883 | 0.565883 | 0.440919 |
 | fsx_S_0212 | S | partition-clustering | PASS | 0.1 | 0.13553 | 0.178984 | 0.078984 | 0.05329 |
-| fsx_S_0213 | S | coloring-labeling | PASS | 0.1 | 0.82243 | 0.855422 | 0.755422 | 0.538481 |
 | fsx_S_0214 | S | maxsat-csp | PASS | 0.1 | 0.175103 | 0.18584 | 0.08584 | 0.0689 |
 | fsx_S_0215 | S | independent-set-clique | PASS | 0.1 | 0.561588 | 0.606684 | 0.506684 | 0.371789 |
 | fsx_S_0216 | S | online-to-offline-replay | PASS | 0.1 | 0.393497 | 0.436657 | 0.336657 | 0.314946 |
@@ -1206,11 +1149,9 @@
 | fsx_S_0222 | S | assignment-matching | PASS | 0.1 | 0.21823 | 0.233379 | 0.133379 | 0.09509 |
 | fsx_S_0223 | S | network-design | PASS | 0.1 | 0.79054 | 0.859916 | 0.759916 | 0.553528 |
 | fsx_S_0224 | S | partition-clustering | PASS | 0.1 | 0.137588 | 0.197737 | 0.097737 | 0.066321 |
-| fsx_S_0225 | S | coloring-labeling | PASS | 0.1 | 0.735933 | 0.82639 | 0.72639 | 0.523158 |
 | fsx_S_0226 | S | maxsat-csp | PASS | 0.1 | 0.162704 | 0.168323 | 0.068323 | 0.056463 |
 | fsx_S_0227 | S | independent-set-clique | PASS | 0.1 | 0.91 | 0.93 | 0.83 | 0.591072 |
 | fsx_S_0228 | S | online-to-offline-replay | PASS | 0.1 | 0.159804 | 0.281805 | 0.181805 | 0.126711 |
-| fsx_S_0229 | S | graph-interdiction | PASS | 0.1 | 0.48153 | 0.515911 | 0.415911 | 0.311369 |
 | fsx_S_0230 | S | covering-facility-location | PASS | 0.1 | 0.756847 | 0.773776 | 0.673777 | 0.474332 |
 | fsx_S_0231 | S | packing-knapsack | PASS | 0.1 | 0.409123 | 0.535947 | 0.435947 | 0.343442 |
 | fsx_S_0232 | S | routing-tour | PASS | 0.1 | 0.158526 | 0.178715 | 0.078715 | 0.058309 |
@@ -1222,27 +1163,21 @@
 | fsx_S_0238 | S | maxsat-csp | PASS | 0.1 | 0.172569 | 0.187165 | 0.087165 | 0.059159 |
 | fsx_S_0239 | S | independent-set-clique | PASS | 0.1 | 0.436846 | 0.451257 | 0.351257 | 0.251235 |
 | fsx_S_0240 | S | online-to-offline-replay | PASS | 0.1 | 0.149047 | 0.348776 | 0.248776 | 0.239311 |
-| fsx_S_0241 | S | graph-interdiction | PASS | 0.1 | 0.218349 | 0.328775 | 0.228775 | 0.17718 |
 | fsx_S_0242 | S | covering-facility-location | PASS | 0.1 | 0.660983 | 0.668889 | 0.568889 | 0.44932 |
 | fsx_S_0243 | S | packing-knapsack | PASS | 0.1 | 0.521626 | 0.567844 | 0.467844 | 0.319385 |
 | fsx_S_0244 | S | routing-tour | PASS | 0.1 | 0.450317 | 0.474312 | 0.374312 | 0.360566 |
 | fsx_S_0245 | S | scheduling-jssp | PASS | 0.1 | 0.442977 | 0.477529 | 0.377529 | 0.294852 |
 | fsx_S_0246 | S | assignment-matching | PASS | 0.1 | 0.907813 | 0.927418 | 0.827418 | 0.573528 |
-| fsx_S_0247 | S | network-design | PASS | 0.1 | 0.650974 | 0.669869 | 0.569869 | 0.438331 |
 | fsx_S_0248 | S | partition-clustering | PASS | 0.1 | 0.178695 | 0.198459 | 0.098459 | 0.072733 |
-| fsx_S_0249 | S | coloring-labeling | PASS | 0.1 | 0.936631 | 0.968012 | 0.868012 | 0.591183 |
 | fsx_S_0250 | S | maxsat-csp | PASS | 0.1 | 0.18942 | 0.20016 | 0.10016 | 0.069515 |
 | fsx_S_0251 | S | independent-set-clique | PASS | 0.1 | 0.330148 | 0.416791 | 0.316791 | 0.220501 |
 | fsx_S_0252 | S | online-to-offline-replay | PASS | 0.1 | 0.262336 | 0.502217 | 0.402217 | 0.338713 |
-| fsx_S_0253 | S | graph-interdiction | PASS | 0.1 | 0.259916 | 0.392894 | 0.292894 | 0.255434 |
 | fsx_S_0254 | S | covering-facility-location | PASS | 0.1 | 0.694341 | 0.964123 | 0.864123 | 0.612745 |
-| fsx_S_0255 | S | packing-knapsack | PASS | 0.1 | 0.345034 | 0.353747 | 0.253747 | 0.196129 |
 | fsx_S_0256 | S | routing-tour | PASS | 0.1 | 0.318604 | 0.335993 | 0.235993 | 0.178122 |
 | fsx_S_0257 | S | scheduling-jssp | PASS | 0.1 | 0.450459 | 0.457899 | 0.357899 | 0.258487 |
 | fsx_S_0258 | S | assignment-matching | PASS | 0.1 | 0.141712 | 0.160265 | 0.060265 | 0.055249 |
 | fsx_S_0259 | S | network-design | PASS | 0.1 | 0.165986 | 0.165986 | 0.065986 | 0.044138 |
 | fsx_S_0260 | S | partition-clustering | PASS | 0.1 | 0.138094 | 0.195135 | 0.095135 | 0.065552 |
-| fsx_S_0261 | S | coloring-labeling | PASS | 0.1 | 0.796275 | 0.845541 | 0.745541 | 0.524147 |
 | fsx_S_0262 | S | maxsat-csp | PASS | 0.1 | 0.695553 | 0.714974 | 0.614974 | 0.429809 |
 | fsx_S_0263 | S | independent-set-clique | PASS | 0.1 | 0.15672 | 0.165618 | 0.065617 | 0.047191 |
 | fsx_S_0264 | S | online-to-offline-replay | PASS | 0.1 | 0.111109 | 0.253216 | 0.153216 | 0.204238 |

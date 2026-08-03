@@ -7,7 +7,7 @@ FrontierSmith's withheld orchestrator + test/checker generators, broadened acros
 FrontierCS, ALE-Bench, MLS-Bench). **Deterministic scoring only** — no wall-time/GPU; kernels appear
 only as FLOPs/op-count. See `DESIGN.md` for the full method + critical analysis.
 
-Current corpus: **1365 generated problems**, **1365/1365 machine-verified PASS**, with unique IDs and a
+Current corpus: **1300 generated problems**, **1300/1300 machine-verified PASS**, with unique IDs and a
 one-to-one match between `seeds/seed_list.jsonl` and `problems/fsx_*`.
 
 The corpus is built in three waves: wave-1 (506, `fsx_*_0001`–`fsx_*_0506`), wave-2b
@@ -15,7 +15,7 @@ The corpus is built in three waves: wave-1 (506, `fsx_*_0001`–`fsx_*_0506`), w
 Wave-2b and wave-3 enforce an **innovation-headroom**
 acceptance (`strong - greedy >= 0.06`, `strong <= 0.92`, `greedy - trivial >= 0.03`) so the insight
 visibly beats the recipe, and an **anti-homogeneity gate** (`reports/scan_homogeneity.py`) — the
-current corpus is 1365 dirs / 1365 unique skeletons / 1365 unique statement shapes at
+current corpus is 1300 dirs / 1300 unique skeletons / 1300 unique statement shapes at
 `--max-clones 1`. See `AGENT_BRIEF_INNOVATION_ADDENDUM.md`.
 
 **Wave-3** widens *domain* coverage rather than depth, using
@@ -40,7 +40,7 @@ harness/
   _selftest, _selftest_C, _selftest_B   regression fixtures (one per harness path)
 seeds/
   build_seed_list.py           taxonomy/supplements → seed_list.jsonl (`--current` for corpus)
-  seed_list.jsonl              the 1365 problem specs (tier/format/family/theme/scale/variant)
+  seed_list.jsonl              the 1300 problem specs (tier/format/family/theme/scale/variant)
 reports/
   taxonomy_proposal.json       researched cross-framework taxonomy (5 formats, 4 tiers, 36 families)
   verify_all.sh                re-verify every problem with the correct harness (ground truth)
@@ -71,7 +71,7 @@ fails). The corpus survived three rounds of adversarial Codex review + independe
 
 ## Regenerate / extend
 ```bash
-python3 seeds/build_seed_list.py --current        # rebuild the current 1365-spec plan
+python3 seeds/build_seed_list.py --current        # rebuild the current 1300-spec plan
 bash   reports/verify_all.sh                      # ground-truth re-verify all problems
 python3 reports/aggregate.py                       # → reports/summary.{json,md}
 # batch generation is driven by the Workflow tool over compact {id,format} routes:
