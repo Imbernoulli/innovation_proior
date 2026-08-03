@@ -758,3 +758,15 @@ methods+trajectory 出的数据（~2,225 条）；maintenance = 蒸馏数据（7
 - **maintenance 的第一信号：im_wd03 的 ALE 372 vs 纯创新臂 286**；
 - ⚠️ 三个纯创新臂 ALE 逐位相同（286.5）= ALE 量化 attractor 现象（全部样本落进相同失败/默认档），非评测事故，已知格局；
 - 裁决主力（16 个 soup/scale 合并模型的 FCS+Research）已提交；innnew_ft 与 maintenance 三方案本体在训。
+
+**（08-03 滚动）9B 矩阵合并变体——已齐全的行**（FCS 172/Res 64 全量才入表）：
+
+| soup | FCS | Research |
+|---|---|---|
+| innold a10 / **a20** / a30 | 5.23 / **6.16** / 4.27 | 8.75 / **12.34** / (修复中) |
+| innnew_wd03 a10 / **a20** / a30 | 5.79 / **6.55** / 5.02 | 10.61 / 9.97 / 8.95 |
+| innnew_lr1e5 **a10** / a20 / a30 | **6.33** / 5.12 / 2.77 | 10.01 / 7.97 / 7.59 |
+| im_wd03 a10 | (FCS 评测中) | 9.52 |
+
+- 形态：innold 与 innnew_wd03 的峰都在 **α=0.2**（FCS 6.2-6.5，逼近 base 6.82）；lr1e-5 臂峰前移到 α=0.1 且更陡（lr 大 → 模型走得远 → 吃不了高 α）。
+- 新旧 soup 级对比要等 innnew_ft（wd0.1 基线）的 soup 评完才是同超参配对；当前 innold_a20 的 Research 12.34 是全场最高。
