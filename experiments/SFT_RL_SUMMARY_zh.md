@@ -772,3 +772,12 @@ methods+trajectory 出的数据（~2,225 条）；maintenance = 蒸馏数据（7
 - 新旧 soup 级对比要等 innnew_ft（wd0.1 基线）的 soup 评完才是同超参配对；当前 innold_a20 的 Research 12.34 是全场最高。
 
 **（08-03 巡检+2）新齐全行**：soup_im_wd03_a10 FCS **6.03** / Res 9.52（上轮的部分值 11.08 如预期回归均值——部分值不引用的纪律再次自证）；lorA_innnew_lr5e5 s01/s02 Res 8.18/9.15；lorA_im_s01 Res **10.65**（LoRA+maintenance 组合的 Research 已超 base 锚点，FCS 在跑）。
+
+**（08-03 巡检+3）核心问题 (a) raw 级定稿 + 平衡王者候选**：
+- **EXP1 新旧 A/B（裸训四榜全）**：innnew 0.43/5.17/281/0.099 vs innold 0.20/5.03/286/0.094 ——
+  **新旧无实质差**（各维全部在噪声内），与 ctl A/B（+0.31/+0.67 均 ns）三重印证。数据代际问题彻底关闭。
+- **lorA_im_s01（LoRA+全量maintenance+s0.1）两榜齐：FCS 6.38 + Res 10.65** —— 两榜同时 ≈ base，
+  目前平衡性最好的单模型；对比 soup_innold_a20（FCS 6.16/Res 12.34 = 牺牲少量 FCS 换 +1.7 Res）。
+- **maintenance 的 ALE 剂量阶梯（raw 臂）**：纯创新 286 → im_lt1 324 → im_wd03 372 → im_lr1e5 **401**
+  （超 base 锚点 357）—— 蒸馏数据对 ALE 的修复单调可见。
+- 补漏：innnew/im 系 12 个 soup 的两榜评测漏发已补（48 作业）。
