@@ -1,12 +1,14 @@
 #!/bin/bash
-# Supervisor for the hard-CP rollout driver. Restarts only the rollout child it
-# launches; vLLM service health is handled by server_watchdog3.sh.
+# Supervisor for the CodeContests+ (ccplus) pass. ccplus sits at the TAIL of code/worklist.jsonl
+# so the main first-pass won't reach it for a long time; this drives just the 793 ccplus problems
+# (worklist_ccplus_only.jsonl) NOW, across all 3 vLLM services, writing to traces/code.ccplus.jsonl.
+# Runs alongside driver A (code optim ahc first-pass) + driver B (deep reroll).
 set -u
 
-SC=/tmp/claude-2065/-srv-home-bohanlyu-innovation-proior/6ed8424a-6c58-40da-8be5-c4e3e3548d9b/scratchpad
+SC=/tmp/claude-2065/-srv-home-bohanlyu-innovation-proior/4fbbec36-23a3-4fd3-83db-61517e4405f7/scratchpad
 REPO=/srv/home/bohanlyu/innovation_proior
 VENV=/srv/home/bohanlyu/sesl/.venv
-LOG="$SC/rollout_batch.log"
+LOG="$SC/rollout_ccplus.log"
 
 STALL_SECS=${STALL_SECS:-2700}
 CHECK_SECS=${CHECK_SECS:-60}
@@ -16,7 +18,7 @@ export CUDA_VISIBLE_DEVICES=
 mkdir -p "$SC"
 
 trace_bytes() {
-  find "$REPO/data_v4/_hardcp/traces" -maxdepth 1 -name '*.jsonl' -printf '%s\n' 2>/dev/null \
+  find "$REPO/data_v4/_hardcp/traces" -maxdepth 1 -name 'code.ccplus.jsonl' -printf '%s\n' 2>/dev/null \
     | awk '{s+=$1} END{print s+0}'
 }
 
@@ -32,22 +34,24 @@ running_reqs() {
 }
 
 start_driver() {
-  echo "[driver_watchdog $(date -u)] start python tools/hardcp_rollout.py --domains code math --max-budget 16 --request-timeout 3600 --concurrency 28 --query-concurrency 40 --verify-workers 48 (base first-pass remainder: code ~2600 + math ~2584 never-attempted)" >> "$LOG"
+  echo "[ccplus_watchdog $(date -u)] start python tools/hardcp_rollout.py --domains code --worklist worklist_ccplus_only.jsonl --out-suffix .ccplus --max-budget 16 --concurrency 96 --query-concurrency 128 --verify-workers 48 (2 services, saturate)" >> "$LOG"
   # shellcheck source=/srv/home/bohanlyu/sesl/.venv/bin/activate
   source "$VENV/bin/activate" || exit 1
   cd "$REPO" || exit 1
   python tools/hardcp_rollout.py \
-    --domains code math cfr1 \
+    --domains code \
+    --worklist worklist_ccplus_only.jsonl \
+    --out-suffix .ccplus \
     --max-budget 16 \
     --request-timeout 3600 \
-    --concurrency 40 \
-    --query-concurrency 64 \
+    --concurrency 16 \
+    --query-concurrency 32 \
     --verify-workers 48 \
     >> "$LOG" 2>&1 &
   DRIVER_PID=$!
   LAST_BYTES=$(trace_bytes)
   LAST_CHANGE=$(date +%s)
-  echo "[driver_watchdog $(date -u)] child pid=$DRIVER_PID trace_bytes=$LAST_BYTES" >> "$LOG"
+  echo "[ccplus_watchdog $(date -u)] child pid=$DRIVER_PID trace_bytes=$LAST_BYTES" >> "$LOG"
 }
 
 stop_driver() {
@@ -65,9 +69,9 @@ stop_driver() {
 }
 
 DRIVER_PID=0
-LOCKDIR="$SC/driver_watchdog.lock"
+LOCKDIR="$SC/driver_watchdog_ccplus.lock"
 if ! mkdir "$LOCKDIR" 2>/dev/null; then
-  echo "[driver_watchdog $(date -u)] another driver_watchdog is already running; exiting" >> "$LOG"
+  echo "[ccplus_watchdog $(date -u)] another ccplus_watchdog is already running; exiting" >> "$LOG"
   exit 0
 fi
 cleanup() {
@@ -86,7 +90,7 @@ while true; do
   if ! kill -0 "$DRIVER_PID" 2>/dev/null; then
     wait "$DRIVER_PID" 2>/dev/null
     rc=$?
-    echo "[driver_watchdog $(date -u)] child exited rc=$rc -> restart" >> "$LOG"
+    echo "[ccplus_watchdog $(date -u)] child exited rc=$rc -> restart" >> "$LOG"
     start_driver
     continue
   fi
@@ -103,7 +107,7 @@ while true; do
   if [ "$idle_for" -ge "$STALL_SECS" ]; then
     running=$(running_reqs)
     if [ "$running" -eq 0 ]; then
-      echo "[driver_watchdog $(date -u)] no trace growth for ${idle_for}s and vLLM idle -> restart child $DRIVER_PID" >> "$LOG"
+      echo "[ccplus_watchdog $(date -u)] no ccplus-trace growth for ${idle_for}s and vLLM idle -> restart child $DRIVER_PID" >> "$LOG"
       stop_driver
       start_driver
     fi
