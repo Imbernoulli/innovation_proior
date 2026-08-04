@@ -36,11 +36,14 @@ CODE_SYS = ("You are an expert competitive programmer. Solve the problem with a 
 MATH_SYS = ("You are an expert mathematician. Solve the problem. Think step by step, verify your work, then "
             "give the final answer on its own in \\boxed{}.")
 # optim/ahc are single-file C++ reading stdin (heuristic optimization) -> same contract as code.
+# ioi: NO code system prompt — IOI's contract is implement-the-functions/no-main against the
+# official grader, which contradicts CODE_SYS's stdin/stdout instruction; the worklist prompt
+# carries the full official interface contract itself. cfr1 (open-r1 Codeforces) is stdin/stdout.
 DOMAIN_SYS = {'code': CODE_SYS, 'math': MATH_SYS, 'reasoning': None, 'ifollow': None,
-              'optim': CODE_SYS, 'ahc': CODE_SYS}
+              'optim': CODE_SYS, 'ahc': CODE_SYS, 'ioi': None, 'cfr1': CODE_SYS}
 
 # (base trace, keep_all?) per domain. keep_all=True => keep every solve (teacher / reroll / hardest).
-DOMAINS = ['code', 'math', 'reasoning', 'ifollow', 'optim', 'ahc']
+DOMAINS = ['code', 'math', 'reasoning', 'ifollow', 'optim', 'ahc', 'ioi', 'cfr1']
 def sources_for(dom):
     # Order matters: de-dup keeps the FIRST passing record per (id, domain), so the modern
     # escalation traces win; the archived phases (.oldlogic stop-at-first-pass, .hardv2/.mixed/
