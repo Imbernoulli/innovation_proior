@@ -882,3 +882,45 @@ e=170 的原因 = 救援作业把修复行追加在旧 404 错误行之后，首
 
 任务 #21（用户重设 9B SFT 矩阵）就此收官：13 臂 × 四榜 + 16 合并变体两榜 + 三冠军四榜，
 三个核心问题全部定稿（(a) 切新版 / (b) average 后难题优先 / (c) 组合拳，冠军如上）。
+
+## 2.11 ⭐⭐⭐ 9B base 直接 synth-RL：Research +70% / ALE +31%，FCS 在噪声内小降（08-06）
+
+**设置**：Qwen3.5-9B base（无 SFT）→ GRPO on frontiersmith_synth 1300 题（**去重后**），
+8×H200，batch 64×16=1024 rollout/步，resp 32768，20 步 SAVE=5，采样与评测同口径
+（temp 1.0 / top_p 0.95 / top_k 20 / presence 1.5 / min_p 0）。judge=shim，沙箱=apptainer。
+**research 与 MLS 均未进入训练**（research 是 eval-only 红线；MLS 因 vLLM 队列争用被移出，见下）。
+
+| ckpt | FCS(172) | Research(64) | ALE(10) | MLS(20) |
+|---|---|---|---|---|
+| base 锚点 | **6.82** | 10.6 | 357 | 0.04–0.10 |
+| s5  | 6.59 | 11.76 | 373.9 | 0.033 |
+| s10 | 6.02 | 14.55 | 354.9 | 0.040 |
+| **s15** | 5.93 | **18.06** | **468.9** | **0.085** |
+
+严格协议：全部 172/172、64/64、10/10 题满 5 样本，FCS/ALE 零错误样本；MLS 20/20 计分
+（首轮 0 分是 MLSBENCH_ROOT 指向主仓库缺 `--use-replace`，改 dev root 后正常）。
+
+**结论**：
+1. **Research +7.46（+70%）且单调上升**，训练数据里没有一道 research 题 → 纯跨领域迁移。
+2. **ALE +111.9，远超 40 的噪声底**（s5/s10 持平，s15 才跃升）——与 Research 同步，
+   说明学到的是"长程搜索/迭代改进"这类通用能力，不是刷单一榜。
+3. **MLS 0.085 回到 base 区间上沿**，且是三点最高——agentic 没有被损害。
+4. **FCS 单调小降 6.59→5.93（累计 −0.89，仍在 1.0 噪声底内）**，方向一致故不能当作噪声忽略：
+   synth 奖励偏"启发式/优化"型，与 FCS 的"精确算法"要求存在错配（与 35B 的
+   [[rl35b-synth-reward-misalignment]] 同源，但本轮幅度小得多——KL 锚 0.001 + 逐任务归一 +
+   去重题库共同起效）。
+5. **止盈判断待定**：Research/ALE 到 s15 仍在爬升，未见顶 → s20 已导出评测中。
+
+**工程侧（本轮修掉的 5 个真 bug，全部提交）**：
+- `use_dynamic_bsz` 跨 rank 微批数不同步 → 不同 rank 发出不同集合通信 → 永久死锁
+  （上游同因 issue #6176 / 修复 PR #5591，我们的补丁与其逐字节一致）；
+- `nccl_timeout` 必须是顶层 `actor_rollout_ref.nccl_timeout`（600s 默认；`+actor.*` 会
+  InstantiationException 直接崩）；环境变量 NCCL_TIMEOUT 不喂它；
+- 熵计算在 248320 词表上单笔分配 27.5 GiB → 4 卡臂 OOM，需 `entropy_from_logits_with_chunking=True`；
+- 导出脚本要把形状骨架强制 sdpa（ckpt 里带 flash_attention_2，CPU 导出机不支持）；
+- **运行中的 bash 脚本绝不能原地编辑**（bash 按字节偏移增量读取，编辑会让运行中的作业
+  执行错位命令 → job 12064549 死于此）；launcher 现在执行作业私有快照。
+
+**速度经验（实测）**：MAX_NUM_SEQS 8→32 是数量级提速（vLLM 默认 8 严重限流）；
+但 32→64 每卡吞吐仅 +9.5%（849→928 tok/s）——**卡已吃饱，并发不再是瓶颈**；
+零抢占贯穿全程。8 卡 65 min/步，4 卡 134 min/步（严格 2×）。
