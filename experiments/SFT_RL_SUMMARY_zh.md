@@ -1228,3 +1228,26 @@ novel-method 率 s5→s20 = 22.2%→16.7%（McNemar p=0.375；MLS 每 run 只有
 基线同族占比从 30.8%→62.5%（早期→晚期 RL，Fisher p=0.139）——**RL 看起来是收敛到教科书方法，
 而不是停止编辑**。两指标对四个 s20 臂的排序 Spearman ρ=0.40，同把 rlsyS 排最不创新。
 定性：方向一致的佐证；定量：MLS 侧样本量不足以独立确认。
+
+## 2.17 ⭐⭐ rlv3 宿主 OOM 连环案侦破 + adaptive-n v2.3 / 长度惩罚首步验证（08-11）
+
+**案情**：带动态采样(v2.3)+长度惩罚的 rlv3 四臂连续 6 次在 step-1 生成期 ~50-66min 死于宿主 cgroup OOM，450G/650G、seqs 64/48、GMU 0.70/0.65、MLS 测试并发 4/2、Ray 对象存储加不加上限——死亡时间全部不动（配置不敏感 + 相位锁定）。
+
+**侦破过程**（方法论价值大于案件本身）：
+1. 调参三轮无效后，两路独立核实（取证 subagent + Codex 5.6-sol xhigh 直连）。Codex 排除深挖假说（死在初始 rollout，深挖代码未执行到；且证实 `ADAPTIVE_N_MAX_EXTRA=0` 语义=无限而非关闭），并指出打分路径无并发闸门（8 worker×32 线程≈256 并发打分树）——真隐患，修了（信号量），但**修后仍死**。
+2. 升级为**上节点实时取证**：远端 setsid 脱管 cgroup 追踪器（20s 采样 `/sys/fs/cgroup/.../job_<id>/memory.current`，300G 越线自动抓全进程树），当场抓获：**MLS episode 在执行模型生成的降维解法**（`custom_dimred.py` on mnist/fashion_mnist），单 bench 进程 **140G+**，cgroup 45 秒 89G→374G。波状攻击、每波 OOM killer 抽签——rldn v1 在 450G 活过 step-1 纯属杀中了"对的"进程。
+
+**三层修复**（全部提交）：① MLS episode worker 入口 `RLIMIT_AS`（`MLS_RL_EPISODE_MEM_MB`=16G，继承全部 test/evaluate 后代）→ 实证：带修复 run 峰值 **103.9G**（未修复同臂 359.8G 即死），跑飞解法 MemoryError 得低分而非杀节点；② synth 打分信号量（`FRONTIERSMITH_SYNTH_MAX_CONC`=1，全节点≤8 并发）；③ synth harness 全子进程 `RLIMIT_AS`（`FSX_CHILD_MEM_MB`=8G，config 的 memory 字段此前从未强制）。
+
+**v2.3 + 惩罚首步验证（三臂 step-1 一致通过）**：
+| 验证点 | loraIM | soupNEW10 | soupWD03_20(全程带修复) |
+|---|---|---|---|
+| 折回 16 行 | 32×16 精确 | 32×16 精确 | 32×16 精确 |
+| 原始正分率 | 25.0% | 31.2% | 28.1%（基线~30%）|
+| 惩罚 | min=-0.500 | min=-0.500（291 负分/21 个超长正分被压）| min=-0.500 |
+| oom_kill | 0 | 0 | 0 |
+| 重复率 / </think> | 0.2% / 50.6% | 0.2% / 60.4% | — |
+
+**代价与已知问题**：步时 ~3.5-4.4h（7 月配置 1.8-2.1h），长杆=信号量串行打分+深挖轮次；若 timing 分解证实打分主导，首选 `FRONTIERSMITH_SYNTH_MAX_CONC=2`。**wandb-offline 教训**：history 只在优雅结束时落盘，TIMEOUT/OOM 死的 run 全部指标不可恢复（3 个完成 step-1 的 run，0 行可读）→ 已加杀不掉的 per-step `metrics.jsonl`（落在 rollout dump 旁）。adaptive 计数器（deepen/requeue/drop 具体数字）因此本轮缺失，-c2 起补齐。
+
+**战役状态**：今晚三臂皆为验证 run（墙时被 08-11 06:00-18:00 维护压短，到不了 SAVE=5）；四条 -c2 续跑链 18:05 满血接管（23:59 墙时、四臂齐发、带全部修复+指标沉淀）。
