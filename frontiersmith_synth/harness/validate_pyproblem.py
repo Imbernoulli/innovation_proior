@@ -37,13 +37,31 @@ TIER_RE = re.compile(r"(?://|#)\s*TIER:\s*(\w+)", re.IGNORECASE)
 import os
 HARNESS_DIR = str(Path(__file__).resolve().parent)  # so evaluators can `import isorun`
 
+import resource as _resource
+
+# Same host-RAM guard as validate_problem.py (see comment there): cap every
+# spawned evaluator's address space; `memory` in config.yaml was never enforced.
+_CHILD_MEM_MB = int(os.environ.get("FSX_CHILD_MEM_MB", "8192"))
+
+
+def _mem_preexec():
+    if _CHILD_MEM_MB <= 0:
+        return None
+    lim = _CHILD_MEM_MB * 1024 * 1024
+
+    def _set():
+        _resource.setrlimit(_resource.RLIMIT_AS, (lim, lim))
+
+    return _set
+
 
 def run_capture(cmd, timeout, cwd=None):
     env = dict(os.environ)
     env["PYTHONPATH"] = HARNESS_DIR + os.pathsep + env.get("PYTHONPATH", "")
     try:
         r = subprocess.run(cmd, timeout=timeout, stdout=subprocess.PIPE,
-                           stderr=subprocess.PIPE, cwd=cwd, env=env)
+                           stderr=subprocess.PIPE, cwd=cwd, env=env,
+                           preexec_fn=_mem_preexec())
         return (r.returncode, r.stdout.decode("utf-8", "replace"),
                 r.stderr.decode("utf-8", "replace"), False)
     except subprocess.TimeoutExpired:

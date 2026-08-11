@@ -28,6 +28,30 @@ Exit code 0 == PASS. A machine-readable report is written to <probdir>/validatio
 import argparse, json, os, re, shutil, subprocess, sys, math, tempfile
 from pathlib import Path
 
+import resource as _resource
+
+# Per-child address-space cap (MB) for every subprocess this harness spawns
+# (generators, checkers, compilers, sandboxed candidates, evaluators). The
+# config.yaml `memory` field was parsed but never enforced, so one runaway
+# candidate/evaluator could eat 100+ GB of host RAM -- fatal when the RL reward
+# path runs many scorings on a training node (rlv3 host OOMs, 2026-08-10).
+# 0 disables. The limit is applied post-fork via preexec_fn; `resource` is
+# imported at module level so the child never touches the import machinery.
+_CHILD_MEM_MB = int(os.environ.get("FSX_CHILD_MEM_MB", "8192"))
+
+
+def _mem_preexec():
+    """preexec_fn capping the child's RLIMIT_AS (inherited by its descendants)."""
+    if _CHILD_MEM_MB <= 0:
+        return None
+    lim = _CHILD_MEM_MB * 1024 * 1024
+
+    def _set():
+        _resource.setrlimit(_resource.RLIMIT_AS, (lim, lim))
+
+    return _set
+
+
 RATIO_RE = re.compile(r"Ratio:\s*([+-]?[0-9]*\.?[0-9]+(?:[eE][-+]?[0-9]+)?)")
 RATIO_UB_RE = re.compile(r"RatioUnbounded:\s*([0-9]*\.?[0-9]+)")
 TIER_RE = re.compile(r"(?://|#)\s*TIER:\s*(\w+)", re.IGNORECASE)
@@ -117,7 +141,7 @@ def sandbox_run_solution(cmd, inf, outf, timeout, cwd):
         with open(inf, "rb") as fi, open(outf, "wb") as fo:
             try:
                 r = subprocess.run(bcmd, stdin=fi, stdout=fo, stderr=subprocess.PIPE,
-                                   timeout=timeout, env=env)
+                                   timeout=timeout, env=env, preexec_fn=_mem_preexec())
                 # Some managed HPC/container nodes allow bwrap mount/pid namespaces but reject
                 # creating a network namespace. Keep source-tree and /proc isolation instead of
                 # falling all the way back to an unsandboxed run. (Same net-ns safety net for
@@ -131,7 +155,7 @@ def sandbox_run_solution(cmd, inf, outf, timeout, cwd):
                              if backend == "bwrap"
                              else _solution_apptainer_cmd(_isorun(), exe, dst, mask, net_ns=False))
                     r = subprocess.run(retry, stdin=fi, stdout=fo, stderr=subprocess.PIPE,
-                                       timeout=timeout, env=env)
+                                       timeout=timeout, env=env, preexec_fn=_mem_preexec())
                 return r.returncode, False
             except subprocess.TimeoutExpired:
                 return None, True
@@ -162,7 +186,7 @@ def run(cmd, timeout, stdin=None, stdout=None, cwd=None):
     """Run a command; return (rc, stderr_text, timed_out)."""
     try:
         r = subprocess.run(cmd, timeout=timeout, stdin=stdin, stdout=stdout,
-                           stderr=subprocess.PIPE, cwd=cwd)
+                           stderr=subprocess.PIPE, cwd=cwd, preexec_fn=_mem_preexec())
         return r.returncode, r.stderr.decode("utf-8", "replace"), False
     except subprocess.TimeoutExpired:
         return None, "", True
@@ -172,7 +196,7 @@ def run_capture(cmd, timeout, cwd=None):
     """Run a command capturing BOTH stdout and stderr as text; return (rc, out, err, to)."""
     try:
         r = subprocess.run(cmd, timeout=timeout, stdout=subprocess.PIPE,
-                           stderr=subprocess.PIPE, cwd=cwd)
+                           stderr=subprocess.PIPE, cwd=cwd, preexec_fn=_mem_preexec())
         return (r.returncode, r.stdout.decode("utf-8", "replace"),
                 r.stderr.decode("utf-8", "replace"), False)
     except subprocess.TimeoutExpired:
