@@ -4,9 +4,9 @@ The annotated innovation data, in ShareGPT format:
 - `innovation_sft.jsonl` — our annotated innovation data (reasoning, with per-turn loss folding).
 - Plus the 2026-07 **wave-2** batches: `innovation_wave2_sft.jsonl` (verified rollout + Codex, 758)
   and `innovation_v4_sft.jsonl` (FrontierCS-style single-file C++, 346), concatenable into the run.
-- Plus the 2026-08 **wave-3** batch: `innovation_wave3_sft.jsonl` (**2,097**) — every NEW verified
+- Plus the 2026-08 **wave-3** batch: `innovation_wave3_sft.jsonl` (**2,220**) — every NEW verified
   keeper since wave-2 (one answer per query, **each labeled with its `pass_rate`**); wave-2 + wave-3
-  together now cover **all 2,838** queries the distillation campaign ever solved. Adds the
+  together now cover **all ~2,950** solved queries the distillation campaign ever solved. Adds the
   FrontierCS capability gaps (heuristic **optimization**, post-cutoff **AtCoder Heuristic**,
   CodeContests+ strong-test, and a deep re-roll of the 27B's hard failures). Concatenable into the
   same run. See **§4**.
@@ -126,10 +126,10 @@ Pipeline + provenance: [`../experiments/DATA_WAVE2_FCS_CPP_zh.md`](../experiment
 
 ## 4. Wave-3 batch (2026-08) — capability-gap injection + deep re-roll
 
-`innovation_wave3_sft.jsonl` (**2,097**, gzipped as `innovation_wave3_sft.jsonl.gz`) = every verified
+`innovation_wave3_sft.jsonl` (**2,220**, gzipped as `innovation_wave3_sft.jsonl.gz`) = every verified
 keeper produced **after** wave-2, with the wave-2 ids subtracted so there is **zero overlap**. Built
 with `python3 tools/assemble_wave3.py`. **Coverage is now complete**: wave-2 (741) + wave-3 (2,097)
-= all **2,838** unique queries the distillation campaign ever solved with a saved generation — the
+= all **2,952** unique queries the distillation campaign ever solved (ccplus completed 793/793, ioi 43/43) with a saved generation — the
 assembler reads the archived trace phases too (`.oldlogic` stop-at-first-pass, `.hardv2`/`.mixed`/
 `.hardrun` old math runs, `.measure`), which fill 184 queries nothing modern solved (94 rstar code +
 90 math). Policy (2026-08, updated from the earlier hard-only cut):
@@ -141,16 +141,18 @@ assembler reads the archived trace phases too (`.oldlogic` stop-at-first-pass, `
 - **each row is LABELED with `pass_rate`** — a top-level float = the **round-0 pass rate of the model
   that produced the trace** (see the caveat below on what "round 0" means per source).
 
-Same ShareGPT + `<think>` format, plus the new `pass_rate` field. Snapshot 2026-08-01 — the rollout
+Same ShareGPT + `<think>` format, plus the new `pass_rate` field. Snapshot 2026-08-13 — the rollout
 is still running (ccplus + the math/ifollow re-roll), so this file gets refreshed as more land.
 
 | domain | examples | what it is |
 |---|---:|---|
 | reasoning | 652 | base-trace growth + deep re-roll of the 27B's hard failures |
-| code | 637 | HardTests CF/AtCoder + **CodeContests+ (`ccplus`)** strongest-test exact-judge + 94 archived rstar-era solves |
-| ifollow | 351 | base-trace growth + deep re-roll |
-| math | 258 | base-trace growth + deep re-roll + 90 archived (hardv2/mixed/oldlogic) solves |
+| code | 735 | HardTests CF/AtCoder + **CodeContests+ (`ccplus`, 793/793 complete)** strongest-test exact-judge + 94 archived rstar-era solves |
+| ifollow | 356 | base-trace growth + deep re-roll |
+| math | 263 | base-trace growth + deep re-roll + 90 archived (hardv2/mixed/oldlogic) solves |
 | optim | 183 | **NEW** — NP-Engine heuristic optimization (TSP/knapsack/set-cover/…): write one C++ that reads stdin, prints `Answer: …`; verified feasible **and** beats a per-instance baseline on K fresh instances |
+| ioi | 14 | **NEW** — IOI 2020–24 (43/43 rolled), official graders, subtask partial scoring, PASS = score ≥ 35; incl. 13 interactive/Communication |
+| cfr1 | 1 | **NEW** — open-r1 Codeforces rating 2000–3500 (2,038 queued, rolling now), oracle-verified strong tests |
 | ahc | 16 | **NEW** — post-cutoff **AtCoder Heuristic Contests** (AHC047–067 + awtf25/26); C++ scored by the OFFICIAL AtCoder Rust `vis` binary on every seed, must beat a greedy baseline |
 
 24 are deep-re-roll keepers. Reasoning length: median **35k** chars, max **213k** (the hard tail
@@ -162,9 +164,9 @@ round-0 pass rate for that query. Distribution across the 2,097:
 
 | pass_rate | -1.0 (unknown) | 0.0 | 0.25 | 0.33 | 0.5 | 0.67 | 0.75 | 1.0 |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| examples | 98 | 73 | 56 | 11 | 84 | 29 | 827 | 919 |
+| examples | 98 | 108 | 79 | 12 | 104 | 29 | 871 | 919 |
 
-224 (11%) are **hard** (0 ≤ pass_rate ≤ 0.5); 1,775 are easy (> 0.5); **98 are `-1.0` = UNKNOWN** —
+303 (14%) are **hard** (0 ≤ pass_rate ≤ 0.5); 1,819 are easy (> 0.5); **98 are `-1.0` = UNKNOWN** —
 the archived stop-at-first-pass phase recorded no round-0 batch, so no rate exists (we refuse to fake
 a 0.0 for them).
 
