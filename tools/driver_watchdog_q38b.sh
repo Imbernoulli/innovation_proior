@@ -9,11 +9,11 @@ set -u
 SC=/tmp/claude-2065/-srv-home-bohanlyu-innovation-proior/4fbbec36-23a3-4fd3-83db-61517e4405f7/scratchpad
 REPO=/srv/home/bohanlyu/innovation_proior
 VENV=/srv/home/bohanlyu/sesl/.venv
-LOG="$SC/rollout_q38.log"
-PORTS=${Q38_PORTS:-30002}
+LOG="$SC/rollout_q38b.log"
+PORTS=${Q38B_PORTS:-30002}
 # comma-joined service URLs (one per TP=2 replica; driver pins queries across them)
 URLS=$(for p in $PORTS; do printf "http://127.0.0.1:%s," "$p"; done); URLS=${URLS%,}
-CONC=${Q38_CONC:-96}
+CONC=${Q38B_CONC:-48}
 
 STALL_SECS=${STALL_SECS:-21600}
 CHECK_SECS=${CHECK_SECS:-60}
@@ -23,23 +23,23 @@ export CUDA_VISIBLE_DEVICES=
 mkdir -p "$SC"
 
 trace_bytes() {
-  find "$REPO/data_v4/_hardcp/traces" -maxdepth 1 -name '*.q38.jsonl' -printf '%s\n' 2>/dev/null \
+  find "$REPO/data_v4/_hardcp/traces" -maxdepth 1 -name '*.q38b.jsonl' -printf '%s\n' 2>/dev/null \
     | awk '{s+=$1} END{print s+0}'
 }
 
 start_driver() {
-  echo "[q38_watchdog $(date -u)] start python tools/hardcp_rollout.py --domains reasoning math code ifollow ioi ahc --worklist unsolved.jsonl --out-suffix .q38 --url $URLS --model Qwen3.8-27B --max-budget 64 --easy-threshold 1.1 --temperature 1.0 --max-tokens 57344 --request-timeout 3600 --concurrency $CONC --query-concurrency $((CONC+16)) --verify-workers 64" >> "$LOG"
+  echo "[q38b_watchdog $(date -u)] start python tools/hardcp_rollout.py --domains code math cfr1 reasoning --worklist never_attempted.jsonl --out-suffix .q38b --url $URLS --model Qwen3.8-27B --max-budget 16 --easy-threshold 0.5 --temperature 1.0 --max-tokens 57344 --request-timeout 3600 --concurrency $CONC --query-concurrency $((CONC+16)) --verify-workers 64" >> "$LOG"
   # shellcheck source=/srv/home/bohanlyu/sesl/.venv/bin/activate
   source "$VENV/bin/activate" || exit 1
   cd "$REPO" || exit 1
   python tools/hardcp_rollout.py \
-    --domains reasoning math code ifollow ioi ahc \
-    --worklist unsolved.jsonl \
-    --out-suffix .q38 \
+    --domains code math cfr1 reasoning \
+    --worklist never_attempted.jsonl \
+    --out-suffix .q38b \
     --url "$URLS" \
     --model Qwen3.8-27B \
-    --max-budget 64 \
-    --easy-threshold 1.1 \
+    --max-budget 16 \
+    --easy-threshold 0.5 \
     --temperature 1.0 \
     --max-tokens 57344 \
     --request-timeout 3600 \
@@ -50,7 +50,7 @@ start_driver() {
   DRIVER_PID=$!
   LAST_BYTES=$(trace_bytes)
   LAST_CHANGE=$(date +%s)
-  echo "[q38_watchdog $(date -u)] child pid=$DRIVER_PID trace_bytes=$LAST_BYTES" >> "$LOG"
+  echo "[q38b_watchdog $(date -u)] child pid=$DRIVER_PID trace_bytes=$LAST_BYTES" >> "$LOG"
 }
 
 stop_driver() {
@@ -68,9 +68,9 @@ stop_driver() {
 }
 
 DRIVER_PID=0
-LOCKDIR="$SC/driver_watchdog_q38.lock"
+LOCKDIR="$SC/driver_watchdog_q38b.lock"
 if ! mkdir "$LOCKDIR" 2>/dev/null; then
-  echo "[q38_watchdog $(date -u)] another q38_watchdog is already running; exiting" >> "$LOG"
+  echo "[q38b_watchdog $(date -u)] another q38b_watchdog is already running; exiting" >> "$LOG"
   exit 0
 fi
 cleanup() {
@@ -89,7 +89,7 @@ while true; do
   if ! kill -0 "$DRIVER_PID" 2>/dev/null; then
     wait "$DRIVER_PID" 2>/dev/null
     rc=$?
-    echo "[q38_watchdog $(date -u)] child exited rc=$rc -> restart" >> "$LOG"
+    echo "[q38b_watchdog $(date -u)] child exited rc=$rc -> restart" >> "$LOG"
     start_driver
     continue
   fi
@@ -107,7 +107,7 @@ while true; do
     first_port=$(echo $PORTS | awk '{print $1}')
     up=$(curl -fs -o /dev/null -w "%{http_code}" --max-time 4 "http://127.0.0.1:$first_port/v1/models" 2>/dev/null)
     if [ "$up" = "200" ]; then
-      echo "[q38_watchdog $(date -u)] no q38-trace growth for ${idle_for}s but service up -> restart child $DRIVER_PID" >> "$LOG"
+      echo "[q38b_watchdog $(date -u)] no q38-trace growth for ${idle_for}s but service up -> restart child $DRIVER_PID" >> "$LOG"
       stop_driver
       start_driver
     fi

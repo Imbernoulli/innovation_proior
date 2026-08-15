@@ -11,20 +11,20 @@ REPO=/srv/home/bohanlyu/innovation_proior
 TR=$REPO/data_v4/_hardcp/traces
 SC=/tmp/claude-2065/-srv-home-bohanlyu-innovation-proior/4fbbec36-23a3-4fd3-83db-61517e4405f7/scratchpad
 
-q38_bytes() { find "$TR" -maxdepth 1 -name '*.q38.jsonl' -printf '%s\n' 2>/dev/null | awk '{s+=$1} END{print s+0}'; }
+q38_bytes() { find "$TR" -maxdepth 1 \( -name '*.q38.jsonl' -o -name '*.q38b.jsonl' \) -printf '%s\n' 2>/dev/null | awk '{s+=$1} END{print s+0}'; }
 svc_up() { curl -fs -o /dev/null --max-time 4 "http://127.0.0.1:$1/v1/models" 2>/dev/null; }
-preempt() { local t=0 v; for p in 30002; do v=$(curl -fs --max-time 4 http://127.0.0.1:$p/metrics 2>/dev/null | awk '!/^#/ && /num_preemptions_total/ {print int($NF)}'); t=$((t+${v:-0})); done; echo $t; }
-running() { local t=0 v; for p in 30002; do v=$(curl -fs --max-time 4 http://127.0.0.1:$p/metrics 2>/dev/null | grep -E '^vllm:num_requests_running' | awk '{print int($2)}'); t=$((t+${v:-0})); done; echo $t; }
+preempt() { local t=0 v; for p in 30002 30003; do v=$(curl -fs --max-time 4 http://127.0.0.1:$p/metrics 2>/dev/null | awk '!/^#/ && /num_preemptions_total/ {print int($NF)}'); t=$((t+${v:-0})); done; echo $t; }
+running() { local t=0 v; for p in 30002 30003; do v=$(curl -fs --max-time 4 http://127.0.0.1:$p/metrics 2>/dev/null | grep -E '^vllm:num_requests_running' | awk '{print int($2)}'); t=$((t+${v:-0})); done; echo $t; }
 free_gpus() { nvidia-smi --query-gpu=index,memory.used --format=csv,noheader,nounits 2>/dev/null | awk -F', ' '$2<3000{printf "%s ",$1}'; }
-q38_driver_alive() { ps -eo args | grep -qE 'hardcp_rollout\.py.*out-suffix \.q38'; }
+q38_driver_alive() { [ "$(ps -eo args | grep -cE 'hardcp_rollout\.py.*out-suffix \.q38')" -ge 2 ]; }
 
 last_bytes=$(q38_bytes); last_change=$(date +%s); last_pre=$(preempt); last_pre=${last_pre:-0}
-down_30002=0; stalled=0; tick=0; prev_free=$(free_gpus)
+down_30002=0; down_30003=0; stalled=0; tick=0; prev_free=$(free_gpus)
 echo "[q38-watch] armed: q38 bytes=$last_bytes driver=$(q38_driver_alive && echo up || echo DOWN)"
 while true; do
   sleep 180
   tick=$((tick+1))
-  for p in 30002; do
+  for p in 30002 30003; do
     dvar="down_$p"
     if ! svc_up $p; then
       [ "${!dvar}" = "0" ] && { echo "[q38-watch] ALERT: q38 service $p DOWN"; eval "$dvar=1"; }
@@ -32,7 +32,7 @@ while true; do
       [ "${!dvar}" = "1" ] && { echo "[q38-watch] q38 service $p RECOVERED"; eval "$dvar=0"; }
     fi
   done
-  if ! q38_driver_alive; then echo "[q38-watch] ALERT: q38 driver process DEAD (watchdog should relaunch; check rollout_q38.log)"; sleep 600; fi
+  if ! q38_driver_alive; then echo "[q38-watch] ALERT: fewer than 2 q38 drivers alive (expect unsolved + never_attempted)"; sleep 600; fi
   b=$(q38_bytes); now=$(date +%s)
   if [ "$b" != "$last_bytes" ]; then last_bytes=$b; last_change=$now; [ "$stalled" = "1" ] && { echo "[q38-watch] q38 trace growth RESUMED"; stalled=0; }; fi
   idle=$((now - last_change))
@@ -50,8 +50,8 @@ while true; do
   fi
   if [ $((tick % 20)) -eq 0 ]; then
     line="[q38-watch] digest:"
-    for f in "$TR"/*.q38.jsonl; do
-      [ -f "$f" ] && line="$line $(basename "$f" .q38.jsonl)=$(wc -l < "$f")"
+    for f in "$TR"/*.q38.jsonl "$TR"/*.q38b.jsonl; do
+      [ -f "$f" ] && line="$line $(basename "$f" .jsonl)=$(wc -l < "$f")"
     done
     echo "$line in-flight=$(running)"
   fi
