@@ -9,10 +9,10 @@ if ! mkdir "$LOCKDIR" 2>/dev/null; then
   exit 0
 fi
 trap 'rmdir "$LOCKDIR" 2>/dev/null || true' EXIT
-declare -A GPUS=( [30000]="0,1" [30001]="2,3" [30002]="4,5" [30003]="6,7" )   # 4xTP=2, 40 in-flight each for Qwen3.8
+declare -A GPUS=( [30000]="0,1" [30001]="2,3" [30002]="4,5" )   # 3xTP=2 (GPUs 6,7 released to others), 30 in-flight each
 up(){ curl -sf "http://127.0.0.1:$1/v1/models" >/dev/null 2>&1; }
 while true; do
-  for port in 30000 30001 30002 30003; do
+  for port in 30000 30001 30002; do
     if ! up "$port"; then
       sleep 10
       if ! up "$port"; then
