@@ -52,6 +52,7 @@ def sources_for(dom):
             (f'{HARDCP}/traces/{dom}.ccplus.jsonl', False),   # code: dedicated CodeContests+ pass (on-policy)
             (f'{HARDCP}/traces/{dom}.deepseek.jsonl', True),
             (f'{HARDCP}/traces/{dom}.poe.jsonl', True),
+            (f'{HARDCP}/traces/{dom}.q38.jsonl', True),       # Qwen3.8-27B teacher pass on unsolved hard-fails
             (f'{HARDCP}/traces/{dom}.reroll.jsonl', True),
             (f'{HARDCP}/traces/{dom}.hardv2.jsonl', True),
             (f'{HARDCP}/traces/{dom}.mixed.jsonl', True),
