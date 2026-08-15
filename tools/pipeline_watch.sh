@@ -13,18 +13,18 @@ SC=/tmp/claude-2065/-srv-home-bohanlyu-innovation-proior/4fbbec36-23a3-4fd3-83db
 
 q38_bytes() { find "$TR" -maxdepth 1 \( -name '*.q38.jsonl' -o -name '*.q38b.jsonl' \) -printf '%s\n' 2>/dev/null | awk '{s+=$1} END{print s+0}'; }
 svc_up() { curl -fs -o /dev/null --max-time 4 "http://127.0.0.1:$1/v1/models" 2>/dev/null; }
-preempt() { local t=0 v; for p in 30002 30003; do v=$(curl -fs --max-time 4 http://127.0.0.1:$p/metrics 2>/dev/null | awk '!/^#/ && /num_preemptions_total/ {print int($NF)}'); t=$((t+${v:-0})); done; echo $t; }
-running() { local t=0 v; for p in 30002 30003; do v=$(curl -fs --max-time 4 http://127.0.0.1:$p/metrics 2>/dev/null | grep -E '^vllm:num_requests_running' | awk '{print int($2)}'); t=$((t+${v:-0})); done; echo $t; }
+preempt() { local t=0 v; for p in 30000 30001 30002 30003; do v=$(curl -fs --max-time 4 http://127.0.0.1:$p/metrics 2>/dev/null | awk '!/^#/ && /num_preemptions_total/ {print int($NF)}'); t=$((t+${v:-0})); done; echo $t; }
+running() { local t=0 v; for p in 30000 30001 30002 30003; do v=$(curl -fs --max-time 4 http://127.0.0.1:$p/metrics 2>/dev/null | grep -E '^vllm:num_requests_running' | awk '{print int($2)}'); t=$((t+${v:-0})); done; echo $t; }
 free_gpus() { nvidia-smi --query-gpu=index,memory.used --format=csv,noheader,nounits 2>/dev/null | awk -F', ' '$2<3000{printf "%s ",$1}'; }
 q38_driver_alive() { [ "$(ps -eo args | grep -cE 'hardcp_rollout\.py.*out-suffix \.q38')" -ge 2 ]; }
 
 last_bytes=$(q38_bytes); last_change=$(date +%s); last_pre=$(preempt); last_pre=${last_pre:-0}
-down_30002=0; down_30003=0; stalled=0; tick=0; prev_free=$(free_gpus)
+down_30000=0; down_30001=0; down_30002=0; down_30003=0; stalled=0; tick=0; prev_free=$(free_gpus)
 echo "[q38-watch] armed: q38 bytes=$last_bytes driver=$(q38_driver_alive && echo up || echo DOWN)"
 while true; do
   sleep 180
   tick=$((tick+1))
-  for p in 30002 30003; do
+  for p in 30000 30001 30002 30003; do
     dvar="down_$p"
     if ! svc_up $p; then
       [ "${!dvar}" = "0" ] && { echo "[q38-watch] ALERT: q38 service $p DOWN"; eval "$dvar=1"; }
