@@ -72,6 +72,16 @@ def load_backend(args):
             'headers': {'Content-Type': 'application/json'},
             'schedule': [4, 8, 16, 32, 64, 128, 256, 512, 1024], 'suffix': ''}
 
+_PROC_VERIFIERS = {}
+def _proc_verify(domain, answer, prob):
+    """Runs INSIDE a ProcessPoolExecutor worker: verify() executes on that process's main thread,
+    so verifiers that use signal.alarm (reasoning) are legal here — and the asyncio event loop in
+    the parent is never blocked. Verifier module is loaded once per worker process."""
+    v = _PROC_VERIFIERS.get(domain)
+    if v is None:
+        v = load_verifier(domain); _PROC_VERIFIERS[domain] = v
+    return v(answer, prob)
+
 def load_verifier(domain):
     p = os.path.join(HARDCP, domain, 'verify.py')
     spec = importlib.util.spec_from_file_location(f'verify_{domain}', p)
@@ -193,10 +203,15 @@ async def sample_once(session, backend, endpoint, request_sem, messages, max_tok
 
 async def verify_generation(domain, verify, answer, prob, verify_pool, args):
     try:
-        # Reasoning reward code uses signal.alarm, so it must stay on the main thread.
-        if domain == 'reasoning':
-            return verify(answer, prob)
         loop = asyncio.get_running_loop()
+        # Reasoning reward code uses signal.alarm -> needs a MAIN thread. Running it inline used to
+        # block the whole event loop (every HTTP send/recv froze for the duration; with Qwen3.8's
+        # ~80k-char reasonings that was seconds-to-tens-of-seconds per verify and starved all
+        # endpoints). Now it runs in a subprocess pool: legal for signal, non-blocking for the loop.
+        if domain == 'reasoning':
+            return await asyncio.wait_for(
+                loop.run_in_executor(verify_pool.proc, _proc_verify, domain, answer, prob),
+                timeout=args.verify_timeout)
         return await asyncio.wait_for(
             loop.run_in_executor(verify_pool, verify, answer, prob),
             timeout=args.verify_timeout)
@@ -385,12 +400,17 @@ async def run_domain(session, backend, endpoints, request_sem, domain, args, que
 
 async def main_async(args):
     global _TIMEOUT
-    import aiohttp, concurrent.futures
+    import aiohttp, concurrent.futures, multiprocessing
     _TIMEOUT = aiohttp.ClientTimeout(total=args.request_timeout)
     domains = parse_domains(args.domains)
     # Dedicated pool keeps blocking verify() bounded without growing asyncio's
     # default executor under a large query fanout.
     verify_pool = concurrent.futures.ThreadPoolExecutor(max_workers=args.verify_workers)
+    # Sidecar PROCESS pool for signal-using verifiers (reasoning); attached to the thread pool object
+    # so the existing plumbing (single verify_pool arg) is untouched.
+    verify_pool.proc = concurrent.futures.ProcessPoolExecutor(
+        max_workers=max(2, min(16, args.verify_workers // 4)),
+        mp_context=multiprocessing.get_context('spawn'))
     backend = load_backend(args)
     endpoints = make_endpoint_states(backend['chat_urls'], args.concurrency)
     print(f"backend={args.backend} model={backend['model']} schedule={backend['schedule']} "
