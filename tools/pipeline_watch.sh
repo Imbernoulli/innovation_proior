@@ -16,7 +16,7 @@ svc_up() { curl -fs -o /dev/null --max-time 4 "http://127.0.0.1:$1/v1/models" 2>
 preempt() { local t=0 v; for p in 30000 30001 30002; do v=$(curl -fs --max-time 4 http://127.0.0.1:$p/metrics 2>/dev/null | awk '!/^#/ && /num_preemptions_total/ {print int($NF)}'); t=$((t+${v:-0})); done; echo $t; }
 running() { local t=0 v; for p in 30000 30001 30002; do v=$(curl -fs --max-time 4 http://127.0.0.1:$p/metrics 2>/dev/null | grep -E '^vllm:num_requests_running' | awk '{print int($2)}'); t=$((t+${v:-0})); done; echo $t; }
 free_gpus() { nvidia-smi --query-gpu=index,memory.used --format=csv,noheader,nounits 2>/dev/null | awk -F', ' '$2<3000{printf "%s ",$1}'; }
-q38_driver_alive() { [ "$(ps -eo args | grep -cE 'hardcp_rollout\.py.*out-suffix \.q38')" -ge 2 ]; }
+q38_driver_alive() { [ "$(ps -eo args | grep -cE 'hardcp_rollout\.py.*out-suffix \.q38')" -ge 6 ]; }
 
 last_bytes=$(q38_bytes); last_change=$(date +%s); last_pre=$(preempt); last_pre=${last_pre:-0}
 down_30000=0; down_30001=0; down_30002=0; stalled=0; tick=0; prev_free=$(free_gpus)
@@ -32,7 +32,7 @@ while true; do
       [ "${!dvar}" = "1" ] && { echo "[q38-watch] q38 service $p RECOVERED"; eval "$dvar=0"; }
     fi
   done
-  if ! q38_driver_alive; then echo "[q38-watch] ALERT: fewer than 2 q38 drivers alive (expect unsolved + never_attempted)"; sleep 600; fi
+  if ! q38_driver_alive; then echo "[q38-watch] ALERT: fewer than 6 q38 drivers alive (expect 4 q38b per-domain + 2 q38)"; sleep 600; fi
   b=$(q38_bytes); now=$(date +%s)
   if [ "$b" != "$last_bytes" ]; then last_bytes=$b; last_change=$now; [ "$stalled" = "1" ] && { echo "[q38-watch] q38 trace growth RESUMED"; stalled=0; }; fi
   idle=$((now - last_change))
@@ -44,6 +44,7 @@ while true; do
   #     Seen 2026-08-13 (base driver, 9 days) and 2026-08-16 (q38, 6h). Emit once per wedge episode.
   for pid in $(ps -eo pid,args | awk '$2=="python" && $0 ~ /hardcp_rollout\.py/ {print $1}'); do
     nl=$(ps -o nlwp= -p $pid 2>/dev/null | tr -d ' '); cpu=$(ps -o %cpu= -p $pid 2>/dev/null | tr -d ' ' | cut -d. -f1)
+    age=$(ps -o etimes= -p $pid 2>/dev/null | tr -d ' '); [ "${age:-0}" -lt 1800 ] && continue   # <30min = still loading worklists
     tag=$(ps -o args= -p $pid | grep -oE 'out-suffix \S+' | awk '{print $2}')
     if [ "${nl:-99}" -le 6 ] && [ "${cpu:-99}" -lt 1 ]; then
       zc="zc_$pid"; eval "cnt=\${$zc:-0}"; cnt=$((cnt+1)); eval "$zc=$cnt"

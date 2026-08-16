@@ -9,11 +9,13 @@ set -u
 SC=/tmp/claude-2065/-srv-home-bohanlyu-innovation-proior/4fbbec36-23a3-4fd3-83db-61517e4405f7/scratchpad
 REPO=/srv/home/bohanlyu/innovation_proior
 VENV=/srv/home/bohanlyu/sesl/.venv
-LOG="$SC/rollout_q38b.log"
 PORTS=${Q38B_PORTS:-30002}
 # comma-joined service URLs (one per TP=2 replica; driver pins queries across them)
 URLS=$(for p in $PORTS; do printf "http://127.0.0.1:%s," "$p"; done); URLS=${URLS%,}
 CONC=${Q38B_CONC:-60}
+DOMS=${Q38B_DOMAINS:-code math cfr1 reasoning}
+TAG=$(echo $DOMS | tr " " "_")
+LOG="$SC/rollout_q38b_${TAG}.log"
 
 STALL_SECS=${STALL_SECS:-86400}
 CHECK_SECS=${CHECK_SECS:-60}
@@ -28,12 +30,12 @@ trace_bytes() {
 }
 
 start_driver() {
-  echo "[q38b_watchdog $(date -u)] start python tools/hardcp_rollout.py --domains code math cfr1 reasoning --worklist never_attempted.jsonl --out-suffix .q38b --url $URLS --model Qwen3.8-27B --max-budget 16 --easy-threshold 0.5 --temperature 1.0 --max-tokens 57344 --request-timeout 3600 --concurrency $CONC --query-concurrency $((CONC*2+40)) --verify-workers 64" >> "$LOG"
+  echo "[q38b_watchdog $(date -u)] start python tools/hardcp_rollout.py --domains $DOMS --worklist never_attempted.jsonl --out-suffix .q38b --url $URLS --model Qwen3.8-27B --max-budget 16 --easy-threshold 0.5 --temperature 1.0 --max-tokens 57344 --request-timeout 3600 --concurrency $CONC --query-concurrency $((CONC*2+40)) --verify-workers 64" >> "$LOG"
   # shellcheck source=/srv/home/bohanlyu/sesl/.venv/bin/activate
   source "$VENV/bin/activate" || exit 1
   cd "$REPO" || exit 1
   python tools/hardcp_rollout.py \
-    --domains code math cfr1 reasoning \
+    --domains $DOMS \
     --worklist never_attempted.jsonl \
     --out-suffix .q38b \
     --url "$URLS" \
@@ -68,7 +70,7 @@ stop_driver() {
 }
 
 DRIVER_PID=0
-LOCKDIR="$SC/driver_watchdog_q38b.lock"
+LOCKDIR="$SC/driver_watchdog_q38b_${TAG:-all}.lock"
 if ! mkdir "$LOCKDIR" 2>/dev/null; then
   echo "[q38b_watchdog $(date -u)] another q38b_watchdog is already running; exiting" >> "$LOG"
   exit 0
