@@ -17,11 +17,25 @@ while true; do
       sleep 10
       if ! up "$port"; then
         echo "[q38-server-wd $(date -u 2>/dev/null)] port $port DOWN -> relaunch on GPUs ${GPUS[$port]}" >> "$SC/watchdog_q38_server.log"
-        # kill by port-specific numeric PIDs only (never pkill -f with a pattern in our own cmdline)
-        for pid in $(ps -eo pid,args | awk -v P="--port $port" '$0 ~ /vllm serve Qwen\/Qwen3.8/ && index($0,P) {print $1}'); do
-          kill -9 "$pid" 2>/dev/null
+        # Kill the FULL 3-layer tree (launcher -> EngineCore -> Worker_TP*). Killing only the launcher
+        # orphans EngineCore+workers which keep ~75GB and the relaunch fails "Free memory ... 3/79 GiB".
+        # Holders = every compute proc on this port's GPUs (+ their parents) + the port's launcher.
+        gpus_csv="${GPUS[$port]}"
+        {
+          for g in ${gpus_csv//,/ }; do
+            U=$(nvidia-smi --query-gpu=index,uuid --format=csv,noheader | awk -F', ' -v g=$g '$1==g{print $2}')
+            nvidia-smi --query-compute-apps=pid,gpu_uuid --format=csv,noheader 2>/dev/null | awk -F', ' -v u="$U" '$2==u{print $1}'
+          done
+          ps -eo pid,args | awk -v P="--port $port" '$0 ~ /vllm serve Qwen\/Qwen3.8/ && index($0,P) {print $1}'
+        } | sort -u > "$SC/_kill_$port.txt"
+        for pid in $(cat "$SC/_kill_$port.txt"); do ps -o ppid= -p "$pid" 2>/dev/null | tr -d ' '; done | sort -u >> "$SC/_kill_$port.txt"
+        for pid in $(sort -u "$SC/_kill_$port.txt"); do [ -n "$pid" ] && [ "$pid" != "1" ] && kill -9 "$pid" 2>/dev/null; done
+        sleep 10
+        # verify the GPUs are actually free before relaunching (else the relaunch just OOMs again)
+        for g in ${gpus_csv//,/ }; do
+          used=$(nvidia-smi --query-gpu=index,memory.used --format=csv,noheader,nounits | awk -F', ' -v g=$g '$1==g{print $2}')
+          [ "${used:-99999}" -gt 3000 ] && echo "[q38-server-wd $(date -u)] WARN GPU $g still ${used}MiB used after kill; relaunch may OOM" >> "$SC/watchdog_q38_server.log"
         done
-        sleep 8
         bash "$REPO/tools/launch_1server_q38.sh" "${GPUS[$port]}" "$port"
         sleep 210
       fi
