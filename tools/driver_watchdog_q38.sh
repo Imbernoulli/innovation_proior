@@ -13,7 +13,7 @@ LOG="$SC/rollout_q38.log"
 PORTS=${Q38_PORTS:-30002}
 # comma-joined service URLs (one per TP=2 replica; driver pins queries across them)
 URLS=$(for p in $PORTS; do printf "http://127.0.0.1:%s," "$p"; done); URLS=${URLS%,}
-CONC=${Q38_CONC:-66}
+CONC=${Q38_CONC:-30}
 
 STALL_SECS=${STALL_SECS:-86400}
 CHECK_SECS=${CHECK_SECS:-60}
@@ -28,7 +28,7 @@ trace_bytes() {
 }
 
 start_driver() {
-  echo "[q38_watchdog $(date -u)] start python tools/hardcp_rollout.py --domains reasoning math code ifollow ioi --worklist unsolved.jsonl --out-suffix .q38 --url $URLS --model Qwen3.8-27B --max-budget 64 --easy-threshold 1.1 --temperature 1.0 --max-tokens 57344 --request-timeout 3600 --concurrency $CONC --query-concurrency $((CONC*2+40)) --verify-workers 64" >> "$LOG"
+  echo "[q38_watchdog $(date -u)] start python tools/hardcp_rollout.py --domains reasoning math code ifollow ioi --worklist unsolved.jsonl --out-suffix .q38 --url $URLS --model Qwen3.8-27B --max-budget 8 --easy-threshold 1.1 --temperature 1.0 --max-tokens 57344 --request-timeout 3600 --concurrency $CONC --query-concurrency $((CONC*2+40)) --verify-workers 64" >> "$LOG"
   # shellcheck source=/srv/home/bohanlyu/sesl/.venv/bin/activate
   source "$VENV/bin/activate" || exit 1
   cd "$REPO" || exit 1
@@ -38,7 +38,7 @@ start_driver() {
     --out-suffix .q38 \
     --url "$URLS" \
     --model Qwen3.8-27B \
-    --max-budget 64 \
+    --max-budget 8 \
     --easy-threshold 1.1 \
     --temperature 1.0 \
     --max-tokens 57344 \

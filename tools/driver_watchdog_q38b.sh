@@ -13,7 +13,7 @@ LOG="$SC/rollout_q38b.log"
 PORTS=${Q38B_PORTS:-30002}
 # comma-joined service URLs (one per TP=2 replica; driver pins queries across them)
 URLS=$(for p in $PORTS; do printf "http://127.0.0.1:%s," "$p"; done); URLS=${URLS%,}
-CONC=${Q38B_CONC:-24}
+CONC=${Q38B_CONC:-60}
 
 STALL_SECS=${STALL_SECS:-86400}
 CHECK_SECS=${CHECK_SECS:-60}
