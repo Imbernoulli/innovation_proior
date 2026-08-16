@@ -45,6 +45,9 @@ while true; do
   for pid in $(ps -eo pid,args | awk '$2=="python" && $0 ~ /hardcp_rollout\.py/ {print $1}'); do
     nl=$(ps -o nlwp= -p $pid 2>/dev/null | tr -d ' '); cpu=$(ps -o %cpu= -p $pid 2>/dev/null | tr -d ' ' | cut -d. -f1)
     age=$(ps -o etimes= -p $pid 2>/dev/null | tr -d ' '); [ "${age:-0}" -lt 1800 ] && continue   # <30min = still loading worklists
+    # a driver holding open HTTP conns to the servers is WAITING on generations, not wedged (both real
+    # zombies had 0 conns); few threads + low cpu is normal while awaiting long gens before any verify ran
+    nconn=$(ss -tnp 2>/dev/null | grep "pid=$pid," | grep -cE ':3000[0-9] '); [ "${nconn:-0}" -gt 0 ] && { eval "zc_$pid=0"; continue; }
     tag=$(ps -o args= -p $pid | grep -oE 'out-suffix \S+' | awk '{print $2}')
     if [ "${nl:-99}" -le 6 ] && [ "${cpu:-99}" -lt 1 ]; then
       zc="zc_$pid"; eval "cnt=\${$zc:-0}"; cnt=$((cnt+1)); eval "$zc=$cnt"
