@@ -15,7 +15,7 @@ PORTS=${Q38B_PORTS:-30002}
 URLS=$(for p in $PORTS; do printf "http://127.0.0.1:%s," "$p"; done); URLS=${URLS%,}
 CONC=${Q38B_CONC:-24}
 
-STALL_SECS=${STALL_SECS:-21600}
+STALL_SECS=${STALL_SECS:-86400}
 CHECK_SECS=${CHECK_SECS:-60}
 
 export TMPDIR="$SC"
