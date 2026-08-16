@@ -28,7 +28,7 @@ trace_bytes() {
 }
 
 start_driver() {
-  echo "[q38b_watchdog $(date -u)] start python tools/hardcp_rollout.py --domains code math cfr1 reasoning --worklist never_attempted.jsonl --out-suffix .q38b --url $URLS --model Qwen3.8-27B --max-budget 16 --easy-threshold 0.5 --temperature 1.0 --max-tokens 57344 --request-timeout 3600 --concurrency $CONC --query-concurrency $((CONC+16)) --verify-workers 64" >> "$LOG"
+  echo "[q38b_watchdog $(date -u)] start python tools/hardcp_rollout.py --domains code math cfr1 reasoning --worklist never_attempted.jsonl --out-suffix .q38b --url $URLS --model Qwen3.8-27B --max-budget 16 --easy-threshold 0.5 --temperature 1.0 --max-tokens 57344 --request-timeout 3600 --concurrency $CONC --query-concurrency $((CONC*2+40)) --verify-workers 64" >> "$LOG"
   # shellcheck source=/srv/home/bohanlyu/sesl/.venv/bin/activate
   source "$VENV/bin/activate" || exit 1
   cd "$REPO" || exit 1
@@ -44,7 +44,7 @@ start_driver() {
     --max-tokens 57344 \
     --request-timeout 3600 \
     --concurrency "$CONC" \
-    --query-concurrency "$((CONC+16))" \
+    --query-concurrency "$((CONC*2+40))" \
     --verify-workers 64 \
     >> "$LOG" 2>&1 &
   DRIVER_PID=$!

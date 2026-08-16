@@ -28,12 +28,12 @@ trace_bytes() {
 }
 
 start_driver() {
-  echo "[q38_watchdog $(date -u)] start python tools/hardcp_rollout.py --domains reasoning math code ifollow ioi ahc --worklist unsolved.jsonl --out-suffix .q38 --url $URLS --model Qwen3.8-27B --max-budget 64 --easy-threshold 1.1 --temperature 1.0 --max-tokens 57344 --request-timeout 3600 --concurrency $CONC --query-concurrency $((CONC+16)) --verify-workers 64" >> "$LOG"
+  echo "[q38_watchdog $(date -u)] start python tools/hardcp_rollout.py --domains reasoning math code ifollow ioi --worklist unsolved.jsonl --out-suffix .q38 --url $URLS --model Qwen3.8-27B --max-budget 64 --easy-threshold 1.1 --temperature 1.0 --max-tokens 57344 --request-timeout 3600 --concurrency $CONC --query-concurrency $((CONC*2+40)) --verify-workers 64" >> "$LOG"
   # shellcheck source=/srv/home/bohanlyu/sesl/.venv/bin/activate
   source "$VENV/bin/activate" || exit 1
   cd "$REPO" || exit 1
   python tools/hardcp_rollout.py \
-    --domains reasoning math code ifollow ioi ahc \
+    --domains reasoning math code ifollow ioi \
     --worklist unsolved.jsonl \
     --out-suffix .q38 \
     --url "$URLS" \
@@ -44,7 +44,7 @@ start_driver() {
     --max-tokens 57344 \
     --request-timeout 3600 \
     --concurrency "$CONC" \
-    --query-concurrency "$((CONC+16))" \
+    --query-concurrency "$((CONC*2+40))" \
     --verify-workers 64 \
     >> "$LOG" 2>&1 &
   DRIVER_PID=$!
