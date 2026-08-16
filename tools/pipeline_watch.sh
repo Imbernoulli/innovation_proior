@@ -40,6 +40,18 @@ while true; do
     echo "[q38-watch] ALERT: no q38 trace growth for $((idle/60))min, in-flight=$(running), service_down=$down_30002"
     stalled=1
   fi
+  # --- zombie-driver detector: alive but asyncio loop wedged (ep_poll, threads collapse to <=6, CPU<1%).
+  #     Seen 2026-08-13 (base driver, 9 days) and 2026-08-16 (q38, 6h). Emit once per wedge episode.
+  for pid in $(ps -eo pid,args | awk '$2=="python" && $0 ~ /hardcp_rollout\.py/ {print $1}'); do
+    nl=$(ps -o nlwp= -p $pid 2>/dev/null | tr -d ' '); cpu=$(ps -o %cpu= -p $pid 2>/dev/null | tr -d ' ' | cut -d. -f1)
+    tag=$(ps -o args= -p $pid | grep -oE 'out-suffix \S+' | awk '{print $2}')
+    if [ "${nl:-99}" -le 6 ] && [ "${cpu:-99}" -lt 1 ]; then
+      zc="zc_$pid"; eval "cnt=\${$zc:-0}"; cnt=$((cnt+1)); eval "$zc=$cnt"
+      [ "$cnt" -eq 4 ] && echo "[q38-watch] ALERT: ZOMBIE driver pid=$pid ($tag): threads=$nl cpu=$cpu% for ~12min — kill -9 it, watchdog relaunches"
+    else
+      eval "zc_$pid=0"
+    fi
+  done
   pr=$(preempt); pr=${pr:-0}; d=$((pr - last_pre)); last_pre=$pr
   [ "$d" -gt 100 ] && echo "[q38-watch] ALERT: preemption spike +$d in 3min on 30002 (KV thrash)"
   free=$(free_gpus)
