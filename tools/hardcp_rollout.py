@@ -70,7 +70,8 @@ def load_backend(args):
     model = args.model or cfg.get('model', 'Qwen3.6-27B')
     return {'chat_urls': [f'{u.rstrip("/")}/v1/chat/completions' for u in urls], 'model': model,
             'headers': {'Content-Type': 'application/json'},
-            'schedule': [4, 8, 16, 32, 64, 128, 256, 512, 1024], 'suffix': ''}
+            'schedule': [c for c in [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024]
+                         if c >= max(1, getattr(args, 'schedule_start', 4))], 'suffix': ''}
 
 _PROC_VERIFIERS = {}
 def _proc_verify(domain, answer, prob):
@@ -473,6 +474,11 @@ def main():
     ap.add_argument('--max-tokens', type=int, default=57344)
     ap.add_argument('--temperature', type=float, default=0.9)
     ap.add_argument('--max-budget', type=int, default=128)
+    ap.add_argument('--schedule-start', type=int, default=4,
+                    help='first-round sample count for the local backend (doubling from there). 4 = 3.6-era '
+                         'default (measures a 4-sample round-0 pass rate); 1 = cheapest: sample once, double '
+                         'on failure (user 2026-08-17: "先采 1 次再翻倍"). pass_rate then has coarser '
+                         'resolution but samples_used still records the exact cost.')
     ap.add_argument('--keep-per-query', type=int, default=8,
                     help='keep up to this many correct generations from the deciding round (shortest-first)')
     ap.add_argument('--easy-threshold', type=float, default=0.5,

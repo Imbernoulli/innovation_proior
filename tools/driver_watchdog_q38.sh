@@ -41,6 +41,7 @@ start_driver() {
     --url "$URLS" \
     --model Qwen3.8-27B \
     --max-budget 8 \
+    --schedule-start 1 \
     --easy-threshold 1.1 \
     --temperature 1.0 \
     --max-tokens 32768 \
