@@ -46,8 +46,8 @@ start_driver() {
     --max-budget 256 \
     --easy-threshold 1.1 \
     --request-timeout 3600 \
-    --concurrency 10 \
-    --query-concurrency 24 \
+    --concurrency 24 \
+    --query-concurrency 40 \
     --verify-workers 64 \
     >> "$LOG" 2>&1 &
   DRIVER_PID=$!

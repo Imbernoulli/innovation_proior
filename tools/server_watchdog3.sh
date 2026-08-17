@@ -1,5 +1,5 @@
 #!/bin/bash
-# Watchdog for the 2 independent TP=2 services (ports 30000/30001 on GPU pairs 1,2 / 3,5).
+# Watchdog for the 3 independent TP=2 services (ports 30000/30001/30002 on GPU pairs 1,2 / 4,5 / 6,7).
 # If a port is down for two checks, kill its stale vllm (frees its GPUs) and relaunch just that one.
 # Only touches OUR `vllm serve ... --port <p>` — never other users' sglang/GPUs.
 SC=/tmp/claude-2065/-srv-home-bohanlyu-innovation-proior/6ed8424a-6c58-40da-8be5-c4e3e3548d9b/scratchpad
@@ -10,7 +10,7 @@ if ! mkdir "$LOCKDIR" 2>/dev/null; then
   exit 0
 fi
 trap 'rmdir "$LOCKDIR" 2>/dev/null || true' EXIT
-declare -A GPUS=( [30000]="1,2" [30001]="3,5" )
+declare -A GPUS=( [30000]="1,3" [30001]="0,2" )   # 2 TP=2 services on the 4 free GPUs
 up(){ curl -sf "http://127.0.0.1:$1/v1/models" >/dev/null 2>&1; }
 while true; do
   for port in 30000 30001; do

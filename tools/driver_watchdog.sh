@@ -40,8 +40,8 @@ start_driver() {
     --domains code math cfr1 \
     --max-budget 16 \
     --request-timeout 3600 \
-    --concurrency 40 \
-    --query-concurrency 64 \
+    --concurrency 56 \
+    --query-concurrency 80 \
     --verify-workers 48 \
     >> "$LOG" 2>&1 &
   DRIVER_PID=$!
