@@ -246,39 +246,33 @@ def _llm_judge(problem_text, gold, generation_text):
     """Strict flash judge verdict True/False, or None if unavailable/errored."""
     if _os.environ.get("HARDCP_MATH_JUDGE", "1") == "0":
         return None
-    key = _judge_key()
-    if not key:
-        return None
-    try:
-        import requests
-    except Exception:
-        return None
     boxed = _find_boxed(generation_text or "")
     cand = (f"Extracted \\boxed answer: {boxed}\n" if boxed else "") + \
            "Model's conclusion (tail):\n" + (generation_text or "")[-1500:]
     user = (f"Problem:\n{problem_text}\n\nREFERENCE answer:\n{gold}\n\n"
             f"CANDIDATE answer:\n{cand}\n\nEquivalent? YES or NO.")
-    body = {"model": _JUDGE_MODEL,
-            "messages": [{"role": "system", "content": _JUDGE_SYS},
-                         {"role": "user", "content": user}],
-            "max_tokens": 8, "temperature": 0, "thinking": {"type": "disabled"}}
-    for _ in range(2):
-        try:
-            r = requests.post(_JUDGE_URL, headers={"Authorization": f"Bearer {key}"},
-                              json=body, timeout=90)
-            if r.status_code == 402:          # Insufficient Balance -> no point retrying DeepSeek
-                break
-            txt = (r.json()["choices"][0]["message"]["content"] or "").strip().upper()
-            if txt.startswith("Y"):
-                return True
-            if txt.startswith("N"):
-                return False
-        except Exception:
-            continue
-    # (2026-08-17) DeepSeek account hit 402 Insufficient Balance -> judge silently returned None
-    # -> fell to string compare -> every ungradeable-gold math query judged MISMATCH. Fall back to
-    # the LOCAL Qwen3.8 service as the strict judge (thinking off, temp 0, YES/NO). Endpoints from
-    # HARDCP_LOCAL_JUDGE_URLS (comma-sep) or the default 3 q38 ports.
+    # (2026-08-17, user decision: "判官用自己就行了") The judge is the LOCAL Qwen3.8 service, period.
+    # DeepSeek is no longer consulted (its account hit 402 and it silently degraded to string compare
+    # for weeks). Local judge: thinking ON, temp 0, last YES/NO in content; 7/7 adversarial matrix.
+    # Set HARDCP_JUDGE=deepseek to force the old external path (needs a funded key).
+    if _os.environ.get("HARDCP_JUDGE", "local") == "deepseek":
+        key = _judge_key()
+        if key:
+            try:
+                import requests
+                body = {"model": _JUDGE_MODEL,
+                        "messages": [{"role": "system", "content": _JUDGE_SYS},
+                                     {"role": "user", "content": user}],
+                        "max_tokens": 8, "temperature": 0, "thinking": {"type": "disabled"}}
+                r = requests.post(_JUDGE_URL, headers={"Authorization": f"Bearer {key}"},
+                                  json=body, timeout=90)
+                txt = (r.json()["choices"][0]["message"]["content"] or "").strip().upper()
+                if txt.startswith("Y"):
+                    return True
+                if txt.startswith("N"):
+                    return False
+            except Exception:
+                pass
     return _local_judge(user)
 
 
