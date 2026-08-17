@@ -23,7 +23,7 @@ CUDA_VISIBLE_DEVICES="$GPUS" VLLM_WORKER_MULTIPROC_METHOD=spawn HF_HUB_OFFLINE=1
 setsid nohup /srv/home/bohanlyu/sesl/.venv/bin/vllm serve Qwen/Qwen3.8-27B \
   --served-model-name Qwen3.8-27B --host 0.0.0.0 --port "$PORT" \
   --tensor-parallel-size "$TP" --dtype bfloat16 \
-  --max-model-len 65536 --max-num-seqs "$SEQS" --gpu-memory-utilization 0.90 \
+  --max-model-len 65536 --max-num-seqs "$SEQS" --gpu-memory-utilization 0.95 --max-num-batched-tokens 16384 \
   --reasoning-parser qwen3 --trust-remote-code --enable-prefix-caching \
   --speculative-config '{"method":"mtp","num_speculative_tokens":3}' \
   --kv-cache-dtype fp8 \
