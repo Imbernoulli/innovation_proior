@@ -10,6 +10,10 @@
 # (+29%), so it sustains ~2x the concurrency of a single TP=2 replica; extra batch amortizes the
 # all-reduce cost. Same-concurrency TP=4 is slower — the win ONLY appears at higher in-flight.
 # 64k ctx / 57k max_tokens: a 131k/110k experiment collapsed KV to ~14 per replica; don't.
+# MTP speculative decoding (2026-08-16 A/B under identical load, TP=2): baseline 35 tok/s per seq,
+# 1,090 agg @31 in-flight  vs  MTP-3+fp8-KV 74 tok/s per seq, 1,780 agg @24 in-flight -> 2x per-seq,
+# +65% aggregate. Draft acceptance ~45% (1.3 of 3). Qwen3.8 ships an MTP head; the user's hunch that
+# "server-side per-token is too slow" was right (not a penalty — generation_config has none).
 GPUS="$1"; PORT="${2:-30002}"
 TP=$(echo "$GPUS" | tr ',' '\n' | wc -l)
 SEQS=$(( TP == 4 ? 448 : 224 ))
@@ -21,5 +25,7 @@ setsid nohup /srv/home/bohanlyu/sesl/.venv/bin/vllm serve Qwen/Qwen3.8-27B \
   --tensor-parallel-size "$TP" --dtype bfloat16 \
   --max-model-len 65536 --max-num-seqs "$SEQS" --gpu-memory-utilization 0.90 \
   --reasoning-parser qwen3 --trust-remote-code --enable-prefix-caching \
+  --speculative-config '{"method":"mtp","num_speculative_tokens":3}' \
+  --kv-cache-dtype fp8 \
   >> "$SC/vllm_$PORT.log" 2>&1 &
 echo "launched Qwen3.8-27B TP=$TP service on GPUs $GPUS port $PORT (64k ctx, max-num-seqs $SEQS)"
