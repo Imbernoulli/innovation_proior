@@ -263,3 +263,13 @@ python3 tools/v4_backfill.py --apply --units fcs-p2-18     # 只写 data_v4/<uni
 ```
 
 基线 blob 一律用 `git show 23ff22f29:<path>` 读，不落盘、不改工作树。token 用 `字符/4` 估（与 review 同口径）。
+
+---
+
+## 全量 apply 结果（2026-08-18，主 session 执行）
+
+- 试点 20 条之后，剩余 **203 条**单元全部 apply 并逐条 commit（共 **223** 个 `v4-backfill:` commit；tag `v4-backfill-baseline` → HEAD）。
+- `git diff --shortstat`：219 files, **+2,562 / −7**；那 7 行"删除"全部是文件末尾换行/空行归一化（`\ No newline at end of file`），**无任何内容行被删除**。
+- 闸门（全量后复测）：工件 regex 命中 4 文件（与基线相同，均在代码栅栏内，非本次引入）；top-1 开头占比 **1.2%**（<5%）；`Reading the problem` 开头 **0**；`deliberately` 81 文件、`convinced myself` 2、`Causal recap` 50 —— 与基线持平，未回升。
+- 回填后 tok 中位 ≈ 2.28k（chars/4），最大 ≈ 10.1k，远低于 32k 预算。
+- 遗留：`deliberately` 81 处 + 逐字口号 25 处的题目特异性改写（review §4.4 / §7-3）仍待做；decontam denylist 在当前树上重跑会被清空的问题（报告上文 §blocking-1）是既有漂移，未在本次触碰。
