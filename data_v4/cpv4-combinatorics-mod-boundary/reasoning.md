@@ -17,6 +17,8 @@ The only subtle part is where the sum stops. A term is real exactly while the le
 
 `455 - 336 + 6 = 125`, the sample answer. The last contributing term, `j=2`, sits exactly on `rem = 0`: two children maxed out absorb the whole total, a genuine configuration worth `+6`. So the stopping test must be inclusive, `S - j*(c+1) >= 0`; a strict `> 0` exits one term early, drops the `+6`, and reports `119`. One character, `>` versus `>=`, is the entire difference between right and wrong, and this off-by-one is precisely what the problem is built to punish, so the guard reads `S - j*step >= 0`.
 
+I pick the smallest input that puts the leftover exactly on the boundary so the `> 0` versus `>= 0` choice is exercised: `k=2, c=1, S=2`, `M` large. The truth is easy to see by hand — two children each in `{0,1}` summing to `2` forces `(1,1)`, so the answer is `1`. Trace the buggy loop, `step = 2`:
+
 One neighbouring off-by-one to keep straight: the unbounded count is `C(rem + k - 1, k - 1)` — `k` parts, `k - 1` bars among `rem + k - 1` slots — not `C(rem + k, k - 1)`, which would smuggle in a phantom slot and inflate every term.
 
 For the binomials I need `C(N, r)` with `N` up to `S + k - 1`, plus `C(k, j)` for `j` up to `k`. A single factorial table of size `maxN = S + k` covers all of it: every top I request is `< maxN`, and `C(k, j)` reads only `fact[k]` with `k <= maxN`. Because `M` is prime and exceeds every argument I touch, I get `inv[maxN]` from one Fermat exponentiation and walk the inverse factorials downward. The `C` helper returns `0` on `r < 0`, `N < 0`, or `r > N`, which also lets any out-of-range term vanish on its own; I still bound the loop by `j <= k` so `fact[k]` is never read past intent.
