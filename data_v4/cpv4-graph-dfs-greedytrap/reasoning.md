@@ -34,6 +34,8 @@ Two things here are wrong, and both are the corners the constraints invite. The 
 
 The explicit-stack post-order DFS keeps, per node, an edge cursor `it[u]` so I can resume scanning its out-neighbours after diving into a child, and a `done[u]` flag so each memo is computed once. The post-order moment is when `it[u]` runs off the end of `adj[u]`: every reachable successor is then `done`, so I fold `best[u] = p[u] + max(0, max_v best[v])` and pop.
 
+Let me trace this iterative version on the sample to be sure the post-order ordering is right. Outer loop `s=0`: push `0`. `u=0`, `it[0]=0 < 2`, child `v=1`, not done, push `1`. `u=1`, child `v=5`, push `5`. `u=5`, no edges, post-order: `best[5]=7+0=7`, done, pop. Back to `u=1`, `it[1]=1` done with edges, post-order: `ext=max(0,best[5]=7)=7`, `best[1]=8+7=15`, done, pop. Back to `u=0`, `it[0]=1`, child `v=2`, push `2`. `u=2`, child `v=3`, push `3`. `u=3`, child `v=4`, push `4`. `u=4`, child `v=5`, but `done[5]` already, so do *not* push; `it[4]` advances; now `it[4]` exhausted, post-order: `ext=max(0,best[5]=7)=7`, `best[4]=1+7=8`, pop. `u=3` exhausted: `best[3]=9+max(0,8)=17`, pop. `u=2` exhausted: `best[2]=2+max(0,17)=19`, pop. `u=0` exhausted: `ext=max(0,best[1]=15,best[2]=19)=19`, `best[0]=3+19=22`, pop. Outer loop continues `s=1..5`, all already `done`, skipped. Final `ans = max` over all `best = 22`. The iterative traversal reproduces the hand computation exactly, including the shared sink `5` being computed once and reused — the memo and the `done`-guard on the push together prevent both recomputation and re-descent.
+
 ```
 for (int s = 0; s < n; s++) {
     if (done[s]) continue;
@@ -59,3 +61,5 @@ The `!done[v]` guard on the push is what makes this safe on a re-convergent DAG.
 Two more corners exercise the recurrence rather than restate it. `m=0, p=[-7,4]`: every path is a single paper, so the answer is `4`, the largest lone prestige. A pass-through-vs-avoid chain `p=[5,-100,5]`, `0->1->2`: `best[2]=5`, `best[1]=-100+max(0,5)=-95`, `best[0]=5+max(0,-95)=5` — the recurrence declines to cross the `-100` because `5-100+5 < 5`, and the answer is `5`, not the full-chain `-90`. The explicit stack lives on the heap and grows to at most `n` entries, so the induced `2*10^5` chain that overflowed the recursion runs without trouble.
 
 For confidence beyond hand-tracing I ran a small-case stress: random DAGs built by fixing a topological order and adding lower-to-higher edges, prestige in a small signed range, checked against an independent exhaustive path-enumerator; every case agreed. The `O(n + m)` iterative-DFS DP — `long long` throughout, outer answer seeded at `LLONG_MIN` — is the full program in the answer module.
+
+**Final solution.** That is what I ship — one self-contained file, the `O(n + m)` iterative DFS DP I can defend rather than the greedy I broke.
