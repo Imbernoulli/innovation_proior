@@ -64,6 +64,37 @@ reduce once as `kk = k % p` so every exponentiation runs on a reduced base; and 
 ~`2*10^9`, past 32 bits, so I keep `long long` throughout and multiply through `__int128` inside
 `power_mod`.
 
+**A real bug, caught by tracing the smallest square `n`.** I tested `n = 1, k = 7`. The expected
+answer: one bead, the only group elements are the identity rotation and the single reflection (which
+also fixes everything), so `(k + k)/(2*1) = k = 7` bracelets. My code printed `14`. Let me trace it.
+`n = 1`: the loop runs `d = 1` (since `1*1 <= 1`), `n % 1 == 0`, `d2 = n/d = 1`. The *first* line adds
+`phi(1) * k^1 = 1 * 7 = 7`. The *second* line adds `phi(1) * k^1 = 7` **again** — because `d2 == d ==
+1`, the complement is the same divisor, and I counted it twice. `rotSum` became `14` instead of `7`.
+The reflection part for odd `n=1` is `n * k^{(n+1)/2} = 1 * 7^1 = 7`. Total `= 21`, over `2n = 2`,
+gives `21 * inverse(2)`. With `rotSum` wrongly doubled to `14`, total `= 21` actually came out as
+`14 + 7 = 21`... let me redo this carefully: doubled `rotSum = 14`, `reflSum = 7`, `total = 21`,
+`/2 = 10.5` — not an integer mod-wise it landed on the wrong residue, and the printed value was `14`,
+not `7`. The root cause is unambiguous regardless of the downstream arithmetic: **when `d == n/d` (a
+perfect-square divisor, here `n = 1` itself), the divisor and its complement coincide and must be
+added once, not twice.** Any square `n` (1, 4, 9, 16, ...) would trip this — `n = 4` has the middle
+divisor `d = 2 = 4/2`, which my loop would also double.
+
+Re-trace `n = 1, k = 7`: `d = 1`, `d2 = 1`, add `t1 = phi(1)*7 = 7`; `d2 == d` so skip `t2`. `rotSum
+= 7`. Reflection (odd) `= 1 * 7^1 = 7`. Total `= 14`, `denom = 2`, `14 * inverse(2) = 7`. Correct.
+Re-trace `n = 4, k = 2`: divisors hit are `d = 1` (d2=4) and `d = 2` (d2=2). `d=1`: `t1 =
+phi(4)*2^1 = 2*2 = 4`, `d2=4 != 1` so `t2 = phi(1)*2^4 = 16`. `d=2`: `t1 = phi(2)*2^2 = 1*4 = 4`,
+`d2=2 == 2` so skip. `rotSum = 4+16+4 = 24` — matches my hand computation above, and the final answer
+is `6`. The square-divisor bug is closed, and it failed for exactly the reason I fixed.
+
+- `k = 1`: one color, so there is exactly **one** bracelet for any `n`. Check `n = 5, k = 1`:
+  rotation part `= sum_{g|5} phi(5/g) * 1^g = phi(5)+phi(1) = 4+1 = 5 = n`; reflection (odd) `=
+  n * 1 = 5`; total `= 10`, over `2n = 10`, equals `1`. Correct. The `1^anything = 1` collapses
+  everything to `2n / 2n = 1`, as it must.
+
+- `n = 2`, both beads: `k=2` should give 3 bracelets (00, 01, 11 — the two beads are
+  interchangeable). Rotation `sum_{g|2} phi(2/g)k^g = phi(2)k^1 + phi(1)k^2 = 1*2 + 1*4 = 6`;
+  reflection (even, `n/2=1`): `1*k^2 + 1*k^1 = 4 + 2 = 6`; total `12`, over `4`, equals `3`. Correct.
+
 The divisor loop has one real trap for this problem, because the tests include perfect-square `n` and
 `n = 1`. Enumerating divisors by pairing each `d <= sqrt n` with `n/d` double-counts when the two
 coincide — the middle divisor of a square (`d = sqrt n`), and `n = 1` where `d = n/d = 1`. Add both
