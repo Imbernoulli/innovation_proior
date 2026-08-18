@@ -33,8 +33,11 @@ d*m + m + m*d + d = 2md + d + m.
 The internal residual skip is what makes near-zero projection weights produce an approximate
 identity rather than an approximate zero map. A zero-mean truncated Gaussian with standard
 deviation 1e-2 is used for the main training setup; the code path below uses a conservative 1e-3
-default. Both are small relative to the backbone initialization and keep the new branch near zero at
-the start.
+default. Both are small relative to the backbone's own weight initialization, which uses standard
+deviation 0.02 throughout BERT's dense and attention projections: 1e-2 is about 2x smaller than
+that floor, 1e-3 is 20x smaller, so the branch starts effectively negligible against the scale of
+weight the rest of the frozen network was already built on, not just against the activation it
+sits beside.
 
 Placement is fixed by the BERT post-LN block. There are two adapters per Transformer layer: one
 after the attention output projection and dropout, and one after the feed-forward output projection
