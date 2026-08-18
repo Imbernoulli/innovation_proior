@@ -16,9 +16,20 @@ still asks about every strong power. I have to check the product behavior before
 
 Tensor products give the first direction. If I represent `G` and `H`, then the tensor products of their vertex
 vectors represent the strong product, and inner products multiply. Handle projections multiply too. That gives
-`theta(G * H) <= theta(G) theta(H)`, which is enough for the capacity upper bound. The matrix formulation gives
-the reverse inequality, so the optimized value actually satisfies
-`theta(G * H) = theta(G) theta(H)`.
+`theta(G * H) <= theta(G) theta(H)`, which is enough for the capacity upper bound.
+
+The reverse inequality will not come from the same trick. Tensoring two representations only ever exhibits one
+particular representation of `G * H`; it cannot rule out some cleverer, non-tensor representation of the product
+doing better, so minimizing over tensor representations alone can never certify that `theta(G * H)` is not
+smaller than `theta(G) theta(H)`. I need a second quantity that is forced to sit below `theta(G) theta(H)` no
+matter which representation of `G * H` turns out to be optimal. So I flip the extremal problem: instead of
+minimizing the worst handle projection over representations of `G`, I maximize the total projection, the sum of
+squared projections over all vertices, but now over orthonormal representations of the complementary graph. That
+maximum equals the same `theta(G)` I already have from the minimization side, a duality between a graph and its
+complement that is not visible in the geometry itself, only in the matching pair of semidefinite programs.
+Tensoring these dual representations of the two complements gives one concrete feasible point for the
+maximization problem on the complement of `G * H`, and its value is exactly `theta(G) theta(H)`. That pins the
+reverse inequality, so the optimized value satisfies `theta(G * H) = theta(G) theta(H)`.
 
 Now the one-use certificate controls every block length:
 `alpha(G^k) <= theta(G^k) = theta(G)^k`, so `Theta(G) <= theta(G)`. This is the missing upper-bound mechanism:
