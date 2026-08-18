@@ -12,6 +12,8 @@ Left to right, house 0 grabs the cheapest color A (cost 1); house 1 must avoid A
 
 So I take the exhaustive structure. For each house `i` and color `c`, let `dp[i][c]` be the minimum cost to validly color houses `0..i` with house `i` painted `c`. The only thing house `i+1` cares about is house `i`'s color, which is exactly the table's index, so the state is complete. `dp[0][c] = cost[0][c]` (no predecessor); for `i >= 1`, `dp[i][c] = cost[i][c] + min_{c' != c} dp[i-1][c']`. The answer is `min_c dp[n-1][c]`, or `-1` if that minimum is infinity.
 
+**Stress-testing greedy before committing.** Hand-waving "greedy feels cheap" is how wrong solutions get shipped, so let me actually attack it with a concrete instance I can compute by hand. Take `n = 3`, `k = 3` with costs
+
 On the statement's sample `17 2 17 / 16 16 5 / 14 3 19`: `dp[0]=(17,2,17)`; `dp[1][A]=16+min(2,17)=18`, `dp[1][B]=16+min(17,17)=33`, `dp[1][C]=5+min(17,2)=7`; `dp[2][A]=14+min(33,7)=21`, `dp[2][B]=3+min(18,7)=10`, `dp[2][C]=19+min(18,33)=37`; answer `min=10`, matching the stated 10 (coloring `B,C,B`). Recurrence confirmed.
 
 The literal `min_{c' != c}` is an `O(k)` scan inside an `O(k)` loop — `O(nk^2)`, the `10^9` I ruled out. The escape is running two minimums: scan the previous row once for its smallest value `best1` (at color `idx1`) and its second-smallest `best2`. Then the cheapest predecessor of a color *different* from `c` is `best1` when `c != idx1`, and `best2` exactly when `c == idx1` — because then the minimum's own color is the forbidden one and the runner-up is the best legal predecessor. That is `O(1)` per color, `O(nk)` overall, with just a rolling row of length `k` in memory.
@@ -26,6 +28,8 @@ for (i = 0; i < n; i++) { ...two-min of prev...; cur[c] = (c==idx1?best2:best1)+
 The smallest input that exposes it is `n=1, k=1, cost=[[7]]`, where the answer is obviously 7 — one house, no adjacency. Running it: `prev=[0]`, so `best1=0, idx1=0, best2=INF`; for color 0, `c==idx1` selects `best2=INF`, giving `cur[0]=INF` and a final `-1`. Wrong. The defect is exact: the zero phantom carries a color index `idx1=0`, and the two-minimum logic then excludes color 0 as if house 0 had to differ from a house that does not exist. House 0 has no predecessor and no forbidden color, so the exclusion is spurious — and even for larger `k` it would inflate `dp[0][idx1]` to `best2` instead of `cost[0][idx1]`.
 
 The fix is to stop faking a predecessor: seed `dp[0][c] = cost[0][c]` directly and run the two-minimum step from house 1, where excluding the previous color is genuinely correct because a previous house exists. `n=0` peels off up front (answer 0, and nothing to read).
+
+Re-trace `n=1, k=1, [[7]]`: `n != 0`; read `prev = [7]`; the `i`-loop does not run; answer `min(prev) = 7`. Correct. Re-trace `n=1, k=4, [[9,3,5,8]]`: `prev = (9,3,5,8)`, answer `3`. Correct. The exact case that broke now passes, and it passes for the reason I fixed — the phantom predecessor is gone.
 
 ```
 if (n == 0) { print 0; return; }
