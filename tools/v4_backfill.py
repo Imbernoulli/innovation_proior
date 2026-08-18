@@ -247,7 +247,44 @@ def classify(block):
     return "OTHER", ""
 
 # ---------------------------------------------------------------- tic stripping
-SENT_SPLIT = re.compile(r"(?<=[.!?])\s+(?=[A-Z*`(\-])")
+SENT_SPLIT = re.compile(r"(?<=[a-z0-9\)`\*\"])[.!?]\s+(?=[A-Z])")
+
+BREAKER = re.compile(r"^\s*$|^#{1,6}\s|^\s*(?:[-*+]|\d+[.)])\s")
+
+def _chunks(text):
+    """Split a block into logical chunks: blank lines and markdown headings are
+    their own (never-touched) chunks, each list item starts a chunk, and runs of
+    hard-wrapped prose lines form one chunk.  Sentence surgery has to see a whole
+    sentence, and these files hard-wrap sentences across several lines."""
+    out, cur = [], []
+    for line in text.split("\n"):
+        if BREAKER.match(line):
+            if cur:
+                out.append(cur)
+            cur = [line]
+            if not line.strip() or re.match(r"^#{1,6}\s", line):
+                out.append(cur)
+                cur = []
+        else:
+            cur.append(line)
+    if cur:
+        out.append(cur)
+    return out
+
+def _join(lines):
+    """Undo the hard wrap: 'differential-' + 'testing' -> 'differential-testing'."""
+    s = ""
+    for ln in lines:
+        ln = ln.rstrip()
+        if not s:
+            s = ln
+        elif s.endswith("-") and re.match(r"^[a-z]", ln.lstrip()):
+            s += ln.lstrip()
+        else:
+            s += " " + ln.lstrip()
+    return s
+
+BOLD_HDR = re.compile(r"^(\s*\**[-*+]?\s*\*\*.{1,150}?\*\*[ \t]*)")
 
 def strip_tics(text):
     """Remove the three banned phrasings, minimally.
@@ -256,16 +293,22 @@ def strip_tics(text):
       (their content is the tic itself: a self-congratulation, not a check);
     * "Causal recap"-style restatement sentences are dropped;
     * the adverb "deliberately" is deleted in place, keeping its sentence.
-    Nothing is added.  Returns (text, [notes]).
+    Nothing is added.  Chunks without a tic are copied through byte-for-byte, so
+    list structure, headings and the original wrapping survive untouched.
+    Returns (text, [notes]).
     """
     notes = []
-    lines = []
-    for line in text.split("\n"):
-        if not re.search(RE_TIC, line) and not re.match(r"^\s*\**causal recap\b", line, re.I):
-            lines.append(line)                      # untouched, byte for byte
+    out = []
+    for lines in _chunks(text):
+        raw = "\n".join(lines)
+        if not RE_TIC.search(raw) and not re.search(r"\**causal recap\b", raw, re.I):
+            out.append(raw)                                  # untouched
             continue
+        p = _join(lines)
+        hm = BOLD_HDR.match(p)                               # keep any bold lead-in
+        head, p = (hm.group(1), p[hm.end():]) if hm else ("", p)
         keep = []
-        for sent in SENT_SPLIT.split(line):
+        for sent in SENT_SPLIT.split(p):
             if re.search(r"\bconvinced? myself\b", sent, re.I):
                 notes.append("dropped sentence: convinced myself")
                 continue
@@ -273,7 +316,7 @@ def strip_tics(text):
                 notes.append("dropped sentence: causal recap")
                 continue
             keep.append(sent)
-        p = " ".join(keep)
+        p = head + " ".join(keep)
         if re.search(r"\bdeliberately\b", p, re.I):
             notes.append("removed adverb: deliberately")
             p = re.sub(r",\s*deliberately\s*,", ",", p, flags=re.I)
@@ -282,12 +325,13 @@ def strip_tics(text):
             p = re.sub(r"\bdeliberately\b", "", p, flags=re.I)
             p = re.sub(r"[ \t]{2,}", " ", p)
             p = re.sub(r" +([,.;:])", r"\1", p)
-            p = re.sub(r",\s*([.;:!?])", r"\1", p)     # "Edge cases, deliberately." -> "Edge cases."
+            p = re.sub(r",\s*([.;:!?])", r"\1", p)
             p = re.sub(r",\s*,", ",", p)
             p = re.sub(r"\(\s*\)", "", p)
-            p = re.sub(r"\*\*\s*([.,])", r"\1**", p) if p.count("**") % 2 else p
-        lines.append(p.rstrip())
-    return "\n".join(lines).strip(), notes
+        out.append(p.rstrip())
+    t = "\n".join(out)
+    t = re.sub(r"\n{3,}", "\n\n", t)
+    return t.strip(), notes
 
 def dangling_colon_fix(text, next_is_code):
     """A ship/trace paragraph that introduced a code fence we do not carry back
@@ -394,6 +438,13 @@ def plan(unit_info, include_partial=False):
         ins.append(dict(after=pos, old_i=r["i"], text=txt, family=r["family"],
                         notes=notes, chars=len(txt)))
     ins.sort(key=lambda d: (d["after"], d["old_i"]))
+    # a paragraph that opens mid-sentence ("with `L=1, R=2`. ...") only reads
+    # correctly right after its OLD predecessor; if that predecessor is not coming
+    # back too (usually it is a code fence), drop it rather than paste a fragment.
+    placed = {(d["after"], d["old_i"]) for d in ins}
+    ins = [d for d in ins
+           if re.match(r'^[#*`\-A-Z0-9("\u201c]', d["text"].lstrip())
+           or (d["after"], d["old_i"] - 1) in placed]
     return ins
 
 def render(unit_info, ins):
