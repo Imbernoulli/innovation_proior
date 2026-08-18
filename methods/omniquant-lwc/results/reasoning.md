@@ -51,7 +51,23 @@ cares about the *layer output*, where every bulk weight is exercised by every to
 weight feeds a single input dimension, so the bulk error accumulates far more than the weight-MSE on one
 toy group lets on. The honest reading of my little experiment is that it confirms the *direction* —
 inward clipping helps — and, more usefully, it rules out the aggressive version and shows the right
-amount is a delicate, group-specific tradeoff. That points away from *setting* the clip and toward
+amount is a delicate, group-specific tradeoff.
+
+But a fifteen-weight toy group is not proof, and I should not trust my own back-of-envelope sweep any
+more than I trust a fixed percentile. Let me check the claim at the scale that matters: run the real
+block-wise pipeline on a full model, keep the reconstruction loss exactly as it will be at deployment,
+and set every group's clip two different ways on the identical objective — once by a grid search over a
+handful of candidate ratios per group, scoring each candidate on that same reconstruction loss and
+keeping the best, and once by letting gradient descent walk the ratio to wherever the loss wants it. Grid
+search here is searching the *right* quantity, not blindly covering the outlier the way plain min-max
+does, so this is the honest version of "just tune it well" rather than a straw man. On LLaMA-1-7B at W4A4
+the grid-searched clip lands at 15.82 average perplexity; gradient descent on the identical per-group
+ratio, same reconstruction objective, same calibration budget, lands at 12.87. So even a properly
+searched clip — not a lazy fixed percentile but an actual per-group optimum found by scoring real
+candidates against the real loss — still loses to a learned one, because a discrete sweep can only land
+*near* the optimum of a jagged, group-specific loss surface, while a gradient can walk to wherever that
+surface's minimum actually sits, group by group, without me ever having to enumerate candidates or pay
+for evaluating each one. That points away from *setting* the clip, however carefully, and toward
 *learning* it: make the clipping range a trainable quantity, per group, optimized directly against how
 much the quantized weights perturb the output. That is the degree of freedom I will spend my budget on.
 
