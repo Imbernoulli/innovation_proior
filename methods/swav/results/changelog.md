@@ -17,3 +17,6 @@
 - `methods/swav/notes/source_matrix.md:1` added the source-by-source evidence matrix covering primary, supplement, ancestors, explainer, author-side thesis, and canonical code checkout.
 - `methods/swav/notes/discovery_synthesis.md:1` added audit synthesis notes for math signs/constants, implementation faithfulness, leak/scaffold review, and fixes made.
 - `methods/swav/refs/self_accounts/search_log.md:1` documented the author self-account search and the thesis/talk sources found.
+
+## 2026-08-17 — source-value recheck
+- `results/reasoning.md`: the decisive reframe (code need not be dataset-level truth, only consistent across views) now runs through the author-side retrospective's own augmentation ablation on the clustering predecessor — 12.5% intra-class-edge purity with random-resized cropping, 3.5% with a fixed-size random-location crop, 0.9%/0.6% with the central crop only, flips worth nothing (12.5/11.1/12.4) — plus the observation that only one of k-means' two outputs (assignment, not centroids) was ever used. No factual corrections were needed; landing and code unchanged.
