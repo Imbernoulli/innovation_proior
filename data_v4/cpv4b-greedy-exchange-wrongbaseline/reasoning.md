@@ -56,6 +56,20 @@ answer. On the counterexample: `A` push 3, clock 3, `3>3`? no; `B` push 2, clock
 3, clock 2; `C` push 2, clock 4, `4>4`? no. Heap size `2`, matching the true optimum and beating the
 sweep — the repair bites on exactly the case that broke the baseline.
 
+**A second, larger hand-trace to build confidence.** Five modules `(t,d)`: `J1=(4,5)`, `J2=(3,6)`,
+`J3=(2,9)`, `J4=(6,7)`, `J5=(2,4)`. EDD order by deadline: `J5(d4), J1(d5), J2(d6), J4(d7), J3(d9)`.
+
+Heap size `3`. My brute-force oracle on this instance also says `3`, so the algorithm and the oracle
+agree on a non-trivial case. Note the two evictions: `J1` (tight deadline, biggest time so far) and
+`J4` (the longest of all) were exactly the ones the exchange discards — the plain sweep would have
+clung to `J1` and skipped both `J2` and `J4`, ending at `2`. The exchange wins by un-accepting.
+
+Two things look off, so I trace the smallest input that exposes them: a single module that *exactly*
+fits, `n = 1`, `(t,d) = (5,5)`. The right answer is `1` — it finishes at exactly `5 <= 5`. Run it:
+`clock = 0`; i=0: `clock += 5 -> 5`; `5 >= 5`? yes (with `>=`); so it tries `heap.top()` — but I have
+not pushed anything yet, the heap is **empty**, `heap.top()` is undefined behavior / a crash. Even if
+it did not crash, evicting on an exact fit is wrong: finishing *at* the deadline is on time.
+
 Three implementation details need care, and each is a spot this problem specifically invites a bug.
 The eviction comparison must be *strict*: a module that finishes exactly at its deadline ships, so I
 evict only when `clock > d`, never `clock >= d` — using `>=` would drop legitimate exact-fit modules
@@ -66,6 +80,23 @@ worst case the module I just pushed is itself the one evicted. And the sort key 
 I store each pair as `{d, t}` so the default pair comparison sorts by deadline and yields EDD
 directly. Storing `{t, d}` would sort by processing time and silently break the EDD precondition the
 whole correctness argument rests on — a bug with no visible symptom on many inputs.
+
+**A second debug episode: the sort key and the pair layout.** My initial instinct was to store
+`job[i] = {t, d}` and `sort(job.begin(), job.end())`, then read `t = job[i].first, d =
+job[i].second`. I trace why that is wrong on `(t,d)` pairs `(5,1)` and `(1,5)`: storing `{t,d}` gives
+pairs `{5,1}` and `{1,5}`; default pair-sort orders by *first* component, i.e. by **processing time**
+`1 < 5`, producing order `(1,5)` then `(5,1)`. But EDD wants order by **deadline**: `(5,1)` has
+deadline `1` and must come first. My layout sorted by the wrong field. Concretely, with the wrong
+order: `(1,5)` push1 clock1 `1>5`?no `{1}`; `(5,1)` push5 clock6 `6>1`?yes pop5 clock1 `{1}`; size
+`1`. The correct EDD order `(5,1),(1,5)`: `(5,1)` push5 clock5 `5>1`?yes pop5 clock0 `{}`; `(1,5)`
+push1 clock1 `1>5`?no `{1}`; size `1`. Same final count *here* by luck, but the sweep's clock history
+differs, and on larger instances sorting by processing time instead of deadline silently breaks the
+EDD precondition that the whole correctness argument rests on. The fix: store the **deadline first**
+in the pair (`job[i] = {d, t}`) so the default sort is EDD, and read `d = job[i].first, t =
+job[i].second`. After this, my brute-force oracle and the solution agree on hundreds of random small
+cases, which they did not before I straightened the key.
+
+**Edge cases, because this is where this kind of code dies.**
 
 The corners follow from this. `n = 0` reads cleanly, the loop never runs, the empty heap prints `0`.
 A single exact fit `(5,5)` keeps its one module (`5 > 5` is false); a single overshoot `(5,4)` pushes
