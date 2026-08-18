@@ -2,11 +2,15 @@ The contract turns on one word: a prefix `s[0..L-1]` scores only if it is a stri
 
 The mechanism I lean on: let `pi[L]` be the length of the longest *proper* border of `s[0..L-1]` (longest proper prefix that is also a suffix). The shortest period of the length-`L` prefix is `d = L - pi[L]`, and that period tiles the prefix into whole copies exactly when `d | L`. So the prefix is tiled iff
 
+I commit to the failure-function pass and treat the divisor scan as the independent checker.
+
   `d = L - pi[L]`,  `d < L`,  and  `L % d == 0`,
 
 with minimal tile length exactly `d`. On the sample `abcabcabc`: `pi[6] = 3 → d = 3`, `6 % 3 == 0` → tiled; `pi[9] = 6 → d = 3`, `9 % 3 == 0` → tiled; and `pi[7] = 4 → d = 3` with `7 % 3 ≠ 0` → *not* tiled — the border-exists-but-period-does-not-divide case, which is exactly the trap the problem is built around. Count 2, tile-sum 6, matching the given `2 6`.
 
 I index `pi` by prefix *length* `L ∈ [0, n]` rather than by 0-based position, so the period is the clean `L - pi[L]` with no `+1` fudge, and `pi[0] = pi[1] = 0` by definition. This indexing invites two off-by-ones, both fatal and both specific to this problem.
+
+Trace the *build* on `aa`. Start `k = 0`. `i = 1`: the `while` does nothing (`k = 0`); `s[0] == s[0]` is `'a' == 'a'` true, so `k++` -> `k = 1`; `pi[1] = 1`. `i = 2`: `s[1] == s[1]`? compare `s[1] == s[k] = s[1]`, `'a' == 'a'` true, `k++` -> `k = 2`; `pi[2] = 2`. So `pi = [0, 1, 2]`.
 
 The build bound. The loop that fills `pi` must run over lengths `i = 2..n`:
 
