@@ -36,6 +36,16 @@ floating point. This relation is a consistent total order, which is why a global
 optimal: with no two adjacent jobs out of order, no adjacent swap helps, and any order can be sorted
 by adjacent swaps that only ever lower the bill.
 
+**Numeric self-check of the exchange formula on a concrete pair.** I do not want to trust an
+algebra cancellation I did in my head, so I instantiate it. Take `i = (p,w) = (3,1)` and
+`j = (2,5)`, with `T = 0` for simplicity. The formula predicts
+`cost(i before j) - cost(j before i) = p[i] w[j] - p[j] w[i] = 3*5 - 2*1 = 13`, i.e. `i`-first is
+13 *more* expensive, so `j` should go first. Check directly. Order `i,j`: `i` finishes at 3 (cost
+`1*3=3`), `j` at 5 (cost `5*5=25`), pair total `28`. Order `j,i`: `j` finishes at 2 (cost `5*2=10`),
+`i` at 5 (cost `1*5=5`), pair total `15`. Difference `28 - 15 = 13`. Matches the formula exactly,
+and indeed `j`-first (`15`) is cheaper — consistent with `p/w`: `j` has ratio `2/5 = 0.4` < `i`'s
+`3/1 = 3`, so the smaller-ratio job goes first. The derivation holds.
+
 The sample `(3,1), (1,2), (2,5)` with answer `22` exercises both the key and the accumulation at once.
 Ratios `p/w` are `3`, `0.5`, `0.4`;
 ascending gives scene2, scene1, scene0. Running it: scene2 finishes at `2`, cost `5*2 = 10`; scene1
@@ -99,3 +109,8 @@ values, values near `10^9`, near-tied ratios, and exact-tie families — plus th
 sample, double-misorder, and overflow cases: zero mismatches. Timing `n = 10^5` with random near-`10^9`
 values gives `~0.06 s`, far under the 1 s limit, since the work is one `O(n log n)` sort plus an
 `O(n)` sweep. The full program is in the answer.
+
+**Final solution.** I disproved the floating comparator with a traced near-tie, disproved the 64-bit
+accumulator with a traced overflow, and confirmed the exact-integer version against an independent
+brute force on hundreds of cases. This is what I ship — sort by the exact cross-product, sum the bill
+in `__int128`.
