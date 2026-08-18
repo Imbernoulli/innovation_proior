@@ -35,6 +35,14 @@ reachable only from `0` via a `+1` hop (there is no platform `-1` for a `+2` hop
 forced and pays both tolls. The answer is `dp[n-1]` — she must finish standing on the last platform,
 and unlike a max-weight selection there is no "do nothing" alternative to fold in with a `max(..., 0)`.
 
+Let me confirm the recurrence by hand on the documented sample `t = [3, 1, 1, 9, 1, 9, 1]`, expected
+answer `6`. `dp[0] = 3`. `dp[1] = 3 + 1 = 4`. `dp[2] = t[2] + min(dp[1], dp[0]) = 1 + min(4, 3) = 4`.
+`dp[3] = t[3] + min(dp[2], dp[1]) = 9 + min(4, 4) = 13`. `dp[4] = t[4] + min(dp[3], dp[2]) =
+1 + min(13, 4) = 5`. `dp[5] = t[5] + min(dp[4], dp[3]) = 9 + min(5, 13) = 14`. `dp[6] = t[6] +
+min(dp[5], dp[4]) = 1 + min(14, 5) = 6`. Answer `dp[6] = 6`. It matches, and the cheap path threads
+through `dp[2] = 4` then `dp[4] = 5` then `dp[6] = 6`, which is exactly the `0 -> 2 -> 4 -> 6` route I
+found by hand. The recurrence is right.
+
 Against the sample `t = [3, 1, 1, 9, 1, 9, 1]`, expected `6`: `dp` runs `3, 4, 4, 13, 5, 14, 6`,
 threading `dp[2] = 4 -> dp[4] = 5 -> dp[6] = 6`, which is exactly the `0 -> 2 -> 4 -> 6` route I found
 by hand.
@@ -48,6 +56,14 @@ printed verbatim: with `t = [5, 7]` the wrong seed prints `7` for the forced `0 
 true cost is `12`. So `prev1 = t[1] + t[0]`, and the sample carry reproduces the `dp` table above,
 ending at `6`.
 
+Re-trace `n = 2`, `t = [5, 7]`: `prev2 = 5`, `prev1 = 7 + 5 = 12`, loop skipped, answer `12`. Correct.
+Re-trace the sample `t = [3, 1, 1, 9, 1, 9, 1]`: `prev2 = 3`, `prev1 = 1 + 3 = 4`. `i=2`:
+`cur = 1 + min(4, 3) = 4`; now `prev2 = 4, prev1 = 4`. `i=3`: `cur = 9 + min(4, 4) = 13`;
+`prev2 = 4, prev1 = 13`. `i=4`: `cur = 1 + min(13, 4) = 5`; `prev2 = 13, prev1 = 5`. `i=5`:
+`cur = 9 + min(5, 13) = 14`; `prev2 = 5, prev1 = 14`. `i=6`: `cur = 1 + min(14, 5) = 6`;
+`prev2 = 14, prev1 = 6`. Answer `6`. Correct, and it matches the by-hand `dp` table exactly. The case
+that broke now passes, and it broke for precisely the reason I fixed — that is the evidence I trust.
+
 The carry indexes `t[0]` and `t[1]` unconditionally, so `n = 0` and `n = 1` would read past the end of
 the vector. Both need an early guard, after the read and before the carry: `n = 0` prints `0` (no
 platforms, nothing paid), `n = 1` prints `t[0]` (a single platform that is both start and finish). At
@@ -58,4 +74,3 @@ One more edge pins the recurrence's flavor: `n = 3`, `t = [0, 10^9, 0]` gives
 analogue of the greedy trap. All tolls being non-negative, there is no sentinel or `-infinity` in the
 recurrence for `min` to mishandle. Reading with `cin >>` consumes arbitrary whitespace, so `n` and the
 tolls may be split across lines however the input pleases. The full module is in the answer.
-
