@@ -53,8 +53,12 @@ Casting one operand promotes the whole multiplication to 128-bit, so `g_lo * p =
 
 There is a quieter overflow in the count itself. With all-equal gains, `n = 2*10^5`, `p = q = 1`, every pair is balanced and the answer is `C(n, 2) = 200000 * 199999 / 2 = 19999900000 ~ 2*10^10`, past the 32-bit ceiling. Each `count += (j - lo)` adds a small `int`, but the running total climbs to `~2*10^10`, so `count` must be `long long` — which it is.
 
+**Edge cases, because this is where this kind of code dies.**
+
 The corners this problem invites: `n = 0` and `n = 1` read fine and give `0` (no pair; the loop body never fires). All-equal gains with `p >= q` make every pair balanced (`g*q <= g*p` reduces to `q <= p`) — the `C(n,2)` count case above. `p = q` with distinct gains admits only equal-gain pairs, so `0`. On-threshold pairs (ratio exactly `p/q`, like `{4,10}`) are counted by `<=` on exact products — the case a `double` test misrounds. And a maximal-magnitude pair with both gains and `p, q` near `4*10^9` is exactly the `1.6*10^19` cross-product that needs `__int128`.
 
 I cross-check against an independent `O(n^2)` oracle that compares each pair with exact rationals (`Fraction(hi, lo) <= Fraction(p, q)`) — a different mechanism entirely, no cross-multiplication of my own. A generator mixes three regimes: a *tight* mode with a small value alphabet and small `p/q` so many ratios land exactly on the bound (the misround trap), a *wide* mode with values and `p, q` up to `4*10^9` so cross-products hit `1.6*10^19` (the overflow trap), and a medium mixed regime. Across hundreds of random small cases the two-pointer solution and the rational oracle agree with zero mismatches.
 
 What ships is one self-contained file: read into `long long`, sort, two-pointer sweep with the cross-products in `__int128` and the count in `long long`. The full module is in the answer.
+
+**Final solution.** I disproved floating point by reasoning about mantissa width, disproved `long long` products by *constructing and running* a case where one product wraps negative and flips the count, and confirmed the fix and corners against an exact-rational oracle. What I ship is one self-contained file: sort, two-pointer sweep, cross-products in `__int128`, count in `long long`.
