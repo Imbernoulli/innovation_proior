@@ -16,6 +16,10 @@ activity-selection problem, and it is tempting here because I have to sort by en
 alternative anyway, so it feels free. But it maximizes the *count* of intervals chosen, and here I
 am paid by weight. Before trusting that those two objectives coincide, I try to break it.
 
+**Stress-testing greedy before committing.** Hand-waving "greedy probably generalizes" is exactly
+how wrong solutions get shipped, so let me actually attack it with a concrete instance. Here is the
+cleanest two-interval counterexample I can build.
+
 The cleanest break is two intervals: `A = [0,1) w=1` and `B = [0,100) w=1000`. Sorted by end,
 greedy meets `A` first, takes it (total `1`), then finds `B` starting at `0` inside `[0,1)` and
 rejects it — answer `1`, against the obvious optimum of `B` alone for `1000`. Off by a factor of a
@@ -71,6 +75,17 @@ one end `<= 5` (the `5` from `[0,5)`), so `take = 6 + best[1] = 11` beats `skip 
 is exactly where the half-open `<=` earns its keep — `[0,5)` ends at `5`, `[5,9)` starts at `5`,
 they touch, and the `<=` lets them coexist for `5 + 6 = 11`. A `<` there would forbid the pair and
 report the wrong answer. Final `best[4] = 11`, matching the expected output.
+
+This invariant ("`lo` is the count of qualifying ends, and `best[lo]` is the DP value over that
+prefix") is the same number whether I think of it as a count or a one-based table index, so the two
+readings that collided before now coincide by construction. Re-trace the three-interval case,
+`i=2`, `s=2`, over `ends[0..1]=[2,4]`: `lo=0,hi=2`; `mid=1`, `ends[1]=4 > 2` -> `hi=1`; `lo=0,hi=1`;
+`mid=0`, `ends[0]=2 <= 2` -> `lo=1`; loop ends, `lo=1`. `take = 5 + best[1] = 5 + 5 = 10`. Correct,
+and now for a structural reason rather than a lucky one. Re-trace the touching pair `[0,5)/[5,9)`:
+`i=1`, `s=5`, `ends[0..0]=[5]`: `mid=0`, `5 <= 5` -> `lo=1`; `take = 7 + best[1] = 7 + 10 = 17`.
+Correct.
+
+**Edge cases, because this is where this kind of code dies.**
 
 A few corners the recurrence still has to survive. `n = 0`: the read of `n` succeeds, both loops run
 zero times, and I print `best[0] = 0`. The nested case is the interesting one — `[0,100) w50`
