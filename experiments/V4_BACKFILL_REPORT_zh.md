@@ -217,6 +217,15 @@ OLD 的交卷段是两句"我说服了我自己"+ 一句真交卷。前者删掉
 | 自查密度 broad 中位（20 单元） | 0.65 | **1.63** | ↑ 2.5× |
 | 自查密度 broad 中位（全 347） | 0.78 | **0.81** | ↑（只动了 20/346） |
 
+### 7.1b 残留的局部冗余（唯一一处需要人眼的质量代价）
+
+阈值判 MISSING 是按**逐字 + 具体值**两个信号，抓不到"换了一个例子讲同一件事"的语义重复。pilot 里看到一处：
+`fcs-p2-21` 回填的 `**Stress-testing the tempting greedy before committing.**`（用 `(6,6,10)/(5,9,9)/(4,8,8)` 立靶）
+紧挨着 HEAD 既有的 `**Breaking the tempting greedy.**`（用样例立靶）——两段都完整、都成立，但连着读有点重复。
+
+量化：剩余 614 条待插入段里，与其相邻 HEAD 段的 4-gram 重合 ≥0.30 的只有 **1 条**（`fcs-ge-03` ship，0.36）。
+**逐字重复基本没有；语义重复需要人眼或一次 LLM 过审才能清干净**，这是全量 apply 前唯一建议加的一道人工抽检。
+
 ### 7.2 decontam / verbatim-code 闸
 
 `sft/build_sft.py`（`INNOVATION_DECONTAM=1`，输出改到 scratchpad 以免覆盖 `sft/` 产物）：
