@@ -44,6 +44,15 @@ bare), and `dp[i] >= dp[i-2L] + 2L` whenever `s[i-2L..i)` is a square. Base `dp[
 that value stalls through `dp[3]` and `dp[4]`, and at `dp[5]` the halves `s[1..3)="ab"` and
 `s[3..5)="ab"` match, giving `dp[1] + 4 = 4` — the coverage that beat greedy.
 
+The answer is `dp[n]`. Base case `dp[0] = 0` (empty prefix). Let me sanity-check the recurrence on
+the sample `s = "aabab"`, expected `4`. `dp[0]=0`. `dp[1]`: `2L<=1` impossible, so `dp[1]=dp[0]=0`.
+`dp[2]`: inherit `dp[1]=0`; `L=1` square `s[0..1)`=`a` vs `s[1..2)`=`a` equal -> `dp[0]+2=2`. So
+`dp[2]=2`. `dp[3]`: inherit `dp[2]=2`; `L=1` `s[1..2)`=`a` vs `s[2..3)`=`b` no. `dp[3]=2`. `dp[4]`:
+inherit `dp[3]=2`; `L=1` `s[2..3)`=`b` vs `s[3..4)`=`a` no; `L=2` `s[0..2)`=`aa` vs `s[2..4)`=`ba` no.
+`dp[4]=2`. `dp[5]`: inherit `dp[4]=2`; `L=1` `s[3..4)`=`a` vs `s[4..5)`=`b` no; `L=2` `s[1..3)`=`ab`
+vs `s[3..5)`=`ab` equal -> `dp[1]+4 = 0+4 = 4`. So `dp[5]=4`. Answer `4`. The recurrence reproduces
+the value that beat greedy. Good.
+
 The DP needs `sub(l,r)` = hash of `s[l..r)` in `O(1)`. I use prefix hashes `h[i]` = hash of
 `s[0..i)` and powers `pw[k] = base^k`, all modulo the Mersenne prime `2^61-1` so reduction is a
 shift-and-add: `h[i+1] = h[i]*base + (s[i]+1)`, and `sub(l,r) = h[r] - h[l]*base^{r-l}`. The trap
@@ -55,6 +64,35 @@ miscount. The fix is to bias positive before subtracting: with `x = mulmod(h[l],
 form `res = h[r] + MOD - x`, which lies in `[1, 2*MOD)`, then subtract `MOD` once if needed. The
 `mulmod` for this modulus multiplies into a `__uint128_t` and reduces by `(c & MOD) + (c >> 61)` —
 congruent because `2^61 ≡ 1 (mod 2^61-1)` — with one conditional subtraction to finish.
+
+Let me trace it on the very string the DP needs to get right, `s = "aabab"`, specifically the
+make-or-break test at `dp[5]`: is `s[1..3)` ("ab") equal to `s[3..5)` ("ab")? They are literally
+equal, so `sub(1,3)` must equal `sub(3,5)`. Pick a tiny concrete base to trace, `base = 4`, and map
+`a=1, b=2` (i.e. `s[i]+1` with `a->1`... actually `'a'+1` numerically, but for a hand-trace the
+*relative* values are what matter, so let me use `a=1, b=2`). Prefix hashes with `base=4`:
+`h[0]=0`; `h[1]=0*4+1=1` (a); `h[2]=1*4+1=5` (a); `h[3]=5*4+2=22` (b); `h[4]=22*4+1=89` (a);
+`h[5]=89*4+2=358` (b). Powers: `pw[0]=1, pw[1]=4, pw[2]=16`.
+
+**The first bug — the subtraction underflows under the modulus.** The hand-trace above never went
+negative because I used small integers, but the real code reduces every `h` modulo `MOD`, and then
+`h[r] - x` is computed in *unsigned* 64-bit arithmetic where `h[r]` can be the *smaller* of the two.
+Concretely, suppose after reduction `h[r] = 5` and `x = mulmod(h[l], pw[r-l]) = MOD - 3` (a perfectly
+possible reduced value). Then `h[r] - x = 5 - (MOD-3)` in unsigned arithmetic wraps around to a giant
+number near `2^64`, and `res % MOD` of that giant wrapped value is *not* the true residue
+`(5 - (MOD-3)) mod MOD = 8`. The unsigned wrap happens at `2^64`, but my modulus is `2^61-1`, so the
+wrapped value modulo `MOD` is garbage. So two genuinely equal substrings could be declared unequal,
+or worse, two unequal ones equal, and the DP silently computes the wrong coverage. The fix is the
+standard one: add `MOD` before subtracting so the operand is non-negative, `res = h[r] + MOD - x`,
+then conditionally subtract `MOD` once. And `h[l]` is `< MOD` and `pw[...]` reduced, so
+`x = mulmod(...) < MOD`, which means `h[r] + MOD - x` lies in `[1, 2*MOD)` and a single `if (res >=
+MOD) res -= MOD;` normalizes it without a `%`.
+
+Re-trace `s = "aaaa"`: `dp[2]`: `L=1,j=0`, `sub(0,1)`="a" vs `sub(1,2)`="a" equal -> `dp[0]+2=2`, so
+`dp[2]=2`. `dp[3]`: inherit `2`; `L=1,j=1` `sub(1,2)` vs `sub(2,3)` equal -> `dp[1]+2=0+2=2`; so
+`dp[3]=2`. `dp[4]`: inherit `2`; `L=1,j=2` `sub(2,3)` vs `sub(3,4)` equal -> `dp[2]+2=2+2=4`;
+`L=2,j=0` `sub(0,2)`="aa" vs `sub(2,4)`="aa" equal -> `dp[0]+4=0+4=4`. So `dp[4]=4`. Answer `4`.
+Correct. The compiled build now prints `4` on `aaaa`, and still `4` on `aabab`. The two cases that
+broke now pass, and they broke for exactly the reasons I fixed — that is the evidence I trust.
 
 The square test has one index that is easy to slip on: a square of length `2L` ending at `i` starts
 at `j = i - 2L`, with halves `s[j..j+L)` and `s[j+L..i)`, *both* of length `L`. The second half must
