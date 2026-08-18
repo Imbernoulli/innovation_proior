@@ -14,6 +14,9 @@ times ~37 search steps times `2*10^5` is under `4*10^8` cheap operations, comfor
 The naive `R(m) = sum_{a=1}^{m} floor(m/a)` (shelf `a` admits bins `1..floor(m/a)`) is
 `O(m) ~ 4*10^10` per call — hopeless — so getting the sublinear form right is the entire job.
 
+I will use the hyperbola identity for speed, but I refuse to trust the correction term until a brute
+oracle confirms it on concrete numbers.
+
 The sublinear form is the hyperbola count. Let `s = floor(sqrt(m))`.
 Region A is the points with `a <= s`: for each such `a` the admissible `b` are `1..floor(m/a)`, giving
 `sum_{a=1}^{s} floor(m/a)`. Region B, the points with `b <= s`, is identical by the `a<->b` symmetry.
@@ -39,11 +42,26 @@ The separation appears the instant `s` reaches 2, at `m = 4`: the definition giv
 while `-s` gives `2*(4+2) - 2 = 10` and is exposed. So `-s*s` it is; I'll cross-check it against the
 plain definition over the first few thousand `m` rather than trust one hand computation.
 
+`m = 2`: definition `floor(2/1)+floor(2/2) = 2 + 1 = 3`, so `R(2) = 3`. `s = 1`. Correct:
+`2*floor(2/1) - 1 = 4 - 1 = 3`. Match. Wrong: `2*2 - 1 = 3`. Also match. Still no separation.
+
+`m = 4`: now `s = 2`, so `s*s = 4` but `s = 2` — they finally differ. Definition:
+`floor(4/1)+floor(4/2)+floor(4/3)+floor(4/4) = 4 + 2 + 1 + 1 = 8`, so `R(4) = 8`. Correct form:
+`2*(floor(4/1)+floor(4/2)) - s*s = 2*(4 + 2) - 4 = 12 - 4 = 8`. **Match.** Wrong form:
+`2*(4+2) - s = 12 - 2 = 10`. **`10 != 8` — the wrong form is exposed.**
+
 One more dependency: `s` must be *exactly* `floor(sqrt(m))`. If a floating `sqrtl` rounds up on a
 near-square `m`, then `s*s` exceeds `m`, the overlap block picks up pairs with `a*b > m`, and the
 count is wrong. A `long double` mantissa has room at `m ~ 4*10^10`, but a near-square can still round
 the wrong way, so I pin `s` exactly: `r = (long long)sqrtl(m)`, then decrement while `r*r > m` and
 increment while `(r+1)^2 <= m`. Those products, `~4*10^10` at `r ~ 2*10^5`, stay well inside 64-bit.
+
+I trace `m = 100` because it is small enough to cross-check yet large enough to have `s = 10`.
+`s = floor(sqrt(100)) = 10`. The loop sums `floor(100/i)` for `i = 1..10`:
+`100, 50, 33, 25, 20, 16, 14, 12, 11, 10`. Adding: `100+50=150`, `+33=183`, `+25=208`, `+20=228`,
+`+16=244`, `+14=258`, `+12=270`, `+11=281`, `+10=291`. So `acc = 291`. Then
+`R(100) = 2*291 - 10*10 = 582 - 100 = 482`. Let me confirm against the divisor-summatory meaning:
+`sum_{t=1..100} d(t)` is a known value, `482`. It matches. The predicate is correct on this case.
 
 Now the search. My first instinct writes it as
 
