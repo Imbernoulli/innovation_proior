@@ -59,6 +59,43 @@ compare the cross-multiplied integers `t[i]*w[j]` against `t[j]*w[i]`, never the
 violate that same ordering contract. The products are at most `10^4 * 10^4 = 10^8`, nowhere near the
 64-bit limit, so cross-multiplication is exact and safe.
 
+**A trace that exposes a real bug.** Before trusting it, I check the comparator's contract on a
+tie, because that is where this exact pattern dies. Take two jobs with the *same ratio*:
+`P = (t=2, w=1)` and `Q = (t=4, w=2)` (both ratio 2). Evaluate the lambda both ways.
+`cmp(P,Q): t[P]*w[Q] < t[Q]*w[P]` is `2*2 < 4*1` -> `4 < 4` -> false. `cmp(Q,P): t[Q]*w[P] <
+t[P]*w[Q]` is `4*1 < 2*2` -> `4 < 4` -> false. So far so good — on this pair the comparator says
+"neither strictly precedes", which is the correct behavior for equivalent elements. So the strict
+`<` is not *itself* the bug. But I have to be careful about what `std::sort` does with equivalent
+elements: it may place them in either relative order, and that is fine *for the cost* (ties are
+cost-invariant, as I proved). The subtle defect I want to rule out is a different one: if I had
+written the comparator as `t[i]*w[j] <= t[j]*w[i]` — using `<=` because "ascending" felt like it
+wanted `<=` — then on the tie `cmp(P,Q)` is `4 <= 4` -> true *and* `cmp(Q,P)` is `4 <= 4` -> true.
+Both true means the comparator claims `P < Q` and `Q < P` simultaneously: not a strict weak
+ordering, undefined behavior, potential crash or scrambled output on inputs with many equal ratios.
+The fix is to keep the comparator strict (`<`), and, so the order is fully deterministic rather than
+implementation-defined on ties, break ties explicitly by index. I rewrite the lambda.
+
+**Edge cases, because this is where this kind of code dies.**
+
+- `n = 0`: the read of `n` succeeds, the loops never run, `cost` stays `0`, I print `0`. The empty
+  schedule has cost 0 — correct. (If the input is entirely empty so even `n` fails to read, the
+  `if (!(cin >> n)) return 0;` prints nothing; per the contract `n` is always present, but this is a
+  safe no-op.)
+- `n = 1`, job `(7, 9)`: one completion time `7`, cost `9*7 = 63`. The single-element schedule is
+  forced; correct.
+- All weights equal: the comparator reduces to `t[i] < t[j]`, i.e. shortest-job-first, which is the
+  known optimum for the unweighted sum. The general key degenerates correctly.
+- All processing times equal: the comparator reduces to `w[i] < w[j]`... let me check the direction.
+  With `t[i]=t[j]=t`, `t[i]*w[j] < t[j]*w[i]` is `t*w[j] < t*w[i]` i.e. `w[j] < w[i]`, so `i` comes
+  before `j` when `w[i] > w[j]` — heaviest first. Correct: with equal lengths, the heaviest job
+  should finish earliest.
+- Overflow: the running `clock` reaches at most `2*10^5 * 10^4 = 2*10^9`, and each
+  `cost += w[i]*clock` adds at most `10^4 * 2*10^9 = 2*10^13`, with the total bounded by `~2*10^18`
+  — inside signed 64-bit. The comparator's products are at most `10^8`. All `long long`; no overflow
+  anywhere.
+- Output: exactly one integer and a newline; `cin >>` skips arbitrary whitespace so the parsing is
+  format-agnostic between the "lines" and "flat token stream" readings of the input.
+
 That fixes the comparator and the one-pass accumulation behind it:
 
 ```cpp
@@ -85,3 +122,5 @@ and plain random values, plus the empty/single/equal-weight/equal-time corners, 
 brute minimum every time, including the `34`-vs-`25` instance that motivated the whole design.
 `O(n log n)` on `n = 2*10^5` is comfortably under the one-second limit. The full self-contained
 program is in the answer.
+
+**Final solution.** That is what I ship — one self-contained file, the `O(n log n)` sort I can defend by the exchange argument rather than the greedy single keys I broke.
