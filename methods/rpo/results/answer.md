@@ -42,8 +42,11 @@ one added line and zero new parameters.
 ## Hyperparameters
 
 - `rpo_alpha = 0.5` — half-width of the uniform mean perturbation, in action units. `alpha = 0`
-  recovers PPO exactly; very large `alpha` drowns the gradient signal. `0.5` is the robust default; a
-  few environments do better with a much smaller `alpha` (near-PPO behavior).
+  recovers PPO exactly; very large `alpha` drowns the gradient signal. `0.5` is the robust default
+  across most of the suite, but on tasks whose reward punishes ever leaving a narrow good region
+  (precise reaching, staying upright without falling) it can collapse well below PPO rather than
+  merely underperform; dropping to a much smaller `alpha` (e.g. `0.01`) on exactly those tasks
+  restores at-or-above-PPO performance.
 - Everything else is PPO: clip `eps = 0.2`, GAE `lambda = 0.95`, `gamma = 0.99`, K update epochs,
   per-minibatch advantage normalization, clipped value loss, Adam `eps = 1e-5`, LR anneal,
   grad-norm clip `0.5`.
