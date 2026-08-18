@@ -22,13 +22,26 @@ The next worker to place is `i = popcount(mask)`, implied by the mask — which 
 
 Base `dp[0] = 0`; answer `dp[(1<<n) - 1]`. Optimal substructure gives correctness: an optimal assignment, restricted to its first `k` workers, must itself optimally cover the task set those workers use — otherwise swapping in a cheaper sub-assignment over the *same* task set (still a valid completion) would lower the total, a contradiction. Every subset of every size and every legal next-worker transition is enumerated, so `dp[full]` is the true minimum over all `n!` permutations.
 
+**Confirming the recurrence by hand on the sample.** Matrix above, `n = 3`. `dp[000] = 0`, worker 0 next.
+- From `000` (worker 0): `dp[001] = cost[0][0] = 0`; `dp[010] = cost[0][1] = 6`; `dp[100] = cost[0][2] = 3`.
+- From `001` (popcount 1 -> worker 1): tasks 1,2 free. `dp[011] = 0 + cost[1][1] = 0 + 0 = 0`; `dp[101] = 0 + cost[1][2] = 0 + 8 = 8`.
+- From `010` (worker 1): tasks 0,2 free. `dp[011] = min(0, 6 + cost[1][0]=6) = min(0,12)=0`; `dp[110] = 6 + cost[1][2] = 6 + 8 = 14`.
+- From `100` (worker 1): tasks 0,1 free. `dp[101] = min(8, 3 + cost[1][0]=6) = min(8,9)=8`; `dp[110] = min(14, 3 + cost[1][1]=0) = min(14,3)=3`.
+- From `011` (popcount 2 -> worker 2): task 2 free. `dp[111] = 0 + cost[2][2] = 0 + 7 = 7`.
+- From `101` (worker 2): task 1 free. `dp[111] = min(7, 8 + cost[2][1]=7) = min(7,15)=7`.
+- From `110` (worker 2): task 0 free. `dp[111] = min(7, 3 + cost[2][0]=3) = min(7, 6) = 6`.
+
 The cost is affordable: `2^18 = 262144` states times up to `18` transitions is `~4.7*10^6` operations, comfortably under 2 s, and `dp` is one `long long` per state, `2 MB` against a 256 MB limit.
 
 I iterate `mask` upward and push into the strictly larger `mask | (1<<j)`. That order is valid because every one-bit-removed subset is numerically smaller, so `dp[mask]` is already finalized when I read it. With a complete cost matrix every subset is in fact reachable, so no `dp[mask]` is ever `INF` at read time — but I still guard `if (dp[mask] == INF) continue;` so the sentinel never has a cost added to it (which would both write a bogus finite value into an unreachable state and risk overflow), and `if (popcount(mask) >= n) continue;` so `cost[i][j]` is never indexed at the nonexistent worker `i = n`. Both guards cost nothing and close those failure classes outright rather than leaving correctness resting on reachability luck.
 
 Tracing the `n=3` sample, the DP lands on `6` via `dp[110]` (workers 0,1 on tasks 2,1) then worker 2 onto task 0 — the exact assignment greedy could not reach. On `n=2`, `cost=[[-5,2],[3,-1]]`, it gives `min(-5-1, 2+3) = -6`: the recurrence assumes nothing about sign, so the contract's negative costs are handled directly, with none of the non-negativity fuss some Hungarian setups want.
 
+Trace. `dp[00]=0`, rest `INF = LLONG_MAX/4`. `mask=00`, `i=0`: `dp[01]=min(INF, 0+cost[0][0]=5)=5`; `dp[10]=min(INF,0+cost[0][1]=3)=3`. `mask=01`, `i=1`: task 1 free -> `dp[11]=min(INF, dp[01]+cost[1][1]=5+9=14)=14`. `mask=10`, `i=1`: task 0 free -> `dp[11]=min(14, dp[10]+cost[1][0]=3+4=7)=7`. `mask=11`, `i=2`: loop body skips (no free task). Answer `dp[11]=7`. Correct *here* — but only because every mask happened to be reachable at `n=2`. The INF guard was never exercised.
+
 The remaining corners fall out cleanly. `n = 0`: `dp[(1<<0)-1] = dp[0] = 0` already, but I add an explicit early print so I never reason about `vector<long long>(1<<0)`. `n = 1`: the lone worker takes the lone task at whatever cost — assignment has no "skip" option, so a negative single cell is correct, not something to floor at zero. All-equal matrices give `n*v` for every permutation, and ties are order-independent under compare-and-store. `INF = LLONG_MAX/4` is only ever read as a guard, never accumulated into, so it cannot overflow.
+
+Re-trace `n=2`, `cost=[[5,3],[4,9]]`: identical to before because all masks are reachable, and I still land on `7`. Re-trace a case with a negative cost, `n=2`, `cost=[[-5,2],[3,-1]]`, answer `min(-5+-1, 2+3)=min(-6,5)=-6`: `dp[01]=-5`, `dp[10]=2`; `dp[11]` via `01`: `-5+(-1)=-6`; via `10`: `2+3=5`; `min=-6`. Correct — and confirms the DP needs no non-negativity assumption (unlike some greedy/Hungarian setups), which is good because the contract allows negative costs. The guards changed no answer on reachable instances and removed the overflow class; that is the evidence I trust.
 
 For the code I lean on a differential test against an independent oracle that enumerates all `n!` permutations directly — a different method, so agreement is real evidence — over 700 cases: random small matrices (`n <= 8`, so `8!` stays instant for the oracle), plus the greedy-killer, all-equal, negative-cost, forced-cheap-cell, and `n=0`/`n=1` families. Zero mismatches, and a direct `n=18` run finished in about 0.02 s, far under the limit.
 
