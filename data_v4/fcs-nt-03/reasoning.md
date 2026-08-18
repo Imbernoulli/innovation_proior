@@ -21,6 +21,8 @@ The large values each occur at a single small `i`, while the small values repeat
 
 I could chase down each constant run explicitly, but the geometry hands me something cleaner and symmetric: the Dirichlet hyperbola method. `D(n)` is the number of lattice points `(a, b)` with `a, b >= 1` and `a * b <= n` — each `k <= n` contributes one point per factorization `k = a*b`, i.e. `d(k)` points. That region is symmetric across `a = b`. Let `s = floor(sqrt(n))`. The vertical strip `a <= s` under the hyperbola holds `T = sum_{a=1}^{s} floor(n/a)` points (for each `a`, the partners are `b = 1 .. floor(n/a)`). By the `a <-> b` symmetry the horizontal strip `b <= s` holds the same `T`. Their union is the entire region; their overlap is exactly the points with both `a <= s` and `b <= s`, and since `a, b <= s` forces `a*b <= s*s <= n`, that overlap is the full `s × s` square. Inclusion–exclusion gives
 
+That is the formula. It evaluates `D(n)` in `O(sqrt(n))` time and `O(1)` memory — exactly the `2 * 10^6`-iteration loop the structure promised, with no array and no per-block bookkeeping. Let me verify it on `n = 6`. `s = floor(sqrt(6)) = 2`. `T = floor(6/1) + floor(6/2) = 6 + 3 = 9`. `D(6) = 2 * 9 - 2*2 = 18 - 4 = 14`. Matches the hand computation. One more, `n = 10`: `s = 3`, `T = 10 + 5 + 3 = 18`, `D = 36 - 9 = 27`. Brute (sieve) on `1..10` gives `1+2+2+3+2+4+2+4+3+4 = 27`. Matches. I am convinced the math is right.
+
 ```
 D(n) = 2 * T - s*s,    T = sum_{i=1}^{s} floor(n / i),    s = floor(sqrt(n)).
 ```
