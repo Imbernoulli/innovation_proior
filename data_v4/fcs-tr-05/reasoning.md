@@ -12,6 +12,12 @@ One structural hazard from the constraints: a degenerate chain has depth `2*10^5
 
 With the pieces built, the worked sample (tree `1-2`, `1-3`, `2-4`; values `[5,3,6,1]`) gives `15, 8, 0` — correct — but a random differential test against a brute oracle flags a mismatch, minimized to a star: center `1`, leaves `2,3,4`, two XORs routed through the center, then a query walking the center comes back too large. The path walk itself is fine — on the star, `pathSum(2,3)` handles the two length-1 light chains and closes on the center at `posIn[1]`, summing to `v[2]+v[3]+v[1]` — so the fault is inside the segment tree, in the recombination. My first `updateRange` folds `sumv` back up from the children but not `cntBit`:
 
+**Diagnosing the bug.** I traced `pathXor` and `pathSum` against the chain layout. The center `1` is the root and the head of its own chain; leaves `2,3,4` are each light children, so each is its own one-node chain with `chainHead[leaf] = leaf`. For `pathSum(2, 3)`: `chainHead[2]=2 != chainHead[3]=3`, so I compare `depth_[chainHead[2]]` vs `depth_[chainHead[3]]` — both leaves at depth 1 — and (because `<` is strict) I do **not** swap; I take the block for `head = chainHead[u] = 2`, add `segQuery(posIn[2], posIn[2])`, and set `u = parent_[2] = 1`. Next loop: `chainHead[1]=1 != chainHead[3]=3`; `depth_[1]=0 < depth_[3]... ` wait — `chainHead[u]` is now `1` with depth 0, `chainHead[v]=3` with depth 1, so `depth_[chainHead[u]] < depth_[chainHead[v]]` is true, I swap, take head `3`, add `segQuery(posIn[3], posIn[3])`, set the (swapped) `u = parent_[3] = 1`. Now both are node `1`, the loop ends, and the final `segQuery(posIn[1], posIn[1])` adds the center. Total `v[2]+v[3]+v[1]` — correct.
+
+I re-ran the minimized star case: now the post-center XOR computes its delta from a correct `cntBit`, and the query returns the brute value. Then I re-ran the broader differential test. The reason I trust the fix is that the failure had a precise mechanism — stale internal bit-counts feeding a later flip — and the fix restores exactly the invariant that mechanism violated: *every node's `cntBit` always equals the true set-bit counts of its range*. The sum cache is derived from counts, so keeping counts correct keeps sums correct through arbitrarily many overlapping XORs.
+
+**Edge cases, because this is where this kind of code dies.**
+
 ```
 sumv[node] = sumv[2*node] + sumv[2*node+1];
 // cntBit recombination missing here
