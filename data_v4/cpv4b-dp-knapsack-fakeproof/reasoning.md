@@ -42,6 +42,31 @@ and then `m=2` reads that just-updated `2` into `dp[2][0]`, returning `3` — a 
 Descending keeps `dp[1][0]` at its pre-shard-1 value when `m=2` reads it, and `dp[2][0]` lands at `1`.
 Downward it is.
 
+Let me confirm the recurrence by hand on the sample: `n = 4`, `W = 5`, `M = 3`, `q = 2`, shards
+`(2,1), (3,2), (2,0), (1,1)` (already reduced mod 3). I will track only the cells that ever become
+nonzero. Start: `dp[0][0] = 1`. Shard 0 `(wi=2, pi=1)`: for `m = 2`, `dp[2][(0+1)%3] = dp[2][1] +=
+dp[0][0] = 1`. Now nonzero cells: `dp[0][0]=1`, `dp[2][1]=1`. Shard 1 `(wi=3, pi=2)`: descend `m` from 5.
+`m=5`: `dp[5][(1+2)%3]=dp[5][0] += dp[2][1] = 1`. `m=3`: `dp[3][(0+2)%3]=dp[3][2] += dp[0][0] = 1`. Now:
+`dp[0][0]=1`, `dp[2][1]=1`, `dp[3][2]=1`, `dp[5][0]=1`. Shard 2 `(wi=2, pi=0)`: descend. `m=5`:
+`dp[5][(2+0)%3]=dp[5][2] += dp[3][2] = 1`. `m=4`: `dp[4][(1+0)%3]=dp[4][1] += dp[2][1] = 1`. `m=2`:
+`dp[2][(0+0)%3]=dp[2][0] += dp[0][0] = 1`. Now nonzero: `dp[0][0]=1, dp[2][1]=1, dp[2][0]=1, dp[3][2]=1,
+dp[4][1]=1, dp[5][0]=1, dp[5][2]=1`. Shard 3 `(wi=1, pi=1)`: descend. `m=5`: `dp[5][(1+1)%3]=dp[5][2] +=
+dp[4][1] = 1+1 = 2`. `m=4`: `dp[4][(2+1)%3]=dp[4][0] += dp[3][2] = 1`. `m=3`: `dp[3][(1+1)%3]=dp[3][2] +=
+dp[2][1] = 1+1 = 2`; also `dp[3][(0+1)%3]=dp[3][1] += dp[2][0] = 1`. `m=1`: `dp[1][(0+1)%3]=dp[1][1] +=
+dp[0][0] = 1`. The answer cell is `dp[W][q] = dp[5][2]`, which is now `2`. That matches the expected
+sample answer of `2`, and the two contributions to `dp[5][2]` are exactly the two subsets named in the
+statement. The recurrence is right.
+
+**Diagnosing and fixing the second bug.** Two coupled facts make the single subtraction correct: I must
+reduce `pi = p[i] % M` *before* the loop, so `0 <= pi < M`, and then `0 <= ph < M` guarantees `ph + pi <
+2M`, so exactly one conditional subtraction normalizes the residue back into `[0, M)`. I add the
+reduction (`int pi = p[i] % M;`) and keep the single-subtraction wrap. Re-trace the two-shard case
+`(2,5),(2,5)`, `W=4`, `M=3`, `q=1`, now with `pi = 5 % 3 = 2`. `dp[0][0]=1`. Shard 0 descend: `m=2`:
+`nph = 0 + 2 = 2`, no subtract, `dp[2][2] += dp[0][0] = 1`. Shard 1 descend: `m=4`: `nph = 2 + 2 = 4 >=
+3 -> 1`, `dp[4][1] += dp[2][2] = 1`; `m=2`: `nph = 0 + 2 = 2`, `dp[2][2] += dp[0][0] = 1+1 = 2`. Answer
+`dp[4][1] = 1`. Correct, no out-of-bounds, residue `10 mod 3 = 1` recovered exactly. The phase axis is
+now sound for phases up to `10^9`.
+
 The residue arithmetic is the other place this problem sets a trap, and it comes straight from `p[i] <=
 10^9`. I want the wrap `(r + pi) mod M` to be a single conditional subtraction, `nph = ph + pi; if (nph
 >= M) nph -= M;`. That is valid *only* when `pi < M`: then `ph + pi < 2M` and one subtraction lands back
@@ -65,3 +90,11 @@ Cost: the table is `(W+1) * M <= 2001 * 200 ≈ 4·10^5` longs (~3.2 MB), and th
 and the `if (v == 0) continue;` skip over empty source cells only helps. That is what I ship: one
 self-contained C++ file, the coupled `O(n*W*M)` counting knapsack with the mass loop descending and the
 phase reduced before the single-subtraction wrap. The full program is in the answer.
+
+**Final solution.** I disproved the tempting "residues are uniform, answer = C/M" closed form by
+enumerating one small case (residues `0,1,2` got counts `1,1,0`, not `2/3` each), so I committed to the
+coupled `dp[mass][residue]` table; I checked its recurrence by hand on the sample reaching `dp[5][2]=2`;
+a trace of `[(1,0),(1,0)]` returning the illegal `3` exposed forward mass-iteration double-welding a
+shard, fixed by descending; and a trace of `[(2,5),(2,5)]` exposed the missing `p[i] % M` reduction
+blowing past the residue array, fixed by reducing the phase before the single-subtraction wrap. That is
+what I ship — one self-contained file, the `O(n*W*M)` two-dimensional counting knapsack I can defend.
