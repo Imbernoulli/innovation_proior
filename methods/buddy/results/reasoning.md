@@ -79,13 +79,27 @@ intersection size — and the sketch sizes are fixed constants independent of gr
 precision/cost knob.
 
 This makes the per-node primitive concrete. Give each node u an initial sketch pair (m_u^{(0)},
-h_u^{(0)}) — the MinHash and HyperLogLog of the singleton {u}. The d-hop neighborhood decomposes as
-N_d(u) = ∪_{v ∈ N(u)} N_{d−1}(v), a union over neighbors. Since I just verified that MinHash-of-union is
-elementwise min and HLL-of-union is elementwise max, applying that to this recurrence gives
-m_u^{(d)} = min_{v ∈ N(u)} m_v^{(d−1)} and h_u^{(d)} = max_{v ∈ N(u)} h_v^{(d−1)}. That is *message
-passing* — but the messages are the sketches, and the aggregators are elementwise min and max. So with k
-rounds of min/max sketch propagation I get, for every node, the sketches of all its d-hop neighborhoods
-up to d = k, in O(k|E|·h) time with h the sketch size — node-level, once, no subgraph. Then for any
+h_u^{(0)}) — the MinHash and HyperLogLog of the singleton {u}. N_d(u), the set of nodes within distance
+≤ d of u, decomposes as a union over u's *closed* neighborhood: N_d(u) = ∪_{v ∈ N(u) ∪ {u}} N_{d−1}(v) —
+a node w is within d of u either because w = u itself (distance 0) or because some graph-neighbor v of u
+is within d−1 of w. The version that looks obvious is to skip the extra {u} term and aggregate only over
+graph neighbors, m_u^{(d)} = min_{v ∈ N(u)} m_v^{(d−1)}; I check it on the smallest graph that can break
+it, two nodes u, v joined by a single edge. Then m_u^{(1)} = m_v^{(0)}, the sketch of the singleton
+{v} — u's own identity never entered the update — and symmetrically m_v^{(1)} = m_u^{(0)}. Reading off
+the 1-hop intersection from these gives J(m_u^{(1)}, m_v^{(1)}) = 0, since {v} and {u} are disjoint sets,
+so the estimator reports |N_1(u) ∩ N_1(v)| = 0. But N_1(u) and N_1(v) are both, by definition, the whole
+two-node graph {u, v}, so the true intersection is 2: the neighbor-only recurrence drops each node's own
+identity from its own ball at every hop, and on a graph this small there is nothing else around to
+reintroduce it. The fix is to aggregate over the closed neighborhood, not the open one: run the same
+min/max propagation on the graph with a self-loop added at every node, so each node's own prior-level
+sketch is folded into its own update alongside the messages from its neighbors, m_u^{(d)} =
+min(m_u^{(d−1)}, min_{v ∈ N(u)} m_v^{(d−1)}) and h_u^{(d)} = max(h_u^{(d−1)}, max_{v ∈ N(u)} h_v^{(d−1)}).
+On the same two-node graph this gives m_u^{(1)} = min(m_u^{(0)}, m_v^{(0)}), the MinHash of {u, v}, and
+likewise for v, so J = 1 and the estimated intersection is 2 — matching N_1(u) = N_1(v) = {u, v} exactly.
+That is *message passing* — but the messages are the sketches, the aggregators are elementwise min and
+max, and the graph they run on carries a self-loop at every node. So with k rounds of min/max sketch
+propagation I get, for every node, the sketches of all its d-hop neighborhoods up to d = k, in O(k|E|·h)
+time with h the sketch size — node-level, once, no subgraph. Then for any
 candidate pair (u, v) I read off |N_{d_u}(u)| ≈ card(h_u^{(d_u)}), |N_{d_u}(u) ∩ N_{d_v}(v)| ≈
 H(m_u^{(d_u)}, m_v^{(d_v)}) · card(max(...)), and turn those into the count table A and boundary B by the
 inclusion-exclusion arithmetic I checked above. The expensive per-edge subgraph construction has been
