@@ -12,6 +12,8 @@ P(2k+1) = P(k+1)^2 + P(k)^2.
 
 Its top-right is `P(k+1)P(k) + P(k)P(k-1) = P(k)(P(k+1)+P(k-1)) = P(2k)`. I want this in terms of the pair I actually carry, `(P(k), P(k+1))`, so I substitute `P(k-1) = P(k+1) - 2P(k)` from the recurrence, giving `P(k+1)+P(k-1) = 2P(k+1) - 2P(k)` and
 
+These two — `P(2k) = P(k)(2P(k+1) - 2P(k))` and `P(2k+1) = P(k+1)^2 + P(k)^2` — are my doubling step. I sanity-check on paper with `k = 2`, where `P(2)=2`, `P(3)=5`: `P(4) = P(2)*(2*P(3) - 2*P(2)) = 2*(10 - 4) = 12`, which matches the table, and `P(5) = P(3)^2 + P(2)^2 = 25 + 4 = 29`, also correct. Good — the identities hold on a real value, not just symbolically.
+
 ```
 P(2k) = P(k) * (2*P(k+1) - 2*P(k)).
 ```
@@ -23,5 +25,7 @@ I run it iteratively, not recursively — with `T` up to `2*10^5` and ~60 levels
 The modular arithmetic has two sharp edges. Every product — `a*t`, `b*b`, `a*a`, `2*b` — is of two values below `10^18`, so it goes through `unsigned __int128` and is reduced immediately. And `2*P(k+1) - 2*P(k)` is a subtraction in unsigned arithmetic, so I form it as `(two_b + p - two_a) % p`, adding `p` first so the intermediate never underflows.
 
 One transcription trap is worth naming because the identities invite it: `P(2k+1) = P(k+1)^2 + P(k)^2` needs the *old* `P(k)`. If I update `a` to `P(2k)` and then read `a` for `P(2k+1)`, the square uses the clobbered value. Trace the `k=1` doubling step — `(a,b)=(1,2)`, expecting `(P(2),P(3))=(2,5)`: `t=2`, then `a = 1*2 = 2` is `P(2)`, but `b = b*b + a*a = 4 + 2*2 = 8` instead of `5 = 4 + 1`, because `a*a` used the new `2` and not the old `1`. So both doubled values must land in fresh temporaries `c = P(2k)`, `d = P(2k+1)` computed from the old pair before either is overwritten; the bit branch then sets `(a,b) = (d, 2d+c)` when the bit is set, `(c,d)` when clear. With the fix the same step gives `c=2, d=5`, and the whole run for `N=4` yields `12`.
+
+**Fixing and re-verifying.** Compute both doubled values into fresh temporaries `c` and `d` from the *old* pair, and only then overwrite `a, b`.
 
 Hand traces only catch the bug I am looking for, so I differential-test against an independent oracle: a Python `2x2` matrix power with big integers — no `__int128`, no doubling identities, a genuinely different mechanism, so a shared algebra slip is unlikely to cancel. The generator spans the regimes the judge names: exhaustive small `N` (`0..199`) across several moduli, `N` near `10^18`, tiny moduli `{2,3,5,7}` where residues collapse and any off-by-one in the subtraction would surface, large primes near `10^18` that exercise the `__int128` path, and the edges `{0,1,2,10^18-1,10^18}`. Over 2000+ queries: zero mismatches. `N=0` runs the loop 64 times on an all-zero index and never leaves `(0,1)`, giving `0` — the base case. A worst case of `T=2*10^5` queries each with `N=10^18` and a `~10^18` prime runs in 0.27 s, inside the 2 s limit and confirming the `O(T log N)` budget. That iterative fast-doubling evaluation, with the `__int128` products and the `+p` subtraction guard, is the full program in the answer.
