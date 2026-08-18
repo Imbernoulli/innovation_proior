@@ -56,7 +56,25 @@ degree-bounded vector space, and that choice introduces two competing pressures:
 enough coefficients to interpolate the assumed configuration, but too few
 coefficients to support the zero pattern, rank, or nonvanishing pattern that the
 configuration would force. The proof succeeds exactly when those pressures are
-incompatible.
+incompatible, and incompatibility is even a coherent target because
+degree-bounded polynomials carry a genuine dichotomy, not a continuum. In one
+variable, a polynomial of degree at most `d` either has at most `d` roots or is
+the zero polynomial -- nothing in between. In `n` variables over a field of size
+`q`, the same dichotomy holds quantitatively: a nonzero polynomial of degree `d`
+vanishes on at most a `d/q` fraction of the whole space, while the zero
+polynomial vanishes on everything. There is no bounded-degree, nonzero
+polynomial with a "medium-sized" zero set to hide in. The zero-constraint and
+coefficient modes exploit this directly: engineer `P`'s zero set to be too large
+for its degree to survive as nonzero, and the only escape left is that `P` is
+identically zero -- which some other fact I already control about `P` (a
+leading form, a chosen coefficient) already forbids. The rank mode exploits the
+same no-middle-ground structure one level up, in linear algebra rather than
+root counts: a matrix built from monomials of bounded degree has rank bounded
+above by the number of those monomials, while the diagonal structure the
+combinatorial hypothesis forces gives a rank bounded below by the diagonal's
+size -- two numbers that cannot both hold unless the configuration is small. In
+all three modes, low degree does not merely restrict `P`; it removes any middle
+ground for `P` to hide in.
 
 The method also has sharp boundaries. If the natural encoding has degree larger
 than the root-counting threshold, the argument loses its bite. If the field
