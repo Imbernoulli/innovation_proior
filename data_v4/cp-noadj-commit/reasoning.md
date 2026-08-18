@@ -4,6 +4,8 @@ Two routes are on the table. Greedy — repeatedly grab the largest free positiv
 
 The linear alternative carries two prefix optima left to right: `skip`, the best sum over `a[0..i]` with position `i` not taken, and `take`, the best with `i` taken. The future only cares whether `i` was taken — that is all that constrains `i+1` — so two values suffice. Skipping `i` leaves `i-1` unconstrained: `skip_i = max(skip_{i-1}, take_{i-1})`. Taking `i` forces `i-1` untaken and adds `a[i]`: `take_i = skip_{i-1} + a[i]`. Before any element, `skip = 0` (the empty selection) and `take = -inf` (no last-taken state exists yet). The answer is `max(take_{n-1}, skip_{n-1}, 0)`, the trailing `0` being the empty selection that floors all-negative inputs at `0`.
 
+Let me confirm the recurrence by hand on the sample `a = [5, 1, 1, 5, 1, 5]`, answer `15` (indices 0, 3, 5). Start `(take, skip) = (-inf, 0)`. i=0 (5): `take=0+5=5`, `skip=max(0,-inf)=0`. i=1 (1): `take=0+1=1`, `skip=max(0,5)=5`. i=2 (1): `take=5+1=6`, `skip=max(5,1)=5`. i=3 (5): `take=5+5=10`, `skip=max(5,6)=6`. i=4 (1): `take=6+1=7`, `skip=max(6,10)=10`. i=5 (5): `take=10+5=15`, `skip=max(10,7)=10`. Answer `max(15,10,0)=15`. The recurrence is right.
+
 Transcribing this is where it goes wrong. The tempting in-place loop is
 
 ```
@@ -32,3 +34,5 @@ Re-trace `[1, 1]`: start `(-inf, 0)` -> i=0 `(1, 0)` -> i=1 `ntake = 0+1 = 1`, `
 The corners fall straight out. `n = 0`: the loop never runs, `max(-inf, 0, 0) = 0`. A lone negative `[-7]`: `ntake = -7`, `nskip = 0`, answer `max(-7, 0, 0) = 0` — take nothing rather than a loss. All-negative: every `take` stays negative, `skip` stays `0`, answer `0`. And the sentinel is safe: `LLONG_MIN/4` is only ever read inside a `max`, never has `a[i]` added to it (I only add to `skip`), so it cannot underflow.
 
 So I ship the `O(n)`, `O(1)`-space DP: 64-bit accumulators against the overflow, both transitions reading the previous pair through temporaries, and `take` seeded at `-inf`.
+
+**Final solution.** That is what I ship — one self-contained file, the simple `O(n)` DP I can defend rather than the greedy I broke.
