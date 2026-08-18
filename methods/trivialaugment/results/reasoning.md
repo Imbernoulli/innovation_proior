@@ -87,14 +87,24 @@ operation set and that lands on the coverage-heavy side. I keep the folding, but
 reason: it removes a free hyperparameter and the rate it leaves behind is the one the orbit argument
 prefers, not an accident I am pretending matches the baseline.
 
-Then I handle the magnitude. A continuous magnitude sounds more general, but the surrounding methods
-already discretize strengths, and the RandAugment diagnostics say a small number of distinct
-magnitudes can be enough. UniformAugment itself notes the tradeoff: discretizing reduces augmentation
-variance by limiting the parameter space. That is not obviously a defect. I want enough diversity to
-cover useful orbits, not unlimited jitter. So I keep the inherited 31 bins `{0,...,30}`, and instead
-of fixing a single global magnitude, I sample a fresh strength bin for each image. This gives weak
-and strong perturbations in the same training distribution, rather than forcing the whole run onto
-one shell of the orbit.
+Then I handle the magnitude, and here RandAugment's own move — one global `M`, tuned once for the
+task — is the attempt I have to argue against rather than just trim. I already have the diagnostic
+for it: the best `M` is not a property of a single image, it tracks model width and training-set
+size, so it is fit to the aggregate run, not to any one input. Fixing that one number for every
+image forces a choice I do not want to make by hand: either I search until `M` matches this
+dataset and model, or I settle for a compromise that is too weak for images that could take a
+stronger distortion and too strong for images that could only take a mild one. A single shared
+magnitude cannot be both, because every image is exposed to the same number regardless of what it
+could actually absorb. A continuous magnitude does not solve this either — it only sounds more
+general, while the surrounding methods already discretize strengths and the RandAugment
+diagnostics say a small number of distinct magnitudes can be enough. UniformAugment itself notes
+the tradeoff: discretizing reduces augmentation variance by limiting the parameter space. That is
+not obviously a defect. I want enough diversity to cover useful orbits, not unlimited jitter. So I
+keep the inherited 31 bins `{0,...,30}`, but instead of fixing one global magnitude and searching
+for its value, I sample a fresh strength bin for each image. That removes the search rather than
+relocating it: no single `M` has to be found for the dataset, because every image draws its own
+strength across the full range, so weak and strong perturbations both appear in the same training
+distribution for free, rather than forcing the whole run onto one shell of the orbit.
 
 At this point the method is sample one operation uniformly from `A`, sample one strength uniformly
 from `{0,...,30}`, apply the operation at that strength, and return the image. I want to be careful
