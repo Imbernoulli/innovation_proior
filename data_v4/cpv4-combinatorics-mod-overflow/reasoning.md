@@ -2,6 +2,8 @@ The counting in this problem is almost trivial — every query resolves to two b
 
 **Reducing the geometry to binomials.** A monotone walk from `(ax, ay)` to `(bx, by)` is an interleaving of `R = bx - ax` rights and `U = by - ay` ups, so there are `C(R + U, R)` of them. A walk through the checkpoint is two independent legs — coordinates only increase, so `(cx, cy)` is passed exactly once and nothing is double-counted — which gives
 
+Let me sanity-check that factorization on the first sample query, `(cx,cy)=(2,1)`, `(ex,ey)=(4,3)`. Leg 1 is `C(2+1, 2) = C(3,2) = 3`. Leg 2 needs `ex-cx = 2` rights and `ey-cy = 2` ups, so `C(4, 2) = 6`. Product `3 * 6 = 18`, which matches the stated answer `18`. Second query has the checkpoint at the origin: leg 1 is `C(0,0) = 1`, leg 2 is `C(10, 5) = 252`, product `252` — matches. Third: `C(2,1) * C(2,1) = 2 * 2 = 4` — matches. The reduction to binomials is correct.
+
 ```
 answer = C(cx + cy, cx) * C((ex - cx) + (ey - cy), ex - cx)   (mod M)
 ```
@@ -12,6 +14,10 @@ The three sample queries drop straight out of this (`3 * 6 = 18`, `1 * 252 = 252
 
 The single modular multiply is where this problem is won or lost. Written the naive way, `(int)a * (int)b % M` forms the product in `int` arithmetic and wraps at `2^32` before the `% M` ever runs. Concretely, take `M = 2000000011` with `a = M - 3` and `b = M - 5`: the true product `a * b = 4000000028000000048` should reduce to `(-3)(-5) = 15`, but a 32-bit multiply truncates it to garbage that `% M` then turns into nonsense. Small-`M` tests keep the products tiny and pass, which is exactly why this bug survives casual testing and only surfaces on the large-`M` cases. The fix is to widen everything into `long long`:
 
+Before I trust the inverse-factorial fold I prove the fold identity, then trace it. The claim is `inv_fact[i-1] = inv_fact[i] * i`. Why: `inv_fact[i] = 1 / i!` and `inv_fact[i-1] = 1 / (i-1)!`, and `(i-1)! = i! / i`, so `1/(i-1)! = i / i! = i * (1/i!) = i * inv_fact[i]`. The identity holds. Now a concrete trace with a small prime where I can compute everything by hand: `M = 7`, build up to `maxN = 4`. `fact = [1, 1, 2, 6%7=6, 24%7=3]`, i.e. `fact[4] = 4! = 24 = 3 (mod 7)`. `inv_fact[4] = 3^(5) mod 7`: `3^2=9=2`, `3^4=2^2=4`, `3^5=4*3=12=5`, so `inv_fact[4]=5`. Check: `3 * 5 = 15 = 1 (mod 7)`. Good. Fold down: `inv_fact[3] = inv_fact[4]*4 = 5*4 = 20 = 6 (mod 7)`; check `fact[3]=6`, `6*6=36=1 (mod 7)` — good. `inv_fact[2] = inv_fact[3]*3 = 6*3 = 18 = 4`; check `fact[2]=2`, `2*4=8=1` — good. `inv_fact[1] = 4*2 = 8 = 1`; check `fact[1]=1`, `1*1=1` — good. `inv_fact[0] = 1*1 = 1`; `fact[0]=1` — good. The whole inverse-factorial table is consistent, so `C(n,k) = mul(fact[n], mul(inv_fact[k], inv_fact[n-k]))` will be correct mod `M`.
+
+**Trace of the full pipeline on a sample.** Query `(2,1,4,3)` with `M = 998244353`. `leg1 = C(3, 2)`. `fact[3] = 6`, `inv_fact[2]`, `inv_fact[1]` — by the identity `C(3,2) = 3`. `leg2`: `dx = 2`, `dy = 2`, `C(4, 2) = 6`. Final `mul(leg1, leg2) = mul(3, 6) = 18`, and `18 < M` so no reduction. Output `18`. Matches. The pipeline is wired correctly end to end.
+
 ```
 ll mul(ll a, ll b) { return (a % MOD) * (b % MOD) % MOD; }
 ```
@@ -21,5 +27,13 @@ Now that same product is a `ll * ll`, `4000000028000000048 < 9.2 * 10^18`, and `
 For valid input `k` is always in range (`cx <= cx+cy`, `dx <= dx+dy`), so the binomial never needs a guard for correctness. I still write `C(n,k)` to return `0` when `k < 0` or `k > n`: it matches the combinatorial convention, and concretely it keeps a stray or negative `k` from indexing `inv_fact` out of bounds — an undefined read rather than a clean zero — at no cost on the legitimate legs.
 
 To be sure the factorization and the arithmetic agree, I cross-check the formula against a solver that counts a completely different way: a grid DP `dp[x][y] = dp[x-1][y] + dp[x][y-1]`, run separately on each leg and multiplied — purely additive, sharing none of the factorial/inverse machinery. Across a few hundred randomized small cases (coordinates up to `7`) with moduli drawn from four families — the smallest legal prime above the largest leg, a small prime in the low hundreds, a prime near `10^6`, and a prime near `2 * 10^9` — the two agree everywhere. That last family is the one the `int` `mul` would have gotten wrong.
+
+**Edge cases.**
+- *Checkpoint at the origin*, `(0,0,ex,ey)`: `leg1 = C(0,0) = 1`. `fact[0] = 1`, `inv_fact[0] = 1`, so `C(0,0) = mul(1, mul(1, 1)) = 1`. The answer collapses to the single binomial `leg2`, as it should — there is only one way to "walk" from the origin to the origin (stand still). Verified on the second sample (`252`).
+- *Checkpoint equals destination*, `(ex,ey,ex,ey)`: `leg2 = C(0,0) = 1`; answer is just `leg1`. The factorial-zero handling makes this fall out for free.
+- *Zero-length both ways*, `(0,0,0,0)`: `leg1 = leg2 = C(0,0) = 1`, answer `1`. The robot stays put; one walk. `maxN = 0`, so `fact` has a single entry `fact[0] = 1` and `inv_fact[0] = power(1, M-2) = 1`; the fold loop with `maxN = 0` runs zero times. No out-of-bounds, no empty-vector indexing. Correct.
+- *Small modulus where reductions fire*, e.g. `M = 7`: traced above; the inverse chain is exact, and the brute agreed across the small-prime cases. The line `1 % MOD` rather than `1` matters only when `M = 1`, but `M` is a prime so `M >= 2` and `1 % MOD = 1`; harmless either way and safe.
+- *Overflow*, the headline corner: all of `MOD`, `fact`, `inv_fact`, and every product are `long long`, funneled through `mul`, whose `(a % MOD) * (b % MOD)` is a 64-bit product of two values below `M (< 2^31)`, i.e. below `4 * 10^18 < 9.2 * 10^18`. No multiply in the program can overflow. The fast-power squares `base = mul(base, base)`, also through the 64-bit `mul`. Safe.
+- *Performance*: `maxN <= 2 * 10^6`, so two `long long` tables of `~2 * 10^6` entries are about 32 MB total, and the precompute is one linear pass plus one `O(log M)` inverse; with `q <= 10` queries the whole run is well under the 1-second, 256-MB budget (measured: ~0.03 s, ~19 MB at `maxN = 2 * 10^6`).
 
 The corner behaviors that matter all fall out cleanly. Checkpoint at the origin gives `C(0,0) = 1` for leg 1, so the answer is the second binomial alone; checkpoint equal to the destination makes leg 2 the trivial `1`; both endpoints at the origin gives `N = 0`, so `fact` is the single entry `fact[0] = 1` and the fold loop runs zero times, with no empty-vector indexing. On the budget: two `long long` tables of `~2 * 10^6` entries are about `32 MB`, the precompute is one linear pass plus a single `O(log M)` inverse, and with `q <= 10` the whole run is far inside the 1-second, 256-MB limits. The complete source is in the answer.
