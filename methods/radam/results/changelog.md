@@ -14,6 +14,7 @@
 - `methods/radam/notes/discovery_synthesis.md:18` recorded the corrected exact-versus-approximate derivation and the code-faithfulness findings.
 - `methods/radam/refs/self_accounts/search_log.md:5` documented the author self-account search and the absence of a separate long-form author retrospective beyond the canonical README/author page.
 - `methods/radam/notes/synthesis.md:37` updated the older synthesis note so it no longer contradicts the corrected deliverables on moment domains and canonical defaults.
+- 2026-08-18 `methods/radam/results/reasoning.md` (`degenerated_to_sgd` paragraph, ~line 32): grounded the flag's default in a concrete, checkable failure — the momentum fallback drops the adaptive denominator, so a raw gradient above one in magnitude gives it a *larger* step than Adam itself would take, reopening the same kind of divergence the rectifier was built to avoid. Sourced from `refs/self_accounts/github_issue_54_degenerated_to_sgd.txt` (LiyuanLucasLiu/RAdam GitHub issue #54, author's own reply to a real post-publication divergence bug report); the primary paper never discusses this default. Landing (code, final method) unchanged. Added `notes/source_matrix.md` row + extended follow-up search log (PhD thesis / interview / GitHub-issue sweep, no other new self-account material found).
 
 Verification:
 
