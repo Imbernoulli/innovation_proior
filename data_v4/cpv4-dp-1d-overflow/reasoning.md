@@ -13,6 +13,10 @@ The base case is the empty prefix: one empty display, which I initialize as `off
 
 **The transcription hazard.** Both transitions read the *previous* pair `(off_{i-1}, on_{i-1})`, so updating `off` in place before computing `on` is wrong: `on = (s[i]=='.') ? off : 0` would then read the freshly-written `off_i` instead of `off_{i-1}`. On `n = 2`, `s = ".."` (valid displays `..`, `#.`, `.#` — not `##`) that in-place version returns `4`: at `i = 1` it sets `off = 1 + 1 = 2`, then `on = off = 2`, counting the displays where lamp 0 was on — exactly the adjacency the problem forbids. Snapshotting both new values from the old pair before committing either fixes it:
 
+Re-trace `n = 2`, `s = ".."`. Start `(1, 0)`.
+- i=0 (`.`): `noff = 1 + 0 = 1`, `non = off_old = 1`. Commit -> `(1, 1)`.
+- i=1 (`.`): `noff = 1 + 1 = 2`, `non = off_old = 1`. Commit -> `(2, 1)`.
+
 ```
 long long off = 1, on = 0;
 for (int i = 0; i < n; i++) {
