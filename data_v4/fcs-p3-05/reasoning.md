@@ -8,6 +8,8 @@ I want a closed form I can evaluate mod `p`, and I would rather derive it than q
 
   `C(n) = (2n)! / (n! * (n+1)!)`.
 
+Let me sanity-check it on a value I enumerated: `C(3) = 720 / (6 * 24) = 720/144 = 5`. Correct. `C(4) = 40320 / (24 * 120) = 40320 / 2880 = 14`. Correct. Good — the formula is right, and it is defined for every `n`, not just small ones. This is the general algorithm the table could never be.
+
 On the values I enumerated, `720/(6*24) = 5` and `40320/(24*120) = 14`, and unlike the table this is defined for every `n`.
 
 To evaluate it mod `p` I cannot form `(2n)!` as an integer, but `(2n)! mod p` is an `O(n)` product `1*2*...*2n` reducing each step, and division by `n!(n+1)!` becomes multiplication by its modular inverse. This is where the guarantee `p > 2n` matters: every factor `1, ..., 2n` is strictly below `p`, hence nonzero and invertible modulo the prime, so `(2n)!`, `n!`, `(n+1)!` and the whole denominator are invertible mod `p` and the division is defined — without that bound a factor could be `0 mod p` and no inverse would exist. The inverse is `denom^{p-2} mod p` by Fermat, in `O(log p)`. Per query `O(n + log p)`, dominated by the two factorial loops.
