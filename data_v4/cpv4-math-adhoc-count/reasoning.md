@@ -6,6 +6,11 @@ The fast route makes the problem multiplicative. Every pair shares `g = gcd(x, y
 
 For the constraint I do not need `x <= n` and `y <= n` separately. The `lcm` is a multiple of both, so `lcm >= y > x`, and `lcm = g*a*b <= n` already forces both. The only condition is `g*a*b <= n`, and for a fixed coprime `a < b` the admissible `g` are `1 .. floor(n/(a*b))`. Hence
 
+**Sanity-checking the formula on the sample before writing code.** The stated example is `n = 6`, answer `9`. Let me evaluate the sum by hand.
+- `a = 1`: `b` runs while `1*b <= 6`, i.e. `b` from `2` to `6`. All `b` are coprime to `1`. Contributions `floor(6/(1*b))`: `b=2 -> 3`, `b=3 -> 2`, `b=4 -> 1`, `b=5 -> 1`, `b=6 -> 1`. Subtotal `3+2+1+1+1 = 8`.
+- `a = 2`: need `a*(a+1) = 6 <= 6`, so `a = 2` is included. `b` runs while `2*b <= 6`, i.e. `b = 3` (since `b > a = 2`). `gcd(2,3)=1`. `floor(6/6) = 1`. Subtotal `1`.
+- `a = 3`: `a*(a+1) = 12 > 6`, loop stops.
+
 ```
 count = sum over a < b, gcd(a, b) = 1, a*b <= n  of  floor(n / (a*b)).
 ```
@@ -13,6 +18,8 @@ count = sum over a < b, gcd(a, b) = 1, a*b <= n  of  floor(n / (a*b)).
 The loop bounds fall out of `a < b` with `a*b <= n`: that forces `a*(a+1) <= n`, so `a` runs only to about `sqrt(n)` (~1000 at `n = 10^6`), and `b` from `a+1` while `a*b <= n`. The iteration count is `sum_a (n/a - a) ~ n log n`, a few times `10^7`, each with one gcd — comfortably inside a second.
 
 Evaluate on the sample `n = 6` (answer `9`): `a = 1` gives `b = 2..6` with `floor(6/b) = 3, 2, 1, 1, 1`, subtotal `8`; `a = 2` gives only `b = 3`, `floor(6/6) = 1`; `a = 3` has `3*4 = 12 > 6` and stops. Total `9`. To see what a single term counts, `(a, b) = (1, 2)` with `floor(6/2) = 3` is the pairs `{1,2}, {2,4}, {3,6}` (`g = 1, 2, 3`) — three unordered pairs sharing the coprime shape `(1, 2)`. Each term is one shape counted across its scalings `g`.
+
+**That coincidence is a warning, not a pass — trace a bigger case.** Accidental correctness on one input is how a broken counter ships. Let me run the same buggy code on `n = 6`, where I know the answer is `9`. `a = 1` (`1 <= 6`): `b` from `1` to `6`. `b=1: +floor(6/1)=6`; `b=2: +3`; `b=3: +2`; `b=4: +1`; `b=5: +1`; `b=6: +1`. Running `ans = 6+3+2+1+1+1 = 14`. Then `ans /= 2 -> 7`. `a = 2` (`4 <= 6`): `b` from `1` while `2*b <= 6`, so `b = 1, 2, 3`. `b=1: gcd(2,1)=1, +floor(6/2)=3`; `b=2: gcd(2,2)=2, skip`; `b=3: gcd(2,3)=1, +floor(6/6)=1`. `ans = 7 + 3 + 1 = 11`, then `ans /= 2 -> 5`. `a = 3`: `9 > 6`, stop. Output `5`. The correct answer is `9`. **The bug is exposed: this prints `5`, not `9`.**
 
 One rival formulation of the same count is worth ruling out, because the "off by a factor of two, off by one on the diagonal" mistake is exactly where this problem kills a submission: sum `floor(n/(a*b))` over all coprime `(a, b)` and halve the double count.
 
@@ -34,3 +41,5 @@ The coprime skip guards a second, independent double count. On `n = 4` the brute
 Edge cases hinge on the same loop guard. For `n = 0` and `n = 1`, `a*(a+1) = 2 <= n` is false at `a = 1`, the loop never runs, `ans = 0` — correct, no pair `x < y` exists. `n = 2` gives `{1,2}`, `n = 3` gives `{1,2}, {1,3}`; both fall out of the bounds with no special-casing. Nothing overflows: every product `a*b <= n <= 10^6` and the guard `a*(a+1)` peaks near `10^6`, all inside 64-bit, while `ans` tops out around `3.6*10^7` at `n = 10^6`. Wall time there is about `0.11 s`.
 
 Checked against the brute oracle on several hundred random `n` across buckets up to 3, 30, 200, 600 plus the tiny corners, there are zero mismatches, and `n = 6 -> 9` matches the statement.
+
+**Final solution.** I count by the gcd parameterization, enumerating `a < b` directly so each unordered pair appears exactly once — no ordered-then-halve, no diagonal, no chance to mistime a division. One self-contained file.
