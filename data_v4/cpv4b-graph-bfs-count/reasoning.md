@@ -44,6 +44,46 @@ double-count the contract warned about — the same hop implemented by two track
 collapse to a *simple* graph first, a per-station `set<int>` of neighbours, dropping `u == v`
 self-loops, and each pair contributes exactly one adjacency entry:
 
+**Confirming my actual condition avoids it.** My committed code uses the *strict* test
+`else if (dist[v] == dist[u] + 1)`, with an explicit comment that `dist[v] == dist[u]` and
+`dist[v] < dist[u]` are *not* predecessors. Re-trace the same `n = 5` triangle-top graph with the
+strict test: dequeue `2`, neighbour `3` has `dist[3] = 1`, and `1 == 1 + 1`? No (`1 != 2`), so nothing
+is added — the same-layer edge is correctly ignored. Neighbour `5`: undiscovered, `ways[5] = ways[2]
+= 1`. Dequeue `3`, neighbour `2`: `dist[2]=1`, `1 == 2`? no. Neighbour `5`: `dist[5]=2 = dist[3]+1`,
+add `ways[3]=1` -> `ways[5] = 2`. Answer `2`. Correct. The strict `== dist[u] + 1` is exactly what
+keeps same-layer edges out of the sum, and tracing the wrong `>=` against it is the evidence I trust.
+
+**A numeric self-check of the "counts multiply" claim.** I claimed shortest-path counts behave
+multiplicatively across independent branch points, which is *why* the answer overflows 64-bit and the
+modulus matters. Let me not just assert it — let me check it numerically on a chain of diamonds. Put
+`k` diamonds in series: source `h_0 = 1`, and between hub `h_i` and hub `h_{i+1}` two disjoint middle
+stations, so each diamond contributes a factor of 2 and the total number of fastest routes is `2^k`.
+For `k = 3` the prediction is `2^3 = 8`. Build it (hubs `1,4,7,10` with two mids each) and the
+recurrence gives `ways[4]=2`, `ways[7]=ways[4]*?` — careful, it is additive per layer:
+`ways[h_{i+1}] = ways[mid_a] + ways[mid_b] = ways[h_i] + ways[h_i] = 2*ways[h_i]`, so
+`ways[h_k] = 2^k`. For `k = 3`: `1 -> 2 -> 4 -> 8`. I ran exactly this construction for `k = 40` where
+`2^40 = 1099511627776`, far beyond what fits if I had used 32-bit, and beyond a billion so the modulus
+genuinely bites: the program prints `511620083`, and independently `pow(2, 40) mod (10^9+7) =
+511620083`. The two agree, so (a) the multiplicative intuition is correct, (b) the modular reduction is
+applied correctly, and (c) had I used `int` for `ways` it would have wrapped and silently lied. This is
+the concrete confirmation that `long long` accumulation plus `% MOD` is mandatory, not decorative.
+
+**Edge cases, because counting code dies in the corners.**
+- *Disconnected:* `n = 2, m = 0`. BFS never reaches `2`, so `dist[2] = INF`; the final guard
+  `if (dist[n] == INF) print 0`. Output `0`. Correct.
+- *Direct edge:* `n = 2`, track `1-2`. `ways[2] = ways[1] = 1`. Output `1`. Correct.
+- *Parallel tracks + self-loop:* `n = 2`, tracks `1-2, 1-2, 1-1`. Dedup collapses to a single hop and
+  drops the loop; output `1`. Correct (verified above).
+- *`ways[1]` seeding:* I set `ways[1] = 1 % MOD`. With `MOD = 10^9 + 7`, `1 % MOD = 1`, so the source
+  has one route (standing still). If `n = 1` were ever allowed the answer would be `1`; the contract
+  has `n >= 2`, but the seeding is consistent either way.
+- *Overflow / modulus:* `ways` is `vector<long long>`, every accumulation does `% MOD`, and the final
+  print does `ways[n] % MOD`. The diamond-chain check above confirms the result stays in `[0, MOD)`.
+- *Self-loop never on a shortest step:* dropping `u == v` is safe because a fastest route strictly
+  increases distance every hop, and a self-loop keeps distance the same — it can never be on one.
+- *Input parsing:* `cin >> n >> m` then `m` pairs; `cin >>` skips arbitrary whitespace, so layout is
+  format-agnostic. If the stream is empty I `return 0`.
+
 ```
 vector<set<int>> tmp(n + 1);
 for (auto &e : edges) {
