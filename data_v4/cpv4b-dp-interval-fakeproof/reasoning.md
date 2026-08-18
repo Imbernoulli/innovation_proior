@@ -38,6 +38,15 @@ reduce `[l..r]` to one stone, base `dp[l][l]=0`. The last merge splits at `k` in
 
   `dp[l][r] = min over k in [l, r-1] of ( dp[l][k] + dp[k+1][r] + ( seg(l,k) | seg(k+1,r) ) )`,
 
+Something about the inner range `k <= r` nags at me, so I trace the smallest segment, `len = 2`, say
+`l = 0`, `r = 1` on input `[6, 5]`. The split loop runs `k = 0` and `k = 1`. For `k = 0`:
+`dp[0][0] + dp[1][1] + (seg(0,0)|seg(1,1)) = 0 + 0 + (6|5) = 7`. Fine. For `k = 1`: it computes
+`dp[0][1] + dp[2][1] + (seg(0,1) | seg(2,1))`. But `dp[0][1]` is the very cell I am *currently
+filling* — it is still `INF` (or garbage) — and `dp[2][1]` and `seg(2, 1)` index an empty/reversed
+range. That `k = r` iteration is meaningless: there is no way to split `[l..r]` with the right block
+empty. So the upper bound must be `k < r`, i.e. `k` ranges `l .. r-1`. This is a genuine
+off-by-one that would have read uninitialized cells and corrupted the answer.
+
 with answer `dp[0][n-1]`. The split bound is the one place this recurrence bites back: `k` must stop at
 `r-1`. Running `k` up to `r` takes the right block `[r+1..r]` empty, reads `dp[r+1][r]` and a reversed
 `seg(r+1, r)` outside the DP's meaning, and — because I fill `dp[l][r]` in increasing segment length —
