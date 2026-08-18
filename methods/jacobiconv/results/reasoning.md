@@ -1,9 +1,10 @@
 I start from the GPR-GNN numbers because they show both the win and the remaining weakness. The flat,
-unconstrained monomial filter sits at Texas 0.9065, Cornell 0.8705, Cora 0.8890, and Citeseer 0.8020.
-But the seed-to-seed variance is the warning sign: Texas std across seeds ranges from 0.0262 to
-0.0471. That spread is the fingerprint of a hard coefficient optimization problem, not an
-expressiveness problem. The monomial powers are complete, but they become collinear as order grows,
-so the optimizer can land in different places depending on seed.
+unconstrained monomial filter sits at Texas 0.9295, Cornell 0.9137, Cora 0.8857, and Citeseer 0.8012.
+But the confidence interval is the warning sign: the reported 95% CI is +-0.0131 on Texas and
++-0.0181 on Cornell, two to three times wider than the +-0.0069 on Cora and +-0.0083 on Citeseer.
+That spread is the fingerprint of a hard coefficient optimization problem, not an expressiveness
+problem. The monomial powers are complete, but they become collinear as order grows, so the optimizer
+can land in different places depending on seed.
 
 So I stop asking which complete basis can represent the target filter. Monomial, Chebyshev,
 Bernstein, and Jacobi bases all span the same degree-`K` polynomial space. The real question is which
@@ -100,10 +101,10 @@ just approximate). So the representable filter family is unchanged whether I eva
 
 The bar remains the GPR-GNN numbers, not invented JacobiConv results. Given the two-orders-of-magnitude
 drop in the monomial-versus-Jacobi condition number on my stand-in density, I expect this shared Jacobi
-core to match or beat Cora 0.8890, Citeseer 0.8020, Texas 0.9065, and Cornell 0.8705, with the most
-important signal being lower variance than the Texas std spread of 0.0262 to 0.0471 — variance is the
-quantity the conditioning argument speaks to most directly. But the same experiment warns me the win
-may be partial: with `(a,b)` frozen at `1` the Hessian is well-conditioned but not orthonormal, so if
+core to match or beat Cora 0.8857, Citeseer 0.8012, Texas 0.9295, and Cornell 0.9137, with the most
+important signal being a tighter confidence interval than the Texas +-0.0131 / Cornell +-0.0181 — that
+spread is the quantity the conditioning argument speaks to most directly. But the same experiment warns
+me the win may be partial: with `(a,b)` frozen at `1` the Hessian is well-conditioned but not orthonormal, so if
 the numbers land at or below GPR-GNN the honest reading is that the conditioning benefit does not fully
 survive this restricted harness without learnable `(a,b)`, per-channel filters, or PCD. Either way the
 edit is the same: keep the unconstrained shared coefficients and replace monomial powers with the

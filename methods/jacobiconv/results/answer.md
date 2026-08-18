@@ -1,7 +1,8 @@
-**Problem.** GPR-GNN's unconstrained monomial filter won the ladder but with the highest seed-to-seed
-variance (Texas std spanning 0.0262-0.0471), which points to ill-conditioned coefficient
-optimization. Keep the unconstrained signed coefficients and flat start, but replace the monomial
-basis with an orthogonal polynomial basis.
+**Problem.** GPR-GNN's unconstrained monomial filter won the ladder but with the widest confidence
+intervals on the small heterophilic sets (Texas +-0.0131, Cornell +-0.0181, vs. +-0.0069-0.0083 on
+Cora/Citeseer), which points to ill-conditioned coefficient optimization. Keep the unconstrained
+signed coefficients and flat start, but replace the monomial basis with an orthogonal polynomial
+basis.
 
 **Key idea.** For a linear spectral filter `Z = sum_k alpha_k g_k(L_hat) X`, the coefficient Hessian
 is the basis Gram matrix under the graph signal density:
