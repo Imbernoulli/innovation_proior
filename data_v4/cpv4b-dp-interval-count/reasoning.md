@@ -10,6 +10,21 @@ The last run ending at `i` has length `len in [A, B]` and occupies `(i-len+1 .. 
 
 where the window comes from `A <= i - p <= B`. The answer is `f[n]`, and the inner sum over a sliding window of previous `f` values is exactly what a prefix-sum array turns into `O(1)` per `i`, giving `O(n)`.
 
+**Self-checking the recurrence numerically before coding.** I will not trust a formula I have not run by hand on a case I can independently count. Take `n = 4, k = 3, A = 2, B = 2` (every stripe forced to length 2). By direct reasoning a length-4 label is two length-2 stripes of differing colors: `3 * 2 = 6`. Now the recurrence, with `(k-1) = 2`:
+- `f[1]`: window needs `len = 1` in `[2,2]` — no; first-run case `1` in `[2,2]` — no. `f[1] = 0`.
+- `f[2]`: first-run case `2` in `[2,2]` — yes, `+k = +3`. Window: `p` in `[max(1,0), 0]` = empty. `f[2] = 3`.
+- `f[3]`: first-run `3` in `[2,2]` — no. Window `p` in `[max(1,1),1] = {1}`, `f[1]=0`, so `+2*0 = 0`. `f[3] = 0`.
+- `f[4]`: first-run `4` in `[2,2]` — no. Window `p` in `[max(1,2),2] = {2}`, `f[2]=3`, so `+2*3 = 6`. `f[4] = 6`.
+Answer `f[4] = 6`. Matches the hand count exactly. Good — the structure is right.
+
+A second independent check on a non-degenerate window. Take `n = 6, k = 2, A = 1, B = 2`. Running the recurrence (with `(k-1)=1`): `f[1]=2` (first-run len 1, `+k=2`). `f[2]`: first-run len 2 `+2`, plus window `p in {1}` giving `1*f[1]=2`, so `f[2]=4`. `f[3]`: window `p in {1,2}` (len 2,1), `1*(f[1]+f[2]) = 6`; first-run len 3 not in `[1,2]`; `f[3]=6`. `f[4]`: window `p in {2,3}`, `f[2]+f[3]=10`; `f[4]=10`. `f[5]`: `p in {3,4}`, `f[3]+f[4]=16`; `f[5]=16`. `f[6]`: `p in {4,5}`, `f[4]+f[5]=26`; `f[6]=26`. So `26`. I will hold onto `26` as a target the code must reproduce.
+
+I trace the smallest input that exposes the dedup, `n = 2, k = 2, A = 1, B = 2`, where I can list every valid label by hand. All four strings `00, 01, 10, 11` are valid (each run is length 1 or 2), so the answer is `4`. Run the code: `kmod = 2`. `i=1`: window `phi = 0 < plo = 1`, skip; first-run `1` in `[1,2]`, `ways = 2`; `f[1]=2`, `pref[1]=2`. `i=2`: `plo = max(1,0)=1`, `phi = 1`, so `s = pref[1]-pref[0] = 2`, `ways = 2 * 2 = 4`; first-run `2` in `[1,2]`, `ways = 4 + 2 = 6`; `f[2] = 6`. Final answer `6`.
+
+**Fixing and re-verifying.** Replace the window factor with `(k-1) mod M`. Since `k >= 1`, `k-1 >= 0`, so `km1 = (k-1) % M` is well defined and non-negative; I compute it once.
+
+Re-trace `n = 2, k = 2, A = 1, B = 2`: `km1 = 1`. `i=1`: `f[1]=2`, `pref[1]=2`. `i=2`: `s = pref[1]-pref[0] = 2`, `ways = 2 * 1 = 2`; first-run `+k = +2`, `ways = 4`; `f[2] = 4`. Answer `4`. Correct, and the two phantoms are gone for the reason I fixed. Re-trace the `n=6,k=2,A=1,B=2` target with the fix: I get `2,4,6,10,16,26`, answer `26`, matching the hand derivation. The two cases that pinned the bug now both pass.
+
 The `(k-1)` versus `k` factor is the crux, and the smallest case pins it. Take `n = 2, k = 2, A = 1, B = 2`, where I can list every valid label: `00, 01, 10, 11`, so the truth is `4`. Using `k` for the window factor instead of `(k-1)` gives `f[2] = k*f[1] + k = 2*2 + 2 = 6`. The two phantoms are `00` and `11`: each is counted once by the first-run `+k` term (one length-2 run) and *again* by the window term (two same-color length-1 cells that are not a legal split). Only `(k-1)` — forbidding the new cell from repeating cell 1's color — kills those two and returns `4`.
 
 Running the recurrence on the non-degenerate sliding-window case `n = 6, k = 2, A = 1, B = 2` (the window spans two prior positions once `i >= 3`) gives `f = 2, 4, 6, 10, 16, 26`, so `26` — a concrete target the finished code must reproduce. The narrow-window example `n = 4, k = 3, A = 2, B = 2` also drops out: `f[1]=0`, `f[2]=k=3`, `f[3]=(k-1)*f[1]=0`, `f[4]=(k-1)*f[2]=6`, matching the two differing length-2 stripes counted directly as `3*2`.
