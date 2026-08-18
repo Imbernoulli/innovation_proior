@@ -247,7 +247,7 @@ def classify(block):
     return "OTHER", ""
 
 # ---------------------------------------------------------------- tic stripping
-SENT_SPLIT = re.compile(r"(?<=[a-z0-9\)`\*\"])[.!?]\s+(?=[A-Z])")
+SENT_SPLIT = re.compile(r"(?<=[a-z0-9)`*\"][.!?])\s+(?=[A-Z])")
 
 BREAKER = re.compile(r"^\s*$|^#{1,6}\s|^\s*(?:[-*+]|\d+[.)])\s")
 
