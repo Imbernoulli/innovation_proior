@@ -114,38 +114,13 @@ at position `i > j`. Between those two positions the state is multiplied by `alp
 i.e. by `exp(g_{j+1} + ... + g_i)`. That sum of consecutive log-gates is exactly `decay_i - decay_j`, so
 the relative weight is `exp(decay_i - decay_j)`. Let me confirm the telescoping is not off by an index:
 with `g = [-0.1, -0.3, -0.2, -0.5, -0.4]`, take `i = 4, j = 1`; multiplying the gates from `t = 2` to
-`t = 4` explicitly gives `0.33287`, and `exp(decay_4 - decay_1)` gives `0.33287` — they agree.
-
-That decay-weighted key-key matrix has two different consumers, and at first that looks like trouble.
-The pseudo-values `u` (the intra-chunk output, position `i` reading a write from `j < i`) genuinely want
-the `i`-to-`j` decay weight `exp(decay_i - decay_j)` baked into the triangular solve. But the pseudo-keys
-`w` (which carry into the *next* chunk's state) get their own separate rescaling by `exp(decay_last -
-decay)` applied right after — so do they actually need that same `i`-`j`-weighted matrix, or would the
-plain, undecayed key-key matrix (call it `L0`, with `T0 = (I + L0)^{-1}`) be the right one to solve for
-`w`, since its decay factor is applied afterward anyway? If the two roles genuinely need different
-matrices, that is a second forward substitution — and forward substitution is the one piece of this whole
-algorithm that is inherently sequential (`O(C)` steps within a chunk, not a matmul), so a second one
-doubles the single bottleneck the chunkwise reformulation exists to eliminate.
-
-Check whether the two matrices are actually independent rather than assume it. Build `L` (decay-weighted,
-as above) and `L0` (the same key-key matrix without the decay factor) from the same random `k`, `beta`,
-`g` (`C = 6`, `d = 4`), invert each separately by forward substitution, and compare `I + L` against
-`diag(gamma) (I + L0) diag(gamma)^{-1}` where `gamma = exp(decay)`: max absolute difference `1.11e-16` —
-they are similar matrices, related by a diagonal conjugation, not two independent systems. A diagonal
-similarity transform has a cheap effect on the inverse too: `T` should equal `T0` rescaled entrywise by
-`gamma_i / gamma_j`; checked directly, max absolute difference `5.55e-17`. So the two "separate"
-inversions the two consumers seemed to need are one conjugation apart, not two solves apart.
-
-That means `T` — which I am already computing once, as `attn` below — is enough for both, as long as `w`
-pulls its decay-free numbers out by rescaling the *input* instead of re-solving: `T @ (k_beta *
-exp(decay))` should equal `exp(decay) * (T0 @ k_beta)` — checked against `T0` computed the long way, max
-absolute difference `2.78e-17`. So the strictly-lower-triangular key-key matrix that builds the UT system
-uses `(k_beta @ k^T) * exp(decay_i - decay_j)` for `i > j`, the triangular solve `T = (I + L)^{-1}`
-absorbs the gate, and both `u = T @ v_beta` and `w = T @ (k_beta * exp(decay))` come out of that single
-solve — one forward substitution doing the job that looked like it needed two. The carried chunk state is
-decayed across the chunk by `exp(decay_last)`; the chunk's keys are weighted by `exp(decay_last - decay)`
-before they fold into the next state; the inter-chunk read scales the query by `exp(decay)`. Every
-cumulative product spans at most one chunk, so it stays bounded, and every heavy operation is a matmul.
+`t = 4` explicitly gives `0.33287`, and `exp(decay_4 - decay_1)` gives `0.33287` — they agree. So the
+strictly-lower-triangular key-key matrix that builds the UT system uses `(k_beta @ k^T) * exp(decay_i -
+decay_j)` for `i > j`, and the triangular solve `T = (I + L)^{-1}` absorbs the gate. The carried chunk
+state is decayed across the chunk by `exp(decay_last)`; the chunk's keys are weighted by `exp(decay_last
+- decay)` before they fold into the next state; the inter-chunk read scales the query by `exp(decay)`.
+Every cumulative product spans at most one chunk, so it stays bounded, and every heavy operation is a
+matmul.
 
 That is the derivation, but the index bookkeeping across the chunk boundary — the carried-state decay,
 the key re-weighting, the query scaling — is exactly the kind of thing that is easy to get subtly wrong,
