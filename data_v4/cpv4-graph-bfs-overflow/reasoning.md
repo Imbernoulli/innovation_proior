@@ -30,6 +30,20 @@ into `adj[b]`), BFS from city `1` with `dist[]` initialized to a sentinel `-1` f
 for every city whose `dist` is not `-1`. Self-loops and duplicate edges need no handling: a
 self-neighbour or a repeat is already visited when popped, so the sentinel check skips it.
 
+**Sanity-checking the derivation on the sample.** The stated example: `n = 6`, importances
+`w = [3, 5, 2, 8, 1, 4]` (so `w[1]=3, ..., w[6]=4`), edges `1-2, 1-3, 2-4, 3-4, 4-5`. City `6` has no
+edges, so it is unreachable. Let me run the BFS by hand. Start `dist = [_, 0, -1, -1, -1, -1, -1]`
+(index 0 unused), queue `[1]`.
+
+The BFS part of this is correct — I traced it on the sample and it gives the right depths. But the
+*cost* part is exactly where I told myself to be paranoid, so let me trace it on a case engineered to
+expose magnitude, not structure. Take a path of `4` cities `1-2-3-4` with importances all `10^6`.
+Depths are `1:0, 2:1, 3:2, 4:3`. The true cost is `0 + 1*10^6 + 2*10^6 + 3*10^6 = 6*10^6 = 6000000`,
+which is small enough to be *right by luck* here — so this case alone won't catch the bug. I need the
+total to actually cross `2^31`. So take a longer path, say `n = 100000` cities in a line, all
+importances `10^6`. The true total is `10^6 * (0 + 1 + 2 + ... + 99999) = 10^6 * (99999*100000/2) =
+10^6 * 4999950000 = 4.99995*10^15`. That is the answer I expect.
+
 The one place this goes wrong in practice is exactly where the cast sits, because it is easy to write
 the overflow back in while believing you fixed it. If I widen only the accumulator —
 
@@ -62,3 +76,8 @@ hundredths of a second at `n = m = 2*10^5`.
 
 So the shape is fixed: adjacency list, BFS from city `1` with the `-1` sentinel, accumulate
 `(long long)dist[v] * w[v]` over reachable cities. The full module is in the answer.
+
+**Final solution.** I earned the BFS over DFS with a concrete miscount, derived the layer-by-layer
+depth argument and checked it on the sample, then trapped and killed the int-overflow in the product
+and the accumulator (widening *before* the multiply), and chose the sentinel-`-1` reachability test
+that says what I mean. This is what I ship — one self-contained file.
