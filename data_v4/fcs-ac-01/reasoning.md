@@ -58,6 +58,45 @@ must land. The parity of a permutation on `n` elements is `(n - c) mod 2`, where
 number of cycles (a `k`-cycle is `k-1` transpositions; summing gives `n - c`). One linear
 pass with a visited array counts the cycles.
 
+Something about the order of `j = pi[j]` and `visited[j] = 1` looks off, so I trace the
+smallest input that could expose it. Take the identity arrangement `A == B` on `n = 4`
+cells, so `pi = [0,1,2,3]` — four fixed points, four cycles, `parPi` must be `(4-4)&1 = 0`.
+
+Walk the inner loop at `i = 0`: I check `visited[0]` — false, so `cycles = 1`, set `j = 0`.
+Loop condition `!visited[0]` is true: I execute `j = pi[0] = 0`, then `visited[0] = 1`. Back
+to the condition `!visited[0]` — now false, exit. So far so good, one cell consumed. `i = 1`:
+`visited[1]` false, `cycles = 2`, same dance, marks cell 1. Likewise `i = 2, 3`. Final
+`cycles = 4`, `parPi = 0`. Correct here.
+
+**Diagnosing the bug on a non-trivial cycle.** The identity hid it. Let me trace a real
+cycle: `pi = [1, 0, 2, 3]` (a 2-cycle on `{0,1}` plus two fixed points), which is one
+transposition, `n - c = 4 - 3 = 1`, so `parPi` must be `1`. At `i = 0`: `cycles = 1`,
+`j = 0`. Condition `!visited[0]` true: `j = pi[0] = 1`, `visited[1] = 1`. Condition
+`!visited[1]` — false! Loop exits having marked cell `1` but **never marked cell `0`**. Now
+`i = 1`: `visited[1]` is true, skip. `i = 2, 3`: two more cycles. But `i = 0` was the start
+of this cycle and got counted, while cell `0` itself is still unvisited — except the loop at
+`i = 0` already moved past it. Worse, when I later reach... wait: cell `0` is never marked
+visited at all. There is no `i` that revisits `0` because the outer loop only goes forward
+and `i = 0` is done. So `0` stays unvisited forever, but the outer loop never returns to it.
+The count came out `cycles = 1 (from i=0) + 1 (i=2) + 1 (i=3) = 3`, giving `parPi = (4-3)&1
+= 1` — *accidentally* right here, but for the wrong reason: I got lucky that the unmarked
+start cell happened not to spawn a phantom extra cycle. The real defect is the loop body
+advances `j` **before** marking it, so the *starting* cell of each cycle is the one that
+gets marked one step late, and on cycles of length `>= 2` the start cell `i` is left
+unvisited. On some inputs that leaves a node that a later, smaller... no — `i` only
+increases, so a left-behind start cell with index below the current `i` is simply lost,
+never recounted; but a cycle whose minimum element is its *start* can get its bookkeeping
+tangled when the traversal re-enters. I do not want to reason case-by-case about when the
+luck holds. The fix is unambiguous: **mark `j` visited, then advance.**
+
+Re-trace `pi = [1, 0, 2, 3]`. `i = 0`: `cycles = 1`, `j = 0`. `!visited[0]` true: mark `0`,
+`j = pi[0] = 1`. `!visited[1]` true: mark `1`, `j = pi[1] = 0`. `!visited[0]` now false:
+exit. Cells `0, 1` both marked — one cycle, correctly. `i = 1`: visited, skip. `i = 2`:
+`cycles = 2`, mark `2`, `j = pi[2] = 2`, exit. `i = 3`: `cycles = 3`, mark `3`. Final
+`cycles = 3`, `parPi = (4 - 3) & 1 = 1`. Correct, and now for the right reason: every cell
+is marked exactly once, so `cycles` is exactly the number of orbits. This is the version I
+keep.
+
 The one place this transcription dies is the order of operations inside the cycle walk. It
 has to be mark-then-advance:
 
