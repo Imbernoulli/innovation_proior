@@ -81,8 +81,12 @@ is no longer "the ordinary spectral gradient, reweighted." Let me make this conc
 `r` (a 1D proxy for one component) and actually differentiate both versions. With the weight detached,
 `L_A = sg(|r|^α)·r²` has gradient `|r|^α·2r`. With the weight live, `L_B = |r|^α·r² = |r|^(α+2)` has
 gradient `(α+2)|r|^(α+1)·sign(r)`. At `α = 1` the ratio `grad_B / grad_A = (α+2)/2 = 1.5`, and computing
-it with autograd at `r = 0.1, 0.5, 2.0` gives `1.500` every time — a *constant* inflation factor.
-So flowing gradients through the weight doesn't change *which* components are emphasized; it silently
+it with autograd at `r = 0.1, 0.5, 2.0` gives `1.500` every time — a *constant* inflation factor. That's
+not just a property of the 1D stand-in: redoing the same autograd comparison on the actual object —
+the two real degrees of freedom `(a_f, b_f)` of a complex frequency component, differentiating
+`w·((a_r-a_f)² + (b_r-b_f)²)` directly with respect to each — gives the identical `1.500` on both partials,
+at several random `(a_r, b_r, a_f, b_f)`. So flowing gradients through the weight doesn't change *which*
+components are emphasized; it silently
 multiplies the whole spectral gradient by `(α+2)/2` and, worse, ties that multiplier to `α`. Then the
 exponent `α` is doing two jobs at once — setting the focusing contrast (which I want) *and* rescaling the
 effective learning rate (which I don't) — and the two get tangled. The clean thing is to break that
