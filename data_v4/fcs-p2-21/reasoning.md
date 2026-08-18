@@ -19,6 +19,12 @@ pair, both min-vs-min and max-vs-max shrink. I normalize every base to `w <= d` 
 nesting is just two scalar `>` comparisons and rotation never comes up again. The normalization is
 sound precisely because the requirement is symmetric in the two base dimensions.
 
+**Stress-testing the tempting greedy before committing.** The single most natural heuristic for this
+problem is: *give each box type its tallest orientation (largest dimension up), use each such box at
+most once, and then chain them by nesting.* It feels right — you want tall boxes, so stand each on
+its smallest face. Hand-waving "that feels optimal" is how wrong solutions get shipped, so let me
+attack it with a concrete instance. Take three types: `(6, 6, 10)`, `(5, 9, 9)`, `(4, 8, 8)`.
+
 **Breaking the tempting greedy.** The most natural heuristic is: stand each type on its tallest face
 (largest dimension up), use it once, and chain by nesting. But strict nesting is a *global* coupling,
 and a per-box score fixes orientation one box at a time — here is a concrete break. Take the given
@@ -49,6 +55,15 @@ sorted order and let `dp[j]` be the tallest stack whose **top** box is `j`. Eith
 so the inner scan sees all valid supports and `dp[j]` is exact. The answer is `max_j dp[j]`, or `0`
 if there are no boxes — the box-stacking specialization of the LIS DP, `O(m^2)` time, `O(m)` space.
 
+**Tracing the DP to the answer.** With the corrected order, the DP fills: `(9,9) h5` -> dp 5;
+`(8,8) h4` -> can it sit on `(9,9)`? `8<9` and `8<9` yes, dp = 5+4 = 9; `(6,10) h6` -> sits on
+`(8,8)`? `10<8` no; on `(9,9)`? `10<9` no; so dp 6; second `(6,10) h6` -> dp 6; `(5,9) h9` -> sits on
+`(6,10)`? `5<6` and `9<10` yes, dp = 6+9 = 15; on `(9,9)`/`(8,8)`? `9<8` no; so dp 15;
+second `(5,9) h9` -> 15; `(6,6) h10` -> sits on `(9,9)`? `6<9,6<9` yes dp 5+10=15; on `(8,8)`?
+`6<8,6<8` yes dp 9+10=19; better, dp 19; `(4,8) h8` -> sits on `(5,9)`? `4<5,8<9` yes dp 15+8=23;
+on `(6,10)`? `4<6,8<10` yes dp 6+8=14; on `(8,8)`? `4<8,8<8` no (not strict); best dp 23;
+second `(4,8) h8` -> 23. Maximum is `23`, the very stack I built by hand. The recurrence is right.
+
 **The comparison the constraints invite me to botch.** The nesting test must be strict `>` in
 *both* base dimensions, not `>=` — and cubes and equal-dimension boxes are exactly the inputs that
 punish a slip. Take a single cube `(2,2,2)`. All three of its orientations have base
@@ -72,3 +87,5 @@ by memoized DFS — a deliberately different shape from the sorted `O(m^2)` DP. 
 milliseconds and ~3.6 MB, far inside the limits. The classic reference instance
 `{4,6,7},{1,2,3},{4,5,6},{10,12,32}` returns the known `60`, and the greedy-trap cases (where the
 oracle and the sorted DP still agree) are what pin the algorithm rather than just the code.
+
+**Final solution.** That is what I ship — one self-contained file, the simple `O(m^2)` ordered DP I can defend rather than the greedy I broke.
