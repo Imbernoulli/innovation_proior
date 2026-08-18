@@ -6,7 +6,16 @@ The cheap idea is to lean on Kadane, which I already know cold: find the best no
 
 So I carry the state the scan actually depends on — how many deletions I have spent inside the current window — as two Kadane-style quantities, both "best subarray *ending exactly at* `i`": `noDel` with no element deleted, `oneDel` with exactly one. `noDel` is ordinary Kadane, `max(a[i], noDel_{i-1} + a[i])`: start fresh at `i` or extend. For `oneDel` there are two ways to end at `i` having spent one deletion. Either the deleted element is `a[i]` itself — take a no-deletion window ending at `i-1`, append `a[i]`, and immediately delete it, leaving exactly `noDel_{i-1}` — or the deletion happened earlier and `a[i]` is kept, extending `oneDel_{i-1} + a[i]`. So `oneDel_i = max(noDel_{i-1}, oneDel_{i-1} + a[i])`. Both transitions read the *previous* generation of the pair.
 
+**Stress-testing the greedy before committing.** Hand-waving "delete the worst element of the best window feels right" is exactly how a wrong solution gets shipped. So I attack it with concrete instances. I want a case where the *best window to delete from* is a different, larger window than the one plain Kadane stops on. Intuitively that happens when a single bad element makes plain Kadane cut the window short — but with a deletion that bad element is free, so it would have been profitable to keep extending through it.
+
 I seed both at a negative sentinel standing for "no subarray yet". At `i = 0`, `noDel` becomes `a[0]` and `oneDel` stays at the sentinel — correct, because deleting the lone element would empty the window. `oneDel` only becomes a real value from `i = 1`, which is exactly when `noDel_{i-1}` refers to a genuinely non-empty remainder. The answer is the running max over both states at every `i`.
+
+Let me confirm the recurrence by hand on the example `a = [5, 6, -3, 3, -5]`, expected answer `14`. Initialize `noDel = oneDel = NEG`, `best = NEG`.
+- i=0 (5): `newNoDel = max(5, NEG+5) = 5`; `newOneDel = max(NEG, NEG+5) = NEG`. State `(noDel, oneDel) = (5, NEG)`, `best = 5`.
+- i=1 (6): `newOneDel = max(noDel=5, oneDel+6=NEG) = 5` (delete the `6`, keep the `5`); `newNoDel = max(6, 5+6=11) = 11`. State `(11, 5)`, `best = 11`.
+- i=2 (-3): `newOneDel = max(noDel=11, oneDel + (-3) = 5-3=2) = 11` (window `[5,6,-3]` delete `-3` -> `11`); `newNoDel = max(-3, 11-3=8) = 8`. State `(8, 11)`, `best = 11`.
+- i=3 (3): `newOneDel = max(noDel=8, oneDel + 3 = 11+3=14) = 14` (extend the one-deletion window `[5,6,-3 (deleted)]` by `+3`); `newNoDel = max(3, 8+3=11) = 11`. State `(11, 14)`, `best = 14`.
+- i=4 (-5): `newOneDel = max(noDel=11, oneDel + (-5) = 14-5=9) = 11`; `newNoDel = max(-5, 11-5=6) = 6`. State `(6, 11)`, `best = max(14, 11) = 14`.
 
 Tracing `[5, 6, -3, 3, -5]` to confirm the recurrence lands on `14`, starting `(noDel, oneDel) = (NEG, NEG)`:
 - `i=0` (5): `noDel = 5`, `oneDel = NEG`, best `5`.
@@ -17,7 +26,17 @@ Tracing `[5, 6, -3, 3, -5]` to confirm the recurrence lands on `14`, starting `(
 
 The winning path is precisely the window `[5, 6, -3, 3]` with the `-3` deleted — the one the greedy structurally could not reach.
 
+Buggy trace. Start `noDel = oneDel = best = NEG`.
+- i=0 (10): `noDel = max(10, NEG+10) = 10`; `oneDel = max(noDel=10, NEG+10) = 10`; `best = 10`. Already wrong: `oneDel = 10` claims a one-deletion subarray ending at index 0 with score `10`, but the only such "subarray" would be `[10]` with its element deleted — empty, illegal. The bug let `oneDel` read the just-updated `noDel` (`10`) as if it were `noDel_{i-1}`.
+- i=1 (-100): `noDel = max(-100, 10-100) = -90`; `oneDel = max(noDel=-90, oneDel + (-100) = 10-100 = -90) = -90`; `best = 10`.
+- i=2 (10): `noDel = max(10, -90+10) = 10`; `oneDel = max(noDel=10, oneDel+10 = -90+10 = -80) = 10`; `best = 10`.
+
 The one place this dies in transcription is update order. `oneDel_i` reads `noDel_{i-1}`, so if I write the loop body as `noDel = max(a[i], noDel + a[i]); oneDel = max(noDel, oneDel + a[i]);`, the second line reads the just-overwritten `noDel_i`, letting `oneDel` "delete `a[i]`" from a window that already restarted fresh at `a[i]` — an empty remainder dressed up as a legal one. That naive order returns `10` on `[10, -100, 10]` (true answer `20`: delete the `-100`), because at `i = 0` it already reads `noDel = 10` into `oneDel`. The fix is to compute both new values from the old pair into temporaries and only then assign:
+
+Re-trace `[10, -100, 10]`. Start `(noDel, oneDel) = (NEG, NEG)`.
+- i=0 (10): `newOneDel = max(NEG, NEG) = NEG`; `newNoDel = max(10, NEG) = 10`. State `(10, NEG)`, `best = 10`.
+- i=1 (-100): `newOneDel = max(noDel=10, oneDel + (-100) = NEG) = 10`; `newNoDel = max(-100, 10-100) = -90`. State `(-90, 10)`, `best = 10`.
+- i=2 (10): `newOneDel = max(noDel=-90, oneDel + 10 = 10+10 = 20) = 20`; `newNoDel = max(10, -90+10) = 10`. State `(10, 20)`, `best = 20`.
 
 ```
 long long newOneDel = max(noDel, oneDel + a[i]);  // old noDel, old oneDel
