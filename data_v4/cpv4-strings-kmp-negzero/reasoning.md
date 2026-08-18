@@ -6,6 +6,8 @@ The alternative, a naive windowed check that fixes `c = t[i] - p[0]` and verifie
 
 The one place the reduction can quietly go wrong is the index bookkeeping. KMP scans `td` (length `tn = n-1`) and reports a full match when the prefix counter `k` reaches `pm = m-1`. A match ending at `td` index `e` covers `td[e-pm+1 .. e]`, so it starts at difference-array index `s = e - pm + 1`. That block of `pm` differences describes the originals `t[s], t[s+1], ..., t[s+pm]` — `pm+1 = m` consecutive values from original index `s`. So the difference-array start index *is* the text start index; there is no shift between the two coordinate systems. On the given sample `t = [-1,0,-2,2,3,1]`, `p = [5,6,4]`: `pd = [1,-2]`, `td = [1,-2,4,1,-2]`, and `[1,-2]` occurs ending at `e=1` (start `1-2+1 = 0`) and `e=4` (start `4-2+1 = 3`) — positions `0 3`, matching the stated answer.
 
+Re-trace `n=0, m=1`: prints `0\n` then `\n` — two lines, second empty. Correct. Re-trace `n=4, m=1`, `t=[-3,0,9,-3]`, `p=[100]`: prints `4` then `0 1 2 3` (the loop emits a space after each but a newline after the last because `i+1<n` is false at `i=3`); the `if (n==0)` does not fire. Correct, and notice the all-negative/zero/positive mix in `t` and the wildly-off `p=[100]` change nothing — every single position resonates, as it must up to shift. This is the sign-handling check: a single element always matches, regardless of sign, and the code does not gate on positivity anywhere.
+
 The generic KMP path silently assumes `m >= 2`, and the two short pattern lengths break it in different ways, so both need explicit handling before any difference array is built. For `m = 0` (empty pattern) the path computes `pm = m-1 = -1` and then `vector<long long> pd(pm)` — a vector of size `-1`, which as a `size_t` is about `1.8*10^19`, an instant `bad_alloc`. And an empty pattern has no window to anchor `c` against, so its answer is `0` positions regardless of the text. I intercept it at the very top:
 
 ```
@@ -26,6 +28,13 @@ if (m == 1) {
 One more length corner is `m > n`: no window fits, answer `0`. The KMP path would in fact reach `0` on its own — with `tn = n-1 < pm = m-1`, `k` can never climb to `pm` — except when `n = 0`, where `td` has size `n-1 = -1`, the same negative-size disaster. So I guard `m > n` after the two base cases. Once past all three guards I am assured `n >= m >= 2`, hence `n-1 >= 1`, and no negative-size vector can ever be constructed.
 
 With `m >= 2` and `n >= m` I build `pd` and `td`, compute the standard KMP failure function over `pd`, then scan `td` for full matches:
+
+Trace on the sample `pd = [1, -2]` (`pm=2`), `td = [1, -2, 4, 1, -2]` (`tn=5`). Failure function: `fail[0]=0`; `i=1`: `k=fail[0]=0`, while-loop skipped (`k=0`), check `pd[1]==pd[0]`? `-2 == 1`? no, so `k` stays `0`, `fail[1]=0`. So `fail=[0,0]`. Scan, `k=0`:
+- `i=0`, `td[0]=1`: while skipped; `td[0]==pd[0]`? `1==1` yes, `k=1`. `k==pm`? `1==2` no.
+- `i=1`, `td[1]=-2`: while `k>0 && td[1]!=pd[1]`? `-2 != -2`? no, skipped; `td[1]==pd[1]`? `-2==-2` yes, `k=2`. `k==pm`? yes -> push `i-pm+1 = 1-2+1 = 0`; `k=fail[1]=0`.
+- `i=2`, `td[2]=4`: while `k>0`? no; `td[2]==pd[0]`? `4==1`? no, `k=0`.
+- `i=3`, `td[3]=1`: `td[3]==pd[0]`? `1==1` yes, `k=1`.
+- `i=4`, `td[4]=-2`: while `k>0 && td[4]!=pd[1]`? `-2!=-2`? no; `td[4]==pd[1]`? yes, `k=2`. `k==pm` -> push `4-2+1 = 3`; `k=fail[1]=0`.
 
 ```
 int k = 0;
