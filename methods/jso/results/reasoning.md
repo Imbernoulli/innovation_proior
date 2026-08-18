@@ -61,27 +61,36 @@ generations: the blend is a one-pole low-pass on the slot, not a brake that stal
 behavior I wanted — noisy generations damped, persistent signal still followed — and now I have watched
 it happen rather than asserted it.
 
-Those four are refinements to the *parameter propagation*. Now a change to the *mutation operator
-itself*. Look hard at current-to-pbest/1:
-`v_i = x_i + F_i*(x_pbest - x_i) + F_i*(x_r1 - x_r2)`. The same `F_i` multiplies two structurally
-different things. The first term, `x_pbest - x_i`, is a *directed pull toward the elite* — it is
-exploitation, dragging the individual toward one of the best solutions found. The second term,
-`x_r1 - x_r2`, is the *self-scaling random difference* — it is the exploration, the perturbation that
-carries the population's scatter. Using one `F_i` for both ties the strength of the elite-pull and
-the strength of the random perturbation together. But I have just spent four refinements
-arguing that the right balance between exploration and exploitation *changes over the run*: broad and
-diversifying early, focused and elite-following late. With a single `F_i`, the relative weight of pull
-to perturbation is fixed by the operator's geometry and cannot move with the phase. So the lever I am
-missing is a way to make the elite-pull *weaker* than the perturbation early (do not commit to the
-current elite while still exploring) and *stronger* than the perturbation late (follow the good
-solutions once the basin is found).
+Those four are refinements to the *parameter propagation*, and every one of them leaves the *mutation
+operator itself* untouched. Current-to-pbest/1 is
+`v_i = x_i + F_i*(x_pbest - x_i) + F_i*(x_r1 - x_r2)`, and that exact coupling is not a rough first
+draft I get to blame on inexperience — it is the founding formula, `v_i = x_i + F_i*(x_best - x_i) +
+F_i*(x_r1 - x_r2)`, carried unmodified through every self-adaptive DE variant I have inherited and
+into the phase-railed memory I just finished building. Four rounds of adaptation machinery layered on
+top of this operator, and none of them touched it. That is itself informative: the rails floor `CR`
+and cap `F` precisely because there is no other lever available — I am reshaping the *distribution*
+the mutation samples from because the mutation formula gives me no way to reshape the *balance inside
+a single draw*. The same `F_i` multiplies two structurally different things. The first term,
+`x_pbest - x_i`, is a *directed pull toward the elite* — it is exploitation, dragging the individual
+toward one of the best solutions found. The second term, `x_r1 - x_r2`, is the *self-scaling random
+difference* — it is the exploration, the perturbation that carries the population's scatter. Tying
+them to one scalar means the relative weight of pull to perturbation is fixed by the operator's
+geometry, and no amount of rail-tuning upstream of it can move that ratio with the phase. So the
+lever I am actually missing sits inside the operator, not around it: a way to make the elite-pull
+*weaker* than the perturbation early (do not commit to the current elite while still exploring) and
+*stronger* than the perturbation late (follow the good solutions once the basin is found).
 
 The fix I want to try is to give the elite-pull term its own factor — a *weighted* `F`. Replace
 `F_i*(x_pbest - x_i)` with `Fw*(x_pbest - x_i)`, where `Fw` is `F_i` scaled by a phase-dependent
-multiplier, keeping `F_i` on the random-difference term. Early in the run I want `Fw < F_i`; late,
-`Fw > F_i`. A simple three-step schedule on the budget fraction:
-`Fw = 0.7*F_i` for the first 0.2 of the budget, `0.8*F_i` for the first 0.4, and `1.2*F_i` thereafter.
-The donor becomes `v_i = x_i + Fw*(x_pbest - x_i) + F_i*(x_r1 - x_r2)`.
+multiplier, keeping `F_i` on the random-difference term untouched. The donor becomes
+`v_i = x_i + Fw*(x_pbest - x_i) + F_i*(x_r1 - x_r2)`. I do not have a closed form for what the
+multiplier should be at each phase — nothing in the argument above pins down a number, only the
+*sign* of the effect I want, weaker early and stronger late. So I run it: sweep budget-fraction
+thresholds and multiplier values against the same benchmark suite the rail constants were tuned on,
+without chasing the sweep past the first setting that clearly wins, and keep whatever survives. What
+survives is a three-step schedule: `Fw = 0.7*F_i` for the first 0.2 of the budget, `0.8*F_i` for the
+first 0.4, and `1.2*F_i` thereafter — the same shape as the `CR`/`F` rails, aggressive-then-relaxed
+constants, just finally applied to the one place those rails could never reach.
 
 Before I commit to this I want to see, on actual numbers, that it does what I claim — that the balance
 moves with phase and that the unweighted operator genuinely cannot do the same thing. Take a 1-D
