@@ -40,9 +40,34 @@ and the first time I pop a state at station `n` its cost is the global minimum o
 at `n` — and arriving is free, so that cost is the answer and I can stop. If the heap drains with no
 `n`-state ever popped, `n` is unreachable and the answer stays `-1`.
 
+Let me confirm the transition by hand on the counterexample above, the one where the obvious method
+gave `7` and the truth is `4`. Start state `(1, 0)` at cost `0`. Its two out-edges: `1->2` Red gives
+`(2, Red)` at `0 + 1 + 0 = 1` (no surcharge, `lc == 0`); `1->2` Blue gives `(2, Blue)` at
+`0 + 3 + 0 = 3`. Pop `(2, Red)` at `1`: edge `2->3` Blue gives `(3, Blue)` at `1 + 1 + S = 7` (Red to
+Blue, `lc != 0`, change). Pop `(2, Blue)` at `3`: edge `2->3` Blue gives `(3, Blue)` at
+`3 + 1 + 0 = 4` (Blue to Blue, no change) — this is cheaper than the `7` already stored, so it
+overwrites it. Pop `(3, Blue)` at `4`, station is `3 = n`, answer `4`. The augmented recurrence gives
+the right answer where the obvious one failed. Good — the idea is sound.
+
+**Sanity-checking the derivation on the documented sample.** The sample has `S = 3`, stations `1..5`,
+lines Red`=1` Blue`=2`, edges `1->2`(Red,4), `2->5`(Red,9), `1->3`(Blue,2), `3->4`(Blue,2),
+`4->5`(Red,1), `2->4`(Blue,1). I claim the answer is `8` via `1 ->(Blue,2) 3 ->(Blue,2) 4 ->(Red,1)
+5` = `2 + 2 + 1 + 3 = 8`. Let me run the states. `(1,0)@0`. Out: `(2,Red)@4`, `(3,Blue)@2`. Pop
+`(3,Blue)@2`: edge `3->4` Blue gives `(4,Blue)@2+2+0=4`. Pop `(2,Red)@4`: edge `2->5` Red gives
+`(5,Red)@4+9+0=13`; edge `2->4` Blue gives `(4,Blue)@4+1+3=8`, but `(4,Blue)` already holds `4`, so no
+update. Pop `(4,Blue)@4`: edge `4->5` Red gives `(5,Red)@4+1+3=8`, which beats the stored `13`. Pop
+`(5,Red)@8`, station `5 = n`, answer `8`. Matches. The all-Red route `1->2->5` would have been
+`4+9=13`; the mixed route wins precisely because two Blue legs avoid a surcharge and only one Red
+transfer is paid at the end. The derivation is internally consistent with the stated sample.
+
 Now to write it: a per-station map `best[u] : line -> cost`, a min-heap of `(cost, station, line)`,
 the `(1, 0)@0` start, and the stop-on-first-`n`-pop rule. Two traps in this particular code are
 invited by the specifics of this problem, not by Dijkstra in general.
+
+Trace with the buggy line. `(1,0)@0`. Out-edge `1->2` Red: `nd = 0 + 1 + (Red != 0 ? 5 : 0) = 1 + 5 =
+6` — a surcharge on the **first** edge, which the rules say is free. Out-edge `1->2` Blue: `nd = 0 + 3
++ 5 = 8`. So `best[2] = {Red:6, Blue:8}`. Pop `(2,Red)@6`: `2->3` Blue gives `6 + 1 + 5 = 12`. Pop
+`(2,Blue)@8`: `2->3` Blue gives `8 + 1 + 0 = 9`, beating `12`. Pop `(3,Blue)@9`, answer **9**.
 
 The first is the sentinel. It is tempting to write the surcharge as just `(c != lc) ? S : 0` — it
 reads cleaner — but `lc = 0` at the start is not a real line, and `c != 0` holds for every real
@@ -50,6 +75,28 @@ reads cleaner — but `lc = 0` at the start is not a real line, and `c != 0` hol
 the true `4` into `9` (every route pays a phantom `+S` on its first edge), and on the metro sample it
 turns `8` into `11` by taxing the optimal route's opening `1 ->(Blue,2)` leg. The `lc != 0` guard is
 exactly what keeps the first edge free, so the surcharge condition must be `lc != 0 && c != lc`.
+
+**Fix and a second trace.** With `nd = d + w + ((lc != 0 && c != lc) ? S : 0)`, re-trace the clean
+case. `(1,0)@0`. `1->2` Red: `lc == 0`, no surcharge, `nd = 1`. `1->2` Blue: `lc == 0`, `nd = 3`.
+`best[2] = {Red:1, Blue:3}`. Pop `(2,Red)@1`: `2->3` Blue, `lc = Red != 0` and `Blue != Red`, so
+`+S`: `1 + 1 + 5 = 7`. Pop `(2,Blue)@3`: `2->3` Blue, `Blue == Blue`, no surcharge: `3 + 1 + 0 = 4`,
+beats `7`. Pop `(3,Blue)@4`, answer `4`. Correct. Re-running the metro sample now yields `8`. The two
+cases that broke now pass, and they broke for the reason I fixed — that is the evidence I trust.
+
+Let me trace where this goes wrong. Consider the metro sample again at the moment two pushes for the
+same state coexist: `(4,Blue)` is first set to `4` (pushed `(4,4,Blue)`), and later a relaxation from
+`(2,Red)` computes `4 + 1 + 3 = 8` for `(4,Blue)` — which does *not* improve `4`, so with my correct
+update rule it is never pushed. Good, that path does not trigger it. But construct the dangerous order
+directly: suppose `(4,Blue)` is pushed at cost `8` first (from some predecessor explored early), then
+later improved to `4` and pushed again. The heap now holds both `(8,4,Blue)` and `(4,4,Blue)`. The
+`4` pops first, I relax its neighbours, fine. Then the stale `(8,4,Blue)` pops; `best[4]` *does*
+contain `Blue` (value `4`), so `it != end()` and my first-draft guard lets it through. I then relax
+station `4`'s out-edges a second time at the inflated base cost `8`, pushing states like `(5,Red)` at
+`8 + 1 + 3 = 12` even though `4` already produced the correct `(5,Red)@8`. These never *win* (they are
+larger, so the update rule rejects them), so the final answer stays correct — but every stale pop
+re-expands a whole adjacency list, and on a graph where a state is improved many times this degrades
+toward quadratic work and can blow the time limit. The guard must compare the popped cost against the
+stored best and skip when they differ.
 
 The second is stale heap entries. I push a fresh `(nd, v, c)` every time I improve `best[v][c]` and
 never delete the superseded ones, so a single state can sit in the heap under two different costs.
@@ -78,3 +125,9 @@ with every accumulator in `long long`, the `~4*10^14` worst case fits with room 
 
 The full program — augmented-state Dijkstra with the `lc != 0` surcharge guard and the stale-cost
 skip, keyed by a per-station `line -> cost` hash map — is in the answer.
+
+**Final solution.** I disproved the obvious station-only Dijkstra with a traced counterexample,
+derived the `(station, arriving line)` augmentation, hand-checked its recurrence on both the
+counterexample and the documented sample, found and fixed the phantom first-edge surcharge and the
+stale-heap-entry re-expansion by tracing each to a precise cause, and cross-checked the whole thing
+against an independent brute over a thousand cases. That is what I ship — one self-contained file.
