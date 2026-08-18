@@ -11,6 +11,8 @@ So I replace the optimization with a decision: `feasible(d)` = "can I place all 
 
 Total cost is `O(n log n)` for the sort plus `O(n log span)` for the search, about `6*10^6` predicate steps at the limits — comfortably under a second.
 
+**Sanity-checking the predicate's direction on the sample.** Take `p = [1, 2, 8, 4, 9]`, `k = 3`. Sorted: `[1, 2, 4, 8, 9]`, span `= 9 - 1 = 8`. Let me hand-run `feasible(3)`: keep `1` (placed=1, last=1); `2-1=1 < 3` skip; `4-1=3 >= 3` keep (placed=2, last=4); `8-4=4 >= 3` keep (placed=3) — reached `k`, true. Now `feasible(4)`: keep `1`; `2,4` give `1,3 < 4` skip; `8-1=7 >= 4` keep (placed=2, last=8); `9-8=1 < 4` skip; end with placed=2 `< 3`, false. So the threshold is between 3 and 4, i.e. the answer is `3`. Matches the stated example. Good, the predicate and its monotonic flip are behaving.
+
 The greedy-is-maximal claim carries the whole reduction, so I pin it with an exchange argument. Take any valid placement `q_1 < ... < q_m` with all gaps `>= d`. Slide `q_1` down to `p[0]`: still valid, gaps only grew. Then slide `q_2` to the earliest position `>= p[0] + d`; it cannot cross `q_3`, since that gap was already `>= d` and I only moved `q_2` left, so validity holds and `m` is unchanged. Inductively every `q_i` pulls onto the greedy's choice without dropping an item, so the greedy places at least `m` — it is optimal. Anchoring anywhere other than `p[0]` could only place fewer.
 
 A quick direction check on the given sample `p = [1,2,8,4,9], k = 3`, sorted `[1,2,4,8,9]`: `feasible(3)` keeps `1,4,8` → 3 items, true; `feasible(4)` keeps `1,8` → 2 items, false. The threshold sits at 3, matching the stated answer.
@@ -23,7 +25,18 @@ while (lo < hi) { mid = (lo + hi) / 2; if (feasible(mid)) lo = mid; else hi = mi
 
 Pairing the success branch `lo = mid` with a *floored* midpoint is a non-termination trap. On `p = [0,10], k = 2` (answer 10) the search climbs to `lo = 9, hi = 10`, where `mid = (9+10)/2 = 9`; `feasible(9)` is true so `lo = 9` — a no-op — and `mid` recomputes to 9 forever, neither bound moving. The fix is precise: when the success branch is `lo = mid`, the midpoint must be biased upward, `mid = lo + (hi - lo + 1) / 2`, so that once `hi = lo + 1` the midpoint is `hi`, not `lo`. (Writing it as `lo + (hi - lo + 1)/2` rather than `(lo + hi + 1)/2` also avoids summing two large bounds — free insurance even though `span <= 10^9` here.) Re-running `[0,10]` with the upper mid, `lo` walks `0 → 5 → 8 → 9 → 10` and exits at `lo = hi = 10`.
 
+Re-trace `p=[0,10], k=2`: `lo=0,hi=10`. `mid=0+(10-0+1)/2=0+5=5`; true → `lo=5`. `lo=5,hi=10`: `mid=5+(5+1)/2=5+3=8`; `feasible(8)` true → `lo=8`. `lo=8,hi=10`: `mid=8+(2+1)/2=8+1=9`; `feasible(9)` true → `lo=9`. `lo=9,hi=10`: `mid=9+(1+1)/2=9+1=10`; `feasible(10)`: keep `0`, `10-0=10>=10` keep → placed 2, true → `lo=10`. Now `lo=10=hi`, loop exits, answer `10`. Correct, and it terminates. The case that hung now resolves, and it hung for exactly the reason I fixed — that is the evidence I trust, not a vibe.
+
 One degenerate case must be handled outside the search. `k == 1` has no pair, so the minimum gap is undefined; if the search ran, the predicate `placed >= 1` would be true for every `d` and it would report the full span, a meaningless number. So I special-case `k <= 1 → 0` up front (the `<= 1` also absorbs a stray `k = 0` without ever touching `p[0]`), placing the guard after reading input but before the predicate dereferences `p[0]`.
+
+**Edge cases, because this is where maximin code dies.**
+- *`k == n` (take every slot).* The greedy is forced to keep every position to reach `k`, so `feasible(d)` is true iff *every* adjacent gap is `>= d`; the threshold is the minimum adjacent gap of all positions. Traced `p=[1,5,2,8]` sorted `[1,2,5,8]`, `k=4`: gaps `1,3,3`, min `1`; the search lands on `1`. Matches the brute. Correct.
+- *All-equal positions.* `p=[7,7,7,7]`, `k=2`. Sorted all `7`, span `0`, so `lo=hi=0` and the loop never runs, answer `0`. Two items at the same coordinate have gap `0`, which is the best possible here. Correct.
+- *Two extreme points.* `p=[0, 10^9]`, `k=2`: answer is the full span `10^9`; the search returns it (traced above with `10`). Correct.
+- *Heavy duplicates with room.* `p=[0,0,0,5]`, `k=2`: best is to take one `0` and the `5`, gap `5`. `feasible(5)`: keep first `0`, the next `0`s give gap `0 < 5` skip, `5-0=5>=5` keep → placed 2, true; `feasible(6)` false. Answer `5`. Correct.
+- *Unsorted input.* `p=[9,1,4,2,8]`, `k=3` is the sample in disguise; the `sort` at the top normalizes order, answer `3`. Correct.
+- *Minimal `n=1, k=1`.* Guard fires, output `0`. The loop and `p[0]` dereference in the predicate are never reached for the wrong reason; the guard sits before the search. Correct.
+- *Types / overflow.* All quantities are `long long`; `p[i] - last` and `p[n-1] - p[0]` are differences of non-negative `<= 10^9` values, safely in range; the upper-mid form avoids summing two large bounds. No accumulation, so no large-sum overflow risk. Safe.
 
 The remaining corners fall out of the same machinery. `k == n` forces the greedy to keep every position, so the threshold is the minimum adjacent gap of the whole array. All-equal positions give span 0, so the search loop never runs and the answer is 0. Two extreme points give the full span. Heavy duplicates and unsorted input are absorbed by the leading sort. All of these agree with the brute force.
 
