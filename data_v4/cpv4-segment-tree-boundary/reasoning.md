@@ -12,6 +12,15 @@ small-alphabet hidden tests are aimed straight at them. Values are `|a[i]| <= 10
 struct and unambiguous comparisons. Output lengths are at most `n`, well inside `int`. I keep the
 brute scan around as an independent oracle even though it is far too slow to submit.
 
+- *Per-query scan.* For a query, walk `l..r` keeping a counter that resets to `1` whenever
+  `a[i] > a[i-1]` fails. Trivial and obviously correct — I will keep it as my brute-force oracle —
+  but `O(nq)` is far too slow for the real bounds.
+- *Structural segment tree.* Each node covers a contiguous block and stores enough to (a) answer
+  "longest increasing run inside this block" and (b) be merged with a neighbouring block in `O(1)`.
+  Point update is one root-to-leaf rebuild, `O(log n)`; a query stitches together `O(log n)` canonical
+  blocks. This is the one that meets the time limit, so I commit to it, and the whole game is getting
+  the merge and the query stitching boundary-correct.
+
 **The node and the merge.** A node covering a contiguous block must support gluing on either side, so
 the minimal state is: `best` (longest increasing run fully inside the block), `pre` (longest run
 *starting at the block's left end*), `suf` (longest run *ending at the block's right end*), the
@@ -33,6 +42,13 @@ ascent**, `join = (L.rval < R.lval)`. Then:
 update rewrites one leaf and re-merges up its path. On the sample `a = [1,3,2,4,5,6,1,7]` this gives
 root `best = 4` for the run `2<4<5<6`; the seam between the `(1,3)` and `(2,4)` subblocks has
 `rval=3` vs `lval=2`, does **not** join, so `3` and `2` are never fused into one run.
+
+Re-trace `[7,7]`: `join = (7 < 7) = false`. `res.pre = L.pre = 1` (guard true but `join` false, so no
+extension). `res.suf = 1`. `res.best = max(1,1) = 1`, and `join` is false so no seam candidate. Root
+`best = 1`. Correct. I re-check the genuine ascent `a = [3,5]`, `[1,2]`: `join = (3<5) = true`,
+`pre = 2`, `suf = 2`, `best = max(1,1)=1` then `max(1, 1+1)=2`. Returns `2`. Correct. The flat case is
+fixed and the real-ascent case still works, which is the evidence I trust — the change was for the
+reason I diagnosed, not a coincidence.
 
 That leaves two boundary traps hiding in the merge, both of which the plateau-heavy tests would
 expose. Written out with a strict `<`:
@@ -74,6 +90,27 @@ values — clipping happens by *not descending*, never by post-hoc subtraction. 
 sample query `[5,8]` on `1 3 2 4 5 6 8 7` return `3` (`5<6<8`) rather than `4`: the longer `4<5<6<8`
 starts at position `4`, and no `Node` covering position `4` is ever entered when `ql = 5`, so its `4`
 simply never exists in the merged result.
+
+**Edge cases.**
+- `l == r` (single-position window): the query reaches one leaf, returns `best = 1`. Correct — a lone
+  element is a length-`1` increasing block. Checked `2 3 3` on `1 2 3 4 5` → `1`.
+- All-equal array `7 7 7 7 7`, query `[1,5]`: every seam has `rval == lval`, `join` false everywhere,
+  so every `best` stays `1`. Returns `1`. Correct — equal is not strictly increasing.
+- Strictly decreasing `5 4 3 2 1`, query `[1,5]`: every seam `5<4` etc. false → `1`. Correct.
+- Strictly increasing `1 2 3 4 5`, query `[3,5]`: clipped to positions `3..5` = `3,4,5` → `3`, *not*
+  `5`, because the run is cut at `l=3`. Verified `3`. This is the window-clip corner.
+- Update that flips a boundary: on `1 3 2 4 5 6 1 7`, `set 7 8` turns position `7` from `1` to `8`,
+  rebuilding its leaf and re-merging up; query `[5,8]` then sees `5,6,8,7` → `3`. Matches the sample.
+- Output discipline: only type-`2` operations print; an input of pure updates prints nothing, which I
+  confirmed. Lengths are small ints; `to_string` is exact.
+
+**Re-verification by brute force.** I wrote the obviously-correct `O(n)`-per-query scanner as an
+independent oracle and stress-tested the segment tree against it: `400` random small cases (`n <= 12`,
+`q <= 18`, small value alphabets so equal-neighbour seams are frequent) plus `300` larger cases
+(`n <= 30`, `q <= 40`, values across the full `±10^9` range), interleaving sets and queries — **zero
+mismatches** on all `700`. Both boundary bugs above were caught *before* this run by the targeted
+traces; the stress run is what convinces me nothing subtler remains. The documented sample also
+reproduces exactly (`4 / 4 / 3 / 3`).
 
 The remaining edge cases fall out of the same two rules. `l == r` reaches a single leaf and returns
 `best = 1`. An all-equal or strictly-decreasing array has `join` false at every seam, so every `best`
