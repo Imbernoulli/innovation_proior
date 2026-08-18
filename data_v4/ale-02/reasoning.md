@@ -105,3 +105,5 @@ the XOR add/remove and the `+/-area` score updates are correct, not merely plaus
 The full self-contained C++17 program — the bitset occupancy, the precompiled
 rotation masks, the greedy warm start, and the annealing loop with the corrected
 REPLACE branch — is the frozen answer.
+
+**Final solution.** That is what I ship — one self-contained file.
