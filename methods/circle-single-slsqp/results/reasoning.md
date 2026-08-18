@@ -94,7 +94,8 @@ insurance that happened not to be needed here, not a source of the result. Secon
 limitation. If the ceiling on this rung were the optimizer, different random starts would converge
 to about the same value; if it is the lone initialization, they should scatter. Re-running with
 seeds `1, 2, 3, 7` gives `2.581, 2.581, 2.611, 2.592` — a spread of three hundredths, all above the
-grid and all below the frontier, none reaching seed `0`'s `2.595` from above. That scatter is the
+grid and all below the frontier, and one of them — seed `3` at `2.611` — clearing seed `0`'s
+`2.595` outright. That scatter is the
 diagnosis made concrete: SLSQP is the right local engine, but a single random basin out of many is
 what caps the score. The next rung has to wrap this exact solver in many restarts to find a better
 basin than one draw can offer.
