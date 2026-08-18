@@ -1,0 +1,33 @@
+SOURCE: Jason Wei, "Six intuitions about large language models"
+URL: https://www.jasonwei.net/blog/some-intuitions-about-large-language-models
+Author: Jason Wei (first author, "Chain-of-Thought Prompting Elicits Reasoning in Large
+Language Models", NeurIPS 2022, arXiv:2201.11903)
+Retrieved: 2026-08-17 (via web fetch + HTML text extraction)
+Note: this is a later personal-blog retrospective/teaching post, not the paper itself and
+not the Google Research blog recap of the paper. It gives Wei's own independent framing for
+why chain-of-thought works, distinct from (though compatible with) the paper's own ablation
+tables (equation-only / variable-compute-only / reasoning-after-answer, in
+src/fables/appendix-ablation.tex and src/main_fables/ablation-bar.tex, which are primary-paper
+material, not an independent source).
+
+===== Relevant excerpt (Intuition 3) =====
+
+"Intuition 3. Tokens can have very different information density, so give language models
+time to think. It is a fundamental truth that not all tokens are worth the same in terms of
+information. Some tokens are very easy to guess and not worth much at all. For example, in
+"I'm Jason Wei, a researcher at OpenAI working on large language ___", it's not so hard to
+predict "models". It's so easy to predict that token that not much information is lost if I
+omit it. Some tokens are very hard to guess; they're worth a lot. For example, in "Jason Wei's
+favorite color is ___", it's virtually impossible to predict. So that token contains a lot of
+new information. Some tokens can also be very hard to compute. For example, in "Question: What
+is the square of ((8-2)*3+4)^3/8? (A) 1,483,492; (B) 1,395,394; (C) 1,771,561; Answer: (", the
+next token requires a lot of work (evaluating that expression). You can imagine that if you're
+ChatGPT, and as soon as you have to see the prompt you have to immediately start typing, it
+would be pretty hard to get that question right. The solution to this is to give language
+models more compute by allowing them to perform natural language reasoning before giving the
+final answer. This can be done via a simple trick called chain-of-thought prompting, which
+encourages the model to reason by providing an example of a "chain-of-thought" in the few-shot
+example, as highlighted in blue."
+
+"This technique is really useful for improving performance on complicated reasoning tasks that
+would require humans to spend more than one second solving."
