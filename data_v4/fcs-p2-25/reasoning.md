@@ -2,6 +2,8 @@ An `n x n` grid with values in `[-10^9, 10^9]`, and a falling path that starts a
 
 Two ways to attack it. Greedy descent — start at the cheapest top cell and always step to the cheapest of the three reachable cells below — is `O(n^2)` and a few lines, but a falling path is a *global* object: the column I sit in at row `i` decides which columns I can reach further down, and greedy picks a column from only the next row's three values, blind to what that column fences off later. That is exactly where greedy tends to fail, so I will not trust it without trying to break it. The alternative is a layered DP: for each column keep the minimum cost of a path ending there, and relax each cell from the (at most) three cells above. Same `O(n^2)`, and its correctness is the textbook DAG-relaxation argument — the only real risk is transcription at the edge columns.
 
+**Stress-testing greedy before committing.** Hand-waving "cheapest next cell feels right" is how wrong solutions get shipped, so let me actually attack greedy with a concrete instance instead of arguing in the abstract. I want a grid where taking the locally cheapest step early forces me into an expensive region later, while a *more expensive* early step keeps a cheap region reachable. Let me build one, `n = 3`.
+
 Let me actually break greedy rather than argue about it. I want a grid where the locally cheapest early step forces an expensive region later; `n = 3`, uniform top row so the trap is purely in the step decision:
 
 ```
@@ -19,6 +21,8 @@ dp[i][j] = a[i][j] + min( dp[i-1][j-1], dp[i-1][j], dp[i-1][j+1] )   // skip out
 ```
 
 The answer is `min over j of dp[n-1][j]`. Every dp value is the cost of some real path, and the `min` ranges over every legal predecessor, so it can neither invent an unachievable sum nor miss the optimum — the guarantee greedy lacked. On the given sample the recurrence reproduces the stated `13`: row 0 `[2, 1, 3]`, row 1 `[7, 6, 5]` (e.g. `dp[2] = 4 + min(1, 3) = 5`), row 2 `dp[0] = 7 + min(7, 6) = 13`, so the minimum is `13` via columns `1 -> 2 -> 1`.
+
+Row 0: `dp = [2, 1, 3]`. Row 1: `dp[0] = 6 + min(dp[0], dp[1]) = 6 + min(2,1) = 6 + 1 = 7`; `dp[1] = 5 + min(dp[0],dp[1],dp[2]) = 5 + min(2,1,3) = 5 + 1 = 6`; `dp[2] = 4 + min(dp[1],dp[2]) = 4 + min(1,3) = 4 + 1 = 5`. So row 1 `dp = [7, 6, 5]`. Row 2: `dp[0] = 7 + min(7,6) = 7 + 6 = 13`; `dp[1] = 8 + min(7,6,5) = 8 + 5 = 13`; `dp[2] = 9 + min(6,5) = 9 + 5 = 14`. Row 2 `dp = [13, 13, 14]`, minimum `13`. Correct — and the two ways to reach 13 (`2->5->? ` no; actually `1 (col1) -> 4 (col2) -> 8 (col1)` = `1+4+8 = 13`, columns `1->2->1`) match the path I expected.
 
 The edge columns are where this kind of code dies: columns `0` and `n-1` have only two predecessors. I guard the reads instead of padding with sentinels — start `best = dp[j]` (straight-down, always valid), fold in `dp[j-1]` only when `j > 0` and `dp[j+1]` only when `j+1 < n`. No index escapes `[0, n-1]` and no fabricated infinity can leak into a `min`. For `n = 1` both guards are false and each row's dp is just the running column sum — the only path.
 
