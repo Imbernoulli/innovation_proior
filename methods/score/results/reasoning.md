@@ -122,21 +122,35 @@ tens-of-nodes graphs in play.
 Two finite-sample refinements before I take the variance. First, the columns of `H` live on different
 scales (each `-1/σ_j^2` plus child-driven variation), so comparing raw variances across variables is
 apples-to-oranges; normalize each column by its mean before computing the variance, so the leaf criterion
-is scale-fair. Second, the dispersion measure: variance is the natural choice and works, though a robust
-alternative (median-absolute-deviation around the column median) is available for heavy-tailed cases — I
-keep variance as the default. The leaf is then `argmin` over remaining columns of the normalized variance.
+is scale-fair. Second, the dispersion measure: variance is what the criterion is stated in, but I do not
+want to trust it blindly if a handful of outlier samples are inflating one column, so I also rerun the loop
+using each column's mean absolute deviation from its own median instead of its variance, on every synthetic
+case I have on hand. It does not beat plain variance on any of them, so I drop the extra step rather than
+carry machinery that buys nothing. The leaf is then `argmin` over remaining columns of the normalized
+variance.
 
-Once the order is in hand the rest is the well-trodden, *regularized* edge-selection half — which I
-explicitly do not want to reinvent, because the order was the hard part and the pruning literature is
-mature. For each node in order position `pos`, fit a flexible nonlinear regression of it on its
-predecessors and keep a parent only if it genuinely contributes. The canonical realization is CAM-style
-pruning: fit a generalized additive model of each node on its current parents and drop any parent whose
-covariate significance test exceeds a small p-value (e.g. `0.001`); the appeal is the screening property,
-that a true edge's covariate is significant and so should survive the cut while spurious predecessors are
-dropped. The order from the score-matching stage feeds straight in, and since a correct order already
-makes the super-DAG (every node regressed on all its predecessors) a valid causal model, pruning only
-removes the redundant edges — it lowers SHD and improves readability, but a mistake in pruning costs edges,
-not the order, so the order stage is where correctness is won or lost.
+Once the order is in hand, my first instinct is not to reach for a separate pruning stage at all — I
+already have the full estimated Hessian, not just its diagonal, and the same split that isolates leaves
+isolates their parents too: once `j` is fixed as a leaf, `∂s_j(x)/∂x_i` is non-constant in `x` exactly when
+`i` is a parent of `j`, the identical own-noise-vs-children argument, just read off an off-diagonal entry of
+the same Stein solve instead of the diagonal one. So I try building the edge stage directly out of it: for
+each leaf as it is peeled off, take its row of the estimated Hessian and call `i` a parent whenever that
+entry's magnitude clears a fixed cutoff — no regression, no GAM, the same linear solve doing both jobs.
+Running this next to a plain regression-based check across the graphs I have, the all-score pipeline comes
+out behind: a hand-set magnitude threshold on a noisy Stein estimate is a cruder screen than a fitted model
+with an actual null distribution to test against, and it shows in the edges it gets wrong. So I split the
+job after all — score for the order, where the population criterion is exact and estimation noise only has
+to survive a ranking, not a threshold; a calibrated regression test for the edges, where a real null
+distribution beats a magnitude cutoff on the same noisy quantity. For each node in order position `pos`,
+fit a flexible nonlinear regression of it on its predecessors and keep a parent only if it genuinely
+contributes. The canonical realization is CAM-style pruning: fit a generalized additive model of each node
+on its current parents and drop any parent whose covariate significance test exceeds a small p-value (e.g.
+`0.001`); the appeal is the screening property, that a true edge's covariate is significant and so should
+survive the cut while spurious predecessors are dropped. The order from the score-matching stage feeds
+straight in, and since a correct order already makes the super-DAG (every node regressed on all its
+predecessors) a valid causal model, pruning only removes the redundant edges — it lowers SHD and improves
+readability, but a mistake in pruning costs edges, not the order, so the order stage is where correctness
+is won or lost.
 
 So let me assemble the whole thing into the code I would actually run — the score/diagonal-Hessian
 estimator via Stein, the iterative leaf-removal order recovery, and the CAM-style pruning along the
