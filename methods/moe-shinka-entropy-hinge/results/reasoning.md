@@ -46,14 +46,20 @@ and `s = 1.17`. So the gate triples the rescue strength from a healthy router (`
 collapsed one (`1.5`), and never drops the floor enforcement to exactly zero. That is the modulation
 I wanted: mostly idle, surging only as the router peaks.
 
-Now the implementation point that decides whether any of this is a real training signal. The hinge
-is naturally written on the count `f_i`, and `f_i` comes from a `bincount` of the top-K selections —
-it is non-differentiable, its gradient is identically zero, just like the bare count penalty of the
-first balancing rung. The count can only *select* which experts are under the floor; the gradient
-that actually moves usage has to flow through the differentiable router probability `P_i`. The
-obvious patch is to keep the `f`-based test for membership but apply the penalty to `P` of the
-selected experts: `Σ_i under_i · max(0, τ − P_i)`, where `under_i = [τ − f_i > 0]` is detached. Let
-me trace this on a concrete collapsed layer to make sure it does what I think.
+Now the implementation point that decides whether any of this is a real training signal, and I do not
+want to guess at it from the formula alone — I write the hinge the most literal way there is and watch
+what happens. Build the per-expert usage fraction directly: one-hot the top-K picks, average over the
+batch — `sel_mask = one_hot(sel_idx, N)`, `avg_sel = sel_mask.float().mean(0)` — and hinge on that
+fraction: `relu(τ − avg_sel).sum()`. That is the honest, unedited reading of `max(0, τ − f_i)`. But
+`sel_mask` comes from a hard top-K selection with no autograd path, so `avg_sel` carries none either,
+and `relu` of a gradient-less tensor is still gradient-less: written exactly as it stands, this term
+cannot move a single router weight, even though it is supposed to be a real push — a multiplier that
+strengthens as the router peaks, gradients that act on the router's token allocation. The literal port
+computes a value, not a signal. The count can only *select* which experts are under the floor; the
+gradient that actually moves usage has to flow through the differentiable router probability `P_i`. So
+I keep the `f`-based test for membership but move the penalty onto `P` of the selected experts:
+`Σ_i under_i · max(0, τ − P_i)`, where `under_i = [τ − f_i > 0]` is detached. Let me trace this on a
+concrete collapsed layer to make sure it does what I think.
 
 Take `N=8`, `τ=0.008`, and a heavily skewed routing of 100 tokens (top-2) so that experts 6 and 7
 each get only 0.5% of the slots — both below the floor, `under = {6,7}`. Now I need the router
