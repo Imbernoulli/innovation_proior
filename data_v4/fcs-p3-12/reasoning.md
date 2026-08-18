@@ -1,10 +1,19 @@
 Three constraints decide this problem before any algorithm is chosen: `N` runs up to `10^18`, `k` is at most `50`, and `p` (`2 <= p <= 10^9`) is not promised prime. The first kills any `O(N)` dynamic program outright — whatever I do must be logarithmic in `N`. The second says a cost polynomial in `k` is affordable. The third is the quiet one: with a composite modulus I cannot divide, so every step has to stay inside additions and multiplications mod `p`, with no modular inverse anywhere. I answer `T` queries (up to `2*10^5`), one triple `N k p` each, printing one count per line.
 
+- `N = 0`: just the empty string, `1`.
+- `N = 1`: `0, 1`, both good, `2`.
+- `N = 2`: `00, 01, 10, 11`, all good (longest run is at most `2-1`? no — `11` has a run of `2`, which is fine since we forbid `3`), so `4`.
+- `N = 3`: all `8` strings except `111`, so `7`.
+- `N = 4`: from brute force, `13`.
+- `N = 5`: `24`. `N = 6`: `44`. `N = 7`: `81`.
+
 The head of the sequence is a trap. Fix `k = 3` and count good strings by length: `N=0` gives `1`, then `2, 4` for `N=1,2` (every string fits), then `N=3` loses only `111` for `7`, and brute force continues `13, 24, 44, 81`. So `1, 2, 4, 7, 13, ...` opens with three exact powers of two, and that is not special to `k=3`: for any `k`, lengths `0..k-1` have no room for a forbidden run, so all `2^N` strings are good and `f(N) = 2^N`; for `k = 50` that is fifty consecutive powers of two before `f(50) = 2^50 - 1` finally falls one short. A solution that peeked only at small `N` would "discover" `f(N) = 2^N` and ship a `pow(2, N)` one-liner or a hardcoded table. Both pass the samples and die everywhere `N >= k`: `k=3, N=3` is `7`, not `2^3 = 8`, because `111` is forbidden, and the gap is exactly the count of bad strings, which only grows with `N`. With `N` reaching `10^18` no table is addressable and `2^N` is simply the wrong function. The powers-of-two head is the initial condition of a recurrence, not the answer.
 
 Deriving that recurrence: I classify a good string of length `n >= 1` by its leading block of ones — `j` ones (`0 <= j <= k-1`) then a `0`, followed by any good string of length `n-1-j`; the only string with no such `0` is all-ones, good only while `n <= k-1`. Summing over `j` gives, for `n >= k`,
 
 `f(n) = f(n-1) + f(n-2) + ... + f(n-k)`,
+
+**The initial values.** The recurrence needs `k` seed values `f(0), f(1), ..., f(k-1)`. But I already worked these out when I was tempted to hardcode them: for `0 <= n <= k-1`, *every* string of length `n` is good (no room for a run of `k`), so `f(n) = 2^n`. So the seeds are `f(i) = 2^i` for `i = 0, ..., k-1`, and the recurrence takes over from `f(k) = f(k-1) + ... + f(0) = 2^{k-1} + 2^{k-2} + ... + 1 = 2^k - 1`, which matches the "`2^k - 1`" observation. The whole structure clicks together: the powers-of-two head is not a coincidence to be hardcoded, it is the *initial condition* of a recurrence whose tail is the actual content of the problem.
 
 the order-`k` "`k`-bonacci" recurrence (`k = 2` is Fibonacci), with coefficients independent of `n` — exactly the lever for an astronomical `N`. Against the brute values for `k = 3`: `f(3) = 4+2+1 = 7`, `f(4) = 7+4+2 = 13`, `f(5) = 13+7+4 = 24`, all matching. The seeds are `f(i) = 2^i` for `i = 0..k-1`, and the recurrence itself produces `f(k) = 2^{k-1} + ... + 1 = 2^k - 1`.
 
@@ -15,6 +24,8 @@ The reduction, concretely: a polynomial is a length-`k` coefficient vector (degr
 One place the small-`p` tests can bite: the seeds. For `N < k` I answer with the seed directly, `f(N) = 2^N mod p`. If I build `2^i` as a raw `long long` — it fits, since `2^49 ~ 1.1*10^15` — and postpone the reduction, that direct path emits an unreduced value, and with `p` as small as `2` the error is not academic. Pin it with `N = 49, k = 50, p = 7`: here `N < k`, so the answer is `2^49 mod 7`; `2` has order `3` mod `7` (`2^3 = 8 = 1 mod 7`) and `49 = 3*16 + 1`, so `2^49 = 2 mod 7`. Building the seeds already reduced — `cur = (cur * 2) % p`, storing the reduced value — makes this case print `2`, and `N = 50` print `2^50 - 1 = 3 mod 7`. The discipline that keeps it clean everywhere: never carry an unreduced accumulator into a place where it is output or combined with reduced values.
 
 The `k = 1` corner is a genuine degeneracy, not decoration — and the constraints stress it explicitly. "No run of one or more ones" means no ones at all, so only the all-zeros string is good and `f(n) = 1` for every `n`. The generic machinery breaks here: the characteristic polynomial is `x - 1`, the coefficient vector has a single slot, and `x` reduces to the constant `1`. Seeding `base` with `base[1] = 1` (the polynomial `x`) is an out-of-range write when the vector length is `1`, so `k = 1` gets its own branch that sets `base[0] = 1` directly; then `x^N = 1` and `f(N) = coef[0] * f(0) = 1`.
+
+I compiled with `-O2 -std=c++17` and ran the differential test over `600` random seeds. Each seed produces dozens of queries; in total I checked `34800` query rows. After the two fixes above, the result was zero mismatches across all `34800` rows. The two bugs I had — the unreduced-seed bug and the `k = 1` index bug — were both first exposed by this harness (the `k = 1` case) or by the targeted small-modulus trace (the seed case), and both were fixed at the cause, not papered over.
 
 Overflow: coefficients live in `[0, p)` with `p <= 10^9`, so a single product reaches `(10^9)^2 = 10^18` — past `int`, within `__int128`, which is what every modular product uses; accumulating `k <= 50` of them before reduction stays in range. `N < 2^63` reads into a 64-bit integer and the exponentiation loop runs at most `60` times.
 
