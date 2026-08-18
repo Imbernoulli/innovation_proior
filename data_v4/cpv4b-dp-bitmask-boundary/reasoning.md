@@ -25,6 +25,16 @@ Greedy, standing on uncovered vent 0, grabs the strip reaching furthest right �
 out, and the reason is exactly that a single wide strip can cost more than two narrow ones covering
 the same vents.
 
+**Sanity-checking the forward-scan order, numerically.** My loop is `for S = 0..2^m-1` and from each
+`S` I relax `S -> S | mask_i`. The relaxation only ever moves to a *superset* `nS = S | mask_i`, and a
+proper superset satisfies `nS > S` as an integer (it has all of `S`'s bits plus at least one more, so
+its integer value is strictly larger). Therefore when the loop reaches index `nS`, every predecessor
+`S < nS` that could relax into it has *already* been processed, so `dp[nS]` is final by the time I use
+it to relax further. Let me verify on the trace above: `dp[15]` was written from `dp[3]` (3 < 15, seen
+earlier) and `dp[6]` fed `dp[7]` and `dp[14]` (6 < 7, 6 < 14). Every relaxation goes low-index to
+high-index. So a single forward pass suffices; I do not need to iterate to a fixpoint. Good — that
+claim is not assumed, it is the strict-superset-implies-larger-integer fact, checked on the case.
+
 So the state is the set of sealed vents and the objective ranges over arbitrary subsets — a subset DP.
 Let `dp[S]` be the minimum cost to have sealed exactly the set `S`; start `dp[0] = 0`, everything else
 `+infinity`, and relax by adding one strip at a time: from `S`, applying strip `i` reaches
@@ -33,6 +43,9 @@ is correct because any subset of strips achieving a cover can be applied in some
 chain `0 -> S_1 -> ... -> FULL` whose cost is the sum of the strips used; relaxing every single-strip
 extension from every state considers every such chain. Order is irrelevant since the masks combine by
 OR, and re-applying a strip never helps.
+
+**Stress-testing greedy before committing.** Let me actually attack greedy with a concrete instance,
+because "it feels right" is how wrong solutions get shipped. Take `m = 4` and three strips:
 
 One ordering fact makes a single pass enough. Every transition moves to a strict superset
 `nS = S | mask_i`, and a strict superset has strictly larger integer value (all of `S`'s bits plus at
@@ -78,4 +91,3 @@ zero-cost strips relax fine, since `dp[S] + 0` is a valid step, so free covers a
 touching spans `[0,2)`/`[2,4)` are the boundary case already traced. I cross-checked the whole thing
 against an independent brute force that enumerates all `2^n` strip subsets over several hundred random
 small cases, feasible and impossible, with no mismatch. The full program is in the answer.
-
