@@ -4,6 +4,8 @@ A product is strictly positive exactly when the chosen subset contains no zero �
 
 The two choices are independent. Any subset of the `P` positives is allowed — `2^P` ways. Among the `N` negatives I may take only an even-sized subset. Writing `E_N` for the number of even-sized subsets of an `N`-element set, the positive-product subsets *including the empty one* number `2^P * E_N`, and I subtract `1` to drop the empty subset. Every power reduces mod `m` by fast exponentiation, so the whole computation is `O(n + log P + log N)`. I keep the naive `O(2^n)` subset enumeration around only as a brute-force oracle to check the closed form against.
 
+I commit to the closed form and keep enumeration as the oracle.
+
 The even-subset count falls out of the binomial identity: `(1+1)^N = sum_k C(N,k) = 2^N` and `(1-1)^N = sum_k (-1)^k C(N,k) = 0`, so the even-indexed and odd-indexed sums are equal and each equals `2^(N-1)` — for `N >= 1`. That derivation divides `2^N` by two, and at `N = 0` it would read `E_0 = 2^(-1)`, which is meaningless. Directly: the empty set has exactly one subset, the empty one, of size `0` (even), so `E_0 = 1`. The `2^(N-1)` formula simply cannot carry this base case, so `N = 0` needs its own branch — and `N = 0` is exactly the all-positive and positives-and-zeros regime, so getting it wrong silently corrupts a whole class of inputs rather than one stray case.
 
 Checking the formula on the given sample `a = [3, -2, -5, 0, 4]`: `P = 2`, `N = 2`, one zero dropped. `E_N = 2^1 = 2` (the even negative subsets `{}` and `{-2,-5}`), `2^P = 4`, total `8`, answer `8 - 1 = 7` — matching the seven the statement enumerates.
