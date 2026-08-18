@@ -12,6 +12,8 @@ So I ship the thing I can prove. The DP is `4 * 10^6` operations with a recurren
 
 Let `dp[i][j]` be true iff the first `i` characters of `p` match the first `j` of `s`; I want `dp[|p|][|s|]`. For the boundary, `dp[0][0]` is true (empty matches empty) and `dp[0][j>=1]` is false. The first column asks whether a length-`i` pattern prefix can match the empty string — true only if every one of its characters is a `*` (each matching empty), which the `*` transition reproduces automatically. The transition for `i, j >= 1`, reading `pc = p[i-1]`:
 
+Boundary. `dp[0][0]` = true: the empty pattern matches the empty string. `dp[0][j]` for `j >= 1` = false: an empty pattern cannot match a nonempty string. The first column `dp[i][0]` — can a length-`i` pattern prefix match the empty string? Only if every one of its characters is a `*` (each star matching empty); a single literal or `?` requires a character that is not there. So `dp[i][0] = dp[i-1][0]` when `p[i-1] == '*'`, and false otherwise. That is the same as "`dp[i][0]` is true iff `p[0..i-1]` is all stars", which the recurrence produces automatically.
+
 - `pc == '*'`: the star matches the **empty** sequence — drop it, needing `dp[i-1][j]` — or absorbs `s[j-1]` and stays available, `dp[i][j-1]`. So `dp[i][j] = dp[i-1][j] || dp[i][j-1]`. This one OR is the whole reason DP beats backtracking: it folds "star eats more" and "star stops here" into a single memoized step, with no rewinding.
 - `pc == '?'` or `pc == s[j-1]`: a single-character match, `dp[i][j] = dp[i-1][j-1]`.
 - otherwise: `dp[i][j] = false`.
