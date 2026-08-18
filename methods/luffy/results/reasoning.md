@@ -82,17 +82,22 @@ matching, any off-the-shelf teacher dataset drops straight in. I accept the trad
 drop the KL term, `β = 0`, and follow Dr.GRPO by removing the length and std-error normalizations, so the
 advantage is clean and the only off-policy machinery is the ratio choice.)
 
-Now run the mixed-policy objective in my head over training and a new failure appears — and it is the one
-the whole field warns about. With the off-policy term `Σ_t π_θ(τ_{j,t}) · Â_j`, the cheapest way for the
-optimizer to raise the off-policy objective is to push up the teacher tokens that *already* have high
-`π_θ` — the ones the model would have produced anyway. Those contribute the most because `π_θ` is already
-large and the gradient `π_θ · ∇log π_θ` scales with `π_θ`. Meanwhile the teacher tokens with *low* `π_θ`
-— precisely the deviating, surprising tokens that carry the new reasoning the model does not yet have —
-get a tiny gradient and are effectively ignored. So the model converges fast onto the parts of the
-teacher trace it already agrees with and never learns the parts that would actually expand its
-capability. Entropy collapses, exploration dies, and I am back to a fast-converging imitator. This is the
-"hacking" of the mixed objective: it imitates the easy agreement and skips the hard, valuable
-disagreement.
+I do not want to just trust the math here — let me actually run it: same union-group advantage, off-policy
+term left raw, `Σ_t π_θ(τ_{j,t}) · Â_j`, no reshaping. A failure shows up in the training curve, not only in
+my head. Over the first stretch of steps the model's own solve rate drops hard, and when I put a plain
+SFT-on-the-teacher-trace run next to it, the two curves sit almost on top of each other through that whole
+early phase — whatever I built out of RL machinery is behaving exactly like an imitation loss. It never
+fully climbs back either: by the end of the run this variant still trails plain on-policy GRPO. Something
+in the gradient is throwing away the union-group structure I was proud of. With the off-policy term
+`Σ_t π_θ(τ_{j,t}) · Â_j`, the cheapest way for the optimizer to raise the off-policy objective is to push up
+the teacher tokens that *already* have high `π_θ` — the ones the model would have produced anyway. Those
+contribute the most because `π_θ` is already large and the gradient `π_θ · ∇log π_θ` scales with `π_θ`.
+Meanwhile the teacher tokens with *low* `π_θ` — precisely the deviating, surprising tokens that carry the
+new reasoning the model does not yet have — get a tiny gradient and are effectively ignored. That is
+exactly the SFT-like signature on the curve: the model converges fast onto the parts of the teacher trace
+it already agrees with and never learns the parts that would actually expand its capability. Entropy
+collapses, exploration dies, and I am back to a fast-converging imitator. This is the "hacking" of the
+mixed objective: it imitates the easy agreement and skips the hard, valuable disagreement.
 
 Let me make the failure precise by looking at the off-policy gradient. Write `π = π_θ(τ_{j,t})` for short.
 The off-policy term is `f(r̂) · Â_j` with `f` the identity (vanilla mixed-policy is `f(x) = x`), and
