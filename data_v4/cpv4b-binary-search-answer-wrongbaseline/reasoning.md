@@ -62,6 +62,16 @@ post is still right — it leaves the most room for the rest and the largest pos
 just runs this count from every anchor and accepts if any reaches `k` (and short-circuits `d <= 0` to
 true, since every selection has nonnegative gaps).
 
+**A second, independent self-verify — `k = 2`.** Pairs are the cleanest sanity check because the answer
+has a closed form: for two posts the two cyclic gaps are `g` and `L - g`, so the clearance is
+`min(g, L - g)`. Test `L = 10`, posts `[1, 8]`, `k = 2`. The gap `8 - 1 = 7`, so clearance should be
+`min(7, 3) = 3`. Trace my code at `d = 4`: anchor `p = 1`, post `8` gap `7 >= 4`, wrap
+`(1+10)-8 = 3 < 4`, break — count `1`; anchor `p = 8`, post `1` unrolled at `1 + 10 = 11`, gap
+`11 - 8 = 3 < 4`, skip — count `1`. `feasible(4) = false`. At `d = 3`: anchor `p = 1`, post `8` gap 7,
+wrap `3 >= 3`, take — count `2 >= k`, true. So the answer is `3`. Correct, and it confirms the wrap
+handling is symmetric: neither anchor can claim the long arc `7` as the clearance, because the other
+arc `3` always binds. (The full program prints `3` on this input, which I checked.)
+
 Re-running the failing query with this predicate: at `d = 8`, anchor `0` takes `9` (wrap
 `20 - 9 = 11`, fine) then reaches `17` with gap `8` but wrap `20 - 17 = 3 < 8`, so it breaks without
 taking it — count `2`. Sweeping the other anchors at `d = 8` tops out at `2` everywhere, so
