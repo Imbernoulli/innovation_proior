@@ -107,3 +107,5 @@ rotation masks, the greedy warm start, and the annealing loop with the corrected
 REPLACE branch — is the frozen answer.
 
 **Final solution.** That is what I ship — one self-contained file.
+
+**Final solution.** That is what I ship — one self-contained file.
