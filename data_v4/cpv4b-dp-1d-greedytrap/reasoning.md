@@ -34,6 +34,14 @@ just leapt from stone `i-1` or stone `i-2`, then paid `c[i]`:
 
     dp[i] = min(dp[i-1], dp[i-2]) + c[i].
 
+Let me confirm the recurrence by hand on the stated sample `c = [3, 7, 8, 6, 5, 7]`, `n = 6`,
+claimed answer `16` with landings on stones `0, 2, 4`. `dp[0] = 3`. `dp[1] = min(7, 3+7) = 7`.
+`dp[2] = min(dp[1], dp[0]) + 8 = min(7,3) + 8 = 11`. `dp[3] = min(dp[2], dp[1]) + 6 = min(11,7) + 6
+= 13`. `dp[4] = min(dp[3], dp[2]) + 5 = min(13,11) + 5 = 16`. `dp[5] = min(dp[4], dp[3]) + 7 =
+min(16,13) + 7 = 20`. Answer `= min(dp[5], dp[4]) = min(20, 16) = 16`. It matches, and `dp[4] = 16`
+is realized by `dp[2] = 11` (which is `dp[0]=3` plus `8`) plus `5`, i.e. landings `0, 2, 4` — exactly
+the claimed path. The recurrence is right.
+
 The body is clearly right; the two ends are where transcription bites, because they encode the two
 special rules of the contract. My first cut writes them the naive way — to be on stone `1` you
 stepped from stone `0`, and you finish from the last stone:
@@ -57,6 +65,10 @@ come from either of the last two stones:
     ans = dp[n-1];
     if (n >= 2) ans = min(ans, dp[n-2]);
 
+Re-trace `[1, 8, 9, 5]`: `dp = [1, 9, 10, 14]`, `ans = min(dp[3], dp[2]) = min(14, 10) = 10`.
+Correct. The case that broke now passes, and it broke for the reason I fixed — that is the evidence
+I trust.
+
 Re-trace: `ans = min(14, 10) = 10`, correct.
 
 The second end is still wrong: `dp[1] = dp[0] + c[1]` hard-codes "to be on stone `1` you stepped
@@ -72,6 +84,18 @@ genuinely different histories — land on stone `1` first (`c[1]`) or land on st
 Re-trace `[9, 1]`: `dp[1] = min(1, 10) = 1`, `ans = min(1, 9) = 1`, correct. And `[1, 8, 9, 5]` end
 to end with both fixes: `dp = [1, 8, 10, 13]`, `ans = min(13, 10) = 10` — the first-landing fix did
 not disturb the case the finish fix repaired.
+
+**A numeric self-check of the recurrence on an all-negative case, because negatives flip intuition.**
+With negative costs I no longer want *few* landings; each landing only helps, so I want to land on as
+many stones as the reach allows — and the `+1` step lets me touch *every* stone. Take `c = [-4, -6,
+-2, -6]`, `n = 4`. Landing on all four (steps `0->1->2->3`) costs `-4-6-2-6 = -18`, then the free
+leap from stone `3 = n-1` finishes. Can I do better than `-18`? Every stone is negative, so skipping
+any only raises the total; `-18` should be optimal. Run the recurrence: `dp[0] = -4`; `dp[1] =
+min(-6, -4-6) = min(-6, -10) = -10`; `dp[2] = min(dp[1], dp[0]) + c[2] = min(-10,-4) + (-2) = -12`;
+`dp[3] = min(dp[2], dp[1]) + c[3] = min(-12,-10) + (-6) = -18`; `ans = min(dp[3], dp[2]) = min(-18,
+-12) = -18`. Matches the hand argument, and `dp[3] = -18` is the all-stones path. The recurrence
+handles the sign flip correctly because `min` automatically prefers chaining through more negative
+stones; nothing special is needed.
 
 With both ends fixed I run the given sample `c = [3, 7, 8, 6, 5, 7]`: `dp = [3, 7, 11, 13, 16, 20]`,
 `ans = min(20, 16) = 16`, realized by landings `0, 2, 4` — matching the stated crossing.
@@ -96,3 +120,5 @@ clear-to-bank, and minimize the sum over landed stones. On hundreds of random in
 negative, mixed, and all-negative, `n` up to ~16) it agrees with the DP on every one.
 
 What I ship is this prefix DP, one self-contained `O(n)` file; the full module is in the answer.
+
+**Final solution.** That is what I ship: one self-contained `O(n)` file, the DP I can defend rather than the greedy I broke.
