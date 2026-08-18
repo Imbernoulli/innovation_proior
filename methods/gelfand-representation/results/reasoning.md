@@ -18,6 +18,8 @@ The spectrum is the right test. In a function algebra, the spectrum of a functio
 
 `sigma(a) = { phi(a) : phi in Delta(A) }`.
 
+Let me check this on a ring where I already know the direct proof is hard. Take `W`, the absolutely convergent Fourier series on the circle, `f(t)=sum c_n e^{int}` with `||f||=sum|c_n|`, multiplied pointwise (which is convolution on the coefficients). The function `g(t)=e^{it}` is invertible in `W`, with inverse `e^{-it}`, and both have norm `1`. For any character `phi`, boundedness gives `|phi(g)|<=1` and `|phi(g^{-1})|<=1`, and `phi(g)phi(g^{-1})=1` forces both to have modulus exactly `1`, so `phi(g)=e^{it_0}` for some `t_0`. Then for any `f=sum c_n g^n` in `W`, `phi(f)=sum c_n phi(g)^n=sum c_n e^{int_0}=f(t_0)`: every character of `W` is evaluation at a point of the circle, so `Delta(W)` is the circle itself. The range-equals-spectrum fact says `f` fails to be invertible in `W` exactly when some character kills it, i.e. exactly when `f(t_0)=0` for some `t_0` on the circle. Turned around: a nonvanishing `f` in `W` is invertible in `W`, so `1/f` also has an absolutely convergent Fourier series. That statement used to need a hard estimate on the decay rate of convolution powers; here it drops out as a sentence about zeros.
+
 So the transformed function has range equal to the spectrum of the original element. Its uniform norm is
 
 `||hat a||_infty = sup_phi |phi(a)| = sup{|lambda| : lambda in sigma(a)} = r(a)`.
