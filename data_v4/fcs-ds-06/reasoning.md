@@ -63,6 +63,18 @@ delta, then run the loop. Type 1 applies a delta at the point's stored `(rank, y
 coordinates with `lastAns`, computes the rectangle sum, sets `lastAns`, and prints. The empty-rectangle
 case the encoding can produce — `X1 > X2` or `Y1 > Y2` — returns `0` before touching the trees.
 
+That felt symmetric with the query side, which also calls `upper_bound`. To check it, I trace the
+smallest input that could expose a rank error: one point at `(0, 0)` with weight `5`, and one query for
+the rectangle `[0,0] x [0,0]`. Compression gives a single `x`-rank `r = 1` and node `1`'s `y`-list is
+`[0]` (size `m = 1`). Seeding the weight: in node `1`, `upper_bound([0], 0)` returns the position *after*
+the `0`, i.e. index `1`, so `yr = 1`. The inner walk `k = 1; 1 <= 1` does `bit[1][1] += 5`. So far it
+*happens* to land right. Now I make the `y` not be the smallest value, which is where `upper_bound`
+betrays me. Two points: `(0, 0)` weight `0` and `(0, 5)` weight `7`; node `1`'s `y`-list is `[0, 5]`,
+`m = 2`. Seeding the `(0,5)` point: `upper_bound([0,5], 5)` returns index `2` (past the `5`), so
+`yr = 2`, and the walk `k = 2` does `bit[1][2] += 7`. Then a query `[0,5] x [0,5]` should return `7`. In
+the query, the inner prefix for `y <= 5` is `upper_bound([0,5], 5) = 2`, walk `k = 2 -> bit[1][2]`, plus
+`k = 0` stops: sum `7`. It matches — again by luck, because `5` is the *largest* `y`.
+
 A few corners I want to be sure of. Boundary inclusivity: `rHi = xidx(X2)` includes the rank of `X2` and
 `rLo = xidx(X1-1)` excludes `X1`'s lower neighbor, and `Y1-1` excludes the bottom edge, so a point exactly
 on the border is counted once. Negative weights: the Fenwick stores signed deltas, so `+10` then `-10` is
