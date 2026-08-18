@@ -72,6 +72,18 @@ order. The window is inclusive `[L, R]`, started *empty* as `curL = 0, curR =
 The delicate part is the order of the four while-loops that march the pointers.
 My first cut:
 
+**Tracing it on a tiny case and hitting a bug.** Let me trace the smallest input
+that could expose an ordering mistake. Take `a = [5, 5]` (after compression
+`[0, 0]`, `V = 1`), and a single query `(0, 0)` whose correct answer is `1`.
+Start `curL = 0, curR = -1`, `cnt = [0]`, `distinct = 0`.
+
+- `while (curL < 0)`: `0 < 0` false, skip.
+- `while (curR < 0)`: `-1 < 0` true → `add(++curR)` = `add(0)`: `cnt[a[0]] =
+  cnt[0]` goes `0 -> 1`, so `distinct -> 1`. Now `curR = 0`. Loop check `0 < 0`
+  false, stop.
+- `while (curL > 0)`: false. `while (curR > 0)`: false.
+- Answer `= distinct = 1`. Correct here.
+
 ```
 while (curL < Q.l) remove(curL++);  // shrink left
 while (curR < Q.r) add(++curR);     // grow right
@@ -92,6 +104,17 @@ position outside the window, and everything downstream is corrupt.
 The fix is forced: grow before you shrink. Do both `add`-loops (extend `R` right,
 extend `L` left — these only enlarge the window) first, then both `remove`-loops.
 That guarantees every `remove` acts on a position currently inside the window:
+
+Re-trace `a = [1,2]`, query A `(1,1)`: start `L=0,R=-1`. Grow right: `add(0)`
+→ `cnt[0]=1, distinct=1`; `add(1)` → `cnt[1]=1, distinct=2`; now `R=1`. Grow
+left: `curL=0 > 1`? no. Shrink right: `R=1>1`? no. Shrink left: `curL=0<1` →
+`remove(0)`: `cnt[0] 1->0`, `distinct 2->1`, `curL=1`. Answer `distinct=1` —
+range `[1,1]` is `{2}`, correct. Then query B `(0,0)`: grow right `R=1<0`? no.
+Grow left `curL=1>0` → `add(0)`: `cnt[0] 0->1`, `distinct 1->2`, `curL=0`. Shrink
+right `R=1>0` → `remove(1)`: `cnt[1] 1->0`, `distinct 2->1`, `R=0`. Shrink left
+`0<0`? no. Answer `distinct=1` — range `[0,0]` is `{1}`, correct. The corruption
+is gone and it is gone *for the reason I fixed*: no `remove` ever touches a
+position outside the window now.
 
 ```
 while (curR < Q.r) add(++curR);     // grow right
@@ -123,3 +146,5 @@ when `q` is tiny relative to `n`.
 A Fenwick sweep-by-`r` or a persistent segment tree would reach the same
 wall-clock with strictly more machinery and more bug surface, so Mo's algorithm
 is the right fit at these limits. The full submission is in the answer.
+
+**Final solution.** That is what I ship — one self-contained file.
