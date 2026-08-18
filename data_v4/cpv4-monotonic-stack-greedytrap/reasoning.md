@@ -73,3 +73,5 @@ So the whole solution is one left-to-right scan with a strict-`>` pop, then a ta
 unspent budget. The strict comparison keeps equal towers from wasting a demolition, and the drain
 forces leftover removals onto the least significant tail. Wrapped in the stdin/stdout contract — read
 `n`, `k`, `s`; print the result string then a newline — that is the program.
+
+**Final solution.** That is what I ship: one self-contained file, the `O(n)` monotonic stack I can defend rather than the greedy I broke.
