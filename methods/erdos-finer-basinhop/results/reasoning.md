@@ -47,7 +47,7 @@ single SLSQP ladder from one (upscaled, kicked) start will be enough, because th
 local minima, not fewer. The extra degrees of freedom that let me carve better structure also create more
 ways to get stuck. The shape of the problem — a non-convex minimax where local descent is cheap but the
 basins are many — is exactly the regime where you want to solve to a local optimum, perturb, and re-solve,
-keeping only improvements. So I wrap the SLSQP ladder in a basin-hopping loop: solve the ladder to a local
+keeping only improvements. That is not just my own guess at the right family: the finest published construction on this exact problem, the `~600`-cell record beyond the resolution I am working at here, was reached by gradient descent combined with exactly this recipe — random hill-climbing plus simulated annealing layered on the local optimizer, with the same box-and-sum feasibility projection I am already using. Knowing the record at higher resolution was won by perturb-and-restart on top of local descent, not by some structurally different global method, is what tells me to spend this rung's budget wrapping the SLSQP ladder rather than reaching for, say, a convex relaxation. So I wrap the SLSQP ladder in a basin-hopping loop: solve the ladder to a local
 optimum, then perturb the best-so-far vector and re-solve, accepting only improvements, repeating for a
 budget of hops. Each hop is a constrained restart near the current best — far enough to jump basins, near
 enough to keep the good gross structure. I shrink the perturbation as the hops proceed, so early hops
