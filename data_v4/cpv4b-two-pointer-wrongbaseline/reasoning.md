@@ -25,6 +25,14 @@ gives `18 - 9 = 9 >= 7` with `j - i = 2` — the window `a[6..7] = 3 + 6 = 9`, l
 tick reaches `7` (max element `6`), so `2` is optimal. Now the naive window, which after each right
 step shrinks from the left while the window minus `a[l]` is still `>= S`:
 
+Trace it. `r=0`: `s=4`, not `>=7`. `r=1`: `s=6`. `r=2`: `s=8>=7`; can I shrink? `s - a[0] = 8-4 = 4
+< 7`, no; record length `r-l+1 = 3`. `r=3`: `s=10`; shrink? `10 - a[0] = 6 < 7`, no; length `4`,
+worse. `r=4`: `s=12`; `12 - 4 = 8 >= 7`, shrink, `l=1, s=8`; `8 - a[1] = 6 < 7`, stop; length `4`.
+`r=5` (`-3`): `s=5 < 7`. `r=6` (`3`): `s=8 >= 7`; `8 - a[1] = 6 < 7`, no shrink; length `r-l+1 = 6`.
+`r=7` (`6`): `s=14`; shrink: `14 - a[1]=12>=7` (`l=2,s=12`), `12 - a[2]=10>=7` (`l=3,s=10`), `10 -
+a[3]=8>=7` (`l=4,s=8`), `8 - a[4]=6<7` stop; length `r-l+1 = 7-4+1 = 4`. The best the naive ever
+records is `3`.
+
 ```
 best = inf; s = 0; l = 0;
 for r in 0..n-1:
@@ -60,6 +68,53 @@ the sample prefix `[0, 4, 6, 8, 10, 12, 9, 12, 18]`, the mechanism that matters 
 survives in the deque — precisely the left endpoint the naive pointer could never keep. Later at
 `j=8` (`18`), extraction records `18 - prefix[6] = 9 >= 7` at length `8 - 6 = 2`. The deque gets the
 `2` that the sliding window missed.
+
+- `j=0` (`prefix 0`): deque empty, front-pop nothing; back: empty; push 0. Deque `[0]` (vals `[0]`).
+- `j=1` (`4`): `4 - 0 = 4 < 7`, no front-pop. Back: `prefix[0]=0 >= 4`? No. Push 1. `[0,1]` (`0,4`).
+- `j=2` (`6`): `6 - 0 = 6 < 7`, stop front. Back: `4 >= 6`? No. Push 2. `[0,1,2]` (`0,4,6`).
+- `j=3` (`8`): `8 - 0 = 8 >= 7`, record `3 - 0 = 3`, pop front `0`. Now front `1`: `8 - 4 = 4 < 7`,
+  stop. Back: `6 >= 8`? No. Push 3. `[1,2,3]` (`4,6,8`).
+- `j=4` (`10`): `10 - 4 = 6 < 7`, stop. Back: `8 >= 10`? No. Push 4. `[1,2,3,4]` (`4,6,8,10`).
+- `j=5` (`12`): `12 - 4 = 8 >= 7`, record `5 - 1 = 4`, pop front `1`. Front `2`: `12 - 6 = 6 < 7`,
+  stop. Back: `10 >= 12`? No. Push 5. `[2,3,4,5]` (`6,8,10,12`).
+- `j=6` (`9`): `9 - 6 = 3 < 7`, stop front. Back dominance: `prefix[5]=12 >= 9`? Yes, pop 5.
+  `prefix[4]=10 >= 9`? Yes, pop 4. `prefix[3]=8 >= 9`? No, stop. Push 6. `[2,3,6]` (`6,8,9`).
+  This is the crucial step: the dip lets index 6 (value 9) survive, which naive could never keep.
+- `j=7` (`12`): `12 - 6 = 6 < 7`, stop front. Back: `prefix[6]=9 >= 12`? No. Push 7. `[2,3,6,7]`
+  (`6,8,9,12`).
+- `j=8` (`18`): `18 - 6 = 12 >= 7`, record `8 - 2 = 6`, pop front `2`. `18 - 8 = 10 >= 7`, record
+  `8 - 3 = 5`, pop `3`. `18 - 9 = 9 >= 7`, record `8 - 6 = 2`, pop `6`. `18 - 12 = 6 < 7`, stop.
+
+I have a nagging feeling about the *order* of the two while-loops, so I trace the smallest input that
+could expose it. Take `a = [5]`, `S = 5`; the answer is obviously `1` (the single tick `5 >= 5`).
+`prefix = [0, 5]`. `r=0` (`0`): dominance — deque empty; extract — empty; push 0. Deque `[0]`. `r=1`
+(`5`): dominance — `prefix[0]=0 >= 5`? No, keep. extract — `5 - prefix[0] = 5 >= 5`, record
+`1 - 0 = 1`, pop 0; deque empty, stop. push 1. Final `best = 1`. Correct here. But this ran the
+dominance pop *before* the extract on the same `r`, and I want a case where that ordering actually
+bites.
+
+**The bug, found by a second trace.** Consider `a = [10]`, `S = 10`. `prefix = [0, 10]`, answer `1`.
+That works (same shape as above). Now the real probe: what if the new index would *dominate* the very
+front index that should have produced the answer? Try `prefix` where the front is large. Take
+`a = [-4, 10]`, `S = 6`; window `[0,1]` sums `6 >= 6` (length 2), window `[1,1]` sums `10 >= 6`
+(length 1) — answer `1`. `prefix = [0, -4, 6]`. `r=0` (`0`): push 0. `[0]`. `r=1` (`-4`): dominance —
+`prefix[0]=0 >= -4`? Yes, **pop 0**. Then extract — deque empty, nothing. push 1. `[1]` (val `-4`).
+`r=2` (`6`): dominance — `prefix[1]=-4 >= 6`? No. extract — `6 - (-4) = 10 >= 6`, record `2 - 1 = 1`,
+pop 1. push 2. Final `best = 1`. That happens to be right. But look at what nearly went wrong, and
+construct the case that *does* go wrong: I need the front to be both the answer's left endpoint *and*
+something a later same-`r` dominance pop would erase before extraction. Try `a = [6, -100]`, `S = 6`,
+answer `1` (`a[0]=6>=6`). `prefix = [0, 6, -94]`. `r=0`: push 0. `r=1` (`6`): dominance `0>=6`? No.
+extract `6 - 0 = 6 >= 6`, record `1`, pop 0. push 1. `r=2` (`-94`): dominance `prefix[1]=6>=-94`? Yes,
+pop 1. extract empty. push 2. `best=1`. Still fine.
+
+The ordering does not corrupt *these* answers, but the principle is wrong and a sharper case shows it.
+Run `a = [3, 3]`, `S = 6`, answer `2` (`3+3=6`). `prefix = [0, 3, 6]`. With **dominance-first**: `r=0`
+push 0 `[0]`. `r=1` (`3`): dominance `0>=3`? No. extract `3-0=3<6` no. push 1 `[0,1]`. `r=2` (`6`):
+dominance `prefix[1]=3 >= 6`? No. `prefix[0]=0>=6`? No. extract `6 - 0 = 6 >= 6`, record `2 - 0 = 2`,
+pop 0. `6 - 3 = 3 < 6` stop. push 2. `best = 2`. Correct. Hmm — dominance-first keeps surviving by
+luck because dominance only pops indices with *larger* prefix, and the front used for extraction has
+the *smallest* prefix, so dominance never pops the front it needs. So the two orders give the same
+answer. The actual defect I should hunt is elsewhere.
 
 **A transcription bug: which loop runs first.** The trap in coding this up is the
 order of the two while-loops within one `j`. My first cut ran the dominance back-pop before the
