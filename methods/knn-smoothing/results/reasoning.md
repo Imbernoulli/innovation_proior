@@ -62,14 +62,37 @@ at very low counts (0.40 at `μ=1`, where dropout lives), but it is the right mo
 loudest genes from hijacking the distance. So the distance space is: square-root the counts,
 normalize to a common library size, *then* measure neighbors.
 
-The second decision is where to look for neighbors, and here I want to be deliberately crude. The
-simplest choice is to pick neighbors directly on the observed (noisy) normalized profiles — not to
-first denoise the space I am searching in. That is the whole character of this rung and also its
-known weakness. In a high-dropout regime the observed profiles are sparse and noisy, so the
-nearest-neighbor relation is itself corrupted: a cell's true neighbors may be pushed away and
-impostors pulled in, purely by which genes happened to drop out in each. I am going to accept that
-weakness on purpose, because curing it is exactly what a later graph construction would be for. For
-now, neighbors on the raw normalized profiles.
+The second decision is where to look for neighbors, and here I want to be deliberately crude: pick
+neighbors directly on the observed (noisy) normalized profiles in one pass, not on a first-denoised
+embedding. That is the whole character of this rung, and I owe it a real check rather than a
+hand-wave, because the square-root-and-normalize step does not actually make the search unbiased. A
+cell's post-transform noise still depends on how many molecules it happened to be captured with: a
+deeply-captured cell has proportionally less Poisson scatter per gene than a shallow one drawn from
+the exact same biological state, so after normalizing, the deep cell's profile sits close to almost
+everything in Euclidean distance, while a shallow cell from that same state scatters wide and can
+end up looking far from its own kind. That would mean the "nearest neighbor" search is not really
+finding *similar cells*, it is finding *quiet cells* — a systematic pull toward whichever cells
+happen to have the least noise, independent of whether they share a state. I can check this
+directly rather than assume it: simulate 400 cells from a single true state with realistic
+capture-depth variation (lognormal depths, mean ≈ 2200), run the exact recipe above, and ask whether
+each cell's 10 picked neighbors are drawn evenly from the population or skewed toward the low-noise
+half:
+
+```
+population mean depth                                     : 2213.9
+mean depth of picked neighbor pool                         : 6430.1
+ratio picked / population                                  : 2.90
+fraction of picks from the deep (low-noise) half of the SAME cluster : 0.996   (0.5 = unbiased)
+```
+
+Nearly every neighbor picked comes from the low-noise half of the population, even though every
+cell here is the same true state by construction — the bias is real, and it is large (this holds up
+across reruns with different random seeds, ratio 2.7-3.1 each time). With a single global pass over
+noisy profiles, low-noise cells act as an attractor and noisier cells get systematically
+under-averaged with their own kind instead of with each other. I am going to accept that weakness on
+purpose, because curing it — re-deriving the neighbor search step by step on progressively-smoothed,
+lower-noise profiles instead of trusting one noisy pass outright — is exactly what a later rung
+would have to do. For now, neighbors on the raw normalized profiles.
 
 Then the averaging. I take the cell plus its `k` neighbors and average their normalized profiles
 uniformly — a *hard, uniform* pool, every neighbor weighted equally, with a cliff at the `k`-th
@@ -119,8 +142,10 @@ pool removes ninety percent of the per-gene noise, so neighbor averaging should 
 fraction of the gap to the rate. But I also expect a clear gap remaining below a graph-diffusion
 rung, for the two reasons I built in on purpose. The neighbors are chosen on noisy profiles, so some
 of the pooling is simply wrong — the depth check shows the distance becomes meaningful once I
-normalize, but it says nothing about dropout corrupting *which* cell is nearest, and that corruption
-is exactly what survives here. And the pool is a hard uniform average with one global `k`, so it
+normalize, but the size-bias check shows normalizing does not make the search unbiased: it still
+systematically favors low-noise, deeply-captured cells as neighbors over noisier true state-mates,
+and that bias is exactly what survives here. And the pool is a hard uniform average with one global
+`k`, so it
 cannot adapt its bandwidth to the local density of the manifold the way a weighted affinity graph
 can. Denoising the space neighbors are found in, and replacing the hard uniform pool with an
 adaptive-bandwidth, transitive diffusion, is what the next rung would have to do.

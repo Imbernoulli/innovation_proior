@@ -11,10 +11,12 @@ cell's original library size — so the output is on the count scale and keeps p
 **Why these choices.** Square root makes count variance roughly mean-independent so loud genes do
 not hijack the distance; library-size normalization removes the depth confound from neighbor
 selection. Neighbors are chosen on the *raw* normalized profiles (no denoised embedding) — the
-classical Wagner-style baseline — which is deliberately crude: in high dropout the noisy distances
-mis-select neighbors, and a single global `k` with a hard uniform pool over-smooths dense regions
-while under-smoothing isolated cells. These are the two flaws the graph-diffusion rung exists to
-cure. `k ≈ 10` is tuned on the tune set as a bias-variance compromise.
+classical Wagner-style baseline — which is deliberately crude: normalizing does not make the search
+unbiased, since a deeply-captured cell keeps proportionally less per-gene noise than a shallow
+cell of the same state, so the search systematically prefers low-noise (deep) cells as neighbors
+over noisier true state-mates; and a single global `k` with a hard uniform pool over-smooths dense
+regions while under-smoothing isolated cells. These are the two flaws the graph-diffusion rung
+exists to cure. `k ≈ 10` is tuned on the tune set as a bias-variance compromise.
 
 **Hyperparameters / contract.** `knn = 10` (neighbors averaged, plus the cell itself). Input/output
 shape preserved, output non-negative. Deterministic given the input. Neighbors via exact Euclidean

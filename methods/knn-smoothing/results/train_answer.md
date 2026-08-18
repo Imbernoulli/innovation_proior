@@ -21,10 +21,13 @@ square-root the counts, normalize to a common library size, and only then measur
 second decision is one I make deliberately crude: where to look for neighbors. The classical
 Wagner-style kNN-smoothing picks neighbors directly on the observed, noisy normalized profiles — it
 does not first denoise the space it searches in. That is the character of the method and also its
-known weakness, because in a high-dropout regime the observed profiles are sparse and noisy, so the
-nearest-neighbor relation is itself corrupted: a cell's true neighbors may be pushed away and
-impostors pulled in, purely by which genes happened to drop out. I accept that weakness on purpose,
-because curing it is exactly what a later graph construction is for.
+known weakness: normalizing removes the depth confound from the *scale* of a profile, but it does
+not remove it from the *noise level* of a profile — a deeply-captured cell keeps proportionally less
+Poisson scatter per gene than a shallow cell of the exact same state, so its normalized profile sits
+close to almost everything in Euclidean distance while a shallow state-mate scatters wide, and the
+search ends up systematically favoring quiet, deeply-captured cells as neighbors over noisier
+same-state cells. I accept that weakness on purpose, because curing it is exactly what a later graph
+construction is for.
 
 The averaging is a *hard, uniform* pool: I take the cell plus its $k$ neighbors and average their
 normalized profiles with equal weight, so the boundary at the $k$-th neighbor is a cliff. After
