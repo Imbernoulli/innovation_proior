@@ -16,10 +16,10 @@ svc_up() { curl -fs -o /dev/null --max-time 4 "http://127.0.0.1:$1/v1/models" 2>
 preempt() { local t=0 v; for p in 30000 30001 30002; do v=$(curl -fs --max-time 4 http://127.0.0.1:$p/metrics 2>/dev/null | awk '!/^#/ && /num_preemptions_total/ {print int($NF)}'); t=$((t+${v:-0})); done; echo $t; }
 running() { local t=0 v; for p in 30000 30001 30002; do v=$(curl -fs --max-time 4 http://127.0.0.1:$p/metrics 2>/dev/null | grep -E '^vllm:num_requests_running' | awk '{print int($2)}'); t=$((t+${v:-0})); done; echo $t; }
 free_gpus() { nvidia-smi --query-gpu=index,memory.used --format=csv,noheader,nounits 2>/dev/null | awk -F', ' '$2<3000{printf "%s ",$1}'; }
-q38_driver_alive() { [ "$(ps -eo args | grep -cE 'hardcp_rollout\.py.*out-suffix \.q38')" -ge 5 ]; }
+q38_driver_alive() { [ "$(ps -eo args | grep -cE 'hardcp_rollout\.py.*out-suffix \.q38')" -ge 4 ]; }
 
 last_bytes=$(q38_bytes); last_change=$(date +%s); last_pre=$(preempt); last_pre=${last_pre:-0}
-down_30000=0; down_30001=0; down_30002=0; stalled=0; tick=0; prev_free=$(free_gpus)
+down_30000=0; down_30001=0; down_30002=0; stalled=0; tick=0; fw=0; fw_reported=0
 echo "[q38-watch] armed: q38 bytes=$last_bytes driver=$(q38_driver_alive && echo up || echo DOWN)"
 while true; do
   sleep 180
@@ -32,7 +32,7 @@ while true; do
       [ "${!dvar}" = "1" ] && { echo "[q38-watch] q38 service $p RECOVERED"; eval "$dvar=0"; }
     fi
   done
-  if ! q38_driver_alive; then echo "[q38-watch] ALERT: fewer than 5 q38 drivers alive (q38b cfr1/code/math + q38 x2; q38b-reasoning finished 92/92)"; sleep 600; fi
+  if ! q38_driver_alive; then echo "[q38-watch] ALERT: fewer than 4 q38 drivers alive (cfr1, code-fresh, code-unsolved, non-coding)"; sleep 600; fi
   b=$(q38_bytes); now=$(date +%s)
   if [ "$b" != "$last_bytes" ]; then last_bytes=$b; last_change=$now; [ "$stalled" = "1" ] && { echo "[q38-watch] q38 trace growth RESUMED"; stalled=0; }; fi
   idle=$((now - last_change))
@@ -58,12 +58,11 @@ while true; do
   done
   pr=$(preempt); pr=${pr:-0}; d=$((pr - last_pre)); last_pre=$pr
   [ "$d" -gt 100 ] && echo "[q38-watch] ALERT: preemption spike +$d in 3min on 30002 (KV thrash)"
-  free=$(free_gpus)
-  if [ "$free" != "$prev_free" ]; then
-    nf=$(echo $free | wc -w)
-    [ "$nf" -ge 2 ] && echo "[q38-watch] LAUNCH WINDOW: $nf more free GPUs: $free" || echo "[q38-watch] free-GPU set changed: ${nf:-0} free ($free)"
-    prev_free=$free
-  fi
+  # free-GPU windows: GPUs 6,7 belong to another user's flapping job (user said leave them) — only
+  # report a window when >=2 GPUs have stayed free for 5 consecutive ticks (~15 min), once per episode.
+  free=$(free_gpus); nf=$(echo $free | wc -w)
+  if [ "$nf" -ge 2 ]; then fw=$((fw+1)); else fw=0; fw_reported=0; fi
+  if [ "$fw" -ge 5 ] && [ "${fw_reported:-0}" = "0" ]; then echo "[q38-watch] LAUNCH WINDOW (stable 15min): $nf free GPUs: $free"; fw_reported=1; fi
   if [ $((tick % 20)) -eq 0 ]; then
     line="[q38-watch] digest:"
     for f in "$TR"/*.q38.jsonl "$TR"/*.q38b.jsonl; do
