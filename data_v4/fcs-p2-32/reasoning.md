@@ -6,6 +6,8 @@ The natural rescue — sort both arrays by magnitude and pair biggest with bigge
 
 Let `dp[i][j]` be the best dot product of a non-empty aligned pairing drawn from `A[0..i-1]` and `B[0..j-1]`. At cell `(i, j)` the last elements `A[i-1]`, `B[j-1]` are either paired together as the final aligned pair — contributing `A[i-1]*B[j-1]` on its own, or `dp[i-1][j-1] + A[i-1]*B[j-1]` if it extends a real pairing on the smaller prefixes — or `A[i-1]` is dropped (`dp[i-1][j]`), or `B[j-1]` is dropped (`dp[i][j-1]`). So
 
+**Stress-testing the greedy before committing.** "Greedy feels right" is exactly how wrong solutions get shipped, so let me attack it with concrete instances rather than intuition.
+
 ```
 dp[i][j] = max( A[i-1]*B[j-1],
                 dp[i-1][j-1] + A[i-1]*B[j-1],
@@ -14,6 +16,8 @@ dp[i][j] = max( A[i-1]*B[j-1],
 ```
 
 with the borders `dp[*][0]`, `dp[0][*]` set to a sentinel `NEG` meaning "no non-empty pairing yet". The standalone `A[i-1]*B[j-1]` term is what makes a length-1 pairing representable and guarantees every interior cell holds a real value, so `dp[n][m]` is always a valid answer.
+
+The "start a brand-new pairing here" term — the standalone `prod` — is *missing*, and `dp[i-1][j-1]` for border cells is the sentinel `NEG = LLONG_MIN/4`. So on the very first interior cell `(1,1)` this computes `best = NEG + prod`, an enormous negative number, then maxes it against two more border sentinels. Let me trace the smallest input that exposes the damage: `A = [5]`, `B = [3]`, where the answer is obviously `5*3 = 15` (the only legal pairing is the single pair). Border `dp[0][0] = NEG`. At `(1,1)`: `prod = 15`; `best = dp[0][0] + 15 = NEG + 15` (still about `-2.3*10^18`); then `max` against `dp[0][1]=NEG` and `dp[1][0]=NEG`. Final `dp[1][1] = NEG + 15`, and I print roughly `-2305843009213693936`. Completely wrong.
 
 The one delicate point is the extend term. `dp[i-1][j-1]` may be the `NEG` sentinel (on a border), and I must not add the product into it: that would encode a falsehood — a non-empty pairing on an empty prefix — and flirt with underflow besides. So the extend is taken only when `dp[i-1][j-1] != NEG`. Related and equally important: there is deliberately no `max(..., 0)` anywhere. The empty pairing is disallowed, so a forced-negative input like `A = [-5]`, `B = [3]` must return `-15`, not `0`.
 
@@ -26,6 +30,10 @@ best = max(best, dp[i][j-1]);
 ```
 
 On the smallest input `A = [5]`, `B = [3]`, whose only pairing is `5*3 = 15`, cell `(1,1)` computes `best = dp[0][0] + 15 = NEG + 15 ≈ -2.3*10^18`, then maxes against two more `NEG` borders, and prints a giant negative. A length-1 pairing is never representable on its own; every cell tries to extend, and at the borders there is nothing real to extend. The corrected body makes the fresh single pair a first-class candidate and gates the extend:
+
+Re-trace `A = [5]`, `B = [3]`: at `(1,1)`, `prod = 15`, `best = 15`, the diagonal is `NEG` so the extend is skipped, up and left are `NEG` and lose. `dp[1][1] = 15`. Correct. Re-trace the all-negative pair `A = [-3, -4]`, `B = [-5, -6]`, where I expect `39` (both negatives multiplied and stacked: `(-3)(-5) + (-4)(-6) = 15 + 24 = 39`): `(1,1)`: `prod = 15`, `dp = 15`. `(1,2)`: `prod = (-3)(-6) = 18`, left `15` -> `18`. `(2,1)`: `prod = (-4)(-5) = 20`, up `15` -> `20`. `(2,2)`: `prod = (-4)(-6) = 24`, diagonal `dp[1][1]+24 = 39`, up `dp[1][2]=18`, left `dp[2][1]=20` -> `max(24, 39, 18, 20) = 39`. `dp[2][2] = 39`. Correct, and again the winning value is a *stack* of two pairs, the exact thing both greedies could not see. The two cases that broke (or would have broken) before now pass for the reason I fixed.
+
+**Edge cases, because this is where this kind of code dies.**
 
 ```
 long long prod = A[i-1] * B[j-1];
@@ -44,3 +52,5 @@ A few corners fall straight out of the recurrence. When `n = 1` or `m = 1` the a
 Beyond the hand-traces, I differential-test the recurrence against an independent brute force that enumerates every non-empty equal-length pair of subsequences and takes the max dot product, feasible only at tiny sizes. Across a few hundred random instances biased toward the dangerous regimes — mixed signs, all-negative, all-positive, zero-heavy — with `n, m` up to `8`, plus the explicit corners above, the DP matches the oracle on every one. The largest shape `n = m = 500` at all `+1000` and at all `-1000` both give `5*10^8` with no overflow, in a few milliseconds against the 1-second limit.
 
 So the shipped program is one self-contained `O(nm)` file: the gated recurrence above run over the `(i, j)` grid with borders initialized to `NEG`, reading `n m` then `A` then `B`, and printing `dp[n][m]`.
+
+**Final solution.** That is what I ship — one self-contained `O(nm)` file, the simple alignment DP I can defend rather than the greedy I broke.
