@@ -1,0 +1,138 @@
+[
+ {
+  "slug": "swav",
+  "track": "B_selfaccount",
+  "fixer_note": "none - verified decisive step already grounded (DeepCluster real limitations + thesis-matched discrete-vs-soft ablation already present at reasoning.md:94)",
+  "auditor_class": "B",
+  "auditor_key_step": "Codes need not be dataset-level truth, only consistent across views: predict view t's code from view s's embedding, with online Sinkhorn equipartition.",
+  "auditor_evidence": "I don't actually need the code to be a ground truth about the image. I only need it to be *consistent across views*."
+ },
+ {
+  "slug": "pointnet-plusplus",
+  "track": "B_selfaccount",
+  "fixer_note": "none - density step already self-derived (Poisson calc not in primary), self-accounts confirmed to add nothing beyond constants",
+  "auditor_class": "B",
+  "auditor_key_step": "Non-uniform density breaks a single fixed radius -> multi-scale grouping + random input dropout p=0.95. All in the primary; code/slides only confirm constants.",
+  "auditor_evidence": "about 94% of those small balls contain two or fewer points"
+ },
+ {
+  "slug": "adaboost-boosting",
+  "track": "B_selfaccount",
+  "fixer_note": "",
+  "auditor_class": "B",
+  "auditor_key_step": "Measured error eps_t sets BOTH the reweighting strength and the vote weight; beta=eps/(1-eps) falls out of minimizing the bound. All in the 1997 primary.",
+  "auditor_evidence": "The update drives the just-used hypothesis to exactly chance on the next round's distribution."
+ },
+ {
+  "slug": "progressive-gan",
+  "track": "B_selfaccount",
+  "fixer_note": "none — verified reasoning.md real-image fade-in derivation (D exploiting high-frequency sharpness as a shortcut if reals are not faded identically) is already grounded by the primary paper fig:fadein caption + sudden-shocks rationale and matches official process_reals code exactly; documented in notes/sources.md, no edit made",
+  "auditor_class": "B",
+  "auditor_key_step": "Fade in each new block with frac(lod) AND fade the reals identically so D cannot use high-frequency sharpness as a shortcut. All in primary + official code.",
+  "auditor_evidence": "at the instant a new block appears — when it is still random and producing only blocky output — the real images D sees are equally blocky"
+ },
+ {
+  "slug": "adarnn",
+  "track": "B_selfaccount",
+  "fixer_note": "",
+  "auditor_class": "B",
+  "auditor_key_step": "TDC maximizes (not minimizes) cross-period distance via max-entropy worst case; per-state alpha by boosting ratchet after pre-training. Both in primary Sec 4.",
+  "auditor_evidence": "If I split the stream into segments that are all distributionally *similar*, I have hidden the drift from the model"
+ },
+ {
+  "slug": "efficientnet",
+  "track": "B_selfaccount",
+  "fixer_note": "",
+  "auditor_class": "B",
+  "auditor_key_step": "Cost law d*w^2*r^2 turns 'scale all three' into the single constraint alpha*beta^2*gamma^2~2, so one phi is a compute-doubling knob. Primary Eq.2-3.",
+  "auditor_evidence": "If I fix the base α β^2 γ^2 to a chosen value, then a single number controls how compute grows with φ"
+ },
+ {
+  "slug": "leftover-hash-lemma",
+  "track": "B_selfaccount",
+  "fixer_note": "",
+  "auditor_class": "B",
+  "auditor_key_step": "collision prob of (H,H(X)) splits into X=X' (min-entropy) and X!=X' (2-universality); L2 excess -> statistical distance via Cauchy-Schwarz costs 2log(1/eps)",
+  "auditor_evidence": "HILL primary Lemma 4.8 proof already uses pairwise independence, diagonal case X=X', second-moment bound; matrix says Vadhan used as parameter cross-check"
+ },
+ {
+  "slug": "proximal-gradient-ista",
+  "track": "B_selfaccount",
+  "fixer_note": "",
+  "auditor_class": "B",
+  "auditor_key_step": "Majorize only f, keep g exact -> prox_{tg}(y - t grad f); FISTA t-recurrence and anchor forced by potential telescoping. All in Beck-Teboulle Lemma 2.3/4.1.",
+  "auditor_evidence": "the coefficient bookkeeping only closes if t_{k+1}^2 - t_{k+1} = t_k^2"
+ },
+ {
+  "slug": "varibad",
+  "track": "B_selfaccount",
+  "fixer_note": "",
+  "auditor_class": "B",
+  "auditor_key_step": "A vanilla VAE only compresses the seen prefix; encode only tau_{:t} but decode the ENTIRE trajectory, which forces m to be a task descriptor.",
+  "auditor_evidence": "That's impossible unless `m` has captured the underlying task - the goal, the target velocity - rather than just memorising the seen prefix."
+ },
+ {
+  "slug": "circle-single-slsqp",
+  "track": "D_single_source",
+  "fixer_note": "",
+  "auditor_class": "D",
+  "auditor_key_step": "With centers fixed the radii subproblem is an LP (hand-checked on 3 circles); SLSQP on all 78 vars jointly, then LP-retighten; seeds show the basin limit.",
+  "auditor_evidence": "I ran the LP on these three centers and it returned `[0.2, 0.1, 0.2]`, sum `0.5` - matching the hand computation"
+ },
+ {
+  "slug": "concat-film",
+  "track": "B_selfaccount",
+  "fixer_note": "none - decisive step (concat=conditional bias / gating=bounded half / unify into affine) already grounded via co-authored Distill explainer already in refs/, verified numerically, no provenance leakage",
+  "auditor_class": "B",
+  "auditor_key_step": "W[F;z]=W_F F+W_z z: concat is a conditional bias (gamma=1); gating is the bounded multiplicative half; unrestricted gamma(z)F+beta(z) unifies both.",
+  "auditor_evidence": "The natural object sitting between those two partial mechanisms is a per-feature affine transform, with the conditioning signal producing both knobs"
+ },
+ {
+  "slug": "fastsac",
+  "track": "B_selfaccount",
+  "fixer_note": "none - Lemma 2 (KL-projection restricted-class improvement, pi_old-in-Pi fallback) already a genuine primary-derived proof; re-searched (BAIR blog + web) for a richer author self-account, found none beyond the high-level BAIR release post which adds nothing load-bearing",
+  "auditor_class": "B",
+  "auditor_key_step": "KL-projection improvement proof needs only pi_old in Pi -> restricted Gaussian actor OK; reparam pathwise grad; alpha as dual variable. In SAC v1/v2 primaries.",
+  "auditor_evidence": "it only used that pi_old is itself a member of Pi and so is always a candidate the argmin can fall back to"
+ },
+ {
+  "slug": "mifgsm",
+  "track": "B_selfaccount",
+  "fixer_note": "none - overfitting-to-surrogate-holes -> momentum step already grounded in primary + Liu et al. 'Delving' ancestor (aligned boundaries / model-specific holes); re-searched, confirmed no author self-account exists (repo READMEs are formula-only, no narrative)",
+  "auditor_class": "B",
+  "auditor_key_step": "Iterative attack overfits the surrogate's private sharp maxima; momentum over per-iteration L1-normalized gradients keeps the consistent direction. In primary.",
+  "auditor_evidence": "a greedy zig-zagging ascent is exactly the thing that finds and dives into the nearest sharp local maximum of the loss"
+ },
+ {
+  "slug": "spectral-signature",
+  "track": "B_selfaccount",
+  "fixer_note": "none - rank-one covariance bump / eigenvector-correlation / honest Chebyshev margin already grounded in primary with the paper's overclean '6 sigma^2/epsilon' constant already correctly caveated (per notes/discovery_synthesis.md math audit); re-searched, confirmed no author self-account exists",
+  "auditor_class": "B",
+  "auditor_key_step": "Poison subpopulation adds rank-one eps(1-eps)Delta Delta^T bump, amplified in learned features -> top singular vector of per-label centered matrix. In primary.",
+  "auditor_evidence": "a small shifted subpopulation adds a rank-one bump in the direction of the mean gap"
+ },
+ {
+  "slug": "unipc",
+  "track": "D_single_source",
+  "fixer_note": "none - 'corrector is free' / Vandermonde predictor-corrector unification already grounded in an independent, checkable worked toy-integral derivation (linear vs quadratic integrand, corrector exact to machine zero at equal NFE); searched GitHub README, OpenReview (blocked by bot challenge via 4 retrieval paths), and Chinese-language sources for an author self-account, found none accessible",
+  "auditor_class": "D",
+  "auditor_key_step": "corrector is free in a multistep loop (next step's predictor eval = corrector's needed eval); unify predictor/corrector at any order via Vandermonde solve R rho = b with B(h)",
+  "auditor_evidence": "in a multistep sampler the corrector costs no extra network call - I reuse the next step's predictor evaluation to correct the previous step"
+ },
+ {
+  "slug": "conservative-policy-iteration",
+  "track": "B_selfaccount",
+  "fixer_note": "",
+  "auditor_class": "B",
+  "auditor_key_step": "perf-difference identity weights old advantages by the NEW policy's visitation => greedy degrades; mixture update keeps d close, coupling on c_t=0 gives exact all-alpha bound",
+  "auditor_evidence": "the improvement is the old advantages reweighted by the *new* policy's visitation ... using the old one mispredicts the change"
+ },
+ {
+  "slug": "value-iteration-networks",
+  "track": "D_single_source",
+  "fixer_note": "",
+  "auditor_class": "D",
+  "auditor_key_step": "One VI sweep = conv (one channel per action, kernel = discounted P) + max over the action channel, recurred K times with TIED weights -> differentiable planner",
+  "auditor_evidence": "Take a weighted combination of a value at a pixel and its neighbors, the same weight pattern at every pixel... that looks like a *convolution*."
+ }
+]
