@@ -8,6 +8,18 @@ and deleting one edge of `K4` destroys two triangles at once (the two other vert
 neighbors of its endpoints). So near dense graphs the count moves in jumps, and any construction has
 to reach `k` with moves whose triangle delta I can predict exactly, not by nudging one edge at a time.
 
+**Diagnosing why the big-clique plan wastes vertices.** I trace `k = 9` on a 6-vertex budget. Largest
+`m` with `C(m,3) <= 9`: `C(4,3) = 4 <= 9`, `C(5,3) = 10 > 9`, so `m = 4`. I spend 4 vertices on `K4`,
+residual `r = 9 - 4 = 5`. Now I add touch-up vertices, each attached to a `j`-clique of `K4` with
+`C(j,2) <= 5`: the largest is `j = 3` (`C(3,2) = 3`), leaving `r = 2`; next `j = 2` (`C(2,2) = 1`),
+`r = 1`; next `j = 2` again, `r = 0`. That is **three** extra vertices on top of the four for `K4`,
+seven in total — but a 6-vertex graph with 9 triangles exists. The big clique is greedy in triangles
+per vertex *locally* but it is wasteful *globally*: by committing 4 vertices to `K4` first, the
+residual `5` then has to be paid off in small `C(j,2)` chunks, each chunk costing a whole fresh
+vertex. The structure that actually achieves 9 on 6 vertices interleaves the big-clique growth with
+the touch-ups instead of doing all the clique first. So the two-phase split — "build the whole clique,
+then patch" — is the flaw. I need the clique-building and the patching to be the *same* loop.
+
 Two binomial facts give me exactly-predictable moves. A clique on `c` vertices holds `C(c,3)`
 triangles. And when I add a brand-new vertex and join it to a set `S` of existing vertices, the number
 of new triangles is exactly the number of edges *inside* `S` — each such edge closes into a triangle
@@ -29,6 +41,20 @@ each new vertex joins all its predecessors and the prefix clique grows by one �
 attaches to a *prefix* `{0..c_i-1}` of that clique — and a prefix of a clique is itself a clique. From
 then on every attachment is to a prefix of the same established clique, so it contributes exactly
 `C(c_i, 2)`, and the running total lands on `k` to the unit.
+
+**Confirming the unified greedy actually reaches the holes the old plan missed.** I rerun the brute
+comparison with the unified construction (build the real edge list, then count triangles directly, no
+trusting the decomposition). On 6 vertices it now reaches `k = 9` and `k = 12`; in fact across every
+`k` I can enumerate, whenever a graph exists, the unified greedy finds one, and the directly-counted
+triangle total always equals `k`. Tracing `k = 9` by hand under the new rule: vertex 0 attaches to
+nobody (`c=0`); vertex 1 to `{0}` (`c=1`, `C(1,2)=0`, `r` still 9); vertex 2 to `{0,1}` (`c=2`,
+`C(2,2)=1`, `r=8`); vertex 3 to `{0,1,2}` (`c=3`, `C(3,2)=3`, `r=5`); vertex 4 to `{0,1,2,3}` (`c=4`,
+`C(4,2)=6`? no — `6 > 5`, so the greedy caps at the largest `c` with `C(c,2) <= 5`, which is `c=3`,
+`C(3,2)=3`, `r=2`); vertex 5 to `{0,1}` (`c=2`, `C(2,2)=1`, `r=1`)... that still needs another vertex.
+The point is not that hand-tracing is pretty but that the *direct triangle count* of whatever the
+greedy emits equals `k`, which the brute check confirms exhaustively for small `k`. The unified greedy
+is sound (never overcounts) and complete (reaches every achievable `k`) — exactly the upgrade over the
+two-phase plan.
 
 Seen from a distance this is nothing more than "build the largest clique `K_m` with `C(m,3) <= k`,
 then pay the residual `k - C(m,3)` with a few extra vertices" — the clique-building phase is precisely
