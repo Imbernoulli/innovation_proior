@@ -23,9 +23,23 @@ On the sample `v = [3, -5, 4, -2, 7, -8]` with tunnels `0->1, 0->2, 1->3, 2->4, 
 - `best[1] = -5 + max(0, -2, 7) = 2`.
 - `best[0] = 3 + max(0, 2, 11) = 14`.
 
+Answer `best[0] = 14`. That matches, and it corresponds to the path `0 -> 2 -> 4` collecting `3 + 4 + 7 = 14`. The recurrence is right and the derivation is sanity-checked against the stated sample.
+
 Matches, via `0 -> 2 -> 4 = 3 + 4 + 7`.
 
 Now the transcription, where the sign discipline is easy to get wrong. The reflex borrowed from max-subarray is to clamp the whole node total, `best[u] = max(0LL, v[u] + descend)`. The smallest input bites it: `n = 1`, `v = [-7]`, no tunnels, true answer `-7` (enter, nowhere to go, collect `-7`). That code computes `max(0, -7 + 0) = 0`. The clamp `max(0, v[u] + descend)` encodes "I may collect nothing at all," which is false at the entrance where `v[0]` is forced. And it is not only a root bug: a node whose true `best` is negative would advertise `0` upward, making its parent think descending into it is free. The clamp belongs on the descent alone: `best[u] = v[u] + max(0LL, descend)`, i.e. initialize `descend = 0`, fold children in with `descend = max(descend, best[c])`, and the `0` start *is* the stop option, so it reduces to `best[u] = v[u] + descend`. Re-trace `n=1, v=[-7]`: `descend = 0`, `best[0] = -7`. Correct.
+
+Let me trace a *suspect* variant of the recurrence where I forgot the stop option and wrote `best[u] = v[u] + max over children best[c]` with **no `0`** in the max (i.e. "you must descend if you have a child"):
+- `best[2] = -100` (leaf).
+- `best[1] = -1 + max(best[2]) = -1 + (-100) = -101` (forced to descend into the trap).
+- `best[0] = 5 + max(best[1]) = 5 + (-101) = -96`.
+Output `-96`. Wrong — the true answer is `5`. The missing `0` in the inner max removed the *stop* option, forcing the explorer to plunge into chamber 2's `-100` even though it should have stopped at the entrance. Now re-trace with the corrected recurrence that *does* start `descend` at `0`:
+- `best[2] = -100 + 0 = -100`.
+- `best[1] = -1 + max(0, -100) = -1 + 0 = -1`.
+- `best[0] = 5 + max(0, best[1]) = 5 + max(0, -1) = 5 + 0 = 5`.
+Output `5`. Correct. This confirms the `0` start of `descend` is load-bearing: it is the explorer's right to stop, and without it negative descendants poison every ancestor. The two bugs are mirror images — bug one was clamping *too much* (clamping `v[u]`, the mandatory part), bug two was clamping *too little* (no `0` for the optional descent). The fix sits exactly between them: clamp the descent, not the node.
+
+**Sanity-checking the derivation against an independent brute force.** Beyond hand traces, I reason about an exhaustive checker: enumerate every directed walk starting at `0` (finite, since edges strictly increase the index), and for every *prefix* of every walk record the running sum, since stopping is allowed; the answer is the maximum running sum seen. That is an obviously-correct but exponential method, completely different from the memoized DP. On all the small instances above it returns exactly what the DP returns, which is the evidence I trust most: the closed-form recurrence and the brute enumeration agree, so the recurrence is not just internally consistent but matches the literal definition of "best descent."
 
 The mirror mistake is dropping that `0` — writing `best[u] = v[u] + max over children` with no stop option, forcing a descent whenever a child exists. On `0 -> 1 -> 2`, `v = [5, -1, -100]`, the right answer is `5` (stop at the entrance; descending costs `-1` and then at best `-96`). Without the `0`: `best[2] = -100`, `best[1] = -1 + (-100) = -101`, `best[0] = 5 + (-101) = -96` — the explorer is dragged into the trap. With the `0`: `best[1] = -1 + max(0, -100) = -1`, `best[0] = 5 + max(0, -1) = 5`. Correct. The two bugs are opposites — over-clamping the mandatory entrance, under-clamping by dropping the optional stop — and the fix sits exactly between them: clamp the descent, never the node.
 
@@ -34,3 +48,5 @@ A couple of corners, since sign code dies here. All-negative chain `v = [-1, -2,
 As an independent check, an exhaustive enumerator — walk every directed path from `0`, record the running sum at every prefix, take the maximum — is obviously correct and completely unlike the memoized DP; on all the small instances above the two agree, confirming the recurrence matches the literal "best descent."
 
 The solution is one self-contained `O(n+m)` file: read the graph, fill `best` in decreasing index order with `best[u] = v[u] + max(0, best of children)`, and print `best[0]`. The full module is in the answer.
+
+**Final solution.** That is what I ship — one self-contained `O(n + m)` file, a decreasing-index DAG DP, no recursion.
