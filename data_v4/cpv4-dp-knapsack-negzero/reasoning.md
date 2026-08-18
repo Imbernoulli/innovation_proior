@@ -8,6 +8,8 @@ Let `dp[c]` be the maximum total score over subsets of weight *exactly* `c`, or 
 
 The transition for block `i` with weight `wi`, score `vi`, in 0/1 fashion: a weight-`c` subset either omits the block (value unchanged) or includes it on top of a reachable weight-`(c - wi)` subset, giving `dp[c] = max(dp[c], dp[c - wi] + vi)` for `c >= wi`, but only when `dp[c - wi] != UNREACH` — the guard forbids extending a subset that does not exist. The answer is `dp[C]`, or `IMPOSSIBLE` if it is still `UNREACH`. The iteration order carries the 0/1 restriction. Relaxing `c` upward would let `dp[c - wi]` already contain block `i` folded in during this same pass, using it twice — unbounded-knapsack behaviour. Concretely, one block `(2,5)` with `C = 4`, iterating upward: `dp[2] = 5`, then `dp[4] = dp[2] + 5 = 10`, claiming weight `4` by using the single weight-2 block twice, when weight `4` is in fact unreachable. Iterating downward (`c` from `C` to `wi`) keeps `dp[c - wi]` at its pre-block value, so `dp[4]` stays `UNREACH` and the output is the correct `IMPOSSIBLE`. So the inner loop runs downward.
 
+**Sanity-checking the derivation on the sample, by hand.** Sample: `C = 7`, blocks `(w,v) = (3,5), (4,-2), (2,0), (5,4)`. I expect `4`. Start `dp = [0, U, U, U, U, U, U, U]` (indices `0..7`, `U = UNREACH`).
+
 Now the sentinel — my reflex first cut:
 
 ```
@@ -34,6 +36,13 @@ dp[0] = 0;
 ```
 
 sits far below any real value, can never be chosen by `max`, and makes the final equality test unambiguous. Re-running `C = 4, (4,-6),(2,-1),(2,-3)` now correctly settles `dp[4] = -4`. The `dp[c - wi] != UNREACH` guard already keeps `+vi` from ever landing on the sentinel, so even at `LLONG_MIN/4` it cannot underflow — it is only ever read, never the left operand of an addition.
+
+- Block (4,-6), `c=4`: `dp[0] != U`, `dp[4] = max(U, 0 + (-6)) = -6` (now `-6 > U`, so it sticks). Good — weight 4 is correctly marked reachable with score `-6`.
+- Block (2,-1), `c=4`: `dp[2] == U`, skip; `c=2`: `dp[2] = max(U, 0 + (-1)) = -1`.
+- Block (2,-3), `c=4`: `dp[2] = -1 != U`, `dp[4] = max(-6, -1 + (-3)) = max(-6, -4) = -4`; `c=2`: `dp[2] = max(-1, 0 + (-3)) = -1`.
+- End: `dp[4] = -4 != U`, print `-4`. **Correct.** The case that returned the wrong `IMPOSSIBLE` now returns the true `-4`, and it broke for exactly the reason I fixed — the sentinel was inside the answer range.
+
+**Second debug episode — the iteration direction.** I asserted downward iteration keeps it 0/1, but assertions are where silent bugs hide, so I code the *wrong* direction and trace it to see the failure, confirming my fix is the right one. Suppose the inner loop were upward, `for (c = wi; c <= C; c++)`. Take `C = 4` and a single block `(2, 5)`. The honest truth: with one block of weight 2 you cannot reach total weight 4 — `dp[4]` must stay `UNREACH`, output `IMPOSSIBLE`. Trace upward: `dp = [0, U, U, U, U]`. Block (2,5), `c=2`: `dp[2] = max(U, dp[0]+5) = 5`. `c=3`: `dp[3] = max(U, dp[1]+5)`, `dp[1]=U`, skip. `c=4`: `dp[4] = max(U, dp[2]+5)` — but `dp[2]` was just set to `5` *in this same block's pass*, so `dp[4] = 5 + 5 = 10`. The DP claims weight `4` is reachable with score `10` by using the single weight-2 block **twice**. That is the unbounded-knapsack over-count, and it is a wrong answer with no crash. Now trace the **downward** loop I actually use, `c=4` then `c=3` then `c=2`: `c=4`: `dp[4] = max(U, dp[2]+5)`, `dp[2]` still `U` (not yet touched this pass), skip; `c=3`: `dp[2]=U`, skip; `c=2`: `dp[2] = max(U, dp[0]+5) = 5`. End: `dp[4] = U`, output `IMPOSSIBLE`. Correct. The downward order is not a stylistic choice; the upward order silently doubles items, and the trace shows it concretely.
 
 The corners fall out of this structure. `C = 0`: the table is just `dp[0] = 0`, and since every `wi >= 1` the inner loop `c >= wi` never runs, so the answer is `0` — the empty load — even when every block scores negative. `n = 0`: no blocks, so `dp[0] = 0` gives `0` when `C = 0` and `dp[C]` stays `UNREACH` giving `IMPOSSIBLE` otherwise, which is right since an empty multiset can only make weight `0`. All-negative scores with a reachable `C` return the negative optimum (the `-4` case), never `IMPOSSIBLE`. An unreachable `C` leaves `dp[C] = UNREACH` and prints `IMPOSSIBLE`. A block with `wi > C` can never contribute to an exact total of `C`; the loop bound already no-ops its pass, but I add an explicit `if (wi > C) continue;` so a heavy block costs `O(1)` rather than a loop-header check. Output is a single line: the integer `dp[C]` or the literal `IMPOSSIBLE`.
 
