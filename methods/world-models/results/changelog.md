@@ -1,5 +1,19 @@
 # Changelog
 
+- 2026-08-18 `results/reasoning.md` — grounded the temperature/exploit paragraph
+  (previously "that creates a hazard I have to take seriously... the policy
+  may discover hidden-state trajectories where projectiles disappear or never
+  launch") in the self-account material already on disk at
+  `refs/self_accounts/worldmodels_github_io.html` ("Cheating the World Model"):
+  the failure is now the documented mixture mode collapse at τ=0.1 (monsters
+  never form/fire, dream score ~2086 but real-environment transfer only 193,
+  worse than the ~210 random-policy baseline), and the resolution is closed
+  with the actual swept numbers (τ=1.15: dream 918, real 1092) instead of an
+  unresolved "I can only settle this by sweeping" hedge. Landing (temperature
+  knob, τ≈1.15 best transfer) unchanged — no factual error found, so
+  answer.md/train_answer.md left as-is. See `notes/sources.md` for the quote
+  and provenance.
+
 - `results/context.md:3` Rewrote the setup as exactly five `##` sections with
   pre-method framing only.
 - `results/context.md:39` Kept VAE, MDN, and CMA-ES as prior primitives while
