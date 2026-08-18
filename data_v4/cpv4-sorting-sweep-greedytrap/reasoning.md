@@ -10,9 +10,24 @@ So I need to weigh accept against reject *with* the value of what each choice fo
 
 `best[i+1] = max(best[i], best[j] + p_i)`,
 
+Let me sanity-check the recurrence on the documented sample. Six requests, given as `(s,f,p)`:
+`1:(0,5,30)`, `2:(0,2,20)`, `3:(2,4,6)`, `4:(4,7,20)`, `5:(5,9,25)`, `6:(7,9,8)`. Sort by `f`: `(0,2,20)`, `(2,4,6)`, `(0,5,30)`, `(4,7,20)`, `(5,9,25)`, `(7,9,8)` -> finishing times `F = [2,4,5,7,9,9]`. Walk `best`, with `best[0]=0`:
+- i=0, request `(0,2,20)`, `s=0`: prefix of `F[0..-1]` with `F<=0` is empty, `j=0`. accept `best[0]+20=20`, reject `best[0]=0`. `best[1]=20`.
+- i=1, request `(2,4,6)`, `s=2`: among `F[0..0]=[2]`, `F<=2` -> `j=1`. accept `best[1]+6=26`, reject `best[1]=20`. `best[2]=26`.
+- i=2, request `(0,5,30)`, `s=0`: among `F[0..1]=[2,4]`, none `<=0` -> `j=0`. accept `best[0]+30=30`, reject `best[2]=26`. `best[3]=30`.
+- i=3, request `(4,7,20)`, `s=4`: among `F[0..2]=[2,4,5]`, `F<=4` -> `[2,4]` -> `j=2`. accept `best[2]+20=46`, reject `best[3]=30`. `best[4]=46`.
+- i=4, request `(5,9,25)`, `s=5`: among `F[0..3]=[2,4,5,7]`, `F<=5` -> `[2,4,5]` -> `j=3`. accept `best[3]+25=55`, reject `best[4]=46`. `best[5]=55`.
+- i=5, request `(7,9,8)`, `s=7`: among `F[0..4]=[2,4,5,7,9]`, `F<=7` -> `[2,4,5,7]` -> `j=4`. accept `best[4]+8=54`, reject `best[5]=55`. `best[6]=55`.
+
 with `j` the number of earlier requests whose finish is `<= s_i`, found by binary search on the sorted finishing-time array; the answer is `best[n]`. Note `<=`, not `<`, matching the half-open convention.
 
 To exercise the recurrence end to end I build a six-request instance: `(0,5,30)`, `(0,2,20)`, `(2,4,6)`, `(4,7,20)`, `(5,9,25)`, `(7,9,8)`. Sorted by `f` they relabel to `(0,2,20)`, `(2,4,6)`, `(0,5,30)`, `(4,7,20)`, `(5,9,25)`, `(7,9,8)`, giving `F = [2,4,5,7,9,9]`. Walking `best` from `best[0]=0`: `(0,2,20)` has no compatible predecessor so `best[1]=20`; `(2,4,6)` reaches back to `best[1]` so `best[2]=26`; `(0,5,30)` has none compatible so `best[3]=max(26,30)=30`; `(4,7,20)` reaches `best[2]` so `best[4]=46`; `(5,9,25)` reaches `best[3]` so `best[5]=55`; `(7,9,8)` reaches `best[4]=46+8=54 < 55` so `best[6]=55`. The optimum `55` is the two requests `(0,5,30)` and `(5,9,25)`. Earliest-finish greedy on the same input grabs `(0,2),(2,4),(4,7),(7,9)` for `20+6+20+8=54` — one short, so the instance is itself a greedy trap.
+
+The predicate `F[mid] < S[i]` worries me immediately, because touching endpoints should be compatible. Let me trace the smallest input that exposes it: two requests that touch, `(0,2,20)` and `(2,4,6)`. The expected answer is `26` — they touch at `2`, so both are accepted, `20 + 6 = 26`. Sort by `f`: already `F=[2,4]`, `S=[0,2]`, `P=[20,6]`. `best[0]=0`.
+- i=0, `S[0]=0`: search `F[0..-1]` empty, `lo=0`. take `best[0]+20=20`, skip `best[0]=0`. `best[1]=20`.
+- i=1, `S[1]=2`: search `F[0..0]=[2]` for largest prefix with `F<2`. `lo=0,hi=1`; `mid=0`, `F[0]=2 < 2`? No, so `hi=0`. Loop ends, `lo=0`. take `best[0]+6=6`, skip `best[1]=20`. `best[2]=max(6,20)=20`.
+
+Re-trace `(0,2,20),(2,4,6)`: i=1, `S[1]=2`, search `F[0..0]=[2]`: `mid=0`, `F[0]=2 <= 2`? Yes, `lo=1`. take `best[1]+6=26`, skip `best[1]=20`. `best[2]=26`. Correct. Re-trace the strictly-overlapping pair `(0,1,1),(0,3,5)` (answer 5, they share `[0,1)`): sort by `f` -> `F=[1,3]`, `S=[0,0]`, `P=[1,5]`. i=0: search empty, `lo=0`, `best[1]=max(0+1,0)=1`. i=1, `S[1]=0`: search `F[0..0]=[1]`: `mid=0`, `F[0]=1<=0`? No, `hi=0`, `lo=0`. take `best[0]+5=5`, skip `best[1]=1`. `best[2]=5`. Correct — the overlapping predecessor is correctly *not* counted because `1 <= 0` is false. The case that broke now passes, and it broke for the exact reason I fixed.
 
 The one place this transcribes into a bug is the binary-search predicate. A predecessor at position `k` is compatible with request `i` iff `F[k] <= S[i]`, and I want the count of the leading block where that holds — a `lower_bound`-style partition returning the first index where the predicate *fails*. The tempting default is the strict `F[k] < S[i]`, and that is wrong here for exactly the touching-endpoint reason: on the pair `(0,2,20)`, `(2,4,6)` the strict predicate treats the predecessor finishing at `2` as incompatible with the request starting at `2`, so the search lands at count `0` instead of `1`, `(2,4,6)` reaches back to `best[0]` instead of `best[1]`, and the code returns `20` instead of `26`. The predicate must be `<=`:
 
