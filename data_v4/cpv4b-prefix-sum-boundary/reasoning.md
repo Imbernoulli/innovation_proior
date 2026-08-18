@@ -4,7 +4,14 @@ Two readings of the count. Brute force sums the `w` weights of every window and 
 
 Exclusive prefix: `P[0] = 0` and `P[k] = a[0] + ... + a[k-1]`, so `P[k]` sums positions `0..k-1`, and the half-open range `[i, j)` has sum `P[j] - P[i]`. A batch of length `w` starting at 0-indexed `i` covers `[i, i+w)`, sum `P[i+w] - P[i]`. Its last element is at `i + w - 1`, which must exist: `i + w - 1 <= n - 1`, i.e. `i <= n - w`. So the starts run `i = 0, ..., n - w`, a count of `n - w + 1`. That inclusive `+1` is where this dies most quietly: a loop that stops at `n - w` drops the last window, and the drop is invisible whenever that last window fails the band, so it hides until a test where the final window passes.
 
+Let me **numerically self-check that "`n - w + 1` starts" claim** before I lean on it, because an off-by-one in the count of windows is precisely the bug I am trying to avoid. Take `n = 6`, `w = 3`. The batches by hand: starts at index 0 (`[0,1,2]`), 1 (`[1,2,3]`), 2 (`[2,3,4]`), 3 (`[3,4,5]`). Index 3's last element is `3+3-1 = 5 = n-1`, valid; a start at index 4 would need element `4+3-1 = 6 = n`, which does not exist, so index 4 is out. That is 4 batches. The formula gives `n - w + 1 = 6 - 3 + 1 = 4`. Match. A second check: `n = 5`, `w = 5` (whole belt) gives `5 - 5 + 1 = 1` start (index 0 only) — correct, exactly one batch. And `n = 5`, `w = 1` gives `5 - 1 + 1 = 5` starts — every parcel its own batch, correct. The formula holds on all three.
+
 For the code I read weights into `a[1..n]` and use a 1-indexed prefix, `P[0]=0`, `P[k]=a[1]+...+a[k]`, under which the batch starting at 1-indexed `s` covers `s..s+w-1` with sum `P[s+w-1] - P[s-1]` for `s = 1, ..., n-w+1`. Same window arithmetic re-expressed; the trap is copying the 0-indexed `P[i+w]-P[i]` into the 1-indexed loop as `P[s+w]-P[s]`, which computes the window shifted right by one and can read past `P[n]`. From the definition, `P[s+w-1]` sums `a[1..s+w-1]` and `P[s-1]` sums `a[1..s-1]`, difference `a[s..s+w-1]` — exactly the `w` parcels — and the largest index touched is `P[n]` at `s = n-w+1`, in range.
+
+I trace this on the worked sample `n=6, w=3, L=10, R=15`, weights `a[1..6] = [4,2,5,1,9,3]`, where I already worked out by hand that the answer is `3` (batches `11, 8, 15, 13` — three pass, the `8` fails). First the prefix: `P[0]=0, P[1]=4, P[2]=6, P[3]=11, P[4]=12, P[5]=21, P[6]=24`. Now the loop runs `s = 1` to `n - w = 6 - 3 = 3`:
+- `s=1`: `sum = P[3] - P[0] = 11 - 0 = 11`. `10 <= 11 <= 15` -> pass, `count=1`.
+- `s=2`: `sum = P[4] - P[1] = 12 - 4 = 8`. `8 < 10` -> fail.
+- `s=3`: `sum = P[5] - P[2] = 21 - 6 = 15`. `10 <= 15 <= 15` -> pass, `count=2`.
 
 I trace the actual loop on the worked sample `n=6, w=3, L=10, R=15, a[1..6]=[4,2,5,1,9,3]`, answer `3`. Prefix `P = [0,4,6,11,12,21,24]`. Loop `s = 1 .. n-w+1 = 4`:
 - `s=1`: `P[3]-P[0]=11`, in `[10,15]`, count `1`.
@@ -14,8 +21,22 @@ I trace the actual loop on the worked sample `n=6, w=3, L=10, R=15, a[1..6]=[4,2
 
 That final start `s = n-w+1 = 4` is exactly the batch `[1,9,3]=13`; a loop ending at `n-w = 3` would report `2` and drop it. The sample is precisely a case where the last window passes, which is why it, not a stress test, is what exposes the off-by-one — I keep the inclusive bound `s <= n - w + 1`.
 
+**Edge cases, because boundaries are where this dies.**
+- `w > n`: there is no length-`w` block. In code I guard the loop with `if (w >= 1 && w <= n)`. If `w > n`, the loop never runs and `count = 0`. Without the guard, `n - w + 1` would be `<= 0` and the `for (s = 1; s <= n-w+1; ...)` would also not execute — but `n - w + 1` is computed in `long long`, so for huge `w` (up to `10^9`) there is no wrap; still, the explicit guard makes the intent obvious and dodges any signedness worry. Traced `n=3, w=5`: guard false, output `0`. Correct.
+- `w = n`: one batch, the whole belt. `n - w + 1 = 1`, loop runs once at `s=1`, `sum = P[n] - P[0]` = total weight. Traced `n=4, w=4, [1,2,3,0]`, band `[6,6]`: `P[4]=6`, `sum=6`, `6>=6 && 6<=6` -> pass, `count=1`. Correct.
+- `w = 1`: every parcel is a batch; `sum = P[s] - P[s-1] = a[s]`. Traced `n=5, w=1, L=R=-2, a=[-2,0,-2,1,-2]`: starts `s=1..5`, sums are the weights themselves; three of them equal `-2` -> `count=3`. Correct, and it confirms the single-element window degenerates properly.
+- All-negative or zero weights: nothing special — the band test is two-sided, so negative window sums are counted iff they land in `[L,R]`. The traces above already include negatives.
+- Overflow at the band edge: window sum can be `~2*10^14`; `long long` holds it with four orders of magnitude to spare. Traced `n=2, w=2, L=10^9, R=2*10^15, a=[10^9, 10^9]`: `sum = 2*10^9`, which exceeds the 32-bit range but is well within `long long`; `2*10^9 >= 10^9 && <= 2*10^15` -> pass, `count=1`. An `int` accumulator would have wrapped `2*10^9` to a negative and miscounted. This is why every sum-path variable is `long long`.
+- Output: exactly one integer and a newline. `cin >>` skips arbitrary whitespace, so the input format is layout-agnostic.
+
 The band is closed, so `>=`/`<=`, not strict — a slip to `>`/`<` drops any window landing exactly on an endpoint. The sharpest probe for it is a degenerate band `L=R`, where only sums equal to that value pass. Take `n=3, w=2, L=R=-1, a=[1,-2,1]`: batches `[1,-2]=-1` and `[-2,1]=-1` both equal `-1`, so the answer is `2`. Prefix `[0,1,-1,0]`; `s=1` gives `P[2]-P[0]=-1`, `s=2` gives `P[3]-P[1]=-1`, both pass under `>=`/`<=`, count `2`. Strict comparisons would return `0` here — no sum is strictly between `-1` and `-1` — so the closed-interval form is load-bearing.
+
+Now trace my fixed code. Prefix: `P[0]=0, P[1]=1, P[2]=-1, P[3]=0`. Loop `s = 1..n-w+1 = 1..2`:
+- `s=1`: `sum = P[2]-P[0] = -1 - 0 = -1`. Test `-1 >= -1 && -1 <= -1` -> both hold -> pass, `count=1`.
+- `s=2`: `sum = P[3]-P[1] = 0 - 1 = -1`. Test `-1 >= -1 && -1 <= -1` -> pass, `count=2`.
 
 The remaining corners are quick. `w > n` I guard with `if (w >= 1 && w <= n)` so the loop simply never runs and the count stays `0`; the guard also keeps the intent obvious, though `n-w+1` computed in 64-bit is already non-positive there. `w = n` is the single whole-belt batch `P[n]-P[0]`. `w = 1` degenerates to `P[s]-P[s-1] = a[s]`, each parcel its own batch. Negatives and zeros need nothing special, since the band test is two-sided. The overflow settled at the outset is the corner with real teeth: the `~2*10^14` cap is why every sum-path variable stays `long long` — an `int` accumulator would wrap and miscount on exactly the large tests.
 
 The whole thing is one pass to build `P` and one pass over the `n-w+1` starts: `O(n)` time, `O(n)` memory, comfortably inside the one-second, 256-MB budget at `n = 2*10^5`. I check the finished solution against the independent brute force on random small inputs — small `n`, `w` ranging up to `n+2` so `w>n` is exercised, negatives and zeros, and `L=R` forced a fraction of the time to hit exact equality — and they agree on every case; the two boundary variants I guarded against (the `n-w` loop bound and strict-band comparison) disagree with brute on the sample and on a large share of the random cases, so the boundaries are genuinely load-bearing, not cosmetic. The full submission — the exclusive prefix build, the guarded loop over `s = 1 .. n-w+1`, and the closed-band test, all in `long long` — is the module in the answer.
+
+**Final solution.** That is what I ship — one self-contained `O(n)` file.
