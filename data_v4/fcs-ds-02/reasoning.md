@@ -26,6 +26,8 @@ int update(int prev, int lo, int hi, int pos) {
 
 The load-bearing line is copying *both* children from `prev` first, then overwriting only the child on the descent direction. The other child keeps pointing into the old version — that is the structure sharing; building both children fresh would defeat persistence and blow the budget. `cnt[cur] = cnt[prev] + 1` because exactly one element was added under this node.
 
+**Tracing the recurrence on the sample before trusting it.** Array `[1,5,2,6,3,7,4]`, query `2 5 3`. Ranks here equal values-minus-one since the distinct sorted values are `1..7`, ranks `0..6`. I need the 3rd smallest of positions 2..5 = `[5,2,6,3]`. `root[5]` minus `root[1]` is the frequency over `[5,2,6,3]` (ranks `[4,1,5,2]`). Descend from `[0,6]`, mid 3: left child spans ranks `[0,3]` (values 1..4), window count there = how many of `[5,2,6,3]` are `<= 4` = the elements 2,3 = 2. `k=3 > 2`, so go right with `k = 3 - 2 = 1`, into ranks `[4,6]`. mid 5: left child `[4,5]` (values 5,6), window count = elements 5,6 = 2. `k=1 <= 2`, go left into `[4,5]`. mid 4: left child `[4,4]` (value 5), window count = element 5 = 1. `k=1 <= 1`, go left into leaf `[4,4]`, return rank 4 -> `sorted[4] = 5`. Matches the expected `5`. The recurrence is right.
+
 The query walks the two versions in lockstep, left-child window count = `cnt[lc[uRoot]] - cnt[lc[vRoot]]`:
 
 ```
@@ -43,3 +45,5 @@ The one genuine trap here is the *order* of the two versions at the call site. T
 The advertised corners fall out of the same structure with no special-casing. An all-equal array (and `n = 1`) collapses to `m = 1`: the axis is the single leaf `[0,0]`, so every `(l, r, k)` returns that one value — right, since every order statistic of a constant window is equal. A single-position window `l = r` takes `root[r] − root[r-1]`, isolating one element's rank on the descent. Negatives and `±10^9` never reach the tree, which sees only ranks in `[0, m-1]`; I decompress through `sorted[]` so the printed value is the true element. Counts are `int`, capped at `n = 2*10^5`, well inside 32 bits.
 
 Differential-testing against the sorted-slice brute — hundreds of randomized small cases across value regimes (heavy duplicates, tiny ranges, full `±10^9`, all-equal), medium cases up to `n, q ~ 300`, and the corners above — turns up zero mismatches. A worst-case `n = q = 2*10^5` instance with random full-spread values and random `(l, r, k)` runs in roughly half a second and about 50 MB, inside the 2 s / 256 MB budget. The full self-contained module is in the answer.
+
+**Final solution.** That is what I ship: one self-contained file, the persistent segment tree with prefix-version subtraction.
