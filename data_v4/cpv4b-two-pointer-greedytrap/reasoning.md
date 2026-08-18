@@ -24,6 +24,12 @@ only `w[0] = 3` and the right takes the last two, `w[5] = 4` and `w[4] = 3`, for
 side — the locally cheapest step is not the cheapest path to a large count when one tank feeds both
 ends. Greedy is out.
 
+Run the cheaper-end greedy. Left end is `w[0] = 3`, right end is `w[5] = 4`; the left is lighter, so
+lift it. Fuel used `= 3`, the left pointer advances. Now the left end is `w[1] = 4`, the right end is
+still `w[5] = 4`; tie, take the left, fuel used `= 7`. Now the left end is `w[2] = 6` and the right
+end is `w[5] = 4`; the right is lighter, but `7 + 4 = 11 > 10`, it does not fit; the left's `6` does
+not fit either (`7 + 6 = 13`). Neither end fits, so greedy stops having removed **2** containers.
+
 The handle that works: fix the prefix length `i`. The prefix is then forced to be `w[0..i-1]` with
 cost `pref[i]`, and the only remaining freedom is the suffix length `j`, which I want as large as
 possible subject to fuel `suf[j] <= B - pref[i]` and no-overlap `j <= n - i`. Since weights are
