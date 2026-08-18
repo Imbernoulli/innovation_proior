@@ -4,7 +4,7 @@ The annotated innovation data, in ShareGPT format:
 - `innovation_sft.jsonl` — our annotated innovation data (reasoning, with per-turn loss folding).
 - Plus the 2026-07 **wave-2** batches: `innovation_wave2_sft.jsonl` (verified rollout + Codex, 758)
   and `innovation_v4_sft.jsonl` (FrontierCS-style single-file C++, 346), concatenable into the run.
-- Plus the 2026-08 **wave-3** batch: `innovation_wave3_sft.jsonl` (**2,254**) — every NEW verified
+- Plus the 2026-08 **wave-3** batch: `innovation_wave3_sft.jsonl` (**3,161**) — every NEW verified
   keeper since wave-2 (one answer per query, **each labeled with its `pass_rate`**); wave-2 + wave-3
   together now cover **all ~2,950** solved queries the distillation campaign ever solved. Adds the
   FrontierCS capability gaps (heuristic **optimization**, post-cutoff **AtCoder Heuristic**,
@@ -126,7 +126,7 @@ Pipeline + provenance: [`../experiments/DATA_WAVE2_FCS_CPP_zh.md`](../experiment
 
 ## 4. Wave-3 batch (2026-08) — capability-gap injection + deep re-roll
 
-`innovation_wave3_sft.jsonl` (**2,254**, gzipped as `innovation_wave3_sft.jsonl.gz`) = every verified
+`innovation_wave3_sft.jsonl` (**3,161**, gzipped as `innovation_wave3_sft.jsonl.gz`) = every verified
 keeper produced **after** wave-2, with the wave-2 ids subtracted so there is **zero overlap**. Built
 with `python3 tools/assemble_wave3.py`. **Coverage is now complete**: wave-2 (741) + wave-3 (2,097)
 = all **2,952** unique queries the distillation campaign ever solved (ccplus completed 793/793, ioi 43/43) with a saved generation — the
@@ -141,18 +141,18 @@ assembler reads the archived trace phases too (`.oldlogic` stop-at-first-pass, `
 - **each row is LABELED with `pass_rate`** — a top-level float = the **round-0 pass rate of the model
   that produced the trace** (see the caveat below on what "round 0" means per source).
 
-Same ShareGPT + `<think>` format, plus the new `pass_rate` field. Snapshot 2026-08-15 — the rollout
+Same ShareGPT + `<think>` format, plus the new `pass_rate` field. Snapshot 2026-08-17 — the rollout
 is still running (ccplus + the math/ifollow re-roll), so this file gets refreshed as more land.
 
 | domain | examples | what it is |
 |---|---:|---|
-| reasoning | 655 | base-trace growth + deep re-roll of the 27B's hard failures |
-| code | 738 | HardTests CF/AtCoder + **CodeContests+ (`ccplus`, 793/793 complete)** strongest-test exact-judge + 94 archived rstar-era solves |
-| ifollow | 370 | base-trace growth + deep re-roll |
-| math | 269 | base-trace growth + deep re-roll + 90 archived (hardv2/mixed/oldlogic) solves |
+| reasoning | 973 | base-trace growth + deep re-roll of the 27B's hard failures |
+| code | 843 | HardTests CF/AtCoder + **CodeContests+ (`ccplus`, 793/793 complete)** strongest-test exact-judge + 94 archived rstar-era solves |
+| ifollow | 421 | base-trace growth + deep re-roll |
+| math | 411 | base-trace growth + deep re-roll + 90 archived (hardv2/mixed/oldlogic) solves |
 | optim | 183 | **NEW** — NP-Engine heuristic optimization (TSP/knapsack/set-cover/…): write one C++ that reads stdin, prints `Answer: …`; verified feasible **and** beats a per-instance baseline on K fresh instances |
-| ioi | 20 | **NEW** — IOI 2020–24 (43/43 rolled), official graders, subtask partial scoring, PASS = score ≥ 35; incl. 13 interactive/Communication |
-| cfr1 | 1 | **NEW** — open-r1 Codeforces rating 2000–3500 (2,038 queued, rolling now), oracle-verified strong tests |
+| ioi | 22 | **NEW** — IOI 2020–24 (43/43 rolled), official graders, subtask partial scoring, PASS = score ≥ 35; incl. 13 interactive/Communication |
+| cfr1 | 290 | **NEW** — open-r1 Codeforces rating 2000–3500 (2,038 queued, rolling now), oracle-verified strong tests |
 | ahc | 18 | **NEW** — post-cutoff **AtCoder Heuristic Contests** (AHC047–067 + awtf25/26); C++ scored by the OFFICIAL AtCoder Rust `vis` binary on every seed, must beat a greedy baseline |
 
 24 are deep-re-roll keepers. Reasoning length: median **35k** chars, max **213k** (the hard tail
@@ -163,18 +163,16 @@ queries are now included too). All land as the FrontierCS scoring target: **sing
 the 256-sample deep re-roll) and no teacher solved — **1,612 queries** (reasoning 666 / math 455 / code 314 /
 ifollow 153 / ioi 22 / ahc 2), written to `data_v4/_hardcp/<domain>/unsolved.jsonl` — is being re-rolled by
 **Qwen3.8-27B** (`Qwen/Qwen3.8-27B`, thinking mode, TP=4 on 4×H100, schedule 4→32, keep every solve) into
-`traces/<domain>.q38.jsonl`; `source: Qwen3.8-27B` marks those rows. Early yield is high — first 30 records
-23 solved (76%), and it already cleared both ahc hard-fails and 6/22 ioi. This snapshot ships **25** q38
-keepers; the pass is still running and the file gets refreshed as it lands.
+`traces/<domain>.q38.jsonl`; `source: Qwen3.8-27B` marks those rows. Two silent verifier bugs found & fixed 2026-08-17 (missing `pylatexenc` + a dead numeric path in the reasoning table scorer; DeepSeek judge at 402 → local Qwen3.8 is now the math judge) — table__* and ungradeable-gold math had been judged FAIL for the whole campaign. Qwen3.8 also runs a second pass over the 6,508 queries Qwen3.6 never attempted (`never_attempted.jsonl` → `.q38b.jsonl`; sample once, double on failure). Yield: cfr1/code/math fresh queries ~90-100%, reasoning table 94%. This snapshot ships **932** q38 keepers; the pass is still running and the file gets refreshed as it lands.
 
 **Pass-rate label (`pass_rate`) — read this before filtering on it.** It is the generating model's
 round-0 pass rate for that query. Distribution across the 2,097:
 
 | pass_rate | -1.0 (unknown) | 0.0 | 0.25 | 0.33 | 0.5 | 0.67 | 0.75 | 1.0 |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
-| examples | 98 | 121 | 89 | 12 | 109 | 29 | 872 | 924 |
+| examples | 98 | 268 | 183 | 12 | 172 | 29 | 941 | 1458 |
 
-331 (15%) are **hard** (0 ≤ pass_rate ≤ 0.5); 1,825 are easy (> 0.5); **98 are `-1.0` = UNKNOWN** —
+635 (20%) are **hard** (0 ≤ pass_rate ≤ 0.5); 1,825 are easy (> 0.5); **98 are `-1.0` = UNKNOWN** —
 the archived stop-at-first-pass phase recorded no round-0 batch, so no rate exists (we refuse to fake
 a 0.0 for them).
 
