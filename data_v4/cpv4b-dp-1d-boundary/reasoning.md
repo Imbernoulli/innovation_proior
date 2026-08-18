@@ -6,14 +6,29 @@ To hit `O(n)` I slide a monotonic deque of predecessor indices whose front is `a
 
 The smallest input that forces a full-reach leap makes the difference visible: `n = 2, D = 1, c = [0, 5]`, whose only crossing is the single gap-`1 = D` leap `0 -> 1`, answer `5`. With `<=`, at `j = 1` the front check `0 <= 1 - 1 = 0` is true, so index `0` is evicted, the deque empties, and `dp[1]` stays `INF` — output `-1`, wrong. With `<`, the check `0 < 0` is false, index `0` stays, and `dp[1] = dp[0] + 5 = 5`. So the eviction is
 
+- `j = 0`: front-evict against `0 <= 0 - 1 = -1`? `0 <= -1` is false, nothing evicted. `j > 0` is false, so no `dp[0]` update from the window; `dp[0] = c[0] = 0` was set before the loop. `dp[0] < INF`, push: deque back-eviction empty, `dq = [0]`.
+- `j = 1`: front-evict: `dq.front() = 0`, test `0 <= 1 - 1 = 0`? `0 <= 0` is **true**, so it pops index `0` out of the window. Now `dq` is empty, so the `if` body finds `dq.empty()` and leaves `dp[1] = INF`. Final `dp[1] = INF`, output `-1`.
+
 ```
 while (!dq.empty() && dq.front() < j - D) dq.pop_front();
 ```
+
+- `j = 0`: evict against `0 < -1`? false. `dq = [0]` after push, `dp[0] = 0`.
+- `j = 1`: evict: `dq.front() = 0`, `0 < 1 - 1 = 0`? `0 < 0` is false — index `0` stays, correctly, because gap `1 = D` is legal. `c[1] = 5 >= 0`, `dp[dq.front()] = dp[0] = 0 < INF`, so `dp[1] = 0 + 5 = 5`. Output `5`. Correct.
+
+**Second trace — a different boundary: is the predecessor in the deque before I need it?** There is a subtle ordering question independent of the window width. I push `j` into the deque at the *end* of iteration `j`, and I read the deque front at the *start* of iteration `j`. So when I process `j`, the candidate predecessors available are those pushed in iterations `0..j-1` — exactly indices `< j`, which is what "forward leaps only, `i < j`" requires. Good in principle, but let me trace a case where `j - 1` is the *only* legal predecessor and confirm it is actually present: `n = 3`, `D = 1`, `c = [3, 1, 4]` (no cracks; with `D = 1` the frog must step on every stone, answer `3 + 1 + 4 = 8`).
+
+- Before loop `dp[0] = 3`.
+- `j = 0`: evict `0 < -1`? no. push `0`: `dq = [0]`.
+- `j = 1`: evict `dq.front()=0 < 1-1=0`? `0 < 0` false, stays. `c[1]=1>=0`, `dp[0]=3`, `dp[1] = 3 + 1 = 4`. Push `1`: back-evict `dp[dq.back()] = dp[0] = 3 >= dp[1] = 4`? `3 >= 4` false, so keep `0`; `dq = [0, 1]`.
+- `j = 2`: evict `dq.front()=0 < 2-1=1`? `0 < 1` true — pop `0` (gap from `0` to `2` is `2 > D = 1`, correctly illegal). Now `dq.front()=1`, `1 < 1`? false, stays. `c[2]=4>=0`, `dp[1]=4`, `dp[2] = 4 + 4 = 8`. Output `dp[2] = 8`. Correct.
 
 and the gap-`==D` predecessor survives exactly as the recurrence demands.
 
 Two smaller invariants close the deque bookkeeping. Because I push `j` only at the end of its own iteration and read the front at the start of the next, the candidates visible when processing `j` are precisely the indices `< j` — the forward-only `i < j` constraint holds for free. And the back-eviction uses `>=` rather than `>`: among equal-valued minima I keep only the newest index, which is safe because it stays in the window at least as long as any older equal-valued one, and it keeps the deque shorter.
 
 The corners all fall out of the same loop. `n = 1`: one iteration, no window update, so the answer is `dp[0]` — `c[0]` if landable (the start is already the end), `-1` if the start is cracked. A cracked start (`c[0] = -1`) leaves `dp[0] = INF` and nothing reachable, so `-1`. A cracked end (`c[n-1] = -1`) fails the `c[j] >= 0` guard, `dp[n-1]` stays `INF`, `-1`. When a crack forces the only route through a gap `> D` — `c = [0, -1, 5], D = 1` — stone `1` is never pushed, so at `j = 2` the deque is empty and the answer is `-1`; bump `D` to `2` and index `0` sits in the inclusive window, giving `dp[2] = 5`. That pair is the inclusive boundary in miniature. Overflow is closed by `long long` everywhere plus `INF = LLONG_MAX/4`, with the `dp[front] < INF` guard ensuring `INF` is never added into a stored `dp`. Input is read with `cin >>`, which eats arbitrary whitespace, so a wrapped toll line parses; output is one integer and a newline.
+
+**A numeric self-check of the window claim on a concrete case.** Before trusting the `[j-D, j-1]` window I check it against the worked sample by brute force in my head: `n = 8`, `D = 3`, `c = [0,7,2,-1,9,4,1,6]`. `dp[0] = 0`. For `j = 1`, window `i in [max(0,1-3), 0] = [0,0]`: `dp[1] = 7 + dp[0] = 7`. `j = 2`, window `[0,1]`: `min(dp[0],dp[1]) = 0`, `dp[2] = 2 + 0 = 2`. `j = 3` cracked, `dp[3] = INF`. `j = 4`, window `[1,3]`: candidates `dp[1]=7, dp[2]=2, dp[3]=INF`, min `2`, `dp[4] = 9 + 2 = 11`. `j = 5`, window `[2,4]`: `min(dp[2]=2, dp[3]=INF, dp[4]=11) = 2`, `dp[5] = 4 + 2 = 6`. `j = 6`, window `[3,5]`: `min(INF, 11, 6) = 6`, `dp[6] = 1 + 6 = 7`. `j = 7`, window `[4,6]`: `min(dp[4]=11, dp[5]=6, dp[6]=7) = 6`, `dp[7] = 6 + 6 = 12`. So `dp[7] = 12`, which matches the stated answer `12` and the path `0 -> 2 -> 5 -> 7`. The window definition reproduces the intended answer, so the recurrence is what I want; now I just have to transcribe it without breaking the boundary.
 
 Each index enters and leaves the deque once, so the pass is `O(n)` amortized over `n = 2*10^5` — comfortably inside a second — using one `long long` vector and a deque of indices. Checked against a plain `O(n*D)` scan on several hundred random small cases (`n` up to ~25, `D` from `1` to past `n`, about a third of stones cracked, plus forced `D=1` and full-reach mixes): after the eviction fix, zero mismatches; before it, the disagreements were exactly the gap-`==D` cases. The full self-contained program is in the answer.
