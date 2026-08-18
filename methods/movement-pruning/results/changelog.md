@@ -21,3 +21,23 @@
   code (`TopVSTE`/`ThresholdSTE` in reasoning.md:93-112, answer.md, train_answer.md all agree).
 - No content changes made to `reasoning.md`, `answer.md`, or `train_answer.md`: no non-primary
   source was found to ground the key_step further, and no factual/algebraic error was found to fix.
+
+## 2026-08-17 (follow-up pass)
+- Re-ran the non-primary source search with a broader technique (fetching Victor Sanh's own
+  "Explain Like I'm Five" SlideShare deck for movement pruning via its server-rendered bot page,
+  since a plain fetch of that URL returns a JS anti-bot challenge page and had apparently been
+  treated as inaccessible in the prior pass). This turned up real content: a 12-slide deck by
+  Victor Sanh (linked from his own `huggingface/transformers` PR #4637 / `examples/movement-pruning/README.md`)
+  explaining movement vs. magnitude pruning via a stock-picking analogy (two $200 stocks vs. a $75
+  stock; year-to-year returns of +1%/-5%/+30%; the $75 stock overtakes either $200 stock in under
+  7 years). Saved to `refs/self_accounts/sanh_eli5_slides_transcript.txt`; full record in
+  `notes/sources.md` (which now supersedes the prior pass's now-lost `notes/sources.md`, since
+  `notes/` is gitignored and was not preserved between passes).
+- `methods/movement-pruning/results/reasoning.md`: surgically rewrote the sentence pivoting from
+  weight *value* (magnitude, 0th order) to weight *motion* (movement, 1st order) — the paragraph
+  beginning "So I need a criterion that the fine-tuning process actually shapes." — to run through
+  a concrete numeric analogy grounded in Sanh's own stock-picking framing (two equally-priced
+  options, one with a higher growth rate, overtakes the other under a few years) instead of stating
+  the pivot as an unadorned abstraction. No math, code, or landing content changed; no length
+  padding; first person / present tense preserved; no provenance strings added.
+  Outcome revised from `no_source_found` to `fixed`.
