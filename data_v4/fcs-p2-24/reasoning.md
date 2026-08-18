@@ -10,6 +10,8 @@ The recurrence itself: `dp[v]` is the fewest squares summing to exactly `v`, wit
 
 The one transcription trap is the sentinel. I initialize unknown cells to `INT_MAX`, so `dp[v - s*s] + 1` would be `INT_MAX + 1` — signed overflow, undefined behavior, and a garbage value that could win the `min` — if I ever added `1` to a sentinel. In this recurrence I never do: the `s = 1` read hits `dp[v-1]`, already finite, so the optimum is finite before any `+1` fires. But that is an argument about the data, not something the code enforces, so rather than bet a one-shot submission on it I read the predecessor into a named `int prev` and form `prev + 1` (at most `10^6 + 1`) only inside the comparison, keeping the data flow explicit:
 
+Let me trace the smallest input that could expose the `INT_MAX + 1` worry if my "always finite" argument were wrong. Take `n = 2`. `dp = [0, INF, INF]`. `v=1`: `s=1`, `s*s=1<=1`, `dp[1] = min(INF, dp[0]+1) = min(INF, 1) = 1`. `v=2`: `s=1`, `dp[2] = min(INF, dp[1]+1) = min(INF, 2) = 2`; `s=2` gives `s*s=4 > 2`, stop. Result `dp[2] = 2`, i.e. `2 = 1 + 1`. Correct. So the `INT_MAX + 1` branch never actually fires here because `s=1` always lands on a finite cell first — exactly my induction argument, confirmed on a concrete run.
+
 ```cpp
 vector<int> dp(n + 1, INT_MAX);
 dp[0] = 0;
