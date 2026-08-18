@@ -71,6 +71,26 @@ diagonal; answer `2`, and the lattice mismatches vanish. With `>` the
 per-edge area is strictly unimodal so the `while` terminates, and `j` advancing monotonically at
 most once around keeps the total `O(h)`.
 
+**The bug, found by tracing a square.** Take the unit square hull `h = [(0,0), (1,0), (1,1), (0,1)]`,
+`m = 4`, in CCW order. The true diameter is a diagonal, squared distance `2`. Start `j = 1`. Edge
+`i = 0`: `(h[0], h[1]) = ((0,0),(1,0))`, the bottom edge. I compare `cross(bottom, h[2]) = cross((0,0),
+(1,0),(1,1))`. That cross product is `(1-0)*(1-0) - (0-0)*(1-0) = 1`. And `cross((0,0),(1,0),h[1]) =
+cross((0,0),(1,0),(1,0)) = 0`. So `1 >= 0` is true, advance `j` to 2. Now compare `cross(bottom, h[3]) =
+cross((0,0),(1,0),(0,1)) = 1` against `cross(bottom, h[2]) = 1`. Here is the trap: `1 >= 1` is **true**
+under my `>=`, so I advance `j` to 3 even though the apex did not get strictly farther from the edge. Now
+compare `cross(bottom, h[0]) = cross((0,0),(1,0),(0,0)) = 0` against `cross(bottom, h[3]) = 1`; `0 >= 1`
+is false, stop. So for the bottom edge I ended at `j = 3`. That happens to still be a correct apex here,
+but the danger is concrete and general: with `>=`, on a hull that has two vertices *equidistant* from an
+edge (which happens constantly with axis-aligned squares, rectangles, and any collinear-on-the-far-side
+configuration), the pointer skips *past* a legitimate antipodal vertex without ever testing the
+distance to it. The farthest pair can be exactly that skipped vertex. On a thin rectangle
+`[(0,0),(10,0),(10,1),(0,1)]` the two far corners from the bottom edge are `(10,1)` and `(0,1)`, both at
+cross product `10`; `>=` advances straight through `(10,1)`'s partner relationships and I lose a
+diagonal candidate. I confirmed the smell by running my first version against the brute force on small
+random lattices — the small `2x2` and `3x3` lattice cases, which are *full* of equidistant ties, threw
+mismatches. The defect is precise: the advance condition must be **strict** (`>`), so the pointer stops
+*at* the first apex and tests the distance there instead of stepping over apexes that merely tie.
+
 The degenerate branches, checked concretely: `m == 1` (all identical) returns `0`; `m == 2`
 returns `dist2(h[0], h[1])` — `[(0,0),(1,0),(2,0)]` collapses under the strict pop to
 `[(0,0),(2,0)]`, distance² `4`, and a vertical line behaves the same since the sort key is
