@@ -15,9 +15,9 @@ This exposes cross-entropy as a weighted sum of polynomial bases `(1-P_t)^j` wit
 
   `L_Poly-1 = (1 + ε₁)(1-P_t) + ½(1-P_t)² + … = -log(P_t) + ε₁(1-P_t)`.
 
-A positive `ε₁` strengthens the surviving confidence-pressure that plain cross-entropy lets decay too soon — the opposite of focal loss's move — and helps on balanced data; the optimal sign/magnitude is task-dependent, with negative values reducing the leading push in over-confident or heavily imbalanced settings.
+A positive `ε₁` strengthens the surviving confidence-pressure that plain cross-entropy lets decay too soon — the opposite of focal loss's move. Class imbalance by itself does not decide the sign: a 21,841-way classification head and an 80-class detection head are both imbalanced yet want opposite signs. What decides it is the model's own confidence trajectory, logged as mean `P_t` over training — chronically low (the classification head) calls for `ε₁ > 0` to lift it, chronically saturated near 1 (the detector head) calls for `ε₁ < 0` to pull it back down, a softer version of focal loss's suppression.
 
-**Hyperparameters.** One knob: `ε₁`, swept by 1-D grid search; `ε₁ = 2.0` is the image-classification default. `ε₁ = 0` recovers cross-entropy; `ε₁ ≥ -1` keeps the leading coefficient nonnegative. `P_t` is the softmax probability at the ground-truth class.
+**Hyperparameters.** One knob: `ε₁`, swept by 1-D grid search against the logged confidence trajectory. `ε₁ = 2` is what the sweep lands on for the 21K-way classification head; `ε₁ = -1` is what it lands on for the detection head, at the boundary of `ε₁ ≥ -1` that keeps the leading coefficient nonnegative. `ε₁ = 0` recovers cross-entropy exactly. `P_t` is the softmax probability at the ground-truth class.
 
 ```python
 import torch
