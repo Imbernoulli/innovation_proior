@@ -12,6 +12,8 @@ For the reflection, I want the number of paths with `a` up, `b` down, staying `>
 
 with the convention `C(n, k) = 0` for `k < 0` or `k > n`, so the subtracted term vanishes when `b - m - 1 < 0`, i.e. `m >= b`, the unconstrained regime. One more guard: if the path cannot even end at or above the barrier — `a - b < -m` — no safe path exists, and I short-circuit to `0` rather than push the formula into a regime I never re-derived. On the sample `a = 3, b = 2, m = 0` the formula gives `C(5,3) - C(5,1) = 10 - 5 = 5` — the truth the greedy missed — and `a = 4, b = 4, m = 0` gives `C(8,4) - C(8,3) = 70 - 56 = 14`, the fourth Catalan number.
 
+Let me confirm the recurrence by hand on the sample `a = 3, b = 2, m = 0`, expected `5`. `total = C(5, 3) = 10`. `bad index = b - m - 1 = 2 - 0 - 1 = 1`, so `bad = C(5, 1) = 5`. `safe = 10 - 5 = 5`. The derivation reproduces the hand-enumerated answer. As a second paper check, `a = 4, b = 4, m = 0` should be the 4th Catalan number, `14`: `total = C(8, 4) = 70`, `bad = C(8, 4 - 0 - 1) = C(8, 3) = 56`, `safe = 70 - 56 = 14`. Correct. The reflection is right.
+
 Now the code, where the reflected index legitimately goes out of range, so my first unguarded binomial is a landmine:
 
 ```
