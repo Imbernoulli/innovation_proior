@@ -8,6 +8,18 @@ The predicate "bed `i` is bloomed on day `t`" is `b[i] <= t`: the bed blooms *on
 
 The search range: between consecutive bloom days the bloomed set is constant, so `feasible` only changes on days some bed newly blooms; the earliest feasible day is therefore one of the `b[i]`, and `[lo, hi] = [min b, max b]` brackets it. Below `min b` nothing is bloomed (0 bouquets, and `m >= 1`); on `max b` the whole row is one run of length `n`. An answer exists iff that full run suffices, `floor(n/k) >= m`, which holds iff `n >= m*k`. So I test `m*k > n` up front and print `-1`; otherwise `feasible(hi)` is guaranteed true and the search is well-posed with no sentinel.
 
+I will trace the documented sample to sanity-check the *derivation itself* on a concrete input: `n=7, m=2, k=2, b=[3,1,4,1,5,9,2]`, expected answer `4`. First `lo = min b = 1`, `hi = max b = 9`. The impossibility test: `m*k = 4 <= 7 = n`, so we proceed. Binary search on `[1,9]`.
+
+- `L=1,R=9`: `mid = 1 + (9-1)/2 = 5`. Evaluate `feasible(5)` with the `b[i] < 5` predicate: beds with `b[i] < 5` are days `3,1,4,1,_,_,2` -> beds `0,1,2,3` bloomed (`3,1,4,1 < 5`), bed 4 is `5` and `5 < 5` is *false* so not bloomed, bed 5 `9` no, bed 6 `2 < 5` yes. Runs: beds `0,1,2,3` give a run of 4 -> at `run=2` bouquet#1 (reset), at `run=2` again bouquet#2 -> `bouquets=2`; bed 6 alone -> nothing. `bouquets=2 >= 2` true. So `R = 5`.
+- `L=1,R=5`: `mid = 1 + (5-1)/2 = 3`. `feasible(3)` with `b[i] < 3`: beds with day `< 3` are `1 (bed1), 1 (bed3), 2 (bed6)` — bed0 is `3`, `3<3` false. So bloomed beds are `1, 3, 6`, none adjacent -> all runs length 1 -> `0` bouquets. `0 >= 2` false. `L = 4`.
+- `L=4,R=5`: `mid = 4 + (5-4)/2 = 4`. `feasible(4)` with `b[i] < 4`: beds with day `< 4`: bed0 `3<4` yes, bed1 `1` yes, bed2 `4<4` *false*, bed3 `1` yes, bed6 `2` yes. So bloomed = beds `0,1,_,3,_,_,6`. Runs: `0,1` length 2 -> 1 bouquet; bed 3 alone; bed 6 alone. `bouquets = 1`. `1 >= 2` false. `L = 5`.
+- `L=5,R=5`: loop ends. Print `5`.
+
+- `L=1,R=9`: `mid=5`, `feasible(5)`: `b[i] <= 5` includes bed4 (`5<=5`) now, beds `0..4` and `6` bloomed; beds `0,1,2,3,4` is a run of 5 -> `floor(5/2)=2` bouquets -> true -> `R=5`.
+- `L=1,R=5`: `mid=3`, `feasible(3)`: `b[i] <= 3` -> bed0 `3` yes, bed1 `1`, bed3 `1`, bed6 `2`. Bloomed beds `0,1,_,3,_,_,6`. Runs: `0,1` len2 -> 1 bouquet, others len1. `bouquets=1 < 2` false -> `L=4`.
+- `L=4,R=5`: `mid=4`, `feasible(4)`: `b[i] <= 4` -> bed0 `3`, bed1 `1`, bed2 `4` (now included!), bed3 `1`, bed6 `2`. Bloomed beds `0,1,2,3,_,_,6`. Run `0,1,2,3` len4 -> `floor(4/2)=2` bouquets -> true -> `R=4`.
+- `L=4,R=4`: loop ends. Print `4`. Correct.
+
 The lower-bound loop is `while (L < R) { mid = L + (R-L)/2; if (feasible(mid)) R = mid; else L = mid+1; }`, then print `L`. Keep the candidate when feasible (`mid` itself may be the earliest), discard it when not (the earliest is then strictly greater). It converges because each step strictly shrinks `R - L`: on the feasible branch `mid <= R-1` whenever `L < R`, so `R` drops; on the infeasible branch `L` rises. The other boundary trap lives right here — `R = mid-1` or `L = mid` would over- or under-shoot. The decisive step on the sample is `mid=3`: bloomed beds are `0,1,3,6` (days `3,1,1,2`) with only the `0,1` pair adjacent, one bouquet, infeasible, so `L = mid+1 = 4`; with `feasible(4)` true (the run of 4) the loop settles on `4` rather than sliding past it. That is where `L = mid+1`, not `L = mid`, earns its exact form.
 
 Edge cases where boundary code dies:
@@ -15,6 +27,14 @@ Edge cases where boundary code dies:
 - *`k=1`.* Every bloomed bed is its own bouquet, so the answer is the `m`-th smallest bloom day; `run==k` fires and resets on each bloomed bed, which is correct.
 - *Broken run.* `b=[1,9,1], k=3, m=1` needs all three adjacent beds bloomed at once, so the middle bed forces the answer to day 9 — the answer genuinely depends on adjacency, not the `m`-th smallest day, which is why a feasibility scan and not a sort is required.
 - *Answer at the left edge.* `b=[1,5,1,1], k=2, m=1` is already feasible on day 1 (beds 2,3 adjacent), and the loop settles on `lo` without ever probing below it — the left-edge termination I most worried about. Single-bed and all-same-day inputs are the trivial `lo=hi` case where the loop body never runs.
+
+- `L=1,R=2`: `mid = 1 + (2-1)/2 = 1`. `feasible(1)`: bed0 `1<=1` bloomed, `run=1=k` -> bouquet, `bouquets=1>=1` true. Branch `R = mid = 1`.
+- `L=1,R=1`: loop condition `L < R` is `1 < 1` false. Exit. Print `L = 1`. Correct.
+
+- `L=1,R=9`: `mid=5`. `feasible(5)`: beds with `b[i]<=5`: bed0 `1`, bed2 `1`; bed1 `9` no. Bloomed `0,_,2`, no run of 3 -> `0` bouquets -> false -> `L=6`.
+- `L=6,R=9`: `mid = 6 + (9-6)/2 = 7`. `feasible(7)`: bed1 `9<=7` false still -> same, `0` bouquets -> false -> `L=8`.
+- `L=8,R=9`: `mid = 8 + (9-8)/2 = 8`. `feasible(8)`: bed1 `9<=8` false -> `0` -> false -> `L=9`.
+- `L=9,R=9`: exit. Print `9`. Correct.
 
 Finally I cross-check against the brute day-by-day oracle, which sorts the distinct bloom days and returns the first feasible one — a completely different control structure, so agreement is real evidence and not a tautology. On randomized small cases with deliberately tight day ranges (to force many tied bloom days and exercise the `<=` boundary on every run) and `m` chosen to straddle feasibility (so the `-1` branch fires often), the two agree; together with the hand traces above, that is what I trust.
 
