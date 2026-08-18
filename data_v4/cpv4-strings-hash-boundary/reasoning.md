@@ -4,6 +4,8 @@ Brute force compares prefix to suffix character by character: one test is `O(len
 
 Forward hash, prefix table exclusive on top: `H[i]` is the hash of `s[0..i-1]`, `H[0] = 0`, `H[i+1] = H[i]*B + val(s[i])`, `pow[k] = B^k`. For an inclusive 0-indexed window `s[a..b]`,
 
+Let me sanity-check the offsets on paper before I trust them. The window is `s[a], s[a+1], ..., s[b]`. `H[b+1]` is the hash of `s[0..b]`, i.e. `... + s[a]*B^{b-a} + ... + s[b]*B^0`. The "junk" prefix I must subtract is `s[0..a-1]`, whose hash is `H[a]`, but in `H[b+1]` that prefix has been shifted left by exactly the window length `(b - a + 1)` positions, so I subtract `H[a] * B^{b-a+1} = H[a] * pow[b-a+1]`. Good — the power exponent is the **window length**, and the upper table index is `b+1` (one past the inclusive end). Those two facts are the whole ballgame. I will use a double hash (two moduli, two bases) to make a chance collision astronomically unlikely; comparison is then a pair equality.
+
 ```
 hash(a, b) = H[b+1] - H[a] * pow[b-a+1].
 ```
@@ -13,6 +15,20 @@ Two things are easy to slip here, and both are visible in the derivation. First,
 Now the period windows. `p` is a period of `t = s[L..R]` iff the length-`(len-p)` prefix equals the length-`(len-p)` suffix. In original-string coordinates the prefix `t[0..len-p-1]` is `s[L .. L+(len-p)-1]`, and `L+(len-p)-1 = L + (R-L+1-p) - 1 = R-p`, so it is `s[L..R-p]`; the suffix `t[p..len-1]` is `s[L+p..R]`. Both have length `(R-p)-L+1 = len-p`, so the test is `hash(L, R-p) == hash(L+p, R)`.
 
 The tempting error on the suffix is writing its start as `L+p+1` — the prefix ends at `R-p`, so it looks symmetric to "skip `p` and one more" on the other side. That shortens the suffix to `len-p-1`, its length stops matching the prefix, and equal substrings stop comparing equal, silently skipping a true period. On `"abab"` (`L=0, R=3`) the correct start gives, at `p=2`, prefix `s[0..1]="ab"` and suffix `s[2..3]="ab"` — equal, answer `2`; with `L+p+1` the suffix is `s[3..3]="b"`, length 1 against 2, and the real period `2` is missed. So the suffix starts at exactly `L+p`. I scan `p` from `1` upward and return the first `p` in `[1, len-1]` whose windows match, else `len`.
+
+Let me trace the smallest meaningful case, `s = "aa"`, query `(1, 2)`, where the answer is plainly `1` (the two `a`s give period `1`). Build the table with `val('a') = 1`, base `B`. `H[0]=0`, `H[1] = 0*B + 1 = 1`, `H[2] = 1*B + 1 = B+1`. `L = 0, R = 1, len = 2`. Test `p = 1`: prefix window is `get(0, R-1) = get(0, 0)`; suffix window is `get(1, 1)`.
+
+**The first bug — `H[b]` instead of `H[b+1]`.** I wrote `h1[b]` where my own derivation said the upper table index must be `b+1` (one past the inclusive end, because the table is exclusive on top). With `h1[b]` I am hashing `s[a .. b-1]`, a window one character too short — a classic inclusive/exclusive off-by-one. The smallest case `get(0,0)` returning `0` (hash of the empty window) instead of `1` is the fingerprint. Fix: `h1[b+1]` and `h2[b+1]`, and the array must be sized `n+1`. Re-trace `get(0,0)` after the fix: `x = h1[1] - h1[0]*pow[1] = 1 - 0 = 1`. Correct. And `get(1,1) = h1[2] - h1[1]*pow[1] = (B+1) - 1*B = 1`. So for `s="aa"`, `p=1`: `get(0,0)=1 == get(1,1)=1`, answer `1`. Fixed and correct.
+
+Test `p = 1`: prefix `get(0, R-1) = get(0, 2)` = hash of `"aba"`; suffix (buggy) `get(L+1+1, R) = get(2, 3)` = hash of `"ab"`. These have *different lengths* (3 vs 2) so the hashes differ — `p=1` correctly rejected here, by luck. Test `p = 2`: prefix `get(0, R-2) = get(0, 1)` = hash of `"ab"` (length 2); suffix (buggy) `get(0+2+1, 3) = get(3, 3)` = hash of `"b"` (length 1). Lengths 2 vs 1 differ, so `p=2` is **rejected** — but `p=2` is the correct answer! The buggy version would skip it, then test `p=3`: prefix `get(0, 0)="a"`, suffix `get(0+3+1,3)=get(4,3)` — an empty/invalid window (`a > b`), `lenq = 3 - 4 + 1 = 0`, garbage. So the buggy suffix start corrupts the whole scan.
+
+**Edge cases.**
+- `len = 1` (e.g. query `(4,4)` or a single-character string): the loop `for p in [1, len)` is empty, so `ans = len = 1`. A length-1 string has smallest period `1`. Correct, and importantly no hash call with a degenerate window happens.
+- All equal, `s = "aaaa"`, query `(1,4)`: `p=1` -> `get(0,2)="aaa"` vs `get(1,3)="aaa"` equal -> `1`. Smallest period of `a^k` is `1`. Correct.
+- Aperiodic, `s = "aab"`, query `(1,3)`: `p=1` -> `get(0,1)="aa"` vs `get(1,2)="ab"` differ; `p=2` -> `get(0,0)="a"` vs `get(2,2)="b"` differ; fall through to `ans = len = 3`. Correct (no `p < 3` works).
+- Highly periodic full-size `s = (ab)^{2500}`, full query: `p=1` rejected (`a != b` somewhere), `p=2` -> length-`(5000-2)` prefix vs suffix equal -> `2` immediately. The early `break` keeps it `O(p)` here, fast.
+- Collision risk: a single modulus `~10^9` could collide on adversarial input; I use a **double** hash (moduli `1e9+7` and `998244353`, bases `131` and `137`), so a false equality needs simultaneous collision in both, probability `~10^{-18}` per test — negligible across `2.5*10^7` tests. Accumulators are `unsigned long long`; products like `H[a] * pow[len]` are taken `% MOD` before they can overflow 64 bits (operands are `< 10^9`, product `< 10^{18} < 1.8*10^{19}`). Safe.
+- Output: exactly `q` lines, one integer each; I build the output in a single string and flush once for speed.
 
 At the extremes the offsets stay in range. The loop runs `p < len`, so the largest `p` ever hashed is `len-1`, giving `hash(L, L)` and `hash(R, R)` — both length 1, both valid; `p = len` (length-0 overlap) is never hashed, it is only the fallback `ans = len`. At a non-1 left end the conversion still aligns: `s = "xabcabc"`, query `(2,7)` → `L=1, R=6`, and `p=3` gives `s[1..3]="abc" == s[4..6]="abc"`, answer `3`, so `l != 1` costs nothing.
 
