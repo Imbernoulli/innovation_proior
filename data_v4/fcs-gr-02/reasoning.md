@@ -15,6 +15,19 @@ against a 1 s limit is a guaranteed timeout. I want a method whose cost depends 
 so I drop search as the engine: correct but with a timeout risk I cannot retire against adversarial
 tests.
 
+**Why the obvious thing is too slow — making it concrete.** Let me make the failure tangible rather
+than hand-wavy. Take the chain `x0 -> x1 -> ... -> x_{99999}` (encode `x_k -> x_{k+1}` as the clause
+`(x_k == away) OR (x_{k+1} == home)`), and then add two clauses forcing `x0 = home` and
+`x_{99999} = away`. This is unsatisfiable, but the contradiction is `10^5` implications away from
+either forcing clause. A search that assigns `x_{50000} = home` early, say, propagates forward and
+backward but may re-derive overlapping forced regions across many branch points; in the family of such
+gadgets the number of distinct "consistent so far" partial assignments a poorly-ordered search visits
+grows with the number of independent near-conflicts I can plant. The point is not that *this single*
+chain breaks DPLL (good propagation kills a pure chain), it is that the search has no *structural*
+guarantee — its complexity is a property of the branching order, which the adversary controls. I want
+a method whose complexity is a property of the *input size only*. That is the demand that forces the
+insight.
+
 The structural reformulation retires it. A clause `lit_a OR lit_b` is logically equivalent to the
 implication pair `(NOT lit_a) -> lit_b` and `(NOT lit_b) -> lit_a`: if one side fails the other must
 hold. Build a directed graph on the `2n` literals — each variable contributes "= home" and "= away" —
@@ -51,6 +64,20 @@ there can drag a node's low-link below what the component structure warrants and
 or leave a root undetected so a component never closes — a silent mislabeling, not a crash. My
 differential tester caught exactly this on a dense 4-variable instance; switching that branch from
 `low[v]` to `num[v]` fixed it and the mismatch never recurred.
+
+Take the unit-forcing instance `n = 1`, clauses `(0,1)|(0,1)` and `(0,0)|(0,0)`. The first clause is
+"`x = home` OR `x = home`", i.e. it forces `x = home`; as implications, `la = lb = litNode(0,1) = 0`
+(node 0 = home), and we add `negNode(0) -> 0` twice, i.e. `1 -> 0` (away forces home). The second
+clause forces `x = away`: `la = lb = litNode(0,0) = 1` (node 1 = away), adding `negNode(1) -> 1`, i.e.
+`0 -> 1` (home forces away). So the graph has `0 -> 1` and `1 -> 0`: nodes 0 and 1 form one cycle, one
+SCC. The test "are literals of variable 0 in the same SCC?" must fire and print `NO`. Let me trace my
+iterative DFS from `s = 0`: push frame `(0,0)`, `num[0]=low[0]=0`, `stk=[0]`, `onstk[0]=1`. Explore
+edge `0 -> 1`: `1` unvisited, `num[1]=low[1]=1`, push `(1,0)`, `stk=[0,1]`. From `1` explore `1 -> 0`:
+`0` is visited and `onstk[0]`, so relax `low[1] = min(low[1], num[0]) = min(1,0) = 0`. Frame `1`
+exhausted: is `low[1]==num[1]`? `0 != 1`, no root, pop frame; relax parent `low[0] = min(low[0],
+low[1]) = min(0,0)=0`. Frame `0` exhausted: `low[0]==num[0]` (`0==0`), root — pop `stk` until `0`:
+pop `1` (comp 0), pop `0` (comp 0). Both literals get `comp 0`. The satisfiability loop sees
+`comp[0]==comp[1]` and prints `NO`. Correct.
 
 The edge cases fall out of the same test. `n = 0`: both loops run zero times, the formula is vacuously
 satisfiable, so I print `YES` and an empty assignment line (`YES\n\n`). A free variable (`n = 1, m = 0`)
