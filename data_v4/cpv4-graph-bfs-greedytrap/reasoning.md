@@ -12,6 +12,22 @@ The bound is. Consider one hub station of degree `D`, each spoke on its own dist
 
 The fix is to compute "the set of stations reachable for free once on line `c`" once and share it. That set is a *line-component*: within line `c`, the stations partition into connected components, and inside one component I roam free. So I build a layered graph: stations `0..n-1` are ordinary nodes; each `(line, connected component)` mints one super-node; a station connects to a super-node with weight `1` (boarding / switching onto that line-component) and the super-node connects back to each of its stations with weight `0` (riding free within it). Now `dist[station]` counts *boardings*, and since the first board is free, `transfers = boardings - 1`; the answer for `n-1` is `dist[n-1] - 1`. Each super-node is relaxed once, so the work is `O(n+m)` regardless of hub degree.
 
+**Second debug episode — the layered model is initially WRONG, and a random case catches it.** I
+implement the bipartite graph, but in my first cut I create *one super-node per line label*, connecting
+every station that touches line `c` to that single node. I rerun the random oracle and it immediately
+fails. Seed 12 gives stations `0..3`, target `3`, connections `(2,3,line A)`, `(1,0,line B)`,
+`(3,2,line A)`, `(0,0,line C)` (a self-loop). My sol prints `0`; the brute prints `-1`. I trace by hand.
+Physically, station `0` reaches only station `1` (and itself); stations `2,3` form a separate component.
+There is *no* walk from `0` to `3` — the brute's `-1` is right. But in my one-node-per-line graph, the
+connections `(1,0,line B)` and `(3,2,line A)` ... wait, those are different lines, so let me find the
+real culprit: it is the duplicated *line B* across the components in the failing seeds. With one node
+per label, two disconnected segments that merely share a label `c` both attach to the *same* super-node,
+so the BFS happily rides from a station in the first segment, "through" the shared super-node, to a
+station in the second segment — a free teleport that does not exist physically. That is precisely the
+contract subtlety I warned myself about at the start: free movement is confined to a *connected
+component* of line `c`, not the whole label. One node per label silently glues disjoint segments
+together and fabricates reachability. The brute, which counts transfers along real walks, exposes it.
+
 There is a wrong way to build this, and it is the contract subtlety from the start biting back. If I mint one super-node per line *label* and attach every station touching line `c` to it, the BFS can ride from a station in one line-`c` segment "through" the shared node into a physically disconnected line-`c` segment — a free teleport that does not exist, fabricating reachability. The oracle exposes it at once: a random case where station `0` cannot reach the target at all, yet the one-node-per-label code returns `0` while the brute, counting transfers along real walks, returns `-1` and is right. So the super-node must be per `(line, component)`, not per label. For each line I take only its connections, reset its touched stations to singletons in a DSU, union along that line's edges, and mint one super-node per DSU root; each touched station attaches to its own component's node, so two disjoint segments of a label get two different nodes and cannot teleport. The reset is scoped to the touched stations so `find` never escapes them, and the total reset+union over all lines is `O(m * alpha)`. With the fix the oracle passes, including a generator that reuses a tiny label pool specifically to force disconnected same-label segments — zero mismatches.
 
 On the sample the offset does its job: line 5 is one component over `{0,1,3,4}` -> node `P`, so boarding `P` from `dist[0]=0` costs `1` and riding it free gives `dist[4]=1` — one boarding, answer `dist[4]-1 = 0`. The two-line route reaches `4` at `dist=2` (two boardings, one transfer), and BFS keeps the smaller value.
