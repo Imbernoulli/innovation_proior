@@ -84,12 +84,18 @@ stationary distribution of the walk. So in the large-`t` limit every cell is rep
 common, geometry-weighted global average, and all the biological variation between cells is gone.
 That is the over-smoothing failure made concrete: `t` too small under-pools, `t` too large collapses
 toward a single profile, and the useful regime is in between. This is the same bias–variance lever
-`k` was for kNN-smoothing, but better-behaved, because the affinity weighting already does most of the
-denoising in a single step and the powers are there only to reach transitively, not to grind
-everything flat. I therefore expect the sweet spot to be a handful of steps; I will tune `t` on the
-tune set and expect it to land small. The kernel decay `α` and the neighbor count `k` setting the
-bandwidth are secondary knobs I will fix to standard values (`α = 2`, a Gaussian-like decay; `k`
-around ten).
+`k` was for kNN-smoothing, but harder to pick without touching held-out data. The cheap way to
+automate it needs no tune set at all: watch how much the imputed profile moves from one step to the
+next and stop once that change has nearly settled. When I actually try that stopping rule, I don't
+trust what it hands back — it settles too early. The walk clears dropout noise on the first couple of
+steps and starts eating real per-cell signal on the steps right after, at a similar pace, so the
+step-to-step change is already small while the profile is still sliding toward the shared row-0/row-3
+mixture the toy chain predicts. A rule that only watches whether the walk has stopped moving cannot
+tell "the noise is gone" from "the signal is going" from inside the walk itself — it has nothing
+outside the walk to check against. So I drop the self-stopping rule and tune `t` against the held-out
+score on the tune set instead, the same discipline `k` needed for kNN-smoothing, and expect the honest
+optimum to land small. The kernel decay `α` and the neighbor count `k` setting the bandwidth are
+secondary knobs I will fix to standard values (`α = 2`, a Gaussian-like decay; `k` around ten).
 
 The diffusion is run in the same square-root, library-normalized space I built the graph in, then
 inverted — square the diffused values and restore each cell's library size — so the output lands on
