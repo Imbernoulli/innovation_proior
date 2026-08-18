@@ -12,6 +12,17 @@ The base case needs an explicit guard, and here the negatives resurface as index
 
 The negatives put the sum right at the 32-bit edge, so a worked case is worth having. Take `n=2, T=-2000000000, a=[-1e9, -1e9]`: the sum is `-2*10^9`, equal to `T`, so the pair is admissible and the answer is 1. That sum sits just above `INT_MIN`, but push one value to `1e9` against a positive `T` and a `1e9 + 1e9 = 2e9` sum sails past `INT_MAX` — a 32-bit evaluation wraps and flips admissibility. In 64-bit it stays exact: `-2000000000LL >= -2000000000LL` holds, add 1, output 1.
 
+**Edge cases, because this is where this kind of code dies.**
+
+- `n = 0` (empty fleet): the `n < 2` guard prints `0` and returns. No pair exists. Correct, and by intent, not by `hi = -1` luck.
+- `n = 1` (single thruster): guard prints `0`. No pair exists. Correct.
+- All-negative, threshold unreachable: `n=4, T=-1, a=[-5,-3,-8,-2]`. Sorted `[-8,-5,-3,-2]`. `lo=0,hi=3`: `-8+-2=-10 >= -1`? No, `lo++`. `lo=1,hi=3`: `-5+-2=-7>=-1`? No, `lo++`. `lo=2,hi=3`: `-3+-2=-5>=-1`? No, `lo++`. `lo=3,hi=3`: stop. `count=0`. Correct — no reverse-thrust pair clears a near-zero requirement.
+- All-negative, threshold very low so every pair clears: `n=3, T=-100, a=[-5,-6,-7]`. Sorted `[-7,-6,-5]`. `lo=0,hi=2`: `-7+-5=-12>=-100`? Yes, add `2-0=2`, `hi=1`. `lo=0,hi=1`: `-7+-6=-13>=-100`? Yes, add `1-0=1`, `hi=0`. Stop. `count=3 = 3*2/2`. Correct — all `n*(n-1)/2` pairs qualify.
+- All zeros at `T = 0`: `n=5, a=[0,0,0,0,0]`. Every pair sum is `0 >= 0`, so all `10` pairs qualify. The sweep: each `a[lo]+a[hi]=0>=0`, so it always takes the `>=` branch, adding `hi-lo` and decrementing `hi`: `(4-0)+(3-0)+(2-0)+(1-0)=10`. Correct — zeros are admissible at a zero threshold, which a strict `>` instead of `>=` would wrongly drop to `0`.
+- Threshold above every reachable sum: max pair sum `< T` -> the `>=` branch never fires, `lo` walks to `hi`, `count=0`. Correct.
+- Overflow: `count` is `long long`; its max `n*(n-1)/2 ~ 2*10^10` fits. Each sum `a[lo]+a[hi]` is `long long`, range `[-2*10^9, 2*10^9]`, no wrap. `T` is `long long`, `|T| <= 2*10^9`, fits. The increment `hi - lo` is at most `n-1 < 2^31`, promoted to `long long` by the `+=`. Safe.
+- Output: exactly one integer and a newline; `cin >>` consumes arbitrary whitespace so parsing is format-agnostic.
+
 The sign-driven corners behave as the sweep predicts. All zeros at `T = 0`: every sum is `0 >= 0`, so all `n*(n-1)/2` pairs count. All-negative against a threshold no reverse-thrust pair can reach: the `>=` branch never fires and the count stays 0. All-negative with a very low `T`: every pair clears, the `>=` branch fires at every step, and the sum runs up to `n*(n-1)/2` — the worst case for the accumulator, `~2*10^10`, which is exactly why it is `long long`. A `T` above every reachable sum: `lo` walks up to meet `hi` with no `>=` branch, count 0.
 
 For assurance beyond the traces I check the sweep against an obvious `O(n^2)` brute force that enumerates every pair and tests the threshold directly, over many small random cases spanning all-negative, all-zero, mixed-sign arrays, thresholds below, inside, and above the reachable range, and `n` in `{0, 1, 2..10}` — so the empty, single-thruster, and all-negative-boundary cases all fall inside the distribution rather than being asserted separately. They agree everywhere. At `n = 2*10^5` with `|a[i]|` near `10^9` the sweep is dominated by the sort and finishes well under the 1 s limit.
