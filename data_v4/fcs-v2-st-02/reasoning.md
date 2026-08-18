@@ -60,6 +60,12 @@ need, so the conjugate-product form is the correct one. The cyclic wrap-around f
 `sz>=2n` lands in indices `q>=n`, which the sieve never reads, so it cannot contaminate the
 answers.
 
+Re-trace `u = [1,2,3]`, `v = [4,5,6]`, `corr[1]`: with the conjugate-product the inverse transform now
+yields `sum_i u[i] v[i+1] = 1*5 + 2*6 = 17`. Correct. And the wrap-around indices (the convolution is
+cyclic over `sz >= 2n`) land in the upper half `q >= n`, which I never read — I only take
+`q in [0, n)` — so the cyclic tail does not contaminate the answers. The bug was a clean
+correlation-vs-convolution swap, and the conjugation is exactly the one-line correction.
+
 Floating point is the remaining soft spot: `mismatch(q)` comes back as a `double` I round with
 `llround`. A single term reaches at most `26^2 * n ≈ 1.4*10^8`, orders of magnitude below the
 `~9*10^15` where `double` loses integer exactness, so the rounding is safe. That estimate settles
@@ -69,6 +75,17 @@ that block across the string and check with two rolling hashes (different moduli
 string versus the `?`-filled string built from different index expressions) that they agree on
 every concrete position. If this ever disagreed with the sieve, fall back to a direct per-class
 scan over all `p` — it should never fire.
+
+**The trace that exposed a bug.** I want `corr[q] = sum_i u[i] * v[i+q]`, a *correlation*. But
+`fft(u) * fft(v)` followed by inverse FFT computes a *convolution*, `sum_i u[i] * v[k-i]`, not a
+correlation. Those are different index patterns, and the difference is not subtle — it reverses one
+operand. Let me trace the smallest input that separates them. Take `u = [1, 2, 3]`, `v = [4, 5, 6]`
+and ask for `corr[1] = u[0]*v[1] + u[1]*v[2] = 1*5 + 2*6 = 17`. What does the plain-product code
+produce at index `1`? The convolution at index `1` is `u[0]*v[1] + u[1]*v[0] = 1*5 + 2*4 = 13`. So
+the code returns `13` where I needed `17`. Concretely it would mis-score shifts, and on a real
+instance like `aab` (where the true period is `3`) the corrupted `mismatch` array would mark the wrong
+shifts compatible and the sieve would report a bogus small period. The defect is precise: I used the
+convolution identity for a correlation problem.
 
 The edge cases fall out of the same structure. `n=1`: a single position is trivially period `1`,
 handled before the FFT so there is no degenerate transform. All wildcards `?...?`: every
