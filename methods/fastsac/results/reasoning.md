@@ -113,8 +113,18 @@ Now the improvement step. In ordinary policy iteration I'd set the new policy gr
 the soft world the analogous "greedy" move is toward the energy-based policy exp(Q/alpha)/Z —
 that's the distribution that, for a fixed Q, maximizes E[Q] + alpha*H, by the usual
 Gibbs/variational fact. But I can't represent an arbitrary energy-based density with my Gaussian
-actor; I'm restricted to some tractable family Pi. So instead of setting pi to exp(Q/alpha)/Z,
-I *project* exp(Q/alpha)/Z onto Pi. Which projection? The information projection — minimize the
+actor; I'm restricted to some tractable family Pi. I should be precise about what that costs,
+because the obvious shortcut — keep soft Q-learning and just swap its sampler network for a
+Gaussian — is exactly the move that fails. The energy-based form of the optimal policy there is
+not decoration; it falls out of an implicit assumption that the policy can represent *any*
+distribution. Take that away and the two halves stop agreeing: the Q-learning backup still
+converges to the *optimal* soft Q, the optimum over all distributions, and a Gaussian actor cannot
+attain the policy that Q corresponds to, so the pair does not converge to the optimal solution at
+all. That's not an approximation error I can shrink by training the sampler harder; it's the wrong
+fixed point. If the actor is going to be restricted, the convergence *statement* has to be
+restricted with it — I need a result that says I reach the best policy in Pi, whatever Pi is. That
+is what forces the improvement step to be a constrained move rather than an exact greedy one. So
+instead of setting pi to exp(Q/alpha)/Z, I *project* exp(Q/alpha)/Z onto Pi. Which projection? The information projection — minimize the
 KL from my candidate to the target:
 
   pi_new(.|s) = argmin_{pi' in Pi} KL( pi'(.|s) || exp( (1/alpha) Q^{pi_old}(s,.) ) / Z^{pi_old}(s) ).
