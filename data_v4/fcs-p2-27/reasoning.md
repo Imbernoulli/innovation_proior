@@ -6,6 +6,10 @@ The right object is the full distribution per prefix: `dp[s]` = the number of su
 
 `dp_new[s] = dp_old[s] + dp_old[s - v]`   (the second term only when `s >= v`),
 
+- Item `1` (`v = 1`): `dp_new[s] = dp[s] + dp[s-1]`. `dp[0] = 1`, `dp[1] = 0 + dp[0] = 1`, `dp[2] = 0 + dp[1]=0`, `dp[3] = 0 + dp[2] = 0`. So `dp = [1, 1, 0, 0]` — subsets `{}` and `{1}`, correct.
+- Item `2` (`v = 2`): `dp[0] = 1`, `dp[1] = 1`, `dp[2] = 0 + dp[0] = 1`, `dp[3] = 0 + dp[1] = 1`. So `dp = [1, 1, 1, 1]` — sums `0,1,2,3` each reachable one way (`{}, {1}, {2}, {1,2}`), correct.
+- Item `3` (`v = 3`): `dp[0]=1`, `dp[1]=1`, `dp[2]=1`, `dp[3]= 1 + dp[0] = 2`. Final `dp[3] = 2`. Correct — `{1,2}` and `{3}`.
+
 and the answer is `dp[T]` after all `n` items. Run on the sample this lands on `dp[3] = 2` as required. Time is `O(n*T)`, space `O(T)`.
 
 The `O(n*T)` cost wants a single in-place array, and that is exactly where this problem bites. The update must sweep `s` from high to low:
@@ -15,6 +19,8 @@ for (s = T; s >= v; s--) dp[s] += dp[s - v];
 ```
 
 If instead I sweep ascending, then for a positive `v` the cell `dp[s - v]` has *already* been updated in this same pass, so it already carries "used item `i` once" — adding it counts using item `i` again, silently turning the 0/1 count into the with-repetition (unbounded-knapsack) count. The failure is sharp on `a = [1]`, `T = 3`, where the truth is `0` (one item of value `1` cannot reach `3`): ascending gives `dp[1] = dp[0] = 1`, `dp[2] = dp[1] = 1`, `dp[3] = dp[2] = 1` — a phantom `1`, the single item reused three times along the chain `dp[1] -> dp[2] -> dp[3]`. Descending, `s - v < s` lies in the region not yet touched this pass, so `dp[s - v]` is the pre-item value and each item is used at most once; the same input then correctly yields `dp[3] = 0`. Getting this direction backwards is the most common way this exact code is wrong.
+
+Re-trace `a = [2,2,2]`, `T = 2` with the descending loop to be sure I did not regress: each pass touches only `s = 2` reading `dp[0]`, identical to before, final `dp[2] = 3`. Correct. And re-run the original sample `a = [1,2,3]`, `T = 3` mentally with descending order: item `1` (`v=1`) descending `s=3,2,1`: `dp[3]=0+dp[2]=0`, `dp[2]=0+dp[1]=0`, `dp[1]=0+dp[0]=1` -> `[1,1,0,0]`; item `2` (`v=2`) `s=3,2`: `dp[3]=0+dp[1]=1`, `dp[2]=0+dp[0]=1` -> `[1,1,1,1]`; item `3` (`v=3`) `s=3`: `dp[3]=1+dp[0]=2` -> `dp[3]=2`. Correct. The case that broke now passes, and it broke for precisely the reason I fixed — that is the evidence I trust.
 
 Zeros deserve a separate look because `v = 0` makes the update `dp[s] += dp[s]` — the cell references only itself, no cross-cell dependence, so the iteration direction is irrelevant and it simply doubles every count: include or exclude the zero. Hence `T = 0` yields `2^(number of zeros)` (only zeros can be added without moving the sum); e.g. `[0, 0, 5]` with `T = 0` gives `4`, any subset of the two zeros.
 
