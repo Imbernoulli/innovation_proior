@@ -69,3 +69,46 @@ Karras on unrelated later topics (limited-data GAN training). No long-form autho
 retrospective, or transcript with additional technical content on the fade-in mechanism turned up.
 This confirms the finding already on record in `search_log.md`. Relying on the primary paper +
 official code combination for this step, as recorded above.
+
+## recheck pass (2026-08-17) — author self-accounts FOUND
+
+The earlier passes concluded that no author retrospective with technical content existed. Two do,
+and both are now on disk:
+
+**1. Tero Karras, Machine Learning Coffee Seminar talk, 2018-09-17** —
+`refs/self_accounts/karras_mlcs_talk_2018_transcript.txt` (+ `.vtt`), and a second talk at
+`refs/self_accounts/karras_ai_channel_talk_transcript.txt`. Auto-captions, so ASR errors
+("molestation" = normalization, "creaks alarm" = pixelnorm, "covenant" = convnet), but the content is
+unambiguous. Load-bearing, and NOT in the paper:
+> "a lot of normalization techniques being applied to usually both networks because normalization is a
+> good way to avoid such an escalation ... this is problematic because that [normalization] requires
+> huge mini batches and we cannot afford them at high resolutions so what to do — well we noticed that
+> it is enough to employ normalization ... just one of the networks; it's enough if one of the networks
+> is unwilling to participate in this kind of arms race"
+(the fade-in half, also in his words: "when we want to increase the resolution we cannot go and add
+the new layers just like that because [they] are completely untrained and doing so would cause a
+sudden shock so what we do instead is extract two images at different resolutions and do a linear
+crossfade between them ... our discriminator is a perfect mirror image of the generator and both
+networks keep growing in synchrony using exactly the same kind of linear crossfades"; and for
+minibatch stddev: "the previous techniques have been kind of heavy ... we found out that we can
+actually get the same effect using a much simpler or much lightweight mechanism and actually even get
+better results that way".)
+
+**2. ICLR 2018 OpenReview thread** — `refs/self_accounts/openreview_thread_Hk99zCeAb.md` (retrieved via
+the HuggingFace mirror `ulab-ai/ResearchArcade-openreview-reviews`; openreview.net itself is behind a
+Turnstile challenge). Author reply, 2017-11-15:
+> "We did explore different network architectures in the early stages of the project. In general, it
+> does not seem to make a big difference whether we start at 2x2, 4x4, 8x8, or 16x16 resolution. We
+> chose 4x4 mainly because it is the most natural fit for our specific network architecture. We have
+> also observed that it is beneficial to have roughly the same structure and capacity in both networks,
+> as well as matching upsampling and downsampling operators."
+Also: "smaller minibatches actually produce slightly better results in configurations where batch
+normalization is not present".
+
+**Still not grounded by any self-account: the real-image fade.** A wide search (both transcripts, the
+full OpenReview thread, poster OCR, repo README and every issue comment — none by an author, the
+StyleGAN2 §4 retrospective) turned up nothing on why the training images are faded identically. The
+only author-side trace is the code comment `# Smooth crossfade between consecutive levels-of-detail.`
+in `process_reals`. reasoning.md's derivation of that step therefore remains its own, and it stays
+verified numerically against the actual `process_reals` mechanism (residual 0.65 / 0.32 / 0.0 at
+old_weight 0 / 0.5 / 1.0, which is exact since the blur is idempotent so the residual is (1-w)*r0).
