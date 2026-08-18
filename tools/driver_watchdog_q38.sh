@@ -47,7 +47,7 @@ start_driver() {
     --max-tokens 32768 \
     --request-timeout 3600 \
     --concurrency "$CONC" \
-    --query-concurrency "$((CONC*2+40))" \
+    --query-concurrency "${Q38_QC:-$((CONC*2+40))}" \
     --verify-workers 64 \
     >> "$LOG" 2>&1 &
   DRIVER_PID=$!
