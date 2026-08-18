@@ -14,6 +14,8 @@ stars-and-bars `C(n + k - 1, n - 1)`, and the cap is enforced by subtracting the
 flavour overflows. That is `O(n + k)` after the factorial precompute. I take the inclusion-exclusion
 route and keep the DP to check it against.
 
+I commit to inclusion-exclusion and treat the DP as my checking oracle.
+
 Deriving the identity. Let `U = C(n + k - 1, n - 1)` be the uncapped count. For a fixed set `S` of
 flavours, let `A_S` count the tuples where every flavour in `S` is forced to at least `c + 1` (the
 others free). Substituting `x_i = y_i + (c + 1)` for `i in S` with `y_i >= 0` drops the budget by
@@ -61,3 +63,7 @@ Verification. I compared against the `O(n*k)` DP on over a thousand random small
 were the `n = 0, k = 0` family; after it, none. The full module — the `O(n + k)` factorial precompute
 up to `n + k`, the `C` and `bars` helpers, and the early-break inclusion-exclusion loop — is in the
 answer.
+
+**Final solution.** I proved the inclusion-exclusion identity, fixed its stopping rule, repaired the
+`m = 0` stars-and-bars corner that the binomial formula silently miscounts, and hardened every
+modular product through `__int128`. That is what I ship — one self-contained file.
