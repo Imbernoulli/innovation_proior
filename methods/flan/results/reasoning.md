@@ -47,7 +47,7 @@ Evaluation needs to avoid making one wording look like the whole recipe. For eac
 
 I also need to separate the effect of the instructions from the effect of multi-task finetuning. If I remove the templates entirely and train only on raw inputs and outputs, the model gets supervision but not the habit of mapping a natural request to an action. If I prepend only a task or dataset name, I give it a symbolic task identifier but still not an ordinary user-facing instruction. For the no-template version, inference still has to use natural requests because otherwise the model would not know what task a bare input is asking for. For the task-name version, I can test both the natural request and the name prefix. If those controls fall short, the missing ingredient is the instruction format, not just exposure to many labels.
 
-So the pipeline that falls out is templating into natural requests, conservative cluster splitting with the union-in-the-eval-cluster rule I had to be careful about, an OPTIONS suffix so ranked classification scores the intended label set, capped examples-proportional mixture sampling, packing, and ordinary finetuning.
+So the pipeline that falls out is templating into natural requests, conservative cluster splitting with the union-in-the-eval-cluster rule I had to be careful about, an OPTIONS suffix so ranked classification scores the intended label set except on the five continuation-shaped tasks where it backfires, capped examples-proportional mixture sampling, packing, and ordinary finetuning.
 
 ```python
 import random
@@ -83,6 +83,8 @@ TASK_FORMATS = {
     ],
 }
 
+NO_OPTIONS_DATASETS = {"hellaswag", "piqa", "record", "wsc273", "winogrande"}
+
 def options_suffix(classes):
     if not classes:
         return ""
@@ -91,7 +93,8 @@ def options_suffix(classes):
 def format_example(dataset_name, example, classes=None):
     template_in, template_out = random.choice(TASK_FORMATS[dataset_name])
     fields = dict(example)
-    fields["options"] = options_suffix(classes)
+    shown_classes = None if dataset_name in NO_OPTIONS_DATASETS else classes
+    fields["options"] = options_suffix(shown_classes)
     return template_in.format(**fields), template_out.format(**fields)
 
 def blocked_clusters(eval_cluster):

@@ -4,7 +4,7 @@ One could simply multi-task finetune on many datasets, but that only shows the m
 
 The method is FLAN, which stands for Fine-tuned LAnguage Net. It takes a dense left-to-right decoder-only language model pretrained on web text, code, dialog, and Wikipedia, and continues finetuning it on a mixture of existing NLP datasets that have been reformatted as natural-language instructions. The base model used in the original work has 137B parameters, but the same recipe can be applied across scales. The core idea is instruction tuning: instead of training the model to predict a target given a raw input, train it to predict a target given a templated request.
 
-Each of the 62 TFDS datasets is equipped with a bank of ten manually written instruction templates. Most templates express the original task direction, such as asking whether a premise entails a hypothesis or asking to translate a sentence to German. Up to three templates per dataset invert the task, for example asking the model to write a positive movie review rather than classify one. During training, every example is rendered with a randomly chosen template from its dataset's bank. This template randomization prevents the model from relying on a fixed surface string and forces it to attend to the requested operation. Generation tasks keep a free-text target, while classification tasks append an OPTIONS suffix listing the valid answer strings; at inference the listed strings are ranked by probability to avoid splitting mass across paraphrases such as "yes", "true", and "correct".
+Each of the 62 TFDS datasets is equipped with a bank of ten manually written instruction templates. Most templates express the original task direction, such as asking whether a premise entails a hypothesis or asking to translate a sentence to German. Up to three templates per dataset invert the task, for example asking the model to write a positive movie review rather than classify one. During training, every example is rendered with a randomly chosen template from its dataset's bank. This template randomization prevents the model from relying on a fixed surface string and forces it to attend to the requested operation. Generation tasks keep a free-text target, while classification tasks append an OPTIONS suffix listing the valid answer strings; at inference the listed strings are ranked by probability to avoid splitting mass across paraphrases such as "yes", "true", and "correct". HellaSwag, PiQA, ReCoRD, WSC273, and Winogrande are the documented exception: each is already phrased as picking the better continuation of a shared context, so appending OPTIONS competes with that continuation shape and ranked accuracy comes out lower than with no suffix; those five are scored by rank classification with the OPTIONS suffix omitted.
 
 The zero-shot evaluation uses cluster-leave-out splits rather than dataset-leave-out splits. The datasets are grouped into twelve clusters: natural language inference, reading comprehension, commonsense reasoning, sentiment analysis, closed-book QA, paraphrase detection, coreference resolution, reading comprehension with commonsense, struct-to-text, translation, summarization, and miscellaneous tasks. A dataset counts as unseen only if no dataset from its cluster appeared during training. Additional exclusions prevent leakage between semantically close clusters: NLI and paraphrase are withheld from each other, and reading comprehension with commonsense is withheld alongside reading comprehension or commonsense reasoning whenever one of those is evaluated. Evaluating c clusters therefore trains c separate checkpoints, each with a different cluster held out.
 
@@ -48,6 +48,8 @@ TEMPLATE_BANK = {
     ],
 }
 
+NO_OPTIONS_DATASETS = {"hellaswag", "piqa", "record", "wsc273", "winogrande"}
+
 def options_suffix(classes):
     if not classes:
         return ""
@@ -56,7 +58,8 @@ def options_suffix(classes):
 def format_example(dataset_name, example, classes=None):
     template_in, template_out = random.choice(TEMPLATE_BANK[dataset_name])
     fields = dict(example)
-    fields["options"] = options_suffix(classes)
+    shown_classes = None if dataset_name in NO_OPTIONS_DATASETS else classes
+    fields["options"] = options_suffix(shown_classes)
     return template_in.format(**fields), template_out.format(**fields)
 
 def blocked_clusters(eval_cluster):

@@ -4,7 +4,7 @@ The core move is to make supervised NLP data look like the way a user would ask 
 
 The zero-shot protocol is cluster-leave-out, not dataset-leave-out. The datasets are grouped into twelve task clusters. A dataset is considered unseen only when no dataset from its task cluster was used in finetuning, with extra exclusions for overlapping clusters: NLI and paraphrase are held out from each other; reading comprehension with commonsense is held out when evaluating either reading comprehension or commonsense reasoning; and both parent clusters are held out when evaluating reading comprehension with commonsense. Evaluating c clusters requires c checkpoints, each finetuned with a different cluster omitted. Summarization is included in the task collection but left out of evaluation because most summarization inputs exceed the 1024-token input length.
 
-Classification prompts append an OPTIONS suffix listing the valid answer strings, then rank the listed strings by probability. This reduces the problem where the model spreads probability mass across paraphrases such as "yes", "true", and "correct". Generation tasks use free-text decoding directly.
+Classification prompts append an OPTIONS suffix listing the valid answer strings, then rank the listed strings by probability. This reduces the problem where the model spreads probability mass across paraphrases such as "yes", "true", and "correct". Generation tasks use free-text decoding directly. Five datasets are the documented exception: HellaSwag, PiQA, ReCoRD, WSC273, and Winogrande are already phrased as picking the better continuation of a shared context rather than answering a request, so appending OPTIONS competes with that continuation shape instead of helping it, and ranked accuracy comes out lower than with no suffix at all. Those five are scored by rank classification over the same candidate strings with the OPTIONS suffix omitted.
 
 Training uses a cap of 30,000 examples per dataset, examples-proportional mixing with mixing-rate maximum 3,000, sequence packing with EOS separators between inputs and targets, 30,000 gradient steps, batch size 8,192 tokens, Adafactor at learning rate 3e-5, input length 1024, and target length 256.
 
@@ -48,6 +48,8 @@ TEMPLATE_BANK = {
     ],
 }
 
+NO_OPTIONS_DATASETS = {"hellaswag", "piqa", "record", "wsc273", "winogrande"}
+
 def options_suffix(classes):
     if not classes:
         return ""
@@ -56,7 +58,8 @@ def options_suffix(classes):
 def format_example(dataset_name, example, classes=None):
     template_in, template_out = random.choice(TEMPLATE_BANK[dataset_name])
     fields = dict(example)
-    fields["options"] = options_suffix(classes)
+    shown_classes = None if dataset_name in NO_OPTIONS_DATASETS else classes
+    fields["options"] = options_suffix(shown_classes)
     return template_in.format(**fields), template_out.format(**fields)
 
 def blocked_clusters(eval_cluster):
