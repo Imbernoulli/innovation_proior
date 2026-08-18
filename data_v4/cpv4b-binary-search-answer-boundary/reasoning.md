@@ -4,9 +4,28 @@ The predicate "power `p` keeps total blows `<= k`" is monotone in `p`: a larger 
 
 The per-boulder count is where the first off-by-one hides. To break weight `w` into pieces each at most `p` I need the fewest pieces `m` with `m*p >= w`, i.e. `m = ceil(w/p)`, and each blow adds one piece, so blows `= m - 1`. Without floating point the integer identity is `ceil(w/p) - 1 == (w - 1) / p` (floor division, `w, p >= 1`). The trap is `w` an exact multiple of `p`: `w = 8, p = 4` gives `ceil(8/4) - 1 = 1` and `(8-1)/4 = 1` — the boulder splits `4, 4`, one blow — whereas the tempting `w/p = 2` counts one too many, and `ceil(w/p)` without the `-1` counts pieces, not blows. The `(w-1)/p` form encodes the inclusive `<= p` cap, shedding exactly one blow when `w` is a clean multiple. And that off-by-one moves the whole answer, not just a count: on `w = [6], k = 2` the answer is `2` (split `6` into `2,2,2` = two blows), but `w/p = 6/2 = 3 > 2` would call `p = 2` infeasible and wrongly return `3`.
 
+- `w = 8, p = 4` (an exact multiple): `ceil(8/4) - 1 = 2 - 1 = 1`. And `(8 - 1)/4 = 7/4 = 1`. Match. A boulder of 8 with `p = 4` splits into pieces `4, 4` — that is one blow. Correct.
+- `w = 9, p = 4` (just over a multiple): `ceil(9/4) - 1 = 3 - 1 = 2`. And `(9 - 1)/4 = 8/4 = 2`. Match. Pieces `4, 4, 1`, two blows. Correct.
+- `w = 4, p = 4` (equal): `ceil(4/4) - 1 = 1 - 1 = 0`. And `(4 - 1)/4 = 3/4 = 0`. Match. One piece, zero blows. Correct.
+- `w = 1, p = 1`: `ceil(1/1) - 1 = 0`. And `(1 - 1)/1 = 0`. Match. A 1 kg boulder with `p = 1` is already fine, zero blows. Correct.
+
+The cost function looks right by the numeric checks above. The search is where I am nervous, so I trace the documented sample: `w = [10, 7, 8, 5]`, `k = 6`, expected answer `4`. Here `maxw = 10`, so `lo = 1, hi = 10`.
+
+1. `lo=1, hi=10`, `mid = 1 + 9/2 = 1 + 4 = 5`. `cuts(5)=3 <= 6` feasible -> `hi = mid - 1 = 4`.
+2. `lo=1, hi=4`, `mid = 1 + 3/2 = 1 + 1 = 2`. `cuts(2)=12 > 6` infeasible -> `lo = mid + 1 = 3`.
+3. `lo=3, hi=4`, `mid = 3 + 1/2 = 3 + 0 = 3`. `cuts(3)=8 > 6` infeasible -> `lo = mid + 1 = 4`.
+4. `lo=4, hi=4` -> loop ends. Output `lo = 4`.
+
+**The bug.** Take a tiny case where the *feasible region starts at the very value the search first probes*. `w = [6]`, `k = 1`. Then `maxw = 6`, `lo = 1, hi = 6`. The blow counts: `cuts(p) = (6-1)/p = 5/p`. So `cuts(1)=5, cuts(2)=2, cuts(3)=1, cuts(4)=1, cuts(5)=1, cuts(6)=0`. With `k = 1`, feasible powers are `p >= 3` (`cuts(3)=1 <= 1`), and `cuts(2)=2 > 1`, so the true minimum is `p = 3`. Run my loop:
+
 The search boundary is the second. I want the *smallest* `p` that passes a monotone predicate, so on a feasible `mid` the value `mid` is itself a live candidate and must stay in the window: `hi = mid`, not `hi = mid - 1`. The given example `w = [10,7,8,5], k = 6` does not discriminate between the two — its answer `4` is reconstructable from the low side, so both variants print `4` and I can't lean on it to validate the boundary. A case that does discriminate is `w = [6], k = 1`, where `cuts(p) = 5/p`: feasible powers are `p >= 3` (`cuts(3)=1`, `cuts(2)=2`), true minimum `3`. Under `hi = mid - 1`: `lo=1,hi=6`, `mid=3` feasible → `hi=2`; `mid=1` infeasible → `lo=2`; ends at `lo=hi=2`, which is infeasible — a feasible `mid` was thrown away, and since `lo` only ever climbs over infeasible values there is no path back to the true minimum. With `hi = mid`: `mid=3` feasible → `hi=3`; `mid=2` infeasible → `lo=3`; ends at `3`, correct.
 
 Pairing `hi = mid` with the floor midpoint `mid = lo + (hi - lo)/2` is what keeps the loop finite: the floor gives `lo <= mid < hi` whenever `lo < hi`, so the `hi = mid` branch strictly lowers `hi` and the `lo = mid + 1` branch strictly raises `lo`, and the window always shrinks. A ceiling midpoint with `hi = mid` would stall at `mid = hi` — the floor-midpoint / `hi = mid` pair is the matched one.
+
+1. `mid=5`, `cuts(5)=3 <= 6` -> `hi=5`.
+2. `lo=1, hi=5`, `mid = 1 + 4/2 = 3`, `cuts(3)=8 > 6` -> `lo=4`.
+3. `lo=4, hi=5`, `mid = 4 + 1/2 = 4`, `cuts(4)=5 <= 6` -> `hi=4`.
+4. `lo=4, hi=4` -> end. Output `4`. Correct.
 
 For the edges: `k = 0` needs `cuts(p) = 0`, i.e. `p >= maxw`; the search returns `maxw`, always feasible, so it closes without a special case. A single boulder of weight `1` with `k = 0` gives range `[1,1]`, the loop never runs, and it prints `1`. Many equal weights near `10^9` at `n = 2*10^5` accumulate to ~`2*10^14`, safely inside the ~`9.2*10^18` range of `long long`. Inside `cuts` I add an early exit — `if (total > k) return total;` — so it stops summing once the budget is already blown; this prunes work on infeasible `p` and keeps `total` from running far past `k`. Input is two whitespace-separated lines, which `cin >>` parses without regard to the line break; output is one integer and a newline.
 
