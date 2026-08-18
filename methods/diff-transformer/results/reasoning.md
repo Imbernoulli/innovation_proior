@@ -84,21 +84,12 @@ genuinely go negative and no longer sum to one, so this is a *signed* attention 
 now push an irrelevant value vector's contribution to zero, which a single positive softmax structurally
 cannot. The analogy survives contact with arithmetic, with the caveat that `lambda` has to be calibrated.
 
-Now the problems, in order. First, `lambda`. The obvious move is to bolt on a free scalar `lambda`, one
-ordinary weight, and let the optimizer place it. But `lambda` doesn't sit next to an ordinary weight — it
-multiplies straight into `A2`, and every other quantity feeding this subtraction, `A1` and `A2` themselves,
-is `exp(s)/sum_n' exp(s_n')`, so a step in the underlying `q`/`k` vectors moves those terms
-*multiplicatively*: `d(exp(x))/dx = exp(x)`, so a fixed step in the dot product changes the softmax entry
-by an amount proportional to its own current value. A raw scalar `lambda` moves *additively* under the
-same optimizer step — a fixed `delta` regardless of where `lambda` currently sits — so its updates are not
-scaled the way the rest of the subtraction is scaled; nothing keeps its rate of movement in step with the
-exponential terms it's being subtracted against. That mismatch is exactly the failure mode I don't want:
-before the two halves have any reason to agree, an unanchored `lambda` can drift to a badly-scaled value
-and turn `A1 - lambda*A2` into something with wild magnitude and sign, and there's no mechanism pulling it
-back. I want `lambda`'s own updates to move at the *same rate* as everything else driving the subtraction,
-which means building it out of the same kind of quantity the attention maps are built from — an exponential
-of a dot product, so a step in the underlying vectors changes `lambda` multiplicatively, the way it changes
-a softmax entry, not additively. Concretely
+Now the problems, in order. First, `lambda`. If I just make `lambda` a free scalar parameter the optimizer
+can drive it anywhere, and at the start of training a badly-scaled `lambda` makes the two large positive
+maps subtract into something with a wild magnitude and sign, and the gradients are a mess. I want `lambda`
+to start in a sane place and be *re-parameterized* so the learnable part is well-conditioned. The trick I
+like: don't learn `lambda` directly; learn it as a difference of two exponentials of dot products, plus a
+constant init. Concretely
 `lambda = exp(lambda_q1 . lambda_k1) - exp(lambda_q2 . lambda_k2) + lambda_init`,
 with `lambda_q1, lambda_k1, lambda_q2, lambda_k2` learnable vectors of dimension `head_dim` initialized
 small (normal, std 0.1). My intuition is that at init the two exponentials nearly cancel so `lambda`

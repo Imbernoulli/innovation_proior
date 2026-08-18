@@ -101,14 +101,27 @@ velocity.
 
 `K` must stay small, though, and I want to be honest about why rather than wave at it. The inequality I
 just exercised is a statement about the unreliable *source end* — it held at `w = 7` because the field
-there is dominated by error. It is not a license to skip steps in general. The diagnostic only certifies
-that the zero move is competitive where the guided velocity is a worse estimate than nothing; once the
-field becomes informative (and my own Gaussian check showed the closed form is well-defined and the
-learned field has every chance to track it as `t` grows), continuing to do nothing throws away useful,
-budget-limited solver steps and discards the conditional signal I need. So zero-init is deliberately a
-short prefix, not a schedule. This is the second lever. The two are independent — optimized scale
-corrects the mix on every guided step; zero-init removes the few steps where no mix is trustworthy — and
-together they are the full method.
+there is dominated by error. My first reading is that this is a fixed geometric fact about high-noise
+guidance — the source end is always the least informative part of the trajectory, so I could just bake
+`K` in as a constant fraction of any schedule and stop worrying about it. That reading is checkable
+against something the 1D toy cannot give me, and it fails. Track the same guided-vs-zero gap not at one
+fixed model but across checkpoints of increasing convergence: first on the Mixture-of-Gaussians setup
+where the closed form applies exactly, then on a real conditional image generator carried toward
+convergence on ImageNet. Early checkpoints show exactly the gap I found at `w = 7` — guided loses to
+zero at the source end. As training proceeds the gap shrinks, and past a clear turning point pure
+zero-init stops improving anything: the guided move at `t` near 0 is no longer worse than doing nothing,
+because the field there has become accurate enough to trust on its own. So "guided worse than zero at
+the source end" is not a permanent property of high-noise guidance; it is a symptom of the field still
+being underfit at that point in training, and the same diagnostic that flags the unreliable steps is
+also, incidentally, a convergence probe. That is also why the trick keeps paying off outside the toy
+setting: a large text-conditioned generator is conditioning on too vast and diverse a space to reach
+that turning point in practice, so the regime zero-init is patching stays live. And it fixes what
+"small" has to mean: once past the unreliable prefix the field is informative, continuing to do nothing
+throws away useful, budget-limited solver steps and discards the conditional signal I need, so zero-init
+has to stay a short prefix tied to how underfit the source end still is — not a fixed correction folded
+permanently into CFG. This is the second lever. The two are independent — optimized scale corrects the
+mix on every guided step; zero-init removes the few steps where no mix is trustworthy because the model
+has not yet converged there — and together they are the full method.
 
 Now make both halves concrete in code. The optimized scale flattens each prediction per batch element,
 forms the projection coefficient with a small denominator floor (so a near-zero unconditional
