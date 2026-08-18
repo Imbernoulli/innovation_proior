@@ -6,6 +6,14 @@ The per-pair scheme over-counts, and the sample shows by how much. On `(0,0),(0,
 
 The formula: fix `P=(px,py)`; a triangle with its right angle at `P` is determined by choosing the vertical-leg endpoint (any other point with `x=px`) and the horizontal-leg endpoint (any other point with `y=py`) independently, so `P` anchors `col(px) * row(py)` triangles where each count excludes `P` itself. The answer is `sum_P (col(px)-1)*(row(py)-1)`. On the sample only `(0,0)` sits in both a populated column (`col=3`) and a populated row (`row=3`), giving `(3-1)*(3-1)=4`; every other point has a lone factor of one and contributes zero. Total `4`.
 
+Let me verify on the sample `(0,0),(0,2),(0,3),(2,0),(3,0)`. Column counts: `x=0` holds 3 points, `x=2` holds 1, `x=3` holds 1. Row counts: `y=0` holds 3, `y=2` holds 1, `y=3` holds 1. Now per point, with "minus self":
+- `(0,0)`: col `x=0` -> `3-1=2`; row `y=0` -> `3-1=2`; contributes `2*2=4`.
+- `(0,2)`: col `x=0` -> `2`; row `y=2` -> `1-1=0`; contributes `0`.
+- `(0,3)`: col -> `2`; row `y=3` -> `0`; contributes `0`.
+- `(2,0)`: col `x=2` -> `0`; row `y=0` -> `2`; contributes `0`.
+- `(3,0)`: col -> `0`; row -> `2`; contributes `0`.
+Total `4`. Matches the stated answer, and the four triangles are exactly `{(0,0),(0,2),(2,0)}`, `{(0,0),(0,2),(3,0)}`, `{(0,0),(0,3),(2,0)}`, `{(0,0),(0,3),(3,0)}` — all anchored at `(0,0)`. The formula is right.
+
 Now the transcription, where the duplicate trap actually bites. The naive version builds the column/row maps over the raw points and sums over the raw points:
 
 ```
@@ -23,6 +31,14 @@ for (auto &p : raw) if (seen.insert(p).second) pts.push_back(p);
 ```
 
 with `col`/`row` and the sum then built over `pts`. Re-tracing `(0,0),(0,0),(5,0)`: `pts = {(0,0),(5,0)}`, `col[0]=1`, `col[5]=1`, `row[0]=2`, and both distinct points have a zero factor, so the total is `0`. The sample, having no duplicates, is unchanged at `4`.
+
+**Edge cases, because this is where counting code dies.**
+- `n = 0`: no points read, `pts` empty, the sum loop never runs, `answer = 0`. The empty set has no triangles — correct. (The `if (!(cin >> n)) return 0;` also covers truly empty stdin.)
+- Fewer than three distinct points, e.g. `n=2` `(0,0),(0,5)`: `col[0]=2, row[0]=1, row[5]=1`. `(0,0)` -> `(2-1)*(1-1)=0`; `(0,5)` -> `(2-1)*(1-1)=0`. Total `0` — you cannot form a triangle from two points, and indeed every term has a zero factor because no point shares both a column *and* a separate row partner. Correct.
+- All points in one column, e.g. `(0,0),(0,1),(0,2)`: every `row[...] = 1`, so each `side = 0`; answer `0`. Three collinear points form no triangle at all — correct.
+- Heavy duplicates: e.g. `(1,1),(1,1),(1,4),(5,1),(1,4)` collapses to distinct `{(1,1),(1,4),(5,1)}`. `col[1]=2, col[5]=1`; `row[1]=2, row[4]=1`. `(1,1)` -> `(2-1)*(2-1)=1`; `(1,4)` -> `(2-1)*(1-1)=0`; `(5,1)` -> `(1-1)*(2-1)=0`. Total `1`, the triangle `{(1,1),(1,4),(5,1)}` anchored at `(1,1)`. Correct, and the duplicates did not inflate it.
+- Overflow: the accumulator is `long long`. On a `447 x 447` grid the answer is `447^2 * 446^2 ~ 3.97*10^10`, well within 64-bit and well past 32-bit — so `long long` is mandatory and sufficient. Coordinates are only ever used as map keys, never multiplied, so coordinate magnitude (`10^9`) cannot overflow anything.
+- Output: exactly one integer and a newline; `cin >>` consumes arbitrary whitespace so parsing is format-agnostic.
 
 The exclude-self `-1` is load-bearing on *both* factors, not one. A single point `(0,0)` with no others must give `0`; with the `-1` it does (`(1-1)*(1-1)`), but without it each factor is `1` and it invents a triangle whose two "other" corners are `P` twice. And the `-1` has to sit on each factor independently: for the L-shape `(0,0),(0,1),(1,0)`, `col[0]=2`, `row[0]=2`, so `(0,0)` gives `(2-1)*(2-1)=1` — the one real triangle. Subtracting only from the column would give `(2-1)*2=2`, double the truth.
 
