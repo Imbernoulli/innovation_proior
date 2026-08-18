@@ -3,8 +3,14 @@ exponential-integrator, DPM-Solver++(kM) — and it gets me to maybe fifteen or 
 with stable images under large guidance. But I want the extreme few-step regime, five to ten calls,
 and there the wheels come off: every solver I have leaves a visible per-step truncation error because
 at five steps the half-log-SNR interval `h` is large and the `O(h^k)` term is not small. The reflex is
-"go to higher order," but I have already learned that just raising the order of a *predictor* solver
-buys less and less — and under guidance, where the model's derivatives are amplified, can even hurt.
+"go to higher order," but that lever is worse than it looks, for a reason specific to where a
+predictor gets its extra order from. A predictor of order `p` buys the `p`-th order by feeding in more
+*previous* model outputs — and previous outputs are the oldest, least accurate things in the loop, each
+carrying its own truncation error from a step already taken. Every order I add imports a staler
+quantity, and under guidance, where the model's derivatives are amplified, the imported error is
+amplified with it. There is a second, blunter obstacle in the same direction: the analytical
+coefficients for these exponential-integrator steps have only ever been written down explicitly for
+orders up to three, so "just go higher" is not even a knob that exists past `p = 3`.
 So before I reach for order, let me ask what *kind* of error I am leaving uncorrected, because the
 answer might be a different lever than order.
 
@@ -143,7 +149,18 @@ A few realities I keep from the reference implementation. The `phi`/`expm1` fact
 exponentials, so `expm1` is used throughout to avoid cancellation. The order ramps up as history
 accumulates — first step order 1, then 2, then up to the configured max — and there is a
 `lower_order_final` option that drops the order on the last step(s) where there is no future evaluation
-to correct with (and where the trajectory is nearly straight at low noise anyway). The time grid is the
+to correct with (and where the trajectory is nearly straight at low noise anyway). Having the framework
+makes the per-step order a schedule I can actually sweep, and the sweep settles the question I opened
+with. On CIFAR10 at ten calls, writing the schedule as the per-step orders: `1223433321` gives FID
+`4.07`, `1233343321` gives `4.14`, `1234544321` gives `4.76`, `1234554322` gives `5.41`, and
+`1234565432` — the one that climbs all the way to order six — gives `18.23`. Flat and high,
+`1234444443`, gives `6.84`. So it is not a plateau; past order three or four it degrades, and by order
+six it falls apart. That is exactly the mechanism I suspected at the start: those extra orders are
+bought with progressively older previous points, whose own errors then propagate into every subsequent
+step. The corrector buys its extra order from the *current* point instead — the freshest quantity in
+the loop — which is why adding it helps consistently while making the predictor taller does not. At
+the very low end the best schedules I find are modest for the same reason: `123432` at six calls and
+`1223334` at seven. The time grid is the
 EDM/Karras power schedule (`rho=7`) or uniform-`lambda`; either spends the budget where truncation
 error is largest. For latent-space text-to-image there is no `[-1,1]` bound, so thresholding is off and
 only the numerics matter. And the data prediction itself folds in classifier-free guidance — the
