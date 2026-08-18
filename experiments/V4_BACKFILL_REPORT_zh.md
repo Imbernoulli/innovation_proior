@@ -198,7 +198,49 @@ OLD 的交卷段是两句"我说服了我自己"+ 一句真交卷。前者删掉
 | `fcs-v2-st-01` | 7,115 → 9,456 | +3 |
 | `cpv4-strings-hash-negzero` | 4,729 → 9,691 | +6 retrace×6 |
 
-合计 **59 段**。pilot 内自查密度（broad）中位 0.65 → **1.63**。每个单元单独 commit（`v4-backfill: <unit> — +N segments (…)`）。
+合计 **59 段**，已全部落地，每个单元一个 commit（`v4-backfill: <unit> — +N segments (…)`，20 个 commit）。
+
+**diff 形态**：`git diff v4-backfill-baseline..HEAD -- data_v4` = **20 files changed, 189 insertions(+), 0 deletions(-)**。
+**没有任何一行既有文字被修改或删除**——回填是纯插入。（口癖处理只作用于被插入的文本，不碰 HEAD 原文；HEAD 里既有的 `deliberately` 保持原样，那是 §7-3 去模板化补完的工作。）
+
+### 7.1 闸门实测（pilot 前 vs 后）
+
+| 闸 | pilot 前 | pilot 后 | 判定 |
+|---|---|---|---|
+| `tools/lint_inframe.py \| grep data_v4` | 0 | **0** | ✅ 无新增（但见下：这条闸对 data_v4 恒真） |
+| 工件 regex（20 单元） | 0 | **0** | ✅ |
+| 工件 regex（全 data_v4） | 4 文件（`ale-05/06/29/33`，均在代码围栏内） | **同样 4 文件** | ✅ 零新增 |
+| top-1 开头占比（全 347） | 0.9% | **0.9%** | ✅ <5% |
+| top-1 开头占比（20 单元内） | 5.0%（1/20，小样本） | **5.0%** | ✅ 未变 |
+| `deliberately`（全 347） | 81 文件 / 100 处 | **81 / 100** | ✅ 零回升 |
+| `convinced myself` / `Causal recap` / `Reading the problem`（全 347） | 5 / 50 / 14 文件 | **5 / 50 / 14** | ✅ 零回升 |
+| 自查密度 broad 中位（20 单元） | 0.65 | **1.63** | ↑ 2.5× |
+| 自查密度 broad 中位（全 347） | 0.78 | **0.81** | ↑（只动了 20/346） |
+
+### 7.2 decontam / verbatim-code 闸
+
+`sft/build_sft.py`（`INNOVATION_DECONTAM=1`，输出改到 scratchpad 以免覆盖 `sft/` 产物）：
+
+```
+[decontam] gate ON: dropped 28 methods, 8 trajectories, 46 Type-1 finale rungs.
+wrote …: 2590 examples   v4_unique: 338
+```
+
+全部断言通过；**20 个 pilot 单元 20/20 都在产出的样本里**，其 think 通道复检：工件 0、opener 0、`Causal recap` 0、`convinced myself` 0；唯一一处 `deliberately` 在 `fcs-p2-21:84`，是 pilot 前就存在的原文（`a deliberately different shape from the sorted O(m^2) DP`），非本次引入。pilot 单元 think 中位 9,067 字符（≈2.3k tok），**超 32k tok 的 0 个**。
+
+注：build_sft 的 verbatim-code gate（`_ta_code_ok`）比对的是 rung 的 `train_answer` 与 `answer` 的代码围栏；**data_v4 的 `reasoning.md` 不经过这道闸**，而且本次回填一个代码围栏都没有插入，所以它结构上不可能被触发。
+
+`decontam/audit_leakage.py`：v4 轴 `n=346, leak=346 (MEDIUM v4_synth_register), contaminated=0`，与已提交的 `leakage_tags_v4.jsonl` **逐字节相同**——因为 `annotate_v4()` 只按行枚举 `sft/_v4_tags.jsonl` 打标，**完全不读 reasoning 正文**，本次改动结构上不可能影响它。运行后工作树已 `git checkout -- decontam/` 还原。
+
+---
+
+## 9. 阻塞项 / 需要人来决定的
+
+1. **⚠️ `decontam/audit_leakage.py` 现在跑全量会把 denylist 清空。** 在当前树上重出 `leakage_tags_*` 会产生大量与本次改动**无关**的漂移：`n 2698→2590`、`wave2 1352→750`、`drop_method_slugs 28→0`、`drop_traj_slugs 8→0`、`benchmark_denylist.txt 36 行→空`。而 `build_sft.py` 的 decontam gate 正是读 `decontam_rules.json` 的这两个列表（当前提交版给出 28/8）。**照 review §2.5-5 的第二道闸"全量重出 leakage_tags_*"去做，会把 decontam gate 变成空操作。** 这是本次回填之前就存在的问题（语料成分换过、被 drop 的 slug 已经不在树上了），必须先单独查清再动。本次已把工作树还原，未提交任何 decontam 改动。
+2. **验收指标两条达不到**（§5）：自查密度 ≥2/千 tok（基线天花板 0.54，回填后 0.46）、中位 4.4k tok（回填后 2.28k）。要么改指标，要么扩授权到 934 个 MISSING 的 OTHER 段——后者正是 review §2.4 警告的"无差别恢复"。
+3. **`tools/lint_inframe.py` 从来没扫过 data_v4**（扫描根是 `<root>/<slug>/results/*.md`，data_v4 单元没有 `results/` 子目录）。"grep data_v4 无新增命中"这条闸是恒真的，不构成保护。若要真正覆盖，需要把 data_v4 加进它的 roots——届时 `C_rsn_header` 会命中 38 个本来就用 `##` 分节的单元（ale-* 为主），与回填无关。
+4. **仓库里有并发的 agent 在提交**（`svfix(...)` 系列穿插在本次 20 个 commit 之间）。本次一次 `git commit --amend` 因此意外把 `tools/v4_backfill.py` 的一次改动并进了别人的 commit `ae988d818`（对方内容完好，未丢失）。后续一律用 pathspec 限定的 `git commit -- <paths>`。
+5. **剩余 326 个单元未 apply**（计划 614 段），等人拍板。全量 apply 的投影见 §3/§6。
 
 ---
 
