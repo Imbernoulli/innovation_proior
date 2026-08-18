@@ -41,6 +41,67 @@ the empty selection is always a competitor. A leaf holding `v` is `total = v`, a
 - `best = max(L.best, R.best, L.suf + R.pre)` — the block lies entirely in `L`, entirely in `R`, or
   *straddles* the boundary as a suffix of `L` glued to a prefix of `R`.
 
+Let me sanity-check the straddle case is consistent with the empties: since `L.suf >= 0` and
+`R.pre >= 0`, the gluing term is `>= 0`, and because `L.best, R.best >= 0`, `P.best >= 0` too, so the
+empty block survives as required.
+
+Hand-check on `[3, -2, 5]`. Leaves: `3 -> (3,3,3,3)`, `-2 -> (-2,0,0,0)`, `5 -> (5,5,5,5)`. Merge
+`[3]` with `[-2]`: `total = 1`; `pre = max(3, 3 + 0) = 3`; `suf = max(0, -2 + 3) = 1`;
+`best = max(3, 0, 3 + 0) = 3`. So `[3,-2] -> (1, 3, 1, 3)`. Merge that with `[5]`:
+`total = 1 + 5 = 6`; `pre = max(3, 1 + 5) = 6`; `suf = max(5, 5 + 1) = 6`;
+`best = max(3, 5, 1 + 5) = 6`. Best block of `[3,-2,5]` is `6` — matches the whole-array sample.
+The merge algebra is right.
+
+**First implementation — and immediately a trace, because clean algebra transcribes dirty.** I write
+the leaf and combine, build a `4n` tree, and a query that returns an identity node for the empty
+range. My first cut of the query identity and the all-zero leaf default looked fine, but I want to
+trace the *partial-overlap query path* on a small case, because that is where range segment trees
+quietly break. Consider `n = 3`, `a = [-2, 5, -1]`, query `2 2 3` (window `[5, -1]`, answer should be
+`5`). The tree over `[0,2]` splits at `mid = 1`: left covers `[0,1]`, right covers `[2,2]`. The query
+range in 0-indexed terms is `[1, 1] .. [2, 2]`, i.e. `l = 1, r = 2`. At the root the range is not
+fully inside, so I recurse. My first query function read like this.
+
+**The first bug — missing the out-of-range base case.** Trace it. Root `[0,2]`, `l=1,r=2`: not fully
+covered, `mid=1`, recurse left `[0,1]` and right `[2,2]`. Left `[0,1]`, `l=1,r=2`: not fully covered
+(`0 < 1`), `mid=0`, recurse left `[0,0]` and right `[1,1]`. Left `[0,0]`, `l=1,r=2`: **`0` is not in
+`[1,2]` at all**, but there is no guard, so `l<=0 && 0<=r` is `1<=0` = false, I do *not* return the
+node, and I keep recursing... into a leaf where `lo==hi==0`, which never hits the `l<=lo&&hi<=r`
+return and has no children — undefined indices `2*node` past the array, garbage. Even setting the
+crash aside, the leaf `[0,0]` holds `a[0] = -2`, which is **outside** the query window and must not
+contribute. Without an out-of-range guard I fold position `0` into the answer. That is a correctness
+bug independent of the crash. The merge identity for "this node contributes nothing" must be the
+empty-segment node `{total:0, pre:0, suf:0, best:0}` and I must return it whenever the node's range is
+disjoint from `[l, r]`.
+
+Re-trace `a = [-2, 5, -1]`, query 0-indexed `[1, 2]`. Root `[0,2]`: not disjoint, not fully inside,
+`mid=1`; `r=2 > mid` and `l=1 <= mid`, so the general branch: recurse left `[0,1]` and right `[2,2]`.
+Left `[0,1]`, `[1,2]`: not disjoint, not fully inside, `mid=0`; here `l = 1 > mid = 0`, so I go *only*
+right: query `[1,1]` with `[1,2]` -> fully inside -> returns leaf `5 -> (5,5,5,5)`. So left subtree
+contributes `(5,5,5,5)`, having correctly *skipped* the `[0,0]` leaf. Right `[2,2]`, `[1,2]`: fully
+inside -> leaf `-1 -> (-1,0,0,0)`. Combine `(5,5,5,5)` with `(-1,0,0,0)`:
+`total = 5 + (-1) = 4`; `pre = max(5, 5 + 0) = 5`; `suf = max(0, -1 + 5) = 4`;
+`best = max(5, 0, 5 + 0) = 5`. Answer `5`. Correct, and position `0` never entered. The disjoint
+guard was the fix and it fixed it for the reason I diagnosed.
+
+**Second trace — the empty-block / all-negative case, where the `max(0, .)` floors earn their keep.**
+I worry that an all-negative window might leak a negative answer if any field forgot its `>= 0` floor.
+Trace `a = [-3, -1, -4]`, query the whole thing, 0-indexed `[0, 2]`, expected `0` (take nothing).
+Leaves: `-3 -> (-3,0,0,0)`, `-1 -> (-1,0,0,0)`, `-4 -> (-4,0,0,0)`. Merge `[-3]` and `[-1]`:
+`total = -4`; `pre = max(0, -3 + 0) = 0`; `suf = max(0, -1 + 0) = 0`; `best = max(0,0, 0+0) = 0` ->
+`(-4, 0, 0, 0)`. Merge with `[-4]`: `total = -8`; `pre = max(0, -4 + 0) = 0`;
+`suf = max(0, -4 + 0) = 0`; `best = max(0, 0, 0 + 0) = 0` -> `(-8, 0, 0, 0)`. Query returns `best = 0`.
+Correct. The `total` field is allowed to go negative (it is a true sum, used only inside `pre/suf`
+gluing), but `pre`, `suf`, `best` never do, so the empty selection is preserved end to end. Good — and
+this is exactly the leaf where a naive "best = max(L.best, R.best, L.suf + R.pre)" *without* the leaf
+floor would have produced `-1` or `-3`.
+
+**A targeted check that greedy and the tree disagree on the trap input.** I run my reasoning on
+`[5, -100, 4]`: leaves `(5,5,5,5)`, `(-100,0,0,0)`, `(4,4,4,4)`. Merge `[5],[-100]`: `total=-95`;
+`pre=max(5,5+0)=5`; `suf=max(0,-100+5)=0`; `best=max(5,0,5+0)=5` -> `(-95,5,0,5)`. Merge with `[4]`:
+`total=-91`; `pre=max(5,-95+4)=5`; `suf=max(4,4+0)=4`; `best=max(5,4,0+4)=4`... wait, `L.suf=0`,
+`R.pre=4`, glue `=4`; `max(5,4,4)=5`. Final `best = 5`. The tree says `5`; greedy said `9`. The tree
+matches the by-hand truth and refuses the impossible `9`. Confirmed.
+
 The floors compose: `L.suf, R.pre >= 0` makes the straddle term `>= 0`, and with `L.best, R.best >= 0`
 the parent's `best >= 0`, so the empty block survives every merge. Running `[3, -2, 5]` through it —
 `(3,3,3,3)` merged with `(-2,0,0,0)` gives `(1,3,1,3)`, merged with `(5,5,5,5)` gives
