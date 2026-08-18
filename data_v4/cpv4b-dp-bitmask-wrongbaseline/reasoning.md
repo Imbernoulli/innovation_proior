@@ -24,6 +24,20 @@ penalty into the transition using the only previous-ish thing in hand — add `e
 `nxt`. That charges `e` from *one* back rather than two, and it charges it on the second batch, which by
 the contract owes no carry-over at all yet.
 
+**First trace — and the baseline is already suspect on paper.** Walk a length-3 order `x, y, z`. When I
+append `y` after `x` the code adds `e[last][nxt] = e[x][y]`. But by the problem, `y` is only *one*
+position after `x`, so `y` should pay **no** carry-over at all yet — carry-over starts at the third
+batch. And when I append `z` after `y` the code adds `e[y][z]`, charging the carry-over from `y` (one
+back) onto `z`, whereas the problem charges `e[x][z]` from `x` (two back). So the hacked baseline pays
+the wrong `e` on the second batch (it should pay none) and the wrong `e` on the third (it uses `y`
+instead of `x`). On paper this looks broken; let me confirm it numerically against brute force rather
+than trust the paper argument.
+
+**Numeric self-check of the baseline against brute force.** Take the documented sample, `n = 3`.
+
+Brute force over all 6 orders, charging exactly the problem's definition (adjacency on consecutive
+pairs, carry-over `e[order[t-2]][order[t]]` for `t >= 2`):
+
 The patch fails on the sample. With `n = 3`, brute force over the six
 orders puts the optimum at `12`, order `2,1,0`: adjacency `c[2][1] + c[1][0] = 4 + 5 = 9` plus the
 two-back carry-over `e[2][0] = 3`; every other order costs at least `13`, and nothing costs less than
@@ -54,6 +68,15 @@ table. Transitions are `2^n * n^3 = 2.68*10^8` relaxations, each a couple of add
 under two seconds. I flatten `(last, prev)` into a single `n*n` dimension so the table is a clean `2^n`
 by `n^2` array rather than a jagged three-level structure.
 
+I trace the smallest input that exercises a real two-back charge, `n = 3` with the sample matrices,
+following order `2,1,0`. Step one: from `dp[{2}][2*3+2] = 0`, append `1`. New most-recent batch is `1`,
+and the batch before it is `2`, so the correct new index is `last_new=1, prev_new=2`, i.e.
+`1*3 + 2 = 5`. But my code wrote `dp[nmask][prev*n + last] = dp[nmask][2*3 + 1] = dp[nmask][7]`, which
+decodes as `last_new=2, prev_new=1` — the two batches **swapped**. So the next time I read this cell I
+would think the order ends `..., 2, 1` when it actually ends `..., 1, 2`, and I would charge `c[2][...]`
+where I should charge `c[1][...]`. The result is a corrupted chain; on the sample this produced a wrong
+total (I got a value that did not match the brute-force `12`).
+
 One encoding hazard in this flattened layout is worth stating precisely, because it is easy to get
 backwards. After appending `nxt` the order ends `..., last, nxt`, so the destination cell must index
 `(nxt, last)` — new most-recent is `nxt`, new two-back is `last`, i.e. `dp[nmask][nxt*n + last]`.
@@ -62,6 +85,20 @@ later read of that cell would believe the order ends `..., last, prev` and charg
 should charge `c[nxt][...]`, corrupting the chain. The source reads `(last, prev)`; the destination
 writes `(nxt, last)`. Keeping those two encodings distinct is the one place this DP genuinely differs
 from single-slot Held-Karp bookkeeping.
+
+**A second debug episode: the carry-over fires one step too early.** While re-reading the code I worried
+about the `single` flag, so I traced a different order, `0,1,2`, whose true cost is `19` (adjacency
+`5+4=9`, carry `e[0][2]=10`). Start `dp[{0}][0*3+0]=0` (single marker `prev==last==0`). Append `1`:
+because `prev==last` I must treat this as placing the *second* batch and add **no** carry-over, only
+`c[0][1]=5`, reaching `dp[{0,1}][1*3+0]=5`. I checked the condition: `single = (prev == last) = (0 ==
+0) = true`, so `add = c[0][1]` only — good, no `e` charged. (An earlier mental version of mine had used
+`if (popcount(mask) >= 2) add += e[...]`, which is equivalent, but the `prev==last` marker is cleaner
+because it lives in the state and survives flattening.) Append `2`: now `prev=0, last=1`, distinct, so
+`single=false`, `add = c[1][2] + e[0][2] = 4 + 10 = 14`, reaching `dp[{0,1,2}][2*3+1] = 5 + 14 = 19`.
+That matches the brute-force `19` for this order, and crucially the carry-over `e[0][2]` fired exactly
+when the third batch was placed, charged from the correct two-back batch `0`. Had I forgotten the
+`single` guard, the second batch would have wrongly paid `e[0][1]`, inflating every order. The guard is
+load-bearing and the trace confirms it triggers at the right step.
 
 The corners fall out. `n = 0` and `n = 1` short-circuit to `0` — no transitions, no carry-over — via the
 empty-input guard and explicit branches. `n = 2` reaches the full mask with `single == true` throughout,
