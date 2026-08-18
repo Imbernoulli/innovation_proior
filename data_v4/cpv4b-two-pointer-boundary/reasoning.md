@@ -4,6 +4,16 @@ The predicate is monotone in the window: if `[i, j]` is stable, so is every sub-
 
 For a right end whose smallest stable start is `left`, the stable stretches ending there are `[left, right], ..., [right, right]` — `right - left + 1` of them. The value I need to keep in view: if even `[right, right]` is unstable, `left` should run to `right + 1` and the formula gives `0`, no contribution. That `left == right + 1` empty state is where the code will bite. For the left-advance test, `[left, right]` is stable iff `a[maxd.front()] - a[mind.front()] < D`, so I shrink *while* the negation holds — `>= D`, not `> D`. That negation is the strict/non-strict crux the problem is built on. Hand-enumerating the given sample (`D = 5`, `a = [4, 8, 6, 11, 9, 7]`) confirms both the formula and the monotone left: the per-right stable counts are `1, 2, 3, 1, 2, 3` summing to `12`, with `left` moving `0, 0, 0, 3, 3, 3` — never backward.
 
+**Confirming the recurrence by hand on the sample.** Sample: `D = 5`, `a = [4, 8, 6, 11, 9, 7]`, claimed answer `12`. Let me enumerate the stable windows ending at each `right`, by the suffix rule, range strictly `< 5`:
+- `right=0` (4): `[4]` range 0 < 5. starts {0}. count 1.
+- `right=1` (8): `[8]` r0; `[4,8]` r4 < 5. starts {0,1}. count 2.
+- `right=2` (6): `[6]` r0; `[8,6]` r2; `[4,8,6]` r4 < 5. starts {0,1,2}. count 3.
+- `right=3` (11): `[11]` r0; `[6,11]` r5 — NOT < 5. So left jumps to 3. starts {3}. count 1.
+- `right=4` (9): `[9]` r0; `[11,9]` r2; `[6,11,9]` r5 — not stable. left = 3. starts {3,4}. count 2.
+- `right=5` (7): `[7]` r0; `[9,7]` r2; `[11,9,7]` r4 < 5; `[6,11,9,7]` r5 — not stable. left = 3. starts {3,4,5}. count 3.
+
+The thing that worries me is the `D = 0` case: no window can have range `< 0`, so *every* window is unstable, so the shrink loop will keep advancing `left` past `right`, and the deques can empty out — and then `a[maxd.front()]` reads `front()` on an empty deque, which is undefined behaviour. Let me trace the smallest input that exposes it: `n = 1`, `D = 0`, `a = [100]`. Start `left = 0`, deques empty.
+
 The sweep body, then. For each `right` I push it onto both deques (popping from the max deque's back everything `<= a[right]`, from the min deque's back everything `>= a[right]`), advance `left` while the window is unstable, and add `right - left + 1`. The single place this bites is the empty-window state I flagged, and `D = 0` is where it surfaces. Take `n = 1, D = 0, a = [100]`: at `right = 0` both deques hold `0`; the shrink test `a[0] - a[0] = 0 >= 0` is true, so `left` goes to `1` and both fronts (`0 < 1`) pop, leaving the deques empty — and an unguarded `while (a[maxd.front()] - a[mind.front()] >= D)` then re-reads `front()` on empty deques, undefined behaviour that segfaults. So the shrink loop must stop once the window has gone empty; gating on `left <= right` does exactly that:
 
 ```
