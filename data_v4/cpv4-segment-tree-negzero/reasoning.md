@@ -20,6 +20,8 @@ Merging left `L` and right `R` into parent `P`:
 
 A leaf over one value `v` is `{v, v, v, v}`: the only non-empty subarray is the element itself. Build is `O(n)`, update and query `O(log n)`. The high-level idea isn't the risk; the risk is entirely in the base cases the negatives-and-zeros corner is built to expose — the identity used for out-of-range pieces, and the sign of a lone negative leaf.
 
+Merge: `P.best = max(L.best=1, R.best=5, L.suf + R.pre = -2 + 5 = 3) = 5`. Correct. `P.pre = max(L.pre=-1, L.tot + R.pre = -4 + 5 = 1) = 1`, matching the real best prefix of the full array (`[-2,1] = -1`? no — `[-2,1,-3,4,-1,2]` prefixes are `-2,-1,-4,0,-1,1`, max `1`). Good, `P.pre = 1`. The formulas hold; the idea is sound. Now the dangerous part is the *empty* pieces.
+
 **The identity element — the real trap.** A range query splits at internal nodes, and on branches that fall outside `[l,r]` the recursion has to return *something* that merges harmlessly with real nodes. The tempting choice is the zero node `{0,0,0,0}` — "an empty range contributes nothing." It is wrong, and it is wrong on exactly the corner this problem stresses.
 
 Trace `a = [-5,-2,-8]`, query `2 0 2`, true answer `-2` (every subarray sum is negative; the least-bad is the single `-2`). Somewhere the recursion merges a real leaf `L = {-2,-2,-2,-2}` with an out-of-range `R = {0,0,0,0}`:
