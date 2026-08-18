@@ -23,6 +23,13 @@ The inner `while (x[i] <= right) i++` advances `i` and then re-reads `x[i]` to t
 
 **The closed boundary forces `<=`, not `<`.** A house exactly at `p+L` is lit and must be absorbed. On `x=[0,5]`, `L=5`, both lie inside `[0,5]` so the answer is `1`: `right=5`, `lamps=1`; the inner loop skips `0`, then `5<=5` sends `i=2` and stops — one lamp. With `x[i] < right` the house at `5` stays dark and costs a second lamp, a wrong `2`. So `<=` is load-bearing, matching the closed segment.
 
+**Edge cases, because this is where this kind of code dies.**
+- `n = 0`: the loop never runs; I must return `0`. The `if (!(cin >> n >> L)) return 0;` guard already handles a totally empty stream, but a present `n = 0` with the second line empty reaches the loop with `i = 0 = n`, so `while (i < n)` is false immediately and `lamps = 0`. I add an explicit `if (n == 0) { print 0; }` for clarity and to avoid sorting an empty vector (harmless but pointless). Correct.
+- `n = 1`: one lamp, covered above; answer `1` for any `L >= 0`.
+- Very large `L` (e.g. `L = 2*10^9`) spanning all houses: the first lamp's `right = x[0] + L` covers everything, answer `1`. The sum `x[0] + L` can be `-10^9 + 2*10^9 = 10^9` or, for `x[0]` near `+10^9`, up to `3*10^9` — fits in `long long`, would overflow `int`. This is exactly why `right`, `L`, and `x` are `long long`.
+- All negative coordinates, e.g. `[-9, 6, 13]`, `L = 9`: sorted `[-9, 6, 13]`. Lamp `[-9, 0]` lights `-9` (next `6 > 0`); lamp `[6, 15]` lights `6, 13`. Answer `2`. (Center-greedy would center on `-9` -> `[-13.5, -4.5]`, then on `6` -> `[1.5, 10.5]` missing `13`, then on `13` -> `3` lamps. The trap reappears for negatives too; my left-anchor rule gets `2`.)
+- Output: exactly one integer and a newline; `cin >>` consumes arbitrary whitespace, so parsing is format-agnostic and tolerant of the second line's layout.
+
 **`L=0` and duplicates fall out with no special case.** `L=0` makes each lamp light a single point, so the answer is the number of *distinct* positions. On `x=[4,4,7]`, `L=0`: lamp `[4,4]` skips both `4`s (`4<=4`), stops at `7`; lamp `[7,7]` gives `2`, the distinct-position count. Duplicates at one spot share a lamp, and the leftmost-dark anchoring plus `<=` handle both together.
 
 **Remaining edges.** `n=0`: the sweep never runs, but I add an explicit early `0` so I neither sort an empty vector nor lean on the read-guard alone. Very large `L` (say `2*10^9`) makes the first lamp's `right=x[0]+L` cover everything for answer `1` — and this is exactly the `x[0]+L` up to `3*10^9` that forced `long long`. Negative coordinates behave identically; the centering trap reappears for them and the left-anchor rule still wins.
