@@ -7,7 +7,7 @@ You fix ONE method: `methods/<SLUG>/` in /srv/home/bohanlyu/innovation_proior (g
 
 ## The defect
 The trace's DECISIVE STEP (the move that makes the construction work) reads as a clean forward derivation from the finished paper. But finished papers edit the struggle out. What we want is the documented route: what the author actually tried first and why it failed, which counterexample/obstacle forced the design — evidence that lives OUTSIDE the primary paper: author self-accounts (Nobel/Turing/award lectures, PhD theses of first authors, retrospectives, interviews/podcasts/talk transcripts, blogs, OpenReview replies, GitHub issue replies, competition reports), co-author surveys, authoritative third-party re-derivations.
-Tracks: `B_selfaccount` (material is already in refs/notes but unused) · `D_single_source`/`D_candidate` (only the primary is present) · `C_decorative` (sources cited as flavor only) · `A_fake_thin` (notes admit "standard knowledge", nothing read).
+Tracks: `B_selfaccount` (material is already in refs/notes but unused) · `D_single_source`/`D_candidate` (only the primary is present) · `C_decorative` (sources cited as flavor only) · `A_fake_thin` (notes admit "standard knowledge", nothing read) · `W3_*` (wave-3: a triage agent classified it B/C/D; its notes are passed to you as TRIAGE).
 
 ## Procedure (do all steps, in order)
 1. Read results/reasoning.md fully; read notes/*.md; `ls refs/ src/`. Identify the decisive step yourself (don't just trust the hint).
@@ -23,7 +23,7 @@ Tracks: `B_selfaccount` (material is already in refs/notes but unused) · `D_sin
    - Do NOT: rewrite the whole file; pad or trim to a length target; add "Wait"/"Alternatively"/"Hmm" filler (a genuine dead end is the actual computation that failed, not a hedge word); delete existing correct innovation content; change the landing (final method + code) unless it is wrong.
    - Fix factual errors you meet (wrong constant/sign/attribution/formula) after checking the source; propagate to answer.md / train_answer.md / code consistently; append a dated entry to results/changelog.md.
 5. LINT: from repo root `python3 tools/lint_inframe.py | grep "methods/<SLUG>/"` → no hits in files you edited (categories A_paren/B_meta/E_paperref/C_rsn_header). Also `grep -n -i "the paper\|the authors\|arxiv\|et al\." methods/<SLUG>/results/reasoning.md` → nothing new.
-6. COMMIT immediately, this method only: `git add methods/<SLUG> && git commit -q -m "svfix(<TRACK>): <SLUG> — <source>, <which step now grounded>"`. NEVER `git add -A` / `git add .` (concurrent agents share the tree; wave-1 swept others' half-edits into a commit). Then `git log -1 --format=%h` and put the sha in your output.
+6. COMMIT immediately, this method only (if git says `index.lock` exists, another agent is committing — sleep 3-10 s and retry, up to 5 times): `git add methods/<SLUG> && git commit -q -m "svfix(<TRACK>): <SLUG> — <source>, <which step now grounded>"`. NEVER `git add -A` / `git add .` (concurrent agents share the tree; wave-1 swept others' half-edits into a commit). Then `git log -1 --format=%h` and put the sha in your output.
 7. If after the full search in step 2 there is truly nothing beyond the primary: write the search log (queries + venues) into notes/sources.md, do NOT rewrite, outcome = no_source_found. This should be uncommon; if the trace additionally has factual errors, still fix those and commit.
 
 ## Output (your final message is parsed — return exactly this JSON and nothing else)
