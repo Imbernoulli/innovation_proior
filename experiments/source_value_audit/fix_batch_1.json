@@ -1,0 +1,50 @@
+[
+ {
+  "slug": "hastad-switching-lemma",
+  "track": "A_fake_thin",
+  "key_step": "Decision-tree depth is the cheap-switch condition; (Cpw)^s decay in s makes a union bound over S blocks affordable, so layers peel while parity stays parity.",
+  "evidence": "The writeup relies on standard knowledge of the switching lemma and `AC0` lower-bound proof ... No original paper text was freshly extracted or quoted in this run."
+ },
+ {
+  "slug": "deltanet",
+  "track": "B_selfaccount",
+  "key_step": "Induct out the pseudo-value u_t so S_t = sum u_i k_i^T (linear-attn shape), then WY/UT turns the triangular u,w recurrence into (I+L)^{-1}diag(beta). Primary.",
+  "evidence": "the delta-rule layer is vanilla linear attention with `v_i` replaced by the pseudo value `u_i`"
+ },
+ {
+  "slug": "hodge-theorem",
+  "track": "B_selfaccount",
+  "key_step": "Least-L2-norm rep -> d*a=0; closed+coclosed = Laplacian; Green operator I=H+Delta G. Hodge primary NOT retrieved; textbook proof from Demailly/Lim.",
+  "evidence": "the least-norm representative, if it exists, should be orthogonal to every exact form"
+ },
+ {
+  "slug": "pearl",
+  "track": "B_selfaccount",
+  "key_step": "Matching principle binds only encoder input -> decouple context sampler (recent) from RL sampler (buffer); product-of-Gaussians; z/episode = PSRL. In primary.",
+  "evidence": "The data that trains the encoder need not be the data that trains the policy"
+ },
+ {
+  "slug": "swav",
+  "track": "B_selfaccount",
+  "key_step": "Codes need not be dataset-level truth, only consistent across views: predict view t's code from view s's embedding, with online Sinkhorn equipartition.",
+  "evidence": "I don't actually need the code to be a ground truth about the image. I only need it to be *consistent across views*."
+ },
+ {
+  "slug": "bsms-gnn",
+  "track": "D_single_source",
+  "key_step": "Topology-only pooling provably 2-CC: keep every other BFS frontier so each dropped node has a kept parent, then A^2 restrict; contacts via A A^C A. From paper.",
+  "evidence": "every dropped odd-depth node d has a BFS parent at depth d-1, which is even and kept — that parent is the kept material neighbor"
+ },
+ {
+  "slug": "distilbert",
+  "track": "D_single_source",
+  "key_step": "Halve depth not width so teacher tensors fit student -> init from teacher layer slice; triple loss soft-CE(T^2)+MLM+cos. In paper; only HF-code details added.",
+  "evidence": "Keeping the dimensions matched is what makes this copy possible at all: if I'd shrunk the width, the teacher tensors wouldn't fit"
+ },
+ {
+  "slug": "medusa",
+  "track": "D_single_source",
+  "key_step": "Typical acceptance p_orig > min(eps, delta*exp(-H)) replaces rejection sampling; W1=0/W2=lm_head makes each head start as the LM head; tree attention mask",
+  "evidence": "Borrow the truncation-sampling idea: use the *original model's* own probability for each candidate token as the gauge - method.tex lines 19/70-79 already say all of this"
+ }
+]

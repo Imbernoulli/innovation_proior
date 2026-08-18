@@ -1,0 +1,50 @@
+[
+ {
+  "slug": "adarnn",
+  "track": "B_selfaccount",
+  "key_step": "TDC maximizes (not minimizes) cross-period distance via max-entropy worst case; per-state alpha by boosting ratchet after pre-training. Both in primary Sec 4.",
+  "evidence": "If I split the stream into segments that are all distributionally *similar*, I have hidden the drift from the model"
+ },
+ {
+  "slug": "efficientnet",
+  "track": "B_selfaccount",
+  "key_step": "Cost law d*w^2*r^2 turns 'scale all three' into the single constraint alpha*beta^2*gamma^2~2, so one phi is a compute-doubling knob. Primary Eq.2-3.",
+  "evidence": "If I fix the base α β^2 γ^2 to a chosen value, then a single number controls how compute grows with φ"
+ },
+ {
+  "slug": "leftover-hash-lemma",
+  "track": "B_selfaccount",
+  "key_step": "collision prob of (H,H(X)) splits into X=X' (min-entropy) and X!=X' (2-universality); L2 excess -> statistical distance via Cauchy-Schwarz costs 2log(1/eps)",
+  "evidence": "HILL primary Lemma 4.8 proof already uses pairwise independence, diagonal case X=X', second-moment bound; matrix says Vadhan used as parameter cross-check"
+ },
+ {
+  "slug": "proximal-gradient-ista",
+  "track": "B_selfaccount",
+  "key_step": "Majorize only f, keep g exact -> prox_{tg}(y - t grad f); FISTA t-recurrence and anchor forced by potential telescoping. All in Beck-Teboulle Lemma 2.3/4.1.",
+  "evidence": "the coefficient bookkeeping only closes if t_{k+1}^2 - t_{k+1} = t_k^2"
+ },
+ {
+  "slug": "varibad",
+  "track": "B_selfaccount",
+  "key_step": "A vanilla VAE only compresses the seen prefix; encode only tau_{:t} but decode the ENTIRE trajectory, which forces m to be a task descriptor.",
+  "evidence": "That's impossible unless `m` has captured the underlying task - the goal, the target velocity - rather than just memorising the seen prefix."
+ },
+ {
+  "slug": "circle-single-slsqp",
+  "track": "D_single_source",
+  "key_step": "With centers fixed the radii subproblem is an LP (hand-checked on 3 circles); SLSQP on all 78 vars jointly, then LP-retighten; seeds show the basin limit.",
+  "evidence": "I ran the LP on these three centers and it returned `[0.2, 0.1, 0.2]`, sum `0.5` - matching the hand computation"
+ },
+ {
+  "slug": "gpipe",
+  "track": "D_single_source",
+  "key_step": "Micro-batch pipeline + one synchronous update + re-materialization; bubble (K-1)/(M+K-1), M>=4K. Only artifact in the dir is the GPipe tex; no refs/code/notes.",
+  "evidence": "accumulating M micro-batch gradients and applying one update computes the gradient the optimizer would have used on the unsplit mini-batch"
+ },
+ {
+  "slug": "react",
+  "track": "D_single_source",
+  "key_step": "Language into the action space (A_hat = A union L): a 'thought' is an action with no environment effect that only updates context. From primary; no notes dir.",
+  "evidence": "an action that lands in the language part, call it a thought, does *not* touch the environment — it produces no observation, changes nothing outside"
+ }
+]

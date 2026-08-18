@@ -1,0 +1,56 @@
+[
+ {
+  "slug": "gelfand-representation",
+  "track": "A_fake_thin",
+  "key_step": "Points := characters (= maximal ideals, Gelfand-Mazur); weak-* compact X; range(hat a)=sigma(a) so norm=r(a); C*-identity gives isometry; Stone-Weierstrass",
+  "evidence": "I did not fetch or read the original 1941 or 1943 papers in this run after the interruption."
+ },
+ {
+  "slug": "cutmix",
+  "track": "B_selfaccount",
+  "key_step": "Fill Cutout's deleted box with a real patch from image B instead of zeros; label = realized area fraction lambda recomputed after int() and border clipping.",
+  "evidence": "So what happens if I fill that region not with zeros, but with the corresponding region *from another training image*? - primary Intro asks the same: 'maximally utilize the deleted regions'"
+ },
+ {
+  "slug": "green-tao-theorem",
+  "track": "B_selfaccount",
+  "key_step": "Primes dense relative to pseudorandom almost-prime majorant (W-tricked Lambda_R^2); transference via linear-forms conds. In primary intro; Green 2005 agrees.",
+  "evidence": "I do not need the primes to be dense in the integers; I need them to be dense relative to a larger sparse object that is itself random enough for progression counting"
+ },
+ {
+  "slug": "nice",
+  "track": "B_selfaccount",
+  "key_step": "Additive coupling gives a unit-triangular Jacobian; 3 alternating layers needed for full mixing; top exp-diagonal scale restores volume change. All primary.",
+  "evidence": "So influence crosses fully in both directions at three alternating layers, not two"
+ },
+ {
+  "slug": "swa",
+  "track": "B_selfaccount",
+  "key_step": "Non-decaying (high/cyclical) LR keeps checkpoints on a shell so their centroid moves inward 1/sqrt(n); weight avg = ensemble to first order. Both in primary.",
+  "evidence": "With a decaying schedule the \"shell\" has zero radius and there is nothing to move inward from."
+ },
+ {
+  "slug": "solomonoff-induction",
+  "track": "C_decorative",
+  "key_step": "Prefix-free 2^-|p| summable (Kraft); mixture over all consistent programs, not shortest: toy shows 2^-K gives P=0 vs 0.2. Textbook + own toy; primary unread.",
+  "evidence": "the two rules agree up to a constant on the mass but give genuinely different predictions: `0.2` versus `0` for the next bit"
+ },
+ {
+  "slug": "deep-double-descent",
+  "track": "D_single_source",
+  "key_step": "Replace parameter count with EMC = max{n : E[train err] <= eps}, unifying width/epochs/samples on one axis with criticality at EMC ~= n. From the primary.",
+  "evidence": "I stop asking whether the model is too large in an absolute sense and start asking whether the procedure is barely able to fit this sample size. The dangerous condition is ... `EMC approx n`"
+ },
+ {
+  "slug": "linear-mdp-lsvi-ucb",
+  "track": "D_single_source",
+  "key_step": "linear-MDP closure under Bellman backup; data-dependent target kills fixed-function concentration => cover value class (d^2 cost); bonus elliptical-potential regret",
+  "evidence": "matrix: mechanism.tex is the key technical source... proof files show why this is more than linear regression with a UCB; explainers only independent derivations for cross-check"
+ },
+ {
+  "slug": "xlnet",
+  "track": "D_single_source",
+  "key_step": "Permute the factorization order via masks; naive softmax is target-position-blind, so g must take z_t, via two streams (content sees self, query does not).",
+  "evidence": "Take [New, York, is, a, city] and mask both \"New\" and \"York.\" ... It never once trains p(York | New) - the primary's own example, verbatim in src/model.tex:268."
+ }
+]

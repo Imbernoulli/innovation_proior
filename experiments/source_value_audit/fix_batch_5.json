@@ -1,0 +1,50 @@
+[
+ {
+  "slug": "awac",
+  "track": "B_selfaccount",
+  "key_step": "Forward-KL projection importance-sampled from the buffer cancels pi_beta -> implicit constraint, no behavior model; bootstrapped Q^pi not AWR's MC. In primary.",
+  "evidence": "only the forward direction lets me sample from the buffer and cancel π_β"
+ },
+ {
+  "slug": "fagin-theorem",
+  "track": "B_selfaccount",
+  "key_step": "shift from spectra (sizes) to structures; guess computation tableau as SO-existential relations with first-order local checks; guess auxiliary order",
+  "evidence": "primary proves gen-spectrum=NP equivalence incl. empty-vocab exception; self-account (very decidable) and Immerman tableau only modernize/cross-check the same route"
+ },
+ {
+  "slug": "marcus-electron-transfer",
+  "track": "B_selfaccount",
+  "key_step": "phi_X+c*phi_X* is an eigenstate only if E_X=E_X*; that equal-energy restraint forces nonequilib P_u; minimize F* under it, m^2*lam => dF*=(lam+dG0)^2/4lam",
+  "evidence": "the equal-energy condition is not an extra assumption I am imposing, it is the condition for the activated complex to *be* a quantum state at all - primary fn.6 + Eqs.33/38"
+ },
+ {
+  "slug": "simsiam",
+  "track": "B_selfaccount",
+  "key_step": "Recast as alternating optimization over (theta, per-image eta): stop-gradient falls out of holding one block fixed; predictor = lost expectation. Primary sec.5.",
+  "evidence": "the stop-gradient is not an extra heuristic in this view, it is forced by the act of optimizing one block while the other is held constant"
+ },
+ {
+  "slug": "erdos-finer-basinhop",
+  "track": "C_decorative",
+  "key_step": "Cell-repeat upscaling verified as a no-op on C, so the coarse profile lifts free; kick off the flat plateau; basin-hop SLSQP with annealed beta. No sources.",
+  "evidence": "upscaling really is a free no-op on the bound: the upscaled point starts at exactly the same `C` the coarse profile achieved"
+ },
+ {
+  "slug": "conformer-climate",
+  "track": "D_single_source",
+  "key_step": "compose attention-then-conv at full 60-level resolution inside macaron half-step FFN sandwich; absolute per-level positional embedding since height is not translation-invariant",
+  "evidence": "What I have assembled - two macaron half-step FFNs sandwiching an attention-then-convolution core, closed by a LayerNorm - is the conformer block"
+ },
+ {
+  "slug": "gridsynth",
+  "track": "D_single_source",
+  "key_step": "T-count=2k-2 so minimize denom exponent k of u; closeness is <z,u> >= 1-eps^2/2 and unitarity forces u• into the unit disk -> 2D grid problem, skew-reduced.",
+  "evidence": "so `u•` is *also* in the unit disk. That second condition is *not* implied by the first - uprightness, Step Lemma, mod-8 all in src/gridsynth.tex+appendices; no refs/ dir exists"
+ },
+ {
+  "slug": "streaming-llm",
+  "track": "D_single_source",
+  "key_step": "Softmax sums to 1 -> surplus dumped on always-visible initial tokens; evicting them renormalizes -> keep 4 sinks + window, in-cache positions. All in paper.",
+  "evidence": "the arithmetic says it's about them being the denominator's anchor, and the moment the anchor goes, the whole distribution snaps to a shape the model never saw in training"
+ }
+]

@@ -1,0 +1,50 @@
+[
+ {
+  "slug": "adaboost-boosting",
+  "track": "B_selfaccount",
+  "key_step": "Measured error eps_t sets BOTH the reweighting strength and the vote weight; beta=eps/(1-eps) falls out of minimizing the bound. All in the 1997 primary.",
+  "evidence": "The update drives the just-used hypothesis to exactly chance on the next round's distribution."
+ },
+ {
+  "slug": "dual-bilinear",
+  "track": "B_selfaccount",
+  "key_step": "Represent a goal by the functional s -> d*(s,g); one-step greedy needs only successor values, so it is sufficient, and latent-only, so noise-invariant.",
+  "evidence": "A goal is not just \"far from here\"; operationally it is the thing that every state has some reaching relation to."
+ },
+ {
+  "slug": "isolation-forest",
+  "track": "B_selfaccount",
+  "key_step": "score isolation depth instead of modelling normality; normalize by random-BST average path c(n)=2H_{n-1}-2(n-1)/n; sub-sample small psi to defeat swamping/masking",
+  "evidence": "Now the counterintuitive move the swamping/masking pathologies force on me. The obvious thing is to build each tree from the *entire* data set"
+ },
+ {
+  "slug": "progressive-gan",
+  "track": "B_selfaccount",
+  "key_step": "Fade in each new block with frac(lod) AND fade the reals identically so D cannot use high-frequency sharpness as a shortcut. All in primary + official code.",
+  "evidence": "at the instant a new block appears — when it is still random and producing only blocky output — the real images D sees are equally blocky"
+ },
+ {
+  "slug": "trivialaugment",
+  "track": "B_selfaccount",
+  "key_step": "One op per image + strength resampled per image (Identity replaces drop prob); primary states the anew-per-image contrast with RA and the weak+strong mixture.",
+  "evidence": "instead of fixing a single global magnitude, I sample a fresh strength bin for each image. This gives weak and strong perturbations in the same training distribution"
+ },
+ {
+  "slug": "chain-of-thought",
+  "track": "D_single_source",
+  "key_step": "reformat exemplar to <Q, NL intermediate steps, A> so the imitated continuation pattern is 'narrate working then answer'; 3 ablations isolate content vs compute",
+  "evidence": "maybe the benefit is purely the *extra computation* ... Control: prompt the model to emit a sequence of dots — the paper's own ablations, restated; no refs/ or notes/ exist, only src/ primary tex"
+ },
+ {
+  "slug": "focal-frequency-loss",
+  "track": "D_single_source",
+  "key_step": "Adaptive spectral gate w=|F_r-F_f|^alpha, detached so gradient is w*grad(dist^2) not dist^(alpha+2). No notes/refs/src dir exists; primary + its code only.",
+  "evidence": "So flowing gradients through the weight doesn't change *which* components are emphasized; it silently multiplies the whole spectral gradient by `(α+2)/2`"
+ },
+ {
+  "slug": "movement-pruning",
+  "track": "D_single_source",
+  "key_step": "Fine-tuned weights barely move so magnitude prunes by pretraining -> score movement from zero; STE gives dL/dS=dL/dW*W, sign + swap lemma. All in paper.",
+  "evidence": "in transfer learning, magnitude pruning can't *learn what to prune* from the fine-tuning step"
+ }
+]

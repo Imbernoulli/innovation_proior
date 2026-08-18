@@ -1,0 +1,50 @@
+[
+ {
+  "slug": "conservative-policy-iteration",
+  "track": "B_selfaccount",
+  "key_step": "perf-difference identity weights old advantages by the NEW policy's visitation => greedy degrades; mixture update keeps d close, coupling on c_t=0 gives exact all-alpha bound",
+  "evidence": "the improvement is the old advantages reweighted by the *new* policy's visitation ... using the old one mispredicts the change"
+ },
+ {
+  "slug": "gain",
+  "track": "B_selfaccount",
+  "key_step": "Without a hint the optimal-D condition is rank-deficient; a hint revealing d-1 mask coordinates glues all single-flip mask-conditionals and pins the truth.",
+  "evidence": "with no hint, or with a hint independent of `M`, the optimum is not unique and `G` is not forced to the true distribution. The hint has to actually carry information about `M`."
+ },
+ {
+  "slug": "myerson-auction",
+  "track": "B_selfaccount",
+  "key_step": "IC forces monotone q + envelope payment identity; integration by parts turns expected payment into virtual surplus phi=v-(1-F)/f; irregular case ironed",
+  "evidence": "the bidder's contribution to expected revenue is not its value times allocation probability, but its allocation probability times phi(v)=v-(1-F(v))/f(v)"
+ },
+ {
+  "slug": "ssm",
+  "track": "B_selfaccount",
+  "key_step": "Time-invariance both buys the FFT conv and blocks content selection (Selective Copying); make Delta,B,C input-dependent, then scan+fusion+recompute.",
+  "evidence": "the time-invariance I love in LTI SSMs is what gives them the FFT convolution and the cheap scaling, and it is *also* what makes them unable to select based on content"
+ },
+ {
+  "slug": "polynomial-method-combinatorics",
+  "track": "C_decorative",
+  "key_step": "Each template (Dvir leading form, Alon top coefficient, Ellenberg-Gijswijt slice rank) paraphrases its own primary; the unifying invariant is the trace's.",
+  "evidence": "the polynomial is not decoration: it manufactures the rank object that the original set did not visibly contain"
+ },
+ {
+  "slug": "convex-hull-trick",
+  "track": "D_single_source",
+  "key_step": "Division-free 3-line cross-product bad test + monotone deque. No primary paper; both refs state the same folklore method, cp-algorithms adds only Li Chao.",
+  "evidence": "Substitute $x^*$ and avoid the division. Since $m_1-m_3>0$, multiplying through preserves the inequality"
+ },
+ {
+  "slug": "least-to-most",
+  "track": "D_single_source",
+  "key_step": "Subproblem k must REUSE answer k-1, else aggregation is itself the hard step. Only artifact in the method dir is the primary tex; no refs, code, or notes.",
+  "evidence": "Independent decomposition just relocates the hard step to the aggregator."
+ },
+ {
+  "slug": "value-iteration-networks",
+  "track": "D_single_source",
+  "key_step": "One VI sweep = conv (one channel per action, kernel = discounted P) + max over the action channel, recurred K times with TIED weights -> differentiable planner",
+  "evidence": "Take a weighted combination of a value at a pixel and its neighbors, the same weight pattern at every pixel... that looks like a *convolution*."
+ }
+]

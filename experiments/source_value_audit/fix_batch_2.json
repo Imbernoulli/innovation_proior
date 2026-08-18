@@ -1,0 +1,50 @@
+[
+ {
+  "slug": "nash-embedding",
+  "track": "A_fake_thin",
+  "key_step": "f*e=g as an underdetermined nonlinear PDE; beat derivative loss with a smoothed Newton iteration; C1 case by twists: tiny in C0, large in derivative",
+  "evidence": "I did not download and read the full Nash 1954/1956 PDFs locally; the report relies on standard mathematical knowledge plus the retrieved bibliographic and explanatory sources above."
+ },
+ {
+  "slug": "digress",
+  "track": "B_selfaccount",
+  "key_step": "Gaussian noise destroys sparsity => discrete per-node/per-edge categorical transitions; marginal-limit transition Q=aI+b*1m'; structural features only definable on discrete noisy graph",
+  "evidence": "The sparsity that *was* the data is gone ... you cannot compute a cycle count on a fog"
+ },
+ {
+  "slug": "ibot",
+  "track": "B_selfaccount",
+  "key_step": "BEiT's MIM loss and DINO's loss are the same cross-entropy, so swap the frozen dVAE for the EMA teacher = online tokenizer. Primary Eq.1-3 makes this move.",
+  "evidence": "These are the *same* object. Both are a cross-entropy from a teacher distribution to a student distribution."
+ },
+ {
+  "slug": "pointnet-plusplus",
+  "track": "B_selfaccount",
+  "key_step": "Non-uniform density breaks a single fixed radius -> multi-scale grouping + random input dropout p=0.95. All in the primary; code/slides only confirm constants.",
+  "evidence": "about 94% of those small balls contain two or fewer points"
+ },
+ {
+  "slug": "transformer-xl",
+  "track": "B_selfaccount",
+  "key_step": "Caching prior-segment states with stop-gradient makes segment-local absolute positions collide, forcing relative encoding inside every attention score.",
+  "evidence": "a query sees two keys carrying the identical positional marker and has no way to tell which is older. Absolute segment-local positions collide under reuse."
+ },
+ {
+  "slug": "busy-beaver",
+  "track": "D_single_source",
+  "key_step": "Assume S computable -> simulate S(n) steps -> decide blank-tape halting -> contradiction. Pure Rado 1962; notes self-declare 'avoided broad research'.",
+  "evidence": "every halting `n`-state machine halts in at most `S(n)` steps by the definition of `S(n)` as the maximum over halting machines"
+ },
+ {
+  "slug": "em-algorithm",
+  "track": "D_single_source",
+  "key_step": "Q=L+H decomposition + Jensen gives H(phi|phi_p)<=H(phi_p|phi_p), so raising Q raises observed likelihood",
+  "evidence": "Jensen removes that danger... If the M-step raises Q, the observed likelihood rises — all from DLR 1977; Laird interview origin story never enters reasoning.md"
+ },
+ {
+  "slug": "megatron-lm",
+  "track": "D_single_source",
+  "key_step": "GeLU cannot commute with summed row-split partials -> column-split GEMM1 + row-split GEMM2, one all-reduce; conjugate f/g autograd ops; vocab-parallel CE",
+  "evidence": "So with a row split I cannot apply the nonlinearity device-locally; I'd have to add the partial products back together across devices *first* — an all-reduce sitting right in the *middle* of the block"
+ }
+]
