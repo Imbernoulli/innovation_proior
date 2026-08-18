@@ -2,7 +2,11 @@ I want to solve `X = U(X)`, but the equation is sitting in a space where "solve"
 
 Continuity alone is too soft. If I know only that nearby points go to nearby points, that tells me what happens after the sequence is already converging; it does not create convergence. Compact topology gives another kind of answer: a continuous self-map of a filled compact region may have a fixed point because the region has the right shape. But that answer is silent about this orbit I can compute. It also allows multiple fixed points, and iteration can behave badly. I need a hypothesis that talks directly about the motion under repeated application.
 
-Distances are the only quantities that survive in this abstract setting. If `U` makes every pair of points no farther apart, `||U(X)-U(Y)|| <= ||X-Y||`, I still do not have enough. Equal distances can preserve oscillations, and even strict shrinking without a uniform margin can waste all its shrinking at infinity. So let me try to demand the same loss of distance every time and everywhere: a number `M` with `0 <= M < 1` such that
+Distances are the only quantities that survive in this abstract setting. If `U` makes every pair of points no farther apart, `||U(X)-U(Y)|| <= ||X-Y||`, I still do not have enough — equal distances can preserve oscillations forever. Strict decrease at every pair looks like it should be enough, so let me test that before assuming it fails. Take `U(x) = x + 1/x` on `[1, infinity)`. Since `1/x > 0` for every `x` in this domain, `U(x)` is never equal to `x`: there is no fixed point for any iteration to land on. Yet the pointwise condition holds everywhere. For `x != y`,
+
+`U(x)-U(y) = (x-y) - (1/x - 1/y) = (x-y)(1 - 1/(xy))`,
+
+and `x,y >= 1` gives `xy >= 1`, so the factor `1 - 1/(xy)` lies in `[0,1)`, strictly below `1` unless `x=y=1`. So `|U(x)-U(y)| < |x-y|` for every distinct pair: the map shrinks each individual distance and still has nothing to converge to. The reason is visible in the factor itself — `1 - 1/(xy)` drifts toward `1` as `x` and `y` grow, so no single number bounds the shrinkage away from `1` across the whole domain. Strict pointwise decrease can be arbitrarily weak far out even though it never fails locally. So let me try to demand the same loss of distance every time and everywhere: a number `M` with `0 <= M < 1` such that
 
 `||U(X') - U(X'')|| <= M ||X' - X''||`
 
