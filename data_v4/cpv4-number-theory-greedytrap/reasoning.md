@@ -8,6 +8,8 @@ The recurrence holds because any optimal representation of `v` uses some admissi
 
 The one genuinely dangerous piece is enumerating the powers `<= n`. The naive `(long long)pow(b, k)` goes through a `double`: `pow(15, 5)` can come back `759374.9999...` and truncate to `759374`, or `pow(10, 5)` as `100000.0000001` — an off-by-one in the *value* of a power, which silently corrupts `dp`. And forming `b^k` as an integer product *before* comparing to `n` lets that product overflow `long long` for large `b` at `k = 5` and wrap to something `<= n`, pushing a garbage power into the list. Both are silent wrong-answers. So I build `b^k` by repeated integer multiplication and test, before each multiply, whether the running product would exceed `n` — using division so no overflowing product is ever formed:
 
+The guard `p > n / b` means `p * b > n` (integer division is safe here because if `p <= n/b` then `p*b <= n`), so the running product never exceeds `n` and never overflows. The `for e` loop multiplies `b` into `p` exactly `k` times, giving `b^k` exactly, in integers — no floating point. Let me trace `k = 5`, `n = 1000000`, `b = 15`: `p=1`; e0 `n/b = 66666`, `1<=66666` ok, `p=15`; e1 `15<=66666` ok, `p=225`; e2 `225<=66666` ok, `p=3375`; e3 `3375<=66666` ok, `p=50625`; e4 `50625<=66666` ok, `p=759375`; loop ends, `p=759375 <= n`, push. Now `b=16`: e0 `1<=62500` ok `p=16`; e1 `16<=62500` ok `p=256`; e2 `256<=62500` ok `p=4096`; e3 `4096<=62500` ok `p=65536`; e4 `65536 > 62500` -> `exceed=true`, break; outer `break`. So the list stops exactly at `15^5`, as it must, and `16^5` never overflows anything. Enumeration fixed and verified.
+
 ```
 for (long long b = 1;; b++) {
     long long p = 1; bool exceed = false;
