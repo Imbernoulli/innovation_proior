@@ -26,6 +26,8 @@ with the index reduced into `[0, mod)`. In C++ `%` of a negative left operand is
 
 I write `countLen(len, mod, bd)` building `suf` and walking the tight path, `countUpTo(N)` looping `len = 1..D` with the all-nines bound for `len < D` and `N`'s digits at `len = D`, and `main` doing `f(R) - f(L-1)`. It compiles clean under `-O2 -std=c++17`. Now the check that matters: differential testing against the scan oracle. Hand cases pass — `1 20 -> 15`, `1 1 -> 1`, `9 9 -> 1`, `10 10 -> 0`. Then 600 random small ranges, and it breaks immediately:
 
+So my solution overcounts. Good — the oracle earned its keep on the very first batch.
+
 ```
 MISMATCH seed=4 input=[997 1012] sol=5 brute=4
 MISMATCH seed=5 input=[133927 231154] sol=16203 brute=16195
