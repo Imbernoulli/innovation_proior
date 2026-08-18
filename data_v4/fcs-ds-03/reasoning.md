@@ -34,6 +34,8 @@ The order of operations is the load-bearing part. `dp[0] = 0` is known immediate
 
 Now the `insert`. The delicate line is deciding which child to recurse into after the midpoint winner is settled. My first cut compared at the left endpoint and the midpoint:
 
+Something about the `leftBetter == midBetter` direction looked off, so before trusting it I ran the differential harness against the `O(n^2)` brute force on small random cases. It failed almost immediately. Let me trace the smallest breaking instance by hand to find out *why*, not just *that*.
+
 ```
 void insert(int node, int l, int r, Line nw) {
     if (!nw.valid) return;
@@ -70,3 +72,5 @@ The corner cases, checked explicitly:
 - All-negative / mixed-sign factors: the whole reason for Li Chao over the deque. With `a` all `-10^6` and `b` all `+10^6`, every product is `-10^12` and the chain reaches `-2*10^17`; still matches brute.
 
 Now the deferred sentinel question can be settled. Accumulators and line fields are `long long`; the extreme chain magnitude `~2*10^17` sits comfortably inside `9.2*10^18`. The "infinity" sentinel is `4*10^18`, and it is only ever *returned* from `query` when a path node is empty and then fed into a `min` — it is never an operand of `dp[j] + b[j]*a[i]` (those operands are real `dp`/`b`/`a` values), and the only place I add to a queried value is `c[i] + best`, where `best` is a real line evaluation, never the sentinel, because the tree always contains at least line `0` by the time any query runs. So `4e18` never has a large value added to it and cannot overflow. The large-`n` worst-magnitude runs produce values around `±2*10^17`, finish in about `0.15 s` at `n = 2*10^5`, and use about `29 MB` — well inside the `1 s` / `256 MB` budget.
+
+**Final solution.** One self-contained file, the `O(n log n)` Li Chao DP I can defend.
