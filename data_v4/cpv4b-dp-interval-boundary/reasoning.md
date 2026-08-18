@@ -26,6 +26,14 @@ panel to the left each step, so a running `curMax = max(curMax, a[j+1])` tracks 
 
   `dp[i] = min over j of  dp[j] + K + curMax`,
 
+Let me confirm the recurrence by hand on the sample `a = [1,5,5,1,5]`, `K = 2`, `L = 2`, answer `17`.
+`dp[0]=0`.
+- `dp[1]`: `j=0`, rug `[1,1]`, max `1`, cand `0+2+1=3`. So `dp[1]=3`.
+- `dp[2]`: `j=1` rug `[2,2]` max `5` cand `3+2+5=10`; `j=0` rug `[1,2]` max `5` cand `0+2+5=7`. `dp[2]=7`.
+- `dp[3]`: `j=2` rug `[3,3]` max `5` cand `7+2+5=14`; `j=1` rug `[2,3]` max `5` cand `3+2+5=10`. `dp[3]=10`.
+- `dp[4]`: `j=3` rug `[4,4]` max `1` cand `10+2+1=13`; `j=2` rug `[3,4]` max `5` cand `7+2+5=14`. `dp[4]=13`.
+- `dp[5]`: `j=4` rug `[5,5]` max `5` cand `13+2+5=20`; `j=3` rug `[4,5]` max `5` cand `10+2+5=17`. `dp[5]=17`.
+
 with answer `dp[n]` and no separate inner max loop.
 
 Both boundaries here are inclusive-interval traps, and each sits one index away from the natural wrong
@@ -40,6 +48,18 @@ guess:
   `a[j]`, the length-1 rug `[1,1]` at `j=0` reads the unused slot `a[0] = 0` and gets priced at
   `K + 0` instead of `K + a[1]`, undercounting that same `[1,2,2]` to 4. The `+1` is load-bearing on
   both bounds.
+
+**A second trace, because the running max has its own boundary.** With the length bound fixed I
+re-examine the max update `curMax = max(curMax, a[j + 1])`. The rug is `[j+1, i]`, so its leftmost
+panel is `a[j+1]` — the `+1` matters. A very natural slip is to write `curMax = max(curMax, a[j])`,
+reasoning "I'm at split index `j`, fold in `a[j]`." Let me trace *that* variant on `a = [1,2,2]`,
+`K=1`, `L=2`, where I now know the answer is `5`. With the buggy `a[j]`:
+- `dp[1]`: `j=0` rug `[1,1]`, update `curMax = max(0, a[0])`. But `a[0]` is the unused index-0 slot,
+  value `0`. cand `0 + 1 + 0 = 1`. `dp[1]=1`.
+- `dp[2]`: `j=1` rug `[2,2]` `curMax=max(0,a[1])=1` cand `1+1+1=3`; `j=0` rug `[1,2]`
+  `curMax=max(1,a[0])=1` cand `0+1+1=2`. `dp[2]=2`.
+- `dp[3]`: `j=2` rug `[3,3]` `curMax=max(0,a[2])=2` cand `2+1+2=5`; `j=1` rug `[2,3]`
+  `curMax=max(2,a[1])=2` cand `1+1+2=4`. `dp[3]=4`.
 
 On the sample the recurrence sweeps `dp = 0, 3, 7, 10, 13, 17`, so `dp[5] = 17`, realized by
 `[1,1],[2,3],[4,5]` — the partition I reached by hand against greedy.
