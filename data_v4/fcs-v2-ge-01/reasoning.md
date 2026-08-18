@@ -86,6 +86,30 @@ a repeated vertex, area `0`. Here `0 >= 12` is false so `l` stays put by luck �
 *willing* to step `l` onto the apex, and on a larger hull that lets `l` wrap past `i` and start
 measuring degenerate triangles. So the `l`-chase needs `if (ln == i) break;`.
 
+**The second, nastier bug — `j` and `l` colliding.** I trace `h = 4`, a square `(0,0),(4,0),(4,4),(0,4)`,
+`area2` of the best triangle is `16` (half the square). Apex `i = 0`, `j = 1`, `l = 2`. Chase `l`:
+`ln = 3`; `cur = |cross(0,1,2)|`. `cross((0,0),(4,0),(4,4)) = 4*4 - 0 = 16`; `nxt = cross((0,0),(4,0),(0,4)) =
+4*4 - 0 = 16`; `nxt >= cur` so `l = 3`; next `ln = (3+1)%4 = 0 = i`, guard breaks. `area2 = 16`,
+`best = 16`. Advance `j`: `jn = 2 != 0`, `j = 2`. Now `l = 3`, `j = 2`, fine, `l != j`. Chase: `ln =
+0 = i`, break immediately; `area2 = |cross((0,0),(4,4),(0,4))| = 4*4 - 4*0 = 16`. Advance `j`: `jn =
+3 != 0`, `j = 3`. Now `l = 3 == j`! My `if (l == j) l = (l+1)%h;` sets `l = 0 = i` — an illegal apex
+vertex. The next chase computes `cross(hull[0], hull[3], hull[0])`, a degenerate `0`, and worse, if a
+later `ln` wrapped I would be reading triangles that reuse the apex. The fix: when `j` catches `l`, push
+`l` forward, but if that push would land on `i`, there is simply no room for a third vertex with this
+`j`, so I must **break out of this apex** rather than let `l` sit on `i`.
+
+**Re-tracing the square with the fix.** Apex `0`: `j=1, l=2`. Chase: `ln=3 != 0`; `cur=16`,
+`nxt=16`, `16>=16` so `l=3`; `ln=(3+1)%4=0=i`, guard breaks at `l=3`. `area2=16`, `best=16`.
+`jn=2`, `j=2`; `l=3 != j`. Chase: `ln=0=i` break; `area2=|cross((0,0),(4,4),(0,4))|=16`. `jn=3`,
+`j=3`; now `l==j`, push: `ln=(3+1)%4=0=i` -> **break this apex**. Apexes `1,2,3` by symmetry also
+yield `16`. Final `best=16`. Correct, and crucially the degenerate apex-reuse triangles never get
+measured.
+
+**Re-tracing the right triangle `h=3`.** Apex `0`, `j=1`, `l=2`. Chase: `ln=(2+1)%3=0=i`, guard
+breaks immediately, `l=2`. `area2=|cross((0,0),(4,0),(0,3))| = 4*3 - 0 = 12`, `best=12`. `jn=2 != 0`,
+`j=2`; `l=2==j`, push: `ln=(2+1)%3=0=i` -> break. Apexes `1,2` give the same `12`. Answer `12`.
+Correct.
+
 The square `(0,0), (4,0), (4,4), (0,4)` exposes the second bug. Apex `0` sweeps correctly to `l = 3`,
 `j = 2`, but advancing `j` to `3` makes `l == j`; my `l = (l+1)%h` then sets `l = 0 = i`, the apex
 again. The right handling: when `j` catches `l`, push `l` forward, but if that push would land on `i`
