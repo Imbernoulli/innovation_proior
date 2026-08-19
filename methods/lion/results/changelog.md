@@ -19,16 +19,3 @@
 - 2026-08-18 `methods/lion/notes/sources.md` added: documents the self-account search trail (none found;
   OpenReview forum for this paper has no reviews, no Google Research blog post, no relevant GitHub issue
   discussion) and the primary-source passages (release.tex) now grounding the decisive step.
-- 2026-08-18 epistemic fix `methods/lion/results/reasoning.md` "do I need both constants" ablation
-  paragraph: the prior svfix pass (above) replaced a fabricated sign-disagreement count with the primary
-  paper's own published ablation table numbers, but framed them as an experiment the narrator ran and
-  observed ("So run it. I train ... The recorded top-1 numbers: ..."). Those numbers are Lion's own
-  ablation results — this is a single-turn proposal frame in which the method's own experiments have not
-  happened yet, so the narrator cannot report having run them. Rewrote to keep the hypothesis (is one EMA
-  enough, or is the decoupling load-bearing), the discriminating-experiment design (train both degenerate
-  single-constant versions alongside AdamW and the two-constant rule, matched ViT-S/16/ViT-B/16 setup and
-  tuning budget), each hypothesis's prediction, and the decision rule ("whichever pattern survives at both
-  scales is what decides it") — with no claimed observation and no numbers. The landing keeps both
-  constants provisionally (matching what the actual paper does), but that choice is now stated as a
-  decision rule pending the run, not a reported result; this unit needs a trajectory-conversion pass to
-  carry the real observation.
