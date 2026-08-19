@@ -159,18 +159,16 @@ Let me run the whole step once on real numbers to make sure the gain bookkeeping
 four cities at the corners of a unit square: `0=(0,0)`, `1=(1,0)`, `2=(1,1)`, `3=(0,1)`. The boundary
 tour `0-1-2-3` has length 4 and is optimal. Hand the procedure the crossing tour `0-2-1-3` instead —
 its two diagonals cross — with length `√2 + 1 + √2 + 1 = 2√2 + 2 ≈ 4.8284`. Now: `t_1 = 0`, break
-`x_1 = (0,2)`, `|x_1| = √2 ≈ 1.4142`. The nearest city to `t_2 = 2` that isn't already a tour neighbor
-is 1 (or 3, tied), so `y_1 = (2,1)`, `|y_1| = 1`, `g_1 = 1.4142 - 1 = 0.4142 > 0` — first step alive.
-Set `i = 2`, `t_3 = 1`. City 1's two tour links are `(1,2)` and `(1,3)`, so `x_2` is one of them, and
-I check the close-up of each by joining `t_4` to `t_1 = 0`:
+`x_1 = (0,2)`, `|x_1| = √2 ≈ 1.4142`. From `t_2 = 2`, `y_1` can't land on city 0 (that's `t_1`) or city
+1 (`(2,1)` is still a tour link at `t_2`, and `y_1` has to be a link from outside the tour, not a
+repeat of one already there) — city 3 is the only city left, so `y_1 = (2,3)`, `|y_1| = 1`,
+`g_1 = 1.4142 - 1 = 0.4142 > 0` — first step alive. Set `i = 2`, `t_3 = 3`. City 3's two tour links are
+`(1,3)` and `(3,0)`; `(3,0)` runs straight back to `t_1`, so breaking it leaves nothing to close up —
+that forces `x_2 = (1,3)`, `t_4 = 1`. Check the close-up by joining `t_4` to `t_1 = 0`:
+`g_2* = |x_2| - |(1,0)| = 1.4142 - 1 = 0.4142`; total `G = g_1 + g_2* = 0.4142 + 0.4142 = 0.8284 > 0`,
+so `G* = 0.8284`, `k = 2`.
 
-- `x_2 = (1,2)`, `t_4 = 2`, close-up `(2,0)`: `g_2* = |x_2| - |(2,0)| = 1 - 1.4142 = -0.4142`; total
-  `G = g_1 + g_2* = 0`. (And this break is the infeasible one — it splits the cycle — so it wouldn't
-  survive anyway.)
-- `x_2 = (1,3)`, `t_4 = 3`, close-up `(3,0)`: `g_2* = √2 - 1 = 0.4142`; total `G = g_1 + g_2* =
-  0.4142 + 0.4142 = 0.8284 > 0`. This is the feasible close-up, so `G* = 0.8284`, `k = 2`.
-
-Cashing the depth-2 exchange — break `(0,2)` and `(1,3)`, add `(2,1)` and `(3,0)` — rebuilds the tour
+Cashing the depth-2 exchange — break `(0,2)` and `(1,3)`, add `(2,3)` and `(1,0)` — rebuilds the tour
 `0-1-2-3` of length 4. And the predicted length is `f(T) - G* = 4.8284 - 0.8284 = 4.0000`, which is
 exactly what the rebuilt tour measures — the additive-gain identity `f(T') = f(T) - sum of g_i`
 predicts the rebuilt length to four decimal places on this instance. Past this depth, if a
