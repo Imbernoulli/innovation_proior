@@ -20,11 +20,15 @@ CoT injects intermediate steps *through the prompt*: demonstrate the reasoning i
 - Prepend them to each test question; generate greedily; parse the final answer (e.g. the number after "The answer is").
 - Empirical behavior: the gain is an **emergent ability of scale** — CoT hurts or does not help most models below 10B parameters, begins to help only at sufficiently large scale, and is clearest around 100B+ parameters; smaller models often write fluent but illogical chains. Gains are largest on harder multi-step problems and smaller on one-step problems; arithmetic gains are robust to exemplar annotator, style, choice, order, and count, though prompt engineering still matters for some tasks.
 
-## What the ablations show
+## Ruling out cheaper explanations
 
-- **Equation only** (emit the bare equation, no prose): helps on one- or two-step datasets but not much on semantically harder GSM8K, suggesting the natural-language decomposition is doing work beyond writing an equation.
-- **Variable compute only** (emit dots matching the equation length, no content): about baseline, suggesting that extra generated characters alone are not enough.
-- **Chain of thought after the answer**: about baseline, supporting the interpretation that the useful steps must precede the answer rather than merely activate relevant knowledge.
+Three narrower mechanisms could produce the same headline effect without the model doing genuine step-by-step reasoning, so each gets a matched control before the design is trusted, holding the answer format and exemplar count fixed:
+
+- **Equation only** (emit the bare equation, no prose, in place of the chain): predicted to help on one- or two-step datasets where the equation can be read straight off the question, but to do little on semantically harder GSM8K — if so, the natural-language decomposition is doing work beyond just writing an equation.
+- **Variable compute only** (emit dots matching the equation's length, no content, in place of the chain): predicted to land close to the no-chain baseline — if so, extra generated characters alone are not what's driving the gain.
+- **Chain of thought after the answer** (move the same chain to follow the stated answer instead of preceding it): predicted to land close to baseline as well — if so, the steps are not merely priming relevant knowledge but are actually used to derive the answer, which requires them to come first.
+
+The decision rule: the method is credited with genuine step-by-step reasoning only if the full before-the-answer natural-language chain clears all three controls while each control itself comes in near baseline — that combination is what separates "meaningful, sequentially-used reasoning" from "an equation," "extra tokens," or "knowledge priming."
 
 ## Working code
 
