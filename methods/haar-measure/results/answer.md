@@ -72,7 +72,7 @@ For a left-invariant measure `mu` and `a in G`, the right translate
 
 is again a left-invariant regular Borel measure. By uniqueness it must be a scalar multiple of `mu`. With the convention
 
-`mu(Ea) = Delta(a)^{-1} mu(E)`,
+`mu(Ea) = Delta(a) mu(E)`,
 
 the scalar defines a continuous homomorphism
 

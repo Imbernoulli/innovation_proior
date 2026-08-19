@@ -10,7 +10,7 @@ The Riesz representation theorem then converts the functional I into a regular B
 
 Uniqueness follows from the same compact-covering estimates. If mu and nu are two nonzero regular left-invariant Borel measures, then after fixing f_0 the ratios of integrals of any nonnegative test function f and f_0 must agree for both measures. The reason is that both integrals satisfy the same translation-invariant local covering inequalities, and the only freedom is the overall unit. Consequently nu = c mu for some positive scalar c. Thus the Haar measure is canonical up to the choice of a unit of volume.
 
-One subtlety remains. A left-invariant measure need not be right invariant. For any group element a, the right translate E maps to mu(Ea) is again a left-invariant regular Borel measure, so by uniqueness it equals Delta(a)^{-1} mu(E) for some positive scalar. The map Delta from G to the positive reals is the modular function, a continuous group homomorphism. When Delta is identically one, the group is called unimodular, and the same Haar measure is both left and right invariant. Compact groups, discrete groups, and abelian groups are all unimodular, but the general theorem only guarantees left invariance.
+One subtlety remains. A left-invariant measure need not be right invariant. For any group element a, the right translate E maps to mu(Ea) is again a left-invariant regular Borel measure, so by uniqueness it equals Delta(a) mu(E) for some positive scalar. The map Delta from G to the positive reals is the modular function, a continuous group homomorphism. When Delta is identically one, the group is called unimodular, and the same Haar measure is both left and right invariant. Compact groups, discrete groups, and abelian groups are all unimodular, but the general theorem only guarantees left invariance.
 
 This entire chain amounts to a single clean theorem, and it is worth stating in the compact form the field keeps it in. Let $G$ be a locally compact Hausdorff topological group. There exists a nonzero regular Borel measure $\mu$ on $G$, finite on every compact set and strictly positive on every nonempty open set, such that
 
@@ -18,6 +18,6 @@ $$\mu(xE) = \mu(E)$$
 
 for every $x \in G$ and every Borel set $E \subseteq G$; and if $\nu$ is any other nonzero regular left-invariant Borel measure on $G$, then $\nu = c\,\mu$ for some constant $c > 0$, the constant being fixed the moment a unit is chosen — the mass of a single test function $f_0$, or, when $G$ is compact, the normalization $\mu(G) = 1$, which is exactly what lets a compact group's Haar measure double as a probability measure. The one qualification that cannot be dropped is that $\mu$ is only guaranteed left-invariant: right translation by a fixed $a \in G$ produces another left-invariant measure, which uniqueness forces back to a scalar multiple of $\mu$ itself,
 
-$$\mu(Ea) = \Delta(a)^{-1}\mu(E),$$
+$$\mu(Ea) = \Delta(a)\mu(E),$$
 
 with $\Delta : G \to (0,\infty)$ the continuous homomorphism called the modular function, equal to $1$ identically exactly on the unimodular groups — compact, discrete, and abelian among them. Existence of $\mu$, its uniqueness up to a positive scalar, and the modular function measuring any residual asymmetry between left and right translation: that is the Haar measure, delivered in full.

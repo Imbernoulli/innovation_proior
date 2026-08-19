@@ -64,7 +64,7 @@ One caveat remains, and it is easy to miss if I think only about abelian example
 
 So `mu_a` is another left-invariant regular Borel measure. Uniqueness forces it to be a scalar multiple of `mu`. Thus there is a positive scalar depending on `a`; with the common convention,
 
-`mu(Ea) = Delta(a)^{-1} mu(E)`.
+`mu(Ea) = Delta(a) mu(E)`.
 
 The map `Delta:G -> (0,infty)` is continuous and multiplicative, because two right translations compose and the corresponding scalars multiply. This is the modular function. If `Delta` is identically `1`, the group is unimodular and the same measure is both left and right invariant. Compact groups, discrete groups, abelian groups, and many familiar Lie groups fall into that calmer case, but the theorem itself is more general. The canonical object is left-invariant volume; right invariance is an additional property, not part of the basic guarantee.
 
