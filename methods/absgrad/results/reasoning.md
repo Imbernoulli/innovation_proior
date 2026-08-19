@@ -50,9 +50,7 @@ The threshold has to rise because `||hat_g||_2` is at least as large as the old 
 
 Finally, the size threshold still matters. The statistic can correctly flag a badly represented primitive, but if the scale threshold classifies it as small, the controller will duplicate instead of split, and duplication does not shrink an over-large primitive. Lowering the split/clone scale boundary can help route fine-detail primitives to split. That is secondary to the gradient fix: it routes selected primitives correctly, but it does not by itself solve cancellation in the selection statistic.
 
-The resulting method is simple. Keep the true signed gradient for optimization. During rasterizer backward, additionally accumulate per-pixel absolute projected-mean sub-gradients per axis. Average both signed and absolute statistics over visibility. Use the signed statistic to clone small high-gradient primitives, use the absolute statistic to split large high-gradient primitives, prune and reset opacity exactly as before, and raise the split threshold because the absolute statistic dominates the signed one.
-
-## Code sketch
+The resulting method is simple. Keep the true signed gradient for optimization. During rasterizer backward, additionally accumulate per-pixel absolute projected-mean sub-gradients per axis. Average both signed and absolute statistics over visibility. Use the signed statistic to clone small high-gradient primitives, use the absolute statistic to split large high-gradient primitives, prune and reset opacity exactly as before, and raise the split threshold because the absolute statistic dominates the signed one. As a density-control step wired into the existing training loop:
 
 ```python
 @torch.no_grad()
