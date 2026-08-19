@@ -18,24 +18,29 @@ P_e (the model weights θ stay frozen):
 
 This tunes only the *input layer* — no per-layer activations, no reparametrization MLP, no inserted
 modules. Parameter cost is exactly E·P (embedding dim × prompt length): <0.01% of the model per task
-for billion-parameter models. The central finding is the **power of scale**: the larger the frozen
-model, the more competitive this minimal intervention becomes, until at XXL (11B) it matches even
-the strong multi-task model-tuning baseline despite >20,000× fewer task-specific parameters.
+for billion-parameter models. The central hypothesis is the **power of scale**: the larger the frozen
+model, the more competitive this minimal intervention should become — the bet is that at XXL (11B)
+it can match even the strong multi-task model-tuning baseline despite >20,000× fewer task-specific
+parameters, a claim the SuperGLUE-across-sizes sweep is built to test.
 
-Design choices (each matters most below XXL, then becomes much less decisive as scale grows):
+Design choices (each predicted to matter most below XXL, then become much less decisive as scale grows):
 - **LM-adapt the base model first.** T5.1.1 is pre-trained only on span corruption (targets begin
   with sentinel tokens), so its decoder has a strong sentinel prior that a frozen prompt cannot
-  override — mid-sized models often fail to emit a legal class label (0% accuracy; copying input
-  spans or empty strings). Continue T5's self-supervised training under the LM objective (natural
-  prefix → natural continuation) for ~100K steps *once*, yielding a reusable frozen base that writes
-  natural text. Merely prepending a sentinel to targets barely helps.
-- **Initialization.** random uniform [−0.5, 0.5] < sampled common-vocabulary embeddings < class-label
-  embeddings (verbalizer-style; average multi-token labels; fall back to sampled vocab for extra
-  slots). Class-label init primes the model toward legal outputs and is best — but the gap vanishes
-  at XXL.
-- **Prompt length.** Cost is E·P, so pick the minimal length that performs: 1→20 tokens gives a large
-  boost, >20 is marginal, >100 is mildly detrimental for large models; XXL does well even with a
-  single-token prompt.
+  override — the prediction is that mid-sized models should fail to emit a legal class label at all
+  on many tasks (near-0% accuracy, concentrated in copying input spans or predicting empty strings
+  rather than scattered mistakes). Continue T5's self-supervised training under the LM objective
+  (natural prefix → natural continuation) for ~100K steps *once*, yielding a reusable frozen base
+  that writes natural text. The discriminating test: a sentinel merely prepended to targets should
+  barely help (it papers over the symptom without retraining the decoder's prior), while LM
+  adaptation should help broadly — that ordering is what decides between the two explanations.
+- **Initialization.** random uniform [−0.5, 0.5], sampled common-vocabulary embeddings, or
+  class-label embeddings (verbalizer-style; average multi-token labels; fall back to sampled vocab
+  for extra slots). Class-label init primes the model toward legal outputs and is predicted to be
+  best where the model is still fragile — with the gap expected to shrink and possibly vanish at
+  XXL, a claim for an init-vs-size sweep to settle.
+- **Prompt length.** Cost is E·P, so pick the minimal length that performs: 1→20 tokens is predicted
+  to give a large boost, >20 marginal, >100 mildly detrimental for large models; the case to test is
+  whether XXL does well even with a single-token prompt.
 
 Free consequences: one batch can mix different prompts against the same frozen backbone (multi-task
 serving), and several prompts for one task form a cheap ensemble. Optimizer: Adafactor, constant
