@@ -1,16 +1,21 @@
 I need a novelty signal, not a surprise signal. A forward model is tempting because its error is
 cheap: train on the stream of transitions, reward states or transitions where the model is wrong.
 But the target of forward prediction is the next observation, and the next observation is exactly
-where environment randomness enters. Let me make that worry concrete before I trust it. Suppose some
-patch of the screen shows static that is genuinely random -- a "noisy TV" -- so the relevant target
+where environment randomness enters. I have not actually watched this happen on the Atari games I have
+run prediction-error curiosity on, so last time this worry came up I forced it on purpose in the maze
+study instead of trusting the intuition: bolt a television onto a wall, give the agent an action that
+flips the channel, and run inverse-dynamics-feature and random-feature curiosity against it. Both
+stalled -- their learning curves went flat for as long as the TV stayed reachable. That is the real,
+checkable version of the fear; let me now pin down the mechanism instead of just the symptom. Suppose
+some patch of the screen shows static that is genuinely random -- a "noisy TV" -- so the relevant target
 coordinate is \(y\in\{-1,+1\}\), each with probability one half, independent of anything the agent
 can feed the model. The best the predictor can ever do is output the mean, and its residual error
 floors at the variance: with the optimal constant prediction \(\hat y=E[y]=0\), the MSE is
 \(E[(\hat y-y)^2]=\operatorname{Var}(y)=1\). I checked this on two million samples and the empirical
 floor is \(1.0000\); no amount of data drives it down because the input does not determine the answer.
-A curiosity agent rewarded by this error would park itself in front of the static forever. So raw
-forward error confuses the error I want, "I have not seen enough data here," with an error I do not
-want, "the answer is random."
+A curiosity agent rewarded by this error would park itself in front of the static forever -- exactly
+what the maze TV showed me directly. So raw forward error confuses the error I want, "I have not seen
+enough data here," with an error I do not want, "the answer is random."
 
 That tells me the predicament is in the choice of target, not in the idea of prediction error. Let me
 separate the causes a prediction error can have: lack of nearby training data, stochastic targets,
