@@ -55,3 +55,25 @@
   #110) still ground the avg-not-max and drop-the-weight-term design
   *choices* themselves — only the "I ran it and here's the number" framing
   was removed.
+
+## 2026-08-18 — obs-fix
+- **train_answer.md still had a narrator-run-experiment claim the epistemic
+  pass above only fixed in reasoning.md**: "Diagnostic experiments show that
+  keeping the weight channels that multiply the largest-magnitude input
+  features in FP16 recovers accuracy, while keeping channels selected by
+  weight magnitude barely helps" reported a result in the proposal's own
+  voice (obs_scan_v3 flag `abl_shows`).
+- Rewrote to hypothesis + discriminating-test design + prediction: saliency
+  is set by activations not weight magnitude (the premise); the test is to
+  quantize a layer low-bit, FP16-protect a small fraction of channels
+  chosen by activation magnitude vs. by weight magnitude at the same
+  budget, and compare recovered accuracy; the activation-selected set is
+  predicted to recover most of the loss, the weight-magnitude set to barely
+  beat a random selection, because raw weight size carries no signal about
+  a channel's contribution to the output. No numbers removed (none were
+  present beyond the qualitative claim); mechanism explanation (why
+  activation magnitude matters) kept.
+- answer.md's parallel sentence ("Keeping only a small activation-selected
+  fraction of weight channels in FP16 is diagnostic evidence that these
+  channels matter") was already result-free; left untouched. context.md
+  unaffected — it carries no result claims here.
