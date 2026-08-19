@@ -25,3 +25,18 @@ Kept all mechanism content (what each of the three ingredients does and why) and
 constants table untouched. No changes needed to `answer.md` (no violation found) or
 `context.md` (no ablation numbers there to reconcile). This unit now needs a
 trajectory-observation turn to supply the actual ablation result.
+
+## 2026-08-18 (obs-fix repair pass: adjacent overclaim missed by the scanner)
+
+The scanner only matches `abl_shows`/`run_num` patterns, so it missed a second, adjacent
+sentence in `train_answer.md` that had the same defect as the one already fixed above: "the
+stronger, more modest claim is that running the same RL algorithm with this normalized
+residual encoder makes scaling the critic beneficial precisely over the range where a plain
+MLP degrades" states the critic-scaling outcome in flat present tense, as an accomplished
+causal fact, for the exact claim `reasoning.md`'s twin sentence was already hedged for in
+the prior pass ("becomes beneficial" -> "should become beneficial").
+
+Fixed by the same should/predict treatment: "makes ... beneficial" -> "should make ...
+beneficial", and named what decides the claim (the scaling sweep and leave-one-out ablation
+already described earlier in this file) instead of leaving it resting on the simplicity
+diagnostic alone. No numbers, mechanism content, or other passages touched.
