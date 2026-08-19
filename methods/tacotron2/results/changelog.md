@@ -1,0 +1,3 @@
+# Changelog - tacotron2
+
+- `results/reasoning.md:19` epistemic fix: removed the narrator's claimed self-run pre-net-dropout ablation (reported training/held-out loss behavior and a held-out MSE figure) — a single-turn proposal cannot report its own method's experimental results. Kept the two dropout-gating hypotheses, the matched-run discriminating-experiment design (train-only vs. always-on, plus the isolated eval-time dropout-flip control), each hypothesis's prediction, and the decision rule that ships whichever variant survives. The always-on pre-net dropout design is now reached via prediction + decision rule rather than a stated observation.
