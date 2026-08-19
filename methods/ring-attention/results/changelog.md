@@ -1,0 +1,2 @@
+
+- 2026-08-18 (commit-race repair): restored the RSA-grounded dead-end passage (prior ring scheme = two-phase key-then-value rotation stockpiling an O(s) un-normalized score row; ancestor Li et al. arXiv:2105.13120 §3.1, verbatim quotes in notes/sources.md, source in refs/li2021_sequence_parallelism.txt). This passage entered via a mis-scoped commit (0a341575b, labeled "zero") and was silently reverted by another mis-scoped commit (2e7525921, labeled "roberta"); both were index races between concurrent agents. Content itself is source-verified.
