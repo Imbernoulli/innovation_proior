@@ -11,11 +11,11 @@ with $\kappa=1$. The division by $\kappa$ keeps the large-error slope independen
 $$\mathcal L=\frac1{N'}\sum_{i=1}^{N}\sum_{j=1}^{N'}\rho^\kappa_{\tau_i}\big(\delta^{\tau_i,\tau'_j}_t\big).$$
 I sum over the predicted levels $i$ because each predicted quantile is regressed at its own level, and average over the target samples $j$ (hence the $1/N'$) because they are a Monte-Carlo estimate of the bootstrapped distribution. $N$ controls how much of my own quantile function I shape per step; $N'$ is a variance-reduction count denoising the regression target, so its marginal value drops once the target estimate is quiet. Pushing $N=1$ touches a single random point per update — a clean diagnostic for whether the gain is merely an auxiliary-loss effect of having many heads — but for the working agent I want both moderate and nowhere near a fixed $200$, landing on $N=N'=8$, whose $8\times8=64$ pairwise terms cost about what the grid agent costs per update while far below its $200$-wide output.
 
-The architecture question is how $\tau$ enters without rebuilding the DQN machinery, so I cut the network exactly where DQN itself cuts it: three conv layers plus flatten are $\psi(x)\in\mathbb R^d$, with $d=3136$ for the usual $84\times84\times4$ input, and the action head $f$ is DQN's own fully-connected stack unchanged — Dense($d\to512$), ReLU, Dense($512\to$actions) — one hidden layer, not a bare linear map. I add a third function $\phi(\tau)$ that embeds the scalar level into that same $d$-dimensional space and combine it with $\psi(x)$ before $f$ sees either one. The combination matters. If I merely concatenate $\psi(x)$ and $\phi(\tau)$, $f$'s first dense layer computes $\mathrm{ReLU}(W_\psi\psi+W_\phi\phi+b)$, and because the two weight blocks act on disjoint halves of the input, the pre-activation is exactly additive: moving $\tau$ shifts every pre-activation by the same amount regardless of state, so whatever state-dependence survives into the output has to come from an accident of where a hidden unit's ReLU kink happens to sit, not from the merge itself — a thin foundation when the shape of $F^{-1}$ has to change with $\tau$ in a way that genuinely depends on the state. So I make $\tau$ *multiply* the state features through the element-wise (Hadamard) product,
+The architecture question is how $\tau$ enters without rebuilding the DQN machinery. I take $\psi(x)$ to be the fixed Nature-DQN encoder ending in the $512$-dimensional ReLU feature vector — choosing the boundary so the encoder includes the usual hidden layer and the action head $f$ is a single linear map from $512$ features to actions. I add a third function $\phi(\tau)$ that embeds the scalar level into the same $512$-dimensional space and combine it with $\psi(x)$ before the head. The combination matters. If I merely concatenate $\psi(x)$ and $\phi(\tau)$ and hit them with one linear map, $\tau$ enters only *additively*: the output is (linear in $\psi$) plus (linear in $\phi(\tau)$), so $\tau$ can only slide the whole curve up and down — a state-independent shift — and cannot reshape the quantile function per state. The shape of $F^{-1}$ has to change with $\tau$ in a state-dependent way, so I make $\tau$ *multiply* the state features through the element-wise (Hadamard) product,
 $$Z_\tau(x,a)\approx f\big(\psi(x)\odot\phi(\tau)\big)_a,$$
-letting $\phi(\tau)$ gate each feature of $\psi(x)$ by construction, at every one of the $d$ merged coordinates, before $f$'s own hidden layer runs — not an effect I have to hope a ReLU kink happens to preserve. A sweep across a handful of Atari games and a few embedding sizes and nonlinearities shows concatenation is not broken (it still typically beats the quantile-grid baseline), but the Hadamard merge wins consistently across seeds, matching what the additive-vs-multiplicative pre-activation argument predicts. For the embedding itself, feeding the raw scalar $\tau$ through a linear layer is rank-one in $\tau$ and too weak; I want a basis expansion that lifts the scalar into many features varying at different rates, so a linear layer on top can synthesize an arbitrary smooth function of $\tau$. Cosines of increasing frequency are the natural bounded basis on an interval, so I expand $\tau$ into $n$ cosine features $\cos(\pi i\tau)$ and pass them through a linear-then-ReLU into the feature dimension,
+letting $\phi(\tau)$ gate each feature of $\psi(x)$ so even a single linear $f$ on top sees a genuinely $\tau$-conditioned input. For the embedding itself, feeding the raw scalar $\tau$ through a linear layer is rank-one in $\tau$ and too weak; I want a basis expansion that lifts the scalar into many features varying at different rates, so a linear layer on top can synthesize an arbitrary smooth function of $\tau$. Cosines of increasing frequency are the natural bounded basis on an interval, so I expand $\tau$ into $n$ cosine features $\cos(\pi i\tau)$ and pass them through a linear-then-ReLU into the feature dimension,
 $$\phi_j(\tau)=\operatorname{ReLU}\!\Big(\sum_{i=1}^{n}\cos(\pi i\tau)\,w_{ij}+b_j\Big),\qquad n=64,$$
-where indexing the basis from $0$ instead only adds a constant cosine that the bias $b_j$ absorbs. The linear-then-ReLU lets the head pick and recombine frequencies and gives $\phi$ the same nonlinearity budget as the rest of the head, at the cost of one tiny cosine expansion plus one linear layer shared across all $\tau$ samples in a batch. This adds no capacity that defeats the point: the torso is untouched, $f$ is exactly the fully-connected stack DQN already had, and where the grid agent's output was $|\mathcal A|\times N$, mine is $|\mathcal A|$ per evaluated $\tau$ reused across samples — I have *removed* the $N$-fold output blowup and replaced it with a small embedding branch.
+where indexing the basis from $0$ instead only adds a constant cosine that the bias $b_j$ absorbs. The linear-then-ReLU lets the head pick and recombine frequencies and gives $\phi$ the same nonlinearity budget as the rest of the head, at the cost of one tiny cosine expansion plus one linear layer shared across all $\tau$ samples in a batch. This adds no capacity that defeats the point: the torso is untouched, the head is the same shallow $f$, and where the grid agent's output was $|\mathcal A|\times N$, mine is $|\mathcal A|$ per evaluated $\tau$ reused across samples — I have *removed* the $N$-fold output blowup and replaced it with a small embedding branch.
 
 The policy acts on the mean by Monte Carlo, since $\mathbb{E}[Z(x,a)]=\mathbb{E}_{\tau\sim U([0,1])}[Z_\tau(x,a)]$, approximated with $K$ fresh samples,
 $$\tilde\pi(x)=\arg\max_a\frac1K\sum_{k=1}^K Z_{\tilde\tau_k}(x,a),\qquad \tilde\tau_k\sim U([0,1]),\ K=32,$$
@@ -36,14 +36,16 @@ KAPPA = 1.0
 
 
 class ConvTorso(nn.Module):
-    """psi(x): DQN's own conv stack, flattened -- (B,4,84,84) -> (B, d). Stops BEFORE the FC layers."""
-    def __init__(self):
+    """Nature-DQN conv stack: (B,4,84,84) -> (B, d)."""
+    def __init__(self, d=512):
         super().__init__()
+        self.d = d
         self.net = nn.Sequential(
             nn.Conv2d(4, 32, 8, stride=4), nn.ReLU(),
             nn.Conv2d(32, 64, 4, stride=2), nn.ReLU(),
             nn.Conv2d(64, 64, 3, stride=1), nn.ReLU(),
             nn.Flatten(),
+            nn.Linear(3136, d), nn.ReLU(),
         )
 
     def forward(self, x):
@@ -52,14 +54,12 @@ class ConvTorso(nn.Module):
 
 class ImplicitQuantileNetwork(nn.Module):
     """Z_tau(x,a) = f( psi(x) (Hadamard) phi(tau) )_a, with phi a cosine embedding of tau."""
-    def __init__(self, n_actions, d=3136, hidden=512, n_cos=N_COS):
+    def __init__(self, n_actions, d=512, n_cos=N_COS):
         super().__init__()
         self.n_actions, self.d, self.n_cos = n_actions, d, n_cos
-        self.torso = ConvTorso()
-        self.phi = nn.Linear(n_cos, d)        # cosine basis -> feature dim (matches conv-flatten dim)
-        self.head = nn.Sequential(            # f: DQN's own FC stack, unchanged (1 hidden layer)
-            nn.Linear(d, hidden), nn.ReLU(), nn.Linear(hidden, n_actions)
-        )
+        self.torso = ConvTorso(d)
+        self.phi = nn.Linear(n_cos, d)        # cosine basis -> feature dim
+        self.head = nn.Linear(d, n_actions)   # f: single linear head to actions
         # frequencies i = 1..n_cos used in cos(pi * i * tau)
         self.register_buffer("freqs", torch.arange(1, n_cos + 1, dtype=torch.float32) * 3.141592653589793)
 
@@ -72,7 +72,7 @@ class ImplicitQuantileNetwork(nn.Module):
         # returns Z_{tau}(x, .) for each of M sampled taus: (B, M, n_actions)
         psi = self.torso(x).unsqueeze(1)                   # (B, 1, d)
         phi = self.quantile_embedding(taus)                # (B, M, d)
-        feats = psi * phi                                  # Hadamard modulation (B, M, d), fed to f
+        feats = psi * phi                                  # Hadamard modulation (B, M, d)
         return self.head(feats)                            # (B, M, n_actions)
 
     def greedy_action(self, x, k=K_POLICY):
