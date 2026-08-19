@@ -1,0 +1,86 @@
+{
+  "task": "roberta-pretraining-recipe",
+  "title": "BERT pretraining recipe: a replication and design-choice ladder",
+  "domain": "Language models",
+  "metrics": [
+    "SQuAD1.1",
+    "SQuAD2.0",
+    "MNLI-m",
+    "SST-2",
+    "RACE",
+    "ppl"
+  ],
+  "metric_columns": [
+    "dev_F1_or_acc"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "bert_base_reimpl",
+      "method": "BERT-base reimplementation (fairseq, static masking, segment-pair+NSP)",
+      "reasoning": "01-bert_base_reimpl-reasoning.md",
+      "answer": "01-bert_base_reimpl-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "dynamic_masking",
+      "method": "Dynamic masking (regenerate the MLM mask every epoch instead of fixing it at preprocessing)",
+      "reasoning": "02-dynamic_masking-reasoning.md",
+      "answer": "02-dynamic_masking-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "full_sentences_no_nsp",
+      "method": "FULL-SENTENCES input format without the NSP loss",
+      "reasoning": "03-full_sentences_no_nsp-reasoning.md",
+      "answer": "03-full_sentences_no_nsp-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "large_batches",
+      "method": "Large-batch training via gradient accumulation (256 -> 2K -> 8K sequences, compute-matched)",
+      "reasoning": "04-large_batches-reasoning.md",
+      "answer": "04-large_batches-answer.md",
+      "feedback": "04-feedback.md"
+    },
+    {
+      "n": 5,
+      "slug": "combined_recipe_bert_large",
+      "method": "Combined recipe (dynamic mask + full-sentences/no-NSP + 8K batch + byte-level BPE) on BERT-large architecture, 16GB data, 100K steps",
+      "reasoning": "05-combined_recipe_bert_large-reasoning.md",
+      "answer": "05-combined_recipe_bert_large-answer.md",
+      "feedback": "05-feedback.md"
+    },
+    {
+      "n": 6,
+      "slug": "more_data",
+      "method": "+ additional pretraining data (16GB -> 160GB: Books+Wiki, CC-News, OpenWebText, Stories)",
+      "reasoning": "06-more_data-reasoning.md",
+      "answer": "06-more_data-answer.md",
+      "feedback": "06-feedback.md"
+    },
+    {
+      "n": 7,
+      "slug": "pretrain_300k",
+      "method": "+ pretrain longer (100K -> 300K steps)",
+      "reasoning": "07-pretrain_300k-reasoning.md",
+      "answer": "07-pretrain_300k-answer.md",
+      "feedback": "07-feedback.md"
+    },
+    {
+      "n": 8,
+      "slug": "pretrain_500k",
+      "method": "+ pretrain even longer (300K -> 500K steps)",
+      "reasoning": "08-pretrain_500k-reasoning.md",
+      "answer": "08-pretrain_500k-answer.md",
+      "feedback": "08-feedback.md"
+    }
+  ],
+  "endpoint": "RoBERTa recipe: dynamic masking + FULL-SENTENCES without NSP + large batches (8K) + byte-level BPE, BERT-large architecture, 160GB data, 500K steps",
+  "ranking_basis": "Every rung's dev-set numbers (SQuAD 1.1/2.0 F1, MNLI-m acc, SST-2 acc, RACE acc where measured) improve monotonically or tie across the ladder relative to the immediately preceding rung, culminating in rung 8's 500K-step model, which posts the best number in every column measured on the final ablation table (SQuAD 94.6/89.4, MNLI-m 90.2, SST-2 96.4) with no observed overfitting signal.",
+  "notes": "Paper-replication-based trajectory: the ladder is the paper's own documented ablation sequence (Training Procedure Analysis section, then the RoBERTa aggregation/scaling section), not a code-edit surface. Each rung's numbers are taken verbatim from methods/roberta/src/tables/*.tex, cited by file+line in notes-ladder.md. Byte-level vs char-level BPE has no standalone quantitative ablation in the record (paper explicitly defers it to future work), so it is folded into rung 5's combined recipe rather than given its own measured rung. Stopped at the 500K-step model (rung 8), matching the paper's own ablation.tex table endpoint; further leaderboard/ensemble results (full 9-task GLUE table, SQuAD/RACE test-set submissions) lie outside this design-choice ladder and are not included as rungs."
+}
