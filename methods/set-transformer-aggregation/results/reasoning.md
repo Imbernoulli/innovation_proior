@@ -135,22 +135,30 @@ read each other and the summary is formed over *context-aware* variable represen
 independently-scored ones. That second addition is the inter-variable-correlation modelling I argued the
 domain needs and that no lower rung has — but "adds more machinery" is not the same claim as "the machinery
 is doing the right work," and more parameters can win for boring reasons. So isolate the two additions
-instead of arguing for them bundled. On a labeled set-classification task I can check this against, a
-single content-dependent query pooling raw, independently-encoded elements barely clears the parameter-free
-mean-pooling floor — AUROC 0.5643 → 0.5671, a gain of 0.003: content-dependence on elements that have not
-seen each other buys almost nothing. Swap that for self-attention among the elements feeding an *ordinary*,
-non-content-dependent pool (no learned seed at all) and the same floor moves four times as far, to 0.5757 —
-letting the elements read each other, with no content-dependent readout at all, beats a content-dependent
-readout with no element interaction. Stack both — elements interact, *then* a content-dependent seed reads
-the result — and the gain is not the sum of the two isolated gains, it is larger still, to 0.5941: the two
-pieces are doing different jobs, not standing in for each other, which is why I keep both rather than trade
-the encoder for a fancier pooling head. That same comparison also draws the boundary of the claim honestly:
-on a task where the set is large enough that an already-expressive per-element encoding leaves little
-residual ambiguity about which elements matter, plain pooling on top of that encoding can beat adding the
-content-dependent seed back on — the seed earns its keep specifically where *which* elements matter is
-still in question. `V` here is a few dozen physically heterogeneous variables at one location, not a large
-near-redundant set, so I expect to sit on the side of that boundary where the interaction step keeps paying
-for itself, not the side where it stops mattering. There is further evidence that attending-among-elements-
+instead of arguing for them bundled: run a small factorial on a labeled set-classification task, holding
+capacity comparable across four conditions — mean-pooling with no learned query at all (the parameter-free
+floor), a single content-dependent query pooling the *raw*, independently-encoded elements (content-
+dependence in isolation, no SAB), self-attention among the elements feeding an *ordinary*, non-content-
+dependent pool (interaction in isolation, no learned seed), and the two stacked (SAB feeding the content-
+dependent seed — the actual construction). If content-dependence on elements that have not yet seen each
+other is doing most of the work, the lone-query condition should clear the mean-pool floor by the wider
+margin and SAB-only should add little on top of it. If instead it is the interaction that matters — elements
+need to be compared against each other before any read-out, content-dependent or not, is informative — the
+ordering should invert, with SAB-only clearing the floor by more than the lone content-dependent query does.
+The sharper test of "these are two different jobs, not two routes to the same thing" is the stacked
+condition: if the mechanisms are genuinely complementary, letting the elements interact and *then* reading
+them with a content-dependent seed should beat not just each isolated condition but the two isolated gains
+added together — a jump bigger than either piece alone predicts is the signature of interaction and
+content-dependent read-out answering different questions, and that is the case for keeping both rather than
+trading the encoder for a fancier pooling head; a jump no bigger than the sum would say the two are
+redundant and one could be dropped. This factorial also has to respect a caveat rather than paper over it:
+on a set large enough that an already-expressive per-element encoding leaves little residual ambiguity about
+*which* elements matter, plain pooling on top of that encoding could plausibly beat adding the content-
+dependent seed back on — the seed's value should be conditional on which-elements-matter still being
+genuinely in question, not universal. `V` here is a few dozen physically heterogeneous variables at one
+location, not a large near-redundant set, so I expect this task to land on the side of that boundary where
+the interaction step keeps paying for itself — but that is a prediction the factorial has to confirm, not
+something the construction argument alone can settle. There is further evidence that attending-among-elements-
 before-pooling captures structure fixed reductions cannot: on a max-value-regression toy task, the
 attentive self-attention-plus-pooling construction matches the max-pooling oracle, while mean and sum
 pooling fail badly — because finding the governing element requires the elements to be compared against
