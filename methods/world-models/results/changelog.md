@@ -1,5 +1,19 @@
 # Changelog
 
+- 2026-08-18 `results/reasoning.md` — epistemic correction: the 2026-08-18
+  svfix pass above had the narrator run a controller against the dream and
+  report the outcome ("running a controller against the dream shows me it is
+  not hypothetical... τ=0.1: dream ~2086, real 193, worse than random ~210;
+  τ=1.15: dream 918, real 1092"). A single-turn proposal's own experiments
+  have not happened yet, so that observation and its numbers are removed.
+  Kept: the hazard hypothesis, the mode-collapse mechanism now stated as a
+  prediction ("the mixture could collapse... any policy trained against it
+  would carry the same blind spot"), the τ knob math, and the decision rule
+  ("I can only settle it by sweeping τ... measuring real-environment survival
+  against a random-policy baseline: whichever τ gives the best real transfer
+  is the one I ship"). answer.md/train_answer.md were not touched by the
+  svfix commit (`git diff` confirms) so are out of scope and left as-is.
+
 - 2026-08-18 `results/reasoning.md` — grounded the temperature/exploit paragraph
   (previously "that creates a hazard I have to take seriously... the policy
   may discover hidden-state trajectories where projectiles disappear or never
