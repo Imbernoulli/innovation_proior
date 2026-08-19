@@ -1,0 +1,66 @@
+{
+  "task": "convnext-modernization",
+  "title": "Modernizing a ConvNet: closing the gap to Swin Transformer on ImageNet-1K",
+  "domain": "Computer vision (ImageNet-1K image classification backbones)",
+  "metrics": [
+    "imagenet1k"
+  ],
+  "metric_columns": [
+    "top1_acc",
+    "gflops"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "modern_recipe",
+      "method": "ResNet-50, unchanged architecture, modern (DeiT/Swin-style) training recipe",
+      "reasoning": "01-modern_recipe-reasoning.md",
+      "answer": "01-modern_recipe-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "macro_design",
+      "method": "Swin-T stage compute ratio (3,3,9,3) + patchify stem (4x4 stride-4 conv)",
+      "reasoning": "02-macro_design-reasoning.md",
+      "answer": "02-macro_design-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "resnextify",
+      "method": "Depthwise 3x3 conv (ResNeXt-style grouped conv taken to groups=channels) + width 64->96",
+      "reasoning": "03-resnextify-reasoning.md",
+      "answer": "03-resnextify-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "inverted_bottleneck",
+      "method": "Inverted bottleneck block (narrow -> wide 4x -> narrow, MobileNetV2/Transformer-MLP style)",
+      "reasoning": "04-inverted_bottleneck-reasoning.md",
+      "answer": "04-inverted_bottleneck-answer.md",
+      "feedback": "04-feedback.md"
+    },
+    {
+      "n": 5,
+      "slug": "large_kernel",
+      "method": "Depthwise conv moved above the 1x1 expansion, kernel size swept 3/5/7/9/11, settle on 7x7",
+      "reasoning": "05-large_kernel-reasoning.md",
+      "answer": "05-large_kernel-answer.md",
+      "feedback": "05-feedback.md"
+    },
+    {
+      "n": 6,
+      "slug": "micro_design",
+      "method": "GELU, single activation, single norm, LayerNorm, separate LN-stabilized downsampling layers (final ConvNeXt-T)",
+      "reasoning": "06-micro_design-reasoning.md",
+      "answer": "06-micro_design-answer.md",
+      "feedback": "06-feedback.md"
+    }
+  ],
+  "endpoint": "ConvNeXt-T: 82.0% top-1 @ 4.49 GFLOPs, exceeding Swin-T's 81.3% @ 4.50 GFLOPs at matched budget",
+  "ranking_basis": "Strictly monotonic documented ladder on the single reported metric (ImageNet-1K top-1 accuracy, three-seed mean) at a roughly fixed FLOPs budget (~4.1-5.3G, the ResNet-50/Swin-T regime): 76.13 -> 78.82 -> 79.51 -> 80.50 -> 80.64 -> 80.57 (k=7, after a 79.92 dip) -> 81.97 (rounded 82.0 in the summary figure). Each rung's adopted configuration is carried forward unchanged into the next rung's baseline, so the ladder is a single accumulating path, not a branching comparison.",
+  "notes": "The ladder is mined entirely from methods/convnext/refs/primary/source/main.tex: the roadmap prose in Sections 'Modernizing a ConvNet: a Roadmap' (Training Techniques / Macro Design / ResNeXt-ify / Inverted Bottleneck / Large Kernel Sizes / Micro Design) plus the detailed per-step ablation table (\\label{tab:modernizing-t}, lines ~809-829) which gives the precise mean+-std top-1 and GFLOPs for every intermediate configuration, including sub-steps grouped into the same rung here (e.g. rung 2's stage-ratio-only 79.36 vs +patchify-stem 79.51; rung 3's depthwise-only 78.28 vs +width 80.50; rung 5's full kernel sweep 3/5/7/9/11; rung 6's five sequential micro-design edits). Final architecture code (block, stem, downsampling, LayerNorm) matches methods/convnext/code/ConvNeXt/models/convnext.py exactly. No author self-account with additional numbers was found (methods/convnext/notes/source_matrix.md); intermediate architecture code (rungs 1-5) is an engineering fill consistent with the documented block diagrams and the well-known reference architectures cited in the paper itself (ResNet, ResNeXt, MobileNetV2, ViT, Swin, CaiT/LayerScale), since the authors released code only for the final model."
+}
