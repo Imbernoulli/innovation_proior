@@ -26,7 +26,7 @@ trajectory effect, not a single Schatten penalty.
 
 ## Defaults
 
-- `depth = 3`: cheapest depth with the saturation-style low-rank effect; depth 4 was empirically similar.
+- `depth = 3`: cheapest depth with the saturation-style low-rank effect; depth 4 sharpens the same throttle further but costs an extra matmul per step, so it only earns a place over depth 3 if a matched-budget comparison shows a measurably tighter kept/discarded singular-value separation.
 - `init_scale = 1e-3`: puts the end-to-end product near zero so singular modes start throttled.
 - Per-factor Gaussian std: `init_scale^(1/depth) * n^(-1/2)`, matching the reference Gaussian branch.
 - Full hidden dimension: no explicit rank cap.
