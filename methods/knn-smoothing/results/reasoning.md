@@ -64,7 +64,7 @@ normalize to a common library size, *then* measure neighbors.
 
 The second decision is where to look for neighbors, and here I want to be deliberately crude: pick
 neighbors directly on the observed (noisy) normalized profiles in one pass, not on a first-denoised
-embedding. That is the whole character of this rung, and I owe it a real check rather than a
+embedding. That is the whole character of this rung, and I owe it a real argument rather than a
 hand-wave, because the square-root-and-normalize step does not actually make the search unbiased. A
 cell's post-transform noise still depends on how many molecules it happened to be captured with: a
 deeply-captured cell has proportionally less Poisson scatter per gene than a shallow one drawn from
@@ -72,27 +72,20 @@ the exact same biological state, so after normalizing, the deep cell's profile s
 everything in Euclidean distance, while a shallow cell from that same state scatters wide and can
 end up looking far from its own kind. That would mean the "nearest neighbor" search is not really
 finding *similar cells*, it is finding *quiet cells* — a systematic pull toward whichever cells
-happen to have the least noise, independent of whether they share a state. I can check this
-directly rather than assume it: simulate 400 cells from a single true state with realistic
-capture-depth variation (lognormal depths, mean ≈ 2200), run the exact recipe above, and ask whether
-each cell's 10 picked neighbors are drawn evenly from the population or skewed toward the low-noise
-half:
-
-```
-population mean depth                                     : 2213.9
-mean depth of picked neighbor pool                         : 6430.1
-ratio picked / population                                  : 2.90
-fraction of picks from the deep (low-noise) half of the SAME cluster : 0.996   (0.5 = unbiased)
-```
-
-Nearly every neighbor picked comes from the low-noise half of the population, even though every
-cell here is the same true state by construction — the bias is real, and it is large (this holds up
-across reruns with different random seeds, ratio 2.7-3.1 each time). With a single global pass over
-noisy profiles, low-noise cells act as an attractor and noisier cells get systematically
-under-averaged with their own kind instead of with each other. I am going to accept that weakness on
-purpose, because curing it — re-deriving the neighbor search step by step on progressively-smoothed,
-lower-noise profiles instead of trusting one noisy pass outright — is exactly what a later rung
-would have to do. For now, neighbors on the raw normalized profiles.
+happen to have the least noise, independent of whether they share a state. This is checkable rather
+than assumable: simulate cells from a single true state with realistic capture-depth variation
+(lognormal depths) and the exact recipe above, then ask whether each cell's picked neighbors are
+drawn evenly from the population or skewed toward the low-noise half. If the mechanism I just argued
+is real, the picked pool's mean depth should sit well above the population mean, and the fraction of
+picks landing in the low-noise half of that same-state population should sit well above the `0.5` an
+unbiased search would give — and it should hold up across reruns with different random seeds rather
+than being a fluke of one draw. I have not run that check yet, but the sign of the prediction is
+clear enough to build the decision on: low-noise cells should act as an attractor, and noisier cells
+should get systematically under-averaged with their own kind instead of with each other. I am going
+to accept that weakness on purpose either way, because curing it — re-deriving the neighbor search
+step by step on progressively-smoothed, lower-noise profiles instead of trusting one noisy pass
+outright — is exactly what a later rung would have to do. For now, neighbors on the raw normalized
+profiles; the check above is the one that would confirm and size the bias once results are in.
 
 Then the averaging. I take the cell plus its `k` neighbors and average their normalized profiles
 uniformly — a *hard, uniform* pool, every neighbor weighted equally, with a cliff at the `k`-th
@@ -142,10 +135,10 @@ pool removes ninety percent of the per-gene noise, so neighbor averaging should 
 fraction of the gap to the rate. But I also expect a clear gap remaining below a graph-diffusion
 rung, for the two reasons I built in on purpose. The neighbors are chosen on noisy profiles, so some
 of the pooling is simply wrong — the depth check shows the distance becomes meaningful once I
-normalize, but the size-bias check shows normalizing does not make the search unbiased: it still
-systematically favors low-noise, deeply-captured cells as neighbors over noisier true state-mates,
-and that bias is exactly what survives here. And the pool is a hard uniform average with one global
-`k`, so it
+normalize, but the size-bias argument says normalizing does not make the search unbiased: it should
+still systematically favor low-noise, deeply-captured cells as neighbors over noisier true
+state-mates, and that predicted bias is exactly what I would expect to survive here. And the pool is
+a hard uniform average with one global `k`, so it
 cannot adapt its bandwidth to the local density of the manifold the way a weighted affinity graph
 can. Denoising the space neighbors are found in, and replacing the hard uniform pool with an
 adaptive-bandwidth, transitive diffusion, is what the next rung would have to do.
