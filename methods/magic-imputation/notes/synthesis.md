@@ -35,3 +35,45 @@ M (or its conjugate symmetric form D^{-1/2} A D^{-1/2}) has eigenvalues in [0,1]
 - sqrt + libsize norm: libsize removes depth confound; sqrt variance-stabilizes count data (Poisson-ish) so Euclidean distance is meaningful.
 
 ## In-frame: never name the paper. Method may be called MAGIC in answer.md.
+
+## svfix audit addendum (2026-08-18, TRACK=W3_notes_unclear)
+Quality-gate check: the decisive step in reasoning.md (powering the row-stochastic Markov
+operator M^t X as a spectral low-pass filter; picking t at the elbow of per-step R^2 change)
+is genuinely DERIVED on the page via the trace's own honest spectral computation (Markov
+matrix eigenvalues in [0,1], M^t shrinks each mode by lambda^t) AND that derivation is backed
+almost verbatim by the primary paper's own STAR Methods. Verdict: sound_as_is. No rewrite
+made to reasoning.md/answer.md/train_answer.md/code.
+
+PROVENANCE BUG FOUND AND FIXED: refs/magic_pmc.html on disk was NOT the MAGIC paper — it was
+a wrong PMC article ("Prioritizing uncharacterized genes in the search for glioma biomarkers",
+Towner & Wren, CNS Oncol 2014), i.e. a bad download that silently landed at the wrong PMC id.
+refs/magic_biorxiv.pdf was also broken: it is a Cloudflare "Just a moment..." challenge page
+saved with a .pdf extension, not the preprint. This means the synthesis.md claim above
+("STAR Methods extracted in full via WebFetch") could not previously be verified from any
+file on disk, which is exactly the W3_notes_unclear flag.
+
+Fix applied: re-fetched the correct primary source, PMC6771278 / pmc.ncbi.nlm.nih.gov/articles/PMC6771278/
+(van Dijk et al. 2018, Cell 174:716, "Recovering gene interactions from single-cell data using
+data diffusion" — confirmed via <meta name="citation_title"> in the saved HTML) and overwrote
+refs/magic_pmc.html with the real article; also saved a plain-text extraction refs/magic_pmc.txt.
+Both now contain, verbatim, the STAR Methods passages that ground the decisive step, e.g.:
+- low-pass framing: "Powering M has the effect of low-pass filtering the eigenvalues of the
+  Markov transition matrix... diminishes the importance of noise dimensions with near-zero
+  explanatory power." (refs/magic_pmc.txt, STAR Methods, "Markov affinity based graph diffusion")
+- elbow/R^2 stopping rule: "we reason that the decay has approximately converged after it has
+  gone below 0.05, i.e., less than 5% change from the previous t" (refs/magic_pmc.txt, STAR
+  Methods, "Diffusion time for Markov Affinity Matrix") — matches reasoning.md's "(R^2 says <5%
+  change from the previous t)" essentially verbatim.
+- spurious-edge / powering rationale for "why not one hop": "spurious edges would have
+  similarity in the raw data, but these would not be supported by shared neighbors... Powering
+  M has the effect of low-pass filtering..." (same section) — backs reasoning.md's "trust an
+  edge in proportion to how robustly connected the two cells are... through many independent
+  paths" passage.
+
+STILL BROKEN, not fixed this pass (not load-bearing for the decisive step, so left as a flag
+rather than blocking this fix): refs/magic_biorxiv.pdf (Cloudflare challenge page, not the
+preprint; biorxiv.org rate-limited retries with HTTP 429 during this session) and
+refs/diffusion_maps_coifman_lafon_2006.pdf (actually a ScienceDirect/Elsevier access-gate HTML
+page, not the PDF — TRIAGE correctly treated Coifman-Lafon as background-math corroboration
+only, never as the decisive-step source, so this doesn't affect the sound_as_is verdict, but a
+future pass should refetch both from an open-access mirror).
