@@ -1,0 +1,152 @@
+[
+ {
+  "slug": "convnext",
+  "verdict": "V",
+  "note": "sweep numbers 79.92/80.35/80.57 + retrain-recipe results in reasoning",
+  "already_in_epistemic_pass": false
+ },
+ {
+  "slug": "deit",
+  "verdict": "V",
+  "note": "augmentation-test outcomes + fine-tune results claimed in reasoning",
+  "already_in_epistemic_pass": false
+ },
+ {
+  "slug": "lookahead",
+  "verdict": "V",
+  "note": "CIFAR-10 three-arm run with 95.15% in reasoning",
+  "already_in_epistemic_pass": false
+ },
+ {
+  "slug": "lsq",
+  "verdict": "V",
+  "note": "six ResNet-18 trainings w/ outcome in reasoning",
+  "already_in_epistemic_pass": true
+ },
+ {
+  "slug": "grokfast",
+  "verdict": "V",
+  "note": "trained 2-layer transformer mod-97, observed curve",
+  "already_in_epistemic_pass": true
+ },
+ {
+  "slug": "toolformer",
+  "verdict": "V",
+  "note": "8xA100 training protocol + checkpoint selection claimed done",
+  "already_in_epistemic_pass": false
+ },
+ {
+  "slug": "chinchilla",
+  "verdict": "V",
+  "note": "method IS empirical frontier fits; needs_traj by nature",
+  "already_in_epistemic_pass": false
+ },
+ {
+  "slug": "scaling-laws",
+  "verdict": "V",
+  "note": "claims own measured exponents; needs_traj by nature",
+  "already_in_epistemic_pass": false
+ },
+ {
+  "slug": "roberta",
+  "verdict": "V",
+  "note": "train_answer reports batch-8k instability as observed",
+  "already_in_epistemic_pass": false
+ },
+ {
+  "slug": "awq",
+  "verdict": "V",
+  "note": "train_answer: diagnostic experiments show",
+  "already_in_epistemic_pass": true
+ },
+ {
+  "slug": "biggan",
+  "verdict": "V",
+  "note": "answer: freezing experiments show",
+  "already_in_epistemic_pass": false
+ },
+ {
+  "slug": "chain-of-thought",
+  "verdict": "V",
+  "note": "answer+train_answer: what the ablations show",
+  "already_in_epistemic_pass": true
+ },
+ {
+  "slug": "deep-mf",
+  "verdict": "V",
+  "note": "experiments show depth-4 not worth it",
+  "already_in_epistemic_pass": false
+ },
+ {
+  "slug": "grokking",
+  "verdict": "V",
+  "note": "train_answer: own decay-ablation result (random-label = prior work, keep)",
+  "already_in_epistemic_pass": false
+ },
+ {
+  "slug": "simba",
+  "verdict": "V",
+  "note": "reasoning+train_answer: component ablations show",
+  "already_in_epistemic_pass": false
+ },
+ {
+  "slug": "diffpool",
+  "verdict": "V",
+  "note": "train_answer ablation-shows (reasoning already under epistemic correction)",
+  "already_in_epistemic_pass": true
+ },
+ {
+  "slug": "balanced-softmax",
+  "verdict": "V",
+  "note": "long-tail training failure claimed as own run; move to given/context framing",
+  "already_in_epistemic_pass": false
+ },
+ {
+  "slug": "cma-es",
+  "verdict": "R",
+  "note": "1.8x side experiment — desk sim? judge in context",
+  "already_in_epistemic_pass": false
+ },
+ {
+  "slug": "missforest",
+  "verdict": "R",
+  "note": "small RF experiment — desk-scale?",
+  "already_in_epistemic_pass": false
+ },
+ {
+  "slug": "gumbel-softmax",
+  "verdict": "R",
+  "note": "tiny MC over temperatures — desk-scale?",
+  "already_in_epistemic_pass": false
+ },
+ {
+  "slug": "platt-scaling",
+  "verdict": "R",
+  "note": "two-parameter fit on which set?",
+  "already_in_epistemic_pass": false
+ },
+ {
+  "slug": "beta-calibration",
+  "verdict": "R",
+  "note": "fit both ways on synthetic scores",
+  "already_in_epistemic_pass": false
+ },
+ {
+  "slug": "hippo",
+  "verdict": "R",
+  "note": "LegS recurrence run at L=256 on synthetic f — desk-scale?",
+  "already_in_epistemic_pass": false
+ },
+ {
+  "slug": "art-ct-reconstruction",
+  "verdict": "R",
+  "note": "two-plane experiment — desk Kaczmarz?",
+  "already_in_epistemic_pass": false
+ },
+ {
+  "slug": "proteinmpnn",
+  "verdict": "R",
+  "note": "cross-distance experiment — geometry check?",
+  "already_in_epistemic_pass": false
+ }
+]
