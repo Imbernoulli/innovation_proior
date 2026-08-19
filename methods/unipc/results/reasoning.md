@@ -3,8 +3,14 @@ exponential-integrator, DPM-Solver++(kM) — and it gets me to maybe fifteen or 
 with stable images under large guidance. But I want the extreme few-step regime, five to ten calls,
 and there the wheels come off: every solver I have leaves a visible per-step truncation error because
 at five steps the half-log-SNR interval `h` is large and the `O(h^k)` term is not small. The reflex is
-"go to higher order," but I have already learned that just raising the order of a *predictor* solver
-buys less and less — and under guidance, where the model's derivatives are amplified, can even hurt.
+"go to higher order," but that lever is worse than it looks, for a reason specific to where a
+predictor gets its extra order from. A predictor of order `p` buys the `p`-th order by feeding in more
+*previous* model outputs — and previous outputs are the oldest, least accurate things in the loop, each
+carrying its own truncation error from a step already taken. Every order I add imports a staler
+quantity, and under guidance, where the model's derivatives are amplified, the imported error is
+amplified with it. There is a second, blunter obstacle in the same direction: the analytical
+coefficients for these exponential-integrator steps have only ever been written down explicitly for
+orders up to three, so "just go higher" is not even a knob that exists past `p = 3`.
 So before I reach for order, let me ask what *kind* of error I am leaving uncorrected, because the
 answer might be a different lever than order.
 

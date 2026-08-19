@@ -18,3 +18,17 @@ rebuttals supply exactly the reasoning the paper compresses, and two passages of
   (7) added.
 No factual errors found; the "corrector is free" derivation, the Vandermonde solve, the worked toy
 integral, the landing and the code are unchanged.
+
+## 2026-08-18 — epistemic correction (single-turn proposal voice)
+The order-schedule passage above reported the method's own ablation as an observation the narrator had
+already measured ("the sweep settles the question... gives FID `4.07`... `18.23`"). In a single-turn
+proposal frame that has not happened yet, so `results/reasoning.md` was rewritten to keep the
+discriminating-experiment design (matched ten-call budget, the specific candidate schedules, CIFAR10),
+each hypothesis's prediction (FID should degrade with how much order a schedule buys through the
+predictor's staler history rather than the corrector's current point; the order-six-via-predictor
+schedule should be worst), and the decision rule ("whichever schedule wins that comparison is the one I
+ship as the default") — with the claimed FID numbers and the "that is exactly the mechanism I
+suspected" confirmation removed. The opening mechanism paragraph (why a predictor's extra order is
+inherently staler, and why analytical coefficients stop at order 3) is on-page argument, not a claimed
+measurement, and is unchanged. This schedule choice now needs its trajectory-observation turn to be
+confirmed or falsified; it is not re-derived here.
