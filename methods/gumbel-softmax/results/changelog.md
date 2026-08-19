@@ -1,0 +1,3 @@
+# Changelog
+
+- 2026-08-18 `methods/gumbel-softmax/results/reasoning.md:78` obs-fix: the `τ`-sweep paragraph reported simulated `E[y]` outcome vectors (mean soft samples at five temperatures, narrated as "the interpolation story holds on numbers") for the proposed relaxation's own defining property — banned own-method result reporting for a single-turn proposal. Rewrote as the two predictions implied by the preceding algebra (small-`τ` mean → `π`; large-`τ` mean → uniform) plus the decision rule that would confirm or disconfirm them, with no simulated numbers. The earlier Gumbel-Max cross-check at line 62 (a couple hundred thousand draws verifying the classical, pre-existing sampling identity) is prior-work/deterministic and was left untouched.
