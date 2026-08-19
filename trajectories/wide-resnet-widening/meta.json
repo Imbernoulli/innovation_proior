@@ -1,0 +1,60 @@
+{
+  "task": "wide-resnet-widening",
+  "title": "Wide Residual Networks: trading depth for width in the residual block",
+  "domain": "Image classification architectures",
+  "metrics": [
+    "CIFAR-10",
+    "CIFAR-100",
+    "SVHN"
+  ],
+  "metric_columns": [
+    "test_error_pct",
+    "params_M"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "block_type",
+      "method": "Block-type search B(M) at fixed budget (k=2)",
+      "reasoning": "01-block_type-reasoning.md",
+      "answer": "01-block_type-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "deepening_factor",
+      "method": "Deepening-factor l sweep on WRN-40-2 at fixed parameter budget",
+      "reasoning": "02-deepening_factor-reasoning.md",
+      "answer": "02-deepening_factor-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "width_depth_grid",
+      "method": "Width-vs-depth grid (k=1..12, depth 16-40), ZCA preprocessing",
+      "reasoning": "03-width_depth_grid-reasoning.md",
+      "answer": "03-width_depth_grid-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "dropout_zca",
+      "method": "Dropout inside the residual branch, added to the best ZCA config",
+      "reasoning": "04-dropout_zca-reasoning.md",
+      "answer": "04-dropout_zca-answer.md",
+      "feedback": "04-feedback.md"
+    },
+    {
+      "n": 5,
+      "slug": "meanstd_final",
+      "method": "Mean/std renormalization for baseline-fair comparison + final dropout re-measurement",
+      "reasoning": "05-meanstd_final-reasoning.md",
+      "answer": "05-meanstd_final-answer.md",
+      "feedback": "05-feedback.md"
+    }
+  ],
+  "endpoint": "WRN-28-10 with dropout, mean/std normalization",
+  "ranking_basis": "Ranked by measured CIFAR-10/CIFAR-100 test error (lower is better) at each rung, holding the evaluation protocol of that rung fixed. Rung 1 settles the block's internal conv pattern at fixed params/k=2 (B(3,3) best, 5.73%, table:blocks). Rung 2 settles the deepening factor at fixed params (l=2 best, 5.43%, table:blocks_l) confirming the two-conv block. Rung 3 sweeps k=1..12 and depth=16..40 under ZCA preprocessing (table:width); WRN-28-10 (36.5M params) is the best cell found, 4.17%/20.50%, matching a thin 1001-layer/10.2M-param reference in order of magnitude while training far faster. Rung 4 adds dropout to that ZCA-preprocessed WRN-28-10 and finds a mixed result: CIFAR-10 gets slightly worse (4.17->4.39%) while CIFAR-100 improves (20.5->20.0%), sourced from the pre-v2 (v1) README table preserved in git history. Rung 5 switches CIFAR preprocessing from ZCA to mean/std specifically to allow direct, apples-to-apples comparison against the thin-ResNet prior art (which all report mean/std numbers) -- this alone moves WRN-28-10 from 4.17% to 4.00% (table:final, no dropout) and moves the dropout arm from a mixed 4.39%/20.0% result to a clean win, 3.89%/18.85% (table:dropout), beating thin pre-act-ResNet-1001 (4.92%/22.71%, 10.2M params) by 0.92/3.46 points at roughly 3.6x fewer parameters and far less depth (28 vs 1001 layers). Endpoint is WRN-28-10 with dropout=0.3, mean/std preprocessing -- the config embodied in the released wide-resnet.lua / train_cifar.sh.",
+  "notes": "Source-grounded from methods/wide-resnet/refs/primary/arxiv_source/wide_networks.tex (final v4 arXiv source) for every table number, plus methods/wide-resnet/refs/official_code/git-history-szagoruyko-wide-residual-networks.txt for the superseded rung-4 (v1, ZCA) dropout table, independently corroborated by github issue #61 in refs/official_code/github-issues-all-threads.txt which restates the same v1-vs-v2 renumbering (4.17->4.00, 4.81->4.27, 4.97->4.53) from a third party's own read of the arxiv v1 PDF. Rungs 1-2 (block type, deepening factor) both use k=2 and the same held-fixed-parameter protocol described in the source (lines 200, 247); rungs 3-4 are ZCA; rung 5 is mean/std. Endpoint (WRN-28-10-dropout) is not the single best number in the full record -- WRN-40-10-dropout posts a lower headline 3.8%/18.3% (table:overall) at ~5x more parameters -- but it is the config the paper's own final-comparison and dropout-ablation tables (table:final, table:dropout) center on and the one embodied in the released reference model/scripts, so it is the ladder's terminus; the WRN-40-10 headline number and the SVHN dropout result are reported as coda facts in rung 5's feedback rather than as a further rung, since no further design decision separates them from WRN-28-10-dropout other than raising k and depth again inside the same already-established recipe."
+}
