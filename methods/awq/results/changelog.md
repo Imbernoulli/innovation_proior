@@ -22,3 +22,36 @@
   saved locally at refs/github_issues_scale_design.txt.
 - No change to the landing (method + code): the scale-search formula,
   α-grid-search procedure, and quantize_block implementation are unchanged.
+
+## 2026-08-18 — svfix(epistemic)
+- **Removed self-supplied observations introduced by the svfix(D_candidate)
+  pass above.** A single-turn method unit is a proposal: the method's own
+  experiments have not happened at that point in the frame, so reasoning.md
+  must not have the narrator run the OPT-6.7B scale study (or the
+  weight-vs-activation loss check) and report a result — real, sourced
+  numbers or not. Both additions from the prior pass did exactly that:
+  (1) the OPT-6.7B Δ'/Δ-vs-PPL table plus the two paragraphs narrating its
+  readout ("PPL falls off a cliff...", "PPL is best at s=2 and gets worse
+  again at s=4...") and the two downstream references to it ("climb past
+  1.2×...", "the perplexity confirms it... the same run exposed..."); (2)
+  "multiply the activation term by a weight-magnitude term... rerun it. The
+  loss doesn't move" (issue #110 ablation, narrated as self-run).
+- Rewrote both passages to keep the hypothesis, the discriminating-experiment
+  design (model, scale range, matched 1% salient budget, metric), each
+  hypothesis's prediction, and the decision rule — without asserting an
+  observed outcome. The Δ'≥Δ inequality (scaling a channel can only enlarge,
+  never shrink, a group's max) is kept as on-page algebra, not an
+  experiment, and now carries the "≈ is optimistic" argument that the table
+  used to carry empirically. The weight-magnitude paragraph now declines the
+  extra term by inference from the earlier (pre-existing, untouched)
+  large-weight diagnostic rather than by citing a rerun.
+- Landing (whole-layer output-MSE objective; one-parameter α-grid-search
+  scored by real per-layer output MSE at calibration time) is unchanged and
+  remains justified by the algebra + hypothesis alone. The specific
+  empirical question the removed table answered — does the predicted
+  Δ'/Δ-vs-PPL crossover actually occur on OPT-6.7B — is still open in
+  proposal voice; it belongs in a trajectory observation turn.
+- Sources named in the prior entry (Ji Lin / tonylins GitHub issues #58,
+  #110) still ground the avg-not-max and drop-the-weight-term design
+  *choices* themselves — only the "I ran it and here's the number" framing
+  was removed.
