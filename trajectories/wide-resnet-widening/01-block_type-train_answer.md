@@ -92,14 +92,50 @@ class ResidualBlockM(nn.Module):
         return shortcut + residual
 
 
-BLOCK_TYPE_CONFIGS = {
-    "B331": ((3, 3), 28),
-    "B313": ((3, 1, 3), 22),
-    "B131": ((1, 3, 1), 40),
-    "B13":  ((1, 3), 40),
-    "B31":  ((3, 1), 40),
-    "B311": ((3, 1, 1), 40),
-}
+def make_block_type_net(block_type, num_classes=10):
+    """block_type in {"B331","B313","B131","B13","B31","B311"} -> (kernel_sizes, depth)."""
+    configs = {
+        "B331": ((3, 3), 28),
+        "B313": ((3, 1, 3), 22),
+        "B131": ((1, 3, 1), 40),
+        "B13":  ((1, 3), 40),
+        "B31":  ((3, 1), 40),
+        "B311": ((3, 1, 1), 40),
+    }
+    kernel_sizes, depth = configs[block_type]
+    return WideNetM(depth, widen_factor=2, kernel_sizes=kernel_sizes, num_classes=num_classes)
+
+
+class WideNetM(nn.Module):
+    def __init__(self, depth, widen_factor, kernel_sizes, num_classes=10):
+        super().__init__()
+        # depth counts total conv layers through the 3 groups; blocks_per_group derived
+        # from the block's own convolution count len(kernel_sizes).
+        n_convs_per_block = len(kernel_sizes)
+        blocks_per_group = (depth - 4) // (3 * n_convs_per_block)
+        widths = [16, 16 * widen_factor, 32 * widen_factor, 64 * widen_factor]
+
+        self.conv1 = nn.Conv2d(3, widths[0], kernel_size=3, padding=1, bias=False)
+        self.group1 = self._make_group(widths[0], widths[1], blocks_per_group, 1, kernel_sizes)
+        self.group2 = self._make_group(widths[1], widths[2], blocks_per_group, 2, kernel_sizes)
+        self.group3 = self._make_group(widths[2], widths[3], blocks_per_group, 2, kernel_sizes)
+        self.bn = nn.BatchNorm2d(widths[3])
+        self.fc = nn.Linear(widths[3], num_classes)
+
+    def _make_group(self, in_planes, out_planes, count, stride, kernel_sizes):
+        layers = [ResidualBlockM(in_planes, out_planes, kernel_sizes, stride)]
+        for _ in range(1, count):
+            layers.append(ResidualBlockM(out_planes, out_planes, kernel_sizes, 1))
+        return nn.Sequential(*layers)
+
+    def forward(self, x):
+        x = self.conv1(x)
+        x = self.group1(x)
+        x = self.group2(x)
+        x = self.group3(x)
+        x = F.relu(self.bn(x), inplace=True)
+        x = F.avg_pool2d(x, 8, 1, 0).flatten(1)
+        return self.fc(x)
 ```
 
 I train each of the six at `k=2` on CIFAR-10 (ZCA-whitened, flip + 4px reflected-pad crop), SGD
