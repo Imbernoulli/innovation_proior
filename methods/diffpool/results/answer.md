@@ -33,11 +33,15 @@ component GNNs are equivariant, since for any permutation P, X' = (PS)ᵀ(PZ) = 
 ## Auxiliary objectives
 
 The soft clustering is a non-convex, factorization-like object, and the classification gradient
-reaching it is weak and indirect. Checked against a no-link-prediction ablation on the same five
-benchmarks, though, that worry only partly pans out: classification signal alone still finds real
-hierarchical clusters, and the accuracy gap is a few tenths of a point (5.95% vs 6.27% average gain
-over mean-pooling, negative on Collab) — not a collapse. What the two auxiliary losses, added at
-every layer, actually buy is run-to-run training stability and crisper, more interpretable clusters:
+reaching it is weak and indirect — plausibly too weak on its own to steer the pooling GNN away from
+degenerate assignments (everything collapsed into one cluster, or a partition that ignores the graph
+entirely). Two auxiliary losses, added at every layer, inject the missing structural prior directly.
+Whether they're rescuing the optimization from that collapse or merely stabilizing an already-adequate
+signal is a question a leave-one-term-out ablation (same architecture and budget, one term zeroed at a
+time) can settle: if dropping a term collapses accuracy and the visualized clusters lose their
+hierarchical structure, that term is load-bearing for correctness; if accuracy and cluster structure
+hold up without it, its job is more likely training stability (link prediction) or cluster legibility
+(entropy) than avoiding outright failure:
 
 - **Link prediction:** L_LP = ‖ A^(l) − S^(l) S^(l)ᵀ ‖_F. Since (S Sᵀ)_{ij} = S_i·S_j is the soft
   probability that nodes i and j share a cluster, this makes connected nodes get grouped together.
