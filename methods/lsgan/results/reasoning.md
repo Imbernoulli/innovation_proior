@@ -75,7 +75,7 @@ So I discretize a 1-D toy: fix `p_d = N(0,1)` on a grid, take the Pearson labels
 
     p_g = p_d=N(0,1) : ∫N²-form = 0.000000 ,  χ²-form = 0.000000
     p_g = N(1, 1)    : ∫N²-form = 0.204042 ,  χ²-form = 0.204042
-    p_g = N(0, 2)    : ∫N²-form = 0.154243 ,  χ²-form = 0.154243
+    p_g = N(0, 2)    : ∫N²-form = 0.159982 ,  χ²-form = 0.159982
     p_g = N(−2, 0.7) : ∫N²-form = 0.657484 ,  χ²-form = 0.657484
 
 Both checks pass. The two formulas agree to all printed digits for every `p_g`, so the algebra collecting the expectations is right; and the value is exactly `0` when `p_g = p_d` and strictly positive when `p_g` is pulled away from `p_d`, so the object genuinely behaves as a divergence minimized at `p_g = p_d`. That settles the earlier worry: the least-squares game with labels chosen so that `b − c = 1` and `b − a = 2` minimizes a Pearson `χ²` divergence between `p_d + p_g` and `2 p_g`, and pushing it down really does drive the model toward the data. The least-squares game is f-divergence minimization, with a different divergence than the original game's Jensen–Shannon.
