@@ -8,13 +8,13 @@ Now I have a dilemma. I could mix all scales as raw features, but each scale is 
 
 Two components sit in each scale now, and nothing forces me to route them the same way. My first guess: a coarse seasonal rhythm is built by aggregating finer rhythms — a weekly pattern is a sum of daily ones — so seasonal detail should climb fine-to-coarse; a fine-scale trend estimate is the noisiest one, fit on the shortest window, so the clean coarse trend should instead push down into the finer scales. But a small MLP mixer can absorb either direction internally, so this aggregation argument is a hypothesis about what will generalize, not a closed derivation — the network is not forced to need it. There are four internally consistent ways to route the two components: both bottom-up, both top-down, my guess (season up, trend down), or its full reverse (season down, trend up). I fix everything else — the decomposition, the pooling ladder, the mixer width, the number of layers — and vary only this routing, then read off the forecasts on the same benchmark windows.
 
-On the 336-step ETTh1 setting the four routings do not tie: season-up/trend-down (my guess) scores 0.484 MSE / 0.458 MAE; season-down/trend-down (uniform top-down) scores 0.488/0.466; season-up/trend-up (uniform bottom-up) scores 0.493/0.484; season-down/trend-up (the full reverse of my guess) scores 0.498/0.491, worse than either single flip alone. So the asymmetry is not decorative: getting the direction pairing backward costs more than getting either component's direction wrong by itself, which is the signature of a real mechanism rather than an arbitrary consistent convention. I keep seasonal information climbing fine-to-coarse: for `m = 1..M`, I update
+My prediction is not just that my guess wins, but that the pairing itself carries the effect: getting the direction backward on both components at once (the full reverse) should cost more than getting either component's direction wrong by itself, because a wrong pairing fights the mixer on two fronts instead of one — that would be the signature of a real mechanism rather than an arbitrary consistent convention, and it is a claim the sweep can falsify by having a single flip land worse than the full reverse. Whichever of the four routings comes out ahead on the held-out forecasts is the one I ship. I build the network around my predicted winner so the design is ready to test. Seasonal information climbs fine-to-coarse: for `m = 1..M`, I update
 
 `s_m <- s_m + BottomUpMixing_m(s_{m-1})`.
 
 The mixer has to change length from `floor(P / 2^{m-1})` to `floor(P / 2^m)`, so it acts along the temporal dimension. I make it a small MLP, `Linear -> GELU -> Linear`, because I want a learned transformation of the finer seasonal pattern, not only a fixed resampling.
 
-And I keep trend information sinking coarse-to-fine: for `m = M-1..0`, I update
+And trend information sinks coarse-to-fine: for `m = M-1..0`, I update
 
 `t_m <- t_m + TopDownMixing_m(t_{m+1})`.
 
