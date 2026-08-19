@@ -42,8 +42,6 @@ The train/test asymmetry around the head is worth pushing on. At test time, if t
 
 Putting the chain together: the expensive full-network inner loop is justified only if the body rapidly specializes. Freezing, CCA/CKA, Euclidean movement, and the early-training check all point the other way — the body is reused, the head moves. The cut that survives the math is to adapt only the head, with the same descent sign and the same outer objective, while retaining second-order differentiation through that head update, which I confirmed is genuinely nonzero both symbolically and by tracing autograd. The implementation follows: current head params each step, `autograd.grad(..., create_graph=True)`, full-length updates with zeros for the body and $-\alpha g$ for the head, no extra meta-parameters.
 
-## Minimal ANIL implementation stub
-
 ```python
 import torch
 import torch.nn.functional as F
