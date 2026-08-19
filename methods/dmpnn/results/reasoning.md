@@ -66,8 +66,7 @@ Let me write the message phase as the vectorized loop I'd actually run, because 
     rev = message[reverse_index]                                        # h_wv for each bond v->w
     message = a[source_atom_of_each_bond] - rev                         # m_vw = a_v - h_wv  (the N(v)\w sum)
     message = ReLU(h^0 + W_m(message))                                  # tied update + skip to h^0
-  # back to atoms:
-  a = scatter-sum bond messages into destination atoms                 # m_v = sum_{w in N(v)} h_wv^T
+  a = scatter-sum bond messages into destination atoms                 # back to atoms: m_v = sum_{w in N(v)} h_wv^T
   h_atom = ReLU(W_a(cat(x_atom, a)))                                    # h_v = tau(W_a cat(x_v, m_v))
   h_mol  = scatter-sum h_atom over each molecule's atoms                # h = sum_v h_v
 
