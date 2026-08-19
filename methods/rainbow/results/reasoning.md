@@ -81,14 +81,18 @@ points at an action; its probabilities never enter the target distribution. This
 attachment — it modifies the selection step and nothing else — which is the confirmation I was hoping
 for that distributional and double-Q do not collide.
 
-Prioritized replay is the first place where the obvious choice is the wrong one. The available
-quantity, and my first instinct, is to reuse the scalar absolute TD error computed from the means,
-because it is cheap and already lying around. But the optimization target here is the projected
-distribution, not the mean, and those two errors can disagree. Concretely, on a stochastic transition
-the network can already predict the correct return *distribution* — matching $\Phi_z d_t^{(n)}$ — while
-a single sampled outcome still produces a large mean TD error just from the variance of the draw. A
-mean-error priority would then keep re-sampling a transition the agent has nothing left to learn from.
-So the priority has to be the agent's actual per-sample loss: the categorical divergence
+Prioritized replay is the first place where the machinery I already have does not obviously carry
+over safely. The absolute TD error computed from the means is still readable off this network — I can
+take $z^\top p_\theta(S_t,A_t)$ and $z^\top p_{\bar\theta}(S_{t+n},a^*_{t+n})$ exactly as before — but
+that scheme already carries a documented weakness that has nothing to do with distributions: greedy
+TD-error prioritization is sensitive to noise spikes when rewards are stochastic, and new transitions
+are always inserted at maximum priority, so a transition can keep looking urgent purely from the
+variance of a sampled outcome, even once there is nothing left in it for the network to learn. Reading
+the TD error off the mean does not fix that; it makes it worse in a specific way, because the mean is
+no longer the quantity this network is trained to reduce — the loss it actually minimizes is the
+categorical divergence $D_{\mathrm{KL}}(\Phi_z d_t^{(n)}\|d_t)$, not a squared TD error. A priority
+built from a quantity the optimizer is not reducing can drift from what the optimizer treats as
+learning potential. The consistent choice is to prioritize by the same loss being minimized:
 $p_t\propto(D_{\mathrm{KL}}(\Phi_z d_t^{(n)}\|d_t))^\omega$. In code the minimized quantity is the
 cross-entropy $-\sum_i m_i\log p_i$ rather than the full KL, which is fine because the projected target
 $m=\Phi_z d_t^{(n)}$ is fixed under the gradient, so the two differ only by the target's entropy — a
@@ -96,7 +100,12 @@ constant that does not affect either the gradient or the relative ordering of pr
 buffer stores this raw per-sample loss and raises it to $\omega$ in its own priority update; the
 importance-sampling weights multiply the loss for the gradient but are deliberately not folded back
 into the stored priority, since the priority should reflect learnability, not the correction for
-sampling bias.
+sampling bias. Whether switching to the KL loss also relieves the noise-spike weakness I started from
+is not something I can settle by this construction alone: a categorical loss can keep decreasing
+smoothly as a distribution sharpens even while the realized outcome on any one visit is not
+deterministic, in a way a single scalar TD sample cannot, so it might be more robust on noisy
+environments — but that is a claim about training dynamics, not a proof, and I leave it as an open
+question the consistency argument does not by itself answer.
 
 Now the dueling head, which has to be reinterpreted rather than reused. The scalar version adds a value
 scalar to action-advantage scalars and subtracts the mean advantage to pin the otherwise-unidentifiable
