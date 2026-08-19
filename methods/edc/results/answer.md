@@ -221,7 +221,7 @@ class EDCStrategy(Strategy):
 - **Revised split opacity `1 - sqrt(1 - alpha)` (RevisingGS)** solves exactly the same
   transmittance-matching equation EDC's own derivation hits (`(1 - f*alpha)^2 = 1 - alpha`),
   but keeps it as an `alpha`-dependent formula; EDC instead collapses it to a single proposed
-  scalar (`0.6`), sitting at the low end of that transmittance band rather than up where a
+  scalar (`0.6`), sitting near the middle of that transmittance band rather than up where a
   competing spatial-density-matching argument alone would place it — the exact value left for
   a sweep to pin down.
 - **Longest-axis placement (VCR-GauS)** shares the deterministic long-axis idea but keeps the

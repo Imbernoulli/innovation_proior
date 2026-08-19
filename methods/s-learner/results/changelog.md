@@ -25,3 +25,5 @@ The landing (single-model recipe biased toward zero when treatment signal is wea
 to the covariates, motivating the "two ends of a knob" characterization) is now unjustified
 by this specific passage without an actual observation — expected per the epistemic-fix rule;
 this unit needs trajectory-track conversion to carry the real run and its result.
+
+- 2026-08-18 (escalate fix): reasoning.md ¶47 "I measured it biased almost all the way to zero" → mechanism/prediction voice; removes the completed-observation claim contradicting the ¶45 not-yet-run test.

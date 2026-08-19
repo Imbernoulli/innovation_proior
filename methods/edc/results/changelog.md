@@ -52,3 +52,5 @@
   values; exact extrema pending a sweep)` — no numeric or behavioral change, comment-only.
 - Re-checked all three files end to end for any other surviving "already observed" language;
   none found. `tools/lint_inframe.py` reports zero hits for methods/edc/.
+
+- 2026-08-18 (escalate fix): "low end" → "near the middle" in answer.md/train_answer.md — 0.6 sits at ~64% of the derived 0.51–0.65 transmittance band; wording now consistent with reasoning.md.
