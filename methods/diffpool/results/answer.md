@@ -32,8 +32,12 @@ component GNNs are equivariant, since for any permutation P, X' = (PS)ᵀ(PZ) = 
 
 ## Auxiliary objectives
 
-The task gradient alone cannot reliably train the pooling GNN — the soft clustering is a non-convex,
-factorization-like object with many spurious minima. Two auxiliary losses, added at every layer:
+The soft clustering is a non-convex, factorization-like object, and the classification gradient
+reaching it is weak and indirect. Checked against a no-link-prediction ablation on the same five
+benchmarks, though, that worry only partly pans out: classification signal alone still finds real
+hierarchical clusters, and the accuracy gap is a few tenths of a point (5.95% vs 6.27% average gain
+over mean-pooling, negative on Collab) — not a collapse. What the two auxiliary losses, added at
+every layer, actually buy is run-to-run training stability and crisper, more interpretable clusters:
 
 - **Link prediction:** L_LP = ‖ A^(l) − S^(l) S^(l)ᵀ ‖_F. Since (S Sᵀ)_{ij} = S_i·S_j is the soft
   probability that nodes i and j share a cluster, this makes connected nodes get grouped together.
