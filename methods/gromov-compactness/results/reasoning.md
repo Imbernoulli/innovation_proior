@@ -5,13 +5,29 @@ can ask for uniform convergence, weak convergence, or smooth convergence in coor
 sequence of geometric spaces does not naturally give me "the same point" in every term of the
 sequence. The first problem is not a missing estimate; it is the wrong notion of convergence.
 
-So the first move is to stop treating coordinates or embeddings as part of the data. A compact
-metric space is already a complete object: its distances say what it means for points to be near.
-To compare two such spaces, I do not need a privileged coordinate system. I can embed both
-isometrically into a third metric space and ask whether their images are Hausdorff-close, or I can
-use a correspondence whose distortion of pairwise distances is small. This makes convergence a
-relation among intrinsic distance structures. The limit is allowed to be a metric space, not
-necessarily a smooth manifold with the same charts as the approximating sequence.
+I have hit exactly this wall before, trying to show that a finitely generated group of polynomial
+growth looks nilpotent once I rescale it and look from far away. My first instinct there was to
+name the limiting object before building it: treat "the group seen from infinity" as a structure of
+some recognizable kind and test the group against that catalogue. I try adapting a construction from
+topological dynamics that conjugates the rescaled group action directly onto a known model. It does
+not work. I try the same question as an instance of the classification of topological groups,
+matching the rescaled group against an existing list of structural types. That does not work either,
+and for the same underlying reason both times: a classification check needs a candidate structure to
+test membership against, and I do not have one until a limit already exists. Neither approach can
+even get started, because both presuppose the shape of the answer before there is a procedure that
+produces it.
+
+So the first move is to stop trying to name the limit and instead take the elementary notion of a
+limit at face value on the spaces themselves. A compact metric space is already a complete object:
+its distances say what it means for points to be near. To compare two such spaces, I do not need a
+privileged coordinate system, and I do not need to know in advance what kind of object the answer
+will be. I can embed both isometrically into a third metric space and ask whether their images are
+Hausdorff-close, or I can use a correspondence whose distortion of pairwise distances is small. This
+makes convergence a relation among intrinsic distance structures, built directly rather than checked
+against a catalogue of known types. Nothing exotic is required beyond passing to the limit more than
+once, at every scale; that repeated limiting is what manufactures a structure I could not have named
+in advance. The limit is allowed to be a metric space, not necessarily a smooth manifold with the
+same charts as the approximating sequence.
 
 Once convergence is defined intrinsically, the compactness hypothesis also changes shape. Instead
 of bounding derivatives in one coordinate chart, I need bounds that prevent the metric spaces from
