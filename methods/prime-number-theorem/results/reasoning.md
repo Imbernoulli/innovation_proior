@@ -44,16 +44,17 @@ There is a trap here. A pole at \(s=1\) alone is not enough if other singulariti
 
 So the analytic statement I need is very specific: \(\zeta(s)\) has no zeros on \(\operatorname{Re}s=1\). In \(\operatorname{Re}s>1\), the Euler product already rules out zeros. Hadamard's article isolates the missing boundary conclusion and proves it. Once that line is clear, \(-\zeta'/\zeta(s)-1/(s-1)\) has no boundary pole at any point \(1+it\). The pole at \(1\) is the only boundary singularity left.
 
-The proof of that nonvanishing has the right flavor. It does not try to count primes directly. It uses the positivity hidden in the logarithm of the Euler product. For real \(\sigma>1\),
-\(\log\zeta(\sigma)\) is a sum with positive contributions. If I compare values at \(\sigma\), \(\sigma+it\), and \(\sigma+2it\), the trigonometric inequality
+The proof of that nonvanishing has the right flavor. It does not try to count primes directly; it tracks how the real and cosine-weighted versions of the same sum behave as \(\sigma\downarrow1\). For real \(\sigma>1\) let
 \[
-3+4\cos u+\cos 2u=2(1+\cos u)^2\ge0
+S(\sigma)=\sum_p p^{-\sigma},
 \]
-keeps the prime-power sum from producing the wrong sign. In modern terms this makes the product
+essentially the real series behind \(\log\zeta(\sigma)\): the simple pole forces \(S(\sigma)\to+\infty\), growing like \(-\log(\sigma-1)\). Now suppose \(\zeta(1+it)=0\) for some real \(t\neq0\), and track the cosine-weighted analogue
 \[
-|\zeta(\sigma)^3\zeta(\sigma+it)^4\zeta(\sigma+2it)|
+P(\sigma)=\sum_p\cos(t\log p)\,p^{-\sigma}.
 \]
-large enough, as \(\sigma\downarrow1\), to contradict the possibility that \(\zeta(1+it)=0\) while \(\zeta\) has only its simple pole at \(1\). The exact proof can be organized in different ways, but the force of it is this positivity: the Euler product still controls the boundary when its logarithm is combined so that every prime-power coefficient is nonnegative.
+A zero at \(1+it\) forces \(\log\zeta(\sigma+it)\to-\infty\) as \(\sigma\downarrow1\), so \(P(\sigma)\) has to diverge to \(-\infty\) at the same rate that \(S(\sigma)\) diverges to \(+\infty\). But every term of \(P\) is bounded between \(-1\) and \(1\) times the matching term of \(S\); the only way the weighted sum can match the unweighted one in magnitude is for essentially all of the weight \(p^{-\sigma}\), as \(\sigma\downarrow1\), to concentrate on primes with \(t\log p\) sitting near an odd multiple of \(\pi\) — the angle where \(\cos(t\log p)\approx-1\). The sizes force that concentration; it is not an assumption.
+
+That concentration is exactly what breaks under a doubled frequency. The same primes, judged at \(2t\) instead of \(t\), have \(2t\log p\) near a multiple of \(2\pi\), where \(\cos(2t\log p)\approx1\): the interference that was destructive at \(t\) becomes constructive at \(2t\). So the analogous sum \(Q(\sigma)=\sum_p\cos(2t\log p)\,p^{-\sigma}\) is forced to \(+\infty\) through positive values, which means \(\log\zeta(\sigma+2it)\to+\infty\) as \(\sigma\downarrow1\) — a pole of \(\zeta\) at \(1+2it\). But \(\zeta\) has exactly one singularity on \(\operatorname{Re}s\ge1\), the simple pole at \(1\); it cannot have a second one at \(1+2it\). A zero at \(1+it\) manufactures a pole that is not there, so the hypothesis is impossible.
 
 With the zero-free boundary in place, the counting theorem is no longer a direct enumeration problem. I have the Dirichlet series
 \[
