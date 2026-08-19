@@ -40,3 +40,15 @@
   by a reported result — pending that sweep.
 - The landing is honestly under-justified now that the observation is gone; this method unit is
   queued for the trajectory-conversion pass to supply the actual sweep as an observation turn.
+
+## 2026-08-18 — svfix(epistemic) repair
+- The prior pass rewrote the prose but missed a matching claim in the Python code comment
+  shipped identically in all three files: `# Long-Axis Split constants (sweep extrema; +-0.05
+  [is] robust)`. That comment asserted, as an already-established fact, that 0.6/0.85 were the
+  measured outcome of a sweep and that a +-0.05 robustness band had already been checked —
+  contradicting the prose immediately above it, which (post-fix) says the sweep hasn't happened
+  yet and 0.6/0.85 are only the working proposal pending it. Reworded the comment in
+  reasoning.md, answer.md, and train_answer.md to `# Long-Axis Split constants (proposed
+  values; exact extrema pending a sweep)` — no numeric or behavioral change, comment-only.
+- Re-checked all three files end to end for any other surviving "already observed" language;
+  none found. `tools/lint_inframe.py` reports zero hits for methods/edc/.

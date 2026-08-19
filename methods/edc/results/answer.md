@@ -100,7 +100,7 @@ class EDCStrategy(Strategy):
     prune_opa: float = 0.005         # standard low-opacity prune floor
     absgrad: bool = False
     key_for_gradient: str = "means2d"
-    # Long-Axis Split constants (sweep extrema; +-0.05 robust)
+    # Long-Axis Split constants (proposed values; exact extrema pending a sweep)
     las_opa_factor: float = 0.6      # child opacity = 0.6 * parent
     las_short_factor: float = 0.85   # non-longest axes -> 0.85
     las_long_div: float = 2.0        # longest axis halved
