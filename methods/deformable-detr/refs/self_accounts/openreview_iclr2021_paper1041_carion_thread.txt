@@ -1,0 +1,66 @@
+===== Is deformable attention an attention mechanism? (ICLR.cc/2021/Conference/Paper1041/-/Public_Comment) =====
+Hello,
+
+I have a question about the "Deformable Attention Module" presented in this paper. According to the text following equation (2), the attention coefficients $A_{m,q,k}$ "are obtained via linear projection over the query feature". In my opinion, that does not constitute an attention mechanism per-se, since by definition an attention should incorporate both features from the query and the key (the most popular instantiation of an attention mechanism being dot-product attention).
+In other words, the presented mechanism aggregates features in a neighborhood irrespective of what the actual features are.
+From a purely terminological point of view, the role played by these $A_{mqk}$ is more akin to a gating, and in my opinion a better name for the proposed module would be something like "multi-resolution gated deformable convolution". What is your opinion on this?
+As a side note, in the proposed formulation, the $A_{m,q,k}$ could very well be computed as a dot-product as well (between the query and each of the sampled point), making it a "true" attention mechanism. Have you tried such thing?
+
+Aside from the numerical results, which are impressive, it would provide invaluable insights to showcase visualizations of the "attention" maps in the encoder and the decoder, similar to the original DETR paper. In particular, is the proposed model learning an approximation of what the original DETR attention attends to, or is it attending to completely different things? Do you still observe instance separation inside the encoder?
+
+The two additions on top of the vanilla model (namely "two stage detr" and "iterative bounding box refinement") are interesting and seem to be directly applicable to the original DETR as well. Do you have a ball-park estimate of the performance reached when applying them on DETR-DC5?
+As a side note, the gains obtained thanks to the iterative bounding box refinement might hint at limitations in the original auxiliary-loss formulation, or the L1+GIOU combinations. It would be interesting to analyze this more deeply. It's surprising that it helps mainly for large objects in the deformable setting, I would have guessed it would help for small instead.
+
+Finally, an ablation that would be valuable in my opinion would be to more carefully disentangle the effect of the multi-resolution and the effect of the proposed deformable module. In particular, in table2, the only experiment with no multi-scale input is done with k=1. What would be the performance with k=4 or even k=8 (which would be the most similar to DETR)? I'm curious to see if the proposed deformable module can match original DETR's performance on a low-res feature map, and if it requires long training schedule to do so. That would help understanding where the convergence speed boost comes from, and the exact performance trade-offs that are being made by using this different deformable mechanism as opposed to traditional attention.
+
+
+
+===== Reply to Nicolas Carion (1/2) (ICLR.cc/2021/Conference/Paper1041/-/Official_Comment) =====
+Hi Nicolas,
+
+Thanks for your good questions and constructive suggestions. First of all, we answer the question in your title. In our understanding, attention mechanisms are known by the property that it enables the neural networks to focus more on relevant elements of the input than on irrelevant parts. It is not defined by the formulation of how the attention weights are calculate. In this context, the proposed deformable attention is indeed an attention mechanism. Then, we answer the other questions as follows.
+
+----------
+Q#1: "...attention weight are obtained via linear projection over the query feature...by definition an attention should incorporate both features from the query and the key...As a side note, in the proposed formulation, the $A_{mqk}$ could very well be computed as a dot-product as well (between the query and each of the sampled point), making it a 'true' attention mechanism. Have you tried such thing?"
+
+A#1: Yes, we tried using dot-product to obtain the attention weight in some early experiments, where $K=1$ and other design choices are very similar with the default setting of Deformable DETR. It achieves on par performance (AP difference <0.5%) compared with that of linear projection. However, we experimentally found that using dot-product results ~25% slower speed than that of linear projection. Therefore, we choose to obtain the attention weight by linear projection for efficiency.
+
+We guess the reason of their very close performance is that the stacked convolutions and attention layers have provided enough contextual information for the query feature to determine the attention weights. We are also inspired by [a], which shows that the dot-product between the query and key content features (without the positional encodings) plays a minor role in the transformer self-attention.
+
+In terms of speed, using dot-product has the same computational complexity as the linear projection. The inefficiency of the dot-product may be related to the implementation. In comparison to linear projection, the dot-product requires additional random memory access for sampling key features and the batch matrix-matrix product, which may be the reason of inefficiency. In particular, for the dot-product, we first sample the key features (with the shape of $N_Q \times N_K \times C$) related to each query, and then apply the batch matrix-matrix product with the query features (with the shape of $N_Q \times C \times 1$), in order to obtain the attention weights (with the shape of $N_Q \times N_K$). Meanwhile, for the linear projection, we only need to compute a matrix multiplication between the query features (with the shape of $N_Q \times C$) and the weights of linear projection (with the shape of $C \times N_K$). 
+
+We shall add these comparisons and discussions in the revision. Thanks for your suggestion.
+
+[a] An Empirical Study of Spatial Attention Mechanisms in Deep Networks. In ICCV, 2019.
+
+----------
+Q#2: "showcase visualizations of the 'attention' maps in the encoder and the decoder"
+
+A#2: In the encoder, we observed very similar attention patterns between Deformable DETR and vanilla DETR, namely "instance separation". However, in the decoder, Deformable DETR focuses on the whole foreground instance instead of extreme points in vanilla DETR. We shall add the visualization in the revision.
+
+----------
+Q#3: Adding "two-stage DETR" and "iterative bounding box refinement" to vanilla DETR. 
+
+A#3: Actually, applying these two techniques to vanilla DETR is not straight-forward. Both techniques require a mechanism to guide the attention module w.r.t. the previously predicted bounding boxes, which is missing in vanilla DETR. Besides, trial and error are required to make these techniques compatible with vanilla DETR. However, vanilla DETR requires a very long training time. Due to limited computing resources, it is not affordable for us (also for many labs) to do many trials. From this point, Deformable DETR opens up the possibilities to explore these variants with its fast convergence and efficiency.
+
+----------
+Q#4: "It's surprising that it helps mainly for large objects in the deformable setting, I would have guessed it would help for small instead."
+
+A#4: We are also surprised by the phenomenon that "iterative bounding box refinement" helps mainly for large objects, while "two-stage Deformable DETR" helps mainly for small objects. It is very interesting. However, we still don’t know what the reason is. Further study is needed.
+
+
+===== Reply to Nicolas Carion (2/2) (ICLR.cc/2021/Conference/Paper1041/-/Official_Comment) =====
+----------
+Q#5: "disentangle the effect of the multi-resolution and the effect of the proposed deformable module"
+
+A#5: Thanks for your good suggestion. We tried training Deformable DETR (K = 4) with single-scale input feature maps (of stride 32) for 50 epochs and 150 epochs. The results are shown as follows. The single-scale model of 50 epochs is still slightly worse than DETR (500 epochs) in total AP, while the single-scale model of 150 epochs achieves on par accuracy with DETR (500 epochs). However, the phenomenon is still slightly different. The single-scale Deformable DETR performs better on small objects and performs worse on large objects, compared with vanilla DETR. Further study is needed.
+
+| Method                         |  K   | Epochs |  AP  | AP50 | AP75 | AP@S | AP@M | AP@L |
+| ------------------------------ | :--: | :----: | :--: | :--: | :--: | :--: | :--: | :--: |
+| DETR                           |  -   |  500   | 42.0 | 62.4 | 44.2 | 20.5 | 45.8 | 61.1 |
+| DETR                           |  -   |   50   | 33.3 | 54.1 | 34.2 | 13.3 | 35.9 | 52.0 |
+| Deformable DETR (single scale) |  4   |   50   | 40.5 | 60.6 | 43.0 | 21.5 | 44.7 | 56.7 |
+| Deformable DETR (multi scale)  |  4   |   50   | 43.8 | 62.6 | 47.7 | 26.4 | 47.1 | 58.0 |
+| DETR                           |  -   |  150   | 39.5 | 60.3 | 41.4 | 17.5 | 43.0 | 59.1 |
+| Deformable DETR (single scale) |  4   |  150   | 41.6 | 61.9 | 44.6 | 22.8 | 45.3 | 58.0 |
+| Deformable DETR (multi scale)  |  4   |  150   | 45.3 | 64.3 | 49.1 | 27.1 | 48.4 | 60.0 |
