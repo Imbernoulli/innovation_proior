@@ -1,0 +1,44 @@
+{
+  "task": "lion-program-search",
+  "title": "Lion program search: discovering a first-order optimizer by evolution over update-rule programs",
+  "domain": "Optimization / deep learning training",
+  "metrics": [
+    "ViT-S/16",
+    "ViT-B/16"
+  ],
+  "metric_columns": [
+    "ImageNet",
+    "ReaL",
+    "V2"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "priorauto",
+      "method": "PowerSign / AddSign (Neural Optimizer Search, restricted expression-tree search over fixed {g, m} operands)",
+      "reasoning": "01-priorauto-reasoning.md",
+      "answer": "01-priorauto-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "single_beta",
+      "method": "Single-EMA sign momentum (Ablation_0.9 / Ablation_0.99: m = interp(g, m, beta); update = sign(m))",
+      "reasoning": "02-single_beta-reasoning.md",
+      "answer": "02-single_beta-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "lion",
+      "method": "Lion: decoupled two-constant sign-momentum (fast interpolated blend signed for the step, slow EMA persisted as the only buffer)",
+      "reasoning": "03-lion-reasoning.md",
+      "answer": "03-lion-answer.md",
+      "feedback": "03-feedback.md"
+    }
+  ],
+  "endpoint": "Lion (decoupled beta1=0.9 / beta2=0.99 sign-momentum)",
+  "ranking_basis": "Ranked by measured ImageNet/ReaL/V2 top-1 accuracy (three-run average) on ViT-S/16 and ViT-B/16, tuned lr/weight-decay per entrant, all from the same table (methods/lion/src/release.tex Table tab:multi). priorauto (PowerSign/AddSign) weakest, below AdamW on every column at both scales (77.36/83.39/65.17 & 77.37/83.36/64.52 vs AdamW's 78.89/84.61/66.73 at ViT-S/16; same pattern at ViT-B/16) -- the restricted, fixed-operand/fixed-momentum search space caps what it can reach. single_beta (Ablation_0.9/Ablation_0.99) beats priorauto on every column at both scales but still falls short of AdamW on ImageNet and ReaL at both scales (78.23/78.19 & 79.54/79.90 vs 78.89/80.12 ImageNet) -- a single interpolation constant forced to both remember gradient history and stay reactive to the fresh gradient undershoots on one job to buy the other. lion (the endpoint) beats every prior entrant -- AdamW, PowerSign, AddSign, both ablations -- on every column at both scales (79.46/85.25/67.68 ViT-S/16; 80.77/86.15/69.19 ViT-B/16), by decoupling the two jobs onto two constants (beta1=0.9 for the transient signed blend, beta2=0.99 for the one persisted buffer), which the raw discovered program's two differently-tuned interp calls algebraically forced once verified rather than assumed.",
+  "notes": "Ladder mined from methods/lion/src/release.tex Table tab:multi (lines 941-952) plus the search-machinery narrative in the same source (random-2M-programs baseline L418, regularized-evolution-vs-4x-compute-baselines L427/L451, abstract-execution pruning stats L464, raw discovered program lines 1370-1373). PowerSign/AddSign formulas fetched fresh via WebFetch of arXiv:1709.07417 (Bello et al. 2017) and saved to methods/lion/refs/powersign_addsign_formulas.md, since release.tex names but does not restate them; their accuracy numbers are release.tex's own. Rung 1 (priorauto) tests an EXISTING automated-discovery result under the target protocol before building new search machinery -- it is a real rung (a genuine proposal + real measured numbers), not filler: it is the natural cheapest-first move and its failure motivates widening the program representation. The raw discovered program's dead cosh, harmless-on-ablation clip/arcsin, and the m/sqrt(m*m)=sign(m) identity are folded into rung 3's on-page derivation (no separate measured row exists for them -- they are exact identities / no-quality-drop ablations reported only qualitatively in the source, not distinct table rows), per notes-ladder.md's 'Not used as separate rungs' section. RAdam/NAdam/AdaBelief/AMSGrad (same table, other columns) are real measured numbers but never proposed or tested by the narrator at any rung, so they are omitted rather than fabricating an untested rung around them."
+}
