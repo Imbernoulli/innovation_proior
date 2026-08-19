@@ -8,11 +8,19 @@ Now I test whether the Hessian signs are only approximate information or the who
 
 `f(p+y)=f(p)+quadratic part+higher order terms`.
 
-If the higher order terms remain, I cannot cleanly read off a handle. The necessary local statement is stronger: after a smooth change of coordinates, a nondegenerate critical point is exactly quadratic. That is the Morse lemma. In coordinates `(u,v)` with `u in R^lambda` and `v in R^{n-lambda}`,
+If the higher order terms remain, I cannot cleanly read off a handle; a remainder that is merely small is not a shape I can attach anything to. I need something exact, so I fall back on the one identity that is exact by construction rather than asymptotic: for `h(t)=f(p+ty)`, `h(1)-h(0)=int_0^1 h'(t)dt`. Expanding `h'`, this reads
+
+`f(p+y)=c+sum_i y_i g_i(y)`, `g_i(y)=int_0^1 (partial_i f)(p+ty)dt`,
+
+with nothing dropped, valid on the nose for every `y` in the chart. Because `p` is critical, `g_i(0)=(partial_i f)(p)=0`, so each `g_i` vanishes at the origin exactly as `f-c` did, and the same trick applies to it a second time: `g_i(y)=sum_j y_j h_{ij}(y)` for smooth `h_{ij}`. Symmetrizing in `i,j` gives an exact identity, not an approximation,
+
+`f(p+y)=c+sum_{i,j} h_{ij}(y) y_i y_j`,
+
+with `h_{ij}(0)` equal to half the Hessian. This is where nondegeneracy earns its keep: `(h_{ij}(0))` is invertible because it is half the Hessian, invertibility of a matrix is an open condition, and the `h_{ij}` are continuous, so `(h_{ij}(y))` stays invertible on some neighborhood of `0`. An invertible symmetric matrix of functions diagonalizes the same way a constant one does under completing the square: peel off one coordinate at a time, use a nonzero pivot entry to absorb the cross terms into a new coordinate, and each such substitution is itself a smooth invertible change of variables because the pivot stays nonzero throughout the neighborhood. After finitely many such steps the quadratic form is a signed sum of squares, and the count of negative signs cannot depend on how I ordered the pivots, since it is exactly the count of negative Hessian eigenvalues, an invariant of the starting form. That is the Morse lemma: in the resulting coordinates `(u,v)` with `u in R^lambda` and `v in R^{n-lambda}`,
 
 `f=c-||u||^2+||v||^2`,
 
-where `c=f(p)` and `lambda` is the number of negative Hessian directions. This is the moment where the Hessian index stops being a diagnostic number and becomes a topological dimension.
+where `lambda` is the number of negative Hessian directions. This is the moment where the Hessian index stops being a diagnostic number and becomes a topological dimension.
 
 Let me cross the critical level in this local model. Below `c`, the inequality is `-||u||^2+||v||^2 <= -epsilon`, or `||v||^2 <= ||u||^2-epsilon`. Near the origin that forces `u` to be nonzero and large enough; the central negative disk is missing. Above `c`, the inequality is `-||u||^2+||v||^2 <= epsilon`, or `||v||^2 <= ||u||^2+epsilon`, and now the set includes the disk in the negative directions with the positive directions thickened around it. The new core is the disk `D^lambda` in the descending directions, and its normal thickening is `D^{n-lambda}` in the ascending directions. The boundary by which it was already visible below is `S^{lambda-1} x D^{n-lambda}`. So the local event is not "a mysterious singularity"; it is the attachment of a `lambda`-handle `D^lambda x D^{n-lambda}`.
 
