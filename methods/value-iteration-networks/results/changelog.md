@@ -17,3 +17,14 @@ issue threads, Berkeley 2016 deck). Two changes to `results/reasoning.md`:
   and the analogous structure here is that transition distributions are almost never dense.
 - No factual errors found; the 5×5 numeric equivalence check (max abs diff ~7e-8), the channel-max
   distinction, the architecture, the landing and the code are unchanged.
+
+## 2026-08-18 — epistemic correction
+The 2026-08-17 recheck above put the untying ablation's *outcome* in the narrator's mouth: at this
+point in the frame the method's own experiments have not run yet, so "the success rate drops from
+99.3% to 95.6%..." etc. was an observation the proposal isn't entitled to. Removed the reported
+numbers from `results/reasoning.md`; kept the ablation's design (untie the `K` recurrent layers,
+change nothing else, compare held-out success across training-set sizes), the prediction (drops
+hardest when data is scarce), the discriminating signature (a widening gap says parameter-count
+problem, a flat gap says capacity problem), and the existing honesty line ("I won't claim the size
+of the effect until I've run it"). The generalization rewrite (linear-op-then-max; sparse dynamics)
+was not touched — it states no observed result, so it wasn't in scope.
