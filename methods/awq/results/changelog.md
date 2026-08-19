@@ -77,3 +77,29 @@
   fraction of weight channels in FP16 is diagnostic evidence that these
   channels matter") was already result-free; left untouched. context.md
   unaffected — it carries no result claims here.
+
+## 2026-08-18 — obs-fix (repair pass, reasoning.md)
+- The prior entry above claimed reasoning.md was already clean going into
+  this pass; that was wrong. The 304fcad34 svfix(epistemic) commit only
+  removed the OPT-6.7B PPL table and the s-sweep narration — it never
+  touched the four narrator-run-outcome sentences in the saliency section,
+  which survived unfixed through d01a6c963: "Keeping ~1% in FP16 recovers
+  almost all the lost accuracy. So there's a small 'salient' set..."; "That
+  barely beats keeping a *random* 1%. So weight magnitude is not what
+  makes a weight important... the same 1% budget gives a large recovery.
+  So saliency is set by the activation side."; "I already have the answer
+  from the earlier diagnostic: weight magnitude alone couldn't even find
+  the salient channels, it barely beat keeping a random 1%."; and the
+  closing recap ("the FP16-keep diagnostic showed the loss concentrates
+  in a salient ~1% — and the magnitude-vs-activation comparison showed
+  that 1% is picked out by *activation* magnitude").
+- Rewrote all four into hypothesis + discriminating-test design (restore
+  a matched ~1% budget chosen by each candidate criterion, compare
+  against a random-selection baseline) + prediction (weight magnitude
+  should land near the random baseline; activation magnitude should clear
+  it by a wide margin) + decision rule (whichever criterion clears the
+  baseline names the true saliency signal). The later paragraph that
+  reuses the weight-magnitude-vs-activation result to justify dropping the
+  weight term from the scale search was rewritten to lean on the
+  *predicted* outcome of that same test rather than an assumed-observed
+  one. No mechanism content or numbers-as-design-parameters removed.
