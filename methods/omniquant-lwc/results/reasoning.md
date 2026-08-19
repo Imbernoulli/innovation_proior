@@ -54,22 +54,27 @@ inward clipping helps — and, more usefully, it rules out the aggressive versio
 amount is a delicate, group-specific tradeoff.
 
 But a fifteen-weight toy group is not proof, and I should not trust my own back-of-envelope sweep any
-more than I trust a fixed percentile. Let me check the claim at the scale that matters: run the real
-block-wise pipeline on a full model, keep the reconstruction loss exactly as it will be at deployment,
-and set every group's clip two different ways on the identical objective — once by a grid search over a
-handful of candidate ratios per group, scoring each candidate on that same reconstruction loss and
-keeping the best, and once by letting gradient descent walk the ratio to wherever the loss wants it. Grid
-search here is searching the *right* quantity, not blindly covering the outlier the way plain min-max
-does, so this is the honest version of "just tune it well" rather than a straw man. On LLaMA-1-7B at W4A4
-the grid-searched clip lands at 15.82 average perplexity; gradient descent on the identical per-group
-ratio, same reconstruction objective, same calibration budget, lands at 12.87. So even a properly
-searched clip — not a lazy fixed percentile but an actual per-group optimum found by scoring real
-candidates against the real loss — still loses to a learned one, because a discrete sweep can only land
-*near* the optimum of a jagged, group-specific loss surface, while a gradient can walk to wherever that
-surface's minimum actually sits, group by group, without me ever having to enumerate candidates or pay
-for evaluating each one. That points away from *setting* the clip, however carefully, and toward
-*learning* it: make the clipping range a trainable quantity, per group, optimized directly against how
-much the quantized weights perturb the output. That is the degree of freedom I will spend my budget on.
+more than I trust a fixed percentile. The way to check the claim at the scale that matters is to run the
+real block-wise pipeline on a full model, keep the reconstruction loss exactly as it will be at
+deployment, and set every group's clip two different ways on the identical objective — once by a grid
+search over a handful of candidate ratios per group, scoring each candidate on that same reconstruction
+loss and keeping the best, and once by letting gradient descent walk the ratio to wherever the loss wants
+it, with the same calibration budget and the same per-group objective in both arms, so the only thing
+that differs is how the ratio is found. Grid search here is searching the *right* quantity, not blindly
+covering the outlier the way plain min-max does, so this is the honest version of "just tune it well"
+rather than a straw man — if a careful discrete search matches the learned clip under that matched
+budget, there is no case for adding a trainable parameter at all. My prediction is that it will not
+match: a discrete sweep can only land *near* the optimum of a jagged, group-specific loss surface,
+because between candidates it has no information about the surface, while a gradient can walk to
+wherever that surface's minimum actually sits, group by group, without me ever having to enumerate
+candidates or pay for evaluating each one — and at low bit-width, where every group's residual error
+compounds into the model's output, that gap should show up as a real difference in reconstruction loss on
+something like LLaMA-1-7B at W4A4. The decision rule is the comparison itself: whichever ratio-finding
+method reaches the lower loss under the identical budget is the one I ship; if grid search wins or ties,
+learning the clip buys nothing and I should not build it. Betting on the gradient is what points away
+from *setting* the clip, however carefully, and toward *learning* it: make the clipping range a trainable
+quantity, per group, optimized directly against how much the quantized weights perturb the output. That
+is the degree of freedom I will spend my budget on, pending that comparison.
 
 Learning the clip immediately runs into the wall that keeps PTQ gradient-free: the quantizer has a
 `round` in it, and `round` is flat almost everywhere — zero derivative — so a gradient cannot flow back
