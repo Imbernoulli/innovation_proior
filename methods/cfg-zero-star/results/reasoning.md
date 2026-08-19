@@ -103,25 +103,29 @@ velocity.
 just exercised is a statement about the unreliable *source end* — it held at `w = 7` because the field
 there is dominated by error. My first reading is that this is a fixed geometric fact about high-noise
 guidance — the source end is always the least informative part of the trajectory, so I could just bake
-`K` in as a constant fraction of any schedule and stop worrying about it. That reading is checkable
-against something the 1D toy cannot give me, and it fails. Track the same guided-vs-zero gap not at one
-fixed model but across checkpoints of increasing convergence: first on the Mixture-of-Gaussians setup
-where the closed form applies exactly, then on a real conditional image generator carried toward
-convergence on ImageNet. Early checkpoints show exactly the gap I found at `w = 7` — guided loses to
-zero at the source end. As training proceeds the gap shrinks, and past a clear turning point pure
-zero-init stops improving anything: the guided move at `t` near 0 is no longer worse than doing nothing,
-because the field there has become accurate enough to trust on its own. So "guided worse than zero at
-the source end" is not a permanent property of high-noise guidance; it is a symptom of the field still
-being underfit at that point in training, and the same diagnostic that flags the unreliable steps is
-also, incidentally, a convergence probe. That is also why the trick keeps paying off outside the toy
-setting: a large text-conditioned generator is conditioning on too vast and diverse a space to reach
-that turning point in practice, so the regime zero-init is patching stays live. And it fixes what
-"small" has to mean: once past the unreliable prefix the field is informative, continuing to do nothing
-throws away useful, budget-limited solver steps and discards the conditional signal I need, so zero-init
-has to stay a short prefix tied to how underfit the source end still is — not a fixed correction folded
-permanently into CFG. This is the second lever. The two are independent — optimized scale corrects the
-mix on every guided step; zero-init removes the few steps where no mix is trustworthy because the model
-has not yet converged there — and together they are the full method.
+`K` in as a constant fraction of any schedule and stop worrying about it. But there's a competing reading
+the 1D toy cannot adjudicate, since it only ever probes one fixed, closed-form field: "guided worse than
+zero at the source end" might not be a geometric fact about the trajectory at all, but a symptom of the
+field still being underfit there — in which case `K` should track how converged the model is, not sit at
+a fixed fraction. The two readings make different, checkable predictions, and the test that separates
+them is to track the same guided-vs-zero gap not at one fixed model but across checkpoints of increasing
+convergence — first on the Mixture-of-Gaussians setup, where the closed form gives an exact benchmark at
+every checkpoint, then on a real conditional image generator carried toward convergence on ImageNet. If
+`K` is a fixed geometric fact, the gap should hold at about the same size no matter how converged the
+checkpoint is. If it is an underfitting symptom instead, the gap should be largest at early checkpoints,
+shrink as training proceeds, and cross a turning point past which pure zero-init stops helping — the
+guided move at `t` near 0 no longer worse than doing nothing, because the field there has become accurate
+enough to trust on its own. Whichever pattern that sweep shows is what should decide whether `K` is a
+fixed constant or a schedule tied to convergence; the same diagnostic that flags the unreliable steps
+would double as a convergence probe either way. I don't have that sweep yet, so I go with what the toy
+already supports without it: the closed form shows the field is well-defined and gives the learned field
+every chance to track it as `t` grows, so treating the source-end failure as temporary rather than as a
+permanent property of the geometry is the reading consistent with what I've actually checked. Under that
+reading, once the field becomes informative, continuing to do nothing throws away useful, budget-limited
+solver steps and discards the conditional signal I need. So zero-init is deliberately a short prefix, not
+a schedule — and the checkpoint sweep above is the test that would tell me if that call is wrong. This is
+the second lever. The two are independent — optimized scale corrects the mix on every guided step;
+zero-init removes the few steps where no mix is trustworthy — and together they are the full method.
 
 Now make both halves concrete in code. The optimized scale flattens each prediction per batch element,
 forms the projection coefficient with a small denominator floor (so a near-zero unconditional
