@@ -9,8 +9,21 @@ You fix ONE method: `methods/<SLUG>/` in /srv/home/bohanlyu/innovation_proior (g
 The trace's DECISIVE STEP (the move that makes the construction work) reads as a clean forward derivation from the finished paper. But finished papers edit the struggle out. What we want is the documented route: what the author actually tried first and why it failed, which counterexample/obstacle forced the design — evidence that lives OUTSIDE the primary paper: author self-accounts (Nobel/Turing/award lectures, PhD theses of first authors, retrospectives, interviews/podcasts/talk transcripts, blogs, OpenReview replies, GitHub issue replies, competition reports), co-author surveys, authoritative third-party re-derivations.
 Tracks: `B_selfaccount` (material is already in refs/notes but unused) · `D_single_source`/`D_candidate` (only the primary is present) · `C_decorative` (sources cited as flavor only) · `A_fake_thin` (notes admit "standard knowledge", nothing read) · `W3_*` (wave-3: a triage agent classified it B/C/D; its notes are passed to you as TRIAGE).
 
+## Quality gate — decide FIRST whether this trace needs fixing at all
+The goal is training-data quality, not source count. A single-source trace is LEGITIMATE and must be left alone when BOTH hold:
+(a) the decisive step is genuinely DERIVED on the page — the obvious first move fails for a concrete, checkable reason (a worked counterexample, a quantity that doesn't close, an explicit ablation) and the resolution follows from that failure; AND
+(b) that obstacle/justification really is in the primary (modern ML papers often carry their own ablations and failed variants) or is the trace's own honest computation.
+In that case: outcome = "sound_as_is", and you MUST quote (≤200 chars each) (i) the trace passage that does the deriving and (ii) the primary/source passage or the on-page computation that backs it. Do NOT graft a source onto a sound trace — a bolted-on citation that the reasoning doesn't need is damage, not improvement (a wave-2 fixer grafted a blog stat that was just the primary's own number restated, and overclaimed independence; the verifier killed it).
+Fix ONLY when at least one of these defects is present:
+- the decisive step is ASSERTED, not derived (hindsight tone, "this confirms", design stated with no forcing reason);
+- a failed attempt is staged/vague ("this feels wrong") instead of failing for a real reason;
+- a factual error (wrong constant/sign/attribution/formula);
+- genuinely valuable non-primary material is ALREADY on disk (refs/notes) and unused at the decisive step;
+- the trace contradicts the sources on record.
+An adversarial verifier will adjudicate "sound_as_is" claims with the same rigor as fixes — thin justifications will be bounced back to you.
+
 ## Procedure (do all steps, in order)
-1. Read results/reasoning.md fully; read notes/*.md; `ls refs/ src/`. Identify the decisive step yourself (don't just trust the hint).
+1. Read results/reasoning.md fully; read notes/*.md; `ls refs/ src/`. Identify the decisive step yourself (don't just trust the hint). Apply the quality gate above; only continue to step 2 if the gate says fix.
 2. FIND MATERIAL — search in this order and do not stop at the first empty layer:
    a. `grep -ril "<key terms>" methods/<SLUG>/refs methods/<SLUG>/src methods/<SLUG>/notes` — material is often already on disk and unused (wave-1: em-algorithm had a Laird interview, deltanet had a "Failed Attempt" blog section, isolation-forest's notes skipped pages 13-29 of the source — re-extract when a saved .txt looks truncated).
    b. `grep -i "<slug or method name>" SELF_ACCOUNT_SOURCES.md` at repo root.
@@ -27,7 +40,7 @@ Tracks: `B_selfaccount` (material is already in refs/notes but unused) · `D_sin
 7. If after the full search in step 2 there is truly nothing beyond the primary: write the search log (queries + venues) into notes/sources.md, do NOT rewrite, outcome = no_source_found. This should be uncommon; if the trace additionally has factual errors, still fix those and commit.
 
 ## Output (your final message is parsed — return exactly this JSON and nothing else)
-{"slug":"...", "track":"...", "outcome":"fixed|no_source_found|not_applicable", "sources_added":["<type>: <title/URL> -> <local path>"], "quote":"<≤200 chars verbatim from the source file that grounds the step>", "quote_file":"<local path>", "step_rewritten":"<≤160 chars: what the decisive passage now runs through>", "errors_corrected":["..."], "commit":"<sha or ''>", "search_log":"<≤200 chars: queries/venues tried, if outcome != fixed>"}
+{"slug":"...", "track":"...", "outcome":"fixed|sound_as_is|no_source_found|not_applicable", "sources_added":["<type>: <title/URL> -> <local path>"], "quote":"<≤200 chars verbatim from the source file that grounds the step>", "quote_file":"<local path>", "step_rewritten":"<≤160 chars: what the decisive passage now runs through>", "errors_corrected":["..."], "commit":"<sha or ''>", "search_log":"<≤200 chars: queries/venues tried, if outcome == no_source_found>", "sound_evidence":{"trace_quote":"<≤200 chars>", "backing_quote":"<≤200 chars>", "backing_file":"<path>"}}
 
 ## What the verifier will check (so do it right the first time)
 - quote_file exists, is >2 KB, and contains the quote (fuzzy match ok).
