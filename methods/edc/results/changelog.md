@@ -22,3 +22,21 @@
   GitHub issues, alphaxiv, arXiv v1-vs-current diff) found no author self-account material for
   EDC (see notes/sources.md for the search log). Long-axis-split geometry (halving/offset/
   split-only/recovery-aware-pruning) reasoning was already sound and is unchanged.
+
+## 2026-08-18 — svfix(epistemic)
+- The previous pass (above) had the narrator report the sweep's own real ablation numbers
+  (SSIM/PSNR/LPIPS, "the sweep below confirms `0.85`/`0.6` as the extremum") as an
+  already-observed outcome in reasoning.md/answer.md/train_answer.md. At that point in the
+  frame the proposal's own experiments haven't happened yet, so a narrator that reports its own
+  method's results is out of voice regardless of whether the numbers are real. Removed the
+  reported numbers and the outcome-dependent conclusions ("0.6 lands at the low end, telling me
+  which argument the renderer cares about") from all three files.
+- Kept: the math bounding the two competing objectives (spatial-mass minimum at `f ≈ 0.84` vs.
+  transmittance band `0.51-0.65`), the discriminating-experiment design (matched trained runs,
+  everything but the factor held fixed), each hypothesis's prediction (winner near 0.5-0.6 vs.
+  near 0.8-1.0), and the decision rule (whichever value survives the sweep is the one to ship).
+  `0.6`/`0.85` remain in the text as the narrator's working proposal — a reasoned bet toward the
+  transmittance side, justified only by the on-page transmittance-vs-full-opacity algebra, not
+  by a reported result — pending that sweep.
+- The landing is honestly under-justified now that the observation is gone; this method unit is
+  queued for the trajectory-conversion pass to supply the actual sweep as an observation turn.

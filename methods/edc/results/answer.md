@@ -48,10 +48,10 @@ For each Gaussian flagged for densification (mean `mu`, true scales `s`, rotatio
   profile) bottoms out near `f ≈ 0.84`, while matching *through-ray transmittance*
   (`(1 - f*alpha)^2` against the parent's `1 - alpha`) wants `f` in the low-0.5s to mid-0.6s —
   so the exact constant isn't derivable from either objective alone.
-- `0.85` and `0.6` are extrema found by sweeping trained runs (SSIM 0.821->0.823,
-  PSNR 27.67->27.72, LPIPS 0.217->0.216 vs. no opacity reduction); `+-0.05` gives
-  near-identical results. `0.6` sits at the low end of the transmittance-matching band, so
-  transmittance-matching is the dominant consideration, not spatial-density matching.
+- `0.85` and `0.6` are the proposed working values — `0.6` near the middle of the
+  transmittance-matching band — pending a sweep over matched trained runs (`+-0.05` around
+  each) to pin the exact extrema and settle which of the two competing objectives above the
+  renderer actually weights more heavily.
 - **Split only** (no clone): the converged-size observation makes one operation enough.
 
 ## Recovery-Aware Pruning
@@ -220,9 +220,10 @@ class EDCStrategy(Strategy):
   EDC stacks on top, supplying the operation.
 - **Revised split opacity `1 - sqrt(1 - alpha)` (RevisingGS)** solves exactly the same
   transmittance-matching equation EDC's own derivation hits (`(1 - f*alpha)^2 = 1 - alpha`),
-  but keeps it as an `alpha`-dependent formula; EDC instead collapses it to a single
-  sweep-tuned scalar (`0.6`), landing at the low end of that transmittance band rather than
-  up where a competing spatial-density-matching argument alone would place it.
+  but keeps it as an `alpha`-dependent formula; EDC instead collapses it to a single proposed
+  scalar (`0.6`), sitting at the low end of that transmittance band rather than up where a
+  competing spatial-density-matching argument alone would place it — the exact value left for
+  a sweep to pin down.
 - **Longest-axis placement (VCR-GauS)** shares the deterministic long-axis idea but keeps the
   parent's full shape and opacity; EDC additionally halves the long axis, shrinks the short
   axes to 0.85, and reduces opacity to 0.6 so the whole density profile is preserved.
