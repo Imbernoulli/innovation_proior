@@ -16,10 +16,12 @@ The goal is training-data quality, not source count. A single-source trace is LE
 In that case: outcome = "sound_as_is", and you MUST quote (≤200 chars each) (i) the trace passage that does the deriving and (ii) the primary/source passage or the on-page computation that backs it. Do NOT graft a source onto a sound trace — a bolted-on citation that the reasoning doesn't need is damage, not improvement (a wave-2 fixer grafted a blog stat that was just the primary's own number restated, and overclaimed independence; the verifier killed it).
 Fix ONLY when at least one of these defects is present:
 - the decisive step is ASSERTED, not derived (hindsight tone, "this confirms", design stated with no forcing reason);
+- an empirical outcome is FAKE-DERIVED (presented as logically necessary when it is only knowable by experiment) — restage as hypothesis → discriminating test → observed numbers from the record → interpretation;
 - a failed attempt is staged/vague ("this feels wrong") instead of failing for a real reason;
 - a factual error (wrong constant/sign/attribution/formula);
 - genuinely valuable non-primary material is ALREADY on disk (refs/notes) and unused at the decisive step;
 - the trace contradicts the sources on record.
+EMPIRICAL decisive steps (most modern ML methods): a mathematical counterexample can be genuinely computed on the page, but an experimental outcome (an ablation result, a training curve, a benchmark delta) can only be OBSERVED, never derived. The honest trace shape for such a step is: (1) derive up to the boundary of what logic settles — competing hypotheses, why first principles cannot decide between them; (2) design the discriminating test (what is held fixed, matched parameters, what each hypothesis predicts); (3) report the REAL numbers from the primary/sources as the observed result (never invent numbers; surprise is allowed — the result may contradict the prediction, that is a genuine wall); (4) interpret the result mechanistically. A trace that "derives" an empirical outcome with logical-necessity tone is FAKE DERIVATION — it teaches assert-without-verify — and counts as a defect to fix (restage it as an experiment with the paper's numbers), even though it needs no new source. Conversely, a trace that honestly stages the ablation and reasons around it is sound even if single-source.
 An adversarial verifier will adjudicate "sound_as_is" claims with the same rigor as fixes — thin justifications will be bounced back to you.
 
 ## Procedure (do all steps, in order)
