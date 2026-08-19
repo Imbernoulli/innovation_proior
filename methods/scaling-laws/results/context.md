@@ -26,6 +26,8 @@ Transformer language models get better as they get bigger, are trained on more d
 
 The measured quantity is autoregressive cross-entropy test loss (nats/token) on a held-out split, with models trained on WebText2 and tested both there and on other text distributions to check universality. Models span over six orders of magnitude in non-embedding parameters; datasets are taken in fixed subsets down to small sizes to probe overfitting (with early stopping when test loss stops improving, and 10% dropout in the finite-data study); compute is measured in PetaFLOP-days. Context length is 1024 tokens. Training uses Adam (Adafactor for the largest models), a fixed step budget with warmup and cosine decay, and a range of batch sizes to measure $B_{\text{crit}}$. Fits are performed in log-log space; fit constants tied to vocabulary/tokenization carry no fundamental meaning.
 
+**Given frontier exponents.** Fitting each single factor's frontier directly reports $\alpha_N \approx 0.076$ ($N_c \approx 6.4\times10^{13}$), $\alpha_D \approx 0.095$–$0.103$ ($D_c \approx 1.8\times10^{13}$), $\alpha_S \approx 0.76$, and $\alpha_B \approx 0.21$; fitting the compute-optimal loss-versus-compute trend directly off the frontier reports $\alpha_C \approx 0.05$.
+
 ## Code framework
 
 The primitives that already exist: linear-regression / curve-fitting in log space (NumPy/SciPy), and the Transformer hyperparameter conventions. Given a set of training runs — each a tuple of scale quantities and the converged/early-stopped loss — the pieces to fill in start from the parameter- and compute-counting helpers and the single-variable power-law fit; the remaining slots are left open below.

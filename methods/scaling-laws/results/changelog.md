@@ -1,0 +1,4 @@
+# Changelog
+
+- 2026-08-18 `methods/scaling-laws/results/context.md` added a "Given frontier exponents" paragraph to Evaluation settings, stating the directly-fit single-factor exponents ($\alpha_N$, $\alpha_D$, $\alpha_S$, $\alpha_B$) and the directly-fit compute exponent ($\alpha_C\approx0.05$) as pre-existing measured facts, so the joint-law derivation can cite them as given rather than as the narrator's own live experiment.
+- 2026-08-18 `methods/scaling-laws/results/reasoning.md` compute-exponent cross-check paragraph: removed the narrator-run-experiment framing ("a number I measured *independently* off the compute frontier ... the strongest internal evidence") and rewrote the passage to compare the on-page reciprocal-sum derivation against the compute exponent now stated as given in context, keeping the algebra and the consistency-check conclusion.
