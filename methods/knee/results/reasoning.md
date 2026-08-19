@@ -29,27 +29,37 @@ That is precisely the large-batch generalization gap that is reported in practic
 quantitative prediction it did not have to, so I will reason with it.
 
 Now the temperature picture alone does not tell me the *budget* to spend hot — it says hot is good, not how
-long. Before building on a story about why, let me rule out the boring alternative: maybe it isn't temperature
-at all — maybe a narrow basin's iterate just needs more raw optimization time, at *any* rate, to eventually
-wander to a wide one; patience instead of heat. That is checkable without touching the schedule I am
-designing: take the same net and run it fifty times longer, 10,000 epochs instead of 200, holding the rate
-fixed and low at 0.001 the whole way. The training loss converges cleanly — this is not a stalled optimizer,
-it genuinely settles somewhere — but the test accuracy lands at 93.9, well under the >95 that 200 epochs with
-a long high-rate phase reaches. Fifty times the wall-clock at low temperature does not substitute for time
-spent hot: it is not distance traveled that matters but the escape mechanism itself, and only a large step is
-big enough to jump a narrow basin's walls. That rules out the patience account and leaves the density account
-standing: suppose wide minima are *rarer* than narrow ones — the landscape is full of narrow basins and only
-sparsely dotted with wide ones — so a search that cools quickly is overwhelmingly likely to fall into one of
-the many narrow basins long before it stumbles onto a rare wide one, and only a long high-temperature search
-finds a rare one before settling. The pattern is not even smooth, which fits a rarity story better than a
-smooth one: cut the hot phase to 30 of the 200 epochs and repeat fifty times, and the average is a mediocre
-94.81 — but one of those fifty runs spikes to 95.24, above even the long-explore average of 95.1, a rare hit
-exactly where a rare-target account predicts one. The same batch-size arithmetic above is consistent with
-this: the colder large-batch search not only settles faster but settles into the abundant narrow basins it
-cannot escape, which is what its worse generalization looks like. I still cannot measure the density directly
-— that would take sampling many minima and comparing widths, which I keep in mind as the test that could
-falsify the whole thing — but the patience control and the rare-hit pattern are two independent, checkable
-reasons to treat this as a density effect rather than a smoother alternative, so I will design from it.
+long. Before building on a story about why, let me design a way to rule out the boring alternative: maybe it
+isn't temperature at all — maybe a narrow basin's iterate just needs more raw optimization time, at *any*
+rate, to eventually wander to a wide one; patience instead of heat. That is checkable without touching the
+schedule I am designing: take the same net and run it fifty times longer, 10,000 epochs instead of 200,
+holding the rate fixed and low at 0.001 the whole way, and compare it against a run that spends a long phase
+at high rate before cooling. If patience is the real story, the extended low-rate run's loss should converge
+cleanly and its accuracy should climb to match the high-rate run's, since given enough wall-clock even a cold
+walk should eventually wander into a wide basin — distance traveled is what matters, not step size. If heat
+is what matters instead, the extended run's loss should still converge cleanly — this would not be a stalled
+optimizer — but its accuracy should fall short of the high-rate run's no matter how long it continues, because
+it is not distance traveled that matters but the escape mechanism itself, and only a large step is big enough
+to jump a narrow basin's walls. That gap, or the absence of it, is what separates patience from heat. Suppose
+heat wins that control: the next question is why a long hot phase specifically, and here is the further
+hypothesis I would lean on — that wide minima are *rarer* than narrow ones, the landscape full of narrow
+basins and only sparsely dotted with wide ones, so a search that cools quickly is overwhelmingly likely to
+fall into one of the many narrow basins long before it stumbles onto a rare wide one, and only a long
+high-temperature search reliably finds one before settling. That rarity story makes its own sharper,
+checkable prediction: cut the hot phase down to 30 of the 200 epochs and repeat the run fifty times at that
+matched, shorter budget. A smooth, non-rarity account predicts the fifty repeats cluster tightly, each
+landing somewhere between the no-explore and full-explore extremes. A rarity account predicts something
+rougher — most of the fifty landing mediocre, cooling having caught them before they found a wide basin, but
+a minority spiking sharply higher, occasionally rivaling or beating the long-explore average, because a
+short hot phase is still a lottery ticket for a rare basin and a few tickets should win. The same batch-size
+arithmetic above is consistent with the rarity account either way: the colder large-batch search not only
+settles faster but should settle into the abundant narrow basins it cannot escape, which is what its worse
+generalization would look like. I still cannot measure the density directly — that would take sampling many
+minima and comparing widths, which I keep in mind as the test that could falsify the whole thing — but the
+extended-low-rate control and the repeated-short-hot-phase spread are two independent, checkable tests, and
+whichever pattern they actually show is the one I trust: patience if the long cold run matches the reference,
+a smooth account if the short repeats cluster, density if the short repeats show a rare-hit tail. I take
+density as the working hypothesis to design from, with those two tests as what could overturn it.
 
 This reshapes how I read the standard schedules. Cosine annealing is at its peak rate for a single instant —
 `epoch = 0` — and from there it cools monotonically; under the density hypothesis it barely explores before
