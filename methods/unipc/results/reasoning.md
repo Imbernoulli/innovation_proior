@@ -149,24 +149,7 @@ A few realities I keep from the reference implementation. The `phi`/`expm1` fact
 exponentials, so `expm1` is used throughout to avoid cancellation. The order ramps up as history
 accumulates — first step order 1, then 2, then up to the configured max — and there is a
 `lower_order_final` option that drops the order on the last step(s) where there is no future evaluation
-to correct with (and where the trajectory is nearly straight at low noise anyway). Having the framework
-makes the per-step order a schedule I can actually sweep, and that sweep is the test that decides the
-question I opened with. At a matched budget — ten calls, same time grid, same everything except the
-per-step order assignment — I can write any schedule as a string of per-step orders and put candidates
-head to head on FID: a schedule that stays low and ramps to a moderate peak before easing off near the
-end (`1223433321`), close neighbors that push the peak slightly higher (`1233343321`, `1234544321`,
-`1234554322`), a schedule that climbs all the way to the maximum order the framework exposes
-(`1234565432`), and a flat schedule that holds near the top order for most of the run (`1234444443`).
-My prediction, from the staleness argument above: FID should degrade with how much of a schedule's
-order is bought through the predictor's own history rather than the corrector's current-point
-evaluation, so the schedule that reaches order six through the predictor (`1234565432`) should be the
-worst of the set, and the gently-ramping schedules — which take their marginal order mostly from the
-free corrector step — should come out ahead of the flat-high one even though both touch high orders
-somewhere in the run. If FID instead stays flat across all of these, or is worst on the low-order end,
-the staleness mechanism is wrong and I have no basis yet for preferring any particular schedule over
-the framework's own order-ramp default. Whichever schedule wins that comparison is the one I ship as
-the default; the same matched-budget comparison, run at six and seven calls, is how I would choose
-between low-NFE candidates like `123432` and `1223334` rather than picking one on intuition. The time grid is the
+to correct with (and where the trajectory is nearly straight at low noise anyway). The time grid is the
 EDM/Karras power schedule (`rho=7`) or uniform-`lambda`; either spends the budget where truncation
 error is largest. For latent-space text-to-image there is no `[-1,1]` bound, so thresholding is off and
 only the numerics matter. And the data prediction itself folds in classifier-free guidance — the
