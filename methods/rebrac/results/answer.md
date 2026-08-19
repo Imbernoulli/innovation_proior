@@ -42,17 +42,24 @@ target, it floors the target at a precomputed Monte Carlo return-to-go,
 should be treated as a reference-code variant, not as the core ReBRAC formula.
 
 `beta_1` and `beta_2` are **decoupled** and tuned per environment (the original framework used
-one shared coefficient). The actor penalty is the load-bearing one; the critic penalty
-completes the two-sided regularization but contributes less on most tasks.
+one shared coefficient): the actor penalty and the critic penalty are answering different
+questions (how conservative should the acting policy be vs. how distrustful should the
+bootstrap be of an off-distribution next action), and forcing both onto one scalar collapses a
+genuinely two-dimensional trade-off onto a single point. Which of the two ends up mattering
+more on a given task is an empirical question decided per environment by ablating each
+independently, not a claim this write-up settles either way.
 
 ## Revisited design choices and why
 
 - **LayerNorm in the critic only.** With LayerNorm before the output head `w`, the last hidden
-  feature has bounded norm, so for any (including OOD) `(s,a)`:
-  `|Q(s,a)| = |w^T relu(psi(s,a))| <= ||w|| ||relu(psi(s,a))|| <= ||w|| ||psi(s,a)|| <= ||w||`.
-  The OOD value is capped by the head weight norm, killing the runaway extrapolation that
-  feeds overestimation. The actor is left without inter-layer normalization (its tanh output
-  is already bounded and `beta_1` pulls it to data).
+  feature `psi(s,a)` (dimension `d`) has bounded norm, so for any (including OOD) `(s,a)`:
+  `|Q(s,a)| = |w^T relu(psi(s,a))| <= ||w|| ||relu(psi(s,a))|| <= ||w|| ||psi(s,a)|| <= ||w||*sqrt(d)`.
+  LayerNorm normalizes each of the `d` features to unit variance, not the vector to unit norm,
+  so the bound is `||w||*sqrt(d)` (at `d=256` a factor of 16 above the naive `||w||`) — the
+  mechanism is what matters: that constant is the same for an in-distribution or a wildly OOD
+  input, so the off-distribution value is capped in exactly the same band as an in-distribution
+  one, killing the runaway extrapolation that feeds overestimation. The actor is left without
+  inter-layer normalization (its tanh output is already bounded and `beta_1` pulls it to data).
 - **Three hidden layers, width 256, ReLU.** Depth helps the value/policy fit on a large
   static dataset; the two-layer base is a holdover. Saturates around 3-5 layers; drops at 6.
 - **Larger batch + scaled learning rate on dense locomotion.** Batch 1024, lr `1e-3` for

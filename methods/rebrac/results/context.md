@@ -43,13 +43,16 @@ two penalty strengths were treated as a single shared coefficient.
 **Normalization as an extrapolation regularizer (diagnostic finding).** A separate empirical
 thread observed that applying Layer Normalization (Ba et al. 2016) inside the critic
 markedly stabilizes value learning on offline data, and gave the mechanism explicitly (Ball
-et al. 2023). If the last hidden representation `psi(s,a)` is layer-normalized before the
-final linear head `w`, then for *any* input — including OOD `(s,a)` —
-`|Q(s,a)| = |w^T relu(psi(s,a))| <= ||w|| · ||relu(psi(s,a))|| <= ||w|| · ||psi(s,a)|| <= ||w||`,
-because LayerNorm forces `||psi(s,a)||` to a bounded constant. The Q-value off-distribution is
-therefore bounded by the head weight norm and cannot run away far above the values seen in
-data. A toy fit (inputs on a radius-0.5 circle, target `y = ||x||`) shows a plain ReLU MLP
-extrapolating without bound outside the support while the LayerNorm variant stays bounded.
+et al. 2023). If the last hidden representation `psi(s,a)` (dimension `d`) is layer-normalized
+before the final linear head `w`, then for *any* input — including OOD `(s,a)` —
+`|Q(s,a)| = |w^T relu(psi(s,a))| <= ||w|| · ||relu(psi(s,a))|| <= ||w|| · ||psi(s,a)||`, and
+because LayerNorm gives each of the `d` normalized features unit variance, `||psi(s,a)||` is
+forced to the fixed constant `sqrt(d)` for any input (not `1`, since normalizing per-coordinate
+variance to `1` is not the same as normalizing the vector to unit norm), so `|Q(s,a)| <=
+||w||·sqrt(d)`. The Q-value off-distribution is therefore bounded by a constant that does not
+grow with how far the input sits outside the data, and cannot run away far above the values
+seen in data. A toy fit (inputs on a radius-0.5 circle, target `y = ||x||`) shows a plain ReLU
+MLP extrapolating without bound outside the support while the LayerNorm variant stays bounded.
 
 **Depth, batch size, discount as understudied knobs.** Most off-policy bases (TD3, SAC) ship
 with two hidden layers by default; several later offline works quietly switched to three and
