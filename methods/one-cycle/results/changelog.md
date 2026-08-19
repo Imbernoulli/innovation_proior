@@ -21,3 +21,22 @@
   inverse-cosine cycling were already correct; only the justification changed.
 - Source: methods/one-cycle/refs/disciplined_hyperparams_1803.09820.pdf, extracted to
   refs/disciplined_hyperparams_1803.09820.txt; quotes + provenance in notes/sources.md.
+
+## 2026-08-18 — svfix(epistemic)
+- The 2026-08-18 W3_ancestors_only pass above still crossed the line: it grounded the
+  decisive momentum step in a real source (Smith 2018 Sec 4.3 Fig. 7c) but wrote it into
+  reasoning.md/train_answer.md in first-person past tense as the narrator's OWN executed
+  experiment ("I test it directly ... Rising momentum does buy something ... Falling
+  momentum is the one that wins outright") -- a single-turn proposal has no results yet,
+  sourced or not.
+- Rewrote both passages to keep the two hypotheses, the discriminating-experiment DESIGN
+  (three-way momentum sweep -- constant / rising / falling -- against a fixed rising LR
+  ramp, matched schedule and budget), each hypothesis's PREDICTION (constant/rising: buys a
+  larger tolerable peak rate at the cost of higher minimum test loss; falling: wins on
+  minimum test loss, convergence speed, and stability range all at once), and the decision
+  rule (whichever treatment wins the comparison is the one momentum is cycled by). Removed
+  the claimed observation and the "settles it" / "wins outright" framing.
+- The landing (momentum 0.95->0.85->0.95, inverse-cosine cycling) is unchanged and is now
+  asserted without an in-frame observation backing the direction -- expected per the
+  epistemic-fix rule; this unit needs conversion to a trajectory observation turn to supply
+  the actual result.
