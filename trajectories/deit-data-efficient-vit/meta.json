@@ -1,0 +1,52 @@
+{
+  "task": "deit-data-efficient-vit",
+  "title": "Data-efficient image Transformer: training recipe and attention distillation on ImageNet-1k only",
+  "domain": "Computer vision (ImageNet-1K image classification, convolution-free Transformers)",
+  "metrics": [
+    "DeiT-Ti",
+    "DeiT-S",
+    "DeiT-B",
+    "DeiT-B_384"
+  ],
+  "metric_columns": [
+    "top1_imagenet"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "recipe",
+      "method": "Data-efficient training recipe (AdamW + truncated-normal init + RandAugment/Mixup/CutMix/Random Erasing/Stochastic Depth/Repeated Augmentation/Label Smoothing), unmodified ViT-B/16 architecture, no distillation",
+      "reasoning": "01-recipe-reasoning.md",
+      "answer": "01-recipe-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "hard_distill",
+      "method": "Distillation objective: hard-label distillation (argmax teacher pseudo-label, 50/50 CE) vs soft KD, single class-token readout",
+      "reasoning": "02-hard_distill-reasoning.md",
+      "answer": "02-hard_distill-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "distill_token",
+      "method": "Dedicated distillation token (second special token, own classifier trained on the teacher's hard label) with late-fusion readout, hard-label objective fixed",
+      "reasoning": "03-distill_token-reasoning.md",
+      "answer": "03-distill_token-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "res_ft_long",
+      "method": "Fine-tune the class+distillation model at 384^2 (bicubic positional-embedding interpolation) and extend the schedule to 1000 epochs",
+      "reasoning": "04-res_ft_long-reasoning.md",
+      "answer": "04-res_ft_long-answer.md",
+      "feedback": "04-feedback.md"
+    }
+  ],
+  "endpoint": "DeiT-B, class+distillation token, fine-tuned at 384^2, 1000-epoch schedule: 85.2% top-1 ImageNet-1k, no external training data",
+  "ranking_basis": "Ranked by measured ImageNet-1k top-1 (primary quality signal, DeiT-B unless noted, all sizes reported per rung). Rung1 (data-efficient recipe, no distillation) reaches Ti/S/B = 72.2/79.8/81.8 at 224^2 and 83.1 after a 384^2 fine-tune, already ahead of the 79.35% timm-tuned ViT-B/16-on-ImageNet-1k-only starting point. Rung2 fixes the architecture and tests distillation objective: soft KD leaves B essentially unchanged (81.8/83.2) while hard-label distillation lifts every size (74.3/80.9/83.0/84.0). Rung3 fixes the hard-label objective and tests architecture: a dedicated distillation token with late-fused readout reaches 74.5/81.2/83.4/84.5, beating both single-token hard distillation (rung2) and either token's readout alone (83.0/84.2 class-only, 83.1/84.4 distillation-only). Rung4 combines the winning class+distillation architecture with a 384^2 fine-tune and a 1000-epoch schedule (1000-epoch @224: 76.6/82.6/84.2; @384: 85.2), landing at the published headline 85.2%, which the record states surpasses the 84.15% reached by a ViT-B pretrained on 300M extra images at the same 384^2 resolution.",
+  "notes": "methods/deit single-round trace (context/answer/reasoning/train_answer) is the derivation reference and is untouched. Ladder mined entirely from methods/deit/src/{training.tex, experiments.tex, token.tex}: the training ablation table (training.tex, tab:ablation), the throughput table (experiments.tex, tab:throughput), the distillation-method table (experiments.tex, tab:distillation), and the resolution fine-tune table (training.tex, tab:res_finetune). The teacher-architecture comparison (tab:teacher) is background only, not its own rung, since its header names the two-token student and so postdates rung 3's architecture; it is used in 00-initial-context.md and rung 2's reasoning only to justify locking RegNetY-16GF (82.9% top-1) as the fixed default teacher for every distillation rung. Final rung = the published method: 85.2% matches the paper's own stated headline number exactly (experiments.tex:44,244)."
+}
