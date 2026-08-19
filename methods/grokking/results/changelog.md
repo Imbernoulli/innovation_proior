@@ -20,3 +20,4 @@
 - `methods/grokking/code/openai-grok-metadata.json:1` recorded the official repository URL, commit, fetch date, and role.
 - `methods/grokking/results/.codex_review.json:1` replaced stale review metadata with a truthful current manual-audit record and independent-review-not-run status.
 - `methods/grokking/notes/strict_check_output.txt:1` recorded the passing strict checker, leakage scan, JSON validation, and official-code parse check.
+- `methods/grokking/results/train_answer.md:21` obs-fix: replaced the self-reported "ablation showing decay-to-origin beats decay-to-initialization" result with the design rationale for keeping both decay modes and the matched-budget comparison that decides between them (random-label prior-work reference in the same file left untouched).
