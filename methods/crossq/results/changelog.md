@@ -19,3 +19,23 @@
   found; landing (BatchRenorm twin critics, joint forward pass, no target
   network, UTD=1) unchanged, so answer.md/train_answer.md left as-is. See
   `notes/sources.md` for the quotes and provenance.
+
+- 2026-08-18 (epistemic svfix) `results/reasoning.md` — the grounding pass above
+  overshot: it recast the documented "common pitfall" (Bhatt et al. 2019) as the
+  narrator's own past experimental history — "it's not hearsay to me — I hit this
+  exact wall once already, dropping a BatchNorm layer straight into a DDPG critic
+  ... I hadn't built any other mode for it," "destabilization I already watched
+  happen once," and "this is exactly the fix that worked the first time I hit
+  this, on the DDPG critic, when nothing fancier did." That is a narrator
+  claiming to have run an experiment (naive separate-batch BatchNorm on a DDPG
+  critic) and reporting its outcome (failure, then a fix that "worked") — a
+  single-turn proposal has no such history to report. Removed all three claims;
+  kept the documented mechanism stated as a known fact ("a documented failure
+  mode, not just folklore" / "statistics ... oscillate between two modes"), the
+  on-page numeric toy trace (unchanged, allowed as on-page computation), and the
+  concatenate-then-split fix design (unchanged, allowed as design). No prediction
+  or decision-rule sentence existed in this passage to preserve — this paragraph
+  is diagnosis-of-a-known-pitfall + fix-design, not a discriminating experiment
+  with a landing that depended on the removed text, so `needs_traj` is not
+  triggered by this fix. Lint clean (`tools/lint_inframe.py`); answer.md /
+  train_answer.md had no svfix changes in this method, so untouched.
