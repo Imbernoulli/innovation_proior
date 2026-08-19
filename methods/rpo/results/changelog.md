@@ -13,16 +13,3 @@
   better with a much smaller `alpha` (near-PPO behavior)" to state the real severity (collapse well
   below PPO, not just underperformance) and name the failure mode, for consistency with the
   reasoning.md fix above. No change to the landing (`rpo_alpha=0.5` default, algorithm, code unchanged).
-- 2026-08-18 (epistemic fix) The two entries above put the method's *own* results — the four-env
-  failure with real numbers, and the `alpha=0.01` recovery — into the narrator's mouth inside
-  reasoning.md and answer.md. This is a single-turn proposal: at this point in the frame the suite
-  has not been run yet, so the narrator cannot report having run it, real numbers or not (that
-  observation belongs only in a trajectory turn). Reworked both passages back to hypothesis +
-  discriminating-experiment design + per-family prediction + decision rule ("if a task collapses
-  under `alpha=0.5`, re-run at `alpha=0.01` and check whether it recovers to at-or-above PPO"),
-  dropping the claimed sweep run, the specific outcome numbers, and "which tells me" hindsight
-  framing. Kept: the algebra (gradient-noise-scale limits), the real reward-structure distinction
-  between narrow-band tasks (Reacher/Pusher/InvertedDoublePendulum/Ant) and locomotion tasks, and
-  the falsifiable prediction + decision rule. `rpo_alpha=0.5` landing, algorithm, and code unchanged.
-  This unit now needs a trajectory-conversion pass to carry the removed observation as a proper
-  observation turn.
