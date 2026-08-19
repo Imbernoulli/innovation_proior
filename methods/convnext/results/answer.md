@@ -1,29 +1,23 @@
 # ConvNeXt
 
-ConvNeXt is a pure convolutional backbone obtained by modernizing a residual ConvNet with the non-attention design choices that made hierarchical vision Transformers strong: Transformer-style training, a four-stage hierarchy, a patchify stem, separated spatial/channel mixing, an inverted 4x bottleneck, a large depthwise kernel, sparse activations and norms, LayerNorm, separate downsampling, LayerScale, and stochastic depth.
+ConvNeXt is a pure convolutional backbone proposed by modernizing a residual ConvNet with the non-attention design choices that made hierarchical vision Transformers strong: Transformer-style training, a four-stage hierarchy, a patchify stem, separated spatial/channel mixing, an inverted 4x bottleneck, a large depthwise kernel, sparse activations and norms, LayerNorm, separate downsampling, LayerScale, and stochastic depth.
 
-The controlled ResNet-50 / Swin-T path is:
+The controlled ResNet-50 / Swin-T validation path holds compute in the same ~4.5 GFLOPs regime throughout and changes one design axis per step, each matched against its immediate predecessor's training protocol so a change can only be credited to the axis that moved:
 
-| Step | Top-1 | GFLOPs |
-| --- | ---: | ---: |
-| ResNet-50, old recipe | 76.13 | 4.09 |
-| Modern recipe, no EMA for ablations | 78.82 +- 0.07 | 4.09 |
-| Stage counts `(3,4,6,3) -> (3,3,9,3)` | 79.36 +- 0.07 | 4.53 |
-| 4x4 stride-4 patchify stem | 79.51 +- 0.18 | 4.42 |
-| Depthwise conv alone | 78.28 +- 0.08 | 2.35 |
-| Widen base channels `64 -> 96` | 80.50 +- 0.02 | 5.27 |
-| Inverted 4x bottleneck | 80.64 +- 0.03 | 4.64 |
-| Move depthwise conv before channel MLP | 79.92 +- 0.08 | 4.07 |
-| Depthwise kernel 5 | 80.35 +- 0.08 | 4.10 |
-| Depthwise kernel 7 | 80.57 +- 0.14 | 4.15 |
-| Depthwise kernel 9 | 80.57 +- 0.06 | 4.21 |
-| Depthwise kernel 11 | 80.47 +- 0.11 | 4.29 |
-| ReLU to GELU | 80.62 +- 0.14 | 4.15 |
-| One activation per block | 81.27 +- 0.06 | 4.15 |
-| One normalization per block | 81.41 +- 0.09 | 4.15 |
-| BatchNorm to LayerNorm | 81.47 +- 0.09 | 4.46 |
-| Separate downsampling with boundary LayerNorms | 81.97 +- 0.06 | 4.49 |
-| Swin-T reference | 81.30 | 4.50 |
+1. Retrain the plain ResNet-50 with the modernized recipe (AdamW, 300 epochs, RandAugment, Mixup, Cutmix, Random Erasing, label smoothing, stochastic depth, no EMA while BatchNorm variants remain in the path) — this becomes the baseline every later step is measured against, so an architectural gain can't be confused with what the recipe alone buys.
+2. Stage counts `(3,4,6,3) -> (3,3,9,3)`, matching the Transformer-era 1:1:3:1 depth ratio.
+3. Replace the 7x7-stride-2-conv-plus-maxpool stem with a single 4x4 stride-4 patchify convolution (the two stems are verified by hand to give stage 1 the same 56x56 grid, so only the manner of downsampling changes).
+4. Make the 3x3 convolution depthwise, then widen the base channel count `64 -> 96` to spend the compute a depthwise conv frees back as width, following ResNeXt's grouped-convolution precedent.
+5. Invert the block to a narrow-wide-narrow shape with a 4x channel expansion, matching MobileNetV2's inverted residual to the Transformer MLP's expansion ratio.
+6. Move the depthwise convolution ahead of the channel expansion, so the spatial mixer acts on the narrow tensor rather than the expanded one.
+7. Sweep the depthwise kernel size (3/5/7/9/11) at matched compute. A MAC count at this point shows channel mixing outweighs spatial mixing roughly 16x at this width, so the predicted FLOP curve across the sweep is close to flat and accuracy is expected to show diminishing returns that saturate near the local-window scale (7x7) that the Swin-T competitor uses at this stage.
+8. Replace ReLU with GELU, matching the Transformer MLP's activation.
+9. Drop every block activation except the one between the two channel-mixing layers, testing whether the conventional ConvNet block was over-saturated with nonlinearity rather than under-nonlinear.
+10. Drop every block normalization except one, placed before the first 1x1 layer.
+11. Replace BatchNorm with LayerNorm inside this remodeled (depthwise-mixed, sparsely-activated, singly-normalized) block.
+12. Replace in-block downsampling with a standalone 2x2 stride-2 convolution between stages, with a LayerNorm added at every resolution-change boundary (after the stem, before each downsampling conv, after the final pool) to compensate for the normalization that in-block downsampling used to co-locate with every resolution change — the boundary most likely to destabilize training if left unnormalized.
+
+The decision rule carried through the whole chain: a change is kept if it holds or improves accuracy at matched compute; a change that costs accuracy without a compensating structural reason (like the width increase compensating for depthwise) is dropped or reworked. The chain is run once at the small ResNet-50/Swin-T regime and once at the larger ResNet-200/Swin-B regime (~15 GFLOPs) against the corresponding Swin references, so a design choice earns a place in the final architecture only if the sign of its effect agrees at both scales, not just one.
 
 The final block is:
 
