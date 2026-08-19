@@ -11,13 +11,15 @@ pay `N` critics for it; the goal is ensemble-quality pessimism from a single sma
 ## Key idea
 
 Use **Random Network Distillation** as the OOD-action detector: a frozen random target `g(s,a)`, a
-predictor `ĝ(s,a)` trained on dataset `(s,a)`, novelty `b(s,a) = ‖ĝ(s,a) − g(s,a)‖²`. Naive
-`[s,a]`-concatenated RND is *escapable* — the actor can drive `b` down on OOD actions without returning
-to the data ("not discriminative enough"). The fix is the **conditioning**: condition the RND prior on
-the action via **FiLM** (the state is the feature stream; the action emits per-unit `(γ, β)` that
-scale/shift a hidden layer — or vice-versa), so the predictor's error is a *sharp* function of the
-action, minimizable only by proposing an in-distribution action. Subtract `β·b` from **both** the actor
-objective and the critic bootstrap target.
+predictor `ĝ(s,a)` trained on dataset `(s,a)`, novelty `b(s,a) = ‖ĝ(s,a) − g(s,a)‖²`. Checked on frozen
+snapshots, even naive `[s,a]`-concatenated RND already discriminates OOD actions well — the reported
+"not discriminative enough" failure is not detection but **minimization**: an actor's gradient descent
+through a concat-conditioned `b` follows an anti-gradient field that is locally inconsistent in the
+action, so descending it does not reliably compose into a path back to the data. The fix is the
+**conditioning**: condition the RND prior on the action via **FiLM** (the state is the feature stream;
+the action emits per-unit `(γ, β)` that scale/shift a hidden layer — or vice-versa), so nearby actions
+produce nearby gradients and an actor minimizing `b` can actually walk itself back to an in-distribution
+action. Subtract `β·b` from **both** the actor objective and the critic bootstrap target.
 
 ## Algorithm
 
