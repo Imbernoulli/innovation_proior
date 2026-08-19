@@ -1,0 +1,68 @@
+{
+  "task": "preact-identity-mappings",
+  "title": "Identity mappings in a residual block: what goes on the shortcut and where activations sit",
+  "domain": "Computer vision (CIFAR-10/100 ResNet block design)",
+  "metrics": [
+    "cifar10_resnet110",
+    "cifar10_resnet164",
+    "cifar10_resnet1001",
+    "cifar100"
+  ],
+  "metric_columns": [
+    "test_error_pct"
+  ],
+  "initial_context_file": "00-initial-context.md",
+  "steps": [
+    {
+      "n": 1,
+      "slug": "shortcut_sweep",
+      "method": "Sweep of shortcut-path manipulations on ResNet-110 (constant scaling, exclusive gating, shortcut-only gating, 1x1 conv, dropout), f=ReLU unchanged",
+      "reasoning": "01-shortcut_sweep-reasoning.md",
+      "answer": "01-shortcut_sweep-answer.md",
+      "feedback": "01-feedback.md"
+    },
+    {
+      "n": 2,
+      "slug": "bn_after_add",
+      "method": "BN after the element-wise addition (f = BN then ReLU), deliberate wrong-direction calibration test",
+      "reasoning": "02-bn_after_add-reasoning.md",
+      "answer": "02-bn_after_add-answer.md",
+      "feedback": "02-feedback.md"
+    },
+    {
+      "n": 3,
+      "slug": "relu_before_add",
+      "method": "ReLU moved before the addition (naive identity-f fix; residual branch F ends in ReLU)",
+      "reasoning": "03-relu_before_add-reasoning.md",
+      "answer": "03-relu_before_add-answer.md",
+      "feedback": "03-feedback.md"
+    },
+    {
+      "n": 4,
+      "slug": "relu_only_preact",
+      "method": "ReLU-only pre-activation: ReLU moved to the front of each weight layer, BN left after the conv",
+      "reasoning": "04-relu_only_preact-reasoning.md",
+      "answer": "04-relu_only_preact-answer.md",
+      "feedback": "04-feedback.md"
+    },
+    {
+      "n": 5,
+      "slug": "full_preact",
+      "method": "Full pre-activation: BN -> ReLU -> Conv (both weight layers), clean identity after-addition, shared pre-activation feeds the 1x1 shortcut projection",
+      "reasoning": "05-full_preact-reasoning.md",
+      "answer": "05-full_preact-answer.md",
+      "feedback": "05-feedback.md"
+    },
+    {
+      "n": 6,
+      "slug": "preact_resnet1001",
+      "method": "Full pre-activation bottleneck unit pushed to a 1001-layer network (333 units) on CIFAR-10/100",
+      "reasoning": "06-preact_resnet1001-reasoning.md",
+      "answer": "06-preact_resnet1001-answer.md",
+      "feedback": "06-feedback.md"
+    }
+  ],
+  "endpoint": "Full pre-activation residual unit (BN->ReLU->Conv twice, bare identity add, shared pre-activation feeding the 1x1 projection shortcut on shape-changing units), validated on ResNet-1001: 4.92% CIFAR-10 test error vs. 7.61% for the original-unit ResNet-1001, and 22.71% CIFAR-100 vs. 27.82%.",
+  "ranking_basis": "Strictly monotonic documented ladder on CIFAR-10 ResNet-110 test error once the direction is found: shortcut manipulations all fail or badly underperform the 6.61% baseline (12.35/8.70/12.22/fail...); BN-after-addition (8.17) and ReLU-before-addition (7.84) are worse than baseline, confirming the mechanism; ReLU-only pre-activation (6.71) roughly matches baseline; full pre-activation (6.37) is the first design to clearly beat it. The final rung carries the same full pre-activation unit (in bottleneck form) to ResNet-1001, where the gap is largest: 4.92% vs. 7.61% for the original unit at the same depth (the original ResNet-1001 was actually *worse* than ResNet-110's 6.61%, the motivating anomaly from the research question), plus a matching CIFAR-100 result (22.71% vs. 27.82%).",
+  "notes": "Every feedback number is from methods/pre-activation/src/resnet_plus_arxiv.tex (tab:shortcuts, tab:activations, tab:preact) -- see trajectories/preact-identity-mappings/notes-ladder.md for the full variant/line-number mapping. Baseline ResNet-110 = 6.61% is pre-existing background (He et al. 2016a original ResNet paper), already recorded in methods/pre-activation/results/context.md and carried into 00-initial-context.md as a given, not a rung. Rung 1 merges 5 documented shortcut variants (10 measured configurations) into one rung since the source presents them as a single grouped ablation answering one question. Median of 5 runs per architecture throughout (resnet_plus_arxiv.tex:198,:368). Code for rungs 1-5 (ResNet-110/164 scale) is a direct architectural transcription of the block diagrams and formulas in the source text; rung 6's bottleneck variant is the same pre-activation substitution applied to the standard 1x1-3x3-1x1 bottleneck, matching the paper's own PreActBottleneck description."
+}
