@@ -1,0 +1,102 @@
+[
+ {
+  "slug": "convnext",
+  "kind": "ladder",
+  "why": "旗舰：ResNet→modern recipe 76.1→78.8→patchify→depthwise+width 80.5→kernel sweep 79.9/80.4/80.6→…全程 ImageNet 数字，一版比一版好"
+ },
+ {
+  "slug": "wide-resnet",
+  "kind": "ladder",
+  "why": "B(M) block 搜索→加宽 k=1/2/4/8/10 阶梯，v1→v2 预处理翻案也是一级"
+ },
+ {
+  "slug": "lion",
+  "kind": "ladder",
+  "why": "进化搜索本身就是 fitness 阶梯 + 收尾 ablation"
+ },
+ {
+  "slug": "deit",
+  "kind": "ladder",
+  "why": "baseline→+aug→+distill token→+finetune 逐级带数"
+ },
+ {
+  "slug": "pre-activation",
+  "kind": "ladder",
+  "why": "shortcut 变体表 constant/gating/1x1/dropout 逐个失败→identity 成功，天然 rungs"
+ },
+ {
+  "slug": "lookahead",
+  "kind": "single_decision",
+  "why": "三臂一次比较，单轮判据句足够"
+ },
+ {
+  "slug": "lsq",
+  "kind": "single_decision",
+  "why": "一次 multiplier 扫找可用值"
+ },
+ {
+  "slug": "grokfast",
+  "kind": "single_decision",
+  "why": "观察曲线→提滤波→验证，弧太短"
+ },
+ {
+  "slug": "chinchilla",
+  "kind": "campaign",
+  "why": "三方法三角互证的 sweep 拟合，非改进阶梯；单轮设计+判据 或以 观察为 context 的推导"
+ },
+ {
+  "slug": "scaling-laws",
+  "kind": "campaign",
+  "why": "同上"
+ },
+ {
+  "slug": "toolformer",
+  "kind": "single_decision",
+  "why": "训练协议+选 checkpoint，非阶梯"
+ },
+ {
+  "slug": "roberta",
+  "kind": "ladder?",
+  "why": "逐项加改动（动态mask/大batch/去NSP）带数，可考虑"
+ },
+ {
+  "slug": "simba",
+  "kind": "single_decision",
+  "why": "三组件消融"
+ },
+ {
+  "slug": "deep-mf",
+  "kind": "single_decision",
+  "why": "深度选择"
+ },
+ {
+  "slug": "grokking",
+  "kind": "single_decision",
+  "why": "decay-to-origin vs init 一次消融"
+ },
+ {
+  "slug": "chain-of-thought",
+  "kind": "single_decision",
+  "why": "消融表验证，非阶梯"
+ },
+ {
+  "slug": "awq",
+  "kind": "single_decision",
+  "why": ""
+ },
+ {
+  "slug": "biggan",
+  "kind": "single_decision",
+  "why": ""
+ },
+ {
+  "slug": "diffpool",
+  "kind": "single_decision",
+  "why": ""
+ },
+ {
+  "slug": "balanced-softmax",
+  "kind": "single_decision",
+  "why": ""
+ }
+]
