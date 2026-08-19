@@ -1,0 +1,3 @@
+# Changelog
+
+- 2026-08-18 `methods/grokfast/results/reasoning.md:1` obs-fix: the opening paragraph claimed the narrator personally trained a two-layer Transformer on `a · b (mod 97)` and watched training accuracy pin at 100% then validation climb late — a narrator-run experiment outcome the proposal has no standing to report before the method's own experiments happen. Reframed as the documented, reproducible delayed-generalization pattern on tasks of this kind (consistent with `results/context.md`'s Background section), removing the "I train ... and observe ..." framing while keeping the same motivating observation and all downstream reasoning untouched.
