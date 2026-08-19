@@ -84,4 +84,4 @@ For SVHN, the reference script uses `mean=[109.9, 109.7, 113.8] / 255` and `std=
 - Do not rescale weights or activations at test time.
 - Keep the original label and the ordinary cross-entropy objective.
 
-The early targeted version used stored high-activation feature maps to choose what to hide, but random fixed-size regions matched it in the original experiments without the extra feature-map bookkeeping.
+An early version stored each image's highest-activation feature map and specifically hid that region the next epoch. The shipped design drops that bookkeeping: the extra saliency machinery would have to clear a real margin over the plain random square at matched training budget to earn its cost, and a random square already applies the same input-erasure mechanism for free.
