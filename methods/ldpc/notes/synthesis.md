@@ -49,3 +49,10 @@ Sequential decoding of convolutional codes (Wozencraft, Fano): probabilistic, us
 - Shannon 1948 (web): capacity, random-coding existence, ML intractable.
 - tanh⇔f(β) equivalence: verified numerically (notes above).
 - Frontier context only: Richardson 2003 error floors / trapping sets (web).
+
+## W3_notes_unclear audit (svfix, sound_as_is)
+`pdftotext` on refs/gallager_thesis_1963.pdf yields garbage (Type 3 glyphs, no ToUnicode — old scanned MIT tech-report). Re-OCR'd via `pdftoppm -r 200` + `tesseract`, saved as refs/gallager_thesis_1963_ocr.txt (170 KB, all 90 pp; gitignored like the rest of refs/). Confirmed the decisive-step derivation in results/reasoning.md against the actual page images/OCR text, not just the section numbers cited above:
+- j=2 ⇒ only logarithmic min-distance: reasoning.md's tree/loop argument is Gallager's own Theorem 2.5 proof (pp.18-19: "the code in the form of a tree... D ≤ 2m+2" with "2(k-1)^m ≤ n").
+- Extrinsic (omit-the-receiving-check) message passing: matches Ch.4 pp.40-42 verbatim in substance — "The probability to be associated with one digit in the computation of another digit d is the probability found in the first iteration, omitting the parity-check set containing d" (Lemma 4.1 / Theorem 4.1, the even-parity generating-function proof reasoning.md rederives line for line).
+- Tree-breaks-into-cycles caveat: p.41 "This assumption breaks down when the tree closes upon itself... each tier... (j-1)(k-1) times more nodes... independence assumption must break down while m is quite small" — matches reasoning.md's own tier-count/collision argument.
+Verdict: the decisive step is genuinely derived on the page (checkable failure reasons: j=2 gives only a log-n bound via an explicit worked loop argument; naive non-extrinsic passing double-counts evidence) and that derivation really is Gallager's own math, not asserted/hindsight. Left reasoning.md untouched (outcome=sound_as_is); no rewrite warranted.
