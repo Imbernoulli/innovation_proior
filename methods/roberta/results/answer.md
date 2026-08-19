@@ -24,10 +24,11 @@ tuned comparator for later objectives:
    conflated removing the loss with shortening the input; with long contiguous
    input, NSP is redundant.
 3. **Large batches** — train with 8K sequences per batch (with a scaled-up
-   learning rate). Large-batch sweeps improve MLM perplexity and keep downstream
-   quality comparable or better while making distributed training efficient.
-   Stabilize large-batch Adam by setting **β₂ = 0.98** (not 0.999) and turning
-   gradient clipping off.
+   learning rate), the equal-compute point expected to hold MLM perplexity and
+   downstream quality while parallelizing far better than batch 256. The larger
+   batch is expected to destabilize Adam's default second-moment window, so
+   **β₂ = 0.98** (not 0.999) replaces it, with gradient clipping left off and
+   checked via the gradient-norm trace.
 4. **Byte-level BPE, 50K units** — a universal tokenizer that encodes any text
    with no unknown tokens and no language-specific preprocessing.
 5. **More data, longer training** — scale from 16GB to 160GB across BookCorpus,
