@@ -1,0 +1,3 @@
+# NASNet Deliverable Changelog
+
+- `methods/nasnet/results/reasoning.md:5` epistemic fix: the svfix pass had the narrator claim to have personally run the whole-network NAS search ("I already know exactly, because I ran... my last run had 800 child networks... before the controller found something worth reporting") — self-supplied observation voice for a search that was never within this proposal's own frame. Rewrote to cite the same 800-GPU/12,800-sample/50-epoch/CIFAR-10 numbers as a fact already on the record (prior work, Zoph & Le's whole-network NAS), removing the first-person "I ran"/"my last run" execution claim while keeping every number and the design reasoning (cost forces the cell-vs-whole-network decoupling) intact.
