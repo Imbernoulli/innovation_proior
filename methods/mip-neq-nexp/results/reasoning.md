@@ -19,6 +19,27 @@ prover can always maintain a locally consistent fiction adapted to the transcrip
 must maintain compatible fictions across unpredictable overlaps, and high compatibility is strong enough
 to reconstruct or reason about an underlying global proof.
 
+That compatibility claim only earns its keep once I can push a single round's catch probability down to
+something negligible, and my first instinct is to treat this the way any randomized check gets amplified:
+fire off several independent copies of the line-and-point query inside the same round and assume the
+failure probabilities multiply, the way repeated independent coin flips would. That assumption does not
+survive isolation. Isolation only forbids the provers from seeing each other's answer within a round; it
+says nothing about how a pre-agreed joint strategy may respond across several simultaneous query pairs
+delivered in that same round. Nothing in the two-prover model stops the answer to slot two from being
+correlated with the answer to slot one, so a single wide round of parallel sub-checks does not have to
+fail with the product of the per-slot probabilities — a correlated cheat can cover more of the random
+choices than independence would predict. The catch probability of one round is real, but I cannot assume
+it compounds for free just by widening that round.
+
+What I can trust is repetition across rounds, not within one. Run the line-and-point exchange to a full,
+closed decision — the verifier accepts or rejects that instance outright — before drawing the next line
+and the next random point from scratch. Once a run is closed there is nothing left in it for a pre-agreed
+strategy to correlate against, because the next run's randomness has not been generated yet. So k
+independent closed runs each fail with probability at most 1 − ε, and together they fail with probability
+at most (1 − ε)^k. That costs communication — k full exchanges instead of one wide round — but it needs
+no claim about how a correlated cheat spreads inside a single round, only that a finished round cannot
+leak into a round that has not started.
+
 Once there is a way to enforce a global proof oracle, the NEXP lower bound becomes plausible. A NEXP
 machine on input `x` has an exponentially long accepting tableau if `x` is in the language. By a
 Cook-Levin style transformation at exponential scale, this tableau can be represented as an

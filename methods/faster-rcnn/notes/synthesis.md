@@ -32,7 +32,7 @@
 - OverFeat = one-stage class-specific: regressor+classifier on sliding windows over a scale pyramid; one aspect ratio per window; simultaneously locates AND categorizes.
 - RPN = first stage of a two-stage cascade: class-AGNOSTIC proposals from square 3×3 windows + anchors of varied scale/ratio, then Fast R-CNN attends/refines with adaptively pooled features from proposal boxes. Two-stage cascade with adaptive pooling on the actual proposal region → more accurate.
 
-## Canonical code (py-faster-rcnn, rbgirshick) — grounded files in code/
+## Canonical code (py-faster-rcnn, rbgirshick) — grounded files in src/py-faster-rcnn/ (verified 2026-08-18, see notes/sources.md; this dir was empty/missing before that pass)
 - generate_anchors.py: base_size=16, ratios [0.5,1,2], scales 2**[3,4,5]=[8,16,32] → 9 anchors. _ratio_enum keeps area constant while changing ratio (ws=round(sqrt(size/r)), hs=round(ws*r)); _scale_enum multiplies w,h by scale.
 - bbox_transform.py: bbox_transform (compute t* targets), bbox_transform_inv (apply deltas to anchors), clip_boxes.
 - anchor_target_layer.py: build labels (1/0/-1), targets, inside/outside weights; filter inside-image anchors; overlaps; subsample to RPN_BATCHSIZE=256, fg fraction 0.5; pos overlap 0.7, neg 0.3.
