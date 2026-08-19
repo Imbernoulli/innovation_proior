@@ -4,7 +4,7 @@
 
 Find the elementary excitations and the field/temperature dependence of the magnetization of a Heisenberg ferromagnet,
 
-    H = −J Σ_⟨ij⟩ S_i·S_j + g μ_B H Σ_i S_i^z   (+ dipolar terms),   J > 0,
+    H = −J Σ_⟨ij⟩ S_i·S_j − g μ_B H Σ_i S_i^z   (+ dipolar terms),   J > 0,
 
 where the localized single-spin-flip is not an energy eigenstate (the exchange term hops it), and Bloch's plane-wave magnons solve only the one-excitation sector with no systematic, extensible, operator-level framework for adding excitations, an external field, or the dipole–dipole interaction.
 
@@ -46,9 +46,9 @@ reproducing Bloch's quadratic spin-wave dispersion. The O(S⁰) term H_2 = (J/4)
 
 ## External field and magnetization
 
-The Zeeman term is diagonal in the magnon basis:
+The Zeeman term (sign fixed so the field reinforces, rather than fights, the exchange ground state S_i^z = +S) is diagonal in the magnon basis:
 
-    g μ_B H Σ_i S_i^z = g μ_B H (NS − Σ_k a_k†a_k)  ⇒  ε_k(H) = qJS(1 − γ_k) + g μ_B H,
+    −g μ_B H Σ_i S_i^z = −g μ_B H (NS − Σ_k a_k†a_k) = −g μ_B H NS + g μ_B H Σ_k a_k†a_k  ⇒  ε_k(H) = qJS(1 − γ_k) + g μ_B H,
 
 a rigid, k-independent gap — no re-diagonalization. Each magnon lowers the total spin by one unit, so with Bose occupation n_B(ε) = 1/(e^{ε/k_BT} − 1),
 
