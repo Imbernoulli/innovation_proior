@@ -8,14 +8,19 @@ accuracy using ImageNet-1k *only*, on a single node in a few days — and devise
 suited to transformers.
 
 ## Key ideas
-1. **Data-efficient training recipe.** The transformer's data-hunger is a recipe artifact, not
-   intrinsic: strong augmentation + regularization (substituting for missing data) plus AdamW closes
-   the gap on ImageNet-1k, no convolutions and no external data.
+1. **Data-efficient training recipe.** The transformer's data-hunger is hypothesized to be a recipe
+   artifact, not intrinsic: strong augmentation + regularization (substituting for missing data) plus
+   AdamW, tuned specifically for ImageNet-1k scale, is predicted to close most of the gap to convnet
+   accuracy with no convolutions and no external data — validated by comparing the resulting model
+   directly against convnets of similar size and speed.
 2. **Distillation token.** A new learnable token, used like the class token but supervised by the
    teacher's label instead of the true label, gives the transformer a dedicated distillation pathway.
-3. **Hard-label distillation.** Treat the teacher's top-1 prediction as a label — parameter-free and,
-   in this setting, better than soft distillation. A **convnet teacher** beats a transformer teacher,
-   because the transformer inherits the convnet's inductive bias.
+3. **Hard-label distillation.** Treat the teacher's top-1 prediction as a label — parameter-free, and
+   expected to beat soft distillation here because the label stays valid for exactly the augmented crop
+   the student sees, unlike a softened target computed once. Expected to work best with a **convnet
+   teacher** rather than a transformer teacher: distillation should transfer more than the label, it
+   should transfer the teacher's inductive bias, and a convnet's locality/translation-equivariance prior
+   is exactly what the transformer structurally lacks.
 
 ## Architecture (unchanged from ViT, plus one token)
 Image (224²) → 16×16 patches → linear/Conv2d patch embedding (D = 768 for the base model) → prepend a
@@ -34,28 +39,45 @@ The τ² factor in the soft loss compensates the 1/τ² gradient scaling of soft
 re-evaluated on the *augmented* crop the student sees, so y_t is consistent with the student's input.
 The class head is trained against y, the distillation head against y_t.
 
-Why a separate distillation token (not a second class token): two tokens with the *same* (true-label)
-target collapse into one another (cosine similarity 0.999) and add nothing; the class and distillation
-tokens, with *different* targets, stay distinct (≈0.06 at input, ≈0.93 at the last layer) and the
-distillation token contributes real signal.
+Why a separate distillation token rather than a second class token: two tokens trained on the same
+(true-label) target have nothing in the objective pulling them apart, so they are predicted to collapse
+toward each other and add nothing beyond a single class token. The class and distillation tokens instead
+have *different* targets (true label vs. teacher label), which should keep them meaningfully distinct
+rather than converging to copies — though some convergence toward each other with depth is expected too,
+since the two targets usually agree. That prediction — a same-target control token collapsing while the
+distillation token stays distinct — is the check that validates the design before relying on it.
 
 ## Test-time prediction
 Late fusion: add the softmax outputs of the class head and the distillation head, predict the argmax.
 
 ## Training recipe (base model, ImageNet-1k)
-- Optimizer AdamW (SGD gives ~74.5% vs ~81.8%); lr = 5e-4 × batch/512, cosine decay, warmup 5 epochs,
-  weight decay 0.05 (the large-scale recipe's 0.3 hurts here), 300 epochs, batch ~1024.
-- Truncated-normal initialization (transformers are init-sensitive).
-- Augmentation: RandAugment (chosen over AutoAugment), Mixup (p = 0.8), CutMix (p = 1.0), random erasing
-  (p = 0.25); **repeated augmentation** (×3) is a key boost. Label smoothing ε = 0.1.
-- Regularization: stochastic depth 0.1; **no dropout** (it hurts). No batch norm, so batch size can be
-  reduced freely.
-- Removing Mixup+CutMix drops accuracy ~6 points; removing repeated augmentation drops it several points.
+- Optimizer AdamW rather than SGD: with no batch norm and a loss landscape less forgiving of a single
+  global step size, per-parameter adaptive scaling with decoupled weight decay is predicted to train
+  this architecture far better — validated by a matched-budget comparison against SGD before committing.
+  lr = 5e-4 × batch/512, cosine decay, warmup 5 epochs, weight decay 0.05 (the large-scale recipe's 0.3
+  is calibrated for 300M images and is expected to over-regularize on 1.2M under heavy augmentation),
+  300 epochs, batch ~1024.
+- Truncated-normal initialization (transformers are sensitive to initialization scale).
+- Augmentation: RandAugment (favored over AutoAugment as the stronger of the two automatic policies),
+  Mixup (p = 0.8), CutMix (p = 1.0), random erasing (p = 0.25); **repeated augmentation** (×3 views per
+  batch) is expected to be a key contributor, since it should give a better-conditioned gradient than a
+  single noisy view. Label smoothing ε = 0.1.
+- Regularization: stochastic depth 0.1 in place of dropout — regularizing whole residual paths should
+  suit a transformer stack better than dropping activations, and should avoid the redundant pressure
+  dropout would add on top of heavy augmentation. No batch norm, so batch size should be reducible
+  without the accuracy penalty a batch-normed model would take.
+- Validation: matched-budget knockout ablations (remove one ingredient at a time, everything else held
+  fixed) are how each of these calls gets checked before the recipe is locked in — Mixup+CutMix together
+  and repeated augmentation are the two ingredients expected to cost the most accuracy if removed.
 
 ## Resolution
 Train at 224², fine-tune at 384² (FixRes). Patch size fixed, so N grows; the N positional embeddings are
-resized to the new grid with **bicubic** interpolation (bilinear shrinks vector ℓ₂-norm and breaks the
-pretrained model). Keep strong augmentation and the teacher during fine-tuning.
+resized to the new grid with **bicubic** interpolation. Bilinear interpolation is provably norm-reducing
+when averaging non-collinear vectors, and feeding the pretrained model positional vectors at a shrunk
+magnitude is expected to throw off attention logits it was tuned to; bicubic's negative side-lobe weights
+let the interpolated vector overshoot toward its neighbors instead, which should approximately preserve
+the norm. Keep strong augmentation and the teacher during fine-tuning, rather than dropping either
+mid-fine-tune and discarding signal the model still benefits from.
 
 ## Code
 ```python
