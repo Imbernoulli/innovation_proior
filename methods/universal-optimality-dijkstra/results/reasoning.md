@@ -370,8 +370,8 @@ that `|H_{i−1}|` (a lower bound on `W(x)`) be polynomially related to `|H_i|` 
 c · log|H_i|`. So I need the inner heaps' sizes to *grow fast* as the index drops.
 
 How fast? If sizes merely doubled (`|H_i| ≈ 2^i`), then `log|H_i| ≈ i` and `log|H_{i−1}| ≈ i − 1` —
-that's only an additive gap, the ratio `→ 1`, fine for delete-min but, as I'll see, it kills the insert
-amortization. Push harder: let `|H_i|` grow *doubly* exponentially, `|H_i| ≈ 2^{2^i}`. Then
+only an additive gap, and with `n` items the list would run to `Θ(log n)` inner heaps, which is more
+indices than I want to route through later. Push harder: let `|H_i|` grow *doubly* exponentially, `|H_i| ≈ 2^{2^i}`. Then
 `log|H_i| ≈ 2^i` and `log|H_{i−2}| ≈ 2^{i−2} = 2^i / 4`, so the working-set lower bound for an item in
 `H_i` is within a constant factor of the delete-min cost *in the log* — and as a bonus the number of
 inner heaps is only `O(log log n)`, which will let me handle the "which heap holds the global minimum"
@@ -424,11 +424,12 @@ heap is Fibonacci-quality). If `i = 1`, that's `O(1)`, fine. If `i > 1`, by the 
 `log W(x) ≥ log 2^{2^{i−3}} = 2^{i−3} = 2^i / 8`, so the delete cost `O(2^i) = O(8 · 2^{i−3}) =
 O(log W(x))`. The doubly-exponential growth makes `H_{i−2}`'s size lower-bound (a stand-in
 for `W(x)`) match `H_i`'s size upper-bound to within a factor of `8` in the log, so delete-min is
-within the working-set bound. (And the `/8` is exactly why I needed doubly- and not singly-exponential: with
-`|H_i| = 2^i` the cost is `O(i)` while `log W ≥ i − c`, a constant *additive* gap only — but the insert
-amortization needs the gaps between sizes to grow fast, and that's the other half.)
+within the working-set bound. (With `|H_i| = 2^i` the ratio would only be additive — `log W ≥ i − c`
+against cost `O(i)` — a weaker margin, and it buys nothing on the heap-count side either, since that
+schedule still needs `Θ(log n)` indices instead of `O(log log n)`. Doubly-exponential gets both a clean
+multiplicative constant here and the log log n heap count I'll spend below.)
 
-Insert cost — this is the half that forces doubly-exponential. An insertion that changes heaps
+Insert cost — the other half of the bookkeeping. An insertion that changes heaps
 `H_0, …, H_{j−1}` (highest changed index `j`) costs `O(j)`; normalize to `j` units, charge `1` to each
 of `H_0, …, H_{j−1}`, and split each heap's unit equally among its items. By the lower-bound invariant,
 an item in `H_i` is charged at most `1 / (2^{2^{i−1}} − 2^{2^{i−2}}) ≤ 1 / 2^{2^{i−2}}` for this
@@ -437,10 +438,11 @@ accrues total charge at most `Σ_{i≥0} 1 / 2^{2^{i−2}}`. I should actually a
 "it converges," since the entire `O(1)` insert bound is this one number being finite. The terms are
 `1/2^{1/4}, 1/2^{1/2}, 1/2^1, 1/2^2, 1/2^4, 1/2^8, …` `≈ 0.841, 0.707, 0.5, 0.25, 0.0625, 0.0039, …`;
 once the exponent doubles each step the tail crashes to nothing, and the total comes out to about `2.36`.
-So each item's lifetime charge is `< 2.4`, a genuine constant, and each insertion is `O(1)` amortized. Had the sizes only grown
-singly-exponentially, the per-charge bound would be `~1/2^{i}` and the sum still converges, but the
-*delete-min* side fails; doubly-exponential is the sweet spot where *both* the delete-min log-ratio and
-the insert charge-series behave. So: `O(1)` amortized insert, decrease-key, find-min; delete-min within
+So each item's lifetime charge is `< 2.4`, a genuine constant, and each insertion is `O(1)` amortized.
+That convergence didn't need doubly-exponential growth specifically — any schedule with exponentially
+shrinking per-charge terms would sum to a constant. What doubly-exponential growth buys, in the same
+move, is the `/8` multiplicative ratio on the delete-min side above *and* the `O(log log n)` cap on the
+number of inner heaps, which is what the routing tasks below need to stay `O(1)`. So: `O(1)` amortized insert, decrease-key, find-min; delete-min within
 the working-set bound — provided I can do the two routing tasks (find the inner heap holding a given
 item; find the inner heap holding the global minimum) in `O(1)` amortized each.
 
