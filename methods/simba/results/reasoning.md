@@ -80,10 +80,18 @@ reasoning. The diagnostic measures functional simplicity at initialization by sa
 parameters, evaluating the random function on a grid, decomposing it in frequency space, and using a
 frequency-weighted average of Fourier coefficients as complexity c(f). The simplicity score is
 approximately E_theta[1 / c(f_theta)]. That score is not a training objective and it is not a proof
-that every larger model improves. It is a diagnostic for the architectural bias. The useful claim is
-more modest and stronger: when the same RL algorithm is run with this normalized residual encoder,
-scaling the critic becomes beneficial over the tested range where the plain MLP degrades, and the
-component ablations show that removing any of the three ingredients hurts performance.
+that every larger model improves. It is a diagnostic for the architectural bias. The claim I actually
+need to test is more modest and sharper: with this normalized residual encoder, scaling the critic
+should become beneficial over a range where the plain MLP degrades, and each of the three ingredients
+should be load-bearing rather than redundant. The test is a controlled scaling sweep -- the same RL
+algorithm, the same critic width and depth settings, the full encoder against the plain-MLP baseline,
+everything else held fixed -- together with a leave-one-out ablation that removes exactly one of
+{running-stat input normalization, the pre-LN residual branch, the final LayerNorm} at a time while
+keeping width, depth, optimizer, and replay ratio at the values above. If the design is right, the
+full encoder's return curve should separate upward from the plain MLP as capacity grows rather than
+flattening or degrading, and every single-ingredient removal should lose return relative to the full
+construction at both a small and a large scale. An ingredient that can be dropped without cost at
+either scale is not doing the work I think it is, and the decision rule is to cut it.
 
 There is one subtle correction to make in my own story. I should not say the residual block alone
 keeps feature magnitudes bounded. The residual block preserves an identity path and computes its
