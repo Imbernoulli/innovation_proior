@@ -19,10 +19,15 @@ The **inner maximization** is the attack (find the worst perturbation); the **ou
 is the defense. A small `ρ(θ)` means the loss is small for *every* `δ ∈ S`, so no adversarial
 example exists within the budget. Two facts make it solvable in practice:
 
-1. **The inner max is tractable with first-order methods.** Random-start projected gradient descent
-   (PGD) on the input, run to its plateau, lands at well-concentrated loss values across many random
-   restarts and across distinct basins. PGD therefore serves as a practical "universal first-order
-   adversary": robustness to PGD is the yardstick for robustness to gradient-based attacks broadly.
+1. **The inner max is tractable enough to commit to.** A cheap diagnostic — launch random-start
+   `ℓ_∞` PGD from many independent points around an image and track where each run plateaus —
+   decides whether "whatever PGD finds" is a stable target or a lottery. It clears only if the
+   final losses concentrate across restarts, the maxima reached are genuinely distinct (large
+   pairwise distance and angle) yet reach comparable height, and the direction PGD converges to
+   decorrelates from the clean gradient as the perturbation grows (ruling out a purely linear
+   ball). Only if that clears does PGD run to its plateau serve as a practical "universal
+   first-order adversary": beating it is the target, on the working conjecture that any adversary
+   using only input gradients is pulled into the same concentrated band.
 2. **The outer gradient is the gradient at the active inner maximizer (Danskin).** No differentiation
    through the inner optimization is needed in the active-maximizer case — freeze the PGD-found `δ*`
    and take an ordinary SGD step on `L(θ, x+δ*, y)`.
