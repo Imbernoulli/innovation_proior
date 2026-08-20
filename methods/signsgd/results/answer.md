@@ -68,8 +68,11 @@ the translated signSGD bound controls the square of the expected average `l_2` n
 `(1/sqrt N)[2L(f_0-f*)+sigma^2]`, with density ratios `R_1 = sqrt(phi(L))/phi(g)`,
 `R_2 = phi(sigma)/phi(g)`. The sign bound can match or improve on the SGD bound when noise is no denser than the gradient
 (`R_2` not `>> 1`); it loses when curvature is much denser than the gradient (`R_1 >> 1`).
-**Measured fact:** in real networks (Welford's algorithm, Resnet-20/CIFAR-10), gradient and noise
-densities are of the same order and both dense — the favorable regime.
+**Regime check.** Which side of `R_2` real networks land on is a measurement, not a derivation:
+Welford's algorithm gives `phi(g)` and `phi(sigma)` exactly in one extra pass per epoch, cheap enough
+to check on Resnet-20/CIFAR-10 (and other architectures) before trusting the method at scale. Same-order,
+dense `phi(g)`/`phi(sigma)` predicts signSGD tracks SGD while compressing; a sparse-noise/dense-gradient
+gap predicts SGD wins outright.
 
 **Small batch (`n_k=1`), unimodal symmetric noise.** Gauss's inequality gives the sharper flip bound
 `P[wrong] <= (2/9)/S_i^2` if `S_i := |g_i|/sigma_i > 2/sqrt3`, else `1/2 - S_i/(2 sqrt3)` (strictly
