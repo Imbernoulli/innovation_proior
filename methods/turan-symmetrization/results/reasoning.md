@@ -1,5 +1,3 @@
-# Reasoning
-
 I have the problem in front of me and almost nothing else — no desk, no paper to spread out, just a long shift walking among stacked logs and a question I can turn over in my head. That constraint is going to shape everything: whatever I land on has to be something I can *hold*, a structural picture, not a page of algebra I'd lose track of by the third line. So let me think it through from the picture.
 
 The question. A graph on $n$ vertices, and I forbid a clique on $r+1$ vertices — no $K_{r+1}$ anywhere. How many edges can I cram in, and what does the densest such graph look like? Mantel already did $r=2$: forbid a triangle and you top out at $\lfloor n^2/4\rfloor$, achieved by splitting the vertices into two equal halves and joining everything across the split. That answer is suggestive in a way I want to take seriously. The extremal triangle-free graph isn't some intricate sparse thing — it's the *most symmetric* object you could draw: two classes, all cross-edges, no inside-edges. Beauty and extremality coincided there. I have a dim feeling they will again.
