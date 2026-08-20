@@ -151,24 +151,35 @@ Those branches are diagnostic variants, not the default method. The default is o
 embedding vector, no embedding regularization, frozen autoencoder, frozen text encoder,
 frozen denoiser, and the unchanged epsilon-prediction reconstruction loss.
 
-## What The Analysis Shows
+## Design Rationale
 
-The natural GAN-inversion expectation is that extra latent capacity should improve
-reconstruction. In this embedding space that expectation fails. A single learned vector gives
-reconstruction comparable to multi-vector alternatives while preserving substantially better
-editability. Multi-word, progressive, regularized, and per-image-token variants mostly move
-the solution along a distortion-editability curve rather than improving the frontier.
+Extra latent capacity is the natural move to consider, following the GAN-inversion precedent
+of extended per-layer codes: more learned vectors should relax whatever bottleneck a single
+embedding imposes. But extra vectors only help if that bottleneck is real, and they are not
+free — every added vector, and every relaxation of the pull toward real word embeddings (more
+vectors, a higher learning rate, no regularizer), moves the embedding away from the
+distribution the frozen text encoder was trained on, which is exactly the axis editability
+lives on. The design therefore keeps to a single embedding vector by default and exposes
+exactly one tuning parameter, the learning rate, rather than a basket of auxiliary
+mechanisms: a lower rate keeps the vector close to the ordinary word cloud and favors
+editability, a higher rate lets it drift farther and favors fidelity. Any of the heavier
+variants — multi-vector, progressive introduction, explicit regularization, per-image
+tokens — has to justify itself against that one-knob default rather than being added on the
+GAN-inversion analogy alone.
 
-The useful operating knob is the learning rate. Lower learning rates or explicit pulls
-toward existing word embeddings keep the learned vector closer to the natural word cloud:
-the concept is easier to edit but less faithful. Higher learning rates let it drift farther:
-the concept is captured more strongly but becomes harder to edit. Human captions perform
-poorly for the same reason long descriptions often weaken prompt control: the language
-conditioner can focus on the object description and neglect the requested scene or style.
+Human-written captions are avoided as a substitute for the placeholder for a separate,
+mechanism-level reason: a long object description gives a selectively-attending text encoder
+more tokens to fixate on, which can crowd out the attention budget available for the rest of
+the prompt. A single placeholder token cannot compete for attention that way, whatever its
+embedding encodes, which is why the method keeps the identity signal to one token and leaves
+the rest of the prompt free to steer composition, style, and background.
 
-The reconstruction claim is semantic rather than pixel-exact. Concept-match is measured with
-CLIP-space cosine similarity, which is relatively insensitive to exact shape, so precise
-shape preservation remains an open limitation. Pivotal tuning and bipartite DDIM inversion
-can improve or preserve some structure in special settings, but in this LDM guidance regime
-they lose editability or prompt alignment enough that they do not replace the one-vector
-frozen-model method.
+The reconstruction target is semantic rather than pixel-exact: concept match is measured with
+CLIP-space cosine similarity, which is forgiving about exact shape, so precise geometry
+preservation is a separate, open question the design does not claim to settle. Two heavier
+alternatives are set aside by construction rather than adopted: pivotal tuning finetunes the
+generator itself, which violates the frozen-weights constraint the whole method is built
+around; and DDIM-based noise inversion relies on a frozen initial noise code holding an
+object's structure through a text change, which is only reliable at guidance scales below the
+range this model normally uses for editing, so it fights the same guidance regime the rest of
+the method depends on. Neither replaces the one-vector, frozen-model method.
