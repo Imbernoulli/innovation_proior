@@ -102,3 +102,15 @@ from material already on disk, no further external search was warranted
 outcome = sound_as_is. No rewrite to reasoning.md, answer.md, or
 train_answer.md. No new file threaded into the trace's citations. No
 factual errors found in the decisive step or its surrounding derivation.
+
+## Commit-scope note (added during glow repair pass, 2026-08-20)
+This file was originally added alongside methods/glow/results/reasoning.md
+in commit b4e16ab0b, whose commit message described only the glow
+decisive step and did not disclose that the same commit also carried this
+104-line full-attnres write-up — an independent verifier flagged that as
+an undisclosed scope violation (two methods bundled into one commit, one
+of them unmentioned). This content itself was independently re-verified
+and is unchanged (see quality-gate verdict above); this note only
+re-files it under its own accurately-scoped commit so the audit trail
+attributes full-attnres's sourcing check to its own commit rather than
+glow's.
