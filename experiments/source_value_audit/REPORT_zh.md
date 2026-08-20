@@ -46,3 +46,38 @@
 5. 论文里 §3 “Sources” 段和附录首段的数字改用本审计口径（A 21% / B 61% / D 16%），不再引用老的 82/716/624。
 
 产物：`experiments/source_value_audit/merged.jsonl`（153 条，含 class/key_step/evidence/category/basis_old），`batch_*.jsonl` 原始输出，`PROMPT.md` 审计指令。
+
+---
+
+## 全语料清洗收官（2026-08-18/20）
+
+### 判据的演进（重要）
+最初按「来源类别」判（D 单来源 = 要改），中途按数据 owner 的意见改为**质量门**：单来源但决定步真的推导/验证过 → `sound_as_is`，一字不改；**禁止为凑来源而嫁接引用**（wave-2 的 vllm 就是反例：把官方博客"60-80% 浪费"当独立证据，实为论文自己 20.4–38.2% 利用率的换算，被 verifier 拦下）。同时确立认识论分层：
+- **think 通道（reasoning.md）绝不能自产实验观察**——单轮 method 是 proposal，那一刻实验还没做；只能到「假设 → 判别实验设计 → 各假设预测 → 判据」为止。
+- **answer/train_answer 同为模型语音**，也不得汇报本方法自己的实验结果。
+- 本方法的实验数字只有一个合法入口：**trajectory 的 observation turn**（环境回报，loss-masked）。
+- 允许：前人已发表、先于本方法存在的数字（作为已知事实）；叙述者在页面上真做的计算（代数、微型例子、手工 trace、小规模确定性对拍）。
+新增缺陷类型：`fake_derivation`（把只能实验知道的结论写成逻辑必然）、`self_supplied_observation`（think 里自称跑了实验并报结果）。
+
+### 结果
+| 轮次 | 单元 | 结果 |
+|---|--:|---|
+| wave-1（抽样 65） | 65 | 59 修复 / 4 确认合格 / 2 无来源；Opus 严审推翻 Sonnet 自判「已合格」13/17 |
+| wave-2（110） | 110 | 98 过验（84 一次通过 + 14 修补后）/ 5 escalate / 3 限流 |
+| **wave-3（859，全语料剩余）** | **859** | **650 `sound_as_is`（76%，不该动没动）/ 168 修复 / 40 对抗确认为 A / 1 无来源，零 escalate** |
+| epistemic 修正（svfix 自身引入的观察） | 87 | 59 修正 / 26 干净 / 2 手工收口 |
+| obs-fix（程序扫描出的原生违规） | 25 | 18 修复 / 5 桌面级保留 / 1 已修 / 1 手工 |
+| data_v4 分段回填 | 223 | +2,562 行真实文字，0 内容删除，闸门全过 |
+| traj-build | 6 | convnext / wide-resnet / lion / deit / pre-activation / roberta，共 32 rungs，feedback 数字逐个 grep 源文件 |
+
+`tools/obs_scan.py` 为程序化 lint（三层正则 + 桌面计算豁免），可在新数据入库时复跑。
+
+### 顺带发现并修掉的事实错误（举例）
+- `galois-theory`：五次 resolvent 的取值数写成 6（应为 120/5=24）——reasoning 里改为在页面上现算稳定子，context/train_answer 同步。
+- `kruskal-katona`：「stable 但非 colex」的反例 {1,3},{2,3} 其实不 stable，换为 {1,3},{1,4}。
+- `cnn`：fan-in 初始化写成 1/√fan-in（LeCun 1998 附录 A 为 1/fan-in）。
+- `lion`：编造的 curve-fit 与"符号不一致计数"→ 精确代数 + 论文真实 ViT 表格数字（后按新规移出 think 通道）。
+- `looped-transformer`：论文印错的 SUBLEQ 分支标志符号（官方 subleq.py 为准）。
+
+### commit 卫生问题（已核查，数据未受损）
+并发 agent 共享工作树导致数次跨方法 commit 捆绑（`c72b5918b` none+relationnet、`439357c64` rvea+shifting-bottleneck、`b4e16ab0b` glow+full-attnres）：多带的都是**新增 notes/sources.md**，无覆盖无删除；`2a2416208` 曾误将 `egnn/notes/sources.md` 取消追踪，3 分钟后由 `a82b79d9e` 恢复（磁盘内容未变）。一个 fixer 曾伪造 commit（`157ad19a`，悬空未入 main）和一处引文张冠李戴（badge 的 sound_evidence 字段，仅存在于工作流返回值，未入库）——均被对抗 verifier 当场识破，是该防线必要性的直接证据。
