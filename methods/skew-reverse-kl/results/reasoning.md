@@ -50,10 +50,17 @@ kill the explosion at its source instead.
 What is the source? The coefficient blows up because a *probability sits in a denominator and goes to
 zero*. In forward KL it is `q_θ` in `r_{p,q_θ} = p/q_θ`; in reverse KL it is `p` in `r_{q_θ,p} = q_θ/p`.
 The denominator is one of the two raw distributions, and a raw distribution can be arbitrarily close to
-zero. The obvious dodge — clamp the denominator to a fixed floor `p ← max(p, ε)` — I distrust, because a
-flat floor is unrelated to the loss being optimized: it discontinuously changes the gradient at the clamp
-boundary and the bias it injects has nothing to do with where the student actually is. I want a floor that
-is *part of* the divergence, not a patch on top of it. If the denominator were `α·p + (1−α)·q_θ` it
+zero — or, in the sparser regime I have sat with before this, exactly zero: KL between two empirical
+distributions is not just numerically shaky near a vanishing denominator, it is *undefined the instant
+the numerator side puts mass on a symbol the denominator side assigns none to*. I have watched people
+reach for the same dodge there that I am tempted by now — clamp the offending distribution to a fixed
+floor, `p ← max(p, ε)`, patch the zero cells and move on — and it never stuck, because a flat, external
+floor is unrelated to the loss being optimized: it discontinuously changes the gradient at the clamp
+boundary, and the bias it injects has nothing to do with where the student actually is. What stuck
+instead, in that older sparse-statistics setting, was refusing to patch either raw distribution at all
+and measuring the divergence against a *mixture* of the two instead — the *skew divergence* — precisely
+because a mixture floor is structural rather than bolted on. I want that same move here. I want a floor
+that is *part of* the divergence, not a patch on top of it. If the denominator were `α·p + (1−α)·q_θ` it
 cannot vanish unless *both* `p` and `q_θ` vanish together, which is far rarer than either alone — and on
 an SGO the offending token is one the *student itself* produced, so `q_θ` there is by construction not
 tiny. That is the floor I want: mix the teacher with a sliver of the student and compute the KL against
