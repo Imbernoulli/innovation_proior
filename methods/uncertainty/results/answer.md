@@ -4,9 +4,11 @@ Uncertainty weighting (homoscedastic / task-dependent uncertainty weighting) com
 task losses in a shared-representation multi-task network by treating each task's loss as a
 negative log-likelihood with its own learned observation-noise scale `σ_i`. The derivation weights
 each task by inverse variance `1/σ_i²` and adds a logarithmic scale penalty; the canonical
-log-variance implementation uses `s_i = log σ_i²` and optimises `Σ_i exp(-s_i) L_i + s_i`, so the
-relative task weights are learned jointly with the network instead of hand-tuned and cannot collapse
-like bare learnable weights.
+log-variance implementation uses `s_i = log σ_i²` and optimises `Σ_i exp(-s_i) L_i + s_i` per
+regression head (`2·exp(-s_i) L_i + s_i` per classification head, since the softmax-temperature NLL
+carries no Gaussian `1/2` to cancel against the same doubling), so the relative task weights are
+learned jointly with the network instead of hand-tuned and cannot collapse like bare learnable
+weights.
 
 ## Problem it solves
 
@@ -61,12 +63,17 @@ L(W, σ_1, σ_2) = (1/2σ_1²) L_1(W) + (1/σ_2²) L_2(W) + log σ_1 + log σ_2
 
 with `L_1 = ||y_1 − f^W(x)||²` (Euclidean) and `L_2 = −log Softmax(y_2, f^W(x))` (cross-entropy).
 The regression coefficient carries the `1/2` from the Gaussian NLL; the classification coefficient
-carries the full `1/σ²` from the logit temperature scaling. That asymmetry is part of the derivation.
-The compact canonical implementation uses the uniform log-variance form for already-reduced task
-losses:
+carries the full `1/σ²` from the logit temperature scaling. In the log-variance form `s_i = log σ_i²`
+(using `log σ = s/2`) that asymmetry does not wash out: the regression term `(1/2)exp(-s)L + s/2`
+doubles to `exp(-s)L + s` for free (both halves scale together, so the fixed point is unmoved), but
+the classification term `exp(-s)L + s/2` has precision coefficient `1`, not `1/2`, so reaching the
+same `+s` shape doubles its precision too, to `2·exp(-s)L + s`. Dropping that factor moves the
+classifier's fixed point from the true `σ² = 2L` down to `σ² = L` — it would end up weighted twice
+as precise as its own likelihood calls for. So the implementation is type-aware, not uniform:
 
 ```
-L_impl = Σ_i exp(-s_i) L_i + s_i,    s_i = log σ_i²
+L_impl = Σ_i exp(-s_i) L_i + s_i           (regression head)
+L_impl = Σ_i 2·exp(-s_i) L_i + s_i         (classification head)
 ```
 
 ## Working code
@@ -82,12 +89,17 @@ import torch.nn as nn
 class MultiTaskLoss(nn.Module):
     """Homoscedastic uncertainty weighting of K task losses.
 
-    Learns one log-variance s_i = log(sigma_i^2) per task. Each task loss is
-    weighted by its precision exp(-s_i) and regularized by + s_i:
-        L = sum_i  exp(-s_i) * L_i  +  s_i
-    exp(-s_i) > 0 (no divide-by-zero); s_i is unconstrained so SGD steps it
-    freely; + s_i forbids the sigma -> inf (weight -> 0) collapse that a bare
-    learnable weight w_i in sum_i w_i L_i suffers."""
+    Learns one log-variance s_i = log(sigma_i^2) per task, weighted by a
+    precision and regularized by + s_i. exp(-s_i) > 0 (no divide-by-zero);
+    s_i is unconstrained so SGD steps it freely; + s_i forbids the sigma ->
+    inf (weight -> 0) collapse that a bare learnable weight w_i in
+    sum_i w_i L_i suffers. A cross-entropy head's NLL puts the full
+    1/sigma^2 on the logits (no Gaussian 1/2), so matching this module's
+    uniform + s_i regularizer needs precision 2*exp(-s_i) for a
+    classification head, not exp(-s_i); a regression head's 1/2 cancels
+    against the same doubling, so its precision stays exp(-s_i). fine_loss
+    and coarse_loss are both cross-entropy heads here, so both take the
+    classification coefficient."""
 
     def __init__(self, num_tasks=2):
         super().__init__()
@@ -98,7 +110,7 @@ class MultiTaskLoss(nn.Module):
     def forward(self, fine_loss, coarse_loss, epoch, total_epochs):
         losses = [fine_loss, coarse_loss]
         total = sum(
-            torch.exp(-self.log_vars[i]) * losses[i] + self.log_vars[i]
+            2 * torch.exp(-self.log_vars[i]) * losses[i] + self.log_vars[i]
             for i in range(len(losses))
         )
         return total

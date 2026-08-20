@@ -16,11 +16,11 @@ with $L_2(W)$ the unscaled cross-entropy. The inverse-variance weight $1/\sigma^
 
 $$L(W, \sigma_1, \sigma_2) = \frac{1}{2\sigma_1^2} L_1(W) + \frac{1}{\sigma_2^2} L_2(W) + \log\sigma_1 + \log\sigma_2,$$
 
-with $L_1 = \|y_1 - f^W(x)\|^2$ and $L_2 = -\log\text{Softmax}(y_2, f^W(x))$. Both tasks are weighted by inverse variance and regularised by $\log\sigma_i$, and the construction extends to any number of continuous and discrete outputs by adding terms. One honest asymmetry remains: the regression coefficient is $1/(2\sigma_1^2)$ and the classification coefficient is $1/\sigma_2^2$ — the factor of two is the $1/2$ in the Gaussian NLL, absent from the temperature scaling that puts the full $1/\sigma^2$ on the logits. For a compact module that consumes any already-reduced task loss, I adopt the canonical uniform log-variance convention: the term $\exp(-s_i)L_i + s_i$ per task. In the log-variance variable the regression term $\tfrac{1}{2}\exp(-s)L + \tfrac{1}{2}s$ multiplied by two becomes $\exp(-s)L + s$ without moving its optimum in $s$, and the classifier yields the same precision term after the $\sigma \to 1$ approximation; the probabilistic derivation still explains the factor-of-two asymmetry that this coding convention smooths over.
+with $L_1 = \|y_1 - f^W(x)\|^2$ and $L_2 = -\log\text{Softmax}(y_2, f^W(x))$. Both tasks are weighted by inverse variance and regularised by $\log\sigma_i$, and the construction extends to any number of continuous and discrete outputs by adding terms. One honest asymmetry remains: the regression coefficient is $1/(2\sigma_1^2)$ and the classification coefficient is $1/\sigma_2^2$ — the factor of two is the $1/2$ in the Gaussian NLL, absent from the temperature scaling that puts the full $1/\sigma^2$ on the logits. In the log-variance variable, using $\log\sigma = s/2$, that asymmetry does not wash out: the regression term $\tfrac{1}{2}\exp(-s)L + \tfrac{1}{2}s$ doubles for free to $\exp(-s)L + s$, since both halves scale together and the fixed point is unmoved, but the classification term is $\exp(-s)L + s/2$ — precision coefficient $1$, not $\tfrac{1}{2}$ — so reaching the same "$+s$" shape doubles its precision too, to $2\exp(-s)L + s$; dropping that factor would move the classifier's fixed point from the true $\sigma^2 = 2L$ down to $\sigma^2 = L$, over-weighting it relative to what its own likelihood calls for. So the implementation is type-aware, not uniform: $\exp(-s_i)L_i + s_i$ per regression head, $2\exp(-s_i)L_i + s_i$ per classification head.
 
-This beats a grid search for two structural reasons, not merely by automating it. A grid search samples the weighting space coarsely while the good band is narrow, so it can step over the best point; the learned $\sigma$ moves continuously and is not quantised. More importantly, a grid weight is static for the whole run, whereas the learned $\sigma$ is dynamic: early in training every loss is large, so every $\sigma_i$ is large (by $\sigma_i^2 = L_i$) and the weighting is roughly even; as the model masters an easy task its loss drops, its $\sigma$ drops, and its weight rises — a schedule of relative weights that evolves over training in a way no single fixed grid point can match. Robustness to initialisation is guaranteed by convexity: the per-task objective in $s$ is $\tfrac{1}{2}\exp(-s)L + s/2$ with $\partial/\partial s = -\tfrac{1}{2}\exp(-s)L + \tfrac{1}{2}$, zero at $s = \log L$, and second derivative $\tfrac{1}{2}\exp(-s)L > 0$, so it is strictly convex with a single minimum; the implemented $\exp(-s)L + s$ shares that minimiser and positive curvature. We can therefore initialise $s = 0$ — meaning $\sigma^2 = 1$, $\exp(-s) = 1$, every task weighted equally, the most neutral possible start — and let each scalar move toward its fixed point with no further hand-tuned hyperparameter.
+This beats a grid search for two structural reasons, not merely by automating it. A grid search samples the weighting space coarsely while the good band is narrow, so it can step over the best point; the learned $\sigma$ moves continuously and is not quantised. More importantly, a grid weight is static for the whole run, whereas the learned $\sigma$ is dynamic: early in training every loss is large, so every $\sigma_i$ is large (by $\sigma_i^2 \propto L_i$) and the weighting is roughly even; as the model masters an easy task its loss drops, its $\sigma$ drops, and its weight rises — a schedule of relative weights that evolves over training in a way no single fixed grid point can match. Robustness to initialisation is guaranteed by convexity, checked per task type: the regression objective in $s$ is $\tfrac{1}{2}\exp(-s)L + s/2$, with $\partial/\partial s = -\tfrac{1}{2}\exp(-s)L + \tfrac{1}{2}$ zero at $s = \log L$ and second derivative $\tfrac{1}{2}\exp(-s)L > 0$; the implemented $\exp(-s)L + s$ shares that minimiser and positive curvature. The classification objective, $2\exp(-s)L + s$, is strictly convex too — $\partial/\partial s = -2\exp(-s)L + 1$ zero at $s = \log(2L)$, second derivative $2\exp(-s)L > 0$ — just at twice the loss scale. We can therefore initialise $s = 0$ — meaning $\sigma^2 = 1$, $\exp(-s) = 1$, every task weighted equally, the most neutral possible start — and let each scalar move toward its fixed point with no further hand-tuned hyperparameter.
 
-The whole thing drops into the existing multi-task harness as one log-variance Parameter per task, registered so the optimiser trains it jointly with the network, and a short forward computing $\sum_i \exp(-s_i) L_i + s_i$:
+The whole thing drops into the existing multi-task harness as one log-variance Parameter per task, registered so the optimiser trains it jointly with the network, and a short forward computing $\sum_i 2\exp(-s_i) L_i + s_i$ for these two cross-entropy heads:
 
 ```python
 import torch
@@ -30,12 +30,17 @@ import torch.nn as nn
 class MultiTaskLoss(nn.Module):
     """Homoscedastic uncertainty weighting of K task losses.
 
-    Learns one log-variance s_i = log(sigma_i^2) per task. Each task loss is
-    weighted by its precision exp(-s_i) and regularized by + s_i:
-        L = sum_i  exp(-s_i) * L_i  +  s_i
-    exp(-s_i) > 0 (no divide-by-zero); s_i is unconstrained so SGD steps it
-    freely; + s_i forbids the sigma -> inf (weight -> 0) collapse that a bare
-    learnable weight w_i in sum_i w_i L_i suffers."""
+    Learns one log-variance s_i = log(sigma_i^2) per task, weighted by a
+    precision and regularized by + s_i. exp(-s_i) > 0 (no divide-by-zero);
+    s_i is unconstrained so SGD steps it freely; + s_i forbids the sigma ->
+    inf (weight -> 0) collapse that a bare learnable weight w_i in
+    sum_i w_i L_i suffers. A cross-entropy head's NLL puts the full
+    1/sigma^2 on the logits (no Gaussian 1/2), so matching this module's
+    uniform + s_i regularizer needs precision 2*exp(-s_i) for a
+    classification head, not exp(-s_i); a regression head's 1/2 cancels
+    against the same doubling, so its precision stays exp(-s_i). fine_loss
+    and coarse_loss are both cross-entropy heads here, so both take the
+    classification coefficient."""
 
     def __init__(self, num_tasks=2):
         super().__init__()
@@ -46,7 +51,7 @@ class MultiTaskLoss(nn.Module):
     def forward(self, fine_loss, coarse_loss, epoch, total_epochs):
         losses = [fine_loss, coarse_loss]
         total = sum(
-            torch.exp(-self.log_vars[i]) * losses[i] + self.log_vars[i]
+            2 * torch.exp(-self.log_vars[i]) * losses[i] + self.log_vars[i]
             for i in range(len(losses))
         )
         return total
