@@ -51,14 +51,20 @@ halves the normalization layers per block. In a large-scale op-sharded implement
 owns the attention and MLP kernels, the two branches read the same tensor, so the attention and
 MLP input projections can be fused or co-scheduled, and the two sublayer outputs are summed
 locally and rejoin the residual through a *single* all-reduce (one forward, one backward)
-instead of two. That is the source of the roughly 15% large-scale throughput gain. In the local
-decoder patch below, `CausalSelfAttention` and `MLP` are intentionally unchanged, so the code
-realizes the single-norm parallel wiring but not a literal fused matmul rewrite. The only thing surrendered
-is one step of composition (the MLP no longer conditions on attention's output): a small
-quality cost at small scale that washes out by large scale. Tied vs untied (`MLP(LN2(x))` with
-a second independent norm) makes no measurable quality difference, so the tied single-norm
-form is chosen — it is the one that delivers the halved norm count and keeps the fused-kernel
-path available.
+instead of two. Two distinct, differently-priced wins fall out of that — the halved collective
+count (communication-bound) and the fused matmul's higher arithmetic intensity (compute-bound) —
+and which one dominates the resulting throughput gain is a profiling question on the target
+hardware, not something the block diagram alone settles. In the local decoder patch below,
+`CausalSelfAttention` and `MLP` are intentionally unchanged, so the code realizes the
+single-norm parallel wiring but not a literal fused matmul rewrite. The only thing surrendered
+is one step of composition (the MLP no longer conditions on attention's output): the expected
+cost is a small quality hit at small scale that should shrink as depth grows — a prediction to
+check by training both wirings and reading off validation loss, not an assumed result. Tied vs
+untied (`MLP(LN2(x))` with a second independent norm) is expected to make no measurable quality
+difference, since the extra gain is one per-channel vector against projection weights the
+branches already have independent freedom over — a hypothesis to disconfirm, not a settled fact
+— so the tied single-norm form is the default choice either way: it delivers the halved norm
+count and keeps the fused-kernel path available at no assumed quality cost.
 
 ## Defaults and why
 
