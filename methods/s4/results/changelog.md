@@ -34,6 +34,13 @@
 - `methods/s4/notes/strict_check_output.txt:1` - Recorded that no independent strict checker exists in this workspace.
 - `methods/s4/results/.codex_review.json:4` - Updated the review metadata from stale `errored` to `not_run` with the missing-checker reason and manual audit evidence.
 
+## 2026-08-19 — svfix repair (W3_primary_only)
+
+- `methods/s4/results/reasoning.md:179` - Removed a third-person meta-voice leak at the start of the code section (an external-code-artifact phrase naming the code by its provenance rather than the narrator's own) that broke first-person voice; rewrote as "I store...", "scale...", "multiply...", "apply...", "use...".
+- `methods/s4/notes/sources.md:1` (new) - Documented the correct backing for the decisive NPLR step (`reasoning.md:89-91`): the actual proof of `thm:hippo-nplr` at `refs/primary/source/src/appendix-theory.tex:211-236` (sec:s4-nplr-proof, HiPPO-LegS case), which the trace's index-algebra derivation matches almost verbatim. The step was previously (mis)backed by `method.tex:107`, a one-line bare assertion of the same fact with no mechanism.
+- `methods/s4/notes/source_matrix.md:7` - Split the NPLR theorem-statement citation (`method.tex:119-127`, marked as not proof-bearing) from the actual proof citation (`appendix-theory.tex:157-312`, sec:s4-nplr-proof) that backs the decisive step.
+- No change to the derivation's content, landing, or code: the decisive-step math in `reasoning.md:89-91` was already a genuine derivation (index algebra + concrete N=6 numerical check) matching the primary paper's own proof; this pass only corrects which passage of the primary source backs it and removes the meta-voice leak. Outcome: single-source (class D) remains legitimate — no non-primary material exists for this mechanism (search log in `notes/sources.md`).
+
 ## Verification
 
 - `context.md` scaffold shape: 5 `##` sections.

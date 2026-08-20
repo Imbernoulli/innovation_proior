@@ -176,7 +176,7 @@ Let me pin down the parameterization and the few design choices that remain. In 
 
 That handles one 1-D channel. A real model has H feature channels, so I just run H independent copies of this 1-D SSM — H separate DPLR factors, C̃, and Δ — producing H output sequences, then mix the H channels with a position-wise linear layer (the SSM never mixes channels itself). This is precisely a depthwise-separable convolution structure, except the per-channel filters are *global* (length L) and generated implicitly from the SSM rather than stored. Stack these with norm, residual, and a pointwise nonlinearity between layers, and the depth supplies the nonlinearity that the linear core lacks. Train the SSM/DPLR parameters with a smaller learning rate and no weight decay — they're not ordinary weights, they're a continuous dynamical system, and decaying them toward zero would corrupt the HiPPO structure — while the mixing layers train normally.
 
-Now the code. The reference implementation stores only one half of each conjugate pair, scales A by dt instead of explicitly forming g(z) = (2/dt)(1-z)/(1+z), multiplies the Cauchy weights by dt, applies the rank-1 Woodbury correction, then uses irfft to get the real kernel.
+Now the code. I store only one half of each conjugate pair, scale A by dt instead of explicitly forming g(z) = (2/dt)(1-z)/(1+z), multiply the Cauchy weights by dt, apply the rank-1 Woodbury correction, then use irfft to get the real kernel.
 
 ```python
 import torch
