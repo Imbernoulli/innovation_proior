@@ -119,8 +119,9 @@ that blows up as any eigenvalue $\lambda_i$ approaches the upper barrier $u$. Us
 the Sherman-Morrison expansion of $(uI-A-tvv^*)^{-1}$, one shows there is always a
 vector and a weight to add that lets both barriers move forward by a fixed amount
 without increasing the potential; iterating drives the condition number to
-$\frac{d+1+2\sqrt d}{d+1-2\sqrt d}$. The same paper noted, "purely for
-motivational purposes," that *adding the average vector* applies the operator
+$\frac{d+1+2\sqrt d}{d+1-2\sqrt d}$. The same paper also contains an aside — later described as included
+"purely for motivational purposes" rather than as part of the actual
+construction — noting that *adding the average vector* applies the operator
 $I-\tfrac1m\frac{d}{dx}$ to the characteristic polynomial, so that starting from
 $x^n$ and iterating produces $(I-\tfrac1m\frac{d}{dx})^k x^n$, a scaled associated
 Laguerre polynomial whose extreme roots have the very ratio
