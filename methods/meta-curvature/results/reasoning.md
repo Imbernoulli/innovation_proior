@@ -215,5 +215,3 @@ M_o` applied as commuting `n`-mode products, equivalently a Kronecker product ne
 initialized to identity it reproduces MAML exactly, diagonal factors give a separable coordinate-wise
 approximation rather than arbitrary Meta-SGD, and it folds into the existing autodiff outer loop with no
 matrix inversion and no new higher-order cost beyond MAML's.
-</content>
-</invoke>
