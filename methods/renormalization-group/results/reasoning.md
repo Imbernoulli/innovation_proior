@@ -6,10 +6,24 @@ by scale.
 
 Kadanoff's block-spin idea gives the right image: replace small blocks by effective degrees of
 freedom and compare the blocked system with the original one. But if the blocked model is forced to
-have the same microscopic form with only a temperature and field, the construction is an assumption.
-The real blocking operation generates other interactions. Wilson's decisive step is to stop treating
-those extra terms as a defect. They are the natural coordinates of the effective theory at the new
-scale.
+have the same microscopic form with only a temperature and field, that closure is an assumption, and
+an assumption is worth testing rather than trusting. Work the block-spin step through by hand on the
+two-dimensional square lattice: eliminate the center spin of each five-spin block by summing over its
+two states, which turns the local piece of the Boltzmann weight into 2cosh[J(sum of the four
+neighboring spins)], then expand that factor over the sixteen configurations the four outer spins can
+take. The sum does not fold back onto one rescaled coupling. It splits into a coupling between
+adjacent outer spins, a second and independent coupling between the two outer spins that now sit
+diagonally across the decimated block, and a four-spin coupling tying all four corners together --
+more coupling types than the temperature and field the closure assumption allows, after a single
+decimation step, with still more appearing at every further step. That matches what years of trying
+to derive renormalization-group transformations for a fixed handful of couplings -- Gell-Mann and
+Low's single electric charge, Kadanoff's temperature and field -- had already run into: no such
+transformation could be made to work, because the fixed-coupling requirement itself does not survive
+contact with an explicit calculation. Wilson's decisive step is to stop treating the extra terms the
+decimation produces as a defect to truncate away. They are the natural coordinates of the effective
+theory at the new scale, and once the fixed-coupling requirement is dropped, defining a
+renormalization-group transformation at all stops being the hard problem -- finding a computable
+approximation to it becomes the hard problem instead.
 
 This changes the object being studied. The object is not a single Hamiltonian that is repeatedly
 massaged into a familiar microscopic form. It is a point in a usually infinite-dimensional coupling
@@ -40,8 +54,11 @@ their flows enter the same basin of attraction and differ mainly in irrelevant c
 long-distance critical behavior is controlled by the same fixed point. The exponents are not fitted
 features of each material. They are eigenvalues of the linearized scale-change map.
 
-The one-dimensional Ising decimation illustrates the logic without approximation. Summing over every
-other spin gives K' = (1/2) log cosh(2K), or tanh K' = tanh^2 K. Finite K flows toward K = 0, while
+The one-dimensional Ising decimation illustrates the logic without approximation, and it is the
+exception rather than the rule for the coupling count: a chain has no closed loops for a decimation
+step to generate new couplings around, so summing over every other spin folds back onto a single
+coupling exactly, unlike the two-dimensional block above. That single decimation step gives
+K' = (1/2) log cosh(2K), or tanh K' = tanh^2 K. Finite K flows toward K = 0, while
 K = infinity is the zero-temperature unstable fixed point. The absence of a finite-K critical fixed
 point is the renormalization-group reason there is no finite-temperature phase transition in one
 dimension.
