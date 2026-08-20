@@ -57,12 +57,16 @@ network applied to concatenated pairs, with sum-pooling for order-invariant set 
 
 RelationNet *both* learns a deep embedding *and* learns a deep non-linear similarity, mutually
 tuned. Fixed-metric methods (Matching/Prototypical) assume element-wise comparison and (for
-Prototypical) linear separability after the embedding, so they are bottlenecked by the embedding;
-a learned relation module can represent comparisons no fixed metric can (e.g. a synthetic 2D case
-where the matched region is non-linear: Euclidean-NN, a learned Mahalanobis metric, and even an
-MLP-embedding-then-Mahalanobis all fail, but the deep relation module solves it). It avoids the
-recurrence of memory/RNN methods (MANN, MetaNets) and the test-time gradient steps of
-optimisation methods (MAML, Meta-Learner LSTM): inference is a single feed-forward pass.
+Prototypical) linear separability after the embedding, so they are bottlenecked by the embedding:
+any comparator built from a fixed distance — Euclidean, cosine, or a learned Mahalanobis metric,
+even after warping the embedding through extra non-linear layers — classifies by thresholding that
+distance, so its matched region is always a convex sublevel set (a disk or ellipsoid); it cannot
+carve a non-convex matched region such as an annulus around the query, whatever the embedding
+does. A relation module with a hidden non-linearity is not bound by that convexity — it can
+compute a distance-like quantity internally and threshold it on both sides — so it can represent
+comparisons no fixed-distance metric structurally can. It also avoids the recurrence of
+memory/RNN methods (MANN, MetaNets) and the test-time gradient steps of optimisation methods
+(MAML, Meta-Learner LSTM): inference is a single feed-forward pass.
 
 ## Working code
 
