@@ -21,9 +21,10 @@ beyond the training window, on off-the-shelf models running standard dense-atten
   sequence outgrows the cache — then perplexity spikes abruptly, exactly when the *first* tokens
   are evicted, not gradually as old context is lost.
 - **Attention sinks.** Beyond the bottom couple of layers, almost every head dumps a large
-  fraction of its attention mass onto the first few token positions regardless of content (often
-  more than half the total mass goes to token zero). Replacing the first tokens with linebreaks
-  doesn't move this, so it is **absolute position, not semantics**, that matters.
+  fraction of its attention mass onto the first few token positions (often more than half the
+  total mass goes to token zero). Causal masking makes those slots the only ones visible to
+  *every* later query, so it is **absolute position, not semantics**, that the model is
+  exploiting — whatever content occupies the slot is beside the point.
 - **Why.** Softmax forces attention weights to sum to one — there is no abstain — so when a query
   has no strong match, the surplus mass must land somewhere. Causal masking makes the initial
   tokens the only ones visible to *every* later query, so training drives them into the role of a
