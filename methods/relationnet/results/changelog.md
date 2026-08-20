@@ -14,3 +14,11 @@
   proof, not an experimental report), so the "Why it works" section no longer asserts an
   experimental pass/fail result the method unit never ran in-loop. `results/train_answer.md`
   already used the capacity/derivation framing only and needed no change.
+
+## Commit-scope note (added 2026-08-20)
+This fix (and this changelog entry) was originally landed in commit `c72b5918b`, whose commit
+message described only a `none` (3DGS) repair and did not disclose that the same commit also
+carried this relationnet fix — an undisclosed scope violation (two methods bundled into one
+commit, one of them unmentioned). The content itself is unchanged from that commit; this note
+re-files it under its own accurately-scoped commit so the audit trail attributes relationnet's
+repair to its own commit rather than `none`'s.
