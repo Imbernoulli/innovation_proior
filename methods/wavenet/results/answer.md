@@ -119,7 +119,7 @@ def loss_fn(model, waveform, cond=None):
     x = F.one_hot(waveform[:, :-1], QUANT).float().transpose(1, 2)
     target = waveform[:, 1:]
     logits = model(x, cond)
-    # Match the reference implementation: drop positions without a full receptive field.
+    # These targets are predicted from a window that still overlaps the zero-padding at the sequence start, not genuine history: exclude them.
     warmup = model.receptive_field - 1
     if target.size(1) <= warmup:
         raise ValueError("waveform must be longer than the model receptive field")
