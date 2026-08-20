@@ -116,13 +116,28 @@ increasing. Or, treat `max_π w(π)` as the linear program `max w` subject to `w
 all `k`, with one constraint per 1-tree, and run simplex generating columns on demand. Both of
 these are the obvious textbook attacks.
 
-And both crawl. The LP has an astronomical number of constraints; generating columns and pivoting
-is heavy. The steepest-ascent version has to fight the non-differentiability — near the optimum,
-where 1-trees tie, the "increase `w` at every step" requirement forces tiny, expensively
-line-searched steps, and the number of iterations grows badly as `n` grows. I'm spending all my
-time maximizing the bound and none solving TSPs. The trouble is structural: insisting that the
-function *increase* every step is exactly what makes me crawl, because at the kinks I want to
-reach, no small step increases `w`.
+The LP crawls for a plain reason: an astronomical number of constraints, one per 1-tree, so
+generating columns and pivoting is heavy. Steepest ascent is subtler, and before I code it up let
+me check the direction is even sound. Real steepest ascent for a concave function needs the
+*whole* tied set at `π` — every 1-tree that shares the current minimum weight, the full
+subdifferential — and takes the best direction out of that set. But resolving every tie is a
+harder computation than finding one minimizer: my greedy MST-plus-two-edges routine hands me
+exactly one minimizing 1-tree, not the set of all of them. So what happens if I do the cheap thing
+anyway and treat that single residual vector as the ascent direction? Check it on the smallest
+object with the right shape — three affine pieces of a two-variable `π`, `w(π) = min{−π_1,
+π_1−2π_2, π_1+2π_2}`, a min of finitely many affine functions exactly like my real `w`. At
+`π=(1,1)` the pieces evaluate to `−1, −1, 3` — a tie between the first two, `w(1,1)=−1`, with tied
+gradients `(−1,0)` and `(1,−2)`. My greedy routine would hand me one of those two, say `d=(−1,0)`.
+Is that an ascent direction? The true local behavior along `d` is governed by whichever tied piece
+falls fastest: `min{d·(−1,0), d·(1,−2)} = min{1,−1} = −1 < 0` — `w` decreases along `d`. The other
+candidate, `d=(1,−2)`, does no better: `min{(1,−2)·(−1,0), (1,−2)·(1,−2)} = min{−1,5} = −1 < 0`.
+Neither of the only two vectors a single cheap minimization could plausibly hand me is an ascent
+direction at this non-optimal point — the "obvious" steepest-ascent step, built from one 1-tree
+instead of the full tied set, can walk `w` straight downhill. That's not a slowness complaint,
+it's a correctness hole: the one piece of the subdifferential I can afford to compute is not
+guaranteed to point uphill at all, and the piece that would be guaranteed — the whole tied set —
+is exactly what I can't afford at every branch-and-bound node. I'm stuck between an LP that's
+correct but crawls and a "steepest ascent" that's cheap but can point the wrong way.
 
 So let me question that requirement. Maybe I don't need the function to increase every step. What
 weaker guarantee could I settle for that still gets me to the maximizer? The maximizer `π*` is a
