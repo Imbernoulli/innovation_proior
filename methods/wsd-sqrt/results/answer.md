@@ -5,8 +5,9 @@ stages — a linear **warmup** to the peak rate, a long **stable** stage that ho
 constant, and a short final **decay** (cooldown) that anneals the rate down to a floor. Crucially
 the stable stage has no predetermined length: it is a reusable trunk that can run indefinitely,
 and a cooldown can be branched off any checkpoint on demand. The **sqrt** variant uses the
-`1 - sqrt(progress)` cooldown shape, which front-loads the rate drop and outperforms the linear
-cooldown in the reported 10-20% cooldown experiments.
+`1 - sqrt(progress)` cooldown shape, which front-loads the rate drop relative to a linear tail so
+that the cooldown quenches high-rate oscillation early and spends more of its remaining steps at
+genuinely low, settling rates.
 
 ## Problem it solves
 
@@ -36,22 +37,24 @@ the pretraining loss is a long valley with a flat "river" direction along its fl
 but makes it overshoot and oscillate across the hill directions, so the measured loss stays
 elevated — large steps, little apparent progress. Lowering the rate quenches the cross-valley
 oscillation and the iterate drops the short distance into the channel — small steps, a sharp loss
-drop. Because you only descend the valley's width (not the river's length), a short decay (~10%)
-suffices, and pre- vs. post-decay checkpoints lie in one connected basin (linear weight
-interpolation between them shows the same smooth loss drop).
+drop. Because you only descend the valley's width (not the river's length), the decay only needs
+to be a short slice of the run — this method uses ~10-20% of steps — rather than a full anneal,
+and pre- vs. post-decay checkpoints are expected to lie in one connected basin (linear weight
+interpolation between them following the same smooth loss drop).
 
 Why `1 - sqrt(progress)` for the cooldown shape: the decay should quench high-rate oscillation
 early, while leaving enough remaining cooldown at useful low rates. With decay-progress
 `p in [0,1]`, the multiplier `1 - sqrt(p)` has derivative `-1/(2 sqrt(p))`: singular at `p = 0`
 in the continuous idealization and `-1/2` at `p = 1`. Since `sqrt(p) > p` on `(0,1)`, it lies
-below the linear `1 - p`, reaching any chosen low multiplier earlier. Empirically this shape
-consistently beats linear in the tested 10-20% cooldown settings, with the advantage growing for
-longer training. In the `1 - p^a` family, `a = 0.5` is empirical rather than algebraically forced:
-very small exponents such as `0.1` and `0.2` underperform because the rate is too low for too many
-steps, while the remaining tested exponents below `0.5` differ only marginally and `0.5` still
-comes out on top. The final LR is an independent knob: `min_lr = 0` reproduces the canonical
-cooldown-to-zero, while a small positive floor can avoid exact-zero saturation on downstream
-metrics.
+below the linear `1 - p`, reaching any chosen low multiplier earlier. The exponent in the more
+general `1 - p^a` family is an empirical choice rather than something algebra alone can pin down:
+the geometry only says smaller `a` front-loads the drop more, not how much front-loading is too
+much — push `a` too low and the run is stranded at a near-dead rate for most of the cooldown,
+while `a` too close to `1` lingers too long at rates still high enough to sustain the cross-valley
+oscillation. This method lands on `a = 0.5` — the square-root shape — as the exponent that sits
+between those two failure modes. The final LR is an independent knob: `min_lr = 0` reproduces the
+canonical cooldown-to-zero, while a small positive floor is available if downstream evaluation
+turns out to prefer it (the two objectives need not favor the same floor).
 
 ## Final schedule
 
@@ -117,6 +120,6 @@ with `final_lr_factor = min_lr / eta`, `n_anneal = int(fract_decay * N)`, and
 - **Constant LR (no decay)** — WSD's stable trunk with no cooldown; leaves the late-anneal
   settling (the sharp loss drop) unrealized.
 - **Constant + linear cooldown (trapezoidal / "infinite-LR" schedule)** — WSD with `f(p) = 1 - p`.
-  The sqrt cooldown replaces the linear tail with `1 - sqrt(p)`, front-loading the rate drop; in
-  the reported ablations it gives lower loss than linear, with the advantage growing for longer
-  runs.
+  The sqrt cooldown replaces the linear tail with `1 - sqrt(p)`, front-loading the rate drop on the
+  reasoning that quenching the cross-valley oscillation earlier leaves more of the cooldown at
+  rates low enough to actually settle.
