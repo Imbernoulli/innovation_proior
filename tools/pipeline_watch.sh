@@ -16,8 +16,8 @@ svc_up() { curl -fs -o /dev/null --max-time 4 "http://127.0.0.1:$1/v1/models" 2>
 preempt() { local t=0 v; for p in 30000 30001 30002; do v=$(curl -fs --max-time 4 http://127.0.0.1:$p/metrics 2>/dev/null | awk '!/^#/ && /num_preemptions_total/ {print int($NF)}'); t=$((t+${v:-0})); done; echo $t; }
 running() { local t=0 v; for p in 30000 30001 30002; do v=$(curl -fs --max-time 4 http://127.0.0.1:$p/metrics 2>/dev/null | grep -E '^vllm:num_requests_running' | awk '{print int($2)}'); t=$((t+${v:-0})); done; echo $t; }
 free_gpus() { nvidia-smi --query-gpu=index,memory.used --format=csv,noheader,nounits 2>/dev/null | awk -F', ' '$2<3000{printf "%s ",$1}'; }
-# cgshop RETIRED 2026-08-19 (thinking never terminates); cp2 COMPLETE 151/151 -> 2 drivers: cfr1@110 code@80
-q38_driver_alive() { [ "$(ps -eo args | grep -cE 'hardcp_rollout\.py.*out-suffix \.q38')" -ge 2 ]; }
+# cgshop retired; cp2 151/151 + code-fresh 1801/1801 COMPLETE -> 1 driver left: cfr1@110 (tail ~70 queries)
+q38_driver_alive() { [ "$(ps -eo args | grep -cE 'hardcp_rollout\.py.*out-suffix \.q38')" -ge 1 ]; }
 
 last_bytes=$(q38_bytes); last_change=$(date +%s); last_pre=$(preempt); last_pre=${last_pre:-0}
 down_30000=0; down_30001=0; down_30002=0; stalled=0; tick=0; fw=0; fw_reported=0
@@ -33,7 +33,7 @@ while true; do
       [ "${!dvar}" = "1" ] && { echo "[q38-watch] q38 service $p RECOVERED"; eval "$dvar=0"; }
     fi
   done
-  if ! q38_driver_alive; then echo "[q38-watch] ALERT: fewer than 2 q38 drivers alive (cfr1@110 code@80)"; sleep 600; fi
+  if ! q38_driver_alive; then echo "[q38-watch] ALERT: no q38 driver alive (expected cfr1@110; if [cfr1] DONE appears in its log this is campaign completion, not a crash)"; sleep 600; fi
   b=$(q38_bytes); now=$(date +%s)
   if [ "$b" != "$last_bytes" ]; then last_bytes=$b; last_change=$now; [ "$stalled" = "1" ] && { echo "[q38-watch] q38 trace growth RESUMED"; stalled=0; }; fi
   idle=$((now - last_change))
