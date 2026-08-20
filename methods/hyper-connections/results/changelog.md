@@ -21,3 +21,4 @@
 - `methods/hyper-connections/notes/strict_check_output.txt:14` recorded the initialization equivalence smoke test.
 - `methods/hyper-connections/notes/strict_check_output.txt:15` recorded structural checks for section count, target-name leakage, reasoning headers, review JSON validity, evidence files, and answer-code fidelity.
 - `methods/hyper-connections/results/changelog.md:1` replaced the stale changelog with this current file:line audit record.
+- `methods/hyper-connections/results/reasoning.md:5` (2026-08-19) rewrote the single-accumulator ("2x2 rule") paragraph: replaced the asserted "collapsed into one vector" claim with an explicit unrolling of the scalar recurrence, deriving that every route through a depth shares that depth's one carry weight — grounded in Appendix F's "How HC×1 fails" (unused primary-source material); see `notes/sources.md`.
