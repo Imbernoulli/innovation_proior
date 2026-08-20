@@ -3,8 +3,22 @@
 ## Three-source bottom line (status)
 - PRIMARY (1): Lomax 1999 "Intensity modulation methods for proton radiotherapy" Phys Med Biol 44:185 — PAYWALLED at IOPscience; only the **abstract** obtained (lomax1999.pdf = IOP HTML, abstract only). Four IM methods; the "3D modulation of individual Bragg peaks" = IMPT proper. Math reproduced from faithful secondaries (robust dual-field paper objective + matRad code).
 - PRIMARY (1, robust): Inaniwa et al. 2010 "Robust dual-field optimization of scanned ion beams against range and setup uncertainties" (arXiv 1010.0808) — FULL TEXT read. Gives explicit dose-influence superposition D_{i,l}=Σ_j d_{ij} w_j, penalized under/over-dose least-squares objective with Heaviside operators (eq.1), and robust gradient-suppression terms (eq.6). Cites Unkelbach 2007/2009, Pflugfelder 2008 as the worst-case / probabilistic IMPT robust ancestors.
-- BACKGROUND (2): Paganetti & Bortfeld "Proton Beam Radiotherapy — The State of the Art" (AAPM, aapm_protonSOA.pdf) — Bragg peak physics, SOBP, conformality, clinical rationale, scanning vs passive, distal falloff. Unkelbach 2006 PhD thesis (probabilistic treatment planning — expected value of objective, the IMRT ancestor of probabilistic IMPT). SOBP = weighted superposition of pristine Bragg peaks at different energies; range uncertainty ~3.5% from HU→stopping-power conversion (web-sourced).
-- EXPLAINER (3): MGB radoncphysics "Handling range and setup uncertainty in IMPT optimization" (probabilistic E[f] vs worst-case min-max, why Bragg-peak-behind-OAR is fragile). matRad (Wieser 2017, paper paywalled) — CODE is the canonical implementation, fetched into code/. Plus opacity_impt.pdf (Arcadu 2017) and robustness-protocols PDF (already in refs) as supporting IMPT explainers.
+- BACKGROUND (2): Paganetti & Bortfeld "Proton Beam Radiotherapy — The State of the Art" (AAPM, aapm_protonSOA.pdf) — Bragg peak physics, SOBP, conformality, clinical rationale, scanning vs passive, distal falloff. SOBP = weighted superposition of pristine Bragg peaks at different energies; range uncertainty ~3.5% from HU→stopping-power conversion (web-sourced).
+  CORRECTION (svfix repair pass, see notes/sources.md): unkelbach06thesis.pdf is NOT a
+  proton/IMPT source — full-text check confirms it is Unkelbach's 2006 PhD thesis on
+  organ MOTION in photon IMRT (Heidelberg), with only 3 incidental "proton" mentions and
+  zero range/setup-uncertainty content. A verifier bounced a fix that grounded the
+  proton range/setup decisive step against it. Do not cite it for proton-specific claims;
+  it is off-topic here despite the superficial "probabilistic treatment planning" title
+  match. The genuinely on-topic, full-text, on-disk source for the robust-optimization
+  decisive step is refs/robust_dualfield_1010.0808.pdf (Inaniwa et al 2010) — see
+  notes/sources.md.
+- EXPLAINER (3): MGB radoncphysics "Handling range and setup uncertainty in IMPT optimization" (probabilistic E[f] vs worst-case min-max, why Bragg-peak-behind-OAR is fragile).
+  CORRECTION (svfix repair pass): the "matRad ... fetched into code/" claim below is
+  FALSE — there is no code/ directory anywhere in this method (verified `ls`/`find`).
+  matRad correspondence was never actually verified against real matRad source; treat the
+  matRad-specific claims in this file as unconfirmed and do not present them as sourced.
+  matRad (Wieser 2017, paper paywalled) — CODE claimed as the canonical implementation, NOT actually fetched into code/ (see correction above). Plus opacity_impt.pdf (Arcadu 2017) and robustness-protocols PDF (already in refs) as supporting IMPT explainers.
 
 ## The pain point / research question
 Photon IMRT (Bortfeld inverse planning) modulates fluence of exponentially-attenuating beams. Protons have a Bragg peak: near-zero exit dose, dose maximum at a depth set by energy, sharp distal falloff. A single pristine peak is too narrow to cover a tumor → SOBP stacks pristine peaks (weighted superposition at graded energies) to make a uniform high-dose plateau. Passive SOBP (single field uniform dose per field) wastes the proton advantage: every field must itself be uniform across the target. Question: can we instead let EACH field be deliberately INHOMOGENEOUS, modulating the weight of every individual Bragg spot in 3D, and only require the SUM over fields to be uniform on the target while sparing OARs? That's IMPT. It needs spot-scanning (magnetically steer a pencil beam laterally, change energy for depth) and inverse optimization over thousands of spot weights.
