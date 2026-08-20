@@ -128,42 +128,45 @@ the geometry: rescale the unconditional baseline, then push along the conditiona
 That fixes the mix, but it does not answer what to do when the velocity at the beginning is so
 bad that even a better mix is not a good step. My first instinct is that a smarter mix should
 help everywhere, so the natural thing is to use the optimized guided velocity at every step,
-including `t = 0`, and let the projection do its work. The closed-form diagnostic lets me test
-that instinct instead of trusting it. At `t = 0` I know `v_0^*(x) = mu - x` exactly, so I can ask
-a concrete question: is the guided first-step velocity actually closer to `v_0^*` than the zero
-vector is?
+including `t = 0`, and let the projection do its work. At `t = 0` I know `v_0^*(x) = mu - x`
+exactly, so I can ask a concrete question: is the guided first-step velocity actually closer to
+`v_0^*` than the zero vector is?
 
-To make the comparison honest I have to model what "underfitted" means. I take the underfit
-learned velocities to be the true ones corrupted toward a random direction of the same energy,
-parameterized by a correlation `rho` (so `rho = 1` is a perfect fit, `rho` small is badly fit),
-and I form the optimized guided velocity from those. Then I average
-`||v_guided - v_0^*||^2` over a batch of `x_0` and compare it to `||0 - v_0^*||^2 = ||v_0^*||^2`.
-At a moderate guidance scale `w = 1.5`, the ratio `||v_guided - v_0^*||^2 / ||v_0^*||^2` comes out
+Unlike the sign check on `(2t - 1)`, I cannot settle this by pure algebra. That check compared two
+things I could both compute — a formula and a Monte Carlo estimate of the same expectation. Here
+one side is unknown: I know the target `v_0^*(x)`, but I do not know how close the network's
+actual `v_uncond` and `v_cond` sit to it at the point in training that matters — that is a fact
+about the fit, not something the algebra can hand me. So I set up the smallest experiment that can
+answer it instead of guessing: use the Gaussian source/target pair I already have a closed form
+for, train the flow model on it, and at `t = 0`, on checkpoints spanning under-trained to
+converged, compare `||v_guided(t=0) - v_0^*||^2`, the squared error of the optimized-scale guided
+step, against `||0 - v_0^*||^2`, the squared error of doing nothing.
 
-  rho = 0.99 -> 0.16,   rho = 0.90 -> 0.50,   rho = 0.70 -> 1.16,
-  rho = 0.50 -> 1.76,   rho = 0.30 -> 2.34,   rho = 0.10 -> 2.93.
+The two hypotheses make different, checkable predictions. If the guided mix is always at least as
+good as silence, the ratio of those two errors should sit at or below one on every checkpoint. If
+instead the `(1 - w) e_uncond + w e_cond` amplification I already flagged is what dominates while
+the fit is still bad, the ratio should start above one on the least-trained checkpoints and fall
+toward and below one as training converges: a crossover, not a flat ordering. Only running the
+comparison distinguishes the two, but the decision rule is fixed either way before I run it: a
+crossover means I zero out the velocity for whichever prefix of steps sits on the wrong side of
+it and use the optimized-scale guidance everywhere else; no crossover means the mix is already the
+best move at every step and there is nothing to gate.
 
-This kills my first instinct, but only partway, and the partway is the interesting part. When the
-field is well fit (`rho >= 0.9`) the ratio is below one: the guided step really is the better
-estimate, and zeroing it would throw away a good move. But once the fit degrades past about
-`rho ~ 0.8`, the ratio crosses one and keeps climbing: the guided first-step velocity becomes a
-worse estimate of the optimal velocity than doing nothing at all. So in the underfitted regime
-the diagnostic genuinely satisfies
+A crossover, if it is there, is a statement about the source end of the trajectory specifically,
+not about guidance in general — it names the checkpoints and timesteps where the fit is worst,
+early in training and `t` near `0`, which is exactly where the same amplification that helps a
+well-fit vector hurts a badly-fit one. At the source end, when the field is unreliable, a guided
+move can be a worse velocity estimate than no velocity at all: it injects the largest wrong
+direction exactly when the trajectory has the least semantic information. If I set the velocity to
+zero instead, the ODE update leaves `x` unchanged and I avoid that particular bad move without
+touching any other step.
 
-  ||v_guided(t = 0) - v_0^*||_2^2 >= ||0 - v_0^*||_2^2.
-
-Read that as a decision rule. At the source end, when the field is unreliable, a guided move can
-be a worse velocity estimate than no velocity at all. If I take that step, I inject the largest
-wrong direction exactly when the trajectory has the least semantic information. If I set the
-velocity to zero, the ODE update leaves `x` unchanged and I avoid that particular bad move.
-
-The crossover also tells me how far this can extend. It is not a property of guidance in general;
-it is a property of the worst-fit, lowest-`rho` part of the schedule, which on a flow path is the
-noise end. So the beginning of the solver needs an inert prefix, but a short one: I zero the
+So the beginning of the solver needs an inert prefix, but a short and conditional one: I zero the
 velocity for the first `K` solver steps and use the optimized guided velocity after that. `K` has
-to stay small, because the inequality is a statement about the unreliable source end, not the
-whole trajectory; once the velocity field becomes informative the ratio drops back below one, and
-continuing to do nothing would simply throw away useful solver steps.
+to stay small and tied to how underfit the field actually is, because the argument only concerns
+the unreliable source end, not the whole trajectory — once a checkpoint's velocity field is
+informative enough to push the ratio back below one, continuing to zero the step would throw away
+a useful move instead of avoiding a harmful one.
 
 The sampler code only needs the two predictions it already computes. I flatten each prediction per
 batch element, form the projection scale, reshape it for broadcasting, and use the same per-step
@@ -221,7 +224,7 @@ gives an exact velocity,
 locate where that error is worst. The mix gets a per-sample projection coefficient
 `s^* = v_cond^T v_uncond / ||v_uncond||^2`, verified as the least-squares minimizer with an
 orthogonal residual, which leaves guidance to amplify the conditional residual. The initial steps
-get zero velocity in the underfitted regime, where the first-step diagnostic shows the guided
-estimate crossing over to be worse than the zero vector. I still have a drop-in guidance rule: the
-same two network predictions per step, one dot product and one norm for the scale, and an inert
-prefix at the unreliable source end.
+get zero velocity for whichever prefix the first-step check flags: the checkpoints and timesteps
+where the guided estimate crosses over to be no better than the zero vector. I still have a
+drop-in guidance rule: the same two network predictions per step, one dot product and one norm
+for the scale, and an inert prefix at the unreliable source end.
