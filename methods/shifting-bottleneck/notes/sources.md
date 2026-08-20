@@ -90,3 +90,15 @@ phrasing around a hand-checked tie, not a wrong constant/sign/formula (the
 value `B=11`, `ell=1` and every downstream use of it are correct), so it
 does not meet the fix-trigger bar for "a factual error" and was left
 alone per the no-padding/no-unneeded-edits rule.
+
+## Commit-scope note (added during rvea repair pass, 2026-08-20)
+This file was originally added alongside methods/rvea/notes/sources.md in
+commit 439357c64, whose commit message described only the rvea decisive
+step and did not disclose that the same commit also carried this
+92-line shifting-bottleneck write-up — an independent verifier flagged
+that as an undisclosed scope violation (two methods bundled into one
+commit, one of them unmentioned). This content itself was independently
+re-verified and is unchanged (see quality-gate verdict above); this note
+only re-files it under its own accurately-scoped commit so the audit
+trail attributes shifting-bottleneck's sourcing check to its own commit
+rather than rvea's.
