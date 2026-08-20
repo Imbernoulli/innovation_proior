@@ -58,3 +58,19 @@ Backtracking only when no gain found, only at i=1,2. Measurements: mean choice n
 - Disjointness of X,Y: avoids undoing within an iteration, simplifies gain bookkeeping, gives a clean stop rule, avoids implementation bugs.
 - Backtrack only levels 1,2 + cap ~5: empirically the right candidate is almost always the 1st/2nd (mean 1.2 / 1.8); deeper backtracking is a big time penalty for little gain.
 - Multistart from random tours: random starts as fast as constructive ones and give a population of local optima; better heuristic ⇒ fewer, better local optima.
+
+## svfix audit verdict (TRACK=W3_ancestors_only, 2026-08-20)
+Decisive step under review: variable-depth sequential exchange — forced x_i via
+close-up feasibility + positive-partial-sum gain criterion (cyclic-permutation lemma),
+replacing fixed-k k-opt.
+Verdict: **sound_as_is**. reasoning.md's derivation of this step (why-fixed-k-fails →
+element-by-element X/Y construction → additive gain → forced x_i by close-up →
+cyclic-permutation lemma, proved in full with a worked numeric example) tracks the
+primary (Lin & Kernighan 1973) almost line for line — the primary itself states the
+same "fix k in advance is a serious drawback" motivation and gives the identical lemma
+and proof. refs/lk1973.txt (pdftotext -layout extraction of refs/lk1973.pdf, added this
+pass) is the plain-text evidence file. refs/helsgaun_general_kopt.pdf, kopt_report.pdf,
+lkh_report.pdf remain correctly unused at this step — they are Helsgaun-era descendant
+material (5-opt submoves, alpha-nearness candidate lists), not evidence for the 1973
+decisive step, and grafting a citation to them here would be decorative, not load-bearing.
+No rewrite made; reasoning.md/answer.md/train_answer.md unchanged.
