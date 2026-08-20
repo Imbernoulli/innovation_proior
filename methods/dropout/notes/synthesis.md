@@ -120,7 +120,10 @@ the mean prediction ≤ average of squared errors of the individuals (Jensen / b
   fine-tuning, to avoid destroying pre-trained features.
 
 ## Canonical implementation (grounding)
-cuda-convnet (Alex Krizhevsky) + the dropout fork. Mechanics from src/layer.cu:
+cuda-convnet (Alex Krizhevsky) + a dropout fork. Mechanics from src/layer.cu, verified 2026-08-19
+against dnouri/cuda-convnet (github.com/dnouri/cuda-convnet/blob/master/src/layer.cu, a
+third-party fork that adds dropout to Krizhevsky's own library — not the authors' unreleased
+code; saved locally at refs/cuda-convnet_dropout_layer.cu.txt, see notes/sources.md):
 - Train fprop: `mask = uniform(); mask = mask > _dropout; acts *= mask;` (keep prob = 1-_dropout)
 - Test fprop: `acts *= (1 - _dropout)` (inverted scaling, equivalent to halving outgoing weights
   when keep=0.5).
