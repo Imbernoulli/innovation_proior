@@ -1,0 +1,62 @@
+Bootstrap: docker
+From: ubuntu:22.04
+
+%post
+    set -eux
+    export DEBIAN_FRONTEND=noninteractive
+
+    apt-get update
+    apt-get install -y --no-install-recommends \
+        ca-certificates \
+        curl \
+        jq \
+        unzip \
+        zip \
+        build-essential \
+        pkg-config \
+        python3 \
+        python3-pip \
+        pypy3 \
+        openjdk-17-jdk
+
+    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+    apt-get install -y --no-install-recommends nodejs
+    npm install -g npm@latest
+
+    arch="$(uname -m)"
+    case "$arch" in
+      x86_64) goarch="amd64v2" ;;
+      aarch64) goarch="arm64" ;;
+      *) echo "Unsupported arch: $arch" && exit 1 ;;
+    esac
+    GO_JUDGE_VERSION="${GO_JUDGE_VERSION:-v1.11.1}"
+    GO_JUDGE_VERSION_NO_V="${GO_JUDGE_VERSION#v}"
+    curl -fsSL "https://github.com/criyle/go-judge/releases/download/${GO_JUDGE_VERSION}/go-judge_${GO_JUDGE_VERSION_NO_V}_linux_${goarch}.tar.gz" \
+      | tar -xz -C /usr/local/bin go-judge
+    chmod +x /usr/local/bin/go-judge
+
+    cd /app
+    npm install --omit=dev --ignore-scripts
+    chmod +x /app/entrypoint.sh
+    mkdir -p /app/problems /app/submissions /app/data /lib/testlib
+
+    apt-get clean
+    rm -rf /var/lib/apt/lists/*
+
+%files
+    Frontier-CS/algorithmic/package.json /app/package.json
+    Frontier-CS/algorithmic/package-lock.json /app/package-lock.json
+    Frontier-CS/algorithmic/server.js /app/server.js
+    Frontier-CS/algorithmic/entrypoint.sh /app/entrypoint.sh
+    Frontier-CS/algorithmic/judge/src /app/src
+    Frontier-CS/algorithmic/judge/include /app/include
+    Frontier-CS/algorithmic/judge/config /app/config
+    Frontier-CS/algorithmic/judge/include /lib/testlib
+
+%environment
+    export PORT="${PORT:-8082}"
+    export GJ_ADDR="${GJ_ADDR:-http://127.0.0.1:5050}"
+    export TESTLIB_INSIDE="${TESTLIB_INSIDE:-/lib/testlib}"
+
+%runscript
+    exec /app/entrypoint.sh "$@"

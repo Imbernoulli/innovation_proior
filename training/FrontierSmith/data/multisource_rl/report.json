@@ -1,0 +1,86 @@
+{
+  "train": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/data/multisource_rl/train.parquet",
+  "research_x": 1,
+  "mls_x": 1,
+  "seed": 0,
+  "mix": {
+    "total": 1468,
+    "per_source": {
+      "frontiersmith_synth": {
+        "rows": 1300,
+        "frac": 0.8856
+      },
+      "mlsbench_rl": {
+        "rows": 168,
+        "frac": 0.1144
+      }
+    },
+    "agent_name": {
+      "single_turn_agent": 1300,
+      "mlsbench_agent": 168
+    }
+  },
+  "note": "GRPO samples batches uniformly over rows -> per-batch source mix follows row proportions.",
+  "smoke": {
+    "path": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/data/multisource_rl/train_smoke.parquet",
+    "mix": {
+      "total": 8,
+      "per_source": {
+        "frontiersmith_synth": {
+          "rows": 6,
+          "frac": 0.75
+        },
+        "mlsbench_rl": {
+          "rows": 2,
+          "frac": 0.25
+        }
+      },
+      "agent_name": {
+        "single_turn_agent": 6,
+        "mlsbench_agent": 2
+      }
+    },
+    "rows": [
+      {
+        "data_source": "mlsbench_rl",
+        "agent_name": "mlsbench_agent",
+        "ground_truth": "ml-clustering-algorithm_tv4"
+      },
+      {
+        "data_source": "frontiersmith_synth",
+        "agent_name": "single_turn_agent",
+        "ground_truth": "fsx_A_0116"
+      },
+      {
+        "data_source": "frontiersmith_synth",
+        "agent_name": "single_turn_agent",
+        "ground_truth": "fsx_C_1236"
+      },
+      {
+        "data_source": "mlsbench_rl",
+        "agent_name": "mlsbench_agent",
+        "ground_truth": "optimization-convex-concave_train"
+      },
+      {
+        "data_source": "frontiersmith_synth",
+        "agent_name": "single_turn_agent",
+        "ground_truth": "fsx_B_1067"
+      },
+      {
+        "data_source": "frontiersmith_synth",
+        "agent_name": "single_turn_agent",
+        "ground_truth": "fsx_G_0435"
+      },
+      {
+        "data_source": "frontiersmith_synth",
+        "agent_name": "single_turn_agent",
+        "ground_truth": "fsx_A_0517"
+      },
+      {
+        "data_source": "frontiersmith_synth",
+        "agent_name": "single_turn_agent",
+        "ground_truth": "fsx_S_0836"
+      }
+    ]
+  }
+}

@@ -1,0 +1,89 @@
+{
+  "probdir": "/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/synth/harness/_selftest_B",
+  "mode": "program",
+  "gates": {
+    "G0_files": true,
+    "G1_import": true,
+    "G3_bounds": true,
+    "G3b_vector": true,
+    "G4_determinism": true,
+    "G5b_adversarial": true,
+    "G5c_isolation": true,
+    "G5_feasibility": true,
+    "G6_baseline": true,
+    "G7_discrimination": true,
+    "G8_divergence": true
+  },
+  "metrics": {
+    "invalid_mean": 0.0,
+    "trivial_mean": 0.1,
+    "strong_mean": 0.41326,
+    "greedy_mean": 0.362803,
+    "strong_minus_trivial": 0.31326,
+    "exec_divergence": 0.21695
+  },
+  "solutions": {
+    "greedy": {
+      "tier": "greedy",
+      "ratio": 0.362803,
+      "vector": [
+        0.2659,
+        0.3121,
+        0.2941,
+        0.3241,
+        0.4446,
+        0.4272,
+        0.388,
+        0.4463
+      ],
+      "status": "OK"
+    },
+    "invalid": {
+      "tier": "invalid",
+      "ratio": 0.0,
+      "vector": [
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "status": "OK"
+    },
+    "strong": {
+      "tier": "strong",
+      "ratio": 0.41326,
+      "vector": [
+        0.2814,
+        0.3614,
+        0.3344,
+        0.3744,
+        0.4716,
+        0.4807,
+        0.4906,
+        0.5117
+      ],
+      "status": "OK"
+    },
+    "trivial": {
+      "tier": "trivial",
+      "ratio": 0.1,
+      "vector": [
+        0.1,
+        0.1,
+        0.1,
+        0.1,
+        0.1,
+        0.1,
+        0.1,
+        0.1
+      ],
+      "status": "OK"
+    }
+  },
+  "verdict": "PASS",
+  "errors": []
+}

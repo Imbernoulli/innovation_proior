@@ -1,0 +1,35 @@
+diff --git a/src/mlsbench/scoring/__init__.py b/src/mlsbench/scoring/__init__.py
+index eb57590bb..a450c254a 100644
+--- a/src/mlsbench/scoring/__init__.py
++++ b/src/mlsbench/scoring/__init__.py
+@@ -6,6 +6,7 @@ Provides unified [0,1] scoring across tasks with different metrics.
+ from __future__ import annotations
+ 
+ import argparse
++import json
+ import sys
+ from pathlib import Path
+ 
+@@ -98,7 +99,21 @@ def _cmd_score_task(args: argparse.Namespace, tasks_dir: Path) -> None:
+ 
+     results = evaluate_task(args.task, model=args.model, tasks_dir=tasks_dir)
+     if not results:
+-        print(f"No results for task '{args.task}'. Check score_spec.py and leaderboard.csv exist.")
++        # `--format json` has to emit JSON even when there is nothing to score.
++        # This branch used to print an English sentence on stdout and exit 0
++        # regardless of --format, so every programmatic caller got a
++        # JSONDecodeError and could not tell "this model has no leaderboard row"
++        # (a real, scoreable outcome: the agent never submitted) apart from "the
++        # scorer crashed". In FrontierSmith's eval path that difference decides
++        # whether a run counts as a genuine 0 or is dropped from the mean, so
++        # returning valid, empty JSON is the difference between a correct number
++        # and a silently inflated one.
++        if args.out_format == "json":
++            print(json.dumps({args.task: []}))
++        elif args.out_format == "csv":
++            print("")
++        else:
++            print(f"No results for task '{args.task}'. Check score_spec.py and leaderboard.csv exist.")
+         return
+ 
+     if args.out_format == "json":

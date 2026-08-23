@@ -1,0 +1,24 @@
+diff --git a/slurm/cc_eval_thinking_both_autopart.sh b/slurm/cc_eval_thinking_both_autopart.sh
+--- a/slurm/cc_eval_thinking_both_autopart.sh
++++ b/slurm/cc_eval_thinking_both_autopart.sh
+@@ -25,7 +25,7 @@
+ # =============================================================================
+ #SBATCH --job-name=cc-eval-thinking
+ #SBATCH --gres=gpu:1
+-#SBATCH --cpus-per-task=8
++#SBATCH --cpus-per-task=12
+ #SBATCH --mem=240G
+ #SBATCH --time=02:00:00
+ #SBATCH --output=/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/logs/%x-%j.out
+diff --git a/slurm/cc_eval_research_autopart.sh b/slurm/cc_eval_research_autopart.sh
+--- a/slurm/cc_eval_research_autopart.sh
++++ b/slurm/cc_eval_research_autopart.sh
+@@ -29,7 +29,7 @@
+ # =============================================================================
+ #SBATCH --job-name=cc-eval-research
+ #SBATCH --gres=gpu:1
+-#SBATCH --cpus-per-task=8
++#SBATCH --cpus-per-task=12
+ #SBATCH --mem=240G
+ #SBATCH --time=03:00:00
+ #SBATCH --output=/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith/logs/%x-%j.out

@@ -1,0 +1,656 @@
+diff --git a/src/mlsbench/agent/interactive.py b/src/mlsbench/agent/interactive.py
+index d4b4ccd7c..ae4ec40aa 100755
+--- a/src/mlsbench/agent/interactive.py
++++ b/src/mlsbench/agent/interactive.py
+@@ -1,9 +1,12 @@
+ """InteractiveAgent: LLM-powered agent using the tool_use API."""
+ 
++import os
++
+ from mlsbench.agent.base import BaseAgent
+ from mlsbench.agent.models import build_client
+ from mlsbench.agent.tools import (
+     TOOL_SCHEMAS, WEB_SEARCH_SCHEMA, WEB_EXTRACT_SCHEMA, RESET_SCHEMA, EDIT_REPLACE_SCHEMA,
++    VIEW_SCHEMA,
+ )
+ 
+ SYSTEM_PROMPT_SCI = """\
+@@ -90,15 +93,63 @@ class InteractiveAgent(BaseAgent):
+                 "  - op='insert': insert content after after_line\n"
+                 "  - op='create': create a new file (only if allow_create=true)\n"
+             )
+-            replace_block = (
+-                "- edit(op, filename, ...): Modify files in the workspace by exact string match.\n"
+-                "  - op='str_replace': replace the single, unique occurrence of old_str with new_str\n"
+-                "    (old_str must match exactly — whitespace included — and be unique; an empty\n"
+-                "    new_str deletes it)\n"
+-                "  - op='create': create a new file (only if allow_create=true)\n"
++            # ---------------------------------------------------------------
++            # Which str_replace CONTRACT is in force.
++            #
++            # Two env vars so an A/B can select a contract without editing code
++            # (FrontierSmith scripts/mlsbench_contract_eval.py drives them):
++            #
++            #   MLSBENCH_STRICT_STR_REPLACE=1
++            #       upstream contract: byte-exact matcher (tools.resolve_old_str
++            #       short-circuits on the same var), the ORIGINAL prompt wording,
++            #       and NO view tool. This is public `--use-replace` behaviour.
++            #   MLSBENCH_VIEW_TOOL=0
++            #       keep the tolerant matcher and its prompt guidance, but
++            #       withhold view(). Isolates the matcher's contribution from
++            #       the tool's.
++            #
++            # Both unset = tolerant matcher + view, i.e. exactly what this
++            # checkout did before these knobs existed.
++            # ---------------------------------------------------------------
++            _strict = os.environ.get("MLSBENCH_STRICT_STR_REPLACE", "").strip().lower() in (
++                "1", "true", "yes", "on",
+             )
++            _view_enabled = (not _strict) and os.environ.get(
++                "MLSBENCH_VIEW_TOOL", "1"
++            ).strip().lower() not in ("0", "false", "no", "off")
++
++            if _strict:
++                # Verbatim upstream wording — the prompt IS part of the contract,
++                # so the kill-switch has to restore it too, not just the matcher.
++                replace_block = (
++                    "- edit(op, filename, ...): Modify files in the workspace by exact string match.\n"
++                    "  - op='str_replace': replace the single, unique occurrence of old_str with new_str\n"
++                    "    (old_str must match exactly — whitespace included — and be unique; an empty\n"
++                    "    new_str deletes it)\n"
++                    "  - op='create': create a new file (only if allow_create=true)\n"
++                )
++            else:
++                replace_block = (
++                    "- edit(op, filename, ...): Modify files in the workspace by exact string match.\n"
++                    "  - op='str_replace': replace the single, unique occurrence of old_str with new_str\n"
++                    "    (old_str must reproduce the file's text and be unique; an empty new_str\n"
++                    "    deletes it). Keep old_str SHORT — a few distinctive lines is enough, and\n"
++                    "    short anchors are far more reliable than pasting a whole class or docstring.\n"
++                    "  - op='create': create a new file (only if allow_create=true)\n"
++                )
++                if _view_enabled:
++                    replace_block += (
++                        "- view(filename, start_line=None, end_line=None): Read the file back. The line\n"
++                        "  numbers shown in the prompt and in view() output are a display prefix\n"
++                        "  ('NNNNNN: ') — never include them in old_str. Call view() before str_replace\n"
++                        "  whenever you are unsure of the exact text, and always after an undo().\n"
++                    )
+             if edit_block in self.system_prompt:
+                 self.system_prompt = self.system_prompt.replace(edit_block, replace_block, 1)
++            # str_replace addresses code by verbatim text, so the agent needs a way
++            # to re-read it; the line-range tool needed only line numbers.
++            if _view_enabled:
++                self._tool_schemas.append(VIEW_SCHEMA)
+         if self.allow_reset:
+             self._tool_schemas.append(RESET_SCHEMA)
+             # Document reset() right after undo() so it reads as a peer tool.
+diff --git a/src/mlsbench/agent/models.py b/src/mlsbench/agent/models.py
+index 2a59d3ce8..428731064 100755
+--- a/src/mlsbench/agent/models.py
++++ b/src/mlsbench/agent/models.py
+@@ -637,6 +637,18 @@ class OpenAIClient(ModelClient):
+         )
+         if not skip_tool_choice:
+             create_kwargs["tool_choice"] = "required"
++        # Optional deterministic sampling. Unset (the default) leaves the request
++        # byte-identical to before — no `seed` field is sent, so provider
++        # behaviour is unchanged. Set MLSBENCH_SAMPLING_SEED=<int> to make a run
++        # reproducible against a seeded backend (vLLM honours per-request
++        # `seed`), which is what lets a preempted A/B cell be re-run and land in
++        # the same place instead of silently becoming a fresh draw.
++        _seed_raw = os.environ.get("MLSBENCH_SAMPLING_SEED", "").strip()
++        if _seed_raw:
++            try:
++                create_kwargs["seed"] = int(_seed_raw)
++            except ValueError:
++                pass
+         if extra_body:
+             create_kwargs["extra_body"] = extra_body
+ 
+diff --git a/src/mlsbench/agent/tools.py b/src/mlsbench/agent/tools.py
+index 27861a245..8ea83706f 100755
+--- a/src/mlsbench/agent/tools.py
++++ b/src/mlsbench/agent/tools.py
+@@ -41,7 +41,29 @@ TOOL_SCHEMAS = [
+                 "op": {
+                     "type": "string",
+                     "enum": ["create", "insert", "replace"],
+-                    "description": "The edit operation to perform.",
++                    # start_line/end_line/after_line cannot go in `required` (they
++                    # are per-op), and models driven by guided decoding emit only
++                    # the required fields -- so op='replace' arrives with no line
++                    # numbers and is rejected. Spell the companions out here, which
++                    # is the only place the schema can carry the dependency.
++                    #
++                    # MLSBENCH_LINERANGE_SCHEMA=public restores the upstream
++                    # one-line description. It exists so the line-range CONTROL
++                    # arm in an A/B can be the genuinely public contract: this
++                    # description is itself a contract change, and folding it
++                    # into the baseline would credit str_replace for an
++                    # improvement that belongs to the line-range op.
++                    "description": (
++                        "The edit operation to perform."
++                        if os.environ.get("MLSBENCH_LINERANGE_SCHEMA", "").strip().lower()
++                        == "public"
++                        else
++                        "The edit operation to perform. Each op has REQUIRED companion "
++                        "arguments that you must also pass:\n"
++                        "  'replace' -> requires start_line AND end_line AND content\n"
++                        "  'insert'  -> requires after_line AND content\n"
++                        "  'create'  -> requires content"
++                    ),
+                 },
+                 "filename": {
+                     "type": "string",
+@@ -113,6 +135,212 @@ TOOL_SCHEMAS = [
+ ]
+ 
+ 
++# ---------------------------------------------------------------------------
++# str_replace anchor resolution
++#
++# `op='str_replace'` addresses code by *reproducing it verbatim*, unlike the
++# line-range ops which address it by two integers. That is only a fair contract
++# when the agent can re-read the file at will (Anthropic's text-editor tool
++# pairs `str_replace` with `view`). This harness has no `view` tool, and the
++# only rendering of the file the agent ever sees is the line-number-prefixed
++# dump in the initial prompt (base.py build_initial_prompt) plus a 3-line peek
++# after each edit. A byte-exact matcher on top of that turns a *recall* failure
++# into a rejected tool call.
++#
++# resolve_old_str() therefore walks a ladder of progressively looser matches and
++# accepts a level only when it yields exactly ONE candidate span, so an edit is
++# never silently applied to the wrong place.
++# ---------------------------------------------------------------------------
++
++# The initial prompt renders every file line as "%6d: <line>" — models routinely
++# echo that prefix back, or echo the "%6d  <line>" form used by _file_snapshot.
++_LNUM_PREFIX_RE = re.compile(r"^[ \t]{0,10}\d{1,6}[ \t]*(?:[:|][ \t]?|[ \t])")
++
++# Look-alike characters that survive a model round-trip but break byte equality.
++_UNICODE_FOLD = {
++    " ": " ", "‘": "'", "’": "'", "“": '"', "”": '"',
++    "−": "-", "–": "-", "—": "-", "×": "*", "﻿": "",
++}
++
++
++def _strip_line_numbers(s: str) -> tuple[str, int]:
++    """Remove prompt-style line-number prefixes. Returns (text, n_lines_stripped)."""
++    out, hits = [], 0
++    for ln in s.split("\n"):
++        stripped = _LNUM_PREFIX_RE.sub("", ln, count=1)
++        if stripped != ln:
++            hits += 1
++        out.append(stripped)
++    return "\n".join(out), hits
++
++
++def _fold_unicode(s: str) -> str:
++    s = s.replace("\r\n", "\n").replace("\r", "\n")
++    for a, b in _UNICODE_FOLD.items():
++        s = s.replace(a, b)
++    return s
++
++
++def _canon_line(ln: str) -> str:
++    """Whitespace-insensitive canonical form of one line."""
++    return re.sub(r"[ \t]+", " ", ln.strip())
++
++
++def _line_offsets(text: str) -> list[int]:
++    offs, pos = [0], 0
++    for ln in text.split("\n"):
++        pos += len(ln) + 1
++        offs.append(pos)
++    return offs
++
++
++def _ws_block_spans(text: str, old_str: str) -> list[tuple[int, int, int, int]]:
++    """Find `old_str` as a block of lines, ignoring indentation and internal
++    whitespace runs. Returns [(char_start, char_end, line_start, line_end)]."""
++    old_lines = old_str.split("\n")
++    lead = 0
++    while lead < len(old_lines) and not old_lines[lead].strip():
++        lead += 1
++    trail = len(old_lines)
++    while trail > lead and not old_lines[trail - 1].strip():
++        trail -= 1
++    core = [_canon_line(l) for l in old_lines[lead:trail]]
++    if not core:
++        return []
++    tl = text.split("\n")
++    tc = [_canon_line(l) for l in tl]
++    n = len(core)
++    offs = _line_offsets(text)
++    spans = []
++    for i in range(0, len(tc) - n + 1):
++        if tc[i:i + n] == core:
++            start = offs[i]
++            end = offs[i + n] - 1 if i + n <= len(tl) else len(text)
++            spans.append((start, min(end, len(text)), i + 1, i + n))
++    return spans
++
++
++def _reindent(new_str: str, old_str: str, file_block: str) -> str:
++    """Shift `new_str` by the indent delta between the agent's `old_str` and the
++    real `file_block`, so a whitespace-tolerant match does not corrupt indentation."""
++    def base_indent(s: str) -> int | None:
++        for ln in s.split("\n"):
++            if ln.strip():
++                return len(ln) - len(ln.lstrip())
++        return None
++    a, b = base_indent(old_str), base_indent(file_block)
++    if a is None or b is None or a == b:
++        return new_str
++    delta = b - a
++    out = []
++    for ln in new_str.split("\n"):
++        if not ln.strip():
++            out.append(ln)
++        elif delta > 0:
++            out.append(" " * delta + ln)
++        else:
++            cur = len(ln) - len(ln.lstrip())
++            out.append(ln[min(cur, -delta):])
++    return "\n".join(out)
++
++
++def resolve_old_str(text: str, old_str: str) -> dict:
++    """Locate the unique region of `text` designated by `old_str`.
++
++    Returns a dict with either:
++        ok=True, start, end, line_start, line_end, level, note
++    or:
++        ok=False, reason ('not_found' | 'ambiguous'), n_matches, level
++    Each level is only accepted when it produces exactly one candidate, so a
++    looser match can never silently retarget the edit.
++    """
++    if os.environ.get("MLSBENCH_STRICT_STR_REPLACE", "").strip() in ("1", "true", "yes"):
++        levels = [("exact", old_str)]
++    else:
++        cands: list[tuple[str, str]] = [("exact", old_str)]
++        lnum, hits = _strip_line_numbers(old_str)
++        if hits >= max(1, (len(old_str.split("\n")) * 2) // 3) and lnum != old_str:
++            cands.append(("line-number prefixes stripped", lnum))
++        folded = _fold_unicode(old_str)
++        if folded != old_str:
++            cands.append(("line endings / unicode normalized", folded))
++        rtrim = "\n".join(l.rstrip() for l in old_str.split("\n")).strip("\n")
++        if rtrim and rtrim != old_str:
++            cands.append(("trailing whitespace trimmed", rtrim))
++        seen, levels = set(), []
++        for name, c in cands:
++            if c and c not in seen:
++                seen.add(c)
++                levels.append((name, c))
++
++    for name, cand in levels:
++        n = text.count(cand)
++        if n == 1:
++            idx = text.index(cand)
++            end = idx + len(cand)
++            # A raw substring match can land MID-LINE when the agent's anchor is
++            # under-indented — splicing there corrupts the file (in the banked
++            # runs, mid-line matches left the file unparseable 49.6% of the time
++            # vs 24.4% for line-aligned ones). If the anchor is really a run of
++            # whole lines that differ only in indentation, snap to those lines.
++            aligned = (idx == 0 or text[idx - 1] == "\n") and (end == len(text) or text[end] == "\n")
++            if not aligned:
++                snap = _ws_block_spans(text, cand)
++                if len(snap) == 1:
++                    s, e, ls_, le_ = snap[0]
++                    return dict(ok=True, start=s, end=e, line_start=ls_, line_end=le_,
++                                level="realigned to line boundaries", matched=text[s:e],
++                                note="anchor was not aligned to line boundaries")
++            ls = text.count("\n", 0, idx) + 1
++            return dict(ok=True, start=idx, end=end, line_start=ls,
++                        line_end=ls + cand.count("\n"), level=name,
++                        matched=cand, note=("" if name == "exact" else name))
++        if n > 1:
++            return dict(ok=False, reason="ambiguous", n_matches=n, level=name)
++
++    if os.environ.get("MLSBENCH_STRICT_STR_REPLACE", "").strip() in ("1", "true", "yes"):
++        return dict(ok=False, reason="not_found", n_matches=0, level="exact")
++
++    spans = _ws_block_spans(text, old_str)
++    if len(spans) == 1:
++        s, e, ls, le = spans[0]
++        return dict(ok=True, start=s, end=e, line_start=ls, line_end=le,
++                    level="whitespace-insensitive", matched=text[s:e],
++                    note="whitespace/indentation differed")
++    if len(spans) > 1:
++        return dict(ok=False, reason="ambiguous", n_matches=len(spans),
++                    level="whitespace-insensitive")
++    return dict(ok=False, reason="not_found", n_matches=0, level="all")
++
++
++def closest_region(text: str, old_str: str, max_lines: int = 400) -> tuple[float, int, int]:
++    """Best-matching same-length line window of `text` for `old_str`.
++
++    Returns (similarity, line_start_1indexed, n_lines). Used to turn a bare
++    'not found' into an actionable error: the agent has no `view` tool, so the
++    error message is its only channel for re-reading the file.
++    """
++    import difflib
++    tl = [_canon_line(l) for l in text.split("\n")]
++    ol = [_canon_line(l) for l in old_str.split("\n")]
++    n = max(1, min(len(ol), max_lines))
++    ol = ol[:n]
++    sm = difflib.SequenceMatcher(autojunk=False)
++    # Short anchors need character-level similarity: comparing two 1-element line
++    # lists only ever yields 0.0 or 1.0, which makes the error message useless.
++    char_level = n <= 8
++    sm.set_seq2("\n".join(ol) if char_level else ol)
++    best, bi = 0.0, 0
++    for i in range(0, max(1, len(tl) - n + 1)):
++        sm.set_seq1("\n".join(tl[i:i + n]) if char_level else tl[i:i + n])
++        if sm.real_quick_ratio() <= best or sm.quick_ratio() <= best:
++            continue
++        r = sm.ratio()
++        if r > best:
++            best, bi = r, i
++    return best, bi + 1, n
++
++
+ # Opt-in tool — SWAPPED IN for the line-range `edit` schema when --use-replace is set.
+ # Same tool name ("edit") so dispatch, logging, and step counters are unchanged; only the
+ # operation set differs (exact string replacement instead of line-range replacement).
+@@ -163,6 +391,35 @@ EDIT_REPLACE_SCHEMA = {
+ }
+ 
+ 
++# Read half of the view+str_replace editor contract. Appended to TOOL_SCHEMAS
++# when --use-replace is set: str_replace addresses code by verbatim text, which
++# is only answerable if the agent can re-read the file.
++VIEW_SCHEMA = {
++    "name": "view",
++    "description": (
++        "Read the current contents of a file in the workspace. Call this before "
++        "op='str_replace' whenever you are unsure of the exact text (especially "
++        "after an edit, an undo, or when the initial prompt has gone stale) — "
++        "old_str must reproduce the file's text, and this is how you check it.\n"
++        "Line numbers in the output are a display prefix ('NNNNNN: ') and must "
++        "NOT be included in old_str.\n"
++        "With no line range, shows the editable region of the file."
++    ),
++    "input_schema": {
++        "type": "object",
++        "properties": {
++            "filename": {
++                "type": "string",
++                "description": "Package-relative path (e.g. 'scikit-learn/custom_calibration.py').",
++            },
++            "start_line": {"type": "integer", "description": "First line to show (1-indexed, optional)."},
++            "end_line": {"type": "integer", "description": "Last line to show (1-indexed, inclusive, optional)."},
++        },
++        "required": ["filename"],
++    },
++}
++
++
+ # Opt-in tool — appended to TOOL_SCHEMAS only when --allow-reset is set.
+ RESET_SCHEMA = {
+     "name": "reset",
+@@ -1031,6 +1288,14 @@ class WorkspaceTools:
+             op, filename, content, after_line, start_line, end_line, old_str, new_str
+         )
+ 
++        # A syntactically broken file is never what the agent wanted, but the only
++        # signal it currently gets is a failed test() -- and the test budget is 3.
++        # Surface the parse error immediately, at the cost of one ast.parse().
++        if not result.startswith("ERROR"):
++            warn = self._syntax_warning(filename)
++            if warn:
++                result = result + "\n\n" + warn
++
+         # Always append the current file snapshot so the model sees the live state
+         if filename in self.live_protected_ranges:
+             snapshot = self._file_snapshot(filename)
+@@ -1039,6 +1304,36 @@ class WorkspaceTools:
+ 
+         return result
+ 
++    def _syntax_warning(self, filename: str) -> str:
++        """Return a warning if `filename` is a .py file that no longer parses."""
++        if not filename.endswith(".py"):
++            return ""
++        try:
++            path = self._resolve_workspace_path(filename)
++            if not path.exists():
++                return ""
++            src = path.read_text()
++        except Exception:
++            return ""
++        import ast
++        try:
++            ast.parse(src)
++            return ""
++        except SyntaxError as e:
++            lines = src.split("\n")
++            ln = e.lineno or 1
++            lo, hi = max(1, ln - 3), min(len(lines), ln + 3)
++            ctx = "\n".join(f"{i:6d}: {lines[i - 1]}" for i in range(lo, hi + 1))
++            return (
++                f"WARNING: {filename} no longer parses as Python — "
++                f"{type(e).__name__}: {e.msg} at line {ln}"
++                + (f", column {e.offset}" if e.offset else "")
++                + ".\nFix this before calling test(), or the run will fail and waste "
++                  "a test from your budget. Context:\n" + ctx
++            )
++        except Exception:
++            return ""
++
+     def _edit_impl(
+         self,
+         op: str,
+@@ -1108,7 +1403,31 @@ class WorkspaceTools:
+ 
+         elif op == "replace":
+             if start_line is None or end_line is None:
+-                return "ERROR: 'start_line' and 'end_line' are required for op='replace'"
++                # A bare restatement of the rule makes the model repeat the same
++                # call (observed 3 turns in a row). Hand it the exact call to make,
++                # with this file's live editable range already filled in.
++                rng = self._editable_range_str(filename)
++                first = None
++                for r in self._compute_editable_ranges(
++                    filename,
++                    len(self._resolve_workspace_path(filename).read_text().splitlines())
++                    if filename in self.live_protected_ranges else 0,
++                ):
++                    first = r
++                    break
++                example = (
++                    f'edit(op="replace", filename="{filename}", '
++                    f'start_line={first[0]}, end_line={first[1]}, content="...")'
++                    if first else
++                    f'edit(op="replace", filename="{filename}", '
++                    f'start_line=<first line>, end_line=<last line>, content="...")'
++                )
++                return (
++                    f"ERROR: op='replace' also requires start_line and end_line "
++                    f"(1-indexed, inclusive) — you sent only content. The editable "
++                    f"range of {filename} is {rng}. Retry exactly like this, with "
++                    f"your new code as content:\n  {example}"
++                )
+             if filename not in self.live_protected_ranges:
+                 return f"ERROR: File not editable: {filename}"
+             if not self._check_edit_permission(filename, start_line, end_line):
+@@ -1154,35 +1473,66 @@ class WorkspaceTools:
+                 return f"ERROR: File not found in workspace: {filename}"
+ 
+             text = path.read_text()
+-            count = text.count(old_str)
+-            if count == 0:
+-                return (
+-                    f"ERROR: old_str not found in {filename}. It must match the file exactly, "
+-                    f"including whitespace and indentation."
+-                )
+-            if count > 1:
++            m = resolve_old_str(text, old_str)
++            if not m["ok"]:
++                if m["reason"] == "ambiguous":
++                    return (
++                        f"ERROR: old_str matches {m['n_matches']} locations in {filename} "
++                        f"(at the '{m['level']}' level). Add more surrounding context so it "
++                        f"matches exactly one location."
++                    )
++                if m["level"] == "exact":
++                    # Kill-switch path (MLSBENCH_STRICT_STR_REPLACE=1): keep the
++                    # original message verbatim so behaviour is unchanged.
++                    return (
++                        f"ERROR: old_str not found in {filename}. It must match the file exactly, "
++                        f"including whitespace and indentation."
++                    )
++                # Not found anywhere. The agent has no `view` tool, so hand it the
++                # closest region verbatim — otherwise its only recourse is to guess
++                # the anchor again from a prompt that may be many edits stale.
++                sim, ls, n = closest_region(text, old_str)
++                lines = text.split("\n")
++                lo = max(1, ls - 2)
++                hi = min(len(lines), ls + n + 1)
++                excerpt = "\n".join(f"{i:6d}: {lines[i - 1]}" for i in range(lo, hi + 1))
+                 return (
+-                    f"ERROR: old_str is not unique in {filename} ({count} matches). "
+-                    f"Add more surrounding context so it matches exactly one location."
++                    f"ERROR: old_str not found in {filename}. Matching is exact-first but "
++                    f"tolerates line-number prefixes, unicode look-alikes and "
++                    f"indentation/whitespace differences — so the text you sent is genuinely "
++                    f"not in the file (nearest region is {sim:.0%} similar).\n"
++                    f"Here is the file around the closest region (lines {lo}-{hi}); copy the "
++                    f"anchor from THIS text, without the 'NNNNNN: ' prefixes. "
++                    f"Editable range: {self._editable_range_str(filename)}.\n"
++                    f"{excerpt}"
+                 )
+ 
+-            idx = text.index(old_str)
+-            start_line = text.count("\n", 0, idx) + 1
+-            end_line = start_line + old_str.count("\n")
++            idx, end_idx = m["start"], m["end"]
++            start_line, end_line = m["line_start"], m["line_end"]
+             if not self._check_edit_permission(filename, start_line, end_line):
+                 return (
+                     f"ERROR: the match spans lines {start_line}..{end_line}, which exceed the "
+                     f"editable range. You may only edit lines {self._editable_range_str(filename)}."
+                 )
+ 
+-            new_text = text[:idx] + new_str + text[idx + len(old_str):]
++            matched = text[idx:end_idx]
++            # A looser match may have landed on a differently-indented block; shift
++            # the replacement to the file's indentation so the edit stays valid.
++            effective_new = (
++                new_str if m["level"] == "exact"
++                else _reindent(new_str, old_str, matched)
++            )
++            new_text = text[:idx] + effective_new + text[end_idx:]
+             self._save_snapshot(filename)
+             path.write_text(new_text)
+             num_old_lines = end_line - start_line + 1
+-            num_new_lines = num_old_lines + (new_str.count("\n") - old_str.count("\n"))
++            num_new_lines = num_old_lines + (
++                effective_new.count("\n") - matched.count("\n")
++            )
+             self._update_ranges_after_replace(filename, start_line, end_line, num_new_lines)
++            note = f" [matched after: {m['note']}]" if m.get("note") else ""
+             return (
+-                f"OK: Replaced 1 occurrence in {filename} (lines {start_line}..{end_line}). "
++                f"OK: Replaced 1 occurrence in {filename} (lines {start_line}..{end_line}).{note} "
+                 f"Editable range: {self._editable_range_str(filename)}."
+             )
+ 
+@@ -4233,12 +4583,63 @@ class WorkspaceTools:
+     # Tool: undo
+     # ------------------------------------------------------------------
+ 
++    def view(self, filename: str, start_line: int | None = None,
++             end_line: int | None = None) -> str:
++        """Read a file (or a line range of it) back out of the workspace.
++
++        `str_replace` requires the agent to reproduce existing code byte-for-byte;
++        without a way to re-read the file it must do that from a prompt that goes
++        stale after the first edit (and after every undo, which rewinds the file
++        with no diff shown). This is the read half of the standard
++        view + str_replace editor contract.
++        """
++        filename = self._canonicalize_filename(filename)
++        try:
++            path = self._resolve_workspace_path(filename)
++        except FileNotFoundError as exc:
++            return f"ERROR: {exc}"
++        if not path.exists():
++            return f"ERROR: File not found in workspace: {filename}"
++        try:
++            lines = path.read_text().split("\n")
++        except Exception as exc:
++            return f"ERROR: could not read {filename}: {exc}"
++
++        total = len(lines)
++        lo = 1 if start_line is None else max(1, int(start_line))
++        hi = total if end_line is None else min(total, int(end_line))
++        if end_line is None and start_line is None:
++            # Default to the editable region(s) — that is the only part the agent
++            # may anchor on anyway, and it keeps the tool result bounded.
++            editable = self._compute_editable_ranges(filename, total)
++            if editable:
++                lo, hi = editable[0][0], editable[-1][1]
++        if hi < lo:
++            return f"ERROR: empty range {lo}..{hi} for {filename} ({total} lines)"
++        MAX = 600
++        truncated = ""
++        if hi - lo + 1 > MAX:
++            hi = lo + MAX - 1
++            truncated = f"\n... (truncated at {MAX} lines; call view again with start_line/end_line)"
++        body = "\n".join(f"{i:6d}: {lines[i - 1]}" for i in range(lo, hi + 1))
++        return (
++            f"[{filename} | lines {lo}-{hi} of {total} | "
++            f"editable: {self._editable_range_str(filename)}]\n"
++            f"Note: the 'NNNNNN: ' prefixes are display only — do NOT include them in old_str.\n"
++            f"{body}{truncated}"
++        )
++
+     def undo(self, n: int = 1) -> str:
+         """Revert the last n file modification actions."""
+         if not self._history:
+-            return "ERROR: Nothing to undo"
++            return (
++                "ERROR: Nothing to undo — the edit history is empty, so the files are "
++                "already at their original template state. Do not call undo again; "
++                "use view() to re-read the file, then edit()."
++            )
+ 
+         restored = []
++        touched: list[str] = []
+         for _ in range(min(n, len(self._history))):
+             if not self._history:
+                 break
+@@ -4249,9 +4650,19 @@ class WorkspaceTools:
+             else:
+                 snap["path"].write_text(snap["content"])
+                 restored.append(f"Restored: {snap['filename']}")
++            if snap["filename"] not in touched:
++                touched.append(snap["filename"])
+             self.live_protected_ranges = snap["ranges"]
+ 
+-        return "Undo complete:\n" + "\n".join(restored)
++        out = "Undo complete:\n" + "\n".join(restored)
++        # An undo rewinds file content the agent cannot see. edit() appends a
++        # snapshot for exactly this reason; undo() must too, or the agent's next
++        # str_replace anchors on text that no longer exists.
++        for fn in touched:
++            snapshot = self._file_snapshot(fn)
++            if snapshot:
++                out += "\n\n" + snapshot
++        return out
+ 
+     # ------------------------------------------------------------------
+     # Tool: reset (revert ALL edits → pre-edit template)
+@@ -4629,6 +5040,8 @@ class WorkspaceTools:
+                 result = self.submit(**tool_input)
+             elif tool_name == "undo":
+                 result = self.undo(**tool_input)
++            elif tool_name == "view":
++                result = self.view(**tool_input)
+             elif tool_name == "reset":
+                 result = self.reset(**tool_input)
+             elif tool_name == "web_search":

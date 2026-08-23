@@ -44,6 +44,55 @@ tools/*codex*.log
 
 # SFT: ship the gzipped training data (sft/*.jsonl.gz, committed); raw .jsonl are large/regenerable
 sft/*.jsonl
+sft/*.jsonl.bak*
+sft/*.jsonl.preremediation
+sft/r1/
+sft/r2/
+
+# FrontierSmith integration: keep source/scripts/docs, not cluster artifacts or private scratch outputs
+training/FrontierSmith/.venv*/
+training/FrontierSmith/.cache/
+training/FrontierSmith/**/.claude/
+training/FrontierSmith/.post_sft/
+training/FrontierSmith/.runner_snapshots/
+training/FrontierSmith/.last_*
+training/FrontierSmith/outputs/
+training/FrontierSmith/logs/
+training/FrontierSmith/wandb/
+training/FrontierSmith/checkpoints/
+training/FrontierSmith/models/
+training/FrontierSmith/models_rl/
+training/FrontierSmith/models_sft/
+training/FrontierSmith/LF-innov/
+training/FrontierSmith/Frontier-CS/algorithmic/problems/
+training/FrontierSmith/naturebench/logs/
+training/FrontierSmith/naturebench/envs/
+training/FrontierSmith/naturebench/results/
+training/FrontierSmith/naturebench/data/
+training/FrontierSmith/naturebench/containers/*.sif
+training/FrontierSmith/synth/problems/
+training/FrontierSmith/synth/problems_broken*/
+training/FrontierSmith/synth/problems_legacy/
+training/FrontierSmith/synth/logs/
+training/FrontierSmith/synth/reports/blind_compare*/
+training/FrontierSmith/synth/reports/*secret*
+training/FrontierSmith/**/*.parquet
+training/FrontierSmith/**/*.parquet.bak
+training/FrontierSmith/**/*.safetensors
+training/FrontierSmith/**/*.ckpt
+training/FrontierSmith/**/*.pt
+training/FrontierSmith/**/*.pth
+training/FrontierSmith/**/*.bin
+training/FrontierSmith/**/*.sqlite
+training/FrontierSmith/**/*.db
+training/FrontierSmith/core.*
+training/FrontierSmith/slurm-*.out
+training/FrontierSmith/DELLA_USERNS_*.md
+
+# frontiersmith_synth local audit/run artifacts
+frontiersmith_synth/core.*
+frontiersmith_synth/*.out
+frontiersmith_synth/reports/*secret*
 
 # scratch / verification junk
 **/__pycache__/

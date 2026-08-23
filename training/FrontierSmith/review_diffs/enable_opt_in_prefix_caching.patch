@@ -1,0 +1,28 @@
+diff --git a/scripts/start_vllm_server.sh b/scripts/start_vllm_server.sh
+--- a/scripts/start_vllm_server.sh
++++ b/scripts/start_vllm_server.sh
+@@ -27,6 +27,7 @@ MAX_NUM_SEQS=${MAX_NUM_SEQS:-16}
+ MAX_NUM_BATCHED_TOKENS=${MAX_NUM_BATCHED_TOKENS:-32768}
+ GPU_MEMORY_UTILIZATION=${GPU_MEMORY_UTILIZATION:-0.88}
+ DTYPE=${DTYPE:-bfloat16}
+ DISABLE_CUSTOM_ALL_REDUCE=${DISABLE_CUSTOM_ALL_REDUCE:-1}
++ENABLE_PREFIX_CACHING=${ENABLE_PREFIX_CACHING:-0}
+ 
+ if [ -z "${GDN_PREFILL_BACKEND+x}" ]; then
+@@ -82,9 +83,15 @@ if [ -n "$GDN_PREFILL_BACKEND" ]; then
+     args+=(--gdn-prefill-backend "$GDN_PREFILL_BACKEND")
+ fi
+ 
++case "$ENABLE_PREFIX_CACHING" in
++    0) ;;
++    1) args+=(--enable-prefix-caching) ;;
++    *) echo "ERROR: ENABLE_PREFIX_CACHING must be 0 or 1 (got $ENABLE_PREFIX_CACHING)" >&2; exit 2 ;;
++esac
++
+ if [ "$DISABLE_CUSTOM_ALL_REDUCE" = "1" ]; then
+     args+=(--disable-custom-all-reduce)
+ fi
+ 
+-echo "Starting vLLM server: model=$MODEL_PATH served=$SERVED_MODEL_NAME host=$HOST port=$PORT TP=$TP max_num_batched_tokens=$MAX_NUM_BATCHED_TOKENS"
++echo "Starting vLLM server: model=$MODEL_PATH served=$SERVED_MODEL_NAME host=$HOST port=$PORT TP=$TP max_num_batched_tokens=$MAX_NUM_BATCHED_TOKENS prefix_caching=$ENABLE_PREFIX_CACHING"
+ exec vllm serve "${args[@]}" "$@"
