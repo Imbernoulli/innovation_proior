@@ -28,10 +28,17 @@ done; done
 ```bash
 cd /srv/home/bohanlyu/innovation_proior/training/FrontierSmith
 for M in withag noag soup_withag_a10 soup_withag_a20 soup_noag_a10 soup_noag_a20; do
-  VLLM_RPC_TIMEOUT=120000 GPUS=4,5 bash scripts/gpublaze/eval_split_local.sh \
+  VLLM_RPC_TIMEOUT=600000 EXTRA_VLLM_ARGS="--no-enable-prefix-caching" GPUS=4,5 \
+    bash scripts/gpublaze/eval_split_local.sh \
     /srv/home/bohanlyu/models_sft/agentic_ablation_4b/${M#withag}... # 路径按实际
 done
 ```
+
+⚠️ serve 口径（base r1-r3 的血泪）：vllm 0.21 V1 默认开 prefix caching，但 Qwen3.5 的
+mamba/GDN 架构下它是实验路径，长序列段会让 `sample_tokens` RPC 停滞 >120s → 引擎自杀
+（`EngineDeadError`，客户端表现为成批 APIConnectionError）。**必须
+`--no-enable-prefix-caching` + `VLLM_RPC_TIMEOUT=600000`**；失败可无限 RESUME=1 续跑
+（默认开），已完成样本不重做。
 实际执行时逐个跑（串行），TAG 命名 `q35_4b_<model>`。MLS/research 用 agent 的链
 （把 8006 服务换成对应模型权重重启即可，qwen3_xml parser + RPC 120s 保留）。
 
