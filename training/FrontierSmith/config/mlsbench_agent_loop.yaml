@@ -1,0 +1,6 @@
+# Agent-loop registry for MLS-Bench RL (used via
+#   actor_rollout_ref.rollout.agent.agent_loop_config_path=<this file>).
+# Only runs that pass this path ever import the MLS agent loop — existing
+# single-turn runs are byte-identical without it.
+- name: mlsbench_agent
+  _target_: verl.experimental.agent_loop.mlsbench_agent_loop.MLSBenchAgentLoop

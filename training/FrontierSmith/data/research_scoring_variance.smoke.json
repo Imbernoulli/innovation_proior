@@ -1,0 +1,91 @@
+{
+  "meta": {
+    "generated_utc": "2026-08-03T16:38:18+00:00",
+    "hostname": "della-gpu.princeton.edu",
+    "reps": 2,
+    "threshold_std": 5.0,
+    "merged_from": [
+      {
+        "file": "/tmp/claude-372967/-scratch-gpfs-CHIJ-bohan-fs/3a50c5c5-a73c-4e20-b786-5776707c2962/scratchpad/var_cbl.json",
+        "meta": {
+          "generated_utc": "2026-08-03T16:21:59+00:00",
+          "hostname": "della-gpu.princeton.edu",
+          "shard": null
+        }
+      },
+      {
+        "file": "/tmp/claude-372967/-scratch-gpfs-CHIJ-bohan-fs/3a50c5c5-a73c-4e20-b786-5776707c2962/scratchpad/var_sr.json",
+        "meta": {
+          "generated_utc": "2026-08-03T16:28:52+00:00",
+          "hostname": "della-gpu.princeton.edu",
+          "shard": null
+        }
+      }
+    ],
+    "argv": [
+      "scripts/measure_eval_variance.py",
+      "--merge",
+      "/tmp/claude-372967/-scratch-gpfs-CHIJ-bohan-fs/3a50c5c5-a73c-4e20-b786-5776707c2962/scratchpad/var_cbl.json",
+      "/tmp/claude-372967/-scratch-gpfs-CHIJ-bohan-fs/3a50c5c5-a73c-4e20-b786-5776707c2962/scratchpad/var_sr.json",
+      "--out",
+      "data/research_scoring_variance.smoke.json"
+    ],
+    "n_problems": 2,
+    "n_lottery": 0
+  },
+  "problems": {
+    "cant_be_late/low_availability_tight_deadline_large_overhead": {
+      "family": "cant_be_late",
+      "n_samples": 1,
+      "max_rep_std": 0.0,
+      "mean_rep_std": 0.0,
+      "max_rep_range": 0.0,
+      "mean_abs_drift_from_banked": 0.0,
+      "unstable_infra": false,
+      "lottery": false,
+      "samples": {
+        "0": {
+          "banked_score": 28.0,
+          "rep_scores": [
+            28.0,
+            28.0
+          ],
+          "rep_errors": [],
+          "rep_seconds": [
+            3.23,
+            1.15
+          ],
+          "median": 28.0,
+          "range": 0.0,
+          "std": 0.0
+        }
+      }
+    },
+    "symbolic_regression/mccormick": {
+      "family": "symbolic_regression",
+      "n_samples": 1,
+      "max_rep_std": null,
+      "mean_rep_std": null,
+      "max_rep_range": null,
+      "mean_abs_drift_from_banked": null,
+      "unstable_infra": false,
+      "lottery": false,
+      "samples": {
+        "0": {
+          "banked_score": 99.45716711840736,
+          "rep_scores": [],
+          "rep_errors": [
+            "infra: symbolic_regression/mccormick: evaluator timed out after 400s"
+          ],
+          "rep_seconds": [
+            400.57
+          ],
+          "median": null,
+          "range": null,
+          "std": null
+        }
+      }
+    }
+  },
+  "lottery_problems": []
+}

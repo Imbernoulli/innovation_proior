@@ -28,9 +28,10 @@ paper into the chain of thought of how the method was actually derived.
 Beyond the website, the traces are assembled into **supervised fine-tuning data** in the
 LLaMA-Factory ShareGPT format. Build scripts and full documentation live in
 [`sft/`](sft/README.md). The processed data ships **gzipped** in `sft/`
-(`innovation_sft.jsonl.gz`, plus the 2026-07 wave-2 batches `innovation_wave2_sft.jsonl.gz` /
-`innovation_v4_sft.jsonl.gz` and their raw verified keepers `innovation_wave2_raw_keepers.jsonl.gz`
-— `gunzip -k` to use); the working `.jsonl` are git-ignored and regenerable with the scripts.
+(`innovation_sft.jsonl.gz`, the 2026-07 wave-2 batches `innovation_wave2_sft.jsonl.gz` /
+`innovation_v4_sft.jsonl.gz`, their raw verified keepers `innovation_wave2_raw_keepers.jsonl.gz`,
+and the 2026-08 final wave-3 release `innovation_wave3_sft.jsonl.gz` — `gunzip -k` to use);
+the working `.jsonl` are git-ignored and regenerable with the scripts.
 Training is **innovation-only** (the HF-scraped maintenance set was dropped 2026-07):
 
 ### 数据总览 / Data inventory (2026-07)
@@ -55,6 +56,7 @@ only — round-0 accuracy ≤ 0.5** (the model solves them ≤ half the time).
 > 术语：仓库里旧的 **"distill" = 被删的 HF-maintain**；本轮**新蒸馏**（27B/DeepSeek rollout）在 **wave-2** 里，是保留的。
 > wave-2 的 raw verified keeper（741 条，acc≤0.5，含 problem + 所有过验证生成）另存 `sft/innovation_wave2_raw_keepers.jsonl.gz`。
 > 27B rollout（全 4 域）仍在后台产出；DeepSeek tier-2 因 key 余额暂停；wave-2 只保留 round-0 acc≤0.5 的硬样本。
+> 2026-08 更新：wave-3 已收口为最终 5,291 条 verified keeper，见 [`sft/README.md`](sft/README.md#4-wave-3-batch-2026-08--capability-gap-injection--deep-re-roll)。
 
 - **`innovation_sft.jsonl`** (`sft/build_sft.py`) — our annotated data: each method as a Q&A, each
   trajectory / agentic ladder as a multi-turn conversation (with tool use), the answer being the
@@ -104,6 +106,36 @@ To train: fill the stub path in the fork's `data/dataset_info.json`, then run a 
 with `dataset: innovation_sft` (optionally concatenate the wave-2 batches), `template: qwen3` (or
 `qwen3_5`), `mask_history: false`. The per-example metadata is baked into the data, so one global config trains
 every case correctly. Full details: [`sft/README.md`](sft/README.md).
+
+## FrontierSmith training/eval integration（2026-08）
+
+This integration branch adds the cleaned FrontierSmith training and evaluation snapshot under
+[`training/FrontierSmith/`](training/FrontierSmith/), sourced from the readable
+`/scratch/gpfs/CHIJ/bohan/fs/FrontierSmith` worktree. The raw `fs/` directory was not copied whole:
+models, checkpoints, virtualenvs, `outputs/`, W&B runs, Slurm logs, raw parquet/jsonl dumps, and
+private Claude session files are intentionally excluded.
+
+- **SFT**: `sft/README.md` documents the final wave-3 SFT package; `sft/split_r1.py`,
+  `sft/split_r2.py`, and `frontiersmith_synth/scratch_tune.py` preserve the small helper scripts
+  that were still untracked in the source worktree.
+- **RL training**: use [`training/FrontierSmith/slurm/cc_rl_multisource.sh`](training/FrontierSmith/slurm/cc_rl_multisource.sh)
+  as the final multisource GRPO launcher. The relevant VERL changes include adaptive group
+  deepening, DAPO-style overlong handling, per-task reward normalization, and the vLLM
+  presence-penalty fast path in
+  [`training/FrontierSmith/scripts/vllm_penalty_fastpath.py`](training/FrontierSmith/scripts/vllm_penalty_fastpath.py).
+- **Evaluation**: serving and scoring are split. GPU jobs run shared vLLM backends via
+  [`training/FrontierSmith/scripts/vllm_pool_serve.sh`](training/FrontierSmith/scripts/vllm_pool_serve.sh)
+  / [`training/FrontierSmith/slurm/cc_serve_only.sh`](training/FrontierSmith/slurm/cc_serve_only.sh);
+  CPU clients pick registered backends via
+  [`training/FrontierSmith/scripts/submit_pool_clients.sh`](training/FrontierSmith/scripts/submit_pool_clients.sh)
+  and [`training/FrontierSmith/slurm/cc_eval_split_submit.sh`](training/FrontierSmith/slurm/cc_eval_split_submit.sh).
+- **Results**: the small reproduction matrix is preserved at
+  [`training/FrontierSmith/results/reproduction_results.csv`](training/FrontierSmith/results/reproduction_results.csv)
+  with a short summary in [`training/FrontierSmith/results/README.md`](training/FrontierSmith/results/README.md).
+
+See [`docs/FRONTIERSMITH_TRAINING_EVAL_INTEGRATION_zh.md`](docs/FRONTIERSMITH_TRAINING_EVAL_INTEGRATION_zh.md)
+for the Chinese handoff, including the Claude Code history caveat and the data-polish decisions that
+led to the final SFT/RL/eval layout.
 
 ## Experiments & evaluation（实验与评测）
 

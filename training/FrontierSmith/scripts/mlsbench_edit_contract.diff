@@ -1,0 +1,756 @@
+--- a/src/mlsbench/agent/tools.py
++++ b/src/mlsbench/agent/tools.py
+@@ -296,7 +296,17 @@
+                         line_end=ls + cand.count("\n"), level=name,
+                         matched=cand, note=("" if name == "exact" else name))
+         if n > 1:
+-            return dict(ok=False, reason="ambiguous", n_matches=n, level=name)
++            # Report WHERE the duplicates are; "add more context" with no
++            # locations leaves the agent guessing which one it meant.
++            hits, pos = [], 0
++            while True:
++                j = text.find(cand, pos)
++                if j < 0:
++                    break
++                hits.append(text.count("\n", 0, j) + 1)
++                pos = j + 1
++            return dict(ok=False, reason="ambiguous", n_matches=n, level=name,
++                        match_lines=hits)
+ 
+     if os.environ.get("MLSBENCH_STRICT_STR_REPLACE", "").strip() in ("1", "true", "yes"):
+         return dict(ok=False, reason="not_found", n_matches=0, level="exact")
+@@ -309,7 +319,8 @@
+                     note="whitespace/indentation differed")
+     if len(spans) > 1:
+         return dict(ok=False, reason="ambiguous", n_matches=len(spans),
+-                    level="whitespace-insensitive")
++                    level="whitespace-insensitive",
++                    match_lines=[ls for _, _, ls, _ in spans])
+     return dict(ok=False, reason="not_found", n_matches=0, level="all")
+ 
+ 
+@@ -328,7 +339,11 @@
+     sm = difflib.SequenceMatcher(autojunk=False)
+     # Short anchors need character-level similarity: comparing two 1-element line
+     # lists only ever yields 0.0 or 1.0, which makes the error message useless.
+-    char_level = n <= 8
++    # But it costs ~0.7s on a 1000-line file against a 5-line anchor, and this
++    # runs on every rejected edit -- including inside the RL env worker. Above a
++    # few hundred lines, fall back to line-level: the excerpt it picks is only a
++    # hint, and a slightly worse hint beats a second of wall clock per rejection.
++    char_level = n <= 8 and len(tl) <= 300
+     sm.set_seq2("\n".join(ol) if char_level else ol)
+     best, bi = 0.0, 0
+     for i in range(0, max(1, len(tl) - n + 1)):
+@@ -341,6 +356,24 @@
+     return best, bi + 1, n
+ 
+ 
++# Op-name synonyms the model reaches for. Mapping them costs nothing and saves a
++# step off a 20-step budget; the canonical names are what the schema advertises.
++_OP_ALIASES = {
++    "rewrite": "rewrite",
++    "overwrite": "rewrite",
++    "rewrite_region": "rewrite",
++    "replace_region": "rewrite",
++    "write": "rewrite",
++    "str_replace": "str_replace",
++    "string_replace": "str_replace",
++    "strreplace": "str_replace",
++    "create": "create",
++    "new_file": "create",
++    "insert": "insert",
++    "replace": "replace",
++}
++
++
+ # Opt-in tool — SWAPPED IN for the line-range `edit` schema when --use-replace is set.
+ # Same tool name ("edit") so dispatch, logging, and step counters are unchanged; only the
+ # operation set differs (exact string replacement instead of line-range replacement).
+@@ -391,6 +424,88 @@
+ }
+ 
+ 
++# The rewrite+str_replace+view contract. SWAPPED IN for EDIT_REPLACE_SCHEMA when
++# the tolerant contract is in force (i.e. not MLSBENCH_STRICT_STR_REPLACE=1),
++# so the strict arm keeps reproducing public MLS-Bench exactly.
++#
++# The op split follows Cline, which separates write_to_file (whole-file
++# create/major rewrite) from replace_in_file (surgical SEARCH/REPLACE) and tells
++# the model which to use when, rather than OpenHands'/Anthropic's single
++# str_replace command. The banked runs say why: 3098 of 12255 str_replace calls
++# carried an anchor covering >=95% of the editable region -- the model
++# transcribing the stub in order to overwrite it -- and only 12.1% of those were
++# accepted, against 37-45% for smaller anchors.
++EDIT_REWRITE_SCHEMA = {
++    "name": "edit",
++    "description": (
++        "Edit files in the workspace. Pick the operation by HOW MUCH you are changing:\n"
++        "\n"
++        "  rewrite: Replace the WHOLE editable region of the file with `content`.\n"
++        "    Use this to implement or re-implement the stub you were given — it is the\n"
++        "    normal way to write your solution. It needs NO line numbers and NO copy of\n"
++        "    the old code, so it cannot fail with 'not found' or 'outside the editable\n"
++        "    range'. `content` is your complete new code for that region.\n"
++        "\n"
++        "  str_replace: Replace the SINGLE, UNIQUE occurrence of `old_str` with `new_str`.\n"
++        "    Use this only for a SMALL, surgical change (fix one line, tweak a constant).\n"
++        "    `old_str` must reproduce text that is in the file right now and must be\n"
++        "    unique. Keep it SHORT — 1 to 10 lines. Do NOT paste a whole function or\n"
++        "    docstring as `old_str`; if the change is that big, use op='rewrite'.\n"
++        "    An empty `new_str` deletes `old_str`.\n"
++        "\n"
++        "  create: Create a NEW file with `content`. Only available if allow_create=true.\n"
++        "\n"
++        "After every successful edit this tool echoes the file's current editable region\n"
++        "back to you. That echo — not the copy in the first message — is the truth about\n"
++        "what the file now contains. Anchor the next str_replace on it, or call view().\n"
++        "File paths are relative to the package root (e.g. 'LLaMA-Factory/src/...').\n"
++        "Lines outside the editable region are protected and must NOT be modified."
++    ),
++    "input_schema": {
++        "type": "object",
++        "properties": {
++            "op": {
++                "type": "string",
++                "enum": ["rewrite", "str_replace", "create"],
++                "description": (
++                    "The edit operation, with its REQUIRED companion arguments:\n"
++                    "  'rewrite'     -> requires content   (replaces the whole editable region)\n"
++                    "  'str_replace' -> requires old_str AND new_str (small surgical change)\n"
++                    "  'create'      -> requires content   (new file)"
++                ),
++            },
++            "filename": {
++                "type": "string",
++                "description": "Package-relative path to the file (e.g. 'pytorch-vision/custom_loss.py').",
++            },
++            "content": {
++                "type": "string",
++                "description": (
++                    "Your complete new code. Required for op='rewrite' (becomes the entire "
++                    "editable region) and for op='create'."
++                ),
++            },
++            "old_str": {
++                "type": "string",
++                "description": (
++                    "Text to replace (required for op='str_replace'). Must appear in the file's "
++                    "CURRENT contents and occur exactly once. Keep it to 1-10 lines; use "
++                    "op='rewrite' for anything larger. Never include the 'NNNNNN: ' line-number "
++                    "prefixes that appear in the displayed code."
++                ),
++            },
++            "new_str": {
++                "type": "string",
++                "description": (
++                    "Replacement text (required for op='str_replace'). An empty string deletes `old_str`."
++                ),
++            },
++        },
++        "required": ["op", "filename"],
++    },
++}
++
++
+ # Read half of the view+str_replace editor contract. Appended to TOOL_SCHEMAS
+ # when --use-replace is set: str_replace addresses code by verbatim text, which
+ # is only answerable if the agent can re-read the file.
+@@ -1120,11 +1235,28 @@
+ 
+         return editable
+ 
++    # Budget for the post-edit state echo. The editable region is 58 lines /
++    # ~2.1 kB at the median and 132 lines / ~4.6 kB at p90 across the 46 banked
++    # task fixtures, so echoing it whole is affordable and stays under the RL
++    # agent loop's 8000-char tool-response truncation
++    # (MLS_RL_MAX_TOOL_RESPONSE_CHARS).
++    SNAPSHOT_MAX_LINES = 160
++    SNAPSHOT_MAX_CHARS = 6000
++
+     def _file_snapshot(self, filename: str) -> str:
+-        """Return a compact snapshot showing updated editable range boundaries.
++        """Echo the file's editable region as it stands right now.
+ 
+-        Shows only the first/last few lines of each editable region so the model
+-        can see the updated line numbers without re-reading its own edits.
++        This used to show only the first and last 3 lines of each editable range,
++        which meant that after the agent's first edit it had no rendering of the
++        file it had just changed: the only full copy it ever saw was the one in
++        the initial prompt, and that copy was now wrong. The banked runs show the
++        cost directly -- str_replace acceptance decays 50.4% -> 40.2% -> 34.9% ->
++        ... -> 24.7% across the 1st..6th+ call of an episode, and 'old_str not
++        found' is the dominant rejection from the 2nd call on.
++
++        So echo the region in full (bounded), the way Cline returns
++        final_file_content after replace_in_file: the tool result, not the
++        original prompt, is the agent's source of truth for the file.
+         """
+         try:
+             path = self._resolve_workspace_path(filename)
+@@ -1139,12 +1271,25 @@
+             return ""
+ 
+         range_strs = ", ".join(f"{s}–{e}" for s, e in editable_ranges)
+-        header = f"[Current file: {filename} | editable: {range_strs} | total: {len(all_lines)} lines]"
++        header = (
++            f"[Current contents of {filename} | editable: {range_strs} | "
++            f"total: {len(all_lines)} lines]\n"
++            f"This is the file as it is NOW — use it, not the copy in the first "
++            f"message, when choosing old_str. The 'NNNNNN: ' prefixes are display "
++            f"only; never put them in old_str."
++        )
+ 
+-        # For short ranges (<=8 lines), show everything; otherwise show first/last 3
+-        peek = 3
+-        sections: list[str] = []
+         N = len(all_lines)
++        total_span = 0
++        for start, end in editable_ranges:
++            s_c = max(1, min(start, N))
++            e_c = max(s_c - 1, min(end, N))
++            total_span += max(0, e_c - s_c + 1)
++        # Only elide when the region genuinely does not fit; a truncated echo is
++        # what caused the staleness in the first place.
++        elide = total_span > self.SNAPSHOT_MAX_LINES
++
++        sections: list[str] = []
+         for start, end in editable_ranges:
+             # Clamp to actual file length so freshly-created files (e.g. from
+             # mid_edit) don't trip an IndexError on access beyond EOF.
+@@ -1154,20 +1299,35 @@
+                 continue
+             span = e_clamped - s_clamped + 1
+             lines_out: list[str] = []
+-            if span <= peek * 2 + 2:
+-                # Short range — show all lines
++            if not elide:
+                 for i in range(s_clamped, e_clamped + 1):
+-                    lines_out.append(f"{i:6d}  {all_lines[i - 1]}")
++                    lines_out.append(f"{i:6d}: {all_lines[i - 1]}")
+             else:
+-                # Long range — show first/last few lines
+-                for i in range(s_clamped, s_clamped + peek):
+-                    lines_out.append(f"{i:6d}  {all_lines[i - 1]}")
+-                lines_out.append(f"       ... ({span - peek * 2} more lines) ...")
+-                for i in range(e_clamped - peek + 1, e_clamped + 1):
+-                    lines_out.append(f"{i:6d}  {all_lines[i - 1]}")
++                peek = max(4, self.SNAPSHOT_MAX_LINES // (2 * len(editable_ranges)))
++                if span <= peek * 2 + 2:
++                    for i in range(s_clamped, e_clamped + 1):
++                        lines_out.append(f"{i:6d}: {all_lines[i - 1]}")
++                else:
++                    for i in range(s_clamped, s_clamped + peek):
++                        lines_out.append(f"{i:6d}: {all_lines[i - 1]}")
++                    lines_out.append(
++                        f"       ... ({span - peek * 2} more lines not shown — call "
++                        f"view(filename='{filename}', start_line=..., end_line=...) "
++                        f"to read them) ..."
++                    )
++                    for i in range(e_clamped - peek + 1, e_clamped + 1):
++                        lines_out.append(f"{i:6d}: {all_lines[i - 1]}")
+             sections.append("\n".join(lines_out))
+ 
+-        return header + "\n" + "\n...\n".join(sections)
++        out = header + "\n" + "\n...\n".join(sections)
++        if len(out) > self.SNAPSHOT_MAX_CHARS:
++            # Cut on a line boundary: a half-line would be a plausible-looking
++            # anchor that is not actually in the file.
++            out = out[: self.SNAPSHOT_MAX_CHARS].rsplit("\n", 1)[0] + (
++                f"\n... (echo truncated at {self.SNAPSHOT_MAX_CHARS} chars — call "
++                f"view(filename='{filename}', start_line=..., end_line=...) for the rest)"
++            )
++        return out
+ 
+     def _editable_range_str(self, filename: str) -> str:
+         """Return a human-readable string describing the current editable line range."""
+@@ -1284,17 +1444,47 @@
+         # file before validation, so a correct edit isn't rejected on a prefix
+         # mismatch.
+         filename = self._canonicalize_filename(filename)
++        parsed_before = self._parses_ok(filename)
+         result = self._edit_impl(
+             op, filename, content, after_line, start_line, end_line, old_str, new_str
+         )
+ 
+-        # A syntactically broken file is never what the agent wanted, but the only
+-        # signal it currently gets is a failed test() -- and the test budget is 3.
+-        # Surface the parse error immediately, at the cost of one ast.parse().
++        # A syntactically broken file is never what the agent wanted, and it is
++        # expensive: the only other signal is a failed test(), and the test budget
++        # is 3. Runs where the editable file always parsed scored 0.0836 against
++        # 0.0559 for runs where it broke at least once. So reject an edit that
++        # NEWLY breaks the parse and put the file back, the way OpenHands'
++        # file_editor reverts on a new lint error -- a rejected edit costs 1 of 20
++        # steps, an undetected broken file costs 1 of 3 tests.
+         if not result.startswith("ERROR"):
+-            warn = self._syntax_warning(filename)
+-            if warn:
+-                result = result + "\n\n" + warn
++            detail = self._syntax_detail(filename)
++            if detail is None:
++                self._syntax_reject_streak[filename] = 0
++            elif parsed_before and self._syntax_gate_enabled():
++                streak = self._syntax_reject_streak.get(filename, 0)
++                if streak < self.SYNTAX_GATE_MAX_STREAK and self._revert_last_edit(filename):
++                    self._syntax_reject_streak[filename] = streak + 1
++                    hint = (
++                        " If the change is large, send the whole region at once with "
++                        "op='rewrite' instead of patching it piece by piece."
++                        if op != "rewrite" else ""
++                    )
++                    msg = (
++                        f"ERROR: edit REJECTED and NOT applied — it would have left "
++                        f"{filename} unparseable ({detail['headline']}). The file is "
++                        f"unchanged, so nothing was lost.\n"
++                        f"Do NOT re-send the same edit; it will fail the same way. Fix "
++                        f"the syntax in your replacement text first.{hint}\n"
++                        f"Where it would have broken:\n{detail['context']}"
++                    )
++                    snap = self._file_snapshot(filename)
++                    return msg + ("\n\n" + snap if snap else "")
++                # Streak exhausted: stop blocking, so a model that cannot satisfy the
++                # gate is not locked out of editing for the rest of the episode.
++                self._syntax_reject_streak[filename] = 0
++                result = result + "\n\n" + detail["warning"]
++            else:
++                result = result + "\n\n" + detail["warning"]
+ 
+         # Always append the current file snapshot so the model sees the live state
+         if filename in self.live_protected_ranges:
+@@ -1304,35 +1494,154 @@
+ 
+         return result
+ 
+-    def _syntax_warning(self, filename: str) -> str:
+-        """Return a warning if `filename` is a .py file that no longer parses."""
++    # Consecutive syntax rejections tolerated per file before the gate steps
++    # aside (prevents a model that cannot produce parseable code from burning
++    # every remaining step on rejected edits).
++    SYNTAX_GATE_MAX_STREAK = 3
++
++    @property
++    def _syntax_reject_streak(self) -> dict:
++        if not hasattr(self, "_syntax_reject_streak_map"):
++            self._syntax_reject_streak_map: dict[str, int] = {}
++        return self._syntax_reject_streak_map
++
++    def _syntax_gate_enabled(self) -> bool:
++        """Reject-and-revert is opt-in per driver.
++
++        InteractiveAgent turns it on for its own (non-strict) contract. The other
++        drivers that call tools.edit() -- openevolve_agent, discover_agent -- are
++        separate experiment paths whose edit semantics are not in scope here, so
++        they keep the previous soft-warning behaviour untouched.
++        """
++        if not getattr(self, "syntax_gate", False):
++            return False
++        return os.environ.get("MLSBENCH_SYNTAX_GATE", "1").strip().lower() not in (
++            "0", "false", "no", "off",
++        )
++
++    def _parses_ok(self, filename: str) -> bool:
++        """True if `filename` is not a .py file, is missing, or currently parses."""
+         if not filename.endswith(".py"):
+-            return ""
++            return True
+         try:
+             path = self._resolve_workspace_path(filename)
+             if not path.exists():
+-                return ""
++                return True
+             src = path.read_text()
+         except Exception:
+-            return ""
++            return True
+         import ast
+         try:
+             ast.parse(src)
++            return True
++        except SyntaxError:
++            return False
++        except Exception:
++            return True
++
++    def _revert_last_edit(self, filename: str) -> bool:
++        """Undo the snapshot the just-applied edit pushed. Returns True on success."""
++        if not self._history:
++            return False
++        if self._history[-1].get("filename") != filename:
++            return False
++        snap = self._history.pop()
++        try:
++            if snap["content"] is None:
++                if snap["path"].exists():
++                    snap["path"].unlink()
++                self._created_files.discard(snap["filename"])
++            else:
++                snap["path"].write_text(snap["content"])
++            self.live_protected_ranges = snap["ranges"]
++        except Exception:
++            return False
++        return True
++
++    def _available_ops(self) -> list[str]:
++        """Ops this run actually advertises, for 'unknown op' errors."""
++        if getattr(self, "allow_rewrite", False):
++            return ["rewrite", "str_replace", "create"]
++        if getattr(self, "use_replace", False):
++            return ["str_replace", "create"]
++        return ["create", "insert", "replace"]
++
++    def _rewrite_hint(self, filename: str, old_str: str, always: bool = False) -> str:
++        """Suggest op='rewrite' when the anchor is big enough that transcribing it
++        is the actual problem.
++
++        In the banked runs, anchors covering >=95% of the editable region were
++        accepted 12.1% of the time (3098 calls) against 37-45% for smaller ones:
++        past a certain size the agent is not making a surgical edit, it is
++        re-typing the region in order to replace it, and `rewrite` expresses that
++        directly with nothing to get wrong.
++        """
++        if not getattr(self, "allow_rewrite", False):
++            return ""  # op='rewrite' is only offered by EDIT_REPLACE_SCHEMA
++        try:
++            path = self._resolve_workspace_path(filename)
++            total = len(path.read_text().splitlines()) if path.exists() else 0
++            editable = self._compute_editable_ranges(filename, total)
++        except Exception:
++            editable = []
++        span = sum(e - s + 1 for s, e in editable)
++        n_anchor = len(old_str.split("\n"))
++        big = span > 0 and n_anchor >= 0.6 * span
++        if not (always or big or n_anchor > 25):
+             return ""
++        return (
++            f"NOTE: your old_str is {n_anchor} lines"
++            + (f" and the whole editable region is only {span}" if span else "")
++            + ". If you are replacing the region rather than making a small fix, do "
++              "not quote it at all — call "
++              f"edit(op='rewrite', filename='{filename}', content='<your full new code>') "
++              "and skip the matching entirely.\n"
++        )
++
++    def _syntax_detail(self, filename: str) -> dict | None:
++        """Parse-check `filename`; None if it is fine (or not checkable Python).
++
++        Returns {'headline', 'context', 'warning'} so callers can either surface
++        the soft warning verbatim or build a rejection message from the parts.
++        """
++        if not filename.endswith(".py"):
++            return None
++        try:
++            path = self._resolve_workspace_path(filename)
++            if not path.exists():
++                return None
++            src = path.read_text()
++        except Exception:
++            return None
++        import ast
++        try:
++            ast.parse(src)
++            return None
+         except SyntaxError as e:
+             lines = src.split("\n")
+             ln = e.lineno or 1
+             lo, hi = max(1, ln - 3), min(len(lines), ln + 3)
+             ctx = "\n".join(f"{i:6d}: {lines[i - 1]}" for i in range(lo, hi + 1))
+-            return (
+-                f"WARNING: {filename} no longer parses as Python — "
++            headline = (
+                 f"{type(e).__name__}: {e.msg} at line {ln}"
+                 + (f", column {e.offset}" if e.offset else "")
+-                + ".\nFix this before calling test(), or the run will fail and waste "
+-                  "a test from your budget. Context:\n" + ctx
+             )
++            return {
++                "headline": headline,
++                "context": ctx,
++                "warning": (
++                    f"WARNING: {filename} no longer parses as Python — {headline}.\n"
++                    f"Fix this before calling test(), or the run will fail and waste "
++                    f"a test from your budget. Context:\n{ctx}"
++                ),
++            }
+         except Exception:
+-            return ""
++            return None
++
++    def _syntax_warning(self, filename: str) -> str:
++        """Back-compat wrapper: the soft-warning string, or '' if the file parses."""
++        d = self._syntax_detail(filename)
++        return d["warning"] if d else ""
+ 
+     def _edit_impl(
+         self,
+@@ -1346,6 +1655,15 @@
+         new_str: str | None = None,
+     ) -> str:
+         """Core edit logic (without snapshot appending)."""
++        # A 9B under guided decoding reaches for near-synonyms of the op name;
++        # rejecting those costs a step and teaches nothing, so map them.
++        op = _OP_ALIASES.get((op or "").strip().lower(), op)
++        # In str_replace mode there is no line-range `replace`, so a bare
++        # op='replace' + content is the model asking for op='rewrite'.
++        if op == "replace" and getattr(self, "allow_rewrite", False) \
++                and start_line is None and end_line is None and content:
++            op = "rewrite"
++
+         # Validate package
+         parts = filename.split("/")
+         pkg_name = parts[0]
+@@ -1354,7 +1672,73 @@
+         ]:
+             return f"ERROR: Package '{pkg_name}' is not in allowed packages"
+ 
+-        if op == "create":
++        if op == "rewrite":
++            # Address the editable region by its DEFINITION rather than by a copy
++            # of its current text. In the banked runs, 3098 of 12255 str_replace
++            # calls used an anchor covering >=95% of the editable region -- i.e.
++            # the model transcribing the whole stub just to replace it -- and only
++            # 12.1% of those were accepted, against 37-45% for smaller anchors.
++            # That intent needs no anchor at all, so give it an op that has none.
++            if not getattr(self, "allow_rewrite", False):
++                # The strict arm must reproduce public MLS-Bench exactly, so the
++                # op is unavailable there even though the code path exists.
++                return (
++                    "ERROR: unknown op 'rewrite'. Available ops: "
++                    + ", ".join(self._available_ops())
++                )
++            if filename not in self.live_protected_ranges:
++                return f"ERROR: File not editable: {filename}"
++            if not (content or "").strip():
++                # Wiping the region is never the intent and is expensive to notice
++                # (the file still parses, so the syntax gate stays silent).
++                return (
++                    f"ERROR: op='rewrite' needs `content` — the complete new code for the "
++                    f"editable region of {filename}. You sent nothing, which would delete "
++                    f"the region. Retry with content=\"<your full implementation>\"."
++                )
++            path = self._resolve_workspace_path(filename)
++            if not path.exists():
++                return f"ERROR: File not found in workspace: {filename}"
++
++            lines = path.read_text().splitlines(keepends=True)
++            editable = self._compute_editable_ranges(filename, len(lines))
++            if not editable:
++                return (
++                    f"ERROR: {filename} has no editable region — the whole file is "
++                    f"protected, so op='rewrite' has nothing to write to."
++                )
++            if len(editable) > 1:
++                rngs = ", ".join(f"{s}-{e}" for s, e in editable)
++                return (
++                    f"ERROR: {filename} has {len(editable)} separate editable regions "
++                    f"({rngs}), so op='rewrite' is ambiguous — it rewrites one contiguous "
++                    f"region. Edit them one at a time with op='str_replace', anchoring on "
++                    f"a short unique snippet inside the region you mean. Call "
++                    f"view(filename='{filename}') first to see their current contents."
++                )
++
++            start_line, end_line = editable[0]
++            start_line = max(1, min(start_line, len(lines) + 1))
++            end_line = max(start_line - 1, min(end_line, len(lines)))
++
++            new_lines = content.splitlines(keepends=True)
++            if new_lines and not new_lines[-1].endswith("\n"):
++                new_lines[-1] += "\n"
++
++            self._save_snapshot(filename)
++            lines[start_line - 1:end_line] = new_lines
++            path.write_text("".join(lines))
++            self._update_ranges_after_replace(
++                filename, start_line, end_line, len(new_lines)
++            )
++            return (
++                f"OK: Rewrote the editable region of {filename} — replaced lines "
++                f"{start_line}..{end_line} ({end_line - start_line + 1} lines) with "
++                f"{len(new_lines)} line(s). "
++                f"Editable range: {self._editable_range_str(filename)}."
++            )
++
++        elif op == "create":
+             if not self.config_task.get("allow_create", False):
+                 return "ERROR: allow_create is false; cannot create new files"
+             path = self._resolve_workspace_path(filename)
+@@ -1476,10 +1860,17 @@
+             m = resolve_old_str(text, old_str)
+             if not m["ok"]:
+                 if m["reason"] == "ambiguous":
++                    where = m.get("match_lines") or []
++                    at = (
++                        " (starting at lines " + ", ".join(str(x) for x in where[:8])
++                        + ("..." if len(where) > 8 else "") + ")"
++                        if where else ""
++                    )
+                     return (
+-                        f"ERROR: old_str matches {m['n_matches']} locations in {filename} "
+-                        f"(at the '{m['level']}' level). Add more surrounding context so it "
+-                        f"matches exactly one location."
++                        f"ERROR: old_str matches {m['n_matches']} places in {filename}"
++                        f"{at}, so it is ambiguous and nothing was changed. Extend old_str "
++                        f"with the distinctive line just above or below the one you mean "
++                        f"until it appears only once."
+                     )
+                 if m["level"] == "exact":
+                     # Kill-switch path (MLSBENCH_STRICT_STR_REPLACE=1): keep the
+@@ -1501,7 +1892,8 @@
+                     f"tolerates line-number prefixes, unicode look-alikes and "
+                     f"indentation/whitespace differences — so the text you sent is genuinely "
+                     f"not in the file (nearest region is {sim:.0%} similar).\n"
+-                    f"Here is the file around the closest region (lines {lo}-{hi}); copy the "
++                    + self._rewrite_hint(filename, old_str)
++                    + f"Here is the file around the closest region (lines {lo}-{hi}); copy the "
+                     f"anchor from THIS text, without the 'NNNNNN: ' prefixes. "
+                     f"Editable range: {self._editable_range_str(filename)}.\n"
+                     f"{excerpt}"
+@@ -1510,9 +1902,23 @@
+             idx, end_idx = m["start"], m["end"]
+             start_line, end_line = m["line_start"], m["line_end"]
+             if not self._check_edit_permission(filename, start_line, end_line):
++                # 316 of the 1913 first-str_replace calls in the banked runs died
++                # here: the anchor starts in the protected header (imports, the
++                # '# FIXED' banner) and runs down into the body. Say which part is
++                # out of bounds and give the operation that cannot have this
++                # problem, instead of only restating the rule.
++                prot = ", ".join(
++                    f"{r[0]}-{'EOF' if r[1] == -1 else r[1]}"
++                    for r in self.live_protected_ranges.get(filename, [])
++                ) or "(none)"
+                 return (
+-                    f"ERROR: the match spans lines {start_line}..{end_line}, which exceed the "
+-                    f"editable range. You may only edit lines {self._editable_range_str(filename)}."
++                    f"ERROR: old_str was found, but it spans lines {start_line}..{end_line} "
++                    f"of {filename}, which reaches outside the editable region. "
++                    f"Editable: {self._editable_range_str(filename)}; protected: {prot}.\n"
++                    f"Shorten old_str so it lies entirely inside the editable region — drop "
++                    f"the leading/trailing lines that belong to the protected part (imports, "
++                    f"banner comments, the closing marker).\n"
++                    + self._rewrite_hint(filename, old_str, always=True)
+                 )
+ 
+             matched = text[idx:end_idx]
+--- a/src/mlsbench/agent/interactive.py
++++ b/src/mlsbench/agent/interactive.py
+@@ -6,6 +6,7 @@
+ from mlsbench.agent.models import build_client
+ from mlsbench.agent.tools import (
+     TOOL_SCHEMAS, WEB_SEARCH_SCHEMA, WEB_EXTRACT_SCHEMA, RESET_SCHEMA, EDIT_REPLACE_SCHEMA,
++    EDIT_REWRITE_SCHEMA,
+     VIEW_SCHEMA,
+ )
+ 
+@@ -107,9 +108,13 @@
+             #       keep the tolerant matcher and its prompt guidance, but
+             #       withhold view(). Isolates the matcher's contribution from
+             #       the tool's.
++            #   MLSBENCH_REWRITE_OP=0
++            #       withhold op='rewrite' (and its prompt guidance), leaving
++            #       str_replace as the only way to change existing code. Set
++            #       this to reproduce the pre-rewrite tolerant arm.
+             #
+-            # Both unset = tolerant matcher + view, i.e. exactly what this
+-            # checkout did before these knobs existed.
++            # All unset = tolerant matcher + view + rewrite, the recommended
++            # contract.
+             # ---------------------------------------------------------------
+             _strict = os.environ.get("MLSBENCH_STRICT_STR_REPLACE", "").strip().lower() in (
+                 "1", "true", "yes", "on",
+@@ -117,6 +122,23 @@
+             _view_enabled = (not _strict) and os.environ.get(
+                 "MLSBENCH_VIEW_TOOL", "1"
+             ).strip().lower() not in ("0", "false", "no", "off")
++            _rewrite_enabled = (not _strict) and os.environ.get(
++                "MLSBENCH_REWRITE_OP", "1"
++            ).strip().lower() not in ("0", "false", "no", "off")
++
++            if _rewrite_enabled:
++                # op='rewrite' is only reachable when its schema is installed, so
++                # the tool layer keys its errors/hints off the same flag.
++                self._tool_schemas = [
++                    EDIT_REWRITE_SCHEMA if s.get("name") == "edit" else s
++                    for s in self._tool_schemas
++                ]
++                self.tools.allow_rewrite = True
++            self.tools.use_replace = True
++            # Reject-and-revert on a NEW syntax error, for this contract only.
++            # Off in the strict arm (which must stay upstream-exact) and off for
++            # the other drivers that call tools.edit() directly.
++            self.tools.syntax_gate = not _strict
+ 
+             if _strict:
+                 # Verbatim upstream wording — the prompt IS part of the contract,
+@@ -128,6 +150,43 @@
+                     "    new_str deletes it)\n"
+                     "  - op='create': create a new file (only if allow_create=true)\n"
+                 )
++            elif _rewrite_enabled:
++                # Two ops, split by SIZE of the change, the way Cline splits
++                # write_to_file from replace_in_file and tells the model which to
++                # reach for. The banked runs are unambiguous that the size split
++                # is the one that matters: anchors covering >=95% of the editable
++                # region were accepted 12.1% of the time against 37-45% for
++                # smaller ones.
++                replace_block = (
++                    "- edit(op, filename, ...): Modify files in the workspace. Choose op by how\n"
++                    "  much you are changing:\n"
++                    "  - op='rewrite': replace the WHOLE editable region with `content`. This is\n"
++                    "    the normal way to write your solution. It needs no line numbers and no\n"
++                    "    copy of the old code, so it cannot fail with 'not found' or 'outside the\n"
++                    "    editable range'. Prefer it whenever you are (re)implementing the stub.\n"
++                    "  - op='str_replace': replace the single, unique occurrence of old_str with\n"
++                    "    new_str — for SMALL surgical fixes only. Keep old_str to 1–10 lines. Never\n"
++                    "    paste a whole function, class or docstring as old_str; that is what\n"
++                    "    op='rewrite' is for, and long anchors almost always fail to match.\n"
++                    "  - op='create': create a new file (only if allow_create=true)\n"
++                )
++                if _view_enabled:
++                    replace_block += (
++                        "- view(filename, start_line=None, end_line=None): Read the file back. Call\n"
++                        "  it before str_replace whenever you are unsure of the exact text, and\n"
++                        "  always after an undo().\n"
++                    )
++                replace_block += (
++                    "\n"
++                    "  Reading the file correctly matters more than anything else here:\n"
++                    "  * Every successful edit echoes back the file's CURRENT editable region.\n"
++                    "    That echo is the truth. The listing in this first message is only true\n"
++                    "    until your first edit — after that, do not copy old_str out of it.\n"
++                    "  * The 'NNNNNN: ' line numbers in every listing are a display prefix. Never\n"
++                    "    include them in old_str or in content.\n"
++                    "  * If an edit is rejected, read the error: it quotes the nearest real text\n"
++                    "    in the file. Anchor on that, or switch to op='rewrite'.\n"
++                )
+             else:
+                 replace_block = (
+                     "- edit(op, filename, ...): Modify files in the workspace by exact string match.\n"
+--- a/src/mlsbench/agent/base.py
++++ b/src/mlsbench/agent/base.py
+@@ -836,6 +836,26 @@
+             self._print_lines(old_l, f"{R}-{{num:4d}} | {{line}}{RST}", 1, limit, D, RST)
+             self._print_lines(new_l, f"{G}+{{num:4d}} | {{line}}{RST}", 1, limit, D, RST)
+ 
++        elif op == "rewrite":
++            # The op carries no line numbers, so recover them from the editable
++            # range in order to print a diff rather than a bare content dump.
++            s, old_lines = 1, []
++            try:
++                path = self.tools._resolve_workspace_path(fname)
++                if path.exists():
++                    all_lines = path.read_text().splitlines()
++                    rngs = self.tools._compute_editable_ranges(fname, len(all_lines))
++                    if len(rngs) == 1:
++                        s, e = rngs[0]
++                        old_lines = all_lines[s - 1 : e]
++            except Exception:
++                pass
++            print(f"{B}diff --agent a/{fname} b/{fname}{RST}")
++            print(f"{C}@@ rewrite editable region: -{len(old_lines)} "
++                  f"+{len(new_lines)} @@{RST}")
++            self._print_lines(old_lines, f"{R}-{{num:4d}} | {{line}}{RST}", s, limit, D, RST)
++            self._print_lines(new_lines, f"{G}+{{num:4d}} | {{line}}{RST}", s, limit, D, RST)
++
+         else:
+             print(f"  {Y}op={op}{RST}  file={fname}")
+ 
