@@ -9,9 +9,10 @@ exists on the latest corpus. These two arms differ ONLY in the agentic rows.
 Arms (identical maintain, identical hyperparams):
   withag = timeonly(innovation_sft HEAD rebuild, 2622 rows incl. 473 agentic)
   noag   = same minus rows with a non-empty `tools` field (the r3 filter)
-Shared:  maintain = wave2 x8 replay (the c2_maint8x dose that held FCS at base
-         in the 9B exploration; wave3 deliberately NOT used here so the arms
-         stay comparable to the exploration line).
+Shared:  maintain = wave2 (hard-only, 750) + wave3 (5,291) single pass, NO
+         replay (user ruling 2026-08-22: replay was a workaround for scarce
+         maintain data; the distillation campaign is complete and volume now
+         does the job). wave3 ids exclude wave2 by construction (zero overlap).
 
 The timeonly transform mirrors the user's 2026-08-18 ruling exactly as
 implemented in training/FrontierSmith/scripts/build_training_final_innovation.py:
@@ -24,8 +25,13 @@ import gzip, json, os, sys
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 SRC = os.path.join(REPO, "sft", "innovation_sft.jsonl")
 WAVE2 = os.path.join(REPO, "sft", "innovation_wave2_sft.jsonl.gz")
+WAVE3 = os.path.join(REPO, "sft", "innovation_wave3_sft.jsonl.gz")
 OUTDIR = os.path.dirname(os.path.abspath(__file__))
-MAINT_K = 8
+# One uniform schema across all three files (the loss:None landmine class):
+# exactly these keys on every row, absent ones filled with "". wave3's
+# pass_rate/samples_used are analysis metadata, not training fields, and
+# enable_thinking is uniformly absent (all rows are thinking-mode).
+KEEP_KEYS = ("conversations", "system", "tools")
 
 PERSONA = "You are a good researcher."
 DELIVERY = ("When you write code, deliver a single, self-contained, runnable implementation that "
@@ -57,23 +63,26 @@ def main():
     n_agentic = len(withag) - len(noag)
     assert n_agentic == 473, f"expected 473 agentic rows, got {n_agentic}"
 
+    def keep(r):
+        return {k: r.get(k, "") for k in KEEP_KEYS}
+
     maint = [json.loads(l) for l in gzip.open(WAVE2, "rt")]
+    n_w2 = len(maint)
+    maint += [json.loads(l) for l in gzip.open(WAVE3, "rt")]
 
     for name, rows in (("innovation_timeonly_withag", withag),
                        ("innovation_timeonly_noag", noag)):
         p = os.path.join(OUTDIR, name + ".jsonl")
         with open(p, "w") as f:
             for r in rows:
-                f.write(json.dumps({k: v for k, v in r.items() if not k.startswith("_")},
-                                   ensure_ascii=False) + "\n")
+                f.write(json.dumps(keep(r), ensure_ascii=False) + "\n")
         print(f"{p}: {len(rows)} rows")
 
-    p = os.path.join(OUTDIR, f"maintain_wave2_x{MAINT_K}.jsonl")
+    p = os.path.join(OUTDIR, "maintain_w2w3.jsonl")
     with open(p, "w") as f:
-        for _ in range(MAINT_K):
-            for r in maint:
-                f.write(json.dumps(r, ensure_ascii=False) + "\n")
-    print(f"{p}: {len(maint)}x{MAINT_K} = {len(maint)*MAINT_K} rows")
+        for r in maint:
+            f.write(json.dumps(keep(r), ensure_ascii=False) + "\n")
+    print(f"{p}: wave2 {n_w2} + wave3 {len(maint)-n_w2} = {len(maint)} rows (single pass, no replay)")
     print(f"systems stripped to timeonly: {stripped}/{len(withag)}")
 
 
