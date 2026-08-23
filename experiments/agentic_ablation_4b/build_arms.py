@@ -64,7 +64,21 @@ def main():
     assert n_agentic == 473, f"expected 473 agentic rows, got {n_agentic}"
 
     def keep(r):
-        return {k: r.get(k, "") for k in KEEP_KEYS}
+        # Qwen3.5 is a VL arch: its processor treats literal <image>/<video>/<audio>
+        # in text as multimodal placeholders and crashes on text-only rows (53
+        # scraped CF statements in wave3 carry <image>). Neutralize with the
+        # corpus's ⟨⟩ convention, same as ⟨think⟩/⟨tool_call⟩.
+        out = {k: r.get(k, "") for k in KEEP_KEYS}
+        fixed = []
+        for t in out["conversations"]:
+            t = dict(t)
+            v = t.get("value")
+            if isinstance(v, str):
+                for tok in ("image", "video", "audio"):
+                    t["value"] = v = v.replace(f"<{tok}>", f"⟨{tok}⟩")
+            fixed.append(t)
+        out["conversations"] = fixed
+        return out
 
     maint = [json.loads(l) for l in gzip.open(WAVE2, "rt")]
     n_w2 = len(maint)
